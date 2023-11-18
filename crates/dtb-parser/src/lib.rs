@@ -1,3 +1,39 @@
+//! A parser for the device tree blob format.
+//!
+//! The device tree blob format is a binary format used by firmware to describe non-discoverable
+//! hardware to the operating system. This includes things like the number of CPUs and their frequency,
+//! MMIO regions, interrupt controllers, and other platform-specific information.
+//!
+//! The format is described in detail in the [Device Tree Specification](https://github.com/devicetree-org/devicetree-specification);
+//!
+//! In contrast to other DTB parsers where the entire DTB is traversed multiple times,
+//! searching for sub-nodes and properties, this crate makes use of the [Visitor Pattern](https://rust-unofficial.github.io/patterns/patterns/behavioural/visitor.html)
+//! to only traverse the DTB once, allowing the caller to collect information from the DTB in a single pass.
+//! The visitor pattern also allows the caller to choose which nodes and properties they are interested in.
+//!
+//! # Example
+//!
+//! ```rust,no_run
+//! let dtb_ptr = 0x1234_5678 as *const u8; // get a pointer to the DTB
+//! let dtb = unsafe { dtb_parser::Dtb::from_raw(dtb_ptr) }.unwrap();
+//!
+//! struct MyVisitor {
+//!    cpu_count: usize,
+//! }
+//!
+//! impl<'a> dtb_parser::Visit<'a> for MyVisitor {
+//!   fn visit_subnode(&mut self, name: &'a str, node: Node<'a>) -> Result<(), dtb_parser::Error> {
+//!     if name == "cpus" {
+//!         node.walk(&mut self)?; // walk the cpus node, calling visit_subnode for each subnode
+//!     } else if name.starts_with("cpu@") {
+//!         self.cpu_count += 1;
+//!     }
+//!     
+//!     Ok(())
+//!   }
+//! }
+//! ```
+
 #![no_std]
 #![feature(error_in_core)]
 
