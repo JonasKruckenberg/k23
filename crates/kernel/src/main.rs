@@ -2,7 +2,12 @@
 #![no_main]
 #![feature(naked_functions, asm_const)]
 
+mod error;
+
 use core::arch::asm;
+use error::Error;
+
+pub type Result<T> = core::result::Result<T, Error>;
 
 const STACK_SIZE_PAGES: usize = 25;
 const PAGE_SIZE: usize = 4096;
