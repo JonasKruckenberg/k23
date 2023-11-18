@@ -28,6 +28,19 @@ unsafe extern "C" fn _start() -> ! {
 }
 
 extern "C" fn start(hartid: usize, opaque: usize) -> ! {
+    extern "C" {
+        static mut __bss_start: u64;
+        static mut __bss_end: u64;
+    }
+    unsafe {
+        let mut ptr = &mut __bss_start as *mut u64;
+        let end = &mut __bss_end as *mut u64;
+        while ptr < end {
+            ptr.write_volatile(0);
+            ptr = ptr.offset(1);
+        }
+    }
+
     loop {
         unsafe {
             asm!("wfi");
