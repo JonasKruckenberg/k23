@@ -32,6 +32,9 @@ SECTIONS {
         __bss_end = .;
     } > DRAM
 
+    . = ALIGN(16);
+    __stack_start = .;
+
     /DISCARD/ : {
         *(.comment*)
         *(.eh_frame*)
