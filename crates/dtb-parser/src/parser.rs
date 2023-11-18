@@ -74,8 +74,8 @@ impl<'a> Parser<'a> {
 
                     let aligned_len = align_up!(len, mem::size_of::<u32>());
 
-                    let bytes = &self.struct_slice.get(..len).ok_or(Error::UnexpectedEOF)?;
-                    self.struct_slice = &self
+                    let bytes = self.struct_slice.get(..len).ok_or(Error::UnexpectedEOF)?;
+                    self.struct_slice = self
                         .struct_slice
                         .get(aligned_len..)
                         .ok_or(Error::UnexpectedEOF)?;
@@ -86,7 +86,16 @@ impl<'a> Parser<'a> {
 
                     let name = self.read_prop_name(nameoff)?;
 
-                    visitor.visit_property(name, bytes)?;
+                    match name {
+                        "reg" => visitor.visit_reg(bytes)?,
+                        "#address-cells" => {
+                            visitor.visit_address_cells(u32::from_be_bytes(bytes.try_into()?))?;
+                        }
+                        "#size-cells" => {
+                            visitor.visit_size_cells(u32::from_be_bytes(bytes.try_into()?))?;
+                        }
+                        _ => visitor.visit_property(name, bytes)?,
+                    }
                 }
                 FDT_NOP => {}
                 FDT_END => {

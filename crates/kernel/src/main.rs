@@ -1,9 +1,11 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const)]
+#![feature(naked_functions, asm_const, error_in_core)]
 
+mod board_info;
 mod error;
 
+use crate::board_info::BoardInfo;
 use core::arch::asm;
 use error::Error;
 
@@ -32,7 +34,7 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
-extern "C" fn start(hartid: usize, opaque: usize) -> ! {
+extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
     extern "C" {
         static mut __bss_start: u64;
         static mut __bss_end: u64;
@@ -45,6 +47,8 @@ extern "C" fn start(hartid: usize, opaque: usize) -> ! {
             ptr = ptr.offset(1);
         }
     }
+
+    let board_info = BoardInfo::from_raw(opaque).unwrap();
 
     loop {
         unsafe {

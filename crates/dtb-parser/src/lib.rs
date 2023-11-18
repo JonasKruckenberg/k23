@@ -56,11 +56,27 @@ const DTB_VERSION: u32 = 17;
 
 #[allow(unused_variables)]
 pub trait Visit<'a> {
-    fn visit_subnode(&mut self, name: &'a str, node: Node<'a>) -> Result<()> {
+    fn visit_subnode(&mut self, name: &'a str, node: Node<'a>) -> core::result::Result<(), Error> {
         Ok(())
     }
 
-    fn visit_property(&mut self, name: &'a str, value: &'a [u8]) -> Result<()> {
+    fn visit_reg(&mut self, reg: &'a [u8]) -> core::result::Result<(), Error> {
+        Ok(())
+    }
+
+    fn visit_address_cells(&mut self, cells: u32) -> core::result::Result<(), Error> {
+        Ok(())
+    }
+
+    fn visit_size_cells(&mut self, cells: u32) -> core::result::Result<(), Error> {
+        Ok(())
+    }
+
+    fn visit_property(
+        &mut self,
+        name: &'a str,
+        value: &'a [u8],
+    ) -> core::result::Result<(), Error> {
         Ok(())
     }
 }

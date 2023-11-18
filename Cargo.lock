@@ -13,6 +13,7 @@ dependencies = [
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "dtb-parser",
  "onlyerror",
 ]
 
