@@ -14,15 +14,17 @@
 //! # Example
 //!
 //! ```rust,no_run
+//! use dtb_parser::{Node, Visit, Dtb};
+//!
 //! let dtb_ptr = 0x1234_5678 as *const u8; // get a pointer to the DTB
-//! let dtb = unsafe { dtb_parser::Dtb::from_raw(dtb_ptr) }.unwrap();
+//! let dtb = unsafe { Dtb::from_raw(dtb_ptr) }.unwrap();
 //!
 //! struct MyVisitor {
 //!    cpu_count: usize,
 //! }
 //!
-//! impl<'a> dtb_parser::Visit<'a> for MyVisitor {
-//!   fn visit_subnode(&mut self, name: &'a str, node: Node<'a>) -> Result<(), dtb_parser::Error> {
+//! impl<'a> Visit<'a> for MyVisitor {
+//!   fn visit_subnode(&mut self, name: &'a str, mut node: Node<'a>) -> Result<(), dtb_parser::Error> {
 //!     if name == "cpus" {
 //!         node.walk(&mut self)?; // walk the cpus node, calling visit_subnode for each subnode
 //!     } else if name.starts_with("cpu@") {
@@ -38,19 +40,35 @@
 #![feature(error_in_core)]
 
 mod error;
+mod node;
+mod parser;
 
+use crate::parser::Parser;
 use core::slice;
+
 pub use error::Error;
+pub use node::Node;
+
 pub(crate) type Result<T> = core::result::Result<T, Error>;
 
 const DTB_MAGIC: u32 = 0xD00DFEED;
 const DTB_VERSION: u32 = 17;
 
+#[allow(unused_variables)]
+pub trait Visit<'a> {
+    fn visit_subnode(&mut self, name: &'a str, node: Node<'a>) -> Result<()> {
+        Ok(())
+    }
+
+    fn visit_property(&mut self, name: &'a str, value: &'a [u8]) -> Result<()> {
+        Ok(())
+    }
+}
+
 pub struct Dtb<'a> {
     header: &'a Header,
     memory_slice: &'a [u8],
-    struct_slice: &'a [u8],
-    strings_slice: &'a [u8],
+    parser: Parser<'a>,
 }
 
 #[repr(C)]
@@ -100,9 +118,21 @@ impl<'a> Dtb<'a> {
 
         Ok(Self {
             header,
-            struct_slice,
-            strings_slice,
             memory_slice,
+            parser: Parser::new(struct_slice, strings_slice, 0),
         })
     }
+
+    pub fn walk(self, visitor: &mut dyn Visit<'a>) -> crate::Result<()> {
+        self.parser.walk(visitor)
+    }
+}
+
+fn c_strlen_on_slice(slice: &[u8]) -> usize {
+    let mut end = slice;
+    while !end.is_empty() && *end.first().unwrap_or(&0) != 0 {
+        end = &end[1..];
+    }
+
+    end.as_ptr() as usize - slice.as_ptr() as usize
 }
