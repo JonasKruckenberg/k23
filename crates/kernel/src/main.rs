@@ -5,10 +5,10 @@
 mod board_info;
 mod error;
 mod logger;
+mod sbi;
 
 use crate::board_info::BoardInfo;
 use core::arch::asm;
-use core::fmt::Write;
 use error::Error;
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -53,6 +53,41 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
     let board_info = BoardInfo::from_raw(opaque).unwrap();
 
     logger::init(&board_info.serial, 38400);
+
+    for hart in 0..board_info.cpus {
+        if hart != hartid {
+            sbi::hsm::start_hart(hart, _start_hart as usize, 0).unwrap();
+        }
+    }
+
+    kmain(hartid)
+}
+
+#[no_mangle]
+#[naked]
+unsafe extern "C" fn _start_hart() -> ! {
+    asm!(
+        "la     sp, __stack_start", // set the stack pointer to the bottom of the stack
+        "li     t0, {stack_size}", // load the stack size
+        "mv     t1, a0",            // load the hart id
+        "addi   t1, t1, 1", // add one to the hart id so that we add at least one stack size (stack grows from the top downwards)
+        "mul    t0, t0, t1", // multiply the stack size by the hart id to get the offset
+        "add    sp, sp, t0", // add the offset from sp to get the harts stack pointer
+
+        "jal zero, {start_rust}", // jump into Rust
+
+        stack_size = const STACK_SIZE_PAGES * PAGE_SIZE,
+        start_rust = sym start_hart,
+        options(noreturn)
+    )
+}
+
+extern "C" fn start_hart(hartid: usize) -> ! {
+    kmain(hartid)
+}
+
+fn kmain(hartid: usize) -> ! {
+    log::info!("Hello world from hart {hartid}!");
 
     loop {
         unsafe {
