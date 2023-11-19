@@ -1,5 +1,6 @@
 mod error;
 pub mod hsm;
+pub mod time;
 
 use core::arch::asm;
 pub use error::Error;
@@ -7,6 +8,7 @@ pub use error::Error;
 type Result<T> = core::result::Result<T, Error>;
 
 const EID_HSM: usize = 0x48534D;
+const EID_TIME: usize = 0x54494D45;
 
 #[inline]
 fn sbi_call(
