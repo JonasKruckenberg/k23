@@ -40,12 +40,14 @@
 #![feature(error_in_core)]
 
 mod error;
+mod memory_reservations;
 mod node;
 mod parser;
 
 use crate::parser::Parser;
 use core::slice;
 
+use crate::memory_reservations::MemoryReservations;
 pub use error::Error;
 pub use node::Node;
 
@@ -137,6 +139,17 @@ impl<'a> Dtb<'a> {
             memory_slice,
             parser: Parser::new(struct_slice, strings_slice, 0),
         })
+    }
+
+    pub fn version(&self) -> u32 {
+        u32::from_be_bytes(self.header.version)
+    }
+
+    pub fn memory_reservations(&self) -> MemoryReservations {
+        MemoryReservations {
+            buf: &self.memory_slice,
+            done: false,
+        }
     }
 
     pub fn walk(self, visitor: &mut dyn Visit<'a>) -> crate::Result<()> {
