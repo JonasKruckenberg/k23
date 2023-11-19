@@ -26,7 +26,7 @@ fn kmain(hartid: usize) -> ! {
 
     trap::init();
 
-    sbi::time::set_timer(2_000_000).unwrap();
+    // sbi::time::set_timer(2_000_000).unwrap();
 
     loop {
         unsafe {
