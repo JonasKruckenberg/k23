@@ -1,4 +1,3 @@
-use crate::logger;
 use core::arch::asm;
 use core::marker::PhantomPinned;
 use riscv::register::scause::{Interrupt, Trap};
@@ -176,18 +175,18 @@ fn default_trap_handler(
     a6: usize,
     a7: usize,
 ) -> *mut TrapFrame {
-        let cause = scause::read().cause();
-        log::debug!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
+    let cause = scause::read().cause();
+    log::debug!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
 
-        if matches!(cause, Trap::Interrupt(Interrupt::SupervisorTimer)) {
-            log::debug!("timer event");
+    if matches!(cause, Trap::Interrupt(Interrupt::SupervisorTimer)) {
+        log::debug!("timer event");
 
-            unsafe {
-                sie::clear_stimer();
-            }
-        } else {
-            panic!("unknown trap")
+        unsafe {
+            sie::clear_stimer();
         }
+    } else {
+        panic!("unknown trap")
+    }
 
     frame
 }

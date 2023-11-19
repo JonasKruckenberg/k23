@@ -45,11 +45,10 @@ impl<'a> Parser<'a> {
                 FDT_BEGIN_NODE => {
                     nesting_level += 1;
 
-                    // only parse the subnode if it's a direct child of the current node
+                    // only parse the sub node if it's a direct child of the current node
                     if nesting_level == self.level + 1 {
                         let name = self.read_node_name()?;
-                        let mut node =
-                            Node::new(self.struct_slice, self.strings_slice, nesting_level);
+                        let node = Node::new(self.struct_slice, self.strings_slice, nesting_level);
 
                         // hack to skip over the root node
                         if name.is_empty() && self.level == 0 {

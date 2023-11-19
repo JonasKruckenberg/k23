@@ -24,10 +24,6 @@ bitflags! {
 
 pub struct SerialPort {
     data: AtomicPtr<u8>,
-    int_en: AtomicPtr<u8>,
-    fifo_ctrl: AtomicPtr<u8>,
-    line_ctrl: AtomicPtr<u8>,
-    modem_ctrl: AtomicPtr<u8>,
     line_sts: AtomicPtr<u8>,
 }
 
@@ -75,10 +71,6 @@ impl SerialPort {
 
         Self {
             data: AtomicPtr::new(base_pointer),
-            int_en: AtomicPtr::new(int_en),
-            fifo_ctrl: AtomicPtr::new(fifo_ctrl),
-            line_ctrl: AtomicPtr::new(line_ctrl),
-            modem_ctrl: AtomicPtr::new(modem_ctrl),
             line_sts: AtomicPtr::new(base_pointer.add(5)),
         }
     }
