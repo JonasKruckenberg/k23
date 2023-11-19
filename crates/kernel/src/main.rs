@@ -31,7 +31,9 @@ fn kmain(hartid: usize) -> ! {
 }
 
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    log::error!("KERNEL PANIC {}", info);
+
     loop {
         unsafe {
             asm!("wfi");
