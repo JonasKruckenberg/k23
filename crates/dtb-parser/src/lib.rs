@@ -39,15 +39,17 @@
 #![no_std]
 #![feature(error_in_core)]
 
+mod debug;
 mod error;
 mod memory_reservations;
 mod node;
 mod parser;
 
+use crate::memory_reservations::MemoryReservations;
 use crate::parser::Parser;
 use core::slice;
 
-use crate::memory_reservations::MemoryReservations;
+pub use debug::DebugVisitor;
 pub use error::Error;
 pub use node::Node;
 
