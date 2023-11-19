@@ -21,16 +21,11 @@ const PAGE_SIZE: usize = 4096;
 #[naked]
 unsafe extern "C" fn _start() -> ! {
     asm!(
-        "la     sp, __stack_start", // set the stack pointer to the bottom of the stack
-        "li     t0, {stack_size}", // load the stack size
-        "mv     t1, a0",            // load the hart id
-        "addi   t1, t1, 1", // add one to the hart id so that we add at least one stack size (stack grows from the top downwards)
-        "mul    t0, t0, t1", // multiply the stack size by the hart id to get the offset
-        "add    sp, sp, t0", // add the offset from sp to get the harts stack pointer
+        "call {set_stack_pointer}",
 
         "jal zero, {start_rust}", // jump into Rust
 
-        stack_size = const STACK_SIZE_PAGES * PAGE_SIZE,
+        set_stack_pointer = sym set_stack_pointer,
         start_rust = sym start,
         options(noreturn)
     )
@@ -63,20 +58,30 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
     kmain(hartid)
 }
 
-#[no_mangle]
 #[naked]
-unsafe extern "C" fn _start_hart() -> ! {
+unsafe extern "C" fn set_stack_pointer() {
     asm!(
         "la     sp, __stack_start", // set the stack pointer to the bottom of the stack
-        "li     t0, {stack_size}", // load the stack size
+        "li     t0, {stack_size}",  // load the stack size
         "mv     t1, a0",            // load the hart id
         "addi   t1, t1, 1", // add one to the hart id so that we add at least one stack size (stack grows from the top downwards)
         "mul    t0, t0, t1", // multiply the stack size by the hart id to get the offset
         "add    sp, sp, t0", // add the offset from sp to get the harts stack pointer
+        "ret",
+        stack_size = const STACK_SIZE_PAGES * PAGE_SIZE,
+        options(noreturn)
+    )
+}
+
+#[no_mangle]
+#[naked]
+unsafe extern "C" fn _start_hart() -> ! {
+    asm!(
+        "call {set_stack_pointer}",
 
         "jal zero, {start_rust}", // jump into Rust
 
-        stack_size = const STACK_SIZE_PAGES * PAGE_SIZE,
+        set_stack_pointer = sym set_stack_pointer,
         start_rust = sym start_hart,
         options(noreturn)
     )
