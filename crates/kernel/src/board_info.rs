@@ -3,12 +3,19 @@ use core::mem;
 use core::ops::Range;
 use dtb_parser::{Dtb, Node, Visit};
 
+#[derive(Debug)]
 pub struct BoardInfo {
     pub cpus: usize,
     pub base_frequency: u32,
-    pub serial: Range<usize>,
+    pub serial: Serial,
     pub clint: Range<usize>,
     pub qemu_test: Option<Range<usize>>,
+}
+
+#[derive(Debug)]
+pub struct Serial {
+    pub mmio_regs: Range<usize>,
+    pub clock_frequency: u32,
 }
 
 impl BoardInfo {
@@ -24,10 +31,19 @@ impl BoardInfo {
                 .cpus_visitor
                 .base_frequency
                 .ok_or(Error::MissingBordInfo("base_frequency"))?,
-            serial: visitor
-                .soc_visitor
-                .serial
-                .ok_or(Error::MissingBordInfo("serial"))?,
+            serial: Serial {
+                mmio_regs: visitor
+                    .soc_visitor
+                    .serial_visitor
+                    .regs
+                    .inner
+                    .ok_or(Error::MissingBordInfo("serial.regs"))?,
+                clock_frequency: visitor
+                    .soc_visitor
+                    .serial_visitor
+                    .clock_frequency
+                    .ok_or(Error::MissingBordInfo("serial.clock_frequency"))?,
+            },
             clint: visitor
                 .soc_visitor
                 .clint
@@ -51,14 +67,21 @@ struct CpusVisitor {
 
 #[derive(Default)]
 struct SocVisitor {
-    pub serial: Option<Range<usize>>,
+    pub serial_visitor: SerialVisitor,
     pub clint: Option<Range<usize>>,
     pub qemu_test: Option<Range<usize>>,
     addr_size: usize,
     width_size: usize,
 }
 
-struct RegVisitor {
+#[derive(Default)]
+struct SerialVisitor {
+    pub regs: RegsVisitor,
+    pub clock_frequency: Option<u32>,
+}
+
+#[derive(Default)]
+struct RegsVisitor {
     pub inner: Option<Range<usize>>,
     addr_size: usize,
     width_size: usize,
@@ -98,15 +121,15 @@ impl<'a> Visit<'a> for SocVisitor {
         mut node: Node<'a>,
     ) -> Result<(), dtb_parser::Error> {
         if name.starts_with("serial@") {
-            let mut serial_visitor = RegVisitor::new(self.addr_size, self.width_size);
-            node.walk(&mut serial_visitor)?;
-            self.serial = serial_visitor.inner;
+            self.serial_visitor.regs.addr_size = self.addr_size;
+            self.serial_visitor.regs.width_size = self.width_size;
+            node.walk(&mut self.serial_visitor)?;
         } else if name.starts_with("clint@") {
-            let mut clint_visitor = RegVisitor::new(self.addr_size, self.width_size);
+            let mut clint_visitor = RegsVisitor::new(self.addr_size, self.width_size);
             node.walk(&mut clint_visitor)?;
             self.clint = clint_visitor.inner;
         } else if name.starts_with("test@") {
-            let mut qemu_test_visitor = RegVisitor::new(self.addr_size, self.width_size);
+            let mut qemu_test_visitor = RegsVisitor::new(self.addr_size, self.width_size);
             node.walk(&mut qemu_test_visitor)?;
             self.qemu_test = qemu_test_visitor.inner;
         }
@@ -124,7 +147,30 @@ impl<'a> Visit<'a> for SocVisitor {
     }
 }
 
-impl RegVisitor {
+impl SerialVisitor {
+    pub fn new(addr_size: usize, width_size: usize) -> Self {
+        Self {
+            regs: RegsVisitor::new(addr_size, width_size),
+            clock_frequency: None,
+        }
+    }
+}
+
+impl<'a> Visit<'a> for SerialVisitor {
+    fn visit_reg(&mut self, reg: &'a [u8]) -> Result<(), dtb_parser::Error> {
+        self.regs.visit_reg(reg)
+    }
+
+    fn visit_property(&mut self, name: &'a str, value: &'a [u8]) -> Result<(), dtb_parser::Error> {
+        if name == "clock-frequency" {
+            self.clock_frequency = Some(u32::from_be_bytes(value.try_into().unwrap()));
+        }
+
+        Ok(())
+    }
+}
+
+impl RegsVisitor {
     pub fn new(addr_size: usize, width_size: usize) -> Self {
         Self {
             inner: None,
@@ -134,7 +180,7 @@ impl RegVisitor {
     }
 }
 
-impl<'a> Visit<'a> for RegVisitor {
+impl<'a> Visit<'a> for RegsVisitor {
     fn visit_reg(&mut self, reg: &[u8]) -> Result<(), dtb_parser::Error> {
         let (reg, rest) = reg.split_at(self.addr_size);
         let (width, _) = rest.split_at(self.width_size);
