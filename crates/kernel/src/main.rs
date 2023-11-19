@@ -4,7 +4,7 @@
 
 mod board_info;
 mod error;
-mod uart;
+mod logger;
 
 use crate::board_info::BoardInfo;
 use core::arch::asm;
@@ -52,11 +52,7 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
 
     let board_info = BoardInfo::from_raw(opaque).unwrap();
 
-    uart::init(&board_info.serial);
-
-    let mut uart = uart::UART.lock();
-    let uart = uart.as_mut().unwrap();
-    uart.write_str("Hello, world!\n").unwrap();
+    logger::init(&board_info.serial, 38400);
 
     loop {
         unsafe {
