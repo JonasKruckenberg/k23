@@ -10,6 +10,7 @@ pub struct BoardInfo {
     pub serial: Serial,
     pub clint: Range<usize>,
     pub qemu_test: Option<Range<usize>>,
+    pub memory: Range<usize>,
 }
 
 #[derive(Debug)]
@@ -26,37 +27,43 @@ impl BoardInfo {
         dtb.walk(&mut visitor)?;
 
         Ok(Self {
-            cpus: visitor.cpus_visitor.cpus,
+            cpus: visitor.cpus.cpus,
             base_frequency: visitor
-                .cpus_visitor
+                .cpus
                 .base_frequency
                 .ok_or(Error::MissingBordInfo("base_frequency"))?,
             serial: Serial {
                 mmio_regs: visitor
-                    .soc_visitor
-                    .serial_visitor
+                    .soc
+                    .serial
                     .regs
                     .inner
                     .ok_or(Error::MissingBordInfo("serial.regs"))?,
                 clock_frequency: visitor
-                    .soc_visitor
-                    .serial_visitor
+                    .soc
+                    .serial
                     .clock_frequency
                     .ok_or(Error::MissingBordInfo("serial.clock_frequency"))?,
             },
             clint: visitor
-                .soc_visitor
+                .soc
                 .clint
+                .inner
                 .ok_or(Error::MissingBordInfo("clint"))?,
-            qemu_test: visitor.soc_visitor.qemu_test,
+            qemu_test: visitor.soc.qemu_test.inner,
+            memory: visitor
+                .memory
+                .inner
+                .ok_or(Error::MissingBordInfo("memory"))?,
         })
     }
 }
 
 #[derive(Default)]
 struct BoardInfoVisitor {
-    pub cpus_visitor: CpusVisitor,
-    pub soc_visitor: SocVisitor,
+    pub cpus: CpusVisitor,
+    pub soc: SocVisitor,
+    pub memory: RegsVisitor,
 }
 
 #[derive(Default)]
@@ -67,11 +74,9 @@ struct CpusVisitor {
 
 #[derive(Default)]
 struct SocVisitor {
-    pub serial_visitor: SerialVisitor,
-    pub clint: Option<Range<usize>>,
-    pub qemu_test: Option<Range<usize>>,
-    addr_size: usize,
-    width_size: usize,
+    pub serial: SerialVisitor,
+    pub clint: RegsVisitor,
+    pub qemu_test: RegsVisitor,
 }
 
 #[derive(Default)]
@@ -90,10 +95,24 @@ struct RegsVisitor {
 impl<'a> Visit<'a> for BoardInfoVisitor {
     fn visit_subnode(&mut self, name: &'a str, node: Node<'a>) -> Result<(), dtb_parser::Error> {
         if name == "cpus" {
-            node.walk(&mut self.cpus_visitor)?;
+            node.walk(&mut self.cpus)?;
         } else if name == "soc" {
-            node.walk(&mut self.soc_visitor)?;
+            node.walk(&mut self.soc)?;
+        } else if name.starts_with("memory@") {
+            node.walk(&mut self.memory)?;
         }
+        Ok(())
+    }
+
+    fn visit_address_cells(&mut self, size_in_cells: u32) -> Result<(), dtb_parser::Error> {
+        let size_in_bytes = size_in_cells as usize * mem::size_of::<u32>();
+        self.memory.addr_size = size_in_bytes;
+        Ok(())
+    }
+
+    fn visit_size_cells(&mut self, size_in_cells: u32) -> Result<(), dtb_parser::Error> {
+        let size_in_bytes = size_in_cells as usize * mem::size_of::<u32>();
+        self.memory.width_size = size_in_bytes;
         Ok(())
     }
 }
@@ -115,44 +134,31 @@ impl<'a> Visit<'a> for CpusVisitor {
 }
 
 impl<'a> Visit<'a> for SocVisitor {
-    fn visit_subnode(
-        &mut self,
-        name: &'a str,
-        mut node: Node<'a>,
-    ) -> Result<(), dtb_parser::Error> {
+    fn visit_subnode(&mut self, name: &'a str, node: Node<'a>) -> Result<(), dtb_parser::Error> {
         if name.starts_with("serial@") {
-            self.serial_visitor.regs.addr_size = self.addr_size;
-            self.serial_visitor.regs.width_size = self.width_size;
-            node.walk(&mut self.serial_visitor)?;
+            node.walk(&mut self.serial)?;
         } else if name.starts_with("clint@") {
-            let mut clint_visitor = RegsVisitor::new(self.addr_size, self.width_size);
-            node.walk(&mut clint_visitor)?;
-            self.clint = clint_visitor.inner;
+            node.walk(&mut self.clint)?;
         } else if name.starts_with("test@") {
-            let mut qemu_test_visitor = RegsVisitor::new(self.addr_size, self.width_size);
-            node.walk(&mut qemu_test_visitor)?;
-            self.qemu_test = qemu_test_visitor.inner;
+            node.walk(&mut self.qemu_test)?;
         }
         Ok(())
     }
 
-    fn visit_address_cells(&mut self, cells: u32) -> Result<(), dtb_parser::Error> {
-        self.addr_size = cells as usize * mem::size_of::<u32>();
+    fn visit_address_cells(&mut self, size_in_cells: u32) -> Result<(), dtb_parser::Error> {
+        let size_in_bytes = size_in_cells as usize * mem::size_of::<u32>();
+        self.serial.regs.addr_size = size_in_bytes;
+        self.clint.addr_size = size_in_bytes;
+        self.qemu_test.addr_size = size_in_bytes;
         Ok(())
     }
 
-    fn visit_size_cells(&mut self, cells: u32) -> Result<(), dtb_parser::Error> {
-        self.width_size = cells as usize * mem::size_of::<u32>();
+    fn visit_size_cells(&mut self, size_in_cells: u32) -> Result<(), dtb_parser::Error> {
+        let size_in_bytes = size_in_cells as usize * mem::size_of::<u32>();
+        self.serial.regs.width_size = size_in_bytes;
+        self.clint.width_size = size_in_bytes;
+        self.qemu_test.width_size = size_in_bytes;
         Ok(())
-    }
-}
-
-impl SerialVisitor {
-    pub fn new(addr_size: usize, width_size: usize) -> Self {
-        Self {
-            regs: RegsVisitor::new(addr_size, width_size),
-            clock_frequency: None,
-        }
     }
 }
 
@@ -167,16 +173,6 @@ impl<'a> Visit<'a> for SerialVisitor {
         }
 
         Ok(())
-    }
-}
-
-impl RegsVisitor {
-    pub fn new(addr_size: usize, width_size: usize) -> Self {
-        Self {
-            inner: None,
-            addr_size,
-            width_size,
-        }
     }
 }
 
