@@ -1,6 +1,8 @@
 use crate::board_info::BoardInfo;
+use crate::trap::TrapFrame;
 use crate::{logger, sbi, PAGE_SIZE, STACK_SIZE_PAGES};
 use core::arch::asm;
+use core::mem;
 
 /// Sets the harts stack pointer to the top of the stack.
 ///
@@ -28,6 +30,20 @@ unsafe extern "C" fn set_stack_pointer() {
     )
 }
 
+#[naked]
+unsafe extern "C" fn allocate_trap_frame() {
+    asm!(
+        "addi sp, sp, {trap_frame_size}",
+        "andi sp, sp, {trap_frame_mask}",
+        "csrrw x0, sscratch, sp", // sscratch points to the trap frame
+        "ret",
+
+        trap_frame_size = const -(mem::size_of::<TrapFrame>() as isize),
+        trap_frame_mask = const !(mem::align_of::<TrapFrame>() - 1),
+        options(noreturn)
+    )
+}
+
 /// This is the boot harts entry point into the kernel.
 /// It is the first function that is called after OpenSBI has set up the environment.
 ///
@@ -39,10 +55,12 @@ unsafe extern "C" fn set_stack_pointer() {
 unsafe extern "C" fn _start() -> ! {
     asm!(
         "call {set_stack_pointer}",
+        "call {allocate_trap_frame}",
 
         "jal zero, {start_rust}", // jump into Rust
 
         set_stack_pointer = sym set_stack_pointer,
+        allocate_trap_frame = sym allocate_trap_frame,
         start_rust = sym start,
         options(noreturn)
     )
@@ -59,10 +77,12 @@ unsafe extern "C" fn _start() -> ! {
 unsafe extern "C" fn _start_hart() -> ! {
     asm!(
         "call {set_stack_pointer}",
+        "call {allocate_trap_frame}",
 
         "jal zero, {start_rust}", // jump into Rust
 
         set_stack_pointer = sym set_stack_pointer,
+        allocate_trap_frame = sym allocate_trap_frame,
         start_rust = sym crate::kmain,
         options(noreturn)
     )

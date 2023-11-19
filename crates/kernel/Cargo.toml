@@ -11,3 +11,4 @@ spin.workspace = true
 dtb-parser = { path = "../dtb-parser" }
 uart-16550 = { path = "../uart-16550" }
 log.workspace = true
+riscv.workspace = true

@@ -7,6 +7,7 @@ mod error;
 mod logger;
 mod sbi;
 mod start;
+mod trap;
 
 use core::arch::asm;
 use error::Error;
@@ -22,6 +23,10 @@ const PAGE_SIZE: usize = 4096;
 /// This function should set up hart-local state, and then ?. It should never return.
 fn kmain(hartid: usize) -> ! {
     log::info!("Hello world from hart {hartid}!");
+
+    trap::init();
+
+    sbi::time::set_timer(2_000_000).unwrap();
 
     loop {
         unsafe {

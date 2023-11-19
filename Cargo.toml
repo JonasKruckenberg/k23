@@ -11,3 +11,4 @@ onlyerror = { version = "0.1.3", default-features = false }
 bitflags = "2.4.1"
 spin = "0.9.8"
 log = "0.4.20"
+riscv = "0.10.1"
