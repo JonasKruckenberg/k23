@@ -1,6 +1,6 @@
 use crate::board_info::BoardInfo;
 use crate::trap::TrapFrame;
-use crate::{kmem, logger, sbi, unwind, PAGE_SIZE, STACK_SIZE_PAGES};
+use crate::{kmem, logger, sbi, PAGE_SIZE, STACK_SIZE_PAGES};
 use core::arch::asm;
 use core::mem;
 use core::ptr::addr_of_mut;
@@ -52,6 +52,10 @@ unsafe extern "C" fn allocate_trap_frame() {
 #[naked]
 unsafe extern "C" fn _start() -> ! {
     asm!(
+        ".option push",
+        ".option norelax",
+        "    la		gp, __global_pointer$",
+        ".option pop",
         "call {set_stack_pointer}",
         "call {allocate_trap_frame}",
 
@@ -74,6 +78,10 @@ unsafe extern "C" fn _start() -> ! {
 #[naked]
 unsafe extern "C" fn _start_hart() -> ! {
     asm!(
+        ".option push",
+        ".option norelax",
+        "    la		gp, __global_pointer$",
+        ".option pop",
         "call {set_stack_pointer}",
         "call {allocate_trap_frame}",
 
@@ -112,6 +120,8 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
 
     kmem::init(&board_info);
 
+    print_debug_info(&board_info);
+
     for hart in 0..board_info.cpus {
         if hart != hartid {
             sbi::hsm::start_hart(hart, _start_hart as usize, 0).unwrap();
@@ -119,4 +129,32 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
     }
 
     crate::kmain(hartid)
+}
+
+fn print_debug_info(board_info: &BoardInfo) {
+    use core::ptr::addr_of;
+
+    extern "C" {
+        static __text_start: u8;
+        static __text_end: u8;
+        static __stack_start: u8;
+    }
+
+    let text_start = unsafe { addr_of!(__text_start) };
+    let text_end = unsafe { addr_of!(__text_end) };
+
+    log::debug!("text area {:?}", text_start..text_end);
+
+    let stack_start = unsafe { addr_of!(__stack_start) };
+
+    log::debug!(
+        "stack area {:?}",
+        stack_start..unsafe { stack_start.add(STACK_SIZE_PAGES * PAGE_SIZE * board_info.cpus) }
+    );
+
+    for cpu in 0..board_info.cpus {
+        let start = unsafe { stack_start.add(STACK_SIZE_PAGES * PAGE_SIZE * cpu) };
+        let end = unsafe { stack_start.add(STACK_SIZE_PAGES * PAGE_SIZE * (cpu + 1)) };
+        log::debug!("stack for hart {cpu}: {:?}", start..end);
+    }
 }
