@@ -1,5 +1,6 @@
 [build]
 target = "riscv64gc-unknown-none-elf"
+rustflags = ["-C", "force-unwind-tables=true"]
 
 [target.riscv64gc-unknown-none-elf]
-runner = "qemu-system-riscv64 -machine virt -cpu rv64 -d guest_errors,unimp -smp 4 -m 128M -nographic -serial mon:stdio -bios default -device virtio-rng-device -device virtio-gpu-device -device virtio-net-device -device virtio-tablet-device -device virtio-keyboard-device -kernel "
+runner = "qemu-system-riscv64 -machine virt -cpu rv64 -d guest_errors,unimp -smp 1 -m 128M -nographic -serial mon:stdio -bios default -device virtio-rng-device -device virtio-gpu-device -device virtio-net-device -device virtio-tablet-device -device virtio-keyboard-device -kernel "

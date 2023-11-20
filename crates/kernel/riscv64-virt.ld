@@ -7,8 +7,10 @@ MEMORY {
 
 SECTIONS {
     .text : {
+        __text_start = .;
         *(.text.start)
         *(.text .text.*)
+        __text_end = .;
     } > DRAM
 
     __global_pointer$ = .;
@@ -32,14 +34,19 @@ SECTIONS {
         __bss_end = .;
     } > DRAM
 
+    .eh_frame : {
+        . = ALIGN(8);
+        __eh_frame_start = .;
+        KEEP (*(.eh_frame)) *(.rel.eh_frame*)
+        __eh_frame_end = .;
+    } > DRAM
+
     . = ALIGN(16);
     __stack_start = .;
 
     /DISCARD/ : {
         *(.comment*)
-        *(.eh_frame*)
         *(.gcc_except_table*)
         *(.note*)
-        *(.rel.eh_frame*)
     }
 }

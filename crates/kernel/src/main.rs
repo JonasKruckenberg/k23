@@ -1,6 +1,9 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions, asm_const, error_in_core, allocator_api)]
+#![feature(c_unwind)]
+
+extern crate alloc;
 
 mod board_info;
 mod error;
@@ -9,6 +12,7 @@ mod logger;
 mod sbi;
 mod start;
 mod trap;
+mod unwind;
 
 use core::arch::asm;
 use error::Error;
@@ -29,6 +33,8 @@ fn kmain(hartid: usize) -> ! {
 
     // sbi::time::set_timer(2_000_000).unwrap();
 
+    panic!();
+
     loop {
         unsafe {
             asm!("wfi");
@@ -39,6 +45,14 @@ fn kmain(hartid: usize) -> ! {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     log::error!("KERNEL PANIC {}", info);
+
+    unwind::with_context(|ctx| {
+        let b = unwind::Backtrace::from_context(ctx.clone());
+
+        for frame in b {
+            log::debug!("{:4}:{:#19x} - <unknown>", 0, frame.pc);
+        }
+    });
 
     loop {
         unsafe {

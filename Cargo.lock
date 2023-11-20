@@ -44,10 +44,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gimli"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fb8d784f27acf97159b40fc4db5ecd8aa23b9ad5ef69cdd136d3bc80665f0c0"
+
+[[package]]
 name = "kernel"
 version = "0.1.0"
 dependencies = [
  "dtb-parser",
+ "gimli",
  "linked_list_allocator",
  "log",
  "onlyerror",
