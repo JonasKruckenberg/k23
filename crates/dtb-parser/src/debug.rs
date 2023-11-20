@@ -18,7 +18,7 @@ impl<'a, T: fmt::Write> DebugVisitor<'a, T> {
 }
 
 impl<'a, 'b, T: fmt::Write> Visit<'b> for DebugVisitor<'a, T> {
-    fn visit_subnode(&mut self, name: &'b str, mut node: Node<'b>) -> crate::Result<()> {
+    fn visit_subnode(&mut self, name: &'b str, node: Node<'b>) -> crate::Result<()> {
         self.write(format_args!("- {}\n", name))?;
 
         self.padding += 4;

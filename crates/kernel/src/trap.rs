@@ -4,6 +4,10 @@ use riscv::register::scause::{Interrupt, Trap};
 use riscv::register::stvec::TrapMode;
 use riscv::register::{scause, sie, sstatus, stvec};
 
+/// This struct keeps the harts state during a trap so we can restore it later.
+///
+/// Currently we only save the `t` and `a` registers as well as the `ra` register.
+// TODO we probably should save all general purpose registers & floating points regs if kernel code is allowed to use them
 #[repr(C, align(16))]
 #[derive(Debug)]
 pub struct TrapFrame {

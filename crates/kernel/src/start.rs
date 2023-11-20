@@ -1,8 +1,9 @@
 use crate::board_info::BoardInfo;
 use crate::trap::TrapFrame;
-use crate::{logger, sbi, PAGE_SIZE, STACK_SIZE_PAGES};
+use crate::{kmem, logger, sbi, unwind, PAGE_SIZE, STACK_SIZE_PAGES};
 use core::arch::asm;
 use core::mem;
+use core::ptr::addr_of_mut;
 
 /// Sets the harts stack pointer to the top of the stack.
 ///
@@ -33,13 +34,10 @@ unsafe extern "C" fn set_stack_pointer() {
 #[naked]
 unsafe extern "C" fn allocate_trap_frame() {
     asm!(
-        "addi sp, sp, {trap_frame_size}",
-        "andi sp, sp, {trap_frame_mask}",
+        "addi sp, sp, -{trap_frame_size}",
         "csrrw x0, sscratch, sp", // sscratch points to the trap frame
         "ret",
-
-        trap_frame_size = const -(mem::size_of::<TrapFrame>() as isize),
-        trap_frame_mask = const !(mem::align_of::<TrapFrame>() - 1),
+        trap_frame_size = const mem::size_of::<TrapFrame>(),
         options(noreturn)
     )
 }
@@ -100,8 +98,8 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
         static mut __bss_end: u64;
     }
     unsafe {
-        let mut ptr = &mut __bss_start as *mut u64;
-        let end = &mut __bss_end as *mut u64;
+        let mut ptr = addr_of_mut!(__bss_start);
+        let end = addr_of_mut!(__bss_end);
         while ptr < end {
             ptr.write_volatile(0);
             ptr = ptr.offset(1);
