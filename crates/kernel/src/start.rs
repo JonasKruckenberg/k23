@@ -110,7 +110,7 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
 
     logger::init(&board_info.serial, 38400);
 
-    // TODO setup kernel heap
+    kmem::init(&board_info);
 
     for hart in 0..board_info.cpus {
         if hart != hartid {
