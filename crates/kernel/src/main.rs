@@ -44,15 +44,15 @@ fn kmain(hartid: usize) -> ! {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
+    let ctx = unwind::Context::capture();
+
     log::error!("KERNEL PANIC {}", info);
+    log::debug!("ctx {:?}", ctx);
 
-    unwind::with_context(|ctx| {
-        let b = unwind::Backtrace::from_context(ctx.clone());
-
-        for frame in b {
-            log::debug!("{:4}:{:#19x} - <unknown>", 0, frame.pc);
-        }
-    });
+    let b = unwind::Backtrace::new();
+    for frame in b {
+        log::debug!("{:#19x}", frame.pc);
+    }
 
     loop {
         unsafe {

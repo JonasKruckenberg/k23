@@ -14,6 +14,11 @@ pub struct Backtrace {
 }
 
 impl Backtrace {
+    #[inline(always)]
+    pub fn new() -> Self {
+        Self::from_context(Context::capture())
+    }
+
     pub fn from_context(ctx: Context) -> Self {
         extern "C" {
             static __eh_frame_start: u8;
@@ -109,25 +114,56 @@ impl Iterator for Backtrace {
     }
 }
 
+// The LLVM source (https://llvm.org/doxygen/RISCVFrameLowering_8cpp_source.html)
+// specify that only ra (x1) and saved registers (x8-x9, x18-x27) are used for
+// frame unwinding info, plus sp (x2) for the CFA, so we only need to save those.
+// If this causes issues down the line it should be trivial to change this to capture the full context.
 #[repr(C)]
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Context {
     pub ra: usize,
     pub sp: usize,
+    pub s: [usize; 12],
+}
+
+#[cfg(target_pointer_width = "64")]
+macro_rules! save_gp {
+    ($reg:ident => $ptr:ident[$pos:expr]) => {
+        concat!(
+            "sd ",
+            stringify!($reg),
+            ", 8*",
+            $pos,
+            '(',
+            stringify!($ptr),
+            ')'
+        )
+    };
 }
 
 impl Context {
-    pub fn capture() -> Self {
-        let (ra, sp);
+    #[naked]
+    pub extern "C" fn capture() -> Self {
         unsafe {
             asm!(
-                "mv {}, ra",
-                "mv {}, sp",
-                out(reg) ra,
-                out(reg) sp,
-            );
+                save_gp!(ra => a0[0]),
+                save_gp!(sp => a0[1]),
+                save_gp!(s0 => a0[2]),
+                save_gp!(s1 => a0[3]),
+                save_gp!(s2 => a0[4]),
+                save_gp!(s3 => a0[5]),
+                save_gp!(s4 => a0[6]),
+                save_gp!(s5 => a0[7]),
+                save_gp!(s6 => a0[8]),
+                save_gp!(s7 => a0[9]),
+                save_gp!(s8 => a0[10]),
+                save_gp!(s9 => a0[11]),
+                save_gp!(s10 => a0[12]),
+                save_gp!(s11 => a0[13]),
+                "ret",
+                options(noreturn)
+            )
         }
-        Self { ra, sp }
     }
 }
 
@@ -140,74 +176,27 @@ impl ops::Index<Register> for Context {
     type Output = usize;
 
     fn index(&self, index: Register) -> &Self::Output {
+        log::debug!("index {index:?}");
         match index {
-            Register(1) => &self.ra,
-            Register(2) => &self.sp,
-            _ => panic!("unsupported register"),
+            RiscV::RA => &self.ra,
+            RiscV::SP => &self.sp,
+            Register(reg @ 8..=9) => &self.s[reg as usize - 8],
+            Register(reg @ 18..=27) => &self.s[reg as usize - 16],
+            reg => panic!("unsupported register {reg:?}"),
         }
     }
 }
 
 impl ops::IndexMut<Register> for Context {
     fn index_mut(&mut self, index: Register) -> &mut Self::Output {
+        log::debug!("indexMut {index:?}");
         match index {
-            Register(1) => &mut self.ra,
-            Register(2) => &mut self.sp,
-            _ => panic!("unsupported register"),
+            RiscV::RA => &mut self.ra,
+            RiscV::SP => &mut self.sp,
+            Register(reg @ 8..=9) => &mut self.s[reg as usize - 8],
+            Register(reg @ 18..=27) => &mut self.s[reg as usize - 16],
+            reg => panic!("unsupported register {reg:?}"),
         }
-    }
-}
-
-pub fn with_context<T, F: FnOnce(&mut Context) -> T>(f: F) -> T {
-    use core::mem::ManuallyDrop;
-
-    union Data<T, F> {
-        f: ManuallyDrop<F>,
-        t: ManuallyDrop<T>,
-    }
-
-    extern "C" fn delegate<T, F: FnOnce(&mut Context) -> T>(ctx: &mut Context, ptr: *mut ()) {
-        // SAFETY: This function is called exactly once; it extracts the function, call it and
-        // store the return value. This function is `extern "C"` so we don't need to worry about
-        // unwinding past it.
-        unsafe {
-            let data = &mut *ptr.cast::<Data<T, F>>();
-            let t = ManuallyDrop::take(&mut data.f)(ctx);
-            data.t = ManuallyDrop::new(t);
-        }
-    }
-
-    let mut data = Data {
-        f: ManuallyDrop::new(f),
-    };
-    save_context(delegate::<T, F>, addr_of_mut!(data).cast());
-    unsafe { ManuallyDrop::into_inner(data.t) }
-}
-
-#[naked]
-extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), ptr: *mut ()) {
-    unsafe {
-        asm!(
-            "
-            mv t0, sp
-            add sp, sp, -({sizeof_context} + 16)
-            sd ra, {sizeof_context}(sp)
-            ",
-            "
-            sd ra, 0(sp)
-            sd t0, 8(sp)
-            ",
-            "
-            mv t0, a0
-            mv a0, sp
-            jalr t0
-            ld ra, {sizeof_context}(sp)
-            add sp, sp, ({sizeof_context} + 16)
-            ret
-            ",
-            sizeof_context = const core::mem::size_of::<Context>(),
-            options(noreturn)
-        );
     }
 }
 
