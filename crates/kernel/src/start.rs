@@ -122,6 +122,17 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
 
     print_debug_info(&board_info);
 
+    unsafe {
+        let dtb = dtb_parser::Dtb::from_raw(opaque).unwrap();
+        let mut uart = uart_16550::SerialPort::new(
+            board_info.serial.mmio_regs.start,
+            board_info.serial.clock_frequency,
+            38400,
+        );
+        dtb.walk(&mut dtb_parser::DebugVisitor::new(&mut uart))
+            .unwrap();
+    }
+
     for hart in 0..board_info.cpus {
         if hart != hartid {
             sbi::hsm::start_hart(hart, _start_hart as usize, 0).unwrap();
