@@ -5,6 +5,7 @@
 
 extern crate alloc;
 
+mod backtrace;
 mod board_info;
 mod error;
 mod kmem;
@@ -12,7 +13,6 @@ mod logger;
 mod sbi;
 mod start;
 mod trap;
-mod unwind;
 
 use core::arch::asm;
 use error::Error;
@@ -31,9 +31,9 @@ fn kmain(hartid: usize) -> ! {
 
     trap::init();
 
-    // sbi::time::set_timer(2_000_000).unwrap();
-
     panic!();
+
+    // sbi::time::set_timer(2_000_000).unwrap();
 
     loop {
         unsafe {
@@ -44,15 +44,14 @@ fn kmain(hartid: usize) -> ! {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    let ctx = unwind::Context::capture();
-
     log::error!("KERNEL PANIC {}", info);
-    log::debug!("ctx {:?}", ctx);
 
-    let b = unwind::Backtrace::new();
-    for frame in b {
-        log::debug!("{:#19x}", frame.pc);
-    }
+    log::error!("un-symbolized stack trace:");
+    let mut count = 0;
+    backtrace::trace(|frame| {
+        count += 1;
+        log::debug!("{:<2}- {:#x?}", count, frame.symbol_address());
+    });
 
     loop {
         unsafe {
