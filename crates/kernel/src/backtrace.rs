@@ -1,96 +1,48 @@
 use core::arch::asm;
-use core::mem::ManuallyDrop;
-use core::ptr::{addr_of, addr_of_mut};
-use core::{mem, ops, slice};
+use core::ptr::addr_of;
+use core::{ops, slice};
 use gimli::{
     BaseAddresses, CfaRule, EhFrame, EndianSlice, FrameDescriptionEntry, NativeEndian, Register,
     RegisterRule, RiscV, UnwindContext, UnwindSection, UnwindTableRow,
 };
 
+// Load bearing inline don't remove
+// TODO figure out why this is and remove
+#[inline(always)]
 pub fn trace<F: FnMut(&Frame)>(mut cb: F) {
-    with_context(|ctx| {
-        extern "C" {
-            static __eh_frame_start: u8;
-            static __eh_frame_end: u8;
-        }
+    let mut ctx = Context::capture();
 
-        let slice = unsafe {
-            let start = addr_of!(__eh_frame_start);
-            // let end = addr_of!(__eh_frame_end);
-
-            let end = (start as usize).saturating_add(isize::MAX as _);
-            let len = end - start as usize;
-
-            slice::from_raw_parts(start, len)
-        };
-
-        let bases = BaseAddresses::default()
-            .set_eh_frame(slice.as_ptr() as _)
-            .set_text(0x80200000);
-
-        let eh_frame = EhFrame::new(slice, NativeEndian);
-
-        let mut unwinder = UnwindContext::<_, StoreOnStack>::new_in();
-
-        loop {
-            let frame = Frame::from_context(&ctx, &eh_frame, &bases, &mut unwinder);
-
-            if let Some(frame) = frame {
-                cb(&frame);
-                *ctx = frame.unwind(&ctx);
-            } else {
-                return;
-            }
-        }
-    })
-}
-
-pub fn with_context<F: FnOnce(&mut Context)>(cb: F) {
-    extern "C" fn trampoline<F: FnOnce(&mut Context)>(ctx: &mut Context, opaque: *mut ()) {
-        unsafe {
-            let mut data = &mut *opaque.cast::<ManuallyDrop<F>>();
-            ManuallyDrop::take(&mut data)(ctx);
-        }
+    extern "C" {
+        static __eh_frame_start: u8;
+        static __eh_frame_end: u8;
     }
 
-    let mut data = ManuallyDrop::new(cb);
+    let slice = unsafe {
+        let start = addr_of!(__eh_frame_start);
 
-    save_context(trampoline::<F>, addr_of_mut!(data).cast())
-}
+        let end = (start as usize).saturating_add(isize::MAX as _);
+        let len = end - start as usize;
 
-#[naked]
-fn save_context(cb: extern "C" fn(&mut Context, *mut ()), opaque: *mut ()) {
-    unsafe {
-        asm!(
-            "mv t0, sp",
-            "add sp, sp, -({size_of_ctx} + 16)",
-            "sd ra, {size_of_ctx}(sp)",
+        slice::from_raw_parts(start, len)
+    };
 
-            "sd ra, 0*8(sp)",
-            "sd t0, 1*8(sp)",
-            "sd s0, 2*8(sp)",
-            "sd s1, 3*8(sp)",
-            "sd s2, 4*8(sp)",
-            "sd s3, 5*8(sp)",
-            "sd s4, 6*8(sp)",
-            "sd s5, 7*8(sp)",
-            "sd s6, 8*8(sp)",
-            "sd s7, 9*8(sp)",
-            "sd s8, 10*8(sp)",
-            "sd s9, 11*8(sp)",
-            "sd s10, 12*8(sp)",
-            "sd s11, 13*8(sp)",
+    let bases = BaseAddresses::default()
+        .set_eh_frame(slice.as_ptr() as _)
+        .set_text(0x80200000);
 
-            "mv t0, a0",
-            "mv a0, sp",
-            "jalr t0",
+    let eh_frame = EhFrame::new(slice, NativeEndian);
 
-            "ld ra, {size_of_ctx}(sp)",
-            "add sp, sp, ({size_of_ctx} + 16)",
-            "ret",
-            size_of_ctx = const mem::size_of::<Context>(),
-            options(noreturn)
-        )
+    let mut unwinder = UnwindContext::<_, StoreOnStack>::new_in();
+
+    loop {
+        let frame = Frame::from_context(&ctx, &eh_frame, &bases, &mut unwinder);
+
+        if let Some(frame) = frame {
+            cb(&frame);
+            ctx = frame.unwind(&ctx);
+        } else {
+            return;
+        }
     }
 }
 
@@ -98,12 +50,58 @@ fn save_context(cb: extern "C" fn(&mut Context, *mut ()), opaque: *mut ()) {
 // specify that only ra (x1) and saved registers (x8-x9, x18-x27) are used for
 // frame unwinding info, plus sp (x2) for the CFA, so we only need to save those.
 // If this causes issues down the line it should be trivial to change this to capture the full context.
-#[repr(C, align(16))]
 #[derive(Debug, Clone)]
 pub struct Context {
     pub ra: usize,
     pub sp: usize,
     pub s: [usize; 12],
+}
+
+impl Context {
+    // Load bearing inline don't remove
+    // TODO figure out why this is and remove
+    #[inline(always)]
+    pub fn capture() -> Self {
+        let (ra, sp, s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11);
+        unsafe {
+            asm!(
+            "mv {}, ra",
+            "mv {}, sp",
+            "mv {}, s0",
+            "mv {}, s1",
+            "mv {}, s2",
+            "mv {}, s3",
+            "mv {}, s4",
+            "mv {}, s5",
+            "mv {}, s6",
+            "mv {}, s7",
+            "mv {}, s8",
+            "mv {}, s9",
+            "mv {}, s10",
+            "mv {}, s11",
+            out(reg) ra,
+            out(reg) sp,
+            out(reg) s0,
+            out(reg) s1,
+            out(reg) s2,
+            out(reg) s3,
+            out(reg) s4,
+            out(reg) s5,
+            out(reg) s6,
+            out(reg) s7,
+            out(reg) s8,
+            out(reg) s9,
+            out(reg) s10,
+            out(reg) s11,
+            )
+        }
+
+        Self {
+            ra,
+            sp,
+            s: [s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11],
+        }
+    }
 }
 
 impl ops::Index<Register> for Context {
@@ -142,7 +140,7 @@ pub struct Frame<'a> {
 }
 
 impl<'a> Frame<'a> {
-    pub fn from_context(
+    fn from_context(
         ctx: &Context,
         eh_frame: &'a EhFrame<EndianSlice<'static, NativeEndian>>,
         bases: &BaseAddresses,

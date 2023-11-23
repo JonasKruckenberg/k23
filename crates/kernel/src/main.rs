@@ -15,6 +15,7 @@ mod start;
 mod trap;
 
 use core::arch::asm;
+use core::sync::atomic::{AtomicBool, Ordering};
 use error::Error;
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -31,8 +32,6 @@ fn kmain(hartid: usize) -> ! {
 
     trap::init();
 
-    panic!();
-
     // sbi::time::set_timer(2_000_000).unwrap();
 
     loop {
@@ -42,16 +41,21 @@ fn kmain(hartid: usize) -> ! {
     }
 }
 
+static PANICKING: AtomicBool = AtomicBool::new(false);
+
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     log::error!("KERNEL PANIC {}", info);
 
-    log::error!("un-symbolized stack trace:");
-    let mut count = 0;
-    backtrace::trace(|frame| {
-        count += 1;
-        log::debug!("{:<2}- {:#x?}", count, frame.symbol_address());
-    });
+    // if we panic in the backtrace, prevent us from spinning into an infinite panic loop
+    if !PANICKING.swap(true, Ordering::AcqRel) {
+        log::error!("un-symbolized stack trace:");
+        let mut count = 0;
+        backtrace::trace(|frame| {
+            count += 1;
+            log::debug!("{:<2}- {:#x?}", count, frame.symbol_address());
+        });
+    }
 
     loop {
         unsafe {
