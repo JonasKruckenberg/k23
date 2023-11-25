@@ -1,6 +1,5 @@
 use core::arch::asm;
 use core::marker::PhantomPinned;
-use riscv::register::scause::{Interrupt, Trap};
 use riscv::register::stvec::TrapMode;
 use riscv::register::{scause, sie, sstatus, stvec};
 

@@ -53,12 +53,14 @@ checksum = "6fb8d784f27acf97159b40fc4db5ecd8aa23b9ad5ef69cdd136d3bc80665f0c0"
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "dtb-parser",
  "gimli",
  "linked_list_allocator",
  "log",
  "onlyerror",
  "riscv",
+ "sbicall",
  "spin",
  "uart-16550",
 ]
@@ -127,6 +129,13 @@ dependencies = [
  "bit_field",
  "critical-section",
  "embedded-hal",
+]
+
+[[package]]
+name = "sbicall"
+version = "0.1.0"
+dependencies = [
+ "onlyerror",
 ]
 
 [[package]]

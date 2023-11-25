@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::paging::PhysicalAddress;
 use core::mem;
 use core::ops::Range;
 use dtb_parser::{Dtb, Node, Visit};
@@ -8,14 +9,14 @@ pub struct BoardInfo {
     pub cpus: usize,
     pub base_frequency: u32,
     pub serial: Serial,
-    pub clint: Range<usize>,
-    pub qemu_test: Option<Range<usize>>,
-    pub memory: Range<usize>,
+    pub clint: Range<PhysicalAddress>,
+    pub qemu_test: Option<Range<PhysicalAddress>>,
+    pub memory: Range<PhysicalAddress>,
 }
 
 #[derive(Debug)]
 pub struct Serial {
-    pub mmio_regs: Range<usize>,
+    pub mmio_regs: Range<PhysicalAddress>,
     pub clock_frequency: u32,
 }
 
@@ -87,7 +88,7 @@ struct SerialVisitor {
 
 #[derive(Default)]
 struct RegsVisitor {
-    pub inner: Option<Range<usize>>,
+    pub inner: Option<Range<PhysicalAddress>>,
     addr_size: usize,
     width_size: usize,
 }
@@ -184,7 +185,9 @@ impl<'a> Visit<'a> for RegsVisitor {
         let reg = usize::from_be_bytes(reg.try_into().unwrap());
         let width = usize::from_be_bytes(width.try_into().unwrap());
 
-        self.inner = Some(reg..reg + width);
+        let start = unsafe { PhysicalAddress::new(reg) };
+        let end = start.add(width);
+        self.inner = Some(start..end);
 
         Ok(())
     }

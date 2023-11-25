@@ -10,7 +10,7 @@ struct Logger(Mutex<Option<SerialPort>>);
 pub fn init(serial_info: &Serial, baud_rate: u32) {
     let uart = unsafe {
         SerialPort::new(
-            serial_info.mmio_regs.start,
+            serial_info.mmio_regs.start.as_raw(),
             serial_info.clock_frequency,
             baud_rate,
         )

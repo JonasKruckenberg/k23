@@ -1,9 +1,12 @@
 use crate::board_info::BoardInfo;
+use crate::logger;
+use crate::paging::PAGE_SIZE;
 use crate::trap::TrapFrame;
-use crate::{kmem, logger, sbi, PAGE_SIZE, STACK_SIZE_PAGES};
 use core::arch::asm;
 use core::mem;
 use core::ptr::addr_of_mut;
+
+pub const STACK_SIZE_PAGES: usize = 25;
 
 /// Sets the harts stack pointer to the top of the stack.
 ///
@@ -118,20 +121,20 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
 
     logger::init(&board_info.serial, 38400);
 
-    kmem::init(&board_info);
-
     print_debug_info(&board_info);
 
     unsafe {
         let dtb = dtb_parser::Dtb::from_raw(opaque).unwrap();
         let mut uart = uart_16550::SerialPort::new(
-            board_info.serial.mmio_regs.start,
+            board_info.serial.mmio_regs.start.as_raw(),
             board_info.serial.clock_frequency,
             38400,
         );
         dtb.walk(&mut dtb_parser::DebugVisitor::new(&mut uart))
             .unwrap();
     }
+
+    crate::paging::init(&board_info);
 
     for hart in 0..board_info.cpus {
         if hart != hartid {

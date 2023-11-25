@@ -5,19 +5,24 @@ KERNEL_OFFSET = 0x80200000;
 
 SECTIONS {
     . = KERNEL_OFFSET;
+    . = ALIGN(4096);
 
     .text : {
         __text_start = .;
         *(.text.start)
         *(.text .text.*)
+        . = ALIGN(4096);
         __text_end = .;
     }
 
     __global_pointer$ = .;
 
     .rodata : {
+        __rodata_start = .;
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
+        . = ALIGN(4096);
+        __rodata_end = .;
     }
 
     .data : {
@@ -30,7 +35,7 @@ SECTIONS {
         __bss_start = .;
         *(.bss .bss.*)
         *(.sbss .sbss.*)
-        . = ALIGN(8);
+        . = ALIGN(4096);
         __bss_end = .;
     }
 
@@ -41,7 +46,7 @@ SECTIONS {
         __eh_frame_end = .;
     }
 
-    . = ALIGN(16);
+    . = ALIGN(4096);
     __stack_start = .;
 
     /DISCARD/ : {

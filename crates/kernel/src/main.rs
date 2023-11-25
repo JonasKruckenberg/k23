@@ -3,13 +3,11 @@
 #![feature(naked_functions, asm_const, error_in_core, allocator_api)]
 #![feature(c_unwind)]
 
-extern crate alloc;
-
 mod backtrace;
 mod board_info;
 mod error;
-mod kmem;
 mod logger;
+mod paging;
 mod start;
 mod trap;
 
@@ -18,9 +16,6 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use error::Error;
 
 pub type Result<T> = core::result::Result<T, Error>;
-
-const STACK_SIZE_PAGES: usize = 25;
-const PAGE_SIZE: usize = 4096;
 
 /// This is the main function of the kernel.
 ///
