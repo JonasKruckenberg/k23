@@ -135,7 +135,7 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
 
     for hart in 0..board_info.cpus {
         if hart != hartid {
-            sbi::hsm::start_hart(hart, _start_hart as usize, 0).unwrap();
+            sbicall::hsm::start_hart(hart, _start_hart as usize, 0).unwrap();
         }
     }
 

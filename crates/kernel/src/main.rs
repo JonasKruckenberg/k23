@@ -10,7 +10,6 @@ mod board_info;
 mod error;
 mod kmem;
 mod logger;
-mod sbi;
 mod start;
 mod trap;
 

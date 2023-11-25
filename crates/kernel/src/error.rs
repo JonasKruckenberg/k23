@@ -4,4 +4,6 @@ pub enum Error {
     DTB(#[from] dtb_parser::Error),
     #[error("missing board info property: {0}")]
     MissingBordInfo(&'static str),
+    #[error("SBI call failed: {0}")]
+    SBI(#[from] sbicall::Error),
 }
