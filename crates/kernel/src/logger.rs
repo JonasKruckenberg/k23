@@ -1,6 +1,6 @@
 use crate::board_info::Serial;
+use crate::sync::Mutex;
 use log::{Metadata, Record};
-use spin::Mutex;
 use uart_16550::SerialPort;
 
 static LOGGER: Logger = Logger::empty();

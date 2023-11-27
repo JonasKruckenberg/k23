@@ -9,7 +9,7 @@ use core::ops::Range;
 use core::ptr::addr_of;
 use riscv::register::satp;
 use riscv::register::satp::Mode;
-use spin::Once;
+// use spin::Once;
 
 mod entry;
 mod flush;
@@ -62,7 +62,7 @@ impl fmt::Debug for VirtualAddress {
     }
 }
 
-static MAPPER: Once<Mapper> = Once::new();
+// static MAPPER: Once<Mapper> = Once::new();
 
 extern "C" {
     static __text_start: u8;
@@ -158,7 +158,7 @@ pub fn init(board_info: &BoardInfo) {
     log::debug!("paging enabled");
 
     // Step 7: set global mapper
-    MAPPER.call_once(|| mapper);
+    // MAPPER.call_once(|| mapper);
 }
 
 fn align_range(range: Range<PhysicalAddress>) -> Range<PhysicalAddress> {
