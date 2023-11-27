@@ -36,18 +36,23 @@ impl log::Log for Logger {
         if self.enabled(record.metadata()) {
             use core::fmt::Write;
 
-            let mut uart = self.0.lock();
-            // don't panic if we accidentally log before the logger is initialized
-            // logs are not that important anyway
-            let Some(uart) = uart.as_mut() else { return };
+            // disable interrupts while we hold the uart lock
+            // otherwise we might deadlock if we try to log from the trap handler
+            // TODO maybe replace this with a reentrant mutex
+            crate::interrupt::without(|| {
+                let mut uart = self.0.lock();
+                // don't panic if we accidentally log before the logger is initialized
+                // logs are not that important anyway
+                let Some(uart) = uart.as_mut() else { return };
 
-            let _ = writeln!(
-                uart,
-                "[{:<5} {}] {}",
-                record.level(),
-                record.module_path_static().unwrap_or_default(),
-                record.args()
-            );
+                let _ = writeln!(
+                    uart,
+                    "[{:<5} {}] {}",
+                    record.level(),
+                    record.module_path_static().unwrap_or_default(),
+                    record.args()
+                );
+            })
         }
     }
 

@@ -6,9 +6,11 @@
 mod backtrace;
 mod board_info;
 mod error;
+mod interrupt;
 mod logger;
 mod paging;
 mod start;
+mod sync;
 mod trap;
 
 use core::arch::asm;
