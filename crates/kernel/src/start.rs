@@ -4,7 +4,7 @@ use crate::paging::PAGE_SIZE;
 use crate::trap::TrapFrame;
 use core::arch::asm;
 use core::mem;
-use core::ptr::addr_of_mut;
+use core::ptr::{addr_of, addr_of_mut};
 
 pub const STACK_SIZE_PAGES: usize = 25;
 
@@ -146,8 +146,6 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
 }
 
 fn print_debug_info(board_info: &BoardInfo) {
-    use core::ptr::addr_of;
-
     extern "C" {
         static __text_start: u8;
         static __text_end: u8;
