@@ -1,61 +1,30 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const, error_in_core, allocator_api)]
-#![feature(c_unwind)]
+#![feature(naked_functions, asm_const, error_in_core)]
 
+mod arch;
 mod backtrace;
 mod board_info;
 mod error;
-mod interrupt;
 mod logger;
 mod paging;
-mod start;
+mod panic;
 mod sync;
-mod trap;
 
-use core::arch::asm;
-use core::sync::atomic::{AtomicBool, Ordering};
-use error::Error;
-
+pub use error::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
 /// This is the main function of the kernel.
 ///
 /// After performing arch & board specific initialization, all harts will end up in this function.
 /// This function should set up hart-local state, and then ?. It should never return.
-fn kmain(hartid: usize) -> ! {
+pub fn kmain(hartid: usize) -> ! {
+    // arch-agnostic initialization
+    // per-hart initialization
+
     log::info!("Hello world from hart {hartid}!");
 
-    trap::init();
+    arch::trap::init().unwrap();
 
-    // sbi::time::set_timer(2_000_000).unwrap();
-
-    loop {
-        unsafe {
-            asm!("wfi");
-        }
-    }
-}
-
-static PANICKING: AtomicBool = AtomicBool::new(false);
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo) -> ! {
-    log::error!("KERNEL PANIC {}", info);
-
-    // if we panic in the backtrace, prevent us from spinning into an infinite panic loop
-    if !PANICKING.swap(true, Ordering::AcqRel) {
-        log::error!("un-symbolized stack trace:");
-        let mut count = 0;
-        backtrace::trace(|frame| {
-            count += 1;
-            log::debug!("{:<2}- {:#x?}", count, frame.symbol_address());
-        });
-    }
-
-    loop {
-        unsafe {
-            asm!("wfi");
-        }
-    }
+    todo!()
 }

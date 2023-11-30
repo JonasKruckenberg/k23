@@ -1,4 +1,5 @@
-use crate::board_info::Serial;
+use crate::arch;
+use crate::board_info::BoardInfo;
 use crate::sync::Mutex;
 use log::{Metadata, Record};
 use uart_16550::SerialPort;
@@ -7,11 +8,11 @@ static LOGGER: Logger = Logger::empty();
 
 struct Logger(Mutex<Option<SerialPort>>);
 
-pub fn init(serial_info: &Serial, baud_rate: u32) {
+pub fn init(board_info: &BoardInfo, baud_rate: u32) -> crate::Result<()> {
     let uart = unsafe {
         SerialPort::new(
-            serial_info.mmio_regs.start.as_raw(),
-            serial_info.clock_frequency,
+            board_info.serial.mmio_regs.start.as_raw(),
+            board_info.serial.clock_frequency,
             baud_rate,
         )
     };
@@ -19,6 +20,8 @@ pub fn init(serial_info: &Serial, baud_rate: u32) {
 
     log::set_logger(&LOGGER).unwrap();
     log::set_max_level(log::LevelFilter::Trace);
+
+    Ok(())
 }
 
 impl Logger {
@@ -39,7 +42,7 @@ impl log::Log for Logger {
             // disable interrupts while we hold the uart lock
             // otherwise we might deadlock if we try to log from the trap handler
             // TODO maybe replace this with a reentrant mutex
-            crate::interrupt::without(|| {
+            arch::interrupt::without(|| {
                 let mut uart = self.0.lock();
                 // don't panic if we accidentally log before the logger is initialized
                 // logs are not that important anyway

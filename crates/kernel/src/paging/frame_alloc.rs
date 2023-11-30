@@ -1,4 +1,5 @@
-use super::{PhysicalAddress, PAGE_SIZE};
+use crate::arch::PAGE_SIZE;
+use crate::paging::PhysicalAddress;
 use core::ops::Range;
 
 pub struct FrameAllocator {
@@ -12,8 +13,11 @@ impl FrameAllocator {
         }
     }
 
-    pub fn allocate_frame(&mut self) -> Option<PhysicalAddress> {
-        self.free_frame_list.pop().map(|frame| frame.as_ptr())
+    pub fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
+        self.free_frame_list
+            .pop()
+            .map(|frame| frame.as_ptr())
+            .ok_or(crate::Error::OutOfMemory)
     }
 
     pub fn deallocate_frame(&mut self, phys: PhysicalAddress) {

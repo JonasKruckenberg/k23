@@ -3,6 +3,16 @@ use core::marker::PhantomPinned;
 use riscv::register::stvec::TrapMode;
 use riscv::register::{scause, sie, sstatus, stvec};
 
+pub fn init() -> crate::Result<()> {
+    unsafe {
+        stvec::write(trap_vec as _, TrapMode::Vectored);
+        sie::set_stimer();
+        sstatus::set_sie();
+    }
+
+    Ok(())
+}
+
 /// This struct keeps the harts state during a trap so we can restore it later.
 ///
 /// Currently we only save the `t` and `a` registers as well as the `ra` register.
@@ -17,14 +27,6 @@ pub struct TrapFrame {
     pub _pinned: PhantomPinned,
 }
 
-pub fn init() {
-    unsafe {
-        stvec::write(trap_vec as _, TrapMode::Vectored);
-        sie::set_stimer();
-        sstatus::set_sie();
-    }
-}
-
 #[naked]
 pub unsafe extern "C" fn trap_vec() {
     // When in vectored mode
@@ -34,22 +36,22 @@ pub unsafe extern "C" fn trap_vec() {
     // We can use this to direct some traps that don't need
     // expensive SBI call handling to cheaper handlers (like timers)
     asm! (
-        ".align 2",
-        ".option push",
-        ".option norvc",
-        "j {default}", // exception
-        "j {default}", // supervisor software interrupt
-        "j {default}", // reserved
-        "j {default}", // reserved
-        "j {default}", // reserved
-        "j {default}", // supervisor timer interrupt
-        "j {default}", // reserved
-        "j {default}", // reserved
-        "j {default}", // reserved
-        "j {default}", // supervisor external interrupt
-        ".option pop",
-        default = sym default_trap_entry,
-        options(noreturn)
+    ".align 2",
+    ".option push",
+    ".option norvc",
+    "j {default}", // exception
+    "j {default}", // supervisor software interrupt
+    "j {default}", // reserved
+    "j {default}", // reserved
+    "j {default}", // reserved
+    "j {default}", // supervisor timer interrupt
+    "j {default}", // reserved
+    "j {default}", // reserved
+    "j {default}", // reserved
+    "j {default}", // supervisor external interrupt
+    ".option pop",
+    default = sym default_trap_entry,
+    options(noreturn)
     )
 }
 

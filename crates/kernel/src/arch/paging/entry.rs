@@ -1,4 +1,4 @@
-use super::PhysicalAddress;
+use crate::paging::PhysicalAddress;
 use bitflags::bitflags;
 use core::fmt;
 use core::fmt::Formatter;
@@ -31,11 +31,11 @@ impl Entry {
     }
 
     pub fn set_address(&mut self, adress: PhysicalAddress) {
-        self.0 |= adress.0 >> 2;
+        self.0 |= adress.as_raw() >> 2;
     }
 
     pub fn address(&self) -> PhysicalAddress {
-        PhysicalAddress((self.0 & !0x3ff) << 2)
+        unsafe { PhysicalAddress::new((self.0 & !0x3ff) << 2) }
     }
 }
 
