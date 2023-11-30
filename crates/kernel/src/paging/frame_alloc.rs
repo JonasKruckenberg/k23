@@ -1,5 +1,6 @@
 use crate::arch::PAGE_SIZE;
 use crate::paging::PhysicalAddress;
+use crate::Error;
 use core::ops::Range;
 
 pub struct FrameAllocator {
@@ -18,6 +19,32 @@ impl FrameAllocator {
             .pop()
             .map(|frame| frame.as_ptr())
             .ok_or(crate::Error::OutOfMemory)
+    }
+
+    pub fn allocate_frames(&mut self, n: usize) -> crate::Result<PhysicalAddress> {
+        let mut current = self.free_frame_list.head.as_ref();
+        let mut first_frame = current;
+        let mut remaining = n;
+
+        while let Some(frame) = current {
+            if remaining == 0 {
+                return Ok(first_frame.unwrap().as_ptr());
+            } else if let Some(next) = frame.next.as_ref() {
+                // check if the next frame is consecutive
+                if next.as_ptr().as_raw() == frame.as_ptr().as_raw() + PAGE_SIZE {
+                    remaining -= 1;
+                    current = Some(next);
+                } else {
+                    // we found a free frame but its in a different region
+                    // so we need to start over
+                    remaining = n;
+                    first_frame = current;
+                }
+            }
+        }
+
+        // we didn't find enough free frames
+        Err(Error::OutOfMemory)
     }
 
     pub fn deallocate_frame(&mut self, phys: PhysicalAddress) {

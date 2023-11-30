@@ -56,6 +56,10 @@ impl Mapper {
         &self.allocator
     }
 
+    pub fn allocator_mut(&mut self) -> &mut FrameAllocator {
+        &mut self.allocator
+    }
+
     pub fn root_table(&self) -> Table {
         Table::from_address(self.root_table, MAX_LEVEL)
     }
