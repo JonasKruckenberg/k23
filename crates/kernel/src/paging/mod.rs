@@ -8,7 +8,7 @@ pub mod frame_alloc;
 pub struct PhysicalAddress(usize);
 
 impl PhysicalAddress {
-    pub unsafe fn new(addr: usize) -> Self {
+    pub const unsafe fn new(addr: usize) -> Self {
         Self(addr)
     }
     pub fn add(&self, offset: usize) -> Self {
@@ -32,7 +32,7 @@ impl fmt::Debug for PhysicalAddress {
 pub struct VirtualAddress(usize);
 
 impl VirtualAddress {
-    pub unsafe fn new(addr: usize) -> Self {
+    pub const unsafe fn new(addr: usize) -> Self {
         Self(addr)
     }
 
