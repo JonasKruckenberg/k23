@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(naked_functions, asm_const, error_in_core)]
 
+mod allocator;
 mod arch;
 mod backtrace;
 mod board_info;
