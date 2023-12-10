@@ -20,7 +20,7 @@ pub fn init(board_info: &BoardInfo) {
     //
     // let heap_size = (board_info.memory.end - heap_base_aligned) & !(Heap::MIN_SIZE - 1);
 
-    unsafe {
-        ALLOCATOR.init(heap_base_aligned, heap_size);
-    }
+    // unsafe {
+    //     ALLOCATOR.init(heap_base_aligned, heap_size);
+    // }
 }

@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const, error_in_core)]
+#![feature(naked_functions, asm_const, error_in_core, allocator_api)]
 
 mod allocator;
 mod arch;
