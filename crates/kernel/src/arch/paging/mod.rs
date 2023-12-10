@@ -4,11 +4,12 @@ use crate::arch::paging::mapper::Mapper;
 use crate::board_info::BoardInfo;
 use crate::paging::frame_alloc::FrameAllocator;
 use crate::paging::PhysicalAddress;
-use crate::sync::Mutex;
 use core::ops::Range;
 use core::ptr::addr_of;
+use riscv::register::satp;
+use riscv::register::satp::Mode;
 
-pub mod entry;
+mod entry;
 mod flush;
 mod mapper;
 mod table;
@@ -23,27 +24,12 @@ extern "C" {
     static __rodata_end: u8;
 }
 
-pub static mut MAPPER: Mutex<Option<Mapper>> = Mutex::new(None);
-
-pub fn activate() -> crate::Result<()> {
-    let mut mapper = unsafe { MAPPER.lock() };
-    let mapper = mapper.as_mut().unwrap();
-
-    // mapper.root_table().print_table();
-
-    log::debug!("activating paging...");
-    mapper.activate()?;
-    log::debug!("paging activated");
-
-    Ok(())
-}
-
 /// Initialize virtual memory management
 ///
 /// This will set up the page table, identity map the kernel and stack, and enable paging.
 ///
 /// TODO lift this out of the arch module
-pub fn setup(board_info: &BoardInfo) -> crate::Result<()> {
+pub fn init(board_info: &BoardInfo) -> crate::Result<()> {
     let stack_start = unsafe { addr_of!(__stack_start) as usize };
     let text_start = unsafe { addr_of!(__text_start) as usize };
     let text_end = unsafe { addr_of!(__text_end) as usize };
@@ -69,7 +55,7 @@ pub fn setup(board_info: &BoardInfo) -> crate::Result<()> {
     // Step 2: initialize allocator
     let allocator = unsafe { FrameAllocator::new(&regions) };
 
-    // Step 3: create mapper
+    // Step 4: create mapper
     let mut mapper = Mapper::new(allocator)?;
 
     // helper function to identity map a region
@@ -97,21 +83,24 @@ pub fn setup(board_info: &BoardInfo) -> crate::Result<()> {
         Ok(())
     };
 
-    // Step 5: map kernel
+    // Step 4: map kernel
     log::debug!("mapping kernel region: {:?}", kernel_region);
     identity_map_range(kernel_region.clone())?;
 
-    // Step 6: map stack
+    // Step 5: map stack
     log::debug!("mapping stack region: {:?}", stack_region);
     identity_map_range(stack_region.clone())?;
 
-    // Step 7: map MMIO regions (UART)
+    // Step 6: map MMIO regions (UART)
     log::debug!("mapping mmio region: {:?}", board_info.serial.mmio_regs);
     identity_map_range(align_range(board_info.serial.mmio_regs.clone()))?;
 
-    unsafe {
-        MAPPER.lock().replace(mapper);
-    }
+    mapper.root_table().print_table();
+
+    // Step 7: enable paging
+    log::debug!("enabling paging... {:?}", mapper.root_table().address());
+    mapper.activate()?;
+    log::debug!("paging enabled");
 
     Ok(())
 }

@@ -1,7 +1,6 @@
 use crate::arch;
 use crate::board_info::BoardInfo;
 use core::arch::asm;
-use core::ops::Range;
 use core::ptr::addr_of_mut;
 
 /// Sets the harts stack pointer to the top of the stack.
@@ -103,24 +102,21 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
     extern "C" {
         static mut __bss_start: u64;
         static mut __bss_end: u64;
-        static mut __tbss_start: u64;
-        static mut __tbss_end: u64;
     }
-
     unsafe {
-        // zero out the BSS section
-        zero_range(addr_of_mut!(__bss_start)..addr_of_mut!(__bss_end));
-        // zero out the TBSS section (thread local BSS)
-        zero_range(addr_of_mut!(__tbss_start)..addr_of_mut!(__tbss_end));
+        let mut ptr = addr_of_mut!(__bss_start);
+        let end = addr_of_mut!(__bss_end);
+        while ptr < end {
+            ptr.write_volatile(0);
+            ptr = ptr.offset(1);
+        }
     }
 
     let board_info = BoardInfo::from_raw(opaque).unwrap();
 
     crate::logger::init(&board_info, 38400).unwrap();
 
-    arch::paging::setup(&board_info).unwrap();
-
-    arch::tls::setup(&board_info).unwrap();
+    arch::paging::init(&board_info).unwrap();
 
     for hart in 0..board_info.cpus {
         if hart != hartid {
@@ -129,19 +125,4 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
     }
 
     crate::kmain(hartid)
-}
-
-/// Utility function to zero out a range of memory.
-/// This is used to zero out the BSS and TBSS sections.
-///
-/// We explicitly use `*mut u64` here so that we generate 64-bit stores (`sd` instructions) even
-/// on 32-bit systems.
-fn zero_range(range: Range<*mut u64>) {
-    let mut ptr = range.start;
-    while ptr < range.end {
-        unsafe {
-            ptr.write_volatile(0);
-        }
-        ptr = unsafe { ptr.offset(1) };
-    }
 }

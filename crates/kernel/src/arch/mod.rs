@@ -4,7 +4,6 @@ pub mod backtrace;
 pub mod interrupt;
 pub mod paging;
 mod start;
-pub mod tls;
 pub mod trap;
 
 pub const PAGE_SIZE: usize = 4096;

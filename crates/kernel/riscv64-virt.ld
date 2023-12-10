@@ -39,16 +39,6 @@ SECTIONS {
         __bss_end = .;
     }
 
-    .tls : {
-        __tdata_start = .;
-        *(.tdata .tdata.*)
-        __tdata_end = .;
-
-        __tbss_start = .;
-        *(.tbss .tbss.*)
-        __tbss_end = .;
-    }
-
     .eh_frame : {
         . = ALIGN(8);
         __eh_frame_start = .;
