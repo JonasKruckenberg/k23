@@ -1,0 +1,17 @@
+[package]
+name = "cranelift-frontend"
+version.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cranelift-codegen = { version = "0.1.0", path = "../cranelift-codegen" }
+hashbrown.workspace = true
+log.workspace = true
+smallvec.workspace = true
+target-lexicon.workspace = true
+onlyerror.workspace = true
+
+[dev-dependencies]
+similar = "2.4.0"
