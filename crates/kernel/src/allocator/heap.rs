@@ -1,5 +1,6 @@
 use crate::allocator::slab::Slab;
 use crate::arch::PAGE_SIZE;
+use crate::paging::VirtualAddress;
 use core::alloc::{AllocError, Layout};
 use core::ptr::NonNull;
 
@@ -38,9 +39,9 @@ impl Heap {
     const MIN_SLAB_SIZE: usize = 4096;
     pub const MIN_SIZE: usize = Self::NUM_OF_SLABS * Self::MIN_SLAB_SIZE;
 
-    pub unsafe fn new(heap_start_addr: usize, heap_size: usize) -> Self {
+    pub unsafe fn new(heap_start_addr: VirtualAddress, heap_size: usize) -> Self {
         assert_eq!(
-            heap_start_addr % PAGE_SIZE,
+            heap_start_addr.as_raw() % PAGE_SIZE,
             0,
             "Start address should be page aligned"
         );
@@ -57,14 +58,14 @@ impl Heap {
 
         Self {
             slab_64_bytes: Slab::new(heap_start_addr, slab_size),
-            slab_128_bytes: Slab::new(heap_start_addr + slab_size, slab_size),
-            slab_256_bytes: Slab::new(heap_start_addr + 2 * slab_size, slab_size),
-            slab_512_bytes: Slab::new(heap_start_addr + 3 * slab_size, slab_size),
-            slab_1024_bytes: Slab::new(heap_start_addr + 4 * slab_size, slab_size),
-            slab_2048_bytes: Slab::new(heap_start_addr + 5 * slab_size, slab_size),
-            slab_4096_bytes: Slab::new(heap_start_addr + 6 * slab_size, slab_size),
+            slab_128_bytes: Slab::new(heap_start_addr.add(slab_size), slab_size),
+            slab_256_bytes: Slab::new(heap_start_addr.add(2 * slab_size), slab_size),
+            slab_512_bytes: Slab::new(heap_start_addr.add(3 * slab_size), slab_size),
+            slab_1024_bytes: Slab::new(heap_start_addr.add(4 * slab_size), slab_size),
+            slab_2048_bytes: Slab::new(heap_start_addr.add(5 * slab_size), slab_size),
+            slab_4096_bytes: Slab::new(heap_start_addr.add(6 * slab_size), slab_size),
             linked_list: linked_list_allocator::Heap::new(
-                (heap_start_addr + 7 * slab_size) as *mut u8,
+                (heap_start_addr.as_raw() + 7 * slab_size) as *mut u8,
                 slab_size,
             ),
         }

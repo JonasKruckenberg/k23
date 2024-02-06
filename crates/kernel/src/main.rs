@@ -2,6 +2,8 @@
 #![no_main]
 #![feature(naked_functions, asm_const, error_in_core, allocator_api)]
 
+extern crate alloc;
+
 mod allocator;
 mod arch;
 mod backtrace;
@@ -10,22 +12,17 @@ mod error;
 mod logger;
 mod paging;
 mod panic;
+mod runtime;
 mod sync;
 
 pub use error::Error;
-pub type Result<T> = core::result::Result<T, Error>;
 
-/// This is the main function of the kernel.
-///
-/// After performing arch & board specific initialization, all harts will end up in this function.
-/// This function should set up hart-local state, and then ?. It should never return.
-pub fn kmain(hartid: usize) -> ! {
-    // arch-agnostic initialization
-    // per-hart initialization
+pub(crate) type Result<T> = core::result::Result<T, Error>;
 
+fn kmain(hartid: usize) -> ! {
     log::info!("Hello world from hart {hartid}!");
 
-    arch::trap::init().unwrap();
+    runtime::compile_wasm(include_bytes!("../full.wasm"));
 
     todo!()
 }

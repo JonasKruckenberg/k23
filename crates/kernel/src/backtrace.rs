@@ -1,4 +1,5 @@
 use crate::arch::backtrace as arch;
+use crate::arch::backtrace::Context;
 use core::ptr::addr_of;
 use core::slice;
 use gimli::{
@@ -9,9 +10,16 @@ use gimli::{
 // Load bearing inline don't remove
 // TODO figure out why this is and remove
 #[inline(always)]
-pub fn trace<F: FnMut(&Frame)>(mut cb: F) {
-    let mut ctx = arch::Context::capture();
+pub fn trace<F: FnMut(&Frame)>(cb: F) {
+    let ctx = Context::capture();
 
+    trace_with_context(ctx, cb);
+}
+
+// Load bearing inline don't remove
+// TODO figure out why this is and remove
+#[inline(always)]
+pub fn trace_with_context<F: FnMut(&Frame)>(mut ctx: Context, mut cb: F) {
     extern "C" {
         static __eh_frame_start: u8;
         static __eh_frame_end: u8;

@@ -1,4 +1,5 @@
 use crate::allocator::heap::Heap;
+use crate::paging::VirtualAddress;
 use crate::sync::Mutex;
 use core::alloc::{AllocError, Allocator, Layout};
 use core::ptr::NonNull;
@@ -13,7 +14,7 @@ impl LockedHeap {
         Self(Mutex::new(None))
     }
 
-    pub unsafe fn init(&self, heap_start_addr: usize, heap_size: usize) {
+    pub unsafe fn init(&self, heap_start_addr: VirtualAddress, heap_size: usize) {
         let heap = Heap::new(heap_start_addr, heap_size);
         self.0.lock().replace(heap);
     }

@@ -6,12 +6,17 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dtb-parser = { path = "../dtb-parser" }
-uart-16550 = { path = "../uart-16550" }
-sbicall = { path = "../sbicall" }
+dtb-parser.workspace = true
+uart-16550.workspace = true
+sbicall.workspace = true
 log.workspace = true
 bitflags.workspace = true
 onlyerror.workspace = true
 riscv.workspace = true
-linked_list_allocator = "0.10.5"
-gimli = { version = "0.28.0", default-features = false, features = ["read-core"] }
+linked_list_allocator.workspace = true
+cfg-if.workspace = true
+gimli = { workspace = true, features = ["read-core"] }
+cranelift-wasm.workspace = true
+cranelift-codegen.workspace = true
+cranelift-frontend.workspace = true
+wasmparser.workspace = true

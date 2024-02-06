@@ -1,19 +1,8 @@
-use core::arch::asm;
-
-pub mod backtrace;
-pub mod interrupt;
-pub mod paging;
-mod start;
-pub mod trap;
-
-pub const PAGE_SIZE: usize = 4096;
-
-pub const STACK_SIZE_PAGES: usize = 25;
-
-pub fn halt() -> ! {
-    unsafe {
-        loop {
-            asm!("wfi");
-        }
+cfg_if::cfg_if! {
+    if #[cfg(target_arch = "riscv64")] {
+        mod riscv64;
+        pub use riscv64::*;
+    } else {
+        compile_error!("unsupported target architecture");
     }
 }
