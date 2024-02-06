@@ -1,0 +1,17 @@
+[package]
+name = "cranelift-wasm"
+version.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cranelift-codegen = { workspace = true, features = ["unwind", "host-arch"] }
+cranelift-entity.workspace = true
+cranelift-frontend.workspace = true
+hashbrown.workspace = true
+log.workspace = true
+smallvec.workspace = true
+wasmparser.workspace = true
+onlyerror.workspace = true
+target-lexicon.workspace = true

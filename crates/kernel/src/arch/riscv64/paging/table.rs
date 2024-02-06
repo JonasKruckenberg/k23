@@ -71,7 +71,7 @@ impl Table {
         (virt.as_raw() >> (self.level * 9 + 12)) & 0x1ff
     }
 
-    pub fn print_table(&self) {
+    pub fn print_table(&self, acc: VirtualAddress) {
         let padding = match self.level {
             0 => 8,
             1 => 4,
@@ -80,15 +80,23 @@ impl Table {
 
         for i in 0..512 {
             let entry = &self[i];
+            let virt =
+                unsafe { VirtualAddress::new(acc.as_raw() | (i & 0x1ff) << (self.level * 9 + 12)) };
 
             if entry
                 .flags()
                 .intersects(PageFlags::READ | PageFlags::EXECUTE)
             {
-                log::debug!("{:^padding$}{}:{i} is a leaf", "", self.level);
+                log::debug!(
+                    "{:^padding$}{}:{i} is a leaf {} => {}",
+                    "",
+                    self.level,
+                    virt,
+                    entry.address(),
+                );
             } else if entry.flags().contains(PageFlags::VALID) {
                 log::debug!("{:^padding$}{}:{i} is a table node", "", self.level);
-                Table::from_address(entry.address(), self.level - 1).print_table();
+                Table::from_address(entry.address(), self.level - 1).print_table(virt);
             }
         }
     }
