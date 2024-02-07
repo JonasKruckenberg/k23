@@ -215,18 +215,25 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "cfg-if",
- "cranelift-codegen",
- "cranelift-frontend",
- "cranelift-wasm",
  "dtb-parser",
  "gimli",
+ "kmem",
  "linked_list_allocator",
  "log",
  "onlyerror",
  "riscv",
  "sbicall",
  "uart-16550",
- "wasmparser",
+]
+
+[[package]]
+name = "kmem"
+version = "0.1.0"
+dependencies = [
+ "cfg-if",
+ "log",
+ "onlyerror",
+ "sbicall",
 ]
 
 [[package]]

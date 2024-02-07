@@ -9,7 +9,6 @@ edition = "2021"
 
 [workspace.dependencies]
 dtb-parser = { path = "./crates/dtb-parser" }
-kernel = { path = "_kernel" }
 sbicall = { path = "./crates/sbicall" }
 uart-16550 = { path = "./crates/uart-16550" }
 wasmparser = { path = "./crates/wasmparser" }
@@ -20,6 +19,7 @@ cranelift-entity = { path = "./crates/cranelift-entity" }
 cranelift-frontend = { path = "./crates/cranelift-frontend" }
 fxhash = { path = "./crates/fxhash" }
 gimli = { path = "./crates/gimli" }
+kmem = { path = "./crates/kmem" }
 bitflags = "2.4.1"
 log = "0.4.20"
 riscv = "0.11.0"

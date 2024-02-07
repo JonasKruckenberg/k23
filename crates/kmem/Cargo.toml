@@ -1,0 +1,12 @@
+[package]
+name = "kmem"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cfg-if.workspace = true
+onlyerror.workspace = true
+log.workspace = true
+
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+sbicall.workspace = true

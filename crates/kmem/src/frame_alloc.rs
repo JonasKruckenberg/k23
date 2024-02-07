@@ -1,12 +1,17 @@
-use crate::arch::PAGE_SIZE;
-use crate::paging::PhysicalAddress;
+use super::arch::Arch;
+use super::PhysicalAddress;
+use core::marker::PhantomData;
 use core::ops::Range;
 
-pub struct FrameAllocator {
-    free_frame_list: FreeFrameList,
+/// Allocator for physical memory regions (called *frames* to distinguish them from virtual memory *pages*)
+///
+/// This is deliberately *not* using a bump allocation strategy but a free-list one, so it can operate on
+/// possibly disjoint regions of physical memory.
+pub struct FrameAllocator<A> {
+    free_frame_list: FreeFrameList<A>,
 }
 
-impl FrameAllocator {
+impl<A: Arch> FrameAllocator<A> {
     pub unsafe fn new(regions: &[Range<PhysicalAddress>]) -> Self {
         Self {
             free_frame_list: FreeFrameList::new(regions),
@@ -21,27 +26,32 @@ impl FrameAllocator {
     }
 
     pub fn deallocate_frame(&mut self, phys: PhysicalAddress) {
-        let ptr = phys.as_raw() as *mut FreeFrame;
+        let ptr = phys.0 as *mut FreeFrame;
         unsafe {
             self.free_frame_list.push(&mut *ptr);
         }
     }
 }
 
-struct FreeFrameList {
+struct FreeFrameList<A> {
     len: usize,
     head: Option<&'static mut FreeFrame>,
+    _m: PhantomData<A>,
 }
 
-impl FreeFrameList {
+impl<A: Arch> FreeFrameList<A> {
     unsafe fn new(regions: &[Range<PhysicalAddress>]) -> Self {
-        let mut new_list = Self { len: 0, head: None };
+        let mut new_list = Self {
+            len: 0,
+            head: None,
+            _m: PhantomData,
+        };
 
         for region in regions {
-            let num_of_frames = (region.end.as_raw() - region.start.as_raw()) / PAGE_SIZE;
+            let num_of_frames = (region.end.0 - region.start.0) / A::PAGE_SIZE;
 
             for i in (0..num_of_frames).rev() {
-                let new_frame = (region.start.as_raw() + i * PAGE_SIZE) as *mut FreeFrame;
+                let new_frame = (region.start.0 + i * A::PAGE_SIZE) as *mut FreeFrame;
                 new_list.push(&mut *new_frame);
             }
         }
@@ -71,6 +81,6 @@ struct FreeFrame {
 impl FreeFrame {
     fn as_ptr(&self) -> PhysicalAddress {
         let ptr = self as *const _ as usize;
-        unsafe { PhysicalAddress::new(ptr) }
+        PhysicalAddress(ptr)
     }
 }

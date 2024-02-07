@@ -1,8 +1,7 @@
 use crate::arch;
-use crate::arch::riscv64::trap::TrapFrame;
+// use crate::arch::riscv64::trap::TrapFrame;
 use crate::board_info::BoardInfo;
 use core::arch::asm;
-use core::mem;
 use core::ptr::addr_of_mut;
 
 /// Sets the harts stack pointer to the top of the stack.
@@ -31,16 +30,16 @@ unsafe extern "C" fn set_stack_pointer() {
     )
 }
 
-#[naked]
-unsafe extern "C" fn allocate_trap_frame() {
-    asm!(
-    "addi sp, sp, -{trap_frame_size}",
-    "csrrw x0, sscratch, sp", // sscratch points to the trap frame
-    "ret",
-    trap_frame_size = const mem::size_of::<TrapFrame>(),
-    options(noreturn)
-    )
-}
+// #[naked]
+// unsafe extern "C" fn allocate_trap_frame() {
+//     asm!(
+//     "addi sp, sp, -{trap_frame_size}",
+//     "csrrw x0, sscratch, sp", // sscratch points to the trap frame
+//     "ret",
+//     trap_frame_size = const mem::size_of::<TrapFrame>(),
+//     options(noreturn)
+//     )
+// }
 
 /// This is the boot harts entry point into the kernel.
 /// It is the first function that is called after OpenSBI has set up the environment.
@@ -57,12 +56,12 @@ unsafe extern "C" fn _start() -> ! {
     "    la		gp, __global_pointer$",
     ".option pop",
     "call {set_stack_pointer}",
-    "call {allocate_trap_frame}",
+    // "call {allocate_trap_frame}",
 
     "jal zero, {start_rust}", // jump into Rust
 
     set_stack_pointer = sym set_stack_pointer,
-    allocate_trap_frame = sym allocate_trap_frame,
+    // allocate_trap_frame = sym allocate_trap_frame,
     start_rust = sym start,
     options(noreturn)
     )
@@ -83,12 +82,12 @@ unsafe extern "C" fn _start_hart() -> ! {
     "    la		gp, __global_pointer$",
     ".option pop",
     "call {set_stack_pointer}",
-    "call {allocate_trap_frame}",
+    // "call {allocate_trap_frame}",
 
     "jal zero, {start_rust}", // jump into Rust
 
     set_stack_pointer = sym set_stack_pointer,
-    allocate_trap_frame = sym allocate_trap_frame,
+    // allocate_trap_frame = sym allocate_trap_frame,
     start_rust = sym crate::kmain,
     options(noreturn)
     )
@@ -114,7 +113,12 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
 
     log::debug!("initializing virtual memory...");
 
-    arch::paging::init(&board_info).unwrap();
+    if let Err(err) = super::paging::init(&board_info) {
+        panic!("Failed to initialize paging: {}", err)
+    }
+
+    log::debug!("initializing kernel heap...");
+    crate::allocator::init();
 
     crate::kmain(hartid)
 }

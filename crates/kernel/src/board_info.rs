@@ -1,8 +1,8 @@
 use crate::error::Error;
-use crate::paging::PhysicalAddress;
 use core::mem;
 use core::ops::Range;
 use dtb_parser::{Dtb, Node, Visit};
+use kmem::PhysicalAddress;
 
 #[derive(Debug)]
 pub struct BoardInfo {

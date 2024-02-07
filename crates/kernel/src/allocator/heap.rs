@@ -1,8 +1,8 @@
 use crate::allocator::slab::Slab;
 use crate::arch::PAGE_SIZE;
-use crate::paging::VirtualAddress;
 use core::alloc::{AllocError, Layout};
 use core::ptr::NonNull;
+use kmem::VirtualAddress;
 
 /// A heap allocator.
 ///
@@ -65,7 +65,7 @@ impl Heap {
             slab_2048_bytes: Slab::new(heap_start_addr.add(5 * slab_size), slab_size),
             slab_4096_bytes: Slab::new(heap_start_addr.add(6 * slab_size), slab_size),
             linked_list: linked_list_allocator::Heap::new(
-                (heap_start_addr.as_raw() + 7 * slab_size) as *mut u8,
+                heap_start_addr.add(7 * slab_size).as_raw() as *mut u8,
                 slab_size,
             ),
         }

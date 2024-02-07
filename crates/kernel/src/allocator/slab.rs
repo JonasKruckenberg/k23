@@ -1,55 +1,56 @@
-use crate::paging::VirtualAddress;
 use core::alloc::AllocError;
-use core::ops::Range;
 use core::ptr::NonNull;
+use kmem::VirtualAddress;
 
 pub struct Slab<const BLOCK_SIZE: usize> {
-    free_frame_list: FreeFrameList,
+    free_block_list: FreeBlockList<BLOCK_SIZE>,
+}
+
+struct FreeBlockList<const BLOCK_SIZE: usize> {
+    len: usize,
+    head: Option<&'static mut FreeBlock>,
+}
+
+struct FreeBlock {
+    next: Option<&'static mut FreeBlock>,
 }
 
 impl<const BLOCK_SIZE: usize> Slab<BLOCK_SIZE> {
-    pub unsafe fn new(start: VirtualAddress, heap_size: usize) -> Self {
-        let region = start..start.add(heap_size);
+    pub unsafe fn new(start: VirtualAddress, size: usize) -> Self {
+        log::trace!("initializing {BLOCK_SIZE} byte slab at {start:?} with len {size} bytes");
         Self {
-            free_frame_list: FreeFrameList::new::<BLOCK_SIZE>(region),
+            free_block_list: FreeBlockList::new(start, size / BLOCK_SIZE),
         }
     }
 
     pub fn allocate(&mut self) -> Result<NonNull<u8>, AllocError> {
-        self.free_frame_list
-            .pop()
-            .map(|frame| frame.as_ptr())
-            .ok_or(AllocError)
+        match self.free_block_list.pop() {
+            Some(block) => Ok(block.as_ptr()),
+            None => Err(AllocError),
+        }
     }
 
     pub fn deallocate(&mut self, ptr: NonNull<u8>) {
-        let ptr = ptr.as_ptr() as *mut FreeFrame;
+        let ptr = ptr.as_ptr() as *mut FreeBlock;
         unsafe {
-            self.free_frame_list.push(&mut *ptr);
+            self.free_block_list.push(&mut *ptr);
         }
     }
 }
 
-struct FreeFrameList {
-    len: usize,
-    head: Option<&'static mut FreeFrame>,
-}
-
-impl FreeFrameList {
-    unsafe fn new<const BLOCK_SIZE: usize>(region: Range<VirtualAddress>) -> Self {
+impl<const BLOCK_SIZE: usize> FreeBlockList<BLOCK_SIZE> {
+    unsafe fn new(start: VirtualAddress, num_blocks: usize) -> Self {
         let mut new_list = Self { len: 0, head: None };
 
-        let num_of_frames = (region.end.as_raw() - region.start.as_raw()) / BLOCK_SIZE;
-
-        for i in (0..num_of_frames).rev() {
-            let new_frame = region.start.add(i * BLOCK_SIZE).as_raw() as *mut FreeFrame;
+        for i in (0..num_blocks).rev() {
+            let new_frame = start.add(i * BLOCK_SIZE).as_raw() as *mut FreeBlock;
             new_list.push(&mut *new_frame);
         }
 
         new_list
     }
 
-    pub fn pop(&mut self) -> Option<&mut FreeFrame> {
+    pub fn pop(&mut self) -> Option<&mut FreeBlock> {
         self.head.take().map(|block| {
             self.head = block.next.take();
             self.len -= 1;
@@ -57,21 +58,16 @@ impl FreeFrameList {
         })
     }
 
-    fn push(&mut self, free_block: &'static mut FreeFrame) {
+    fn push(&mut self, free_block: &'static mut FreeBlock) {
         free_block.next = self.head.take();
         self.len += 1;
         self.head = Some(free_block);
     }
 }
 
-struct FreeFrame {
-    next: Option<&'static mut FreeFrame>,
-}
-
-impl FreeFrame {
-    fn as_ptr(&mut self) -> NonNull<u8> {
-        let ptr = self as *mut _ as *mut u8; // yuck
-
+impl FreeBlock {
+    fn as_ptr(&self) -> NonNull<u8> {
+        let ptr = self as *const _ as *mut u8;
         unsafe { NonNull::new_unchecked(ptr) }
     }
 }

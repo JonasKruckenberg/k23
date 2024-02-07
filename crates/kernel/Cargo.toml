@@ -3,8 +3,6 @@ name = "kernel"
 version.workspace = true
 edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 dtb-parser.workspace = true
 uart-16550.workspace = true
@@ -16,7 +14,8 @@ riscv.workspace = true
 linked_list_allocator.workspace = true
 cfg-if.workspace = true
 gimli = { workspace = true, features = ["read-core"] }
-cranelift-wasm.workspace = true
-cranelift-codegen.workspace = true
-cranelift-frontend.workspace = true
-wasmparser.workspace = true
+kmem.workspace = true
+#cranelift-wasm.workspace = true
+#cranelift-codegen.workspace = true
+#cranelift-frontend.workspace = true
+#wasmparser.workspace = true

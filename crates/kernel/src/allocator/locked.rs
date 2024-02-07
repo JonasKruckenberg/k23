@@ -1,8 +1,8 @@
 use crate::allocator::heap::Heap;
-use crate::paging::VirtualAddress;
 use crate::sync::Mutex;
 use core::alloc::{AllocError, Allocator, Layout};
 use core::ptr::NonNull;
+use kmem::VirtualAddress;
 
 /// A thread safe wrapper around [`Heap`].
 ///

@@ -25,13 +25,6 @@ SECTIONS {
         __rodata_end = .;
     }
 
-    .eh_frame : {
-        . = ALIGN(8);
-        __eh_frame_start = .;
-        KEEP (*(.eh_frame)) *(.rel.eh_frame*)
-        __eh_frame_end = .;
-    }
-
     .data : {
         *(.data .data.*)
         *(.sdata .sdata.*)
@@ -44,6 +37,13 @@ SECTIONS {
         *(.sbss .sbss.*)
         . = ALIGN(4096);
         __bss_end = .;
+    }
+
+    .eh_frame : {
+        . = ALIGN(8);
+        __eh_frame_start = .;
+        KEEP (*(.eh_frame)) *(.rel.eh_frame*)
+        __eh_frame_end = .;
     }
 
     . = ALIGN(4096);
