@@ -5,10 +5,8 @@ use crate::sync::Mutex;
 use core::ops::Range;
 use core::ptr::addr_of;
 use kmem::{Arch, Flush, FrameAllocator, Mapper, PageFlags, PhysicalAddress};
-use riscv::register::satp;
-use riscv::register::satp::Mode;
 
-static KERNEL_MAPPER: Mutex<Option<Mapper<MemoryMode>>> = Mutex::new(None);
+static FRAME_ALLOC: Mutex<Option<FrameAllocator<MemoryMode>>> = Mutex::new(None);
 
 pub fn init(board_info: &BoardInfo) -> crate::Result<()> {
     extern "C" {
@@ -48,10 +46,10 @@ pub fn init(board_info: &BoardInfo) -> crate::Result<()> {
     log::trace!("physical memory regions {regions:?}");
 
     // Step 2: initialize allocator
-    let frame_alloc = unsafe { FrameAllocator::new(&regions) };
+    let mut frame_alloc = unsafe { FrameAllocator::new(&regions) };
 
     // Step 4: create mapper
-    let mut mapper = Mapper::new(0, frame_alloc)?;
+    let mut mapper = Mapper::new(0, &mut frame_alloc)?;
 
     let mut flush = Flush::empty(0);
 
@@ -117,8 +115,8 @@ pub fn init(board_info: &BoardInfo) -> crate::Result<()> {
         flush.flush()?;
     }
 
-    log::trace!("configuring global kernel mapper...");
-    KERNEL_MAPPER.lock().replace(mapper);
+    log::trace!("initializing global frame allocator...");
+    FRAME_ALLOC.lock().replace(frame_alloc);
 
     // log::debug!("testing heap mapping...");
     // unsafe {

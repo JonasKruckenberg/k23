@@ -7,14 +7,14 @@ use crate::Error;
 use crate::{PhysicalAddress, VirtualAddress};
 use core::ops::Range;
 
-pub struct Mapper<A> {
+pub struct Mapper<'a, A> {
     address_space: usize,
-    allocator: FrameAllocator<A>,
+    allocator: &'a mut FrameAllocator<A>,
     root_table: PhysicalAddress,
 }
 
-impl<A: Arch> Mapper<A> {
-    pub fn new(address_space: usize, mut allocator: FrameAllocator<A>) -> crate::Result<Self> {
+impl<'a, A: Arch> Mapper<'a, A> {
+    pub fn new(address_space: usize, allocator: &'a mut FrameAllocator<A>) -> crate::Result<Self> {
         let root_table = allocator.allocate_frame()?;
 
         let mut this = Self {
