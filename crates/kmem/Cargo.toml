@@ -10,3 +10,4 @@ log.workspace = true
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 sbicall.workspace = true
+riscv.workspace = true

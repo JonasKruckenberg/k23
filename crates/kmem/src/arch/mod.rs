@@ -36,6 +36,10 @@ pub trait Arch {
     /// The offset from physical memory at which the kernel will be mapped.
     const PHYS_OFFSET: usize;
 
+    unsafe fn active_table(address_space: usize) -> PhysicalAddress;
+
+    unsafe fn activate_table(table: PhysicalAddress, address_space: usize);
+
     /// Invalidate all address translation caches across all address spaces
     fn invalidate_all() -> crate::Result<()>;
 
@@ -52,9 +56,9 @@ pub trait Arch {
         }
     }
 
-    fn canonicalize_virt(virt: VirtualAddress) -> VirtualAddress {
-        let shift = mem::size_of::<usize>() as u32 * 8 - Self::VIRT_ADDR_BITS;
-
-        VirtualAddress(virt.0.wrapping_shl(shift).wrapping_shr(shift))
-    }
+    // fn canonicalize_virt(virt: VirtualAddress) -> VirtualAddress {
+    //     let shift = mem::size_of::<usize>() as u32 * 8 - Self::VIRT_ADDR_BITS;
+    //
+    //     VirtualAddress(virt.0.wrapping_shl(shift).wrapping_shr(shift))
+    // }
 }

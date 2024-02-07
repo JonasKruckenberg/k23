@@ -29,6 +29,19 @@ impl<'a, A: Arch> Mapper<'a, A> {
         Ok(this)
     }
 
+    pub fn from_active(address_space: usize, allocator: &'a mut FrameAllocator<A>) -> Self {
+        let root_table = unsafe { A::active_table(address_space) };
+        Self {
+            address_space,
+            allocator,
+            root_table,
+        }
+    }
+
+    pub fn activate(self) {
+        unsafe { A::activate_table(self.root_table, self.address_space) }
+    }
+
     pub fn address_space(&self) -> usize {
         self.address_space
     }

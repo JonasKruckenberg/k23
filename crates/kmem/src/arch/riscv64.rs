@@ -1,6 +1,8 @@
 use crate::arch::Arch;
-use crate::VirtualAddress;
+use crate::{PhysicalAddress, VirtualAddress};
 use core::ops::Range;
+use riscv::register::satp;
+use riscv::register::satp::Mode;
 
 const PHYS_OFFSET: usize = 0xFFFF_8000_0000_0000;
 
@@ -26,6 +28,12 @@ fn invalidate_range(
     Ok(())
 }
 
+unsafe fn active_table(address_space: usize) -> PhysicalAddress {
+    let satp = satp::read();
+    assert_eq!(satp.asid(), address_space);
+    PhysicalAddress::new(satp.ppn() << 12)
+}
+
 pub struct Riscv64Sv39;
 
 impl Arch for Riscv64Sv39 {
@@ -45,6 +53,15 @@ impl Arch for Riscv64Sv39 {
     const ENTRY_ADDR_SHIFT: usize = ENTRY_ADDR_SHIFT;
 
     const PHYS_OFFSET: usize = PHYS_OFFSET;
+
+    unsafe fn active_table(address_space: usize) -> PhysicalAddress {
+        active_table(address_space)
+    }
+
+    unsafe fn activate_table(table: PhysicalAddress, address_space: usize) {
+        let ppn = table.as_raw() >> 12;
+        satp::set(Mode::Sv39, address_space, ppn);
+    }
 
     fn invalidate_all() -> crate::Result<()> {
         sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
@@ -78,6 +95,15 @@ impl Arch for Riscv64Sv48 {
     const ENTRY_ADDR_SHIFT: usize = ENTRY_ADDR_SHIFT;
     const PHYS_OFFSET: usize = PHYS_OFFSET;
 
+    unsafe fn active_table(address_space: usize) -> PhysicalAddress {
+        active_table(address_space)
+    }
+
+    unsafe fn activate_table(table: PhysicalAddress, address_space: usize) {
+        let ppn = table.as_raw() >> 12;
+        satp::set(Mode::Sv48, address_space, ppn);
+    }
+
     fn invalidate_all() -> crate::Result<()> {
         sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
         Ok(())
@@ -109,6 +135,15 @@ impl Arch for Riscv64Sv57 {
     const ENTRY_FLAGS_MASK: usize = ENTRY_FLAGS_MASK;
     const ENTRY_ADDR_SHIFT: usize = ENTRY_ADDR_SHIFT;
     const PHYS_OFFSET: usize = PHYS_OFFSET;
+
+    unsafe fn active_table(address_space: usize) -> PhysicalAddress {
+        active_table(address_space)
+    }
+
+    unsafe fn activate_table(table: PhysicalAddress, address_space: usize) {
+        let ppn = table.as_raw() >> 12;
+        satp::set(Mode::Sv57, address_space, ppn);
+    }
 
     fn invalidate_all() -> crate::Result<()> {
         sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;

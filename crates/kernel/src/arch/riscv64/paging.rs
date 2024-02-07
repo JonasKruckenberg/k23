@@ -106,14 +106,10 @@ pub fn init(board_info: &BoardInfo) -> crate::Result<()> {
         mapper.map_with_flush(virt, frame, PageFlags::READ | PageFlags::WRITE, &mut flush)?;
     }
 
-    unsafe {
-        let ppn = mapper.root_table().address().as_raw() >> 12;
-        satp::set(Mode::Sv39, mapper.address_space(), ppn);
-
-        log::trace!("flushing address translation changes: {flush:?}");
-
-        flush.flush()?;
-    }
+    log::trace!("activating page table...");
+    mapper.activate();
+    log::trace!("flushing address translation changes: {flush:?}");
+    flush.flush()?;
 
     log::trace!("initializing global frame allocator...");
     FRAME_ALLOC.lock().replace(frame_alloc);
