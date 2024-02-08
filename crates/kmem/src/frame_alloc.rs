@@ -4,9 +4,10 @@ use core::marker::PhantomData;
 use core::ops::Range;
 use core::{fmt, mem};
 
-struct MemoryUsage {
-    used: usize,
-    total: usize,
+#[derive(Debug)]
+pub struct FrameUsage {
+    pub used: usize,
+    pub total: usize,
 }
 
 pub struct BumpAllocator<A> {
@@ -19,10 +20,10 @@ impl<A: Arch> BumpAllocator<A> {
     /// # Safety
     ///
     /// The regions list is assumed to be sorted and not overlapping
-    pub unsafe fn new(regions: &'static [Range<PhysicalAddress>]) -> Self {
+    pub unsafe fn new(regions: &'static [Range<PhysicalAddress>], offset: usize) -> Self {
         Self {
             regions,
-            offset: 0,
+            offset,
             _m: PhantomData,
         }
     }
@@ -43,13 +44,13 @@ impl<A: Arch> BumpAllocator<A> {
         Err(Error::OutOfMemory)
     }
 
-    pub fn memory_usage(&self) -> MemoryUsage {
+    pub fn memory_usage(&self) -> FrameUsage {
         let mut total = 0;
         for region in self.regions.iter() {
             total += region.size_in_bytes() >> A::PAGE_SHIFT;
         }
         let used = self.offset >> A::PAGE_SHIFT;
-        MemoryUsage { used, total }
+        FrameUsage { used, total }
     }
 }
 
@@ -73,10 +74,7 @@ impl<A: Arch> fmt::Debug for TableEntry<A> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let usage_map = unsafe {
             let virt = A::phys_to_virt(self.region.start);
-            core::slice::from_raw_parts(
-                virt.as_raw() as *const u8,
-                self.usage_map_pages() * A::PAGE_SIZE,
-            )
+            core::slice::from_raw_parts(virt.as_raw() as *const u8, self.pages() / 8)
         };
 
         f.debug_struct("TableEntry")
@@ -96,29 +94,37 @@ impl<A: Arch> TableEntry<A> {
         self.region.size_in_bytes() >> A::PAGE_SHIFT
     }
 
-    /// Set the usage number for a specific page
-    pub fn set_usage_for_page(&mut self, page: usize, usage: u8) {
-        let phys = self.region.start.add(page * mem::size_of::<u8>());
-        unsafe {
+    pub fn is_page_used(&self, page: usize) -> bool {
+        let phys = self.region.start.add(page / 8);
+        let bits = unsafe {
             let virt = A::phys_to_virt(phys);
-            core::ptr::write(virt.as_raw() as *mut u8, usage);
-
-            let v = core::ptr::read(virt.as_raw() as *const u8);
-            assert!(matches!(v, 0 | 1));
+            *(virt.as_raw() as *const u8)
         };
+        bits & (1 << (page % 8)) != 0
     }
 
-    pub fn get_usage_for_page(&self, page: usize) -> u8 {
-        let phys = self.region.start.add(page * mem::size_of::<u8>());
+    pub fn mark_page_as_used(&mut self, page: usize) {
+        let phys = self.region.start.add(page / 8);
         unsafe {
             let virt = A::phys_to_virt(phys);
-            core::ptr::read(virt.as_raw() as *const u8)
+            let bits = core::ptr::read_volatile(virt.as_raw() as *const u8);
+            core::ptr::write_volatile(virt.as_raw() as *mut u8, bits | 1 << (page as u8 % 8));
+        }
+    }
+    pub fn mark_page_as_free(&mut self, page: usize) {
+        let phys = self.region.start.add(page / 8);
+        unsafe {
+            let virt = A::phys_to_virt(phys);
+            let bits = core::ptr::read_volatile(virt.as_raw() as *const u8);
+            core::ptr::write_volatile(virt.as_raw() as *mut u8, bits & !(1 << (page as u8 % 8)));
         }
     }
 
     /// The number of pages required to store the usage map for this entry
     pub fn usage_map_pages(&self) -> usize {
-        let bytes = self.pages() * mem::size_of::<u8>();
+        // we can fit 8 bits into one byte
+        let bytes = self.pages() / 8;
+
         // align-up to next page
         (bytes + (A::PAGE_SIZE - 1)) >> A::PAGE_SHIFT
     }
@@ -132,6 +138,24 @@ pub struct FrameAllocator<A> {
 
 impl<A: Arch> FrameAllocator<A> {
     const NUM_ENTRIES: usize = A::PAGE_SIZE / mem::size_of::<TableEntry<A>>();
+
+    fn entries_mut(&self) -> &mut [TableEntry<A>] {
+        unsafe {
+            core::slice::from_raw_parts_mut(
+                self.table_virt.as_raw() as *mut TableEntry<A>,
+                Self::NUM_ENTRIES,
+            )
+        }
+    }
+
+    fn entries(&self) -> &[TableEntry<A>] {
+        unsafe {
+            core::slice::from_raw_parts(
+                self.table_virt.as_raw() as *const TableEntry<A>,
+                Self::NUM_ENTRIES,
+            )
+        }
+    }
 
     pub fn new(mut bump_allocator: BumpAllocator<A>) -> crate::Result<Self> {
         // allocate a frame to hold the table
@@ -156,9 +180,7 @@ impl<A: Arch> FrameAllocator<A> {
                 offset = 0;
             }
 
-            for i in 0..Self::NUM_ENTRIES {
-                let entry = this.entry_mut(i);
-
+            for entry in this.entries_mut() {
                 if entry.region.size_in_bytes() == 0 {
                     // Create new entry
                     entry.region = region.clone();
@@ -174,13 +196,11 @@ impl<A: Arch> FrameAllocator<A> {
             }
         }
 
-        for i in 0..Self::NUM_ENTRIES {
-            let entry = this.entry_mut(i);
-
+        for entry in this.entries_mut() {
             let usage_map_pages = entry.usage_map_pages();
 
             for page in 0..usage_map_pages {
-                entry.set_usage_for_page(page, 1);
+                entry.mark_page_as_used(page);
             }
 
             entry.skip = usage_map_pages;
@@ -190,31 +210,11 @@ impl<A: Arch> FrameAllocator<A> {
         Ok(this)
     }
 
-    fn entry(&self, index: usize) -> &TableEntry<A> {
-        let virt = self.table_virt.add(index * mem::size_of::<TableEntry<A>>());
-        unsafe { &*(virt.as_raw() as *const TableEntry<A>) }
-    }
-
-    fn entry_mut(&mut self, index: usize) -> &mut TableEntry<A> {
-        let virt = self.table_virt.add(index * mem::size_of::<TableEntry<A>>());
-        unsafe { &mut *(virt.as_raw() as *mut TableEntry<A>) }
-    }
-
-    pub fn debug_print(&self) {
-        for i in 0..Self::NUM_ENTRIES {
-            let entry = self.entry(i);
-            log::debug!("{entry:?}");
-        }
-    }
-
     pub fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
-        for i in 0..Self::NUM_ENTRIES {
-            let entry = self.entry_mut(i);
-
+        for entry in self.entries_mut() {
             for page in entry.skip..entry.pages() {
-                let usage = entry.get_usage_for_page(page);
-                if usage == 0 {
-                    entry.set_usage_for_page(page, 1);
+                if !entry.is_page_used(page) {
+                    entry.mark_page_as_used(page);
                     entry.skip = page;
                     entry.used += 1;
 
@@ -227,17 +227,13 @@ impl<A: Arch> FrameAllocator<A> {
     }
 
     pub fn allocate_frames(&mut self, requested: usize) -> crate::Result<PhysicalAddress> {
-        for i in 0..Self::NUM_ENTRIES {
-            let entry = self.entry_mut(i);
-
+        for entry in self.entries_mut() {
             // find a consecutive run of free pages
             let mut free_page = entry.skip;
             let mut free_len = 0;
 
             for page in entry.skip..entry.pages() {
-                let usage = entry.get_usage_for_page(page);
-
-                if usage > 0 {
+                if entry.is_page_used(page) {
                     free_page = page + 1;
                     free_len = 0;
                 } else {
@@ -245,8 +241,7 @@ impl<A: Arch> FrameAllocator<A> {
 
                     if free_len == requested {
                         for page in free_page..free_page + free_len {
-                            let usage = entry.get_usage_for_page(page);
-                            entry.set_usage_for_page(page, usage + 1);
+                            entry.mark_page_as_used(page);
                         }
 
                         if entry.skip == free_page {
@@ -264,62 +259,16 @@ impl<A: Arch> FrameAllocator<A> {
     }
 
     pub fn deallocate_frame(&mut self, phys: PhysicalAddress) -> crate::Result<()> {
-        for i in 0..Self::NUM_ENTRIES {
-            let entry = self.entry_mut(i);
-
-            if entry.region.contains(&phys) {
-                let page = (phys.as_raw() - entry.region.start.as_raw()) >> A::PAGE_SHIFT;
-
-                let mut usage = entry.get_usage_for_page(page);
-
-                if usage > 0 {
-                    usage -= 1;
-                } else {
-                    return Err(Error::DoubleFree(
-                        entry.region.start.add(page << A::PAGE_SHIFT),
-                    ));
-                }
-
-                // if page was freed
-                if usage == 0 {
-                    // Update skip if necessary
-                    if page < entry.skip {
-                        entry.skip = page;
-                    }
-
-                    // Update used page count
-                    entry.used -= 1;
-                }
-
-                entry.set_usage_for_page(page, usage);
-
-                return Ok(());
-            }
-        }
-
-        todo!()
+        self.deallocate_frames(phys, 1)
     }
 
     pub fn deallocate_frames(&mut self, phys: PhysicalAddress, count: usize) -> crate::Result<()> {
-        for i in 0..Self::NUM_ENTRIES {
-            let entry = self.entry_mut(i);
-
+        for entry in self.entries_mut() {
             if phys >= entry.region.start && phys.add(count * A::PAGE_SIZE) <= entry.region.end {
                 let start_page = (phys.as_raw() - entry.region.start.as_raw()) >> A::PAGE_SHIFT;
 
                 for page in start_page..start_page + count {
-                    let mut usage = entry.get_usage_for_page(page);
-
-                    if usage > 0 {
-                        usage -= 1;
-                    } else {
-                        return Err(Error::DoubleFree(
-                            entry.region.start.add(page << A::PAGE_SHIFT),
-                        ));
-                    }
-
-                    // if page was freed
-                    if usage == 0 {
+                    if entry.is_page_used(page) {
                         // Update skip if necessary
                         if page < entry.skip {
                             entry.skip = page;
@@ -327,15 +276,61 @@ impl<A: Arch> FrameAllocator<A> {
 
                         // Update used page count
                         entry.used -= 1;
-                    }
 
-                    entry.set_usage_for_page(page, usage);
+                        entry.mark_page_as_free(page);
+                    } else {
+                        return Err(Error::DoubleFree(
+                            entry.region.start.add(page << A::PAGE_SHIFT),
+                        ));
+                    }
                 }
 
                 return Ok(());
             }
         }
 
-        todo!()
+        Err(Error::DoubleFree(phys))
+    }
+
+    pub fn debug_print(&self) {
+        for entry in self.entries() {
+            log::debug!("{entry:?}");
+        }
+    }
+
+    pub fn frame_usage(&self) -> FrameUsage {
+        let mut total = 0;
+        let mut used = 0;
+        for entry in self.entries() {
+            total += entry.region.size_in_bytes() >> A::PAGE_SHIFT;
+            used += entry.used;
+        }
+
+        FrameUsage { used, total }
     }
 }
+
+// #[cfg(test)]
+// mod test {
+//     #[test]
+//     fn test() {
+// let frame = frame_alloc.allocate_frames(50)?;
+// log::debug!("allocated 50 frames");
+// assert_eq!(frame.as_raw(), 0x8059f000);
+//
+// frame_alloc.deallocate_frame(frame)?;
+// log::debug!("deallocated 1 frame");
+// frame_alloc.debug_print();
+//
+// frame_alloc.deallocate_frames(frame.add(MemoryMode::PAGE_SIZE), 49)?;
+// log::debug!("deallocated the other 49 frames");
+// frame_alloc.debug_print();
+
+// assert_eq!(next.as_raw(), 0x805a6000);
+//
+// let next = frame_alloc.allocate_frame()?;
+// log::debug!("alloc2 after free");
+// assert_eq!(next.as_raw(), 0x805ab000);
+//
+//     }
+// }
