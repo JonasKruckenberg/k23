@@ -14,6 +14,8 @@ cfg_if::cfg_if! {
 
 pub trait Arch {
     const PAGE_SIZE: usize;
+    const PAGE_SHIFT: u32 = (Self::PAGE_SIZE - 1).count_ones();
+
     const VIRT_ADDR_BITS: u32;
     const PAGE_LEVELS: usize;
 
@@ -50,10 +52,17 @@ pub trait Arch {
     ) -> crate::Result<()>;
 
     unsafe fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-        match phys.as_raw().checked_add(Self::PHYS_OFFSET) {
-            Some(some) => VirtualAddress::new(some),
-            None => panic!("phys_to_virt({:#x}) overflow", phys.as_raw()),
-        }
+        let shift = mem::size_of::<usize>() as u32 * 8 - Self::VIRT_ADDR_BITS;
+        VirtualAddress(
+            (phys.as_raw() as isize)
+                .wrapping_shl(shift)
+                .wrapping_shr(shift),
+        )
+
+        // match phys.as_raw().checked_add(Self::PHYS_OFFSET) {
+        //     Some(some) => VirtualAddress::new(some),
+        //     None => panic!("phys_to_virt({:#x}) overflow", phys.as_raw()),
+        // }
     }
 
     // fn canonicalize_virt(virt: VirtualAddress) -> VirtualAddress {

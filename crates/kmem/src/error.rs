@@ -18,6 +18,8 @@ pub enum Error {
     VirtualAddressAlignment(VirtualAddress),
     #[error("the given combination of page flags is invalid")]
     InvalidPageFlags,
+    #[error("attempted to free already freed frame {0:?}")]
+    DoubleFree(PhysicalAddress),
 }
 
 macro_rules! ensure {

@@ -38,6 +38,7 @@ impl<T> Mutex<T> {
             .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
         {
+            log::trace!("mutex is locked, waiting...");
             while self.is_locked() {
                 core::hint::spin_loop();
             }
