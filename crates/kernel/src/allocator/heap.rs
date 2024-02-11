@@ -1,8 +1,8 @@
 use crate::allocator::slab::Slab;
-use crate::arch::PAGE_SIZE;
+use crate::arch::VMM;
+use kmem::{Arch, VirtualAddress};
 use core::alloc::{AllocError, Layout};
 use core::ptr::NonNull;
-use kmem::VirtualAddress;
 
 /// A heap allocator.
 ///
@@ -41,7 +41,7 @@ impl Heap {
 
     pub unsafe fn new(heap_start_addr: VirtualAddress, heap_size: usize) -> Self {
         assert_eq!(
-            heap_start_addr.as_raw() % PAGE_SIZE,
+            heap_start_addr.as_raw() % VMM::PAGE_SIZE,
             0,
             "Start address should be page aligned"
         );

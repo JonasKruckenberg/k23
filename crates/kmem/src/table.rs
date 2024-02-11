@@ -11,20 +11,26 @@ pub struct Table<A> {
     level: usize,
     // The start address of the entries (conceptually it is [Entry; 512])
     addr: PhysicalAddress,
+    phys_offset: usize,
     _m: PhantomData<A>,
 }
 
 impl<A: Arch> Table<A> {
-    pub fn new(addr: PhysicalAddress, level: usize) -> Self {
+    pub fn new(addr: PhysicalAddress, level: usize, phys_offset: usize) -> Self {
         Self {
             level,
             addr,
+            phys_offset,
             _m: PhantomData,
         }
     }
 
     pub fn level(&self) -> usize {
         self.level
+    }
+
+    pub fn phys_offset(&self) -> usize {
+        self.phys_offset
     }
 
     pub fn address(&self) -> PhysicalAddress {
@@ -52,7 +58,10 @@ impl<A: Arch> Table<A> {
     pub fn entry(&self, index: usize) -> crate::Result<&Entry<A>> {
         ensure!(index < 512, Error::PageIndexOutOfBounds(index));
 
-        let ptr = self.addr.add(index * mem::size_of::<Entry<A>>()).as_raw() as *const Entry<A>;
+        let ptr = self
+            .addr
+            .add(index * mem::size_of::<Entry<A>>() + self.phys_offset)
+            .as_raw() as *const Entry<A>;
 
         Ok(unsafe { &*(ptr) })
     }
@@ -60,7 +69,10 @@ impl<A: Arch> Table<A> {
     pub fn entry_mut(&mut self, index: usize) -> crate::Result<&mut Entry<A>> {
         ensure!(index < 512, Error::PageIndexOutOfBounds(index));
 
-        let ptr = self.addr.add(index * mem::size_of::<Entry<A>>()).as_raw() as *mut Entry<A>;
+        let ptr = self
+            .addr
+            .add(index * mem::size_of::<Entry<A>>() + self.phys_offset)
+            .as_raw() as *mut Entry<A>;
 
         Ok(unsafe { &mut *(ptr) })
     }
@@ -114,42 +126,43 @@ impl<A: Arch> Table<A> {
     //     todo!()
     // }
     //
-    // #[cfg(debug_assertions)]
-    // pub fn debug_print_table(&self) -> crate::Result<()> {
-    //     self.debug_print_table_inner(unsafe { VirtualAddress::new(0) })
-    // }
-    //
-    // #[cfg(debug_assertions)]
-    // fn debug_print_table_inner(&self, acc: VirtualAddress) -> crate::Result<()> {
-    //     let padding = match self.level {
-    //         0 => 8,
-    //         1 => 4,
-    //         _ => 0,
-    //     };
-    //
-    //     for i in 0..512 {
-    //         let entry = &self.entry(i)?;
-    //         let virt = acc | self.virt_from_index(i);
-    //
-    //         if entry
-    //             .flags()
-    //             .intersects(PageFlags::READ | PageFlags::EXECUTE)
-    //         {
-    //             log::debug!(
-    //                 "{:^padding$}{}:{i} is a leaf {} => {}",
-    //                 "",
-    //                 self.level,
-    //                 virt,
-    //                 entry.address(),
-    //             );
-    //         } else if entry.is_valid() {
-    //             log::debug!("{:^padding$}{}:{i} is a table node", "", self.level);
-    //             Self::new(entry.address(), self.level - 1).debug_print_table_inner(virt)?;
-    //         }
-    //     }
-    //
-    //     Ok(())
-    // }
+    #[cfg(debug_assertions)]
+    pub fn debug_print_table(&self) -> crate::Result<()> {
+        self.debug_print_table_inner(unsafe { VirtualAddress::new(0) })
+    }
+
+    #[cfg(debug_assertions)]
+    fn debug_print_table_inner(&self, acc: VirtualAddress) -> crate::Result<()> {
+        let padding = match self.level {
+            0 => 8,
+            1 => 4,
+            _ => 0,
+        };
+
+        for i in 0..512 {
+            let entry = &self.entry(i)?;
+            let virt = acc | self.virt_from_index(i);
+
+            if entry
+                .flags()
+                .intersects(EntryFlags::READ | EntryFlags::EXECUTE)
+            {
+                log::debug!(
+                    "{:^padding$}{}:{i} is a leaf {:?} => {:?}",
+                    "",
+                    self.level,
+                    virt,
+                    entry.address(),
+                );
+            } else if entry.is_valid() {
+                log::debug!("{:^padding$}{}:{i} is a table node", "", self.level);
+                Self::new(entry.address(), self.level - 1, self.phys_offset)
+                    .debug_print_table_inner(virt)?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -160,17 +173,17 @@ pub struct Entry<A> {
 }
 
 impl<A: Arch> Entry<A> {
-    pub fn flags(&self) -> PageFlags<A> {
-        PageFlags::from_bits_truncate(self.inner)
+    pub fn flags(&self) -> EntryFlags<A> {
+        EntryFlags::from_bits_truncate(self.inner)
     }
 
-    pub fn set_flags(&mut self, flags: PageFlags<A>) {
+    pub fn set_flags(&mut self, flags: EntryFlags<A>) {
         self.inner &= !0x3ff; // clear all previous flags
         self.inner |= flags.bits;
     }
 
     pub fn is_valid(&self) -> bool {
-        self.flags().intersects(PageFlags::VALID)
+        self.flags().intersects(EntryFlags::VALID)
     }
 
     pub fn address(&self) -> PhysicalAddress {
@@ -186,12 +199,12 @@ impl<A: Arch> Entry<A> {
     }
 }
 
-pub struct PageFlags<A> {
+pub struct EntryFlags<A> {
     bits: usize,
     _m: PhantomData<A>,
 }
 
-impl<A> Clone for PageFlags<A> {
+impl<A> Clone for EntryFlags<A> {
     fn clone(&self) -> Self {
         Self {
             bits: self.bits,
@@ -200,9 +213,9 @@ impl<A> Clone for PageFlags<A> {
     }
 }
 
-impl<A> Copy for PageFlags<A> {}
+impl<A> Copy for EntryFlags<A> {}
 
-impl<A> PageFlags<A> {
+impl<A> EntryFlags<A> {
     pub const fn from_bits_retain(bits: usize) -> Self {
         Self {
             bits,
@@ -211,7 +224,7 @@ impl<A> PageFlags<A> {
     }
 }
 
-impl<A: Arch> PageFlags<A> {
+impl<A: Arch> EntryFlags<A> {
     pub const fn from_bits_truncate(bits: usize) -> Self {
         Self {
             bits: bits & A::ENTRY_FLAGS_MASK,
@@ -232,7 +245,7 @@ impl<A: Arch> PageFlags<A> {
     }
 }
 
-impl<A> ops::BitOr for PageFlags<A> {
+impl<A> ops::BitOr for EntryFlags<A> {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {

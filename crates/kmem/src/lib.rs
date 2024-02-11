@@ -17,18 +17,11 @@ use core::{fmt, ops};
 pub use arch::*;
 pub use error::Error;
 pub use flush::Flush;
-pub use frame_alloc::{BumpAllocator, FrameAllocator};
+pub use frame_alloc::{BitMapAllocator, BumpAllocator, FrameAllocator};
 pub use mapper::Mapper;
-pub use table::{Entry, PageFlags};
+pub use table::{Entry, EntryFlags};
 
 pub(crate) type Result<T> = core::result::Result<T, Error>;
-
-// TODO implement through global static instead of generics and pass &'static dyn Arch
-// or just pass &dyn Arch as param
-
-pub const KIB: usize = 1024;
-pub const MIB: usize = 1024 * KIB;
-pub const GIB: usize = 1024 * MIB;
 
 /// A physical address.
 #[derive(Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]

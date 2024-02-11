@@ -1,40 +1,51 @@
 use crate::arch::Arch;
 use crate::error::ensure;
 use crate::flush::Flush;
-use crate::frame_alloc::FrameAllocator;
-use crate::table::{PageFlags, Table};
+use crate::frame_alloc::{BitMapAllocator, FrameAllocator};
+use crate::table::{EntryFlags, Table};
 use crate::Error;
 use crate::{PhysicalAddress, VirtualAddress};
 use core::ops::Range;
 
 pub struct Mapper<'a, A> {
     address_space: usize,
-    allocator: &'a mut FrameAllocator<A>,
+    allocator: &'a mut dyn FrameAllocator<A>,
     root_table: PhysicalAddress,
+    phys_offset: usize,
 }
 
 impl<'a, A: Arch> Mapper<'a, A> {
-    pub fn new(address_space: usize, allocator: &'a mut FrameAllocator<A>) -> crate::Result<Self> {
+    pub fn new(
+        address_space: usize,
+        allocator: &'a mut dyn FrameAllocator<A>,
+        phys_offset: usize,
+    ) -> crate::Result<Self> {
         let root_table = allocator.allocate_frame()?;
 
         let mut this = Self {
             address_space,
             allocator,
             root_table,
+            phys_offset,
         };
 
-        let flush = this.map_identity(root_table, PageFlags::READ | PageFlags::WRITE)?;
+        let flush = this.map_identity(root_table, EntryFlags::READ | EntryFlags::WRITE)?;
         unsafe { flush.ignore() }
 
         Ok(this)
     }
 
-    pub fn from_active(address_space: usize, allocator: &'a mut FrameAllocator<A>) -> Self {
+    pub fn from_active(
+        address_space: usize,
+        allocator: &'a mut BitMapAllocator<A>,
+        phys_offset: usize,
+    ) -> Self {
         let root_table = unsafe { A::active_table(address_space) };
         Self {
             address_space,
             allocator,
             root_table,
+            phys_offset,
         }
     }
 
@@ -51,22 +62,23 @@ impl<'a, A: Arch> Mapper<'a, A> {
             Table::new(
                 PhysicalAddress::new(self.root_table.as_raw()),
                 A::PAGE_LEVELS - 1,
+                self.phys_offset,
             )
         }
     }
 
-    pub fn allocator(&self) -> &FrameAllocator<A> {
-        &self.allocator
+    pub fn allocator(&self) -> &dyn FrameAllocator<A> {
+        self.allocator
     }
 
-    pub fn allocator_mut(&mut self) -> &mut FrameAllocator<A> {
-        &mut self.allocator
+    pub fn allocator_mut(&mut self) -> &mut dyn FrameAllocator<A> {
+        self.allocator
     }
 
     pub fn identity_map_range(
         &mut self,
         phys_range: Range<PhysicalAddress>,
-        flags: PageFlags<A>,
+        flags: EntryFlags<A>,
     ) -> crate::Result<Flush<A>> {
         let mut flush = Flush::empty(self.address_space);
         self.identity_map_range_with_flush(phys_range, flags, &mut flush)?;
@@ -76,7 +88,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
     pub fn identity_map_range_with_flush(
         &mut self,
         phys_range: Range<PhysicalAddress>,
-        flags: PageFlags<A>,
+        flags: EntryFlags<A>,
         flush: &mut Flush<A>,
     ) -> crate::Result<()> {
         let virt_start = unsafe { VirtualAddress::new(phys_range.start.as_raw()) };
@@ -89,7 +101,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
         &mut self,
         virt_range: Range<VirtualAddress>,
         phys_range: Range<PhysicalAddress>,
-        flags: PageFlags<A>,
+        flags: EntryFlags<A>,
     ) -> crate::Result<Flush<A>> {
         let mut flush = Flush::empty(self.address_space);
         self.map_range_with_flush(virt_range, phys_range, flags, &mut flush)?;
@@ -100,7 +112,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
         &mut self,
         virt_range: Range<VirtualAddress>,
         phys_range: Range<PhysicalAddress>,
-        flags: PageFlags<A>,
+        flags: EntryFlags<A>,
         flush: &mut Flush<A>,
     ) -> crate::Result<()> {
         let len = virt_range.end.as_raw() - virt_range.start.as_raw();
@@ -119,7 +131,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
     pub fn map_identity(
         &mut self,
         phys: PhysicalAddress,
-        flags: PageFlags<A>,
+        flags: EntryFlags<A>,
     ) -> crate::Result<Flush<A>> {
         let mut flush = Flush::empty(self.address_space);
         self.map_identity_with_flush(phys, flags, &mut flush)?;
@@ -129,7 +141,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
     pub fn map_identity_with_flush(
         &mut self,
         phys: PhysicalAddress,
-        flags: PageFlags<A>,
+        flags: EntryFlags<A>,
         flush: &mut Flush<A>,
     ) -> crate::Result<()> {
         let virt = unsafe { VirtualAddress::new(phys.as_raw()) };
@@ -140,7 +152,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
         &mut self,
         virt: VirtualAddress,
         phys: PhysicalAddress,
-        flags: PageFlags<A>,
+        flags: EntryFlags<A>,
     ) -> crate::Result<Flush<A>> {
         let mut flush = Flush::empty(self.address_space);
         self.map_with_flush(virt, phys, flags, &mut flush)?;
@@ -151,7 +163,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
         &mut self,
         virt: VirtualAddress,
         phys: PhysicalAddress,
-        flags: PageFlags<A>,
+        flags: EntryFlags<A>,
         flush: &mut Flush<A>,
     ) -> crate::Result<()> {
         ensure!(
@@ -166,7 +178,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
         // Make sure that Read, Write, or Execute have been provided
         // otherwise, we'll leak memory and always create a page fault.
         ensure!(
-            flags.intersects(PageFlags::READ | PageFlags::WRITE | PageFlags::EXECUTE),
+            flags.intersects(EntryFlags::READ | EntryFlags::WRITE | EntryFlags::EXECUTE),
             Error::InvalidPageFlags
         );
 
@@ -176,22 +188,22 @@ impl<'a, A: Arch> Mapper<'a, A> {
             let entry = table.entry_mut(table.index_of_virt(virt))?;
 
             if i == 0 {
-                entry.set_flags(flags | PageFlags::VALID);
+                entry.set_flags(flags | EntryFlags::VALID);
                 entry.set_address(phys);
                 flush.extend_range(virt..virt.add(A::PAGE_SIZE), self.address_space)?;
                 return Ok(());
             } else {
                 if !entry.is_valid() {
                     let frame = self.allocator.allocate_frame()?;
-                    entry.set_flags(PageFlags::VALID);
+                    entry.set_flags(EntryFlags::VALID);
                     entry.set_address(frame);
 
                     // TODO don't map identity
-                    let flush = self.map_identity(frame, PageFlags::READ | PageFlags::WRITE)?;
+                    let flush = self.map_identity(frame, EntryFlags::READ | EntryFlags::WRITE)?;
                     unsafe { flush.ignore() }
                 }
 
-                table = Table::new(entry.address(), i - 1);
+                table = Table::new(entry.address(), i - 1, table.phys_offset());
             }
         }
 
@@ -206,7 +218,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
 
         let addr = self.unmap_inner(virt, &mut self.root_table())?;
 
-        self.allocator.deallocate_frame(addr);
+        self.allocator.deallocate_frame(addr)?;
 
         Ok(Flush::new(self.address_space, virt..virt.add(A::PAGE_SIZE)))
     }
@@ -217,6 +229,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
         table: &mut Table<A>,
     ) -> crate::Result<PhysicalAddress> {
         let level = table.level();
+        let phys_offset = table.phys_offset();
         let entry = table.entry_mut(table.index_of_virt(virt))?;
 
         if level == 0 {
@@ -224,7 +237,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
             entry.clear();
             Ok(address)
         } else {
-            let mut subtable = Table::new(entry.address(), level - 1);
+            let mut subtable = Table::new(entry.address(), level - 1, phys_offset);
             let res = self.unmap_inner(virt, &mut subtable)?;
 
             let is_still_populated = (0..512)
@@ -232,7 +245,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
                 .any(|e| e.is_valid());
 
             if !is_still_populated {
-                self.allocator.deallocate_frame(subtable.address());
+                self.allocator.deallocate_frame(subtable.address())?;
                 entry.clear();
             }
 
@@ -248,7 +261,7 @@ impl<'a, A: Arch> Mapper<'a, A> {
 
             if entry
                 .flags()
-                .intersects(PageFlags::EXECUTE | PageFlags::READ)
+                .intersects(EntryFlags::EXECUTE | EntryFlags::READ)
             {
                 let addr = entry.address();
                 let pgoff = virt.as_raw() & A::ADDR_OFFSET_MASK;
@@ -261,10 +274,10 @@ impl<'a, A: Arch> Mapper<'a, A> {
             } else {
                 // PTE is pointer to next level page table
                 ensure!(
-                    entry.flags().intersects(PageFlags::VALID),
+                    entry.flags().intersects(EntryFlags::VALID),
                     Error::InvalidPageFlags
                 );
-                table = Table::new(entry.address(), i - 1);
+                table = Table::new(entry.address(), i - 1, table.phys_offset());
             }
         }
 

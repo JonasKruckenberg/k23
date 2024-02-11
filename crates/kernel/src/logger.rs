@@ -1,52 +1,58 @@
-use crate::arch;
 use crate::board_info::BoardInfo;
-use crate::sync::Mutex;
+use crate::sync::{Mutex, Once};
+use crate::{arch, Error};
+use core::fmt::Write;
+use kmem::VirtualAddress;
 use log::{Metadata, Record};
 use uart_16550::SerialPort;
 
-static LOGGER: Logger = Logger::empty();
+const BAUD_RATE: u32 = 38400;
 
-struct Logger(Mutex<Option<SerialPort>>);
+static LOGGER: Once<Logger> = Once::empty();
 
-pub fn init(board_info: &BoardInfo, baud_rate: u32) -> crate::Result<()> {
-    let uart = unsafe {
+struct Logger {
+    port: Mutex<SerialPort>,
+    freq: u32,
+}
+
+/// Perform [*early initialization*](../../../ARCHITECTURE.md) of the logger.
+pub fn init_early(board_info: &BoardInfo) -> crate::Result<()> {
+    let port = unsafe {
         SerialPort::new(
             board_info.serial.mmio_regs.start.as_raw(),
             board_info.serial.clock_frequency,
-            baud_rate,
+            BAUD_RATE,
         )
     };
-    LOGGER.0.lock().replace(uart);
 
-    log::set_logger(&LOGGER).unwrap();
+    LOGGER.get_or_init(move || Logger {
+        port: Mutex::new(port),
+        freq: board_info.serial.clock_frequency,
+    });
+
+    log::set_logger(&LOGGER).map_err(Error::InitLogger)?;
     log::set_max_level(log::LevelFilter::Trace);
 
     Ok(())
 }
 
-impl Logger {
-    pub const fn empty() -> Self {
-        Self(Mutex::new(None))
-    }
+pub fn init_late(uart_base: VirtualAddress) {
+    let logger = LOGGER.wait();
+
+    *logger.port.lock() = unsafe { SerialPort::new(uart_base.as_raw(), logger.freq, BAUD_RATE) };
 }
 
-impl log::Log for Logger {
+impl log::Log for Once<Logger> {
     fn enabled(&self, _metadata: &Metadata) -> bool {
         true
     }
 
     fn log(&self, record: &Record) {
-        if self.enabled(record.metadata()) {
-            use core::fmt::Write;
-
-            // disable interrupts while we hold the uart lock
-            // otherwise we might deadlock if we try to log from the trap handler
-            // TODO maybe replace this with a reentrant mutex
-            arch::interrupt::without(|| {
-                let mut uart = self.0.lock();
-                // don't panic if we accidentally log before the logger is initialized
-                // logs are not that important anyway
-                let Some(uart) = uart.as_mut() else { return };
+        arch::interrupt::without(|| {
+            // don't deadlock if we accidentally log before the logger is initialized
+            // logs are not that important anyway
+            if let Some(logger) = self.get() {
+                let mut uart = logger.port.lock();
 
                 let _ = writeln!(
                     uart,
@@ -55,8 +61,8 @@ impl log::Log for Logger {
                     record.module_path_static().unwrap_or_default(),
                     record.args()
                 );
-            })
-        }
+            }
+        })
     }
 
     fn flush(&self) {}

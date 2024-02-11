@@ -4,8 +4,8 @@ use core::ops::Range;
 use riscv::register::satp;
 use riscv::register::satp::Mode;
 
-const PHYS_OFFSET: usize = 0xFFFF_8000_0000_0000;
-
+// const PHYS_OFFSET: usize = 0xFFFF_8000_0000_0000;
+const PHYS_OFFSET: usize = 0xffff_ffc0_0000_0000;
 const PAGE_SIZE: usize = 4096;
 const ADDR_PPN_BITS: usize = 9;
 const ADDR_OFFSET_BITS: usize = 12;

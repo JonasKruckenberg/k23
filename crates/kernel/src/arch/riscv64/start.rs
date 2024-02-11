@@ -1,8 +1,9 @@
 use crate::arch;
-// use crate::arch::riscv64::trap::TrapFrame;
+use crate::arch::VMM;
 use crate::board_info::BoardInfo;
 use core::arch::asm;
 use core::ptr::addr_of_mut;
+use kmem::Arch;
 
 /// Sets the harts stack pointer to the top of the stack.
 ///
@@ -25,7 +26,7 @@ unsafe extern "C" fn set_stack_pointer() {
     "add    sp, sp, t0", // add the offset from sp to get the harts stack pointer
     "ret",
 
-    stack_size = const arch::STACK_SIZE_PAGES * arch::PAGE_SIZE,
+    stack_size = const arch::STACK_SIZE_PAGES * VMM::PAGE_SIZE,
     options(noreturn)
     )
 }
@@ -107,18 +108,15 @@ extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
         }
     }
 
-    let board_info = BoardInfo::from_raw(opaque).unwrap();
+    let board_info = BoardInfo::from_raw(opaque).expect("failed to parse DTB blob");
 
-    crate::logger::init(&board_info, 38400).unwrap();
+    crate::logger::init_early(&board_info).expect("failed to initialize global logger");
 
     log::debug!("initializing virtual memory...");
-
-    if let Err(err) = super::paging::init(&board_info) {
-        panic!("Failed to initialize paging: {}", err)
-    }
+    super::paging::init(&board_info).expect("Failed to initialize paging!");
 
     log::debug!("initializing kernel heap...");
-    crate::allocator::init();
+    crate::allocator::init().expect("Failed to initialize kernel heap");
 
     crate::kmain(hartid)
 }

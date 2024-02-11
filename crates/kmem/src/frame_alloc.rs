@@ -10,6 +10,14 @@ pub struct FrameUsage {
     pub total: usize,
 }
 
+pub trait FrameAllocator<A> {
+    fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress>;
+    fn allocate_frames(&mut self, frames: usize) -> crate::Result<PhysicalAddress>;
+    fn deallocate_frame(&mut self, base: PhysicalAddress) -> crate::Result<()>;
+    fn deallocate_frames(&mut self, base: PhysicalAddress, frames: usize) -> crate::Result<()>;
+    fn frame_usage(&self) -> FrameUsage;
+}
+
 pub struct BumpAllocator<A> {
     regions: &'static [Range<PhysicalAddress>],
     offset: usize,
@@ -27,8 +35,10 @@ impl<A: Arch> BumpAllocator<A> {
             _m: PhantomData,
         }
     }
+}
 
-    pub fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
+impl<A: Arch> FrameAllocator<A> for BumpAllocator<A> {
+    fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
         let mut offset = self.offset;
 
         for region in self.regions.iter() {
@@ -44,7 +54,19 @@ impl<A: Arch> BumpAllocator<A> {
         Err(Error::OutOfMemory)
     }
 
-    pub fn memory_usage(&self) -> FrameUsage {
+    fn allocate_frames(&mut self, frames: usize) -> crate::Result<PhysicalAddress> {
+        todo!()
+    }
+
+    fn deallocate_frame(&mut self, base: PhysicalAddress) -> crate::Result<()> {
+        todo!()
+    }
+
+    fn deallocate_frames(&mut self, base: PhysicalAddress, frames: usize) -> crate::Result<()> {
+        todo!()
+    }
+
+    fn frame_usage(&self) -> FrameUsage {
         let mut total = 0;
         for region in self.regions.iter() {
             total += region.size_in_bytes() >> A::PAGE_SHIFT;
@@ -130,13 +152,13 @@ impl<A: Arch> TableEntry<A> {
     }
 }
 
-pub struct FrameAllocator<A> {
+pub struct BitMapAllocator<A> {
     /// The base address of the buddy allocation table
     table_virt: VirtualAddress,
     _m: PhantomData<A>,
 }
 
-impl<A: Arch> FrameAllocator<A> {
+impl<A: Arch> BitMapAllocator<A> {
     const NUM_ENTRIES: usize = A::PAGE_SIZE / mem::size_of::<TableEntry<A>>();
 
     fn entries_mut(&self) -> &mut [TableEntry<A>] {
@@ -162,13 +184,20 @@ impl<A: Arch> FrameAllocator<A> {
         let table_phys = bump_allocator.allocate_frame()?;
         let table_virt = unsafe { A::phys_to_virt(table_phys) };
 
-        let mut this = Self {
+        log::debug!("test table virt {table_virt:?}");
+        unsafe {
+            core::ptr::read_volatile(table_virt.as_raw() as *const u8);
+        }
+        log::debug!("test success virt");
+
+        let this = Self {
             table_virt,
             _m: PhantomData,
         };
 
         // fill the table with the memory regions
         log::debug!("bump allocator offset {}", bump_allocator.offset);
+
         let mut offset = bump_allocator.offset;
         for mut region in bump_allocator.regions.iter().cloned() {
             // keep advancing past already fully used memory regions
@@ -181,6 +210,7 @@ impl<A: Arch> FrameAllocator<A> {
             }
 
             for entry in this.entries_mut() {
+                log::debug!("here {:?}", entry.region);
                 if entry.region.size_in_bytes() == 0 {
                     // Create new entry
                     entry.region = region.clone();
@@ -190,6 +220,7 @@ impl<A: Arch> FrameAllocator<A> {
                     entry.region.start = region.start.clone();
                     break;
                 } else if region.start == entry.region.end {
+                    log::debug!("here2");
                     entry.region.end = region.end.clone();
                     break;
                 }
@@ -210,7 +241,15 @@ impl<A: Arch> FrameAllocator<A> {
         Ok(this)
     }
 
-    pub fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
+    pub fn debug_print(&self) {
+        for entry in self.entries() {
+            log::debug!("{entry:?}");
+        }
+    }
+}
+
+impl<A: Arch> FrameAllocator<A> for BitMapAllocator<A> {
+    fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
         for entry in self.entries_mut() {
             for page in entry.skip..entry.pages() {
                 if !entry.is_page_used(page) {
@@ -226,7 +265,8 @@ impl<A: Arch> FrameAllocator<A> {
         Err(Error::OutOfMemory)
     }
 
-    pub fn allocate_frames(&mut self, requested: usize) -> crate::Result<PhysicalAddress> {
+    fn allocate_frames(&mut self, requested: usize) -> crate::Result<PhysicalAddress> {
+        debug_assert!(requested > 0);
         for entry in self.entries_mut() {
             // find a consecutive run of free pages
             let mut free_page = entry.skip;
@@ -258,11 +298,12 @@ impl<A: Arch> FrameAllocator<A> {
         Err(Error::OutOfMemory)
     }
 
-    pub fn deallocate_frame(&mut self, phys: PhysicalAddress) -> crate::Result<()> {
+    fn deallocate_frame(&mut self, phys: PhysicalAddress) -> crate::Result<()> {
         self.deallocate_frames(phys, 1)
     }
 
-    pub fn deallocate_frames(&mut self, phys: PhysicalAddress, count: usize) -> crate::Result<()> {
+    fn deallocate_frames(&mut self, phys: PhysicalAddress, count: usize) -> crate::Result<()> {
+        debug_assert!(count > 0);
         for entry in self.entries_mut() {
             if phys >= entry.region.start && phys.add(count * A::PAGE_SIZE) <= entry.region.end {
                 let start_page = (phys.as_raw() - entry.region.start.as_raw()) >> A::PAGE_SHIFT;
@@ -292,13 +333,7 @@ impl<A: Arch> FrameAllocator<A> {
         Err(Error::DoubleFree(phys))
     }
 
-    pub fn debug_print(&self) {
-        for entry in self.entries() {
-            log::debug!("{entry:?}");
-        }
-    }
-
-    pub fn frame_usage(&self) -> FrameUsage {
+    fn frame_usage(&self) -> FrameUsage {
         let mut total = 0;
         let mut used = 0;
         for entry in self.entries() {
