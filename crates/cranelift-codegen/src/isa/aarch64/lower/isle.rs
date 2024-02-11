@@ -2,6 +2,7 @@
 
 // Pull in the ISLE generated code.
 pub mod generated_code;
+use crate::opts::StackSlot;
 use generated_code::Context;
 use smallvec::SmallVec;
 

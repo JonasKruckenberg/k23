@@ -147,6 +147,13 @@ impl State {
         num_returns: usize,
     ) {
         debug_assert!(self.stack.len() >= num_params);
+
+        self.stack.reserve(num_params);
+        for i in (self.stack.len() - num_params)..self.stack.len() {
+            let val = self.stack[i];
+            self.stack.push(val);
+        }
+
         self.control_stack.push(ControlFrame::If {
             next_block,
             num_params,

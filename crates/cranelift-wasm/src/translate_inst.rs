@@ -26,9 +26,12 @@ pub fn translate_inst(
         return translate_unreachable_inst(state, builder, inst, env);
     }
 
+    debug_assert!(state.reachable);
+
     match inst {
         Instruction::Unreachable => {
             builder.ins().trap(TrapCode::UnreachableCodeReached);
+            state.reachable = false;
         }
         Instruction::Nop => {} // Do nothing
         Instruction::Drop => {
@@ -159,7 +162,7 @@ pub fn translate_inst(
                 ..
             } = state.control_stack[i]
             else {
-                panic!("expected if control frame on top of stack")
+                return Err(Error::EmptyControlStack);
             };
 
             // We finished the consequent, so record its final
@@ -237,9 +240,6 @@ pub fn translate_inst(
             );
             let i = state.control_stack.len() - 1 - label.index();
             let frame = &mut state.control_stack[i];
-
-            log::debug!("frame is {frame:?}");
-
             frame.set_branched_to_exit();
 
             let num_returns = if frame.is_loop() {
@@ -265,7 +265,6 @@ pub fn translate_inst(
             );
             let i = state.control_stack.len() - 1 - label.index();
             let frame = &mut state.control_stack[i];
-
             frame.set_branched_to_exit();
 
             let num_returns = if frame.is_loop() {
@@ -775,7 +774,7 @@ fn translate_unreachable_inst(
 ) -> crate::Result<()> {
     use wasmparser::Instruction;
 
-    debug_assert!(state.reachable);
+    debug_assert!(!state.reachable);
 
     match inst {
         Instruction::If { ty } => {
@@ -869,11 +868,6 @@ fn translate_unreachable_inst(
                 if frame.exit_is_branched_to() || next_reachable {
                     builder.switch_to_block(frame.next_block());
                     builder.seal_block(frame.next_block());
-
-                    log::debug!(
-                        "next_block_params {:?}",
-                        builder.block_params(frame.next_block())
-                    );
 
                     state
                         .stack
