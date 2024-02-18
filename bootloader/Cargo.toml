@@ -1,0 +1,27 @@
+[package]
+name = "bootloader"
+version.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log.workspace = true
+vmm.workspace = true
+kconfig.workspace = true
+cfg-if.workspace = true
+spin.workspace = true
+uart-16550.workspace = true
+dtb-parser.workspace = true
+backtrace.workspace = true
+
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+riscv.workspace = true
+
+[build-dependencies]
+kconfig.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+log.workspace = true
