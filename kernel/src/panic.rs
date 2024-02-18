@@ -1,5 +1,3 @@
-// use crate::{arch, backtrace};
-use crate::backtrace;
 use core::arch::asm;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, Ordering};

@@ -1,13 +1,12 @@
-use crate::error::Error;
 use core::mem;
 use core::ops::Range;
 use dtb_parser::{Dtb, Node, Visit};
-use kmem::PhysicalAddress;
+use vmm::PhysicalAddress;
 
-#[derive(Debug)]
-pub struct BoardInfo {
+/// Information about the machine we're running on, parsed from the Device Tree Blob (DTB) passed
+/// to us by a previous boot stage (U-BOOT)
+pub struct MachineInfo {
     pub cpus: usize,
-    pub base_frequency: u32,
     pub serial: Serial,
     pub clint: Range<PhysicalAddress>,
     pub qemu_test: Option<Range<PhysicalAddress>>,
@@ -20,57 +19,47 @@ pub struct Serial {
     pub clock_frequency: u32,
 }
 
-impl BoardInfo {
-    pub fn from_raw(dtb_ptr: *const u8) -> crate::Result<Self> {
+impl MachineInfo {
+    pub fn from_dtb(dtb_ptr: *const u8) -> Self {
         let dtb = unsafe { Dtb::from_raw(dtb_ptr) }.unwrap();
 
-        let mut visitor = BoardInfoVisitor::default();
-        dtb.walk(&mut visitor)?;
+        let mut visitor = Visitor::default();
+        dtb.walk(&mut visitor).expect("Failed to parse device tree");
 
-        Ok(Self {
-            cpus: visitor.cpus.cpus,
-            base_frequency: visitor
-                .cpus
-                .base_frequency
-                .ok_or(Error::MissingBordInfo("base_frequency"))?,
+        Self {
+            cpus: visitor.cpus,
             serial: Serial {
                 mmio_regs: visitor
                     .soc
                     .serial
                     .regs
                     .inner
-                    .ok_or(Error::MissingBordInfo("serial.regs"))?,
+                    .expect("Missing DTB property `soc.serial.regs`"),
                 clock_frequency: visitor
                     .soc
                     .serial
                     .clock_frequency
-                    .ok_or(Error::MissingBordInfo("serial.clock_frequency"))?,
+                    .expect("Missing DTB property `soc.serial.clock-frequency`"),
             },
             clint: visitor
                 .soc
                 .clint
                 .inner
-                .ok_or(Error::MissingBordInfo("clint"))?,
+                .expect("Missing DTB property `soc.clint.regs`"),
             qemu_test: visitor.soc.qemu_test.inner,
             memory: visitor
                 .memory
                 .inner
-                .ok_or(Error::MissingBordInfo("memory"))?,
-        })
+                .expect("Missing DTB property `memory.regs"),
+        }
     }
 }
 
 #[derive(Default)]
-struct BoardInfoVisitor {
-    pub cpus: CpusVisitor,
+struct Visitor {
+    pub cpus: usize,
     pub soc: SocVisitor,
     pub memory: RegsVisitor,
-}
-
-#[derive(Default)]
-struct CpusVisitor {
-    pub cpus: usize,
-    pub base_frequency: Option<u32>,
 }
 
 #[derive(Default)]
@@ -93,10 +82,12 @@ struct RegsVisitor {
     width_size: usize,
 }
 
-impl<'a> Visit<'a> for BoardInfoVisitor {
+impl<'a> Visit<'a> for Visitor {
     fn visit_subnode(&mut self, name: &'a str, node: Node<'a>) -> Result<(), dtb_parser::Error> {
         if name == "cpus" {
-            node.walk(&mut self.cpus)?;
+            node.walk(self)?;
+        } else if name.starts_with("cpu@") {
+            self.cpus += 1;
         } else if name == "soc" {
             node.walk(&mut self.soc)?;
         } else if name.starts_with("memory@") {
@@ -114,22 +105,6 @@ impl<'a> Visit<'a> for BoardInfoVisitor {
     fn visit_size_cells(&mut self, size_in_cells: u32) -> Result<(), dtb_parser::Error> {
         let size_in_bytes = size_in_cells as usize * mem::size_of::<u32>();
         self.memory.width_size = size_in_bytes;
-        Ok(())
-    }
-}
-
-impl<'a> Visit<'a> for CpusVisitor {
-    fn visit_subnode(&mut self, name: &'a str, _node: Node<'a>) -> Result<(), dtb_parser::Error> {
-        if name.starts_with("cpu@") {
-            self.cpus += 1;
-        }
-        Ok(())
-    }
-
-    fn visit_property(&mut self, name: &'a str, value: &'a [u8]) -> Result<(), dtb_parser::Error> {
-        if name == "timebase-frequency" {
-            self.base_frequency = Some(u32::from_be_bytes(value.try_into().unwrap()));
-        }
         Ok(())
     }
 }
