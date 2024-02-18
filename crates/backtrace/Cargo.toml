@@ -1,0 +1,9 @@
+[package]
+name = "backtrace"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+cfg-if.workspace = true
+gimli.workspace = true
