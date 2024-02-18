@@ -1,6 +1,5 @@
 [workspace]
-members = ["crates/*"]
-exclude = ["crates/cranelift-codegen/meta", "crates/cranelift-isle"]
+members = ["crates/*", "build/*", "kernel", "bootloader"]
 resolver = "2"
 
 [workspace.package]
@@ -20,6 +19,7 @@ cranelift-frontend = { path = "./crates/cranelift-frontend" }
 fxhash = { path = "./crates/fxhash" }
 gimli = { path = "./crates/gimli" }
 kmem = { path = "./crates/kmem" }
+cranelift-isle = { path = "build/cranelift-isle" }
 bitflags = "2.4.1"
 log = "0.4.20"
 riscv = "0.11.0"
