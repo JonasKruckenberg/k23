@@ -1,0 +1,8 @@
+[package]
+name = "kconfig"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+log.workspace = true

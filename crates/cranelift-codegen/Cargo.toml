@@ -22,7 +22,7 @@ fxhash.workspace = true
 
 [build-dependencies]
 cranelift-codegen-meta = { path = "meta" }
-cranelift-isle = { path = "../cranelift-isle" }
+cranelift-isle.workspace = true
 
 #cranelift-isle.workspace = true
 
