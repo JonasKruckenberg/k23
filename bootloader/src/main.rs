@@ -3,6 +3,7 @@
 #![feature(naked_functions, asm_const, pointer_is_aligned)]
 
 mod arch;
+mod externs;
 mod logger;
 mod machine_info;
 mod panic;

@@ -9,5 +9,6 @@ stack-size-pages = 16 # Size of the per-hart stack in pages
 log-level = "debug"
 
 [bootloader]
-stack-size-pages = 4 # Size of the per-hart stack in pages
-log-level = "debug"
+stack-size-pages = 25 # Size of the per-hart stack in pages
+log-level = "trace"
+target = "configs/riscv64imac-unknown-bootloader.json"
