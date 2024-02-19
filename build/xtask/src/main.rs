@@ -1,11 +1,13 @@
 mod config;
 mod logger;
 
+use crate::config::Target;
 use anyhow::anyhow;
 use cargo_metadata::camino::Utf8PathBuf;
 use cargo_metadata::{Artifact, Message, MetadataCommand};
 use clap::{ArgAction, Parser};
 use config::Config;
+use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -69,11 +71,13 @@ fn run() -> anyhow::Result<()> {
             let bootloader = build_bootloader(&cfg, release)?;
             let kernel = build_kernel(&cfg, release)?;
 
-            let (qemu_bin, cpu) = match cfg.target.arch.as_str() {
-                "riscv64gc" => ("qemu-system-riscv64", "rv64"),
-                _ => unimplemented!("Unsupported target architecture"),
+            let (qemu_bin, cpu) = if cfg.target.to_string().contains("riscv64gc") {
+                ("qemu-system-riscv64", "rv64")
+            } else {
+                unimplemented!("Unsupported target architecture");
             };
 
+            log::debug!("{bootloader}");
             log::debug!("{kernel}");
 
             Command::new(qemu_bin)
@@ -133,54 +137,66 @@ fn run() -> anyhow::Result<()> {
 }
 
 fn build_bootloader(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> {
-    let stack_size_pages = cfg.bootloader.stack_size_pages.to_string();
-    let log_level = cfg.bootloader.log_level.to_usize().to_string();
-    let uart_baud_rate = cfg.uart_baud_rate.to_string();
-    let memory_mode = ron::ser::to_string(&cfg.memory_mode)?;
+    // fall back to the root target
+    let target = cfg.bootloader.target.clone().unwrap_or(cfg.target.clone());
 
-    let env_vars = vec![
-        ("K23_KCONFIG_STACK_SIZE_PAGES", stack_size_pages.as_str()),
-        ("K23_KCONFIG_LOG_LEVEL", log_level.as_str()),
-        ("K23_KCONFIG_UART_BAUD_RATE", uart_baud_rate.as_str()),
-        ("K23_KCONFIG_MEMORY_MODE", memory_mode.as_str()),
-    ];
+    log::debug!("building for target {:?}", target);
 
-    let features: Vec<_> = cfg.bootloader.features.iter().map(|f| f.as_str()).collect();
-    let kernel = build_crate(
-        "bootloader",
-        &cfg.target.to_string(),
-        env_vars,
-        &features,
-        release,
-    )?;
-    let executable = kernel
+    let bootloader = Builder::new("bootloader", target)
+        .enable_features(cfg.bootloader.features.as_slice())
+        .release(release)
+        .env(
+            "K23_KCONFIG_STACK_SIZE_PAGES",
+            cfg.bootloader.stack_size_pages.to_string(),
+        )
+        .env(
+            "K23_KCONFIG_LOG_LEVEL",
+            cfg.bootloader.log_level.to_usize().to_string(),
+        )
+        .env("K23_KCONFIG_UART_BAUD_RATE", cfg.uart_baud_rate.to_string())
+        .env(
+            "K23_KCONFIG_MEMORY_MODE",
+            ron::ser::to_string(&cfg.memory_mode)?,
+        )
+        .env("RUSTFLAGS", "-Csoft-float")
+        .additional_args(&[
+            "-Z",
+            "build-std=core,alloc",
+            "-Z",
+            "build-std-features=compiler-builtins-mem",
+        ])
+        .build()?;
+
+    let executable = bootloader
         .executable
-        .ok_or(anyhow!("failed to retrieve bootloader artifact"))?;
+        .ok_or(anyhow!("failed to retrieve kernel artifact"))?;
 
     Ok(executable)
 }
 
 fn build_kernel(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> {
-    let stack_size_pages = cfg.kernel.stack_size_pages.to_string();
-    let log_level = cfg.kernel.log_level.to_usize().to_string();
-    let uart_baud_rate = cfg.uart_baud_rate.to_string();
-    let memory_mode = ron::ser::to_string(&cfg.memory_mode)?;
+    // fall back to the root target
+    let target = cfg.kernel.target.clone().unwrap_or(cfg.target.clone());
 
-    let env_vars = vec![
-        ("K23_KCONFIG_STACK_SIZE_PAGES", stack_size_pages.as_str()),
-        ("K23_KCONFIG_LOG_LEVEL", log_level.as_str()),
-        ("K23_KCONFIG_UART_BAUD_RATE", uart_baud_rate.as_str()),
-        ("K23_KCONFIG_MEMORY_MODE", memory_mode.as_str()),
-    ];
+    let kernel = Builder::new("kernel", target)
+        .enable_features(cfg.kernel.features.as_slice())
+        .release(release)
+        .env(
+            "K23_KCONFIG_STACK_SIZE_PAGES",
+            cfg.kernel.stack_size_pages.to_string(),
+        )
+        .env(
+            "K23_KCONFIG_LOG_LEVEL",
+            cfg.kernel.log_level.to_usize().to_string(),
+        )
+        .env("K23_KCONFIG_UART_BAUD_RATE", cfg.uart_baud_rate.to_string())
+        .env(
+            "K23_KCONFIG_MEMORY_MODE",
+            ron::ser::to_string(&cfg.memory_mode)?,
+        )
+        .env("RUSTFLAGS", "-Cforce-unwind-tables=true")
+        .build()?;
 
-    let features: Vec<_> = cfg.kernel.features.iter().map(|f| f.as_str()).collect();
-    let kernel = build_crate(
-        "kernel",
-        &cfg.target.to_string(),
-        env_vars,
-        &features,
-        release,
-    )?;
     let executable = kernel
         .executable
         .ok_or(anyhow!("failed to retrieve kernel artifact"))?;
@@ -188,67 +204,122 @@ fn build_kernel(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> {
     Ok(executable)
 }
 
-fn build_crate(
-    crate_name: &str,
-    target: &str,
-    env_vars: Vec<(&str, &str)>,
-    features: &[&str],
+struct Builder<'a> {
+    name: &'a str,
     release: bool,
-) -> anyhow::Result<Artifact> {
-    let mut command = Command::new("cargo");
-    command.args(&[
-        "build",
-        "--message-format=json-render-diagnostics",
-        "-p",
-        crate_name,
-        "--target",
-        target,
-        "--features",
-        &features.join(","),
-    ]);
-    command.envs(env_vars);
+    features: Vec<String>,
+    command: Command,
+}
 
-    if release {
-        command.arg("--release");
-    }
+impl<'a> Builder<'a> {
+    pub fn new(name: &'a str, target: Target) -> Self {
+        let target = target.to_string();
 
-    let mut command = command.stdout(Stdio::piped()).spawn().unwrap();
-    let metadata = MetadataCommand::new().exec().unwrap();
+        let mut command = Command::new("cargo");
+        command.args(&[
+            "build",
+            "--message-format=json-render-diagnostics",
+            "-p",
+            name,
+            "--target",
+            &target,
+        ]);
 
-    let mut artifact: Option<Artifact> = None;
-    let workspace_packages = metadata.workspace_packages();
-
-    let reader = std::io::BufReader::new(command.stdout.take().unwrap());
-    for message in Message::parse_stream(reader) {
-        match message.unwrap() {
-            Message::CompilerMessage(msg) => {
-                log::info!("{:?}", msg);
-            }
-            Message::CompilerArtifact(art) => {
-                artifact = Some(art);
-            }
-            Message::BuildScriptExecuted(script) => {
-                if let Ok(idx) = workspace_packages
-                    .binary_search_by(|candidate| candidate.id.cmp(&script.package_id))
-                {
-                    let package = workspace_packages[idx];
-                    log::info!("Successfully compiled `{}` build script", package.name);
-                }
-            }
-            Message::BuildFinished(finished) => {
-                if finished.success {
-                    log::info!("Successfully compiled `{crate_name}`");
-                } else {
-                    anyhow::bail!("could not compile `{crate_name}`");
-                }
-            }
-            _ => (), // Unknown message
+        Self {
+            name,
+            release: false,
+            features: vec![],
+            command,
         }
     }
 
-    command.wait().expect("Couldn't get cargo's exit status");
+    pub fn env(mut self, key: impl AsRef<OsStr>, val: impl AsRef<OsStr>) -> Self {
+        self.command.env(key, val);
+        self
+    }
 
-    artifact.ok_or(anyhow!("failed to retrieve artifact from command"))
+    // pub fn envs<I, K, V>(mut self, vars: I) -> Self
+    // where
+    //     I: IntoIterator<Item = (K, V)>,
+    //     K: AsRef<OsStr>,
+    //     V: AsRef<OsStr>,
+    // {
+    //     self.command.envs(vars);
+    //     self
+    // }
+
+    pub fn additional_args<I, A>(mut self, args: I) -> Self
+    where
+        I: IntoIterator<Item = A>,
+        A: AsRef<OsStr>,
+    {
+        self.command.args(args);
+        self
+    }
+
+    pub fn enable_features<I, F>(mut self, features: I) -> Self
+    where
+        I: IntoIterator<Item = F>,
+        F: AsRef<str>,
+    {
+        for f in features {
+            self.features.push(f.as_ref().to_string());
+        }
+        self
+    }
+
+    pub fn release(mut self, release: bool) -> Self {
+        self.release = release;
+        self
+    }
+
+    pub fn build(mut self) -> anyhow::Result<Artifact> {
+        self.command.args(&["--features", &self.features.join(",")]);
+        if self.release {
+            self.command.arg("--release");
+        }
+
+        log::debug!("command {:?}", self.command);
+
+        let mut command = self.command.stdout(Stdio::piped()).spawn().unwrap();
+        let metadata = MetadataCommand::new().exec().unwrap();
+
+        let mut artifact: Option<Artifact> = None;
+        let workspace_packages = metadata.workspace_packages();
+
+        let reader = std::io::BufReader::new(command.stdout.take().unwrap());
+        for message in Message::parse_stream(reader) {
+            match message.unwrap() {
+                Message::CompilerMessage(msg) => {
+                    log::info!("{:?}", msg);
+                }
+                Message::CompilerArtifact(art) => {
+                    artifact = Some(art);
+                }
+                Message::BuildScriptExecuted(script) => {
+                    if let Ok(idx) = workspace_packages
+                        .binary_search_by(|candidate| candidate.id.cmp(&script.package_id))
+                    {
+                        let package = workspace_packages[idx];
+                        log::info!("Successfully compiled `{}` build script", package.name);
+                    }
+                }
+                Message::BuildFinished(finished) => {
+                    if finished.success {
+                        log::info!("Successfully compiled `{}`", self.name);
+                    } else {
+                        anyhow::bail!("could not compile `{}`", self.name);
+                    }
+                }
+                _ => (), // Unknown message
+            }
+        }
+        log::debug!("here");
+
+        command.wait().expect("Couldn't get cargo's exit status");
+
+        artifact.ok_or(anyhow!("failed to retrieve artifact from command"))
+    }
 }
 
 // fn parse_elf(executable: &Path) -> anyhow::Result<(u64, Vec<u8>, BTreeMap<String, u64>)> {
