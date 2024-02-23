@@ -24,12 +24,12 @@ SECTIONS {
         __rodata_end = .;
     } > DRAM
 
-    .eh_frame : {
-        __eh_frame_start = .;
-        KEEP (*(.eh_frame)) *(.rel.eh_frame*)
-        . = ALIGN(4096); # 4KB page alignment for mapping
-        __eh_frame_end = .;
-    } > DRAM
+    #.eh_frame : {
+    #    __eh_frame_start = .;
+    #    KEEP (*(.eh_frame)) *(.rel.eh_frame*)
+    #    . = ALIGN(4096); # 4KB page alignment for mapping
+    #    __eh_frame_end = .;
+    #} > DRAM
 
     .data : {
         . = ALIGN(4096); # 4KB page alignment for mapping

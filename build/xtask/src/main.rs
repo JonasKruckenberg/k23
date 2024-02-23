@@ -158,7 +158,7 @@ fn build_bootloader(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> 
             "K23_KCONFIG_MEMORY_MODE",
             ron::ser::to_string(&cfg.memory_mode)?,
         )
-        .env("RUSTFLAGS", "-Csoft-float")
+        .env("RUSTFLAGS", "-Csoft-float -Zstack-protector=strong")
         .additional_args(&[
             "-Z",
             "build-std=core,alloc",

@@ -14,5 +14,11 @@ include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
 fn kmain(hartid: usize) -> ! {
     log::info!("Hello World from hart {hartid}!");
 
-    panic!()
+    // locate kernel slice
+    // map kernel slice at PHYS_OFFSET
+    //      -> create bump alloc
+    //      -> create mapper
+    //      ->
+
+    todo!()
 }

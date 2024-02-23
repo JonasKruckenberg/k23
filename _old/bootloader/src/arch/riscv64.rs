@@ -2,6 +2,8 @@ use crate::machine_info::MachineInfo;
 use crate::{logger, KCONFIG, MEMORY_MODE};
 use core::arch::asm;
 use core::ptr::addr_of_mut;
+use rand::rngs::SmallRng;
+use rand::RngCore;
 use spin::Once;
 use vmm::Mode;
 
@@ -50,6 +52,8 @@ unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
             ptr = ptr.offset(1);
         }
 
+        init_stack_guard();
+
         let machine_info = MachineInfo::from_dtb(opaque);
 
         logger::init(&machine_info);
@@ -60,4 +64,16 @@ unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
     };
 
     crate::kmain(hartid)
+}
+
+#[no_mangle]
+pub static mut __stack_chk_guard: u64 = 787878787878787878;
+
+#[inline(always)]
+fn init_stack_guard() {
+    let mut rng = SmallRng::seed_from_u64(700);
+
+    unsafe {
+        __stack_chk_guard = rng.next_u64();
+    }
 }

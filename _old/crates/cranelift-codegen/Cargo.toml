@@ -8,7 +8,7 @@ edition.workspace = true
 [dependencies]
 bumpalo.workspace = true
 cranelift-bforest.workspace = true
-cranelift-codegen-shared = { path = "./shared" }
+cranelift-codegen-shared = { path = "shared" }
 cranelift-entity.workspace = true
 gimli = { workspace = true, optional = true, features = ["read", "write"] }
 log.workspace = true

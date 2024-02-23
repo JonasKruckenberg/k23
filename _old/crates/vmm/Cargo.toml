@@ -1,0 +1,14 @@
+[package]
+name = "vmm"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bitflags.workspace = true
+cfg-if.workspace = true
+log.workspace = true
+onlyerror.workspace = true
+
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+riscv.workspace = true
+sbicall.workspace = true

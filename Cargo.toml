@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*", "build/*", "kernel", "bootloader"]
+members = ["build/*"]
 resolver = "2"
 
 [workspace.package]
@@ -8,21 +8,19 @@ edition = "2021"
 authors = ["Jonas Kruckenberg <iterpre@protonmail.com>"]
 
 [workspace.dependencies]
-backtrace = { path = "crates/backtrace" }
-kconfig = { path = "build/kconfig" }
-dtb-parser = { path = "crates/dtb-parser" }
-uart-16550 = { path = "crates/uart-16550" }
-gimli = { path = "crates/gimli", features = ["read-core"] }
-fxhash = { path = "crates/fxhash" }
-sbicall = { path = "crates/sbicall" }
-vmm = { path = "crates/vmm" }
-wasmparser = { path = "crates/wasmparser" }
-cranelift-wasm = { path = "crates/cranelift-wasm" }
-cranelift-bforest = { path = "crates/cranelift-bforest" }
-cranelift-codegen = { path = "crates/cranelift-codegen" }
-cranelift-entity = { path = "crates/cranelift-entity" }
-cranelift-frontend = { path = "crates/cranelift-frontend" }
-cranelift-isle = { path = "build/cranelift-isle" }
+#dtb-parser = { path = "_old/crates/dtb-parser" }
+#uart-16550 = { path = "_old/crates/uart-16550" }
+#gimli = { path = "_old/crates/gimli", features = ["read-core"] }
+#fxhash = { path = "_old/crates/fxhash" }
+#sbicall = { path = "_old/crates/sbicall" }
+#vmm = { path = "_old/crates/vmm" }
+#wasmparser = { path = "_old/crates/wasmparser" }
+#cranelift-wasm = { path = "_old/crates/cranelift-wasm" }
+#cranelift-bforest = { path = "_old/crates/cranelift-bforest" }
+#cranelift-codegen = { path = "_old/crates/cranelift-codegen" }
+#cranelift-entity = { path = "_old/crates/cranelift-entity" }
+#cranelift-frontend = { path = "_old/crates/cranelift-frontend" }
+#backtrace = { path = "_old/crates/backtrace" }
 bitflags = "2.4.1"
 log = "0.4.20"
 riscv = "0.11.0"
@@ -37,10 +35,12 @@ spin = "0.9.8"
 linked_list_allocator = "0.10.5"
 
 # build dependencies
+kconfig = { path = "build/kconfig" }
+cranelift-isle = { path = "build/cranelift-isle" }
 serde = { version = "1.0.196", default-features = false, features = ["derive"] }
 toml = "0.8.10"
 anyhow = "1.0.79"
-clap = {  version = "4.5.0", features = ["derive"] }
+clap = { version = "4.5.0", features = ["derive"] }
 env_logger = "0.11.2"
 anstyle = "1.0.6"
 cargo_metadata = "0.18.1"
