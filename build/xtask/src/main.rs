@@ -85,7 +85,7 @@ fn run() -> anyhow::Result<()> {
                     "-d",
                     "guest_errors,unimp",
                     "-smp",
-                    "1",
+                    "8",
                     "-m",
                     "128M",
                     "-nographic",
