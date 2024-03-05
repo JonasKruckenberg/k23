@@ -1,5 +1,5 @@
 [workspace]
-members = ["build/*"]
+members = ["build/*", "kernel", "libs/dtb-parser", "libs/dtb-parser", "libs/sbicall", "loader"]
 resolver = "2"
 
 [workspace.package]
@@ -8,11 +8,11 @@ edition = "2021"
 authors = ["Jonas Kruckenberg <iterpre@protonmail.com>"]
 
 [workspace.dependencies]
-#dtb-parser = { path = "_old/crates/dtb-parser" }
+dtb-parser = { path = "libs/dtb-parser" }
 #uart-16550 = { path = "_old/crates/uart-16550" }
 #gimli = { path = "_old/crates/gimli", features = ["read-core"] }
 #fxhash = { path = "_old/crates/fxhash" }
-#sbicall = { path = "_old/crates/sbicall" }
+sbicall = { path = "libs/sbicall" }
 #vmm = { path = "_old/crates/vmm" }
 #wasmparser = { path = "_old/crates/wasmparser" }
 #cranelift-wasm = { path = "_old/crates/cranelift-wasm" }
@@ -35,7 +35,6 @@ spin = "0.9.8"
 linked_list_allocator = "0.10.5"
 
 # build dependencies
-kconfig = { path = "build/kconfig" }
 cranelift-isle = { path = "build/cranelift-isle" }
 serde = { version = "1.0.196", default-features = false, features = ["derive"] }
 toml = "0.8.10"

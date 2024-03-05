@@ -1,7 +1,0 @@
-[package]
-name = "sbicall"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-onlyerror.workspace = true

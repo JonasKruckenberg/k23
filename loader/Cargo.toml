@@ -1,0 +1,16 @@
+[package]
+name = "loader"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "loader"
+test = false
+
+[dependencies]
+cfg-if.workspace = true
+dtb-parser.workspace = true
+log.workspace = true
+sbicall.workspace = true
+spin.workspace = true

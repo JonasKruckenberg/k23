@@ -1,12 +1,9 @@
-mod config;
 mod logger;
 
-use crate::config::Target;
 use anyhow::anyhow;
 use cargo_metadata::camino::Utf8PathBuf;
 use cargo_metadata::{Artifact, Message, MetadataCommand};
 use clap::{ArgAction, Parser};
-use config::Config;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -37,8 +34,8 @@ struct Common {
 enum XtaskCommand {
     /// Builds and runs the image in QEMU
     Run {
-        /// Path to the image configuration file, in TOML.
-        cfg: PathBuf,
+        // /// Path to the image configuration file, in TOML.
+        // cfg: PathBuf,
         /// Whether to build in release mode instead of debug mode
         #[clap(short, long)]
         release: bool,
@@ -65,36 +62,28 @@ fn run() -> anyhow::Result<()> {
     logger::init(xtask.common.verbose);
 
     match xtask.cmd {
-        XtaskCommand::Run { cfg, release } => {
-            let cfg = Config::from_file(&cfg).unwrap();
+        XtaskCommand::Run { release, .. } => {
+            let loader = build_loader(release)?;
+            let kernel = build_kernel(release)?;
 
-            let bootloader = build_bootloader(&cfg, release)?;
-            let kernel = build_kernel(&cfg, release)?;
-
-            let (qemu_bin, cpu) = if cfg.target.to_string().contains("riscv64gc") {
-                ("qemu-system-riscv64", "rv64")
-            } else {
-                unimplemented!("Unsupported target architecture");
-            };
-
-            log::debug!("{bootloader}");
+            log::debug!("{loader}");
             log::debug!("{kernel}");
 
-            Command::new(qemu_bin)
+            Command::new("qemu-system-riscv64")
                 .args(&[
                     "-bios",
                     "default",
                     "-kernel",
-                    bootloader.as_str(),
+                    loader.as_str(),
                     // bootloader.executable.unwrap().as_str(),
-                    // "-device",
-                    // &format!("loader,addr=0x80400000,file={}", kernel.as_str()),
+                    "-device",
+                    &format!("loader,addr=0x80400000,file={}", kernel.as_str()),
                     "-machine",
                     "virt",
                     "-cpu",
-                    cpu,
+                    "rv64",
                     "-d",
-                    "guest_errors,unimp,int",
+                    "guest_errors,unimp",
                     "-smp",
                     "1",
                     "-m",
@@ -119,46 +108,18 @@ fn run() -> anyhow::Result<()> {
                 .output()
                 .unwrap();
         }
-        XtaskCommand::Dist { cfg, debug } => {
-            let cfg = Config::from_file(&cfg).unwrap();
-
-            let kernel = build_kernel(&cfg, !debug)?;
-
-            log::info!(action = "Packaging"; "Extracting elf artifact {kernel}");
-
-            Command::new("riscv64-elf-objcopy")
-                .args([kernel.as_str(), "-O", "binary", "kernel.bin"])
-                .output()
-                .unwrap();
+        XtaskCommand::Dist { .. } => {
+            todo!()
         }
     }
 
     Ok(())
 }
 
-fn build_bootloader(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> {
-    // fall back to the root target
-    let target = cfg.bootloader.target.clone().unwrap_or(cfg.target.clone());
-
-    log::debug!("building for target {:?}", target);
-
-    let bootloader = Builder::new("bootloader", target)
-        .enable_features(cfg.bootloader.features.as_slice())
+fn build_loader(release: bool) -> anyhow::Result<Utf8PathBuf> {
+    let bootloader = Builder::new("loader", "riscv64imac-unknown-none-elf")
         .release(release)
-        .env(
-            "K23_KCONFIG_STACK_SIZE_PAGES",
-            cfg.bootloader.stack_size_pages.to_string(),
-        )
-        .env(
-            "K23_KCONFIG_LOG_LEVEL",
-            cfg.bootloader.log_level.to_usize().to_string(),
-        )
-        .env("K23_KCONFIG_UART_BAUD_RATE", cfg.uart_baud_rate.to_string())
-        .env(
-            "K23_KCONFIG_MEMORY_MODE",
-            ron::ser::to_string(&cfg.memory_mode)?,
-        )
-        .env("RUSTFLAGS", "-Csoft-float -Zstack-protector=strong")
+        .env("RUSTFLAGS", "-Csoft-float")
         .additional_args(&[
             "-Z",
             "build-std=core,alloc",
@@ -174,27 +135,19 @@ fn build_bootloader(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> 
     Ok(executable)
 }
 
-fn build_kernel(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> {
-    // fall back to the root target
-    let target = cfg.kernel.target.clone().unwrap_or(cfg.target.clone());
-
-    let kernel = Builder::new("kernel", target)
-        .enable_features(cfg.kernel.features.as_slice())
+fn build_kernel(release: bool) -> anyhow::Result<Utf8PathBuf> {
+    let kernel = Builder::new("kernel", "riscv64gc-unknown-none-elf")
         .release(release)
         .env(
-            "K23_KCONFIG_STACK_SIZE_PAGES",
-            cfg.kernel.stack_size_pages.to_string(),
+            "RUSTFLAGS",
+            "-Cforce-unwind-tables=true -Zstack-protector=strong",
         )
-        .env(
-            "K23_KCONFIG_LOG_LEVEL",
-            cfg.kernel.log_level.to_usize().to_string(),
-        )
-        .env("K23_KCONFIG_UART_BAUD_RATE", cfg.uart_baud_rate.to_string())
-        .env(
-            "K23_KCONFIG_MEMORY_MODE",
-            ron::ser::to_string(&cfg.memory_mode)?,
-        )
-        .env("RUSTFLAGS", "-Cforce-unwind-tables=true")
+        .additional_args(&[
+            "-Z",
+            "build-std=core,alloc",
+            "-Z",
+            "build-std-features=compiler-builtins-mem",
+        ])
         .build()?;
 
     let executable = kernel
@@ -212,9 +165,7 @@ struct Builder<'a> {
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(name: &'a str, target: Target) -> Self {
-        let target = target.to_string();
-
+    pub fn new(name: &'a str, target: &str) -> Self {
         let mut command = Command::new("cargo");
         command.args(&[
             "build",
@@ -222,7 +173,7 @@ impl<'a> Builder<'a> {
             "-p",
             name,
             "--target",
-            &target,
+            target,
         ]);
 
         Self {
@@ -238,33 +189,12 @@ impl<'a> Builder<'a> {
         self
     }
 
-    // pub fn envs<I, K, V>(mut self, vars: I) -> Self
-    // where
-    //     I: IntoIterator<Item = (K, V)>,
-    //     K: AsRef<OsStr>,
-    //     V: AsRef<OsStr>,
-    // {
-    //     self.command.envs(vars);
-    //     self
-    // }
-
     pub fn additional_args<I, A>(mut self, args: I) -> Self
     where
         I: IntoIterator<Item = A>,
         A: AsRef<OsStr>,
     {
         self.command.args(args);
-        self
-    }
-
-    pub fn enable_features<I, F>(mut self, features: I) -> Self
-    where
-        I: IntoIterator<Item = F>,
-        F: AsRef<str>,
-    {
-        for f in features {
-            self.features.push(f.as_ref().to_string());
-        }
         self
     }
 
@@ -321,19 +251,3 @@ impl<'a> Builder<'a> {
         artifact.ok_or(anyhow!("failed to retrieve artifact from command"))
     }
 }
-
-// fn parse_elf(executable: &Path) -> anyhow::Result<(u64, Vec<u8>, BTreeMap<String, u64>)> {
-//     let data = fs::read(executable)?;
-//     let elf: ElfFile<elf::FileHeader64<Endianness>> = ElfFile::parse(&*data).unwrap();
-//
-//     let symbols = elf.symbols();
-//
-//     let mut out = BTreeMap::new();
-//     for symbol in symbols {
-//         let name = symbol.name().unwrap();
-//
-//         out.insert(name.to_string(), symbol.address());
-//     }
-//
-//     Ok((elf.entry(), elf.data().to_vec(), out))
-// }
