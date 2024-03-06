@@ -14,3 +14,4 @@ dtb-parser.workspace = true
 log.workspace = true
 sbicall.workspace = true
 spin.workspace = true
+uart-16550.workspace = true

@@ -1,5 +1,5 @@
 [workspace]
-members = ["build/*", "kernel", "libs/dtb-parser", "libs/dtb-parser", "libs/sbicall", "loader"]
+members = ["build/*", "kernel", "libs/dtb-parser", "libs/dtb-parser", "libs/sbicall", "libs/uart-16550", "loader"]
 resolver = "2"
 
 [workspace.package]
@@ -9,7 +9,7 @@ authors = ["Jonas Kruckenberg <iterpre@protonmail.com>"]
 
 [workspace.dependencies]
 dtb-parser = { path = "libs/dtb-parser" }
-#uart-16550 = { path = "_old/crates/uart-16550" }
+uart-16550 = { path = "libs/uart-16550" }
 #gimli = { path = "_old/crates/gimli", features = ["read-core"] }
 #fxhash = { path = "_old/crates/fxhash" }
 sbicall = { path = "libs/sbicall" }
