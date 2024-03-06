@@ -34,6 +34,7 @@ spin = "0.9.8"
 linked_list_allocator = "0.10.5"
 smallvec = "2.0.0-alpha.4"
 arrayvec = { version = "0.7.4", default-features = false }
+qemu-exit = "3.0.2"
 
 # build dependencies
 cranelift-isle = { path = "build/cranelift-isle" }

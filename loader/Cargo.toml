@@ -16,3 +16,4 @@ sbicall.workspace = true
 arrayvec.workspace = true
 spin.workspace = true
 uart-16550.workspace = true
+qemu-exit.workspace = true

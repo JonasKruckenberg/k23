@@ -1,3 +1,4 @@
+use crate::arch;
 use arrayvec::ArrayVec;
 use core::mem;
 use core::ops::Range;
@@ -5,7 +6,6 @@ use dtb_parser::{DevTree, Error, Node, Strings, Visitor};
 
 /// Information about the machine we're running on, parsed from the Device Tree Blob (DTB) passed
 /// to us by a previous boot stage (U-BOOT)
-#[derive(Debug)]
 pub struct MachineInfo {
     /// The number of "standalone" CPUs in the system
     pub cpus: usize,
@@ -15,7 +15,7 @@ pub struct MachineInfo {
     ///
     /// This is currently only implemented for sifive (i.e. riscv) compatible devices and can be used
     /// to exit the hosting virtual machine on panics or after tests finished.
-    pub qemu_test: Option<Range<usize>>,
+    pub qemu_exit_handle: Option<arch::QEMUExit>,
     /// The address range at which the primary physical memory of the system is mapped.
     pub memory: Range<usize>,
 }
@@ -56,8 +56,9 @@ struct MachineInfoVisitor<'dt> {
     // values parsed from the FDT that we need to construct a `MachineInfo` instance
     cpus: usize,
     serial: Option<Serial>,
-    qemu_test: Option<Range<usize>>,
     memory: Option<Range<usize>>,
+    #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+    sifive_test: Option<Range<usize>>,
 }
 
 struct SerialVisitor {
@@ -76,10 +77,24 @@ impl<'dt> MachineInfoVisitor<'dt> {
     pub fn result(self) -> Option<MachineInfo> {
         debug_assert_ne!(self.cpus, 0);
 
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                let qemu_exit_handle = self
+                    .sifive_test
+                    .map(|reg| qemu_exit::RISCV64::new(reg.start as u64));
+            } else if #[cfg(target_arch = "aarch64")]{
+                let qemu_exit_handle = Some(qemu_exit::AArch64::new());
+            } else if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+                let qemu_exit_handle = Some(qemu_exit::X86::new(0xf4, 0x10));
+            } else {
+                let qemu_exit_handle = None;
+            }
+        };
+
         Some(MachineInfo {
             cpus: self.cpus,
             serial: self.serial?,
-            qemu_test: self.qemu_test,
+            qemu_exit_handle,
             memory: self.memory?,
         })
     }
@@ -135,11 +150,12 @@ impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
     fn visit_compatible(&mut self, mut strings: Strings<'dt>) -> Result<(), Error> {
         while let Some(str) = strings.next()? {
             match str {
+                #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
                 "sifive,test0" => {
                     if let Some(node) = self.node.take() {
                         let mut v = self.reg_visitor();
                         node.visit(&mut v)?;
-                        self.qemu_test = v.result();
+                        self.sifive_test = v.result();
                     }
                 }
                 "ns16550a" => {
