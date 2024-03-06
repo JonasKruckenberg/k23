@@ -14,6 +14,8 @@ pub enum Error {
     TryFromSlice(#[from] core::array::TryFromSliceError),
     #[error("failed to parse utf8")]
     Utf8(#[from] core::str::Utf8Error),
+    #[error("failed to parse C-string")]
+    FromBytesUntilNulError(#[from] core::ffi::FromBytesUntilNulError),
     #[error("DTB properties must be preceded by their parent node")]
     MissingParent,
 }

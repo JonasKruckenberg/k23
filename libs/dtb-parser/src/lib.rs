@@ -11,6 +11,7 @@
 pub mod debug;
 mod error;
 
+use core::ffi::CStr;
 use core::{mem, slice, str};
 
 pub use error::Error;
@@ -269,18 +270,8 @@ impl<'dt> Node<'dt> {
 
 fn read_str<'dt>(slice: &'dt [u8], nameoff: u32) -> Result<&'dt str> {
     let slice = &slice.get(nameoff as usize..).ok_or(Error::UnexpectedEOF)?;
-    let name_len = c_strlen_on_slice(slice);
-    let name = str::from_utf8(&slice[..name_len])?;
-    Ok(name)
-}
-
-fn c_strlen_on_slice(slice: &[u8]) -> usize {
-    let mut end = slice;
-    while !end.is_empty() && *end.first().unwrap_or(&0) != 0 {
-        end = &end[1..];
-    }
-
-    end.as_ptr() as usize - slice.as_ptr() as usize
+    let str = CStr::from_bytes_until_nul(slice)?;
+    Ok(str.to_str()?)
 }
 
 // #[derive(Debug)]
