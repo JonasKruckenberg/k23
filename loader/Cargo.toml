@@ -13,5 +13,6 @@ cfg-if.workspace = true
 dtb-parser.workspace = true
 log.workspace = true
 sbicall.workspace = true
+arrayvec.workspace = true
 spin.workspace = true
 uart-16550.workspace = true

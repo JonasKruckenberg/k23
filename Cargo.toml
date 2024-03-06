@@ -27,12 +27,13 @@ riscv = "0.11.0"
 cfg-if = "1.0.0"
 hashbrown = { version = "0.14.3", features = ["nightly"] }
 onlyerror = { version = "0.1.3", default-features = false }
-smallvec = "2.0.0-alpha.3"
 target-lexicon = { version = "0.12.13", default-features = false }
 bumpalo = "3.14.0"
 regalloc2 = { version = "0.9.3", default-features = false }
 spin = "0.9.8"
 linked_list_allocator = "0.10.5"
+smallvec = "2.0.0-alpha.4"
+arrayvec = { version = "0.7.4", default-features = false }
 
 # build dependencies
 cranelift-isle = { path = "build/cranelift-isle" }

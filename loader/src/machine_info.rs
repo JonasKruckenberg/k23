@@ -1,4 +1,4 @@
-use crate::stack_vec::StackVec;
+use arrayvec::ArrayVec;
 use core::mem;
 use core::ops::Range;
 use dtb_parser::{DevTree, Error, Node, Strings, Visitor};
@@ -40,10 +40,20 @@ impl MachineInfo {
 
 #[derive(Default)]
 struct MachineInfoVisitor<'dt> {
+    /// The most recent node we encountered.
+    ///
+    /// Since we decide to continue parsing a node depending on its `compatible` prop
+    /// and props come *after* their respective node, we need to backtrack and therefore store the node.
     node: Option<Node<'dt>>,
-    address_sizes: StackVec<usize, 8>,
-    width_sizes: StackVec<usize, 8>,
+    /// Stack of encountered `#address-cells` values, used to correctly read `reg` properties.
+    ///
+    /// The fixed upper bound of 8 elements is just a guess, technically FDTs can have arbitrary depth.
+    /// But we don't have an allocator and 8 seems to be a reasonable choice in practice.
+    address_sizes: ArrayVec<usize, 8>,
+    /// Stack of encountered `#size-cells` values, used to correctly read `reg` properties.
+    width_sizes: ArrayVec<usize, 8>,
 
+    // values parsed from the FDT that we need to construct a `MachineInfo` instance
     cpus: usize,
     serial: Option<Serial>,
     qemu_test: Option<Range<usize>>,
@@ -98,11 +108,9 @@ impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
             let width_len = self.width_sizes.len();
 
             node.visit(self)?;
-
-            unsafe {
-                self.address_sizes.truncate(addr_len);
-                self.width_sizes.truncate(width_len)
-            }
+            
+            self.address_sizes.truncate(addr_len);
+            self.width_sizes.truncate(width_len);
         }
 
         Ok(())

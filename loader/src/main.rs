@@ -6,7 +6,6 @@ mod arch;
 mod logger;
 mod machine_info;
 mod panic;
-mod stack_vec;
 
 fn main(hartid: usize) -> ! {
     log::info!("Hello World from hart {hartid}");
