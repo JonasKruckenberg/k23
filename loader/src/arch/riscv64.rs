@@ -1,15 +1,15 @@
-use crate::logger::LoggerInner;
 use crate::machine_info::MachineInfo;
 use core::arch::asm;
-use core::mem::MaybeUninit;
-use core::ops::Range;
 use core::ptr::addr_of_mut;
-use core::{mem, slice};
-use dtb_parser::{DevTree, Error, Node, Strings, Visitor};
+use core::sync::atomic::{AtomicBool, Ordering};
+use dtb_parser::DevTree;
 use spin::Once;
+use uart_16550::SerialPort;
 
 const STACK_SIZE_PAGES: usize = 16;
 const PAGE_SIZE: usize = 4096;
+
+pub type QEMUExit = qemu_exit::RISCV64;
 
 pub fn halt() -> ! {
     unsafe {
@@ -46,10 +46,12 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
-unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
-    static INIT: Once = Once::new();
+pub static MINFO: Once<MachineInfo> = Once::new();
 
-    INIT.call_once(|| {
+unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
+    static INIT: AtomicBool = AtomicBool::new(true);
+
+    let minfo = if INIT.swap(false, Ordering::AcqRel) {
         extern "C" {
             static mut __bss_start: u64;
             static mut __bss_end: u64;
@@ -63,24 +65,23 @@ unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
             ptr = ptr.offset(1);
         }
 
-        crate::logger::init();
-
-        // {
-        //     let mut w = LoggerInner;
-        //     let mut dbg = dtb_parser::debug::DebugVisitor::new(&mut w);
-        //
-        //     DevTree::from_raw(opaque).unwrap().visit(&mut dbg).unwrap()
-        // }
-
         let minfo = MachineInfo::from_dtb(opaque);
-        log::info!("{minfo:?}");
 
-        // for hart in 0..8 {
-        //     if hart != hartid {
-        //         sbicall::hsm::start_hart(hart, _start as usize, 0).unwrap();
-        //     }
-        // }
-    });
+        crate::logger::init(&minfo);
 
-    crate::main(hartid)
+        {
+            let mut port =
+                SerialPort::new(minfo.serial.reg.start, minfo.serial.clock_frequency, 38400);
+
+            let mut v = dtb_parser::debug::DebugVisitor::new(&mut port);
+
+            DevTree::from_raw(opaque).unwrap().visit(&mut v).unwrap();
+        }
+
+        MINFO.call_once(|| minfo)
+    } else {
+        MINFO.wait()
+    };
+
+    crate::main(hartid, minfo)
 }
