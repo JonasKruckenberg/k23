@@ -182,3 +182,43 @@ impl fmt::Debug for VirtualAddress {
             .finish()
     }
 }
+
+pub trait AddressRangeExt {
+    fn align(self, alignment: usize) -> Self;
+    fn is_aligned(&self, alignment: usize) -> bool;
+    fn size(&self) -> usize;
+}
+
+impl AddressRangeExt for Range<PhysicalAddress> {
+    fn align(self, alignment: usize) -> Self {
+        let start = self.start.as_raw() & !(alignment - 1);
+        let end = (self.end.as_raw() + alignment - 1) & !(alignment - 1);
+
+        unsafe { PhysicalAddress::new(start)..PhysicalAddress::new(end) }
+    }
+
+    fn is_aligned(&self, alignment: usize) -> bool {
+        self.start.is_aligned(alignment) && self.end.is_aligned(alignment)
+    }
+
+    fn size(&self) -> usize {
+        self.end.sub_addr(self.start)
+    }
+}
+
+impl AddressRangeExt for Range<VirtualAddress> {
+    fn align(self, alignment: usize) -> Self {
+        let start = self.start.as_raw() & !(alignment - 1);
+        let end = (self.end.as_raw() + alignment - 1) & !(alignment - 1);
+
+        unsafe { VirtualAddress::new(start)..VirtualAddress::new(end) }
+    }
+
+    fn is_aligned(&self, alignment: usize) -> bool {
+        self.start.is_aligned(alignment) && self.end.is_aligned(alignment)
+    }
+
+    fn size(&self) -> usize {
+        self.end.sub_addr(self.start)
+    }
+}
