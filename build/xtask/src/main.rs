@@ -70,7 +70,7 @@ fn run() -> anyhow::Result<()> {
             log::debug!("{kernel}");
 
             Command::new("qemu-system-riscv64")
-                .args(&[
+                .args([
                     "-bios",
                     "default",
                     "-kernel",
@@ -120,7 +120,7 @@ fn build_loader(release: bool) -> anyhow::Result<Utf8PathBuf> {
     let bootloader = Builder::new("loader", "riscv64imac-unknown-none-elf")
         .release(release)
         .env("RUSTFLAGS", "-Csoft-float")
-        .additional_args(&[
+        .additional_args([
             "-Z",
             "build-std=core,alloc",
             "-Z",
@@ -142,7 +142,7 @@ fn build_kernel(release: bool) -> anyhow::Result<Utf8PathBuf> {
         //     "RUSTFLAGS",
         //     "-Cforce-unwind-tables=true -Zstack-protector=strong",
         // )
-        .additional_args(&[
+        .additional_args([
             "-Z",
             "build-std=core,alloc",
             "-Z",
@@ -167,7 +167,7 @@ struct Builder<'a> {
 impl<'a> Builder<'a> {
     pub fn new(name: &'a str, target: &str) -> Self {
         let mut command = Command::new("cargo");
-        command.args(&[
+        command.args([
             "build",
             "--message-format=json-render-diagnostics",
             "-p",
@@ -204,7 +204,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn build(mut self) -> anyhow::Result<Artifact> {
-        self.command.args(&["--features", &self.features.join(",")]);
+        self.command.args(["--features", &self.features.join(",")]);
         if self.release {
             self.command.arg("--release");
         }

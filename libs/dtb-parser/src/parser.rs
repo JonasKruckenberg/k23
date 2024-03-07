@@ -27,7 +27,7 @@ impl<'dt> Parser<'dt> {
                 FDT_BEGIN_NODE => {
                     nesting_level += 1;
 
-                    let name = read_str(&self.struct_slice, self.offset as u32)?;
+                    let name = read_str(self.struct_slice, self.offset as u32)?;
                     self.offset += align_up(name.len() + 1, mem::size_of::<u32>());
 
                     if nesting_level == self.level + 1 {
@@ -66,7 +66,7 @@ impl<'dt> Parser<'dt> {
                         continue;
                     }
 
-                    let name = read_str(&self.strings_slice, nameoff)?;
+                    let name = read_str(self.strings_slice, nameoff)?;
 
                     match name {
                         "reg" => visitor.visit_reg(bytes)?,

@@ -28,6 +28,11 @@ pub struct SerialPort {
 }
 
 impl SerialPort {
+    /// Constructs a new UART 16550 compatible driver
+    ///
+    /// # Safety
+    ///
+    /// The caller has to ensure the given `base` address is valid and points to the correct MMIO region for the UART device.
     pub unsafe fn new(base: usize, clock_frequency: u32, baud_rate: u32) -> Self {
         let base_pointer = base as *mut u8;
 

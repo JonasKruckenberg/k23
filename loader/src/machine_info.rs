@@ -2,6 +2,7 @@ use crate::arch;
 use arrayvec::ArrayVec;
 use core::mem;
 use core::ops::Range;
+use core::ptr::NonNull;
 use dtb_parser::{DevTree, Node, Strings, Visitor};
 use spin::Once;
 
@@ -34,11 +35,13 @@ pub struct Serial {
 }
 
 impl MachineInfo {
-    pub fn from_dtb(dtb_ptr: *const u8) -> Self {
+    pub fn from_dtb(dtb_ptr: NonNull<u8>) -> Self {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
 
-        let mut v = MachineInfoVisitor::default();
-        v.boot_cpu = fdt.boot_cpuid_phys();
+        let mut v = MachineInfoVisitor {
+            boot_cpu: fdt.boot_cpuid_phys(),
+            ..Default::default()
+        };
 
         fdt.visit(&mut v).unwrap();
 

@@ -1,6 +1,6 @@
 use crate::machine_info::{MachineInfo, MINFO};
 use core::arch::asm;
-use core::ptr::addr_of_mut;
+use core::ptr::{addr_of_mut, NonNull};
 use uart_16550::SerialPort;
 
 const STACK_SIZE_PAGES: usize = 16;
@@ -43,7 +43,7 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
-unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
+unsafe extern "C" fn start(hartid: usize, opaque: *mut u8) -> ! {
     // use `call_once` to do all global one-time initialization
     let minfo = MINFO.call_once(|| {
         extern "C" {
@@ -59,7 +59,9 @@ unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
             ptr = ptr.offset(1);
         }
 
-        let minfo = MachineInfo::from_dtb(opaque);
+        let dtb_ptr = NonNull::new(opaque).unwrap();
+
+        let minfo = MachineInfo::from_dtb(dtb_ptr);
 
         crate::logger::init(&minfo);
 
@@ -69,7 +71,7 @@ unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
 
             let mut v = dtb_parser::debug::DebugVisitor::new(&mut port);
 
-            dtb_parser::DevTree::from_raw(opaque)
+            dtb_parser::DevTree::from_raw(dtb_ptr)
                 .unwrap()
                 .visit(&mut v)
                 .unwrap();
