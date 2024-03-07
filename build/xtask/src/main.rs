@@ -138,10 +138,10 @@ fn build_loader(release: bool) -> anyhow::Result<Utf8PathBuf> {
 fn build_kernel(release: bool) -> anyhow::Result<Utf8PathBuf> {
     let kernel = Builder::new("kernel", "riscv64gc-unknown-none-elf")
         .release(release)
-        .env(
-            "RUSTFLAGS",
-            "-Cforce-unwind-tables=true -Zstack-protector=strong",
-        )
+        // .env(
+        //     "RUSTFLAGS",
+        //     "-Cforce-unwind-tables=true -Zstack-protector=strong",
+        // )
         .additional_args(&[
             "-Z",
             "build-std=core,alloc",

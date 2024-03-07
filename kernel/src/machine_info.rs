@@ -10,9 +10,8 @@ pub static MINFO: Once<MachineInfo> = Once::new();
 /// Information about the machine we're running on, parsed from the Device Tree Blob (DTB) passed
 /// to us by a previous boot stage (U-BOOT)
 pub struct MachineInfo {
-    pub boot_cpu: u32,
     /// The number of "standalone" CPUs in the system
-    pub cpus: u32,
+    pub cpus: usize,
     /// Information about the systems UART device
     pub serial: Serial,
     /// Information about the systems QEMU test device, if present.
@@ -38,8 +37,6 @@ impl MachineInfo {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
 
         let mut v = MachineInfoVisitor::default();
-        v.boot_cpu = fdt.boot_cpuid_phys();
-
         fdt.visit(&mut v).unwrap();
 
         v.result()
@@ -69,8 +66,7 @@ struct MachineInfoVisitor<'dt> {
     width_sizes: ArrayVec<usize, 8>,
 
     // values parsed from the FDT that we need to construct a `MachineInfo` instance
-    boot_cpu: u32,
-    cpus: u32,
+    cpus: usize,
     serial: Option<Serial>,
     memory: Option<Range<usize>>,
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
@@ -108,7 +104,6 @@ impl<'dt> MachineInfoVisitor<'dt> {
         }
 
         Some(MachineInfo {
-            boot_cpu: self.boot_cpu,
             cpus: self.cpus,
             serial: self.serial?,
             qemu_exit_handle,

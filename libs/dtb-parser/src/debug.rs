@@ -18,6 +18,8 @@ impl<'a, T: fmt::Write> DebugVisitor<'a, T> {
 }
 
 impl<'a, 'dt, T: fmt::Write> Visitor<'dt> for DebugVisitor<'a, T> {
+    type Error = Error;
+
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> crate::Result<()> {
         self.write(format_args!("- {}\n", name))?;
 

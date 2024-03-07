@@ -10,10 +10,12 @@
 
 pub mod debug;
 mod error;
+mod parser;
 
 use core::ffi::CStr;
 use core::{mem, slice, str};
 
+use crate::parser::Parser;
 pub use error::Error;
 
 type Result<T> = core::result::Result<T, Error>;
@@ -26,12 +28,50 @@ const FDT_END: u32 = 0x00000009;
 const DTB_MAGIC: u32 = 0xD00DFEED;
 const DTB_VERSION: u32 = 17;
 
-fn align_down(value: usize, alignment: usize) -> usize {
-    value & !(alignment - 1)
+#[allow(unused_variables)]
+pub trait Visitor<'dt> {
+    type Error: core::error::Error;
+
+    fn visit_subnode(
+        &mut self,
+        name: &'dt str,
+        node: Node<'dt>,
+    ) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn visit_reg(&mut self, reg: &'dt [u8]) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn visit_address_cells(&mut self, cells: u32) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn visit_size_cells(&mut self, cells: u32) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn visit_compatible(&mut self, strings: Strings<'dt>) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn visit_property(
+        &mut self,
+        name: &'dt str,
+        value: &'dt [u8],
+    ) -> core::result::Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
-fn align_up(value: usize, alignment: usize) -> usize {
-    align_down(value + (alignment - 1), alignment)
+#[derive(Debug)]
+pub struct DevTree<'dt> {
+    version: u32,
+    last_comp_version: u32,
+    boot_cpuid_phys: u32,
+    memory_slice: &'dt [u8],
+    parser: Parser<'dt>,
 }
 
 #[derive(Debug)]
@@ -47,13 +87,6 @@ struct Header {
     boot_cpuid_phys: [u8; 4],
     size_dt_strings: [u8; 4],
     size_dt_struct: [u8; 4],
-}
-
-#[derive(Debug)]
-pub struct DevTree<'dt> {
-    header: &'dt Header,
-    memory_slice: &'dt [u8],
-    cursor: Cursor<'dt>,
 }
 
 impl<'dt> DevTree<'dt> {
@@ -88,9 +121,11 @@ impl<'dt> DevTree<'dt> {
         };
 
         Ok(Self {
-            header,
+            version: u32::from_be_bytes(header.version),
+            last_comp_version: u32::from_be_bytes(header.last_comp_version),
+            boot_cpuid_phys: u32::from_be_bytes(header.boot_cpuid_phys),
             memory_slice,
-            cursor: Cursor {
+            parser: Parser {
                 struct_slice,
                 strings_slice,
                 level: 0,
@@ -99,162 +134,43 @@ impl<'dt> DevTree<'dt> {
         })
     }
 
-    pub fn visit(mut self, visitor: &mut dyn Visitor<'dt>) -> Result<()> {
-        self.cursor.visit(visitor)
-    }
-}
-
-#[allow(unused_variables)]
-pub trait Visitor<'dt> {
-    fn visit_subnode(
-        &mut self,
-        name: &'dt str,
-        node: Node<'dt>,
-    ) -> core::result::Result<(), Error> {
-        Ok(())
+    pub fn version(&self) -> u32 {
+        self.version
     }
 
-    fn visit_reg(&mut self, reg: &'dt [u8]) -> core::result::Result<(), Error> {
-        Ok(())
+    pub fn last_comp_version(&self) -> u32 {
+        self.last_comp_version
     }
 
-    fn visit_address_cells(&mut self, cells: u32) -> core::result::Result<(), Error> {
-        Ok(())
+    pub fn boot_cpuid_phys(&self) -> u32 {
+        self.boot_cpuid_phys
     }
 
-    fn visit_size_cells(&mut self, cells: u32) -> core::result::Result<(), Error> {
-        Ok(())
+    pub fn visit<E: core::error::Error + From<Error>>(
+        mut self,
+        visitor: &mut dyn Visitor<'dt, Error = E>,
+    ) -> core::result::Result<(), E> {
+        self.parser.visit(visitor)
     }
 
-    fn visit_compatible(&mut self, strings: Strings<'dt>) -> core::result::Result<(), Error> {
-        Ok(())
-    }
-
-    fn visit_property(
-        &mut self,
-        name: &'dt str,
-        value: &'dt [u8],
-    ) -> core::result::Result<(), Error> {
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Cursor<'dt> {
-    struct_slice: &'dt [u8],
-    strings_slice: &'dt [u8],
-    /// Offset into the struct_slice buffer
-    offset: usize,
-    level: usize,
-}
-
-impl<'dt> Cursor<'dt> {
-    fn visit(&mut self, visitor: &mut dyn Visitor<'dt>) -> Result<()> {
-        let mut nesting_level = self.level;
-
-        while self.offset < self.struct_slice.len() {
-            let token = self.read_u32()?;
-
-            match token {
-                FDT_BEGIN_NODE => {
-                    nesting_level += 1;
-
-                    let name = read_str(&self.struct_slice, self.offset as u32)?;
-                    self.offset += align_up(name.len() + 1, mem::size_of::<u32>());
-
-                    if nesting_level == self.level + 1 {
-                        let node = Node::new(
-                            self.struct_slice,
-                            self.strings_slice,
-                            self.offset,
-                            nesting_level,
-                        );
-
-                        // hack to skip over the root node
-                        // if name.is_empty() && self.level == 0 {
-                        //     node.visit(visitor)?;
-                        // } else {
-                        visitor.visit_subnode(name, node)?;
-                        // }
-                    }
-                }
-                FDT_END_NODE => {
-                    if nesting_level <= self.level {
-                        return Ok(());
-                    }
-
-                    nesting_level -= 1;
-                }
-                FDT_PROP => {
-                    let len = self.read_u32()? as usize;
-                    let nameoff = self.read_u32()?;
-
-                    let aligned_len = align_up(len, mem::size_of::<u32>());
-
-                    let bytes = self.read_bytes(len)?;
-                    self.offset += aligned_len - len;
-
-                    if nesting_level != self.level {
-                        continue;
-                    }
-
-                    let name = read_str(&self.strings_slice, nameoff)?;
-
-                    match name {
-                        "reg" => visitor.visit_reg(bytes)?,
-                        "#address-cells" => {
-                            visitor.visit_address_cells(u32::from_be_bytes(bytes.try_into()?))?;
-                        }
-                        "#size-cells" => {
-                            visitor.visit_size_cells(u32::from_be_bytes(bytes.try_into()?))?;
-                        }
-                        "compatible" => {
-                            visitor.visit_compatible(Strings::new(bytes))?;
-                        }
-                        _ => visitor.visit_property(name, bytes)?,
-                    }
-                }
-                FDT_NOP => {}
-                FDT_END => {
-                    return if nesting_level != 0 || self.offset != self.struct_slice.len() {
-                        Err(Error::InvalidNesting)?
-                    } else {
-                        Ok(())
-                    };
-                }
-                _ => return Err(Error::InvalidToken(token)),
-            }
+    pub fn reserved_entries(&self) -> ReserveEntries<'dt> {
+        ReserveEntries {
+            buf: self.memory_slice,
+            offset: 0,
+            done: false,
         }
-
-        Ok(())
-    }
-
-    fn read_bytes(&mut self, n: usize) -> Result<&'dt [u8]> {
-        let slice = self
-            .struct_slice
-            .get(self.offset..self.offset + n)
-            .ok_or(Error::UnexpectedEOF)?;
-        self.offset += n;
-
-        Ok(slice)
-    }
-
-    fn read_u32(&mut self) -> Result<u32> {
-        let bytes = self.read_bytes(mem::size_of::<u32>())?;
-
-        Ok(u32::from_be_bytes(bytes.try_into()?))
     }
 }
 
 #[derive(Clone)]
 pub struct Node<'dt> {
-    parser: Cursor<'dt>,
+    parser: Parser<'dt>,
 }
 
 impl<'dt> Node<'dt> {
     fn new(struct_slice: &'dt [u8], strings_slice: &'dt [u8], offset: usize, level: usize) -> Self {
         Self {
-            parser: Cursor {
+            parser: Parser {
                 struct_slice,
                 strings_slice,
                 offset,
@@ -263,57 +179,64 @@ impl<'dt> Node<'dt> {
         }
     }
 
-    pub fn visit(mut self, visitor: &mut dyn Visitor<'dt>) -> crate::Result<()> {
+    pub fn visit<E: core::error::Error + From<Error>>(
+        mut self,
+        visitor: &mut dyn Visitor<'dt, Error = E>,
+    ) -> core::result::Result<(), E> {
         self.parser.visit(visitor)
     }
 }
 
-fn read_str<'dt>(slice: &'dt [u8], nameoff: u32) -> Result<&'dt str> {
+fn read_str(slice: &[u8], nameoff: u32) -> Result<&str> {
     let slice = &slice.get(nameoff as usize..).ok_or(Error::UnexpectedEOF)?;
     let str = CStr::from_bytes_until_nul(slice)?;
     Ok(str.to_str()?)
 }
 
-// #[derive(Debug)]
-// pub struct ReserveEntry {
-//     pub address: u64,
-//     pub size: u64,
-// }
-//
-// pub struct ReserveEntries<'dt> {
-//     buf: &'dt [u8],
-//     done: bool,
-// }
-//
-// impl<'dt> ReserveEntries<'dt> {
-//     fn read_u64(&mut self) -> Result<u64> {
-//         let (buf, rest) = self.buf.split_at(mem::size_of::<u64>());
-//         self.buf = rest;
-//
-//         Ok(u64::from_be_bytes(buf.try_into()?))
-//     }
-//
-//     pub fn next_entry(&mut self) -> Result<Option<ReserveEntry>> {
-//         if self.done {
-//             Ok(None)
-//         } else {
-//             let entry = {
-//                 let address = self.read_u64()?;
-//                 let size = self.read_u64()?;
-//
-//                 Ok(ReserveEntry { address, size })
-//             };
-//
-//             self.done = entry.is_err()
-//                 || entry
-//                     .as_ref()
-//                     .map(|e| e.address == 0 || e.size == 0)
-//                     .unwrap_or_default();
-//
-//             entry.map(Some)
-//         }
-//     }
-// }
+#[derive(Debug)]
+pub struct ReserveEntry {
+    pub address: u64,
+    pub size: u64,
+}
+
+pub struct ReserveEntries<'dt> {
+    buf: &'dt [u8],
+    offset: usize,
+    done: bool,
+}
+
+impl<'dt> ReserveEntries<'dt> {
+    fn read_u64(&mut self) -> Result<u64> {
+        let bytes = self
+            .buf
+            .get(self.offset..self.offset + mem::size_of::<u64>())
+            .ok_or(Error::UnexpectedEOF)?;
+        self.offset += mem::size_of::<u64>();
+
+        Ok(u64::from_be_bytes(bytes.try_into()?))
+    }
+
+    pub fn next_entry(&mut self) -> Result<Option<ReserveEntry>> {
+        if self.done || self.offset == self.buf.len() {
+            Ok(None)
+        } else {
+            let entry = {
+                let address = self.read_u64()?;
+                let size = self.read_u64()?;
+
+                Ok(ReserveEntry { address, size })
+            };
+
+            self.done = entry.is_err()
+                || entry
+                    .as_ref()
+                    .map(|e| e.address == 0 || e.size == 0)
+                    .unwrap_or_default();
+
+            entry.map(Some)
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Strings<'dt> {

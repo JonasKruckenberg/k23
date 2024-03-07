@@ -5,4 +5,11 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+cfg-if.workspace = true
 log.workspace = true
+sbicall.workspace = true
+spin.workspace = true
+uart-16550.workspace = true
+qemu-exit.workspace = true
+arrayvec.workspace = true
+dtb-parser.workspace = true

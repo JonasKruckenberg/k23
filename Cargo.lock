@@ -310,7 +310,14 @@ checksum = "b1a46d1a171d865aa5f83f92695765caa047a9b4cbae2cbf37dbd613a793fd4c"
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
+ "cfg-if",
+ "dtb-parser",
  "log",
+ "qemu-exit",
+ "sbicall",
+ "spin",
+ "uart-16550",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 use crate::arch;
-use crate::arch::MINFO;
+use crate::machine_info::MINFO;
 use core::panic::PanicInfo;
 use qemu_exit::QEMUExit;
 
@@ -13,6 +13,5 @@ fn panic(info: &PanicInfo) -> ! {
         }
     }
 
-    // In case there is no QEMU exit handle we just wait forever here
     arch::halt()
 }
