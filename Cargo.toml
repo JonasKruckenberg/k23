@@ -1,5 +1,5 @@
 [workspace]
-members = ["build/*", "kernel", "libs/dtb-parser", "libs/dtb-parser", "libs/sbicall", "libs/uart-16550", "loader"]
+members = ["build/*", "kernel", "libs/dtb-parser", "libs/dtb-parser", "libs/sbicall", "libs/uart-16550", "libs/vmm", "loader"]
 resolver = "2"
 
 [workspace.package]
