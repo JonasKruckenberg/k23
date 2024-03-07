@@ -23,6 +23,7 @@ SECTIONS {
         __rodata_start = .;
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
+        . = ALIGN(4096);
         __rodata_end = .;
     }
 
