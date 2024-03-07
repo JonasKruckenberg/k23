@@ -181,10 +181,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn env(mut self, key: impl AsRef<OsStr>, val: impl AsRef<OsStr>) -> Self {
-        self.command.env(key, val);
-        self
-    }
+    // pub fn env(mut self, key: impl AsRef<OsStr>, val: impl AsRef<OsStr>) -> Self {
+    //     self.command.env(key, val);
+    //     self
+    // }
 
     pub fn additional_args<I, A>(mut self, args: I) -> Self
     where
