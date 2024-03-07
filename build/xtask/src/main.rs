@@ -63,10 +63,10 @@ fn run() -> anyhow::Result<()> {
 
     match xtask.cmd {
         XtaskCommand::Run { release, .. } => {
-            let loader = build_loader(release)?;
+            // let loader = build_loader(release)?;
             let kernel = build_kernel(release)?;
 
-            log::debug!("{loader}");
+            // log::debug!("{loader}");
             log::debug!("{kernel}");
 
             Command::new("qemu-system-riscv64")
@@ -74,10 +74,7 @@ fn run() -> anyhow::Result<()> {
                     "-bios",
                     "default",
                     "-kernel",
-                    loader.as_str(),
-                    // bootloader.executable.unwrap().as_str(),
-                    "-device",
-                    &format!("loader,addr=0x80400000,file={}", kernel.as_str()),
+                    kernel.as_str(),
                     "-machine",
                     "virt",
                     "-cpu",
@@ -116,24 +113,24 @@ fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_loader(release: bool) -> anyhow::Result<Utf8PathBuf> {
-    let bootloader = Builder::new("loader", "riscv64imac-unknown-none-elf")
-        .release(release)
-        .env("RUSTFLAGS", "-Csoft-float")
-        .additional_args([
-            "-Z",
-            "build-std=core,alloc",
-            "-Z",
-            "build-std-features=compiler-builtins-mem",
-        ])
-        .build()?;
-
-    let executable = bootloader
-        .executable
-        .ok_or(anyhow!("failed to retrieve kernel artifact"))?;
-
-    Ok(executable)
-}
+// fn build_loader(release: bool) -> anyhow::Result<Utf8PathBuf> {
+//     let bootloader = Builder::new("loader", "riscv64imac-unknown-none-elf")
+//         .release(release)
+//         .env("RUSTFLAGS", "-Csoft-float")
+//         .additional_args([
+//             "-Z",
+//             "build-std=core,alloc",
+//             "-Z",
+//             "build-std-features=compiler-builtins-mem",
+//         ])
+//         .build()?;
+//
+//     let executable = bootloader
+//         .executable
+//         .ok_or(anyhow!("failed to retrieve kernel artifact"))?;
+//
+//     Ok(executable)
+// }
 
 fn build_kernel(release: bool) -> anyhow::Result<Utf8PathBuf> {
     let kernel = Builder::new("kernel", "riscv64gc-unknown-none-elf")

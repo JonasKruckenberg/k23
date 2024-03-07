@@ -7,9 +7,11 @@ authors.workspace = true
 [dependencies]
 cfg-if.workspace = true
 log.workspace = true
-sbicall.workspace = true
 spin.workspace = true
 uart-16550.workspace = true
 qemu-exit.workspace = true
 arrayvec.workspace = true
 dtb-parser.workspace = true
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+riscv.workspace = true
+sbicall.workspace = true
