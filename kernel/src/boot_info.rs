@@ -5,6 +5,7 @@ use core::ops::Range;
 use core::ptr::NonNull;
 use dtb_parser::{DevTree, Node, Strings, Visitor};
 use spin::Once;
+use vmm::PhysicalAddress;
 
 pub static BOOT_INFO: Once<BootInfo> = Once::new();
 
@@ -21,14 +22,14 @@ pub struct BootInfo {
     /// to exit the hosting virtual machine on panics or after tests finished.
     pub qemu_exit_handle: Option<arch::QEMUExit>,
     /// The address range at which the primary physical memory of the system is mapped.
-    pub memory: Range<usize>,
+    pub memory: Range<PhysicalAddress>,
 }
 
 /// Information about the systems UART device
 #[derive(Debug)]
 pub struct Serial {
     /// The MMIO registers reserved for this device
-    pub reg: Range<usize>,
+    pub reg: Range<PhysicalAddress>,
     /// The clock frequency configured
     pub clock_frequency: u32,
 }
@@ -69,9 +70,9 @@ struct BootInfoVisitor<'dt> {
     // values parsed from the FDT that we need to construct a `BootInfo` instance
     cpus: usize,
     serial: Option<Serial>,
-    memory: Option<Range<usize>>,
+    memory: Option<Range<PhysicalAddress>>,
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
-    sifive_test: Option<Range<usize>>,
+    sifive_test: Option<Range<PhysicalAddress>>,
 }
 
 struct SerialVisitor {
@@ -81,7 +82,7 @@ struct SerialVisitor {
 
 #[derive(Default)]
 struct RegVisitor {
-    pub inner: Option<Range<usize>>,
+    pub inner: Option<Range<PhysicalAddress>>,
     address_size: usize,
     width_size: usize,
 }
@@ -94,7 +95,7 @@ impl<'dt> BootInfoVisitor<'dt> {
             if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
                 let qemu_exit_handle = self
                     .sifive_test
-                    .map(|reg| qemu_exit::RISCV64::new(reg.start as u64));
+                    .map(|reg| qemu_exit::RISCV64::new(reg.start.as_raw() as u64));
             } else if #[cfg(target_arch = "aarch64")]{
                 let qemu_exit_handle = Some(qemu_exit::AArch64::new());
             } else if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
@@ -216,7 +217,7 @@ impl<'dt> Visitor<'dt> for SerialVisitor {
 }
 
 impl RegVisitor {
-    pub fn result(self) -> Option<Range<usize>> {
+    pub fn result(self) -> Option<Range<PhysicalAddress>> {
         self.inner
     }
 }
@@ -234,7 +235,8 @@ impl<'dt> Visitor<'dt> for RegVisitor {
         let start = usize::from_be_bytes(reg.try_into().unwrap());
         let width = usize::from_be_bytes(width.try_into().unwrap());
 
-        self.inner = Some(start..start + width);
+        // Safety: start is read from the FDT
+        let start = unsafe { PhysicalAddress::new(start) };
 
         Ok(())
     }

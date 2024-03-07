@@ -12,7 +12,7 @@ struct Logger(Mutex<MaybeUninit<SerialPort>>);
 pub fn init(boot_info: &BootInfo) {
     let serial_port = unsafe {
         SerialPort::new(
-            boot_info.serial.reg.start,
+            boot_info.serial.reg.start.as_raw(),
             boot_info.serial.clock_frequency,
             38400,
         )

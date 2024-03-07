@@ -12,6 +12,7 @@ uart-16550.workspace = true
 qemu-exit.workspace = true
 arrayvec.workspace = true
 dtb-parser.workspace = true
+vmm = { version = "0.1.0", path = "../libs/vmm" }
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv.workspace = true
 sbicall.workspace = true
