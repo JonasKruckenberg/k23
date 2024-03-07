@@ -200,8 +200,8 @@ impl<'dt> Node<'dt> {
     }
 }
 
-fn read_str(slice: &[u8], nameoff: u32) -> Result<&str> {
-    let slice = &slice.get(nameoff as usize..).ok_or(Error::UnexpectedEOF)?;
+pub fn read_str(slice: &[u8], offset: u32) -> Result<&str> {
+    let slice = &slice.get(offset as usize..).ok_or(Error::UnexpectedEOF)?;
     let str = CStr::from_bytes_until_nul(slice)?;
     Ok(str.to_str()?)
 }
