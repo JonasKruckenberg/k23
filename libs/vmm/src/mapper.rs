@@ -251,7 +251,11 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
             if lvl == 0 {
                 // we reached the leaf entry
-                assert_eq!(entry.is_vacant(), !remap);
+                assert_eq!(
+                    entry.is_vacant(),
+                    !remap,
+                    "expected table entry to be vacant, to remap use  the _remap methods"
+                );
 
                 entry.set_address_and_flags(phys, flags.union(M::ENTRY_FLAG_DEFAULT_LEAF));
                 flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;

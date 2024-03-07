@@ -6,10 +6,6 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 
-// mod alloc;
-// mod arch;
-// mod entry;
-// mod error;
 mod alloc;
 mod arch;
 mod entry;
@@ -139,7 +135,7 @@ impl VirtualAddress {
     pub const fn add(self, offset: usize) -> Self {
         let (out, overflow) = self.0.overflowing_add(offset);
         if overflow {
-            panic!("physical address overflow");
+            panic!("virtual address overflow");
         }
         Self(out)
     }
