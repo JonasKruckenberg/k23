@@ -238,6 +238,8 @@ impl<'dt> Visitor<'dt> for RegVisitor {
         // Safety: start is read from the FDT
         let start = unsafe { PhysicalAddress::new(start) };
 
+        self.inner = Some(start..start.add(width));
+        
         Ok(())
     }
 }
