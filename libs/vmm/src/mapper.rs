@@ -204,7 +204,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         let level = 0;
 
         for i in 0..len_pages {
-            log::trace!("mapping page {i} of {} at level {}", len_pages, level);
+            // log::trace!("mapping page {i} of {} at level {}", len_pages, level);
             let virt = virt_range.start.add(i * M::PAGE_SIZE);
             let phys = phys_range.start.add(i * M::PAGE_SIZE);
             self.map_with_flush(virt, phys, flags, level, flush, remap)?;
