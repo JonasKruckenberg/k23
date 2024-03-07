@@ -6,11 +6,11 @@ use core::ptr::NonNull;
 use dtb_parser::{DevTree, Node, Strings, Visitor};
 use spin::Once;
 
-pub static MINFO: Once<MachineInfo> = Once::new();
+pub static BOOT_INFO: Once<BootInfo> = Once::new();
 
 /// Information about the machine we're running on, parsed from the Device Tree Blob (DTB) passed
 /// to us by a previous boot stage (U-BOOT)
-pub struct MachineInfo {
+pub struct BootInfo {
     /// The number of "standalone" CPUs in the system
     pub cpus: usize,
     /// Information about the systems UART device
@@ -33,11 +33,11 @@ pub struct Serial {
     pub clock_frequency: u32,
 }
 
-impl MachineInfo {
+impl BootInfo {
     pub fn from_dtb(dtb_ptr: NonNull<u8>) -> Self {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
 
-        let mut v = MachineInfoVisitor::default();
+        let mut v = BootInfoVisitor::default();
         fdt.visit(&mut v).unwrap();
 
         v.result()
@@ -52,7 +52,7 @@ impl MachineInfo {
 */
 
 #[derive(Default)]
-struct MachineInfoVisitor<'dt> {
+struct BootInfoVisitor<'dt> {
     /// The most recent node we encountered.
     ///
     /// Since we decide to continue parsing a node depending on its `compatible` prop
@@ -66,7 +66,7 @@ struct MachineInfoVisitor<'dt> {
     /// Stack of encountered `#size-cells` values, used to correctly read `reg` properties.
     width_sizes: ArrayVec<usize, 8>,
 
-    // values parsed from the FDT that we need to construct a `MachineInfo` instance
+    // values parsed from the FDT that we need to construct a `BootInfo` instance
     cpus: usize,
     serial: Option<Serial>,
     memory: Option<Range<usize>>,
@@ -86,8 +86,8 @@ struct RegVisitor {
     width_size: usize,
 }
 
-impl<'dt> MachineInfoVisitor<'dt> {
-    pub fn result(self) -> Option<MachineInfo> {
+impl<'dt> BootInfoVisitor<'dt> {
+    pub fn result(self) -> Option<BootInfo> {
         debug_assert_ne!(self.cpus, 0);
 
         cfg_if::cfg_if! {
@@ -104,7 +104,7 @@ impl<'dt> MachineInfoVisitor<'dt> {
             }
         }
 
-        Some(MachineInfo {
+        Some(BootInfo {
             cpus: self.cpus,
             serial: self.serial?,
             qemu_exit_handle,
@@ -121,7 +121,7 @@ impl<'dt> MachineInfoVisitor<'dt> {
     }
 }
 
-impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
+impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
     type Error = dtb_parser::Error;
 
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {

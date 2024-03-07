@@ -1,5 +1,5 @@
 use crate::arch;
-use crate::machine_info::MINFO;
+use crate::boot_info::BOOT_INFO;
 use core::panic::PanicInfo;
 use qemu_exit::QEMUExit;
 
@@ -7,7 +7,7 @@ use qemu_exit::QEMUExit;
 fn panic(info: &PanicInfo) -> ! {
     log::error!("KERNEL PANIC {}", info);
 
-    if let Some(minfo) = MINFO.get() {
+    if let Some(minfo) = BOOT_INFO.get() {
         if let Some(exit_handle) = &minfo.qemu_exit_handle {
             exit_handle.exit_failure()
         }

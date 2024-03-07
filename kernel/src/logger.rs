@@ -1,4 +1,4 @@
-use crate::machine_info::MachineInfo;
+use crate::boot_info::BootInfo;
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use log::{LevelFilter, Metadata, Record};
@@ -9,11 +9,11 @@ static LOGGER: Logger = Logger(Mutex::new(MaybeUninit::uninit()));
 
 struct Logger(Mutex<MaybeUninit<SerialPort>>);
 
-pub fn init(machine_info: &MachineInfo) {
+pub fn init(boot_info: &BootInfo) {
     let serial_port = unsafe {
         SerialPort::new(
-            machine_info.serial.reg.start,
-            machine_info.serial.clock_frequency,
+            boot_info.serial.reg.start,
+            boot_info.serial.clock_frequency,
             38400,
         )
     };

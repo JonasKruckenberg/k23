@@ -1,4 +1,4 @@
-use crate::machine_info::{MachineInfo, MINFO};
+use crate::boot_info::{BootInfo, BOOT_INFO};
 use core::arch::asm;
 use core::ptr::{addr_of_mut, NonNull};
 use uart_16550::SerialPort;
@@ -45,7 +45,7 @@ unsafe extern "C" fn _start() -> ! {
 
 unsafe extern "C" fn start(hartid: usize, opaque: *mut u8) -> ! {
     // use `call_once` to do all global one-time initialization
-    let minfo = MINFO.call_once(|| {
+    let info = BOOT_INFO.call_once(|| {
         extern "C" {
             static mut __bss_start: u64;
             static mut __bss_end: u64;
@@ -61,13 +61,13 @@ unsafe extern "C" fn start(hartid: usize, opaque: *mut u8) -> ! {
 
         let dtb_ptr = NonNull::new(opaque).unwrap();
 
-        let minfo = MachineInfo::from_dtb(dtb_ptr);
+        let info = BootInfo::from_dtb(dtb_ptr);
 
-        crate::logger::init(&minfo);
+        crate::logger::init(&info);
 
         {
             let mut port =
-                SerialPort::new(minfo.serial.reg.start, minfo.serial.clock_frequency, 38400);
+                SerialPort::new(info.serial.reg.start, info.serial.clock_frequency, 38400);
 
             let mut v = dtb_parser::debug::DebugVisitor::new(&mut port);
 
@@ -77,8 +77,8 @@ unsafe extern "C" fn start(hartid: usize, opaque: *mut u8) -> ! {
                 .unwrap();
         }
 
-        minfo
+        info
     });
 
-    crate::main(hartid, minfo)
+    crate::main(hartid, info)
 }

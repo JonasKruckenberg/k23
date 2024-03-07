@@ -2,15 +2,15 @@
 #![no_main]
 #![feature(naked_functions, asm_const)]
 
-use crate::machine_info::MachineInfo;
+use crate::boot_info::BootInfo;
 
 mod arch;
+mod boot_info;
 mod logger;
-mod machine_info;
 mod panic;
 mod stack_guard;
 
-fn main(hartid: usize, _minfo: &'static MachineInfo) -> ! {
+fn main(hartid: usize, _boot_info: &'static BootInfo) -> ! {
     log::info!("Hello World from hart {hartid}");
 
     // Stage1: load kernel into ram
