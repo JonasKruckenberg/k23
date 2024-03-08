@@ -357,7 +357,7 @@ dependencies = [
  "qemu-exit",
  "sbicall",
  "spin",
- "uart-16550",
+ "vmm",
 ]
 
 [[package]]
