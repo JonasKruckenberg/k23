@@ -10,7 +10,8 @@ mod logger;
 mod panic;
 mod stack_guard;
 
-fn main(hartid: usize, _boot_info: &'static BootInfo) -> ! {
+#[no_mangle]
+fn kmain(hartid: usize, _boot_info: &'static BootInfo) -> ! {
     log::info!("Hello World from hart {hartid}");
 
     // Stage1: load kernel into ram
