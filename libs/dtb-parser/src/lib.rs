@@ -252,13 +252,19 @@ impl<'dt> ReserveEntries<'dt> {
                 Ok(ReserveEntry { address, size })
             };
 
-            self.done = entry.is_err()
-                || entry
-                    .as_ref()
-                    .map(|e| e.address == 0 || e.size == 0)
-                    .unwrap_or_default();
+            // entries where both address and size is zero mark the end
+            let is_empty = entry
+                .as_ref()
+                .map(|e| e.address == 0 || e.size == 0)
+                .unwrap_or_default();
 
-            entry.map(Some)
+            self.done = entry.is_err() || is_empty;
+
+            if !is_empty {
+                entry.map(Some)
+            } else {
+                Ok(None)
+            }
         }
     }
 }
