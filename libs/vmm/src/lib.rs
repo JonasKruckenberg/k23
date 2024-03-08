@@ -187,6 +187,7 @@ pub trait AddressRangeExt {
     fn align(self, alignment: usize) -> Self;
     fn is_aligned(&self, alignment: usize) -> bool;
     fn size(&self) -> usize;
+    fn add(self, offset: usize) -> Self;
 }
 
 impl AddressRangeExt for Range<PhysicalAddress> {
@@ -204,6 +205,10 @@ impl AddressRangeExt for Range<PhysicalAddress> {
     fn size(&self) -> usize {
         self.end.sub_addr(self.start)
     }
+
+    fn add(self, offset: usize) -> Self {
+        self.start.add(offset)..self.end.add(offset)
+    }
 }
 
 impl AddressRangeExt for Range<VirtualAddress> {
@@ -220,5 +225,9 @@ impl AddressRangeExt for Range<VirtualAddress> {
 
     fn size(&self) -> usize {
         self.end.sub_addr(self.start)
+    }
+
+    fn add(self, offset: usize) -> Self {
+        self.start.add(offset)..self.end.add(offset)
     }
 }

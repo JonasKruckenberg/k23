@@ -12,6 +12,7 @@ pub static BOOT_INFO: Once<BootInfo> = Once::new();
 /// Information about the machine we're running on, parsed from the Device Tree Blob (DTB) passed
 /// to us by a previous boot stage (U-BOOT)
 pub struct BootInfo {
+    pub dtb: &'static [u8],
     /// The number of "standalone" CPUs in the system
     pub cpus: usize,
     /// Information about the systems UART device
@@ -38,7 +39,10 @@ impl BootInfo {
     pub fn from_dtb(dtb_ptr: NonNull<u8>) -> Self {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
 
-        let mut v = BootInfoVisitor::default();
+        let mut v = BootInfoVisitor {
+            dtb: fdt.as_slice(),
+            ..Default::default()
+        };
         fdt.visit(&mut v).unwrap();
 
         v.result()
@@ -68,6 +72,7 @@ struct BootInfoVisitor<'dt> {
     width_sizes: ArrayVec<usize, 8>,
 
     // values parsed from the FDT that we need to construct a `BootInfo` instance
+    dtb: &'static [u8],
     cpus: usize,
     serial: Option<Serial>,
     memory: Option<Range<PhysicalAddress>>,
@@ -106,6 +111,7 @@ impl<'dt> BootInfoVisitor<'dt> {
         }
 
         Some(BootInfo {
+            dtb: self.dtb,
             cpus: self.cpus,
             serial: self.serial?,
             qemu_exit_handle,
@@ -239,7 +245,7 @@ impl<'dt> Visitor<'dt> for RegVisitor {
         let start = unsafe { PhysicalAddress::new(start) };
 
         self.inner = Some(start..start.add(width));
-        
+
         Ok(())
     }
 }

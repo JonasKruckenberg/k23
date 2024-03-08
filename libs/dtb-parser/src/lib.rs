@@ -71,6 +71,7 @@ pub struct DevTree<'dt> {
     version: u32,
     last_comp_version: u32,
     boot_cpuid_phys: u32,
+    total_slice: &'dt [u8],
     memory_slice: &'dt [u8],
     parser: Parser<'dt>,
 }
@@ -133,10 +134,17 @@ impl<'dt> DevTree<'dt> {
             slice::from_raw_parts(addr, length as usize)
         };
 
+        let total_slice = {
+            let addr = base.as_ptr();
+            let length = u32::from_be_bytes(header.totalsize);
+            slice::from_raw_parts(addr, length as usize)
+        };
+
         Ok(Self {
             version: u32::from_be_bytes(header.version),
             last_comp_version: u32::from_be_bytes(header.last_comp_version),
             boot_cpuid_phys: u32::from_be_bytes(header.boot_cpuid_phys),
+            total_slice,
             memory_slice,
             parser: Parser {
                 struct_slice,
@@ -157,6 +165,10 @@ impl<'dt> DevTree<'dt> {
 
     pub fn boot_cpuid_phys(&self) -> u32 {
         self.boot_cpuid_phys
+    }
+
+    pub fn as_slice(&self) -> &'dt [u8] {
+        self.total_slice
     }
 
     pub fn visit<E: core::error::Error + From<Error>>(
