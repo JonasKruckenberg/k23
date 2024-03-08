@@ -1,6 +1,6 @@
 use crate::flush::Flush;
 use crate::table::Table;
-use crate::{FrameAllocator, Mode, PhysicalAddress, VirtualAddress};
+use crate::{AddressRangeExt, FrameAllocator, Mode, PhysicalAddress, VirtualAddress};
 use bitflags::Flags;
 use core::ops::Range;
 
@@ -198,7 +198,20 @@ impl<'a, M: Mode> Mapper<'a, M> {
     ) -> crate::Result<()> {
         let len = virt_range.end.0 - virt_range.start.0;
         // make sure both ranges are the same size
-        debug_assert_eq!(len, phys_range.end.0 - phys_range.start.0);
+        debug_assert_eq!(
+            len,
+            phys_range.end.0 - phys_range.start.0,
+            "cannot map virtual address range to physical address range of different size"
+        );
+
+        debug_assert!(
+            virt_range.size() >= M::PAGE_SIZE,
+            "virtual address range must span be at least one page"
+        );
+        debug_assert!(
+            phys_range.size() >= M::PAGE_SIZE,
+            "physical address range must span be at least one page"
+        );
 
         let len_pages = len / M::PAGE_SIZE;
         let level = 0;
