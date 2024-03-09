@@ -37,6 +37,8 @@ pub trait Mode {
     const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags;
     /// Default flags for a valid page table subtable entry
     const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags;
+    /// Default flags for an entry that is read & write
+    const ENTRY_FLAG_DEFAULT_READ_WRITE: Self::EntryFlags;
     /// On RiscV targets the entry's physical address bits are shifted 2 bits to the right.
     /// This constant is present to account for that, should be set to 0 on all other targets.
     const ENTRY_ADDRESS_SHIFT: usize = 0;

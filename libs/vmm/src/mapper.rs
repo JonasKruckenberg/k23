@@ -16,28 +16,48 @@ pub struct Mapper<'a, M> {
     asid: usize,
     root_table: PhysicalAddress,
     allocator: &'a mut dyn FrameAllocator<M>,
+    phys_to_virt: fn(PhysicalAddress) -> VirtualAddress,
 }
 
 impl<'a, M: Mode> Mapper<'a, M> {
-    pub fn new(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> crate::Result<Self> {
+    pub fn new(
+        asid: usize,
+        allocator: &'a mut dyn FrameAllocator<M>,
+        phys_to_virt: fn(PhysicalAddress) -> VirtualAddress,
+    ) -> crate::Result<Self> {
         let root_table = allocator.allocate_frame()?;
         // crate::alloc::zero_frames(root_table.0 as *mut u64, 1);
 
-        Ok(Self {
+        let mut this = Self {
             asid,
             root_table,
             allocator,
-        })
+            phys_to_virt,
+        };
+
+        let root_table_virt = phys_to_virt(root_table);
+        this.map(
+            root_table_virt,
+            root_table,
+            M::ENTRY_FLAG_DEFAULT_READ_WRITE,
+            0,
+        )?;
+
+        Ok(this)
     }
 
-    pub fn from_active(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> Self {
+    pub fn from_active(
+        asid: usize,
+        allocator: &'a mut dyn FrameAllocator<M>,
+        phys_to_virt: fn(PhysicalAddress) -> VirtualAddress,
+    ) -> Self {
         let root_table = M::get_active_table(asid);
         debug_assert!(root_table.0 != 0);
 
         Self {
             asid,
             root_table,
-            // virt_to_phys,
+            phys_to_virt,
             allocator,
         }
     }
@@ -278,6 +298,9 @@ impl<'a, M: Mode> Mapper<'a, M> {
                     // allocate a new physical frame to hold the entries children
                     let frame_phys = self.allocator.allocate_frame()?;
                     entry.set_address_and_flags(frame_phys, M::ENTRY_FLAG_DEFAULT_TABLE);
+
+                    let frame_virt = (self.phys_to_virt)(frame_phys);
+                    self.map(frame_virt, frame_phys, M::ENTRY_FLAG_DEFAULT_READ_WRITE, 0)?;
                 }
 
                 table = unsafe { Table::new(entry.get_address(), table.level() - 1) };
