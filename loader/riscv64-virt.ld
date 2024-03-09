@@ -21,18 +21,14 @@ SECTIONS {
         __rodata_start = .;
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
+        . = ALIGN(4096); # 4KB page alignment for mapping
         __rodata_end = .;
     } > DRAM
 
-    .data : {
-        . = ALIGN(4096); # 4KB page alignment for mapping
-        __data_start = .;
-        *(.data .data.*)
-        *(.sdata .sdata.*)
-        __data_end = .;
-    } > DRAM
-
     .bss (NOLOAD) : {
+        . = ALIGN(4096); # 4KB page alignment for mapping
+        __stack_start = .;
+        *(.bss.uninit)
         . = ALIGN(8); # 8-byte alignment for u64 ptr trick
         __bss_start = .;
         *(.bss .bss.*)
@@ -40,8 +36,13 @@ SECTIONS {
         __bss_end = .;
     } > DRAM
 
-    . = ALIGN(4096); # 4KB page alignment for mapping
-    __stack_start = .;
+    .data : {
+        __data_start = .;
+        *(.data .data.*)
+        *(.sdata .sdata.*)
+        . = ALIGN(4096); # 4KB page alignment for mapping
+        __data_end = .;
+    } > DRAM
 
     /DISCARD/ : {
         *(.comment*)

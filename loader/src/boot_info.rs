@@ -4,6 +4,7 @@ use core::ops::Range;
 use core::ptr::NonNull;
 use dtb_parser::{DevTree, Node, Visitor};
 use vmm::PhysicalAddress;
+// use vmm::PhysicalAddress;
 
 #[derive(Debug)]
 pub struct BootInfo {

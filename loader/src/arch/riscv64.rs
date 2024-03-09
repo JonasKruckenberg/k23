@@ -1,17 +1,25 @@
-use crate::machine_info::{MachineInfo, MINFO};
+use crate::boot_info::BootInfo;
+use crate::STACK_FILL;
 use core::arch::asm;
-use core::ptr::{addr_of_mut, NonNull};
-use uart_16550::SerialPort;
+use core::ops::Range;
+use core::ptr::{addr_of, addr_of_mut, NonNull};
+use core::{hint, usize};
+use vmm::{
+    BumpAllocator, EntryFlags, Flush, FrameAllocator, Mapper, Mode, PhysicalAddress, VirtualAddress,
+};
 
-const STACK_SIZE_PAGES: usize = 16;
-const PAGE_SIZE: usize = 4096;
+pub const PAGE_SIZE: usize = 4096;
+pub const STACK_SIZE_PAGES: usize = 16 + 8;
 
-pub type QEMUExit = qemu_exit::RISCV64;
+#[link_section = ".bss.uninit"]
+pub static BOOT_STACK: [u8; STACK_SIZE_PAGES * PAGE_SIZE] = [0; STACK_SIZE_PAGES * PAGE_SIZE];
+
+type VMM = vmm::Riscv64Sv39;
 
 pub fn halt() -> ! {
     unsafe {
         loop {
-            asm!("wfi");
+            asm!("wfi")
         }
     }
 }
@@ -25,60 +33,162 @@ unsafe extern "C" fn _start() -> ! {
         ".option norelax",
         "    la		gp, __global_pointer$",
         ".option pop",
-        "la     sp, __stack_start", // set the stack pointer to the bottom of the stack
-        "li     t0, {stack_size}", // load the stack size
-        "addi   t1, a0, 1", // add one to the hart id so that we add at least one stack size (stack grows from the top downwards)
-        "mul    t0, t0, t1", // multiply the stack size by the hart id to get the offset
-        "add    sp, sp, t0", // add the offset from sp to get the harts stack pointer
+        "la     sp, {stack}",       // set the stack pointer to the bottom of the stack
+        "li     t0, {stack_size}",  // load the stack size
+        "add    sp, sp, t0",        // add the stack size to the stack pointer
+        "mv     a2, sp",
 
-        // "addi sp, sp, -{trap_frame_size}",
-        // "csrrw x0, sscratch, sp", // sscratch points to the trap frame
+        // fill our stack area with a canary pattern
+        "li          t1, {stack_fill}",
+        "la          t0, {stack}",
+        "100:", // fillstack
+        "sw          t1, 0(t0)",
+        "addi        t0, t0, 4",
+        "bltu        t0, sp, 100b",
 
-        "jal zero, {start_rust}", // jump into Rust
-
+        "jal zero, {start_rust}",   // jump into Rust
+        stack = sym BOOT_STACK,
         stack_size = const STACK_SIZE_PAGES * PAGE_SIZE,
-        // trap_frame_size = const mem::size_of::<TrapFrame>(),
+        stack_fill = const STACK_FILL,
         start_rust = sym start,
         options(noreturn)
     )
 }
 
-unsafe extern "C" fn start(hartid: usize, opaque: *mut u8) -> ! {
-    // use `call_once` to do all global one-time initialization
-    let minfo = MINFO.call_once(|| {
-        extern "C" {
-            static mut __bss_start: u64;
-            static mut __bss_end: u64;
-        }
+#[no_mangle]
+unsafe extern "C" fn start(hartid: usize, opaque: *mut u8, stack_base: *const u8) -> ! {
+    extern "C" {
+        static mut __bss_start: u64;
+        static mut __bss_end: u64;
+    }
 
-        // Zero BSS section
-        let mut ptr = addr_of_mut!(__bss_start);
-        let end = addr_of_mut!(__bss_end);
-        while ptr < end {
-            ptr.write_volatile(0);
-            ptr = ptr.offset(1);
-        }
+    // Zero BSS section
+    let mut ptr = addr_of_mut!(__bss_start);
+    let end = addr_of_mut!(__bss_end);
+    while ptr < end {
+        ptr.write_volatile(0);
+        ptr = ptr.offset(1);
+    }
 
-        let dtb_ptr = NonNull::new(opaque).unwrap();
+    crate::logger::init();
 
-        let minfo = MachineInfo::from_dtb(dtb_ptr);
+    let boot_stack_region = BOOT_STACK.as_ptr()..BOOT_STACK.as_ptr().add(BOOT_STACK.len());
+    // debug_assert!(boot_stack_region.contains(&stack_base));
 
-        crate::logger::init(&minfo);
+    let dtb_ptr = NonNull::new(opaque).unwrap();
+    let boot_info = BootInfo::from_dtb(dtb_ptr);
 
-        {
-            let mut port =
-                SerialPort::new(minfo.serial.reg.start, minfo.serial.clock_frequency, 38400);
+    log::debug!("Hello World");
+    log::debug!(
+        "boot stack region {boot_stack_region:?} guard pages {:?}",
+        boot_stack_region.start..boot_stack_region.start.add(8 * PAGE_SIZE)
+    );
 
-            let mut v = dtb_parser::debug::DebugVisitor::new(&mut port);
+    // 0x80238000
+    // 0x80238000..0x80240000
 
-            dtb_parser::DevTree::from_raw(dtb_ptr)
-                .unwrap()
-                .visit(&mut v)
-                .unwrap();
-        }
+    // let kernel = include_bytes!(env!("K23_KERNEL_ARTIFACT"));
+    //
+    // log::debug!(
+    //     "Kernel image {:?} {} bytes",
+    //     kernel.as_ptr()..kernel.as_ptr().add(kernel.len()),
+    //     kernel.len()
+    // );
 
-        minfo
-    });
+    init_paging(&boot_info);
 
-    crate::main(hartid, minfo)
+    crate::main(hartid)
+}
+
+fn init_paging(boot_info: &BootInfo) {
+    extern "C" {
+        static __text_start: u8;
+        static __text_end: u8;
+        static __rodata_start: u8;
+        static __rodata_end: u8;
+        static __stack_start: u8;
+        static __data_end: u8;
+    }
+
+    let loader_executable_region = unsafe {
+        let start = PhysicalAddress::new(addr_of!(__text_start) as usize);
+        let end = PhysicalAddress::new(addr_of!(__text_end) as usize);
+        start..end
+    };
+
+    let loader_read_only_region = unsafe {
+        let start = PhysicalAddress::new(addr_of!(__rodata_start) as usize);
+        let end = PhysicalAddress::new(addr_of!(__rodata_end) as usize);
+        start..end
+    };
+
+    let loader_read_write_region = unsafe {
+        let start = PhysicalAddress::new(addr_of!(__stack_start) as usize).add(8 * PAGE_SIZE);
+        let end = PhysicalAddress::new(addr_of!(__data_end) as usize);
+        log::debug!("read-write {start:?}..{end:?}");
+        start..end
+    };
+
+    pub const KIB: usize = 1024;
+    pub const MIB: usize = 1024 * KIB;
+    pub const GIB: usize = 1024 * MIB;
+
+    let phys_to_virt_identity =
+        |addr: PhysicalAddress| unsafe { VirtualAddress::new(addr.as_raw()) };
+
+    // step 1: init allocator
+    let mut alloc: BumpAllocator<VMM> = unsafe {
+        BumpAllocator::new(
+            &boot_info.memories,
+            loader_read_write_region
+                .end
+                .sub_addr(boot_info.memories[0].start),
+            phys_to_virt_identity,
+        )
+    };
+
+    // let f = alloc.allocate_frames(10).unwrap();
+    // assert!(f > kernel_read_write_region.end);
+
+    // step 2: init mapper
+    let mut mapper = Mapper::new(0, &mut alloc, phys_to_virt_identity).unwrap();
+    let mut flush = Flush::empty(0);
+
+    // step 4: map own text section
+    mapper
+        .identity_map_range_with_flush(
+            loader_executable_region,
+            EntryFlags::READ | EntryFlags::EXECUTE,
+            &mut flush,
+        )
+        .unwrap();
+
+    // step 5: map own read-only section
+    mapper
+        .identity_map_range_with_flush(loader_read_only_region, EntryFlags::READ, &mut flush)
+        .unwrap();
+
+    // step 6: map own read-write section
+    mapper
+        .identity_map_range_with_flush(
+            loader_read_write_region,
+            EntryFlags::READ | EntryFlags::WRITE,
+            &mut flush,
+        )
+        .unwrap();
+
+    let frame_usage = mapper.allocator().frame_usage();
+    log::debug!(
+        "Mapping complete. Permanently used: {} KiB of {} MiB total ({:.3}%).",
+        (frame_usage.used * VMM::PAGE_SIZE) / KIB,
+        (frame_usage.total * VMM::PAGE_SIZE) / MIB,
+        (frame_usage.used as f64 / frame_usage.total as f64) * 100.0
+    );
+
+    mapper.activate();
+
+    log::debug!("success");
+
+    // let m = Mapper::from_active(0, &mut alloc, phys_to_virt_identity);
+    // m.root_table().debug_print_table().unwrap()
 }

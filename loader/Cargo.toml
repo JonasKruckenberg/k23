@@ -5,11 +5,13 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-cfg-if.workspace = true
-log.workspace = true
-sbicall.workspace = true
-spin.workspace = true
-qemu-exit.workspace = true
 arrayvec.workspace = true
+cfg-if.workspace = true
 dtb-parser.workspace = true
+log.workspace = true
+spin.workspace = true
 vmm = { version = "0.1.0", path = "../libs/vmm" }
+
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+sbicall.workspace = true
+riscv.workspace = true
