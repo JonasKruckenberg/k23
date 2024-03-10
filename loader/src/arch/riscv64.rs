@@ -142,14 +142,12 @@ fn init_paging(boot_info: &BootInfo) {
         )
     };
 
-    // let f = alloc.allocate_frames(10).unwrap();
-    // assert!(f > kernel_read_write_region.end);
-
     // step 2: init mapper
     let mut mapper = Mapper::new(0, &mut alloc, phys_to_virt_identity).unwrap();
     let mut flush = Flush::empty(0);
 
     // step 4: map own text section
+    log::trace!("Identity mapping own executable region {loader_executable_region:?}...");
     mapper
         .identity_map_range_with_flush(
             loader_executable_region,
@@ -159,11 +157,13 @@ fn init_paging(boot_info: &BootInfo) {
         .unwrap();
 
     // step 5: map own read-only section
+    log::trace!("Identity mapping own read-only region {loader_read_only_region:?}...");
     mapper
         .identity_map_range_with_flush(loader_read_only_region, EntryFlags::READ, &mut flush)
         .unwrap();
 
     // step 6: map own read-write section
+    log::trace!("Identity mapping own read-write region {loader_read_write_region:?}...");
     mapper
         .identity_map_range_with_flush(
             loader_read_write_region,
@@ -181,8 +181,6 @@ fn init_paging(boot_info: &BootInfo) {
     );
 
     mapper.activate();
-
-    log::debug!("success");
 
     // let m = Mapper::from_active(0, &mut alloc, phys_to_virt_identity);
     // m.root_table().debug_print_table().unwrap()
