@@ -1,18 +1,18 @@
 use crate::boot_info::BootInfo;
 use crate::STACK_FILL;
 use core::arch::asm;
-use core::ops::Range;
+use core::ops::{Range, RangeInclusive};
 use core::ptr::{addr_of, addr_of_mut, NonNull};
 use core::{hint, usize};
 use vmm::{
     BumpAllocator, EntryFlags, Flush, FrameAllocator, Mapper, Mode, PhysicalAddress, VirtualAddress,
 };
+use crate::stack::Stack;
 
 pub const PAGE_SIZE: usize = 4096;
-pub const STACK_SIZE_PAGES: usize = 16 + 8;
 
 #[link_section = ".bss.uninit"]
-pub static BOOT_STACK: [u8; STACK_SIZE_PAGES * PAGE_SIZE] = [0; STACK_SIZE_PAGES * PAGE_SIZE];
+pub static BOOT_STACK: Stack = Stack::ZERO;
 
 type VMM = vmm::Riscv64Sv39;
 
@@ -48,15 +48,15 @@ unsafe extern "C" fn _start() -> ! {
 
         "jal zero, {start_rust}",   // jump into Rust
         stack = sym BOOT_STACK,
-        stack_size = const STACK_SIZE_PAGES * PAGE_SIZE,
-        stack_fill = const STACK_FILL,
+        stack_size = const (Stack::GUARD_PAGES + Stack::SIZE_PAGES) * PAGE_SIZE,
+        stack_fill = const Stack::FILL_PATTERN,
         start_rust = sym start,
         options(noreturn)
     )
 }
 
 #[no_mangle]
-unsafe extern "C" fn start(hartid: usize, opaque: *mut u8, stack_base: *const u8) -> ! {
+unsafe extern "C" fn start(hartid: usize, opaque: *mut u8, stack_base: PhysicalAddress) -> ! {
     extern "C" {
         static mut __bss_start: u64;
         static mut __bss_end: u64;
@@ -72,20 +72,15 @@ unsafe extern "C" fn start(hartid: usize, opaque: *mut u8, stack_base: *const u8
 
     crate::logger::init();
 
-    let boot_stack_region = BOOT_STACK.as_ptr()..BOOT_STACK.as_ptr().add(BOOT_STACK.len());
-    // debug_assert!(boot_stack_region.contains(&stack_base));
+    let boot_stack_region = BOOT_STACK.region();
+    debug_assert!(
+        boot_stack_region.contains(&stack_base),
+        "region {boot_stack_region:?} stack_base {stack_base:?}"
+    );
+    log::trace!("boot stack region {boot_stack_region:?} stack base {stack_base:?}");
 
     let dtb_ptr = NonNull::new(opaque).unwrap();
     let boot_info = BootInfo::from_dtb(dtb_ptr);
-
-    log::debug!("Hello World");
-    log::debug!(
-        "boot stack region {boot_stack_region:?} guard pages {:?}",
-        boot_stack_region.start..boot_stack_region.start.add(8 * PAGE_SIZE)
-    );
-
-    // 0x80238000
-    // 0x80238000..0x80240000
 
     // let kernel = include_bytes!(env!("K23_KERNEL_ARTIFACT"));
     //
