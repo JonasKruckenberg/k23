@@ -1,13 +1,10 @@
 use crate::boot_info::BootInfo;
-use crate::STACK_FILL;
-use core::arch::asm;
-use core::ops::{Range, RangeInclusive};
-use core::ptr::{addr_of, addr_of_mut, NonNull};
-use core::{hint, usize};
-use vmm::{
-    BumpAllocator, EntryFlags, Flush, FrameAllocator, Mapper, Mode, PhysicalAddress, VirtualAddress,
-};
 use crate::stack::Stack;
+use crate::{KIB, MIB};
+use core::arch::asm;
+use core::ptr::{addr_of, addr_of_mut, NonNull};
+use core::usize;
+use vmm::{BumpAllocator, EntryFlags, Flush, Mapper, Mode, PhysicalAddress, VirtualAddress};
 
 pub const PAGE_SIZE: usize = 4096;
 
@@ -38,10 +35,11 @@ unsafe extern "C" fn _start() -> ! {
         "add    sp, sp, t0",        // add the stack size to the stack pointer
         "mv     a2, sp",
 
-        // fill our stack area with a canary pattern
+        // fill our stack area with a fixed pattern
+        // so that we can identify unused stack memory in dumps & calculate stack usage
         "li          t1, {stack_fill}",
         "la          t0, {stack}",
-        "100:", // fillstack
+        "100:",
         "sw          t1, 0(t0)",
         "addi        t0, t0, 4",
         "bltu        t0, sp, 100b",
@@ -123,10 +121,6 @@ fn init_paging(boot_info: &BootInfo) {
         log::debug!("read-write {start:?}..{end:?}");
         start..end
     };
-
-    pub const KIB: usize = 1024;
-    pub const MIB: usize = 1024 * KIB;
-    pub const GIB: usize = 1024 * MIB;
 
     let phys_to_virt_identity =
         |addr: PhysicalAddress| unsafe { VirtualAddress::new(addr.as_raw()) };

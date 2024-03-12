@@ -3,7 +3,7 @@
 #![feature(naked_functions, asm_const)]
 #![feature(isqrt)]
 
-use crate::arch::{BOOT_STACK, PAGE_SIZE};
+use crate::arch::BOOT_STACK;
 
 mod arch;
 mod boot_info;
@@ -11,13 +11,11 @@ mod logger;
 mod panic;
 mod stack;
 
-const STACK_FILL: u64 = 0xACE0BACE;
-
 pub const KIB: usize = 1024;
 pub const MIB: usize = 1024 * KIB;
-pub const GIB: usize = 1024 * MIB;
+// pub const GIB: usize = 1024 * MIB;
 
-fn main(hartid: usize) -> ! {
+fn main(_hartid: usize) -> ! {
     let stack_usage = BOOT_STACK.usage();
     log::debug!(
         "Stack usage: {} KiB of {} KiB total ({:.3}%). High Watermark: {} KiB.",
