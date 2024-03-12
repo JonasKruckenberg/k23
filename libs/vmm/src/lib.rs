@@ -65,6 +65,7 @@ pub trait Mode {
         Self: Sized;
 }
 
+#[repr(transparent)]
 #[derive(Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct PhysicalAddress(usize);
 
@@ -125,6 +126,7 @@ impl fmt::Debug for PhysicalAddress {
     }
 }
 
+#[repr(transparent)]
 #[derive(Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct VirtualAddress(usize);
 
