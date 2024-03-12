@@ -25,13 +25,3 @@ pub trait FrameAllocator<M: Mode> {
     /// Information about the number of physical frames used, and available
     fn frame_usage(&self) -> FrameUsage;
 }
-
-pub(crate) fn zero_frames<M: Mode>(mut ptr: *mut u64, num_frames: usize) {
-    unsafe {
-        let end = ptr.add(num_frames * M::PAGE_SIZE);
-        while ptr < end {
-            ptr.write_volatile(0);
-            ptr = ptr.offset(1);
-        }
-    }
-}

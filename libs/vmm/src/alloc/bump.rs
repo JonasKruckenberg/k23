@@ -1,5 +1,5 @@
-use crate::alloc::{zero_frames, FrameAllocator, FrameUsage};
-use crate::{Error, VirtualAddress};
+use crate::alloc::{FrameAllocator, FrameUsage};
+use crate::Error;
 use crate::{Mode, PhysicalAddress};
 use core::marker::PhantomData;
 use core::ops::Range;
@@ -7,7 +7,6 @@ use core::ops::Range;
 pub struct BumpAllocator<'a, M> {
     regions: &'a [Range<PhysicalAddress>],
     offset: usize,
-    phys_to_virt: fn(PhysicalAddress) -> VirtualAddress,
     _m: PhantomData<M>,
 }
 
@@ -15,15 +14,10 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
     /// # Safety
     ///
     /// The regions list is assumed to be sorted and not overlapping
-    pub unsafe fn new(
-        regions: &'a [Range<PhysicalAddress>],
-        offset: usize,
-        phys_to_virt: fn(PhysicalAddress) -> VirtualAddress,
-    ) -> Self {
+    pub unsafe fn new(regions: &'a [Range<PhysicalAddress>], offset: usize) -> Self {
         Self {
             regions,
             offset,
-            phys_to_virt,
             _m: PhantomData,
         }
     }
@@ -46,8 +40,8 @@ impl<'a, M: Mode> FrameAllocator<M> for BumpAllocator<'a, M> {
 
             if offset < region_size {
                 let page_phys = region.start.add(offset);
-                let page_virt = (self.phys_to_virt)(page_phys);
-                zero_frames::<M>(page_virt.0 as *mut u64, num_frames);
+                // let page_virt = (self.phys_to_virt)(page_phys);
+                // zero_frames::<M>(page_virt.0 as *mut u64, num_frames);
                 self.offset += num_frames * M::PAGE_SIZE;
                 return Ok(page_phys);
             }

@@ -1,6 +1,6 @@
 use crate::flush::Flush;
 use crate::table::Table;
-use crate::{AddressRangeExt, FrameAllocator, Mode, PhysicalAddress, VirtualAddress};
+use crate::{zero_frames, AddressRangeExt, FrameAllocator, Mode, PhysicalAddress, VirtualAddress};
 use bitflags::Flags;
 use core::ops::Range;
 
@@ -36,12 +36,17 @@ impl<'a, M: Mode> Mapper<'a, M> {
         };
 
         let root_table_virt = phys_to_virt(root_table);
-        this.map(
+
+        let flush = this.map(
             root_table_virt,
             root_table,
             M::ENTRY_FLAG_DEFAULT_READ_WRITE,
             0,
         )?;
+        flush.flush()?;
+        log::debug!("recursively mapped frame {root_table_virt:?}=>{root_table:?}");
+
+        zero_frames::<M>(root_table_virt.as_raw() as *mut u64, 1);
 
         Ok(this)
     }
@@ -300,7 +305,17 @@ impl<'a, M: Mode> Mapper<'a, M> {
                     entry.set_address_and_flags(frame_phys, M::ENTRY_FLAG_DEFAULT_TABLE);
 
                     let frame_virt = (self.phys_to_virt)(frame_phys);
-                    self.map(frame_virt, frame_phys, M::ENTRY_FLAG_DEFAULT_READ_WRITE, 0)?;
+                    self.map_with_flush(
+                        frame_virt,
+                        frame_phys,
+                        M::ENTRY_FLAG_DEFAULT_READ_WRITE,
+                        0,
+                        flush,
+                        false,
+                    )?;
+                    log::debug!("recursively mapped frame {frame_virt:?}=>{frame_phys:?}");
+
+                    zero_frames::<M>(frame_virt.as_raw() as *mut u64, 1);
                 }
 
                 table = unsafe { Table::new(entry.get_address(), table.level() - 1) };

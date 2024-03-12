@@ -132,6 +132,7 @@ pub struct VirtualAddress(usize);
 
 impl VirtualAddress {
     pub const unsafe fn new(bits: usize) -> Self {
+        debug_assert!(bits <= 0x0000_003f_ffff_ffff || bits > 0xffff_ffbf_ffff_ffff);
         debug_assert!(bits != 0);
         Self(bits)
     }
@@ -233,5 +234,15 @@ impl AddressRangeExt for Range<VirtualAddress> {
 
     fn add(self, offset: usize) -> Self {
         self.start.add(offset)..self.end.add(offset)
+    }
+}
+
+pub(crate) fn zero_frames<M: Mode>(mut ptr: *mut u64, num_frames: usize) {
+    unsafe {
+        let end = ptr.add(num_frames * M::PAGE_SIZE);
+        while ptr < end {
+            ptr.write_volatile(0);
+            ptr = ptr.offset(1);
+        }
     }
 }
