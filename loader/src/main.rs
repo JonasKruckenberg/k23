@@ -1,12 +1,12 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions, asm_const)]
-#![feature(isqrt)]
 
 use crate::arch::BOOT_STACK;
 
 mod arch;
 mod boot_info;
+mod externs;
 mod logger;
 mod panic;
 mod stack;

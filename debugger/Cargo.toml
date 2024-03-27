@@ -1,0 +1,9 @@
+[package]
+name = "debugger"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+lldb.workspace = true

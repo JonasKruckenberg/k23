@@ -132,7 +132,7 @@ fn init_paging(boot_info: &BootInfo) {
             loader_read_write_region
                 .end
                 .sub_addr(boot_info.memories[0].start),
-            phys_to_virt_identity,
+            // phys_to_virt_identity,
         )
     };
 

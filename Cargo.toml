@@ -1,5 +1,5 @@
 [workspace]
-members = ["build/*", "kernel", "libs/dtb-parser", "libs/dtb-parser", "libs/sbicall", "libs/uart-16550", "libs/vmm", "loader"]
+members = ["build/*", "debugger", "kernel", "libs/dtb-parser", "libs/dtb-parser", "libs/sbicall", "libs/uart-16550", "libs/vmm", "loader"]
 resolver = "2"
 
 [workspace.package]
@@ -37,6 +37,7 @@ arrayvec = { version = "0.7.4", default-features = false }
 qemu-exit = "3.0.2"
 
 # build dependencies
+lldb = { path = "build/lldb" }
 cranelift-isle = { path = "build/cranelift-isle" }
 serde = { version = "1.0.196", default-features = false, features = ["derive"] }
 toml = "0.8.10"

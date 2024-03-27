@@ -1,8 +1,8 @@
 use crate::arch;
-use crate::boot_info::BOOT_INFO;
+// use crate::boot_info::BOOT_INFO;
 use core::arch::asm;
 use core::panic::PanicInfo;
-use qemu_exit::QEMUExit;
+// use qemu_exit::QEMUExit;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {

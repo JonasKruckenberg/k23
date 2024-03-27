@@ -5,6 +5,7 @@ use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::{Artifact, Message, MetadataCommand};
 use clap::{ArgAction, Parser};
 use std::ffi::OsStr;
+use std::fs;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
@@ -39,9 +40,6 @@ enum XtaskCommand {
     Gdb {
         // /// Path to the image configuration file, in TOML.
         // cfg: PathBuf,
-        /// Whether to build in release mode instead of debug mode
-        #[clap(short, long)]
-        release: bool,
         /// Don't start QEMU in the background
         #[clap(long, default_value = "true")]
         run: bool,
@@ -80,9 +78,9 @@ fn run() -> anyhow::Result<()> {
             check_kernel()?;
             check_loader()?;
         }
-        XtaskCommand::Gdb { release, run, .. } => {
-            let kernel = build_kernel(release)?;
-            let loader = build_loader(release, &kernel)?;
+        XtaskCommand::Gdb { run, .. } => {
+            let kernel = build_kernel(false)?;
+            let loader = build_loader(false, &kernel)?;
 
             let maybe_child = if run {
                 let c = start_qemu("qemu-system-riscv64", loader.as_str(), true)?;
@@ -109,7 +107,7 @@ fn run() -> anyhow::Result<()> {
             log::debug!("{loader}");
             log::debug!("{kernel}");
 
-            let mut c = start_qemu("qemu-system-riscv64", loader.as_str(), false)?;
+            let mut c = start_qemu("qemu-system-riscv64", loader.as_str(), true)?;
             c.wait()?;
         }
         XtaskCommand::Dist { .. } => {
@@ -138,10 +136,14 @@ fn check_kernel() -> anyhow::Result<()> {
 }
 
 fn build_loader(release: bool, kernel: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
-    let bootloader = Cargo::new_build("loader", "riscv64imac-unknown-none-elf")
+    let bootloader = Cargo::new_build("loader", "riscv64gc-unknown-none-elf")
         .release(release)
-        .env("RUSTFLAGS", "-Zstack-protector=all -Csoft-float=true")
+        .env("RUSTFLAGS", "-Zstack-protector=all")
         .env("K23_KERNEL_ARTIFACT", kernel)
+        .env(
+            "K23_KERNEL_ARTIFACT_LEN",
+            fs::metadata(kernel).unwrap().len().to_string(),
+        )
         .additional_args([
             "-Z",
             "build-std=core,alloc",
@@ -294,9 +296,9 @@ fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> 
         "-cpu",
         "rv64",
         "-d",
-        "guest_errors,unimp",
+        "guest_errors,unimp,int",
         "-smp",
-        "8",
+        "1",
         "-m",
         "128M",
         "-nographic",
@@ -316,7 +318,7 @@ fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> 
 
     if debug {
         cmd.args(["-s", "-S"]);
-        cmd.stdout(Stdio::piped())
+        cmd.stdout(Stdio::inherit())
             .stderr(Stdio::piped())
             .stdin(Stdio::piped());
     } else {
