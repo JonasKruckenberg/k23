@@ -1,10 +1,11 @@
-use crate::strings::get_str;
+use crate::strings::{get_str, with_cstr};
 use crate::{
     debug_descr, Address, IsValid, ProcessID, SBBroadcaster, SBError, SBIterator,
     SBMemoryRegionInfo, SBMemoryRegionInfoList, SBTarget, SBThread, ThreadID,
 };
 use cpp::{cpp, cpp_class};
 use num_enum::FromPrimitive;
+use std::path::Path;
 use std::{ffi, fmt};
 
 cpp_class!(pub unsafe struct SBProcess as "SBProcess");
@@ -201,6 +202,23 @@ impl SBProcess {
             Err(error)
         }
     }
+
+    /// Save the state of the process in a core file.
+    pub fn save_core(
+        &self,
+        file_path: &Path,
+        flavor: &str,
+        core_style: SaveCoreStyle,
+    ) -> Result<(), SBError> {
+        with_cstr(file_path, |file_path| {
+            with_cstr(flavor, |flavor| {
+                cpp!(unsafe [self as "SBProcess*"] -> SBError as "SBError" {
+                    return self->SaveCore(file_path);
+                })
+                .into_result()
+            })
+        })
+    }
 }
 
 impl IsValid for SBProcess {
@@ -219,6 +237,16 @@ impl fmt::Debug for SBProcess {
             })
         })
     }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Debug, FromPrimitive)]
+#[repr(u32)]
+pub enum SaveCoreStyle {
+    #[default]
+    Unspecified = 0,
+    Full = 1,
+    DirtyOnly = 2,
+    StackOnly = 3,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug, FromPrimitive)]
