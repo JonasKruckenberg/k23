@@ -292,8 +292,8 @@ impl<M: Mode> Mode for INIT<M> {
     }
 
     fn entry_is_leaf(entry: &Entry<Self>) -> bool
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         let entry = unsafe { core::mem::transmute(entry) };
         M::entry_is_leaf(entry)

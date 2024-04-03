@@ -30,7 +30,9 @@ impl Into<usize> for EntryFlags {
     }
 }
 
-const PHYS_OFFSET: VirtualAddress = unsafe { VirtualAddress::new(0xffff_ffff_0000_0000) };
+// const PHYS_OFFSET: VirtualAddress = unsafe { VirtualAddress::new(0xffff_ffff_0000_0000) };
+const PHYS_OFFSET: VirtualAddress = unsafe { VirtualAddress::new(0xffff_ffd8_0000_0000) };
+
 // const MMIO_BASE: VirtualAddress = unsafe { VirtualAddress::new(0xffff_ffd8_0000_0000) };
 
 const PAGE_SIZE: usize = 4096;

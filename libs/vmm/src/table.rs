@@ -41,7 +41,7 @@ impl<M: Mode> Table<M> {
     pub fn entry(&self, index: usize) -> &Entry<M> {
         debug_assert!(index < M::PAGE_TABLE_ENTRIES, "index was {}", index);
         let ptr = self.addr.add(index * mem::size_of::<Entry<M>>()).as_raw() as *mut Entry<M>;
-        log::trace!("{ptr:?} self.addr {:?} index: {index}", self.addr);
+        // log::trace!("{ptr:?} self.addr {:?} index: {index}", self.addr);
         unsafe { &*ptr }
     }
 
