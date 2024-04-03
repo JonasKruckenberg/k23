@@ -1,10 +1,9 @@
 use crate::boot_info::BootInfo;
 use crate::kconfig;
 use crate::stack::Stack;
-use crate::{KIB, MIB};
 use core::arch::asm;
-use core::ptr::{addr_of, addr_of_mut, NonNull};
-use vmm::{BumpAllocator, EntryFlags, Flush, Mapper, PhysicalAddress, VirtualAddress, INIT};
+use core::ptr::{addr_of_mut, NonNull};
+use vmm::{PhysicalAddress};
 
 #[link_section = ".bss.uninit"]
 pub static BOOT_STACK: Stack = Stack::ZERO;

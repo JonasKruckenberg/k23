@@ -10,7 +10,10 @@ const LINKER: &[u8] = include_bytes!("riscv64-qemu.ld");
 fn main() -> anyhow::Result<()> {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
-    make_kconfig(&out_dir)?;
+    if let Some(raw_cfg) = option_env!("K23_KCONFIG") {
+        let cfg = ron::from_str(raw_cfg)?;
+        make_kconfig(cfg, &out_dir)?;
+    }
 
     let ld = out_dir.join("linker.ld");
     fs::write(&ld, LINKER).unwrap();
@@ -22,12 +25,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn make_kconfig(out_dir: &Path) -> anyhow::Result<()> {
-    let cfg = {
-        let str = env!("K23_KCONFIG");
-        ron::from_str::<'_, build_config::Config>(str)?
-    };
-
+fn make_kconfig(cfg: build_config::Config, out_dir: &Path) -> anyhow::Result<()> {
     let stack_size_pages = cfg.kernel.stack_size_pages;
     let log_level = match cfg.kernel.log_level {
         LogLevel::Error => quote!(::log::Level::Error),

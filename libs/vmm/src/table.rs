@@ -1,5 +1,5 @@
 use crate::entry::Entry;
-use crate::{Mode, PhysicalAddress, VirtualAddress};
+use crate::{Mode, VirtualAddress};
 use core::marker::PhantomData;
 use core::mem;
 

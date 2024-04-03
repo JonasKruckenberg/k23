@@ -5,6 +5,7 @@ use core::ptr::NonNull;
 use dtb_parser::{DevTree, Node, Visitor};
 use vmm::PhysicalAddress;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct BootInfo {
     /// The number of "standalone" CPUs in the system
