@@ -248,3 +248,58 @@ pub(crate) fn zero_frames<M: Mode>(mut ptr: *mut u64, num_frames: usize) {
         }
     }
 }
+
+/// `INIT` is a special `Mode` implementation that should be used *before* any memory mode is active
+/// (i.e. no address translation is happening). It will wrap another `Mode` implementation and forward
+/// functionality and properties to that inner implementation, **except** for the `Mode::phys_to_virt`
+/// function which will always return and **identity translation** of the given physical address.
+#[derive(Debug, Clone, Copy)]
+pub struct INIT<M>(M);
+
+impl<M> INIT<M> {
+    pub fn into_inner(self) -> M {
+        self.0
+    }
+}
+
+impl<M: Mode> Mode for INIT<M> {
+    type EntryFlags = M::EntryFlags;
+
+    const PAGE_SIZE: usize = M::PAGE_SIZE;
+    const PAGE_TABLE_LEVELS: usize = M::PAGE_TABLE_LEVELS;
+    const PAGE_TABLE_ENTRIES: usize = M::PAGE_TABLE_ENTRIES;
+
+    const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags = M::ENTRY_FLAG_DEFAULT_LEAF;
+    const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags = M::ENTRY_FLAG_DEFAULT_TABLE;
+    const ENTRY_FLAG_DEFAULT_READ_WRITE: Self::EntryFlags = M::ENTRY_FLAG_DEFAULT_READ_WRITE;
+
+    const ENTRY_ADDRESS_SHIFT: usize = M::ENTRY_ADDRESS_SHIFT;
+
+    fn get_active_table(asid: usize) -> PhysicalAddress {
+        M::get_active_table(asid)
+    }
+
+    fn activate_table(asid: usize, table: VirtualAddress) {
+        M::activate_table(asid, table)
+    }
+
+    fn invalidate_all() -> crate::Result<()> {
+        M::invalidate_all()
+    }
+
+    fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> crate::Result<()> {
+        M::invalidate_range(asid, address_range)
+    }
+
+    fn entry_is_leaf(entry: &Entry<Self>) -> bool
+        where
+            Self: Sized,
+    {
+        let entry = unsafe { core::mem::transmute(entry) };
+        M::entry_is_leaf(entry)
+    }
+
+    fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
+        unsafe { VirtualAddress::new(phys.as_raw()) }
+    }
+}
