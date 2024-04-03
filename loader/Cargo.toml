@@ -15,6 +15,7 @@ vmm.workspace = true
 semihosting-logger = { workspace = true, optional = true }
 lz4_flex = { workspace = true, features = ["safe-decode"] }
 linked_list_allocator.workspace = true
+bitflags.workspace = true
 
 [build-dependencies]
 ron.workspace = true
