@@ -19,19 +19,18 @@ SECTIONS {
     __global_pointer$ = .;
 
     .rodata : {
-        . = ALIGN(4096); # 4KB page alignment for mapping
         __rodata_start = .;
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
-        . = ALIGN(4096);
+        . = ALIGN(4096); # 4KB page alignment for mapping
         __rodata_end = .;
     }
 
     .data : {
-        . = ALIGN(4096); # 4KB page alignment for mapping
         __data_start = .;
         *(.data .data.*)
         *(.sdata .sdata.*)
+        . = ALIGN(4096); # 4KB page alignment for mapping
         __data_end = .;
     }
 
@@ -40,6 +39,7 @@ SECTIONS {
         __bss_start = .;
         *(.bss .bss.*)
         *(.sbss .sbss.*)
+        . = ALIGN(4096); # 4KB page alignment for mapping
         __bss_end = .;
     }
 
