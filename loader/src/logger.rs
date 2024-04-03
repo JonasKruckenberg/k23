@@ -43,11 +43,11 @@ pub fn init() {
     impl Write for LoggerInner {
         fn write_str(&mut self, s: &str) -> fmt::Result {
             cfg_if::cfg_if! {
-            if #[cfg(target_arch = "riscv64")] {
-                let ptr = s.as_ptr();
-                let _ = sbicall::dbcn::debug_console_write(s.len(), ptr as usize, 0);
+                if #[cfg(target_arch = "riscv64")] {
+                    let ptr = s.as_ptr();
+                    let _ = sbicall::dbcn::debug_console_write(s.len(), ptr as usize, 0);
+                }
             }
-        }
 
             Ok(())
         }
