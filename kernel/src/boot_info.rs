@@ -1,9 +1,11 @@
 use arrayvec::ArrayVec;
 use core::mem;
 use core::ops::Range;
-use core::ptr::NonNull;
 use dtb_parser::{DevTree, Node, Visitor};
+use spin::Once;
 use vmm::PhysicalAddress;
+
+pub static BOOT_INFO: Once<BootInfo> = Once::new();
 
 #[derive(Debug)]
 pub struct BootInfo {
@@ -25,7 +27,7 @@ pub struct Serial {
 }
 
 impl BootInfo {
-    pub fn from_dtb(dtb_ptr: NonNull<u8>) -> Self {
+    pub fn from_dtb(dtb_ptr: *const u8) -> Self {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
         let mut reservations = fdt.reserved_entries();
 

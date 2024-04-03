@@ -1,25 +1,28 @@
 use arrayvec::ArrayVec;
 use core::mem;
 use core::ops::Range;
-use core::ptr::NonNull;
 use dtb_parser::{DevTree, Node, Visitor};
 use vmm::PhysicalAddress;
 
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct BootInfo {
+pub struct BootInfo<'dt> {
+    pub fdt: &'dt [u8],
     /// The number of "standalone" CPUs in the system
     pub cpus: usize,
     /// Address ranges we may use for allocation
     pub memories: ArrayVec<Range<PhysicalAddress>, 16>,
 }
 
-impl BootInfo {
-    pub fn from_dtb(dtb_ptr: NonNull<u8>) -> Self {
+impl<'dt> BootInfo<'dt> {
+    pub fn from_dtb(dtb_ptr: *const u8) -> Self {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
         let mut reservations = fdt.reserved_entries();
 
-        let mut v = BootInfoVisitor::default();
+        let mut v = BootInfoVisitor {
+            fdt: fdt.as_slice(),
+            ..Default::default()
+        };
         fdt.visit(&mut v).unwrap();
 
         let mut info = v.result();
@@ -61,7 +64,8 @@ impl BootInfo {
 ----------------------------------------------------------------------------------------------------
 */
 #[derive(Default)]
-struct BootInfoVisitor {
+struct BootInfoVisitor<'dt> {
+    fdt: &'dt [u8],
     cpus: usize,
     memories: RegsVisitor,
 }
@@ -73,16 +77,17 @@ struct RegsVisitor {
     regs: ArrayVec<Range<PhysicalAddress>, 16>,
 }
 
-impl BootInfoVisitor {
-    pub fn result(self) -> BootInfo {
+impl<'dt> BootInfoVisitor<'dt> {
+    pub fn result(self) -> BootInfo<'dt> {
         BootInfo {
+            fdt: self.fdt,
             cpus: self.cpus,
             memories: self.memories.regs,
         }
     }
 }
 
-impl<'dt> Visitor<'dt> for BootInfoVisitor {
+impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
     type Error = dtb_parser::Error;
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
         if name == "cpus" || name == "" {

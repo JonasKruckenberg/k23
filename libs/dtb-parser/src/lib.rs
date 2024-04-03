@@ -13,7 +13,6 @@ mod error;
 mod parser;
 
 use core::ffi::CStr;
-use core::ptr::NonNull;
 use core::{mem, slice, str};
 
 use crate::parser::Parser;
@@ -98,8 +97,8 @@ impl<'dt> DevTree<'dt> {
     ///
     /// The caller has to ensure the given pointer is valid and actually points to the device tree blob
     /// as only minimal sanity checking is performed.
-    pub unsafe fn from_raw(base: NonNull<u8>) -> Result<Self> {
-        let header = unsafe { base.cast::<Header>().as_ref() };
+    pub unsafe fn from_raw(base: *const u8) -> Result<Self> {
+        let header = unsafe { &*(base as *const Header) };
 
         if u32::from_be_bytes(header.magic) != DTB_MAGIC {
             return Err(Error::InvalidMagic);
@@ -110,34 +109,27 @@ impl<'dt> DevTree<'dt> {
         }
 
         let struct_slice = {
-            let addr = base
-                .as_ptr()
-                .add(u32::from_be_bytes(header.off_dt_struct) as usize);
+            let addr = base.add(u32::from_be_bytes(header.off_dt_struct) as usize);
             let len = u32::from_be_bytes(header.size_dt_struct) as usize;
             slice::from_raw_parts(addr, len)
         };
 
         let strings_slice = {
-            let addr = base
-                .as_ptr()
-                .add(u32::from_be_bytes(header.off_dt_strings) as usize);
+            let addr = base.add(u32::from_be_bytes(header.off_dt_strings) as usize);
             let length = u32::from_be_bytes(header.size_dt_strings) as usize;
             slice::from_raw_parts(addr, length)
         };
 
         let memory_slice = {
-            let addr = base
-                .as_ptr()
-                .add(u32::from_be_bytes(header.off_mem_rsvmap) as usize);
+            let addr = base.add(u32::from_be_bytes(header.off_mem_rsvmap) as usize);
             let length =
                 u32::from_be_bytes(header.totalsize) - u32::from_be_bytes(header.off_mem_rsvmap);
             slice::from_raw_parts(addr, length as usize)
         };
 
         let total_slice = {
-            let addr = base.as_ptr();
             let length = u32::from_be_bytes(header.totalsize);
-            slice::from_raw_parts(addr, length as usize)
+            slice::from_raw_parts(base, length as usize)
         };
 
         Ok(Self {

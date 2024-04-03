@@ -2,8 +2,8 @@ use crate::boot_info::BootInfo;
 use crate::kconfig;
 use crate::stack::Stack;
 use core::arch::asm;
-use core::ptr::{addr_of_mut, NonNull};
-use vmm::{PhysicalAddress};
+use core::ptr::addr_of_mut;
+use vmm::PhysicalAddress;
 
 #[link_section = ".bss.uninit"]
 pub static BOOT_STACK: Stack = Stack::ZERO;
@@ -49,7 +49,7 @@ unsafe extern "C" fn _start() -> ! {
 }
 
 #[no_mangle]
-unsafe extern "C" fn start(hartid: usize, opaque: *mut u8, stack_base: PhysicalAddress) -> ! {
+unsafe extern "C" fn start(hartid: usize, opaque: *const u8, stack_base: PhysicalAddress) -> ! {
     extern "C" {
         static mut __bss_start: u64;
         static mut __bss_end: u64;
@@ -72,8 +72,7 @@ unsafe extern "C" fn start(hartid: usize, opaque: *mut u8, stack_base: PhysicalA
     );
     log::trace!("boot stack region {boot_stack_region:?} stack base {stack_base:?}");
 
-    let dtb_ptr = NonNull::new(opaque).unwrap();
-    let boot_info = BootInfo::from_dtb(dtb_ptr);
+    let boot_info = BootInfo::from_dtb(opaque);
 
     log::debug!("{boot_info:?}");
 
