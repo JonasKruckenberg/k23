@@ -105,34 +105,35 @@ impl<M: Mode> BitMapAllocator<M> {
         );
 
         // fill the table with the memory regions
-        let mut offset = bump_allocator.offset();
-        for mut region in bump_allocator.regions().iter().cloned() {
-            let region_size = region.end.0 - region.start.0;
+        // let mut offset = bump_allocator.offset();
+        // for mut region in bump_allocator.regions().iter().cloned() {
+        let region = bump_allocator.region();
+        // let region_size = region.end.0 - region.start.0;
 
-            // keep advancing past already fully used memory regions
-            if offset >= region_size {
-                offset -= region_size;
-                continue;
-            } else if offset > 0 {
-                region.start = region.start.add(offset);
-                offset = 0;
-            }
+        // keep advancing past already fully used memory regions
+        // if offset >= region_size {
+        //     offset -= region_size;
+        //     continue;
+        // } else if offset > 0 {
+        //     region.start = region.start.add(offset);
+        //     offset = 0;
+        // }
 
-            for entry in this.entries_mut() {
-                if entry.region.end.0 == entry.region.start.0 {
-                    // Create new entry
-                    entry.region = region.clone();
-                    break;
-                } else if region.end == entry.region.start {
-                    // Combine entry at start
-                    entry.region.start = region.start.clone();
-                    break;
-                } else if region.start == entry.region.end {
-                    entry.region.end = region.end.clone();
-                    break;
-                }
+        for entry in this.entries_mut() {
+            if entry.region.end.0 == entry.region.start.0 {
+                // Create new entry
+                entry.region = region.clone();
+                break;
+            } else if region.end == entry.region.start {
+                // Combine entry at start
+                entry.region.start = region.start.clone();
+                break;
+            } else if region.start == entry.region.end {
+                entry.region.end = region.end.clone();
+                break;
             }
         }
+        // }
 
         for entry in this.entries_mut() {
             let usage_map_pages = entry.usage_map_pages();
