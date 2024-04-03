@@ -1,19 +1,13 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const, pointer_is_aligned)]
+#![feature(naked_functions, asm_const)]
 
-use core::arch::asm;
-
-mod arch;
+mod boot_info;
 mod logger;
-mod machine_info;
 mod panic;
+mod stack;
 
-// Configuration constants and statics defined by the build script
-include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
-
-fn kmain(hartid: usize) -> ! {
-    log::info!("Hello World");
-
-    panic!()
+pub mod kconfig {
+    // Configuration constants and statics defined by the build script
+    include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
 }

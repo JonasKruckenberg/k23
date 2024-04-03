@@ -1,0 +1,9 @@
+[package]
+name = "sbicall"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+cfg-if.workspace = true
+onlyerror.workspace = true

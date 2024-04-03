@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*", "build/*", "kernel", "bootloader"]
+members = ["build/*", "kernel", "libs/*", "loader"]
 resolver = "2"
 
 [workspace.package]
@@ -8,46 +8,51 @@ edition = "2021"
 authors = ["Jonas Kruckenberg <iterpre@protonmail.com>"]
 
 [workspace.dependencies]
-backtrace = { path = "crates/backtrace" }
-kconfig = { path = "build/kconfig" }
-dtb-parser = { path = "crates/dtb-parser" }
-uart-16550 = { path = "crates/uart-16550" }
-gimli = { path = "crates/gimli", features = ["read-core"] }
-fxhash = { path = "crates/fxhash" }
-sbicall = { path = "crates/sbicall" }
-vmm = { path = "crates/vmm" }
-wasmparser = { path = "crates/wasmparser" }
-cranelift-wasm = { path = "crates/cranelift-wasm" }
-cranelift-bforest = { path = "crates/cranelift-bforest" }
-cranelift-codegen = { path = "crates/cranelift-codegen" }
-cranelift-entity = { path = "crates/cranelift-entity" }
-cranelift-frontend = { path = "crates/cranelift-frontend" }
-cranelift-isle = { path = "build/cranelift-isle" }
-bitflags = "2.4.1"
-log = "0.4.20"
-riscv = "0.11.0"
-cfg-if = "1.0.0"
-hashbrown = { version = "0.14.3", features = ["nightly"] }
+dtb-parser = { path = "libs/dtb-parser" }
+uart-16550 = { path = "libs/uart-16550" }
+sbicall = { path = "libs/sbicall" }
+vmm = { path = "libs/vmm" }
+semihosting-logger = { path = "libs/semihosting-logger" }
+cranelift-bforest = { path = "libs/cranelift-bforest" }
+cranelift-codegen = { path = "libs/cranelift-codegen" }
+cranelift-entity = { path = "libs/cranelift-entity" }
+cranelift-frontend = { path = "libs/cranelift-frontend" }
+cranelift-wasm = { path = "libs/cranelift-was" }
+fxhash = { path = "libs/fxhash" }
+gimli = { path = "libs/gimli" }
+wasmparser = { path = "libs/wasmparser" }
+
 onlyerror = { version = "0.1.3", default-features = false }
-smallvec = "2.0.0-alpha.3"
+log = "0.4.20"
+bitflags = "2.4.1"
+cfg-if = "1.0.0"
+spin = "0.9.8"
+linked_list_allocator = "0.10.5"
+arrayvec = { version = "0.7.4", default-features = false }
+lz4_flex = { version = "0.11.3", default-features = false }
+hashbrown = { version = "0.14.3", features = ["nightly"] }
 target-lexicon = { version = "0.12.13", default-features = false }
 bumpalo = "3.14.0"
 regalloc2 = { version = "0.9.3", default-features = false }
-spin = "0.9.8"
-linked_list_allocator = "0.10.5"
+smallvec = "2.0.0-alpha.4"
+qemu-exit = "3.0.2"
 
-# build dependencies
-serde = { version = "1.0.196", default-features = false, features = ["derive"] }
-toml = "0.8.10"
-anyhow = "1.0.79"
-clap = {  version = "4.5.0", features = ["derive"] }
+riscv = "0.11.0"
+riscv-semihosting = "0.1.0"
+
+
+cranelift-isle = { path = "build/cranelift-isle" }
+build-config = { path = "build/config" }
+clap = { version = "4.5.0", features = ["derive"] }
 env_logger = "0.11.2"
 anstyle = "1.0.6"
 cargo_metadata = "0.18.1"
+anyhow = "1.0.79"
+serde = { version = "1.0.196", default-features = false, features = ["derive"] }
+toml = "0.8.10"
 ron = "0.8.1"
 quote = "1.0.35"
 proc-macro2 = "1.0.78"
-object = { version = "0.32.2", default-features = false, features = ["elf", "write", "read"] }
 
 [profile.release]
 opt-level = 3
@@ -56,3 +61,6 @@ lto = true
 strip = true
 overflow-checks = true
 split-debuginfo = "packed"
+
+[profile.dev.package.lz4_flex]
+opt-level = 3

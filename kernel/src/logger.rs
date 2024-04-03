@@ -1,8 +1,7 @@
-use crate::machine_info::MachineInfo;
-use crate::KCONFIG;
+use crate::boot_info::BootInfo;
 use core::fmt::Write;
 use core::mem::MaybeUninit;
-use log::{Metadata, Record};
+use log::{LevelFilter, Metadata, Record};
 use spin::mutex::Mutex;
 use uart_16550::SerialPort;
 
@@ -10,19 +9,19 @@ static LOGGER: Logger = Logger(Mutex::new(MaybeUninit::uninit()));
 
 struct Logger(Mutex<MaybeUninit<SerialPort>>);
 
-pub fn init(machine_info: &MachineInfo) {
+pub fn init(boot_info: &BootInfo) {
     let serial_port = unsafe {
         SerialPort::new(
-            machine_info.serial.mmio_regs.start.as_raw(),
-            machine_info.serial.clock_frequency,
-            KCONFIG.uart_baud_rate,
+            boot_info.serial.reg.start.as_raw(),
+            boot_info.serial.clock_frequency,
+            38400,
         )
     };
 
     LOGGER.0.lock().write(serial_port);
 
     log::set_logger(&LOGGER).unwrap();
-    log::set_max_level(KCONFIG.log_level.to_level_filter());
+    log::set_max_level(LevelFilter::Trace);
 }
 
 impl log::Log for Logger {

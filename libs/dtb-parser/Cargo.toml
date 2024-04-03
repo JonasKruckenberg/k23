@@ -1,0 +1,9 @@
+[package]
+name = "dtb-parser"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+log.workspace = true
+onlyerror.workspace = true

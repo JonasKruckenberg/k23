@@ -1,5 +1,5 @@
 [toolchain]
 channel = "nightly"
-components = ["rustfmt", "clippy", "llvm-tools-preview"]
-targets = [ "riscv64gc-unknown-none-elf", "wasm32-unknown-unknown" ]
+components = ["rustfmt", "clippy"]
+targets = ["riscv64gc-unknown-none-elf", "wasm32-unknown-unknown"]
 profile = "minimal"

@@ -1,15 +1,14 @@
-mod config;
 mod logger;
 
-use crate::config::Target;
 use anyhow::anyhow;
-use cargo_metadata::camino::Utf8PathBuf;
+use build_config::Config;
+use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::{Artifact, Message, MetadataCommand};
 use clap::{ArgAction, Parser};
-use config::Config;
 use std::ffi::OsStr;
+use std::fs;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 
 /// Helper for passing VERSION to opt.
 /// If `CARGO_VERSION_INFO` is set, use it, otherwise use `CARGO_PKG_VERSION`.
@@ -35,21 +34,33 @@ struct Common {
 
 #[derive(Debug, Parser)]
 enum XtaskCommand {
-    /// Builds and runs the image in QEMU
-    Run {
+    Check {
         /// Path to the image configuration file, in TOML.
         cfg: PathBuf,
+    },
+    /// Builds and runs the image in QEMU
+    Run {
         /// Whether to build in release mode instead of debug mode
         #[clap(short, long)]
         release: bool,
+        /// Path to the image configuration file, in TOML.
+        cfg: PathBuf,
     },
     /// Builds the image
     Dist {
-        /// Path to the image configuration file, in TOML.
-        cfg: PathBuf,
         /// Whether to build in debug mode instead of release mode
         #[clap(short, long)]
         debug: bool,
+        /// Path to the image configuration file, in TOML.
+        cfg: PathBuf,
+    },
+    /// Builds and runs the image in QEMU
+    Dbg {
+        /// Whether to build in release mode instead of debug mode
+        #[clap(short, long)]
+        release: bool,
+        /// Path to the image configuration file, in TOML.
+        cfg: PathBuf,
     },
 }
 
@@ -65,107 +76,119 @@ fn run() -> anyhow::Result<()> {
     logger::init(xtask.common.verbose);
 
     match xtask.cmd {
-        XtaskCommand::Run { cfg, release } => {
+        XtaskCommand::Check { cfg } => {
             let cfg = Config::from_file(&cfg).unwrap();
 
-            let bootloader = build_bootloader(&cfg, release)?;
+            check_kernel(&cfg)?;
+            check_loader(&cfg)?;
+        }
+        XtaskCommand::Run { release, cfg, .. } => {
+            let cfg = Config::from_file(&cfg).unwrap();
+
             let kernel = build_kernel(&cfg, release)?;
+            let loader = build_loader(&cfg, release, &kernel)?;
 
-            let (qemu_bin, cpu) = if cfg.target.to_string().contains("riscv64gc") {
-                ("qemu-system-riscv64", "rv64")
-            } else {
-                unimplemented!("Unsupported target architecture");
-            };
-
-            log::debug!("{bootloader}");
+            log::debug!("{loader}");
             log::debug!("{kernel}");
 
-            Command::new(qemu_bin)
-                .args(&[
-                    "-bios",
-                    "default",
-                    "-kernel",
-                    bootloader.as_str(),
-                    // bootloader.executable.unwrap().as_str(),
-                    // "-device",
-                    // &format!("loader,addr=0x80400000,file={}", kernel.as_str()),
-                    "-machine",
-                    "virt",
-                    "-cpu",
-                    cpu,
-                    "-d",
-                    "guest_errors,unimp,int",
-                    "-smp",
-                    "1",
-                    "-m",
-                    "128M",
-                    "-nographic",
-                    "-serial",
-                    "mon:stdio",
-                    "-device",
-                    "virtio-rng-device",
-                    "-device",
-                    "virtio-gpu-device",
-                    "-device",
-                    "virtio-net-device",
-                    "-device",
-                    "virtio-tablet-device",
-                    "-device",
-                    "virtio-keyboard-device",
-                ])
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .stdin(Stdio::inherit())
-                .output()
-                .unwrap();
+            let mut c = start_qemu("qemu-system-riscv64", loader.as_str(), false)?;
+            c.wait()?;
         }
-        XtaskCommand::Dist { cfg, debug } => {
+        XtaskCommand::Dbg { release, cfg, .. } => {
             let cfg = Config::from_file(&cfg).unwrap();
 
-            let kernel = build_kernel(&cfg, !debug)?;
+            let kernel = build_kernel(&cfg, release)?;
+            let loader = build_loader(&cfg, release, &kernel)?;
 
-            log::info!(action = "Packaging"; "Extracting elf artifact {kernel}");
+            log::debug!("{loader}");
+            log::debug!("{kernel}");
 
-            Command::new("riscv64-elf-objcopy")
-                .args([kernel.as_str(), "-O", "binary", "kernel.bin"])
-                .output()
-                .unwrap();
+            let mut c = start_qemu("qemu-system-riscv64", loader.as_str(), true)?;
+
+            // Command::new("rust-lldb")
+            //     .arg(loader)
+            //     .stdin(Stdio::inherit())
+            //     .stdout(Stdio::inherit())
+            //     .stderr(Stdio::inherit())
+            //     .output()?;
+
+            c.wait()?;
+        }
+        XtaskCommand::Dist { .. } => {
+            todo!()
         }
     }
 
     Ok(())
 }
 
-fn build_bootloader(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> {
-    // fall back to the root target
-    let target = cfg.bootloader.target.clone().unwrap_or(cfg.target.clone());
+fn compress_kernel(kernel: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
+    let out_path = kernel.with_extension("lz4");
 
-    log::debug!("building for target {:?}", target);
+    let input = fs::read(kernel)?;
+    let output = lz4_flex::block::compress_prepend_size(&input);
+    fs::write(&out_path, output)?;
 
-    let bootloader = Builder::new("bootloader", target)
-        .enable_features(cfg.bootloader.features.as_slice())
+    Ok(out_path)
+}
+
+fn check_loader(cfg: &Config) -> anyhow::Result<()> {
+    let target = cfg
+        .loader
+        .target
+        .as_ref()
+        .unwrap_or(&cfg.target)
+        .to_string();
+
+    Cargo::new_check("loader", &target, &cfg)?
+        .env("RUSTFLAGS", "-Zstack-protector=all -Csoft-float=true")
+        .env("K23_KERNEL_ARTIFACT", "main.rs") // use main.rs as a fake file during checking
+        .enable_features(cfg.loader.features.clone())
+        .exec()?;
+
+    Ok(())
+}
+
+fn check_kernel(cfg: &Config) -> anyhow::Result<()> {
+    let target = cfg
+        .kernel
+        .target
+        .as_ref()
+        .unwrap_or(&cfg.target)
+        .to_string();
+
+    Cargo::new_check("kernel", &target, &cfg)?
+        .env("RUSTFLAGS", "-Zstack-protector=all")
+        .enable_features(cfg.kernel.features.clone())
+        .exec()?;
+
+    Ok(())
+}
+
+fn build_loader(cfg: &Config, release: bool, kernel: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
+    let target = cfg
+        .loader
+        .target
+        .as_ref()
+        .unwrap_or(&cfg.target)
+        .to_string();
+
+    let compressed_kernel = compress_kernel(&kernel)?;
+
+    log::debug!("compressed kernel artifact {compressed_kernel}");
+
+    let bootloader = Cargo::new_build("loader", &target, &cfg)?
         .release(release)
-        .env(
-            "K23_KCONFIG_STACK_SIZE_PAGES",
-            cfg.bootloader.stack_size_pages.to_string(),
-        )
-        .env(
-            "K23_KCONFIG_LOG_LEVEL",
-            cfg.bootloader.log_level.to_usize().to_string(),
-        )
-        .env("K23_KCONFIG_UART_BAUD_RATE", cfg.uart_baud_rate.to_string())
-        .env(
-            "K23_KCONFIG_MEMORY_MODE",
-            ron::ser::to_string(&cfg.memory_mode)?,
-        )
-        .env("RUSTFLAGS", "-Csoft-float")
-        .additional_args(&[
+        .env("RUSTFLAGS", "-Zstack-protector=all")
+        .env("K23_KERNEL_ARTIFACT", compressed_kernel)
+        .additional_args([
             "-Z",
             "build-std=core,alloc",
             "-Z",
             "build-std-features=compiler-builtins-mem",
         ])
-        .build()?;
+        .enable_features(cfg.loader.features.clone())
+        .exec()?;
 
     let executable = bootloader
         .executable
@@ -175,27 +198,24 @@ fn build_bootloader(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> 
 }
 
 fn build_kernel(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> {
-    // fall back to the root target
-    let target = cfg.kernel.target.clone().unwrap_or(cfg.target.clone());
+    let target = cfg
+        .kernel
+        .target
+        .as_ref()
+        .unwrap_or(&cfg.target)
+        .to_string();
 
-    let kernel = Builder::new("kernel", target)
-        .enable_features(cfg.kernel.features.as_slice())
+    let kernel = Cargo::new_build("kernel", &target, &cfg)?
         .release(release)
-        .env(
-            "K23_KCONFIG_STACK_SIZE_PAGES",
-            cfg.kernel.stack_size_pages.to_string(),
-        )
-        .env(
-            "K23_KCONFIG_LOG_LEVEL",
-            cfg.kernel.log_level.to_usize().to_string(),
-        )
-        .env("K23_KCONFIG_UART_BAUD_RATE", cfg.uart_baud_rate.to_string())
-        .env(
-            "K23_KCONFIG_MEMORY_MODE",
-            ron::ser::to_string(&cfg.memory_mode)?,
-        )
-        .env("RUSTFLAGS", "-Cforce-unwind-tables=true")
-        .build()?;
+        .env("RUSTFLAGS", "-Zstack-protector=all")
+        .additional_args([
+            "-Z",
+            "build-std=core,alloc",
+            "-Z",
+            "build-std-features=compiler-builtins-mem",
+        ])
+        .enable_features(cfg.kernel.features.clone())
+        .exec()?;
 
     let executable = kernel
         .executable
@@ -204,49 +224,50 @@ fn build_kernel(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> {
     Ok(executable)
 }
 
-struct Builder<'a> {
-    name: &'a str,
+struct Cargo<'a> {
+    crate_name: &'a str,
     release: bool,
     features: Vec<String>,
     command: Command,
 }
 
-impl<'a> Builder<'a> {
-    pub fn new(name: &'a str, target: Target) -> Self {
-        let target = target.to_string();
+impl<'a> Cargo<'a> {
+    pub fn new_build(crate_name: &'a str, target: &str, cfg: &Config) -> anyhow::Result<Self> {
+        Self::new("build", crate_name, target, cfg)
+    }
+
+    pub fn new_check(crate_name: &'a str, target: &str, cfg: &Config) -> anyhow::Result<Self> {
+        Self::new("check", crate_name, target, cfg)
+    }
+
+    fn new(cmd: &'a str, crate_name: &'a str, target: &str, cfg: &Config) -> anyhow::Result<Self> {
+        // let cfg_ron = ron::to_string(&cfg)?;
+
+        let cfg_ron = ron::ser::to_string_pretty(&cfg, ron::ser::PrettyConfig::new())?;
 
         let mut command = Command::new("cargo");
-        command.args(&[
-            "build",
+        command.args([
+            cmd,
             "--message-format=json-render-diagnostics",
             "-p",
-            name,
+            crate_name,
             "--target",
-            &target,
+            target,
         ]);
+        command.env("K23_KCONFIG", cfg_ron);
 
-        Self {
-            name,
+        Ok(Self {
+            crate_name,
             release: false,
             features: vec![],
             command,
-        }
+        })
     }
 
     pub fn env(mut self, key: impl AsRef<OsStr>, val: impl AsRef<OsStr>) -> Self {
         self.command.env(key, val);
         self
     }
-
-    // pub fn envs<I, K, V>(mut self, vars: I) -> Self
-    // where
-    //     I: IntoIterator<Item = (K, V)>,
-    //     K: AsRef<OsStr>,
-    //     V: AsRef<OsStr>,
-    // {
-    //     self.command.envs(vars);
-    //     self
-    // }
 
     pub fn additional_args<I, A>(mut self, args: I) -> Self
     where
@@ -257,14 +278,11 @@ impl<'a> Builder<'a> {
         self
     }
 
-    pub fn enable_features<I, F>(mut self, features: I) -> Self
+    pub fn enable_features<I>(mut self, features: I) -> Self
     where
-        I: IntoIterator<Item = F>,
-        F: AsRef<str>,
+        I: IntoIterator<Item = String>,
     {
-        for f in features {
-            self.features.push(f.as_ref().to_string());
-        }
+        self.features.extend(features);
         self
     }
 
@@ -273,11 +291,13 @@ impl<'a> Builder<'a> {
         self
     }
 
-    pub fn build(mut self) -> anyhow::Result<Artifact> {
-        self.command.args(&["--features", &self.features.join(",")]);
+    pub fn exec(mut self) -> anyhow::Result<Artifact> {
+        self.command.args(["--features", &self.features.join(",")]);
         if self.release {
             self.command.arg("--release");
         }
+
+        self.command.args(["--features", &self.features.join(",")]);
 
         log::debug!("command {:?}", self.command);
 
@@ -306,15 +326,14 @@ impl<'a> Builder<'a> {
                 }
                 Message::BuildFinished(finished) => {
                     if finished.success {
-                        log::info!("Successfully compiled `{}`", self.name);
+                        log::info!("Successfully compiled `{}`", self.crate_name);
                     } else {
-                        anyhow::bail!("could not compile `{}`", self.name);
+                        anyhow::bail!("could not compile `{}`", self.crate_name);
                     }
                 }
                 _ => (), // Unknown message
             }
         }
-        log::debug!("here");
 
         command.wait().expect("Couldn't get cargo's exit status");
 
@@ -322,18 +341,54 @@ impl<'a> Builder<'a> {
     }
 }
 
-// fn parse_elf(executable: &Path) -> anyhow::Result<(u64, Vec<u8>, BTreeMap<String, u64>)> {
-//     let data = fs::read(executable)?;
-//     let elf: ElfFile<elf::FileHeader64<Endianness>> = ElfFile::parse(&*data).unwrap();
-//
-//     let symbols = elf.symbols();
-//
-//     let mut out = BTreeMap::new();
-//     for symbol in symbols {
-//         let name = symbol.name().unwrap();
-//
-//         out.insert(name.to_string(), symbol.address());
-//     }
-//
-//     Ok((elf.entry(), elf.data().to_vec(), out))
-// }
+fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> {
+    let mut cmd = Command::new(runner);
+    cmd.args([
+        "-bios",
+        "default",
+        "-kernel",
+        kernel,
+        "-machine",
+        "virt",
+        "-cpu",
+        "rv64",
+        "-d",
+        "guest_errors,unimp,int",
+        "-smp",
+        "1",
+        "-m",
+        "128M",
+        "-display",
+        "none",
+        // "-nographic",
+        // "-serial",
+        // "mon:stdio",
+        "-device",
+        "virtio-rng-device",
+        "-device",
+        "virtio-gpu-device",
+        "-device",
+        "virtio-net-device",
+        "-device",
+        "virtio-tablet-device",
+        "-device",
+        "virtio-keyboard-device",
+        "-chardev",
+        "stdio,id=stdio0",
+        "-semihosting-config",
+        "enable=on,userspace=on,chardev=stdio0",
+    ]);
+
+    if debug {
+        cmd.args(["-s", "-S"]);
+        cmd.stdout(Stdio::inherit())
+            .stderr(Stdio::piped())
+            .stdin(Stdio::piped());
+    } else {
+        cmd.stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .stdin(Stdio::inherit());
+    }
+
+    Ok(cmd.spawn()?)
+}
