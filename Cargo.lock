@@ -492,7 +492,6 @@ dependencies = [
  "quote",
  "ron",
  "sbicall",
- "semihosting-logger",
  "spin",
  "vmm",
 ]
@@ -620,16 +619,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "riscv-semihosting"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d7c9656a359b1af0501e4e9348136f71cc453d5587577f7d330e19577a269b2"
-dependencies = [
- "critical-section",
- "riscv",
-]
-
-[[package]]
 name = "ron"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -679,15 +668,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "semihosting-logger"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "log",
- "riscv-semihosting",
-]
 
 [[package]]
 name = "semver"

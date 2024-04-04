@@ -11,4 +11,3 @@ uart-baud-rate = 38400
 [bootloader]
 stack-size-pages = 32      # Size of the per-hart stack in pages
 log-level = "trace"
-features = ["semihosting"]

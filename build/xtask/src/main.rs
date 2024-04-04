@@ -360,9 +360,6 @@ fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> 
         "128M",
         "-display",
         "none",
-        // "-nographic",
-        // "-serial",
-        // "mon:stdio",
         "-device",
         "virtio-rng-device",
         "-device",
@@ -373,10 +370,13 @@ fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> 
         "virtio-tablet-device",
         "-device",
         "virtio-keyboard-device",
-        "-chardev",
-        "stdio,id=stdio0",
-        "-semihosting-config",
-        "enable=on,userspace=on,chardev=stdio0",
+        "-nographic",
+        "-serial",
+        "mon:stdio",
+        // "-chardev",
+        // "stdio,id=stdio0",
+        // "-semihosting-config",
+        // "enable=on,userspace=on,chardev=stdio0",
     ]);
 
     if debug {

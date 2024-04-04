@@ -2,7 +2,7 @@ use crate::boot_info::{BootInfo, BOOT_INFO};
 use crate::kconfig;
 use crate::stack::Stack;
 use core::arch::asm;
-use core::ptr::{addr_of_mut, NonNull};
+use core::ptr::addr_of_mut;
 use uart_16550::SerialPort;
 
 #[link_section = ".text.start"]

@@ -1,11 +1,5 @@
 use crate::kconfig;
 
-#[cfg(feature = "semihosting")]
-pub fn init() {
-    semihosting_logger::init(kconfig::LOG_LEVEL.to_level_filter());
-}
-
-#[cfg(not(feature = "semihosting"))]
 pub fn init() {
     use core::fmt;
     use core::fmt::Write;

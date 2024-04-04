@@ -12,12 +12,11 @@ dtb-parser = { path = "libs/dtb-parser" }
 uart-16550 = { path = "libs/uart-16550" }
 sbicall = { path = "libs/sbicall" }
 vmm = { path = "libs/vmm" }
-semihosting-logger = { path = "libs/semihosting-logger" }
 cranelift-bforest = { path = "libs/cranelift-bforest" }
 cranelift-codegen = { path = "libs/cranelift-codegen" }
 cranelift-entity = { path = "libs/cranelift-entity" }
 cranelift-frontend = { path = "libs/cranelift-frontend" }
-cranelift-wasm = { path = "libs/cranelift-was" }
+cranelift-wasm = { path = "libs/cranelift-wasm" }
 fxhash = { path = "libs/fxhash" }
 gimli = { path = "libs/gimli" }
 wasmparser = { path = "libs/wasmparser" }
@@ -38,7 +37,6 @@ smallvec = "2.0.0-alpha.4"
 qemu-exit = "3.0.2"
 
 riscv = "0.11.0"
-riscv-semihosting = "0.1.0"
 
 
 cranelift-isle = { path = "build/cranelift-isle" }

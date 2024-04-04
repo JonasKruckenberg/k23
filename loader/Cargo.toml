@@ -12,7 +12,6 @@ log.workspace = true
 sbicall.workspace = true
 spin.workspace = true
 vmm.workspace = true
-semihosting-logger = { workspace = true, optional = true }
 lz4_flex = { workspace = true, features = ["safe-decode"] }
 linked_list_allocator.workspace = true
 bitflags.workspace = true
@@ -23,10 +22,3 @@ anyhow.workspace = true
 quote.workspace = true
 proc-macro2.workspace = true
 build-config.workspace = true
-
-[features]
-# Enable semihosting-related features
-# This will switch the logger from using the `sbi`-based system, to the `semihosting-logger`
-# which will make the console output much more readable in QEMU.
-# In the future this will also enable other functionality.
-semihosting = ["dep:semihosting-logger"]
