@@ -14,7 +14,7 @@ pub fn init() {
 
     impl log::Log for Logger {
         fn enabled(&self, _metadata: &Metadata) -> bool {
-            true
+            false
         }
 
         fn log(&self, record: &Record) {

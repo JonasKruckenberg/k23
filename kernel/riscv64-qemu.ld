@@ -1,5 +1,5 @@
 OUTPUT_ARCH(riscv)
-ENTRY(_start)
+ENTRY(kstart)
 
 KERNEL_OFFSET = 0xffffffff80000000;
 #KERNEL_OFFSET = 0x80200000;

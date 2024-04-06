@@ -21,36 +21,36 @@ fxhash = { path = "libs/fxhash" }
 gimli = { path = "libs/gimli" }
 wasmparser = { path = "libs/wasmparser" }
 
-onlyerror = { version = "0.1.3", default-features = false }
-log = "0.4.20"
-bitflags = "2.4.1"
+onlyerror = { version = "0.1.4", default-features = false }
+log = "0.4.21"
+bitflags = "2.5.0"
 cfg-if = "1.0.0"
 spin = "0.9.8"
 linked_list_allocator = "0.10.5"
 arrayvec = { version = "0.7.4", default-features = false }
 lz4_flex = { version = "0.11.3", default-features = false }
 hashbrown = { version = "0.14.3", features = ["nightly"] }
-target-lexicon = { version = "0.12.13", default-features = false }
-bumpalo = "3.14.0"
+target-lexicon = { version = "0.12.14", default-features = false }
+bumpalo = "3.15.4"
 regalloc2 = { version = "0.9.3", default-features = false }
-smallvec = "2.0.0-alpha.4"
+smallvec = "2.0.0-alpha.5"
 qemu-exit = "3.0.2"
 
-riscv = "0.11.0"
+riscv = "0.11.1"
 
 
 cranelift-isle = { path = "build/cranelift-isle" }
 build-config = { path = "build/config" }
-clap = { version = "4.5.0", features = ["derive"] }
-env_logger = "0.11.2"
+clap = { version = "4.5.4", features = ["derive"] }
+env_logger = "0.11.3"
 anstyle = "1.0.6"
 cargo_metadata = "0.18.1"
-anyhow = "1.0.79"
-serde = { version = "1.0.196", default-features = false, features = ["derive"] }
-toml = "0.8.10"
+anyhow = "1.0.81"
+serde = { version = "1.0.197", default-features = false, features = ["derive"] }
+toml = "0.8.12"
 ron = "0.8.1"
 quote = "1.0.35"
-proc-macro2 = "1.0.78"
+proc-macro2 = "1.0.79"
 
 [profile.release]
 opt-level = 3

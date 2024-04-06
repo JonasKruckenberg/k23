@@ -22,12 +22,14 @@ use crate::boot_info::BootInfo;
 use crate::elf::ElfSections;
 use alloc::vec::Vec;
 use core::alloc::Layout;
+use core::arch::asm;
+use core::mem;
 use core::ops::Range;
 use core::ptr::addr_of;
 use spin::Mutex;
 use vmm::{
-    BumpAllocator, EntryFlags, Flush, FrameAllocator, FrameUsage, Mapper, Mode, PhysicalAddress,
-    INIT,
+    AddressRangeExt, BumpAllocator, EntryFlags, Flush, FrameAllocator, FrameUsage, Mapper, Mode,
+    PhysicalAddress, VirtualAddress, INIT,
 };
 
 pub const KIB: usize = 1024;
@@ -35,6 +37,15 @@ pub const MIB: usize = 1024 * KIB;
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: GAlloc<INIT<kconfig::MEMORY_MODE>> = GAlloc::EMPTY;
+
+#[repr(C)]
+pub struct KernelArgs {
+    boot_hart: usize,
+    fdt: VirtualAddress,
+    kernel: Range<VirtualAddress>,
+    stack: Range<VirtualAddress>,
+    alloc_offset: usize
+}
 
 fn main(hartid: usize, boot_info: BootInfo<'static>) -> ! {
     let own_image_regions = ImageRegions::from_self();
@@ -57,40 +68,121 @@ fn main(hartid: usize, boot_info: BootInfo<'static>) -> ! {
     let kernel_sections = elf::parse(&kernel);
     log::debug!("{kernel_sections:?}");
 
-    let text_begin = unsafe {
-        core::slice::from_raw_parts(kernel_sections.text.phys.start.as_raw() as *const u8, 100)
-    };
-    log::debug!(
-        "beginning of kernel text section {:?}.. {text_begin:?}",
-        kernel_sections.text.phys.start
-    );
-
-    init_paging(&boot_info, own_image_regions, kernel_sections.clone());
-
-    let text_begin = unsafe {
-        core::slice::from_raw_parts(kernel_sections.text.virt.start.as_raw() as *const u8, 100)
-    };
-    log::debug!(
-        "beginning of kernel text section {:?}.. {text_begin:?}",
-        kernel_sections.text.virt.start
-    );
-
-    let stack_usage = BOOT_STACK.usage();
-    log::debug!(
-        "Stack usage: {} KiB of {} KiB total ({:.3}%). High Watermark: {} KiB.",
-        (stack_usage.used) / KIB,
-        (stack_usage.total) / KIB,
-        (stack_usage.used as f64 / stack_usage.total as f64) * 100.0,
-        (stack_usage.high_watermark) / KIB,
-    );
-
-    unsafe {
-        let kernel_entry: unsafe extern "C" fn(hartid: usize, opaque: *const u8) =
-            core::mem::transmute(kernel_sections.text.virt.start);
-        kernel_entry(hartid, boot_info.fdt.as_ptr())
+    fn decorate_stack(mut ptr: *mut u64, num_frames: usize) {
+        unsafe {
+            let end = ptr.add(num_frames * kconfig::PAGE_SIZE);
+            while ptr < end {
+                ptr.write_volatile(stack::Stack::FILL_PATTERN);
+                ptr = ptr.offset(1);
+            }
+        }
     }
 
-    unreachable!()
+    let kernel_stack_phys = {
+        let mut alloc = GLOBAL_ALLOCATOR.0.lock();
+        let alloc = alloc.as_mut().unwrap();
+
+        let stack_len_pages = boot_info.cpus * (16 + 8);
+        let stack_base = alloc.allocate_frames(stack_len_pages).unwrap();
+
+        decorate_stack(stack_base.as_raw() as *mut u64, stack_len_pages);
+
+        stack_base..stack_base.add(stack_len_pages * kconfig::PAGE_SIZE)
+    };
+
+    init_paging(
+        &boot_info,
+        own_image_regions,
+        kernel_sections.clone(),
+        kernel_stack_phys.clone(),
+    );
+
+    fn probe_region(region: Range<VirtualAddress>) {
+        unsafe {
+            let mut ptr = region.start.as_raw() as *const u64;
+            let end = ptr.add(region.size() / mem::size_of::<u64>());
+            log::debug!("start {ptr:?} end {end:?}");
+
+            while ptr < end {
+                ptr.read_volatile();
+                ptr = ptr.offset(1);
+            }
+        }
+    }
+
+    log::debug!("probing kernel text region...");
+    probe_region(kernel_sections.text.virt);
+    log::debug!("success!");
+
+    log::debug!("probing kernel rodata region...");
+    probe_region(kernel_sections.rodata.virt);
+    log::debug!("success!");
+
+    log::debug!("probing kernel data region...");
+    probe_region(kernel_sections.data.virt);
+    log::debug!("success!");
+
+    log::debug!("probing kernel bss region...");
+    probe_region(kernel_sections.bss.virt);
+    log::debug!("success!");
+
+    // let stack_usage = BOOT_STACK.usage();
+    // log::debug!(
+    //     "Stack usage: {} KiB of {} KiB total ({:.3}%). High Watermark: {} KiB.",
+    //     (stack_usage.used) / KIB,
+    //     (stack_usage.total) / KIB,
+    //     (stack_usage.used as f64 / stack_usage.total as f64) * 100.0,
+    //     (stack_usage.high_watermark) / KIB,
+    // );
+    // unsafe {
+    //     let msg_start = 0xffffffff800091f8 as *const u8;
+    //     let size = 23;
+    //     let slice = core::slice::from_raw_parts(msg_start, size);
+    //     log::debug!("message {:?}", core::str::from_utf8(slice));
+    // }
+
+    let args = KernelArgs {
+        boot_hart: hartid,
+        fdt: unsafe {
+            kconfig::MEMORY_MODE::phys_to_virt(
+                PhysicalAddress::new(boot_info.fdt.as_ptr() as usize),
+            )
+        },
+        kernel: unsafe {
+            let base =
+                kconfig::MEMORY_MODE::phys_to_virt(PhysicalAddress::new(kernel.as_ptr() as usize));
+
+            base..base.add(kernel.len())
+        },
+        stack: kconfig::MEMORY_MODE::phys_to_virt(kernel_stack_phys.start)
+            ..kconfig::MEMORY_MODE::phys_to_virt(kernel_stack_phys.end),
+        alloc_offset: {
+            let alloc = GLOBAL_ALLOCATOR.0.lock();
+            let alloc = alloc.as_ref().unwrap();
+            alloc.offset()
+        }
+    };
+
+    unsafe {
+        kernel_entry(
+            args.stack.end.as_raw(),
+            kernel_sections.entry.as_raw(),
+            &args,
+        )
+    }
+}
+
+unsafe extern "C" fn kernel_entry(stack: usize, func: usize, args: *const KernelArgs) -> ! {
+    log::debug!("jumping to kernel! stack: {stack:#x}, func: {func:#x}, args: {args:?}");
+
+    asm!(
+        "mv sp, {stack}",
+        "jalr zero, {func}",
+        in("a0") args,
+        stack = in(reg) stack,
+        func = in(reg) func,
+        options(noreturn)
+    )
 }
 
 struct GAlloc<M>(Mutex<Option<BumpAllocator<M>>>);
@@ -116,30 +208,6 @@ unsafe impl<M: Mode> alloc::alloc::GlobalAlloc for GAlloc<M> {
 
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
         unimplemented!()
-    }
-}
-
-impl<M: Mode> FrameAllocator<M> for GAlloc<M> {
-    fn allocate_frames(&mut self, frames: usize) -> Result<PhysicalAddress, vmm::Error> {
-        let alloc = self.0.get_mut();
-        let alloc = alloc.as_mut().expect("heap not initialized");
-        alloc.allocate_frames(frames)
-    }
-
-    fn deallocate_frames(
-        &mut self,
-        base: PhysicalAddress,
-        frames: usize,
-    ) -> Result<(), vmm::Error> {
-        let alloc = self.0.get_mut();
-        let alloc = alloc.as_mut().expect("heap not initialized");
-        alloc.deallocate_frames(base, frames)
-    }
-
-    fn frame_usage(&self) -> FrameUsage {
-        let alloc = self.0.lock();
-        let alloc = alloc.as_ref().expect("heap not initialized");
-        alloc.frame_usage()
     }
 }
 
@@ -199,6 +267,7 @@ fn init_paging(
     boot_info: &BootInfo,
     own_image_regions: ImageRegions,
     kernel_sections: ElfSections,
+    kernel_stack_phys: Range<PhysicalAddress>,
 ) {
     let mut alloc = GLOBAL_ALLOCATOR.0.lock();
     let alloc = alloc.as_mut().expect("heap not initialized");
@@ -274,50 +343,75 @@ fn init_paging(
         )
         .unwrap();
 
-    log::debug!(
-        "Mapping kernel rodata region {:?}=>{:?}...",
-        kernel_sections.rodata.virt,
-        kernel_sections.rodata.phys
-    );
-    mapper
-        .map_range_with_flush(
+    if !kernel_sections.rodata.virt.is_empty() {
+        log::debug!(
+            "Mapping kernel rodata region {:?}=>{:?}...",
             kernel_sections.rodata.virt,
-            kernel_sections.rodata.phys,
-            EntryFlags::READ,
-            &mut flush,
-        )
-        .unwrap();
+            kernel_sections.rodata.phys
+        );
+        mapper
+            .map_range_with_flush(
+                kernel_sections.rodata.virt,
+                kernel_sections.rodata.phys,
+                EntryFlags::READ,
+                &mut flush,
+            )
+            .unwrap();
+    }
 
-    log::debug!(
-        "Mapping kernel data region {:?}=>{:?}...",
-        kernel_sections.data.virt,
-        kernel_sections.data.phys
-    );
-    mapper
-        .map_range_with_flush(
+    if !kernel_sections.data.virt.is_empty() {
+        log::debug!(
+            "Mapping kernel data region {:?}=>{:?}...",
             kernel_sections.data.virt,
-            kernel_sections.data.phys,
-            EntryFlags::READ | EntryFlags::WRITE,
-            &mut flush,
-        )
-        .unwrap();
+            kernel_sections.data.phys
+        );
+        mapper
+            .map_range_with_flush(
+                kernel_sections.data.virt,
+                kernel_sections.data.phys,
+                EntryFlags::READ | EntryFlags::WRITE,
+                &mut flush,
+            )
+            .unwrap();
+    }
+
+    if !kernel_sections.bss.virt.is_empty() {
+        log::debug!(
+            "Mapping kernel bss region {:?}=>{:?}...",
+            kernel_sections.bss.virt,
+            kernel_sections.bss.phys
+        );
+        mapper
+            .map_range_with_flush(
+                kernel_sections.bss.virt,
+                kernel_sections.bss.phys,
+                EntryFlags::READ | EntryFlags::WRITE,
+                &mut flush,
+            )
+            .unwrap();
+    }
+
+    let kernel_stack_virt = kconfig::MEMORY_MODE::phys_to_virt(kernel_stack_phys.start)
+        ..kconfig::MEMORY_MODE::phys_to_virt(kernel_stack_phys.end);
 
     log::debug!(
-        "Mapping kernel bss region {:?}=>{:?}...",
-        kernel_sections.bss.virt,
-        kernel_sections.bss.phys
+        "Mapping kernel stack region {:?}=>{:?}...",
+        kernel_stack_virt,
+        kernel_stack_phys
     );
     mapper
-        .map_range_with_flush(
-            kernel_sections.bss.virt,
-            kernel_sections.bss.phys,
+        .remap_range_with_flush(
+            kernel_stack_virt,
+            kernel_stack_phys,
             EntryFlags::READ | EntryFlags::WRITE,
             &mut flush,
         )
         .unwrap();
 
     mapper.activate();
-    flush.flush().unwrap();
+    kconfig::MEMORY_MODE::invalidate_all();
+
+    // flush.flush().unwrap();
 
     let frame_usage = alloc.frame_usage();
     log::info!(

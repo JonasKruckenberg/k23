@@ -21,7 +21,7 @@ pub struct BootInfo {
 #[derive(Debug)]
 pub struct Serial {
     /// The MMIO registers reserved for this device
-    pub reg: Range<PhysicalAddress>,
+    pub regs: Range<PhysicalAddress>,
     /// The clock frequency configured
     pub clock_frequency: u32,
 }
@@ -198,7 +198,7 @@ impl<'dt> Visitor<'dt> for SerialVisitor {
 impl SerialVisitor {
     pub fn result(self) -> Option<Serial> {
         Some(Serial {
-            reg: self.regs.result().into_iter().next().unwrap(),
+            regs: self.regs.result().into_iter().next().unwrap(),
             clock_frequency: self.clock_frequency?,
         })
     }

@@ -14,4 +14,4 @@ target-lexicon.workspace = true
 onlyerror.workspace = true
 
 [dev-dependencies]
-similar = "2.4.0"
+similar = "2.5.0"

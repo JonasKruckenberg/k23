@@ -11,6 +11,7 @@ pub struct Section {
 
 #[derive(Debug, Clone)]
 pub struct ElfSections {
+    pub entry: VirtualAddress,
     pub text: Section,
     pub rodata: Section,
     pub data: Section,
@@ -130,6 +131,7 @@ pub fn parse(buf: &[u8]) -> ElfSections {
     }
 
     ElfSections {
+        entry: unsafe { VirtualAddress::new(hdr.e_entry) },
         text: text_section.expect("elf is missing text section"),
         rodata: rodata_section.expect("elf is missing rodata section"),
         data: data_section.expect("elf is missing data section"),
