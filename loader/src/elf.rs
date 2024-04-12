@@ -130,6 +130,8 @@ pub fn parse(buf: &[u8]) -> ElfSections {
         }
     }
 
+    assert_ne!(hdr.e_entry, 0, "no entry point found for elf");
+
     ElfSections {
         entry: unsafe { VirtualAddress::new(hdr.e_entry) },
         text: text_section.expect("elf is missing text section"),

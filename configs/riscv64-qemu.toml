@@ -7,7 +7,9 @@ memory-mode = "Riscv64Sv39"
 stack-size-pages = 16  # Size of the per-hart stack in pages
 log-level = "debug"
 uart-baud-rate = 38400
+linker-script = "kernel-riscv64-qemu.ld"
 
 [bootloader]
-stack-size-pages = 32      # Size of the per-hart stack in pages
+stack-size-pages = 64 # Size of the per-hart stack in pages
 log-level = "trace"
+linker-script = "loader-riscv64-qemu.ld"

@@ -1,2 +1,5 @@
 [alias]
 xtask = "run --package xtask --"
+
+[env]
+K23_CONFIG = "configs/riscv64-qemu.toml" # Default configuration path as a fallback for rust-analyzer

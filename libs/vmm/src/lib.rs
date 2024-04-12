@@ -2,9 +2,9 @@
 #![feature(error_in_core)]
 
 use bitflags::Flags;
-use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
+use core::{fmt, mem};
 
 mod alloc;
 mod arch;
@@ -25,6 +25,8 @@ pub(crate) type Result<T> = core::result::Result<T, Error>;
 
 pub trait Mode {
     type EntryFlags: Flags + From<usize> + Into<usize> + Copy + Clone + fmt::Debug;
+
+    const PHYS_OFFSET: usize;
 
     const PAGE_SIZE: usize;
 
@@ -64,7 +66,9 @@ pub trait Mode {
     where
         Self: Sized;
 
-    fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress;
+    fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
+        unsafe { VirtualAddress::new(phys.as_raw()).add(Self::PHYS_OFFSET) }
+    }
 }
 
 #[repr(transparent)]
@@ -241,7 +245,7 @@ impl AddressRangeExt for Range<VirtualAddress> {
 
 pub(crate) fn zero_frames<M: Mode>(mut ptr: *mut u64, num_frames: usize) {
     unsafe {
-        let end = ptr.add(num_frames * M::PAGE_SIZE);
+        let end = ptr.add((num_frames * M::PAGE_SIZE) / mem::size_of::<u64>());
         while ptr < end {
             ptr.write_volatile(0);
             ptr = ptr.offset(1);
@@ -264,6 +268,8 @@ impl<M> INIT<M> {
 
 impl<M: Mode> Mode for INIT<M> {
     type EntryFlags = M::EntryFlags;
+
+    const PHYS_OFFSET: usize = 0;
 
     const PAGE_SIZE: usize = M::PAGE_SIZE;
     const PAGE_TABLE_LEVELS: usize = M::PAGE_TABLE_LEVELS;
@@ -297,9 +303,5 @@ impl<M: Mode> Mode for INIT<M> {
     {
         let entry = unsafe { core::mem::transmute(entry) };
         M::entry_is_leaf(entry)
-    }
-
-    fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-        unsafe { VirtualAddress::new(phys.as_raw()) }
     }
 }

@@ -1,8 +1,9 @@
+use crate::kconfig;
 use arrayvec::ArrayVec;
 use core::mem;
 use core::ops::Range;
 use dtb_parser::{DevTree, Node, Visitor};
-use vmm::PhysicalAddress;
+use vmm::{AddressRangeExt, PhysicalAddress};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -27,14 +28,7 @@ impl<'dt> BootInfo<'dt> {
 
         let mut info = v.result();
 
-        // Take reserved areas into account
-        while let Some(entry) = reservations.next_entry().unwrap() {
-            let entry = unsafe {
-                let start = PhysicalAddress::new(entry.address as usize);
-
-                start..start.add(entry.size as usize)
-            };
-
+        let mut exclude_region = |entry: Range<PhysicalAddress>| {
             let memories = info.memories.take();
 
             for mut region in memories {
@@ -52,7 +46,25 @@ impl<'dt> BootInfo<'dt> {
                     info.memories.push(region);
                 }
             }
+        };
+
+        // Apply memory reservations
+        while let Some(entry) = reservations.next_entry().unwrap() {
+            let entry = unsafe {
+                let start = PhysicalAddress::new(entry.address as usize);
+
+                start..start.add(entry.size as usize)
+            };
+
+            exclude_region(entry);
         }
+
+        // Reserve the FDT region itself
+        exclude_region(unsafe {
+            let base = PhysicalAddress::new(info.fdt.as_ptr() as usize);
+
+            (base..base.add(info.fdt.len())).align(kconfig::PAGE_SIZE)
+        });
 
         info
     }

@@ -2,7 +2,6 @@ OUTPUT_ARCH(riscv)
 ENTRY(kstart)
 
 KERNEL_OFFSET = 0xffffffff80000000;
-#KERNEL_OFFSET = 0x80200000;
 
 SECTIONS {
     . = KERNEL_OFFSET;
@@ -26,14 +25,6 @@ SECTIONS {
         __rodata_end = .;
     }
 
-    .data : {
-        __data_start = .;
-        *(.data .data.*)
-        *(.sdata .sdata.*)
-        . = ALIGN(4096); # 4KB page alignment for mapping
-        __data_end = .;
-    }
-
     .bss (NOLOAD) : {
         . = ALIGN(8); # 8-byte alignment for u64 ptr trick
         __bss_start = .;
@@ -41,6 +32,14 @@ SECTIONS {
         *(.sbss .sbss.*)
         . = ALIGN(4096); # 4KB page alignment for mapping
         __bss_end = .;
+    }
+
+    .data : {
+        __data_start = .;
+        *(.data .data.*)
+        *(.sdata .sdata.*)
+        . = ALIGN(4096); # 4KB page alignment for mapping
+        __data_end = .;
     }
 
     . = ALIGN(4096); # 4KB page alignment for mapping

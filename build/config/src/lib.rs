@@ -62,6 +62,7 @@ pub struct KernelConfig {
     pub uart_baud_rate: u32,
     /// Optionally overrides the default target
     pub target: Option<Target>,
+    pub linker_script: PathBuf,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -78,6 +79,7 @@ pub struct LoaderConfig {
     pub log_level: LogLevel,
     /// Optionally overrides the default target
     pub target: Option<Target>,
+    pub linker_script: PathBuf,
 }
 
 /// The available verbosity levels of logging output
@@ -216,7 +218,11 @@ impl Config {
         let str = fs::read_to_string(path).context("failed to read configuration file")?;
         hasher.write(str.as_bytes());
 
-        let raw: RawConfig = toml::from_str(&str).context("failed to parse configuration")?;
+        let mut raw: RawConfig = toml::from_str(&str).context("failed to parse configuration")?;
+        let dir = path.parent().unwrap();
+
+        raw.bootloader.linker_script = dir.join(raw.bootloader.linker_script).canonicalize()?;
+        raw.kernel.linker_script = dir.join(raw.kernel.linker_script).canonicalize()?;
 
         Ok(Self {
             name: raw.name,
@@ -225,7 +231,7 @@ impl Config {
             kernel: raw.kernel,
             loader: raw.bootloader,
             buildhash: hasher.finish(),
-            config_path: path.to_path_buf(),
+            config_path: path.to_path_buf().canonicalize()?,
             target: raw.target,
         })
     }

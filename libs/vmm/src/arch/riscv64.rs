@@ -30,11 +30,6 @@ impl Into<usize> for EntryFlags {
     }
 }
 
-// const PHYS_OFFSET: VirtualAddress = unsafe { VirtualAddress::new(0xffff_ffff_0000_0000) };
-const PHYS_OFFSET: VirtualAddress = unsafe { VirtualAddress::new(0xffff_ffd8_0000_0000) };
-
-// const MMIO_BASE: VirtualAddress = unsafe { VirtualAddress::new(0xffff_ffd8_0000_0000) };
-
 const PAGE_SIZE: usize = 4096;
 const PAGE_TABLE_ENTRIES: usize = 512;
 const ENTRY_ADDRESS_SHIFT: usize = 2;
@@ -65,6 +60,8 @@ pub struct Riscv64Sv39;
 impl Mode for Riscv64Sv39 {
     type EntryFlags = EntryFlags;
 
+    const PHYS_OFFSET: usize = 0xffff_ffd8_0000_0000;
+
     const PAGE_SIZE: usize = PAGE_SIZE;
     const PAGE_TABLE_LEVELS: usize = 3; // L0, L1, L2
     const PAGE_TABLE_ENTRIES: usize = PAGE_TABLE_ENTRIES;
@@ -74,6 +71,15 @@ impl Mode for Riscv64Sv39 {
     const ENTRY_FLAG_DEFAULT_READ_WRITE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_READ_WRITE;
 
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
+
+    fn invalidate_all() -> crate::Result<()> {
+        sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
+        Ok(())
+    }
+
+    fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> crate::Result<()> {
+        invalidate_address_range(asid, address_range)
+    }
 
     fn get_active_table(asid: usize) -> PhysicalAddress {
         unsafe { get_active_table(asid) }
@@ -86,15 +92,6 @@ impl Mode for Riscv64Sv39 {
         }
     }
 
-    fn invalidate_all() -> crate::Result<()> {
-        sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
-        Ok(())
-    }
-
-    fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> crate::Result<()> {
-        invalidate_address_range(asid, address_range)
-    }
-
     fn entry_is_leaf(entry: &Entry<Self>) -> bool
     where
         Self: Sized,
@@ -104,10 +101,6 @@ impl Mode for Riscv64Sv39 {
             .get_flags()
             .intersects(EntryFlags::READ | EntryFlags::EXECUTE)
     }
-
-    fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-        PHYS_OFFSET.add(phys.as_raw())
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -115,6 +108,8 @@ pub struct Riscv64Sv48;
 
 impl Mode for Riscv64Sv48 {
     type EntryFlags = EntryFlags;
+
+    const PHYS_OFFSET: usize = 0xffff_bfff_8000_0000;
 
     const PAGE_SIZE: usize = PAGE_SIZE;
     const PAGE_TABLE_LEVELS: usize = 4; // L0, L1, L2, L3
@@ -125,6 +120,15 @@ impl Mode for Riscv64Sv48 {
     const ENTRY_FLAG_DEFAULT_READ_WRITE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_READ_WRITE;
 
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
+
+    fn invalidate_all() -> crate::Result<()> {
+        sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
+        Ok(())
+    }
+
+    fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> crate::Result<()> {
+        invalidate_address_range(asid, address_range)
+    }
 
     fn get_active_table(asid: usize) -> PhysicalAddress {
         unsafe { get_active_table(asid) }
@@ -137,15 +141,6 @@ impl Mode for Riscv64Sv48 {
         }
     }
 
-    fn invalidate_all() -> crate::Result<()> {
-        sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
-        Ok(())
-    }
-
-    fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> crate::Result<()> {
-        invalidate_address_range(asid, address_range)
-    }
-
     fn entry_is_leaf(entry: &Entry<Self>) -> bool
     where
         Self: Sized,
@@ -155,10 +150,6 @@ impl Mode for Riscv64Sv48 {
             .get_flags()
             .intersects(EntryFlags::READ | EntryFlags::EXECUTE)
     }
-
-    fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-        PHYS_OFFSET.add(phys.as_raw())
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -166,6 +157,8 @@ pub struct Riscv64Sv57;
 
 impl Mode for Riscv64Sv57 {
     type EntryFlags = EntryFlags;
+
+    const PHYS_OFFSET: usize = 0xff7fffff80000000;
 
     const PAGE_SIZE: usize = PAGE_SIZE;
     const PAGE_TABLE_LEVELS: usize = 5; // L0, L1, L2, L3, L4
@@ -176,6 +169,15 @@ impl Mode for Riscv64Sv57 {
     const ENTRY_FLAG_DEFAULT_READ_WRITE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_READ_WRITE;
 
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
+
+    fn invalidate_all() -> crate::Result<()> {
+        sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
+        Ok(())
+    }
+
+    fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> crate::Result<()> {
+        invalidate_address_range(asid, address_range)
+    }
 
     fn get_active_table(asid: usize) -> PhysicalAddress {
         unsafe { get_active_table(asid) }
@@ -188,15 +190,6 @@ impl Mode for Riscv64Sv57 {
         }
     }
 
-    fn invalidate_all() -> crate::Result<()> {
-        sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
-        Ok(())
-    }
-
-    fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> crate::Result<()> {
-        invalidate_address_range(asid, address_range)
-    }
-
     fn entry_is_leaf(entry: &Entry<Self>) -> bool
     where
         Self: Sized,
@@ -205,9 +198,5 @@ impl Mode for Riscv64Sv57 {
         entry
             .get_flags()
             .intersects(EntryFlags::READ | EntryFlags::EXECUTE)
-    }
-
-    fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-        PHYS_OFFSET.add(phys.as_raw())
     }
 }

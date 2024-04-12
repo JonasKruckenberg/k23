@@ -2,22 +2,15 @@
 #![no_main]
 #![feature(naked_functions, asm_const)]
 
-use crate::boot_info::BootInfo;
-
 mod arch;
-mod boot_info;
-mod logger;
 mod panic;
-mod stack;
 
-pub mod kconfig {
-    // Configuration constants and statics defined by the build script
-    include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
-}
+fn main() {}
 
 #[no_mangle]
-fn kmain(hartid: usize, _boot_info: &'static BootInfo) -> ! {
-    log::info!("Hello World from hart {hartid}");
+pub static mut __stack_chk_guard: u64 = 0xe57fad0f5f757433;
 
-    todo!()
+#[no_mangle]
+pub unsafe extern "C" fn __stack_chk_fail() {
+    panic!("Loader stack is corrupted")
 }

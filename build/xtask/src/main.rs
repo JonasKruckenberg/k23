@@ -5,8 +5,10 @@ use build_config::Config;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::{Artifact, Message, MetadataCommand};
 use clap::{ArgAction, Parser};
+use ed25519_dalek::Signer;
 use std::ffi::OsStr;
 use std::fs;
+use std::io::{IoSlice, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
@@ -85,6 +87,8 @@ fn run() -> anyhow::Result<()> {
         XtaskCommand::Run { release, cfg, .. } => {
             let cfg = Config::from_file(&cfg).unwrap();
 
+            log::debug!("{cfg:?}");
+
             let kernel = build_kernel(&cfg, release)?;
             let loader = build_loader(&cfg, release, &kernel)?;
 
@@ -105,13 +109,6 @@ fn run() -> anyhow::Result<()> {
 
             let mut c = start_qemu("qemu-system-riscv64", loader.as_str(), true)?;
 
-            // Command::new("rust-lldb")
-            //     .arg(loader)
-            //     .stdin(Stdio::inherit())
-            //     .stdout(Stdio::inherit())
-            //     .stderr(Stdio::inherit())
-            //     .output()?;
-
             c.wait()?;
         }
         XtaskCommand::Dist { .. } => {
@@ -122,14 +119,32 @@ fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn compress_kernel(kernel: &Utf8Path) -> anyhow::Result<Utf8PathBuf> {
-    let out_path = kernel.with_extension("lz4");
+fn compress_kernel(kernel: &Utf8Path) -> anyhow::Result<(Utf8PathBuf, Utf8PathBuf)> {
+    let signing_key = {
+        use ed25519_dalek::SigningKey;
+        use rand_core::OsRng;
+
+        let mut csprng = OsRng;
+        SigningKey::generate(&mut csprng)
+    };
 
     let input = fs::read(kernel)?;
     let output = lz4_flex::block::compress_prepend_size(&input);
-    fs::write(&out_path, output)?;
 
-    Ok(out_path)
+    let verifying_key = signing_key.verifying_key();
+    let signature = signing_key.sign(&output);
+
+    let kernel_file_path = kernel.with_extension("lz4");
+    let mut kernel_file = fs::File::create(&kernel_file_path)?;
+    kernel_file
+        .write_vectored(&mut [IoSlice::new(&signature.to_bytes()), IoSlice::new(&output)])?;
+
+    let verifying_key_path = kernel.parent().unwrap().join("verifying_key.pub");
+    fs::write(&verifying_key_path, verifying_key.to_bytes())?;
+
+    verifying_key.verify_strict(&output, &signature).unwrap();
+
+    Ok((kernel_file_path, verifying_key_path))
 }
 
 fn check_loader(cfg: &Config) -> anyhow::Result<()> {
@@ -142,7 +157,6 @@ fn check_loader(cfg: &Config) -> anyhow::Result<()> {
 
     Cargo::new_check("loader", &target, &cfg)?
         .env("RUSTFLAGS", "-Zstack-protector=all -Csoft-float=true")
-        .env("K23_KERNEL_ARTIFACT", "main.rs") // use main.rs as a fake file during checking
         .enable_features(cfg.loader.features.clone())
         .exec()?;
 
@@ -173,14 +187,15 @@ fn build_loader(cfg: &Config, release: bool, kernel: &Utf8Path) -> anyhow::Resul
         .unwrap_or(&cfg.target)
         .to_string();
 
-    let compressed_kernel = compress_kernel(&kernel)?;
+    let (kernel_image, kernel_verifying_key) = compress_kernel(&kernel)?;
 
-    log::debug!("compressed kernel artifact {compressed_kernel}");
+    log::debug!("compressed kernel image {kernel_image} public key {kernel_verifying_key}");
 
     let bootloader = Cargo::new_build("loader", &target, &cfg)?
         .release(release)
         .env("RUSTFLAGS", "-Zstack-protector=all")
-        .env("K23_KERNEL_ARTIFACT", compressed_kernel)
+        .env("K23_KERNEL_IMAGE", kernel_image)
+        .env("K23_KERNEL_VERIFYING_KEY", kernel_verifying_key)
         .additional_args([
             "-Z",
             "build-std=core,alloc",
@@ -241,10 +256,6 @@ impl<'a> Cargo<'a> {
     }
 
     fn new(cmd: &'a str, crate_name: &'a str, target: &str, cfg: &Config) -> anyhow::Result<Self> {
-        // let cfg_ron = ron::to_string(&cfg)?;
-
-        let cfg_ron = ron::ser::to_string_pretty(&cfg, ron::ser::PrettyConfig::new())?;
-
         let mut command = Command::new("cargo");
         command.args([
             cmd,
@@ -254,7 +265,7 @@ impl<'a> Cargo<'a> {
             "--target",
             target,
         ]);
-        command.env("K23_KCONFIG", cfg_ron);
+        command.env("K23_KCONFIG", cfg.config_path.as_os_str());
 
         Ok(Self {
             crate_name,
@@ -297,7 +308,9 @@ impl<'a> Cargo<'a> {
             self.command.arg("--release");
         }
 
-        self.command.args(["--features", &self.features.join(",")]);
+        if !self.features.is_empty() {
+            self.command.args(["--features", &self.features.join(",")]);
+        }
 
         log::debug!("command {:?}", self.command);
 
@@ -353,14 +366,11 @@ fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> 
         "-cpu",
         "rv64",
         "-d",
-        "guest_errors,unimp,int",
+        "guest_errors",
         "-smp",
         "1",
         "-m",
         "128M",
-        "-nographic",
-        "-serial",
-        "mon:stdio",
         "-device",
         "virtio-rng-device",
         "-device",
@@ -371,43 +381,11 @@ fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> 
         "virtio-tablet-device",
         "-device",
         "virtio-keyboard-device",
-
-        // "-bios",
-        // "default",
-        //
-        // "-machine",
-        // "virt",
-        // "-cpu",
-        // "rv64",
-        // "-d",
-        // "guest_errors,unimp,int",
-        // "-smp",
-        // "1",
-        // "-m",
-        // "128M",
-        // "-display",
-        // "none",
-        //
-        // "-device",
-        // "virtio-rng-device",
-        // "-device",
-        // "virtio-gpu-device",
-        // "-device",
-        // "virtio-net-device",
-        // "-device",
-        // "virtio-tablet-device",
-        // "-device",
-        // "virtio-keyboard-device",
-        //
-        // "-nographic",
-        // "-serial",
-        // "mon:stdio",
-
-        // "-chardev",
-        // "stdio,id=stdio0",
-        // "-semihosting-config",
-        // "enable=on,userspace=on,chardev=stdio0",
-
+        "-nographic",
+        "-serial",
+        "mon:stdio",
+        "-semihosting-config",
+        "enable=on,userspace=on",
         // "-monitor",
         // "unix:qemu-monitor-socket,server,nowait",
     ]);

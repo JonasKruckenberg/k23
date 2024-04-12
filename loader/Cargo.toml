@@ -5,20 +5,18 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-arrayvec.workspace = true
 cfg-if.workspace = true
-dtb-parser.workspace = true
 log.workspace = true
-sbicall.workspace = true
 spin.workspace = true
 vmm.workspace = true
-lz4_flex = { workspace = true, features = ["safe-decode"] }
+arrayvec.workspace = true
+dtb-parser.workspace = true
+sbicall.workspace = true
 linked_list_allocator.workspace = true
+ed25519-dalek = { workspace = true, features = ["fast"] }
+lz4_flex.workspace = true
 bitflags.workspace = true
 
 [build-dependencies]
-ron.workspace = true
-anyhow.workspace = true
-quote.workspace = true
-proc-macro2.workspace = true
 build-config.workspace = true
+anyhow.workspace = true

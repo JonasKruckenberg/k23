@@ -1,6 +1,6 @@
 use crate::flush::Flush;
 use crate::table::Table;
-use crate::{zero_frames, AddressRangeExt, FrameAllocator, Mode, PhysicalAddress, VirtualAddress};
+use crate::{AddressRangeExt, FrameAllocator, Mode, PhysicalAddress, VirtualAddress};
 use bitflags::Flags;
 use core::ops::Range;
 
@@ -14,7 +14,6 @@ impl<'a, M: Mode> Mapper<'a, M> {
     pub fn new(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> crate::Result<Self> {
         let root_table = allocator.allocate_frame()?;
         let root_table_virt = M::phys_to_virt(root_table);
-        zero_frames::<M>(root_table_virt.as_raw() as *mut u64, 1);
 
         let this = Self {
             asid,
@@ -274,9 +273,6 @@ impl<'a, M: Mode> Mapper<'a, M> {
                     // allocate a new physical frame to hold the entries children
                     let frame_phys = self.allocator.allocate_frame()?;
                     entry.set_address_and_flags(frame_phys, M::ENTRY_FLAG_DEFAULT_TABLE);
-
-                    let frame_virt = M::phys_to_virt(frame_phys);
-                    zero_frames::<M>(frame_virt.as_raw() as *mut u64, 1);
                 }
 
                 let table_phys = entry.get_address();

@@ -1,5 +1,5 @@
 [workspace]
-members = ["build/*", "kernel", "libs/*", "loader"]
+members = ["build/*", "libs/*", "kernel", "loader"]
 resolver = "2"
 
 [workspace.package]
@@ -29,16 +29,18 @@ spin = "0.9.8"
 linked_list_allocator = "0.10.5"
 arrayvec = { version = "0.7.4", default-features = false }
 lz4_flex = { version = "0.11.3", default-features = false }
+riscv = "0.11.1"
+ed25519-dalek = { version = "2.1.1", default-features = false }
+
+# cranelift dependencies
 hashbrown = { version = "0.14.3", features = ["nightly"] }
 target-lexicon = { version = "0.12.14", default-features = false }
 bumpalo = "3.15.4"
 regalloc2 = { version = "0.9.3", default-features = false }
 smallvec = "2.0.0-alpha.5"
-qemu-exit = "3.0.2"
 
-riscv = "0.11.1"
-
-
+# build dependencies
+rand_core = { version = "0.6.4", features = ["getrandom"] }
 cranelift-isle = { path = "build/cranelift-isle" }
 build-config = { path = "build/config" }
 clap = { version = "4.5.4", features = ["derive"] }
@@ -48,9 +50,6 @@ cargo_metadata = "0.18.1"
 anyhow = "1.0.81"
 serde = { version = "1.0.197", default-features = false, features = ["derive"] }
 toml = "0.8.12"
-ron = "0.8.1"
-quote = "1.0.35"
-proc-macro2 = "1.0.79"
 
 [profile.release]
 opt-level = 3

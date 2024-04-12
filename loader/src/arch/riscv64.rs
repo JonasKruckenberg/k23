@@ -1,20 +1,11 @@
 use crate::boot_info::BootInfo;
-use crate::kconfig;
-use crate::stack::Stack;
+use crate::{kconfig, KernelArgs};
 use core::arch::asm;
 use core::ptr::addr_of_mut;
-use vmm::PhysicalAddress;
 
 #[link_section = ".bss.uninit"]
-pub static BOOT_STACK: Stack = Stack::ZERO;
-
-pub fn halt() -> ! {
-    unsafe {
-        loop {
-            asm!("wfi");
-        }
-    }
-}
+pub static BOOT_STACK: [u8; kconfig::PAGE_SIZE * kconfig::STACK_SIZE_PAGES] =
+    [0; kconfig::PAGE_SIZE * kconfig::STACK_SIZE_PAGES];
 
 #[link_section = ".text.start"]
 #[no_mangle]
@@ -30,26 +21,16 @@ unsafe extern "C" fn _start() -> ! {
         "add    sp, sp, t0",        // add the stack size to the stack pointer
         "mv     a2, sp",
 
-        // fill our stack area with a fixed pattern
-        // so that we can identify unused stack memory in dumps & calculate stack usage
-        "li          t1, {stack_fill}",
-        "la          t0, {stack}",
-        "100:",
-        "sw          t1, 0(t0)",
-        "addi        t0, t0, 4",
-        "bltu        t0, sp, 100b",
-
         "jal zero, {start_rust}",   // jump into Rust
         stack = sym BOOT_STACK,
-        stack_size = const (Stack::GUARD_PAGES + Stack::SIZE_PAGES) * kconfig::PAGE_SIZE,
-        stack_fill = const Stack::FILL_PATTERN,
+        stack_size = const kconfig::PAGE_SIZE * kconfig::STACK_SIZE_PAGES,
+
         start_rust = sym start,
         options(noreturn)
     )
 }
 
-#[no_mangle]
-unsafe extern "C" fn start(hartid: usize, opaque: *const u8, stack_base: PhysicalAddress) -> ! {
+unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
     extern "C" {
         static mut __bss_start: u64;
         static mut __bss_end: u64;
@@ -65,14 +46,33 @@ unsafe extern "C" fn start(hartid: usize, opaque: *const u8, stack_base: Physica
 
     crate::logger::init();
 
-    let boot_stack_region = BOOT_STACK.region();
-    debug_assert!(
-        boot_stack_region.contains(&stack_base),
-        "region {boot_stack_region:?} stack_base {stack_base:?}"
-    );
-    log::trace!("boot stack region {boot_stack_region:?} stack base {stack_base:?}");
+    log::debug!("stack region {:?}", BOOT_STACK.as_ptr_range());
 
     let boot_info = BootInfo::from_dtb(opaque);
 
     crate::main(hartid, boot_info)
+}
+
+pub unsafe extern "C" fn kernel_entry(stack_ptr: usize, func: usize, args: *const KernelArgs) -> ! {
+    log::debug!("jumping to kernel! stack_ptr: {stack_ptr:#x}, func: {func:#x}, args: {args:?}");
+
+    asm!(
+        "mv sp, {stack}",
+        "jalr zero, {func}",
+        "1:",
+        "   wfi",
+        "   j 1b",
+        in("a0") args,
+        stack = in(reg) stack_ptr,
+        func = in(reg) func,
+        options(noreturn)
+    )
+}
+
+pub fn halt() -> ! {
+    unsafe {
+        loop {
+            asm!("wfi");
+        }
+    }
 }

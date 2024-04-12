@@ -1,5 +1,5 @@
 use crate::alloc::{BumpAllocator, FrameAllocator, FrameUsage};
-use crate::Error;
+use crate::{AddressRangeExt, Error};
 use crate::{Mode, PhysicalAddress, VirtualAddress};
 use core::marker::PhantomData;
 use core::mem;
@@ -12,7 +12,6 @@ struct TableEntry<M> {
     skip: usize,
     /// The number of used pages
     used: usize,
-    phys_to_virt: fn(PhysicalAddress) -> VirtualAddress,
     _m: PhantomData<M>,
 }
 
@@ -26,7 +25,7 @@ impl<M: Mode> TableEntry<M> {
     pub fn is_page_used(&self, page: usize) -> bool {
         let phys = self.region.start.add(page / 8);
         let bits = unsafe {
-            let virt = (self.phys_to_virt)(phys);
+            let virt = M::phys_to_virt(phys);
             *(virt.0 as *const u8)
         };
         bits & (1 << (page % 8)) != 0
@@ -35,15 +34,16 @@ impl<M: Mode> TableEntry<M> {
     pub fn mark_page_as_used(&mut self, page: usize) {
         let phys = self.region.start.add(page / 8);
         unsafe {
-            let virt = (self.phys_to_virt)(phys);
+            let virt = M::phys_to_virt(phys);
             let bits = core::ptr::read_volatile(virt.0 as *const u8);
             core::ptr::write_volatile(virt.0 as *mut u8, bits | 1 << (page as u8 % 8));
         }
     }
+
     pub fn mark_page_as_free(&mut self, page: usize) {
         let phys = self.region.start.add(page / 8);
         unsafe {
-            let virt = (self.phys_to_virt)(phys);
+            let virt = M::phys_to_virt(phys);
             let bits = core::ptr::read_volatile(virt.0 as *const u8);
             core::ptr::write_volatile(virt.0 as *mut u8, bits & !(1 << (page as u8 % 8)));
         }
@@ -86,13 +86,10 @@ impl<M: Mode> BitMapAllocator<M> {
         }
     }
 
-    pub fn new(
-        mut bump_allocator: BumpAllocator<M>,
-        phys_to_virt: fn(PhysicalAddress) -> VirtualAddress,
-    ) -> crate::Result<Self> {
+    pub fn new(mut bump_allocator: BumpAllocator<M>) -> crate::Result<Self> {
         // allocate a frame to hold the table
         let table_phys = bump_allocator.allocate_frame()?;
-        let table_virt = phys_to_virt(table_phys);
+        let table_virt = M::phys_to_virt(table_phys);
 
         let this = Self {
             table_virt,
@@ -105,35 +102,34 @@ impl<M: Mode> BitMapAllocator<M> {
         );
 
         // fill the table with the memory regions
-        // let mut offset = bump_allocator.offset();
-        // for mut region in bump_allocator.regions().iter().cloned() {
-        let region = bump_allocator.region();
-        // let region_size = region.end.0 - region.start.0;
+        let mut offset = bump_allocator.offset();
+        for mut region in bump_allocator.regions().iter().rev().cloned() {
+            let region_size = region.size();
 
-        // keep advancing past already fully used memory regions
-        // if offset >= region_size {
-        //     offset -= region_size;
-        //     continue;
-        // } else if offset > 0 {
-        //     region.start = region.start.add(offset);
-        //     offset = 0;
-        // }
+            // keep advancing past already fully used memory regions
+            if offset >= region_size {
+                offset -= region_size;
+                continue;
+            } else if offset > 0 {
+                region.start = region.start.add(offset);
+                offset = 0;
+            }
 
-        for entry in this.entries_mut() {
-            if entry.region.end.0 == entry.region.start.0 {
-                // Create new entry
-                entry.region = region.clone();
-                break;
-            } else if region.end == entry.region.start {
-                // Combine entry at start
-                entry.region.start = region.start.clone();
-                break;
-            } else if region.start == entry.region.end {
-                entry.region.end = region.end.clone();
-                break;
+            for entry in this.entries_mut() {
+                if entry.region.end.0 == entry.region.start.0 {
+                    // Create new entry
+                    entry.region = region.clone();
+                    break;
+                } else if region.end == entry.region.start {
+                    // Combine entry at start
+                    entry.region.start = region.start.clone();
+                    break;
+                } else if region.start == entry.region.end {
+                    entry.region.end = region.end.clone();
+                    break;
+                }
             }
         }
-        // }
 
         for entry in this.entries_mut() {
             let usage_map_pages = entry.usage_map_pages();
@@ -144,7 +140,6 @@ impl<M: Mode> BitMapAllocator<M> {
 
             entry.skip = usage_map_pages;
             entry.used = usage_map_pages;
-            entry.phys_to_virt = phys_to_virt;
         }
 
         Ok(this)
@@ -248,5 +243,96 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
         }
 
         FrameUsage { used, total }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        BitMapAllocator, BumpAllocator, EmulateArch, Error, FrameAllocator, Mode, PhysicalAddress,
+    };
+
+    #[test]
+    fn single_region_single_frame() -> Result<(), Error> {
+        let bump_alloc: BumpAllocator<EmulateArch> =
+            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)]);
+        let mut alloc = BitMapAllocator::new(bump_alloc)?;
+
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x3000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x2000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x1000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
+        assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn single_region_multi_frame() -> Result<(), Error> {
+        let bump_alloc: BumpAllocator<EmulateArch> =
+            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)]);
+        let mut alloc = BitMapAllocator::new(bump_alloc)?;
+
+        assert_eq!(alloc.allocate_frames(3)?, PhysicalAddress(0x1000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
+        assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn multi_region_single_frame() -> Result<(), Error> {
+        let bump_alloc: BumpAllocator<EmulateArch> = BumpAllocator::new(&[
+            PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
+            PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
+                ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+        ]);
+        let mut alloc = BitMapAllocator::new(bump_alloc)?;
+
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x8000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x7000));
+
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x3000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x2000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x1000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
+        assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn multi_region_multi_frame() -> Result<(), Error> {
+        let bump_alloc: BumpAllocator<EmulateArch> = BumpAllocator::new(&[
+            PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
+            PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
+                ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+        ]);
+        let mut alloc = BitMapAllocator::new(bump_alloc)?;
+
+        assert_eq!(alloc.allocate_frames(2)?, PhysicalAddress(0x7000));
+
+        assert_eq!(alloc.allocate_frames(2)?, PhysicalAddress(0x2000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x1000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
+        assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn multi_region_multi_frame2() -> Result<(), Error> {
+        let bump_alloc: BumpAllocator<EmulateArch> = BumpAllocator::new(&[
+            PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
+            PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
+                ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+        ]);
+        let mut alloc = BitMapAllocator::new(bump_alloc)?;
+
+        assert_eq!(alloc.allocate_frames(3)?, PhysicalAddress(0x1000));
+        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
+        assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
+
+        Ok(())
     }
 }

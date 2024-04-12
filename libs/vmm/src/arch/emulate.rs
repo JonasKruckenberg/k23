@@ -59,6 +59,8 @@ impl EmulateArch {
 impl Mode for EmulateArch {
     type EntryFlags = EmulateEntryFlags;
 
+    const PHYS_OFFSET: usize = 0xffff_ffd8_0000_0000;
+
     const PAGE_SIZE: usize = 4096;
 
     const PAGE_TABLE_LEVELS: usize = 2; // L0, L1, L2
