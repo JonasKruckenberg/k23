@@ -1,12 +1,13 @@
+use anyhow::{ensure, Context};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::str::FromStr;
 use std::{
+    fmt,
     fmt::Formatter,
     fs,
     hash::{DefaultHasher, Hasher},
     path::{Path, PathBuf},
 };
-
-use anyhow::{ensure, Context};
-use serde::{Deserialize, Deserializer, Serialize};
 
 fn kernel_default_stack_size_pages() -> usize {
     16
@@ -113,22 +114,27 @@ pub enum Target {
     Path(PathBuf),
 }
 
-impl Target {
-    pub fn from_str(target: &str) -> anyhow::Result<Self> {
-        if let Ok(triple) = TargetTriple::from_str(&target) {
+impl FromStr for Target {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(triple) = TargetTriple::from_str(s) {
             Ok(Target::Triple(triple))
         } else {
-            Ok(Target::Path(PathBuf::from(target)))
+            Ok(Target::Path(PathBuf::from(s)))
         }
     }
+}
 
-    pub fn to_string(&self) -> String {
+impl fmt::Display for Target {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Target::Triple(triple) => format!(
+            Target::Triple(triple) => write!(
+                f,
                 "{}-{}-{}-{}",
                 triple.arch, triple.vendor, triple.os, triple.env
             ),
-            Target::Path(path) => path.to_string_lossy().to_string(),
+            Target::Path(path) => write!(f, "{}", path.display()),
         }
     }
 }
@@ -145,9 +151,11 @@ pub struct TargetTriple {
     pub env: String,
 }
 
-impl TargetTriple {
-    pub fn from_str(target_triple: &str) -> anyhow::Result<Self> {
-        let mut iter = target_triple.splitn(4, '-');
+impl FromStr for TargetTriple {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut iter = s.splitn(4, '-');
 
         let arch = iter
             .next()

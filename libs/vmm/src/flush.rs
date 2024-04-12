@@ -1,8 +1,9 @@
 use crate::{Error, Mode, VirtualAddress};
+use core::cmp;
 use core::marker::PhantomData;
 use core::ops::Range;
-use core::{cmp, mem};
 
+#[must_use]
 pub struct Flush<M> {
     asid: usize,
     range: Option<Range<VirtualAddress>>,
@@ -37,9 +38,13 @@ impl<M: Mode> Flush<M> {
         Ok(())
     }
 
-    pub unsafe fn ignore(self) {
-        mem::forget(self);
-    }
+    /// # Safety
+    ///
+    /// Not flushing after mutating the page translation tables will likely lead to unintended
+    /// consequences such as inconsistent views of the address space between different harts.
+    ///
+    /// You should only call this if you know what you're doing.
+    pub unsafe fn ignore(self) {}
 
     pub fn extend_range(&mut self, asid: usize, other: Range<VirtualAddress>) -> crate::Result<()> {
         if self.asid == asid {

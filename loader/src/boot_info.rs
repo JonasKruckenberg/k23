@@ -1,5 +1,6 @@
 use crate::kconfig;
 use arrayvec::ArrayVec;
+use core::cmp::Ordering;
 use core::mem;
 use core::ops::Range;
 use dtb_parser::{DevTree, Node, Visitor};
@@ -66,6 +67,19 @@ impl<'dt> BootInfo<'dt> {
             (base..base.add(info.fdt.len())).align(kconfig::PAGE_SIZE)
         });
 
+        // ensure the memory regions are sorted.
+        // this is important for the allocation logic to be correct
+        info.memories.sort_unstable_by(|a, b| {
+            if a.end < b.start {
+                Ordering::Less
+            } else if b.end < a.start {
+                Ordering::Greater
+            } else {
+                // This should never happen if the `exclude_region` code about is correct
+                unreachable!("Memory region {a:?} and {b:?} are overlapping");
+            }
+        });
+
         info
     }
 }
@@ -102,7 +116,7 @@ impl<'dt> BootInfoVisitor<'dt> {
 impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
     type Error = dtb_parser::Error;
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
-        if name == "cpus" || name == "" {
+        if name == "cpus" || name.is_empty() {
             node.visit(self)?;
         } else if name.starts_with("cpu@") {
             self.cpus += 1;

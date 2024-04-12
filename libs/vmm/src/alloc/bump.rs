@@ -13,7 +13,12 @@ pub struct BumpAllocator<'a, M> {
 }
 
 impl<'a, M: Mode> BumpAllocator<'a, M> {
-    pub fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
+    /// Create a new frame allocator over a given set of physical memory regions.
+    ///
+    /// # Safety
+    ///
+    /// The caller has to ensure the slice is correctly sorted from lowest to highest addresses.
+    pub unsafe fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
         Self {
             regions,
             offset: 0,
@@ -91,8 +96,9 @@ mod test {
 
     #[test]
     fn single_region_single_frame() -> Result<(), Error> {
-        let mut alloc: BumpAllocator<EmulateArch> =
-            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)]);
+        let mut alloc: BumpAllocator<EmulateArch> = unsafe {
+            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)])
+        };
 
         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x3000));
         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x2000));
@@ -105,8 +111,9 @@ mod test {
 
     #[test]
     fn single_region_multi_frame() -> Result<(), Error> {
-        let mut alloc: BumpAllocator<EmulateArch> =
-            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)]);
+        let mut alloc: BumpAllocator<EmulateArch> = unsafe {
+            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)])
+        };
 
         assert_eq!(alloc.allocate_frames(3)?, PhysicalAddress(0x1000));
         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
@@ -117,11 +124,13 @@ mod test {
 
     #[test]
     fn multi_region_single_frame() -> Result<(), Error> {
-        let mut alloc: BumpAllocator<EmulateArch> = BumpAllocator::new(&[
-            PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
-            PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
-                ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
-        ]);
+        let mut alloc: BumpAllocator<EmulateArch> = unsafe {
+            BumpAllocator::new(&[
+                PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
+                PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
+                    ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+            ])
+        };
 
         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x8000));
         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x7000));
@@ -137,11 +146,13 @@ mod test {
 
     #[test]
     fn multi_region_multi_frame() -> Result<(), Error> {
-        let mut alloc: BumpAllocator<EmulateArch> = BumpAllocator::new(&[
-            PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
-            PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
-                ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
-        ]);
+        let mut alloc: BumpAllocator<EmulateArch> = unsafe {
+            BumpAllocator::new(&[
+                PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
+                PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
+                    ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+            ])
+        };
 
         assert_eq!(alloc.allocate_frames(2)?, PhysicalAddress(0x7000));
 
@@ -155,11 +166,13 @@ mod test {
 
     #[test]
     fn multi_region_multi_frame2() -> Result<(), Error> {
-        let mut alloc: BumpAllocator<EmulateArch> = BumpAllocator::new(&[
-            PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
-            PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
-                ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
-        ]);
+        let mut alloc: BumpAllocator<EmulateArch> = unsafe {
+            BumpAllocator::new(&[
+                PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
+                PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
+                    ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+            ])
+        };
 
         assert_eq!(alloc.allocate_frames(3)?, PhysicalAddress(0x1000));
         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));

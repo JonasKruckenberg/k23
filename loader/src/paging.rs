@@ -1,19 +1,22 @@
-use crate::boot_info::BootInfo;
-use crate::elf::ElfSections;
-use crate::kconfig;
 use core::ops::Range;
 use core::ptr::addr_of;
+
 use vmm::{
     AddressRangeExt, BumpAllocator, EntryFlags, Flush, Mapper, Mode, PhysicalAddress,
     VirtualAddress, INIT,
 };
 
+use crate::boot_info::BootInfo;
+use crate::elf::ElfSections;
+use crate::kconfig;
+
 pub fn init(
     boot_info: &BootInfo,
     kernel: ElfSections,
 ) -> Result<(usize, Range<VirtualAddress>, Range<VirtualAddress>), vmm::Error> {
+    // Safety: The boot_info module ensures the memory entries are in the right order
     let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
-        BumpAllocator::new(&boot_info.memories);
+        unsafe { BumpAllocator::new(&boot_info.memories) };
 
     let mut mapper = Mapper::new(0, &mut alloc)?;
     let mut flush = Flush::empty(0);
@@ -25,9 +28,9 @@ pub fn init(
     identity_map_self(&mut mapper, &mut flush)?;
 
     // do the actual mapping
-    map_physical_memory(&mut mapper, &mut flush, &boot_info)?;
-    let fdt_virt = map_fdt(&mut mapper, &mut flush, &boot_info)?;
-    let stack_virt = map_kernel(&mut mapper, &mut flush, &boot_info, kernel)?;
+    map_physical_memory(&mut mapper, &mut flush, boot_info)?;
+    let fdt_virt = map_fdt(&mut mapper, &mut flush, boot_info)?;
+    let stack_virt = map_kernel(&mut mapper, &mut flush, boot_info, kernel)?;
 
     // Switch on the MMU
     log::debug!("activating page table...");

@@ -142,6 +142,9 @@ fn verify_kernel_signature<'a>(
 #[no_mangle]
 pub static mut __stack_chk_guard: u64 = 0xe57fad0f5f757433;
 
+/// # Safety
+///
+/// This is an extern
 #[no_mangle]
 pub unsafe extern "C" fn __stack_chk_fail() {
     panic!("Loader stack is corrupted")

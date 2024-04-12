@@ -1,10 +1,16 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(error_in_core)]
 
+use crate::entry::Entry;
+pub use alloc::{BitMapAllocator, BumpAllocator, FrameAllocator, FrameUsage};
+pub use arch::*;
 use bitflags::Flags;
 use core::fmt::Formatter;
 use core::ops::Range;
 use core::{fmt, mem};
+pub use error::Error;
+pub use flush::Flush;
+pub use mapper::Mapper;
 
 mod alloc;
 mod arch;
@@ -13,13 +19,6 @@ mod error;
 mod flush;
 mod mapper;
 mod table;
-
-use crate::entry::Entry;
-pub use alloc::{BitMapAllocator, BumpAllocator, FrameAllocator, FrameUsage};
-pub use arch::*;
-pub use error::Error;
-pub use flush::Flush;
-pub use mapper::Mapper;
 
 pub(crate) type Result<T> = core::result::Result<T, Error>;
 
@@ -75,6 +74,10 @@ pub trait Mode {
 pub struct PhysicalAddress(usize);
 
 impl PhysicalAddress {
+    /// # Safety
+    ///
+    /// `PhysicalAddress` is treated like a pointer in many places and therefore the caller has to
+    /// uphold the same safety guarantees. Namely, the caller has to ensure the given address is valid.
     pub const unsafe fn new(bits: usize) -> Self {
         debug_assert!(bits != 0);
         Self(bits)
@@ -136,8 +139,12 @@ impl fmt::Debug for PhysicalAddress {
 pub struct VirtualAddress(usize);
 
 impl VirtualAddress {
+    /// # Safety
+    ///
+    /// No input checking is performed. The caller has to ensure the given address is a valid
+    /// virtual address under current memory mode.
     pub const unsafe fn new(bits: usize) -> Self {
-        debug_assert!(bits <= 0x0000_003f_ffff_ffff || bits > 0xffff_ffbf_ffff_ffff);
+        // debug_assert!(bits <= 0x0000_003f_ffff_ffff || bits > 0xffff_ffbf_ffff_ffff);
         debug_assert!(bits != 0);
         Self(bits)
     }

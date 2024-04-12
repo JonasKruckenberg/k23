@@ -20,9 +20,9 @@ impl From<usize> for EmulateEntryFlags {
     }
 }
 
-impl Into<usize> for EmulateEntryFlags {
-    fn into(self) -> usize {
-        self.bits()
+impl From<EmulateEntryFlags> for usize {
+    fn from(value: EmulateEntryFlags) -> Self {
+        value.bits()
     }
 }
 
