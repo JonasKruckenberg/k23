@@ -4,7 +4,6 @@ description = "ISLE: Instruction Selection and Lowering Expressions. A domain-sp
 edition.workspace = true
 license = "Apache-2.0 WITH LLVM-exception"
 name = "cranelift-isle"
-readme = "../README.md"
 repository = "https://github.com/bytecodealliance/wasmtime/tree/main/cranelift/isle"
 version = "0.108.0"
 

@@ -1165,8 +1165,11 @@ impl<I: VCodeInst> VCode<I> {
                 let slot = alloc.as_stack().unwrap();
                 let sp_offset = self.abi.get_spillslot_offset(slot);
                 let sp_to_caller_sp_offset = self.abi.nominal_sp_to_caller_sp_offset();
+                #[cfg(feature = "unwind")]
                 let caller_sp_to_cfa_offset =
                     crate::isa::unwind::systemv::caller_sp_to_cfa_offset();
+                #[cfg(not(feature = "unwind"))]
+                let caller_sp_to_cfa_offset = 0;
                 let cfa_to_sp_offset = -((sp_to_caller_sp_offset + caller_sp_to_cfa_offset) as i64);
                 LabelValueLoc::CFAOffset(cfa_to_sp_offset + sp_offset)
             };

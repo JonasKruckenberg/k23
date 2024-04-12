@@ -9,6 +9,7 @@ pub mod systemv;
 pub mod winx64;
 
 /// CFA-based unwind information used on SystemV.
+#[cfg(feature = "unwind")]
 pub type CfaUnwindInfo = systemv::UnwindInfo;
 
 /// Expected unwind info type.
@@ -27,7 +28,6 @@ pub enum UnwindInfoKind {
 
 /// Represents unwind information for a single function.
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub enum UnwindInfo {
     /// Windows x64 ABI unwind information.
@@ -142,7 +142,6 @@ pub enum UnwindInfo {
 /// ...
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum UnwindInst {
     /// The frame-pointer register for this architecture has just been pushed to
     /// the stack (and on architectures where return-addresses are not pushed by

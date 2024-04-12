@@ -78,7 +78,7 @@ macro_rules! newtype_of_reg {
         // NB: We cannot implement `DerefMut` because that would let people do
         // nasty stuff like `*my_gpr.deref_mut() = some_xmm_reg`, breaking the
         // invariants that `Gpr` provides.
-        impl std::ops::Deref for $newtype_reg {
+        impl core::ops::Deref for $newtype_reg {
             type Target = Reg;
 
             fn deref(&self) -> &Reg {
