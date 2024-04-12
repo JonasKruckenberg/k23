@@ -36,7 +36,6 @@ const ENTRY_ADDRESS_SHIFT: usize = 2;
 
 const ENTRY_FLAG_DEFAULT_LEAF: EntryFlags = EntryFlags::VALID;
 const ENTRY_FLAG_DEFAULT_TABLE: EntryFlags = EntryFlags::VALID;
-const ENTRY_FLAG_DEFAULT_READ_WRITE: EntryFlags = EntryFlags::from_bits_truncate(1 << 1 | 1 << 2);
 
 fn invalidate_address_range(
     asid: usize,
@@ -68,7 +67,6 @@ impl Mode for Riscv64Sv39 {
 
     const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags = ENTRY_FLAG_DEFAULT_LEAF;
     const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_TABLE;
-    const ENTRY_FLAG_DEFAULT_READ_WRITE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_READ_WRITE;
 
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 
@@ -117,7 +115,6 @@ impl Mode for Riscv64Sv48 {
 
     const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags = ENTRY_FLAG_DEFAULT_LEAF;
     const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_TABLE;
-    const ENTRY_FLAG_DEFAULT_READ_WRITE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_READ_WRITE;
 
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 
@@ -166,7 +163,6 @@ impl Mode for Riscv64Sv57 {
 
     const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags = ENTRY_FLAG_DEFAULT_LEAF;
     const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_TABLE;
-    const ENTRY_FLAG_DEFAULT_READ_WRITE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_READ_WRITE;
 
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 

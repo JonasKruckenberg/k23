@@ -68,8 +68,6 @@ impl Mode for EmulateArch {
 
     const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags = EmulateEntryFlags::VALID;
     const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags = EmulateEntryFlags::VALID;
-    const ENTRY_FLAG_DEFAULT_READ_WRITE: Self::EntryFlags =
-        EmulateEntryFlags::from_bits_truncate(1 << 1 | 1 << 2);
 
     fn invalidate_all() -> crate::Result<()> {
         Ok(())
