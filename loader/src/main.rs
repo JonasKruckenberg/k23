@@ -5,18 +5,17 @@
 extern crate alloc;
 
 use crate::boot_info::BootInfo;
-use core::ptr::{addr_of, addr_of_mut};
+use core::ptr::addr_of_mut;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use linked_list_allocator::LockedHeap;
-use vmm::{
-    AddressRangeExt, BumpAllocator, EntryFlags, Flush, FrameAllocator, Mapper, Mode,
-    PhysicalAddress, VirtualAddress, INIT,
-};
+use vmm::VirtualAddress;
 
 mod arch;
 mod boot_info;
 mod elf;
 mod logger;
+mod paging;
+mod panic;
 
 pub mod kconfig {
     // Configuration constants and statics defined by the build script
@@ -86,200 +85,26 @@ fn main(hartid: usize, boot_info: BootInfo) -> ! {
         .expect("failed to decompress kernel");
     log::info!("successfully decompressed kernel");
 
-    // 4. setup frame allocator
-    //      - start at top of physmem, works downwards
-
-    let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
-        BumpAllocator::new(&boot_info.memories);
-
-    let mut mapper = Mapper::new(0, &mut alloc).expect("failed to initialize page table mapper");
-    let mut flush = Flush::empty(0);
-
-    for region_phys in &boot_info.memories {
-        let region_virt = kconfig::MEMORY_MODE::phys_to_virt(region_phys.start)
-            ..kconfig::MEMORY_MODE::phys_to_virt(region_phys.end);
-
-        log::debug!("Mapping physical memory region {region_virt:?} => {region_phys:?}...");
-        mapper
-            .map_range_with_flush(
-                region_virt,
-                region_phys.clone(),
-                EntryFlags::READ | EntryFlags::WRITE,
-                &mut flush,
-            )
-            .unwrap();
-    }
-
-    let fdt_phys = unsafe {
-        let base = PhysicalAddress::new(boot_info.fdt.as_ptr() as usize);
-
-        (base..base.add(boot_info.fdt.len())).align(kconfig::PAGE_SIZE)
-    };
-    let fdt_virt = kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.start)
-        ..kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.end);
-
-    log::debug!("Mapping fdt region {fdt_virt:?} => {fdt_phys:?}...");
-    mapper
-        .map_range_with_flush(fdt_virt.clone(), fdt_phys, EntryFlags::READ, &mut flush)
-        .unwrap();
-
-    extern "C" {
-        static __text_start: u8;
-        static __text_end: u8;
-        static __rodata_start: u8;
-        static __rodata_end: u8;
-        static __stack_start: u8;
-        static __data_end: u8;
-    }
-
-    let own_executable_region = unsafe {
-        PhysicalAddress::new(addr_of!(__text_start) as usize)
-            ..PhysicalAddress::new(addr_of!(__text_end) as usize)
-    };
-    let own_read_only_region = unsafe {
-        PhysicalAddress::new(addr_of!(__rodata_start) as usize)
-            ..PhysicalAddress::new(addr_of!(__rodata_end) as usize)
-    };
-    let own_read_write_region = unsafe {
-        PhysicalAddress::new(addr_of!(__stack_start) as usize)
-            ..PhysicalAddress::new(addr_of!(__data_end) as usize)
-    };
-
-    log::debug!("Identity mapping own executable region {own_executable_region:?}...");
-    mapper
-        .identity_map_range_with_flush(
-            own_executable_region,
-            EntryFlags::READ | EntryFlags::EXECUTE,
-            &mut flush,
-        )
-        .unwrap();
-
-    log::debug!("Identity mapping own read-only region {own_read_only_region:?}...");
-    mapper
-        .identity_map_range_with_flush(own_read_only_region, EntryFlags::READ, &mut flush)
-        .unwrap();
-
-    log::debug!("Identity mapping own read-write region {own_read_write_region:?}...");
-    mapper
-        .identity_map_range_with_flush(
-            own_read_write_region,
-            EntryFlags::READ | EntryFlags::WRITE,
-            &mut flush,
-        )
-        .unwrap();
-
     let kernel_regions = elf::parse(&kernel);
+    let kernel_start = kernel_regions.text.virt.start;
+    let kernel_end = kernel_regions.data.virt.end;
+    let kernel_entry = kernel_regions.entry;
 
-    log::debug!(
-        "Mapping kernel text region {:?} => {:?}...",
-        kernel_regions.text.virt,
-        kernel_regions.text.phys
-    );
-    mapper
-        .map_range_with_flush(
-            kernel_regions.text.virt.clone(),
-            kernel_regions.text.phys,
-            EntryFlags::READ | EntryFlags::EXECUTE,
-            &mut flush,
-        )
-        .unwrap();
-
-    log::debug!(
-        "Mapping kernel rodata region {:?} => {:?}...",
-        kernel_regions.rodata.virt,
-        kernel_regions.rodata.phys
-    );
-    mapper
-        .map_range_with_flush(
-            kernel_regions.rodata.virt,
-            kernel_regions.rodata.phys,
-            EntryFlags::READ,
-            &mut flush,
-        )
-        .unwrap();
-
-    log::debug!(
-        "Mapping kernel bss region {:?} => {:?}...",
-        kernel_regions.bss.virt,
-        kernel_regions.bss.phys
-    );
-    mapper
-        .map_range_with_flush(
-            kernel_regions.bss.virt,
-            kernel_regions.bss.phys,
-            EntryFlags::READ | EntryFlags::WRITE,
-            &mut flush,
-        )
-        .unwrap();
-
-    log::debug!(
-        "Mapping kernel data region {:?} => {:?}...",
-        kernel_regions.data.virt,
-        kernel_regions.data.phys
-    );
-    mapper
-        .map_range_with_flush(
-            kernel_regions.data.virt.clone(),
-            kernel_regions.data.phys,
-            EntryFlags::READ | EntryFlags::WRITE,
-            &mut flush,
-        )
-        .unwrap();
-
-    let kernel_stack_frames = boot_info.cpus * kconfig::STACK_SIZE_PAGES_KERNEL;
-
-    let kernel_stack_phys = {
-        let base = mapper
-            .allocator_mut()
-            .allocate_frames(kernel_stack_frames)
-            .unwrap();
-        base..base.add(kernel_stack_frames * kconfig::PAGE_SIZE)
-    };
-
-    let kernel_stack_virt = unsafe {
-        let end = VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET);
-
-        end.sub(kernel_stack_frames * kconfig::PAGE_SIZE)..end
-    };
-
-    mapper
-        .map_range_with_flush(
-            kernel_stack_virt.clone(),
-            kernel_stack_phys,
-            EntryFlags::READ | EntryFlags::WRITE,
-            &mut flush,
-        )
-        .unwrap();
-
-    log::debug!("activating page table...");
-    mapper.activate();
-
-    let frame_usage = alloc.frame_usage();
-    log::info!(
-        "Mapping complete. Permanently used: {} KiB of {} MiB total ({:.3}%).",
-        (frame_usage.used * kconfig::PAGE_SIZE) / 1024,
-        (frame_usage.total * kconfig::PAGE_SIZE) / (1024 * 1024),
-        (frame_usage.used as f64 / frame_usage.total as f64) * 100.0
-    );
+    let (alloc_offset, fdt_virt, kernel_stack_virt) =
+        paging::init(&boot_info, kernel_regions).expect("failed to set up page tables");
 
     let args = KernelArgs {
         boot_hart: hartid,
         fdt: fdt_virt.start,
-        kernel_start: kernel_regions.text.virt.start,
-        kernel_end: kernel_regions.data.virt.end,
+        kernel_start,
+        kernel_end,
         stack_start: kernel_stack_virt.start,
         stack_end: kernel_stack_virt.end,
 
-        alloc_offset: alloc.offset(),
+        alloc_offset,
     };
 
-    unsafe {
-        arch::kernel_entry(
-            args.kernel_end.as_raw(),
-            kernel_regions.entry.as_raw(),
-            &args,
-        )
-    }
+    unsafe { arch::kernel_entry(kernel_end.as_raw(), kernel_entry.as_raw(), &args) }
 }
 
 fn init_global_alloc(boot_info: &BootInfo) {
@@ -312,14 +137,6 @@ fn verify_kernel_signature<'a>(
         .expect("failed to verify kernel image signature");
 
     kernel
-}
-
-#[panic_handler]
-#[no_mangle]
-fn rust_panic(info: &core::panic::PanicInfo) -> ! {
-    log::error!("LOADER PANIC {}", info);
-
-    arch::halt()
 }
 
 #[no_mangle]
