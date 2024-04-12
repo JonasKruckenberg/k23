@@ -53,6 +53,14 @@ unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
     crate::main(hartid, boot_info)
 }
 
+pub fn halt() -> ! {
+    unsafe {
+        loop {
+            asm!("wfi");
+        }
+    }
+}
+
 pub unsafe extern "C" fn kernel_entry(stack_ptr: usize, func: usize, args: *const KernelArgs) -> ! {
     log::debug!("jumping to kernel! stack_ptr: {stack_ptr:#x}, func: {func:#x}, args: {args:?}");
 
@@ -67,12 +75,4 @@ pub unsafe extern "C" fn kernel_entry(stack_ptr: usize, func: usize, args: *cons
         func = in(reg) func,
         options(noreturn)
     )
-}
-
-pub fn halt() -> ! {
-    unsafe {
-        loop {
-            asm!("wfi");
-        }
-    }
 }

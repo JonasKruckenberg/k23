@@ -1,8 +1,8 @@
 use build_config::{Config, LogLevel, MemoryMode};
-use std::{env, fs};
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::{env, fs};
 
 fn main() -> anyhow::Result<()> {
     let workspace_root = Path::new(env!("CARGO_RUSTC_CURRENT_DIR"));
@@ -25,7 +25,12 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn make_kconfig(cfg: &Config, out_dir: &Path, verifying_key: Option<&str>, kernel_image: Option<&str>) -> anyhow::Result<()> {
+fn make_kconfig(
+    cfg: &Config,
+    out_dir: &Path,
+    verifying_key: Option<&str>,
+    kernel_image: Option<&str>,
+) -> anyhow::Result<()> {
     let stack_size_pages = cfg.loader.stack_size_pages;
     let stack_size_pages_kernel = cfg.kernel.stack_size_pages;
     let log_level = match cfg.loader.log_level {

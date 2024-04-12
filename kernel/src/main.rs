@@ -5,12 +5,10 @@
 mod arch;
 mod panic;
 
-fn main() {}
-
 #[no_mangle]
 pub static mut __stack_chk_guard: u64 = 0xe57fad0f5f757433;
 
 #[no_mangle]
 pub unsafe extern "C" fn __stack_chk_fail() {
-    panic!("Loader stack is corrupted")
+    panic!("Kernel stack is corrupted")
 }

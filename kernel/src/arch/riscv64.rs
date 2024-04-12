@@ -1,5 +1,4 @@
 use core::arch::asm;
-use core::ops::Range;
 use vmm::VirtualAddress;
 
 pub fn halt() -> ! {
@@ -22,6 +21,6 @@ pub struct KernelArgs {
 }
 
 #[no_mangle]
-pub extern "C" fn kstart(args: KernelArgs) -> ! {
+pub extern "C" fn kstart(_args: KernelArgs) -> ! {
     todo!()
 }
