@@ -1,9 +1,9 @@
 //! A frontend for building Cranelift IR from other languages.
 use crate::ssa::{SSABuilder, SideEffects};
 use crate::variable::Variable;
-use core::fmt::Debug;
+use core::fmt::{self, Debug};
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
-use cranelift_codegen::entity::{EntitySet, SecondaryMap};
+use cranelift_codegen::entity::{EntityRef, EntitySet, SecondaryMap};
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{
@@ -170,21 +170,53 @@ impl<'short, 'long> InstBuilderBase<'short> for FuncInstBuilder<'short, 'long> {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, onlyerror::Error)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 /// An error encountered when calling [`FunctionBuilder::try_use_var`].
 pub enum UseVariableError {
-    #[error("variable {0} was used before it was defined")]
     UsedBeforeDeclared(Variable),
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, onlyerror::Error)]
+impl fmt::Display for UseVariableError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UseVariableError::UsedBeforeDeclared(variable) => {
+                write!(
+                    f,
+                    "variable {} was used before it was defined",
+                    variable.index()
+                )?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for UseVariableError {}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 /// An error encountered when calling [`FunctionBuilder::try_declare_var`].
 pub enum DeclareVariableError {
-    #[error("variable {0} was declared multiple times")]
     DeclaredMultipleTimes(Variable),
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, onlyerror::Error)]
+impl std::error::Error for DeclareVariableError {}
+
+impl fmt::Display for DeclareVariableError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DeclareVariableError::DeclaredMultipleTimes(variable) => {
+                write!(
+                    f,
+                    "variable {} was declared multiple times",
+                    variable.index()
+                )?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 /// An error encountered when defining the initial value of a variable.
 pub enum DefVariableError {
     /// The variable was instantiated with a value of the wrong type.
@@ -192,16 +224,35 @@ pub enum DefVariableError {
     /// note: to obtain the type of the value, you can call
     /// [`cranelift_codegen::ir::dfg::DataFlowGraph::value_type`] (using the
     /// [`FunctionBuilder.func.dfg`] field)
-    #[error(
-        "the types of variable {0} and value {1} are not the same.
-                    The `Value` supplied to `def_var` must be of the same type as
-                    the variable was declared to be of in `declare_var`."
-    )]
     TypeMismatch(Variable, Value),
     /// The value was defined (in a call to [`FunctionBuilder::def_var`]) before
     /// it was declared (in a call to [`FunctionBuilder::declare_var`]).
-    #[error("the value of variabe {0} was declared before it was defined")]
     DefinedBeforeDeclared(Variable),
+}
+
+impl fmt::Display for DefVariableError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DefVariableError::TypeMismatch(variable, value) => {
+                write!(
+                    f,
+                    "the types of variable {} and value {} are not the same.
+                    The `Value` supplied to `def_var` must be of the same type as
+                    the variable was declared to be of in `declare_var`.",
+                    variable.index(),
+                    value.as_u32()
+                )?;
+            }
+            DefVariableError::DefinedBeforeDeclared(variable) => {
+                write!(
+                    f,
+                    "the value of variabe {} was declared before it was defined",
+                    variable.index()
+                )?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// This module allows you to create a function in Cranelift IR in a straightforward way, hiding
@@ -775,7 +826,7 @@ impl<'a> FunctionBuilder<'a> {
 
         // Load all of the memory first. This is necessary in case `dest` overlaps.
         // It can also improve performance a bit.
-        let registers: smallvec::SmallVec<_, { THRESHOLD as usize }> = (0..load_and_store_amount)
+        let registers: smallvec::SmallVec<[_; THRESHOLD as usize]> = (0..load_and_store_amount)
             .map(|i| {
                 let offset = (access_size * i) as i32;
                 (self.ins().load(int_type, flags, src, offset), offset)
@@ -968,8 +1019,8 @@ impl<'a> FunctionBuilder<'a> {
         left: Value,
         right: Value,
         size: u64,
-        left_align: core::num::NonZeroU8,
-        right_align: core::num::NonZeroU8,
+        left_align: std::num::NonZeroU8,
+        right_align: std::num::NonZeroU8,
         flags: MemFlags,
     ) -> Value {
         use IntCC::*;
@@ -1513,7 +1564,7 @@ block0:
 
     #[test]
     fn small_memcmp_zero_size() {
-        let align_eight = core::num::NonZeroU8::new(8).unwrap();
+        let align_eight = std::num::NonZeroU8::new(8).unwrap();
         small_memcmp_helper(
             "
 block0:
@@ -1540,7 +1591,7 @@ block0:
 
     #[test]
     fn small_memcmp_byte_ugt() {
-        let align_one = core::num::NonZeroU8::new(1).unwrap();
+        let align_one = std::num::NonZeroU8::new(1).unwrap();
         small_memcmp_helper(
             "
 block0:
@@ -1569,7 +1620,7 @@ block0:
 
     #[test]
     fn small_memcmp_aligned_eq() {
-        let align_four = core::num::NonZeroU8::new(4).unwrap();
+        let align_four = std::num::NonZeroU8::new(4).unwrap();
         small_memcmp_helper(
             "
 block0:
@@ -1598,7 +1649,7 @@ block0:
 
     #[test]
     fn small_memcmp_ipv6_ne() {
-        let align_two = core::num::NonZeroU8::new(2).unwrap();
+        let align_two = std::num::NonZeroU8::new(2).unwrap();
         small_memcmp_helper(
             "
 block0:
@@ -1627,7 +1678,7 @@ block0:
 
     #[test]
     fn small_memcmp_odd_size_uge() {
-        let one = core::num::NonZeroU8::new(1).unwrap();
+        let one = std::num::NonZeroU8::new(1).unwrap();
         small_memcmp_helper(
             "
     sig0 = (i64, i64, i64) -> i32 system_v

@@ -1,7 +1,7 @@
 use crate::ir::ValueLabel;
 use crate::machinst::Reg;
+use crate::HashMap;
 use alloc::vec::Vec;
-use hashbrown::HashMap;
 
 /// Value location range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

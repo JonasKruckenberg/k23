@@ -12,7 +12,6 @@
 
 #![no_std]
 
-use core::default::Default;
 use core::hash::{BuildHasherDefault, Hash, Hasher};
 use core::ops::BitXor;
 use hashbrown::{HashMap, HashSet};

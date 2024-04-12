@@ -76,15 +76,12 @@ use crate::isa;
 use crate::isa::s390x::{inst::*, settings as s390x_settings};
 use crate::isa::unwind::UnwindInst;
 use crate::machinst::*;
-use crate::machinst::{RealReg, Reg, RegClass, Writable};
 use crate::settings;
 use crate::{CodegenError, CodegenResult};
 use alloc::vec::Vec;
-use core::convert::TryFrom;
-use spin::Once;
-// use core::sync::OnceLock;
 use regalloc2::{MachineEnv, PReg, PRegSet};
 use smallvec::{smallvec, SmallVec};
+use spin::Once;
 
 // We use a generic implementation that factors out ABI commonalities.
 
@@ -194,9 +191,10 @@ pub static REG_SAVE_AREA_SIZE: u32 = 160;
 impl Into<MemArg> for StackAMode {
     fn into(self) -> MemArg {
         match self {
-            StackAMode::FPOffset(off, _ty) => MemArg::InitialSPOffset { off },
-            StackAMode::NominalSPOffset(off, _ty) => MemArg::NominalSPOffset { off },
-            StackAMode::SPOffset(off, _ty) => {
+            // Argument area always begins at the initial SP.
+            StackAMode::IncomingArg(off) => MemArg::InitialSPOffset { off },
+            StackAMode::Slot(off) => MemArg::NominalSPOffset { off },
+            StackAMode::OutgoingArg(off) => {
                 MemArg::reg_plus_off(stack_reg(), off, MemFlags::trusted())
             }
         }
@@ -223,21 +221,23 @@ impl ABIMachineSpec for S390xMachineDeps {
         8
     }
 
-    fn compute_arg_locs<'a, I>(
+    fn compute_arg_locs(
         call_conv: isa::CallConv,
         _flags: &settings::Flags,
-        params: I,
+        params: &[ir::AbiParam],
         args_or_rets: ArgsOrRets,
         add_ret_area_ptr: bool,
-        mut args: ArgsAccumulator<'_>,
-    ) -> CodegenResult<(u32, Option<usize>)>
-    where
-        I: IntoIterator<Item = &'a ir::AbiParam>,
-    {
+        mut args: ArgsAccumulator,
+    ) -> CodegenResult<(u32, Option<usize>)> {
         assert_ne!(
             call_conv,
             isa::CallConv::Tail,
             "s390x does not support the 'tail' calling convention yet"
+        );
+        assert_ne!(
+            call_conv,
+            isa::CallConv::Winch,
+            "s390x does not support the 'winch' calling convention yet"
         );
 
         let mut next_gpr = 0;
@@ -405,10 +405,6 @@ impl ABIMachineSpec for S390xMachineDeps {
         Ok((next_stack, extra_arg))
     }
 
-    fn fp_to_arg_offset(_call_conv: isa::CallConv, _flags: &settings::Flags) -> i64 {
-        0
-    }
-
     fn gen_load_stack(mem: StackAMode, into_reg: Writable<Reg>, ty: Type) -> Inst {
         Inst::gen_load(into_reg, mem.into(), ty)
     }
@@ -499,7 +495,7 @@ impl ABIMachineSpec for S390xMachineDeps {
         insts
     }
 
-    fn gen_get_stack_addr(mem: StackAMode, into_reg: Writable<Reg>, _ty: Type) -> Inst {
+    fn gen_get_stack_addr(mem: StackAMode, into_reg: Writable<Reg>) -> Inst {
         let mem = mem.into();
         Inst::LoadAddr { rd: into_reg, mem }
     }
@@ -569,8 +565,15 @@ impl ABIMachineSpec for S390xMachineDeps {
                 frame_layout.stack_args_size.try_into().unwrap(),
             ));
         }
-        insts.push(Inst::Ret { link: gpr(14) });
         insts
+    }
+
+    fn gen_return(
+        _call_conv: isa::CallConv,
+        _isa_flags: &s390x_settings::Flags,
+        _frame_layout: &FrameLayout,
+    ) -> SmallInstVec<Inst> {
+        smallvec![Inst::Ret { link: gpr(14) }]
     }
 
     fn gen_probestack(_insts: &mut SmallInstVec<Self::I>, _: u32) {

@@ -4,7 +4,6 @@
 use super::evex::{Register, RegisterOrAmode};
 use super::rex::{LegacyPrefixes, OpcodeMap};
 use super::ByteSink;
-use crate::ir::TrapCode;
 use crate::isa::x64::args::Amode;
 use crate::isa::x64::encoding::rex;
 use crate::isa::x64::inst::Inst;
@@ -251,8 +250,8 @@ impl VexInstruction {
     /// Emit the VEX-encoded instruction to the provided buffer.
     pub fn encode(&self, sink: &mut MachBuffer<Inst>) {
         if let RegisterOrAmode::Amode(amode) = &self.rm {
-            if amode.can_trap() {
-                sink.add_trap(TrapCode::HeapOutOfBounds);
+            if let Some(trap_code) = amode.get_flags().trap_code() {
+                sink.add_trap(trap_code);
             }
         }
 
@@ -339,9 +338,7 @@ mod tests {
             .imm(0x17)
             .encode(&mut sink);
 
-        let bytes = sink
-            .finish(&Default::default(), &mut Default::default())
-            .data;
+        let bytes = sink.finish(&Default::default()).data;
         assert_eq!(bytes.as_slice(), [0xc5, 0xf1, 0x73, 0xfa, 0x17]);
     }
 
@@ -369,9 +366,7 @@ mod tests {
             .imm_reg(c)
             .encode(&mut sink);
 
-        let bytes = sink
-            .finish(&Default::default(), &mut Default::default())
-            .data;
+        let bytes = sink.finish(&Default::default()).data;
         assert_eq!(bytes.as_slice(), [0xc4, 0xe3, 0x69, 0x4b, 0xcb, 0x40]);
     }
 
@@ -396,9 +391,7 @@ mod tests {
             .imm(4)
             .encode(&mut sink);
 
-        let bytes = sink
-            .finish(&Default::default(), &mut Default::default())
-            .data;
+        let bytes = sink.finish(&Default::default()).data;
         assert_eq!(bytes.as_slice(), [0xc4, 0x41, 0x24, 0xc2, 0xd4, 0x04]);
     }
 
@@ -422,9 +415,7 @@ mod tests {
             .rm(src2)
             .encode(&mut sink);
 
-        let bytes = sink
-            .finish(&Default::default(), &mut Default::default())
-            .data;
+        let bytes = sink.finish(&Default::default()).data;
         assert_eq!(bytes.as_slice(), [0xc5, 0xf0, 0x55, 0xd0]);
     }
 
@@ -452,9 +443,7 @@ mod tests {
             .rm(src2)
             .encode(&mut sink);
 
-        let bytes = sink
-            .finish(&Default::default(), &mut Default::default())
-            .data;
+        let bytes = sink.finish(&Default::default()).data;
         assert_eq!(bytes.as_slice(), [0xc4, 0xc1, 0x70, 0x55, 0x55, 0x0a]);
     }
 
@@ -484,9 +473,7 @@ mod tests {
             .rm(src2)
             .encode(&mut sink);
 
-        let bytes = sink
-            .finish(&Default::default(), &mut Default::default())
-            .data;
+        let bytes = sink.finish(&Default::default()).data;
         assert_eq!(bytes.as_slice(), [0xc4, 0xa1, 0x70, 0x55, 0x54, 0xa8, 100]);
     }
 }

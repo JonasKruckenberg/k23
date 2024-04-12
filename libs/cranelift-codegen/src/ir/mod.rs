@@ -23,9 +23,11 @@ pub mod pcc;
 mod progpoint;
 mod sourceloc;
 pub mod stackslot;
-mod table;
 mod trapcode;
 pub mod types;
+
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
 
 pub use crate::ir::atomic_rmw_op::AtomicRmwOp;
 pub use crate::ir::builder::{
@@ -36,7 +38,7 @@ pub use crate::ir::dfg::{BlockData, DataFlowGraph, ValueDef};
 pub use crate::ir::dynamic_type::{dynamic_to_fixed, DynamicTypeData, DynamicTypes};
 pub use crate::ir::entities::{
     Block, Constant, DynamicStackSlot, DynamicType, FuncRef, GlobalValue, Immediate, Inst,
-    JumpTable, MemoryType, SigRef, StackSlot, Table, UserExternalNameRef, Value,
+    JumpTable, MemoryType, SigRef, StackSlot, UserExternalNameRef, Value,
 };
 pub use crate::ir::extfunc::{
     AbiParam, ArgumentExtension, ArgumentPurpose, ExtFuncData, Signature,
@@ -51,7 +53,7 @@ pub use crate::ir::jumptable::JumpTableData;
 pub use crate::ir::known_symbol::KnownSymbol;
 pub use crate::ir::layout::Layout;
 pub use crate::ir::libcall::{get_probestack_funcref, LibCall};
-pub use crate::ir::memflags::{Endianness, MemFlags};
+pub use crate::ir::memflags::{AliasRegion, Endianness, MemFlags};
 pub use crate::ir::memtype::{MemoryTypeData, MemoryTypeField};
 pub use crate::ir::pcc::{BaseExpr, Expr, Fact, FactContext, PccError, PccResult};
 pub use crate::ir::progpoint::ProgramPoint;
@@ -60,7 +62,6 @@ pub use crate::ir::sourceloc::SourceLoc;
 pub use crate::ir::stackslot::{
     DynamicStackSlotData, DynamicStackSlots, StackSlotData, StackSlotKind, StackSlots,
 };
-pub use crate::ir::table::TableData;
 pub use crate::ir::trapcode::TrapCode;
 pub use crate::ir::types::Type;
 
@@ -74,11 +75,13 @@ pub(crate) type SourceLocs = SecondaryMap<Inst, RelSourceLoc>;
 
 /// Marked with a label value.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct ValueLabel(u32);
 entity_impl!(ValueLabel, "val");
 
 /// A label of a Value.
 #[derive(Debug, Clone, PartialEq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct ValueLabelStart {
     /// Source location when it is in effect
     pub from: RelSourceLoc,
@@ -89,6 +92,7 @@ pub struct ValueLabelStart {
 
 /// Value label assignments: label starts or value aliases.
 #[derive(Debug, Clone, PartialEq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum ValueLabelAssignments {
     /// Original value labels assigned at transform.
     Starts(alloc::vec::Vec<ValueLabelStart>),

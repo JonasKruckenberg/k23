@@ -177,17 +177,19 @@ use crate::isa::unwind::UnwindInst;
 use crate::machinst::{
     BlockIndex, MachInstLabelUse, TextSectionBuilder, VCodeConstant, VCodeConstants, VCodeInst,
 };
-use crate::trace;
 use crate::VCodeConstantData;
 use alloc::collections::BinaryHeap;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
-use core::convert::TryFrom;
 use core::mem;
 use cranelift_entity::{entity_impl, PrimaryMap};
 use smallvec::SmallVec;
 
+#[cfg(feature = "enable-serde")]
+use serde::{Deserialize, Serialize};
+
+#[cfg(not(feature = "enable-serde"))]
 pub trait CompilePhase {
     type MachSrcLocType: core::fmt::Debug + PartialEq + Clone;
     type SourceLocType: core::fmt::Debug + PartialEq + Clone;
@@ -195,6 +197,7 @@ pub trait CompilePhase {
 
 /// Status of a compiled artifact that needs patching before being used.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Stencil;
 
 /// Status of a compiled artifact ready to use.
@@ -299,6 +302,9 @@ pub struct MachBuffer<I: VCodeInst> {
     /// constant may appear in this array multiple times if it was emitted
     /// multiple times.
     used_constants: SmallVec<(VCodeConstant, CodeOffset), 4>,
+    /// Indicates when a patchable region is currently open, to guard that it's
+    /// not possible to nest patchable regions.
+    open_patchable: bool,
 }
 
 impl MachBufferFinalized<Stencil> {
@@ -395,6 +401,29 @@ pub enum StackMapExtent {
     StartedAtOffset(CodeOffset),
 }
 
+/// Represents the beginning of an editable region in the [`MachBuffer`], while code emission is
+/// still occurring. An [`OpenPatchRegion`] is closed by [`MachBuffer::end_patchable`], consuming
+/// the [`OpenPatchRegion`] token in the process.
+pub struct OpenPatchRegion(usize);
+
+/// A region in the [`MachBuffer`] code buffer that can be edited prior to finalization. An example
+/// of where you might want to use this is for patching instructions that mention constants that
+/// won't be known until later: [`MachBuffer::start_patchable`] can be used to begin the patchable
+/// region, instructions can be emitted with placeholder constants, and the [`PatchRegion`] token
+/// can be produced by [`MachBuffer::end_patchable`]. Once the values of those constants are known,
+/// the [`PatchRegion::patch`] function can be used to get a mutable buffer to the instruction
+/// bytes, and the constants uses can be updated directly.
+pub struct PatchRegion {
+    range: core::ops::Range<usize>,
+}
+
+impl PatchRegion {
+    /// Consume the patch region to yield a mutable slice of the [`MachBuffer`] data buffer.
+    pub fn patch<I: VCodeInst>(self, buffer: &mut MachBuffer<I>) -> &mut [u8] {
+        &mut buffer.data[self.range]
+    }
+}
+
 impl<I: VCodeInst> MachBuffer<I> {
     /// Create a new section, known to start at `start_offset` and with a size limited to
     /// `length_limit`.
@@ -421,6 +450,7 @@ impl<I: VCodeInst> MachBuffer<I> {
             labels_at_tail_off: 0,
             constants: Default::default(),
             used_constants: Default::default(),
+            open_patchable: false,
         }
     }
 
@@ -486,7 +516,7 @@ impl<I: VCodeInst> MachBuffer<I> {
 
     /// Align up to the given alignment.
     pub fn align_to(&mut self, align_to: CodeOffset) {
-        trace!("MachBuffer: align to {}", align_to);
+        log::trace!("MachBuffer: align to {}", align_to);
         assert!(
             align_to.is_power_of_two(),
             "{} is not a power of two",
@@ -499,13 +529,36 @@ impl<I: VCodeInst> MachBuffer<I> {
         // Post-invariant: as for `put1()`.
     }
 
+    /// Begin a region of patchable code. There is one requirement for the
+    /// code that is emitted: It must not introduce any instructions that
+    /// could be chomped (branches are an example of this). In other words,
+    /// you must not call [`MachBuffer::add_cond_branch`] or
+    /// [`MachBuffer::add_uncond_branch`] between calls to this method and
+    /// [`MachBuffer::end_patchable`].
+    pub fn start_patchable(&mut self) -> OpenPatchRegion {
+        assert!(!self.open_patchable, "Patchable regions may not be nested");
+        self.open_patchable = true;
+        OpenPatchRegion(usize::try_from(self.cur_offset()).unwrap())
+    }
+
+    /// End a region of patchable code, yielding a [`PatchRegion`] value that
+    /// can be consumed later to produce a one-off mutable slice to the
+    /// associated region of the data buffer.
+    pub fn end_patchable(&mut self, open: OpenPatchRegion) -> PatchRegion {
+        // No need to assert the state of `open_patchable` here, as we take
+        // ownership of the only `OpenPatchable` value.
+        self.open_patchable = false;
+        let end = usize::try_from(self.cur_offset()).unwrap();
+        PatchRegion { range: open.0..end }
+    }
+
     /// Allocate a `Label` to refer to some offset. May not be bound to a fixed
     /// offset yet.
     pub fn get_label(&mut self) -> MachLabel {
         let l = self.label_offsets.len() as u32;
         self.label_offsets.push(UNKNOWN_LABEL_OFFSET);
         self.label_aliases.push(UNKNOWN_LABEL);
-        trace!("MachBuffer: new label -> {:?}", MachLabel(l));
+        log::trace!("MachBuffer: new label -> {:?}", MachLabel(l));
         MachLabel(l)
 
         // Post-invariant: the only mutation is to add a new label; it has no
@@ -514,7 +567,7 @@ impl<I: VCodeInst> MachBuffer<I> {
 
     /// Reserve the first N MachLabels for blocks.
     pub fn reserve_labels_for_blocks(&mut self, blocks: usize) {
-        trace!("MachBuffer: first {} labels are for blocks", blocks);
+        log::trace!("MachBuffer: first {} labels are for blocks", blocks);
         debug_assert!(self.label_offsets.is_empty());
         self.label_offsets.resize(blocks, UNKNOWN_LABEL_OFFSET);
         self.label_aliases.resize(blocks, UNKNOWN_LABEL);
@@ -581,7 +634,7 @@ impl<I: VCodeInst> MachBuffer<I> {
         }
 
         let label = self.get_label();
-        trace!(
+        log::trace!(
             "defer constant: eventually emit {size} bytes aligned \
              to {align} at label {label:?}",
         );
@@ -593,7 +646,7 @@ impl<I: VCodeInst> MachBuffer<I> {
 
     /// Bind a label to the current offset. A label can only be bound once.
     pub fn bind_label(&mut self, label: MachLabel) {
-        trace!(
+        log::trace!(
             "MachBuffer: bind label {:?} at offset {}",
             label,
             self.cur_offset()
@@ -656,7 +709,7 @@ impl<I: VCodeInst> MachBuffer<I> {
     /// This can be called before the branch is actually emitted; fixups will
     /// not happen until an island is emitted or the buffer is finished.
     pub fn use_label_at_offset(&mut self, offset: CodeOffset, label: MachLabel, kind: I::LabelUse) {
-        trace!(
+        log::trace!(
             "MachBuffer: use_label_at_offset: offset {} label {:?} kind {:?}",
             offset,
             label,
@@ -691,6 +744,10 @@ impl<I: VCodeInst> MachBuffer<I> {
     /// Additional requirement: no labels may be bound between `start` and `end`
     /// (exclusive on both ends).
     pub fn add_uncond_branch(&mut self, start: CodeOffset, end: CodeOffset, target: MachLabel) {
+        debug_assert!(
+            !self.open_patchable,
+            "Branch instruction inserted within a patchable region"
+        );
         assert!(self.cur_offset() == start);
         debug_assert!(end > start);
         assert!(!self.pending_fixup_records.is_empty());
@@ -722,6 +779,10 @@ impl<I: VCodeInst> MachBuffer<I> {
         target: MachLabel,
         inverted: &[u8],
     ) {
+        debug_assert!(
+            !self.open_patchable,
+            "Branch instruction inserted within a patchable region"
+        );
         assert!(self.cur_offset() == start);
         debug_assert!(end > start);
         assert!(!self.pending_fixup_records.is_empty());
@@ -743,6 +804,11 @@ impl<I: VCodeInst> MachBuffer<I> {
     }
 
     fn truncate_last_branch(&mut self) {
+        debug_assert!(
+            !self.open_patchable,
+            "Branch instruction truncated within a patchable region"
+        );
+
         self.lazily_clear_labels_at_tail();
         // Invariants hold at this point.
 
@@ -784,7 +850,7 @@ impl<I: VCodeInst> MachBuffer<I> {
         // resolve_label_offset(l) for l in labels_at_tail:
         //    (past end of buffer)
 
-        trace!(
+        log::trace!(
             "truncate_last_branch: truncated {:?}; off now {}",
             b,
             cur_off
@@ -841,7 +907,7 @@ impl<I: VCodeInst> MachBuffer<I> {
         self.lazily_clear_labels_at_tail();
         // Invariants valid at this point.
 
-        trace!(
+        log::trace!(
             "enter optimize_branches:\n b = {:?}\n l = {:?}\n f = {:?}",
             self.latest_branches,
             self.labels_at_tail,
@@ -854,7 +920,7 @@ impl<I: VCodeInst> MachBuffer<I> {
         // so this always makes progress.
         while let Some(b) = self.latest_branches.last() {
             let cur_off = self.cur_offset();
-            trace!("optimize_branches: last branch {:?} at off {}", b, cur_off);
+            log::trace!("optimize_branches: last branch {:?} at off {}", b, cur_off);
             // If there has been any code emission since the end of the last branch or
             // label definition, then there's nothing we can edit (because we
             // don't move code once placed, only back up and overwrite), so
@@ -894,7 +960,7 @@ impl<I: VCodeInst> MachBuffer<I> {
             // address is equivalent to a no-op; in both cases, nextPC is the
             // fallthrough.
             if self.resolve_label_offset(b.target) == cur_off {
-                trace!("branch with target == cur off; truncating");
+                log::trace!("branch with target == cur off; truncating");
                 self.truncate_last_branch();
                 continue;
             }
@@ -1009,7 +1075,7 @@ impl<I: VCodeInst> MachBuffer<I> {
                 if self.resolve_label_offset(b.target) != b.start {
                     let redirected = b.labels_at_this_branch.len();
                     for &l in &b.labels_at_this_branch {
-                        trace!(
+                        log::trace!(
                             " -> label at start of branch {:?} redirected to target {:?}",
                             l,
                             b.target
@@ -1028,7 +1094,7 @@ impl<I: VCodeInst> MachBuffer<I> {
                     mut_b.labels_at_this_branch.clear();
 
                     if redirected > 0 {
-                        trace!(" -> after label redirects, restarting loop");
+                        log::trace!(" -> after label redirects, restarting loop");
                         continue;
                     }
                 } else {
@@ -1040,7 +1106,7 @@ impl<I: VCodeInst> MachBuffer<I> {
                 // Examine any immediately preceding branch.
                 if self.latest_branches.len() > 1 {
                     let prev_b = &self.latest_branches[self.latest_branches.len() - 2];
-                    trace!(" -> more than one branch; prev_b = {:?}", prev_b);
+                    log::trace!(" -> more than one branch; prev_b = {:?}", prev_b);
                     // This uncond is immediately after another uncond; we
                     // should have already redirected labels to this uncond away
                     // (but check to be sure); so we can truncate this uncond.
@@ -1048,7 +1114,7 @@ impl<I: VCodeInst> MachBuffer<I> {
                         && prev_b.end == b.start
                         && b.labels_at_this_branch.is_empty()
                     {
-                        trace!(" -> uncond follows another uncond; truncating");
+                        log::trace!(" -> uncond follows another uncond; truncating");
                         self.truncate_last_branch();
                         continue;
                     }
@@ -1063,7 +1129,7 @@ impl<I: VCodeInst> MachBuffer<I> {
                         && prev_b.end == b.start
                         && self.resolve_label_offset(prev_b.target) == cur_off
                     {
-                        trace!(" -> uncond follows a conditional, and conditional's target resolves to current offset");
+                        log::trace!(" -> uncond follows a conditional, and conditional's target resolves to current offset");
                         // Save the target of the uncond (this becomes the
                         // target of the cond), and truncate the uncond.
                         let target = b.target;
@@ -1088,7 +1154,7 @@ impl<I: VCodeInst> MachBuffer<I> {
                         // again.
                         prev_b.inverted = Some(not_inverted);
                         self.pending_fixup_records[prev_b.fixup].label = target;
-                        trace!(" -> reassigning target of condbr to {:?}", target);
+                        log::trace!(" -> reassigning target of condbr to {:?}", target);
                         prev_b.target = target;
                         debug_assert_eq!(off_before_edit, self.cur_offset());
                         continue;
@@ -1102,7 +1168,7 @@ impl<I: VCodeInst> MachBuffer<I> {
 
         self.purge_latest_branches();
 
-        trace!(
+        log::trace!(
             "leave optimize_branches:\n b = {:?}\n l = {:?}\n f = {:?}",
             self.latest_branches,
             self.labels_at_tail,
@@ -1118,7 +1184,7 @@ impl<I: VCodeInst> MachBuffer<I> {
         let cur_off = self.cur_offset();
         if let Some(l) = self.latest_branches.last() {
             if l.end < cur_off {
-                trace!("purge_latest_branches: removing branch {:?}", l);
+                log::trace!("purge_latest_branches: removing branch {:?}", l);
                 self.latest_branches.clear();
             }
         }
@@ -1259,7 +1325,7 @@ impl<I: VCodeInst> MachBuffer<I> {
         }
         self.pending_fixup_deadline = u32::MAX;
         while let Some(fixup) = self.fixup_records.peek() {
-            trace!("emit_island: fixup {:?}", fixup);
+            log::trace!("emit_island: fixup {:?}", fixup);
 
             // If this fixup shouldn't be applied, that means its label isn't
             // defined yet and there'll be remaining space to apply a veneer if
@@ -1323,7 +1389,7 @@ impl<I: VCodeInst> MachBuffer<I> {
             } else {
                 (offset - label_offset) > kind.max_neg_range()
             };
-            trace!(
+            log::trace!(
                 " -> label_offset = {}, known, required = {} (pos {} neg {})",
                 label_offset,
                 veneer_required,
@@ -1335,7 +1401,7 @@ impl<I: VCodeInst> MachBuffer<I> {
                 self.emit_veneer(label, offset, kind);
             } else {
                 let slice = &mut self.data[start..end];
-                trace!("patching in-range!");
+                log::trace!("patching in-range!");
                 kind.patch(slice, offset, label_offset);
             }
         } else {
@@ -1365,12 +1431,12 @@ impl<I: VCodeInst> MachBuffer<I> {
         // Allocate space for a veneer in the island.
         self.align_to(I::LabelUse::ALIGN);
         let veneer_offset = self.cur_offset();
-        trace!("making a veneer at {}", veneer_offset);
+        log::trace!("making a veneer at {}", veneer_offset);
         let start = offset as usize;
         let end = (offset + kind.patch_size()) as usize;
         let slice = &mut self.data[start..end];
         // Patch the original label use to refer to the veneer.
-        trace!(
+        log::trace!(
             "patching original at offset {} to veneer offset {}",
             offset,
             veneer_offset
@@ -1380,7 +1446,7 @@ impl<I: VCodeInst> MachBuffer<I> {
         let veneer_slice = self.get_appended_space(kind.veneer_size() as usize);
         let (veneer_fixup_off, veneer_label_use) =
             kind.generate_veneer(veneer_slice, veneer_offset);
-        trace!(
+        log::trace!(
             "generated veneer; fixup offset {}, label_use {:?}",
             veneer_fixup_off,
             veneer_label_use
@@ -1453,9 +1519,10 @@ impl<I: VCodeInst> MachBuffer<I> {
         }
     }
 
-    /// Add an external relocation at the current offset.
-    pub fn add_reloc<T: Into<RelocTarget> + Clone>(
+    /// Add an external relocation at the given offset from current offset.
+    pub fn add_reloc_at_offset<T: Into<RelocTarget> + Clone>(
         &mut self,
+        offset: CodeOffset,
         kind: Reloc,
         target: &T,
         addend: Addend,
@@ -1495,11 +1562,21 @@ impl<I: VCodeInst> MachBuffer<I> {
         // when a relocation can't otherwise be resolved later, so it shouldn't
         // actually result in any memory unsafety or anything like that.
         self.relocs.push(MachReloc {
-            offset: self.data.len() as CodeOffset,
+            offset: self.data.len() as CodeOffset + offset,
             kind,
             target,
             addend,
         });
+    }
+
+    /// Add an external relocation at the current offset.
+    pub fn add_reloc<T: Into<RelocTarget> + Clone>(
+        &mut self,
+        kind: Reloc,
+        target: &T,
+        addend: Addend,
+    ) {
+        self.add_reloc_at_offset(0, kind, target, addend);
     }
 
     /// Add a trap record at the current offset.
@@ -1529,8 +1606,11 @@ impl<I: VCodeInst> MachBuffer<I> {
 
     /// Set the `SourceLoc` for code from this offset until the offset at the
     /// next call to `end_srcloc()`.
-    pub fn start_srcloc(&mut self, loc: RelSourceLoc) {
-        self.cur_srcloc = Some((self.cur_offset(), loc));
+    /// Returns the current [CodeOffset] and [RelSourceLoc].
+    pub fn start_srcloc(&mut self, loc: RelSourceLoc) -> (CodeOffset, RelSourceLoc) {
+        let cur = (self.cur_offset(), loc);
+        self.cur_srcloc = Some(cur);
+        cur
     }
 
     /// Mark the end of the `SourceLoc` segment started at the last
@@ -1566,7 +1646,7 @@ impl<I: VCodeInst> MachBuffer<I> {
                 (start_offset, end_offset)
             }
         };
-        trace!("Adding stack map for offsets {start:#x}..{end:#x}");
+        log::trace!("Adding stack map for offsets {start:#x}..{end:#x}: {stack_map:?}");
         self.stack_maps.push(MachStackMap {
             offset: start,
             offset_end: end,
@@ -1705,6 +1785,10 @@ impl<I: VCodeInst> Ord for MachLabelFixup<I> {
 
 /// A relocation resulting from a compilation.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
 pub struct MachRelocBase<T> {
     /// The offset at which the relocation applies, *relative to the
     /// containing section*.
@@ -1749,6 +1833,10 @@ impl From<MachLabel> for RelocTarget {
 
 /// A Relocation target
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
 pub enum FinalizedRelocTarget {
     /// Points to an [ExternalName] outside the current function.
     ExternalName(ExternalName),
@@ -1769,6 +1857,10 @@ impl FinalizedRelocTarget {
 
 /// A trap record resulting from a compilation.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
 pub struct MachTrap {
     /// The offset at which the trap instruction occurs, *relative to the
     /// containing section*.
@@ -1779,6 +1871,10 @@ pub struct MachTrap {
 
 /// A call site record resulting from a compilation.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
 pub struct MachCallSite {
     /// The offset of the call's return address, *relative to the containing section*.
     pub ret_addr: CodeOffset,
@@ -1788,6 +1884,10 @@ pub struct MachCallSite {
 
 /// A source-location mapping resulting from a compilation.
 #[derive(PartialEq, Debug, Clone)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
 pub struct MachSrcLoc<T: CompilePhase> {
     /// The start of the region of code corresponding to a source location.
     /// This is relative to the start of the function, not to the start of the
@@ -1813,6 +1913,10 @@ impl MachSrcLoc<Stencil> {
 
 /// Record of stack map metadata: stack offsets containing references.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
 pub struct MachStackMap {
     /// The code offset at which this stack map applies.
     pub offset: CodeOffset,
@@ -1897,7 +2001,7 @@ impl<I: VCodeInst> TextSectionBuilder for MachTextSectionBuilder<I> {
     }
 
     fn resolve_reloc(&mut self, offset: u64, reloc: Reloc, addend: Addend, target: usize) -> bool {
-        crate::trace!(
+        log::trace!(
             "Resolving relocation @ {offset:#x} + {addend:#x} to target {target} of kind {reloc:?}"
         );
         let label = MachLabel::from_block(BlockIndex::new(target));
@@ -1923,7 +2027,7 @@ impl<I: VCodeInst> TextSectionBuilder for MachTextSectionBuilder<I> {
         self.buf
             .finish_emission_maybe_forcing_veneers(self.force_veneers);
 
-        // We don't need the data any more, so return it to the caller.
+        // We don't need the data anymore, so return it to the caller.
         mem::take(&mut self.buf.data).into_vec()
     }
 }
@@ -1939,8 +2043,6 @@ mod test {
     use crate::isa::aarch64::inst::{BranchTarget, CondBrKind, EmitInfo, Inst};
     use crate::machinst::{MachInstEmit, MachInstEmitState};
     use crate::settings;
-    use alloc::vec::Vec;
-    use core::default::Default;
 
     fn label(n: u32) -> MachLabel {
         MachLabel::from_block(BlockIndex::new(n as usize))
@@ -2315,6 +2417,7 @@ mod test {
     #[test]
     fn metadata_records() {
         let mut buf = MachBuffer::<Inst>::new();
+        let ctrl_plane = &mut Default::default();
         let constants = Default::default();
 
         buf.reserve_labels_for_blocks(1);

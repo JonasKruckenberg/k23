@@ -2,26 +2,22 @@
 //! in CFG nodes.
 
 use super::cost::Cost;
-use super::domtree::DomTreeWithChildren;
 use super::Stats;
-use crate::dominator_tree::DominatorTree;
+use crate::dominator_tree::DominatorTreePreorder;
+use fxhash::{FxHashMap, FxHashSet};
+use crate::hash_map::Entry as HashEntry;
+use crate::inst_predicates::is_pure_for_egraph;
 use crate::ir::{Block, Function, Inst, Value, ValueDef};
 use crate::loop_analysis::{Loop, LoopAnalysis};
 use crate::scoped_hash_map::ScopedHashMap;
-use crate::trace;
-use crate::unionfind::UnionFind;
 use alloc::vec::Vec;
 use cranelift_entity::{packed_option::ReservedValue, SecondaryMap};
-use fxhash::{FxHashMap, FxHashSet};
-use hashbrown::hash_map::Entry as HashEntry;
 use smallvec::{smallvec, SmallVec};
 
 pub(crate) struct Elaborator<'a> {
     func: &'a mut Function,
-    domtree: &'a DominatorTree,
-    domtree_children: &'a DomTreeWithChildren,
+    domtree: &'a DominatorTreePreorder,
     loop_analysis: &'a LoopAnalysis,
-    eclasses: &'a mut UnionFind<Value>,
     /// Map from Value that is produced by a pure Inst (and was thus
     /// not in the side-effecting skeleton) to the value produced by
     /// an elaborated inst (placed in the layout) to whose results we
@@ -39,6 +35,11 @@ pub(crate) struct Elaborator<'a> {
     /// is already placed in the Layout. If so, we duplicate, and
     /// insert non-identity mappings from the original inst's results
     /// to the cloned inst's results.
+    ///
+    /// Note that as values may refer to unions that represent a subset
+    /// of a larger eclass, it's not valid to walk towards the root of a
+    /// union tree: doing so would potentially equate values that fall
+    /// on different branches of the dominator tree.
     value_to_elaborated_value: ScopedHashMap<Value, ElaboratedValue>,
     /// Map from Value to the best (lowest-cost) Value in its eclass
     /// (tree of union value-nodes).
@@ -133,11 +134,9 @@ enum BlockStackEntry {
 impl<'a> Elaborator<'a> {
     pub(crate) fn new(
         func: &'a mut Function,
-        domtree: &'a DominatorTree,
-        domtree_children: &'a DomTreeWithChildren,
+        domtree: &'a DominatorTreePreorder,
         loop_analysis: &'a LoopAnalysis,
         remat_values: &'a FxHashSet<Value>,
-        eclasses: &'a mut UnionFind<Value>,
         stats: &'a mut Stats,
     ) -> Self {
         let num_values = func.dfg.num_values();
@@ -147,9 +146,7 @@ impl<'a> Elaborator<'a> {
         Self {
             func,
             domtree,
-            domtree_children,
             loop_analysis,
-            eclasses,
             value_to_elaborated_value: ScopedHashMap::with_capacity(num_values),
             value_to_best_value,
             loop_stack: smallvec![],
@@ -164,7 +161,7 @@ impl<'a> Elaborator<'a> {
     }
 
     fn start_block(&mut self, idom: Option<Block>, block: Block) {
-        trace!(
+        log::trace!(
             "start_block: block {:?} with idom {:?} at loop depth {:?} scope depth {}",
             block,
             idom,
@@ -197,7 +194,7 @@ impl<'a> Elaborator<'a> {
                     hoist_block: idom,
                     scope_depth: (self.value_to_elaborated_value.depth() - 1) as u32,
                 });
-                trace!(
+                log::trace!(
                     " -> loop header, pushing; depth now {}",
                     self.loop_stack.len()
                 );
@@ -209,53 +206,119 @@ impl<'a> Elaborator<'a> {
             );
         }
 
-        trace!("block {}: loop stack is {:?}", block, self.loop_stack);
+        log::trace!("block {}: loop stack is {:?}", block, self.loop_stack);
 
         self.cur_block = block;
     }
 
     fn compute_best_values(&mut self) {
         let best = &mut self.value_to_best_value;
-        for (value, def) in self.func.dfg.values_and_defs() {
-            trace!("computing best for value {:?} def {:?}", value, def);
-            match def {
-                ValueDef::Union(x, y) => {
-                    // Pick the best of the two options based on
-                    // min-cost. This works because each element of `best`
-                    // is a `(cost, value)` tuple; `cost` comes first so
-                    // the natural comparison works based on cost, and
-                    // breaks ties based on value number.
-                    trace!(" -> best of {:?} and {:?}", best[x], best[y]);
-                    best[value] = core::cmp::min(best[x], best[y]);
-                    trace!(" -> {:?}", best[value]);
-                }
-                ValueDef::Param(_, _) => {
-                    best[value] = BestEntry(Cost::zero(), value);
-                }
-                // If the Inst is inserted into the layout (which is,
-                // at this point, only the side-effecting skeleton),
-                // then it must be computed and thus we give it zero
-                // cost.
-                ValueDef::Result(inst, _) => {
-                    if let Some(_) = self.func.layout.inst_block(inst) {
-                        best[value] = BestEntry(Cost::zero(), value);
-                    } else {
-                        trace!(" -> value {}: result, computing cost", value);
-                        let inst_data = &self.func.dfg.insts[inst];
-                        // N.B.: at this point we know that the opcode is
-                        // pure, so `pure_op_cost`'s precondition is
-                        // satisfied.
-                        let cost = Cost::of_pure_op(
-                            inst_data.opcode(),
-                            self.func.dfg.inst_values(inst).map(|value| best[value].0),
+
+        // Do a fixpoint loop to compute the best value for each eclass.
+        //
+        // The maximum number of iterations is the length of the longest chain
+        // of `vNN -> vMM` edges in the dataflow graph where `NN < MM`, so this
+        // is *technically* quadratic, but `cranelift-frontend` won't construct
+        // any such edges. NaN canonicalization will introduce some of these
+        // edges, but they are chains of only two or three edges. So in
+        // practice, we *never* do more than a handful of iterations here unless
+        // (a) we parsed the CLIF from text and the text was funkily numbered,
+        // which we don't really care about, or (b) the CLIF producer did
+        // something weird, in which case it is their responsibility to stop
+        // doing that.
+        log::trace!("Entering fixpoint loop to compute the best values for each eclass",);
+        let mut keep_going = true;
+        while keep_going {
+            keep_going = false;
+            log::trace!(
+                "fixpoint iteration {}",
+                self.stats.elaborate_best_cost_fixpoint_iters
+            );
+            self.stats.elaborate_best_cost_fixpoint_iters += 1;
+
+            for (value, def) in self.func.dfg.values_and_defs() {
+                log::trace!("computing best for value {:?} def {:?}", value, def);
+                let orig_best_value = best[value];
+
+                match def {
+                    ValueDef::Union(x, y) => {
+                        // Pick the best of the two options based on
+                        // min-cost. This works because each element of `best`
+                        // is a `(cost, value)` tuple; `cost` comes first so
+                        // the natural comparison works based on cost, and
+                        // breaks ties based on value number.
+                        best[value] = core::cmp::min(best[x], best[y]);
+                        log::trace!(
+                            " -> best of union({:?}, {:?}) = {:?}",
+                            best[x],
+                            best[y],
+                            best[value]
                         );
-                        best[value] = BestEntry(cost, value);
                     }
-                }
-            };
-            debug_assert_ne!(best[value].0, Cost::infinity());
-            debug_assert_ne!(best[value].1, Value::reserved_value());
-            trace!("best for eclass {:?}: {:?}", value, best[value]);
+                    ValueDef::Param(_, _) => {
+                        best[value] = BestEntry(Cost::zero(), value);
+                    }
+                    // If the Inst is inserted into the layout (which is,
+                    // at this point, only the side-effecting skeleton),
+                    // then it must be computed and thus we give it zero
+                    // cost.
+                    ValueDef::Result(inst, _) => {
+                        if let Some(_) = self.func.layout.inst_block(inst) {
+                            best[value] = BestEntry(Cost::zero(), value);
+                        } else {
+                            let inst_data = &self.func.dfg.insts[inst];
+                            // N.B.: at this point we know that the opcode is
+                            // pure, so `pure_op_cost`'s precondition is
+                            // satisfied.
+                            let cost = Cost::of_pure_op(
+                                inst_data.opcode(),
+                                self.func.dfg.inst_values(inst).map(|value| best[value].0),
+                            );
+                            best[value] = BestEntry(cost, value);
+                            log::trace!(" -> cost of value {} = {:?}", value, cost);
+                        }
+                    }
+                };
+
+                // Keep on iterating the fixpoint loop while we are finding new
+                // best values.
+                keep_going |= orig_best_value != best[value];
+            }
+        }
+
+        if cfg!(any(feature = "trace-log", debug_assertions)) {
+            log::trace!("finished fixpoint loop to compute best value for each eclass");
+            for value in self.func.dfg.values() {
+                log::trace!("-> best for eclass {:?}: {:?}", value, best[value]);
+                debug_assert_ne!(best[value].1, Value::reserved_value());
+                // You might additionally be expecting an assert that the best
+                // cost is not infinity, however infinite cost *can* happen in
+                // practice. First, note that our cost function doesn't know
+                // about any shared structure in the dataflow graph, it only
+                // sums operand costs. (And trying to avoid that by deduping a
+                // single operation's operands is a losing game because you can
+                // always just add one indirection and go from `add(x, x)` to
+                // `add(foo(x), bar(x))` to hide the shared structure.) Given
+                // that blindness to sharing, we can make cost grow
+                // exponentially with a linear sequence of operations:
+                //
+                //     v0 = iconst.i32 1    ;; cost = 1
+                //     v1 = iadd v0, v0     ;; cost = 3 + 1 + 1
+                //     v2 = iadd v1, v1     ;; cost = 3 + 5 + 5
+                //     v3 = iadd v2, v2     ;; cost = 3 + 13 + 13
+                //     v4 = iadd v3, v3     ;; cost = 3 + 29 + 29
+                //     v5 = iadd v4, v4     ;; cost = 3 + 61 + 61
+                //     v6 = iadd v5, v5     ;; cost = 3 + 125 + 125
+                //     ;; etc...
+                //
+                // Such a chain can cause cost to saturate to infinity. How do
+                // we choose which e-node is best when there are multiple that
+                // have saturated to infinity? It doesn't matter. As long as
+                // invariant (2) for optimization rules is upheld by our rule
+                // set (see `cranelift/cranelift-codegen/src/opts/README.md`) it is safe
+                // to choose *any* e-node in the e-class. At worst we will
+                // produce suboptimal code, but never an incorrectness.
+            }
         }
     }
 
@@ -308,7 +371,7 @@ impl<'a> Elaborator<'a> {
                     *v.insert(new_result)
                 }
             };
-            trace!("rematerialized {} as {}", arg.value, new_value);
+            log::trace!("rematerialized {} as {}", arg.value, new_value);
             arg.value = new_value;
             stats.elaborate_remat += 1;
             true
@@ -321,30 +384,21 @@ impl<'a> Elaborator<'a> {
         while let Some(entry) = self.elab_stack.pop() {
             match entry {
                 ElabStackEntry::Start { value, before } => {
-                    debug_assert_ne!(value, Value::reserved_value());
-                    let value = self.func.dfg.resolve_aliases(value);
+                    debug_assert!(self.func.dfg.value_is_real(value));
 
                     self.stats.elaborate_visit_node += 1;
-                    let canonical_value = self.eclasses.find_and_update(value);
-                    debug_assert_ne!(canonical_value, Value::reserved_value());
-                    trace!(
-                        "elaborate: value {} canonical {} before {}",
-                        value,
-                        canonical_value,
-                        before
-                    );
 
                     // Get the best option; we use `value` (latest
                     // value) here so we have a full view of the
                     // eclass.
-                    trace!("looking up best value for {}", value);
+                    log::trace!("looking up best value for {}", value);
                     let BestEntry(_, best_value) = self.value_to_best_value[value];
-                    trace!("elaborate: value {} -> best {}", value, best_value);
+                    log::trace!("elaborate: value {} -> best {}", value, best_value);
                     debug_assert_ne!(best_value, Value::reserved_value());
 
-                    if let Some(elab_val) = self.value_to_elaborated_value.get(&canonical_value) {
+                    if let Some(elab_val) = self.value_to_elaborated_value.get(&best_value) {
                         // Value is available; use it.
-                        trace!("elaborate: value {} -> {:?}", value, elab_val);
+                        log::trace!("elaborate: value {} -> {:?}", value, elab_val);
                         self.stats.elaborate_memoize_hit += 1;
                         self.elab_result_stack.push(*elab_val);
                         continue;
@@ -356,7 +410,7 @@ impl<'a> Elaborator<'a> {
                     // how we can compute it.
                     let (inst, result_idx) = match self.func.dfg.value_def(best_value) {
                         ValueDef::Result(inst, result_idx) => {
-                            trace!(
+                            log::trace!(
                                 " -> value {} is result {} of {}",
                                 best_value,
                                 result_idx,
@@ -369,7 +423,7 @@ impl<'a> Elaborator<'a> {
                             // this value; just push its result on the
                             // result stack (blockparams are already
                             // available).
-                            trace!(" -> value {} is a blockparam", best_value);
+                            log::trace!(" -> value {} is a blockparam", best_value);
                             self.elab_result_stack.push(ElaboratedValue {
                                 in_block,
                                 value: best_value,
@@ -381,7 +435,7 @@ impl<'a> Elaborator<'a> {
                         }
                     };
 
-                    trace!(
+                    log::trace!(
                         " -> result {} of inst {:?}",
                         result_idx,
                         self.func.dfg.insts[inst]
@@ -415,7 +469,7 @@ impl<'a> Elaborator<'a> {
                     num_args,
                     before,
                 } => {
-                    trace!(
+                    log::trace!(
                         "PendingInst: {} result {} args {} before {}",
                         inst,
                         result_idx,
@@ -455,7 +509,7 @@ impl<'a> Elaborator<'a> {
                                     !self.loop_analysis.is_in_loop(value.in_block, loop_entry.lp)
                                 })
                                 .unwrap_or(self.loop_stack.len());
-                            trace!(
+                            log::trace!(
                                 " -> arg: elab_value {:?} hoist level {:?}",
                                 value,
                                 hoist_level
@@ -464,7 +518,7 @@ impl<'a> Elaborator<'a> {
                         })
                         .max()
                         .unwrap_or(self.loop_stack.len().saturating_sub(1));
-                    trace!(
+                    log::trace!(
                         " -> loop hoist level: {:?}; cur loop depth: {:?}, loop_stack: {:?}",
                         loop_hoist_level,
                         self.loop_stack.len(),
@@ -497,18 +551,14 @@ impl<'a> Elaborator<'a> {
                             let data = &self.loop_stack[loop_hoist_level];
                             // `data.hoist_block` should dominate `before`'s block.
                             let before_block = self.func.layout.inst_block(before).unwrap();
-                            debug_assert!(self.domtree.dominates(
-                                data.hoist_block,
-                                before_block,
-                                &self.func.layout
-                            ));
+                            debug_assert!(self.domtree.dominates(data.hoist_block, before_block));
                             // Determine the instruction at which we
                             // insert in `data.hoist_block`.
                             let before = self.func.layout.last_inst(data.hoist_block).unwrap();
                             (data.scope_depth as usize, before, data.hoist_block)
                         };
 
-                    trace!(
+                    log::trace!(
                         " -> decided to place: before {} insert_block {}",
                         before,
                         insert_block
@@ -545,11 +595,11 @@ impl<'a> Elaborator<'a> {
                     // Also clone if we rematerialized, because we
                     // don't want to rewrite the args in the original
                     // copy.
-                    trace!("need inst {} before {}", inst, before);
+                    log::trace!("need inst {} before {}", inst, before);
                     let inst = if self.func.layout.inst_block(inst).is_some() || remat_arg {
                         // Clone the inst!
                         let new_inst = self.func.dfg.clone_inst(inst);
-                        trace!(
+                        log::trace!(
                             " -> inst {} already has a location; cloned to {}",
                             inst,
                             new_inst
@@ -568,18 +618,16 @@ impl<'a> Elaborator<'a> {
                                 value: new_result,
                                 in_block: insert_block,
                             };
-                            let canonical_result = self.eclasses.find_and_update(result);
+                            let best_result = self.value_to_best_value[result];
                             self.value_to_elaborated_value.insert_if_absent_with_depth(
-                                canonical_result,
+                                best_result.1,
                                 elab_value,
                                 scope_depth,
                             );
 
-                            self.eclasses.add(new_result);
-                            self.eclasses.union(result, new_result);
-                            self.value_to_best_value[new_result] = self.value_to_best_value[result];
+                            self.value_to_best_value[new_result] = best_result;
 
-                            trace!(
+                            log::trace!(
                                 " -> cloned inst has new result {} for orig {}",
                                 new_result,
                                 result
@@ -587,7 +635,7 @@ impl<'a> Elaborator<'a> {
                         }
                         new_inst
                     } else {
-                        trace!(" -> no location; using original inst");
+                        log::trace!(" -> no location; using original inst");
                         // Create identity mappings from result values
                         // to themselves in this scope, since we're
                         // using the original inst.
@@ -596,17 +644,23 @@ impl<'a> Elaborator<'a> {
                                 value: result,
                                 in_block: insert_block,
                             };
-                            let canonical_result = self.eclasses.find_and_update(result);
+                            let best_result = self.value_to_best_value[result];
                             self.value_to_elaborated_value.insert_if_absent_with_depth(
-                                canonical_result,
+                                best_result.1,
                                 elab_value,
                                 scope_depth,
                             );
-                            trace!(" -> inserting identity mapping for {}", result);
+                            log::trace!(" -> inserting identity mapping for {}", result);
                         }
                         inst
                     };
+
                     // Place the inst just before `before`.
+                    assert!(
+                        is_pure_for_egraph(self.func, inst),
+                        "something has gone very wrong if we are elaborating effectful \
+                         instructions, they should have remained in the skeleton"
+                    );
                     self.func.layout.insert_inst(inst, before);
 
                     // Update the inst's arguments.
@@ -630,7 +684,7 @@ impl<'a> Elaborator<'a> {
     }
 
     fn elaborate_block(&mut self, elab_values: &mut Vec<Value>, idom: Option<Block>, block: Block) {
-        trace!("elaborate_block: block {}", block);
+        log::trace!("elaborate_block: block {}", block);
         self.start_block(idom, block);
 
         // Iterate over the side-effecting skeleton using the linked
@@ -640,7 +694,7 @@ impl<'a> Elaborator<'a> {
         let mut next_inst = self.func.layout.first_inst(block);
         let mut first_branch = None;
         while let Some(inst) = next_inst {
-            trace!(
+            log::trace!(
                 "elaborating inst {} with results {:?}",
                 inst,
                 self.func.dfg.inst_results(inst)
@@ -655,11 +709,11 @@ impl<'a> Elaborator<'a> {
 
             // Determine where elaboration inserts insts.
             let before = first_branch.unwrap_or(inst);
-            trace!(" -> inserting before {}", before);
+            log::trace!(" -> inserting before {}", before);
 
             elab_values.extend(self.func.dfg.inst_values(inst));
             for arg in elab_values.iter_mut() {
-                trace!(" -> arg {}", *arg);
+                log::trace!(" -> arg {}", *arg);
                 // Elaborate the arg, placing any newly-inserted insts
                 // before `before`. Get the updated value, which may
                 // be different than the original.
@@ -673,7 +727,7 @@ impl<'a> Elaborator<'a> {
                     &mut new_arg,
                     &mut self.stats,
                 );
-                trace!("   -> rewrote arg to {:?}", new_arg);
+                log::trace!("   -> rewrote arg to {:?}", new_arg);
                 *arg = new_arg.value;
             }
             self.func
@@ -683,10 +737,10 @@ impl<'a> Elaborator<'a> {
             // We need to put the results of this instruction in the
             // map now.
             for &result in self.func.dfg.inst_results(inst) {
-                trace!(" -> result {}", result);
-                let canonical_result = self.eclasses.find_and_update(result);
+                log::trace!(" -> result {}", result);
+                let best_result = self.value_to_best_value[result];
                 self.value_to_elaborated_value.insert_if_absent(
-                    canonical_result,
+                    best_result.1,
                     ElaboratedValue {
                         in_block: block,
                         value: result,
@@ -698,10 +752,9 @@ impl<'a> Elaborator<'a> {
         }
     }
 
-    fn elaborate_domtree(&mut self, domtree: &DomTreeWithChildren) {
-        let root = domtree.root();
+    fn elaborate_domtree(&mut self, domtree: &DominatorTreePreorder) {
         self.block_stack.push(BlockStackEntry::Elaborate {
-            block: root,
+            block: self.func.layout.entry_block().unwrap(),
             idom: None,
         });
 
@@ -744,7 +797,7 @@ impl<'a> Elaborator<'a> {
         self.stats.elaborate_func += 1;
         self.stats.elaborate_func_pre_insts += self.func.dfg.num_insts() as u64;
         self.compute_best_values();
-        self.elaborate_domtree(&self.domtree_children);
+        self.elaborate_domtree(&self.domtree);
         self.stats.elaborate_func_post_insts += self.func.dfg.num_insts() as u64;
     }
 }

@@ -23,16 +23,11 @@ use crate::nan_canonicalization::do_nan_canonicalization;
 use crate::remove_constant_phis::do_remove_constant_phis;
 use crate::result::{CodegenResult, CompileResult};
 use crate::settings::{FlagsOrIsa, OptLevel};
-use crate::trace;
 use crate::unreachable_code::eliminate_unreachable_code;
 use crate::verifier::{verify_context, VerifierErrors, VerifierResult};
 use crate::CompileError;
-#[cfg(feature = "souper-harvest")]
-use alloc::string::String;
 use alloc::vec::Vec;
-
-#[cfg(feature = "souper-harvest")]
-use crate::souper_harvest::do_souper_harvest;
+use target_lexicon::Architecture;
 
 /// Persistent data structures and compilation pipeline.
 pub struct Context {
@@ -156,7 +151,7 @@ impl Context {
         );
 
         let opt_level = isa.flags().opt_level();
-        crate::trace!(
+        log::trace!(
             "Optimizing (opt level {:?}):\n{}",
             opt_level,
             self.func.display()
@@ -266,7 +261,15 @@ impl Context {
 
     /// Perform NaN canonicalizing rewrites on the function.
     pub fn canonicalize_nans(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
-        do_nan_canonicalization(&mut self.func);
+        // Currently only RiscV64 is the only arch that may not have vector support.
+        let has_vector_support = match isa.triple().architecture {
+            Architecture::Riscv64(_) => match isa.isa_flags().iter().find(|f| f.name == "has_v") {
+                Some(value) => value.as_bool().unwrap_or(false),
+                None => false,
+            },
+            _ => true,
+        };
+        do_nan_canonicalization(&mut self.func, has_vector_support);
         self.verify_if(isa)
     }
 
@@ -328,7 +331,7 @@ impl Context {
     #[cfg(feature = "souper-harvest")]
     pub fn souper_harvest(
         &mut self,
-        out: &mut core::sync::mpsc::Sender<String>,
+        out: &mut std::sync::mpsc::Sender<String>,
     ) -> CodegenResult<()> {
         do_souper_harvest(&self.func, out);
         Ok(())
@@ -341,10 +344,11 @@ impl Context {
     {
         // let _tt = timing::egraph();
 
-        trace!(
+        log::trace!(
             "About to optimize with egraph phase:\n{}",
             self.func.display()
         );
+        let fisa = fisa.into();
         self.compute_loop_analysis();
         let mut alias_analysis = AliasAnalysis::new(&self.func, &self.domtree);
         let mut pass = EgraphPass::new(
@@ -352,10 +356,12 @@ impl Context {
             &self.domtree,
             &self.loop_analysis,
             &mut alias_analysis,
+            &fisa.flags,
         );
         pass.run();
         log::debug!("egraph stats: {:?}", pass.stats);
-        trace!("After egraph optimization:\n{}", self.func.display());
+        log::trace!("pinned_union_count: {}", pass.eclasses.pinned_union_count);
+        log::trace!("After egraph optimization:\n{}", self.func.display());
 
         self.verify_if(fisa)
     }

@@ -5,11 +5,12 @@ use crate::keys::Keys;
 use crate::EntityRef;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::iter::FromIterator;
 use core::marker::PhantomData;
 use core::mem;
 use core::ops::{Index, IndexMut};
 use core::slice;
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
 
 /// A primary mapping `K -> V` allocating dense entity references.
 ///
@@ -27,6 +28,7 @@ use core::slice;
 /// plain slice would make it easier to use incorrectly. To make a slice of a `PrimaryMap`, use
 /// `into_boxed_slice`.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct PrimaryMap<K, V>
 where
     K: EntityRef,

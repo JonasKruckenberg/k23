@@ -69,7 +69,7 @@ pub(crate) fn lower_condcode(cc: IntCC) -> Cond {
 }
 
 pub(crate) fn lower_fp_condcode(cc: FloatCC) -> Cond {
-    // Refer to `codegen/shared/src/condcodes.rs` and to the `FCMP` AArch64 docs.
+    // Refer to `cranelift-codegen/shared/src/condcodes.rs` and to the `FCMP` AArch64 docs.
     // The FCMP instruction sets:
     //               NZCV
     // - PCSR.NZCV = 0011 on UN (unordered),

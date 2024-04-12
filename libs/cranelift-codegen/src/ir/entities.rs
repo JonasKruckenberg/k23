@@ -22,6 +22,8 @@
 use crate::entity::entity_impl;
 use core::fmt;
 use core::u32;
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
 
 /// An opaque reference to a [basic block](https://en.wikipedia.org/wiki/Basic_block) in a
 /// [`Function`](super::function::Function).
@@ -31,6 +33,7 @@ use core::u32;
 ///
 /// While the order is stable, it is arbitrary and does not necessarily resemble the layout order.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Block(u32);
 entity_impl!(Block, "block");
 
@@ -62,6 +65,7 @@ impl Block {
 ///
 /// While the order is stable, it is arbitrary.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Value(u32);
 entity_impl!(Value, "v");
 
@@ -92,6 +96,7 @@ impl Value {
 ///
 /// While the order is stable, it is arbitrary and does not necessarily resemble the layout order.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Inst(u32);
 entity_impl!(Inst, "inst");
 
@@ -112,6 +117,7 @@ entity_impl!(Inst, "inst");
 ///
 /// While the order is stable, it is arbitrary and does not necessarily resemble the stack order.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct StackSlot(u32);
 entity_impl!(StackSlot, "ss");
 
@@ -130,6 +136,7 @@ impl StackSlot {
 
 /// An opaque reference to a dynamic stack slot.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct DynamicStackSlot(u32);
 entity_impl!(DynamicStackSlot, "dss");
 
@@ -148,6 +155,7 @@ impl DynamicStackSlot {
 
 /// An opaque reference to a dynamic type.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct DynamicType(u32);
 entity_impl!(DynamicType, "dt");
 
@@ -166,7 +174,7 @@ impl DynamicType {
 
 /// An opaque reference to a global value.
 ///
-/// A `GlobalValue` is a [`Value`](Value) that will be live across the entire
+/// A `GlobalValue` is a [`Value`] that will be live across the entire
 /// function lifetime. It can be preloaded from other global values.
 ///
 /// You can create a `GlobalValue` in the following ways:
@@ -184,6 +192,7 @@ impl DynamicType {
 ///
 /// While the order is stable, it is arbitrary.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct GlobalValue(u32);
 entity_impl!(GlobalValue, "gv");
 
@@ -206,6 +215,7 @@ impl GlobalValue {
 /// types and proof-carrying-code facts optionally attached to the
 /// fields.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct MemoryType(u32);
 entity_impl!(MemoryType, "mt");
 
@@ -231,6 +241,7 @@ impl MemoryType {
 /// While the order is stable, it is arbitrary and does not necessarily resemble the order in which
 /// the constants are written in the constant pool.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Constant(u32);
 entity_impl!(Constant, "const");
 
@@ -256,6 +267,7 @@ impl Constant {
 ///
 /// While the order is stable, it is arbitrary.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Immediate(u32);
 entity_impl!(Immediate, "imm");
 
@@ -285,6 +297,7 @@ impl Immediate {
 ///
 /// While the order is stable, it is arbitrary.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct JumpTable(u32);
 entity_impl!(JumpTable, "jt");
 
@@ -320,6 +333,7 @@ impl JumpTable {
 ///
 /// While the order is stable, it is arbitrary.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct FuncRef(u32);
 entity_impl!(FuncRef, "fn");
 
@@ -338,6 +352,7 @@ impl FuncRef {
 
 /// A reference to an `UserExternalName`, declared with `Function::declare_imported_user_function`.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct UserExternalNameRef(u32);
 entity_impl!(UserExternalNameRef, "userextname");
 
@@ -356,6 +371,7 @@ entity_impl!(UserExternalNameRef, "userextname");
 ///
 /// While the order is stable, it is arbitrary.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct SigRef(u32);
 entity_impl!(SigRef, "sig");
 
@@ -372,34 +388,9 @@ impl SigRef {
     }
 }
 
-/// An opaque reference to a [WebAssembly
-/// table](https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format#WebAssembly_tables).
-///
-/// `Table`s are used to store a list of function references.
-/// They can be created with [`FuncEnvironment::make_table`](https://docs.rs/cranelift-wasm/*/cranelift_wasm/trait.FuncEnvironment.html#tymethod.make_table).
-/// They can be used with
-/// [`FuncEnvironment::translate_call_indirect`](https://docs.rs/cranelift-wasm/*/cranelift_wasm/trait.FuncEnvironment.html#tymethod.translate_call_indirect).
-///
-/// While the order is stable, it is arbitrary.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Table(u32);
-entity_impl!(Table, "table");
-
-impl Table {
-    /// Create a new table reference from its number.
-    ///
-    /// This method is for use by the parser.
-    pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
-    }
-}
-
 /// An opaque reference to any of the entities defined in this module that can appear in CLIF IR.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum AnyEntity {
     /// The whole function.
     Function,
@@ -427,8 +418,6 @@ pub enum AnyEntity {
     FuncRef(FuncRef),
     /// A function call signature.
     SigRef(SigRef),
-    /// A table.
-    Table(Table),
     /// A function's stack limit
     StackLimit,
 }
@@ -449,7 +438,6 @@ impl fmt::Display for AnyEntity {
             Self::Constant(r) => r.fmt(f),
             Self::FuncRef(r) => r.fmt(f),
             Self::SigRef(r) => r.fmt(f),
-            Self::Table(r) => r.fmt(f),
             Self::StackLimit => write!(f, "stack_limit"),
         }
     }
@@ -533,17 +521,10 @@ impl From<SigRef> for AnyEntity {
     }
 }
 
-impl From<Table> for AnyEntity {
-    fn from(r: Table) -> Self {
-        Self::Table(r)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use alloc::string::ToString;
-    use core::u32;
 
     #[test]
     fn value_with_number() {

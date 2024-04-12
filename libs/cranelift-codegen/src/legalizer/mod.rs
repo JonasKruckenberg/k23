@@ -19,13 +19,10 @@ use crate::ir::immediates::Imm64;
 use crate::ir::types::{self, I128, I64};
 use crate::ir::{self, InstBuilder, InstructionData, MemFlags, Value};
 use crate::isa::TargetIsa;
-use crate::trace;
 
 mod globalvalue;
-mod table;
 
 use self::globalvalue::expand_global_value;
-use self::table::expand_table_addr;
 
 fn imm_const(pos: &mut FuncCursor, arg: Value, imm: Imm64, is_signed: bool) -> Value {
     let ty = pos.func.dfg.value_type(arg);
@@ -55,7 +52,7 @@ fn imm_const(pos: &mut FuncCursor, arg: Value, imm: Imm64, is_signed: bool) -> V
 /// Perform a simple legalization by expansion of the function, without
 /// platform-specific transforms.
 pub fn simple_legalize(func: &mut ir::Function, cfg: &mut ControlFlowGraph, isa: &dyn TargetIsa) {
-    trace!("Pre-legalization function:\n{}", func.display());
+    log::trace!("Pre-legalization function:\n{}", func.display());
 
     let mut pos = FuncCursor::new(func);
     let func_begin = pos.position();
@@ -152,12 +149,6 @@ pub fn simple_legalize(func: &mut ir::Function, cfg: &mut ControlFlowGraph, isa:
                     mflags.set_aligned();
                     pos.func.dfg.replace(inst).store(mflags, arg, addr, 0);
                 }
-                InstructionData::TableAddr {
-                    opcode: ir::Opcode::TableAddr,
-                    table,
-                    arg,
-                    offset,
-                } => expand_table_addr(isa, inst, &mut pos.func, table, arg, offset),
 
                 InstructionData::BinaryImm64 { opcode, arg, imm } => {
                     let is_signed = match opcode {
@@ -270,7 +261,7 @@ pub fn simple_legalize(func: &mut ir::Function, cfg: &mut ControlFlowGraph, isa:
         }
     }
 
-    trace!("Post-legalization function:\n{}", func.display());
+    log::trace!("Post-legalization function:\n{}", func.display());
 }
 
 /// Custom expansion for conditional trap instructions.
@@ -282,7 +273,7 @@ fn expand_cond_trap(
     arg: ir::Value,
     code: ir::TrapCode,
 ) {
-    trace!(
+    log::trace!(
         "expanding conditional trap: {:?}: {}",
         inst,
         func.dfg.display_inst(inst)

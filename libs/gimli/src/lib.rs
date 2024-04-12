@@ -30,10 +30,6 @@
 #[macro_use]
 extern crate alloc;
 
-// #[cfg(any(feature = "std", feature = "write"))]
-// #[macro_use]
-// extern crate std;
-
 #[cfg(feature = "endian-reader")]
 pub use stable_deref_trait::{CloneStableDeref, StableDeref};
 

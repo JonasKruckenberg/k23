@@ -76,7 +76,6 @@ use crate::ir;
 use crate::ir::types::*;
 use crate::isa::TargetIsa;
 use crate::machinst::{BlockIndex, LowerBackend, VCode};
-use crate::trace;
 use core::fmt;
 use regalloc2::Function as _;
 
@@ -85,53 +84,43 @@ pub type PccResult<T> = core::result::Result<T, PccError>;
 
 /// An error or inconsistency discovered when checking proof-carrying
 /// code.
-#[derive(Debug, Clone, onlyerror::Error)]
+#[derive(Debug, Clone)]
 pub enum PccError {
     /// An operation wraps around, invalidating the stated value
     /// range.
-    #[error("overflow")]
     Overflow,
     /// An input to an operator that produces a fact-annotated value
     /// does not have a fact describing it, and one is needed.
-    #[error("missing fact")]
     MissingFact,
     /// A derivation of an output fact is unsupported (incorrect or
     /// not derivable).
-    #[error("unsupported fact")]
     UnsupportedFact,
     /// A block parameter claims a fact that one of its predecessors
     /// does not support.
-    #[error("unsupported block parameter")]
     UnsupportedBlockparam,
     /// A memory access is out of bounds.
-    #[error("memory access out of bounds")]
     OutOfBounds,
     /// Proof-carrying-code checking is not implemented for a
     /// particular compiler backend.
-    #[error("compiler backend not supported")]
     UnimplementedBackend,
     /// Proof-carrying-code checking is not implemented for a
     /// particular instruction that instruction-selection chose. This
     /// is an internal compiler error.
-    #[error("instruction not supported")]
     UnimplementedInst,
     /// Access to an invalid or undefined field offset in a struct.
-    #[error("invalid field offset")]
     InvalidFieldOffset,
     /// Access to a field via the wrong type.
-    #[error("bad field type")]
     BadFieldType,
     /// Store to a read-only field.
-    #[error("write to a read-only field")]
     WriteToReadOnlyField,
     /// Store of data to a field with a fact that does not subsume the
     /// field's fact.
-    #[error("invalid stored fact")]
     InvalidStoredFact,
 }
 
 /// A fact on a value.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum Fact {
     /// A bitslice of a value (up to a bitwidth) is within the given
     /// integer range.
@@ -232,6 +221,7 @@ pub enum Fact {
 
 /// A bound expression.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Expr {
     /// The dynamic (base) part.
     pub base: BaseExpr,
@@ -241,6 +231,7 @@ pub struct Expr {
 
 /// The base part of a bound expression.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum BaseExpr {
     /// No dynamic part (i.e., zero).
     None,
@@ -1106,7 +1097,7 @@ impl<'a> FactContext<'a> {
             _ => None,
         };
 
-        trace!("add: {lhs:?} + {rhs:?} -> {result:?}");
+        log::trace!("add: {lhs:?} + {rhs:?} -> {result:?}");
         result
     }
 
@@ -1157,7 +1148,7 @@ impl<'a> FactContext<'a> {
 
             _ => None,
         };
-        trace!("uextend: fact {fact:?} from {from_width} to {to_width} -> {result:?}");
+        log::trace!("uextend: fact {fact:?} from {from_width} to {to_width} -> {result:?}");
         result
     }
 
@@ -1186,7 +1177,7 @@ impl<'a> FactContext<'a> {
             return Some(fact.clone());
         }
 
-        trace!(
+        log::trace!(
             "truncate: fact {:?} from {} to {}",
             fact,
             from_width,
@@ -1241,7 +1232,7 @@ impl<'a> FactContext<'a> {
             }
             _ => None,
         };
-        trace!("scale: {fact:?} * {factor} at width {width} -> {result:?}");
+        log::trace!("scale: {fact:?} * {factor} at width {width} -> {result:?}");
         result
     }
 
@@ -1327,7 +1318,7 @@ impl<'a> FactContext<'a> {
             }
             _ => None,
         };
-        trace!("offset: {fact:?} + {offset} in width {width} -> {result:?}");
+        log::trace!("offset: {fact:?} + {offset} in width {width} -> {result:?}");
         result
     }
 
@@ -1338,7 +1329,7 @@ impl<'a> FactContext<'a> {
     /// that this address accesses, if known, or `None` if the range
     /// doesn't constrain the access to exactly one location.
     fn check_address(&self, fact: &Fact, size: u32) -> PccResult<Option<(ir::MemoryType, u64)>> {
-        trace!("check_address: fact {:?} size {}", fact, size);
+        log::trace!("check_address: fact {:?} size {}", fact, size);
         match fact {
             Fact::Mem {
                 ty,
@@ -1534,7 +1525,7 @@ impl<'a> FactContext<'a> {
 
             _ => fact.clone(),
         };
-        trace!("apply_inequality({fact:?}, {lhs:?}, {rhs:?}, {kind:?} -> {result:?}");
+        log::trace!("apply_inequality({fact:?}, {lhs:?}, {rhs:?}, {kind:?} -> {result:?}");
         result
     }
 
@@ -1629,7 +1620,7 @@ impl<'a> FactContext<'a> {
 
             _ => None,
         };
-        trace!("union({lhs:?}, {rhs:?}) -> {result:?}");
+        log::trace!("union({lhs:?}, {rhs:?}) -> {result:?}");
         result
     }
 }

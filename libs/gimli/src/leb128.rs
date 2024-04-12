@@ -164,7 +164,7 @@ pub mod write {
     /// Write the given unsigned number using the LEB128 encoding to the given
     /// `std::io::Write`able. Returns the number of bytes written to `w`, or an
     /// error if writing failed.
-    pub fn unsigned(mut w: BorrowedCursor, mut val: u64) -> Result<usize, crate::Error> {
+    pub fn unsigned(mut w: BorrowedCursor, mut val: u64) -> Result<usize, crate::write::Error> {
         let mut bytes_written = 0;
         loop {
             let mut byte = low_bits_of_u64(val);
@@ -199,7 +199,7 @@ pub mod write {
     /// Write the given signed number using the LEB128 encoding to the given
     /// `std::io::Write`able. Returns the number of bytes written to `w`, or an
     /// error if writing failed.
-    pub fn signed(mut w: BorrowedCursor, mut val: i64) -> Result<usize, crate::Error> {
+    pub fn signed(mut w: BorrowedCursor, mut val: i64) -> Result<usize, crate::write::Error> {
         let mut bytes_written = 0;
         loop {
             let mut byte = val as u8;

@@ -2,14 +2,16 @@
 //!
 //! This module defines the types of immediate operands that can appear on Cranelift instructions.
 //! Each type here should have a corresponding definition in the
-//! `cranelift-codegen/meta/src/shared/immediates` crate in the meta language.
+//! `cranelift-cranelift-codegen/meta/src/shared/immediates` crate in the meta language.
 
 use alloc::vec::Vec;
 use core::cmp::Ordering;
-use core::convert::TryFrom;
 use core::fmt::{self, Display, Formatter};
 use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Not, Sub};
 use core::str::FromStr;
+use core::{i32, u32};
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
 
 /// Convert a type into a vector of bytes; all implementors in this file must use little-endian
 /// orderings of bytes to match WebAssembly's little-endianness.
@@ -53,6 +55,7 @@ impl IntoBytes for Vec<u8> {
 /// An `Imm64` operand can also be used to represent immediate values of smaller integer types by
 /// sign-extending to `i64`.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Imm64(i64);
 
 impl Imm64 {
@@ -153,6 +156,7 @@ impl FromStr for Imm64 {
 /// A `Uimm64` operand can also be used to represent immediate values of smaller integer types by
 /// zero-extending to `i64`.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Uimm64(u64);
 
 impl Uimm64 {
@@ -284,6 +288,7 @@ pub type Uimm8 = u8;
 ///
 /// This is used to represent sizes of memory objects.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Uimm32(u32);
 
 impl From<Uimm32> for u32 {
@@ -339,6 +344,7 @@ impl FromStr for Uimm32 {
 ///
 /// This is used as an immediate value in SIMD instructions.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct V128Imm(pub [u8; 16]);
 
 impl V128Imm {
@@ -378,6 +384,7 @@ impl From<u128> for V128Imm {
 /// This is used to encode an immediate offset for load/store instructions. All supported ISAs have
 /// a maximum load/store offset that fits in an `i32`.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Offset32(i32);
 
 impl Offset32 {
@@ -472,6 +479,7 @@ impl FromStr for Offset32 {
 ///
 /// All bit patterns are allowed.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 #[repr(C)]
 pub struct Ieee32(u32);
 
@@ -486,6 +494,7 @@ pub struct Ieee32(u32);
 ///
 /// All bit patterns are allowed.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 #[repr(C)]
 pub struct Ieee64(u64);
 
@@ -782,12 +791,12 @@ impl Ieee32 {
     // pub fn sqrt(self) -> Self {
     //     Self::with_float(self.as_f32().sqrt())
     // }
-
+    //
     // /// Computes the absolute value of self.
     // pub fn abs(self) -> Self {
     //     Self::with_float(self.as_f32().abs())
     // }
-
+    //
     // /// Returns a number composed of the magnitude of self and the sign of sign.
     // pub fn copysign(self, sign: Self) -> Self {
     //     Self::with_float(self.as_f32().copysign(sign.as_f32()))
@@ -807,12 +816,12 @@ impl Ieee32 {
     // pub fn ceil(self) -> Self {
     //     Self::with_float(self.as_f32().ceil())
     // }
-
+    //
     // /// Returns the largest integer less than or equal to `self`.
     // pub fn floor(self) -> Self {
     //     Self::with_float(self.as_f32().floor())
     // }
-
+    //
     // /// Returns the integer part of `self`. This means that non-integer numbers are always truncated towards zero.
     // pub fn trunc(self) -> Self {
     //     Self::with_float(self.as_f32().trunc())
@@ -1000,12 +1009,12 @@ impl Ieee64 {
     // pub fn sqrt(self) -> Self {
     //     Self::with_float(self.as_f64().sqrt())
     // }
-
+    //
     // /// Computes the absolute value of self.
     // pub fn abs(self) -> Self {
     //     Self::with_float(self.as_f64().abs())
     // }
-
+    //
     // /// Returns a number composed of the magnitude of self and the sign of sign.
     // pub fn copysign(self, sign: Self) -> Self {
     //     Self::with_float(self.as_f64().copysign(sign.as_f64()))
@@ -1025,7 +1034,7 @@ impl Ieee64 {
     // pub fn ceil(self) -> Self {
     //     Self::with_float(self.as_f64().ceil())
     // }
-
+    //
     // /// Returns the largest integer less than or equal to `self`.
     // pub fn floor(self) -> Self {
     //     Self::with_float(self.as_f64().floor())
@@ -1035,7 +1044,7 @@ impl Ieee64 {
     // pub fn trunc(self) -> Self {
     //     Self::with_float(self.as_f64().trunc())
     // }
-
+    //
     // /// Returns the nearest integer to `self`. Rounds half-way cases to the number
     // /// with an even least significant digit.
     // pub fn round_ties_even(self) -> Self {
@@ -1171,9 +1180,8 @@ impl Not for Ieee64 {
 mod tests {
     use super::*;
     use alloc::string::ToString;
-    use core::fmt::Display;
     use core::mem;
-    use core::str::FromStr;
+    use core::{f32, f64};
 
     #[test]
     fn format_imm64() {

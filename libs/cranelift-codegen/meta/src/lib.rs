@@ -1,8 +1,6 @@
 //! This crate generates Rust sources for use by
 //! [`cranelift_codegen`](../cranelift_codegen/index.html).
 
-extern crate cranelift_codegen_shared;
-
 #[macro_use]
 mod cdsl;
 mod srcgen;

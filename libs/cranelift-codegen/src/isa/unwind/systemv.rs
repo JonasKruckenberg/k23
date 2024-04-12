@@ -7,18 +7,37 @@ use crate::{binemit::CodeOffset, CodegenError};
 use alloc::vec::Vec;
 use gimli::write::{Address, FrameDescriptionEntry};
 
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
+
 type Register = u16;
 
 /// Enumerate the errors possible in mapping Cranelift registers to their DWARF equivalent.
 #[allow(missing_docs)]
-#[derive(Debug, PartialEq, Eq, onlyerror::Error)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum RegisterMappingError {
-    #[error("unable to find bank for register info")]
     MissingBank,
-    #[error("register mapping is currently only implemented for x86_64")]
     UnsupportedArchitecture,
-    #[error("unsupported register bank: {0}")]
     UnsupportedRegisterBank(&'static str),
+}
+
+// This is manually implementing Error and Display instead of using thiserror to reduce the amount
+// of dependencies used by Cranelift.
+impl core::error::Error for RegisterMappingError {}
+
+impl core::fmt::Display for RegisterMappingError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        match self {
+            RegisterMappingError::MissingBank => write!(f, "unable to find bank for register info"),
+            RegisterMappingError::UnsupportedArchitecture => write!(
+                f,
+                "register mapping is currently only implemented for x86_64"
+            ),
+            RegisterMappingError::UnsupportedRegisterBank(bank) => {
+                write!(f, "unsupported register bank: {}", bank)
+            }
+        }
+    }
 }
 
 // This mirrors gimli's CallFrameInstruction, but is serializable
@@ -26,6 +45,7 @@ pub enum RegisterMappingError {
 // https://github.com/gimli-rs/gimli/issues/513.
 // TODO: if gimli ever adds serialization support, remove this type
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub(crate) enum CallFrameInstruction {
     Cfa(Register, i32),
     CfaRegister(Register),
@@ -115,8 +135,6 @@ impl Into<gimli::write::CallFrameInstruction> for CallFrameInstruction {
 pub(crate) trait RegisterMapper<Reg> {
     /// Maps Reg.
     fn map(&self, reg: Reg) -> Result<Register, RegisterMappingError>;
-    /// Gets stack pointer register.
-    fn sp(&self) -> Register;
     /// Gets the frame pointer register, if any.
     fn fp(&self) -> Option<Register> {
         None
@@ -135,6 +153,7 @@ pub(crate) trait RegisterMapper<Reg> {
 ///
 /// This representation is not ISA specific.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct UnwindInfo {
     instructions: Vec<(u32, CallFrameInstruction)>,
     len: u32,

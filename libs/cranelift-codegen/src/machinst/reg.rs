@@ -8,6 +8,9 @@ use regalloc2::{
     Allocation, Operand, OperandConstraint, OperandKind, OperandPos, PReg, PRegSet, VReg,
 };
 
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
+
 /// The first 192 vregs (64 int, 64 float, 64 vec) are "pinned" to
 /// physical registers: this means that they are always constrained to
 /// the corresponding register at all use/mod/def sites.
@@ -82,7 +85,7 @@ impl Reg {
     }
 }
 
-impl core::fmt::Debug for Reg {
+impl Debug for Reg {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         if let Some(rreg) = self.to_real_reg() {
             let preg: PReg = rreg.into();
@@ -99,6 +102,7 @@ impl core::fmt::Debug for Reg {
 /// A real (physical) register. This corresponds to one of the target
 /// ISA's named registers and can be used as an instruction operand.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct RealReg(VReg);
 
 impl RealReg {
@@ -113,7 +117,7 @@ impl RealReg {
     }
 }
 
-impl core::fmt::Debug for RealReg {
+impl Debug for RealReg {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         Reg::from(*self).fmt(f)
     }
@@ -125,6 +129,7 @@ impl core::fmt::Debug for RealReg {
 /// before register allocation occurs, in order to allow us to name as
 /// many register-carried values as necessary.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct VirtualReg(VReg);
 
 impl VirtualReg {
@@ -138,7 +143,7 @@ impl VirtualReg {
     }
 }
 
-impl core::fmt::Debug for VirtualReg {
+impl Debug for VirtualReg {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         Reg::from(*self).fmt(f)
     }
@@ -154,6 +159,7 @@ impl core::fmt::Debug for VirtualReg {
 /// usual, frictionless way to get one of these is to allocate a new
 /// temporary.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Writable<T: Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Hash> {
     reg: T,
 }
@@ -185,77 +191,77 @@ impl<T: Clone + Copy + Debug + PartialEq + Eq + PartialOrd + Ord + Hash> Writabl
 // Conversions between regalloc2 types (VReg) and our types
 // (VirtualReg, RealReg, Reg).
 
-impl core::convert::From<regalloc2::VReg> for Reg {
-    fn from(vreg: regalloc2::VReg) -> Reg {
+impl From<VReg> for Reg {
+    fn from(vreg: VReg) -> Reg {
         Reg(vreg)
     }
 }
 
-impl core::convert::From<regalloc2::VReg> for VirtualReg {
-    fn from(vreg: regalloc2::VReg) -> VirtualReg {
+impl From<VReg> for VirtualReg {
+    fn from(vreg: VReg) -> VirtualReg {
         debug_assert!(pinned_vreg_to_preg(vreg).is_none());
         VirtualReg(vreg)
     }
 }
 
-impl core::convert::From<regalloc2::VReg> for RealReg {
-    fn from(vreg: regalloc2::VReg) -> RealReg {
+impl From<VReg> for RealReg {
+    fn from(vreg: VReg) -> RealReg {
         debug_assert!(pinned_vreg_to_preg(vreg).is_some());
         RealReg(vreg)
     }
 }
 
-impl core::convert::From<Reg> for regalloc2::VReg {
-    /// Extract the underlying `regalloc2::VReg`. Note that physical
+impl From<Reg> for VReg {
+    /// Extract the underlying `VReg`. Note that physical
     /// registers also map to particular (special) VRegs, so this
     /// method can be used either on virtual or physical `Reg`s.
-    fn from(reg: Reg) -> regalloc2::VReg {
+    fn from(reg: Reg) -> VReg {
         reg.0
     }
 }
-impl core::convert::From<&Reg> for regalloc2::VReg {
-    fn from(reg: &Reg) -> regalloc2::VReg {
-        reg.0
-    }
-}
-
-impl core::convert::From<VirtualReg> for regalloc2::VReg {
-    fn from(reg: VirtualReg) -> regalloc2::VReg {
+impl From<&Reg> for VReg {
+    fn from(reg: &Reg) -> VReg {
         reg.0
     }
 }
 
-impl core::convert::From<RealReg> for regalloc2::VReg {
-    fn from(reg: RealReg) -> regalloc2::VReg {
+impl From<VirtualReg> for VReg {
+    fn from(reg: VirtualReg) -> VReg {
         reg.0
     }
 }
 
-impl core::convert::From<RealReg> for regalloc2::PReg {
+impl From<RealReg> for VReg {
+    fn from(reg: RealReg) -> VReg {
+        reg.0
+    }
+}
+
+impl From<RealReg> for regalloc2::PReg {
     fn from(reg: RealReg) -> regalloc2::PReg {
         PReg::from_index(reg.0.vreg())
     }
 }
 
-impl core::convert::From<regalloc2::PReg> for RealReg {
+impl From<regalloc2::PReg> for RealReg {
     fn from(preg: regalloc2::PReg) -> RealReg {
         RealReg(VReg::new(preg.index(), preg.class()))
     }
 }
 
-impl core::convert::From<regalloc2::PReg> for Reg {
+impl From<regalloc2::PReg> for Reg {
     fn from(preg: regalloc2::PReg) -> Reg {
         Reg(VReg::new(preg.index(), preg.class()))
     }
 }
 
-impl core::convert::From<RealReg> for Reg {
+impl From<RealReg> for Reg {
     fn from(reg: RealReg) -> Reg {
         Reg(reg.0)
     }
 }
 
-impl core::convert::From<VirtualReg> for Reg {
+impl From<VirtualReg> for Reg {
     fn from(reg: VirtualReg) -> Reg {
         Reg(reg.0)
     }
@@ -548,7 +554,7 @@ impl<'a> AllocationConsumer<'a> {
     }
 }
 
-impl<'a> core::default::Default for AllocationConsumer<'a> {
+impl<'a> Default for AllocationConsumer<'a> {
     fn default() -> Self {
         Self { allocs: [].iter() }
     }

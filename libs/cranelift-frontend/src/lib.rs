@@ -161,12 +161,15 @@
 //! ```
 
 #![deny(missing_docs)]
-#![cfg_attr(not(test), no_std)]
-#![feature(error_in_core)]
+#![no_std]
 
 #[allow(unused_imports)] // #[macro_use] is required for no_std
 #[macro_use]
 extern crate alloc;
+
+#[cfg(feature = "std")]
+#[macro_use]
+extern crate std;
 
 #[cfg(not(feature = "std"))]
 use hashbrown::HashMap;

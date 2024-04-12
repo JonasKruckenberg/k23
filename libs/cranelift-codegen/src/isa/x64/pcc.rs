@@ -2,17 +2,15 @@
 
 use crate::ir::pcc::*;
 use crate::ir::types::*;
-use crate::ir::Type;
 use crate::isa::x64::args::AvxOpcode;
 use crate::isa::x64::inst::args::{
-    AluRmiROpcode, Amode, Gpr, Imm8Reg, RegMem, RegMemImm, ShiftKind, SyntheticAmode,
+    AluRmiROpcode, Amode, Gpr, Imm8Reg, RegMem, RegMemImm, ShiftKind, SseOpcode, SyntheticAmode,
     ToWritableReg, CC,
 };
 use crate::isa::x64::inst::Inst;
 use crate::machinst::pcc::*;
 use crate::machinst::{InsnIndex, VCode, VCodeConstantData};
 use crate::machinst::{Reg, Writable};
-use crate::trace;
 
 fn undefined_result(
     ctx: &FactContext,
@@ -46,7 +44,7 @@ pub(crate) fn check(
     inst_idx: InsnIndex,
     state: &mut FactFlowState,
 ) -> PccResult<()> {
-    trace!("Checking facts on inst: {:?}", vcode[inst_idx]);
+    log::trace!("Checking facts on inst: {:?}", vcode[inst_idx]);
 
     // We only persist flag state for one instruction, because we
     // can't exhaustively enumerate all flags-effecting ops; so take
@@ -189,7 +187,7 @@ pub(crate) fn check(
             dst,
             ..
         } => check_output(ctx, vcode, dst.to_writable_reg(), &[], |_vcode| {
-            Ok(Fact::constant(64, 0))
+            Ok(Some(Fact::constant(64, 0)))
         }),
 
         Inst::AluConstOp { dst, .. } => undefined_result(ctx, vcode, dst, 64, 64),
@@ -247,7 +245,7 @@ pub(crate) fn check(
             undefined_result(ctx, vcode, dst, 64, 64)?;
             Ok(())
         }
-        Inst::MulHi {
+        Inst::Mul {
             size,
             dst_lo,
             dst_hi,
@@ -260,11 +258,21 @@ pub(crate) fn check(
                 }
                 RegMem::Reg { .. } => {}
             }
-            undefined_result(ctx, vcode, dst_lo, 64, 64)?;
-            undefined_result(ctx, vcode, dst_hi, 64, 64)?;
+            undefined_result(ctx, vcode, dst_lo, 64, size.to_bits().into())?;
+            undefined_result(ctx, vcode, dst_hi, 64, size.to_bits().into())?;
             Ok(())
         }
-        Inst::UMulLo {
+        Inst::Mul8 { dst, ref src2, .. } => {
+            match <&RegMem>::from(src2) {
+                RegMem::Mem { ref addr } => {
+                    check_load(ctx, None, addr, vcode, I8, 64)?;
+                }
+                RegMem::Reg { .. } => {}
+            }
+            undefined_result(ctx, vcode, dst, 64, 16)?;
+            Ok(())
+        }
+        Inst::IMul {
             size,
             dst,
             ref src2,
@@ -276,10 +284,24 @@ pub(crate) fn check(
                 }
                 RegMem::Reg { .. } => {}
             }
-            undefined_result(ctx, vcode, dst, 64, 64)?;
+            undefined_result(ctx, vcode, dst, 64, size.to_bits().into())?;
             Ok(())
         }
-
+        Inst::IMulImm {
+            size,
+            dst,
+            ref src1,
+            ..
+        } => {
+            match <&RegMem>::from(src1) {
+                RegMem::Mem { ref addr } => {
+                    check_load(ctx, None, addr, vcode, size.to_type(), 64)?;
+                }
+                RegMem::Reg { .. } => {}
+            }
+            undefined_result(ctx, vcode, dst, 64, size.to_bits().into())?;
+            Ok(())
+        }
         Inst::CheckedSRemSeq {
             dst_quotient,
             dst_remainder,
@@ -296,7 +318,7 @@ pub(crate) fn check(
 
         Inst::Imm { simm64, dst, .. } => {
             check_output(ctx, vcode, dst.to_writable_reg(), &[], |_vcode| {
-                Ok(Fact::constant(64, simm64))
+                Ok(Some(Fact::constant(64, simm64)))
             })
         }
 
@@ -465,7 +487,7 @@ pub(crate) fn check(
             }
             RegMem::Reg { reg } if (cc == CC::NB || cc == CC::NBE) && cmp_flags.is_some() => {
                 let (cmp_lhs, cmp_rhs) = cmp_flags.unwrap();
-                trace!("lhs = {:?} rhs = {:?}", cmp_lhs, cmp_rhs);
+                log::trace!("lhs = {:?} rhs = {:?}", cmp_lhs, cmp_rhs);
                 let reg = *reg;
                 check_output(ctx, vcode, dst.to_writable_reg(), &[], |vcode| {
                     // See comments in aarch64::pcc CSel for more details on this.
@@ -491,19 +513,7 @@ pub(crate) fn check(
             _ => undefined_result(ctx, vcode, dst, 64, 64),
         },
 
-        Inst::XmmCmove {
-            dst,
-            ref consequent,
-            ..
-        } => {
-            match <&RegMem>::from(consequent) {
-                RegMem::Mem { ref addr } => {
-                    check_load(ctx, None, addr, vcode, I8X16, 128)?;
-                }
-                RegMem::Reg { .. } => {}
-            }
-            ensure_no_fact(vcode, dst.to_writable_reg().to_reg())
-        }
+        Inst::XmmCmove { dst, .. } => ensure_no_fact(vcode, dst.to_writable_reg().to_reg()),
 
         Inst::Push64 { ref src } => match <&RegMemImm>::from(src) {
             RegMemImm::Mem { ref addr } => {
@@ -528,6 +538,35 @@ pub(crate) fn check(
             match <&RegMem>::from(src2) {
                 RegMem::Mem { ref addr } => {
                     check_load(ctx, None, addr, vcode, I8X16, 128)?;
+                }
+                RegMem::Reg { .. } => {}
+            }
+            ensure_no_fact(vcode, dst.to_writable_reg().to_reg())
+        }
+
+        Inst::XmmUnaryRmRUnaligned {
+            dst,
+            ref src,
+            op: SseOpcode::Movss,
+            ..
+        } => {
+            match <&RegMem>::from(src) {
+                RegMem::Mem { ref addr } => {
+                    check_load(ctx, None, addr, vcode, F32, 32)?;
+                }
+                RegMem::Reg { .. } => {}
+            }
+            ensure_no_fact(vcode, dst.to_writable_reg().to_reg())
+        }
+        Inst::XmmUnaryRmRUnaligned {
+            dst,
+            ref src,
+            op: SseOpcode::Movsd,
+            ..
+        } => {
+            match <&RegMem>::from(src) {
+                RegMem::Mem { ref addr } => {
+                    check_load(ctx, None, addr, vcode, F64, 64)?;
                 }
                 RegMem::Reg { .. } => {}
             }
@@ -586,17 +625,21 @@ pub(crate) fn check(
             src: ref src2,
             ..
         } => {
-            let size = match op {
-                AvxOpcode::Vmovss => 32,
-                AvxOpcode::Vmovsd => 64,
+            let (ty, size) = match op {
+                AvxOpcode::Vmovss => (F32, 32),
+                AvxOpcode::Vmovsd => (F64, 64),
+                AvxOpcode::Vpinsrb => (I8, 8),
+                AvxOpcode::Vpinsrw => (I16, 16),
+                AvxOpcode::Vpinsrd => (I32, 32),
+                AvxOpcode::Vpinsrq => (I64, 64),
 
                 // We assume all other operations happen on 128-bit values.
-                _ => 128,
+                _ => (I8X16, 128),
             };
 
             match <&RegMem>::from(src2) {
                 RegMem::Mem { ref addr } => {
-                    check_load(ctx, None, addr, vcode, I8X16, size)?;
+                    check_load(ctx, None, addr, vcode, ty, size)?;
                 }
                 RegMem::Reg { .. } => {}
             }
@@ -640,6 +683,24 @@ pub(crate) fn check(
         }
 
         Inst::XmmToGprVex { dst, .. } => undefined_result(ctx, vcode, dst, 64, 64),
+
+        Inst::XmmMovRM {
+            ref dst,
+            op: SseOpcode::Movss,
+            ..
+        } => {
+            check_store(ctx, None, dst, vcode, F32)?;
+            Ok(())
+        }
+
+        Inst::XmmMovRM {
+            ref dst,
+            op: SseOpcode::Movsd,
+            ..
+        } => {
+            check_store(ctx, None, dst, vcode, F64)?;
+            Ok(())
+        }
 
         Inst::XmmMovRM { ref dst, .. } | Inst::XmmMovRMImm { ref dst, .. } => {
             check_store(ctx, None, dst, vcode, I8X16)?;
@@ -709,6 +770,29 @@ pub(crate) fn check(
             RegMem::Reg { .. } => Ok(()),
         },
 
+        Inst::XmmRmRImm {
+            dst,
+            ref src2,
+            size,
+            op,
+            ..
+        } if op.has_scalar_src2() => {
+            match <&RegMem>::from(src2) {
+                RegMem::Mem { ref addr } => {
+                    check_load(
+                        ctx,
+                        None,
+                        addr,
+                        vcode,
+                        size.to_type(),
+                        size.to_bits().into(),
+                    )?;
+                }
+                RegMem::Reg { .. } => {}
+            }
+            ensure_no_fact(vcode, dst.to_reg())
+        }
+
         Inst::XmmRmRImm { dst, ref src2, .. } => {
             match <&RegMem>::from(src2) {
                 RegMem::Mem { ref addr } => {
@@ -723,6 +807,8 @@ pub(crate) fn check(
         | Inst::ReturnCallKnown { .. }
         | Inst::JmpKnown { .. }
         | Inst::Ret { .. }
+        | Inst::GrowArgumentArea { .. }
+        | Inst::ShrinkArgumentArea { .. }
         | Inst::JmpIf { .. }
         | Inst::JmpCond { .. }
         | Inst::TrapIf { .. }
@@ -854,13 +940,13 @@ fn check_mem<'a>(
             to_bits,
         } => {
             let loaded_fact = clamp_range(ctx, to_bits, from_bits, ctx.load(&addr, ty)?.cloned())?;
-            trace!(
+            log::trace!(
                 "loaded_fact = {:?} result_fact = {:?}",
                 loaded_fact,
                 result_fact
             );
-            if ctx.subsumes_fact_optionals(Some(&loaded_fact), result_fact) {
-                Ok(Some(loaded_fact.clone()))
+            if ctx.subsumes_fact_optionals(loaded_fact.as_ref(), result_fact) {
+                Ok(loaded_fact.clone())
             } else {
                 Err(PccError::UnsupportedFact)
             }
@@ -878,16 +964,16 @@ fn compute_addr(
     amode: &SyntheticAmode,
     bits: u16,
 ) -> Option<Fact> {
-    trace!("compute_addr: {:?}", amode);
+    log::trace!("compute_addr: {:?}", amode);
     match *amode {
         SyntheticAmode::Real(Amode::ImmReg { simm32, base, .. }) => {
             let base = get_fact_or_default(vcode, base, bits);
-            trace!("base = {:?}", base);
+            log::trace!("base = {:?}", base);
             let simm32: i64 = simm32.into();
             let simm32: u64 = simm32 as u64;
             let offset = Fact::constant(bits, simm32);
             let sum = ctx.add(&base, &offset, bits)?;
-            trace!("sum = {:?}", sum);
+            log::trace!("sum = {:?}", sum);
             Some(sum)
         }
         SyntheticAmode::Real(Amode::ImmRegRegShift {
@@ -899,14 +985,14 @@ fn compute_addr(
         }) => {
             let base = get_fact_or_default(vcode, base.into(), bits);
             let index = get_fact_or_default(vcode, index.into(), bits);
-            trace!("base = {:?} index = {:?}", base, index);
+            log::trace!("base = {:?} index = {:?}", base, index);
             let shifted = ctx.shl(&index, bits, shift.into())?;
             let sum = ctx.add(&base, &shifted, bits)?;
             let simm32: i64 = simm32.into();
             let simm32: u64 = simm32 as u64;
             let offset = Fact::constant(bits, simm32);
             let sum = ctx.add(&sum, &offset, bits)?;
-            trace!("sum = {:?}", sum);
+            log::trace!("sum = {:?}", sum);
             Some(sum)
         }
         SyntheticAmode::Real(Amode::RipRelative { .. })

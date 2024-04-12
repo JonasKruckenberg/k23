@@ -16,7 +16,7 @@ struct Val<V> {
 
 /// A view into an occupied entry in a `ScopedHashMap`. It is part of the `Entry` enum.
 pub struct OccupiedEntry<'a, K: 'a, V: 'a> {
-    entry: hashbrown::hash_map::OccupiedEntry<'a, K, Val<V>, BuildHasherDefault<FxHasher>>,
+    entry: crate::hash_map::OccupiedEntry<'a, K, Val<V>, BuildHasherDefault<FxHasher>>,
 }
 
 impl<'a, K, V> OccupiedEntry<'a, K, V> {
@@ -36,8 +36,8 @@ pub struct VacantEntry<'a, K: 'a, V: 'a> {
 /// Where to insert from a `VacantEntry`. May be vacant or occupied in
 /// the underlying map because of lazy (generation-based) deletion.
 enum InsertLoc<'a, K: 'a, V: 'a> {
-    Vacant(hashbrown::hash_map::VacantEntry<'a, K, Val<V>, BuildHasherDefault<FxHasher>>),
-    Occupied(hashbrown::hash_map::OccupiedEntry<'a, K, Val<V>, BuildHasherDefault<FxHasher>>),
+    Vacant(crate::hash_map::VacantEntry<'a, K, Val<V>, BuildHasherDefault<FxHasher>>),
+    Occupied(crate::hash_map::OccupiedEntry<'a, K, Val<V>, BuildHasherDefault<FxHasher>>),
 }
 
 impl<'a, K: Hash, V> VacantEntry<'a, K, V> {
@@ -113,7 +113,7 @@ where
         debug_assert!(depth <= self.generation_by_depth.len());
         let generation = self.generation_by_depth[depth];
         let depth = depth as u32;
-        use hashbrown::hash_map::Entry::*;
+        use super::hash_map::Entry::*;
         match self.map.entry(key) {
             Occupied(entry) => {
                 let entry_generation = entry.get().generation;

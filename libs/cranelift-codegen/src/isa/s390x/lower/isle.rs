@@ -12,6 +12,7 @@ use crate::isa::s390x::inst::{
     WritableRegPair,
 };
 use crate::isa::s390x::S390xBackend;
+use crate::isle_common_prelude_methods;
 use crate::machinst::isle::*;
 use crate::machinst::{MachLabel, Reg};
 use crate::{
@@ -23,15 +24,13 @@ use crate::{
     isa::CallConv,
     machinst::abi::ABIMachineSpec,
     machinst::{
-        ArgPair, CallArgList, CallArgPair, CallRetList, CallRetPair, InstOutput, Lower, MachInst,
+        ArgPair, CallArgList, CallArgPair, CallRetList, CallRetPair, InstOutput, MachInst,
         VCodeConstant, VCodeConstantData,
     },
 };
-use crate::{isle_common_prelude_methods, isle_lower_prelude_methods};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::Cell;
-use core::convert::TryFrom;
 use regalloc2::PReg;
 use smallvec::smallvec;
 
@@ -1010,7 +1009,7 @@ fn sign_extend_to_u64(value: u64, from_bits: u8) -> u64 {
 
 /// Determines whether this condcode interprets inputs as signed or
 /// unsigned.  See the documentation for the `icmp` instruction in
-/// cranelift-codegen/meta/src/shared/instructions.rs for further insights
+/// cranelift-cranelift-codegen/meta/src/shared/instructions.rs for further insights
 /// into this.
 #[inline]
 fn condcode_is_signed(cc: IntCC) -> bool {

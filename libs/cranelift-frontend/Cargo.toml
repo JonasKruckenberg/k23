@@ -1,17 +1,21 @@
 [package]
+authors = ["The Cranelift Project Developers"]
 name = "cranelift-frontend"
-version.workspace = true
+version = "0.108.0"
+description = "Cranelift IR builder helper"
+license = "Apache-2.0 WITH LLVM-exception"
+documentation = "https://docs.rs/cranelift-frontend"
+categories = ["no-std"]
+repository = "https://github.com/bytecodealliance/wasmtime"
+readme = "README.md"
 edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-cranelift-codegen = { version = "0.1.0", path = "../cranelift-codegen" }
-hashbrown.workspace = true
-log.workspace = true
-smallvec.workspace = true
-target-lexicon.workspace = true
-onlyerror.workspace = true
+cranelift-codegen = { workspace = true }
+target-lexicon = { workspace = true }
+log = { workspace = true }
+hashbrown = { workspace = true }
+smallvec = { workspace = true }
 
 [dev-dependencies]
-similar = "2.5.0"
+similar = { workspace = true }

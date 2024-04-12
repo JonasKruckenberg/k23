@@ -1,4 +1,4 @@
-//! This module contains constants that are shared between the codegen and the meta crate, so they
+//! This module contains constants that are shared between the cranelift-codegen and the meta crate, so they
 //! are kept in sync.
 
 // Numbering scheme for value types:

@@ -5,6 +5,7 @@
 //! an array or pool of shared data).
 
 use core::hash::{Hash, Hasher};
+use fxhash::FxHasher;
 use hashbrown::raw::RawTable;
 
 /// Trait that allows for equality comparison given some external
@@ -76,7 +77,7 @@ fn compute_hash<Ctx, K>(ctx: &Ctx, k: &K) -> u32
 where
     Ctx: CtxHash<K>,
 {
-    let mut hasher = fxhash::FxHasher::default();
+    let mut hasher = FxHasher::default();
     ctx.ctx_hash(&mut hasher, k);
     hasher.finish() as u32
 }
@@ -125,7 +126,6 @@ impl<K, V> CtxHashMap<K, V> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use core::hash::Hash;
 
     #[derive(Clone, Copy, Debug)]
     struct Key {

@@ -3,15 +3,12 @@
 use crate::ir;
 use crate::ir::types::*;
 
-use crate::ir::ExternalName;
-use crate::ir::MemFlags;
 use crate::isa;
 
-use crate::isa::riscv64::{inst::EmitState, inst::*};
+use crate::isa::riscv64::inst::*;
 use crate::isa::CallConv;
 use crate::machinst::*;
 
-use crate::ir::types::I8;
 use crate::ir::LibCall;
 use crate::ir::Signature;
 use crate::isa::riscv64::settings::Flags as RiscvFlags;
@@ -22,7 +19,6 @@ use crate::CodegenResult;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use regalloc2::{MachineEnv, PReg, PRegSet};
-use regs::x_reg;
 use smallvec::{smallvec, SmallVec};
 use spin::Once;
 
@@ -90,17 +86,20 @@ impl ABIMachineSpec for Riscv64MachineDeps {
         16
     }
 
-    fn compute_arg_locs<'a, I>(
+    fn compute_arg_locs(
         call_conv: isa::CallConv,
         _flags: &settings::Flags,
-        params: I,
+        params: &[ir::AbiParam],
         args_or_rets: ArgsOrRets,
         add_ret_area_ptr: bool,
-        mut args: ArgsAccumulator<'_>,
-    ) -> CodegenResult<(u32, Option<usize>)>
-    where
-        I: IntoIterator<Item = &'a ir::AbiParam>,
-    {
+        mut args: ArgsAccumulator,
+    ) -> CodegenResult<(u32, Option<usize>)> {
+        assert_ne!(
+            call_conv,
+            isa::CallConv::Winch,
+            "riscv64 does not support the 'winch' calling convention yet"
+        );
+
         // All registers that can be used as parameters or rets.
         // both start and end are included.
         let (x_start, x_end, f_start, f_end) = match (call_conv, args_or_rets) {
@@ -205,11 +204,6 @@ impl ABIMachineSpec for Riscv64MachineDeps {
         Ok((next_stack, pos))
     }
 
-    fn fp_to_arg_offset(_call_conv: isa::CallConv, _flags: &settings::Flags) -> i64 {
-        // lr fp.
-        16
-    }
-
     fn gen_load_stack(mem: StackAMode, into_reg: Writable<Reg>, ty: Type) -> Inst {
         Inst::gen_load(into_reg, mem.into(), ty, MemFlags::trusted())
     }
@@ -298,7 +292,7 @@ impl ABIMachineSpec for Riscv64MachineDeps {
         insts
     }
 
-    fn gen_get_stack_addr(mem: StackAMode, into_reg: Writable<Reg>, _ty: Type) -> Inst {
+    fn gen_get_stack_addr(mem: StackAMode, into_reg: Writable<Reg>) -> Inst {
         Inst::LoadAddr {
             rd: into_reg,
             mem: mem.into(),
@@ -306,12 +300,12 @@ impl ABIMachineSpec for Riscv64MachineDeps {
     }
 
     fn gen_load_base_offset(into_reg: Writable<Reg>, base: Reg, offset: i32, ty: Type) -> Inst {
-        let mem = AMode::RegOffset(base, offset as i64, ty);
+        let mem = AMode::RegOffset(base, offset as i64);
         Inst::gen_load(into_reg, mem, ty, MemFlags::trusted())
     }
 
     fn gen_store_base_offset(base: Reg, offset: i32, from_reg: Reg, ty: Type) -> Inst {
-        let mem = AMode::RegOffset(base, offset as i64, ty);
+        let mem = AMode::RegOffset(base, offset as i64);
         Inst::gen_store(mem, from_reg, ty, MemFlags::trusted())
     }
 
@@ -363,15 +357,17 @@ impl ABIMachineSpec for Riscv64MachineDeps {
             // sd   fp,0(sp)     ;; store old fp.
             // mv   fp,sp        ;; set fp to sp.
             insts.extend(Self::gen_sp_reg_adjust(-16));
-            insts.push(Self::gen_store_stack(
-                StackAMode::SPOffset(8, I64),
+            insts.push(Inst::gen_store(
+                AMode::SPOffset(8),
                 link_reg(),
                 I64,
+                MemFlags::trusted(),
             ));
-            insts.push(Self::gen_store_stack(
-                StackAMode::SPOffset(0, I64),
+            insts.push(Inst::gen_store(
+                AMode::SPOffset(0),
                 fp_reg(),
                 I64,
+                MemFlags::trusted(),
             ));
 
             if flags.unwind_info() {
@@ -400,15 +396,17 @@ impl ABIMachineSpec for Riscv64MachineDeps {
         let mut insts = SmallVec::new();
 
         if frame_layout.setup_area_size > 0 {
-            insts.push(Self::gen_load_stack(
-                StackAMode::SPOffset(8, I64),
+            insts.push(Inst::gen_load(
                 writable_link_reg(),
+                AMode::SPOffset(8),
                 I64,
+                MemFlags::trusted(),
             ));
-            insts.push(Self::gen_load_stack(
-                StackAMode::SPOffset(0, I64),
+            insts.push(Inst::gen_load(
                 writable_fp_reg(),
+                AMode::SPOffset(0),
                 I64,
+                MemFlags::trusted(),
             ));
             insts.extend(Self::gen_sp_reg_adjust(16));
         }
@@ -418,9 +416,16 @@ impl ABIMachineSpec for Riscv64MachineDeps {
                 frame_layout.stack_args_size.try_into().unwrap(),
             ));
         }
-        insts.push(Inst::Ret {});
 
         insts
+    }
+
+    fn gen_return(
+        _call_conv: isa::CallConv,
+        _isa_flags: &RiscvFlags,
+        _frame_layout: &FrameLayout,
+    ) -> SmallInstVec<Inst> {
+        smallvec![Inst::Ret {}]
     }
 
     fn gen_probestack(insts: &mut SmallInstVec<Self::I>, frame_size: u32) {
@@ -450,7 +455,9 @@ impl ABIMachineSpec for Riscv64MachineDeps {
         let mut insts = SmallVec::new();
         // Adjust the stack pointer downward for clobbers and the function fixed
         // frame (spillslots and storage slots).
-        let stack_size = frame_layout.fixed_frame_storage_size + frame_layout.clobber_size;
+        let stack_size = frame_layout.fixed_frame_storage_size
+            + frame_layout.clobber_size
+            + frame_layout.outgoing_args_size;
         if flags.unwind_info() && frame_layout.setup_area_size > 0 {
             // The *unwind* frame (but not the actual frame) starts at the
             // clobbers, just below the saved FP/LR pair.
@@ -481,15 +488,22 @@ impl ABIMachineSpec for Riscv64MachineDeps {
                         },
                     });
                 }
-                insts.push(Self::gen_store_stack(
-                    StackAMode::SPOffset(-(cur_offset as i64), ty),
+                insts.push(Inst::gen_store(
+                    AMode::SPOffset(-(cur_offset as i64)),
                     real_reg_to_reg(reg.to_reg()),
                     ty,
+                    MemFlags::trusted(),
                 ));
                 cur_offset += 8
             }
 
             insts.extend(Self::gen_sp_reg_adjust(-(stack_size as i32)));
+
+            // Adjust the nominal sp to account for the outgoing argument area.
+            let sp_adj = frame_layout.outgoing_args_size as i32;
+            if sp_adj > 0 {
+                insts.push(Self::gen_nominal_sp_adj(sp_adj));
+            }
         }
         insts
     }
@@ -500,7 +514,9 @@ impl ABIMachineSpec for Riscv64MachineDeps {
         frame_layout: &FrameLayout,
     ) -> SmallVec<Inst, 16> {
         let mut insts = SmallVec::new();
-        let stack_size = frame_layout.fixed_frame_storage_size + frame_layout.clobber_size;
+        let stack_size = frame_layout.fixed_frame_storage_size
+            + frame_layout.clobber_size
+            + frame_layout.outgoing_args_size;
         if stack_size > 0 {
             insts.extend(Self::gen_sp_reg_adjust(stack_size as i32));
         }
@@ -512,10 +528,11 @@ impl ABIMachineSpec for Riscv64MachineDeps {
                 RegClass::Float => F64,
                 RegClass::Vector => unimplemented!("Vector Clobber Restores"),
             };
-            insts.push(Self::gen_load_stack(
-                StackAMode::SPOffset(-cur_offset, ty),
+            insts.push(Inst::gen_load(
                 Writable::from_reg(real_reg_to_reg(reg.to_reg())),
+                AMode::SPOffset(-cur_offset),
                 ty,
+                MemFlags::trusted(),
             ));
             cur_offset += 8
         }
@@ -695,7 +712,6 @@ impl ABIMachineSpec for Riscv64MachineDeps {
         };
 
         // Return FrameLayout structure.
-        debug_assert!(outgoing_args_size == 0);
         FrameLayout {
             stack_args_size,
             setup_area_size,
@@ -1088,10 +1104,11 @@ impl Riscv64MachineDeps {
                 rs2: tmp.to_reg(),
             });
 
-            insts.push(Self::gen_store_stack(
-                StackAMode::SPOffset(0, I8),
+            insts.push(Inst::gen_store(
+                AMode::SPOffset(0),
                 zero_reg(),
                 I32,
+                MemFlags::trusted(),
             ));
         }
 

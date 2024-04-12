@@ -4,7 +4,7 @@ use super::regs::{self};
 use super::EmitState;
 use crate::ir::condcodes::{FloatCC, IntCC};
 use crate::ir::types::*;
-use crate::ir::{MemFlags, Type};
+use crate::ir::MemFlags;
 use crate::isa::x64::inst::regs::pretty_print_reg;
 use crate::isa::x64::inst::Inst;
 use crate::machinst::*;
@@ -78,7 +78,7 @@ macro_rules! newtype_of_reg {
         // NB: We cannot implement `DerefMut` because that would let people do
         // nasty stuff like `*my_gpr.deref_mut() = some_xmm_reg`, breaking the
         // invariants that `Gpr` provides.
-        impl core::ops::Deref for $newtype_reg {
+        impl std::ops::Deref for $newtype_reg {
             type Target = Reg;
 
             fn deref(&self) -> &Reg {
@@ -329,7 +329,8 @@ impl Amode {
         Self::RipRelative { target }
     }
 
-    pub(crate) fn with_flags(&self, flags: MemFlags) -> Self {
+    /// Set the specified [MemFlags] to the [Amode].
+    pub fn with_flags(&self, flags: MemFlags) -> Self {
         match self {
             &Self::ImmReg { simm32, base, .. } => Self::ImmReg {
                 simm32,
@@ -402,10 +403,6 @@ impl Amode {
             Amode::ImmReg { flags, .. } | Amode::ImmRegRegShift { flags, .. } => *flags,
             Amode::RipRelative { .. } => MemFlags::trusted(),
         }
-    }
-
-    pub(crate) fn can_trap(&self) -> bool {
-        !self.get_flags().notrap()
     }
 
     pub(crate) fn with_allocs(&self, allocs: &mut AllocationConsumer<'_>) -> Self {
@@ -817,8 +814,6 @@ pub enum AluRmiROpcode {
     Or,
     /// Bitwise exclusive OR.
     Xor,
-    /// The signless, non-extending (N x N -> N, for N in {32,64}) variant.
-    Mul,
 }
 
 impl fmt::Debug for AluRmiROpcode {
@@ -831,7 +826,6 @@ impl fmt::Debug for AluRmiROpcode {
             AluRmiROpcode::And => "and",
             AluRmiROpcode::Or => "or",
             AluRmiROpcode::Xor => "xor",
-            AluRmiROpcode::Mul => "imul",
         };
         write!(fmt, "{}", name)
     }
@@ -1153,6 +1147,7 @@ pub enum SseOpcode {
     Ucomiss,
     Ucomisd,
     Unpcklps,
+    Unpcklpd,
     Unpckhps,
     Xorps,
     Xorpd,
@@ -1311,7 +1306,8 @@ impl SseOpcode {
             | SseOpcode::Punpcklqdq
             | SseOpcode::Punpckhqdq
             | SseOpcode::Pshuflw
-            | SseOpcode::Pshufhw => SSE2,
+            | SseOpcode::Pshufhw
+            | SseOpcode::Unpcklpd => SSE2,
 
             SseOpcode::Pabsb
             | SseOpcode::Pabsw
@@ -1373,6 +1369,26 @@ impl SseOpcode {
         match self {
             SseOpcode::Movd => 4,
             _ => 8,
+        }
+    }
+
+    /// Is `src2` with this opcode a scalar, as for lane insertions?
+    pub(crate) fn has_scalar_src2(self) -> bool {
+        match self {
+            SseOpcode::Pinsrb | SseOpcode::Pinsrw | SseOpcode::Pinsrd => true,
+            SseOpcode::Pmovsxbw
+            | SseOpcode::Pmovsxbd
+            | SseOpcode::Pmovsxbq
+            | SseOpcode::Pmovsxwd
+            | SseOpcode::Pmovsxwq
+            | SseOpcode::Pmovsxdq => true,
+            SseOpcode::Pmovzxbw
+            | SseOpcode::Pmovzxbd
+            | SseOpcode::Pmovzxbq
+            | SseOpcode::Pmovzxwd
+            | SseOpcode::Pmovzxwq
+            | SseOpcode::Pmovzxdq => true,
+            _ => false,
         }
     }
 }
@@ -1568,6 +1584,7 @@ impl fmt::Debug for SseOpcode {
             SseOpcode::Pshufhw => "pshufhw",
             SseOpcode::Pblendw => "pblendw",
             SseOpcode::Movddup => "movddup",
+            SseOpcode::Unpcklpd => "unpcklpd",
         };
         write!(fmt, "{}", name)
     }
@@ -1769,7 +1786,8 @@ impl AvxOpcode {
             | AvxOpcode::Vsqrtss
             | AvxOpcode::Vsqrtsd
             | AvxOpcode::Vroundss
-            | AvxOpcode::Vroundsd => {
+            | AvxOpcode::Vroundsd
+            | AvxOpcode::Vunpcklpd => {
                 smallvec![InstructionSet::AVX]
             }
 

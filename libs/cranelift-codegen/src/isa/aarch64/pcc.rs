@@ -11,7 +11,6 @@ use crate::isa::aarch64::inst::{AMode, ExtendOp};
 use crate::machinst::pcc::*;
 use crate::machinst::Reg;
 use crate::machinst::{InsnIndex, VCode};
-use crate::trace;
 
 fn extend_fact(ctx: &FactContext, value: &Fact, mode: ExtendOp) -> Option<Fact> {
     match mode {
@@ -38,37 +37,39 @@ pub(crate) fn check(
     inst_idx: InsnIndex,
     state: &mut FactFlowState,
 ) -> PccResult<()> {
-    trace!("Checking facts on inst: {:?}", vcode[inst_idx]);
+    let inst = &vcode[inst_idx];
+    log::trace!("Checking facts on inst: {:?}", inst);
 
     // We only persist flag state for one instruction, because we
     // can't exhaustively enumerate all flags-effecting ops; so take
     // the `cmp_state` here and perhaps use it below but don't let it
     // remain.
     let cmp_flags = state.cmp_flags.take();
-    trace!(" * with cmp_flags = {cmp_flags:?}");
+    log::trace!(" * with cmp_flags = {cmp_flags:?}");
 
-    match vcode[inst_idx] {
+    match *inst {
         Inst::Args { .. } => {
             // Defs on the args have "axiomatic facts": we trust the
             // ABI code to pass through the values unharmed, so the
             // facts given to us in the CLIF should still be true.
             Ok(())
         }
-        Inst::ULoad8 { rd, ref mem, flags } | Inst::SLoad8 { rd, ref mem, flags } => {
-            check_load(ctx, Some(rd.to_reg()), flags, mem, vcode, I8)
+        Inst::ULoad8 { rd, ref mem, flags }
+        | Inst::SLoad8 { rd, ref mem, flags }
+        | Inst::ULoad16 { rd, ref mem, flags }
+        | Inst::SLoad16 { rd, ref mem, flags }
+        | Inst::ULoad32 { rd, ref mem, flags }
+        | Inst::SLoad32 { rd, ref mem, flags }
+        | Inst::ULoad64 { rd, ref mem, flags } => {
+            let access_ty = inst.mem_type().unwrap();
+            check_load(ctx, Some(rd.to_reg()), flags, mem, vcode, access_ty)
         }
-        Inst::ULoad16 { rd, ref mem, flags } | Inst::SLoad16 { rd, ref mem, flags } => {
-            check_load(ctx, Some(rd.to_reg()), flags, mem, vcode, I16)
+        Inst::FpuLoad32 { ref mem, flags, .. }
+        | Inst::FpuLoad64 { ref mem, flags, .. }
+        | Inst::FpuLoad128 { ref mem, flags, .. } => {
+            let access_ty = inst.mem_type().unwrap();
+            check_load(ctx, None, flags, mem, vcode, access_ty)
         }
-        Inst::ULoad32 { rd, ref mem, flags } | Inst::SLoad32 { rd, ref mem, flags } => {
-            check_load(ctx, Some(rd.to_reg()), flags, mem, vcode, I32)
-        }
-        Inst::ULoad64 { rd, ref mem, flags } => {
-            check_load(ctx, Some(rd.to_reg()), flags, mem, vcode, I64)
-        }
-        Inst::FpuLoad32 { ref mem, flags, .. } => check_load(ctx, None, flags, mem, vcode, F32),
-        Inst::FpuLoad64 { ref mem, flags, .. } => check_load(ctx, None, flags, mem, vcode, F64),
-        Inst::FpuLoad128 { ref mem, flags, .. } => check_load(ctx, None, flags, mem, vcode, I8X16),
         Inst::LoadP64 { ref mem, flags, .. } => check_load_pair(ctx, flags, mem, vcode, 16),
         Inst::FpuLoadP64 { ref mem, flags, .. } => check_load_pair(ctx, flags, mem, vcode, 16),
         Inst::FpuLoadP128 { ref mem, flags, .. } => check_load_pair(ctx, flags, mem, vcode, 32),
@@ -82,14 +83,18 @@ pub(crate) fn check(
             ..
         } => check_load_addr(ctx, flags, rn, vcode, access_ty),
 
-        Inst::Store8 { rd, ref mem, flags } => check_store(ctx, Some(rd), flags, mem, vcode, I8),
-        Inst::Store16 { rd, ref mem, flags } => check_store(ctx, Some(rd), flags, mem, vcode, I16),
-        Inst::Store32 { rd, ref mem, flags } => check_store(ctx, Some(rd), flags, mem, vcode, I32),
-        Inst::Store64 { rd, ref mem, flags } => check_store(ctx, Some(rd), flags, mem, vcode, I64),
-        Inst::FpuStore32 { ref mem, flags, .. } => check_store(ctx, None, flags, mem, vcode, F32),
-        Inst::FpuStore64 { ref mem, flags, .. } => check_store(ctx, None, flags, mem, vcode, F64),
-        Inst::FpuStore128 { ref mem, flags, .. } => {
-            check_store(ctx, None, flags, mem, vcode, I8X16)
+        Inst::Store8 { rd, ref mem, flags }
+        | Inst::Store16 { rd, ref mem, flags }
+        | Inst::Store32 { rd, ref mem, flags }
+        | Inst::Store64 { rd, ref mem, flags } => {
+            let access_ty = inst.mem_type().unwrap();
+            check_store(ctx, Some(rd), flags, mem, vcode, access_ty)
+        }
+        Inst::FpuStore32 { ref mem, flags, .. }
+        | Inst::FpuStore64 { ref mem, flags, .. }
+        | Inst::FpuStore128 { ref mem, flags, .. } => {
+            let access_ty = inst.mem_type().unwrap();
+            check_store(ctx, None, flags, mem, vcode, access_ty)
         }
         Inst::StoreP64 { ref mem, flags, .. } => check_store_pair(ctx, flags, mem, vcode, 16),
         Inst::FpuStoreP64 { ref mem, flags, .. } => check_store_pair(ctx, flags, mem, vcode, 16),
@@ -303,7 +308,7 @@ pub(crate) fn check(
                 check_constant(ctx, vcode, rd, 64, constant)
             } else {
                 check_output(ctx, vcode, rd, &[], |_vcode| {
-                    Ok(Fact::max_range_for_width(64))
+                    Ok(Some(Fact::max_range_for_width(64)))
                 })
             }
         }
@@ -312,7 +317,7 @@ pub(crate) fn check(
             if (cond == Cond::Hs || cond == Cond::Hi) && cmp_flags.is_some() =>
         {
             let (cmp_lhs, cmp_rhs) = cmp_flags.unwrap();
-            trace!("CSel: cmp {cond:?} ({cmp_lhs:?}, {cmp_rhs:?})");
+            log::trace!("CSel: cmp {cond:?} ({cmp_lhs:?}, {cmp_rhs:?})");
 
             check_output(ctx, vcode, rd, &[], |vcode| {
                 // We support transitivity-based reasoning. If the
@@ -412,7 +417,7 @@ fn check_addr<'a>(
         return Ok(());
     }
 
-    trace!("check_addr: {:?}", addr);
+    log::trace!("check_addr: {:?}", addr);
 
     let check = |addr: &Fact, ty: Type| -> PccResult<()> {
         match op {
@@ -423,10 +428,10 @@ fn check_addr<'a>(
             } => {
                 let loaded_fact =
                     clamp_range(ctx, to_bits, from_bits, ctx.load(addr, ty)?.cloned())?;
-                trace!(
+                log::trace!(
                     "checking a load: loaded_fact = {loaded_fact:?} result_fact = {result_fact:?}"
                 );
-                if ctx.subsumes_fact_optionals(Some(&loaded_fact), result_fact) {
+                if ctx.subsumes_fact_optionals(loaded_fact.as_ref(), result_fact) {
                     Ok(())
                 } else {
                     Err(PccError::UnsupportedFact)
@@ -441,22 +446,17 @@ fn check_addr<'a>(
             let rn = get_fact_or_default(vcode, rn, 64);
             let rm = get_fact_or_default(vcode, rm, 64);
             let sum = fail_if_missing(ctx.add(&rn, &rm, 64))?;
-            trace!("rn = {rn:?} rm = {rm:?} sum = {sum:?}");
+            log::trace!("rn = {rn:?} rm = {rm:?} sum = {sum:?}");
             check(&sum, ty)
         }
-        &AMode::RegScaled { rn, rm, ty } => {
+        &AMode::RegScaled { rn, rm } => {
             let rn = get_fact_or_default(vcode, rn, 64);
             let rm = get_fact_or_default(vcode, rm, 64);
             let rm_scaled = fail_if_missing(ctx.scale(&rm, 64, ty.bytes()))?;
             let sum = fail_if_missing(ctx.add(&rn, &rm_scaled, 64))?;
             check(&sum, ty)
         }
-        &AMode::RegScaledExtended {
-            rn,
-            rm,
-            ty,
-            extendop,
-        } => {
+        &AMode::RegScaledExtended { rn, rm, extendop } => {
             let rn = get_fact_or_default(vcode, rn, 64);
             let rm = get_fact_or_default(vcode, rm, 64);
             let rm_extended = fail_if_missing(extend_fact(ctx, &rm, extendop))?;
@@ -485,7 +485,7 @@ fn check_addr<'a>(
             // 32760 (= 4095 * 8) for I64s. The `UImm12Scaled` type
             // stores the *scaled* value, so we don't need to multiply
             // (again) by the type's size here.
-            let offset: u64 = uimm12.value.into();
+            let offset: u64 = uimm12.value().into();
             // This `unwrap()` will always succeed because the value
             // will always be positive and much smaller than
             // `i64::MAX` (see above).

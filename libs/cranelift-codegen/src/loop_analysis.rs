@@ -67,7 +67,7 @@ impl LoopLevel {
     }
 }
 
-impl core::default::Default for LoopLevel {
+impl Default for LoopLevel {
     fn default() -> Self {
         LoopLevel::invalid()
     }

@@ -2,7 +2,6 @@
 
 // Pull in the ISLE generated code.
 pub mod generated_code;
-use crate::opts::StackSlot;
 use generated_code::Context;
 use smallvec::SmallVec;
 
@@ -18,6 +17,7 @@ use crate::ir::{condcodes, ArgumentExtension};
 use crate::isa;
 use crate::isa::aarch64::inst::{FPULeftShiftImm, FPURightShiftImm, ReturnCallInfo};
 use crate::isa::aarch64::AArch64Backend;
+use crate::isle_common_prelude_methods;
 use crate::machinst::isle::*;
 use crate::machinst::valueregs;
 use crate::{
@@ -29,14 +29,10 @@ use crate::{
     isa::aarch64::abi::AArch64CallSite,
     isa::aarch64::inst::args::{ShiftOp, ShiftOpShiftImm},
     isa::aarch64::inst::SImm7Scaled,
-    machinst::{
-        abi::ArgPair, ty_bits, InstOutput, Lower, MachInst, VCodeConstant, VCodeConstantData,
-    },
+    machinst::{abi::ArgPair, ty_bits, InstOutput, MachInst, VCodeConstant, VCodeConstantData},
 };
-use crate::{isle_common_prelude_methods, isle_lower_prelude_methods};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::convert::TryFrom;
 use regalloc2::PReg;
 
 type BoxCallInfo = Box<CallInfo>;
@@ -104,6 +100,9 @@ impl Context for IsleContext<'_, '_, MInst, AArch64Backend> {
             self.lower_ctx.sigs(),
             callee_sig,
             &callee,
+            // TODO: this should be Opcode::ReturnCall, once aarch64 has been ported to the new
+            // tail call strategy.
+            Opcode::Call,
             distance,
             caller_conv,
             self.backend.flags().clone(),
@@ -132,7 +131,9 @@ impl Context for IsleContext<'_, '_, MInst, AArch64Backend> {
             self.lower_ctx.sigs(),
             callee_sig,
             callee,
-            Opcode::ReturnCallIndirect,
+            // TODO: this should be Opcode::ReturnCallIndirect, once aarch64 has
+            // been ported to the new tail call strategy.
+            Opcode::CallIndirect,
             caller_conv,
             self.backend.flags().clone(),
         );

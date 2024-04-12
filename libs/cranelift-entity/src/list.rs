@@ -5,6 +5,9 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem;
 
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
+
 /// A small list of entity references allocated from a pool.
 ///
 /// An `EntityList<T>` type provides similar functionality to `Vec<T>`, but with some important
@@ -60,6 +63,7 @@ use core::mem;
 /// The index stored in an `EntityList` points to part 2, the list elements. The value 0 is
 /// reserved for the empty list which isn't allocated in the vector.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct EntityList<T: EntityRef + ReservedValue> {
     index: u32,
     unused: PhantomData<T>,
@@ -77,6 +81,7 @@ impl<T: EntityRef + ReservedValue> Default for EntityList<T> {
 
 /// A memory pool for storing lists of `T`.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct ListPool<T: EntityRef + ReservedValue> {
     // The main array containing the lists.
     data: Vec<T>,
@@ -637,8 +642,6 @@ impl<T: EntityRef + ReservedValue> EntityList<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::{sclass_for_length, sclass_size};
-    use crate::EntityRef;
 
     /// An opaque reference to an instruction in a function.
     #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]

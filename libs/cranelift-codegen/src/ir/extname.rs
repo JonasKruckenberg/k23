@@ -10,6 +10,8 @@ use core::fmt::{self, Write};
 use core::str::FromStr;
 
 use cranelift_entity::EntityRef as _;
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
 
 use super::entities::UserExternalNameRef;
 use super::function::FunctionParameters;
@@ -20,6 +22,7 @@ use super::function::FunctionParameters;
 /// functions. In the latter case, this becomes an `ExternalName`, which gets embedded in
 /// relocations later, etc.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum UserFuncName {
     /// A user-defined name, with semantics left to the user.
     User(UserExternalName),
@@ -67,6 +70,7 @@ impl fmt::Display for UserFuncName {
 ///
 /// Cranelift does not interpret these numbers in any way, so they can represent arbitrary values.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct UserExternalName {
     /// Arbitrary.
     pub namespace: u32,
@@ -89,6 +93,7 @@ impl fmt::Display for UserExternalName {
 
 /// A name for a test case.
 #[derive(Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct TestcaseName(Box<[u8]>);
 
 impl fmt::Display for TestcaseName {
@@ -122,6 +127,7 @@ impl TestcaseName {
 /// In particular, many `.clif` test files use function names to identify
 /// functions.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum ExternalName {
     /// A reference to a name in a user-defined symbol table.
     User(UserExternalNameRef),

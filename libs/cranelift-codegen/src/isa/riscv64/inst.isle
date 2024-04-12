@@ -1644,7 +1644,7 @@
 ;; Helper for emitting the `min` instruction.
 (decl rv_min (XReg XReg) XReg)
 (rule (rv_min rs1 rs2)
-  (alu_rrr (AluOPRRR.Max) rs1 rs2))
+  (alu_rrr (AluOPRRR.Min) rs1 rs2))
 
 ;; Helper for emitting the `minu` instruction.
 (decl rv_minu (XReg XReg) XReg)
@@ -2280,19 +2280,19 @@
     (writable_reg_to_reg sum)))
 
 ;; Generates a AMode that points to a register plus an offset.
-(decl gen_reg_offset_amode (Reg i64 Type) AMode)
+(decl gen_reg_offset_amode (Reg i64) AMode)
 (extern constructor gen_reg_offset_amode gen_reg_offset_amode)
 
 ;; Generates a AMode that an offset from the stack pointer.
-(decl gen_sp_offset_amode (i64 Type) AMode)
+(decl gen_sp_offset_amode (i64) AMode)
 (extern constructor gen_sp_offset_amode gen_sp_offset_amode)
 
 ;; Generates a AMode that an offset from the frame pointer.
-(decl gen_fp_offset_amode (i64 Type) AMode)
+(decl gen_fp_offset_amode (i64) AMode)
 (extern constructor gen_fp_offset_amode gen_fp_offset_amode)
 
 ;; Generates an AMode that points to a stack slot + offset.
-(decl gen_stack_slot_amode (StackSlot i64 Type) AMode)
+(decl gen_stack_slot_amode (StackSlot i64) AMode)
 (extern constructor gen_stack_slot_amode gen_stack_slot_amode)
 
 ;; Generates a AMode that points to a constant in the constant pool.
@@ -2302,41 +2302,41 @@
 
 
 ;; Tries to match a Value + Offset into an AMode
-(decl amode (Value i32 Type) AMode)
-(rule 0 (amode addr offset ty) (amode_inner addr offset ty))
+(decl amode (Value i32) AMode)
+(rule 0 (amode addr offset) (amode_inner addr offset))
 
 ;; If we are adding a constant offset with an iadd we can instead make that
 ;; offset part of the amode offset.
 ;;
 ;; We can't recurse into `amode` again since that could cause stack overflows.
 ;; See: https://github.com/bytecodealliance/wasmtime/pull/6968
-(rule 1 (amode (iadd addr (iconst (simm32 y))) offset ty)
+(rule 1 (amode (iadd addr (iconst (simm32 y))) offset)
   (if-let new_offset (s32_add_fallible y offset))
-  (amode_inner addr new_offset ty))
-(rule 2 (amode (iadd (iconst (simm32 x)) addr) offset ty)
+  (amode_inner addr new_offset))
+(rule 2 (amode (iadd (iconst (simm32 x)) addr) offset)
   (if-let new_offset (s32_add_fallible x offset))
-  (amode_inner addr new_offset ty))
+  (amode_inner addr new_offset))
 
 
 ;; These are the normal rules for generating an AMode.
-(decl amode_inner (Value i32 Type) AMode)
+(decl amode_inner (Value i32) AMode)
 
 ;; In the simplest case we just lower into a Reg+Offset
-(rule 0 (amode_inner r @ (value_type (ty_addr64 _)) offset ty)
-  (gen_reg_offset_amode r offset ty))
+(rule 0 (amode_inner r @ (value_type (ty_addr64 _)) offset)
+  (gen_reg_offset_amode r offset))
 
 ;; If the value is a `get_frame_pointer`, we can just use the offset from that.
-(rule 1 (amode_inner (get_frame_pointer) offset ty)
-  (gen_fp_offset_amode offset ty))
+(rule 1 (amode_inner (get_frame_pointer) offset)
+  (gen_fp_offset_amode offset))
 
 ;; If the value is a `get_stack_pointer`, we can just use the offset from that.
-(rule 1 (amode_inner (get_stack_pointer) offset ty)
-  (gen_sp_offset_amode offset ty))
+(rule 1 (amode_inner (get_stack_pointer) offset)
+  (gen_sp_offset_amode offset))
 
 ;; Similarly if the value is a `stack_addr` we can also turn that into an sp offset.
-(rule 1 (amode_inner (stack_addr ss ss_offset) amode_offset ty)
+(rule 1 (amode_inner (stack_addr ss ss_offset) amode_offset)
   (if-let combined_offset (s32_add_fallible ss_offset amode_offset))
-  (gen_stack_slot_amode ss combined_offset ty))
+  (gen_stack_slot_amode ss combined_offset))
 
 
 
@@ -2733,6 +2733,8 @@
 (rule 1 (gen_bitcast r $F64 $I64) (rv_fmvxd r))
 (rule 1 (gen_bitcast r $I32 $F32) (rv_fmvwx r))
 (rule 1 (gen_bitcast r $I64 $F64) (rv_fmvdx r))
+(rule 1 (gen_bitcast r $I64 $R64) (copy_reg r $I64))
+(rule 1 (gen_bitcast r $R64 $I64) (copy_reg r $I64))
 (rule (gen_bitcast r _ _) r)
 
 (decl move_f_to_x (FReg Type) XReg)
@@ -2843,6 +2845,20 @@
   (let ((rd WritableXReg (temp_writable_xreg))
         (_ Unit (emit (MInst.MovFromPReg rd rm))))
     rd))
+
+;; Copy a register of the given type to a new register.
+;;
+;; Generally, regalloc should take care of this kind of thing for us. This is
+;; only useful for implementing things like `bitcast` from an `r64` to an `i64`
+;; to avoid conflicting constraints on a single aliased value by splitting the
+;; value into two parts.
+(decl copy_reg (XReg Type) XReg)
+(rule (copy_reg src ty)
+      (let ((dst WritableXReg (temp_writable_xreg))
+            (_ Unit (emit (MInst.Mov dst
+                                     src
+                                     ty))))
+        dst))
 
 (decl fp_reg () PReg)
 (extern constructor fp_reg fp_reg)
