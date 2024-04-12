@@ -1,0 +1,6 @@
+[book]
+authors = ["Jonas Kruckenberg"]
+language = "en"
+multilingual = false
+src = "src"
+title = "K23 Documentation"
