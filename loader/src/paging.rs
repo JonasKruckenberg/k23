@@ -13,10 +13,10 @@ use crate::kconfig;
 pub fn init(
     boot_info: &BootInfo,
     kernel: ElfSections,
-) -> Result<(usize, Range<VirtualAddress>, Range<VirtualAddress>), vmm::Error> {
+) -> Result<(usize, VirtualAddress, Range<VirtualAddress>), vmm::Error> {
     // Safety: The boot_info module ensures the memory entries are in the right order
     let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
-        unsafe { BumpAllocator::new(&boot_info.memories) };
+        unsafe { BumpAllocator::new(&boot_info.memories, 0) };
 
     let mut mapper = Mapper::new(0, &mut alloc)?;
     let mut flush = Flush::empty(0);
@@ -64,7 +64,7 @@ fn map_fdt(
     mapper: &mut Mapper<INIT<kconfig::MEMORY_MODE>>,
     flush: &mut Flush<INIT<kconfig::MEMORY_MODE>>,
     boot_info: &BootInfo,
-) -> Result<Range<VirtualAddress>, vmm::Error> {
+) -> Result<VirtualAddress, vmm::Error> {
     let fdt_phys = unsafe {
         let base = PhysicalAddress::new(boot_info.fdt.as_ptr() as usize);
 
@@ -74,9 +74,13 @@ fn map_fdt(
         ..kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.end);
 
     log::debug!("Mapping fdt region {fdt_virt:?} => {fdt_phys:?}...");
-    mapper.map_range_with_flush(fdt_virt.clone(), fdt_phys, EntryFlags::READ, flush)?;
+    mapper.map_range_with_flush(fdt_virt, fdt_phys, EntryFlags::READ, flush)?;
 
-    Ok(fdt_virt)
+    let fdt_addr = unsafe {
+        kconfig::MEMORY_MODE::phys_to_virt(PhysicalAddress::new(boot_info.fdt.as_ptr() as usize))
+    };
+
+    Ok(fdt_addr)
 }
 
 fn identity_map_self(
@@ -197,6 +201,7 @@ fn map_kernel(
         end.sub(kernel_stack_frames * kconfig::PAGE_SIZE)..end
     };
 
+    log::debug!("Mapping kernel stack region {kernel_stack_virt:?} => {kernel_stack_phys:?}...");
     mapper.map_range_with_flush(
         kernel_stack_virt.clone(),
         kernel_stack_phys,

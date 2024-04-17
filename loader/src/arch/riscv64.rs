@@ -1,7 +1,8 @@
 use crate::boot_info::BootInfo;
-use crate::{kconfig, KernelArgs};
+use crate::kconfig;
 use core::arch::asm;
 use core::ptr::addr_of_mut;
+use vmm::VirtualAddress;
 
 #[link_section = ".bss.uninit"]
 pub static BOOT_STACK: [u8; kconfig::PAGE_SIZE * kconfig::STACK_SIZE_PAGES] =
@@ -61,18 +62,23 @@ pub fn halt() -> ! {
     }
 }
 
-pub unsafe extern "C" fn kernel_entry(stack_ptr: usize, func: usize, args: *const KernelArgs) -> ! {
-    log::debug!("jumping to kernel! stack_ptr: {stack_ptr:#x}, func: {func:#x}, args: {args:?}");
+pub unsafe extern "C" fn kernel_entry(
+    stack_ptr: VirtualAddress,
+    func: VirtualAddress,
+    args: VirtualAddress,
+) -> ! {
+    log::debug!("jumping to kernel! stack_ptr: {stack_ptr:?}, func: {func:?}, args: {args:?}");
 
     asm!(
         "mv sp, {stack}",
+        "mv ra, zero",
         "jalr zero, {func}",
         "1:",
         "   wfi",
         "   j 1b",
-        in("a0") args,
-        stack = in(reg) stack_ptr,
-        func = in(reg) func,
+        in("a0") args.as_raw(),
+        stack = in(reg) stack_ptr.as_raw(),
+        func = in(reg) func.as_raw(),
         options(noreturn)
     )
 }
