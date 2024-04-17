@@ -346,6 +346,7 @@ dependencies = [
  "cranelift-entity",
  "cranelift-frontend",
  "env_logger",
+ "gimli",
  "hashbrown 0.14.3",
  "log",
  "onlyerror",
@@ -702,10 +703,14 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arrayvec",
  "build-config",
  "cfg-if",
+ "dtb-parser",
+ "linked_list_allocator",
  "log",
  "spin",
+ "uart-16550",
  "vmm",
 ]
 
