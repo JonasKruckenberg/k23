@@ -18,10 +18,10 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
     /// # Safety
     ///
     /// The caller has to ensure the slice is correctly sorted from lowest to highest addresses.
-    pub unsafe fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
+    pub unsafe fn new(regions: &'a [Range<PhysicalAddress>], offset: usize) -> Self {
         Self {
             regions,
-            offset: 0,
+            offset,
             _m: PhantomData,
         }
     }
