@@ -1,6 +1,7 @@
 use crate::debug::DebugInfo;
 use crate::heap::{Heap, HeapData};
 use crate::state::GlobalVariable;
+use crate::table::{Table, TableData};
 use cranelift_codegen::cursor::FuncCursor;
 use cranelift_codegen::{ir, isa};
 use cranelift_entity::PrimaryMap;
@@ -171,15 +172,17 @@ pub trait FuncTranslationEnvironment: TargetEnvironment {
         heap: Heap,
     ) -> crate::Result<()>;
 
+    fn tables(&self) -> &PrimaryMap<Table, TableData>;
+
     /// Set up a table in `func`.
-    fn make_table(&mut self, func: &mut ir::Function, index: TableIdx) -> crate::Result<ir::Table>;
+    fn make_table(&mut self, func: &mut ir::Function, index: TableIdx) -> crate::Result<Table>;
 
     /// Translate a `table.init` instruction.
     fn translate_table_init(
         &mut self,
         pos: FuncCursor,
         table_index: TableIdx,
-        table: ir::Table,
+        table: Table,
         elem_index: ElemIdx,
         dst: ir::Value,
         src: ir::Value,
@@ -191,7 +194,7 @@ pub trait FuncTranslationEnvironment: TargetEnvironment {
         &mut self,
         pos: FuncCursor,
         table_index: TableIdx,
-        table: ir::Table,
+        table: Table,
         delta: ir::Value,
         init_value: ir::Value,
     ) -> crate::Result<ir::Value>;
@@ -201,7 +204,7 @@ pub trait FuncTranslationEnvironment: TargetEnvironment {
         &mut self,
         builder: &mut FunctionBuilder,
         table_index: TableIdx,
-        table: ir::Table,
+        table: Table,
         index: ir::Value,
     ) -> crate::Result<ir::Value>;
 
@@ -210,7 +213,7 @@ pub trait FuncTranslationEnvironment: TargetEnvironment {
         &mut self,
         builder: &mut FunctionBuilder,
         table_index: TableIdx,
-        table: ir::Table,
+        table: Table,
         value: ir::Value,
         index: ir::Value,
     ) -> crate::Result<()>;
@@ -220,7 +223,7 @@ pub trait FuncTranslationEnvironment: TargetEnvironment {
         &mut self,
         pos: FuncCursor,
         index: TableIdx,
-        table: ir::Table,
+        table: Table,
     ) -> crate::Result<ir::Value>;
 
     /// Translate a `table.copy` instruction.
@@ -228,9 +231,9 @@ pub trait FuncTranslationEnvironment: TargetEnvironment {
         &mut self,
         pos: FuncCursor,
         dst_table_index: TableIdx,
-        dst_table: ir::Table,
+        dst_table: Table,
         src_table_index: TableIdx,
-        src_table: ir::Table,
+        src_table: Table,
         dst: ir::Value,
         src: ir::Value,
         len: ir::Value,
@@ -241,7 +244,7 @@ pub trait FuncTranslationEnvironment: TargetEnvironment {
         &mut self,
         pos: FuncCursor,
         table_index: TableIdx,
-        table: ir::Table,
+        table: Table,
         dst: ir::Value,
         val: ir::Value,
         len: ir::Value,
@@ -292,7 +295,7 @@ pub trait FuncTranslationEnvironment: TargetEnvironment {
         &mut self,
         builder: &mut FunctionBuilder,
         table_index: TableIdx,
-        table: ir::Table,
+        table: Table,
         sig_index: TypeIdx,
         sig_ref: ir::SigRef,
         callee: ir::Value,
@@ -319,7 +322,7 @@ pub trait FuncTranslationEnvironment: TargetEnvironment {
         &mut self,
         builder: &mut FunctionBuilder,
         table_index: TableIdx,
-        table: ir::Table,
+        table: Table,
         sig_index: TypeIdx,
         sig_ref: ir::SigRef,
         callee: ir::Value,

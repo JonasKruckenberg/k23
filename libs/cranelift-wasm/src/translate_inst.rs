@@ -1,6 +1,7 @@
 use crate::error::ensure;
 use crate::heap::Heap;
 use crate::state::{ControlFrame, ElseState, GlobalVariable, State};
+use crate::table::TableSize;
 use crate::traits::FuncTranslationEnvironment;
 use crate::Error;
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
@@ -8,11 +9,12 @@ use cranelift_codegen::ir;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::{
-    types, Fact, InstBuilder, MemFlags, Opcode, RelSourceLoc, TrapCode, Type, Value,
+    types, Endianness, Fact, InstBuilder, MemFlags, Opcode, RelSourceLoc, TrapCode, Type, Value,
 };
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::EntityRef;
 use cranelift_frontend::{FunctionBuilder, Variable};
+use wasmparser::TableIdx;
 
 pub fn translate_inst(
     state: &mut State,
@@ -65,7 +67,7 @@ pub fn translate_inst(
                     let base = builder.ins().global_value(ty, gv);
 
                     let mut flags = MemFlags::trusted();
-                    flags.set_table();
+                    flags.set_by_name("table").unwrap();
 
                     builder.ins().load(ty, flags, base, offset)
                 }
@@ -83,7 +85,7 @@ pub fn translate_inst(
                     let base = builder.ins().global_value(ty, gv);
 
                     let mut flags = MemFlags::trusted();
-                    flags.set_table();
+                    flags.set_by_name("table").unwrap();
 
                     builder.ins().store(flags, val, base, offset);
                 }
@@ -928,137 +930,6 @@ fn translate_binary_arith(
     Ok(())
 }
 
-fn cast_index_to_pointer_ty(
-    mut pos: FuncCursor,
-    index: Value,
-    index_ty: Type,
-    pointer_ty: Type,
-    pcc: bool,
-) -> Value {
-    if index_ty == pointer_ty {
-        return index;
-    }
-    // Note that using 64-bit heaps on a 32-bit host is not currently supported,
-    // would require at least a bounds check here to ensure that the truncation
-    // from 64-to-32 bits doesn't lose any upper bits. For now though we're
-    // mostly interested in the 32-bit-heaps-on-64-bit-hosts cast.
-    assert!(index_ty.bits() < pointer_ty.bits());
-
-    // Convert `index` to `addr_ty`.
-    let extended_index = pos.ins().uextend(pointer_ty, index);
-
-    // Add a range fact on the extended value.
-    if pcc {
-        pos.func.dfg.facts[extended_index] = Some(Fact::max_range_for_width_extended(
-            u16::try_from(index_ty.bits()).unwrap(),
-            u16::try_from(pointer_ty.bits()).unwrap(),
-        ));
-    }
-
-    // Add debug value-label alias so that debuginfo can name the extended
-    // value as the address
-    let loc = pos.srcloc();
-    let loc = RelSourceLoc::from_base_offset(pos.func.params.base_srcloc(), loc);
-    pos.func
-        .stencil
-        .dfg
-        .add_value_label_alias(extended_index, loc, index);
-
-    extended_index
-}
-
-enum Reachability {
-    Unreachable,
-    Reachable((Value, MemFlags)),
-}
-
-/// Convert a linear memory index into a bounds-checked machine address
-fn index2addr(
-    builder: &mut FunctionBuilder,
-    index: Value,
-    heap: Heap,
-    access_size: u8,
-    memarg: wasmparser::MemArg,
-    env: &mut dyn FuncTranslationEnvironment,
-) -> crate::Result<Reachability> {
-    // In a normal WASM runtime this would be the place to emit bound checking code,
-    // but we rely on the fact that access to unmapped virtual memory will trigger an exception
-    // this assumption is a bit flawed in the presence of multiple, possibly imported/exported memories
-    // but if saves us from having to emit expensive bound checks
-
-    let pcc = env.proof_carrying_code();
-    let addr_ty = env.target_config().pointer_type();
-    let index_ty = builder.func.dfg.value_type(index);
-    let index = cast_index_to_pointer_ty(builder.cursor(), index, index_ty, addr_ty, pcc);
-
-    let heap = &env.heaps()[heap];
-
-    // optimization for when we can statically assert this access will trap
-    if memarg.offset + u64::from(access_size) > heap.max_size {
-        builder.ins().trap(TrapCode::HeapOutOfBounds);
-        return Ok(Reachability::Unreachable);
-    }
-
-    let heap_base = builder.ins().global_value(addr_ty, heap.base);
-    // emit pcc fact for heap base
-    if let Some(ty) = heap.memory_type {
-        builder.func.dfg.facts[heap_base] = Some(Fact::Mem {
-            ty,
-            min_offset: 0,
-            max_offset: 0,
-            nullable: false,
-        });
-    }
-
-    let base_and_index = builder.ins().iadd(heap_base, index);
-    // emit pcc fact for base + index
-    if let Some(ty) = heap.memory_type {
-        builder.func.dfg.facts[base_and_index] = Some(Fact::Mem {
-            ty,
-            min_offset: 0,
-            max_offset: u64::from(u32::MAX),
-            nullable: false,
-        });
-    }
-
-    let addr = if memarg.offset == 0 {
-        base_and_index
-    } else {
-        let offset = builder.ins().iconst(addr_ty, i64::try_from(memarg.offset)?);
-        // emit pcc fact for offset
-        if pcc {
-            builder.func.dfg.facts[offset] = Some(Fact::constant(
-                u16::try_from(addr_ty.bits()).unwrap(),
-                u64::from(memarg.offset),
-            ));
-        }
-
-        let base_index_and_offset = builder.ins().iconst(addr_ty, i64::try_from(memarg.offset)?);
-        // emit pcc fact for base + index + offset
-        if let Some(ty) = heap.memory_type {
-            builder.func.dfg.facts[base_index_and_offset] = Some(Fact::Mem {
-                ty,
-                min_offset: u64::from(memarg.offset),
-                max_offset: u64::from(u32::MAX).checked_add(memarg.offset).unwrap(),
-                nullable: false,
-            });
-        }
-
-        base_index_and_offset
-    };
-
-    let mut flags = MemFlags::new();
-    flags.set_endianness(ir::Endianness::Little);
-    flags.set_heap();
-
-    if heap.memory_type.is_some() {
-        // Proof-carrying code is enabled; check this memory access.
-        flags.set_checked();
-    }
-
-    Ok(Reachability::Reachable((addr, flags)))
-}
-
 fn mem_op_size(opcode: Opcode, ty: Type) -> u8 {
     match opcode {
         Opcode::Istore8 | Opcode::Sload8 | Opcode::Uload8 => 1,
@@ -1067,6 +938,11 @@ fn mem_op_size(opcode: Opcode, ty: Type) -> u8 {
         Opcode::Store | Opcode::Load => u8::try_from(ty.bytes()).unwrap(),
         _ => panic!("unknown size of mem op for {:?}", opcode),
     }
+}
+
+pub enum Reachability {
+    Unreachable,
+    Reachable(Value, MemFlags),
 }
 
 fn translate_load(
@@ -1078,12 +954,14 @@ fn translate_load(
     env: &mut dyn FuncTranslationEnvironment,
 ) -> crate::Result<()> {
     let index = state.pop1()?;
+
     let heap = state.get_or_make_heap(builder.func, memarg.memory, env)?;
+    let heap = &env.heaps()[heap];
 
     let access_size = mem_op_size(opcode, result_ty);
 
-    let Reachability::Reachable((addr, flags)) =
-        index2addr(builder, index, heap, access_size, memarg, env)?
+    let Reachability::Reachable(addr, flags) =
+        heap.get_addr_for_index(builder, index, access_size, memarg, env)?
     else {
         state.reachable = false;
         return Ok(());
@@ -1108,12 +986,14 @@ fn translate_store(
     let val_ty = builder.func.dfg.value_type(val);
 
     let index = state.pop1()?;
+
     let heap = state.get_or_make_heap(builder.func, memarg.memory, env)?;
+    let heap = &env.heaps()[heap];
 
     let access_size = mem_op_size(opcode, val_ty);
 
-    let Reachability::Reachable((addr, flags)) =
-        index2addr(builder, index, heap, access_size, memarg, env)?
+    let Reachability::Reachable(addr, flags) =
+        heap.get_addr_for_index(builder, index, access_size, memarg, env)?
     else {
         state.reachable = false;
         return Ok(());

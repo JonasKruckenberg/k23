@@ -26,9 +26,6 @@ pub mod stackslot;
 mod trapcode;
 pub mod types;
 
-#[cfg(feature = "enable-serde")]
-use serde_derive::{Deserialize, Serialize};
-
 pub use crate::ir::atomic_rmw_op::AtomicRmwOp;
 pub use crate::ir::builder::{
     InsertBuilder, InstBuilder, InstBuilderBase, InstInserterBase, ReplaceBuilder,

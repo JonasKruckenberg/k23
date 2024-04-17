@@ -191,7 +191,7 @@ impl fmt::Display for UseVariableError {
     }
 }
 
-impl std::error::Error for UseVariableError {}
+impl core::error::Error for UseVariableError {}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 /// An error encountered when calling [`FunctionBuilder::try_declare_var`].
@@ -199,7 +199,7 @@ pub enum DeclareVariableError {
     DeclaredMultipleTimes(Variable),
 }
 
-impl std::error::Error for DeclareVariableError {}
+impl core::error::Error for DeclareVariableError {}
 
 impl fmt::Display for DeclareVariableError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -826,7 +826,7 @@ impl<'a> FunctionBuilder<'a> {
 
         // Load all of the memory first. This is necessary in case `dest` overlaps.
         // It can also improve performance a bit.
-        let registers: smallvec::SmallVec<[_; THRESHOLD as usize]> = (0..load_and_store_amount)
+        let registers: smallvec::SmallVec<_, { THRESHOLD as usize }> = (0..load_and_store_amount)
             .map(|i| {
                 let offset = (access_size * i) as i32;
                 (self.ins().load(int_type, flags, src, offset), offset)
@@ -1019,8 +1019,8 @@ impl<'a> FunctionBuilder<'a> {
         left: Value,
         right: Value,
         size: u64,
-        left_align: std::num::NonZeroU8,
-        right_align: std::num::NonZeroU8,
+        left_align: core::num::NonZeroU8,
+        right_align: core::num::NonZeroU8,
         flags: MemFlags,
     ) -> Value {
         use IntCC::*;

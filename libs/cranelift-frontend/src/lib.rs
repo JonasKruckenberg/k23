@@ -161,7 +161,8 @@
 //! ```
 
 #![deny(missing_docs)]
-#![no_std]
+#![cfg_attr(not(test), no_std)]
+#![feature(error_in_core)]
 
 #[allow(unused_imports)] // #[macro_use] is required for no_std
 #[macro_use]

@@ -1,5 +1,4 @@
 use alloc::collections::BTreeMap;
-use cranelift_codegen::gimli;
 use wasmparser::{NameSectionReader, NameSubsection};
 
 type GimliSlice<'a> = gimli::EndianSlice<'a, gimli::LittleEndian>;
