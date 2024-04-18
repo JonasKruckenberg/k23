@@ -18,10 +18,10 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
     /// # Safety
     ///
     /// The caller has to ensure the slice is correctly sorted from lowest to highest addresses.
-    pub unsafe fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
+    pub unsafe fn new(regions: &'a [Range<PhysicalAddress>], offset: usize) -> Self {
         Self {
             regions,
-            offset: 0,
+            offset,
             _m: PhantomData,
         }
     }
@@ -35,7 +35,7 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
     }
 }
 
-impl<'a, M: Mode> FrameAllocator<M> for BumpAllocator<'a, M> {
+impl<'a, M: Mode> FrameAllocator for BumpAllocator<'a, M> {
     fn allocate_frames(&mut self, frames: usize) -> crate::Result<PhysicalAddress> {
         let requested_size = frames * M::PAGE_SIZE;
         let mut offset = self.offset;

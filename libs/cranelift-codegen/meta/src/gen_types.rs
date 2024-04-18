@@ -1,7 +1,7 @@
 //! Generate sources with type info.
 //!
 //! This generates a `types.rs` file which is included in
-//! `cranelift-codegen/ir/types.rs`. The file provides constant definitions for the
+//! `cranelift-cranelift-codegen/ir/types.rs`. The file provides constant definitions for the
 //! most commonly used types, including all of the scalar types.
 //!
 //! This ensures that the metaprogram and the generated program see the same

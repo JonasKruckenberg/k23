@@ -14,7 +14,7 @@ pub fn expand_global_value(
     isa: &dyn TargetIsa,
     global_value: ir::GlobalValue,
 ) {
-    crate::trace!(
+    log::trace!(
         "expanding global value: {:?}: {}",
         inst,
         func.dfg.display_inst(inst)

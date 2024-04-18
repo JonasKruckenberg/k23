@@ -1,43 +1,44 @@
 [package]
+authors = ["The Cranelift Project Developers"]
 name = "cranelift-codegen"
-version.workspace = true
+version = "0.108.0"
+description = "Low-level code generator library"
+license = "Apache-2.0 WITH LLVM-exception"
+documentation = "https://docs.rs/cranelift-codegen"
+repository = "https://github.com/bytecodealliance/wasmtime"
+categories = ["no-std"]
+readme = "README.md"
+keywords = ["compile", "compiler", "jit"]
+build = "build.rs"
 edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-bumpalo.workspace = true
-cranelift-bforest.workspace = true
-cranelift-codegen-shared = { path = "./shared" }
-cranelift-entity.workspace = true
-gimli = { workspace = true, optional = true, features = ["read", "write"] }
-log.workspace = true
-smallvec.workspace = true
-target-lexicon.workspace = true
-regalloc2.workspace = true
-hashbrown.workspace = true
-onlyerror.workspace = true
+bumpalo = "3"
+cranelift-codegen-shared = { path = "./shared", version = "0.108.0" }
+cranelift-entity = { workspace = true }
+cranelift-bforest = { workspace = true }
+hashbrown = { workspace = true, features = ["raw"] }
+target-lexicon = { workspace = true }
+log = { workspace = true }
+gimli = { workspace = true, optional = true, features = ["write"] }
+smallvec = { workspace = true }
+regalloc2 = { workspace = true, features = ["checker", "trace-log"] }
 spin.workspace = true
 fxhash.workspace = true
+# It is a goal of the cranelift-cranelift-codegen crate to have minimal external dependencies.
+# Please don't add any unless they are essential to the task of creating binary
+# machine code. Integration tests that need external dependencies can be
+# accomodated in `tests`.
+
+[dev-dependencies]
+criterion = { version = "0.5.0", features = ["html_reports"] }
+similar = "2.1.0"
 
 [build-dependencies]
 cranelift-codegen-meta = { path = "meta" }
-cranelift-isle.workspace = true
-
-#cranelift-isle.workspace = true
+cranelift-isle = { workspace = true }
 
 [features]
-default = ["unwind", "host-arch"]
-
-# Enables detailed logging which can be somewhat expensive.
-trace-log = ["regalloc2/trace-log"]
-
-# Enable tracking how long passes take in Cranelift.
-#
-# Enabled by default.
-#timing = []
-
-# This enables unwind info generation functionality.
 unwind = ["gimli"]
 
 # ISA targets for which we should build.
@@ -46,8 +47,6 @@ x86 = []
 arm64 = []
 s390x = []
 riscv64 = []
-# Enable the ISA target for the host machine
-host-arch = []
 
 # Option to enable all architectures.
 all-arch = [
@@ -63,3 +62,7 @@ isle-errors = ["cranelift-isle/fancy-errors"]
 # Put ISLE generated files in isle_generated_code/, for easier
 # inspection, rather than inside of target/.
 isle-in-source-tree = []
+
+[[bench]]
+name = "x64-evex-encoding"
+harness = false

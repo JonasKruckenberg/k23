@@ -7,6 +7,9 @@
 use core::fmt::{self, Display, Formatter};
 use core::str::FromStr;
 
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
+
 /// Common traits of condition codes.
 pub trait CondCode: Copy {
     /// Get the complemented condition code of `self`.
@@ -30,6 +33,7 @@ pub trait CondCode: Copy {
 /// separate codes for comparing the integers as signed or unsigned numbers where it makes a
 /// difference.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum IntCC {
     /// `==`.
     Equal,
@@ -191,6 +195,7 @@ impl FromStr for IntCC {
 /// comparison. The 14 condition codes here cover every possible combination of the relation above
 /// except the impossible `!UN & !EQ & !LT & !GT` and the always true `UN | EQ | LT | GT`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum FloatCC {
     /// EQ | LT | GT
     Ordered,
@@ -339,7 +344,7 @@ impl FromStr for FloatCC {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::string::ToString;
+    use std::string::ToString;
 
     #[test]
     fn int_complement() {

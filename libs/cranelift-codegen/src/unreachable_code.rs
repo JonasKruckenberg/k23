@@ -5,7 +5,7 @@ use cranelift_entity::EntitySet;
 use crate::cursor::{Cursor, FuncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
-use crate::{ir, trace};
+use crate::ir;
 
 /// Eliminate unreachable code.
 ///
@@ -30,14 +30,14 @@ pub fn eliminate_unreachable_code(
             continue;
         }
 
-        trace!("Eliminating unreachable {}", block);
+        log::trace!("Eliminating unreachable {}", block);
         // Move the cursor out of the way and make sure the next lop iteration goes to the right
         // block.
         pos.prev_block();
 
         // Remove all instructions from `block`.
         while let Some(inst) = pos.func.layout.first_inst(block) {
-            trace!(" - {}", pos.func.dfg.display_inst(inst));
+            log::trace!(" - {}", pos.func.dfg.display_inst(inst));
             pos.func.layout.remove_inst(inst);
         }
 

@@ -1,6 +1,5 @@
 //! Types for compile-time and run-time endianity.
 
-use core::convert::TryInto;
 use core::fmt::Debug;
 
 /// A trait describing the endianity of some buffer.

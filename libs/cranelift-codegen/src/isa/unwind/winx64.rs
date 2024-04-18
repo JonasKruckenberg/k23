@@ -3,6 +3,8 @@
 use crate::result::{CodegenError, CodegenResult};
 use alloc::vec::Vec;
 use log::warn;
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
 
 use crate::binemit::CodeOffset;
 use crate::isa::unwind::UnwindInst;
@@ -45,6 +47,7 @@ impl<'a> Writer<'a> {
 /// Note: the Cranelift x86 ISA RU enum matches the Windows unwind GPR encoding values.
 #[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub(crate) enum UnwindCode {
     PushRegister {
         instruction_offset: u8,
@@ -190,6 +193,7 @@ pub(crate) trait RegisterMapper<Reg> {
 /// For information about Windows x64 unwind info, see:
 /// <https://docs.microsoft.com/en-us/cpp/build/exception-handling-x64>
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct UnwindInfo {
     pub(crate) flags: u8,
     pub(crate) prologue_size: u8,

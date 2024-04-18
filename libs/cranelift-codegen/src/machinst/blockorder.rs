@@ -64,10 +64,8 @@ use crate::dominator_tree::DominatorTree;
 use crate::entity::SecondaryMap;
 use crate::inst_predicates::visit_block_succs;
 use crate::ir::{Block, Function, Inst, Opcode};
-use crate::{machinst::*, trace};
+use crate::machinst::*;
 use fxhash::{FxHashMap, FxHashSet};
-
-use smallvec::SmallVec;
 
 /// Mapping from CLIF BBs to VCode BBs.
 #[derive(Debug)]
@@ -146,7 +144,7 @@ impl LoweredBlock {
 impl BlockLoweringOrder {
     /// Compute and return a lowered block order for `f`.
     pub fn new(f: &Function, domtree: &DominatorTree) -> BlockLoweringOrder {
-        trace!("BlockLoweringOrder: function body {:?}", f);
+        log::trace!("BlockLoweringOrder: function body {:?}", f);
 
         // Step 1: compute the in-edge and out-edge count of every block.
         let mut block_in_count = SecondaryMap::with_default(0);
@@ -292,7 +290,7 @@ impl BlockLoweringOrder {
             indirect_branch_targets,
         };
 
-        trace!("BlockLoweringOrder: {:#?}", result);
+        log::trace!("BlockLoweringOrder: {:#?}", result);
         result
     }
 
@@ -326,7 +324,7 @@ mod test {
     use crate::flowgraph::ControlFlowGraph;
     use crate::ir::types::*;
     use crate::ir::UserFuncName;
-    use crate::ir::{AbiParam, Function, InstBuilder, Signature};
+    use crate::ir::{AbiParam, InstBuilder, Signature};
     use crate::isa::CallConv;
 
     fn build_test_func(n_blocks: usize, edges: &[(usize, usize)]) -> BlockLoweringOrder {

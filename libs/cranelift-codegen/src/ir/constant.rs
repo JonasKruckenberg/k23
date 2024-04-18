@@ -13,10 +13,12 @@ use crate::ir::Constant;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::fmt;
-use core::iter::FromIterator;
 use core::slice::Iter;
 use core::str::{from_utf8, FromStr};
 use cranelift_entity::EntityRef;
+
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
 
 /// This type describes the actual constant data. Note that the bytes stored in this structure are
 /// expected to be in little-endian order; this is due to ease-of-use when interacting with
@@ -24,6 +26,7 @@ use cranelift_entity::EntityRef;
 ///
 /// [little-endian by design]: https://github.com/WebAssembly/design/blob/master/Portability.md
 #[derive(Clone, Hash, Eq, PartialEq, Debug, Default, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct ConstantData(Vec<u8>);
 
 impl FromIterator<u8> for ConstantData {
@@ -162,9 +165,10 @@ impl FromStr for ConstantData {
     }
 }
 
-/// Maintains the mapping between a constant handle (i.e.  [`Constant`](crate::ir::Constant)) and
-/// its constant data (i.e.  [`ConstantData`](crate::ir::ConstantData)).
+/// Maintains the mapping between a constant handle (i.e.  [`Constant`]) and
+/// its constant data (i.e.  [`ConstantData`]).
 #[derive(Clone, PartialEq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct ConstantPool {
     /// This mapping maintains the insertion order as long as Constants are created with
     /// sequentially increasing integers.
@@ -255,7 +259,7 @@ impl ConstantPool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::string::ToString;
+    use std::string::ToString;
 
     #[test]
     fn empty() {

@@ -66,11 +66,15 @@ use crate::ir::pcc::Fact;
 use crate::ir::{GlobalValue, Type};
 use alloc::vec::Vec;
 
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
+
 /// Data defining a memory type.
 ///
 /// A memory type corresponds to a layout of data in memory. It may
 /// have a statically-known or dynamically-known size.
 #[derive(Clone, PartialEq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum MemoryTypeData {
     /// An aggregate consisting of certain fields at certain offsets.
     ///
@@ -148,6 +152,7 @@ impl core::fmt::Display for MemoryTypeData {
 
 /// One field in a memory type.
 #[derive(Clone, PartialEq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct MemoryTypeField {
     /// The offset of this field in the memory type.
     pub offset: u64,

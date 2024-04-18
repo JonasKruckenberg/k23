@@ -183,7 +183,7 @@ pub(crate) fn define() -> SettingGroup {
         r#"
             In some cases, LLVM's implementation of an ABI (calling convention)
             goes beyond a standard and supports additional argument types or
-            behavior. This option instructs Cranelift codegen to follow LLVM's
+            behavior. This option instructs Cranelift cranelift-codegen to follow LLVM's
             behavior where applicable.
 
             Currently, this applies only to Windows Fastcall on x86-64, and
@@ -316,6 +316,20 @@ pub(crate) fn define() -> SettingGroup {
             the security implications carefully before disabling this option.
         "#,
         true,
+    );
+
+    settings.add_bool(
+        "enable_incremental_compilation_cache_checks",
+        "Enable additional checks for debugging the incremental compilation cache.",
+        r#"
+            Enables additional checks that are useful during development of the incremental
+            compilation cache. This should be mostly useful for Cranelift hackers, as well as for
+            helping to debug false incremental cache positives for embedders.
+
+            This option is disabled by default and requires enabling the "incremental-cache" Cargo
+            feature in cranelift-cranelift-codegen.
+        "#,
+        false,
     );
 
     settings.add_num(

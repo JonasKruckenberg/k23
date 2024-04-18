@@ -68,6 +68,7 @@ fn gen_formats(formats: &[Rc<InstructionFormat>], fmt: &mut Formatter) {
 /// `ValueList` to store the additional information out of line.
 fn gen_instruction_data(formats: &[Rc<InstructionFormat>], fmt: &mut Formatter) {
     fmt.line("#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]");
+    fmt.line(r#"#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]"#);
     fmt.line("#[allow(missing_docs)]");
     fmtln!(fmt, "pub enum InstructionData {");
     fmt.indent(|fmt| {
@@ -498,6 +499,12 @@ fn gen_opcodes(all_inst: &AllInstructions, fmt: &mut Formatter) {
     );
     fmt.line("#[repr(u8)]");
     fmt.line("#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]");
+    fmt.line(
+        r#"#[cfg_attr(
+            feature = "enable-serde",
+            derive(serde_derive::Serialize, serde_derive::Deserialize)
+        )]"#,
+    );
 
     // We explicitly set the discriminant of the first variant to 1, which allows us to take
     // advantage of the NonZero optimization, meaning that wrapping enums can use the 0

@@ -10,7 +10,7 @@
 //! slightly differs from the machine code of most ISAs: in most ISAs, a
 //! conditional branch has one target (and the not-taken case falls through).
 //! However, we expect that machine backends will elide branches to the following
-//! block (i.e., zero-offset jumps), and will be able to codegen a branch-cond /
+//! block (i.e., zero-offset jumps), and will be able to cranelift-codegen a branch-cond /
 //! branch-uncond pair if *both* targets are not fallthrough. This allows us to
 //! play with layout prior to final binary emission, as well, if we want.
 //!
@@ -18,25 +18,20 @@
 //! backend pipeline.
 
 use crate::ir::pcc::*;
-use crate::ir::RelSourceLoc;
-use crate::ir::{self, types, Constant, ConstantData, DynamicStackSlot, ValueLabel};
+use crate::ir::{self, types, Constant, ConstantData, ValueLabel};
 use crate::machinst::*;
-use fxhash::FxHashMap;
-use fxhash::FxHashSet;
-// use crate::timing;
-use crate::trace;
 use crate::CodegenError;
 use crate::{LabelValueLoc, ValueLocRange};
+use fxhash::{FxHashMap, FxHashSet};
 use regalloc2::{
     Edit, Function as RegallocFunction, InstOrEdit, InstRange, MachineEnv, Operand, OperandKind,
-    PRegSet, RegClass, VReg,
+    PRegSet, RegClass,
 };
 
-use alloc::vec::Vec;
+use crate::hash_map::Entry;
+use crate::hash_map::HashMap;
 use core::fmt;
-use cranelift_entity::{entity_impl, Keys, PrimaryMap};
-use hashbrown::hash_map::Entry;
-use hashbrown::HashMap;
+use cranelift_entity::{entity_impl, Keys};
 
 /// Index referring to an instruction in VCode.
 pub type InsnIndex = regalloc2::Inst;
@@ -556,7 +551,7 @@ impl<I: VCodeInst> VCodeBuilder<I> {
         // Translate blockparam args via the vreg aliases table as well.
         for arg in &mut self.vcode.branch_block_args {
             let new_arg = VCode::<I>::resolve_vreg_alias_impl(&self.vcode.vreg_aliases, *arg);
-            trace!("operandcollector: block arg {:?} -> {:?}", arg, new_arg);
+            log::trace!("operandcollector: block arg {:?} -> {:?}", arg, new_arg);
             *arg = new_arg;
         }
     }
@@ -813,7 +808,7 @@ impl<I: VCodeInst> VCode<I> {
         let mut total_bb_padding = 0;
 
         for (block_order_idx, &block) in final_order.iter().enumerate() {
-            trace!("emitting block {:?}", block);
+            log::trace!("emitting block {:?}", block);
 
             // Call the new block hook for state
             state.on_new_block();
@@ -841,9 +836,8 @@ impl<I: VCodeInst> VCode<I> {
 
             // Is this the first block? Emit the prologue directly if so.
             if block == self.entry {
-                trace!(" -> entry block");
+                log::trace!(" -> entry block");
                 buffer.start_srcloc(Default::default());
-                state.pre_sourceloc(Default::default());
                 for inst in &self.abi.gen_prologue() {
                     do_emit(&inst, &[], &mut disasm, &mut buffer, &mut state);
                 }
@@ -911,7 +905,6 @@ impl<I: VCodeInst> VCode<I> {
                             buffer.start_srcloc(srcloc);
                             cur_srcloc = Some(srcloc);
                         }
-                        state.pre_sourceloc(cur_srcloc.unwrap_or_default());
 
                         // If this is a safepoint, compute a stack map
                         // and pass it to the emit state.
@@ -1121,7 +1114,7 @@ impl<I: VCodeInst> VCode<I> {
             }
 
             if inst_offset > next_offset {
-                trace!(
+                log::trace!(
                     "Fixing code offset of the removed Inst {}: {} -> {}",
                     inst_index,
                     inst_offset,
@@ -1172,8 +1165,11 @@ impl<I: VCodeInst> VCode<I> {
                 let slot = alloc.as_stack().unwrap();
                 let sp_offset = self.abi.get_spillslot_offset(slot);
                 let sp_to_caller_sp_offset = self.abi.nominal_sp_to_caller_sp_offset();
+                #[cfg(feature = "unwind")]
                 let caller_sp_to_cfa_offset =
                     crate::isa::unwind::systemv::caller_sp_to_cfa_offset();
+                #[cfg(not(feature = "unwind"))]
+                let caller_sp_to_cfa_offset = 0;
                 let cfa_to_sp_offset = -((sp_to_caller_sp_offset + caller_sp_to_cfa_offset) as i64);
                 LabelValueLoc::CFAOffset(cfa_to_sp_offset + sp_offset)
             };
@@ -1199,7 +1195,7 @@ impl<I: VCodeInst> VCode<I> {
             // to minimize output size here and for the consumers.
             if let Some(last_loc_range) = ranges.last_mut() {
                 if last_loc_range.loc == loc && last_loc_range.end == start {
-                    trace!(
+                    log::trace!(
                         "Extending debug range for VL{} in {:?} to {}",
                         label,
                         loc,
@@ -1210,7 +1206,7 @@ impl<I: VCodeInst> VCode<I> {
                 }
             }
 
-            trace!(
+            log::trace!(
                 "Recording debug range for VL{} in {:?}: [Inst {}..Inst {}) [{}..{})",
                 label,
                 loc,
@@ -1296,7 +1292,7 @@ impl<I: VCodeInst> VCode<I> {
     /// Set the fact for a given VReg.
     pub fn set_vreg_fact(&mut self, vreg: VReg, fact: Fact) {
         let vreg = self.resolve_vreg_alias(vreg);
-        trace!("set fact on {}: {:?}", vreg, fact);
+        log::trace!("set fact on {}: {:?}", vreg, fact);
         self.facts[vreg.vreg()] = Some(fact);
     }
 
@@ -1609,7 +1605,7 @@ impl<I: VCodeInst> VRegAllocator<I> {
     ///
     /// Returns the old fact, if any (only one fact can be stored).
     pub fn set_fact(&mut self, vreg: VirtualReg, fact: Fact) -> Option<Fact> {
-        trace!("vreg {:?} has fact: {:?}", vreg, fact);
+        log::trace!("vreg {:?} has fact: {:?}", vreg, fact);
         self.facts[vreg.index()].replace(fact)
     }
 
@@ -1652,7 +1648,7 @@ impl<I: VCodeInst> VRegAllocator<I> {
 /// [MachBuffer].
 ///
 /// First, during the lowering phase, constants are inserted using
-/// [VCodeConstants.insert]; an intermediate handle, [VCodeConstant], tracks what constants are
+/// [VCodeConstants.insert]; an intermediate handle, `VCodeConstant`, tracks what constants are
 /// used in this phase. Some deduplication is performed, when possible, as constant
 /// values are inserted.
 ///
@@ -1718,12 +1714,12 @@ impl VCodeConstants {
         self.constants.len()
     }
 
-    /// Iterate over the [VCodeConstant] keys inserted in this structure.
+    /// Iterate over the `VCodeConstant` keys inserted in this structure.
     pub fn keys(&self) -> Keys<VCodeConstant> {
         self.constants.keys()
     }
 
-    /// Iterate over the [VCodeConstant] keys and the data (as a byte slice) inserted in this
+    /// Iterate over the `VCodeConstant` keys and the data (as a byte slice) inserted in this
     /// structure.
     pub fn iter(&self) -> impl Iterator<Item = (VCodeConstant, &VCodeConstantData)> {
         self.constants.iter()

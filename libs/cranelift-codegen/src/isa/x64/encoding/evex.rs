@@ -15,7 +15,6 @@
 //! Software Development Manual, volume 2A).
 
 use super::rex::{self, LegacyPrefixes, OpcodeMap};
-use crate::ir::TrapCode;
 use crate::isa::x64::args::{Amode, Avx512TupleType};
 use crate::isa::x64::inst::Inst;
 use crate::MachBuffer;
@@ -202,8 +201,8 @@ impl EvexInstruction {
     /// - an optional immediate, if necessary (not currently implemented)
     pub fn encode(&self, sink: &mut MachBuffer<Inst>) {
         if let RegisterOrAmode::Amode(amode) = &self.rm {
-            if amode.can_trap() {
-                sink.add_trap(TrapCode::HeapOutOfBounds);
+            if let Some(trap_code) = amode.get_flags().trap_code() {
+                sink.add_trap(trap_code);
             }
         }
         sink.put4(self.bits);
@@ -478,7 +477,7 @@ mod tests {
     use crate::ir::MemFlags;
     use crate::isa::x64::args::Gpr;
     use crate::isa::x64::inst::regs;
-    use alloc::vec::Vec;
+    use std::vec::Vec;
 
     // As a sanity test, we verify that the output of `xed-asmparse-main 'vpabsq xmm0{k0},
     // xmm1'` matches this EVEX encoding machinery.

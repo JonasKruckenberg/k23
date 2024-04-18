@@ -93,9 +93,6 @@ impl crate::isa::unwind::systemv::RegisterMapper<Reg> for RegisterMapper {
     fn map(&self, reg: Reg) -> Result<u16, RegisterMappingError> {
         Ok(map_reg(reg)?.0)
     }
-    fn sp(&self) -> u16 {
-        Register(15).0
-    }
 }
 
 #[cfg(test)]
@@ -122,9 +119,7 @@ mod tests {
             Some(StackSlotData::new(StackSlotKind::ExplicitSlot, 64)),
         ));
 
-        let code = context
-            .compile(&*isa, &mut Default::default())
-            .expect("expected compilation");
+        let code = context.compile(&*isa).expect("expected compilation");
 
         let fde = match code
             .create_unwind_info(isa.as_ref())
@@ -166,9 +161,7 @@ mod tests {
             Some(StackSlotData::new(StackSlotKind::ExplicitSlot, 64)),
         ));
 
-        let code = context
-            .compile(&*isa, &mut Default::default())
-            .expect("expected compilation");
+        let code = context.compile(&*isa).expect("expected compilation");
 
         let fde = match code
             .create_unwind_info(isa.as_ref())

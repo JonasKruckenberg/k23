@@ -59,6 +59,9 @@ use cranelift_entity::PrimaryMap;
 use regalloc2::{Allocation, VReg};
 use smallvec::{smallvec, SmallVec};
 
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
+
 #[macro_use]
 pub mod isle;
 
@@ -302,9 +305,6 @@ pub trait MachInstEmitState<I: VCodeInst>: Default + Clone + Debug {
     /// Update the emission state before emitting an instruction that is a
     /// safepoint.
     fn pre_safepoint(&mut self, _stack_map: StackMap) {}
-    /// Update the emission state to indicate instructions are associated with a
-    /// particular RelSourceLoc.
-    fn pre_sourceloc(&mut self, _srcloc: RelSourceLoc) {}
     /// A hook that triggers when first emitting a new block.
     /// It is guaranteed to be called before any instructions are emitted.
     fn on_new_block(&mut self) {}
@@ -313,6 +313,7 @@ pub trait MachInstEmitState<I: VCodeInst>: Default + Clone + Debug {
 /// The result of a `MachBackend::compile_function()` call. Contains machine
 /// code (as bytes) and a disassembly, if requested.
 #[derive(PartialEq, Debug, Clone)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct CompiledCodeBase<T: CompilePhase> {
     /// Machine code.
     pub buffer: MachBufferFinalized<T>,
@@ -367,6 +368,79 @@ impl<T: CompilePhase> CompiledCodeBase<T> {
     /// Returns a reference to the machine code generated for this function compilation.
     pub fn code_buffer(&self) -> &[u8] {
         self.buffer.data()
+    }
+
+    /// Get the disassembly of the buffer, using the given capstone context.
+    #[cfg(feature = "disas")]
+    pub fn disassemble(
+        &self,
+        params: Option<&crate::ir::function::FunctionParameters>,
+        cs: &capstone::Capstone,
+    ) -> Result<String, anyhow::Error> {
+        use std::fmt::Write;
+
+        let mut buf = String::new();
+
+        let relocs = self.buffer.relocs();
+        let traps = self.buffer.traps();
+
+        // Normalize the block starts to include an initial block of offset 0.
+        let mut block_starts = Vec::new();
+        if self.bb_starts.first().copied() != Some(0) {
+            block_starts.push(0);
+        }
+        block_starts.extend_from_slice(&self.bb_starts);
+        block_starts.push(self.buffer.data().len() as u32);
+
+        // Iterate over block regions, to ensure that we always produce block labels
+        for (n, (&start, &end)) in block_starts
+            .iter()
+            .zip(block_starts.iter().skip(1))
+            .enumerate()
+        {
+            writeln!(buf, "block{}: ; offset 0x{:x}", n, start)?;
+
+            let buffer = &self.buffer.data()[start as usize..end as usize];
+            let insns = cs.disasm_all(buffer, start as u64).map_err(map_caperr)?;
+            for i in insns.iter() {
+                write!(buf, "  ")?;
+
+                let op_str = i.op_str().unwrap_or("");
+                if let Some(s) = i.mnemonic() {
+                    write!(buf, "{}", s)?;
+                    if !op_str.is_empty() {
+                        write!(buf, " ")?;
+                    }
+                }
+
+                write!(buf, "{}", op_str)?;
+
+                let end = i.address() + i.bytes().len() as u64;
+                let contains = |off| i.address() <= off && off < end;
+
+                for reloc in relocs.iter().filter(|reloc| contains(reloc.offset as u64)) {
+                    write!(
+                        buf,
+                        " ; reloc_external {} {} {}",
+                        reloc.kind,
+                        reloc.target.display(params),
+                        reloc.addend,
+                    )?;
+                }
+
+                if let Some(trap) = traps.iter().find(|trap| contains(trap.offset as u64)) {
+                    write!(buf, " ; trap: {}", trap.code)?;
+                }
+
+                writeln!(buf)?;
+            }
+        }
+
+        return Ok(buf);
+
+        fn map_caperr(err: capstone::Error) -> anyhow::Error {
+            anyhow::format_err!("{}", err)
+        }
     }
 }
 

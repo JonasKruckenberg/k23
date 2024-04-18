@@ -1,9 +1,15 @@
 [package]
+authors = ["The Cranelift Project Developers"]
 name = "cranelift-bforest"
-version.workspace = true
+version = "0.108.0"
+description = "A forest of B+-trees"
+license = "Apache-2.0 WITH LLVM-exception"
+documentation = "https://docs.rs/cranelift-bforest"
+repository = "https://github.com/bytecodealliance/wasmtime"
+categories = ["no-std"]
+readme = "README.md"
+keywords = ["btree", "forest", "set", "map"]
 edition.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-cranelift-entity.workspace = true
+cranelift-entity = { workspace = true }

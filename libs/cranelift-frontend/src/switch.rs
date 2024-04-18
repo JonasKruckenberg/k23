@@ -342,7 +342,6 @@ mod tests {
     use super::*;
     use crate::frontend::FunctionBuilderContext;
     use alloc::string::ToString;
-    use cranelift_codegen::ir::Function;
 
     macro_rules! setup {
         ($default:expr, [$($index:expr,)*]) => {{

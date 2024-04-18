@@ -5,10 +5,10 @@
 extern crate alloc;
 
 use crate::boot_info::BootInfo;
-use core::ptr::addr_of_mut;
+use core::ptr::{addr_of, addr_of_mut};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use linked_list_allocator::LockedHeap;
-use vmm::VirtualAddress;
+use vmm::{Mode, PhysicalAddress, VirtualAddress};
 
 mod arch;
 mod boot_info;
@@ -90,12 +90,12 @@ fn main(hartid: usize, boot_info: BootInfo) -> ! {
     let kernel_end = kernel_regions.data.virt.end;
     let kernel_entry = kernel_regions.entry;
 
-    let (alloc_offset, fdt_virt, kernel_stack_virt) =
+    let (alloc_offset, fdt_addr, kernel_stack_virt) =
         paging::init(&boot_info, kernel_regions).expect("failed to set up page tables");
 
     let args = KernelArgs {
         boot_hart: hartid,
-        fdt: fdt_virt.start,
+        fdt: fdt_addr,
         kernel_start,
         kernel_end,
         stack_start: kernel_stack_virt.start,
@@ -104,7 +104,12 @@ fn main(hartid: usize, boot_info: BootInfo) -> ! {
         alloc_offset,
     };
 
-    unsafe { arch::kernel_entry(kernel_end.as_raw(), kernel_entry.as_raw(), &args) }
+    unsafe {
+        let args_ptr =
+            kconfig::MEMORY_MODE::phys_to_virt(PhysicalAddress::new(addr_of!(args) as usize));
+
+        arch::kernel_entry(kernel_stack_virt.end, kernel_entry, args_ptr)
+    }
 }
 
 fn init_global_alloc(boot_info: &BootInfo) {

@@ -67,8 +67,7 @@ use crate::{
     inst_predicates::{
         has_memory_fence_semantics, inst_addr_offset_type, inst_store_data, visit_block_succs,
     },
-    ir::{immediates::Offset32, Block, Function, Inst, Opcode, Type, Value},
-    trace,
+    ir::{immediates::Offset32, AliasRegion, Block, Function, Inst, Opcode, Type, Value},
 };
 use cranelift_entity::{packed_option::PackedOption, EntityRef};
 use fxhash::{FxHashMap, FxHashSet};
@@ -93,14 +92,11 @@ impl LastStores {
             self.other = inst.into();
         } else if opcode.can_store() {
             if let Some(memflags) = func.dfg.insts[inst].memflags() {
-                if memflags.heap() {
-                    self.heap = inst.into();
-                } else if memflags.table() {
-                    self.table = inst.into();
-                } else if memflags.vmctx() {
-                    self.vmctx = inst.into();
-                } else {
-                    self.other = inst.into();
+                match memflags.alias_region() {
+                    None => self.other = inst.into(),
+                    Some(AliasRegion::Heap) => self.heap = inst.into(),
+                    Some(AliasRegion::Table) => self.table = inst.into(),
+                    Some(AliasRegion::Vmctx) => self.vmctx = inst.into(),
                 }
             } else {
                 self.heap = inst.into();
@@ -113,14 +109,11 @@ impl LastStores {
 
     fn get_last_store(&self, func: &Function, inst: Inst) -> PackedOption<Inst> {
         if let Some(memflags) = func.dfg.insts[inst].memflags() {
-            if memflags.heap() {
-                self.heap
-            } else if memflags.table() {
-                self.table
-            } else if memflags.vmctx() {
-                self.vmctx
-            } else {
-                self.other
+            match memflags.alias_region() {
+                None => self.other,
+                Some(AliasRegion::Heap) => self.heap,
+                Some(AliasRegion::Table) => self.table,
+                Some(AliasRegion::Vmctx) => self.vmctx,
             }
         } else if func.dfg.insts[inst].opcode().can_load()
             || func.dfg.insts[inst].opcode().can_store()
@@ -198,7 +191,7 @@ pub struct AliasAnalysis<'a> {
 impl<'a> AliasAnalysis<'a> {
     /// Perform an alias analysis pass.
     pub fn new(func: &Function, domtree: &'a DominatorTree) -> AliasAnalysis<'a> {
-        trace!("alias analysis: input is:\n{:?}", func);
+        log::trace!("alias analysis: input is:\n{:?}", func);
         let mut analysis = AliasAnalysis {
             domtree,
             block_input: FxHashMap::default(),
@@ -224,7 +217,7 @@ impl<'a> AliasAnalysis<'a> {
                 .or_insert_with(|| LastStores::default())
                 .clone();
 
-            trace!(
+            log::trace!(
                 "alias analysis: input to block{} is {:?}",
                 block.index(),
                 state
@@ -232,7 +225,7 @@ impl<'a> AliasAnalysis<'a> {
 
             for inst in func.layout.block_insts(block) {
                 state.update(func, inst);
-                trace!("after inst{}: state is {:?}", inst.index(), state);
+                log::trace!("after inst{}: state is {:?}", inst.index(), state);
             }
 
             visit_block_succs(func, block, |_inst, succ, _from_table| {
@@ -275,7 +268,7 @@ impl<'a> AliasAnalysis<'a> {
         state: &mut LastStores,
         inst: Inst,
     ) -> Option<Value> {
-        trace!(
+        log::trace!(
             "alias analysis: scanning at inst{} with state {:?} ({:?})",
             inst.index(),
             state,
@@ -297,7 +290,7 @@ impl<'a> AliasAnalysis<'a> {
                     ty,
                     extending_opcode: get_ext_opcode(opcode),
                 };
-                trace!(
+                log::trace!(
                     "alias analysis: at inst{}: store with data v{} at loc {:?}",
                     inst.index(),
                     store_data.index(),
@@ -316,7 +309,7 @@ impl<'a> AliasAnalysis<'a> {
                     ty,
                     extending_opcode: get_ext_opcode(opcode),
                 };
-                trace!(
+                log::trace!(
                     "alias analysis: at inst{}: load with last_store inst{} at loc {:?}",
                     inst.index(),
                     last_store.map(|inst| inst.index()).unwrap_or(usize::MAX),
@@ -335,13 +328,13 @@ impl<'a> AliasAnalysis<'a> {
                 // meet-points to this use-site).
                 let aliased =
                     if let Some((def_inst, value)) = self.mem_values.get(&mem_loc).cloned() {
-                        trace!(
+                        log::trace!(
                             " -> sees known value v{} from inst{}",
                             value.index(),
                             def_inst.index()
                         );
                         if self.domtree.dominates(def_inst, inst, &func.layout) {
-                            trace!(
+                            log::trace!(
                                 " -> dominates; value equiv from v{} to v{} inserted",
                                 load_result.index(),
                                 value.index()
@@ -357,7 +350,7 @@ impl<'a> AliasAnalysis<'a> {
                 // Otherwise, we can keep *this* load around
                 // as a new equivalent value.
                 if aliased.is_none() {
-                    trace!(
+                    log::trace!(
                         " -> inserting load result v{} at loc {:?}",
                         load_result.index(),
                         mem_loc
@@ -391,7 +384,7 @@ impl<'a> AliasAnalysis<'a> {
             while let Some(inst) = pos.next_inst() {
                 if let Some(replaced_result) = self.process_inst(pos.func, &mut state, inst) {
                     let result = pos.func.dfg.inst_results(inst)[0];
-                    pos.func.dfg.detach_results(inst);
+                    pos.func.dfg.clear_results(inst);
                     pos.func.dfg.change_to_alias(result, replaced_result);
                     pos.remove_inst_and_step_back();
                 }

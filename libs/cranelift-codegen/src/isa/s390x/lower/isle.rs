@@ -12,6 +12,7 @@ use crate::isa::s390x::inst::{
     WritableRegPair,
 };
 use crate::isa::s390x::S390xBackend;
+use crate::isle_common_prelude_methods;
 use crate::machinst::isle::*;
 use crate::machinst::{MachLabel, Reg};
 use crate::{
@@ -23,15 +24,13 @@ use crate::{
     isa::CallConv,
     machinst::abi::ABIMachineSpec,
     machinst::{
-        ArgPair, CallArgList, CallArgPair, CallRetList, CallRetPair, InstOutput, Lower, MachInst,
+        ArgPair, CallArgList, CallArgPair, CallRetList, CallRetPair, InstOutput, MachInst,
         VCodeConstant, VCodeConstantData,
     },
 };
-use crate::{isle_common_prelude_methods, isle_lower_prelude_methods};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::Cell;
-use core::convert::TryFrom;
 use regalloc2::PReg;
 use smallvec::smallvec;
 
@@ -747,47 +746,47 @@ impl generated_code::Context for IsleContext<'_, '_, MInst, S390xBackend> {
         i64::from(off)
     }
 
-    #[inline]
-    fn fcvt_to_uint_ub32(&mut self, size: u8) -> u64 {
-        (2.0_f32).powi(size.into()).to_bits() as u64
-    }
+    // #[inline]
+    // fn fcvt_to_uint_ub32(&mut self, size: u8) -> u64 {
+    //     (2.0_f32).powi(size.into()).to_bits() as u64
+    // }
 
     #[inline]
     fn fcvt_to_uint_lb32(&mut self) -> u64 {
         (-1.0_f32).to_bits() as u64
     }
 
-    #[inline]
-    fn fcvt_to_uint_ub64(&mut self, size: u8) -> u64 {
-        (2.0_f64).powi(size.into()).to_bits()
-    }
+    // #[inline]
+    // fn fcvt_to_uint_ub64(&mut self, size: u8) -> u64 {
+    //     (2.0_f64).powi(size.into()).to_bits()
+    // }
 
     #[inline]
     fn fcvt_to_uint_lb64(&mut self) -> u64 {
         (-1.0_f64).to_bits()
     }
 
-    #[inline]
-    fn fcvt_to_sint_ub32(&mut self, size: u8) -> u64 {
-        (2.0_f32).powi((size - 1).into()).to_bits() as u64
-    }
+    // #[inline]
+    // fn fcvt_to_sint_ub32(&mut self, size: u8) -> u64 {
+    //     (2.0_f32).powi((size - 1).into()).to_bits() as u64
+    // }
 
-    #[inline]
-    fn fcvt_to_sint_lb32(&mut self, size: u8) -> u64 {
-        let lb = (-2.0_f32).powi((size - 1).into());
-        core::cmp::max(lb.to_bits() + 1, (lb - 1.0).to_bits()) as u64
-    }
+    // #[inline]
+    // fn fcvt_to_sint_lb32(&mut self, size: u8) -> u64 {
+    //     let lb = (-2.0_f32).powi((size - 1).into());
+    //     core::cmp::max(lb.to_bits() + 1, (lb - 1.0).to_bits()) as u64
+    // }
 
-    #[inline]
-    fn fcvt_to_sint_ub64(&mut self, size: u8) -> u64 {
-        (2.0_f64).powi((size - 1).into()).to_bits()
-    }
+    // #[inline]
+    // fn fcvt_to_sint_ub64(&mut self, size: u8) -> u64 {
+    //     (2.0_f64).powi((size - 1).into()).to_bits()
+    // }
 
-    #[inline]
-    fn fcvt_to_sint_lb64(&mut self, size: u8) -> u64 {
-        let lb = (-2.0_f64).powi((size - 1).into());
-        core::cmp::max(lb.to_bits() + 1, (lb - 1.0).to_bits())
-    }
+    // #[inline]
+    // fn fcvt_to_sint_lb64(&mut self, size: u8) -> u64 {
+    //     let lb = (-2.0_f64).powi((size - 1).into());
+    //     core::cmp::max(lb.to_bits() + 1, (lb - 1.0).to_bits())
+    // }
 
     #[inline]
     fn littleendian(&mut self, flags: MemFlags) -> Option<()> {
@@ -1010,7 +1009,7 @@ fn sign_extend_to_u64(value: u64, from_bits: u8) -> u64 {
 
 /// Determines whether this condcode interprets inputs as signed or
 /// unsigned.  See the documentation for the `icmp` instruction in
-/// cranelift-codegen/meta/src/shared/instructions.rs for further insights
+/// cranelift-cranelift-codegen/meta/src/shared/instructions.rs for further insights
 /// into this.
 #[inline]
 fn condcode_is_signed(cc: IntCC) -> bool {

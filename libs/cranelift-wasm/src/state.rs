@@ -1,5 +1,6 @@
 use crate::error::ensure;
 use crate::heap::Heap;
+use crate::table::Table;
 use crate::traits::FuncTranslationEnvironment;
 use crate::Error;
 use alloc::collections::btree_map::Entry;
@@ -15,7 +16,7 @@ pub struct State {
     pub control_stack: SmallVec<ControlFrame, 32>,
     pub reachable: bool,
     heaps: BTreeMap<wasmparser::MemIdx, Heap>,
-    tables: BTreeMap<wasmparser::TableIdx, ir::Table>,
+    tables: BTreeMap<wasmparser::TableIdx, Table>,
     globals: BTreeMap<wasmparser::GlobalIdx, GlobalVariable>,
     functions: BTreeMap<wasmparser::FuncIdx, (ir::FuncRef, usize)>,
     signatures: BTreeMap<wasmparser::TypeIdx, (ir::SigRef, usize)>,
@@ -208,7 +209,7 @@ impl State {
         func: &mut ir::Function,
         table: wasmparser::TableIdx,
         env: &mut dyn FuncTranslationEnvironment,
-    ) -> crate::Result<ir::Table> {
+    ) -> crate::Result<Table> {
         match self.tables.entry(table) {
             Entry::Occupied(entry) => Ok(*entry.get()),
             Entry::Vacant(entry) => Ok(*entry.insert(env.make_table(func, table)?)),

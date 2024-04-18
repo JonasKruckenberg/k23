@@ -19,7 +19,7 @@ use crate::machinst::{
     VCodeInst, ValueRegs, Writable,
 };
 use crate::settings::Flags;
-use crate::{trace, CodegenResult};
+use crate::CodegenResult;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use fxhash::{FxHashMap, FxHashSet};
@@ -214,7 +214,7 @@ pub struct Lower<'func, I: VCodeInst> {
     /// Actual uses of each SSA value so far, incremented while lowering.
     value_lowered_uses: SecondaryMap<Value, u32>,
 
-    /// Effectful instructions that have been sunk; they are not codegen'd at
+    /// Effectful instructions that have been sunk; they are not cranelift-codegen'd at
     /// their original locations.
     inst_sunk: FxHashSet<Inst>,
 
@@ -249,7 +249,7 @@ pub struct Lower<'func, I: VCodeInst> {
 /// to. However, danger awaits: the compare might be the only user of
 /// a load, so we might think we can just move the load (and nothing
 /// is duplicated -- success!), except that the compare itself is
-/// codegen'd in multiple places, where it is incorporated as a
+/// cranelift-codegen'd in multiple places, where it is incorporated as a
 /// subpattern itself.
 ///
 /// So we really want a notion of "unique all the way along the
@@ -277,7 +277,7 @@ pub struct Lower<'func, I: VCodeInst> {
 /// := op v2; v4 := op v2` then `v2` is non-uniquely used, so from the
 /// point of view of lowering `v4` or `v3`, we cannot merge the load
 /// at `v1`. But if we decide just to use the assigned register for
-/// `v2` at both `v3` and `v4`, then we only actually codegen `v2`
+/// `v2` at both `v3` and `v4`, then we only actually cranelift-codegen `v2`
 /// once, so it *is* a unique root at that point and we *can* merge
 /// the load.
 ///
@@ -300,9 +300,9 @@ pub struct Lower<'func, I: VCodeInst> {
 /// words, `Multiple` is contagious: even if an op's result value is
 /// directly used only once in the CLIF, that value is `Multiple` if
 /// the op that uses it is itself used multiple times (hence could be
-/// codegen'd multiple times). In brief, this analysis tells us
+/// cranelift-codegen'd multiple times). In brief, this analysis tells us
 /// whether, if every op merged all of its operand tree, a given op
-/// could be codegen'd in more than one place.
+/// could be cranelift-codegen'd in more than one place.
 ///
 /// To compute this, we first consider direct uses. At this point
 /// `Unused` answers are correct, `Multiple` answers are correct, but
@@ -372,7 +372,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
                 if value_regs[param].is_invalid() {
                     let regs = vregs.alloc_with_maybe_fact(ty, f.dfg.facts[param].clone())?;
                     value_regs[param] = regs;
-                    trace!("bb {} param {}: regs {:?}", bb, param, regs);
+                    log::trace!("bb {} param {}: regs {:?}", bb, param, regs);
                 }
             }
             for inst in f.layout.block_insts(bb) {
@@ -381,7 +381,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
                     if value_regs[result].is_invalid() && !ty.is_invalid() {
                         let regs = vregs.alloc_with_maybe_fact(ty, f.dfg.facts[result].clone())?;
                         value_regs[result] = regs;
-                        trace!(
+                        log::trace!(
                             "bb {} inst {} ({:?}): result {} regs {:?}",
                             bb,
                             inst,
@@ -429,16 +429,16 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
             for inst in f.layout.block_insts(bb) {
                 let side_effect = has_lowering_side_effect(f, inst);
 
-                trace!("bb {} inst {} has color {}", bb, inst, cur_color);
+                log::trace!("bb {} inst {} has color {}", bb, inst, cur_color);
                 if side_effect {
                     side_effect_inst_entry_colors.insert(inst, InstColor::new(cur_color));
-                    trace!(" -> side-effecting; incrementing color for next inst");
+                    log::trace!(" -> side-effecting; incrementing color for next inst");
                     cur_color += 1;
                 }
 
                 // Determine if this is a constant; if so, add to the table.
                 if let Some(c) = is_constant_64bit(f, inst) {
-                    trace!(" -> constant: {}", c);
+                    log::trace!(" -> constant: {}", c);
                     inst_constants.insert(inst, c);
                 }
             }
@@ -506,7 +506,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
 
         // Find the args for the inst corresponding to the given value.
         let uses = |value| {
-            trace!(" -> pushing args for {} onto stack", value);
+            log::trace!(" -> pushing args for {} onto stack", value);
             if let ValueDef::Result(src_inst, _) = f.dfg.value_def(value) {
                 Some(f.dfg.inst_values(src_inst))
             } else {
@@ -532,7 +532,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
                 let arg = f.dfg.resolve_aliases(arg);
                 let old = value_ir_uses[arg];
                 if force_multiple {
-                    trace!(
+                    log::trace!(
                         "forcing arg {} to Multiple because of multiple results of user inst",
                         arg
                     );
@@ -541,7 +541,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
                     value_ir_uses[arg].inc();
                 }
                 let new = value_ir_uses[arg];
-                trace!("arg {} used, old state {:?}, new {:?}", arg, old, new);
+                log::trace!("arg {} used, old state {:?}, new {:?}", arg, old, new);
 
                 // On transition to Multiple, do DFS.
                 if old == ValueUseState::Multiple || new != ValueUseState::Multiple {
@@ -553,7 +553,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
                 while let Some(iter) = stack.last_mut() {
                     if let Some(value) = iter.next() {
                         let value = f.dfg.resolve_aliases(value);
-                        trace!(" -> DFS reaches {}", value);
+                        log::trace!(" -> DFS reaches {}", value);
                         if value_ir_uses[value] == ValueUseState::Multiple {
                             // Truncate DFS here: no need to go further,
                             // as whole subtree must already be Multiple.
@@ -566,7 +566,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
                             continue;
                         }
                         value_ir_uses[value] = ValueUseState::Multiple;
-                        trace!(" -> became Multiple");
+                        log::trace!(" -> became Multiple");
                         if let Some(iter) = uses(value) {
                             stack.push(iter);
                         }
@@ -583,7 +583,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
 
     fn gen_arg_setup(&mut self) {
         if let Some(entry_bb) = self.f.layout.entry_block() {
-            trace!(
+            log::trace!(
                 "gen_arg_setup: entry BB {} args are:\n{:?}",
                 entry_bb,
                 self.f.dfg.block_params(entry_bb)
@@ -724,7 +724,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
             }
             // Are any outputs used at least once?
             let value_needed = self.is_any_inst_result_needed(inst);
-            trace!(
+            log::trace!(
                 "lower_clif_block: block {} inst {} ({:?}) is_branch {} side_effect {} value_needed {}",
                 block,
                 inst,
@@ -751,10 +751,10 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
                 continue;
             }
 
-            // Normal instruction: codegen if the instruction is side-effecting
+            // Normal instruction: cranelift-codegen if the instruction is side-effecting
             // or any of its outputs its used.
             if has_side_effect || value_needed {
-                trace!("lowering: inst {}: {:?}", inst, self.f.dfg.insts[inst]);
+                log::trace!("lowering: inst {}: {:?}", inst, self.f.dfg.insts[inst]);
                 let temp_regs = backend.lower(self, inst).unwrap_or_else(|| {
                     let ty = if self.num_outputs(inst) > 0 {
                         Some(self.output_ty(inst, 0))
@@ -834,7 +834,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
 
     fn get_value_labels<'a>(&'a self, val: Value, depth: usize) -> Option<&'a [ValueLabelStart]> {
         if let Some(ref values_labels) = self.f.dfg.values_labels {
-            trace!(
+            log::trace!(
                 "get_value_labels: val {} -> {} -> {:?}",
                 val,
                 self.f.dfg.resolve_aliases(val),
@@ -866,7 +866,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
                 .map(|&ValueLabelStart { label, .. }| label)
                 .collect::<FxHashSet<_>>();
             for label in labels {
-                trace!(
+                log::trace!(
                     "value labeling: defines val {:?} -> reg {:?} -> label {:?}",
                     val,
                     reg,
@@ -882,7 +882,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
             return;
         }
 
-        trace!(
+        log::trace!(
             "value labeling: srcloc {}: inst {}",
             self.srcloc(inst),
             inst
@@ -897,7 +897,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
             return;
         }
 
-        trace!("value labeling: block {}", block);
+        log::trace!("value labeling: block {}", block);
         for &arg in self.f.dfg.block_params(block) {
             self.emit_value_label_marks_for_value(arg);
         }
@@ -928,7 +928,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
         branch: Inst,
         targets: &[MachLabel],
     ) -> CodegenResult<()> {
-        trace!(
+        log::trace!(
             "lower_clif_branches: block {} branch {:?} targets {:?}",
             block,
             branch,
@@ -997,7 +997,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
 
     /// Lower the function.
     pub fn lower<B: LowerBackend<MInst = I>>(mut self, backend: &B) -> CodegenResult<VCode<I>> {
-        trace!("about to lower function: {:?}", self.f);
+        log::trace!("about to lower function: {:?}", self.f);
 
         // Initialize the ABI object, giving it temps if requested.
         let temps = self
@@ -1094,7 +1094,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
         // Now that we've emitted all instructions into the
         // VCodeBuilder, let's build the VCode.
         let vcode = self.vcode.build(self.vregs);
-        trace!("built vcode: {:?}", vcode);
+        log::trace!("built vcode: {:?}", vcode);
 
         Ok(vcode)
     }
@@ -1196,7 +1196,16 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
     /// Get the value of a constant instruction (`iconst`, etc.) as a 64-bit
     /// value, if possible.
     pub fn get_constant(&self, ir_inst: Inst) -> Option<u64> {
-        self.inst_constants.get(&ir_inst).cloned()
+        self.inst_constants.get(&ir_inst).map(|&c| {
+            // The upper bits must be zero, enforced during legalization and by
+            // the CLIF verifier.
+            debug_assert_eq!(c, {
+                let input_size = self.output_ty(ir_inst, 0).bits() as u64;
+                let shift = 64 - input_size;
+                (c << shift) >> shift
+            });
+            c
+        })
     }
 
     /// Get the input as one of two options other than a direct register:
@@ -1214,7 +1223,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
     /// must call `sink_inst()`. When this is called, it indicates that the
     /// effect has been sunk to the current scan location. The sunk
     /// instruction's result(s) must have *no* uses remaining, because it will
-    /// not be codegen'd (it has been integrated into the current instruction).
+    /// not be cranelift-codegen'd (it has been integrated into the current instruction).
     pub fn input_as_value(&self, ir_inst: Inst, idx: usize) -> Value {
         let val = self.f.dfg.inst_args(ir_inst)[idx];
         self.f.dfg.resolve_aliases(val)
@@ -1229,7 +1238,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
     /// Resolves a particular input of an instruction to the `Value` that it is
     /// represented with.
     pub fn get_value_as_source_or_const(&self, val: Value) -> NonRegInput {
-        trace!(
+        log::trace!(
             "get_input_for_val: val {} at cur_inst {:?} cur_scan_entry_color {:?}",
             val,
             self.cur_inst,
@@ -1259,8 +1268,8 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
             //   prior to the sunk instruction) to sink.
             ValueDef::Result(src_inst, result_idx) => {
                 let src_side_effect = has_lowering_side_effect(self.f, src_inst);
-                trace!(" -> src inst {}", src_inst);
-                trace!(" -> has lowering side effect: {}", src_side_effect);
+                log::trace!(" -> src inst {}", src_inst);
+                log::trace!(" -> has lowering side effect: {}", src_side_effect);
                 if !src_side_effect {
                     // Pure instruction: always possible to
                     // sink. Let's determine whether we are the only
@@ -1274,7 +1283,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
                     // Side-effect: test whether this is the only use of the
                     // only result of the instruction, and whether colors allow
                     // the code-motion.
-                    trace!(
+                    log::trace!(
                         " -> side-effecting op {} for val {}: use state {:?}",
                         src_inst,
                         val,
@@ -1318,14 +1327,14 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
     /// Put the given value into register(s) and return the assigned register.
     pub fn put_value_in_regs(&mut self, val: Value) -> ValueRegs<Reg> {
         let val = self.f.dfg.resolve_aliases(val);
-        trace!("put_value_in_regs: val {}", val);
+        log::trace!("put_value_in_regs: val {}", val);
 
         if let Some(inst) = self.f.dfg.value_def(val).inst() {
             assert!(!self.inst_sunk.contains(&inst));
         }
 
         let regs = self.value_regs[val];
-        trace!(" -> regs {:?}", regs);
+        log::trace!(" -> regs {:?}", regs);
         assert!(regs.is_valid());
 
         self.value_lowered_uses[val] += 1;
@@ -1344,7 +1353,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
 
     /// Emit a machine instruction.
     pub fn emit(&mut self, mach_inst: I) {
-        trace!("emit: {:?}", mach_inst);
+        log::trace!("emit: {:?}", mach_inst);
         self.ir_insts.push(mach_inst);
     }
 
@@ -1401,7 +1410,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
 
     /// Note that one vreg is to be treated as an alias of another.
     pub fn set_vreg_alias(&mut self, from: Reg, to: Reg) {
-        trace!("set vreg alias: from {:?} to {:?}", from, to);
+        log::trace!("set vreg alias: from {:?} to {:?}", from, to);
         self.vcode.set_vreg_alias(from, to);
     }
 

@@ -1,7 +1,7 @@
 //! Cranelift code generation library.
 #![deny(missing_docs)]
 #![cfg_attr(not(test), no_std)]
-#![feature(error_in_core, thread_local)]
+#![feature(error_in_core)]
 // Various bits and pieces of this crate might only be used for one platform or
 // another, but it's not really too useful to learn about that all the time. On
 // CI we build at least one version of this crate with `--features all-arch`
@@ -10,6 +10,7 @@
 // everything down.
 #![cfg_attr(not(feature = "all-arch"), allow(dead_code))]
 
+#[allow(unused_imports)] // #[macro_use] is required for no_std
 #[macro_use]
 extern crate alloc;
 
@@ -17,6 +18,7 @@ pub use crate::context::Context;
 pub use crate::value_label::{LabelValueLoc, ValueLabelsRanges, ValueLocRange};
 pub use crate::verifier::verify_function;
 pub use crate::write::write_function;
+use hashbrown::{hash_map, HashMap};
 
 pub use cranelift_bforest as bforest;
 pub use cranelift_entity as entity;
@@ -44,12 +46,12 @@ pub mod write;
 pub use crate::entity::packed_option;
 pub use crate::machinst::buffer::{
     FinalizedMachReloc, FinalizedRelocTarget, MachCallSite, MachSrcLoc, MachStackMap,
-    MachTextSectionBuilder, MachTrap,
+    MachTextSectionBuilder, MachTrap, OpenPatchRegion, PatchRegion,
 };
 pub use crate::machinst::{
     CompiledCode, Final, MachBuffer, MachBufferFinalized, MachInst, MachInstEmit,
-    MachInstEmitState, MachLabel, RealReg, Reg, TextSectionBuilder, VCodeConstantData,
-    VCodeConstants, Writable,
+    MachInstEmitState, MachLabel, RealReg, Reg, RelocDistance, TextSectionBuilder,
+    VCodeConstantData, VCodeConstants, Writable,
 };
 
 mod alias_analysis;
@@ -72,20 +74,6 @@ mod unionfind;
 mod unreachable_code;
 mod value_label;
 
-#[cfg(feature = "souper-harvest")]
-mod souper_harvest;
-
 pub use crate::result::{CodegenError, CodegenResult, CompileError};
-
-/// Even when trace logging is disabled, the trace macro has a significant performance cost so we
-/// disable it by default.
-#[macro_export]
-macro_rules! trace {
-    ($($tt:tt)*) => {
-        if cfg!(feature = "trace-log") {
-            ::log::trace!($($tt)*);
-        }
-    };
-}
 
 include!(concat!(env!("OUT_DIR"), "/version.rs"));

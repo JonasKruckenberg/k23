@@ -8,12 +8,21 @@ use crate::ir::{
     self, pcc::Fact, Block, DataFlowGraph, DynamicStackSlot, DynamicStackSlotData,
     DynamicStackSlots, DynamicType, ExtFuncData, FuncRef, GlobalValue, GlobalValueData, Inst,
     JumpTable, JumpTableData, Layout, MemoryType, MemoryTypeData, Opcode, SigRef, Signature,
-    SourceLocs, StackSlot, StackSlotData, StackSlots, Table, TableData, Type,
+    SourceLocs, StackSlot, StackSlotData, StackSlots, Type,
 };
 use crate::isa::CallConv;
 use crate::write::write_function;
+use crate::HashMap;
+#[cfg(feature = "enable-serde")]
+use alloc::string::String;
 use core::fmt;
-use hashbrown::HashMap;
+
+#[cfg(feature = "enable-serde")]
+use serde::de::{Deserializer, Error};
+#[cfg(feature = "enable-serde")]
+use serde::ser::Serializer;
+#[cfg(feature = "enable-serde")]
+use serde::{Deserialize, Serialize};
 
 use super::entities::UserExternalNameRef;
 use super::extname::UserFuncName;
@@ -108,6 +117,10 @@ impl FunctionParameters {
 /// Additionally, these fields can be the same for two functions that would be compiled the same
 /// way, and finalized by applying `FunctionParameters` onto their `CompiledCodeStencil`.
 #[derive(Clone, PartialEq, Hash)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
 pub struct FunctionStencil {
     /// A version marker used to ensure that serialized clif ir is never deserialized with a
     /// different version of Cranelift.
@@ -132,9 +145,6 @@ pub struct FunctionStencil {
 
     /// Memory types for proof-carrying code.
     pub memory_types: PrimaryMap<ir::MemoryType, ir::MemoryTypeData>,
-
-    /// Tables referenced.
-    pub tables: PrimaryMap<ir::Table, ir::TableData>,
 
     /// Data flow graph containing the primary definition of all instructions, blocks and values.
     pub dfg: DataFlowGraph,
@@ -164,7 +174,6 @@ impl FunctionStencil {
         self.global_values.clear();
         self.global_value_facts.clear();
         self.memory_types.clear();
-        self.tables.clear();
         self.dfg.clear();
         self.layout.clear();
         self.srclocs.clear();
@@ -221,11 +230,6 @@ impl FunctionStencil {
             .get(ty)
             .unwrap_or_else(|| panic!("Undeclared dynamic vector type: {}", ty))
             .concrete()
-    }
-
-    /// Declares a table accessible to the function.
-    pub fn create_table(&mut self, data: TableData) -> Table {
-        self.tables.push(data)
     }
 
     /// Find a presumed unique special-purpose function parameter value.
@@ -335,6 +339,7 @@ impl FunctionStencil {
 /// Functions can be cloned, but it is not a very fast operation.
 /// The clone will have all the same entity numbers as the original.
 #[derive(Clone, PartialEq)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Function {
     /// Name of this function.
     ///
@@ -377,7 +382,6 @@ impl Function {
                 global_values: PrimaryMap::new(),
                 global_value_facts: SecondaryMap::new(),
                 memory_types: PrimaryMap::new(),
-                tables: PrimaryMap::new(),
                 dfg: DataFlowGraph::new(),
                 layout: Layout::new(),
                 srclocs: SecondaryMap::new(),

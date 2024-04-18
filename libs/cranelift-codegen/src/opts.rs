@@ -8,11 +8,10 @@ use crate::ir::instructions::InstructionFormat;
 pub use crate::ir::types::*;
 pub use crate::ir::{
     AtomicRmwOp, BlockCall, Constant, DynamicStackSlot, FuncRef, GlobalValue, Immediate,
-    InstructionData, MemFlags, Opcode, StackSlot, Table, TrapCode, Type, Value,
+    InstructionData, MemFlags, Opcode, StackSlot, TrapCode, Type, Value,
 };
 use crate::isle_common_prelude_methods;
 use crate::machinst::isle::*;
-use crate::trace;
 use core::marker::PhantomData;
 use cranelift_entity::packed_option::ReservedValue;
 use smallvec::{smallvec, SmallVec};
@@ -83,21 +82,20 @@ where
 
     fn next(&mut self, ctx: &mut IsleContext<'a, 'b, 'c>) -> Option<Self::Output> {
         while let Some(value) = self.stack.pop() {
-            debug_assert_ne!(value, Value::reserved_value());
-            let value = ctx.ctx.func.dfg.resolve_aliases(value);
-            trace!("iter: value {:?}", value);
+            debug_assert!(ctx.ctx.func.dfg.value_is_real(value));
+            log::trace!("iter: value {:?}", value);
             match ctx.ctx.func.dfg.value_def(value) {
                 ValueDef::Union(x, y) => {
                     debug_assert_ne!(x, Value::reserved_value());
                     debug_assert_ne!(y, Value::reserved_value());
-                    trace!(" -> {}, {}", x, y);
+                    log::trace!(" -> {}, {}", x, y);
                     self.stack.push(x);
                     self.stack.push(y);
                     continue;
                 }
                 ValueDef::Result(inst, _) if ctx.ctx.func.dfg.inst_results(inst).len() == 1 => {
                     let ty = ctx.ctx.func.dfg.value_type(value);
-                    trace!(" -> value of type {}", ty);
+                    log::trace!(" -> value of type {}", ty);
                     return Some((ty, ctx.ctx.func.dfg.insts[inst].clone()));
                 }
                 _ => {}
@@ -200,7 +198,7 @@ impl<'a, 'b, 'c> generated_code::Context for IsleContext<'a, 'b, 'c> {
         let value = self
             .ctx
             .insert_pure_enode(NewOrExistingInst::New(op.clone(), ty));
-        trace!("make_inst_ctor: {:?} -> {}", op, value);
+        log::trace!("make_inst_ctor: {:?} -> {}", op, value);
         value
     }
 
@@ -233,14 +231,14 @@ impl<'a, 'b, 'c> generated_code::Context for IsleContext<'a, 'b, 'c> {
     }
 
     fn remat(&mut self, value: Value) -> Value {
-        trace!("remat: {}", value);
+        log::trace!("remat: {}", value);
         self.ctx.remat_values.insert(value);
         self.ctx.stats.remat += 1;
         value
     }
 
     fn subsume(&mut self, value: Value) -> Value {
-        trace!("subsume: {}", value);
+        log::trace!("subsume: {}", value);
         self.ctx.subsume_values.insert(value);
         self.ctx.stats.subsume += 1;
         value
@@ -261,5 +259,36 @@ impl<'a, 'b, 'c> generated_code::Context for IsleContext<'a, 'b, 'c> {
     type uextend_maybe_etor_returns = MaybeUnaryEtorIter<'a, 'b, 'c>;
     fn uextend_maybe_etor(&mut self, value: Value, returns: &mut Self::uextend_maybe_etor_returns) {
         *returns = MaybeUnaryEtorIter::new(Opcode::Uextend, value);
+    }
+
+    // NB: Cranelift's defined semantics for `fcvt_from_{s,u}int` match Rust's
+    // own semantics for converting an integer to a float, so these are all
+    // implemented with `as` conversions in Rust.
+    fn f32_from_uint(&mut self, n: u64) -> Ieee32 {
+        Ieee32::with_float(n as f32)
+    }
+
+    fn f64_from_uint(&mut self, n: u64) -> Ieee64 {
+        Ieee64::with_float(n as f64)
+    }
+
+    fn f32_from_sint(&mut self, n: i64) -> Ieee32 {
+        Ieee32::with_float(n as f32)
+    }
+
+    fn f64_from_sint(&mut self, n: i64) -> Ieee64 {
+        Ieee64::with_float(n as f64)
+    }
+
+    fn u64_bswap16(&mut self, n: u64) -> u64 {
+        (n as u16).swap_bytes() as u64
+    }
+
+    fn u64_bswap32(&mut self, n: u64) -> u64 {
+        (n as u32).swap_bytes() as u64
+    }
+
+    fn u64_bswap64(&mut self, n: u64) -> u64 {
+        n.swap_bytes()
     }
 }

@@ -22,6 +22,14 @@ fn main() -> anyhow::Result<()> {
     );
     println!("cargo:rerun-if-changed={}", cfg_path.display());
 
+    if let Some(verifying_key) = verifying_key {
+        println!("cargo:rerun-if-changed={verifying_key}");
+    }
+
+    if let Some(kernel_image) = kernel_image {
+        println!("cargo:rerun-if-changed={kernel_image}");
+    }
+
     Ok(())
 }
 

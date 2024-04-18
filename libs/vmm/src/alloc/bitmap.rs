@@ -1,9 +1,10 @@
 use crate::alloc::{BumpAllocator, FrameAllocator, FrameUsage};
 use crate::{AddressRangeExt, Error};
 use crate::{Mode, PhysicalAddress, VirtualAddress};
+use core::fmt::Formatter;
 use core::marker::PhantomData;
-use core::mem;
 use core::ops::Range;
+use core::{fmt, mem};
 
 struct TableEntry<M> {
     /// The region of physical memory this table entry manages
@@ -13,6 +14,16 @@ struct TableEntry<M> {
     /// The number of used pages
     used: usize,
     _m: PhantomData<M>,
+}
+
+impl<M> fmt::Debug for TableEntry<M> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TableEntry")
+            .field("region", &self.region)
+            .field("skip", &self.skip)
+            .field("used", &self.used)
+            .finish()
+    }
 }
 
 impl<M: Mode> TableEntry<M> {
@@ -33,8 +44,9 @@ impl<M: Mode> TableEntry<M> {
 
     pub fn mark_page_as_used(&mut self, page: usize) {
         let phys = self.region.start.add(page / 8);
+        let virt = M::phys_to_virt(phys);
+
         unsafe {
-            let virt = M::phys_to_virt(phys);
             let bits = core::ptr::read_volatile(virt.0 as *const u8);
             core::ptr::write_volatile(virt.0 as *mut u8, bits | 1 << (page as u8 % 8));
         }
@@ -101,9 +113,9 @@ impl<M: Mode> BitMapAllocator<M> {
             table_virt..table_virt.add(M::PAGE_SIZE)
         );
 
-        // fill the table with the memory regions
+        log::trace!("filling table with memory regions...");
         let mut offset = bump_allocator.offset();
-        for mut region in bump_allocator.regions().iter().rev().cloned() {
+        for mut region in bump_allocator.regions().iter().cloned() {
             let region_size = region.size();
 
             // keep advancing past already fully used memory regions
@@ -131,6 +143,7 @@ impl<M: Mode> BitMapAllocator<M> {
             }
         }
 
+        log::trace!("mark entries...");
         for entry in this.entries_mut() {
             let usage_map_pages = entry.usage_map_pages();
 
@@ -145,14 +158,14 @@ impl<M: Mode> BitMapAllocator<M> {
         Ok(this)
     }
 
-    // pub fn debug_print_table(&self) {
-    //     for entry in self.entries() {
-    //         log::debug!("{entry:?}")
-    //     }
-    // }
+    pub fn debug_print_table(&self) {
+        for entry in self.entries() {
+            log::debug!("{entry:?}")
+        }
+    }
 }
 
-impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
+impl<M: Mode> FrameAllocator for BitMapAllocator<M> {
     fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
         for entry in self.entries_mut() {
             for page in entry.skip..entry.pages() {

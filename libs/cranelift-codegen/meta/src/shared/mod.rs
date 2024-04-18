@@ -16,7 +16,6 @@ use crate::shared::formats::Formats;
 use crate::shared::immediates::Immediates;
 
 use std::collections::HashMap;
-use std::iter::FromIterator;
 use std::rc::Rc;
 
 pub(crate) struct Definitions {
@@ -44,9 +43,9 @@ pub(crate) fn define() -> Definitions {
 /// Verifies certain properties of formats.
 ///
 /// - Formats must be uniquely named: if two formats have the same name, they must refer to the
-/// same data. Otherwise, two format variants in the codegen crate would have the same name.
+/// same data. Otherwise, two format variants in the cranelift-codegen crate would have the same name.
 /// - Formats must be structurally different from each other. Otherwise, this would lead to
-/// code duplicate in the codegen crate.
+/// code duplicate in the cranelift-codegen crate.
 ///
 /// Returns a list of all the instruction formats effectively used.
 fn verify_instruction_formats(all_instructions: &AllInstructions) -> Vec<Rc<InstructionFormat>> {

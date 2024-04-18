@@ -1,9 +1,7 @@
-//! This library contains code that is common to both the `cranelift-codegen` and
-//! `cranelift-codegen-meta` libraries.
+//! This library contains code that is common to both the `cranelift-cranelift-codegen` and
+//! `cranelift-cranelift-codegen-meta` libraries.
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
-
-use core::env;
 
 pub mod constant_hash;
 pub mod constants;

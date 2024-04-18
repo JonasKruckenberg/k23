@@ -5,8 +5,12 @@ use crate::ir::{ExternalName, GlobalValue, MemFlags, Type};
 use crate::isa::TargetIsa;
 use core::fmt;
 
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
+
 /// Information about a global value declaration.
 #[derive(Clone, PartialEq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum GlobalValueData {
     /// Value is the address of the VM context struct.
     VMContext,

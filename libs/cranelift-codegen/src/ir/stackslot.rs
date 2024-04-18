@@ -16,6 +16,9 @@ use crate::ir::{DynamicTypeData, GlobalValueData};
 #[allow(unused_imports)]
 use crate::ir::types::*;
 
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
+
 /// The size of an object on the stack, or the size of a stack frame.
 ///
 /// We don't use `usize` to represent object sizes on the target platform because Cranelift supports
@@ -25,6 +28,7 @@ pub type StackSize = u32;
 
 /// The kind of a stack slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum StackSlotKind {
     /// An explicit stack slot. This is a chunk of stack memory for use by the `stack_load`
     /// and `stack_store` instructions.
@@ -59,6 +63,7 @@ impl fmt::Display for StackSlotKind {
 
 /// Contents of a stack slot.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct StackSlotData {
     /// The kind of stack slot.
     pub kind: StackSlotKind,
@@ -96,6 +101,7 @@ impl fmt::Display for StackSlotData {
 
 /// Contents of a dynamic stack slot.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct DynamicStackSlotData {
     /// The kind of stack slot.
     pub kind: StackSlotKind,

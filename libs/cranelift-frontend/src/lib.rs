@@ -168,6 +168,10 @@
 #[macro_use]
 extern crate alloc;
 
+#[cfg(feature = "std")]
+#[macro_use]
+extern crate std;
+
 #[cfg(not(feature = "std"))]
 use hashbrown::HashMap;
 #[cfg(feature = "std")]

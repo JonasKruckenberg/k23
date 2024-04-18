@@ -9,6 +9,9 @@ use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 use core::slice::{Iter, IterMut};
 
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
+
 /// Contents of a jump table.
 ///
 /// All jump tables use 0-based indexing and are densely populated.
@@ -18,6 +21,7 @@ use core::slice::{Iter, IterMut};
 /// may be iterated using the `all_branches` and `all_branches_mut` functions, which will both
 /// iterate over the default block first.
 #[derive(Clone, PartialEq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct JumpTableData {
     // Table entries.
     table: Vec<BlockCall>,
@@ -110,7 +114,7 @@ mod tests {
     use crate::entity::EntityRef;
     use crate::ir::instructions::ValueListPool;
     use crate::ir::{Block, BlockCall, Value};
-    use alloc::string::ToString;
+    use std::string::ToString;
 
     #[test]
     fn empty() {

@@ -1,8 +1,11 @@
 use core::fmt;
 use core::str::FromStr;
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
 
 /// A well-known symbol.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum KnownSymbol {
     /// ELF well-known linker symbol _GLOBAL_OFFSET_TABLE_
     ElfGlobalOffsetTable,

@@ -6,7 +6,7 @@ edition.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cranelift-codegen = { workspace = true, features = ["unwind", "host-arch"] }
+cranelift-codegen = { workspace = true, features = ["unwind", "riscv64"] }
 cranelift-entity.workspace = true
 cranelift-frontend.workspace = true
 hashbrown.workspace = true
@@ -15,6 +15,7 @@ smallvec.workspace = true
 wasmparser.workspace = true
 onlyerror.workspace = true
 target-lexicon.workspace = true
+gimli = { workspace = true, features = ["read"] }
 
 [dev-dependencies]
 env_logger = "0.11.3"

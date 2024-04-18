@@ -1,7 +1,7 @@
 mod bitmap;
 mod bump;
 
-use crate::{Mode, PhysicalAddress};
+use crate::PhysicalAddress;
 
 pub use bitmap::BitMapAllocator;
 pub use bump::BumpAllocator;
@@ -12,7 +12,7 @@ pub struct FrameUsage {
     pub total: usize,
 }
 
-pub trait FrameAllocator<M: Mode> {
+pub trait FrameAllocator {
     fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
         self.allocate_frames(1)
     }

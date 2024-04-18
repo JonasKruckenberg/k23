@@ -33,11 +33,10 @@ mod pool;
 mod set;
 
 pub use self::map::{Map, MapCursor, MapForest, MapIter};
-pub use self::set::{Set, SetCursor, SetForest, SetIter};
-
 use self::node::NodeData;
 use self::path::Path;
 use self::pool::NodePool;
+pub use self::set::{Set, SetCursor, SetForest, SetIter};
 
 /// The maximum branching factor of an inner node in a B+-tree.
 /// The minimum number of outgoing edges is `INNER_SIZE/2`.

@@ -7,7 +7,7 @@ use crate::ir::MemFlags;
 use crate::ir::Opcode;
 use crate::ir::{dynamic_to_fixed, ExternalName, LibCall, Signature};
 use crate::isa;
-use crate::isa::aarch64::{inst::EmitState, inst::*, settings as aarch64_settings};
+use crate::isa::aarch64::{inst::*, settings as aarch64_settings};
 use crate::isa::unwind::UnwindInst;
 use crate::machinst::*;
 use crate::settings;
@@ -35,9 +35,10 @@ static STACK_ARG_RET_SIZE_LIMIT: u32 = 128 * 1024 * 1024;
 impl Into<AMode> for StackAMode {
     fn into(self) -> AMode {
         match self {
-            StackAMode::FPOffset(off, ty) => AMode::FPOffset { off, ty },
-            StackAMode::NominalSPOffset(off, ty) => AMode::NominalSPOffset { off, ty },
-            StackAMode::SPOffset(off, ty) => AMode::SPOffset { off, ty },
+            // Argument area begins after saved frame pointer + return address.
+            StackAMode::IncomingArg(off) => AMode::FPOffset { off: off + 16 },
+            StackAMode::Slot(off) => AMode::NominalSPOffset { off },
+            StackAMode::OutgoingArg(off) => AMode::SPOffset { off },
         }
     }
 }
@@ -99,18 +100,15 @@ impl ABIMachineSpec for AArch64MachineDeps {
         16
     }
 
-    fn compute_arg_locs<'a, I>(
+    fn compute_arg_locs(
         call_conv: isa::CallConv,
         _flags: &settings::Flags,
-        params: I,
+        params: &[ir::AbiParam],
         args_or_rets: ArgsOrRets,
         add_ret_area_ptr: bool,
-        mut args: ArgsAccumulator<'_>,
-    ) -> CodegenResult<(u32, Option<usize>)>
-    where
-        I: IntoIterator<Item = &'a ir::AbiParam>,
-    {
-        if call_conv == isa::CallConv::Tail {
+        mut args: ArgsAccumulator,
+    ) -> CodegenResult<(u32, Option<usize>)> {
+        if matches!(call_conv, isa::CallConv::Tail) {
             return compute_arg_locs_tail(params, add_ret_area_ptr, args);
         }
 
@@ -368,10 +366,6 @@ impl ABIMachineSpec for AArch64MachineDeps {
         Ok((next_stack, extra_arg))
     }
 
-    fn fp_to_arg_offset(_call_conv: isa::CallConv, _flags: &settings::Flags) -> i64 {
-        16 // frame pointer + return address.
-    }
-
     fn gen_load_stack(mem: StackAMode, into_reg: Writable<Reg>, ty: Type) -> Inst {
         Inst::gen_load(into_reg, mem.into(), ty, MemFlags::trusted())
     }
@@ -463,7 +457,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
         insts
     }
 
-    fn gen_get_stack_addr(mem: StackAMode, into_reg: Writable<Reg>, _ty: Type) -> Inst {
+    fn gen_get_stack_addr(mem: StackAMode, into_reg: Writable<Reg>) -> Inst {
         // FIXME: Do something different for dynamic types?
         let mem = mem.into();
         Inst::LoadAddr { rd: into_reg, mem }
@@ -477,7 +471,6 @@ impl ABIMachineSpec for AArch64MachineDeps {
         let mem = AMode::RegOffset {
             rn: base,
             off: offset as i64,
-            ty,
         };
         Inst::gen_load(into_reg, mem, ty, MemFlags::trusted())
     }
@@ -486,7 +479,6 @@ impl ABIMachineSpec for AArch64MachineDeps {
         let mem = AMode::RegOffset {
             rn: base,
             off: offset as i64,
-            ty,
         };
         Inst::gen_store(mem, from_reg, ty, MemFlags::trusted())
     }
@@ -616,7 +608,7 @@ impl ABIMachineSpec for AArch64MachineDeps {
     fn gen_epilogue_frame_restore(
         call_conv: isa::CallConv,
         _flags: &settings::Flags,
-        isa_flags: &aarch64_settings::Flags,
+        _isa_flags: &aarch64_settings::Flags,
         frame_layout: &FrameLayout,
     ) -> SmallInstVec<Inst> {
         let setup_frame = frame_layout.setup_area_size > 0;
@@ -643,19 +635,28 @@ impl ABIMachineSpec for AArch64MachineDeps {
                 frame_layout.stack_args_size.try_into().unwrap(),
             ));
         }
-        match select_api_key(isa_flags, call_conv, setup_frame) {
-            Some(key) => {
-                insts.push(Inst::AuthenticatedRet {
-                    key,
-                    is_hint: !isa_flags.has_pauth(),
-                });
-            }
-            None => {
-                insts.push(Inst::Ret {});
-            }
-        }
 
         insts
+    }
+
+    fn gen_return(
+        call_conv: isa::CallConv,
+        isa_flags: &aarch64_settings::Flags,
+        frame_layout: &FrameLayout,
+    ) -> SmallInstVec<Inst> {
+        let setup_frame = frame_layout.setup_area_size > 0;
+
+        match select_api_key(isa_flags, call_conv, setup_frame) {
+            Some(key) => {
+                smallvec![Inst::AuthenticatedRet {
+                    key,
+                    is_hint: !isa_flags.has_pauth(),
+                }]
+            }
+            None => {
+                smallvec![Inst::Ret {}]
+            }
+        }
     }
 
     fn gen_probestack(_insts: &mut SmallInstVec<Self::I>, _: u32) {
@@ -862,10 +863,15 @@ impl ABIMachineSpec for AArch64MachineDeps {
         }
 
         // Allocate the fixed frame below the clobbers if necessary.
-        if frame_layout.fixed_frame_storage_size > 0 {
-            insts.extend(Self::gen_sp_reg_adjust(
-                -(frame_layout.fixed_frame_storage_size as i32),
-            ));
+        let stack_size = frame_layout.fixed_frame_storage_size + frame_layout.outgoing_args_size;
+        if stack_size > 0 {
+            insts.extend(Self::gen_sp_reg_adjust(-(stack_size as i32)));
+        }
+
+        // Adjust the nominal sp to account for the outgoing argument area.
+        let sp_adj = frame_layout.outgoing_args_size as i32;
+        if sp_adj > 0 {
+            insts.push(Self::gen_nominal_sp_adj(sp_adj));
         }
 
         insts
@@ -889,10 +895,9 @@ impl ABIMachineSpec for AArch64MachineDeps {
         }
 
         // Free the fixed frame if necessary.
-        if frame_layout.fixed_frame_storage_size > 0 {
-            insts.extend(Self::gen_sp_reg_adjust(
-                frame_layout.fixed_frame_storage_size as i32,
-            ));
+        let stack_size = frame_layout.fixed_frame_storage_size + frame_layout.outgoing_args_size;
+        if stack_size > 0 {
+            insts.extend(Self::gen_sp_reg_adjust(stack_size as i32));
         }
 
         let load_vec_reg = |rd| Inst::FpuLoad64 {
@@ -1106,10 +1111,9 @@ impl ABIMachineSpec for AArch64MachineDeps {
     }
 
     fn get_regs_clobbered_by_call(call_conv_of_callee: isa::CallConv) -> PRegSet {
-        if call_conv_of_callee == isa::CallConv::Tail {
-            TAIL_CLOBBERS
-        } else {
-            DEFAULT_AAPCS_CLOBBERS
+        match call_conv_of_callee {
+            isa::CallConv::Tail => ALL_CLOBBERS,
+            _ => DEFAULT_AAPCS_CLOBBERS,
         }
     }
 
@@ -1164,7 +1168,6 @@ impl ABIMachineSpec for AArch64MachineDeps {
         };
 
         // Return FrameLayout structure.
-        debug_assert!(outgoing_args_size == 0);
         FrameLayout {
             stack_args_size,
             setup_area_size,
@@ -1188,10 +1191,11 @@ impl AArch64MachineDeps {
         for _ in 0..probe_count {
             insts.extend(Self::gen_sp_reg_adjust(-(guard_size as i32)));
 
-            insts.push(Self::gen_store_stack(
-                StackAMode::SPOffset(0, I8),
+            insts.push(Inst::gen_store(
+                AMode::SPOffset { off: 0 },
                 zero_reg(),
                 I32,
+                MemFlags::trusted(),
             ));
         }
 
@@ -1291,15 +1295,12 @@ impl AArch64CallSite {
     }
 }
 
-fn compute_arg_locs_tail<'a, I>(
-    params: I,
+fn compute_arg_locs_tail(
+    params: &[ir::AbiParam],
     add_ret_area_ptr: bool,
-    mut args: ArgsAccumulator<'_>,
-) -> CodegenResult<(u32, Option<usize>)>
-where
-    I: IntoIterator<Item = &'a ir::AbiParam>,
-{
-    let mut xregs = TAIL_CLOBBERS
+    mut args: ArgsAccumulator,
+) -> CodegenResult<(u32, Option<usize>)> {
+    let mut xregs = ALL_CLOBBERS
         .into_iter()
         .filter(|r| r.class() == RegClass::Int)
         // We reserve `x0` for the return area pointer. For simplicity, we
@@ -1313,7 +1314,7 @@ where
         // indirect calls. So skip `x1` also, reserving it for that role.
         .skip(2);
 
-    let mut vregs = TAIL_CLOBBERS
+    let mut vregs = ALL_CLOBBERS
         .into_iter()
         .filter(|r| r.class() == RegClass::Float);
 
@@ -1542,8 +1543,8 @@ const fn default_aapcs_clobbers() -> PRegSet {
 
 const DEFAULT_AAPCS_CLOBBERS: PRegSet = default_aapcs_clobbers();
 
-// NB: The `tail` calling convention clobbers all allocatable registers.
-const TAIL_CLOBBERS: PRegSet = PRegSet::empty()
+// For calling conventions that clobber all registers.
+const ALL_CLOBBERS: PRegSet = PRegSet::empty()
     .with(xreg_preg(0))
     .with(xreg_preg(1))
     .with(xreg_preg(2))

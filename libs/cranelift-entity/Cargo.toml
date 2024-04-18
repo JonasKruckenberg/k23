@@ -1,8 +1,12 @@
 [package]
+authors = ["The Cranelift Project Developers"]
 name = "cranelift-entity"
-version.workspace = true
+version = "0.108.0"
+description = "Data structures using entity references as mapping keys"
+license = "Apache-2.0 WITH LLVM-exception"
+documentation = "https://docs.rs/cranelift-entity"
+repository = "https://github.com/bytecodealliance/wasmtime"
+categories = ["no-std"]
+readme = "README.md"
+keywords = ["entity", "set", "map"]
 edition.workspace = true
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]

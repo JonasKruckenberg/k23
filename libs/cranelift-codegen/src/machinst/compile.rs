@@ -5,7 +5,6 @@ use crate::ir::pcc;
 use crate::ir::Function;
 use crate::isa::TargetIsa;
 use crate::machinst::*;
-use crate::trace;
 use crate::CodegenError;
 
 use regalloc2::RegallocOptions;
@@ -44,7 +43,7 @@ pub fn compile<B: LowerBackend + TargetIsa>(
         vcode.num_insts()
     );
     log::debug!("Number of lowered vcode blocks: {}", vcode.num_blocks());
-    trace!("vcode from lowering: \n{:?}", vcode);
+    log::trace!("vcode from lowering: \n{:?}", vcode);
 
     // Perform validation of proof-carrying-code facts, if requested.
     if b.flags().enable_pcc() {

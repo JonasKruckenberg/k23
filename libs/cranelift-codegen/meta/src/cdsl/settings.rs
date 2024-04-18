@@ -117,7 +117,7 @@ impl Preset {
     ) -> impl Iterator<Item = &'static str> + 'a {
         self.values
             .iter()
-            .map(move |bool_index| group.settings[bool_index.0].name)
+            .map(|bool_index| group.settings[bool_index.0].name)
     }
 }
 

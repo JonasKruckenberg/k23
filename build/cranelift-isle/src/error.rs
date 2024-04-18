@@ -256,8 +256,7 @@ impl From<&Span> for std::ops::Range<usize> {
     }
 }
 
-#[cfg(not(feature = "fancy-errors"))]
-use self::diagnostic::{Diagnostic, Label};
+use diagnostic::{Diagnostic, Label};
 
 #[cfg(feature = "fancy-errors")]
 use codespan_reporting::diagnostic;

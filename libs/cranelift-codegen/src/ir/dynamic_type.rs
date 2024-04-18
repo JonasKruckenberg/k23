@@ -4,10 +4,13 @@ use crate::ir::entities::DynamicType;
 use crate::ir::types::*;
 use crate::ir::GlobalValue;
 use crate::ir::PrimaryMap;
-use crate::ir::Type;
+
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
 
 /// A dynamic type object which has a base vector type and a scaling factor.
 #[derive(Clone, PartialEq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct DynamicTypeData {
     /// Base vector type, this is the minimum size of the type.
     pub base_vector_ty: Type,

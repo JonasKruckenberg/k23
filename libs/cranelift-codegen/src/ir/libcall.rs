@@ -6,6 +6,8 @@ use crate::{
 };
 use core::fmt;
 use core::str::FromStr;
+#[cfg(feature = "enable-serde")]
+use serde_derive::{Deserialize, Serialize};
 
 /// The name of a runtime library routine.
 ///
@@ -16,6 +18,7 @@ use core::str::FromStr;
 ///
 /// This list is likely to grow over time.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub enum LibCall {
     /// probe for stack overflow. These are emitted for functions which need
     /// when the `enable_probestack` setting is true.

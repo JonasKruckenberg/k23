@@ -8,7 +8,7 @@ pub use super::MachLabel;
 use super::RetPair;
 pub use crate::ir::{
     condcodes::CondCode, dynamic_to_fixed, Constant, DynamicStackSlot, ExternalName, FuncRef,
-    GlobalValue, Immediate, SigRef,
+    GlobalValue, Immediate, SigRef, StackSlot,
 };
 pub use crate::isa::{unwind::UnwindInst, TargetIsa};
 pub use crate::machinst::{
@@ -758,6 +758,7 @@ macro_rules! isle_prelude_caller_methods {
                 self.lower_ctx.sigs(),
                 sig_ref,
                 &extname,
+                Opcode::Call,
                 dist,
                 caller_conv,
                 self.backend.flags().clone(),
@@ -825,9 +826,8 @@ macro_rules! isle_prelude_method_helpers {
                 call_site.emit_copy_regs_to_buffer(self.lower_ctx, i, *arg_regs);
             }
             for (i, arg_regs) in arg_regs.iter().enumerate() {
-                for inst in call_site.gen_arg(self.lower_ctx, i, *arg_regs) {
-                    self.lower_ctx.emit(inst);
-                }
+                let moves = call_site.gen_arg(self.lower_ctx, i, *arg_regs);
+                call_site.emit_arg_moves(self.lower_ctx, moves);
             }
         }
 
@@ -838,15 +838,13 @@ macro_rules! isle_prelude_method_helpers {
             mut caller: $abicaller,
             args: ValueSlice,
         ) -> InstOutput {
-            caller.emit_stack_pre_adjust(self.lower_ctx);
-
             self.gen_call_common_args(&mut caller, args);
 
             // Handle retvals prior to emitting call, so the
             // constraints are on the call instruction; but buffer the
             // instructions till after the call.
             let mut outputs = InstOutput::new();
-            let mut retval_insts: crate::machinst::abi::SmallInstVec<_> = smallvec::smallvec![];
+            let mut retval_insts = crate::machinst::abi::SmallInstVec::new();
             // We take the *last* `num_rets` returns of the sig:
             // this skips a StructReturn, if any, that is present.
             let sigdata_num_rets = self.lower_ctx.sigs().num_rets(abi);
@@ -870,8 +868,6 @@ macro_rules! isle_prelude_method_helpers {
             for inst in retval_insts {
                 self.lower_ctx.emit(inst);
             }
-
-            caller.emit_stack_post_adjust(self.lower_ctx);
 
             outputs
         }

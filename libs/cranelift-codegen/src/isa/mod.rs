@@ -23,7 +23,7 @@
 //! # #[macro_use] extern crate target_lexicon;
 //! use cranelift_codegen::isa;
 //! use cranelift_codegen::settings::{self, Configurable};
-//! use core::str::FromStr;
+//! use std::str::FromStr;
 //! use target_lexicon::Triple;
 //!
 //! let shared_builder = settings::builder();
@@ -118,15 +118,28 @@ pub fn lookup_by_name(name: &str) -> Result<Builder, LookupError> {
 }
 
 /// Describes reason for target lookup failure
-#[derive(PartialEq, Eq, Copy, Clone, Debug, onlyerror::Error)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum LookupError {
     /// Support for this target was disabled in the current build.
-    #[error("Support for this target is disabled")]
     SupportDisabled,
 
     /// Support for this target has not yet been implemented.
-    #[error("Support for this target has not been implemented yet")]
     Unsupported,
+}
+
+// This is manually implementing Error and Display instead of using thiserror to reduce the amount
+// of dependencies used by Cranelift.
+impl core::error::Error for LookupError {}
+
+impl fmt::Display for LookupError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            LookupError::SupportDisabled => write!(f, "Support for this target is disabled"),
+            LookupError::Unsupported => {
+                write!(f, "Support for this target has not been implemented yet")
+            }
+        }
+    }
 }
 
 /// The type of a polymorphic TargetISA object which is 'static.
@@ -307,6 +320,12 @@ pub trait TargetIsa: fmt::Display + Send + Sync {
         Self: Sized + 'static,
     {
         Arc::new(self)
+    }
+
+    /// Generate a `Capstone` context for disassembling bytecode for this architecture.
+    #[cfg(feature = "disas")]
+    fn to_capstone(&self) -> Result<capstone::Capstone, capstone::Error> {
+        Err(capstone::Error::UnsupportedArch)
     }
 
     /// Returns whether this ISA has a native fused-multiply-and-add instruction

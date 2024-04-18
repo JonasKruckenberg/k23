@@ -1,20 +1,17 @@
 //! Contains the RISC-V instruction encoding logic.
 //!
 //! These formats are specified in the RISC-V specification in section 2.2.
-//! See: https://riscv.org/wp-content/uploads/2017/05/riscv-spec-v2.2.pdf
+//! See: <https://riscv.org/wp-content/uploads/2017/05/riscv-spec-v2.2.pdf>
 //!
 //! Some instructions especially in extensions have slight variations from
 //! the base RISC-V specification.
 
 use super::*;
-use crate::isa::riscv64::inst::reg_to_gpr_num;
 use crate::isa::riscv64::lower::isle::generated_code::{
-    COpcodeSpace, CaOp, CbOp, CiOp, CiwOp, CjOp, ClOp, CrOp, CsOp, CssOp, CsznOp, VecAluOpRImm5,
-    VecAluOpRR, VecAluOpRRImm5, VecAluOpRRR, VecAluOpRRRImm5, VecAluOpRRRR, VecElementWidth,
-    VecOpCategory, VecOpMasking, ZcbMemOp,
+    COpcodeSpace, CaOp, CbOp, CiOp, CiwOp, ClOp, CrOp, CsOp, CssOp, CsznOp, VecAluOpRImm5,
+    VecAluOpRR, VecAluOpRRRImm5, VecAluOpRRRR, VecOpCategory, ZcbMemOp,
 };
 use crate::machinst::isle::WritableReg;
-use crate::Reg;
 
 fn unsigned_field_width(value: u32, width: u8) -> u32 {
     debug_assert_eq!(value & (!0 << width), 0);
