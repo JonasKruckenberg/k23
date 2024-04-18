@@ -1,7 +1,16 @@
 use crate::boot_info::BootInfo;
-use crate::{kconfig, logger};
+use crate::kernel_mapper::with_kernel_mapper;
+use crate::{kconfig, kernel_mapper, logger};
 use core::arch::asm;
-use vmm::{AddressRangeExt, BitMapAllocator, BumpAllocator, EntryFlags, Mapper, VirtualAddress};
+use core::iter::Map;
+use core::mem::MaybeUninit;
+use core::ops::Range;
+use spin::{Mutex, Once};
+use uart_16550::SerialPort;
+use vmm::{
+    AddressRangeExt, BitMapAllocator, BumpAllocator, EntryFlags, Flush, FrameAllocator, FrameUsage,
+    Mapper, PhysicalAddress, VirtualAddress,
+};
 
 pub fn halt() -> ! {
     unsafe {
@@ -24,32 +33,31 @@ pub struct KernelArgs {
 }
 
 #[no_mangle]
-pub extern "C" fn kstart(args: *const KernelArgs) -> ! {
-    let args = unsafe { &*(args) };
+pub extern "C" fn kstart(kargs: *const KernelArgs) -> ! {
+    let kargs = unsafe { &*(kargs) };
+    let boot_info = BootInfo::from_dtb(kargs.fdt.as_raw() as *const u8);
 
-    let boot_info = BootInfo::from_dtb(args.fdt.as_raw() as *const u8);
+    kernel_mapper::init(&boot_info.memories, kargs.alloc_offset);
 
-    let mut alloc: BumpAllocator<kconfig::MEMORY_MODE> =
-        unsafe { BumpAllocator::new(&boot_info.memories, args.alloc_offset) };
+    let serial_base = with_kernel_mapper(|mapper, flush| {
+        let serial_phys = boot_info.serial.regs.clone().align(kconfig::PAGE_SIZE);
+        let serial_virt = {
+            let base = kargs.stack_start;
 
-    let mut mapper = Mapper::from_active(0, &mut alloc);
-
-    let serial_phys = boot_info.serial.regs.clone().align(kconfig::PAGE_SIZE);
-    let serial_virt = {
-        let base = args.stack_start;
-
-        base.sub(serial_phys.size())..base
-    };
-    let flush = mapper
-        .map_range(
+            base.sub(serial_phys.size())..base
+        };
+        mapper.map_range_with_flush(
             serial_virt.clone(),
             serial_phys,
             EntryFlags::READ | EntryFlags::WRITE,
-        )
-        .unwrap();
-    flush.flush().unwrap();
+            flush,
+        )?;
 
-    logger::init(serial_virt.start, boot_info.serial.clock_frequency);
+        Ok(serial_virt.start)
+    })
+    .expect("failed to map serial region");
+
+    logger::init(serial_base, boot_info.serial.clock_frequency);
 
     log::debug!("hello world!");
 

@@ -2,8 +2,8 @@ use core::ops::Range;
 use core::ptr::addr_of;
 
 use vmm::{
-    AddressRangeExt, BumpAllocator, EntryFlags, Flush, Mapper, Mode, PhysicalAddress,
-    VirtualAddress, INIT,
+    AddressRangeExt, BumpAllocator, EntryFlags, Flush, FrameAllocator, Mapper, Mode,
+    PhysicalAddress, VirtualAddress, INIT,
 };
 
 use crate::boot_info::BootInfo;
@@ -15,10 +15,10 @@ pub fn init(
     kernel: ElfSections,
 ) -> Result<(usize, VirtualAddress, Range<VirtualAddress>), vmm::Error> {
     // Safety: The boot_info module ensures the memory entries are in the right order
-    let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
+    let alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
         unsafe { BumpAllocator::new(&boot_info.memories, 0) };
 
-    let mut mapper = Mapper::new(0, &mut alloc)?;
+    let mut mapper = Mapper::new(0, alloc)?;
     let mut flush = Flush::empty(0);
 
     // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
@@ -34,13 +34,13 @@ pub fn init(
 
     // Switch on the MMU
     log::debug!("activating page table...");
-    mapper.activate();
+    let alloc = mapper.activate();
 
     Ok((alloc.offset(), fdt_virt, stack_virt))
 }
 
 fn map_physical_memory(
-    mapper: &mut Mapper<INIT<kconfig::MEMORY_MODE>>,
+    mapper: &mut Mapper<INIT<kconfig::MEMORY_MODE>, BumpAllocator<INIT<kconfig::MEMORY_MODE>>>,
     flush: &mut Flush<INIT<kconfig::MEMORY_MODE>>,
     boot_info: &BootInfo,
 ) -> Result<(), vmm::Error> {
@@ -48,7 +48,7 @@ fn map_physical_memory(
         let region_virt = kconfig::MEMORY_MODE::phys_to_virt(region_phys.start)
             ..kconfig::MEMORY_MODE::phys_to_virt(region_phys.end);
 
-        log::debug!("Mapping physical memory region {region_virt:?} => {region_phys:?}...");
+        log::trace!("Mapping physical memory region {region_virt:?} => {region_phys:?}...");
         mapper.map_range_with_flush(
             region_virt,
             region_phys.clone(),
@@ -61,7 +61,7 @@ fn map_physical_memory(
 }
 
 fn map_fdt(
-    mapper: &mut Mapper<INIT<kconfig::MEMORY_MODE>>,
+    mapper: &mut Mapper<INIT<kconfig::MEMORY_MODE>, BumpAllocator<INIT<kconfig::MEMORY_MODE>>>,
     flush: &mut Flush<INIT<kconfig::MEMORY_MODE>>,
     boot_info: &BootInfo,
 ) -> Result<VirtualAddress, vmm::Error> {
@@ -73,7 +73,7 @@ fn map_fdt(
     let fdt_virt = kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.start)
         ..kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.end);
 
-    log::debug!("Mapping fdt region {fdt_virt:?} => {fdt_phys:?}...");
+    log::trace!("Mapping fdt region {fdt_virt:?} => {fdt_phys:?}...");
     mapper.map_range_with_flush(fdt_virt, fdt_phys, EntryFlags::READ, flush)?;
 
     let fdt_addr = unsafe {
@@ -84,7 +84,7 @@ fn map_fdt(
 }
 
 fn identity_map_self(
-    mapper: &mut Mapper<INIT<kconfig::MEMORY_MODE>>,
+    mapper: &mut Mapper<INIT<kconfig::MEMORY_MODE>, BumpAllocator<INIT<kconfig::MEMORY_MODE>>>,
     flush: &mut Flush<INIT<kconfig::MEMORY_MODE>>,
 ) -> Result<(), vmm::Error> {
     extern "C" {
@@ -111,17 +111,17 @@ fn identity_map_self(
             ..PhysicalAddress::new(addr_of!(__data_end) as usize)
     };
 
-    log::debug!("Identity mapping own executable region {own_executable_region:?}...");
+    log::trace!("Identity mapping own executable region {own_executable_region:?}...");
     mapper.identity_map_range_with_flush(
         own_executable_region,
         EntryFlags::READ | EntryFlags::EXECUTE,
         flush,
     )?;
 
-    log::debug!("Identity mapping own read-only region {own_read_only_region:?}...");
+    log::trace!("Identity mapping own read-only region {own_read_only_region:?}...");
     mapper.identity_map_range_with_flush(own_read_only_region, EntryFlags::READ, flush)?;
 
-    log::debug!("Identity mapping own read-write region {own_read_write_region:?}...");
+    log::trace!("Identity mapping own read-write region {own_read_write_region:?}...");
     mapper.identity_map_range_with_flush(
         own_read_write_region,
         EntryFlags::READ | EntryFlags::WRITE,
@@ -132,12 +132,12 @@ fn identity_map_self(
 }
 
 fn map_kernel(
-    mapper: &mut Mapper<INIT<kconfig::MEMORY_MODE>>,
+    mapper: &mut Mapper<INIT<kconfig::MEMORY_MODE>, BumpAllocator<INIT<kconfig::MEMORY_MODE>>>,
     flush: &mut Flush<INIT<kconfig::MEMORY_MODE>>,
     boot_info: &BootInfo,
     kernel: ElfSections,
 ) -> Result<Range<VirtualAddress>, vmm::Error> {
-    log::debug!(
+    log::trace!(
         "Mapping kernel text region {:?} => {:?}...",
         kernel.text.virt,
         kernel.text.phys
@@ -149,7 +149,7 @@ fn map_kernel(
         flush,
     )?;
 
-    log::debug!(
+    log::trace!(
         "Mapping kernel rodata region {:?} => {:?}...",
         kernel.rodata.virt,
         kernel.rodata.phys
@@ -161,7 +161,7 @@ fn map_kernel(
         flush,
     )?;
 
-    log::debug!(
+    log::trace!(
         "Mapping kernel bss region {:?} => {:?}...",
         kernel.bss.virt,
         kernel.bss.phys
@@ -173,7 +173,7 @@ fn map_kernel(
         flush,
     )?;
 
-    log::debug!(
+    log::trace!(
         "Mapping kernel data region {:?} => {:?}...",
         kernel.data.virt,
         kernel.data.phys
@@ -201,7 +201,7 @@ fn map_kernel(
         end.sub(kernel_stack_frames * kconfig::PAGE_SIZE)..end
     };
 
-    log::debug!("Mapping kernel stack region {kernel_stack_virt:?} => {kernel_stack_phys:?}...");
+    log::trace!("Mapping kernel stack region {kernel_stack_virt:?} => {kernel_stack_phys:?}...");
     mapper.map_range_with_flush(
         kernel_stack_virt.clone(),
         kernel_stack_phys,

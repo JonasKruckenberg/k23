@@ -35,7 +35,7 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
     }
 }
 
-impl<'a, M: Mode> FrameAllocator<M> for BumpAllocator<'a, M> {
+impl<'a, M: Mode> FrameAllocator for BumpAllocator<'a, M> {
     fn allocate_frames(&mut self, frames: usize) -> crate::Result<PhysicalAddress> {
         let requested_size = frames * M::PAGE_SIZE;
         let mut offset = self.offset;

@@ -2,16 +2,18 @@ use crate::flush::Flush;
 use crate::table::Table;
 use crate::{AddressRangeExt, FrameAllocator, Mode, PhysicalAddress, VirtualAddress};
 use bitflags::Flags;
+use core::marker::PhantomData;
 use core::ops::Range;
 
-pub struct Mapper<'a, M> {
+pub struct Mapper<M, A> {
     asid: usize,
     root_table: VirtualAddress,
-    allocator: &'a mut dyn FrameAllocator<M>,
+    allocator: A,
+    _m: PhantomData<M>,
 }
 
-impl<'a, M: Mode> Mapper<'a, M> {
-    pub fn new(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> crate::Result<Self> {
+impl<M: Mode, A: FrameAllocator + Send + Sync> Mapper<M, A> {
+    pub fn new(asid: usize, mut allocator: A) -> crate::Result<Self> {
         let root_table = allocator.allocate_frame()?;
         let root_table_virt = M::phys_to_virt(root_table);
 
@@ -19,12 +21,13 @@ impl<'a, M: Mode> Mapper<'a, M> {
             asid,
             root_table: root_table_virt,
             allocator,
+            _m: PhantomData,
         };
 
         Ok(this)
     }
 
-    pub fn from_active(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> Self {
+    pub fn from_active(asid: usize, allocator: A) -> Self {
         let root_table = M::get_active_table(asid);
         let root_table_virt = M::phys_to_virt(root_table);
         debug_assert!(root_table.0 != 0);
@@ -33,18 +36,24 @@ impl<'a, M: Mode> Mapper<'a, M> {
             asid,
             root_table: root_table_virt,
             allocator,
+            _m: PhantomData,
         }
     }
 
-    pub fn activate(self) {
-        M::activate_table(self.asid, self.root_table)
-    }
-
-    pub fn allocator(&self) -> &dyn FrameAllocator<M> {
+    pub fn activate(self) -> A {
+        M::activate_table(self.asid, self.root_table);
         self.allocator
     }
 
-    pub fn allocator_mut(&mut self) -> &mut dyn FrameAllocator<M> {
+    pub fn allocator(&self) -> &A {
+        &self.allocator
+    }
+
+    pub fn allocator_mut(&mut self) -> &mut A {
+        &mut self.allocator
+    }
+
+    pub fn into_allocator(self) -> A {
         self.allocator
     }
 
