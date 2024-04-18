@@ -95,7 +95,7 @@ impl<'dt> BootInfo<'dt> {
         exclude_region(unsafe {
             let base = PhysicalAddress::new(info.fdt.as_ptr() as usize)
                 .sub(kconfig::MEMORY_MODE::PHYS_OFFSET);
-            
+
             (base..base.add(info.fdt.len())).align(kconfig::PAGE_SIZE)
         });
 
