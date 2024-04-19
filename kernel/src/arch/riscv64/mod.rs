@@ -3,8 +3,10 @@ use crate::kernel_mapper::with_kernel_mapper;
 use crate::{kconfig, kernel_mapper, logger};
 use core::arch::asm;
 use core::iter::Map;
+use core::marker::PhantomPinned;
 use core::mem::MaybeUninit;
 use core::ops::Range;
+use core::ptr::addr_of;
 use spin::{Mutex, Once};
 use uart_16550::SerialPort;
 use vmm::{
@@ -58,7 +60,6 @@ pub extern "C" fn kstart(kargs: *const KernelArgs) -> ! {
     .expect("failed to map serial region");
 
     logger::init(serial_base, boot_info.serial.clock_frequency);
-
     log::debug!("hello world!");
 
     todo!()
