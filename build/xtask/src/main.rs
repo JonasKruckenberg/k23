@@ -7,7 +7,7 @@ use cargo_metadata::{Artifact, Message, MetadataCommand};
 use clap::{ArgAction, Parser};
 use ed25519_dalek::Signer;
 use std::ffi::OsStr;
-use std::fs;
+use std::{fs, process};
 use std::io::{IoSlice, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -69,6 +69,7 @@ enum XtaskCommand {
 fn main() {
     if let Err(err) = run() {
         log::error!("{:?}", err);
+        process::exit(1);
     }
 }
 
