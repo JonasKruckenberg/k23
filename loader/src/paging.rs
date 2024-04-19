@@ -10,15 +10,31 @@ use vmm::{
 
 type VMMode = INIT<kconfig::MEMORY_MODE>;
 
+// TODO come up with a better name
+pub struct MappingResult {
+    page_table: VirtualAddress,
+    pub kernel_entry: VirtualAddress,
+    pub kernel: Range<VirtualAddress>,
+    pub fdt: VirtualAddress,
+    pub stacks: Range<VirtualAddress>,
+    pub frame_alloc_offset: usize,
+}
+
+impl MappingResult {
+    pub fn activate_page_table(&self) {
+        kconfig::MEMORY_MODE::activate_table(0, self.page_table)
+    }
+}
+
 pub struct Mapper<'a, 'dt> {
     inner: vmm::Mapper<VMMode, BumpAllocator<'a, VMMode>>,
     flush: Flush<VMMode>,
     boot_info: &'a BootInfo<'dt>,
 
     kernel_entry: Option<VirtualAddress>,
-    kernel_virt: Option<Range<VirtualAddress>>,
-    fdt_virt: Option<VirtualAddress>,
-    stacks_virt: Option<Range<VirtualAddress>>,
+    kernel: Option<Range<VirtualAddress>>,
+    fdt: Option<VirtualAddress>,
+    stacks: Option<Range<VirtualAddress>>,
 }
 
 impl<'a, 'dt> Mapper<'a, 'dt> {
@@ -32,40 +48,28 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             boot_info,
 
             kernel_entry: None,
-            kernel_virt: None,
-            fdt_virt: None,
-            stacks_virt: None,
+            kernel: None,
+            fdt: None,
+            stacks: None,
         })
     }
 
-    pub fn finish(
-        &self,
-    ) -> Result<
-        (
-            usize,
-            VirtualAddress,
-            VirtualAddress,
-            Range<VirtualAddress>,
-            Range<VirtualAddress>,
-        ),
-        vmm::Error,
-    > {
-        self.inner.activate();
-
-        Ok((
-            self.inner.allocator().offset(),
-            self.fdt_virt.unwrap(),
-            self.kernel_entry.unwrap(),
-            self.kernel_virt.clone().unwrap(),
-            self.stacks_virt.clone().unwrap(),
-        ))
+    pub fn finish(self) -> MappingResult {
+        MappingResult {
+            page_table: self.inner.root_table().addr(),
+            kernel_entry: self.kernel_entry.unwrap(),
+            kernel: self.kernel.unwrap(),
+            fdt: self.fdt.unwrap(),
+            stacks: self.stacks.unwrap(),
+            frame_alloc_offset: self.inner.allocator().offset(),
+        }
     }
 
     // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
     // as opposed to m-mode where it would take effect after jump tp u-mode.
     // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
     // We will then unmap the loader in the kernel.
-    pub fn identity_map_loader(&mut self) -> Result<(), vmm::Error> {
+    pub fn identity_map_loader(mut self) -> Result<Self, vmm::Error> {
         extern "C" {
             static __text_start: u8;
             static __text_end: u8;
@@ -115,10 +119,10 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             &mut self.flush,
         )?;
 
-        Ok(())
+        Ok(self)
     }
 
-    pub fn map_physical_memory(&mut self) -> Result<(), vmm::Error> {
+    pub fn map_physical_memory(mut self) -> Result<Self, vmm::Error> {
         for region_phys in &self.boot_info.memories {
             let region_virt = kconfig::MEMORY_MODE::phys_to_virt(region_phys.start)
                 ..kconfig::MEMORY_MODE::phys_to_virt(region_phys.end);
@@ -132,10 +136,10 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             )?;
         }
 
-        Ok(())
+        Ok(self)
     }
 
-    pub fn map_fdt(&mut self) -> Result<(), vmm::Error> {
+    pub fn map_fdt(mut self) -> Result<Self, vmm::Error> {
         assert_eq!(
             self.boot_info.fdt.as_ptr().align_offset(kconfig::PAGE_SIZE),
             0
@@ -157,12 +161,12 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             &mut self.flush,
         )?;
 
-        self.fdt_virt = Some(fdt_virt.start);
+        self.fdt = Some(fdt_virt.start);
 
-        Ok(())
+        Ok(self)
     }
 
-    pub fn map_kernel_sections(&mut self, kernel: &ElfSections) -> Result<(), vmm::Error> {
+    pub fn map_kernel_sections(mut self, kernel: &ElfSections) -> Result<Self, vmm::Error> {
         log::trace!(
             "Mapping kernel text region {:?} => {:?}...",
             kernel.text.virt,
@@ -211,17 +215,17 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             &mut self.flush,
         )?;
 
-        self.kernel_virt = Some(kernel.text.virt.start..kernel.data.virt.end);
+        self.kernel = Some(kernel.text.virt.start..kernel.data.virt.end);
         self.kernel_entry = Some(kernel.entry);
 
-        Ok(())
+        Ok(self)
     }
 
     // the kernel stacks regions start at the start of TLS working downwards
     // each region has a maximum size of STACK_SIZE_PAGES, but only INITIAL_STACK_PAGES in each region are mapped upfront
     // the rest will be allocated on-demand by the kernel trap handler.
     // This way we save physical memory, by not allocating unused stack space.
-    pub fn map_kernel_stacks(&mut self) -> Result<(), vmm::Error> {
+    pub fn map_kernel_stacks(mut self) -> Result<Self, vmm::Error> {
         const INITIAL_STACK_PAGES: usize = 64;
 
         let stacks_end = unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) };
@@ -252,8 +256,8 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             stack_top = stack_top.sub(kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE);
         }
 
-        self.stacks_virt = Some(stack_top..stacks_end);
+        self.stacks = Some(stack_top..stacks_end);
 
-        Ok(())
+        Ok(self)
     }
 }

@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(naked_functions, asm_const, split_array)]
 
-use crate::paging::Mapper;
+use crate::paging::{Mapper, MappingResult};
 use boot_info::BootInfo;
 use core::{ptr, slice};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -36,9 +36,9 @@ pub struct KernelArgs {
 fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::debug!("hello from hart {hartid} {boot_info:?}");
 
-    static INIT: Once<Mapper> = Once::new();
+    static INIT: Once<MappingResult> = Once::new();
 
-    let mapper = INIT.call_once(|| {
+    let res = INIT.call_once(|| {
         // Safety: The boot_info module ensures the memory entries are in the right order
         let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
             unsafe { BumpAllocator::new(&boot_info.memories, 0) };
@@ -58,41 +58,40 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         let mut mapper = Mapper::new(alloc, &boot_info).expect("failed to setup mapper");
         mapper
             .identity_map_loader()
-            .expect("failed to map own regions");
-        mapper.map_physical_memory().expect("failed to map physmem");
-        mapper
+            .unwrap()
+            .map_physical_memory()
+            .unwrap()
             .map_kernel_sections(&kernel_sections)
-            .expect("failed to map kernel sections");
-        mapper.map_fdt().expect("failed to map FDT region");
-        mapper
+            .unwrap()
+            .map_fdt()
+            .unwrap()
             .map_kernel_stacks()
-            .expect("failed to map kernel stack regions");
-
-        mapper
+            .unwrap()
+            .finish()
     });
 
     log::debug!("activating page table...");
-    let (frame_alloc_offset, fdt_virt, kernel_entry, kernel_virt, stacks_virt) =
-        mapper.finish().unwrap();
+    res.activate_page_table();
     log::debug!("success");
 
     let kargs = KernelArgs {
         boot_hart: boot_info.boot_hart,
-        fdt_virt,
-        kernel_start: kernel_virt.start,
-        kernel_end: kernel_virt.end,
-        stacks_start: stacks_virt.start,
-        stacks_end: stacks_virt.end,
-        frame_alloc_offset,
+        fdt_virt: res.fdt,
+        kernel_start: res.kernel.start,
+        kernel_end: res.kernel.end,
+        stacks_start: res.stacks.start,
+        stacks_end: res.stacks.end,
+        frame_alloc_offset: res.frame_alloc_offset,
     };
 
     // determine the right stack ptr
-    let stack_ptr = stacks_virt
+    let stack_ptr = res
+        .stacks
         .end
         .sub(hartid * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE);
 
     unsafe {
-        arch::kernel_entry(hartid, stack_ptr, kernel_entry, &kargs);
+        arch::kernel_entry(hartid, stack_ptr, res.kernel_entry, &kargs);
     }
 }
 
