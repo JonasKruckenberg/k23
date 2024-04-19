@@ -43,6 +43,7 @@ pub extern "C" fn kstart(kargs: *const KernelArgs) -> ! {
     let boot_info = BootInfo::from_dtb(kargs.fdt.as_raw() as *const u8);
 
     kernel_mapper::init(&boot_info.memories, kargs.alloc_offset);
+        logger::init();
 
     let serial_base = with_kernel_mapper(|mapper, flush| {
         let serial_phys = boot_info.serial.regs.clone().align(kconfig::PAGE_SIZE);
@@ -62,7 +63,6 @@ pub extern "C" fn kstart(kargs: *const KernelArgs) -> ! {
     })
     .expect("failed to map serial region");
 
-    logger::init(serial_base, boot_info.serial.clock_frequency);
 
     trap::init();
 
