@@ -5,8 +5,6 @@ use core::arch::asm;
 use core::marker::PhantomPinned;
 use core::ptr::addr_of;
 
-static mut TRAP_FRAME: TrapFrame = TrapFrame::ZERO;
-
 pub fn init() {
     unsafe {
         log::debug!("setting sscratch to {:p}", addr_of!(TRAP_FRAME));

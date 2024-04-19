@@ -12,7 +12,10 @@ use core::ops::Range;
 use core::ptr::addr_of;
 use spin::{Mutex, Once};
 use uart_16550::SerialPort;
-use vmm::{AddressRangeExt, BitMapAllocator, BumpAllocator, EntryFlags, Flush, FrameAllocator, FrameUsage, INIT, Mapper, PhysicalAddress, VirtualAddress};
+use vmm::{
+    AddressRangeExt, BitMapAllocator, BumpAllocator, EntryFlags, Flush, FrameAllocator, FrameUsage,
+    Mapper, PhysicalAddress, VirtualAddress, INIT,
+};
 
 pub fn halt() -> ! {
     unsafe {
@@ -39,7 +42,7 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
     let kargs = unsafe { &*(kargs) };
 
     static INIT: Once = Once::new();
-    
+
     INIT.call_once(|| {
         logger::init();
         log::debug!("{hartid} {kargs:?}");
@@ -64,10 +67,9 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
 
             Ok(serial_virt.start)
         })
-            .expect("failed to map serial region");
-
+        .expect("failed to map serial region");
     });
-    
+
     // trap::init();
 
     log::info!("Hello world from hart {hartid}!");
