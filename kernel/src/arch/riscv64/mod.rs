@@ -44,9 +44,6 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
     static INIT: Once = Once::new();
 
     INIT.call_once(|| {
-        logger::init();
-        log::debug!("{hartid} {kargs:?}");
-
         let boot_info = BootInfo::from_dtb(kargs.fdt_virt.as_raw() as *const u8);
 
         kernel_mapper::init(&boot_info.memories, kargs.frame_alloc_offset);
@@ -68,6 +65,10 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
             Ok(serial_virt.start)
         })
         .expect("failed to map serial region");
+
+        logger::init(serial_base, boot_info.serial.clock_frequency);
+
+        log::debug!("{hartid} {kargs:?}");
     });
 
     // trap::init();
