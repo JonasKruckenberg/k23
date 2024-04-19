@@ -1,14 +1,14 @@
 use crate::kconfig;
 use arrayvec::ArrayVec;
 use core::cmp::Ordering;
-use core::mem;
+use core::fmt::Formatter;
 use core::ops::Range;
+use core::{fmt, mem};
 use dtb_parser::{DevTree, Node, Visitor};
 use vmm::{AddressRangeExt, PhysicalAddress};
 
-#[allow(dead_code)]
-#[derive(Debug)]
 pub struct BootInfo<'dt> {
+    pub boot_hart: u32,
     pub fdt: &'dt [u8],
     /// The number of "standalone" CPUs in the system
     pub cpus: usize,
@@ -16,18 +16,32 @@ pub struct BootInfo<'dt> {
     pub memories: ArrayVec<Range<PhysicalAddress>, 16>,
 }
 
+impl<'dt> fmt::Debug for BootInfo<'dt> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BootInfo")
+            .field("fdt", &self.fdt.as_ptr_range())
+            .field("cpus", &self.cpus)
+            .field("memories", &self.memories)
+            .finish()
+    }
+}
+
 impl<'dt> BootInfo<'dt> {
     pub fn from_dtb(dtb_ptr: *const u8) -> Self {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
         let mut reservations = fdt.reserved_entries();
+        let fdt_slice = fdt.as_slice();
+        let boot_hart = fdt.boot_cpuid_phys();
 
-        let mut v = BootInfoVisitor {
-            fdt: fdt.as_slice(),
-            ..Default::default()
-        };
+        let mut v = BootInfoVisitor::default();
         fdt.visit(&mut v).unwrap();
 
-        let mut info = v.result();
+        let mut info = BootInfo {
+            fdt: fdt_slice,
+            boot_hart,
+            cpus: v.cpus,
+            memories: v.memories.regs,
+        };
 
         let mut exclude_region = |entry: Range<PhysicalAddress>| {
             let memories = info.memories.take();
@@ -101,16 +115,6 @@ struct RegsVisitor {
     address_size: usize,
     width_size: usize,
     regs: ArrayVec<Range<PhysicalAddress>, 16>,
-}
-
-impl<'dt> BootInfoVisitor<'dt> {
-    pub fn result(self) -> BootInfo<'dt> {
-        BootInfo {
-            fdt: self.fdt,
-            cpus: self.cpus,
-            memories: self.memories.regs,
-        }
-    }
 }
 
 impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {

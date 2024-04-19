@@ -4,14 +4,10 @@ use core::cmp::Ordering;
 use core::fmt::{Debug, Formatter};
 use core::mem;
 use core::ops::Range;
-use dtb_parser::{DevTree, Node, Visitor};
-use spin::Once;
+use dtb_parser::{DevTree, Visitor};
 use vmm::{AddressRangeExt, Mode, PhysicalAddress};
 
-pub static BOOT_INFO: Once<BootInfo> = Once::new();
-
-pub struct BootInfo<'dt> {
-    pub fdt: &'dt [u8],
+pub struct BootInfo {
     /// The number of "standalone" CPUs in the system
     pub cpus: usize,
     /// Address ranges we may use for allocation
@@ -20,17 +16,9 @@ pub struct BootInfo<'dt> {
     pub serial: Serial,
 }
 
-impl<'a> Debug for BootInfo<'a> {
+impl Debug for BootInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("BootInfo")
-            .field(
-                "fdt",
-                &format_args!(
-                    "Slice({:?}, {} bytes)",
-                    self.fdt.as_ptr_range(),
-                    self.fdt.len()
-                ),
-            )
             .field("cpus", &self.cpus)
             .field("memories", &self.memories)
             .field("serial", &self.serial)
@@ -47,18 +35,20 @@ pub struct Serial {
     pub clock_frequency: u32,
 }
 
-impl<'dt> BootInfo<'dt> {
+impl BootInfo {
     pub fn from_dtb(dtb_ptr: *const u8) -> Self {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
         let mut reservations = fdt.reserved_entries();
+        let fdt_slice = fdt.as_slice();
 
-        let mut v = BootInfoVisitor {
-            fdt: fdt.as_slice(),
-            ..Default::default()
-        };
+        let mut v = BootInfoVisitor::default();
         fdt.visit(&mut v).unwrap();
 
-        let mut info = v.result();
+        let mut info = BootInfo {
+            cpus: v.cpus,
+            memories: v.memories,
+            serial: v.serial.unwrap(),
+        };
 
         let mut exclude_region = |entry: Range<PhysicalAddress>| {
             let memories = info.memories.take();
@@ -93,10 +83,10 @@ impl<'dt> BootInfo<'dt> {
 
         // Reserve the FDT region itself
         exclude_region(unsafe {
-            let base = PhysicalAddress::new(info.fdt.as_ptr() as usize)
+            let base = PhysicalAddress::new(fdt_slice.as_ptr() as usize)
                 .sub(kconfig::MEMORY_MODE::PHYS_OFFSET);
 
-            (base..base.add(info.fdt.len())).align(kconfig::PAGE_SIZE)
+            (base..base.add(fdt_slice.len())).align(kconfig::PAGE_SIZE)
         });
 
         // ensure the memory regions are sorted.
@@ -124,7 +114,6 @@ impl<'dt> BootInfo<'dt> {
 
 #[derive(Default)]
 struct BootInfoVisitor<'dt> {
-    fdt: &'dt [u8],
     node: Option<dtb_parser::Node<'dt>>,
     /// Stack of encountered `#address-cells` values, used to correctly read `reg` properties.
     ///
@@ -151,15 +140,6 @@ struct RegsVisitor {
 }
 
 impl<'dt> BootInfoVisitor<'dt> {
-    pub fn result(self) -> BootInfo<'dt> {
-        BootInfo {
-            fdt: self.fdt,
-            cpus: self.cpus,
-            memories: self.memories,
-            serial: self.serial.unwrap(),
-        }
-    }
-
     fn regs_visitor(&self) -> RegsVisitor {
         RegsVisitor {
             regs: ArrayVec::new(),
@@ -171,7 +151,11 @@ impl<'dt> BootInfoVisitor<'dt> {
 
 impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
     type Error = dtb_parser::Error;
-    fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
+    fn visit_subnode(
+        &mut self,
+        name: &'dt str,
+        node: dtb_parser::Node<'dt>,
+    ) -> Result<(), Self::Error> {
         self.node = Some(node.clone());
 
         if name.starts_with("cpu@") {

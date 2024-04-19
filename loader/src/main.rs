@@ -4,11 +4,14 @@
 
 extern crate alloc;
 
-use crate::boot_info::BootInfo;
-use core::ptr::{addr_of, addr_of_mut};
+use crate::paging::MappingResult;
+use boot_info::BootInfo;
+use core::mem;
+use core::ptr::addr_of_mut;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use linked_list_allocator::LockedHeap;
-use vmm::{Mode, PhysicalAddress, VirtualAddress};
+use spin::Once;
+use vmm::{BumpAllocator, EntryFlags, Mapper, Mode, VirtualAddress, INIT};
 
 mod arch;
 mod boot_info;
@@ -16,99 +19,91 @@ mod elf;
 mod logger;
 mod paging;
 mod panic;
-
 pub mod kconfig {
     // Configuration constants and statics defined by the build script
     include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
 }
 
-#[repr(C)]
+#[repr(C, align(16))]
+#[derive(Clone)]
 pub struct KernelArgs {
     boot_hart: usize,
-    fdt: VirtualAddress,
+    fdt_virt: VirtualAddress,
     kernel_start: VirtualAddress,
     kernel_end: VirtualAddress,
-    stack_start: VirtualAddress,
-    stack_end: VirtualAddress,
-    alloc_offset: usize,
+    stacks_start: VirtualAddress,
+    stacks_end: VirtualAddress,
+    frame_alloc_offset: usize,
 }
 
-/// ## Virtual Memory Layout
-///
-/// STACK_OFFSET = PHYS_OFFSET - (num_cpus * stack_size_pages * page_size)
-///
-/// ### Sv39
-/// | Address Range                           | Size    | Description                                         |
-/// |-----------------------------------------|---------|-----------------------------------------------------|
-/// | 0x0000000000000000..=0x0000003fffffffff |  256 GB | user-space virtual memory                           |
-/// | 0x0000004000000000..=0xffffffbfffffffff | ~16K PB | hole of non-canonical virtual memory addresses      |
-/// |                                         |         | kernel-space virtual memory                         |
-/// | 0xffffffc000000000..=0xffffffd7fffefffe |  ~96 GB | unused                                              |
-/// |       STACK_OFFSET..=0xffffffd7ffffffff |         | kernel stack                                        |
-/// | 0xffffffd800000000..=0xffffffe080000000 |  124 GB | direct mapping of all physical memory (PHYS_OFFSET) |
-/// | 0xffffffff80000000..=0xffffffffffffffff |    2 GB | kernel (KERN_OFFSET)                                |
-///
-///
-/// ### Sv48
-/// | Address Range                           | Size    | Description                                         |
-/// |-----------------------------------------|---------|-----------------------------------------------------|
-/// | 0x0000000000000000..=0x00007fffffffffff |  128 TB | user-space virtual memory                           |
-/// | 0x0000800000000000..=0xffff7fffffffffff | ~16K PB | hole of non-canonical virtual memory addresses      |
-/// |                                         |         | kernel-space virtual memory                         |
-/// | 0xffff800000000000..=0xffffbfff7ffefffe |  ~64 TB | unused                                              |
-/// |       STACK_OFFSET..=0xffffbfff7fffffff |         | kernel stack                                        |
-/// | 0xffffbfff80000000..=0xffffffff7fffffff |   64 TB | direct mapping of all physical memory (PHYS_OFFSET) |
-/// | 0xffffffff80000000..=0xffffffffffffffff |    2 GB | kernel (KERN_OFFSET)                                |
-///
-///
-/// ### Sv57
-/// | Address Range                           | Size    | Description                                         |
-/// |-----------------------------------------|---------|-----------------------------------------------------|
-/// | 0x0000000000000000..=0x00ffffffffffffff |   64 PB | user-space virtual memory                           |
-/// | 0x0100000000000000..=0xfeffffffffffffff | ~16K PB | hole of non-canonical virtual memory addresses      |
-/// |                                         |         | kernel-space virtual memory                         |
-/// | 0xff00000000000000..=0xff7fffff7ffefffe |  ~32 PB | unused                                              |
-/// |       STACK_OFFSET..=0xff7fffff7fffffff |         | kernel stack                                        |
-/// | 0xff7fffff80000000..=0xffffffff7fffffff |   32 PB | direct mapping of all physical memory (PHYS_OFFSET) |
-/// | 0xffffffff80000000..=0xffffffffffffffff |    2 GB | kernel (KERN_OFFSET)                                |
-///
-fn main(hartid: usize, boot_info: BootInfo) -> ! {
-    // 1. Verify kernel signature
-    let compressed_kernel = verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
-    log::info!("successfully verified kernel image signature");
+fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
+    log::debug!("hello from hart {hartid} {boot_info:?}");
 
-    // 2. Init global allocator
-    init_global_alloc(&boot_info);
+    static KERNEL_ARGS: Once<(
+        VirtualAddress,
+        Mapper<INIT<kconfig::MEMORY_MODE>, BumpAllocator<'static, INIT<kconfig::MEMORY_MODE>>>,
+        KernelArgs,
+    )> = Once::new();
 
-    // 3. decompress kernel
-    let kernel = lz4_flex::decompress_size_prepended(compressed_kernel)
-        .expect("failed to decompress kernel");
-    log::info!("successfully decompressed kernel");
+    let (kernel_entry, mapper, kargs) = KERNEL_ARGS.call_once(|| {
+        // 1. Verify kernel signature
+        let compressed_kernel =
+            verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
+        log::info!("successfully verified kernel image signature");
 
-    let kernel_regions = elf::parse(&kernel);
-    let kernel_start = kernel_regions.text.virt.start;
-    let kernel_end = kernel_regions.data.virt.end;
-    let kernel_entry = kernel_regions.entry;
+        // 2. Init global allocator
+        init_global_alloc(&boot_info);
 
-    let (alloc_offset, fdt_addr, kernel_stack_virt) =
-        paging::init(&boot_info, kernel_regions).expect("failed to set up page tables");
+        // 3. decompress kernel
+        let kernel = lz4_flex::decompress_size_prepended(compressed_kernel)
+            .expect("failed to decompress kernel")
+            .leak(); // leaking the kernel here so the allocator doesn't attempt to free it
+        log::info!("successfully decompressed kernel");
 
-    let args = KernelArgs {
-        boot_hart: hartid,
-        fdt: fdt_addr,
-        kernel_start,
-        kernel_end,
-        stack_start: kernel_stack_virt.start,
-        stack_end: kernel_stack_virt.end,
+        let kernel_sections = elf::parse(&kernel);
 
-        alloc_offset,
-    };
+        let MappingResult {
+            mapper,
+            fdt_virt,
+            kernel_stacks_virt,
+        } = paging::init(&boot_info, &kernel_sections).expect("failed to set up page tables");
+
+        let args = KernelArgs {
+            boot_hart: boot_info.boot_hart as usize,
+            fdt_virt,
+            kernel_start: kernel_sections.text.virt.start,
+            kernel_end: kernel_sections.data.virt.end,
+            stacks_start: kernel_stacks_virt.start,
+            stacks_end: kernel_stacks_virt.end,
+            frame_alloc_offset: mapper.allocator().offset(),
+        };
+
+        (kernel_sections.entry, mapper, args)
+    });
+
+    log::debug!("activating page table...");
+    mapper.activate();
+    log::debug!("success");
+
+    // determine the right stack ptr
+    let mut stack_ptr = kargs
+        .stacks_end
+        .sub(hartid * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE);
 
     unsafe {
-        let args_ptr =
-            kconfig::MEMORY_MODE::phys_to_virt(PhysicalAddress::new(addr_of!(args) as usize));
+        let kargs_size = mem::size_of::<KernelArgs>() + mem::align_of::<KernelArgs>();
 
-        arch::kernel_entry(kernel_stack_virt.end, kernel_entry, args_ptr)
+        let kargs_ptr = stack_ptr.sub(kargs_size).as_raw() as *mut KernelArgs;
+        stack_ptr = stack_ptr.sub(kargs_size);
+
+        core::ptr::write(kargs_ptr, kargs.clone());
+
+        arch::kernel_entry(
+            hartid,
+            stack_ptr,
+            *kernel_entry,
+            VirtualAddress::new(kargs_ptr as usize),
+        );
     }
 }
 
@@ -120,12 +115,18 @@ fn init_global_alloc(boot_info: &BootInfo) {
         static mut __data_end: u8;
     }
 
-    let data_end = unsafe { addr_of_mut!(__data_end) };
+    let heap_base = unsafe {
+        addr_of_mut!(__data_end) as usize
+            + (boot_info.cpus * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE)
+    };
 
     // INVARIANT: We assume that memories[0] is the *same* region the loader got placed in AND that the loader is placed at the start of that region.
-    let heap_size = boot_info.memories[0].end.as_raw() - data_end as usize;
+    let heap_size = boot_info.memories[0].end.as_raw() - heap_base;
+
+    log::debug!("loader heap {:#x?}", heap_base..(heap_base + heap_size));
+
     unsafe {
-        ALLOC.lock().init(data_end, heap_size);
+        ALLOC.lock().init(heap_base as *mut u8, heap_size);
     }
 }
 
@@ -142,15 +143,4 @@ fn verify_kernel_signature<'a>(
         .expect("failed to verify kernel image signature");
 
     kernel
-}
-
-#[no_mangle]
-pub static mut __stack_chk_guard: u64 = 0xe57fad0f5f757433;
-
-/// # Safety
-///
-/// This is an extern
-#[no_mangle]
-pub unsafe extern "C" fn __stack_chk_fail() {
-    panic!("Loader stack is corrupted")
 }

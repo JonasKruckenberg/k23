@@ -40,9 +40,8 @@ impl<M: Mode, A: FrameAllocator + Send + Sync> Mapper<M, A> {
         }
     }
 
-    pub fn activate(self) -> A {
+    pub fn activate(&self) {
         M::activate_table(self.asid, self.root_table);
-        self.allocator
     }
 
     pub fn allocator(&self) -> &A {

@@ -1,13 +1,11 @@
 use crate::boot_info::BootInfo;
-use crate::kconfig;
+use crate::{kconfig, logger};
 use core::arch::asm;
 use core::ptr::addr_of_mut;
+use spin::Once;
 use vmm::VirtualAddress;
 
-#[link_section = ".bss.uninit"]
-pub static BOOT_STACK: [u8; kconfig::PAGE_SIZE * kconfig::STACK_SIZE_PAGES] =
-    [0; kconfig::PAGE_SIZE * kconfig::STACK_SIZE_PAGES];
-
+// do global, arch-specific setup
 #[link_section = ".text.start"]
 #[no_mangle]
 #[naked]
@@ -17,13 +15,14 @@ unsafe extern "C" fn _start() -> ! {
         ".option norelax",
         "    la		gp, __global_pointer$",
         ".option pop",
-        "la     sp, {stack}",       // set the stack pointer to the bottom of the stack
-        "li     t0, {stack_size}",  // load the stack size
-        "add    sp, sp, t0",        // add the stack size to the stack pointer
-        "mv     a2, sp",
+
+        "la     sp, __stack_start", // set the stack pointer to the bottom of the stack
+        "li     t0, {stack_size}", // load the stack size
+        "addi   t1, a0, 1", // add one to the hart id so that we add at least one stack size (stack grows from the top downwards)
+        "mul    t0, t0, t1", // multiply the stack size by the hart id to get the offset
+        "add    sp, sp, t0", // add the offset from sp to get the harts stack pointer
 
         "jal zero, {start_rust}",   // jump into Rust
-        stack = sym BOOT_STACK,
         stack_size = const kconfig::PAGE_SIZE * kconfig::STACK_SIZE_PAGES,
 
         start_rust = sym start,
@@ -31,25 +30,59 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
-unsafe extern "C" fn start(hartid: usize, opaque: *const u8) -> ! {
+// do local, arch-specific setup
+#[link_section = ".text.start"]
+#[no_mangle]
+#[naked]
+unsafe extern "C" fn _start_hart() -> ! {
+    asm!(
+    ".option push",
+    ".option norelax",
+    "    la		gp, __global_pointer$",
+    ".option pop",
+
+    "la     sp, __stack_start", // set the stack pointer to the bottom of the stack
+    "li     t0, {stack_size}", // load the stack size
+    "addi   t1, a0, 1", // add one to the hart id so that we add at least one stack size (stack grows from the top downwards)
+    "mul    t0, t0, t1", // multiply the stack size by the hart id to get the offset
+    "add    sp, sp, t0", // add the offset from sp to get the harts stack pointer
+
+    "jal zero, {start_rust}",   // jump into Rust
+    stack_size = const kconfig::PAGE_SIZE * kconfig::STACK_SIZE_PAGES,
+
+    start_rust = sym crate::main,
+    options(noreturn)
+    )
+}
+
+static BOOT_INFO: Once<BootInfo> = Once::new();
+
+fn start(hartid: usize, opaque: *const u8) -> ! {
     extern "C" {
         static mut __bss_start: u64;
         static mut __bss_end: u64;
     }
 
-    // Zero BSS section
-    let mut ptr = addr_of_mut!(__bss_start);
-    let end = addr_of_mut!(__bss_end);
-    while ptr < end {
-        ptr.write_volatile(0);
-        ptr = ptr.offset(1);
+    unsafe {
+        // Zero BSS section
+        let mut ptr = addr_of_mut!(__bss_start);
+        let end = addr_of_mut!(__bss_end);
+        while ptr < end {
+            ptr.write_volatile(0);
+            ptr = ptr.offset(1);
+        }
     }
 
-    crate::logger::init();
+    logger::init();
 
-    log::debug!("stack region {:?}", BOOT_STACK.as_ptr_range());
+    let boot_info = BOOT_INFO.call_once(|| BootInfo::from_dtb(opaque));
 
-    let boot_info = BootInfo::from_dtb(opaque);
+    for hart in 0..boot_info.cpus {
+        if hart != hartid {
+            sbicall::hsm::start_hart(hart, _start_hart as usize, boot_info as *const _ as usize)
+                .unwrap();
+        }
+    }
 
     crate::main(hartid, boot_info)
 }
@@ -63,6 +96,7 @@ pub fn halt() -> ! {
 }
 
 pub unsafe extern "C" fn kernel_entry(
+    hartid: usize,
     stack_ptr: VirtualAddress,
     func: VirtualAddress,
     args: VirtualAddress,
@@ -70,14 +104,15 @@ pub unsafe extern "C" fn kernel_entry(
     log::debug!("jumping to kernel! stack_ptr: {stack_ptr:?}, func: {func:?}, args: {args:?}");
 
     asm!(
-        "mv sp, {stack}",
+        "mv sp, {stack_ptr}",
         "mv ra, zero",
         "jalr zero, {func}",
         "1:",
         "   wfi",
         "   j 1b",
-        in("a0") args.as_raw(),
-        stack = in(reg) stack_ptr.as_raw(),
+        in("a0") hartid,
+        in("a1") args.as_raw(),
+        stack_ptr = in(reg) stack_ptr.as_raw(),
         func = in(reg) func.as_raw(),
         options(noreturn)
     )

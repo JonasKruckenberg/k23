@@ -1,5 +1,5 @@
 mod register;
-mod trap;
+// mod trap;
 
 use crate::boot_info::BootInfo;
 use crate::kernel_mapper::with_kernel_mapper;
@@ -12,10 +12,7 @@ use core::ops::Range;
 use core::ptr::addr_of;
 use spin::{Mutex, Once};
 use uart_16550::SerialPort;
-use vmm::{
-    AddressRangeExt, BitMapAllocator, BumpAllocator, EntryFlags, Flush, FrameAllocator, FrameUsage,
-    Mapper, PhysicalAddress, VirtualAddress,
-};
+use vmm::{AddressRangeExt, BitMapAllocator, BumpAllocator, EntryFlags, Flush, FrameAllocator, FrameUsage, INIT, Mapper, PhysicalAddress, VirtualAddress};
 
 pub fn halt() -> ! {
     unsafe {
@@ -25,50 +22,57 @@ pub fn halt() -> ! {
     }
 }
 
+#[repr(C, align(16))]
 #[derive(Debug)]
-#[repr(C)]
 pub struct KernelArgs {
     boot_hart: usize,
-    fdt: VirtualAddress,
+    fdt_virt: VirtualAddress,
     kernel_start: VirtualAddress,
     kernel_end: VirtualAddress,
-    stack_start: VirtualAddress,
-    stack_end: VirtualAddress,
-    alloc_offset: usize,
+    stacks_start: VirtualAddress,
+    stacks_end: VirtualAddress,
+    frame_alloc_offset: usize,
 }
 
 #[no_mangle]
-pub extern "C" fn kstart(kargs: *const KernelArgs) -> ! {
+pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
     let kargs = unsafe { &*(kargs) };
-    let boot_info = BootInfo::from_dtb(kargs.fdt.as_raw() as *const u8);
 
-    kernel_mapper::init(&boot_info.memories, kargs.alloc_offset);
+    static INIT: Once = Once::new();
+    
+    INIT.call_once(|| {
         logger::init();
+        log::debug!("{hartid} {kargs:?}");
 
-    let serial_base = with_kernel_mapper(|mapper, flush| {
-        let serial_phys = boot_info.serial.regs.clone().align(kconfig::PAGE_SIZE);
-        let serial_virt = {
-            let base = kargs.stack_start;
+        let boot_info = BootInfo::from_dtb(kargs.fdt_virt.as_raw() as *const u8);
 
-            base.sub(serial_phys.size())..base
-        };
-        mapper.map_range_with_flush(
-            serial_virt.clone(),
-            serial_phys,
-            EntryFlags::READ | EntryFlags::WRITE,
-            flush,
-        )?;
+        kernel_mapper::init(&boot_info.memories, kargs.frame_alloc_offset);
 
-        Ok(serial_virt.start)
-    })
-    .expect("failed to map serial region");
+        let serial_base = with_kernel_mapper(|mapper, flush| {
+            let serial_phys = boot_info.serial.regs.clone().align(kconfig::PAGE_SIZE);
+            let serial_virt = {
+                let base = kargs.stacks_start;
 
+                base.sub(serial_phys.size())..base
+            };
+            mapper.map_range_with_flush(
+                serial_virt.clone(),
+                serial_phys,
+                EntryFlags::READ | EntryFlags::WRITE,
+                flush,
+            )?;
 
-    trap::init();
+            Ok(serial_virt.start)
+        })
+            .expect("failed to map serial region");
 
-    log::debug!("hello world!");
+    });
+    
+    // trap::init();
 
-    log::debug!("{}", unsafe { *(0x10 as *const u8) });
+    log::info!("Hello world from hart {hartid}!");
+
+    // log::debug!("{}", unsafe { *(0x10 as *const u8) });
 
     todo!()
 }

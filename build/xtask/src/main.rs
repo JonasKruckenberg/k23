@@ -156,7 +156,7 @@ fn check_loader(cfg: &Config) -> anyhow::Result<()> {
         .to_string();
 
     Cargo::new_check("loader", &target, &cfg)?
-        .env("RUSTFLAGS", "-Zstack-protector=all -Csoft-float=true")
+        // .env("RUSTFLAGS", "-Zstack-protector=all -Csoft-float=true")
         .enable_features(cfg.loader.features.clone())
         .exec()?;
 
@@ -193,7 +193,7 @@ fn build_loader(cfg: &Config, release: bool, kernel: &Utf8Path) -> anyhow::Resul
 
     let bootloader = Cargo::new_build("loader", &target, &cfg)?
         .release(release)
-        .env("RUSTFLAGS", "-Zstack-protector=all")
+        // .env("RUSTFLAGS", "-Zstack-protector=all")
         .env("K23_KERNEL_IMAGE", kernel_image)
         .env("K23_KERNEL_VERIFYING_KEY", kernel_verifying_key)
         .additional_args([
@@ -366,9 +366,9 @@ fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> 
         "-cpu",
         "rv64",
         "-d",
-        "guest_errors",
+        "guest_errors,int",
         "-smp",
-        "1",
+        "2",
         "-m",
         "128M",
         "-device",

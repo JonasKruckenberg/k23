@@ -26,9 +26,6 @@ SECTIONS {
     } > DRAM
 
     .bss (NOLOAD) : {
-        . = ALIGN(4096); # 4KB page alignment for mapping
-        __stack_start = .;
-        *(.bss.uninit)
         . = ALIGN(8); # 8-byte alignment for u64 ptr trick
         __bss_start = .;
         *(.bss .bss.*)
@@ -43,6 +40,9 @@ SECTIONS {
         . = ALIGN(4096); # 4KB page alignment for mapping
         __data_end = .;
     } > DRAM
+
+    . = ALIGN(4096); # 4KB page alignment for mapping
+    __stack_start = .;
 
     /DISCARD/ : {
         *(.comment*)
