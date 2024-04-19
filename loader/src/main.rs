@@ -55,8 +55,7 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
         let kernel_sections = elf::parse(&kernel);
 
-        let mut mapper = Mapper::new(alloc, &boot_info).expect("failed to setup mapper");
-        mapper
+        Mapper::new(alloc, &boot_info).expect("failed to setup mapper")
             .identity_map_loader()
             .unwrap()
             .map_physical_memory()
