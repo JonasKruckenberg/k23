@@ -37,6 +37,9 @@ pub struct KernelArgs {
     frame_alloc_offset: usize,
 }
 
+#[thread_local]
+static mut HARTID: usize = 0;
+
 #[no_mangle]
 pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
     let kargs = unsafe { &*(kargs) };
@@ -71,9 +74,13 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
         log::debug!("{hartid} {kargs:?}");
     });
 
-    // trap::init();
+    log::debug!("setting hartid as TLS test...");
+    unsafe { HARTID = hartid };
+    log::debug!("hartids equal: {}", unsafe { HARTID == hartid });
 
-    log::info!("Hello world from hart {hartid}!");
+    // unsafe { log::info!("Hello world from hart {HARTID}!") };
+
+    // trap::init();
 
     // log::debug!("{}", unsafe { *(0x10 as *const u8) });
 

@@ -7,10 +7,10 @@ use cargo_metadata::{Artifact, Message, MetadataCommand};
 use clap::{ArgAction, Parser};
 use ed25519_dalek::Signer;
 use std::ffi::OsStr;
-use std::{fs, process};
 use std::io::{IoSlice, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::{fs, process};
 
 /// Helper for passing VERSION to opt.
 /// If `CARGO_VERSION_INFO` is set, use it, otherwise use `CARGO_PKG_VERSION`.

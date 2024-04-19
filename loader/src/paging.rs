@@ -3,6 +3,7 @@ use crate::elf::ElfSections;
 use crate::kconfig;
 use core::ops::Range;
 use core::ptr::addr_of;
+use core::{ptr, slice};
 use vmm::{
     AddressRangeExt, BumpAllocator, EntryFlags, Flush, FrameAllocator, Mode, PhysicalAddress,
     VirtualAddress, INIT,
@@ -17,6 +18,8 @@ pub struct MappingResult {
     pub kernel: Range<VirtualAddress>,
     pub fdt: VirtualAddress,
     pub stacks: Range<VirtualAddress>,
+    pub tls: Range<VirtualAddress>,
+    pub tls_size_pages: usize,
     pub frame_alloc_offset: usize,
 }
 
@@ -35,6 +38,8 @@ pub struct Mapper<'a, 'dt> {
     kernel: Option<Range<VirtualAddress>>,
     fdt: Option<VirtualAddress>,
     stacks: Option<Range<VirtualAddress>>,
+    tls: Option<Range<VirtualAddress>>,
+    tls_size_pages: Option<usize>,
 }
 
 impl<'a, 'dt> Mapper<'a, 'dt> {
@@ -51,6 +56,8 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             kernel: None,
             fdt: None,
             stacks: None,
+            tls: None,
+            tls_size_pages: None,
         })
     }
 
@@ -61,6 +68,8 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             kernel: self.kernel.unwrap(),
             fdt: self.fdt.unwrap(),
             stacks: self.stacks.unwrap(),
+            tls: self.tls.unwrap(),
+            tls_size_pages: self.tls_size_pages.unwrap(),
             frame_alloc_offset: self.inner.allocator().offset(),
         }
     }
@@ -215,8 +224,60 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             &mut self.flush,
         )?;
 
-        self.kernel = Some(kernel.text.virt.start..kernel.data.virt.end);
+        self.kernel = Some(kernel.text.virt.start..kernel.tls.virt.end);
         self.kernel_entry = Some(kernel.entry);
+
+        Ok(self)
+    }
+
+    pub fn map_tls(mut self, kernel: &ElfSections) -> Result<Self, vmm::Error> {
+        let tls_size_pages = kernel.tls.phys.size().div_ceil(kconfig::PAGE_SIZE);
+
+        let src = unsafe {
+            slice::from_raw_parts(
+                kernel.tls.phys.start.as_raw() as *const u8,
+                kernel.tls.phys.size(),
+            )
+        };
+
+        let region_end = unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) };
+        let mut region_start =
+            region_end.sub(tls_size_pages * kconfig::PAGE_SIZE * self.boot_info.cpus);
+
+        for hart in 0..self.boot_info.cpus {
+            let tls_phys = {
+                let base = self.inner.allocator_mut().allocate_frames(tls_size_pages)?;
+                base..base.add(tls_size_pages * kconfig::PAGE_SIZE)
+            };
+
+            // copy tls data
+            unsafe {
+                let dst = slice::from_raw_parts_mut(tls_phys.start.as_raw() as *mut u8, src.len());
+
+                ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
+            };
+
+            let tls_virt = region_start..region_start.add(tls_size_pages * kconfig::PAGE_SIZE);
+
+            log::trace!(
+                "Mapping kernel TLS region for hart {hart} {tls_virt:?} => {tls_phys:?}..."
+            );
+
+            self.inner.map_range_with_flush(
+                tls_virt,
+                tls_phys,
+                EntryFlags::READ | EntryFlags::WRITE,
+                &mut self.flush,
+            )?;
+
+            region_start = region_start.add(tls_size_pages * kconfig::PAGE_SIZE);
+        }
+
+        self.tls_size_pages = Some(tls_size_pages);
+        self.tls = Some(
+            region_end.sub(tls_size_pages * kconfig::PAGE_SIZE * self.boot_info.cpus)..region_end,
+        );
+        log::debug!("{:?}", self.tls);
 
         Ok(self)
     }
@@ -228,7 +289,7 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
     pub fn map_kernel_stacks(mut self) -> Result<Self, vmm::Error> {
         const INITIAL_STACK_PAGES: usize = 64;
 
-        let stacks_end = unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) };
+        let stacks_end = self.tls.as_ref().expect("no tls mapping data").start;
         let mut stack_top = stacks_end;
 
         for hart in 0..self.boot_info.cpus {

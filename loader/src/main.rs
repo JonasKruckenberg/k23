@@ -7,7 +7,7 @@ use boot_info::BootInfo;
 use core::{ptr, slice};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use spin::Once;
-use vmm::{BumpAllocator, FrameAllocator, VirtualAddress, INIT};
+use vmm::{AddressRangeExt, BumpAllocator, FrameAllocator, VirtualAddress, INIT};
 
 mod arch;
 mod boot_info;
@@ -55,12 +55,15 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
         let kernel_sections = elf::parse(&kernel);
 
-        Mapper::new(alloc, &boot_info).expect("failed to setup mapper")
+        Mapper::new(alloc, &boot_info)
+            .unwrap()
             .identity_map_loader()
             .unwrap()
             .map_physical_memory()
             .unwrap()
             .map_kernel_sections(&kernel_sections)
+            .unwrap()
+            .map_tls(&kernel_sections)
             .unwrap()
             .map_fdt()
             .unwrap()
@@ -89,8 +92,18 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         .end
         .sub(hartid * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE);
 
+    let thread_ptr = res
+        .tls
+        .start
+        .add(hartid * res.tls_size_pages * kconfig::PAGE_SIZE);
+    log::debug!(
+        "(hartid {hartid} * tls_size_pages {}) + start {:?}",
+        res.tls_size_pages,
+        res.tls.start
+    );
+
     unsafe {
-        arch::kernel_entry(hartid, stack_ptr, res.kernel_entry, &kargs);
+        arch::kernel_entry(hartid, stack_ptr, thread_ptr, res.kernel_entry, &kargs);
     }
 }
 

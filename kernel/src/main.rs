@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const, allocator_api)]
+#![feature(naked_functions, asm_const, allocator_api, thread_local)]
 
 extern crate alloc;
 

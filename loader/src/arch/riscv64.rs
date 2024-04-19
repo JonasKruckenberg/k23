@@ -98,13 +98,17 @@ pub fn halt() -> ! {
 pub unsafe extern "C" fn kernel_entry(
     hartid: usize,
     stack_ptr: VirtualAddress,
+    thread_ptr: VirtualAddress,
     func: VirtualAddress,
     args: &KernelArgs,
 ) -> ! {
-    log::debug!("jumping to kernel! stack_ptr: {stack_ptr:?}, func: {func:?}, args: {args:?}");
+    log::debug!("jumping to kernel! stack_ptr: {stack_ptr:?}, thread_ptr: {thread_ptr:?}, func: {func:?}, args: {args:?}");
+
+    // halt()
 
     asm!(
         "mv sp, {stack_ptr}",
+        "mv tp, {thread_ptr}",
         "mv ra, zero",
         "jalr zero, {func}",
         "1:",
@@ -113,6 +117,7 @@ pub unsafe extern "C" fn kernel_entry(
         in("a0") hartid,
         in("a1") args,
         stack_ptr = in(reg) stack_ptr.as_raw(),
+        thread_ptr = in(reg) thread_ptr.as_raw(),
         func = in(reg) func.as_raw(),
         options(noreturn)
     )

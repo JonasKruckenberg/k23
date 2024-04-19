@@ -42,6 +42,16 @@ SECTIONS {
         __data_end = .;
     }
 
+    .tls : {
+         __tdata_start = .;
+         *(.tdata .tdata.*)
+         __tdata_end = .;
+
+         __tbss_start = .;
+         *(.tbss .tbss.*)
+         __tbss_end = .;
+     }
+
     . = ALIGN(4096); # 4KB page alignment for mapping
     __stack_start = .;
 
