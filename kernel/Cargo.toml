@@ -8,10 +8,10 @@ authors.workspace = true
 vmm.workspace = true
 dtb-parser.workspace = true
 uart-16550.workspace = true
-#cranelift-codegen = { workspace = true, features = ["unwind", "riscv64"] }
-#cranelift-frontend.workspace = true
-#cranelift-wasm.workspace = true
-#wasmparser.workspace = true
+cranelift-codegen = { workspace = true, features = ["unwind", "riscv64"] }
+cranelift-frontend.workspace = true
+cranelift-wasm.workspace = true
+wasmparser.workspace = true
 
 cfg-if.workspace = true
 spin.workspace = true
