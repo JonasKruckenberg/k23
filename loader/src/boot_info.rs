@@ -104,8 +104,7 @@ impl<'dt> BootInfo<'dt> {
 ----------------------------------------------------------------------------------------------------
 */
 #[derive(Default)]
-struct BootInfoVisitor<'dt> {
-    fdt: &'dt [u8],
+struct BootInfoVisitor {
     cpus: usize,
     memories: RegsVisitor,
 }
@@ -117,7 +116,7 @@ struct RegsVisitor {
     regs: ArrayVec<Range<PhysicalAddress>, 16>,
 }
 
-impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
+impl<'dt> Visitor<'dt> for BootInfoVisitor {
     type Error = dtb_parser::Error;
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
         if name == "cpus" || name.is_empty() {

@@ -28,7 +28,7 @@ pub fn halt() -> ! {
 #[repr(C, align(16))]
 #[derive(Debug)]
 pub struct KernelArgs {
-    boot_hart: usize,
+    boot_hart: u32,
     fdt_virt: VirtualAddress,
     kernel_start: VirtualAddress,
     kernel_end: VirtualAddress,

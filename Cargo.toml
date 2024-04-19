@@ -28,7 +28,6 @@ cfg-if = "1.0.0"
 spin = "0.9.8"
 linked_list_allocator = "0.10.5"
 arrayvec = { version = "0.7.4", default-features = false }
-lz4_flex = { version = "0.11.3", default-features = false }
 riscv = "0.11.1"
 ed25519-dalek = { version = "2.1.1", default-features = false }
 
@@ -62,6 +61,3 @@ lto = true
 strip = true
 overflow-checks = true
 split-debuginfo = "packed"
-
-[profile.dev.package.lz4_flex]
-opt-level = 3

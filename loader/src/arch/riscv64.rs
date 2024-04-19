@@ -1,5 +1,5 @@
 use crate::boot_info::BootInfo;
-use crate::{kconfig, logger};
+use crate::{kconfig, logger, KernelArgs};
 use core::arch::asm;
 use core::ptr::addr_of_mut;
 use spin::Once;
@@ -99,7 +99,7 @@ pub unsafe extern "C" fn kernel_entry(
     hartid: usize,
     stack_ptr: VirtualAddress,
     func: VirtualAddress,
-    args: VirtualAddress,
+    args: &KernelArgs,
 ) -> ! {
     log::debug!("jumping to kernel! stack_ptr: {stack_ptr:?}, func: {func:?}, args: {args:?}");
 
@@ -111,7 +111,7 @@ pub unsafe extern "C" fn kernel_entry(
         "   wfi",
         "   j 1b",
         in("a0") hartid,
-        in("a1") args.as_raw(),
+        in("a1") args,
         stack_ptr = in(reg) stack_ptr.as_raw(),
         func = in(reg) func.as_raw(),
         options(noreturn)

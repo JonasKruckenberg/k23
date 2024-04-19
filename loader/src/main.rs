@@ -2,16 +2,12 @@
 #![no_main]
 #![feature(naked_functions, asm_const, split_array)]
 
-extern crate alloc;
-
-use crate::paging::MappingResult;
+use crate::paging::Mapper;
 use boot_info::BootInfo;
-use core::mem;
-use core::ptr::addr_of_mut;
+use core::{ptr, slice};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use linked_list_allocator::LockedHeap;
 use spin::Once;
-use vmm::{BumpAllocator, EntryFlags, Mapper, Mode, VirtualAddress, INIT};
+use vmm::{BumpAllocator, FrameAllocator, VirtualAddress, INIT};
 
 mod arch;
 mod boot_info;
@@ -19,15 +15,16 @@ mod elf;
 mod logger;
 mod paging;
 mod panic;
+
 pub mod kconfig {
     // Configuration constants and statics defined by the build script
     include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
 }
 
-#[repr(C, align(16))]
-#[derive(Clone)]
+#[repr(C)]
+#[derive(Debug)]
 pub struct KernelArgs {
-    boot_hart: usize,
+    boot_hart: u32,
     fdt_virt: VirtualAddress,
     kernel_start: VirtualAddress,
     kernel_end: VirtualAddress,
@@ -39,94 +36,63 @@ pub struct KernelArgs {
 fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::debug!("hello from hart {hartid} {boot_info:?}");
 
-    static KERNEL_ARGS: Once<(
-        VirtualAddress,
-        Mapper<INIT<kconfig::MEMORY_MODE>, BumpAllocator<'static, INIT<kconfig::MEMORY_MODE>>>,
-        KernelArgs,
-    )> = Once::new();
+    static INIT: Once<Mapper> = Once::new();
 
-    let (kernel_entry, mapper, kargs) = KERNEL_ARGS.call_once(|| {
+    let mapper = INIT.call_once(|| {
+        // Safety: The boot_info module ensures the memory entries are in the right order
+        let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
+            unsafe { BumpAllocator::new(&boot_info.memories, 0) };
+
         // 1. Verify kernel signature
-        let compressed_kernel =
-            verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
+        let kernel = verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
         log::info!("successfully verified kernel image signature");
 
-        // 2. Init global allocator
-        init_global_alloc(&boot_info);
+        // TODO decompress kernel
 
-        // 3. decompress kernel
-        let kernel = lz4_flex::decompress_size_prepended(compressed_kernel)
-            .expect("failed to decompress kernel")
-            .leak(); // leaking the kernel here so the allocator doesn't attempt to free it
-        log::info!("successfully decompressed kernel");
+        // 2. Copy kernel to top of physmem
+        let kernel = copy_kernel(&mut alloc, kernel);
+        log::debug!("copied kernel to {:?}", kernel.as_ptr_range());
 
         let kernel_sections = elf::parse(&kernel);
 
-        let MappingResult {
-            mapper,
-            fdt_virt,
-            kernel_stacks_virt,
-        } = paging::init(&boot_info, &kernel_sections).expect("failed to set up page tables");
+        let mut mapper = Mapper::new(alloc, &boot_info).expect("failed to setup mapper");
+        mapper
+            .identity_map_loader()
+            .expect("failed to map own regions");
+        mapper.map_physical_memory().expect("failed to map physmem");
+        mapper
+            .map_kernel_sections(&kernel_sections)
+            .expect("failed to map kernel sections");
+        mapper.map_fdt().expect("failed to map FDT region");
+        mapper
+            .map_kernel_stacks()
+            .expect("failed to map kernel stack regions");
 
-        let args = KernelArgs {
-            boot_hart: boot_info.boot_hart as usize,
-            fdt_virt,
-            kernel_start: kernel_sections.text.virt.start,
-            kernel_end: kernel_sections.data.virt.end,
-            stacks_start: kernel_stacks_virt.start,
-            stacks_end: kernel_stacks_virt.end,
-            frame_alloc_offset: mapper.allocator().offset(),
-        };
-
-        (kernel_sections.entry, mapper, args)
+        mapper
     });
 
     log::debug!("activating page table...");
-    mapper.activate();
+    let (frame_alloc_offset, fdt_virt, kernel_entry, kernel_virt, stacks_virt) =
+        mapper.finish().unwrap();
     log::debug!("success");
 
+    let kargs = KernelArgs {
+        boot_hart: boot_info.boot_hart,
+        fdt_virt,
+        kernel_start: kernel_virt.start,
+        kernel_end: kernel_virt.end,
+        stacks_start: stacks_virt.start,
+        stacks_end: stacks_virt.end,
+        frame_alloc_offset,
+    };
+
     // determine the right stack ptr
-    let mut stack_ptr = kargs
-        .stacks_end
+    let stack_ptr = stacks_virt
+        .end
         .sub(hartid * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE);
 
     unsafe {
-        let kargs_size = mem::size_of::<KernelArgs>() + mem::align_of::<KernelArgs>();
-
-        let kargs_ptr = stack_ptr.sub(kargs_size).as_raw() as *mut KernelArgs;
-        stack_ptr = stack_ptr.sub(kargs_size);
-
-        core::ptr::write(kargs_ptr, kargs.clone());
-
-        arch::kernel_entry(
-            hartid,
-            stack_ptr,
-            *kernel_entry,
-            VirtualAddress::new(kargs_ptr as usize),
-        );
-    }
-}
-
-fn init_global_alloc(boot_info: &BootInfo) {
-    #[global_allocator]
-    static ALLOC: LockedHeap = LockedHeap::empty();
-
-    extern "C" {
-        static mut __data_end: u8;
-    }
-
-    let heap_base = unsafe {
-        addr_of_mut!(__data_end) as usize
-            + (boot_info.cpus * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE)
-    };
-
-    // INVARIANT: We assume that memories[0] is the *same* region the loader got placed in AND that the loader is placed at the start of that region.
-    let heap_size = boot_info.memories[0].end.as_raw() - heap_base;
-
-    log::debug!("loader heap {:#x?}", heap_base..(heap_base + heap_size));
-
-    unsafe {
-        ALLOC.lock().init(heap_base as *mut u8, heap_size);
+        arch::kernel_entry(hartid, stack_ptr, kernel_entry, &kargs);
     }
 }
 
@@ -143,4 +109,17 @@ fn verify_kernel_signature<'a>(
         .expect("failed to verify kernel image signature");
 
     kernel
+}
+
+fn copy_kernel(alloc: &mut BumpAllocator<INIT<kconfig::MEMORY_MODE>>, src: &[u8]) -> &'static [u8] {
+    unsafe {
+        let frames = src.len().div_ceil(kconfig::PAGE_SIZE);
+        let base = alloc.allocate_frames(frames).unwrap();
+
+        let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, src.len());
+
+        ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
+
+        dst
+    }
 }

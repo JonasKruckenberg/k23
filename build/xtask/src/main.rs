@@ -119,7 +119,7 @@ fn run() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn compress_kernel(kernel: &Utf8Path) -> anyhow::Result<(Utf8PathBuf, Utf8PathBuf)> {
+fn create_kernel_image_files(kernel: &Utf8Path) -> anyhow::Result<(Utf8PathBuf, Utf8PathBuf)> {
     let signing_key = {
         use ed25519_dalek::SigningKey;
         use rand_core::OsRng;
@@ -129,20 +129,16 @@ fn compress_kernel(kernel: &Utf8Path) -> anyhow::Result<(Utf8PathBuf, Utf8PathBu
     };
 
     let input = fs::read(kernel)?;
-    let output = lz4_flex::block::compress_prepend_size(&input);
 
     let verifying_key = signing_key.verifying_key();
-    let signature = signing_key.sign(&output);
+    let signature = signing_key.sign(&input);
 
     let kernel_file_path = kernel.with_extension("lz4");
     let mut kernel_file = fs::File::create(&kernel_file_path)?;
-    kernel_file
-        .write_vectored(&mut [IoSlice::new(&signature.to_bytes()), IoSlice::new(&output)])?;
+    kernel_file.write_vectored(&mut [IoSlice::new(&signature.to_bytes()), IoSlice::new(&input)])?;
 
     let verifying_key_path = kernel.parent().unwrap().join("verifying_key.pub");
     fs::write(&verifying_key_path, verifying_key.to_bytes())?;
-
-    verifying_key.verify_strict(&output, &signature).unwrap();
 
     Ok((kernel_file_path, verifying_key_path))
 }
@@ -187,7 +183,7 @@ fn build_loader(cfg: &Config, release: bool, kernel: &Utf8Path) -> anyhow::Resul
         .unwrap_or(&cfg.target)
         .to_string();
 
-    let (kernel_image, kernel_verifying_key) = compress_kernel(&kernel)?;
+    let (kernel_image, kernel_verifying_key) = create_kernel_image_files(&kernel)?;
 
     log::debug!("compressed kernel image {kernel_image} public key {kernel_verifying_key}");
 

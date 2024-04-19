@@ -15,6 +15,5 @@ cargo_metadata.workspace = true
 anyhow.workspace = true
 build-config.workspace = true
 serde.workspace = true
-lz4_flex = { workspace = true, features = ["std"] }
 ed25519-dalek = { workspace = true, features = ["rand_core"] }
 rand_core.workspace = true

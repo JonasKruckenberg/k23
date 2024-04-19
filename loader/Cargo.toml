@@ -12,9 +12,7 @@ vmm.workspace = true
 arrayvec.workspace = true
 dtb-parser.workspace = true
 sbicall.workspace = true
-linked_list_allocator.workspace = true
 ed25519-dalek = { workspace = true, features = ["fast"] }
-lz4_flex.workspace = true
 bitflags.workspace = true
 
 [build-dependencies]
