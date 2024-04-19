@@ -1,3 +1,6 @@
+mod register;
+mod trap;
+
 use crate::boot_info::BootInfo;
 use crate::kernel_mapper::with_kernel_mapper;
 use crate::{kconfig, kernel_mapper, logger};
@@ -60,7 +63,12 @@ pub extern "C" fn kstart(kargs: *const KernelArgs) -> ! {
     .expect("failed to map serial region");
 
     logger::init(serial_base, boot_info.serial.clock_frequency);
+
+    trap::init();
+
     log::debug!("hello world!");
+
+    log::debug!("{}", unsafe { *(0x10 as *const u8) });
 
     todo!()
 }
