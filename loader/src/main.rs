@@ -42,31 +42,30 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         // Safety: The boot_info module ensures the memory entries are in the right order
         let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
             unsafe { BumpAllocator::new(&boot_info.memories, 0) };
-        let mut mapper = Mapper::new(alloc, &boot_info)
+
+        let fdt = allocate_and_copy(&mut alloc, boot_info.fdt);
+        log::trace!("Copied FDT to {:?}", fdt.as_ptr_range());
+
+        // 1. Verify kernel signature
+        let kernel = verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
+        log::info!("Successfully verified kernel image signature");
+
+        // TODO decompress kernel
+
+        // 2. Copy kernel to top of physmem
+        let kernel = allocate_and_copy(&mut alloc, kernel);
+        log::trace!("Copied kernel to {:?}", kernel.as_ptr_range());
+
+        let kernel_sections = elf::parse(&kernel);
+
+        Mapper::new(alloc, &boot_info)
             .unwrap()
             .identity_map_loader()
             .unwrap()
             .map_physical_memory()
             .unwrap()
-            .map_fdt()
-            .unwrap();
-
-        // 2088960
-        // 1798144
-
-        // 1. Verify kernel signature
-        let kernel = verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
-        log::info!("successfully verified kernel image signature");
-
-        // TODO decompress kernel
-
-        // 2. Copy kernel to top of physmem
-        let kernel = copy_kernel(mapper.alloc_mut(), kernel);
-        log::debug!("copied kernel to {:?}", kernel.as_ptr_range());
-
-        let kernel_sections = elf::parse(&kernel);
-
-        mapper
+            .map_fdt(fdt)
+            .unwrap()
             .map_kernel_sections(&kernel_sections)
             .unwrap()
             .map_tls(&kernel_sections)
@@ -111,6 +110,23 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     }
 }
 
+/// Allocates enough space using the BumpAllocator and copies the given bytes into it
+fn allocate_and_copy(
+    alloc: &mut BumpAllocator<INIT<kconfig::MEMORY_MODE>>,
+    src: &[u8],
+) -> &'static [u8] {
+    unsafe {
+        let frames = src.len().div_ceil(kconfig::PAGE_SIZE);
+        let base = alloc.allocate_frames(frames).unwrap();
+
+        let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, src.len());
+
+        ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
+
+        dst
+    }
+}
+
 fn verify_kernel_signature<'a>(
     verifying_key: &[u8; ed25519_dalek::PUBLIC_KEY_LENGTH],
     kernel_image: &'a [u8],
@@ -124,17 +140,4 @@ fn verify_kernel_signature<'a>(
         .expect("failed to verify kernel image signature");
 
     kernel
-}
-
-fn copy_kernel(alloc: &mut BumpAllocator<INIT<kconfig::MEMORY_MODE>>, src: &[u8]) -> &'static [u8] {
-    unsafe {
-        let frames = src.len().div_ceil(kconfig::PAGE_SIZE);
-        let base = alloc.allocate_frames(frames).unwrap();
-
-        let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, src.len());
-
-        ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
-
-        dst
-    }
 }
