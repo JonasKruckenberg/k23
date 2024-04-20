@@ -10,7 +10,7 @@ static KERNEL_MAPPER: Mutex<
 
 pub fn init(memories: &[Range<PhysicalAddress>], alloc_offset: usize) {
     let bump_alloc = unsafe { BumpAllocator::new(memories, alloc_offset) };
-    let mut alloc = BitMapAllocator::new(bump_alloc).unwrap();
+    let alloc = BitMapAllocator::new(bump_alloc).unwrap();
     alloc.debug_print_table();
 
     KERNEL_MAPPER.lock().write(Mapper::from_active(0, alloc));

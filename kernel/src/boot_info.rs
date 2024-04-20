@@ -1,11 +1,10 @@
-use crate::kconfig;
 use arrayvec::ArrayVec;
 use core::cmp::Ordering;
 use core::fmt::{Debug, Formatter};
 use core::mem;
 use core::ops::Range;
 use dtb_parser::{DevTree, Visitor};
-use vmm::{AddressRangeExt, Mode, PhysicalAddress};
+use vmm::PhysicalAddress;
 
 pub struct BootInfo {
     /// The number of "standalone" CPUs in the system
@@ -39,7 +38,6 @@ impl BootInfo {
     pub fn from_dtb(dtb_ptr: *const u8) -> Self {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
         let mut reservations = fdt.reserved_entries();
-        let fdt_slice = fdt.as_slice();
 
         let mut v = BootInfoVisitor::default();
         fdt.visit(&mut v).unwrap();
@@ -80,14 +78,6 @@ impl BootInfo {
 
             exclude_region(entry);
         }
-
-        // Reserve the FDT region itself
-        exclude_region(unsafe {
-            let base = PhysicalAddress::new(fdt_slice.as_ptr() as usize)
-                .sub(kconfig::MEMORY_MODE::PHYS_OFFSET);
-
-            (base..base.add(fdt_slice.len())).align(kconfig::PAGE_SIZE)
-        });
 
         // ensure the memory regions are sorted.
         // this is important for the allocation logic to be correct

@@ -62,6 +62,17 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
     }
 
     pub fn finish(self) -> MappingResult {
+        const KIB: usize = 1024;
+        const MIB: usize = 1024 * KIB;
+        
+        let frame_usage = self.inner.allocator().frame_usage();
+            log::info!(
+            "Mapping complete. Permanently used: {} KiB of {} MiB total ({:.3}%).",
+            (frame_usage.used * kconfig::PAGE_SIZE) / KIB,
+            (frame_usage.total * kconfig::PAGE_SIZE) / MIB,
+            (frame_usage.used as f64 / frame_usage.total as f64) * 100.0
+        );
+        
         MappingResult {
             page_table: self.inner.root_table().addr(),
             kernel_entry: self.kernel_entry.unwrap(),
@@ -72,10 +83,6 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             tls_size_pages: self.tls_size_pages.unwrap(),
             frame_alloc_offset: self.inner.allocator().offset(),
         }
-    }
-
-    pub fn alloc_mut(&mut self) -> &mut BumpAllocator<'a, VMMode> {
-        self.inner.allocator_mut()
     }
 
     // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
@@ -152,22 +159,19 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
         Ok(self)
     }
 
-    pub fn map_fdt(mut self) -> Result<Self, vmm::Error> {
-        assert_eq!(
-            self.boot_info.fdt.as_ptr().align_offset(kconfig::PAGE_SIZE),
-            0
-        );
+    pub fn map_fdt(mut self, fdt: &'static [u8]) -> Result<Self, vmm::Error> {
+        assert_eq!(fdt.as_ptr().align_offset(kconfig::PAGE_SIZE), 0);
 
         let fdt_phys = unsafe {
-            let base = PhysicalAddress::new(self.boot_info.fdt.as_ptr() as usize);
+            let base = PhysicalAddress::new(fdt.as_ptr() as usize);
 
-            (base..base.add(self.boot_info.fdt.len())).align(kconfig::PAGE_SIZE)
+            (base..base.add(fdt.len())).align(kconfig::PAGE_SIZE)
         };
         let fdt_virt = kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.start)
             ..kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.end);
 
         log::trace!("Mapping fdt region {fdt_virt:?} => {fdt_phys:?}...");
-        self.inner.map_range_with_flush(
+        self.inner.remap_range_with_flush(
             fdt_virt.clone(),
             fdt_phys,
             EntryFlags::READ,
@@ -281,7 +285,6 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
         self.tls = Some(
             region_end.sub(tls_size_pages * kconfig::PAGE_SIZE * self.boot_info.cpus)..region_end,
         );
-        log::debug!("{:?}", self.tls);
 
         Ok(self)
     }

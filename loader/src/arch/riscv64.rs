@@ -77,6 +77,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
 
     let boot_info = BOOT_INFO.call_once(|| BootInfo::from_dtb(opaque));
 
+    log::debug!("{boot_info:?}");
+
     for hart in 0..boot_info.cpus {
         if hart != hartid {
             sbicall::hsm::start_hart(hart, _start_hart as usize, boot_info as *const _ as usize)
@@ -102,9 +104,8 @@ pub unsafe extern "C" fn kernel_entry(
     func: VirtualAddress,
     args: &KernelArgs,
 ) -> ! {
-    log::debug!("jumping to kernel! stack_ptr: {stack_ptr:?}, thread_ptr: {thread_ptr:?}, func: {func:?}, args: {args:?}");
-
-    // halt()
+    log::debug!("Jumping to kernel ({func:?})...");
+    log::trace!("Hart {hartid} kernel arguments: sp = {stack_ptr:?}, tp = {thread_ptr:?}, a0 = {hartid}, a1 = {args:p}");
 
     asm!(
         "mv sp, {stack_ptr}",

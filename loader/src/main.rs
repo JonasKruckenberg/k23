@@ -7,7 +7,7 @@ use boot_info::BootInfo;
 use core::{ptr, slice};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use spin::Once;
-use vmm::{AddressRangeExt, BumpAllocator, FrameAllocator, VirtualAddress, INIT};
+use vmm::{BumpAllocator, FrameAllocator, VirtualAddress, INIT};
 
 mod arch;
 mod boot_info;
@@ -34,7 +34,7 @@ pub struct KernelArgs {
 }
 
 fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
-    log::debug!("hello from hart {hartid} {boot_info:?}");
+    log::debug!("Hart {hartid} started");
 
     static INIT: Once<MappingResult> = Once::new();
 
@@ -75,9 +75,8 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
             .finish()
     });
 
-    log::debug!("activating page table...");
+    log::debug!("Activating page table...");
     res.activate_page_table();
-    log::debug!("success");
 
     let kargs = KernelArgs {
         boot_hart: boot_info.boot_hart,
@@ -95,15 +94,11 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         .end
         .sub(hartid * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE);
 
+    // determine thread pointer for tls
     let thread_ptr = res
         .tls
         .start
         .add(hartid * res.tls_size_pages * kconfig::PAGE_SIZE);
-    log::debug!(
-        "(hartid {hartid} * tls_size_pages {}) + start {:?}",
-        res.tls_size_pages,
-        res.tls.start
-    );
 
     unsafe {
         arch::kernel_entry(hartid, stack_ptr, thread_ptr, res.kernel_entry, &kargs);

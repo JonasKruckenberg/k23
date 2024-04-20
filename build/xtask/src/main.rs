@@ -363,7 +363,7 @@ fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> 
         "-cpu",
         "rv64",
         "-d",
-        "guest_errors,int",
+        "guest_errors",
         "-smp",
         "2",
         "-m",

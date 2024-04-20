@@ -1,11 +1,10 @@
-use crate::kconfig;
 use arrayvec::ArrayVec;
 use core::cmp::Ordering;
 use core::fmt::Formatter;
 use core::ops::Range;
 use core::{fmt, mem};
 use dtb_parser::{DevTree, Node, Visitor};
-use vmm::{AddressRangeExt, PhysicalAddress};
+use vmm::PhysicalAddress;
 
 pub struct BootInfo<'dt> {
     pub boot_hart: u32,
@@ -43,7 +42,14 @@ impl<'dt> BootInfo<'dt> {
             memories: v.memories.regs,
         };
 
-        let mut exclude_region = |entry: Range<PhysicalAddress>| {
+        // Apply memory reservations
+        while let Some(entry) = reservations.next_entry().unwrap() {
+            let entry = unsafe {
+                let start = PhysicalAddress::new(entry.address as usize);
+
+                start..start.add(entry.size as usize)
+            };
+
             let memories = info.memories.take();
 
             for mut region in memories {
@@ -61,25 +67,7 @@ impl<'dt> BootInfo<'dt> {
                     info.memories.push(region);
                 }
             }
-        };
-
-        // Apply memory reservations
-        while let Some(entry) = reservations.next_entry().unwrap() {
-            let entry = unsafe {
-                let start = PhysicalAddress::new(entry.address as usize);
-
-                start..start.add(entry.size as usize)
-            };
-
-            exclude_region(entry);
         }
-
-        // Reserve the FDT region itself
-        exclude_region(unsafe {
-            let base = PhysicalAddress::new(info.fdt.as_ptr() as usize);
-
-            (base..base.add(info.fdt.len())).align(kconfig::PAGE_SIZE)
-        });
 
         // ensure the memory regions are sorted.
         // this is important for the allocation logic to be correct

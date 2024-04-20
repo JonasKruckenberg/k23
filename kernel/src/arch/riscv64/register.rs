@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 macro_rules! csr_base_and_read {
     ($ty_name: ident, $csr_name: literal) => {
         pub fn read() -> $ty_name {
@@ -5,7 +7,7 @@ macro_rules! csr_base_and_read {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
                     let bits: usize;
                     // force $csrname to be a string literal
-                    let csr_name: &str = $csr_name;
+                    let _csr_name: &str = $csr_name;
                     unsafe {
                         ::core::arch::asm!(concat!("csrr {0}, ", $csr_name), out(reg) bits);
                     }
@@ -39,7 +41,7 @@ macro_rules! csr_write {
         unsafe fn _write(bits: usize) {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-                    let csr_name: &str = $csr_name;
+                    let _csr_name: &str = $csr_name;
                     ::core::arch::asm!(concat!("csrrw x0, ", $csr_name, ", {0}"), in(reg) bits)
                 } else {
                     unimplemented!()
@@ -50,7 +52,6 @@ macro_rules! csr_write {
 }
 
 pub mod scause {
-    use crate::arch::riscv64::register::stvec::Mode;
     csr_base_and_read!(Scause, "scause");
     csr_write!("scause");
 
