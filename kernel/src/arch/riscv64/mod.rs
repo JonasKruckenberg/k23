@@ -1,5 +1,5 @@
 mod register;
-// mod trap;
+mod trap;
 
 use crate::boot_info::BootInfo;
 use crate::kernel_mapper::with_kernel_mapper;
@@ -43,6 +43,7 @@ static mut HARTID: usize = 0;
 #[no_mangle]
 pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
     let kargs = unsafe { &*(kargs) };
+    trap::init();
 
     static INIT: Once = Once::new();
 
@@ -80,7 +81,6 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
 
     // unsafe { log::info!("Hello world from hart {HARTID}!") };
 
-    // trap::init();
 
     // log::debug!("{}", unsafe { *(0x10 as *const u8) });
 
