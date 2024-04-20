@@ -1,4 +1,4 @@
-use crate::kconfig;
+use crate::{arch, kconfig};
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use log::{Metadata, Record};
@@ -32,13 +32,15 @@ impl log::Log for Logger {
             // disable interrupts while we hold the uart lock
             // otherwise we might deadlock if we try to log from the trap handler
             // arch::without_interrupts(|| {
+            let hartid = unsafe { arch::HARTID };
             let _ = writeln!(
                 uart,
-                "[{:<5} {}] {}",
+                "[HART {hartid}] [{:<5} {}] {}",
                 record.level(),
                 record.module_path_static().unwrap_or_default(),
                 record.args()
             );
+
             // });
         }
     }

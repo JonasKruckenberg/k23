@@ -5,17 +5,8 @@ use crate::boot_info::BootInfo;
 use crate::kernel_mapper::with_kernel_mapper;
 use crate::{kconfig, kernel_mapper, logger};
 use core::arch::asm;
-use core::iter::Map;
-use core::marker::PhantomPinned;
-use core::mem::MaybeUninit;
-use core::ops::Range;
-use core::ptr::addr_of;
-use spin::{Mutex, Once};
-use uart_16550::SerialPort;
-use vmm::{
-    AddressRangeExt, BitMapAllocator, BumpAllocator, EntryFlags, Flush, FrameAllocator, FrameUsage,
-    Mapper, PhysicalAddress, VirtualAddress, INIT,
-};
+use spin::Once;
+use vmm::{AddressRangeExt, EntryFlags, VirtualAddress};
 
 pub fn halt() -> ! {
     unsafe {
@@ -38,11 +29,13 @@ pub struct KernelArgs {
 }
 
 #[thread_local]
-static mut HARTID: usize = 0;
+pub static mut HARTID: usize = 0;
 
 #[no_mangle]
 pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
     let kargs = unsafe { &*(kargs) };
+    unsafe { HARTID = hartid };
+
     trap::init();
 
     static INIT: Once = Once::new();
@@ -75,14 +68,9 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
         log::debug!("{hartid} {kargs:?}");
     });
 
-    log::debug!("setting hartid as TLS test...");
-    unsafe { HARTID = hartid };
-    log::debug!("hartids equal: {}", unsafe { HARTID == hartid });
+    log::info!("Hello world!");
 
-    // unsafe { log::info!("Hello world from hart {HARTID}!") };
-
-
-    // log::debug!("{}", unsafe { *(0x10 as *const u8) });
+    log::debug!("{}", unsafe { *(0x10 as *const u8) });
 
     todo!()
 }
