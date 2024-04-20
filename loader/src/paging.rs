@@ -74,6 +74,10 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
         }
     }
 
+    pub fn alloc_mut(&mut self) -> &mut BumpAllocator<'a, VMMode> {
+        self.inner.allocator_mut()
+    }
+
     // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
     // as opposed to m-mode where it would take effect after jump tp u-mode.
     // This means we need to temporarily identity map the loader here, so we can continue executing our own code.

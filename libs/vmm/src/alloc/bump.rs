@@ -44,7 +44,7 @@ impl<'a, M: Mode> FrameAllocator for BumpAllocator<'a, M> {
             let region_size = region.size();
             if offset < region_size {
                 if region_size - offset < requested_size {
-                    log::warn!("Skipped memory region {region:?} since it was fullfill request for {requested_size} bytes. Wasted {region_size} bytes in the process...");
+                    log::warn!("Skipped memory region {region:?} since it was fullfill request for {requested_size} bytes. Wasted {} bytes in the process...", region_size - offset);
 
                     self.offset += region_size - offset;
                     offset = 0;

@@ -42,6 +42,17 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         // Safety: The boot_info module ensures the memory entries are in the right order
         let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
             unsafe { BumpAllocator::new(&boot_info.memories, 0) };
+        let mut mapper = Mapper::new(alloc, &boot_info)
+            .unwrap()
+            .identity_map_loader()
+            .unwrap()
+            .map_physical_memory()
+            .unwrap()
+            .map_fdt()
+            .unwrap();
+
+        // 2088960
+        // 1798144
 
         // 1. Verify kernel signature
         let kernel = verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
@@ -50,22 +61,15 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         // TODO decompress kernel
 
         // 2. Copy kernel to top of physmem
-        let kernel = copy_kernel(&mut alloc, kernel);
+        let kernel = copy_kernel(mapper.alloc_mut(), kernel);
         log::debug!("copied kernel to {:?}", kernel.as_ptr_range());
 
         let kernel_sections = elf::parse(&kernel);
 
-        Mapper::new(alloc, &boot_info)
-            .unwrap()
-            .identity_map_loader()
-            .unwrap()
-            .map_physical_memory()
-            .unwrap()
+        mapper
             .map_kernel_sections(&kernel_sections)
             .unwrap()
             .map_tls(&kernel_sections)
-            .unwrap()
-            .map_fdt()
             .unwrap()
             .map_kernel_stacks()
             .unwrap()
