@@ -1,95 +1,88 @@
 use crate::boot_info::BootInfo;
 use crate::elf::ElfSections;
 use crate::kconfig;
-use core::ops::Range;
+use core::ops::{Add, Range};
 use core::ptr::addr_of;
 use core::{ptr, slice};
 use vmm::{
-    AddressRangeExt, BumpAllocator, EntryFlags, Flush, FrameAllocator, Mode, PhysicalAddress,
-    VirtualAddress, INIT,
+    AddressRangeExt, BumpAllocator, EntryFlags, Flush, FrameAllocator, FrameUsage, Mode,
+    PhysicalAddress, VirtualAddress, INIT,
 };
 
 type VMMode = INIT<kconfig::MEMORY_MODE>;
 
-// TODO come up with a better name
-pub struct MappingResult {
-    page_table: VirtualAddress,
-    pub kernel_entry: VirtualAddress,
-    pub kernel: Range<VirtualAddress>,
-    pub fdt: VirtualAddress,
-    pub stacks: Range<VirtualAddress>,
-    pub tls: Range<VirtualAddress>,
-    pub tls_size_pages: usize,
-    pub frame_alloc_offset: usize,
-}
+const INITIAL_STACK_PAGES: usize = 32;
 
-impl MappingResult {
-    pub fn activate_page_table(&self) {
-        kconfig::MEMORY_MODE::activate_table(0, self.page_table)
-    }
-}
-
-pub struct Mapper<'a, 'dt> {
-    inner: vmm::Mapper<VMMode, BumpAllocator<'a, VMMode>>,
+pub struct Mapper<'dt> {
+    inner: vmm::Mapper<VMMode, BumpAllocator<'dt, VMMode>>,
     flush: Flush<VMMode>,
-    boot_info: &'a BootInfo<'dt>,
+    boot_info: &'dt BootInfo<'dt>,
+    kernel: ElfSections,
 
-    kernel_entry: Option<VirtualAddress>,
-    kernel: Option<Range<VirtualAddress>>,
-    fdt: Option<VirtualAddress>,
-    stacks: Option<Range<VirtualAddress>>,
-    tls: Option<Range<VirtualAddress>>,
-    tls_size_pages: Option<usize>,
+    tls_size_pages: usize,
+    hartmem_size_pages_phys: usize,
+    hartmem_size_pages_virt: usize,
 }
 
-impl<'a, 'dt> Mapper<'a, 'dt> {
+impl<'dt> Mapper<'dt> {
     pub fn new(
-        alloc: BumpAllocator<'a, VMMode>,
-        boot_info: &'a BootInfo<'dt>,
+        alloc: BumpAllocator<'dt, VMMode>,
+        boot_info: &'dt BootInfo<'dt>,
+        kernel: ElfSections,
     ) -> Result<Self, vmm::Error> {
+        let tls_size_pages =
+            (kernel.tdata.virt.size() + kernel.tbss.virt.size()).div_ceil(kconfig::PAGE_SIZE);
+
         Ok(Self {
             inner: vmm::Mapper::new(0, alloc)?,
             flush: Flush::empty(0),
             boot_info,
+            kernel,
 
-            kernel_entry: None,
-            kernel: None,
-            fdt: None,
-            stacks: None,
-            tls: None,
-            tls_size_pages: None,
+            tls_size_pages,
+            hartmem_size_pages_phys: tls_size_pages + INITIAL_STACK_PAGES,
+            hartmem_size_pages_virt: tls_size_pages + kconfig::STACK_SIZE_PAGES_KERNEL,
         })
     }
 
-    pub fn finish(self) -> MappingResult {
-        const KIB: usize = 1024;
-        const MIB: usize = 1024 * KIB;
-        
-        let frame_usage = self.inner.allocator().frame_usage();
-            log::info!(
-            "Mapping complete. Permanently used: {} KiB of {} MiB total ({:.3}%).",
-            (frame_usage.used * kconfig::PAGE_SIZE) / KIB,
-            (frame_usage.total * kconfig::PAGE_SIZE) / MIB,
-            (frame_usage.used as f64 / frame_usage.total as f64) * 100.0
-        );
-        
-        MappingResult {
-            page_table: self.inner.root_table().addr(),
-            kernel_entry: self.kernel_entry.unwrap(),
-            kernel: self.kernel.unwrap(),
-            fdt: self.fdt.unwrap(),
-            stacks: self.stacks.unwrap(),
-            tls: self.tls.unwrap(),
-            tls_size_pages: self.tls_size_pages.unwrap(),
-            frame_alloc_offset: self.inner.allocator().offset(),
+    pub fn activate_page_table(&self) {
+        kconfig::MEMORY_MODE::activate_table(0, self.inner.root_table().addr());
+    }
+
+    pub fn frame_usage(&self) -> FrameUsage {
+        self.inner.allocator().frame_usage()
+    }
+
+    pub fn frame_alloc_offset(&self) -> usize {
+        self.inner.allocator().offset()
+    }
+
+    pub fn kernel_sections(&self) -> &ElfSections {
+        &self.kernel
+    }
+
+    pub fn map_physical_memory(&mut self) -> Result<(), vmm::Error> {
+        for region_phys in &self.boot_info.memories {
+            let region_virt = kconfig::MEMORY_MODE::phys_to_virt(region_phys.start)
+                ..kconfig::MEMORY_MODE::phys_to_virt(region_phys.end);
+
+            log::trace!("Mapping physical memory region {region_virt:?} => {region_phys:?}...");
+            self.inner.map_range_with_flush(
+                region_virt,
+                region_phys.clone(),
+                EntryFlags::READ | EntryFlags::WRITE,
+                &mut self.flush,
+            )?;
         }
+
+        Ok(())
     }
 
     // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
     // as opposed to m-mode where it would take effect after jump tp u-mode.
     // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
     // We will then unmap the loader in the kernel.
-    pub fn identity_map_loader(mut self) -> Result<Self, vmm::Error> {
+    pub fn identity_map_loader(&mut self) -> Result<(), vmm::Error> {
         extern "C" {
             static __text_start: u8;
             static __text_end: u8;
@@ -139,193 +132,102 @@ impl<'a, 'dt> Mapper<'a, 'dt> {
             &mut self.flush,
         )?;
 
-        Ok(self)
+        Ok(())
     }
 
-    pub fn map_physical_memory(mut self) -> Result<Self, vmm::Error> {
-        for region_phys in &self.boot_info.memories {
-            let region_virt = kconfig::MEMORY_MODE::phys_to_virt(region_phys.start)
-                ..kconfig::MEMORY_MODE::phys_to_virt(region_phys.end);
-
-            log::trace!("Mapping physical memory region {region_virt:?} => {region_phys:?}...");
-            self.inner.map_range_with_flush(
-                region_virt,
-                region_phys.clone(),
-                EntryFlags::READ | EntryFlags::WRITE,
-                &mut self.flush,
-            )?;
-        }
-
-        Ok(self)
-    }
-
-    pub fn map_fdt(mut self, fdt: &'static [u8]) -> Result<Self, vmm::Error> {
-        assert_eq!(fdt.as_ptr().align_offset(kconfig::PAGE_SIZE), 0);
-
-        let fdt_phys = unsafe {
-            let base = PhysicalAddress::new(fdt.as_ptr() as usize);
-
-            (base..base.add(fdt.len())).align(kconfig::PAGE_SIZE)
-        };
-        let fdt_virt = kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.start)
-            ..kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.end);
-
-        log::trace!("Mapping fdt region {fdt_virt:?} => {fdt_phys:?}...");
-        self.inner.remap_range_with_flush(
-            fdt_virt.clone(),
-            fdt_phys,
-            EntryFlags::READ,
-            &mut self.flush,
-        )?;
-
-        self.fdt = Some(fdt_virt.start);
-
-        Ok(self)
-    }
-
-    pub fn map_kernel_sections(mut self, kernel: &ElfSections) -> Result<Self, vmm::Error> {
+    pub fn map_kernel_sections(&mut self) -> Result<(), vmm::Error> {
         log::trace!(
             "Mapping kernel text region {:?} => {:?}...",
-            kernel.text.virt,
-            kernel.text.phys
+            self.kernel.text.virt,
+            self.kernel.text.phys
         );
         self.inner.map_range_with_flush(
-            kernel.text.virt.clone(),
-            kernel.text.phys.clone(),
+            self.kernel.text.virt.clone(),
+            self.kernel.text.phys.clone(),
             EntryFlags::READ | EntryFlags::EXECUTE,
             &mut self.flush,
         )?;
 
         log::trace!(
             "Mapping kernel rodata region {:?} => {:?}...",
-            kernel.rodata.virt,
-            kernel.rodata.phys
+            self.kernel.rodata.virt,
+            self.kernel.rodata.phys
         );
         self.inner.map_range_with_flush(
-            kernel.rodata.virt.clone(),
-            kernel.rodata.phys.clone(),
+            self.kernel.rodata.virt.clone(),
+            self.kernel.rodata.phys.clone(),
             EntryFlags::READ,
             &mut self.flush,
         )?;
 
         log::trace!(
             "Mapping kernel bss region {:?} => {:?}...",
-            kernel.bss.virt,
-            kernel.bss.phys
+            self.kernel.bss.virt,
+            self.kernel.bss.phys
         );
         self.inner.map_range_with_flush(
-            kernel.bss.virt.clone(),
-            kernel.bss.phys.clone(),
+            self.kernel.bss.virt.clone(),
+            self.kernel.bss.phys.clone(),
             EntryFlags::READ | EntryFlags::WRITE,
             &mut self.flush,
         )?;
 
         log::trace!(
             "Mapping kernel data region {:?} => {:?}...",
-            kernel.data.virt,
-            kernel.data.phys
+            self.kernel.data.virt,
+            self.kernel.data.phys
         );
         self.inner.map_range_with_flush(
-            kernel.data.virt.clone(),
-            kernel.data.phys.clone(),
+            self.kernel.data.virt.clone(),
+            self.kernel.data.phys.clone(),
             EntryFlags::READ | EntryFlags::WRITE,
             &mut self.flush,
         )?;
 
-        self.kernel = Some(kernel.text.virt.start..kernel.tls.virt.end);
-        self.kernel_entry = Some(kernel.entry);
-
-        Ok(self)
+        Ok(())
     }
 
-    pub fn map_tls(mut self, kernel: &ElfSections) -> Result<Self, vmm::Error> {
-        let tls_size_pages = kernel.tls.phys.size().div_ceil(kconfig::PAGE_SIZE);
-
-        let src = unsafe {
-            slice::from_raw_parts(
-                kernel.tls.phys.start.as_raw() as *const u8,
-                kernel.tls.phys.size(),
+    pub fn hartmem_virt(&self, hartid: usize) -> Range<VirtualAddress> {
+        let end = unsafe {
+            VirtualAddress::new(
+                kconfig::MEMORY_MODE::PHYS_OFFSET
+                    - (self.hartmem_size_pages_virt * kconfig::PAGE_SIZE * hartid),
             )
         };
 
-        let region_end = unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) };
-        let mut region_start =
-            region_end.sub(tls_size_pages * kconfig::PAGE_SIZE * self.boot_info.cpus);
-
-        for hart in 0..self.boot_info.cpus {
-            let tls_phys = {
-                let base = self.inner.allocator_mut().allocate_frames(tls_size_pages)?;
-                base..base.add(tls_size_pages * kconfig::PAGE_SIZE)
-            };
-
-            // copy tls data
-            unsafe {
-                let dst = slice::from_raw_parts_mut(tls_phys.start.as_raw() as *mut u8, src.len());
-
-                ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
-            };
-
-            let tls_virt = region_start..region_start.add(tls_size_pages * kconfig::PAGE_SIZE);
-
-            log::trace!(
-                "Mapping kernel TLS region for hart {hart} {tls_virt:?} => {tls_phys:?}..."
-            );
-
-            self.inner.map_range_with_flush(
-                tls_virt,
-                tls_phys,
-                EntryFlags::READ | EntryFlags::WRITE,
-                &mut self.flush,
-            )?;
-
-            region_start = region_start.add(tls_size_pages * kconfig::PAGE_SIZE);
-        }
-
-        self.tls_size_pages = Some(tls_size_pages);
-        self.tls = Some(
-            region_end.sub(tls_size_pages * kconfig::PAGE_SIZE * self.boot_info.cpus)..region_end,
-        );
-
-        Ok(self)
+        end.sub(self.hartmem_size_pages_virt * kconfig::PAGE_SIZE)..end
     }
 
-    // the kernel stacks regions start at the start of TLS working downwards
-    // each region has a maximum size of STACK_SIZE_PAGES, but only INITIAL_STACK_PAGES in each region are mapped upfront
-    // the rest will be allocated on-demand by the kernel trap handler.
-    // This way we save physical memory, by not allocating unused stack space.
-    pub fn map_kernel_stacks(mut self) -> Result<Self, vmm::Error> {
-        const INITIAL_STACK_PAGES: usize = 64;
+    pub fn map_hartmem(&mut self, hartid: usize) -> Result<Range<PhysicalAddress>, vmm::Error> {
+        let hartmem_phys = {
+            let start = self
+                .inner
+                .allocator_mut()
+                .allocate_frames(self.hartmem_size_pages_phys)?;
 
-        let stacks_end = self.tls.as_ref().expect("no tls mapping data").start;
-        let mut stack_top = stacks_end;
+            start..start.add(self.hartmem_size_pages_phys * kconfig::PAGE_SIZE)
+        };
 
-        for hart in 0..self.boot_info.cpus {
-            let stack_phys = {
-                let base = self
-                    .inner
-                    .allocator_mut()
-                    .allocate_frames(INITIAL_STACK_PAGES)?;
-                base..base.add(INITIAL_STACK_PAGES * kconfig::PAGE_SIZE)
-            };
+        // the tls region is at the top of hartmem
+        let hartmem_virt = unsafe {
+            let end = VirtualAddress::new(
+                    kconfig::MEMORY_MODE::PHYS_OFFSET
+                        - (self.hartmem_size_pages_virt * kconfig::PAGE_SIZE * hartid),
+                );
 
-            let stack_virt = stack_top.sub(INITIAL_STACK_PAGES * kconfig::PAGE_SIZE)..stack_top;
+            end.sub(self.hartmem_size_pages_phys * kconfig::PAGE_SIZE)..end
+        };
 
-            log::trace!(
-                "Mapping kernel stack region for hart {hart} {stack_virt:?} => {stack_phys:?}..."
-            );
+        log::trace!(
+            "Mapping hart {hartid} hart-local region {hartmem_virt:?} => {hartmem_phys:?}..."
+        );
+        self.inner.map_range_with_flush(
+            hartmem_virt,
+            hartmem_phys.clone(),
+            EntryFlags::READ | EntryFlags::WRITE,
+            &mut self.flush,
+        )?;
 
-            self.inner.map_range_with_flush(
-                stack_virt,
-                stack_phys,
-                EntryFlags::READ | EntryFlags::WRITE,
-                &mut self.flush,
-            )?;
-
-            stack_top = stack_top.sub(kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE);
-        }
-
-        self.stacks = Some(stack_top..stacks_end);
-
-        Ok(self)
+        Ok(hartmem_phys)
     }
 }

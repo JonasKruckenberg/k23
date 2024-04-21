@@ -16,15 +16,14 @@ pub fn halt() -> ! {
     }
 }
 
-#[repr(C, align(16))]
+#[repr(C)]
 #[derive(Debug)]
 pub struct KernelArgs {
     boot_hart: u32,
     fdt_virt: VirtualAddress,
-    kernel_start: VirtualAddress,
-    kernel_end: VirtualAddress,
-    stacks_start: VirtualAddress,
-    stacks_end: VirtualAddress,
+    stack_start: VirtualAddress,
+    stack_end: VirtualAddress,
+    hartmems_virt_start: VirtualAddress,
     frame_alloc_offset: usize,
 }
 
@@ -48,7 +47,7 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
         let serial_base = with_kernel_mapper(|mapper, flush| {
             let serial_phys = boot_info.serial.regs.clone().align(kconfig::PAGE_SIZE);
             let serial_virt = {
-                let base = kargs.stacks_start;
+                let base = kargs.hartmems_virt_start;
 
                 base.sub(serial_phys.size())..base
             };
@@ -64,8 +63,6 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
         .expect("failed to map serial region");
 
         logger::init(serial_base, boot_info.serial.clock_frequency);
-
-        log::debug!("{hartid} {kargs:?}");
     });
 
     log::info!("Hello world!");
@@ -74,3 +71,18 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
 
     todo!()
 }
+
+// struct MMIOAlloc {
+//     offset: VirtualAddress,
+// }
+//
+// impl MMIOAlloc {
+//     pub fn new(offset: VirtualAddress) -> Self {
+//         Self { offset }
+//     }
+//
+//     pub fn alloc_pages(&mut self, num_pages: usize) -> VirtualAddress {
+//         self.offset = self.offset.sub(num_pages * kconfig::PAGE_SIZE);
+//         self.offset
+//     }
+// }

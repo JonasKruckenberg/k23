@@ -16,7 +16,8 @@ pub struct ElfSections {
     pub rodata: Section,
     pub data: Section,
     pub bss: Section,
-    pub tls: Section,
+    pub tdata: Section,
+    pub tbss: Section,
 }
 
 #[derive(Debug)]
@@ -100,7 +101,8 @@ pub fn parse(buf: &[u8]) -> ElfSections {
     let mut rodata_section = None;
     let mut data_section = None;
     let mut bss_section = None;
-    let mut tls_section = None;
+    let mut tdata_section = None;
+    let mut tbss_section = None;
 
     for entry in shentries {
         let flags = ElfSectionHeaderEntryFlags::from_bits_retain(entry.sh_flags);
@@ -127,7 +129,8 @@ pub fn parse(buf: &[u8]) -> ElfSections {
                 ".rodata" => rodata_section = Some(section),
                 ".data" => data_section = Some(section),
                 ".bss" => bss_section = Some(section),
-                ".tls" => tls_section = Some(section),
+                ".tdata" => tdata_section = Some(section),
+                ".tbss" => tbss_section = Some(section),
                 _ => panic!("unknown section name"),
             }
         }
@@ -141,6 +144,7 @@ pub fn parse(buf: &[u8]) -> ElfSections {
         rodata: rodata_section.expect("elf is missing rodata section"),
         data: data_section.expect("elf is missing data section"),
         bss: bss_section.expect("elf is missing bss section"),
-        tls: tls_section.expect("elf is missing bss section"),
+        tdata: tdata_section.expect("elf is missing tdata section"),
+        tbss: tbss_section.expect("elf is missing tbss section"),
     }
 }

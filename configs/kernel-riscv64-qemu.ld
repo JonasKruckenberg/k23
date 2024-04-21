@@ -42,18 +42,17 @@ SECTIONS {
         __data_end = .;
     }
 
-    .tls : {
+    .tdata : {
          __tdata_start = .;
          *(.tdata .tdata.*)
          __tdata_end = .;
+    }
 
+    .tbss : {
          __tbss_start = .;
          *(.tbss .tbss.*)
          __tbss_end = .;
-     }
-
-    . = ALIGN(4096); # 4KB page alignment for mapping
-    __stack_start = .;
+    }
 
     /DISCARD/ : {
         *(.comment*)

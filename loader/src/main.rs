@@ -2,12 +2,16 @@
 #![no_main]
 #![feature(naked_functions, asm_const, split_array)]
 
-use crate::paging::{Mapper, MappingResult};
+use crate::elf::ElfSections;
+use crate::paging::Mapper;
 use boot_info::BootInfo;
+use core::ops::Range;
 use core::{ptr, slice};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use spin::Once;
-use vmm::{BumpAllocator, FrameAllocator, VirtualAddress, INIT};
+use spin::{Barrier, Mutex, Once, RwLock};
+use vmm::{
+    AddressRangeExt, BumpAllocator, FrameAllocator, Mode, PhysicalAddress, VirtualAddress, INIT,
+};
 
 mod arch;
 mod boot_info;
@@ -26,25 +30,27 @@ pub mod kconfig {
 pub struct KernelArgs {
     boot_hart: u32,
     fdt_virt: VirtualAddress,
-    kernel_start: VirtualAddress,
-    kernel_end: VirtualAddress,
-    stacks_start: VirtualAddress,
-    stacks_end: VirtualAddress,
+    stack_start: VirtualAddress,
+    stack_end: VirtualAddress,
+    hartmems_virt_start: VirtualAddress,
     frame_alloc_offset: usize,
 }
 
 fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::debug!("Hart {hartid} started");
 
-    static INIT: Once<MappingResult> = Once::new();
+    static INIT: Once<(Mapper, Range<VirtualAddress>)> = Once::new();
 
-    let res = INIT.call_once(|| {
+    let (mapper, fdt_virt) = INIT.call_once(|| {
         // Safety: The boot_info module ensures the memory entries are in the right order
         let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
             unsafe { BumpAllocator::new(&boot_info.memories, 0) };
 
-        let fdt = allocate_and_copy(&mut alloc, boot_info.fdt);
-        log::trace!("Copied FDT to {:?}", fdt.as_ptr_range());
+        let fdt_phys = allocate_and_copy(&mut alloc, boot_info.fdt);
+        log::trace!("Copied FDT to {fdt_phys:?}");
+
+        let fdt_virt = kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.start)
+            ..kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.end);
 
         // 1. Verify kernel signature
         let kernel = verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
@@ -54,72 +60,86 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
         // 2. Copy kernel to top of physmem
         let kernel = allocate_and_copy(&mut alloc, kernel);
-        log::trace!("Copied kernel to {:?}", kernel.as_ptr_range());
+        log::trace!("Copied kernel to {kernel:?}");
 
-        let kernel_sections = elf::parse(&kernel);
+        let kernel_sections = elf::parse(unsafe { kernel.as_slice() });
 
-        Mapper::new(alloc, &boot_info)
-            .unwrap()
-            .identity_map_loader()
-            .unwrap()
-            .map_physical_memory()
-            .unwrap()
-            .map_fdt(fdt)
-            .unwrap()
-            .map_kernel_sections(&kernel_sections)
-            .unwrap()
-            .map_tls(&kernel_sections)
-            .unwrap()
-            .map_kernel_stacks()
-            .unwrap()
-            .finish()
+        let mut mapper = Mapper::new(alloc, boot_info, kernel_sections).unwrap();
+
+        mapper.map_physical_memory().unwrap();
+        mapper.identity_map_loader().unwrap();
+        mapper.map_kernel_sections().unwrap();
+
+        for hartid in 0..boot_info.cpus {
+            let hartmem_phys = mapper.map_hartmem(hartid).unwrap();
+
+            copy_tdata(mapper.kernel_sections(), hartmem_phys)
+        }
+
+        const KIB: usize = 1024;
+        const MIB: usize = 1024 * KIB;
+
+        let frame_usage = mapper.frame_usage();
+        log::info!(
+            "Mapping complete. Permanently used: {} KiB of {} MiB total ({:.3}%).",
+            (frame_usage.used * kconfig::PAGE_SIZE) / KIB,
+            (frame_usage.total * kconfig::PAGE_SIZE) / MIB,
+            (frame_usage.used as f64 / frame_usage.total as f64) * 100.0
+        );
+
+        (mapper, fdt_virt)
     });
 
-    log::debug!("Activating page table...");
-    res.activate_page_table();
+    log::debug!("Hart {hartid} Activating page table...");
+    mapper.activate_page_table();
+
+    let hartmem = mapper.hartmem_virt(hartid);
+    let stack_virt = hartmem.start
+        ..hartmem
+            .start
+            .add(kconfig::STACK_SIZE_PAGES_KERNEL * kconfig::PAGE_SIZE);
+    let tls_virt = hartmem
+        .start
+        .add(kconfig::STACK_SIZE_PAGES_KERNEL * kconfig::PAGE_SIZE)..hartmem.end;
 
     let kargs = KernelArgs {
         boot_hart: boot_info.boot_hart,
-        fdt_virt: res.fdt,
-        kernel_start: res.kernel.start,
-        kernel_end: res.kernel.end,
-        stacks_start: res.stacks.start,
-        stacks_end: res.stacks.end,
-        frame_alloc_offset: res.frame_alloc_offset,
+        fdt_virt: fdt_virt.start,
+        stack_start: stack_virt.start,
+        stack_end: stack_virt.end,
+        hartmems_virt_start: unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) }
+            .sub(hartmem.size() * boot_info.cpus),
+        frame_alloc_offset: mapper.frame_alloc_offset(),
     };
 
-    // determine the right stack ptr
-    let stack_ptr = res
-        .stacks
-        .end
-        .sub(hartid * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE);
-
-    // determine thread pointer for tls
-    let thread_ptr = res
-        .tls
-        .start
-        .add(hartid * res.tls_size_pages * kconfig::PAGE_SIZE);
+    log::trace!("Hart {hartid} kargs {kargs:?}");
 
     unsafe {
-        arch::kernel_entry(hartid, stack_ptr, thread_ptr, res.kernel_entry, &kargs);
-    }
+        arch::kernel_entry(
+            hartid,
+            stack_virt.end,
+            tls_virt.start,
+            mapper.kernel_sections().entry,
+            &kargs,
+        );
+    };
 }
 
 /// Allocates enough space using the BumpAllocator and copies the given bytes into it
 fn allocate_and_copy(
     alloc: &mut BumpAllocator<INIT<kconfig::MEMORY_MODE>>,
     src: &[u8],
-) -> &'static [u8] {
-    unsafe {
-        let frames = src.len().div_ceil(kconfig::PAGE_SIZE);
-        let base = alloc.allocate_frames(frames).unwrap();
+) -> Range<PhysicalAddress> {
+    let frames = src.len().div_ceil(kconfig::PAGE_SIZE);
+    let base = alloc.allocate_frames(frames).unwrap();
 
+    unsafe {
         let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, src.len());
 
         ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
-
-        dst
     }
+
+    base..base.add(src.len())
 }
 
 fn verify_kernel_signature<'a>(
@@ -135,4 +155,24 @@ fn verify_kernel_signature<'a>(
         .expect("failed to verify kernel image signature");
 
     kernel
+}
+
+fn copy_tdata(kernel_sections: &ElfSections, hartmem_phys: Range<PhysicalAddress>) {
+    unsafe {
+        let src = slice::from_raw_parts(
+            kernel_sections.tdata.phys.start.as_raw() as *const u8,
+            kernel_sections.tdata.phys.size(),
+        );
+
+        let tdata_addr = hartmem_phys.end.sub(src.len());
+        let dst = slice::from_raw_parts_mut(tdata_addr.as_raw() as *mut u8, src.len());
+
+        log::trace!(
+            "Copying tdata from {:?} to {:?}",
+            src.as_ptr_range(),
+            dst.as_ptr_range()
+        );
+
+        ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
+    }
 }
