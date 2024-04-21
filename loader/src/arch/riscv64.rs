@@ -36,22 +36,22 @@ unsafe extern "C" fn _start() -> ! {
 #[naked]
 unsafe extern "C" fn _start_hart() -> ! {
     asm!(
-    ".option push",
-    ".option norelax",
-    "    la		gp, __global_pointer$",
-    ".option pop",
+        ".option push",
+        ".option norelax",
+        "    la		gp, __global_pointer$",
+        ".option pop",
 
-    "la     sp, __stack_start", // set the stack pointer to the bottom of the stack
-    "li     t0, {stack_size}", // load the stack size
-    "addi   t1, a0, 1", // add one to the hart id so that we add at least one stack size (stack grows from the top downwards)
-    "mul    t0, t0, t1", // multiply the stack size by the hart id to get the offset
-    "add    sp, sp, t0", // add the offset from sp to get the harts stack pointer
+        "la     sp, __stack_start", // set the stack pointer to the bottom of the stack
+        "li     t0, {stack_size}", // load the stack size
+        "addi   t1, a0, 1", // add one to the hart id so that we add at least one stack size (stack grows from the top downwards)
+        "mul    t0, t0, t1", // multiply the stack size by the hart id to get the offset
+        "add    sp, sp, t0", // add the offset from sp to get the harts stack pointer
 
-    "jal zero, {start_rust}",   // jump into Rust
-    stack_size = const kconfig::PAGE_SIZE * kconfig::STACK_SIZE_PAGES,
+        "jal zero, {start_rust}",   // jump into Rust
+        stack_size = const kconfig::PAGE_SIZE * kconfig::STACK_SIZE_PAGES,
 
-    start_rust = sym crate::main,
-    options(noreturn)
+        start_rust = sym crate::main,
+        options(noreturn)
     )
 }
 
@@ -104,8 +104,8 @@ pub unsafe extern "C" fn kernel_entry(
     func: VirtualAddress,
     args: &KernelArgs,
 ) -> ! {
-    log::debug!("Jumping to kernel ({func:?})...");
-    log::trace!("Hart {hartid} kernel arguments: sp = {stack_ptr:?}, tp = {thread_ptr:?}, a0 = {hartid}, a1 = {args:p}");
+    log::debug!("Hart {hartid} Jumping to kernel ({func:?})...");
+    log::trace!("Hart {hartid} Kernel arguments: sp = {stack_ptr:?}, tp = {thread_ptr:?}, a0 = {hartid}, a1 = {args:p}");
 
     asm!(
         "mv sp, {stack_ptr}",
