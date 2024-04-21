@@ -154,6 +154,12 @@ fn check_loader(cfg: &Config) -> anyhow::Result<()> {
 
     Cargo::new_check("loader", &target, &cfg)?
         // .env("RUSTFLAGS", "-Zstack-protector=all -Csoft-float=true")
+        .additional_args([
+            "-Z",
+            "build-std=core,alloc",
+            "-Z",
+            "build-std-features=compiler-builtins-mem",
+        ])
         .enable_features(cfg.loader.features.clone())
         .exec()?;
 
@@ -169,7 +175,13 @@ fn check_kernel(cfg: &Config) -> anyhow::Result<()> {
         .to_string();
 
     Cargo::new_check("kernel", &target, &cfg)?
-        .env("RUSTFLAGS", "-Zstack-protector=all")
+        // .env("RUSTFLAGS", "-Zstack-protector=all")
+        .additional_args([
+            "-Z",
+            "build-std=core,alloc",
+            "-Z",
+            "build-std-features=compiler-builtins-mem",
+        ])
         .enable_features(cfg.kernel.features.clone())
         .exec()?;
 
@@ -219,7 +231,7 @@ fn build_kernel(cfg: &Config, release: bool) -> anyhow::Result<Utf8PathBuf> {
 
     let kernel = Cargo::new_build("kernel", &target, &cfg)?
         .release(release)
-        .env("RUSTFLAGS", "-Zstack-protector=all")
+        // .env("RUSTFLAGS", "-Zstack-protector=all")
         .additional_args([
             "-Z",
             "build-std=core,alloc",
