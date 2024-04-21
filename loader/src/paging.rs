@@ -78,7 +78,6 @@ struct State<'dt> {
     boot_info: &'dt BootInfo<'dt>,
     kernel: ElfSections,
 
-    tls_size_pages: usize,
     hartmem_size_pages_phys: usize,
     hartmem_size_pages_virt: usize,
 }
@@ -98,7 +97,6 @@ impl<'dt> State<'dt> {
             boot_info,
             kernel,
 
-            tls_size_pages,
             hartmem_size_pages_phys: tls_size_pages + INITIAL_STACK_PAGES,
             hartmem_size_pages_virt: tls_size_pages + kconfig::STACK_SIZE_PAGES_KERNEL,
         })

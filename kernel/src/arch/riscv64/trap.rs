@@ -209,7 +209,7 @@ unsafe extern "C" fn default_trap_entry() {
 
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
 fn default_trap_handler(
-    raw_frame: *mut TrapFrame,
+    _raw_frame: *mut TrapFrame,
     a1: usize,
     a2: usize,
     a3: usize,
@@ -260,5 +260,5 @@ fn default_trap_handler(
         }
     }
 
-    raw_frame
+    // raw_frame
 }

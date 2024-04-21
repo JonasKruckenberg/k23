@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::allocator::locked::LockedHeap;
 
 mod heap;
