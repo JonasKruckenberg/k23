@@ -2,6 +2,7 @@ use crate::arch;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, Ordering};
 
+#[thread_local]
 static PANICKING: AtomicBool = AtomicBool::new(false);
 
 #[panic_handler]
