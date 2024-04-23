@@ -1,0 +1,17 @@
+[graph]
+targets = [
+    "riscv64-unknown-none-elf",
+    # You can also specify which target_features you promise are enabled for a
+    # particular target. target_features are currently not validated against
+    # the actual valid features supported by the target architecture.
+    #{ triple = "wasm32-unknown-unknown", features = ["atomics"] },
+]
+
+[licenses]
+allow = [
+    "MIT", # requires license notice
+    "Apache-2.0", # requires license notice
+    "Unicode-DFS-2016", # requires license notice
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause", # requires license notice and link to source code TODO allow?
+]
