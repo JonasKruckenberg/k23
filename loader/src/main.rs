@@ -31,7 +31,7 @@ pub struct KernelArgs {
     fdt_virt: VirtualAddress,
     stack_start: VirtualAddress,
     stack_end: VirtualAddress,
-    hartmems_virt_start: VirtualAddress,
+    page_alloc_offset: VirtualAddress,
     frame_alloc_offset: usize,
 }
 
@@ -87,7 +87,7 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         fdt_virt: fdt_virt.start,
         stack_start: stack_virt.start,
         stack_end: stack_virt.end,
-        hartmems_virt_start: unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) }
+        page_alloc_offset: unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) }
             .sub(hartmem.size() * boot_info.cpus),
         frame_alloc_offset: page_table_result.frame_alloc_offset,
     };
