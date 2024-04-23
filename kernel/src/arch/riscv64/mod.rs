@@ -69,6 +69,8 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
         unsafe { logger::init(serial_base, boot_info.serial.clock_frequency) };
     });
 
+    log::debug!("Hart started");
+
     // Safety: Register access
     unsafe {
         register::sstatus::set_sie();

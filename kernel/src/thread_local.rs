@@ -101,8 +101,8 @@ pub struct LocalKey<T: 'static> {
 
 impl<T: 'static> LocalKey<T> {
     #[doc(hidden)]
-    pub const fn new(getit: unsafe fn(Option<&mut Option<T>>) -> Option<&'static T>) -> Self {
-        Self { inner: getit }
+    pub const fn new(inner: unsafe fn(Option<&mut Option<T>>) -> Option<&'static T>) -> Self {
+        Self { inner }
     }
 
     pub fn with<F, R>(&'static self, f: F) -> R
