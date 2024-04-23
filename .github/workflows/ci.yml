@@ -38,6 +38,7 @@ jobs:
 
   rustfmt:
     name: Rustfmt
+    needs: pre_ci
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
@@ -50,6 +51,8 @@ jobs:
       - run: cargo fmt --all -- --check
 
   cargo-deny:
+    name: Cargo deny
+    needs: pre_ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
