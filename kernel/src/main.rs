@@ -10,7 +10,7 @@ mod boot_info;
 mod kernel_mapper;
 mod logger;
 mod panic;
-// mod wasm;
+mod thread_local;
 
 pub mod kconfig {
     // Configuration constants and statics defined by the build script

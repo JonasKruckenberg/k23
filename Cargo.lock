@@ -392,12 +392,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "critical-section"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7059fff8937831a9ae6f0fe4d658ffabf58f2ca96aa9dec1c889f936f705f216"
-
-[[package]]
 name = "crossbeam-deque"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -510,12 +504,6 @@ name = "either"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11157ac094ffbdde99aa67b23417ebdd801842852b500e395a45a9c0aac03e4a"
-
-[[package]]
-name = "embedded-hal"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
 name = "env_filter"
@@ -709,7 +697,9 @@ dependencies = [
  "dtb-parser",
  "linked_list_allocator",
  "log",
+ "riscv",
  "spin",
+ "sync",
  "uart-16550",
  "vmm",
 ]
@@ -747,7 +737,7 @@ dependencies = [
  "dtb-parser",
  "ed25519-dalek",
  "log",
- "sbicall",
+ "riscv",
  "spin",
  "vmm",
 ]
@@ -938,12 +928,11 @@ checksum = "adad44e29e4c806119491a7f06f03de4d1af22c3a680dd47f1e6e179439d1f56"
 
 [[package]]
 name = "riscv"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f5c1b8bf41ea746266cdee443d1d1e9125c86ce1447e1a2615abd34330d33a9"
+version = "0.1.0"
 dependencies = [
- "critical-section",
- "embedded-hal",
+ "bitflags",
+ "cfg-if",
+ "onlyerror",
 ]
 
 [[package]]
@@ -987,14 +976,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "sbicall"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "onlyerror",
 ]
 
 [[package]]
@@ -1133,6 +1114,10 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "sync"
+version = "0.1.0"
 
 [[package]]
 name = "target-lexicon"
@@ -1286,7 +1271,6 @@ dependencies = [
  "log",
  "onlyerror",
  "riscv",
- "sbicall",
 ]
 
 [[package]]

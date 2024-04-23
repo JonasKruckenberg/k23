@@ -12,6 +12,7 @@ dtb-parser = { path = "libs/dtb-parser" }
 uart-16550 = { path = "libs/uart-16550" }
 riscv = { path = "libs/riscv" }
 vmm = { path = "libs/vmm" }
+sync = { path = "libs/sync" }
 cranelift-bforest = { path = "libs/cranelift-bforest" }
 cranelift-codegen = { path = "libs/cranelift-codegen" }
 cranelift-entity = { path = "libs/cranelift-entity" }
@@ -28,7 +29,6 @@ cfg-if = "1.0.0"
 spin = "0.9.8"
 linked_list_allocator = "0.10.5"
 arrayvec = { version = "0.7.4", default-features = false }
-riscv = "0.11.1"
 ed25519-dalek = { version = "2.1.1", default-features = false }
 
 # cranelift dependencies

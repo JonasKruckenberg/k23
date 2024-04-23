@@ -1,10 +1,11 @@
-mod register;
 mod trap;
 
 use crate::boot_info::BootInfo;
 use crate::kernel_mapper::with_kernel_mapper;
+use crate::thread_local::declare_thread_local;
 use crate::{kconfig, kernel_mapper, logger};
 use core::arch::asm;
+use riscv::register;
 use spin::Once;
 use vmm::{AddressRangeExt, EntryFlags, VirtualAddress};
 
@@ -27,13 +28,15 @@ pub struct KernelArgs {
     frame_alloc_offset: usize,
 }
 
-#[thread_local]
-pub static mut HARTID: usize = 0;
+declare_thread_local! {
+    pub static HARTID: usize;
+}
 
 #[no_mangle]
 pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
     let kargs = unsafe { &*(kargs) };
-    unsafe { HARTID = hartid };
+
+    HARTID.initialize_with(hartid, |_, _| {});
 
     trap::init();
 
@@ -62,12 +65,15 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
         })
         .expect("failed to map serial region");
 
-        logger::init(serial_base, boot_info.serial.clock_frequency);
+        // Safety: serial_base is derived from BootInfo
+        unsafe { logger::init(serial_base, boot_info.serial.clock_frequency) };
     });
 
-    log::info!("Hello world!");
-
-    log::debug!("{}", unsafe { *(0x10 as *const u8) });
+    // Safety: Register access
+    unsafe {
+        register::sstatus::set_sie();
+        register::sie::set_stie();
+    }
 
     todo!()
 }
