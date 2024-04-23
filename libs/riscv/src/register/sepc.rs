@@ -1,4 +1,4 @@
-use super::{csr_base_and_read};
+use super::csr_base_and_read;
 use core::fmt;
 use core::fmt::Formatter;
 

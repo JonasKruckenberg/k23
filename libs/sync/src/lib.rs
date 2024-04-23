@@ -7,8 +7,8 @@ mod raw_mutex;
 mod remutex;
 
 pub use mutex::{Mutex, MutexGuard};
-pub use remutex::{ReentrantMutex, ReentrantMutexGuard};
 pub use once::Once;
+pub use remutex::{ReentrantMutex, ReentrantMutexGuard};
 
 #[cfg(test)]
 macro_rules! assert_not_send {
