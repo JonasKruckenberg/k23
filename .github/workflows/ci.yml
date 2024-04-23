@@ -36,6 +36,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo xtask check ${{matrix.config}}
 
+  rustfmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install rustfmt with nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
   cargo-deny:
     runs-on: ubuntu-latest
     steps:
