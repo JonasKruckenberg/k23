@@ -23,7 +23,7 @@ log = { workspace = true }
 gimli = { workspace = true, optional = true, features = ["write"] }
 smallvec = { workspace = true }
 regalloc2 = { workspace = true, features = ["checker", "trace-log"] }
-spin.workspace = true
+sync.workspace = true
 fxhash.workspace = true
 # It is a goal of the cranelift-cranelift-codegen crate to have minimal external dependencies.
 # Please don't add any unless they are essential to the task of creating binary

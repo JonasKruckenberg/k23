@@ -2,7 +2,7 @@ use crate::boot_info::BootInfo;
 use crate::{kconfig, logger, KernelArgs};
 use core::arch::asm;
 use core::ptr::addr_of_mut;
-use spin::Once;
+use sync::Once;
 use vmm::VirtualAddress;
 
 // do global, arch-specific setup
@@ -75,7 +75,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
 
     logger::init();
 
-    let boot_info = BOOT_INFO.call_once(|| BootInfo::from_dtb(opaque));
+    let boot_info = BOOT_INFO.get_or_init(|| BootInfo::from_dtb(opaque));
 
     log::debug!("{boot_info:?}");
 

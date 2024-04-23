@@ -2,7 +2,6 @@ use super::register::scause::{Exception, Interrupt, Trap};
 use super::register::{scause, sepc, stval, stvec};
 use crate::arch::halt;
 use core::arch::asm;
-use core::fmt::Write;
 use core::marker::PhantomPinned;
 use core::ptr::addr_of;
 

@@ -1,7 +1,7 @@
 use crate::kconfig;
 use core::mem::MaybeUninit;
 use core::ops::Range;
-use spin::Mutex;
+use sync::Mutex;
 use vmm::{BitMapAllocator, BumpAllocator, Flush, Mapper, PhysicalAddress};
 
 static KERNEL_MAPPER: Mutex<

@@ -3,7 +3,7 @@ use core::arch::asm;
 use core::fmt::{Error, Write};
 use core::{fmt, slice};
 use log::{Metadata, Record};
-use spin::Mutex;
+use sync::Mutex;
 
 pub fn init() {
     let mut logger_inner = LOGGER.0.lock();

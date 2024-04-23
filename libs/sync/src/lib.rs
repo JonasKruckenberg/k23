@@ -1,14 +1,14 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(thread_local)]
 
-extern crate alloc;
-
 mod mutex;
+mod once;
 mod raw_mutex;
 mod remutex;
 
 pub use mutex::{Mutex, MutexGuard};
 pub use remutex::{ReentrantMutex, ReentrantMutexGuard};
+pub use once::Once;
 
 #[cfg(test)]
 macro_rules! assert_not_send {

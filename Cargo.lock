@@ -298,7 +298,7 @@ dependencies = [
  "regalloc2",
  "similar",
  "smallvec 2.0.0-alpha.5",
- "spin",
+ "sync",
  "target-lexicon",
 ]
 
@@ -698,7 +698,6 @@ dependencies = [
  "linked_list_allocator",
  "log",
  "riscv",
- "spin",
  "sync",
  "uart-16550",
  "vmm",
@@ -738,7 +737,7 @@ dependencies = [
  "ed25519-dalek",
  "log",
  "riscv",
- "spin",
+ "sync",
  "vmm",
 ]
 
@@ -1073,15 +1072,6 @@ name = "smallvec"
 version = "2.0.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24bd433ebbd599a277e9e73bf6220f3193842551fab233949b7254306dccdac1"
-
-[[package]]
-name = "spin"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
-dependencies = [
- "lock_api",
-]
 
 [[package]]
 name = "spinning_top"

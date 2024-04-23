@@ -6,7 +6,7 @@ use crate::thread_local::declare_thread_local;
 use crate::{kconfig, kernel_mapper, logger};
 use core::arch::asm;
 use riscv::register;
-use spin::Once;
+use sync::Once;
 use vmm::{AddressRangeExt, EntryFlags, VirtualAddress};
 
 pub fn halt() -> ! {
@@ -42,7 +42,7 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
 
     static INIT: Once = Once::new();
 
-    INIT.call_once(|| {
+    INIT.get_or_init(|| {
         let boot_info = BootInfo::from_dtb(kargs.fdt_virt.as_raw() as *const u8);
 
         kernel_mapper::init(&boot_info.memories, kargs.frame_alloc_offset);

@@ -7,7 +7,7 @@ use boot_info::BootInfo;
 use core::ops::Range;
 use core::{ptr, slice};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use spin::Once;
+use sync::Once;
 use vmm::{
     AddressRangeExt, BumpAllocator, FrameAllocator, Mode, PhysicalAddress, VirtualAddress, INIT,
 };
@@ -40,7 +40,7 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
     static INIT: Once<(PageTableResult, Range<VirtualAddress>)> = Once::new();
 
-    let (page_table_result, fdt_virt) = INIT.call_once(|| {
+    let (page_table_result, fdt_virt) = INIT.get_or_init(|| {
         // Safety: The boot_info module ensures the memory entries are in the right order
         let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
             unsafe { BumpAllocator::new(&boot_info.memories, 0) };

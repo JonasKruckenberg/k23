@@ -7,7 +7,7 @@ authors.workspace = true
 [dependencies]
 cfg-if.workspace = true
 log.workspace = true
-spin.workspace = true
+sync.workspace = true
 vmm.workspace = true
 arrayvec.workspace = true
 dtb-parser.workspace = true

@@ -1,7 +1,7 @@
 use crate::allocator::heap::Heap;
 use core::alloc::{AllocError, Allocator, Layout};
 use core::ptr::NonNull;
-use spin::Mutex;
+use sync::Mutex;
 use vmm::{Mode, VirtualAddress};
 
 /// A thread safe wrapper around [`Heap`].
