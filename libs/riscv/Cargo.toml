@@ -1,5 +1,5 @@
 [package]
-name = "sbicall"
+name = "riscv"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,3 +7,4 @@ authors.workspace = true
 [dependencies]
 cfg-if.workspace = true
 onlyerror.workspace = true
+bitflags.workspace = true

@@ -81,7 +81,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
 
     for hart in 0..boot_info.cpus {
         if hart != hartid {
-            sbicall::hsm::start_hart(hart, _start_hart as usize, boot_info as *const _ as usize)
+            riscv::sbi::hsm::start_hart(hart, _start_hart as usize, boot_info as *const _ as usize)
                 .unwrap();
         }
     }

@@ -1,4 +1,4 @@
-use crate::{sbi_call, EID_TIME};
+use super::{sbi_call, EID_TIME};
 
 #[inline]
 pub fn set_timer(stime_value: u64) -> super::Result<()> {

@@ -1,4 +1,4 @@
-use crate::{sbi_call, EID_HSM};
+use super::{sbi_call, EID_HSM};
 
 #[inline]
 pub fn start_hart(hartid: usize, start_address: usize, opaque: usize) -> super::Result<()> {

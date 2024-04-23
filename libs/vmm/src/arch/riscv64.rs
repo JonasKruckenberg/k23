@@ -43,7 +43,7 @@ fn invalidate_address_range(
 ) -> crate::Result<()> {
     let base_addr = address_range.start.0;
     let size = address_range.end.0 - address_range.start.0;
-    sbicall::rfence::sfence_vma_asid(0, usize::MAX, base_addr, size, asid)?;
+    riscv::sbi::rfence::sfence_vma_asid(0, usize::MAX, base_addr, size, asid)?;
     Ok(())
 }
 
@@ -71,7 +71,7 @@ impl Mode for Riscv64Sv39 {
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 
     fn invalidate_all() -> crate::Result<()> {
-        sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
+        riscv::sbi::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
         Ok(())
     }
 
@@ -119,7 +119,7 @@ impl Mode for Riscv64Sv48 {
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 
     fn invalidate_all() -> crate::Result<()> {
-        sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
+        riscv::sbi::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
         Ok(())
     }
 
@@ -167,7 +167,7 @@ impl Mode for Riscv64Sv57 {
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 
     fn invalidate_all() -> crate::Result<()> {
-        sbicall::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
+        riscv::sbi::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
         Ok(())
     }
 

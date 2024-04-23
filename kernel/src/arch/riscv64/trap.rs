@@ -1,7 +1,8 @@
-use super::register::scause::{Exception, Trap};
+use super::register::scause::{Exception, Interrupt, Trap};
 use super::register::{scause, sepc, stval, stvec};
 use crate::arch::halt;
 use core::arch::asm;
+use core::fmt::Write;
 use core::marker::PhantomPinned;
 use core::ptr::addr_of;
 
@@ -209,7 +210,7 @@ unsafe extern "C" fn default_trap_entry() {
 
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
 fn default_trap_handler(
-    _raw_frame: *mut TrapFrame,
+    raw_frame: *mut TrapFrame,
     a1: usize,
     a2: usize,
     a3: usize,
@@ -221,7 +222,7 @@ fn default_trap_handler(
     // let frame = unsafe { &*raw_frame };
     let cause = scause::read().cause();
 
-    // panic!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
+    log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
 
     match cause {
         Trap::Exception(Exception::LoadPageFault) => {
@@ -255,10 +256,14 @@ fn default_trap_handler(
 
             halt();
         }
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            log::info!("Supervisor Timer");
+            riscv::sbi::time::set_timer(u64::MAX).unwrap();
+        }
         _ => {
-            panic!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
+            // panic!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
         }
     }
 
-    // raw_frame
+    raw_frame
 }

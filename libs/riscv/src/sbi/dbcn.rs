@@ -1,4 +1,4 @@
-use crate::{sbi_call, EID_DBCN};
+use super::{sbi_call, EID_DBCN};
 
 #[inline]
 pub fn debug_console_write(

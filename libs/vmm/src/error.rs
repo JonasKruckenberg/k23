@@ -10,5 +10,5 @@ pub enum Error {
     DoubleFree(PhysicalAddress),
     #[cfg(target_arch = "riscv64")]
     #[error("SBI call failed with error {0}")]
-    SBI(#[from] sbicall::Error),
+    SBI(#[from] riscv::sbi::Error),
 }

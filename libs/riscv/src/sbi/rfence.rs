@@ -1,4 +1,4 @@
-use crate::{sbi_call, EID_RFENCE};
+use super::{sbi_call, EID_RFENCE};
 
 #[inline]
 pub fn sfence_vma(

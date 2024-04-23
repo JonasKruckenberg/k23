@@ -1,4 +1,4 @@
-use crate::{sbi_call, EID_BASE};
+use super::{sbi_call, EID_BASE};
 
 pub struct SbiVersion {
     pub minor: usize,

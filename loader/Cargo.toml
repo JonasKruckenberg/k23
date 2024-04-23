@@ -11,7 +11,7 @@ spin.workspace = true
 vmm.workspace = true
 arrayvec.workspace = true
 dtb-parser.workspace = true
-sbicall.workspace = true
+riscv.workspace = true
 ed25519-dalek = { workspace = true, features = ["fast"] }
 bitflags.workspace = true
 
