@@ -1,5 +1,5 @@
 use crate::alloc::{BumpAllocator, FrameAllocator, FrameUsage};
-use crate::{AddressRangeExt, Error};
+use crate::{zero_frames, AddressRangeExt, Error};
 use crate::{Mode, PhysicalAddress, VirtualAddress};
 use core::fmt::Formatter;
 use core::marker::PhantomData;
@@ -151,6 +151,11 @@ impl<M: Mode> BitMapAllocator<M> {
                 entry.mark_page_as_used(page);
             }
 
+            if usage_map_pages > 0 {
+                let addr = M::phys_to_virt(entry.region.start);
+                zero_frames::<M>(addr.as_raw() as *mut u64, usage_map_pages);
+            }
+
             entry.skip = usage_map_pages;
             entry.used = usage_map_pages;
         }
@@ -203,7 +208,6 @@ impl<M: Mode> FrameAllocator for BitMapAllocator<M> {
                         if entry.skip == free_page {
                             entry.skip = free_page + free_len;
                         }
-                        log::trace!("already used {} += num_frames {num_frames}", entry.used);
                         entry.used += num_frames;
 
                         return Ok(entry.region.start.add(free_page << M::PAGE_SHIFT));
