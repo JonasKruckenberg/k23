@@ -324,7 +324,7 @@ impl MemFlags {
         //
         // Also note that the default, all zeros, is `HeapOutOfBounds`. It is
         // intentionally not `None` so memory operations are all considered
-        // effect-ful by default.
+        // effect-full by default.
         match (self.bits & MASK_TRAP_CODE) >> TRAP_CODE_OFFSET {
             0b0000 => Some(TrapCode::HeapOutOfBounds),
             0b0001 => Some(TrapCode::StackOverflow),

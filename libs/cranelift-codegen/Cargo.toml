@@ -28,7 +28,7 @@ fxhash.workspace = true
 # It is a goal of the cranelift-cranelift-codegen crate to have minimal external dependencies.
 # Please don't add any unless they are essential to the task of creating binary
 # machine code. Integration tests that need external dependencies can be
-# accomodated in `tests`.
+# accommodated in `tests`.
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

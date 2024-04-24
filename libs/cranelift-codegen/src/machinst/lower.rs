@@ -1212,7 +1212,7 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
     ///
     /// - An instruction, given that it is effect-free or able to sink its
     ///   effect to the current instruction being lowered, and given it has only
-    ///   one output, and if effect-ful, given that this is the only use;
+    ///   one output, and if effect-full, given that this is the only use;
     /// - A constant, if the value is a constant.
     ///
     /// The instruction input may be available in either of these forms.  It may

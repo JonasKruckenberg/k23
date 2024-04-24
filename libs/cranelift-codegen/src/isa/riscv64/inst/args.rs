@@ -1534,7 +1534,7 @@ impl AtomicOP {
 pub enum AMO {
     Relax = 0b00,
     Release = 0b01,
-    Aquire = 0b10,
+    Acquire = 0b10,
     SeqCst = 0b11,
 }
 
@@ -1543,7 +1543,7 @@ impl AMO {
         match self {
             AMO::Relax => "",
             AMO::Release => ".rl",
-            AMO::Aquire => ".aq",
+            AMO::Acquire => ".aq",
             AMO::SeqCst => ".aqrl",
         }
     }

@@ -229,7 +229,7 @@ pub struct VCodeBuilder<I: VCodeInst> {
     /// In-progress VCode.
     pub(crate) vcode: VCode<I>,
 
-    /// In what direction is the build occuring?
+    /// In what direction is the build occurring?
     direction: VCodeBuildDirection,
 
     /// Index of the last block-start in the vcode.

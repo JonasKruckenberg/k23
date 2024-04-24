@@ -147,7 +147,7 @@ impl Inst {
         }
     }
 
-    /// Returns Some(VState) if this insturction is expecting a specific vector state
+    /// Returns Some(VState) if this instruction is expecting a specific vector state
     /// before emission.
     fn expected_vstate(&self) -> Option<&VState> {
         match self {
@@ -389,7 +389,7 @@ impl Inst {
 
             // c.j
             //
-            // We don't have a separate JAL as that is only availabile in RV32C
+            // We don't have a separate JAL as that is only available in RV32C
             Inst::Jal { label } => {
                 sink.use_label_at_offset(*start_off, label, LabelUse::RVCJump);
                 sink.add_uncond_branch(*start_off, *start_off + 2, label);
@@ -877,7 +877,7 @@ impl Inst {
                 // Right now we only put a u32 or u64 in this instruction.
                 // It is not very long, no need to check if need `emit_island`.
                 // If data is very long , this is a bug because RawData is typecial
-                // use to load some data and rely on some positon in the code stream.
+                // use to load some data and rely on some position in the code stream.
                 // and we may exceed `Inst::worst_case_size`.
                 // for more information see https://github.com/bytecodealliance/wasmtime/pull/5612.
                 sink.put_data(&data[..]);
@@ -1916,7 +1916,7 @@ impl Inst {
                     //   auipc rd, 0              # R_RISCV_GOT_HI20 (symbol_name)
                     //   ld    rd, rd, 0          # R_RISCV_PCREL_LO12_I (label)
 
-                    // Create the lable that is going to be published to the final binary object.
+                    // Create the label that is going to be published to the final binary object.
                     let auipc_label = sink.get_label();
                     sink.bind_label(auipc_label);
 
@@ -1987,7 +1987,7 @@ impl Inst {
                 //
                 // https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-elf.adoc#global-dynamic
 
-                // Create the lable that is going to be published to the final binary object.
+                // Create the label that is going to be published to the final binary object.
                 let auipc_label = sink.get_label();
                 sink.bind_label(auipc_label);
 
@@ -2773,12 +2773,12 @@ impl Inst {
 
     fn allocate(self, allocs: &mut AllocationConsumer) -> Self {
         fn alloc_value_regs(
-            orgin: &ValueRegs<Reg>,
+            origin: &ValueRegs<Reg>,
             alloc: &mut AllocationConsumer,
         ) -> ValueRegs<Reg> {
-            match orgin.regs().len() {
-                1 => ValueRegs::one(alloc.next(orgin.regs()[0])),
-                2 => ValueRegs::two(alloc.next(orgin.regs()[0]), alloc.next(orgin.regs()[1])),
+            match origin.regs().len() {
+                1 => ValueRegs::one(alloc.next(origin.regs()[0])),
+                2 => ValueRegs::two(alloc.next(origin.regs()[0]), alloc.next(origin.regs()[1])),
                 _ => unreachable!(),
             }
         }

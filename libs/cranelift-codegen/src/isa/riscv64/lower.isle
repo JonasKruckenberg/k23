@@ -78,7 +78,7 @@
 ;; !!! Important !!!
 ;; These rules only work for (ishl (uextend _) _) and not for (uextend (ishl _ _))!
 ;; Getting this wrong means a potential misscalculation of the shift amount.
-;; Additionaly we can only ensure that this is correct if the uextend is 32 to 64 bits.
+;; Additionally we can only ensure that this is correct if the uextend is 32 to 64 bits.
 (decl pure partial match_shnadd_uw (Imm64) AluOPRRR)
 (rule (match_shnadd_uw (u64_from_imm64 1)) (AluOPRRR.Sh1adduw))
 (rule (match_shnadd_uw (u64_from_imm64 2)) (AluOPRRR.Sh2adduw))
@@ -1826,7 +1826,7 @@
 ;; For vectors, we also do the same operation.
 ;; We can technically use any type in the bitwise operations, but prefer
 ;; using the type of the inputs so that we avoid emitting unnecessary
-;; `vsetvl` instructions. it's likeley that the vector unit is already
+;; `vsetvl` instructions. it's likely that the vector unit is already
 ;; configured for that type.
 (rule 1 (lower (has_type (ty_vec_fits_in_register ty) (bitselect c x y)))
   (let ((tmp_x VReg (rv_vand_vv c x (unmasked) ty))
@@ -2797,7 +2797,7 @@
 ;; we use a special rounding mode in the right shift instruction.
 ;;
 ;; For the right shift instruction we use `vssrl` which is a Scaling Shift
-;; Right Logical instruction using the `vxrm` fixed-point rouding mode. The
+;; Right Logical instruction using the `vxrm` fixed-point rounding mode. The
 ;; default rounding mode is `rnu` (round-to-nearest-up (add +0.5 LSB)).
 ;; Which is coincidentally the rounding mode we want for `avg_round`.
 (rule (lower (has_type (ty_vec_fits_in_register ty) (avg_round x y)))

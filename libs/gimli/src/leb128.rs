@@ -1,7 +1,7 @@
 //! Read and write DWARF's "Little Endian Base 128" (LEB128) variable length
 //! integer encoding.
 //!
-//! The implementation is a direct translation of the psuedocode in the DWARF 4
+//! The implementation is a direct translation of the pseudocode in the DWARF 4
 //! standard's appendix C.
 //!
 //! Read and write signed integers:
