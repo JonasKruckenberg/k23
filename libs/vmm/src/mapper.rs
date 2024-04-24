@@ -261,7 +261,6 @@ impl<M: Mode, A: FrameAllocator + Send + Sync> Mapper<M, A> {
 
         let mut table = self.root_table();
 
-        debug_assert_eq!(M::PAGE_TABLE_LEVELS, 3);
         for lvl in (0..M::PAGE_TABLE_LEVELS).rev() {
             let entry = table.entry_mut(table.index_of_virt(virt));
 
