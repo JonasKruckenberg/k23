@@ -1,16 +1,30 @@
 use core::arch::asm;
 use core::fmt::{Error, Write};
+use core::ops::DerefMut;
 use core::{fmt, slice};
+use sync::Mutex;
 
 const OPEN: usize = 0x01;
 const WRITE: usize = 0x05;
 const OPEN_W_TRUNC: usize = 4;
 
-pub struct HostStream(usize);
+struct HostStream(usize);
 
 impl HostStream {
     pub fn new_stdout() -> Self {
-        Self(open(":tt\0", OPEN_W_TRUNC).unwrap())
+        Self::open(":tt\0", OPEN_W_TRUNC).unwrap()
+    }
+
+    pub fn new_stderr() -> Self {
+        Self::open(":tt\0", OPEN_W_TRUNC).unwrap()
+    }
+
+    fn open(name: &str, mode: usize) -> Result<Self, ()> {
+        let name = name.as_bytes();
+        match unsafe { syscall(OPEN, &[name.as_ptr() as usize, mode, name.len() - 1]) } as isize {
+            -1 => Err(()),
+            fd => Ok(Self(fd as usize)),
+        }
     }
 }
 
@@ -31,14 +45,6 @@ impl Write for HostStream {
             }
         }
         Ok(())
-    }
-}
-
-fn open(name: &str, mode: usize) -> Result<usize, ()> {
-    let name = name.as_bytes();
-    match unsafe { syscall(OPEN, &[name.as_ptr() as usize, mode, name.len() - 1]) } as isize {
-        -1 => Err(()),
-        fd => Ok(fd as usize),
     }
 }
 
@@ -70,3 +76,97 @@ unsafe fn syscall(_nr: usize, _arg: &[usize]) -> usize {
         }
     }
 }
+
+static STDOUT: Mutex<Option<HostStream>> = Mutex::new(None);
+static STDERR: Mutex<Option<HostStream>> = Mutex::new(None);
+
+fn print_inner(hs: &'static Mutex<Option<HostStream>>, args: fmt::Arguments) -> fmt::Result {
+    let mut stream = hs.lock();
+
+    if stream.is_none() {
+        stream.replace(HostStream::new_stdout());
+    }
+
+    match stream.deref_mut() {
+        Some(stream) => stream.write_fmt(args),
+        None => unreachable!(),
+    }
+}
+
+pub fn _print(args: fmt::Arguments) {
+    print_inner(&STDOUT, args).expect("failed to write to semihosting stdout")
+}
+pub fn _eprint(args: fmt::Arguments) {
+    print_inner(&STDERR, args).expect("failed to write to semihosting stderr")
+}
+
+#[macro_export]
+macro_rules! hprint {
+    ($s:expr) => {
+        $crate::semihosting::_print(format_args!($s))
+    };
+    ($($tt:tt)*) => {
+        $crate::semihosting::_print(format_args!($($tt)*))
+    };
+}
+
+#[macro_export]
+macro_rules! hprintln {
+    () => {
+        $crate::semihosting::_print(format_args!("\n"))
+    };
+    ($s:expr) => {
+        $crate::semihosting::_print(format_args!(concat!($s, "\n")))
+    };
+    ($s:expr, $($tt:tt)*) => {
+        $crate::semihosting::_print(format_args!(concat!($s, "\n"), $($tt)*))
+    };
+}
+
+#[macro_export]
+macro_rules! heprint {
+    ($s:expr) => {
+        $crate::semihosting::_eprint(format_args!($s))
+    };
+    ($($tt:tt)*) => {
+        $crate::semihosting::_eprint(format_args!($($tt)*))
+    };
+}
+
+#[macro_export]
+macro_rules! heprintln {
+    () => {
+        $crate::semihosting::_eprint(format_args!("\n"))
+    };
+    ($s:expr) => {
+        $crate::semihosting::_eprint(format_args!(concat!($s, "\n")))
+    };
+    ($s:expr, $($tt:tt)*) => {
+        $crate::semihosting::_eprint(format_args!(concat!($s, "\n"), $($tt)*))
+    };
+}
+
+#[macro_export]
+macro_rules! dbg {
+    () => {
+        $crate::heprintln!("[{}:{}]", file!(), line!());
+    };
+    ($val:expr) => {
+        // Use of `match` here is intentional because it affects the lifetimes
+        // of temporaries - https://stackoverflow.com/a/48732525/1063961
+        match $val {
+            tmp => {
+                $crate::heprintln!("[{}:{}] {} = {:#?}",
+                    file!(), line!(), stringify!($val), &tmp);
+                tmp
+            }
+        }
+    };
+    // Trailing comma with single argument is ignored
+    ($val:expr,) => { $crate::dbg!($val) };
+    ($($val:expr),+ $(,)?) => {
+        ($($crate::dbg!($val)),+,)
+    };
+}
+
+pub use {dbg, heprint, heprintln, hprint, hprintln};

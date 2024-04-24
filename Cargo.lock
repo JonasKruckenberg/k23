@@ -932,6 +932,7 @@ dependencies = [
  "bitflags",
  "cfg-if",
  "onlyerror",
+ "sync",
 ]
 
 [[package]]
