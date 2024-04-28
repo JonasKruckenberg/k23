@@ -14,14 +14,8 @@ uart-16550 = { path = "libs/uart-16550" }
 riscv = { path = "libs/riscv" }
 vmm = { path = "libs/vmm" }
 sync = { path = "libs/sync" }
-cranelift-bforest = { path = "libs/cranelift-bforest" }
-cranelift-codegen = { path = "libs/cranelift-codegen" }
-cranelift-entity = { path = "libs/cranelift-entity" }
-cranelift-frontend = { path = "libs/cranelift-frontend" }
-cranelift-wasm = { path = "libs/cranelift-wasm" }
 fxhash = { path = "libs/fxhash" }
 gimli = { path = "libs/gimli" }
-wasmparser = { path = "libs/wasmparser" }
 
 onlyerror = { version = "0.1.4", default-features = false }
 log = "0.4.21"
@@ -33,10 +27,10 @@ ed25519-dalek = { version = "2.1.1", default-features = false }
 
 # cranelift dependencies
 hashbrown = { version = "0.14.3", features = ["nightly"] }
-target-lexicon = { version = "0.12.14", default-features = false }
-bumpalo = "3.16.0"
-regalloc2 = { version = "0.9.3", default-features = false }
-smallvec = "2.0.0-alpha.5"
+cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core"] }
+cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core", "riscv64"] }
+cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core"] }
+target-lexicon = { version = "0.12.13", default-features = false }
 
 # build dependencies
 rand_core = { version = "0.6.4", features = ["getrandom"] }
@@ -58,3 +52,6 @@ lto = true
 strip = true
 overflow-checks = true
 split-debuginfo = "packed"
+
+[profile.dev.package.ed25519-dalek]
+opt-level = 3

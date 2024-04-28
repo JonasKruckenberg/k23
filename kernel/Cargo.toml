@@ -16,11 +16,12 @@ cfg-if.workspace = true
 log.workspace = true
 linked_list_allocator.workspace = true
 arrayvec.workspace = true
-#cranelift-codegen = { workspace = true, features = ["unwind", "riscv64"] }
-#cranelift-frontend.workspace = true
-#cranelift-wasm.workspace = true
-#wasmparser.workspace = true
-
+cranelift-wasm.workspace = true
+cranelift-codegen.workspace = true
+cranelift-frontend.workspace = true
+target-lexicon.workspace = true
+gimli = { workspace = true, features = ["read"] }
+hashbrown.workspace = true
 
 [build-dependencies]
 build-config.workspace = true

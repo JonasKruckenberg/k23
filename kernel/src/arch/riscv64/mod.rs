@@ -64,7 +64,7 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
         register::sie::set_stie();
     }
 
-    todo!()
+    crate::main(hartid)
 }
 
 fn map_serial_device(
