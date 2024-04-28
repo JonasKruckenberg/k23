@@ -45,8 +45,9 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         log::trace!("{own_regions:?}");
 
         // Safety: The boot_info module ensures the memory entries are in the right order
-        let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
-            unsafe { BumpAllocator::new(&boot_info.memories, 0) };
+        let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> = unsafe {
+            BumpAllocator::new_with_lower_bound(&boot_info.memories, 0, own_regions.read_write.end)
+        };
 
         let fdt_phys = allocate_and_copy(&mut alloc, boot_info.fdt);
         log::trace!("Copied FDT to {fdt_phys:?}");
