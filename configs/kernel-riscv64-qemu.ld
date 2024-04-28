@@ -42,16 +42,16 @@ SECTIONS {
         __data_end = .;
     }
 
-    .tdata : {
-         __tdata_start = .;
-         *(.tdata .tdata.*)
-         __tdata_end = .;
-    }
-
     .tbss : {
          __tbss_start = .;
          *(.tbss .tbss.*)
          __tbss_end = .;
+    }
+
+    .tdata : {
+         __tdata_start = .;
+         *(.tdata .tdata.*)
+         __tdata_end = .;
     }
 
     /DISCARD/ : {
