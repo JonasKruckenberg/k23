@@ -41,6 +41,9 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     static INIT: Once<(PageTableResult, Range<VirtualAddress>)> = Once::new();
 
     let (page_table_result, fdt_virt) = INIT.get_or_init(|| {
+        let own_regions = own_regions(boot_info);
+        log::trace!("{own_regions:?}");
+
         // Safety: The boot_info module ensures the memory entries are in the right order
         let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> =
             unsafe { BumpAllocator::new(&boot_info.memories, 0) };

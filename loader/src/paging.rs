@@ -124,51 +124,34 @@ impl<'dt> State<'dt> {
     // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
     // We will then unmap the loader in the kernel.
     pub fn identity_map_loader(&mut self) -> Result<(), vmm::Error> {
-        extern "C" {
-            static __text_start: u8;
-            static __text_end: u8;
-            static __rodata_start: u8;
-            static __rodata_end: u8;
-            static __bss_start: u8;
-            static __stack_start: u8;
-        }
+        let own_regions = own_regions(&self.boot_info);
 
-        let own_executable_region: Range<PhysicalAddress> = unsafe {
-            PhysicalAddress::new(addr_of!(__text_start) as usize)
-                ..PhysicalAddress::new(addr_of!(__text_end) as usize)
-        };
-
-        let own_read_only_region: Range<PhysicalAddress> = unsafe {
-            PhysicalAddress::new(addr_of!(__rodata_start) as usize)
-                ..PhysicalAddress::new(addr_of!(__rodata_end) as usize)
-        };
-
-        let own_read_write_region: Range<PhysicalAddress> = unsafe {
-            let start = PhysicalAddress::new(addr_of!(__bss_start) as usize);
-            let stack_start = PhysicalAddress::new(addr_of!(__stack_start) as usize);
-
-            start
-                ..stack_start
-                    .add(self.boot_info.cpus * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE)
-        };
-
-        log::trace!("Identity mapping own executable region {own_executable_region:?}...");
+        log::trace!(
+            "Identity mapping own executable region {:?}...",
+            own_regions.executable
+        );
         self.mapper.identity_map_range_with_flush(
-            own_executable_region,
+            own_regions.executable,
             EntryFlags::READ | EntryFlags::EXECUTE,
             &mut self.flush,
         )?;
 
-        log::trace!("Identity mapping own read-only region {own_read_only_region:?}...");
+        log::trace!(
+            "Identity mapping own read-only region {:?}...",
+            own_regions.read_only
+        );
         self.mapper.identity_map_range_with_flush(
-            own_read_only_region,
+            own_regions.read_only,
             EntryFlags::READ,
             &mut self.flush,
         )?;
 
-        log::trace!("Identity mapping own read-write region {own_read_write_region:?}...");
+        log::trace!(
+            "Identity mapping own read-write region {:?}...",
+            own_regions.read_write
+        );
         self.mapper.identity_map_range_with_flush(
-            own_read_write_region,
+            own_regions.read_write,
             EntryFlags::READ | EntryFlags::WRITE,
             &mut self.flush,
         )?;
@@ -278,5 +261,46 @@ impl<'dt> State<'dt> {
         }
 
         Ok(hartmem_phys)
+    }
+}
+
+#[derive(Debug)]
+pub struct OwnRegions {
+    pub executable: Range<PhysicalAddress>,
+    pub read_only: Range<PhysicalAddress>,
+    pub read_write: Range<PhysicalAddress>,
+}
+
+pub fn own_regions(boot_info: &BootInfo) -> OwnRegions {
+    extern "C" {
+        static __text_start: u8;
+        static __text_end: u8;
+        static __rodata_start: u8;
+        static __rodata_end: u8;
+        static __bss_start: u8;
+        static __stack_start: u8;
+    }
+
+    let executable: Range<PhysicalAddress> = unsafe {
+        PhysicalAddress::new(addr_of!(__text_start) as usize)
+            ..PhysicalAddress::new(addr_of!(__text_end) as usize)
+    };
+
+    let read_only: Range<PhysicalAddress> = unsafe {
+        PhysicalAddress::new(addr_of!(__rodata_start) as usize)
+            ..PhysicalAddress::new(addr_of!(__rodata_end) as usize)
+    };
+
+    let read_write: Range<PhysicalAddress> = unsafe {
+        let start = PhysicalAddress::new(addr_of!(__bss_start) as usize);
+        let stack_start = PhysicalAddress::new(addr_of!(__stack_start) as usize);
+
+        start..stack_start.add(boot_info.cpus * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE)
+    };
+
+    OwnRegions {
+        executable,
+        read_only,
+        read_write,
     }
 }
