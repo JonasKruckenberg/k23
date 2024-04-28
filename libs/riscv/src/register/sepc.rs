@@ -2,7 +2,7 @@ use super::csr_base_and_read;
 use core::fmt;
 use core::fmt::Formatter;
 
-csr_base_and_read!(Sepc, "stvec");
+csr_base_and_read!(Sepc, "sepc");
 
 impl fmt::Debug for Sepc {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
