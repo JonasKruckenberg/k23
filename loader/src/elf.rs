@@ -1,15 +1,23 @@
 use bitflags::bitflags;
 use core::ffi::CStr;
 use core::ops::Range;
+use core::slice;
 use vmm::{PhysicalAddress, VirtualAddress};
 
-#[derive(Debug, Clone)]
+const ELF_MAGIC: [u8; 4] = [0x7f, b'E', b'L', b'F'];
+
+/// 64-bit object.
+pub const ELF_CLASS_64: u8 = 2;
+/// 2's complement, little endian.
+pub const ELF_DATA_2LSB: u8 = 1;
+
+#[derive(Debug)]
 pub struct Section {
     pub virt: Range<VirtualAddress>,
     pub phys: Range<PhysicalAddress>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ElfSections {
     pub entry: VirtualAddress,
     pub text: Section,
@@ -22,7 +30,7 @@ pub struct ElfSections {
 
 #[derive(Debug)]
 #[repr(C)]
-struct ElfHeader {
+struct ElfHeader64 {
     ei_magic: [u8; 4],
     ei_class: u8,
     ei_data: u8,
@@ -33,9 +41,9 @@ struct ElfHeader {
     e_type: u16,
     e_machine: u16,
     e_version: u32,
-    e_entry: usize,
-    e_phoff: usize,
-    e_shoff: usize,
+    e_entry: u64,
+    e_phoff: u64,
+    e_shoff: u64,
     e_flags: u32,
     e_ehsize: u16,
     e_phentsize: u16,
@@ -47,17 +55,17 @@ struct ElfHeader {
 
 #[derive(Debug)]
 #[repr(C)]
-struct ElfSectionHeaderEntry {
+struct ElfSectionHeaderEntry64 {
     sh_name: u32,
     sh_type: u32,
-    sh_flags: usize,
-    sh_addr: usize,
-    sh_offset: usize,
-    sh_size: usize,
+    sh_flags: u64,
+    sh_addr: u64,
+    sh_offset: u64,
+    sh_size: u64,
     sh_link: u32,
     sh_info: u32,
-    sh_addralign: usize,
-    sh_entsize: usize,
+    sh_addralign: u64,
+    sh_entsize: u64,
 }
 
 bitflags! {
@@ -83,18 +91,34 @@ bitflags! {
 }
 
 pub fn parse(buf: &[u8]) -> ElfSections {
-    let hdr = unsafe { &*(buf.as_ptr() as *const ElfHeader) };
+    let hdr = unsafe { &*(buf.as_ptr() as *const ElfHeader64) };
+    assert_eq!(
+        hdr.ei_magic, ELF_MAGIC,
+        "expected kernel to be a valid elf file"
+    );
+    assert_eq!(
+        hdr.ei_class, ELF_CLASS_64,
+        "expected kernel to be a 64-bits elf file"
+    );
+    assert_eq!(
+        hdr.ei_data, ELF_DATA_2LSB,
+        "expected kernel to be a little-endian elf file"
+    );
 
     let shentries = unsafe {
-        let start = buf.as_ptr().add(hdr.e_shoff) as *const ElfSectionHeaderEntry;
-        core::slice::from_raw_parts(start, hdr.e_shnum as usize)
+        let start = buf.as_ptr().add(hdr.e_shoff as usize);
+        debug_assert!(start < buf.as_ptr_range().end);
+        slice::from_raw_parts(
+            start.cast::<ElfSectionHeaderEntry64>(),
+            hdr.e_shnum as usize,
+        )
     };
 
     let shstrtab = unsafe {
         let entry = &shentries[hdr.e_shstrndx as usize];
 
-        let start = buf.as_ptr().add(entry.sh_offset);
-        core::slice::from_raw_parts(start, entry.sh_size)
+        let start = buf.as_ptr().add(entry.sh_offset as usize);
+        core::slice::from_raw_parts(start, entry.sh_size as usize)
     };
 
     let mut text_section = None;
@@ -105,7 +129,7 @@ pub fn parse(buf: &[u8]) -> ElfSections {
     let mut tbss_section = None;
 
     for entry in shentries {
-        let flags = ElfSectionHeaderEntryFlags::from_bits_retain(entry.sh_flags);
+        let flags = ElfSectionHeaderEntryFlags::from_bits_retain(entry.sh_flags as usize);
 
         // either SHT_PROGBITS or SHT_NOBITS and
         if (entry.sh_type == 0x1 || entry.sh_type == 0x8)
@@ -115,12 +139,12 @@ pub fn parse(buf: &[u8]) -> ElfSections {
 
             let section = Section {
                 virt: unsafe {
-                    let start = VirtualAddress::new(entry.sh_addr);
-                    start..start.add(entry.sh_size)
+                    let start = VirtualAddress::new(entry.sh_addr as usize);
+                    start..start.add(entry.sh_size as usize)
                 },
                 phys: unsafe {
-                    let start = PhysicalAddress::new(buf.as_ptr() as usize).add(entry.sh_offset);
-                    start..start.add(entry.sh_size)
+                    let start = PhysicalAddress::new(buf.as_ptr() as usize).add(entry.sh_offset as usize);
+                    start..start.add(entry.sh_size as usize)
                 },
             };
 
@@ -139,7 +163,7 @@ pub fn parse(buf: &[u8]) -> ElfSections {
     assert_ne!(hdr.e_entry, 0, "no entry point found for elf");
 
     ElfSections {
-        entry: unsafe { VirtualAddress::new(hdr.e_entry) },
+        entry: unsafe { VirtualAddress::new(hdr.e_entry as usize) },
         text: text_section.expect("elf is missing text section"),
         rodata: rodata_section.expect("elf is missing rodata section"),
         data: data_section.expect("elf is missing data section"),
