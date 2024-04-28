@@ -5,6 +5,7 @@ use crate::kernel_mapper::with_kernel_mapper;
 use crate::thread_local::declare_thread_local;
 use crate::{allocator, boot_info, kconfig, kernel_mapper, logger};
 use core::arch::asm;
+use core::ops::Range;
 use riscv::register;
 use sync::Once;
 use vmm::{AddressRangeExt, EntryFlags, VirtualAddress};
@@ -24,12 +25,14 @@ pub struct KernelArgs {
     fdt_virt: VirtualAddress,
     stack_start: VirtualAddress,
     stack_end: VirtualAddress,
+    trap_stack_start: VirtualAddress,
     page_alloc_offset: VirtualAddress,
     frame_alloc_offset: usize,
 }
 
 declare_thread_local! {
     pub static HARTID: usize;
+    pub static STACK: Range<VirtualAddress>
 }
 
 #[no_mangle]
@@ -37,8 +40,9 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
     let kargs = unsafe { &*(kargs) };
 
     HARTID.initialize_with(hartid, |_, _| {});
+    STACK.initialize_with(kargs.stack_start..kargs.stack_end, |_, _| {});
 
-    trap::init();
+    trap::init(kargs.trap_stack_start);
 
     static INIT: Once = Once::new();
 

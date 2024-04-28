@@ -12,6 +12,7 @@ use vmm::{
 type VMMode = INIT<kconfig::MEMORY_MODE>;
 
 const INITIAL_STACK_PAGES: usize = 32;
+pub const TRAP_STACK_PAGES: usize = 16;
 
 pub fn init(
     alloc: BumpAllocator<VMMode>,
@@ -97,8 +98,10 @@ impl<'dt> State<'dt> {
             boot_info,
             kernel,
 
-            hartmem_size_pages_phys: tls_size_pages + INITIAL_STACK_PAGES,
-            hartmem_size_pages_virt: tls_size_pages + kconfig::STACK_SIZE_PAGES_KERNEL,
+            hartmem_size_pages_phys: tls_size_pages + INITIAL_STACK_PAGES + TRAP_STACK_PAGES,
+            hartmem_size_pages_virt: tls_size_pages
+                + kconfig::STACK_SIZE_PAGES_KERNEL
+                + TRAP_STACK_PAGES,
         })
     }
 

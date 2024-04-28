@@ -1,14 +1,15 @@
 use super::register::scause::{Exception, Interrupt, Trap};
 use super::register::{scause, sepc, stval, stvec};
-use crate::arch::halt;
+use crate::arch::{halt, STACK};
 use core::arch::asm;
 use core::marker::PhantomPinned;
 use core::ptr::addr_of;
+use vmm::VirtualAddress;
 
 #[thread_local]
-static TRAP_FRAME: TrapFrame = TrapFrame::ZERO;
+static mut TRAP_FRAME: TrapFrame = TrapFrame::ZERO;
 
-pub fn init() {
+pub fn init(trap_stack_virt: VirtualAddress) {
     unsafe {
         log::debug!("setting sscratch to {:p}", addr_of!(TRAP_FRAME));
         asm!(
@@ -16,6 +17,9 @@ pub fn init() {
             "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
             trap_frame = in(reg) addr_of!(TRAP_FRAME)
         );
+
+        log::debug!("setting trap stack base to {trap_stack_virt}");
+        TRAP_FRAME.trap_stack_ptr = trap_stack_virt.as_raw();
 
         log::debug!("setting trap vec to {:#x}", trap_vec as usize);
         stvec::write(trap_vec as usize, stvec::Mode::Vectored);
@@ -34,6 +38,7 @@ pub struct TrapFrame {
     pub t: [usize; 7],
     pub a: [usize; 8],
     pub s: [usize; 12],
+    pub trap_stack_ptr: usize,
 
     pub _pinned: PhantomPinned,
 }
@@ -45,6 +50,7 @@ impl TrapFrame {
         t: [0; 7],
         a: [0; 8],
         s: [0; 12],
+        trap_stack_ptr: 0,
         _pinned: PhantomPinned,
     };
 }
@@ -176,6 +182,7 @@ unsafe extern "C" fn default_trap_entry() {
         save!(s11 => t6[28]),
 
         "mv a0, t6",
+        load!(t6[29] => sp),
 
         "call {trap_handler}",
 
@@ -243,10 +250,20 @@ fn default_trap_handler(
         Trap::Exception(Exception::StorePageFault) => {
             let epc = sepc::read();
             let tval = stval::read();
+            
+            STACK.with(|stack_range| {
+                let tval = unsafe { VirtualAddress::new(tval.as_bits()) };
+
+                log::trace!("stack range {stack_range:?} tval {tval:?}");
+
+                if stack_range.contains(&tval) {
+                    panic!("KERNEL hart has overflowed its stack {tval:?} stack {stack_range:?}");
+                }
+            });
+
+            log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
 
             // let ctx = Context::from_raw(frame.ra, frame.sp, frame.s);
-
-            log::error!("KERNEL STORE PAGE FAULT: epc {epc:x?} tval {tval:x?}");
             // let mut count = 0;
             // crate::backtrace::trace_with_context(ctx, |frame| {
             //     count += 1;

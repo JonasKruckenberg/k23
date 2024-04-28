@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(naked_functions, asm_const, split_array)]
 
-use crate::paging::PageTableResult;
+use crate::paging::{own_regions, PageTableResult, TRAP_STACK_PAGES};
 use boot_info::BootInfo;
 use core::ops::Range;
 use core::{ptr, slice};
@@ -31,6 +31,7 @@ pub struct KernelArgs {
     fdt_virt: VirtualAddress,
     stack_start: VirtualAddress,
     stack_end: VirtualAddress,
+    trap_stack_start: VirtualAddress,
     page_alloc_offset: VirtualAddress,
     frame_alloc_offset: usize,
 }
@@ -82,15 +83,21 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         ..hartmem
             .start
             .add(kconfig::STACK_SIZE_PAGES_KERNEL * kconfig::PAGE_SIZE);
+    let trap_stack_virt = stack_virt.end
+        ..stack_virt
+            .end
+            .add(TRAP_STACK_PAGES * kconfig::STACK_SIZE_PAGES_KERNEL);
     let tls_virt = hartmem
         .start
-        .add(kconfig::STACK_SIZE_PAGES_KERNEL * kconfig::PAGE_SIZE)..hartmem.end;
+        .add((kconfig::STACK_SIZE_PAGES_KERNEL + TRAP_STACK_PAGES) * kconfig::PAGE_SIZE)
+        ..hartmem.end;
 
     let kargs = KernelArgs {
         boot_hart: boot_info.boot_hart,
         fdt_virt: fdt_virt.start,
         stack_start: stack_virt.start,
         stack_end: stack_virt.end,
+        trap_stack_start: trap_stack_virt.start,
         page_alloc_offset: unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) }
             .sub(hartmem.size() * boot_info.cpus),
         frame_alloc_offset: page_table_result.frame_alloc_offset,
