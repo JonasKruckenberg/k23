@@ -31,26 +31,26 @@ pub struct ElfSections {
 #[derive(Debug)]
 #[repr(C)]
 struct ElfHeader64 {
-    ei_magic: [u8; 4],
-    ei_class: u8,
-    ei_data: u8,
-    ei_version: u8,
-    ei_osabi: u8,
-    ei_abiversion: u8,
-    ei_pad: [u8; 7],
-    e_type: u16,
-    e_machine: u16,
-    e_version: u32,
-    e_entry: u64,
-    e_phoff: u64,
-    e_shoff: u64,
-    e_flags: u32,
-    e_ehsize: u16,
-    e_phentsize: u16,
-    e_phnum: u16,
-    e_shentsize: u16,
-    e_shnum: u16,
-    e_shstrndx: u16,
+    pub magic: [u8; 4],
+    pub class: u8,
+    pub data: u8,
+    pub version: u8,
+    pub os_abi: u8,
+    pub abi_version: u8,
+    pub padding: [u8; 7],
+    pub e_type: u16,
+    pub e_machine: u16,
+    pub e_version: u32,
+    pub e_entry: u64,
+    pub e_phoff: u64,
+    pub e_shoff: u64,
+    pub e_flags: u32,
+    pub e_ehsize: u16,
+    pub e_phentsize: u16,
+    pub e_phnum: u16,
+    pub e_shentsize: u16,
+    pub e_shnum: u16,
+    pub e_shstrndx: u16,
 }
 
 #[derive(Debug)]
@@ -90,18 +90,21 @@ bitflags! {
     }
 }
 
+// This function takes a few shortcuts when parsing the elf file:
+//      - we assume the elf file is 64-bit since we have no 32-bit support
+//      - we assume the elf file has the same endianness as the loader
 pub fn parse(buf: &[u8]) -> ElfSections {
     let hdr = unsafe { &*(buf.as_ptr() as *const ElfHeader64) };
     assert_eq!(
-        hdr.ei_magic, ELF_MAGIC,
+        hdr.magic, ELF_MAGIC,
         "expected kernel to be a valid elf file"
     );
     assert_eq!(
-        hdr.ei_class, ELF_CLASS_64,
+        hdr.class, ELF_CLASS_64,
         "expected kernel to be a 64-bits elf file"
     );
     assert_eq!(
-        hdr.ei_data, ELF_DATA_2LSB,
+        hdr.data, ELF_DATA_2LSB,
         "expected kernel to be a little-endian elf file"
     );
 
@@ -116,9 +119,8 @@ pub fn parse(buf: &[u8]) -> ElfSections {
 
     let shstrtab = unsafe {
         let entry = &shentries[hdr.e_shstrndx as usize];
-
         let start = buf.as_ptr().add(entry.sh_offset as usize);
-        core::slice::from_raw_parts(start, entry.sh_size as usize)
+        slice::from_raw_parts(start, entry.sh_size as usize)
     };
 
     let mut text_section = None;
@@ -143,7 +145,8 @@ pub fn parse(buf: &[u8]) -> ElfSections {
                     start..start.add(entry.sh_size as usize)
                 },
                 phys: unsafe {
-                    let start = PhysicalAddress::new(buf.as_ptr() as usize).add(entry.sh_offset as usize);
+                    let start =
+                        PhysicalAddress::new(buf.as_ptr() as usize).add(entry.sh_offset as usize);
                     start..start.add(entry.sh_size as usize)
                 },
             };
