@@ -34,29 +34,33 @@ macro_rules! declare_thread_local {
 
 macro_rules! thread_local_inner {
     // used to generate the `LocalKey` value for const-initialized thread locals
-    (@key $t:ty, const $init:expr) => {{
+    (@key $name:ident, $t:ty, const $init:expr) => {{
         #[inline]
         unsafe fn __getit(_init: Option<&mut Option<$t>>) -> Option<&'static $t> {
             const INIT_EXPR: $t = $init;
 
             #[thread_local]
-            static VAL: $t = INIT_EXPR;
+            #[cfg_attr(debug_assertions, no_mangle)]
+            // Use a mutable static to prevent the compiler from placing the init expression into tdata
+            // even when its all zeros.
+            static mut $name: $t = INIT_EXPR;
 
-            Some(&*::core::ptr::addr_of!(VAL))
+            Some(&*::core::ptr::addr_of!($name))
         }
 
         $crate::thread_local::LocalKey::new(__getit)
     }};
     // used to generate the `LocalKey` value for lazily-initialized thread locals
-    (@key $t:ty, $init:expr) => {{
+    (@key $name:ident, $t:ty, $init:expr) => {{
         #[inline]
         fn __init() -> $t { $init }
 
         #[inline]
         unsafe fn __getit(init: Option<&mut Option<$t>>) -> Option<&'static $t> {
             #[thread_local]
-            static VAL: ::core::cell::UnsafeCell<Option<$t>> = ::core::cell::UnsafeCell::new(None);
-            let ptr = VAL.get();
+            #[cfg_attr(debug_assertions, no_mangle)]
+            static $name: ::core::cell::UnsafeCell<Option<$t>> = ::core::cell::UnsafeCell::new(None);
+            let ptr = $name.get();
 
             if (&*ptr).is_none() {
                 let value = init.map(|inner| inner.take()).unwrap_or_else(|| Some(__init()));
@@ -73,11 +77,11 @@ macro_rules! thread_local_inner {
     }};
     ($(#[$attr:meta])* $vis:vis $name:ident, $t:ty, $($init:tt)*) => {
         $(#[$attr])* $vis const $name: $crate::thread_local::LocalKey<$t> =
-            $crate::thread_local::thread_local_inner!(@key $t, $($init)*);
+            $crate::thread_local::thread_local_inner!(@key $name, $t, $($init)*);
     };
     ($(#[$attr:meta])* $vis:vis $name:ident, $t:ty) => {
         $(#[$attr])* $vis const $name: $crate::thread_local::LocalKey<$t> =
-            $crate::thread_local::thread_local_inner!(@key $t, panic!("Thread Local Storage value is not initialized"));
+            $crate::thread_local::thread_local_inner!(@key $name, $t, panic!("Thread Local Storage value is not initialized"));
     }
 }
 
