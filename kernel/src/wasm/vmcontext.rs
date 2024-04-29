@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::wasm::module::Module;
 use core::mem;
 use core::mem::offset_of;

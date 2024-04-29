@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::wasm::module::{FunctionType, Import, MemoryPlan, Module, TablePlan};
 use alloc::boxed::Box;
 use core::mem;
@@ -38,7 +40,7 @@ impl<'wasm> ModuleEnvironment<'wasm> {
 }
 
 impl<'wasm> TypeConvert for ModuleEnvironment<'wasm> {
-    fn lookup_heap_type(&self, index: UnpackedIndex) -> WasmHeapType {
+    fn lookup_heap_type(&self, _index: UnpackedIndex) -> WasmHeapType {
         todo!()
     }
 }

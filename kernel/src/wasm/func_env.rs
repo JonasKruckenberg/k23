@@ -1,7 +1,9 @@
+#![allow(unused)]
+
 use crate::wasm::builtins::BuiltinFunctions;
 use crate::wasm::module::Module;
 use crate::wasm::vmcontext::VMContextOffsets;
-use crate::wasm::{WASM32_MAX_PAGES, WASM64_MAX_PAGES, WASM_PAGE_SIZE};
+use crate::wasm::WASM_PAGE_SIZE;
 use alloc::vec;
 use cranelift_codegen::cursor::FuncCursor;
 use cranelift_codegen::entity::{EntityRef, PrimaryMap};

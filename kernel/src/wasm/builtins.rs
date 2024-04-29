@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::wasm::NS_WASMTIME_BUILTIN;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};

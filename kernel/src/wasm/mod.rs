@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 mod builtins;
 mod func_env;
 mod module;
@@ -8,16 +10,11 @@ use crate::wasm::func_env::FuncEnvironment;
 use crate::wasm::module_env::ModuleEnvironment;
 use alloc::vec::Vec;
 use cranelift_codegen::control::ControlPlane;
-use cranelift_codegen::dominator_tree::DominatorTree;
-use cranelift_codegen::flowgraph::ControlFlowGraph;
 use cranelift_codegen::ir::types::{F32, F64, I32, I64, I8X16, R32, R64};
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Function, Type};
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_codegen::settings::Configurable;
 use cranelift_wasm::{FuncIndex, FuncTranslator, TypeIndex, WasmHeapType, WasmResult, WasmValType};
-use target_lexicon::{
-    Aarch64Architecture, Architecture, BinaryFormat, Environment, OperatingSystem, Vendor,
-};
 
 /// Namespace corresponding to wasm functions, the index is the index of the
 /// defined function that's being referenced.
@@ -113,7 +110,7 @@ pub fn translate(module: &[u8]) -> WasmResult<()> {
         ctx.verify_if(isa.as_ref()).unwrap();
 
         let mut out = Vec::new();
-        let compiled = ctx
+        let _compiled = ctx
             .compile_and_emit(isa.as_ref(), &mut out, &mut ControlPlane::default())
             .unwrap();
     }
