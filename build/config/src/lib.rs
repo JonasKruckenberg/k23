@@ -9,11 +9,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
-fn kernel_default_stack_size_pages() -> usize {
-    16
-}
 fn bootloader_default_stack_size_pages() -> usize {
     4
+}
+fn kernel_default_stack_size_pages() -> usize {
+    32
+}
+fn kernel_default_initial_stack_size_pages() -> usize {
+    16
+}
+fn kernel_default_trap_stack_size_pages() -> usize {
+    16
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -53,6 +59,12 @@ pub struct KernelConfig {
     /// The per-hart stack size in pages
     #[serde(default = "kernel_default_stack_size_pages")]
     pub stack_size_pages: usize,
+    /// The initial number of pages that will be mapped for each hart stack
+    #[serde(default = "kernel_default_initial_stack_size_pages")]
+    pub initial_stack_size_pages: usize,
+    /// The per-hart trap stack size in pages
+    #[serde(default = "kernel_default_trap_stack_size_pages")]
+    pub trap_stack_size_pages: usize,
     /// Rust features to enable
     #[serde(default)]
     pub features: Vec<String>,

@@ -1,10 +1,12 @@
 name = "riscv64-qemu"                 # Name of the configuration
 version = "0.1.0"                     # Version of the configuration
 target = "riscv64gc-unknown-none-elf" # Rust target triple to compile for
-memory-mode = "Riscv64Sv39"
+memory-mode = "Riscv64Sv39"           # The memory mode to use (can be one of Riscv64Sv39, Riscv64Sv48, and Riscv64Sv57)
 
 [kernel]
-stack-size-pages = 64  # Size of the per-hart stack in pages
+stack-size-pages = 64         # Size of the per-hart stack in pages
+initial-stack-size-pages = 16 # The number of pages of each stack that will initially be mapped
+trap-stack-size-pages = 16    # Size of the per-hart trap stack in pages
 log-level = "trace"
 uart-baud-rate = 38400
 linker-script = "kernel-riscv64-qemu.ld"

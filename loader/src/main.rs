@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(naked_functions, asm_const, split_array)]
 
-use crate::paging::{own_regions, PageTableResult, TRAP_STACK_PAGES};
+use crate::paging::{own_regions, PageTableResult};
 use boot_info::BootInfo;
 use core::ops::Range;
 use core::{ptr, slice};
@@ -88,14 +88,14 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     let stack_virt = hartmem.start
         ..hartmem
             .start
-            .add(kconfig::STACK_SIZE_PAGES_KERNEL * kconfig::PAGE_SIZE);
+            .add(kconfig::KERNEL_STACK_SIZE_PAGES * kconfig::PAGE_SIZE);
     let trap_stack_virt = stack_virt.end
         ..stack_virt
             .end
-            .add(TRAP_STACK_PAGES * kconfig::STACK_SIZE_PAGES_KERNEL);
+            .add((kconfig::KERNEL_TRAP_STACK_SIZE_PAGES + kconfig::KERNEL_TRAP_STACK_SIZE_PAGES) * kconfig::PAGE_SIZE);
     let tls_virt = hartmem
         .start
-        .add((kconfig::STACK_SIZE_PAGES_KERNEL + TRAP_STACK_PAGES) * kconfig::PAGE_SIZE)
+        .add((kconfig::KERNEL_TRAP_STACK_SIZE_PAGES + kconfig::KERNEL_TRAP_STACK_SIZE_PAGES) * kconfig::PAGE_SIZE)
         ..hartmem.end;
 
     let kargs = KernelArgs {
