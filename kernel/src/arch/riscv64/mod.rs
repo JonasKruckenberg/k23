@@ -7,6 +7,8 @@ use crate::{allocator, boot_info, kconfig, kernel_mapper, logger};
 use core::arch::asm;
 use core::ops::Range;
 use riscv::register;
+use riscv::register::sstatus::FS;
+use riscv::register::{sie, sstatus};
 use sync::Once;
 use vmm::{AddressRangeExt, EntryFlags, VirtualAddress};
 
@@ -64,8 +66,9 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
 
     // Safety: Register access
     unsafe {
-        register::sstatus::set_sie();
-        register::sie::set_stie();
+        sstatus::set_sie();
+        sstatus::set_fs(FS::Initial);
+        sie::set_stie();
     }
 
     crate::main(hartid)

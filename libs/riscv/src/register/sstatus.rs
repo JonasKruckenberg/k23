@@ -14,6 +14,13 @@ pub unsafe fn clear_sie() {
     _clear(1 << 1)
 }
 
+pub unsafe fn set_fs(fs: FS) {
+    let mut value = read().bits;
+    value &= !(0x3 << 13); // clear previous value
+    value |= (fs as usize) << 13;
+    _write(value);
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SPP {
     Supervisor = 1,
