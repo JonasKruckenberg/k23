@@ -237,7 +237,7 @@ dependencies = [
 [[package]]
 name = "cranelift-bforest"
 version = "0.108.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#d84703859a4cd84d035e0ca4db7ffecc1eb37a54"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#5756fd4bdd9d3def9eaefc19e3bf93ea45e2ec63"
 dependencies = [
  "cranelift-entity",
 ]
@@ -245,7 +245,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen"
 version = "0.108.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#d84703859a4cd84d035e0ca4db7ffecc1eb37a54"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#5756fd4bdd9d3def9eaefc19e3bf93ea45e2ec63"
 dependencies = [
  "bumpalo",
  "cranelift-bforest",
@@ -254,17 +254,18 @@ dependencies = [
  "cranelift-control",
  "cranelift-entity",
  "cranelift-isle 0.108.0 (git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std)",
- "hashbrown 0.14.3",
+ "hashbrown 0.14.5",
  "log",
  "regalloc2",
  "smallvec",
+ "spin",
  "target-lexicon",
 ]
 
 [[package]]
 name = "cranelift-codegen-meta"
 version = "0.108.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#d84703859a4cd84d035e0ca4db7ffecc1eb37a54"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#5756fd4bdd9d3def9eaefc19e3bf93ea45e2ec63"
 dependencies = [
  "cranelift-codegen-shared",
 ]
@@ -272,17 +273,17 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-shared"
 version = "0.108.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#d84703859a4cd84d035e0ca4db7ffecc1eb37a54"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#5756fd4bdd9d3def9eaefc19e3bf93ea45e2ec63"
 
 [[package]]
 name = "cranelift-control"
 version = "0.108.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#d84703859a4cd84d035e0ca4db7ffecc1eb37a54"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#5756fd4bdd9d3def9eaefc19e3bf93ea45e2ec63"
 
 [[package]]
 name = "cranelift-entity"
 version = "0.108.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#d84703859a4cd84d035e0ca4db7ffecc1eb37a54"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#5756fd4bdd9d3def9eaefc19e3bf93ea45e2ec63"
 dependencies = [
  "serde",
  "serde_derive",
@@ -291,10 +292,10 @@ dependencies = [
 [[package]]
 name = "cranelift-frontend"
 version = "0.108.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#d84703859a4cd84d035e0ca4db7ffecc1eb37a54"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#5756fd4bdd9d3def9eaefc19e3bf93ea45e2ec63"
 dependencies = [
  "cranelift-codegen",
- "hashbrown 0.14.3",
+ "hashbrown 0.14.5",
  "log",
  "smallvec",
  "target-lexicon",
@@ -312,17 +313,17 @@ dependencies = [
 [[package]]
 name = "cranelift-isle"
 version = "0.108.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#d84703859a4cd84d035e0ca4db7ffecc1eb37a54"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#5756fd4bdd9d3def9eaefc19e3bf93ea45e2ec63"
 
 [[package]]
 name = "cranelift-wasm"
 version = "0.108.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#d84703859a4cd84d035e0ca4db7ffecc1eb37a54"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#5756fd4bdd9d3def9eaefc19e3bf93ea45e2ec63"
 dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
  "cranelift-frontend",
- "hashbrown 0.14.3",
+ "hashbrown 0.14.5",
  "log",
  "smallvec",
  "wasmparser",
@@ -461,7 +462,7 @@ checksum = "38793c55593b33412e3ae40c2c9781ffaa6f438f6f8c10f24e71846fbd7ae01e"
 name = "fxhash"
 version = "0.1.0"
 dependencies = [
- "hashbrown 0.14.3",
+ "hashbrown 0.14.5",
 ]
 
 [[package]]
@@ -490,7 +491,7 @@ name = "gimli"
 version = "0.1.0"
 dependencies = [
  "fxhash",
- "hashbrown 0.14.3",
+ "hashbrown 0.14.5",
  "indexmap",
  "test-assembler",
 ]
@@ -506,9 +507,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.14.3"
+version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "290f1a1d9242c78d09ce40a5e87e7554ee637af1351968159f4952f028f75604"
+checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 dependencies = [
  "ahash",
  "allocator-api2",
@@ -533,7 +534,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "168fb715dda47215e360912c096649d23d58bf392ac62f73919e831745e40f26"
 dependencies = [
  "equivalent",
- "hashbrown 0.14.3",
+ "hashbrown 0.14.5",
 ]
 
 [[package]]
@@ -555,7 +556,7 @@ dependencies = [
  "cranelift-wasm",
  "dtb-parser",
  "gimli",
- "hashbrown 0.14.3",
+ "hashbrown 0.14.5",
  "linked_list_allocator",
  "log",
  "riscv",
@@ -856,6 +857,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin"
+version = "0.9.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+
+[[package]]
 name = "spinning_top"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1049,7 +1056,7 @@ checksum = "39192edb55d55b41963db40fd49b0b542156f04447b5b512744a91d38567bdbc"
 dependencies = [
  "ahash",
  "bitflags",
- "hashbrown 0.14.3",
+ "hashbrown 0.14.5",
  "indexmap",
  "semver",
 ]
@@ -1057,7 +1064,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-types"
 version = "21.0.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#d84703859a4cd84d035e0ca4db7ffecc1eb37a54"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std#5756fd4bdd9d3def9eaefc19e3bf93ea45e2ec63"
 dependencies = [
  "cranelift-entity",
  "onlyerror",

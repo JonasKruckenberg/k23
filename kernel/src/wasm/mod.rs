@@ -1,26 +1,23 @@
-use crate::kconfig;
-use crate::wasm::func_env::FuncEnvironment;
-use crate::wasm::module_env::ModuleEnvironment;
-use crate::wasm::utils::value_type;
-use core::mem;
-use cranelift_codegen::control::ControlPlane;
-use cranelift_codegen::dominator_tree::DominatorTree;
-use cranelift_codegen::flowgraph::ControlFlowGraph;
-use cranelift_codegen::ir;
-use cranelift_codegen::ir::AbiParam;
-use cranelift_codegen::settings::Configurable;
-use cranelift_wasm::wasmparser::{FuncValidator, FunctionBody, WasmModuleResources};
-use cranelift_wasm::{FuncTranslator, WasmResult};
-
 mod builtins;
 mod func_env;
 mod module;
 mod module_env;
-mod utils;
 mod vmcontext;
 
-/// Trap code used for debug assertions we emit in our JIT code.
-const DEBUG_ASSERT_TRAP_CODE: u16 = u16::MAX;
+use crate::wasm::func_env::FuncEnvironment;
+use crate::wasm::module_env::ModuleEnvironment;
+use alloc::vec::Vec;
+use cranelift_codegen::control::ControlPlane;
+use cranelift_codegen::dominator_tree::DominatorTree;
+use cranelift_codegen::flowgraph::ControlFlowGraph;
+use cranelift_codegen::ir::types::{F32, F64, I32, I64, I8X16, R32, R64};
+use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Function, Type};
+use cranelift_codegen::isa::TargetIsa;
+use cranelift_codegen::settings::Configurable;
+use cranelift_wasm::{FuncIndex, FuncTranslator, TypeIndex, WasmHeapType, WasmResult, WasmValType};
+use target_lexicon::{
+    Aarch64Architecture, Architecture, BinaryFormat, Environment, OperatingSystem, Vendor,
+};
 
 /// Namespace corresponding to wasm functions, the index is the index of the
 /// defined function that's being referenced.
@@ -29,15 +26,6 @@ pub const NS_WASM_FUNC: u32 = 0;
 /// Namespace for builtin function trampolines. The index is the index of the
 /// builtin that's being referenced.
 pub const NS_WASMTIME_BUILTIN: u32 = 1;
-
-/// Magic value for core Wasm VM contexts.
-///
-/// This is stored at the start of all `VMContext` structures.
-pub const VMCONTEXT_MAGIC: u32 = u32::from_le_bytes(*b"CT23");
-
-/// If this bit is set on a GC reference, then the GC reference is actually an
-/// unboxed `i31`.
-const I31_REF_DISCRIMINANT: u32 = 1;
 
 /// WebAssembly page sizes are defined to be 64KiB.
 pub const WASM_PAGE_SIZE: u32 = 0x10000;
@@ -48,9 +36,6 @@ pub const WASM32_MAX_PAGES: u64 = 1 << 16;
 /// The number of pages (for 64-bit modules) we can have before we run out of
 /// byte index space.
 pub const WASM64_MAX_PAGES: u64 = 1 << 48;
-
-/// The size of the guard page before a linear memory in bytes, set pretty arbitrarily to 16KiB.
-pub const MEMORY_GUARD_SIZE: u64 = 0x4000;
 
 pub fn translate(module: &[u8]) -> WasmResult<()> {
     let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
@@ -63,59 +48,101 @@ pub fn translate(module: &[u8]) -> WasmResult<()> {
 
     let mut module_env = ModuleEnvironment::new();
 
-    cranelift_wasm::translate_module(module, &mut module_env).unwrap();
+    cranelift_wasm::translate_module(module, &mut module_env)?;
 
-    let (mut translation, types) = module_env.finish();
-    let functions = mem::take(&mut translation.function_body_inputs);
+    let translation = module_env.finish();
 
-    let mut func_translator = FuncTranslator::new();
+    log::debug!("{:?} {:?}", translation.module, translation.types);
 
-    for (def_func_index, mut func) in functions {
-        log::debug!("translating func {def_func_index:?}...");
-        log::debug!("{translation:#?}");
+    assert_eq!(translation.module.types.len(), 1);
+    let ty_idx = translation.module.types[TypeIndex::from_u32(0)];
+    let f = translation.types[ty_idx].unwrap_func();
+    assert_eq!(f.params().len(), 1);
+    assert_eq!(f.returns().len(), 1);
+    assert_eq!(f.non_i31_gc_ref_params_count(), 0);
+    assert_eq!(f.non_i31_gc_ref_returns_count(), 0);
 
+    assert_eq!(translation.module.functions.len(), 1);
+    assert_eq!(
+        translation.module.functions[FuncIndex::from_u32(0)].signature,
+        ty_idx
+    );
+
+    assert_eq!(translation.module.table_plans.len(), 1);
+    assert_eq!(translation.module.memory_plans.len(), 1);
+    assert_eq!(translation.module.globals.len(), 1);
+    assert_eq!(translation.module.exports.len(), 2);
+    assert_eq!(translation.function_body_inputs.len(), 1);
+
+    for (def_func_index, mut func_body_input) in translation.function_body_inputs {
         let sig_index =
             translation.module.functions[translation.module.func_index(def_func_index)].signature;
-        let sig = types[sig_index].unwrap_func();
+        let sig = translation.types[sig_index].unwrap_func();
 
-        let mut translated = ir::Function::new();
-        translated.signature.params = sig
-            .params()
-            .iter()
-            .map(|p| AbiParam::new(value_type(isa.as_ref(), *p)))
-            .collect();
+        let mut translated = Function::new();
+        // translated.signature.sp
+        translated
+            .signature
+            .params
+            .push(AbiParam::special(I64, ArgumentPurpose::VMContext));
+        translated.signature.params.extend(
+            sig.params()
+                .iter()
+                .map(|p| AbiParam::new(value_type(isa.as_ref(), *p))),
+        );
         translated.signature.returns = sig
             .returns()
             .iter()
             .map(|p| AbiParam::new(value_type(isa.as_ref(), *p)))
             .collect();
 
-        let mut func_env = FuncEnvironment::new(isa.as_ref(), &translation);
+        let mut func_env = FuncEnvironment::new(isa.as_ref(), &translation.module);
+        let mut func_translator = FuncTranslator::new();
 
         func_translator.translate_body(
-            &mut func.validator,
-            func.body,
+            &mut func_body_input.validator,
+            func_body_input.body,
             &mut translated,
             &mut func_env,
         )?;
 
-        log::debug!("translated func {}", translated.display());
-
-        let cfg = ControlFlowGraph::with_function(&translated);
-        let domtree = DominatorTree::with_function(&translated, &cfg);
-
-        let compiled = isa
-            .compile_function(&translated, &domtree, false, &mut ControlPlane::default())
+        let mut ctx = cranelift_codegen::Context::for_function(translated);
+        ctx.optimize(isa.as_ref(), &mut ControlPlane::default())
             .unwrap();
-        let compiled = compiled.apply_params(&translated.params);
+        ctx.replace_redundant_loads().unwrap();
+        ctx.verify_if(isa.as_ref()).unwrap();
 
-        // tval  0xffffffd7fffdc3e8
-
-        // tdata 0xffffffd7ffffff0f..0xffffffd800000000
-        // tbss  0xffffffd7fffff000..0xffffffd7ffffff0f
-        // stack 0xffffffd7fffbf000..0xffffffd7fffff000
-        // heap  0xffffffd7fdfbe000..0xffffffd7fffbe000
+        let mut out = Vec::new();
+        let compiled = ctx
+            .compile_and_emit(isa.as_ref(), &mut out, &mut ControlPlane::default())
+            .unwrap();
     }
 
-    Ok(())
+    todo!()
+}
+
+/// Returns the corresponding cranelift type for the provided wasm type.
+pub fn value_type(isa: &dyn TargetIsa, ty: WasmValType) -> Type {
+    match ty {
+        WasmValType::I32 => I32,
+        WasmValType::I64 => I64,
+        WasmValType::F32 => F32,
+        WasmValType::F64 => F64,
+        WasmValType::V128 => I8X16,
+        WasmValType::Ref(rt) => reference_type(rt.heap_type, isa.pointer_type()),
+    }
+}
+
+/// Returns the reference type to use for the provided wasm type.
+pub fn reference_type(wasm_ht: WasmHeapType, pointer_type: Type) -> Type {
+    match wasm_ht {
+        WasmHeapType::Func | WasmHeapType::ConcreteFunc(_) | WasmHeapType::NoFunc => pointer_type,
+        WasmHeapType::Extern | WasmHeapType::Any | WasmHeapType::I31 | WasmHeapType::None => {
+            match pointer_type {
+                I32 => R32,
+                I64 => R64,
+                _ => panic!("unsupported pointer type"),
+            }
+        }
+    }
 }
