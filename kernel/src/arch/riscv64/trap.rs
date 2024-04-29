@@ -250,7 +250,7 @@ fn default_trap_handler(
         Trap::Exception(Exception::StorePageFault) => {
             let epc = sepc::read();
             let tval = stval::read();
-            
+
             STACK.with(|stack_range| {
                 let tval = unsafe { VirtualAddress::new(tval.as_bits()) };
 
