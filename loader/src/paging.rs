@@ -11,7 +11,7 @@ use vmm::{
 
 type VMMode = INIT<kconfig::MEMORY_MODE>;
 
-const INITIAL_STACK_PAGES: usize = 32;
+const INITIAL_STACK_PAGES: usize = 64;
 pub const TRAP_STACK_PAGES: usize = 16;
 
 pub fn init(
