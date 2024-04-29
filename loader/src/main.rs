@@ -6,7 +6,7 @@ use crate::paging::{own_regions, PageTableResult, TRAP_STACK_PAGES};
 use boot_info::BootInfo;
 use core::ops::Range;
 use core::{ptr, slice};
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::Signature;
 use sync::Once;
 use vmm::{
     AddressRangeExt, BumpAllocator, FrameAllocator, Mode, PhysicalAddress, VirtualAddress, INIT,
@@ -56,9 +56,15 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         let fdt_virt = kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.start)
             ..kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.end);
 
-        // // 1. Verify kernel signature
-        let kernel = verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
-        log::info!("Successfully verified kernel image signature");
+        // 1. Verify kernel signature (skip for debug builds because it's very slow)
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "verify-image")] {
+                let kernel = verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
+                log::info!("Successfully verified kernel image signature");
+            } else {
+                let kernel = &kconfig::KERNEL_IMAGE[Signature::BYTE_SIZE..];
+            }
+        }
 
         // TODO decompress kernel
 
@@ -133,10 +139,13 @@ fn allocate_and_copy(
     base..base.add(src.len())
 }
 
+#[cfg(feature = "verify-image")]
 fn verify_kernel_signature<'a>(
     verifying_key: &[u8; ed25519_dalek::PUBLIC_KEY_LENGTH],
     kernel_image: &'a [u8],
 ) -> &'a [u8] {
+    use ed25519_dalek::{Verifier, VerifyingKey};
+
     let verifying_key = VerifyingKey::from_bytes(verifying_key).unwrap();
     let (signature, kernel) = kernel_image.split_at(Signature::BYTE_SIZE);
     let signature = Signature::from_slice(signature).unwrap();

@@ -19,3 +19,6 @@ bitflags.workspace = true
 [build-dependencies]
 build-config.workspace = true
 anyhow.workspace = true
+
+[features]
+verify-image = []

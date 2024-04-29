@@ -37,6 +37,9 @@ struct Common {
 #[derive(Debug, Parser)]
 enum XtaskCommand {
     Check {
+        /// Whether to build in release mode instead of debug mode
+        #[clap(short, long)]
+        release: bool,
         /// Path to the image configuration file, in TOML.
         cfg: PathBuf,
     },
@@ -79,11 +82,11 @@ fn run() -> anyhow::Result<()> {
     logger::init(xtask.common.verbose);
 
     match xtask.cmd {
-        XtaskCommand::Check { cfg } => {
+        XtaskCommand::Check { cfg, release } => {
             let cfg = Config::from_file(&cfg).unwrap();
 
-            check_kernel(&cfg)?;
-            check_loader(&cfg)?;
+            check_kernel(&cfg, release)?;
+            check_loader(&cfg, release)?;
         }
         XtaskCommand::Run { release, cfg, .. } => {
             let cfg = Config::from_file(&cfg).unwrap();
@@ -144,7 +147,7 @@ fn create_kernel_image_files(kernel: &Utf8Path) -> anyhow::Result<(Utf8PathBuf, 
     Ok((kernel_file_path, verifying_key_path))
 }
 
-fn check_loader(cfg: &Config) -> anyhow::Result<()> {
+fn check_loader(cfg: &Config, release: bool) -> anyhow::Result<()> {
     let target = cfg
         .loader
         .target
@@ -152,7 +155,8 @@ fn check_loader(cfg: &Config) -> anyhow::Result<()> {
         .unwrap_or(&cfg.target)
         .to_string();
 
-    Cargo::new_check("loader", &target, &cfg)?
+    let cmd = Cargo::new_check("loader", &target, &cfg)?
+        .release(release)
         // .env("RUSTFLAGS", "-Zstack-protector=all -Csoft-float=true")
         .additional_args([
             "-Z",
@@ -160,13 +164,20 @@ fn check_loader(cfg: &Config) -> anyhow::Result<()> {
             "-Z",
             "build-std-features=compiler-builtins-mem",
         ])
-        .enable_features(cfg.loader.features.clone())
-        .exec()?;
+        .enable_features(cfg.loader.features.clone());
+
+    let cmd = if release {
+        cmd.enable_features(["verify-image".to_string()])
+    } else {
+        cmd
+    };
+
+    cmd.exec()?;
 
     Ok(())
 }
 
-fn check_kernel(cfg: &Config) -> anyhow::Result<()> {
+fn check_kernel(cfg: &Config, release: bool) -> anyhow::Result<()> {
     let target = cfg
         .kernel
         .target
@@ -175,6 +186,7 @@ fn check_kernel(cfg: &Config) -> anyhow::Result<()> {
         .to_string();
 
     Cargo::new_check("kernel", &target, &cfg)?
+        .release(release)
         // .env("RUSTFLAGS", "-Zstack-protector=all")
         .additional_args([
             "-Z",
@@ -200,7 +212,7 @@ fn build_loader(cfg: &Config, release: bool, kernel: &Utf8Path) -> anyhow::Resul
 
     log::debug!("compressed kernel image {kernel_image} public key {kernel_verifying_key}");
 
-    let bootloader = Cargo::new_build("loader", &target, &cfg)?
+    let cmd = Cargo::new_build("loader", &target, &cfg)?
         .release(release)
         // .env("RUSTFLAGS", "-Zstack-protector=all")
         .env("K23_KERNEL_IMAGE", kernel_image)
@@ -211,8 +223,15 @@ fn build_loader(cfg: &Config, release: bool, kernel: &Utf8Path) -> anyhow::Resul
             "-Z",
             "build-std-features=compiler-builtins-mem",
         ])
-        .enable_features(cfg.loader.features.clone())
-        .exec()?;
+        .enable_features(cfg.loader.features.clone());
+
+    let cmd = if release {
+        cmd.enable_features(["verify-image".to_string()])
+    } else {
+        cmd
+    };
+
+    let bootloader = cmd.exec()?;
 
     let executable = bootloader
         .executable
@@ -375,11 +394,11 @@ fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> 
         "-cpu",
         "rv64",
         "-d",
-        "guest_errors",
+        "guest_errors,int",
         "-smp",
-        "2",
+        "1",
         "-m",
-        "128M",
+        "512M",
         "-device",
         "virtio-rng-device",
         "-device",
