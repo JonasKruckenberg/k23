@@ -27,7 +27,6 @@ pub struct KernelArgs {
     fdt_virt: VirtualAddress,
     stack_start: VirtualAddress,
     stack_end: VirtualAddress,
-    trap_stack_start: VirtualAddress,
     page_alloc_offset: VirtualAddress,
     frame_alloc_offset: usize,
 }
@@ -44,7 +43,7 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
     HARTID.initialize_with(hartid, |_, _| {});
     STACK.initialize_with(kargs.stack_start..kargs.stack_end, |_, _| {});
 
-    trap::init(kargs.trap_stack_start);
+    trap::init();
 
     static INIT: Once = Once::new();
 

@@ -89,18 +89,16 @@ impl<'dt> State<'dt> {
         let tls_size_pages =
             (kernel.tdata.virt.size() + kernel.tbss.virt.size()).div_ceil(kconfig::PAGE_SIZE);
 
+        log::trace!("tdata size {} tbss size {}", kernel.tdata.virt.size(), kernel.tbss.virt.size());
+        
         Ok(Self {
             mapper: Mapper::new(0, alloc)?,
             flush: Flush::empty(0),
             boot_info,
             kernel,
 
-            hartmem_size_pages_phys: tls_size_pages
-                + kconfig::KERNEL_INITIAL_STACK_SIZE_PAGES
-                + kconfig::KERNEL_TRAP_STACK_SIZE_PAGES,
-            hartmem_size_pages_virt: tls_size_pages
-                + kconfig::KERNEL_STACK_SIZE_PAGES
-                + kconfig::KERNEL_TRAP_STACK_SIZE_PAGES,
+            hartmem_size_pages_phys: tls_size_pages + kconfig::KERNEL_INITIAL_STACK_SIZE_PAGES,
+            hartmem_size_pages_virt: tls_size_pages + kconfig::KERNEL_STACK_SIZE_PAGES,
         })
     }
 

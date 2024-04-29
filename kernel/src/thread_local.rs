@@ -141,6 +141,17 @@ impl<T: 'static> LocalKey<T> {
             f(init, reference)
         }
     }
+
+    pub unsafe fn as_ptr(&self) -> *const T {
+        log::trace!("as_ptr {:?}", self.inner);
+        let value = unsafe {
+            (self.inner)(None).expect(
+                "cannot access a Thread Local Storage value \
+             during or after destruction",
+            )
+        };
+        value as *const T
+    }
 }
 
 pub(crate) use {declare_thread_local, thread_local_inner};

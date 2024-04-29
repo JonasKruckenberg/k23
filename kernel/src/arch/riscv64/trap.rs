@@ -1,29 +1,44 @@
 use super::register::scause::{Exception, Interrupt, Trap};
 use super::register::{scause, sepc, stval, stvec};
 use crate::arch::{halt, STACK};
+use crate::kconfig;
+use crate::thread_local::declare_thread_local;
 use core::arch::asm;
 use core::marker::PhantomPinned;
 use core::ptr::addr_of;
 use vmm::VirtualAddress;
 
-#[thread_local]
-static mut TRAP_FRAME: TrapFrame = TrapFrame::ZERO;
+declare_thread_local! {
+    static TRAP_FRAME: TrapFrame;
+    static TRAP_STACK: [u8; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE] = const { [0; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE] };
+}
 
-pub fn init(trap_stack_virt: VirtualAddress) {
-    unsafe {
-        log::debug!("setting sscratch to {:p}", addr_of!(TRAP_FRAME));
-        asm!(
-            // "addi sp, sp, -{trap_frame_size}",
-            "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
-            trap_frame = in(reg) addr_of!(TRAP_FRAME)
-        );
+pub fn init() {
+    let frame = TrapFrame {
+        ra: 0,
+        sp: 0,
+        t: [0; 7],
+        a: [0; 8],
+        s: [0; 12],
+        // Safety: mutable statics are wildly unsafe, but we take exactly *one* mutable reference to it here
+        trap_stack_ptr: unsafe { TRAP_STACK.as_ptr() as *mut _ },
+        _pinned: PhantomPinned,
+    };
+    log::debug!("setting up trap frame {:?}", unsafe { TRAP_STACK.as_ptr() });
 
-        log::debug!("setting trap stack base to {trap_stack_virt}");
-        TRAP_FRAME.trap_stack_ptr = trap_stack_virt.as_raw();
+    TRAP_FRAME.initialize_with(frame, |_, frame_ref| {
+        log::debug!("setting sscratch to {:p}", addr_of!(frame_ref));
+
+        unsafe {
+            asm!(
+                "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
+                trap_frame = in(reg) addr_of!(frame_ref)
+            );
+        }
 
         log::debug!("setting trap vec to {:#x}", trap_vec as usize);
-        stvec::write(trap_vec as usize, stvec::Mode::Vectored);
-    }
+        unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
+    });
 }
 
 /// This struct keeps the harts state during a trap, so we can restore it later.
@@ -38,21 +53,9 @@ pub struct TrapFrame {
     pub t: [usize; 7],
     pub a: [usize; 8],
     pub s: [usize; 12],
-    pub trap_stack_ptr: usize,
+    pub trap_stack_ptr: *mut [u8; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE],
 
     pub _pinned: PhantomPinned,
-}
-
-impl TrapFrame {
-    pub const ZERO: Self = Self {
-        ra: 0,
-        sp: 0,
-        t: [0; 7],
-        a: [0; 8],
-        s: [0; 12],
-        trap_stack_ptr: 0,
-        _pinned: PhantomPinned,
-    };
 }
 
 #[naked]
