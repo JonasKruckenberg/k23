@@ -15,20 +15,19 @@ declare_thread_local! {
 
 pub fn init() {
     let frame = TrapFrame {
-            ra: 0,
-            sp: 0,
-            t: [0; 7],
-            a: [0; 8],
-            s: [0; 12],
-            // Safety: mutable statics are wildly unsafe, but we take exactly *one* mutable reference to it here
-            trap_stack_ptr: unsafe {
-                TRAP_STACK
-                    .as_ptr()
-                    .add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE)
-                    as *mut _
-            },
-            _pinned: PhantomPinned,
-        };
+        ra: 0,
+        sp: 0,
+        t: [0; 7],
+        a: [0; 8],
+        s: [0; 12],
+        // Safety: mutable statics are wildly unsafe, but we take exactly *one* mutable reference to it here
+        trap_stack_ptr: unsafe {
+            TRAP_STACK
+                .as_ptr()
+                .add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE) as *mut _
+        },
+        _pinned: PhantomPinned,
+    };
     log::debug!("setting up trap frame {:?}", unsafe { TRAP_STACK.as_ptr() });
 
     TRAP_FRAME.initialize_with(frame, |_, frame_ref| {
