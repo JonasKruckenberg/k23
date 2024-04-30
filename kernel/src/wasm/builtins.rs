@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use crate::wasm::NS_WASMTIME_BUILTIN;
+use crate::wasm::NS_WASM_BUILTIN;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
@@ -291,7 +291,7 @@ impl BuiltinFunctions {
         let signature = func.import_signature(self.types.signature(index));
         let name =
             ir::ExternalName::User(func.declare_imported_user_function(ir::UserExternalName {
-                namespace: NS_WASMTIME_BUILTIN,
+                namespace: NS_WASM_BUILTIN,
                 index: index.index(),
             }));
         let f = func.import_function(ir::ExtFuncData {

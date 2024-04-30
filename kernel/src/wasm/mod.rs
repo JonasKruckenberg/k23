@@ -1,20 +1,24 @@
 #![allow(unused)]
 
 mod builtins;
+mod compiler;
 mod func_env;
 mod module;
 mod module_env;
 mod vmcontext;
 
+use crate::wasm::compiler::Compiler;
 use crate::wasm::func_env::FuncEnvironment;
 use crate::wasm::module_env::ModuleEnvironment;
 use alloc::vec::Vec;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::types::{F32, F64, I32, I64, I8X16, R32, R64};
-use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Function, Type};
-use cranelift_codegen::isa::TargetIsa;
+use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Function, Signature, Type};
+use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_codegen::settings::Configurable;
-use cranelift_wasm::{FuncIndex, FuncTranslator, TypeIndex, WasmHeapType, WasmResult, WasmValType};
+use cranelift_wasm::{
+    FuncIndex, FuncTranslator, TypeIndex, WasmFuncType, WasmHeapType, WasmResult, WasmValType,
+};
 
 /// Namespace corresponding to wasm functions, the index is the index of the
 /// defined function that's being referenced.
@@ -22,7 +26,7 @@ pub const NS_WASM_FUNC: u32 = 0;
 
 /// Namespace for builtin function trampolines. The index is the index of the
 /// builtin that's being referenced.
-pub const NS_WASMTIME_BUILTIN: u32 = 1;
+pub const NS_WASM_BUILTIN: u32 = 1;
 
 /// WebAssembly page sizes are defined to be 64KiB.
 pub const WASM_PAGE_SIZE: u32 = 0x10000;
@@ -34,14 +38,26 @@ pub const WASM32_MAX_PAGES: u64 = 1 << 16;
 /// byte index space.
 pub const WASM64_MAX_PAGES: u64 = 1 << 48;
 
+/// A position within an original source file,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FilePos(u32);
+
+impl Default for FilePos {
+    fn default() -> FilePos {
+        FilePos(u32::MAX)
+    }
+}
+
 pub fn translate(module: &[u8]) -> WasmResult<()> {
     let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
     let mut b = cranelift_codegen::settings::builder();
     b.set("opt_level", "speed_and_size").unwrap();
 
-    let isa = isa_builder
+    let target_isa = isa_builder
         .finish(cranelift_codegen::settings::Flags::new(b))
         .unwrap();
+
+    let compiler = Compiler::new(target_isa);
 
     let mut module_env = ModuleEnvironment::new();
 
@@ -71,51 +87,21 @@ pub fn translate(module: &[u8]) -> WasmResult<()> {
     assert_eq!(translation.module.exports.len(), 2);
     assert_eq!(translation.function_body_inputs.len(), 1);
 
-    for (def_func_index, mut func_body_input) in translation.function_body_inputs {
-        let sig_index =
-            translation.module.functions[translation.module.func_index(def_func_index)].signature;
-        let sig = translation.types[sig_index].unwrap_func();
-
-        let mut translated = Function::new();
-        // translated.signature.sp
-        translated
-            .signature
-            .params
-            .push(AbiParam::special(I64, ArgumentPurpose::VMContext));
-        translated.signature.params.extend(
-            sig.params()
-                .iter()
-                .map(|p| AbiParam::new(value_type(isa.as_ref(), *p))),
+    for (def_func_index, input) in translation.function_body_inputs {
+        let compiled = compiler.compile_function(
+            &translation.module,
+            &translation.types,
+            def_func_index,
+            input,
         );
-        translated.signature.returns = sig
-            .returns()
-            .iter()
-            .map(|p| AbiParam::new(value_type(isa.as_ref(), *p)))
-            .collect();
 
-        let mut func_env = FuncEnvironment::new(isa.as_ref(), &translation.module);
-        let mut func_translator = FuncTranslator::new();
-
-        func_translator.translate_body(
-            &mut func_body_input.validator,
-            func_body_input.body,
-            &mut translated,
-            &mut func_env,
-        )?;
-
-        let mut ctx = cranelift_codegen::Context::for_function(translated);
-        ctx.optimize(isa.as_ref(), &mut ControlPlane::default())
-            .unwrap();
-        ctx.replace_redundant_loads().unwrap();
-        ctx.verify_if(isa.as_ref()).unwrap();
-
-        let mut out = Vec::new();
-        let _compiled = ctx
-            .compile_and_emit(isa.as_ref(), &mut out, &mut ControlPlane::default())
-            .unwrap();
+        log::debug!("Func {def_func_index:?} relocations:");
+        for reloc in compiled.relocations() {
+            log::debug!("{reloc:?}");
+        }
     }
 
-    todo!()
+    Ok(())
 }
 
 /// Returns the corresponding cranelift type for the provided wasm type.
@@ -142,4 +128,19 @@ pub fn reference_type(wasm_ht: WasmHeapType, pointer_type: Type) -> Type {
             }
         }
     }
+}
+
+fn wasm_call_signature(target_isa: &dyn TargetIsa, wasm_func_ty: &WasmFuncType) -> Signature {
+    let mut sig = Signature::new(CallConv::Fast);
+
+    // Add the caller/callee `vmctx` parameters.
+    sig.params.push(AbiParam::special(
+        target_isa.pointer_type(),
+        ArgumentPurpose::VMContext,
+    ));
+
+    let cvt = |ty: &WasmValType| AbiParam::new(value_type(target_isa, *ty));
+    sig.params.extend(wasm_func_ty.params().iter().map(&cvt));
+    sig.returns.extend(wasm_func_ty.returns().iter().map(&cvt));
+    sig
 }

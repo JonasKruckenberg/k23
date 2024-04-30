@@ -4,7 +4,9 @@ use crate::wasm::module::{FunctionType, Import, MemoryPlan, Module, TablePlan};
 use alloc::boxed::Box;
 use core::mem;
 use cranelift_codegen::entity::PrimaryMap;
-use cranelift_wasm::wasmparser::{FuncValidator, FunctionBody, UnpackedIndex, ValidatorResources};
+use cranelift_wasm::wasmparser::{
+    FuncToValidate, FuncValidator, FunctionBody, UnpackedIndex, ValidatorResources,
+};
 use cranelift_wasm::{
     ConstExpr, DataIndex, DefinedFuncIndex, ElemIndex, EntityIndex, FuncIndex, Global, GlobalIndex,
     Memory, MemoryIndex, ModuleInternedTypeIndex, Table, TableIndex, TypeConvert, TypeIndex,

@@ -24,7 +24,7 @@ use cranelift_wasm::{
 pub struct FuncEnvironment<'module_env, 'wasm> {
     target_isa: &'module_env dyn TargetIsa,
     module: &'module_env Module<'wasm>,
-    offsets: VMContextOffsets,
+    pub offsets: VMContextOffsets,
 
     heaps: PrimaryMap<Heap, HeapData>,
     builtins: BuiltinFunctions,

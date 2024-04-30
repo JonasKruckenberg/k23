@@ -11,6 +11,7 @@ use cranelift_wasm::{
 
 // struct VMContext {
 //      magic: usize,
+//      stack_limit: usize,
 //      builtins: *mut VMBuiltinFunctionsArray,
 //      store: *mut dyn Store,
 //      tables: [VMTableDefinition; module.num_defined_tables],
@@ -102,6 +103,7 @@ pub struct VMContextOffsets {
 
     // offsets
     magic: u32,
+    stack_limit: u32,
     builtins_begin: u32,
     tables_begin: u32,
     globals_begin: u32,
@@ -139,6 +141,7 @@ impl VMContextOffsets {
             ptr_size,
 
             magic: member_offset(size_of_u32::<usize>()),
+            stack_limit: member_offset(size_of_u32::<usize>()),
             builtins_begin: member_offset(ptr_size),
             tables_begin: member_offset(
                 size_of_u32::<VMTableDefinition>() * module.num_defined_tables(),
@@ -165,6 +168,14 @@ impl VMContextOffsets {
         }
     }
 
+    #[inline]
+    pub fn magic(&self) -> u32 {
+        self.magic
+    }
+    #[inline]
+    pub fn stack_limit(&self) -> u32 {
+        self.stack_limit
+    }
     #[inline]
     pub fn vmtable_definition(&self, index: DefinedTableIndex) -> u32 {
         assert!(index.as_u32() < self.num_defined_tables);
