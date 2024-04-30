@@ -1,12 +1,12 @@
 use super::register::scause::{Exception, Interrupt, Trap};
 use super::register::{scause, sepc, stval, stvec};
-use crate::arch::{halt, STACK};
+use crate::arch::halt;
 use crate::kconfig;
 use crate::thread_local::declare_thread_local;
 use core::arch::asm;
 use core::marker::PhantomPinned;
 use core::ptr::addr_of;
-use vmm::VirtualAddress;
+use riscv::register::sstatus;
 
 declare_thread_local! {
     static TRAP_FRAME: TrapFrame;
@@ -15,15 +15,20 @@ declare_thread_local! {
 
 pub fn init() {
     let frame = TrapFrame {
-        ra: 0,
-        sp: 0,
-        t: [0; 7],
-        a: [0; 8],
-        s: [0; 12],
-        // Safety: mutable statics are wildly unsafe, but we take exactly *one* mutable reference to it here
-        trap_stack_ptr: unsafe { TRAP_STACK.as_ptr() as *mut _ },
-        _pinned: PhantomPinned,
-    };
+            ra: 0,
+            sp: 0,
+            t: [0; 7],
+            a: [0; 8],
+            s: [0; 12],
+            // Safety: mutable statics are wildly unsafe, but we take exactly *one* mutable reference to it here
+            trap_stack_ptr: unsafe {
+                TRAP_STACK
+                    .as_ptr()
+                    .add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE)
+                    as *mut _
+            },
+            _pinned: PhantomPinned,
+        };
     log::debug!("setting up trap frame {:?}", unsafe { TRAP_STACK.as_ptr() });
 
     TRAP_FRAME.initialize_with(frame, |_, frame_ref| {
@@ -53,7 +58,7 @@ pub struct TrapFrame {
     pub t: [usize; 7],
     pub a: [usize; 8],
     pub s: [usize; 12],
-    pub trap_stack_ptr: *mut [u8; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE],
+    pub trap_stack_ptr: *mut u8,
 
     pub _pinned: PhantomPinned,
 }
@@ -209,6 +214,19 @@ unsafe extern "C" fn default_trap_entry() {
         load!(t6[15] => a6),
         load!(t6[16] => a7),
 
+        load!(t6[17] => s0),
+        load!(t6[18] => s1),
+        load!(t6[19] => s2),
+        load!(t6[20] => s3),
+        load!(t6[21] => s4),
+        load!(t6[22] => s5),
+        load!(t6[23] => s6),
+        load!(t6[24] => s7),
+        load!(t6[25] => s8),
+        load!(t6[26] => s9),
+        load!(t6[27] => s10),
+        load!(t6[28] => s11),
+
         "csrrw t6, sscratch, t6",
         "sret",
 
@@ -231,47 +249,31 @@ fn default_trap_handler(
     // let frame = unsafe { &*raw_frame };
     let cause = scause::read().cause();
 
+    log::trace!("{:?}", sstatus::read());
     log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
+
+    // 0xffffffd7fffd8a00
 
     match cause {
         Trap::Exception(Exception::LoadPageFault) => {
             let epc = sepc::read();
             let tval = stval::read();
 
-            // let ctx = Context::from_raw(frame.ra, frame.sp, frame.s);
+            log::error!("KERNEL LOAD PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
 
-            log::error!("KERNEL LOAD PAGE FAULT: epc {epc:x?} tval {tval:x?}");
+            halt();
 
             // let mut count = 0;
             // crate::backtrace::trace_with_context(ctx, |frame| {
             //     count += 1;
             //     log::debug!("{:<2}- {:#x?}", count, frame.symbol_address());
             // });
-
-            halt();
         }
         Trap::Exception(Exception::StorePageFault) => {
             let epc = sepc::read();
             let tval = stval::read();
 
-            STACK.with(|stack_range| {
-                let tval = unsafe { VirtualAddress::new(tval.as_bits()) };
-
-                log::trace!("stack range {stack_range:?} tval {tval:?}");
-
-                if stack_range.contains(&tval) {
-                    panic!("KERNEL hart has overflowed its stack {tval:?} stack {stack_range:?}");
-                }
-            });
-
             log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
-
-            // let ctx = Context::from_raw(frame.ra, frame.sp, frame.s);
-            // let mut count = 0;
-            // crate::backtrace::trace_with_context(ctx, |frame| {
-            //     count += 1;
-            //     log::debug!("{:<2}- {:#x?}", count, frame.symbol_address());
-            // });
 
             halt();
         }

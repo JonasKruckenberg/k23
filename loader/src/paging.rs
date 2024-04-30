@@ -40,7 +40,7 @@ pub fn init(
     Ok(PageTableResult {
         table_addr: state.mapper.root_table().addr(),
         kernel_entry_virt: state.kernel.entry,
-        hartmem_size_pages_virt: state.hartmem_size_pages_virt,
+        hartmem_size_pages: state.hartmem_size_pages,
         frame_alloc_offset: state.mapper.allocator().offset(),
     })
 }
@@ -49,7 +49,7 @@ pub struct PageTableResult {
     pub kernel_entry_virt: VirtualAddress,
     pub frame_alloc_offset: usize,
     table_addr: VirtualAddress,
-    hartmem_size_pages_virt: usize,
+    hartmem_size_pages: usize,
 }
 
 impl PageTableResult {
@@ -61,11 +61,11 @@ impl PageTableResult {
         let end = unsafe {
             VirtualAddress::new(
                 kconfig::MEMORY_MODE::PHYS_OFFSET
-                    - (self.hartmem_size_pages_virt * kconfig::PAGE_SIZE * hartid),
+                    - (self.hartmem_size_pages * kconfig::PAGE_SIZE * hartid),
             )
         };
 
-        end.sub(self.hartmem_size_pages_virt * kconfig::PAGE_SIZE)..end
+        end.sub(self.hartmem_size_pages * kconfig::PAGE_SIZE)..end
     }
 }
 
@@ -76,8 +76,7 @@ struct State<'dt> {
     boot_info: &'dt BootInfo<'dt>,
     kernel: ElfSections,
 
-    hartmem_size_pages_phys: usize,
-    hartmem_size_pages_virt: usize,
+    hartmem_size_pages: usize,
 }
 
 impl<'dt> State<'dt> {
@@ -89,16 +88,19 @@ impl<'dt> State<'dt> {
         let tls_size_pages =
             (kernel.tdata.virt.size() + kernel.tbss.virt.size()).div_ceil(kconfig::PAGE_SIZE);
 
-        log::trace!("tdata size {} tbss size {}", kernel.tdata.virt.size(), kernel.tbss.virt.size());
-        
+        log::trace!(
+            "tdata size {} tbss size {}",
+            kernel.tdata.virt.size(),
+            kernel.tbss.virt.size()
+        );
+
         Ok(Self {
             mapper: Mapper::new(0, alloc)?,
             flush: Flush::empty(0),
             boot_info,
             kernel,
 
-            hartmem_size_pages_phys: tls_size_pages + kconfig::KERNEL_INITIAL_STACK_SIZE_PAGES,
-            hartmem_size_pages_virt: tls_size_pages + kconfig::KERNEL_STACK_SIZE_PAGES,
+            hartmem_size_pages: tls_size_pages + kconfig::KERNEL_STACK_SIZE_PAGES,
         })
     }
 
@@ -216,19 +218,19 @@ impl<'dt> State<'dt> {
             let start = self
                 .mapper
                 .allocator_mut()
-                .allocate_frames(self.hartmem_size_pages_phys)?;
+                .allocate_frames(self.hartmem_size_pages)?;
 
-            start..start.add(self.hartmem_size_pages_phys * kconfig::PAGE_SIZE)
+            start..start.add(self.hartmem_size_pages * kconfig::PAGE_SIZE)
         };
 
         // the tls region is at the top of hartmem
         let hartmem_virt = unsafe {
             let end = VirtualAddress::new(
                 kconfig::MEMORY_MODE::PHYS_OFFSET
-                    - (self.hartmem_size_pages_virt * kconfig::PAGE_SIZE * hartid),
+                    - (self.hartmem_size_pages * kconfig::PAGE_SIZE * hartid),
             );
 
-            end.sub(self.hartmem_size_pages_phys * kconfig::PAGE_SIZE)..end
+            end.sub(self.hartmem_size_pages * kconfig::PAGE_SIZE)..end
         };
 
         log::trace!(

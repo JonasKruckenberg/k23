@@ -1,3 +1,5 @@
+use core::cell::RefCell;
+
 macro_rules! declare_thread_local {
     // empty (base case for the recursion)
     () => {};
@@ -151,6 +153,22 @@ impl<T: 'static> LocalKey<T> {
             )
         };
         value as *const T
+    }
+}
+
+impl<T: 'static> LocalKey<RefCell<T>> {
+    pub fn with_borrow<F, R>(&'static self, f: F) -> R
+    where
+        F: FnOnce(&T) -> R,
+    {
+        self.with(|cell| f(&cell.borrow()))
+    }
+
+    pub fn with_borrow_mut<F, R>(&'static self, f: F) -> R
+        where
+            F: FnOnce(&mut T) -> R,
+    {
+        self.with(|cell| f(&mut cell.borrow_mut()))
     }
 }
 

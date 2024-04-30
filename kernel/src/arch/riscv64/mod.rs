@@ -33,7 +33,7 @@ pub struct KernelArgs {
 
 declare_thread_local! {
     pub static HARTID: usize;
-    pub static STACK: Range<VirtualAddress>
+    pub static STACK: Range<VirtualAddress>;
 }
 
 #[no_mangle]
