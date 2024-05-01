@@ -1,13 +1,12 @@
-#![allow(unused)]
-
 use crate::allocator::locked::LockedHeap;
 use crate::kconfig;
 use crate::kernel_mapper::with_kernel_mapper;
-use vmm::{EntryFlags, FrameAllocator, VirtualAddress};
+use vmm::{EntryFlags, VirtualAddress};
 
 mod heap;
 mod locked;
 mod slab;
+#[cfg(feature = "track-allocations")]
 mod tracking;
 
 #[global_allocator]
@@ -24,6 +23,8 @@ pub fn init(offset: VirtualAddress) -> Result<(), vmm::Error> {
 
         let heap_virt = offset.sub(HEAP_PAGES * kconfig::PAGE_SIZE)..offset;
 
+        log::trace!("Mapping kernel heap {heap_virt:?} => {heap_phys:?}...");
+
         mapper.map_range_with_flush(
             heap_virt.clone(),
             heap_phys,
@@ -37,5 +38,14 @@ pub fn init(offset: VirtualAddress) -> Result<(), vmm::Error> {
     unsafe { ALLOCATOR.init::<kconfig::MEMORY_MODE>(heap_start, HEAP_PAGES * kconfig::PAGE_SIZE) }
 
     #[cfg(feature = "track-allocations")]
+    tracking::init();
+
     Ok(())
+}
+
+pub fn print_heap_statistics() {
+    log::debug!("Allocator Usage {:#?}", ALLOCATOR.usage());
+
+    #[cfg(feature = "track-allocations")]
+    tracking::print_histograms();
 }

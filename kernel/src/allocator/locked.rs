@@ -26,10 +26,16 @@ impl LockedHeap {
 
 unsafe impl core::alloc::GlobalAlloc for LockedHeap {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        #[cfg(feature = "track-allocations")]
+        super::tracking::record_allocation(&layout);
+
         self.allocate(layout).unwrap().as_ptr() as *mut u8
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        #[cfg(feature = "track-allocations")]
+        super::tracking::record_deallocation(&layout);
+
         self.deallocate(NonNull::new(ptr).unwrap(), layout)
     }
 }

@@ -6,9 +6,10 @@ memory-mode = "Riscv64Sv39"           # The memory mode to use (can be one of Ri
 [kernel]
 stack-size-pages = 64         # Size of the per-hart stack in pages
 trap-stack-size-pages = 16    # Size of the per-hart trap stack in pages
-log-level = "trace"
+log-level = "debug"
 uart-baud-rate = 38400
 linker-script = "kernel-riscv64-qemu.ld"
+features = ["track-allocations"]
 
 [bootloader]
 stack-size-pages = 64 # Size of the per-hart stack in pages

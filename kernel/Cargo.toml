@@ -22,7 +22,13 @@ cranelift-frontend.workspace = true
 target-lexicon.workspace = true
 gimli = { workspace = true, features = ["read"] }
 hashbrown.workspace = true
+hdrhistogram = { git = "https://github.com/JonasKruckenberg/HdrHistogram_rust", optional = true, default-features = false, features = ["core", "serialization"] }
+serde = { version = "1.0.199", default-features = false, optional = true, features = ["derive"] }
+serde_json = { version = "1.0", default-features = false, optional = true, features = ["alloc"] }
 
 [build-dependencies]
 build-config.workspace = true
 anyhow.workspace = true
+
+[features]
+track-allocations = ["hdrhistogram", "serde", "serde_json"]
