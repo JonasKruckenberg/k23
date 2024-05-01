@@ -5,15 +5,15 @@ use core::ops::Range;
 use core::ptr::addr_of;
 use core::{ptr, slice};
 use vmm::{
-    AddressRangeExt, BumpAllocator, EntryFlags, Flush, FrameAllocator, Mapper, Mode,
-    PhysicalAddress, VirtualAddress, INIT,
+    AddressRangeExt, BumpAllocator, EntryFlags, Flush, Mapper, Mode, PhysicalAddress,
+    VirtualAddress, INIT,
 };
 
 type VMMode = INIT<kconfig::MEMORY_MODE>;
 
 pub fn init(
-    alloc: BumpAllocator<VMMode>,
-    boot_info: &BootInfo,
+    alloc: &mut BumpAllocator<VMMode>,
+    boot_info: &'static BootInfo,
     kernel: ElfSections,
 ) -> Result<PageTableResult, vmm::Error> {
     let mut state = State::new(alloc, boot_info, kernel)?;
@@ -41,7 +41,7 @@ pub fn init(
         table_addr: state.mapper.root_table().addr(),
         kernel_entry_virt: state.kernel.entry,
         hartmem_size_pages: state.hartmem_size_pages,
-        frame_alloc_offset: state.mapper.allocator().offset(),
+        frame_alloc_offset: alloc.offset(),
     })
 }
 
@@ -69,8 +69,8 @@ impl PageTableResult {
     }
 }
 
-struct State<'dt> {
-    mapper: Mapper<VMMode, BumpAllocator<'dt, VMMode>>,
+struct State<'a, 'dt> {
+    mapper: Mapper<'a, VMMode>,
     flush: Flush<VMMode>,
 
     boot_info: &'dt BootInfo<'dt>,
@@ -79,9 +79,9 @@ struct State<'dt> {
     hartmem_size_pages: usize,
 }
 
-impl<'dt> State<'dt> {
+impl<'a, 'dt> State<'a, 'dt> {
     pub fn new(
-        alloc: BumpAllocator<'dt, VMMode>,
+        alloc: &'a mut BumpAllocator<'dt, VMMode>,
         boot_info: &'dt BootInfo<'dt>,
         kernel: ElfSections,
     ) -> Result<Self, vmm::Error> {

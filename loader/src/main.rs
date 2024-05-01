@@ -75,7 +75,7 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
             slice::from_raw_parts(kernel.start.as_raw() as *const _, kernel.size())
         });
 
-        let res = paging::init(alloc, boot_info, kernel_sections).unwrap();
+        let res = paging::init(&mut alloc, boot_info, kernel_sections).unwrap();
 
         (res, fdt_virt)
     });

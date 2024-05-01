@@ -5,15 +5,15 @@ use bitflags::Flags;
 use core::marker::PhantomData;
 use core::ops::Range;
 
-pub struct Mapper<M, A> {
+pub struct Mapper<'a, M> {
     asid: usize,
     root_table: VirtualAddress,
-    allocator: A,
+    allocator: &'a mut dyn FrameAllocator,
     _m: PhantomData<M>,
 }
 
-impl<M: Mode, A: FrameAllocator + Send + Sync> Mapper<M, A> {
-    pub fn new(asid: usize, mut allocator: A) -> crate::Result<Self> {
+impl<'a, M: Mode> Mapper<'a, M> {
+    pub fn new(asid: usize, allocator: &'a mut dyn FrameAllocator) -> crate::Result<Self> {
         let root_table = allocator.allocate_frame()?;
         let root_table_virt = M::phys_to_virt(root_table);
 
@@ -27,7 +27,7 @@ impl<M: Mode, A: FrameAllocator + Send + Sync> Mapper<M, A> {
         Ok(this)
     }
 
-    pub fn from_active(asid: usize, allocator: A) -> Self {
+    pub fn from_active(asid: usize, allocator: &'a mut dyn FrameAllocator) -> Self {
         let root_table = M::get_active_table(asid);
         let root_table_virt = M::phys_to_virt(root_table);
         debug_assert!(root_table.0 != 0);
@@ -44,15 +44,11 @@ impl<M: Mode, A: FrameAllocator + Send + Sync> Mapper<M, A> {
         M::activate_table(self.asid, self.root_table);
     }
 
-    pub fn allocator(&self) -> &A {
-        &self.allocator
+    pub fn allocator(&self) -> &dyn FrameAllocator {
+        self.allocator
     }
 
-    pub fn allocator_mut(&mut self) -> &mut A {
-        &mut self.allocator
-    }
-
-    pub fn into_allocator(self) -> A {
+    pub fn allocator_mut(&mut self) -> &mut dyn FrameAllocator {
         self.allocator
     }
 

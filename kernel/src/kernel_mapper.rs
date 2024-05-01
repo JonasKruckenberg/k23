@@ -2,33 +2,43 @@ use crate::kconfig;
 use core::mem::MaybeUninit;
 use core::ops::Range;
 use sync::Mutex;
-use vmm::{BitMapAllocator, BumpAllocator, Flush, Mapper, PhysicalAddress};
+use vmm::{BitMapAllocator, BumpAllocator, Flush, FrameAllocator, Mapper, PhysicalAddress};
 
-static KERNEL_MAPPER: Mutex<
-    MaybeUninit<Mapper<kconfig::MEMORY_MODE, BitMapAllocator<kconfig::MEMORY_MODE>>>,
-> = Mutex::new(MaybeUninit::uninit());
+static FRAME_ALLOC: Mutex<MaybeUninit<BitMapAllocator<kconfig::MEMORY_MODE>>> =
+    Mutex::new(MaybeUninit::uninit());
 
 pub fn init(memories: &[Range<PhysicalAddress>], alloc_offset: usize) {
     let bump_alloc = unsafe { BumpAllocator::new(memories, alloc_offset) };
     let alloc = BitMapAllocator::new(bump_alloc).unwrap();
     alloc.debug_print_table();
 
-    KERNEL_MAPPER.lock().write(Mapper::from_active(0, alloc));
+    FRAME_ALLOC.lock().write(alloc);
+}
+
+pub fn with_frame_alloc<R, F>(f: F) -> R
+where
+    F: FnOnce(&mut dyn FrameAllocator) -> R,
+{
+    let mut alloc = FRAME_ALLOC.lock();
+    f(unsafe { alloc.assume_init_mut() })
 }
 
 pub fn with_kernel_mapper<R, F>(mut f: F) -> Result<R, vmm::Error>
 where
     F: FnMut(
-        &mut Mapper<kconfig::MEMORY_MODE, BitMapAllocator<kconfig::MEMORY_MODE>>,
+        Mapper<kconfig::MEMORY_MODE>,
         &mut Flush<kconfig::MEMORY_MODE>,
     ) -> Result<R, vmm::Error>,
 {
-    let mut mapper = KERNEL_MAPPER.lock();
-    let mut flush = Flush::empty(0);
+    with_frame_alloc(|alloc| {
+        let mapper = Mapper::from_active(0, alloc);
 
-    let r = f(unsafe { mapper.assume_init_mut() }, &mut flush)?;
+        let mut flush = Flush::empty(0);
 
-    flush.flush()?;
+        let r = f(mapper, &mut flush)?;
 
-    Ok(r)
+        flush.flush()?;
+
+        Ok(r)
+    })
 }

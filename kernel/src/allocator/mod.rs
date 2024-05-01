@@ -15,7 +15,7 @@ pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
 pub fn init(offset: VirtualAddress) -> Result<(), vmm::Error> {
     const HEAP_PAGES: usize = 8192; // 32 MiB
 
-    let heap_start = with_kernel_mapper(|mapper, flush| {
+    let heap_start = with_kernel_mapper(|mut mapper, flush| {
         let heap_phys = {
             let base = mapper.allocator_mut().allocate_frames(HEAP_PAGES)?;
             base..base.add(HEAP_PAGES * kconfig::PAGE_SIZE)

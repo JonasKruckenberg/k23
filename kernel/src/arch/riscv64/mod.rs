@@ -77,7 +77,7 @@ fn map_serial_device(
     serial: &boot_info::Serial,
     offset: VirtualAddress,
 ) -> Result<VirtualAddress, vmm::Error> {
-    with_kernel_mapper(|mapper, flush| {
+    with_kernel_mapper(|mut mapper, flush| {
         let serial_phys = serial.regs.clone().align(kconfig::PAGE_SIZE);
         let serial_virt = offset.sub(serial_phys.size())..offset;
 
