@@ -2,8 +2,17 @@ use core::alloc::AllocError;
 use core::ptr::NonNull;
 use vmm::VirtualAddress;
 
+#[derive(Debug)]
+#[allow(unused)]
+pub struct SlabUsage {
+    pub size: usize,
+    pub used: usize,
+    pub total: usize,
+}
+
 pub struct Slab<const BLOCK_SIZE: usize> {
     free_block_list: FreeBlockList<BLOCK_SIZE>,
+    blocks_total: usize,
 }
 
 struct FreeBlockList<const BLOCK_SIZE: usize> {
@@ -20,6 +29,15 @@ impl<const BLOCK_SIZE: usize> Slab<BLOCK_SIZE> {
         log::trace!("initializing {BLOCK_SIZE} byte slab at {start:?} with len {size} bytes");
         Self {
             free_block_list: FreeBlockList::new(start, size / BLOCK_SIZE),
+            blocks_total: size / BLOCK_SIZE,
+        }
+    }
+
+    pub fn usage(&self) -> SlabUsage {
+        SlabUsage {
+            size: BLOCK_SIZE,
+            total: self.blocks_total,
+            used: self.blocks_total - self.free_block_list.len,
         }
     }
 

@@ -1,4 +1,4 @@
-use crate::allocator::heap::Heap;
+use crate::allocator::heap::{Heap, HeapUsage};
 use core::alloc::{AllocError, Allocator, Layout};
 use core::ptr::NonNull;
 use sync::Mutex;
@@ -17,6 +17,10 @@ impl LockedHeap {
     pub unsafe fn init<M: Mode>(&self, heap_start_addr: VirtualAddress, heap_size: usize) {
         let heap = Heap::new::<M>(heap_start_addr, heap_size);
         self.0.lock().replace(heap);
+    }
+
+    pub fn usage(&self) -> HeapUsage {
+        self.0.lock().as_ref().unwrap().usage()
     }
 }
 

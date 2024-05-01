@@ -23,6 +23,8 @@ fn main(_hartid: usize) -> ! {
 
     wasm::translate(wasm).unwrap();
 
+    allocator::print_heap_statistics();
+
     todo!()
 }
 

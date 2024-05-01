@@ -8,6 +8,7 @@ use vmm::{EntryFlags, FrameAllocator, VirtualAddress};
 mod heap;
 mod locked;
 mod slab;
+mod tracking;
 
 #[global_allocator]
 pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -35,5 +36,6 @@ pub fn init(offset: VirtualAddress) -> Result<(), vmm::Error> {
 
     unsafe { ALLOCATOR.init::<kconfig::MEMORY_MODE>(heap_start, HEAP_PAGES * kconfig::PAGE_SIZE) }
 
+    #[cfg(feature = "track-allocations")]
     Ok(())
 }

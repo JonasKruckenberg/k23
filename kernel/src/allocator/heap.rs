@@ -1,7 +1,20 @@
-use crate::allocator::slab::Slab;
+use crate::allocator::slab::{Slab, SlabUsage};
 use core::alloc::{AllocError, Layout};
 use core::ptr::NonNull;
 use vmm::{Mode, VirtualAddress};
+
+#[derive(Debug)]
+#[allow(unused)]
+pub struct HeapUsage {
+    pub usage_64: SlabUsage,
+    pub usage_128: SlabUsage,
+    pub usage_256: SlabUsage,
+    pub usage_512: SlabUsage,
+    pub usage_1024: SlabUsage,
+    pub usage_2048: SlabUsage,
+    pub usage_4096: SlabUsage,
+    pub usage_linked_list: usize,
+}
 
 /// A heap allocator.
 ///
@@ -104,6 +117,19 @@ impl Heap {
             AllocatorKind::Slab1024 => self.slab_1024_bytes.deallocate(ptr),
             AllocatorKind::Slab2048 => self.slab_2048_bytes.deallocate(ptr),
             AllocatorKind::Slab4096 => self.slab_4096_bytes.deallocate(ptr),
+        }
+    }
+
+    pub fn usage(&self) -> HeapUsage {
+        HeapUsage {
+            usage_64: self.slab_64_bytes.usage(),
+            usage_128: self.slab_128_bytes.usage(),
+            usage_256: self.slab_256_bytes.usage(),
+            usage_512: self.slab_512_bytes.usage(),
+            usage_1024: self.slab_1024_bytes.usage(),
+            usage_2048: self.slab_2048_bytes.usage(),
+            usage_4096: self.slab_4096_bytes.usage(),
+            usage_linked_list: self.linked_list.used(),
         }
     }
 
