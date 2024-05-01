@@ -4,6 +4,7 @@ use crate::{AddressRangeExt, FrameAllocator, Mode, PhysicalAddress, VirtualAddre
 use bitflags::Flags;
 use core::marker::PhantomData;
 use core::ops::Range;
+use core::ptr;
 
 pub struct Mapper<'a, M> {
     asid: usize,
@@ -16,15 +17,13 @@ impl<'a, M: Mode> Mapper<'a, M> {
     pub fn new(asid: usize, allocator: &'a mut dyn FrameAllocator) -> crate::Result<Self> {
         let root_table = allocator.allocate_frame()?;
         let root_table_virt = M::phys_to_virt(root_table);
-
-        let this = Self {
+        
+        Ok(Self {
             asid,
             root_table: root_table_virt,
             allocator,
             _m: PhantomData,
-        };
-
-        Ok(this)
+        })
     }
 
     pub fn from_active(asid: usize, allocator: &'a mut dyn FrameAllocator) -> Self {
@@ -38,6 +37,25 @@ impl<'a, M: Mode> Mapper<'a, M> {
             allocator,
             _m: PhantomData,
         }
+    }
+    
+    pub fn shallow_clone_active(asid: usize, allocator: &'a mut dyn FrameAllocator) -> crate::Result<Self> {
+        let root_table_orig = M::get_active_table(asid);
+        let root_table_orig_virt = M::phys_to_virt(root_table_orig);
+
+        let root_table = allocator.allocate_frame()?;
+        let root_table_virt = M::phys_to_virt(root_table);
+        
+        unsafe {
+            ptr::copy_nonoverlapping(root_table_orig_virt.as_raw() as *const u8, root_table_virt.as_raw() as *mut u8, M::PAGE_SIZE);
+        }
+
+        Ok(Self {
+            asid,
+            root_table: root_table_virt,
+            allocator,
+            _m: PhantomData,
+        })
     }
 
     pub fn activate(&self) {

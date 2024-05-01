@@ -1,7 +1,7 @@
 mod trap;
 
 use crate::boot_info::BootInfo;
-use crate::kernel_mapper::with_kernel_mapper;
+use crate::kernel_mapper::with_mapper;
 use crate::thread_local::declare_thread_local;
 use crate::{allocator, boot_info, kconfig, kernel_mapper, logger};
 use core::arch::asm;
@@ -77,7 +77,7 @@ fn map_serial_device(
     serial: &boot_info::Serial,
     offset: VirtualAddress,
 ) -> Result<VirtualAddress, vmm::Error> {
-    with_kernel_mapper(|mut mapper, flush| {
+    with_mapper(0, |mut mapper, flush| {
         let serial_phys = serial.regs.clone().align(kconfig::PAGE_SIZE);
         let serial_virt = offset.sub(serial_phys.size())..offset;
 

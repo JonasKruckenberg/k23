@@ -1,6 +1,6 @@
 use crate::allocator::locked::LockedHeap;
 use crate::kconfig;
-use crate::kernel_mapper::with_kernel_mapper;
+use crate::kernel_mapper::with_mapper;
 use vmm::{EntryFlags, VirtualAddress};
 
 mod heap;
@@ -15,7 +15,7 @@ pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
 pub fn init(offset: VirtualAddress) -> Result<(), vmm::Error> {
     const HEAP_PAGES: usize = 8192; // 32 MiB
 
-    let heap_start = with_kernel_mapper(|mut mapper, flush| {
+    let heap_start = with_mapper(0, |mut mapper, flush| {
         let heap_phys = {
             let base = mapper.allocator_mut().allocate_frames(HEAP_PAGES)?;
             base..base.add(HEAP_PAGES * kconfig::PAGE_SIZE)
