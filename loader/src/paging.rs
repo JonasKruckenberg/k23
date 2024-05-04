@@ -19,12 +19,17 @@ pub fn init(
     let mut state = State::new(alloc, boot_info, kernel)?;
 
     state.map_physical_memory()?;
-    state.identity_map_loader()?;
     state.map_kernel_sections()?;
 
     for hartid in 0..boot_info.cpus {
         state.map_hartmem(hartid)?;
     }
+
+    // We immediately unmap the loader once we reached the kernel. To keep us from having to unnecessarily
+    // allocate and immediately deallocate the memory we just remember the bump offset *before* allocating
+    // the loader tables and pass that to the kernel
+    let frame_alloc_offset = state.mapper.allocator().frame_usage().used << VMMode::PAGE_SHIFT;
+    state.identity_map_loader()?;
 
     const KIB: usize = 1024;
     const MIB: usize = 1024 * KIB;
@@ -41,7 +46,7 @@ pub fn init(
         table_addr: state.mapper.root_table().addr(),
         kernel_entry_virt: state.kernel.entry,
         hartmem_size_pages: state.hartmem_size_pages,
-        frame_alloc_offset: alloc.offset(),
+        frame_alloc_offset,
     })
 }
 

@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(naked_functions, asm_const, split_array)]
 
-use crate::paging::{own_regions, PageTableResult};
+use crate::paging::{own_regions, OwnRegions, PageTableResult};
 use boot_info::BootInfo;
 use core::ops::Range;
 use core::{ptr, slice};
@@ -24,23 +24,12 @@ pub mod kconfig {
     include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
 }
 
-#[repr(C)]
-#[derive(Debug)]
-pub struct KernelArgs {
-    boot_hart: u32,
-    fdt_virt: VirtualAddress,
-    stack_start: VirtualAddress,
-    stack_end: VirtualAddress,
-    page_alloc_offset: VirtualAddress,
-    frame_alloc_offset: usize,
-}
-
 fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::debug!("Hart {hartid} started");
 
-    static INIT: Once<(PageTableResult, Range<VirtualAddress>)> = Once::new();
+    static INIT: Once<(PageTableResult, Range<VirtualAddress>, OwnRegions)> = Once::new();
 
-    let (page_table_result, fdt_virt) = INIT.get_or_init(|| {
+    let (page_table_result, fdt_virt, own_regions) = INIT.get_or_init(|| {
         let own_regions = own_regions(boot_info);
         log::trace!("{own_regions:?}");
 
@@ -77,7 +66,7 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
         let res = paging::init(&mut alloc, boot_info, kernel_sections).unwrap();
 
-        (res, fdt_virt)
+        (res, fdt_virt, own_regions)
     });
 
     log::debug!("Hart {hartid} Activating page table...");
@@ -92,25 +81,23 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         .start
         .add(kconfig::KERNEL_STACK_SIZE_PAGES * kconfig::PAGE_SIZE)..hartmem.end;
 
-    let kargs = KernelArgs {
-        boot_hart: boot_info.boot_hart,
-        fdt_virt: fdt_virt.start,
-        stack_start: stack_virt.start,
-        stack_end: stack_virt.end,
-        page_alloc_offset: unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) }
-            .sub(hartmem.size() * boot_info.cpus),
-        frame_alloc_offset: page_table_result.frame_alloc_offset,
-    };
+    let own_region = INIT::<kconfig::MEMORY_MODE>::phys_to_virt(own_regions.executable.start)
+        ..INIT::<kconfig::MEMORY_MODE>::phys_to_virt(own_regions.read_write.end);
 
-    log::trace!("Hart {hartid} kargs {kargs:?}");
+    let page_alloc_offset = unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) }
+        .sub(hartmem.size() * boot_info.cpus);
 
     unsafe {
         arch::kernel_entry(
-            hartid,
-            stack_virt.end,
-            tls_virt.start,
-            page_table_result.kernel_entry_virt,
-            &kargs,
+            hartid,                               // hartid
+            tls_virt.start,                       // thread_ptr
+            page_table_result.kernel_entry_virt,  // func
+            boot_info.boot_hart,                  // boot_hart
+            fdt_virt.start,                       // fdt_virt
+            stack_virt,                           // stack
+            own_region,                           // loader
+            page_alloc_offset,                    // page_alloc_offset
+            page_table_result.frame_alloc_offset, // frame_alloc_offset
         );
     };
 }

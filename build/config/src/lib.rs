@@ -18,6 +18,9 @@ fn kernel_default_stack_size_pages() -> usize {
 fn kernel_default_trap_stack_size_pages() -> usize {
     16
 }
+fn kernel_default_heap_size_pages() -> usize {
+    8192
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -59,6 +62,9 @@ pub struct KernelConfig {
     /// The per-hart trap stack size in pages
     #[serde(default = "kernel_default_trap_stack_size_pages")]
     pub trap_stack_size_pages: usize,
+    /// The heap size in pages
+    #[serde(default = "kernel_default_heap_size_pages")]
+    pub heap_size_pages: usize,
     /// Rust features to enable
     #[serde(default)]
     pub features: Vec<String>,
