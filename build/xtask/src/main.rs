@@ -414,8 +414,8 @@ fn start_qemu(runner: &str, kernel: &str, debug: bool) -> anyhow::Result<Child> 
         "mon:stdio",
         "-semihosting-config",
         "enable=on,userspace=on",
-        // "-monitor",
-        // "unix:qemu-monitor-socket,server,nowait",
+        "-monitor",
+        "unix:qemu-monitor-socket,server,nowait",
     ]);
 
     if debug {

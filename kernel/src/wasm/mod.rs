@@ -48,7 +48,7 @@ impl Default for FilePos {
     }
 }
 
-pub fn translate(module: &[u8]) -> WasmResult<()> {
+pub fn translate(module: &[u8]) -> Result<(), CompileError> {
     let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
     let mut b = cranelift_codegen::settings::builder();
     b.set("opt_level", "speed_and_size").unwrap();

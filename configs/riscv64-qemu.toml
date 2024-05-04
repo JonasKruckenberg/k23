@@ -4,9 +4,10 @@ target = "riscv64gc-unknown-none-elf" # Rust target triple to compile for
 memory-mode = "Riscv64Sv39"           # The memory mode to use (can be one of Riscv64Sv39, Riscv64Sv48, and Riscv64Sv57)
 
 [kernel]
-stack-size-pages = 64         # Size of the per-hart stack in pages
+stack-size-pages = 128        # Size of the per-hart stack in pages
 trap-stack-size-pages = 16    # Size of the per-hart trap stack in pages
-log-level = "debug"
+heap-size-pages = 8192        # 32 MiB
+log-level = "trace"
 uart-baud-rate = 38400
 linker-script = "kernel-riscv64-qemu.ld"
 #features = ["track-allocations"]

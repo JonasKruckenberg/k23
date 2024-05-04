@@ -51,8 +51,6 @@ impl<M: Mode> Entry<M> {
 
     /// Updates the address and flags of this entry at once
     pub fn set_address_and_flags(&mut self, address: PhysicalAddress, flags: M::EntryFlags) {
-        // #[cfg(target_arch = "riscv64")]
-        // log::trace!("{self:?}");
         self.bits &= M::EntryFlags::all().into(); // clear all previous flags
         self.bits |= (address.0 >> M::ENTRY_ADDRESS_SHIFT) | flags.into();
     }

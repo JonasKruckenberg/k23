@@ -1,4 +1,4 @@
-use crate::arch;
+use crate::{allocator, arch};
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -9,9 +9,11 @@ static PANICKING: AtomicBool = AtomicBool::new(false);
 fn panic(info: &PanicInfo) -> ! {
     // if we panic in the logger, this will prevent us from spinning into an infinite panic loop
     if !PANICKING.swap(true, Ordering::AcqRel) {
-        // riscv::semihosting::heprintln!("KERNEL PANIC {}", info);
+        riscv::semihosting::heprintln!("KERNEL PANIC {}", info);
 
         log::error!("KERNEL PANIC {info}");
+
+        // allocator::print_heap_statistics();
     }
 
     loop {

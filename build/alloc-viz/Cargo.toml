@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 ratatui = { version = "0.26.2", default-features = false, features = ["crossterm"] }
-hdrhistogram = { git = "https://github.com/JonasKruckenberg/HdrHistogram_rust", features = ["serialization"] }
-crossterm = { version = "0.26.1", features = ["event-stream"] }
-serde = { version = "1.0.199", features = ["derive"] }
-serde_json = { version = "1.0" }
+crossterm = { version = "0.27.0", features = ["event-stream"] }
+hdrhistogram = { workspace = true, features = ["std", "serialization"] }
+serde.workspace = true
+serde_json = { workspace = true, features = ["std"] }

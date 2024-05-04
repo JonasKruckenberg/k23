@@ -47,9 +47,8 @@ fn invalidate_address_range(
     Ok(())
 }
 
-unsafe fn get_active_table(asid: usize) -> PhysicalAddress {
+unsafe fn get_active_table() -> PhysicalAddress {
     let satp = satp::read();
-    assert_eq!(satp.asid(), asid);
     PhysicalAddress(satp.ppn() << 12)
 }
 
@@ -79,8 +78,8 @@ impl Mode for Riscv64Sv39 {
         invalidate_address_range(asid, address_range)
     }
 
-    fn get_active_table(asid: usize) -> PhysicalAddress {
-        unsafe { get_active_table(asid) }
+    fn get_active_table(_asid: usize) -> PhysicalAddress {
+        unsafe { get_active_table() }
     }
 
     fn activate_table(asid: usize, table: VirtualAddress) {
@@ -127,8 +126,8 @@ impl Mode for Riscv64Sv48 {
         invalidate_address_range(asid, address_range)
     }
 
-    fn get_active_table(asid: usize) -> PhysicalAddress {
-        unsafe { get_active_table(asid) }
+    fn get_active_table(_asid: usize) -> PhysicalAddress {
+        unsafe { get_active_table() }
     }
 
     fn activate_table(asid: usize, table: VirtualAddress) {
@@ -175,8 +174,8 @@ impl Mode for Riscv64Sv57 {
         invalidate_address_range(asid, address_range)
     }
 
-    fn get_active_table(asid: usize) -> PhysicalAddress {
-        unsafe { get_active_table(asid) }
+    fn get_active_table(_asid: usize) -> PhysicalAddress {
+        unsafe { get_active_table() }
     }
 
     fn activate_table(asid: usize, table: VirtualAddress) {

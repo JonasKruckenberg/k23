@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use cranelift_codegen::entity::{EntityRef, PrimaryMap};

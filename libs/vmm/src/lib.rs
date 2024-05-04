@@ -11,6 +11,7 @@ use core::{fmt, mem};
 pub use error::Error;
 pub use flush::Flush;
 pub use mapper::Mapper;
+pub use table::Table;
 
 mod alloc;
 mod arch;
