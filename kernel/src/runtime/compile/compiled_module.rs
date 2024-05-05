@@ -93,6 +93,10 @@ impl ModuleTextBuilder {
         functions
     }
 
+    pub fn finish(mut self) -> Vec<u8> {
+        self.text.finish(&mut Default::default())
+    }
+
     fn append_func(
         &mut self,
         compiled_func: &CompiledFunction,

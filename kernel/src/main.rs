@@ -36,7 +36,9 @@ fn main(_hartid: usize) -> ! {
 
     let engine = Engine::new(target_isa);
     let wasm = include_bytes!("../tests/fib-wasm.wasm");
-    let _module = runtime::compile_module(&engine, wasm);
+    let module = runtime::compile_module(&engine, wasm);
+
+    runtime::instance::test(&engine, module);
 
     todo!()
 }

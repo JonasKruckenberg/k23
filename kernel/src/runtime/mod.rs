@@ -3,7 +3,7 @@ mod compile;
 mod engine;
 mod errors;
 pub mod instance;
-mod instantiate;
+// mod instantiate;
 mod translate;
 mod utils;
 mod vmcontext;

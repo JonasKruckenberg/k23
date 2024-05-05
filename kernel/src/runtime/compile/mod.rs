@@ -2,7 +2,9 @@ mod compiled_function;
 mod compiled_module;
 mod compiler;
 
+use crate::runtime::builtins::BuiltinFunctionIndex;
 use crate::runtime::compile::compiled_function::{CompiledFunction, RelocationTarget};
+use crate::runtime::compile::compiled_module::ModuleTextBuilder;
 use crate::runtime::engine::Engine;
 use crate::runtime::translate::ModuleEnvironment;
 use crate::runtime::translate::ModuleTranslation;
@@ -17,11 +19,10 @@ use cranelift_codegen::entity::PrimaryMap;
 use cranelift_wasm::wasmparser::{Parser, Validator, WasmFeatures};
 use cranelift_wasm::{DefinedFuncIndex, ModuleInternedTypeIndex, StaticModuleIndex, WasmSubType};
 
-use crate::runtime::builtins::BuiltinFunctionIndex;
-use crate::runtime::compile::compiled_module::{CompiledFunctionInfo, ModuleTextBuilder};
+pub use compiled_module::{CompiledFunctionInfo, CompiledModule, FunctionLoc};
 pub use compiler::Compiler;
 
-pub fn compile_module<'wasm>(engine: &Engine, wasm: &'wasm [u8]) {
+pub fn compile_module<'wasm>(engine: &Engine, wasm: &'wasm [u8]) -> CompiledModule<'wasm> {
     // 2. Setup parsing & translation state
     let features = WasmFeatures::default();
     let mut validator = Validator::new_with_features(features);
@@ -49,9 +50,13 @@ pub fn compile_module<'wasm>(engine: &Engine, wasm: &'wasm [u8]) {
     );
 
     // 6. link functions & resolve relocations
-    let compiled_module = unlinked_compile_outputs.link_and_append(module, &mut text_builder);
+    let functions = unlinked_compile_outputs.link_and_append(&module, &mut text_builder);
 
-    todo!()
+    CompiledModule {
+        text: text_builder.finish(),
+        module,
+        functions,
+    }
 }
 
 type CompileInput<'a> =
@@ -114,7 +119,7 @@ impl<'a> CompileInputs<'a> {
     pub fn compile(
         self,
         engine: &Engine,
-        _module: &'a Module,
+        module: &'a Module,
     ) -> Result<UnlinkedCompileOutputs, CompileError> {
         let mut indices = BTreeMap::new();
         let mut outputs: BTreeMap<u32, BTreeMap<CompileKey, CompileOutput>> = BTreeMap::new();
@@ -129,20 +134,29 @@ impl<'a> CompileInputs<'a> {
                 .insert(output.key, output);
         }
 
-        // let functions = outputs.get(&CompileOutputKind::Function).unwrap();
-        // let mut builtins = Vec::new();
-        // compile_required_builtins(engine, module, functions, &mut builtins)?;
-        // outputs.insert(CompileOutputKind::WasmToBuiltinTrampoline, builtins);
+        let mut unlinked_compile_outputs = UnlinkedCompileOutputs { indices, outputs };
 
-        Ok(UnlinkedCompileOutputs { indices, outputs })
+        let mut builtins = BTreeMap::new();
+        compile_required_builtins(
+            engine,
+            module,
+            unlinked_compile_outputs.iter_flattened(),
+            &mut builtins,
+        )?;
+
+        unlinked_compile_outputs
+            .outputs
+            .insert(CompileKey::WASM_TO_BUILTIN_TRAMPOLINE_KIND, builtins);
+
+        Ok(unlinked_compile_outputs)
     }
 }
 
-fn compile_required_builtins(
+fn compile_required_builtins<'a>(
     engine: &Engine,
     module: &Module,
-    func_outputs: &[CompileOutput],
-    builtin_outputs: &mut Vec<CompileOutput>,
+    func_outputs: impl Iterator<Item = &'a CompileOutput>,
+    builtin_outputs: &mut BTreeMap<CompileKey, CompileOutput>,
 ) -> Result<(), CompileError> {
     let mut builtins = BTreeSet::new();
 
@@ -164,10 +178,8 @@ fn compile_required_builtins(
             .compiler()
             .compile_wasm_to_builtin_trampoline(module, builtin_index)?;
 
-        builtin_outputs.push(CompileOutput {
-            key: CompileKey::wasm_to_builtin_trampoline(builtin_index),
-            function,
-        });
+        let key = CompileKey::wasm_to_builtin_trampoline(builtin_index);
+        builtin_outputs.insert(key, CompileOutput { key, function });
     }
 
     Ok(())
@@ -280,7 +292,7 @@ impl UnlinkedCompileOutputs {
 
     pub fn link_and_append<'wasm>(
         self,
-        module: Module<'wasm>,
+        module: &Module<'wasm>,
         text_builder: &mut ModuleTextBuilder,
     ) -> PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo> {
         text_builder.append_funcs(self.iter_flattened(), |callee| match callee {
