@@ -17,9 +17,8 @@ mod boot_info;
 mod frame_alloc;
 mod logger;
 mod panic;
-mod thread_local;
-// mod wasm;
 mod runtime;
+mod thread_local;
 
 pub mod kconfig {
     // Configuration constants and statics defined by the build script
@@ -37,14 +36,7 @@ fn main(_hartid: usize) -> ! {
 
     let engine = Engine::new(target_isa);
     let wasm = include_bytes!("../tests/fib-wasm.wasm");
-
-    runtime::setup_store(&engine);
-
-    log::debug!("{:?}", StackUsage::measure());
-
-    // wasm::translate(wasm).unwrap();
-
-    // allocator::print_heap_statistics();
+    let _module = runtime::compile_module(&engine, wasm);
 
     todo!()
 }

@@ -1,6 +1,7 @@
+use crate::entry::Entry;
 use crate::flush::Flush;
 use crate::table::Table;
-use crate::{AddressRangeExt, FrameAllocator, Mode, PhysicalAddress, VirtualAddress};
+use crate::{AddressRangeExt, Error, FrameAllocator, Mode, PhysicalAddress, VirtualAddress};
 use bitflags::Flags;
 use core::marker::PhantomData;
 use core::ops::Range;
@@ -51,32 +52,6 @@ impl<'a, M: Mode> Mapper<'a, M> {
         }
     }
 
-    // pub fn shallow_clone_active(
-    //     asid: usize,
-    //     allocator: &'a mut dyn FrameAllocator,
-    // ) -> crate::Result<Self> {
-    //     let root_table_orig = M::get_active_table(asid);
-    //     let root_table_orig_virt = M::phys_to_virt(root_table_orig);
-    //
-    //     let root_table = allocator.allocate_frame()?;
-    //     let root_table_virt = M::phys_to_virt(root_table);
-    //
-    //     unsafe {
-    //         ptr::copy_nonoverlapping(
-    //             root_table_orig_virt.as_raw() as *const u8,
-    //             root_table_virt.as_raw() as *mut u8,
-    //             M::PAGE_SIZE,
-    //         );
-    //     }
-    //
-    //     Ok(Self {
-    //         asid,
-    //         root_table: root_table_virt,
-    //         allocator,
-    //         _m: PhantomData,
-    //     })
-    // }
-
     pub fn activate(&self) {
         M::activate_table(self.asid, self.root_table);
     }
@@ -93,167 +68,114 @@ impl<'a, M: Mode> Mapper<'a, M> {
         unsafe { Table::new(self.root_table, M::PAGE_TABLE_LEVELS - 1) }
     }
 
-    pub fn identity_map_range(
+    pub fn set_flags_for_range(
         &mut self,
-        phys_range: Range<PhysicalAddress>,
-        flags: M::EntryFlags,
-    ) -> crate::Result<Flush<M>> {
-        let mut flush = Flush::empty(self.asid);
-        self.identity_map_range_with_flush(phys_range, flags, &mut flush)?;
-        Ok(flush)
-    }
-
-    pub fn identity_map_range_with_flush(
-        &mut self,
-        phys_range: Range<PhysicalAddress>,
+        range_virt: Range<VirtualAddress>,
         flags: M::EntryFlags,
         flush: &mut Flush<M>,
     ) -> crate::Result<()> {
-        let virt_start = unsafe { VirtualAddress::new(phys_range.start.0) };
-        let virt_end = unsafe { VirtualAddress::new(phys_range.end.0) };
+        debug_assert!(
+            range_virt.size() >= M::PAGE_SIZE,
+            "virtual address range must span be at least one page"
+        );
 
-        self.map_range_with_flush_inner(virt_start..virt_end, phys_range, flags, flush, false)
+        Self::for_pages_in_range(range_virt.clone(), |i, _, page_size| {
+            let virt = range_virt.start.add(i * page_size);
+
+            self.set_flags(virt, flags, flush)
+        })
     }
 
-    pub fn map_range(
+    pub fn set_flags(
         &mut self,
-        virt_range: Range<VirtualAddress>,
-        phys_range: Range<PhysicalAddress>,
-        flags: M::EntryFlags,
-    ) -> crate::Result<Flush<M>> {
-        let mut flush = Flush::empty(self.asid);
-        self.map_range_with_flush_inner(virt_range, phys_range, flags, &mut flush, false)?;
-        Ok(flush)
-    }
-
-    pub fn map_range_with_flush(
-        &mut self,
-        virt_range: Range<VirtualAddress>,
-        phys_range: Range<PhysicalAddress>,
+        virt: VirtualAddress,
         flags: M::EntryFlags,
         flush: &mut Flush<M>,
     ) -> crate::Result<()> {
-        self.map_range_with_flush_inner(virt_range, phys_range, flags, flush, false)
+        debug_assert!(
+            virt.is_aligned(M::PAGE_SIZE),
+            "virtual address is not page aligned"
+        );
+
+        let on_leaf = |entry: &mut Entry<M>| {
+            assert!(
+                !entry.is_vacant(),
+                "expected table entry to *not* be vacant, to perform initial mapping use the map_ methods"
+            );
+
+            entry.set_address_and_flags(
+                entry.get_address(),
+                flags.union(M::ENTRY_FLAG_DEFAULT_LEAF),
+            );
+
+            flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;
+
+            Ok(())
+        };
+
+        Self::walk_mut(virt, self.root_table(), on_leaf, |_| Ok(()))
+    }
+
+    pub fn map_range_identity(
+        &mut self,
+        range_phys: Range<PhysicalAddress>,
+        flags: M::EntryFlags,
+        flush: &mut Flush<M>,
+    ) -> crate::Result<()> {
+        debug_assert!(
+            range_phys.size() >= M::PAGE_SIZE,
+            "physical address range must span be at least one page"
+        );
+
+        let range_virt = M::phys_to_virt(range_phys.start)..M::phys_to_virt(range_phys.end);
+
+        Self::for_pages_in_range(range_virt.clone(), |i, _, page_size| {
+            let virt = range_virt.start.add(i * page_size);
+            let phys = range_phys.start.add(i * page_size);
+
+            self.map(virt, phys, flags, flush)
+        })
     }
 
     pub fn map_identity(
         &mut self,
         phys: PhysicalAddress,
         flags: M::EntryFlags,
-        level: usize,
-    ) -> crate::Result<Flush<M>> {
-        let mut flush = Flush::empty(self.asid);
-        self.map_identity_with_flush(phys, flags, level, &mut flush)?;
-        Ok(flush)
-    }
-
-    pub fn map_identity_with_flush(
-        &mut self,
-        phys: PhysicalAddress,
-        flags: M::EntryFlags,
-        level: usize,
         flush: &mut Flush<M>,
     ) -> crate::Result<()> {
-        let virt = unsafe { VirtualAddress::new(phys.0) };
-        self.map_with_flush(virt, phys, flags, level, flush, false)
+        let virt = M::phys_to_virt(phys);
+        self.map(virt, phys, flags, flush)
     }
 
-    pub fn identity_remap_range(
+    pub fn map_range(
         &mut self,
-        phys_range: Range<PhysicalAddress>,
-        flags: M::EntryFlags,
-    ) -> crate::Result<Flush<M>> {
-        let mut flush = Flush::empty(self.asid);
-        self.identity_remap_range_with_flush(phys_range, flags, &mut flush)?;
-        Ok(flush)
-    }
-
-    pub fn identity_remap_range_with_flush(
-        &mut self,
-        phys_range: Range<PhysicalAddress>,
+        range_virt: Range<VirtualAddress>,
+        range_phys: Range<PhysicalAddress>,
         flags: M::EntryFlags,
         flush: &mut Flush<M>,
     ) -> crate::Result<()> {
-        let virt_start = unsafe { VirtualAddress::new(phys_range.start.0) };
-        let virt_end = unsafe { VirtualAddress::new(phys_range.end.0) };
-
-        self.map_range_with_flush_inner(virt_start..virt_end, phys_range, flags, flush, true)
-    }
-
-    pub fn remap_range(
-        &mut self,
-        virt_range: Range<VirtualAddress>,
-        phys_range: Range<PhysicalAddress>,
-        flags: M::EntryFlags,
-    ) -> crate::Result<Flush<M>> {
-        let mut flush = Flush::empty(self.asid);
-        self.map_range_with_flush_inner(virt_range, phys_range, flags, &mut flush, true)?;
-        Ok(flush)
-    }
-
-    pub fn remap_range_with_flush(
-        &mut self,
-        virt_range: Range<VirtualAddress>,
-        phys_range: Range<PhysicalAddress>,
-        flags: M::EntryFlags,
-        flush: &mut Flush<M>,
-    ) -> crate::Result<()> {
-        self.map_range_with_flush_inner(virt_range, phys_range, flags, flush, true)
-    }
-
-    pub fn remap_identity(
-        &mut self,
-        phys: PhysicalAddress,
-        flags: M::EntryFlags,
-        level: usize,
-    ) -> crate::Result<Flush<M>> {
-        let mut flush = Flush::empty(self.asid);
-        self.remap_identity_with_flush(phys, flags, level, &mut flush)?;
-        Ok(flush)
-    }
-
-    pub fn remap_identity_with_flush(
-        &mut self,
-        phys: PhysicalAddress,
-        flags: M::EntryFlags,
-        level: usize,
-        flush: &mut Flush<M>,
-    ) -> crate::Result<()> {
-        let virt = unsafe { VirtualAddress::new(phys.0) };
-        self.map_with_flush(virt, phys, flags, level, flush, true)
-    }
-
-    fn map_range_with_flush_inner(
-        &mut self,
-        virt_range: Range<VirtualAddress>,
-        phys_range: Range<PhysicalAddress>,
-        flags: M::EntryFlags,
-        flush: &mut Flush<M>,
-        remap: bool,
-    ) -> crate::Result<()> {
-        let len = virt_range.size();
+        let len = range_virt.size();
         // make sure both ranges are the same size
         debug_assert_eq!(
             len,
-            phys_range.end.0 - phys_range.start.0,
+            range_phys.end.0 - range_phys.start.0,
             "cannot map virtual address range to physical address range of different size"
         );
 
         debug_assert!(
-            virt_range.size() >= M::PAGE_SIZE,
+            range_virt.size() >= M::PAGE_SIZE,
             "virtual address range must span be at least one page"
         );
         debug_assert!(
-            phys_range.size() >= M::PAGE_SIZE,
+            range_phys.size() >= M::PAGE_SIZE,
             "physical address range must span be at least one page"
         );
 
-        Self::for_pages_in_range(virt_range.clone(), |i, level, page_size| {
-            let virt = virt_range.start.add(i * page_size);
-            let phys = phys_range.start.add(i * page_size);
-            self.map_with_flush(virt, phys, flags, level, flush, remap)?;
+        Self::for_pages_in_range(range_virt.clone(), |i, _, page_size| {
+            let virt = range_virt.start.add(i * page_size);
+            let phys = range_phys.start.add(i * page_size);
 
-            Ok(())
+            self.map(virt, phys, flags, flush)
         })
     }
 
@@ -262,23 +184,8 @@ impl<'a, M: Mode> Mapper<'a, M> {
         virt: VirtualAddress,
         phys: PhysicalAddress,
         flags: M::EntryFlags,
-        level: usize,
-    ) -> crate::Result<Flush<M>> {
-        let mut flush = Flush::empty(self.asid);
-        self.map_with_flush(virt, phys, flags, level, &mut flush, false)?;
-        Ok(flush)
-    }
-
-    pub fn map_with_flush(
-        &mut self,
-        virt: VirtualAddress,
-        phys: PhysicalAddress,
-        flags: M::EntryFlags,
-        wanted_lvl: usize,
         flush: &mut Flush<M>,
-        remap: bool,
     ) -> crate::Result<()> {
-        debug_assert!(wanted_lvl < M::PAGE_TABLE_LEVELS);
         debug_assert!(
             phys.is_aligned(M::PAGE_SIZE),
             "physical address is not page aligned"
@@ -288,106 +195,106 @@ impl<'a, M: Mode> Mapper<'a, M> {
             "virtual address is not page aligned"
         );
 
-        let mut table = self.root_table();
+        let table = self.root_table();
 
-        for lvl in (0..M::PAGE_TABLE_LEVELS).rev() {
-            let entry = table.entry_mut(table.index_of_virt(virt));
+        let on_leaf = |entry: &mut Entry<M>| {
+            assert!(
+                entry.is_vacant(),
+                "expected table entry to be vacant, to remap use  the remap_ methods"
+            );
 
-            if lvl == wanted_lvl {
-                // we reached the leaf entry
-                assert_eq!(
-                    entry.is_vacant(),
-                    !remap,
-                    "expected table entry to be vacant, to remap use  the _remap methods"
-                );
+            entry.set_address_and_flags(phys, flags.union(M::ENTRY_FLAG_DEFAULT_LEAF));
 
-                entry.set_address_and_flags(phys, flags.union(M::ENTRY_FLAG_DEFAULT_LEAF));
+            flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;
 
-                let page_size = 8 << (M::PAGE_ENTRY_SHIFT * (lvl + 1));
-                flush.extend_range(self.asid, virt..virt.add(page_size))?;
-                return Ok(());
-            } else {
-                if entry.is_vacant() {
-                    // allocate a new physical frame to hold the entries children
-                    let frame_phys = self.allocator.allocate_frame()?;
-                    entry.set_address_and_flags(frame_phys, M::ENTRY_FLAG_DEFAULT_TABLE);
-                }
+            Ok(())
+        };
 
-                let table_phys = entry.get_address();
-                let table_virt = M::phys_to_virt(table_phys);
-                table = unsafe { Table::new(table_virt, table.level() - 1) };
+        let on_node = |entry: &mut Entry<M>| {
+            if entry.is_vacant() {
+                // allocate a new physical frame to hold the entries children
+                let frame_phys = self.allocator.allocate_frame()?;
+                entry.set_address_and_flags(frame_phys, M::ENTRY_FLAG_DEFAULT_TABLE);
             }
-        }
 
-        unreachable!("virtual address was too large to be mapped. This should not be possible");
+            Ok(())
+        };
+
+        Self::walk_mut(virt, table, on_leaf, on_node)
     }
 
-    pub fn unmap_range_with_flush(
+    pub fn virt_to_phys(&self, virt: VirtualAddress) -> Option<PhysicalAddress> {
+        let on_leaf = |entry: &Entry<M>| -> crate::Result<PhysicalAddress> {
+            let mut phys = entry.get_address();
+            // copy the offset bits from the virtual address
+            phys.0 |= virt.0 & M::PAGE_OFFSET_MASK;
+
+            Ok(phys)
+        };
+
+        Self::walk(virt, self.root_table(), on_leaf, |_| Ok(())).ok()
+    }
+
+    pub fn unmap_forget_range(
         &mut self,
-        virt_range: Range<VirtualAddress>,
+        range_virt: Range<VirtualAddress>,
         flush: &mut Flush<M>,
     ) -> crate::Result<()> {
-        Self::for_pages_in_range(virt_range.clone(), |i, level, page_size| {
-            let virt = virt_range.start.add(i * page_size);
+        Self::for_pages_in_range(range_virt.clone(), |i, _, page_size| {
+            let virt = range_virt.start.add(i * page_size);
 
-            self.unmap_with_flush(virt, level, flush)?;
+            self.unmap_forget(virt, flush)?;
 
             Ok(())
         })
     }
 
-    pub fn unmap_forget_range_with_flush(
+    pub fn unmap_forget(
         &mut self,
-        virt_range: Range<VirtualAddress>,
+        virt: VirtualAddress,
+        flush: &mut Flush<M>,
+    ) -> crate::Result<PhysicalAddress> {
+        debug_assert!(virt.0 % M::PAGE_SIZE == 0);
+
+        let addr = self.unmap_inner(virt, &mut self.root_table(), false)?;
+        flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;
+
+        Ok(addr)
+    }
+
+    pub fn unmap_range(
+        &mut self,
+        range_virt: Range<VirtualAddress>,
         flush: &mut Flush<M>,
     ) -> crate::Result<()> {
-        Self::for_pages_in_range(virt_range.clone(), |i, level, page_size| {
-            let virt = virt_range.start.add(i * page_size);
+        Self::for_pages_in_range(range_virt.clone(), |i, _, page_size| {
+            let virt = range_virt.start.add(i * page_size);
 
-            self.unmap_forget_with_flush(virt, level, flush)?;
+            self.unmap(virt, flush)?;
 
             Ok(())
         })
     }
 
-    pub fn unmap_with_flush(
+    pub fn unmap(
         &mut self,
         virt: VirtualAddress,
-        wanted_level: usize,
         flush: &mut Flush<M>,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<PhysicalAddress> {
         debug_assert!(virt.0 % M::PAGE_SIZE == 0);
 
-        let addr = self.unmap_inner(virt, &mut self.root_table(), wanted_level, true)?;
+        let addr = self.unmap_inner(virt, &mut self.root_table(), true)?;
 
-        let _ = self.allocator.deallocate_frame(addr);
-        let page_size = 8 << (M::PAGE_ENTRY_SHIFT * (wanted_level + 1));
-        flush.extend_range(self.asid, virt..virt.add(page_size))?;
+        self.allocator.deallocate_frame(addr)?;
+        flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;
 
-        Ok(())
-    }
-
-    pub fn unmap_forget_with_flush(
-        &mut self,
-        virt: VirtualAddress,
-        wanted_level: usize,
-        flush: &mut Flush<M>,
-    ) -> crate::Result<()> {
-        debug_assert!(virt.0 % M::PAGE_SIZE == 0);
-
-        self.unmap_inner(virt, &mut self.root_table(), wanted_level, false)?;
-
-        let page_size = 8 << (M::PAGE_ENTRY_SHIFT * (wanted_level + 1));
-        flush.extend_range(self.asid, virt..virt.add(page_size))?;
-
-        Ok(())
+        Ok(addr)
     }
 
     fn unmap_inner(
         &mut self,
         virt: VirtualAddress,
         table: &mut Table<M>,
-        wanted_level: usize,
         dealloc: bool,
     ) -> crate::Result<PhysicalAddress> {
         let level = table.level();
@@ -397,7 +304,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
             return Ok(entry.get_address());
         }
 
-        if level == wanted_level {
+        if level == 0 {
             let address = entry.get_address();
             entry.clear();
             Ok(address)
@@ -407,7 +314,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
             let table_virt = M::phys_to_virt(table_phys);
             let mut subtable = unsafe { Table::new(table_virt, level - 1) };
 
-            let res = self.unmap_inner(virt, &mut subtable, wanted_level, dealloc)?;
+            let res = self.unmap_inner(virt, &mut subtable, dealloc)?;
 
             let is_still_populated = (0..512).map(|j| subtable.entry(j)).any(|e| !e.is_vacant());
 
@@ -424,19 +331,23 @@ impl<'a, M: Mode> Mapper<'a, M> {
         }
     }
 
-    pub fn virt_to_phys(&self, virt: VirtualAddress) -> Option<PhysicalAddress> {
-        let mut table = self.root_table();
-
+    fn walk_mut<R>(
+        virt: VirtualAddress,
+        mut table: Table<M>,
+        on_leaf: impl FnOnce(&mut Entry<M>) -> crate::Result<R>,
+        mut on_node: impl FnMut(&mut Entry<M>) -> crate::Result<()>,
+    ) -> crate::Result<R> {
         for lvl in (0..M::PAGE_TABLE_LEVELS).rev() {
-            let entry = table.entry(table.index_of_virt(virt));
+            let entry = table.entry_mut(table.index_of_virt(virt));
 
             if lvl == 0 {
-                let mut phys = entry.get_address();
-                // copy the offset bits from the virtual address
-                phys.0 |= virt.0 & M::PAGE_OFFSET_MASK;
-                return Some(phys);
+                return on_leaf(entry);
             } else {
-                assert!(!entry.is_vacant());
+                on_node(entry)?;
+
+                if entry.is_vacant() {
+                    return Err(Error::NotMapped(virt));
+                }
 
                 let table_phys = entry.get_address();
                 let table_virt = M::phys_to_virt(table_phys);
@@ -444,7 +355,34 @@ impl<'a, M: Mode> Mapper<'a, M> {
             }
         }
 
-        None
+        unreachable!("virtual address was too large to be mapped. This should not be possible");
+    }
+
+    fn walk<R>(
+        virt: VirtualAddress,
+        mut table: Table<M>,
+        on_leaf: impl FnOnce(&Entry<M>) -> crate::Result<R>,
+        mut on_node: impl FnMut(&Entry<M>) -> crate::Result<()>,
+    ) -> crate::Result<R> {
+        for lvl in (0..M::PAGE_TABLE_LEVELS).rev() {
+            let entry = table.entry(table.index_of_virt(virt));
+
+            if lvl == 0 {
+                return on_leaf(entry);
+            } else {
+                on_node(entry)?;
+
+                if entry.is_vacant() {
+                    return Err(Error::NotMapped(virt));
+                }
+
+                let table_phys = entry.get_address();
+                let table_virt = M::phys_to_virt(table_phys);
+                table = unsafe { Table::new(table_virt, table.level() - 1) };
+            }
+        }
+
+        unreachable!("virtual address was too large to be mapped. This should not be possible");
     }
 
     fn for_pages_in_range<F>(virt: Range<VirtualAddress>, mut f: F) -> crate::Result<()>

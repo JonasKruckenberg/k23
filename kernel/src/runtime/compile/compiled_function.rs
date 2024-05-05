@@ -1,5 +1,5 @@
-use crate::runtime::{BuiltinFunctionIndex, FilePos};
-use crate::runtime::{NS_WASM_BUILTIN, NS_WASM_FUNC};
+use crate::runtime::builtins::BuiltinFunctionIndex;
+use crate::runtime::NS_WASM_FUNC;
 use cranelift_codegen::entity::PrimaryMap;
 use cranelift_codegen::ir::{ExternalName, StackSlots, UserExternalName, UserExternalNameRef};
 use cranelift_codegen::{
@@ -33,10 +33,20 @@ pub struct CompiledFunctionMetadata {
     pub end_srcloc: FilePos,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum RelocationTarget {
     Wasm(FuncIndex),
     Builtin(BuiltinFunctionIndex),
+}
+
+/// A position within an original source file,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FilePos(u32);
+
+impl Default for FilePos {
+    fn default() -> FilePos {
+        FilePos(u32::MAX)
+    }
 }
 
 #[derive(Debug)]
@@ -93,9 +103,9 @@ fn mach_reloc_to_reloc(
                 // A reference to another jit'ed WASM function
                 NS_WASM_FUNC => RelocationTarget::Wasm(FuncIndex::from_u32(name.index)),
                 // A reference to a WASM builtin
-                NS_WASM_BUILTIN => {
-                    RelocationTarget::Builtin(BuiltinFunctionIndex::from_u32(name.index))
-                }
+                // NS_WASM_BUILTIN => {
+                //     RelocationTarget::Builtin(BuiltinFunctionIndex::from_u32(name.index))
+                // }
                 _ => panic!("unknown namespace {}", name.namespace),
             }
         }

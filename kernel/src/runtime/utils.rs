@@ -3,16 +3,6 @@ use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature, Type};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_wasm::{WasmFuncType, WasmHeapType, WasmValType};
 
-/// A position within an original source file,
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FilePos(u32);
-
-impl Default for FilePos {
-    fn default() -> FilePos {
-        FilePos(u32::MAX)
-    }
-}
-
 /// Returns the corresponding cranelift type for the provided wasm type.
 pub fn value_type(isa: &dyn TargetIsa, ty: WasmValType) -> Type {
     match ty {
@@ -64,7 +54,7 @@ pub fn native_call_signature(target_isa: &dyn TargetIsa, wasm_func_ty: &WasmFunc
 
     let cvt = |ty: &WasmValType| AbiParam::new(value_type(target_isa, *ty));
     sig.params.extend(wasm_func_ty.params().iter().map(&cvt));
-    // TODO handle returns
+    sig.returns.extend(wasm_func_ty.returns().iter().map(&cvt));
 
     sig
 }

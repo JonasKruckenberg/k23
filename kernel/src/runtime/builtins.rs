@@ -1,5 +1,6 @@
-#![allow(unused)]
+mod raw;
 
+use super::VMContext;
 use super::NS_WASM_BUILTIN;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};
@@ -39,41 +40,41 @@ macro_rules! foreach_builtin_function {
             memory_atomic_wait32(vmctx: vmctx, memory: i32, addr: i64, expected: i32, timeout: i64) -> i32;
             // Returns an index for wasm's `memory.atomic.wait64` instruction.
             memory_atomic_wait64(vmctx: vmctx, memory: i32, addr: i64, expected: i64, timeout: i64) -> i32;
-            // Invoked before malloc returns.
-            check_malloc(vmctx: vmctx, addr: i32, len: i32) -> i32;
-            // Invoked before the free returns.
-            check_free(vmctx: vmctx, addr: i32) -> i32;
-            // Invoked before a load is executed.
-            check_load(vmctx: vmctx, num_bytes: i32, addr: i32, offset: i32) -> i32;
-            // Invoked before a store is executed.
-            check_store(vmctx: vmctx, num_bytes: i32, addr: i32, offset: i32) -> i32;
-            // Invoked after malloc is called.
-            malloc_start(vmctx: vmctx);
-            // Invoked after free is called.
-            free_start(vmctx: vmctx);
-            // Invoked when wasm stack pointer is updated.
-            update_stack_pointer(vmctx: vmctx, value: i32);
-            // Invoked before memory.grow is called.
-            update_mem_size(vmctx: vmctx, num_bytes: i32);
-            // Drop a non-stack GC reference (eg an overwritten table entry)
-            // once it will no longer be used again. (Note: `val` is not a
-            // `reference` because it needn't appear in any stack maps, as it
-            // must not be live after this call.)
-            drop_gc_ref(vmctx: vmctx, val: pointer);
-            // Do a GC, treating the optional `root` as a GC root and returning
-            // the updated `root` (so that, in the case of moving collectors,
-            // callers have a valid version of `root` again).
-            gc(vmctx: vmctx, root: reference) -> reference;
-            // Implementation of Wasm's `global.get` instruction for globals
-            // containing GC references.
-            gc_ref_global_get(vmctx: vmctx, global: i32) -> reference;
-            // Implementation of Wasm's `global.set` instruction for globals
-            // containing GC references.
-            gc_ref_global_set(vmctx: vmctx, global: i32, val: reference);
-            // Returns an index for Wasm's `table.grow` instruction for GC references.
-            table_grow_gc_ref(vmctx: vmctx, table: i32, delta: i32, init: reference) -> i32;
-            // Returns an index for Wasm's `table.fill` instruction for GC references.
-            table_fill_gc_ref(vmctx: vmctx, table: i32, dst: i32, val: reference, len: i32);
+            // // Invoked before malloc returns.
+            // check_malloc(vmctx: vmctx, addr: i32, len: i32) -> i32;
+            // // Invoked before the free returns.
+            // check_free(vmctx: vmctx, addr: i32) -> i32;
+            // // Invoked before a load is executed.
+            // check_load(vmctx: vmctx, num_bytes: i32, addr: i32, offset: i32) -> i32;
+            // // Invoked before a store is executed.
+            // check_store(vmctx: vmctx, num_bytes: i32, addr: i32, offset: i32) -> i32;
+            // // Invoked after malloc is called.
+            // malloc_start(vmctx: vmctx);
+            // // Invoked after free is called.
+            // free_start(vmctx: vmctx);
+            // // Invoked when wasm stack pointer is updated.
+            // update_stack_pointer(vmctx: vmctx, value: i32);
+            // // Invoked before memory.grow is called.
+            // update_mem_size(vmctx: vmctx, num_bytes: i32);
+            // // Drop a non-stack GC reference (eg an overwritten table entry)
+            // // once it will no longer be used again. (Note: `val` is not a
+            // // `reference` because it needn't appear in any stack maps, as it
+            // // must not be live after this call.)
+            // drop_gc_ref(vmctx: vmctx, val: pointer);
+            // // Do a GC, treating the optional `root` as a GC root and returning
+            // // the updated `root` (so that, in the case of moving collectors,
+            // // callers have a valid version of `root` again).
+            // gc(vmctx: vmctx, root: reference) -> reference;
+            // // Implementation of Wasm's `global.get` instruction for globals
+            // // containing GC references.
+            // gc_ref_global_get(vmctx: vmctx, global: i32) -> reference;
+            // // Implementation of Wasm's `global.set` instruction for globals
+            // // containing GC references.
+            // gc_ref_global_set(vmctx: vmctx, global: i32, val: reference);
+            // // Returns an index for Wasm's `table.grow` instruction for GC references.
+            // table_grow_gc_ref(vmctx: vmctx, table: i32, delta: i32, init: reference) -> i32;
+            // // Returns an index for Wasm's `table.fill` instruction for GC references.
+            // table_fill_gc_ref(vmctx: vmctx, table: i32, dst: i32, val: reference, len: i32);
         }
     };
 }
@@ -303,3 +304,40 @@ impl BuiltinFunctions {
         f
     }
 }
+
+macro_rules! define_builtin_array {
+    (
+        $(
+            $( #[$attr:meta] )*
+            $name:ident( $( $pname:ident: $param:ident ),* ) $( -> $result:ident )?;
+        )*
+    ) => {
+        /// An array that stores addresses of builtin functions. We translate code
+        /// to use indirect calls. This way, we don't have to patch the code.
+        #[repr(C)]
+        pub struct VMBuiltinFunctionsArray {
+            $(
+                $name: unsafe extern "C" fn(
+                    $(define_builtin_array!(@ty $param)),*
+                ) $( -> define_builtin_array!(@ty $result))?,
+            )*
+        }
+
+        impl VMBuiltinFunctionsArray {
+            #[allow(unused_doc_comments)]
+            pub const INIT: VMBuiltinFunctionsArray = VMBuiltinFunctionsArray {
+                $(
+                    $name: crate::runtime::builtins::raw::$name,
+                )*
+            };
+        }
+    };
+
+    (@ty i32) => (u32);
+    (@ty i64) => (u64);
+    (@ty reference) => (*mut u8);
+    (@ty pointer) => (*mut u8);
+    (@ty vmctx) => (*mut VMContext);
+}
+
+foreach_builtin_function!(define_builtin_array);

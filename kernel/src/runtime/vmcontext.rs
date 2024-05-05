@@ -1,79 +1,4 @@
-//! # VMContext
-//!
-//! There are many bits of data that the JIT code needs at run-time, such as pointers to tables,
-//! constants, pointers to imported objects and runtime configuration.
-//!
-//! All this JIT state is kept inside a `VMContext` struct that currently looks like this:
-//! ```rust
-//! #[repr(C)]
-//! struct VMContext {
-//!     magic: usize,
-//!     builtins: *mut VMBuiltinFunctionsArray,
-//!     tables: [VMTableDefinition; module.num_defined_tables],
-//!     memories: [*mut VMMemoryDefinition; module.num_defined_memories],
-//!     owned_memories: [VMMemoryDefinition; module.num_owned_memories],
-//!     globals: [VMGlobalDefinition; module.num_defined_globals],
-//!     func_refs: [VMFuncRef; module.num_escaped_funcs],
-//!     imported_functions: [VMFunctionImport; module.num_imported_functions],
-//!     imported_tables: [VMTableImport; module.num_imported_tables],
-//!     imported_memories: [VMMemoryImport; module.num_imported_memories],
-//!     imported_globals: [VMGlobalImport; module.num_imported_globals],
-//!     stack_limit: usize,
-//!     last_wasm_exit_fp: usize,
-//!     last_wasm_exit_pc: usize,
-//!     last_wasm_entry_sp: usize,
-//! }
-//! ```
-//!
-//! As you can see, the final size of a `VMContext` depends on number of defined items in the given
-//! WASM module. This means we can't actually define `VMContext` as a Rust struct.
-//! During compilation populate a `VMContextPlan` struct that describes how the corresponding
-//! `VMContext` will be laid out in memory, this `VMContextPlan` instance is then used for
-//! pointer + offset calculations to access the structs fields.
-//!
-//     /// The value of the frame pointer register when we last called from Wasm to
-//     /// the host.
-//     ///
-//     /// Maintained by our Wasm-to-host trampoline, and cleared just before
-//     /// calling into Wasm in `catch_traps`.
-//     ///
-//     /// This member is `0` when Wasm is actively running and has not called out
-//     /// to the host.
-//     ///
-//     /// Used to find the start of a a contiguous sequence of Wasm frames when
-//     /// walking the stack.
-//     pub last_wasm_exit_fp: UnsafeCell<usize>,
-//
-//     /// The last Wasm program counter before we called from Wasm to the host.
-//     ///
-//     /// Maintained by our Wasm-to-host trampoline, and cleared just before
-//     /// calling into Wasm in `catch_traps`.
-//     ///
-//     /// This member is `0` when Wasm is actively running and has not called out
-//     /// to the host.
-//     ///
-//     /// Used when walking a contiguous sequence of Wasm frames.
-//     pub last_wasm_exit_pc: UnsafeCell<usize>,
-//
-//     /// The last host stack pointer before we called into Wasm from the host.
-//     ///
-//     /// Maintained by our host-to-Wasm trampoline, and cleared just before
-//     /// calling into Wasm in `catch_traps`.
-//     ///
-//     /// This member is `0` when Wasm is actively running and has not called out
-//     /// to the host.
-//     ///
-//     /// When a host function is wrapped into a `wasmtime::Func`, and is then
-//     /// called from the host, then this member has the sentinal value of `-1 as
-//     /// usize`, meaning that this contiguous sequence of Wasm frames is the
-//     /// empty sequence, and it is not safe to dereference the
-//     /// `last_wasm_exit_fp`.
-//     ///
-//     /// Used to find the end of a contiguous sequence of Wasm frames when
-//     /// walking the stack.
-//     pub last_wasm_entry_sp: UnsafeCell<usize>,
-
-use crate::runtime::wasm2ir::Module;
+use crate::runtime::translate::Module;
 use core::mem;
 use core::mem::offset_of;
 use core::sync::atomic::AtomicUsize;
@@ -85,11 +10,51 @@ use cranelift_wasm::{
 
 pub const VMCONTEXT_MAGIC: u32 = u32::from_le_bytes(*b"vmcx");
 
-/// A VMContext plan describes how we plan to allocate, instantiate and handle the VMContext for a
-/// given module.
+#[repr(C)]
+pub struct VMContext {
+    ptr: *const u8,
+}
+
+#[repr(C)]
+pub struct VMTableDefinition {}
+
+#[repr(C)]
+pub struct VMMemoryDefinition {
+    /// The start address.
+    pub base: *mut u8,
+    /// The current logical size of this linear memory in bytes.
+    ///
+    /// This is atomic because shared memories must be able to grow their length
+    /// atomically. For relaxed access, see
+    /// [`VMMemoryDefinition::current_length()`].
+    pub current_length: AtomicUsize,
+    /// The address space identifier of the memory
+    pub asid: usize,
+}
+
+#[repr(C)]
+pub struct VMGlobalDefinition {}
+
+#[repr(C)]
+pub struct VMFuncRef {}
+
+#[repr(C)]
+pub struct VMFunctionImport {}
+
+#[repr(C)]
+pub struct VMTableImport {}
+
+#[repr(C)]
+pub struct VMMemoryImport {}
+
+#[repr(C)]
+pub struct VMGlobalImport {}
+
+/// VMContextOffsets describes how the VMContext for the corresponding module will be laid out at runtime.
 ///
 /// This struct is used by compilation code (namely the `FuncEnvironment`) to access the offsets from the
 /// global `vmctx` pointer.
+#[derive(Debug)]
 pub struct VMContextOffsets {
     num_imported_funcs: u32,
     num_imported_tables: u32,
@@ -121,41 +86,6 @@ pub struct VMContextOffsets {
     last_wasm_exit_pc: u32,
     last_wasm_entry_sp: u32,
 }
-
-#[repr(C)]
-struct VMTableDefinition {}
-
-#[repr(C)]
-struct VMMemoryDefinition {
-    /// The start address.
-    pub base: *mut u8,
-    /// The current logical size of this linear memory in bytes.
-    ///
-    /// This is atomic because shared memories must be able to grow their length
-    /// atomically. For relaxed access, see
-    /// [`VMMemoryDefinition::current_length()`].
-    pub current_length: AtomicUsize,
-    /// The address space identifier of the memory
-    pub asid: usize,
-}
-
-#[repr(C)]
-struct VMGlobalDefinition {}
-
-#[repr(C)]
-struct VMFuncRef {}
-
-#[repr(C)]
-struct VMFunctionImport {}
-
-#[repr(C)]
-struct VMTableImport {}
-
-#[repr(C)]
-struct VMMemoryImport {}
-
-#[repr(C)]
-struct VMGlobalImport {}
 
 impl VMContextOffsets {
     pub fn for_module(isa: &dyn TargetIsa, module: &Module) -> Self {
@@ -211,6 +141,10 @@ impl VMContextOffsets {
             last_wasm_entry_sp: member_offset(ptr_size),
             size: offset,
         }
+    }
+
+    pub fn size(&self) -> u32 {
+        self.size
     }
 
     #[inline]
@@ -272,15 +206,15 @@ impl VMContextOffsets {
     }
     #[inline]
     pub fn last_wasm_exit_fp(&self) -> u32 {
-        self.stack_limit
+        self.last_wasm_exit_fp
     }
     #[inline]
     pub fn last_wasm_exit_pc(&self) -> u32 {
-        self.stack_limit
+        self.last_wasm_exit_pc
     }
     #[inline]
     pub fn last_wasm_entry_sp(&self) -> u32 {
-        self.stack_limit
+        self.last_wasm_entry_sp
     }
 
     /// Return the offset to the `base` field in `VMMemoryDefinition` index `index`.

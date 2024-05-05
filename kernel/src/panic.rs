@@ -1,4 +1,4 @@
-use crate::{allocator, arch};
+use crate::arch;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, Ordering};
 

@@ -1,54 +1,32 @@
+mod func_env;
+mod module_env;
+
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use cranelift_codegen::entity::{EntityRef, PrimaryMap};
+use cranelift_codegen::packed_option::ReservedValue;
+use cranelift_wasm::wasmparser::MemoryType;
 use cranelift_wasm::{
     DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex, EntityIndex, FuncIndex, Global,
     GlobalIndex, Memory, MemoryIndex, ModuleInternedTypeIndex, OwnedMemoryIndex, Table, TableIndex,
     TypeIndex,
 };
 
-#[derive(Debug)]
-pub struct Import<'wasm> {
-    /// Name of this import
-    pub module: &'wasm str,
-    /// The field name projection of this import
-    pub field: &'wasm str,
-    /// Where this import will be placed, which also has type information
-    /// about the import.
-    pub index: EntityIndex,
-}
+use crate::runtime::translate::module_env::FuncRefIndex;
+pub use func_env::FuncEnvironment;
+pub use module_env::{FunctionBodyInput, ModuleEnvironment, ModuleTranslation};
 
-#[derive(Debug)]
-pub struct FunctionType {
-    /// The type of this function, indexed into the module-wide type tables for
-    /// a module compilation.
-    pub signature: ModuleInternedTypeIndex,
-}
-
-#[derive(Debug)]
-pub struct TablePlan {
-    /// The WebAssembly table description
-    pub table: Table,
-}
-
-#[derive(Debug)]
-pub struct MemoryPlan {
-    /// The WebAssembly linear memory description.
-    pub memory: Memory,
-}
-
+/// A parsed, verified, and translated module ready to be compiled
 #[derive(Debug, Default)]
 pub struct Module<'wasm> {
-    /// The name of the module if any
     pub name: Option<&'wasm str>,
-    /// The start function of the module if any
-    pub start: Option<FuncIndex>,
 
+    /// The start function of the module if any
+    pub start_func: Option<FuncIndex>,
     /// Imports declared in the wasm module
     pub imports: Vec<Import<'wasm>>,
     /// Exports declared in the wasm module
     pub exports: BTreeMap<&'wasm str, EntityIndex>,
-
     /// Types declared in the wasm module.
     pub types: PrimaryMap<TypeIndex, ModuleInternedTypeIndex>,
     /// Types of functions, imported and local.
@@ -141,6 +119,9 @@ impl<'wasm> Module<'wasm> {
         global_index.as_u32() < self.num_imported_globals
     }
 
+    pub fn num_escaped_funcs(&self) -> u32 {
+        self.num_escaped_funcs
+    }
     pub fn num_imported_funcs(&self) -> u32 {
         self.num_imported_funcs
     }
@@ -164,5 +145,68 @@ impl<'wasm> Module<'wasm> {
     }
     pub fn num_defined_globals(&self) -> u32 {
         self.globals.len() as u32
+    }
+}
+
+#[derive(Debug)]
+pub struct Import<'wasm> {
+    /// Name of this import
+    pub module: &'wasm str,
+    /// The field name projection of this import
+    pub field: &'wasm str,
+    /// Where this import will be placed, which also has type information
+    /// about the import.
+    pub index: EntityIndex,
+}
+
+/// A table plan describes how we plan to allocate, instantiate and handle a given table
+#[derive(Debug)]
+pub struct TablePlan {
+    /// The WebAssembly table description
+    pub table: Table,
+}
+
+/// A memory plan describes how we plan to allocate, instantiate and handle a given memory
+#[derive(Debug)]
+pub struct MemoryPlan {
+    /// The WebAssembly linear memory description.
+    pub memory: Memory,
+}
+
+impl MemoryPlan {
+    pub fn for_memory_type(ty: MemoryType) -> Self {
+        Self {
+            memory: Memory {
+                minimum: ty.initial,
+                maximum: ty.maximum,
+                shared: ty.shared,
+                memory64: ty.memory64,
+            },
+        }
+    }
+}
+
+impl TablePlan {
+    pub fn for_table(table: Table) -> Self {
+        Self { table }
+    }
+}
+
+#[derive(Debug)]
+pub struct FunctionType {
+    /// The type of this function, indexed into the module-wide type tables for
+    /// a module compilation.
+    pub signature: ModuleInternedTypeIndex,
+    /// The index into the funcref table, if present. Note that this is
+    /// `reserved_value()` if the function does not escape from a module.
+    pub func_ref: FuncRefIndex,
+}
+
+impl FunctionType {
+    /// Returns whether this function's type is one that "escapes" the current
+    /// module, meaning that the function is exported, used in `ref.func`, used
+    /// in a table, etc.
+    pub fn is_escaping(&self) -> bool {
+        !self.func_ref.is_reserved_value()
     }
 }

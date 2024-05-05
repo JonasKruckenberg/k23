@@ -1,9 +1,10 @@
 #![allow(unused)]
 
-use crate::wasm::builtins::BuiltinFunctions;
-use crate::wasm::module::Module;
-use crate::wasm::vmcontext::VMContextOffsets;
-use crate::wasm::WASM_PAGE_SIZE;
+use super::Module;
+use crate::runtime::builtins::BuiltinFunctions;
+use crate::runtime::utils::value_type;
+use crate::runtime::vmcontext::VMContextOffsets;
+use crate::runtime::WASM_PAGE_SIZE;
 use alloc::vec;
 use cranelift_codegen::cursor::FuncCursor;
 use cranelift_codegen::entity::{EntityRef, PrimaryMap};
@@ -22,25 +23,25 @@ use cranelift_wasm::{
 };
 
 pub struct FuncEnvironment<'module_env, 'wasm> {
-    target_isa: &'module_env dyn TargetIsa,
+    isa: &'module_env dyn TargetIsa,
     module: &'module_env Module<'wasm>,
     pub offsets: VMContextOffsets,
-
-    heaps: PrimaryMap<Heap, HeapData>,
     builtins: BuiltinFunctions,
+    heaps: PrimaryMap<Heap, HeapData>,
 
     vmctx: Option<GlobalValue>,
     pcc_vmctx_memtype: Option<MemoryType>,
 }
 
 impl<'module_env, 'wasm> FuncEnvironment<'module_env, 'wasm> {
-    pub fn new(target_isa: &'module_env dyn TargetIsa, module: &'module_env Module<'wasm>) -> Self {
+    pub fn new(isa: &'module_env dyn TargetIsa, module: &'module_env Module<'wasm>) -> Self {
         Self {
-            target_isa,
+            isa,
             module,
-            offsets: VMContextOffsets::new(module, target_isa.pointer_bytes() as u32),
-            heaps: PrimaryMap::default(),
-            builtins: BuiltinFunctions::new(target_isa),
+
+            heaps: PrimaryMap::with_capacity(module.memory_plans.len()),
+            offsets: VMContextOffsets::for_module(isa, module),
+            builtins: BuiltinFunctions::new(isa),
             vmctx: None,
             pcc_vmctx_memtype: None,
         }
@@ -49,7 +50,7 @@ impl<'module_env, 'wasm> FuncEnvironment<'module_env, 'wasm> {
     fn vmctx(&mut self, func: &mut Function) -> GlobalValue {
         self.vmctx.unwrap_or_else(|| {
             let vmctx = func.create_global_value(GlobalValueData::VMContext);
-            if self.target_isa.flags().enable_pcc() {
+            if self.isa.flags().enable_pcc() {
                 // Create a placeholder memtype for the vmctx; we'll
                 // add fields to it as we lazily create HeapData
                 // structs and global values.
@@ -90,14 +91,6 @@ impl<'module_env, 'wasm> FuncEnvironment<'module_env, 'wasm> {
             (vmctx, offset)
         } else {
             todo!("imported memories")
-            // let from_offset = self.offsets.vmctx_vmglobal_import_from(global_index);
-            // let global = func.create_global_value(ir::GlobalValueData::Load {
-            //     base: vmctx,
-            //     offset: Offset32::new(i32::try_from(from_offset).unwrap()),
-            //     global_type: pointer_type,
-            //     flags: MemFlags::trusted().with_readonly(),
-            // });
-            // (global, 0)
         }
     }
 
@@ -158,22 +151,20 @@ impl<'module_env, 'wasm> FuncEnvironment<'module_env, 'wasm> {
 
 impl<'module_env, 'wasm> TargetEnvironment for FuncEnvironment<'module_env, 'wasm> {
     fn target_config(&self) -> TargetFrontendConfig {
-        self.target_isa.frontend_config()
+        self.isa.frontend_config()
     }
 
     fn heap_access_spectre_mitigation(&self) -> bool {
-        self.target_isa
-            .flags()
-            .enable_heap_access_spectre_mitigation()
+        self.isa.flags().enable_heap_access_spectre_mitigation()
     }
 
     fn proof_carrying_code(&self) -> bool {
-        self.target_isa.flags().enable_pcc()
+        self.isa.flags().enable_pcc()
     }
 }
 
 impl<'module_env, 'wasm> TypeConvert for FuncEnvironment<'module_env, 'wasm> {
-    fn lookup_heap_type(&self, index: UnpackedIndex) -> WasmHeapType {
+    fn lookup_heap_type(&self, _index: UnpackedIndex) -> WasmHeapType {
         todo!()
     }
 }
@@ -200,7 +191,7 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment for FuncEnvironment<'mo
         Ok(GlobalVariable::Memory {
             gv,
             offset: offset.into(),
-            ty: super::value_type(self.target_isa, ty),
+            ty: value_type(self.isa, ty),
         })
     }
 
@@ -256,7 +247,7 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment for FuncEnvironment<'mo
                     let offset = u64::try_from(base_offset).unwrap();
                     fields.push(MemoryTypeField {
                         offset,
-                        ty: self.target_isa.pointer_type(),
+                        ty: self.isa.pointer_type(),
                         // Read-only field from the PoV of PCC checks:
                         // don't allow stores to this field. (Even if
                         // it is a dynamic memory whose base can
@@ -265,10 +256,8 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment for FuncEnvironment<'mo
                         readonly: true,
                         fact: Some(base_fact.clone()),
                     });
-                    *size = core::cmp::max(
-                        *size,
-                        offset + u64::from(self.target_isa.pointer_type().bytes()),
-                    );
+                    *size =
+                        core::cmp::max(*size, offset + u64::from(self.isa.pointer_type().bytes()));
                 }
                 _ => {
                     panic!("Bad memtype");
@@ -303,7 +292,7 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment for FuncEnvironment<'mo
         }))
     }
 
-    fn make_indirect_sig(&mut self, func: &mut Function, index: TypeIndex) -> WasmResult<SigRef> {
+    fn make_indirect_sig(&mut self, _func: &mut Function, _index: TypeIndex) -> WasmResult<SigRef> {
         todo!()
     }
 
@@ -362,17 +351,18 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment for FuncEnvironment<'mo
         _heap: Heap,
         val: Value,
     ) -> WasmResult<Value> {
-        let memory_grow = self.builtins.memory32_grow(&mut pos.func);
-
-        let index_arg = index.index();
-
-        let memory_index = pos.ins().iconst(I32, index_arg as i64);
-        let vmctx = self.vmctx_val(&mut pos);
-
-        let val = self.cast_memory_index_to_i64(&mut pos, val, index);
-        let call_inst = pos.ins().call(memory_grow, &[vmctx, val, memory_index]);
-        let result = *pos.func.dfg.inst_results(call_inst).first().unwrap();
-        Ok(self.cast_pointer_to_memory_index(&mut pos, result, index))
+        todo!()
+        // let memory_grow = self.builtins.memory32_grow(&mut pos.func);
+        //
+        // let index_arg = index.index();
+        //
+        // let memory_index = pos.ins().iconst(I32, index_arg as i64);
+        // let vmctx = self.vmctx_val(&mut pos);
+        //
+        // let val = self.cast_memory_index_to_i64(&mut pos, val, index);
+        // let call_inst = pos.ins().call(memory_grow, &[vmctx, val, memory_index]);
+        // let result = *pos.func.dfg.inst_results(call_inst).first().unwrap();
+        // Ok(self.cast_pointer_to_memory_index(&mut pos, result, index))
     }
 
     fn translate_memory_size(

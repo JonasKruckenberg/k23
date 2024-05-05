@@ -1,11 +1,9 @@
-use super::CompiledFunction;
+use crate::runtime::builtins::{BuiltinFunctionIndex, BuiltinFunctionSignatures};
+use crate::runtime::compile::compiled_function::CompiledFunction;
+use crate::runtime::translate::{FuncEnvironment, FunctionBodyInput, Module};
 use crate::runtime::utils::{native_call_signature, wasm_call_signature};
 use crate::runtime::vmcontext::{VMContextOffsets, VMCONTEXT_MAGIC};
-use crate::runtime::wasm2ir::{FunctionBodyInput, Module};
-use crate::runtime::{
-    BuiltinFunctionIndex, BuiltinFunctionSignatures, CompileError, FuncEnvironment,
-    DEBUG_ASSERT_TRAP_CODE, NS_WASM_FUNC,
-};
+use crate::runtime::{CompileError, DEBUG_ASSERT_TRAP_CODE, NS_WASM_FUNC};
 use core::mem;
 use cranelift_codegen::entity::PrimaryMap;
 use cranelift_codegen::ir::condcodes::IntCC;
@@ -27,13 +25,6 @@ pub struct Compiler {
     isa: OwnedTargetIsa,
 }
 
-/// The compilation context for a single function
-struct CompilationContext<'a> {
-    target_isa: &'a dyn TargetIsa,
-    func_translator: FuncTranslator,
-    codegen_context: Context,
-    validator_allocations: FuncValidatorAllocations,
-}
 impl Compiler {
     pub fn new(isa: OwnedTargetIsa) -> Self {
         Self { isa }
@@ -143,10 +134,8 @@ impl Compiler {
         // Call into WASM
         let call = declare_and_call(&mut builder, wasm_call_sig, func_index, &args);
 
-        // TODO handle returns
-
-        let _results = builder.func.dfg.inst_results(call).to_vec();
-        builder.ins().return_(&[]);
+        let results = builder.func.dfg.inst_results(call).to_vec();
+        builder.ins().return_(&results);
         builder.finalize();
 
         Ok(ctx.finish()?)
@@ -201,8 +190,16 @@ impl Compiler {
         builder.ins().return_(&results);
         builder.finalize();
 
-        todo!()
+        Ok(ctx.finish()?)
     }
+}
+
+/// The compilation context for a single function
+struct CompilationContext<'a> {
+    target_isa: &'a dyn TargetIsa,
+    func_translator: FuncTranslator,
+    codegen_context: Context,
+    validator_allocations: FuncValidatorAllocations,
 }
 
 impl<'a> CompilationContext<'a> {

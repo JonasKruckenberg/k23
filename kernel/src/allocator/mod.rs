@@ -1,6 +1,6 @@
 use crate::allocator::locked::LockedHeap;
 use crate::kconfig;
-use vmm::{EntryFlags, VirtualAddress};
+use vmm::VirtualAddress;
 
 mod heap;
 mod locked;
@@ -12,7 +12,10 @@ mod tracking;
 pub static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 pub fn init(heap_start: VirtualAddress) -> Result<(), vmm::Error> {
-    unsafe { ALLOCATOR.init::<kconfig::MEMORY_MODE>(heap_start, kconfig::HEAP_SIZE_PAGES * kconfig::PAGE_SIZE) }
+    unsafe {
+        ALLOCATOR
+            .init::<kconfig::MEMORY_MODE>(heap_start, kconfig::HEAP_SIZE_PAGES * kconfig::PAGE_SIZE)
+    }
 
     #[cfg(feature = "track-allocations")]
     tracking::init();

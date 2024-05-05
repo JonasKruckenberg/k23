@@ -2,7 +2,7 @@ use crate::boot_info::BootInfo;
 use crate::{kconfig, logger};
 use core::arch::asm;
 use core::mem;
-use core::ops::{Range, Sub};
+use core::ops::Range;
 use core::ptr::addr_of_mut;
 use sync::Once;
 use vmm::VirtualAddress;
@@ -137,7 +137,7 @@ pub struct KernelArgs {
     loader_end: VirtualAddress,
 }
 
-pub unsafe extern "C" fn kernel_entry(
+pub unsafe fn kernel_entry(
     hartid: usize,
     thread_ptr: VirtualAddress,
     func: VirtualAddress,

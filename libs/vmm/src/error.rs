@@ -1,4 +1,4 @@
-use crate::PhysicalAddress;
+use crate::{PhysicalAddress, VirtualAddress};
 
 #[derive(Debug, onlyerror::Error)]
 pub enum Error {
@@ -11,4 +11,6 @@ pub enum Error {
     #[cfg(target_arch = "riscv64")]
     #[error("SBI call failed with error {0}")]
     SBI(#[from] riscv::sbi::Error),
+    #[error("Address {0:?} is not mapped and cant be translated")]
+    NotMapped(VirtualAddress),
 }

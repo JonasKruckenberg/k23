@@ -1,4 +1,4 @@
-use crate::runtime::Compiler;
+use crate::runtime::compile::Compiler;
 use core::sync::atomic::{AtomicU64, Ordering};
 use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
 

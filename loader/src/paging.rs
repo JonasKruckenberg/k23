@@ -115,7 +115,7 @@ impl<'a, 'dt> State<'a, 'dt> {
                 ..kconfig::MEMORY_MODE::phys_to_virt(region_phys.end);
 
             log::trace!("Mapping physical memory region {region_virt:?} => {region_phys:?}...");
-            self.mapper.map_range_with_flush(
+            self.mapper.map_range(
                 region_virt,
                 region_phys.clone(),
                 EntryFlags::READ | EntryFlags::WRITE,
@@ -137,7 +137,7 @@ impl<'a, 'dt> State<'a, 'dt> {
             "Identity mapping own executable region {:?}...",
             own_regions.executable
         );
-        self.mapper.identity_map_range_with_flush(
+        self.mapper.map_range_identity(
             own_regions.executable,
             EntryFlags::READ | EntryFlags::EXECUTE,
             &mut self.flush,
@@ -147,17 +147,14 @@ impl<'a, 'dt> State<'a, 'dt> {
             "Identity mapping own read-only region {:?}...",
             own_regions.read_only
         );
-        self.mapper.identity_map_range_with_flush(
-            own_regions.read_only,
-            EntryFlags::READ,
-            &mut self.flush,
-        )?;
+        self.mapper
+            .map_range_identity(own_regions.read_only, EntryFlags::READ, &mut self.flush)?;
 
         log::trace!(
             "Identity mapping own read-write region {:?}...",
             own_regions.read_write
         );
-        self.mapper.identity_map_range_with_flush(
+        self.mapper.map_range_identity(
             own_regions.read_write,
             EntryFlags::READ | EntryFlags::WRITE,
             &mut self.flush,
@@ -172,7 +169,7 @@ impl<'a, 'dt> State<'a, 'dt> {
             self.kernel.text.virt,
             self.kernel.text.phys
         );
-        self.mapper.map_range_with_flush(
+        self.mapper.map_range(
             self.kernel.text.virt.clone(),
             self.kernel.text.phys.clone(),
             EntryFlags::READ | EntryFlags::EXECUTE,
@@ -184,7 +181,7 @@ impl<'a, 'dt> State<'a, 'dt> {
             self.kernel.rodata.virt,
             self.kernel.rodata.phys
         );
-        self.mapper.map_range_with_flush(
+        self.mapper.map_range(
             self.kernel.rodata.virt.clone(),
             self.kernel.rodata.phys.clone(),
             EntryFlags::READ,
@@ -196,7 +193,7 @@ impl<'a, 'dt> State<'a, 'dt> {
             self.kernel.bss.virt,
             self.kernel.bss.phys
         );
-        self.mapper.map_range_with_flush(
+        self.mapper.map_range(
             self.kernel.bss.virt.clone(),
             self.kernel.bss.phys.clone(),
             EntryFlags::READ | EntryFlags::WRITE,
@@ -208,7 +205,7 @@ impl<'a, 'dt> State<'a, 'dt> {
             self.kernel.data.virt,
             self.kernel.data.phys
         );
-        self.mapper.map_range_with_flush(
+        self.mapper.map_range(
             self.kernel.data.virt.clone(),
             self.kernel.data.phys.clone(),
             EntryFlags::READ | EntryFlags::WRITE,
@@ -241,7 +238,7 @@ impl<'a, 'dt> State<'a, 'dt> {
         log::trace!(
             "Mapping hart {hartid} hart-local region {hartmem_virt:?} => {hartmem_phys:?}..."
         );
-        self.mapper.map_range_with_flush(
+        self.mapper.map_range(
             hartmem_virt,
             hartmem_phys.clone(),
             EntryFlags::READ | EntryFlags::WRITE,

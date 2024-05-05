@@ -1,6 +1,5 @@
-use crate::runtime::wasm2ir::{FuncRefIndex, FunctionType, Import, MemoryPlan, Module, TablePlan};
-use core::mem;
-use cranelift_codegen::entity::PrimaryMap;
+use super::{FunctionType, Import, MemoryPlan, Module, TablePlan};
+use cranelift_codegen::entity::{entity_impl, PrimaryMap};
 use cranelift_codegen::packed_option::ReservedValue;
 use cranelift_wasm::wasmparser::{
     Encoding, ExternalKind, FuncToValidate, FunctionBody, Parser, Payload, TypeRef, UnpackedIndex,
@@ -28,6 +27,11 @@ pub struct FunctionBodyInput<'wasm> {
     pub body: FunctionBody<'wasm>,
 }
 
+/// Index into the funcref table within a VMContext for a function.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+pub struct FuncRefIndex(u32);
+entity_impl!(FuncRefIndex);
+
 impl<'a, 'wasm> TypeConvert for ModuleEnvironment<'a, 'wasm> {
     fn lookup_heap_type(&self, _index: UnpackedIndex) -> WasmHeapType {
         todo!()
@@ -40,10 +44,6 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
             result: ModuleTranslation::default(),
             validator,
         }
-    }
-
-    pub fn finish(&mut self) -> ModuleTranslation<'wasm> {
-        mem::take(&mut self.result)
     }
 
     /// Marks a given function as "escaped" i.e. accessible outside of this module
@@ -298,118 +298,3 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
         Ok(())
     }
 }
-
-// impl<'wasm> TypeConvert for ModuleEnvironment<'wasm> {
-//     fn lookup_heap_type(&self, _index: UnpackedIndex) -> WasmHeapType {
-//         todo!()
-//     }
-// }
-//
-// impl<'wasm> cranelift_wasm::ModuleEnvironment<'wasm> for ModuleEnvironment<'wasm> {
-//     fn reserve_function_bodies(&mut self, bodies: u32, _code_section_offset: u64) {
-//         self.result
-//             .function_body_inputs
-//             .reserve_exact(bodies as usize);
-//     }
-//
-//     fn declare_func_export(&mut self, func_index: FuncIndex, name: &'wasm str) -> WasmResult<()> {
-
-//
-//         Ok(())
-//     }
-//
-//     fn declare_table_export(
-//         &mut self,
-//         table_index: TableIndex,
-//         name: &'wasm str,
-//     ) -> WasmResult<()> {
-//         self.result
-//             .module
-//             .exports
-//             .insert(name, EntityIndex::Table(table_index));
-//
-//         Ok(())
-//     }
-//
-//     fn declare_memory_export(
-//         &mut self,
-//         memory_index: MemoryIndex,
-//         name: &'wasm str,
-//     ) -> WasmResult<()> {
-//         self.result
-//             .module
-//             .exports
-//             .insert(name, EntityIndex::Memory(memory_index));
-//
-//         Ok(())
-//     }
-//
-//     fn declare_global_export(
-//         &mut self,
-//         global_index: GlobalIndex,
-//         name: &'wasm str,
-//     ) -> WasmResult<()> {
-//         self.result
-//             .module
-//             .exports
-//             .insert(name, EntityIndex::Global(global_index));
-//
-//         Ok(())
-//     }
-//
-//     fn declare_start_func(&mut self, index: FuncIndex) -> WasmResult<()> {
-//         self.result.module.start = Some(index);
-//
-//         Ok(())
-//     }
-//
-//     fn declare_table_elements(
-//         &mut self,
-//         _table_index: TableIndex,
-//         _base: Option<GlobalIndex>,
-//         _offset: u32,
-//         _elements: Box<[FuncIndex]>,
-//     ) -> WasmResult<()> {
-//         // mark each func as escaped
-//
-//         todo!()
-//     }
-//
-//     fn declare_passive_element(
-//         &mut self,
-//         _index: ElemIndex,
-//         _elements: Box<[FuncIndex]>,
-//     ) -> WasmResult<()> {
-//         todo!()
-//     }
-//
-//     fn declare_passive_data(
-//         &mut self,
-//         _data_index: DataIndex,
-//         _data: &'wasm [u8],
-//     ) -> WasmResult<()> {
-//         todo!()
-//     }
-//
-//     fn define_function_body(
-//         &mut self,
-//         validator: FuncValidator<ValidatorResources>,
-//         body: FunctionBody<'wasm>,
-//     ) -> WasmResult<()> {
-//         self.result
-//             .function_body_inputs
-//             .push(FunctionBodyInput { validator, body });
-//
-//         Ok(())
-//     }
-//
-//     fn declare_data_initialization(
-//         &mut self,
-//         _memory_index: MemoryIndex,
-//         _base: Option<GlobalIndex>,
-//         _offset: u64,
-//         _data: &'wasm [u8],
-//     ) -> WasmResult<()> {
-//         todo!()
-//     }
-// }

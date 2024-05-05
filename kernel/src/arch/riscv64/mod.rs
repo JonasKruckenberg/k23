@@ -2,7 +2,7 @@ mod trap;
 
 use crate::boot_info::BootInfo;
 use crate::thread_local::declare_thread_local;
-use crate::{allocator, boot_info, frame_alloc, kconfig, logger};
+use crate::{allocator, frame_alloc, kconfig, logger};
 use core::arch::asm;
 use core::ops::Range;
 use riscv::register;
@@ -66,13 +66,9 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
                     "Unmapping loader region {:?}",
                     kargs.loader_start..kargs.loader_end
                 );
-                mapper.unmap_forget_range_with_flush(
-                    kargs.loader_start..kargs.loader_end,
-                    &mut flush,
-                )?;
+                mapper.unmap_forget_range(kargs.loader_start..kargs.loader_end, &mut flush)?;
 
                 // Map UART MMIO region
-
                 let serial_phys = boot_info.serial.regs.clone().align(kconfig::PAGE_SIZE);
                 let serial_virt = offset.sub(serial_phys.size())..offset;
                 offset = offset.sub(serial_virt.size());
@@ -82,7 +78,7 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
                     serial_virt,
                     serial_phys,
                 );
-                mapper.map_range_with_flush(
+                mapper.map_range(
                     serial_virt.clone(),
                     serial_phys,
                     EntryFlags::READ | EntryFlags::WRITE,
@@ -97,14 +93,14 @@ pub extern "C" fn kstart(hartid: usize, kargs: *const KernelArgs) -> ! {
                     base..base.add(kconfig::HEAP_SIZE_PAGES * kconfig::PAGE_SIZE)
                 };
                 let heap_virt = offset.sub(kconfig::HEAP_SIZE_PAGES * kconfig::PAGE_SIZE)..offset;
-                offset = offset.sub(heap_virt.size());
+                //offset = offset.sub(heap_virt.size());
 
                 riscv::hprintln!(
                     "Mapping kernel heap region {:?} => {:?}",
                     heap_virt,
                     heap_phys,
                 );
-                mapper.map_range_with_flush(
+                mapper.map_range(
                     heap_virt.clone(),
                     heap_phys,
                     EntryFlags::READ | EntryFlags::WRITE,
