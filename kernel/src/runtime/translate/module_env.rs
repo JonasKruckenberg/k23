@@ -7,8 +7,9 @@ use cranelift_wasm::wasmparser::{
     Validator, ValidatorResources, WasmFeatures,
 };
 use cranelift_wasm::{
-    DefinedFuncIndex, EntityIndex, FuncIndex, GlobalIndex, MemoryIndex, ModuleInternedTypeIndex,
-    TableIndex, TypeConvert, TypeIndex, WasmCompositeType, WasmHeapType, WasmResult, WasmSubType,
+    ConstExpr, DefinedFuncIndex, EntityIndex, FuncIndex, GlobalIndex, MemoryIndex,
+    ModuleInternedTypeIndex, TableIndex, TypeConvert, TypeIndex, WasmCompositeType, WasmHeapType,
+    WasmResult, WasmSubType,
 };
 
 pub struct ModuleEnvironment<'a, 'wasm> {
@@ -210,12 +211,25 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                     .reserve_exact(globals.count() as usize);
 
                 for global in globals {
-                    self.result
+                    let global = global?;
+
+                    let global_index = self
+                        .result
                         .module
                         .globals
-                        .push(self.convert_global_type(&global?.ty));
+                        .push(self.convert_global_type(&global.ty));
 
-                    // TODO handle global init expr
+                    let (expr, escaping_funcs) = ConstExpr::from_wasmparser(global.init_expr)?;
+
+                    for func_index in escaping_funcs {
+                        self.mark_func_as_escaped(func_index);
+                    }
+
+                    let def_index = self.result.module.global_initializers.push(expr);
+                    debug_assert_eq!(
+                        Some(def_index),
+                        self.result.module.defined_global_index(global_index)
+                    )
                 }
             }
             Payload::ExportSection(exports) => {
