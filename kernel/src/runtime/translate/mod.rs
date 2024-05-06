@@ -1,16 +1,16 @@
 mod func_env;
 mod module_env;
 
-use crate::rt::FuncRefIndex;
+use crate::runtime::FuncRefIndex;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use cranelift_codegen::entity::{EntityRef, PrimaryMap};
 use cranelift_codegen::packed_option::ReservedValue;
 use cranelift_wasm::wasmparser::MemoryType;
 use cranelift_wasm::{
-    DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex, EngineOrModuleTypeIndex, EntityIndex,
-    FuncIndex, Global, GlobalIndex, Memory, MemoryIndex, ModuleInternedTypeIndex, OwnedMemoryIndex,
-    Table, TableIndex, TypeIndex,
+    ConstExpr, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex, EngineOrModuleTypeIndex,
+    EntityIndex, FuncIndex, Global, GlobalIndex, Memory, MemoryIndex, ModuleInternedTypeIndex,
+    OwnedMemoryIndex, Table, TableIndex, TypeIndex,
 };
 pub use func_env::FuncEnvironment;
 pub use module_env::{FunctionBodyInput, ModuleEnvironment, ModuleTranslation};
@@ -35,6 +35,8 @@ pub struct TranslatedModule<'wasm> {
     pub memory_plans: PrimaryMap<MemoryIndex, MemoryPlan>,
     /// WebAssembly global variables.
     pub globals: PrimaryMap<GlobalIndex, Global>,
+
+    pub global_initializers: PrimaryMap<DefinedGlobalIndex, ConstExpr>,
 
     pub num_imported_funcs: u32,
     pub num_imported_tables: u32,

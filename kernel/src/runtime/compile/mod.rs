@@ -3,11 +3,11 @@ mod function;
 mod module;
 mod obj;
 
-use crate::rt::engine::Engine;
-use crate::rt::translate::{
+use crate::runtime::engine::Engine;
+use crate::runtime::translate::{
     FunctionBodyInput, ModuleEnvironment, ModuleTranslation, TranslatedModule,
 };
-use crate::rt::{BuiltinFunctionIndex, CompileError};
+use crate::runtime::{BuiltinFunctionIndex, CompileError};
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;

@@ -1,14 +1,12 @@
 //! Support for building and parsing intermediate compilation artifacts in object format
 
 use crate::kconfig;
-use crate::rt::compile::{CompileOutput, CompiledFunction, FunctionLoc, RelocationTarget};
-use crate::rt::engine::Engine;
+use crate::runtime::compile::{CompileOutput, CompiledFunction, FunctionLoc, RelocationTarget};
+use crate::runtime::engine::Engine;
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::Range;
-use core::ptr;
-use core::ptr::NonNull;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::TextSectionBuilder;
 use object::write::{

@@ -22,7 +22,7 @@ mod boot_info;
 mod frame_alloc;
 mod logger;
 mod panic;
-mod rt;
+mod runtime;
 mod thread_local;
 
 pub mod kconfig {
@@ -31,7 +31,7 @@ pub mod kconfig {
 }
 
 fn main(_hartid: usize) -> ! {
-    rt::test();
+    runtime::test();
 
     // let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
     // let mut b = cranelift_codegen::settings::builder();

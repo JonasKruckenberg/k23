@@ -1,4 +1,4 @@
-use crate::rt::translate::TranslatedModule;
+use crate::runtime::translate::TranslatedModule;
 use cranelift_codegen::entity::PrimaryMap;
 use cranelift_wasm::{DefinedFuncIndex, ModuleInternedTypeIndex, WasmSubType};
 

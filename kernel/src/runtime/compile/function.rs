@@ -1,4 +1,4 @@
-use crate::rt::{BuiltinFunctionIndex, NS_WASM_BUILTIN, NS_WASM_FUNC};
+use crate::runtime::{BuiltinFunctionIndex, NS_WASM_BUILTIN, NS_WASM_FUNC};
 use cranelift_codegen::entity::PrimaryMap;
 use cranelift_codegen::ir::{ExternalName, StackSlots, UserExternalName, UserExternalNameRef};
 use cranelift_codegen::{

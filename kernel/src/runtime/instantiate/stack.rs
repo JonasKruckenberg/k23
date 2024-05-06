@@ -1,6 +1,5 @@
-use crate::rt::instantiate::{GuestAllocator, GuestVec, InstanceData};
-use crate::rt::VMContext;
-use alloc::collections::TryReserveError;
+use crate::runtime::instantiate::{GuestAllocator, GuestVec};
+use crate::runtime::VMContext;
 use core::arch::asm;
 use core::fmt;
 use core::fmt::Formatter;

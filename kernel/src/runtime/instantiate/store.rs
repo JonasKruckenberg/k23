@@ -1,8 +1,7 @@
 use crate::kconfig;
-use crate::rt::instantiate::stack::Stack;
-use crate::rt::instantiate::{GuestAllocator, InstanceData, InstanceHandle};
-use crate::rt::module::Module;
-use core::alloc::Allocator;
+use crate::runtime::instantiate::stack::Stack;
+use crate::runtime::instantiate::{GuestAllocator, InstanceData, InstanceHandle};
+use crate::runtime::module::Module;
 use cranelift_codegen::entity::PrimaryMap;
 use vmm::VirtualAddress;
 

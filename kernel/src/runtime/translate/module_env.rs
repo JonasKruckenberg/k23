@@ -1,5 +1,5 @@
 use super::{FunctionType, Import, MemoryPlan, TablePlan, TranslatedModule};
-use crate::rt::FuncRefIndex;
+use crate::runtime::FuncRefIndex;
 use cranelift_codegen::entity::PrimaryMap;
 use cranelift_codegen::packed_option::ReservedValue;
 use cranelift_wasm::wasmparser::{

@@ -1,5 +1,6 @@
 mod builtins;
 mod compile;
+mod const_expr;
 mod engine;
 mod errors;
 mod instance;
@@ -10,9 +11,9 @@ mod translate;
 mod utils;
 mod vmcontext;
 
-use crate::rt::instantiate::Store;
-use crate::rt::linker::Linker;
-use crate::rt::module::Module;
+use crate::runtime::instantiate::Store;
+use crate::runtime::linker::Linker;
+use crate::runtime::module::Module;
 pub use builtins::{BuiltinFunctionIndex, BuiltinFunctionSignatures, BuiltinFunctions};
 pub use compile::build_module;
 use cranelift_codegen::settings::Configurable;

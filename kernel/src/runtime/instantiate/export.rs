@@ -1,5 +1,5 @@
-use crate::rt::translate::{MemoryPlan, TablePlan};
-use crate::rt::{VMFuncRef, VMGlobalDefinition, VMMemoryDefinition, VMTableDefinition};
+use crate::runtime::translate::{MemoryPlan, TablePlan};
+use crate::runtime::{VMFuncRef, VMGlobalDefinition, VMMemoryDefinition, VMTableDefinition};
 use core::ptr::NonNull;
 use cranelift_wasm::{DefinedMemoryIndex, Global};
 

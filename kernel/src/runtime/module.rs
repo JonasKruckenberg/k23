@@ -1,8 +1,8 @@
-use crate::rt::compile::{CompiledFunctionInfo, CompiledModuleInfo};
-use crate::rt::instantiate::{CodeMemory, GuestVec, Store};
-use crate::rt::translate::EntityType;
-use crate::rt::vmcontext::VMContextOffsets;
-use crate::rt::{build_module, translate, Engine};
+use crate::runtime::compile::{CompiledFunctionInfo, CompiledModuleInfo};
+use crate::runtime::instantiate::{CodeMemory, GuestVec, Store};
+use crate::runtime::translate::EntityType;
+use crate::runtime::vmcontext::VMContextOffsets;
+use crate::runtime::{build_module, translate, Engine};
 use alloc::sync::Arc;
 use core::ops::Range;
 use cranelift_wasm::DefinedFuncIndex;
@@ -30,7 +30,7 @@ impl<'wasm> Module<'wasm> {
         let mut guest_vec = GuestVec::new(store.allocator());
         let info = build_module(engine, bytes, &mut guest_vec).unwrap();
         log::trace!("compile output {:?}", guest_vec.as_ptr_range());
-        
+
         let mut code = CodeMemory::new(guest_vec);
         code.publish().unwrap();
 

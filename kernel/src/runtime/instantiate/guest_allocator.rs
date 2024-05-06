@@ -1,7 +1,7 @@
 use crate::frame_alloc::with_frame_alloc;
 use crate::kconfig;
-use crate::rt::translate::{MemoryPlan, TablePlan};
-use crate::rt::{VMContext, VMContextOffsets};
+use crate::runtime::translate::{MemoryPlan, TablePlan};
+use crate::runtime::{VMContext, VMContextOffsets};
 use alloc::sync::Arc;
 use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
 use core::fmt;

@@ -1,8 +1,8 @@
 #![allow(unused)]
 
 use super::TranslatedModule;
-use crate::rt::utils::value_type;
-use crate::rt::{BuiltinFunctions, VMContextOffsets, WASM_PAGE_SIZE};
+use crate::runtime::utils::value_type;
+use crate::runtime::{BuiltinFunctions, VMContextOffsets, WASM_PAGE_SIZE};
 use alloc::vec;
 use cranelift_codegen::cursor::FuncCursor;
 use cranelift_codegen::entity::{EntityRef, PrimaryMap};

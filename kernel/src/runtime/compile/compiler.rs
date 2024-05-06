@@ -1,7 +1,7 @@
-use crate::rt::compile::{CompiledFunction, ELFOSABI_K23};
-use crate::rt::translate::{FuncEnvironment, FunctionBodyInput, TranslatedModule};
-use crate::rt::utils::{native_call_signature, wasm_call_signature};
-use crate::rt::{
+use crate::runtime::compile::{CompiledFunction, ELFOSABI_K23};
+use crate::runtime::translate::{FuncEnvironment, FunctionBodyInput, TranslatedModule};
+use crate::runtime::utils::{native_call_signature, wasm_call_signature};
+use crate::runtime::{
     BuiltinFunctionIndex, BuiltinFunctionSignatures, CompileError, VMContextOffsets,
     DEBUG_ASSERT_TRAP_CODE, NS_WASM_FUNC, VMCONTEXT_MAGIC,
 };

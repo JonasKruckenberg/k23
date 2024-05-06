@@ -1,7 +1,7 @@
-use crate::rt::instance::Instance;
-use crate::rt::instantiate::Store;
-use crate::rt::module::Module;
-use crate::rt::Engine;
+use crate::runtime::instance::Instance;
+use crate::runtime::instantiate::Store;
+use crate::runtime::module::Module;
+use crate::runtime::Engine;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec;
@@ -28,7 +28,12 @@ impl Linker {
         }
     }
 
-    pub fn instantiate<'wasm>(&self, store: &mut Store<'wasm>, engine: &Engine, module: Module<'wasm>) -> Instance {
+    pub fn instantiate<'wasm>(
+        &self,
+        store: &mut Store<'wasm>,
+        engine: &Engine,
+        module: Module<'wasm>,
+    ) -> Instance {
         unsafe { Instance::new_raw(store, module) }
     }
 
@@ -37,7 +42,7 @@ impl Linker {
     //     //     .imports()
     //     //     .map(|import| self._get_by_import(&import))
     //     //     .collect::<Vec<_>>();
-    // 
+    //
     //     InstancePre::new(module)
     // }
 

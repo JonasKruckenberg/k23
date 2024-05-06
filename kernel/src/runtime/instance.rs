@@ -1,7 +1,6 @@
-use crate::rt::instantiate::{InstanceHandle, Store};
-use crate::rt::module::Module;
-use crate::rt::{VMContext, VMFuncRef};
-use core::arch::asm;
+use crate::runtime::instantiate::{InstanceHandle, Store};
+use crate::runtime::module::Module;
+use crate::runtime::{VMContext, VMFuncRef};
 use core::mem;
 use core::ptr::NonNull;
 use cranelift_wasm::EntityIndex;
@@ -79,7 +78,7 @@ impl Func {
                 data.stack.stack_limit()
             );
             data.stack.on_stack(data.vmctx.as_ptr(), func_ptr);
-            
+
             log::trace!("finished call");
         };
     }
