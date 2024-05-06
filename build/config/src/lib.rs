@@ -1,13 +1,10 @@
 use anyhow::{ensure, Context};
 use serde::{Deserialize, Deserializer, Serialize};
+use std::fmt::Formatter;
+use std::hash::{DefaultHasher, Hasher};
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::{
-    fmt,
-    fmt::Formatter,
-    fs,
-    hash::{DefaultHasher, Hasher},
-    path::{Path, PathBuf},
-};
+use std::{fmt, fs};
 
 fn bootloader_default_stack_size_pages() -> usize {
     4

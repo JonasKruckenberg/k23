@@ -1,14 +1,19 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const, allocator_api, thread_local, error_in_core)]
+#![feature(
+    naked_functions,
+    asm_const,
+    allocator_api,
+    thread_local,
+    error_in_core,
+    hint_assert_unchecked
+)]
 
 extern crate alloc;
 
 use crate::arch::STACK;
-use crate::runtime::Engine;
 use core::arch::asm;
 use core::ops::Range;
-use cranelift_codegen::settings::Configurable;
 use vmm::VirtualAddress;
 
 mod allocator;
@@ -17,7 +22,7 @@ mod boot_info;
 mod frame_alloc;
 mod logger;
 mod panic;
-mod runtime;
+mod rt;
 mod thread_local;
 
 pub mod kconfig {
@@ -26,19 +31,19 @@ pub mod kconfig {
 }
 
 fn main(_hartid: usize) -> ! {
-    let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
-    let mut b = cranelift_codegen::settings::builder();
-    b.set("opt_level", "speed_and_size").unwrap();
+    rt::test();
 
-    let target_isa = isa_builder
-        .finish(cranelift_codegen::settings::Flags::new(b))
-        .unwrap();
-
-    let engine = Engine::new(target_isa);
-    let wasm = include_bytes!("../tests/fib-wasm.wasm");
-    let module = runtime::compile_module(&engine, wasm);
-
-    runtime::instance::test(&engine, module);
+    // let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
+    // let mut b = cranelift_codegen::settings::builder();
+    // b.set("opt_level", "speed_and_size").unwrap();
+    //
+    // let target_isa = isa_builder
+    //     .finish(cranelift_codegen::settings::Flags::new(b))
+    //     .unwrap();
+    //
+    // let engine = Engine::new(target_isa);
+    // let wasm = include_bytes!("../tests/fib-wasm.wasm");
+    // rt::build_module(&engine, wasm);
 
     todo!()
 }

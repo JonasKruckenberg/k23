@@ -130,9 +130,8 @@ define_offsets!(
 #[cfg(feature = "read")]
 mod tests {
     use super::*;
-    use crate::read;
     use crate::write::EndianVec;
-    use crate::LittleEndian;
+    use crate::{read, LittleEndian};
 
     #[test]
     fn test_string_table() {

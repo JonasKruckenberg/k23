@@ -855,9 +855,8 @@ pub(crate) mod convert {
 mod tests {
     use super::*;
     use crate::arch::X86_64;
-    use crate::read;
     use crate::write::EndianVec;
-    use crate::{LittleEndian, Vendor};
+    use crate::{read, LittleEndian, Vendor};
 
     #[test]
     fn test_frame_table() {

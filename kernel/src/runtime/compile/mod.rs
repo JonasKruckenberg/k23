@@ -1,35 +1,43 @@
-mod compiled_function;
-mod compiled_module;
 mod compiler;
+mod function;
+mod module;
+mod obj;
 
-use crate::runtime::builtins::BuiltinFunctionIndex;
-use crate::runtime::compile::compiled_function::{CompiledFunction, RelocationTarget};
-use crate::runtime::compile::compiled_module::ModuleTextBuilder;
-use crate::runtime::engine::Engine;
-use crate::runtime::translate::ModuleEnvironment;
-use crate::runtime::translate::ModuleTranslation;
-use crate::runtime::translate::{FunctionBodyInput, Module};
-use crate::runtime::CompileError;
+use crate::rt::engine::Engine;
+use crate::rt::translate::{
+    FunctionBodyInput, ModuleEnvironment, ModuleTranslation, TranslatedModule,
+};
+use crate::rt::{BuiltinFunctionIndex, CompileError};
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
-use core::fmt;
-use core::fmt::Formatter;
 use cranelift_codegen::entity::PrimaryMap;
 use cranelift_wasm::wasmparser::{Parser, Validator, WasmFeatures};
 use cranelift_wasm::{DefinedFuncIndex, ModuleInternedTypeIndex, StaticModuleIndex, WasmSubType};
+use obj::ObjectBuilder;
+use object::write::WritableBuffer;
 
-pub use compiled_module::{CompiledFunctionInfo, CompiledModule, FunctionLoc};
 pub use compiler::Compiler;
+pub use function::{CompiledFunction, RelocationTarget};
+pub use module::{CompiledFunctionInfo, CompiledModuleInfo, FunctionLoc};
+pub use obj::{
+    ELFOSABI_K23, ELF_K23_BTI, ELF_K23_ENGINE, ELF_K23_INFO, ELF_K23_TRAPS, ELF_TEXT,
+    ELF_WASM_DATA, ELF_WASM_DWARF, ELF_WASM_NAMES,
+};
 
-pub fn compile_module<'wasm>(engine: &Engine, wasm: &'wasm [u8]) -> CompiledModule<'wasm> {
-    // 2. Setup parsing & translation state
+pub fn build_module<'wasm, T: WritableBuffer>(
+    engine: &Engine,
+    wasm: &'wasm [u8],
+    output_buffer: &mut T,
+) -> Result<CompiledModuleInfo<'wasm>, CompileError> {
     let features = WasmFeatures::default();
     let mut validator = Validator::new_with_features(features);
     let parser = Parser::new(0);
     let module_env = ModuleEnvironment::new(&mut validator);
 
-    // 3. Perform WASM -> Cranelift IR translation
+    // Perform WASM -> Cranelift IR translation
     let translation = module_env.translate(parser, wasm).unwrap();
     let ModuleTranslation {
         module,
@@ -37,43 +45,65 @@ pub fn compile_module<'wasm>(engine: &Engine, wasm: &'wasm [u8]) -> CompiledModu
         types,
     } = translation;
 
-    // 4. collect all the necessary context and gather the functions that need compiling
+    // collect all the necessary context and gather the functions that need compiling
     let compile_inputs = CompileInputs::from_module(&module, &types, function_body_inputs);
 
-    // 5. compile functions to machine code
+    // compile functions to machine code
     let unlinked_compile_outputs = compile_inputs.compile(&engine, &module).unwrap();
 
-    let mut text_builder = ModuleTextBuilder::new(
-        engine
-            .target_isa()
-            .text_section_builder(unlinked_compile_outputs.num_funcs()),
+    let obj_builder = ObjectBuilder::new(engine.compiler().object());
+
+    let info = unlinked_compile_outputs.link_append_and_finish(
+        &engine,
+        module,
+        types,
+        obj_builder,
+        output_buffer,
     );
 
-    // 6. link functions & resolve relocations
-    let functions = unlinked_compile_outputs.link_and_append(&module, &mut text_builder);
-
-    CompiledModule {
-        text: text_builder.finish(),
-        module,
-        functions,
-    }
+    Ok(info)
 }
 
 type CompileInput<'a> =
     Box<dyn FnOnce(&Compiler) -> Result<CompileOutput, CompileError> + Send + 'a>;
 
-pub struct CompileInputs<'a> {
-    inputs: Vec<CompileInput<'a>>,
+pub struct CompileInputs<'a>(Vec<CompileInput<'a>>);
+
+pub struct UnlinkedCompileOutputs {
+    indices: BTreeMap<CompileKey, usize>,
+    outputs: BTreeMap<u32, BTreeMap<CompileKey, CompileOutput>>,
+}
+
+#[derive(Debug)]
+pub struct CompileOutput {
+    pub key: CompileKey,
+    pub function: CompiledFunction,
+    pub symbol: String,
+}
+
+/// A sortable, comparable key for a compilation output.
+/// This is used to sort by compilation output kind and bucket results.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CompileKey {
+    // The namespace field is bitpacked like:
+    //
+    //     [ kind:i3 module:i29 ]
+    namespace: u32,
+
+    index: u32,
 }
 
 impl<'a> CompileInputs<'a> {
+    /// Gather all functions that need compilation - including trampolines.
     pub fn from_module(
-        module: &'a Module,
+        module: &'a TranslatedModule,
         types: &'a PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
         function_body_inputs: PrimaryMap<DefinedFuncIndex, FunctionBodyInput<'a>>,
     ) -> Self {
         let mut inputs: Vec<CompileInput> = Vec::new();
         let mut num_trampolines = 0;
+        // We only ever compile one module at a time
+        let module_index = StaticModuleIndex::from_u32(0);
 
         for (def_func_index, body_input) in function_body_inputs {
             inputs.push(Box::new(move |compiler| {
@@ -81,8 +111,13 @@ impl<'a> CompileInputs<'a> {
                     compiler.compile_function(&module, &types, def_func_index, body_input)?;
 
                 Ok(CompileOutput {
-                    key: CompileKey::wasm_function(StaticModuleIndex::from_u32(0), def_func_index),
+                    key: CompileKey::wasm_function(module_index, def_func_index),
                     function,
+                    symbol: format!(
+                        "wasm[{}]::function[{}]",
+                        module_index.as_u32(),
+                        def_func_index.as_u32()
+                    ),
                 })
             }));
 
@@ -99,11 +134,13 @@ impl<'a> CompileInputs<'a> {
                     )?;
 
                     Ok(CompileOutput {
-                        key: CompileKey::native_to_wasm_trampoline(
-                            StaticModuleIndex::from_u32(0),
-                            def_func_index,
-                        ),
+                        key: CompileKey::native_to_wasm_trampoline(module_index, def_func_index),
                         function,
+                        symbol: format!(
+                            "wasm[{}]::native_to_wasm_trampoline[{}]",
+                            module_index.as_u32(),
+                            func_index.as_u32()
+                        ),
                     })
                 }));
             }
@@ -113,18 +150,20 @@ impl<'a> CompileInputs<'a> {
 
         // TODO collect wasm->native trampolines
 
-        Self { inputs }
+        Self(inputs)
     }
 
+    /// Feed the collected inputs through the compiler, producing [`UnlinkedCompileOutputs`] which holds
+    /// the resulting artifacts.
     pub fn compile(
         self,
         engine: &Engine,
-        module: &'a Module,
+        module: &TranslatedModule,
     ) -> Result<UnlinkedCompileOutputs, CompileError> {
         let mut indices = BTreeMap::new();
         let mut outputs: BTreeMap<u32, BTreeMap<CompileKey, CompileOutput>> = BTreeMap::new();
 
-        for (idx, f) in self.inputs.into_iter().enumerate() {
+        for (idx, f) in self.0.into_iter().enumerate() {
             let output = f(engine.compiler())?;
             indices.insert(output.key, idx);
 
@@ -135,14 +174,16 @@ impl<'a> CompileInputs<'a> {
         }
 
         let mut unlinked_compile_outputs = UnlinkedCompileOutputs { indices, outputs };
+        let flattened: Vec<_> = unlinked_compile_outputs
+            .outputs
+            .values()
+            .map(|inner| inner.values())
+            .flatten()
+            .collect();
 
         let mut builtins = BTreeMap::new();
-        compile_required_builtins(
-            engine,
-            module,
-            unlinked_compile_outputs.iter_flattened(),
-            &mut builtins,
-        )?;
+
+        compile_required_builtins(engine, module, flattened.into_iter(), &mut builtins)?;
 
         unlinked_compile_outputs
             .outputs
@@ -152,9 +193,10 @@ impl<'a> CompileInputs<'a> {
     }
 }
 
+/// Compile WASM to builtin trampolines for builtins referenced by the already compiled functions.
 fn compile_required_builtins<'a>(
     engine: &Engine,
-    module: &Module,
+    module: &TranslatedModule,
     func_outputs: impl Iterator<Item = &'a CompileOutput>,
     builtin_outputs: &mut BTreeMap<CompileKey, CompileOutput>,
 ) -> Result<(), CompileError> {
@@ -179,29 +221,110 @@ fn compile_required_builtins<'a>(
             .compile_wasm_to_builtin_trampoline(module, builtin_index)?;
 
         let key = CompileKey::wasm_to_builtin_trampoline(builtin_index);
-        builtin_outputs.insert(key, CompileOutput { key, function });
+        builtin_outputs.insert(
+            key,
+            CompileOutput {
+                key,
+                function,
+                symbol: format!("wasm_to_builtin_trampoline[{}]", builtin_index.as_u32()),
+            },
+        );
     }
 
     Ok(())
 }
 
-#[derive(Debug)]
-struct CompileOutput {
-    key: CompileKey,
-    function: CompiledFunction,
-}
+impl UnlinkedCompileOutputs {
+    /// Append the compiled functions to the given object resolving any relocations in the process.
+    ///
+    /// This is the final step if compilation.
+    pub fn link_append_and_finish<'wasm, T: WritableBuffer>(
+        mut self,
+        engine: &Engine,
+        module: TranslatedModule<'wasm>,
+        types: PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
+        mut obj_builder: ObjectBuilder,
+        output_buffer: &mut T,
+    ) -> CompiledModuleInfo<'wasm> {
+        let flattened: Vec<_> = self
+            .outputs
+            .values()
+            .map(|inner| inner.values())
+            .flatten()
+            .collect();
 
-/// A sortable, comparable key for a compilation output.
-///
-/// Two `u32`s to align with `cranelift_codegen::ir::UserExternalName`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct CompileKey {
-    // The namespace field is bitpacked like:
-    //
-    //     [ kind:i3 module:i29 ]
-    namespace: u32,
+        let text_builder = engine
+            .compiler()
+            .target_isa()
+            .text_section_builder(flattened.len());
 
-    index: u32,
+        let mut text_builder = obj_builder.text_builder(text_builder);
+
+        let symbol_ids_and_locs =
+            text_builder.append_funcs(flattened.into_iter(), |callee| match callee {
+                RelocationTarget::Wasm(callee_index) => {
+                    let def_func_index = module.defined_func_index(callee_index).unwrap();
+                    self.indices
+                        [&CompileKey::wasm_function(StaticModuleIndex::from_u32(0), def_func_index)]
+                }
+                RelocationTarget::Builtin(builtin_index) => {
+                    self.indices[&CompileKey::wasm_to_builtin_trampoline(builtin_index)]
+                }
+            });
+
+        text_builder.finish();
+
+        let wasm_functions = self
+            .outputs
+            .remove(&CompileKey::WASM_FUNCTION_KIND)
+            .unwrap_or_default()
+            .into_iter();
+
+        let mut native_to_wasm_trampolines = self
+            .outputs
+            .remove(&CompileKey::NATIVE_TO_WASM_TRAMPOLINE_KIND)
+            .unwrap_or_default();
+
+        let funcs: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo> = wasm_functions
+            .map(|(key, _)| {
+                let wasm_func_index = self.indices[&key];
+                let (_, wasm_func_loc) = symbol_ids_and_locs[wasm_func_index];
+
+                let native_to_wasm_trampoline_key = CompileKey::native_to_wasm_trampoline(
+                    key.module(),
+                    DefinedFuncIndex::from_u32(key.index),
+                );
+                let native_to_wasm_trampoline = native_to_wasm_trampolines
+                    .remove(&native_to_wasm_trampoline_key)
+                    .map(|output| symbol_ids_and_locs[self.indices[&output.key]].1);
+
+                CompiledFunctionInfo {
+                    wasm_func_loc,
+                    native_to_wasm_trampoline,
+                }
+            })
+            .collect();
+
+        // If configured attempt to use static memory initialization which
+        // can either at runtime be implemented as a single memcpy to
+        // initialize memory or otherwise enabling virtual-memory-tricks
+        // such as mmap'ing from a file to get copy-on-write.
+        // let max_always_allowed = kconfig::PAGE_SIZE * 16; // TODO
+        // module.try_static_init(kconfig::PAGE_SIZE, max_always_allowed);
+
+        // Attempt to convert table initializer segments to
+        // FuncTable representation where possible, to enable
+        // table lazy init.
+        // module.try_func_table_init();
+
+        obj_builder.finish(output_buffer).unwrap();
+
+        CompiledModuleInfo {
+            module,
+            funcs,
+            types,
+        }
+    }
 }
 
 impl CompileKey {
@@ -228,8 +351,6 @@ impl CompileKey {
         kind << Self::KIND_OFFSET
     }
 
-    // NB: more kinds in the other `impl` block.
-
     fn wasm_function(module: StaticModuleIndex, index: DefinedFuncIndex) -> Self {
         debug_assert_eq!(module.as_u32() & Self::KIND_MASK, 0);
         Self {
@@ -249,61 +370,22 @@ impl CompileKey {
     fn wasm_to_builtin_trampoline(index: BuiltinFunctionIndex) -> Self {
         Self {
             namespace: Self::WASM_TO_BUILTIN_TRAMPOLINE_KIND,
-            index: index.index(),
+            index: index.as_u32(),
         }
     }
 
-    // fn array_to_wasm_trampoline(module: StaticModuleIndex, index: DefinedFuncIndex) -> Self {
-    //     debug_assert_eq!(module.as_u32() & Self::KIND_MASK, 0);
-    //     Self {
-    //         namespace: Self::ARRAY_TO_WASM_TRAMPOLINE_KIND | module.as_u32(),
-    //         index: index.as_u32(),
-    //     }
-    // }
-
-    // fn wasm_to_native_trampoline(index: ModuleInternedTypeIndex) -> Self {
-    //     Self {
-    //         namespace: Self::WASM_TO_NATIVE_TRAMPOLINE_KIND,
-    //         index: index.as_u32(),
-    //     }
-    // }
-}
-
-#[derive(Debug)]
-struct UnlinkedCompileOutputs {
-    indices: BTreeMap<CompileKey, usize>,
-    outputs: BTreeMap<u32, BTreeMap<CompileKey, CompileOutput>>,
-}
-
-impl UnlinkedCompileOutputs {
-    pub fn code_size_hint(&self) -> usize {
-        self.iter_flattened().fold(0, |acc, output| {
-            acc + output.function.buffer.total_size() as usize
-        })
+    fn array_to_wasm_trampoline(module: StaticModuleIndex, index: DefinedFuncIndex) -> Self {
+        debug_assert_eq!(module.as_u32() & Self::KIND_MASK, 0);
+        Self {
+            namespace: Self::ARRAY_TO_WASM_TRAMPOLINE_KIND | module.as_u32(),
+            index: index.as_u32(),
+        }
     }
 
-    pub fn num_funcs(&self) -> usize {
-        self.outputs.iter().fold(0, |acc, (_, vec)| acc + vec.len())
-    }
-
-    pub fn iter_flattened(&self) -> impl Iterator<Item = &CompileOutput> + '_ {
-        self.outputs.values().map(|inner| inner.values()).flatten()
-    }
-
-    pub fn link_and_append<'wasm>(
-        self,
-        module: &Module<'wasm>,
-        text_builder: &mut ModuleTextBuilder,
-    ) -> PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo> {
-        text_builder.append_funcs(self.iter_flattened(), |callee| match callee {
-            RelocationTarget::Wasm(callee_index) => {
-                let def_func_index = module.defined_func_index(callee_index).unwrap();
-                self.indices
-                    [&CompileKey::wasm_function(StaticModuleIndex::from_u32(0), def_func_index)]
-            }
-            RelocationTarget::Builtin(builtin_index) => {
-                self.indices[&CompileKey::wasm_to_builtin_trampoline(builtin_index)]
-            }
-        })
+    fn wasm_to_native_trampoline(index: ModuleInternedTypeIndex) -> Self {
+        Self {
+            namespace: Self::WASM_TO_NATIVE_TRAMPOLINE_KIND,
+            index: index.as_u32(),
+        }
     }
 }

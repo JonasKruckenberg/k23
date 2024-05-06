@@ -24,10 +24,10 @@ cfg-if = "1.0.0"
 linked_list_allocator = "0.10.5"
 arrayvec = { version = "0.7.4", default-features = false }
 ed25519-dalek = { version = "2.1.1", default-features = false }
+object = { version = "0.35.0", default-features = false }
 hdrhistogram = { git = "https://github.com/JonasKruckenberg/HdrHistogram_rust", default-features = false }
 serde = { version = "1.0.199", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0", default-features = false }
-smallvec = "1.13.2"
 
 # cranelift dependencies
 hashbrown = { version = "0.14.3", features = ["nightly"] }

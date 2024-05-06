@@ -20,8 +20,9 @@ cranelift-wasm.workspace = true
 cranelift-codegen.workspace = true
 cranelift-frontend.workspace = true
 target-lexicon.workspace = true
-#gimli = { workspace = true, features = ["read"] }
 onlyerror.workspace = true
+object = { workspace = true, features = ["read_core", "write_core", "elf"] }
+pin-project-lite = "0.2"
 
 hdrhistogram = { workspace = true, optional = true, features = ["core", "serialization"] }
 serde = { workspace = true, optional = true }

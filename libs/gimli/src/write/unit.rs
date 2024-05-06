@@ -1917,14 +1917,12 @@ mod tests {
     use crate::common::{
         DebugAddrBase, DebugLocListsBase, DebugRngListsBase, DebugStrOffsetsBase, LineEncoding,
     };
-    use crate::constants;
-    use crate::read;
     use crate::write::{
         DebugLine, DebugLineStr, DebugStr, DwarfUnit, EndianVec, LineString, LineStringTable,
         Location, LocationList, LocationListTable, Range, RangeList, RangeListOffsets,
         RangeListTable, StringTable,
     };
-    use crate::LittleEndian;
+    use crate::{constants, read, LittleEndian};
     use std::collections::HashMap;
     use std::mem;
     use std::sync::Arc;

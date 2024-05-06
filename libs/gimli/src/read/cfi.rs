@@ -3572,8 +3572,7 @@ fn parse_encoded_pointer<R: Reader>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::{parse_cfi_entry, AugmentationData, RegisterRuleMap, UnwindContext};
+    use super::{parse_cfi_entry, AugmentationData, RegisterRuleMap, UnwindContext, *};
     use crate::common::Format;
     use crate::constants;
     use crate::endianity::{BigEndian, Endianity, LittleEndian, NativeEndian};
@@ -3584,8 +3583,7 @@ mod tests {
     use alloc::boxed::Box;
     use alloc::vec::Vec;
     use core::marker::PhantomData;
-    use core::mem;
-    use core::u64;
+    use core::{mem, u64};
     use test_assembler::{Endian, Label, LabelMaker, LabelOrNum, Section, ToLabelOrNum};
 
     // Ensure each test tries to read the same section kind that it wrote.

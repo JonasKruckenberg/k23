@@ -1,7 +1,6 @@
-mod raw;
+mod impls;
 
-use super::VMContext;
-use super::NS_WASM_BUILTIN;
+use super::{VMContext, NS_WASM_BUILTIN};
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
@@ -231,7 +230,7 @@ impl BuiltinFunctionSignatures {
             ) => {
                 $(
                     $( #[$attr] )*
-                    if _cur == builtin.index() {
+                    if _cur == builtin.as_u32() {
                         return Signature {
                             params: ::alloc::vec![ $( self.$param() ),* ],
                             returns: ::alloc::vec![ $( self.$result() )? ],
@@ -260,7 +259,7 @@ impl BuiltinFunctionIndex {
     }
 
     /// Return the index as an u32 number.
-    pub const fn index(&self) -> u32 {
+    pub const fn as_u32(&self) -> u32 {
         self.0
     }
 }
@@ -285,7 +284,7 @@ impl BuiltinFunctions {
         func: &mut ir::Function,
         index: BuiltinFunctionIndex,
     ) -> ir::FuncRef {
-        let cache = &mut self.builtins[index.index() as usize];
+        let cache = &mut self.builtins[index.as_u32() as usize];
         if let Some(f) = cache {
             return *f;
         }
@@ -293,7 +292,7 @@ impl BuiltinFunctions {
         let name =
             ir::ExternalName::User(func.declare_imported_user_function(ir::UserExternalName {
                 namespace: NS_WASM_BUILTIN,
-                index: index.index(),
+                index: index.as_u32(),
             }));
         let f = func.import_function(ir::ExtFuncData {
             name,
@@ -327,7 +326,7 @@ macro_rules! define_builtin_array {
             #[allow(unused_doc_comments)]
             pub const INIT: VMBuiltinFunctionsArray = VMBuiltinFunctionsArray {
                 $(
-                    $name: crate::runtime::builtins::raw::$name,
+                    $name: crate::rt::builtins::impls::$name,
                 )*
             };
         }

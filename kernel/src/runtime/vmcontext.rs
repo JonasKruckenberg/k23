@@ -1,14 +1,36 @@
-use crate::runtime::translate::Module;
+//! struct VMContext {
+//!     magic: usize,
+//!     builtins: *mut VMBuiltinFunctionsArray,
+//!     tables: [VMTableDefinition; module.num_defined_tables],
+//!     memories: [*mut VMMemoryDefinition; module.num_defined_memories],
+//!     owned_memories: [VMMemoryDefinition; module.num_owned_memories],
+//!     globals: [VMGlobalDefinition; module.num_defined_globals],
+//!     func_refs: [VMFuncRef; module.num_escaped_funcs],
+//!     imported_functions: [VMFunctionImport; module.num_imported_functions],
+//!     imported_tables: [VMTableImport; module.num_imported_tables],
+//!     imported_memories: [VMMemoryImport; module.num_imported_memories],
+//!     imported_globals: [VMGlobalImport; module.num_imported_globals],
+//!     scratch: VMScratchSpace
+//! }
+
+use super::translate::TranslatedModule;
 use core::mem;
 use core::mem::offset_of;
 use core::sync::atomic::AtomicUsize;
+use cranelift_codegen::entity::entity_impl;
 use cranelift_codegen::isa::TargetIsa;
 use cranelift_wasm::{
     DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, FuncIndex, GlobalIndex, MemoryIndex,
     OwnedMemoryIndex, TableIndex,
 };
+use vmm::VirtualAddress;
 
 pub const VMCONTEXT_MAGIC: u32 = u32::from_le_bytes(*b"vmcx");
+
+/// Index into the funcref table within a VMContext for a function.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+pub struct FuncRefIndex(u32);
+entity_impl!(FuncRefIndex);
 
 #[repr(C)]
 pub struct VMContext {
@@ -33,10 +55,14 @@ pub struct VMMemoryDefinition {
 }
 
 #[repr(C)]
-pub struct VMGlobalDefinition {}
+pub struct VMGlobalDefinition {
+    pub data: [u8; 16],
+}
 
 #[repr(C)]
-pub struct VMFuncRef {}
+pub struct VMFuncRef {
+    pub native_call: VirtualAddress,
+}
 
 #[repr(C)]
 pub struct VMFunctionImport {}
@@ -50,10 +76,6 @@ pub struct VMMemoryImport {}
 #[repr(C)]
 pub struct VMGlobalImport {}
 
-/// VMContextOffsets describes how the VMContext for the corresponding module will be laid out at runtime.
-///
-/// This struct is used by compilation code (namely the `FuncEnvironment`) to access the offsets from the
-/// global `vmctx` pointer.
 #[derive(Debug)]
 pub struct VMContextOffsets {
     num_imported_funcs: u32,
@@ -88,7 +110,7 @@ pub struct VMContextOffsets {
 }
 
 impl VMContextOffsets {
-    pub fn for_module(isa: &dyn TargetIsa, module: &Module) -> Self {
+    pub fn for_module(isa: &dyn TargetIsa, module: &TranslatedModule) -> Self {
         let mut offset = 0;
 
         let mut member_offset = |size_of_member: u32| -> u32 {
@@ -114,31 +136,32 @@ impl VMContextOffsets {
             // offsets
             magic: member_offset(ptr_size),
             builtins: member_offset(ptr_size),
-            tables: member_offset(module.num_defined_tables() * size_of_u32::<VMTableDefinition>()),
-            memories: member_offset(module.num_defined_memories() * ptr_size),
+            tables: member_offset(size_of_u32::<VMTableDefinition>() * module.num_defined_tables()),
+            memories: member_offset(ptr_size * module.num_defined_memories()),
             owned_memories: member_offset(
-                module.num_owned_memories() * size_of_u32::<VMMemoryDefinition>(),
+                size_of_u32::<VMMemoryDefinition>() * module.num_owned_memories(),
             ),
             globals: member_offset(
-                module.num_defined_globals() * size_of_u32::<VMGlobalDefinition>(),
+                size_of_u32::<VMGlobalDefinition>() * module.num_defined_globals(),
             ),
-            func_refs: member_offset(module.num_escaped_funcs() * size_of_u32::<VMFuncRef>()),
+            func_refs: member_offset(size_of_u32::<VMFuncRef>() * module.num_escaped_funcs()),
             imported_functions: member_offset(
-                module.num_imported_funcs() * size_of_u32::<VMFunctionImport>(),
+                size_of_u32::<VMFunctionImport>() * module.num_imported_funcs(),
             ),
             imported_tables: member_offset(
-                module.num_imported_tables() * size_of_u32::<VMTableImport>(),
+                size_of_u32::<VMTableImport>() * module.num_imported_tables(),
             ),
             imported_memories: member_offset(
-                module.num_imported_memories() * size_of_u32::<VMMemoryImport>(),
+                size_of_u32::<VMMemoryImport>() * module.num_imported_memories(),
             ),
             imported_globals: member_offset(
-                module.num_imported_globals() * size_of_u32::<VMGlobalImport>(),
+                size_of_u32::<VMGlobalImport>() * module.num_imported_globals(),
             ),
             stack_limit: member_offset(ptr_size),
             last_wasm_exit_fp: member_offset(ptr_size),
             last_wasm_exit_pc: member_offset(ptr_size),
             last_wasm_entry_sp: member_offset(ptr_size),
+
             size: offset,
         }
     }
@@ -148,7 +171,7 @@ impl VMContextOffsets {
     }
 
     #[inline]
-    pub fn magic(&self) -> u32 {
+    pub fn vmctx_magic(&self) -> u32 {
         self.magic
     }
     #[inline]
@@ -200,6 +223,7 @@ impl VMContextOffsets {
         assert!(index.as_u32() < self.num_imported_globals);
         self.imported_globals + index.as_u32() * size_of_u32::<VMGlobalImport>()
     }
+
     #[inline]
     pub fn stack_limit(&self) -> u32 {
         self.stack_limit

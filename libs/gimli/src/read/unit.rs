@@ -3209,15 +3209,14 @@ impl<R: Reader> fallible_iterator::FallibleIterator for DebugTypesUnitHeadersIte
 #[cfg(feature = "write")]
 mod tests {
     use super::*;
-    use crate::constants;
     use crate::constants::*;
     use crate::endianity::{Endianity, LittleEndian};
-    use crate::leb128;
     use crate::read::abbrev::tests::AbbrevSectionMethods;
     use crate::read::{
         Abbreviation, AttributeSpecification, DebugAbbrev, EndianSlice, Error, Result,
     };
     use crate::test_util::GimliSectionMethods;
+    use crate::{constants, leb128};
     use alloc::vec::Vec;
     use core::cell::Cell;
     use test_assembler::{Endian, Label, LabelMaker, Section};

@@ -58,9 +58,7 @@
 //! #     example().unwrap();
 //! # }
 
-use core::error;
-use core::fmt;
-use core::result;
+use core::{error, fmt, result};
 
 use crate::constants;
 

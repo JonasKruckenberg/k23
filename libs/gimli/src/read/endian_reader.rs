@@ -6,8 +6,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use core::fmt::Debug;
 use core::ops::{Deref, Index, Range, RangeFrom, RangeTo};
-use core::slice;
-use core::str;
+use core::{slice, str};
 use stable_deref_trait::CloneStableDeref;
 
 use crate::endianity::Endianity;

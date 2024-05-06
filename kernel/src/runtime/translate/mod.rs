@@ -1,24 +1,22 @@
 mod func_env;
 mod module_env;
 
+use crate::rt::FuncRefIndex;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use cranelift_codegen::entity::{EntityRef, PrimaryMap};
 use cranelift_codegen::packed_option::ReservedValue;
 use cranelift_wasm::wasmparser::MemoryType;
 use cranelift_wasm::{
-    DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex, EntityIndex, FuncIndex, Global,
-    GlobalIndex, Memory, MemoryIndex, ModuleInternedTypeIndex, OwnedMemoryIndex, Table, TableIndex,
-    TypeIndex,
+    DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex, EngineOrModuleTypeIndex, EntityIndex,
+    FuncIndex, Global, GlobalIndex, Memory, MemoryIndex, ModuleInternedTypeIndex, OwnedMemoryIndex,
+    Table, TableIndex, TypeIndex,
 };
-
-use crate::runtime::translate::module_env::FuncRefIndex;
 pub use func_env::FuncEnvironment;
 pub use module_env::{FunctionBodyInput, ModuleEnvironment, ModuleTranslation};
 
-/// A parsed, verified, and translated module ready to be compiled
 #[derive(Debug, Default)]
-pub struct Module<'wasm> {
+pub struct TranslatedModule<'wasm> {
     pub name: Option<&'wasm str>,
 
     /// The start function of the module if any
@@ -45,7 +43,51 @@ pub struct Module<'wasm> {
     pub num_escaped_funcs: u32,
 }
 
-impl<'wasm> Module<'wasm> {
+#[derive(Debug)]
+pub struct Import<'wasm> {
+    /// Name of this import
+    pub module: &'wasm str,
+    /// The field name projection of this import
+    pub field: &'wasm str,
+    /// Where this import will be placed, which also has type information
+    /// about the import.
+    pub index: EntityIndex,
+}
+
+/// A table plan describes how we plan to allocate, instantiate and handle a given table
+#[derive(Debug)]
+pub struct TablePlan {
+    /// The WebAssembly table description
+    pub table: Table,
+}
+
+#[derive(Debug)]
+pub struct FunctionType {
+    /// The type of this function, indexed into the module-wide type tables for
+    /// a module compilation.
+    pub signature: ModuleInternedTypeIndex,
+    /// The index into the funcref table, if present. Note that this is
+    /// `reserved_value()` if the function does not escape from a module.
+    pub func_ref: FuncRefIndex,
+}
+
+/// A type of an item in a wasm module where an item is typically something that
+/// can be exported.
+#[allow(missing_docs)]
+#[derive(Clone, Debug)]
+pub enum EntityType {
+    /// A global variable with the specified content type
+    Global(Global),
+    /// A linear memory with the specified limits
+    Memory(Memory),
+    /// A table with the specified element type and limits
+    Table(Table),
+    /// A function type where the index points to the type section and records a
+    /// function signature.
+    Function(EngineOrModuleTypeIndex),
+}
+
+impl<'wasm> TranslatedModule<'wasm> {
     #[inline]
     pub fn func_index(&self, defined_func: DefinedFuncIndex) -> FuncIndex {
         FuncIndex::from_u32(self.num_imported_funcs + defined_func.as_u32())
@@ -119,6 +161,37 @@ impl<'wasm> Module<'wasm> {
         global_index.as_u32() < self.num_imported_globals
     }
 
+    /// Returns an iterator of all the imports in this module, along with their
+    /// module name, field name, and type that's being imported.
+    pub fn imports(&self) -> Imports<'wasm, '_> {
+        Imports {
+            module: self,
+            index: 0,
+        }
+    }
+
+    /// Returns an iterator of all the imports in this module, along with their
+    /// module name, field name, and type that's being imported.
+    pub fn exports(&self) -> Exports<'wasm, '_> {
+        Exports {
+            module: self,
+            exports: self.exports.iter(),
+            index: 0,
+        }
+    }
+
+    /// Returns the type of an item based on its index
+    pub fn type_of(&self, index: EntityIndex) -> EntityType {
+        match index {
+            EntityIndex::Global(i) => EntityType::Global(self.globals[i]),
+            EntityIndex::Table(i) => EntityType::Table(self.table_plans[i].table),
+            EntityIndex::Memory(i) => EntityType::Memory(self.memory_plans[i].memory),
+            EntityIndex::Function(i) => {
+                EntityType::Function(EngineOrModuleTypeIndex::Module(self.functions[i].signature))
+            }
+        }
+    }
+
     pub fn num_escaped_funcs(&self) -> u32 {
         self.num_escaped_funcs
     }
@@ -146,24 +219,16 @@ impl<'wasm> Module<'wasm> {
     pub fn num_defined_globals(&self) -> u32 {
         self.globals.len() as u32
     }
+
+    pub fn try_static_init(&self, _alignment: usize, _max_always_allowed: usize) -> Vec<u8> {
+        todo!()
+    }
 }
 
-#[derive(Debug)]
-pub struct Import<'wasm> {
-    /// Name of this import
-    pub module: &'wasm str,
-    /// The field name projection of this import
-    pub field: &'wasm str,
-    /// Where this import will be placed, which also has type information
-    /// about the import.
-    pub index: EntityIndex,
-}
-
-/// A table plan describes how we plan to allocate, instantiate and handle a given table
-#[derive(Debug)]
-pub struct TablePlan {
-    /// The WebAssembly table description
-    pub table: Table,
+impl TablePlan {
+    pub fn for_table(table: Table) -> Self {
+        Self { table }
+    }
 }
 
 /// A memory plan describes how we plan to allocate, instantiate and handle a given memory
@@ -186,22 +251,6 @@ impl MemoryPlan {
     }
 }
 
-impl TablePlan {
-    pub fn for_table(table: Table) -> Self {
-        Self { table }
-    }
-}
-
-#[derive(Debug)]
-pub struct FunctionType {
-    /// The type of this function, indexed into the module-wide type tables for
-    /// a module compilation.
-    pub signature: ModuleInternedTypeIndex,
-    /// The index into the funcref table, if present. Note that this is
-    /// `reserved_value()` if the function does not escape from a module.
-    pub func_ref: FuncRefIndex,
-}
-
 impl FunctionType {
     /// Returns whether this function's type is one that "escapes" the current
     /// module, meaning that the function is exported, used in `ref.func`, used
@@ -210,3 +259,48 @@ impl FunctionType {
         !self.func_ref.is_reserved_value()
     }
 }
+
+pub struct Imports<'wasm, 'module> {
+    module: &'module TranslatedModule<'wasm>,
+    index: usize,
+}
+
+impl<'wasm, 'module> Iterator for Imports<'wasm, 'module> {
+    type Item = (&'wasm str, &'wasm str, EntityType);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let i = self.module.imports.get(self.index)?;
+        self.index += 1;
+
+        Some((i.module, i.field, self.module.type_of(i.index)))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.module.imports.len(), Some(self.module.imports.len()))
+    }
+}
+
+impl<'module, 'wasm> ExactSizeIterator for Imports<'module, 'wasm> {}
+
+pub struct Exports<'wasm, 'module> {
+    module: &'module TranslatedModule<'wasm>,
+    exports: alloc::collections::btree_map::Iter<'module, &'wasm str, EntityIndex>,
+    index: usize,
+}
+
+impl<'wasm, 'module> Iterator for Exports<'wasm, 'module> {
+    type Item = (&'wasm str, EntityType);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (name, index) = self.exports.next()?;
+        self.index += 1;
+
+        Some((name, self.module.type_of(*index)))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.module.imports.len(), Some(self.module.imports.len()))
+    }
+}
+
+impl<'module, 'wasm> ExactSizeIterator for Exports<'module, 'wasm> {}

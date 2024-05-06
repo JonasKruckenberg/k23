@@ -2,16 +2,26 @@ mod builtins;
 mod compile;
 mod engine;
 mod errors;
-pub mod instance;
-// mod instantiate;
+mod instance;
+mod instantiate;
+mod linker;
+mod module;
 mod translate;
 mod utils;
 mod vmcontext;
 
-pub use compile::compile_module;
+use crate::rt::instantiate::Store;
+use crate::rt::linker::Linker;
+use crate::rt::module::Module;
+pub use builtins::{BuiltinFunctionIndex, BuiltinFunctionSignatures, BuiltinFunctions};
+pub use compile::build_module;
+use cranelift_codegen::settings::Configurable;
 pub use engine::Engine;
 pub use errors::CompileError;
-pub use vmcontext::VMContext;
+pub use vmcontext::{
+    FuncRefIndex, VMContext, VMContextOffsets, VMFuncRef, VMGlobalDefinition, VMMemoryDefinition,
+    VMTableDefinition, VMCONTEXT_MAGIC,
+};
 
 /// Namespace corresponding to wasm functions, the index is the index of the
 /// defined function that's being referenced.
@@ -34,65 +44,28 @@ pub const WASM64_MAX_PAGES: u64 = 1 << 48;
 /// Trap code used for debug assertions we emit in our JIT code.
 pub const DEBUG_ASSERT_TRAP_CODE: u16 = u16::MAX;
 
-pub fn flow(wasm: &[u8]) {
-    // 1. Global State Setup
-    // let target_isa = todo!()
-    // let engine = Engine::new(target_isa);
+pub fn test() {
+    let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
+    let mut b = cranelift_codegen::settings::builder();
+    b.set("opt_level", "speed_and_size").unwrap();
 
-    // 2. Setup parsing & translation state
-    // let features = WasmFeatures::default();
-    // let mut validator = Validator::new_with_features(features);
-    // let parser = cranelift_wasm::wasmparser::Parser::new(0);
-    // let module_env = ModuleEnvironment::new(&mut validator)
+    let target_isa = isa_builder
+        .finish(cranelift_codegen::settings::Flags::new(b))
+        .unwrap();
 
-    // 3. Perform WASM -> Cranelift IR translation
-    // let translation = module_env.translate(parser, wasm)?;
+    let engine = Engine::new(target_isa);
+    let wasm = include_bytes!("../../tests/fib-wasm.wasm");
 
-    // 4. collect all the necessary context and gather the functions that need compiling
-    // let compile_inputs = CompileInputs::from_module(&module, &types, function_body_inputs);
+    let mut store = Store::new();
+    let linker = Linker::new();
 
-    // 5. compile functions to machine code
-    // let unlinked_compile_outputs = compile_inputs.compile(&engine, &module)?;
+    let module = Module::from_bytes(&engine, &mut store, wasm);
 
-    // 6. link functions & resolve relocations
-    // let compiled_module = unlinked_compile_outputs.link();
+    let instance = linker.instantiate(&mut store, &engine, module);
+    log::debug!("{store:#?}");
 
-    // =========================== Instantiate ===========================
-    // WITH `CompiledModule` AND `imports: &[Extern]`
+    let func = instance.get_func(&mut store, "fib").unwrap();
+    log::debug!("{func:?}");
 
-    // 0. Map builtins
-    //      - map Builtins (builtins are precompiled and in a separate .wasm_builtins section of the kernel)
-
-    // 1. Allocate space
-    //      - for CodeMemory
-    //      - for VMContext
-    //      - for Stack
-    //      - for each table
-    //      - for each memory
-    // result -> Instance
-
-    // 2. Initialize CodeMemory final relocations (incl linking to builtins) & publish
-
-    // 3. Initialize VMContext
-    //  - set magic value
-    //  - init tables (by using VMTableDefinition from Instance)
-    //  - init memories (by using )
-    //  - init memories
-    //      - insert VMMemoryDefinition for every not-shared, not-imported memory
-    //      - insert *mut VMMemoryDefinition for every not-shared, not-imported memory
-    //      - insert *mut VMMemoryDefinition for every not-imported, shared memory
-    //  - init globals from const inits
-    //  - TODO funcrefs??
-    //  - init imports
-    //      - copy from imports.functions
-    //      - copy from imports.tables
-    //      - copy from imports.memories
-    //      - copy from imports.globals
-    //  - set stack limit
-    //  - dont init last_wasm_exit_fp, last_wasm_exit_pc, or last_wasm_entry_sp bc zero initialization
-
-    // 3. Initialize tables from const init exprs
-    // 4. Initialize memories from const init exprs
-    // 5. IF present => run start function
-    // 6.
+    func.call(&mut store);
 }

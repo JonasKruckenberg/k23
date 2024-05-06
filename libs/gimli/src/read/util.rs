@@ -2,11 +2,8 @@
 use alloc::boxed::Box;
 #[cfg(feature = "read")]
 use alloc::vec::Vec;
-use core::fmt;
 use core::mem::MaybeUninit;
-use core::ops;
-use core::ptr;
-use core::slice;
+use core::{fmt, ops, ptr, slice};
 
 mod sealed {
     /// # Safety

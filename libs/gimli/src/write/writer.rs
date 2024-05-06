@@ -1,8 +1,7 @@
 use crate::common::{Format, SectionId};
-use crate::constants;
 use crate::endianity::Endianity;
-use crate::leb128;
 use crate::write::{Address, Error, Result};
+use crate::{constants, leb128};
 use core::io::BorrowedBuf;
 
 /// A trait for writing the data to a DWARF section.
@@ -330,8 +329,7 @@ pub struct InitialLengthOffset(usize);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::write;
-    use crate::{BigEndian, LittleEndian};
+    use crate::{write, BigEndian, LittleEndian};
     use std::{i64, u64};
 
     #[test]

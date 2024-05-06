@@ -2017,11 +2017,10 @@ impl<R: Reader, S: EvaluationStorage<R>> Evaluation<R, S> {
 mod tests {
     use super::*;
     use crate::common::Format;
-    use crate::constants;
     use crate::endianity::LittleEndian;
-    use crate::leb128;
     use crate::read::{EndianSlice, Error, Result, UnitOffset};
     use crate::test_util::GimliSectionMethods;
+    use crate::{constants, leb128};
     use core::usize;
     use test_assembler::{Endian, Section};
 

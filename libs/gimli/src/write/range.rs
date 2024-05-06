@@ -310,12 +310,11 @@ mod tests {
         DebugAbbrevOffset, DebugAddrBase, DebugInfoOffset, DebugLocListsBase, DebugRngListsBase,
         DebugStrOffsetsBase, Format,
     };
-    use crate::read;
     use crate::write::{
         ConvertUnitContext, EndianVec, LineStringTable, LocationListTable, Range, RangeListTable,
         StringTable,
     };
-    use crate::LittleEndian;
+    use crate::{read, LittleEndian};
     use std::collections::HashMap;
     use std::sync::Arc;
 

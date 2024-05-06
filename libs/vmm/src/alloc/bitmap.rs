@@ -1,6 +1,5 @@
 use crate::alloc::{BumpAllocator, FrameAllocator, FrameUsage};
-use crate::{zero_frames, AddressRangeExt, Error};
-use crate::{Mode, PhysicalAddress, VirtualAddress};
+use crate::{zero_frames, AddressRangeExt, Error, Mode, PhysicalAddress, VirtualAddress};
 use core::fmt::Formatter;
 use core::marker::PhantomData;
 use core::ops::Range;

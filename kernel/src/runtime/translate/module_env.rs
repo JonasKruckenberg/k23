@@ -1,5 +1,6 @@
-use super::{FunctionType, Import, MemoryPlan, Module, TablePlan};
-use cranelift_codegen::entity::{entity_impl, PrimaryMap};
+use super::{FunctionType, Import, MemoryPlan, TablePlan, TranslatedModule};
+use crate::rt::FuncRefIndex;
+use cranelift_codegen::entity::PrimaryMap;
 use cranelift_codegen::packed_option::ReservedValue;
 use cranelift_wasm::wasmparser::{
     Encoding, ExternalKind, FuncToValidate, FunctionBody, Parser, Payload, TypeRef, UnpackedIndex,
@@ -17,7 +18,7 @@ pub struct ModuleEnvironment<'a, 'wasm> {
 
 #[derive(Default)]
 pub struct ModuleTranslation<'wasm> {
-    pub module: Module<'wasm>,
+    pub module: TranslatedModule<'wasm>,
     pub function_body_inputs: PrimaryMap<DefinedFuncIndex, FunctionBodyInput<'wasm>>,
     pub types: PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
 }
@@ -26,11 +27,6 @@ pub struct FunctionBodyInput<'wasm> {
     pub validator: FuncToValidate<ValidatorResources>,
     pub body: FunctionBody<'wasm>,
 }
-
-/// Index into the funcref table within a VMContext for a function.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
-pub struct FuncRefIndex(u32);
-entity_impl!(FuncRefIndex);
 
 impl<'a, 'wasm> TypeConvert for ModuleEnvironment<'a, 'wasm> {
     fn lookup_heap_type(&self, _index: UnpackedIndex) -> WasmHeapType {

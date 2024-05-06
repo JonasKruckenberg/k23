@@ -4,9 +4,10 @@ use crate::common::{
 };
 use crate::constants;
 use crate::endianity::Endianity;
+use crate::read::lists::ListsHeader;
 use crate::read::{
-    lists::ListsHeader, DebugAddr, EndianSlice, Error, Expression, Range, RawRange, Reader,
-    ReaderOffset, ReaderOffsetId, Result, Section,
+    DebugAddr, EndianSlice, Error, Expression, Range, RawRange, Reader, ReaderOffset,
+    ReaderOffsetId, Result, Section,
 };
 
 /// The raw contents of the `.debug_loc` section.

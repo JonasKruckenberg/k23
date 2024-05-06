@@ -27,23 +27,3 @@ where
     let mut alloc = FRAME_ALLOC.lock();
     f(unsafe { alloc.assume_init_mut() })
 }
-
-// pub fn with_mapper<R, F>(asid: usize, mut f: F) -> Result<R, vmm::Error>
-// where
-//     F: FnMut(
-//         Mapper<kconfig::MEMORY_MODE>,
-//         &mut Flush<kconfig::MEMORY_MODE>,
-//     ) -> Result<R, vmm::Error>,
-// {
-//     with_frame_alloc(|alloc| {
-//         let mapper = Mapper::from_active(asid, alloc);
-//
-//         let mut flush = Flush::empty(asid);
-//
-//         let r = f(mapper, &mut flush)?;
-//
-//         flush.flush()?;
-//
-//         Ok(r)
-//     })
-// }

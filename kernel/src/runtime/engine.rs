@@ -1,6 +1,7 @@
-use crate::runtime::compile::Compiler;
+use crate::kconfig;
+use crate::rt::compile::Compiler;
 use core::sync::atomic::{AtomicU64, Ordering};
-use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
+use cranelift_codegen::isa::OwnedTargetIsa;
 
 /// Globally shared state for runtime
 pub struct Engine {
@@ -27,16 +28,16 @@ impl Engine {
         }
     }
 
-    pub fn target_isa(&self) -> &dyn TargetIsa {
-        self.compiler.target_isa()
-    }
-
     pub fn compiler(&self) -> &Compiler {
         &self.compiler
     }
 
     pub fn next_address_space_id(&self) -> u64 {
         self.address_space_id_allocator.next()
+    }
+
+    pub fn stack_limit(&self) -> usize {
+        16 * kconfig::PAGE_SIZE
     }
 }
 

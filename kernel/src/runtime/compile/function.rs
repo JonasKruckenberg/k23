@@ -1,5 +1,4 @@
-use crate::runtime::builtins::BuiltinFunctionIndex;
-use crate::runtime::NS_WASM_FUNC;
+use crate::rt::{BuiltinFunctionIndex, NS_WASM_BUILTIN, NS_WASM_FUNC};
 use cranelift_codegen::entity::PrimaryMap;
 use cranelift_codegen::ir::{ExternalName, StackSlots, UserExternalName, UserExternalNameRef};
 use cranelift_codegen::{
@@ -103,9 +102,9 @@ fn mach_reloc_to_reloc(
                 // A reference to another jit'ed WASM function
                 NS_WASM_FUNC => RelocationTarget::Wasm(FuncIndex::from_u32(name.index)),
                 // A reference to a WASM builtin
-                // NS_WASM_BUILTIN => {
-                //     RelocationTarget::Builtin(BuiltinFunctionIndex::from_u32(name.index))
-                // }
+                NS_WASM_BUILTIN => {
+                    RelocationTarget::Builtin(BuiltinFunctionIndex::from_u32(name.index))
+                }
                 _ => panic!("unknown namespace {}", name.namespace),
             }
         }

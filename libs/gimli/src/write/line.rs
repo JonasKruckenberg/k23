@@ -6,12 +6,11 @@ use fxhash::FxHasher;
 use indexmap::{IndexMap, IndexSet};
 
 use crate::common::{DebugLineOffset, Encoding, Format, LineEncoding, SectionId};
-use crate::constants;
-use crate::leb128;
 use crate::write::{
     Address, DebugLineStrOffsets, DebugStrOffsets, Error, LineStringId, LineStringTable, Result,
     Section, StringId, Writer,
 };
+use crate::{constants, leb128};
 
 /// The number assigned to the first special opcode.
 //
@@ -1159,9 +1158,8 @@ mod convert {
 #[cfg(feature = "read")]
 mod tests {
     use super::*;
-    use crate::read;
     use crate::write::{DebugLineStr, DebugStr, EndianVec, StringTable};
-    use crate::LittleEndian;
+    use crate::{read, LittleEndian};
 
     #[test]
     fn test_line_program_table() {

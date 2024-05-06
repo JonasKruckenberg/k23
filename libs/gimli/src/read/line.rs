@@ -1,7 +1,6 @@
 use alloc::vec::Vec;
-use core::fmt;
 use core::num::{NonZeroU64, Wrapping};
-use core::result;
+use core::{fmt, result};
 
 use crate::common::{
     DebugLineOffset, DebugLineStrOffset, DebugStrOffset, DebugStrOffsetsIndex, Encoding, Format,
@@ -1896,8 +1895,7 @@ mod tests {
     use crate::endianity::LittleEndian;
     use crate::read::{EndianSlice, Error};
     use crate::test_util::GimliSectionMethods;
-    use core::u64;
-    use core::u8;
+    use core::{u64, u8};
     use test_assembler::{Endian, Label, LabelMaker, Section};
 
     #[test]

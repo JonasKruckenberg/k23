@@ -1,16 +1,17 @@
-use crate::runtime::builtins::{BuiltinFunctionIndex, BuiltinFunctionSignatures};
-use crate::runtime::compile::compiled_function::CompiledFunction;
-use crate::runtime::translate::{FuncEnvironment, FunctionBodyInput, Module};
-use crate::runtime::utils::{native_call_signature, wasm_call_signature};
-use crate::runtime::vmcontext::{VMContextOffsets, VMCONTEXT_MAGIC};
-use crate::runtime::{CompileError, DEBUG_ASSERT_TRAP_CODE, NS_WASM_FUNC};
+use crate::rt::compile::{CompiledFunction, ELFOSABI_K23};
+use crate::rt::translate::{FuncEnvironment, FunctionBodyInput, TranslatedModule};
+use crate::rt::utils::{native_call_signature, wasm_call_signature};
+use crate::rt::{
+    BuiltinFunctionIndex, BuiltinFunctionSignatures, CompileError, VMContextOffsets,
+    DEBUG_ASSERT_TRAP_CODE, NS_WASM_FUNC, VMCONTEXT_MAGIC,
+};
 use core::mem;
 use cranelift_codegen::entity::PrimaryMap;
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::types::I32;
 use cranelift_codegen::ir::{
-    Block, ExtFuncData, ExternalName, Function, GlobalValueData, Inst, InstBuilder, MemFlags,
-    Signature, TrapCode, Type, UserExternalName, UserFuncName, Value,
+    Block, Endianness, ExtFuncData, ExternalName, Function, GlobalValueData, Inst, InstBuilder,
+    MemFlags, Signature, TrapCode, Type, UserExternalName, UserFuncName, Value,
 };
 use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::Context;
@@ -19,6 +20,9 @@ use cranelift_wasm::wasmparser::FuncValidatorAllocations;
 use cranelift_wasm::{
     DefinedFuncIndex, FuncIndex, FuncTranslator, ModuleInternedTypeIndex, WasmSubType,
 };
+use object::write::Object;
+use object::{BinaryFormat, FileFlags};
+use target_lexicon::Architecture;
 
 /// WASM to machine code compiler
 pub struct Compiler {
@@ -36,7 +40,7 @@ impl Compiler {
 
     pub fn compile_function(
         &self,
-        module: &Module,
+        module: &TranslatedModule,
         types: &PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
         def_func_index: DefinedFuncIndex,
         input: FunctionBodyInput,
@@ -66,6 +70,7 @@ impl Compiler {
             .codegen_context
             .func
             .create_global_value(GlobalValueData::VMContext);
+
         let stack_limit = ctx
             .codegen_context
             .func
@@ -99,7 +104,7 @@ impl Compiler {
     /// 3. TODO return results
     pub fn compile_native_to_wasm_trampoline(
         &self,
-        module: &Module,
+        module: &TranslatedModule,
         types: &PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
         def_func_index: DefinedFuncIndex,
     ) -> Result<CompiledFunction, CompileError> {
@@ -143,7 +148,7 @@ impl Compiler {
 
     pub fn compile_wasm_to_builtin_trampoline(
         &self,
-        module: &Module,
+        module: &TranslatedModule,
         builtin_index: BuiltinFunctionIndex,
     ) -> Result<CompiledFunction, CompileError> {
         let isa = self.target_isa();
@@ -180,7 +185,7 @@ impl Compiler {
             pointer_type,
             mem_flags,
             array_addr,
-            (builtin_index.index() * pointer_type.bytes()) as i32,
+            (builtin_index.as_u32() * pointer_type.bytes()) as i32,
         );
 
         let block_params = builder.block_params(block0).to_vec();
@@ -191,6 +196,32 @@ impl Compiler {
         builder.finalize();
 
         Ok(ctx.finish()?)
+    }
+
+    pub fn object(&self) -> Object {
+        let architecture = match self.isa.triple().architecture {
+            Architecture::X86_32(_) => object::Architecture::I386,
+            Architecture::X86_64 => object::Architecture::X86_64,
+            Architecture::Arm(_) => object::Architecture::Arm,
+            Architecture::Aarch64(_) => object::Architecture::Aarch64,
+            Architecture::S390x => object::Architecture::S390x,
+            Architecture::Riscv64(_) => object::Architecture::Riscv64,
+            _ => panic!("unsupported"),
+        };
+
+        let endianness = match self.isa.endianness() {
+            Endianness::Little => object::Endianness::Little,
+            Endianness::Big => object::Endianness::Big,
+        };
+
+        let mut obj = Object::new(BinaryFormat::Elf, architecture, endianness);
+        obj.flags = FileFlags::Elf {
+            os_abi: ELFOSABI_K23,
+            e_flags: 0,
+            abi_version: 0,
+        };
+
+        obj
     }
 }
 

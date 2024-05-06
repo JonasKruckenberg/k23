@@ -4,9 +4,8 @@
 use alloc::borrow::Cow;
 #[cfg(feature = "read")]
 use alloc::string::String;
-use core::fmt;
 use core::ops::{Deref, Range, RangeFrom, RangeTo};
-use core::str;
+use core::{fmt, str};
 
 use crate::endianity::Endianity;
 use crate::read::{Error, Reader, ReaderOffsetId, Result};

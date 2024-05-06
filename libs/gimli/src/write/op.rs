@@ -1061,11 +1061,10 @@ mod tests {
         DebugAbbrevOffset, DebugAddrBase, DebugInfoOffset, DebugLocListsBase, DebugRngListsBase,
         DebugStrOffsetsBase, Format, SectionId,
     };
-    use crate::read;
     use crate::write::{
         DebugLineStrOffsets, DebugStrOffsets, EndianVec, LineProgram, Sections, Unit, UnitTable,
     };
-    use crate::LittleEndian;
+    use crate::{read, LittleEndian};
     use std::collections::HashMap;
     use std::sync::Arc;
 

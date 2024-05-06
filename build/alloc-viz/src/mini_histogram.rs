@@ -1,13 +1,11 @@
-use std::fmt::Formatter;
 use hdrhistogram::Histogram;
-use ratatui::{
-    layout::Rect,
-    style::Style,
-    symbols,
-    widgets::{Block, Widget},
-};
-use serde::{Deserializer};
+use ratatui::layout::Rect;
+use ratatui::style::Style;
+use ratatui::symbols;
+use ratatui::widgets::{Block, Widget};
 use serde::de::{Error, SeqAccess};
+use serde::Deserializer;
+use std::fmt::Formatter;
 
 #[derive(Debug, serde::Deserialize)]
 #[allow(unused)]
@@ -19,7 +17,10 @@ pub struct SizeHistogram {
     pub max_outlier: Option<u64>,
 }
 
-fn deserialize_histogram<'de, D>(d: D) -> Result<Histogram<u32>, D::Error> where D: Deserializer<'de> {
+fn deserialize_histogram<'de, D>(d: D) -> Result<Histogram<u32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
     struct V;
 
     impl<'de> serde::de::Visitor<'de> for V {
@@ -29,19 +30,25 @@ fn deserialize_histogram<'de, D>(d: D) -> Result<Histogram<u32>, D::Error> where
             write!(formatter, "a byte buffer")
         }
 
-        fn visit_bytes<E>(self, mut v: &[u8]) -> Result<Self::Value, E> where E: Error {
+        fn visit_bytes<E>(self, mut v: &[u8]) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
             let mut de = hdrhistogram::serialization::Deserializer::new();
             Ok(de.deserialize(&mut v).unwrap())
         }
 
         // for json
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
             let mut vec = Vec::with_capacity(seq.size_hint().unwrap_or(0));
-            
+
             while let Some(e) = seq.next_element::<u8>()? {
                 vec.push(e);
             }
-            
+
             self.visit_bytes(&vec)
         }
     }

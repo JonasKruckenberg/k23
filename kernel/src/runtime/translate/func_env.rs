@@ -1,10 +1,8 @@
 #![allow(unused)]
 
-use super::Module;
-use crate::runtime::builtins::BuiltinFunctions;
-use crate::runtime::utils::value_type;
-use crate::runtime::vmcontext::VMContextOffsets;
-use crate::runtime::WASM_PAGE_SIZE;
+use super::TranslatedModule;
+use crate::rt::utils::value_type;
+use crate::rt::{BuiltinFunctions, VMContextOffsets, WASM_PAGE_SIZE};
 use alloc::vec;
 use cranelift_codegen::cursor::FuncCursor;
 use cranelift_codegen::entity::{EntityRef, PrimaryMap};
@@ -24,7 +22,7 @@ use cranelift_wasm::{
 
 pub struct FuncEnvironment<'module_env, 'wasm> {
     isa: &'module_env dyn TargetIsa,
-    module: &'module_env Module<'wasm>,
+    module: &'module_env TranslatedModule<'wasm>,
     pub offsets: VMContextOffsets,
     builtins: BuiltinFunctions,
     heaps: PrimaryMap<Heap, HeapData>,
@@ -34,7 +32,10 @@ pub struct FuncEnvironment<'module_env, 'wasm> {
 }
 
 impl<'module_env, 'wasm> FuncEnvironment<'module_env, 'wasm> {
-    pub fn new(isa: &'module_env dyn TargetIsa, module: &'module_env Module<'wasm>) -> Self {
+    pub fn new(
+        isa: &'module_env dyn TargetIsa,
+        module: &'module_env TranslatedModule<'wasm>,
+    ) -> Self {
         Self {
             isa,
             module,

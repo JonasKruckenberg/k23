@@ -1,4 +1,6 @@
-use crate::runtime::VMContext;
+#![allow(unused)]
+
+use super::VMContext;
 
 /// Returns an index for wasm's `memory.grow` builtin function.
 #[link_section = ".text.builtins"]
