@@ -1,5 +1,5 @@
 [workspace]
-members = ["build/*", "libs/*", "kernel", "loader"]
+members = ["build/*", "libs/*", "kernel", "loader", "fib"]
 resolver = "2"
 
 [workspace.package]

@@ -55,7 +55,9 @@ pub fn test() {
         .unwrap();
 
     let engine = Engine::new(target_isa);
-    let wasm = include_bytes!("../../tests/fib-wasm.wasm");
+    let wasm = include_bytes!(
+        "/Users/jonas/Documents/GitHub/k23/target/wasm32-unknown-unknown/debug/fib.wasm"
+    );
 
     let mut store = Store::new();
     let linker = Linker::new();
