@@ -298,6 +298,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
             Payload::CustomSection(s) if s.name() == "name" => {}
             Payload::CustomSection(s) if s.name().starts_with(".debug_") => {}
             Payload::CustomSection(s) if s.name() == "producers" => {}
+            Payload::CustomSection(s) if s.name() == "target_features" => {}
             Payload::End(_) => {}
             other => {
                 self.validator.payload(&other)?;
