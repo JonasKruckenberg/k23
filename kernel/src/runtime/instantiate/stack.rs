@@ -31,7 +31,7 @@ impl Stack {
     ) {
         log::trace!("switching to stack {:?}", self.inner.as_ptr_range());
 
-        let arg: usize = 6;
+        let arg: usize = 7;
         let ret: usize;
         asm!(
             "csrrw sp, sscratch, sp",
@@ -46,7 +46,7 @@ impl Stack {
             wasm_stack_ptr = in(reg) self.stack_ptr(),
             vmctx_ptr = in(reg) vmctx,
             func = in(reg) func,
-            arg = in(reg) arg,
+            arg = in(reg) arg - 2,
             out("a0") ret
         );
         log::trace!(
@@ -73,7 +73,7 @@ WASM says: The {}th fibonacci number is {ret:?}!
 
 
 "#,
-            arg + 1
+            arg
         );
         log::trace!("switched back from stack {:?}", self.inner.as_ptr_range());
     }

@@ -63,7 +63,7 @@ impl Compiler {
         // collect debug info
         ctx.codegen_context.func.collect_debug_info();
 
-        let mut func_env = FuncEnvironment::new(isa, &module);
+        let mut func_env = FuncEnvironment::new(isa, &module, types);
 
         // setup stack limit
         let vmctx = ctx

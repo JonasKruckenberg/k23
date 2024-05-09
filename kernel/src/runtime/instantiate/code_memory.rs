@@ -117,7 +117,7 @@ impl CodeMemory {
     pub fn resolve_function_loc(&self, func_loc: FunctionLoc) -> VirtualAddress {
         let addr = self.text.start.add(func_loc.start as usize);
 
-        log::debug!(
+        log::trace!(
             "resolve_function_loc {func_loc:?}, text {:?} => {:?}",
             self.text,
             addr
