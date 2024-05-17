@@ -1,4 +1,4 @@
-use crate::rt::guest_memory::GuestAllocator;
+use crate::runtime::guest_memory::GuestAllocator;
 use core::alloc::{Allocator, Layout, LayoutError};
 use core::ops::Range;
 use core::ptr::NonNull;

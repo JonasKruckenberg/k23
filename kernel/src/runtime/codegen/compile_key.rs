@@ -1,4 +1,4 @@
-use crate::rt::builtins::BuiltinFunctionIndex;
+use crate::runtime::builtins::BuiltinFunctionIndex;
 use cranelift_wasm::{DefinedFuncIndex, StaticModuleIndex};
 
 /// A sortable, comparable key for a compilation output.

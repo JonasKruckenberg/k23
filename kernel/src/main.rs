@@ -12,6 +12,7 @@
 extern crate alloc;
 
 use crate::arch::STACK;
+use crate::runtime::{Engine, Linker, Module, Store};
 use core::arch::asm;
 use core::ops::Range;
 use cranelift_codegen::settings::Configurable;
@@ -23,8 +24,7 @@ mod boot_info;
 mod frame_alloc;
 mod logger;
 mod panic;
-mod rt;
-// mod rt2;
+mod runtime;
 mod thread_local;
 
 pub mod kconfig {
@@ -44,18 +44,17 @@ fn main(_hartid: usize) -> ! {
         .finish(cranelift_codegen::settings::Flags::new(b))
         .unwrap();
 
-    let engine = rt::Engine::new(target_isa);
+    let engine = Engine::new(target_isa);
     let wasm = include_bytes!(
         "/Users/jonas/Documents/GitHub/k23/target/wasm32-unknown-unknown/debug/fib.wasm"
     );
 
-    let mut store = rt::Store::new(0);
+    let mut store = Store::new(0);
 
-    let module = rt::Module::from_binary(&engine, &mut store, wasm);
+    let module = Module::from_binary(&engine, &mut store, wasm);
     log::debug!("{module:#?}");
-    log::trace!("");
 
-    let linker = rt::Linker::new();
+    let linker = Linker::new();
     let instance = linker.instantiate(&mut store, &module);
     instance.debug_print_vmctx(&store);
 

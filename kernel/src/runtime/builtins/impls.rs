@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use crate::rt::vmcontext::VMContext;
+use crate::runtime::vmcontext::VMContext;
 use core::arch::asm;
 
 /// Returns an index for wasm's `memory.grow` builtin function.

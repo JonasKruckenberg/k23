@@ -1,9 +1,9 @@
 #![allow(unused)]
 
-use crate::rt::codegen::TranslatedModule;
-use crate::rt::utils::{value_type, wasm_call_signature};
-use crate::rt::vmcontext::VMContextPlan;
-use crate::rt::{NS_WASM_FUNC, WASM_PAGE_SIZE};
+use crate::runtime::codegen::TranslatedModule;
+use crate::runtime::utils::{value_type, wasm_call_signature};
+use crate::runtime::vmcontext::VMContextPlan;
+use crate::runtime::{NS_WASM_FUNC, WASM_PAGE_SIZE};
 use alloc::vec;
 use alloc::vec::Vec;
 use cranelift_codegen::cursor::FuncCursor;

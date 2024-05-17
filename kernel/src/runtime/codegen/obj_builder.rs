@@ -1,10 +1,10 @@
 //! Support for building and parsing intermediate compilation artifacts in object format
 
 use crate::kconfig;
-use crate::rt::codegen::{
+use crate::runtime::codegen::{
     CompileOutput, CompiledFunction, DebugInfo, FunctionLoc, RelocationTarget, TrapInfo,
 };
-use crate::rt::engine::Engine;
+use crate::runtime::engine::Engine;
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;

@@ -7,9 +7,9 @@ mod module_env;
 mod obj_builder;
 mod translated_module;
 
-use crate::rt::codegen::module_env::{FuncCompileInput, ModuleEnvironment, Translation};
-use crate::rt::engine::Engine;
-use crate::rt::errors::CompileError;
+use crate::runtime::codegen::module_env::{FuncCompileInput, ModuleEnvironment, Translation};
+use crate::runtime::engine::Engine;
+use crate::runtime::errors::CompileError;
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
@@ -20,7 +20,7 @@ use cranelift_wasm::wasmparser::{Parser, Validator};
 use cranelift_wasm::{DefinedFuncIndex, ModuleInternedTypeIndex, StaticModuleIndex, WasmSubType};
 use object::write::WritableBuffer;
 
-use crate::rt::codegen::compile_key::CompileKey;
+use crate::runtime::codegen::compile_key::CompileKey;
 pub use compiled_function::*;
 pub use compiled_module::*;
 pub use compiler::*;

@@ -1,6 +1,6 @@
-use crate::rt::builtins::BuiltinFunctionIndex;
-use crate::rt::trap::{Trap, DEBUG_ASSERT_TRAP_CODE};
-use crate::rt::{NS_WASM_BUILTIN, NS_WASM_FUNC};
+use crate::runtime::builtins::BuiltinFunctionIndex;
+use crate::runtime::trap::{Trap, DEBUG_ASSERT_TRAP_CODE};
+use crate::runtime::{NS_WASM_BUILTIN, NS_WASM_FUNC};
 use cranelift_codegen::ir::{
     ExternalName, StackSlots, TrapCode, UserExternalName, UserExternalNameRef,
 };

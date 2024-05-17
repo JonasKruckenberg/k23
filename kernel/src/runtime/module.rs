@@ -1,8 +1,8 @@
-use crate::rt::codegen::{compile_module, CompiledModuleInfo};
-use crate::rt::engine::Engine;
-use crate::rt::guest_memory::{AlignedVec, CodeMemory};
-use crate::rt::store::Store;
-use crate::rt::vmcontext::VMContextPlan;
+use crate::runtime::codegen::{compile_module, CompiledModuleInfo};
+use crate::runtime::engine::Engine;
+use crate::runtime::guest_memory::{AlignedVec, CodeMemory};
+use crate::runtime::store::Store;
+use crate::runtime::vmcontext::VMContextPlan;
 use alloc::sync::Arc;
 
 #[derive(Debug)]

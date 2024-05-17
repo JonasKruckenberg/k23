@@ -1,5 +1,5 @@
-use crate::rt::instance::InstanceData;
-use crate::rt::vmcontext::VMVal;
+use crate::runtime::instance::InstanceData;
+use crate::runtime::vmcontext::VMVal;
 use alloc::vec::Vec;
 use cranelift_wasm::{ConstExpr, ConstOp, GlobalIndex};
 

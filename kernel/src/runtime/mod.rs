@@ -15,7 +15,6 @@ mod utils;
 mod vmcontext;
 
 pub use engine::Engine;
-pub use instance::Instance;
 pub use linker::Linker;
 pub use module::Module;
 pub use store::Store;

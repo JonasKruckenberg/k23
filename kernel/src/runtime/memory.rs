@@ -1,5 +1,5 @@
-use crate::rt::guest_memory::GuestVec;
-use crate::rt::vmcontext::VMMemoryDefinition;
+use crate::runtime::guest_memory::GuestVec;
+use crate::runtime::vmcontext::VMMemoryDefinition;
 
 #[derive(Debug)]
 pub struct Memory {

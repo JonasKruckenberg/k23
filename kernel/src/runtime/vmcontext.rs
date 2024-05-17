@@ -16,7 +16,7 @@
 //!     last_wasm_entry_sp: usize,
 //! }
 
-use crate::rt::codegen::TranslatedModule;
+use crate::runtime::codegen::TranslatedModule;
 use alloc::fmt;
 use core::ffi::c_void;
 use core::fmt::Formatter;

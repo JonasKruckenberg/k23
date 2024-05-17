@@ -1,6 +1,6 @@
-use crate::rt::guest_memory::GuestVec;
-use crate::rt::trap::Trap;
-use crate::rt::vmcontext::{VMFuncRef, VMTableDefinition};
+use crate::runtime::guest_memory::GuestVec;
+use crate::runtime::trap::Trap;
+use crate::runtime::vmcontext::{VMFuncRef, VMTableDefinition};
 use core::ptr::NonNull;
 use core::slice;
 use cranelift_wasm::{WasmHeapType, WasmRefType};

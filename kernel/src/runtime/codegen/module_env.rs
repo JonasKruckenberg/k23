@@ -1,9 +1,9 @@
-use crate::rt::codegen::{
+use crate::runtime::codegen::{
     FunctionType, Import, MemoryInitializer, MemoryPlan, ProducersLanguage, ProducersLanguageField,
     ProducersSdk, ProducersSdkField, ProducersTool, ProducersToolField, TableInitialValue,
     TablePlan, TableSegment, TableSegmentElements, TranslatedModule,
 };
-use crate::rt::vmcontext::FuncRefIndex;
+use crate::runtime::vmcontext::FuncRefIndex;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use cranelift_codegen::entity::{PrimaryMap, Unsigned};

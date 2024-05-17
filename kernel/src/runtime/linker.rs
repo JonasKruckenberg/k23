@@ -1,6 +1,6 @@
-use crate::rt::instance::{Instance};
-use crate::rt::module::Module;
-use crate::rt::store::Store;
+use crate::runtime::instance::Instance;
+use crate::runtime::module::Module;
+use crate::runtime::store::Store;
 
 pub struct Linker {}
 

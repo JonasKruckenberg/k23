@@ -1,4 +1,4 @@
-use crate::rt::vmcontext::FuncRefIndex;
+use crate::runtime::vmcontext::FuncRefIndex;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use cranelift_entity::packed_option::ReservedValue;

@@ -1,10 +1,11 @@
-use crate::rt::codegen::{MemoryPlan, TablePlan};
-use crate::rt::guest_memory::{GuestAllocator, GuestVec};
-use crate::rt::instance::{Instance, InstanceData};
-use crate::rt::memory::Memory;
-use crate::rt::module::Module;
-use crate::rt::table::{FuncTable, Table, TableElementType};
-use crate::rt::vmcontext::{VMContext, VMContextPlan};
+use crate::runtime::codegen::{MemoryPlan, TablePlan};
+use crate::runtime::guest_memory::{GuestAllocator, GuestVec};
+use crate::runtime::instance::{Instance, InstanceData};
+use crate::runtime::memory::Memory;
+use crate::runtime::module::Module;
+use crate::runtime::table::{FuncTable, Table, TableElementType};
+use crate::runtime::vmcontext::{VMContext, VMContextPlan};
+use crate::runtime::WASM_PAGE_SIZE;
 use core::alloc::{Allocator, Layout};
 use core::cell::{Ref, RefCell, RefMut};
 use core::ptr::NonNull;

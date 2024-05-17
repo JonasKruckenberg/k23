@@ -1,14 +1,14 @@
-use crate::rt::codegen::{
+use crate::runtime::codegen::{
     CompiledModuleInfo, TableInitialValue, TableSegmentElements, TranslatedModule,
 };
-use crate::rt::const_expr::ConstExprEvaluator;
-use crate::rt::guest_memory::CodeMemory;
-use crate::rt::memory::Memory;
-use crate::rt::module::Module;
-use crate::rt::store::Store;
-use crate::rt::table::Table;
-use crate::rt::trap::Trap;
-use crate::rt::vmcontext::{
+use crate::runtime::const_expr::ConstExprEvaluator;
+use crate::runtime::guest_memory::CodeMemory;
+use crate::runtime::memory::Memory;
+use crate::runtime::module::Module;
+use crate::runtime::store::Store;
+use crate::runtime::table::Table;
+use crate::runtime::trap::Trap;
+use crate::runtime::vmcontext::{
     VMContext, VMContextPlan, VMFuncRef, VMFunctionImport, VMGlobalDefinition, VMGlobalImport,
     VMMemoryDefinition, VMMemoryImport, VMTableDefinition, VMTableImport, VMCONTEXT_MAGIC,
 };
@@ -333,7 +333,7 @@ fn initialize_vmctx<'wasm>(
         // initialize vmctx magic number
         let offset = data.vmctx_plan.vmctx_magic();
         *data.vmctx_plus_offset_mut(offset) = VMCONTEXT_MAGIC;
-        
+
         // initialize defined globals
         for (global_index, expr) in &module.global_initializers {
             let val = const_eval.eval(&mut data, expr);

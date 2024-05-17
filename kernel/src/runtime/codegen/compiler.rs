@@ -1,10 +1,10 @@
-use crate::rt::builtins::BuiltinFunctionIndex;
-use crate::rt::codegen::func_env::FunctionEnvironment;
-use crate::rt::codegen::module_env::FuncCompileInput;
-use crate::rt::codegen::{CompiledFunction, TranslatedModule, ELFOSABI_K23};
-use crate::rt::errors::CompileError;
-use crate::rt::utils::wasm_call_signature;
-use crate::rt::NS_WASM_FUNC;
+use crate::runtime::builtins::BuiltinFunctionIndex;
+use crate::runtime::codegen::func_env::FunctionEnvironment;
+use crate::runtime::codegen::module_env::FuncCompileInput;
+use crate::runtime::codegen::{CompiledFunction, TranslatedModule, ELFOSABI_K23};
+use crate::runtime::errors::CompileError;
+use crate::runtime::utils::wasm_call_signature;
+use crate::runtime::NS_WASM_FUNC;
 use core::mem;
 use cranelift_codegen::ir::{
     Block, Endianness, Function, GlobalValueData, MemFlags, UserExternalName, UserFuncName,
