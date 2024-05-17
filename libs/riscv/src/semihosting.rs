@@ -21,7 +21,15 @@ impl HostStream {
 
     fn open(name: &str, mode: usize) -> Result<Self, ()> {
         let name = name.as_bytes();
-        match unsafe { syscall(OPEN, &[name.as_ptr() as usize, mode, name.len() - 1]) } as isize {
+        match unsafe {
+            syscall(
+                OPEN,
+                [name.as_ptr() as usize, mode, name.len() - 1]
+                    .as_ptr()
+                    .cast(),
+            )
+        } as isize
+        {
             -1 => Err(()),
             fd => Ok(Self(fd as usize)),
         }
@@ -32,7 +40,12 @@ impl Write for HostStream {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let mut buf = s.as_bytes();
         while !buf.is_empty() {
-            match unsafe { syscall(WRITE, &[self.0, buf.as_ptr() as usize, buf.len()]) } {
+            match unsafe {
+                syscall(
+                    WRITE,
+                    [self.0, buf.as_ptr() as usize, buf.len()].as_ptr().cast(),
+                )
+            } {
                 // Done
                 0 => return Ok(()),
                 // `n` bytes were not written
@@ -48,7 +61,7 @@ impl Write for HostStream {
     }
 }
 
-unsafe fn syscall(_nr: usize, _arg: &[usize]) -> usize {
+unsafe fn syscall(_nr: usize, _arg: *const ()) -> usize {
     cfg_if::cfg_if! {
         if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
             let mut nr = _nr;
@@ -67,7 +80,7 @@ unsafe fn syscall(_nr: usize, _arg: &[usize]) -> usize {
                 .option pop
                 ",
                 inout("a0") nr,
-                inout("a1") arg.as_ptr() => _,
+                inout("a1") arg => _,
                 options(nostack, preserves_flags),
             );
             nr
