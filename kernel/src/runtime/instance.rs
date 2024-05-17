@@ -20,7 +20,7 @@ use core::{fmt, mem, ptr, slice};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{entity_impl, EntityRef, PrimaryMap};
 use cranelift_wasm::{
-    DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, FuncIndex, GlobalIndex,
+    DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, FuncIndex, GlobalIndex, MemoryIndex,
     ModuleInternedTypeIndex, TableIndex, WasmHeapType,
 };
 
@@ -36,6 +36,7 @@ impl Instance {
 
         initialize_vmctx(&mut const_eval, store, handle, &module.info.module)?;
         initialize_tables(&mut const_eval, store, handle, &module.info.module)?;
+        initialize_memories(store, handle, &module.info.module)?;
 
         Ok(handle)
     }
@@ -319,6 +320,23 @@ impl<'wasm> InstanceData<'wasm> {
 
         Ok(())
     }
+
+    fn defined_or_imported_memory(&self, index: MemoryIndex) -> &VMMemoryDefinition {
+        unsafe {
+            let ptr = if let Some(def_index) = self.module_info.module.defined_memory_index(index) {
+                *self.vmctx_plus_offset::<*mut VMMemoryDefinition>(
+                    self.vmctx_plan.vmctx_memory_pointer(def_index),
+                )
+            } else {
+                let import = &*self.vmctx_plus_offset::<VMMemoryImport>(
+                    self.vmctx_plan.vmctx_memory_import(index),
+                );
+                import.from
+            };
+
+            &*ptr
+        }
+    }
 }
 
 fn initialize_vmctx<'wasm>(
@@ -439,6 +457,25 @@ fn initialize_tables<'wasm>(
                 )
             },
         )?;
+    }
+
+    Ok(())
+}
+
+fn initialize_memories<'wasm>(
+    store: &Store,
+    instance: Instance,
+    module: &TranslatedModule<'wasm>,
+) -> Result<(), Trap> {
+    for init in &module.memory_initializers.runtime {
+        let data = store.instance_data(instance);
+        let memory = data.defined_or_imported_memory(init.memory_index);
+
+        unsafe {
+            let dst = memory.base.add(usize::try_from(init.offset).unwrap());
+
+            ptr::copy_nonoverlapping(init.bytes.as_ptr(), dst, init.bytes.len())
+        }
     }
 
     Ok(())
