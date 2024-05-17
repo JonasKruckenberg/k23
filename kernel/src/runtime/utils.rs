@@ -49,6 +49,7 @@ pub fn wasm_call_signature(target_isa: &dyn TargetIsa, wasm_func_ty: &WasmFuncTy
     sig
 }
 
+#[allow(unused)]
 pub fn native_call_signature(target_isa: &dyn TargetIsa, wasm_func_ty: &WasmFuncType) -> Signature {
     let mut sig = blank_sig(target_isa, CallConv::triple_default(target_isa.triple()));
 

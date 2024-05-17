@@ -1,10 +1,14 @@
-use crate::runtime::{BuiltinFunctionIndex, NS_WASM_BUILTIN, NS_WASM_FUNC};
-use cranelift_codegen::entity::PrimaryMap;
-use cranelift_codegen::ir::{ExternalName, StackSlots, UserExternalName, UserExternalNameRef};
+use crate::runtime::builtins::BuiltinFunctionIndex;
+use crate::runtime::trap::{Trap, DEBUG_ASSERT_TRAP_CODE};
+use crate::runtime::{NS_WASM_BUILTIN, NS_WASM_FUNC};
+use cranelift_codegen::ir::{
+    ExternalName, StackSlots, TrapCode, UserExternalName, UserExternalNameRef,
+};
 use cranelift_codegen::{
     binemit, Final, FinalizedMachReloc, FinalizedRelocTarget, MachBufferFinalized,
     ValueLabelsRanges,
 };
+use cranelift_entity::PrimaryMap;
 use cranelift_wasm::FuncIndex;
 
 #[derive(Debug)]
@@ -36,6 +40,11 @@ pub struct CompiledFunctionMetadata {
 pub enum RelocationTarget {
     Wasm(FuncIndex),
     Builtin(BuiltinFunctionIndex),
+}
+
+pub struct TrapInfo {
+    pub offset: u32,
+    pub code: Trap,
 }
 
 /// A position within an original source file,
@@ -76,6 +85,33 @@ impl CompiledFunction {
             .relocs()
             .iter()
             .map(|r| mach_reloc_to_reloc(r, &self.name_map))
+    }
+
+    pub fn traps(&self) -> impl Iterator<Item = TrapInfo> + ExactSizeIterator + '_ {
+        self.buffer.traps().iter().map(|trap| {
+            let code = match trap.code {
+                TrapCode::StackOverflow => Trap::StackOverflow,
+                TrapCode::HeapOutOfBounds => Trap::MemoryOutOfBounds,
+                TrapCode::HeapMisaligned => Trap::HeapMisaligned,
+                TrapCode::TableOutOfBounds => Trap::TableOutOfBounds,
+                TrapCode::IndirectCallToNull => Trap::IndirectCallToNull,
+                TrapCode::BadSignature => Trap::BadSignature,
+                TrapCode::IntegerOverflow => Trap::IntegerOverflow,
+                TrapCode::IntegerDivisionByZero => Trap::IntegerDivisionByZero,
+                TrapCode::BadConversionToInteger => Trap::BadConversionToInteger,
+                TrapCode::UnreachableCodeReached => Trap::UnreachableCodeReached,
+                TrapCode::Interrupt => todo!(),
+                TrapCode::NullReference => Trap::NullReference,
+                TrapCode::NullI31Ref => Trap::NullI31Ref,
+                TrapCode::User(DEBUG_ASSERT_TRAP_CODE) => Trap::DebugAssertionFailed,
+                TrapCode::User(c) => panic!("unknown trap code {c}"),
+            };
+
+            TrapInfo {
+                code,
+                offset: trap.offset,
+            }
+        })
     }
 
     /// Get a reference to the compiled function metadata.

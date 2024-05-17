@@ -129,13 +129,3 @@ impl<R: Reader> PubTypesEntryIter<R> {
         self.0.next()
     }
 }
-
-#[cfg(feature = "fallible-iterator")]
-impl<R: Reader> fallible_iterator::FallibleIterator for PubTypesEntryIter<R> {
-    type Item = PubTypesEntry<R>;
-    type Error = crate::read::Error;
-
-    fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
-        self.0.next()
-    }
-}

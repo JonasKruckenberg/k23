@@ -436,16 +436,6 @@ impl<R: Reader> RawRngListIter<R> {
     }
 }
 
-#[cfg(feature = "fallible-iterator")]
-impl<R: Reader> fallible_iterator::FallibleIterator for RawRngListIter<R> {
-    type Item = RawRngListEntry<R::Offset>;
-    type Error = Error;
-
-    fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
-        RawRngListIter::next(self)
-    }
-}
-
 /// An iterator over an address range list.
 ///
 /// This iterator internally handles processing of base addresses and different
@@ -561,16 +551,6 @@ impl<R: Reader> RngListIter<R> {
         }
 
         Ok(Some(range))
-    }
-}
-
-#[cfg(feature = "fallible-iterator")]
-impl<R: Reader> fallible_iterator::FallibleIterator for RngListIter<R> {
-    type Item = Range;
-    type Error = Error;
-
-    fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
-        RngListIter::next(self)
     }
 }
 

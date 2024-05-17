@@ -1134,17 +1134,6 @@ impl<R: Reader> RangeIter<R> {
     }
 }
 
-#[cfg(feature = "fallible-iterator")]
-impl<R: Reader> fallible_iterator::FallibleIterator for RangeIter<R> {
-    type Item = Range;
-    type Error = Error;
-
-    #[inline]
-    fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
-        RangeIter::next(self)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

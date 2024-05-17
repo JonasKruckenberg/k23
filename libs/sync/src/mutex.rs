@@ -1,5 +1,6 @@
 use crate::raw_mutex::RawMutex;
 use core::cell::UnsafeCell;
+use core::fmt;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 
@@ -27,7 +28,9 @@ impl<T> Mutex<T> {
             data: UnsafeCell::new(data),
         }
     }
+}
 
+impl<T: ?Sized> Mutex<T> {
     pub fn is_locked(&self) -> bool {
         self.raw.is_locked()
     }
@@ -53,7 +56,7 @@ impl<T> Mutex<T> {
     }
 }
 
-impl<'a, T> Deref for MutexGuard<'a, T> {
+impl<'a, T: ?Sized> Deref for MutexGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -61,7 +64,7 @@ impl<'a, T> Deref for MutexGuard<'a, T> {
     }
 }
 
-impl<'a, T> DerefMut for MutexGuard<'a, T> {
+impl<'a, T: ?Sized> DerefMut for MutexGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.lock.data.get() }
     }
@@ -70,6 +73,21 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 impl<'a, T: ?Sized> Drop for MutexGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.raw.unlock();
+    }
+}
+
+impl<T: ?Sized + fmt::Debug> fmt::Debug for Mutex<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut d = f.debug_struct("Mutex");
+        match self.try_lock() {
+            Some(guard) => {
+                d.field("data", &&*guard);
+            }
+            None => {
+                d.field("data", &format_args!("<locked>"));
+            }
+        }
+        d.finish_non_exhaustive()
     }
 }
 

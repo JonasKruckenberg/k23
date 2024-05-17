@@ -1,4 +1,4 @@
-use crate::runtime::instantiate::GuestAllocator;
+use crate::runtime::guest_memory::GuestAllocator;
 use core::alloc::{Allocator, Layout, LayoutError};
 use core::ops::Range;
 use core::ptr::NonNull;
@@ -12,7 +12,7 @@ use core::{hint, mem, ptr, slice};
 /// # GuestAllocator
 ///
 /// Data "owned" by generated code i.e. data that belongs to a [`Store`] is allocated through a Stores
-/// [`GuestAllocator`] that manages a stores virtual memory etc. A [`GuestVec`] is essentially the
+/// [`GuestAllocator`] that manages a stores virtual memory etc. A [`AlignedVec`] is essentially the
 /// guest-owned counterpart to `Vec` in the kernel.
 ///
 /// # Alignment
@@ -24,14 +24,14 @@ use core::{hint, mem, ptr, slice};
 /// There are just two rules:
 /// 1. The alignment must be a power of two
 /// 2. The alignment must be greater or equal to the alignment of `T`
-pub struct GuestVec<T, const ALIGN: usize> {
+pub struct AlignedVec<T, const ALIGN: usize> {
     ptr: NonNull<T>,
     cap: usize,
     len: usize,
     alloc: GuestAllocator,
 }
 
-impl<T, const ALIGN: usize> GuestVec<T, ALIGN> {
+impl<T, const ALIGN: usize> AlignedVec<T, ALIGN> {
     const ALIGN_CHECK: bool = ALIGN.is_power_of_two() && ALIGN >= mem::align_of::<T>();
     const MIN_NON_ZERO_CAP: usize = if mem::size_of::<T>() == 1 {
         8
@@ -309,7 +309,7 @@ impl<T, const ALIGN: usize> GuestVec<T, ALIGN> {
     }
 }
 
-impl<T, const ALIGN: usize> Drop for GuestVec<T, ALIGN> {
+impl<T, const ALIGN: usize> Drop for AlignedVec<T, ALIGN> {
     #[inline]
     fn drop(&mut self) {
         if let Some((ptr, layout)) = self.current_memory() {
@@ -360,7 +360,7 @@ fn try_grow_unchecked(
     memory.map_err(|_| ())
 }
 
-impl<const ALIGN: usize> object::write::WritableBuffer for GuestVec<u8, ALIGN> {
+impl<const ALIGN: usize> object::write::WritableBuffer for AlignedVec<u8, ALIGN> {
     #[inline]
     fn len(&self) -> usize {
         self.len()

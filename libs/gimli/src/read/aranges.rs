@@ -122,16 +122,6 @@ impl<R: Reader> ArangeHeaderIter<R> {
     }
 }
 
-#[cfg(feature = "fallible-iterator")]
-impl<R: Reader> fallible_iterator::FallibleIterator for ArangeHeaderIter<R> {
-    type Item = ArangeHeader<R>;
-    type Error = Error;
-
-    fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
-        ArangeHeaderIter::next(self)
-    }
-}
-
 /// A header for a set of entries in the `.debug_arange` section.
 ///
 /// These entries all belong to a single unit.
@@ -282,16 +272,6 @@ impl<R: Reader> ArangeEntryIter<R> {
                 Err(e)
             }
         }
-    }
-}
-
-#[cfg(feature = "fallible-iterator")]
-impl<R: Reader> fallible_iterator::FallibleIterator for ArangeEntryIter<R> {
-    type Item = ArangeEntry;
-    type Error = Error;
-
-    fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
-        ArangeEntryIter::next(self)
     }
 }
 

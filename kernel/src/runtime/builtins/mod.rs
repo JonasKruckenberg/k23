@@ -1,6 +1,7 @@
 mod impls;
 
-use super::{VMContext, NS_WASM_BUILTIN};
+use crate::runtime::vmcontext::VMContext;
+use crate::runtime::NS_WASM_BUILTIN;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};
 use cranelift_codegen::isa::{CallConv, TargetIsa};

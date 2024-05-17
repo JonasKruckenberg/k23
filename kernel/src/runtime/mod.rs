@@ -1,28 +1,25 @@
+#![allow(unused)]
+
 mod builtins;
-mod compile;
+mod codegen;
 mod const_expr;
 mod engine;
 mod errors;
+mod guest_memory;
 mod instance;
-mod instantiate;
 mod linker;
+mod memory;
 mod module;
-mod translate;
+mod store;
+mod table;
+mod trap;
 mod utils;
 mod vmcontext;
 
-use crate::runtime::instantiate::Store;
-use crate::runtime::linker::Linker;
-use crate::runtime::module::Module;
-pub use builtins::{BuiltinFunctionIndex, BuiltinFunctionSignatures, BuiltinFunctions};
-pub use compile::build_module;
-use cranelift_codegen::settings::Configurable;
 pub use engine::Engine;
-pub use errors::CompileError;
-pub use vmcontext::{
-    FuncRefIndex, VMContext, VMContextOffsets, VMFuncRef, VMGlobalDefinition, VMMemoryDefinition,
-    VMTableDefinition, VMCONTEXT_MAGIC,
-};
+pub use linker::Linker;
+pub use module::Module;
+pub use store::Store;
 
 /// Namespace corresponding to wasm functions, the index is the index of the
 /// defined function that's being referenced.
@@ -42,33 +39,67 @@ pub const WASM32_MAX_PAGES: u64 = 1 << 16;
 /// byte index space.
 pub const WASM64_MAX_PAGES: u64 = 1 << 48;
 
-/// Trap code used for debug assertions we emit in our JIT code.
-pub const DEBUG_ASSERT_TRAP_CODE: u16 = u16::MAX;
-
-pub fn test() {
-    let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
-    let mut b = cranelift_codegen::settings::builder();
-    b.set("opt_level", "speed_and_size").unwrap();
-
-    let target_isa = isa_builder
-        .finish(cranelift_codegen::settings::Flags::new(b))
-        .unwrap();
-
-    let engine = Engine::new(target_isa);
-    let wasm = include_bytes!(
-        "/Users/jonas/Documents/GitHub/k23/target/wasm32-unknown-unknown/debug/fib.wasm"
-    );
-
-    let mut store = Store::new();
-    let linker = Linker::new();
-
-    let module = Module::from_bytes(&engine, &mut store, wasm);
-
-    let instance = linker.instantiate(&mut store, &engine, module);
-    log::debug!("{store:#?}");
-
-    let func = instance.get_func(&mut store, "fib").unwrap();
-    log::debug!("{func:?}");
-
-    func.call(&mut store);
-}
+// pub struct Stack {
+//     inner: GuestVec<u8, 16>,
+// }
+//
+// impl Stack {
+//     pub fn new(stack_size: usize, alloc: GuestAllocator) -> Result<Self, ()> {
+//         let mut inner = GuestVec::try_with_capacity(stack_size, alloc)?;
+//         inner.try_resize(stack_size, 0)?;
+//
+//         Ok(Self { inner })
+//     }
+//
+//     pub fn stack_ptr(&mut self) -> *mut u8 {
+//         self.inner.as_mut_ptr_range().end
+//     }
+//
+//     pub fn stack_limit(&mut self) -> *const u8 {
+//         self.inner.as_ptr_range().start
+//     }
+//
+//     pub unsafe fn on_stack(
+//         &mut self,
+//         vmctx: *mut VMContext,
+//         func: unsafe extern "C" fn(*mut VMContext, usize),
+//     ) {
+//         log::trace!("switching to stack {:?}", self.inner.as_ptr_range());
+//
+//         let arg: usize = 7;
+//         let ret: usize;
+//         asm!(
+//         "csrrw sp, sscratch, sp",
+//
+//         "mv  sp, {wasm_stack_ptr}",
+//         "mv  a0, {vmctx_ptr}",
+//
+//         "mv  a1, {arg}",
+//         "jalr {func}",
+//
+//         "csrrw sp, sscratch, sp",
+//         wasm_stack_ptr = in(reg) self.stack_ptr(),
+//         vmctx_ptr = in(reg) vmctx,
+//         func = in(reg) func,
+//         arg = in(reg) arg - 2,
+//         out("a0") ret
+//         );
+//         log::trace!(
+//             r#"
+//
+// WASM says: The {}th fibonacci number is {ret:?}!
+//
+// "#,
+//             arg
+//         );
+//         log::trace!("switched back from stack {:?}", self.inner.as_ptr_range());
+//     }
+// }
+//
+// impl fmt::Debug for Stack {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         f.debug_struct("Stack")
+//             .field("address_range", &self.inner.as_ptr_range())
+//             .finish()
+//     }
+// }

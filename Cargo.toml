@@ -1,5 +1,5 @@
 [workspace]
-members = ["build/*", "libs/*", "kernel", "loader", "fib"]
+members = ["build/*", "libs/*", "kernel", "loader"]
 resolver = "2"
 
 [workspace.package]
@@ -34,6 +34,7 @@ hashbrown = { version = "0.14.3", features = ["nightly"] }
 cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core"] }
 cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core", "host-arch"] }
 cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core"] }
+cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false }
 target-lexicon = { version = "0.12.13", default-features = false }
 
 # build dependencies

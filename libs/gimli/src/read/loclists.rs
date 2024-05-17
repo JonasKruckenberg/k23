@@ -500,16 +500,6 @@ impl<R: Reader> RawLocListIter<R> {
     }
 }
 
-#[cfg(feature = "fallible-iterator")]
-impl<R: Reader> fallible_iterator::FallibleIterator for RawLocListIter<R> {
-    type Item = RawLocListEntry<R>;
-    type Error = Error;
-
-    fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
-        RawLocListIter::next(self)
-    }
-}
-
 /// An iterator over a location list.
 ///
 /// This iterator internally handles processing of base address selection entries
@@ -643,16 +633,6 @@ impl<R: Reader> LocListIter<R> {
         }
 
         Ok(Some(LocationListEntry { range, data }))
-    }
-}
-
-#[cfg(feature = "fallible-iterator")]
-impl<R: Reader> fallible_iterator::FallibleIterator for LocListIter<R> {
-    type Item = LocationListEntry<R>;
-    type Error = Error;
-
-    fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
-        LocListIter::next(self)
     }
 }
 
