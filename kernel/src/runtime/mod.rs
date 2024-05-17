@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 mod builtins;
 mod codegen;
 mod const_expr;

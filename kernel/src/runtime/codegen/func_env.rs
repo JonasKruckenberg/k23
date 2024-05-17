@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use crate::runtime::codegen::TranslatedModule;
 use crate::runtime::utils::{value_type, wasm_call_signature};
 use crate::runtime::vmcontext::VMContextPlan;

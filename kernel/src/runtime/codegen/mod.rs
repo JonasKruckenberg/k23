@@ -81,7 +81,7 @@ impl<'a> CompileInputs<'a> {
         function_body_inputs: PrimaryMap<DefinedFuncIndex, FuncCompileInput<'a>>,
     ) -> Self {
         let mut inputs: Vec<CompileInput> = Vec::new();
-        let mut num_trampolines = 0;
+        // let mut num_trampolines = 0;
         // We only ever compile one module at a time
         let module_index = StaticModuleIndex::from_u32(0);
 
@@ -126,7 +126,7 @@ impl<'a> CompileInputs<'a> {
             // }
         }
 
-        log::debug!("Number of native to WASM trampolines to build: {num_trampolines}",);
+        // log::debug!("Number of native to WASM trampolines to build: {num_trampolines}",);
 
         // TODO collect wasm->native trampolines
 

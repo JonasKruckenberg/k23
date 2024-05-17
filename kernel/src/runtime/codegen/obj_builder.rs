@@ -29,24 +29,13 @@ pub const ELF_WASM_DWARF: &str = ".k23.dwarf";
 /// Builder for intermediate compilation artifacts in ELF format
 pub struct ObjectBuilder<'obj> {
     result: Object<'obj>,
-
-    rodata_section: SectionId,
-    names_section: Option<SectionId>,
     dwarf_section: Option<SectionId>,
 }
 
 impl<'obj> ObjectBuilder<'obj> {
-    pub fn new(mut obj: Object<'obj>) -> Self {
-        let rodata_section = obj.add_section(
-            obj.segment_name(StandardSegment::Data).to_vec(),
-            ELF_WASM_DATA.as_bytes().to_vec(),
-            SectionKind::ReadOnlyData,
-        );
-
+    pub fn new(obj: Object<'obj>) -> Self {
         ObjectBuilder {
             result: obj,
-            rodata_section,
-            names_section: None,
             dwarf_section: None,
         }
     }

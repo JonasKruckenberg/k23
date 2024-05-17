@@ -1,6 +1,7 @@
 use crate::runtime::guest_memory::GuestVec;
 use crate::runtime::vmcontext::VMMemoryDefinition;
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct Memory {
     pub inner: GuestVec<u8>,

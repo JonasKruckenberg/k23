@@ -10,6 +10,7 @@ pre-empted = "pre-empted"
 SEH = "SEH"
 ands = "ands"
 addd = "addd"
+ratatui = "ratatui"
 
 [default.extend-identifier]
 

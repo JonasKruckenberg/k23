@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use crate::runtime::vmcontext::VMContext;
 use core::arch::asm;
 

@@ -23,6 +23,7 @@ pub fn init(heap_start: VirtualAddress) -> Result<(), vmm::Error> {
     Ok(())
 }
 
+#[allow(unused)]
 pub fn print_heap_statistics() {
     log::debug!("Allocator Usage {:#?}", KERNEL_ALLOCATOR.usage());
 

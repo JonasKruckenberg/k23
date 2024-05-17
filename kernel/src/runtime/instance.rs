@@ -78,6 +78,7 @@ impl Instance {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct InstanceData<'wasm> {
     pub module_info: Arc<CompiledModuleInfo<'wasm>>,
@@ -499,7 +500,7 @@ fn with_defined_table_index_and_instance<R>(
         f(def_table_index, &mut data)
     } else {
         let (foreign_instance, foreign_table_def) = {
-            let mut data = store.instance_data_mut(instance);
+            let data = store.instance_data(instance);
             let import = data.imported_table(index);
             let foreign_instance = store.instance_for_vmctx(import.vmctx);
             let foreign_table_def = import.from;

@@ -94,6 +94,7 @@ impl TryFrom<u8> for Trap {
     }
 }
 
+#[allow(unused)]
 pub fn trap_for_offset(trap_section: &[u8], offset: u32) -> Trap {
     let mut section = Bytes(trap_section);
 

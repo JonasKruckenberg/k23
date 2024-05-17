@@ -7,9 +7,8 @@ use cranelift_wasm::wasmparser::map::HashMap;
 use cranelift_wasm::wasmparser::WasmFeatures;
 use cranelift_wasm::{
     ConstExpr, DataIndex, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex,
-    DefinedTableIndex, ElemIndex, EngineOrModuleTypeIndex, EntityIndex, EntityType, FuncIndex,
-    Global, GlobalIndex, Memory, MemoryIndex, ModuleInternedTypeIndex, OwnedMemoryIndex, Table,
-    TableIndex, TypeIndex,
+    DefinedTableIndex, ElemIndex, EntityIndex, FuncIndex, Global, GlobalIndex, Memory, MemoryIndex,
+    ModuleInternedTypeIndex, OwnedMemoryIndex, Table, TableIndex, TypeIndex,
 };
 
 #[derive(Debug, Default)]
@@ -73,12 +72,14 @@ pub struct Producers<'wasm> {
     pub sdk: Vec<ProducersSdkField<'wasm>>,
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct ProducersLanguageField<'wasm> {
     pub name: ProducersLanguage<'wasm>,
     pub version: &'wasm str,
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub enum ProducersLanguage<'wasm> {
     Wat,
@@ -89,12 +90,14 @@ pub enum ProducersLanguage<'wasm> {
     Other(&'wasm str),
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct ProducersToolField<'wasm> {
     pub name: ProducersTool<'wasm>,
     pub version: &'wasm str,
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub enum ProducersTool<'wasm> {
     Wabt,
@@ -111,12 +114,14 @@ pub enum ProducersTool<'wasm> {
     Other(&'wasm str),
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct ProducersSdkField<'wasm> {
     pub name: ProducersSdk<'wasm>,
     pub version: &'wasm str,
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub enum ProducersSdk<'wasm> {
     Emscripten,
@@ -130,6 +135,7 @@ pub struct FunctionType {
     pub func_ref: FuncRefIndex,
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct Import<'wasm> {
     pub module: &'wasm str,
@@ -178,6 +184,7 @@ pub struct MemoryInitializers<'wasm> {
     pub runtime: Vec<MemoryInitializer<'wasm>>,
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct MemoryInitializer<'wasm> {
     pub memory_index: MemoryIndex,
@@ -339,39 +346,34 @@ impl<'wasm> TranslatedModule<'wasm> {
         global_index.as_u32() < self.num_imported_globals
     }
 
-    // // /// Returns an iterator of all the imports in this module, along with their
-    // // /// module name, field name, and type that's being imported.
-    // // pub fn imports(&self) -> Imports<'wasm, '_> {
-    // //     Imports {
-    // //         module: self,
-    // //         index: 0,
-    // //     }
-    // // }
-    // //
-    // // /// Returns an iterator of all the imports in this module, along with their
-    // // /// module name, field name, and type that's being imported.
-    // // pub fn exports(&self) -> Exports<'wasm, '_> {
-    // //     Exports {
-    // //         module: self,
-    // //         exports: self.exports.iter(),
-    // //         index: 0,
-    // //     }
-    // // }
-
-    /// Returns the type of an item based on its index
-    pub fn type_of(&self, index: EntityIndex) -> EntityType {
-        match index {
-            EntityIndex::Global(i) => EntityType::Global(self.globals[i]),
-            EntityIndex::Table(i) => EntityType::Table(self.table_plans[i].table),
-            EntityIndex::Memory(i) => EntityType::Memory(self.memory_plans[i].memory),
-            EntityIndex::Function(i) => {
-                EntityType::Function(EngineOrModuleTypeIndex::Module(self.functions[i].signature))
-            }
-        }
-    }
-
-    // pub fn try_static_init(&self, _alignment: usize, _max_always_allowed: usize) -> Vec<u8> {
-    //     todo!()
+    // /// Returns an iterator of all the imports in this module, along with their
+    // /// module name, field name, and type that's being imported.
+    // pub fn imports(&self) -> Imports<'wasm, '_> {
+    //     Imports {
+    //         module: self,
+    //         index: 0,
+    //     }
+    // }
+    //
+    // /// Returns an iterator of all the imports in this module, along with their
+    // /// module name, field name, and type that's being imported.
+    // pub fn exports(&self) -> Exports<'wasm, '_> {
+    //     Exports {
+    //         module: self,
+    //         exports: self.exports.iter(),
+    //         index: 0,
+    //     }
+    // }
+    // /// Returns the type of an item based on its index
+    // pub fn type_of(&self, index: EntityIndex) -> EntityType {
+    //     match index {
+    //         EntityIndex::Global(i) => EntityType::Global(self.globals[i]),
+    //         EntityIndex::Table(i) => EntityType::Table(self.table_plans[i].table),
+    //         EntityIndex::Memory(i) => EntityType::Memory(self.memory_plans[i].memory),
+    //         EntityIndex::Function(i) => {
+    //             EntityType::Function(EngineOrModuleTypeIndex::Module(self.functions[i].signature))
+    //         }
+    //     }
     // }
 }
 

@@ -21,7 +21,7 @@ pub struct Store<'wasm> {
 }
 
 impl<'wasm> Store<'wasm> {
-    pub fn new(asid: usize) -> Self {
+    pub fn new(_asid: usize) -> Self {
         Self {
             allocator: unsafe {
                 GuestAllocator::new_in_kernel_space(VirtualAddress::new(0x1000)).unwrap()

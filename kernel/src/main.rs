@@ -45,9 +45,7 @@ fn main(_hartid: usize) -> ! {
         .unwrap();
 
     let engine = Engine::new(target_isa);
-    let wasm = include_bytes!(
-        "/Users/jonas/Documents/GitHub/k23/target/wasm32-unknown-unknown/debug/fib.wasm"
-    );
+    let wasm = include_bytes!("../tests/fib-rs-debug.wasm");
 
     let mut store = Store::new(0);
 

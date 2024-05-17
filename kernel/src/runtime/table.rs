@@ -38,6 +38,7 @@ impl Table {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct FuncTable {
     pub elements: GuestVec<FuncTableElem>,
