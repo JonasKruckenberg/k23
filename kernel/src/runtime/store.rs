@@ -23,7 +23,9 @@ pub struct Store<'wasm> {
 impl<'wasm> Store<'wasm> {
     pub fn new(asid: usize) -> Self {
         Self {
-            allocator: unsafe { GuestAllocator::new_in_kernel_space(VirtualAddress::new(0x1000)) },
+            allocator: unsafe {
+                GuestAllocator::new_in_kernel_space(VirtualAddress::new(0x1000)).unwrap()
+            },
             instances: PrimaryMap::new(),
             vmctx2instance: HashMap::default(),
         }
@@ -112,8 +114,10 @@ impl<'wasm> Store<'wasm> {
     }
 
     fn allocate_memory(&mut self, plan: &MemoryPlan) -> Memory {
-        let inner =
-            GuestVec::with_capacity_in(plan.memory.minimum as usize, self.guest_allocator());
+        let inner = GuestVec::with_capacity_in(
+            plan.memory.minimum as usize * WASM_PAGE_SIZE as usize,
+            self.guest_allocator(),
+        );
 
         Memory {
             inner,

@@ -1,12 +1,13 @@
 use crate::frame_alloc::with_frame_alloc;
 use crate::kconfig;
 use alloc::sync::Arc;
-use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
+use core::alloc::{AllocError, Allocator, Layout};
 use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use core::ptr::NonNull;
-use linked_list_allocator::LockedHeap;
+use linked_list_allocator::Heap;
+use sync::Mutex;
 use vmm::{AddressRangeExt, EntryFlags, Flush, Mapper, Mode, VirtualAddress};
 
 /// A type that knows how to allocate and deallocate memory in userspace.
@@ -32,7 +33,7 @@ use vmm::{AddressRangeExt, EntryFlags, Flush, Mapper, Mode, VirtualAddress};
 /// But this approach allows us more flexibility in how we manage memory: E.g. we can have process groups
 /// that share a common [`Store`] and can therefore share resources much more efficiently.
 #[derive(Debug, Clone)]
-pub struct GuestAllocator(Arc<GuestAllocatorInner>);
+pub struct GuestAllocator(Arc<Mutex<GuestAllocatorInner>>);
 
 pub struct GuestAllocatorInner {
     asid: usize,
@@ -41,63 +42,73 @@ pub struct GuestAllocatorInner {
     // we don't have many allocations, just a few large chunks (e.g. CodeMemory, Stack, Memories)
     // so a simple linked list should suffice.
     // TODO measure and verify this assumption
-    inner: LockedHeap,
+    inner: Heap,
 }
 
 impl GuestAllocator {
-    pub unsafe fn new_in_kernel_space(virt_offset: VirtualAddress) -> Self {
+    pub unsafe fn new_in_kernel_space(virt_offset: VirtualAddress) -> Result<Self, AllocError> {
         let root_table = kconfig::MEMORY_MODE::get_active_table(0);
 
         let mut inner = GuestAllocatorInner {
             root_table: kconfig::MEMORY_MODE::phys_to_virt(root_table),
             asid: 0,
-            inner: LockedHeap::empty(),
+            inner: Heap::empty(),
             virt_offset,
         };
 
-        let (mem_virt, flush) = inner.map_additional_pages(64);
+        let (mem_virt, flush) = inner.map_additional_pages(16)?;
         flush.flush().unwrap();
 
         unsafe {
             inner
                 .inner
-                .lock()
                 .init(mem_virt.start.as_raw() as *mut u8, mem_virt.size());
         }
 
-        Self(Arc::new(inner))
+        Ok(Self(Arc::new(Mutex::new(inner))))
     }
 
     pub fn asid(&self) -> usize {
-        self.0.asid
+        self.0.lock().asid
     }
 
     pub fn root_table(&self) -> VirtualAddress {
-        self.0.root_table
+        self.0.lock().root_table
     }
 }
 
 unsafe impl Allocator for GuestAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        let ptr = unsafe { self.0.inner.alloc(layout) };
+        let mut inner = self.0.lock();
+
+        let ptr = if let Ok(ptr) = inner.inner.allocate_first_fit(layout) {
+            ptr
+        } else {
+            let grow_by = layout.size() - inner.inner.free();
+            let grow_by_pages = grow_by.div_ceil(kconfig::PAGE_SIZE);
+            log::debug!("growing guest alloc by {grow_by_pages} pages");
+
+            // TODO probably amortize growth
+            let (_, flush) = inner.map_additional_pages(grow_by_pages)?;
+            flush.flush().unwrap();
+
+            unsafe { inner.inner.extend(grow_by_pages * kconfig::PAGE_SIZE) };
+
+            // at this point the method below is guaranteed to not fail
+            inner.inner.allocate_first_fit(layout).unwrap()
+        };
 
         log::trace!("allocation request {ptr:?} {layout:?}");
 
-        if let Some(ptr) = NonNull::new(ptr) {
-            Ok(NonNull::slice_from_raw_parts(ptr, layout.size()))
-        } else {
-            // TODO map new pages
-            // Hitting this case means the inner allocator ran out of memory.
-            // we should try to map in new physical memory and grow the alloc
-
-            Err(AllocError)
-        }
+        Ok(NonNull::slice_from_raw_parts(ptr, layout.size()))
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         log::trace!("deallocation request {ptr:?} {layout:?}");
         // TODO unmap pages
-        self.0.inner.dealloc(ptr.cast().as_ptr(), layout);
+
+        let mut inner = self.0.lock();
+        inner.inner.deallocate(ptr, layout)
     }
 }
 
@@ -105,13 +116,16 @@ impl GuestAllocatorInner {
     fn map_additional_pages(
         &mut self,
         num_pages: usize,
-    ) -> (Range<VirtualAddress>, Flush<kconfig::MEMORY_MODE>) {
+    ) -> Result<(Range<VirtualAddress>, Flush<kconfig::MEMORY_MODE>), AllocError> {
         with_frame_alloc(|frame_alloc| {
             let mut mapper = Mapper::from_address(self.asid, self.root_table, frame_alloc);
             let mut flush = Flush::empty(self.asid);
 
             let mem_phys = {
-                let start = mapper.allocator_mut().allocate_frames(num_pages).unwrap();
+                let start = mapper
+                    .allocator_mut()
+                    .allocate_frames(num_pages)
+                    .map_err(|_| AllocError)?;
                 start..start.add(num_pages * kconfig::PAGE_SIZE)
             };
 
@@ -125,9 +139,9 @@ impl GuestAllocatorInner {
                     EntryFlags::READ | EntryFlags::WRITE,
                     &mut flush,
                 )
-                .unwrap();
+                .map_err(|_| AllocError)?;
 
-            (mem_virt, flush)
+            Ok((mem_virt, flush))
         })
     }
 }
