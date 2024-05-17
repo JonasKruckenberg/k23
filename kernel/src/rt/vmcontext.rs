@@ -10,85 +10,96 @@
 //!     imported_tables: [VMTableImport; module.num_imported_tables],
 //!     imported_memories: [VMMemoryImport; module.num_imported_memories],
 //!     imported_globals: [VMGlobalImport; module.num_imported_globals],
-//!     scratch: VMScratchSpace
+//!     stack_limit: usize,
+//!     last_wasm_exit_fp: usize,
+//!     last_wasm_exit_pc: usize,
+//!     last_wasm_entry_sp: usize,
 //! }
 
-use super::translate::TranslatedModule;
+use crate::rt::codegen::TranslatedModule;
+use alloc::fmt;
+use core::ffi::c_void;
+use core::fmt::Formatter;
+use core::marker::PhantomPinned;
 use core::mem;
 use core::mem::offset_of;
+use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;
-use cranelift_codegen::entity::entity_impl;
 use cranelift_codegen::isa::TargetIsa;
+use cranelift_entity::entity_impl;
+use cranelift_entity::packed_option::ReservedValue;
 use cranelift_wasm::{
     DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, FuncIndex, GlobalIndex, MemoryIndex,
     OwnedMemoryIndex, TableIndex, WasmValType,
 };
-use vmm::VirtualAddress;
 
 pub const VMCONTEXT_MAGIC: u32 = u32::from_le_bytes(*b"vmcx");
 
-/// Index into the funcref table within a VMContext for a function.
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
-pub struct FuncRefIndex(u32);
-entity_impl!(FuncRefIndex);
-
-#[repr(C)]
-pub struct VMContext {
-    ptr: *const u8,
-}
-
-pub union ValRaw {
+pub union VMVal {
     pub i32: i32,
     pub i64: i64,
     pub f32: u32,
     pub f64: u64,
     pub v128: [u8; 16],
-    // pub funcref: *mut c_void,
-    // pub externref: u32,
+    pub funcref: *mut c_void,
+    pub externref: u32,
+    pub anyref: u32,
 }
 
-#[repr(C)]
-pub struct VMTableDefinition {}
+impl fmt::Debug for VMVal {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("VMVal").finish()
+    }
+}
 
+#[derive(Debug)]
+#[repr(C, align(16))] // align 16 since globals are aligned to that and contained inside
+pub struct VMContext {
+    _m: PhantomPinned,
+}
+
+#[derive(Debug, Copy, Clone)]
+#[repr(C)]
+pub struct VMTableDefinition {
+    pub base: *mut u8,
+    pub current_length: u32,
+}
+
+#[derive(Debug)]
 #[repr(C)]
 pub struct VMMemoryDefinition {
-    /// The start address.
     pub base: *mut u8,
-    /// The current logical size of this linear memory in bytes.
-    ///
-    /// This is atomic because shared memories must be able to grow their length
-    /// atomically. For relaxed access, see
-    /// [`VMMemoryDefinition::current_length()`].
     pub current_length: AtomicUsize,
     /// The address space identifier of the memory
     pub asid: usize,
 }
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct VMGlobalDefinition {
-    pub data: [u8; 16],
+    data: [u8; 16],
 }
 
 impl VMGlobalDefinition {
-    pub unsafe fn from_val_raw(val_raw: ValRaw) -> Self {
+    pub unsafe fn from_vmval(val_raw: VMVal) -> Self {
         Self { data: val_raw.v128 }
     }
 
-    pub unsafe fn to_val_raw(&self, wasm_ty: &WasmValType) -> ValRaw {
+    pub unsafe fn to_vmval(&self, wasm_ty: &WasmValType) -> VMVal {
         match wasm_ty {
-            WasmValType::I32 => ValRaw {
+            WasmValType::I32 => VMVal {
                 i32: *self.as_i32(),
             },
-            WasmValType::I64 => ValRaw {
+            WasmValType::I64 => VMVal {
                 i64: *self.as_i64(),
             },
-            WasmValType::F32 => ValRaw {
+            WasmValType::F32 => VMVal {
                 f32: *self.as_f32_bits(),
             },
-            WasmValType::F64 => ValRaw {
+            WasmValType::F64 => VMVal {
                 f64: *self.as_f64_bits(),
             },
-            WasmValType::V128 => ValRaw {
+            WasmValType::V128 => VMVal {
                 v128: self.data.clone(),
             },
             WasmValType::Ref(_) => todo!(),
@@ -196,25 +207,47 @@ impl VMGlobalDefinition {
     }
 }
 
-#[repr(C)]
-pub struct VMFuncRef {
-    pub native_call: VirtualAddress,
-}
-
-#[repr(C)]
-pub struct VMFunctionImport {}
-
-#[repr(C)]
-pub struct VMTableImport {}
-
-#[repr(C)]
-pub struct VMMemoryImport {}
-
-#[repr(C)]
-pub struct VMGlobalImport {}
+/// Index into the funcref table within a VMContext for a function.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+pub struct FuncRefIndex(u32);
+entity_impl!(FuncRefIndex);
 
 #[derive(Debug)]
-pub struct VMContextOffsets {
+#[repr(C)]
+pub struct VMFuncRef {
+    // pub type_index: VMSharedTypeIndex,
+    pub vmctx: *mut VMContext,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct VMFunctionImport {
+    pub from: *mut VMFuncRef,
+    pub vmctx: NonNull<VMContext>,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct VMTableImport {
+    pub from: *mut VMTableDefinition,
+    pub vmctx: NonNull<VMContext>,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct VMMemoryImport {
+    pub from: *mut VMMemoryDefinition,
+    pub vmctx: NonNull<VMContext>,
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct VMGlobalImport {
+    pub from: *mut VMGlobalDefinition,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct VMContextPlan {
     num_imported_funcs: u32,
     num_imported_tables: u32,
     num_imported_memories: u32,
@@ -230,7 +263,7 @@ pub struct VMContextOffsets {
 
     // offsets
     magic: u32,
-    builtins: u32,
+    // builtins: u32,
     tables: u32,
     memories: u32,
     owned_memories: u32,
@@ -246,7 +279,7 @@ pub struct VMContextOffsets {
     last_wasm_entry_sp: u32,
 }
 
-impl VMContextOffsets {
+impl VMContextPlan {
     pub fn for_module(isa: &dyn TargetIsa, module: &TranslatedModule) -> Self {
         let mut offset = 0;
 
@@ -259,7 +292,7 @@ impl VMContextOffsets {
         let ptr_size = isa.pointer_bytes() as u32;
 
         Self {
-            num_imported_funcs: module.num_imported_funcs(),
+            num_imported_funcs: module.num_imported_functions(),
             num_imported_tables: module.num_imported_tables(),
             num_imported_memories: module.num_imported_memories(),
             num_imported_globals: module.num_imported_globals(),
@@ -272,7 +305,7 @@ impl VMContextOffsets {
 
             // offsets
             magic: member_offset(ptr_size),
-            builtins: member_offset(ptr_size),
+            // builtins: member_offset(ptr_size),
             tables: member_offset(size_of_u32::<VMTableDefinition>() * module.num_defined_tables()),
             memories: member_offset(ptr_size * module.num_defined_memories()),
             owned_memories: member_offset(
@@ -283,7 +316,7 @@ impl VMContextOffsets {
             ),
             func_refs: member_offset(size_of_u32::<VMFuncRef>() * module.num_escaped_funcs()),
             imported_functions: member_offset(
-                size_of_u32::<VMFunctionImport>() * module.num_imported_funcs(),
+                size_of_u32::<VMFunctionImport>() * module.num_imported_functions(),
             ),
             imported_tables: member_offset(
                 size_of_u32::<VMTableImport>() * module.num_imported_tables(),
@@ -303,8 +336,46 @@ impl VMContextOffsets {
         }
     }
 
+    #[inline]
     pub fn size(&self) -> u32 {
         self.size
+    }
+
+    #[inline]
+    pub fn num_defined_tables(&self) -> u32 {
+        self.num_defined_tables
+    }
+    #[inline]
+    pub fn num_defined_memories(&self) -> u32 {
+        self.num_defined_memories
+    }
+    #[inline]
+    pub fn num_owned_memories(&self) -> u32 {
+        self.num_owned_memories
+    }
+    #[inline]
+    pub fn num_defined_globals(&self) -> u32 {
+        self.num_defined_globals
+    }
+    #[inline]
+    pub fn num_escaped_funcs(&self) -> u32 {
+        self.num_escaped_funcs
+    }
+    #[inline]
+    pub fn num_imported_funcs(&self) -> u32 {
+        self.num_imported_funcs
+    }
+    #[inline]
+    pub fn num_imported_tables(&self) -> u32 {
+        self.num_imported_tables
+    }
+    #[inline]
+    pub fn num_imported_memories(&self) -> u32 {
+        self.num_imported_memories
+    }
+    #[inline]
+    pub fn num_imported_globals(&self) -> u32 {
+        self.num_imported_globals
     }
 
     #[inline]
@@ -312,51 +383,100 @@ impl VMContextOffsets {
         self.magic
     }
     #[inline]
-    pub fn builtins(&self) -> u32 {
-        self.builtins
+    pub fn vmctx_stack_limit(&self) -> u32 {
+        self.stack_limit
     }
     #[inline]
-    pub fn vmtable_definition(&self, index: DefinedTableIndex) -> u32 {
+    pub fn vmctx_last_wasm_exit_fp(&self) -> u32 {
+        self.last_wasm_exit_fp
+    }
+    #[inline]
+    pub fn vmctx_last_wasm_exit_pc(&self) -> u32 {
+        self.last_wasm_exit_pc
+    }
+    #[inline]
+    pub fn vmctx_last_wasm_entry_sp(&self) -> u32 {
+        self.last_wasm_entry_sp
+    }
+    #[inline]
+    pub fn vmctx_table_definitions_start(&self) -> u32 {
+        self.tables
+    }
+    #[inline]
+    pub fn vmctx_table_definition(&self, index: DefinedTableIndex) -> u32 {
         assert!(index.as_u32() < self.num_defined_tables);
         self.tables + index.as_u32() * size_of_u32::<VMTableDefinition>()
     }
     #[inline]
-    pub fn vmmemory_pointer(&self, index: DefinedMemoryIndex) -> u32 {
+    pub fn vmctx_memory_pointers_start(&self) -> u32 {
+        self.memories
+    }
+    #[inline]
+    pub fn vmctx_memory_definitions_start(&self) -> u32 {
+        self.owned_memories
+    }
+    #[inline]
+    pub fn vmctx_memory_pointer(&self, index: DefinedMemoryIndex) -> u32 {
         assert!(index.as_u32() < self.num_defined_memories);
         self.memories + index.as_u32() * self.ptr_size
     }
     #[inline]
-    pub fn vmmemory_definition(&self, index: OwnedMemoryIndex) -> u32 {
+    pub fn vmctx_memory_definition(&self, index: OwnedMemoryIndex) -> u32 {
         assert!(index.as_u32() < self.num_owned_memories);
         self.owned_memories + index.as_u32() * size_of_u32::<VMMemoryDefinition>()
     }
     #[inline]
-    pub fn vmglobal_definition(&self, index: DefinedGlobalIndex) -> u32 {
+    pub fn vmctx_global_definitions_start(&self) -> u32 {
+        self.globals
+    }
+    #[inline]
+    pub fn vmctx_global_definition(&self, index: DefinedGlobalIndex) -> u32 {
         assert!(index.as_u32() < self.num_defined_globals);
         self.globals + index.as_u32() * size_of_u32::<VMGlobalDefinition>()
     }
     #[inline]
-    pub fn vmfunc_ref(&self, index: FuncIndex) -> u32 {
+    pub fn vmctx_func_refs_start(&self) -> u32 {
+        self.func_refs
+    }
+    #[inline]
+    pub fn vmctx_func_ref(&self, index: FuncRefIndex) -> u32 {
+        assert!(!index.is_reserved_value());
         assert!(index.as_u32() < self.num_escaped_funcs);
         self.func_refs + index.as_u32() * size_of_u32::<VMFuncRef>()
     }
     #[inline]
-    pub fn vmfunction_import(&self, index: FuncIndex) -> u32 {
+    pub fn vmctx_function_imports_start(&self) -> u32 {
+        self.imported_functions
+    }
+    #[inline]
+    pub fn vmctx_function_import(&self, index: FuncIndex) -> u32 {
         assert!(index.as_u32() < self.num_imported_funcs);
         self.imported_functions + index.as_u32() * size_of_u32::<VMFunctionImport>()
     }
     #[inline]
-    pub fn vmtable_import(&self, index: TableIndex) -> u32 {
+    pub fn vmctx_table_imports_start(&self) -> u32 {
+        self.imported_tables
+    }
+    #[inline]
+    pub fn vmctx_table_import(&self, index: TableIndex) -> u32 {
         assert!(index.as_u32() < self.num_imported_tables);
         self.imported_tables + index.as_u32() * size_of_u32::<VMTableImport>()
     }
     #[inline]
-    pub fn vmmemory_import(&self, index: MemoryIndex) -> u32 {
+    pub fn vmctx_memory_imports_start(&self) -> u32 {
+        self.imported_memories
+    }
+    #[inline]
+    pub fn vmctx_memory_import(&self, index: MemoryIndex) -> u32 {
         assert!(index.as_u32() < self.num_imported_memories);
         self.imported_memories + index.as_u32() * size_of_u32::<VMMemoryImport>()
     }
     #[inline]
-    pub fn vmglobal_import(&self, index: GlobalIndex) -> u32 {
+    pub fn vmctx_global_imports_start(&self) -> u32 {
+        self.imported_globals
+    }
+    #[inline]
+    pub fn vmctx_global_import(&self, index: GlobalIndex) -> u32 {
         assert!(index.as_u32() < self.num_imported_globals);
         self.imported_globals + index.as_u32() * size_of_u32::<VMGlobalImport>()
     }
@@ -380,13 +500,13 @@ impl VMContextOffsets {
 
     /// Return the offset to the `base` field in `VMMemoryDefinition` index `index`.
     #[inline]
-    pub fn vmmemory_definition_base(&self, index: OwnedMemoryIndex) -> u32 {
-        self.vmmemory_definition(index) + offset_of!(VMMemoryDefinition, base) as u32
+    pub fn vmctx_memory_definition_base(&self, index: OwnedMemoryIndex) -> u32 {
+        self.vmctx_memory_definition(index) + offset_of!(VMMemoryDefinition, base) as u32
     }
     /// Return the offset to the `current_length` field in `VMMemoryDefinition` index `index`.
     #[inline]
-    pub fn vmmemory_definition_current_length(&self, index: OwnedMemoryIndex) -> u32 {
-        self.vmmemory_definition(index) + offset_of!(VMMemoryDefinition, current_length) as u32
+    pub fn vmctx_memory_definition_current_length(&self, index: OwnedMemoryIndex) -> u32 {
+        self.vmctx_memory_definition(index) + offset_of!(VMMemoryDefinition, current_length) as u32
     }
 }
 

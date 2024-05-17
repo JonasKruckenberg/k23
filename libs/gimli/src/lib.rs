@@ -30,9 +30,6 @@
 #[macro_use]
 extern crate alloc;
 
-#[cfg(feature = "endian-reader")]
-pub use stable_deref_trait::{CloneStableDeref, StableDeref};
-
 mod common;
 pub use crate::common::*;
 

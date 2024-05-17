@@ -1,51 +1,62 @@
 #![allow(unused)]
 
-use super::TranslatedModule;
-use crate::runtime::utils::value_type;
-use crate::runtime::{BuiltinFunctions, VMContextOffsets, WASM_PAGE_SIZE};
+use crate::rt::codegen::TranslatedModule;
+use crate::rt::utils::{value_type, wasm_call_signature};
+use crate::rt::vmcontext::VMContextPlan;
+use crate::rt::{NS_WASM_FUNC, WASM_PAGE_SIZE};
 use alloc::vec;
+use alloc::vec::Vec;
 use cranelift_codegen::cursor::FuncCursor;
-use cranelift_codegen::entity::{EntityRef, PrimaryMap};
+use cranelift_codegen::entity::PrimaryMap;
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::types::{I32, I64};
 use cranelift_codegen::ir::{
-    Fact, FuncRef, Function, GlobalValue, GlobalValueData, Inst, InstBuilder, MemFlags, MemoryType,
-    MemoryTypeData, MemoryTypeField, SigRef, Type, Value,
+    ExtFuncData, ExternalName, Fact, FuncRef, Function, GlobalValue, GlobalValueData, Inst,
+    InstBuilder, MemFlags, MemoryType, MemoryTypeData, MemoryTypeField, SigRef, UserExternalName,
+    Value,
 };
 use cranelift_codegen::isa::{TargetFrontendConfig, TargetIsa};
 use cranelift_frontend::FunctionBuilder;
 use cranelift_wasm::wasmparser::UnpackedIndex;
 use cranelift_wasm::{
-    FuncIndex, GlobalIndex, GlobalVariable, Heap, HeapData, HeapStyle, MemoryIndex, TableIndex,
-    TargetEnvironment, TypeConvert, TypeIndex, WasmHeapType, WasmResult,
+    FuncIndex, GlobalIndex, GlobalVariable, Heap, HeapData, HeapStyle, MemoryIndex,
+    ModuleInternedTypeIndex, TableIndex, TargetEnvironment, TypeConvert, TypeIndex, WasmHeapType,
+    WasmResult, WasmSubType,
 };
 
-pub struct FuncEnvironment<'module_env, 'wasm> {
+pub struct FunctionEnvironment<'module_env, 'wasm> {
     isa: &'module_env dyn TargetIsa,
     module: &'module_env TranslatedModule<'wasm>,
-    pub offsets: VMContextOffsets,
-    builtins: BuiltinFunctions,
+    types: &'module_env PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
+
     heaps: PrimaryMap<Heap, HeapData>,
 
+    vmctx_plan: VMContextPlan,
     vmctx: Option<GlobalValue>,
     pcc_vmctx_memtype: Option<MemoryType>,
 }
 
-impl<'module_env, 'wasm> FuncEnvironment<'module_env, 'wasm> {
+impl<'module_env, 'wasm> FunctionEnvironment<'module_env, 'wasm> {
     pub fn new(
         isa: &'module_env dyn TargetIsa,
         module: &'module_env TranslatedModule<'wasm>,
+        types: &'module_env PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
     ) -> Self {
         Self {
             isa,
             module,
+            types,
 
-            heaps: PrimaryMap::with_capacity(module.memory_plans.len()),
-            offsets: VMContextOffsets::for_module(isa, module),
-            builtins: BuiltinFunctions::new(isa),
+            heaps: Default::default(),
+
+            vmctx_plan: VMContextPlan::for_module(isa, module),
             vmctx: None,
             pcc_vmctx_memtype: None,
         }
+    }
+
+    pub fn vmctx_stack_limit_offset(&self) -> u32 {
+        self.vmctx_plan.stack_limit()
     }
 
     fn vmctx(&mut self, func: &mut Function) -> GlobalValue {
@@ -79,78 +90,9 @@ impl<'module_env, 'wasm> FuncEnvironment<'module_env, 'wasm> {
         let vmctx = self.vmctx(&mut pos.func);
         pos.ins().global_value(pointer_type, vmctx)
     }
-
-    fn get_global_location(
-        &mut self,
-        func: &mut Function,
-        global_index: GlobalIndex,
-    ) -> (GlobalValue, i32) {
-        // let pointer_type = self.pointer_type();
-        let vmctx = self.vmctx(func);
-        if let Some(def_index) = self.module.defined_global_index(global_index) {
-            let offset = i32::try_from(self.offsets.vmglobal_definition(def_index)).unwrap();
-            (vmctx, offset)
-        } else {
-            todo!("imported memories")
-        }
-    }
-
-    pub fn cast_memory_index_to_i64(
-        &self,
-        pos: &mut FuncCursor,
-        val: Value,
-        memory_index: MemoryIndex,
-    ) -> Value {
-        if self.memory_index_type(memory_index) == I64 {
-            val
-        } else {
-            pos.ins().uextend(I64, val)
-        }
-    }
-
-    fn memory_index_type(&self, index: MemoryIndex) -> Type {
-        if self.module.memory_plans[index].memory.memory64 {
-            I64
-        } else {
-            I32
-        }
-    }
-
-    pub fn cast_pointer_to_memory_index(
-        &self,
-        pos: &mut FuncCursor,
-        val: Value,
-        memory_index: MemoryIndex,
-    ) -> Value {
-        let desired_type = self.memory_index_type(memory_index);
-        let pointer_type = self.pointer_type();
-        assert_eq!(pos.func.dfg.value_type(val), pointer_type);
-
-        // The current length is of type `pointer_type` but we need to fit it
-        // into `desired_type`. We are guaranteed that the result will always
-        // fit, so we just need to do the right ireduce/sextend here.
-        if pointer_type == desired_type {
-            val
-        } else if pointer_type.bits() > desired_type.bits() {
-            pos.ins().ireduce(desired_type, val)
-        } else {
-            // Note that we `sextend` instead of the probably expected
-            // `uextend`. This function is only used within the contexts of
-            // `memory.size` and `memory.grow` where we're working with units of
-            // pages instead of actual bytes, so we know that the upper bit is
-            // always cleared for "valid values". The one case we care about
-            // sextend would be when the return value of `memory.grow` is `-1`,
-            // in which case we want to copy the sign bit.
-            //
-            // This should only come up on 32-bit hosts running wasm64 modules,
-            // which at some point also makes you question various assumptions
-            // made along the way...
-            pos.ins().sextend(desired_type, val)
-        }
-    }
 }
 
-impl<'module_env, 'wasm> TargetEnvironment for FuncEnvironment<'module_env, 'wasm> {
+impl<'module_env, 'wasm> TargetEnvironment for FunctionEnvironment<'module_env, 'wasm> {
     fn target_config(&self) -> TargetFrontendConfig {
         self.isa.frontend_config()
     }
@@ -164,19 +106,22 @@ impl<'module_env, 'wasm> TargetEnvironment for FuncEnvironment<'module_env, 'was
     }
 }
 
-impl<'module_env, 'wasm> TypeConvert for FuncEnvironment<'module_env, 'wasm> {
-    fn lookup_heap_type(&self, _index: UnpackedIndex) -> WasmHeapType {
+impl<'module_env, 'wasm> TypeConvert for FunctionEnvironment<'module_env, 'wasm> {
+    fn lookup_heap_type(&self, index: UnpackedIndex) -> WasmHeapType {
         todo!()
     }
 }
 
-impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment for FuncEnvironment<'module_env, 'wasm> {
+impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment
+    for FunctionEnvironment<'module_env, 'wasm>
+{
     fn make_global(
         &mut self,
         func: &mut Function,
-        index: GlobalIndex,
+        global_index: GlobalIndex,
     ) -> WasmResult<GlobalVariable> {
-        let ty = self.module.globals[index].wasm_ty;
+        let vmctx = self.vmctx(func);
+        let ty = self.module.globals[global_index].wasm_ty;
 
         if ty.is_vmgcref_type() {
             // Although reference-typed globals live at the same memory location as
@@ -188,9 +133,14 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment for FuncEnvironment<'mo
             return Ok(GlobalVariable::Custom);
         }
 
-        let (gv, offset) = self.get_global_location(func, index);
+        let offset = if let Some(def_index) = self.module.defined_global_index(global_index) {
+            i32::try_from(self.vmctx_plan.vmctx_global_definition(def_index)).unwrap()
+        } else {
+            todo!("imported memories")
+        };
+
         Ok(GlobalVariable::Memory {
-            gv,
+            gv: vmctx,
             offset: offset.into(),
             ty: value_type(self.isa, ty),
         })
@@ -230,7 +180,7 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment for FuncEnvironment<'mo
             .expect("imported memories");
         let owned_index = self.module.owned_memory_index(def_index);
         let base_offset =
-            i32::try_from(self.offsets.vmmemory_definition_base(owned_index)).unwrap();
+            i32::try_from(self.vmctx_plan.vmctx_memory_definition_base(owned_index)).unwrap();
 
         let (base_fact, data_memtype) = if let Some(ptr_memtype) = self.pcc_vmctx_memtype {
             // Create a memtype representing the untyped memory region.
@@ -282,22 +232,65 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment for FuncEnvironment<'mo
         });
         func.global_value_facts[base] = base_fact;
 
+        let index_type = if self.module.memory_plans[memory_index].memory.memory64 {
+            I64
+        } else {
+            I32
+        };
+
         Ok(self.heaps.push(HeapData {
             base,
             min_size,
             max_size,
             offset_guard_size: 0,
             style: HeapStyle::Static { bound: bound_bytes },
-            index_type: self.memory_index_type(memory_index),
+            index_type,
             memory_type: data_memtype,
         }))
     }
 
-    fn make_indirect_sig(&mut self, _func: &mut Function, _index: TypeIndex) -> WasmResult<SigRef> {
+    fn make_indirect_sig(&mut self, func: &mut Function, index: TypeIndex) -> WasmResult<SigRef> {
         todo!()
     }
 
     fn make_direct_func(&mut self, func: &mut Function, index: FuncIndex) -> WasmResult<FuncRef> {
+        let sig = self.module.functions[index].signature;
+        let sig = &self.types[sig];
+        let sig = wasm_call_signature(self.isa, sig.unwrap_func());
+
+        let sigref = func.import_signature(sig);
+        let nameref = func.declare_imported_user_function(UserExternalName {
+            namespace: NS_WASM_FUNC,
+            index: index.as_u32(),
+        });
+        let funcref = func.import_function(ExtFuncData {
+            name: ExternalName::User(nameref),
+            signature: sigref,
+            colocated: self.module.defined_function_index(index).is_some(),
+        });
+
+        Ok(funcref)
+    }
+
+    fn translate_call(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        callee_index: FuncIndex,
+        callee: FuncRef,
+        call_args: &[Value],
+    ) -> WasmResult<Inst> {
+        let mut real_call_args = Vec::with_capacity(call_args.len() + 1);
+        let vmctx = self.vmctx_val(&mut builder.cursor());
+
+        // Handle direct calls to locally-defined functions.
+        if !self.module.is_imported_function(callee_index) {
+            real_call_args.push(vmctx);
+            real_call_args.extend_from_slice(call_args);
+
+            // Finally, make the direct call!
+            return Ok(builder.ins().call(callee, &real_call_args));
+        }
+
         todo!()
     }
 
@@ -347,23 +340,12 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment for FuncEnvironment<'mo
 
     fn translate_memory_grow(
         &mut self,
-        mut pos: FuncCursor,
+        pos: FuncCursor,
         index: MemoryIndex,
-        _heap: Heap,
+        heap: Heap,
         val: Value,
     ) -> WasmResult<Value> {
         todo!()
-        // let memory_grow = self.builtins.memory32_grow(&mut pos.func);
-        //
-        // let index_arg = index.index();
-        //
-        // let memory_index = pos.ins().iconst(I32, index_arg as i64);
-        // let vmctx = self.vmctx_val(&mut pos);
-        //
-        // let val = self.cast_memory_index_to_i64(&mut pos, val, index);
-        // let call_inst = pos.ins().call(memory_grow, &[vmctx, val, memory_index]);
-        // let result = *pos.func.dfg.inst_results(call_inst).first().unwrap();
-        // Ok(self.cast_pointer_to_memory_index(&mut pos, result, index))
     }
 
     fn translate_memory_size(

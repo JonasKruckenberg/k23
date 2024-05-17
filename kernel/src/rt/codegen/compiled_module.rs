@@ -1,4 +1,4 @@
-use crate::runtime::translate::TranslatedModule;
+use crate::rt::codegen::translated_module::TranslatedModule;
 use cranelift_codegen::entity::PrimaryMap;
 use cranelift_wasm::{DefinedFuncIndex, ModuleInternedTypeIndex, WasmSubType};
 
@@ -12,7 +12,7 @@ pub struct CompiledModuleInfo<'wasm> {
 #[derive(Debug)]
 pub struct CompiledFunctionInfo {
     /// The [`FunctionLoc`] indicating the location of this function in the text
-    /// section of the compition artifact.
+    /// section of the compilation artifact.
     pub wasm_func_loc: FunctionLoc,
     /// A trampoline for native callers (e.g. `Func::wrap`) calling into this function (if needed).
     pub native_to_wasm_trampoline: Option<FunctionLoc>,

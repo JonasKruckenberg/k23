@@ -1,7 +1,5 @@
 use crate::frame_alloc::with_frame_alloc;
 use crate::kconfig;
-use crate::runtime::translate::{MemoryPlan, TablePlan};
-use crate::runtime::{VMContext, VMContextOffsets};
 use alloc::sync::Arc;
 use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
 use core::fmt;
@@ -57,7 +55,7 @@ impl GuestAllocator {
             virt_offset,
         };
 
-        let (mem_virt, flush) = inner.map_additional_pages(32);
+        let (mem_virt, flush) = inner.map_additional_pages(64);
         flush.flush().unwrap();
 
         unsafe {
@@ -76,29 +74,6 @@ impl GuestAllocator {
 
     pub fn root_table(&self) -> VirtualAddress {
         self.0.root_table
-    }
-
-    pub fn allocate_vmctx(&self, offsets: &VMContextOffsets) -> NonNull<VMContext> {
-        let vmctx_layout = Layout::from_size_align(offsets.size() as usize, 8).unwrap();
-        self.allocate_zeroed(vmctx_layout).unwrap().cast()
-    }
-
-    pub fn deallocate_vmctx(&self, ptr: NonNull<VMContext>, offsets: &VMContextOffsets) {
-        let vmctx_layout = Layout::from_size_align(offsets.size() as usize, 8).unwrap();
-        unsafe { self.deallocate(ptr.cast(), vmctx_layout) };
-    }
-
-    pub fn allocate_stack(&self, stack_size: usize) -> NonNull<[u8]> {
-        let stack_layout = Layout::from_size_align(stack_size, 16).unwrap();
-        self.allocate_zeroed(stack_layout).unwrap()
-    }
-
-    pub fn allocate_memory(&self, plan: MemoryPlan) {
-        todo!()
-    }
-
-    pub fn allocate_table(&self, plan: TablePlan) {
-        todo!()
     }
 }
 

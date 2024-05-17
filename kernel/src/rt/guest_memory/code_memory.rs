@@ -1,10 +1,10 @@
 use crate::frame_alloc::with_frame_alloc;
 use crate::kconfig;
-use crate::runtime::compile::{
+use crate::rt::codegen::{
     FunctionLoc, ELF_K23_INFO, ELF_K23_TRAPS, ELF_TEXT, ELF_WASM_DATA, ELF_WASM_DWARF,
     ELF_WASM_NAMES,
 };
-use crate::runtime::instantiate::GuestVec;
+use crate::rt::guest_memory::AlignedVec;
 use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
@@ -12,7 +12,7 @@ use object::{File, Object, ObjectSection};
 use vmm::{AddressRangeExt, EntryFlags, Flush, Mapper, VirtualAddress};
 
 pub struct CodeMemory {
-    inner: GuestVec<u8, { kconfig::PAGE_SIZE }>,
+    inner: AlignedVec<u8, { kconfig::PAGE_SIZE }>,
     published: bool,
 
     text: Range<VirtualAddress>,
@@ -20,11 +20,11 @@ pub struct CodeMemory {
     func_name_data: Range<VirtualAddress>,
     trap_data: Range<VirtualAddress>,
     dwarf: Range<VirtualAddress>,
-    info_data: Range<VirtualAddress>,
+    info: Range<VirtualAddress>,
 }
 
 impl CodeMemory {
-    pub fn new(vec: GuestVec<u8, { kconfig::PAGE_SIZE }>) -> Self {
+    pub fn new(vec: AlignedVec<u8, { kconfig::PAGE_SIZE }>) -> Self {
         let obj = File::parse(vec.as_slice()).expect("failed to parse compilation artifact");
 
         let mut text = None;
@@ -32,7 +32,7 @@ impl CodeMemory {
         let mut func_name_data = Default::default();
         let mut trap_data = Default::default();
         let mut dwarf = Default::default();
-        let mut info_data = Default::default();
+        let mut info = Default::default();
 
         for section in obj.sections() {
             let name = section.name().unwrap();
@@ -66,7 +66,7 @@ impl CodeMemory {
                 ELF_WASM_DWARF => dwarf = range,
 
                 ELF_K23_TRAPS => trap_data = range,
-                ELF_K23_INFO => info_data = range,
+                ELF_K23_INFO => info = range,
                 _ => {}
             }
         }
@@ -80,7 +80,7 @@ impl CodeMemory {
             func_name_data,
             trap_data,
             dwarf,
-            info_data,
+            info,
         }
     }
 
@@ -135,13 +135,14 @@ impl CodeMemory {
 impl fmt::Debug for CodeMemory {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("CodeMemory")
-            .field("address_range", &self.inner.as_ptr_range())
+            .field("inner", &self.inner.as_ptr_range())
             .field("published", &self.published)
             .field("text", &self.text)
             .field("wasm_data", &self.wasm_data)
             .field("func_name_data", &self.func_name_data)
             .field("trap_data", &self.trap_data)
-            .field("info_data", &self.info_data)
+            .field("dwarf", &self.dwarf)
+            .field("info", &self.info)
             .finish()
     }
 }

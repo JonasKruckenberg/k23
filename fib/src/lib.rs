@@ -7,7 +7,7 @@ pub extern "C" fn fib(n: u32) -> u32 {
     for _ in 0..n {
         let t = a;
         a = b;
-        b = b.saturating_add(t);
+        b += t;
     }
     return b;
 }

@@ -985,16 +985,6 @@ impl<R: Reader> OperationIter<R> {
     }
 }
 
-#[cfg(feature = "fallible-iterator")]
-impl<R: Reader> fallible_iterator::FallibleIterator for OperationIter<R> {
-    type Item = Operation<R>;
-    type Error = Error;
-
-    fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
-        OperationIter::next(self)
-    }
-}
-
 /// Specification of what storage should be used for [`Evaluation`].
 ///
 #[cfg_attr(

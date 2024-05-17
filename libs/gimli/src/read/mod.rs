@@ -171,8 +171,6 @@
 
 use core::fmt::{self, Debug};
 use core::result;
-#[cfg(feature = "std")]
-use std::{error, io};
 
 use crate::common::{Register, SectionId};
 use crate::constants;
@@ -193,11 +191,6 @@ pub use self::dwarf::*;
 
 mod endian_slice;
 pub use self::endian_slice::*;
-
-#[cfg(feature = "endian-reader")]
-mod endian_reader;
-#[cfg(feature = "endian-reader")]
-pub use self::endian_reader::*;
 
 mod reader;
 pub use self::reader::*;
@@ -581,16 +574,6 @@ impl Error {
             Error::InvalidIndexRow => "Invalid hash row in `.dwp` index.",
             Error::UnknownIndexSection => "Unknown section type in `.dwp` index.",
         }
-    }
-}
-
-#[cfg(feature = "std")]
-impl error::Error for Error {}
-
-#[cfg(feature = "std")]
-impl From<io::Error> for Error {
-    fn from(_: io::Error) -> Self {
-        Error::Io
     }
 }
 

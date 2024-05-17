@@ -1,6 +1,7 @@
 mod impls;
 
-use super::{VMContext, NS_WASM_BUILTIN};
+use crate::rt::vmcontext::VMContext;
+use crate::rt::NS_WASM_BUILTIN;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
@@ -326,7 +327,7 @@ macro_rules! define_builtin_array {
             #[allow(unused_doc_comments)]
             pub const INIT: VMBuiltinFunctionsArray = VMBuiltinFunctionsArray {
                 $(
-                    $name: crate::runtime::builtins::impls::$name,
+                    $name: crate::rt::builtins::impls::$name,
                 )*
             };
         }
