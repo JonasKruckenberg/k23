@@ -5,7 +5,7 @@ jobs:
     name: Vet Dependencies
     runs-on: ubuntu-latest
     env:
-      CARGO_VET_VERSION: 0.9
+      CARGO_VET_VERSION: 0.9.1
     steps:
       - uses: actions/checkout@master
       - name: Install Rust
