@@ -8,8 +8,8 @@ static FRAME_ALLOC: Mutex<MaybeUninit<BitMapAllocator<kconfig::MEMORY_MODE>>> =
     Mutex::new(MaybeUninit::uninit());
 
 pub fn init<F, R>(memories: &[Range<PhysicalAddress>], f: F) -> R
-    where
-        F: FnOnce(&mut BitMapAllocator<kconfig::MEMORY_MODE>) -> R,
+where
+    F: FnOnce(&mut BitMapAllocator<kconfig::MEMORY_MODE>) -> R,
 {
     let bump_alloc = unsafe { BumpAllocator::new(memories) };
     let mut alloc = BitMapAllocator::new(bump_alloc).unwrap();

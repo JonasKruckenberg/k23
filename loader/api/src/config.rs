@@ -29,7 +29,7 @@ impl LoaderConfig {
             magic: CFG_MAGIC,
             // mappings: Mappings::new_default(),
             kernel_stack_size_pages: 20,
-            memory_mode: MemoryMode::new_default()
+            memory_mode: MemoryMode::new_default(),
         }
     }
 

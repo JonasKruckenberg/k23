@@ -32,7 +32,6 @@ impl log::Log for Logger {
     fn flush(&self) {}
 }
 
-
 // use crate::{arch, kconfig};
 // use core::cell::UnsafeCell;
 // use core::fmt::Write;
@@ -41,7 +40,7 @@ impl log::Log for Logger {
 // use sync::ReentrantMutex;
 // use uart_16550::SerialPort;
 // use vmm::VirtualAddress;
-// 
+//
 // /// ## Reentrancy
 // ///
 // /// The logger uses a `ReentrantMutex`, i.e. one that can be locked from *the same hart* multiple
@@ -59,33 +58,33 @@ impl log::Log for Logger {
 // /// we have to use *Interior Mutability* which we just use an `UnsafeCell` for because - again - this
 // /// use-case is special, and we know it's safe.
 // static LOGGER: Logger = Logger(ReentrantMutex::new(UnsafeCell::new(MaybeUninit::uninit())));
-// 
+//
 // struct Logger(ReentrantMutex<UnsafeCell<MaybeUninit<SerialPort>>>);
-// 
+//
 // /// # Safety
 // ///
 // /// The caller has to ensure the `base` address points to the start of a UART devices MMIO-range
 // pub unsafe fn init(base: VirtualAddress, clock_freq: u32) {
 //     log::set_logger(&LOGGER).unwrap();
 //     log::set_max_level(kconfig::LOG_LEVEL.to_level_filter());
-// 
+//
 //     let serial_port = SerialPort::new(base.as_raw(), clock_freq, 38400);
-// 
+//
 //     (&mut *LOGGER.0.lock().get()).write(serial_port);
 // }
-// 
+//
 // impl log::Log for Logger {
 //     fn enabled(&self, _metadata: &Metadata) -> bool {
 //         true
 //     }
-// 
+//
 //     fn log(&self, record: &Record) {
 //         if self.enabled(record.metadata()) {
 //             let uart = self.0.lock();
 //             // Safety: We only ever lock the mutex here, so potential double-locking only occurs within trap handlers
 //             // were this is fine. Writing bytes to the uart doesn't meaningfully impact the original lock holder.
 //             let uart = unsafe { (&mut *uart.get()).assume_init_mut() };
-// 
+//
 //             let _ = arch::HARTID.with(|hartid| {
 //                 writeln!(
 //                     uart,
@@ -97,6 +96,6 @@ impl log::Log for Logger {
 //             });
 //         }
 //     }
-// 
+//
 //     fn flush(&self) {}
 // }
