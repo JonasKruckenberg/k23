@@ -1,10 +1,10 @@
 OUTPUT_ARCH(riscv)
-ENTRY(kstart)
+ENTRY(_start)
 
-KERNEL_OFFSET = 0xffffffff80000000;
+LOADER_OFFSET = 0x80200000;
 
 SECTIONS {
-    . = KERNEL_OFFSET;
+    . = LOADER_OFFSET;
     . = ALIGN(4096);
 
     .text : {
@@ -15,10 +15,10 @@ SECTIONS {
         __text_end = .;
     }
 
-    __global_pointer$ = .;
-
     .rodata : {
+        . = ALIGN(4096); # 4KB page alignment for mapping
         __rodata_start = .;
+        *(.got .got.*)
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
         . = ALIGN(4096); # 4KB page alignment for mapping
@@ -30,29 +30,20 @@ SECTIONS {
         __bss_start = .;
         *(.bss .bss.*)
         *(.sbss .sbss.*)
-        . = ALIGN(4096); # 4KB page alignment for mapping
         __bss_end = .;
     }
 
     .data : {
         __data_start = .;
+        PROVIDE(__global_pointer$ = . + 0x800);
         *(.data .data.*)
         *(.sdata .sdata.*)
         . = ALIGN(4096); # 4KB page alignment for mapping
         __data_end = .;
     }
 
-    .tbss : {
-         __tbss_start = .;
-         *(.tbss .tbss.*)
-         __tbss_end = .;
-    }
-
-    .tdata : {
-         __tdata_start = .;
-         *(.tdata .tdata.*)
-         __tdata_end = .;
-    }
+    . = ALIGN(4096);
+    __stack_start = .;
 
     /DISCARD/ : {
         *(.comment*)

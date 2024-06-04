@@ -17,13 +17,11 @@ unsafe impl<T: Send + Sync> Sync for Once<T> {}
 unsafe impl<T: Send> Send for Once<T> {}
 
 impl<T> Once<T> {
-    pub const INIT: Self = Self {
-        status: AtomicU8::new(STATUS_INCOMPLETE),
-        data: UnsafeCell::new(MaybeUninit::uninit()),
-    };
-
     pub const fn new() -> Self {
-        Self::INIT
+        Self {
+            status: AtomicU8::new(STATUS_INCOMPLETE),
+            data: UnsafeCell::new(MaybeUninit::uninit()),
+        }
     }
 
     pub fn get_or_init<F: FnOnce() -> T>(&self, f: F) -> &T {
@@ -131,6 +129,12 @@ impl<T> Once<T> {
         // * `UnsafeCell`/inner deref: data never changes again
         // * `MaybeUninit`/outer deref: data was initialized
         &mut *(*self.data.get()).as_mut_ptr()
+    }
+}
+
+impl<T> Default for Once<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

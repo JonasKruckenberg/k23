@@ -1,5 +1,7 @@
-[alias]
-xtask = "run --package xtask --"
-
-[env]
-K23_CONFIG = "configs/riscv64-qemu.toml" # Default configuration path as a fallback for rust-analyzer
+[target.'cfg(all(target_arch = "riscv64", target_os="none"))']
+runner = "cargo run --package bootimg-runner --"
+rustflags = [
+    "-C", "relocation-model=pie",
+    "-C", "link-args=-zseparate-loadable-segments",
+    "-C", "link-args=--image-base=0xffffffff80000000"
+]

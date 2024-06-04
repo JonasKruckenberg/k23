@@ -1,25 +1,30 @@
-#![cfg_attr(not(test), no_std)]
-#![feature(error_in_core)]
-
-use crate::entry::Entry;
-pub use alloc::{BitMapAllocator, BumpAllocator, FrameAllocator, FrameUsage};
-pub use arch::*;
-use bitflags::Flags;
-use core::fmt::Formatter;
-use core::ops::Range;
-use core::{fmt, mem};
-pub use error::Error;
-pub use flush::Flush;
-pub use mapper::Mapper;
-pub use table::Table;
+#![no_std]
+#![feature(error_in_core, used_with_arg)]
+#![no_main]
 
 mod alloc;
 mod arch;
+mod elf;
 mod entry;
 mod error;
 mod flush;
 mod mapper;
 mod table;
+
+use crate::entry::Entry;
+use bitflags::Flags;
+use core::fmt::Formatter;
+use core::ops::Range;
+use core::{fmt, mem};
+
+pub use alloc::{BitMapAllocator, BumpAllocator, FrameAllocator, FrameUsage};
+pub use arch::*;
+#[cfg(feature = "elf")]
+pub use elf::TlsTemplate;
+pub use error::Error;
+pub use flush::Flush;
+pub use mapper::Mapper;
+pub use table::Table;
 
 pub(crate) type Result<T> = core::result::Result<T, Error>;
 
@@ -36,9 +41,15 @@ pub trait Mode {
     const PAGE_TABLE_ENTRIES: usize;
 
     /// Default flags for a valid page table leaf
-    const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags;
+    const ENTRY_FLAGS_LEAF: Self::EntryFlags;
     /// Default flags for a valid page table subtable entry
-    const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags;
+    const ENTRY_FLAGS_TABLE: Self::EntryFlags;
+    /// Flags that mark something as read-execute
+    const ENTRY_FLAGS_RX: Self::EntryFlags;
+    /// Flags that mark something as read-only
+    const ENTRY_FLAGS_RO: Self::EntryFlags;
+    /// Flags that mark something as read-write
+    const ENTRY_FLAGS_RW: Self::EntryFlags;
 
     /// On RiscV targets the entry's physical address bits are shifted 2 bits to the right.
     /// This constant is present to account for that, should be set to 0 on all other targets.
@@ -66,7 +77,7 @@ pub trait Mode {
         Self: Sized;
 
     fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-        unsafe { VirtualAddress::new(phys.as_raw()).add(Self::PHYS_OFFSET) }
+        VirtualAddress::new(phys.as_raw()).add(Self::PHYS_OFFSET)
     }
 }
 
@@ -75,13 +86,17 @@ pub trait Mode {
 pub struct PhysicalAddress(usize);
 
 impl PhysicalAddress {
-    /// # Safety
-    ///
-    /// `PhysicalAddress` is treated like a pointer in many places and therefore the caller has to
-    /// uphold the same safety guarantees. Namely, the caller has to ensure the given address is valid.
-    pub const unsafe fn new(bits: usize) -> Self {
+    pub const fn new(bits: usize) -> Self {
         debug_assert!(bits != 0);
         Self(bits)
+    }
+
+    pub const fn offset(self, offset: isize) -> Self {
+        if offset.is_negative() {
+            self.sub(offset.wrapping_abs() as usize)
+        } else {
+            self.add(offset as usize)
+        }
     }
 
     pub const fn add(self, offset: usize) -> Self {
@@ -119,6 +134,14 @@ impl PhysicalAddress {
 
         self.as_raw() & (align - 1) == 0
     }
+
+    pub const fn align_down(self, alignment: usize) -> Self {
+        Self(self.0 & !(alignment - 1))
+    }
+
+    pub const fn align_up(self, alignment: usize) -> Self {
+        Self((self.0 + alignment - 1) & !(alignment - 1))
+    }
 }
 
 impl fmt::Display for PhysicalAddress {
@@ -140,14 +163,18 @@ impl fmt::Debug for PhysicalAddress {
 pub struct VirtualAddress(usize);
 
 impl VirtualAddress {
-    /// # Safety
-    ///
-    /// No input checking is performed. The caller has to ensure the given address is a valid
-    /// virtual address under current memory mode.
-    pub const unsafe fn new(bits: usize) -> Self {
+    pub const fn new(bits: usize) -> Self {
         // debug_assert!(bits <= 0x0000_003f_ffff_ffff || bits > 0xffff_ffbf_ffff_ffff);
         debug_assert!(bits != 0);
         Self(bits)
+    }
+
+    pub const fn offset(self, offset: isize) -> Self {
+        if offset.is_negative() {
+            self.sub(offset.wrapping_abs() as usize)
+        } else {
+            self.add(offset as usize)
+        }
     }
 
     pub const fn add(self, offset: usize) -> Self {
@@ -161,7 +188,7 @@ impl VirtualAddress {
     pub const fn sub(self, offset: usize) -> Self {
         let (out, overflow) = self.0.overflowing_sub(offset);
         if overflow {
-            panic!("physical address underflow");
+            panic!("virtual address overflow");
         }
         Self(out)
     }
@@ -169,7 +196,7 @@ impl VirtualAddress {
     pub const fn sub_addr(self, rhs: Self) -> usize {
         let (out, overflow) = self.0.overflowing_sub(rhs.0);
         if overflow {
-            panic!("physical address underflow");
+            panic!("virtual address underflow");
         }
         out
     }
@@ -184,6 +211,14 @@ impl VirtualAddress {
         }
 
         self.as_raw() & (align - 1) == 0
+    }
+
+    pub const fn align_down(self, alignment: usize) -> Self {
+        Self(self.0 & !(alignment - 1))
+    }
+
+    pub const fn align_up(self, alignment: usize) -> Self {
+        Self((self.0 + alignment - 1) & !(alignment - 1))
     }
 }
 
@@ -202,20 +237,12 @@ impl fmt::Debug for VirtualAddress {
 }
 
 pub trait AddressRangeExt {
-    fn align(self, alignment: usize) -> Self;
     fn is_aligned(&self, alignment: usize) -> bool;
     fn size(&self) -> usize;
     fn add(self, offset: usize) -> Self;
 }
 
 impl AddressRangeExt for Range<PhysicalAddress> {
-    fn align(self, alignment: usize) -> Self {
-        let start = self.start.as_raw() & !(alignment - 1);
-        let end = (self.end.as_raw() + alignment - 1) & !(alignment - 1);
-
-        unsafe { PhysicalAddress::new(start)..PhysicalAddress::new(end) }
-    }
-
     fn is_aligned(&self, alignment: usize) -> bool {
         self.start.is_aligned(alignment) && self.end.is_aligned(alignment)
     }
@@ -230,13 +257,6 @@ impl AddressRangeExt for Range<PhysicalAddress> {
 }
 
 impl AddressRangeExt for Range<VirtualAddress> {
-    fn align(self, alignment: usize) -> Self {
-        let start = self.start.as_raw() & !(alignment - 1);
-        let end = (self.end.as_raw() + alignment - 1) & !(alignment - 1);
-
-        unsafe { VirtualAddress::new(start)..VirtualAddress::new(end) }
-    }
-
     fn is_aligned(&self, alignment: usize) -> bool {
         self.start.is_aligned(alignment) && self.end.is_aligned(alignment)
     }
@@ -264,6 +284,7 @@ pub(crate) fn zero_frames<M: Mode>(mut ptr: *mut u64, num_frames: usize) {
 /// (i.e. no address translation is happening). It will wrap another `Mode` implementation and forward
 /// functionality and properties to that inner implementation, **except** for the `Mode::phys_to_virt`
 /// function which will always return and **identity translation** of the given physical address.
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct INIT<M>(M);
 
@@ -282,8 +303,11 @@ impl<M: Mode> Mode for INIT<M> {
     const PAGE_TABLE_LEVELS: usize = M::PAGE_TABLE_LEVELS;
     const PAGE_TABLE_ENTRIES: usize = M::PAGE_TABLE_ENTRIES;
 
-    const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags = M::ENTRY_FLAG_DEFAULT_LEAF;
-    const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags = M::ENTRY_FLAG_DEFAULT_TABLE;
+    const ENTRY_FLAGS_LEAF: Self::EntryFlags = M::ENTRY_FLAGS_LEAF;
+    const ENTRY_FLAGS_TABLE: Self::EntryFlags = M::ENTRY_FLAGS_TABLE;
+    const ENTRY_FLAGS_RX: Self::EntryFlags = M::ENTRY_FLAGS_RX;
+    const ENTRY_FLAGS_RO: Self::EntryFlags = M::ENTRY_FLAGS_RO;
+    const ENTRY_FLAGS_RW: Self::EntryFlags = M::ENTRY_FLAGS_RW;
 
     const ENTRY_ADDRESS_SHIFT: usize = M::ENTRY_ADDRESS_SHIFT;
 
@@ -307,7 +331,16 @@ impl<M: Mode> Mode for INIT<M> {
     where
         Self: Sized,
     {
-        let entry = unsafe { core::mem::transmute(entry) };
+        // Safety: INIT<M> has the same layout as M
+        let entry: &Entry<M> = unsafe { mem::transmute(entry) };
         M::entry_is_leaf(entry)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[panic_handler]
+    fn panic(_: &core::panic::PanicInfo) -> ! {
+        loop {}
     }
 }

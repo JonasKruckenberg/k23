@@ -6,19 +6,19 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-cfg-if.workspace = true
-log.workspace = true
-sync.workspace = true
-vmm.workspace = true
-arrayvec.workspace = true
+loader-api.workspace = true
 dtb-parser.workspace = true
-riscv.workspace = true
-ed25519-dalek = { workspace = true, features = ["fast"] }
+vmm = { workspace = true, features = ["elf"] }
+sync.workspace = true
+
+cfg-if.workspace = true
+arrayvec.workspace = true
+log.workspace = true
+lz4_flex.workspace = true
 bitflags.workspace = true
+ed25519-dalek = { workspace = true, features = ["fast"] }
+linked_list_allocator.workspace = true
+object = { workspace = true, features = ["read_core", "elf"] }
 
-[build-dependencies]
-build-config.workspace = true
-anyhow.workspace = true
-
-[features]
-verify-image = []
+[target.'cfg(target_arch = "riscv64")'.dependencies]
+riscv.workspace = true

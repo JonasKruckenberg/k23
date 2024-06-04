@@ -1,0 +1,9 @@
+[package]
+name = "loader-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vmm = { workspace = true, features = ["elf"] }
+loader-api-macros = { path = "macros" }
+cfg-if.workspace = true

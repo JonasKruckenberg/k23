@@ -1,138 +1,175 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const, split_array)]
+#![feature(naked_functions, asm_const, maybe_uninit_slice)]
 
-use crate::paging::{own_regions, OwnRegions, PageTableResult};
-use boot_info::BootInfo;
+mod arch;
+mod logger;
+mod machine_info;
+mod mapping;
+mod panic;
+mod payload;
+
+// Configuration constants and statics defined by the build script
+include!(concat!(env!("OUT_DIR"), "/gen.rs"));
+
+pub mod kconfig {
+    #[allow(non_camel_case_types)]
+    pub type MEMORY_MODE = vmm::Riscv64Sv39;
+    pub const STACK_SIZE_PAGES: usize = 32;
+    pub const PAGE_SIZE: usize = <MEMORY_MODE as ::vmm::Mode>::PAGE_SIZE;
+}
+
+use crate::machine_info::MachineInfo;
+// use crate::mapping::{set_up_mappings, Mappings};
+use crate::mapping::{set_up_mappings, Mappings};
+use crate::payload::Payload;
+use core::mem::MaybeUninit;
 use core::ops::Range;
+use core::ptr::{addr_of, addr_of_mut};
 use core::{ptr, slice};
-use ed25519_dalek::Signature;
+use linked_list_allocator::LockedHeap;
+use loader_api::{MemoryRegion, MemoryRegionKind};
 use sync::Once;
 use vmm::{
     AddressRangeExt, BumpAllocator, FrameAllocator, Mode, PhysicalAddress, VirtualAddress, INIT,
 };
 
-mod arch;
-mod boot_info;
-mod elf;
-mod logger;
-mod paging;
-mod panic;
+#[global_allocator]
+static ALLOC: LockedHeap = LockedHeap::empty();
 
-pub mod kconfig {
-    // Configuration constants and statics defined by the build script
-    include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
-}
+fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
+    log::info!("Hart {hartid} started");
 
-fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
-    log::debug!("Hart {hartid} started");
+    static MAPPINGS: Once<Mappings> = Once::new();
 
-    static INIT: Once<(PageTableResult, Range<VirtualAddress>, OwnRegions)> = Once::new();
-
-    let (page_table_result, fdt_virt, own_regions) = INIT.get_or_init(|| {
-        let own_regions = own_regions(boot_info);
+    let mappings = MAPPINGS.get_or_init(|| {
+        let own_regions = LoaderRegions::new(machine_info);
         log::trace!("{own_regions:?}");
 
-        // Safety: The boot_info module ensures the memory entries are in the right order
+        // Safety: The machine_info module ensures the memory entries are in the right order
         let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> = unsafe {
-            BumpAllocator::new_with_lower_bound(&boot_info.memories, 0, own_regions.read_write.end)
+            BumpAllocator::new_with_lower_bound(&machine_info.memories, own_regions.read_write.end)
         };
 
-        let fdt_phys = allocate_and_copy(&mut alloc, boot_info.fdt);
-        log::trace!("Copied FDT to {fdt_phys:?}");
-
-        let fdt_virt = kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.start)
-            ..kconfig::MEMORY_MODE::phys_to_virt(fdt_phys.end);
-
-        // 1. Verify kernel signature (skip for debug builds because it's very slow)
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "verify-image")] {
-                let kernel = verify_kernel_signature(kconfig::VERIFYING_KEY, kconfig::KERNEL_IMAGE);
-                log::info!("Successfully verified kernel image signature");
-            } else {
-                let kernel = &kconfig::KERNEL_IMAGE[Signature::BYTE_SIZE..];
-            }
+        unsafe {
+            ALLOC.lock().init(
+                machine_info.memories[0].start.as_raw() as *mut u8,
+                machine_info.memories[0].size(),
+            );
         }
 
-        // TODO decompress kernel
+        let fdt_virt = allocate_and_copy_fdt(machine_info, &mut alloc).unwrap();
 
-        // 2. Copy kernel to top of physmem
-        let kernel = allocate_and_copy(&mut alloc, kernel);
-        log::trace!("Copied kernel to {kernel:?}");
+        let payload = Payload::from_signed_and_compressed(PAYLOAD, VERIFYING_KEY, &mut alloc);
 
-        let kernel_sections = elf::parse(unsafe {
-            slice::from_raw_parts(kernel.start.as_raw() as *const _, kernel.size())
+        let mut mappings =
+            set_up_mappings(payload, machine_info, &own_regions, fdt_virt, &mut alloc).unwrap();
+
+        let memory_regions = mappings.finalize_memory_regions(|_, raw_regions| {
+            let mut next_region = 0;
+            let mut push_region = |region: MemoryRegion| {
+                raw_regions[next_region].write(region);
+                next_region += 1;
+            };
+
+            for used_region in alloc.used_regions() {
+                push_region(MemoryRegion {
+                    range: used_region,
+                    kind: MemoryRegionKind::Loader,
+                });
+            }
+
+            for free_region in alloc.free_regions() {
+                push_region(MemoryRegion {
+                    range: free_region,
+                    kind: MemoryRegionKind::Usable,
+                });
+            }
+
+            unsafe { MaybeUninit::slice_assume_init_mut(&mut raw_regions[0..next_region]) }
         });
 
-        let res = paging::init(&mut alloc, boot_info, kernel_sections).unwrap();
+        mappings.finalize_boot_info(machine_info, memory_regions);
 
-        (res, fdt_virt, own_regions)
+        mappings
     });
 
-    log::debug!("Hart {hartid} Activating page table...");
-    page_table_result.activate_table();
-
-    let hartmem = page_table_result.hartmem_virt(hartid);
-    let stack_virt = hartmem.start
-        ..hartmem
-            .start
-            .add(kconfig::KERNEL_STACK_SIZE_PAGES * kconfig::PAGE_SIZE);
-    let tls_virt = hartmem
-        .start
-        .add(kconfig::KERNEL_STACK_SIZE_PAGES * kconfig::PAGE_SIZE)..hartmem.end;
-
-    let own_region = INIT::<kconfig::MEMORY_MODE>::phys_to_virt(own_regions.executable.start)
-        ..INIT::<kconfig::MEMORY_MODE>::phys_to_virt(own_regions.read_write.end);
-
-    let page_alloc_offset = unsafe { VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET) }
-        .sub(hartmem.size() * boot_info.cpus);
+    mappings.activate_table();
+    mappings.initialize_tls_region_for_hart(hartid);
 
     unsafe {
         arch::kernel_entry(
-            hartid,                               // hartid
-            tls_virt.start,                       // thread_ptr
-            page_table_result.kernel_entry_virt,  // func
-            boot_info.boot_hart,                  // boot_hart
-            fdt_virt.start,                       // fdt_virt
-            stack_virt,                           // stack
-            own_region,                           // loader
-            page_alloc_offset,                    // page_alloc_offset
-            page_table_result.frame_alloc_offset, // frame_alloc_offset
-        );
-    };
+            mappings.entry_point(),
+            mappings
+                .tls_region_for_hart(hartid)
+                .unwrap_or_default()
+                .start,
+            hartid,
+            mappings.stack_region_for_hart(hartid),
+            mappings.boot_info(),
+        )
+    }
 }
 
-/// Allocates enough space using the BumpAllocator and copies the given bytes into it
-fn allocate_and_copy(
+// move the FDT from wherever the previous bootloader placed it into a properly allocated place,
+// so we don't accidentally override it
+pub fn allocate_and_copy_fdt(
+    machine_info: &MachineInfo,
     alloc: &mut BumpAllocator<INIT<kconfig::MEMORY_MODE>>,
-    src: &[u8],
-) -> Range<PhysicalAddress> {
-    let frames = src.len().div_ceil(kconfig::PAGE_SIZE);
+) -> Result<VirtualAddress, vmm::Error> {
+    let frames = machine_info.fdt.len().div_ceil(kconfig::PAGE_SIZE);
     let base = alloc.allocate_frames(frames).unwrap();
 
     unsafe {
-        let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, src.len());
+        let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, machine_info.fdt.len());
 
-        ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
+        ptr::copy_nonoverlapping(machine_info.fdt.as_ptr(), dst.as_mut_ptr(), dst.len());
     }
 
-    base..base.add(src.len())
+    Ok(kconfig::MEMORY_MODE::phys_to_virt(base))
 }
 
-#[cfg(feature = "verify-image")]
-fn verify_kernel_signature<'a>(
-    verifying_key: &[u8; ed25519_dalek::PUBLIC_KEY_LENGTH],
-    kernel_image: &'a [u8],
-) -> &'a [u8] {
-    use ed25519_dalek::{Verifier, VerifyingKey};
+#[derive(Debug)]
+pub struct LoaderRegions {
+    pub executable: Range<PhysicalAddress>,
+    pub read_only: Range<PhysicalAddress>,
+    pub read_write: Range<PhysicalAddress>,
+}
 
-    let verifying_key = VerifyingKey::from_bytes(verifying_key).unwrap();
-    let (signature, kernel) = kernel_image.split_at(Signature::BYTE_SIZE);
-    let signature = Signature::from_slice(signature).unwrap();
+impl LoaderRegions {
+    pub fn new(machine_info: &MachineInfo) -> Self {
+        extern "C" {
+            static __text_start: u8;
+            static __text_end: u8;
+            static __rodata_start: u8;
+            static __rodata_end: u8;
+            static __bss_start: u8;
+            static __stack_start: u8;
+        }
 
-    verifying_key
-        .verify(kernel, &signature)
-        .expect("failed to verify kernel image signature");
+        let executable: Range<PhysicalAddress> = unsafe {
+            PhysicalAddress::new(addr_of!(__text_start) as usize)
+                ..PhysicalAddress::new(addr_of!(__text_end) as usize)
+        };
 
-    kernel
+        let read_only: Range<PhysicalAddress> = unsafe {
+            PhysicalAddress::new(addr_of!(__rodata_start) as usize)
+                ..PhysicalAddress::new(addr_of!(__rodata_end) as usize)
+        };
+
+        let read_write: Range<PhysicalAddress> = unsafe {
+            let start = PhysicalAddress::new(addr_of!(__bss_start) as usize);
+            let stack_start = PhysicalAddress::new(addr_of!(__stack_start) as usize);
+
+            start
+                ..stack_start
+                    .add(machine_info.cpus * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE)
+        };
+
+        LoaderRegions {
+            executable,
+            read_only,
+            read_write,
+        }
+    }
 }

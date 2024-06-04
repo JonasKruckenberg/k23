@@ -6,21 +6,17 @@
     allocator_api,
     thread_local,
     error_in_core,
-    hint_assert_unchecked
+    hint_assert_unchecked,
+    used_with_arg
 )]
 
 extern crate alloc;
 
-use crate::arch::STACK;
 use crate::runtime::{Engine, Linker, Module, Store};
-use core::arch::asm;
-use core::ops::Range;
 use cranelift_codegen::settings::Configurable;
-use vmm::VirtualAddress;
 
 mod allocator;
 mod arch;
-mod boot_info;
 mod frame_alloc;
 mod logger;
 mod panic;
@@ -28,8 +24,11 @@ mod runtime;
 mod thread_local;
 
 pub mod kconfig {
-    // Configuration constants and statics defined by the build script
-    include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
+    #[allow(non_camel_case_types)]
+    pub type MEMORY_MODE = vmm::Riscv64Sv39;
+    pub const PAGE_SIZE: usize = <MEMORY_MODE as ::vmm::Mode>::PAGE_SIZE;
+    pub const HEAP_SIZE_PAGES: usize = 8192; // 32 MiB
+    pub const TRAP_STACK_SIZE_PAGES: usize = 16; // Size of the per-hart trap stack in pages
 }
 
 fn main(_hartid: usize) -> ! {
@@ -67,48 +66,48 @@ pub unsafe extern "C" fn __stack_chk_fail() {
     panic!("Kernel stack is corrupted")
 }
 
-#[derive(Debug)]
-pub struct StackUsage {
-    pub used: usize,
-    pub total: usize,
-    pub high_watermark: usize,
-}
-
-impl StackUsage {
-    pub const FILL_PATTERN: u64 = 0xACE0BACE;
-
-    pub fn measure() -> Self {
-        let sp: usize;
-        unsafe {
-            asm!("mv {}, sp", out(reg) sp);
-        }
-        let sp = unsafe { VirtualAddress::new(sp) };
-
-        STACK.with(|stack| {
-            let high_watermark = Self::stack_high_watermark(stack.clone());
-
-            if sp < stack.start {
-                panic!("stack overflow");
-            }
-
-            StackUsage {
-                used: stack.end.sub_addr(sp),
-                total: kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE,
-                high_watermark: stack.end.sub_addr(high_watermark),
-            }
-        })
-    }
-
-    fn stack_high_watermark(stack_region: Range<VirtualAddress>) -> VirtualAddress {
-        unsafe {
-            let mut ptr = stack_region.start.as_raw() as *const u64;
-            let stack_top = stack_region.end.as_raw() as *const u64;
-
-            while ptr < stack_top && *ptr == Self::FILL_PATTERN {
-                ptr = ptr.offset(1);
-            }
-
-            VirtualAddress::new(ptr as usize)
-        }
-    }
-}
+// #[derive(Debug)]
+// pub struct StackUsage {
+//     pub used: usize,
+//     pub total: usize,
+//     pub high_watermark: usize,
+// }
+//
+// impl StackUsage {
+//     pub const FILL_PATTERN: u64 = 0xACE0BACE;
+//
+//     pub fn measure() -> Self {
+//         let sp: usize;
+//         unsafe {
+//             asm!("mv {}, sp", out(reg) sp);
+//         }
+//         let sp = unsafe { VirtualAddress::new(sp) };
+//
+//         STACK.with(|stack| {
+//             let high_watermark = Self::stack_high_watermark(stack.clone());
+//
+//             if sp < stack.start {
+//                 panic!("stack overflow");
+//             }
+//
+//             StackUsage {
+//                 used: stack.end.sub_addr(sp),
+//                 total: kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE,
+//                 high_watermark: stack.end.sub_addr(high_watermark),
+//             }
+//         })
+//     }
+//
+//     fn stack_high_watermark(stack_region: Range<VirtualAddress>) -> VirtualAddress {
+//         unsafe {
+//             let mut ptr = stack_region.start.as_raw() as *const u64;
+//             let stack_top = stack_region.end.as_raw() as *const u64;
+//
+//             while ptr < stack_top && *ptr == Self::FILL_PATTERN {
+//                 ptr = ptr.offset(1);
+//             }
+//
+//             VirtualAddress::new(ptr as usize)
+//         }
+//     }
+// }

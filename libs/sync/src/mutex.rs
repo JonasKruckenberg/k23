@@ -39,7 +39,7 @@ impl<T: ?Sized> Mutex<T> {
         self.raw.lock();
 
         MutexGuard {
-            lock: &self,
+            lock: self,
             _m: PhantomData,
         }
     }
@@ -47,7 +47,7 @@ impl<T: ?Sized> Mutex<T> {
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
         if self.raw.try_lock() {
             Some(MutexGuard {
-                lock: &self,
+                lock: self,
                 _m: PhantomData,
             })
         } else {

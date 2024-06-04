@@ -5,7 +5,7 @@ use core::ops::Range;
 use riscv::register::satp;
 
 bitflags! {
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
     pub struct EntryFlags: usize {
         const VALID     = 1 << 0;
         const READ      = 1 << 1;
@@ -34,8 +34,11 @@ const PAGE_SIZE: usize = 4096;
 const PAGE_TABLE_ENTRIES: usize = 512;
 const ENTRY_ADDRESS_SHIFT: usize = 2;
 
-const ENTRY_FLAG_DEFAULT_LEAF: EntryFlags = EntryFlags::VALID;
-const ENTRY_FLAG_DEFAULT_TABLE: EntryFlags = EntryFlags::VALID;
+const ENTRY_FLAGS_LEAF: EntryFlags = EntryFlags::VALID;
+const ENTRY_FLAGS_TABLE: EntryFlags = EntryFlags::VALID;
+const ENTRY_FLAGS_RX: EntryFlags = EntryFlags::READ.union(EntryFlags::EXECUTE);
+const ENTRY_FLAGS_RO: EntryFlags = EntryFlags::READ;
+const ENTRY_FLAGS_RW: EntryFlags = EntryFlags::READ.union(EntryFlags::WRITE);
 
 fn invalidate_address_range(
     asid: usize,
@@ -64,13 +67,16 @@ impl Mode for Riscv64Sv39 {
     const PAGE_TABLE_LEVELS: usize = 3; // L0, L1, L2
     const PAGE_TABLE_ENTRIES: usize = PAGE_TABLE_ENTRIES;
 
-    const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags = ENTRY_FLAG_DEFAULT_LEAF;
-    const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_TABLE;
+    const ENTRY_FLAGS_LEAF: Self::EntryFlags = ENTRY_FLAGS_LEAF;
+    const ENTRY_FLAGS_TABLE: Self::EntryFlags = ENTRY_FLAGS_TABLE;
+    const ENTRY_FLAGS_RX: Self::EntryFlags = ENTRY_FLAGS_RX;
+    const ENTRY_FLAGS_RO: Self::EntryFlags = ENTRY_FLAGS_RO;
+    const ENTRY_FLAGS_RW: Self::EntryFlags = ENTRY_FLAGS_RW;
 
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 
     fn invalidate_all() -> crate::Result<()> {
-        riscv::sbi::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
+        riscv::sbi::rfence::sfence_vma(0, usize::MAX, 0, usize::MAX)?;
         Ok(())
     }
 
@@ -112,8 +118,11 @@ impl Mode for Riscv64Sv48 {
     const PAGE_TABLE_LEVELS: usize = 4; // L0, L1, L2, L3
     const PAGE_TABLE_ENTRIES: usize = PAGE_TABLE_ENTRIES;
 
-    const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags = ENTRY_FLAG_DEFAULT_LEAF;
-    const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_TABLE;
+    const ENTRY_FLAGS_LEAF: Self::EntryFlags = ENTRY_FLAGS_LEAF;
+    const ENTRY_FLAGS_TABLE: Self::EntryFlags = ENTRY_FLAGS_TABLE;
+    const ENTRY_FLAGS_RX: Self::EntryFlags = ENTRY_FLAGS_RX;
+    const ENTRY_FLAGS_RO: Self::EntryFlags = ENTRY_FLAGS_RO;
+    const ENTRY_FLAGS_RW: Self::EntryFlags = ENTRY_FLAGS_RW;
 
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 
@@ -160,8 +169,11 @@ impl Mode for Riscv64Sv57 {
     const PAGE_TABLE_LEVELS: usize = 5; // L0, L1, L2, L3, L4
     const PAGE_TABLE_ENTRIES: usize = PAGE_TABLE_ENTRIES;
 
-    const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags = ENTRY_FLAG_DEFAULT_LEAF;
-    const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags = ENTRY_FLAG_DEFAULT_TABLE;
+    const ENTRY_FLAGS_LEAF: Self::EntryFlags = ENTRY_FLAGS_LEAF;
+    const ENTRY_FLAGS_TABLE: Self::EntryFlags = ENTRY_FLAGS_TABLE;
+    const ENTRY_FLAGS_RX: Self::EntryFlags = ENTRY_FLAGS_RX;
+    const ENTRY_FLAGS_RO: Self::EntryFlags = ENTRY_FLAGS_RO;
+    const ENTRY_FLAGS_RW: Self::EntryFlags = ENTRY_FLAGS_RW;
 
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 

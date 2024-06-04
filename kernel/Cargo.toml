@@ -7,10 +7,9 @@ license.workspace = true
 
 [dependencies]
 vmm.workspace = true
-dtb-parser.workspace = true
-uart-16550.workspace = true
 sync.workspace = true
 riscv.workspace = true
+loader-api.workspace = true
 
 cfg-if.workspace = true
 log.workspace = true
@@ -27,13 +26,9 @@ rustc-demangle = "0.1.24"
 gimli = { workspace = true, features = ["read"] }
 postcard = { version = "1.0.8", default-features = false, features = ["alloc"] }
 
-hdrhistogram = { workspace = true, optional = true, features = ["core", "serialization"] }
-serde = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true, features = ["alloc"] }
+#hdrhistogram = { workspace = true, optional = true, features = ["core", "serialization"] }
+#serde = { workspace = true, optional = true }
+#serde_json = { workspace = true, optional = true, features = ["alloc"] }
 
-[build-dependencies]
-build-config.workspace = true
-anyhow.workspace = true
-
-[features]
-track-allocations = ["hdrhistogram", "serde", "serde_json"]
+#[features]
+#track-allocations = ["hdrhistogram", "serde", "serde_json"]

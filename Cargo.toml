@@ -1,5 +1,5 @@
 [workspace]
-members = ["build/*", "libs/*", "kernel", "loader"]
+members = ["build/*", "libs/*", "kernel", "loader", "loader/api", "loader/api/macros"]
 resolver = "2"
 
 [workspace.package]
@@ -16,6 +16,7 @@ vmm = { path = "libs/vmm" }
 sync = { path = "libs/sync" }
 fxhash = { path = "libs/fxhash" }
 gimli = { path = "libs/gimli" }
+loader-api = { path = "loader/api" }
 
 onlyerror = { version = "0.1.4", default-features = false }
 log = "0.4.21"
@@ -24,10 +25,8 @@ cfg-if = "1.0.0"
 linked_list_allocator = "0.10.5"
 arrayvec = { version = "0.7.4", default-features = false }
 ed25519-dalek = { version = "2.1.1", default-features = false }
-object = { version = "0.35.0", default-features = false }
-hdrhistogram = { git = "https://github.com/JonasKruckenberg/HdrHistogram_rust", default-features = false }
-serde = { version = "1.0.199", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0", default-features = false }
+object = { version = "0.36.0", default-features = false }
+lz4_flex = { version = "0.11", default-features = false }
 
 # cranelift dependencies
 hashbrown = { version = "0.14.3", features = ["nightly"] }
@@ -38,15 +37,16 @@ cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime", branc
 target-lexicon = { version = "0.12.13", default-features = false }
 
 # build dependencies
+serde = { version = "1.0.199", default-features = false, features = ["derive"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }
-build-config = { path = "build/config" }
 clap = { version = "4.5.4", features = ["derive"] }
 env_logger = "0.11.3"
 anstyle = "1.0.6"
 cargo_metadata = "0.18.1"
-anyhow = "1.0.82"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
 toml = "0.8.12"
-similar = "2.5.0"
 
 [profile.release]
 opt-level = 3

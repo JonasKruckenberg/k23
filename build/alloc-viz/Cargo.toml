@@ -6,8 +6,8 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-ratatui = { version = "0.26.2", default-features = false, features = ["crossterm"] }
-crossterm = { version = "0.27.0", features = ["event-stream"] }
-hdrhistogram = { workspace = true, features = ["std", "serialization"] }
-serde.workspace = true
-serde_json = { workspace = true, features = ["std"] }
+#ratatui = { version = "0.26.2", default-features = false, features = ["crossterm"] }
+#crossterm = { version = "0.27.0", features = ["event-stream"] }
+#hdrhistogram = { workspace = true, features = ["std", "serialization"] }
+#serde.workspace = true
+#serde_json = { workspace = true, features = ["std"] }
