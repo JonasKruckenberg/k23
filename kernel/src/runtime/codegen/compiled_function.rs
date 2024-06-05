@@ -87,7 +87,7 @@ impl CompiledFunction {
             .map(|r| mach_reloc_to_reloc(r, &self.name_map))
     }
 
-    pub fn traps(&self) -> impl Iterator<Item = TrapInfo> + ExactSizeIterator + '_ {
+    pub fn traps(&self) -> impl ExactSizeIterator<Item = TrapInfo> + '_ {
         self.buffer.traps().iter().map(|trap| {
             let code = match trap.code {
                 TrapCode::StackOverflow => Trap::StackOverflow,

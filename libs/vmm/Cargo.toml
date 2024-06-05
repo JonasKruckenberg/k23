@@ -5,11 +5,16 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lib]
+harness = false
+
 [dependencies]
 bitflags.workspace = true
 log.workspace = true
 onlyerror.workspace = true
-cfg-if = "1.0.0"
+cfg-if.workspace = true
+object = { workspace = true, features = ["read_core", "elf"], optional = true }
+kstd.workspace = true
 
-[target.'cfg(target_arch = "riscv64")'.dependencies]
-riscv.workspace = true
+[features]
+elf = ["object"]

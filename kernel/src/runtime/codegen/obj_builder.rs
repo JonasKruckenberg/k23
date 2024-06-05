@@ -17,7 +17,7 @@ use object::{LittleEndian, SectionKind, SymbolFlags, SymbolKind, SymbolScope, U3
 
 pub const ELFOSABI_K23: u8 = 223;
 pub const ELF_K23_TRAPS: &str = ".k23.traps";
-pub const ELF_K23_INFO: &'static str = ".k23.info";
+pub const ELF_K23_INFO: &str = ".k23.info";
 pub const ELF_K23_BTI: &str = ".k23.bti";
 pub const ELF_K23_ENGINE: &str = ".k23.engine";
 
@@ -189,7 +189,7 @@ impl<'a, 'obj> TextSectionBuilder<'a, 'obj> {
         let body_len = body.len() as u64;
         let off = self
             .inner
-            .append(true, &body, alignment, &mut self.ctrl_plane);
+            .append(true, body, alignment, &mut self.ctrl_plane);
 
         let symbol_id = self.obj.add_symbol(Symbol {
             name: name.as_bytes().to_vec(),

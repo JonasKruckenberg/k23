@@ -85,7 +85,7 @@ impl<'module_env, 'wasm> FunctionEnvironment<'module_env, 'wasm> {
 
     fn vmctx_val(&mut self, pos: &mut FuncCursor<'_>) -> Value {
         let pointer_type = self.pointer_type();
-        let vmctx = self.vmctx(&mut pos.func);
+        let vmctx = self.vmctx(pos.func);
         pos.ins().global_value(pointer_type, vmctx)
     }
 }

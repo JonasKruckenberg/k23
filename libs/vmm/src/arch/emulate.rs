@@ -66,8 +66,13 @@ impl Mode for EmulateArch {
     const PAGE_TABLE_LEVELS: usize = 2; // L0, L1, L2
     const PAGE_TABLE_ENTRIES: usize = 512;
 
-    const ENTRY_FLAG_DEFAULT_LEAF: Self::EntryFlags = EmulateEntryFlags::VALID;
-    const ENTRY_FLAG_DEFAULT_TABLE: Self::EntryFlags = EmulateEntryFlags::VALID;
+    const ENTRY_FLAGS_LEAF: Self::EntryFlags = EmulateEntryFlags::VALID;
+    const ENTRY_FLAGS_TABLE: Self::EntryFlags = EmulateEntryFlags::VALID;
+    const ENTRY_FLAGS_RX: Self::EntryFlags =
+        EmulateEntryFlags::READ.union(EmulateEntryFlags::EXECUTE);
+    const ENTRY_FLAGS_RO: Self::EntryFlags = EmulateEntryFlags::READ;
+    const ENTRY_FLAGS_RW: Self::EntryFlags =
+        EmulateEntryFlags::READ.union(EmulateEntryFlags::WRITE);
 
     fn invalidate_all() -> crate::Result<()> {
         Ok(())
@@ -94,6 +99,6 @@ impl Mode for EmulateArch {
     }
 
     fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-        unsafe { VirtualAddress::new(phys.as_raw()) }
+        VirtualAddress::new(phys.as_raw())
     }
 }

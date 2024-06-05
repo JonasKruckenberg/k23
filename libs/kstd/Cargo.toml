@@ -1,0 +1,11 @@
+[package]
+name = "kstd"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+cfg-if.workspace = true
+onlyerror.workspace = true
+bitflags.workspace = true

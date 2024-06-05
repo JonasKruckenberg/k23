@@ -1,12 +1,11 @@
-use super::register::scause::{Exception, Interrupt, Trap};
-use super::register::{scause, sepc, stval, stvec};
-use crate::arch::halt;
 use crate::kconfig;
 use crate::thread_local::declare_thread_local;
 use core::arch::asm;
 use core::marker::PhantomPinned;
 use core::ptr::addr_of;
-use riscv::register::sstatus;
+use kstd::arch::riscv64::sbi::time::set_timer;
+use kstd::arch::riscv64::scause::{Exception, Interrupt, Trap};
+use kstd::arch::riscv64::{abort, scause, sepc, sstatus, stval, stvec};
 
 declare_thread_local! {
     static TRAP_FRAME: TrapFrame;
@@ -235,6 +234,7 @@ unsafe extern "C" fn default_trap_entry() {
 }
 
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
+#[allow(clippy::too_many_arguments)]
 fn default_trap_handler(
     raw_frame: *mut TrapFrame,
     a1: usize,
@@ -260,7 +260,7 @@ fn default_trap_handler(
 
             log::error!("KERNEL LOAD PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
 
-            halt();
+            abort();
 
             // let mut count = 0;
             // crate::backtrace::trace_with_context(ctx, |frame| {
@@ -274,11 +274,11 @@ fn default_trap_handler(
 
             log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
 
-            halt();
+            abort();
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             log::info!("Supervisor Timer");
-            riscv::sbi::time::set_timer(u64::MAX).unwrap();
+            set_timer(u64::MAX).unwrap();
         }
         _ => {
             // panic!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");

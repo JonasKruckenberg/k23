@@ -340,11 +340,11 @@ impl<'wasm> InstanceData<'wasm> {
     }
 }
 
-fn initialize_vmctx<'wasm>(
+fn initialize_vmctx(
     const_eval: &mut ConstExprEvaluator,
     store: &Store,
     instance: Instance,
-    module: &TranslatedModule<'wasm>,
+    module: &TranslatedModule,
 ) -> Result<(), Trap> {
     let mut data = store.instance_data_mut(instance);
 
@@ -398,11 +398,11 @@ fn initialize_vmctx<'wasm>(
     Ok(())
 }
 
-fn initialize_tables<'wasm>(
+fn initialize_tables(
     const_eval: &mut ConstExprEvaluator,
     store: &Store,
     instance: Instance,
-    module: &TranslatedModule<'wasm>,
+    module: &TranslatedModule,
 ) -> Result<(), Trap> {
     for (def_table_index, initial_value) in &module.table_initializers.initial_values {
         match initial_value {
@@ -463,10 +463,10 @@ fn initialize_tables<'wasm>(
     Ok(())
 }
 
-fn initialize_memories<'wasm>(
+fn initialize_memories(
     store: &Store,
     instance: Instance,
-    module: &TranslatedModule<'wasm>,
+    module: &TranslatedModule,
 ) -> Result<(), Trap> {
     for init in &module.memory_initializers.runtime {
         let data = store.instance_data(instance);

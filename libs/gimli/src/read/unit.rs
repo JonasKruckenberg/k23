@@ -2,7 +2,6 @@
 
 use core::cell::Cell;
 use core::ops::{Range, RangeFrom, RangeTo};
-use core::{u16, u8};
 
 use crate::common::{
     DebugAbbrevOffset, DebugAddrBase, DebugAddrIndex, DebugInfoOffset, DebugLineOffset,
@@ -194,6 +193,7 @@ pub struct DebugInfoUnitHeadersIter<R: Reader> {
 
 impl<R: Reader> DebugInfoUnitHeadersIter<R> {
     /// Advance the iterator to the next unit header.
+
     pub fn next(&mut self) -> Result<Option<UnitHeader<R>>> {
         if self.input.is_empty() {
             Ok(None)
@@ -573,7 +573,7 @@ where
     let unit_type;
     // DWARF 1 was very different, and is obsolete, so isn't supported by this
     // reader.
-    if 2 <= version && version <= 4 {
+    if (2..=4).contains(&version) {
         abbrev_offset = parse_debug_abbrev_offset(&mut rest, format)?;
         address_size = rest.read_u8()?;
         // Before DWARF5, all units in the .debug_info section are compilation
@@ -1847,7 +1847,7 @@ where
             AttributeValue::Data8(data) => data as i64,
             AttributeValue::Sdata(data) => data,
             AttributeValue::Udata(data) => {
-                if data > i64::max_value() as u64 {
+                if data > i64::MAX as u64 {
                     // Maybe we should emit a warning here
                     return None;
                 }
@@ -2281,6 +2281,7 @@ impl<'abbrev, 'entry, 'unit, R: Reader> AttrsIter<'abbrev, 'entry, 'unit, R> {
     /// occurs while parsing the next attribute, then this error
     /// is returned, and all subsequent calls return `None`.
     #[inline(always)]
+
     pub fn next(&mut self) -> Result<Option<Attribute<R>>> {
         if self.attributes.is_empty() {
             // Now that we have parsed all of the attributes, we know where

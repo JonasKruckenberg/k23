@@ -103,6 +103,7 @@ pub struct ArangeHeaderIter<R: Reader> {
 
 impl<R: Reader> ArangeHeaderIter<R> {
     /// Advance the iterator to the next header.
+
     pub fn next(&mut self) -> Result<Option<ArangeHeader<R>>> {
         if self.input.is_empty() {
             return Ok(None);
@@ -256,6 +257,7 @@ impl<R: Reader> ArangeEntryIter<R> {
     /// when iteration is complete and all aranges have already been parsed and
     /// yielded. If an error occurs while parsing the next arange, then this error
     /// is returned as `Err(e)`, and all subsequent calls return `Ok(None)`.
+
     pub fn next(&mut self) -> Result<Option<ArangeEntry>> {
         if self.input.is_empty() {
             return Ok(None);

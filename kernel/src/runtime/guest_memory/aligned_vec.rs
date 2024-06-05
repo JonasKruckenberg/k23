@@ -267,7 +267,7 @@ impl<T, const ALIGN: usize> AlignedVec<T, ALIGN> {
             unsafe {
                 let size = mem::size_of::<T>().unchecked_mul(self.cap);
                 let layout = Layout::from_size_align_unchecked(size, ALIGN);
-                Some((self.ptr.cast().into(), layout))
+                Some((self.ptr.cast(), layout))
             }
         }
     }
@@ -289,9 +289,7 @@ impl<T, const ALIGN: usize> AlignedVec<T, ALIGN> {
             Err(_) => return Err(()),
         };
 
-        if let Err(err) = alloc_guard(layout.size()) {
-            return Err(err);
-        }
+        alloc_guard(layout.size())?;
 
         let result = alloc.allocate_zeroed(layout);
 
@@ -308,6 +306,9 @@ impl<T, const ALIGN: usize> AlignedVec<T, ALIGN> {
         })
     }
 }
+
+unsafe impl<T: Sync, const ALIGN: usize> Sync for AlignedVec<T, ALIGN> {}
+unsafe impl<T: Send, const ALIGN: usize> Send for AlignedVec<T, ALIGN> {}
 
 impl<T, const ALIGN: usize> Drop for AlignedVec<T, ALIGN> {
     #[inline]

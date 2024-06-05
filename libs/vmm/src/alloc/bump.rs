@@ -3,8 +3,8 @@ use crate::{
 };
 use core::marker::PhantomData;
 use core::ops::Range;
+use core::{iter, slice};
 
-#[derive(Debug)]
 pub struct BumpAllocator<'a, M> {
     regions: &'a [Range<PhysicalAddress>],
     // offset from the top of memory regions
@@ -19,23 +19,27 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
     /// # Safety
     ///
     /// The caller has to ensure the slice is correctly sorted from lowest to highest addresses.
-    pub unsafe fn new(regions: &'a [Range<PhysicalAddress>], offset: usize) -> Self {
+    pub unsafe fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
         Self {
             regions,
-            offset,
+            offset: 0,
             lower_bound: PhysicalAddress(0),
             _m: PhantomData,
         }
     }
 
+    /// Create a new frame allocator over a given set of physical memory regions.
+    ///
+    /// # Safety
+    ///
+    /// The caller has to ensure the slice is correctly sorted from lowest to highest addresses.
     pub unsafe fn new_with_lower_bound(
         regions: &'a [Range<PhysicalAddress>],
-        offset: usize,
         lower_bound: PhysicalAddress,
     ) -> Self {
         Self {
             regions,
-            offset,
+            offset: 0,
             lower_bound,
             _m: PhantomData,
         }
@@ -47,6 +51,71 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
 
     pub fn regions(&self) -> &'a [Range<PhysicalAddress>] {
         self.regions
+    }
+
+    pub fn free_regions(&self) -> FreeRegions<'_> {
+        FreeRegions {
+            offset: self.offset,
+            inner: self.regions().iter().rev().cloned(),
+        }
+    }
+
+    pub fn used_regions(&self) -> UsedRegions<'_> {
+        UsedRegions {
+            offset: self.offset,
+            inner: self.regions().iter().rev().cloned(),
+        }
+    }
+}
+
+pub struct FreeRegions<'a> {
+    offset: usize,
+    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
+}
+
+impl<'a> Iterator for FreeRegions<'a> {
+    type Item = Range<PhysicalAddress>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let mut region = self.inner.next()?;
+            let region_size = region.size();
+            // keep advancing past already fully used memory regions
+            if self.offset >= region_size {
+                self.offset -= region_size;
+                continue;
+            } else if self.offset > 0 {
+                region.end = region.end.sub(self.offset);
+                self.offset = 0;
+            }
+
+            return Some(region);
+        }
+    }
+}
+
+pub struct UsedRegions<'a> {
+    offset: usize,
+    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
+}
+
+impl<'a> Iterator for UsedRegions<'a> {
+    type Item = Range<PhysicalAddress>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut region = self.inner.next()?;
+        let region_size = region.size();
+
+        if self.offset >= region_size {
+            Some(region)
+        } else if self.offset > 0 {
+            region.start = region.end.sub(self.offset);
+            self.offset = 0;
+
+            Some(region)
+        } else {
+            None
+        }
     }
 }
 
@@ -81,6 +150,7 @@ impl<'a, M: Mode> FrameAllocator for BumpAllocator<'a, M> {
                 zero_frames::<M>(page_virt.as_raw() as *mut u64, frames);
 
                 self.offset += requested_size;
+
                 return Ok(page_phys);
             }
 
@@ -123,10 +193,7 @@ mod test {
     #[test]
     fn single_region_single_frame() -> Result<(), Error> {
         let mut alloc: BumpAllocator<EmulateArch> = unsafe {
-            BumpAllocator::new(
-                &[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)],
-                0,
-            )
+            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)])
         };
 
         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x3000));
@@ -141,10 +208,7 @@ mod test {
     #[test]
     fn single_region_multi_frame() -> Result<(), Error> {
         let mut alloc: BumpAllocator<EmulateArch> = unsafe {
-            BumpAllocator::new(
-                &[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)],
-                0,
-            )
+            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)])
         };
 
         assert_eq!(alloc.allocate_frames(3)?, PhysicalAddress(0x1000));
@@ -157,14 +221,11 @@ mod test {
     #[test]
     fn multi_region_single_frame() -> Result<(), Error> {
         let mut alloc: BumpAllocator<EmulateArch> = unsafe {
-            BumpAllocator::new(
-                &[
-                    PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
-                    PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
-                        ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
-                ],
-                0,
-            )
+            BumpAllocator::new(&[
+                PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
+                PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
+                    ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+            ])
         };
 
         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x8000));
@@ -182,14 +243,11 @@ mod test {
     #[test]
     fn multi_region_multi_frame() -> Result<(), Error> {
         let mut alloc: BumpAllocator<EmulateArch> = unsafe {
-            BumpAllocator::new(
-                &[
-                    PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
-                    PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
-                        ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
-                ],
-                0,
-            )
+            BumpAllocator::new(&[
+                PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
+                PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
+                    ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+            ])
         };
 
         assert_eq!(alloc.allocate_frames(2)?, PhysicalAddress(0x7000));
@@ -205,14 +263,11 @@ mod test {
     #[test]
     fn multi_region_multi_frame2() -> Result<(), Error> {
         let mut alloc: BumpAllocator<EmulateArch> = unsafe {
-            BumpAllocator::new(
-                &[
-                    PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
-                    PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
-                        ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
-                ],
-                0,
-            )
+            BumpAllocator::new(&[
+                PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
+                PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
+                    ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+            ])
         };
 
         assert_eq!(alloc.allocate_frames(3)?, PhysicalAddress(0x1000));

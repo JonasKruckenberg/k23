@@ -101,7 +101,7 @@ pub struct ProducersToolField<'wasm> {
 #[derive(Debug)]
 pub enum ProducersTool<'wasm> {
     Wabt,
-    LLVM,
+    Llvm,
     Clang,
     Lld,
     Binaryen,
@@ -271,7 +271,7 @@ impl<'wasm> TranslatedModule<'wasm> {
     #[inline]
     pub fn defined_tables(
         &self,
-    ) -> impl Iterator<Item = (DefinedTableIndex, &'_ TablePlan)> + ExactSizeIterator + '_ {
+    ) -> impl ExactSizeIterator<Item = (DefinedTableIndex, &'_ TablePlan)> + '_ {
         self.table_plans
             .iter()
             .skip(self.num_imported_tables as usize)
@@ -320,7 +320,7 @@ impl<'wasm> TranslatedModule<'wasm> {
     #[inline]
     pub fn defined_memories(
         &self,
-    ) -> impl Iterator<Item = (DefinedMemoryIndex, &'_ MemoryPlan)> + ExactSizeIterator + '_ {
+    ) -> impl ExactSizeIterator<Item = (DefinedMemoryIndex, &'_ MemoryPlan)> + '_ {
         self.memory_plans
             .iter()
             .skip(self.num_imported_memories as usize)

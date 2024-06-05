@@ -966,6 +966,7 @@ pub struct OperationIter<R: Reader> {
 
 impl<R: Reader> OperationIter<R> {
     /// Read the next operation in an expression.
+
     pub fn next(&mut self) -> Result<Option<Operation<R>>> {
         if self.input.is_empty() {
             return Ok(None);

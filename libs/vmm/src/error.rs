@@ -10,7 +10,7 @@ pub enum Error {
     DoubleFree(PhysicalAddress),
     #[cfg(target_arch = "riscv64")]
     #[error("SBI call failed with error {0}")]
-    SBI(#[from] riscv::sbi::Error),
+    SBI(#[from] kstd::arch::riscv64::sbi::Error),
     #[error("Address {0:?} is not mapped and cant be translated")]
     NotMapped(VirtualAddress),
 }

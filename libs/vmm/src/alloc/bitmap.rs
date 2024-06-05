@@ -122,7 +122,7 @@ impl<M: Mode> BitMapAllocator<M> {
                 offset -= region_size;
                 continue;
             } else if offset > 0 {
-                region.start = region.start.add(offset);
+                region.end = region.end.sub(offset);
                 offset = 0;
             }
 
@@ -141,6 +141,22 @@ impl<M: Mode> BitMapAllocator<M> {
                 }
             }
         }
+        // for region in bump_allocator.free_regions() {
+        //     for entry in this.entries_mut() {
+        //         if entry.region.end.0 == entry.region.start.0 {
+        //             // Create new entry
+        //             entry.region = region.clone();
+        //             break;
+        //         } else if region.end == entry.region.start {
+        //             // Combine entry at start
+        //             entry.region.start = region.start;
+        //             break;
+        //         } else if region.start == entry.region.end {
+        //             entry.region.end = region.end;
+        //             break;
+        //         }
+        //     }
+        // }
 
         log::trace!("mark entries...");
         for entry in this.entries_mut() {

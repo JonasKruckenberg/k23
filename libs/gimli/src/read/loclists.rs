@@ -480,6 +480,7 @@ impl<R: Reader> RawLocListIter<R> {
     }
 
     /// Advance the iterator to the next location.
+
     pub fn next(&mut self) -> Result<Option<RawLocListEntry<R>>> {
         if self.input.is_empty() {
             return Ok(None);
@@ -536,6 +537,7 @@ impl<R: Reader> LocListIter<R> {
     }
 
     /// Advance the iterator to the next location.
+
     pub fn next(&mut self) -> Result<Option<LocationListEntry<R>>> {
         loop {
             let raw_loc = match self.raw.next()? {
@@ -599,7 +601,7 @@ impl<R: Reader> LocListIter<R> {
             RawLocListEntry::DefaultLocation { data } => (
                 Range {
                     begin: 0,
-                    end: u64::max_value(),
+                    end: u64::MAX,
                 },
                 data,
             ),

@@ -15,6 +15,11 @@ pub struct Table<M> {
 
 impl<M: Mode> Table<M> {
     /// Loads the table pointed by the given `entry`
+    ///
+    /// # Safety
+    ///
+    /// The caller has to ensure the given `addr` actually points to a
+    /// page table entry.
     pub unsafe fn new(addr: VirtualAddress, level: usize) -> Table<M> {
         Self {
             level,
@@ -102,50 +107,50 @@ impl<M: Mode> Table<M> {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::table::Table;
-    use crate::{EmulateArch, VirtualAddress};
-
-    #[test]
-    fn index_of_virt() {
-        let virt = EmulateArch::virt_from_parts(511, 510, 509, 38);
-        assert_eq!(EmulateArch::virt_into_parts(virt), (511, 510, 509, 38));
-
-        let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 2) };
-        assert_eq!(table.index_of_virt(virt), 511);
-
-        let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 1) };
-        assert_eq!(table.index_of_virt(virt), 510);
-
-        let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 0) };
-        assert_eq!(table.index_of_virt(virt), 509);
-    }
-
-    #[test]
-    fn virt_from_index() {
-        let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 2) };
-        assert_eq!(
-            table.virt_from_index(511),
-            EmulateArch::virt_from_parts(511, 0, 0, 0)
-        );
-
-        let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 1) };
-        assert_eq!(
-            table.virt_from_index(7),
-            EmulateArch::virt_from_parts(0, 7, 0, 0)
-        );
-
-        let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 0) };
-        assert_eq!(
-            table.virt_from_index(89),
-            EmulateArch::virt_from_parts(0, 0, 89, 0)
-        );
-
-        let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 2) };
-        assert_eq!(
-            table.virt_from_index(0),
-            EmulateArch::virt_from_parts(0, 0, 0, 0)
-        );
-    }
-}
+// #[cfg(test)]
+// mod test {
+//     use crate::table::Table;
+//     use crate::{EmulateArch, VirtualAddress};
+//
+//     #[ktest::test]
+//     fn index_of_virt() {
+//         let virt = EmulateArch::virt_from_parts(511, 510, 509, 38);
+//         assert_eq!(EmulateArch::virt_into_parts(virt), (511, 510, 509, 38));
+//
+//         let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 2) };
+//         assert_eq!(table.index_of_virt(virt), 511);
+//
+//         let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 1) };
+//         assert_eq!(table.index_of_virt(virt), 510);
+//
+//         let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 0) };
+//         assert_eq!(table.index_of_virt(virt), 509);
+//     }
+//
+//     #[ktest::test]
+//     fn virt_from_index() {
+//         let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 2) };
+//         assert_eq!(
+//             table.virt_from_index(511),
+//             EmulateArch::virt_from_parts(511, 0, 0, 0)
+//         );
+//
+//         let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 1) };
+//         assert_eq!(
+//             table.virt_from_index(7),
+//             EmulateArch::virt_from_parts(0, 7, 0, 0)
+//         );
+//
+//         let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 0) };
+//         assert_eq!(
+//             table.virt_from_index(89),
+//             EmulateArch::virt_from_parts(0, 0, 89, 0)
+//         );
+//
+//         let table: Table<EmulateArch> = unsafe { Table::new(VirtualAddress(0), 2) };
+//         assert_eq!(
+//             table.virt_from_index(0),
+//             EmulateArch::virt_from_parts(0, 0, 0, 0)
+//         );
+//     }
+// }

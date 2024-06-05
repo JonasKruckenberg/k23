@@ -57,7 +57,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
         if ty.is_escaping() {
             return;
         }
-        let index = self.result.module.num_escaped_funcs as u32;
+        let index = self.result.module.num_escaped_funcs;
         ty.func_ref = FuncRefIndex::from_u32(index);
         self.result.module.num_escaped_funcs += 1;
     }
@@ -579,7 +579,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                         let ProducersFieldValue { name, version } = value?;
                         let name = match name {
                             "wabt" => ProducersTool::Wabt,
-                            "LLVM" => ProducersTool::LLVM,
+                            "LLVM" => ProducersTool::Llvm,
                             "clang" => ProducersTool::Clang,
                             "lld" => ProducersTool::Lld,
                             "Binaryen" => ProducersTool::Binaryen,
@@ -644,9 +644,10 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
             ".debug_str" => dwarf.debug_str = gimli::DebugStr::new(data, endian),
             ".debug_str_offsets" => dwarf.debug_str_offsets = gimli::DebugStrOffsets::from(slice),
             ".debug_str_sup" => {
-                let mut dwarf_sup: gimli::Dwarf<gimli::EndianSlice<'wasm, gimli::LittleEndian>> =
-                    Default::default();
-                dwarf_sup.debug_str = gimli::DebugStr::from(slice);
+                let dwarf_sup = gimli::Dwarf {
+                    debug_str: gimli::DebugStr::from(slice),
+                    ..Default::default()
+                };
                 dwarf.sup = Some(Arc::new(dwarf_sup));
             }
             ".debug_types" => dwarf.debug_types = gimli::DebugTypes::from(slice),

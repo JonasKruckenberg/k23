@@ -64,6 +64,10 @@ impl<'a, M: Mode> Mapper<'a, M> {
         self.allocator
     }
 
+    pub fn into_allocator(self) -> &'a mut dyn FrameAllocator {
+        self.allocator
+    }
+
     pub fn root_table(&self) -> Table<M> {
         unsafe { Table::new(self.root_table, M::PAGE_TABLE_LEVELS - 1) }
     }
@@ -103,10 +107,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
                 "expected table entry to *not* be vacant, to perform initial mapping use the map_ methods"
             );
 
-            entry.set_address_and_flags(
-                entry.get_address(),
-                flags.union(M::ENTRY_FLAG_DEFAULT_LEAF),
-            );
+            entry.set_address_and_flags(entry.get_address(), flags.union(M::ENTRY_FLAGS_LEAF));
 
             flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;
 
@@ -203,7 +204,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
                 "expected table entry to be vacant, to remap use  the remap_ methods"
             );
 
-            entry.set_address_and_flags(phys, flags.union(M::ENTRY_FLAG_DEFAULT_LEAF));
+            entry.set_address_and_flags(phys, flags.union(M::ENTRY_FLAGS_LEAF));
 
             flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;
 
@@ -214,7 +215,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
             if entry.is_vacant() {
                 // allocate a new physical frame to hold the entries children
                 let frame_phys = self.allocator.allocate_frame()?;
-                entry.set_address_and_flags(frame_phys, M::ENTRY_FLAG_DEFAULT_TABLE);
+                entry.set_address_and_flags(frame_phys, M::ENTRY_FLAGS_TABLE);
             }
 
             Ok(())
@@ -331,6 +332,50 @@ impl<'a, M: Mode> Mapper<'a, M> {
         }
     }
 
+    pub fn remap(
+        &mut self,
+        virt: VirtualAddress,
+        phys: PhysicalAddress,
+        flags: M::EntryFlags,
+        flush: &mut Flush<M>,
+    ) -> crate::Result<()> {
+        debug_assert!(
+            phys.is_aligned(M::PAGE_SIZE),
+            "physical address is not page aligned"
+        );
+        debug_assert!(
+            virt.is_aligned(M::PAGE_SIZE),
+            "virtual address is not page aligned"
+        );
+
+        let table = self.root_table();
+
+        let on_leaf = |entry: &mut Entry<M>| {
+            assert!(
+                !entry.is_vacant(),
+                "expected table entry to *not* be vacant, to map use  the map_ methods"
+            );
+
+            entry.set_address_and_flags(phys, flags.union(M::ENTRY_FLAGS_LEAF));
+
+            flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;
+
+            Ok(())
+        };
+
+        let on_node = |entry: &mut Entry<M>| {
+            if entry.is_vacant() {
+                // allocate a new physical frame to hold the entries children
+                let frame_phys = self.allocator.allocate_frame()?;
+                entry.set_address_and_flags(frame_phys, M::ENTRY_FLAGS_TABLE);
+            }
+
+            Ok(())
+        };
+
+        Self::walk_mut(virt, table, on_leaf, on_node)
+    }
+
     fn walk_mut<R>(
         virt: VirtualAddress,
         mut table: Table<M>,
@@ -385,7 +430,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         unreachable!("virtual address was too large to be mapped. This should not be possible");
     }
 
-    fn for_pages_in_range<F>(virt: Range<VirtualAddress>, mut f: F) -> crate::Result<()>
+    pub fn for_pages_in_range<F>(range: impl AddressRangeExt, mut f: F) -> crate::Result<()>
     where
         F: FnMut(usize, usize, usize) -> crate::Result<()>,
     {
@@ -405,7 +450,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         // }
 
         let lvl = 0;
-        let len_pages = virt.size() / M::PAGE_SIZE;
+        let len_pages = range.size() / M::PAGE_SIZE;
 
         for i in 0..len_pages {
             f(i, lvl, M::PAGE_SIZE)?;
@@ -426,167 +471,3 @@ impl<'a, M: Mode> Mapper<'a, M> {
         Ok(())
     }
 }
-
-// bitflags::bitflags! {
-//     struct ElfShFlags: u64 {
-//         /// Section is writable.
-//         const SHF_WRITE = 1 << 0;
-//         /// Section occupies memory during execution.
-//         const SHF_ALLOC = 1 << 1;
-//         /// Section is executable.
-//         const SHF_EXECINSTR = 1 << 2;
-//         /// Section holds thread-local storage.
-//         const SHF_TLS = 1 << 10;
-//     }
-// }
-//
-// impl<'a, M: Mode> Mapper<'a, M> {
-//     pub fn map_elf(
-//         &mut self,
-//         obj: &object::File,
-//         flush: &mut Flush<M>,
-//         flags_for_section: impl Fn(&Section) -> object::read::Result<M::EntryFlags>,
-//     ) -> crate::Result<()> {
-//         debug_assert!(matches!(obj.format(), BinaryFormat::Elf));
-//
-//         let regions: MemoryRegions<M, _, _> =
-//             MemoryRegions::new(obj.sections(), flags_for_section);
-//
-//         for region in regions {
-//             assert!(region.range_virt.is_aligned(M::PAGE_SIZE));
-//
-//             let size_pages = region.range_virt.size() / M::PAGE_SIZE;
-//
-//             let range_phys = {
-//                 let start = self.allocator.allocate_frames(size_pages)?;
-//                 start..start.add(size_pages * M::PAGE_SIZE)
-//             };
-//
-//             log::trace!(
-//                 "Mapping {:?} sections of ELF {:?} => {range_phys:?}, flags {:?}",
-//                 region.sections,
-//                 region.range_virt,
-//                 region.flags
-//             );
-//             self.map_range(region.range_virt, range_phys, region.flags, flush)?;
-//         }
-//
-//         Ok(())
-//     }
-// }
-//
-// struct Buffer<T, const N: usize> {
-//     inner: [MaybeUninit<T>; N],
-//     len: usize,
-// }
-//
-// impl<T, const N: usize> Buffer<T, N> {
-//     pub fn push(&mut self, v: T) {
-//         assert!(self.len < N);
-//
-//         self.inner[self.len - 1].write(v);
-//         self.len += 1;
-//     }
-//
-//     pub fn as_slice(&self) -> &[T] {
-//         unsafe {
-//             mem::transmute(&self.inner[0..self.len])
-//         }
-//     }
-// }
-//
-// impl<T, const N: usize> Default for Buffer<T, N> {
-//     fn default() -> Self {
-//         Self {
-//             inner: unsafe { MaybeUninit::uninit().assume_init() },
-//             len: 0,
-//         }
-//     }
-// }
-//
-// impl<T: fmt::Debug, const N: usize> fmt::Debug for Buffer<T, N> {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//         f.debug_list().entries(self.as_slice()).finish()
-//     }
-// }
-//
-// struct MemoryRegions<'file, 'data, M: Mode, I, F> {
-//     buffer: Buffer<Section<'file, 'data>, 16>,
-//     range_virt: Range<VirtualAddress>,
-//     flags: M::EntryFlags,
-//     inner: I,
-//     flags_for_section: F,
-// }
-//
-// struct MemoryRegion<'file, 'data, M: Mode> {
-//     sections: Buffer<Section<'file, 'data>, 16>,
-//     range_virt: Range<VirtualAddress>,
-//     flags: M::EntryFlags,
-// }
-//
-// impl<'file, 'data, M: Mode, I, F> MemoryRegions<'file, 'data, M, I, F> {
-//     pub fn new(inner: I, flags_for_section: F) -> Self {
-//         Self {
-//             buffer: Buffer::default(),
-//             range_virt: Default::default(),
-//             flags: M::EntryFlags::empty(),
-//             inner,
-//             flags_for_section,
-//         }
-//     }
-// }
-//
-// impl<'file: 'data, 'data, M, I, F> Iterator for MemoryRegions<'file, 'data, M, I, F>
-// where
-//     M: Mode,
-//     I: Iterator<Item = Section<'file, 'data>>,
-//     F: Fn(&Section) -> object::read::Result<M::EntryFlags>,
-// {
-//     type Item = MemoryRegion<'file, 'data, M>;
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         loop {
-//             let section = self.inner.next()?;
-//             // skip sections that are marked as non-alloc
-//             if !is_alloc(&section) {
-//                 continue;
-//             }
-//
-//             let flags = (self.flags_for_section)(&section).ok()?;
-//
-//             let range_virt = unsafe {
-//                 let start = VirtualAddress::new(section.address() as usize);
-//
-//                 start..start.add(section.size() as usize)
-//             };
-//
-//             if flags.contains(self.flags) {
-//                 self.range_virt = Range {
-//                     start: cmp::min(self.range_virt.start, range_virt.start),
-//                     end: cmp::max(self.range_virt.start, range_virt.end),
-//                 };
-//             } else {
-//                 let range_virt = mem::replace(&mut self.range_virt, range_virt);
-//                 let flags = mem::replace(&mut self.flags, flags);
-//                 let sections = mem::take(&mut self.buffer);
-//                 self.buffer.push(section);
-//
-//                 break Some(MemoryRegion {
-//                     range_virt,
-//                     flags,
-//                     sections,
-//                 });
-//             }
-//         }
-//     }
-// }
-//
-// /// Whether a given section occupies memory during execution.
-// fn is_alloc(section: &Section) -> bool {
-//     const SHF_ALLOC: u64 = 1 << 1;
-//
-//     match section.flags() {
-//         SectionFlags::Elf { sh_flags } => sh_flags & SHF_ALLOC != 0,
-//         _ => unreachable!(),
-//     }
-// }
