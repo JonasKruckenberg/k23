@@ -28,6 +28,11 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
         }
     }
 
+    /// Create a new frame allocator over a given set of physical memory regions.
+    ///
+    /// # Safety
+    ///
+    /// The caller has to ensure the slice is correctly sorted from lowest to highest addresses.
     pub unsafe fn new_with_lower_bound(
         regions: &'a [Range<PhysicalAddress>],
         lower_bound: PhysicalAddress,
