@@ -1,3 +1,5 @@
+#![allow(clippy::missing_safety_doc)]
+
 pub mod satp;
 pub mod scause;
 pub mod sepc;

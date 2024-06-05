@@ -15,6 +15,7 @@ fn panic(info: &PanicInfo) -> ! {
         // allocator::print_heap_statistics();
     }
 
+    #[allow(clippy::never_loop)]
     loop {
         kstd::arch::riscv64::abort()
     }
