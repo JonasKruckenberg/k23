@@ -32,3 +32,7 @@ clippy *FLAGS:
 # check rustfmt for `crate`
 check-fmt *FLAGS:
     {{ _cargo }} fmt --check --all {{ FLAGS }}
+
+check *FLAGS:
+    # riscv64 checks
+    {{ _cargo }} check --target riscv64gc-unknown-none-elf {{ _riscv64crates }} {{ _buildstd }} {{ FLAGS }}

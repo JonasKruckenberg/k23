@@ -26,15 +26,16 @@ jobs:
     if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        config: [ "configs/riscv64-qemu.toml" ]
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo xtask check ${{matrix.config}}
+      - name: install Just
+        uses: extractions/setup-just@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: cargo check
+        run: just check
 
   rustfmt:
     name: Rustfmt
