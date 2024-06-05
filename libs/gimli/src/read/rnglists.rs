@@ -416,6 +416,7 @@ impl<R: Reader> RawRngListIter<R> {
     }
 
     /// Advance the iterator to the next range.
+
     pub fn next(&mut self) -> Result<Option<RawRngListEntry<R::Offset>>> {
         if self.input.is_empty() {
             return Ok(None);
@@ -472,6 +473,7 @@ impl<R: Reader> RngListIter<R> {
     }
 
     /// Advance the iterator to the next range.
+
     pub fn next(&mut self) -> Result<Option<Range>> {
         loop {
             let raw_range = match self.raw.next()? {

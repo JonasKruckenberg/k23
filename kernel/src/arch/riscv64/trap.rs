@@ -234,6 +234,7 @@ unsafe extern "C" fn default_trap_entry() {
 }
 
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
+#[allow(clippy::too_many_arguments)]
 fn default_trap_handler(
     raw_frame: *mut TrapFrame,
     a1: usize,

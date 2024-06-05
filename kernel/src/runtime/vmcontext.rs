@@ -100,7 +100,7 @@ impl VMGlobalDefinition {
                 f64: *self.as_f64_bits(),
             },
             WasmValType::V128 => VMVal {
-                v128: self.data.clone(),
+                v128: self.data
             },
             WasmValType::Ref(_) => todo!(),
         }
@@ -246,7 +246,7 @@ pub struct VMGlobalImport {
     pub from: *mut VMGlobalDefinition,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct VMContextPlan {
     num_imported_funcs: u32,
     num_imported_tables: u32,

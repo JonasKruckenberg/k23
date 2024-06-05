@@ -91,7 +91,7 @@ impl Compiler {
         // collect debug info
         ctx.codegen_context.func.collect_debug_info();
 
-        let mut func_env = FunctionEnvironment::new(isa, &module, types);
+        let mut func_env = FunctionEnvironment::new(isa, module, types);
 
         // setup stack limit
         let vmctx = ctx
@@ -124,7 +124,7 @@ impl Compiler {
         )?;
         ctx.validator_allocations = validator.into_allocations();
 
-        Ok(ctx.finish()?)
+        ctx.finish()
     }
 
     /// Compiles a trampoline for calling a WASM function from the host

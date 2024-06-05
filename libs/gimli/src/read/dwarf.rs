@@ -245,9 +245,9 @@ impl<R: Reader> Dwarf<R> {
     /// - an inline `DW_FORM_string` string
     /// - a `DW_FORM_strp` reference to an offset into the `.debug_str` section
     /// - a `DW_FORM_strp_sup` reference to an offset into a supplementary
-    /// object file
+    ///     object file
     /// - a `DW_FORM_line_strp` reference to an offset into the `.debug_line_str`
-    /// section
+    ///     section
     /// - a `DW_FORM_strx` index into the `.debug_str_offsets` entries for the unit
     ///
     /// then return the attribute's string value. Returns an error if the attribute
@@ -1126,6 +1126,7 @@ impl<R: Reader> Default for RangeIter<R> {
 
 impl<R: Reader> RangeIter<R> {
     /// Advance the iterator to the next range.
+
     pub fn next(&mut self) -> Result<Option<Range>> {
         match self.0 {
             RangeIterInner::Single(ref mut range) => Ok(range.take()),

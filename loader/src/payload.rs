@@ -11,7 +11,7 @@ pub struct Payload<'a> {
 }
 
 impl<'a> Payload<'a> {
-    pub fn from_signed_and_compressed<'b>(
+    pub fn from_signed_and_compressed(
         bytes: &'a [u8],
         verifying_key: &'static [u8; ed25519_dalek::PUBLIC_KEY_LENGTH],
         alloc: &mut BumpAllocator<'_, INIT<kconfig::MEMORY_MODE>>,
@@ -28,7 +28,7 @@ impl<'a> Payload<'a> {
         Self::from_compressed(compressed_payload, alloc)
     }
 
-    pub fn from_compressed<'b>(
+    pub fn from_compressed(
         compressed: &'a [u8],
         alloc: &mut BumpAllocator<'_, INIT<kconfig::MEMORY_MODE>>,
     ) -> Self {

@@ -36,7 +36,8 @@ fn blank_sig(isa: &dyn TargetIsa, call_conv: CallConv) -> Signature {
     // Add the caller/callee `vmctx` parameters.
     sig.params
         .push(AbiParam::special(pointer_type, ArgumentPurpose::VMContext));
-    return sig;
+
+    sig
 }
 
 pub fn wasm_call_signature(target_isa: &dyn TargetIsa, wasm_func_ty: &WasmFuncType) -> Signature {

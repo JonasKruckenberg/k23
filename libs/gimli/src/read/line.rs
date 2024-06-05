@@ -285,10 +285,10 @@ where
     /// >   1. Add a signed integer to the line register.
     /// >
     /// >   2. Modify the operation pointer by incrementing the address and
-    /// >   op_index registers as described below.
+    /// >       op_index registers as described below.
     /// >
     /// >   3. Append a row to the matrix using the current values of the state
-    /// >   machine registers.
+    /// >       machine registers.
     /// >
     /// >   4. Set the basic_block register to “false.”
     /// >
@@ -1297,7 +1297,7 @@ where
         let rest = &mut input.split(unit_length)?;
 
         let version = rest.read_u16()?;
-        if version < 2 || version > 5 {
+        if !(2..=5).contains(&version) {
             return Err(Error::UnknownVersion(u64::from(version)));
         }
 
@@ -1695,8 +1695,8 @@ impl FileEntryFormat {
         let mut path_count = 0;
         for _ in 0..format_count {
             let content_type = input.read_uleb128()?;
-            let content_type = if content_type > u64::from(u16::max_value()) {
-                constants::DwLnct(u16::max_value())
+            let content_type = if content_type > u64::from(u16::MAX) {
+                constants::DwLnct(u16::MAX)
             } else {
                 constants::DwLnct(content_type as u16)
             };

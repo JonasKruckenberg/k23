@@ -165,12 +165,12 @@ impl<R: Reader> EhFrameHdr<R> {
         }
         let eh_frame_ptr = parse_encoded_pointer(eh_frame_ptr_enc, &parameters, &mut reader)?;
 
-        let fde_count;
-        if fde_count_enc == constants::DW_EH_PE_omit || table_enc == constants::DW_EH_PE_omit {
-            fde_count = 0
-        } else {
-            fde_count = parse_encoded_pointer(fde_count_enc, &parameters, &mut reader)?.direct()?;
-        }
+        let fde_count =
+            if fde_count_enc == constants::DW_EH_PE_omit || table_enc == constants::DW_EH_PE_omit {
+                0
+            } else {
+                parse_encoded_pointer(fde_count_enc, &parameters, &mut reader)?.direct()?
+            };
 
         Ok(ParsedEhFrameHdr {
             address_size,
@@ -241,6 +241,7 @@ pub struct EhHdrTableIter<'a, 'bases, R: Reader> {
 
 impl<'a, 'bases, R: Reader> EhHdrTableIter<'a, 'bases, R> {
     /// Yield the next entry in the `EhHdrTableIter`.
+
     pub fn next(&mut self) -> Result<Option<(Pointer, Pointer)>> {
         if self.remain == 0 {
             return Ok(None);
@@ -1005,6 +1006,7 @@ where
     Section: UnwindSection<R>,
 {
     /// Advance the iterator to the next entry.
+
     pub fn next(&mut self) -> Result<Option<CieOrFde<'bases, Section, R>>> {
         if self.input.is_empty() {
             return Ok(None);
@@ -1616,6 +1618,7 @@ where
 }
 
 impl<R: Reader> FrameDescriptionEntry<R> {
+    #[allow(clippy::too_many_arguments)]
     fn parse_rest<Section, F>(
         offset: R::Offset,
         length: R::Offset,
@@ -3360,6 +3363,7 @@ pub struct CallFrameInstructionIter<'a, R: Reader> {
 
 impl<'a, R: Reader> CallFrameInstructionIter<'a, R> {
     /// Parse the next call frame instruction.
+
     pub fn next(&mut self) -> Result<Option<CallFrameInstruction<R>>> {
         if self.input.is_empty() {
             return Ok(None);

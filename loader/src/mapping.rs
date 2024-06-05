@@ -97,7 +97,7 @@ pub fn set_up_mappings(
     state.map_physical_memory(machine_info)?;
 
     // Identity map self
-    let loader_virt = state.identity_map_loader(&loader_regions)?;
+    let loader_virt = state.identity_map_loader(loader_regions)?;
 
     let frame_usage = state.mapper.allocator().frame_usage();
     log::info!(

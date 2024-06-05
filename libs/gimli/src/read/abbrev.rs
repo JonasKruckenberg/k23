@@ -3,6 +3,7 @@
 use alloc::collections::btree_map;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::cmp::Ordering;
 use core::convert::TryFrom;
 use core::fmt::{self, Debug};
 use core::iter::FromIterator;
@@ -239,15 +240,18 @@ impl Abbreviations {
             // in a Vec, as long as the map doesn't already contain them.
             // A potential further optimization would be to allow some
             // holes in the Vec, but there's no need for that yet.
-            if code_usize - 1 < self.vec.len() {
-                return Err(());
-            } else if code_usize - 1 == self.vec.len() {
-                if !self.map.is_empty() && self.map.contains_key(&abbrev.code) {
-                    return Err(());
-                } else {
-                    self.vec.push(abbrev);
-                    return Ok(());
+
+            match usize::cmp(&(code_usize - 1), &self.vec.len()) {
+                Ordering::Less => return Err(()),
+                Ordering::Equal => {
+                    if !self.map.is_empty() && self.map.contains_key(&abbrev.code) {
+                        return Err(());
+                    } else {
+                        self.vec.push(abbrev);
+                        return Ok(());
+                    }
                 }
+                Ordering::Greater => {}
             }
         }
         match self.map.entry(abbrev.code) {

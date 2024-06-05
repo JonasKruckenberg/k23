@@ -50,15 +50,15 @@ pub fn compile_module<'wasm, T: WritableBuffer>(
     let compile_inputs = CompileInputs::from_module(&module, &types, func_compile_inputs);
 
     // compile functions to machine code
-    let unlinked_compile_outputs = compile_inputs.compile(&engine, &module).unwrap();
+    let unlinked_compile_outputs = compile_inputs.compile(engine, &module).unwrap();
 
     let mut obj_builder = ObjectBuilder::new(engine.compiler().create_intermediate_code_object());
 
-    obj_builder.append_engine_info(&engine);
+    obj_builder.append_engine_info(engine);
     obj_builder.append_debug_info(&module.debug_info);
 
     let info = unlinked_compile_outputs.link_append_and_finish(
-        &engine,
+        engine,
         module,
         types,
         obj_builder,
@@ -88,7 +88,7 @@ impl<'a> CompileInputs<'a> {
         for (def_func_index, body_input) in function_body_inputs {
             inputs.push(Box::new(move |compiler| {
                 let function =
-                    compiler.compile_function(&module, &types, def_func_index, body_input)?;
+                    compiler.compile_function(module, types, def_func_index, body_input)?;
 
                 Ok(CompileOutput {
                     key: CompileKey::wasm_function(module_index, def_func_index),
@@ -157,8 +157,7 @@ impl<'a> CompileInputs<'a> {
         let flattened: Vec<_> = unlinked_compile_outputs
             .outputs
             .values()
-            .map(|inner| inner.values())
-            .flatten()
+            .flat_map(|inner| inner.values())
             .collect();
 
         let mut builtins = BTreeMap::new();
@@ -241,8 +240,7 @@ impl UnlinkedCompileOutputs {
         let flattened: Vec<_> = self
             .outputs
             .values()
-            .map(|inner| inner.values())
-            .flatten()
+            .flat_map(|inner| inner.values())
             .collect();
 
         let text_builder = engine

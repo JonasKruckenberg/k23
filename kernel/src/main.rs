@@ -48,7 +48,7 @@ fn main(_hartid: usize) -> ! {
 
     let mut store = Store::new(0);
 
-    let module = Module::from_binary(&engine, &mut store, wasm);
+    let module = Module::from_binary(&engine, &store, wasm);
     log::debug!("{module:#?}");
 
     let linker = Linker::new();
@@ -61,6 +61,9 @@ fn main(_hartid: usize) -> ! {
 #[no_mangle]
 pub static mut __stack_chk_guard: u64 = 0xe57fad0f5f757433;
 
+/// # Safety
+/// 
+/// Extern
 #[no_mangle]
 pub unsafe extern "C" fn __stack_chk_fail() {
     panic!("Kernel stack is corrupted")
