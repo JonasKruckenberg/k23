@@ -1,4 +1,4 @@
-use crate::raw_mutex::RawMutex;
+use super::raw_mutex::RawMutex;
 use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 use core::num::NonZeroUsize;
@@ -140,7 +140,7 @@ pub fn local_thread_id() -> NonZeroUsize {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::assert_not_send;
+    use crate::sync::assert_not_send;
     use std::cell::RefCell;
     use std::sync::Arc;
     use std::thread;

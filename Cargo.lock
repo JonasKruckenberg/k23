@@ -513,17 +513,25 @@ dependencies = [
  "cranelift-frontend",
  "cranelift-wasm",
  "gimli",
+ "kstd",
  "linked_list_allocator",
  "loader-api",
  "log",
  "object",
  "onlyerror",
  "postcard",
- "riscv",
  "rustc-demangle",
- "sync",
  "target-lexicon",
  "vmm",
+]
+
+[[package]]
+name = "kstd"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "onlyerror",
 ]
 
 [[package]]
@@ -550,13 +558,12 @@ dependencies = [
  "cfg-if",
  "dtb-parser",
  "ed25519-dalek",
+ "kstd",
  "linked_list_allocator",
  "loader-api",
  "log",
  "lz4_flex",
  "object",
- "riscv",
- "sync",
  "vmm",
 ]
 
@@ -726,16 +733,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adad44e29e4c806119491a7f06f03de4d1af22c3a680dd47f1e6e179439d1f56"
 
 [[package]]
-name = "riscv"
-version = "0.1.0"
-dependencies = [
- "bitflags",
- "cfg-if",
- "onlyerror",
- "sync",
-]
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -862,10 +859,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sync"
-version = "0.1.0"
-
-[[package]]
 name = "target-lexicon"
 version = "0.12.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -951,10 +944,10 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "cfg-if",
+ "kstd",
  "log",
  "object",
  "onlyerror",
- "riscv",
 ]
 
 [[package]]

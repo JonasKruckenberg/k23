@@ -9,7 +9,7 @@ license.workspace = true
 loader-api.workspace = true
 dtb-parser.workspace = true
 vmm = { workspace = true, features = ["elf"] }
-sync.workspace = true
+kstd.workspace = true
 
 cfg-if.workspace = true
 arrayvec.workspace = true
@@ -19,6 +19,3 @@ bitflags.workspace = true
 ed25519-dalek = { workspace = true, features = ["fast"] }
 linked_list_allocator.workspace = true
 object = { workspace = true, features = ["read_core", "elf"] }
-
-[target.'cfg(target_arch = "riscv64")'.dependencies]
-riscv.workspace = true

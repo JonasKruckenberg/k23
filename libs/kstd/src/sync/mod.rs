@@ -1,6 +1,3 @@
-#![cfg_attr(not(test), no_std)]
-#![feature(thread_local)]
-
 mod mutex;
 mod once;
 mod raw_mutex;

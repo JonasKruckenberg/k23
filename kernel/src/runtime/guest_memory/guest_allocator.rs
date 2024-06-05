@@ -6,8 +6,8 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use core::ptr::NonNull;
+use kstd::sync::Mutex;
 use linked_list_allocator::Heap;
-use sync::Mutex;
 use vmm::{AddressRangeExt, EntryFlags, Flush, Mapper, Mode, VirtualAddress};
 
 /// A type that knows how to allocate and deallocate memory in userspace.

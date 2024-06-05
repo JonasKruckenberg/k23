@@ -1,7 +1,7 @@
 use crate::kconfig;
 use core::mem::MaybeUninit;
 use core::ops::Range;
-use sync::Mutex;
+use kstd::sync::Mutex;
 use vmm::{BitMapAllocator, BumpAllocator, FrameAllocator, PhysicalAddress};
 
 static FRAME_ALLOC: Mutex<MaybeUninit<BitMapAllocator<kconfig::MEMORY_MODE>>> =

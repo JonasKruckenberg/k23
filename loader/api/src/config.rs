@@ -58,7 +58,7 @@ impl MemoryMode {
             if #[cfg(target_arch = "riscv64")] {
                 Self::Riscv64Sv39
             } else {
-                compile_error!("Unsupported target architecture");
+                panic!("Unsupported target architecture");
             }
         }
     }

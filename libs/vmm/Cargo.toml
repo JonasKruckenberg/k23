@@ -14,9 +14,7 @@ log.workspace = true
 onlyerror.workspace = true
 cfg-if.workspace = true
 object = { workspace = true, features = ["read_core", "elf"], optional = true }
-
-[target.'cfg(target_arch = "riscv64")'.dependencies]
-riscv.workspace = true
+kstd.workspace = true
 
 [features]
 elf = ["object"]

@@ -1,9 +1,6 @@
 use crate::kconfig;
-use crate::machine_info::MachineInfo;
-use core::ptr::addr_of_mut;
 use core::slice;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use linked_list_allocator::LockedHeap;
 use loader_api::LoaderConfig;
 use object::{Object, ObjectSection};
 use vmm::{BumpAllocator, FrameAllocator, INIT};

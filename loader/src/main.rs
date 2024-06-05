@@ -25,11 +25,11 @@ use crate::mapping::{set_up_mappings, Mappings};
 use crate::payload::Payload;
 use core::mem::MaybeUninit;
 use core::ops::Range;
-use core::ptr::{addr_of, addr_of_mut};
+use core::ptr::addr_of;
 use core::{ptr, slice};
+use kstd::sync::Once;
 use linked_list_allocator::LockedHeap;
 use loader_api::{MemoryRegion, MemoryRegionKind};
-use sync::Once;
 use vmm::{
     AddressRangeExt, BumpAllocator, FrameAllocator, Mode, PhysicalAddress, VirtualAddress, INIT,
 };

@@ -3,8 +3,8 @@ use crate::{kconfig, logger};
 use core::arch::asm;
 use core::ops::Range;
 use core::ptr::addr_of_mut;
+use kstd::sync::Once;
 use loader_api::BootInfo;
-use sync::Once;
 use vmm::VirtualAddress;
 
 // do global, arch-specific setup

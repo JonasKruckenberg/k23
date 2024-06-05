@@ -16,7 +16,7 @@ impl log::Log for Logger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            riscv::semihosting::hprintln!(
+            kstd::println!(
                 "[{:<5} {}] {}",
                 record.level(),
                 record.module_path_static().unwrap_or_default(),

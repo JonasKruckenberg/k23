@@ -1,13 +1,14 @@
+use crate::sync::Mutex;
 use core::arch::asm;
 use core::ffi::CStr;
 use core::fmt::{Error, Write};
 use core::ops::DerefMut;
 use core::{fmt, hint, slice};
-use sync::Mutex;
 
 const OPEN: usize = 0x01;
 const WRITE: usize = 0x05;
 const EXIT: usize = 0x18;
+#[cfg(target_pointer_width = "32")]
 const EXIT_EXTENDED: usize = 0x20;
 const GET_CMDLINE: usize = 0x15;
 const OPEN_W_TRUNC: usize = 4;
@@ -58,8 +59,7 @@ impl HostStream {
 impl Write for HostStream {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         #[allow(clippy::default_constructed_unit_structs)]
-        self.write_all(s.as_bytes())
-            .map_err(|err| Error::default())?;
+        self.write_all(s.as_bytes()).map_err(|_| Error::default())?;
 
         Ok(())
     }
@@ -111,75 +111,6 @@ pub fn _eprint(args: fmt::Arguments) {
 }
 
 #[macro_export]
-macro_rules! hprint {
-    ($s:expr) => {
-        $crate::semihosting::_print(format_args!($s))
-    };
-    ($($tt:tt)*) => {
-        $crate::semihosting::_print(format_args!($($tt)*))
-    };
-}
-
-#[macro_export]
-macro_rules! hprintln {
-    () => {
-        $crate::semihosting::_print(format_args!("\n"))
-    };
-    ($s:expr) => {
-        $crate::semihosting::_print(format_args!(concat!($s, "\n")))
-    };
-    ($s:expr, $($tt:tt)*) => {
-        $crate::semihosting::_print(format_args!(concat!($s, "\n"), $($tt)*))
-    };
-}
-
-#[macro_export]
-macro_rules! heprint {
-    ($s:expr) => {
-        $crate::semihosting::_eprint(format_args!($s))
-    };
-    ($($tt:tt)*) => {
-        $crate::semihosting::_eprint(format_args!($($tt)*))
-    };
-}
-
-#[macro_export]
-macro_rules! heprintln {
-    () => {
-        $crate::semihosting::_eprint(format_args!("\n"))
-    };
-    ($s:expr) => {
-        $crate::semihosting::_eprint(format_args!(concat!($s, "\n")))
-    };
-    ($s:expr, $($tt:tt)*) => {
-        $crate::semihosting::_eprint(format_args!(concat!($s, "\n"), $($tt)*))
-    };
-}
-
-#[macro_export]
-macro_rules! dbg {
-    () => {
-        $crate::heprintln!("[{}:{}]", file!(), line!());
-    };
-    ($val:expr) => {
-        // Use of `match` here is intentional because it affects the lifetimes
-        // of temporaries - https://stackoverflow.com/a/48732525/1063961
-        match $val {
-            tmp => {
-                $crate::heprintln!("[{}:{}] {} = {:#?}",
-                    file!(), line!(), stringify!($val), &tmp);
-                tmp
-            }
-        }
-    };
-    // Trailing comma with single argument is ignored
-    ($val:expr,) => { $crate::dbg!($val) };
-    ($($val:expr),+ $(,)?) => {
-        ($($crate::dbg!($val)),+,)
-    };
-}
-
-#[macro_export]
 macro_rules! syscall {
     ($nr:path) => {
         syscall_inner($nr, 0)
@@ -204,7 +135,7 @@ macro_rules! syscall {
     };
 }
 
-pub use {dbg, heprint, heprintln, hprint, hprintln, syscall};
+pub use syscall;
 
 #[inline(always)]
 unsafe fn syscall_inner(_nr: usize, _arg: usize) -> usize {
@@ -307,7 +238,8 @@ pub enum ExitReason {
     ADP_Stopped_OSSpecific = 0x20029,
 }
 
-fn get_cmdline(buf: &mut [u8]) -> Result<&CStr, core::ffi::FromBytesUntilNulError> {
+pub fn get_cmdline(buf: &mut [u8]) -> Result<&CStr, core::ffi::FromBytesUntilNulError> {
+    #[allow(unused)]
     struct Args<'a> {
         buf: &'a mut [u8],
         len: usize,

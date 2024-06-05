@@ -3,25 +3,14 @@ mod trap;
 use crate::thread_local::declare_thread_local;
 use crate::{allocator, frame_alloc, kconfig, logger};
 use arrayvec::ArrayVec;
-use core::arch::asm;
+use kstd::arch::riscv64::sstatus::FS;
+use kstd::arch::riscv64::{sie, sstatus};
+use kstd::sync::Once;
 use loader_api::{LoaderConfig, MemoryRegionKind};
-use riscv::register;
-use riscv::register::sstatus::FS;
-use riscv::register::{sie, sstatus};
-use sync::Once;
 use vmm::{AddressRangeExt, EntryFlags, Flush, Mapper};
-
-pub fn halt() -> ! {
-    unsafe {
-        loop {
-            asm!("wfi");
-        }
-    }
-}
 
 declare_thread_local! {
     pub static HARTID: usize;
-    pub static TTEST: usize = const { 42 };
 }
 
 #[loader_api::entry(LoaderConfig::new_default())]
@@ -30,9 +19,9 @@ fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
 
     logger::init();
 
-    TTEST.with(|g| {
-        log::info!("Hello World from kernel {:?} {g}", boot_info);
-    });
+    // TTEST.with(|g| {
+    //     log::info!("Hello World from kernel {:?} {g}", boot_info);
+    // });
 
     trap::init();
 

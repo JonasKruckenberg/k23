@@ -1,7 +1,7 @@
 use crate::allocator::heap::{Heap, HeapUsage};
 use core::alloc::{AllocError, Allocator, Layout};
 use core::ptr::NonNull;
-use sync::Mutex;
+use kstd::sync::Mutex;
 use vmm::{Mode, VirtualAddress};
 
 /// A thread safe wrapper around [`Heap`].

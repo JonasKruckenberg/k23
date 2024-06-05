@@ -2,7 +2,8 @@ use crate::entry::Entry;
 use crate::{Mode, PhysicalAddress, VirtualAddress};
 use bitflags::bitflags;
 use core::ops::Range;
-use riscv::register::satp;
+use kstd::arch::riscv64::satp;
+use kstd::arch::riscv64::sbi::rfence::{sfence_vma, sfence_vma_asid};
 
 bitflags! {
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
@@ -46,7 +47,7 @@ fn invalidate_address_range(
 ) -> crate::Result<()> {
     let base_addr = address_range.start.0;
     let size = address_range.end.0 - address_range.start.0;
-    riscv::sbi::rfence::sfence_vma_asid(0, usize::MAX, base_addr, size, asid)?;
+    sfence_vma_asid(0, usize::MAX, base_addr, size, asid)?;
     Ok(())
 }
 
@@ -76,7 +77,7 @@ impl Mode for Riscv64Sv39 {
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 
     fn invalidate_all() -> crate::Result<()> {
-        riscv::sbi::rfence::sfence_vma(0, usize::MAX, 0, usize::MAX)?;
+        sfence_vma(0, usize::MAX, 0, usize::MAX)?;
         Ok(())
     }
 
@@ -127,7 +128,7 @@ impl Mode for Riscv64Sv48 {
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 
     fn invalidate_all() -> crate::Result<()> {
-        riscv::sbi::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
+        sfence_vma(0, usize::MAX, 0, 0)?;
         Ok(())
     }
 
@@ -178,7 +179,7 @@ impl Mode for Riscv64Sv57 {
     const ENTRY_ADDRESS_SHIFT: usize = ENTRY_ADDRESS_SHIFT;
 
     fn invalidate_all() -> crate::Result<()> {
-        riscv::sbi::rfence::sfence_vma(0, usize::MAX, 0, 0)?;
+        sfence_vma(0, usize::MAX, 0, 0)?;
         Ok(())
     }
 

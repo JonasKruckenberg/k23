@@ -7,8 +7,7 @@ license.workspace = true
 
 [dependencies]
 vmm.workspace = true
-sync.workspace = true
-riscv.workspace = true
+kstd.workspace = true
 loader-api.workspace = true
 
 cfg-if.workspace = true
