@@ -25,6 +25,7 @@ impl HostStream {
         Self::open(":tt\0", OPEN_W_APPEND).unwrap()
     }
 
+    #[allow(clippy::result_unit_err)]
     pub fn write_all(&mut self, mut buf: &[u8]) -> Result<(), ()> {
         while !buf.is_empty() {
             match unsafe { syscall!(WRITE, self.0, buf.as_ptr(), buf.len()) } {
@@ -47,6 +48,7 @@ impl HostStream {
         Ok(())
     }
 
+    #[allow(clippy::result_unit_err)]
     fn open(name: &str, mode: usize) -> Result<Self, ()> {
         let name = name.as_bytes();
         match unsafe { syscall!(OPEN, name.as_ptr() as usize, mode, name.len() - 1) } as isize {
