@@ -99,9 +99,7 @@ impl VMGlobalDefinition {
             WasmValType::F64 => VMVal {
                 f64: *self.as_f64_bits(),
             },
-            WasmValType::V128 => VMVal {
-                v128: self.data
-            },
+            WasmValType::V128 => VMVal { v128: self.data },
             WasmValType::Ref(_) => todo!(),
         }
     }

@@ -62,7 +62,7 @@ fn main(_hartid: usize) -> ! {
 pub static mut __stack_chk_guard: u64 = 0xe57fad0f5f757433;
 
 /// # Safety
-/// 
+///
 /// Extern
 #[no_mangle]
 pub unsafe extern "C" fn __stack_chk_fail() {
