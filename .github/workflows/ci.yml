@@ -65,7 +65,7 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v1
 
   clippy:
-    name: Check
+    name: Clippy
     needs: pre_ci
     if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
