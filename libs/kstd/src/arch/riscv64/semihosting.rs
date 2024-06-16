@@ -65,6 +65,8 @@ pub use syscall;
 
 /// [SYS_EXIT (0x18)](https://github.com/ARM-software/abi-aa/blob/HEAD/semihosting/semihosting.rst#sys_exit-0x18)
 pub const SYS_EXIT: usize = 0x18;
+
+#[cfg(target_pointer_width = "32")]
 /// [SYS_EXIT_EXTENDED (0x20)](https://github.com/ARM-software/abi-aa/blob/HEAD/semihosting/semihosting.rst#sys_exit_extended-0x20)
 pub const SYS_EXIT_EXTENDED: usize = 0x20;
 
@@ -73,26 +75,26 @@ pub const SYS_EXIT_EXTENDED: usize = 0x20;
 #[non_exhaustive]
 pub enum ExitReason {
     // Reason codes related to hardware exceptions:
-    AdpStoppedBranchThroughZero = 0x20000,
-    AdpStoppedUndefinedInstr = 0x20001,
-    AdpStoppedSoftwareInterrupt = 0x20002,
-    AdpStoppedPrefetchAbort = 0x20003,
-    AdpStoppedDataAbort = 0x20004,
-    AdpStoppedAddressException = 0x20005,
-    AdpStoppedIrq = 0x20006,
-    AdpStoppedFiq = 0x20007,
+    // AdpStoppedBranchThroughZero = 0x20000,
+    // AdpStoppedUndefinedInstr = 0x20001,
+    // AdpStoppedSoftwareInterrupt = 0x20002,
+    // AdpStoppedPrefetchAbort = 0x20003,
+    // AdpStoppedDataAbort = 0x20004,
+    // AdpStoppedAddressException = 0x20005,
+    // AdpStoppedIrq = 0x20006,
+    // AdpStoppedFiq = 0x20007,
 
     // Reason codes related to software events:
-    AdpStoppedBreakPoint = 0x20020,
-    AdpStoppedWatchPoint = 0x20021,
-    AdpStoppedStepComplete = 0x20022,
+    // AdpStoppedBreakPoint = 0x20020,
+    // AdpStoppedWatchPoint = 0x20021,
+    // AdpStoppedStepComplete = 0x20022,
     AdpStoppedRunTimeErrorUnknown = 0x20023,
-    AdpStoppedInternalError = 0x20024,
-    AdpStoppedUserInterruption = 0x20025,
+    // AdpStoppedInternalError = 0x20024,
+    // AdpStoppedUserInterruption = 0x20025,
     AdpStoppedApplicationExit = 0x20026,
-    AdpStoppedStackOverflow = 0x20027,
-    AdpStoppedDivisionByZero = 0x20028,
-    AdpStoppedOsspecific = 0x20029,
+    // AdpStoppedStackOverflow = 0x20027,
+    // AdpStoppedDivisionByZero = 0x20028,
+    // AdpStoppedOsspecific = 0x20029,
 }
 
 #[allow(clippy::cast_sign_loss)]
