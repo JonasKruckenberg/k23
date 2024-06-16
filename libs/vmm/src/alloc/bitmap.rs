@@ -281,13 +281,13 @@ impl<M: Mode> FrameAllocator for BitMapAllocator<M> {
 #[cfg(test)]
 mod test {
     use crate::{
-        BitMapAllocator, BumpAllocator, EmulateArch, Error, FrameAllocator, Mode, PhysicalAddress,
+        BitMapAllocator, BumpAllocator, EmulateMode, Error, FrameAllocator, Mode, PhysicalAddress,
     };
 
     #[test]
     fn single_region_single_frame() -> Result<(), Error> {
-        let bump_alloc: BumpAllocator<EmulateArch> = unsafe {
-            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)])
+        let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
+            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE)])
         };
         let mut alloc = BitMapAllocator::new(bump_alloc)?;
 
@@ -302,8 +302,8 @@ mod test {
 
     #[test]
     fn single_region_multi_frame() -> Result<(), Error> {
-        let bump_alloc: BumpAllocator<EmulateArch> = unsafe {
-            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE)])
+        let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
+            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE)])
         };
         let mut alloc = BitMapAllocator::new(bump_alloc)?;
 
@@ -316,11 +316,11 @@ mod test {
 
     #[test]
     fn multi_region_single_frame() -> Result<(), Error> {
-        let bump_alloc: BumpAllocator<EmulateArch> = unsafe {
+        let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
             BumpAllocator::new(&[
-                PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
-                PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
-                    ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+                PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
+                PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
+                    ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
             ])
         };
         let mut alloc = BitMapAllocator::new(bump_alloc)?;
@@ -339,11 +339,11 @@ mod test {
 
     #[test]
     fn multi_region_multi_frame() -> Result<(), Error> {
-        let bump_alloc: BumpAllocator<EmulateArch> = unsafe {
+        let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
             BumpAllocator::new(&[
-                PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
-                PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
-                    ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+                PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
+                PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
+                    ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
             ])
         };
         let mut alloc = BitMapAllocator::new(bump_alloc)?;
@@ -360,11 +360,11 @@ mod test {
 
     #[test]
     fn multi_region_multi_frame2() -> Result<(), Error> {
-        let bump_alloc: BumpAllocator<EmulateArch> = unsafe {
+        let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
             BumpAllocator::new(&[
-                PhysicalAddress(0)..PhysicalAddress(4 * EmulateArch::PAGE_SIZE),
-                PhysicalAddress(7 * EmulateArch::PAGE_SIZE)
-                    ..PhysicalAddress(9 * EmulateArch::PAGE_SIZE),
+                PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
+                PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
+                    ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
             ])
         };
         let mut alloc = BitMapAllocator::new(bump_alloc)?;

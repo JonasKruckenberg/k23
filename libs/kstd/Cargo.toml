@@ -8,4 +8,3 @@ license.workspace = true
 [dependencies]
 cfg-if.workspace = true
 onlyerror.workspace = true
-bitflags.workspace = true

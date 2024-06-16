@@ -6,7 +6,6 @@ mod arch;
 mod logger;
 mod machine_info;
 mod mapping;
-mod panic;
 mod payload;
 
 // Configuration constants and statics defined by the build script

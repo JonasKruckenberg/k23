@@ -2,8 +2,8 @@ use crate::entry::Entry;
 use crate::{Mode, PhysicalAddress, VirtualAddress};
 use bitflags::bitflags;
 use core::ops::Range;
-use kstd::arch::riscv64::satp;
-use kstd::arch::riscv64::sbi::rfence::{sfence_vma, sfence_vma_asid};
+use kstd::arch::satp;
+use kstd::arch::sbi::rfence::{sfence_vma, sfence_vma_asid};
 
 bitflags! {
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]

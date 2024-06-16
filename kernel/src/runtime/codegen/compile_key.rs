@@ -9,7 +9,6 @@ pub struct CompileKey {
     //
     //     [ kind:i3 module:i29 ]
     namespace: u32,
-
     pub index: u32,
 }
 

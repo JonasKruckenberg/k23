@@ -33,9 +33,9 @@ macro_rules! get_bits {
 }
 
 /// Mock RiscvSv39 architecture for testing
-pub struct EmulateArch;
+pub struct EmulateMode;
 
-impl EmulateArch {
+impl EmulateMode {
     pub fn virt_from_parts(
         vpn2: usize,
         vpn1: usize,
@@ -56,7 +56,7 @@ impl EmulateArch {
     }
 }
 
-impl Mode for EmulateArch {
+impl Mode for EmulateMode {
     type EntryFlags = EmulateEntryFlags;
 
     const PHYS_OFFSET: usize = 0xffff_ffd8_0000_0000;

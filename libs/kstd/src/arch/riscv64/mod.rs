@@ -1,12 +1,12 @@
-mod register;
+pub mod hio;
+pub mod register;
+pub mod sbi;
+pub(crate) mod semihosting;
 
 use core::arch::asm;
 pub use register::*;
 
-pub mod sbi;
-pub mod semihosting;
-
-pub fn abort() -> ! {
+pub fn abort_internal() -> ! {
     unsafe {
         loop {
             asm!("wfi");

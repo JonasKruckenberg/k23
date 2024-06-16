@@ -1,3 +1,4 @@
+use crate::arch::EntryFlags;
 use crate::frame_alloc::with_frame_alloc;
 use crate::kconfig;
 use crate::runtime::codegen::{
@@ -9,7 +10,7 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use object::{File, Object, ObjectSection};
-use vmm::{AddressRangeExt, EntryFlags, Flush, Mapper, VirtualAddress};
+use vmm::{AddressRangeExt, Flush, Mapper, VirtualAddress};
 
 pub struct CodeMemory {
     inner: AlignedVec<u8, { kconfig::PAGE_SIZE }>,

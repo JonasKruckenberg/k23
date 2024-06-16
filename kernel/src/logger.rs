@@ -18,7 +18,7 @@ impl log::Log for Logger {
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             arch::HARTID.with(|hartid| {
-                kstd::println!(
+                kstd::heprintln!(
                     "[{:<5} HART {} {}] {}",
                     record.level(),
                     hartid,

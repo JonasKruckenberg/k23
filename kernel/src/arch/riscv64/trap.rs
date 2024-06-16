@@ -1,11 +1,11 @@
 use crate::kconfig;
-use crate::thread_local::declare_thread_local;
 use core::arch::asm;
 use core::marker::PhantomPinned;
 use core::ptr::addr_of;
-use kstd::arch::riscv64::sbi::time::set_timer;
-use kstd::arch::riscv64::scause::{Exception, Interrupt, Trap};
-use kstd::arch::riscv64::{abort, scause, sepc, sstatus, stval, stvec};
+use kstd::arch::sbi::time::set_timer;
+use kstd::arch::scause::{Exception, Interrupt, Trap};
+use kstd::arch::{scause, sepc, sstatus, stval, stvec};
+use kstd::declare_thread_local;
 
 declare_thread_local! {
     static TRAP_FRAME: TrapFrame;
@@ -260,7 +260,7 @@ fn default_trap_handler(
 
             log::error!("KERNEL LOAD PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
 
-            abort();
+            panic!();
 
             // let mut count = 0;
             // crate::backtrace::trace_with_context(ctx, |frame| {
@@ -274,7 +274,7 @@ fn default_trap_handler(
 
             log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
 
-            abort();
+            panic!();
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             log::info!("Supervisor Timer");

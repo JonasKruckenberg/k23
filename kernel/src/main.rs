@@ -19,13 +19,16 @@ mod allocator;
 mod arch;
 mod frame_alloc;
 mod logger;
-mod panic;
 mod runtime;
-mod thread_local;
 
 pub mod kconfig {
     #[allow(non_camel_case_types)]
+    #[cfg(target_arch = "riscv64")]
     pub type MEMORY_MODE = vmm::Riscv64Sv39;
+    #[allow(non_camel_case_types)]
+    #[cfg(not(target_arch = "riscv64"))]
+    pub type MEMORY_MODE = vmm::EmulateMode;
+
     pub const PAGE_SIZE: usize = <MEMORY_MODE as ::vmm::Mode>::PAGE_SIZE;
     pub const HEAP_SIZE_PAGES: usize = 8192; // 32 MiB
     pub const TRAP_STACK_SIZE_PAGES: usize = 16; // Size of the per-hart trap stack in pages

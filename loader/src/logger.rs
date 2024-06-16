@@ -16,7 +16,7 @@ impl log::Log for Logger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            kstd::println!(
+            kstd::heprintln!(
                 "[{:<5} {}] {}",
                 record.level(),
                 record.module_path_static().unwrap_or_default(),

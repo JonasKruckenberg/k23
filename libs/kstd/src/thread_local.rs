@@ -1,3 +1,4 @@
+#[macro_export]
 macro_rules! declare_thread_local {
     // empty (base case for the recursion)
     () => {};
@@ -32,6 +33,8 @@ macro_rules! declare_thread_local {
     );
 }
 
+#[doc(hidden)]
+#[macro_export]
 macro_rules! thread_local_inner {
     // used to generate the `LocalKey` value for const-initialized thread locals
     (@key $name:ident, $t:ty, const $init:expr) => {{
@@ -143,7 +146,7 @@ impl<T: 'static> LocalKey<T> {
     }
 
     pub unsafe fn as_ptr(&self) -> *const T {
-        log::trace!("as_ptr {:?}", self.inner);
+        // log::trace!("as_ptr {:?}", self.inner);
         let value = unsafe {
             (self.inner)(None).expect(
                 "cannot access a Thread Local Storage value \
@@ -154,4 +157,4 @@ impl<T: 'static> LocalKey<T> {
     }
 }
 
-pub(crate) use {declare_thread_local, thread_local_inner};
+pub use {declare_thread_local, thread_local_inner};

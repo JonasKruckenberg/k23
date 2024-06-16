@@ -1,3 +1,4 @@
+use crate::arch::EntryFlags;
 use crate::frame_alloc::with_frame_alloc;
 use crate::kconfig;
 use alloc::sync::Arc;
@@ -8,7 +9,7 @@ use core::ops::Range;
 use core::ptr::NonNull;
 use kstd::sync::Mutex;
 use linked_list_allocator::Heap;
-use vmm::{AddressRangeExt, EntryFlags, Flush, Mapper, Mode, VirtualAddress};
+use vmm::{AddressRangeExt, Flush, Mapper, Mode, VirtualAddress};
 
 /// A type that knows how to allocate and deallocate memory in userspace.
 ///

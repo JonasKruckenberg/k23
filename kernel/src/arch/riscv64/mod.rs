@@ -1,13 +1,15 @@
 mod trap;
 
-use crate::thread_local::declare_thread_local;
 use crate::{allocator, frame_alloc, kconfig, logger};
 use arrayvec::ArrayVec;
-use kstd::arch::riscv64::sstatus::FS;
-use kstd::arch::riscv64::{sie, sstatus};
+use kstd::arch::sstatus::FS;
+use kstd::arch::{sie, sstatus};
+use kstd::declare_thread_local;
 use kstd::sync::Once;
 use loader_api::{LoaderConfig, MemoryRegionKind};
-use vmm::{AddressRangeExt, EntryFlags, Flush, Mapper};
+use vmm::{AddressRangeExt, Flush, Mapper};
+
+pub type EntryFlags = vmm::EntryFlags;
 
 declare_thread_local! {
     pub static HARTID: usize;
@@ -18,11 +20,6 @@ fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
     HARTID.initialize_with(hartid, |_, _| {});
 
     logger::init();
-
-    // TTEST.with(|g| {
-    //     log::info!("Hello World from kernel {:?} {g}", boot_info);
-    // });
-
     trap::init();
 
     static INIT: Once = Once::new();
