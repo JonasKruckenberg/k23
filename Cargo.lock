@@ -510,6 +510,7 @@ dependencies = [
  "cranelift-wasm",
  "gimli",
  "kstd",
+ "ktest",
  "linked_list_allocator",
  "loader-api",
  "log",
@@ -517,6 +518,7 @@ dependencies = [
  "onlyerror",
  "postcard",
  "rustc-demangle",
+ "talc",
  "target-lexicon",
  "vmm",
 ]
@@ -526,7 +528,27 @@ name = "kstd"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
+ "lock_api",
  "onlyerror",
+]
+
+[[package]]
+name = "ktest"
+version = "0.1.0"
+dependencies = [
+ "dtb-parser",
+ "kstd",
+ "ktest-macros",
+ "loader-api",
+]
+
+[[package]]
+name = "ktest-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -851,6 +873,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "talc"
+version = "4.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04be12ec299aadd63a0bf781d893e4b6139d33cdca6dcd6f6be31f849cedcac8"
+dependencies = [
+ "lock_api",
 ]
 
 [[package]]

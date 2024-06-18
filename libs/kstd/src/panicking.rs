@@ -55,8 +55,9 @@ fn begin_panicking() -> AbortReason {
 fn default_panic_handler(info: &PanicInfo<'_>) -> ! {
     let abort_reason = begin_panicking();
 
+    let message = info.message();
     let loc = info.location().unwrap(); // The current implementation always returns Some
-    let payload = match abort_reason {
+    let context = match abort_reason {
         AbortReason::AlwaysAbort => "hart panicked, aborting.",
         AbortReason::PanicInHook => "hart panicked while processing panic. aborting.",
     };
@@ -64,10 +65,10 @@ fn default_panic_handler(info: &PanicInfo<'_>) -> ! {
     let hook = HOOK.lock();
     match *hook {
         Hook::Default => {
-            default_hook(&PanicHookInfo::new(loc, &payload));
+            default_hook(&PanicHookInfo::new(loc, message, &context));
         }
         Hook::Custom(ref hook) => {
-            hook(&PanicHookInfo::new(loc, &payload));
+            hook(&PanicHookInfo::new(loc, message, &context));
         }
     }
 }
@@ -84,7 +85,7 @@ static HOOK: Mutex<Hook> = Mutex::new(Hook::Default);
 
 fn default_hook(info: &PanicHookInfo<'_>) -> ! {
     heprintln!("{}", info);
-    arch::abort_internal();
+    arch::abort_internal(1);
 }
 
 pub fn set_hook(hook: fn(&PanicHookInfo<'_>) -> !) {
@@ -102,30 +103,22 @@ pub fn set_hook(hook: fn(&PanicHookInfo<'_>) -> !) {
 }
 
 pub struct PanicHookInfo<'a> {
-    payload: &'a (dyn Any + Send),
+    context: &'a str,
+    message: Option<&'a fmt::Arguments<'a>>,
     location: &'a Location<'a>,
 }
 
 impl<'a> PanicHookInfo<'a> {
     #[inline]
-    pub(crate) fn new(location: &'a Location<'a>, payload: &'a (dyn Any + Send)) -> Self {
-        PanicHookInfo { payload, location }
-    }
-
-    /// Returns the payload associated with the panic.
-    ///
-    /// This will commonly, but not always, be a `&'static str` or [`String`].
-    pub fn payload(&self) -> &(dyn Any + Send) {
-        self.payload
-    }
-
-    #[must_use]
-    #[inline]
-    pub fn payload_as_str(&self) -> Option<&str> {
-        if let Some(s) = self.payload.downcast_ref::<&str>() {
-            Some(s)
-        } else {
-            None
+    pub(crate) fn new(
+        location: &'a Location<'a>,
+        message: Option<&'a fmt::Arguments<'a>>,
+        context: &'a str,
+    ) -> Self {
+        PanicHookInfo {
+            context,
+            location,
+            message,
         }
     }
 
@@ -142,10 +135,12 @@ impl fmt::Display for PanicHookInfo<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("panicked at ")?;
         self.location.fmt(formatter)?;
-        if let Some(payload) = self.payload_as_str() {
-            formatter.write_str(":\n")?;
-            formatter.write_str(payload)?;
+        formatter.write_str(":\n")?;
+        if let Some(fmt_args) = self.message {
+            fmt_args.fmt(formatter)?;
         }
+        formatter.write_str("\n")?;
+        formatter.write_str(self.context)?;
         Ok(())
     }
 }

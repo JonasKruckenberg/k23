@@ -42,6 +42,7 @@
 // rw 0xffffffff80020000..0xffffffff80021000 => 0x9fb42000..0x9fb43000
 //    0xffffffff800200d8..0xffffffff80020218 => BSS
 
+use crate::arch::EntryFlags;
 use crate::machine_info::MachineInfo;
 use crate::payload::Payload;
 use crate::{kconfig, LoaderRegions};
@@ -50,10 +51,7 @@ use core::ops::{Div, Range};
 use core::{mem, ptr, slice};
 use loader_api::{BootInfo, MemoryRegion};
 use object::Object;
-use vmm::{
-    BumpAllocator, EntryFlags, Flush, Mapper, Mode, PhysicalAddress, TlsTemplate, VirtualAddress,
-    INIT,
-};
+use vmm::{BumpAllocator, Flush, Mapper, Mode, PhysicalAddress, TlsTemplate, VirtualAddress, INIT};
 
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;

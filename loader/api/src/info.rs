@@ -74,3 +74,12 @@ pub enum MemoryRegionKind {
     /// This memory should _not_ be used by the kernel.
     Loader,
 }
+
+impl MemoryRegionKind {
+    pub fn is_usable(&self) -> bool {
+        match self {
+            MemoryRegionKind::Usable => true,
+            _ => false,
+        }
+    }
+}

@@ -1,5 +1,5 @@
 [workspace]
-members = ["build/*", "libs/*", "kernel", "loader", "loader/api", "loader/api/macros"]
+members = ["build/*", "libs/*", "kernel", "loader", "loader/api", "loader/api/macros", "libs/ktest/macros"]
 resolver = "2"
 
 [workspace.package]
@@ -16,6 +16,7 @@ fxhash = { path = "libs/fxhash" }
 gimli = { path = "libs/gimli" }
 loader-api = { path = "loader/api" }
 kstd = { path = "libs/kstd" }
+ktest = { path = "libs/ktest" }
 
 onlyerror = { version = "0.1.4", default-features = false }
 log = "0.4.21"
@@ -26,6 +27,7 @@ arrayvec = { version = "0.7.4", default-features = false }
 ed25519-dalek = { version = "2.1.1", default-features = false }
 object = { version = "0.36.0", default-features = false }
 lz4_flex = { version = "0.11", default-features = false }
+lock_api = "0.4.12"
 
 # cranelift dependencies
 hashbrown = { version = "0.14.3", features = ["nightly"] }
