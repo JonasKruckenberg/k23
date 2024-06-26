@@ -1,6 +1,5 @@
 use crate::sync::Mutex;
 use crate::{arch, declare_thread_local, heprintln};
-use core::any::Any;
 use core::cell::Cell;
 use core::panic::{Location, PanicInfo};
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -65,10 +64,18 @@ fn default_panic_handler(info: &PanicInfo<'_>) -> ! {
     let hook = HOOK.lock();
     match *hook {
         Hook::Default => {
-            default_hook(&PanicHookInfo::new(loc, message, &context));
+            default_hook(&PanicHookInfo::new(
+                loc,
+                Some(&format_args!("{}", message)),
+                &context,
+            ));
         }
         Hook::Custom(ref hook) => {
-            hook(&PanicHookInfo::new(loc, message, &context));
+            hook(&PanicHookInfo::new(
+                loc,
+                Some(&format_args!("{}", message)),
+                &context,
+            ));
         }
     }
 }
