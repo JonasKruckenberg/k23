@@ -6,7 +6,6 @@
 //!
 //! The format is described in detail in the [Device Tree Specification](https://github.com/devicetree-org/devicetree-specification);
 #![no_std]
-#![feature(error_in_core)]
 
 pub mod debug;
 mod error;

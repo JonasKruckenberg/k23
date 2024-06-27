@@ -1,6 +1,5 @@
 use crate::sync::Mutex;
 use crate::{arch, declare_thread_local, heprintln};
-use core::any::Any;
 use core::cell::Cell;
 use core::panic::{Location, PanicInfo};
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -17,7 +16,7 @@ declare_thread_local! {
 /// Determines whether the current hart is panicking.
 #[inline]
 pub fn panicking() -> bool {
-    if GLOBAL_PANICKING.load(Ordering::Relaxed) == false {
+    if !GLOBAL_PANICKING.load(Ordering::Relaxed) {
         false
     } else {
         panicking_slow_path()
@@ -29,7 +28,7 @@ pub fn panicking() -> bool {
 #[inline(never)]
 #[cold]
 fn panicking_slow_path() -> bool {
-    LOCAL_PANICKING.with(|c| c.get() == true)
+    LOCAL_PANICKING.with(|c| c.get())
 }
 
 enum AbortReason {
@@ -55,8 +54,9 @@ fn begin_panicking() -> AbortReason {
 fn default_panic_handler(info: &PanicInfo<'_>) -> ! {
     let abort_reason = begin_panicking();
 
+    let message = info.message();
     let loc = info.location().unwrap(); // The current implementation always returns Some
-    let payload = match abort_reason {
+    let context = match abort_reason {
         AbortReason::AlwaysAbort => "hart panicked, aborting.",
         AbortReason::PanicInHook => "hart panicked while processing panic. aborting.",
     };
@@ -64,10 +64,18 @@ fn default_panic_handler(info: &PanicInfo<'_>) -> ! {
     let hook = HOOK.lock();
     match *hook {
         Hook::Default => {
-            default_hook(&PanicHookInfo::new(loc, &payload));
+            default_hook(&PanicHookInfo::new(
+                loc,
+                Some(&format_args!("{}", message)),
+                context,
+            ));
         }
         Hook::Custom(ref hook) => {
-            hook(&PanicHookInfo::new(loc, &payload));
+            hook(&PanicHookInfo::new(
+                loc,
+                Some(&format_args!("{}", message)),
+                context,
+            ));
         }
     }
 }
@@ -84,7 +92,7 @@ static HOOK: Mutex<Hook> = Mutex::new(Hook::Default);
 
 fn default_hook(info: &PanicHookInfo<'_>) -> ! {
     heprintln!("{}", info);
-    arch::abort_internal();
+    arch::abort_internal(1);
 }
 
 pub fn set_hook(hook: fn(&PanicHookInfo<'_>) -> !) {
@@ -94,38 +102,26 @@ pub fn set_hook(hook: fn(&PanicHookInfo<'_>) -> !) {
 
     let new = Hook::Custom(hook);
     let mut hook = HOOK.lock();
-    let old = mem::replace(&mut *hook, new);
-    drop(hook);
-    // Only drop the old hook after releasing the lock to avoid deadlocking
-    // if its destructor panics.
-    drop(old);
+    let _ = mem::replace(&mut *hook, new);
 }
 
 pub struct PanicHookInfo<'a> {
-    payload: &'a (dyn Any + Send),
+    context: &'a str,
+    message: Option<&'a fmt::Arguments<'a>>,
     location: &'a Location<'a>,
 }
 
 impl<'a> PanicHookInfo<'a> {
     #[inline]
-    pub(crate) fn new(location: &'a Location<'a>, payload: &'a (dyn Any + Send)) -> Self {
-        PanicHookInfo { payload, location }
-    }
-
-    /// Returns the payload associated with the panic.
-    ///
-    /// This will commonly, but not always, be a `&'static str` or [`String`].
-    pub fn payload(&self) -> &(dyn Any + Send) {
-        self.payload
-    }
-
-    #[must_use]
-    #[inline]
-    pub fn payload_as_str(&self) -> Option<&str> {
-        if let Some(s) = self.payload.downcast_ref::<&str>() {
-            Some(s)
-        } else {
-            None
+    pub(crate) fn new(
+        location: &'a Location<'a>,
+        message: Option<&'a fmt::Arguments<'a>>,
+        context: &'a str,
+    ) -> Self {
+        PanicHookInfo {
+            context,
+            location,
+            message,
         }
     }
 
@@ -134,7 +130,7 @@ impl<'a> PanicHookInfo<'a> {
     pub fn location(&self) -> Option<&Location<'_>> {
         // NOTE: If this is changed to sometimes return None,
         // deal with that case in std::panicking::default_hook and core::panicking::panic_fmt.
-        Some(&self.location)
+        Some(self.location)
     }
 }
 
@@ -142,10 +138,12 @@ impl fmt::Display for PanicHookInfo<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("panicked at ")?;
         self.location.fmt(formatter)?;
-        if let Some(payload) = self.payload_as_str() {
-            formatter.write_str(":\n")?;
-            formatter.write_str(payload)?;
+        formatter.write_str(":\n")?;
+        if let Some(fmt_args) = self.message {
+            fmt_args.fmt(formatter)?;
         }
+        formatter.write_str("\n")?;
+        formatter.write_str(self.context)?;
         Ok(())
     }
 }

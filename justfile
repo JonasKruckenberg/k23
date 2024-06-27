@@ -36,3 +36,6 @@ check-fmt *FLAGS:
 check *FLAGS:
     # riscv64 checks
     {{ _cargo }} check --target riscv64gc-unknown-none-elf {{ _riscv64crates }} {{ _buildstd }} {{ FLAGS }}
+
+test-riscv64 *FLAGS:
+    {{ _cargo }} test --target riscv64gc-unknown-none-elf -p kernel {{ _buildstd }} {{ FLAGS }}

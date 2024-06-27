@@ -15,6 +15,7 @@ declare_thread_local! {
     pub static HARTID: usize;
 }
 
+#[cfg(not(test))]
 #[loader_api::entry(LoaderConfig::new_default())]
 fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
     HARTID.initialize_with(hartid, |_, _| {});
@@ -47,6 +48,8 @@ fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
                 &mut flush,
             )?;
 
+            flush.flush()?;
+
             // // Map UART MMIO region
             // let serial_phys = boot_info.serial.regs.clone().align(kconfig::PAGE_SIZE);
             // let serial_virt = offset.sub(serial_phys.size())..offset;
@@ -63,13 +66,9 @@ fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
             //     &mut flush,
             // )?;
 
-            // Map the kernel heap
-            let heap_phys = {
-                let base = mapper
-                    .allocator_mut()
-                    .allocate_frames(kconfig::HEAP_SIZE_PAGES)?;
-                base..base.add(kconfig::HEAP_SIZE_PAGES * kconfig::PAGE_SIZE)
-            };
+            // Safety: serial_base is derived from BootInfo
+            // unsafe { logger::init(serial_virt.start, boot_info.serial.clock_frequency) };
+            // mapper.root_table().debug_print_table()?;
 
             let heap_virt = boot_info
                 .free_virt
@@ -78,25 +77,7 @@ fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
                 ..boot_info.free_virt.end;
             boot_info.free_virt.end = boot_info.free_virt.end.sub(heap_virt.size());
 
-            log::debug!(
-                "Mapping kernel heap region {:?} => {:?}",
-                heap_virt,
-                heap_phys,
-            );
-            mapper.map_range(
-                heap_virt.clone(),
-                heap_phys,
-                EntryFlags::READ | EntryFlags::WRITE,
-                &mut flush,
-            )?;
-
-            flush.flush()?;
-
-            // Safety: serial_base is derived from BootInfo
-            // unsafe { logger::init(serial_virt.start, boot_info.serial.clock_frequency) };
-            // mapper.root_table().debug_print_table()?;
-
-            allocator::init(heap_virt.start).unwrap();
+            allocator::init(alloc, heap_virt).unwrap();
 
             Ok(())
         })
