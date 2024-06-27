@@ -1,5 +1,5 @@
 [workspace]
-members = ["build/*", "libs/*", "kernel", "loader", "loader/api", "loader/api/macros"]
+members = ["build/*", "libs/*", "kernel", "loader", "loader/api", "loader/api/macros", "libs/ktest/macros"]
 resolver = "2"
 
 [workspace.package]
@@ -16,36 +16,38 @@ fxhash = { path = "libs/fxhash" }
 gimli = { path = "libs/gimli" }
 loader-api = { path = "loader/api" }
 kstd = { path = "libs/kstd" }
+ktest = { path = "libs/ktest" }
 
 onlyerror = { version = "0.1.4", default-features = false }
 log = "0.4.21"
-bitflags = "2.5.0"
+bitflags = "2.6.0"
 cfg-if = "1.0.0"
 linked_list_allocator = "0.10.5"
 arrayvec = { version = "0.7.4", default-features = false }
 ed25519-dalek = { version = "2.1.1", default-features = false }
 object = { version = "0.36.0", default-features = false }
 lz4_flex = { version = "0.11", default-features = false }
+lock_api = "0.4.12"
 
 # cranelift dependencies
-hashbrown = { version = "0.14.3", features = ["nightly"] }
+hashbrown = { version = "0.14.5", features = ["nightly"] }
 cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core"] }
 cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core", "host-arch"] }
 cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core"] }
 cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false }
-target-lexicon = { version = "0.12.13", default-features = false }
+target-lexicon = { version = "0.12.14", default-features = false }
 
 # build dependencies
-serde = { version = "1.0.199", default-features = false, features = ["derive"] }
+serde = { version = "1.0.203", default-features = false, features = ["derive"] }
 rand_core = { version = "0.6.4", features = ["getrandom"] }
-clap = { version = "4.5.4", features = ["derive"] }
+clap = { version = "4.5.7", features = ["derive"] }
 env_logger = "0.11.3"
-anstyle = "1.0.6"
+anstyle = "1.0.7"
 cargo_metadata = "0.18.1"
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
-toml = "0.8.12"
+toml = "0.8.14"
 
 [profile.release]
 opt-level = 3

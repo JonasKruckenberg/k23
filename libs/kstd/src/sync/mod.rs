@@ -1,27 +1,29 @@
-mod mutex;
 mod once;
 mod raw_mutex;
-mod remutex;
 
-pub use mutex::{Mutex, MutexGuard};
+use core::num::NonZeroUsize;
+use core::ptr::addr_of;
+use lock_api::GetThreadId;
 pub use once::Once;
-pub use remutex::{ReentrantMutex, ReentrantMutexGuard};
 
-#[cfg(test)]
-macro_rules! assert_not_send {
-    ($x:ty) => {
-        const _: fn() -> () = || {
-            struct Check<T: ?Sized>(T);
-            trait AmbiguousIfImpl<A> {
-                fn some_item() {}
-            }
+pub use raw_mutex::RawMutex;
 
-            impl<T: ?Sized> AmbiguousIfImpl<()> for Check<T> {}
-            impl<T: ?Sized + Send> AmbiguousIfImpl<u8> for Check<T> {}
+pub type Mutex<T> = lock_api::Mutex<RawMutex, T>;
+pub type MutexGuard<'a, T> = lock_api::MutexGuard<'a, RawMutex, T>;
+pub type ReentrantMutex<T> = lock_api::ReentrantMutex<RawMutex, LocalThreadId, T>;
+pub type ReentrantMutexGuard<'a, T> = lock_api::ReentrantMutexGuard<'a, RawMutex, LocalThreadId, T>;
 
-            <Check<$x> as AmbiguousIfImpl<_>>::some_item()
-        };
-    };
+pub struct LocalThreadId;
+
+unsafe impl GetThreadId for LocalThreadId {
+    const INIT: Self = LocalThreadId;
+
+    fn nonzero_thread_id(&self) -> NonZeroUsize {
+        // The address of a thread-local variable is guaranteed to be unique t<o the
+        // current thread, and is also guaranteed to be non-zero. The variable has to have a
+        // non-zero size to guarantee it has a unique address for each thread.>
+        #[thread_local]
+        static X: u8 = 0;
+        NonZeroUsize::new(addr_of!(X) as usize).expect("thread ID was zero")
+    }
 }
-#[cfg(test)]
-pub(crate) use assert_not_send;

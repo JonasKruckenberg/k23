@@ -23,7 +23,7 @@
 // False positives.
 #![allow(clippy::derive_partial_eq_without_eq)]
 #![cfg_attr(not(test), no_std)]
-#![feature(error_in_core, core_io_borrowed_buf)]
+#![feature(core_io_borrowed_buf)]
 #![allow(clippy::should_implement_trait)]
 #[allow(unused_imports)]
 #[cfg(any(feature = "read", feature = "write"))]

@@ -40,6 +40,7 @@ macro_rules! thread_local_inner {
     (@key $name:ident, $t:ty, const $init:expr) => {{
         #[inline]
         unsafe fn __getit(_init: Option<&mut Option<$t>>) -> Option<&'static $t> {
+            #[allow(clippy::declare_interior_mutable_const)] // TODO figore out
             const INIT_EXPR: $t = $init;
 
             #[thread_local]
@@ -145,8 +146,10 @@ impl<T: 'static> LocalKey<T> {
         }
     }
 
+    /// # Safety
+    ///
+    /// This attempts to retrieve a raw pointer to the underlying data. You should prefer to use the getter methods.
     pub unsafe fn as_ptr(&self) -> *const T {
-        // log::trace!("as_ptr {:?}", self.inner);
         let value = unsafe {
             (self.inner)(None).expect(
                 "cannot access a Thread Local Storage value \

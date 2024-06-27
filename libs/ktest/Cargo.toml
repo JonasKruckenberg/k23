@@ -1,0 +1,15 @@
+[package]
+name = "ktest"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+ktest-macros = { path = "macros" }
+kstd.workspace = true
+
+[target.'cfg(target_os = "none")'.dependencies]
+kstd.workspace = true
+loader-api.workspace = true
+dtb-parser.workspace = true

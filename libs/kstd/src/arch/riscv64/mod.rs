@@ -6,8 +6,8 @@ pub(crate) mod semihosting;
 use core::arch::asm;
 pub use register::*;
 
-pub fn abort_internal() -> ! {
-    semihosting::exit(1);
+pub fn abort_internal(code: i32) -> ! {
+    semihosting::exit(code);
 
     // fall back to a wfi loop if exiting using semihosting failed
     unsafe {

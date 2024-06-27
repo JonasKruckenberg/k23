@@ -1,8 +1,8 @@
-use core::fmt::{Error, Write};
-use core::{fmt, slice};
-use core::ops::DerefMut;
-use crate::sync::Mutex;
 use super::semihosting::syscall;
+use crate::sync::Mutex;
+use core::fmt::{Error, Write};
+use core::ops::DerefMut;
+use core::{fmt, slice};
 
 const OPEN: usize = 0x01;
 const WRITE: usize = 0x05;
@@ -61,7 +61,6 @@ impl Write for HostStream {
         Ok(())
     }
 }
-
 
 static STDOUT: Mutex<Option<HostStream>> = Mutex::new(None);
 static STDERR: Mutex<Option<HostStream>> = Mutex::new(None);

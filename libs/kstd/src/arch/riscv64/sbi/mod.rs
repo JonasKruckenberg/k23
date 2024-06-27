@@ -88,7 +88,7 @@ macro_rules! sbi_call {
                 }
             } else {
                 $(let _ = $args);*;
-                
+
                 #[inline(always)]
                 fn unimplemented() -> super::Result<usize> {
                     unimplemented!()

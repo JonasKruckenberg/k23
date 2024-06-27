@@ -7,6 +7,8 @@ use kstd::sync::Once;
 use loader_api::BootInfo;
 use vmm::VirtualAddress;
 
+pub type EntryFlags = vmm::EntryFlags;
+
 // do global, arch-specific setup
 #[link_section = ".text.start"]
 #[no_mangle]

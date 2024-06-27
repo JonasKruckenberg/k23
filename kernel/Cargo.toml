@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "kernel"
+harness = false
+
 [dependencies]
 vmm.workspace = true
 kstd.workspace = true
@@ -24,6 +28,10 @@ object = { workspace = true, features = ["read_core", "write_core", "elf"] }
 rustc-demangle = "0.1.24"
 gimli = { workspace = true, features = ["read"] }
 postcard = { version = "1.0.8", default-features = false, features = ["alloc"] }
+talc = "4.4.1"
+
+[dev-dependencies]
+ktest.workspace = true
 
 #hdrhistogram = { workspace = true, optional = true, features = ["core", "serialization"] }
 #serde = { workspace = true, optional = true }

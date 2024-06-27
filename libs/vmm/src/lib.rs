@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(error_in_core, used_with_arg)]
+#![feature(used_with_arg)]
 #![no_main]
 
 extern crate alloc as _;

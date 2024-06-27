@@ -5,21 +5,18 @@
     asm_const,
     allocator_api,
     thread_local,
-    error_in_core,
     hint_assert_unchecked,
     used_with_arg
 )]
 
 extern crate alloc;
 
-use crate::runtime::{Engine, Linker, Module, Store};
-use cranelift_codegen::settings::Configurable;
-
 mod allocator;
 mod arch;
 mod frame_alloc;
 mod logger;
 mod runtime;
+mod tests;
 
 pub mod kconfig {
     #[allow(non_camel_case_types)]
@@ -36,27 +33,7 @@ pub mod kconfig {
 
 fn main(_hartid: usize) -> ! {
     // Eventually this will all be hidden behind other abstractions (the scheduler, etc.) and this
-    // function will just jump into the scheduling loop but for now we'll keep it here for testing purposes
-
-    let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
-    let mut b = cranelift_codegen::settings::builder();
-    b.set("opt_level", "speed_and_size").unwrap();
-
-    let target_isa = isa_builder
-        .finish(cranelift_codegen::settings::Flags::new(b))
-        .unwrap();
-
-    let engine = Engine::new(target_isa);
-    let wasm = include_bytes!("../tests/fib-rs-debug.wasm");
-
-    let mut store = Store::new(0);
-
-    let module = Module::from_binary(&engine, &store, wasm);
-    log::debug!("{module:#?}");
-
-    let linker = Linker::new();
-    let instance = linker.instantiate(&mut store, &module);
-    instance.debug_print_vmctx(&store);
+    // function will just jump into the scheduling loop
 
     todo!()
 }
