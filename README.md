@@ -7,8 +7,8 @@
   </p>
   <p>
   <a href="https://bindgen.tauri.tech/">Manual</a>
+  <a href="https://discord.gg/KUGGcUS5cW">k23 Discord</a>
 
-[k23 Discord][discord-url]
 [![MIT licensed][mit-badge]][mit-url]
 
   </p>
