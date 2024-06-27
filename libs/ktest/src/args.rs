@@ -15,14 +15,14 @@ pub enum FormatSetting {
     #[default]
     Pretty,
     Terse,
-    Json
+    Json,
 }
 
 impl<'a> Arguments<'a> {
     pub fn from_str(str: &'a str) -> Self {
         Self::parse(str.split_ascii_whitespace())
     }
-    
+
     pub fn parse(mut iter: impl Iterator<Item = &'a str>) -> Self {
         let mut out = Self::default();
 
@@ -38,7 +38,7 @@ impl<'a> Arguments<'a> {
                     "json" => out.format = FormatSetting::Json,
                     _ => {}
                 },
-                _ => out.test_name = Some(str)
+                _ => out.test_name = Some(str),
             }
         }
 

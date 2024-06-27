@@ -1,7 +1,7 @@
-use core::fmt;
 use crate::args::FormatSetting;
-use crate::{Conclusion, Outcome, Test, TestInfo};
 use crate::assert::Failed;
+use crate::{Conclusion, Outcome, Test, TestInfo};
+use core::fmt;
 
 pub struct Printer<'a> {
     out: &'a mut dyn fmt::Write,
@@ -9,7 +9,7 @@ pub struct Printer<'a> {
 }
 
 impl<'a> Printer<'a> {
-    pub fn new(out: &'a mut dyn fmt::Write, format: FormatSetting,) -> Self {
+    pub fn new(out: &'a mut dyn fmt::Write, format: FormatSetting) -> Self {
         Self { out, format }
     }
 
@@ -26,7 +26,7 @@ impl<'a> Printer<'a> {
                 r#"{{ "type": "suite", "event": "started", "test_count": {} }}"#,
                 num_tests
             )
-                .unwrap(),
+            .unwrap(),
         }
     }
 
@@ -34,10 +34,7 @@ impl<'a> Printer<'a> {
         let TestInfo { module, name, .. } = info;
         match self.format {
             FormatSetting::Pretty => {
-                write!(
-                    self.out,
-                    "test {module}::{name} ... ",
-                ).unwrap();
+                write!(self.out, "test {module}::{name} ... ",).unwrap();
             }
             FormatSetting::Terse => {
                 // In terse mode, nothing is printed before the job. Only
@@ -48,7 +45,7 @@ impl<'a> Printer<'a> {
                     self.out,
                     r#"{{ "type": "test", "event": "started", "name": "{module}::{name}" }}"#,
                 )
-                    .unwrap();
+                .unwrap();
             }
         }
     }
@@ -79,7 +76,7 @@ impl<'a> Printer<'a> {
                         Outcome::Ignored => "ignored",
                     }
                 )
-                    .unwrap();
+                .unwrap();
             }
         }
     }
@@ -103,12 +100,7 @@ impl<'a> Printer<'a> {
                 continue;
             }
 
-            writeln!(
-                self.out,
-                "{}::{}: test",
-                test.info.module,
-                test.info.name,
-            ).unwrap();
+            writeln!(self.out, "{}::{}: test", test.info.module, test.info.name,).unwrap();
         }
     }
 
@@ -133,24 +125,29 @@ impl<'a> Printer<'a> {
                     conclusion.num_ignored,
                     conclusion.num_measured,
                     conclusion.num_filtered_out,
-                ).unwrap();
+                )
+                .unwrap();
                 writeln!(self.out).unwrap();
             }
             FormatSetting::Json => {
                 writeln!(
                     self.out,
                     concat!(
-                    r#"{{ "type": "suite", "event": "{}", "passed": {}, "failed": {},"#,
-                    r#" "ignored": {}, "measured": {}, "filtered_out": {} }}"#,
+                        r#"{{ "type": "suite", "event": "{}", "passed": {}, "failed": {},"#,
+                        r#" "ignored": {}, "measured": {}, "filtered_out": {} }}"#,
                     ),
-                    if conclusion.num_failed > 0 { "failed" } else { "ok" },
+                    if conclusion.num_failed > 0 {
+                        "failed"
+                    } else {
+                        "ok"
+                    },
                     conclusion.num_passed,
                     conclusion.num_failed,
                     conclusion.num_ignored,
                     conclusion.num_measured,
                     conclusion.num_filtered_out,
                 )
-                    .unwrap();
+                .unwrap();
             }
         }
     }

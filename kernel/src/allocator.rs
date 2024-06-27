@@ -99,7 +99,8 @@ impl talc::OomHandler for OomHandler {
             talc.oom_handler.heap = talc.extend(old_heap, new_heap);
         }
 
-        with_frame_alloc(|alloc| talc.oom_handler.ensure_mapped(alloc, old_heap)).map_err(|_| ())?;
+        with_frame_alloc(|alloc| talc.oom_handler.ensure_mapped(alloc, old_heap))
+            .map_err(|_| ())?;
 
         Ok(())
     }
