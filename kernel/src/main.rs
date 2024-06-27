@@ -5,7 +5,6 @@
     asm_const,
     allocator_api,
     thread_local,
-    error_in_core,
     hint_assert_unchecked,
     used_with_arg
 )]
