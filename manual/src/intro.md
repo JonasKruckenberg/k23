@@ -24,7 +24,7 @@ In todays massively interconnected world, where security is paramount maybe, *ju
 k23 is built around the idea of using WebAssembly as the primary execution environment. This allows for a number of benefits:
 - **Security**: WebAssembly is designed to run in a sandboxed environment, making it much harder to exploit.
 - **Modularity**: WebAssembly modules can depend on each other, importing and exporting functionality and data, forming a modular system where dependency management is a **first class citizen**.
-- **Portability**: WebAssembly is designed to be very portable. Forget questions like "is this binary compiled for amd64 or arm?". k23 programs just run whereever.
+- **Portability**: WebAssembly is designed to be very portable. Forget questions like "is this binary compiled for amd64 or arm?". k23 programs just run wherever.
 - **Static Analysis**: WebAssembly is famous for being very easy to analyze. This means we can check for bad programs without even running them.
 
 k23 also uses a microkernel architecture where only the most core kernel functionliaty and WASM runtime are running in privileged mode. Everything else is implemented as a WebAssembly module, running in a strongly sandboxed environment.

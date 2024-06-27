@@ -23,6 +23,6 @@ k23 is an active research project exploring a *more secure, modular, and easy to
 
 ## Contributing
 
-I believe OS developmet should be fun, easy, and approachable. If you would like to hack on k23, fork it for your own experiments or just hang out and philosophize about computers. Be my guest! You can [join our small, but growing community][discord-url] of likeminded, awesome people that all believe better computer system are possible!
+I believe OS development should be fun, easy, and approachable. If you would like to hack on k23, fork it for your own experiments or just hang out and philosophize about computers. Be my guest! You can [join our small, but growing community][discord-url] of likeminded, awesome people that all believe better computer system are possible!
 
 [discord-url]: https://discord.gg/KUGGcUS5cW

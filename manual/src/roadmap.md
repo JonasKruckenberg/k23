@@ -11,4 +11,4 @@ There are **plenty** of things not yet implementing, missing, or broken. Here is
 - [ ] **Capability System**: Implement a capability based security system for interacting with OS functionality and drivers
 - [ ] **WASI Support**: Support the WebAssembly System Interface specification for accessing things like the network, file system and more.
 
-This list is not exhaustive and will be updated as development progresses. If you would like to discuss the roadmap items above or have suggestions, please open a dicussion on the [GitHub repository](https://github.com/JonasKruckenberg/k23).
+This list is not exhaustive and will be updated as development progresses. If you would like to discuss the roadmap items above or have suggestions, please open a discussion on the [GitHub repository](https://github.com/JonasKruckenberg/k23).
