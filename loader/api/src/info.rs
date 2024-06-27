@@ -77,9 +77,6 @@ pub enum MemoryRegionKind {
 
 impl MemoryRegionKind {
     pub fn is_usable(&self) -> bool {
-        match self {
-            MemoryRegionKind::Usable => true,
-            _ => false,
-        }
+        matches!(self, MemoryRegionKind::Usable)
     }
 }

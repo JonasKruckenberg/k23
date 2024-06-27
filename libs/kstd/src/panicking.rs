@@ -16,7 +16,7 @@ declare_thread_local! {
 /// Determines whether the current hart is panicking.
 #[inline]
 pub fn panicking() -> bool {
-    if GLOBAL_PANICKING.load(Ordering::Relaxed) == false {
+    if !GLOBAL_PANICKING.load(Ordering::Relaxed) {
         false
     } else {
         panicking_slow_path()
@@ -28,7 +28,7 @@ pub fn panicking() -> bool {
 #[inline(never)]
 #[cold]
 fn panicking_slow_path() -> bool {
-    LOCAL_PANICKING.with(|c| c.get() == true)
+    LOCAL_PANICKING.with(|c| c.get())
 }
 
 enum AbortReason {
@@ -67,14 +67,14 @@ fn default_panic_handler(info: &PanicInfo<'_>) -> ! {
             default_hook(&PanicHookInfo::new(
                 loc,
                 Some(&format_args!("{}", message)),
-                &context,
+                context,
             ));
         }
         Hook::Custom(ref hook) => {
             hook(&PanicHookInfo::new(
                 loc,
                 Some(&format_args!("{}", message)),
-                &context,
+                context,
             ));
         }
     }
@@ -102,11 +102,7 @@ pub fn set_hook(hook: fn(&PanicHookInfo<'_>) -> !) {
 
     let new = Hook::Custom(hook);
     let mut hook = HOOK.lock();
-    let old = mem::replace(&mut *hook, new);
-    drop(hook);
-    // Only drop the old hook after releasing the lock to avoid deadlocking
-    // if its destructor panics.
-    drop(old);
+    let _ = mem::replace(&mut *hook, new);
 }
 
 pub struct PanicHookInfo<'a> {
@@ -134,7 +130,7 @@ impl<'a> PanicHookInfo<'a> {
     pub fn location(&self) -> Option<&Location<'_>> {
         // NOTE: If this is changed to sometimes return None,
         // deal with that case in std::panicking::default_hook and core::panicking::panic_fmt.
-        Some(&self.location)
+        Some(self.location)
     }
 }
 

@@ -1,13 +1,10 @@
-use crate::arch::{EntryFlags, HARTID};
-use crate::{allocator, frame_alloc, kconfig, logger};
-use arrayvec::ArrayVec;
-use loader_api::MemoryRegionKind;
-use talc::{Talc, Talck};
-use vmm::{Flush, Mapper, PhysicalAddress, VirtualAddress};
-
 #[cfg(test)]
 #[ktest::setup_harness]
 fn setup(hartid: usize, info: ktest::SetupInfo) {
+    use crate::{allocator, arch::HARTID, frame_alloc, kconfig, logger};
+    use arrayvec::ArrayVec;
+    use loader_api::MemoryRegionKind;
+
     HARTID.initialize_with(hartid, |_, _| {});
 
     logger::init();
