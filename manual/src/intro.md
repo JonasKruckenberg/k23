@@ -5,6 +5,7 @@ Welcome to the official **k23 manual**! This manual will guide you through the i
 <br />
 
 **Watch my talk at RustNL 2024 about k23**
+
 <iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/GjDwj7RWOgs?si=bKBI4WKpm1HQ8YtP" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
 ## What is k23?
