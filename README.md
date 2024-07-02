@@ -6,7 +6,7 @@
     <strong>Experimental WASM Microkernel Operating System</strong>
   </p>
   <p>
-  <a href="https://bindgen.tauri.tech/">Manual</a>
+  <a href="https://jonaskruckenberg.github.io/k23/">Manual</a>
   <a href="https://discord.gg/KUGGcUS5cW">k23 Discord</a>
 
 [![MIT licensed][mit-badge]][mit-url]
