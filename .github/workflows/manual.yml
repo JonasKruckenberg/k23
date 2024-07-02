@@ -5,33 +5,40 @@ on:
     branches:
       - main
 
-permissions:
-  contents: write
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  publish:
-    name: Publish
+  deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # To push a branch
+      pages: write # To push to a GitHub Pages site
+      id-token: write # To update the deployment status
     steps:
-      - uses: actions/checkout@v3
-      - name: Install mdbook
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install latest mdbook
         run: |
+          tag=$(curl 'https://api.github.com/repos/rust-lang/mdbook/releases/latest' | jq -r '.tag_name')
+          url="https://github.com/rust-lang/mdbook/releases/download/${tag}/mdbook-${tag}-x86_64-unknown-linux-gnu.tar.gz"
           mkdir mdbook
-          curl -Lf https://github.com/rust-lang/mdBook/releases/download/v0.4.37/mdbook-v0.4.37-x86_64-unknown-linux-gnu.tar.gz | tar -xz --directory=./mdbook
+          curl -sSL $url | tar -xz --directory=./mdbook
           echo `pwd`/mdbook >> $GITHUB_PATH
-      - name: Build book
-        run: mdbook build manual
-      - name: Deploy
+      - name: Build Book
         run: |
-          git worktree add --orphan -B gh-pages gh-pages
-          cp -r manual/book/ gh-pages
-          git config user.name "Deploy from CI"
-          git config user.email ""
-          cd gh-pages
-          git add -A
-          git commit -m 'deploy new book'
-          git push origin +gh-pages
+          # This assumes your book is in the root of your repository.
+          # Just add a `cd` here if you need to change to another directory.
+          mdbook build manual
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload entire repository
+          path: "manual/book"
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
