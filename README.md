@@ -21,10 +21,6 @@
 
 k23 is an active research project exploring a *more secure, modular, and easy to develop for* operating system by using WebAssembly as the primary execution environment.
 
-**Watch my talk at RustNL 2024 about k23**
-
-<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/GjDwj7RWOgs?si=bKBI4WKpm1HQ8YtP" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-
 ## Contributing
 
 I believe OS development should be fun, easy, and approachable. If you would like to hack on k23, fork it for your own experiments or just hang out and philosophize about computers. Be my guest! You can [join our small, but growing community][discord-url] of likeminded, awesome people that all believe better computer system are possible!
