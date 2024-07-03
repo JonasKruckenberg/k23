@@ -78,24 +78,33 @@ fn default_panic_handler(info: &PanicInfo<'_>) -> ! {
             ));
         }
     }
+
+    rust_panic()
+}
+
+/// Mirroring std, this is an unmangled function on which to slap
+/// yer breakpoints for backtracing panics.
+#[no_mangle]
+#[inline(never)]
+fn rust_panic() -> ! {
+    arch::abort_internal(1);
 }
 
 #[derive(Default)]
 enum Hook {
     #[default]
     Default,
-    Custom(fn(&PanicHookInfo<'_>) -> !),
+    Custom(fn(&PanicHookInfo<'_>)),
 }
 
 // FIXME replace with RwLock
 static HOOK: Mutex<Hook> = Mutex::new(Hook::Default);
 
-fn default_hook(info: &PanicHookInfo<'_>) -> ! {
+fn default_hook(info: &PanicHookInfo<'_>) {
     heprintln!("{}", info);
-    arch::abort_internal(1);
 }
 
-pub fn set_hook(hook: fn(&PanicHookInfo<'_>) -> !) {
+pub fn set_hook(hook: fn(&PanicHookInfo<'_>)) {
     if LOCAL_PANICKING.with(|p| p.get()) {
         panic!("cannot modify the panic hook from a panicking thread");
     }
