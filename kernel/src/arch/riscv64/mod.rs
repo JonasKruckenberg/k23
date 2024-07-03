@@ -77,6 +77,7 @@ fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
                 ..boot_info.free_virt.end;
             boot_info.free_virt.end = boot_info.free_virt.end.sub(heap_virt.size());
 
+            log::debug!("Setting up kernel heap {heap_virt:?}");
             allocator::init(alloc, heap_virt).unwrap();
 
             Ok(())

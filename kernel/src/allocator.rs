@@ -18,7 +18,10 @@ pub fn init(
     heap: Range<VirtualAddress>,
 ) -> Result<(), vmm::Error> {
     let mut alloc = KERNEL_ALLOCATOR.lock();
-    alloc.oom_handler.heap = Span::from_base_size(heap.end.as_raw() as *mut u8, kconfig::PAGE_SIZE);
+    alloc.oom_handler.heap = Span::from_base_size(
+        heap.end.sub(kconfig::PAGE_SIZE).as_raw() as *mut u8,
+        kconfig::PAGE_SIZE,
+    );
     alloc.oom_handler.min = heap.start.as_raw();
     alloc.oom_handler.ensure_mapped(
         frame_alloc,
@@ -61,8 +64,9 @@ impl OomHandler {
             VirtualAddress::new(start as usize)..VirtualAddress::new(end as usize)
         };
 
+        log::debug!("mapping kernel heap region {heap_virt:?} => {heap_phys:?}");
         mapper.map_range(
-            heap_virt.clone(),
+            heap_virt,
             heap_phys,
             EntryFlags::READ | EntryFlags::WRITE,
             &mut flush,
