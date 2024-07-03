@@ -169,8 +169,10 @@ impl<'a> State<'a> {
             &mut self.flush,
         )?;
 
-        Ok(self.phys_to_virt(loader_regions.executable.start)
-            ..self.phys_to_virt(loader_regions.read_write.end))
+        Ok(
+            VirtualAddress::new(loader_regions.executable.start.as_raw())
+                ..VirtualAddress::new(loader_regions.read_write.end.as_raw()),
+        )
     }
 
     // Allocate physical memory for the BootInfo struct and MemoryRegion slice
