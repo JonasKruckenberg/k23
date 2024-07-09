@@ -41,23 +41,18 @@ lock_api = "0.4.12"
 hashbrown = { version = "0.14.5", default-features = false, features = [
     "nightly",
 ] }
-# cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core"] }
-# cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core", "host-arch"] }
-# cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false, features = ["core"] }
-# cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std", default-features = false }
-target-lexicon = { version = "0.12.14", default-features = false }
-cranelift-wasm = { path = "/Users/jonaskruckenberg/Documents/GitHub/wasmtime/cranelift/wasm", default-features = false, features = [
+cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std2", default-features = false, features = [
     "core",
 ] }
-cranelift-codegen = { path = "/Users/jonaskruckenberg/Documents/GitHub/wasmtime/cranelift/codegen", default-features = false, features = [
+cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std2", default-features = false, features = [
     "core",
     "host-arch",
 ] }
-cranelift-frontend = { path = "/Users/jonaskruckenberg/Documents/GitHub/wasmtime/cranelift/frontend", default-features = false, features = [
+cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std2", default-features = false, features = [
     "core",
 ] }
-cranelift-entity = { path = "/Users/jonaskruckenberg/Documents/GitHub/wasmtime/cranelift/entity", default-features = false }
-
+cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std2", default-features = false }
+target-lexicon = { version = "0.12.14", default-features = false }
 
 # build dependencies
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }
