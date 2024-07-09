@@ -10,8 +10,8 @@ use core::alloc::{Allocator, Layout};
 use core::cell::{Ref, RefCell, RefMut};
 use core::ptr::NonNull;
 use cranelift_entity::PrimaryMap;
-use cranelift_wasm::wasmparser::map::HashMap;
 use cranelift_wasm::{DefinedMemoryIndex, DefinedTableIndex};
+use hashbrown::HashMap;
 use vmm::VirtualAddress;
 
 pub struct Store<'wasm> {

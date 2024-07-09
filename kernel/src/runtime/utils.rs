@@ -26,6 +26,12 @@ pub fn reference_type(wasm_ht: WasmHeapType, pointer_type: Type) -> Type {
                 _ => panic!("unsupported pointer type"),
             }
         }
+        WasmHeapType::NoExtern
+        | WasmHeapType::Eq
+        | WasmHeapType::Array
+        | WasmHeapType::ConcreteArray(_)
+        | WasmHeapType::Struct
+        | WasmHeapType::ConcreteStruct(_) => todo!(),
     }
 }
 

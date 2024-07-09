@@ -312,6 +312,12 @@ impl<'wasm> InstanceData<'wasm> {
                         self.tables[def_table_index].init_func(dst, exprs.into_iter())?
                     }
                     WasmHeapType::Extern
+                    | WasmHeapType::NoExtern
+                    | WasmHeapType::Eq
+                    | WasmHeapType::Array
+                    | WasmHeapType::ConcreteArray(_)
+                    | WasmHeapType::Struct
+                    | WasmHeapType::ConcreteStruct(_)
                     | WasmHeapType::Any
                     | WasmHeapType::I31
                     | WasmHeapType::None => todo!(),
@@ -419,7 +425,14 @@ fn initialize_tables(
                         let items = (0..table.len()).map(|_| funcref);
                         table.init_func(0, items)?;
                     }
+
                     WasmHeapType::Extern
+                    | WasmHeapType::NoExtern
+                    | WasmHeapType::Eq
+                    | WasmHeapType::Array
+                    | WasmHeapType::ConcreteArray(_)
+                    | WasmHeapType::Struct
+                    | WasmHeapType::ConcreteStruct(_)
                     | WasmHeapType::Any
                     | WasmHeapType::I31
                     | WasmHeapType::None => todo!(),

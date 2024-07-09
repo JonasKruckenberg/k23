@@ -1,0 +1,29 @@
+cargo run -p kernel --target riscv64gc-unknown-none-elf -Z build-std=core,alloc -Z build-std-features=compiler-builtins-mem 
+   Compiling cranelift-codegen v0.111.0 (/Users/jonaskruckenberg/Documents/GitHub/wasmtime/cranelift/codegen)
+error[E0433]: failed to resolve: use of undeclared type `Ordering`
+   --> /Users/jonaskruckenberg/Documents/GitHub/wasmtime/cranelift/codegen/src/isa/riscv64/abi.rs:689:29
+    |
+689 |         if !INIT.swap(true, Ordering::SeqCst) {
+    |                             ^^^^^^^^ use of undeclared type `Ordering`
+    |
+help: consider importing one of these enums
+    |
+3   + use core::cmp::Ordering;
+    |
+3   + use core::sync::atomic::Ordering;
+    |
+
+warning: unused import: `CompiledCode`
+  --> /Users/jonaskruckenberg/Documents/GitHub/wasmtime/cranelift/codegen/src/isa/mod.rs:53:23
+   |
+53 | use crate::machinst::{CompiledCode, CompiledCodeStencil, TextSectionBuilder};
+   |                       ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `CompiledCode` and `Reg`
+ --> /Users/jonaskruckenberg/Documents/GitHub/wasmtime/cranelift/codegen/src/isa/riscv64/mod.rs:8:14
+  |
+8 |     compile, CompiledCode, CompiledCodeStencil, MachInst, MachTextSectionBuilder, Reg, SigSet,
+  |              ^^^^^^^^^^^^                                                         ^^^
+

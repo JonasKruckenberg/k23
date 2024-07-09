@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 use cranelift_codegen::entity::{PrimaryMap, Unsigned};
 use cranelift_codegen::packed_option::ReservedValue;
 use cranelift_wasm::wasmparser::{
-    CustomSectionReader, DataKind, ElementItems, ElementKind, Encoding, ExternalKind,
+    BinaryReader, CustomSectionReader, DataKind, ElementItems, ElementKind, Encoding, ExternalKind,
     FuncToValidate, FunctionBody, Operator, Parser, Payload, ProducersFieldValue,
     ProducersSectionReader, TableInit, TypeRef, UnpackedIndex, Validator, ValidatorResources,
     WasmFeatures,
@@ -40,6 +40,13 @@ pub struct FuncCompileInput<'wasm> {
 
 impl<'a, 'wasm> TypeConvert for ModuleEnvironment<'a, 'wasm> {
     fn lookup_heap_type(&self, _index: UnpackedIndex) -> WasmHeapType {
+        todo!()
+    }
+
+    fn lookup_type_index(
+        &self,
+        index: cranelift_wasm::wasmparser::UnpackedIndex,
+    ) -> cranelift_wasm::EngineOrModuleTypeIndex {
         todo!()
     }
 }
@@ -95,6 +102,8 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                 for ty in types.into_iter_err_on_gc_types() {
                     let wasm_func_type = self.convert_func_type(&ty?);
                     let idx = self.result.types.push(WasmSubType {
+                        is_final: true,
+                        supertype: None,
                         composite_type: WasmCompositeType::Func(wasm_func_type),
                     });
                     self.result.module.types.push(idx);
@@ -129,7 +138,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                                 .result
                                 .module
                                 .table_plans
-                                .push(TablePlan::for_table(self.convert_table_type(&ty)));
+                                .push(TablePlan::for_table(self.convert_table_type(&ty)?));
 
                             EntityIndex::Table(table_index)
                         }
@@ -191,7 +200,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                     self.result
                         .module
                         .table_plans
-                        .push(TablePlan::for_table(self.convert_table_type(&table.ty)));
+                        .push(TablePlan::for_table(self.convert_table_type(&table.ty)?));
 
                     let init = match table.init {
                         TableInit::RefNull => TableInitialValue::RefNull,
@@ -399,7 +408,6 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
             Payload::CodeSectionEntry(mut body) => {
                 let validator = self.validator.code_section_entry(&body)?;
 
-                body.allow_memarg64(self.validator.features().contains(WasmFeatures::MEMORY64));
                 self.result
                     .func_compile_inputs
                     .push(FuncCompileInput { body, validator });
@@ -408,7 +416,12 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
             //     self.parse_name_section(NameSectionReader::new(sec.data(), sec.data_offset()))?;
             // }
             Payload::CustomSection(sec) if sec.name() == "producers" => {
-                let reader = ProducersSectionReader::new(sec.data(), sec.data_offset())?;
+                let reader = ProducersSectionReader::new(BinaryReader::new(
+                    sec.data(),
+                    sec.data_offset(),
+                    *self.validator.features(),
+                ))?;
+
                 self.parse_producers_section(reader)?;
             }
             Payload::CustomSection(sec) if sec.name() == "target_features" => {
