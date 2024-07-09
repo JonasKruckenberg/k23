@@ -33,7 +33,7 @@ jobs:
           # Just add a `cd` here if you need to change to another directory.
           mdbook build manual
       - name: Setup Pages
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
