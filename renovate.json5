@@ -1,0 +1,67 @@
+{
+  semanticCommits: 'enabled',
+  configMigration: true,
+  dependencyDashboard: true,
+  packageRules: [
+    {
+      matchManagers: [
+        'cargo',
+      ],
+      matchDepTypes: [
+        'build-dependencies',
+        'dependencies',
+        'workspace.dependencies'
+      ],
+      matchCurrentVersion: '>=0.1.0',
+      matchUpdateTypes: [
+        'patch',
+      ],
+      enabled: false,
+    },
+    {
+      matchManagers: [
+        'cargo',
+      ],
+      matchDepTypes: [
+        'build-dependencies',
+        'dependencies',
+        'workspace.dependencies'
+      ],
+      matchCurrentVersion: '>=1.0.0',
+      matchUpdateTypes: [
+        'minor',
+        'patch'
+      ],
+      enabled: false,
+    },
+    {
+      matchManagers: [
+        'cargo',
+      ],
+      matchDepTypes: [
+        'dev-dependencies',
+      ],
+      matchCurrentVersion: '>=0.1.0',
+      matchUpdateTypes: [
+        'patch',
+      ],
+      automerge: true,
+      groupName: 'compatible (dev)',
+    },
+    {
+      matchManagers: [
+        'cargo',
+      ],
+      matchDepTypes: [
+        'dev-dependencies',
+      ],
+      matchCurrentVersion: '>=1.0.0',
+      matchUpdateTypes: [
+        'minor',
+        'patch'
+      ],
+      automerge: true,
+      groupName: 'compatible (dev)',
+    },
+  ],
+}
