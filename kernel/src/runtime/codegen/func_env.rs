@@ -108,6 +108,13 @@ impl<'module_env, 'wasm> TypeConvert for FunctionEnvironment<'module_env, 'wasm>
     fn lookup_heap_type(&self, index: UnpackedIndex) -> WasmHeapType {
         todo!()
     }
+
+    fn lookup_type_index(
+        &self,
+        index: cranelift_wasm::wasmparser::UnpackedIndex,
+    ) -> cranelift_wasm::EngineOrModuleTypeIndex {
+        todo!()
+    }
 }
 
 impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment
@@ -244,6 +251,7 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment
             style: HeapStyle::Static { bound: bound_bytes },
             index_type,
             memory_type: data_memtype,
+            page_size_log2: self.module.memory_plans[memory_index].memory.page_size_log2,
         }))
     }
 

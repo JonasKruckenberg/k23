@@ -23,6 +23,7 @@ cranelift-codegen.workspace = true
 cranelift-frontend.workspace = true
 cranelift-entity.workspace = true
 target-lexicon.workspace = true
+hashbrown.workspace = true
 onlyerror.workspace = true
 object = { workspace = true, features = ["read_core", "write_core", "elf"] }
 rustc-demangle = "0.1.24"

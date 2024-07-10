@@ -21,6 +21,12 @@ impl From<WasmRefType> for TableElementType {
             WasmHeapType::Extern | WasmHeapType::Any | WasmHeapType::I31 | WasmHeapType::None => {
                 TableElementType::GcRef
             }
+            WasmHeapType::NoExtern
+            | WasmHeapType::Eq
+            | WasmHeapType::Array
+            | WasmHeapType::ConcreteArray(_)
+            | WasmHeapType::Struct
+            | WasmHeapType::ConcreteStruct(_) => todo!(),
         }
     }
 }

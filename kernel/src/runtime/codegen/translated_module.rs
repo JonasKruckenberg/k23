@@ -3,13 +3,13 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, PrimaryMap};
-use cranelift_wasm::wasmparser::map::HashMap;
 use cranelift_wasm::wasmparser::WasmFeatures;
 use cranelift_wasm::{
     ConstExpr, DataIndex, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex,
     DefinedTableIndex, ElemIndex, EntityIndex, FuncIndex, Global, GlobalIndex, Memory, MemoryIndex,
     ModuleInternedTypeIndex, OwnedMemoryIndex, Table, TableIndex, TypeIndex,
 };
+use hashbrown::HashMap;
 
 #[derive(Debug, Default)]
 pub struct TranslatedModule<'wasm> {
@@ -391,12 +391,19 @@ impl TablePlan {
 
 impl MemoryPlan {
     pub fn for_memory(ty: cranelift_wasm::wasmparser::MemoryType) -> Self {
+        let page_size_log2 = u8::try_from(ty.page_size_log2.unwrap_or(16)).unwrap();
+        debug_assert!(
+            page_size_log2 == 16 || page_size_log2 == 0,
+            "invalid page_size_log2: {}; must be 16 or 0",
+            page_size_log2
+        );
         Self {
             memory: Memory {
                 minimum: ty.initial,
                 maximum: ty.maximum,
                 shared: ty.shared,
                 memory64: ty.memory64,
+                page_size_log2,
             },
         }
     }
