@@ -46,9 +46,12 @@ k23 uses [cranelift](https://cranelift.dev) as its JIT compiler backend.
 There are currently no pre-built binaries available. However, here are the steps to run it from source:
 
 ## Prerequisites:
-  - [Rust](https://www.rust-lang.org/tools/install)
-  - [just](https://just.systems)
-  - [QEMU](https://www.qemu.org)
+
+The follwing tools are required to build and run k23:
+
+  - [Rust](https://www.rust-lang.org/tools/install) - k23 is written entirely in Rust
+  - [just](https://just.systems) - Just is the simple command runner that k23 uses
+  - [QEMU](https://www.qemu.org) - QEMU used to run the kernel in a virtual machine
 
 ## Running
 
