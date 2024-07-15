@@ -1,6 +1,4 @@
-use crate::{
-    zero_frames, AddressRangeExt, Error, FrameAllocator, FrameUsage, Mode, PhysicalAddress,
-};
+use crate::{AddressRangeExt, Error, FrameAllocator, FrameUsage, Mode, PhysicalAddress};
 use core::marker::PhantomData;
 use core::ops::Range;
 use core::{iter, slice};
@@ -119,7 +117,7 @@ impl<'a> Iterator for UsedRegions<'a> {
     }
 }
 
-impl<'a, M: Mode> FrameAllocator for BumpAllocator<'a, M> {
+impl<'a, M: Mode> FrameAllocator<M> for BumpAllocator<'a, M> {
     fn allocate_frames(&mut self, frames: usize) -> crate::Result<PhysicalAddress> {
         let requested_size = frames * M::PAGE_SIZE;
         let mut offset = self.offset;
@@ -145,9 +143,6 @@ impl<'a, M: Mode> FrameAllocator for BumpAllocator<'a, M> {
                     );
                     return Err(Error::OutOfMemory);
                 }
-
-                let page_virt = M::phys_to_virt(page_phys);
-                zero_frames::<M>(page_virt.as_raw() as *mut u64, frames);
 
                 self.offset += requested_size;
 

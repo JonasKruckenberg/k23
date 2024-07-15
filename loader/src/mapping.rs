@@ -238,7 +238,7 @@ impl<'a> State<'a> {
             let start = self
                 .mapper
                 .allocator_mut()
-                .allocate_frames(size_pages * machine_info.cpus)?;
+                .allocate_frames_zeroed(size_pages * machine_info.cpus)?;
 
             start..start.add(size_pages * kconfig::PAGE_SIZE * machine_info.cpus)
         };

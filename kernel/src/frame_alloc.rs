@@ -22,7 +22,7 @@ where
 
 pub fn with_frame_alloc<R, F>(f: F) -> R
 where
-    F: FnOnce(&mut dyn FrameAllocator) -> R,
+    F: FnOnce(&mut dyn FrameAllocator<kconfig::MEMORY_MODE>) -> R,
 {
     let mut alloc = FRAME_ALLOC.lock();
     f(unsafe { alloc.assume_init_mut() })

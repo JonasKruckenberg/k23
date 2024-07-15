@@ -14,7 +14,7 @@ static KERNEL_ALLOCATOR: Talck<kstd::sync::RawMutex, OomHandler> = Talc::new(Oom
 .lock();
 
 pub fn init(
-    frame_alloc: &mut dyn FrameAllocator,
+    frame_alloc: &mut dyn FrameAllocator<kconfig::MEMORY_MODE>,
     heap: Range<VirtualAddress>,
 ) -> Result<(), vmm::Error> {
     let mut alloc = KERNEL_ALLOCATOR.lock();
@@ -44,7 +44,7 @@ struct OomHandler {
 impl OomHandler {
     fn ensure_mapped(
         &self,
-        frame_alloc: &mut dyn FrameAllocator,
+        frame_alloc: &mut dyn FrameAllocator<kconfig::MEMORY_MODE>,
         old_heap: Span,
     ) -> Result<(), vmm::Error> {
         let (span_to_map, empty) = self.heap.except(old_heap);

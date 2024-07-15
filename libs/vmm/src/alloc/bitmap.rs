@@ -99,7 +99,7 @@ impl<M: Mode> BitMapAllocator<M> {
 
     pub fn new(mut bump_allocator: BumpAllocator<M>) -> crate::Result<Self> {
         // allocate a frame to hold the table
-        let table_phys = bump_allocator.allocate_frame()?;
+        let table_phys = bump_allocator.allocate_frame_zeroed()?;
         let table_virt = M::phys_to_virt(table_phys);
 
         let mut this = Self {
@@ -185,7 +185,7 @@ impl<M: Mode> BitMapAllocator<M> {
     }
 }
 
-impl<M: Mode> FrameAllocator for BitMapAllocator<M> {
+impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
     fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
         for entry in self.entries_mut() {
             for page in entry.skip..entry.pages() {

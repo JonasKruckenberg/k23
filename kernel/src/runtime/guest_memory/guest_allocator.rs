@@ -125,7 +125,7 @@ impl GuestAllocatorInner {
             let mem_phys = {
                 let start = mapper
                     .allocator_mut()
-                    .allocate_frames(num_pages)
+                    .allocate_frames_zeroed(num_pages)
                     .map_err(|_| AllocError)?;
                 start..start.add(num_pages * kconfig::PAGE_SIZE)
             };

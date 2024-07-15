@@ -9,13 +9,13 @@ use core::ops::Range;
 pub struct Mapper<'a, M> {
     asid: usize,
     root_table: VirtualAddress,
-    allocator: &'a mut dyn FrameAllocator,
+    allocator: &'a mut dyn FrameAllocator<M>,
     _m: PhantomData<M>,
 }
 
 impl<'a, M: Mode> Mapper<'a, M> {
-    pub fn new(asid: usize, allocator: &'a mut dyn FrameAllocator) -> crate::Result<Self> {
-        let root_table = allocator.allocate_frame()?;
+    pub fn new(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> crate::Result<Self> {
+        let root_table = allocator.allocate_frame_zeroed()?;
         let root_table_virt = M::phys_to_virt(root_table);
 
         Ok(Self {
@@ -26,7 +26,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         })
     }
 
-    pub fn from_active(asid: usize, allocator: &'a mut dyn FrameAllocator) -> Self {
+    pub fn from_active(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> Self {
         let root_table = M::get_active_table(asid);
         let root_table_virt = M::phys_to_virt(root_table);
         debug_assert!(root_table.0 != 0);
@@ -42,7 +42,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
     pub fn from_address(
         asid: usize,
         root_table: VirtualAddress,
-        allocator: &'a mut dyn FrameAllocator,
+        allocator: &'a mut dyn FrameAllocator<M>,
     ) -> Self {
         Self {
             asid,
@@ -56,15 +56,15 @@ impl<'a, M: Mode> Mapper<'a, M> {
         M::activate_table(self.asid, self.root_table);
     }
 
-    pub fn allocator(&self) -> &dyn FrameAllocator {
+    pub fn allocator(&self) -> &dyn FrameAllocator<M> {
         self.allocator
     }
 
-    pub fn allocator_mut(&mut self) -> &mut dyn FrameAllocator {
+    pub fn allocator_mut(&mut self) -> &mut dyn FrameAllocator<M> {
         self.allocator
     }
 
-    pub fn into_allocator(self) -> &'a mut dyn FrameAllocator {
+    pub fn into_allocator(self) -> &'a mut dyn FrameAllocator<M> {
         self.allocator
     }
 
@@ -201,7 +201,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         let on_leaf = |entry: &mut Entry<M>| {
             assert!(
                 entry.is_vacant(),
-                "expected table entry to be vacant, to remap use  the remap_ methods"
+                "expected table entry to be vacant, to remap use  the remap_ methods. entry address {:?} entry {entry:?}", entry.get_address(),
             );
 
             entry.set_address_and_flags(phys, flags.union(M::ENTRY_FLAGS_LEAF));
@@ -214,7 +214,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         let on_node = |entry: &mut Entry<M>| {
             if entry.is_vacant() {
                 // allocate a new physical frame to hold the entries children
-                let frame_phys = self.allocator.allocate_frame()?;
+                let frame_phys = self.allocator.allocate_frame_zeroed()?;
                 entry.set_address_and_flags(frame_phys, M::ENTRY_FLAGS_TABLE);
             }
 
@@ -366,7 +366,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         let on_node = |entry: &mut Entry<M>| {
             if entry.is_vacant() {
                 // allocate a new physical frame to hold the entries children
-                let frame_phys = self.allocator.allocate_frame()?;
+                let frame_phys = self.allocator.allocate_frame_zeroed()?;
                 entry.set_address_and_flags(frame_phys, M::ENTRY_FLAGS_TABLE);
             }
 
