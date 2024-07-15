@@ -200,6 +200,8 @@ fn run_in_qemu(target: Target, bootimg_path: &Path, wait_for_debugger: bool) -> 
             "none",
             "-semihosting-config",
             "enable=on,target=native",
+            "-monitor",
+            "unix:qemu-monitor-socket,server,nowait",
         ]);
 
         if wait_for_debugger {
