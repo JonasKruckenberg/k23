@@ -82,6 +82,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
     }
 
     pub fn translate_payload(&mut self, payload: Payload<'wasm>) -> WasmResult<()> {
+        log::trace!("Translating payload section {payload:?}");
         match payload {
             Payload::Version {
                 num,

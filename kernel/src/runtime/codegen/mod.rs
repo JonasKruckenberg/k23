@@ -37,6 +37,7 @@ pub fn compile_module<'wasm, T: WritableBuffer>(
     let module_env = ModuleEnvironment::new(&mut validator);
 
     // Perform WASM -> Cranelift IR translation
+    log::trace!("Translating module to Cranelift IR...");
     let translation = module_env.translate(parser, wasm).unwrap();
     let Translation {
         module,
@@ -50,13 +51,17 @@ pub fn compile_module<'wasm, T: WritableBuffer>(
     let compile_inputs = CompileInputs::from_module(&module, &types, func_compile_inputs);
 
     // compile functions to machine code
+    log::trace!("Compiling functions to machine code...");
     let unlinked_compile_outputs = compile_inputs.compile(engine, &module).unwrap();
 
+    log::trace!("Setting up intermediate code object...");
     let mut obj_builder = ObjectBuilder::new(engine.compiler().create_intermediate_code_object());
 
+    log::trace!("Appending info to intermediate code object...");
     obj_builder.append_engine_info(engine);
     obj_builder.append_debug_info(&module.debug_info);
 
+    log::trace!("Appending compiled functions to intermediate code object...");
     let info = unlinked_compile_outputs.link_append_and_finish(
         engine,
         module,

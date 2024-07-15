@@ -14,7 +14,9 @@ pub struct Module<'wasm> {
 
 impl<'wasm> Module<'wasm> {
     pub fn from_binary(engine: &Engine, store: &Store, bytes: &'wasm [u8]) -> Self {
+        log::trace!("Allocating new output buffer for compiled module...");
         let mut guest_vec = AlignedVec::new(store.guest_allocator());
+        log::trace!("Compiling module...");
         let info = compile_module(engine, bytes, &mut guest_vec).unwrap();
         log::trace!("compile output {:?}", guest_vec.as_ptr_range());
 

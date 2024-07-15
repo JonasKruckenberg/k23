@@ -9,6 +9,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(isa: OwnedTargetIsa) -> Self {
+        log::trace!("Setting up new Engine instance for ISA: {:?}", isa.name());
         Self {
             features: WasmFeatures::default(),
             compiler: Compiler::new(isa),
