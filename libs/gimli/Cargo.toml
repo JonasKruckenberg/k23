@@ -1,7 +1,11 @@
 [package]
 name = "gimli"
 version.workspace = true
-categories = ["development-tools::debugging", "development-tools::profiling", "parser-implementations"]
+categories = [
+    "development-tools::debugging",
+    "development-tools::profiling",
+    "parser-implementations",
+]
 description = "A library for reading and writing the DWARF debugging format."
 documentation = "https://docs.rs/gimli"
 edition.workspace = true
@@ -15,6 +19,9 @@ include = [
 ]
 keywords = ["DWARF", "debug", "ELF", "eh_frame"]
 license = "MIT OR Apache-2.0"
+
+[lints]
+workspace = true
 
 [dependencies]
 indexmap = { version = "2.2.6", optional = true, default-features = false }
@@ -30,4 +37,3 @@ read = ["read-core"]
 #read-all = ["read", "fallible-iterator", "endian-reader"]
 #endian-reader = ["read", "dep:stable_deref_trait"]
 write = ["dep:indexmap"]
-

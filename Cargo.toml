@@ -16,6 +16,12 @@ edition = "2021"
 authors = ["Jonas Kruckenberg <iterpre@protonmail.com>"]
 license = "MIT"
 
+[workspace.lints.clippy]
+large_futures = "deny"
+large_stack_frames = "deny"
+large_stack_arrays = "deny"
+recursive_format_impl = "deny"
+
 [workspace.dependencies]
 dtb-parser = { path = "libs/dtb-parser" }
 uart-16550 = { path = "libs/uart-16550" }
