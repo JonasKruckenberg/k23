@@ -1,41 +1,4 @@
 #[cfg(test)]
-#[ktest::setup_harness]
-fn setup(hartid: usize, info: ktest::SetupInfo) {
-    use crate::{allocator, arch::HARTID, frame_alloc, kconfig, logger};
-    use arrayvec::ArrayVec;
-    use loader_api::MemoryRegionKind;
-
-    HARTID.initialize_with(hartid, |_, _| {});
-
-    logger::init();
-
-    let mut usable = ArrayVec::<_, 16>::new();
-
-    for region in info.boot_info.memory_regions.iter() {
-        if region.kind == MemoryRegionKind::Usable {
-            usable.push(region.range.clone());
-        }
-    }
-
-    log::trace!("initializing frame alloc");
-    frame_alloc::init(&usable, |alloc| -> Result<(), vmm::Error> {
-        let heap_virt = info
-            .boot_info
-            .free_virt
-            .end
-            .sub(kconfig::HEAP_SIZE_PAGES * kconfig::PAGE_SIZE)
-            ..info.boot_info.free_virt.end;
-
-        log::trace!("Setting up heap {heap_virt:?}");
-
-        allocator::init(alloc, heap_virt).unwrap();
-
-        Ok(())
-    })
-    .unwrap();
-}
-
-#[cfg(test)]
 mod tests {
     use crate::runtime::{Engine, Linker, Module, Store};
     use cranelift_codegen::settings::Configurable;

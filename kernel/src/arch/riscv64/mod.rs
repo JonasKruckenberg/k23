@@ -6,7 +6,7 @@ use kstd::arch::sstatus::FS;
 use kstd::arch::{sie, sstatus};
 use kstd::declare_thread_local;
 use kstd::sync::Once;
-use loader_api::{LoaderConfig, MemoryRegionKind};
+use loader_api::MemoryRegionKind;
 use vmm::{AddressRangeExt, Flush, Mapper};
 
 pub type EntryFlags = vmm::EntryFlags;
@@ -15,9 +15,7 @@ declare_thread_local! {
     pub static HARTID: usize;
 }
 
-#[cfg(not(test))]
-#[loader_api::entry(LoaderConfig::new_default())]
-fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
+fn setup(hartid: usize, boot_info: &'static mut loader_api::BootInfo) {
     HARTID.initialize_with(hartid, |_, _| {});
 
     logger::init();
@@ -93,6 +91,18 @@ fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
         sstatus::set_fs(FS::Initial);
         sie::set_stie();
     }
+}
+
+#[cfg(not(test))]
+#[loader_api::entry(loader_api::LoaderConfig::new_default())]
+fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
+    setup(hartid, boot_info);
 
     crate::main(hartid)
+}
+
+#[cfg(test)]
+#[ktest::setup_harness]
+fn kstart_test(hartid: usize, info: ktest::SetupInfo) {
+    setup(hartid, info.boot_info);
 }

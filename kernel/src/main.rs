@@ -8,6 +8,7 @@
     hint_assert_unchecked,
     used_with_arg
 )]
+#![cfg_attr(test, allow(unused))]
 
 extern crate alloc;
 
