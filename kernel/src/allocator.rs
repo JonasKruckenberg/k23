@@ -9,7 +9,7 @@ use vmm::{Flush, FrameAllocator, Mapper, VirtualAddress};
 #[global_allocator]
 static KERNEL_ALLOCATOR: Talck<kstd::sync::RawMutex, OomHandler> = Talc::new(OomHandler {
     heap: Span::empty(),
-    min: 0,
+    max: 0,
 })
 .lock();
 
@@ -18,15 +18,11 @@ pub fn init(
     heap: Range<VirtualAddress>,
 ) -> Result<(), vmm::Error> {
     let mut alloc = KERNEL_ALLOCATOR.lock();
-    alloc.oom_handler.heap = Span::from_base_size(
-        heap.end.sub(kconfig::PAGE_SIZE).as_raw() as *mut u8,
-        kconfig::PAGE_SIZE,
-    );
-    alloc.oom_handler.min = heap.start.as_raw();
-    alloc.oom_handler.ensure_mapped(
-        frame_alloc,
-        Span::from_base_size(heap.end.as_raw() as *mut u8, 0),
-    )?;
+    alloc.oom_handler.heap =
+        Span::from_base_size(heap.start.as_raw() as *mut u8, kconfig::PAGE_SIZE);
+    alloc.oom_handler.max = heap.end.as_raw();
+
+    OomHandler::ensure_mapped(frame_alloc, None, alloc.oom_handler.heap)?;
 
     unsafe {
         let heap = alloc.oom_handler.heap;
@@ -38,17 +34,22 @@ pub fn init(
 
 struct OomHandler {
     heap: Span,
-    min: usize,
+    max: usize,
 }
 
 impl OomHandler {
     fn ensure_mapped(
-        &self,
         frame_alloc: &mut dyn FrameAllocator<kconfig::MEMORY_MODE>,
-        old_heap: Span,
+        old_heap: Option<Span>,
+        new_heap: Span,
     ) -> Result<(), vmm::Error> {
-        let (span_to_map, empty) = self.heap.except(old_heap);
-        assert!(empty.is_empty());
+        let span_to_map = if let Some(old_heap) = old_heap {
+            let (empty, span_to_map) = new_heap.except(old_heap);
+            assert!(empty.is_empty());
+            span_to_map
+        } else {
+            new_heap
+        };
 
         let mut mapper: Mapper<'_, vmm::Riscv64Sv39> = Mapper::from_active(0, frame_alloc);
         let mut flush = Flush::empty(0);
@@ -84,27 +85,29 @@ impl talc::OomHandler for OomHandler {
         // but we'll be sure not to extend past the limit
         let new_heap: Span = old_heap
             .extend(
+                0,
                 old_heap
                     .size()
                     .max(layout.size())
                     .div_ceil(kconfig::PAGE_SIZE)
                     * kconfig::PAGE_SIZE,
-                0,
             )
-            .above(talc.oom_handler.min as *mut u8);
+            .below(talc.oom_handler.max as *mut u8);
+
+        log::trace!("Extending heap. Old {old_heap:?} => {new_heap:?}");
 
         if new_heap == old_heap {
             // we won't be extending the heap, so we should return Err
             return Err(());
         }
 
+        with_frame_alloc(|alloc| OomHandler::ensure_mapped(alloc, Some(old_heap), new_heap))
+            .map_err(|_| ())?;
+
         unsafe {
             // we're assuming the new memory up to HEAP_TOP_LIMIT is unused and allocatable
             talc.oom_handler.heap = talc.extend(old_heap, new_heap);
         }
-
-        with_frame_alloc(|alloc| talc.oom_handler.ensure_mapped(alloc, old_heap))
-            .map_err(|_| ())?;
 
         Ok(())
     }
