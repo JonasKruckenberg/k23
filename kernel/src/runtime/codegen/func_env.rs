@@ -45,7 +45,7 @@ impl<'module_env, 'wasm> FunctionEnvironment<'module_env, 'wasm> {
             module,
             types,
 
-            heaps: Default::default(),
+            heaps: PrimaryMap::default(),
 
             vmctx_plan: VMContextPlan::for_module(isa, module),
             vmctx: None,
@@ -177,7 +177,7 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment
             .maximum
             .and_then(|max| max.checked_mul(u64::from(WASM_PAGE_SIZE)));
 
-        let bound_bytes = 0x1_0000 * WASM_PAGE_SIZE as u64;
+        let bound_bytes = 0x1_0000 * u64::from(WASM_PAGE_SIZE);
 
         let def_index = self
             .module

@@ -6,6 +6,7 @@ use crate::runtime::errors::CompileError;
 use crate::runtime::utils::wasm_call_signature;
 use crate::runtime::NS_WASM_FUNC;
 use core::mem;
+use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::{
     Block, Endianness, Function, GlobalValueData, MemFlags, UserExternalName, UserFuncName,
 };
@@ -32,7 +33,7 @@ impl Compiler {
             isa,
             func_translator: FuncTranslator::new(),
             codegen_context: Context::new(),
-            validator_allocations: Default::default(),
+            validator_allocations: FuncValidatorAllocations::default(),
         }
     }
     pub fn target_isa(&self) -> &dyn TargetIsa {
@@ -128,8 +129,10 @@ impl Compiler {
     }
 
     /// Compiles a trampoline for calling a WASM function from the host
+    #[allow(clippy::unused_self)]
     pub fn compile_host_to_wasm_trampoline(&self) {}
     /// Compiles a trampoline for calling a host function from WASM
+    #[allow(clippy::unused_self)]
     pub fn compile_wasm_to_host_trampoline(&self) {}
     /// Compiles a trampoline for calling a builtin function from WASM
     pub fn compile_wasm_to_builtin_trampoline(
@@ -176,7 +179,7 @@ impl<'a> CompilationContext<'a> {
     pub fn finish(mut self) -> Result<CompiledFunction, CompileError> {
         let compiled_code = self
             .codegen_context
-            .compile(self.target_isa, &mut Default::default())?;
+            .compile(self.target_isa, &mut ControlPlane::default())?;
 
         let preferred_alignment = self.target_isa.function_alignment().preferred;
         let alignment = compiled_code.buffer.alignment.max(preferred_alignment);

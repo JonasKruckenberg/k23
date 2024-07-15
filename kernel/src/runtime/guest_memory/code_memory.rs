@@ -29,11 +29,11 @@ impl CodeMemory {
         let obj = File::parse(vec.as_slice()).expect("failed to parse compilation artifact");
 
         let mut text = None;
-        let mut wasm_data = Default::default();
-        let mut func_name_data = Default::default();
-        let mut trap_data = Default::default();
-        let mut dwarf = Default::default();
-        let mut info = Default::default();
+        let mut wasm_data = Range::default();
+        let mut func_name_data = Range::default();
+        let mut trap_data = Range::default();
+        let mut dwarf = Range::default();
+        let mut info = Range::default();
 
         for section in obj.sections() {
             let name = section.name().unwrap();
@@ -46,7 +46,7 @@ impl CodeMemory {
             // Double-check that sections are all aligned properly.
             if section.align() != 0 && range.size() != 0 {
                 debug_assert!(
-                    range.is_aligned(section.align() as usize),
+                    range.is_aligned(usize::try_from(section.align()).unwrap()),
                     "section `{}` isn't aligned to {:#x} ({range:?})",
                     section.name().unwrap_or("ERROR"),
                     section.align(),

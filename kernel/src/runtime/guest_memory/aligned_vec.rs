@@ -91,6 +91,7 @@ impl<T, const ALIGN: usize> AlignedVec<T, ALIGN> {
         self.cap
     }
 
+    #[allow(clippy::unused_self)]
     pub fn alignment(&self) -> usize {
         ALIGN
     }
@@ -160,7 +161,7 @@ impl<T, const ALIGN: usize> AlignedVec<T, ALIGN> {
             self.len = len;
             unsafe {
                 let ptr = self.as_mut_ptr();
-                ptr::slice_from_raw_parts_mut(ptr.add(len), old_len - len).drop_in_place()
+                ptr::slice_from_raw_parts_mut(ptr.add(len), old_len - len).drop_in_place();
             }
         }
     }
@@ -217,9 +218,8 @@ impl<T, const ALIGN: usize> AlignedVec<T, ALIGN> {
             return Err(());
         }
 
-        let new_cap = match len.checked_add(additional) {
-            Some(cap) => cap,
-            None => return Err(()),
+        let Some(new_cap) = len.checked_add(additional) else {
+            return Err(());
         };
 
         // self.cap * 2 can't overflow because it's less than isize::MAX
@@ -272,7 +272,7 @@ impl<T, const ALIGN: usize> AlignedVec<T, ALIGN> {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     fn set_ptr_and_cap(&mut self, ptr: NonNull<[u8]>, cap: usize) {
         // Allocators currently return a `NonNull<[u8]>` whose length matches
         // the size requested. If that ever changes, the capacity here should
@@ -284,18 +284,16 @@ impl<T, const ALIGN: usize> AlignedVec<T, ALIGN> {
     fn try_allocate(cap: usize, alloc: GuestAllocator) -> Result<Self, ()> {
         // We avoid `unwrap_or_else` here because it bloats the amount of
         // LLVM IR generated.
-        let layout = match Layout::from_size_align(cap, ALIGN) {
-            Ok(layout) => layout,
-            Err(_) => return Err(()),
+        let Ok(layout) = Layout::from_size_align(cap, ALIGN) else {
+            return Err(());
         };
 
         alloc_guard(layout.size())?;
 
         let result = alloc.allocate_zeroed(layout);
 
-        let ptr = match result {
-            Ok(ptr) => ptr,
-            Err(_) => return Err(()),
+        let Ok(ptr) = result else {
+            return Err(());
         };
 
         Ok(Self {
@@ -370,7 +368,7 @@ impl<const ALIGN: usize> object::write::WritableBuffer for AlignedVec<u8, ALIGN>
     #[inline]
     fn reserve(&mut self, size: usize) -> Result<(), ()> {
         debug_assert!(self.is_empty());
-        self.try_reserve(size).map_err(|_| ())
+        self.try_reserve(size)
     }
 
     #[inline]
@@ -382,6 +380,6 @@ impl<const ALIGN: usize> object::write::WritableBuffer for AlignedVec<u8, ALIGN>
     #[inline]
     fn write_bytes(&mut self, val: &[u8]) {
         debug_assert!(self.len() + val.len() <= self.capacity());
-        self.try_extend_from_slice(val).unwrap()
+        self.try_extend_from_slice(val).unwrap();
     }
 }

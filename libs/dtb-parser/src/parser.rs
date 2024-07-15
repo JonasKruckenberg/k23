@@ -27,7 +27,10 @@ impl<'dt> Parser<'dt> {
                 FDT_BEGIN_NODE => {
                     nesting_level += 1;
 
-                    let name = read_str(self.struct_slice, u32::try_from(self.offset).map_err(Error::from)?)?;
+                    let name = read_str(
+                        self.struct_slice,
+                        u32::try_from(self.offset).map_err(Error::from)?,
+                    )?;
                     self.offset += align_up(name.len() + 1, mem::size_of::<u32>());
 
                     if nesting_level == self.level + 1 {

@@ -17,11 +17,11 @@ impl CompileKey {
     const KIND_OFFSET: u32 = 32 - Self::KIND_BITS;
     const KIND_MASK: u32 = ((1 << Self::KIND_BITS) - 1) << Self::KIND_OFFSET;
 
-    pub fn kind(&self) -> u32 {
+    pub fn kind(self) -> u32 {
         self.namespace & Self::KIND_MASK
     }
 
-    pub fn module(&self) -> StaticModuleIndex {
+    pub fn module(self) -> StaticModuleIndex {
         StaticModuleIndex::from_u32(self.namespace & !Self::KIND_MASK)
     }
 

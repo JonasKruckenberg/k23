@@ -9,6 +9,7 @@ impl Linker {
         Self {}
     }
 
+    #[allow(clippy::unused_self)]
     pub fn instantiate<'wasm>(&self, store: &mut Store<'wasm>, module: &Module<'wasm>) -> Instance {
         Instance::new(store, module).unwrap()
     }

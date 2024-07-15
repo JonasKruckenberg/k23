@@ -15,6 +15,7 @@
 //!     last_wasm_exit_pc: usize,
 //!     last_wasm_entry_sp: usize,
 //! }
+#![allow(clippy::cast_possible_truncation)] // All offsets are smaller than `u32::MAX`
 
 use crate::runtime::codegen::TranslatedModule;
 use alloc::fmt;
@@ -81,6 +82,7 @@ pub struct VMGlobalDefinition {
 }
 
 impl VMGlobalDefinition {
+    #[allow(clippy::needless_pass_by_value)]
     pub unsafe fn from_vmval(val_raw: VMVal) -> Self {
         Self { data: val_raw.v128 }
     }
@@ -205,7 +207,7 @@ impl VMGlobalDefinition {
     }
 }
 
-/// Index into the funcref table within a VMContext for a function.
+/// Index into the funcref table within a `VMContext` for a function.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct FuncRefIndex(u32);
 entity_impl!(FuncRefIndex);
@@ -287,7 +289,7 @@ impl VMContextPlan {
             out
         };
 
-        let ptr_size = isa.pointer_bytes() as u32;
+        let ptr_size = u32::from(isa.pointer_bytes());
 
         Self {
             num_imported_funcs: module.num_imported_functions(),

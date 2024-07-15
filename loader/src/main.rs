@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions, asm_const, maybe_uninit_slice)]
+#![allow(clippy::items_after_statements, clippy::needless_continue)]
 
 mod arch;
 mod logger;
@@ -19,7 +20,6 @@ pub mod kconfig {
 }
 
 use crate::machine_info::MachineInfo;
-// use crate::mapping::{set_up_mappings, Mappings};
 use crate::mapping::{set_up_mappings, Mappings};
 use crate::payload::Payload;
 use core::mem::MaybeUninit;
@@ -62,7 +62,7 @@ fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
         let payload = Payload::from_signed_and_compressed(PAYLOAD, VERIFYING_KEY, &mut alloc);
 
         let mut mappings =
-            set_up_mappings(payload, machine_info, &own_regions, fdt_virt, &mut alloc).unwrap();
+            set_up_mappings(&payload, machine_info, &own_regions, fdt_virt, &mut alloc).unwrap();
 
         let memory_regions = mappings.finalize_memory_regions(|_, raw_regions| {
             let mut next_region = 0;

@@ -19,5 +19,5 @@ pub enum Error {
     #[error("DTB properties must be preceded by their parent node")]
     MissingParent,
     #[error("failed to convert integer")]
-    IntConvert(#[from] core::num::TryFromIntError)
+    IntConvert(#[from] core::num::TryFromIntError),
 }

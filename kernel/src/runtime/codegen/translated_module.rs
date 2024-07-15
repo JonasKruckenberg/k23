@@ -207,20 +207,23 @@ impl<'wasm> TranslatedModule<'wasm> {
         self.num_imported_globals
     }
     pub fn num_defined_tables(&self) -> u32 {
-        self.table_plans.len() as u32 - self.num_imported_tables
+        u32::try_from(self.table_plans.len()).unwrap() - self.num_imported_tables
     }
     pub fn num_defined_memories(&self) -> u32 {
-        self.memory_plans.len() as u32 - self.num_imported_memories
+        u32::try_from(self.memory_plans.len()).unwrap() - self.num_imported_memories
     }
     pub fn num_owned_memories(&self) -> u32 {
-        self.memory_plans
-            .iter()
-            .skip(self.num_imported_memories as usize)
-            .filter(|(_, mp)| !mp.memory.shared)
-            .count() as u32
+        u32::try_from(
+            self.memory_plans
+                .iter()
+                .skip(self.num_imported_memories as usize)
+                .filter(|(_, mp)| !mp.memory.shared)
+                .count(),
+        )
+        .unwrap()
     }
     pub fn num_defined_globals(&self) -> u32 {
-        self.globals.len() as u32 - self.num_imported_globals
+        u32::try_from(self.globals.len()).unwrap() - self.num_imported_globals
     }
     pub fn num_escaped_funcs(&self) -> u32 {
         self.num_escaped_funcs
@@ -378,7 +381,7 @@ impl<'wasm> TranslatedModule<'wasm> {
 }
 
 impl FunctionType {
-    pub fn is_escaping(&self) -> bool {
+    pub fn is_escaping(self) -> bool {
         !self.func_ref.is_reserved_value()
     }
 }
@@ -394,8 +397,7 @@ impl MemoryPlan {
         let page_size_log2 = u8::try_from(ty.page_size_log2.unwrap_or(16)).unwrap();
         debug_assert!(
             page_size_log2 == 16 || page_size_log2 == 0,
-            "invalid page_size_log2: {}; must be 16 or 0",
-            page_size_log2
+            "invalid page_size_log2: {page_size_log2}; must be 16 or 0"
         );
         Self {
             memory: Memory {

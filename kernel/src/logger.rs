@@ -24,7 +24,7 @@ impl log::Log for Logger {
                     hartid,
                     record.module_path_static().unwrap_or_default(),
                     record.args()
-                )
+                );
             });
         }
     }

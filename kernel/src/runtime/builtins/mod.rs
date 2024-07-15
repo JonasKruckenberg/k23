@@ -201,6 +201,7 @@ impl BuiltinFunctionSignatures {
 
     /// Returns the AbiParam for builtin functions `i32` arguments/returns.
     /// This function is used in the `signatures` macro below.
+    #[allow(clippy::unused_self)]
     fn i32(&self) -> AbiParam {
         // Some platform ABIs require i32 values to be zero- or sign-
         // extended to the full register width.  We need to indicate
@@ -216,10 +217,12 @@ impl BuiltinFunctionSignatures {
 
     /// Returns the AbiParam for builtin functions `i64` arguments/returns.
     /// This function is used in the `signatures` macro below.
+    #[allow(clippy::unused_self)]
     fn i64(&self) -> AbiParam {
         AbiParam::new(ir::types::I64)
     }
 
+    #[allow(clippy::used_underscore_binding)]
     pub fn signature(&self, builtin: BuiltinFunctionIndex) -> Signature {
         let mut _cur = 0;
         macro_rules! iter {
@@ -260,7 +263,7 @@ impl BuiltinFunctionIndex {
     }
 
     /// Return the index as an u32 number.
-    pub const fn as_u32(&self) -> u32 {
+    pub const fn as_u32(self) -> u32 {
         self.0
     }
 }

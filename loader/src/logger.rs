@@ -21,7 +21,7 @@ impl log::Log for Logger {
                 record.level(),
                 record.module_path_static().unwrap_or_default(),
                 record.args()
-            )
+            );
         }
     }
 

@@ -109,7 +109,7 @@ unsafe impl Allocator for GuestAllocator {
         // TODO unmap pages
 
         let mut inner = self.0.lock();
-        inner.inner.deallocate(ptr, layout)
+        inner.inner.deallocate(ptr, layout);
     }
 }
 
@@ -147,6 +147,7 @@ impl GuestAllocatorInner {
     }
 }
 
+#[allow(clippy::missing_fields_in_debug)]
 impl fmt::Debug for GuestAllocatorInner {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("GuestAllocatorInner")

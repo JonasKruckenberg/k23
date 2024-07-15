@@ -65,7 +65,11 @@ impl<M: Mode> Table<M> {
     }
 
     #[must_use]
-    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    #[allow(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_possible_wrap
+    )]
     pub fn virt_from_index(&self, index: usize) -> VirtualAddress {
         let raw = ((index & M::PAGE_ENTRY_MASK)
             << (self.level * M::PAGE_ENTRY_SHIFT + M::PAGE_SHIFT)) as isize;

@@ -169,7 +169,6 @@ impl<'a, M: Mode> Mapper<'a, M> {
         })
     }
 
-
     /// Identity maps a physical address with the given flags.
     ///
     /// # Errors

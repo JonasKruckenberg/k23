@@ -78,7 +78,7 @@ impl<'dt> MachineInfo<'dt> {
         // Apply reserved_entries
         while let Some(entry) = reservations.next_entry().unwrap() {
             let entry = {
-                let start = PhysicalAddress::new(entry.address as usize);
+                let start = PhysicalAddress::new(usize::try_from(entry.address).unwrap());
 
                 start..start.add(usize::try_from(entry.size).unwrap())
             };
@@ -213,7 +213,7 @@ impl<'dt> ReservationsVisitor<'dt> {
             regs_visitor: RegsVisitor {
                 address_size: self.address_size,
                 width_size: self.width_size,
-                regs: Default::default(),
+                regs: ArrayVec::default(),
             },
         }
     }

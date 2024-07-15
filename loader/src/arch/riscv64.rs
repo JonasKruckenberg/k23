@@ -68,7 +68,7 @@ unsafe extern "C" fn _start_hart() -> ! {
 
 /// # Safety
 ///
-/// expects the bottom of stack_size in `t0` and the top of stack in `sp`
+/// expects the bottom of `stack_size` in `t0` and the top of stack in `sp`
 #[naked]
 unsafe extern "C" fn fillstack() {
     // fill our stack area with a fixed pattern

@@ -58,7 +58,7 @@ const MIB: usize = 1024 * KIB;
 
 #[allow(clippy::cast_precision_loss)]
 pub fn set_up_mappings(
-    payload: Payload,
+    payload: &Payload,
     machine_info: &MachineInfo,
     loader_regions: &LoaderRegions,
     fdt_virt: VirtualAddress,

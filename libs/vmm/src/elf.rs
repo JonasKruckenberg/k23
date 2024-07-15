@@ -191,10 +191,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
     }
 
     #[allow(clippy::unused_self)]
-    fn handle_tls_segment(
-        &mut self,
-        program_header: &ProgramHeader,
-    ) -> TlsTemplate {
+    fn handle_tls_segment(&mut self, program_header: &ProgramHeader) -> TlsTemplate {
         TlsTemplate {
             start_addr: program_header.virtual_address,
             mem_size: program_header.mem_size,
@@ -262,7 +259,6 @@ impl<'a, M: Mode> Mapper<'a, M> {
         }
     }
 }
-
 
 #[repr(C)]
 #[derive(Debug, Clone)]

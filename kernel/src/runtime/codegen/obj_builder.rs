@@ -50,6 +50,7 @@ impl<'obj> ObjectBuilder<'obj> {
     }
 
     /// Creates the `ELF_K23_ENGINE` section and writes the current engine configuration into it
+    #[allow(clippy::unused_self)]
     pub fn append_engine_info(&mut self, _engine: &Engine) {}
 
     pub fn append_debug_info(&mut self, info: &DebugInfo) {
@@ -145,7 +146,7 @@ impl<'a, 'obj> TextSectionBuilder<'a, 'obj> {
             obj,
             text_section,
             inner: text_builder,
-            ctrl_plane: Default::default(),
+            ctrl_plane: ControlPlane::default(),
             len: 0,
         }
     }
@@ -233,7 +234,8 @@ impl<'a, 'obj> TextSectionBuilder<'a, 'obj> {
 
     /// Finish building the text section and flush it into the object file
     pub fn finish(mut self) {
-        let padding = kconfig::PAGE_SIZE - (self.len as usize % kconfig::PAGE_SIZE);
+        let padding =
+            kconfig::PAGE_SIZE - (usize::try_from(self.len).unwrap() % kconfig::PAGE_SIZE);
         // Add padding at the end so that the text section is fully page aligned
         self.append_padding(padding);
 

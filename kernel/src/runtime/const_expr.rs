@@ -21,7 +21,7 @@ impl ConstExprEvaluator {
                 }),
                 ConstOp::GlobalGet(global_index) => {
                     let val = self.global_get(instance, *global_index);
-                    self.push(val)
+                    self.push(val);
                 }
                 _ => todo!(),
             }

@@ -81,6 +81,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
         Ok(self.result)
     }
 
+    #[allow(clippy::too_many_lines)]
     pub fn translate_payload(&mut self, payload: Payload<'wasm>) -> WasmResult<()> {
         log::trace!("Translating payload section {payload:?}");
         match payload {
@@ -168,7 +169,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                         module: import.module,
                         name: import.name,
                         ty: index,
-                    })
+                    });
                 }
             }
             Payload::FunctionSection(functions) => {
@@ -352,7 +353,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                                     base,
                                     offset,
                                     elements,
-                                })
+                                });
                         }
                         ElementKind::Declared => {}
                     }
@@ -386,16 +387,14 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                                 }
                             };
 
-                            self.result
-                                .module
-                                .memory_initializers
-                                .runtime
-                                .push(MemoryInitializer {
+                            self.result.module.memory_initializers.runtime.push(
+                                MemoryInitializer {
                                     memory_index,
                                     base,
                                     offset,
                                     bytes: data.data,
-                                })
+                                },
+                            );
                         }
                     }
                 }
@@ -426,7 +425,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                 self.parse_producers_section(reader)?;
             }
             Payload::CustomSection(sec) if sec.name() == "target_features" => {
-                self.parse_target_feature_section(sec);
+                self.parse_target_feature_section(&sec);
             }
             Payload::CustomSection(sec) => {
                 let name = sec.name().trim_end_matches(".dwo");
@@ -434,7 +433,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                     log::debug!("unhandled custom section {sec:?}");
                     return Ok(());
                 }
-                self.parse_dwarf_section(name, sec);
+                self.parse_dwarf_section(name, &sec);
             }
             section => log::warn!("Unknown section {section:?}"),
         }
@@ -527,7 +526,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
     //     Ok(())
     // }
 
-    fn parse_target_feature_section(&mut self, section: CustomSectionReader<'wasm>) {
+    fn parse_target_feature_section(&mut self, section: &CustomSectionReader<'wasm>) {
         let mut bytes = Bytes(section.data());
 
         let _count: u8 = *bytes.read().unwrap();
@@ -539,7 +538,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
             assert_eq!(prefix, 0x2b, "only the `+` prefix is supported");
 
             let len = bytes.read_uleb128().unwrap();
-            let feature = bytes.read_bytes(len as usize).unwrap();
+            let feature = bytes.read_bytes(usize::try_from(len).unwrap()).unwrap();
             let feature = core::str::from_utf8(feature.0).unwrap();
 
             match feature {
@@ -549,7 +548,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                 "multivalue" => required_features.insert(WasmFeatures::MULTI_VALUE),
                 "mutable-globals" => required_features.insert(WasmFeatures::MUTABLE_GLOBAL),
                 "nontrapping-fptoint" => {
-                    required_features.insert(WasmFeatures::SATURATING_FLOAT_TO_INT)
+                    required_features.insert(WasmFeatures::SATURATING_FLOAT_TO_INT);
                 }
                 "sign-ext" => required_features.insert(WasmFeatures::SIGN_EXTENSION),
                 "simd128" => required_features.insert(WasmFeatures::SIMD),
@@ -638,7 +637,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
         Ok(())
     }
 
-    fn parse_dwarf_section(&mut self, name: &'wasm str, section: CustomSectionReader<'wasm>) {
+    fn parse_dwarf_section(&mut self, name: &'wasm str, section: &CustomSectionReader<'wasm>) {
         let endian = gimli::LittleEndian;
         let data = section.data();
         let slice = gimli::EndianSlice::new(data, endian);

@@ -37,12 +37,12 @@ pub fn init() {
     );
 
     TRAP_FRAME.initialize_with(frame, |_, frame_ref| {
-        log::debug!("setting sscratch to {:p}", frame_ref as *const _);
+        log::debug!("setting sscratch to {:p}", core::ptr::from_ref(frame_ref));
 
         unsafe {
             asm!(
                 "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
-                trap_frame = in(reg) frame_ref as *const _
+                trap_frame = in(reg) core::ptr::from_ref(frame_ref)
             );
         }
 

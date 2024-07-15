@@ -8,7 +8,14 @@
     hint_assert_unchecked,
     used_with_arg
 )]
-#![allow(clippy::needless_continue)]
+#![allow(
+    clippy::doc_markdown,
+    clippy::module_name_repetitions,
+    clippy::needless_continue,
+    clippy::cast_ptr_alignment, // TODO verify
+    clippy::unnecessary_wraps,
+    clippy::items_after_statements
+)]
 #![cfg_attr(test, allow(unused))]
 
 extern crate alloc;

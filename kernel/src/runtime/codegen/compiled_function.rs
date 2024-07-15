@@ -75,7 +75,7 @@ impl CompiledFunction {
             buffer,
             name_map,
             alignment,
-            metadata: Default::default(),
+            metadata: CompiledFunctionMetadata::default(),
         }
     }
 

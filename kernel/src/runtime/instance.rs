@@ -41,7 +41,7 @@ impl Instance {
         Ok(handle)
     }
 
-    pub fn debug_print_vmctx(&self, store: &Store) {
+    pub fn debug_print_vmctx(self, store: &Store) {
         struct Dbg<'a, 'wasm> {
             data: &'a InstanceData<'wasm>,
         }
@@ -72,9 +72,9 @@ impl Instance {
         log::debug!(
             "{:#?}",
             Dbg {
-                data: &store.instance_data(*self)
+                data: &store.instance_data(self)
             }
-        )
+        );
     }
 }
 
@@ -254,8 +254,7 @@ impl<'wasm> InstanceData<'wasm> {
     pub unsafe fn table_index(&mut self, table: &VMTableDefinition) -> DefinedTableIndex {
         let index = DefinedTableIndex::new(
             usize::try_from(
-                (table as *const VMTableDefinition)
-                    .offset_from(self.table_ptr(DefinedTableIndex::new(0))),
+                core::ptr::from_ref(table).offset_from(self.table_ptr(DefinedTableIndex::new(0))),
             )
             .unwrap(),
         );
@@ -309,7 +308,7 @@ impl<'wasm> InstanceData<'wasm> {
                             .map(|expr| unsafe { const_eval.eval(self, expr).funcref.cast() })
                             .collect();
 
-                        self.tables[def_table_index].init_func(dst, exprs.into_iter())?
+                        self.tables[def_table_index].init_func(dst, exprs.into_iter())?;
                     }
                     WasmHeapType::Extern
                     | WasmHeapType::NoExtern
@@ -467,7 +466,7 @@ fn initialize_tables(
                     &segment.elements,
                     start,
                     0,
-                    segment.elements.len() as u32,
+                    u32::try_from(segment.elements.len()).unwrap(),
                 )
             },
         )?;
@@ -488,7 +487,7 @@ fn initialize_memories(
         unsafe {
             let dst = memory.base.add(usize::try_from(init.offset).unwrap());
 
-            ptr::copy_nonoverlapping(init.bytes.as_ptr(), dst, init.bytes.len())
+            ptr::copy_nonoverlapping(init.bytes.as_ptr(), dst, init.bytes.len());
         }
     }
 

@@ -116,7 +116,7 @@ impl<'wasm> Store<'wasm> {
 
     fn allocate_memory(&mut self, plan: &MemoryPlan) -> Memory {
         let inner = GuestVec::with_capacity_in(
-            plan.memory.minimum as usize * WASM_PAGE_SIZE as usize,
+            usize::try_from(plan.memory.minimum).unwrap() * WASM_PAGE_SIZE as usize,
             self.guest_allocator(),
         );
 
