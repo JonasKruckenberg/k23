@@ -25,9 +25,9 @@ preflight *FLAGS: (lint FLAGS)
 
 lint *FLAGS: (clippy FLAGS) (check-fmt FLAGS)
 
-clippy *FLAGS:
+clippy $RUSTFLAGS='-Dwarnings' *FLAGS='':
     # riscv64 checks
-    {{ _cargo }} clippy --target riscv64gc-unknown-none-elf {{ _riscv64crates }} {{ _buildstd }} {{ FLAGS }}
+    {{ _cargo }} clippy --target riscv64gc-unknown-none-elf {{ _riscv64crates }} {{ _buildstd }} {{ FLAGS }} -- -Dclippy::all -Dclippy::pedantic
 
 # check rustfmt for `crate`
 check-fmt *FLAGS:
