@@ -34,7 +34,7 @@ impl<'a> Printer<'a> {
         let TestInfo { module, name, .. } = info;
         match self.format {
             FormatSetting::Pretty => {
-                write!(self.out, "test {module}::{name} ... ",).unwrap();
+                writeln!(self.out, "test {module}::{name} ... ",).unwrap();
             }
             FormatSetting::Terse => {
                 // In terse mode, nothing is printed before the job. Only
