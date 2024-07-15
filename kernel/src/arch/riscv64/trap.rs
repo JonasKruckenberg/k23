@@ -195,8 +195,8 @@ unsafe extern "C" fn default_trap_entry() {
         save!(s10 => t6[27]),
         save!(s11 => t6[28]),
 
-        "mv a0, t6",
         load!(t6[29] => sp),
+        "mv a0, t6",
 
         "call {trap_handler}",
 
