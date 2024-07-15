@@ -23,19 +23,27 @@ pub fn init() {
         trap_stack_ptr: unsafe {
             TRAP_STACK
                 .as_ptr()
-                .add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE) as *mut _
+                .byte_add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE) as *mut _
         },
         _pinned: PhantomPinned,
     };
-    log::debug!("setting up trap frame {:?}", unsafe { TRAP_STACK.as_ptr() });
+    log::debug!(
+        "trap stack {:?}..{:?}",
+        unsafe { TRAP_STACK.as_ptr() },
+        unsafe {
+            TRAP_STACK
+                .as_ptr()
+                .byte_add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE)
+        }
+    );
 
     TRAP_FRAME.initialize_with(frame, |_, frame_ref| {
-        log::debug!("setting sscratch to {:p}", addr_of!(frame_ref));
+        log::debug!("setting sscratch to {:p}", frame_ref as *const _);
 
         unsafe {
             asm!(
                 "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
-                trap_frame = in(reg) addr_of!(frame_ref)
+                trap_frame = in(reg) frame_ref as *const _
             );
         }
 
