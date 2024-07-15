@@ -37,9 +37,9 @@ use vmm::{
 static ALLOC: LockedHeap = LockedHeap::empty();
 
 fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
-    log::info!("Hart {hartid} started");
-
     static MAPPINGS: Once<Mappings> = Once::new();
+
+    log::info!("Hart {hartid} started");
 
     let mappings = MAPPINGS.get_or_init(|| {
         let own_regions = LoaderRegions::new(machine_info);
@@ -110,14 +110,18 @@ fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
     }
 }
 
-// move the FDT from wherever the previous bootloader placed it into a properly allocated place,
-// so we don't accidentally override it
+/// Moves the FDT from wherever the previous bootloader placed it into a properly allocated place,
+/// so we don't accidentally override it
+///
+/// # Errors
+///
+/// Returns an error if allocation fails.
 pub fn allocate_and_copy_fdt(
     machine_info: &MachineInfo,
     alloc: &mut BumpAllocator<INIT<kconfig::MEMORY_MODE>>,
 ) -> Result<VirtualAddress, vmm::Error> {
     let frames = machine_info.fdt.len().div_ceil(kconfig::PAGE_SIZE);
-    let base = alloc.allocate_frames(frames).unwrap();
+    let base = alloc.allocate_frames(frames)?;
 
     unsafe {
         let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, machine_info.fdt.len());
@@ -136,6 +140,7 @@ pub struct LoaderRegions {
 }
 
 impl LoaderRegions {
+    #[must_use]
     pub fn new(machine_info: &MachineInfo) -> Self {
         extern "C" {
             static __text_start: u8;

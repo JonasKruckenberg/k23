@@ -41,11 +41,11 @@ impl BootInfo {
         Self {
             boot_hart: 0,
             memory_regions,
-            physical_memory_offset: Default::default(),
+            physical_memory_offset: VirtualAddress::default(),
             tls_template: None,
             fdt_virt: None,
             loader_virt: None,
-            free_virt: Default::default(),
+            free_virt: Range::default(),
         }
     }
 }
@@ -76,6 +76,7 @@ pub enum MemoryRegionKind {
 }
 
 impl MemoryRegionKind {
+    #[must_use]
     pub fn is_usable(&self) -> bool {
         matches!(self, MemoryRegionKind::Usable)
     }

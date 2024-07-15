@@ -508,6 +508,9 @@ impl VMContextPlan {
     }
 }
 
+/// # Panics
+///
+/// Panics if the size of `T` is greater than `u32::MAX`.
 fn size_of_u32<T: Sized>() -> u32 {
-    mem::size_of::<T>() as u32
+    u32::try_from(mem::size_of::<T>()).unwrap()
 }

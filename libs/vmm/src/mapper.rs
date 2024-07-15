@@ -1,3 +1,5 @@
+#![allow(clippy::redundant_else)]
+
 use crate::entry::Entry;
 use crate::flush::Flush;
 use crate::table::Table;
@@ -14,6 +16,11 @@ pub struct Mapper<'a, M> {
 }
 
 impl<'a, M: Mode> Mapper<'a, M> {
+    /// Create a new `Mapper` with a new root table.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a new frame backing the root table cannot be allocated.
     pub fn new(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> crate::Result<Self> {
         let root_table = allocator.allocate_frame_zeroed()?;
         let root_table_virt = M::phys_to_virt(root_table);
@@ -56,6 +63,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         M::activate_table(self.asid, self.root_table);
     }
 
+    #[must_use]
     pub fn allocator(&self) -> &dyn FrameAllocator<M> {
         self.allocator
     }
@@ -64,14 +72,22 @@ impl<'a, M: Mode> Mapper<'a, M> {
         self.allocator
     }
 
+    #[must_use]
     pub fn into_allocator(self) -> &'a mut dyn FrameAllocator<M> {
         self.allocator
     }
 
+    #[must_use]
     pub fn root_table(&self) -> Table<M> {
         unsafe { Table::new(self.root_table, M::PAGE_TABLE_LEVELS - 1) }
     }
 
+    /// Sets the flags for a virtual address range.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
+    #[allow(clippy::missing_errors_doc)]
     pub fn set_flags_for_range(
         &mut self,
         range_virt: Range<VirtualAddress>,
@@ -83,13 +99,19 @@ impl<'a, M: Mode> Mapper<'a, M> {
             "virtual address range must span be at least one page"
         );
 
-        Self::for_pages_in_range(range_virt.clone(), |i, _, page_size| {
+        Self::for_pages_in_range(&range_virt, |i, _, page_size| {
             let virt = range_virt.start.add(i * page_size);
 
             self.set_flags(virt, flags, flush)
         })
     }
 
+    /// Sets the flags for a virtual address.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
+    #[allow(clippy::missing_errors_doc)]
     pub fn set_flags(
         &mut self,
         virt: VirtualAddress,
@@ -117,6 +139,15 @@ impl<'a, M: Mode> Mapper<'a, M> {
         Self::walk_mut(virt, self.root_table(), on_leaf, |_| Ok(()))
     }
 
+    /// Identity maps a physical address range with the given flags.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if underlying allocations fail.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
     pub fn map_range_identity(
         &mut self,
         range_phys: Range<PhysicalAddress>,
@@ -130,7 +161,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
         let range_virt = M::phys_to_virt(range_phys.start)..M::phys_to_virt(range_phys.end);
 
-        Self::for_pages_in_range(range_virt.clone(), |i, _, page_size| {
+        Self::for_pages_in_range(&range_virt, |i, _, page_size| {
             let virt = range_virt.start.add(i * page_size);
             let phys = range_phys.start.add(i * page_size);
 
@@ -138,6 +169,16 @@ impl<'a, M: Mode> Mapper<'a, M> {
         })
     }
 
+
+    /// Identity maps a physical address with the given flags.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if underlying allocations fail.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
     pub fn map_identity(
         &mut self,
         phys: PhysicalAddress,
@@ -148,6 +189,15 @@ impl<'a, M: Mode> Mapper<'a, M> {
         self.map(virt, phys, flags, flush)
     }
 
+    /// Maps a virtual address range to a physical address range with the given flags.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if underlying allocations fail.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
     pub fn map_range(
         &mut self,
         range_virt: Range<VirtualAddress>,
@@ -172,7 +222,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
             "physical address range must span be at least one page"
         );
 
-        Self::for_pages_in_range(range_virt.clone(), |i, _, page_size| {
+        Self::for_pages_in_range(&range_virt, |i, _, page_size| {
             let virt = range_virt.start.add(i * page_size);
             let phys = range_phys.start.add(i * page_size);
 
@@ -180,6 +230,15 @@ impl<'a, M: Mode> Mapper<'a, M> {
         })
     }
 
+    /// Maps a virtual address to a physical address with the given flags.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if underlying allocations fail.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
     pub fn map(
         &mut self,
         virt: VirtualAddress,
@@ -224,6 +283,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         Self::walk_mut(virt, table, on_leaf, on_node)
     }
 
+    #[must_use]
     pub fn virt_to_phys(&self, virt: VirtualAddress) -> Option<PhysicalAddress> {
         let on_leaf = |entry: &Entry<M>| -> crate::Result<PhysicalAddress> {
             let mut phys = entry.get_address();
@@ -236,12 +296,22 @@ impl<'a, M: Mode> Mapper<'a, M> {
         Self::walk(virt, self.root_table(), on_leaf, |_| Ok(())).ok()
     }
 
+    /// Unmaps the virtual address range **without deallocating its physical frames**.
+    /// This is a niche performance optimization.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the virtual address is not mapped.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
     pub fn unmap_forget_range(
         &mut self,
         range_virt: Range<VirtualAddress>,
         flush: &mut Flush<M>,
     ) -> crate::Result<()> {
-        Self::for_pages_in_range(range_virt.clone(), |i, _, page_size| {
+        Self::for_pages_in_range(&range_virt, |i, _, page_size| {
             let virt = range_virt.start.add(i * page_size);
 
             self.unmap_forget(virt, flush)?;
@@ -250,6 +320,16 @@ impl<'a, M: Mode> Mapper<'a, M> {
         })
     }
 
+    /// Unmaps the virtual address **without deallocating its physical frames**.
+    /// This is a niche performance optimization.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the virtual address is not mapped.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
     pub fn unmap_forget(
         &mut self,
         virt: VirtualAddress,
@@ -263,12 +343,21 @@ impl<'a, M: Mode> Mapper<'a, M> {
         Ok(addr)
     }
 
+    /// Unmaps the virtual address range and deallocates the physical frames associated with it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if underlying deallocation fails or the virtual address is not mapped.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
     pub fn unmap_range(
         &mut self,
         range_virt: Range<VirtualAddress>,
         flush: &mut Flush<M>,
     ) -> crate::Result<()> {
-        Self::for_pages_in_range(range_virt.clone(), |i, _, page_size| {
+        Self::for_pages_in_range(&range_virt, |i, _, page_size| {
             let virt = range_virt.start.add(i * page_size);
 
             self.unmap(virt, flush)?;
@@ -277,6 +366,15 @@ impl<'a, M: Mode> Mapper<'a, M> {
         })
     }
 
+    /// Unmaps the virtual address and deallocates the physical frame(s) associated with it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if underlying deallocation fails or the virtual address is not mapped.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
     pub fn unmap(
         &mut self,
         virt: VirtualAddress,
@@ -332,6 +430,15 @@ impl<'a, M: Mode> Mapper<'a, M> {
         }
     }
 
+    /// Remap a virtual address to a (possibly new) physical address with new flags.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if underlying allocations fail or the virtual address is not mapped.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks throughout.
     pub fn remap(
         &mut self,
         virt: VirtualAddress,
@@ -430,7 +537,10 @@ impl<'a, M: Mode> Mapper<'a, M> {
         unreachable!("virtual address was too large to be mapped. This should not be possible");
     }
 
-    pub fn for_pages_in_range<F>(range: impl AddressRangeExt, mut f: F) -> crate::Result<()>
+    /// # Errors
+    ///
+    /// Returns an error if the provided closure returns an error.
+    pub fn for_pages_in_range<F>(range: &impl AddressRangeExt, mut f: F) -> crate::Result<()>
     where
         F: FnMut(usize, usize, usize) -> crate::Result<()>,
     {

@@ -20,6 +20,7 @@ impl<M: Mode> Table<M> {
     ///
     /// The caller has to ensure the given `addr` actually points to a
     /// page table entry.
+    #[must_use]
     pub unsafe fn new(addr: VirtualAddress, level: usize) -> Table<M> {
         Self {
             level,
@@ -28,28 +29,32 @@ impl<M: Mode> Table<M> {
         }
     }
 
+    #[must_use]
     pub fn level(&self) -> usize {
         self.level
     }
 
+    #[must_use]
     pub fn addr(&self) -> VirtualAddress {
         self.addr
     }
 
     pub fn entry_mut(&mut self, index: usize) -> &mut Entry<M> {
-        debug_assert!(index < M::PAGE_TABLE_ENTRIES, "index was {}", index);
+        debug_assert!(index < M::PAGE_TABLE_ENTRIES, "index was {index}");
         let ptr = self.addr.add(index * mem::size_of::<Entry<M>>()).as_raw() as *mut Entry<M>;
         // log::trace!("{ptr:?} self.addr {:?} index: {index}", self.addr);
         unsafe { &mut *ptr }
     }
 
+    #[must_use]
     pub fn entry(&self, index: usize) -> &Entry<M> {
-        debug_assert!(index < M::PAGE_TABLE_ENTRIES, "index was {}", index);
+        debug_assert!(index < M::PAGE_TABLE_ENTRIES, "index was {index}");
         let ptr = self.addr.add(index * mem::size_of::<Entry<M>>()).as_raw() as *mut Entry<M>;
         // log::trace!("{ptr:?} self.addr {:?} index: {index}", self.addr);
         unsafe { &*ptr }
     }
 
+    #[must_use]
     pub fn index_of_virt(&self, virt: VirtualAddress) -> usize {
         // A virtual address is made up of a `n`-bit page offset and `LEVELS - 1` number of `m`-bit page numbers.
         //
@@ -59,6 +64,8 @@ impl<M: Mode> Table<M> {
         (virt.as_raw() >> (self.level * M::PAGE_ENTRY_SHIFT + M::PAGE_SHIFT)) & M::PAGE_ENTRY_MASK
     }
 
+    #[must_use]
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     pub fn virt_from_index(&self, index: usize) -> VirtualAddress {
         let raw = ((index & M::PAGE_ENTRY_MASK)
             << (self.level * M::PAGE_ENTRY_SHIFT + M::PAGE_SHIFT)) as isize;
@@ -69,6 +76,9 @@ impl<M: Mode> Table<M> {
 }
 
 impl<M: Mode> Table<M> {
+    /// # Errors
+    ///
+    /// Returns an error if traversing the table or printing the debug output fails.
     pub fn debug_print_table(&self) -> crate::Result<()> {
         self.debug_print_table_inner(VirtualAddress(0))
     }

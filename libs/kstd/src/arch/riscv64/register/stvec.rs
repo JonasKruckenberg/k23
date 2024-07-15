@@ -6,10 +6,14 @@ csr_base_and_read!(Stvec, "stvec");
 csr_write!("stvec");
 
 pub unsafe fn write(base: usize, mode: Mode) {
-    _write(base + mode as usize)
+    _write(base + mode as usize);
 }
 
 impl Stvec {
+    /// # Panics
+    ///
+    /// Panics if the mode is invalid.
+    #[must_use]
     pub fn mode(&self) -> Mode {
         let mode = self.bits & 0b11;
         match mode {
@@ -18,6 +22,7 @@ impl Stvec {
             _ => panic!("unknown trap mode"),
         }
     }
+    #[must_use]
     pub fn base(&self) -> usize {
         self.bits - (self.bits & 0b11)
     }

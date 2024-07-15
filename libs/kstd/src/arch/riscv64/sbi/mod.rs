@@ -8,10 +8,10 @@ pub mod time;
 pub use error::Error;
 
 const EID_BASE: usize = 0x10;
-const EID_HSM: usize = 0x48534D;
-const EID_TIME: usize = 0x54494D45;
-const EID_RFENCE: usize = 0x52464E43;
-const EID_DBCN: usize = 0x4442434E;
+const EID_HSM: usize = 0x0048_534D;
+const EID_TIME: usize = 0x5449_4D45;
+const EID_RFENCE: usize = 0x5246_4E43;
+const EID_DBCN: usize = 0x4442_434E;
 
 type Result<T> = core::result::Result<T, Error>;
 

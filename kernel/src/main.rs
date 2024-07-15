@@ -8,6 +8,7 @@
     hint_assert_unchecked,
     used_with_arg
 )]
+#![allow(clippy::needless_continue)]
 #![cfg_attr(test, allow(unused))]
 
 extern crate alloc;
@@ -64,8 +65,12 @@ fn main(_hartid: usize) -> ! {
 }
 
 #[no_mangle]
-pub static mut __stack_chk_guard: u64 = 0xe57fad0f5f757433;
+pub static mut __stack_chk_guard: u64 = 0xe57f_ad0f_5f75_7433;
 
+/// # Panics
+///
+/// This function panics if the stack guard value is not the expected value which means the stack is corrupted.
+///
 /// # Safety
 ///
 /// Extern

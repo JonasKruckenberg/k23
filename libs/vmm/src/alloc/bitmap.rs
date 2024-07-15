@@ -41,6 +41,7 @@ impl<M: Mode> TableEntry<M> {
         bits & (1 << (page % 8)) != 0
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     pub fn mark_page_as_used(&mut self, page: usize) {
         let phys = self.region.start.add(page / 8);
         let virt = M::phys_to_virt(phys);
@@ -51,6 +52,7 @@ impl<M: Mode> TableEntry<M> {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     pub fn mark_page_as_free(&mut self, page: usize) {
         let phys = self.region.start.add(page / 8);
         unsafe {
@@ -97,6 +99,11 @@ impl<M: Mode> BitMapAllocator<M> {
         }
     }
 
+    /// Create a new bitmap allocator
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the backing table could not be allocated.
     pub fn new(mut bump_allocator: BumpAllocator<M>) -> crate::Result<Self> {
         // allocate a frame to hold the table
         let table_phys = bump_allocator.allocate_frame_zeroed()?;
@@ -180,7 +187,7 @@ impl<M: Mode> BitMapAllocator<M> {
 
     pub fn debug_print_table(&self) {
         for entry in self.entries() {
-            log::debug!("{entry:?}")
+            log::debug!("{entry:?}");
         }
     }
 }

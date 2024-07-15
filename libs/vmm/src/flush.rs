@@ -27,6 +27,11 @@ impl<M: Mode> Flush<M> {
         }
     }
 
+    /// Flush the range of virtual addresses from the TLB.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the range could not be flushed due to an underlying hardware error.
     pub fn flush(self) -> crate::Result<()> {
         log::trace!("flushing range {:?}", self.range);
         if let Some(range) = self.range {
@@ -46,6 +51,11 @@ impl<M: Mode> Flush<M> {
     /// You should only call this if you know what you're doing.
     pub unsafe fn ignore(self) {}
 
+    /// Extend the range to include the given range.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the given ASID does not match the ASID of this `Flush`.
     pub fn extend_range(&mut self, asid: usize, other: Range<VirtualAddress>) -> crate::Result<()> {
         if self.asid == asid {
             if let Some(this) = self.range.take() {

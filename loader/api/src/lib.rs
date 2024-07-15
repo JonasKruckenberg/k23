@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::doc_markdown, clippy::module_name_repetitions)]
 
 mod config;
 mod info;

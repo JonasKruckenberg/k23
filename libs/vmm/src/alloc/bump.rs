@@ -17,6 +17,7 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
     /// # Safety
     ///
     /// The caller has to ensure the slice is correctly sorted from lowest to highest addresses.
+    #[must_use]
     pub unsafe fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
         Self {
             regions,
@@ -31,6 +32,7 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
     /// # Safety
     ///
     /// The caller has to ensure the slice is correctly sorted from lowest to highest addresses.
+    #[must_use]
     pub unsafe fn new_with_lower_bound(
         regions: &'a [Range<PhysicalAddress>],
         lower_bound: PhysicalAddress,
@@ -43,14 +45,17 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
         }
     }
 
+    #[must_use]
     pub fn offset(&self) -> usize {
         self.offset
     }
 
+    #[must_use]
     pub fn regions(&self) -> &'a [Range<PhysicalAddress>] {
         self.regions
     }
 
+    #[must_use]
     pub fn free_regions(&self) -> FreeRegions<'_> {
         FreeRegions {
             offset: self.offset,
@@ -58,6 +63,7 @@ impl<'a, M: Mode> BumpAllocator<'a, M> {
         }
     }
 
+    #[must_use]
     pub fn used_regions(&self) -> UsedRegions<'_> {
         UsedRegions {
             offset: self.offset,
@@ -161,7 +167,7 @@ impl<'a, M: Mode> FrameAllocator<M> for BumpAllocator<'a, M> {
 
     fn frame_usage(&self) -> FrameUsage {
         let mut total = 0;
-        for region in self.regions.iter() {
+        for region in self.regions {
             let region_size = region.end.0 - region.start.0;
             total += region_size >> M::PAGE_SHIFT;
         }
@@ -171,6 +177,7 @@ impl<'a, M: Mode> FrameAllocator<M> for BumpAllocator<'a, M> {
 }
 
 impl<'a, M> BumpAllocator<'a, crate::INIT<M>> {
+    #[must_use]
     pub fn end_init(self) -> BumpAllocator<'a, M> {
         BumpAllocator {
             regions: self.regions,

@@ -20,12 +20,13 @@ pub type FxHashMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
 pub type FxHashSet<V> = HashSet<V, BuildHasherDefault<FxHasher>>;
 
 #[allow(non_snake_case)]
+#[must_use]
 pub fn FxHashMap<K: Hash + Eq, V>() -> FxHashMap<K, V> {
     HashMap::default()
 }
 
 /// A speedy hash algorithm for use within rustc. The hashmap in liballoc
-/// by default uses SipHash which isn't quite as speedy as we want. In the
+/// by default uses `SipHash` which isn't quite as speedy as we want. In the
 /// compiler we're not really worried about DOS attempts, so we use a fast
 /// non-cryptographic hash.
 ///
@@ -40,9 +41,9 @@ pub struct FxHasher {
 }
 
 #[cfg(target_pointer_width = "32")]
-const K: usize = 0x9e3779b9;
+const K: usize = 0x9e37_79b9;
 #[cfg(target_pointer_width = "64")]
-const K: usize = 0x517cc1b727220a95;
+const K: usize = 0x517c_c1b7_2722_0a95;
 
 impl Default for FxHasher {
     #[inline]
@@ -83,6 +84,7 @@ impl Hasher for FxHasher {
     }
 
     #[cfg(target_pointer_width = "32")]
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     fn write_u64(&mut self, i: u64) {
         self.add_to_hash(i as usize);
@@ -90,6 +92,7 @@ impl Hasher for FxHasher {
     }
 
     #[cfg(target_pointer_width = "64")]
+    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     fn write_u64(&mut self, i: u64) {
         self.add_to_hash(i as usize);

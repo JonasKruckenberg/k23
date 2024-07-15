@@ -1,5 +1,8 @@
 use super::{sbi_call, EID_RFENCE};
 
+/// # Errors
+///
+/// Returns an error if the SBI call fails.
 #[inline]
 pub fn sfence_vma(
     hart_mask: usize,
@@ -11,6 +14,9 @@ pub fn sfence_vma(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns an error if the SBI call fails.
 #[inline]
 pub fn sfence_vma_asid(
     hart_mask: usize,

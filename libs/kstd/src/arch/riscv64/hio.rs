@@ -1,7 +1,6 @@
 use super::semihosting::syscall;
 use crate::sync::Mutex;
 use core::fmt::{Error, Write};
-use core::ops::DerefMut;
 use core::{fmt, slice};
 
 const OPEN: usize = 0x01;
@@ -12,14 +11,31 @@ const OPEN_W_APPEND: usize = 8;
 pub struct HostStream(usize);
 
 impl HostStream {
+    /// Opens a file on the host STDOUT.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the file cannot be opened.
+    #[must_use]
     pub fn new_stdout() -> Self {
         Self::open(":tt\0", OPEN_W_TRUNC).unwrap()
     }
 
+    /// Opens a file on the host STDERR.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the file cannot be opened.
+    #[must_use]
     pub fn new_stderr() -> Self {
         Self::open(":tt\0", OPEN_W_APPEND).unwrap()
     }
 
+    /// Writes a buffer to the host stream.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the write operation failed.
     #[allow(clippy::result_unit_err)]
     pub fn write_all(&mut self, mut buf: &[u8]) -> Result<(), ()> {
         while !buf.is_empty() {
@@ -28,8 +44,8 @@ impl HostStream {
                 0 => return Ok(()),
                 // `n` bytes were not written
                 n if n <= buf.len() => {
-                    let offset = (buf.len() - n) as isize;
-                    buf = unsafe { slice::from_raw_parts(buf.as_ptr().offset(offset), n) }
+                    let offset = buf.len() - n;
+                    buf = unsafe { slice::from_raw_parts(buf.as_ptr().add(offset), n) }
                 }
                 // #[cfg(feature = "jlink-quirks")]
                 // // Error (-1) - should be an error but JLink can return -1, -2, -3,...
@@ -46,9 +62,9 @@ impl HostStream {
     #[allow(clippy::result_unit_err)]
     fn open(name: &str, mode: usize) -> Result<Self, ()> {
         let name = name.as_bytes();
-        match unsafe { syscall!(OPEN, name.as_ptr() as usize, mode, name.len() - 1) } as isize {
-            -1 => Err(()),
-            fd => Ok(Self(fd as usize)),
+        match unsafe { syscall!(OPEN, name.as_ptr() as usize, mode, name.len() - 1) } {
+            usize::MAX => Err(()), // equivalent to -1
+            fd => Ok(Self(fd)),
         }
     }
 }
@@ -56,7 +72,8 @@ impl HostStream {
 impl Write for HostStream {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         #[allow(clippy::default_constructed_unit_structs)]
-        self.write_all(s.as_bytes()).map_err(|_| Error::default())?;
+        self.write_all(s.as_bytes())
+            .map_err(|()| Error::default())?;
 
         Ok(())
     }
@@ -72,7 +89,7 @@ pub fn with_hstdout(f: impl FnOnce(&mut HostStream)) {
         stream.replace(HostStream::new_stdout());
     }
 
-    match stream.deref_mut() {
+    match &mut *stream {
         Some(stream) => f(stream),
         None => unreachable!(),
     }
@@ -85,24 +102,30 @@ pub fn with_hstderr(f: impl FnOnce(&mut HostStream)) {
         stream.replace(HostStream::new_stderr());
     }
 
-    match stream.deref_mut() {
+    match &mut *stream {
         Some(stream) => f(stream),
         None => unreachable!(),
     }
 }
 
+/// # Panics
+///
+/// Panics if writing to the hosts stdout fails.
 pub fn _print(args: fmt::Arguments) {
     with_hstdout(|stdout| {
         stdout
             .write_fmt(args)
-            .expect("failed to write to semihosting stdout")
-    })
+            .expect("failed to write to semihosting stdout");
+    });
 }
 
+/// # Panics
+///
+/// Panics if writing to the hosts stderr fails.
 pub fn _eprint(args: fmt::Arguments) {
     with_hstderr(|stderr| {
         stderr
             .write_fmt(args)
-            .expect("failed to write to semihosting stderr")
-    })
+            .expect("failed to write to semihosting stderr");
+    });
 }

@@ -25,7 +25,7 @@ pub unsafe fn set(mode: Mode, asid: usize, ppn: usize) {
         Mode::Sv64 => 11,
     };
 
-    _write(ppn | (asid << 44) | (mode << 60))
+    _write(ppn | (asid << 44) | (mode << 60));
 }
 
 impl Satp {
@@ -34,6 +34,7 @@ impl Satp {
         self.bits & 0x3f_ffff // bits 0-21
     }
     #[cfg(target_arch = "riscv64")]
+    #[must_use]
     pub fn ppn(&self) -> usize {
         self.bits & 0xfff_ffff_ffff // bits 0-43
     }
@@ -42,6 +43,7 @@ impl Satp {
         (self.bits >> 22) & 0x1ff // bits 22-30
     }
     #[cfg(target_arch = "riscv64")]
+    #[must_use]
     pub fn asid(&self) -> usize {
         (self.bits >> 44) & 0xffff // bits 44-60
     }
@@ -53,6 +55,7 @@ impl Satp {
         }
     }
     #[cfg(target_arch = "riscv64")]
+    #[must_use]
     pub fn mode(&self) -> Mode {
         // bits 60-64
         match (self.bits >> 60) & 0xf {

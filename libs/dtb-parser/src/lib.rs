@@ -19,15 +19,15 @@ pub use error::Error;
 
 type Result<T> = core::result::Result<T, Error>;
 
-const FDT_BEGIN_NODE: u32 = 0x00000001;
-const FDT_END_NODE: u32 = 0x00000002;
-const FDT_PROP: u32 = 0x00000003;
-const FDT_NOP: u32 = 0x00000004;
-const FDT_END: u32 = 0x00000009;
-const DTB_MAGIC: u32 = 0xD00DFEED;
+const FDT_BEGIN_NODE: u32 = 0x0000_0001;
+const FDT_END_NODE: u32 = 0x0000_0002;
+const FDT_PROP: u32 = 0x0000_0003;
+const FDT_NOP: u32 = 0x0000_0004;
+const FDT_END: u32 = 0x0000_0009;
+const DTB_MAGIC: u32 = 0xD00D_FEED;
 const DTB_VERSION: u32 = 17;
 
-#[allow(unused_variables)]
+#[allow(unused_variables, clippy::missing_errors_doc)]
 pub trait Visitor<'dt> {
     type Error: core::error::Error;
 
@@ -96,8 +96,12 @@ impl<'dt> DevTree<'dt> {
     ///
     /// The caller has to ensure the given pointer is valid and actually points to the device tree blob
     /// as only minimal sanity checking is performed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the magic or version fields are invalid.
     pub unsafe fn from_raw(base: *const u8) -> Result<Self> {
-        let header = unsafe { &*(base as *const Header) };
+        let header = unsafe { &*(base.cast::<Header>()) };
 
         if u32::from_be_bytes(header.magic) != DTB_MAGIC {
             return Err(Error::InvalidMagic);
@@ -146,22 +150,31 @@ impl<'dt> DevTree<'dt> {
         })
     }
 
+    #[must_use]
     pub fn version(&self) -> u32 {
         self.version
     }
 
+    #[must_use]
     pub fn last_comp_version(&self) -> u32 {
         self.last_comp_version
     }
 
+    #[must_use]
     pub fn boot_cpuid_phys(&self) -> u32 {
         self.boot_cpuid_phys
     }
 
+    #[must_use]
     pub fn as_slice(&self) -> &'dt [u8] {
         self.total_slice
     }
 
+    /// Visit the device tree blob with the given visitor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the visitor produces an error or the device tree blob is malformed.
     pub fn visit<E: core::error::Error + From<Error>>(
         mut self,
         visitor: &mut dyn Visitor<'dt, Error = E>,
@@ -169,6 +182,7 @@ impl<'dt> DevTree<'dt> {
         self.parser.visit(visitor)
     }
 
+    #[must_use]
     pub fn reserved_entries(&self) -> ReserveEntries<'dt> {
         ReserveEntries {
             buf: self.memory_slice,
@@ -195,6 +209,7 @@ impl<'dt> Node<'dt> {
         }
     }
 
+    #[allow(clippy::missing_errors_doc)]
     pub fn visit<E: core::error::Error + From<Error>>(
         mut self,
         visitor: &mut dyn Visitor<'dt, Error = E>,
@@ -203,6 +218,9 @@ impl<'dt> Node<'dt> {
     }
 }
 
+/// # Errors
+///
+/// Returns an error if at the given offset there is no valid null-terminated utf-8 string.
 pub fn read_str(slice: &[u8], offset: u32) -> Result<&str> {
     let slice = &slice.get(offset as usize..).ok_or(Error::UnexpectedEOF)?;
     let str = CStr::from_bytes_until_nul(slice)?;
@@ -232,6 +250,9 @@ impl<'dt> ReserveEntries<'dt> {
         Ok(u64::from_be_bytes(bytes.try_into()?))
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the next entry could not be read.
     pub fn next_entry(&mut self) -> Result<Option<ReserveEntry>> {
         if self.done || self.offset == self.buf.len() {
             Ok(None)
@@ -244,17 +265,14 @@ impl<'dt> ReserveEntries<'dt> {
             };
 
             // entries where both address and size is zero mark the end
-            let is_empty = entry
-                .as_ref()
-                .map(|e| e.address == 0 || e.size == 0)
-                .unwrap_or_default();
+            let is_empty = entry.as_ref().is_ok_and(|e| e.address == 0 || e.size == 0);
 
             self.done = entry.is_err() || is_empty;
 
-            if !is_empty {
-                entry.map(Some)
-            } else {
+            if is_empty {
                 Ok(None)
+            } else {
+                entry.map(Some)
             }
         }
     }
@@ -268,6 +286,7 @@ pub struct Strings<'dt> {
 }
 
 impl<'dt> Strings<'dt> {
+    #[must_use]
     pub fn new(bytes: &'dt [u8]) -> Self {
         Self {
             bytes,
@@ -276,13 +295,16 @@ impl<'dt> Strings<'dt> {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the string is not valid UTF-8.
     #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<Option<&'dt str>> {
         if self.offset == self.bytes.len() || self.err {
             return Ok(None);
         }
 
-        let str = read_str(self.bytes, self.offset as u32)?;
+        let str = read_str(self.bytes, u32::try_from(self.offset)?)?;
         self.offset += str.len() + 1;
 
         Ok(Some(str))

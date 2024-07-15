@@ -15,23 +15,32 @@ pub unsafe fn write(trap: Trap) {
 impl Scause {
     /// Returns the code field
     #[inline]
+    #[must_use]
     pub fn code(&self) -> usize {
         self.bits & !(1 << (usize::BITS as usize - 1))
     }
 
     /// Is trap cause an interrupt.
     #[inline]
+    #[must_use]
     pub fn is_interrupt(&self) -> bool {
         self.bits & (1 << (usize::BITS as usize - 1)) != 0
     }
 
     /// Is trap cause an exception.
     #[inline]
+    #[must_use]
     pub fn is_exception(&self) -> bool {
         !self.is_interrupt()
     }
 
+    /// Returns the cause of the trap.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the cause is unknown or invalid.
     #[inline]
+    #[must_use]
     pub fn cause(&self) -> Trap {
         if self.is_interrupt() {
             Trap::Interrupt(Interrupt::try_from(self.code()).expect("unknown interrupt"))

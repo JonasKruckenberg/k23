@@ -19,13 +19,13 @@ impl<M: Mode> core::fmt::Debug for Entry<M> {
         let n = (self.bits & ((1 << 1) - 1) << 63) >> 63;
 
         f.debug_struct("Entry")
-            .field("n", &format_args!("{:01b}", n))
-            .field("pbmt", &format_args!("{:02b}", pbmt))
-            .field("reserved", &format_args!("{:07b}", reserved))
-            .field("ppn2", &format_args!("{:026b}", ppn2))
-            .field("ppn1", &format_args!("{:09b}", ppn1))
-            .field("ppn0", &format_args!("{:09b}", ppn0))
-            .field("rsw", &format_args!("{:02b}", rsw))
+            .field("n", &format_args!("{n:01b}"))
+            .field("pbmt", &format_args!("{pbmt:02b}"))
+            .field("reserved", &format_args!("{reserved:07b}"))
+            .field("ppn2", &format_args!("{ppn2:026b}"))
+            .field("ppn1", &format_args!("{ppn1:09b}"))
+            .field("ppn0", &format_args!("{ppn0:09b}"))
+            .field("rsw", &format_args!("{rsw:02b}"))
             .field("flags", &self.get_flags())
             .finish()
     }

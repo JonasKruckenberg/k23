@@ -1,5 +1,8 @@
 use super::{sbi_call, EID_DBCN};
 
+/// # Errors
+///
+/// Returns an error if the SBI call fails.
 #[inline]
 pub fn debug_console_write(
     num_bytes: usize,

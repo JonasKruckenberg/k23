@@ -1,7 +1,6 @@
 use crate::kconfig;
 use core::arch::asm;
 use core::marker::PhantomPinned;
-use core::ptr::addr_of;
 use kstd::arch::sbi::time::set_timer;
 use kstd::arch::scause::{Exception, Interrupt, Trap};
 use kstd::arch::{scause, sepc, sstatus, stval, stvec};

@@ -7,11 +7,11 @@ csr_write!("sstatus");
 csr_clear!("sstatus");
 
 pub unsafe fn set_sie() {
-    _write(1 << 1)
+    _write(1 << 1);
 }
 
 pub unsafe fn clear_sie() {
-    _clear(1 << 1)
+    _clear(1 << 1);
 }
 
 pub unsafe fn set_fs(fs: FS) {
@@ -51,17 +51,20 @@ pub enum Endianness {
 impl Sstatus {
     /// Supervisor Interrupt Enable
     #[inline]
+    #[must_use]
     pub fn sie(&self) -> bool {
         self.bits & (1 << 1) != 0
     }
 
     /// Supervisor Previous Interrupt Enable
     #[inline]
+    #[must_use]
     pub fn spie(&self) -> bool {
         self.bits & (1 << 5) != 0
     }
 
     #[inline]
+    #[must_use]
     pub fn ube(&self) -> Endianness {
         match self.bits & (1 << 6) {
             0 => Endianness::LittleEndian,
@@ -72,15 +75,18 @@ impl Sstatus {
 
     /// Supervisor Previous Privilege Mode
     #[inline]
+    #[must_use]
     pub fn spp(&self) -> SPP {
-        match self.bits & (1 << 8) != 0 {
-            true => SPP::Supervisor,
-            false => SPP::User,
+        if self.bits & (1 << 8) != 0 {
+            SPP::Supervisor
+        } else {
+            SPP::User
         }
     }
 
     /// The status of the vector unit
     #[inline]
+    #[must_use]
     pub fn vs(&self) -> FS {
         let fs = (self.bits >> 9) & 0x3; // bits 13-14
         match fs {
@@ -94,6 +100,7 @@ impl Sstatus {
 
     /// The status of the floating-point unit
     #[inline]
+    #[must_use]
     pub fn fs(&self) -> FS {
         let fs = (self.bits >> 13) & 0x3; // bits 13-14
         match fs {
@@ -108,6 +115,7 @@ impl Sstatus {
     /// The status of additional user-mode extensions
     /// and associated state
     #[inline]
+    #[must_use]
     pub fn xs(&self) -> FS {
         let xs = (self.bits >> 15) & 0x3; // bits 15-16
         match xs {
@@ -121,12 +129,14 @@ impl Sstatus {
 
     /// Permit Supervisor User Memory access
     #[inline]
+    #[must_use]
     pub fn sum(&self) -> bool {
         self.bits & (1 << 18) != 0
     }
 
     /// Make eXecutable Readable
     #[inline]
+    #[must_use]
     pub fn mxr(&self) -> bool {
         self.bits & (1 << 19) != 0
     }
@@ -135,11 +145,13 @@ impl Sstatus {
     ///
     /// In RISCV-32, UXL does not exist, and `UXLEN` is always [`XLEN::XLEN32`].
     #[inline]
+    #[must_use]
     pub fn uxl(&self) -> XLEN {
         cfg_if::cfg_if! {
             if #[cfg(target_arch = "riscv32")] {
                 XLEN::XLEN32
             } else {
+                #[allow(clippy::cast_possible_truncation)] // We actually want to truncate
                 match (self.bits >> 32) as u8 & 0x3 {
                     1 => XLEN::XLEN32,
                     2 => XLEN::XLEN64,
@@ -153,6 +165,7 @@ impl Sstatus {
     /// Whether either the FS field or XS field
     /// signals the presence of some dirty state
     #[inline]
+    #[must_use]
     pub fn sd(&self) -> bool {
         self.bits & (1 << (usize::BITS as usize - 1)) != 0
     }

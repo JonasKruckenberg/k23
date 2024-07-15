@@ -32,10 +32,12 @@ macro_rules! get_bits {
     };
 }
 
-/// Mock RiscvSv39 architecture for testing
+/// Mock `RiscvSv39` architecture for testing
 pub struct EmulateMode;
 
 impl EmulateMode {
+    #[must_use]
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
     pub fn virt_from_parts(
         vpn2: usize,
         vpn1: usize,
@@ -47,6 +49,7 @@ impl EmulateMode {
         VirtualAddress(raw.wrapping_shl(shift).wrapping_shr(shift) as usize)
     }
 
+    #[must_use]
     pub fn virt_into_parts(virt: VirtualAddress) -> (usize, usize, usize, usize) {
         let vpn2 = get_bits!(virt.0, length: 9, offset: 30);
         let vpn1 = get_bits!(virt.0, length: 9, offset: 21);

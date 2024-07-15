@@ -1,7 +1,7 @@
 use crate::sync::Mutex;
 use crate::{arch, declare_thread_local, heprintln};
 use core::cell::Cell;
-use core::panic::{Location, PanicInfo};
+use core::panic::Location;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::{fmt, mem};
 
@@ -16,10 +16,10 @@ declare_thread_local! {
 /// Determines whether the current hart is panicking.
 #[inline]
 pub fn panicking() -> bool {
-    if !GLOBAL_PANICKING.load(Ordering::Relaxed) {
-        false
-    } else {
+    if GLOBAL_PANICKING.load(Ordering::Relaxed) {
         panicking_slow_path()
+    } else {
+        false
     }
 }
 
@@ -28,7 +28,7 @@ pub fn panicking() -> bool {
 #[inline(never)]
 #[cold]
 fn panicking_slow_path() -> bool {
-    LOCAL_PANICKING.with(|c| c.get())
+    LOCAL_PANICKING.with(core::cell::Cell::get)
 }
 
 enum AbortReason {
@@ -51,7 +51,7 @@ fn begin_panicking() -> AbortReason {
 /// Entry point of Rust panics
 #[cfg(not(any(test, doctest)))]
 #[panic_handler]
-fn default_panic_handler(info: &PanicInfo<'_>) -> ! {
+fn default_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
     let abort_reason = begin_panicking();
 
     let message = info.message();
@@ -66,14 +66,14 @@ fn default_panic_handler(info: &PanicInfo<'_>) -> ! {
         Hook::Default => {
             default_hook(&PanicHookInfo::new(
                 loc,
-                Some(&format_args!("{}", message)),
+                Some(&format_args!("{message}")),
                 context,
             ));
         }
         Hook::Custom(ref hook) => {
             hook(&PanicHookInfo::new(
                 loc,
-                Some(&format_args!("{}", message)),
+                Some(&format_args!("{message}")),
                 context,
             ));
         }
@@ -86,7 +86,7 @@ fn default_panic_handler(info: &PanicInfo<'_>) -> ! {
 /// yer breakpoints for backtracing panics.
 #[no_mangle]
 #[inline(never)]
-fn rust_panic() -> ! {
+extern "Rust" fn rust_panic() -> ! {
     arch::abort_internal(1);
 }
 
@@ -104,10 +104,12 @@ fn default_hook(info: &PanicHookInfo<'_>) {
     heprintln!("{}", info);
 }
 
+#[allow(clippy::missing_panics_doc)]
 pub fn set_hook(hook: fn(&PanicHookInfo<'_>)) {
-    if LOCAL_PANICKING.with(|p| p.get()) {
-        panic!("cannot modify the panic hook from a panicking thread");
-    }
+    assert!(
+        !LOCAL_PANICKING.with(core::cell::Cell::get),
+        "cannot modify the panic hook from a panicking thread"
+    );
 
     let new = Hook::Custom(hook);
     let mut hook = HOOK.lock();
@@ -129,8 +131,8 @@ impl<'a> PanicHookInfo<'a> {
     ) -> Self {
         PanicHookInfo {
             context,
-            location,
             message,
+            location,
         }
     }
 

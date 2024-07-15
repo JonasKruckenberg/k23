@@ -1,41 +1,43 @@
+#![allow(clippy::module_name_repetitions)]
+
 #[macro_export]
 macro_rules! declare_thread_local {
     // empty (base case for the recursion)
     () => {};
 
     ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty; $($rest:tt)*) => (
-        $crate::thread_local::thread_local_inner!($(#[$attr])* $vis $name, $t);
+        $crate::thread_local::declare_thread_local_inner!($(#[$attr])* $vis $name, $t);
         $crate::thread_local::declare_thread_local!($($rest)*);
     );
 
     ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty) => (
-        $crate::thread_local::thread_local_inner!($(#[$attr])* $vis $name, $t);
+        $crate::thread_local::declare_thread_local_inner!($(#[$attr])* $vis $name, $t);
     );
 
     ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = const $init:block; $($rest:tt)*) => (
-        $crate::thread_local::thread_local_inner!($(#[$attr])* $vis $name, $t, const $init);
+        $crate::thread_local::declare_thread_local_inner!($(#[$attr])* $vis $name, $t, const $init);
         $crate::thread_local::declare_thread_local!($($rest)*);
     );
 
     ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = const $init:block) => (
-        $crate::thread_local::thread_local_inner!($(#[$attr])* $vis $name, $t, const $init);
+        $crate::thread_local::declare_thread_local_inner!($(#[$attr])* $vis $name, $t, const $init);
     );
 
     // process multiple declarations
     ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = $init:expr; $($rest:tt)*) => (
-        $crate::thread_local::thread_local_inner!($(#[$attr])* $vis $name, $t, $init);
+        $crate::thread_local::declare_thread_local_inner!($(#[$attr])* $vis $name, $t, $init);
         $crate::thread_local::declare_thread_local!($($rest)*);
     );
 
     // handle a single declaration
     ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = $init:expr) => (
-        $crate::thread_local::thread_local_inner!($(#[$attr])* $vis $name, $t, $init);
+        $crate::thread_local::declare_thread_local_inner!($(#[$attr])* $vis $name, $t, $init);
     );
 }
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! thread_local_inner {
+macro_rules! declare_thread_local_inner {
     // used to generate the `LocalKey` value for const-initialized thread locals
     (@key $name:ident, $t:ty, const $init:expr) => {{
         #[inline]
@@ -81,11 +83,11 @@ macro_rules! thread_local_inner {
     }};
     ($(#[$attr:meta])* $vis:vis $name:ident, $t:ty, $($init:tt)*) => {
         $(#[$attr])* $vis const $name: $crate::thread_local::LocalKey<$t> =
-            $crate::thread_local::thread_local_inner!(@key $name, $t, $($init)*);
+            $crate::thread_local::declare_thread_local_inner!(@key $name, $t, $($init)*);
     };
     ($(#[$attr:meta])* $vis:vis $name:ident, $t:ty) => {
         $(#[$attr])* $vis const $name: $crate::thread_local::LocalKey<$t> =
-            $crate::thread_local::thread_local_inner!(@key $name, $t, panic!("Thread Local Storage value is not initialized"));
+            $crate::thread_local::declare_thread_local_inner!(@key $name, $t, panic!("Thread Local Storage value is not initialized"));
     }
 }
 
@@ -113,6 +115,11 @@ impl<T: 'static> LocalKey<T> {
         Self { inner }
     }
 
+    /// Access the value in this thread-local storage.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the thread local storage value is accessed during or after destruction.
     pub fn with<F, R>(&'static self, f: F) -> R
     where
         F: FnOnce(&T) -> R,
@@ -132,6 +139,11 @@ impl<T: 'static> LocalKey<T> {
         Some(result)
     }
 
+    /// Initializes the thread-local storage with the provided value and then calls the given closure.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the thread local storage value is accessed during or after destruction.
     pub fn initialize_with<F, R>(&'static self, init: T, f: F) -> R
     where
         F: FnOnce(Option<T>, &T) -> R,
@@ -146,9 +158,16 @@ impl<T: 'static> LocalKey<T> {
         }
     }
 
+    /// Returns a raw pointer to the underlying thread-local data.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the thread local storage value is accessed during or after destruction.
+    ///
     /// # Safety
     ///
     /// This attempts to retrieve a raw pointer to the underlying data. You should prefer to use the getter methods.
+    #[must_use]
     pub unsafe fn as_ptr(&self) -> *const T {
         let value = unsafe {
             (self.inner)(None).expect(
@@ -156,8 +175,8 @@ impl<T: 'static> LocalKey<T> {
              during or after destruction",
             )
         };
-        value as *const T
+        core::ptr::from_ref::<T>(value)
     }
 }
 
-pub use {declare_thread_local, thread_local_inner};
+pub use {declare_thread_local, declare_thread_local_inner};

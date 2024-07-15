@@ -10,6 +10,7 @@ pub mod stvec;
 
 macro_rules! csr_base_and_read {
     ($ty_name: ident, $csr_name: literal) => {
+        #[must_use]
         pub fn read() -> $ty_name {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
@@ -34,6 +35,7 @@ macro_rules! csr_base_and_read {
         impl $ty_name {
             /// Returns the contents of the register as raw bits
             #[inline]
+            #[must_use]
             pub fn as_bits(&self) -> usize {
                 self.bits
             }

@@ -164,7 +164,7 @@ pub struct Riscv64Sv57;
 impl Mode for Riscv64Sv57 {
     type EntryFlags = EntryFlags;
 
-    const PHYS_OFFSET: usize = 0xff7fffff80000000;
+    const PHYS_OFFSET: usize = 0xff7f_ffff_8000_0000;
 
     const PAGE_SIZE: usize = PAGE_SIZE;
     const PAGE_TABLE_LEVELS: usize = 5; // L0, L1, L2, L3, L4

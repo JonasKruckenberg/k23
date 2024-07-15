@@ -24,6 +24,7 @@ impl LoaderConfig {
     ///
     /// - `kernel_stack_size`: 80kiB
     /// - `mappings`: See [`Mappings::new_default()`]
+    #[must_use]
     pub const fn new_default() -> Self {
         Self {
             magic: CFG_MAGIC,
@@ -33,6 +34,11 @@ impl LoaderConfig {
         }
     }
 
+    /// Asserts that the configuration is valid.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the configuration is invalid.
     pub fn assert_valid(&self) {
         assert_eq!(self.magic, CFG_MAGIC, "malformed loader config");
     }

@@ -2,6 +2,10 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, parse_quote, Attribute, Error, Expr, ItemFn, Path};
 
+/// Marks the function as the entry point of the program.
+///
+/// After settig up the environment the bootloader will call this function
+#[allow(clippy::missing_panics_doc)] // This is a macro
 #[proc_macro_attribute]
 pub fn entry(args: TokenStream, item: TokenStream) -> TokenStream {
     let expr = parse_macro_input!(args as Expr);

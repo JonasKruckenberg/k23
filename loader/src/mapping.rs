@@ -56,6 +56,7 @@ use vmm::{BumpAllocator, Flush, Mapper, Mode, PhysicalAddress, TlsTemplate, Virt
 const KIB: usize = 1024;
 const MIB: usize = 1024 * KIB;
 
+#[allow(clippy::cast_precision_loss)]
 pub fn set_up_mappings(
     payload: Payload,
     machine_info: &MachineInfo,
@@ -352,7 +353,7 @@ impl Mappings {
 
     pub fn initialize_tls_region_for_hart(&self, hartid: usize) {
         if let Some(alloc) = &self.maybe_tls_allocation {
-            alloc.initialize_for_hart(hartid)
+            alloc.initialize_for_hart(hartid);
         }
     }
 

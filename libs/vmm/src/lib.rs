@@ -1,6 +1,7 @@
 #![no_std]
-#![feature(used_with_arg)]
 #![no_main]
+#![feature(used_with_arg)]
+#![allow(clippy::doc_markdown, clippy::module_name_repetitions)]
 
 extern crate alloc as _;
 
@@ -53,7 +54,7 @@ pub trait Mode {
     /// Flags that mark something as read-write
     const ENTRY_FLAGS_RW: Self::EntryFlags;
 
-    /// On RiscV targets the entry's physical address bits are shifted 2 bits to the right.
+    /// On `RiscV` targets the entry's physical address bits are shifted 2 bits to the right.
     /// This constant is present to account for that, should be set to 0 on all other targets.
     const ENTRY_ADDRESS_SHIFT: usize = 0;
 
@@ -66,9 +67,17 @@ pub trait Mode {
     const PAGE_ENTRY_MASK: usize = Self::PAGE_TABLE_ENTRIES - 1;
 
     /// Invalidate all address translation caches across all address spaces
+    ///
+    /// # Errors
+    ///
+    /// Should return an error if the underlying operation failed.
     fn invalidate_all() -> crate::Result<()>;
 
     /// Invalidate address translation caches for the given `address_range` in the given `address_space`
+    ///
+    /// # Errors
+    ///
+    /// Should return an error if the underlying operation failed and the range could not be flushed.
     fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> Result<()>;
 
     fn get_active_table(asid: usize) -> PhysicalAddress;
@@ -78,6 +87,7 @@ pub trait Mode {
     where
         Self: Sized;
 
+    #[must_use]
     fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
         VirtualAddress::new(phys.as_raw()).add(Self::PHYS_OFFSET)
     }
@@ -88,11 +98,14 @@ pub trait Mode {
 pub struct PhysicalAddress(usize);
 
 impl PhysicalAddress {
+    #[must_use]
     pub const fn new(bits: usize) -> Self {
         debug_assert!(bits != 0);
         Self(bits)
     }
 
+    #[must_use]
+    #[allow(clippy::cast_sign_loss)]
     pub const fn offset(self, offset: isize) -> Self {
         if offset.is_negative() {
             self.sub(offset.wrapping_abs() as usize)
@@ -101,46 +114,48 @@ impl PhysicalAddress {
         }
     }
 
+    #[must_use]
     pub const fn add(self, offset: usize) -> Self {
         let (out, overflow) = self.0.overflowing_add(offset);
-        if overflow {
-            panic!("physical address overflow");
-        }
+        assert!(!overflow, "physical address overflow");
         Self(out)
     }
 
+    #[must_use]
     pub const fn sub(self, offset: usize) -> Self {
         let (out, overflow) = self.0.overflowing_sub(offset);
-        if overflow {
-            panic!("physical address underflow");
-        }
+        assert!(!overflow, "physical address underflow");
         Self(out)
     }
 
+    #[must_use]
     pub const fn sub_addr(self, rhs: Self) -> usize {
         let (out, overflow) = self.0.overflowing_sub(rhs.0);
-        if overflow {
-            panic!("physical address underflow");
-        }
+        assert!(!overflow, "physical address underflow");
         out
     }
 
+    #[must_use]
     pub const fn as_raw(&self) -> usize {
         self.0
     }
 
+    #[must_use]
     pub const fn is_aligned(&self, align: usize) -> bool {
-        if !align.is_power_of_two() {
-            panic!("is_aligned_to: align is not a power-of-two");
-        }
+        assert!(
+            align.is_power_of_two(),
+            "is_aligned_to: align is not a power-of-two"
+        );
 
         self.as_raw() & (align - 1) == 0
     }
 
+    #[must_use]
     pub const fn align_down(self, alignment: usize) -> Self {
         Self(self.0 & !(alignment - 1))
     }
 
+    #[must_use]
     pub const fn align_up(self, alignment: usize) -> Self {
         Self((self.0 + alignment - 1) & !(alignment - 1))
     }
@@ -165,12 +180,15 @@ impl fmt::Debug for PhysicalAddress {
 pub struct VirtualAddress(usize);
 
 impl VirtualAddress {
+    #[must_use]
     pub const fn new(bits: usize) -> Self {
         // debug_assert!(bits <= 0x0000_003f_ffff_ffff || bits > 0xffff_ffbf_ffff_ffff);
         debug_assert!(bits != 0);
         Self(bits)
     }
 
+    #[must_use]
+    #[allow(clippy::cast_sign_loss)]
     pub const fn offset(self, offset: isize) -> Self {
         if offset.is_negative() {
             self.sub(offset.wrapping_abs() as usize)
@@ -179,46 +197,48 @@ impl VirtualAddress {
         }
     }
 
+    #[must_use]
     pub const fn add(self, offset: usize) -> Self {
         let (out, overflow) = self.0.overflowing_add(offset);
-        if overflow {
-            panic!("virtual address overflow");
-        }
+        assert!(!overflow, "virtual address overflow");
         Self(out)
     }
 
+    #[must_use]
     pub const fn sub(self, offset: usize) -> Self {
         let (out, overflow) = self.0.overflowing_sub(offset);
-        if overflow {
-            panic!("virtual address overflow");
-        }
+        assert!(!overflow, "virtual address overflow");
         Self(out)
     }
 
+    #[must_use]
     pub const fn sub_addr(self, rhs: Self) -> usize {
         let (out, overflow) = self.0.overflowing_sub(rhs.0);
-        if overflow {
-            panic!("virtual address underflow");
-        }
+        assert!(!overflow, "virtual address underflow");
         out
     }
 
+    #[must_use]
     pub const fn as_raw(&self) -> usize {
         self.0
     }
 
+    #[must_use]
     pub const fn is_aligned(&self, align: usize) -> bool {
-        if !align.is_power_of_two() {
-            panic!("is_aligned_to: align is not a power-of-two");
-        }
+        assert!(
+            align.is_power_of_two(),
+            "is_aligned_to: align is not a power-of-two"
+        );
 
         self.as_raw() & (align - 1) == 0
     }
 
+    #[must_use]
     pub const fn align_down(self, alignment: usize) -> Self {
         Self(self.0 & !(alignment - 1))
     }
 
+    #[must_use]
     pub const fn align_up(self, alignment: usize) -> Self {
         Self((self.0 + alignment - 1) & !(alignment - 1))
     }
@@ -241,6 +261,7 @@ impl fmt::Debug for VirtualAddress {
 pub trait AddressRangeExt {
     fn is_aligned(&self, alignment: usize) -> bool;
     fn size(&self) -> usize;
+    #[must_use]
     fn add(self, offset: usize) -> Self;
 }
 
@@ -318,7 +339,7 @@ impl<M: Mode> Mode for INIT<M> {
     }
 
     fn activate_table(asid: usize, table: VirtualAddress) {
-        M::activate_table(asid, table)
+        M::activate_table(asid, table);
     }
 
     fn invalidate_all() -> crate::Result<()> {
@@ -329,6 +350,7 @@ impl<M: Mode> Mode for INIT<M> {
         M::invalidate_range(asid, address_range)
     }
 
+    #[allow(clippy::transmute_ptr_to_ptr)] // The alternative is worse
     fn entry_is_leaf(entry: &Entry<Self>) -> bool
     where
         Self: Sized,

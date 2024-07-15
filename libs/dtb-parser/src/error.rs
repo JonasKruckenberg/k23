@@ -18,4 +18,6 @@ pub enum Error {
     FromBytesUntilNulError(#[from] core::ffi::FromBytesUntilNulError),
     #[error("DTB properties must be preceded by their parent node")]
     MissingParent,
+    #[error("failed to convert integer")]
+    IntConvert(#[from] core::num::TryFromIntError)
 }

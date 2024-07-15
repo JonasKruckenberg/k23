@@ -10,12 +10,14 @@ macro_rules! syscall {
         )
     };
     ($nr:path, $a1:expr, $a2:expr) => {
+        #[allow(clippy::ref_as_ptr)]
         $crate::arch::riscv64::semihosting::syscall_inner(
             $nr,
             &[$a1 as usize, $a2 as usize] as *const usize as usize,
         )
     };
     ($nr:path, $a1:expr, $a2:expr, $a3:expr) => {
+        #[allow(clippy::ref_as_ptr)]
         $crate::arch::riscv64::semihosting::syscall_inner(
             $nr,
             &[$a1 as usize, $a2 as usize, $a3 as usize] as *const usize as usize,
@@ -30,6 +32,7 @@ macro_rules! syscall {
 }
 
 #[inline(always)]
+#[allow(clippy::used_underscore_binding)]
 pub(crate) unsafe fn syscall_inner(_nr: usize, _arg: usize) -> usize {
     cfg_if::cfg_if! {
         if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {

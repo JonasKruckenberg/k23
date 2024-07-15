@@ -17,6 +17,7 @@ unsafe impl<T: Send + Sync> Sync for Once<T> {}
 unsafe impl<T: Send> Send for Once<T> {}
 
 impl<T> Once<T> {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             status: AtomicU8::new(STATUS_INCOMPLETE),
@@ -24,12 +25,25 @@ impl<T> Once<T> {
         }
     }
 
+    /// # Panics
+    ///
+    /// Panics if the closure errors or panics.
     pub fn get_or_init<F: FnOnce() -> T>(&self, f: F) -> &T {
         self.get_or_try_init::<_, ()>(|| Ok(f()))
             .expect("get_or_init failed")
     }
 
-    pub fn get_or_try_init<F: FnOnce() -> Result<T, E>, E>(&self, f: F) -> Result<&T, E> {
+    /// # Errors
+    ///
+    /// Returns an error if the given closure errors.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the closure panics.
+    pub fn get_or_try_init<F, E>(&self, f: F) -> Result<&T, E>
+    where
+        F: FnOnce() -> Result<T, E>,
+    {
         if let Some(value) = self.get() {
             Ok(value)
         } else {
@@ -144,6 +158,6 @@ struct PanicGuard<'a> {
 
 impl<'a> Drop for PanicGuard<'a> {
     fn drop(&mut self) {
-        self.status.store(STATUS_POISONED, Ordering::Relaxed)
+        self.status.store(STATUS_POISONED, Ordering::Relaxed);
     }
 }

@@ -27,11 +27,12 @@ impl TryFrom<&ProgramHeader64<Endianness>> for ProgramHeader {
             virtual_address: {
                 let raw = usize::try_from(value.p_vaddr(endianness))
                     .map_err(|_| "failed to convert p_vaddr to usize")?;
+
                 if raw == 0 {
                     return Err("p_vaddr is zero");
-                } else {
-                    VirtualAddress::new(raw)
                 }
+
+                VirtualAddress::new(raw)
             },
             file_size: usize::try_from(value.p_filesz(endianness))
                 .map_err(|_| "failed to convert p_filesz to usize")?,
@@ -42,6 +43,15 @@ impl TryFrom<&ProgramHeader64<Endianness>> for ProgramHeader {
 }
 
 impl<'a, M: Mode> Mapper<'a, M> {
+    /// Maps an ELF file into virtual memory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the ELF file could not be mapped, due to various reasons like, malformed ELF, failing allocations, etc.
+    ///
+    /// # Panics
+    ///
+    /// Panics on various sanity checks.
     pub fn map_elf_file(
         &mut self,
         elf_file: &ElfFile64,
@@ -63,9 +73,9 @@ impl<'a, M: Mode> Mapper<'a, M> {
         // Load the segments into virtual memory.
         for program_header in program_headers.clone() {
             match program_header.p_type {
-                PT_LOAD => self.handle_load_segment(program_header, physical_offset, flush)?,
+                PT_LOAD => self.handle_load_segment(&program_header, physical_offset, flush)?,
                 PT_TLS => {
-                    let old = tls_template.replace(self.handle_tls_segment(program_header)?);
+                    let old = tls_template.replace(self.handle_tls_segment(&program_header));
                     assert!(old.is_none(), "multiple TLS segments not supported");
                 }
                 _ => {}
@@ -75,7 +85,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         // Apply relocations in virtual memory.
         for program_header in program_headers.clone() {
             if program_header.p_type == PT_DYNAMIC {
-                self.handle_dynamic_segment(program_header)?;
+                self.handle_dynamic_segment(&program_header)?;
             }
         }
 
@@ -83,7 +93,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         // applied.
         for program_header in program_headers {
             if program_header.p_type == PT_GNU_RELRO {
-                self.handle_relro_segment(program_header, flush)?;
+                self.handle_relro_segment(&program_header, flush)?;
             }
         }
 
@@ -92,7 +102,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
     fn handle_load_segment(
         &mut self,
-        program_header: ProgramHeader,
+        program_header: &ProgramHeader,
         physical_offset: PhysicalAddress,
         flush: &mut Flush<M>,
     ) -> Result<(), crate::Error> {
@@ -113,7 +123,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
             start..end
         };
 
-        let flags = self.flags_for_segment(&program_header);
+        let flags = Self::flags_for_segment(program_header);
 
         log::trace!("{flags:?}");
         log::trace!(
@@ -135,7 +145,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
     fn handle_bss_section(
         &mut self,
-        program_header: ProgramHeader,
+        program_header: &ProgramHeader,
         flags: M::EntryFlags,
         physical_offset: PhysicalAddress,
         flush: &mut Flush<M>,
@@ -180,27 +190,28 @@ impl<'a, M: Mode> Mapper<'a, M> {
         Ok(())
     }
 
+    #[allow(clippy::unused_self)]
     fn handle_tls_segment(
         &mut self,
-        program_header: ProgramHeader,
-    ) -> Result<TlsTemplate, crate::Error> {
-        Ok(TlsTemplate {
+        program_header: &ProgramHeader,
+    ) -> TlsTemplate {
+        TlsTemplate {
             start_addr: program_header.virtual_address,
             mem_size: program_header.mem_size,
             file_size: program_header.file_size,
-        })
+        }
     }
 
     fn handle_dynamic_segment(
         &mut self,
-        _program_header: ProgramHeader,
+        _program_header: &ProgramHeader,
     ) -> Result<(), crate::Error> {
         todo!()
     }
 
     fn handle_relro_segment(
         &mut self,
-        program_header: ProgramHeader,
+        program_header: &ProgramHeader,
         flush: &mut Flush<M>,
     ) -> Result<(), crate::Error> {
         let virt = {
@@ -239,7 +250,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         Ok(dst)
     }
 
-    fn flags_for_segment(&self, program_header: &ProgramHeader) -> M::EntryFlags {
+    fn flags_for_segment(program_header: &ProgramHeader) -> M::EntryFlags {
         if program_header.p_flags & 0x1 != 0 {
             M::ENTRY_FLAGS_RX
         } else if program_header.p_flags & 0x2 != 0 {
@@ -251,6 +262,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         }
     }
 }
+
 
 #[repr(C)]
 #[derive(Debug, Clone)]

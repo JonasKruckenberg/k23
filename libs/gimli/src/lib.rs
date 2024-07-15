@@ -25,6 +25,7 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(core_io_borrowed_buf)]
 #![allow(clippy::should_implement_trait)]
+#![allow(clippy::pedantic)]
 #[allow(unused_imports)]
 #[cfg(any(feature = "read", feature = "write"))]
 #[macro_use]
