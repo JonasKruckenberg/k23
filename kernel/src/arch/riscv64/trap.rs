@@ -251,8 +251,6 @@ fn default_trap_handler(
     log::trace!("{:?}", sstatus::read());
     log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
 
-    // 0xffffffd7fffd8a00
-
     match cause {
         Trap::Exception(Exception::LoadPageFault) => {
             let epc = sepc::read();
