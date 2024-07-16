@@ -39,7 +39,7 @@ pub struct GuestAllocator(Arc<Mutex<GuestAllocatorInner>>);
 pub struct GuestAllocatorInner {
     asid: usize,
     root_table: VirtualAddress,
-    virt_offset: VirtualAddress,
+    virt: Range<VirtualAddress>,
     // we don't have many allocations, just a few large chunks (e.g. CodeMemory, Stack, Memories)
     // so a simple linked list should suffice.
     // TODO measure and verify this assumption
@@ -54,7 +54,7 @@ impl GuestAllocator {
             root_table: kconfig::MEMORY_MODE::phys_to_virt(root_table),
             asid: 0,
             inner: Heap::empty(),
-            virt_offset,
+            virt: virt_offset..virt_offset,
         };
 
         let (mem_virt, flush) = inner.map_additional_pages(16)?;
@@ -130,8 +130,8 @@ impl GuestAllocatorInner {
                 start..start.add(num_pages * kconfig::PAGE_SIZE)
             };
 
-            let mem_virt = self.virt_offset..self.virt_offset.add(num_pages * kconfig::PAGE_SIZE);
-            self.virt_offset = mem_virt.end;
+            let mem_virt = self.virt.end..self.virt.end.add(num_pages * kconfig::PAGE_SIZE);
+            self.virt = self.virt.clone().concat(mem_virt.clone());
 
             mapper
                 .map_range(
@@ -147,13 +147,28 @@ impl GuestAllocatorInner {
     }
 }
 
+impl Drop for GuestAllocatorInner {
+    fn drop(&mut self) {
+        log::trace!("Unmapping... {:?}", self.virt);
+
+        with_frame_alloc(|frame_alloc| {
+            let mut mapper = Mapper::from_address(self.asid, self.root_table, frame_alloc);
+            let mut flush = Flush::empty(self.asid);
+
+            mapper
+                .unmap_range(self.virt.clone(), &mut flush)
+                .expect("failed to unmap");
+        });
+    }
+}
+
 #[allow(clippy::missing_fields_in_debug)]
 impl fmt::Debug for GuestAllocatorInner {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("GuestAllocatorInner")
             .field("asid", &self.asid)
             .field("root_table", &self.root_table)
-            .field("virt_offset", &self.virt_offset)
+            .field("virt", &self.virt)
             .finish()
     }
 }
