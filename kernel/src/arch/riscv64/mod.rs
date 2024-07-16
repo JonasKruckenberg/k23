@@ -94,7 +94,11 @@ fn setup(hartid: usize, boot_info: &'static mut loader_api::BootInfo) {
 }
 
 #[cfg(not(test))]
-#[loader_api::entry(loader_api::LoaderConfig::new_default())]
+#[loader_api::entry({
+    let mut cfg = loader_api::LoaderConfig::new_default();
+    cfg.kernel_stack_size_pages = 128;
+    cfg
+})]
 fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
     setup(hartid, boot_info);
 

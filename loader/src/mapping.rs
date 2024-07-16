@@ -201,6 +201,7 @@ impl<'a> State<'a> {
         Ok(())
     }
 
+    // TODO add guard pages below each stack allocation
     pub fn map_payload_stacks(
         &mut self,
         machine_info: &MachineInfo,
