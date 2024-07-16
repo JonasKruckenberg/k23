@@ -18,7 +18,7 @@ use crate::entry::Entry;
 use bitflags::Flags;
 use core::fmt::Formatter;
 use core::ops::Range;
-use core::{fmt, mem};
+use core::{cmp, fmt, mem};
 
 pub use alloc::{BitMapAllocator, BumpAllocator, FrameAllocator, FrameUsage};
 pub use arch::*;
@@ -263,6 +263,8 @@ pub trait AddressRangeExt {
     fn size(&self) -> usize;
     #[must_use]
     fn add(self, offset: usize) -> Self;
+    #[must_use]
+    fn concat(self, other: Self) -> Self;
 }
 
 impl AddressRangeExt for Range<PhysicalAddress> {
@@ -277,6 +279,13 @@ impl AddressRangeExt for Range<PhysicalAddress> {
     fn add(self, offset: usize) -> Self {
         self.start.add(offset)..self.end.add(offset)
     }
+
+    fn concat(self, other: Self) -> Self {
+        Range {
+            start: cmp::min(self.start, other.start),
+            end: cmp::max(self.end, other.end),
+        }
+    }
 }
 
 impl AddressRangeExt for Range<VirtualAddress> {
@@ -290,6 +299,13 @@ impl AddressRangeExt for Range<VirtualAddress> {
 
     fn add(self, offset: usize) -> Self {
         self.start.add(offset)..self.end.add(offset)
+    }
+
+    fn concat(self, other: Self) -> Self {
+        Range {
+            start: cmp::min(self.start, other.start),
+            end: cmp::max(self.end, other.end),
+        }
     }
 }
 

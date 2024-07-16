@@ -1,5 +1,4 @@
-use crate::{Error, Mode, VirtualAddress};
-use core::cmp;
+use crate::{AddressRangeExt, Error, Mode, VirtualAddress};
 use core::marker::PhantomData;
 use core::ops::Range;
 
@@ -59,10 +58,7 @@ impl<M: Mode> Flush<M> {
     pub fn extend_range(&mut self, asid: usize, other: Range<VirtualAddress>) -> crate::Result<()> {
         if self.asid == asid {
             if let Some(this) = self.range.take() {
-                self.range = Some(Range {
-                    start: cmp::min(this.start, other.start),
-                    end: cmp::max(this.start, other.end),
-                });
+                self.range = Some(this.concat(other));
             } else {
                 self.range = Some(other);
             }
