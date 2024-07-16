@@ -99,5 +99,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install qemu-system-riscv64
+          qemu-system-riscv64 --version
       - name: Run RiscV-64 tests
         run: just test-riscv64
