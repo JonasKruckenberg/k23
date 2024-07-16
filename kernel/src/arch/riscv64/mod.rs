@@ -6,7 +6,7 @@ use kstd::arch::sstatus::FS;
 use kstd::arch::{sie, sstatus};
 use kstd::declare_thread_local;
 use kstd::sync::Once;
-use loader_api::MemoryRegionKind;
+use loader_api::{LoaderConfig, MemoryRegionKind};
 use vmm::{AddressRangeExt, Flush, Mapper};
 
 pub type EntryFlags = vmm::EntryFlags;
@@ -93,12 +93,14 @@ fn setup(hartid: usize, boot_info: &'static mut loader_api::BootInfo) {
     }
 }
 
-#[cfg(not(test))]
-#[loader_api::entry({
+const LOADER_CFG: LoaderConfig = {
     let mut cfg = loader_api::LoaderConfig::new_default();
     cfg.kernel_stack_size_pages = 128;
     cfg
-})]
+};
+
+#[cfg(not(test))]
+#[loader_api::entry(LOADER_CFG)]
 fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
     setup(hartid, boot_info);
 
@@ -106,7 +108,7 @@ fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
 }
 
 #[cfg(test)]
-#[ktest::setup_harness]
+#[ktest::setup_harness(LOADER_CFG)]
 fn kstart_test(hartid: usize, info: ktest::SetupInfo) {
     setup(hartid, info.boot_info);
 }

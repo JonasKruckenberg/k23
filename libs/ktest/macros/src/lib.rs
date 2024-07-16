@@ -2,7 +2,7 @@ extern crate core;
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, parse_quote, Attribute, Error, ItemFn, Path};
+use syn::{parse_macro_input, parse_quote, Attribute, Error, Expr, ItemFn, Path};
 
 #[proc_macro_attribute]
 pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
@@ -33,10 +33,16 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn setup_harness(_args: TokenStream, item: TokenStream) -> TokenStream {
+pub fn setup_harness(args: TokenStream, item: TokenStream) -> TokenStream {
     let crate_path: Path = parse_quote!(::ktest);
 
-    let init_func: ItemFn = parse_macro_input!(item as ItemFn);
+    let loader_cfg = if args.is_empty() {
+        parse_quote!(#crate_path::__private::loader_api::LoaderConfig::new_default())
+    } else {
+        parse_macro_input!(args as Expr)
+    };
+
+    let init_func = parse_macro_input!(item as ItemFn);
     let init_func_ident = init_func.sig.ident.clone();
 
     quote!(
@@ -50,7 +56,7 @@ pub fn setup_harness(_args: TokenStream, item: TokenStream) -> TokenStream {
             #crate_path::run_tests(&mut stdout, args).exit();
         }
 
-        #[#crate_path::__private::loader_api::entry(#crate_path::__private::loader_api::LoaderConfig::new_default())]
+        #[#crate_path::__private::loader_api::entry(#loader_cfg)]
         #[cfg(target_os = "none")]
         #[loader_api(crate = #crate_path::__private::loader_api)]
         fn ktest_runner(hartid: usize, boot_info: &'static mut #crate_path::__private::loader_api::BootInfo) -> ! {
