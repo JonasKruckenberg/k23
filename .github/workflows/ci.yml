@@ -95,9 +95,9 @@ jobs:
         uses: extractions/setup-just@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: riscv64
+      - name: install qemu
+        run: |
+          sudo apt-get update
+          sudo apt-get install qemu-system-riscv64'
       - name: Run RiscV-64 tests
         run: just test-riscv64
