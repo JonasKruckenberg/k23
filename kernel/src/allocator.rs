@@ -55,7 +55,10 @@ impl OomHandler {
         let mut flush = Flush::empty(0);
 
         let heap_phys = {
-            let base = mapper.allocator_mut().allocate_frames(span_to_map.size())?;
+            assert_eq!(span_to_map.size() % kconfig::PAGE_SIZE, 0);
+            let base = mapper
+                .allocator_mut()
+                .allocate_frames(span_to_map.size() / kconfig::PAGE_SIZE)?;
             base..base.add(span_to_map.size())
         };
 
@@ -102,12 +105,15 @@ impl talc::OomHandler for OomHandler {
         }
 
         with_frame_alloc(|alloc| OomHandler::ensure_mapped(alloc, Some(old_heap), new_heap))
+            .inspect_err(|err| log::error!("failed to map extended heap! old heap {old_heap:?} new heap {new_heap:?} err {err:?}"))
             .map_err(|_| ())?;
 
         unsafe {
             // we're assuming the new memory up to HEAP_TOP_LIMIT is unused and allocatable
             talc.oom_handler.heap = talc.extend(old_heap, new_heap);
         }
+
+        log::trace!("successfully extended heap {:?}", talc.oom_handler.heap);
 
         Ok(())
     }
