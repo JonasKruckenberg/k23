@@ -83,6 +83,48 @@ Explainer
 - ?: The applicability of this feature is unclear, e.g. due to the lack of a detailed proposal.
 - N/A: Not Applicable
 
+# WASI Features & Proposals
+
+In addition to the main WASM features, k23 applications will interact with the host through WASM (WebAssembly System Interface) APIs.
+The following table lists all current proposals and their implementation status.
+
+| Features                               | Status      | Tracking Issue                                           |
+|----------------------------------------|-------------|----------------------------------------------------------|
+| [I/O][wasi_io]                         | ❌           |
+| [Clocks][wasi_clocks]                  | ❌           |
+| [Random][wasi_random]                  | ❌           |
+| [Filesystem][wasi_fs]                  | ❌           |
+| [Sockets][wasi_sockets]                | ❌           |
+| [CLI][wasi_cli]                        | ❌           |
+| [HTTP][wasi_http]                      | ❌           |
+| [Machine Learning][wasi_nn]            | ❌           |
+| [Clocks: Timezone][wasi_timezone]      | X           |
+| [Blob Store][wasi_blobs]               | Not planned |
+| [Crypto][wasi_crypto]                  | ❌           |
+| [Digital I/O][wasi_digital_io]         | ?           |
+| [Distributed Lock Service][wasi_locks] | Not planned |
+| [I2C][wasi_i2c]                        | ❌           |
+| [Key-value Store][wasi_kv]             | ❌           |
+| [Logging][wasi_log]                    | ❌           |
+| [Messaging][wasi_msg]                  | ❌           |
+| [Observe][wasi_observe]                | ❌           |
+| [Parallel][wasi_parallel]              | ❌           |
+| [Pattern Match][wasi_pattern_match]    | ?           |
+| [Runtime Config][wasi_cfg]             | ?           |
+| [SPI][wasi_spi]                        | ?           |
+| [SQL][wasi_sql]                        | ?           |
+| [SQL Embed][wasi_sql_embed]            | N/A         |
+| [Threads][wasi_threads]                | Not Planned |
+| [URL][wasi_url]                        | ?           |
+| [USB][wasi_USB]                        | ❌           |
+| [WebGPU][wasi_webgpu]                  | ❌           |
+
+Explainer
+- ✅: Implemented
+- ❌: Not Implemented
+- ?: The applicability of this feature is unclear, e.g. due to the lack of a detailed proposal.
+- N/A: Not Applicable
+
 [bigint-to-i64]: https://github.com/WebAssembly/JS-BigInt-integration
 [bulk-memory]: https://github.com/WebAssembly/bulk-memory-operations/blob/master/proposals/bulk-memory-operations/Overview.md
 [multi-value]: https://github.com/WebAssembly/spec/blob/master/proposals/multi-value/Overview.md
@@ -131,3 +173,31 @@ Explainer
 [custom-page-sizes]: https://github.com/WebAssembly/custom-page-sizes
 [half-precision]: https://github.com/WebAssembly/half-precision
 [compact-import-section]: https://github.com/WebAssembly/compact-import-section
+[wasi_io]: https://github.com/WebAssembly/wasi-io
+[wasi_clocks]: https://github.com/WebAssembly/wasi-clocks
+[wasi_random]: https://github.com/WebAssembly/wasi-random
+[wasi_fs]: https://github.com/WebAssembly/wasi-filesystem
+[wasi_sockets]: https://github.com/WebAssembly/wasi-sockets
+[wasi_cli]: https://github.com/WebAssembly/wasi-cli
+[wasi_http]: https://github.com/WebAssembly/wasi-http
+[wasi_nn]: https://github.com/WebAssembly/wasi-nn
+[wasi_timezone]: https://github.com/WebAssembly/wasi-clocks
+[wasi_blobs]: https://github.com/WebAssembly/wasi-blob-store
+[wasi_crypto]: https://github.com/WebAssembly/wasi-crypto
+[wasi_digital_io]: https://github.com/WebAssembly/wasi-digital-io
+[wasi_locks]: https://github.com/WebAssembly/wasi-distributed-lock-service
+[wasi_i2c]: https://github.com/WebAssembly/wasi-i2c
+[wasi_kv]: https://github.com/WebAssembly/wasi-kv-store
+[wasi_log]: https://github.com/WebAssembly/wasi-logging
+[wasi_msg]: https://github.com/WebAssembly/wasi-messaging
+[wasi_observe]: https://github.com/dylibso/wasi-observe
+[wasi_parallel]: https://github.com/WebAssembly/wasi-parallel
+[wasi_pattern_match]: https://github.com/WebAssembly/wasi-pattern-match
+[wasi_cfg]: https://github.com/WebAssembly/wasi-runtime-config
+[wasi_spi]: https://github.com/WebAssembly/wasi-spi
+[wasi_sql]: https://github.com/WebAssembly/wasi-sql
+[wasi_sql_embed]: https://github.com/WebAssembly/wasi-sql-embed
+[wasi_threads]: https://github.com/WebAssembly/wasi-native-threads
+[wasi_url]: https://github.com/WebAssembly/wasi-url
+[wasi_USB]: https://github.com/WebAssembly/wasi-usb
+[wasi_webgpu]: https://github.com/WebAssembly/wasi-webgpu
