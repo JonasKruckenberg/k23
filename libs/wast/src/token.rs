@@ -543,7 +543,7 @@ macro_rules! float {
 
             // Now that we've got an anchor in the string we parse the remaining
             // digits. Again, not entirely sure why everything is the way it is
-            // here! This is copied frmo gecko.
+            // here! This is copied from gecko.
             let mut discarded_extra_nonzero = false;
             for (digit, decimal) in digits {
                 if !decimal {

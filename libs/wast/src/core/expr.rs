@@ -321,7 +321,7 @@ impl<'a> ExpressionParser<'a> {
 
     /// State transitions with parsing an `if` statement.
     ///
-    /// The syntactical form of an `if` stament looks like:
+    /// The syntactical form of an `if` statement looks like:
     ///
     /// ```wat
     /// (if ($clause)... (then $then) (else $else))

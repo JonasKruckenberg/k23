@@ -144,7 +144,7 @@ impl<'a> Parse<'a> for Data<'a> {
         // as having an initialization offset.
         } else {
             let memory = if parser.peek::<u32>()? {
-                // FIXME: this is only here to accomodate
+                // FIXME: this is only here to accommodate
                 // proposals/threads/imports.wast at this current moment in
                 // time, this probably should get removed when the threads
                 // proposal is rebased on the current spec.
@@ -205,7 +205,7 @@ impl<'a> Parse<'a> for Data<'a> {
     }
 }
 
-/// Differnet ways the value of a data segment can be defined.
+/// Different ways the value of a data segment can be defined.
 #[derive(Debug)]
 #[allow(missing_docs)]
 pub enum DataVal<'a> {
