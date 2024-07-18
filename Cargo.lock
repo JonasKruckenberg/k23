@@ -209,7 +209,7 @@ dependencies = [
 [[package]]
 name = "cranelift-bforest"
 version = "0.111.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "cranelift-entity",
 ]
@@ -217,7 +217,7 @@ dependencies = [
 [[package]]
 name = "cranelift-bitset"
 version = "0.111.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "serde",
  "serde_derive",
@@ -226,7 +226,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen"
 version = "0.111.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "bumpalo",
  "cranelift-bforest",
@@ -248,7 +248,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-meta"
 version = "0.111.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "cranelift-codegen-shared",
 ]
@@ -256,17 +256,17 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-shared"
 version = "0.111.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 
 [[package]]
 name = "cranelift-control"
 version = "0.111.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 
 [[package]]
 name = "cranelift-entity"
 version = "0.111.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "cranelift-bitset",
  "serde",
@@ -276,7 +276,7 @@ dependencies = [
 [[package]]
 name = "cranelift-frontend"
 version = "0.111.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "cranelift-codegen",
  "hashbrown 0.14.5",
@@ -288,12 +288,12 @@ dependencies = [
 [[package]]
 name = "cranelift-isle"
 version = "0.111.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 
 [[package]]
 name = "cranelift-wasm"
 version = "0.111.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
@@ -926,9 +926,9 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.8.14"
+version = "0.8.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f49eb2ab21d2f26bd6db7bf383edc527a7ebaee412d17af4d40fdccd442f335"
+checksum = "ac2caab0bf757388c6c0ae23b3293fdb463fee59434529014f85e3263b995c28"
 dependencies = [
  "serde",
  "serde_spanned",
@@ -947,9 +947,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.22.15"
+version = "0.22.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d59a3a72298453f564e2b111fa896f8d07fabb36f51f06d7e875fc5e0b5a3ef1"
+checksum = "278f3d518e152219c994ce877758516bca5e118eaed6996192a774fb9fbf0788"
 dependencies = [
  "indexmap",
  "serde",
@@ -1009,9 +1009,9 @@ checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
 
 [[package]]
 name = "wasmparser"
-version = "0.212.0"
+version = "0.214.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d28bc49ba1e5c5b61ffa7a2eace10820443c4b7d1c0b144109261d14570fdf8"
+checksum = "5309c1090e3e84dad0d382f42064e9933fdaedb87e468cc239f0eabea73ddcb6"
 dependencies = [
  "ahash",
  "bitflags",
@@ -1023,7 +1023,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-types"
 version = "24.0.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#fb79fb2b77a8281da5119c3e2facf897b9864553"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "anyhow",
  "cranelift-entity",
