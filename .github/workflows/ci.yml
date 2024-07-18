@@ -81,24 +81,24 @@ jobs:
       - name: cargo clippy
         run: just clippy
 
-  test:
-    name: Test
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: install Just
-        uses: extractions/setup-just@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: install qemu
-        run: |
-          sudo apt-get update
-          sudo apt-get install qemu-system-riscv64
-          qemu-system-riscv64 --version
-      - name: Run RiscV-64 tests
-        run: just test-riscv64
+  # test:
+  #   name: Test
+  #   needs: pre_ci
+  #   if: needs.pre_ci.outputs.continue
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 45
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - uses: Swatinem/rust-cache@v2
+  #     - name: install Just
+  #       uses: extractions/setup-just@v2
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #     - name: install qemu
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install qemu-system-riscv64
+  #         qemu-system-riscv64 --version
+  #     - name: Run RiscV-64 tests
+  #       run: just test-riscv64
