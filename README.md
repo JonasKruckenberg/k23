@@ -21,6 +21,11 @@
 
 k23 is an active research project exploring a *more secure, modular, and easy to develop for* operating system by using WebAssembly as the primary execution environment.
 
+## Roadmap
+
+- [ ] Extended Constant Expressions
+- [ ] 
+
 ## Contributing
 
 I believe OS development should be fun, easy, and approachable. If you would like to hack on k23, fork it for your own experiments or just hang out and philosophize about computers. Be my guest! You can [join our small, but growing community][discord-url] of likeminded, awesome people that all believe better computer system are possible!
