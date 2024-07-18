@@ -47,7 +47,7 @@ fn main(_hartid: usize) -> ! {
     use crate::runtime::{Engine, Linker, Module, Store};
     use cranelift_codegen::settings::Configurable;
 
-    let wasm = include_bytes!("../tests/fib-cpp.wasm");
+    let wasm = include_bytes!("../../tests/fib/fib_cpp.wasm");
 
     let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
     let mut b = cranelift_codegen::settings::builder();

@@ -1,0 +1,56 @@
+[package]
+name = "wast"
+version = "214.0.0"
+authors = ["Alex Crichton <alex@alexcrichton.com>"]
+edition.workspace = true
+license = "Apache-2.0 WITH LLVM-exception"
+readme = "README.md"
+repository = "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wast"
+homepage = "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wast"
+documentation = "https://docs.rs/wast"
+description = """
+Customizable Rust parsers for the WebAssembly Text formats WAT and WAST
+"""
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lints]
+workspace = true
+
+[dependencies]
+leb128.workspace = true
+wasm-encoder.workspace = true
+gimli = { workspace = true, optional = true }
+hashbrown = { workspace = true, features = ["ahash"] }
+kstd.workspace = true
+unicode-width.workspace = true
+memchr.workspace = true
+bumpalo.workspace = true
+
+[dev-dependencies]
+# anyhow = { workspace = true }
+# libtest-mimic = { workspace = true }
+# wasmparser = { workspace = true }
+# wat = { workspace = true }
+# rand = { workspace = true }
+
+[features]
+default = ['wasm-module']
+
+# Includes default parsing support for `*.wat` and `*.wast` files (wasm
+# modules). This isn't always needed though if you're parsing just an
+# s-expression based format. If you'd like to slim down this dependency to just
+# the lexer, parser framework, and token support, this feature can be disabled.
+#
+# This feature is turned on by default.
+wasm-module = []
+
+# Off-by-default feature to support emitting DWARF debugging information in
+# parsed binaries pointing back to source locations in the original `*.wat`
+# source.
+dwarf = ["dep:gimli"]
+
+[[test]]
+name = "parse-fail"
+harness = false
