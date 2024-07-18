@@ -23,8 +23,31 @@ k23 is an active research project exploring a *more secure, modular, and easy to
 
 ## Roadmap
 
-- [ ] Extended Constant Expressions
-- [ ] 
+- **Phase 1 - WASM Features**
+   - [ ] WASM module Imports & Exports
+   - [ ] Execute WASM in Userspace
+   - [ ] Support WASM Builtins
+   - [ ] Handle WASM Traps
+   - [ ] Syscall context switching & Basic Host Functions 
+   - [ ] WASM Proposal - Extended Constant Expressions
+   - [ ] WASM Proposal - Multi-Value
+   - [ ] WASM Proposal - Tail Call
+   - [ ] WASM Proposal - Reference Types
+   - [ ] WASM Proposal - Fixed-width SIMD
+   - [ ] WASM Proposal - Relaxed SIMD
+   - [ ] WASM Proposal - Multiple Memories
+- **Phase 2 - Concurrency**
+   - [ ] Kernel Concurrency
+   - [ ] Scheduler
+   - [ ] WASM Proposal - Threads (Atomics)
+   - [ ] WASM Proposal - Shared Everything Threads
+- **Phase 2.5 - Kotlin on k23**
+   - [ ] WASM Proposal - Garbage Collection
+   - [ ] WASM Proposal - Exception Handling
+- **Phase 3 - Drivers**
+   - [ ] Support MMIO regions (WASM Memory Control Proposal *or* Typed Multiple Memories)
+   - [ ] WASM Proposal - Component Model
+   - [ ] WASM Component Linking
 
 ## Contributing
 
