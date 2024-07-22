@@ -25,4 +25,4 @@ jobs:
           make
       - uses: actions/upload-artifact@v4
         with:
-          path: ./build/qemu-system-*
+          path: **/qemu-system-*
