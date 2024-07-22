@@ -98,4 +98,4 @@ jobs:
       - name: Run RiscV-64 tests
         run: just test-riscv64
         env:
-          QEMU: ${{ env.GITHUB_WORKSPACE }}/build/qemu-system-riscv64
+          QEMU: ${{ github.workspace }}/build/qemu-system-riscv64
