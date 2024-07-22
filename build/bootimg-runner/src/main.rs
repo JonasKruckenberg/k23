@@ -22,6 +22,13 @@ struct Options {
         global = true
     )]
     pub cargo_path: PathBuf,
+    #[clap(
+        long = "qemu",
+        env = "QEMU",
+        value_hint = ValueHint::ExecutablePath,
+        global = true
+    )]
+    pub qemu_path: Option<PathBuf>,
     /// Enables verbose logging
     #[clap(short, long, global = true, action = ArgAction::Count)]
     verbose: u8,
@@ -50,7 +57,13 @@ fn main() {
 
     println!("{loader:?} {payload:?}");
 
-    run_in_qemu(target, &loader, opts.wait_for_debugger).unwrap();
+    run_in_qemu(
+        opts.qemu_path.as_deref(),
+        target,
+        &loader,
+        opts.wait_for_debugger,
+    )
+    .unwrap();
 }
 
 fn generate_keypair() -> (VerifyingKey, SigningKey) {
@@ -174,11 +187,19 @@ impl Builder {
     }
 }
 
-fn run_in_qemu(target: Target, bootimg_path: &Path, wait_for_debugger: bool) -> Option<i32> {
-    let runner = match target {
-        Target::Riscv64 => "qemu-system-riscv64",
-        Target::Riscv32 => "qemu-system-riscv32",
-    };
+fn run_in_qemu(
+    qemu_path: Option<&Path>,
+    target: Target,
+    bootimg_path: &Path,
+    wait_for_debugger: bool,
+) -> Option<i32> {
+    let runner = qemu_path.map_or_else(
+        || match target {
+            Target::Riscv64 => "qemu-system-riscv64",
+            Target::Riscv32 => "qemu-system-riscv32",
+        },
+        |path| path.to_str().unwrap(),
+    );
 
     let mut child = KillOnDrop({
         let mut cmd = Command::new(runner);
