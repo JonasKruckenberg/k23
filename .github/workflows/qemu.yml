@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: build QEMU
         run: |
+          sudo apt-get update
+          sudo apt-get install ninja-build
           wget https://download.qemu.org/qemu-9.0.2.tar.xz
           tar xvJf qemu-9.0.2.tar.xz
           cd qemu-9.0.2
