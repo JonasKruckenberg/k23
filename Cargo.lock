@@ -209,6 +209,7 @@ dependencies = [
 [[package]]
 name = "cranelift-bforest"
 version = "0.111.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "cranelift-entity",
 ]
@@ -216,6 +217,7 @@ dependencies = [
 [[package]]
 name = "cranelift-bitset"
 version = "0.111.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "serde",
  "serde_derive",
@@ -224,6 +226,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen"
 version = "0.111.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "bumpalo",
  "cranelift-bforest",
@@ -245,6 +248,7 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-meta"
 version = "0.111.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "cranelift-codegen-shared",
 ]
@@ -252,14 +256,17 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-shared"
 version = "0.111.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 
 [[package]]
 name = "cranelift-control"
 version = "0.111.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 
 [[package]]
 name = "cranelift-entity"
 version = "0.111.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "cranelift-bitset",
  "serde",
@@ -269,6 +276,7 @@ dependencies = [
 [[package]]
 name = "cranelift-frontend"
 version = "0.111.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "cranelift-codegen",
  "hashbrown 0.14.5",
@@ -280,10 +288,12 @@ dependencies = [
 [[package]]
 name = "cranelift-isle"
 version = "0.111.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 
 [[package]]
 name = "cranelift-wasm"
 version = "0.111.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
@@ -1032,6 +1042,7 @@ dependencies = [
 [[package]]
 name = "wasmtime-types"
 version = "24.0.0"
+source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#c9633e2126050acc80827726ed99b10d3c025b26"
 dependencies = [
  "anyhow",
  "cranelift-entity",
