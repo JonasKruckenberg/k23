@@ -26,6 +26,16 @@ Currently, the runtime is quite simple, it only supports the most basic WASM ins
 
 TODO this section will expand with more info.
 
+## QEMU on Linux
+
+Currently k23 only runs on QEMU's 9.x Risc-V emulator and newer, this unfortunately means that the version of QEMU in most Linux package managers is too old. If you want to try out k23, you will have to [build QEMU from source](https://www.qemu.org/download/) on those distributions.
+
+```sh
+# Pass `--target-list` flag to configure so that only the Risc-V target is built
+./configure --target-list="riscv64-softmmu"
+make
+```
+
 ## Debugging
 
 The rest of this guide assumes you are using LLDB, but the same principles apply to GDB and "command translation guides" are available online.
