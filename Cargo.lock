@@ -547,6 +547,7 @@ name = "kstd"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
+ "gimli",
  "lock_api",
  "onlyerror",
 ]

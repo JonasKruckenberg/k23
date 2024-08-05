@@ -12,3 +12,4 @@ workspace = true
 cfg-if.workspace = true
 onlyerror.workspace = true
 lock_api.workspace = true
+gimli = { workspace = true, features = ["read-core"] }
