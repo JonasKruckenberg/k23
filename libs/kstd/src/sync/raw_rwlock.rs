@@ -13,7 +13,7 @@ const WRITER: usize = 1;
 impl RawRwLock {
     fn acquire_reader(&self) -> usize {
         // An arbitrary cap that allows us to catch overflows long before they happen
-        const MAX_READERS: usize = core::usize::MAX / READER / 2;
+        const MAX_READERS: usize = usize::MAX / READER / 2;
 
         let value = self.lock.fetch_add(READER, Ordering::Acquire);
 
@@ -26,7 +26,7 @@ impl RawRwLock {
     }
 
     fn try_lock_exclusive_internal(&self, strong: bool) -> bool {
-        if compare_exchange(
+        compare_exchange(
             &self.lock,
             0,
             WRITER,
@@ -35,16 +35,10 @@ impl RawRwLock {
             strong,
         )
         .is_ok()
-        {
-            true
-        } else {
-            false
-        }
     }
 
-    #[inline(always)]
     fn try_upgrade_internal(&self, strong: bool) -> bool {
-        if compare_exchange(
+        compare_exchange(
             &self.lock,
             UPGRADED,
             WRITER,
@@ -53,15 +47,11 @@ impl RawRwLock {
             strong,
         )
         .is_ok()
-        {
-            true
-        } else {
-            false
-        }
     }
 }
 
 unsafe impl lock_api::RawRwLock for RawRwLock {
+    #[allow(clippy::declare_interior_mutable_const)]
     const INIT: Self = Self {
         lock: AtomicUsize::new(0),
     };
@@ -190,7 +180,6 @@ unsafe impl lock_api::RawRwLockUpgradeDowngrade for RawRwLock {
     }
 }
 
-#[inline(always)]
 fn compare_exchange(
     atomic: &AtomicUsize,
     current: usize,

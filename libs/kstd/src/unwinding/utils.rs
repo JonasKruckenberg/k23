@@ -14,8 +14,8 @@ pub unsafe fn get_unlimited_slice<'a>(start: *const u8) -> &'a [u8] {
 
 pub unsafe fn deref_pointer(ptr: Pointer) -> usize {
     match ptr {
-        Pointer::Direct(x) => x as _,
-        Pointer::Indirect(x) => unsafe { *(x as *const _) },
+        Pointer::Direct(x) => usize::try_from(x).unwrap(),
+        Pointer::Indirect(x) => unsafe { *(x as *const usize) },
     }
 }
 

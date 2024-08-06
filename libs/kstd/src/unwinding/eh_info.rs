@@ -30,7 +30,7 @@ pub static EH_INFO: LazyLock<EhInfo> = LazyLock::new(|| {
 
     let mut bases = BaseAddresses::default()
         .set_eh_frame_hdr(eh_frame_hdr.as_ptr() as u64)
-        .set_text(0xffffffff80000000); // TODO support dynamic offsets
+        .set_text(0xffff_ffff_8000_0000); // TODO support dynamic offsets
 
     let hdr = EhFrameHdr::new(eh_frame_hdr, NativeEndian)
         .parse(&bases, 8)

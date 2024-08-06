@@ -151,8 +151,6 @@ fn rust_panic_with_hook(
 /// Passes the panic straight to the runtime, bypassing any configured
 /// panic hooks. This is currently only used by `panic::resume_unwind`.
 pub fn rust_panic_without_hook(payload: Box<dyn Any + Send>) -> ! {
-    panic_count::increase(false);
-
     struct RewrapBox(Box<dyn Any + Send>);
 
     unsafe impl PanicPayload for RewrapBox {
@@ -171,6 +169,7 @@ pub fn rust_panic_without_hook(payload: Box<dyn Any + Send>) -> ! {
         }
     }
 
+    panic_count::increase(false);
     rust_panic(&mut RewrapBox(payload))
 }
 
@@ -198,8 +197,9 @@ pub unsafe fn r#try<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any + Send>>
 }
 
 #[cfg(feature = "panic-unwind")]
+#[allow(clippy::items_after_statements)]
 pub unsafe fn r#try<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any + Send>> {
-    use core::{intrinsics, mem::ManuallyDrop};
+    use core::{intrinsics, mem::ManuallyDrop, ptr::addr_of_mut};
 
     union Data<F, R> {
         // when we start, this field holds the closure
@@ -210,24 +210,11 @@ pub unsafe fn r#try<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any + Send>>
         p: ManuallyDrop<Box<dyn Any + Send>>,
     }
 
-    let mut data = Data {
-        f: ManuallyDrop::new(f),
-    };
-    let data_ptr = core::ptr::addr_of_mut!(data) as *mut u8;
-
-    unsafe {
-        return if intrinsics::catch_unwind(do_call::<F, R>, data_ptr, do_catch::<F, R>) == 0 {
-            Ok(ManuallyDrop::into_inner(data.r))
-        } else {
-            Err(ManuallyDrop::into_inner(data.p))
-        };
-    }
-
     #[inline]
     fn do_call<F: FnOnce() -> R, R>(data: *mut u8) {
         // SAFETY: this is the responsibility of the caller, see above.
         unsafe {
-            let data = data as *mut Data<F, R>;
+            let data = data.cast::<Data<F, R>>();
             let data = &mut (*data);
             let f = ManuallyDrop::take(&mut data.f);
             data.r = ManuallyDrop::new(f());
@@ -243,7 +230,7 @@ pub unsafe fn r#try<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any + Send>>
         // on `obj` being the correct thing to pass to `data.p` (after wrapping
         // in `ManuallyDrop`).
         unsafe {
-            let data = data as *mut Data<F, R>;
+            let data = data.cast::<Data<F, R>>();
             let data = &mut (*data);
             let obj = cleanup(payload);
             data.p = ManuallyDrop::new(obj);
@@ -259,6 +246,19 @@ pub unsafe fn r#try<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any + Send>>
         let obj = unsafe { crate::unwinding::panic_cleanup(payload) };
         panic_count::decrease();
         obj
+    }
+
+    let mut data = Data {
+        f: ManuallyDrop::new(f),
+    };
+    let data_ptr = addr_of_mut!(data).cast::<u8>();
+
+    unsafe {
+        if intrinsics::catch_unwind(do_call::<F, R>, data_ptr, do_catch::<F, R>) == 0 {
+            Ok(ManuallyDrop::into_inner(data.r))
+        } else {
+            Err(ManuallyDrop::into_inner(data.p))
+        }
     }
 }
 
@@ -322,7 +322,7 @@ fn default_hook(info: &PanicHookInfo<'_>) {
     let location = info.location().unwrap();
     let msg = payload_as_str(info.payload());
 
-    let _ = heprintln!("thread '{}' panicked at {}:\n{}", thread_id, location, msg);
+    heprintln!("thread '{}' panicked at {}:\n{}", thread_id, location, msg);
 }
 
 fn payload_as_str(payload: &dyn Any) -> &str {

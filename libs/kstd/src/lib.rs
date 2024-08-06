@@ -14,6 +14,7 @@
 #![allow(internal_features)]
 // thread_local
 #![feature(thread_local)]
+#![allow(clippy::module_name_repetitions)]
 
 extern crate alloc;
 

@@ -28,14 +28,17 @@ pub struct Context {
 impl fmt::Debug for Context {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut fmt = fmt.debug_struct("Context");
-        for i in 0..=31 {
-            fmt.field(RiscV::register_name(Register(i as _)).unwrap(), &self.gp[i]);
+        for i in 0..=31u16 {
+            fmt.field(
+                RiscV::register_name(Register(i)).unwrap(),
+                &self.gp[i as usize],
+            );
         }
         #[cfg(target_feature = "d")]
-        for i in 0..=31 {
+        for i in 0..=31u16 {
             fmt.field(
-                RiscV::register_name(Register((i + 32) as _)).unwrap(),
-                &self.fp[i],
+                RiscV::register_name(Register(i + 32)).unwrap(),
+                &self.fp[i as usize],
             );
         }
         fmt.finish()

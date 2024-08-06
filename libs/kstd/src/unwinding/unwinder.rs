@@ -1,13 +1,13 @@
+#![allow(clippy::missing_safety_doc, clippy::missing_panics_doc)]
+
+use super::{frame::Frame, utils::with_context};
+use crate::arch;
 use bitflags::bitflags;
 use core::{
     ffi::{c_int, c_void},
     fmt, ptr,
 };
 use gimli::Register;
-
-use crate::arch;
-
-use super::{frame::Frame, utils::with_context};
 
 #[derive(Debug, onlyerror::Error)]
 enum UnwindError {
@@ -38,7 +38,7 @@ impl UnwindError {
     }
 }
 
-pub(crate) struct UnwindContext<'a> {
+pub struct UnwindContext<'a> {
     frame: Option<&'a Frame>,
     ctx: &'a mut arch::unwinding::Context,
     signal: bool,
@@ -105,6 +105,7 @@ pub struct UnwindException {
 }
 
 impl UnwindException {
+    #[must_use]
     pub fn new(exception_class: u64, exception_cleanup: Option<UnwindExceptionCleanupFn>) -> Self {
         Self {
             exception_class,
@@ -142,7 +143,7 @@ pub unsafe extern "C-unwind" fn _Unwind_RaiseException(
         };
 
         // Disambiguate normal frame and signal frame.
-        let handler_cfa = ctx[arch::unwinding::SP] - signal as usize;
+        let handler_cfa = ctx[arch::unwinding::SP] - usize::from(signal);
 
         unsafe {
             (*exception).stop_fn = None;
@@ -165,7 +166,7 @@ fn raise_exception_phase1(
 
     loop {
         if let Some(frame) =
-            Frame::from_context(&ctx, signal).map_err(UnwindError::ConstructFrame)?
+            Frame::from_context(ctx, signal).map_err(UnwindError::ConstructFrame)?
         {
             if let Some(personality) = frame.personality() {
                 let result = unsafe {
@@ -191,7 +192,7 @@ fn raise_exception_phase1(
                 }
             }
 
-            *ctx = frame.unwind(&ctx).map_err(UnwindError::UnwindFrame)?;
+            *ctx = frame.unwind(ctx).map_err(UnwindError::UnwindFrame)?;
             signal = frame.is_signal_trampoline();
         } else {
             return Err(UnwindError::EndOfStack);
@@ -208,9 +209,9 @@ fn raise_exception_phase2(
 
     loop {
         if let Some(frame) =
-            Frame::from_context(&ctx, signal).map_err(UnwindError::ConstructFrame)?
+            Frame::from_context(ctx, signal).map_err(UnwindError::ConstructFrame)?
         {
-            let frame_cfa = ctx[arch::unwinding::SP] - signal as usize;
+            let frame_cfa = ctx[arch::unwinding::SP] - usize::from(signal);
             if let Some(personality) = frame.personality() {
                 let code = unsafe {
                     personality(
@@ -254,7 +255,7 @@ fn raise_exception_phase2(
 /// This function funnily enough is the only thing in the whole `unwinder` module that actually
 /// needs the whole complicated C++/libunwind compatible ABI since it will be called by code-generated
 /// landing pads when they want to resume the unwinding process
-/// (to my knowledge unwind landing pads are generated for all `Drop` implementations as well as for every ``catch_unwind`)
+/// (to my knowledge unwind landing pads are generated for all `Drop` implementations as well as for every `catch_unwind`)
 #[inline(never)]
 #[no_mangle]
 pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut UnwindException) -> ! {
@@ -289,16 +290,16 @@ pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut UnwindException) 
 pub extern "C" fn _Unwind_GetLanguageSpecificData(unwind_ctx: &UnwindContext<'_>) -> *mut c_void {
     unwind_ctx
         .frame
-        .map(|f| f.lsda() as *mut c_void)
-        .unwrap_or(ptr::null_mut())
+        .map_or(ptr::null_mut(), |f| f.lsda() as *mut c_void)
 }
 
 #[no_mangle]
 pub extern "C" fn _Unwind_GetRegionStart(unwind_ctx: &UnwindContext<'_>) -> usize {
-    unwind_ctx.frame.map(|f| f.initial_address()).unwrap_or(0)
+    unwind_ctx.frame.map_or(0, Frame::initial_address)
 }
 
 #[no_mangle]
+#[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
 pub extern "C" fn _Unwind_SetGR(unwind_ctx: &mut UnwindContext<'_>, index: c_int, value: usize) {
     unwind_ctx.ctx[Register(index as u16)] = value;
 }
@@ -313,24 +314,22 @@ pub extern "C" fn _Unwind_GetIPInfo(
     unwind_ctx: &UnwindContext<'_>,
     ip_before_insn: &mut c_int,
 ) -> usize {
-    *ip_before_insn = unwind_ctx.signal as _;
+    *ip_before_insn = i32::from(unwind_ctx.signal);
     unwind_ctx.ctx[arch::unwinding::RA]
 }
 
 #[no_mangle]
 pub extern "C" fn _Unwind_GetTextRelBase(unwind_ctx: &UnwindContext<'_>) -> usize {
-    unwind_ctx
-        .frame
-        .map(|f| f.bases().eh_frame.text.unwrap() as _)
-        .unwrap_or(0)
+    unwind_ctx.frame.map_or(0, |f| {
+        usize::try_from(f.bases().eh_frame.text.unwrap()).unwrap()
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn _Unwind_GetDataRelBase(unwind_ctx: &UnwindContext<'_>) -> usize {
-    unwind_ctx
-        .frame
-        .map(|f| f.bases().eh_frame.data.unwrap() as _)
-        .unwrap_or(0)
+    unwind_ctx.frame.map_or(0, |f| {
+        usize::try_from(f.bases().eh_frame.data.unwrap()).unwrap()
+    })
 }
 
 #[no_mangle]

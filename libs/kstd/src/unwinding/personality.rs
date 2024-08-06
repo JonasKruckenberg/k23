@@ -1,3 +1,5 @@
+#![allow(clippy::cast_sign_loss)]
+
 use super::{
     utils::{deref_pointer, get_unlimited_slice},
     UnwindAction, UnwindContext, UnwindException, UnwindReasonCode,
@@ -24,9 +26,8 @@ unsafe fn rust_eh_personality(
     }
 
     let mut lsda = EndianSlice::new(unsafe { get_unlimited_slice(lsda as _) }, NativeEndian);
-    let eh_action = match find_eh_action(&mut lsda, unwind_ctx) {
-        Ok(v) => v,
-        Err(_) => return UnwindReasonCode::FATAL_PHASE1_ERROR,
+    let Ok(eh_action) = find_eh_action(&mut lsda, unwind_ctx) else {
+        return UnwindReasonCode::FATAL_PHASE1_ERROR;
     };
 
     if actions.contains(UnwindAction::SEARCH_PHASE) {
@@ -40,12 +41,12 @@ unsafe fn rust_eh_personality(
             EHAction::Cleanup(lpad) | EHAction::Catch(lpad) => {
                 crate::unwinding::_Unwind_SetGR(
                     unwind_ctx,
-                    arch::unwinding::UNWIND_DATA_REG.0 .0 as _,
+                    i32::from(arch::unwinding::UNWIND_DATA_REG.0 .0),
                     exception as usize,
                 );
                 crate::unwinding::_Unwind_SetGR(
                     unwind_ctx,
-                    arch::unwinding::UNWIND_DATA_REG.1 .0 as _,
+                    i32::from(arch::unwinding::UNWIND_DATA_REG.1 .0),
                     0,
                 );
                 crate::unwinding::_Unwind_SetIP(unwind_ctx, lpad);
@@ -72,10 +73,10 @@ fn find_eh_action(
     let ip = if ip_before_instr != 0 { ip } else { ip - 1 };
 
     let start_encoding = parse_pointer_encoding(reader)?;
-    let lpad_base = if !start_encoding.is_absent() {
-        unsafe { deref_pointer(parse_encoded_pointer(start_encoding, unwind_ctx, reader)?) }
-    } else {
+    let lpad_base = if start_encoding.is_absent() {
         func_start
+    } else {
+        unsafe { deref_pointer(parse_encoded_pointer(start_encoding, unwind_ctx, reader)?) }
     };
 
     let ttype_encoding = parse_pointer_encoding(reader)?;
@@ -85,7 +86,7 @@ fn find_eh_action(
 
     let call_site_encoding = parse_pointer_encoding(reader)?;
     let call_site_table_length = reader.read_uleb128()?;
-    reader.truncate(call_site_table_length as _)?;
+    reader.truncate(call_site_table_length.try_into().unwrap())?;
 
     while !reader.is_empty() {
         let cs_start = unsafe {
@@ -114,15 +115,15 @@ fn find_eh_action(
             break;
         }
         if ip < func_start + cs_start + cs_len {
-            if cs_lpad == 0 {
-                return Ok(EHAction::None);
+            return if cs_lpad == 0 {
+                Ok(EHAction::None)
             } else {
                 let lpad = lpad_base + cs_lpad;
-                return Ok(match cs_action {
+                Ok(match cs_action {
                     0 => EHAction::Cleanup(lpad),
                     _ => EHAction::Catch(lpad),
-                });
-            }
+                })
+            };
         }
     }
     Ok(EHAction::None)
@@ -161,7 +162,9 @@ fn parse_encoded_pointer(
     };
 
     let offset = match encoding.format() {
-        constants::DW_EH_PE_absptr => input.read_address(mem::size_of::<usize>() as _),
+        constants::DW_EH_PE_absptr => {
+            input.read_address(mem::size_of::<usize>().try_into().unwrap())
+        }
         constants::DW_EH_PE_uleb128 => input.read_uleb128(),
         constants::DW_EH_PE_udata2 => input.read_u16().map(u64::from),
         constants::DW_EH_PE_udata4 => input.read_u32().map(u64::from),

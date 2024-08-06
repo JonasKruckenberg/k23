@@ -41,7 +41,6 @@ pub mod kconfig {
 }
 
 #[inline(never)]
-#[no_mangle]
 fn main(_hartid: usize) -> ! {
     panic!("test panic");
 

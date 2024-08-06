@@ -8,6 +8,9 @@ use core::{
 
 pub use panicking::{set_hook, take_hook, update_hook};
 
+/// # Errors
+///
+/// If the given closure panics, the panic cause will be returned in the Err variant.
 pub fn catch_unwind<F: FnOnce() -> R + UnwindSafe, R>(
     f: F,
 ) -> Result<R, Box<dyn Any + Send + 'static>> {
@@ -62,7 +65,7 @@ impl<'a> PanicHookInfo<'a> {
     pub fn location(&self) -> Option<&Location<'_>> {
         // NOTE: If this is changed to sometimes return None,
         // deal with that case in std::panicking::default_hook and core::panicking::panic_fmt.
-        Some(&self.location)
+        Some(self.location)
     }
 
     #[must_use]

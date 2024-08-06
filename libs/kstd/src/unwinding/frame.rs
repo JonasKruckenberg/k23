@@ -49,9 +49,10 @@ impl Frame {
         let row = &self.row;
         let mut new_ctx = ctx.clone();
 
+        #[allow(clippy::match_wildcard_for_single_variants)]
         let cfa = match *row.cfa() {
             CfaRule::RegisterAndOffset { register, offset } => {
-                ctx[register].wrapping_add(offset as usize)
+                ctx[register].wrapping_add(usize::try_from(offset).unwrap())
             }
             _ => return Err(gimli::Error::UnsupportedEvaluation),
         };
@@ -63,14 +64,15 @@ impl Frame {
             let value = match *rule {
                 RegisterRule::Undefined | RegisterRule::SameValue => ctx[*reg],
                 RegisterRule::Offset(offset) => unsafe {
-                    *((cfa.wrapping_add(offset as usize)) as *const usize)
+                    *((cfa.wrapping_add(usize::try_from(offset).unwrap())) as *const usize)
                 },
-                RegisterRule::ValOffset(offset) => cfa.wrapping_add(offset as usize),
+                RegisterRule::ValOffset(offset) => {
+                    cfa.wrapping_add(usize::try_from(offset).unwrap())
+                }
                 RegisterRule::Expression(_) | RegisterRule::ValExpression(_) => {
                     return Err(gimli::Error::UnsupportedEvaluation)
                 }
-                RegisterRule::Architectural => unreachable!(),
-                RegisterRule::Constant(value) => value as usize,
+                RegisterRule::Constant(value) => usize::try_from(value).unwrap(),
                 _ => unreachable!(),
             };
             new_ctx[*reg] = value;
@@ -79,12 +81,13 @@ impl Frame {
         Ok(new_ctx)
     }
 
+    #[allow(clippy::unused_self)]
     pub fn bases(&self) -> &BaseAddresses {
         &EH_INFO.bases
     }
 
     pub fn initial_address(&self) -> usize {
-        self.fde.initial_address() as _
+        usize::try_from(self.fde.initial_address()).unwrap()
     }
 
     pub fn personality(&self) -> Option<PersonalityRoutine> {
@@ -95,10 +98,7 @@ impl Frame {
     }
 
     pub fn lsda(&self) -> usize {
-        self.fde
-            .lsda()
-            .map(|x| unsafe { deref_pointer(x) })
-            .unwrap_or(0)
+        self.fde.lsda().map_or(0, |x| unsafe { deref_pointer(x) })
     }
 
     pub fn is_signal_trampoline(&self) -> bool {
@@ -107,7 +107,8 @@ impl Frame {
 
     pub fn adjust_stack_for_args(&self, ctx: &mut arch::unwinding::Context) {
         let size = self.row.saved_args_size();
-        ctx[arch::unwinding::SP] = ctx[arch::unwinding::SP].wrapping_add(size as usize);
+        ctx[arch::unwinding::SP] =
+            ctx[arch::unwinding::SP].wrapping_add(usize::try_from(size).unwrap());
     }
 }
 
