@@ -24,7 +24,7 @@ mod panicking;
 // Architecture specific code
 pub mod arch;
 
-// Syncronization primitives
+// Synchronization primitives
 pub mod sync;
 
 // DWARF-based stack unwinding
