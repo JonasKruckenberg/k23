@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const, maybe_uninit_slice)]
+#![feature(naked_functions, asm_const, maybe_uninit_slice, used_with_arg)]
 #![allow(clippy::items_after_statements, clippy::needless_continue)]
 
 mod arch;

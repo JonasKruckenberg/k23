@@ -10,6 +10,7 @@ fn main() {
     let ld_path = out_dir.join("linker.x");
     fs::write(&ld_path, LINKER).unwrap();
     println!("cargo::rustc-link-arg=-T{}", ld_path.display());
+    println!("cargo::rerun-if-env-changed={}", ld_path.display());
     println!("cargo::rerun-if-env-changed=K23_VERIFYING_KEY_PATH");
     println!("cargo::rerun-if-env-changed=K23_PAYLOAD_PATH");
 
