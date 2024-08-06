@@ -78,15 +78,15 @@ impl Target {
         }
     }
 
-    pub fn as_payload_target(&self) -> &'static str {
+    pub fn as_payload_target(&self, workspace_dir: &Path) -> PathBuf {
         match self {
-            Target::Riscv64 => "targets/riscv64gc-k23-kernel.json",
+            Target::Riscv64 => workspace_dir.join("targets/riscv64gc-k23-kernel.json"),
         }
     }
 
-    pub fn as_loader_target(&self) -> &'static str {
+    pub fn as_loader_target(&self, workspace_dir: &Path) -> PathBuf {
         match self {
-            Target::Riscv64 => "targets/riscv64imac-k23-loader.json",
+            Target::Riscv64 => workspace_dir.join("targets/riscv64imac-k23-loader.json"),
         }
     }
 
@@ -114,6 +114,7 @@ pub struct Builder {
     target: Target,
     payload_out_dir: PathBuf,
     loader_out_dir: PathBuf,
+    workspace_dir: PathBuf,
     release: bool,
 }
 
@@ -146,6 +147,7 @@ impl Builder {
             target,
             payload_out_dir,
             loader_out_dir,
+            workspace_dir,
             cargo,
             release,
         }
@@ -161,7 +163,10 @@ impl Builder {
             "-p",
             "loader",
             "--target",
-            self.target.as_loader_target(),
+            self.target
+                .as_loader_target(&self.workspace_dir)
+                .to_str()
+                .unwrap(),
             "-Z",
             "build-std=core,alloc",
             "-Z",

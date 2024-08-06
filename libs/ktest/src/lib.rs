@@ -111,12 +111,12 @@ impl Conclusion {
 pub struct SetupInfo {
     pub is_std: bool,
     #[cfg(target_os = "none")]
-    pub boot_info: &'static mut loader_api::BootInfo,
+    pub boot_info: &'static loader_api::BootInfo,
 }
 
 impl SetupInfo {
     #[cfg(target_os = "none")]
-    pub fn new(boot_info: &'static mut loader_api::BootInfo) -> Self {
+    pub fn new(boot_info: &'static loader_api::BootInfo) -> Self {
         Self {
             is_std: false,
             boot_info,

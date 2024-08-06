@@ -36,3 +36,7 @@ pub mod panic;
 
 // Thread-local storage
 pub mod thread_local;
+
+pub fn abort(code: i32) -> ! {
+    arch::abort_internal(code)
+}

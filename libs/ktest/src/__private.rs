@@ -8,7 +8,7 @@ pub use loader_api;
 #[allow(unreachable_code)]
 pub fn exit(code: i32) -> ! {
     #[cfg(target_os = "none")]
-    kstd::process::exit(code);
+    kstd::abort(code);
 
     #[cfg(not(target_os = "none"))]
     ::std::process::exit(code);
