@@ -1,11 +1,15 @@
+mod lazy_lock;
 mod once;
+mod once_lock;
 mod raw_mutex;
 mod raw_rwlock;
 
 use core::num::NonZeroUsize;
 use core::ptr::addr_of;
+pub use lazy_lock::LazyLock;
 use lock_api::GetThreadId;
 pub use once::Once;
+pub use once_lock::OnceLock;
 
 pub use raw_mutex::RawMutex;
 pub use raw_rwlock::RawRwLock;

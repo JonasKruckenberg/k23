@@ -22,7 +22,7 @@ fn setup(hartid: usize, boot_info: &'static mut loader_api::BootInfo) {
     trap::init();
 
     static INIT: Once = Once::new();
-    INIT.get_or_init(|| {
+    INIT.call_once(|| {
         let mut usable = ArrayVec::<_, 16>::new();
 
         for region in boot_info.memory_regions.iter() {

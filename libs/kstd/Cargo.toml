@@ -8,8 +8,14 @@ license.workspace = true
 [lints]
 workspace = true
 
+[lib]
+harness = false
+
 [dependencies]
 cfg-if.workspace = true
 onlyerror.workspace = true
 lock_api.workspace = true
 gimli = { workspace = true, features = ["read-core"] }
+
+[dev-dependencies]
+ktest.workspace = true

@@ -3,7 +3,7 @@ use crate::{kconfig, logger};
 use core::arch::asm;
 use core::ops::Range;
 use core::ptr::addr_of_mut;
-use kstd::sync::Once;
+use kstd::sync::OnceLock;
 use loader_api::BootInfo;
 use vmm::VirtualAddress;
 
@@ -103,7 +103,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
 
     logger::init();
 
-    static MACHINE_INFO: Once<MachineInfo> = Once::new();
+    static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
 
     let machine_info = MACHINE_INFO.get_or_init(|| MachineInfo::from_dtb(opaque));
     log::debug!("{machine_info:?}");
