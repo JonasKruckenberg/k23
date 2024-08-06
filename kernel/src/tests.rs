@@ -80,4 +80,19 @@ mod kstd_tests {
         Ok(())
     }
 
+    #[ktest::test]
+    fn kstd_lazy_lock() -> ktest::TestResult {
+        let mut called = AtomicU8::default();
+        let lock = LazyLock::new(|| {
+            called.fetch_add(1, Ordering::Relaxed);
+            42
+        });
+        ktest::assert_eq!(called.load(Ordering::Acquire), 0);
+        ktest::assert_eq!(*lock, 42);
+        ktest::assert_eq!(called.load(Ordering::Acquire), 1);
+        ktest::assert_eq!(*lock, 42);
+        ktest::assert_eq!(called.load(Ordering::Acquire), 1);
+
+        Ok(())
+    }
 }
