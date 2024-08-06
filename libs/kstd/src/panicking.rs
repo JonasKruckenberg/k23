@@ -286,10 +286,15 @@ static HOOK: RwLock<Hook> = RwLock::new(Hook::Default);
 /// The panic hook is invoked when a thread panics, but before the panic runtime is invoked.
 ///
 /// The default hook will attempt to print the panic message to the semihosting output.
+///
+/// # Panics
+///
+/// Panics if called from a panicking thread.
 pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
-    if panicking() {
-        panic!("cannot modify the panic hook from a panicking thread");
-    }
+    assert!(
+        !panicking(),
+        "cannot modify the panic hook from a panicking thread"
+    );
 
     let new = Hook::Custom(hook);
     let mut hook = HOOK.write();
@@ -300,10 +305,14 @@ pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
     drop(old);
 }
 
+/// # Panics
+///
+/// Panics if called from a panicking thread.
 pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
-    if panicking() {
-        panic!("cannot modify the panic hook from a panicking thread");
-    }
+    assert!(
+        !panicking(),
+        "cannot modify the panic hook from a panicking thread"
+    );
 
     let mut hook = HOOK.write();
     let old_hook = mem::take(&mut *hook);
@@ -312,6 +321,9 @@ pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
     old_hook.into_box()
 }
 
+/// # Panics
+///
+/// Panics if called from a panicking thread.
 pub fn update_hook<F>(hook_fn: F)
 where
     F: Fn(&(dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static), &PanicHookInfo<'_>)
@@ -319,9 +331,10 @@ where
         + Send
         + 'static,
 {
-    if panicking() {
-        panic!("cannot modify the panic hook from a panicking thread");
-    }
+    assert!(
+        !panicking(),
+        "cannot modify the panic hook from a panicking thread"
+    );
 
     let mut hook = HOOK.write();
     let prev = mem::take(&mut *hook).into_box();
