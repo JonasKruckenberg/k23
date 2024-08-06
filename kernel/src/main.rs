@@ -44,7 +44,7 @@ pub mod kconfig {
 fn main(_hartid: usize) -> ! {
     panic!("test panic");
 
-    kstd::arch::abort_internal(1);
+    // kstd::arch::abort_internal(1);
 
     // Eventually this will all be hidden behind other abstractions (the scheduler, etc.) and this
     // function will just jump into the scheduling loop

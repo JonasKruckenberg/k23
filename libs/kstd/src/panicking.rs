@@ -287,6 +287,10 @@ static HOOK: RwLock<Hook> = RwLock::new(Hook::Default);
 ///
 /// The default hook will attempt to print the panic message to the semihosting output.
 pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
+    if panicking() {
+        panic!("cannot modify the panic hook from a panicking thread");
+    }
+
     let new = Hook::Custom(hook);
     let mut hook = HOOK.write();
     let old = mem::replace(&mut *hook, new);
@@ -297,6 +301,10 @@ pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
 }
 
 pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
+    if panicking() {
+        panic!("cannot modify the panic hook from a panicking thread");
+    }
+
     let mut hook = HOOK.write();
     let old_hook = mem::take(&mut *hook);
     drop(hook);
@@ -311,6 +319,10 @@ where
         + Send
         + 'static,
 {
+    if panicking() {
+        panic!("cannot modify the panic hook from a panicking thread");
+    }
+
     let mut hook = HOOK.write();
     let prev = mem::take(&mut *hook).into_box();
     *hook = Hook::Custom(Box::new(move |info| hook_fn(&prev, info)));
@@ -391,10 +403,10 @@ mod panic_count {
     }
 
     // Disregards ALWAYS_ABORT_FLAG
-    #[must_use]
-    pub fn get_count() -> usize {
-        LOCAL_PANIC_COUNT.with(|c| c.get().0)
-    }
+    // #[must_use]
+    // pub fn get_count() -> usize {
+    //     LOCAL_PANIC_COUNT.with(|c| c.get().0)
+    // }
 
     // Disregards ALWAYS_ABORT_FLAG
     #[must_use]
@@ -449,11 +461,11 @@ pub mod panic_count {
     pub fn set_always_abort() {}
 
     // Disregards ALWAYS_ABORT_FLAG
-    #[inline]
-    #[must_use]
-    pub fn get_count() -> usize {
-        0
-    }
+    // #[inline]
+    // #[must_use]
+    // pub fn get_count() -> usize {
+    //     0
+    // }
 
     #[must_use]
     #[inline]

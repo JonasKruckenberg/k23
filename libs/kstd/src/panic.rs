@@ -1,11 +1,9 @@
 use crate::panicking;
 use alloc::{boxed::Box, string::String};
-use core::{
-    any::Any,
-    fmt,
-    panic::{Location, UnwindSafe},
-};
+use core::{any::Any, fmt};
 
+pub use core::panic::Location;
+pub use core::panic::{AssertUnwindSafe, RefUnwindSafe, UnwindSafe};
 pub use panicking::{set_hook, take_hook, update_hook};
 
 /// # Errors
