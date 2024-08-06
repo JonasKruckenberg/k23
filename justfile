@@ -19,7 +19,7 @@ _riscv64crates := "-p kernel -p loader -p kstd -p vmm"
 _buildstd := "-Z build-std=core,alloc -Z build-std-features=compiler-builtins-mem"
 
 run-riscv64 *FLAGS:
-    {{ _cargo }} run -p kernel --target riscv64gc-unknown-none-elf {{ _buildstd }} {{ FLAGS }}
+    {{ _cargo }} run -p kernel --target targets/riscv64gc-k23-kernel.json {{ _buildstd }} {{ FLAGS }}
 
 preflight *FLAGS: (lint FLAGS)
 
@@ -27,7 +27,7 @@ lint *FLAGS: (clippy FLAGS) (check-fmt FLAGS)
 
 clippy $RUSTFLAGS='-Dwarnings' *FLAGS='':
     # riscv64 checks
-    {{ _cargo }} clippy --target riscv64gc-unknown-none-elf {{ _riscv64crates }} {{ _buildstd }} {{ FLAGS }} -- -Dclippy::all -Dclippy::pedantic
+    {{ _cargo }} clippy --target targets/riscv64gc-k23-kernel.json {{ _riscv64crates }} {{ _buildstd }} {{ FLAGS }} -- -Dclippy::all -Dclippy::pedantic
 
 # check rustfmt for `crate`
 check-fmt *FLAGS:
@@ -35,7 +35,7 @@ check-fmt *FLAGS:
 
 check *FLAGS:
     # riscv64 checks
-    {{ _cargo }} check --target riscv64gc-unknown-none-elf {{ _riscv64crates }} {{ _buildstd }} {{ FLAGS }}
+    {{ _cargo }} check --target targets/riscv64gc-k23-kernel.json {{ _riscv64crates }} {{ _buildstd }} {{ FLAGS }}
 
 test-riscv64 *FLAGS:
-    {{ _cargo }} test --target riscv64gc-unknown-none-elf -p kernel {{ _buildstd }} {{ FLAGS }}
+    {{ _cargo }} test --target targets/riscv64gc-k23-kernel.json -p kernel {{ _buildstd }} {{ FLAGS }}

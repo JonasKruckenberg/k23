@@ -1,23 +1,37 @@
 #![no_std]
-#![no_main]
-// All of these are used for panicking, unwinding and backtraces
-#![allow(internal_features)]
+// panicking & unwinding
 #![feature(
-    thread_local,
+    naked_functions,
+    lang_items,
     panic_info_message,
     std_internals,
+    used_with_arg,
+    panic_can_unwind,
     fmt_internals,
-    panic_internals,
-    panic_can_unwind
+    core_intrinsics,
+    rustc_attrs
 )]
+#![allow(internal_features)]
+// thread_local
+#![feature(thread_local)]
 
 extern crate alloc;
 
-pub mod arch;
 mod macros;
-pub mod panic;
-pub mod panicking;
-pub mod process;
+mod panicking;
+
+// Architecture specific code
+pub mod arch;
+
+// Syncronization primitives
 pub mod sync;
-pub mod thread_local;
+
+// DWARF-based stack unwinding
+#[cfg(feature = "panic-unwind")]
 pub mod unwinding;
+
+// Public-facing panic API
+pub mod panic;
+
+// Thread-local storage
+pub mod thread_local;

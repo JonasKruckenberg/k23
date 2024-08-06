@@ -1,69 +1,51 @@
-use super::{arch, PersonalityRoutine};
+use super::{arch, eh_info::EH_INFO, utils::deref_pointer, PersonalityRoutine};
 use gimli::{
-    BaseAddresses, CfaRule, EhFrame, FrameDescriptionEntry, Register, RegisterRule, UnwindTableRow,
+    BaseAddresses, CfaRule, EhFrame, EndianSlice, FrameDescriptionEntry, NativeEndian, Register,
+    RegisterRule, UnwindContext, UnwindSection, UnwindTableRow,
 };
-use gimli::{EndianSlice, NativeEndian};
 
-pub type StaticSlice = EndianSlice<'static, NativeEndian>;
+#[derive(Debug)]
+pub struct Frame {
+    fde: FrameDescriptionEntry<EndianSlice<'static, NativeEndian>, usize>,
+    row: UnwindTableRow<EndianSlice<'static, NativeEndian>, StoreOnStack>,
+}
 
-struct StoreOnStack;
+impl Frame {
+    pub fn from_context(
+        ctx: &arch::unwinding::Context,
+        signal: bool,
+    ) -> Result<Option<Self>, gimli::Error> {
+        let mut ra = ctx[arch::unwinding::RA];
 
-// gimli's MSRV doesn't allow const generics, so we need to pick a supported array size.
-const fn next_value(x: usize) -> usize {
-    let supported = [0, 1, 2, 3, 4, 8, 16, 32, 64, 128];
-    let mut i = 0;
-    while i < supported.len() {
-        if supported[i] >= x {
-            return supported[i];
+        // Reached end of stack
+        if ra == 0 {
+            return Ok(None);
         }
-        i += 1;
-    }
-    192
-}
 
-impl<R: gimli::Reader> gimli::UnwindContextStorage<R> for StoreOnStack {
-    type Rules = [(Register, RegisterRule<R>); next_value(arch::MAX_REG_RULES)];
-    type Stack = [UnwindTableRow<R, Self>; 2];
-}
+        // RA points to the *next* instruction, so move it back 1 byte for the call instruction.
+        if !signal {
+            ra -= 1;
+        }
 
-#[derive(Debug)]
-pub struct Frame<'a> {
-    fde_result: &'static FDESearchResult,
-    row: &'a UnwindTableRow<StaticSlice, StoreOnStack>,
-}
+        let fde = EH_INFO.hdr.table().unwrap().fde_for_address(
+            &EH_INFO.eh_frame,
+            &EH_INFO.bases,
+            ra as u64,
+            EhFrame::cie_from_offset,
+        )?;
 
-#[derive(Debug)]
-pub struct FDESearchResult {
-    pub fde: FrameDescriptionEntry<StaticSlice>,
-    pub bases: BaseAddresses,
-    pub eh_frame: EhFrame<StaticSlice>,
-}
+        let mut unwinder = UnwindContext::<_, StoreOnStack>::new_in();
+        let row = fde
+            .unwind_info_for_address(&EH_INFO.eh_frame, &EH_INFO.bases, &mut unwinder, ra as _)?
+            .clone();
 
-impl<'a> Frame<'a> {
-    pub fn from_context(ctx: &arch::Context, signal: bool) -> Result<Option<Self>, gimli::Error> {
-        // TODO lazliy load eh_frame
-
-        // let fde_result = match find_fde::get_finder().find_fde(ra as _) {
-        //     Som<e(v) => v,
-        //     None => return Ok(None),
-        // };
-        // let mut unwinder = UnwindContext::<_, StoreOnStack>::new_in();
-        // let row = fde_result
-        //     .fde
-        //     .unwind_info_for_address(
-        //         &fde_result.eh_frame,
-        //         &fde_result.bases,
-        //         &mut unwinder,
-        //         ra as _,
-        //     )?
-        //     .clone();
-
-        // Ok(Some(Self { fde_result, row }))
-
-        todo!()
+        Ok(Some(Self { fde, row }))
     }
 
-    pub fn unwind(&self, ctx: &arch::Context) -> Result<arch::Context, gimli::Error> {
+    pub fn unwind(
+        &self,
+        ctx: &arch::unwinding::Context,
+    ) -> Result<arch::unwinding::Context, gimli::Error> {
         let row = &self.row;
         let mut new_ctx = ctx.clone();
 
@@ -74,8 +56,8 @@ impl<'a> Frame<'a> {
             _ => return Err(gimli::Error::UnsupportedEvaluation),
         };
 
-        new_ctx[arch::SP] = cfa as _;
-        new_ctx[arch::RA] = 0;
+        new_ctx[arch::unwinding::SP] = cfa as _;
+        new_ctx[arch::unwinding::RA] = 0;
 
         for (reg, rule) in row.registers() {
             let value = match *rule {
@@ -97,15 +79,54 @@ impl<'a> Frame<'a> {
         Ok(new_ctx)
     }
 
+    pub fn bases(&self) -> &BaseAddresses {
+        &EH_INFO.bases
+    }
+
+    pub fn initial_address(&self) -> usize {
+        self.fde.initial_address() as _
+    }
+
     pub fn personality(&self) -> Option<PersonalityRoutine> {
-        self.fde_result
-            .fde
+        self.fde
             .personality()
             .map(|x| unsafe { deref_pointer(x) })
             .map(|x| unsafe { core::mem::transmute(x) })
     }
 
-    pub fn is_signal_trampoline(&self) -> bool {
-        self.fde_result.fde.is_signal_trampoline()
+    pub fn lsda(&self) -> usize {
+        self.fde
+            .lsda()
+            .map(|x| unsafe { deref_pointer(x) })
+            .unwrap_or(0)
     }
+
+    pub fn is_signal_trampoline(&self) -> bool {
+        self.fde.is_signal_trampoline()
+    }
+
+    pub fn adjust_stack_for_args(&self, ctx: &mut arch::unwinding::Context) {
+        let size = self.row.saved_args_size();
+        ctx[arch::unwinding::SP] = ctx[arch::unwinding::SP].wrapping_add(size as usize);
+    }
+}
+
+struct StoreOnStack;
+
+// gimli's MSRV doesn't allow const generics, so we need to pick a supported array size.
+const fn next_value(x: usize) -> usize {
+    let supported = [0, 1, 2, 3, 4, 8, 16, 32, 64, 128];
+    let mut i = 0;
+    while i < supported.len() {
+        if supported[i] >= x {
+            return supported[i];
+        }
+        i += 1;
+    }
+    192
+}
+
+impl<R: gimli::Reader> gimli::UnwindContextStorage<R> for StoreOnStack {
+    type Rules = [(Register, RegisterRule<R>); next_value(arch::unwinding::MAX_REG_RULES)];
+    type Stack = [UnwindTableRow<R, Self>; 2];
 }

@@ -1,16 +1,28 @@
-use core::{any::Any, fmt};
+use crate::panicking;
+use alloc::{boxed::Box, string::String};
+use core::{
+    any::Any,
+    fmt,
+    panic::{Location, UnwindSafe},
+};
 
-pub use crate::panicking::update_hook;
-pub use crate::panicking::{set_hook, take_hook};
-pub use core::panic::Location;
-pub use core::panic::{AssertUnwindSafe, RefUnwindSafe, UnwindSafe};
+pub use panicking::{set_hook, take_hook, update_hook};
+
+pub fn catch_unwind<F: FnOnce() -> R + UnwindSafe, R>(
+    f: F,
+) -> Result<R, Box<dyn Any + Send + 'static>> {
+    unsafe { panicking::r#try(f) }
+}
+
+pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
+    panicking::rust_panic_without_hook(payload)
+}
 
 #[derive(Debug)]
 pub struct PanicHookInfo<'a> {
     payload: &'a (dyn Any + Send),
     location: &'a Location<'a>,
     can_unwind: bool,
-    force_no_backtrace: bool,
 }
 
 impl<'a> PanicHookInfo<'a> {
@@ -19,13 +31,11 @@ impl<'a> PanicHookInfo<'a> {
         location: &'a Location<'a>,
         payload: &'a (dyn Any + Send),
         can_unwind: bool,
-        force_no_backtrace: bool,
     ) -> Self {
         PanicHookInfo {
             payload,
             location,
             can_unwind,
-            force_no_backtrace,
         }
     }
 
@@ -61,11 +71,11 @@ impl<'a> PanicHookInfo<'a> {
         self.can_unwind
     }
 
-    #[doc(hidden)]
-    #[inline]
-    pub fn force_no_backtrace(&self) -> bool {
-        self.force_no_backtrace
-    }
+    // #[doc(hidden)]
+    // #[inline]
+    // pub fn force_no_backtrace(&self) -> bool {
+    //     self.force_no_backtrace
+    // }
 }
 
 impl fmt::Display for PanicHookInfo<'_> {

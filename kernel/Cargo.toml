@@ -14,7 +14,7 @@ harness = false
 
 [dependencies]
 vmm.workspace = true
-kstd.workspace = true
+kstd = { workspace = true, features = ["panic-unwind"] }
 loader-api.workspace = true
 
 cfg-if.workspace = true

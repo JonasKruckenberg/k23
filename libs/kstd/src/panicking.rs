@@ -1,80 +1,14 @@
-use core::{any::Any, fmt, mem, panic::Location};
-
-use crate::{
-    heprintln,
-    panic::PanicHookInfo,
-    sync::{LocalThreadId, RwLock},
-};
-use alloc::{boxed::Box, string::String};
-use core::panic::PanicPayload;
+use crate::arch;
+use crate::sync::LocalThreadId;
+use crate::{heprintln, panic::PanicHookInfo, sync::RwLock};
+use alloc::boxed::Box;
+use alloc::string::String;
+use core::any::Any;
+use core::panic::{Location, PanicPayload};
+use core::{fmt, mem};
 use lock_api::GetThreadId;
 
-#[derive(Default)]
-enum Hook {
-    #[default]
-    Default,
-    Custom(Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>),
-}
-
-impl Hook {
-    #[inline]
-    fn into_box(self) -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
-        match self {
-            Hook::Default => Box::new(default_hook),
-            Hook::Custom(hook) => hook,
-        }
-    }
-}
-
-static HOOK: RwLock<Hook> = RwLock::new(Hook::Default);
-
-pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
-    let new = Hook::Custom(hook);
-    let mut hook = HOOK.write();
-    let old = mem::replace(&mut *hook, new);
-    drop(hook);
-    // Only drop the old hook after releasing the lock to avoid deadlocking
-    // if its destructor panics.
-    drop(old);
-}
-
-pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
-    let mut hook = HOOK.write();
-    let old_hook = mem::take(&mut *hook);
-    drop(hook);
-
-    old_hook.into_box()
-}
-
-pub fn update_hook<F>(hook_fn: F)
-where
-    F: Fn(&(dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static), &PanicHookInfo<'_>)
-        + Sync
-        + Send
-        + 'static,
-{
-    let mut hook = HOOK.write();
-    let prev = mem::take(&mut *hook).into_box();
-    *hook = Hook::Custom(Box::new(move |info| hook_fn(&prev, info)));
-}
-
-/// The default panic handler.
-fn default_hook(info: &PanicHookInfo<'_>) {
-    let thread_id = LocalThreadId::INIT.nonzero_thread_id();
-    let location = info.location().unwrap();
-    let msg = payload_as_str(info.payload());
-
-    let _ = heprintln!("thread '{}' panicked at {}:\n{}", thread_id, location, msg);
-}
-
-/// Determines whether the current thread is unwinding because of panic.
-#[inline]
-pub fn panicking() -> bool {
-    !panic_count::count_is_zero()
-}
-
-/// Entry point of panics from the core crate (`panic_impl` lang item).
-// #[cfg(not(any(test, doctest)))]
+/// Entry point for panics from the `core` crate.
 #[panic_handler]
 pub fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
     use core::{any::Any, fmt};
@@ -148,12 +82,7 @@ pub fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
     let msg = info.message();
     let loc = info.location().unwrap(); // The current implementation always returns Some
     if let Some(s) = msg.as_str() {
-        rust_panic_with_hook(
-            &mut StaticStrPayload(s),
-            loc,
-            info.can_unwind(),
-            info.force_no_backtrace(),
-        );
+        rust_panic_with_hook(&mut StaticStrPayload(s), loc, info.can_unwind());
     } else {
         rust_panic_with_hook(
             &mut FormatStringPayload {
@@ -162,16 +91,18 @@ pub fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             },
             loc,
             info.can_unwind(),
-            info.force_no_backtrace(),
         );
     }
 }
 
+/// The central function for dealing with panics.
+///
+/// This checks for recursive panics, invokes panic hooks, and finally dispatches the panic to
+/// the runtime.
 fn rust_panic_with_hook(
     payload: &mut dyn PanicPayload,
     location: &Location<'_>,
     can_unwind: bool,
-    force_no_backtrace: bool,
 ) -> ! {
     let must_abort = panic_count::increase(true);
 
@@ -188,31 +119,20 @@ fn rust_panic_with_hook(
                     location,
                     message
                 );
-            }
-            panic_count::MustAbort::AlwaysAbort => {
-                // Unfortunately, this does not print a backtrace, because creating
-                // a `Backtrace` will allocate, which we must avoid here.
-                heprintln!("aborting due to panic at {}:\n{}\n", location, payload);
-            }
+            } // panic_count::MustAbort::AlwaysAbort => {
+              //     // Unfortunately, this does not print a backtrace, because creating
+              //     // a `Backtrace` will allocate, which we must avoid here.
+              //     heprintln!("aborting due to panic at {}:\n{}\n", location, payload);
+              // }
         }
         crate::arch::abort_internal(1);
     }
 
     match *HOOK.read() {
         Hook::Default => {
-            default_hook(&PanicHookInfo::new(
-                location,
-                payload.get(),
-                can_unwind,
-                force_no_backtrace,
-            ));
+            default_hook(&PanicHookInfo::new(location, payload.get(), can_unwind));
         }
-        Hook::Custom(ref hook) => hook(&PanicHookInfo::new(
-            location,
-            payload.get(),
-            can_unwind,
-            force_no_backtrace,
-        )),
+        Hook::Custom(ref hook) => hook(&PanicHookInfo::new(location, payload.get(), can_unwind)),
     }
 
     panic_count::finished_panic_hook();
@@ -228,6 +148,8 @@ fn rust_panic_with_hook(
     rust_panic(payload)
 }
 
+/// Passes the panic straight to the runtime, bypassing any configured
+/// panic hooks. This is currently only used by `panic::resume_unwind`.
 pub fn rust_panic_without_hook(payload: Box<dyn Any + Send>) -> ! {
     panic_count::increase(false);
 
@@ -254,26 +176,183 @@ pub fn rust_panic_without_hook(payload: Box<dyn Any + Send>) -> ! {
 
 /// Mirroring std, this is an unmangled function on which to slap
 /// yer breakpoints for backtracing panics.
-#[no_mangle]
 #[inline(never)]
-extern "Rust" fn rust_panic(msg: &mut dyn PanicPayload) -> ! {
-    // TODO do the stack unwinding
-
-    crate::arch::abort_internal(1);
+#[no_mangle]
+#[cfg(not(feature = "panic-unwind"))]
+fn rust_panic(_: &mut dyn PanicPayload) -> ! {
+    arch::abort_internal(1);
 }
 
+#[inline(never)]
+#[no_mangle]
+#[cfg(feature = "panic-unwind")]
+extern "Rust" fn rust_panic(payload: &mut dyn PanicPayload) -> ! {
+    let code = crate::unwinding::panic_begin(unsafe { Box::from_raw(payload.take_box()) });
+
+    arch::abort_internal(code);
+}
+
+#[cfg(not(feature = "panic-unwind"))]
+pub unsafe fn r#try<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any + Send>> {
+    Ok(f())
+}
+
+#[cfg(feature = "panic-unwind")]
+pub unsafe fn r#try<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any + Send>> {
+    use core::{intrinsics, mem::ManuallyDrop};
+
+    union Data<F, R> {
+        // when we start, this field holds the closure
+        f: ManuallyDrop<F>,
+        // when the closure completed successfully, this will hold the return
+        r: ManuallyDrop<R>,
+        // when the closure panicked this will hold the panic payload
+        p: ManuallyDrop<Box<dyn Any + Send>>,
+    }
+
+    let mut data = Data {
+        f: ManuallyDrop::new(f),
+    };
+    let data_ptr = core::ptr::addr_of_mut!(data) as *mut u8;
+
+    unsafe {
+        return if intrinsics::catch_unwind(do_call::<F, R>, data_ptr, do_catch::<F, R>) == 0 {
+            Ok(ManuallyDrop::into_inner(data.r))
+        } else {
+            Err(ManuallyDrop::into_inner(data.p))
+        };
+    }
+
+    #[inline]
+    fn do_call<F: FnOnce() -> R, R>(data: *mut u8) {
+        // SAFETY: this is the responsibility of the caller, see above.
+        unsafe {
+            let data = data as *mut Data<F, R>;
+            let data = &mut (*data);
+            let f = ManuallyDrop::take(&mut data.f);
+            data.r = ManuallyDrop::new(f());
+        }
+    }
+
+    #[inline]
+    #[rustc_nounwind] // `intrinsic::r#try` requires catch fn to be nounwind
+    fn do_catch<F: FnOnce() -> R, R>(data: *mut u8, payload: *mut u8) {
+        // SAFETY: this is the responsibility of the caller, see above.
+        //
+        // When `__rustc_panic_cleaner` is correctly implemented we can rely
+        // on `obj` being the correct thing to pass to `data.p` (after wrapping
+        // in `ManuallyDrop`).
+        unsafe {
+            let data = data as *mut Data<F, R>;
+            let data = &mut (*data);
+            let obj = cleanup(payload);
+            data.p = ManuallyDrop::new(obj);
+        }
+    }
+
+    #[cold]
+    unsafe fn cleanup(payload: *mut u8) -> Box<dyn Any + Send + 'static> {
+        // SAFETY: The whole unsafe block hinges on a correct implementation of
+        // the panic handler `__rust_panic_cleanup`. As such we can only
+        // assume it returns the correct thing for `Box::from_raw` to work
+        // without undefined behavior.
+        let obj = unsafe { crate::unwinding::panic_cleanup(payload) };
+        panic_count::decrease();
+        obj
+    }
+}
+
+#[derive(Default)]
+enum Hook {
+    #[default]
+    Default,
+    Custom(Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>),
+}
+
+impl Hook {
+    #[inline]
+    fn into_box(self) -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
+        match self {
+            Hook::Default => Box::new(default_hook),
+            Hook::Custom(hook) => hook,
+        }
+    }
+}
+
+static HOOK: RwLock<Hook> = RwLock::new(Hook::Default);
+
+/// Sets the panic hook, replacing the previous one.
+///
+/// The panic hook is invoked when a thread panics, but before the panic runtime is invoked.
+///
+/// The default hook will attempt to print the panic message to the semihosting output.
+pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
+    let new = Hook::Custom(hook);
+    let mut hook = HOOK.write();
+    let old = mem::replace(&mut *hook, new);
+    drop(hook);
+    // Only drop the old hook after releasing the lock to avoid deadlocking
+    // if its destructor panics.
+    drop(old);
+}
+
+pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
+    let mut hook = HOOK.write();
+    let old_hook = mem::take(&mut *hook);
+    drop(hook);
+
+    old_hook.into_box()
+}
+
+pub fn update_hook<F>(hook_fn: F)
+where
+    F: Fn(&(dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static), &PanicHookInfo<'_>)
+        + Sync
+        + Send
+        + 'static,
+{
+    let mut hook = HOOK.write();
+    let prev = mem::take(&mut *hook).into_box();
+    *hook = Hook::Custom(Box::new(move |info| hook_fn(&prev, info)));
+}
+
+/// The default panic handler.
+fn default_hook(info: &PanicHookInfo<'_>) {
+    let thread_id = LocalThreadId::INIT.nonzero_thread_id();
+    let location = info.location().unwrap();
+    let msg = payload_as_str(info.payload());
+
+    let _ = heprintln!("thread '{}' panicked at {}:\n{}", thread_id, location, msg);
+}
+
+fn payload_as_str(payload: &dyn Any) -> &str {
+    if let Some(&s) = payload.downcast_ref::<&'static str>() {
+        s
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.as_str()
+    } else {
+        "Box<dyn Any>"
+    }
+}
+
+/// Determines whether the current thread is unwinding because of panic.
+#[inline]
+pub fn panicking() -> bool {
+    !panic_count::count_is_zero()
+}
+
+#[cfg(feature = "panic-unwind")]
 mod panic_count {
+    use crate::declare_thread_local;
     use core::{
         cell::Cell,
         sync::atomic::{AtomicUsize, Ordering},
     };
 
-    use crate::declare_thread_local;
-
     /// A reason for forcing an immediate abort on panic.
     #[derive(Debug)]
     pub enum MustAbort {
-        AlwaysAbort,
+        // AlwaysAbort,
         PanicInHook,
     }
 
@@ -346,29 +425,39 @@ mod panic_count {
     }
 }
 
-fn payload_as_str(payload: &dyn Any) -> &str {
-    if let Some(&s) = payload.downcast_ref::<&'static str>() {
-        s
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.as_str()
-    } else {
-        "Box<dyn Any>"
+#[cfg(not(feature = "panic-unwind"))]
+pub mod panic_count {
+    /// A reason for forcing an immediate abort on panic.
+    #[derive(Debug)]
+    pub enum MustAbort {
+        // AlwaysAbort,
+        PanicInHook,
     }
-}
 
-/// This function is called by the panic runtime if FFI code catches a Rust
-/// panic but doesn't rethrow it. We don't support this case since it messes
-/// with our panic count.
-// #[cfg(not(test))]
-pub(crate) fn rust_drop_panic() -> ! {
-    heprintln!("Rust panics must be rethrown");
-    crate::arch::abort_internal(1);
-}
+    #[inline]
+    pub fn increase(run_panic_hook: bool) -> Option<MustAbort> {
+        None
+    }
 
-/// This function is called by the panic runtime if it catches an exception
-/// object which does not correspond to a Rust panic.
-// #[cfg(not(test))]
-pub(crate) fn rust_foreign_exception() -> ! {
-    heprintln!("Rust cannot catch foreign exceptions");
-    crate::arch::abort_internal(1);
+    #[inline]
+    pub fn finished_panic_hook() {}
+
+    #[inline]
+    pub fn decrease() {}
+
+    #[inline]
+    pub fn set_always_abort() {}
+
+    // Disregards ALWAYS_ABORT_FLAG
+    #[inline]
+    #[must_use]
+    pub fn get_count() -> usize {
+        0
+    }
+
+    #[must_use]
+    #[inline]
+    pub fn count_is_zero() -> bool {
+        true
+    }
 }

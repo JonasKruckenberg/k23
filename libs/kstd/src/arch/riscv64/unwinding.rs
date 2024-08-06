@@ -1,3 +1,5 @@
+//! RISC-V specific unwinding code, mostly saving and restoring registers.
+
 use core::arch::asm;
 use core::fmt;
 use core::ops;
@@ -10,7 +12,7 @@ pub const SP: Register = RiscV::SP;
 pub const RA: Register = RiscV::RA;
 
 pub const UNWIND_DATA_REG: (Register, Register) = (RiscV::A0, RiscV::A1);
-pub const UNWIND_PRIVATE_DATA_SIZE: usize = 2;
+// pub const UNWIND_PRIVATE_DATA_SIZE: usize = 2;
 
 #[cfg(all(target_feature = "f", not(target_feature = "d")))]
 compile_error!("RISC-V with only F extension is not supported");

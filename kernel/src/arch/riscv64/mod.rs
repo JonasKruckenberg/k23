@@ -7,7 +7,7 @@ use kstd::arch::{sie, sstatus};
 use kstd::declare_thread_local;
 use kstd::sync::Once;
 use loader_api::{LoaderConfig, MemoryRegionKind};
-use vmm::{AddressRangeExt, Flush, Mapper};
+use vmm::{Flush, Mapper};
 
 pub type EntryFlags = vmm::EntryFlags;
 
@@ -15,7 +15,7 @@ declare_thread_local! {
     pub static HARTID: usize;
 }
 
-fn setup(hartid: usize, boot_info: &'static mut loader_api::BootInfo) {
+fn setup(hartid: usize, boot_info: &'static loader_api::BootInfo) {
     HARTID.initialize_with(hartid, |_, _| {});
 
     logger::init();
@@ -73,7 +73,8 @@ fn setup(hartid: usize, boot_info: &'static mut loader_api::BootInfo) {
                 .end
                 .sub(kconfig::HEAP_SIZE_PAGES * kconfig::PAGE_SIZE)
                 ..boot_info.free_virt.end;
-            boot_info.free_virt.end = boot_info.free_virt.end.sub(heap_virt.size());
+
+            // boot_info.free_virt.end = boot_info.free_virt.end.sub(heap_virt.size());
 
             log::debug!("Setting up kernel heap {heap_virt:?}");
             allocator::init(alloc, heap_virt).unwrap();
@@ -101,10 +102,16 @@ const LOADER_CFG: LoaderConfig = {
 
 #[cfg(not(test))]
 #[loader_api::entry(LOADER_CFG)]
-fn kstart(hartid: usize, boot_info: &'static mut loader_api::BootInfo) -> ! {
-    setup(hartid, boot_info);
+fn kstart(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
+    kstd::panic::catch_unwind(|| {
+        setup(hartid, boot_info);
 
-    crate::main(hartid)
+        crate::main(hartid)
+    })
+    .unwrap_or_else(|_| {
+        log::error!("unrecoverable failure");
+        kstd::arch::abort_internal(101)
+    })
 }
 
 #[cfg(test)]
