@@ -1,6 +1,6 @@
 use crate::args::FormatSetting;
-use crate::assert::Failed;
 use crate::{Conclusion, Outcome, Test, TestInfo};
+use alloc::boxed::Box;
 use core::fmt;
 
 pub struct Printer<'a> {
@@ -82,13 +82,13 @@ impl<'a> Printer<'a> {
     }
 
     fn print_outcome_pretty(&mut self, outcome: &Outcome) {
-        let s = match outcome {
-            Outcome::Passed => "ok",
-            Outcome::Failed { .. } => "FAILED",
-            Outcome::Ignored => "ignored",
-        };
-
-        write!(self.out, "{}", s).unwrap();
+        match outcome {
+            Outcome::Passed => write!(self.out, "ok").unwrap(),
+            Outcome::Failed(_) => {
+                write!(self.out, "FAILED").unwrap();
+            }
+            Outcome::Ignored => write!(self.out, "ignored").unwrap(),
+        }
     }
 
     pub(crate) fn print_list(&mut self, tests: &[Test], ignored: bool) {
@@ -108,7 +108,7 @@ impl<'a> Printer<'a> {
         match self.format {
             FormatSetting::Pretty | FormatSetting::Terse => {
                 let outcome = if conclusion.has_failed() {
-                    Outcome::Failed(Failed::default())
+                    Outcome::Failed(Box::new(()))
                 } else {
                     Outcome::Passed
                 };

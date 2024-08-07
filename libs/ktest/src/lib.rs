@@ -1,27 +1,25 @@
 #![cfg_attr(target_os = "none", no_std)]
 #![feature(used_with_arg)]
+extern crate alloc;
 
 #[doc(hidden)]
 pub mod __private;
 
 mod args;
-pub mod assert;
 mod printer;
 mod run;
 
-use crate::assert::Failed;
+use alloc::boxed::Box;
 pub use args::Arguments;
-use core::fmt;
+use core::any::Any;
 pub use ktest_macros::{setup_harness, test};
 
 #[doc(hidden)]
 pub use run::run_tests;
 
-pub type TestResult = Result<(), Failed>;
-
 /// A single test case
 pub struct Test {
-    pub run: fn() -> Outcome,
+    pub run: fn(),
     pub info: TestInfo<'static>,
 }
 
@@ -32,13 +30,12 @@ pub struct TestInfo<'a> {
     pub ignored: bool,
 }
 
-/// The outcome of performing a test.
-#[derive(Clone)]
+/// The outcome of performing a single test.
 pub enum Outcome {
     /// The test passed.
     Passed,
     /// The test failed.
-    Failed(Failed),
+    Failed(Box<dyn Any + Send + 'static>),
     /// The test was ignored.
     Ignored,
 }
@@ -126,36 +123,5 @@ impl SetupInfo {
     #[cfg(not(target_os = "none"))]
     pub fn new() -> Self {
         Self { is_std: true }
-    }
-}
-
-/// Marks a type which may be used as a test return type.
-pub trait TestReport {
-    /// Report any errors to `tracing`, then returns either `true` for a
-    /// success, or `false` for a failure.
-    fn report(self) -> Outcome;
-}
-
-impl TestReport for () {
-    fn report(self) -> Outcome {
-        Outcome::Passed
-    }
-}
-
-impl TestReport for Result<(), Failed> {
-    fn report(self) -> Outcome {
-        match self {
-            Ok(_) => Outcome::Passed,
-            Err(failed) => Outcome::Failed(failed),
-        }
-    }
-}
-
-impl<T: fmt::Debug> TestReport for Result<(), T> {
-    fn report(self) -> Outcome {
-        match self {
-            Ok(_) => Outcome::Passed,
-            Err(_err) => Outcome::Failed(Failed::default()),
-        }
     }
 }
