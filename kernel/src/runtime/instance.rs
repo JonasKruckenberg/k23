@@ -34,9 +34,17 @@ impl Instance {
 
         let mut const_eval = ConstExprEvaluator::default();
 
+        log::trace!("initializing vmctx...");
         initialize_vmctx(&mut const_eval, store, handle, &module.info.module)?;
+        log::trace!("initialized vmctx...");
+
+        log::trace!("initializing tables...");
         initialize_tables(&mut const_eval, store, handle, &module.info.module)?;
+        log::trace!("initialized tables...");
+
+        log::trace!("initializing memories...");
         initialize_memories(store, handle, &module.info.module)?;
+        log::trace!("initialized memories...");
 
         Ok(handle)
     }
@@ -329,18 +337,18 @@ impl<'wasm> InstanceData<'wasm> {
 
     fn defined_or_imported_memory(&self, index: MemoryIndex) -> &VMMemoryDefinition {
         unsafe {
-            let ptr = if let Some(def_index) = self.module_info.module.defined_memory_index(index) {
-                *self.vmctx_plus_offset::<*mut VMMemoryDefinition>(
-                    self.vmctx_plan.vmctx_memory_pointer(def_index),
-                )
+            if let Some(def_index) = self.module_info.module.defined_memory_index(index) {
+                return &self.vmctx_memory_definitions()[def_index.index()]
+
+                // *self.vmctx_plus_offset::<*mut VMMemoryDefinition>(
+                //     self.vmctx_plan.vmctx_memory_pointer(def_index),
+                // )
             } else {
                 let import = &*self.vmctx_plus_offset::<VMMemoryImport>(
                     self.vmctx_plan.vmctx_memory_import(index),
                 );
-                import.from
-            };
-
-            &*ptr
+                &*import.from
+            }
         }
     }
 }
@@ -481,14 +489,11 @@ fn initialize_memories(
     module: &TranslatedModule,
 ) -> Result<(), Trap> {
     for init in &module.memory_initializers.runtime {
-        let data = store.instance_data(instance);
-        let memory = data.defined_or_imported_memory(init.memory_index);
+        let def_index = module.defined_memory_index(init.memory_index).unwrap();
+        let mut data = store.instance_data_mut(instance);
 
-        unsafe {
-            let dst = memory.base.add(usize::try_from(init.offset).unwrap());
 
-            ptr::copy_nonoverlapping(init.bytes.as_ptr(), dst, init.bytes.len());
-        }
+        data.memories[def_index].inner.extend_from_slice(init.bytes);
     }
 
     Ok(())
