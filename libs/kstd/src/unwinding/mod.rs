@@ -1,10 +1,10 @@
 //! DWARF based stack unwinding.
 //!
-//! # libunwind compatability
+//! # libunwind compatibility
 //!
 //! The functions mirror the [`libunwind`][libunwind] ABI and therefore this module is littered
 //! with ugly externs, C ABI types, pointers and the like.
-//! *In theory* there is no requirement for this ABI compatability (aside from the `_Unwind_Resume` function)
+//! *In theory* there is no requirement for this ABI compatibility (aside from the `_Unwind_Resume` function)
 //! and much of the baggage *could* be dropped from this module since we don't do any FFI in the kernel,
 //! but stack unwinding is complicated and intricate enough that sticking with established patterns.
 //!
