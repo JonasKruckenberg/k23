@@ -62,7 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check Rust Code
-        uses: EmbarkStudios/cargo-deny-action@v1
+        uses: EmbarkStudios/cargo-deny-action@v2
 
   clippy:
     name: Clippy

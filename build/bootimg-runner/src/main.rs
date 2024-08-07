@@ -81,22 +81,43 @@ fn generate_keypair() -> (VerifyingKey, SigningKey) {
 #[derive(Copy, Clone)]
 pub enum Target {
     Riscv64,
-    Riscv32,
 }
 
 impl Target {
     pub fn from_elf(elf_file: &object::File) -> Target {
         match elf_file.architecture() {
-            Architecture::Riscv32 => Self::Riscv64,
             Architecture::Riscv64 => Self::Riscv64,
             arch => panic!("unsupported architecture {arch:?}"),
         }
     }
 
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_payload_target(&self, workspace_dir: &Path) -> PathBuf {
         match self {
-            Target::Riscv64 => "riscv64gc-unknown-none-elf",
-            Target::Riscv32 => "riscv32imac-unknown-none-elf",
+            Target::Riscv64 => workspace_dir.join("targets/riscv64gc-k23-kernel.json"),
+        }
+    }
+
+    pub fn as_loader_target(&self, workspace_dir: &Path) -> PathBuf {
+        match self {
+            Target::Riscv64 => workspace_dir.join("targets/riscv64imac-k23-loader.json"),
+        }
+    }
+
+    pub fn payload_target_dir(&self) -> &'static str {
+        match self {
+            Target::Riscv64 => "riscv64gc-k23-kernel",
+        }
+    }
+
+    pub fn loader_target_dir(&self) -> &'static str {
+        match self {
+            Target::Riscv64 => "riscv64imac-k23-loader",
+        }
+    }
+
+    pub fn qemu_runner(&self) -> &'static str {
+        match self {
+            Target::Riscv64 => "qemu-system-riscv64",
         }
     }
 }
@@ -104,7 +125,9 @@ impl Target {
 pub struct Builder {
     cargo: PathBuf,
     target: Target,
-    out_dir: PathBuf,
+    payload_out_dir: PathBuf,
+    loader_out_dir: PathBuf,
+    workspace_dir: PathBuf,
     release: bool,
 }
 
@@ -120,21 +143,31 @@ impl Builder {
                 .to_path_buf()
         };
 
-        let out_dir = workspace_dir
-            .join("target")
-            .join(target.as_str())
-            .join(if release { "release" } else { "debug" });
+        let out_dir = workspace_dir.join("target");
+
+        let payload_out_dir = out_dir.join(target.payload_target_dir()).join(if release {
+            "release"
+        } else {
+            "debug"
+        });
+        let loader_out_dir = out_dir.join(target.loader_target_dir()).join(if release {
+            "release"
+        } else {
+            "debug"
+        });
 
         Self {
             target,
-            out_dir,
+            payload_out_dir,
+            loader_out_dir,
+            workspace_dir,
             cargo,
             release,
         }
     }
 
     pub fn build_loader(&self, verifying_key: VerifyingKey, payload_path: &Path) -> PathBuf {
-        let verifying_key_path = self.out_dir.join("verifying_key.bin");
+        let verifying_key_path = self.payload_out_dir.join("verifying_key.bin");
         fs::write(&verifying_key_path, verifying_key.as_bytes()).unwrap();
 
         let mut cmd = Command::new(&self.cargo);
@@ -143,7 +176,10 @@ impl Builder {
             "-p",
             "loader",
             "--target",
-            self.target.as_str(),
+            self.target
+                .as_loader_target(&self.workspace_dir)
+                .to_str()
+                .unwrap(),
             "-Z",
             "build-std=core,alloc",
             "-Z",
@@ -166,7 +202,7 @@ impl Builder {
             core::str::from_utf8(&out.stderr).unwrap()
         );
 
-        self.out_dir.join("loader")
+        self.loader_out_dir.join("loader")
     }
 
     pub fn compress_and_sign(&self, input: &[u8], signing_key: SigningKey) -> PathBuf {
@@ -174,7 +210,7 @@ impl Builder {
 
         let signature = signing_key.sign(&compressed);
 
-        let out_path = self.out_dir.join("payload.bin");
+        let out_path = self.payload_out_dir.join("payload.bin");
         let mut file = File::create(&out_path).unwrap();
 
         file.write_vectored(&[
@@ -187,21 +223,10 @@ impl Builder {
     }
 }
 
-fn run_in_qemu(
-    qemu_path: Option<&Path>,
-    target: Target,
-    bootimg_path: &Path,
-    wait_for_debugger: bool,
-) -> Option<i32> {
-    let runner = qemu_path.map_or_else(
-        || match target {
-            Target::Riscv64 => "qemu-system-riscv64",
-            Target::Riscv32 => "qemu-system-riscv32",
-        },
-        |path| path.to_str().unwrap(),
-    );
-
+fn run_in_qemu(qemu_path: Option<&Path>, target: Target, bootimg_path: &Path, wait_for_debugger: bool) -> Option<i32> {
     let mut child = KillOnDrop({
+        let runner = qemu_path.map_or_else(|| target.qemu_runner(), |p| p.to_str().unwrap());
+
         let mut cmd = Command::new(runner);
         cmd.args([
             "-kernel",

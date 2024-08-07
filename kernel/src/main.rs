@@ -40,6 +40,7 @@ pub mod kconfig {
     pub const TRAP_STACK_SIZE_PAGES: usize = 16; // Size of the per-hart trap stack in pages
 }
 
+#[inline(never)]
 fn main(_hartid: usize) -> ! {
     // Eventually this will all be hidden behind other abstractions (the scheduler, etc.) and this
     // function will just jump into the scheduling loop

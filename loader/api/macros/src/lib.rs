@@ -24,9 +24,9 @@ pub fn entry(args: TokenStream, item: TokenStream) -> TokenStream {
 
         #[no_mangle]
         #[export_name = "_start"]
-        pub extern "C" fn __start_impl(hartid: usize, boot_info: &'static mut #crate_path::BootInfo) -> ! {
+        pub extern "C" fn __start_impl(hartid: usize, boot_info: &'static #crate_path::BootInfo) -> ! {
             // validate the signature of the program entry point
-            let f: fn(usize, &'static mut #crate_path::BootInfo) -> ! = #func_ident;
+            let f: fn(usize, &'static #crate_path::BootInfo) -> ! = #func_ident;
 
             f(hartid, boot_info)
         }

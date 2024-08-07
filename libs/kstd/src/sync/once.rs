@@ -1,57 +1,74 @@
-use core::cell::UnsafeCell;
-use core::mem;
-use core::mem::MaybeUninit;
-use core::sync::atomic::{AtomicU8, Ordering};
+use core::{
+    mem,
+    sync::atomic::{AtomicU8, Ordering},
+};
 
+/// No initialization has run yet, and no thread is currently using the Once.
 const STATUS_INCOMPLETE: u8 = 0;
-const STATUS_RUNNING: u8 = 1;
-const STATUS_COMPLETE: u8 = 2;
-const STATUS_POISONED: u8 = 3;
+/// Some thread has previously attempted to initialize the Once, but it panicked,
+/// so the Once is now poisoned. There are no other threads currently accessing
+/// this Once.
+const STATUS_POISONED: u8 = 1;
+/// Some thread is currently attempting to run initialization. It may succeed,
+/// so all future threads need to wait for it to finish.
+const STATUS_RUNNING: u8 = 2;
+/// Initialization has completed and all future calls should finish immediately.
+const STATUS_COMPLETE: u8 = 4;
 
-pub struct Once<T = ()> {
-    status: AtomicU8,
-    data: UnsafeCell<MaybeUninit<T>>,
+pub enum ExclusiveState {
+    Incomplete,
+    Poisoned,
+    Complete,
 }
 
-unsafe impl<T: Send + Sync> Sync for Once<T> {}
-unsafe impl<T: Send> Send for Once<T> {}
+pub struct Once {
+    status: AtomicU8,
+}
 
-impl<T> Once<T> {
+impl Once {
+    #[inline]
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
+    pub const fn new() -> Once {
+        Once {
             status: AtomicU8::new(STATUS_INCOMPLETE),
-            data: UnsafeCell::new(MaybeUninit::uninit()),
         }
     }
 
-    /// # Panics
-    ///
-    /// Panics if the closure errors or panics.
-    pub fn get_or_init<F: FnOnce() -> T>(&self, f: F) -> &T {
-        self.get_or_try_init::<_, ()>(|| Ok(f()))
-            .expect("get_or_init failed")
+    #[inline]
+    pub fn is_completed(&self) -> bool {
+        self.status.load(Ordering::Acquire) == STATUS_COMPLETE
     }
 
-    /// # Errors
-    ///
-    /// Returns an error if the given closure errors.
-    ///
+    pub fn state(&mut self) -> ExclusiveState {
+        match *self.status.get_mut() {
+            STATUS_INCOMPLETE => ExclusiveState::Incomplete,
+            STATUS_POISONED => ExclusiveState::Poisoned,
+            STATUS_COMPLETE => ExclusiveState::Complete,
+            _ => unreachable!("invalid Once state"),
+        }
+    }
+
     /// # Panics
     ///
     /// Panics if the closure panics.
-    pub fn get_or_try_init<F, E>(&self, f: F) -> Result<&T, E>
+    #[inline]
+    #[track_caller]
+    pub fn call_once<F>(&self, f: F)
     where
-        F: FnOnce() -> Result<T, E>,
+        F: FnOnce(),
     {
-        if let Some(value) = self.get() {
-            Ok(value)
-        } else {
-            self.get_or_try_init_slow(f)
+        // Fast path check
+        if self.is_completed() {
+            return;
         }
+
+        let mut f = Some(f);
+        self.call(&mut || f.take().unwrap()());
     }
 
-    fn get_or_try_init_slow<F: FnOnce() -> Result<T, E>, E>(&self, f: F) -> Result<&T, E> {
+    #[cold]
+    #[track_caller]
+    fn call(&self, f: &mut impl FnMut()) {
         loop {
             let xchg = self.status.compare_exchange(
                 STATUS_INCOMPLETE,
@@ -66,87 +83,44 @@ impl<T> Once<T> {
                         status: &self.status,
                     };
 
-                    let value = match f() {
-                        Ok(val) => val,
-                        Err(err) => {
-                            // If an error occurs, clean up everything and leave.
-                            mem::forget(panic_guard);
-                            self.status.store(STATUS_INCOMPLETE, Ordering::Release);
-                            return Err(err);
-                        }
-                    };
-
-                    unsafe {
-                        (*self.data.get()).as_mut_ptr().write(value);
-                    }
+                    f();
 
                     mem::forget(panic_guard);
 
                     self.status.store(STATUS_COMPLETE, Ordering::Release);
 
-                    return unsafe { Ok(self.force_get()) };
+                    return;
                 }
-                Err(STATUS_RUNNING) => match self.poll() {
-                    Some(v) => return Ok(v),
-                    None => continue,
-                },
-                Err(STATUS_COMPLETE) => return Ok(unsafe { self.force_get() }),
-                Err(STATUS_POISONED) => panic!("Once poisoned by panic"),
-                _ => unreachable!(),
+                Err(STATUS_COMPLETE) => return,
+                Err(STATUS_RUNNING) => self.wait(),
+                Err(STATUS_POISONED) => {
+                    // Panic to propagate the poison.
+                    panic!("Once instance has previously been poisoned");
+                }
+                _ => unreachable!("state is never set to invalid values"),
             }
         }
     }
 
-    fn poll(&self) -> Option<&T> {
-        loop {
-            match self.status.load(Ordering::Acquire) {
-                STATUS_INCOMPLETE => return None,
-                STATUS_RUNNING => core::hint::spin_loop(),
-                STATUS_COMPLETE => return Some(unsafe { self.force_get() }),
-                STATUS_POISONED => panic!("Once poisoned by panic"),
-                _ => unreachable!(),
-            }
-        }
-    }
-
-    pub fn wait(&self) -> &T {
-        loop {
-            match self.poll() {
-                Some(x) => break x,
-                None => core::hint::spin_loop(),
-            }
-        }
-    }
-
-    pub fn get(&self) -> Option<&T> {
+    fn poll(&self) -> bool {
         match self.status.load(Ordering::Acquire) {
-            STATUS_COMPLETE => Some(unsafe { self.force_get() }),
-            _ => None,
-        }
-    }
-    pub fn get_mut(&mut self) -> Option<&mut T> {
-        match self.status.load(Ordering::Acquire) {
-            STATUS_COMPLETE => Some(unsafe { self.force_get_mut() }),
-            _ => None,
+            STATUS_INCOMPLETE | STATUS_RUNNING => false,
+            STATUS_COMPLETE => true,
+            STATUS_POISONED => panic!("Once poisoned by panic"),
+            _ => unreachable!(),
         }
     }
 
-    unsafe fn force_get(&self) -> &T {
-        // SAFETY:
-        // * `UnsafeCell`/inner deref: data never changes again
-        // * `MaybeUninit`/outer deref: data was initialized
-        &*(*self.data.get()).as_ptr()
-    }
-
-    unsafe fn force_get_mut(&mut self) -> &mut T {
-        // SAFETY:
-        // * `UnsafeCell`/inner deref: data never changes again
-        // * `MaybeUninit`/outer deref: data was initialized
-        &mut *(*self.data.get()).as_mut_ptr()
+    fn wait(&self) {
+        loop {
+            if !self.poll() {
+                core::hint::spin_loop();
+            }
+        }
     }
 }
 
-impl<T> Default for Once<T> {
+impl Default for Once {
     fn default() -> Self {
         Self::new()
     }

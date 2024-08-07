@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const, maybe_uninit_slice)]
+#![feature(naked_functions, asm_const, maybe_uninit_slice, used_with_arg)]
 #![allow(clippy::items_after_statements, clippy::needless_continue)]
 
 mod arch;
@@ -26,7 +26,7 @@ use core::mem::MaybeUninit;
 use core::ops::Range;
 use core::ptr::addr_of;
 use core::{ptr, slice};
-use kstd::sync::Once;
+use kstd::sync::OnceLock;
 use linked_list_allocator::LockedHeap;
 use loader_api::{MemoryRegion, MemoryRegionKind};
 use vmm::{
@@ -37,7 +37,7 @@ use vmm::{
 static ALLOC: LockedHeap = LockedHeap::empty();
 
 fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
-    static MAPPINGS: Once<Mappings> = Once::new();
+    static MAPPINGS: OnceLock<Mappings> = OnceLock::new();
 
     log::info!("Hart {hartid} started");
 

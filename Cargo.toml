@@ -58,6 +58,8 @@ hashbrown = { version = "0.14.5", default-features = false, features = [
     "inline-more",
     "nightly",
 ] }
+wasmparser = { version = "0.214.0", default-features = false }
+target-lexicon = { version = "0.12.14", default-features = false }
 cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std2", default-features = false, features = [
     "core",
 ] }
@@ -69,8 +71,6 @@ cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime", bra
     "core",
 ] }
 cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std2", default-features = false }
-wasmparser = { version = "0.214.0", default-features = false }
-target-lexicon = { version = "0.12.14", default-features = false }
 
 # build dependencies
 serde = { version = "1.0.203", default-features = false, features = ["derive"] }

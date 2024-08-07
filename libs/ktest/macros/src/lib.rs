@@ -64,7 +64,7 @@ pub fn setup_harness(args: TokenStream, item: TokenStream) -> TokenStream {
         #[#crate_path::__private::loader_api::entry(#loader_cfg)]
         #[cfg(target_os = "none")]
         #[loader_api(crate = #crate_path::__private::loader_api)]
-        fn ktest_runner(hartid: usize, boot_info: &'static mut #crate_path::__private::loader_api::BootInfo) -> ! {
+        fn ktest_runner(hartid: usize, boot_info: &'static #crate_path::__private::loader_api::BootInfo) -> ! {
             struct Log;
 
             impl ::core::fmt::Write for Log {
