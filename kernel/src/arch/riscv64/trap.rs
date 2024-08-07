@@ -278,7 +278,7 @@ fn default_trap_handler(
             let tval = stval::read();
 
             log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
-
+            
             panic!();
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {

@@ -435,6 +435,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                 }
                 self.parse_dwarf_section(name, &sec);
             }
+            Payload::End(_) => {},
             section => log::warn!("Unknown section {section:?}"),
         }
 

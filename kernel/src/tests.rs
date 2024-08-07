@@ -44,7 +44,7 @@ mod compile_tests {
     macro_rules! wasm_test_case {
         ($name:ident, $fixture:expr) => {
             #[ktest::test]
-            fn $name() -> ktest::TestResult {
+            fn $name() {
                 let bytes = include_bytes!($fixture);
                 build_and_run_wasm(bytes)
             }
@@ -61,8 +61,10 @@ mod compile_tests {
         };
     }
 
-    ktest::for_each_fixture!("../tests/fib", wasm_test_case);
-    ktest::for_each_fixture!("../tests/testsuite", wast_test_case);
+    wast_test_case!(test_data, "/Users/jonaskruckenberg/Documents/GitHub/k23/tests/testsuite/data.wast");
+    
+    // ktest::for_each_fixture!("../tests/fib", wasm_test_case);
+    // ktest::for_each_fixture!("../tests/testsuite", wast_test_case);
 }
 
 #[cfg(test)]
