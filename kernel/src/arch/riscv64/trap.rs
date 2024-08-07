@@ -1,7 +1,5 @@
 use crate::kconfig;
 use core::arch::asm;
-use core::marker::PhantomPinned;
-use core::ptr::addr_of;
 use kstd::arch::sbi::time::set_timer;
 use kstd::arch::scause::{Exception, Interrupt, Trap};
 use kstd::arch::{scause, sepc, sstatus, stval, stvec};
@@ -31,23 +29,6 @@ pub fn init() {
         unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
 }
 
-// /// This struct keeps the harts state during a trap, so we can restore it later.
-// ///
-// /// Currently, we only save the `t` and `a` registers as well as the `ra` register.
-// // TODO we probably should save all general purpose registers & floating points regs if kernel code is allowed to use them
-// #[repr(C, align(16))]
-// #[derive(Debug)]
-// pub struct TrapFrame {
-//     pub ra: usize,
-//     pub sp: usize,
-//     pub t: [usize; 7],
-//     pub a: [usize; 8],
-//     pub s: [usize; 12],
-//     pub trap_stack_ptr: *mut u8,
-//
-//     pub _pinned: PhantomPinned,
-// }
-
 #[naked]
 pub unsafe extern "C" fn trap_vec() {
     // When in vectored mode
@@ -74,66 +55,6 @@ pub unsafe extern "C" fn trap_vec() {
     default = sym default_trap_entry,
     options(noreturn)
     )
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(target_pointer_width = "32")] {
-        macro_rules! save {
-            ($reg:ident => $ptr:ident[$pos:expr]) => {
-                concat!(
-                    "sw ",
-                    stringify!($reg),
-                    ", 4*",
-                    $pos,
-                    '(',
-                    stringify!($ptr),
-                    ')'
-                )
-            }
-        }
-
-        macro_rules! load {
-            ($ptr:ident[$pos:expr] => $reg:ident) => {
-                concat!(
-                    "lw ",
-                    stringify!($reg),
-                    ", 4*",
-                    $pos,
-                    '(',
-                    stringify!($ptr),
-                    ')'
-                )
-            }
-        }
-    } else if #[cfg(target_pointer_width = "64")] {
-        macro_rules! load {
-            ($ptr:ident[$pos:expr] => $reg:ident) => {
-                concat!(
-                    "ld ",
-                    stringify!($reg),
-                    ", 8*",
-                    $pos,
-                    '(',
-                    stringify!($ptr),
-                    ')'
-                )
-            }
-        }
-
-        macro_rules! save {
-            ($reg:ident => $ptr:ident[$pos:expr]) => {
-                concat!(
-                    "sd ",
-                    stringify!($reg),
-                    ", 8*",
-                    $pos,
-                    '(',
-                    stringify!($ptr),
-                    ')'
-                )
-            }
-        }
-    }
 }
 
 #[naked]

@@ -5,7 +5,7 @@ pub fn init() {
     static LOGGER: Logger = Logger;
 
     log::set_logger(&LOGGER).unwrap();
-    log::set_max_level(LevelFilter::Info);
+    log::set_max_level(LevelFilter::Trace);
 }
 
 struct Logger;
