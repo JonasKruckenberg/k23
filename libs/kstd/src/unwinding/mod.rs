@@ -1,3 +1,24 @@
+//! DWARF based stack unwinding.
+//!
+//! # libunwind compatability
+//!
+//! The functions mirror the [`libunwind`][libunwind] ABI and therefore this module is littered
+//! with ugly externs, C ABI types, pointers and the like.
+//! *In theory* there is no requirement for this ABI compatability (aside from the `_Unwind_Resume` function)
+//! and much of the baggage *could* be dropped from this module since we don't do any FFI in the kernel,
+//! but stack unwinding is complicated and intricate enough that sticking with established patterns.
+//!
+//! Rewriting this to have a nice, sane API remains a TODO for later.
+//!
+//! # Acknowledgement
+//!
+//! Much of the unwinding code is taken from the great [`unwinding`][unwinding] crate, with some
+//! inspiration from stdlib too, both licensed under MIT/Apache 2.0.
+//!
+//! [libunwind]: https://www.ucw.cz/~hubicka/papers/abi/node25.html#SECTION00923100000000000000
+//! [unwinding]: https://github.com/nbdd0121/unwinding
+
+
 mod eh_info;
 mod frame;
 mod personality;
