@@ -2,12 +2,13 @@
 
 use super::{frame::Frame, utils::with_context};
 use crate::arch;
+use crate::unwinding::eh_info::EH_INFO;
 use bitflags::bitflags;
 use core::{
     ffi::{c_int, c_void},
     fmt, ptr,
 };
-use gimli::Register;
+use gimli::{EhFrame, Register, UnwindSection};
 
 #[derive(Debug, onlyerror::Error)]
 enum UnwindError {
@@ -305,8 +306,18 @@ pub extern "C" fn _Unwind_SetGR(unwind_ctx: &mut UnwindContext<'_>, index: c_int
 }
 
 #[no_mangle]
+pub extern "C" fn _Unwind_GetCFA(unwind_ctx: &UnwindContext<'_>) -> usize {
+    unwind_ctx.ctx[arch::unwinding::SP]
+}
+
+#[no_mangle]
 pub extern "C" fn _Unwind_SetIP(unwind_ctx: &mut UnwindContext<'_>, value: usize) {
     unwind_ctx.ctx[arch::unwinding::RA] = value;
+}
+
+#[no_mangle]
+pub extern "C" fn _Unwind_GetIP(unwind_ctx: &UnwindContext<'_>) -> usize {
+    unwind_ctx.ctx[arch::unwinding::RA]
 }
 
 #[no_mangle]
@@ -333,17 +344,71 @@ pub extern "C" fn _Unwind_GetDataRelBase(unwind_ctx: &UnwindContext<'_>) -> usiz
 }
 
 #[no_mangle]
+pub extern "C" fn _Unwind_FindEnclosingFunction(pc: *mut c_void) -> *mut c_void {
+    if pc.is_null() {
+        return ptr::null_mut();
+    }
+
+    let Some(table) = EH_INFO.hdr.table() else {
+        return ptr::null_mut();
+    };
+
+    let Ok(fde) = table.fde_for_address(
+        &EH_INFO.eh_frame,
+        &EH_INFO.bases,
+        pc as u64 - 1,
+        EhFrame::cie_from_offset,
+    ) else {
+        return ptr::null_mut();
+    };
+
+    usize::try_from(fde.initial_address()).unwrap() as _
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn _Unwind_DeleteException(exception: *mut UnwindException) {
     if let Some(cleanup) = unsafe { (*exception).exception_cleanup } {
         unsafe { cleanup(UnwindReasonCode::FOREIGN_EXCEPTION_CAUGHT, exception) };
     }
 }
 
-// #[inline(never)]
-// #[no_mangle]
-// pub extern "C-unwind" fn _Unwind_Backtrace(
-//     trace: UnwindTraceFn,
-//     trace_argument: *mut c_void,
-// ) -> UnwindReasonCode {
-//     with_context(|ctx| {})
-// }
+#[inline(never)]
+#[no_mangle]
+pub extern "C-unwind" fn _Unwind_Backtrace(
+    trace: UnwindTraceFn,
+    trace_argument: *mut c_void,
+) -> UnwindReasonCode {
+    with_context(|ctx| {
+        let mut ctx = ctx.clone();
+        let mut signal = false;
+
+        loop {
+            let Ok(maybe_frame) = Frame::from_context(&ctx, signal) else {
+                return UnwindReasonCode::FATAL_PHASE1_ERROR;
+            };
+
+            let code = trace(
+                &UnwindContext {
+                    frame: maybe_frame.as_ref(),
+                    ctx: &mut ctx,
+                    signal,
+                },
+                trace_argument,
+            );
+            match code {
+                UnwindReasonCode::NO_REASON => (),
+                _ => return UnwindReasonCode::FATAL_PHASE1_ERROR,
+            }
+
+            if let Some(frame) = maybe_frame {
+                let Ok(new_ctx) = frame.unwind(&ctx) else {
+                    return UnwindReasonCode::FATAL_PHASE1_ERROR;
+                };
+                ctx = new_ctx;
+                signal = frame.is_signal_trampoline();
+            } else {
+                return UnwindReasonCode::END_OF_STACK;
+            }
+        }
+    })
+}
