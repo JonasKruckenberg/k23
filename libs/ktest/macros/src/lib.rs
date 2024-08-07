@@ -22,8 +22,10 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
         #[used(linker)]
         #[link_section = "k23_tests"]
         static #static_ident: #crate_path::Test = {
+            let run: fn() = #ident;
+
             #crate_path::Test {
-                run: || #crate_path::TestReport::report(#ident()),
+                run,
                 info: #crate_path::TestInfo {
                     module: module_path!(),
                     name: stringify!(#ident),

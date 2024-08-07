@@ -41,7 +41,10 @@ pub fn run_tests(write: &mut dyn fmt::Write, args: Arguments) -> Conclusion {
         let outcome = if args.is_ignored(&test) {
             Outcome::Ignored
         } else {
-            (test.run)()
+            match kstd::panic::catch_unwind(|| (test.run)()) {
+                Ok(_) => Outcome::Passed,
+                Err(err) => Outcome::Failed(err),
+            }
         };
         handle_outcome(outcome, &test.info, &mut printer);
     }

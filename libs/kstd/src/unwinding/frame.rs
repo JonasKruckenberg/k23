@@ -42,6 +42,7 @@ impl Frame {
         Ok(Some(Self { fde, row }))
     }
 
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn unwind(
         &self,
         ctx: &arch::unwinding::Context,
@@ -52,7 +53,7 @@ impl Frame {
         #[allow(clippy::match_wildcard_for_single_variants)]
         let cfa = match *row.cfa() {
             CfaRule::RegisterAndOffset { register, offset } => {
-                ctx[register].wrapping_add(usize::try_from(offset).unwrap())
+                ctx[register].wrapping_add(offset as usize)
             }
             _ => return Err(gimli::Error::UnsupportedEvaluation),
         };
@@ -64,11 +65,9 @@ impl Frame {
             let value = match *rule {
                 RegisterRule::Undefined | RegisterRule::SameValue => ctx[*reg],
                 RegisterRule::Offset(offset) => unsafe {
-                    *((cfa.wrapping_add(usize::try_from(offset).unwrap())) as *const usize)
+                    *(cfa.wrapping_add(offset as usize) as *const usize)
                 },
-                RegisterRule::ValOffset(offset) => {
-                    cfa.wrapping_add(usize::try_from(offset).unwrap())
-                }
+                RegisterRule::ValOffset(offset) => cfa.wrapping_add(offset as usize),
                 RegisterRule::Expression(_) | RegisterRule::ValExpression(_) => {
                     return Err(gimli::Error::UnsupportedEvaluation)
                 }
