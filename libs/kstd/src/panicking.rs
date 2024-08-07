@@ -351,11 +351,11 @@ fn default_hook(info: &PanicHookInfo<'_>) {
 
     #[cfg(feature = "panic-unwind")]
     unsafe {
-        crate::bascktrace::trace_unsynchronized(|frame| {
+        crate::backtrace::trace_unsynchronized(|frame| {
             heprintln!("{:?}", frame);
 
             true
-        })
+        });
     }
 }
 

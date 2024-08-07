@@ -14,6 +14,7 @@ pub enum Frame<'a> {
 
 impl<'a> Frame<'a> {
     /// Returns the current instruction pointer of this frame.
+    #[must_use]
     pub fn ip(&self) -> *mut c_void {
         match self {
             Frame::Raw(ctx) => unwinding::_Unwind_GetIP(ctx) as *mut c_void,
@@ -22,6 +23,7 @@ impl<'a> Frame<'a> {
     }
 
     /// Returns the current stack pointer of this frame.
+    #[must_use]
     pub fn sp(&self) -> *mut c_void {
         match self {
             Frame::Raw(ctx) => unwinding::_Unwind_GetCFA(ctx) as *mut c_void,
@@ -30,6 +32,7 @@ impl<'a> Frame<'a> {
     }
 
     /// Returns the starting symbol address of the frame of this function.
+    #[must_use]
     pub fn symbol_address(&self) -> *mut c_void {
         if let Frame::Cloned { symbol_address, .. } = *self {
             return symbol_address;
@@ -49,13 +52,14 @@ impl<'a> fmt::Debug for Frame<'a> {
     }
 }
 
+/// # Safety
+///
+/// This is unsafe as it is unsynchronized and not thread safe (TODO this assumption is copied from stdlib, verify)
 pub unsafe fn trace_unsynchronized<F: FnMut(&Frame) -> bool>(mut cb: F) {
-    trace_imp(&mut cb)
+    trace_imp(&mut cb);
 }
 
 fn trace_imp(mut cb: &mut dyn FnMut(&Frame) -> bool) {
-    unwinding::_Unwind_Backtrace(trace_fn, addr_of_mut!(cb).cast());
-
     extern "C" fn trace_fn(
         ctx: &unwinding::UnwindContext,
         arg: *mut c_void,
@@ -72,6 +76,8 @@ fn trace_imp(mut cb: &mut dyn FnMut(&Frame) -> bool) {
             unwinding::UnwindReasonCode::FATAL_PHASE1_ERROR
         }
     }
+
+    unwinding::_Unwind_Backtrace(trace_fn, addr_of_mut!(cb).cast());
 }
 
 struct DropGuard;

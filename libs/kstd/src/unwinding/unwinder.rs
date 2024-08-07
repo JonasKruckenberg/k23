@@ -362,7 +362,7 @@ pub extern "C" fn _Unwind_FindEnclosingFunction(pc: *mut c_void) -> *mut c_void 
         return ptr::null_mut();
     };
 
-    fde.initial_address() as usize as _
+    usize::try_from(fde.initial_address()).unwrap() as _
 }
 
 #[no_mangle]
