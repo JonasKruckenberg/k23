@@ -29,6 +29,8 @@ pub mod sync;
 
 // DWARF-based stack unwinding
 #[cfg(feature = "panic-unwind")]
+pub mod backtrace;
+#[cfg(feature = "panic-unwind")]
 pub mod unwinding;
 
 // Public-facing panic API
