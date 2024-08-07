@@ -18,7 +18,6 @@
 //! [libunwind]: https://www.ucw.cz/~hubicka/papers/abi/node25.html#SECTION00923100000000000000
 //! [unwinding]: https://github.com/nbdd0121/unwinding
 
-
 mod eh_info;
 mod frame;
 mod personality;
