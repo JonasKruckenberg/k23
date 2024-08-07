@@ -1,72 +1,52 @@
 use crate::kconfig;
 use core::arch::asm;
 use core::marker::PhantomPinned;
+use core::ptr::addr_of;
 use kstd::arch::sbi::time::set_timer;
 use kstd::arch::scause::{Exception, Interrupt, Trap};
 use kstd::arch::{scause, sepc, sstatus, stval, stvec};
 use kstd::declare_thread_local;
 
 declare_thread_local! {
-    static TRAP_FRAME: TrapFrame;
     static TRAP_STACK: [u8; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE] = const { [0; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE] };
 }
 
 pub fn init() {
-    let frame = TrapFrame {
-        ra: 0,
-        sp: 0,
-        t: [0; 7],
-        a: [0; 8],
-        s: [0; 12],
-        // Safety: mutable statics are wildly unsafe, but we take exactly *one* mutable reference to it here
-        trap_stack_ptr: unsafe {
-            TRAP_STACK
-                .as_ptr()
-                .byte_add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE) as *mut _
-        },
-        _pinned: PhantomPinned,
+    let trap_stack_top = unsafe {
+        TRAP_STACK
+            .as_ptr()
+            .byte_add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE) as *mut u8
     };
-    log::debug!(
-        "trap stack {:?}..{:?}",
-        unsafe { TRAP_STACK.as_ptr() },
-        unsafe {
-            TRAP_STACK
-                .as_ptr()
-                .byte_add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE)
-        }
-    );
 
-    TRAP_FRAME.initialize_with(frame, |_, frame_ref| {
-        log::debug!("setting sscratch to {:p}", core::ptr::from_ref(frame_ref));
+        log::debug!("setting sscratch to {:p}", trap_stack_top);
 
         unsafe {
             asm!(
                 "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
-                trap_frame = in(reg) core::ptr::from_ref(frame_ref)
+                trap_frame = in(reg) trap_stack_top
             );
         }
 
         log::debug!("setting trap vec to {:#x}", trap_vec as usize);
         unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
-    });
 }
 
-/// This struct keeps the harts state during a trap, so we can restore it later.
-///
-/// Currently, we only save the `t` and `a` registers as well as the `ra` register.
-// TODO we probably should save all general purpose registers & floating points regs if kernel code is allowed to use them
-#[repr(C, align(16))]
-#[derive(Debug)]
-pub struct TrapFrame {
-    pub ra: usize,
-    pub sp: usize,
-    pub t: [usize; 7],
-    pub a: [usize; 8],
-    pub s: [usize; 12],
-    pub trap_stack_ptr: *mut u8,
-
-    pub _pinned: PhantomPinned,
-}
+// /// This struct keeps the harts state during a trap, so we can restore it later.
+// ///
+// /// Currently, we only save the `t` and `a` registers as well as the `ra` register.
+// // TODO we probably should save all general purpose registers & floating points regs if kernel code is allowed to use them
+// #[repr(C, align(16))]
+// #[derive(Debug)]
+// pub struct TrapFrame {
+//     pub ra: usize,
+//     pub sp: usize,
+//     pub t: [usize; 7],
+//     pub a: [usize; 8],
+//     pub s: [usize; 12],
+//     pub trap_stack_ptr: *mut u8,
+//
+//     pub _pinned: PhantomPinned,
+// }
 
 #[naked]
 pub unsafe extern "C" fn trap_vec() {
@@ -161,78 +141,124 @@ unsafe extern "C" fn default_trap_entry() {
     asm! {
         ".align 2",
 
-        "csrrw t6, sscratch, t6", // t6 points to the TrapFrame
+        "mv t0, sp", // save the correct stack pointer
+        "csrrw sp, sscratch, sp", // t6 points to the TrapFrame
+        "add sp, sp, -0x210",
 
-        save!(ra => t6[0]),
-        save!(sp => t6[1]),
-        save!(t0 => t6[2]),
-        save!(t1 => t6[3]),
-        save!(t2 => t6[4]),
-        save!(t3 => t6[5]),
-        save!(t4 => t6[6]),
-        save!(t5 => t6[7]),
-        // skip t6 because it's saved in sscratch
-        save!(a0 => t6[9]),
-        save!(a1 => t6[10]),
-        save!(a2 => t6[11]),
-        save!(a3 => t6[12]),
-        save!(a4 => t6[13]),
-        save!(a5 => t6[14]),
-        save!(a6 => t6[15]),
-        save!(a7 => t6[16]),
+        // save gp
+        "
+        sd x0, 0x00(sp)
+        sd ra, 0x08(sp)
+        sd t0, 0x10(sp)
+        sd gp, 0x18(sp)
+        sd tp, 0x20(sp)
+        sd s0, 0x40(sp)
+        sd s1, 0x48(sp)
+        sd s2, 0x90(sp)
+        sd s3, 0x98(sp)
+        sd s4, 0xA0(sp)
+        sd s5, 0xA8(sp)
+        sd s6, 0xB0(sp)
+        sd s7, 0xB8(sp)
+        sd s8, 0xC0(sp)
+        sd s9, 0xC8(sp)
+        sd s10, 0xD0(sp)
+        sd s11, 0xD8(sp)
+        ",
 
-        save!(s0 => t6[17]),
-        save!(s1 => t6[18]),
-        save!(s2 => t6[19]),
-        save!(s3 => t6[20]),
-        save!(s4 => t6[21]),
-        save!(s5 => t6[22]),
-        save!(s6 => t6[23]),
-        save!(s7 => t6[24]),
-        save!(s8 => t6[25]),
-        save!(s9 => t6[26]),
-        save!(s10 => t6[27]),
-        save!(s11 => t6[28]),
+        // save fp
+        "
+        fsd fs0, 0x140(sp)
+        fsd fs1, 0x148(sp)
+        fsd fs2, 0x190(sp)
+        fsd fs3, 0x198(sp)
+        fsd fs4, 0x1A0(sp)
+        fsd fs5, 0x1A8(sp)
+        fsd fs6, 0x1B0(sp)
+        fsd fs7, 0x1B8(sp)
+        fsd fs8, 0x1C0(sp)
+        fsd fs9, 0x1C8(sp)
+        fsd fs10, 0x1D0(sp)
+        fsd fs11, 0x1D8(sp)
+        ",
 
-        load!(t6[29] => sp),
-        "mv a0, t6",
+        "mv a0, sp",
 
         "call {trap_handler}",
 
-        "mv t6, a0",
+        "mv sp, a0",
 
-        load!(t6[0] => ra),
-        load!(t6[1] => sp),
-        load!(t6[2] => t0),
-        load!(t6[3] => t1),
-        load!(t6[4] => t2),
-        load!(t6[5] => t3),
-        load!(t6[6] => t4),
-        load!(t6[7] => t5),
-        // skip t6 because it's saved in sscratch
-        load!(t6[9] => a0),
-        load!(t6[10] => a1),
-        load!(t6[11] => a2),
-        load!(t6[12] => a3),
-        load!(t6[13] => a4),
-        load!(t6[14] => a5),
-        load!(t6[15] => a6),
-        load!(t6[16] => a7),
+        // restore gp
+        "ld ra, 0x08(a0)",
+        // skip sp since it is saved in sscratch
+        "ld gp, 0x18(a0)
+        ld tp, 0x20(a0)
+        ld t0, 0x28(a0)
+        ld t1, 0x30(a0)
+        ld t2, 0x38(a0)
+        ld s0, 0x40(a0)
+        ld s1, 0x48(a0)
+        ld a1, 0x58(a0)
+        ld a2, 0x60(a0)
+        ld a3, 0x68(a0)
+        ld a4, 0x70(a0)
+        ld a5, 0x78(a0)
+        ld a6, 0x80(a0)
+        ld a7, 0x88(a0)
+        ld s2, 0x90(a0)
+        ld s3, 0x98(a0)
+        ld s4, 0xA0(a0)
+        ld s5, 0xA8(a0)
+        ld s6, 0xB0(a0)
+        ld s7, 0xB8(a0)
+        ld s8, 0xC0(a0)
+        ld s9, 0xC8(a0)
+        ld s10, 0xD0(a0)
+        ld s11, 0xD8(a0)
+        ld t3, 0xE0(a0)
+        ld t4, 0xE8(a0)
+        ld t5, 0xF0(a0)
+        ld t6, 0xF8(a0)
+        ",
 
-        load!(t6[17] => s0),
-        load!(t6[18] => s1),
-        load!(t6[19] => s2),
-        load!(t6[20] => s3),
-        load!(t6[21] => s4),
-        load!(t6[22] => s5),
-        load!(t6[23] => s6),
-        load!(t6[24] => s7),
-        load!(t6[25] => s8),
-        load!(t6[26] => s9),
-        load!(t6[27] => s10),
-        load!(t6[28] => s11),
+        // restore fp
+        "
+        fld ft0, 0x100(a0)
+        fld ft1, 0x108(a0)
+        fld ft2, 0x110(a0)
+        fld ft3, 0x118(a0)
+        fld ft4, 0x120(a0)
+        fld ft5, 0x128(a0)
+        fld ft6, 0x130(a0)
+        fld ft7, 0x138(a0)
+        fld fs0, 0x140(a0)
+        fld fs1, 0x148(a0)
+        fld fa0, 0x150(a0)
+        fld fa1, 0x158(a0)
+        fld fa2, 0x160(a0)
+        fld fa3, 0x168(a0)
+        fld fa4, 0x170(a0)
+        fld fa5, 0x178(a0)
+        fld fa6, 0x180(a0)
+        fld fa7, 0x188(a0)
+        fld fs2, 0x190(a0)
+        fld fs3, 0x198(a0)
+        fld fs4, 0x1A0(a0)
+        fld fs5, 0x1A8(a0)
+        fld fs6, 0x1B0(a0)
+        fld fs7, 0x1B8(a0)
+        fld fs8, 0x1C0(a0)
+        fld fs9, 0x1C8(a0)
+        fld fs10, 0x1D0(a0)
+        fld fs11, 0x1D8(a0)
+        fld ft8, 0x1E0(a0)
+        fld ft9, 0x1E8(a0)
+        fld ft10, 0x1F0(a0)
+        fld ft11, 0x1F8(a0)
+        ",
 
-        "csrrw t6, sscratch, t6",
+        "add sp, sp, 0x210",
+        "csrrw sp, sscratch, sp",
         "sret",
 
         trap_handler = sym default_trap_handler,
@@ -240,10 +266,16 @@ unsafe extern "C" fn default_trap_entry() {
     }
 }
 
+/// A special trampoline function that the trap handler switches to, to initiate a kernel panic & backtrace
+/// *after* switching back to the regular stack since printing a backtrace of the trap stack is seldom helpful.
+extern "C-unwind" fn trap_panic_trampoline() {
+    panic!("UNRECOVERABLE KERNEL TRAP");
+}
+
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
 #[allow(clippy::too_many_arguments)]
 fn default_trap_handler(
-    raw_frame: *mut TrapFrame,
+    raw_frame: *mut kstd::arch::unwinding::Context,
     a1: usize,
     a2: usize,
     a3: usize,
@@ -251,8 +283,7 @@ fn default_trap_handler(
     a5: usize,
     a6: usize,
     a7: usize,
-) -> *mut TrapFrame {
-    // let frame = unsafe { &*raw_frame };
+) -> *mut kstd::arch::unwinding::Context {
     let cause = scause::read().cause();
 
     log::trace!("{:?}", sstatus::read());
@@ -264,22 +295,14 @@ fn default_trap_handler(
             let tval = stval::read();
 
             log::error!("KERNEL LOAD PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
-
-            panic!();
-
-            // let mut count = 0;
-            // crate::backtrace::trace_with_context(ctx, |frame| {
-            //     count += 1;
-            //     log::debug!("{:<2}- {:#x?}", count, frame.symbol_address());
-            // });
+            unsafe { sepc::write(trap_panic_trampoline as usize) }
         }
         Trap::Exception(Exception::StorePageFault) => {
             let epc = sepc::read();
             let tval = stval::read();
 
             log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
-            
-            panic!();
+            unsafe { sepc::write(trap_panic_trampoline as usize) }
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             log::info!("Supervisor Timer");
