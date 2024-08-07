@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 
 [lib]
+doc = false
 proc-macro = true
 
 [dependencies]

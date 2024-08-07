@@ -348,6 +348,15 @@ fn default_hook(info: &PanicHookInfo<'_>) {
     let msg = payload_as_str(info.payload());
 
     heprintln!("thread '{}' panicked at {}:\n{}", thread_id, location, msg);
+
+    #[cfg(feature = "panic-unwind")]
+    unsafe {
+        crate::backtrace::trace_unsynchronized(|frame| {
+            heprintln!("{:?}", frame);
+
+            true
+        });
+    }
 }
 
 fn payload_as_str(payload: &dyn Any) -> &str {
