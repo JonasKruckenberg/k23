@@ -1,5 +1,6 @@
-use crate::{Flush, Mapper, Mode, PhysicalAddress, VirtualAddress};
+use crate::{AddressRangeExt, Flush, Mapper, Mode, PhysicalAddress, VirtualAddress};
 use core::{ptr, slice};
+use core::ops::Div;
 use object::elf::{ProgramHeader64, PT_DYNAMIC, PT_GNU_RELRO, PT_LOAD, PT_TLS};
 use object::read::elf::{ElfFile64, ProgramHeader as _};
 use object::Endianness;
@@ -143,6 +144,20 @@ impl<'a, M: Mode> Mapper<'a, M> {
         Ok(())
     }
 
+    /// BSS sections are special, since they take up virtual memory that is not present in the "physical" elf file.
+    ///
+    /// Usually, this means just allocating zeroed frames and mapping them "in between" the pages
+    /// backed by the elf file. However, quite often the boundary between DATA and BSS sections is
+    /// *not* page aligned (since that would unnecessarily bloat the elf file) which means for us
+    /// that we need special handling for the last DATA page that is only partially filled with data
+    /// and partially filled with zeroes. Here's how we do this:
+    ///
+    /// 1. We calculate the size of the segments zero initialized part.
+    /// 2. We then figure out whether the boundary is page-aligned or if there are DATA bytes we need to account for.
+    ///     2.1. IF there are data bytes to account for, we allocate a zeroed frame,
+    ///     2.2. we then copy over the relevant data from the DATA section into the new frame
+    ///     2.3. lastly we replace last page previously mapped by `handle_load_segment` to stitch things up.
+    /// 3. If the BSS section is larger than that one page, we allocate additional zeroed frames and map them in.
     fn handle_bss_section(
         &mut self,
         program_header: &ProgramHeader,
@@ -172,20 +187,30 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
             let new_frame = self.allocate_and_copy(last_frame, data_bytes_before_zero)?;
 
-            log::debug!("remap {:?} to {:?}", last_page, new_frame);
+            log::debug!("remap {:?} to {:?}", last_page..last_page.add(M::PAGE_SIZE), new_frame.add(M::PAGE_SIZE));
 
             self.remap(last_page, new_frame, flags, flush)?;
         }
 
-        let additional = {
+        let additional_virt = {
             let start = zero_start.align_up(M::PAGE_SIZE).align_down(M::PAGE_SIZE);
-            let end = zero_end.align_down(M::PAGE_SIZE);
+            let end = zero_end.align_up(M::PAGE_SIZE);
             start..end
         };
 
-        assert!(additional.is_empty());
+        if !additional_virt.is_empty() {
+            // additional_virt should be page-aligned, but just to make sure
+            debug_assert!(additional_virt.is_aligned(M::PAGE_SIZE));
 
-        // TODO for BSS pages that are left unaccounted for after this allocate frames & map
+            let additional_phys = {
+                let start = self.allocator_mut().allocate_frames_zeroed(additional_virt.size().div(M::PAGE_SIZE))?;
+
+                start..start.add(additional_virt.size())
+            };
+
+            log::trace!("mapping additional zeros {additional_virt:?} => {additional_phys:?}");
+            self.map_range(additional_virt, additional_phys, flags, flush)?;
+        }
 
         Ok(())
     }
