@@ -31,6 +31,10 @@ gimli = { path = "libs/gimli" }
 loader-api = { path = "loader/api" }
 kstd = { path = "libs/kstd" }
 ktest = { path = "libs/ktest" }
+wast = { path = "libs/wast" }
+wat = { path = "libs/wat" }
+leb128 = { path = "libs/leb128" }
+wasm-encoder = { path = "libs/wasm-encoder" }
 
 onlyerror = { version = "0.1.4", default-features = false }
 log = "0.4.21"
@@ -42,9 +46,16 @@ ed25519-dalek = { version = "2.1.1", default-features = false }
 object = { version = "0.36.0", default-features = false }
 lz4_flex = { version = "0.11", default-features = false }
 lock_api = "0.4.12"
+unicode-width = { version = "0.1.9" }
+memchr = { version = "2.4.1", default-features = false }
+bumpalo = "3.14.0"
+rustc-demangle = "0.1.24"
+postcard = { version = "1.0.8", default-features = false, features = ["alloc"] }
+talc = "4.4.1"
 
 # cranelift dependencies
 hashbrown = { version = "0.14.5", default-features = false, features = [
+    "inline-more",
     "nightly",
 ] }
 wasmparser = { version = "0.214.0", default-features = false }
@@ -82,4 +93,13 @@ overflow-checks = true
 split-debuginfo = "packed"
 
 [profile.dev.package.ed25519-dalek]
+opt-level = 3
+
+[profile.test.package.ed25519-dalek]
+opt-level = 3
+
+[profile.dev.package.lz4_flex]
+opt-level = 3
+
+[profile.test.package.lz4_flex]
 opt-level = 3

@@ -1,8 +1,13 @@
 extern crate core;
 
+use std::{fs, path::PathBuf};
+
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, parse_quote, Attribute, Error, Expr, ItemFn, Path};
+use syn::{
+    parse::Parse, parse_macro_input, parse_quote, Attribute, Error, Expr, Ident, ItemFn, LitStr,
+    Path,
+};
 
 #[proc_macro_attribute]
 pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
@@ -118,4 +123,65 @@ pub(crate) fn crate_path(attrs: &mut Vec<Attribute>) -> syn::Result<Path> {
         None => Ok(crate_path.unwrap_or_else(|| parse_quote!(::ktest))),
         Some(errors) => Err(errors),
     }
+}
+
+#[derive(Debug)]
+struct ForEachFixtureInput {
+    folder: PathBuf,
+    macroo: Ident,
+}
+
+impl Parse for ForEachFixtureInput {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let folder: LitStr = input.parse()?;
+        input.parse::<syn::Token![,]>()?;
+        let macroo = input.parse()?;
+        Ok(Self {
+            folder: parse_path(&folder),
+            macroo,
+        })
+    }
+}
+
+fn parse_path(path: &syn::LitStr) -> PathBuf {
+    let path = path.value();
+    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    manifest_dir.join(path)
+}
+
+#[proc_macro]
+pub fn for_each_fixture(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as ForEachFixtureInput);
+
+    let folder = fs::read_dir(input.folder).unwrap();
+
+    let cases = folder.filter_map(|entry| {
+        let entry = entry.unwrap();
+        let is_wasm = if let Some(ext) = entry.path().extension() {
+            ext == "wasm" || ext == "wast"
+        } else {
+            false
+        };
+
+        if is_wasm {
+            let path = entry.path();
+            let name = format_ident!(
+                "test_{}",
+                path.file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .replace("-", "_")
+            );
+            let path = path.to_str().unwrap();
+            let macroo = &input.macroo;
+            Some(quote! {
+                #macroo!(#name, #path);
+            })
+        } else {
+            None
+        }
+    });
+
+    quote!(#(#cases)*).into()
 }

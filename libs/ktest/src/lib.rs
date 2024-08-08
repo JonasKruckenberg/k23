@@ -12,7 +12,7 @@ mod run;
 use alloc::boxed::Box;
 pub use args::Arguments;
 use core::any::Any;
-pub use ktest_macros::{setup_harness, test};
+pub use ktest_macros::{for_each_fixture, setup_harness, test};
 
 #[doc(hidden)]
 pub use run::run_tests;

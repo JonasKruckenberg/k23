@@ -96,7 +96,7 @@ fn setup(hartid: usize, boot_info: &'static loader_api::BootInfo) {
 
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = loader_api::LoaderConfig::new_default();
-    cfg.kernel_stack_size_pages = 128;
+    cfg.kernel_stack_size_pages = 256;
     cfg
 };
 

@@ -225,6 +225,10 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
     }
 }
 
+/// # Safety
+///
+/// This function will restore whatever values are in the given `Context` into the machine registers
+/// **without** performing any sort of validation.
 pub unsafe fn restore_context(ctx: &Context) -> ! {
     #[cfg(target_feature = "d")]
     unsafe {
