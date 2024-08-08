@@ -1,7 +1,7 @@
 use super::csr_base_and_read;
+use crate::arch::csr_write;
 use core::fmt;
 use core::fmt::Formatter;
-use crate::arch::csr_write;
 
 csr_base_and_read!(Sepc, "sepc");
 csr_write!("sepc");

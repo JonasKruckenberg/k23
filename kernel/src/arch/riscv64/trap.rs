@@ -16,17 +16,17 @@ pub fn init() {
             .byte_add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE) as *mut u8
     };
 
-        log::debug!("setting sscratch to {:p}", trap_stack_top);
+    log::debug!("setting sscratch to {:p}", trap_stack_top);
 
-        unsafe {
-            asm!(
-                "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
-                trap_frame = in(reg) trap_stack_top
-            );
-        }
+    unsafe {
+        asm!(
+            "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
+            trap_frame = in(reg) trap_stack_top
+        );
+    }
 
-        log::debug!("setting trap vec to {:#x}", trap_vec as usize);
-        unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
+    log::debug!("setting trap vec to {:#x}", trap_vec as usize);
+    unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
 }
 
 #[naked]
@@ -57,6 +57,7 @@ pub unsafe extern "C" fn trap_vec() {
     )
 }
 
+#[allow(clippy::too_many_lines)]
 #[naked]
 unsafe extern "C" fn default_trap_entry() {
     asm! {
