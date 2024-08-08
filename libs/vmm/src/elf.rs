@@ -1,6 +1,6 @@
 use crate::{AddressRangeExt, Flush, Mapper, Mode, PhysicalAddress, VirtualAddress};
-use core::{ptr, slice};
 use core::ops::Div;
+use core::{ptr, slice};
 use object::elf::{ProgramHeader64, PT_DYNAMIC, PT_GNU_RELRO, PT_LOAD, PT_TLS};
 use object::read::elf::{ElfFile64, ProgramHeader as _};
 use object::Endianness;
@@ -187,7 +187,11 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
             let new_frame = self.allocate_and_copy(last_frame, data_bytes_before_zero)?;
 
-            log::debug!("remap {:?} to {:?}", last_page..last_page.add(M::PAGE_SIZE), new_frame.add(M::PAGE_SIZE));
+            log::debug!(
+                "remap {:?} to {:?}",
+                last_page..last_page.add(M::PAGE_SIZE),
+                new_frame.add(M::PAGE_SIZE)
+            );
 
             self.remap(last_page, new_frame, flags, flush)?;
         }
@@ -203,7 +207,9 @@ impl<'a, M: Mode> Mapper<'a, M> {
             debug_assert!(additional_virt.is_aligned(M::PAGE_SIZE));
 
             let additional_phys = {
-                let start = self.allocator_mut().allocate_frames_zeroed(additional_virt.size().div(M::PAGE_SIZE))?;
+                let start = self
+                    .allocator_mut()
+                    .allocate_frames_zeroed(additional_virt.size().div(M::PAGE_SIZE))?;
 
                 start..start.add(additional_virt.size())
             };
