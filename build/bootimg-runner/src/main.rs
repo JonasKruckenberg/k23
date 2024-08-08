@@ -223,7 +223,12 @@ impl Builder {
     }
 }
 
-fn run_in_qemu(qemu_path: Option<&Path>, target: Target, bootimg_path: &Path, wait_for_debugger: bool) -> Option<i32> {
+fn run_in_qemu(
+    qemu_path: Option<&Path>,
+    target: Target,
+    bootimg_path: &Path,
+    wait_for_debugger: bool,
+) -> Option<i32> {
     let mut child = KillOnDrop({
         let runner = qemu_path.map_or_else(|| target.qemu_runner(), |p| p.to_str().unwrap());
 

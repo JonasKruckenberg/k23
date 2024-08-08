@@ -338,7 +338,7 @@ impl<'wasm> InstanceData<'wasm> {
     fn defined_or_imported_memory(&self, index: MemoryIndex) -> &VMMemoryDefinition {
         unsafe {
             if let Some(def_index) = self.module_info.module.defined_memory_index(index) {
-                return &self.vmctx_memory_definitions()[def_index.index()]
+                &self.vmctx_memory_definitions()[def_index.index()]
 
                 // *self.vmctx_plus_offset::<*mut VMMemoryDefinition>(
                 //     self.vmctx_plan.vmctx_memory_pointer(def_index),
@@ -491,7 +491,6 @@ fn initialize_memories(
     for init in &module.memory_initializers.runtime {
         let def_index = module.defined_memory_index(init.memory_index).unwrap();
         let mut data = store.instance_data_mut(instance);
-
 
         data.memories[def_index].inner.extend_from_slice(init.bytes);
     }
