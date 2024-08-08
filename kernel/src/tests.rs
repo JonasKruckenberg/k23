@@ -61,10 +61,10 @@ mod compile_tests {
         };
     }
 
-    wast_test_case!(test_data, "/Users/jonaskruckenberg/Documents/GitHub/k23/tests/testsuite/data.wast");
+    // wast_test_case!(test_data, "/Users/jonaskruckenberg/Documents/GitHub/k23/tests/testsuite/data.wast");
 
-    // ktest::for_each_fixture!("../tests/fib", wasm_test_case);
-    // ktest::for_each_fixture!("../tests/testsuite", wast_test_case);
+    ktest::for_each_fixture!("../tests/fib", wasm_test_case);
+    ktest::for_each_fixture!("../tests/testsuite", wast_test_case);
 }
 
 // #[cfg(test)]
