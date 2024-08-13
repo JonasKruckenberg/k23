@@ -57,9 +57,10 @@ fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
             );
         }
 
-        let fdt_virt = allocate_and_copy_fdt(machine_info, &mut alloc).unwrap();
+        let (fdt_phys, fdt_virt) = allocate_and_copy_fdt(machine_info, &mut alloc).unwrap();
 
         let payload = Payload::from_signed_and_compressed(PAYLOAD, VERIFYING_KEY, &mut alloc);
+        payload.assert_cpu_compatible(fdt_phys.as_raw() as *const u8);
 
         let mut mappings =
             set_up_mappings(&payload, machine_info, &own_regions, fdt_virt, &mut alloc).unwrap();
@@ -119,7 +120,7 @@ fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
 pub fn allocate_and_copy_fdt(
     machine_info: &MachineInfo,
     alloc: &mut BumpAllocator<INIT<kconfig::MEMORY_MODE>>,
-) -> Result<VirtualAddress, vmm::Error> {
+) -> Result<(PhysicalAddress, VirtualAddress), vmm::Error> {
     let frames = machine_info.fdt.len().div_ceil(kconfig::PAGE_SIZE);
     let base = alloc.allocate_frames(frames)?;
 
@@ -129,7 +130,7 @@ pub fn allocate_and_copy_fdt(
         ptr::copy_nonoverlapping(machine_info.fdt.as_ptr(), dst.as_mut_ptr(), dst.len());
     }
 
-    Ok(kconfig::MEMORY_MODE::phys_to_virt(base))
+    Ok((base, kconfig::MEMORY_MODE::phys_to_virt(base)))
 }
 
 #[derive(Debug)]

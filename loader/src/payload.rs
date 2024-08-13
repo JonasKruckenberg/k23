@@ -1,7 +1,13 @@
 use crate::kconfig;
+use crate::machine_info::MachineInfo;
+use bitflags::bitflags;
+use core::ffi::CStr;
 use core::slice;
+use dtb_parser::{DevTree, Node, Visitor};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use kstd::arch::riscv_features::{ElfRiscvAttribute, ElfRiscvAttributesSection, RiscvFeatures};
 use loader_api::LoaderConfig;
+use object::read::elf::ElfFile64;
 use object::{Object, ObjectSection};
 use vmm::{BumpAllocator, FrameAllocator, INIT};
 
@@ -47,6 +53,32 @@ impl<'a> Payload<'a> {
         Self::from_bytes(uncompressed_payload)
     }
 
+    #[cfg(target_arch = "riscv64")]
+    pub fn assert_cpu_compatible(&self, fdt_ptr: *const u8) {
+        let section = self
+            .elf_file
+            .section_by_name(".riscv.attributes")
+            .expect(".riscv.attributes section is required");
+
+        let section = ElfRiscvAttributesSection::new(&section.data().unwrap());
+
+        for mut subsection in section {
+            if subsection.name() == c"riscv" {
+                let subsubsection = subsection.next().unwrap();
+                assert!(subsection.next().is_none());
+
+                for attr in subsubsection {
+                    if let ElfRiscvAttribute::Arch(required_features) = attr {
+                        let fdt = unsafe { DevTree::from_raw(fdt_ptr) }.unwrap();
+
+                        let mut v = CpuFeaturesVisitor { required_features };
+                        fdt.visit(&mut v).unwrap();
+                    }
+                }
+            }
+        }
+    }
+
     pub fn from_bytes(bytes: &'a [u8]) -> Self {
         let elf_file = object::read::elf::ElfFile::parse(bytes).unwrap();
 
@@ -65,5 +97,31 @@ impl<'a> Payload<'a> {
             elf_file,
             loader_config,
         }
+    }
+}
+
+struct CpuFeaturesVisitor {
+    required_features: RiscvFeatures,
+}
+
+impl<'dt> Visitor<'dt> for CpuFeaturesVisitor {
+    type Error = dtb_parser::Error;
+    fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
+        if name == "cpus" || name.is_empty() || name.starts_with("cpu@") {
+            node.visit(self)?;
+        }
+
+        Ok(())
+    }
+
+    fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
+        if name == "riscv,isa" {
+            let s = CStr::from_bytes_with_nul(value).unwrap().to_str().unwrap();
+            let supported_features = RiscvFeatures::from_dtb_riscv_isa_str(s);
+
+            assert!(supported_features.contains(self.required_features));
+        }
+
+        Ok(())
     }
 }
