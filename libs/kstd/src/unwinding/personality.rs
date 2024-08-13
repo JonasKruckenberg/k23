@@ -5,7 +5,7 @@ use super::{
     UnwindAction, UnwindContext, UnwindException, UnwindReasonCode,
 };
 use crate::arch;
-use core::{ffi::c_int, mem};
+use core::ffi::c_int;
 use gimli::{constants, EndianSlice, NativeEndian, Pointer, Reader};
 
 #[lang = "eh_personality"]
@@ -138,7 +138,7 @@ fn parse_pointer_encoding(
     if eh_pe.is_valid_encoding() {
         Ok(eh_pe)
     } else {
-        Err(gimli::Error::UnknownPointerEncoding)
+        Err(gimli::Error::UnknownPointerEncoding(eh_pe))
     }
 }
 
@@ -162,9 +162,7 @@ fn parse_encoded_pointer(
     };
 
     let offset = match encoding.format() {
-        constants::DW_EH_PE_absptr => {
-            input.read_address(mem::size_of::<usize>().try_into().unwrap())
-        }
+        constants::DW_EH_PE_absptr => input.read_address(size_of::<usize>().try_into().unwrap()),
         constants::DW_EH_PE_uleb128 => input.read_uleb128(),
         constants::DW_EH_PE_udata2 => input.read_u16().map(u64::from),
         constants::DW_EH_PE_udata4 => input.read_u32().map(u64::from),
