@@ -134,12 +134,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79296716171880943b8470b5f8d03aa55eb2e645a4874bdbb28adb49162e012c"
 
 [[package]]
-name = "byteorder"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
-
-[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -432,13 +426,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
 
 [[package]]
-name = "fxhash"
-version = "0.1.0"
-dependencies = [
- "hashbrown 0.14.5",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -461,13 +448,9 @@ dependencies = [
 
 [[package]]
 name = "gimli"
-version = "0.1.0"
-dependencies = [
- "fxhash",
- "hashbrown 0.14.5",
- "indexmap",
- "test-assembler",
-]
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32085ea23f3234fc7846555e85283ba4de91e21016dc0455a16286d87a292d64"
 
 [[package]]
 name = "hashbrown"
@@ -922,15 +905,6 @@ name = "target-lexicon"
 version = "0.12.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
-
-[[package]]
-name = "test-assembler"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a6da51de149453f5c43fa67d5e73cccd75b3c5727a38a2f18c5f3c47f2db582"
-dependencies = [
- "byteorder",
-]
 
 [[package]]
 name = "toml"

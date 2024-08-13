@@ -1,13 +1,22 @@
 use super::{arch, eh_info::EH_INFO, utils::deref_pointer, PersonalityRoutine};
+use core::fmt;
+use core::fmt::Formatter;
 use gimli::{
     BaseAddresses, CfaRule, EhFrame, EndianSlice, FrameDescriptionEntry, NativeEndian, Register,
     RegisterRule, UnwindContext, UnwindSection, UnwindTableRow,
 };
 
-#[derive(Debug)]
 pub struct Frame {
     fde: FrameDescriptionEntry<EndianSlice<'static, NativeEndian>, usize>,
-    row: UnwindTableRow<EndianSlice<'static, NativeEndian>, StoreOnStack>,
+    row: UnwindTableRow<usize, StoreOnStack>,
+}
+
+impl fmt::Debug for Frame {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Frame")
+            .field("fde", &self.fde)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Frame {
@@ -35,6 +44,7 @@ impl Frame {
         )?;
 
         let mut unwinder = UnwindContext::<_, StoreOnStack>::new_in();
+
         let row = fde
             .unwind_info_for_address(&EH_INFO.eh_frame, &EH_INFO.bases, &mut unwinder, ra as _)?
             .clone();
@@ -126,7 +136,7 @@ const fn next_value(x: usize) -> usize {
     192
 }
 
-impl<R: gimli::Reader> gimli::UnwindContextStorage<R> for StoreOnStack {
+impl<R: gimli::ReaderOffset> gimli::UnwindContextStorage<R> for StoreOnStack {
     type Rules = [(Register, RegisterRule<R>); next_value(arch::unwinding::MAX_REG_RULES)];
     type Stack = [UnwindTableRow<R, Self>; 2];
 }
