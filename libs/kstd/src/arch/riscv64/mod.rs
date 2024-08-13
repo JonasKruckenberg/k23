@@ -1,5 +1,6 @@
 pub mod hio;
 pub mod register;
+pub mod riscv_features;
 pub mod sbi;
 pub(crate) mod semihosting;
 pub mod unwinding;
