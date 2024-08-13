@@ -277,16 +277,6 @@ pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut UnwindException) 
     })
 }
 
-// #[inline(never)]
-// #[no_mangle]
-// pub unsafe extern "C-unwind" fn _Unwind_ForcedUnwind(
-//     exception: *mut UnwindException,
-//     stop: UnwindStopFn,
-//     stop_arg: *mut c_void,
-// ) -> UnwindReasonCode {
-//     with_context(|ctx| {})
-// }
-
 #[no_mangle]
 pub extern "C" fn _Unwind_GetLanguageSpecificData(unwind_ctx: &UnwindContext<'_>) -> *mut c_void {
     unwind_ctx
