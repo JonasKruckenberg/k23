@@ -1,5 +1,5 @@
 use crate::arch;
-use crate::sync::LocalThreadId;
+use crate::sync::{LocalThreadId, OnceLock};
 use crate::{heprintln, panic::PanicHookInfo, sync::RwLock};
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -111,13 +111,13 @@ fn rust_panic_with_hook(
         match must_abort {
             panic_count::MustAbort::PanicInHook => {
                 // Don't try to format the message in this case, perhaps that is causing the
-                // recursive panics. However if the message is just a string, no user-defined
+                // recursive panics. However, if the message is just a string, no user-defined
                 // code is involved in printing it, so that is risk-free.
-                let message: &str = payload.as_str().unwrap_or_default();
+                let msg = payload_as_str(payload.get());
                 heprintln!(
                     "panicked at {}:\n{}\nthread panicked while processing panic. aborting.\n",
                     location,
-                    message
+                    msg
                 );
             } // panic_count::MustAbort::AlwaysAbort => {
               //     // Unfortunately, this does not print a backtrace, because creating
@@ -125,7 +125,7 @@ fn rust_panic_with_hook(
               //     heprintln!("aborting due to panic at {}:\n{}\n", location, payload);
               // }
         }
-        crate::arch::abort_internal(1);
+        arch::abort_internal(1);
     }
 
     match *HOOK.read() {
@@ -142,7 +142,7 @@ fn rust_panic_with_hook(
         // through a nounwind function (e.g. extern "C") then we cannot continue
         // unwinding and have to abort immediately.
         heprintln!("thread caused non-unwinding panic. aborting.\n");
-        crate::arch::abort_internal(1);
+        arch::abort_internal(1);
     }
 
     rust_panic(payload)
