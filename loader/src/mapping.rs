@@ -116,6 +116,10 @@ pub fn set_up_mappings(
         loader_virt,
         fdt_virt,
         bootinfo_phys,
+        payload_elf_phys: {
+            let start = PhysicalAddress::new(payload.elf_file.data().as_ptr() as usize);
+            start..start.add(payload.elf_file.data().len())
+        },
         dynamic_range_start: VirtualAddress::default(),
         dynamic_range_end: state.dynamic_range_end,
     })
@@ -323,12 +327,13 @@ pub struct Mappings {
     entry: VirtualAddress,
     physical_memory_offset: VirtualAddress,
     maybe_tls_allocation: Option<TlsAllocation>,
+    fdt_virt: VirtualAddress,
+    bootinfo_phys: Range<PhysicalAddress>,
     loader_virt: Range<VirtualAddress>,
+    payload_elf_phys: Range<PhysicalAddress>,
     table_addr: VirtualAddress,
     stacks_virt: Range<VirtualAddress>,
     stack_size: usize,
-    fdt_virt: VirtualAddress,
-    bootinfo_phys: Range<PhysicalAddress>,
     dynamic_range_start: VirtualAddress,
     dynamic_range_end: VirtualAddress,
 }
@@ -396,6 +401,7 @@ impl Mappings {
         boot_info.physical_memory_offset = self.physical_memory_offset;
         boot_info.fdt_virt = Some(self.fdt_virt);
         boot_info.loader_virt = Some(self.loader_virt.clone());
+        boot_info.payload_elf_phys = Some(self.payload_elf_phys.clone());
         boot_info.free_virt = self.dynamic_range_start..self.dynamic_range_end;
     }
 
