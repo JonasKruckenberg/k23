@@ -1,5 +1,5 @@
 use crate::arch;
-use crate::sync::{LocalThreadId, OnceLock};
+use crate::sync::LocalThreadId;
 use crate::{heprintln, panic::PanicHookInfo, sync::RwLock};
 use alloc::boxed::Box;
 use alloc::string::String;
