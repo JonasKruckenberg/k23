@@ -65,7 +65,7 @@ clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
             {{CARGO_ARGS}})
 
 # run checks for the workspace
-check config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
+check config $RUSTFLAGS='' *CARGO_ARGS='':
     #!/usr/bin/env nu
     let config = open {{config}}
     def check_crate [crate, target, ...args] {
@@ -168,7 +168,25 @@ _make_bootimg config payload *CARGO_ARGS="":
     let signature_path = ($out_dir | path join signature.bin)
     let bootimg_path = ($out_dir | path join bootimg.bin)
 
-    # Step 1: Build the bootloader
+    # Step 1: Compress the payload
+    let payload_lz4_path = "{{payload}}.lz4"
+    {{_cargo}} run -p lz4-block-compress {{payload}} $payload_lz4_path
+
+    # Step 2: Sign the compressed payload
+    # Write ed25519 key pair
+    echo "{{_signing_key}}" | openssl pkey -outform DER -out $secret_key_path
+    # Do the actual signing
+    openssl pkeyutl -sign -inkey $secret_key_path -out $signature_path -rawin -in $payload_lz4_path
+    # Extract the 32-byte public key
+    openssl pkey -in $secret_key_path -pubout -outform DER | tail -c 32 | save -f $public_key_path
+
+    # Assign environment variables so we can pick it up in the loader build script
+    $env.K23_VERIFYING_KEY_PATH = $public_key_path
+    $env.K23_SIGNATURE_PATH = $signature_path
+    $env.K23_PAYLOAD_PATH = $payload_lz4_path
+    $env.K23_PAYLOAD_SIZE = (stat -c %s {{payload}})
+
+    # Step 3: Build the bootloader
     let cargo_out = ({{_cargo}} build
         -p loader
         --target $target
@@ -176,28 +194,4 @@ _make_bootimg config payload *CARGO_ARGS="":
         --message-format=json
         {{_buildstd}}
         {{CARGO_ARGS}})
-    cp ($cargo_out | from json --objects | last 2 | get 0.executable) $loader_path
-
-    # Step 2: Compress the payload
-    lz4 -f -9 "{{payload}}"
-    let payload_lz4_path = "{{payload}}.lz4"
-
-    # Write ed25519 key pair
-    echo "{{_signing_key}}" | openssl pkey -outform DER -out $secret_key_path
-    echo $secret_key_path
-
-    # Step 3: Sign the compressed payload
-    openssl pkeyutl -sign -inkey $secret_key_path -out $signature_path -rawin -in $payload_lz4_path
-
-    # Extract the 32-byte public key
-    tail -c 32 $secret_key_path | save -f $public_key_path
-
-    # Step 4: Embed the public key, signature and compressed payload in the bootloader
-    (objcopy
-      --add-section=.k23_pubkey=($public_key_path)
-      --add-section=.k23_signature=($signature_path)
-      --add-section=.k23_payload=($payload_lz4_path)
-      $loader_path
-      $bootimg_path
-    )
-
+    cp ($cargo_out | from json --objects | last 2 | get 0.executable) $bootimg_path

@@ -62,7 +62,13 @@ fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
 
         let fdt_virt = allocate_and_copy_fdt(machine_info, &mut alloc).unwrap();
 
-        let payload = Payload::from_signed_and_compressed(PAYLOAD, VERIFYING_KEY, &mut alloc);
+        let payload = if let (Some(verifying_key), Some(payload), Some(signature)) =
+            (VERIFYING_KEY, PAYLOAD, SIGNATURE)
+        {
+            Payload::from_signed_and_compressed(verifying_key, payload, signature, &mut alloc)
+        } else {
+            panic!("no payload provided");
+        };
 
         let mut mappings =
             set_up_mappings(&payload, machine_info, &own_regions, fdt_virt, &mut alloc).unwrap();

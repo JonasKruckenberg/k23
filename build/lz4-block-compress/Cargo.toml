@@ -1,0 +1,12 @@
+[package]
+name = "lz4-block-compress"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+lz4_flex.workspace = true
