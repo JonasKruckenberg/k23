@@ -1,15 +1,21 @@
 {
   "arch": "riscv64",
+  "vendor": "k23",
+  "env": "kernel",
   "code-model": "medium",
   "cpu": "generic-rv64",
   "data-layout": "e-m:e-p:64:64-i64:64-i128:128-n32:64-S128",
-  "features": "+m,+a,+c",
+  "eh-frame-header": true,
+  "features": "+m,+a,+f,+d,+c",
   "linker": "rust-lld",
   "linker-flavor": "gnu-lld",
+  "llvm-abiname": "lp64d",
   "llvm-target": "riscv64",
   "max-atomic-width": 64,
-  "panic-strategy": "abort",
-  "relocation-model": "static",
-  "supported-sanitizers": ["kernel-address"],
+  "panic-strategy": "unwind",
+  "relocation-model": "pie",
+  "supported-sanitizers": [
+    "kernel-address"
+  ],
   "target-pointer-width": "64"
 }
