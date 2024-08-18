@@ -35,7 +35,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: cargo check
-        run: just check
+        run: just check configs/riscv64-qemu.toml
 
   rustfmt:
     name: Rustfmt
@@ -79,7 +79,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: cargo clippy
-        run: just clippy
+        run: just clippy configs/riscv64-qemu.toml
 
   # test:
   #   name: Test
