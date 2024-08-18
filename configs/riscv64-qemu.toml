@@ -1,0 +1,9 @@
+runner = "qemu-system-riscv64"
+
+[kernel]
+target = "./configs/riscv64gc-k23-kernel.json"
+target-triple = "riscv64gc-k23-kernel"
+
+[loader]
+target = "./configs/riscv64imac-k23-loader.json"
+target-triple = "riscv64imac-k23-loader"
