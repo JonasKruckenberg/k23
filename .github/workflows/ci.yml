@@ -34,7 +34,7 @@ jobs:
         with:
           extra_nix_config: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
-      - name: Build release
+      - name: cargo check
         run: nix develop --command just check configs/riscv64-qemu.toml
 
   rustfmt:
@@ -51,7 +51,7 @@ jobs:
         with:
           extra_nix_config: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
-      - name: Build release
+      - name: cargo fmt
         run: nix develop --command just check-fmt
 
   clippy:
@@ -68,7 +68,7 @@ jobs:
         with:
           extra_nix_config: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
-      - name: Build release
+      - name: cargo clippy
         run: nix develop --command just clippy configs/riscv64-qemu.toml
 
   cargo-deny:
