@@ -40,7 +40,7 @@
 //! assert_eq!(val, 98765);
 //! ```
 
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
 #![feature(allocator_api)]
 
@@ -348,7 +348,6 @@ mod io {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std;
     use std::io;
 
     #[test]
