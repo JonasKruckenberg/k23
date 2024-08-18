@@ -32,6 +32,53 @@ _default:
     @echo '{{ _docstring }}'
     @just --list
 
+# run all tests and checks for all targets
+preflight *FLAGS: (lint "configs/riscv64-qemu.toml" FLAGS)
+
+# run lints (clippy, rustfmt) for the workspace
+lint config *FLAGS: (clippy config FLAGS) (check-fmt config FLAGS)
+
+# run clippy lints for the workspace
+clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
+    #!/usr/bin/env nu
+    let config = open {{config}}
+
+    # run clippy against all crates across the workspace *except the bootloader which has its own target)
+    ({{_cargo}} clippy
+        --workspace
+        --tests
+        --benches
+        --exclude loader
+        --target $config.kernel.target
+        --profile {{profile}}
+        {{_buildstd}}
+        {{CARGO_ARGS}})
+
+    #run clippy against the loader crate and it's specific target
+    ({{_cargo}} clippy
+            -p loader
+            --tests
+            --benches
+            --target $config.kernel.target
+            --profile {{profile}}
+            {{_buildstd}}
+            {{CARGO_ARGS}})
+
+# run checks for the workspace
+check config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
+    #!/usr/bin/env nu
+    let config = open {{config}}
+    def check_crate [crate, target, ...args] {
+        ({{_cargo}} check -p $crate --target $target --profile {{profile}} {{_buildstd}} {{CARGO_ARGS}})
+    }
+
+    check_crate "kernel" $config.kernel.target
+    check_crate "loader" $config.loader.target
+
+# check rustfmt for `crate`
+check-fmt *FLAGS:
+    {{ _cargo }} fmt --check --all {{ FLAGS }}
+
 # Builds the kernel using the given config and runs it using QEMU
 run config *CARGO_ARGS="": (build config CARGO_ARGS) (_run config "target/k23/bootimg.bin")
 
@@ -57,8 +104,8 @@ build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/payload" CARGO
 test config *CARGO_ARGS="" :
     #!/usr/bin/env nu
     let config = open {{config}}
-    let target = try { $config | get kernel.target } catch { $config | get target }
-    let triple = try { $config | get kernel.target-triple } catch { $config | get target-triple }
+    let target = try { $config.kernel.target } catch { $config.target }
+    let triple = try { $config.kernel.target-triple } catch { $config.target-triple }
 
     # CARGO_TARGET_<triple>_RUNNER
     $env.CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER = "just profile={{profile}} _runner {{config}}"
@@ -77,7 +124,7 @@ _runner config binary *ARGS: (_make_bootimg config binary) (_run config "target/
 _run config binary *ARGS:
     #!/usr/bin/env nu
     let config = open {{ config }}
-    let runner = $config | get runner
+    let runner = $config.runner
 
     let cpu = match $runner {
       "qemu-system-riscv64" => "rv64"
@@ -110,7 +157,7 @@ _run config binary *ARGS:
 _make_bootimg config payload *CARGO_ARGS="":
     #!/usr/bin/env nu
     let config = open {{config}}
-    let target = try { $config | get loader.target } catch { $config | get target }
+    let target = try { $config.loader.target } catch { $config.target }
 
     let out_dir = "{{_target_dir}}" | path join "k23"
     mkdir $out_dir
