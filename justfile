@@ -195,7 +195,7 @@ _make_bootimg config payload *CARGO_ARGS="":
     # Step 4: Embed the public key, signature and compressed payload in the bootloader
     (objcopy
       --add-section=.k23_pubkey=($public_key_path)
-      --add-section=.k23_siganture=($signature_path)
+      --add-section=.k23_signature=($signature_path)
       --add-section=.k23_payload=($payload_lz4_path)
       $loader_path
       $bootimg_path
