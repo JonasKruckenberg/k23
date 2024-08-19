@@ -43,37 +43,50 @@ clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
     #!/usr/bin/env nu
     let config = open {{config}}
 
-    # run clippy against all crates across the workspace *except the bootloader which has its own target)
+    # check kernel and dependencies
     ({{_cargo}} clippy
-        --workspace
+        -p kernel
+        --target $config.kernel.target
         --tests
         --benches
-        --exclude loader
-        --target $config.kernel.target
         --profile {{profile}}
         {{_buildstd}}
         {{CARGO_ARGS}})
 
-    #run clippy against the loader crate and it's specific target
+    # check loader and dependencies
     ({{_cargo}} clippy
-            -p loader
-            --tests
-            --benches
-            --target $config.kernel.target
-            --profile {{profile}}
-            {{_buildstd}}
-            {{CARGO_ARGS}})
+        -p loader
+        --target $config.loader.target
+        --tests
+        --benches
+        --profile {{profile}}
+        {{_buildstd}}
+        {{CARGO_ARGS}})
 
 # run checks for the workspace
 check config $RUSTFLAGS='' *CARGO_ARGS='':
     #!/usr/bin/env nu
     let config = open {{config}}
-    def check_crate [crate, target, ...args] {
-        ({{_cargo}} check -p $crate --target $target --profile {{profile}} {{_buildstd}} {{CARGO_ARGS}})
-    }
 
-    check_crate "kernel" $config.kernel.target
-    check_crate "loader" $config.loader.target
+    # check kernel and dependencies
+    ({{_cargo}} check
+        -p kernel
+        --target $config.kernel.target
+        --tests
+        --benches
+        --profile {{profile}}
+        {{_buildstd}}
+        {{CARGO_ARGS}})
+
+    # check loader and dependencies
+    ({{_cargo}} check
+        -p loader
+        --target $config.loader.target
+        --tests
+        --benches
+        --profile {{profile}}
+        {{_buildstd}}
+        {{CARGO_ARGS}})
 
 # check rustfmt for `crate`
 check-fmt *FLAGS:

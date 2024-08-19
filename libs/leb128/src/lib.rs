@@ -348,9 +348,8 @@ mod io {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io;
 
-    #[test]
+    #[ktest::test]
     fn test_low_bits_of_byte() {
         for i in 0..127 {
             assert_eq!(i, low_bits_of_byte(i));
@@ -358,7 +357,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ktest::test]
     fn test_low_bits_of_u64() {
         for i in 0u64..127 {
             assert_eq!(i as u8, low_bits_of_u64(1 << 16 | i));
@@ -370,7 +369,7 @@ mod tests {
     }
 
     // Examples from the DWARF 4 standard, section 7.6, figure 22.
-    #[test]
+    #[ktest::test]
     fn test_read_unsigned() {
         let buf = [2u8];
         let mut readable = &buf[..];
@@ -415,7 +414,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[ktest::test]
     fn test_read_unsigned_thru_dyn_trait() {
         fn read(r: &mut dyn io::Read) -> u64 {
             read::unsigned(r).expect("Should read number")
@@ -431,7 +430,7 @@ mod tests {
     }
 
     // Examples from the DWARF 4 standard, section 7.6, figure 23.
-    #[test]
+    #[ktest::test]
     fn test_read_signed() {
         let buf = [2u8];
         let mut readable = &buf[..];
@@ -484,7 +483,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[ktest::test]
     fn test_read_signed_thru_dyn_trait() {
         fn read(r: &mut dyn io::Read) -> i64 {
             read::signed(r).expect("Should read number")
@@ -499,7 +498,7 @@ mod tests {
         assert_eq!(0, read(&mut readable));
     }
 
-    #[test]
+    #[ktest::test]
     fn test_read_signed_63_bits() {
         let buf = [
             CONTINUATION_BIT,
@@ -519,17 +518,17 @@ mod tests {
         );
     }
 
-    #[test]
+    #[ktest::test]
     fn test_read_unsigned_not_enough_data() {
         let buf = [CONTINUATION_BIT];
         let mut readable = &buf[..];
         match read::unsigned(&mut readable) {
-            Err(read::Error::IoError(e)) => assert_eq!(e.kind(), io::ErrorKind::UnexpectedEof),
+            Err(read::Error::IoError(e)) => assert!(matches!(e, io::Error::UnexpectedEof)),
             otherwise => panic!("Unexpected: {:?}", otherwise),
         }
     }
 
-    #[test]
+    #[ktest::test]
     fn test_read_signed_not_enough_data() {
         let buf = [CONTINUATION_BIT];
         let mut readable = &buf[..];
@@ -539,7 +538,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ktest::test]
     fn test_write_unsigned_not_enough_space() {
         let mut buf = [0; 1];
         let mut writable = &mut buf[..];
@@ -549,7 +548,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ktest::test]
     fn test_write_signed_not_enough_space() {
         let mut buf = [0; 1];
         let mut writable = &mut buf[..];
@@ -559,7 +558,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ktest::test]
     fn test_write_unsigned_thru_dyn_trait() {
         fn write(w: &mut dyn io::Write, val: u64) -> usize {
             write::unsigned(w, val).expect("Should write number")
@@ -575,7 +574,7 @@ mod tests {
         assert_eq!(buf[0], 0);
     }
 
-    #[test]
+    #[ktest::test]
     fn test_write_signed_thru_dyn_trait() {
         fn write(w: &mut dyn io::Write, val: i64) -> usize {
             write::signed(w, val).expect("Should write number")
@@ -591,7 +590,7 @@ mod tests {
         assert_eq!(buf[0], 0);
     }
 
-    #[test]
+    #[ktest::test]
     fn dogfood_signed() {
         fn inner(i: i64) {
             let mut buf = [0u8; 1024];
@@ -611,7 +610,7 @@ mod tests {
         inner(std::i64::MIN);
     }
 
-    #[test]
+    #[ktest::test]
     fn dogfood_unsigned() {
         for i in 0..1025 {
             let mut buf = [0u8; 1024];
@@ -628,7 +627,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ktest::test]
     fn test_read_unsigned_overflow() {
         let buf = [
             2u8 | CONTINUATION_BIT,
@@ -667,7 +666,7 @@ mod tests {
         assert!(read::unsigned(&mut readable).is_err());
     }
 
-    #[test]
+    #[ktest::test]
     fn test_read_signed_overflow() {
         let buf = [
             2u8 | CONTINUATION_BIT,
@@ -706,7 +705,7 @@ mod tests {
         assert!(read::signed(&mut readable).is_err());
     }
 
-    #[test]
+    #[ktest::test]
     fn test_read_multiple() {
         let buf = [2u8 | CONTINUATION_BIT, 1u8, 1u8];
 
@@ -721,7 +720,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[ktest::test]
     fn test_read_multiple_with_overflow() {
         let buf = [
             0b1111_1111,

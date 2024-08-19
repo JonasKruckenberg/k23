@@ -387,6 +387,9 @@ dependencies = [
 [[package]]
 name = "leb128"
 version = "0.1.0"
+dependencies = [
+ "ktest",
+]
 
 [[package]]
 name = "libc"
