@@ -93,7 +93,7 @@ check-fmt *FLAGS:
     {{ _cargo }} fmt --check --all {{ FLAGS }}
 
 # Builds the kernel using the given config and runs it using QEMU
-run config *CARGO_ARGS="": (build config CARGO_ARGS) (_run config "target/k23/bootimg.bin")
+run config CARGO_ARGS="" *ARGS="": (build config CARGO_ARGS) (_run config "target/k23/bootimg.bin" ARGS)
 
 # Builds the kernel using the given config
 build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/payload" CARGO_ARGS)
@@ -143,7 +143,8 @@ _run config binary *ARGS:
       "qemu-system-riscv64" => "rv64"
     }
 
-    (run-external $runner
+    print {{binary}}
+    (^$runner
         "-kernel"
         {{binary}}
         "-machine" "virt"
@@ -155,6 +156,7 @@ _run config binary *ARGS:
         "-serial" "stdio"
         "-semihosting-config"
         "enable=on,target=native"
+        {{ARGS}}
         #"-monitor"
         #"unix:qemu-monitor-socket,server,nowait"
         )
