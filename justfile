@@ -182,10 +182,12 @@ _make_bootimg config payload *CARGO_ARGS="":
     let bootimg_path = ($out_dir | path join bootimg.bin)
 
     # Step 1: Compress the payload
+    print "Compressing the payload..."
     let payload_lz4_path = "{{payload}}.lz4"
     {{_cargo}} run -p lz4-block-compress {{payload}} $payload_lz4_path
 
     # Step 2: Sign the compressed payload
+    print "Signing the compressed payload..."
     # Write ed25519 key pair
     echo "{{_signing_key}}" | openssl pkey -outform DER -out $secret_key_path
     # Do the actual signing
@@ -200,6 +202,7 @@ _make_bootimg config payload *CARGO_ARGS="":
     $env.K23_PAYLOAD_SIZE = (stat -c %s {{payload}})
 
     # Step 3: Build the bootloader
+    print "Building the bootloader..."
     let cargo_out = ({{_cargo}} build
         -p loader
         --target $target
