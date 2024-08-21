@@ -75,22 +75,17 @@ jobs:
       - name: Check Rust Code
         uses: EmbarkStudios/cargo-deny-action@v2
 
-
-  # test:
-  #   name: Test
-  #   needs: pre_ci
-  #   if: needs.pre_ci.outputs.continue
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 45
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - uses: Swatinem/rust-cache@v2
-  #     - name: install Just
-  #       uses: extractions/setup-just@v2
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #     - name: Run RiscV-64 tests
-  #       run: just test-riscv64
-  #       env:
-  #         QEMU: ${{ github.workspace }}/build/qemu-system-riscv64
+#  test:
+#    name: Test
+#    needs: pre_ci
+#    if: needs.pre_ci.outputs.continue
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 45
+#    steps:
+#      - uses: actions/checkout@v3
+#      - name: Install Nix
+#        uses: DeterminateSystems/nix-installer-action@main
+#      - uses: DeterminateSystems/magic-nix-cache-action@main
+#      - uses: Swatinem/rust-cache@v2
+#      - name: cargo clippy
+#        run: nix develop --command just test configs/riscv64-qemu.toml
