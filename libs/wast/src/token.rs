@@ -5,7 +5,6 @@
 use crate::annotation;
 use crate::lexer::Float;
 use crate::parser::{Cursor, Parse, Parser, Peek, Result};
-use alloc::format;
 use alloc::string::String;
 use alloc::string::ToString;
 use core::fmt;
@@ -190,9 +189,7 @@ impl<'a> Parse<'a> for Index<'a> {
             let (val, span) = parser.parse()?;
             Ok(Index::Num(val, span))
         } else {
-            Err(parser.error(format!(
-                "unexpected token, expected an index or an identifier"
-            )))
+            Err(parser.error("unexpected token, expected an index or an identifier"))
         }
     }
 }

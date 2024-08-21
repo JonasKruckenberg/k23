@@ -186,7 +186,7 @@ impl<'a> Parse<'a> for AbstractHeapType {
     }
 }
 
-impl<'a> Peek for AbstractHeapType {
+impl Peek for AbstractHeapType {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         Ok(kw::func::peek(cursor)?
             || kw::r#extern::peek(cursor)?
@@ -656,6 +656,7 @@ impl<'a> Parse<'a> for MemoryType {
 }
 
 /// A function type with parameters and results.
+#[allow(clippy::type_complexity)]
 #[derive(Clone, Debug, Default)]
 pub struct FunctionType<'a> {
     /// The parameters of a function, optionally each having an identifier for
@@ -673,7 +674,7 @@ impl<'a> FunctionType<'a> {
             parser.parens(|p| {
                 let mut l = p.lookahead1();
                 if l.peek::<kw::param>()? {
-                    if results.len() > 0 {
+                    if !results.is_empty() {
                         return Err(p.error(
                             "result before parameter (or unexpected token): \
                              cannot list params after results",

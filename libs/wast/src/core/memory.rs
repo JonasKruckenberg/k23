@@ -213,6 +213,7 @@ pub enum DataVal<'a> {
     Integral(Vec<u8>),
 }
 
+#[allow(clippy::len_without_is_empty)]
 impl DataVal<'_> {
     /// Returns the length, in bytes, of the memory used to represent this data
     /// value.

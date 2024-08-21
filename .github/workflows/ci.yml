@@ -27,15 +27,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v3
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
       - uses: Swatinem/rust-cache@v2
-      - name: install Just
-        uses: extractions/setup-just@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: cargo check
-        run: just check
+        run: nix develop --command just check configs/riscv64-qemu.toml
 
   rustfmt:
     name: Rustfmt
@@ -44,15 +42,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v3
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
       - uses: Swatinem/rust-cache@v2
-      - name: install Just
-        uses: extractions/setup-just@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: cargo fmt
-        run: just check-fmt
+        run: nix develop --command just check-fmt
+
+  clippy:
+    name: Clippy
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo clippy
+        run: nix develop --command just clippy configs/riscv64-qemu.toml
 
   cargo-deny:
     name: Cargo deny
@@ -64,38 +75,17 @@ jobs:
       - name: Check Rust Code
         uses: EmbarkStudios/cargo-deny-action@v2
 
-  clippy:
-    name: Clippy
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: install Just
-        uses: extractions/setup-just@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: cargo clippy
-        run: just clippy
-
-  # test:
-  #   name: Test
-  #   needs: pre_ci
-  #   if: needs.pre_ci.outputs.continue
-  #   runs-on: ubuntu-latest
-  #   timeout-minutes: 45
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - uses: Swatinem/rust-cache@v2
-  #     - name: install Just
-  #       uses: extractions/setup-just@v2
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #     - name: Run RiscV-64 tests
-  #       run: just test-riscv64
-  #       env:
-  #         QEMU: ${{ github.workspace }}/build/qemu-system-riscv64
+#  test:
+#    name: Test
+#    needs: pre_ci
+#    if: needs.pre_ci.outputs.continue
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 45
+#    steps:
+#      - uses: actions/checkout@v3
+#      - name: Install Nix
+#        uses: DeterminateSystems/nix-installer-action@main
+#      - uses: DeterminateSystems/magic-nix-cache-action@main
+#      - uses: Swatinem/rust-cache@v2
+#      - name: cargo clippy
+#        run: nix develop --command just test configs/riscv64-qemu.toml

@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
@@ -14,38 +15,36 @@ fn main() {
     println!("cargo::rerun-if-env-changed=K23_VERIFYING_KEY_PATH");
     println!("cargo::rerun-if-env-changed=K23_PAYLOAD_PATH");
 
-    let verifying_key = if let Some(verifying_key_path) = env::var_os("K23_VERIFYING_KEY_PATH") {
-        let verifying_key_path = workspace_root.join(verifying_key_path);
-
-        println!("cargo::rerun-if-changed={}", verifying_key_path.display());
-
-        format!(r#"include_bytes!("{}")"#, verifying_key_path.display())
+    let verifying_key = include_from_env(workspace_root, env::var_os("K23_VERIFYING_KEY_PATH"));
+    let signature = include_from_env(workspace_root, env::var_os("K23_SIGNATURE_PATH"));
+    let payload = include_from_env(workspace_root, env::var_os("K23_PAYLOAD_PATH"));
+    let payload_size = if let Some(s) = env::var_os("K23_PAYLOAD_SIZE") {
+        s.into_string().unwrap()
     } else {
-        "&[0; ::ed25519_dalek::PUBLIC_KEY_LENGTH]".to_string()
-    };
-
-    let payload = if let Some(payload_path) = env::var_os("K23_PAYLOAD_PATH") {
-        let payload_path = workspace_root.join(payload_path);
-        let len = fs::metadata(&payload_path).unwrap().len();
-
-        println!("cargo::rerun-if-changed={}", payload_path.display());
-
-        format!(
-            r#"&[u8; {len}] = include_bytes!("{}")"#,
-            payload_path.display()
-        )
-    } else {
-        "&[u8; 0] = &[]".to_string()
+        "0".into()
     };
 
     fs::write(
         out_dir.join("gen.rs"),
         format!(
             r#"
-    pub const VERIFYING_KEY: &[u8; ::ed25519_dalek::PUBLIC_KEY_LENGTH] = {verifying_key};
-    pub const PAYLOAD: {payload};
+    pub const VERIFYING_KEY: Option<&[u8; ::ed25519_dalek::PUBLIC_KEY_LENGTH]> = {verifying_key};
+    pub const SIGNATURE: Option<&[u8; ::ed25519_dalek::Signature::BYTE_SIZE]> = {signature};
+    pub static PAYLOAD: Option<&[u8]> = {payload};
+    pub const PAYLOAD_SIZE: usize = {payload_size};
     "#,
         ),
     )
     .unwrap();
+}
+
+fn include_from_env(workspace_root: &Path, var: Option<OsString>) -> String {
+    if let Some(path) = var {
+        let path = workspace_root.join(path);
+
+        println!("cargo::rerun-if-changed={}", path.display());
+        format!(r#"Some(include_bytes!("{}"))"#, path.display())
+    } else {
+        "None".to_string()
+    }
 }

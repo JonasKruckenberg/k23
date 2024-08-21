@@ -24,7 +24,7 @@ use alloc::vec::Vec;
 /// module.section(&producers);
 /// let wasm_bytes = module.finish();
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ProducersSection {
     bytes: Vec<u8>,
     num_fields: u32,
@@ -44,15 +44,6 @@ impl ProducersSection {
         values.encode(&mut self.bytes);
         self.num_fields += 1;
         self
-    }
-}
-
-impl Default for ProducersSection {
-    fn default() -> Self {
-        Self {
-            bytes: Vec::new(),
-            num_fields: 0,
-        }
     }
 }
 
@@ -77,7 +68,7 @@ impl Section for ProducersSection {
 }
 
 /// The value of a field in the producers custom section
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ProducersField {
     bytes: Vec<u8>,
     num_values: u32,
@@ -97,15 +88,6 @@ impl ProducersField {
         version.encode(&mut self.bytes);
         self.num_values += 1;
         self
-    }
-}
-
-impl Default for ProducersField {
-    fn default() -> Self {
-        Self {
-            bytes: Vec::new(),
-            num_values: 0,
-        }
     }
 }
 

@@ -77,7 +77,7 @@ pub fn setup_harness(args: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }
 
-            let machine_info = #crate_path::__private::MachineInfo::from_dtb(boot_info.fdt_virt.unwrap().as_raw() as *const u8);
+            let machine_info = unsafe { #crate_path::__private::MachineInfo::from_dtb(boot_info.fdt_virt.unwrap().as_raw() as *const u8) };
             let args = machine_info.bootargs.map(|bootargs| #crate_path::Arguments::from_str(bootargs.to_str().unwrap())).unwrap_or_default();
 
             let init_func: fn(usize, #crate_path::SetupInfo) = #init_func_ident;

@@ -423,6 +423,7 @@ macro_rules! instructions {
         impl<'a> Parse<'a> for Instruction<'a> {
             fn parse(parser: Parser<'a>) -> Result<Self> {
                 $(
+                    #[allow(clippy::needless_lifetimes)]
                     fn $name<'a>(_parser: Parser<'a>) -> Result<Instruction<'a>> {
                         Ok(Instruction::$name $((
                             instructions!(@parse _parser $($arg)*)?
@@ -444,7 +445,7 @@ macro_rules! instructions {
         }
 
         impl Encode for Instruction<'_> {
-            #[allow(non_snake_case)]
+            #[allow(non_snake_case, clippy::extra_unused_lifetimes)]
             fn encode(&self, v: &mut Vec<u8>) {
                 match self {
                     $(
@@ -1205,13 +1206,13 @@ const _: () = {
 
 impl<'a> Instruction<'a> {
     pub(crate) fn needs_data_count(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Instruction::MemoryInit(_)
-            | Instruction::DataDrop(_)
-            | Instruction::ArrayNewData(_)
-            | Instruction::ArrayInitData(_) => true,
-            _ => false,
-        }
+                | Instruction::DataDrop(_)
+                | Instruction::ArrayNewData(_)
+                | Instruction::ArrayInitData(_)
+        )
     }
 }
 
@@ -1343,7 +1344,7 @@ impl<'a> Parse<'a> for LaneArg {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let lane = parser.step(|c| {
             if let Some((i, rest)) = c.integer()? {
-                if i.sign() == None {
+                if i.sign().is_none() {
                     let (src, radix) = i.val();
                     let val = u8::from_str_radix(src, radix)
                         .map_err(|_| c.error("malformed lane index"))?;

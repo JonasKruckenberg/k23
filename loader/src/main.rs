@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, asm_const, maybe_uninit_slice, used_with_arg)]
+#![feature(naked_functions, maybe_uninit_slice, used_with_arg)]
 #![allow(clippy::items_after_statements, clippy::needless_continue)]
 
 mod arch;
@@ -37,6 +37,9 @@ use vmm::{
 static ALLOC: LockedHeap = LockedHeap::empty();
 
 fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
+    #[cfg(test)]
+    log::info!("tests enabled");
+
     static MAPPINGS: OnceLock<Mappings> = OnceLock::new();
 
     log::info!("Hart {hartid} started");
@@ -59,7 +62,13 @@ fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
 
         let fdt_virt = allocate_and_copy_fdt(machine_info, &mut alloc).unwrap();
 
-        let payload = Payload::from_signed_and_compressed(PAYLOAD, VERIFYING_KEY, &mut alloc);
+        let payload = if let (Some(verifying_key), Some(payload), Some(signature)) =
+            (VERIFYING_KEY, PAYLOAD, SIGNATURE)
+        {
+            Payload::from_signed_and_compressed(verifying_key, payload, signature, &mut alloc)
+        } else {
+            panic!("no payload provided");
+        };
 
         let mut mappings =
             set_up_mappings(&payload, machine_info, &own_regions, fdt_virt, &mut alloc).unwrap();
@@ -151,17 +160,17 @@ impl LoaderRegions {
             static __stack_start: u8;
         }
 
-        let executable: Range<PhysicalAddress> = unsafe {
+        let executable: Range<PhysicalAddress> = {
             PhysicalAddress::new(addr_of!(__text_start) as usize)
                 ..PhysicalAddress::new(addr_of!(__text_end) as usize)
         };
 
-        let read_only: Range<PhysicalAddress> = unsafe {
+        let read_only: Range<PhysicalAddress> = {
             PhysicalAddress::new(addr_of!(__rodata_start) as usize)
                 ..PhysicalAddress::new(addr_of!(__rodata_end) as usize)
         };
 
-        let read_write: Range<PhysicalAddress> = unsafe {
+        let read_write: Range<PhysicalAddress> = {
             let start = PhysicalAddress::new(addr_of!(__bss_start) as usize);
             let stack_start = PhysicalAddress::new(addr_of!(__stack_start) as usize);
 

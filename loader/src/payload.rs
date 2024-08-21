@@ -12,13 +12,13 @@ pub struct Payload<'a> {
 
 impl<'a> Payload<'a> {
     pub fn from_signed_and_compressed(
-        bytes: &'a [u8],
         verifying_key: &'static [u8; ed25519_dalek::PUBLIC_KEY_LENGTH],
+        compressed_payload: &'a [u8],
+        signature: &'static [u8; Signature::BYTE_SIZE],
         alloc: &mut BumpAllocator<'_, INIT<kconfig::MEMORY_MODE>>,
     ) -> Self {
         log::info!("Verifying payload signature...");
         let verifying_key = VerifyingKey::from_bytes(verifying_key).unwrap();
-        let (signature, compressed_payload) = bytes.split_at(Signature::BYTE_SIZE);
         let signature = Signature::from_slice(signature).unwrap();
 
         verifying_key

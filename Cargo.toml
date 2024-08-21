@@ -1,12 +1,11 @@
 [workspace]
 members = [
-    "build/*",
     "libs/*",
     "kernel",
     "loader",
     "loader/api",
     "loader/api/macros",
-    "libs/ktest/macros",
+    "libs/ktest/macros", "build/lz4-block-compress",
 ]
 resolver = "2"
 

@@ -14,7 +14,7 @@ pub fn run_tests(write: &mut dyn fmt::Write, args: Arguments) -> Conclusion {
 
     // If `--list` is specified, just print the list and return.
     if args.list {
-        printer.print_list(&tests, args.ignored);
+        printer.print_list(tests, args.ignored);
         return Conclusion::empty();
     }
 
@@ -22,7 +22,7 @@ pub fn run_tests(write: &mut dyn fmt::Write, args: Arguments) -> Conclusion {
     printer.print_title(tests.len() as u64);
 
     let mut handle_outcome = |outcome: Outcome, test: &TestInfo, printer: &mut Printer| {
-        printer.print_single_outcome(&test, &outcome);
+        printer.print_single_outcome(test, &outcome);
 
         // Handle outcome
         match outcome {
@@ -38,7 +38,7 @@ pub fn run_tests(write: &mut dyn fmt::Write, args: Arguments) -> Conclusion {
         // Print `test foo    ...`, run the test, then print the outcome in
         // the same line.
         printer.print_test(&test.info);
-        let outcome = if args.is_ignored(&test) {
+        let outcome = if args.is_ignored(test) {
             Outcome::Ignored
         } else {
             match kstd::panic::catch_unwind(|| (test.run)()) {
@@ -66,8 +66,8 @@ pub fn all_tests() -> &'static [Test] {
         static __stop_k23_tests: Test;
     }
 
-    let start = unsafe { addr_of!(__start_k23_tests) };
-    let stop = unsafe { addr_of!(__stop_k23_tests) };
+    let start = addr_of!(__start_k23_tests);
+    let stop = addr_of!(__stop_k23_tests);
 
     let stride = mem::size_of::<Test>();
     let byte_offset = stop as usize - start as usize;

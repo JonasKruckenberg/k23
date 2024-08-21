@@ -75,7 +75,6 @@ use bumpalo::Bump;
 use core::cell::{Cell, RefCell};
 use core::fmt;
 use core::ops::Deref;
-use core::usize;
 use hashbrown::HashMap;
 
 /// The maximum recursive depth of parens to parse.
