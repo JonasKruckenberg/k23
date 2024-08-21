@@ -3878,7 +3878,7 @@ impl ConstExpr {
 
     /// Returns the function, if any, referenced by this global.
     pub fn get_ref_func(&self) -> Option<u32> {
-        let prefix = *self.bytes.get(0)?;
+        let prefix = *self.bytes.first()?;
         // 0xd2 == `ref.func` opcode, and if that's found then load the leb
         // corresponding to the function index.
         if prefix != 0xd2 {

@@ -5,7 +5,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use hashbrown::HashMap;
 
-pub fn expand<'a>(fields: &mut Vec<ModuleField<'a>>) {
+pub fn expand(fields: &mut Vec<ModuleField>) {
     let mut expander = Expander::default();
     expander.process(fields);
 }
@@ -50,17 +50,14 @@ impl<'a> Expander<'a> {
     }
 
     fn expand_header(&mut self, item: &mut ModuleField<'a>) {
-        match item {
-            ModuleField::Type(ty) => {
-                let id = gensym::fill(ty.span, &mut ty.id);
-                match &mut ty.def.kind {
-                    InnerTypeKind::Func(f) => {
-                        f.key().insert(self, Index::Id(id));
-                    }
-                    InnerTypeKind::Array(_) | InnerTypeKind::Struct(_) => {}
+        if let ModuleField::Type(ty) = item {
+            let id = gensym::fill(ty.span, &mut ty.id);
+            match &mut ty.def.kind {
+                InnerTypeKind::Func(f) => {
+                    f.key().insert(self, Index::Id(id));
                 }
+                InnerTypeKind::Array(_) | InnerTypeKind::Struct(_) => {}
             }
-            _ => {}
         }
     }
 

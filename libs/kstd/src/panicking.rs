@@ -104,10 +104,9 @@ fn rust_panic_with_hook(
     location: &Location<'_>,
     can_unwind: bool,
 ) -> ! {
-    let must_abort = panic_count::increase(true);
-
     // Check if we need to abort immediately.
-    if let Some(must_abort) = must_abort {
+    #[cfg(feature = "panic-unwind")]
+    if let Some(must_abort) = panic_count::increase(true) {
         match must_abort {
             panic_count::MustAbort::PanicInHook => {
                 // Don't try to format the message in this case, perhaps that is causing the
@@ -461,33 +460,13 @@ mod panic_count {
 
 #[cfg(not(feature = "panic-unwind"))]
 pub mod panic_count {
-    /// A reason for forcing an immediate abort on panic.
-    #[derive(Debug)]
-    pub enum MustAbort {
-        // AlwaysAbort,
-        PanicInHook,
-    }
-
     #[inline]
-    pub fn increase(run_panic_hook: bool) -> Option<MustAbort> {
+    pub fn increase(_run_panic_hook: bool) -> Option<()> {
         None
     }
 
     #[inline]
     pub fn finished_panic_hook() {}
-
-    #[inline]
-    pub fn decrease() {}
-
-    #[inline]
-    pub fn set_always_abort() {}
-
-    // Disregards ALWAYS_ABORT_FLAG
-    // #[inline]
-    // #[must_use]
-    // pub fn get_count() -> usize {
-    //     0
-    // }
 
     #[must_use]
     #[inline]

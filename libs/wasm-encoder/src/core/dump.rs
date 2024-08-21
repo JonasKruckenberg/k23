@@ -58,7 +58,7 @@ impl CoreDumpSection {
     }
 
     /// View the encoded section as a CustomSection.
-    fn as_custom<'a>(&'a self) -> CustomSection<'a> {
+    fn as_custom(&self) -> CustomSection<'_> {
         let mut data = vec![0];
         self.name.encode(&mut data);
         CustomSection {
@@ -98,6 +98,12 @@ pub struct CoreDumpModulesSection {
     bytes: Vec<u8>,
 }
 
+impl Default for CoreDumpModulesSection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CoreDumpModulesSection {
     /// Create a new core dump modules section encoder.
     pub fn new() -> Self {
@@ -130,6 +136,11 @@ impl CoreDumpModulesSection {
     pub fn len(&self) -> u32 {
         self.num_added
     }
+
+    /// Whether the section is empty.
+    pub fn is_empty(&self) -> bool {
+        self.num_added == 0
+    }
 }
 
 impl Encode for CoreDumpModulesSection {
@@ -149,6 +160,12 @@ impl Section for CoreDumpModulesSection {
 pub struct CoreDumpInstancesSection {
     num_added: u32,
     bytes: Vec<u8>,
+}
+
+impl Default for CoreDumpInstancesSection {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CoreDumpInstancesSection {
@@ -190,6 +207,11 @@ impl CoreDumpInstancesSection {
     /// The number of modules that are encoded in the section.
     pub fn len(&self) -> u32 {
         self.num_added
+    }
+
+    /// Whether the section is empty.
+    pub fn is_empty(&self) -> bool {
+        self.num_added == 0
     }
 }
 
@@ -268,7 +290,7 @@ impl CoreDumpStackSection {
     }
 
     /// View the encoded section as a CustomSection.
-    pub fn as_custom<'a>(&'a self) -> CustomSection<'a> {
+    pub fn as_custom(&self) -> CustomSection<'_> {
         let mut data = vec![0];
         self.name.encode(&mut data);
         self.count.encode(&mut data);

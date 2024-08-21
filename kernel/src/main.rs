@@ -1,13 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(
-    naked_functions,
-    asm_const,
-    allocator_api,
-    thread_local,
-    hint_assert_unchecked,
-    used_with_arg
-)]
+#![feature(naked_functions, allocator_api, thread_local, used_with_arg)]
 #![allow(
     clippy::doc_markdown,
     clippy::module_name_repetitions,

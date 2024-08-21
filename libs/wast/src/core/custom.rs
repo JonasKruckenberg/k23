@@ -203,7 +203,7 @@ pub struct Producers<'a> {
 
 impl<'a> Parse<'a> for Producers<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
-        parser.parse::<annotation::producers>()?.0;
+        parser.parse::<annotation::producers>()?;
         let mut languages = Vec::new();
         let mut sdks = Vec::new();
         let mut processed_by = Vec::new();
@@ -266,7 +266,7 @@ pub enum Dylink0Subsection<'a> {
 
 impl<'a> Parse<'a> for Dylink0<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
-        parser.parse::<annotation::dylink_0>()?.0;
+        parser.parse::<annotation::dylink_0>()?;
         let mut ret = Dylink0 {
             subsections: Vec::new(),
         };

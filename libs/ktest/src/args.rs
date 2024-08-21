@@ -19,6 +19,7 @@ pub enum FormatSetting {
 }
 
 impl<'a> Arguments<'a> {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(str: &'a str) -> Self {
         Self::parse(str.split_ascii_whitespace())
     }

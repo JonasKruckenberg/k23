@@ -158,7 +158,7 @@ pub(crate) fn encode(
     e.section_list(6, Global, &globals);
     e.section_list(7, Export, &exports);
     e.custom_sections(Before(Start));
-    if let Some(start) = start.get(0) {
+    if let Some(start) = start.first() {
         e.section(8, start);
     }
     e.custom_sections(After(Start));
@@ -434,7 +434,7 @@ impl<'a> Encode for HeapType<'a> {
     }
 }
 
-impl<'a> Encode for AbstractHeapType {
+impl Encode for AbstractHeapType {
     fn encode(&self, e: &mut Vec<u8>) {
         use AbstractHeapType::*;
         match self {
@@ -1064,8 +1064,10 @@ fn find_names<'a>(
         Data,
     }
 
-    let mut ret = Names::default();
-    ret.module = get_name(module_id, module_name);
+    let mut ret = Names {
+        module: get_name(module_id, module_name),
+        ..Default::default()
+    };
     let mut names = Vec::new();
     for field in fields {
         // Extract the kind/id/name from whatever kind of field this is...
@@ -1162,10 +1164,10 @@ fn find_names<'a>(
                     }
                 }
             }
-            if local_names.len() > 0 {
+            if !local_names.is_empty() {
                 ret.locals.push((*idx, local_names));
             }
-            if label_names.len() > 0 {
+            if !label_names.is_empty() {
                 ret.labels.push((*idx, label_names));
             }
         }
@@ -1183,7 +1185,7 @@ fn find_names<'a>(
                     }
                 }
             }
-            if field_names.len() > 0 {
+            if !field_names.is_empty() {
                 ret.fields.push((*idx, field_names))
             }
         }
@@ -1191,7 +1193,7 @@ fn find_names<'a>(
         *idx += 1;
     }
 
-    return ret;
+    ret
 }
 
 impl Names<'_> {
@@ -1227,47 +1229,47 @@ impl Encode for Names<'_> {
             id.encode(&mut tmp);
             subsec(0, &mut tmp);
         }
-        if self.funcs.len() > 0 {
+        if !self.funcs.is_empty() {
             self.funcs.encode(&mut tmp);
             subsec(1, &mut tmp);
         }
-        if self.locals.len() > 0 {
+        if !self.locals.is_empty() {
             self.locals.encode(&mut tmp);
             subsec(2, &mut tmp);
         }
-        if self.labels.len() > 0 {
+        if !self.labels.is_empty() {
             self.labels.encode(&mut tmp);
             subsec(3, &mut tmp);
         }
-        if self.types.len() > 0 {
+        if !self.types.is_empty() {
             self.types.encode(&mut tmp);
             subsec(4, &mut tmp);
         }
-        if self.tables.len() > 0 {
+        if !self.tables.is_empty() {
             self.tables.encode(&mut tmp);
             subsec(5, &mut tmp);
         }
-        if self.memories.len() > 0 {
+        if !self.memories.is_empty() {
             self.memories.encode(&mut tmp);
             subsec(6, &mut tmp);
         }
-        if self.globals.len() > 0 {
+        if !self.globals.is_empty() {
             self.globals.encode(&mut tmp);
             subsec(7, &mut tmp);
         }
-        if self.elems.len() > 0 {
+        if !self.elems.is_empty() {
             self.elems.encode(&mut tmp);
             subsec(8, &mut tmp);
         }
-        if self.data.len() > 0 {
+        if !self.data.is_empty() {
             self.data.encode(&mut tmp);
             subsec(9, &mut tmp);
         }
-        if self.fields.len() > 0 {
+        if !self.fields.is_empty() {
             self.fields.encode(&mut tmp);
             subsec(10, &mut tmp);
         }
-        if self.tags.len() > 0 {
+        if !self.tags.is_empty() {
             self.tags.encode(&mut tmp);
             subsec(11, &mut tmp);
         }

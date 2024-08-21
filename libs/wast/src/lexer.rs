@@ -350,14 +350,11 @@ impl<'a> Lexer<'a> {
     /// Returns an error if the input is malformed.
     pub fn parse(&self, pos: &mut usize) -> Result<Option<Token>, Error> {
         let offset = *pos;
-        Ok(match self.parse_kind(pos)? {
-            Some(kind) => Some(Token {
-                kind,
-                offset,
-                len: (*pos - offset).try_into().unwrap(),
-            }),
-            None => None,
-        })
+        Ok(self.parse_kind(pos)?.map(|kind| Token {
+            kind,
+            offset,
+            len: (*pos - offset).try_into().unwrap(),
+        }))
     }
 
     fn parse_kind(&self, pos: &mut usize) -> Result<Option<TokenKind>, Error> {
@@ -721,10 +718,7 @@ impl<'a> Lexer<'a> {
             hex,
         }));
 
-        fn skip_underscores<'a>(
-            it: &mut slice::Iter<'_, u8>,
-            good: fn(u8) -> bool,
-        ) -> Option<bool> {
+        fn skip_underscores(it: &mut slice::Iter<'_, u8>, good: fn(u8) -> bool) -> Option<bool> {
             let mut last_underscore = false;
             let mut has_underscores = false;
             let first = *it.next()?;

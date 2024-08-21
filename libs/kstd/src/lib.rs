@@ -3,7 +3,6 @@
 #![feature(
     naked_functions,
     lang_items,
-    panic_info_message,
     std_internals,
     used_with_arg,
     panic_can_unwind,
