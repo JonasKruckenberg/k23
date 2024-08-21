@@ -36,7 +36,7 @@ _default:
 preflight *FLAGS: (lint "configs/riscv64-qemu.toml" FLAGS)
 
 # run lints (clippy, rustfmt) for the workspace
-lint config *FLAGS: (clippy config FLAGS) (check-fmt config FLAGS)
+lint config *FLAGS: (clippy config FLAGS) (check-fmt FLAGS)
 
 # run clippy lints for the workspace
 clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':

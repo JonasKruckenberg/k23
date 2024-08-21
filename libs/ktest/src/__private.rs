@@ -32,7 +32,10 @@ pub struct MachineInfo<'dt> {
 
 #[cfg(target_os = "none")]
 impl<'dt> MachineInfo<'dt> {
-    pub fn from_dtb(dtb_ptr: *const u8) -> Self {
+    /// # Safety
+    ///
+    /// The caller has to ensure the provided pointer actually points to a FDT in memory.
+    pub unsafe fn from_dtb(dtb_ptr: *const u8) -> Self {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
         let mut v = BootInfoVisitor::default();
         fdt.visit(&mut v).unwrap();
@@ -66,9 +69,8 @@ impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
     }
 
     fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
-        match name {
-            "bootargs" => self.bootargs = Some(CStr::from_bytes_until_nul(value).unwrap()),
-            _ => {}
+        if name == "bootargs" {
+            self.bootargs = Some(CStr::from_bytes_until_nul(value).unwrap());
         }
 
         Ok(())

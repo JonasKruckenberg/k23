@@ -136,6 +136,11 @@ impl CoreDumpModulesSection {
     pub fn len(&self) -> u32 {
         self.num_added
     }
+
+    /// Whether the section is empty.
+    pub fn is_empty(&self) -> bool {
+        self.num_added == 0
+    }
 }
 
 impl Encode for CoreDumpModulesSection {
@@ -202,6 +207,11 @@ impl CoreDumpInstancesSection {
     /// The number of modules that are encoded in the section.
     pub fn len(&self) -> u32 {
         self.num_added
+    }
+
+    /// Whether the section is empty.
+    pub fn is_empty(&self) -> bool {
+        self.num_added == 0
     }
 }
 

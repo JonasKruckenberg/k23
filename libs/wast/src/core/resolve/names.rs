@@ -9,7 +9,7 @@ use alloc::vec::Vec;
 use alloc::{format, vec};
 use hashbrown::HashMap;
 
-pub fn resolve<'a>(fields: &mut Vec<ModuleField<'a>>) -> Result<Resolver<'a>, Error> {
+pub fn resolve<'a>(fields: &mut [ModuleField<'a>]) -> Result<Resolver<'a>, Error> {
     let mut resolver = Resolver::default();
     resolver.process(fields)?;
     Ok(resolver)
@@ -35,7 +35,7 @@ pub struct Resolver<'a> {
 }
 
 impl<'a> Resolver<'a> {
-    fn process(&mut self, fields: &mut Vec<ModuleField<'a>>) -> Result<(), Error> {
+    fn process(&mut self, fields: &mut [ModuleField<'a>]) -> Result<(), Error> {
         // Number everything in the module, recording what names correspond to
         // what indices.
         for field in fields.iter_mut() {
@@ -63,7 +63,7 @@ impl<'a> Resolver<'a> {
                     if let Some(id) = field.id {
                         self.fields
                             .entry(type_index)
-                            .or_insert(Namespace::default())
+                            .or_default()
                             .register_specific(id, i as u32, "field")?;
                     }
                 }
@@ -284,10 +284,10 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_valtype(&self, ty: &mut ValType<'a>) -> Result<(), Error> {
-        match ty {
-            ValType::Ref(ty) => self.resolve_heaptype(&mut ty.heap)?,
-            _ => {}
+        if let ValType::Ref(ty) = ty {
+            self.resolve_heaptype(&mut ty.heap)?;
         }
+
         Ok(())
     }
 
@@ -296,20 +296,18 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_heaptype(&self, ty: &mut HeapType<'a>) -> Result<(), Error> {
-        match ty {
-            HeapType::Concrete(i) => {
-                self.resolve(i, Ns::Type)?;
-            }
-            _ => {}
+        if let HeapType::Concrete(i) = ty {
+            self.resolve(i, Ns::Type)?;
         }
+
         Ok(())
     }
 
     fn resolve_storagetype(&self, ty: &mut StorageType<'a>) -> Result<(), Error> {
-        match ty {
-            StorageType::Val(ty) => self.resolve_valtype(ty)?,
-            _ => {}
+        if let StorageType::Val(ty) = ty {
+            self.resolve_valtype(ty)?;
         }
+
         Ok(())
     }
 
@@ -481,7 +479,7 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
             }
 
             LocalSet(i) | LocalGet(i) | LocalTee(i) => {
-                assert!(self.scopes.len() > 0);
+                assert!(!self.scopes.is_empty());
                 // Resolve a local by iterating over scopes from most recent
                 // to less recent. This allows locals added by `let` blocks to
                 // shadow less recent locals.
@@ -755,8 +753,8 @@ impl<'a> TypeReference<'a> for FunctionType<'a> {
         // opportunistically here to see if the values are equal.
 
         let types_not_equal = |a: &ValType, b: &ValType| {
-            let mut a = a.clone();
-            let mut b = b.clone();
+            let mut a = *a;
+            let mut b = *b;
             drop(cx.resolve_valtype(&mut a));
             drop(cx.resolve_valtype(&mut b));
             a != b
@@ -775,7 +773,7 @@ impl<'a> TypeReference<'a> for FunctionType<'a> {
         if not_equal {
             return Err(Error::new(
                 idx.span(),
-                format!("inline function type doesn't match type reference"),
+                "inline function type doesn't match type reference".to_string(),
             ));
         }
 

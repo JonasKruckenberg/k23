@@ -317,7 +317,7 @@ impl QuoteWat<'_> {
                     let span = self.span();
                     Error::new(span, "malformed UTF-8 encoding".to_string())
                 })?;
-                let buf = ParseBuffer::new(&text)?;
+                let buf = ParseBuffer::new(text)?;
                 let mut wat = parser::parse::<Wat<'_>>(&buf)?;
                 wat.encode()
             }
