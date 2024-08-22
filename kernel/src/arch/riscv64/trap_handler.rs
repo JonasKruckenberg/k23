@@ -1,9 +1,8 @@
 use crate::kconfig;
 use core::arch::asm;
-use kstd::arch::sbi::time::set_timer;
-use kstd::arch::scause::{Exception, Interrupt, Trap};
-use kstd::arch::{scause, sepc, sstatus, stval, stvec};
-use kstd::declare_thread_local;
+use riscv::scause::{Exception, Trap};
+use riscv::{scause, sepc, sstatus, stval, stvec};
+use tls::declare_thread_local;
 
 declare_thread_local! {
     static TRAP_STACK: [u8; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE] = const { [0; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE] };
@@ -20,13 +19,21 @@ pub fn init() {
 
     unsafe {
         asm!(
-            "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
-            trap_frame = in(reg) trap_stack_top
+        "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
+        trap_frame = in(reg) trap_stack_top
         );
     }
 
     log::debug!("setting trap vec to {:#x}", trap_vec as usize);
     unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
+}
+
+#[repr(C)]
+#[derive(Clone, Default)]
+pub struct TrapFrame {
+    pub gp: [usize; 32],
+    #[cfg(target_feature = "d")]
+    pub fp: [usize; 32],
 }
 
 #[naked]
@@ -61,14 +68,14 @@ pub unsafe extern "C" fn trap_vec() {
 #[naked]
 unsafe extern "C" fn default_trap_entry() {
     asm! {
-        ".align 2",
+    ".align 2",
 
-        "mv t0, sp", // save the correct stack pointer
-        "csrrw sp, sscratch, sp", // t6 points to the TrapFrame
-        "add sp, sp, -0x210",
+    "mv t0, sp", // save the correct stack pointer
+    "csrrw sp, sscratch, sp", // t6 points to the TrapFrame
+    "add sp, sp, -0x210",
 
-        // save gp
-        "
+    // save gp
+    "
         sd x0, 0x00(sp)
         sd ra, 0x08(sp)
         sd t0, 0x10(sp)
@@ -88,8 +95,8 @@ unsafe extern "C" fn default_trap_entry() {
         sd s11, 0xD8(sp)
         ",
 
-        // save fp
-        "
+    // save fp
+    "
         fsd fs0, 0x140(sp)
         fsd fs1, 0x148(sp)
         fsd fs2, 0x190(sp)
@@ -104,16 +111,16 @@ unsafe extern "C" fn default_trap_entry() {
         fsd fs11, 0x1D8(sp)
         ",
 
-        "mv a0, sp",
+    "mv a0, sp",
 
-        "call {trap_handler}",
+    "call {trap_handler}",
 
-        "mv sp, a0",
+    "mv sp, a0",
 
-        // restore gp
-        "ld ra, 0x08(a0)",
-        // skip sp since it is saved in sscratch
-        "ld gp, 0x18(a0)
+    // restore gp
+    "ld ra, 0x08(a0)",
+    // skip sp since it is saved in sscratch
+    "ld gp, 0x18(a0)
         ld tp, 0x20(a0)
         ld t0, 0x28(a0)
         ld t1, 0x30(a0)
@@ -143,8 +150,8 @@ unsafe extern "C" fn default_trap_entry() {
         ld t6, 0xF8(a0)
         ",
 
-        // restore fp
-        "
+    // restore fp
+    "
         fld ft0, 0x100(a0)
         fld ft1, 0x108(a0)
         fld ft2, 0x110(a0)
@@ -179,12 +186,12 @@ unsafe extern "C" fn default_trap_entry() {
         fld ft11, 0x1F8(a0)
         ",
 
-        "add sp, sp, 0x210",
-        "csrrw sp, sscratch, sp",
-        "sret",
+    "add sp, sp, 0x210",
+    "csrrw sp, sscratch, sp",
+    "sret",
 
-        trap_handler = sym default_trap_handler,
-        options(noreturn)
+    trap_handler = sym default_trap_handler,
+    options(noreturn)
     }
 }
 
@@ -197,7 +204,7 @@ extern "C-unwind" fn trap_panic_trampoline() {
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
 #[allow(clippy::too_many_arguments)]
 fn default_trap_handler(
-    raw_frame: *mut kstd::arch::unwinding::Context,
+    raw_frame: *mut TrapFrame,
     a1: usize,
     a2: usize,
     a3: usize,
@@ -205,7 +212,7 @@ fn default_trap_handler(
     a5: usize,
     a6: usize,
     a7: usize,
-) -> *mut kstd::arch::unwinding::Context {
+) -> *mut TrapFrame {
     let cause = scause::read().cause();
 
     log::trace!("{:?}", sstatus::read());
@@ -226,11 +233,8 @@ fn default_trap_handler(
             log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
             unsafe { sepc::write(trap_panic_trampoline as usize) }
         }
-        Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            log::info!("Supervisor Timer");
-            set_timer(u64::MAX).unwrap();
-        }
         _ => {
+            unsafe { sepc::write(trap_panic_trampoline as usize) }
             // panic!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
         }
     }

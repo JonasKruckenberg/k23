@@ -13,7 +13,8 @@
   "llvm-target": "riscv64",
   "max-atomic-width": 64,
   "panic-strategy": "unwind",
-  "relocation-model": "pie",
+  "relocation-model": "pic",
+  "tls-model": "local-exec",
   "supported-sanitizers": [
     "kernel-address"
   ],

@@ -8,7 +8,7 @@ use loader_api::BootInfo;
 use talc::{Span, Talc, Talck};
 
 #[global_allocator]
-static KERNEL_ALLOCATOR: Talck<kstd::sync::RawMutex, OomHandler> = Talc::new(OomHandler {
+static KERNEL_ALLOCATOR: Talck<sync::RawMutex, OomHandler> = Talc::new(OomHandler {
     heap: Span::empty(),
     max: 0,
 })
@@ -18,6 +18,13 @@ pub fn init(
     frame_alloc: &mut dyn FrameAllocator<kconfig::MEMORY_MODE>,
     boot_info: &BootInfo,
 ) -> Result<(), kmm::Error> {
+    let heap = boot_info
+        .free_virt
+        .end
+        .sub(kconfig::HEAP_SIZE_PAGES * kconfig::PAGE_SIZE)..boot_info.free_virt.end;
+
+    log::debug!("Kernel heap: {heap:?}");
+
     let mut alloc = KERNEL_ALLOCATOR.lock();
     alloc.oom_handler.heap =
         Span::from_base_size(heap.start.as_raw() as *mut u8, kconfig::PAGE_SIZE);

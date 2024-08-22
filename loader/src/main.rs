@@ -1,122 +1,104 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions, maybe_uninit_slice, used_with_arg)]
-#![allow(clippy::items_after_statements, clippy::needless_continue)]
+#![feature(naked_functions)]
+#![feature(maybe_uninit_slice)]
 
+extern crate panic;
+
+/// Constants derived from the build config
+mod kconfig {
+    #![allow(unused)]
+    include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
+}
 mod arch;
-mod logger;
+mod boot_info;
+mod error;
 mod machine_info;
-mod mapping;
+mod paging;
 mod payload;
 
-// Configuration constants and statics defined by the build script
-include!(concat!(env!("OUT_DIR"), "/gen.rs"));
-
-pub mod kconfig {
-    #[allow(non_camel_case_types)]
-    pub type MEMORY_MODE = vmm::Riscv64Sv39;
-    pub const STACK_SIZE_PAGES: usize = 32;
-    pub const PAGE_SIZE: usize = <MEMORY_MODE as ::vmm::Mode>::PAGE_SIZE;
-}
-
+use crate::boot_info::init_boot_info;
 use crate::machine_info::MachineInfo;
-use crate::mapping::{set_up_mappings, Mappings};
+use crate::paging::{PageTableBuilder, PageTableResult};
 use crate::payload::Payload;
-use core::mem::MaybeUninit;
 use core::ops::Range;
 use core::ptr::addr_of;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{ptr, slice};
-use kstd::sync::OnceLock;
-use linked_list_allocator::LockedHeap;
-use loader_api::{MemoryRegion, MemoryRegionKind};
-use vmm::{
+use kmm::{
     AddressRangeExt, BumpAllocator, FrameAllocator, Mode, PhysicalAddress, VirtualAddress, INIT,
 };
+use linked_list_allocator::LockedHeap;
+use loader_api::BootInfo;
 
-#[global_allocator]
-static ALLOC: LockedHeap = LockedHeap::empty();
+use error::Error;
+pub type Result<T> = core::result::Result<T, Error>;
 
-fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
-    #[cfg(test)]
-    log::info!("tests enabled");
+static BOOT_HART: AtomicUsize = AtomicUsize::new(0);
 
-    static MAPPINGS: OnceLock<Mappings> = OnceLock::new();
+fn main(hartid: usize) -> ! {
+    static INIT: sync::OnceLock<(PageTableResult, &'static BootInfo)> = sync::OnceLock::new();
 
     log::info!("Hart {hartid} started");
 
-    let mappings = MAPPINGS.get_or_init(|| {
-        let own_regions = LoaderRegions::new(machine_info);
-        log::trace!("{own_regions:?}");
+    let (page_table_result, boot_info) = INIT
+        .get_or_try_init(init_global)
+        .expect("failed to initialize system");
 
-        // Safety: The machine_info module ensures the memory entries are in the right order
-        let mut alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> = unsafe {
-            BumpAllocator::new_with_lower_bound(&machine_info.memories, own_regions.read_write.end)
-        };
+    log::debug!("Activating page table for hart {hartid}...");
+    page_table_result.activate_table();
 
-        unsafe {
-            ALLOC.lock().init(
-                machine_info.memories[0].start.as_raw() as *mut u8,
-                machine_info.memories[0].size(),
-            );
-        }
-
-        let fdt_virt = allocate_and_copy_fdt(machine_info, &mut alloc).unwrap();
-
-        let payload = if let (Some(verifying_key), Some(payload), Some(signature)) =
-            (VERIFYING_KEY, PAYLOAD, SIGNATURE)
-        {
-            Payload::from_signed_and_compressed(verifying_key, payload, signature, &mut alloc)
-        } else {
-            panic!("no payload provided");
-        };
-
-        let mut mappings =
-            set_up_mappings(&payload, machine_info, &own_regions, fdt_virt, &mut alloc).unwrap();
-
-        let memory_regions = mappings.finalize_memory_regions(|_, raw_regions| {
-            let mut next_region = 0;
-            let mut push_region = |region: MemoryRegion| {
-                raw_regions[next_region].write(region);
-                next_region += 1;
-            };
-
-            for used_region in alloc.used_regions() {
-                push_region(MemoryRegion {
-                    range: used_region,
-                    kind: MemoryRegionKind::Loader,
-                });
-            }
-
-            for free_region in alloc.free_regions() {
-                push_region(MemoryRegion {
-                    range: free_region,
-                    kind: MemoryRegionKind::Usable,
-                });
-            }
-
-            unsafe { MaybeUninit::slice_assume_init_mut(&mut raw_regions[0..next_region]) }
-        });
-
-        mappings.finalize_boot_info(machine_info, memory_regions);
-
-        mappings
-    });
-
-    mappings.activate_table();
-    mappings.initialize_tls_region_for_hart(hartid);
+    log::debug!("Initializing TLS region for hart {hartid}...");
+    page_table_result.init_tls_region_for_hart(hartid);
 
     unsafe {
-        arch::kernel_entry(
-            mappings.entry_point(),
-            mappings
+        arch::switch_to_payload(
+            hartid,
+            page_table_result.payload_entry(),
+            page_table_result.stack_region_for_hart(hartid),
+            page_table_result
                 .tls_region_for_hart(hartid)
                 .unwrap_or_default()
                 .start,
-            hartid,
-            mappings.stack_region_for_hart(hartid),
-            mappings.boot_info(),
+            boot_info,
         )
     }
+}
+
+fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
+    let machine_info = arch::machine_info();
+    let loader_regions = LoaderRegions::new(machine_info);
+    log::trace!("{loader_regions:?}");
+
+    // init frame allocator
+    let mut frame_alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> = unsafe {
+        BumpAllocator::new_with_lower_bound(&machine_info.memories, loader_regions.read_write.end)
+    };
+
+    // Move the FDT to a safe location, so we don't accidentally overwrite it
+    let fdt_virt = allocate_and_copy_fdt(machine_info, &mut frame_alloc)?;
+
+    // init heap allocator
+    init_global_allocator(machine_info);
+
+    // decompress & parse payload
+    let payload =
+        Payload::from_compressed(payload::PAYLOAD.expect("no payload"), &mut frame_alloc)?;
+
+    // init page tables
+    let page_table_result = PageTableBuilder::from_alloc(&mut frame_alloc)?
+        .map_payload(&payload, machine_info)?
+        .map_physical_memory(machine_info)?
+        .identity_map_loader(&loader_regions)?
+        .print_statistics()
+        .result();
+
+    let hartid = BOOT_HART.load(Ordering::Relaxed);
+
+    // init boot info
+    let boot_info = init_boot_info(&mut frame_alloc, hartid, &page_table_result, fdt_virt)?;
+
+    Ok((page_table_result, boot_info))
 }
 
 /// Moves the FDT from wherever the previous bootloader placed it into a properly allocated place,
@@ -128,7 +110,7 @@ fn main(hartid: usize, machine_info: &'static MachineInfo) -> ! {
 pub fn allocate_and_copy_fdt(
     machine_info: &MachineInfo,
     alloc: &mut BumpAllocator<INIT<kconfig::MEMORY_MODE>>,
-) -> Result<VirtualAddress, vmm::Error> {
+) -> Result<VirtualAddress> {
     let frames = machine_info.fdt.len().div_ceil(kconfig::PAGE_SIZE);
     let base = alloc.allocate_frames(frames)?;
 
@@ -139,6 +121,18 @@ pub fn allocate_and_copy_fdt(
     }
 
     Ok(kconfig::MEMORY_MODE::phys_to_virt(base))
+}
+
+fn init_global_allocator(machine_info: &MachineInfo) {
+    #[global_allocator]
+    static ALLOC: LockedHeap = LockedHeap::empty();
+
+    unsafe {
+        ALLOC.lock().init(
+            machine_info.memories[0].start.as_raw() as *mut u8,
+            machine_info.memories[0].size(),
+        );
+    }
 }
 
 #[derive(Debug)]

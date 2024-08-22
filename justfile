@@ -104,6 +104,8 @@ build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/payload" CARGO
     let out_dir = "{{_target_dir}}" | path join "k23"
     mkdir $out_dir
 
+    $env.K23_CONFIG = {{config}}
+
     let cargo_out = ({{_cargo}} build
         -p kernel
         --target $target
@@ -122,6 +124,7 @@ test config *CARGO_ARGS="" :
 
     # CARGO_TARGET_<triple>_RUNNER
     $env.CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER = "just profile={{profile}} _runner {{config}}"
+    $env.K23_CONFIG = {{config}}
 
     {{ _cargo }} test -p kernel --target $target {{ _buildstd }} {{ CARGO_ARGS }}
 
@@ -179,9 +182,9 @@ _make_bootimg config payload *CARGO_ARGS="":
     mkdir $out_dir
 
     let loader_path = ($out_dir | path join loader)
-    let secret_key_path = ($out_dir | path join secret.der)
-    let public_key_path = ($out_dir | path join pubkey.bin)
-    let signature_path = ($out_dir | path join signature.bin)
+    #let secret_key_path = ($out_dir | path join secret.der)
+    #let public_key_path = ($out_dir | path join pubkey.bin)
+    #let signature_path = ($out_dir | path join signature.bin)
     let bootimg_path = ($out_dir | path join bootimg.bin)
 
     # Step 1: Compress the payload
@@ -190,19 +193,19 @@ _make_bootimg config payload *CARGO_ARGS="":
     {{_cargo}} run -p lz4-block-compress {{payload}} $payload_lz4_path
 
     # Step 2: Sign the compressed payload
-    print "Signing the compressed payload..."
+    #print "Signing the compressed payload..."
     # Write ed25519 key pair
-    echo "{{_signing_key}}" | openssl pkey -outform DER -out $secret_key_path
+    #echo "_signing_key" | openssl pkey -outform DER -out $secret_key_path
     # Do the actual signing
-    openssl pkeyutl -sign -inkey $secret_key_path -out $signature_path -rawin -in $payload_lz4_path
+    #openssl pkeyutl -sign -inkey $secret_key_path -out $signature_path -rawin -in $payload_lz4_path
     # Extract the 32-byte public key
-    openssl pkey -in $secret_key_path -pubout -outform DER | tail -c 32 | save -f $public_key_path
+    #openssl pkey -in $secret_key_path -pubout -outform DER | tail -c 32 | save -f $public_key_path
 
     # Assign environment variables so we can pick it up in the loader build script
-    $env.K23_VERIFYING_KEY_PATH = $public_key_path
-    $env.K23_SIGNATURE_PATH = $signature_path
+    #$env.K23_VERIFYING_KEY_PATH = $public_key_path
+    #$env.K23_SIGNATURE_PATH = $signature_path
     $env.K23_PAYLOAD_PATH = $payload_lz4_path
-    $env.K23_PAYLOAD_SIZE = (stat -c %s {{payload}})
+    $env.K23_CONFIG = {{config}}
 
     # Step 3: Build the bootloader
     print "Building the bootloader..."

@@ -3,7 +3,6 @@ cfg_if::cfg_if! {
         mod riscv64;
         pub use riscv64::*;
     } else {
-        mod unsupported;
-        pub use unsupported::*;
+        compile_error!("Unsupported target architecture");
     }
 }

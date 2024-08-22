@@ -28,7 +28,7 @@ mod compile_tests {
     fn build_and_run_wast(wast: &str) {
         use wast::{
             parser::{self, ParseBuffer},
-            Wast, Wat,
+            Wast,
         };
 
         let buf = ParseBuffer::new(wast).unwrap();
