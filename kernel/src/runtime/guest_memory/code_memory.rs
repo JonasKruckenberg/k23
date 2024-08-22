@@ -1,4 +1,4 @@
-use crate::arch::EntryFlags;
+use kmm::EntryFlags;
 use crate::frame_alloc::with_frame_alloc;
 use crate::kconfig;
 use crate::runtime::codegen::{
@@ -10,7 +10,7 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use object::{File, Object, ObjectSection};
-use vmm::{AddressRangeExt, Flush, Mapper, VirtualAddress};
+use kmm::{AddressRangeExt, Flush, Mapper, VirtualAddress};
 
 pub struct CodeMemory {
     inner: AlignedVec<u8, { kconfig::PAGE_SIZE }>,
@@ -85,7 +85,7 @@ impl CodeMemory {
         }
     }
 
-    pub fn publish(&mut self) -> Result<(), vmm::Error> {
+    pub fn publish(&mut self) -> Result<(), kmm::Error> {
         debug_assert!(!self.published);
         self.published = true;
 
@@ -95,7 +95,7 @@ impl CodeMemory {
 
         let alloc = self.inner.allocator();
 
-        with_frame_alloc(|frame_alloc| -> Result<(), vmm::Error> {
+        with_frame_alloc(|frame_alloc| -> Result<(), kmm::Error> {
             let mut mapper: Mapper<kconfig::MEMORY_MODE> =
                 Mapper::from_address(alloc.asid(), alloc.root_table(), frame_alloc);
             let mut flush = Flush::empty(alloc.asid());

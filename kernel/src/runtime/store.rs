@@ -12,7 +12,7 @@ use core::ptr::NonNull;
 use cranelift_entity::PrimaryMap;
 use cranelift_wasm::{DefinedMemoryIndex, DefinedTableIndex};
 use hashbrown::HashMap;
-use vmm::VirtualAddress;
+use kmm::VirtualAddress;
 
 pub struct Store<'wasm> {
     allocator: GuestAllocator,

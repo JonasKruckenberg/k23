@@ -13,14 +13,17 @@ name = "kernel"
 harness = false
 
 [dependencies]
-vmm.workspace = true
-kstd = { workspace = true, features = ["panic-unwind"] }
+kmm.workspace = true
 loader-api.workspace = true
 
 cfg-if.workspace = true
 log.workspace = true
 linked_list_allocator.workspace = true
+panic = { workspace = true, features = ["unwind", "backtrace"] }
+sync.workspace = true
 arrayvec.workspace = true
+tls.workspace = true
+unwind.workspace = true
 cranelift-wasm.workspace = true
 cranelift-codegen.workspace = true
 cranelift-frontend.workspace = true
@@ -33,6 +36,8 @@ gimli = { workspace = true, features = ["read"] }
 rustc-demangle.workspace = true
 postcard = { workspace = true, default-features = false, features = ["alloc"] }
 talc.workspace = true
+[target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
+riscv.workspace = true
 
 [dev-dependencies]
 ktest.workspace = true

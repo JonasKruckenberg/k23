@@ -1,0 +1,23 @@
+[package]
+name = "unwind"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+harness = false
+
+[dependencies]
+log.workspace = true
+cfg-if.workspace = true
+onlyerror.workspace = true
+bitflags.workspace = true
+sync.workspace = true
+gimli = { workspace = true, features = ["read-core"] }
+
+[target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
+riscv.workspace = true

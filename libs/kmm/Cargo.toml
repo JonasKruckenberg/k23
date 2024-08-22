@@ -1,0 +1,22 @@
+[package]
+name = "kmm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bitflags.workspace = true
+log.workspace = true
+onlyerror.workspace = true
+cfg-if.workspace = true
+object = { workspace = true, features = ["read_core", "elf"], optional = true }
+
+[target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
+riscv.workspace = true
+
+[features]
+elf = ["object"]
