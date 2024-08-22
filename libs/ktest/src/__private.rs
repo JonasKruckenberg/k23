@@ -1,10 +1,10 @@
+use crate::arch;
 use core::ffi::CStr;
 use core::fmt::Write;
 #[cfg(target_os = "none")]
 use dtb_parser::{DevTree, Node, Visitor};
 #[cfg(target_os = "none")]
 pub use loader_api;
-use crate::arch;
 
 #[allow(unreachable_code)]
 pub fn exit(code: i32) -> ! {
@@ -19,7 +19,7 @@ pub fn exit(code: i32) -> ! {
 pub fn print(str: &str) {
     #[cfg(target_os = "none")]
     arch::hio::HostStream::new_stdout().write_str(str).unwrap();
-    
+
     #[cfg(not(target_os = "none"))]
     use ::std::io::Write;
     #[cfg(not(target_os = "none"))]

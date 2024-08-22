@@ -24,8 +24,7 @@ struct KConfig<'a> {
 
 impl<'a> KConfig<'a> {
     fn from_table(table: &'a Table) -> Self {
-        let kernel_config = get_table(table, "kernel")
-            .expect("config is missing `kernel`");
+        let kernel_config = get_table(table, "kernel").expect("config is missing `kernel`");
 
         Self {
             stack_size_pages: get_uint(kernel_config, "stack-size-pages")
@@ -34,7 +33,8 @@ impl<'a> KConfig<'a> {
                 .expect("config is missing `kernel.trap-stack-size-pages`"),
             heap_size_pages: get_uint(kernel_config, "heap-size-pages")
                 .expect("config is missing `kernel.heap-size-pages`"),
-            log_level: get_str(kernel_config, "log-level").expect("config is missing `kernel.log-level`"),
+            log_level: get_str(kernel_config, "log-level")
+                .expect("config is missing `kernel.log-level`"),
             memory_mode: get_str(table, "memory-mode").expect("config is missing `memory-mode`"),
         }
     }
@@ -93,5 +93,8 @@ fn get_str<'a>(table: &'a Table, key: &str) -> Option<&'a str> {
 }
 
 fn get_uint(table: &Table, key: &str) -> Option<u64> {
-    table.get(key).and_then(|v| v.as_integer()).map(|v| v as u64)
+    table
+        .get(key)
+        .and_then(|v| v.as_integer())
+        .map(|v| v as u64)
 }

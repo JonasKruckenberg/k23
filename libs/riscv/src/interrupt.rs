@@ -10,6 +10,10 @@ pub fn disable() {
 }
 
 /// Enables all the interrupts for the current hart.
+///
+/// # Safety
+///
+/// The caller must ensure the remaining code is signal-safe.
 #[inline]
 pub unsafe fn enable() {
     sstatus::set_sie()
@@ -40,6 +44,11 @@ where
 /// Execute closure `f` with interrupts enabled for the current hart.
 ///
 /// This function is designed to be run from within an interrupt handler to allow for recursive interrupts.
+///
+/// # Safety
+///
+/// - The caller must ensure the remaining code is signal-safe.
+/// - The interrupt flag must be cleared before calling this function, otherwise the interrupt handler will be re-entered.
 #[inline]
 pub unsafe fn with_enabled<F, R>(f: F) -> R
 where

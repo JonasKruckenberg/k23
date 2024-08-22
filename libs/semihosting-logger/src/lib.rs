@@ -16,7 +16,7 @@ pub fn init(lvl: LevelFilter) {
     static LOGGER: Logger = Logger;
 
     log::set_logger(&LOGGER).unwrap();
-    log::set_max_level(lvl.into());
+    log::set_max_level(lvl);
 }
 
 struct Logger;

@@ -2,8 +2,8 @@
 #![no_main]
 #![feature(used_with_arg, naked_functions, thread_local)]
 #![feature(allocator_api)]
-extern crate panic;
 extern crate alloc;
+extern crate panic;
 
 use loader_api::BootInfo;
 
@@ -15,8 +15,8 @@ mod kconfig {
 mod allocator;
 mod arch;
 mod frame_alloc;
-mod start;
 mod runtime;
+mod start;
 mod tests;
 
 pub fn kmain(_hartid: usize, _boot_info: &'static BootInfo) -> ! {

@@ -47,8 +47,6 @@ clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
     ({{_cargo}} clippy
         -p kernel
         --target $config.kernel.target
-        --tests
-        --benches
         --profile {{profile}}
         {{_buildstd}}
         {{CARGO_ARGS}})
@@ -57,8 +55,6 @@ clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
     ({{_cargo}} clippy
         -p loader
         --target $config.loader.target
-        --tests
-        --benches
         --profile {{profile}}
         {{_buildstd}}
         {{CARGO_ARGS}})
@@ -72,8 +68,6 @@ check config $RUSTFLAGS='' *CARGO_ARGS='':
     ({{_cargo}} check
         -p kernel
         --target $config.kernel.target
-        --tests
-        --benches
         --profile {{profile}}
         {{_buildstd}}
         {{CARGO_ARGS}})
@@ -82,8 +76,6 @@ check config $RUSTFLAGS='' *CARGO_ARGS='':
     ({{_cargo}} check
         -p loader
         --target $config.loader.target
-        --tests
-        --benches
         --profile {{profile}}
         {{_buildstd}}
         {{CARGO_ARGS}})

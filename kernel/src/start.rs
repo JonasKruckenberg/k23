@@ -23,7 +23,8 @@ fn kstart(hartid: usize, boot_info: &'static BootInfo) -> ! {
         arch::finish_processor_init();
 
         crate::kmain(hartid, boot_info);
-    }).unwrap_or_else(|_| {
+    })
+    .unwrap_or_else(|_| {
         log::error!("unrecoverable failure");
         arch::abort();
     })

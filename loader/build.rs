@@ -18,8 +18,10 @@ fn main() {
     if let Some(config) = maybe_config {
         let loader_config = get_table(&config, "loader").unwrap();
 
-        let linker_script_in = workspace_root.join(get_str(loader_config, "linker-script")
-            .expect("config is missing `loader.linker-script`"));
+        let linker_script_in = workspace_root.join(
+            get_str(loader_config, "linker-script")
+                .expect("config is missing `loader.linker-script`"),
+        );
         let linker_script_out = out_dir.join("linker.x");
         fs::copy(linker_script_in, &linker_script_out).unwrap();
 
@@ -37,7 +39,7 @@ fn main() {
 
     println!("cargo::rerun-if-env-changed=K23_VERIFYING_KEY_PATH");
     println!("cargo::rerun-if-env-changed=K23_PAYLOAD_PATH");
-    
+
     //pub const VERIFYING_KEY: Option<&[u8; ::ed25519_dalek::PUBLIC_KEY_LENGTH]> = {verifying_key};
     //pub const SIGNATURE: Option<&[u8; ::ed25519_dalek::Signature::BYTE_SIZE]> = {signature};
     fs::write(
@@ -59,8 +61,7 @@ struct KConfig<'a> {
 
 impl<'a> KConfig<'a> {
     fn from_table(table: &'a Table) -> Self {
-        let loader_config = get_table(table, "loader")
-            .expect("config is missing `loader`");
+        let loader_config = get_table(table, "loader").expect("config is missing `loader`");
 
         Self {
             stack_size_pages: get_uint(loader_config, "stack-size-pages")
@@ -120,7 +121,10 @@ fn get_str<'a>(table: &'a Table, key: &str) -> Option<&'a str> {
 }
 
 fn get_uint(table: &Table, key: &str) -> Option<u64> {
-    table.get(key).and_then(|v| v.as_integer()).map(|v| v as u64)
+    table
+        .get(key)
+        .and_then(|v| v.as_integer())
+        .map(|v| v as u64)
 }
 
 fn include_from_env(workspace_root: &Path, var: Option<OsString>) -> String {
