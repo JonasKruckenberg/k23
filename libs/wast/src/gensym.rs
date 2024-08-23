@@ -1,6 +1,6 @@
 use crate::token::{Id, Span};
 use core::cell::Cell;
-use kstd::declare_thread_local;
+use tls::declare_thread_local;
 
 declare_thread_local!(static NEXT: Cell<u32> = Cell::new(0));
 

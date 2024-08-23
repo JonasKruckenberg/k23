@@ -1,12 +1,12 @@
 use core::ops::Range;
-use vmm::{PhysicalAddress, VirtualAddress};
+use kmm::{PhysicalAddress, VirtualAddress};
 
 #[derive(Debug)]
 #[repr(C)]
 #[non_exhaustive]
 pub struct BootInfo {
     /// The hart that booted the machine, for debugging purposes
-    pub boot_hart: u32,
+    pub boot_hart: usize,
     /// The virtual address at which the mapping of the physical memory starts.
     ///
     /// Physical addresses can be converted to virtual addresses by adding this offset to them.
@@ -24,31 +24,33 @@ pub struct BootInfo {
     /// used by the kernel.
     pub memory_regions: &'static mut [MemoryRegion],
     /// The thread local storage (TLS) template of the kernel executable, if present.
-    pub tls_template: Option<vmm::TlsTemplate>,
+    pub tls_template: Option<kmm::TlsTemplate>,
     /// Address of the flattened device tree
-    pub fdt_virt: Option<VirtualAddress>,
+    pub fdt_virt: VirtualAddress,
     /// The virtual memory occupied by the bootloader.
-    pub loader_virt: Option<Range<VirtualAddress>>,
-    /// The physical memory occupied by payload elf file.
-    pub payload_elf_phys: Option<Range<PhysicalAddress>>,
+    pub loader_virt: Range<VirtualAddress>,
     /// The range of addresses that the kernel can freely allocate from.
     pub free_virt: Range<VirtualAddress>,
 }
 
 impl BootInfo {
-    /// Create a new boot info structure with the given memory map.
-    ///
-    /// The other fields are initialized with default values.
-    pub fn new(memory_regions: &'static mut [MemoryRegion]) -> Self {
+    pub fn new(
+        boot_hart: usize,
+        physical_memory_offset: VirtualAddress,
+        memory_regions: &'static mut [MemoryRegion],
+        tls_template: Option<kmm::TlsTemplate>,
+        fdt_virt: VirtualAddress,
+        loader_virt: Range<VirtualAddress>,
+        free_virt: Range<VirtualAddress>,
+    ) -> Self {
         Self {
-            boot_hart: 0,
+            boot_hart,
+            physical_memory_offset,
             memory_regions,
-            physical_memory_offset: VirtualAddress::default(),
-            tls_template: None,
-            fdt_virt: None,
-            loader_virt: None,
-            payload_elf_phys: None,
-            free_virt: Range::default(),
+            tls_template,
+            fdt_virt,
+            loader_virt,
+            free_virt,
         }
     }
 }

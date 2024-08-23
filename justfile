@@ -42,13 +42,12 @@ lint config *FLAGS: (clippy config FLAGS) (check-fmt FLAGS)
 clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
     #!/usr/bin/env nu
     let config = open {{config}}
+    $env.K23_CONFIG = {{config}}
 
     # check kernel and dependencies
     ({{_cargo}} clippy
         -p kernel
         --target $config.kernel.target
-        --tests
-        --benches
         --profile {{profile}}
         {{_buildstd}}
         {{CARGO_ARGS}})
@@ -57,8 +56,6 @@ clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
     ({{_cargo}} clippy
         -p loader
         --target $config.loader.target
-        --tests
-        --benches
         --profile {{profile}}
         {{_buildstd}}
         {{CARGO_ARGS}})
@@ -67,13 +64,12 @@ clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
 check config $RUSTFLAGS='' *CARGO_ARGS='':
     #!/usr/bin/env nu
     let config = open {{config}}
+    $env.K23_CONFIG = {{config}}
 
     # check kernel and dependencies
     ({{_cargo}} check
         -p kernel
         --target $config.kernel.target
-        --tests
-        --benches
         --profile {{profile}}
         {{_buildstd}}
         {{CARGO_ARGS}})
@@ -82,8 +78,6 @@ check config $RUSTFLAGS='' *CARGO_ARGS='':
     ({{_cargo}} check
         -p loader
         --target $config.loader.target
-        --tests
-        --benches
         --profile {{profile}}
         {{_buildstd}}
         {{CARGO_ARGS}})
@@ -99,14 +93,14 @@ run config CARGO_ARGS="" *ARGS="": (build config CARGO_ARGS) (_run config "targe
 build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/payload" CARGO_ARGS)
     #!/usr/bin/env nu
     let config = open {{config}}
-    let target = try { $config | get kernel.target } catch { $config | get target }
+    $env.K23_CONFIG = {{config}}
 
     let out_dir = "{{_target_dir}}" | path join "k23"
     mkdir $out_dir
 
     let cargo_out = ({{_cargo}} build
         -p kernel
-        --target $target
+        --target $config.kernel.target
         --profile {{profile}}
         --message-format=json
         {{_buildstd}}
@@ -117,13 +111,15 @@ build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/payload" CARGO
 test config *CARGO_ARGS="" :
     #!/usr/bin/env nu
     let config = open {{config}}
-    let target = try { $config.kernel.target } catch { $config.target }
+    $env.K23_CONFIG = {{config}}
+
+    #let target = try {  } catch { $config.target }
     let triple = try { $config.kernel.target-triple } catch { $config.target-triple }
 
     # CARGO_TARGET_<triple>_RUNNER
     $env.CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER = "just profile={{profile}} _runner {{config}}"
 
-    {{ _cargo }} test -p kernel --target $target {{ _buildstd }} {{ CARGO_ARGS }}
+    {{ _cargo }} test -p kernel --target $config.kernel.target {{ _buildstd }} {{ CARGO_ARGS }}
 
 # This is a helper recipe designed to be used as a cargo *target runner*
 # When running tests, the `cargo test` command will produce potentially many executables.
@@ -137,6 +133,8 @@ _runner config binary *ARGS: (_make_bootimg config binary) (_run config "target/
 _run config binary *ARGS:
     #!/usr/bin/env nu
     let config = open {{ config }}
+    $env.K23_CONFIG = {{config}}
+
     let runner = $config.runner
 
     let cpu = match $runner {
@@ -173,15 +171,15 @@ _run config binary *ARGS:
 _make_bootimg config payload *CARGO_ARGS="":
     #!/usr/bin/env nu
     let config = open {{config}}
-    let target = try { $config.loader.target } catch { $config.target }
+    $env.K23_CONFIG = {{config}}
 
     let out_dir = "{{_target_dir}}" | path join "k23"
     mkdir $out_dir
 
     let loader_path = ($out_dir | path join loader)
-    let secret_key_path = ($out_dir | path join secret.der)
-    let public_key_path = ($out_dir | path join pubkey.bin)
-    let signature_path = ($out_dir | path join signature.bin)
+    #let secret_key_path = ($out_dir | path join secret.der)
+    #let public_key_path = ($out_dir | path join pubkey.bin)
+    #let signature_path = ($out_dir | path join signature.bin)
     let bootimg_path = ($out_dir | path join bootimg.bin)
 
     # Step 1: Compress the payload
@@ -190,25 +188,24 @@ _make_bootimg config payload *CARGO_ARGS="":
     {{_cargo}} run -p lz4-block-compress {{payload}} $payload_lz4_path
 
     # Step 2: Sign the compressed payload
-    print "Signing the compressed payload..."
+    #print "Signing the compressed payload..."
     # Write ed25519 key pair
-    echo "{{_signing_key}}" | openssl pkey -outform DER -out $secret_key_path
+    #echo "_signing_key" | openssl pkey -outform DER -out $secret_key_path
     # Do the actual signing
-    openssl pkeyutl -sign -inkey $secret_key_path -out $signature_path -rawin -in $payload_lz4_path
+    #openssl pkeyutl -sign -inkey $secret_key_path -out $signature_path -rawin -in $payload_lz4_path
     # Extract the 32-byte public key
-    openssl pkey -in $secret_key_path -pubout -outform DER | tail -c 32 | save -f $public_key_path
+    #openssl pkey -in $secret_key_path -pubout -outform DER | tail -c 32 | save -f $public_key_path
 
     # Assign environment variables so we can pick it up in the loader build script
-    $env.K23_VERIFYING_KEY_PATH = $public_key_path
-    $env.K23_SIGNATURE_PATH = $signature_path
+    #$env.K23_VERIFYING_KEY_PATH = $public_key_path
+    #$env.K23_SIGNATURE_PATH = $signature_path
     $env.K23_PAYLOAD_PATH = $payload_lz4_path
-    $env.K23_PAYLOAD_SIZE = (stat -c %s {{payload}})
 
     # Step 3: Build the bootloader
     print "Building the bootloader..."
     let cargo_out = ({{_cargo}} build
         -p loader
-        --target $target
+        --target $config.loader.target
         --profile {{profile}}
         --message-format=json
         {{_buildstd}}

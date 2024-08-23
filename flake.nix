@@ -33,6 +33,7 @@
                         just
                         nushell
                         cargo-binutils
+                        mdbook
                         lz4
                         openssl
                         coreutils

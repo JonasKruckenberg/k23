@@ -1,0 +1,16 @@
+[package]
+name = "sync"
+description = "Synchronization primitives for use in k23"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+lock_api.workspace = true
+
+[features]
+thread-local = []

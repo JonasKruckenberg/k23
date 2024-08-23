@@ -1,15 +1,17 @@
+use crate::kconfig;
 use crate::machine_info::MachineInfo;
-use crate::{kconfig, logger};
 use core::arch::asm;
 use core::ops::Range;
+use core::ptr;
 use core::ptr::addr_of_mut;
-use kstd::sync::OnceLock;
+use core::sync::atomic::{AtomicPtr, Ordering};
+use kmm::VirtualAddress;
 use loader_api::BootInfo;
-use vmm::VirtualAddress;
+use sync::OnceLock;
 
-pub type EntryFlags = vmm::EntryFlags;
-
-// do global, arch-specific setup
+/// The main entry point for the loader
+///
+/// This sets up the global and stack pointer, as well as filling the stack with a known debug pattern.
 #[link_section = ".text.start"]
 #[no_mangle]
 #[naked]
@@ -38,32 +40,42 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
-// do local, arch-specific setup
-#[link_section = ".text.start"]
-#[no_mangle]
-#[naked]
-unsafe extern "C" fn _start_hart() -> ! {
-    asm!(
-        ".option push",
-        ".option norelax",
-        "    la		gp, __global_pointer$",
-        ".option pop",
+fn start(hartid: usize, opaque: *const u8) -> ! {
+    // Disable interrupts. The payload will re-enable interrupts
+    // when it's ready to handle them
+    riscv::interrupt::disable();
 
-        "la     sp, __stack_start",    // set the stack pointer to the bottom of the stack area we got passed from the boot hart
-        "li     t0, {stack_size}", // load the stack size
-        "addi   t1, a0, 1", // add one to the hart id so that we add at least one stack size (stack grows from the top downwards)
-        "mul    t1, t0, t1", // multiply the stack size by the hart id to get the offset
-        "add    sp, sp, t1", // add the offset from sp to get the harts stack pointer
+    if hartid == 0 {
+        zero_bss();
 
-        "call {fillstack}",
+        semihosting_logger::init(kconfig::LOG_LEVEL.to_level_filter());
 
-        "jal zero, {start_rust}",   // jump into Rust
-        stack_size = const kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE,
+        RAW_MACHINE_INFO.store(opaque as *mut u8, Ordering::Relaxed);
+        MACHINE_INFO
+            .get_or_try_init(|| unsafe { MachineInfo::from_dtb(opaque) })
+            .expect("failed to parse machine info");
 
-        fillstack = sym fillstack,
-        start_rust = sym crate::main,
-        options(noreturn)
-    )
+        log::info!("{MACHINE_INFO:?}");
+    }
+
+    crate::main(hartid);
+}
+
+fn zero_bss() {
+    extern "C" {
+        static mut __bss_start: u64;
+        static mut __bss_end: u64;
+    }
+
+    unsafe {
+        // Zero BSS section
+        let mut ptr = addr_of_mut!(__bss_start);
+        let end = addr_of_mut!(__bss_end);
+        while ptr < end {
+            ptr.write_volatile(0);
+            ptr = ptr.offset(1);
+        }
+    }
 }
 
 /// # Safety
@@ -85,44 +97,18 @@ unsafe extern "C" fn fillstack() {
     )
 }
 
-fn start(hartid: usize, opaque: *const u8) -> ! {
-    extern "C" {
-        static mut __bss_start: u64;
-        static mut __bss_end: u64;
-    }
+static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
+static RAW_MACHINE_INFO: AtomicPtr<u8> = AtomicPtr::new(ptr::null_mut());
 
-    unsafe {
-        // Zero BSS section
-        let mut ptr = addr_of_mut!(__bss_start);
-        let end = addr_of_mut!(__bss_end);
-        while ptr < end {
-            ptr.write_volatile(0);
-            ptr = ptr.offset(1);
-        }
-    }
-
-    logger::init();
-
-    static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
-
-    let machine_info = MACHINE_INFO.get_or_init(|| MachineInfo::from_dtb(opaque));
-    log::debug!("{machine_info:?}");
-
-    // for hart in 0..boot_info.cpus {
-    //     if hart != hartid {
-    //         riscv::sbi::hsm::start_hart(hart, _start_hart as usize, boot_info as *const _ as usize)
-    //             .unwrap();
-    //     }
-    // }
-
-    crate::main(hartid, machine_info)
+pub fn machine_info() -> &'static MachineInfo<'static> {
+    MACHINE_INFO.get().expect("MachineInfo not initialized")
 }
 
-pub unsafe fn kernel_entry(
-    entry: VirtualAddress,
-    thread_ptr: VirtualAddress,
+pub unsafe fn switch_to_payload(
     hartid: usize,
+    entry: VirtualAddress,
     stack: Range<VirtualAddress>,
+    thread_ptr: VirtualAddress,
     boot_info: &'static BootInfo,
 ) -> ! {
     let stack_ptr = stack.end;

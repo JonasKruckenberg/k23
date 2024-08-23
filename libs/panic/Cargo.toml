@@ -1,0 +1,28 @@
+[package]
+name = "panic"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+harness = false
+
+[dependencies]
+cfg-if.workspace = true
+sync.workspace = true
+log.workspace = true
+tls = { workspace = true, optional = true }
+unwind = { workspace = true, optional = true }
+backtrace = { workspace = true, optional = true }
+
+[target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
+riscv.workspace = true
+
+[features]
+abort = []
+unwind = ["dep:tls", "dep:unwind"]
+backtrace = ["dep:backtrace"]

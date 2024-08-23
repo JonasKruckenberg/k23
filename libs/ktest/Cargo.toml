@@ -10,9 +10,10 @@ workspace = true
 
 [dependencies]
 ktest-macros = { path = "macros" }
-kstd.workspace = true
-
-[target.'cfg(target_os = "none")'.dependencies]
-kstd.workspace = true
+cfg-if.workspace = true
+panic.workspace = true
 loader-api.workspace = true
 dtb-parser.workspace = true
+
+[target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
+riscv.workspace = true
