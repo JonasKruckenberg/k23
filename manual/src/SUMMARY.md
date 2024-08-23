@@ -24,5 +24,3 @@
 # WASM Runtime
 
 - [Supported WASM Features & Proposals](wasm/supported_features_and_proposals.md)
-
-[//]: # ([//]: # &#40;- [Contributing]&#40;./contributing.md&#41;&#41;)
