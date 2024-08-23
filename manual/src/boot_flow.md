@@ -5,8 +5,8 @@ is responsible for setting up the environment including virtual memory mapping, 
 
 ## Loader Boot Flow
 
-![](./boot_flow_loader.png)
+![](./imgs/boot_flow_loader.png)
 
 ## Kernel Boot Flow
 
-![](./boot_flow_kernel.png)
+![](./imgs/boot_flow_kernel.png)
