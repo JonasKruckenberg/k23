@@ -13,7 +13,6 @@ allow = [
     "Apache-2.0", # requires license notice
     "Unicode-DFS-2016", # requires license notice
     "Apache-2.0 WITH LLVM-exception",
-    "BSD-3-Clause", # requires license notice and link to source code TODO allow?
 ]
 
 [sources]
