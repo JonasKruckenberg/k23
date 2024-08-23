@@ -1,13 +1,14 @@
-use crate::arch::EntryFlags;
 use crate::frame_alloc::with_frame_alloc;
 use crate::kconfig;
 use core::alloc::Layout;
 use core::ops::Range;
+use kmm::EntryFlags;
+use kmm::{Flush, FrameAllocator, Mapper, VirtualAddress};
+use loader_api::BootInfo;
 use talc::{Span, Talc, Talck};
-use vmm::{Flush, FrameAllocator, Mapper, VirtualAddress};
 
 #[global_allocator]
-static KERNEL_ALLOCATOR: Talck<kstd::sync::RawMutex, OomHandler> = Talc::new(OomHandler {
+static KERNEL_ALLOCATOR: Talck<sync::RawMutex, OomHandler> = Talc::new(OomHandler {
     heap: Span::empty(),
     max: 0,
 })
@@ -15,8 +16,15 @@ static KERNEL_ALLOCATOR: Talck<kstd::sync::RawMutex, OomHandler> = Talc::new(Oom
 
 pub fn init(
     frame_alloc: &mut dyn FrameAllocator<kconfig::MEMORY_MODE>,
-    heap: Range<VirtualAddress>,
-) -> Result<(), vmm::Error> {
+    boot_info: &BootInfo,
+) -> Result<(), kmm::Error> {
+    let heap = boot_info
+        .free_virt
+        .end
+        .sub(kconfig::HEAP_SIZE_PAGES * kconfig::PAGE_SIZE)..boot_info.free_virt.end;
+
+    log::debug!("Kernel heap: {heap:?}");
+
     let mut alloc = KERNEL_ALLOCATOR.lock();
     alloc.oom_handler.heap =
         Span::from_base_size(heap.start.as_raw() as *mut u8, kconfig::PAGE_SIZE);
@@ -42,7 +50,7 @@ impl OomHandler {
         frame_alloc: &mut dyn FrameAllocator<kconfig::MEMORY_MODE>,
         old_heap: Option<Span>,
         new_heap: Span,
-    ) -> Result<(), vmm::Error> {
+    ) -> Result<(), kmm::Error> {
         let span_to_map = if let Some(old_heap) = old_heap {
             let (empty, span_to_map) = new_heap.except(old_heap);
             assert!(empty.is_empty());
@@ -51,7 +59,7 @@ impl OomHandler {
             new_heap
         };
 
-        let mut mapper: Mapper<'_, vmm::Riscv64Sv39> = Mapper::from_active(0, frame_alloc);
+        let mut mapper: Mapper<'_, kmm::Riscv64Sv39> = Mapper::from_active(0, frame_alloc);
         let mut flush = Flush::empty(0);
 
         let heap_phys = {

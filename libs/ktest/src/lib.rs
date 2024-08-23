@@ -5,6 +5,14 @@ extern crate alloc;
 #[doc(hidden)]
 pub mod __private;
 
+cfg_if::cfg_if! {
+    if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+        use riscv as arch;
+    } else {
+        compile_error!("unsupported target architecture");
+    }
+}
+
 mod args;
 mod printer;
 mod run;

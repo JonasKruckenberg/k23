@@ -5,22 +5,29 @@ use core::fmt::Formatter;
 use core::ops::Range;
 use core::{fmt, mem};
 use dtb_parser::{DevTree, Node, Visitor};
-use vmm::{AddressRangeExt, PhysicalAddress};
+use kmm::{AddressRangeExt, PhysicalAddress};
 
+/// Information about the machine we're running on.
+/// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
 pub struct MachineInfo<'dt> {
+    /// The hart ID of the booting CPU (the CPU which ran all global setup)
+    /// as reported by the previous stage loader
     pub boot_hart: u32,
+    /// The FDT blob passed to us by the previous stage loader
     pub fdt: &'dt [u8],
     /// The number of "standalone" CPUs in the system
     pub cpus: usize,
+    /// A bitfield where each bit corresponds to a CPU in the system.
+    /// A `1` bit indicates the CPU is "online" and can be used,
+    ///     while a `0` bit indicates the CPU is "offline" and can't be used by the system.
+    /// This is used across SBI calls to dispatch IPIs to the correct CPUs.
+    pub hart_mask: usize,
     /// Address ranges we may use for allocation
     pub memories: ArrayVec<Range<PhysicalAddress>, 16>,
+    /// The boot arguments passed to us by the previous stage loader.
     pub bootargs: Option<&'dt CStr>,
+    /// The RNG seed passed to us by the previous stage loader.
     pub rng_seed: Option<&'dt [u8]>,
-}
-
-#[derive(Debug)]
-enum MemoryReservation<'dt> {
-    NoMap(&'dt str, ArrayVec<Range<PhysicalAddress>, 16>),
 }
 
 impl<'dt> fmt::Debug for MachineInfo<'dt> {
@@ -28,6 +35,7 @@ impl<'dt> fmt::Debug for MachineInfo<'dt> {
         f.debug_struct("MachineInfo")
             .field("fdt", &self.fdt.as_ptr_range())
             .field("cpus", &self.cpus)
+            .field("hart_mask", &format_args!("{:b}", self.hart_mask))
             .field("memories", &self.memories)
             .field("bootargs", &self.bootargs)
             .field("rng_seed", &self.rng_seed)
@@ -35,9 +43,14 @@ impl<'dt> fmt::Debug for MachineInfo<'dt> {
     }
 }
 
+#[derive(Debug)]
+enum MemoryReservation<'dt> {
+    NoMap(&'dt str, ArrayVec<Range<PhysicalAddress>, 16>),
+}
+
 impl<'dt> MachineInfo<'dt> {
-    pub fn from_dtb(dtb_ptr: *const u8) -> Self {
-        let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
+    pub unsafe fn from_dtb(dtb_ptr: *const u8) -> crate::Result<Self> {
+        let fdt = unsafe { DevTree::from_raw(dtb_ptr) }?;
         let mut reservations = fdt.reserved_entries();
         let fdt_slice = fdt.as_slice();
 
@@ -49,7 +62,8 @@ impl<'dt> MachineInfo<'dt> {
         let mut info = MachineInfo {
             fdt: fdt_slice,
             boot_hart,
-            cpus: v.cpus,
+            cpus: v.cpus.cpus,
+            hart_mask: v.cpus.hart_mask,
             memories: v.memories.regs,
             bootargs: v.chosen_visitor.bootargs,
             rng_seed: v.chosen_visitor.rng_seed,
@@ -78,9 +92,9 @@ impl<'dt> MachineInfo<'dt> {
         // Apply reserved_entries
         while let Some(entry) = reservations.next_entry().unwrap() {
             let entry = {
-                let start = PhysicalAddress::new(usize::try_from(entry.address).unwrap());
+                let start = PhysicalAddress::new(usize::try_from(entry.address)?);
 
-                start..start.add(usize::try_from(entry.size).unwrap())
+                start..start.add(usize::try_from(entry.size)?)
             };
 
             exclude_region(entry);
@@ -112,18 +126,16 @@ impl<'dt> MachineInfo<'dt> {
             }
         });
 
-        info
+        Ok(info)
     }
 }
 
-/*
-----------------------------------------------------------------------------------------------------
+/*--------------------------------------------------------------------------------------------------
     visitors
-----------------------------------------------------------------------------------------------------
-*/
+---------------------------------------------------------------------------------------------------*/
 #[derive(Default)]
 struct BootInfoVisitor<'dt> {
-    cpus: usize,
+    cpus: CpusVisitor,
     memories: RegsVisitor,
     reservations: ReservationsVisitor<'dt>,
     chosen_visitor: ChosenVisitor<'dt>,
@@ -132,10 +144,10 @@ struct BootInfoVisitor<'dt> {
 impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
     type Error = dtb_parser::Error;
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
-        if name == "cpus" || name.is_empty() {
+        if name.is_empty() {
             node.visit(self)?;
-        } else if name.starts_with("cpu@") {
-            self.cpus += 1;
+        } else if name == "cpus" {
+            node.visit(&mut self.cpus)?;
         } else if name.starts_with("memory@") {
             node.visit(&mut self.memories)?;
         } else if name == "reserved-memory" {
@@ -185,10 +197,9 @@ impl<'dt> Visitor<'dt> for RegsVisitor {
             let (width, rest) = rest.split_at(self.width_size);
             reg = rest;
 
-            let start = usize::from_be_bytes(start.try_into().unwrap());
-            let width = usize::from_be_bytes(width.try_into().unwrap());
+            let start = usize::from_be_bytes(start.try_into()?);
+            let width = usize::from_be_bytes(width.try_into()?);
 
-            // Safety: start is read from the FDT
             let start = PhysicalAddress::new(start);
 
             self.regs.push(start..start.add(width));
@@ -290,11 +301,90 @@ impl<'dt> Visitor<'dt> for ChosenVisitor<'dt> {
 
     fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
         match name {
-            "bootargs" => self.bootargs = Some(CStr::from_bytes_until_nul(value).unwrap()),
+            "bootargs" => self.bootargs = Some(CStr::from_bytes_until_nul(value)?),
             "rng-seed" => self.rng_seed = Some(value),
             _ => log::warn!("unknown /chosen property: {name}"),
         }
 
         Ok(())
     }
+}
+
+#[derive(Default)]
+struct CpusVisitor {
+    cpus: usize,
+    hart_mask: usize,
+}
+
+impl CpusVisitor {
+    fn cpu_visitor(&self) -> CpuVisitor {
+        CpuVisitor::default()
+    }
+}
+
+impl<'dt> Visitor<'dt> for CpusVisitor {
+    type Error = dtb_parser::Error;
+
+    fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
+        if name.starts_with("cpu@") {
+            self.cpus += 1;
+
+            let mut v = self.cpu_visitor();
+            node.visit(&mut v)?;
+            let (hartid, enabled) = v.result();
+
+            if enabled {
+                self.hart_mask |= 1 << hartid;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct CpuVisitor<'dt> {
+    status: Option<&'dt CStr>,
+    hartid: usize,
+}
+
+impl<'dt> CpuVisitor<'dt> {
+    fn result(self) -> (usize, bool) {
+        let enabled = self.status.unwrap() != c"disabled";
+
+        (self.hartid, enabled)
+    }
+}
+
+impl<'dt> Visitor<'dt> for CpuVisitor<'dt> {
+    type Error = dtb_parser::Error;
+
+    fn visit_reg(&mut self, reg: &'dt [u8]) -> Result<(), Self::Error> {
+        self.hartid = match reg.len() {
+            4 => usize::try_from(u32::from_be_bytes(reg.try_into()?))?,
+            8 => usize::try_from(u64::from_be_bytes(reg.try_into()?))?,
+            _ => unreachable!(),
+        };
+
+        Ok(())
+    }
+
+    fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
+        if name == "status" {
+            self.status = Some(CStr::from_bytes_until_nul(value)?);
+        }
+
+        Ok(())
+    }
+
+    // fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
+    //     if name.starts_with("cpu@") {
+    //         self.cpus += 1;
+    //
+    //
+    //         // node.visit(&mut self.regs_visitor)?;
+    //     }
+    //
+    //     Ok(())
+    // }
 }

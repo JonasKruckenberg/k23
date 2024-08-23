@@ -1,0 +1,16 @@
+[package]
+name = "riscv"
+description = "RISC-V architecture support crate"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sync.workspace = true
+cfg-if.workspace = true
+onlyerror.workspace = true
+

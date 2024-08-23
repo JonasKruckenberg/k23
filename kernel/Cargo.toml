@@ -12,35 +12,37 @@ workspace = true
 name = "kernel"
 harness = false
 
-[dependencies]
-vmm.workspace = true
-kstd = { workspace = true, features = ["panic-unwind"] }
-loader-api.workspace = true
+[build-dependencies]
+toml.workspace = true
 
-cfg-if.workspace = true
+[dependencies]
+kmm.workspace = true
+loader-api.workspace = true
 log.workspace = true
-linked_list_allocator.workspace = true
+panic = { workspace = true, features = ["unwind", "backtrace"] }
+semihosting-logger = { workspace = true, features = ["hartid"] }
+sync.workspace = true
+talc.workspace = true
 arrayvec.workspace = true
+cfg-if.workspace = true
+tls.workspace = true
+unwind.workspace = true
+hashbrown.workspace = true
+wasmparser.workspace = true
+target-lexicon.workspace = true
 cranelift-wasm.workspace = true
 cranelift-codegen.workspace = true
 cranelift-frontend.workspace = true
 cranelift-entity.workspace = true
-target-lexicon.workspace = true
-hashbrown.workspace = true
-onlyerror.workspace = true
 object = { workspace = true, features = ["read_core", "write_core", "elf"] }
 gimli = { workspace = true, features = ["read"] }
-rustc-demangle.workspace = true
-postcard = { workspace = true, default-features = false, features = ["alloc"] }
-talc.workspace = true
+onlyerror.workspace = true
+linked_list_allocator.workspace = true
+kconfig-declare.workspace = true
+
+[target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
+riscv.workspace = true
 
 [dev-dependencies]
 ktest.workspace = true
 wast.workspace = true
-
-#hdrhistogram = { workspace = true, optional = true, features = ["core", "serialization"] }
-#serde = { workspace = true, optional = true }
-#serde_json = { workspace = true, optional = true, features = ["alloc"] }
-
-#[features]
-#track-allocations = ["hdrhistogram", "serde", "serde_json"]

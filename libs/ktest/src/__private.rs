@@ -1,3 +1,4 @@
+use crate::arch;
 use core::ffi::CStr;
 use core::fmt::Write;
 #[cfg(target_os = "none")]
@@ -8,7 +9,7 @@ pub use loader_api;
 #[allow(unreachable_code)]
 pub fn exit(code: i32) -> ! {
     #[cfg(target_os = "none")]
-    kstd::abort(code);
+    arch::exit(code);
 
     #[cfg(not(target_os = "none"))]
     ::std::process::exit(code);
@@ -17,7 +18,7 @@ pub fn exit(code: i32) -> ! {
 #[allow(unused)]
 pub fn print(str: &str) {
     #[cfg(target_os = "none")]
-    kstd::arch::hio::with_hstdout(|stdout| stdout.write_str(str).unwrap());
+    arch::hio::HostStream::new_stdout().write_str(str).unwrap();
 
     #[cfg(not(target_os = "none"))]
     use ::std::io::Write;

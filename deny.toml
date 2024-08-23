@@ -13,11 +13,9 @@ allow = [
     "Apache-2.0", # requires license notice
     "Unicode-DFS-2016", # requires license notice
     "Apache-2.0 WITH LLVM-exception",
-    "BSD-3-Clause", # requires license notice and link to source code TODO allow?
 ]
 
 [sources]
 allow-git = [
     "https://github.com/JonasKruckenberg/wasmtime?branch=no_std", # Cranelift no_std fork
-    "https://github.com/JonasKruckenberg/HdrHistogram_rust" # hdrhistogram no_std fork
 ]
