@@ -28,19 +28,12 @@ pub fn symbol(args: TokenStream, input: TokenStream) -> TokenStream {
         value
     };
 
-    #[cfg(feature = "collect-symbols")]
-    let collect_symbol = collect_symbol(&input, &args);
-    #[cfg(not(feature = "collect-symbols"))]
-    let collect_symbol = quote! {};
-
     let attrs = input.attrs;
     let vis = input.vis;
     let ident = input.ident;
     let ty = input.ty;
 
     quote! (
-        #collect_symbol
-
         #(#attrs)*
         #vis const #ident: #ty = {
             #include
@@ -75,33 +68,39 @@ fn toml_to_tokens(value: &toml::Value) -> proc_macro2::TokenStream {
     }
 }
 
-#[cfg(feature = "collect-symbols")]
-fn collect_symbol(input: &ItemConst, args: &Args) -> proc_macro2::TokenStream {
-    let static_ident = format_ident!("__{}", input.ident);
-    let ident_str = input.ident.to_string();
-    let paths = args.paths();
-
-    let doc_comments = input.attrs.iter().filter_map(|attr| {
-        if let Meta::NameValue(nv) = &attr.meta {
-            if nv.path.require_ident().unwrap().to_string() == "doc" {
-                Some(nv.value.to_token_stream())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    });
-
-    quote! {
-        #[::kconfig::linkme::distributed_slice(::kconfig::ITEMS)]
-        static #static_ident: ::kconfig::Item = ::kconfig::Item {
-            name: #ident_str,
-            paths: &[#(#paths,)*],
-            description: &[#(#doc_comments,)*]
-        };
-    }
-}
+// #[cfg(feature = "collect-symbols")]
+// fn collect_symbol(input: &ItemConst, args: &Args) -> proc_macro2::TokenStream {
+//     let static_ident = format_ident!("__{}", input.ident);
+//     let ident_str = input.ident.to_string();
+//     let paths = args.paths();
+//     let def = &input.expr;
+//
+//     let doc_comments = input.attrs.iter().filter_map(|attr| {
+//         if let Meta::NameValue(nv) = &attr.meta {
+//             if nv.path.require_ident().unwrap().to_string() == "doc" {
+//                 Some(nv.value.to_token_stream())
+//             } else {
+//                 None
+//             }
+//         } else {
+//             None
+//         }
+//     });
+//
+//     quote! {
+//         #[::kconfig_declare::linkme::distributed_slice(::kconfig_declare::SYMBOLS)]
+//         #[linkme(crate = ::kconfig_declare::linkme)]
+//         static #static_ident: ::kconfig_declare::Symbol = ::kconfig_declare::Symbol {
+//             name: #ident_str,
+//             paths: &[#(#paths,)*],
+//             description: &[#(#doc_comments,)*],
+//             default: stringify!(#def),
+//             file: file!(),
+//             line: line!(),
+//             column: column!(),
+//         };
+//     }
+// }
 
 enum Args {
     Paths(Paths),

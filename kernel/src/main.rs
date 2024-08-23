@@ -2,10 +2,9 @@
 #![no_main]
 #![feature(used_with_arg, naked_functions, thread_local)]
 #![feature(allocator_api)]
+
 extern crate alloc;
 extern crate panic;
-
-use loader_api::BootInfo;
 
 mod allocator;
 mod arch;
@@ -14,6 +13,8 @@ mod kconfig;
 mod runtime;
 mod start;
 mod tests;
+
+use loader_api::BootInfo;
 
 pub fn kmain(_hartid: usize, _boot_info: &'static BootInfo) -> ! {
     // Eventually this will all be hidden behind other abstractions (the scheduler, etc.) and this
