@@ -1,5 +1,6 @@
 runner = "qemu-system-riscv64"
 memory-mode = "Riscv64Sv39"
+wasm-features = ["a", "b"]
 
 [kernel]
 target = "./configs/riscv64gc-k23-none-kernel.json"
@@ -7,11 +8,11 @@ target-triple = "riscv64gc-k23-none-kernel"
 stack-size-pages = 256
 trap-stack-size-pages = 16
 heap-size-pages = 8192
-log-level = "Trace"
+log-level = "trace"
 
 [loader]
 target = "./configs/riscv64imac-k23-none-loader.json"
 target-triple = "riscv64imac-k23-none-loader"
 linker-script = "./configs/loader-riscv64-qemu.ld"
 stack-size-pages = 32
-log-level = "Trace"
+log-level = "trace"

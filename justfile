@@ -42,6 +42,7 @@ lint config *FLAGS: (clippy config FLAGS) (check-fmt FLAGS)
 clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
     #!/usr/bin/env nu
     let config = open {{config}}
+    $env.K23_CONFIG = {{config}}
 
     # check kernel and dependencies
     ({{_cargo}} clippy
@@ -63,6 +64,7 @@ clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
 check config $RUSTFLAGS='' *CARGO_ARGS='':
     #!/usr/bin/env nu
     let config = open {{config}}
+    $env.K23_CONFIG = {{config}}
 
     # check kernel and dependencies
     ({{_cargo}} check
@@ -91,12 +93,12 @@ run config CARGO_ARGS="" *ARGS="": (build config CARGO_ARGS) (_run config "targe
 build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/payload" CARGO_ARGS)
     #!/usr/bin/env nu
     let config = open {{config}}
+    $env.K23_CONFIG = {{config}}
+
     let target = try { $config | get kernel.target } catch { $config | get target }
 
     let out_dir = "{{_target_dir}}" | path join "k23"
     mkdir $out_dir
-
-    $env.K23_CONFIG = {{config}}
 
     let cargo_out = ({{_cargo}} build
         -p kernel
@@ -111,12 +113,13 @@ build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/payload" CARGO
 test config *CARGO_ARGS="" :
     #!/usr/bin/env nu
     let config = open {{config}}
+    $env.K23_CONFIG = {{config}}
+
     let target = try { $config.kernel.target } catch { $config.target }
     let triple = try { $config.kernel.target-triple } catch { $config.target-triple }
 
     # CARGO_TARGET_<triple>_RUNNER
     $env.CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER = "just profile={{profile}} _runner {{config}}"
-    $env.K23_CONFIG = {{config}}
 
     {{ _cargo }} test -p kernel --target $target {{ _buildstd }} {{ CARGO_ARGS }}
 
@@ -132,6 +135,8 @@ _runner config binary *ARGS: (_make_bootimg config binary) (_run config "target/
 _run config binary *ARGS:
     #!/usr/bin/env nu
     let config = open {{ config }}
+    $env.K23_CONFIG = {{config}}
+
     let runner = $config.runner
 
     let cpu = match $runner {
@@ -168,6 +173,8 @@ _run config binary *ARGS:
 _make_bootimg config payload *CARGO_ARGS="":
     #!/usr/bin/env nu
     let config = open {{config}}
+    $env.K23_CONFIG = {{config}}
+
     let target = try { $config.loader.target } catch { $config.target }
 
     let out_dir = "{{_target_dir}}" | path join "k23"
@@ -197,7 +204,6 @@ _make_bootimg config payload *CARGO_ARGS="":
     #$env.K23_VERIFYING_KEY_PATH = $public_key_path
     #$env.K23_SIGNATURE_PATH = $signature_path
     $env.K23_PAYLOAD_PATH = $payload_lz4_path
-    $env.K23_CONFIG = {{config}}
 
     # Step 3: Build the bootloader
     print "Building the bootloader..."

@@ -7,14 +7,10 @@ extern crate panic;
 
 use loader_api::BootInfo;
 
-/// Constants derived from the build config
-mod kconfig {
-    #![allow(unused)]
-    include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
-}
 mod allocator;
 mod arch;
 mod frame_alloc;
+mod kconfig;
 mod runtime;
 mod start;
 mod tests;

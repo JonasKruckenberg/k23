@@ -221,6 +221,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "kconfig-declare"
+version = "0.1.0"
+dependencies = [
+ "kconfig-declare-macros",
+ "linkme",
+]
+
+[[package]]
+name = "kconfig-declare-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "toml",
+]
+
+[[package]]
 name = "kernel"
 version = "0.1.0"
 dependencies = [
@@ -232,6 +250,7 @@ dependencies = [
  "cranelift-wasm",
  "gimli",
  "hashbrown 0.14.5",
+ "kconfig-declare",
  "kmm",
  "ktest",
  "linked_list_allocator",
@@ -308,12 +327,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "linkme"
+version = "0.3.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c943daedff228392b791b33bba32e75737756e80a613e32e246c6ce9cbab20a"
+dependencies = [
+ "linkme-impl",
+]
+
+[[package]]
+name = "linkme-impl"
+version = "0.3.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb26336e6dc7cc76e7927d2c9e7e3bb376d7af65a6f56a0b16c47d18a9b1abc5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "loader"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
  "cfg-if",
  "dtb-parser",
+ "kconfig-declare",
  "kmm",
  "linked_list_allocator",
  "loader-api",

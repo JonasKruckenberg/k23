@@ -1,0 +1,11 @@
+[package]
+name = "kconfig-declare"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kconfig-declare-macros = { path = "macros" }
+linkme = { version = "0.3.28", optional = true }
+
+[features]
+collect-symbols = ["linkme", "kconfig-declare-macros/collect-symbols"]

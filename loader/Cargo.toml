@@ -30,6 +30,7 @@ object = { workspace = true, features = ["read_core", "elf"] }
 lz4_flex.workspace = true
 linked_list_allocator.workspace = true
 onlyerror.workspace = true
+kconfig-declare.workspace = true
 #ed25519-dalek.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]

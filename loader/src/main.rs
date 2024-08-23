@@ -5,14 +5,10 @@
 
 extern crate panic;
 
-/// Constants derived from the build config
-mod kconfig {
-    #![allow(unused)]
-    include!(concat!(env!("OUT_DIR"), "/kconfig.rs"));
-}
 mod arch;
 mod boot_info;
 mod error;
+mod kconfig;
 mod machine_info;
 mod paging;
 mod payload;
