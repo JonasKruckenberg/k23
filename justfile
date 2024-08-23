@@ -95,14 +95,12 @@ build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/payload" CARGO
     let config = open {{config}}
     $env.K23_CONFIG = {{config}}
 
-    let target = try { $config | get kernel.target } catch { $config | get target }
-
     let out_dir = "{{_target_dir}}" | path join "k23"
     mkdir $out_dir
 
     let cargo_out = ({{_cargo}} build
         -p kernel
-        --target $target
+        --target $config.kernel.target
         --profile {{profile}}
         --message-format=json
         {{_buildstd}}
@@ -115,13 +113,13 @@ test config *CARGO_ARGS="" :
     let config = open {{config}}
     $env.K23_CONFIG = {{config}}
 
-    let target = try { $config.kernel.target } catch { $config.target }
+    #let target = try {  } catch { $config.target }
     let triple = try { $config.kernel.target-triple } catch { $config.target-triple }
 
     # CARGO_TARGET_<triple>_RUNNER
     $env.CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER = "just profile={{profile}} _runner {{config}}"
 
-    {{ _cargo }} test -p kernel --target $target {{ _buildstd }} {{ CARGO_ARGS }}
+    {{ _cargo }} test -p kernel --target $config.kernel.target {{ _buildstd }} {{ CARGO_ARGS }}
 
 # This is a helper recipe designed to be used as a cargo *target runner*
 # When running tests, the `cargo test` command will produce potentially many executables.
@@ -175,8 +173,6 @@ _make_bootimg config payload *CARGO_ARGS="":
     let config = open {{config}}
     $env.K23_CONFIG = {{config}}
 
-    let target = try { $config.loader.target } catch { $config.target }
-
     let out_dir = "{{_target_dir}}" | path join "k23"
     mkdir $out_dir
 
@@ -209,7 +205,7 @@ _make_bootimg config payload *CARGO_ARGS="":
     print "Building the bootloader..."
     let cargo_out = ({{_cargo}} build
         -p loader
-        --target $target
+        --target $config.loader.target
         --profile {{profile}}
         --message-format=json
         {{_buildstd}}
