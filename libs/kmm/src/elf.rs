@@ -1,49 +1,28 @@
 use crate::{AddressRangeExt, Flush, Mapper, Mode, PhysicalAddress, VirtualAddress};
 use core::ops::Div;
 use core::{ptr, slice};
-use object::elf::{ProgramHeader64, PT_DYNAMIC, PT_GNU_RELRO, PT_LOAD, PT_TLS};
-use object::read::elf::{ElfFile64, ProgramHeader as _};
-use object::Endianness;
+use object::elf::{
+    ProgramHeader64, Rela64, DT_RELA, DT_RELACOUNT, DT_RELAENT, DT_RELASZ, PT_DYNAMIC,
+    PT_GNU_RELRO, PT_LOAD, PT_TLS, R_RISCV_RELATIVE,
+};
+use object::read::elf::{Dyn, ElfFile64, ElfSectionIterator64, ProgramHeader as _, Rela};
+use object::{Endianness, Object, ObjectSection};
 
-struct ProgramHeader {
-    pub p_type: u32,
-    pub p_flags: u32,
-    pub offset: usize,
-    pub virtual_address: VirtualAddress,
-    pub file_size: usize,
-    pub mem_size: usize,
-}
-
-impl TryFrom<&ProgramHeader64<Endianness>> for ProgramHeader {
-    type Error = &'static str;
-
-    fn try_from(value: &ProgramHeader64<Endianness>) -> Result<Self, Self::Error> {
-        let endianness = Endianness::default();
-
-        Ok(Self {
-            p_type: value.p_type(endianness),
-            p_flags: value.p_flags(endianness),
-            offset: usize::try_from(value.p_offset(endianness))
-                .map_err(|_| "failed to convert p_offset to usize")?,
-            virtual_address: {
-                let raw = usize::try_from(value.p_vaddr(endianness))
-                    .map_err(|_| "failed to convert p_vaddr to usize")?;
-
-                if raw == 0 {
-                    return Err("p_vaddr is zero");
-                }
-
-                VirtualAddress::new(raw)
-            },
-            file_size: usize::try_from(value.p_filesz(endianness))
-                .map_err(|_| "failed to convert p_filesz to usize")?,
-            mem_size: usize::try_from(value.p_memsz(endianness))
-                .map_err(|_| "failed to convert p_memsz to usize")?,
-        })
+impl<'a, M: Mode> Mapper<'a, M> {
+    pub fn elf(&mut self, virtual_base: VirtualAddress) -> ElfMapper<'_, 'a, M> {
+        ElfMapper {
+            inner: self,
+            virtual_base,
+        }
     }
 }
 
-impl<'a, M: Mode> Mapper<'a, M> {
+pub struct ElfMapper<'p, 'a, M> {
+    inner: &'p mut Mapper<'a, M>,
+    virtual_base: VirtualAddress,
+}
+
+impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
     /// Maps an ELF file into virtual memory.
     ///
     /// # Errors
@@ -58,9 +37,9 @@ impl<'a, M: Mode> Mapper<'a, M> {
         elf_file: &ElfFile64,
         flush: &mut Flush<M>,
     ) -> crate::Result<Option<TlsTemplate>> {
-        let physical_offset = PhysicalAddress::new(elf_file.data().as_ptr() as usize);
+        let physical_base = PhysicalAddress::new(elf_file.data().as_ptr() as usize);
         assert!(
-            physical_offset.is_aligned(M::PAGE_SIZE),
+            physical_base.is_aligned(M::PAGE_SIZE),
             "Loaded ELF file is not sufficiently aligned"
         );
 
@@ -74,7 +53,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         // Load the segments into virtual memory.
         for program_header in program_headers.clone() {
             match program_header.p_type {
-                PT_LOAD => self.handle_load_segment(&program_header, physical_offset, flush)?,
+                PT_LOAD => self.handle_load_segment(&program_header, physical_base, flush)?,
                 PT_TLS => {
                     let old = tls_template.replace(self.handle_tls_segment(&program_header));
                     assert!(old.is_none(), "multiple TLS segments not supported");
@@ -84,9 +63,9 @@ impl<'a, M: Mode> Mapper<'a, M> {
         }
 
         // Apply relocations in virtual memory.
-        for program_header in program_headers.clone() {
-            if program_header.p_type == PT_DYNAMIC {
-                self.handle_dynamic_segment(&program_header)?;
+        for program_header in elf_file.elf_program_headers() {
+            if program_header.p_type.get(Endianness::Little) == PT_DYNAMIC {
+                self.handle_dynamic_segment(&program_header, physical_base, elf_file)?;
             }
         }
 
@@ -104,11 +83,11 @@ impl<'a, M: Mode> Mapper<'a, M> {
     fn handle_load_segment(
         &mut self,
         program_header: &ProgramHeader,
-        physical_offset: PhysicalAddress,
+        physical_base: PhysicalAddress,
         flush: &mut Flush<M>,
     ) -> Result<(), crate::Error> {
         let phys_aligned = {
-            let start = physical_offset
+            let start = physical_base
                 .add(program_header.offset)
                 .align_down(M::PAGE_SIZE);
             let end = start.add(program_header.file_size).align_up(M::PAGE_SIZE);
@@ -117,28 +96,29 @@ impl<'a, M: Mode> Mapper<'a, M> {
         };
 
         let virt_aligned = {
-            let start = program_header.virtual_address.align_down(M::PAGE_SIZE);
-
+            let start = self
+                .virtual_base
+                .add(program_header.virtual_address)
+                .align_down(M::PAGE_SIZE);
             let end = start.add(program_header.file_size).align_up(M::PAGE_SIZE);
 
             start..end
         };
 
         let flags = Self::flags_for_segment(program_header);
-
-        log::trace!("{flags:?}");
         log::trace!(
             "segment {:#x?} => {:#x?}",
             program_header.virtual_address
-                ..program_header.virtual_address.add(program_header.mem_size),
+                ..program_header.virtual_address + program_header.mem_size,
             program_header.offset..program_header.offset + program_header.file_size
         );
-        log::trace!("mapping {virt_aligned:?} => {phys_aligned:?}");
+        log::trace!("mapping {virt_aligned:?} => {phys_aligned:?} {flags:?}");
 
-        self.map_range(virt_aligned, phys_aligned, flags, flush)?;
+        self.inner
+            .map_range(virt_aligned, phys_aligned, flags, flush)?;
 
         if program_header.file_size < program_header.mem_size {
-            self.handle_bss_section(program_header, flags, physical_offset, flush)?;
+            self.handle_bss_section(program_header, flags, physical_base, flush)?;
         }
 
         Ok(())
@@ -162,11 +142,11 @@ impl<'a, M: Mode> Mapper<'a, M> {
         &mut self,
         program_header: &ProgramHeader,
         flags: M::EntryFlags,
-        physical_offset: PhysicalAddress,
+        physical_base: PhysicalAddress,
         flush: &mut Flush<M>,
     ) -> Result<(), crate::Error> {
         // calculate virtual memory region that must be zeroed
-        let virt_start = program_header.virtual_address;
+        let virt_start = self.virtual_base.add(program_header.virtual_address);
         let zero_start = virt_start.add(program_header.file_size);
         let zero_end = virt_start.add(program_header.mem_size);
 
@@ -176,12 +156,11 @@ impl<'a, M: Mode> Mapper<'a, M> {
             "handling BSS {:?}, data before {data_bytes_before_zero}",
             zero_start..zero_end
         );
-
         if data_bytes_before_zero != 0 {
             let last_page = virt_start
                 .add(program_header.file_size - 1)
                 .align_down(M::PAGE_SIZE);
-            let last_frame = physical_offset
+            let last_frame = physical_base
                 .add(program_header.offset + program_header.file_size - 1)
                 .align_down(M::PAGE_SIZE);
 
@@ -193,7 +172,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
                 new_frame.add(M::PAGE_SIZE)
             );
 
-            self.remap(last_page, new_frame, flags, flush)?;
+            self.inner.remap(last_page, new_frame, flags, flush)?;
         }
 
         let additional_virt = {
@@ -208,6 +187,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
             let additional_phys = {
                 let start = self
+                    .inner
                     .allocator_mut()
                     .allocate_frames_zeroed(additional_virt.size().div(M::PAGE_SIZE))?;
 
@@ -215,7 +195,8 @@ impl<'a, M: Mode> Mapper<'a, M> {
             };
 
             log::trace!("mapping additional zeros {additional_virt:?} => {additional_phys:?}");
-            self.map_range(additional_virt, additional_phys, flags, flush)?;
+            self.inner
+                .map_range(additional_virt, additional_phys, flags, flush)?;
         }
 
         Ok(())
@@ -224,7 +205,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
     #[allow(clippy::unused_self)]
     fn handle_tls_segment(&mut self, program_header: &ProgramHeader) -> TlsTemplate {
         TlsTemplate {
-            start_addr: program_header.virtual_address,
+            start_addr: self.virtual_base.add(program_header.virtual_address),
             mem_size: program_header.mem_size,
             file_size: program_header.file_size,
         }
@@ -232,9 +213,136 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
     fn handle_dynamic_segment(
         &mut self,
-        _program_header: &ProgramHeader,
+        program_header: &ProgramHeader64<Endianness>,
+        physical_base: PhysicalAddress,
+        elf_file: &ElfFile64,
     ) -> Result<(), crate::Error> {
-        todo!()
+        let data = program_header
+            .dynamic(Endianness::Little, elf_file.data())
+            .unwrap()
+            .unwrap();
+
+        let mut rela = None; // Address of Rela relocs
+        let mut rela_size = None; // Total size of Rela relocs
+        let mut rela_ent = None; // Size of one Rela reloc
+        let mut rela_count = None; // Number of Rela relocs
+
+        for rel in data {
+            let tag = rel.tag32(Endianness::Little).unwrap();
+            match tag {
+                DT_RELA => {
+                    let ptr = rel.d_val(Endianness::Little);
+                    let prev = rela.replace(ptr);
+                    if prev.is_some() {
+                        panic!("Dynamic section contains more than one Rela entry");
+                    }
+                }
+                DT_RELASZ => {
+                    let val = rel.d_val(Endianness::Little);
+                    let prev = rela_size.replace(val);
+                    if prev.is_some() {
+                        panic!("Dynamic section contains more than one RelaSize entry");
+                    }
+                }
+                DT_RELAENT => {
+                    let val = rel.d_val(Endianness::Little);
+                    let prev = rela_ent.replace(val);
+                    if prev.is_some() {
+                        panic!("Dynamic section contains more than one RelaEnt entry");
+                    }
+                }
+                DT_RELACOUNT => {
+                    let val = rel.d_val(Endianness::Little);
+                    let prev = rela_count.replace(val);
+                    if prev.is_some() {
+                        panic!("Dynamic section contains more than one RelaCount entry");
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        log::debug!(
+            "rela address {rela:x?} total rela size {rela_size:?} rela entry size {rela_ent:?}"
+        );
+
+        let offset = if let Some(rela) = rela {
+            rela
+        } else {
+            // The section doesn't contain any relocations.
+
+            if rela_size.is_some() || rela_ent.is_some() {
+                panic!("Rela entry is missing but RelaSize or RelaEnt have been provided");
+            }
+
+            return Ok(());
+        };
+        let total_size = rela_size.expect("RelaSize entry is missing");
+        let entry_size = rela_ent.expect("RelaEnt entry is missing");
+        let rela_count = rela_count.expect("RelaCount entry is missing");
+
+        assert_eq!(
+            entry_size,
+            size_of::<Rela64<Endianness>>() as u64,
+            "unsupported entry size: {entry_size}"
+        );
+        assert_eq!(total_size / entry_size, rela_count, "invalid RelaCount");
+
+        let relas = unsafe {
+            let ptr = physical_base.add(offset as usize).as_raw() as *const Rela64<Endianness>;
+
+            slice::from_raw_parts(ptr, rela_count as usize)
+        };
+
+        for rela in relas {
+            self.apply_relocation(rela, physical_base, elf_file)?;
+        }
+
+        Ok(())
+    }
+
+    fn apply_relocation(
+        &mut self,
+        rela: &Rela64<Endianness>,
+        physical_base: PhysicalAddress,
+        elf_file: &ElfFile64,
+    ) -> Result<(), crate::Error> {
+        assert!(
+            rela.symbol(Endianness::Little, false).is_none(),
+            "relocations using the symbol table are not supported"
+        );
+
+        match rela.r_type(Endianness::Little, false) {
+            R_RISCV_RELATIVE => {
+                // Calculate the relocation target
+                let offset = rela.r_offset(Endianness::Little);
+                let target = physical_base.add(offset as usize);
+
+                // Calculate the relocated value.
+                let addend = rela.r_addend(Endianness::Little) as isize;
+                let value = self.virtual_base.offset(addend);
+
+                // let section = sections.find_map(|sec| {
+                //     let (start, size) = sec.file_range()?;
+                //     if (start..start + size).contains(&rela.r_offset(Endianness::Little)) {
+                //         Some(sec.name().ok()?)
+                //     } else {
+                //         None
+                //     }
+                // });
+
+                log::trace!(
+                    "Resoling relocation R_RISCV_RELATIVE at {offset:#x} = {:?} + {addend:#x} ({:?}) section {section:?}",
+                    self.virtual_base,
+                    value,
+                );
+
+                unsafe { (target.as_raw() as *mut usize).write_unaligned(value.as_raw()) };
+            }
+            ty => unimplemented!("unsupported relocation type {:?}", ty),
+        }
+
+        Ok(())
     }
 
     fn handle_relro_segment(
@@ -243,7 +351,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         flush: &mut Flush<M>,
     ) -> Result<(), crate::Error> {
         let virt = {
-            let start = program_header.virtual_address;
+            let start = self.virtual_base.add(program_header.virtual_address);
 
             start..start.add(program_header.mem_size)
         };
@@ -252,7 +360,8 @@ impl<'a, M: Mode> Mapper<'a, M> {
             { virt.start.align_down(M::PAGE_SIZE)..virt.end.align_down(M::PAGE_SIZE) };
 
         log::debug!("Marking RELRO segment {virt_aligned:?} as read-only");
-        self.set_flags_for_range(virt_aligned, M::ENTRY_FLAGS_RO, flush)?;
+        self.inner
+            .set_flags_for_range(virt_aligned, M::ENTRY_FLAGS_RO, flush)?;
 
         Ok(())
     }
@@ -263,7 +372,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         len: usize,
     ) -> Result<PhysicalAddress, crate::Error> {
         let frames = len.div_ceil(M::PAGE_SIZE);
-        let dst = self.allocator_mut().allocate_frames(frames)?;
+        let dst = self.inner.allocator_mut().allocate_frames(frames)?;
 
         unsafe {
             let src = slice::from_raw_parts_mut(src.as_raw() as *mut u8, len);
@@ -302,4 +411,34 @@ pub struct TlsTemplate {
     /// If the TLS segment contains zero-initialized data (tbss) then this size will be smaller than
     /// `mem_size`
     pub file_size: usize,
+}
+
+struct ProgramHeader {
+    pub p_type: u32,
+    pub p_flags: u32,
+    pub offset: usize,
+    pub virtual_address: usize,
+    pub file_size: usize,
+    pub mem_size: usize,
+}
+
+impl TryFrom<&ProgramHeader64<Endianness>> for ProgramHeader {
+    type Error = &'static str;
+
+    fn try_from(value: &ProgramHeader64<Endianness>) -> Result<Self, Self::Error> {
+        let endianness = Endianness::default();
+
+        Ok(Self {
+            p_type: value.p_type(endianness),
+            p_flags: value.p_flags(endianness),
+            offset: usize::try_from(value.p_offset(endianness))
+                .map_err(|_| "failed to convert p_offset to usize")?,
+            virtual_address: usize::try_from(value.p_vaddr(endianness))
+                .map_err(|_| "failed to convert p_vaddr to usize")?,
+            file_size: usize::try_from(value.p_filesz(endianness))
+                .map_err(|_| "failed to convert p_filesz to usize")?,
+            mem_size: usize::try_from(value.p_memsz(endianness))
+                .map_err(|_| "failed to convert p_memsz to usize")?,
+        })
+    }
 }

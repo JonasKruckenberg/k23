@@ -55,8 +55,11 @@ impl<'a> PageTableBuilder<'a> {
         payload: &Payload,
         machine_info: &MachineInfo,
     ) -> crate::Result<Self> {
+        let virtual_base = VirtualAddress::new(0xffffffff80000000);
+
         let maybe_tls_template = self
             .mapper
+            .elf(virtual_base)
             .map_elf_file(&payload.elf_file, &mut self.flush)?;
 
         // Allocate memory for TLS segments
@@ -69,7 +72,7 @@ impl<'a> PageTableBuilder<'a> {
 
         self = self.map_payload_stacks(machine_info, stack_size_pages)?;
 
-        self.result.entry = VirtualAddress::new(usize::try_from(payload.elf_file.entry())?);
+        self.result.entry = virtual_base.add(usize::try_from(payload.elf_file.entry())?);
         self.result.stack_size = stack_size_pages * kconfig::PAGE_SIZE;
 
         Ok(self)
@@ -294,6 +297,10 @@ impl TlsAllocation {
     }
 
     pub fn initialize_for_hart(&self, hartid: usize) {
+        if self.tls_template.file_size == 0 {
+            return;
+        }
+
         let src = unsafe {
             slice::from_raw_parts(
                 self.tls_template.start_addr.as_raw() as *const u8,
@@ -320,3 +327,11 @@ impl TlsAllocation {
         }
     }
 }
+
+// 0xffffffff80137fa8
+
+// atomic.rs:3306
+// atomic.rs:604
+// log-0.4.22/src/lib.rs:1313
+
+// 0xffffffff800cf6a8
