@@ -11,23 +11,23 @@ const LOADER_CFG: LoaderConfig = {
 #[cfg(not(test))]
 #[loader_api::entry(LOADER_CFG)]
 fn kstart(hartid: usize, boot_info: &'static BootInfo) -> ! {
-    // panic::catch_unwind(|| {
-    semihosting_logger::hartid::set(hartid);
+    panic::catch_unwind(|| {
+        semihosting_logger::hartid::set(hartid);
 
-    arch::trap_handler::init();
+        arch::trap_handler::init();
 
-    if hartid == boot_info.boot_hart {
-        init_global(boot_info);
-    }
+        if hartid == boot_info.boot_hart {
+            init_global(boot_info);
+        }
 
-    arch::finish_processor_init();
+        arch::finish_processor_init();
 
-    crate::kmain(hartid, boot_info);
-    // })
-    // .unwrap_or_else(|_| {
-    //     log::error!("unrecoverable failure");
-    //     arch::abort();
-    // })
+        crate::kmain(hartid, boot_info);
+    })
+    .unwrap_or_else(|_| {
+        log::error!("unrecoverable failure");
+        arch::abort();
+    })
 }
 
 #[cfg(test)]

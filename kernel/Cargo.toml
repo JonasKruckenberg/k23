@@ -27,15 +27,15 @@ arrayvec.workspace = true
 cfg-if.workspace = true
 tls.workspace = true
 unwind.workspace = true
-#hashbrown.workspace = true
-#wasmparser.workspace = true
-#target-lexicon.workspace = true
-#cranelift-wasm.workspace = true
-#cranelift-codegen.workspace = true
-#cranelift-frontend.workspace = true
-#cranelift-entity.workspace = true
+hashbrown.workspace = true
+wasmparser.workspace = true
+target-lexicon.workspace = true
+cranelift-wasm.workspace = true
+cranelift-codegen.workspace = true
+cranelift-frontend.workspace = true
+cranelift-entity.workspace = true
 object = { workspace = true, features = ["read_core", "write_core", "elf"] }
-#gimli = { workspace = true, features = ["read"] }
+gimli = { workspace = true, features = ["read"] }
 onlyerror.workspace = true
 linked_list_allocator.workspace = true
 kconfig-declare.workspace = true
