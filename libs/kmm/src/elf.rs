@@ -160,39 +160,37 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
             zero_start..zero_end
         );
         if data_bytes_before_zero != 0 {
-            let last_page = virt_start
-                .add(program_header.file_size - 1)
-                .align_down(M::PAGE_SIZE);
-            let last_frame = physical_base
-                .add(program_header.offset + program_header.file_size - 1)
-                .align_down(M::PAGE_SIZE);
+            let last_page = virt_start.add(ph.file_size - 1).align_down(ph.align);
+            let last_frame = phys_base
+                .add(ph.offset + ph.file_size - 1)
+                .align_down(ph.align);
 
             let new_frame = self.allocate_and_copy(last_frame, data_bytes_before_zero)?;
 
             log::debug!(
-                "remap {:?} to {:?}",
-                last_page..last_page.add(M::PAGE_SIZE),
-                new_frame.add(M::PAGE_SIZE)
+                "remapping {:?} to {:?}",
+                last_page..last_page.add(ph.align),
+                new_frame..new_frame.add(ph.align)
             );
 
             self.inner.remap(last_page, new_frame, flags, flush)?;
         }
 
         let additional_virt = {
-            let start = zero_start.align_up(M::PAGE_SIZE).align_down(M::PAGE_SIZE);
-            let end = zero_end.align_up(M::PAGE_SIZE);
+            let start = zero_start.align_up(ph.align).align_down(ph.align);
+            let end = zero_end.align_up(ph.align);
             start..end
         };
 
         if !additional_virt.is_empty() {
             // additional_virt should be page-aligned, but just to make sure
-            debug_assert!(additional_virt.is_aligned(M::PAGE_SIZE));
+            debug_assert!(additional_virt.is_aligned(ph.align));
 
             let additional_phys = {
                 let start = self
                     .inner
                     .allocator_mut()
-                    .allocate_frames_zeroed(additional_virt.size().div(M::PAGE_SIZE))?;
+                    .allocate_frames_zeroed(additional_virt.size().div(ph.align))?;
 
                 start..start.add(additional_virt.size())
             };
@@ -430,6 +428,7 @@ impl TryFrom<&ProgramHeader64<Endianness>> for ProgramHeader {
         Ok(Self {
             p_type: value.p_type(endianness),
             p_flags: value.p_flags(endianness),
+            align: value.p_align(endianness) as usize,
             offset: usize::try_from(value.p_offset(endianness))
                 .map_err(|_| "failed to convert p_offset to usize")?,
             virtual_address: usize::try_from(value.p_vaddr(endianness))
