@@ -41,7 +41,6 @@ fn main() {
         out_dir.join("payload.rs"),
         format!(
             r#"
-    #[link_section = ".data.payload"]
     pub static PAYLOAD: &[u8] = {payload};
     "#,
         ),

@@ -327,11 +327,3 @@ impl TlsAllocation {
         }
     }
 }
-
-// 0xffffffff80137fa8
-
-// atomic.rs:3306
-// atomic.rs:604
-// log-0.4.22/src/lib.rs:1313
-
-// 0xffffffff800cf6a8
