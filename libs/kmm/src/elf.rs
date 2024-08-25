@@ -43,6 +43,8 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
             "Loaded ELF file is not sufficiently aligned"
         );
 
+        debug_print_sections(elf_file);
+
         let mut tls_template = None;
 
         let program_headers = elf_file
@@ -319,6 +321,36 @@ fn flags_for_segment<M: Mode>(program_header: &ProgramHeader) -> M::EntryFlags {
     } else {
         panic!("invalid segment flags {:?}", program_header.p_flags)
     }
+}
+
+fn debug_print_sections(elf_file: &ElfFile64) {
+    use object::{Object, ObjectSection, SectionKind};
+
+    log::trace!("Idx Name              Offset   Vaddr            Filesz   Memsz");
+    elf_file.sections().enumerate().for_each(|(idx, sec)| {
+        let kind = match sec.kind() {
+            SectionKind::Text => "TEXT",
+            SectionKind::Data => "DATA",
+            SectionKind::ReadOnlyData => "DATA",
+            SectionKind::ReadOnlyDataWithRel => "DATA",
+            SectionKind::ReadOnlyString => "DATA",
+            SectionKind::UninitializedData => "BSS",
+            SectionKind::Tls => "TLS",
+            SectionKind::UninitializedTls => "BSS",
+            SectionKind::Debug => "DEBUG",
+            SectionKind::DebugString => "DEBUG",
+            _ => "",
+        };
+
+        log::trace!(
+            "{idx:>3} {name:<17} {offset:#08x} {vaddr:#016x} {filesz:#08x} {memsz:#08x} {kind:<5}",
+            name = sec.name().unwrap(),
+            offset = sec.file_range().map_or(0, |r| r.0),
+            vaddr = sec.address(),
+            filesz = sec.file_range().map_or(0, |r| r.1),
+            memsz = sec.size(),
+        );
+    });
 }
 
 #[repr(C)]
