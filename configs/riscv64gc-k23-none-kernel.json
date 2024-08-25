@@ -15,6 +15,7 @@
   "panic-strategy": "unwind",
   "relocation-model": "pic",
   "tls-model": "local-exec",
+  "position-independent-executables": true,
   "supported-sanitizers": [
     "kernel-address"
   ],
