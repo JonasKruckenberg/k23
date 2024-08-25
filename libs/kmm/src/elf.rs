@@ -51,7 +51,10 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
             .filter_map(|h| ProgramHeader::try_from(h).ok());
 
         // Load the segments into virtual memory.
-        for program_header in program_headers.clone() {
+        for program_header in program_headers
+            .clone()
+            .filter(|segment| segment.mem_size > 0)
+        {
             match program_header.p_type {
                 PT_LOAD => self.handle_load_segment(&program_header, physical_base, flush)?,
                 PT_TLS => {
@@ -63,8 +66,8 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
         }
 
         // Apply relocations in virtual memory.
-        for program_header in elf_file.elf_program_headers() {
-            if program_header.p_type.get(Endianness::Little) == PT_DYNAMIC {
+        for program_header in program_headers.clone() {
+            if program_header.p_type == PT_DYNAMIC {
                 self.handle_dynamic_segment(&program_header, physical_base, elf_file)?;
             }
         }
@@ -314,32 +317,29 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
 
         match rela.r_type(Endianness::Little, false) {
             R_RISCV_RELATIVE => {
-                // Calculate the relocation target
-                let offset = rela.r_offset(Endianness::Little);
-                let target = physical_base.add(offset as usize);
+                // Calculate address at which to apply the relocation.
+                let target = self
+                    .virtual_base
+                    .add(rela.r_offset(Endianness::Little) as usize);
 
-                // Calculate the relocated value.
-                let addend = rela.r_addend(Endianness::Little) as isize;
-                let value = self.virtual_base.offset(addend);
+                // Calculate the value to store at the relocation target.
+                let value = self
+                    .virtual_base
+                    .offset(rela.r_addend(Endianness::Little) as isize);
 
-                // let section = sections.find_map(|sec| {
-                //     let (start, size) = sec.file_range()?;
-                //     if (start..start + size).contains(&rela.r_offset(Endianness::Little)) {
-                //         Some(sec.name().ok()?)
-                //     } else {
-                //         None
-                //     }
-                // });
+                let target_phys = self
+                    .inner
+                    .virt_to_phys(target)
+                    .expect("relocation target not mapped");
 
-                log::trace!(
-                    "Resoling relocation R_RISCV_RELATIVE at {offset:#x} = {:?} + {addend:#x} ({:?}) section {section:?}",
-                    self.virtual_base,
-                    value,
-                );
+                log::trace!("Resolving relocation R_RISCV_RELATIVE at {target:?} to {value:?}",);
 
-                unsafe { (target.as_raw() as *mut usize).write_unaligned(value.as_raw()) };
+                unsafe { (target_phys.as_raw() as *mut usize).write_unaligned(value.as_raw()) };
             }
-            ty => unimplemented!("unsupported relocation type {:?}", ty),
+            _ => unimplemented!(
+                "unsupported relocation type {:?}",
+                rela.r_type(Endianness::Little, false)
+            ),
         }
 
         Ok(())
