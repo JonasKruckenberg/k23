@@ -255,7 +255,7 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
                     .virt_to_phys(target)
                     .expect("relocation target not mapped");
 
-                log::trace!("Resolving relocation R_RISCV_RELATIVE at {target:?} to {value:?}",);
+                // log::trace!("Resolving relocation R_RISCV_RELATIVE at {target:?} to {value:?}",);
 
                 unsafe { (target_phys.as_raw() as *mut usize).write_unaligned(value.as_raw()) };
             }
