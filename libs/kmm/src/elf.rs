@@ -448,8 +448,6 @@ impl<'a> ProgramHeader<'a> {
 
             Some(RelaInfo {
                 offset,
-                total_size,
-                entry_size,
                 count: total_size / entry_size,
             })
         } else {
@@ -460,8 +458,6 @@ impl<'a> ProgramHeader<'a> {
 
 struct RelaInfo {
     pub offset: usize,
-    pub total_size: usize,
-    pub entry_size: usize,
     pub count: usize,
 }
 
