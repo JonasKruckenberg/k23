@@ -5,8 +5,8 @@ use object::elf::{
     ProgramHeader64, Rela64, DT_RELA, DT_RELACOUNT, DT_RELAENT, DT_RELASZ, PT_DYNAMIC,
     PT_GNU_RELRO, PT_LOAD, PT_TLS, R_RISCV_RELATIVE,
 };
-use object::read::elf::{Dyn, ElfFile64, ElfSectionIterator64, ProgramHeader as _, Rela};
-use object::{Endianness, Object, ObjectSection};
+use object::read::elf::{Dyn, ElfFile64, ProgramHeader as _, Rela};
+use object::Endianness;
 
 impl<'a, M: Mode> Mapper<'a, M> {
     pub fn elf(&mut self, virtual_base: VirtualAddress) -> ElfMapper<'_, 'a, M> {
@@ -117,11 +117,8 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
         log::trace!("mapping {virt:?} => {phys:?}");
         self.inner.map_range(virt, phys, flags, flush)?;
 
-        self.inner
-            .map_range(virt_aligned, phys_aligned, flags, flush)?;
-
-        if program_header.file_size < program_header.mem_size {
-            self.handle_bss_section(program_header, flags, physical_base, flush)?;
+        if ph.file_size < ph.mem_size {
+            self.handle_bss_section(ph, flags, phys_base, flush)?;
         }
 
         Ok(())
@@ -143,22 +140,22 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
     /// 3. If the BSS section is larger than that one page, we allocate additional zeroed frames and map them in.
     fn handle_bss_section(
         &mut self,
-        program_header: &ProgramHeader,
+        ph: &ProgramHeader,
         flags: M::EntryFlags,
-        physical_base: PhysicalAddress,
+        phys_base: PhysicalAddress,
         flush: &mut Flush<M>,
-    ) -> Result<(), crate::Error> {
-        // calculate virtual memory region that must be zeroed
-        let virt_start = self.virtual_base.add(program_header.virtual_address);
-        let zero_start = virt_start.add(program_header.file_size);
-        let zero_end = virt_start.add(program_header.mem_size);
+    ) -> crate::Result<()> {
+        let virt_start = self.virtual_base.add(ph.virtual_address);
+        let zero_start = virt_start.add(ph.file_size);
+        let zero_end = virt_start.add(ph.mem_size);
 
         let data_bytes_before_zero = zero_start.as_raw() & 0xfff;
 
         log::debug!(
-            "handling BSS {:?}, data before {data_bytes_before_zero}",
+            "handling BSS {:?}, data bytes before {data_bytes_before_zero}",
             zero_start..zero_end
         );
+
         if data_bytes_before_zero != 0 {
             let last_page = virt_start.add(ph.file_size - 1).align_down(ph.align);
             let last_frame = phys_base
@@ -204,110 +201,36 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
     }
 
     #[allow(clippy::unused_self)]
-    fn handle_tls_segment(&mut self, program_header: &ProgramHeader) -> TlsTemplate {
+    fn handle_tls_segment(&mut self, ph: &ProgramHeader) -> TlsTemplate {
         TlsTemplate {
-            start_addr: self.virtual_base.add(program_header.virtual_address),
-            mem_size: program_header.mem_size,
-            file_size: program_header.file_size,
+            start_addr: self.virtual_base.add(ph.virtual_address),
+            mem_size: ph.mem_size,
+            file_size: ph.file_size,
         }
     }
 
     fn handle_dynamic_segment(
         &mut self,
-        program_header: &ProgramHeader64<Endianness>,
-        physical_base: PhysicalAddress,
+        ph: &ProgramHeader,
+        phys_base: PhysicalAddress,
         elf_file: &ElfFile64,
-    ) -> Result<(), crate::Error> {
-        let data = program_header
-            .dynamic(Endianness::Little, elf_file.data())
-            .unwrap()
-            .unwrap();
+    ) -> crate::Result<()> {
+        if let Some(rela_info) = ph.parse_rela(elf_file) {
+            let relas = unsafe {
+                let ptr = phys_base.add(rela_info.offset).as_raw() as *const Rela64<Endianness>;
 
-        let mut rela = None; // Address of Rela relocs
-        let mut rela_size = None; // Total size of Rela relocs
-        let mut rela_ent = None; // Size of one Rela reloc
-        let mut rela_count = None; // Number of Rela relocs
+                slice::from_raw_parts(ptr, rela_info.count)
+            };
 
-        for rel in data {
-            let tag = rel.tag32(Endianness::Little).unwrap();
-            match tag {
-                DT_RELA => {
-                    let ptr = rel.d_val(Endianness::Little);
-                    let prev = rela.replace(ptr);
-                    if prev.is_some() {
-                        panic!("Dynamic section contains more than one Rela entry");
-                    }
-                }
-                DT_RELASZ => {
-                    let val = rel.d_val(Endianness::Little);
-                    let prev = rela_size.replace(val);
-                    if prev.is_some() {
-                        panic!("Dynamic section contains more than one RelaSize entry");
-                    }
-                }
-                DT_RELAENT => {
-                    let val = rel.d_val(Endianness::Little);
-                    let prev = rela_ent.replace(val);
-                    if prev.is_some() {
-                        panic!("Dynamic section contains more than one RelaEnt entry");
-                    }
-                }
-                DT_RELACOUNT => {
-                    let val = rel.d_val(Endianness::Little);
-                    let prev = rela_count.replace(val);
-                    if prev.is_some() {
-                        panic!("Dynamic section contains more than one RelaCount entry");
-                    }
-                }
-                _ => {}
+            for rela in relas {
+                self.apply_relocation(rela)?;
             }
-        }
-
-        log::debug!(
-            "rela address {rela:x?} total rela size {rela_size:?} rela entry size {rela_ent:?}"
-        );
-
-        let offset = if let Some(rela) = rela {
-            rela
-        } else {
-            // The section doesn't contain any relocations.
-
-            if rela_size.is_some() || rela_ent.is_some() {
-                panic!("Rela entry is missing but RelaSize or RelaEnt have been provided");
-            }
-
-            return Ok(());
-        };
-        let total_size = rela_size.expect("RelaSize entry is missing");
-        let entry_size = rela_ent.expect("RelaEnt entry is missing");
-        let rela_count = rela_count.expect("RelaCount entry is missing");
-
-        assert_eq!(
-            entry_size,
-            size_of::<Rela64<Endianness>>() as u64,
-            "unsupported entry size: {entry_size}"
-        );
-        assert_eq!(total_size / entry_size, rela_count, "invalid RelaCount");
-
-        let relas = unsafe {
-            let ptr = physical_base.add(offset as usize).as_raw() as *const Rela64<Endianness>;
-
-            slice::from_raw_parts(ptr, rela_count as usize)
-        };
-
-        for rela in relas {
-            self.apply_relocation(rela, physical_base, elf_file)?;
         }
 
         Ok(())
     }
 
-    fn apply_relocation(
-        &mut self,
-        rela: &Rela64<Endianness>,
-        physical_base: PhysicalAddress,
-        elf_file: &ElfFile64,
-    ) -> Result<(), crate::Error> {
+    fn apply_relocation(&mut self, rela: &Rela64<Endianness>) -> crate::Result<()> {
         assert!(
             rela.symbol(Endianness::Little, false).is_none(),
             "relocations using the symbol table are not supported"
@@ -345,13 +268,13 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
 
     fn handle_relro_segment(
         &mut self,
-        program_header: &ProgramHeader,
+        ph: &ProgramHeader,
         flush: &mut Flush<M>,
     ) -> Result<(), crate::Error> {
         let virt = {
-            let start = self.virtual_base.add(program_header.virtual_address);
+            let start = self.virtual_base.add(ph.virtual_address);
 
-            start..start.add(program_header.mem_size)
+            start..start.add(ph.mem_size)
         };
 
         let virt_aligned =
@@ -384,6 +307,7 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
 
         Ok(dst)
     }
+}
 
 fn flags_for_segment<M: Mode>(program_header: &ProgramHeader) -> M::EntryFlags {
     if program_header.p_flags & 0x1 != 0 {
@@ -410,19 +334,109 @@ pub struct TlsTemplate {
     pub file_size: usize,
 }
 
-struct ProgramHeader {
+struct ProgramHeader<'a> {
     pub p_type: u32,
     pub p_flags: u32,
+    pub align: usize,
     pub offset: usize,
     pub virtual_address: usize,
     pub file_size: usize,
     pub mem_size: usize,
+    ph: &'a ProgramHeader64<Endianness>,
 }
 
-impl TryFrom<&ProgramHeader64<Endianness>> for ProgramHeader {
+impl<'a> ProgramHeader<'a> {
+    pub fn parse_rela(&self, elf_file: &ElfFile64) -> Option<RelaInfo> {
+        if self.p_type == PT_DYNAMIC {
+            let fields = self
+                .ph
+                .dynamic(Endianness::default(), elf_file.data())
+                .unwrap()?;
+
+            let mut rela = None; // Address of Rela relocs
+            let mut rela_size = None; // Total size of Rela relocs
+            let mut rela_ent = None; // Size of one Rela reloc
+            let mut rela_count = None; // Number of Rela relocs
+
+            for field in fields {
+                let tag = field.tag32(Endianness::Little).unwrap();
+                match tag {
+                    DT_RELA => {
+                        let ptr = field.d_val(Endianness::Little);
+                        let prev = rela.replace(ptr);
+                        if prev.is_some() {
+                            panic!("Dynamic section contains more than one Rela entry");
+                        }
+                    }
+                    DT_RELASZ => {
+                        let val = field.d_val(Endianness::Little);
+                        let prev = rela_size.replace(val);
+                        if prev.is_some() {
+                            panic!("Dynamic section contains more than one RelaSize entry");
+                        }
+                    }
+                    DT_RELAENT => {
+                        let val = field.d_val(Endianness::Little);
+                        let prev = rela_ent.replace(val);
+                        if prev.is_some() {
+                            panic!("Dynamic section contains more than one RelaEnt entry");
+                        }
+                    }
+                    DT_RELACOUNT => {
+                        let val = field.d_val(Endianness::Little);
+                        let prev = rela_count.replace(val);
+                        if prev.is_some() {
+                            panic!("Dynamic section contains more than one RelaCount entry");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            if rela.is_none() && (rela_size.is_some() || rela_ent.is_some()) {
+                panic!("Rela entry is missing but RelaSize or RelaEnt have been provided");
+            }
+            let offset = rela? as usize;
+
+            let total_size = rela_size.expect("RelaSize entry is missing") as usize;
+            let entry_size = rela_ent.expect("RelaEnt entry is missing") as usize;
+
+            assert_eq!(
+                entry_size,
+                size_of::<Rela64<Endianness>>(),
+                "unsupported entry size: {entry_size}"
+            );
+            if let Some(rela_count) = rela_count {
+                assert_eq!(
+                    total_size / entry_size,
+                    rela_count as usize,
+                    "invalid RelaCount"
+                );
+            }
+
+            Some(RelaInfo {
+                offset,
+                total_size,
+                entry_size,
+                count: total_size / entry_size,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+struct RelaInfo {
+    pub offset: usize,
+    pub total_size: usize,
+    pub entry_size: usize,
+    pub count: usize,
+}
+
+impl<'a> TryFrom<&'a ProgramHeader64<Endianness>> for ProgramHeader<'a> {
     type Error = &'static str;
 
-    fn try_from(value: &ProgramHeader64<Endianness>) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a ProgramHeader64<Endianness>) -> Result<Self, Self::Error> {
         let endianness = Endianness::default();
 
         Ok(Self {
@@ -437,6 +451,7 @@ impl TryFrom<&ProgramHeader64<Endianness>> for ProgramHeader {
                 .map_err(|_| "failed to convert p_filesz to usize")?,
             mem_size: usize::try_from(value.p_memsz(endianness))
                 .map_err(|_| "failed to convert p_memsz to usize")?,
+            ph: value,
         })
     }
 }
