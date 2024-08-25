@@ -8,6 +8,10 @@ extern crate panic;
 mod arch;
 mod boot_info;
 mod error;
+
+#[cfg(feature = "kaslr")]
+mod kaslr;
+
 mod kconfig;
 mod machine_info;
 mod paging;
@@ -21,13 +25,13 @@ use core::ops::Range;
 use core::ptr::addr_of;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{ptr, slice};
+use error::Error;
 use kmm::{
     AddressRangeExt, BumpAllocator, FrameAllocator, Mode, PhysicalAddress, VirtualAddress, INIT,
 };
 use linked_list_allocator::LockedHeap;
 use loader_api::BootInfo;
 
-use error::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
 static BOOT_HART: AtomicUsize = AtomicUsize::new(0);
@@ -63,6 +67,7 @@ fn main(hartid: usize) -> ! {
 
 fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     let machine_info = arch::machine_info();
+
     let loader_regions = LoaderRegions::new(machine_info);
     log::trace!("{loader_regions:?}");
 
@@ -70,6 +75,9 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     let mut frame_alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> = unsafe {
         BumpAllocator::new_with_lower_bound(&machine_info.memories, loader_regions.read_write.end)
     };
+
+    #[cfg(feature = "kaslr")]
+    let mut rand = kaslr::init(&machine_info);
 
     // Move the FDT to a safe location, so we don't accidentally overwrite it
     log::trace!("copying FDT to safe location...");
@@ -83,8 +91,15 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     let payload = Payload::from_compressed(payload::PAYLOAD, &mut frame_alloc)?;
 
     log::trace!("initializing page tables...");
-    // init page tables
-    let page_table_result = PageTableBuilder::from_alloc(&mut frame_alloc)?
+    #[allow(unused_mut)]
+    let mut builder = PageTableBuilder::from_alloc(&mut frame_alloc)?;
+
+    #[cfg(feature = "kaslr")]
+    {
+        builder = builder.set_payload_offset(kaslr::random_offset_for_payload(&mut rand, &payload));
+    }
+
+    let page_table_result = builder
         .map_payload(&payload, machine_info)?
         .map_physical_memory(machine_info)?
         .identity_map_loader(&loader_regions)?

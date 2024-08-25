@@ -12,6 +12,8 @@ use object::Object;
 pub struct PageTableBuilder<'a> {
     /// The offset at which the physical memory should be mapped
     physical_memory_offset: VirtualAddress,
+    /// The offset at which the payload should be mapped
+    payload_offset: VirtualAddress,
     /// The highest available virtual address
     free_range_end: VirtualAddress,
 
@@ -32,6 +34,7 @@ impl<'a> PageTableBuilder<'a> {
         Ok(Self {
             physical_memory_offset,
             free_range_end: physical_memory_offset,
+            payload_offset: VirtualAddress::new(0xffff_ffff_8000_0000),
 
             result: PageTableResult {
                 page_table_addr: mapper.root_table().addr(),
@@ -50,16 +53,20 @@ impl<'a> PageTableBuilder<'a> {
         })
     }
 
+    #[cfg(feature = "kaslr")]
+    pub fn set_payload_offset(mut self, payload_offset: VirtualAddress) -> Self {
+        self.payload_offset = payload_offset;
+        self
+    }
+
     pub fn map_payload(
         mut self,
         payload: &Payload,
         machine_info: &MachineInfo,
     ) -> crate::Result<Self> {
-        let virtual_base = VirtualAddress::new(0xffffffff80000000);
-
         let maybe_tls_template = self
             .mapper
-            .elf(virtual_base)
+            .elf(self.payload_offset)
             .map_elf_file(&payload.elf_file, &mut self.flush)?;
 
         // Allocate memory for TLS segments
@@ -72,7 +79,9 @@ impl<'a> PageTableBuilder<'a> {
 
         self = self.map_payload_stacks(machine_info, stack_size_pages)?;
 
-        self.result.entry = virtual_base.add(usize::try_from(payload.elf_file.entry())?);
+        self.result.entry = self
+            .payload_offset
+            .add(usize::try_from(payload.elf_file.entry())?);
         self.result.stack_size = stack_size_pages * kconfig::PAGE_SIZE;
 
         Ok(self)

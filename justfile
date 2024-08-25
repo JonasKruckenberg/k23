@@ -207,6 +207,7 @@ _make_bootimg config payload *CARGO_ARGS="":
         -p loader
         --target $config.loader.target
         --profile {{profile}}
+        ...(if ($config.loader.enable-kaslr == true) { echo "--features" "kaslr" } else { [] })
         --message-format=json
         {{_buildstd}}
         {{CARGO_ARGS}})
