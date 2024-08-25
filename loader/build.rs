@@ -41,7 +41,7 @@ fn main() {
         out_dir.join("payload.rs"),
         format!(
             r#"
-    pub static PAYLOAD: Option<&[u8]> = {payload};
+    pub static PAYLOAD: &[u8] = {payload};
     "#,
         ),
     )
@@ -68,8 +68,8 @@ fn include_from_env(workspace_root: &Path, var: Option<OsString>) -> String {
         let path = workspace_root.join(path);
 
         println!("cargo::rerun-if-changed={}", path.display());
-        format!(r#"Some(include_bytes!("{}"))"#, path.display())
+        format!(r#"include_bytes!("{}")"#, path.display())
     } else {
-        "None".to_string()
+        "&[]".to_string()
     }
 }

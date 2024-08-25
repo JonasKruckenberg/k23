@@ -12,6 +12,7 @@ ands = "ands"
 addd = "addd"
 ratatui = "ratatui"
 datas = "datas"
+rela = "rela" # the relocation format
 
 [default.extend-identifier]
 

@@ -72,15 +72,17 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     };
 
     // Move the FDT to a safe location, so we don't accidentally overwrite it
+    log::trace!("copying FDT to safe location...");
     let fdt_virt = allocate_and_copy_fdt(machine_info, &mut frame_alloc)?;
 
     // init heap allocator
     init_global_allocator(machine_info);
 
     // decompress & parse payload
-    let payload =
-        Payload::from_compressed(payload::PAYLOAD.expect("no payload"), &mut frame_alloc)?;
+    log::trace!("parsing payload... {:p}", payload::PAYLOAD.as_ptr());
+    let payload = Payload::from_compressed(payload::PAYLOAD, &mut frame_alloc)?;
 
+    log::trace!("initializing page tables...");
     // init page tables
     let page_table_result = PageTableBuilder::from_alloc(&mut frame_alloc)?
         .map_payload(&payload, machine_info)?
