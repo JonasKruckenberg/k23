@@ -16,6 +16,7 @@
   "relocation-model": "pic",
   "tls-model": "local-exec",
   "position-independent-executables": true,
+  "relro-level": "full",
   "supported-sanitizers": [
     "kernel-address"
   ],

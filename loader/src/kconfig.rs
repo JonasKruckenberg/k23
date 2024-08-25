@@ -19,6 +19,10 @@ const fn parse_log_lvl(s: &str) -> log::Level {
 #[kconfig_declare::symbol("loader.stack-size-pages")]
 pub const STACK_SIZE_PAGES: usize = 128;
 
+/// Whether to enable Kernel Address Space Layout Randomization (KASLR)
+#[kconfig_declare::symbol("loader.enable-kaslr")]
+pub const ENABLE_KASLR: bool = true;
+
 // TODO: This should be configurable
 #[allow(non_camel_case_types)]
 pub type MEMORY_MODE = kmm::Riscv64Sv39;
