@@ -74,4 +74,18 @@ impl<'a> Payload<'a> {
             loader_config,
         })
     }
+
+    #[cfg(feature = "kaslr")]
+    pub fn mem_size(&self) -> u64 {
+        use object::read::elf::ProgramHeader;
+        use object::Endianness;
+
+        let mem_size = self
+            .elf_file
+            .elf_program_headers()
+            .iter()
+            .fold(0, |acc, ph| acc + ph.p_memsz(Endianness::default()));
+
+        mem_size
+    }
 }
