@@ -1,7 +1,6 @@
 [target.'cfg(all(target_arch = "riscv64", target_os="none"))']
 ##runner = "just _runner"
 rustflags = [
-    "-Clink-args=-zseparate-loadable-segments",
     #    #    "-Cllvm-args=--function-sections",
     #    #    "-Clink-args=-q",
     #    #    "-Clink-arg=-Tconfigs/empty.ld",

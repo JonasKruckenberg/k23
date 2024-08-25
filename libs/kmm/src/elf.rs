@@ -82,37 +82,37 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
 
     fn handle_load_segment(
         &mut self,
-        program_header: &ProgramHeader,
-        physical_base: PhysicalAddress,
+        ph: &ProgramHeader,
+        phys_base: PhysicalAddress,
         flush: &mut Flush<M>,
-    ) -> Result<(), crate::Error> {
-        let phys_aligned = {
-            let start = physical_base
-                .add(program_header.offset)
-                .align_down(M::PAGE_SIZE);
-            let end = start.add(program_header.file_size).align_up(M::PAGE_SIZE);
+    ) -> crate::Result<()> {
+        let flags = flags_for_segment::<M>(ph);
 
-            start..end
-        };
-
-        let virt_aligned = {
-            let start = self
-                .virtual_base
-                .add(program_header.virtual_address)
-                .align_down(M::PAGE_SIZE);
-            let end = start.add(program_header.file_size).align_up(M::PAGE_SIZE);
-
-            start..end
-        };
-
-        let flags = Self::flags_for_segment(program_header);
-        log::trace!(
-            "segment {:#x?} => {:#x?}",
-            program_header.virtual_address
-                ..program_header.virtual_address + program_header.mem_size,
-            program_header.offset..program_header.offset + program_header.file_size
+        log::info!(
+            "Handling Segment: LOAD off {offset:#016x} vaddr {vaddr:#016x} align {align} filesz {filesz:#016x} memsz {memsz:#016x} flags {flags:?}",
+            offset = ph.offset,
+            vaddr = ph.virtual_address,
+            align = ph.align,
+            filesz = ph.file_size,
+            memsz = ph.mem_size
         );
-        log::trace!("mapping {virt_aligned:?} => {phys_aligned:?} {flags:?}");
+
+        let phys = {
+            let start = phys_base.add(ph.offset);
+            let end = start.add(ph.file_size);
+
+            start.align_down(ph.align)..end.align_up(ph.align)
+        };
+
+        let virt = {
+            let start = self.virtual_base.add(ph.virtual_address);
+            let end = start.add(ph.file_size);
+
+            start.align_down(ph.align)..end.align_up(ph.align)
+        };
+
+        log::trace!("mapping {virt:?} => {phys:?}");
+        self.inner.map_range(virt, phys, flags, flush)?;
 
         self.inner
             .map_range(virt_aligned, phys_aligned, flags, flush)?;
@@ -387,16 +387,15 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
         Ok(dst)
     }
 
-    fn flags_for_segment(program_header: &ProgramHeader) -> M::EntryFlags {
-        if program_header.p_flags & 0x1 != 0 {
-            M::ENTRY_FLAGS_RX
-        } else if program_header.p_flags & 0x2 != 0 {
-            M::ENTRY_FLAGS_RW
-        } else if program_header.p_flags & 0x4 != 0 {
-            M::ENTRY_FLAGS_RO
-        } else {
-            panic!("invalid segment flags {:?}", program_header.p_flags)
-        }
+fn flags_for_segment<M: Mode>(program_header: &ProgramHeader) -> M::EntryFlags {
+    if program_header.p_flags & 0x1 != 0 {
+        M::ENTRY_FLAGS_RX
+    } else if program_header.p_flags & 0x2 != 0 {
+        M::ENTRY_FLAGS_RW
+    } else if program_header.p_flags & 0x4 != 0 {
+        M::ENTRY_FLAGS_RO
+    } else {
+        panic!("invalid segment flags {:?}", program_header.p_flags)
     }
 }
 
