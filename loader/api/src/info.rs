@@ -36,6 +36,7 @@ pub struct BootInfo {
 }
 
 impl BootInfo {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         boot_hart: usize,
         physical_memory_offset: VirtualAddress,
@@ -54,7 +55,7 @@ impl BootInfo {
             fdt_virt,
             loader_virt,
             free_virt,
-            payload_phys
+            payload_phys,
         }
     }
 }
