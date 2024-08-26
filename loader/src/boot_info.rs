@@ -1,5 +1,6 @@
 use crate::kconfig;
 use crate::paging::PageTableResult;
+use crate::payload::Payload;
 use core::mem::MaybeUninit;
 use core::ops::Div;
 use core::slice;
@@ -11,6 +12,7 @@ pub fn init_boot_info(
     boot_hart: usize,
     page_table_result: &PageTableResult,
     fdt_virt: VirtualAddress,
+    payload: &Payload,
 ) -> crate::Result<&'static BootInfo> {
     let frame = alloc.allocate_frame()?;
 
@@ -37,6 +39,11 @@ pub fn init_boot_info(
         fdt_virt,
         page_table_result.loader_virt.clone(),
         page_table_result.free_range_virt.clone(),
+        {
+            let r = payload.elf_file.data().as_ptr_range();
+
+            PhysicalAddress::new(r.start as usize)..PhysicalAddress::new(r.end as usize)
+        },
     ));
 
     // lastly, do the physical ptr -> virtual ptr translation

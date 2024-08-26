@@ -29,6 +29,8 @@ pub struct BootInfo {
     pub fdt_virt: VirtualAddress,
     /// The virtual memory occupied by the bootloader.
     pub loader_virt: Range<VirtualAddress>,
+    /// The physical memory occupied by the payload elf.
+    pub payload_phys: Range<PhysicalAddress>,
     /// The range of addresses that the kernel can freely allocate from.
     pub free_virt: Range<VirtualAddress>,
 }
@@ -42,6 +44,7 @@ impl BootInfo {
         fdt_virt: VirtualAddress,
         loader_virt: Range<VirtualAddress>,
         free_virt: Range<VirtualAddress>,
+        payload_phys: Range<PhysicalAddress>,
     ) -> Self {
         Self {
             boot_hart,
@@ -51,6 +54,7 @@ impl BootInfo {
             fdt_virt,
             loader_virt,
             free_virt,
+            payload_phys
         }
     }
 }

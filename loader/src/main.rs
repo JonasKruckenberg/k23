@@ -87,7 +87,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     init_global_allocator(machine_info);
 
     // decompress & parse payload
-    log::trace!("parsing payload... {:p}", payload::PAYLOAD.as_ptr());
+    log::trace!("parsing payload...");
     let payload = Payload::from_compressed(payload::PAYLOAD, &mut frame_alloc)?;
 
     log::trace!("initializing page tables...");
@@ -109,7 +109,13 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     let hartid = BOOT_HART.load(Ordering::Relaxed);
 
     // init boot info
-    let boot_info = init_boot_info(&mut frame_alloc, hartid, &page_table_result, fdt_virt)?;
+    let boot_info = init_boot_info(
+        &mut frame_alloc,
+        hartid,
+        &page_table_result,
+        fdt_virt,
+        &payload,
+    )?;
 
     Ok((page_table_result, boot_info))
 }
