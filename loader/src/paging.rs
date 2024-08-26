@@ -5,7 +5,6 @@ use core::ops::Range;
 use core::{ptr, slice};
 use kmm::{
     BumpAllocator, EntryFlags, Flush, Mapper, Mode, PhysicalAddress, TlsTemplate, VirtualAddress,
-    INIT,
 };
 use object::Object;
 
@@ -17,18 +16,17 @@ pub struct PageTableBuilder<'a> {
     /// The highest available virtual address
     free_range_end: VirtualAddress,
 
-    mapper: Mapper<'a, INIT<kconfig::MEMORY_MODE>>,
-    flush: Flush<INIT<kconfig::MEMORY_MODE>>,
+    mapper: Mapper<'a, kconfig::MEMORY_MODE>,
+    flush: Flush<kconfig::MEMORY_MODE>,
 
     result: PageTableResult,
 }
 
 impl<'a> PageTableBuilder<'a> {
     pub fn from_alloc(
-        frame_allocator: &'a mut BumpAllocator<'_, INIT<kconfig::MEMORY_MODE>>,
+        frame_allocator: &'a mut BumpAllocator<'_, kconfig::MEMORY_MODE>,
+        physical_memory_offset: VirtualAddress,
     ) -> crate::Result<Self> {
-        let physical_memory_offset = VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET);
-
         let mapper = Mapper::new(0, frame_allocator)?;
 
         Ok(Self {
@@ -277,7 +275,7 @@ impl PageTableResult {
         Some(self.maybe_tls_allocation.as_ref()?.region_for_hart(hartid))
     }
 
-    pub fn activate_table(&self) {
+    pub unsafe fn activate_table(&self) {
         kconfig::MEMORY_MODE::activate_table(0, self.page_table_addr);
     }
 

@@ -21,11 +21,12 @@ pub struct Store<'wasm> {
 }
 
 impl<'wasm> Store<'wasm> {
-    pub fn new(asid: usize) -> Self {
+    pub fn new(asid: usize, physmem_off: VirtualAddress) -> Self {
         log::trace!("Setting up new Store instance with ASID: {asid}");
         Self {
             allocator: unsafe {
-                GuestAllocator::new_in_kernel_space(VirtualAddress::new(0x1000)).unwrap()
+                GuestAllocator::new_in_kernel_space(VirtualAddress::new(0x1000), physmem_off)
+                    .unwrap()
             },
             instances: PrimaryMap::new(),
             vmctx2instance: HashMap::default(),

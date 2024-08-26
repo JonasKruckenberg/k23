@@ -23,7 +23,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
     /// Returns an error if a new frame backing the root table cannot be allocated.
     pub fn new(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> crate::Result<Self> {
         let root_table = allocator.allocate_frame_zeroed()?;
-        let root_table_virt = M::phys_to_virt(root_table);
+        let root_table_virt = allocator.phys_to_virt(root_table);
 
         Ok(Self {
             asid,
@@ -35,7 +35,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
     pub fn from_active(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> Self {
         let root_table = M::get_active_table(asid);
-        let root_table_virt = M::phys_to_virt(root_table);
+        let root_table_virt = allocator.phys_to_virt(root_table);
         debug_assert!(root_table.0 != 0);
 
         Self {
@@ -123,7 +123,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
             "virtual address is not page aligned"
         );
 
-        let on_leaf = |entry: &mut Entry<M>| {
+        let on_leaf = |this: &mut Self, entry: &mut Entry<M>| {
             assert!(
                 !entry.is_vacant(),
                 "expected table entry to *not* be vacant, to perform initial mapping use the map_ methods"
@@ -131,12 +131,12 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
             entry.set_address_and_flags(entry.get_address(), flags.union(M::ENTRY_FLAGS_LEAF));
 
-            flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;
+            flush.extend_range(this.asid, virt..virt.add(M::PAGE_SIZE))?;
 
             Ok(())
         };
 
-        Self::walk_mut(virt, self.root_table(), on_leaf, |_| Ok(()))
+        self.walk_mut(virt, self.root_table(), on_leaf, |_, _| Ok(()))
     }
 
     /// Identity maps a physical address range with the given flags.
@@ -159,7 +159,8 @@ impl<'a, M: Mode> Mapper<'a, M> {
             "physical address range must span be at least one page"
         );
 
-        let range_virt = M::phys_to_virt(range_phys.start)..M::phys_to_virt(range_phys.end);
+        let range_virt = self.allocator.phys_to_virt(range_phys.start)
+            ..self.allocator.phys_to_virt(range_phys.end);
 
         Self::for_pages_in_range(&range_virt, |i, _, page_size| {
             let virt = range_virt.start.add(i * page_size);
@@ -184,7 +185,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         flags: M::EntryFlags,
         flush: &mut Flush<M>,
     ) -> crate::Result<()> {
-        let virt = M::phys_to_virt(phys);
+        let virt = self.allocator.phys_to_virt(phys);
         self.map(virt, phys, flags, flush)
     }
 
@@ -256,7 +257,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
         let table = self.root_table();
 
-        let on_leaf = |entry: &mut Entry<M>| {
+        let on_leaf = |this: &mut Self, entry: &mut Entry<M>| {
             assert!(
                 entry.is_vacant(),
                 "expected table entry to be vacant, to remap use  the remap_ methods. entry address {:?} entry {entry:?}", entry.get_address(),
@@ -264,22 +265,22 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
             entry.set_address_and_flags(phys, flags.union(M::ENTRY_FLAGS_LEAF));
 
-            flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;
+            flush.extend_range(this.asid, virt..virt.add(M::PAGE_SIZE))?;
 
             Ok(())
         };
 
-        let on_node = |entry: &mut Entry<M>| {
+        let on_node = |this: &mut Self, entry: &mut Entry<M>| {
             if entry.is_vacant() {
                 // allocate a new physical frame to hold the entries children
-                let frame_phys = self.allocator.allocate_frame_zeroed()?;
+                let frame_phys = this.allocator.allocate_frame_zeroed()?;
                 entry.set_address_and_flags(frame_phys, M::ENTRY_FLAGS_TABLE);
             }
 
             Ok(())
         };
 
-        Self::walk_mut(virt, table, on_leaf, on_node)
+        self.walk_mut(virt, table, on_leaf, on_node)
     }
 
     #[must_use]
@@ -292,7 +293,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
             Ok(phys)
         };
 
-        Self::walk(virt, self.root_table(), on_leaf, |_| Ok(())).ok()
+        self.walk(virt, self.root_table(), on_leaf, |_| Ok(())).ok()
     }
 
     /// Unmaps the virtual address range **without deallocating its physical frames**.
@@ -409,7 +410,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         } else {
             let table_phys = entry.get_address();
 
-            let table_virt = M::phys_to_virt(table_phys);
+            let table_virt = self.allocator.phys_to_virt(table_phys);
             let mut subtable = unsafe { Table::new(table_virt, level - 1) };
 
             let res = self.unmap_inner(virt, &mut subtable, dealloc)?;
@@ -456,7 +457,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
         let table = self.root_table();
 
-        let on_leaf = |entry: &mut Entry<M>| {
+        let on_leaf = |this: &mut Self, entry: &mut Entry<M>| {
             assert!(
                 !entry.is_vacant(),
                 "expected table entry to *not* be vacant, to map use  the map_ methods"
@@ -464,44 +465,45 @@ impl<'a, M: Mode> Mapper<'a, M> {
 
             entry.set_address_and_flags(phys, flags.union(M::ENTRY_FLAGS_LEAF));
 
-            flush.extend_range(self.asid, virt..virt.add(M::PAGE_SIZE))?;
+            flush.extend_range(this.asid, virt..virt.add(M::PAGE_SIZE))?;
 
             Ok(())
         };
 
-        let on_node = |entry: &mut Entry<M>| {
+        let on_node = |this: &mut Self, entry: &mut Entry<M>| {
             if entry.is_vacant() {
                 // allocate a new physical frame to hold the entries children
-                let frame_phys = self.allocator.allocate_frame_zeroed()?;
+                let frame_phys = this.allocator.allocate_frame_zeroed()?;
                 entry.set_address_and_flags(frame_phys, M::ENTRY_FLAGS_TABLE);
             }
 
             Ok(())
         };
 
-        Self::walk_mut(virt, table, on_leaf, on_node)
+        self.walk_mut(virt, table, on_leaf, on_node)
     }
 
     fn walk_mut<R>(
+        &mut self,
         virt: VirtualAddress,
         mut table: Table<M>,
-        on_leaf: impl FnOnce(&mut Entry<M>) -> crate::Result<R>,
-        mut on_node: impl FnMut(&mut Entry<M>) -> crate::Result<()>,
+        on_leaf: impl FnOnce(&mut Self, &mut Entry<M>) -> crate::Result<R>,
+        mut on_node: impl FnMut(&mut Self, &mut Entry<M>) -> crate::Result<()>,
     ) -> crate::Result<R> {
         for lvl in (0..M::PAGE_TABLE_LEVELS).rev() {
             let entry = table.entry_mut(table.index_of_virt(virt));
 
             if lvl == 0 {
-                return on_leaf(entry);
+                return on_leaf(self, entry);
             } else {
-                on_node(entry)?;
+                on_node(self, entry)?;
 
                 if entry.is_vacant() {
                     return Err(Error::NotMapped(virt));
                 }
 
                 let table_phys = entry.get_address();
-                let table_virt = M::phys_to_virt(table_phys);
+                let table_virt = self.allocator.phys_to_virt(table_phys);
                 table = unsafe { Table::new(table_virt, table.level() - 1) };
             }
         }
@@ -510,6 +512,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
     }
 
     fn walk<R>(
+        &self,
         virt: VirtualAddress,
         mut table: Table<M>,
         on_leaf: impl FnOnce(&Entry<M>) -> crate::Result<R>,
@@ -528,7 +531,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
                 }
 
                 let table_phys = entry.get_address();
-                let table_virt = M::phys_to_virt(table_phys);
+                let table_virt = self.allocator.phys_to_virt(table_phys);
                 table = unsafe { Table::new(table_virt, table.level() - 1) };
             }
         }

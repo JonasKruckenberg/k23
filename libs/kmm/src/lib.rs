@@ -20,7 +20,7 @@ use crate::entry::Entry;
 use bitflags::Flags;
 use core::fmt::Formatter;
 use core::ops::Range;
-use core::{cmp, fmt, mem};
+use core::{cmp, fmt};
 
 pub use alloc::{BitMapAllocator, BumpAllocator, FrameAllocator, FrameUsage};
 pub use arch::*;
@@ -35,8 +35,6 @@ pub(crate) type Result<T> = core::result::Result<T, Error>;
 
 pub trait Mode {
     type EntryFlags: Flags + From<usize> + Into<usize> + Copy + Clone + fmt::Debug;
-
-    const PHYS_OFFSET: usize;
 
     const PAGE_SIZE: usize;
 
@@ -73,7 +71,7 @@ pub trait Mode {
     /// # Errors
     ///
     /// Should return an error if the underlying operation failed.
-    fn invalidate_all() -> crate::Result<()>;
+    fn invalidate_all() -> Result<()>;
 
     /// Invalidate address translation caches for the given `address_range` in the given `address_space`
     ///
@@ -89,10 +87,10 @@ pub trait Mode {
     where
         Self: Sized;
 
-    #[must_use]
-    fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-        VirtualAddress::new(phys.as_raw()).add(Self::PHYS_OFFSET)
-    }
+    // #[must_use]
+    // fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
+    //     VirtualAddress::new(phys.as_raw()).add(Self::PHYS_OFFSET)
+    // }
 }
 
 #[repr(transparent)]
@@ -184,7 +182,6 @@ pub struct VirtualAddress(usize);
 impl VirtualAddress {
     #[must_use]
     pub const fn new(bits: usize) -> Self {
-        // debug_assert!(bits <= 0x0000_003f_ffff_ffff || bits > 0xffff_ffbf_ffff_ffff);
         debug_assert!(bits != 0);
         Self(bits)
     }
@@ -313,7 +310,7 @@ impl AddressRangeExt for Range<VirtualAddress> {
 
 pub(crate) fn zero_frames<M: Mode>(mut ptr: *mut u64, num_frames: usize) {
     unsafe {
-        let end = ptr.add((num_frames * M::PAGE_SIZE) / mem::size_of::<u64>());
+        let end = ptr.add((num_frames * M::PAGE_SIZE) / size_of::<u64>());
         while ptr < end {
             ptr.write_volatile(0);
             ptr = ptr.offset(1);
@@ -321,68 +318,9 @@ pub(crate) fn zero_frames<M: Mode>(mut ptr: *mut u64, num_frames: usize) {
     }
 }
 
-/// `INIT` is a special `Mode` implementation that should be used *before* any memory mode is active
-/// (i.e. no address translation is happening). It will wrap another `Mode` implementation and forward
-/// functionality and properties to that inner implementation, **except** for the `Mode::phys_to_virt`
-/// function which will always return and **identity translation** of the given physical address.
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct INIT<M>(M);
-
-impl<M> INIT<M> {
-    pub fn into_inner(self) -> M {
-        self.0
-    }
-}
-
-impl<M: Mode> Mode for INIT<M> {
-    type EntryFlags = M::EntryFlags;
-
-    const PHYS_OFFSET: usize = 0;
-
-    const PAGE_SIZE: usize = M::PAGE_SIZE;
-    const PAGE_TABLE_LEVELS: usize = M::PAGE_TABLE_LEVELS;
-    const PAGE_TABLE_ENTRIES: usize = M::PAGE_TABLE_ENTRIES;
-
-    const ENTRY_FLAGS_LEAF: Self::EntryFlags = M::ENTRY_FLAGS_LEAF;
-    const ENTRY_FLAGS_TABLE: Self::EntryFlags = M::ENTRY_FLAGS_TABLE;
-    const ENTRY_FLAGS_RX: Self::EntryFlags = M::ENTRY_FLAGS_RX;
-    const ENTRY_FLAGS_RO: Self::EntryFlags = M::ENTRY_FLAGS_RO;
-    const ENTRY_FLAGS_RW: Self::EntryFlags = M::ENTRY_FLAGS_RW;
-
-    const ENTRY_ADDRESS_SHIFT: usize = M::ENTRY_ADDRESS_SHIFT;
-
-    fn get_active_table(asid: usize) -> PhysicalAddress {
-        M::get_active_table(asid)
-    }
-
-    fn activate_table(asid: usize, table: VirtualAddress) {
-        M::activate_table(asid, table);
-    }
-
-    fn invalidate_all() -> crate::Result<()> {
-        M::invalidate_all()
-    }
-
-    fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> crate::Result<()> {
-        M::invalidate_range(asid, address_range)
-    }
-
-    #[allow(clippy::transmute_ptr_to_ptr)] // The alternative is worse
-    fn entry_is_leaf(entry: &Entry<Self>) -> bool
-    where
-        Self: Sized,
-    {
-        // Safety: INIT<M> has the same layout as M
-        let entry: &Entry<M> = unsafe { mem::transmute(entry) };
-        M::entry_is_leaf(entry)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    #[panic_handler]
-    fn panic(_: &core::panic::PanicInfo) -> ! {
-        loop {}
-    }
+pub(crate) fn phys_to_virt(
+    physical_memory_offset: VirtualAddress,
+    phys: PhysicalAddress,
+) -> VirtualAddress {
+    physical_memory_offset.add(phys.as_raw())
 }

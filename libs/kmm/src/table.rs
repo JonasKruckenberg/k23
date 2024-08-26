@@ -1,5 +1,5 @@
 use crate::entry::Entry;
-use crate::{Mode, VirtualAddress};
+use crate::{phys_to_virt, Mode, VirtualAddress};
 use core::marker::PhantomData;
 use core::mem;
 
@@ -83,11 +83,15 @@ impl<M: Mode> Table<M> {
     /// # Errors
     ///
     /// Returns an error if traversing the table or printing the debug output fails.
-    pub fn debug_print_table(&self) -> crate::Result<()> {
-        self.debug_print_table_inner(VirtualAddress(0))
+    pub fn debug_print_table(&self, physmem_off: VirtualAddress) -> crate::Result<()> {
+        self.debug_print_table_inner(VirtualAddress(0), physmem_off)
     }
 
-    fn debug_print_table_inner(&self, acc: VirtualAddress) -> crate::Result<()> {
+    fn debug_print_table_inner(
+        &self,
+        acc: VirtualAddress,
+        physmem_off: VirtualAddress,
+    ) -> crate::Result<()> {
         let padding = match self.level {
             0 => 8,
             1 => 4,
@@ -110,9 +114,10 @@ impl<M: Mode> Table<M> {
             } else if !entry.is_vacant() {
                 log::debug!("{:^padding$}{}:{i} is a table node", "", self.level);
                 let entry_phys = entry.get_address();
-                let entry_virt = M::phys_to_virt(entry_phys);
+                let entry_virt = phys_to_virt(physmem_off, entry_phys);
                 unsafe {
-                    Self::new(entry_virt, self.level - 1).debug_print_table_inner(virt)?;
+                    Self::new(entry_virt, self.level - 1)
+                        .debug_print_table_inner(virt, physmem_off)?;
                 }
             }
         }

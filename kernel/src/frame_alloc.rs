@@ -20,7 +20,7 @@ where
         }
     }
 
-    let bump_alloc = unsafe { BumpAllocator::new(&memories) };
+    let bump_alloc = unsafe { BumpAllocator::new(&memories, boot_info.physical_memory_offset) };
     let mut alloc = BitMapAllocator::new(bump_alloc).unwrap();
     let r = f(&mut alloc);
 
