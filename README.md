@@ -26,7 +26,7 @@ k23 is an active research project exploring a *more secure, modular, and easy to
 - **Phase 0 - Bringup**
    - [x] Bootloader stage
    - [x] Risc-V Support
-   - [x] Crytographically Signed Kernel
+   - [x] Crytographic Kernel Integrity
    - [x] Compressed Kernel Support
    - [x] Test Runner & Testing against WASM specification
    - [x] Kernel Backtraces
@@ -34,9 +34,9 @@ k23 is an active research project exploring a *more secure, modular, and easy to
    - [x] KASLR (Kernel Address Space Layout Randomization)
 - **Phase 1 - WASM Features**
    - [ ] Guest memory management
+   - [ ] Guest ASLR (Address Space Layout Randomization)
    - [ ] Executing WASM
    - [ ] Handling Guest Traps & Fault Recovery
-   - [ ] Guest ASLR (Address Space Layout Randomization)
    - [ ] WASM module Imports & Exports
    - [ ] Execute WASM in Userspace
    - [ ] Support WASM Builtins
