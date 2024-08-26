@@ -19,7 +19,7 @@ toml.workspace = true
 kmm.workspace = true
 loader-api.workspace = true
 log.workspace = true
-panic = { workspace = true, features = ["unwind", "backtrace"] }
+panic = { workspace = true, features = ["unwind"] }
 semihosting-logger = { workspace = true, features = ["hartid"] }
 sync.workspace = true
 talc.workspace = true
