@@ -53,14 +53,14 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
             .filter_map(|h| ProgramHeader::try_from(h).ok());
 
         // Load the segments into virtual memory.
-        for program_header in program_headers
+        for ph in program_headers
             .clone()
             .filter(|segment| segment.mem_size > 0)
         {
-            match program_header.p_type {
-                PT_LOAD => self.handle_load_segment(&program_header, physical_base, flush)?,
+            match ph.p_type {
+                PT_LOAD => self.handle_load_segment(&ph, physical_base, flush)?,
                 PT_TLS => {
-                    let old = tls_template.replace(self.handle_tls_segment(&program_header));
+                    let old = tls_template.replace(self.handle_tls_segment(&ph));
                     assert!(old.is_none(), "multiple TLS segments not supported");
                 }
                 _ => {}
@@ -68,17 +68,17 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
         }
 
         // Apply relocations in virtual memory.
-        for program_header in program_headers.clone() {
-            if program_header.p_type == PT_DYNAMIC {
-                self.handle_dynamic_segment(&program_header, physical_base, elf_file)?;
+        for ph in program_headers.clone() {
+            if ph.p_type == PT_DYNAMIC {
+                self.handle_dynamic_segment(&ph, physical_base, elf_file)?;
             }
         }
 
         // Mark some memory regions as read-only after relocations have been
         // applied.
-        for program_header in program_headers {
-            if program_header.p_type == PT_GNU_RELRO {
-                self.handle_relro_segment(&program_header, flush)?;
+        for ph in program_headers.clone() {
+            if ph.p_type == PT_GNU_RELRO {
+                self.handle_relro_segment(&ph, flush)?;
             }
         }
 
