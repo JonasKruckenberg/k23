@@ -31,7 +31,7 @@ k23 is an active research project exploring a *more secure, modular, and easy to
    - [x] Test Runner & Testing against WASM specification
    - [x] Kernel Backtraces
    - [ ] Proper Error Handling
-   - [ ] KASLR (Kernel Address Space Layout Randomization)
+   - [x] KASLR (Kernel Address Space Layout Randomization)
 - **Phase 1 - WASM Features**
    - [ ] Guest memory management
    - [ ] Executing WASM
