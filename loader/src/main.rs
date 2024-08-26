@@ -88,7 +88,6 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     let mut rand = kaslr::init(&machine_info);
 
     // TODO crate allocation plan for payload, stacks, TLS & physical memory
-
     let physmem_off = VirtualAddress::new(0xffff_ffd8_0000_0000);
 
     // Move the FDT to a safe location, so we don't accidentally overwrite it
