@@ -258,15 +258,6 @@ fn default_hook(info: &PanicHookInfo<'_>) {
     let msg = payload_as_str(info.payload());
 
     log::error!("hart panicked at {location}:\n{msg}");
-
-    #[cfg(feature = "backtrace")]
-    unsafe {
-        backtrace::trace_unsynchronized(|frame| {
-            log::error!("{:?}", frame);
-
-            true
-        });
-    }
 }
 
 fn payload_as_str(payload: &dyn Any) -> &str {
