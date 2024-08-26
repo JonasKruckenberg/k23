@@ -45,6 +45,9 @@ pub trait FrameAllocator<M: crate::Mode> {
     /// Information about the number of physical frames used, and available
     fn frame_usage(&self) -> FrameUsage;
 
+    /// Converts a physical address to a virtual address
+    fn phys_to_virt(&self, phys: PhysicalAddress) -> crate::VirtualAddress;
+
     /// Allocates a frame and zeroes it.
     ///
     /// # Errors
@@ -52,10 +55,11 @@ pub trait FrameAllocator<M: crate::Mode> {
     /// Returns an error if the frame cannot be allocated.
     fn allocate_frame_zeroed(&mut self) -> crate::Result<PhysicalAddress> {
         let page_phys = self.allocate_frames(1)?;
-        let page_virt = M::phys_to_virt(page_phys);
+        let page_virt = self.phys_to_virt(page_phys);
         zero_frames::<M>(page_virt.as_raw() as *mut u64, 1);
         Ok(page_phys)
     }
+
     /// Allocates a number of frames and zero them.
     ///
     /// # Errors
@@ -63,7 +67,7 @@ pub trait FrameAllocator<M: crate::Mode> {
     /// Returns an error if the frames cannot be allocated.
     fn allocate_frames_zeroed(&mut self, frames: usize) -> crate::Result<PhysicalAddress> {
         let page_phys = self.allocate_frames(frames)?;
-        let page_virt = M::phys_to_virt(page_phys);
+        let page_virt = self.phys_to_virt(page_phys);
         zero_frames::<M>(page_virt.as_raw() as *mut u64, frames);
         Ok(page_phys)
     }

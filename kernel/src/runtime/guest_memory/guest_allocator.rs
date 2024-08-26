@@ -47,11 +47,14 @@ pub struct GuestAllocatorInner {
 }
 
 impl GuestAllocator {
-    pub unsafe fn new_in_kernel_space(virt_offset: VirtualAddress) -> Result<Self, AllocError> {
+    pub unsafe fn new_in_kernel_space(
+        virt_offset: VirtualAddress,
+        physmem_off: VirtualAddress,
+    ) -> Result<Self, AllocError> {
         let root_table = kconfig::MEMORY_MODE::get_active_table(0);
 
         let mut inner = GuestAllocatorInner {
-            root_table: kconfig::MEMORY_MODE::phys_to_virt(root_table),
+            root_table: physmem_off.add(root_table.as_raw()),
             asid: 0,
             inner: Heap::empty(),
             virt: virt_offset..virt_offset,

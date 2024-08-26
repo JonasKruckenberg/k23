@@ -16,7 +16,7 @@ mod tests;
 
 use loader_api::BootInfo;
 
-pub fn kmain(_hartid: usize, _boot_info: &'static BootInfo) -> ! {
+pub fn kmain(_hartid: usize, boot_info: &'static BootInfo) -> ! {
     // Eventually this will all be hidden behind other abstractions (the scheduler, etc.) and this
     // function will just jump into the scheduling loop
 
@@ -35,7 +35,7 @@ pub fn kmain(_hartid: usize, _boot_info: &'static BootInfo) -> ! {
 
     let engine = Engine::new(target_isa);
 
-    let mut store = Store::new(0);
+    let mut store = Store::new(0, boot_info.physical_memory_offset);
 
     let module = Module::from_binary(&engine, &store, wasm);
     log::debug!("{module:#?}");
