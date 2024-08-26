@@ -2,7 +2,7 @@ use core::slice;
 // use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use crate::error::Error;
 use crate::kconfig;
-use kmm::{BumpAllocator, FrameAllocator, INIT};
+use kmm::{BumpAllocator, FrameAllocator};
 use loader_api::LoaderConfig;
 use object::{Object, ObjectSection};
 
@@ -35,7 +35,7 @@ impl<'a> Payload<'a> {
 
     pub fn from_compressed(
         compressed: &'a [u8],
-        alloc: &mut BumpAllocator<'_, INIT<kconfig::MEMORY_MODE>>,
+        alloc: &mut BumpAllocator<'_, kconfig::MEMORY_MODE>,
     ) -> crate::Result<Self> {
         log::info!("Decompressing payload...");
         let (uncompressed_size, input) =

@@ -4,15 +4,16 @@ use crate::payload::Payload;
 use core::mem::MaybeUninit;
 use core::ops::Div;
 use core::slice;
-use kmm::{BumpAllocator, FrameAllocator, Mode, PhysicalAddress, VirtualAddress, INIT};
+use kmm::{BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress};
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
 
 pub fn init_boot_info(
-    alloc: &mut BumpAllocator<INIT<kconfig::MEMORY_MODE>>,
+    alloc: &mut BumpAllocator<kconfig::MEMORY_MODE>,
     boot_hart: usize,
     page_table_result: &PageTableResult,
     fdt_virt: VirtualAddress,
     payload: &Payload,
+    physmem_off: VirtualAddress,
 ) -> crate::Result<&'static BootInfo> {
     let frame = alloc.allocate_frame()?;
 
@@ -21,16 +22,14 @@ pub fn init_boot_info(
     // memory_regions: &'static mut [MemoryRegion] is a reference to physical memory, but going forward
     // we need it to be a reference to virtual memory.
     let memory_regions = unsafe {
-        let ptr = memory_regions
-            .as_mut_ptr()
-            .byte_add(kconfig::MEMORY_MODE::PHYS_OFFSET);
+        let ptr = memory_regions.as_mut_ptr().byte_add(physmem_off.as_raw());
         slice::from_raw_parts_mut(ptr, memory_regions.len())
     };
 
     let boot_info = unsafe { &mut *(frame.as_raw() as *mut MaybeUninit<BootInfo>) };
     let boot_info = boot_info.write(BootInfo::new(
         boot_hart,
-        VirtualAddress::new(kconfig::MEMORY_MODE::PHYS_OFFSET),
+        physmem_off,
         memory_regions,
         page_table_result
             .maybe_tls_allocation
@@ -47,11 +46,11 @@ pub fn init_boot_info(
     ));
 
     // lastly, do the physical ptr -> virtual ptr translation
-    Ok(unsafe { phys_to_virt_ref(boot_info) })
+    Ok(unsafe { phys_to_virt_ref(physmem_off, boot_info) })
 }
 
 fn init_boot_info_memory_regions(
-    alloc: &BumpAllocator<INIT<kconfig::MEMORY_MODE>>,
+    alloc: &BumpAllocator<kconfig::MEMORY_MODE>,
     frame: PhysicalAddress,
 ) -> &'static mut [MemoryRegion] {
     // first we need to calculate total slice of regions we could fit in the frame
@@ -87,8 +86,8 @@ fn init_boot_info_memory_regions(
     unsafe { MaybeUninit::slice_assume_init_mut(&mut raw_regions[0..next_region]) }
 }
 
-unsafe fn phys_to_virt_ref<T>(phys: &T) -> &T {
-    let ptr = (phys as *const T).byte_add(kconfig::MEMORY_MODE::PHYS_OFFSET);
+unsafe fn phys_to_virt_ref<T>(physmem_off: VirtualAddress, phys: &T) -> &T {
+    let ptr = (phys as *const T).byte_add(physmem_off.as_raw());
 
     &*ptr
 }

@@ -26,9 +26,7 @@ use core::ptr::addr_of;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{ptr, slice};
 use error::Error;
-use kmm::{
-    AddressRangeExt, BumpAllocator, FrameAllocator, Mode, PhysicalAddress, VirtualAddress, INIT,
-};
+use kmm::{AddressRangeExt, BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress};
 use linked_list_allocator::LockedHeap;
 use loader_api::BootInfo;
 
@@ -46,7 +44,13 @@ fn main(hartid: usize) -> ! {
         .expect("failed to initialize system");
 
     log::debug!("Activating page table for hart {hartid}...");
-    page_table_result.activate_table();
+    // SAFETY: This will invalidate all pointers and references that aren't on the loader stack
+    // (the FDT slice and importantly the frame allocator) so care has to be taken to either
+    // not access these anymore (which should be easy, this is one of the last steps we perform before hading off
+    // to the payload) or to map them into virtual memory first!
+    unsafe {
+        page_table_result.activate_table();
+    }
 
     log::debug!("Initializing TLS region for hart {hartid}...");
     page_table_result.init_tls_region_for_hart(hartid);
@@ -72,16 +76,24 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     log::trace!("{loader_regions:?}");
 
     // init frame allocator
-    let mut frame_alloc: BumpAllocator<INIT<kconfig::MEMORY_MODE>> = unsafe {
-        BumpAllocator::new_with_lower_bound(&machine_info.memories, loader_regions.read_write.end)
+    let mut frame_alloc: BumpAllocator<kconfig::MEMORY_MODE> = unsafe {
+        BumpAllocator::new_with_lower_bound(
+            &machine_info.memories,
+            loader_regions.read_write.end,
+            VirtualAddress::default(), // while we haven't activated the virtual memory we have not offset
+        )
     };
 
     #[cfg(feature = "kaslr")]
     let mut rand = kaslr::init(&machine_info);
 
+    // TODO crate allocation plan for payload, stacks, TLS & physical memory
+
+    let physmem_off = VirtualAddress::new(0xffff_ffd8_0000_0000);
+
     // Move the FDT to a safe location, so we don't accidentally overwrite it
     log::trace!("copying FDT to safe location...");
-    let fdt_virt = allocate_and_copy_fdt(machine_info, &mut frame_alloc)?;
+    let fdt_virt = allocate_and_copy_fdt(machine_info, &mut frame_alloc, physmem_off)?;
 
     // init heap allocator
     init_global_allocator(machine_info);
@@ -92,7 +104,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
 
     log::trace!("initializing page tables...");
     #[allow(unused_mut)]
-    let mut builder = PageTableBuilder::from_alloc(&mut frame_alloc)?;
+    let mut builder = PageTableBuilder::from_alloc(&mut frame_alloc, physmem_off)?;
 
     #[cfg(feature = "kaslr")]
     {
@@ -115,6 +127,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         &page_table_result,
         fdt_virt,
         &payload,
+        physmem_off,
     )?;
 
     Ok((page_table_result, boot_info))
@@ -128,7 +141,8 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
 /// Returns an error if allocation fails.
 pub fn allocate_and_copy_fdt(
     machine_info: &MachineInfo,
-    alloc: &mut BumpAllocator<INIT<kconfig::MEMORY_MODE>>,
+    alloc: &mut BumpAllocator<kconfig::MEMORY_MODE>,
+    physmem_off: VirtualAddress,
 ) -> Result<VirtualAddress> {
     let frames = machine_info.fdt.len().div_ceil(kconfig::PAGE_SIZE);
     let base = alloc.allocate_frames(frames)?;
@@ -139,7 +153,7 @@ pub fn allocate_and_copy_fdt(
         ptr::copy_nonoverlapping(machine_info.fdt.as_ptr(), dst.as_mut_ptr(), dst.len());
     }
 
-    Ok(kconfig::MEMORY_MODE::phys_to_virt(base))
+    Ok(physmem_off.add(base.as_raw()))
 }
 
 fn init_global_allocator(machine_info: &MachineInfo) {

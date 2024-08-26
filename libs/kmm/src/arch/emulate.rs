@@ -62,8 +62,6 @@ impl EmulateMode {
 impl Mode for EmulateMode {
     type EntryFlags = EmulateEntryFlags;
 
-    const PHYS_OFFSET: usize = 0xffff_ffd8_0000_0000;
-
     const PAGE_SIZE: usize = 4096;
 
     const PAGE_TABLE_LEVELS: usize = 2; // L0, L1, L2
@@ -99,9 +97,5 @@ impl Mode for EmulateMode {
         entry
             .get_flags()
             .intersects(EmulateEntryFlags::READ | EmulateEntryFlags::EXECUTE)
-    }
-
-    fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-        VirtualAddress::new(phys.as_raw())
     }
 }

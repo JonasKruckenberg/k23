@@ -9,6 +9,13 @@ use kmm::VirtualAddress;
 use loader_api::BootInfo;
 use sync::OnceLock;
 
+static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
+static RAW_MACHINE_INFO: AtomicPtr<u8> = AtomicPtr::new(ptr::null_mut());
+
+pub fn machine_info() -> &'static MachineInfo<'static> {
+    MACHINE_INFO.get().expect("MachineInfo not initialized")
+}
+
 /// The main entry point for the loader
 ///
 /// This sets up the global and stack pointer, as well as filling the stack with a known debug pattern.
@@ -95,13 +102,6 @@ unsafe extern "C" fn fillstack() {
         "ret",
         options(noreturn)
     )
-}
-
-static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
-static RAW_MACHINE_INFO: AtomicPtr<u8> = AtomicPtr::new(ptr::null_mut());
-
-pub fn machine_info() -> &'static MachineInfo<'static> {
-    MACHINE_INFO.get().expect("MachineInfo not initialized")
 }
 
 pub unsafe fn switch_to_payload(
