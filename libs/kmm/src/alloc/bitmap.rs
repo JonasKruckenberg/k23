@@ -1,9 +1,11 @@
 use crate::alloc::{BumpAllocator, FrameAllocator, FrameUsage};
-use crate::{zero_frames, AddressRangeExt, Error, Mode, PhysicalAddress, VirtualAddress};
+use crate::{
+    phys_to_virt, zero_frames, AddressRangeExt, Error, Mode, PhysicalAddress, VirtualAddress,
+};
+use core::fmt;
 use core::fmt::Formatter;
 use core::marker::PhantomData;
 use core::ops::Range;
-use core::{fmt, mem};
 
 struct TableEntry<M> {
     /// The region of physical memory this table entry manages
@@ -32,19 +34,19 @@ impl<M: Mode> TableEntry<M> {
         region_size >> M::PAGE_SHIFT
     }
 
-    pub fn is_page_used(&self, page: usize) -> bool {
+    pub fn is_page_used(&self, page: usize, physmem_off: VirtualAddress) -> bool {
         let phys = self.region.start.add(page / 8);
         let bits = unsafe {
-            let virt = M::phys_to_virt(phys);
+            let virt = phys_to_virt(physmem_off, phys);
             *(virt.0 as *const u8)
         };
         bits & (1 << (page % 8)) != 0
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    pub fn mark_page_as_used(&mut self, page: usize) {
+    pub fn mark_page_as_used(&mut self, page: usize, physmem_off: VirtualAddress) {
         let phys = self.region.start.add(page / 8);
-        let virt = M::phys_to_virt(phys);
+        let virt = phys_to_virt(physmem_off, phys);
 
         unsafe {
             let bits = core::ptr::read_volatile(virt.0 as *const u8);
@@ -53,10 +55,10 @@ impl<M: Mode> TableEntry<M> {
     }
 
     #[allow(clippy::cast_possible_truncation)]
-    pub fn mark_page_as_free(&mut self, page: usize) {
+    pub fn mark_page_as_free(&mut self, page: usize, physmem_off: VirtualAddress) {
         let phys = self.region.start.add(page / 8);
         unsafe {
-            let virt = M::phys_to_virt(phys);
+            let virt = phys_to_virt(physmem_off, phys);
             let bits = core::ptr::read_volatile(virt.0 as *const u8);
             core::ptr::write_volatile(virt.0 as *mut u8, bits & !(1 << (page as u8 % 8)));
         }
@@ -75,11 +77,12 @@ impl<M: Mode> TableEntry<M> {
 pub struct BitMapAllocator<A> {
     /// The base address of the allocation table
     table_virt: VirtualAddress,
+    physmem_off: VirtualAddress,
     _m: PhantomData<A>,
 }
 
 impl<M: Mode> BitMapAllocator<M> {
-    const NUM_ENTRIES: usize = M::PAGE_SIZE / mem::size_of::<TableEntry<M>>();
+    const NUM_ENTRIES: usize = M::PAGE_SIZE / size_of::<TableEntry<M>>();
 
     fn entries_mut(&mut self) -> &mut [TableEntry<M>] {
         unsafe {
@@ -105,12 +108,15 @@ impl<M: Mode> BitMapAllocator<M> {
     ///
     /// Returns an error if the backing table could not be allocated.
     pub fn new(mut bump_allocator: BumpAllocator<M>) -> crate::Result<Self> {
+        let physmem_off = bump_allocator.physmem_off;
+
         // allocate a frame to hold the table
         let table_phys = bump_allocator.allocate_frame_zeroed()?;
-        let table_virt = M::phys_to_virt(table_phys);
+        let table_virt = phys_to_virt(physmem_off, table_phys);
 
         let mut this = Self {
             table_virt,
+            physmem_off,
             _m: PhantomData,
         };
 
@@ -148,33 +154,17 @@ impl<M: Mode> BitMapAllocator<M> {
                 }
             }
         }
-        // for region in bump_allocator.free_regions() {
-        //     for entry in this.entries_mut() {
-        //         if entry.region.end.0 == entry.region.start.0 {
-        //             // Create new entry
-        //             entry.region = region.clone();
-        //             break;
-        //         } else if region.end == entry.region.start {
-        //             // Combine entry at start
-        //             entry.region.start = region.start;
-        //             break;
-        //         } else if region.start == entry.region.end {
-        //             entry.region.end = region.end;
-        //             break;
-        //         }
-        //     }
-        // }
 
         log::trace!("mark entries...");
         for entry in this.entries_mut() {
             let usage_map_pages = entry.usage_map_pages();
 
             for page in 0..usage_map_pages {
-                entry.mark_page_as_used(page);
+                entry.mark_page_as_used(page, physmem_off);
             }
 
             if usage_map_pages > 0 {
-                let addr = M::phys_to_virt(entry.region.start);
+                let addr = phys_to_virt(physmem_off, entry.region.start);
                 zero_frames::<M>(addr.as_raw() as *mut u64, usage_map_pages);
             }
 
@@ -194,10 +184,12 @@ impl<M: Mode> BitMapAllocator<M> {
 
 impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
     fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
+        let physical_memory_offset = self.physmem_off;
+
         for entry in self.entries_mut() {
             for page in entry.skip..entry.pages() {
-                if !entry.is_page_used(page) {
-                    entry.mark_page_as_used(page);
+                if !entry.is_page_used(page, physical_memory_offset) {
+                    entry.mark_page_as_used(page, physical_memory_offset);
                     entry.skip = page;
                     entry.used += 1;
 
@@ -210,13 +202,15 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
     }
 
     fn allocate_frames(&mut self, num_frames: usize) -> crate::Result<PhysicalAddress> {
+        let physmem_off = self.physmem_off;
+
         for entry in self.entries_mut() {
             // find a consecutive run of free pages
             let mut free_page = entry.skip;
             let mut free_len = 0;
 
             for page in entry.skip..entry.pages() {
-                if entry.is_page_used(page) {
+                if entry.is_page_used(page, physmem_off) {
                     free_page = page + 1;
                     free_len = 0;
                 } else {
@@ -224,7 +218,7 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
 
                     if free_len == num_frames {
                         for page in free_page..free_page + free_len {
-                            entry.mark_page_as_used(page);
+                            entry.mark_page_as_used(page, physmem_off);
                         }
 
                         if entry.skip == free_page {
@@ -242,13 +236,15 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
     }
 
     fn deallocate_frames(&mut self, base: PhysicalAddress, num_frames: usize) -> crate::Result<()> {
+        let physmem_off = self.physmem_off;
+
         for entry in self.entries_mut() {
             if base >= entry.region.start && base.add(num_frames * M::PAGE_SIZE) <= entry.region.end
             {
                 let start_page = (base.0 - entry.region.start.0) >> M::PAGE_SHIFT;
 
                 for page in start_page..start_page + num_frames {
-                    if entry.is_page_used(page) {
+                    if entry.is_page_used(page, physmem_off) {
                         // Update skip if necessary
                         if page < entry.skip {
                             entry.skip = page;
@@ -257,7 +253,7 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
                         // Update used page count
                         entry.used -= 1;
 
-                        entry.mark_page_as_free(page);
+                        entry.mark_page_as_free(page, physmem_off);
                     } else {
                         return Err(Error::DoubleFree(
                             entry.region.start.add(page << M::PAGE_SHIFT),
@@ -283,18 +279,26 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
 
         FrameUsage { used, total }
     }
+
+    fn phys_to_virt(&self, phys: PhysicalAddress) -> VirtualAddress {
+        self.physmem_off.add(phys.0)
+    }
 }
 
 #[cfg(test)]
 mod test {
     use crate::{
         BitMapAllocator, BumpAllocator, EmulateMode, Error, FrameAllocator, Mode, PhysicalAddress,
+        VirtualAddress,
     };
 
     #[test]
     fn single_region_single_frame() -> Result<(), Error> {
         let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE)])
+            BumpAllocator::new(
+                &[PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE)],
+                VirtualAddress::default(),
+            )
         };
         let mut alloc = BitMapAllocator::new(bump_alloc)?;
 
@@ -310,7 +314,10 @@ mod test {
     #[test]
     fn single_region_multi_frame() -> Result<(), Error> {
         let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(&[PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE)])
+            BumpAllocator::new(
+                &[PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE)],
+                VirtualAddress::default(),
+            )
         };
         let mut alloc = BitMapAllocator::new(bump_alloc)?;
 
@@ -324,11 +331,14 @@ mod test {
     #[test]
     fn multi_region_single_frame() -> Result<(), Error> {
         let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(&[
-                PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
-                PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
-                    ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
-            ])
+            BumpAllocator::new(
+                &[
+                    PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
+                    PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
+                        ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
+                ],
+                VirtualAddress::default(),
+            )
         };
         let mut alloc = BitMapAllocator::new(bump_alloc)?;
 
@@ -347,11 +357,14 @@ mod test {
     #[test]
     fn multi_region_multi_frame() -> Result<(), Error> {
         let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(&[
-                PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
-                PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
-                    ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
-            ])
+            BumpAllocator::new(
+                &[
+                    PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
+                    PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
+                        ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
+                ],
+                VirtualAddress::default(),
+            )
         };
         let mut alloc = BitMapAllocator::new(bump_alloc)?;
 
@@ -368,11 +381,14 @@ mod test {
     #[test]
     fn multi_region_multi_frame2() -> Result<(), Error> {
         let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(&[
-                PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
-                PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
-                    ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
-            ])
+            BumpAllocator::new(
+                &[
+                    PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
+                    PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
+                        ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
+                ],
+                VirtualAddress::default(),
+            )
         };
         let mut alloc = BitMapAllocator::new(bump_alloc)?;
 
