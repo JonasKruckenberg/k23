@@ -1,6 +1,6 @@
 use crate::machine_info::MachineInfo;
 use crate::payload::Payload;
-use crate::{kconfig, LoaderRegions, UsedTLEs};
+use crate::{kconfig, LoaderRegions, UsedTLPs};
 use core::ops::Range;
 use core::{ptr, slice};
 use kmm::{
@@ -15,7 +15,7 @@ pub struct PageTableBuilder<'a> {
     mapper: Mapper<'a, kconfig::MEMORY_MODE>,
     flush: Flush<kconfig::MEMORY_MODE>,
 
-    used_entries: &'a mut UsedTLEs,
+    used_tlps: &'a mut UsedTLPs,
 
     result: PageTableResult,
 }
@@ -24,13 +24,13 @@ impl<'a> PageTableBuilder<'a> {
     pub fn from_alloc(
         frame_allocator: &'a mut BumpAllocator<'_, kconfig::MEMORY_MODE>,
         physical_memory_offset: VirtualAddress,
-        used_entries: &'a mut UsedTLEs,
+        used_entries: &'a mut UsedTLPs,
     ) -> crate::Result<Self> {
         let mapper = Mapper::new(0, frame_allocator)?;
 
         Ok(Self {
             physical_memory_offset,
-            used_entries,
+            used_tlps: used_entries,
 
             result: PageTableResult {
                 page_table_addr: mapper.root_table().addr(),
@@ -58,7 +58,7 @@ impl<'a> PageTableBuilder<'a> {
         let mem_size = payload.mem_size() as usize;
         let align = payload.align() as usize;
 
-        let payload_image_offset = self.used_entries.get_free_range(mem_size, align).start;
+        let payload_image_offset = self.used_tlps.get_free_range(mem_size, align).start;
         let maybe_tls_template = self
             .mapper
             .elf(payload_image_offset)
@@ -103,7 +103,7 @@ impl<'a> PageTableBuilder<'a> {
             start..start.add(size)
         };
 
-        let virt = self.used_entries.get_free_range(size, kconfig::PAGE_SIZE);
+        let virt = self.used_tlps.get_free_range(size, kconfig::PAGE_SIZE);
 
         log::trace!("Mapping TLS region {:?} => {:?}...", virt, phys);
         self.mapper.map_range(
@@ -137,7 +137,7 @@ impl<'a> PageTableBuilder<'a> {
             start..start.add(stack_size_page * kconfig::PAGE_SIZE * machine_info.cpus)
         };
 
-        let stacks_virt = self.used_entries.get_free_range(
+        let stacks_virt = self.used_tlps.get_free_range(
             stack_size_page * kconfig::PAGE_SIZE * machine_info.cpus,
             kconfig::PAGE_SIZE,
         );
@@ -157,7 +157,7 @@ impl<'a> PageTableBuilder<'a> {
 
     fn map_payload_heap(mut self, heap_size_pages: usize) -> crate::Result<Self> {
         self.result.heap_virt = Some(
-            self.used_entries
+            self.used_tlps
                 .get_free_range(heap_size_pages * kconfig::PAGE_SIZE, kconfig::PAGE_SIZE),
         );
         log::trace!("Reserved heap region {:?}", self.result.heap_virt);

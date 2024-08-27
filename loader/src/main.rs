@@ -14,13 +14,13 @@ mod kconfig;
 mod machine_info;
 mod paging;
 mod payload;
-mod used_tles;
+mod used_tlps;
 
 use crate::boot_info::init_boot_info;
 use crate::machine_info::MachineInfo;
 use crate::paging::{PageTableBuilder, PageTableResult};
 use crate::payload::Payload;
-use crate::used_tles::UsedTLEs;
+use crate::used_tlps::UsedTLPs;
 use core::ops::Range;
 use core::ptr::addr_of;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -86,7 +86,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         )
     };
 
-    let mut used = UsedTLEs::new(ChaCha20Rng::from_seed(
+    let mut used = UsedTLPs::new(ChaCha20Rng::from_seed(
         machine_info.rng_seed.unwrap()[0..32].try_into().unwrap(),
     ));
 
@@ -123,7 +123,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         &page_table_result,
         fdt_offset,
         &payload,
-        physical_memory_offset
+        physical_memory_offset,
     )?;
 
     Ok((page_table_result, boot_info))
