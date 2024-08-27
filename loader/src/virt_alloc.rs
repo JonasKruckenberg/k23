@@ -6,7 +6,7 @@ use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
 
 #[derive(Debug)]
-pub struct UsedTLPs {
+pub struct VirtAllocator {
     /// Whether a top-level page is in use by the kernel.
     page_state: [bool; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
     /// A random number generator that should be used to generate random addresses or
@@ -14,7 +14,7 @@ pub struct UsedTLPs {
     rng: Option<ChaCha20Rng>,
 }
 
-impl UsedTLPs {
+impl VirtAllocator {
     pub fn new(rng: ChaCha20Rng) -> Self {
         let mut this = Self {
             page_state: [false; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
@@ -24,7 +24,7 @@ impl UsedTLPs {
         this
     }
 
-    pub fn get_free_pages(&mut self, num_pages: usize) -> usize {
+    pub fn reserve_pages(&mut self, num_pages: usize) -> usize {
         // find a consecutive range of `num` entries that are not used
         let mut free_pages = self
             .page_state
@@ -55,7 +55,7 @@ impl UsedTLPs {
         }
     }
 
-    pub fn get_free_range(&mut self, size: usize, alignment: usize) -> Range<VirtualAddress> {
+    pub fn reserve_range(&mut self, size: usize, alignment: usize) -> Range<VirtualAddress> {
         assert!(alignment.is_power_of_two());
 
         const TOP_LEVEL_PAGE_SIZE: usize = kconfig::PAGE_SIZE
@@ -64,7 +64,7 @@ impl UsedTLPs {
 
         // how many top-level pages are needed to map `size` bytes
         // and attempt to allocate them
-        let page_idx = self.get_free_pages(size.div_ceil(TOP_LEVEL_PAGE_SIZE));
+        let page_idx = self.reserve_pages(size.div_ceil(TOP_LEVEL_PAGE_SIZE));
 
         // calculate the base address of the page
         //

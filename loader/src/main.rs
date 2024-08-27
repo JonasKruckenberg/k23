@@ -14,13 +14,13 @@ mod kconfig;
 mod machine_info;
 mod paging;
 mod payload;
-mod used_tlps;
+mod virt_alloc;
 
 use crate::boot_info::init_boot_info;
 use crate::machine_info::MachineInfo;
 use crate::paging::{PageTableBuilder, PageTableResult};
 use crate::payload::Payload;
-use crate::used_tlps::UsedTLPs;
+use crate::virt_alloc::VirtAllocator;
 use core::ops::Range;
 use core::ptr::addr_of;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -86,12 +86,12 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         )
     };
 
-    let mut used = UsedTLPs::new(ChaCha20Rng::from_seed(
+    let mut virt_alloc = VirtAllocator::new(ChaCha20Rng::from_seed(
         machine_info.rng_seed.unwrap()[0..32].try_into().unwrap(),
     ));
 
-    let physical_memory_offset = used
-        .get_free_range(machine_info.memory_hull().size(), kconfig::PAGE_SIZE)
+    let physical_memory_offset = virt_alloc
+        .reserve_range(machine_info.memory_hull().size(), kconfig::PAGE_SIZE)
         .start;
 
     // Move the FDT to a safe location, so we don't accidentally overwrite it
@@ -107,7 +107,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
 
     log::trace!("initializing page tables...");
     let page_table_result =
-        PageTableBuilder::from_alloc(&mut frame_alloc, physical_memory_offset, &mut used)?
+        PageTableBuilder::from_alloc(&mut frame_alloc, physical_memory_offset, &mut virt_alloc)?
             .map_payload(&payload, machine_info)?
             .map_physical_memory(machine_info)?
             .identity_map_loader(&loader_regions)?
