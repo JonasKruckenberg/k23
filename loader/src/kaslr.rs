@@ -11,8 +11,12 @@ pub fn init(machine_info: &MachineInfo) -> ChaChaRng {
     ChaChaRng::from_seed(seed.try_into().unwrap())
 }
 
-pub fn random_offset_for_payload(rand: &mut ChaChaRng, payload: &Payload) -> VirtualAddress {
-    let start = kconfig::MEMORY_MODE::PHYS_OFFSET as u64;
+pub fn random_offset_for_payload(
+    rand: &mut ChaChaRng,
+    physmem_off: VirtualAddress,
+    payload: &Payload,
+) -> VirtualAddress {
+    let start = physmem_off.as_raw() as u64;
     let stop = u64::MAX - payload.mem_size();
     log::trace!("sampling between {start:#x}..{stop:#x}",);
 
