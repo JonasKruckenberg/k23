@@ -1,10 +1,11 @@
 use crate::{allocator, arch, frame_alloc, kconfig};
-use kmm::{BitMapAllocator, Flush, Mapper};
+use core::ops::Range;
+use kmm::{BitMapAllocator, Flush, Mapper, VirtualAddress};
 use loader_api::{BootInfo, LoaderConfig};
 
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = LoaderConfig::new_default();
-    cfg.kernel_stack_size_pages = 256;
+    cfg.kernel_stack_size_pages = kconfig::STACK_SIZE_PAGES;
     cfg
 };
 
@@ -49,8 +50,8 @@ fn init_global(boot_info: &'static BootInfo) {
 
     log::debug!("initializing frame alloc...");
     frame_alloc::init(boot_info, |alloc| -> Result<(), kmm::Error> {
-        log::debug!("Unmapping loader region {:?}...", boot_info.loader_virt);
-        unmap_loader(alloc, boot_info)?;
+        log::debug!("Unmapping loader region {:?}...", boot_info.loader_region);
+        unmap_loader(alloc, boot_info.loader_region.clone())?;
 
         log::debug!("Setting up kernel heap...");
         allocator::init(alloc, boot_info)?;
@@ -64,13 +65,13 @@ fn init_global(boot_info: &'static BootInfo) {
 
 fn unmap_loader(
     alloc: &mut BitMapAllocator<kconfig::MEMORY_MODE>,
-    boot_info: &BootInfo,
+    loader_region: Range<VirtualAddress>,
 ) -> Result<(), kmm::Error> {
     let mut mapper: Mapper<kconfig::MEMORY_MODE> = Mapper::from_active(0, alloc);
     let mut flush = Flush::empty(0);
 
     // Unmap the loader regions
-    mapper.unmap_forget_range(boot_info.loader_virt.clone(), &mut flush)?;
+    mapper.unmap_forget_range(loader_region, &mut flush)?;
 
     flush.flush()?;
 

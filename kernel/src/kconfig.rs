@@ -17,7 +17,7 @@ const fn parse_log_lvl(s: &str) -> log::Level {
 
 /// The size of the stack in pages
 #[kconfig_declare::symbol("kernel.stack-size-pages")]
-pub const STACK_SIZE_PAGES: usize = 128;
+pub const STACK_SIZE_PAGES: u32 = 128;
 
 /// The size of the trap handler stack in pages
 #[kconfig_declare::symbol("kernel.trap-stack-size-pages")]

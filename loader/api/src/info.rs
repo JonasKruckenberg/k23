@@ -7,6 +7,19 @@ use kmm::{PhysicalAddress, VirtualAddress};
 pub struct BootInfo {
     /// The hart that booted the machine, for debugging purposes
     pub boot_hart: usize,
+    /// A map of the physical memory regions of the underlying machine.
+    ///
+    /// The bootloader queries this information from the BIOS/UEFI firmware and translates this
+    /// information to Rust types. It also marks any memory regions that the bootloader uses in
+    /// the memory map before passing it to the kernel. Regions marked as usable can be freely
+    /// used by the kernel.
+    pub memory_regions: &'static mut [MemoryRegion],
+    /// The thread local storage (TLS) template of the kernel executable, if present.
+    ///
+    /// Note that the loader will already set up TLS regions for each hart reported as `online`
+    /// by the previous stage bootloader, so this field is rarely needed. Only when the payload
+    /// has ways to bring new harts online after booting, this field is useful.
+    pub tls_template: Option<kmm::TlsTemplate>,
     /// The virtual address at which the mapping of the physical memory starts.
     ///
     /// Physical addresses can be converted to virtual addresses by adding this offset to them.
@@ -16,23 +29,26 @@ pub struct BootInfo {
     /// cause undefined behavior. Only frames reported as `USABLE` by the memory map in the `BootInfo`
     /// can be safely accessed.
     pub physical_memory_offset: VirtualAddress,
-    /// A map of the physical memory regions of the underlying machine.
+    /// Virtual address of the flattened device tree.
+    pub fdt_offset: VirtualAddress,
+    /// Virtual memory region occupied by the loader.
     ///
-    /// The bootloader queries this information from the BIOS/UEFI firmware and translates this
-    /// information to Rust types. It also marks any memory regions that the bootloader uses in
-    /// the memory map before passing it to the kernel. Regions marked as usable can be freely
-    /// used by the kernel.
-    pub memory_regions: &'static mut [MemoryRegion],
-    /// The thread local storage (TLS) template of the kernel executable, if present.
-    pub tls_template: Option<kmm::TlsTemplate>,
-    /// Address of the flattened device tree
-    pub fdt_virt: VirtualAddress,
-    /// The virtual memory occupied by the bootloader.
-    pub loader_virt: Range<VirtualAddress>,
-    /// The physical memory occupied by the payload elf.
-    pub payload_phys: Range<PhysicalAddress>,
     /// The range of addresses that the kernel can freely allocate from.
     pub free_virt: Range<VirtualAddress>,
+    /// This region is identity-mapped contains the loader executable.
+    ///
+    /// This is necessary for Risc-V since there is no way for an S-mode loader to atomically
+    /// enable paging and jump. The loader must therefore identity-map itself, enable paging and
+    /// then jump to the payload.
+    ///
+    /// The payload should use this information to unmap the loader region after taking control.
+    pub loader_region: Range<VirtualAddress>,
+    /// Virtual memory region reserved & mapped for the payload heap.
+    pub heap_region: Option<Range<VirtualAddress>>,
+    /// Physical memory region where the payload ELF file resides.
+    ///
+    /// This field can be used by the payload to perform introspection of its own ELF file.
+    pub payload_elf: Range<PhysicalAddress>,
 }
 
 impl BootInfo {
@@ -42,20 +58,22 @@ impl BootInfo {
         physical_memory_offset: VirtualAddress,
         memory_regions: &'static mut [MemoryRegion],
         tls_template: Option<kmm::TlsTemplate>,
-        fdt_virt: VirtualAddress,
-        loader_virt: Range<VirtualAddress>,
         free_virt: Range<VirtualAddress>,
-        payload_phys: Range<PhysicalAddress>,
+        fdt_offset: VirtualAddress,
+        loader_region: Range<VirtualAddress>,
+        payload_elf: Range<PhysicalAddress>,
+        heap_region: Option<Range<VirtualAddress>>,
     ) -> Self {
         Self {
             boot_hart,
             physical_memory_offset,
             memory_regions,
             tls_template,
-            fdt_virt,
-            loader_virt,
             free_virt,
-            payload_phys,
+            fdt_offset,
+            loader_region,
+            payload_elf,
+            heap_region,
         }
     }
 }

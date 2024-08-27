@@ -7,10 +7,10 @@ const CFG_MAGIC: u32 = u32::from_le_bytes(*b"lcfg");
 #[repr(C)]
 pub struct LoaderConfig {
     magic: u32,
-    /// The size of the stack that the bootloader should allocate for the kernel (in pages).
+    /// The size of the stack that the loader should allocate for the kernel (in pages).
     ///
-    /// The bootloader starts the kernel with a valid stack pointer. This setting defines
-    /// the stack size that the bootloader should allocate and map.
+    /// The loader starts the kernel with a valid stack pointer. This setting defines
+    /// the stack size that the loader should allocate and map.
     ///
     /// The stack is created with an additional guard page, so a stack overflow will lead to
     /// a page fault.
@@ -28,7 +28,6 @@ impl LoaderConfig {
     pub const fn new_default() -> Self {
         Self {
             magic: CFG_MAGIC,
-            // mappings: Mappings::new_default(),
             kernel_stack_size_pages: 20,
             memory_mode: MemoryMode::new_default(),
         }

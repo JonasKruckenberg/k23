@@ -38,10 +38,10 @@ impl<'a> PageTableBuilder<'a> {
 
                 // set by the methods below
                 entry: VirtualAddress::default(),
-                stack_size: 0,
+                per_hart_stack_size: 0,
                 maybe_tls_allocation: None,
                 stacks_virt: Range::default(),
-                loader_virt: Range::default(),
+                loader_region: Range::default(),
             },
 
             mapper,
@@ -57,10 +57,10 @@ impl<'a> PageTableBuilder<'a> {
         let mem_size = payload.mem_size() as usize;
         let align = payload.align() as usize;
 
-        let elf_offset = self.used_entries.get_free_range(mem_size, align).start;
+        let payload_image_offset = self.used_entries.get_free_range(mem_size, align).start;
         let maybe_tls_template = self
             .mapper
-            .elf(elf_offset)
+            .elf(payload_image_offset)
             .map_elf_file(&payload.elf_file, &mut self.flush)?;
 
         // Allocate memory for TLS segments
@@ -72,8 +72,8 @@ impl<'a> PageTableBuilder<'a> {
         let stack_size_pages = usize::try_from(payload.loader_config.kernel_stack_size_pages)?;
         self = self.map_payload_stacks(machine_info, stack_size_pages)?;
 
-        self.result.entry = elf_offset.add(usize::try_from(payload.elf_file.entry())?);
-        self.result.stack_size = stack_size_pages * kconfig::PAGE_SIZE;
+        self.result.entry = payload_image_offset.add(usize::try_from(payload.elf_file.entry())?);
+        self.result.per_hart_stack_size = stack_size_pages * kconfig::PAGE_SIZE;
 
         Ok(self)
     }
@@ -115,7 +115,7 @@ impl<'a> PageTableBuilder<'a> {
     }
 
     // TODO add guard pages below each stack allocation
-    pub fn map_payload_stacks(
+    fn map_payload_stacks(
         mut self,
         machine_info: &MachineInfo,
         stack_size_page: usize,
@@ -143,6 +143,24 @@ impl<'a> PageTableBuilder<'a> {
         )?;
 
         self.result.stacks_virt = stacks_virt;
+
+        Ok(self)
+    }
+
+
+    pub fn map_physical_memory(mut self, machine_info: &MachineInfo) -> Result<Self, kmm::Error> {
+        for region_phys in &machine_info.memories {
+            let region_virt =
+                self.phys_to_virt(region_phys.start)..self.phys_to_virt(region_phys.end);
+
+            log::trace!("Mapping physical memory region {region_virt:?} => {region_phys:?}...");
+            self.mapper.map_range(
+                region_virt,
+                region_phys.clone(),
+                EntryFlags::READ | EntryFlags::WRITE,
+                &mut self.flush,
+            )?;
+        }
 
         Ok(self)
     }
@@ -182,25 +200,8 @@ impl<'a> PageTableBuilder<'a> {
             &mut self.flush,
         )?;
 
-        self.result.loader_virt = VirtualAddress::new(loader_regions.executable.start.as_raw())
+        self.result.loader_region = VirtualAddress::new(loader_regions.executable.start.as_raw())
             ..VirtualAddress::new(loader_regions.read_write.end.as_raw());
-
-        Ok(self)
-    }
-
-    pub fn map_physical_memory(mut self, machine_info: &MachineInfo) -> Result<Self, kmm::Error> {
-        for region_phys in &machine_info.memories {
-            let region_virt =
-                self.phys_to_virt(region_phys.start)..self.phys_to_virt(region_phys.end);
-
-            log::trace!("Mapping physical memory region {region_virt:?} => {region_phys:?}...");
-            self.mapper.map_range(
-                region_virt,
-                region_phys.clone(),
-                EntryFlags::READ | EntryFlags::WRITE,
-                &mut self.flush,
-            )?;
-        }
 
         Ok(self)
     }
@@ -236,18 +237,18 @@ pub struct PageTableResult {
     /// The range of addresses that may be used for dynamic allocations
     pub free_range_virt: Range<VirtualAddress>,
 
+    /// The entry point address of the payload
+    entry: VirtualAddress,
     /// Memory region allocated for payload TLS regions, as well as the template TLS to use for
     /// initializing them.
     pub maybe_tls_allocation: Option<TlsAllocation>,
     /// Memory region allocated for payload stacks
     pub stacks_virt: Range<VirtualAddress>,
     /// The size of each stack in bytes
-    stack_size: usize,
+    per_hart_stack_size: usize,
 
     /// Memory region allocated for loader itself
-    pub loader_virt: Range<VirtualAddress>,
-    /// The entry point address of the payload
-    entry: VirtualAddress,
+    pub loader_region: Range<VirtualAddress>,
 }
 
 impl PageTableResult {
@@ -256,9 +257,9 @@ impl PageTableResult {
     }
 
     pub fn stack_region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
-        let end = self.stacks_virt.end.sub(self.stack_size * hartid);
+        let end = self.stacks_virt.end.sub(self.per_hart_stack_size * hartid);
 
-        end.sub(self.stack_size)..end
+        end.sub(self.per_hart_stack_size)..end
     }
 
     pub fn tls_region_for_hart(&self, hartid: usize) -> Option<Range<VirtualAddress>> {

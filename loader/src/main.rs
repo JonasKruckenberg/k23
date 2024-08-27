@@ -90,11 +90,13 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         machine_info.rng_seed.unwrap()[0..32].try_into().unwrap(),
     ));
 
-    let physmem_virt = used.get_free_range(machine_info.memory_hull().size(), kconfig::PAGE_SIZE);
+    let physical_memory_offset = used
+        .get_free_range(machine_info.memory_hull().size(), kconfig::PAGE_SIZE)
+        .start;
 
     // Move the FDT to a safe location, so we don't accidentally overwrite it
     log::trace!("copying FDT to safe location...");
-    let fdt_virt = allocate_and_copy_fdt(machine_info, &mut frame_alloc, physmem_virt.start)?;
+    let fdt_offset = allocate_and_copy_fdt(machine_info, &mut frame_alloc, physical_memory_offset)?;
 
     // init heap allocator
     init_global_allocator(machine_info);
@@ -105,7 +107,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
 
     log::trace!("initializing page tables...");
     let page_table_result =
-        PageTableBuilder::from_alloc(&mut frame_alloc, physmem_virt.start, &mut used)?
+        PageTableBuilder::from_alloc(&mut frame_alloc, physical_memory_offset, &mut used)?
             .map_payload(&payload, machine_info)?
             .map_physical_memory(machine_info)?
             .identity_map_loader(&loader_regions)?
@@ -119,9 +121,9 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         &mut frame_alloc,
         hartid,
         &page_table_result,
-        fdt_virt,
+        fdt_offset,
         &payload,
-        physmem_virt.start,
+        physical_memory_offset
     )?;
 
     Ok((page_table_result, boot_info))
