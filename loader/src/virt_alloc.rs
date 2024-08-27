@@ -16,12 +16,10 @@ pub struct VirtAllocator {
 
 impl VirtAllocator {
     pub fn new(rng: ChaCha20Rng) -> Self {
-        let mut this = Self {
+        Self {
             page_state: [false; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
             rng: Some(rng),
-        };
-
-        this
+        }
     }
 
     pub fn reserve_pages(&mut self, num_pages: usize) -> usize {

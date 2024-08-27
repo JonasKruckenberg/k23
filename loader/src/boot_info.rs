@@ -45,7 +45,7 @@ pub fn init_boot_info(
 
             PhysicalAddress::new(r.start as usize)..PhysicalAddress::new(r.end as usize)
         },
-        page_table_result.heap_virt.clone()
+        page_table_result.heap_virt.clone(),
     ));
 
     // lastly, do the physical ptr -> virtual ptr translation
