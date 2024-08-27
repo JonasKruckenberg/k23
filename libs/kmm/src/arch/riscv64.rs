@@ -62,6 +62,7 @@ pub struct Riscv64Sv39;
 impl Mode for Riscv64Sv39 {
     type EntryFlags = EntryFlags;
 
+    const VA_BITS: u32 = 38;
     const PAGE_SIZE: usize = PAGE_SIZE;
     const PAGE_TABLE_LEVELS: usize = 3; // L0, L1, L2
     const PAGE_TABLE_ENTRIES: usize = PAGE_TABLE_ENTRIES;
@@ -111,6 +112,7 @@ pub struct Riscv64Sv48;
 impl Mode for Riscv64Sv48 {
     type EntryFlags = EntryFlags;
 
+    const VA_BITS: u32 = 47;
     const PAGE_SIZE: usize = PAGE_SIZE;
     const PAGE_TABLE_LEVELS: usize = 4; // L0, L1, L2, L3
     const PAGE_TABLE_ENTRIES: usize = PAGE_TABLE_ENTRIES;
@@ -160,6 +162,7 @@ pub struct Riscv64Sv57;
 impl Mode for Riscv64Sv57 {
     type EntryFlags = EntryFlags;
 
+    const VA_BITS: u32 = 56;
     const PAGE_SIZE: usize = PAGE_SIZE;
     const PAGE_TABLE_LEVELS: usize = 5; // L0, L1, L2, L3, L4
     const PAGE_TABLE_ENTRIES: usize = PAGE_TABLE_ENTRIES;

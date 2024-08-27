@@ -16,4 +16,3 @@ target-triple = "riscv64imac-k23-none-loader"
 linker-script = "./configs/loader-riscv64-qemu.ld"
 stack-size-pages = 32
 log-level = "trace"
-enable-kaslr = true

@@ -4,7 +4,9 @@ use crate::error::Error;
 use crate::kconfig;
 use kmm::{BumpAllocator, FrameAllocator};
 use loader_api::LoaderConfig;
-use object::{Object, ObjectSection};
+use object::elf::{ProgramHeader64, PT_LOAD};
+use object::read::elf::ProgramHeader;
+use object::{Endianness, Object, ObjectSection};
 
 // Include the generated payload.rs file which contains
 // the payload binary and signature
@@ -75,17 +77,37 @@ impl<'a> Payload<'a> {
         })
     }
 
-    #[cfg(feature = "kaslr")]
     pub fn mem_size(&self) -> u64 {
-        use object::read::elf::ProgramHeader;
         use object::Endianness;
 
-        let mem_size = self
-            .elf_file
+        let max_addr = self
+            .load_program_headers()
+            .map(|ph| ph.p_vaddr(Endianness::default()) + ph.p_memsz(Endianness::default()))
+            .max()
+            .unwrap_or(0);
+
+        let min_addr = self
+            .load_program_headers()
+            .map(|ph| ph.p_vaddr(Endianness::default()))
+            .min()
+            .unwrap_or(0);
+
+        max_addr - min_addr
+    }
+
+    pub fn align(&self) -> u64 {
+        let load_program_headers = self.load_program_headers();
+
+        load_program_headers
+            .map(|ph| ph.p_align(Endianness::default()))
+            .max()
+            .unwrap_or(1)
+    }
+
+    fn load_program_headers(&self) -> impl Iterator<Item = &ProgramHeader64<Endianness>> + '_ {
+        self.elf_file
             .elf_program_headers()
             .iter()
-            .fold(0, |acc, ph| acc + ph.p_memsz(Endianness::default()));
-
-        mem_size
+            .filter(|ph| ph.p_type(Endianness::default()) == PT_LOAD)
     }
 }

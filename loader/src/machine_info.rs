@@ -30,6 +30,26 @@ pub struct MachineInfo<'dt> {
     pub rng_seed: Option<&'dt [u8]>,
 }
 
+impl<'dt> MachineInfo<'dt> {
+    pub fn memory_hull(&self) -> Range<PhysicalAddress> {
+        let min_addr = self
+            .memories
+            .iter()
+            .map(|r| r.start)
+            .min()
+            .unwrap_or(PhysicalAddress::default());
+
+        let max_addr = self
+            .memories
+            .iter()
+            .map(|r| r.end)
+            .max()
+            .unwrap_or(PhysicalAddress::default());
+
+        min_addr..max_addr
+    }
+}
+
 impl<'dt> fmt::Debug for MachineInfo<'dt> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("MachineInfo")
