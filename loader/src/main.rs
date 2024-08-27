@@ -88,7 +88,6 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     let mut rand = kaslr::init(&machine_info);
 
     // TODO crate allocation plan for payload, stacks, TLS & physical memory
-
     let physmem_off = VirtualAddress::new(0xffff_ffd8_0000_0000);
 
     // Move the FDT to a safe location, so we don't accidentally overwrite it
@@ -99,7 +98,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     init_global_allocator(machine_info);
 
     // decompress & parse payload
-    log::trace!("parsing payload... {:p}", payload::PAYLOAD.as_ptr());
+    log::trace!("parsing payload...");
     let payload = Payload::from_compressed(payload::PAYLOAD, &mut frame_alloc)?;
 
     log::trace!("initializing page tables...");
@@ -126,6 +125,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         hartid,
         &page_table_result,
         fdt_virt,
+        &payload,
         physmem_off,
     )?;
 

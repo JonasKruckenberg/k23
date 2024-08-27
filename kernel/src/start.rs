@@ -58,6 +58,7 @@ fn init_global(boot_info: &'static BootInfo) {
         Ok(())
     })
     .expect("failed to initialize frame allocator");
+
     log::info!("Welcome to k23 {}", env!("CARGO_PKG_VERSION"));
 }
 
