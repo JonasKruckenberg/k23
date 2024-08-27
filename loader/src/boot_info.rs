@@ -37,7 +37,6 @@ pub fn init_boot_info(
             .maybe_tls_allocation
             .as_ref()
             .map(|a| a.tls_template.clone()),
-        page_table_result.free_range_virt.clone(),
         fdt_offset,
         page_table_result.loader_region.clone(),
         {
@@ -45,6 +44,7 @@ pub fn init_boot_info(
 
             PhysicalAddress::new(r.start as usize)..PhysicalAddress::new(r.end as usize)
         },
+        page_table_result.heap_virt.clone()
     ));
 
     // lastly, do the physical ptr -> virtual ptr translation

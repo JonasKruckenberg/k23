@@ -15,6 +15,10 @@ pub struct LoaderConfig {
     /// The stack is created with an additional guard page, so a stack overflow will lead to
     /// a page fault.
     pub kernel_stack_size_pages: u32,
+    /// The size of the payload heap in pages.
+    ///
+    /// If specified the loader will create and map a heap for the payload.
+    pub kernel_heap_size_pages: Option<u32>,
     /// The virtual memory mode to use when setting up the page tables.
     pub memory_mode: MemoryMode,
 }
@@ -28,6 +32,7 @@ impl LoaderConfig {
     pub const fn new_default() -> Self {
         Self {
             magic: CFG_MAGIC,
+            kernel_heap_size_pages: None,
             kernel_stack_size_pages: 20,
             memory_mode: MemoryMode::new_default(),
         }

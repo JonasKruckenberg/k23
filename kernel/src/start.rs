@@ -6,6 +6,7 @@ use loader_api::{BootInfo, LoaderConfig};
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = LoaderConfig::new_default();
     cfg.kernel_stack_size_pages = kconfig::STACK_SIZE_PAGES;
+    cfg.kernel_heap_size_pages = Some(kconfig::HEAP_SIZE_PAGES);
     cfg
 };
 

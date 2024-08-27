@@ -33,8 +33,6 @@ pub struct BootInfo {
     pub fdt_offset: VirtualAddress,
     /// Virtual memory region occupied by the loader.
     ///
-    /// The range of addresses that the kernel can freely allocate from.
-    pub free_virt: Range<VirtualAddress>,
     /// This region is identity-mapped contains the loader executable.
     ///
     /// This is necessary for Risc-V since there is no way for an S-mode loader to atomically
@@ -43,8 +41,13 @@ pub struct BootInfo {
     ///
     /// The payload should use this information to unmap the loader region after taking control.
     pub loader_region: Range<VirtualAddress>,
-    /// Virtual memory region reserved & mapped for the payload heap.
+    /// Virtual memory region reserved for the payload heap.
+    ///
+    /// Note that this is **not** mapped, as the payload should map
+    /// this region on-demand.
     pub heap_region: Option<Range<VirtualAddress>>,
+    /// Virtual address of the loaded kernel image.
+    pub payload_image_offset: VirtualAddress,
     /// Physical memory region where the payload ELF file resides.
     ///
     /// This field can be used by the payload to perform introspection of its own ELF file.
@@ -56,9 +59,9 @@ impl BootInfo {
     pub fn new(
         boot_hart: usize,
         physical_memory_offset: VirtualAddress,
+        payload_image_offset: VirtualAddress,
         memory_regions: &'static mut [MemoryRegion],
         tls_template: Option<kmm::TlsTemplate>,
-        free_virt: Range<VirtualAddress>,
         fdt_offset: VirtualAddress,
         loader_region: Range<VirtualAddress>,
         payload_elf: Range<PhysicalAddress>,
@@ -69,8 +72,8 @@ impl BootInfo {
             physical_memory_offset,
             memory_regions,
             tls_template,
-            free_virt,
             fdt_offset,
+            payload_image_offset,
             loader_region,
             payload_elf,
             heap_region,

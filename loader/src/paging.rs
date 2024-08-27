@@ -34,13 +34,13 @@ impl<'a> PageTableBuilder<'a> {
 
             result: PageTableResult {
                 page_table_addr: mapper.root_table().addr(),
-                free_range_virt: VirtualAddress::default()..physical_memory_offset,
 
                 // set by the methods below
                 entry: VirtualAddress::default(),
                 per_hart_stack_size: 0,
                 maybe_tls_allocation: None,
                 stacks_virt: Range::default(),
+                heap_virt: None,
                 loader_region: Range::default(),
             },
 
@@ -71,6 +71,12 @@ impl<'a> PageTableBuilder<'a> {
         // Map stacks for payload
         let stack_size_pages = usize::try_from(payload.loader_config.kernel_stack_size_pages)?;
         self = self.map_payload_stacks(machine_info, stack_size_pages)?;
+
+        // Map heap for payload
+        if let Some(heap_size_pages) = payload.loader_config.kernel_heap_size_pages {
+            let heap_size_pages = usize::try_from(heap_size_pages)?;
+            self = self.map_payload_heap(heap_size_pages)?;
+        }
 
         self.result.entry = payload_image_offset.add(usize::try_from(payload.elf_file.entry())?);
         self.result.per_hart_stack_size = stack_size_pages * kconfig::PAGE_SIZE;
@@ -147,6 +153,15 @@ impl<'a> PageTableBuilder<'a> {
         Ok(self)
     }
 
+    fn map_payload_heap(mut self, heap_size_pages: usize) -> crate::Result<Self> {
+        self.result.heap_virt = Some(
+            self.used_entries
+                .get_free_range(heap_size_pages * kconfig::PAGE_SIZE, kconfig::PAGE_SIZE),
+        );
+        log::trace!("Reserved heap region {:?}", self.result.heap_virt);
+
+        Ok(self)
+    }
 
     pub fn map_physical_memory(mut self, machine_info: &MachineInfo) -> Result<Self, kmm::Error> {
         for region_phys in &machine_info.memories {
@@ -234,8 +249,6 @@ impl<'a> PageTableBuilder<'a> {
 pub struct PageTableResult {
     /// The address of the root page table
     page_table_addr: VirtualAddress,
-    /// The range of addresses that may be used for dynamic allocations
-    pub free_range_virt: Range<VirtualAddress>,
 
     /// The entry point address of the payload
     entry: VirtualAddress,
@@ -246,6 +259,8 @@ pub struct PageTableResult {
     pub stacks_virt: Range<VirtualAddress>,
     /// The size of each stack in bytes
     per_hart_stack_size: usize,
+    /// Memory region allocated for payload heap
+    pub heap_virt: Option<Range<VirtualAddress>>,
 
     /// Memory region allocated for loader itself
     pub loader_region: Range<VirtualAddress>,

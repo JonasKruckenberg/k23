@@ -19,9 +19,9 @@ pub fn init(
     boot_info: &BootInfo,
 ) -> Result<(), kmm::Error> {
     let heap = boot_info
-        .free_virt
-        .end
-        .sub(kconfig::HEAP_SIZE_PAGES * kconfig::PAGE_SIZE)..boot_info.free_virt.end;
+        .heap_region
+        .as_ref()
+        .expect("missing heap region, this is a bug!");
 
     log::debug!("Kernel heap: {heap:?}");
 

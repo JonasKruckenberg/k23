@@ -25,7 +25,7 @@ pub const TRAP_STACK_SIZE_PAGES: usize = 16;
 
 /// The size of the kernel heap in pages
 #[kconfig_declare::symbol("kernel.heap-size-pages")]
-pub const HEAP_SIZE_PAGES: usize = 8192; // 32 MiB
+pub const HEAP_SIZE_PAGES: u32 = 8192; // 32 MiB
 
 // TODO: This should be configurable
 #[allow(non_camel_case_types)]
