@@ -11,9 +11,9 @@ pub fn init_boot_info(
     alloc: &mut BumpAllocator<kconfig::MEMORY_MODE>,
     boot_hart: usize,
     page_table_result: &PageTableResult,
-    fdt_virt: VirtualAddress,
+    fdt_offset: VirtualAddress,
     payload: &Payload,
-    physmem_off: VirtualAddress,
+    physical_memory_offset: VirtualAddress,
 ) -> crate::Result<&'static BootInfo> {
     let frame = alloc.allocate_frame()?;
 
@@ -22,31 +22,34 @@ pub fn init_boot_info(
     // memory_regions: &'static mut [MemoryRegion] is a reference to physical memory, but going forward
     // we need it to be a reference to virtual memory.
     let memory_regions = unsafe {
-        let ptr = memory_regions.as_mut_ptr().byte_add(physmem_off.as_raw());
+        let ptr = memory_regions
+            .as_mut_ptr()
+            .byte_add(physical_memory_offset.as_raw());
         slice::from_raw_parts_mut(ptr, memory_regions.len())
     };
 
     let boot_info = unsafe { &mut *(frame.as_raw() as *mut MaybeUninit<BootInfo>) };
     let boot_info = boot_info.write(BootInfo::new(
         boot_hart,
-        physmem_off,
+        physical_memory_offset,
+        page_table_result.payload_image_offset,
         memory_regions,
         page_table_result
             .maybe_tls_allocation
             .as_ref()
             .map(|a| a.tls_template.clone()),
-        fdt_virt,
-        page_table_result.loader_virt.clone(),
-        page_table_result.free_range_virt.clone(),
+        fdt_offset,
+        page_table_result.loader_region.clone(),
         {
             let r = payload.elf_file.data().as_ptr_range();
 
             PhysicalAddress::new(r.start as usize)..PhysicalAddress::new(r.end as usize)
         },
+        page_table_result.heap_virt.clone(),
     ));
 
     // lastly, do the physical ptr -> virtual ptr translation
-    Ok(unsafe { phys_to_virt_ref(physmem_off, boot_info) })
+    Ok(unsafe { phys_to_virt_ref(physical_memory_offset, boot_info) })
 }
 
 fn init_boot_info_memory_regions(

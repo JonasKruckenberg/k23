@@ -3,24 +3,24 @@
 #![feature(naked_functions)]
 #![feature(maybe_uninit_slice)]
 
+extern crate alloc;
 extern crate panic;
 
 mod arch;
 mod boot_info;
 mod error;
 
-#[cfg(feature = "kaslr")]
-mod kaslr;
-
 mod kconfig;
 mod machine_info;
 mod paging;
 mod payload;
+mod virt_alloc;
 
 use crate::boot_info::init_boot_info;
 use crate::machine_info::MachineInfo;
 use crate::paging::{PageTableBuilder, PageTableResult};
 use crate::payload::Payload;
+use crate::virt_alloc::VirtAllocator;
 use core::ops::Range;
 use core::ptr::addr_of;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -29,6 +29,8 @@ use error::Error;
 use kmm::{AddressRangeExt, BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress};
 use linked_list_allocator::LockedHeap;
 use loader_api::BootInfo;
+use rand_chacha::rand_core::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -84,15 +86,17 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         )
     };
 
-    #[cfg(feature = "kaslr")]
-    let mut rand = kaslr::init(&machine_info);
+    let mut virt_alloc = VirtAllocator::new(ChaCha20Rng::from_seed(
+        machine_info.rng_seed.unwrap()[0..32].try_into().unwrap(),
+    ));
 
-    // TODO crate allocation plan for payload, stacks, TLS & physical memory
-    let physmem_off = VirtualAddress::new(0xffff_ffd8_0000_0000);
+    let physical_memory_offset = virt_alloc
+        .reserve_range(machine_info.memory_hull().size(), kconfig::PAGE_SIZE)
+        .start;
 
     // Move the FDT to a safe location, so we don't accidentally overwrite it
     log::trace!("copying FDT to safe location...");
-    let fdt_virt = allocate_and_copy_fdt(machine_info, &mut frame_alloc, physmem_off)?;
+    let fdt_offset = allocate_and_copy_fdt(machine_info, &mut frame_alloc, physical_memory_offset)?;
 
     // init heap allocator
     init_global_allocator(machine_info);
@@ -102,24 +106,13 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     let payload = Payload::from_compressed(payload::PAYLOAD, &mut frame_alloc)?;
 
     log::trace!("initializing page tables...");
-    #[allow(unused_mut)]
-    let mut builder = PageTableBuilder::from_alloc(&mut frame_alloc, physmem_off)?;
-
-    #[cfg(feature = "kaslr")]
-    {
-        builder = builder.set_payload_offset(kaslr::random_offset_for_payload(
-            &mut rand,
-            physmem_off,
-            &payload,
-        ));
-    }
-
-    let page_table_result = builder
-        .map_payload(&payload, machine_info)?
-        .map_physical_memory(machine_info)?
-        .identity_map_loader(&loader_regions)?
-        .print_statistics()
-        .result();
+    let page_table_result =
+        PageTableBuilder::from_alloc(&mut frame_alloc, physical_memory_offset, &mut virt_alloc)?
+            .map_payload(&payload, machine_info)?
+            .map_physical_memory(machine_info)?
+            .identity_map_loader(&loader_regions)?
+            .print_statistics()
+            .result();
 
     let hartid = BOOT_HART.load(Ordering::Relaxed);
 
@@ -128,9 +121,9 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         &mut frame_alloc,
         hartid,
         &page_table_result,
-        fdt_virt,
+        fdt_offset,
         &payload,
-        physmem_off,
+        physical_memory_offset,
     )?;
 
     Ok((page_table_result, boot_info))
