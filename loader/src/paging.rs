@@ -42,6 +42,7 @@ impl<'a> PageTableBuilder<'a> {
                 stacks_virt: Range::default(),
                 heap_virt: None,
                 loader_region: Range::default(),
+                payload_image_offset: VirtualAddress::default(),
             },
 
             mapper,
@@ -80,6 +81,7 @@ impl<'a> PageTableBuilder<'a> {
 
         self.result.entry = payload_image_offset.add(usize::try_from(payload.elf_file.entry())?);
         self.result.per_hart_stack_size = stack_size_pages * kconfig::PAGE_SIZE;
+        self.result.payload_image_offset = payload_image_offset;
 
         Ok(self)
     }
@@ -252,6 +254,9 @@ pub struct PageTableResult {
 
     /// The entry point address of the payload
     entry: VirtualAddress,
+
+    /// The offset at which the payload image was mapped
+    pub payload_image_offset: VirtualAddress,
     /// Memory region allocated for payload TLS regions, as well as the template TLS to use for
     /// initializing them.
     pub maybe_tls_allocation: Option<TlsAllocation>,

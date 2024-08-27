@@ -32,6 +32,7 @@ pub fn init_boot_info(
     let boot_info = boot_info.write(BootInfo::new(
         boot_hart,
         physical_memory_offset,
+        page_table_result.payload_image_offset,
         memory_regions,
         page_table_result
             .maybe_tls_allocation
