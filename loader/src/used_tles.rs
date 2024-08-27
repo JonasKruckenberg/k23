@@ -21,8 +21,14 @@ impl UsedTLEs {
             rng: Some(rng),
         };
 
-        // mark the zero page as used
-        this.entry_state[0] = true;
+        const SHIFT: usize = kconfig::MEMORY_MODE::PAGE_ENTRY_SHIFT
+            * (kconfig::MEMORY_MODE::PAGE_TABLE_LEVELS - 1)
+            + kconfig::MEMORY_MODE::PAGE_SHIFT;
+
+        let idx = ((usize::MAX << kconfig::MEMORY_MODE::VA_BITS - 1) >> SHIFT)
+            & kconfig::MEMORY_MODE::PAGE_ENTRY_MASK;
+
+        this.entry_state[0..idx].fill(true);
 
         this
     }
