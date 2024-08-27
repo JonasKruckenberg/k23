@@ -62,6 +62,7 @@ impl EmulateMode {
 impl Mode for EmulateMode {
     type EntryFlags = EmulateEntryFlags;
 
+    const VA_BITS: u32 = 38;
     const PAGE_SIZE: usize = 4096;
 
     const PAGE_TABLE_LEVELS: usize = 2; // L0, L1, L2

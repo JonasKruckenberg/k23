@@ -36,6 +36,7 @@ pub(crate) type Result<T> = core::result::Result<T, Error>;
 pub trait Mode {
     type EntryFlags: Flags + From<usize> + Into<usize> + Copy + Clone + fmt::Debug;
 
+    const VA_BITS: u32;
     const PAGE_SIZE: usize;
 
     /// The number of levels the page table has
