@@ -107,7 +107,11 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
 
     #[cfg(feature = "kaslr")]
     {
-        builder = builder.set_payload_offset(kaslr::random_offset_for_payload(&mut rand, &payload));
+        builder = builder.set_payload_offset(kaslr::random_offset_for_payload(
+            &mut rand,
+            physmem_off,
+            &payload,
+        ));
     }
 
     let page_table_result = builder
