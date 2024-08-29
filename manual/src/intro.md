@@ -1,7 +1,7 @@
 # k23 - Experimental WASM Operating System
 
 Welcome to the official **k23 manual**! This manual will guide you through the installation and usage of *k23*, an
-experimental WASM microkernel operating system.
+experimental WASM microkernel operating system. [GitHub repo](https://github.com/JonasKruckenberg/k23)
 
 <br />
 
