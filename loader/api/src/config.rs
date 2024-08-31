@@ -15,9 +15,9 @@ pub struct LoaderConfig {
     /// The stack is created with an additional guard page, so a stack overflow will lead to
     /// a page fault.
     pub kernel_stack_size_pages: u32,
-    /// The size of the payload heap in pages.
+    /// The size of the kernel heap in pages.
     ///
-    /// If specified the loader will create and map a heap for the payload.
+    /// If specified the loader will create and map a heap for the kernel.
     pub kernel_heap_size_pages: Option<u32>,
     /// The virtual memory mode to use when setting up the page tables.
     pub memory_mode: MemoryMode,

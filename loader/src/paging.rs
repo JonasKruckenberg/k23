@@ -1,5 +1,5 @@
+use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
-use crate::payload::Payload;
 use crate::{kconfig, LoaderRegions, VirtAllocator};
 use core::ops::Range;
 use core::{ptr, slice};
@@ -42,7 +42,7 @@ impl<'a> PageTableBuilder<'a> {
                 stacks_virt: Range::default(),
                 heap_virt: None,
                 loader_region: Range::default(),
-                payload_image_offset: VirtualAddress::default(),
+                kernel_image_offset: VirtualAddress::default(),
             },
 
             mapper,
@@ -50,38 +50,38 @@ impl<'a> PageTableBuilder<'a> {
         })
     }
 
-    pub fn map_payload(
+    pub fn map_kernel(
         mut self,
-        payload: &Payload,
+        kernel: &Kernel,
         machine_info: &MachineInfo,
     ) -> crate::Result<Self> {
-        let mem_size = payload.mem_size() as usize;
-        let align = payload.align() as usize;
+        let mem_size = kernel.mem_size() as usize;
+        let align = kernel.align() as usize;
 
-        let payload_image_offset = self.virt_alloc.reserve_range(mem_size, align).start;
+        let kernel_image_offset = self.virt_alloc.reserve_range(mem_size, align).start;
         let maybe_tls_template = self
             .mapper
-            .elf(payload_image_offset)
-            .map_elf_file(&payload.elf_file, &mut self.flush)?;
+            .elf(kernel_image_offset)
+            .map_elf_file(&kernel.elf_file, &mut self.flush)?;
 
         // Allocate memory for TLS segments
         if let Some(template) = maybe_tls_template {
             self = self.allocate_tls(template, machine_info)?;
         }
 
-        // Map stacks for payload
-        let stack_size_pages = usize::try_from(payload.loader_config.kernel_stack_size_pages)?;
-        self = self.map_payload_stacks(machine_info, stack_size_pages)?;
+        // Map stacks for kernel
+        let stack_size_pages = usize::try_from(kernel.loader_config.kernel_stack_size_pages)?;
+        self = self.map_kernel_stacks(machine_info, stack_size_pages)?;
 
-        // Map heap for payload
-        if let Some(heap_size_pages) = payload.loader_config.kernel_heap_size_pages {
+        // Map heap for kernel
+        if let Some(heap_size_pages) = kernel.loader_config.kernel_heap_size_pages {
             let heap_size_pages = usize::try_from(heap_size_pages)?;
-            self = self.map_payload_heap(heap_size_pages)?;
+            self = self.map_kernel_heap(heap_size_pages)?;
         }
 
-        self.result.entry = payload_image_offset.add(usize::try_from(payload.elf_file.entry())?);
+        self.result.entry = kernel_image_offset.add(usize::try_from(kernel.elf_file.entry())?);
         self.result.per_hart_stack_size = stack_size_pages * kconfig::PAGE_SIZE;
-        self.result.payload_image_offset = payload_image_offset;
+        self.result.kernel_image_offset = kernel_image_offset;
 
         Ok(self)
     }
@@ -123,7 +123,7 @@ impl<'a> PageTableBuilder<'a> {
     }
 
     // TODO add guard pages below each stack allocation
-    fn map_payload_stacks(
+    fn map_kernel_stacks(
         mut self,
         machine_info: &MachineInfo,
         stack_size_page: usize,
@@ -155,7 +155,7 @@ impl<'a> PageTableBuilder<'a> {
         Ok(self)
     }
 
-    fn map_payload_heap(mut self, heap_size_pages: usize) -> crate::Result<Self> {
+    fn map_kernel_heap(mut self, heap_size_pages: usize) -> crate::Result<Self> {
         self.result.heap_virt = Some(
             self.virt_alloc
                 .reserve_range(heap_size_pages * kconfig::PAGE_SIZE, kconfig::PAGE_SIZE),
@@ -252,19 +252,19 @@ pub struct PageTableResult {
     /// The address of the root page table
     page_table_addr: VirtualAddress,
 
-    /// The entry point address of the payload
+    /// The entry point address of the kernel
     entry: VirtualAddress,
 
-    /// The offset at which the payload image was mapped
-    pub payload_image_offset: VirtualAddress,
-    /// Memory region allocated for payload TLS regions, as well as the template TLS to use for
+    /// The offset at which the kernel image was mapped
+    pub kernel_image_offset: VirtualAddress,
+    /// Memory region allocated for kernel TLS regions, as well as the template TLS to use for
     /// initializing them.
     pub maybe_tls_allocation: Option<TlsAllocation>,
-    /// Memory region allocated for payload stacks
+    /// Memory region allocated for kernel stacks
     pub stacks_virt: Range<VirtualAddress>,
     /// The size of each stack in bytes
     per_hart_stack_size: usize,
-    /// Memory region allocated for payload heap
+    /// Memory region allocated for kernel heap
     pub heap_virt: Option<Range<VirtualAddress>>,
 
     /// Memory region allocated for loader itself
@@ -272,7 +272,7 @@ pub struct PageTableResult {
 }
 
 impl PageTableResult {
-    pub fn payload_entry(&self) -> VirtualAddress {
+    pub fn kernel_entry(&self) -> VirtualAddress {
         self.entry
     }
 

@@ -90,7 +90,7 @@ check-fmt *FLAGS:
 run config CARGO_ARGS="" *ARGS="": (build config CARGO_ARGS) (_run config "target/k23/bootimg.bin" ARGS)
 
 # Builds the kernel using the given config
-build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/payload" CARGO_ARGS)
+build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/kernel" CARGO_ARGS)
     #!/usr/bin/env nu
     let config = open {{config}}
     $env.K23_CONFIG = {{config}}
@@ -105,7 +105,7 @@ build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/payload" CARGO
         --message-format=json
         {{_buildstd}}
         {{CARGO_ARGS}})
-    cp ($cargo_out | from json --objects | last 2 | get 0.executable) ($out_dir | path join payload)
+    cp ($cargo_out | from json --objects | last 2 | get 0.executable) ($out_dir | path join kernel)
 
 # Runs the tests for the kernel
 test config *CARGO_ARGS="" :
@@ -159,16 +159,16 @@ _run config binary *ARGS:
         #"unix:qemu-monitor-socket,server,nowait"
         )
 
-# This takes in the given config and payload and creates a bootable image. This is the "magic" build step that makes it all work!
+# This takes in the given config and kernel and creates a bootable image. This is the "magic" build step that makes it all work!
 #
 # The boot image is created by:
 # 1. Building the bootloader
-# 2. Compressing the payload
-# 3. Signing the compressed payload
-# 4. Embedding the public key, signature and compressed payload in the bootloader
+# 2. Compressing the kernel
+# 3. Signing the compressed kernel
+# 4. Embedding the public key, signature and compressed kernel in the bootloader
 #
 # This recipe is designed to be used as a dependency of other, user-facing recipes
-_make_bootimg config payload *CARGO_ARGS="":
+_make_bootimg config kernel *CARGO_ARGS="":
     #!/usr/bin/env nu
     let config = open {{config}}
     $env.K23_CONFIG = {{config}}
@@ -182,24 +182,24 @@ _make_bootimg config payload *CARGO_ARGS="":
     #let signature_path = ($out_dir | path join signature.bin)
     let bootimg_path = ($out_dir | path join bootimg.bin)
 
-    # Step 1: Compress the payload
-    print "Compressing the payload..."
-    let payload_lz4_path = "{{payload}}.lz4"
-    {{_cargo}} run -p lz4-block-compress {{payload}} $payload_lz4_path
+    # Step 1: Compress the kernel
+    print "Compressing the kernel..."
+    let kernel_lz4_path = "{{kernel}}.lz4"
+    {{_cargo}} run -p lz4-block-compress {{kernel}} $pkernel_lz4_path
 
-    # Step 2: Sign the compressed payload
-    #print "Signing the compressed payload..."
+    # Step 2: Sign the compressed kernel
+    #print "Signing the compressed kernel..."
     # Write ed25519 key pair
     #echo "_signing_key" | openssl pkey -outform DER -out $secret_key_path
     # Do the actual signing
-    #openssl pkeyutl -sign -inkey $secret_key_path -out $signature_path -rawin -in $payload_lz4_path
+    #openssl pkeyutl -sign -inkey $secret_key_path -out $signature_path -rawin -in $kernel_lz4_path
     # Extract the 32-byte public key
     #openssl pkey -in $secret_key_path -pubout -outform DER | tail -c 32 | save -f $public_key_path
 
     # Assign environment variables so we can pick it up in the loader build script
     #$env.K23_VERIFYING_KEY_PATH = $public_key_path
     #$env.K23_SIGNATURE_PATH = $signature_path
-    $env.K23_PAYLOAD_PATH = $payload_lz4_path
+    $env.K23_KERNEL_PATH = $kernel_lz4_path
 
     # Step 3: Build the bootloader
     print "Building the bootloader..."

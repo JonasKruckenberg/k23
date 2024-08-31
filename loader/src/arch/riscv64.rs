@@ -48,7 +48,7 @@ unsafe extern "C" fn _start() -> ! {
 }
 
 fn start(hartid: usize, opaque: *const u8) -> ! {
-    // Disable interrupts. The payload will re-enable interrupts
+    // Disable interrupts. The kernel will re-enable interrupts
     // when it's ready to handle them
     riscv::interrupt::disable();
 
@@ -104,7 +104,7 @@ unsafe extern "C" fn fillstack() {
     )
 }
 
-pub unsafe fn switch_to_payload(
+pub unsafe fn switch_to_kernel(
     hartid: usize,
     entry: VirtualAddress,
     stack: Range<VirtualAddress>,
