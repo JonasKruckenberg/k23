@@ -1,6 +1,6 @@
 use crate::kconfig;
+use crate::kernel::Kernel;
 use crate::paging::PageTableResult;
-use crate::payload::Payload;
 use core::mem::MaybeUninit;
 use core::ops::Div;
 use core::slice;
@@ -12,7 +12,7 @@ pub fn init_boot_info(
     boot_hart: usize,
     page_table_result: &PageTableResult,
     fdt_offset: VirtualAddress,
-    payload: &Payload,
+    kernel: &Kernel,
     physical_memory_offset: VirtualAddress,
 ) -> crate::Result<&'static BootInfo> {
     let frame = alloc.allocate_frame()?;
@@ -32,7 +32,7 @@ pub fn init_boot_info(
     let boot_info = boot_info.write(BootInfo::new(
         boot_hart,
         physical_memory_offset,
-        page_table_result.payload_image_offset,
+        page_table_result.kernel_image_offset,
         memory_regions,
         page_table_result
             .maybe_tls_allocation
@@ -41,7 +41,7 @@ pub fn init_boot_info(
         fdt_offset,
         page_table_result.loader_region.clone(),
         {
-            let r = payload.elf_file.data().as_ptr_range();
+            let r = kernel.elf_file.data().as_ptr_range();
 
             PhysicalAddress::new(r.start as usize)..PhysicalAddress::new(r.end as usize)
         },

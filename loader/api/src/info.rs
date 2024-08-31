@@ -17,7 +17,7 @@ pub struct BootInfo {
     /// The thread local storage (TLS) template of the kernel executable, if present.
     ///
     /// Note that the loader will already set up TLS regions for each hart reported as `online`
-    /// by the previous stage bootloader, so this field is rarely needed. Only when the payload
+    /// by the previous stage bootloader, so this field is rarely needed. Only when the kernel
     /// has ways to bring new harts online after booting, this field is useful.
     pub tls_template: Option<kmm::TlsTemplate>,
     /// The virtual address at which the mapping of the physical memory starts.
@@ -37,21 +37,21 @@ pub struct BootInfo {
     ///
     /// This is necessary for Risc-V since there is no way for an S-mode loader to atomically
     /// enable paging and jump. The loader must therefore identity-map itself, enable paging and
-    /// then jump to the payload.
+    /// then jump to the kernel.
     ///
-    /// The payload should use this information to unmap the loader region after taking control.
+    /// The kernel should use this information to unmap the loader region after taking control.
     pub loader_region: Range<VirtualAddress>,
-    /// Virtual memory region reserved for the payload heap.
+    /// Virtual memory region reserved for the kernel heap.
     ///
-    /// Note that this is **not** mapped, as the payload should map
+    /// Note that this is **not** mapped, as the kernel should map
     /// this region on-demand.
     pub heap_region: Option<Range<VirtualAddress>>,
     /// Virtual address of the loaded kernel image.
-    pub payload_image_offset: VirtualAddress,
-    /// Physical memory region where the payload ELF file resides.
+    pub kernel_image_offset: VirtualAddress,
+    /// Physical memory region where the kernel ELF file resides.
     ///
-    /// This field can be used by the payload to perform introspection of its own ELF file.
-    pub payload_elf: Range<PhysicalAddress>,
+    /// This field can be used by the kernel to perform introspection of its own ELF file.
+    pub kernel_elf: Range<PhysicalAddress>,
 }
 
 impl BootInfo {
@@ -59,12 +59,12 @@ impl BootInfo {
     pub fn new(
         boot_hart: usize,
         physical_memory_offset: VirtualAddress,
-        payload_image_offset: VirtualAddress,
+        kernel_image_offset: VirtualAddress,
         memory_regions: &'static mut [MemoryRegion],
         tls_template: Option<kmm::TlsTemplate>,
         fdt_offset: VirtualAddress,
         loader_region: Range<VirtualAddress>,
-        payload_elf: Range<PhysicalAddress>,
+        kernel_elf: Range<PhysicalAddress>,
         heap_region: Option<Range<VirtualAddress>>,
     ) -> Self {
         Self {
@@ -73,9 +73,9 @@ impl BootInfo {
             memory_regions,
             tls_template,
             fdt_offset,
-            payload_image_offset,
+            kernel_image_offset,
             loader_region,
-            payload_elf,
+            kernel_elf,
             heap_region,
         }
     }

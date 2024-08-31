@@ -8,51 +8,51 @@ use object::elf::{ProgramHeader64, PT_LOAD};
 use object::read::elf::ProgramHeader;
 use object::{Endianness, Object, ObjectSection};
 
-// Include the generated payload.rs file which contains
-// the payload binary and signature
-include!(concat!(env!("OUT_DIR"), "/payload.rs"));
+// Include the generated kernel.rs file which contains
+// the kernel binary and signature
+include!(concat!(env!("OUT_DIR"), "/kernel.rs"));
 
-pub struct Payload<'a> {
+pub struct Kernel<'a> {
     pub elf_file: object::read::elf::ElfFile64<'a>,
     pub loader_config: &'a LoaderConfig,
 }
 
-impl<'a> Payload<'a> {
+impl<'a> Kernel<'a> {
     // pub fn from_signed_and_compressed(
     //     verifying_key: &'static [u8; ed25519_dalek::PUBLIC_KEY_LENGTH],
-    //     compressed_payload: &'a [u8],
+    //     compressed_kernel: &'a [u8],
     //     signature: &'static [u8; Signature::BYTE_SIZE],
     //     alloc: &mut BumpAllocator<'_, INIT<kconfig::MEMORY_MODE>>,
     // ) -> Self {
-    //     log::info!("Verifying payload signature...");
+    //     log::info!("Verifying kernel signature...");
     //     let verifying_key = VerifyingKey::from_bytes(verifying_key).unwrap();
     //     let signature = Signature::from_slice(signature).unwrap();
     //
     //     verifying_key
-    //         .verify(compressed_payload, &signature)
+    //         .verify(compressed_kernel, &signature)
     //         .expect("failed to verify kernel image signature");
     //
-    //     Self::from_compressed(compressed_payload, alloc)
+    //     Self::from_compressed(compressed_kernel, alloc)
     // }
 
     pub fn from_compressed(
         compressed: &'a [u8],
         alloc: &mut BumpAllocator<'_, kconfig::MEMORY_MODE>,
     ) -> crate::Result<Self> {
-        log::info!("Decompressing payload...");
+        log::info!("Decompressing kernel...");
         let (uncompressed_size, input) =
             lz4_flex::block::uncompressed_size(compressed).map_err(Error::Decompression)?;
 
-        let uncompressed_payload = unsafe {
+        let uncompressed_kernel = unsafe {
             let frames = uncompressed_size.div_ceil(kconfig::PAGE_SIZE);
             let base = alloc.allocate_frames(frames)?;
 
             slice::from_raw_parts_mut(base.as_raw() as *mut u8, frames * kconfig::PAGE_SIZE)
         };
 
-        lz4_flex::decompress_into(input, uncompressed_payload).map_err(Error::Decompression)?;
+        lz4_flex::decompress_into(input, uncompressed_kernel).map_err(Error::Decompression)?;
 
-        Self::from_bytes(uncompressed_payload)
+        Self::from_bytes(uncompressed_kernel)
     }
 
     pub fn from_bytes(bytes: &'a [u8]) -> crate::Result<Self> {

@@ -27,21 +27,21 @@ fn main() {
         );
     }
 
-    // handle the payload inclusion
+    // handle the kernel inclusion
     // let verifying_key = include_from_env(workspace_root, env::var_os("K23_VERIFYING_KEY_PATH"));
     // let signature = include_from_env(workspace_root, env::var_os("K23_SIGNATURE_PATH"));
-    let payload = include_from_env(workspace_root, env::var_os("K23_PAYLOAD_PATH"));
+    let kernel = include_from_env(workspace_root, env::var_os("K23_KERNEL_PATH"));
 
     println!("cargo::rerun-if-env-changed=K23_VERIFYING_KEY_PATH");
-    println!("cargo::rerun-if-env-changed=K23_PAYLOAD_PATH");
+    println!("cargo::rerun-if-env-changed=K23_KERNEL_PATH");
 
     //pub const VERIFYING_KEY: Option<&[u8; ::ed25519_dalek::PUBLIC_KEY_LENGTH]> = {verifying_key};
     //pub const SIGNATURE: Option<&[u8; ::ed25519_dalek::Signature::BYTE_SIZE]> = {signature};
     fs::write(
-        out_dir.join("payload.rs"),
+        out_dir.join("kernel.rs"),
         format!(
             r#"
-    pub static PAYLOAD: &[u8] = {payload};
+    pub static KERNEL: &[u8] = {kernel};
     "#,
         ),
     )

@@ -11,15 +11,15 @@ mod boot_info;
 mod error;
 
 mod kconfig;
+mod kernel;
 mod machine_info;
 mod paging;
-mod payload;
 mod virt_alloc;
 
 use crate::boot_info::init_boot_info;
+use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::paging::{PageTableBuilder, PageTableResult};
-use crate::payload::Payload;
 use crate::virt_alloc::VirtAllocator;
 use core::ops::Range;
 use core::ptr::addr_of;
@@ -49,7 +49,7 @@ fn main(hartid: usize) -> ! {
     // SAFETY: This will invalidate all pointers and references that aren't on the loader stack
     // (the FDT slice and importantly the frame allocator) so care has to be taken to either
     // not access these anymore (which should be easy, this is one of the last steps we perform before hading off
-    // to the payload) or to map them into virtual memory first!
+    // to the kernel) or to map them into virtual memory first!
     unsafe {
         page_table_result.activate_table();
     }
@@ -58,9 +58,9 @@ fn main(hartid: usize) -> ! {
     page_table_result.init_tls_region_for_hart(hartid);
 
     unsafe {
-        arch::switch_to_payload(
+        arch::switch_to_kernel(
             hartid,
-            page_table_result.payload_entry(),
+            page_table_result.kernel_entry(),
             page_table_result.stack_region_for_hart(hartid),
             page_table_result
                 .tls_region_for_hart(hartid)
@@ -101,14 +101,14 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     // init heap allocator
     init_global_allocator(machine_info);
 
-    // decompress & parse payload
-    log::trace!("parsing payload...");
-    let payload = Payload::from_compressed(payload::PAYLOAD, &mut frame_alloc)?;
+    // decompress & parse kernel
+    log::trace!("parsing kernel...");
+    let kernel = Kernel::from_compressed(kernel::KERNEL, &mut frame_alloc)?;
 
     log::trace!("initializing page tables...");
     let page_table_result =
         PageTableBuilder::from_alloc(&mut frame_alloc, physical_memory_offset, &mut virt_alloc)?
-            .map_payload(&payload, machine_info)?
+            .map_kernel(&kernel, machine_info)?
             .map_physical_memory(machine_info)?
             .identity_map_loader(&loader_regions)?
             .print_statistics()
@@ -122,7 +122,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         hartid,
         &page_table_result,
         fdt_offset,
-        &payload,
+        &kernel,
         physical_memory_offset,
     )?;
 
