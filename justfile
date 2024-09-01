@@ -185,7 +185,7 @@ _make_bootimg config kernel *CARGO_ARGS="":
     # Step 1: Compress the kernel
     print "Compressing the kernel..."
     let kernel_lz4_path = "{{kernel}}.lz4"
-    {{_cargo}} run -p lz4-block-compress {{kernel}} $pkernel_lz4_path
+    {{_cargo}} run -p lz4-block-compress {{kernel}} $kernel_lz4_path
 
     # Step 2: Sign the compressed kernel
     #print "Signing the compressed kernel..."
