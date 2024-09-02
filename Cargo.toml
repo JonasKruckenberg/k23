@@ -60,12 +60,12 @@ unicode-width = { version = "0.1.9" }
 memchr = { version = "2.4.1", default-features = false }
 
 # cranelift dependencies
-target-lexicon = { version = "0.12.14", default-features = false }
 hashbrown = { version = "0.14.5", default-features = false, features = [
     "inline-more",
     "nightly",
 ] }
 wasmparser = { version = "0.216.0", default-features = false }
+target-lexicon = { version = "0.12.14", default-features = false }
 cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std2", default-features = false, features = [
     "core",
 ] }
