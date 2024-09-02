@@ -258,7 +258,7 @@ dependencies = [
  "kconfig-declare",
  "kmm",
  "ktest",
- "linked_list_allocator",
+ "linked-list-allocator",
  "loader-api",
  "log",
  "object",
@@ -323,12 +323,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
 
 [[package]]
-name = "linked_list_allocator"
-version = "0.10.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9afa463f5405ee81cdb9cc2baf37e08ec7e4c8209442b5d72c04cfb2cd6e6286"
+name = "linked-list-allocator"
+version = "0.1.0"
 dependencies = [
- "spinning_top",
+ "kmm",
+ "sync",
 ]
 
 [[package]]
@@ -340,7 +339,7 @@ dependencies = [
  "dtb-parser",
  "kconfig-declare",
  "kmm",
- "linked_list_allocator",
+ "linked-list-allocator",
  "loader-api",
  "log",
  "lz4_flex",
@@ -603,15 +602,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "spinning_top"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b9eb1a2f4c41445a3a0ff9abc5221c5fcd28e1f13cd7c0397706f9ac938ddb0"
-dependencies = [
- "lock_api",
 ]
 
 [[package]]

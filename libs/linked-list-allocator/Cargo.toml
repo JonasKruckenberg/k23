@@ -1,0 +1,15 @@
+[package]
+name = "linked-list-allocator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors = ["Philipp Oppermann <dev@phil-opp.com>", "Jonas Kruckenberg <iterpre@protonmail.com>"]
+description = "Simple allocator usable for no_std systems. It builds a linked list from the freed blocks and thus needs no additional data structures."
+
+[lints]
+workspace = true
+
+[dependencies]
+kmm.workspace = true
+sync.workspace = true
+

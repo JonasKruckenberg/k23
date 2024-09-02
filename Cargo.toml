@@ -31,6 +31,7 @@ unwind = { path = "libs/unwind" }
 wasm-encoder = { path = "libs/wasm-encoder" }
 wast = { path = "libs/wast" }
 wat = { path = "libs/wat" }
+linked-list-allocator = { path = "libs/linked-list-allocator" }
 
 cfg-if = "1.0.0"
 lock_api = "0.4.12"
@@ -41,7 +42,6 @@ arrayvec = { version = "0.7.4", default-features = false }
 lz4_flex = { version = "0.11", default-features = false }
 object = { version = "0.36.0", default-features = false }
 gimli = { version = "0.31.0", default-features = false, features = ["read"] }
-linked_list_allocator = "0.10.5"
 talc = "4.4.1"
 #ed25519-dalek = { version = "2.1.1", default-features = false, features = ["fast"] }
 
