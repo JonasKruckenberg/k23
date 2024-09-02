@@ -157,10 +157,7 @@ fn init_global_allocator(machine_info: &MachineInfo) {
     static ALLOC: LockedHeap = LockedHeap::empty();
 
     unsafe {
-        ALLOC.lock().init(
-            machine_info.memories[0].start.as_raw() as *mut u8,
-            machine_info.memories[0].size(),
-        );
+        ALLOC.lock().init_from_phys_range(&machine_info.memories[0]);
     }
 }
 

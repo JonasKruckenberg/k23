@@ -7,7 +7,6 @@
 use core::alloc::GlobalAlloc;
 use core::alloc::Layout;
 use core::alloc::{AllocError, Allocator};
-use core::mem::MaybeUninit;
 use core::ops::{Deref, Range};
 use core::ptr::NonNull;
 use hole::HoleList;
@@ -71,7 +70,7 @@ impl Heap {
     /// if the given address is invalid.
     ///
     /// The provided memory range must be valid for the `'static` lifetime.
-    pub unsafe fn init_from_phys_range(&mut self, range: Range<kmm::PhysicalAddress>) {
+    pub unsafe fn init_from_phys_range(&mut self, range: &Range<kmm::PhysicalAddress>) {
         self.used = 0;
         self.holes = HoleList::new(range.start.as_raw() as *mut u8, range.size());
     }
@@ -100,7 +99,7 @@ impl Heap {
     /// if the given address is invalid.
     ///
     /// The provided memory range must be valid for the `'static` lifetime.
-    pub unsafe fn init_from_virt_range(&mut self, range: Range<kmm::VirtualAddress>) {
+    pub unsafe fn init_from_virt_range(&mut self, range: &Range<kmm::VirtualAddress>) {
         self.used = 0;
         self.holes = HoleList::new(range.start.as_raw() as *mut u8, range.size());
     }

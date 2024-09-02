@@ -466,7 +466,7 @@ impl HoleList {
         let layout = Layout::from_size_align(new_hole_size, 1).unwrap();
 
         // instantiate the hole by forcing a deallocation on the new memory
-        self.deallocate(NonNull::new_unchecked(top as *mut u8), layout);
+        self.deallocate(NonNull::new_unchecked(top), layout);
         self.top = top.add(new_hole_size);
 
         // save extra bytes given to extend that weren't aligned to the hole size
