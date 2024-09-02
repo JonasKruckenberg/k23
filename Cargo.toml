@@ -1,5 +1,14 @@
 [workspace]
-members = ["kernel", "libs/*", "build/*", "loader", "loader/api", "loader/api/macros", "libs/ktest/macros", "libs/kconfig-declare/macros"]
+members = [
+    "kernel",
+    "libs/*",
+    "build/*",
+    "loader",
+    "loader/api",
+    "loader/api/macros",
+    "libs/ktest/macros",
+    "libs/kconfig-declare/macros",
+]
 resolver = "2"
 
 [workspace.package]
@@ -22,6 +31,7 @@ kconfig-declare = { path = "libs/kconfig-declare" }
 kmm = { path = "libs/kmm" }
 ktest = { path = "libs/ktest" }
 leb128 = { path = "libs/leb128" }
+linked-list-allocator = { path = "libs/linked-list-allocator" }
 panic = { path = "libs/panic" }
 riscv = { path = "libs/riscv" }
 semihosting-logger = { path = "libs/semihosting-logger" }
@@ -31,7 +41,6 @@ unwind = { path = "libs/unwind" }
 wasm-encoder = { path = "libs/wasm-encoder" }
 wast = { path = "libs/wast" }
 wat = { path = "libs/wat" }
-linked-list-allocator = { path = "libs/linked-list-allocator" }
 
 cfg-if = "1.0.0"
 lock_api = "0.4.12"
@@ -40,7 +49,7 @@ bitflags = "2.6.0"
 onlyerror = { version = "0.1.4", default-features = false }
 arrayvec = { version = "0.7.4", default-features = false }
 lz4_flex = { version = "0.11", default-features = false }
-object = { version = "0.36.0", default-features = false }
+object = { version = "0.36.4", default-features = false }
 gimli = { version = "0.31.0", default-features = false, features = ["read"] }
 talc = "4.4.1"
 #ed25519-dalek = { version = "2.1.1", default-features = false, features = ["fast"] }
@@ -51,12 +60,12 @@ unicode-width = { version = "0.1.9" }
 memchr = { version = "2.4.1", default-features = false }
 
 # cranelift dependencies
+target-lexicon = { version = "0.12.14", default-features = false }
 hashbrown = { version = "0.14.5", default-features = false, features = [
     "inline-more",
     "nightly",
 ] }
-wasmparser = { version = "0.215.0", default-features = false }
-target-lexicon = { version = "0.12.14", default-features = false }
+wasmparser = { version = "0.216.0", default-features = false }
 cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std2", default-features = false, features = [
     "core",
 ] }
