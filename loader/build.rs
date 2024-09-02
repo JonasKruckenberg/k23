@@ -41,7 +41,8 @@ fn main() {
         out_dir.join("kernel.rs"),
         format!(
             r#"
-    pub static KERNEL: &[u8] = {kernel};
+    /// Raw kernel image, inlined by the build script
+    pub static KERNEL_BYTES: &[u8] = {kernel};
     "#,
         ),
     )

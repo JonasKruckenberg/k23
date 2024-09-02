@@ -15,7 +15,7 @@ union Data<T, F> {
 
 /// A synchronization primitive which initializes its value on first access.
 ///
-/// This is a spin-based port of the [`std::sync::LazyLock`] type.
+/// This is a spin-based port of the [`std::sync::LazyLock`](https://doc.rust-lang.org/std/sync/struct.LazyLock.html) type.
 pub struct LazyLock<T, F = fn() -> T> {
     once: Once,
     data: UnsafeCell<Data<T, F>>,

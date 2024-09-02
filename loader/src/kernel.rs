@@ -77,17 +77,18 @@ impl<'a> Kernel<'a> {
         })
     }
 
+    /// Returns the size of the kernel in memory.
     pub fn mem_size(&self) -> u64 {
         use object::Endianness;
 
         let max_addr = self
-            .load_program_headers()
+            .loadable_program_headers()
             .map(|ph| ph.p_vaddr(Endianness::default()) + ph.p_memsz(Endianness::default()))
             .max()
             .unwrap_or(0);
 
         let min_addr = self
-            .load_program_headers()
+            .loadable_program_headers()
             .map(|ph| ph.p_vaddr(Endianness::default()))
             .min()
             .unwrap_or(0);
@@ -95,8 +96,10 @@ impl<'a> Kernel<'a> {
         max_addr - min_addr
     }
 
-    pub fn align(&self) -> u64 {
-        let load_program_headers = self.load_program_headers();
+    /// Returns the largest alignment of any loadable segment in the kernel and by extension
+    /// the overall alignment for the kernel.
+    pub fn max_align(&self) -> u64 {
+        let load_program_headers = self.loadable_program_headers();
 
         load_program_headers
             .map(|ph| ph.p_align(Endianness::default()))
@@ -104,7 +107,7 @@ impl<'a> Kernel<'a> {
             .unwrap_or(1)
     }
 
-    fn load_program_headers(&self) -> impl Iterator<Item = &ProgramHeader64<Endianness>> + '_ {
+    fn loadable_program_headers(&self) -> impl Iterator<Item = &ProgramHeader64<Endianness>> + '_ {
         self.elf_file
             .elf_program_headers()
             .iter()

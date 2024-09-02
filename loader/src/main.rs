@@ -103,7 +103,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
 
     // decompress & parse kernel
     log::trace!("parsing kernel...");
-    let kernel = Kernel::from_compressed(kernel::KERNEL, &mut frame_alloc)?;
+    let kernel = Kernel::from_compressed(kernel::KERNEL_BYTES, &mut frame_alloc)?;
 
     log::trace!("initializing page tables...");
     let page_table_result =
@@ -164,6 +164,8 @@ fn init_global_allocator(machine_info: &MachineInfo) {
     }
 }
 
+/// Information about our own memory regions.
+/// Used for identity mapping and calculating available physical memory.
 #[derive(Debug)]
 pub struct LoaderRegions {
     pub executable: Range<PhysicalAddress>,
