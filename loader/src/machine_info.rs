@@ -31,20 +31,18 @@ pub struct MachineInfo<'dt> {
 }
 
 impl<'dt> MachineInfo<'dt> {
+    /// Returns the *convex hull* of all physical memory regions i.e. the smallest range of addresses
+    /// that contains all memory regions.
+    ///
+    /// Since we *could* have multiple memory regions, and those regions need not be contiguous,
+    /// this function should be used to determine the range of addresses that we should map in the
+    /// [`map_physical_memory`][crate::PageTableBuilder::map_physical_memory] step.
     pub fn memory_hull(&self) -> Range<PhysicalAddress> {
-        let min_addr = self
-            .memories
-            .iter()
-            .map(|r| r.start)
-            .min()
-            .unwrap_or(PhysicalAddress::default());
+        // This relies on the memory regions being sorted by the constructor
+        debug_assert!(self.memories.is_sorted_by(|a, b| { a.end <= b.start }));
 
-        let max_addr = self
-            .memories
-            .iter()
-            .map(|r| r.end)
-            .max()
-            .unwrap_or(PhysicalAddress::default());
+        let min_addr = self.memories.first().map(|r| r.start).unwrap_or_default();
+        let max_addr = self.memories.last().map(|r| r.end).unwrap_or_default();
 
         min_addr..max_addr
     }
@@ -135,18 +133,20 @@ impl<'dt> MachineInfo<'dt> {
 
         // ensure the memory regions are sorted.
         // this is important for the allocation logic to be correct
-        info.memories.sort_unstable_by(|a, b| {
-            if a.end < b.start {
-                Ordering::Less
-            } else if b.end < a.start {
-                Ordering::Greater
-            } else {
-                // This should never happen if the `exclude_region` code about is correct
-                unreachable!("Memory region {a:?} and {b:?} are overlapping");
-            }
-        });
+        info.memories.sort_unstable_by(compare_memory_regions);
 
         Ok(info)
+    }
+}
+
+fn compare_memory_regions(a: &Range<PhysicalAddress>, b: &Range<PhysicalAddress>) -> Ordering {
+    if a.end <= b.start {
+        Ordering::Less
+    } else if b.end <= a.start {
+        Ordering::Greater
+    } else {
+        // This should never happen if the `exclude_region` code about is correct
+        unreachable!("Memory region {a:?} and {b:?} are overlapping");
     }
 }
 

@@ -56,7 +56,7 @@ impl<'a> PageTableBuilder<'a> {
         machine_info: &MachineInfo,
     ) -> crate::Result<Self> {
         let mem_size = kernel.mem_size() as usize;
-        let align = kernel.align() as usize;
+        let align = kernel.max_align() as usize;
 
         let kernel_image_offset = self.virt_alloc.reserve_range(mem_size, align).start;
         let maybe_tls_template = self

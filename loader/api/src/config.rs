@@ -26,14 +26,15 @@ pub struct LoaderConfig {
 impl LoaderConfig {
     /// Creates a new default configuration with the following values:
     ///
-    /// - `kernel_stack_size`: 80kiB
-    /// - `mappings`: See [`Mappings::new_default()`]
+    /// - `kernel_stack_size_pages`: 20
+    /// - `kernel_heap_size_pages`: None
+    /// - `memory_mode`: The default memory mode for the target architecture (Sv39 for Risc-V).
     #[must_use]
     pub const fn new_default() -> Self {
         Self {
             magic: CFG_MAGIC,
-            kernel_heap_size_pages: None,
             kernel_stack_size_pages: 20,
+            kernel_heap_size_pages: None,
             memory_mode: MemoryMode::new_default(),
         }
     }
