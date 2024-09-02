@@ -164,7 +164,7 @@ dependencies = [
  "hashbrown 0.14.5",
  "log",
  "smallvec",
- "wasmparser",
+ "wasmparser 0.215.0",
  "wasmtime-types",
 ]
 
@@ -272,7 +272,7 @@ dependencies = [
  "tls",
  "toml",
  "unwind",
- "wasmparser",
+ "wasmparser 0.216.0",
  "wast",
 ]
 
@@ -728,7 +728,7 @@ name = "wasm-encoder"
 version = "0.1.0"
 dependencies = [
  "leb128",
- "wasmparser",
+ "wasmparser 0.216.0",
 ]
 
 [[package]]
@@ -745,6 +745,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasmparser"
+version = "0.216.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bcdee6bea3619d311fb4b299721e89a986c3470f804b6d534340e412589028e3"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
 name = "wasmtime-types"
 version = "24.0.0"
 source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std2#515f69127bfc6e674d901c2cdff4a7cb4cedd376"
@@ -754,7 +763,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "smallvec",
- "wasmparser",
+ "wasmparser 0.215.0",
 ]
 
 [[package]]
