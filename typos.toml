@@ -13,6 +13,7 @@ addd = "addd"
 ratatui = "ratatui"
 datas = "datas"
 rela = "rela" # the relocation format
+welp = "welp"
 
 [default.extend-identifier]
 

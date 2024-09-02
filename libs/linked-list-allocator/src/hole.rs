@@ -51,7 +51,7 @@ impl Cursor {
     }
 
     // On success, it returns the new allocation, and the linked list has been updated
-    // to accomodate any new holes and allocation. On error, it returns the cursor
+    // to accommodate any new holes and allocation. On error, it returns the cursor
     // unmodified, and has made no changes to the linked list of holes.
     fn split_current(self, required_layout: Layout) -> Result<(*mut u8, usize), Self> {
         let front_padding;
