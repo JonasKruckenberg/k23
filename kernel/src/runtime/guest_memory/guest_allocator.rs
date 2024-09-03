@@ -64,9 +64,7 @@ impl GuestAllocator {
         flush.flush().unwrap();
 
         unsafe {
-            inner
-                .inner
-                .init(mem_virt.start.as_raw() as *mut u8, mem_virt.size());
+            inner.inner.init_from_virt_range(&mem_virt);
         }
 
         Ok(Self(Arc::new(Mutex::new(inner))))

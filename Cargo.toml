@@ -1,5 +1,14 @@
 [workspace]
-members = ["kernel", "libs/*", "build/*", "loader", "loader/api", "loader/api/macros", "libs/ktest/macros", "libs/kconfig-declare/macros"]
+members = [
+    "kernel",
+    "libs/*",
+    "build/*",
+    "loader",
+    "loader/api",
+    "loader/api/macros",
+    "libs/ktest/macros",
+    "libs/kconfig-declare/macros",
+]
 resolver = "2"
 
 [workspace.package]
@@ -22,6 +31,7 @@ kconfig-declare = { path = "libs/kconfig-declare" }
 kmm = { path = "libs/kmm" }
 ktest = { path = "libs/ktest" }
 leb128 = { path = "libs/leb128" }
+linked-list-allocator = { path = "libs/linked-list-allocator" }
 panic = { path = "libs/panic" }
 riscv = { path = "libs/riscv" }
 semihosting-logger = { path = "libs/semihosting-logger" }
@@ -41,7 +51,6 @@ arrayvec = { version = "0.7.4", default-features = false }
 lz4_flex = { version = "0.11", default-features = false }
 object = { version = "0.36.4", default-features = false }
 gimli = { version = "0.31.0", default-features = false, features = ["read"] }
-linked_list_allocator = "0.10.5"
 talc = "4.4.1"
 #ed25519-dalek = { version = "2.1.1", default-features = false, features = ["fast"] }
 
