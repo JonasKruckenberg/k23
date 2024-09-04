@@ -89,8 +89,9 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: cargo test
         continue-on-error: true # We have plenty of failing tests right now
-        cache-on-failure: true
         # Run tests in release mode because otherwise they take *foreeever*
         run: nix develop --command just profile=release test
