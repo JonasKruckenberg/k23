@@ -1,0 +1,2 @@
+[target.'cfg(all(target_arch = "riscv64"))']
+runner = "just _run_riscv64"
