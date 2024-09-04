@@ -132,7 +132,7 @@ impl Heap {
     ///
     /// # Safety
     ///
-    /// `ptr` must be a pointer returned by a call to the [`allocate_first_fit`] function with
+    /// `ptr` must be a pointer returned by a call to the [`Heap::allocate_first_fit`] function with
     /// identical layout. Undefined behavior may occur for invalid arguments.
     pub unsafe fn deallocate(&mut self, ptr: NonNull<u8>, layout: Layout) {
         self.used -= self.holes.deallocate(ptr, layout).size();

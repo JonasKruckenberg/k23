@@ -1,10 +1,11 @@
 #[cfg(test)]
-mod compile_tests {
+pub mod compile_tests {
     use crate::runtime::{Engine, Linker, Module, Store};
     use cranelift_codegen::settings::Configurable;
+    use kmm::VirtualAddress;
     use wast::WastDirective;
 
-    fn build_and_run_wasm(wasm: &[u8]) {
+    fn build_and_run_wasm(wasm: &[u8], physmem_off: VirtualAddress) {
         let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
         let mut b = cranelift_codegen::settings::builder();
         b.set("opt_level", "speed_and_size").unwrap();
@@ -15,7 +16,7 @@ mod compile_tests {
 
         let engine = Engine::new(target_isa);
 
-        let mut store = Store::new(0);
+        let mut store = Store::new(0, physmem_off);
 
         let module = Module::from_binary(&engine, &store, wasm);
         log::debug!("{module:#?}");
@@ -25,7 +26,7 @@ mod compile_tests {
         instance.debug_print_vmctx(&store);
     }
 
-    fn build_and_run_wast(wast: &str) {
+    fn build_and_run_wast(wast: &str, physmem_off: VirtualAddress) {
         use wast::{
             parser::{self, ParseBuffer},
             Wast,
@@ -36,7 +37,7 @@ mod compile_tests {
         for dir in module.directives {
             if let WastDirective::Wat(mut wat) = dir {
                 let wasm = wat.encode().unwrap();
-                build_and_run_wasm(&wasm);
+                build_and_run_wasm(&wasm, physmem_off);
             }
         }
     }
@@ -44,9 +45,9 @@ mod compile_tests {
     macro_rules! wasm_test_case {
         ($name:ident, $fixture:expr) => {
             #[ktest::test]
-            fn $name() {
+            fn $name(boot_info: &'static loader_api::BootInfo) {
                 let bytes = include_bytes!($fixture);
-                build_and_run_wasm(bytes)
+                build_and_run_wasm(bytes, boot_info.physical_memory_offset)
             }
         };
     }
@@ -54,14 +55,12 @@ mod compile_tests {
     macro_rules! wast_test_case {
         ($name:ident, $fixture:expr) => {
             #[ktest::test]
-            fn $name() {
+            fn $name(boot_info: &'static loader_api::BootInfo) {
                 let bytes = include_str!($fixture);
-                build_and_run_wast(bytes)
+                build_and_run_wast(bytes, boot_info.physical_memory_offset)
             }
         };
     }
-
-    // wast_test_case!(test_data, "/Users/jonaskruckenberg/Documents/GitHub/k23/tests/testsuite/data.wast");
 
     ktest::for_each_fixture!("../tests/fib", wasm_test_case);
     ktest::for_each_fixture!("../tests/testsuite", wast_test_case);

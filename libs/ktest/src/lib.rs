@@ -27,7 +27,7 @@ pub use run::run_tests;
 
 /// A single test case
 pub struct Test {
-    pub run: fn(),
+    pub run: fn(&'static loader_api::BootInfo),
     pub info: TestInfo<'static>,
 }
 

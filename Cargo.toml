@@ -2,12 +2,10 @@
 members = [
     "kernel",
     "libs/*",
-    "build/*",
     "loader",
     "loader/api",
     "loader/api/macros",
-    "libs/ktest/macros",
-    "libs/kconfig-declare/macros",
+    "libs/ktest/macros"
 ]
 resolver = "2"
 
@@ -27,7 +25,6 @@ recursive_format_impl = "deny"
 loader-api = { path = "loader/api" }
 backtrace = { path = "libs/backtrace" }
 dtb-parser = { path = "libs/dtb-parser" }
-kconfig-declare = { path = "libs/kconfig-declare" }
 kmm = { path = "libs/kmm" }
 ktest = { path = "libs/ktest" }
 leb128 = { path = "libs/leb128" }
@@ -40,7 +37,6 @@ tls = { path = "libs/tls" }
 unwind = { path = "libs/unwind" }
 wasm-encoder = { path = "libs/wasm-encoder" }
 wast = { path = "libs/wast" }
-wat = { path = "libs/wat" }
 
 cfg-if = "1.0.0"
 lock_api = "0.4.12"
@@ -52,7 +48,6 @@ lz4_flex = { version = "0.11", default-features = false }
 object = { version = "0.36.4", default-features = false }
 gimli = { version = "0.31.0", default-features = false, features = ["read"] }
 talc = "4.4.1"
-#ed25519-dalek = { version = "2.1.1", default-features = false, features = ["fast"] }
 
 # wast dependencies
 bumpalo = "3.14.0"
@@ -82,7 +77,6 @@ cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime", branc
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
-toml = "0.8.19"
 
 [profile.release]
 opt-level = 3
@@ -91,12 +85,6 @@ lto = true
 strip = true
 overflow-checks = true
 split-debuginfo = "packed"
-
-#[profile.dev.package.ed25519-dalek]
-#opt-level = 3
-#
-#[profile.test.package.ed25519-dalek]
-#opt-level = 3
 
 [profile.dev.package.lz4_flex]
 opt-level = 3

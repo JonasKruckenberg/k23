@@ -3,8 +3,13 @@ use crate::printer::Printer;
 use crate::{Conclusion, Outcome, Test, TestInfo};
 use core::ptr::addr_of;
 use core::{fmt, hint, mem, slice};
+use loader_api::BootInfo;
 
-pub fn run_tests(write: &mut dyn fmt::Write, args: Arguments) -> Conclusion {
+pub fn run_tests(
+    write: &mut dyn fmt::Write,
+    args: Arguments,
+    boot_info: &'static BootInfo,
+) -> Conclusion {
     let tests = all_tests();
 
     let mut conclusion = Conclusion::empty();
@@ -41,7 +46,7 @@ pub fn run_tests(write: &mut dyn fmt::Write, args: Arguments) -> Conclusion {
         let outcome = if args.is_ignored(test) {
             Outcome::Ignored
         } else {
-            match panic::catch_unwind(|| (test.run)()) {
+            match panic::catch_unwind(|| (test.run)(boot_info)) {
                 Ok(_) => Outcome::Passed,
                 Err(err) => Outcome::Failed(err),
             }

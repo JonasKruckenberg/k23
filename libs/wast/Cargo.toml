@@ -28,13 +28,6 @@ memchr.workspace = true
 bumpalo.workspace = true
 tls.workspace = true
 
-[dev-dependencies]
-# anyhow = { workspace = true }
-# libtest-mimic = { workspace = true }
-# wasmparser = { workspace = true }
-# wat = { workspace = true }
-# rand = { workspace = true }
-
 [features]
 default = ['wasm-module']
 

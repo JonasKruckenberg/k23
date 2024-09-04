@@ -7,9 +7,7 @@
 - [How to Build and Run K23](building/how-to-build-and-run.md)
 - [Debugging k23](building/debugging.md)
 
-# Contributing to k23
-
-- [`kconfig` Build Configuration](contributing/kconfig.md)
+[//]: # (# Contributing to k23)
 
 # High-Level Architecture
 
@@ -19,7 +17,7 @@
 # CPU Architectures
 
 - [RISC-V](arch/riscv.md)
-    - [Virtual Memory Layout on RISC-V](arch/riscv/boot_flow.md)
+    - [Virtual Memory Layout on RISC-V](arch/riscv/memory_layout.md)
 
 # WASM Runtime
 
