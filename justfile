@@ -11,6 +11,8 @@ _rustflags := env_var_or_default("RUSTFLAGS", "")
 _buildstd := "-Z build-std=core,alloc -Z build-std-features=compiler-builtins-mem"
 _rustdoc := _cargo + " doc --no-deps"
 
+export CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER := "just _run_riscv64"
+
 # If we're running in Github Actions and cargo-action-fmt is installed, then add
 # a command suffix that formats errors.
 _fmt_clippy := if env_var_or_default("GITHUB_ACTIONS", "") != "true" { "" } else {
