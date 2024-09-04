@@ -88,6 +88,6 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - uses: Swatinem/rust-cache@v2
-      - name: cargo clippy
+      - name: cargo test
         # Run tests in release mode because otherwise they take *foreeever*
         run: nix develop --command just profile=release test
