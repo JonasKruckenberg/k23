@@ -83,7 +83,9 @@ jobs:
     timeout-minutes: 45
     continue-on-error: true # We have plenty of failing tests right now
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main

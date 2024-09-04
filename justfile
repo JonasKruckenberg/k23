@@ -119,6 +119,7 @@ test cargo_args="" *args="": && (test-docs cargo_args)
         --target kernel/riscv64gc-k23-none-kernel.json \
         --profile {{ profile }} \
         {{ _buildstd }} \
+        {{ _fmt }} \
         {{ cargo_args }} \
         -- {{ args }}
 
