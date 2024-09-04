@@ -1,9 +1,8 @@
 extern crate core;
 
-use std::{fs, path::PathBuf};
-
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
+use std::{fs, path::PathBuf};
 use syn::{
     parse::Parse, parse_macro_input, parse_quote, Attribute, Error, Expr, Ident, ItemFn, LitStr,
     Path,
@@ -18,14 +17,22 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
     let static_ident = format_ident!("{}", ident_str.to_uppercase());
     let crate_path = crate_path(&mut func.attrs).unwrap();
 
+    let run_func = if func.sig.inputs.len() == 1 {
+        quote! {
+            |boot_info| #ident(boot_info)
+        }
+    } else {
+        quote! {
+            |_| #ident()
+        }
+    };
+
     quote!(
         #[used(linker)]
         #[link_section = "k23_tests"]
         static #static_ident: #crate_path::Test = {
-            let run: fn() = #ident;
-
             #crate_path::Test {
-                run,
+                run: #run_func,
                 info: #crate_path::TestInfo {
                     module: module_path!(),
                     name: stringify!(#ident),
@@ -77,13 +84,13 @@ pub fn setup_harness(args: TokenStream, item: TokenStream) -> TokenStream {
                 }
             }
 
-            let machine_info = unsafe { #crate_path::__private::MachineInfo::from_dtb(boot_info.fdt_virt.as_raw() as *const u8) };
+            let machine_info = unsafe { #crate_path::__private::MachineInfo::from_dtb(boot_info.fdt_offset.as_raw() as *const u8) };
             let args = machine_info.bootargs.map(|bootargs| #crate_path::Arguments::from_str(bootargs.to_str().unwrap())).unwrap_or_default();
 
             let init_func: fn(usize, #crate_path::SetupInfo) = #init_func_ident;
             init_func(hartid, #crate_path::SetupInfo::new(boot_info));
 
-            #crate_path::run_tests(&mut Log, args).exit();
+            #crate_path::run_tests(&mut Log, args, boot_info).exit();
         }
 
         #init_func

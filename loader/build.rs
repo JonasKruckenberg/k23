@@ -2,26 +2,16 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 fn main() {
+    let workspace_root = Path::new(env!("CARGO_RUSTC_CURRENT_DIR"));
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
-    let kernel = build_kernel(&out_dir);
-    let kernel = compress_kernel(&out_dir, &kernel);
+    let kernel = PathBuf::from(env::var_os("KERNEL").unwrap());
+    println!("cargo::rerun-if-env-changed=KERNEL");
+
+    let kernel = compress_kernel(&out_dir, &workspace_root.join(kernel));
     println!("cargo::rustc-env=KERNEL={}", kernel.display());
 
     copy_linker_script();
-}
-
-fn build_kernel(out_dir: &Path) -> PathBuf {
-    let res = escargot::CargoBuild::new()
-        .package("kernel")
-        .current_release()
-        .target("../kernel/riscv64gc-k23-none-kernel.json")
-        .args(["-Zbuild-std=core,alloc"])
-        .target_dir(out_dir)
-        .run()
-        .unwrap();
-
-    res.path().to_path_buf()
 }
 
 fn compress_kernel(out_dir: &Path, kernel: &Path) -> PathBuf {

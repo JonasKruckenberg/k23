@@ -77,7 +77,6 @@ cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime", branc
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
-toml = "0.8.19"
 
 [profile.release]
 opt-level = 3
