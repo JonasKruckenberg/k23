@@ -105,7 +105,12 @@ test crate="" *cargo_args="":
     {{ error("TODO")  }}
 
 check crate="" *cargo_args="":
-    {{ error("TODO")  }}
+    {{ _cargo }} check \
+        {{ if crate == "" { "--workspace --exclude loader --exclude panic" } else { "-p" } }} {{ crate }} \
+        $(just _print_target {{crate}}) \
+        {{ _buildstd }} \
+        {{ _fmt_clippy }} \
+        {{ cargo_args }}
 
 manual:
     cd manual && mdbook serve
