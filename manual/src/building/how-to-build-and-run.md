@@ -16,4 +16,4 @@ build k23 for `riscv64` and run it inside QEMU. Note that this is currently just
 Other actions include:
 
 - `just preflight` which will run all lints and checks
-- `just test configs/riscv64-qemu.toml` which will run all tests for Risc-V in QEMU
+- `just run` which will run k23 in QEMU

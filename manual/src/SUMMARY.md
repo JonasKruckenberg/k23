@@ -17,7 +17,7 @@
 # CPU Architectures
 
 - [RISC-V](arch/riscv.md)
-    - [Virtual Memory Layout on RISC-V](arch/riscv/boot_flow.md)
+    - [Virtual Memory Layout on RISC-V](arch/riscv/memory_layout.md)
 
 # WASM Runtime
 
