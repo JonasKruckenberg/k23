@@ -227,23 +227,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kconfig-declare"
-version = "0.1.0"
-dependencies = [
- "kconfig-declare-macros",
-]
-
-[[package]]
-name = "kconfig-declare-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "toml",
-]
-
-[[package]]
 name = "kernel"
 version = "0.1.0"
 dependencies = [
@@ -255,7 +238,6 @@ dependencies = [
  "cranelift-wasm",
  "gimli",
  "hashbrown 0.14.5",
- "kconfig-declare",
  "kmm",
  "ktest",
  "linked-list-allocator",
@@ -270,7 +252,6 @@ dependencies = [
  "talc",
  "target-lexicon",
  "tls",
- "toml",
  "unwind",
  "wasmparser 0.216.0",
  "wast",
@@ -337,7 +318,6 @@ dependencies = [
  "arrayvec",
  "cfg-if",
  "dtb-parser",
- "kconfig-declare",
  "kmm",
  "linked-list-allocator",
  "loader-api",
@@ -351,7 +331,6 @@ dependencies = [
  "riscv",
  "semihosting-logger",
  "sync",
- "toml",
 ]
 
 [[package]]
@@ -581,15 +560,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_spanned"
-version = "0.6.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb5b1b31579f3811bf615c144393417496f152e12ac8b7663bf664f4a815306d"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "slice-group-by"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -640,40 +610,6 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 [[package]]
 name = "tls"
 version = "0.1.0"
-
-[[package]]
-name = "toml"
-version = "0.8.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1ed1f98e3fdc28d6d910e6737ae6ab1a93bf1985935a1193e68f93eeb68d24e"
-dependencies = [
- "serde",
- "serde_spanned",
- "toml_datetime",
- "toml_edit",
-]
-
-[[package]]
-name = "toml_datetime"
-version = "0.6.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dd7358ecb8fc2f8d014bf86f6f638ce72ba252a2c3a2572f2a795f1d23efb41"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "toml_edit"
-version = "0.22.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "583c44c02ad26b0c3f3066fe629275e50627026c51ac2e595cca4c230ce1ce1d"
-dependencies = [
- "indexmap",
- "serde",
- "serde_spanned",
- "toml_datetime",
- "winnow",
-]
 
 [[package]]
 name = "uart-16550"
@@ -775,15 +711,6 @@ name = "wat"
 version = "1.214.0"
 dependencies = [
  "wast",
-]
-
-[[package]]
-name = "winnow"
-version = "0.6.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68a9bda4691f099d435ad181000724da8e5899daa10713c2d432552b9ccd3a6f"
-dependencies = [
- "memchr",
 ]
 
 [[package]]

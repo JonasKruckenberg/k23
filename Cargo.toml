@@ -6,8 +6,7 @@ members = [
     "loader",
     "loader/api",
     "loader/api/macros",
-    "libs/ktest/macros",
-    "libs/kconfig-declare/macros",
+    "libs/ktest/macros"
 ]
 resolver = "2"
 
@@ -52,7 +51,6 @@ lz4_flex = { version = "0.11", default-features = false }
 object = { version = "0.36.4", default-features = false }
 gimli = { version = "0.31.0", default-features = false, features = ["read"] }
 talc = "4.4.1"
-#ed25519-dalek = { version = "2.1.1", default-features = false, features = ["fast"] }
 
 # wast dependencies
 bumpalo = "3.14.0"
@@ -91,12 +89,6 @@ lto = true
 strip = true
 overflow-checks = true
 split-debuginfo = "packed"
-
-#[profile.dev.package.ed25519-dalek]
-#opt-level = 3
-#
-#[profile.test.package.ed25519-dalek]
-#opt-level = 3
 
 [profile.dev.package.lz4_flex]
 opt-level = 3

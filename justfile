@@ -26,6 +26,8 @@ _buildstd := "-Z build-std=core,alloc -Z build-std-features=compiler-builtins-me
 _target_dir := env_var_or_default("CARGO_TARGET_DIR", justfile_directory() / "target")
 
 _signing_key := env_var_or_default("SIGNING_KEY", `openssl genpkey -algorithm Ed25519 -outform pem`)
+_kernel_target := "./configs/riscv64gc-k23-none-kernel.json"
+_loader_target := "./configs/riscv64imac-k23-none-loader.json"
 
 # default recipe to display help information
 _default:
@@ -36,71 +38,60 @@ _default:
 preflight *FLAGS: (lint "configs/riscv64-qemu.toml" FLAGS)
 
 # run lints (clippy, rustfmt) for the workspace
-lint config *FLAGS: (clippy config FLAGS) (check-fmt FLAGS)
+lint *FLAGS: (clippy FLAGS) (check-fmt FLAGS)
 
 # run clippy lints for the workspace
-clippy config $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
-    #!/usr/bin/env nu
-    let config = open {{config}}
-    $env.K23_CONFIG = {{config}}
-
+clippy $RUSTFLAGS='-Dwarnings' *CARGO_ARGS='':
     # check kernel and dependencies
-    ({{_cargo}} clippy
-        -p kernel
-        --target $config.kernel.target
-        --profile {{profile}}
-        {{_buildstd}}
-        {{CARGO_ARGS}})
+    {{_cargo}} clippy \
+        -p kernel \
+        --target {{_kernel_target}} \
+        --profile {{profile}} \
+        {{_buildstd}} \
+        {{CARGO_ARGS}}
 
     # check loader and dependencies
-    ({{_cargo}} clippy
-        -p loader
-        --target $config.loader.target
-        --profile {{profile}}
-        {{_buildstd}}
-        {{CARGO_ARGS}})
+    {{_cargo}} clippy \
+        -p loader \
+        --target {{_kernel_target}} \
+        --profile {{profile}} \
+        {{_buildstd}} \
+        {{CARGO_ARGS}}
 
 # run checks for the workspace
-check config $RUSTFLAGS='' *CARGO_ARGS='':
-    #!/usr/bin/env nu
-    let config = open {{config}}
-    $env.K23_CONFIG = {{config}}
-
+check $RUSTFLAGS='' *CARGO_ARGS='':
     # check kernel and dependencies
-    ({{_cargo}} check
-        -p kernel
-        --target $config.kernel.target
-        --profile {{profile}}
-        {{_buildstd}}
-        {{CARGO_ARGS}})
+    {{_cargo}} check \
+        -p kernel \
+        --target {{_kernel_target}} \
+        --profile {{profile}} \
+        {{_buildstd}} \
+        {{CARGO_ARGS}}
 
     # check loader and dependencies
-    ({{_cargo}} check
-        -p loader
-        --target $config.loader.target
-        --profile {{profile}}
-        {{_buildstd}}
-        {{CARGO_ARGS}})
+    {{_cargo}} check \
+        -p loader \
+        --target {{_loader_target}} \
+        --profile {{profile}} \
+        {{_buildstd}} \
+        {{CARGO_ARGS}}
 
 # check rustfmt for `crate`
 check-fmt *FLAGS:
     {{ _cargo }} fmt --check --all {{ FLAGS }}
 
 # Builds the kernel using the given config and runs it using QEMU
-run config CARGO_ARGS="" *ARGS="": (build config CARGO_ARGS) (_run config "target/k23/bootimg.bin" ARGS)
+run CARGO_ARGS="" *ARGS="": (build CARGO_ARGS) (_run "target/k23/bootimg.bin" ARGS)
 
 # Builds the kernel using the given config
-build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/kernel" CARGO_ARGS)
+build *CARGO_ARGS="": && (_make_bootimg "target/k23/kernel" CARGO_ARGS)
     #!/usr/bin/env nu
-    let config = open {{config}}
-    $env.K23_CONFIG = {{config}}
-
     let out_dir = "{{_target_dir}}" | path join "k23"
     mkdir $out_dir
 
     let cargo_out = ({{_cargo}} build
         -p kernel
-        --target $config.kernel.target
+        --target {{_kernel_target}}
         --profile {{profile}}
         --message-format=json
         {{_buildstd}}
@@ -108,45 +99,30 @@ build config *CARGO_ARGS="": && (_make_bootimg config "target/k23/kernel" CARGO_
     cp ($cargo_out | from json --objects | last 2 | get 0.executable) ($out_dir | path join kernel)
 
 # Runs the tests for the kernel
-test config *CARGO_ARGS="" :
+test *CARGO_ARGS="" :
     #!/usr/bin/env nu
-    let config = open {{config}}
-    $env.K23_CONFIG = {{config}}
-
-    #let target = try {  } catch { $config.target }
-    let triple = try { $config.kernel.target-triple } catch { $config.target-triple }
-
     # CARGO_TARGET_<triple>_RUNNER
-    $env.CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER = "just profile={{profile}} _runner {{config}}"
+    $env.CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER = "just profile={{profile}} _runner"
 
-    {{ _cargo }} test -p kernel --target $config.kernel.target {{ _buildstd }} {{ CARGO_ARGS }}
+    {{ _cargo }} test -p kernel --target {{_kernel_target}} {{ _buildstd }} {{ CARGO_ARGS }}
 
 # This is a helper recipe designed to be used as a cargo *target runner*
 # When running tests, the `cargo test` command will produce potentially many executables.
 # The paths to these files are not known ahead of time, so we use this runner trick to package each executable
 # into a bootable image and run it using QEMU.
-_runner config binary *ARGS: (_make_bootimg config binary) (_run config "target/k23/bootimg.bin" ARGS)
+_runner binary *ARGS: (_make_bootimg binary) (_run "target/k23/bootimg.bin" ARGS)
 
 # Runs the given binary that has been built using the config using QEMU
 #
 # This recipe is designed to be used as a dependency of other, user-facing recipes (such as `run` and `test`)
-_run config binary *ARGS:
+_run binary *ARGS:
     #!/usr/bin/env nu
-    let config = open {{ config }}
-    $env.K23_CONFIG = {{config}}
-
-    let runner = $config.runner
-
-    let cpu = match $runner {
-      "qemu-system-riscv64" => "rv64"
-    }
-
     print {{binary}}
-    (^$runner
+    (qemu-system-riscv64
         "-kernel"
         {{binary}}
         "-machine" "virt"
-        "-cpu" $cpu
+        "-cpu" "rv64"
         "-smp" "1"
         "-m" "512M"
         "-d" "guest_errors,int"
@@ -168,18 +144,12 @@ _run config binary *ARGS:
 # 4. Embedding the public key, signature and compressed kernel in the bootloader
 #
 # This recipe is designed to be used as a dependency of other, user-facing recipes
-_make_bootimg config kernel *CARGO_ARGS="":
+_make_bootimg kernel *CARGO_ARGS="":
     #!/usr/bin/env nu
-    let config = open {{config}}
-    $env.K23_CONFIG = {{config}}
-
     let out_dir = "{{_target_dir}}" | path join "k23"
     mkdir $out_dir
 
     let loader_path = ($out_dir | path join loader)
-    #let secret_key_path = ($out_dir | path join secret.der)
-    #let public_key_path = ($out_dir | path join pubkey.bin)
-    #let signature_path = ($out_dir | path join signature.bin)
     let bootimg_path = ($out_dir | path join bootimg.bin)
 
     # Step 1: Compress the kernel
@@ -187,25 +157,13 @@ _make_bootimg config kernel *CARGO_ARGS="":
     let kernel_lz4_path = "{{kernel}}.lz4"
     {{_cargo}} run -p lz4-block-compress {{kernel}} $kernel_lz4_path
 
-    # Step 2: Sign the compressed kernel
-    #print "Signing the compressed kernel..."
-    # Write ed25519 key pair
-    #echo "_signing_key" | openssl pkey -outform DER -out $secret_key_path
-    # Do the actual signing
-    #openssl pkeyutl -sign -inkey $secret_key_path -out $signature_path -rawin -in $kernel_lz4_path
-    # Extract the 32-byte public key
-    #openssl pkey -in $secret_key_path -pubout -outform DER | tail -c 32 | save -f $public_key_path
-
-    # Assign environment variables so we can pick it up in the loader build script
-    #$env.K23_VERIFYING_KEY_PATH = $public_key_path
-    #$env.K23_SIGNATURE_PATH = $signature_path
     $env.K23_KERNEL_PATH = $kernel_lz4_path
 
     # Step 3: Build the bootloader
     print "Building the bootloader..."
     let cargo_out = ({{_cargo}} build
         -p loader
-        --target $config.loader.target
+        --target {{_loader_target}}
         --profile {{profile}}
         --message-format=json
         {{_buildstd}}

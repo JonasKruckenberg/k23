@@ -7,9 +7,7 @@
 - [How to Build and Run K23](building/how-to-build-and-run.md)
 - [Debugging k23](building/debugging.md)
 
-# Contributing to k23
-
-- [`kconfig` Build Configuration](contributing/kconfig.md)
+[//]: # (# Contributing to k23)
 
 # High-Level Architecture
 
