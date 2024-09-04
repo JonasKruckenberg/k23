@@ -60,6 +60,15 @@ run cargo_args *args="":
         {{ cargo_args }} \
         -- {{ args }}
 
+# quick check for development
+check crate="" *cargo_args="":
+    {{ _cargo }} check \
+        {{ if crate == "" { "--workspace --exclude loader --exclude panic" } else { "-p" } }} {{ crate }} \
+        --target kernel/riscv64gc-k23-none-kernel.json \
+        {{ _buildstd }} \
+        {{ _fmt }} \
+        {{ cargo_args }}
+
 # run all tests and checks
 preflight crate="" *cargo_args="": (lint crate cargo_args)
 
