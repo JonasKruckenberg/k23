@@ -43,6 +43,7 @@ Variables can be set using `just VARIABLE=VALUE ...` or
 `just --set VARIABLE VALUE ...`.
 "
 
+# env var to set the cargo runner for the riscv64 target
 export CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER := "just _run_riscv64"
 
 # default recipe to display help information
@@ -119,6 +120,7 @@ test cargo_args="" *args="": && (test-docs cargo_args)
         --target kernel/riscv64gc-k23-none-kernel.json \
         --profile {{ profile }} \
         {{ _buildstd }} \
+        {{ _fmt }} \
         {{ cargo_args }} \
         -- {{ args }}
 

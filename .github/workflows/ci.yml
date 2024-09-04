@@ -75,17 +75,22 @@ jobs:
       - name: Check Rust Code
         uses: EmbarkStudios/cargo-deny-action@v2
 
-#  test:
-#    name: Test
-#    needs: pre_ci
-#    if: needs.pre_ci.outputs.continue
-#    runs-on: ubuntu-latest
-#    timeout-minutes: 45
-#    steps:
-#      - uses: actions/checkout@v3
-#      - name: Install Nix
-#        uses: DeterminateSystems/nix-installer-action@main
-#      - uses: DeterminateSystems/magic-nix-cache-action@main
-#      - uses: Swatinem/rust-cache@v2
-#      - name: cargo clippy
-#        run: nix develop --command just test configs/riscv64-qemu.toml
+  test:
+    name: Test
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo test
+        continue-on-error: true # We have plenty of failing tests right now
+        cache-on-failure: true
+        # Run tests in release mode because otherwise they take *foreeever*
+        run: nix develop --command just profile=release test
