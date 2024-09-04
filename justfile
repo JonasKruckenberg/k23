@@ -43,6 +43,7 @@ Variables can be set using `just VARIABLE=VALUE ...` or
 `just --set VARIABLE VALUE ...`.
 "
 
+# env var to set the cargo runner for the riscv64 target
 export CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER := "just _run_riscv64"
 
 # default recipe to display help information
