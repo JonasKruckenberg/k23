@@ -77,8 +77,6 @@ extern crate alloc;
 mod component;
 mod core;
 mod raw;
-#[cfg(feature = "wasmparser")]
-pub mod reencode;
 
 pub use self::component::*;
 pub use self::core::*;

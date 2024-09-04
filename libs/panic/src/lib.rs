@@ -31,6 +31,8 @@ cfg_if::cfg_if! {
     } else if #[cfg(feature = "abort")] {
         mod abort;
         use abort as r#impl;
+    } else {
+        compile_error!("either the `unwind` or `abort` feature must be enabled");
     }
 }
 

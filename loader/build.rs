@@ -27,7 +27,7 @@ fn build_kernel(out_dir: &Path) -> PathBuf {
 fn compress_kernel(out_dir: &Path, kernel: &Path) -> PathBuf {
     let kernel_compressed = out_dir.join("kernel.lz4");
 
-    let input = fs::read(&kernel).expect("failed to read file");
+    let input = fs::read(kernel).expect("failed to read file");
     let compressed = lz4_flex::compress_prepend_size(&input);
     fs::write(&kernel_compressed, &compressed).expect("failed to write file");
 

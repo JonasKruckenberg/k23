@@ -1,6 +1,6 @@
-use core::slice;
 use crate::error::Error;
 use crate::kconfig;
+use core::slice;
 use kmm::{BumpAllocator, FrameAllocator};
 use loader_api::LoaderConfig;
 use object::elf::{ProgramHeader64, PT_LOAD};

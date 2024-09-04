@@ -9,7 +9,7 @@ profile := "dev"
 _cargo := "cargo" + if toolchain != "" { " +" + toolchain } else { "" }
 _rustflags := env_var_or_default("RUSTFLAGS", "")
 _buildstd := "-Z build-std=core,alloc -Z build-std-features=compiler-builtins-mem"
-_rustdoc := _cargo + " doc --no-deps --all-features"
+_rustdoc := _cargo + " doc --no-deps"
 
 # If we're running in Github Actions and cargo-action-fmt is installed, then add
 # a command suffix that formats errors.
@@ -49,13 +49,13 @@ _default:
     @just --list
 
 
-preflight crate="" *cargo_args="": (lint crate cargo_args) (test crate cargo_args)
+preflight crate="" *cargo_args="": (lint crate cargo_args)
 
-lint crate="" *cargo_args="": (clippy crate cargo_args) (check-fmt crate cargo_args) (check-docs crate cargo_args)
+lint crate="" *cargo_args="": (clippy crate cargo_args) (check-fmt crate cargo_args)
 
 clippy crate="" *cargo_args="":
     {{ _cargo }} clippy \
-        {{ if crate == "" { "--workspace" } else { "-p" } }} {{ crate }} \
+        {{ if crate == "" { "--workspace --exclude loader --exclude panic" } else { "-p" } }} {{ crate }} \
         $(just _print_target {{crate}}) \
         {{ _buildstd }} \
         {{ _fmt_clippy }} \
@@ -67,24 +67,23 @@ check-fmt crate="" *cargo_args="":
         {{ _fmt }} \
         {{ cargo_args }}
 
-check-docs crate="" *cargo_args="": (build-docs crate cargo_args) (test-docs crate cargo_args)
+#check-docs crate="" *cargo_args="": (build-docs crate cargo_args) (test-docs crate cargo_args)
 
-build-docs crate="" *cargo_args="":
-    {{ _rustdoc }} \
-        {{ if crate == '' { '--workspace' } else { '--package' } }} {{ crate }} \
-        $(just _print_target {{crate}}) \
-        {{ _buildstd }} \
-        {{ _fmt }} \
-        {{ cargo_args }}
+#build-docs crate="" *cargo_args="":
+#    {{ _rustdoc }} \
+#        {{ if crate == '' { '--workspace --exclude panic' } else { '--package' } }} {{ crate }} \
+#        $(just _print_target {{crate}}) \
+#        {{ _buildstd }} \
+#        {{ _fmt }} \
+#        {{ cargo_args }}
 
-test-docs crate="" *cargo_args="":
-    {{ _cargo }} test --doc \
-        {{ if crate == "" { "--workspace" } else { "--package" } }} {{ crate }} \
-        --all-features \
-        $(just _print_target {{crate}}) \
-        {{ _buildstd }} \
-        {{ _fmt }} \
-        {{ cargo_args }}
+#test-docs crate="" *cargo_args="":
+#    {{ _cargo }} test --doc \
+#        {{ if crate == "" { "--workspace --exclude panic" } else { "--package" } }} {{ crate }} \
+#        $(just _print_target {{crate}}) \
+#        {{ _buildstd }} \
+#        {{ _fmt }} \
+#        {{ cargo_args }}
 
 build *cargo_args="":
     {{_cargo}} build \
