@@ -81,7 +81,6 @@ jobs:
     if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    continue-on-error: true # We have plenty of failing tests right now
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,5 +90,7 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - uses: Swatinem/rust-cache@v2
       - name: cargo test
+        continue-on-error: true # We have plenty of failing tests right now
+        cache-on-failure: true
         # Run tests in release mode because otherwise they take *foreeever*
         run: nix develop --command just profile=release test
