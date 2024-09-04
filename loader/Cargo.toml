@@ -12,6 +12,10 @@ workspace = true
 name = "loader"
 harness = false
 
+[build-dependencies]
+escargot = "0.5.12"
+lz4_flex.workspace = true
+
 [dependencies]
 loader-api.workspace = true
 sync.workspace = true

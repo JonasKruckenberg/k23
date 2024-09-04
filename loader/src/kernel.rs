@@ -1,5 +1,4 @@
 use core::slice;
-// use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use crate::error::Error;
 use crate::kconfig;
 use kmm::{BumpAllocator, FrameAllocator};
@@ -8,9 +7,7 @@ use object::elf::{ProgramHeader64, PT_LOAD};
 use object::read::elf::ProgramHeader;
 use object::{Endianness, Object, ObjectSection};
 
-// Include the generated kernel.rs file which contains
-// the kernel binary and signature
-include!(concat!(env!("OUT_DIR"), "/kernel.rs"));
+pub const KERNEL_BYTES: &[u8] = include_bytes!(env!("KERNEL"));
 
 pub struct Kernel<'a> {
     pub elf_file: object::read::elf::ElfFile64<'a>,
@@ -18,23 +15,6 @@ pub struct Kernel<'a> {
 }
 
 impl<'a> Kernel<'a> {
-    // pub fn from_signed_and_compressed(
-    //     verifying_key: &'static [u8; ed25519_dalek::PUBLIC_KEY_LENGTH],
-    //     compressed_kernel: &'a [u8],
-    //     signature: &'static [u8; Signature::BYTE_SIZE],
-    //     alloc: &mut BumpAllocator<'_, INIT<kconfig::MEMORY_MODE>>,
-    // ) -> Self {
-    //     log::info!("Verifying kernel signature...");
-    //     let verifying_key = VerifyingKey::from_bytes(verifying_key).unwrap();
-    //     let signature = Signature::from_slice(signature).unwrap();
-    //
-    //     verifying_key
-    //         .verify(compressed_kernel, &signature)
-    //         .expect("failed to verify kernel image signature");
-    //
-    //     Self::from_compressed(compressed_kernel, alloc)
-    // }
-
     pub fn from_compressed(
         compressed: &'a [u8],
         alloc: &mut BumpAllocator<'_, kconfig::MEMORY_MODE>,

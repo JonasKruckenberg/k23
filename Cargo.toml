@@ -2,7 +2,6 @@
 members = [
     "kernel",
     "libs/*",
-    "build/*",
     "loader",
     "loader/api",
     "loader/api/macros",
@@ -26,7 +25,6 @@ recursive_format_impl = "deny"
 loader-api = { path = "loader/api" }
 backtrace = { path = "libs/backtrace" }
 dtb-parser = { path = "libs/dtb-parser" }
-kconfig-declare = { path = "libs/kconfig-declare" }
 kmm = { path = "libs/kmm" }
 ktest = { path = "libs/ktest" }
 leb128 = { path = "libs/leb128" }

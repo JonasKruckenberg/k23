@@ -1,38 +1,37 @@
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 fn main() {
-    let workspace_root = Path::new(env!("CARGO_RUSTC_CURRENT_DIR"));
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
+    let kernel = build_kernel(&out_dir);
+    let kernel = compress_kernel(&out_dir, &kernel);
+    println!("cargo::rustc-env=KERNEL={}", kernel.display());
+
     copy_linker_script();
-
-    // handle the kernel inclusion
-    let kernel = include_from_env(workspace_root, env::var_os("K23_KERNEL_PATH"));
-    println!("cargo::rerun-if-env-changed=K23_KERNEL_PATH");
-
-    fs::write(
-        out_dir.join("kernel.rs"),
-        format!(
-            r#"
-    /// Raw kernel image, inlined by the build script
-    pub static KERNEL_BYTES: &[u8] = {kernel};
-    "#,
-        ),
-    )
-    .unwrap();
 }
 
-fn include_from_env(workspace_root: &Path, var: Option<OsString>) -> String {
-    if let Some(path) = var {
-        let path = workspace_root.join(path);
+fn build_kernel(out_dir: &Path) -> PathBuf {
+    let res = escargot::CargoBuild::new()
+        .package("kernel")
+        .current_release()
+        .target("../kernel/riscv64gc-k23-none-kernel.json")
+        .args(["-Zbuild-std=core,alloc"])
+        .target_dir(out_dir)
+        .run()
+        .unwrap();
 
-        println!("cargo::rerun-if-changed={}", path.display());
-        format!(r#"include_bytes!("{}")"#, path.display())
-    } else {
-        "&[]".to_string()
-    }
+    res.path().to_path_buf()
+}
+
+fn compress_kernel(out_dir: &Path, kernel: &Path) -> PathBuf {
+    let kernel_compressed = out_dir.join("kernel.lz4");
+
+    let input = fs::read(&kernel).expect("failed to read file");
+    let compressed = lz4_flex::compress_prepend_size(&input);
+    fs::write(&kernel_compressed, &compressed).expect("failed to write file");
+
+    kernel_compressed
 }
 
 fn copy_linker_script() {
