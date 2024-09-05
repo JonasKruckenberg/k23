@@ -11,6 +11,9 @@ _rustflags := env_var_or_default("RUSTFLAGS", "")
 _buildstd := "-Z build-std=core,alloc -Z build-std-features=compiler-builtins-mem"
 _rustdoc := _cargo + " doc --no-deps --all-features"
 
+_loader_artifact := "target/riscv64imac-k23-none-loader" / (if profile == "dev" { "debug" } else { profile }) / "loader"
+_kernel_artifact := "target/riscv64gc-k23-none-kernel" / (if profile == "dev" { "debug" } else { profile }) / "kernel"
+
 # If we're running in Github Actions and cargo-action-fmt is installed, then add
 # a command suffix that formats errors.
 _fmt_clippy := if env_var_or_default("GITHUB_ACTIONS", "") != "true" { "" } else {
@@ -52,7 +55,7 @@ _default:
     @just --list
 
 # run the OS
-run cargo_args *args="":
+run cargo_args="" *args="":
     {{ _cargo }} run \
         -p kernel \
         --target kernel/riscv64gc-k23-none-kernel.json \
@@ -124,6 +127,14 @@ test cargo_args="" *args="": && (test-docs cargo_args)
         {{ cargo_args }} \
         -- {{ args }}
 
+build: && (_build_bootimg _kernel_artifact)
+    {{_cargo}} build \
+        -p kernel \
+        --target kernel/riscv64gc-k23-none-kernel.json \
+        --profile {{ profile }} \
+        {{ _buildstd }} \
+        {{ _fmt }}
+
 # open the manual in development mode
 manual:
     cd manual && mdbook serve --open
@@ -132,7 +143,7 @@ _run_riscv64 binary *args: (_build_bootimg binary)
     @echo Running {{binary}}
     qemu-system-riscv64 \
         -kernel \
-        target/riscv64imac-k23-none-loader/{{ if profile == "dev" { "debug" } else { profile } }}/loader \
+        {{_loader_artifact}} \
         -machine virt \
         -cpu rv64 \
         -smp 1 \
