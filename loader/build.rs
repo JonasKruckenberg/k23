@@ -5,11 +5,12 @@ fn main() {
     let workspace_root = Path::new(env!("CARGO_RUSTC_CURRENT_DIR"));
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
-    let kernel = PathBuf::from(env::var_os("KERNEL").unwrap());
     println!("cargo::rerun-if-env-changed=KERNEL");
-
-    let kernel = compress_kernel(&out_dir, &workspace_root.join(kernel));
-    println!("cargo::rustc-env=KERNEL={}", kernel.display());
+    if let Some(kernel) = env::var_os("KERNEL") {
+        let kernel = PathBuf::from(kernel);
+        let kernel = compress_kernel(&out_dir, &workspace_root.join(kernel));
+        println!("cargo::rustc-env=KERNEL={}", kernel.display());
+    }
 
     copy_linker_script();
 }
