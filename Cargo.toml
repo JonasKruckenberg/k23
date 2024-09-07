@@ -35,11 +35,10 @@ semihosting-logger = { path = "libs/semihosting-logger" }
 sync = { path = "libs/sync" }
 tls = { path = "libs/tls" }
 unwind = { path = "libs/unwind" }
-
-#backtrace = { path = "libs/backtrace" }
-#leb128 = { path = "libs/leb128" }
-#wasm-encoder = { path = "libs/wasm-encoder" }
-#wast = { path = "libs/wast" }
+backtrace = { path = "libs/backtrace" }
+leb128 = { path = "libs/leb128" }
+wasm-encoder = { path = "libs/wasm-encoder" }
+wast = { path = "libs/wast" }
 
 cfg-if = "1.0.0"
 lock_api = "0.4.12"

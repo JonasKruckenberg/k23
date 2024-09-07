@@ -39,6 +39,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 
 [[package]]
+name = "backtrace"
+version = "0.1.0"
+dependencies = [
+ "unwind",
+]
+
+[[package]]
 name = "bitflags"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -246,6 +253,7 @@ dependencies = [
  "target-lexicon",
  "tls",
  "wasmparser",
+ "wast",
 ]
 
 [[package]]
@@ -279,6 +287,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "leb128"
+version = "0.1.0"
+dependencies = [
+ "ktest",
 ]
 
 [[package]]
@@ -605,10 +620,23 @@ name = "tls"
 version = "0.1.0"
 
 [[package]]
+name = "uart-16550"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
+
+[[package]]
+name = "unicode-width"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0336d538f7abc86d282a4189614dfaa90810dfc2c6f6427eaf88e16311dd225d"
 
 [[package]]
 name = "unwind"
@@ -628,6 +656,13 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "wasm-encoder"
+version = "0.1.0"
+dependencies = [
+ "leb128",
+]
 
 [[package]]
 name = "wasmparser"
@@ -653,6 +688,20 @@ dependencies = [
  "serde_derive",
  "smallvec",
  "wasmparser",
+]
+
+[[package]]
+name = "wast"
+version = "214.0.0"
+dependencies = [
+ "bumpalo",
+ "gimli",
+ "hashbrown 0.14.5",
+ "leb128",
+ "memchr",
+ "tls",
+ "unicode-width",
+ "wasm-encoder",
 ]
 
 [[package]]
