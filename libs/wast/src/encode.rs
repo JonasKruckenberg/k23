@@ -1,5 +1,6 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use leb128::Leb128Write;
 
 pub(crate) trait Encode {
     fn encode(&self, e: &mut Vec<u8>);
@@ -53,26 +54,26 @@ impl Encode for u8 {
 }
 
 impl Encode for u32 {
-    fn encode(&self, e: &mut Vec<u8>) {
-        leb128::write::unsigned(e, (*self).into()).unwrap();
+    fn encode(&self, sink: &mut Vec<u8>) {
+        sink.as_mut_slice().write_uleb128((*self).into()).unwrap();
     }
 }
 
 impl Encode for i32 {
-    fn encode(&self, e: &mut Vec<u8>) {
-        leb128::write::signed(e, (*self).into()).unwrap();
+    fn encode(&self, sink: &mut Vec<u8>) {
+        sink.as_mut_slice().write_sleb128((*self).into()).unwrap();
     }
 }
 
 impl Encode for u64 {
-    fn encode(&self, e: &mut Vec<u8>) {
-        leb128::write::unsigned(e, *self).unwrap();
+    fn encode(&self, sink: &mut Vec<u8>) {
+        sink.as_mut_slice().write_uleb128(*self).unwrap();
     }
 }
 
 impl Encode for i64 {
-    fn encode(&self, e: &mut Vec<u8>) {
-        leb128::write::signed(e, *self).unwrap();
+    fn encode(&self, sink: &mut Vec<u8>) {
+        sink.as_mut_slice().write_sleb128(*self).unwrap();
     }
 }
 

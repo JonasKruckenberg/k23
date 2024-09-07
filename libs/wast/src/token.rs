@@ -689,7 +689,7 @@ impl Peek for RParen {
 
 #[cfg(test)]
 mod tests {
-    #[test]
+    #[ktest::test]
     fn hex_strtof() {
         macro_rules! f {
             ($a:tt) => (f!(@mk $a, None, None));

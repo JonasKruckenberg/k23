@@ -1262,8 +1262,9 @@ fn is_confusing_unicode(ch: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::format;
 
-    #[test]
+    #[ktest::test]
     fn ws_smoke() {
         fn get_whitespace(input: &str) -> &str {
             let token = get_token(input);
@@ -1279,7 +1280,7 @@ mod tests {
         assert_eq!(get_whitespace("  ;"), "  ");
     }
 
-    #[test]
+    #[ktest::test]
     fn line_comment_smoke() {
         fn get_line_comment(input: &str) -> &str {
             let token = get_token(input);
@@ -1297,7 +1298,7 @@ mod tests {
         assert_eq!(get_line_comment(";;   \r\nabc"), ";;   ");
     }
 
-    #[test]
+    #[ktest::test]
     fn block_comment_smoke() {
         fn get_block_comment(input: &str) -> &str {
             let token = get_token(input);
@@ -1318,17 +1319,17 @@ mod tests {
             .expect("no token")
     }
 
-    #[test]
+    #[ktest::test]
     fn lparen() {
         assert_eq!(get_token("((").kind, TokenKind::LParen);
     }
 
-    #[test]
+    #[ktest::test]
     fn rparen() {
         assert_eq!(get_token(")(").kind, TokenKind::RParen);
     }
 
-    #[test]
+    #[ktest::test]
     fn strings() {
         fn get_string(input: &str) -> Vec<u8> {
             let token = get_token(input);
@@ -1363,7 +1364,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ktest::test]
     fn id() {
         fn get_id(input: &str) -> String {
             let token = get_token(input);
@@ -1381,7 +1382,7 @@ mod tests {
         assert_eq!(get_id("$\"x\" ;;"), "x");
     }
 
-    #[test]
+    #[ktest::test]
     fn annotation() {
         fn get_annotation(input: &str) -> String {
             let token = get_token(input);
@@ -1397,7 +1398,7 @@ mod tests {
         assert_eq!(get_annotation("@0 "), "0");
     }
 
-    #[test]
+    #[ktest::test]
     fn keyword() {
         fn get_keyword(input: &str) -> &str {
             let token = get_token(input);
@@ -1413,7 +1414,7 @@ mod tests {
         assert_eq!(get_keyword("x_z "), "x_z");
     }
 
-    #[test]
+    #[ktest::test]
     fn reserved() {
         fn get_reserved(input: &str) -> &str {
             let token = get_token(input);
@@ -1425,7 +1426,7 @@ mod tests {
         assert_eq!(get_reserved("^_x "), "^_x");
     }
 
-    #[test]
+    #[ktest::test]
     fn integer() {
         fn get_integer(input: &str) -> String {
             let token = get_token(input);
@@ -1445,7 +1446,7 @@ mod tests {
         assert_eq!(get_integer("0x10"), "10");
     }
 
-    #[test]
+    #[ktest::test]
     fn float() {
         fn get_float(input: &str) -> Float<'_> {
             let token = get_token(input);
