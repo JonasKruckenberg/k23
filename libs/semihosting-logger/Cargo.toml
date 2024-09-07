@@ -12,10 +12,10 @@ workspace = true
 [dependencies]
 log.workspace = true
 cfg-if.workspace = true
-tls = { workspace = true, optional = true }
+thread-local = { workspace = true, optional = true }
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
 
 [features]
-hartid = ["dep:tls"]
+hartid = ["dep:thread-local"]

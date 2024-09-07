@@ -33,7 +33,7 @@ panic-unwind = { path = "libs/panic-unwind" }
 riscv = { path = "libs/riscv" }
 semihosting-logger = { path = "libs/semihosting-logger" }
 sync = { path = "libs/sync" }
-tls = { path = "libs/tls" }
+thread-local = { path = "libs/thread-local" }
 unwind = { path = "libs/unwind" }
 leb128 = { path = "libs/leb128" }
 wasm-encoder = { path = "libs/wasm-encoder" }

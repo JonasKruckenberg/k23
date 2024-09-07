@@ -1,4 +1,4 @@
-tls::declare_thread_local! {
+thread_local::declare_thread_local! {
     static HARTID: usize;
 }
 

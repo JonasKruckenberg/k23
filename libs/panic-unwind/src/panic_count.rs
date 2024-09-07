@@ -2,7 +2,7 @@ use core::{
     cell::Cell,
     sync::atomic::{AtomicUsize, Ordering},
 };
-use tls::declare_thread_local;
+use thread_local::declare_thread_local;
 
 /// A reason for forcing an immediate abort on panic.
 #[derive(Debug)]

@@ -26,7 +26,7 @@ hashbrown = { workspace = true, features = ["ahash"] }
 unicode-width.workspace = true
 memchr.workspace = true
 bumpalo.workspace = true
-tls.workspace = true
+thread-local.workspace = true
 
 [dev-dependencies]
 ktest.workspace = true
