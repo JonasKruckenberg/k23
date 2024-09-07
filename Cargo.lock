@@ -39,13 +39,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 
 [[package]]
-name = "backtrace"
-version = "0.1.0"
-dependencies = [
- "unwind",
-]
-
-[[package]]
 name = "bitflags"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -251,7 +244,7 @@ dependencies = [
  "sync",
  "talc",
  "target-lexicon",
- "tls",
+ "thread-local",
  "wasmparser",
  "wast",
 ]
@@ -436,7 +429,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "panic-common",
- "tls",
+ "thread-local",
  "unwind",
 ]
 
@@ -539,7 +532,7 @@ dependencies = [
  "cfg-if",
  "log",
  "riscv",
- "tls",
+ "thread-local",
 ]
 
 [[package]]
@@ -617,15 +610,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
-name = "tls"
+name = "thread-local"
 version = "0.1.0"
-
-[[package]]
-name = "uart-16550"
-version = "0.1.0"
-dependencies = [
- "bitflags",
-]
 
 [[package]]
 name = "unicode-ident"
@@ -702,7 +688,7 @@ dependencies = [
  "ktest",
  "leb128",
  "memchr",
- "tls",
+ "thread-local",
  "unicode-width",
  "wasm-encoder",
 ]
