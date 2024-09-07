@@ -1,4 +1,10 @@
 //! k23 virtual memory management
+//!
+//! ## Further reading
+//! 
+//! This crate started out as a fork of the brilliant [`rmm`](https://gitlab.redox-os.org/redox-os/rmm)
+//! crate. And while the two implementations have diverged quite a bit, the original codebase
+//! is a great resource.
 #![no_std]
 #![no_main]
 #![feature(used_with_arg)]
@@ -87,11 +93,6 @@ pub trait Mode {
     fn entry_is_leaf(entry: &Entry<Self>) -> bool
     where
         Self: Sized;
-
-    // #[must_use]
-    // fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
-    //     VirtualAddress::new(phys.as_raw()).add(Self::PHYS_OFFSET)
-    // }
 }
 
 #[repr(transparent)]
