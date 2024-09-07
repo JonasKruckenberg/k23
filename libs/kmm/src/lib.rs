@@ -1,7 +1,7 @@
 //! k23 virtual memory management
 //!
 //! ## Further reading
-//! 
+//!
 //! This crate started out as a fork of the brilliant [`rmm`](https://gitlab.redox-os.org/redox-os/rmm)
 //! crate. And while the two implementations have diverged quite a bit, the original codebase
 //! is a great resource.
