@@ -11,7 +11,7 @@ workspace = true
 [dependencies]
 ktest-macros = { path = "macros" }
 cfg-if.workspace = true
-panic.workspace = true
+panic-unwind.workspace = true
 loader-api.workspace = true
 dtb-parser.workspace = true
 

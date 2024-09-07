@@ -46,7 +46,7 @@ pub fn run_tests(
         let outcome = if args.is_ignored(test) {
             Outcome::Ignored
         } else {
-            match panic::catch_unwind(|| (test.run)(boot_info)) {
+            match panic_unwind::catch_unwind(|| (test.run)(boot_info)) {
                 Ok(_) => Outcome::Passed,
                 Err(err) => Outcome::Failed(err),
             }

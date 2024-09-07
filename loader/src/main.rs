@@ -4,7 +4,7 @@
 #![feature(maybe_uninit_slice)]
 
 extern crate alloc;
-extern crate panic;
+extern crate panic_abort;
 
 mod arch;
 mod boot_info;

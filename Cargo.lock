@@ -245,14 +245,13 @@ dependencies = [
  "log",
  "object",
  "onlyerror",
- "panic",
+ "panic-unwind",
  "riscv",
  "semihosting-logger",
  "sync",
  "talc",
  "target-lexicon",
  "tls",
- "unwind",
  "wasmparser",
  "wast",
 ]
@@ -277,7 +276,7 @@ dependencies = [
  "dtb-parser",
  "ktest-macros",
  "loader-api",
- "panic",
+ "panic-unwind",
  "riscv",
 ]
 
@@ -325,7 +324,7 @@ dependencies = [
  "lz4_flex",
  "object",
  "onlyerror",
- "panic",
+ "panic-abort",
  "rand",
  "rand_chacha",
  "riscv",
@@ -413,13 +412,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "panic"
+name = "panic-abort"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "panic-common",
+]
+
+[[package]]
+name = "panic-common"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
  "log",
  "riscv",
  "sync",
+]
+
+[[package]]
+name = "panic-unwind"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "panic-common",
  "tls",
  "unwind",
 ]

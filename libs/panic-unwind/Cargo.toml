@@ -1,0 +1,18 @@
+[package]
+name = "panic-unwind"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+harness = false
+
+[lints]
+workspace = true
+
+[dependencies]
+panic-common.workspace = true
+tls.workspace = true
+log.workspace = true
+unwind.workspace = true

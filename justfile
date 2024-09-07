@@ -67,7 +67,7 @@ run cargo_args="" *args="":
 # quick check for development
 check crate="" *cargo_args="":
     {{ _cargo }} check \
-        {{ if crate == "" { "--workspace --exclude loader --exclude panic" } else { "-p" } }} {{ crate }} \
+        {{ if crate == "" { "--workspace --exclude loader" } else { "-p" } }} {{ crate }} \
         --target kernel/riscv64gc-k23-none-kernel.json \
         {{ _buildstd }} \
         {{ _fmt }} \
@@ -82,7 +82,7 @@ lint crate="" *cargo_args="": (clippy crate cargo_args) (check-fmt crate cargo_a
 # run clippy on a crate or the entire workspace.
 clippy crate="" *cargo_args="":
     {{ _cargo }} clippy \
-        {{ if crate == "" { "--workspace --exclude loader --exclude panic" } else { "-p" } }} {{ crate }} \
+        {{ if crate == "" { "--workspace --exclude loader" } else { "-p" } }} {{ crate }} \
         --target kernel/riscv64gc-k23-none-kernel.json \
         {{ _buildstd }} \
         {{ _fmt_clippy }} \
@@ -101,7 +101,7 @@ check-docs crate="" *cargo_args="": (build-docs crate cargo_args) (test-docs cra
 # build documentation for a crate or the entire workspace.
 build-docs crate="" *cargo_args="":
     {{ _rustdoc }} \
-        {{ if crate == '' { '--workspace --exclude panic --exclude loader --exclude wast' } else { '--package' } }} {{ crate }} \
+        {{ if crate == '' { '--workspace --exclude loader --exclude wast' } else { '--package' } }} {{ crate }} \
         --target kernel/riscv64gc-k23-none-kernel.json \
         {{ _buildstd }} \
         {{ _fmt }} \
@@ -110,7 +110,7 @@ build-docs crate="" *cargo_args="":
 # test documentation for a crate or the entire workspace.
 test-docs crate="" *cargo_args="":
     {{ _cargo }} test --doc \
-        {{ if crate == "" { "--workspace --exclude panic --exclude loader" } else { "--package" } }} {{ crate }} \
+        {{ if crate == "" { "--workspace --exclude loader" } else { "--package" } }} {{ crate }} \
         --target kernel/riscv64gc-k23-none-kernel.json \
         {{ _buildstd }} \
         {{ _fmt }} \
