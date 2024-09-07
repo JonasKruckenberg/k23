@@ -7,130 +7,85 @@
 //! Read and write signed integers:
 //!
 //! ```
-//! use leb128;
+//! use leb128::{Leb128Read, Leb128Write};
 //!
 //! let mut buf = [0; 1024];
 //!
 //! // Write to anything that implements `alloc::vec::Vec`.
 //! {
 //!     let mut writable = &mut buf[..];
-//!     leb128::write::signed(&mut writable, -12345).expect("Should write number");
+//!     writable.write_sleb128(-12345).expect("Should write number");
 //! }
 //!
 //! // Read from anything that implements `alloc::vec::Vec`.
 //! let mut readable = &buf[..];
-//! let val = leb128::read::signed(&mut readable).expect("Should read number");
+//! let val = readable.read_sleb128().expect("Should read number");
 //! assert_eq!(val, -12345);
 //! ```
 //!
 //! Or read and write unsigned integers:
 //!
 //! ```
-//! use leb128;
+//! use leb128::{Leb128Write, Leb128Read};
 //!
 //! let mut buf = [0; 1024];
 //!
 //! {
 //!     let mut writable = &mut buf[..];
-//!     leb128::write::unsigned(&mut writable, 98765).expect("Should write number");
+//!     writable.write_uleb128(98765).expect("Should write number");
 //! }
 //!
 //! let mut readable = &buf[..];
-//! let val = leb128::read::unsigned(&mut readable).expect("Should read number");
+//! let val = readable.read_uleb128().expect("Should read number");
 //! assert_eq!(val, 98765);
 //! ```
+#![no_std]
 
-#![cfg_attr(not(test), no_std)]
-#![deny(missing_docs)]
-#![feature(allocator_api)]
+use core::mem;
 
-extern crate alloc;
+#[derive(Debug, onlyerror::Error)]
+pub enum Error {
+    /// Failed to write to the provided buffer.
+    UnexpectedEof,
+    /// gg
+    Overflow,
+    /// h
+    NotEnoughSpace,
+}
+type Result<T> = core::result::Result<T, Error>;
 
-#[doc(hidden)]
-pub const CONTINUATION_BIT: u8 = 1 << 7;
-#[doc(hidden)]
-pub const SIGN_BIT: u8 = 1 << 6;
-
-#[doc(hidden)]
-#[inline]
-pub fn low_bits_of_byte(byte: u8) -> u8 {
-    byte & !CONTINUATION_BIT
+pub trait Leb128Read {
+    #[doc(hidden)]
+    fn read_byte(&mut self) -> Result<u8>;
+    fn read_uleb128(&mut self) -> Result<u64>;
+    fn read_sleb128(&mut self) -> Result<i64>;
 }
 
-#[doc(hidden)]
-#[inline]
-pub fn low_bits_of_u64(val: u64) -> u8 {
-    let byte = val & (u8::MAX as u64);
-    low_bits_of_byte(byte as u8)
-}
-
-/// A module for reading LEB128-encoded signed and unsigned integers.
-pub mod read {
-    use super::{low_bits_of_byte, CONTINUATION_BIT, SIGN_BIT};
-    use crate::io;
-    use core::fmt;
-
-    /// An error type for reading LEB128-encoded values.
-    #[derive(Debug)]
-    pub enum Error {
-        /// There was an underlying IO error.
-        IoError(io::Error),
-        /// The number being read is larger than can be represented.
-        Overflow,
+impl<'a> Leb128Read for &'a [u8] {
+    fn read_byte(&mut self) -> Result<u8> {
+        let (byte, rest) = self.split_first().ok_or(Error::UnexpectedEof)?;
+        *self = rest;
+        Ok(*byte)
     }
 
-    impl From<io::Error> for Error {
-        fn from(e: io::Error) -> Self {
-            Error::IoError(e)
-        }
-    }
-
-    impl fmt::Display for Error {
-        fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-            match *self {
-                Error::IoError(ref e) => e.fmt(f),
-                Error::Overflow => {
-                    write!(f, "The number being read is larger than can be represented")
-                }
-            }
-        }
-    }
-
-    impl core::error::Error for Error {
-        fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-            match *self {
-                Error::IoError(ref e) => Some(e),
-                Error::Overflow => None,
-            }
-        }
-    }
-
-    /// Read an unsigned LEB128-encoded number from the `std::io::Read` stream
-    /// `r`.
-    ///
-    /// On success, return the number.
-    pub fn unsigned<R>(r: &mut R) -> Result<u64, Error>
-    where
-        R: ?Sized + io::Read,
-    {
+    fn read_uleb128(&mut self) -> Result<u64> {
         let mut result = 0;
         let mut shift = 0;
 
         loop {
-            let mut buf = [0];
-            r.read_exact(&mut buf)?;
+            let mut byte = self.read_byte()?;
 
-            if shift == 63 && buf[0] != 0x00 && buf[0] != 0x01 {
-                while buf[0] & CONTINUATION_BIT != 0 {
-                    r.read_exact(&mut buf)?;
+            if shift == 63 && byte != 0x00 && byte != 0x01 {
+                while byte & CONTINUATION_BIT != 0 {
+                    byte = self.read_byte()?;
                 }
                 return Err(Error::Overflow);
             }
 
-            let low_bits = low_bits_of_byte(buf[0]) as u64;
+            let low_bits = low_bits_of_byte(byte) as u64;
             result |= low_bits << shift;
 
-            if buf[0] & CONTINUATION_BIT == 0 {
+            if byte & CONTINUATION_BIT == 0 {
                 return Ok(result);
             }
 
@@ -138,26 +93,18 @@ pub mod read {
         }
     }
 
-    /// Read a signed LEB128-encoded number from the `std::io::Read` stream `r`.
-    ///
-    /// On success, return the number.
-    pub fn signed<R>(r: &mut R) -> Result<i64, Error>
-    where
-        R: ?Sized + io::Read,
-    {
+    fn read_sleb128(&mut self) -> Result<i64> {
         let mut result = 0;
         let mut shift = 0;
         let size = 64;
         let mut byte;
 
         loop {
-            let mut buf = [0];
-            r.read_exact(&mut buf)?;
-
-            byte = buf[0];
+            let mut b = self.read_byte()?;
+            byte = b;
             if shift == 63 && byte != 0x00 && byte != 0x7f {
-                while buf[0] & CONTINUATION_BIT != 0 {
-                    r.read_exact(&mut buf)?;
+                while b & CONTINUATION_BIT != 0 {
+                    b = self.read_byte()?;
                 }
                 return Err(Error::Overflow);
             }
@@ -180,18 +127,24 @@ pub mod read {
     }
 }
 
-/// A module for writing LEB128-encoded signed and unsigned integers.
-pub mod write {
-    use super::{low_bits_of_u64, CONTINUATION_BIT};
-    use crate::io;
+pub trait Leb128Write {
+    fn write_byte(&mut self, val: u8) -> Result<()>;
+    fn write_uleb128(&mut self, val: u64) -> Result<usize>;
+    fn write_sleb128(&mut self, val: i64) -> Result<usize>;
+}
 
-    /// Write `val` to the `std::io::Write` stream `w` as an unsigned LEB128 value.
-    ///
-    /// On success, return the number of bytes written to `w`.
-    pub fn unsigned<W>(w: &mut W, mut val: u64) -> Result<usize, io::Error>
-    where
-        W: ?Sized + io::Write,
-    {
+impl<'a> Leb128Write for &'a mut [u8] {
+    #[inline]
+    fn write_byte(&mut self, val: u8) -> Result<()> {
+        let (a, b) = mem::take(self)
+            .split_first_mut()
+            .ok_or(Error::NotEnoughSpace)?;
+        *a = val;
+        *self = b;
+        Ok(())
+    }
+
+    fn write_uleb128(&mut self, mut val: u64) -> Result<usize> {
         let mut bytes_written = 0;
         loop {
             let mut byte = low_bits_of_u64(val);
@@ -201,8 +154,7 @@ pub mod write {
                 byte |= CONTINUATION_BIT;
             }
 
-            let buf = [byte];
-            w.write_all(&buf)?;
+            self.write_byte(byte)?;
             bytes_written += 1;
 
             if val == 0 {
@@ -211,13 +163,7 @@ pub mod write {
         }
     }
 
-    /// Write `val` to the `std::io::Write` stream `w` as a signed LEB128 value.
-    ///
-    /// On success, return the number of bytes written to `w`.
-    pub fn signed<W>(w: &mut W, mut val: i64) -> Result<usize, io::Error>
-    where
-        W: ?Sized + io::Write,
-    {
+    fn write_sleb128(&mut self, mut val: i64) -> Result<usize> {
         let mut bytes_written = 0;
         loop {
             let mut byte = val as u8;
@@ -233,8 +179,7 @@ pub mod write {
                 byte |= CONTINUATION_BIT;
             }
 
-            let buf = [byte];
-            w.write_all(&buf)?;
+            self.write_byte(byte)?;
             bytes_written += 1;
 
             if done {
@@ -244,105 +189,17 @@ pub mod write {
     }
 }
 
-mod io {
-    use core::{cmp, fmt, mem};
+const CONTINUATION_BIT: u8 = 1 << 7;
+const SIGN_BIT: u8 = 1 << 6;
 
-    #[derive(Debug)]
-    pub enum Error {
-        WriteAllEof,
-        ReadExactEof,
-    }
-
-    impl fmt::Display for Error {
-        fn fmt(&self, f: &mut fmt::Formatter) -> core::result::Result<(), fmt::Error> {
-            match *self {
-                Error::WriteAllEof => write!(f, "failed to write whole buffer"),
-                Error::ReadExactEof => write!(f, "failed to fill whole buffer"),
-            }
-        }
-    }
-
-    impl core::error::Error for Error {
-        fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-            match *self {
-                Error::WriteAllEof => None,
-                Error::ReadExactEof => None,
-            }
-        }
-    }
-
-    pub type Result<T> = core::result::Result<T, Error>;
-
-    pub trait Read {
-        fn read_exact(&mut self, buf: &mut [u8]) -> Result<()>;
-    }
-
-    impl<'a> Read for &'a [u8] {
-        #[inline]
-        fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
-            if buf.len() > self.len() {
-                return Err(Error::ReadExactEof);
-            }
-            let (a, b) = self.split_at(buf.len());
-
-            // First check if the amount of bytes we want to read is small:
-            // `copy_from_slice` will generally expand to a call to `memcpy`, and
-            // for a single byte the overhead is significant.
-            if buf.len() == 1 {
-                buf[0] = a[0];
-            } else {
-                buf.copy_from_slice(a);
-            }
-
-            *self = b;
-            Ok(())
-        }
-    }
-
-    impl<R: Read + ?Sized> Read for &mut R {
-        fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
-            (**self).read_exact(buf)
-        }
-    }
-
-    pub trait Write {
-        fn write(&mut self, data: &[u8]) -> Result<usize>;
-        fn write_all(&mut self, data: &[u8]) -> Result<()>;
-    }
-
-    impl<'a> Write for &'a mut [u8] {
-        #[inline]
-        fn write(&mut self, data: &[u8]) -> Result<usize> {
-            let amt = cmp::min(data.len(), self.len());
-            let (a, b) = mem::take(self).split_at_mut(amt);
-            a.copy_from_slice(&data[..amt]);
-            *self = b;
-            Ok(amt)
-        }
-
-        #[inline]
-        fn write_all(&mut self, data: &[u8]) -> Result<()> {
-            if self.write(data)? == data.len() {
-                Ok(())
-            } else {
-                Err(Error::WriteAllEof)
-            }
-        }
-    }
-
-    impl<A: alloc::alloc::Allocator> Write for alloc::vec::Vec<u8, A> {
-        #[inline]
-        fn write(&mut self, buf: &[u8]) -> Result<usize> {
-            self.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-
-        #[inline]
-        fn write_all(&mut self, buf: &[u8]) -> Result<()> {
-            self.extend_from_slice(buf);
-            Ok(())
-        }
-    }
+#[inline]
+fn low_bits_of_byte(byte: u8) -> u8 {
+    byte & !CONTINUATION_BIT
+}
+#[inline]
+fn low_bits_of_u64(val: u64) -> u8 {
+    let byte = val & (u8::MAX as u64);
+    low_bits_of_byte(byte as u8)
 }
 
 #[cfg(test)]
@@ -373,60 +230,27 @@ mod tests {
     fn test_read_unsigned() {
         let buf = [2u8];
         let mut readable = &buf[..];
-        assert_eq!(
-            2,
-            read::unsigned(&mut readable).expect("Should read number")
-        );
+        assert_eq!(2, readable.read_uleb128().expect("Should read number"));
 
         let buf = [127u8];
         let mut readable = &buf[..];
-        assert_eq!(
-            127,
-            read::unsigned(&mut readable).expect("Should read number")
-        );
+        assert_eq!(127, readable.read_uleb128().expect("Should read number"));
 
         let buf = [CONTINUATION_BIT, 1];
         let mut readable = &buf[..];
-        assert_eq!(
-            128,
-            read::unsigned(&mut readable).expect("Should read number")
-        );
+        assert_eq!(128, readable.read_uleb128().expect("Should read number"));
 
         let buf = [1u8 | CONTINUATION_BIT, 1];
         let mut readable = &buf[..];
-        assert_eq!(
-            129,
-            read::unsigned(&mut readable).expect("Should read number")
-        );
+        assert_eq!(129, readable.read_uleb128().expect("Should read number"));
 
         let buf = [2u8 | CONTINUATION_BIT, 1];
         let mut readable = &buf[..];
-        assert_eq!(
-            130,
-            read::unsigned(&mut readable).expect("Should read number")
-        );
+        assert_eq!(130, readable.read_uleb128().expect("Should read number"));
 
         let buf = [57u8 | CONTINUATION_BIT, 100];
         let mut readable = &buf[..];
-        assert_eq!(
-            12857,
-            read::unsigned(&mut readable).expect("Should read number")
-        );
-    }
-
-    #[ktest::test]
-    fn test_read_unsigned_thru_dyn_trait() {
-        fn read(r: &mut dyn io::Read) -> u64 {
-            read::unsigned(r).expect("Should read number")
-        }
-
-        let buf = [0u8];
-
-        let mut readable = &buf[..];
-        assert_eq!(0, read(&mut readable));
-
-        let mut readable = io::Cursor::new(buf);
-        assert_eq!(0, read(&mut readable));
+        assert_eq!(12857, readable.read_uleb128().expect("Should read number"));
     }
 
     // Examples from the DWARF 4 standard, section 7.6, figure 23.
@@ -434,68 +258,35 @@ mod tests {
     fn test_read_signed() {
         let buf = [2u8];
         let mut readable = &buf[..];
-        assert_eq!(2, read::signed(&mut readable).expect("Should read number"));
+        assert_eq!(2, readable.read_sleb128().expect("Should read number"));
 
         let buf = [0x7eu8];
         let mut readable = &buf[..];
-        assert_eq!(-2, read::signed(&mut readable).expect("Should read number"));
+        assert_eq!(-2, readable.read_sleb128().expect("Should read number"));
 
         let buf = [127u8 | CONTINUATION_BIT, 0];
         let mut readable = &buf[..];
-        assert_eq!(
-            127,
-            read::signed(&mut readable).expect("Should read number")
-        );
+        assert_eq!(127, readable.read_sleb128().expect("Should read number"));
 
         let buf = [1u8 | CONTINUATION_BIT, 0x7f];
         let mut readable = &buf[..];
-        assert_eq!(
-            -127,
-            read::signed(&mut readable).expect("Should read number")
-        );
+        assert_eq!(-127, readable.read_sleb128().expect("Should read number"));
 
         let buf = [CONTINUATION_BIT, 1];
         let mut readable = &buf[..];
-        assert_eq!(
-            128,
-            read::signed(&mut readable).expect("Should read number")
-        );
+        assert_eq!(128, readable.read_sleb128().expect("Should read number"));
 
         let buf = [CONTINUATION_BIT, 0x7f];
         let mut readable = &buf[..];
-        assert_eq!(
-            -128,
-            read::signed(&mut readable).expect("Should read number")
-        );
+        assert_eq!(-128, readable.read_sleb128().expect("Should read number"));
 
         let buf = [1u8 | CONTINUATION_BIT, 1];
         let mut readable = &buf[..];
-        assert_eq!(
-            129,
-            read::signed(&mut readable).expect("Should read number")
-        );
+        assert_eq!(129, readable.read_sleb128().expect("Should read number"));
 
         let buf = [0x7fu8 | CONTINUATION_BIT, 0x7e];
         let mut readable = &buf[..];
-        assert_eq!(
-            -129,
-            read::signed(&mut readable).expect("Should read number")
-        );
-    }
-
-    #[ktest::test]
-    fn test_read_signed_thru_dyn_trait() {
-        fn read(r: &mut dyn io::Read) -> i64 {
-            read::signed(r).expect("Should read number")
-        }
-
-        let buf = [0u8];
-
-        let mut readable = &buf[..];
-        assert_eq!(0, read(&mut readable));
-
-        let mut readable = io::Cursor::new(buf);
-        assert_eq!(0, read(&mut readable));
+        assert_eq!(-129, readable.read_sleb128().expect("Should read number"));
     }
 
     #[ktest::test]
@@ -514,7 +305,7 @@ mod tests {
         let mut readable = &buf[..];
         assert_eq!(
             -0x4000000000000000,
-            read::signed(&mut readable).expect("Should read number")
+            readable.read_sleb128().expect("Should read number")
         );
     }
 
@@ -522,72 +313,32 @@ mod tests {
     fn test_read_unsigned_not_enough_data() {
         let buf = [CONTINUATION_BIT];
         let mut readable = &buf[..];
-        match read::unsigned(&mut readable) {
-            Err(read::Error::IoError(e)) => assert!(matches!(e, io::Error::UnexpectedEof)),
-            otherwise => panic!("Unexpected: {:?}", otherwise),
-        }
+        let res = readable.read_uleb128();
+        assert!(matches!(res, Err(Error::UnexpectedEof)));
     }
 
     #[ktest::test]
     fn test_read_signed_not_enough_data() {
         let buf = [CONTINUATION_BIT];
         let mut readable = &buf[..];
-        match read::signed(&mut readable) {
-            Err(read::Error::IoError(e)) => assert_eq!(e.kind(), io::ErrorKind::UnexpectedEof),
-            otherwise => panic!("Unexpected: {:?}", otherwise),
-        }
+        let res = readable.read_sleb128();
+        assert!(matches!(res, Err(Error::UnexpectedEof)));
     }
 
     #[ktest::test]
     fn test_write_unsigned_not_enough_space() {
         let mut buf = [0; 1];
         let mut writable = &mut buf[..];
-        match write::unsigned(&mut writable, 128) {
-            Err(e) => assert_eq!(e.kind(), io::ErrorKind::WriteZero),
-            otherwise => panic!("Unexpected: {:?}", otherwise),
-        }
+        let res = writable.write_uleb128(128);
+        assert!(matches!(res, Err(Error::NotEnoughSpace)));
     }
 
     #[ktest::test]
     fn test_write_signed_not_enough_space() {
         let mut buf = [0; 1];
         let mut writable = &mut buf[..];
-        match write::signed(&mut writable, 128) {
-            Err(e) => assert_eq!(e.kind(), io::ErrorKind::WriteZero),
-            otherwise => panic!("Unexpected: {:?}", otherwise),
-        }
-    }
-
-    #[ktest::test]
-    fn test_write_unsigned_thru_dyn_trait() {
-        fn write(w: &mut dyn io::Write, val: u64) -> usize {
-            write::unsigned(w, val).expect("Should write number")
-        }
-        let mut buf = [0u8; 1];
-
-        let mut writable = &mut buf[..];
-        assert_eq!(write(&mut writable, 0), 1);
-        assert_eq!(buf[0], 0);
-
-        let mut writable = Vec::from(&buf[..]);
-        assert_eq!(write(&mut writable, 0), 1);
-        assert_eq!(buf[0], 0);
-    }
-
-    #[ktest::test]
-    fn test_write_signed_thru_dyn_trait() {
-        fn write(w: &mut dyn io::Write, val: i64) -> usize {
-            write::signed(w, val).expect("Should write number")
-        }
-        let mut buf = [0u8; 1];
-
-        let mut writable = &mut buf[..];
-        assert_eq!(write(&mut writable, 0), 1);
-        assert_eq!(buf[0], 0);
-
-        let mut writable = Vec::from(&buf[..]);
-        assert_eq!(write(&mut writable, 0), 1);
-        assert_eq!(buf[0], 0);
+        let res = writable.write_sleb128(128);
+        assert!(matches!(res, Err(Error::NotEnoughSpace)));
     }
 
     #[ktest::test]
@@ -597,17 +348,17 @@ mod tests {
 
             {
                 let mut writable = &mut buf[..];
-                write::signed(&mut writable, i).expect("Should write signed number");
+                writable.write_sleb128(i).expect("Should write number");
             }
 
             let mut readable = &buf[..];
-            let result = read::signed(&mut readable).expect("Should be able to read it back again");
+            let result = readable.read_sleb128().expect("Should read number");
             assert_eq!(i, result);
         }
         for i in -513..513 {
             inner(i);
         }
-        inner(std::i64::MIN);
+        inner(i64::MIN);
     }
 
     #[ktest::test]
@@ -617,12 +368,11 @@ mod tests {
 
             {
                 let mut writable = &mut buf[..];
-                write::unsigned(&mut writable, i).expect("Should write signed number");
+                writable.write_uleb128(i).expect("Should write number");
             }
 
             let mut readable = &buf[..];
-            let result =
-                read::unsigned(&mut readable).expect("Should be able to read it back again");
+            let result = readable.read_uleb128().expect("Should read number");
             assert_eq!(i, result);
         }
     }
@@ -663,7 +413,7 @@ mod tests {
             1,
         ];
         let mut readable = &buf[..];
-        assert!(read::unsigned(&mut readable).is_err());
+        assert!(readable.read_uleb128().is_err());
     }
 
     #[ktest::test]
@@ -702,7 +452,7 @@ mod tests {
             1,
         ];
         let mut readable = &buf[..];
-        assert!(read::signed(&mut readable).is_err());
+        assert!(readable.read_sleb128().is_err());
     }
 
     #[ktest::test]
@@ -710,14 +460,8 @@ mod tests {
         let buf = [2u8 | CONTINUATION_BIT, 1u8, 1u8];
 
         let mut readable = &buf[..];
-        assert_eq!(
-            read::unsigned(&mut readable).expect("Should read first number"),
-            130u64
-        );
-        assert_eq!(
-            read::unsigned(&mut readable).expect("Should read first number"),
-            1u64
-        );
+        assert_eq!(readable.read_uleb128().expect("Should read number"), 130u64);
+        assert_eq!(readable.read_uleb128().expect("Should read number"), 1u64);
     }
 
     #[ktest::test]
@@ -738,17 +482,13 @@ mod tests {
             0b1110_0000,
             0b0000_0010, // 45156
         ];
-        let mut readable = &buf[..];
-
-        assert!(if let read::Error::Overflow =
-            read::unsigned(&mut readable).expect_err("Should fail with Error::Overflow")
-        {
-            true
-        } else {
-            false
-        });
+        let mut readable: &[u8] = &buf[..];
+        let res = readable.read_uleb128();
+        assert!(matches!(res, Err(Error::Overflow)));
         assert_eq!(
-            read::unsigned(&mut readable).expect("Should succeed with correct value"),
+            readable
+                .read_uleb128()
+                .expect("Should succeed with correct value"),
             45156
         );
     }
