@@ -2,7 +2,7 @@ use crate::kconfig;
 use core::arch::asm;
 use riscv::scause::{Exception, Trap};
 use riscv::{scause, sepc, sstatus, stval, stvec};
-use tls::declare_thread_local;
+use thread_local::declare_thread_local;
 
 declare_thread_local! {
     static TRAP_STACK: [u8; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE] = const { [0; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE] };

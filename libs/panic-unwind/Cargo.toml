@@ -13,6 +13,6 @@ workspace = true
 
 [dependencies]
 panic-common.workspace = true
-tls.workspace = true
+thread-local.workspace = true
 log.workspace = true
 unwind.workspace = true
