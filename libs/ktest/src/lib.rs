@@ -84,18 +84,16 @@ impl Conclusion {
     }
 
     /// Exits the application with an appropriate error code (0 if all tests
-    /// have passed, 101 if there have been failures). This uses
-    /// [`process::exit`], meaning that destructors are not ran. Consider
-    /// using [`Self::exit_code`] instead for a proper program cleanup.
+    /// have passed, 101 if there have been failures). **This will not run any destructors.**
+    /// Consider using [`Self::exit_code`] instead for a proper program cleanup.
     pub fn exit(&self) -> ! {
         // self.exit_if_failed();
         __private::exit(0)
     }
 
     /// Exits the application with error code 101 if there were any failures.
-    /// Otherwise, returns normally. This uses [`process::exit`], meaning that
-    /// destructors are not ran. Consider using [`Self::exit_code`] instead for
-    /// a proper program cleanup.
+    /// Otherwise, returns normally. **This will not run any destructors.**
+    /// Consider using [`Self::exit_code`] instead for a proper program cleanup.
     pub fn exit_if_failed(&self) {
         if self.has_failed() {
             __private::exit(101)

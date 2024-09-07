@@ -83,6 +83,7 @@ pub use self::core::*;
 pub use self::raw::*;
 
 use alloc::vec::Vec;
+use leb128::Leb128Write;
 
 /// Implemented by types that can be encoded into a byte sink.
 pub trait Encode {
@@ -128,25 +129,25 @@ impl Encode for usize {
 
 impl Encode for u32 {
     fn encode(&self, sink: &mut Vec<u8>) {
-        leb128::write::unsigned(sink, (*self).into()).unwrap();
+        sink.as_mut_slice().write_uleb128((*self).into()).unwrap();
     }
 }
 
 impl Encode for i32 {
     fn encode(&self, sink: &mut Vec<u8>) {
-        leb128::write::signed(sink, (*self).into()).unwrap();
+        sink.as_mut_slice().write_sleb128((*self).into()).unwrap();
     }
 }
 
 impl Encode for u64 {
     fn encode(&self, sink: &mut Vec<u8>) {
-        leb128::write::unsigned(sink, *self).unwrap();
+        sink.as_mut_slice().write_uleb128(*self).unwrap();
     }
 }
 
 impl Encode for i64 {
     fn encode(&self, sink: &mut Vec<u8>) {
-        leb128::write::signed(sink, *self).unwrap();
+        sink.as_mut_slice().write_sleb128(*self).unwrap();
     }
 }
 
@@ -194,7 +195,7 @@ where
 
 fn encoding_size(n: u32) -> usize {
     let mut buf = [0u8; 5];
-    leb128::write::unsigned(&mut &mut buf[..], n.into()).unwrap()
+    buf.as_mut_slice().write_uleb128(n.into()).unwrap()
 }
 
 fn encode_section(sink: &mut Vec<u8>, count: u32, bytes: &[u8]) {
