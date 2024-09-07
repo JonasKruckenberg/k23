@@ -3,6 +3,7 @@ use crate::core;
 use crate::core::EncodeOptions;
 use crate::token::{Id, Index, NameAnnotation, Span};
 use alloc::{vec, vec::Vec};
+use leb128::Leb128Write;
 use wasm_encoder::{
     CanonicalFunctionSection, ComponentAliasSection, ComponentDefinedTypeEncoder,
     ComponentExportSection, ComponentImportSection, ComponentInstanceSection, ComponentNameSection,
@@ -555,9 +556,7 @@ fn get_name<'a>(id: &Option<Id<'a>>, name: &Option<NameAnnotation<'a>>) -> Optio
 impl wasm_encoder::Encode for Custom<'_> {
     fn encode(&self, sink: &mut Vec<u8>) {
         let mut buf = [0u8; 5];
-        let encoded_name_len =
-            leb128::write::unsigned(&mut &mut buf[..], u64::try_from(self.name.len()).unwrap())
-                .unwrap();
+        let encoded_name_len = buf.as_mut_slice().write_uleb128(u64::try_from(self.name.len()).unwrap()).unwrap();
         let data_len = self.data.iter().fold(0, |acc, s| acc + s.len());
 
         // name length

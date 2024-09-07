@@ -1,6 +1,7 @@
 use crate::{encode_section, Encode, HeapType, RefType, Section, SectionId, ValType};
 use alloc::borrow::Cow;
 use alloc::{vec, vec::Vec};
+use leb128::Leb128Read;
 
 /// An encoder for the code section.
 ///
@@ -3884,7 +3885,8 @@ impl ConstExpr {
         if prefix != 0xd2 {
             return None;
         }
-        leb128::read::unsigned(&mut &self.bytes[1..])
+        (&mut self.bytes.as_slice())
+            .read_uleb128()
             .ok()?
             .try_into()
             .ok()
