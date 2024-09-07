@@ -4,8 +4,7 @@
 #![feature(allocator_api)]
 
 extern crate alloc;
-extern crate panic;
-
+extern crate panic_unwind;
 mod allocator;
 mod arch;
 mod frame_alloc;

@@ -20,7 +20,7 @@ loader-api.workspace = true
 sync.workspace = true
 dtb-parser.workspace = true
 semihosting-logger = { workspace = true }
-panic = { workspace = true, features = ["abort"] }
+panic-abort.workspace = true
 
 cfg-if.workspace = true
 log.workspace = true

@@ -23,20 +23,23 @@ recursive_format_impl = "deny"
 
 [workspace.dependencies]
 loader-api = { path = "loader/api" }
-backtrace = { path = "libs/backtrace" }
 dtb-parser = { path = "libs/dtb-parser" }
 kmm = { path = "libs/kmm" }
 ktest = { path = "libs/ktest" }
-leb128 = { path = "libs/leb128" }
 linked-list-allocator = { path = "libs/linked-list-allocator" }
-panic = { path = "libs/panic" }
+panic-abort = { path = "libs/panic-abort" }
+panic-common = { path = "libs/panic-common" }
+panic-unwind = { path = "libs/panic-unwind" }
 riscv = { path = "libs/riscv" }
 semihosting-logger = { path = "libs/semihosting-logger" }
 sync = { path = "libs/sync" }
 tls = { path = "libs/tls" }
 unwind = { path = "libs/unwind" }
-wasm-encoder = { path = "libs/wasm-encoder" }
-wast = { path = "libs/wast" }
+
+#backtrace = { path = "libs/backtrace" }
+#leb128 = { path = "libs/leb128" }
+#wasm-encoder = { path = "libs/wasm-encoder" }
+#wast = { path = "libs/wast" }
 
 cfg-if = "1.0.0"
 lock_api = "0.4.12"

@@ -16,14 +16,13 @@ harness = false
 kmm.workspace = true
 loader-api.workspace = true
 log.workspace = true
-panic = { workspace = true, features = ["unwind"] }
+panic-unwind.workspace = true
 semihosting-logger = { workspace = true, features = ["hartid"] }
 sync.workspace = true
 talc.workspace = true
 arrayvec.workspace = true
 cfg-if.workspace = true
 tls.workspace = true
-unwind.workspace = true
 hashbrown.workspace = true
 wasmparser.workspace = true
 target-lexicon.workspace = true
@@ -41,4 +40,4 @@ riscv.workspace = true
 
 [dev-dependencies]
 ktest.workspace = true
-wast.workspace = true
+#wast.workspace = true

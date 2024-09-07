@@ -13,7 +13,7 @@ const LOADER_CFG: LoaderConfig = {
 #[cfg(not(test))]
 #[loader_api::entry(LOADER_CFG)]
 fn kstart(hartid: usize, boot_info: &'static BootInfo) -> ! {
-    panic::catch_unwind(|| {
+    panic_unwind::catch_unwind(|| {
         semihosting_logger::hartid::set(hartid);
 
         arch::trap_handler::init();

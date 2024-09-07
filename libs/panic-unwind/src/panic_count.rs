@@ -12,7 +12,7 @@ pub enum MustAbort {
 }
 
 // Panic count for the current thread and whether a panic hook is currently
-// being executed..
+// being executed.
 declare_thread_local! {
     static LOCAL_PANIC_COUNT: Cell<(usize, bool)> = const { Cell::new((0, false)) }
 }
