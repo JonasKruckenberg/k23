@@ -117,12 +117,14 @@ impl Compiler {
         let FuncCompileInput { validator, body } = input;
 
         let mut validator = validator.into_validator(ctx.validator_allocations);
-        ctx.func_translator.translate_body(
-            &mut validator,
-            body,
-            &mut ctx.codegen_context.func,
-            &mut func_env,
-        )?;
+        ctx.func_translator
+            .translate_body(
+                &mut validator,
+                body,
+                &mut ctx.codegen_context.func,
+                &mut func_env,
+            )
+            .map_err(CompileError::Translate)?;
         ctx.validator_allocations = validator.into_allocations();
 
         ctx.finish()

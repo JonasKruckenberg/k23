@@ -37,7 +37,7 @@ pub fn kmain(_hartid: usize, boot_info: &'static BootInfo) -> ! {
     let mut store = Store::new(0, boot_info.physical_memory_offset);
 
     let module = Module::from_binary(&engine, &store, wasm);
-    log::debug!("{module:#?}");
+    log::info!("{module:#?}");
 
     let linker = Linker::new();
     let instance = linker.instantiate(&mut store, &module);

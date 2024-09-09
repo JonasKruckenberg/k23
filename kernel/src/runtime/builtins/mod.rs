@@ -164,7 +164,6 @@ foreach_builtin_function!(declare_indexes);
 /// Helper structure for creating a `Signature` for all builtins.
 pub struct BuiltinFunctionSignatures {
     pointer_type: ir::Type,
-    reference_type: ir::Type,
     call_conv: CallConv,
 }
 
@@ -172,11 +171,6 @@ impl BuiltinFunctionSignatures {
     pub fn new(isa: &dyn TargetIsa) -> Self {
         Self {
             pointer_type: isa.pointer_type(),
-            reference_type: match isa.pointer_type() {
-                ir::types::I32 => ir::types::R32,
-                ir::types::I64 => ir::types::R64,
-                _ => panic!(),
-            },
             call_conv: CallConv::triple_default(isa.triple()),
         }
     }
@@ -185,12 +179,6 @@ impl BuiltinFunctionSignatures {
     /// This function is used in the `signatures` macro below.
     fn vmctx(&self) -> AbiParam {
         AbiParam::special(self.pointer_type, ArgumentPurpose::VMContext)
-    }
-
-    /// Returns the AbiParam for builtin functions `reference` arguments/returns.
-    /// This function is used in the `signatures` macro below.
-    fn reference(&self) -> AbiParam {
-        AbiParam::new(self.reference_type)
     }
 
     /// Returns the AbiParam for builtin functions `pointer` arguments/returns.

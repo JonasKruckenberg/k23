@@ -9,6 +9,7 @@ fn main() {
     if let Some(kernel) = env::var_os("KERNEL") {
         let kernel = PathBuf::from(kernel);
         let kernel = compress_kernel(&out_dir, &workspace_root.join(kernel));
+        println!("cargo::rerun-if-changed={}", kernel.display());
         println!("cargo::rustc-env=KERNEL={}", kernel.display());
     }
 
