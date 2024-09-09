@@ -19,7 +19,7 @@ pub fn value_type(isa: &dyn TargetIsa, ty: WasmValType) -> Type {
 pub fn reference_type(wasm_ht: WasmHeapType, pointer_type: Type) -> Type {
     match wasm_ht.top() {
         WasmHeapTopType::Func => pointer_type,
-        WasmHeapTopType::Any |  WasmHeapTopType::Extern => I32
+        WasmHeapTopType::Any | WasmHeapTopType::Extern => I32,
     }
 }
 
