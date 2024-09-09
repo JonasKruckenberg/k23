@@ -1,5 +1,5 @@
 use crate::runtime::codegen::TranslatedModule;
-use crate::runtime::utils::{value_type, wasm_call_signature};
+use crate::runtime::utils::{reference_type, value_type, wasm_call_signature};
 use crate::runtime::vmcontext::VMContextPlan;
 use crate::runtime::{NS_WASM_FUNC, WASM_PAGE_SIZE};
 use alloc::vec;
@@ -10,16 +10,16 @@ use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::types::{I32, I64};
 use cranelift_codegen::ir::{
     ExtFuncData, ExternalName, Fact, FuncRef, Function, GlobalValue, GlobalValueData, Inst,
-    InstBuilder, MemFlags, MemoryType, MemoryTypeData, MemoryTypeField, SigRef, UserExternalName,
-    Value,
+    InstBuilder, MemFlags, MemoryType, MemoryTypeData, MemoryTypeField, SigRef, Signature, Type,
+    UserExternalName, Value,
 };
 use cranelift_codegen::isa::{TargetFrontendConfig, TargetIsa};
 use cranelift_frontend::FunctionBuilder;
 use cranelift_wasm::wasmparser::UnpackedIndex;
 use cranelift_wasm::{
     FuncIndex, GlobalIndex, GlobalVariable, Heap, HeapData, HeapStyle, MemoryIndex,
-    ModuleInternedTypeIndex, TableIndex, TargetEnvironment, TypeConvert, TypeIndex, WasmHeapType,
-    WasmResult, WasmSubType,
+    ModuleInternedTypeIndex, TableIndex, TargetEnvironment, TypeConvert, TypeIndex,
+    WasmHeapTopType, WasmHeapType, WasmResult, WasmSubType,
 };
 
 pub struct FunctionEnvironment<'module_env, 'wasm> {
@@ -102,6 +102,15 @@ impl<'module_env, 'wasm> TargetEnvironment for FunctionEnvironment<'module_env, 
     fn proof_carrying_code(&self) -> bool {
         self.isa.flags().enable_pcc()
     }
+
+    fn reference_type(&self, wasm_ty: WasmHeapType) -> (Type, bool) {
+        let ty = reference_type(wasm_ty, self.pointer_type());
+        let needs_stack_map = match wasm_ty.top() {
+            WasmHeapTopType::Extern | WasmHeapTopType::Any => true,
+            WasmHeapTopType::Func => false,
+        };
+        (ty, needs_stack_map)
+    }
 }
 
 impl<'module_env, 'wasm> TypeConvert for FunctionEnvironment<'module_env, 'wasm> {
@@ -120,6 +129,23 @@ impl<'module_env, 'wasm> TypeConvert for FunctionEnvironment<'module_env, 'wasm>
 impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment
     for FunctionEnvironment<'module_env, 'wasm>
 {
+    fn param_needs_stack_map(&self, _signature: &Signature, index: usize) -> bool {
+        false
+    }
+
+    fn sig_ref_result_needs_stack_map(&self, sig_ref: SigRef, index: usize) -> bool {
+        false
+    }
+
+    fn func_ref_result_needs_stack_map(
+        &self,
+        func: &Function,
+        func_ref: FuncRef,
+        index: usize,
+    ) -> bool {
+        false
+    }
+
     fn make_global(
         &mut self,
         func: &mut Function,
@@ -478,13 +504,21 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment
         todo!()
     }
 
+    fn translate_ref_null(&mut self, mut pos: FuncCursor, ht: WasmHeapType) -> WasmResult<Value> {
+        todo!()
+    }
+
+    fn translate_ref_is_null(&mut self, mut pos: FuncCursor, value: Value) -> WasmResult<Value> {
+        todo!()
+    }
+
     fn translate_ref_func(&mut self, pos: FuncCursor, func_index: FuncIndex) -> WasmResult<Value> {
         todo!()
     }
 
     fn translate_custom_global_get(
         &mut self,
-        pos: FuncCursor,
+        builder: &mut FunctionBuilder,
         global_index: GlobalIndex,
     ) -> WasmResult<Value> {
         todo!()
@@ -492,7 +526,7 @@ impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment
 
     fn translate_custom_global_set(
         &mut self,
-        pos: FuncCursor,
+        builder: &mut FunctionBuilder,
         global_index: GlobalIndex,
         val: Value,
     ) -> WasmResult<()> {

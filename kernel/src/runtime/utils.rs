@@ -1,7 +1,7 @@
-use cranelift_codegen::ir::types::{F32, F64, I32, I64, I8X16, R32, R64};
+use cranelift_codegen::ir::types::{F32, F64, I32, I64, I8X16};
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature, Type};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
-use cranelift_wasm::{WasmFuncType, WasmHeapType, WasmValType};
+use cranelift_wasm::{WasmFuncType, WasmHeapTopType, WasmHeapType, WasmValType};
 
 /// Returns the corresponding cranelift type for the provided wasm type.
 pub fn value_type(isa: &dyn TargetIsa, ty: WasmValType) -> Type {
@@ -17,21 +17,9 @@ pub fn value_type(isa: &dyn TargetIsa, ty: WasmValType) -> Type {
 
 /// Returns the reference type to use for the provided wasm type.
 pub fn reference_type(wasm_ht: WasmHeapType, pointer_type: Type) -> Type {
-    match wasm_ht {
-        WasmHeapType::Func | WasmHeapType::ConcreteFunc(_) | WasmHeapType::NoFunc => pointer_type,
-        WasmHeapType::Extern | WasmHeapType::Any | WasmHeapType::I31 | WasmHeapType::None => {
-            match pointer_type {
-                I32 => R32,
-                I64 => R64,
-                _ => panic!("unsupported pointer type"),
-            }
-        }
-        WasmHeapType::NoExtern
-        | WasmHeapType::Eq
-        | WasmHeapType::Array
-        | WasmHeapType::ConcreteArray(_)
-        | WasmHeapType::Struct
-        | WasmHeapType::ConcreteStruct(_) => todo!(),
+    match wasm_ht.top() {
+        WasmHeapTopType::Func => pointer_type,
+        WasmHeapTopType::Any |  WasmHeapTopType::Extern => I32
     }
 }
 

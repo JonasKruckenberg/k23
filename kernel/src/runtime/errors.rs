@@ -1,9 +1,9 @@
 #[derive(onlyerror::Error, Debug)]
 pub enum CompileError {
     #[error("WebAssembly parsing failed {0}")]
-    Parse(cranelift_wasm::wasmparser::BinaryReaderError),
+    Parse(wasmparser::BinaryReaderError),
     #[error("WebAssembly to Cranelift IR translation failed {0}")]
-    Translate(#[from] cranelift_wasm::WasmError),
+    Translate(cranelift_wasm::WasmError),
     #[error("Cranelift IR to machine code compilation failed {0}")]
     Compile(cranelift_codegen::CodegenError),
 }
