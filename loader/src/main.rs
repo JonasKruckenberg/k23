@@ -86,9 +86,14 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         )
     };
 
-    let mut virt_alloc = VirtAllocator::new(ChaCha20Rng::from_seed(
-        machine_info.rng_seed.unwrap()[0..32].try_into().unwrap(),
-    ));
+    let mut virt_alloc = if kconfig::KASLR {
+        VirtAllocator::new(ChaCha20Rng::from_seed(
+            machine_info.rng_seed.unwrap()[0..32].try_into().unwrap(),
+        ))
+    } else {
+        VirtAllocator::new_no_kaslr()
+    };
+    
 
     let physical_memory_offset = virt_alloc
         .reserve_range(machine_info.memory_hull().size(), kconfig::PAGE_SIZE)
