@@ -93,7 +93,6 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     } else {
         VirtAllocator::new_no_kaslr()
     };
-    
 
     let physical_memory_offset = virt_alloc
         .reserve_range(machine_info.memory_hull().size(), kconfig::PAGE_SIZE)
