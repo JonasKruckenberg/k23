@@ -144,6 +144,7 @@ impl<'a> Frame<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct FramesIter {
     ctx: arch::Context,
     signal: bool,
