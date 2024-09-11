@@ -34,6 +34,7 @@ pub struct UnwindException {
 impl Exception {
     /// Rust's exception class identifier.  This is used by personality routines to
     /// determine whether the exception was thrown by their own runtime.
+    #[allow(clippy::unusual_byte_groupings)]
     const CLASS: u64 = 0x4d4f5a_00_52555354; // M O Z \0  R U S T -- vendor, language
 
     /// Wraps the given payload in an exception.

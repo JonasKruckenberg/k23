@@ -34,19 +34,22 @@ fn rust_panic(_: &mut dyn PanicPayload) -> ! {
 }
 
 pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
+    // Safety: A panicking thread will not be able to call this function because it has already aborted.
     unsafe { panic_common::hook::set_hook(hook) }
 }
 
 pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
+    // Safety: A panicking thread will not be able to call this function because it has already aborted.
     unsafe { panic_common::hook::take_hook() }
 }
 
-pub unsafe fn update_hook<F>(hook_fn: F)
+pub fn update_hook<F>(hook_fn: F)
 where
     F: Fn(&(dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static), &PanicHookInfo<'_>)
         + Sync
         + Send
         + 'static,
 {
-    panic_common::hook::update_hook(hook_fn)
+    // Safety: A panicking thread will not be able to call this function because it has already aborted.
+    unsafe { panic_common::hook::update_hook(hook_fn) }
 }

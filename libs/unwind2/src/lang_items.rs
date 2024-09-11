@@ -6,7 +6,7 @@ use crate::{arch, raise_exception_phase2, Error};
 extern "C" fn personality_stub() {}
 
 pub fn ensure_personality_stub(ptr: u64) -> crate::Result<()> {
-    if ptr == personality_stub as u64 {
+    if ptr == personality_stub as usize as u64 {
         Ok(())
     } else {
         Err(Error::DifferentPersonality)

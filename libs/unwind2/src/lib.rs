@@ -22,6 +22,7 @@ mod utils;
 use crate::eh_action::{find_eh_action, EHAction};
 use crate::exception::Exception;
 use crate::lang_items::ensure_personality_stub;
+use crate::utils::with_context;
 use alloc::boxed::Box;
 use core::any::Any;
 use core::intrinsics;
@@ -29,8 +30,6 @@ use core::mem::ManuallyDrop;
 use core::panic::UnwindSafe;
 use core::ptr::addr_of_mut;
 
-pub use crate::utils::with_context;
-pub use arch::Context;
 pub use eh_info::EhInfo;
 pub use error::Error;
 pub use frame::{Frame, FramesIter};
@@ -50,7 +49,7 @@ pub fn begin_panic(data: Box<dyn Any + Send>) -> Result<()> {
 fn raise_exception_phase_1(ctx: arch::Context) -> Result<usize> {
     let mut frames = FramesIter::from_context(ctx);
 
-    while let Some(mut frame) = frames.next()? {
+    while let Some(frame) = frames.next()? {
         if frame
             .personality()
             .map(ensure_personality_stub)
@@ -64,7 +63,7 @@ fn raise_exception_phase_1(ctx: arch::Context) -> Result<usize> {
             continue;
         };
 
-        let eh_action = find_eh_action(&mut lsda, &mut frame)?;
+        let eh_action = find_eh_action(&mut lsda, &frame)?;
 
         match eh_action {
             EHAction::None | EHAction::Cleanup(_) => continue,
@@ -96,7 +95,7 @@ fn raise_exception_phase2(ctx: arch::Context, exception: *mut Exception) -> Resu
             continue;
         };
 
-        let eh_action = find_eh_action(&mut lsda, &mut frame)?;
+        let eh_action = find_eh_action(&mut lsda, &frame)?;
 
         match eh_action {
             EHAction::None => continue,

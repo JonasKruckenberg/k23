@@ -65,6 +65,11 @@ impl<'a> Frame<'a> {
     }
 
     /// Restore control to this frame.
+    ///
+    /// # Safety
+    ///
+    /// This method is *highly* unsafe because it installs this frames register context, **without
+    /// any checking**. If used improperly, much terrible things will happen, big sadness.
     pub unsafe fn restore(self) -> ! {
         arch::restore_context(&self.ctx)
     }
@@ -146,6 +151,7 @@ pub struct FramesIter {
 
 impl FramesIter {
     #[inline(always)]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         with_context(|ctx| Self {
             ctx: ctx.clone(),
@@ -157,6 +163,7 @@ impl FramesIter {
         Self { ctx, signal: false }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> crate::Result<Option<Frame<'static>>> {
         if let Some(frame) = Frame::from_context(&self.ctx, self.signal)? {
             self.ctx = frame.unwind()?;

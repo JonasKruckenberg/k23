@@ -30,8 +30,9 @@ pub fn catch_unwind<F, R>(f: F) -> Result<R, Box<dyn Any + Send + 'static>>
 where
     F: FnOnce() -> R + UnwindSafe,
 {
-    let res = unwind2::catch_unwind(f).inspect_err(|_| panic_count::decrease()); // decrease the panic count, since we caught it
-    res
+    unwind2::catch_unwind(f).inspect_err(|_| {
+        panic_count::decrease() // decrease the panic count, since we caught it
+    })
 }
 
 /// Triggers a panic, bypassing the panic hook.
@@ -128,7 +129,7 @@ pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
     unsafe { panic_common::hook::take_hook() }
 }
 
-pub unsafe fn update_hook<F>(hook_fn: F)
+pub fn update_hook<F>(hook_fn: F)
 where
     F: Fn(&(dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static), &PanicHookInfo<'_>)
         + Sync
@@ -139,5 +140,5 @@ where
         !panicking(),
         "cannot set a panic hook from a panicking thread"
     );
-    panic_common::hook::update_hook(hook_fn)
+    unsafe { panic_common::hook::update_hook(hook_fn) }
 }
