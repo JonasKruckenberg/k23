@@ -15,4 +15,4 @@ workspace = true
 panic-common.workspace = true
 thread-local.workspace = true
 log.workspace = true
-unwind.workspace = true
+unwind2.workspace = true

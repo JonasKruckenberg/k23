@@ -13,7 +13,6 @@ pub const SP: Register = RiscV::SP;
 pub const RA: Register = RiscV::RA;
 
 pub const UNWIND_DATA_REG: (Register, Register) = (RiscV::A0, RiscV::A1);
-// pub const UNWIND_PRIVATE_DATA_SIZE: usize = 2;
 
 #[cfg(all(target_feature = "f", not(target_feature = "d")))]
 compile_error!("RISC-V with only F extension is not supported");
@@ -189,7 +188,9 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
             "
             mv t0, sp
             add sp, sp, -0x210
+            .cfi_def_cfa_offset 0x210
             sd ra, 0x200(sp)
+            .cfi_offset ra, -16
             ",
             code!(save_gp),
             code!(save_fp),
@@ -199,6 +200,8 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
             jalr t0
             ld ra, 0x200(sp)
             add sp, sp, 0x210
+            .cfi_def_cfa_offset 0
+            .cfi_restore ra
             ret
             ",
             options(noreturn)
@@ -210,7 +213,9 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
             "
             mv t0, sp
             add sp, sp, -0x110
+            .cfi_def_cfa_offset 0x110
             sd ra, 0x100(sp)
+            .cfi_offset ra, -16
             ",
             code!(save_gp),
             "
@@ -219,6 +224,8 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
             jalr t0
             ld ra, 0x100(sp)
             add sp, sp, 0x110
+            .cfi_def_cfa_offset 0
+            .cfi_restore ra
             ret
             ",
             options(noreturn)
