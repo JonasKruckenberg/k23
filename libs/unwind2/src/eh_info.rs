@@ -27,9 +27,8 @@ pub struct EhInfo {
 pub static EH_INFO: LazyLock<EhInfo> = LazyLock::new(|| {
     let eh_frame_hdr = unsafe { get_unlimited_slice(EH_FRAME_HDR.as_ptr()) };
 
-    let mut bases = BaseAddresses::default()
-        .set_eh_frame_hdr(eh_frame_hdr.as_ptr() as u64)
-        .set_text(0xffff_ffff_8000_0000); // TODO support dynamic offsets
+    let mut bases = BaseAddresses::default().set_eh_frame_hdr(eh_frame_hdr.as_ptr() as u64);
+    // .set_text(0xffff_ffff_8000_0000); // TODO support dynamic offsets
 
     let hdr = EhFrameHdr::new(eh_frame_hdr, NativeEndian)
         .parse(&bases, 8)
@@ -46,3 +45,7 @@ pub static EH_INFO: LazyLock<EhInfo> = LazyLock::new(|| {
         eh_frame,
     }
 });
+
+pub fn obtain_eh_info() -> &'static EhInfo {
+    &EH_INFO
+}

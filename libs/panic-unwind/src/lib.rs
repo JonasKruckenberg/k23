@@ -1,17 +1,19 @@
 #![no_std]
 #![allow(internal_features)]
 #![feature(std_internals, core_intrinsics, thread_local, rustc_attrs)]
+
 extern crate alloc;
+
+mod panic_count;
 
 use crate::panic_count::MustAbort;
 use alloc::boxed::Box;
 use alloc::string::String;
 use core::any::Any;
 use core::panic::{PanicPayload, UnwindSafe};
-use core::{fmt, intrinsics, mem, mem::ManuallyDrop, ptr::addr_of_mut};
-use panic_common::PanicHookInfo;
+use core::{fmt, mem};
 
-mod panic_count;
+pub use panic_common::PanicHookInfo;
 
 /// Determines whether the current thread is unwinding because of panic.
 #[inline]
@@ -28,65 +30,8 @@ pub fn catch_unwind<F, R>(f: F) -> Result<R, Box<dyn Any + Send + 'static>>
 where
     F: FnOnce() -> R + UnwindSafe,
 {
-    union Data<F, R> {
-        // when we start, this field holds the closure
-        f: ManuallyDrop<F>,
-        // when the closure completed successfully, this will hold the return
-        r: ManuallyDrop<R>,
-        // when the closure panicked this will hold the panic payload
-        p: ManuallyDrop<Box<dyn Any + Send>>,
-    }
-
-    #[inline]
-    fn do_call<F: FnOnce() -> R, R>(data: *mut u8) {
-        // SAFETY: this is the responsibility of the caller, see above.
-        unsafe {
-            let data = data.cast::<Data<F, R>>();
-            let data = &mut (*data);
-            let f = ManuallyDrop::take(&mut data.f);
-            data.r = ManuallyDrop::new(f());
-        }
-    }
-
-    #[inline]
-    #[rustc_nounwind] // `intrinsic::r#try` requires catch fn to be nounwind
-    fn do_catch<F: FnOnce() -> R, R>(data: *mut u8, payload: *mut u8) {
-        // SAFETY: this is the responsibility of the caller, see above.
-        //
-        // When `__rustc_panic_cleaner` is correctly implemented we can rely
-        // on `obj` being the correct thing to pass to `data.p` (after wrapping
-        // in `ManuallyDrop`).
-        unsafe {
-            let data = data.cast::<Data<F, R>>();
-            let data = &mut (*data);
-            let obj = cleanup(payload);
-            data.p = ManuallyDrop::new(obj);
-        }
-    }
-
-    #[cold]
-    unsafe fn cleanup(payload: *mut u8) -> Box<dyn Any + Send + 'static> {
-        // SAFETY: The whole unsafe block hinges on a correct implementation of
-        // the panic handler `__rust_panic_cleanup`. As such we can only
-        // assume it returns the correct thing for `Box::from_raw` to work
-        // without undefined behavior.
-        let obj = unsafe { unwind::panic_cleanup(payload) };
-        panic_count::decrease();
-        obj
-    }
-
-    let mut data = Data {
-        f: ManuallyDrop::new(f),
-    };
-    let data_ptr = addr_of_mut!(data).cast::<u8>();
-
-    unsafe {
-        if intrinsics::catch_unwind(do_call::<F, R>, data_ptr, do_catch::<F, R>) == 0 {
-            Ok(ManuallyDrop::into_inner(data.r))
-        } else {
-            Err(ManuallyDrop::into_inner(data.p))
-        }
-    }
+    let res = unwind2::catch_unwind(f).inspect_err(|_| panic_count::decrease()); // decrease the panic count, since we caught it
+    res
 }
 
 /// Triggers a panic, bypassing the panic hook.
@@ -150,10 +95,11 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 /// yer breakpoints for backtracing panics.
 #[inline(never)]
 #[no_mangle]
-pub fn rust_panic(payload: &mut dyn PanicPayload) -> ! {
-    let code = unwind::panic_begin(unsafe { Box::from_raw(payload.take_box()) });
-
-    panic_common::exit(code);
+fn rust_panic(payload: &mut dyn PanicPayload) -> ! {
+    match unwind2::begin_panic(unsafe { Box::from_raw(payload.take_box()) }) {
+        Ok(_) => panic_common::exit(0),
+        Err(_) => panic_common::abort(),
+    }
 }
 
 fn payload_as_str(payload: &dyn Any) -> &str {
@@ -164,4 +110,34 @@ fn payload_as_str(payload: &dyn Any) -> &str {
     } else {
         "Box<dyn Any>"
     }
+}
+
+pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
+    assert!(
+        !panicking(),
+        "cannot set a panic hook from a panicking thread"
+    );
+    unsafe { panic_common::hook::set_hook(hook) }
+}
+
+pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
+    assert!(
+        !panicking(),
+        "cannot set a panic hook from a panicking thread"
+    );
+    unsafe { panic_common::hook::take_hook() }
+}
+
+pub unsafe fn update_hook<F>(hook_fn: F)
+where
+    F: Fn(&(dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static), &PanicHookInfo<'_>)
+        + Sync
+        + Send
+        + 'static,
+{
+    assert!(
+        !panicking(),
+        "cannot set a panic hook from a panicking thread"
+    );
+    panic_common::hook::update_hook(hook_fn)
 }

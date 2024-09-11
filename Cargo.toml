@@ -34,7 +34,7 @@ riscv = { path = "libs/riscv" }
 semihosting-logger = { path = "libs/semihosting-logger" }
 sync = { path = "libs/sync" }
 thread-local = { path = "libs/thread-local" }
-unwind = { path = "libs/unwind" }
+unwind2 = { path = "libs/unwind2" }
 leb128 = { path = "libs/leb128" }
 wasm-encoder = { path = "libs/wasm-encoder" }
 wast = { path = "libs/wast" }

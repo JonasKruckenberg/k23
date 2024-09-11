@@ -1,6 +1,26 @@
 use crate::arch;
 use core::ptr;
-use gimli::Pointer;
+use gimli::{Pointer, Register, RegisterRule, UnwindTableRow};
+
+pub struct StoreOnStack;
+
+// gimli's MSRV doesn't allow const generics, so we need to pick a supported array size.
+const fn next_value(x: usize) -> usize {
+    let supported = [0, 1, 2, 3, 4, 8, 16, 32, 64, 128];
+    let mut i = 0;
+    while i < supported.len() {
+        if supported[i] >= x {
+            return supported[i];
+        }
+        i += 1;
+    }
+    192
+}
+
+impl<R: gimli::ReaderOffset> gimli::UnwindContextStorage<R> for StoreOnStack {
+    type Rules = [(Register, RegisterRule<R>); next_value(arch::MAX_REG_RULES)];
+    type Stack = [UnwindTableRow<R, Self>; 2];
+}
 
 pub unsafe fn get_unlimited_slice<'a>(start: *const u8) -> &'a [u8] {
     // Create the largest possible slice for this address.
@@ -10,10 +30,10 @@ pub unsafe fn get_unlimited_slice<'a>(start: *const u8) -> &'a [u8] {
     unsafe { core::slice::from_raw_parts(start as *const _, len) }
 }
 
-pub unsafe fn deref_pointer(ptr: Pointer) -> usize {
+pub unsafe fn deref_pointer(ptr: Pointer) -> u64 {
     match ptr {
-        Pointer::Direct(x) => usize::try_from(x).unwrap(),
-        Pointer::Indirect(x) => unsafe { *(x as *const usize) },
+        Pointer::Direct(x) => x,
+        Pointer::Indirect(x) => unsafe { *(x as *const u64) },
     }
 }
 

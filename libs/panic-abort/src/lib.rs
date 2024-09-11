@@ -2,6 +2,9 @@
 #![allow(internal_features)]
 #![feature(std_internals)]
 
+extern crate alloc;
+
+use alloc::boxed::Box;
 use core::panic::PanicPayload;
 use panic_common::PanicHookInfo;
 
@@ -26,6 +29,24 @@ pub fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 /// yer breakpoints for backtracing panics.
 #[inline(never)]
 #[no_mangle]
-pub fn rust_panic(_: &mut dyn PanicPayload) -> ! {
+fn rust_panic(_: &mut dyn PanicPayload) -> ! {
     panic_common::abort();
+}
+
+pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
+    unsafe { panic_common::hook::set_hook(hook) }
+}
+
+pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
+    unsafe { panic_common::hook::take_hook() }
+}
+
+pub unsafe fn update_hook<F>(hook_fn: F)
+where
+    F: Fn(&(dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static), &PanicHookInfo<'_>)
+        + Sync
+        + Send
+        + 'static,
+{
+    panic_common::hook::update_hook(hook_fn)
 }

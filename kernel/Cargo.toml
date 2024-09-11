@@ -23,6 +23,7 @@ talc.workspace = true
 arrayvec.workspace = true
 cfg-if.workspace = true
 thread-local.workspace = true
+
 hashbrown.workspace = true
 wasmparser.workspace = true
 target-lexicon.workspace = true
@@ -34,6 +35,7 @@ object = { workspace = true, features = ["read_core", "write_core", "elf"] }
 gimli = { workspace = true, features = ["read"] }
 onlyerror.workspace = true
 linked-list-allocator.workspace = true
+unwind2.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
