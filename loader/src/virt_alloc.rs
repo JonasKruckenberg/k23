@@ -15,6 +15,13 @@ pub struct VirtAllocator {
 }
 
 impl VirtAllocator {
+    pub fn new_no_kaslr() -> Self {
+        Self {
+            page_state: [false; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
+            rng: None,
+        }
+    }
+
     pub fn new(rng: ChaCha20Rng) -> Self {
         Self {
             page_state: [false; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
