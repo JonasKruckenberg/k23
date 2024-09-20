@@ -24,7 +24,6 @@ sync.workspace = true
 linked-list-allocator.workspace = true
 thread-local.workspace = true
 unwind2.workspace = true
-backtrace.workspace = true
 
 log.workspace = true
 talc.workspace = true
