@@ -24,6 +24,7 @@ recursive_format_impl = "deny"
 [workspace.dependencies]
 kernel = { path = "kernel" }
 loader-api = { path = "loader/api" }
+backtrace = { path = "libs/backtrace" }
 dtb-parser = { path = "libs/dtb-parser" }
 kmm = { path = "libs/kmm" }
 ktest = { path = "libs/ktest" }
