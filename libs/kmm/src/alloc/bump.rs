@@ -197,12 +197,8 @@ mod test {
     fn single_region_single_frame() {
         let top = PhysicalAddress(usize::MAX);
         let regions = [top.sub(0x4000)..top];
-        let mut alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(
-                &regions,
-                VirtualAddress::default(),
-            )
-        };
+        let mut alloc: BumpAllocator<EmulateMode> =
+            unsafe { BumpAllocator::new(&regions, VirtualAddress::default()) };
 
         assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x1000));
         assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x2000));
@@ -215,12 +211,8 @@ mod test {
     fn single_region_multi_frame() {
         let top = PhysicalAddress(usize::MAX);
         let regions = [top.sub(0x4000)..top];
-        let mut alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(
-                &regions,
-                VirtualAddress::default(),
-            )
-        };
+        let mut alloc: BumpAllocator<EmulateMode> =
+            unsafe { BumpAllocator::new(&regions, VirtualAddress::default()) };
 
         assert_eq!(alloc.allocate_frames(3).unwrap(), top.sub(0x3000));
         assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x4000));
@@ -230,16 +222,9 @@ mod test {
     #[test]
     fn multi_region_single_frame() {
         let top = PhysicalAddress(usize::MAX);
-        let regions = [
-            top.sub(0x4000)..top,
-            top.sub(0x9000)..top.sub(0x7000),
-        ];
-        let mut alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(
-                &regions,
-                VirtualAddress::default(),
-            )
-        };
+        let regions = [top.sub(0x4000)..top, top.sub(0x9000)..top.sub(0x7000)];
+        let mut alloc: BumpAllocator<EmulateMode> =
+            unsafe { BumpAllocator::new(&regions, VirtualAddress::default()) };
 
         assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x8000));
         assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x9000));
@@ -254,16 +239,9 @@ mod test {
     #[test]
     fn multi_region_multi_frame() {
         let top = PhysicalAddress(usize::MAX);
-        let regions = [
-            top.sub(0x4000)..top,
-            top.sub(0x9000)..top.sub(0x7000),
-        ];
-        let mut alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(
-                &regions,
-                VirtualAddress::default(),
-            )
-        };
+        let regions = [top.sub(0x4000)..top, top.sub(0x9000)..top.sub(0x7000)];
+        let mut alloc: BumpAllocator<EmulateMode> =
+            unsafe { BumpAllocator::new(&regions, VirtualAddress::default()) };
 
         assert_eq!(alloc.allocate_frames(2).unwrap(), top.sub(0x9000));
 
@@ -276,16 +254,9 @@ mod test {
     #[test]
     fn multi_region_multi_frame2() {
         let top = PhysicalAddress(usize::MAX);
-        let regions = [
-            top.sub(0x4000)..top,
-            top.sub(0x9000)..top.sub(0x7000),
-        ];
-        let mut alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(
-                &regions,
-                VirtualAddress::default(),
-            )
-        };
+        let regions = [top.sub(0x4000)..top, top.sub(0x9000)..top.sub(0x7000)];
+        let mut alloc: BumpAllocator<EmulateMode> =
+            unsafe { BumpAllocator::new(&regions, VirtualAddress::default()) };
 
         assert_eq!(alloc.allocate_frames(3).unwrap(), top.sub(0x3000));
         assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x4000));

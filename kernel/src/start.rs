@@ -6,7 +6,7 @@ use core::any::Any;
 use core::ops::Range;
 use core::{mem, slice};
 use kmm::{AddressRangeExt, BitMapAllocator, Flush, Mapper, VirtualAddress};
-use loader_api::{LoaderConfig};
+use loader_api::LoaderConfig;
 use object::read::elf::ElfFile64;
 use sync::OnceLock;
 
@@ -30,11 +30,11 @@ fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
         });
         post_init_hart();
     })
-        .unwrap_or_else(|e| {
-            mem::forget(e);
-            log::error!("failed to initialize");
-            arch::abort();
-        });
+    .unwrap_or_else(|e| {
+        mem::forget(e);
+        log::error!("failed to initialize");
+        arch::abort();
+    });
 
     extern "Rust" {
         fn kmain(hartid: usize, boot_info: &'static loader_api::BootInfo) -> !;
@@ -64,8 +64,8 @@ fn init(boot_info: &'static loader_api::BootInfo) {
 
         Ok(())
     })
-        .expect("failed to initialize frame allocator");
-    
+    .expect("failed to initialize frame allocator");
+
     panic_unwind::set_hook(Box::new(|info| {
         let location = info.location();
         let msg = payload_as_str(info.payload());

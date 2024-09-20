@@ -1,6 +1,6 @@
 // You might wonder: Why is this also a library?
 //
-// The reason is that other crates in this workspace (currently only `ktest`) depend on the runtime 
+// The reason is that other crates in this workspace (currently only `ktest`) depend on the runtime
 // services provided by this crate. I.e. the panic handler, global allocator, trap handler etc.
 // To avoid code duplication, the `ktest` crate just depend on the kernel, overriding the `kmain`
 // function with its own test runner.

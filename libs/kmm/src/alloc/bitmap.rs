@@ -291,7 +291,7 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
 //         BitMapAllocator, BumpAllocator, EmulateMode, Error, FrameAllocator, Mode, PhysicalAddress,
 //         VirtualAddress,
 //     };
-// 
+//
 //     #[test]
 //     fn single_region_single_frame() -> Result<(), Error> {
 //         let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
@@ -301,16 +301,16 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
 //             )
 //         };
 //         let mut alloc = BitMapAllocator::new(bump_alloc)?;
-// 
+//
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x3000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x2000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x1000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
 //         assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
-// 
+//
 //         Ok(())
 //     }
-// 
+//
 //     #[test]
 //     fn single_region_multi_frame() -> Result<(), Error> {
 //         let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
@@ -320,14 +320,14 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
 //             )
 //         };
 //         let mut alloc = BitMapAllocator::new(bump_alloc)?;
-// 
+//
 //         assert_eq!(alloc.allocate_frames(3)?, PhysicalAddress(0x1000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
 //         assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
-// 
+//
 //         Ok(())
 //     }
-// 
+//
 //     #[test]
 //     fn multi_region_single_frame() -> Result<(), Error> {
 //         let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
@@ -341,19 +341,19 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
 //             )
 //         };
 //         let mut alloc = BitMapAllocator::new(bump_alloc)?;
-// 
+//
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x8000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x7000));
-// 
+//
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x3000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x2000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x1000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
 //         assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
-// 
+//
 //         Ok(())
 //     }
-// 
+//
 //     #[test]
 //     fn multi_region_multi_frame() -> Result<(), Error> {
 //         let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
@@ -367,17 +367,17 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
 //             )
 //         };
 //         let mut alloc = BitMapAllocator::new(bump_alloc)?;
-// 
+//
 //         assert_eq!(alloc.allocate_frames(2)?, PhysicalAddress(0x7000));
-// 
+//
 //         assert_eq!(alloc.allocate_frames(2)?, PhysicalAddress(0x2000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x1000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
 //         assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
-// 
+//
 //         Ok(())
 //     }
-// 
+//
 //     #[test]
 //     fn multi_region_multi_frame2() -> Result<(), Error> {
 //         let bump_alloc: BumpAllocator<EmulateMode> = unsafe {
@@ -391,11 +391,11 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
 //             )
 //         };
 //         let mut alloc = BitMapAllocator::new(bump_alloc)?;
-// 
+//
 //         assert_eq!(alloc.allocate_frames(3)?, PhysicalAddress(0x1000));
 //         assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
 //         assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
-// 
+//
 //         Ok(())
 //     }
 // }
