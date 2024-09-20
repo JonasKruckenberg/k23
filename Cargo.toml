@@ -53,7 +53,7 @@ talc = "4.4.1"
 
 # wast dependencies
 bumpalo = "3.14.0"
-unicode-width = { version = "0.1.9" }
+unicode-width = { version = "0.2.0" }
 memchr = { version = "2.4.1", default-features = false }
 
 # cranelift dependencies

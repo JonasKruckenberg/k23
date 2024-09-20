@@ -33,6 +33,9 @@ use sync::Mutex;
 /// operating systems in practice, since each user program gets run in its own [`Store`] .
 /// But this approach allows us more flexibility in how we manage memory: E.g. we can have process groups
 /// that share a common [`Store`] and can therefore share resources much more efficiently.
+///
+/// [`Store`]: crate::runtime::Store
+/// [`Instance`]: crate::runtime::instance::Instance
 #[derive(Debug, Clone)]
 pub struct GuestAllocator(Arc<Mutex<GuestAllocatorInner>>);
 
