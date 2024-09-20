@@ -119,6 +119,7 @@ test-docs crate="" *cargo_args="":
 # run all tests
 test cargo_args="" *args="": && (test-docs cargo_args)
     {{ _cargo }} test \
+        -p kernel \
         --target kernel/riscv64gc-k23-none-kernel.json \
         --profile {{ profile }} \
         {{ _buildstd }} \
