@@ -5,4 +5,4 @@ pub const STACK_SIZE_PAGES: usize = 128;
 #[allow(non_camel_case_types)]
 pub type MEMORY_MODE = kmm::Riscv64Sv39;
 pub const PAGE_SIZE: usize = <MEMORY_MODE as kmm::Mode>::PAGE_SIZE;
-pub const KASLR: bool = false;
+pub const KASLR: bool = true;
