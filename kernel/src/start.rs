@@ -1,7 +1,13 @@
 use crate::{allocator, arch, frame_alloc, kconfig};
+use alloc::boxed::Box;
+use alloc::string::String;
+use backtrace::{Backtrace, SymbolizeContext};
+use core::any::Any;
 use core::ops::Range;
-use kmm::{BitMapAllocator, Flush, Mapper, VirtualAddress};
+use core::slice;
+use kmm::{AddressRangeExt, BitMapAllocator, Flush, Mapper, VirtualAddress};
 use loader_api::{BootInfo, LoaderConfig};
+use object::read::elf::ElfFile64;
 
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = LoaderConfig::new_default();
@@ -61,6 +67,29 @@ fn init_global(boot_info: &'static BootInfo) {
     })
     .expect("failed to initialize frame allocator");
 
+    panic_unwind::set_hook(Box::new(|info| {
+        let location = info.location();
+        let msg = payload_as_str(info.payload());
+
+        log::error!("hart panicked at {location}:\n{msg}");
+
+        let elf = unsafe {
+            let start = boot_info
+                .physical_memory_offset
+                .add(boot_info.kernel_elf.start.as_raw())
+                .as_raw() as *const u8;
+            slice::from_raw_parts(start, boot_info.kernel_elf.size())
+        };
+        let elf = ElfFile64::parse(elf).unwrap();
+
+        let ctx =
+            SymbolizeContext::new(elf, boot_info.kernel_image_offset.as_raw() as u64).unwrap();
+
+        let backtrace = Backtrace::capture(&ctx);
+
+        log::error!("{backtrace}");
+    }));
+
     log::info!("Welcome to k23 {}", env!("CARGO_PKG_VERSION"));
 }
 
@@ -77,4 +106,14 @@ fn unmap_loader(
     flush.flush()?;
 
     Ok(())
+}
+
+fn payload_as_str(payload: &dyn Any) -> &str {
+    if let Some(&s) = payload.downcast_ref::<&'static str>() {
+        s
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.as_str()
+    } else {
+        "Box<dyn Any>"
+    }
 }
