@@ -237,7 +237,6 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
- "backtrace",
  "cfg-if",
  "cranelift-codegen",
  "cranelift-entity",
