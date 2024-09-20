@@ -11,14 +11,14 @@ use core::{hint, mem, ptr, slice};
 ///
 /// # GuestAllocator
 ///
-/// Data "owned" by generated code i.e. data that belongs to a [`Store`] is allocated through a Stores
+/// Data "owned" by generated code i.e. data that belongs to a [`Store`][crate::runtime::Store] is allocated through a Stores
 /// [`GuestAllocator`] that manages a stores virtual memory etc. A [`AlignedVec`] is essentially the
 /// guest-owned counterpart to `Vec` in the kernel.
 ///
 /// # Alignment
 ///
 /// Almost all guest allocations require a specific alignment: JIT compiled code must be page-aligned
-/// to allow for proper mapping, the [`Stack`] must be aligned to 16 bytes (on riscv) because of the
+/// to allow for proper mapping, the `Stack` must be aligned to 16 bytes (on riscv) because of the
 /// calling convention. `GuestVec` (contrary to a regular `Vec` and the reason for the code duplication here)
 /// allows you to specify a different alignment then what `mem::align_of::<T>()` would normally dictate.
 /// There are just two rules:
