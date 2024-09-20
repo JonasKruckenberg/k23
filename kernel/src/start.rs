@@ -4,7 +4,6 @@ use core::{mem, slice};
 use core::any::Any;
 use core::ops::Range;
 use object::read::elf::ElfFile64;
-use backtrace::{Backtrace, SymbolizeContext};
 use kmm::{AddressRangeExt, BitMapAllocator, Flush, Mapper, VirtualAddress};
 use loader_api::LoaderConfig;
 use sync::{OnceLock};
@@ -71,22 +70,6 @@ fn init(boot_info: &'static loader_api::BootInfo) {
         let msg = payload_as_str(info.payload());
 
         log::error!("hart panicked at {location}:\n{msg}");
-
-        let elf = unsafe {
-            let start = boot_info
-                .physical_memory_offset
-                .add(boot_info.kernel_elf.start.as_raw())
-                .as_raw() as *const u8;
-            slice::from_raw_parts(start, boot_info.kernel_elf.size())
-        };
-        let elf = ElfFile64::parse(elf).unwrap();
-
-        let ctx =
-            SymbolizeContext::new(elf, boot_info.kernel_image_offset.as_raw() as u64).unwrap();
-
-        let backtrace = Backtrace::capture(&ctx);
-
-        log::error!("{backtrace}");
     }));
 
     log::info!("Welcome to k23 {}", env!("CARGO_PKG_VERSION"));
