@@ -4,8 +4,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use std::{fs, path::PathBuf};
 use syn::{
-    parse::Parse, parse_macro_input, parse_quote, Attribute, Error, Expr, Ident, ItemFn, LitStr,
-    Path,
+    parse::Parse, parse_macro_input, parse_quote, Attribute, Error, Ident, ItemFn, LitStr, Path,
 };
 
 #[proc_macro_attribute]
@@ -44,57 +43,6 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
         #func
     )
     .into()
-}
-
-#[proc_macro_attribute]
-pub fn setup_harness(args: TokenStream, item: TokenStream) -> TokenStream {
-    let crate_path: Path = parse_quote!(::ktest);
-
-    let loader_cfg = if args.is_empty() {
-        parse_quote!(#crate_path::__private::loader_api::LoaderConfig::new_default())
-    } else {
-        parse_macro_input!(args as Expr)
-    };
-
-    let init_func = parse_macro_input!(item as ItemFn);
-    let init_func_ident = init_func.sig.ident.clone();
-
-    quote!(
-        #[cfg(not(target_os = "none"))]
-        fn main() {
-            let stdout = std::io::stdout();
-
-            let args: ::std::vec::Vec<_> = ::std::env::args().collect();
-            let args = #crate_path::Arguments::parse(args.iter().map(|s| s.as_str()));
-
-            #crate_path::run_tests(&mut stdout, args).exit();
-        }
-
-        #[#crate_path::__private::loader_api::entry(#loader_cfg)]
-        #[cfg(target_os = "none")]
-        #[loader_api(crate = #crate_path::__private::loader_api)]
-        fn ktest_runner(hartid: usize, boot_info: &'static #crate_path::__private::loader_api::BootInfo) -> ! {
-            struct Log;
-
-            impl ::core::fmt::Write for Log {
-                fn write_str(&mut self, s: &str) -> ::core::fmt::Result {
-                    #crate_path::__private::print(s);
-
-                    Ok(())
-                }
-            }
-
-            let machine_info = unsafe { #crate_path::__private::MachineInfo::from_dtb(boot_info.fdt_offset.as_raw() as *const u8) };
-            let args = machine_info.bootargs.map(|bootargs| #crate_path::Arguments::from_str(bootargs.to_str().unwrap())).unwrap_or_default();
-
-            let init_func: fn(usize, #crate_path::SetupInfo) = #init_func_ident;
-            init_func(hartid, #crate_path::SetupInfo::new(boot_info));
-
-            #crate_path::run_tests(&mut Log, args, boot_info).exit();
-        }
-
-        #init_func
-    ).into()
 }
 
 // #[ktest(crate = path::to::ktest)]

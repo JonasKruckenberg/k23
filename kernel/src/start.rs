@@ -1,13 +1,16 @@
-use crate::{allocator, arch, frame_alloc, kconfig};
 use alloc::boxed::Box;
 use alloc::string::String;
-use backtrace::{Backtrace, SymbolizeContext};
+use core::{mem, slice};
 use core::any::Any;
 use core::ops::Range;
-use core::slice;
-use kmm::{AddressRangeExt, BitMapAllocator, Flush, Mapper, VirtualAddress};
-use loader_api::{BootInfo, LoaderConfig};
 use object::read::elf::ElfFile64;
+use backtrace::{Backtrace, SymbolizeContext};
+use kmm::{AddressRangeExt, BitMapAllocator, Flush, Mapper, VirtualAddress};
+use loader_api::LoaderConfig;
+use sync::{OnceLock};
+use crate::{allocator, arch, frame_alloc, kconfig};
+
+pub static BOOT_INFO: OnceLock<&'static loader_api::BootInfo> = OnceLock::new();
 
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = LoaderConfig::new_default();
@@ -16,43 +19,39 @@ const LOADER_CFG: LoaderConfig = {
     cfg
 };
 
-#[cfg(not(test))]
 #[loader_api::entry(LOADER_CFG)]
-fn kstart(hartid: usize, boot_info: &'static BootInfo) -> ! {
+fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
     panic_unwind::catch_unwind(|| {
-        semihosting_logger::hartid::set(hartid);
-
-        arch::trap_handler::init();
-
-        if hartid == boot_info.boot_hart {
-            init_global(boot_info);
-        }
-
-        arch::finish_processor_init();
-
-        crate::kmain(hartid, boot_info);
+        pre_init_hart(hartid);
+        // reuse the OnceLock to also ensure the global initialization is done only once
+        BOOT_INFO.get_or_init(|| {
+            init(boot_info);
+            boot_info
+        });
+        post_init_hart();
     })
-    .unwrap_or_else(|_| {
+        .unwrap_or_else(|e| {
+            mem::forget(e);
+            log::error!("failed to initialize");
+            arch::abort();
+        });
+
+    extern "Rust" {
+        fn kmain(hartid: usize, boot_info: &'static loader_api::BootInfo) -> !;
+    }
+
+    panic_unwind::catch_unwind(|| unsafe { kmain(hartid, boot_info) }).unwrap_or_else(|_| {
         log::error!("unrecoverable failure");
         arch::abort();
     })
 }
 
-#[cfg(test)]
-#[ktest::setup_harness(LOADER_CFG)]
-fn kstart_test(hartid: usize, info: ktest::SetupInfo) {
+fn pre_init_hart(hartid: usize) {
     semihosting_logger::hartid::set(hartid);
-
-    arch::trap_handler::init();
-
-    if hartid == info.boot_info.boot_hart {
-        init_global(info.boot_info);
-    }
-
-    arch::finish_processor_init();
+    // setup trap handler
 }
 
-fn init_global(boot_info: &'static BootInfo) {
+fn init(boot_info: &'static loader_api::BootInfo) {
     semihosting_logger::init(kconfig::LOG_LEVEL.to_level_filter());
 
     log::debug!("initializing frame alloc...");
@@ -65,7 +64,7 @@ fn init_global(boot_info: &'static BootInfo) {
 
         Ok(())
     })
-    .expect("failed to initialize frame allocator");
+        .expect("failed to initialize frame allocator");
 
     panic_unwind::set_hook(Box::new(|info| {
         let location = info.location();
@@ -91,6 +90,10 @@ fn init_global(boot_info: &'static BootInfo) {
     }));
 
     log::info!("Welcome to k23 {}", env!("CARGO_PKG_VERSION"));
+}
+
+fn post_init_hart() {
+    // enable interrupts
 }
 
 fn unmap_loader(

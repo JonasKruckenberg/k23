@@ -10,7 +10,12 @@
 #![feature(used_with_arg)]
 #![allow(clippy::doc_markdown, clippy::module_name_repetitions)]
 
-extern crate alloc as _;
+// bring the test runner entry into scope
+#[cfg(test)]
+extern crate ktest as _;
+// bring the #[panic_handler] and #[global_allocator] into scope
+#[cfg(test)]
+extern crate kernel as _;
 
 mod alloc;
 mod arch;
