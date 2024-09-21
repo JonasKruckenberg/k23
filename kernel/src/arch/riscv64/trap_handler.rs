@@ -37,7 +37,7 @@ pub struct TrapFrame {
 }
 
 #[naked]
-pub unsafe extern "C" fn trap_vec() {
+unsafe extern "C" fn trap_vec() {
     // When in vectored mode
     // exceptions i.e. sync traps => BASE
     // interrupts i.e. async traps => BASE + 4 * CAUSE
