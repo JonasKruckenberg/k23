@@ -16,20 +16,17 @@ name = "kernel"
 harness = false
 
 [dependencies]
-loader-api.workspace = true
 kmm.workspace = true
-panic-unwind.workspace = true
+loader-api.workspace = true
+log.workspace = true
 semihosting-logger = { workspace = true, features = ["hartid"] }
 sync.workspace = true
-linked-list-allocator.workspace = true
-thread-local.workspace = true
-unwind2.workspace = true
-backtrace.workspace = true
-
-log.workspace = true
 talc.workspace = true
 arrayvec.workspace = true
 cfg-if.workspace = true
+thread-local.workspace = true
+unwind2.workspace = true
+backtrace.workspace = true
 
 hashbrown.workspace = true
 wasmparser.workspace = true
@@ -41,7 +38,7 @@ cranelift-entity.workspace = true
 object = { workspace = true, features = ["read_core", "write_core", "elf"] }
 gimli = { workspace = true, features = ["read"] }
 onlyerror.workspace = true
-
+linked-list-allocator.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true

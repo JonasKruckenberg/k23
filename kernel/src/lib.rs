@@ -16,6 +16,7 @@ pub mod allocator;
 pub mod arch;
 mod frame_alloc;
 pub mod kconfig;
+pub mod panic;
 pub mod runtime;
 mod start;
 

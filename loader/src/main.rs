@@ -1,10 +1,8 @@
 #![no_std]
 #![no_main]
-#![feature(naked_functions)]
-#![feature(maybe_uninit_slice)]
+#![feature(naked_functions, maybe_uninit_slice, panic_can_unwind)]
 
 extern crate alloc;
-extern crate panic_abort;
 
 mod arch;
 mod boot_info;
@@ -14,6 +12,7 @@ mod kconfig;
 mod kernel;
 mod machine_info;
 mod paging;
+mod panic;
 mod virt_alloc;
 
 use crate::boot_info::init_boot_info;

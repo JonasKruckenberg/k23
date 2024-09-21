@@ -252,7 +252,6 @@ dependencies = [
  "log",
  "object",
  "onlyerror",
- "panic-unwind",
  "riscv",
  "semihosting-logger",
  "sync",
@@ -286,7 +285,6 @@ dependencies = [
  "kernel",
  "ktest-macros",
  "loader-api",
- "panic-unwind",
  "riscv",
 ]
 
@@ -335,7 +333,6 @@ dependencies = [
  "lz4_flex",
  "object",
  "onlyerror",
- "panic-abort",
  "rand",
  "rand_chacha",
  "riscv",
@@ -420,34 +417,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c26d4ea2ccd9b7acedc478853805606e60c5b7b7aedfc1c54ed6d1fdc0587db"
 dependencies = [
  "myn",
-]
-
-[[package]]
-name = "panic-abort"
-version = "0.1.0"
-dependencies = [
- "log",
- "panic-common",
-]
-
-[[package]]
-name = "panic-common"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "log",
- "riscv",
- "sync",
-]
-
-[[package]]
-name = "panic-unwind"
-version = "0.1.0"
-dependencies = [
- "log",
- "panic-common",
- "thread-local",
- "unwind2",
 ]
 
 [[package]]

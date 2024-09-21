@@ -1,13 +1,8 @@
-use crate::{allocator, arch, frame_alloc, kconfig};
-use alloc::boxed::Box;
-use alloc::string::String;
-use backtrace::{Backtrace, SymbolizeContext};
-use core::any::Any;
+use crate::{allocator, arch, frame_alloc, kconfig, panic};
+use core::mem;
 use core::ops::Range;
-use core::{mem, slice};
-use kmm::{AddressRangeExt, BitMapAllocator, Flush, Mapper, VirtualAddress};
+use kmm::{BitMapAllocator, Flush, Mapper, VirtualAddress};
 use loader_api::LoaderConfig;
-use object::read::elf::ElfFile64;
 use sync::OnceLock;
 
 pub static BOOT_INFO: OnceLock<&'static loader_api::BootInfo> = OnceLock::new();
@@ -21,7 +16,7 @@ const LOADER_CFG: LoaderConfig = {
 
 #[loader_api::entry(LOADER_CFG)]
 fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
-    panic_unwind::catch_unwind(|| {
+    panic::catch_unwind(|| {
         pre_init_hart(hartid);
         // reuse the OnceLock to also ensure the global initialization is done only once
         BOOT_INFO.get_or_init(|| {
@@ -40,7 +35,7 @@ fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
         fn kmain(hartid: usize, boot_info: &'static loader_api::BootInfo) -> !;
     }
 
-    panic_unwind::catch_unwind(|| unsafe { kmain(hartid, boot_info) }).unwrap_or_else(|_| {
+    panic::catch_unwind(|| unsafe { kmain(hartid, boot_info) }).unwrap_or_else(|_| {
         log::error!("unrecoverable failure");
         arch::abort();
     })
@@ -66,29 +61,6 @@ fn init(boot_info: &'static loader_api::BootInfo) {
     })
     .expect("failed to initialize frame allocator");
 
-    panic_unwind::set_hook(Box::new(|info| {
-        let location = info.location();
-        let msg = payload_as_str(info.payload());
-
-        log::error!("hart panicked at {location}:\n{msg}");
-
-        let elf = unsafe {
-            let start = boot_info
-                .physical_memory_offset
-                .add(boot_info.kernel_elf.start.as_raw())
-                .as_raw() as *const u8;
-            slice::from_raw_parts(start, boot_info.kernel_elf.size())
-        };
-        let elf = ElfFile64::parse(elf).unwrap();
-
-        let ctx =
-            SymbolizeContext::new(elf, boot_info.kernel_image_offset.as_raw() as u64).unwrap();
-
-        let backtrace = Backtrace::capture(&ctx);
-
-        log::error!("{backtrace}");
-    }));
-
     log::info!("Welcome to k23 {}", env!("CARGO_PKG_VERSION"));
 }
 
@@ -109,14 +81,4 @@ fn unmap_loader(
     flush.flush()?;
 
     Ok(())
-}
-
-fn payload_as_str(payload: &dyn Any) -> &str {
-    if let Some(&s) = payload.downcast_ref::<&'static str>() {
-        s
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.as_str()
-    } else {
-        "Box<dyn Any>"
-    }
 }
