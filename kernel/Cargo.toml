@@ -8,6 +8,9 @@ license.workspace = true
 [lints]
 workspace = true
 
+[lib]
+harness = false
+
 [[bin]]
 name = "kernel"
 harness = false

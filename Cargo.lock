@@ -270,6 +270,8 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "cfg-if",
+ "kernel",
+ "ktest",
  "log",
  "object",
  "onlyerror",
@@ -280,8 +282,8 @@ dependencies = [
 name = "ktest"
 version = "0.1.0"
 dependencies = [
- "cfg-if",
  "dtb-parser",
+ "kernel",
  "ktest-macros",
  "loader-api",
  "panic-unwind",

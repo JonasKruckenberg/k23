@@ -1,26 +1,16 @@
 #![no_std]
 #![no_main]
-#![feature(used_with_arg, naked_functions, thread_local)]
-#![feature(allocator_api)]
 
-extern crate alloc;
-extern crate panic_unwind;
-mod allocator;
-mod arch;
-mod frame_alloc;
-mod kconfig;
-mod runtime;
-mod start;
-mod tests;
+// bring the #[panic_handler] and #[global_allocator] into scope
+extern crate kernel as _;
 
-use loader_api::BootInfo;
-
-pub fn kmain(_hartid: usize, boot_info: &'static BootInfo) -> ! {
+#[no_mangle]
+extern "Rust" fn kmain(_hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
     // Eventually this will all be hidden behind other abstractions (the scheduler, etc.) and this
     // function will just jump into the scheduling loop
 
-    use crate::runtime::{Engine, Linker, Module, Store};
     use cranelift_codegen::settings::Configurable;
+    use kernel::runtime::{Engine, Linker, Module, Store};
 
     let wasm = include_bytes!("../../tests/fib/fib_cpp.wasm");
 
@@ -43,5 +33,6 @@ pub fn kmain(_hartid: usize, boot_info: &'static BootInfo) -> ! {
     let instance = linker.instantiate(&mut store, &module);
     instance.debug_print_vmctx(&store);
 
-    todo!()
+    kernel::arch::exit(0);
+    // todo!()
 }

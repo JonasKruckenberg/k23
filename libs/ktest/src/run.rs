@@ -1,14 +1,37 @@
 use crate::args::Arguments;
 use crate::printer::Printer;
 use crate::{Conclusion, Outcome, Test, TestInfo};
+use core::ffi::CStr;
+use core::fmt::Write;
 use core::ptr::addr_of;
 use core::{fmt, hint, mem, slice};
-use loader_api::BootInfo;
+use dtb_parser::{DevTree, Node, Visitor};
+
+#[no_mangle]
+extern "Rust" fn kmain(_hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
+    struct Log;
+
+    impl fmt::Write for Log {
+        fn write_str(&mut self, s: &str) -> fmt::Result {
+            riscv::hio::HostStream::new_stdout().write_str(s)?;
+
+            Ok(())
+        }
+    }
+
+    let machine_info = unsafe { MachineInfo::from_dtb(boot_info.fdt_offset.as_raw() as *const u8) };
+    let args = machine_info
+        .bootargs
+        .map(|bootargs| Arguments::from_str(bootargs.to_str().unwrap()))
+        .unwrap_or_default();
+
+    run_tests(&mut Log, args, boot_info).exit();
+}
 
 pub fn run_tests(
-    write: &mut dyn fmt::Write,
+    write: &mut dyn Write,
     args: Arguments,
-    boot_info: &'static BootInfo,
+    boot_info: &'static loader_api::BootInfo,
 ) -> Conclusion {
     let tests = all_tests();
 
@@ -84,4 +107,51 @@ pub fn all_tests() -> &'static [Test] {
     };
 
     unsafe { slice::from_raw_parts(start, len) }
+}
+
+#[cfg(target_os = "none")]
+pub struct MachineInfo<'dt> {
+    pub bootargs: Option<&'dt CStr>,
+}
+
+#[cfg(target_os = "none")]
+impl<'dt> MachineInfo<'dt> {
+    /// # Safety
+    ///
+    /// The caller has to ensure the provided pointer actually points to a FDT in memory.
+    pub unsafe fn from_dtb(dtb_ptr: *const u8) -> Self {
+        let fdt = unsafe { DevTree::from_raw(dtb_ptr) }.unwrap();
+        let mut v = BootInfoVisitor::default();
+        fdt.visit(&mut v).unwrap();
+
+        MachineInfo {
+            bootargs: v.bootargs,
+        }
+    }
+}
+
+#[cfg(target_os = "none")]
+#[derive(Default)]
+struct BootInfoVisitor<'dt> {
+    bootargs: Option<&'dt CStr>,
+}
+
+#[cfg(target_os = "none")]
+impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
+    type Error = dtb_parser::Error;
+    fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
+        if name == "chosen" || name.is_empty() {
+            node.visit(self)?;
+        }
+
+        Ok(())
+    }
+
+    fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
+        if name == "bootargs" {
+            self.bootargs = Some(CStr::from_bytes_until_nul(value).unwrap());
+        }
+
+        Ok(())
+    }
 }

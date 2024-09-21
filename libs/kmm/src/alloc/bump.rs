@@ -191,106 +191,75 @@ mod test {
     use crate::{
         BumpAllocator, EmulateMode, Error, FrameAllocator, Mode, PhysicalAddress, VirtualAddress,
     };
+    use ktest::test;
 
     #[test]
-    fn single_region_single_frame() -> Result<(), Error> {
-        let mut alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(
-                &[PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE)],
-                VirtualAddress::default(),
-            )
-        };
+    fn single_region_single_frame() {
+        let top = PhysicalAddress(usize::MAX);
+        let regions = [top.sub(0x4000)..top];
+        let mut alloc: BumpAllocator<EmulateMode> =
+            unsafe { BumpAllocator::new(&regions, VirtualAddress::default()) };
 
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x3000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x2000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x1000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x1000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x2000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x3000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x4000));
         assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
-
-        Ok(())
     }
 
     #[test]
-    fn single_region_multi_frame() -> Result<(), Error> {
-        let mut alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(
-                &[PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE)],
-                VirtualAddress::default(),
-            )
-        };
+    fn single_region_multi_frame() {
+        let top = PhysicalAddress(usize::MAX);
+        let regions = [top.sub(0x4000)..top];
+        let mut alloc: BumpAllocator<EmulateMode> =
+            unsafe { BumpAllocator::new(&regions, VirtualAddress::default()) };
 
-        assert_eq!(alloc.allocate_frames(3)?, PhysicalAddress(0x1000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
+        assert_eq!(alloc.allocate_frames(3).unwrap(), top.sub(0x3000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x4000));
         assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
-
-        Ok(())
     }
 
     #[test]
-    fn multi_region_single_frame() -> Result<(), Error> {
-        let mut alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(
-                &[
-                    PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
-                    PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
-                        ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
-                ],
-                VirtualAddress::default(),
-            )
-        };
+    fn multi_region_single_frame() {
+        let top = PhysicalAddress(usize::MAX);
+        let regions = [top.sub(0x4000)..top, top.sub(0x9000)..top.sub(0x7000)];
+        let mut alloc: BumpAllocator<EmulateMode> =
+            unsafe { BumpAllocator::new(&regions, VirtualAddress::default()) };
 
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x8000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x7000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x8000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x9000));
 
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x3000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x2000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x1000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x1000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x2000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x3000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x4000));
         assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
-
-        Ok(())
     }
 
     #[test]
-    fn multi_region_multi_frame() -> Result<(), Error> {
-        let mut alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(
-                &[
-                    PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
-                    PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
-                        ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
-                ],
-                VirtualAddress::default(),
-            )
-        };
+    fn multi_region_multi_frame() {
+        let top = PhysicalAddress(usize::MAX);
+        let regions = [top.sub(0x4000)..top, top.sub(0x9000)..top.sub(0x7000)];
+        let mut alloc: BumpAllocator<EmulateMode> =
+            unsafe { BumpAllocator::new(&regions, VirtualAddress::default()) };
 
-        assert_eq!(alloc.allocate_frames(2)?, PhysicalAddress(0x7000));
+        assert_eq!(alloc.allocate_frames(2).unwrap(), top.sub(0x9000));
 
-        assert_eq!(alloc.allocate_frames(2)?, PhysicalAddress(0x2000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x1000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
+        assert_eq!(alloc.allocate_frames(2).unwrap(), top.sub(0x2000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x3000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x4000));
         assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
-
-        Ok(())
     }
 
     #[test]
-    fn multi_region_multi_frame2() -> Result<(), Error> {
-        let mut alloc: BumpAllocator<EmulateMode> = unsafe {
-            BumpAllocator::new(
-                &[
-                    PhysicalAddress(0)..PhysicalAddress(4 * EmulateMode::PAGE_SIZE),
-                    PhysicalAddress(7 * EmulateMode::PAGE_SIZE)
-                        ..PhysicalAddress(9 * EmulateMode::PAGE_SIZE),
-                ],
-                VirtualAddress::default(),
-            )
-        };
+    fn multi_region_multi_frame2() {
+        let top = PhysicalAddress(usize::MAX);
+        let regions = [top.sub(0x4000)..top, top.sub(0x9000)..top.sub(0x7000)];
+        let mut alloc: BumpAllocator<EmulateMode> =
+            unsafe { BumpAllocator::new(&regions, VirtualAddress::default()) };
 
-        assert_eq!(alloc.allocate_frames(3)?, PhysicalAddress(0x1000));
-        assert_eq!(alloc.allocate_frames(1)?, PhysicalAddress(0x0));
+        assert_eq!(alloc.allocate_frames(3).unwrap(), top.sub(0x3000));
+        assert_eq!(alloc.allocate_frames(1).unwrap(), top.sub(0x4000));
         assert!(matches!(alloc.allocate_frames(1), Err(Error::OutOfMemory)));
-
-        Ok(())
     }
 }

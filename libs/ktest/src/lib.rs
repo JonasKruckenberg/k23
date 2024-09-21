@@ -1,33 +1,20 @@
-#![cfg_attr(target_os = "none", no_std)]
+#![no_std]
 #![feature(used_with_arg)]
-extern crate alloc;
-
-#[doc(hidden)]
-pub mod __private;
-
-cfg_if::cfg_if! {
-    if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-        use riscv as arch;
-    } else {
-        compile_error!("unsupported target architecture");
-    }
-}
 
 mod args;
 mod printer;
 mod run;
 
-use alloc::boxed::Box;
-pub use args::Arguments;
-use core::any::Any;
-pub use ktest_macros::{for_each_fixture, setup_harness, test};
+extern crate alloc;
 
-#[doc(hidden)]
-pub use run::run_tests;
+use alloc::boxed::Box;
+use core::any::Any;
+pub use ktest_macros::{for_each_fixture, test};
+use loader_api::BootInfo;
 
 /// A single test case
 pub struct Test {
-    pub run: fn(&'static loader_api::BootInfo),
+    pub run: fn(&'static BootInfo),
     pub info: TestInfo<'static>,
 }
 
@@ -88,7 +75,7 @@ impl Conclusion {
     /// Consider using [`Self::exit_code`] instead for a proper program cleanup.
     pub fn exit(&self) -> ! {
         // self.exit_if_failed();
-        __private::exit(0)
+        riscv::exit(0)
     }
 
     /// Exits the application with error code 101 if there were any failures.
@@ -96,7 +83,7 @@ impl Conclusion {
     /// Consider using [`Self::exit_code`] instead for a proper program cleanup.
     pub fn exit_if_failed(&self) {
         if self.has_failed() {
-            __private::exit(101)
+            riscv::exit(101)
         }
     }
 
@@ -108,26 +95,5 @@ impl Conclusion {
             num_ignored: 0,
             num_measured: 0,
         }
-    }
-}
-
-pub struct SetupInfo {
-    pub is_std: bool,
-    #[cfg(target_os = "none")]
-    pub boot_info: &'static loader_api::BootInfo,
-}
-
-impl SetupInfo {
-    #[cfg(target_os = "none")]
-    pub fn new(boot_info: &'static loader_api::BootInfo) -> Self {
-        Self {
-            is_std: false,
-            boot_info,
-        }
-    }
-
-    #[cfg(not(target_os = "none"))]
-    pub fn new() -> Self {
-        Self { is_std: true }
     }
 }

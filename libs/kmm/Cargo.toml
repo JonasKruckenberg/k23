@@ -5,6 +5,9 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lib]
+harness = false
+
 [lints]
 workspace = true
 
@@ -17,6 +20,10 @@ object = { workspace = true, features = ["read_core", "elf"], optional = true }
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
+
+[dev-dependencies]
+ktest.workspace = true
+kernel.workspace = true
 
 [features]
 elf = ["object"]
