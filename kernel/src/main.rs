@@ -33,6 +33,6 @@ extern "Rust" fn kmain(_hartid: usize, boot_info: &'static loader_api::BootInfo)
     let instance = linker.instantiate(&mut store, &module);
     instance.debug_print_vmctx(&store);
 
-    // kernel::arch::exit(0);
-    todo!()
+    kernel::arch::exit(0);
+    // todo!()
 }
