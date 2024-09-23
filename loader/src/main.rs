@@ -13,14 +13,14 @@ mod error;
 mod kconfig;
 mod kernel;
 mod machine_info;
-mod paging;
 mod page_alloc;
+mod paging;
 
 use crate::boot_info::init_boot_info;
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
-use crate::paging::{PageTableBuilder, PageTableResult};
 use crate::page_alloc::PageAllocator;
+use crate::paging::{PageTableBuilder, PageTableResult};
 use core::ops::Range;
 use core::ptr::addr_of;
 use core::sync::atomic::{AtomicUsize, Ordering};
