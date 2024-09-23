@@ -32,6 +32,7 @@
                         # devtools
                         just
                         mdbook
+                        socat
 
                         # for testing the kernel
                         qemu
