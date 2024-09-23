@@ -1,6 +1,6 @@
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
-use crate::{kconfig, LoaderRegions, VirtAllocator};
+use crate::{kconfig, LoaderRegions, PageAllocator};
 use core::ops::Range;
 use core::{ptr, slice};
 use kmm::{
@@ -15,7 +15,7 @@ pub struct PageTableBuilder<'a> {
     mapper: Mapper<'a, kconfig::MEMORY_MODE>,
     flush: Flush<kconfig::MEMORY_MODE>,
 
-    virt_alloc: &'a mut VirtAllocator,
+    page_alloc: &'a mut PageAllocator,
 
     result: PageTableResult,
 }
@@ -24,13 +24,13 @@ impl<'a> PageTableBuilder<'a> {
     pub fn from_alloc(
         frame_allocator: &'a mut BumpAllocator<'_, kconfig::MEMORY_MODE>,
         physical_memory_offset: VirtualAddress,
-        used_entries: &'a mut VirtAllocator,
+        page_alloc: &'a mut PageAllocator,
     ) -> crate::Result<Self> {
         let mapper = Mapper::new(0, frame_allocator)?;
 
         Ok(Self {
             physical_memory_offset,
-            virt_alloc: used_entries,
+            page_alloc,
 
             result: PageTableResult {
                 page_table_addr: mapper.root_table().addr(),
@@ -58,7 +58,7 @@ impl<'a> PageTableBuilder<'a> {
         let mem_size = kernel.mem_size() as usize;
         let align = kernel.max_align() as usize;
 
-        let kernel_image_offset = self.virt_alloc.reserve_range(mem_size, align).start;
+        let kernel_image_offset = self.page_alloc.reserve_range(mem_size, align).start;
         let maybe_tls_template = self
             .mapper
             .elf(kernel_image_offset)
@@ -103,7 +103,7 @@ impl<'a> PageTableBuilder<'a> {
             start..start.add(size)
         };
 
-        let virt = self.virt_alloc.reserve_range(size, kconfig::PAGE_SIZE);
+        let virt = self.page_alloc.reserve_range(size, kconfig::PAGE_SIZE);
 
         log::trace!("Mapping TLS region {:?} => {:?}...", virt, phys);
         self.mapper.map_range(
@@ -137,7 +137,7 @@ impl<'a> PageTableBuilder<'a> {
             start..start.add(stack_size_page * kconfig::PAGE_SIZE * machine_info.cpus)
         };
 
-        let stacks_virt = self.virt_alloc.reserve_range(
+        let stacks_virt = self.page_alloc.reserve_range(
             stack_size_page * kconfig::PAGE_SIZE * machine_info.cpus,
             kconfig::PAGE_SIZE,
         );
@@ -157,7 +157,7 @@ impl<'a> PageTableBuilder<'a> {
 
     fn map_kernel_heap(mut self, heap_size_pages: usize) -> crate::Result<Self> {
         self.result.heap_virt = Some(
-            self.virt_alloc
+            self.page_alloc
                 .reserve_range(heap_size_pages * kconfig::PAGE_SIZE, kconfig::PAGE_SIZE),
         );
         log::trace!("Reserved heap region {:?}", self.result.heap_virt);

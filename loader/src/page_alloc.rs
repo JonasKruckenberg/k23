@@ -6,15 +6,15 @@ use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
 
 #[derive(Debug)]
-pub struct VirtAllocator {
-    /// Whether a top-level page is in use by the kernel.
+pub struct PageAllocator {
+    /// Whether a top-level page is in use.
     page_state: [bool; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
     /// A random number generator that should be used to generate random addresses or
     /// `None` if aslr is disabled.
     rng: Option<ChaCha20Rng>,
 }
 
-impl VirtAllocator {
+impl PageAllocator {
     pub fn new_no_kaslr() -> Self {
         Self {
             page_state: [false; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],

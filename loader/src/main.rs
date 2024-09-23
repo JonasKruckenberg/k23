@@ -14,13 +14,13 @@ mod kconfig;
 mod kernel;
 mod machine_info;
 mod paging;
-mod virt_alloc;
+mod page_alloc;
 
 use crate::boot_info::init_boot_info;
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::paging::{PageTableBuilder, PageTableResult};
-use crate::virt_alloc::VirtAllocator;
+use crate::page_alloc::PageAllocator;
 use core::ops::Range;
 use core::ptr::addr_of;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -86,15 +86,15 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         )
     };
 
-    let mut virt_alloc = if kconfig::KASLR {
-        VirtAllocator::new(ChaCha20Rng::from_seed(
+    let mut page_alloc = if kconfig::KASLR {
+        PageAllocator::new(ChaCha20Rng::from_seed(
             machine_info.rng_seed.unwrap()[0..32].try_into().unwrap(),
         ))
     } else {
-        VirtAllocator::new_no_kaslr()
+        PageAllocator::new_no_kaslr()
     };
 
-    let physical_memory_offset = virt_alloc
+    let physical_memory_offset = page_alloc
         .reserve_range(machine_info.memory_hull().size(), kconfig::PAGE_SIZE)
         .start;
 
@@ -111,7 +111,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
 
     log::trace!("initializing page tables...");
     let page_table_result =
-        PageTableBuilder::from_alloc(&mut frame_alloc, physical_memory_offset, &mut virt_alloc)?
+        PageTableBuilder::from_alloc(&mut frame_alloc, physical_memory_offset, &mut page_alloc)?
             .map_kernel(&kernel, machine_info)?
             .map_physical_memory(machine_info)?
             .identity_map_loader(&loader_regions)?
