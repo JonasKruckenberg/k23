@@ -1,12 +1,11 @@
-use crate::runtime::codegen::{
-    CompiledModuleInfo, TableInitialValue, TableSegmentElements, TranslatedModule,
-};
+use crate::runtime::compile::CompiledModuleInfo;
 use crate::runtime::const_expr::ConstExprEvaluator;
 use crate::runtime::guest_memory::CodeMemory;
 use crate::runtime::memory::Memory;
 use crate::runtime::module::Module;
 use crate::runtime::store::Store;
 use crate::runtime::table::Table;
+use crate::runtime::translate::{TableInitialValue, TableSegmentElements, TranslatedModule};
 use crate::runtime::trap::Trap;
 use crate::runtime::vmcontext::{
     VMContext, VMContextPlan, VMFuncRef, VMFunctionImport, VMGlobalDefinition, VMGlobalImport,

@@ -1,6 +1,6 @@
 use crate::runtime::builtins::BuiltinFunctionIndex;
 use crate::runtime::trap::{Trap, DEBUG_ASSERT_TRAP_CODE};
-use crate::runtime::{NS_WASM_BUILTIN, NS_WASM_FUNC};
+use crate::runtime::NS_WASM_FUNC;
 use cranelift_codegen::ir::{
     ExternalName, StackSlots, TrapCode, UserExternalName, UserExternalNameRef,
 };
@@ -24,47 +24,6 @@ pub struct CompiledFunction {
     pub metadata: CompiledFunctionMetadata,
 }
 
-#[derive(Debug, Default)]
-pub struct CompiledFunctionMetadata {
-    /// Mapping of value labels and their locations.
-    pub value_labels_ranges: ValueLabelsRanges,
-    /// Allocated stack slots.
-    pub sized_stack_slots: StackSlots,
-    /// Start source location.
-    pub start_srcloc: FilePos,
-    /// End source location.
-    pub end_srcloc: FilePos,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum RelocationTarget {
-    Wasm(FuncIndex),
-    Builtin(BuiltinFunctionIndex),
-}
-
-pub struct TrapInfo {
-    pub offset: u32,
-    pub code: Trap,
-}
-
-/// A position within an original source file,
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FilePos(u32);
-
-impl Default for FilePos {
-    fn default() -> FilePos {
-        FilePos(u32::MAX)
-    }
-}
-
-#[derive(Debug)]
-pub struct Relocation {
-    pub kind: binemit::Reloc,
-    pub target: RelocationTarget,
-    pub addend: binemit::Addend,
-    pub offset: binemit::CodeOffset,
-}
-
 impl CompiledFunction {
     pub fn new(
         buffer: MachBufferFinalized<Final>,
@@ -84,7 +43,7 @@ impl CompiledFunction {
         self.buffer
             .relocs()
             .iter()
-            .map(|r| mach_reloc_to_reloc(r, &self.name_map))
+            .map(|r| Relocation::from_mach_reloc(r, &self.name_map))
     }
 
     pub fn traps(&self) -> impl ExactSizeIterator<Item = TrapInfo> + '_ {
@@ -120,42 +79,85 @@ impl CompiledFunction {
     }
 }
 
-fn mach_reloc_to_reloc(
-    reloc: &FinalizedMachReloc,
-    name_map: &PrimaryMap<UserExternalNameRef, UserExternalName>,
-) -> Relocation {
-    let &FinalizedMachReloc {
-        offset,
-        kind,
-        ref target,
-        addend,
-    } = reloc;
+#[derive(Debug, Default)]
+pub struct CompiledFunctionMetadata {
+    /// Mapping of value labels and their locations.
+    pub value_labels_ranges: ValueLabelsRanges,
+    /// Allocated stack slots.
+    pub sized_stack_slots: StackSlots,
+    /// Start source location.
+    pub start_srcloc: FilePos,
+    /// End source location.
+    pub end_srcloc: FilePos,
+}
 
-    let target = match *target {
-        FinalizedRelocTarget::ExternalName(ExternalName::User(user_func_ref)) => {
-            let name = &name_map[user_func_ref];
-            match name.namespace {
-                // A reference to another jit'ed WASM function
-                NS_WASM_FUNC => RelocationTarget::Wasm(FuncIndex::from_u32(name.index)),
-                // A reference to a WASM builtin
-                NS_WASM_BUILTIN => {
-                    RelocationTarget::Builtin(BuiltinFunctionIndex::from_u32(name.index))
+/// A position within an original source file,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FilePos(u32);
+
+impl Default for FilePos {
+    fn default() -> Self {
+        Self(u32::MAX)
+    }
+}
+
+pub struct TrapInfo {
+    pub offset: u32,
+    pub code: Trap,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum RelocationTarget {
+    Wasm(FuncIndex),
+    Builtin(BuiltinFunctionIndex),
+}
+
+#[derive(Debug)]
+pub struct Relocation {
+    pub kind: binemit::Reloc,
+    pub target: RelocationTarget,
+    pub addend: binemit::Addend,
+    pub offset: binemit::CodeOffset,
+}
+
+impl Relocation {
+    fn from_mach_reloc(
+        reloc: &FinalizedMachReloc,
+        name_map: &PrimaryMap<UserExternalNameRef, UserExternalName>,
+    ) -> Self {
+        let &FinalizedMachReloc {
+            offset,
+            kind,
+            ref target,
+            addend,
+        } = reloc;
+
+        let target = match *target {
+            FinalizedRelocTarget::ExternalName(ExternalName::User(user_func_ref)) => {
+                let name = &name_map[user_func_ref];
+                match name.namespace {
+                    // A reference to another jit'ed WASM function
+                    NS_WASM_FUNC => RelocationTarget::Wasm(FuncIndex::from_u32(name.index)),
+                    // A reference to a WASM builtin
+                    // NS_WASM_BUILTIN => {
+                    //     RelocationTarget::Builtin(BuiltinFunctionIndex::from_u32(name.index))
+                    // }
+                    _ => panic!("unknown namespace {}", name.namespace),
                 }
-                _ => panic!("unknown namespace {}", name.namespace),
             }
-        }
-        FinalizedRelocTarget::ExternalName(ExternalName::LibCall(libcall)) => {
-            // cranelift libcalls are a lot like wasm builtins, they are emitted for instructions
-            // that have no ISA equivalent and would be too complicated to emit as JIT code
-            todo!("libcalls {libcall:?}")
-        }
-        _ => panic!("unsupported relocation target {target:?}"),
-    };
+            FinalizedRelocTarget::ExternalName(ExternalName::LibCall(libcall)) => {
+                // cranelift libcalls are a lot like wasm builtins, they are emitted for instructions
+                // that have no ISA equivalent and would be too complicated to emit as JIT code
+                todo!("libcalls {libcall:?}")
+            }
+            _ => panic!("unsupported relocation target {target:?}"),
+        };
 
-    Relocation {
-        kind,
-        target,
-        addend,
-        offset,
+        Self {
+            kind,
+            target,
+            addend,
+            offset,
+        }
     }
 }

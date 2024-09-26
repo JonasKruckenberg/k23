@@ -17,7 +17,7 @@
 //! }
 #![allow(clippy::cast_possible_truncation)] // All offsets are smaller than `u32::MAX`
 
-use crate::runtime::codegen::TranslatedModule;
+use crate::runtime::translate::TranslatedModule;
 use alloc::fmt;
 use core::ffi::c_void;
 use core::fmt::Formatter;
@@ -219,28 +219,28 @@ pub struct VMFuncRef {
     pub vmctx: *mut VMContext,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct VMFunctionImport {
     pub from: *mut VMFuncRef,
     pub vmctx: NonNull<VMContext>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct VMTableImport {
     pub from: *mut VMTableDefinition,
     pub vmctx: NonNull<VMContext>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct VMMemoryImport {
     pub from: *mut VMMemoryDefinition,
     pub vmctx: NonNull<VMContext>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct VMGlobalImport {
     pub from: *mut VMGlobalDefinition,

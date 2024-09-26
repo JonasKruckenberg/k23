@@ -1,23 +1,23 @@
-use crate::runtime::codegen::{
+use crate::runtime::compile::FuncCompileInput;
+use crate::runtime::errors::TranslationError;
+use crate::runtime::translate::{
     FunctionType, Import, MemoryInitializer, MemoryPlan, ProducersLanguage, ProducersLanguageField,
     ProducersSdk, ProducersSdkField, ProducersTool, ProducersToolField, TableInitialValue,
-    TablePlan, TableSegment, TableSegmentElements, TranslatedModule,
+    TablePlan, TableSegment, TableSegmentElements, Translation,
 };
 use crate::runtime::vmcontext::FuncRefIndex;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use cranelift_codegen::entity::{PrimaryMap, Unsigned};
-use cranelift_codegen::packed_option::ReservedValue;
+use cranelift_codegen::entity::Unsigned;
+use cranelift_entity::packed_option::ReservedValue;
 use cranelift_wasm::wasmparser::{
     BinaryReader, CustomSectionReader, DataKind, ElementItems, ElementKind, Encoding, ExternalKind,
-    FuncToValidate, FunctionBody, Operator, Parser, Payload, ProducersFieldValue,
-    ProducersSectionReader, TableInit, TypeRef, UnpackedIndex, Validator, ValidatorResources,
-    WasmFeatures,
+    Operator, Parser, Payload, ProducersFieldValue, ProducersSectionReader, TableInit, TypeRef,
+    UnpackedIndex, Validator, ValidatorResources, WasmFeatures,
 };
 use cranelift_wasm::{
-    ConstExpr, DefinedFuncIndex, EntityIndex, FuncIndex, GlobalIndex, MemoryIndex,
-    ModuleInternedTypeIndex, TableIndex, TypeConvert, TypeIndex, WasmCompositeType, WasmHeapType,
-    WasmResult, WasmSubType,
+    ConstExpr, EntityIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TypeConvert,
+    TypeIndex, WasmCompositeType, WasmHeapType, WasmSubType,
 };
 use object::Bytes;
 
@@ -26,27 +26,12 @@ pub struct ModuleEnvironment<'a, 'wasm> {
     validator: &'a mut Validator,
 }
 
-#[derive(Default)]
-pub struct Translation<'wasm> {
-    pub module: TranslatedModule<'wasm>,
-    pub types: PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
-    pub func_compile_inputs: PrimaryMap<DefinedFuncIndex, FuncCompileInput<'wasm>>,
-}
-
-pub struct FuncCompileInput<'wasm> {
-    pub body: FunctionBody<'wasm>,
-    pub validator: FuncToValidate<ValidatorResources>,
-}
-
 impl<'a, 'wasm> TypeConvert for ModuleEnvironment<'a, 'wasm> {
     fn lookup_heap_type(&self, _index: UnpackedIndex) -> WasmHeapType {
         todo!()
     }
 
-    fn lookup_type_index(
-        &self,
-        index: cranelift_wasm::wasmparser::UnpackedIndex,
-    ) -> cranelift_wasm::EngineOrModuleTypeIndex {
+    fn lookup_type_index(&self, _index: UnpackedIndex) -> cranelift_wasm::EngineOrModuleTypeIndex {
         todo!()
     }
 }
@@ -73,7 +58,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
         mut self,
         parser: Parser,
         data: &'wasm [u8],
-    ) -> WasmResult<Translation<'wasm>> {
+    ) -> Result<Translation<'wasm>, TranslationError> {
         for payload in parser.parse_all(data) {
             self.translate_payload(payload?)?;
         }
@@ -82,7 +67,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn translate_payload(&mut self, payload: Payload<'wasm>) -> WasmResult<()> {
+    pub fn translate_payload(&mut self, payload: Payload<'wasm>) -> Result<(), TranslationError> {
         log::trace!("Translating payload section {payload:?}");
         match payload {
             Payload::Version {
@@ -405,7 +390,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
                     .func_compile_inputs
                     .reserve_exact(count as usize);
             }
-            Payload::CodeSectionEntry(mut body) => {
+            Payload::CodeSectionEntry(body) => {
                 let validator = self.validator.code_section_entry(&body)?;
 
                 self.result
@@ -564,7 +549,7 @@ impl<'a, 'wasm> ModuleEnvironment<'a, 'wasm> {
     fn parse_producers_section(
         &mut self,
         section: ProducersSectionReader<'wasm>,
-    ) -> WasmResult<()> {
+    ) -> Result<(), TranslationError> {
         for field in section {
             let field = field?;
             match field.name {

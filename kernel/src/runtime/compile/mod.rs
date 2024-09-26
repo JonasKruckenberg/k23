@@ -1,31 +1,31 @@
-mod compile_key;
-mod compiled_function;
-mod compiled_module;
+mod compiled_func;
 mod compiler;
-mod func_env;
-mod module_env;
 mod obj_builder;
-mod translated_module;
 
-use crate::runtime::codegen::module_env::{FuncCompileInput, ModuleEnvironment, Translation};
-use crate::runtime::engine::Engine;
+pub use compiler::Compiler;
+pub use obj_builder::{
+    ELFOSABI_K23, ELF_K23_BTI, ELF_K23_ENGINE, ELF_K23_INFO, ELF_K23_TRAPS, ELF_TEXT,
+    ELF_WASM_DATA, ELF_WASM_DWARF, ELF_WASM_NAMES,
+};
+
+use crate::runtime::builtins::BuiltinFunctionIndex;
+use crate::runtime::compile::compiled_func::{CompiledFunction, RelocationTarget};
+use crate::runtime::compile::obj_builder::ObjectBuilder;
 use crate::runtime::errors::CompileError;
+use crate::runtime::translate::ModuleEnvironment;
+use crate::runtime::translate::{TranslatedModule, Translation};
+use crate::runtime::Engine;
 use alloc::boxed::Box;
 use alloc::collections::{BTreeMap, BTreeSet};
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use cranelift_entity::PrimaryMap;
-use cranelift_wasm::wasmparser::{Parser, Validator};
+use cranelift_wasm::wasmparser::{
+    FuncToValidate, FunctionBody, Parser, Validator, ValidatorResources,
+};
 use cranelift_wasm::{DefinedFuncIndex, ModuleInternedTypeIndex, StaticModuleIndex, WasmSubType};
 use object::write::WritableBuffer;
-
-use crate::runtime::codegen::compile_key::CompileKey;
-pub use compiled_function::*;
-pub use compiled_module::*;
-pub use compiler::*;
-pub use obj_builder::*;
-pub use translated_module::*;
 
 pub fn compile_module<'wasm, T: WritableBuffer>(
     engine: &Engine,
@@ -38,7 +38,7 @@ pub fn compile_module<'wasm, T: WritableBuffer>(
 
     // Perform WASM -> Cranelift IR translation
     log::trace!("Translating module to Cranelift IR...");
-    let translation = module_env.translate(parser, wasm).unwrap();
+    let translation = module_env.translate(parser, wasm)?;
     let Translation {
         module,
         func_compile_inputs,
@@ -52,7 +52,7 @@ pub fn compile_module<'wasm, T: WritableBuffer>(
 
     // compile functions to machine code
     log::trace!("Compiling functions to machine code...");
-    let unlinked_compile_outputs = compile_inputs.compile(engine, &module).unwrap();
+    let unlinked_compile_outputs = compile_inputs.compile(engine, &module)?;
 
     log::trace!("Setting up intermediate code object...");
     let mut obj_builder = ObjectBuilder::new(engine.compiler().create_intermediate_code_object());
@@ -71,6 +71,38 @@ pub fn compile_module<'wasm, T: WritableBuffer>(
     );
 
     Ok(info)
+}
+
+pub struct FuncCompileInput<'wasm> {
+    pub body: FunctionBody<'wasm>,
+    pub validator: FuncToValidate<ValidatorResources>,
+}
+
+#[derive(Debug)]
+pub struct CompiledModuleInfo<'wasm> {
+    pub module: TranslatedModule<'wasm>,
+    pub funcs: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
+    pub types: PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
+}
+
+#[derive(Debug)]
+pub struct CompiledFunctionInfo {
+    /// The [`FunctionLoc`] indicating the location of this function in the text
+    /// section of the compilation artifact.
+    pub wasm_func_loc: FunctionLoc,
+    /// A trampoline for native callers (e.g. `Func::wrap`) calling into this function (if needed).
+    pub native_to_wasm_trampoline: Option<FunctionLoc>,
+}
+
+/// Description of where a function is located in the text section of a
+/// compiled image.
+#[derive(Debug, Copy, Clone)]
+pub struct FunctionLoc {
+    /// The byte offset from the start of the text section where this
+    /// function starts.
+    pub start: u32,
+    /// The byte length of this function's function body.
+    pub length: u32,
 }
 
 type CompileInput<'a> =
@@ -320,4 +352,78 @@ impl UnlinkedCompileOutputs {
             types,
         }
     }
+}
+
+/// A sortable, comparable key for a compilation output.
+/// This is used to sort by compilation output kind and bucket results.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CompileKey {
+    // The namespace field is bitpacked like:
+    //
+    //     [ kind:i3 module:i29 ]
+    namespace: u32,
+    pub index: u32,
+}
+
+impl CompileKey {
+    const KIND_BITS: u32 = 3;
+    const KIND_OFFSET: u32 = 32 - Self::KIND_BITS;
+    const KIND_MASK: u32 = ((1 << Self::KIND_BITS) - 1) << Self::KIND_OFFSET;
+
+    pub fn kind(self) -> u32 {
+        self.namespace & Self::KIND_MASK
+    }
+
+    pub fn module(self) -> StaticModuleIndex {
+        StaticModuleIndex::from_u32(self.namespace & !Self::KIND_MASK)
+    }
+
+    pub const WASM_FUNCTION_KIND: u32 = Self::new_kind(0);
+    // const ARRAY_TO_WASM_TRAMPOLINE_KIND: u32 = Self::new_kind(1);
+    // const NATIVE_TO_WASM_TRAMPOLINE_KIND: u32 = Self::new_kind(2);
+    // const WASM_TO_NATIVE_TRAMPOLINE_KIND: u32 = Self::new_kind(3);
+    pub const WASM_TO_BUILTIN_TRAMPOLINE_KIND: u32 = Self::new_kind(4);
+
+    const fn new_kind(kind: u32) -> u32 {
+        assert!(kind < (1 << Self::KIND_BITS));
+        kind << Self::KIND_OFFSET
+    }
+
+    pub fn wasm_function(module: StaticModuleIndex, index: DefinedFuncIndex) -> Self {
+        debug_assert_eq!(module.as_u32() & Self::KIND_MASK, 0);
+        Self {
+            namespace: Self::WASM_FUNCTION_KIND | module.as_u32(),
+            index: index.as_u32(),
+        }
+    }
+
+    pub fn wasm_to_builtin_trampoline(index: BuiltinFunctionIndex) -> Self {
+        Self {
+            namespace: Self::WASM_TO_BUILTIN_TRAMPOLINE_KIND,
+            index: index.as_u32(),
+        }
+    }
+
+    // fn native_to_wasm_trampoline(module: StaticModuleIndex, index: DefinedFuncIndex) -> Self {
+    //     debug_assert_eq!(module.as_u32() & Self::KIND_MASK, 0);
+    //     Self {
+    //         namespace: Self::NATIVE_TO_WASM_TRAMPOLINE_KIND | module.as_u32(),
+    //         index: index.as_u32(),
+    //     }
+    // }
+
+    // fn array_to_wasm_trampoline(module: StaticModuleIndex, index: DefinedFuncIndex) -> Self {
+    //     debug_assert_eq!(module.as_u32() & Self::KIND_MASK, 0);
+    //     Self {
+    //         namespace: Self::ARRAY_TO_WASM_TRAMPOLINE_KIND | module.as_u32(),
+    //         index: index.as_u32(),
+    //     }
+    // }
+    //
+    // fn wasm_to_native_trampoline(index: ModuleInternedTypeIndex) -> Self {
+    //     Self {
+    //         namespace: Self::WASM_TO_NATIVE_TRAMPOLINE_KIND,
+    //         index: index.as_u32(),
+    //     }
+    // }
 }

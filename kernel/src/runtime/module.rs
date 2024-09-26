@@ -1,4 +1,4 @@
-use crate::runtime::codegen::{compile_module, CompiledModuleInfo};
+use crate::runtime::compile::{compile_module, CompiledModuleInfo};
 use crate::runtime::engine::Engine;
 use crate::runtime::guest_memory::{AlignedVec, CodeMemory};
 use crate::runtime::store::Store;

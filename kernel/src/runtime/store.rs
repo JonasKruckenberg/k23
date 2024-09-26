@@ -1,9 +1,9 @@
-use crate::runtime::codegen::{MemoryPlan, TablePlan};
 use crate::runtime::guest_memory::{GuestAllocator, GuestVec};
 use crate::runtime::instance::{Instance, InstanceData};
 use crate::runtime::memory::Memory;
 use crate::runtime::module::Module;
 use crate::runtime::table::{FuncTable, Table, TableElementType};
+use crate::runtime::translate::{MemoryPlan, TablePlan};
 use crate::runtime::vmcontext::{VMContext, VMContextPlan};
 use crate::runtime::WASM_PAGE_SIZE;
 use core::alloc::{Allocator, Layout};

@@ -1,8 +1,10 @@
 use crate::runtime::builtins::BuiltinFunctionIndex;
-use crate::runtime::codegen::func_env::FunctionEnvironment;
-use crate::runtime::codegen::module_env::FuncCompileInput;
-use crate::runtime::codegen::{CompiledFunction, TranslatedModule, ELFOSABI_K23};
-use crate::runtime::errors::CompileError;
+use crate::runtime::compile::compiled_func::CompiledFunction;
+use crate::runtime::compile::obj_builder::ELFOSABI_K23;
+use crate::runtime::compile::FuncCompileInput;
+use crate::runtime::errors::{CompileError, TranslationError};
+use crate::runtime::translate::FunctionEnvironment;
+use crate::runtime::translate::TranslatedModule;
 use crate::runtime::utils::wasm_call_signature;
 use crate::runtime::NS_WASM_FUNC;
 use core::mem;
@@ -124,7 +126,7 @@ impl Compiler {
                 &mut ctx.codegen_context.func,
                 &mut func_env,
             )
-            .map_err(CompileError::Translate)?;
+            .map_err(TranslationError::from)?;
         ctx.validator_allocations = validator.into_allocations();
 
         ctx.finish()

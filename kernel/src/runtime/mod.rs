@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 mod builtins;
-mod codegen;
+mod compile;
 mod const_expr;
 mod engine;
 mod errors;
@@ -12,6 +12,7 @@ mod memory;
 mod module;
 mod store;
 mod table;
+mod translate;
 mod trap;
 mod utils;
 mod vmcontext;

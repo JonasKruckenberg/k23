@@ -1,4 +1,4 @@
-use crate::runtime::codegen::TranslatedModule;
+use super::TranslatedModule;
 use crate::runtime::utils::{reference_type, value_type, wasm_call_signature};
 use crate::runtime::vmcontext::VMContextPlan;
 use crate::runtime::{NS_WASM_FUNC, WASM_PAGE_SIZE};

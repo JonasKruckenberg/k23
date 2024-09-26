@@ -1,6 +1,6 @@
 use crate::frame_alloc::with_frame_alloc;
 use crate::kconfig;
-use crate::runtime::codegen::{
+use crate::runtime::compile::{
     FunctionLoc, ELF_K23_INFO, ELF_K23_TRAPS, ELF_TEXT, ELF_WASM_DATA, ELF_WASM_DWARF,
     ELF_WASM_NAMES,
 };
