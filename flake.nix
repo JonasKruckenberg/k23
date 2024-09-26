@@ -33,6 +33,7 @@
                         just
                         mdbook
                         socat
+                        wabt
 
                         # for testing the kernel
                         qemu
