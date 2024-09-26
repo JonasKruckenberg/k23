@@ -1,4 +1,5 @@
-use crate::runtime::codegen::{Compiler, TranslatedModule};
+use crate::runtime::compile::Compiler;
+use crate::runtime::translate::TranslatedModule;
 use cranelift_codegen::isa::OwnedTargetIsa;
 use cranelift_wasm::wasmparser::WasmFeatures;
 

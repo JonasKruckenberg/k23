@@ -1,4 +1,11 @@
-use crate::runtime::vmcontext::FuncRefIndex;
+mod func_env;
+mod module_env;
+
+pub use func_env::FunctionEnvironment;
+pub use module_env::ModuleEnvironment;
+
+use super::compile::FuncCompileInput;
+use super::vmcontext::FuncRefIndex;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use cranelift_entity::packed_option::ReservedValue;
@@ -6,10 +13,18 @@ use cranelift_entity::{EntityRef, PrimaryMap};
 use cranelift_wasm::wasmparser::WasmFeatures;
 use cranelift_wasm::{
     ConstExpr, DataIndex, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex,
-    DefinedTableIndex, ElemIndex, EntityIndex, FuncIndex, Global, GlobalIndex, Memory, MemoryIndex,
-    ModuleInternedTypeIndex, OwnedMemoryIndex, Table, TableIndex, TypeIndex,
+    DefinedTableIndex, ElemIndex, EngineOrModuleTypeIndex, EntityIndex, EntityType, FuncIndex,
+    Global, GlobalIndex, Memory, MemoryIndex, ModuleInternedTypeIndex, OwnedMemoryIndex, Table,
+    TableIndex, TypeIndex, WasmSubType,
 };
 use hashbrown::HashMap;
+
+#[derive(Default)]
+pub struct Translation<'wasm> {
+    pub module: TranslatedModule<'wasm>,
+    pub types: PrimaryMap<ModuleInternedTypeIndex, WasmSubType>,
+    pub func_compile_inputs: PrimaryMap<DefinedFuncIndex, FuncCompileInput<'wasm>>,
+}
 
 #[derive(Debug, Default)]
 pub struct TranslatedModule<'wasm> {
@@ -45,7 +60,7 @@ pub struct TranslatedModule<'wasm> {
 
 #[derive(Debug, Default)]
 pub struct DebugInfo<'wasm> {
-    // pub names: Names<'wasm>,
+    pub names: Names<'wasm>,
     pub producers: Producers<'wasm>,
     pub dwarf: gimli::Dwarf<gimli::EndianSlice<'wasm, gimli::LittleEndian>>,
     pub debug_loc: gimli::DebugLoc<gimli::EndianSlice<'wasm, gimli::LittleEndian>>,
@@ -56,14 +71,14 @@ pub struct DebugInfo<'wasm> {
     pub debug_tu_index: gimli::DebugTuIndex<gimli::EndianSlice<'wasm, gimli::LittleEndian>>,
 }
 
-// #[derive(Debug, Default, Serialize, Deserialize)]
-// pub struct Names<'wasm> {
-//     pub module_name: Option<&'wasm str>,
-//     pub func_names: HashMap<FuncIndex, &'wasm str>,
-//     pub locals_names: HashMap<FuncIndex, HashMap<u32, &'wasm str>>,
-//     pub global_names: HashMap<GlobalIndex, &'wasm str>,
-//     pub data_names: HashMap<DataIndex, &'wasm str>,
-// }
+#[derive(Debug, Default)]
+pub struct Names<'wasm> {
+    pub module_name: Option<&'wasm str>,
+    pub func_names: HashMap<FuncIndex, &'wasm str>,
+    pub locals_names: HashMap<FuncIndex, HashMap<u32, &'wasm str>>,
+    pub global_names: HashMap<GlobalIndex, &'wasm str>,
+    pub data_names: HashMap<DataIndex, &'wasm str>,
+}
 
 #[derive(Debug, Default)]
 pub struct Producers<'wasm> {
@@ -143,7 +158,7 @@ pub struct Import<'wasm> {
     pub ty: EntityIndex,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TablePlan {
     pub table: Table,
 }
@@ -174,7 +189,7 @@ pub enum TableSegmentElements {
     Expressions(Box<[ConstExpr]>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemoryPlan {
     pub memory: Memory,
 }
@@ -349,35 +364,16 @@ impl<'wasm> TranslatedModule<'wasm> {
         global_index.as_u32() < self.num_imported_globals
     }
 
-    // /// Returns an iterator of all the imports in this module, along with their
-    // /// module name, field name, and type that's being imported.
-    // pub fn imports(&self) -> Imports<'wasm, '_> {
-    //     Imports {
-    //         module: self,
-    //         index: 0,
-    //     }
-    // }
-    //
-    // /// Returns an iterator of all the imports in this module, along with their
-    // /// module name, field name, and type that's being imported.
-    // pub fn exports(&self) -> Exports<'wasm, '_> {
-    //     Exports {
-    //         module: self,
-    //         exports: self.exports.iter(),
-    //         index: 0,
-    //     }
-    // }
-    // /// Returns the type of an item based on its index
-    // pub fn type_of(&self, index: EntityIndex) -> EntityType {
-    //     match index {
-    //         EntityIndex::Global(i) => EntityType::Global(self.globals[i]),
-    //         EntityIndex::Table(i) => EntityType::Table(self.table_plans[i].table),
-    //         EntityIndex::Memory(i) => EntityType::Memory(self.memory_plans[i].memory),
-    //         EntityIndex::Function(i) => {
-    //             EntityType::Function(EngineOrModuleTypeIndex::Module(self.functions[i].signature))
-    //         }
-    //     }
-    // }
+    pub fn type_of(&self, index: EntityIndex) -> EntityType {
+        match index {
+            EntityIndex::Global(i) => EntityType::Global(self.globals[i]),
+            EntityIndex::Table(i) => EntityType::Table(self.table_plans[i].table),
+            EntityIndex::Memory(i) => EntityType::Memory(self.memory_plans[i].memory),
+            EntityIndex::Function(i) => {
+                EntityType::Function(EngineOrModuleTypeIndex::Module(self.functions[i].signature))
+            }
+        }
+    }
 }
 
 impl FunctionType {
@@ -393,7 +389,7 @@ impl TablePlan {
 }
 
 impl MemoryPlan {
-    pub fn for_memory(ty: cranelift_wasm::wasmparser::MemoryType) -> Self {
+    pub fn for_memory(ty: wasmparser::MemoryType) -> Self {
         let page_size_log2 = u8::try_from(ty.page_size_log2.unwrap_or(16)).unwrap();
         debug_assert!(
             page_size_log2 == 16 || page_size_log2 == 0,
