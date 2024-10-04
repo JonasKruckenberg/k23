@@ -114,7 +114,7 @@ dependencies = [
  "cranelift-control",
  "cranelift-entity",
  "cranelift-isle",
- "hashbrown",
+ "hashbrown 0.14.5",
  "libm",
  "log",
  "regalloc2",
@@ -157,7 +157,7 @@ version = "0.113.0"
 source = "git+https://github.com/JonasKruckenberg/wasmtime?branch=no_std3#3a0ec67b05077345df639d64b15e67b7a46dd0ca"
 dependencies = [
  "cranelift-codegen",
- "hashbrown",
+ "hashbrown 0.14.5",
  "log",
  "smallvec",
  "target-lexicon",
@@ -176,7 +176,7 @@ dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
  "cranelift-frontend",
- "hashbrown",
+ "hashbrown 0.14.5",
  "log",
  "smallvec",
  "wasmparser",
@@ -207,6 +207,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
+name = "foldhash"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f81ec6369c545a7d40e4589b5597581fa1c441fe1cce96dd1de43159910a36a2"
+
+[[package]]
 name = "gimli"
 version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -223,13 +229,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "hashbrown"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e087f84d4f86bf4b218b927129862374b72199ae7d8657835f1e89000eea4fb"
+dependencies = [
+ "foldhash",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68b900aa2f7301e21c36462b170ee99994de34dff39a4a6a528e80e7376d07e5"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.14.5",
 ]
 
 [[package]]
@@ -244,7 +259,7 @@ dependencies = [
  "cranelift-frontend",
  "cranelift-wasm",
  "gimli",
- "hashbrown",
+ "hashbrown 0.14.5",
  "kmm",
  "ktest",
  "linked-list-allocator",
@@ -397,12 +412,12 @@ checksum = "e49d2fc6c79d00e708293cb0793a2a33357405d0c0bf0fa7dc88e7694c8db313"
 
 [[package]]
 name = "object"
-version = "0.36.4"
+version = "0.36.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "084f1a5821ac4c651660a94a7153d27ac9d8a53736203f58b31945ded098070a"
+checksum = "aedf0a2d09c573ed1d8d85b30c119153926a2b36dce0ab28322c09a117a4683e"
 dependencies = [
  "crc32fast",
- "hashbrown",
+ "hashbrown 0.15.0",
  "indexmap",
  "memchr",
 ]
@@ -508,7 +523,7 @@ version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12908dbeb234370af84d0579b9f68258a0f67e201412dd9a2814e6f45b2fc0f0"
 dependencies = [
- "hashbrown",
+ "hashbrown 0.14.5",
  "log",
  "rustc-hash",
  "slice-group-by",
@@ -676,7 +691,7 @@ checksum = "bcdee6bea3619d311fb4b299721e89a986c3470f804b6d534340e412589028e3"
 dependencies = [
  "ahash",
  "bitflags",
- "hashbrown",
+ "hashbrown 0.14.5",
  "indexmap",
  "semver",
 ]
@@ -700,7 +715,7 @@ version = "214.0.0"
 dependencies = [
  "bumpalo",
  "gimli",
- "hashbrown",
+ "hashbrown 0.14.5",
  "ktest",
  "leb128",
  "memchr",
