@@ -18,11 +18,4 @@ mod frame_alloc;
 pub mod kconfig;
 pub mod runtime;
 mod start;
-
-#[cfg(test)]
-mod tests {
-    #[ktest::test]
-    fn feature() {
-        assert!(false);
-    }
-}
+mod tests;
