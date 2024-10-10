@@ -1,5 +1,7 @@
 ##!/usr/bin/env just --justfile
 
+set windows-shell := ["powershell.exe", "-c"]
+
 # Overrides the default Rust toolchain set in `rust-toolchain.toml`.
 toolchain := ""
 
