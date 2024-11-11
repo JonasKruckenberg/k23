@@ -2,6 +2,7 @@
 //! https://github.com/llvm/llvm-project/blob/1ae0dae368e4bbf2177603d5c310e794c4fd0bd8/libc/src/setjmp/riscv/longjmp.cpp
 
 use core::arch::asm;
+use core::ptr;
 
 #[repr(C)]
 #[derive(Clone, Debug, Default)]
@@ -9,7 +10,7 @@ pub struct JumpBuf {
     pc: usize,
     s: [usize; 12],
     sp: usize,
-    fs: [usize; 12]
+    fs: [usize; 12],
 }
 
 impl JumpBuf {
@@ -18,7 +19,7 @@ impl JumpBuf {
             pc: 0,
             sp: 0,
             s: [0; 12],
-            fs: [0; 12]
+            fs: [0; 12],
         }
     }
 }
@@ -105,7 +106,7 @@ pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
                 save_gp!(s10 => a0[11]),
                 save_gp!(s11 => a0[12]),
                 save_gp!(sp => a0[13]),
-                
+
                 save_fp!(fs0 => a0[14]),
                 save_fp!(fs1 => a0[15]),
                 save_fp!(fs2 => a0[16]),
@@ -139,7 +140,6 @@ pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
                 save_gp!(s10 => a0[11]),
                 save_gp!(s11 => a0[12]),
                 save_gp!(sp => a0[13]),
-                
                 "mv a0, zero",
                 "ret",
                 options(noreturn)
@@ -167,7 +167,7 @@ pub unsafe extern "C" fn longjmp(buf: *mut JumpBuf, val: isize) -> ! {
                 load_gp!(a0[11] => s10),
                 load_gp!(a0[12] => s11),
                 load_gp!(a0[13] => sp),
-                
+
                 load_fp!(a0[14] => fs0),
                 load_fp!(a0[15] => fs1),
                 load_fp!(a0[16] => fs2),
@@ -180,7 +180,7 @@ pub unsafe extern "C" fn longjmp(buf: *mut JumpBuf, val: isize) -> ! {
                 load_fp!(a0[23] => fs9),
                 load_fp!(a0[24] => fs10),
                 load_fp!(a0[25] => fs11),
-                
+
                 "add a0, a1, zero",
                 "ret",
                 options(noreturn)
@@ -201,7 +201,7 @@ pub unsafe extern "C" fn longjmp(buf: *mut JumpBuf, val: isize) -> ! {
                 load_gp!(a0[11] => s10),
                 load_gp!(a0[12] => s11),
                 load_gp!(a0[13] => sp),
-                
+
                 "add a0, a1, zero",
                 "ret",
                 options(noreturn)
@@ -212,9 +212,9 @@ pub unsafe extern "C" fn longjmp(buf: *mut JumpBuf, val: isize) -> ! {
 
 #[cfg(test)]
 mod tests {
-    use core::ptr::addr_of_mut;
-    use core::ptr;
     use super::*;
+    use core::ptr;
+    use core::ptr::addr_of_mut;
 
     #[ktest::test]
     fn setjmp_longjmp_simple() {
@@ -240,31 +240,45 @@ mod tests {
     fn setjmp_longjmp_complex() {
         unsafe fn routine_a() {
             let r = setjmp(addr_of_mut!(BUFFER_A));
-            if r == 0 { routine_b() }
+            if r == 0 {
+                routine_b()
+            }
             assert_eq!(r, 10001);
 
             let r = setjmp(addr_of_mut!(BUFFER_A));
-            if r == 0 { longjmp(addr_of_mut!(BUFFER_B), 20001); }
+            if r == 0 {
+                longjmp(addr_of_mut!(BUFFER_B), 20001);
+            }
             assert_eq!(r, 10002);
 
             let r = setjmp(addr_of_mut!(BUFFER_A));
-            if r == 0 { longjmp(addr_of_mut!(BUFFER_B), 20002); }
+            if r == 0 {
+                longjmp(addr_of_mut!(BUFFER_B), 20002);
+            }
             debug_assert!(r == 10003);
         }
 
         unsafe fn routine_b() {
             let r = setjmp(addr_of_mut!(BUFFER_B));
-            if r == 0 { longjmp(addr_of_mut!(BUFFER_A), 10001); }
+            if r == 0 {
+                longjmp(addr_of_mut!(BUFFER_A), 10001);
+            }
             assert_eq!(r, 20001);
 
             let r = setjmp(addr_of_mut!(BUFFER_B));
-            if r == 0 { longjmp(addr_of_mut!(BUFFER_A), 10002); }
+            if r == 0 {
+                longjmp(addr_of_mut!(BUFFER_A), 10002);
+            }
             assert_eq!(r, 20002);
 
             let r = setjmp(addr_of_mut!(BUFFER_B));
-            if r == 0 { longjmp(addr_of_mut!(BUFFER_A), 10003); }
+            if r == 0 {
+                longjmp(addr_of_mut!(BUFFER_A), 10003);
+            }
         }
 
-        unsafe { routine_a(); }
+        unsafe {
+            routine_a();
+        }
     }
 }

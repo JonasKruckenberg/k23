@@ -1,10 +1,10 @@
-pub mod trap_handler;
 mod setjmp_longjmp;
+pub mod trap_handler;
 
 use riscv::sstatus::FS;
 use riscv::{interrupt, sie, sstatus};
 
-pub use setjmp_longjmp::{JumpBuf, setjmp, longjmp};
+pub use setjmp_longjmp::{longjmp, setjmp, JumpBuf};
 
 pub fn finish_processor_init() {
     unsafe {

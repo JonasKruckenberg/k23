@@ -184,7 +184,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
     // No need to save caller-saved registers here.
     #[cfg(target_feature = "d")]
     unsafe {
-        asm!(
+        asm! {
             "
             mv t0, sp
             add sp, sp, -0x210
@@ -205,11 +205,11 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
             ret
             ",
             options(noreturn)
-        );
+        };
     }
     #[cfg(not(target_feature = "d"))]
     unsafe {
-        asm!(
+        asm! {
             "
             mv t0, sp
             add sp, sp, -0x110
@@ -229,7 +229,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
             ret
             ",
             options(noreturn)
-        );
+        };
     }
 }
 
