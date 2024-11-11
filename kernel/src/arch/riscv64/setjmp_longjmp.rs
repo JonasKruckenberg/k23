@@ -1,9 +1,9 @@
-//! https://github.com/llvm/llvm-project/blob/bbf2ad026eb0b399364a889799ef6b45878cd299/libc/src/setjmp/riscv/setjmp.cpp
-//! https://github.com/llvm/llvm-project/blob/1ae0dae368e4bbf2177603d5c310e794c4fd0bd8/libc/src/setjmp/riscv/longjmp.cpp
-
 use core::arch::asm;
 use core::ptr;
 
+/// A store for the register state used by `setjmp` and `longjmp`.
+///
+/// In essence this marks a "checkpoint" in the program's execution that can be returned to later.
 #[repr(C)]
 #[derive(Clone, Debug, Default)]
 pub struct JumpBuf {
@@ -24,6 +24,7 @@ impl JumpBuf {
     }
 }
 
+/// Helper macro for constructing the inline assembly, used below.
 macro_rules! define_op {
     ($ins:literal, $reg:ident, $ptr_width:literal, $pos:expr, $ptr:ident) => {
         concat!(
@@ -41,6 +42,7 @@ macro_rules! define_op {
     };
 }
 
+// helper macros for loading and storing registers used by setjmp and longjmp
 cfg_if::cfg_if! {
     if #[cfg(target_pointer_width = "32")] {
         macro_rules! save_gp {
@@ -87,6 +89,21 @@ cfg_if::cfg_if! {
     }
 }
 
+/// Saves various information about the calling environment (the stack pointer,
+/// the instruction pointer and callee saved registers) and establishes a "checkpoint"
+/// to which control flow can later be transferred.
+///
+/// This function pretty weird, it can return more than one time:
+/// - The first time it returns, the return value is `0` indicating that the context has been saved.
+/// - Subsequently, calls to `longjmp` that transfer control to the `*mut JumpBuf` used by this `setjmp`
+///     will cause this function to return again, this time with the value passed to `longjmp`.
+///
+/// This implementation has been adapted from the [LLVM libc implementation (Apache License v2.0 with LLVM Exceptions)](https://github.com/llvm/llvm-project/blob/bbf2ad026eb0b399364a889799ef6b45878cd299/libc/src/setjmp/riscv/setjmp.cpp)
+///
+/// # Safety
+///
+/// Due to the weird multi-return nature of `setjmp` it is very easy to make mistakes, this
+/// function be used with extreme care.
 #[naked]
 pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
     cfg_if::cfg_if! {
@@ -119,7 +136,7 @@ pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
                 save_fp!(fs9 => a0[23]),
                 save_fp!(fs10 => a0[24]),
                 save_fp!(fs11 => a0[25]),
-                
+
                 "mv a0, zero",
                 "ret",
                 options(noreturn)
@@ -148,6 +165,16 @@ pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
     }
 }
 
+/// Performs a non-local jump to a context previously saved by `setjmp`.
+///
+/// This implementation has been adapted from the [LLVM libc implementation (Apache License v2.0 with LLVM Exceptions)](https://github.com/llvm/llvm-project/blob/1ae0dae368e4bbf2177603d5c310e794c4fd0bd8/libc/src/setjmp/riscv/longjmp.cpp)
+///
+/// # Safety
+///
+/// This will transfer control to instructions saved in the `*mut JumpBuf` parameter,
+/// so extreme care must be taken to ensure that the `JumpBuf` is valid and has been initialized.
+/// Additionally, the whole point of this function is to continue execution at a wildly different
+/// address, so this might cause confusing and hard-to-debug behavior.
 #[naked]
 pub unsafe extern "C" fn longjmp(buf: *mut JumpBuf, val: isize) -> ! {
     cfg_if::cfg_if! {
