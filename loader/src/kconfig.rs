@@ -1,3 +1,7 @@
+//! This holds global configuration values for the loader
+//! that really shouldn't be here. Instead we should have a nice user friendly configuration system
+//! maybe based on files... TODO
+
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages

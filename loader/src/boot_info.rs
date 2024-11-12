@@ -7,6 +7,7 @@ use core::slice;
 use kmm::{BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress};
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
 
+/// Initialize the `BootInfo` struct in memory that we then pass to the kernel.
 pub fn init_boot_info(
     alloc: &mut BumpAllocator<kconfig::MEMORY_MODE>,
     boot_hart: usize,

@@ -18,7 +18,8 @@ pub fn machine_info() -> &'static MachineInfo<'static> {
 
 /// The main entry point for the loader
 ///
-/// This sets up the global and stack pointer, as well as filling the stack with a known debug pattern.
+/// This sets up the global and stack pointer, as well as filling the stack with a known debug pattern
+/// and then - as fast as possible - jumps to Rust.
 #[link_section = ".text.start"]
 #[no_mangle]
 #[naked]
@@ -47,12 +48,15 @@ unsafe extern "C" fn _start() -> ! {
     )
 }
 
+/// Architecture specific startup code
 fn start(hartid: usize, opaque: *const u8) -> ! {
     // Disable interrupts. The kernel will re-enable interrupts
     // when it's ready to handle them
     riscv::interrupt::disable();
 
     if hartid == 0 {
+        // zero out the BSS section, under QEMU we already get zeroed memory
+        // but on actual hardware this might not be the case
         zero_bss();
 
         semihosting_logger::init(kconfig::LOG_LEVEL.to_level_filter());
@@ -85,13 +89,15 @@ fn zero_bss() {
     }
 }
 
+/// Fill the stack with a canary pattern (0xACE0BACE) so that we can identify unused stack memory
+/// in dumps & calculate stack usage. This is also really great (don't ask my why I know this) to identify 
+/// when we tried executing stack memory.
+///
 /// # Safety
 ///
 /// expects the bottom of `stack_size` in `t0` and the top of stack in `sp`
 #[naked]
 unsafe extern "C" fn fillstack() {
-    // fill our stack area with a fixed pattern
-    // so that we can identify unused stack memory in dumps & calculate stack usage
     asm!(
         "li          t1, 0xACE0BACE",
         "sub         t0, sp, t0", // subtract stack_size from sp to get the bottom of stack
