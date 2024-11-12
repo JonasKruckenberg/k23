@@ -93,7 +93,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         )
     };
 
-    // Set up the virtual memory "allocator" that we pull memory region assigments from for
+    // Set up the virtual memory "allocator" that we pull memory region assignments from for
     // the various kernel regions
     let mut page_alloc = if kconfig::KASLR {
         PageAllocator::new(ChaCha20Rng::from_seed(
