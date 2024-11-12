@@ -109,7 +109,7 @@ unsafe extern "C" fn default_trap_entry() {
         fsd fs9, 0x1C8(sp)
         fsd fs10, 0x1D0(sp)
         fsd fs11, 0x1D8(sp)
-        ",
+    ",
 
     "mv a0, sp",
 
@@ -184,7 +184,7 @@ unsafe extern "C" fn default_trap_entry() {
         fld ft9, 0x1E8(a0)
         fld ft10, 0x1F0(a0)
         fld ft11, 0x1F8(a0)
-        ",
+    ",
 
     "add sp, sp, 0x210",
     "csrrw sp, sscratch, sp",

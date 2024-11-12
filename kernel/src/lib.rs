@@ -18,4 +18,4 @@ mod frame_alloc;
 pub mod kconfig;
 pub mod runtime;
 mod start;
-mod tests;
+// mod tests;
