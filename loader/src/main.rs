@@ -36,7 +36,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 static BOOT_HART: AtomicUsize = AtomicUsize::new(0);
 
-/// Main, architecture independent, per-hart functionality. 
+/// Main, architecture independent, per-hart functionality.
 /// This function gets called by each arch-specific start function in `arch/<arch>.rs`
 fn main(hartid: usize) -> ! {
     static INIT: sync::OnceLock<(PageTableResult, &'static BootInfo)> = sync::OnceLock::new();
@@ -75,7 +75,7 @@ fn main(hartid: usize) -> ! {
 }
 
 /// Main, architecture independent, global functionality.
-/// 
+///
 /// This is essentially the one-time init portion of the `main` function.
 fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     let machine_info = arch::machine_info();
@@ -117,7 +117,7 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     // decompress & parse kernel
     log::trace!("parsing kernel...");
     let kernel = Kernel::from_compressed(kernel::KERNEL_BYTES, &mut frame_alloc)?;
-    
+
     log::trace!("initializing page tables...");
     let page_table_result =
         PageTableBuilder::from_alloc(&mut frame_alloc, physical_memory_offset, &mut page_alloc)?
