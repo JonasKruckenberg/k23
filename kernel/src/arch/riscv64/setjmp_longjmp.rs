@@ -1,3 +1,41 @@
+//! Non-local control flow primitives (`setjmp`/`longjmp`).
+//! 
+//! # A word of caution
+//! 
+//! These two functions are *the* most unsafe function in this codebase:
+//! If used incorrectly, they will eat your stack and corrupt all of it. As a treat, 
+//! they are also super unintuitive and weird to use! 
+//! 
+//! YOU WILL USE THESE WRONG! 
+//! IF YOU READ THIS THINKING IT MIGHT BE A SOLUTION TO YOUR PROBLEM: ITS NOT!
+//! 
+//! `setjmp` saves important register state at the time of its calling into the provided `JumpBuf`
+//! and `longjmp` will restore that register state. 
+//! This essentially allows you to perform returns to arbitrary frames on the stack. (it doesn't even 
+//! need to be your stack for funsies).
+//! The way this manifests is in `setjmp` returning zero the first time, indicating the register state
+//! got saved. And then, whenever `longjmp` is called, control flow disappears from that codepath 
+//! (`longjmp` returns `!`) and *magically* reappears as **another return of the `setjpm` function**. 
+//! (called a ghost return).
+//! 
+//! I don't think I need to explain further why these two functions are unsafe and weird do I?
+//! 
+//! # Why does this exist at all?
+//! 
+//! `setjmp`/`longjmp` are basically "we have stack unwinding at home" they allow you to skip up 
+//! many stack frames at once. Note that in addition to the unsafety mentioned above, `longjmp` also
+//! *does not call drop handlers* any resources that need explicit drop handling are leaked.
+//! 
+//! These two functions exist in k23 for one reason: Unlike stack unwinding they allow us to skip 
+//! over JIT-code created frames easily. Whenever a trap is taken in WASM JIT code, we *could* begin
+//! stack unwinding, but our unwinder doesn't know how to unwind the WASM stack, the DWARF info it uses
+//! only covers the Rust code.
+//! 
+//! Using `setjmp`/`longjmp` this way might be the only sound way to do it, we actually never longjmp
+//! past native Rust frames, instead at each `host->wasm` boundary we convert the trap into a regular Rust
+//! result. In a nested calls scenario (e.g. host->wasm->host->wasm) it is therefore up to each host function
+//! to propagate the trap and each host function therefore gets to clean up all its resources.
+
 use core::arch::asm;
 use core::ptr;
 
