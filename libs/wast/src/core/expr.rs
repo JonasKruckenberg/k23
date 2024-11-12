@@ -152,7 +152,7 @@ enum Level<'a> {
 
 /// Possible states of "what is currently being parsed?" in an `if` expression.
 enum If<'a> {
-    /// Only the `if` instructoin has been parsed, next thing to parse is the
+    /// Only the `if` instruction has been parsed, next thing to parse is the
     /// clause, if any, of the `if` instruction.
     ///
     /// This parse ends when `(then ...)` is encountered.

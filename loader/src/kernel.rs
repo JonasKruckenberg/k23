@@ -7,7 +7,7 @@ use object::elf::{ProgramHeader64, PT_LOAD};
 use object::read::elf::ProgramHeader;
 use object::{Endianness, Object, ObjectSection};
 
-/// The inlined, compressed kernel 
+/// The inlined, compressed kernel
 pub static KERNEL_BYTES: &[u8] = include_bytes!(env!("KERNEL"));
 
 /// The decompressed and parsed kernel ELF plus the embedded loader configuration data

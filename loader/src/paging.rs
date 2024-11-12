@@ -170,9 +170,9 @@ impl<'a> PageTableBuilder<'a> {
     }
 
     /// Map the physical memory into kernel address space.
-    /// 
+    ///
     /// This can be used by the kernel for direct physical memory access or (on Risc-V) to access
-    /// page tables (there is no recursive mapping). 
+    /// page tables (there is no recursive mapping).
     pub fn map_physical_memory(mut self, machine_info: &MachineInfo) -> Result<Self, kmm::Error> {
         for region_phys in &machine_info.memories {
             let region_virt =
@@ -190,9 +190,8 @@ impl<'a> PageTableBuilder<'a> {
         Ok(self)
     }
 
-    
     /// Identity map the loader itself (this binary).
-    /// 
+    ///
     /// we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
     /// as opposed to m-mode where it would take effect after jump tp u-mode.
     /// This means we need to temporarily identity map the loader here, so we can continue executing our own code.
@@ -307,18 +306,18 @@ impl PageTableResult {
             allocation.initialize_for_hart(hartid);
         }
     }
-    
+
     /// Active the page table.
-    /// 
+    ///
     /// This will switch to the new page table, and flush the TLB.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// This function is probably **the** most unsafe function in the entire loader,
-    /// it will invalidate all pointers and references that are not covered by the 
+    /// it will invalidate all pointers and references that are not covered by the
     /// loaders identity mapping (everything that doesn't live in the loader data/rodata/bss sections
-    /// or on the loader stack). 
-    /// 
+    /// or on the loader stack).
+    ///
     /// Extreme care must be taken to ensure that pointers passed to the kernel have been "translated"
     /// to virtual addresses before leaving the kernel.
     pub unsafe fn activate_table(&self) {

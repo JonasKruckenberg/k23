@@ -90,7 +90,7 @@ fn zero_bss() {
 }
 
 /// Fill the stack with a canary pattern (0xACE0BACE) so that we can identify unused stack memory
-/// in dumps & calculate stack usage. This is also really great (don't ask my why I know this) to identify 
+/// in dumps & calculate stack usage. This is also really great (don't ask my why I know this) to identify
 /// when we tried executing stack memory.
 ///
 /// # Safety
