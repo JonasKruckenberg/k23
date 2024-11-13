@@ -40,7 +40,7 @@ impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
         let physical_base = PhysicalAddress::new(elf_file.data().as_ptr() as usize);
         assert!(
             physical_base.is_aligned(M::PAGE_SIZE),
-            "Loaded ELF file is not sufficiently aligned"
+            "Loaded ELF file is not sufficiently aligned. Expected aligned to {} page size, but base pointer was {physical_base:?}", M::PAGE_SIZE
         );
 
         debug_print_sections(elf_file);

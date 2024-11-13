@@ -7,8 +7,11 @@ fn main() {
 
     println!("cargo::rerun-if-env-changed=KERNEL");
     if let Some(kernel) = env::var_os("KERNEL") {
-        let kernel = PathBuf::from(kernel);
-        let kernel = compress_kernel(&out_dir, &workspace_root.join(kernel));
+        let kernel = workspace_root.join(PathBuf::from(kernel));
+
+        #[cfg(feature = "compress")]
+        let kernel = compress_kernel(&out_dir, &kernel);
+
         println!("cargo::rerun-if-changed={}", kernel.display());
         println!("cargo::rustc-env=KERNEL={}", kernel.display());
     }
@@ -16,6 +19,7 @@ fn main() {
     copy_linker_script();
 }
 
+#[cfg(feature = "compress")]
 fn compress_kernel(out_dir: &Path, kernel: &Path) -> PathBuf {
     let kernel_compressed = out_dir.join("kernel.lz4");
 

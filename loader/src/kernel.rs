@@ -8,7 +8,11 @@ use object::read::elf::ProgramHeader;
 use object::{Endianness, Object, ObjectSection};
 
 /// The inlined, compressed kernel
-pub static KERNEL_BYTES: &[u8] = include_bytes!(env!("KERNEL"));
+pub static KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KERNEL")));
+
+/// Wrapper type for the inlined bytes to ensure proper alignment
+#[repr(C, align(4096))]
+pub struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
 
 /// The decompressed and parsed kernel ELF plus the embedded loader configuration data
 pub struct Kernel<'a> {
@@ -17,6 +21,7 @@ pub struct Kernel<'a> {
 }
 
 impl<'a> Kernel<'a> {
+    #[cfg(feature = "compress")]
     pub fn from_compressed(
         compressed: &'a [u8],
         alloc: &mut BumpAllocator<'_, kconfig::MEMORY_MODE>,

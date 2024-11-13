@@ -3,6 +3,7 @@ pub enum Error {
     /// Failed to set up page tables
     Kmm(#[from] kmm::Error),
     /// Failed to decompress the kernel
+    #[cfg(feature = "compress")]
     Decompression(lz4_flex::block::DecompressError),
     /// Failed to convert number
     TryFromInt(#[from] core::num::TryFromIntError),

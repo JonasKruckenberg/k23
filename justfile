@@ -162,5 +162,6 @@ _build_bootimg $KERNEL:
         -p loader \
         --target loader/riscv64imac-k23-none-loader.json \
         --profile {{ profile }} \
+        --features compress \
         {{ _buildstd }} \
         {{ _fmt }}

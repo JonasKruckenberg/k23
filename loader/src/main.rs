@@ -116,7 +116,10 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
 
     // decompress & parse kernel
     log::trace!("parsing kernel...");
-    let kernel = Kernel::from_compressed(kernel::KERNEL_BYTES, &mut frame_alloc)?;
+    #[cfg(feature = "compress")]
+    let kernel = Kernel::from_compressed(&kernel::KERNEL_BYTES.0, &mut frame_alloc)?;
+    #[cfg(not(feature = "compress"))]
+    let kernel = Kernel::from_bytes(&kernel::KERNEL_BYTES.0)?;
 
     log::trace!("initializing page tables...");
     let page_table_result =
