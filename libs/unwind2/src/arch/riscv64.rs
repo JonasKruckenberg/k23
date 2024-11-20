@@ -1,5 +1,5 @@
 //! RISC-V specific unwinding code, mostly saving and restoring registers.
-use core::arch::{naked_asm, asm};
+use core::arch::{asm, naked_asm};
 use core::fmt;
 use core::ops;
 use gimli::{Register, RiscV};
