@@ -1204,7 +1204,7 @@ const _: () = {
     assert!(size <= pointer * 10);
 };
 
-impl<'a> Instruction<'a> {
+impl Instruction<'_> {
     pub(crate) fn needs_data_count(&self) -> bool {
         matches!(
             self,

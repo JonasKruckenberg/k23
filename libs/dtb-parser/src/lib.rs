@@ -239,7 +239,7 @@ pub struct ReserveEntries<'dt> {
     done: bool,
 }
 
-impl<'dt> ReserveEntries<'dt> {
+impl ReserveEntries<'_> {
     fn read_u64(&mut self) -> Result<u64> {
         let bytes = self
             .buf

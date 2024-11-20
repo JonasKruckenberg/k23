@@ -26,7 +26,7 @@ pub struct ModuleEnvironment<'a, 'wasm> {
     validator: &'a mut Validator,
 }
 
-impl<'a, 'wasm> TypeConvert for ModuleEnvironment<'a, 'wasm> {
+impl TypeConvert for ModuleEnvironment<'_, '_> {
     fn lookup_heap_type(&self, _index: UnpackedIndex) -> WasmHeapType {
         todo!()
     }

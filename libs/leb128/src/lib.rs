@@ -61,7 +61,7 @@ pub trait Leb128Read {
     fn read_sleb128(&mut self) -> Result<i64>;
 }
 
-impl<'a> Leb128Read for &'a [u8] {
+impl Leb128Read for &'_ [u8] {
     fn read_byte(&mut self) -> Result<u8> {
         let (byte, rest) = self.split_first().ok_or(Error::UnexpectedEof)?;
         *self = rest;
@@ -133,7 +133,7 @@ pub trait Leb128Write {
     fn write_sleb128(&mut self, val: i64) -> Result<usize>;
 }
 
-impl<'a> Leb128Write for &'a mut [u8] {
+impl Leb128Write for &'_ mut [u8] {
     #[inline]
     fn write_byte(&mut self, val: u8) -> Result<()> {
         let (a, b) = mem::take(self)

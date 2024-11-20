@@ -83,7 +83,7 @@ pub struct FreeRegions<'a> {
     inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
 }
 
-impl<'a> Iterator for FreeRegions<'a> {
+impl Iterator for FreeRegions<'_> {
     type Item = Range<PhysicalAddress>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -109,7 +109,7 @@ pub struct UsedRegions<'a> {
     inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
 }
 
-impl<'a> Iterator for UsedRegions<'a> {
+impl Iterator for UsedRegions<'_> {
     type Item = Range<PhysicalAddress>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -129,7 +129,7 @@ impl<'a> Iterator for UsedRegions<'a> {
     }
 }
 
-impl<'a, M: Mode> FrameAllocator<M> for BumpAllocator<'a, M> {
+impl<M: Mode> FrameAllocator<M> for BumpAllocator<'_, M> {
     fn allocate_frames(&mut self, frames: usize) -> crate::Result<PhysicalAddress> {
         let requested_size = frames * M::PAGE_SIZE;
         let mut offset = self.offset;

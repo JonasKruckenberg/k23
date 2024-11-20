@@ -30,7 +30,7 @@ pub enum ComponentKind<'a> {
     Binary(Vec<&'a [u8]>),
 }
 
-impl<'a> Component<'a> {
+impl Component<'_> {
     /// Performs a name resolution pass on this [`Component`], resolving all
     /// symbolic names to indices.
     ///

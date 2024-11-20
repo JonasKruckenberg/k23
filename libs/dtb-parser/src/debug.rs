@@ -17,7 +17,7 @@ impl<'a, T: fmt::Write> DebugVisitor<'a, T> {
     }
 }
 
-impl<'a, 'dt, T: fmt::Write> Visitor<'dt> for DebugVisitor<'a, T> {
+impl<'dt, T: fmt::Write> Visitor<'dt> for DebugVisitor<'_, T> {
     type Error = Error;
 
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> crate::Result<()> {

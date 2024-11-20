@@ -226,7 +226,7 @@ pub enum WastExecute<'a> {
     },
 }
 
-impl<'a> WastExecute<'a> {
+impl WastExecute<'_> {
     /// Returns the first span for this execute statement.
     pub fn span(&self) -> Span {
         match self {

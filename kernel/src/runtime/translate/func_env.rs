@@ -90,7 +90,7 @@ impl<'module_env, 'wasm> FunctionEnvironment<'module_env, 'wasm> {
     }
 }
 
-impl<'module_env, 'wasm> TargetEnvironment for FunctionEnvironment<'module_env, 'wasm> {
+impl TargetEnvironment for FunctionEnvironment<'_, '_> {
     fn target_config(&self) -> TargetFrontendConfig {
         self.isa.frontend_config()
     }
@@ -113,7 +113,7 @@ impl<'module_env, 'wasm> TargetEnvironment for FunctionEnvironment<'module_env, 
     }
 }
 
-impl<'module_env, 'wasm> TypeConvert for FunctionEnvironment<'module_env, 'wasm> {
+impl TypeConvert for FunctionEnvironment<'_, '_> {
     fn lookup_heap_type(&self, index: UnpackedIndex) -> WasmHeapType {
         todo!()
     }
@@ -126,9 +126,7 @@ impl<'module_env, 'wasm> TypeConvert for FunctionEnvironment<'module_env, 'wasm>
     }
 }
 
-impl<'module_env, 'wasm> cranelift_wasm::FuncEnvironment
-    for FunctionEnvironment<'module_env, 'wasm>
-{
+impl cranelift_wasm::FuncEnvironment for FunctionEnvironment<'_, '_> {
     fn param_needs_stack_map(&self, _signature: &Signature, index: usize) -> bool {
         false
     }

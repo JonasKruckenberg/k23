@@ -22,7 +22,7 @@ pub struct ElfMapper<'p, 'a, M> {
     virtual_base: VirtualAddress,
 }
 
-impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
+impl<M: Mode> ElfMapper<'_, '_, M> {
     /// Maps an ELF file into virtual memory.
     ///
     /// # Errors
@@ -377,7 +377,7 @@ struct ProgramHeader<'a> {
     ph: &'a ProgramHeader64<Endianness>,
 }
 
-impl<'a> ProgramHeader<'a> {
+impl ProgramHeader<'_> {
     pub fn parse_rela(&self, elf_file: &ElfFile64) -> Option<RelaInfo> {
         if self.p_type == PT_DYNAMIC {
             let fields = self
