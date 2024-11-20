@@ -6,7 +6,7 @@ set windows-shell := ["powershell.exe", "-c"]
 toolchain := ""
 
 # configures what profile to use for builds.
-profile := "dev"
+profile := env_var_or_default("K23_PROFILE", "dev")
 
 _cargo := "cargo" + if toolchain != "" { " +" + toolchain } else { "" }
 _rustflags := env_var_or_default("RUSTFLAGS", "")
@@ -57,7 +57,7 @@ _default:
     @just --list
 
 # run the OS
-run cargo_args="" *args="":
+run $K23_PROFILE=(profile) cargo_args="" *args="":
     {{ _cargo }} run \
         -p kernel \
         --target kernel/riscv64gc-k23-none-kernel.json \
@@ -119,7 +119,7 @@ test-docs crate="" *cargo_args="":
         {{ cargo_args }}
 
 # run all tests
-test cargo_args="" *args="": && (test-docs cargo_args)
+test $K23_PROFILE=(profile) cargo_args="" *args="": && (test-docs cargo_args)
     {{ _cargo }} test \
         -p kernel \
         --target kernel/riscv64gc-k23-none-kernel.json \
