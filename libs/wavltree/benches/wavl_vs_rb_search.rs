@@ -1,11 +1,11 @@
-use std::fmt;
-use std::mem::offset_of;
-use std::pin::Pin;
-use std::ptr::NonNull;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use intrusive_collections::{intrusive_adapter, KeyAdapter, RBTree, RBTreeLink};
 use rand::prelude::SliceRandom;
 use rand::thread_rng;
+use std::fmt;
+use std::mem::offset_of;
+use std::pin::Pin;
+use std::ptr::NonNull;
 use wavltree::{Linked, Links, WAVLTree};
 
 #[derive(Default)]
@@ -70,14 +70,19 @@ struct RBEntry {
 intrusive_adapter!(MyAdapter = Pin<Box<RBEntry>>: RBEntry { link: RBTreeLink });
 impl<'a> KeyAdapter<'a> for MyAdapter {
     type Key = usize;
-    fn get_key(&self, x: &'a RBEntry) -> usize { x.value }
+    fn get_key(&self, x: &'a RBEntry) -> usize {
+        x.value
+    }
 }
 
 fn rb(inserts: &[usize], searches: &[usize]) {
     let mut tree = RBTree::new(MyAdapter::new());
 
     for i in inserts {
-        tree.insert(Box::pin(RBEntry { link: RBTreeLink::new(), value: *i }));
+        tree.insert(Box::pin(RBEntry {
+            link: RBTreeLink::new(),
+            value: *i,
+        }));
     }
 
     for i in searches {
@@ -96,10 +101,16 @@ fn bench_fibs(c: &mut Criterion) {
         nums.shuffle(&mut rng);
         let searches = nums;
 
-        group.bench_with_input(BenchmarkId::new("WAVL", i), &(&inserts, &searches),
-                               |b, (inserts, searches)| b.iter(|| wavl(inserts, searches)));
-        group.bench_with_input(BenchmarkId::new("Red-Black", i), &(&inserts, &searches),
-                               |b, (inserts, searches)| b.iter(|| rb(inserts, searches)));
+        group.bench_with_input(
+            BenchmarkId::new("WAVL", i),
+            &(&inserts, &searches),
+            |b, (inserts, searches)| b.iter(|| wavl(inserts, searches)),
+        );
+        group.bench_with_input(
+            BenchmarkId::new("Red-Black", i),
+            &(&inserts, &searches),
+            |b, (inserts, searches)| b.iter(|| rb(inserts, searches)),
+        );
     }
     group.finish();
 }

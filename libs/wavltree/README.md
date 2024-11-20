@@ -1,4 +1,4 @@
-# An [intrusive] Weak AVL Tree.
+# An intrusive Weak AVL Tree.
 
 A Rust implementation of Weak AVL Trees, primarily for use in the [k23 operating system][k23].
 

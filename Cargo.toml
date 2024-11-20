@@ -94,3 +94,6 @@ opt-level = 3
 
 [profile.test.package.lz4_flex]
 opt-level = 3
+
+[profile.bench]
+debug = true

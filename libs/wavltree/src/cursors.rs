@@ -10,8 +10,8 @@
 // pub fn upper_bound_mut(&mut self) -> CursorMut<'_, T> {
 //     todo!()
 // }
+use crate::WAVLTree;
 use crate::{Link, Linked};
-use crate::{WAVLTree};
 use core::iter::FusedIterator;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -29,6 +29,12 @@ impl<'a, T> Cursor<'a, T>
 where
     T: Linked + ?Sized,
 {
+    /// Returns the raw pointer to the current node
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the ptr is *never* used to move out of the current location, as the tree
+    /// requires pinned memory locations.
     pub unsafe fn get_ptr(&self) -> Link<T> {
         self.current
     }
@@ -70,6 +76,12 @@ impl<'a, T> CursorMut<'a, T>
 where
     T: Linked + ?Sized,
 {
+    /// Returns the raw pointer to the current node
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the ptr is *never* used to move out of the current location, as the tree
+    /// requires pinned memory locations.
     pub unsafe fn get_ptr(&self) -> Link<T> {
         self.current
     }
