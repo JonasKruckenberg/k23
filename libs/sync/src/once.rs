@@ -131,7 +131,7 @@ struct PanicGuard<'a> {
     status: &'a AtomicU8,
 }
 
-impl<'a> Drop for PanicGuard<'a> {
+impl Drop for PanicGuard<'_> {
     fn drop(&mut self) {
         self.status.store(STATUS_POISONED, Ordering::Relaxed);
     }

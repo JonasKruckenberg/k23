@@ -1,5 +1,5 @@
 //! RISC-V specific unwinding code, mostly saving and restoring registers.
-use core::arch::asm;
+use core::arch::{asm, naked_asm};
 use core::fmt;
 use core::ops;
 use gimli::{Register, RiscV};
@@ -184,7 +184,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
     // No need to save caller-saved registers here.
     #[cfg(target_feature = "d")]
     unsafe {
-        asm! {
+        naked_asm! {
             "
             mv t0, sp
             add sp, sp, -0x210
@@ -203,13 +203,12 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
             .cfi_def_cfa_offset 0
             .cfi_restore ra
             ret
-            ",
-            options(noreturn)
+            "
         };
     }
     #[cfg(not(target_feature = "d"))]
     unsafe {
-        asm! {
+        naked_asm! {
             "
             mv t0, sp
             add sp, sp, -0x110
@@ -228,7 +227,6 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
             .cfi_restore ra
             ret
             ",
-            options(noreturn)
         };
     }
 }

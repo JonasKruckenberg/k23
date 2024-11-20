@@ -115,7 +115,7 @@ pub struct MachineInfo<'dt> {
 }
 
 #[cfg(target_os = "none")]
-impl<'dt> MachineInfo<'dt> {
+impl MachineInfo<'_> {
     /// # Safety
     ///
     /// The caller has to ensure the provided pointer actually points to a FDT in memory.

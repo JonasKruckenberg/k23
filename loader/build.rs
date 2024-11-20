@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 fn main() {
-    let workspace_root = Path::new(env!("CARGO_RUSTC_CURRENT_DIR"));
+    let workspace_root = PathBuf::from(env::var_os("__K23_CARGO_RUSTC_CURRENT_DIR").unwrap());
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
     println!("cargo::rerun-if-env-changed=KERNEL");

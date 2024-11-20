@@ -50,6 +50,10 @@ Variables can be set using `just VARIABLE=VALUE ...` or
 
 # env var to set the cargo runner for the riscv64 target
 export CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER := "just _run_riscv64"
+# as of recent Rust nightly versions the old `CARGO_RUSTC_CURRENT_DIR` we used to locate the kernel artifact from the
+# loader build script got removed :/ This is a stopgap until they come up with a replacement.
+# https://github.com/rust-lang/cargo/issues/3946
+export __K23_CARGO_RUSTC_CURRENT_DIR := `dirname "$(cargo locate-project --workspace --message-format plain)"`
 
 # default recipe to display help information
 _default:

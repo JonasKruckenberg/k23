@@ -8,11 +8,13 @@
   "features": "+m,+a,+c",
   "linker": "rust-lld",
   "linker-flavor": "gnu-lld",
+  "llvm-abiname": "lp64",
   "llvm-target": "riscv64",
   "max-atomic-width": 64,
   "panic-strategy": "abort",
   "relocation-model": "static",
   "supported-sanitizers": [
+    "shadow-call-stack",
     "kernel-address"
   ],
   "target-pointer-width": "64"

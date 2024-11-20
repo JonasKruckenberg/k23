@@ -3,7 +3,7 @@ use crate::kernel::Kernel;
 use crate::paging::PageTableResult;
 use core::mem::MaybeUninit;
 use core::ops::Div;
-use core::slice;
+use core::{ptr, slice};
 use kmm::{BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress};
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
 
@@ -22,12 +22,7 @@ pub fn init_boot_info(
 
     // memory_regions: &'static mut [MemoryRegion] is a reference to physical memory, but going forward
     // we need it to be a reference to virtual memory.
-    let memory_regions = unsafe {
-        let ptr = memory_regions
-            .as_mut_ptr()
-            .byte_add(physical_memory_offset.as_raw());
-        slice::from_raw_parts_mut(ptr, memory_regions.len())
-    };
+    let memory_regions = unsafe { phys_to_virt_mut(physical_memory_offset, memory_regions) };
 
     let boot_info = unsafe { &mut *(frame.as_raw() as *mut MaybeUninit<BootInfo>) };
     let boot_info = boot_info.write(BootInfo::new(
@@ -90,8 +85,30 @@ fn init_boot_info_memory_regions(
     unsafe { MaybeUninit::slice_assume_init_mut(&mut raw_regions[0..next_region]) }
 }
 
-unsafe fn phys_to_virt_ref<T>(physmem_off: VirtualAddress, phys: &T) -> &T {
-    let ptr = (phys as *const T).byte_add(physmem_off.as_raw());
+/// Convert a reference in physical memory to a reference in virtual memory.
+///
+/// Note that `wrapping_byte_add` here is *crucial* since we're intentionally wrapping around
+/// (from "positive" physmem addresses to "negavtive" kernelspace virtmem addresses). Previously,
+/// we relied on the UB of LLVM to do the correct wrapping thing which obviously isn't great.
+///
+/// # Safety
+///
+/// well... nothing of this is safe, we're just wholesale making up new references. And references
+/// we're actually not even allowed to touch until the MMU is turned on... Maybe we should change the
+/// API to use only raw pointers instead...
+unsafe fn phys_to_virt_ref<T: ?Sized>(physmem_off: VirtualAddress, phys: &T) -> &T {
+    let ptr = (phys as *const T).wrapping_byte_add(physmem_off.as_raw());
 
     &*ptr
+}
+
+/// Convert a mutable reference in physical memory to a reference in virtual memory.
+///
+/// # Safety
+///
+/// The same safety rules as [phys_to_virt_ref] apply.
+unsafe fn phys_to_virt_mut<T: ?Sized>(physmem_off: VirtualAddress, phys: &mut T) -> &mut T {
+    let ptr = ptr::from_mut(phys).wrapping_byte_add(physmem_off.as_raw());
+
+    &mut *ptr
 }

@@ -27,7 +27,7 @@ impl<'a, 'data> Backtrace<'a, 'data> {
 
 // FIXME: This *will* dealock rn, since we can't log from within this impl
 // it will lead to a deadlock since we already hold the stdouts lock
-impl<'a, 'data> fmt::Display for Backtrace<'a, 'data> {
+impl fmt::Display for Backtrace<'_, '_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "stack backtrace:")?;
         let mut frame_idx = 0;

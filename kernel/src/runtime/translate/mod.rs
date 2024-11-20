@@ -208,7 +208,7 @@ pub struct MemoryInitializer<'wasm> {
     pub bytes: &'wasm [u8],
 }
 
-impl<'wasm> TranslatedModule<'wasm> {
+impl TranslatedModule<'_> {
     pub fn num_imported_functions(&self) -> u32 {
         self.num_imported_functions
     }
