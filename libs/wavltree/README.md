@@ -9,7 +9,7 @@ while tree restructuring operations after deletions are even more efficient than
 Additionally, this implementation is *intrusive* meaning node data (pointers to other nodes etc.) are stored _within_
 participating values, rather than being allocated and owned by the tree itself.
 
-This crate is self-contained, fuzzed, and fully `no_std`.
+This crate is self-contained, (somewhat) fuzzed, and fully `no_std`.
 
 ## when to use this
 
