@@ -80,7 +80,7 @@ impl<'a> Parse<'a> for ItemSigNoName<'a> {
 
 fn parse_item_sig<'a>(parser: Parser<'a>, name: bool) -> Result<ItemSig<'a>> {
     let mut l = parser.lookahead1();
-    let (span, parse_kind): (_, fn(Parser<'a>) -> Result<ItemSigKind>) = if l.peek::<kw::core>()? {
+    let (span, parse_kind): (_, fn(Parser<'a>) -> Result<ItemSigKind<'a>>) = if l.peek::<kw::core>()? {
         let span = parser.parse::<kw::core>()?.0;
         parser.parse::<kw::module>()?;
         (span, |parser| Ok(ItemSigKind::CoreModule(parser.parse()?)))
