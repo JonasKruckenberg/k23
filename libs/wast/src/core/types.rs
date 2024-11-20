@@ -47,7 +47,7 @@ impl<'a> Parse<'a> for ValType<'a> {
     }
 }
 
-impl<'a> Peek for ValType<'a> {
+impl Peek for ValType<'_> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         Ok(kw::i32::peek(cursor)?
             || kw::i64::peek(cursor)?
@@ -97,7 +97,7 @@ impl<'a> Parse<'a> for HeapType<'a> {
     }
 }
 
-impl<'a> Peek for HeapType<'a> {
+impl Peek for HeapType<'_> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         Ok(AbstractHeapType::peek(cursor)?
             || (LParen::peek(cursor)? && kw::shared::peek2(cursor)?)
@@ -460,7 +460,7 @@ impl<'a> Parse<'a> for RefType<'a> {
     }
 }
 
-impl<'a> Peek for RefType<'a> {
+impl Peek for RefType<'_> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         Ok(kw::funcref::peek(cursor)?
             || kw::externref::peek(cursor)?
@@ -723,7 +723,7 @@ impl<'a> Parse<'a> for FunctionType<'a> {
     }
 }
 
-impl<'a> Peek for FunctionType<'a> {
+impl Peek for FunctionType<'_> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         if let Some(next) = cursor.lparen()? {
             match next.keyword()? {
@@ -755,7 +755,7 @@ impl<'a> Parse<'a> for FunctionTypeNoNames<'a> {
     }
 }
 
-impl<'a> Peek for FunctionTypeNoNames<'a> {
+impl Peek for FunctionTypeNoNames<'_> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         FunctionType::peek(cursor)
     }
@@ -946,7 +946,7 @@ pub struct Type<'a> {
     pub final_type: Option<bool>,
 }
 
-impl<'a> Peek for Type<'a> {
+impl Peek for Type<'_> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         kw::r#type::peek(cursor)
     }

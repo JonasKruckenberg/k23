@@ -400,7 +400,7 @@ impl Encode for Option<Id<'_>> {
     }
 }
 
-impl<'a> Encode for ValType<'a> {
+impl Encode for ValType<'_> {
     fn encode(&self, e: &mut Vec<u8>) {
         match self {
             ValType::I32 => e.push(0x7f),
@@ -415,7 +415,7 @@ impl<'a> Encode for ValType<'a> {
     }
 }
 
-impl<'a> Encode for HeapType<'a> {
+impl Encode for HeapType<'_> {
     fn encode(&self, e: &mut Vec<u8>) {
         match self {
             HeapType::Abstract { shared, ty } => {
@@ -454,7 +454,7 @@ impl Encode for AbstractHeapType {
     }
 }
 
-impl<'a> Encode for RefType<'a> {
+impl Encode for RefType<'_> {
     fn encode(&self, e: &mut Vec<u8>) {
         match self {
             // Binary abbreviations (i.e., short form), for when the ref is
@@ -490,7 +490,7 @@ impl<'a> Encode for RefType<'a> {
     }
 }
 
-impl<'a> Encode for StorageType<'a> {
+impl Encode for StorageType<'_> {
     fn encode(&self, e: &mut Vec<u8>) {
         match self {
             StorageType::I8 => e.push(0x78),
@@ -555,7 +555,7 @@ impl Encode for Index<'_> {
     }
 }
 
-impl<'a> Encode for TableType<'a> {
+impl Encode for TableType<'_> {
     fn encode(&self, e: &mut Vec<u8>) {
         self.elem.encode(e);
 
@@ -603,7 +603,7 @@ impl Encode for MemoryType {
     }
 }
 
-impl<'a> Encode for GlobalType<'a> {
+impl Encode for GlobalType<'_> {
     fn encode(&self, e: &mut Vec<u8>) {
         self.ty.encode(e);
         let mut flags = 0;
@@ -1283,14 +1283,14 @@ impl Encode for Id<'_> {
     }
 }
 
-impl<'a> Encode for TryTable<'a> {
+impl Encode for TryTable<'_> {
     fn encode(&self, dst: &mut Vec<u8>) {
         self.block.encode(dst);
         self.catches.encode(dst);
     }
 }
 
-impl<'a> Encode for TryTableCatch<'a> {
+impl Encode for TryTableCatch<'_> {
     fn encode(&self, dst: &mut Vec<u8>) {
         let flag_byte: u8 = match self.kind {
             TryTableCatchKind::Catch(..) => 0,
@@ -1321,7 +1321,7 @@ impl Encode for I8x16Shuffle {
     }
 }
 
-impl<'a> Encode for SelectTypes<'a> {
+impl Encode for SelectTypes<'_> {
     fn encode(&self, dst: &mut Vec<u8>) {
         match &self.tys {
             Some(list) => {

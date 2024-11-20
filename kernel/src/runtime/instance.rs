@@ -53,7 +53,7 @@ impl Instance {
             data: &'a InstanceData<'wasm>,
         }
 
-        impl<'a, 'wasm> fmt::Debug for Dbg<'a, 'wasm> {
+        impl fmt::Debug for Dbg<'_, '_> {
             fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
                 unsafe {
                     f.debug_struct("VMContext")
@@ -96,7 +96,7 @@ pub struct InstanceData<'wasm> {
     pub memories: PrimaryMap<DefinedMemoryIndex, Memory>,
 }
 
-impl<'wasm> InstanceData<'wasm> {
+impl InstanceData<'_> {
     unsafe fn vmctx_magic(&self) -> u32 {
         *self.vmctx_plus_offset::<u32>(self.vmctx_plan.vmctx_magic())
     }

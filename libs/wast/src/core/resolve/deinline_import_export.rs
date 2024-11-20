@@ -51,7 +51,7 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                     // field here instead, switching this to a `Normal` memory.
                     MemoryKind::Inline { is64, ref data } => {
                         let len = data.iter().map(|l| l.len()).sum::<usize>() as u64;
-                        let pages = (len + default_page_size() - 1) / default_page_size();
+                        let pages = len.div_ceil(default_page_size());
                         let kind = MemoryKind::Normal(MemoryType {
                             limits: Limits {
                                 is64,

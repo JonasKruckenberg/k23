@@ -95,7 +95,7 @@ impl<'a> Id<'a> {
     }
 }
 
-impl<'a> Hash for Id<'a> {
+impl Hash for Id<'_> {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         self.name.hash(hasher);
         self.gen.hash(hasher);
@@ -108,7 +108,7 @@ impl<'a> PartialEq for Id<'a> {
     }
 }
 
-impl<'a> Eq for Id<'a> {}
+impl Eq for Id<'_> {}
 
 impl<'a> Parse<'a> for Id<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
@@ -255,7 +255,7 @@ impl<'a, K: Parse<'a>> Parse<'a> for ItemRef<'a, K> {
     }
 }
 
-impl<'a, K: Peek> Peek for ItemRef<'a, K> {
+impl<K: Peek> Peek for ItemRef<'_, K> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         match cursor.lparen()? {
             Some(remaining) => K::peek(remaining),
