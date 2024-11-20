@@ -50,6 +50,7 @@ impl<'a> PageTableBuilder<'a> {
         })
     }
 
+    /// Map the kernel ELF, plus kernel stack and heap regions.
     pub fn map_kernel(
         mut self,
         kernel: &Kernel,
@@ -86,6 +87,7 @@ impl<'a> PageTableBuilder<'a> {
         Ok(self)
     }
 
+    /// Map the kernel thread-local storage (TLS) memory regions.
     fn allocate_tls(
         mut self,
         template: TlsTemplate,
@@ -122,6 +124,7 @@ impl<'a> PageTableBuilder<'a> {
         Ok(self)
     }
 
+    /// Map the kernel stacks for each hart.
     // TODO add guard pages below each stack allocation
     fn map_kernel_stacks(
         mut self,
@@ -155,6 +158,7 @@ impl<'a> PageTableBuilder<'a> {
         Ok(self)
     }
 
+    /// Map the kernel heap region.
     fn map_kernel_heap(mut self, heap_size_pages: usize) -> crate::Result<Self> {
         self.result.heap_virt = Some(
             self.page_alloc
@@ -165,6 +169,10 @@ impl<'a> PageTableBuilder<'a> {
         Ok(self)
     }
 
+    /// Map the physical memory into kernel address space.
+    ///
+    /// This can be used by the kernel for direct physical memory access or (on Risc-V) to access
+    /// page tables (there is no recursive mapping).
     pub fn map_physical_memory(mut self, machine_info: &MachineInfo) -> Result<Self, kmm::Error> {
         for region_phys in &machine_info.memories {
             let region_virt =
@@ -182,10 +190,12 @@ impl<'a> PageTableBuilder<'a> {
         Ok(self)
     }
 
-    // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
-    // as opposed to m-mode where it would take effect after jump tp u-mode.
-    // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
-    // We will then unmap the loader in the kernel.
+    /// Identity map the loader itself (this binary).
+    ///
+    /// we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
+    /// as opposed to m-mode where it would take effect after jump tp u-mode.
+    /// This means we need to temporarily identity map the loader here, so we can continue executing our own code.
+    /// We will then unmap the loader in the kernel.
     pub fn identity_map_loader(mut self, loader_regions: &LoaderRegions) -> crate::Result<Self> {
         log::trace!(
             "Identity mapping own executable region {:?}...",
@@ -272,28 +282,46 @@ pub struct PageTableResult {
 }
 
 impl PageTableResult {
+    /// The kernel entry address as specified in the ELF file.
     pub fn kernel_entry(&self) -> VirtualAddress {
         self.entry
     }
 
+    /// The kernel stack region for a given hartid.
     pub fn stack_region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
         let end = self.stacks_virt.end.sub(self.per_hart_stack_size * hartid);
 
         end.sub(self.per_hart_stack_size)..end
     }
 
+    /// The thread-local storage region for a given hartid.
     pub fn tls_region_for_hart(&self, hartid: usize) -> Option<Range<VirtualAddress>> {
         Some(self.maybe_tls_allocation.as_ref()?.region_for_hart(hartid))
     }
 
-    pub unsafe fn activate_table(&self) {
-        kconfig::MEMORY_MODE::activate_table(0, self.page_table_addr);
-    }
-
+    /// Initialize the TLS region for a given hartid.
+    /// This will copy the `.tdata` section from the TLS template to the TLS region.
     pub fn init_tls_region_for_hart(&self, hartid: usize) {
         if let Some(allocation) = &self.maybe_tls_allocation {
             allocation.initialize_for_hart(hartid);
         }
+    }
+
+    /// Active the page table.
+    ///
+    /// This will switch to the new page table, and flush the TLB.
+    ///
+    /// # Safety
+    ///
+    /// This function is probably **the** most unsafe function in the entire loader,
+    /// it will invalidate all pointers and references that are not covered by the
+    /// loaders identity mapping (everything that doesn't live in the loader data/rodata/bss sections
+    /// or on the loader stack).
+    ///
+    /// Extreme care must be taken to ensure that pointers passed to the kernel have been "translated"
+    /// to virtual addresses before leaving the kernel.
+    pub unsafe fn activate_table(&self) {
+        kconfig::MEMORY_MODE::activate_table(0, self.page_table_addr);
     }
 }
 

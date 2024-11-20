@@ -79,7 +79,7 @@ impl Encode for ModuleType {
 #[derive(Debug)]
 pub struct CoreTypeEncoder<'a>(pub(crate) &'a mut Vec<u8>);
 
-impl<'a> CoreTypeEncoder<'a> {
+impl CoreTypeEncoder<'_> {
     /// Define a function type.
     pub fn function<P, R>(self, params: P, results: R)
     where

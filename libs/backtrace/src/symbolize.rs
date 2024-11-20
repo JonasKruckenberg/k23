@@ -18,7 +18,7 @@ pub enum Symbol<'a> {
     Symtab { name: &'a str },
 }
 
-impl<'a> Symbol<'a> {
+impl Symbol<'_> {
     pub fn name(&self) -> Option<SymbolName<'_>> {
         match self {
             Symbol::Frame { name, .. } => {
@@ -61,7 +61,7 @@ impl<'a> Symbol<'a> {
     }
 }
 
-impl<'a> fmt::Debug for Symbol<'a> {
+impl fmt::Debug for Symbol<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut d = f.debug_struct("Symbol");
         d.field("name", &self.name());
@@ -93,7 +93,7 @@ impl<'a> SymbolName<'a> {
     }
 }
 
-impl<'a> fmt::Display for SymbolName<'a> {
+impl fmt::Display for SymbolName<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(ref s) = self.demangled {
             return s.fmt(f);
@@ -103,7 +103,7 @@ impl<'a> fmt::Display for SymbolName<'a> {
     }
 }
 
-impl<'a> fmt::Debug for SymbolName<'a> {
+impl fmt::Debug for SymbolName<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(ref s) = self.demangled {
             return s.fmt(f);

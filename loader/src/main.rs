@@ -36,6 +36,8 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 static BOOT_HART: AtomicUsize = AtomicUsize::new(0);
 
+/// Main, architecture independent, per-hart functionality.
+/// This function gets called by each arch-specific start function in `arch/<arch>.rs`
 fn main(hartid: usize) -> ! {
     static INIT: sync::OnceLock<(PageTableResult, &'static BootInfo)> = sync::OnceLock::new();
 
@@ -46,7 +48,7 @@ fn main(hartid: usize) -> ! {
         .expect("failed to initialize system");
 
     log::debug!("Activating page table for hart {hartid}...");
-    // SAFETY: This will invalidate all pointers and references that aren't on the loader stack
+    // SAFETY: This will invalidate all pointers and references that don't point to the loader stack
     // (the FDT slice and importantly the frame allocator) so care has to be taken to either
     // not access these anymore (which should be easy, this is one of the last steps we perform before hading off
     // to the kernel) or to map them into virtual memory first!
@@ -57,6 +59,7 @@ fn main(hartid: usize) -> ! {
     log::debug!("Initializing TLS region for hart {hartid}...");
     page_table_result.init_tls_region_for_hart(hartid);
 
+    // we jump to the kernel here
     unsafe {
         arch::switch_to_kernel(
             hartid,
@@ -71,9 +74,13 @@ fn main(hartid: usize) -> ! {
     }
 }
 
+/// Main, architecture independent, global functionality.
+///
+/// This is essentially the one-time init portion of the `main` function.
 fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     let machine_info = arch::machine_info();
 
+    // parse our own regions for later mapping
     let loader_regions = LoaderRegions::new(machine_info);
     log::trace!("{loader_regions:?}");
 
@@ -86,6 +93,8 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
         )
     };
 
+    // Set up the virtual memory "allocator" that we pull memory region assignments from for
+    // the various kernel regions
     let mut page_alloc = if kconfig::KASLR {
         PageAllocator::new(ChaCha20Rng::from_seed(
             machine_info.rng_seed.unwrap()[0..32].try_into().unwrap(),

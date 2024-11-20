@@ -5,6 +5,9 @@ use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
 
+/// Virtual memory allocator for setting up initial mappings.
+///
+/// All regions will be huge page (1GiB) aligned.
 #[derive(Debug)]
 pub struct PageAllocator {
     /// Whether a top-level page is in use.
@@ -15,17 +18,23 @@ pub struct PageAllocator {
 }
 
 impl PageAllocator {
-    pub fn new_no_kaslr() -> Self {
-        Self {
-            page_state: [false; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
-            rng: None,
-        }
-    }
-
+    /// Create a new `PageAllocator` with KASLR enabled.
+    ///
+    /// This means regions will be randomly placed in the higher half of the address space.
     pub fn new(rng: ChaCha20Rng) -> Self {
         Self {
             page_state: [false; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
             rng: Some(rng),
+        }
+    }
+
+    /// Create a new `PageAllocator` with KASLR **disabled**.
+    ///
+    /// Allocated regions will be placed consecutively in the higher half of the address space.
+    pub fn new_no_kaslr() -> Self {
+        Self {
+            page_state: [false; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
+            rng: None,
         }
     }
 

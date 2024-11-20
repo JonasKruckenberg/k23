@@ -1171,7 +1171,7 @@ impl Token {
     }
 }
 
-impl<'a> Integer<'a> {
+impl Integer<'_> {
     /// Returns the sign token for this integer.
     pub fn sign(&self) -> Option<SignToken> {
         self.sign

@@ -26,7 +26,7 @@ k23 is an active research project exploring a *more secure, modular, and easy to
 - **Phase 0 - Bringup**
    - [x] Bootloader stage
    - [x] Risc-V Support
-   - [x] Crytographic Kernel Integrity
+   - [x] Cryptographic Kernel Integrity
    - [x] Compressed Kernel Support
    - [x] Test Runner & Testing against WASM specification
    - [x] Kernel Backtraces

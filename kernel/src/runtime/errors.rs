@@ -5,7 +5,7 @@ pub enum CompileError {
     #[error("Cranelift IR to machine code compilation failed {0}")]
     Compile(cranelift_codegen::CodegenError),
 }
-impl<'a> From<cranelift_codegen::CompileError<'a>> for CompileError {
+impl From<cranelift_codegen::CompileError<'_>> for CompileError {
     fn from(error: cranelift_codegen::CompileError) -> Self {
         Self::Compile(error.inner)
     }
