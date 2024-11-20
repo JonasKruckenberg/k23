@@ -36,7 +36,7 @@
 //! result. In a nested calls scenario (e.g. host->wasm->host->wasm) it is therefore up to each host function
 //! to propagate the trap and each host function therefore gets to clean up all its resources.
 
-use core::arch::asm;
+use core::arch::naked_asm;
 use core::ptr;
 
 /// A store for the register state used by `setjmp` and `longjmp`.
@@ -146,7 +146,7 @@ cfg_if::cfg_if! {
 pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
     cfg_if::cfg_if! {
         if #[cfg(target_feature = "d")] {
-            asm! {
+            naked_asm! {
                 save_gp!(ra => a0[0]),
                 save_gp!(s0 => a0[1]),
                 save_gp!(s1 => a0[2]),
@@ -177,10 +177,9 @@ pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
 
                 "mv a0, zero",
                 "ret",
-                options(noreturn)
             }
         } else {
-            asm! {
+            naked_asm! {
                 save_gp!(ra => a0[0]),
                 save_gp!(s0 => a0[1]),
                 save_gp!(s1 => a0[2]),
@@ -197,7 +196,6 @@ pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
                 save_gp!(sp => a0[13]),
                 "mv a0, zero",
                 "ret",
-                options(noreturn)
             }
         }
     }
@@ -217,7 +215,7 @@ pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
 pub unsafe extern "C" fn longjmp(buf: *mut JumpBuf, val: isize) -> ! {
     cfg_if::cfg_if! {
         if #[cfg(target_feature = "d")] {
-            asm! {
+            naked_asm! {
                 load_gp!(a0[0] => ra),
                 load_gp!(a0[1] => s0),
                 load_gp!(a0[2] => s1),
@@ -248,10 +246,9 @@ pub unsafe extern "C" fn longjmp(buf: *mut JumpBuf, val: isize) -> ! {
 
                 "add a0, a1, zero",
                 "ret",
-                options(noreturn)
             }
         } else {
-            asm! {
+            naked_asm! {
                 load_gp!(a0[0] => ra),
                 load_gp!(a0[1] => s0),
                 load_gp!(a0[2] => s1),
@@ -269,7 +266,6 @@ pub unsafe extern "C" fn longjmp(buf: *mut JumpBuf, val: isize) -> ! {
 
                 "add a0, a1, zero",
                 "ret",
-                options(noreturn)
             }
         }
     }

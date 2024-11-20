@@ -1,6 +1,6 @@
 use crate::kconfig;
 use crate::machine_info::MachineInfo;
-use core::arch::asm;
+use core::arch::{asm, naked_asm};
 use core::ops::Range;
 use core::ptr;
 use core::ptr::addr_of_mut;
@@ -24,7 +24,7 @@ pub fn machine_info() -> &'static MachineInfo<'static> {
 #[no_mangle]
 #[naked]
 unsafe extern "C" fn _start() -> ! {
-    asm!(
+    naked_asm!(
         ".option push",
         ".option norelax",
         "la		gp, __global_pointer$",
@@ -44,7 +44,6 @@ unsafe extern "C" fn _start() -> ! {
 
         fillstack = sym fillstack,
         start_rust = sym start,
-        options(noreturn)
     )
 }
 
@@ -98,7 +97,7 @@ fn zero_bss() {
 /// expects the bottom of `stack_size` in `t0` and the top of stack in `sp`
 #[naked]
 unsafe extern "C" fn fillstack() {
-    asm!(
+    naked_asm!(
         "li          t1, 0xACE0BACE",
         "sub         t0, sp, t0", // subtract stack_size from sp to get the bottom of stack
         "100:",
@@ -106,7 +105,6 @@ unsafe extern "C" fn fillstack() {
         "addi        t0, t0, 8",
         "bltu        t0, sp, 100b",
         "ret",
-        options(noreturn)
     )
 }
 
