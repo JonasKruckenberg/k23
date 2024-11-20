@@ -18,6 +18,7 @@
   "position-independent-executables": true,
   "relro-level": "full",
   "supported-sanitizers": [
+    "shadow-call-stack",
     "kernel-address"
   ],
   "target-pointer-width": "64"
