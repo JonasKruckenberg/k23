@@ -373,9 +373,9 @@ where
     /// # Panics
     ///
     /// Panics if the new entry is already linked to a different intrusive collection.
-    pub fn insert(&mut self, elememt: T::Handle) -> Cursor<'_, T> {
+    pub fn insert(&mut self, element: T::Handle) -> Cursor<'_, T> {
         unsafe {
-            let ptr = T::into_ptr(elememt);
+            let ptr = T::into_ptr(element);
             debug_assert_ne!(self.root, Some(ptr));
 
             let ptr_links = T::links(ptr).as_mut();
