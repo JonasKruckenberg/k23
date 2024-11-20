@@ -1,13 +1,11 @@
 use crate::{allocator, arch, frame_alloc, kconfig};
 use alloc::boxed::Box;
 use alloc::string::String;
-use backtrace::{Backtrace, SymbolizeContext};
 use core::any::Any;
+use core::mem;
 use core::ops::Range;
-use core::{mem, slice};
-use kmm::{AddressRangeExt, BitMapAllocator, Flush, Mapper, VirtualAddress};
+use kmm::{BitMapAllocator, Flush, Mapper, VirtualAddress};
 use loader_api::LoaderConfig;
-use object::read::elf::ElfFile64;
 use sync::OnceLock;
 
 pub static BOOT_INFO: OnceLock<&'static loader_api::BootInfo> = OnceLock::new();
@@ -72,21 +70,22 @@ fn init(boot_info: &'static loader_api::BootInfo) {
 
         log::error!("hart panicked at {location}:\n{msg}");
 
-        let elf = unsafe {
-            let start = boot_info
-                .physical_memory_offset
-                .add(boot_info.kernel_elf.start.as_raw())
-                .as_raw() as *const u8;
-            slice::from_raw_parts(start, boot_info.kernel_elf.size())
-        };
-        let elf = ElfFile64::parse(elf).unwrap();
-
-        let ctx =
-            SymbolizeContext::new(elf, boot_info.kernel_image_offset.as_raw() as u64).unwrap();
-
-        let backtrace = Backtrace::capture(&ctx);
-
-        log::error!("{backtrace}");
+        // TODO this deadlocks :///
+        // let elf = unsafe {
+        //     let start = boot_info
+        //         .physical_memory_offset
+        //         .add(boot_info.kernel_elf.start.as_raw())
+        //         .as_raw() as *const u8;
+        //     slice::from_raw_parts(start, boot_info.kernel_elf.size())
+        // };
+        // let elf = ElfFile64::parse(elf).unwrap();
+        //
+        // let ctx =
+        //     SymbolizeContext::new(elf, boot_info.kernel_image_offset.as_raw() as u64).unwrap();
+        //
+        // let backtrace = Backtrace::capture(&ctx);
+        //
+        // log::error!("{backtrace}");
     }));
 
     log::info!("Welcome to k23 {}", env!("CARGO_PKG_VERSION"));
