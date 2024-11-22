@@ -17,7 +17,7 @@ harness = false
 
 [dependencies]
 loader-api.workspace = true
-kmm.workspace = true
+pmm.workspace = true
 panic-unwind.workspace = true
 semihosting-logger = { workspace = true, features = ["hartid"] }
 sync.workspace = true
@@ -31,15 +31,15 @@ talc.workspace = true
 arrayvec.workspace = true
 cfg-if.workspace = true
 
-hashbrown.workspace = true
-wasmparser.workspace = true
-target-lexicon.workspace = true
-cranelift-wasm.workspace = true
-cranelift-codegen.workspace = true
-cranelift-frontend.workspace = true
-cranelift-entity.workspace = true
-object = { workspace = true, features = ["read_core", "write_core", "elf"] }
-gimli = { workspace = true, features = ["read"] }
+#hashbrown.workspace = true
+#wasmparser.workspace = true
+#target-lexicon.workspace = true
+#cranelift-wasm.workspace = true
+#cranelift-codegen.workspace = true
+#cranelift-frontend.workspace = true
+#cranelift-entity.workspace = true
+#object = { workspace = true, features = ["read_core", "write_core", "elf"] }
+#gimli = { workspace = true, features = ["read"] }
 onlyerror.workspace = true
 
 

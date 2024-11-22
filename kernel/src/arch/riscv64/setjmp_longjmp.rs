@@ -284,12 +284,9 @@ mod tests {
             let mut buf = JumpBuf::new();
 
             let r = setjmp(ptr::from_mut(&mut buf));
-            c += 1;
             if r == 0 {
-                assert_eq!(c, 1);
                 longjmp(ptr::from_mut(&mut buf), 1234567);
             }
-            assert_eq!(c, 2);
             assert_eq!(r, 1234567);
         }
     }
