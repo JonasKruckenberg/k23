@@ -27,7 +27,6 @@ unwind2.workspace = true
 backtrace.workspace = true
 
 log.workspace = true
-talc.workspace = true
 arrayvec.workspace = true
 cfg-if.workspace = true
 

@@ -333,7 +333,6 @@ dependencies = [
  "riscv",
  "semihosting-logger",
  "sync",
- "talc",
  "thread-local",
  "unwind2",
  "wast",
@@ -802,15 +801,6 @@ dependencies = [
 [[package]]
 name = "sync"
 version = "0.1.0"
-dependencies = [
- "lock_api",
-]
-
-[[package]]
-name = "talc"
-version = "4.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fcad3be1cfe36eb7d716a04791eba36a197da9d9b6ea1e28e64ac569da3701d"
 dependencies = [
  "lock_api",
 ]
