@@ -48,6 +48,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     }
 }
 
+// TODO refactor the boot flow so that we don't need a mutex here
 fn main<A>(hartid: usize, pmm_arch: &'static Mutex<A>, minfo: &'static MachineInfo) -> !
 where
     A: pmm::Arch,
