@@ -1,159 +1,131 @@
 #![no_std]
 #![no_main]
+#![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
 #![feature(naked_functions)]
 #![feature(maybe_uninit_slice)]
-
-extern crate alloc;
-extern crate panic_abort;
+#![feature(int_roundings)]
 
 mod arch;
 mod boot_info;
 mod error;
-
-mod kconfig;
 mod kernel;
 mod machine_info;
 mod page_alloc;
-mod paging;
+mod vm;
 
-use crate::boot_info::init_boot_info;
-use crate::kernel::Kernel;
+pub const STACK_SIZE_PAGES: usize = 32;
+pub const LOG_LEVEL: log::Level = log::Level::Trace;
+pub const ENABLE_KASLR: bool = true;
+
+use crate::kernel::{parse_inlined_kernel, Kernel};
 use crate::machine_info::MachineInfo;
-use crate::page_alloc::PageAllocator;
-use crate::paging::{PageTableBuilder, PageTableResult};
+use crate::vm::KernelAddressSpace;
 use core::ops::Range;
 use core::ptr::addr_of;
-use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{ptr, slice};
+use cfg_if::cfg_if;
 use error::Error;
-use kmm::{AddressRangeExt, BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress};
-use linked_list_allocator::LockedHeap;
-use loader_api::BootInfo;
-use rand_chacha::rand_core::SeedableRng;
-use rand_chacha::ChaCha20Rng;
+use pmm::{BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress};
+use sync::Mutex;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-static BOOT_HART: AtomicUsize = AtomicUsize::new(0);
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    let location = info.location().map(|l| l.file()).unwrap_or("<unknown>");
+    let line = info.location().map(|l| l.line()).unwrap_or(0);
+    let col = info.location().map(|l| l.column()).unwrap_or(0);
 
-/// Main, architecture independent, per-hart functionality.
-/// This function gets called by each arch-specific start function in `arch/<arch>.rs`
-fn main(hartid: usize) -> ! {
-    static INIT: sync::OnceLock<(PageTableResult, &'static BootInfo)> = sync::OnceLock::new();
+    log::error!("hart panicked at {location}:{line}:{col}: \n{}", info.message());
 
-    log::info!("Hart {hartid} started");
+    cfg_if! {
+        if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+            riscv::abort();
+        } else {
+            loop {}
+        }
+    }
+}
 
-    let (page_table_result, boot_info) = INIT
-        .get_or_try_init(init_global)
-        .expect("failed to initialize system");
+fn main<A>(hartid: usize, pmm_arch: &'static Mutex<A>, minfo: &'static MachineInfo) -> !
+where
+    A: pmm::Arch,
+    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
+{
+    static INIT: sync::OnceLock<(KernelAddressSpace, PhysicalAddress)> = sync::OnceLock::new();
 
-    log::debug!("Activating page table for hart {hartid}...");
+    let (kernel_aspace, boot_info) = INIT
+        .get_or_try_init(|| -> Result<(KernelAddressSpace, PhysicalAddress)> {
+            log::info!("\nwelcome to k23 v{}\n\n", env!("CARGO_PKG_VERSION"));
+
+            let loader_regions = LoaderRegions::new::<A>(minfo);
+
+            let mut frame_alloc: BumpAllocator<A> = unsafe {
+                BumpAllocator::new_with_lower_bound(
+                    &minfo.memories,
+                    loader_regions.read_write.end,
+                    VirtualAddress::default(), // while we haven't activated the virtual memory we have not offset
+                )
+            };
+
+            // Move the device tree blob from wherever random place the previous bootloader put it
+            // into a properly allocated place so we don't accidentally override it
+            let fdt = alloc_and_copy_fdt(minfo, &mut frame_alloc)?;
+
+            // Parse the inlined kernel ELF file
+            let kernel = parse_inlined_kernel()?;
+
+            let mut pmm_arch = pmm_arch.lock();
+            // Initialize the kernel address space
+            let kernel_aspace =
+                KernelAddressSpace::new(&mut pmm_arch, &mut frame_alloc, &kernel, loader_regions, minfo)?;
+
+            // Set up the BootInfo struct that we will pass on to the kernel
+            let boot_info =
+                boot_info::init_boot_info(&mut frame_alloc, hartid, &kernel_aspace, &kernel, fdt)?;
+
+            Ok((kernel_aspace, boot_info))
+        })
+        .expect("failed global initialization");
+
     // SAFETY: This will invalidate all pointers and references that don't point to the loader stack
     // (the FDT slice and importantly the frame allocator) so care has to be taken to either
     // not access these anymore (which should be easy, this is one of the last steps we perform before hading off
     // to the kernel) or to map them into virtual memory first!
     unsafe {
-        page_table_result.activate_table();
+        log::debug!("[HART {hartid}] Activating kernel address space...");
+        kernel_aspace.activate::<A>();
     }
 
-    log::debug!("Initializing TLS region for hart {hartid}...");
-    page_table_result.init_tls_region_for_hart(hartid);
+    log::debug!("[HART {hartid}] Initializing TLS region...");
+    kernel_aspace.init_tls_region_for_hart(hartid);
 
-    // we jump to the kernel here
+    // Safety: We essentially jump to arbitrary memory here. But we have no choice
+    // other than to rely on `KernelAddressSpace::entry_virt` being correct.
     unsafe {
-        arch::switch_to_kernel(
+        arch::handoff_to_kernel(
             hartid,
-            page_table_result.kernel_entry(),
-            page_table_result.stack_region_for_hart(hartid),
-            page_table_result
+            kernel_aspace.entry_virt(),
+            kernel_aspace.stack_region_for_hart(hartid),
+            kernel_aspace
                 .tls_region_for_hart(hartid)
                 .unwrap_or_default()
                 .start,
-            boot_info,
+            // TODO make fn
+            kernel_aspace.physmap().start.add(boot_info.as_raw()),
         )
     }
 }
 
-/// Main, architecture independent, global functionality.
-///
-/// This is essentially the one-time init portion of the `main` function.
-fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
-    let machine_info = arch::machine_info();
-
-    // parse our own regions for later mapping
-    let loader_regions = LoaderRegions::new(machine_info);
-    log::trace!("{loader_regions:?}");
-
-    // init frame allocator
-    let mut frame_alloc: BumpAllocator<kconfig::MEMORY_MODE> = unsafe {
-        BumpAllocator::new_with_lower_bound(
-            &machine_info.memories,
-            loader_regions.read_write.end,
-            VirtualAddress::default(), // while we haven't activated the virtual memory we have not offset
-        )
-    };
-
-    // Set up the virtual memory "allocator" that we pull memory region assignments from for
-    // the various kernel regions
-    let mut page_alloc = if kconfig::KASLR {
-        PageAllocator::new(ChaCha20Rng::from_seed(
-            machine_info.rng_seed.unwrap()[0..32].try_into().unwrap(),
-        ))
-    } else {
-        PageAllocator::new_no_kaslr()
-    };
-
-    let physical_memory_offset = page_alloc
-        .reserve_range(machine_info.memory_hull().size(), kconfig::PAGE_SIZE)
-        .start;
-
-    // Move the FDT to a safe location, so we don't accidentally overwrite it
-    log::trace!("copying FDT to safe location...");
-    let fdt_offset = allocate_and_copy_fdt(machine_info, &mut frame_alloc, physical_memory_offset)?;
-
-    // init heap allocator
-    init_global_allocator(machine_info);
-
-    // decompress & parse kernel
-    log::trace!("parsing kernel...");
-    let kernel = Kernel::from_compressed(kernel::KERNEL_BYTES, &mut frame_alloc)?;
-
-    log::trace!("initializing page tables...");
-    let page_table_result =
-        PageTableBuilder::from_alloc(&mut frame_alloc, physical_memory_offset, &mut page_alloc)?
-            .map_kernel(&kernel, machine_info)?
-            .map_physical_memory(machine_info)?
-            .identity_map_loader(&loader_regions)?
-            .print_statistics()
-            .result();
-
-    let hartid = BOOT_HART.load(Ordering::Relaxed);
-
-    // init boot info
-    let boot_info = init_boot_info(
-        &mut frame_alloc,
-        hartid,
-        &page_table_result,
-        fdt_offset,
-        &kernel,
-        physical_memory_offset,
-    )?;
-
-    Ok((page_table_result, boot_info))
-}
-
-/// Moves the FDT from wherever the previous bootloader placed it into a properly allocated place,
-/// so we don't accidentally override it
-///
-/// # Errors
-///
-/// Returns an error if allocation fails.
-pub fn allocate_and_copy_fdt(
+pub fn alloc_and_copy_fdt<A>(
     machine_info: &MachineInfo,
-    alloc: &mut BumpAllocator<kconfig::MEMORY_MODE>,
-    physmem_off: VirtualAddress,
-) -> Result<VirtualAddress> {
-    let frames = machine_info.fdt.len().div_ceil(kconfig::PAGE_SIZE);
+    alloc: &mut BumpAllocator<A>,
+) -> Result<PhysicalAddress>
+where
+    A: pmm::Arch,
+{
+    let frames = machine_info.fdt.len().div_ceil(A::PAGE_SIZE);
     let base = alloc.allocate_frames(frames)?;
 
     unsafe {
@@ -162,20 +134,9 @@ pub fn allocate_and_copy_fdt(
         ptr::copy_nonoverlapping(machine_info.fdt.as_ptr(), dst.as_mut_ptr(), dst.len());
     }
 
-    Ok(physmem_off.add(base.as_raw()))
+    Ok(base)
 }
 
-fn init_global_allocator(machine_info: &MachineInfo) {
-    #[global_allocator]
-    static ALLOC: LockedHeap = LockedHeap::empty();
-
-    unsafe {
-        ALLOC.lock().init_from_phys_range(&machine_info.memories[0]);
-    }
-}
-
-/// Information about our own memory regions.
-/// Used for identity mapping and calculating available physical memory.
 #[derive(Debug)]
 pub struct LoaderRegions {
     pub executable: Range<PhysicalAddress>,
@@ -185,7 +146,10 @@ pub struct LoaderRegions {
 
 impl LoaderRegions {
     #[must_use]
-    pub fn new(machine_info: &MachineInfo) -> Self {
+    pub fn new<A>(machine_info: &MachineInfo) -> Self
+    where
+        A: pmm::Arch,
+    {
         extern "C" {
             static __text_start: u8;
             static __text_end: u8;
@@ -209,9 +173,7 @@ impl LoaderRegions {
             let start = PhysicalAddress::new(addr_of!(__bss_start) as usize);
             let stack_start = PhysicalAddress::new(addr_of!(__stack_start) as usize);
 
-            start
-                ..stack_start
-                    .add(machine_info.cpus * kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE)
+            start..stack_start.add(machine_info.cpus * STACK_SIZE_PAGES * A::PAGE_SIZE)
         };
 
         LoaderRegions {

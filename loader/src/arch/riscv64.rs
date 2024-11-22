@@ -1,20 +1,9 @@
-use crate::kconfig;
 use crate::machine_info::MachineInfo;
 use core::arch::{asm, naked_asm};
 use core::ops::Range;
-use core::ptr;
 use core::ptr::addr_of_mut;
-use core::sync::atomic::{AtomicPtr, Ordering};
-use kmm::VirtualAddress;
-use loader_api::BootInfo;
-use sync::OnceLock;
-
-static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
-static RAW_MACHINE_INFO: AtomicPtr<u8> = AtomicPtr::new(ptr::null_mut());
-
-pub fn machine_info() -> &'static MachineInfo<'static> {
-    MACHINE_INFO.get().expect("MachineInfo not initialized")
-}
+use sync::Mutex;
+use crate::{STACK_SIZE_PAGES, LOG_LEVEL, VirtualAddress};
 
 /// The main entry point for the loader
 ///
@@ -40,7 +29,7 @@ unsafe extern "C" fn _start() -> ! {
 
         "jal zero, {start_rust}",   // jump into Rust
 
-        stack_size = const kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE,
+        stack_size = const STACK_SIZE_PAGES * 4096, // TODO make dynamic
 
         fillstack = sym fillstack,
         start_rust = sym start,
@@ -49,26 +38,27 @@ unsafe extern "C" fn _start() -> ! {
 
 /// Architecture specific startup code
 fn start(hartid: usize, opaque: *const u8) -> ! {
-    // Disable interrupts. The kernel will re-enable interrupts
-    // when it's ready to handle them
-    riscv::interrupt::disable();
+    static INIT: sync::OnceLock<(MachineInfo, Mutex<pmm::Riscv64Sv39>)> = sync::OnceLock::new();
 
-    if hartid == 0 {
+    // Pick a hart (whichever arrives here first) to perform global
+    // initialization. All other harts will spin-wait here until it is done.
+    let (minfo, pmm_arch) = INIT.get_or_try_init(|| -> crate::Result<_> {
         // zero out the BSS section, under QEMU we already get zeroed memory
         // but on actual hardware this might not be the case
         zero_bss();
 
-        semihosting_logger::init(kconfig::LOG_LEVEL.to_level_filter());
+        semihosting_logger::init(LOG_LEVEL.to_level_filter());
 
-        RAW_MACHINE_INFO.store(opaque as *mut u8, Ordering::Relaxed);
-        MACHINE_INFO
-            .get_or_try_init(|| unsafe { MachineInfo::from_dtb(opaque) })
-            .expect("failed to parse machine info");
+        let minfo = unsafe { MachineInfo::from_dtb(opaque)? };
+        log::info!("{minfo:?}");
 
-        log::info!("{MACHINE_INFO:?}");
-    }
+        Ok((minfo, Mutex::new(pmm::Riscv64Sv39)))
+    })
+    .expect("failed arch global initialization");
 
-    crate::main(hartid);
+    log::trace!("[HART {hartid}] hart is booting...");
+    
+    crate::main(hartid, pmm_arch, minfo)
 }
 
 fn zero_bss() {
@@ -108,25 +98,24 @@ unsafe extern "C" fn fillstack() {
     )
 }
 
-pub unsafe fn switch_to_kernel(
+pub unsafe fn handoff_to_kernel(
     hartid: usize,
     entry: VirtualAddress,
     stack: Range<VirtualAddress>,
     thread_ptr: VirtualAddress,
-    boot_info: &'static BootInfo,
+    boot_info: VirtualAddress
 ) -> ! {
     let stack_ptr = stack.end;
     let stack_size = stack_ptr.sub_addr(stack.start);
 
     log::debug!("Hart {hartid} Jumping to kernel ({entry:?})...");
-    log::trace!("Hart {hartid} Kernel arguments: sp = {stack_ptr:?}, tp = {thread_ptr:?}, a0 = {hartid}, a1 = {boot_info:p}");
+    log::trace!("Hart {hartid} Kernel arguments: sp = {stack_ptr:?}, tp = {thread_ptr:?}, a0 = {hartid}, a1 = {boot_info:?}");
 
-    asm!(
+    asm! {
         "mv  sp, {stack_ptr}", // Set the kernel stack ptr
 
         //  fill stack with canary pattern
         "call {fillstack}",
-
         "mv tp, {thread_ptr}",  // Set thread ptr
         "mv ra, zero", // Reset return address
 
@@ -137,12 +126,12 @@ pub unsafe fn switch_to_kernel(
         "   wfi",
         "   j 1b",
         in("a0") hartid,
-        in("a1") boot_info,
+        in("a1") boot_info.as_raw(),
         in("t0") stack_size,
         stack_ptr = in(reg) stack_ptr.as_raw(),
         thread_ptr = in(reg) thread_ptr.as_raw(),
         func = in(reg) entry.as_raw(),
         fillstack = sym fillstack,
         options(noreturn)
-    )
+    }
 }

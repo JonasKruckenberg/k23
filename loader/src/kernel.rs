@@ -1,79 +1,54 @@
 use crate::error::Error;
-use crate::kconfig;
-use core::slice;
-use kmm::{BumpAllocator, FrameAllocator};
 use loader_api::LoaderConfig;
-use object::elf::{ProgramHeader64, PT_LOAD};
-use object::read::elf::ProgramHeader;
-use object::{Endianness, Object, ObjectSection};
+use xmas_elf::program::{ProgramHeader, Type};
 
 /// The inlined, compressed kernel
-pub static KERNEL_BYTES: &[u8] = include_bytes!(env!("KERNEL"));
+static KERNEL_BYTES: AlignedBytes = AlignedBytes(*include_bytes!(env!("KERNEL")));
+#[repr(C, align(4096))]
+struct AlignedBytes([u8; include_bytes!(env!("KERNEL")).len()]);
+
+pub fn parse_inlined_kernel() -> crate::Result<Kernel<'static>> {
+    let elf_file = xmas_elf::ElfFile::new(&KERNEL_BYTES.0).map_err(Error::Elf)?;
+
+    let loader_config = unsafe {
+        let section = elf_file
+            .find_section_by_name(".loader_config")
+            .expect("missing .loader_config section");
+        let raw = section.raw_data(&elf_file);
+
+        let ptr: *const LoaderConfig = raw.as_ptr().cast();
+        let cfg = &*ptr;
+
+        cfg.assert_valid();
+        cfg
+    };
+
+    Ok(Kernel {
+        elf_file,
+        loader_config,
+    })
+}
 
 /// The decompressed and parsed kernel ELF plus the embedded loader configuration data
 pub struct Kernel<'a> {
-    pub elf_file: object::read::elf::ElfFile64<'a>,
+    pub elf_file: xmas_elf::ElfFile<'a>,
     pub loader_config: &'a LoaderConfig,
 }
 
 impl<'a> Kernel<'a> {
-    pub fn from_compressed(
-        compressed: &'a [u8],
-        alloc: &mut BumpAllocator<'_, kconfig::MEMORY_MODE>,
-    ) -> crate::Result<Self> {
-        log::info!("Decompressing kernel...");
-        let (uncompressed_size, input) =
-            lz4_flex::block::uncompressed_size(compressed).map_err(Error::Decompression)?;
-
-        let uncompressed_kernel = unsafe {
-            let frames = uncompressed_size.div_ceil(kconfig::PAGE_SIZE);
-            let base = alloc.allocate_frames(frames)?;
-
-            slice::from_raw_parts_mut(base.as_raw() as *mut u8, frames * kconfig::PAGE_SIZE)
-        };
-
-        lz4_flex::decompress_into(input, uncompressed_kernel).map_err(Error::Decompression)?;
-
-        Self::from_bytes(uncompressed_kernel)
-    }
-
-    pub fn from_bytes(bytes: &'a [u8]) -> crate::Result<Self> {
-        let elf_file = object::read::elf::ElfFile::parse(bytes)?;
-
-        let loader_config = unsafe {
-            let section = elf_file
-                .section_by_name(".loader_config")
-                .expect("missing .loader_config section");
-            let raw = section.data()?;
-
-            let ptr: *const LoaderConfig = raw.as_ptr().cast();
-            let cfg = &*ptr;
-
-            cfg.assert_valid();
-            cfg
-        };
-
-        Ok(Self {
-            elf_file,
-            loader_config,
-        })
-    }
-
     /// Returns the size of the kernel in memory.
     pub fn mem_size(&self) -> u64 {
-        use object::Endianness;
-
         let max_addr = self
             .loadable_program_headers()
-            .map(|ph| ph.p_vaddr(Endianness::default()) + ph.p_memsz(Endianness::default()))
+            .map(|ph| ph.virtual_addr() + ph.mem_size())
             .max()
-            .unwrap_or(0);
+            .unwrap_or_default();
 
         let min_addr = self
             .loadable_program_headers()
-            .map(|ph| ph.p_vaddr(Endianness::default()))
+            .map(|ph| ph.virtual_addr())
             .min()
-            .unwrap_or(0);
+            .unwrap_or_default();
 
         max_addr - min_addr
     }
@@ -83,16 +58,12 @@ impl<'a> Kernel<'a> {
     pub fn max_align(&self) -> u64 {
         let load_program_headers = self.loadable_program_headers();
 
-        load_program_headers
-            .map(|ph| ph.p_align(Endianness::default()))
-            .max()
-            .unwrap_or(1)
+        load_program_headers.map(|ph| ph.align()).max().unwrap_or(1)
     }
 
-    fn loadable_program_headers(&self) -> impl Iterator<Item = &ProgramHeader64<Endianness>> + '_ {
+    fn loadable_program_headers(&self) -> impl Iterator<Item = ProgramHeader> + '_ {
         self.elf_file
-            .elf_program_headers()
-            .iter()
-            .filter(|ph| ph.p_type(Endianness::default()) == PT_LOAD)
+            .program_iter()
+            .filter(|ph| ph.get_type().unwrap() == Type::Load)
     }
 }
