@@ -57,7 +57,7 @@ where
 
     let (kernel_aspace, boot_info) = INIT
         .get_or_try_init(|| -> Result<(KernelAddressSpace, PhysicalAddress)> {
-            log::info!("\nwelcome to k23 v{}\n\n", env!("CARGO_PKG_VERSION"));
+            log::info!("welcome to k23 v{}", env!("CARGO_PKG_VERSION"));
 
             let loader_regions = LoaderRegions::new::<A>(minfo);
 

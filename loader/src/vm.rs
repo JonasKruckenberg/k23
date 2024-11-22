@@ -220,7 +220,8 @@ where
         "Loaded ELF file is not sufficiently aligned"
     );
 
-    debug_print_sections(&kernel.elf_file)?;
+    // print the elf sections for debugging purposes
+    kernel.debug_print_elf()?;
 
     let mut maybe_tls_allocation = None;
 
@@ -612,21 +613,6 @@ where
     }
 
     Ok(dst)
-}
-
-fn debug_print_sections(elf_file: &xmas_elf::ElfFile) -> crate::Result<()> {
-    log::trace!("Idx Name              Offset   Vaddr            Filesz   Memsz");
-    for (idx, sec) in elf_file.section_iter().enumerate() {
-        log::trace!(
-            "{idx:>3} {name:<17} {offset:#08x} {vaddr:#016x} {filesz:#08x} {memsz:#08x}",
-            name = sec.get_name(elf_file).unwrap_or(""),
-            offset = sec.offset(),
-            vaddr = sec.address(),
-            filesz = sec.entry_size(),
-            memsz = sec.size(),
-        );
-    }
-    Ok(())
 }
 
 pub struct ProgramHeader<'a> {

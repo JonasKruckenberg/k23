@@ -60,6 +60,21 @@ impl<'a> Kernel<'a> {
 
         load_program_headers.map(|ph| ph.align()).max().unwrap_or(1)
     }
+    
+    pub fn debug_print_elf(&self) -> crate::Result<()> {
+        log::trace!("Idx Name              Offset   Vaddr            Filesz   Memsz");
+        for (idx, sec) in self.elf_file.section_iter().enumerate() {
+            log::trace!(
+            "{idx:>3} {name:<17} {offset:#08x} {vaddr:#016x} {filesz:#08x} {memsz:#08x}",
+            name = sec.get_name(&self.elf_file).unwrap_or(""),
+            offset = sec.offset(),
+            vaddr = sec.address(),
+            filesz = sec.entry_size(),
+            memsz = sec.size(),
+        );
+        }
+        Ok(())
+    }
 
     fn loadable_program_headers(&self) -> impl Iterator<Item = ProgramHeader> + '_ {
         self.elf_file
