@@ -1,7 +1,9 @@
-use core::{iter, slice};
+use crate::{
+    AddressRangeExt, Arch, Error, FrameAllocator, FrameUsage, PhysicalAddress, VirtualAddress,
+};
 use core::marker::PhantomData;
 use core::ops::Range;
-use crate::{AddressRangeExt, Arch, Error, FrameAllocator, FrameUsage, PhysicalAddress, VirtualAddress};
+use core::{iter, slice};
 
 pub struct BumpAllocator<'a, A> {
     regions: &'a [Range<PhysicalAddress>],
@@ -9,7 +11,7 @@ pub struct BumpAllocator<'a, A> {
     offset: usize,
     lower_bound: PhysicalAddress,
     pub(crate) physmem_off: VirtualAddress,
-    _m: PhantomData<A>
+    _m: PhantomData<A>,
 }
 
 impl<'a, A> BumpAllocator<'a, A> {
@@ -25,7 +27,7 @@ impl<'a, A> BumpAllocator<'a, A> {
             offset: 0,
             lower_bound: PhysicalAddress(0),
             physmem_off,
-            _m: PhantomData
+            _m: PhantomData,
         }
     }
 
@@ -45,7 +47,7 @@ impl<'a, A> BumpAllocator<'a, A> {
             offset: 0,
             lower_bound,
             physmem_off,
-            _m: PhantomData
+            _m: PhantomData,
         }
     }
 
@@ -127,7 +129,10 @@ impl Iterator for UsedRegions<'_> {
     }
 }
 
-impl<A> FrameAllocator<A> for BumpAllocator<'_, A> where A: Arch {
+impl<A> FrameAllocator<A> for BumpAllocator<'_, A>
+where
+    A: Arch,
+{
     fn allocate_frames(&mut self, frames: usize) -> crate::Result<PhysicalAddress> {
         let requested_size = frames * A::PAGE_SIZE;
         let mut offset = self.offset;

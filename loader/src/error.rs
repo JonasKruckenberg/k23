@@ -7,5 +7,5 @@ pub enum Error {
     #[error("Failed to parse kernel Elf file")]
     Elf(&'static str),
     #[error("Failed to set up page tables")]
-    Pmm(#[from] pmm::Error)
+    Pmm(#[from] pmm::Error),
 }

@@ -9,7 +9,7 @@ use core::{cmp, fmt};
 
 pub use arch::*;
 pub use error::Error;
-pub use frame_alloc::{bump::BumpAllocator, bitmap::BitMapAllocator, FrameAllocator, FrameUsage};
+pub use frame_alloc::{bitmap::BitMapAllocator, bump::BumpAllocator, FrameAllocator, FrameUsage};
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[repr(transparent)]

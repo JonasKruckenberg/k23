@@ -10,7 +10,7 @@ fn main() {
         println!("cargo::rerun-if-changed={}", kernel.display());
         println!("cargo::rustc-env=KERNEL={}", kernel.display());
     }
-    
+
     copy_linker_script();
 }
 

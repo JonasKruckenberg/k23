@@ -21,10 +21,10 @@ pub const ENABLE_KASLR: bool = true;
 use crate::kernel::{parse_inlined_kernel, Kernel};
 use crate::machine_info::MachineInfo;
 use crate::vm::KernelAddressSpace;
+use cfg_if::cfg_if;
 use core::ops::Range;
 use core::ptr::addr_of;
 use core::{ptr, slice};
-use cfg_if::cfg_if;
 use error::Error;
 use pmm::{BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress};
 use sync::Mutex;
@@ -37,7 +37,10 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     let line = info.location().map(|l| l.line()).unwrap_or(0);
     let col = info.location().map(|l| l.column()).unwrap_or(0);
 
-    log::error!("hart panicked at {location}:{line}:{col}: \n{}", info.message());
+    log::error!(
+        "hart panicked at {location}:{line}:{col}: \n{}",
+        info.message()
+    );
 
     cfg_if! {
         if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
@@ -79,8 +82,13 @@ where
 
             let mut pmm_arch = pmm_arch.lock();
             // Initialize the kernel address space
-            let kernel_aspace =
-                KernelAddressSpace::new(&mut pmm_arch, &mut frame_alloc, &kernel, loader_regions, minfo)?;
+            let kernel_aspace = KernelAddressSpace::new(
+                &mut pmm_arch,
+                &mut frame_alloc,
+                &kernel,
+                loader_regions,
+                minfo,
+            )?;
 
             // Set up the BootInfo struct that we will pass on to the kernel
             let boot_info =

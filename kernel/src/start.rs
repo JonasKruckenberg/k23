@@ -65,9 +65,9 @@ fn init(_boot_info: &'static loader_api::BootInfo) {
     // panic_unwind::set_hook(Box::new(|info| {
     //     let location = info.location();
     //     let msg = payload_as_str(info.payload());
-    // 
+    //
     //     log::error!("hart panicked at {location}:\n{msg}");
-    // 
+    //
     //     // TODO this deadlocks :///
     //     // let elf = unsafe {
     //     //     let start = boot_info

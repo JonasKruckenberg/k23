@@ -1,9 +1,9 @@
 use crate::machine_info::MachineInfo;
+use crate::{VirtualAddress, LOG_LEVEL, STACK_SIZE_PAGES};
 use core::arch::{asm, naked_asm};
 use core::ops::Range;
 use core::ptr::addr_of_mut;
 use sync::Mutex;
-use crate::{STACK_SIZE_PAGES, LOG_LEVEL, VirtualAddress};
 
 /// The main entry point for the loader
 ///
@@ -42,22 +42,23 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
 
     // Pick a hart (whichever arrives here first) to perform global
     // initialization. All other harts will spin-wait here until it is done.
-    let (minfo, pmm_arch) = INIT.get_or_try_init(|| -> crate::Result<_> {
-        // zero out the BSS section, under QEMU we already get zeroed memory
-        // but on actual hardware this might not be the case
-        zero_bss();
+    let (minfo, pmm_arch) = INIT
+        .get_or_try_init(|| -> crate::Result<_> {
+            // zero out the BSS section, under QEMU we already get zeroed memory
+            // but on actual hardware this might not be the case
+            zero_bss();
 
-        semihosting_logger::init(LOG_LEVEL.to_level_filter());
+            semihosting_logger::init(LOG_LEVEL.to_level_filter());
 
-        let minfo = unsafe { MachineInfo::from_dtb(opaque)? };
-        log::info!("{minfo:?}");
+            let minfo = unsafe { MachineInfo::from_dtb(opaque)? };
+            log::info!("{minfo:?}");
 
-        Ok((minfo, Mutex::new(pmm::Riscv64Sv39)))
-    })
-    .expect("failed arch global initialization");
+            Ok((minfo, Mutex::new(pmm::Riscv64Sv39)))
+        })
+        .expect("failed arch global initialization");
 
     log::trace!("[HART {hartid}] hart is booting...");
-    
+
     crate::main(hartid, pmm_arch, minfo)
 }
 
@@ -103,7 +104,7 @@ pub unsafe fn handoff_to_kernel(
     entry: VirtualAddress,
     stack: Range<VirtualAddress>,
     thread_ptr: VirtualAddress,
-    boot_info: VirtualAddress
+    boot_info: VirtualAddress,
 ) -> ! {
     let stack_ptr = stack.end;
     let stack_size = stack_ptr.sub_addr(stack.start);

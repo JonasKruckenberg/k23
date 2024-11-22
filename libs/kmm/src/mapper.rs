@@ -260,7 +260,8 @@ impl<'a, M: Mode> Mapper<'a, M> {
         let on_leaf = |this: &mut Self, entry: &mut Entry<M>| {
             assert!(
                 entry.is_vacant(),
-                "expected table entry to be vacant, to remap use  the remap_ methods. entry address {:?} entry {entry:?}", entry.get_address(),
+                "attempted to map entry {entry:?} ({virt:?} => {phys:?}) which is already mapped to {:?}", 
+                entry.get_address()
             );
 
             entry.set_address_and_flags(phys, flags.union(M::ENTRY_FLAGS_LEAF));

@@ -13,7 +13,7 @@ dtb-parser.workspace = true
 
 log.workspace = true
 cfg-if.workspace = true
-xmas-elf = "0.9.1"
+xmas-elf.workspace = true
 onlyerror.workspace = true
 arrayvec.workspace = true
 bitflags.workspace = true

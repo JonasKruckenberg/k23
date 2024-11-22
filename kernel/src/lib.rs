@@ -23,6 +23,6 @@ pub const HEAP_SIZE_PAGES: u32 = 8192; // 32 MiB
 extern crate alloc;
 
 pub mod arch;
-mod start;
 mod heap;
+mod start;
 // mod tests;

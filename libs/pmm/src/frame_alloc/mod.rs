@@ -1,5 +1,5 @@
-pub mod bump;
 pub mod bitmap;
+pub mod bump;
 
 use crate::{Arch, PhysicalAddress, VirtualAddress};
 
