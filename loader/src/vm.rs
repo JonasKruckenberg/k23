@@ -106,6 +106,12 @@ impl KernelAddressSpace {
         self.physmap.clone()
     }
 
+    pub fn tls_template(&self) -> Option<TlsTemplate> {
+        self.maybe_tls_allocation
+            .as_ref()
+            .map(|a| a.tls_template.clone())
+    }
+
     /// The kernel stack region for a given hartid.
     pub fn stack_region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
         let end = self.stacks_virt.end.sub(self.per_hart_stack_size * hartid);

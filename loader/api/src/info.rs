@@ -1,4 +1,5 @@
 use core::ops::Range;
+use core::ptr::NonNull;
 use pmm::{PhysicalAddress, VirtualAddress};
 
 #[derive(Debug)]
@@ -13,7 +14,7 @@ pub struct BootInfo {
     /// information to Rust types. It also marks any memory regions that the bootloader uses in
     /// the memory map before passing it to the kernel. Regions marked as usable can be freely
     /// used by the kernel.
-    pub memory_regions: &'static mut [MemoryRegion],
+    pub memory_regions: NonNull<[MemoryRegion]>,
     /// The thread local storage (TLS) template of the kernel executable, if present.
     ///
     /// Note that the loader will already set up TLS regions for each hart reported as `online`
@@ -28,9 +29,9 @@ pub struct BootInfo {
     /// frames that are also mapped at other virtual addresses can easily break memory safety and
     /// cause undefined behavior. Only frames reported as `USABLE` by the memory map in the `BootInfo`
     /// can be safely accessed.
-    pub physical_memory_offset: VirtualAddress,
+    pub physmap: Range<VirtualAddress>,
     /// Virtual address of the flattened device tree.
-    pub fdt_offset: VirtualAddress,
+    pub fdt_phys: PhysicalAddress,
     /// Virtual memory region occupied by the loader.
     ///
     /// This region is identity-mapped contains the loader executable.
@@ -40,18 +41,40 @@ pub struct BootInfo {
     /// then jump to the kernel.
     ///
     /// The kernel should use this information to unmap the loader region after taking control.
-    pub loader_region: Range<VirtualAddress>,
-    /// Virtual memory region reserved for the kernel heap.
-    ///
-    /// Note that this is **not** mapped, as the kernel should map
-    /// this region on-demand.
-    pub heap_region: Option<Range<VirtualAddress>>,
+    pub loader_phys: Range<PhysicalAddress>,
     /// Virtual address of the loaded kernel image.
-    pub kernel_image_offset: VirtualAddress,
+    pub kernel_virt_base: VirtualAddress,
     /// Physical memory region where the kernel ELF file resides.
     ///
     /// This field can be used by the kernel to perform introspection of its own ELF file.
-    pub kernel_elf: Range<PhysicalAddress>,
+    pub kernel_phys: Range<PhysicalAddress>,
+}
+
+unsafe impl Send for BootInfo {}
+unsafe impl Sync for BootInfo {}
+
+impl BootInfo {
+    pub fn new(
+        boot_hart: usize,
+        memory_regions: NonNull<[MemoryRegion]>,
+        tls_template: Option<TlsTemplate>,
+        physmap: Range<VirtualAddress>,
+        fdt_phys: PhysicalAddress,
+        loader_phys: Range<PhysicalAddress>,
+        kernel_virt_base: VirtualAddress,
+        kernel_phys: Range<PhysicalAddress>,
+    ) -> Self {
+        Self {
+            boot_hart,
+            memory_regions,
+            tls_template,
+            physmap,
+            fdt_phys,
+            loader_phys,
+            kernel_virt_base,
+            kernel_phys,
+        }
+    }
 }
 
 /// Represent a physical memory region.

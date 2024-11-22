@@ -3,7 +3,7 @@ use crate::vm::KernelAddressSpace;
 use crate::{BumpAllocator, FrameAllocator, PhysicalAddress};
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
-use core::slice;
+use core::{ptr, slice};
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
 
 pub fn init_boot_info<A>(
@@ -26,22 +26,21 @@ where
         PhysicalAddress::new(r.start as usize)..PhysicalAddress::new(r.end as usize)
     };
 
-    todo!();
-    // unsafe {
-    //     ptr::write(
-    //         frame.as_raw() as *mut BootInfo,
-    //         BootInfo {
-    //             boot_hart,
-    //             memory_regions,
-    //             tls_template: None,
-    //             physmem: kernel_aspace.physical_memory_offset(),
-    //             fdt,
-    //             loader_region: kernel_aspace.loader_phys().clone(),
-    //             kernel_virt: kernel_aspace.kernel_virt(),
-    //             kernel_phys,
-    //         },
-    //     );
-    // }
+    unsafe {
+        ptr::write(
+            frame.as_raw() as *mut BootInfo,
+            BootInfo::new(
+                boot_hart,
+                memory_regions,
+                kernel_aspace.tls_template(),
+                kernel_aspace.physmap(),
+                fdt,
+                kernel_aspace.loader_phys(),
+                kernel_aspace.kernel_virt().start,
+                kernel_phys,
+            ),
+        );
+    }
 
     Ok(frame)
 }
