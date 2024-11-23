@@ -1,25 +1,25 @@
-use crate::{AddressRangeExt, Flush, Mapper, Mode, PhysicalAddress, VirtualAddress};
+use crate::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use core::ops::Div;
 use core::{ptr, slice};
+use kmm::{Flush, Mapper, Mode};
 use xmas_elf::dynamic::Tag;
-use xmas_elf::P64;
 use xmas_elf::program::{SegmentData, Type};
-
-impl<'a, M: Mode> Mapper<'a, M> {
-    pub fn elf(&mut self, virtual_base: VirtualAddress) -> ElfMapper<'_, 'a, M> {
-        ElfMapper {
-            inner: self,
-            virtual_base,
-        }
-    }
-}
+use xmas_elf::P64;
+use loader_api::TlsTemplate;
 
 pub struct ElfMapper<'p, 'a, M> {
     inner: &'p mut Mapper<'a, M>,
     virtual_base: VirtualAddress,
 }
 
-impl<M: Mode> ElfMapper<'_, '_, M> {
+impl<'p, 'a, M: Mode> ElfMapper<'p, 'a, M> {
+    pub fn new(mapper: &'p mut Mapper<'a, M>, virtual_base: VirtualAddress) -> Self {
+        Self {
+            inner: mapper,
+            virtual_base,
+        }
+    }
+
     /// Maps an ELF file into virtual memory.
     ///
     /// # Errors
@@ -39,7 +39,7 @@ impl<M: Mode> ElfMapper<'_, '_, M> {
             physical_base.is_aligned(M::PAGE_SIZE),
             "Loaded ELF file is not sufficiently aligned"
         );
-        
+
         let mut tls_template = None;
 
         // Load the segments into virtual memory.
@@ -215,7 +215,8 @@ impl<M: Mode> ElfMapper<'_, '_, M> {
     ) -> crate::Result<()> {
         if let Some(rela_info) = ph.parse_rela(elf_file)? {
             let relas = unsafe {
-                let ptr = phys_base.add(rela_info.offset as usize).as_raw() as *const xmas_elf::sections::Rela<P64>;
+                let ptr = phys_base.add(rela_info.offset as usize).as_raw()
+                    as *const xmas_elf::sections::Rela<P64>;
 
                 slice::from_raw_parts(ptr, rela_info.count as usize)
             };
@@ -313,19 +314,6 @@ fn flags_for_segment<M: Mode>(ph: &ProgramHeader) -> M::EntryFlags {
     } else {
         panic!("invalid segment flags {:?}", ph.p_flags)
     }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub struct TlsTemplate {
-    /// The address of TLS template
-    pub start_addr: VirtualAddress,
-    /// The size of the TLS segment in memory
-    pub mem_size: usize,
-    /// The size of the TLS segment in the elf file.
-    /// If the TLS segment contains zero-initialized data (tbss) then this size will be smaller than
-    /// `mem_size`
-    pub file_size: usize,
 }
 
 pub struct ProgramHeader<'a> {

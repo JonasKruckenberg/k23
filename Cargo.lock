@@ -489,7 +489,6 @@ dependencies = [
  "log",
  "onlyerror",
  "riscv",
- "xmas-elf",
 ]
 
 [[package]]

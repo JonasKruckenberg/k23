@@ -1,11 +1,11 @@
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
+use crate::map_elf::ElfMapper;
 use crate::{kconfig, LoaderRegions, PageAllocator};
 use core::ops::Range;
 use core::{ptr, slice};
-use kmm::{
-    BumpAllocator, EntryFlags, Flush, Mapper, Mode, PhysicalAddress, TlsTemplate, VirtualAddress,
-};
+use kmm::{BumpAllocator, EntryFlags, Flush, Mapper, Mode, PhysicalAddress, VirtualAddress};
+use loader_api::TlsTemplate;
 
 pub struct PageTableBuilder<'a> {
     /// The offset at which the physical memory should be mapped
@@ -59,9 +59,7 @@ impl<'a> PageTableBuilder<'a> {
         let align = kernel.max_align() as usize;
 
         let kernel_image_offset = self.page_alloc.reserve_range(mem_size, align).start;
-        let maybe_tls_template = self
-            .mapper
-            .elf(kernel_image_offset)
+        let maybe_tls_template = ElfMapper::new(&mut self.mapper, kernel_image_offset)
             .map_elf_file(&kernel.elf_file, &mut self.flush)?;
 
         // Allocate memory for TLS segments
@@ -79,7 +77,8 @@ impl<'a> PageTableBuilder<'a> {
             self = self.map_kernel_heap(heap_size_pages)?;
         }
 
-        self.result.entry = kernel_image_offset.add(usize::try_from(kernel.elf_file.header.pt2.entry_point())?);
+        self.result.entry =
+            kernel_image_offset.add(usize::try_from(kernel.elf_file.header.pt2.entry_point())?);
         self.result.per_hart_stack_size = stack_size_pages * kconfig::PAGE_SIZE;
         self.result.kernel_image_offset = kernel_image_offset;
 

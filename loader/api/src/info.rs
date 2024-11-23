@@ -19,7 +19,7 @@ pub struct BootInfo {
     /// Note that the loader will already set up TLS regions for each hart reported as `online`
     /// by the previous stage bootloader, so this field is rarely needed. Only when the kernel
     /// has ways to bring new harts online after booting, this field is useful.
-    pub tls_template: Option<kmm::TlsTemplate>,
+    pub tls_template: Option<TlsTemplate>,
     /// The virtual address at which the mapping of the physical memory starts.
     ///
     /// Physical addresses can be converted to virtual addresses by adding this offset to them.
@@ -61,7 +61,7 @@ impl BootInfo {
         physical_memory_offset: VirtualAddress,
         kernel_image_offset: VirtualAddress,
         memory_regions: &'static mut [MemoryRegion],
-        tls_template: Option<kmm::TlsTemplate>,
+        tls_template: Option<TlsTemplate>,
         fdt_offset: VirtualAddress,
         loader_region: Range<VirtualAddress>,
         kernel_elf: Range<PhysicalAddress>,
@@ -79,6 +79,19 @@ impl BootInfo {
             heap_region,
         }
     }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone)]
+pub struct TlsTemplate {
+    /// The address of TLS template
+    pub start_addr: VirtualAddress,
+    /// The size of the TLS segment in memory
+    pub mem_size: usize,
+    /// The size of the TLS segment in the elf file.
+    /// If the TLS segment contains zero-initialized data (tbss) then this size will be smaller than
+    /// `mem_size`
+    pub file_size: usize,
 }
 
 /// Represent a physical memory region.

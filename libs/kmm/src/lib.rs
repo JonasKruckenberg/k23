@@ -19,8 +19,6 @@ extern crate kernel as _;
 
 mod alloc;
 mod arch;
-#[cfg(feature = "elf")]
-mod elf;
 mod entry;
 mod error;
 mod flush;
@@ -35,8 +33,6 @@ use core::{cmp, fmt};
 
 pub use alloc::{BitMapAllocator, BumpAllocator, FrameAllocator, FrameUsage};
 pub use arch::*;
-#[cfg(feature = "elf")]
-pub use elf::TlsTemplate;
 pub use error::Error;
 pub use flush::Flush;
 pub use mapper::Mapper;

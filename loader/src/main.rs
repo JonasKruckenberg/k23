@@ -13,6 +13,7 @@ mod machine_info;
 mod page_alloc;
 mod paging;
 mod panic;
+mod map_elf;
 
 use crate::boot_info::init_boot_info;
 use crate::kernel::Kernel;
