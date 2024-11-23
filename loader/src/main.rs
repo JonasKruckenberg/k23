@@ -3,9 +3,6 @@
 #![feature(naked_functions)]
 #![feature(maybe_uninit_slice)]
 
-extern crate alloc;
-extern crate panic_abort;
-
 mod arch;
 mod boot_info;
 mod error;
@@ -15,6 +12,7 @@ mod kernel;
 mod machine_info;
 mod page_alloc;
 mod paging;
+mod panic;
 
 use crate::boot_info::init_boot_info;
 use crate::kernel::Kernel;
@@ -27,7 +25,6 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{ptr, slice};
 use error::Error;
 use kmm::{AddressRangeExt, BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress};
-use linked_list_allocator::LockedHeap;
 use loader_api::BootInfo;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -110,13 +107,11 @@ fn init_global() -> Result<(PageTableResult, &'static BootInfo)> {
     // Move the FDT to a safe location, so we don't accidentally overwrite it
     log::trace!("copying FDT to safe location...");
     let fdt_offset = allocate_and_copy_fdt(machine_info, &mut frame_alloc, physical_memory_offset)?;
-
-    // init heap allocator
-    init_global_allocator(machine_info);
-
+    
     // decompress & parse kernel
     log::trace!("parsing kernel...");
     let kernel = Kernel::from_bytes(&kernel::KERNEL_BYTES.0)?;
+    kernel.debug_print_elf()?;
 
     log::trace!("initializing page tables...");
     let page_table_result =
@@ -163,15 +158,6 @@ pub fn allocate_and_copy_fdt(
     }
 
     Ok(physmem_off.add(base.as_raw()))
-}
-
-fn init_global_allocator(machine_info: &MachineInfo) {
-    #[global_allocator]
-    static ALLOC: LockedHeap = LockedHeap::empty();
-
-    unsafe {
-        ALLOC.lock().init_from_phys_range(&machine_info.memories[0]);
-    }
 }
 
 /// Information about our own memory regions.

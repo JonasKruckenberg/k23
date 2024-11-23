@@ -329,7 +329,6 @@ pub struct TlsTemplate {
 }
 
 pub struct ProgramHeader<'a> {
-    pub p_type: Type,
     pub p_flags: xmas_elf::program::Flags,
     pub align: usize,
     pub offset: usize,
@@ -340,7 +339,7 @@ pub struct ProgramHeader<'a> {
 }
 
 impl ProgramHeader<'_> {
-    pub fn parse_rela(&self, elf_file: &xmas_elf::ElfFile) -> crate::Result<Option<RelaInfo>> {
+    fn parse_rela(&self, elf_file: &xmas_elf::ElfFile) -> crate::Result<Option<RelaInfo>> {
         let data = self.ph.get_data(elf_file).map_err(crate::Error::Elf)?;
         let fields = match data {
             SegmentData::Dynamic32(_) => unimplemented!("32-bit elf files are not supported"),
@@ -415,7 +414,6 @@ impl<'a> TryFrom<xmas_elf::program::ProgramHeader<'a>> for ProgramHeader<'a> {
 
     fn try_from(ph: xmas_elf::program::ProgramHeader<'a>) -> Result<Self, Self::Error> {
         Ok(Self {
-            p_type: ph.get_type().map_err(crate::Error::Elf)?,
             p_flags: ph.flags(),
             align: usize::try_from(ph.align())?,
             offset: usize::try_from(ph.offset())?,
