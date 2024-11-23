@@ -89,11 +89,5 @@ strip = true
 overflow-checks = true
 split-debuginfo = "packed"
 
-[profile.dev.package.lz4_flex]
-opt-level = 3
-
-[profile.test.package.lz4_flex]
-opt-level = 3
-
 [profile.bench]
 debug = true

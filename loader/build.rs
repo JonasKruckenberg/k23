@@ -1,29 +1,17 @@
+use std::env;
 use std::path::{Path, PathBuf};
-use std::{env, fs};
 
 fn main() {
     let workspace_root = env::var_os("__K23_CARGO_RUSTC_CURRENT_DIR").map(PathBuf::from);
-    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
     println!("cargo::rerun-if-env-changed=KERNEL");
     if let (Some(workspace_root), Some(kernel)) = (workspace_root, env::var_os("KERNEL")) {
-        let kernel = PathBuf::from(kernel);
-        let kernel = compress_kernel(&out_dir, &workspace_root.join(kernel));
+        let kernel = workspace_root.join(kernel);
         println!("cargo::rerun-if-changed={}", kernel.display());
         println!("cargo::rustc-env=KERNEL={}", kernel.display());
     }
 
     copy_linker_script();
-}
-
-fn compress_kernel(out_dir: &Path, kernel: &Path) -> PathBuf {
-    let kernel_compressed = out_dir.join("kernel.lz4");
-
-    let input = fs::read(kernel).expect("failed to read file");
-    let compressed = lz4_flex::compress_prepend_size(&input);
-    fs::write(&kernel_compressed, &compressed).expect("failed to write file");
-
-    kernel_compressed
 }
 
 fn copy_linker_script() {

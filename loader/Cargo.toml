@@ -12,9 +12,6 @@ workspace = true
 name = "loader"
 harness = false
 
-[build-dependencies]
-lz4_flex.workspace = true
-
 [dependencies]
 loader-api.workspace = true
 kmm.workspace = true
@@ -28,7 +25,6 @@ cfg-if.workspace = true
 log.workspace = true
 arrayvec.workspace = true
 object = { workspace = true, features = ["read_core", "elf"] }
-lz4_flex.workspace = true
 onlyerror.workspace = true
 rand_chacha = { version = "0.3.1", default-features = false }
 rand = { version = "0.8.5", default-features = false }

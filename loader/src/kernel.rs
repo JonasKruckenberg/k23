@@ -1,14 +1,14 @@
-use crate::error::Error;
-use crate::kconfig;
-use core::slice;
-use kmm::{BumpAllocator, FrameAllocator};
 use loader_api::LoaderConfig;
 use object::elf::{ProgramHeader64, PT_LOAD};
 use object::read::elf::ProgramHeader;
 use object::{Endianness, Object, ObjectSection};
 
-/// The inlined, compressed kernel
-pub static KERNEL_BYTES: &[u8] = include_bytes!(env!("KERNEL"));
+/// The inlined kernel
+pub static KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KERNEL")));
+
+/// Wrapper type for the inlined bytes to ensure proper alignment
+#[repr(C, align(4096))]
+pub struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
 
 /// The decompressed and parsed kernel ELF plus the embedded loader configuration data
 pub struct Kernel<'a> {
@@ -17,26 +17,6 @@ pub struct Kernel<'a> {
 }
 
 impl<'a> Kernel<'a> {
-    pub fn from_compressed(
-        compressed: &'a [u8],
-        alloc: &mut BumpAllocator<'_, kconfig::MEMORY_MODE>,
-    ) -> crate::Result<Self> {
-        log::info!("Decompressing kernel...");
-        let (uncompressed_size, input) =
-            lz4_flex::block::uncompressed_size(compressed).map_err(Error::Decompression)?;
-
-        let uncompressed_kernel = unsafe {
-            let frames = uncompressed_size.div_ceil(kconfig::PAGE_SIZE);
-            let base = alloc.allocate_frames(frames)?;
-
-            slice::from_raw_parts_mut(base.as_raw() as *mut u8, frames * kconfig::PAGE_SIZE)
-        };
-
-        lz4_flex::decompress_into(input, uncompressed_kernel).map_err(Error::Decompression)?;
-
-        Self::from_bytes(uncompressed_kernel)
-    }
-
     pub fn from_bytes(bytes: &'a [u8]) -> crate::Result<Self> {
         let elf_file = object::read::elf::ElfFile::parse(bytes)?;
 
