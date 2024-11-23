@@ -1,12 +1,9 @@
 use crate::{AddressRangeExt, Flush, Mapper, Mode, PhysicalAddress, VirtualAddress};
 use core::ops::Div;
 use core::{ptr, slice};
-use object::elf::{
-    ProgramHeader64, Rela64, DT_RELA, DT_RELACOUNT, DT_RELAENT, DT_RELASZ, PT_DYNAMIC,
-    PT_GNU_RELRO, PT_LOAD, PT_TLS, R_RISCV_RELATIVE,
-};
-use object::read::elf::{Dyn, ElfFile64, ProgramHeader as _, Rela};
-use object::Endianness;
+use xmas_elf::dynamic::Tag;
+use xmas_elf::P64;
+use xmas_elf::program::{SegmentData, Type};
 
 impl<'a, M: Mode> Mapper<'a, M> {
     pub fn elf(&mut self, virtual_base: VirtualAddress) -> ElfMapper<'_, 'a, M> {
@@ -34,33 +31,28 @@ impl<M: Mode> ElfMapper<'_, '_, M> {
     /// Panics on various sanity checks.
     pub fn map_elf_file(
         &mut self,
-        elf_file: &ElfFile64,
+        elf_file: &xmas_elf::ElfFile,
         flush: &mut Flush<M>,
     ) -> crate::Result<Option<TlsTemplate>> {
-        let physical_base = PhysicalAddress::new(elf_file.data().as_ptr() as usize);
+        let physical_base = PhysicalAddress::new(elf_file.input.as_ptr() as usize);
         assert!(
             physical_base.is_aligned(M::PAGE_SIZE),
             "Loaded ELF file is not sufficiently aligned"
         );
-
-        debug_print_sections(elf_file);
-
+        
         let mut tls_template = None;
 
-        let program_headers = elf_file
-            .elf_program_headers()
-            .iter()
-            .filter_map(|h| ProgramHeader::try_from(h).ok());
-
         // Load the segments into virtual memory.
-        for ph in program_headers
-            .clone()
-            .filter(|segment| segment.mem_size > 0)
-        {
-            match ph.p_type {
-                PT_LOAD => self.handle_load_segment(&ph, physical_base, flush)?,
-                PT_TLS => {
-                    let old = tls_template.replace(self.handle_tls_segment(&ph));
+        for ph in elf_file.program_iter() {
+            match ph.get_type().unwrap() {
+                Type::Load => self.handle_load_segment(
+                    &ProgramHeader::try_from(ph).unwrap(),
+                    physical_base,
+                    flush,
+                )?,
+                Type::Tls => {
+                    let old = tls_template
+                        .replace(self.handle_tls_segment(&ProgramHeader::try_from(ph).unwrap()));
                     assert!(old.is_none(), "multiple TLS segments not supported");
                 }
                 _ => {}
@@ -68,17 +60,21 @@ impl<M: Mode> ElfMapper<'_, '_, M> {
         }
 
         // Apply relocations in virtual memory.
-        for ph in program_headers.clone() {
-            if ph.p_type == PT_DYNAMIC {
-                self.handle_dynamic_segment(&ph, physical_base, elf_file)?;
+        for ph in elf_file.program_iter() {
+            if ph.get_type().unwrap() == Type::Dynamic {
+                self.handle_dynamic_segment(
+                    &ProgramHeader::try_from(ph).unwrap(),
+                    physical_base,
+                    elf_file,
+                )?;
             }
         }
 
         // Mark some memory regions as read-only after relocations have been
         // applied.
-        for ph in program_headers.clone() {
-            if ph.p_type == PT_GNU_RELRO {
-                self.handle_relro_segment(&ph, flush)?;
+        for ph in elf_file.program_iter() {
+            if ph.get_type().unwrap() == Type::GnuRelro {
+                self.handle_relro_segment(&ProgramHeader::try_from(ph).unwrap(), flush)?;
             }
         }
 
@@ -215,13 +211,13 @@ impl<M: Mode> ElfMapper<'_, '_, M> {
         &mut self,
         ph: &ProgramHeader,
         phys_base: PhysicalAddress,
-        elf_file: &ElfFile64,
+        elf_file: &xmas_elf::ElfFile,
     ) -> crate::Result<()> {
-        if let Some(rela_info) = ph.parse_rela(elf_file) {
+        if let Some(rela_info) = ph.parse_rela(elf_file)? {
             let relas = unsafe {
-                let ptr = phys_base.add(rela_info.offset).as_raw() as *const Rela64<Endianness>;
+                let ptr = phys_base.add(rela_info.offset as usize).as_raw() as *const xmas_elf::sections::Rela<P64>;
 
-                slice::from_raw_parts(ptr, rela_info.count)
+                slice::from_raw_parts(ptr, rela_info.count as usize)
             };
 
             for rela in relas {
@@ -232,37 +228,33 @@ impl<M: Mode> ElfMapper<'_, '_, M> {
         Ok(())
     }
 
-    fn apply_relocation(&mut self, rela: &Rela64<Endianness>) -> crate::Result<()> {
-        assert!(
-            rela.symbol(Endianness::Little, false).is_none(),
+    fn apply_relocation(&mut self, rela: &xmas_elf::sections::Rela<P64>) -> crate::Result<()> {
+        assert_eq!(
+            rela.get_symbol_table_index(),
+            0,
             "relocations using the symbol table are not supported"
         );
 
-        match rela.r_type(Endianness::Little, false) {
+        const R_RISCV_RELATIVE: u32 = 3;
+
+        match rela.get_type() {
             R_RISCV_RELATIVE => {
                 // Calculate address at which to apply the relocation.
-                let target = self
-                    .virtual_base
-                    .add(rela.r_offset(Endianness::Little) as usize);
+                // dynamic relocations offsets are relative to the virtual layout of the elf,
+                // not the physical file
+                let target = self.virtual_base.add(rela.get_offset() as usize);
 
                 // Calculate the value to store at the relocation target.
-                let value = self
-                    .virtual_base
-                    .offset(rela.r_addend(Endianness::Little) as isize);
+                let value = self.virtual_base.offset(rela.get_addend() as isize);
 
                 let target_phys = self
                     .inner
                     .virt_to_phys(target)
                     .expect("relocation target not mapped");
 
-                // log::trace!("Resolving relocation R_RISCV_RELATIVE at {target:?} to {value:?}",);
-
                 unsafe { (target_phys.as_raw() as *mut usize).write_unaligned(value.as_raw()) };
             }
-            _ => unimplemented!(
-                "unsupported relocation type {:?}",
-                rela.r_type(Endianness::Little, false)
-            ),
+            _ => unimplemented!("unsupported relocation type {}", rela.get_type()),
         }
 
         Ok(())
@@ -311,46 +303,16 @@ impl<M: Mode> ElfMapper<'_, '_, M> {
     }
 }
 
-fn flags_for_segment<M: Mode>(program_header: &ProgramHeader) -> M::EntryFlags {
-    if program_header.p_flags & 0x1 != 0 {
+fn flags_for_segment<M: Mode>(ph: &ProgramHeader) -> M::EntryFlags {
+    if ph.p_flags.is_execute() {
         M::ENTRY_FLAGS_RX
-    } else if program_header.p_flags & 0x2 != 0 {
+    } else if ph.p_flags.is_write() {
         M::ENTRY_FLAGS_RW
-    } else if program_header.p_flags & 0x4 != 0 {
+    } else if ph.p_flags.is_read() {
         M::ENTRY_FLAGS_RO
     } else {
-        panic!("invalid segment flags {:?}", program_header.p_flags)
+        panic!("invalid segment flags {:?}", ph.p_flags)
     }
-}
-
-fn debug_print_sections(elf_file: &ElfFile64) {
-    use object::{Object, ObjectSection, SectionKind};
-
-    log::trace!("Idx Name              Offset   Vaddr            Filesz   Memsz");
-    elf_file.sections().enumerate().for_each(|(idx, sec)| {
-        let kind = match sec.kind() {
-            SectionKind::Text => "TEXT",
-            SectionKind::Data => "DATA",
-            SectionKind::ReadOnlyData => "DATA",
-            SectionKind::ReadOnlyDataWithRel => "DATA",
-            SectionKind::ReadOnlyString => "DATA",
-            SectionKind::UninitializedData => "BSS",
-            SectionKind::Tls => "TLS",
-            SectionKind::UninitializedTls => "BSS",
-            SectionKind::Debug => "DEBUG",
-            SectionKind::DebugString => "DEBUG",
-            _ => "",
-        };
-
-        log::trace!(
-            "{idx:>3} {name:<17} {offset:#08x} {vaddr:#016x} {filesz:#08x} {memsz:#08x} {kind:<5}",
-            name = sec.name().unwrap(),
-            offset = sec.file_range().map_or(0, |r| r.0),
-            vaddr = sec.address(),
-            filesz = sec.file_range().map_or(0, |r| r.1),
-            memsz = sec.size(),
-        );
-    });
 }
 
 #[repr(C)]
@@ -366,120 +328,101 @@ pub struct TlsTemplate {
     pub file_size: usize,
 }
 
-struct ProgramHeader<'a> {
-    pub p_type: u32,
-    pub p_flags: u32,
+pub struct ProgramHeader<'a> {
+    pub p_type: Type,
+    pub p_flags: xmas_elf::program::Flags,
     pub align: usize,
     pub offset: usize,
     pub virtual_address: usize,
     pub file_size: usize,
     pub mem_size: usize,
-    ph: &'a ProgramHeader64<Endianness>,
+    ph: xmas_elf::program::ProgramHeader<'a>,
 }
 
 impl ProgramHeader<'_> {
-    pub fn parse_rela(&self, elf_file: &ElfFile64) -> Option<RelaInfo> {
-        if self.p_type == PT_DYNAMIC {
-            let fields = self
-                .ph
-                .dynamic(Endianness::default(), elf_file.data())
-                .unwrap()?;
+    pub fn parse_rela(&self, elf_file: &xmas_elf::ElfFile) -> crate::Result<Option<RelaInfo>> {
+        let data = self.ph.get_data(elf_file).map_err(crate::Error::Elf)?;
+        let fields = match data {
+            SegmentData::Dynamic32(_) => unimplemented!("32-bit elf files are not supported"),
+            SegmentData::Dynamic64(fields) => fields,
+            _ => return Ok(None),
+        };
 
-            let mut rela = None; // Address of Rela relocs
-            let mut rela_size = None; // Total size of Rela relocs
-            let mut rela_ent = None; // Size of one Rela reloc
-            let mut rela_count = None; // Number of Rela relocs
+        let mut rela = None; // Address of Rela relocs
+        let mut rela_size = None; // Total size of Rela relocs
+        let mut rela_ent = None; // Size of one Rela reloc
 
-            for field in fields {
-                let tag = field.tag32(Endianness::Little).unwrap();
-                match tag {
-                    DT_RELA => {
-                        let ptr = field.d_val(Endianness::Little);
-                        let prev = rela.replace(ptr);
-                        if prev.is_some() {
-                            panic!("Dynamic section contains more than one Rela entry");
-                        }
+        for field in fields {
+            let tag = field.get_tag().map_err(crate::Error::Elf)?;
+            match tag {
+                Tag::Rela => {
+                    let ptr = field.get_ptr().map_err(crate::Error::Elf)?;
+                    let prev = rela.replace(ptr);
+                    if prev.is_some() {
+                        panic!("Dynamic section contains more than one Rela entry");
                     }
-                    DT_RELASZ => {
-                        let val = field.d_val(Endianness::Little);
-                        let prev = rela_size.replace(val);
-                        if prev.is_some() {
-                            panic!("Dynamic section contains more than one RelaSize entry");
-                        }
-                    }
-                    DT_RELAENT => {
-                        let val = field.d_val(Endianness::Little);
-                        let prev = rela_ent.replace(val);
-                        if prev.is_some() {
-                            panic!("Dynamic section contains more than one RelaEnt entry");
-                        }
-                    }
-                    DT_RELACOUNT => {
-                        let val = field.d_val(Endianness::Little);
-                        let prev = rela_count.replace(val);
-                        if prev.is_some() {
-                            panic!("Dynamic section contains more than one RelaCount entry");
-                        }
-                    }
-                    _ => {}
                 }
+                Tag::RelaSize => {
+                    let val = field.get_val().map_err(crate::Error::Elf)?;
+                    let prev = rela_size.replace(val);
+                    if prev.is_some() {
+                        panic!("Dynamic section contains more than one RelaSize entry");
+                    }
+                }
+                Tag::RelaEnt => {
+                    let val = field.get_val().map_err(crate::Error::Elf)?;
+                    let prev = rela_ent.replace(val);
+                    if prev.is_some() {
+                        panic!("Dynamic section contains more than one RelaEnt entry");
+                    }
+                }
+
+                Tag::Rel | Tag::RelSize | Tag::RelEnt => {
+                    panic!("REL relocations are not supported")
+                }
+                Tag::RelrSize | Tag::Relr | Tag::RelrEnt => {
+                    panic!("RELR relocations are not supported")
+                }
+                _ => {}
             }
-
-            if rela.is_none() && (rela_size.is_some() || rela_ent.is_some()) {
-                panic!("Rela entry is missing but RelaSize or RelaEnt have been provided");
-            }
-            let offset = rela? as usize;
-
-            let total_size = rela_size.expect("RelaSize entry is missing") as usize;
-            let entry_size = rela_ent.expect("RelaEnt entry is missing") as usize;
-
-            assert_eq!(
-                entry_size,
-                size_of::<Rela64<Endianness>>(),
-                "unsupported entry size: {entry_size}"
-            );
-            if let Some(rela_count) = rela_count {
-                assert_eq!(
-                    total_size / entry_size,
-                    rela_count as usize,
-                    "invalid RelaCount"
-                );
-            }
-
-            Some(RelaInfo {
-                offset,
-                count: total_size / entry_size,
-            })
-        } else {
-            None
         }
+
+        if rela.is_none() && (rela_size.is_some() || rela_ent.is_some()) {
+            panic!("Rela entry is missing but RelaSize or RelaEnt have been provided");
+        }
+
+        let Some(offset) = rela else {
+            return Ok(None);
+        };
+
+        let total_size = rela_size.expect("RelaSize entry is missing");
+        let entry_size = rela_ent.expect("RelaEnt entry is missing");
+
+        Ok(Some(RelaInfo {
+            offset,
+            count: total_size / entry_size,
+        }))
     }
 }
 
 struct RelaInfo {
-    pub offset: usize,
-    pub count: usize,
+    pub offset: u64,
+    pub count: u64,
 }
 
-impl<'a> TryFrom<&'a ProgramHeader64<Endianness>> for ProgramHeader<'a> {
-    type Error = &'static str;
+impl<'a> TryFrom<xmas_elf::program::ProgramHeader<'a>> for ProgramHeader<'a> {
+    type Error = crate::Error;
 
-    fn try_from(value: &'a ProgramHeader64<Endianness>) -> Result<Self, Self::Error> {
-        let endianness = Endianness::default();
-
+    fn try_from(ph: xmas_elf::program::ProgramHeader<'a>) -> Result<Self, Self::Error> {
         Ok(Self {
-            p_type: value.p_type(endianness),
-            p_flags: value.p_flags(endianness),
-            align: value.p_align(endianness) as usize,
-            offset: usize::try_from(value.p_offset(endianness))
-                .map_err(|_| "failed to convert p_offset to usize")?,
-            virtual_address: usize::try_from(value.p_vaddr(endianness))
-                .map_err(|_| "failed to convert p_vaddr to usize")?,
-            file_size: usize::try_from(value.p_filesz(endianness))
-                .map_err(|_| "failed to convert p_filesz to usize")?,
-            mem_size: usize::try_from(value.p_memsz(endianness))
-                .map_err(|_| "failed to convert p_memsz to usize")?,
-            ph: value,
+            p_type: ph.get_type().map_err(crate::Error::Elf)?,
+            p_flags: ph.flags(),
+            align: usize::try_from(ph.align())?,
+            offset: usize::try_from(ph.offset())?,
+            virtual_address: usize::try_from(ph.virtual_addr())?,
+            file_size: usize::try_from(ph.file_size())?,
+            mem_size: usize::try_from(ph.mem_size())?,
+            ph,
         })
     }
 }

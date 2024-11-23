@@ -6,7 +6,6 @@ use core::{ptr, slice};
 use kmm::{
     BumpAllocator, EntryFlags, Flush, Mapper, Mode, PhysicalAddress, TlsTemplate, VirtualAddress,
 };
-use object::Object;
 
 pub struct PageTableBuilder<'a> {
     /// The offset at which the physical memory should be mapped
@@ -80,7 +79,7 @@ impl<'a> PageTableBuilder<'a> {
             self = self.map_kernel_heap(heap_size_pages)?;
         }
 
-        self.result.entry = kernel_image_offset.add(usize::try_from(kernel.elf_file.entry())?);
+        self.result.entry = kernel_image_offset.add(usize::try_from(kernel.elf_file.header.pt2.entry_point())?);
         self.result.per_hart_stack_size = stack_size_pages * kconfig::PAGE_SIZE;
         self.result.kernel_image_offset = kernel_image_offset;
 

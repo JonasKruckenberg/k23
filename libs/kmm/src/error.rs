@@ -13,4 +13,8 @@ pub enum Error {
     SBI(#[from] riscv::sbi::Error),
     #[error("Address {0:?} is not mapped and cant be translated")]
     NotMapped(VirtualAddress),
+    #[error("Failed to map elf file {0}")]
+    Elf(&'static str),
+    #[error("Failed to convert number {0}")]
+    TryFromInt(#[from] core::num::TryFromIntError),
 }

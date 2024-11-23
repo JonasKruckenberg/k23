@@ -487,9 +487,9 @@ dependencies = [
  "kernel",
  "ktest",
  "log",
- "object",
  "onlyerror",
  "riscv",
+ "xmas-elf",
 ]
 
 [[package]]
@@ -552,7 +552,6 @@ dependencies = [
  "linked-list-allocator",
  "loader-api",
  "log",
- "object",
  "onlyerror",
  "panic-abort",
  "rand 0.8.5",

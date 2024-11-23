@@ -37,7 +37,7 @@ pub fn init_boot_info(
         fdt_offset,
         page_table_result.loader_region.clone(),
         {
-            let r = kernel.elf_file.data().as_ptr_range();
+            let r = kernel.elf_file.input.as_ptr_range();
 
             PhysicalAddress::new(r.start as usize)..PhysicalAddress::new(r.end as usize)
         },

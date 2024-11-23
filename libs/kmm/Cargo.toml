@@ -16,7 +16,7 @@ bitflags.workspace = true
 log.workspace = true
 onlyerror.workspace = true
 cfg-if.workspace = true
-object = { workspace = true, features = ["read_core", "elf"], optional = true }
+xmas-elf = { workspace = true, optional = true }
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
@@ -26,4 +26,4 @@ ktest.workspace = true
 kernel.workspace = true
 
 [features]
-elf = ["object"]
+elf = ["xmas-elf"]
