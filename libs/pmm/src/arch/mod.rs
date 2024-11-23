@@ -1,3 +1,6 @@
+mod emulate;
+pub use emulate::EmulateArch;
+
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
         mod riscv64;
@@ -5,12 +8,13 @@ cfg_if::cfg_if! {
     }
 }
 
-use crate::{PhysicalAddress, VirtualAddress};
+use crate::frame_alloc::FramesIter;
+use crate::{BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress};
 use bitflags::bitflags;
 use core::ops::Range;
 
 bitflags! {
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub struct ArchFlags: u8 {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
@@ -18,7 +22,7 @@ bitflags! {
     }
 }
 
-pub trait Arch {
+pub trait Arch: Sized {
     /// Number of usable bits in a virtual address
     const VA_BITS: u32;
     /// The smallest available page size
@@ -29,10 +33,6 @@ pub trait Arch {
     /// The number of page table entries in one table
     const PAGE_TABLE_ENTRIES: usize;
 
-    /// On `RiscV` targets the entry's physical address bits are shifted 2 bits to the right.
-    /// This constant is present to account for that, should be set to 0 on all other targets.
-    const ENTRY_ADDRESS_SHIFT: usize = 0;
-
     // derived constants
     const PAGE_OFFSET_MASK: usize = Self::PAGE_SIZE - 1;
     /// Number of bits we need to shift an address by to reach the next page
@@ -40,15 +40,19 @@ pub trait Arch {
     /// Number of bits we need to shift an address by to reach the next page table entry
     const PAGE_ENTRY_SHIFT: usize = (Self::PAGE_TABLE_ENTRIES - 1).count_ones() as usize;
     const PAGE_ENTRY_MASK: usize = Self::PAGE_TABLE_ENTRIES - 1;
+    const CANONICAL_VA_MASK: usize = (1 << Self::VA_BITS + 1) - 1;
 
-    fn map(
+    fn map<F>(
         &mut self,
-        virt: VirtualAddress,
-        phys: &mut dyn Iterator<Item = PhysicalAddress>,
+        virt: Range<VirtualAddress>,
+        phys: FramesIter<'_, F, Self>,
         flags: ArchFlags,
-    ) -> crate::Result<()>;
+    ) -> crate::Result<()>
+    where
+        F: FrameAllocator<Self>;
     fn map_contiguous(
         &mut self,
+        frame_alloc: &mut BumpAllocator<Self>,
         virt: Range<VirtualAddress>,
         phys: Range<PhysicalAddress>,
         flags: ArchFlags,
@@ -59,15 +63,17 @@ pub trait Arch {
         phys: Range<PhysicalAddress>,
         flags: ArchFlags,
     ) -> crate::Result<()>;
-    fn invalidate_all(&mut self) -> crate::Result<()>;
-    fn invalidate_range(&mut self, asid: usize, range: Range<VirtualAddress>) -> crate::Result<()>;
     fn protect(&mut self, virt: Range<VirtualAddress>, flags: ArchFlags) -> crate::Result<()>;
     fn identity_map_contiguous(
         &mut self,
+        frame_alloc: &mut BumpAllocator<Self>,
         phys: Range<PhysicalAddress>,
         flags: ArchFlags,
     ) -> crate::Result<()> {
         let virt = VirtualAddress::new(phys.start.as_raw())..VirtualAddress::new(phys.end.as_raw());
-        self.map_contiguous(virt, phys, flags)
+        self.map_contiguous(frame_alloc, virt, phys, flags)
     }
+    fn invalidate_all(&mut self) -> crate::Result<()>;
+    fn invalidate_range(&mut self, asid: usize, range: Range<VirtualAddress>) -> crate::Result<()>;
+    fn activate(&self) -> crate::Result<()>;
 }

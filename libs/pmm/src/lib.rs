@@ -1,4 +1,5 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
+#![feature(generic_const_exprs)]
 
 mod arch;
 mod error;
@@ -9,7 +10,7 @@ use core::{cmp, fmt};
 
 pub use arch::*;
 pub use error::Error;
-pub use frame_alloc::{bitmap::BitMapAllocator, bump::BumpAllocator, FrameAllocator, FrameUsage};
+pub use frame_alloc::{BumpAllocator, FrameAllocator, FrameUsage};
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[repr(transparent)]
@@ -225,11 +226,4 @@ impl AddressRangeExt for Range<VirtualAddress> {
             end: cmp::max(self.end, other.end),
         }
     }
-}
-
-pub(crate) fn phys_to_virt(
-    physical_memory_offset: VirtualAddress,
-    phys: PhysicalAddress,
-) -> VirtualAddress {
-    physical_memory_offset.add(phys.as_raw())
 }

@@ -7,6 +7,7 @@ toolchain := ""
 
 # configures what profile to use for builds.
 profile := env_var_or_default("K23_PROFILE", "dev")
+export K23_PROFILE := profile
 
 _cargo := "cargo" + if toolchain != "" { " +" + toolchain } else { "" }
 _rustflags := env_var_or_default("RUSTFLAGS", "")
@@ -61,7 +62,7 @@ _default:
     @just --list
 
 # run the OS
-run $K23_PROFILE=(profile) cargo_args="" *args="":
+run cargo_args="" *args="":
     {{ _cargo }} run \
         -p kernel \
         --target kernel/riscv64gc-k23-none-kernel.json \

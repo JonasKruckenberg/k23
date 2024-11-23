@@ -1,16 +1,14 @@
-use crate::{
-    AddressRangeExt, Arch, Error, FrameAllocator, FrameUsage, PhysicalAddress, VirtualAddress,
-};
+use crate::frame_alloc::FrameAllocatorImpl;
+use crate::{AddressRangeExt, Arch, Error, FrameUsage, PhysicalAddress};
 use core::marker::PhantomData;
 use core::ops::Range;
-use core::{iter, slice};
+use core::{cmp, iter, slice};
 
 pub struct BumpAllocator<'a, A> {
     regions: &'a [Range<PhysicalAddress>],
     // offset from the top of memory regions
     offset: usize,
     lower_bound: PhysicalAddress,
-    pub(crate) physmem_off: VirtualAddress,
     _m: PhantomData<A>,
 }
 
@@ -21,12 +19,11 @@ impl<'a, A> BumpAllocator<'a, A> {
     ///
     /// The caller has to ensure the slice is correctly sorted from lowest to highest addresses.
     #[must_use]
-    pub unsafe fn new(regions: &'a [Range<PhysicalAddress>], physmem_off: VirtualAddress) -> Self {
+    pub unsafe fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
         Self {
             regions,
             offset: 0,
             lower_bound: PhysicalAddress(0),
-            physmem_off,
             _m: PhantomData,
         }
     }
@@ -40,13 +37,11 @@ impl<'a, A> BumpAllocator<'a, A> {
     pub unsafe fn new_with_lower_bound(
         regions: &'a [Range<PhysicalAddress>],
         lower_bound: PhysicalAddress,
-        physmem_off: VirtualAddress,
     ) -> Self {
         Self {
             regions,
             offset: 0,
             lower_bound,
-            physmem_off,
             _m: PhantomData,
         }
     }
@@ -75,6 +70,93 @@ impl<'a, A> BumpAllocator<'a, A> {
             offset: self.offset,
             inner: self.regions().iter().rev().cloned(),
         }
+    }
+}
+
+impl<'a, A> FrameAllocatorImpl<A> for BumpAllocator<'a, A>
+where
+    A: Arch,
+{
+    fn allocate_non_contiguous(&mut self, count: usize) -> crate::Result<Range<PhysicalAddress>> {
+        let requested_size = count * A::PAGE_SIZE;
+        let mut offset = self.offset;
+
+        for region in self.regions.iter().rev() {
+            // only consider regions that we haven't already exhausted
+            if offset < region.size() {
+                let alloc_size = cmp::min(requested_size, region.size() - offset);
+
+                let page_phys = region.end.sub(offset + alloc_size);
+
+                if page_phys <= self.lower_bound {
+                    log::error!(
+                        "Allocation would have crossed `lower_bound`: {} <= {}",
+                        page_phys,
+                        self.lower_bound
+                    );
+                    return Err(Error::OutOfMemory);
+                }
+
+                self.offset += alloc_size;
+
+                return Ok(page_phys..page_phys.add(alloc_size));
+            }
+
+            offset -= region.size();
+        }
+
+        Err(Error::OutOfMemory)
+    }
+
+    fn allocate_contiguous(&mut self, count: usize) -> crate::Result<PhysicalAddress> {
+        let requested_size = count * A::PAGE_SIZE;
+        let mut offset = self.offset;
+
+        for region in self.regions.iter().rev() {
+            let region_size = region.size();
+            // only consider regions that we haven't already exhausted
+            if offset < region_size {
+                // Allocating a contiguous range has different requirements than "regular" allocation
+                // contiguous are rare and often happen in very critical paths where e.g. virtual 
+                // memory is not available yet. So we rather waste some memory than outright crash.
+                if region_size - offset < requested_size {
+                    log::warn!("Skipped memory region {region:?} since it was fulfill request for {requested_size} bytes. Wasted {} bytes in the process...", region_size - offset);
+
+                    self.offset += region_size - offset;
+                    offset = 0;
+                    continue;
+                }
+
+                let page_phys = region.end.sub(offset + requested_size);
+
+                if page_phys <= self.lower_bound {
+                    log::error!(
+                        "Allocation would have crossed `lower_bound`: {} <= {}",
+                        page_phys,
+                        self.lower_bound
+                    );
+                    return Err(Error::OutOfMemory);
+                }
+
+                self.offset += requested_size;
+
+                return Ok(page_phys);
+            }
+
+            offset -= region_size;
+        }
+
+        Err(Error::OutOfMemory)
+    }
+
+    fn frame_usage(&self) -> FrameUsage {
+        let mut total = 0;
+        for region in self.regions {
+            let region_size = region.end.0 - region.start.0;
+            total += region_size >> A::PAGE_SHIFT;
+        }
+        let used = self.offset >> A::PAGE_SHIFT;
+        FrameUsage { used, total }
     }
 }
 
@@ -126,65 +208,5 @@ impl Iterator for UsedRegions<'_> {
         } else {
             None
         }
-    }
-}
-
-impl<A> FrameAllocator<A> for BumpAllocator<'_, A>
-where
-    A: Arch,
-{
-    fn allocate_frames(&mut self, frames: usize) -> crate::Result<PhysicalAddress> {
-        let requested_size = frames * A::PAGE_SIZE;
-        let mut offset = self.offset;
-
-        for region in self.regions.iter().rev() {
-            let region_size = region.size();
-            if offset < region_size {
-                if region_size - offset < requested_size {
-                    log::warn!("Skipped memory region {region:?} since it was fulfill request for {requested_size} bytes. Wasted {} bytes in the process...", region_size - offset);
-
-                    self.offset += region_size - offset;
-                    offset = 0;
-                    continue;
-                }
-
-                let page_phys = region.end.sub(offset + requested_size);
-
-                if page_phys <= self.lower_bound {
-                    log::error!(
-                        "Allocation would have crossed `lower_bound`: {} <= {}",
-                        page_phys,
-                        self.lower_bound
-                    );
-                    return Err(Error::OutOfMemory);
-                }
-
-                self.offset += requested_size;
-
-                return Ok(page_phys);
-            }
-
-            offset -= region_size;
-        }
-
-        Err(Error::OutOfMemory)
-    }
-
-    fn deallocate_frames(&mut self, _base: PhysicalAddress, _frames: usize) -> crate::Result<()> {
-        unimplemented!("BumpAllocator can't free")
-    }
-
-    fn frame_usage(&self) -> FrameUsage {
-        let mut total = 0;
-        for region in self.regions {
-            let region_size = region.end.0 - region.start.0;
-            total += region_size >> A::PAGE_SHIFT;
-        }
-        let used = self.offset >> A::PAGE_SHIFT;
-        FrameUsage { used, total }
-    }
-
-    fn phys_to_virt(&self, phys: PhysicalAddress) -> VirtualAddress {
-        self.physmem_off.add(phys.as_raw())
     }
 }

@@ -1,6 +1,6 @@
 use crate::kernel::Kernel;
 use crate::vm::KernelAddressSpace;
-use crate::{BumpAllocator, FrameAllocator, PhysicalAddress};
+use pmm::{BumpAllocator, FrameAllocator, PhysicalAddress};
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core::{ptr, slice};
@@ -9,7 +9,7 @@ use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
 pub fn init_boot_info<A>(
     frame_alloc: &mut BumpAllocator<A>,
     boot_hart: usize,
-    kernel_aspace: &KernelAddressSpace,
+    kernel_aspace: &KernelAddressSpace<A>,
     kernel: &Kernel,
     fdt: PhysicalAddress,
 ) -> crate::Result<PhysicalAddress>

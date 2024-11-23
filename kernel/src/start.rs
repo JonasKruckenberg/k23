@@ -1,5 +1,7 @@
+use core::fmt::Write;
 use crate::{arch, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_SIZE_PAGES};
 use core::mem;
+use core::ptr::addr_of;
 use loader_api::LoaderConfig;
 use sync::OnceLock;
 
@@ -12,8 +14,18 @@ const LOADER_CFG: LoaderConfig = {
     cfg
 };
 
+#[no_mangle]
+static DATA_SENTINEL: u64 = 424342;
+
 #[loader_api::entry(LOADER_CFG)]
 fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
+    riscv::hio::HostStream::new_stdout().write_all(b"hello world from kernel\n");
+
+    if unsafe { addr_of!(DATA_SENTINEL).read() } == 424342 {
+        riscv::hio::HostStream::new_stdout().write_all(b"sentinel value assertion failed\n");
+        loop {}
+    }
+
     panic_unwind::catch_unwind(|| {
         pre_init_hart(hartid);
         // reuse the OnceLock to also ensure the global initialization is done only once
@@ -40,7 +52,7 @@ fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
 }
 
 fn pre_init_hart(hartid: usize) {
-    semihosting_logger::hartid::set(hartid);
+    // semihosting_logger::hartid::set(hartid);
     // setup trap handler
 }
 

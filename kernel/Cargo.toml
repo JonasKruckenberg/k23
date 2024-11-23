@@ -19,7 +19,7 @@ harness = false
 loader-api.workspace = true
 pmm.workspace = true
 panic-unwind.workspace = true
-semihosting-logger = { workspace = true, features = ["hartid"] }
+semihosting-logger = { workspace = true }
 sync.workspace = true
 linked-list-allocator.workspace = true
 thread-local.workspace = true

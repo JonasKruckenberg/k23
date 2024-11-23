@@ -102,9 +102,14 @@ where
         let offset = if let Some(rng) = self.rng.as_mut() {
             // Choose a random offset.
             let max_offset = top_level_page_size - (size % top_level_page_size);
-            let uniform_range = Uniform::new(0, max_offset / alignment);
-
-            uniform_range.sample(rng) * alignment
+            
+            if max_offset / alignment != 0 {
+                let uniform_range = Uniform::new(0, max_offset / alignment);
+    
+                uniform_range.sample(rng) * alignment
+            } else {
+                0
+            }
         } else {
             0
         };

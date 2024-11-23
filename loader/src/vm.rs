@@ -1,14 +1,14 @@
 use crate::error::Error;
-use crate::kernel::Kernel;
+use crate::kernel::{parse_inlined_kernel, Kernel};
 use crate::machine_info::MachineInfo;
 use crate::page_alloc::PageAllocator;
 use crate::{LoaderRegions, ENABLE_KASLR};
-use bitflags::Flags;
 use core::ops::{Div, Range};
 use core::{ptr, slice};
 use loader_api::TlsTemplate;
 use pmm::{
-    AddressRangeExt, ArchFlags, BumpAllocator, FrameAllocator, PhysicalAddress, VirtualAddress,
+    AddressRangeExt, Arch as _, ArchFlags, BumpAllocator, FrameAllocator, PhysicalAddress,
+    VirtualAddress,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -16,60 +16,34 @@ use xmas_elf::dynamic::Tag;
 use xmas_elf::program::{SegmentData, Type};
 use xmas_elf::P64;
 
-pub struct KernelAddressSpace {
-    entry: VirtualAddress,
-    maybe_tls_allocation: Option<TlsAllocation>,
-    per_hart_stack_size: usize,
-    kernel_virt: Range<VirtualAddress>,
-    stacks_virt: Range<VirtualAddress>,
-    physmap: Range<VirtualAddress>,
-    loader: Range<PhysicalAddress>,
+fn init_frame_alloc<'a>(
+    minfo: &'a MachineInfo,
+    loader_regions: &LoaderRegions,
+) -> BumpAllocator<'a, pmm::Riscv64Sv39> {
+    unsafe { BumpAllocator::new_with_lower_bound(&minfo.memories, loader_regions.read_write.end) }
 }
 
-impl KernelAddressSpace {
-    pub fn new<A>(
-        arch: &mut A,
-        frame_alloc: &mut BumpAllocator<A>,
-        kernel: &Kernel,
-        loader_regions: LoaderRegions,
-        minfo: &MachineInfo,
-    ) -> crate::Result<Self>
-    where
-        A: pmm::Arch,
-        [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
+fn init_page_alloc(minfo: &MachineInfo) -> PageAllocator<pmm::Riscv64Sv39> {
+    let mut page_alloc = if ENABLE_KASLR {
+        PageAllocator::new(ChaCha20Rng::from_seed(
+            minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
+        ))
+    } else {
+        PageAllocator::new_no_kaslr()
+    };
+    page_alloc
+}
+
+fn setup_kernel_address_space(
+    minfo: &MachineInfo,
+) -> crate::Result<KernelAddressSpace<pmm::Riscv64Sv39>> {
     {
-        // Set up the virtual memory "allocator" that we pull memory region assignments from for
-        // the various kernel regions
-        let mut page_alloc = if ENABLE_KASLR {
-            PageAllocator::new(ChaCha20Rng::from_seed(
-                minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
-            ))
-        } else {
-            PageAllocator::new_no_kaslr()
-        };
+        let loader_regions = LoaderRegions::new::<pmm::Riscv64Sv39>(minfo);
 
-        // Map the kernel ELF file
-        let (kernel_virt, maybe_tls_allocation) =
-            map_kernel(arch, frame_alloc, &mut page_alloc, kernel, minfo)?;
+        let mut frame_alloc = init_frame_alloc(minfo, &loader_regions);
+        let mut page_alloc = init_page_alloc(minfo);
 
-        // Map stacks for kernel
-        //
-        // This will set up a stack for each hart that is reported by the device tree, if the kernel
-        // has ways to activate other harts unknown to us currently it will have to set up stacks itself.
-        let per_hart_stack_size = usize::try_from(kernel.loader_config.kernel_stack_size_pages)?;
-        let stacks_virt = map_kernel_stacks(
-            arch,
-            frame_alloc,
-            &mut page_alloc,
-            minfo,
-            per_hart_stack_size,
-        )?;
-
-        // Map the physical memory into kernel address space.
-        //
-        // This will be used by the kernel to access the page tables, BootInfo struct and maybe
-        // more in the future.
-        let physmap = map_physical_memory(arch, &mut page_alloc, minfo)?;
+        let mut pmm = pmm::Riscv64Sv39::new(&mut frame_alloc, 0, VirtualAddress::default())?;
 
         // Identity map the loader itself (this binary).
         //
@@ -77,82 +51,247 @@ impl KernelAddressSpace {
         // as opposed to m-mode where it would take effect after jump tp u-mode.
         // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
         // We will then unmap the loader in the kernel.
-        let loader = identity_map_loader(arch, loader_regions)?;
+        let loader_phys = identity_map_loader(&mut pmm, &mut frame_alloc, loader_regions)?;
 
-        Ok(Self {
-            entry: VirtualAddress::new(usize::try_from(kernel.elf_file.header.pt2.entry_point())?),
-            maybe_tls_allocation,
-            per_hart_stack_size,
-            kernel_virt,
-            stacks_virt,
-            physmap,
-            loader,
-        })
+        // Map the physical memory into kernel address space.
+        //
+        // This will be used by the kernel to access the page tables, BootInfo struct and maybe
+        // more in the future.
+        let physmap = map_physical_memory(&mut pmm, &mut frame_alloc, &mut page_alloc, minfo)?;
+
+        // activate MMU
+        pmm.activate()?;
+
+        let mut pmm = pmm::Riscv64Sv39::from_active(0, physmap.start)?;
     }
 
-    /// The kernel entry address as specified in the ELF file.
-    pub fn entry_virt(&self) -> VirtualAddress {
-        self.entry
-    }
+    let kernel = parse_inlined_kernel()?;
+    
+    // Map the kernel ELF file
+    let (kernel_virt, maybe_tls_allocation) =
+        map_kernel(&mut pmm, &mut frame_alloc, &mut page_alloc, &kernel, minfo)?;
 
-    pub fn loader_phys(&self) -> Range<PhysicalAddress> {
-        self.loader.clone()
-    }
+    // Map stacks for kernel
+    //
+    // This will set up a stack for each hart that is reported by the device tree, if the kernel
+    // has ways to activate other harts unknown to us currently it will have to set up stacks itself.
+    let per_hart_stack_size = usize::try_from(kernel.loader_config.kernel_stack_size_pages)?;
+    let stacks_virt = map_kernel_stacks(
+        &mut pmm,
+        &mut frame_alloc,
+        &mut page_alloc,
+        minfo,
+        per_hart_stack_size,
+    )?;
 
-    pub fn kernel_virt(&self) -> Range<VirtualAddress> {
-        self.kernel_virt.clone()
-    }
-    pub fn physmap(&self) -> Range<VirtualAddress> {
-        self.physmap.clone()
-    }
+    Ok(KernelAddressSpace {
+        entry: kernel_virt
+            .start
+            .add(usize::try_from(kernel.elf_file.header.pt2.entry_point())?),
+        maybe_tls_allocation,
+        per_hart_stack_size,
+        kernel_virt,
+        stacks_virt,
+        physmap,
+        loader: Default::default(),
+        pmm_arch: pmm,
+    })
+}
 
-    pub fn tls_template(&self) -> Option<TlsTemplate> {
-        self.maybe_tls_allocation
-            .as_ref()
-            .map(|a| a.tls_template.clone())
-    }
+pub fn identity_map_loader<A>(
+    arch: &mut A,
+    frame_alloc: &mut BumpAllocator<A>,
+    loader_regions: LoaderRegions,
+) -> crate::Result<Range<PhysicalAddress>>
+where
+    A: pmm::Arch,
+{
+    log::trace!(
+        "Identity mapping own executable region {:?}...",
+        loader_regions.executable
+    );
+    arch.identity_map_contiguous(
+        frame_alloc,
+        loader_regions.executable.clone(),
+        ArchFlags::READ | ArchFlags::EXECUTE,
+    )?;
 
-    /// The kernel stack region for a given hartid.
-    pub fn stack_region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
-        let end = self.stacks_virt.end.sub(self.per_hart_stack_size * hartid);
+    log::trace!(
+        "Identity mapping own read-only region {:?}...",
+        loader_regions.read_only
+    );
+    arch.identity_map_contiguous(
+        frame_alloc,
+        loader_regions.read_only.clone(),
+        ArchFlags::READ,
+    )?;
 
-        end.sub(self.per_hart_stack_size)..end
-    }
+    log::trace!(
+        "Identity mapping own read-write region {:?}...",
+        loader_regions.read_write
+    );
+    arch.identity_map_contiguous(
+        frame_alloc,
+        loader_regions.read_write.clone(),
+        ArchFlags::READ | ArchFlags::WRITE,
+    )?;
 
-    /// The thread-local storage region for a given hartid.
-    pub fn tls_region_for_hart(&self, hartid: usize) -> Option<Range<VirtualAddress>> {
-        Some(self.maybe_tls_allocation.as_ref()?.region_for_hart(hartid))
-    }
+    Ok(loader_regions.executable.start..loader_regions.read_write.end)
+}
 
-    /// Initialize the TLS region for a given hartid.
-    /// This will copy the `.tdata` section from the TLS template to the TLS region.
-    pub fn init_tls_region_for_hart(&self, hartid: usize) {
-        if let Some(allocation) = &self.maybe_tls_allocation {
-            allocation.initialize_for_hart(hartid);
+fn get_alignment_for_size<A>(size: usize) -> usize
+where
+    A: pmm::Arch,
+{
+    for lvl in 0..A::PAGE_TABLE_LEVELS {
+        let page_size = 1 << (A::PAGE_SHIFT + lvl * A::PAGE_ENTRY_SHIFT);
+
+        if size <= page_size {
+            return page_size;
         }
     }
 
-    /// Active the page table.
-    ///
-    /// This will switch to the new page table, and flush the TLB.
-    ///
-    /// # Safety
-    ///
-    /// This function is probably **the** most unsafe function in the entire loader,
-    /// it will invalidate all pointers and references that are not covered by the
-    /// loaders identity mapping (everything that doesn't live in the loader data/rodata/bss sections
-    /// or on the loader stack).
-    ///
-    /// Extreme care must be taken to ensure that pointers passed to the kernel have been "translated"
-    /// to virtual addresses before leaving the kernel.
-    pub unsafe fn activate<A>(&self)
-    where
-        A: pmm::Arch,
-    {
-        todo!()
-        // self.activate_table(0, self.page_table_addr);
-    }
+    unreachable!()
 }
+
+pub fn map_physical_memory<A>(
+    arch: &mut A,
+    frame_alloc: &mut BumpAllocator<A>,
+    page_alloc: &mut PageAllocator<A>,
+    minfo: &MachineInfo,
+) -> crate::Result<Range<VirtualAddress>>
+where
+    A: pmm::Arch,
+    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
+{
+    let physmem_hull = minfo.memory_hull();
+    let alignment = get_alignment_for_size::<A>(physmem_hull.size());
+
+    let physmap_virt = page_alloc.reserve_range(minfo.memory_hull().size(), alignment);
+
+    log::trace!("physmap {physmap_virt:?}");
+    for region_phys in &minfo.memories {
+        let region_virt = physmap_virt.start.add(region_phys.start.as_raw())
+            ..physmap_virt.start.add(region_phys.end.as_raw());
+
+        log::trace!("Mapping physical memory region {region_virt:?} => {region_phys:?}...");
+        arch.map_contiguous(
+            frame_alloc,
+            region_virt,
+            region_phys.clone(),
+            ArchFlags::READ | ArchFlags::WRITE,
+        )?;
+    }
+
+    Ok(physmap_virt)
+}
+
+pub struct KernelAddressSpace<A> {
+    entry: VirtualAddress,
+    maybe_tls_allocation: Option<TlsAllocation>,
+    per_hart_stack_size: usize,
+    kernel_virt: Range<VirtualAddress>,
+    stacks_virt: Range<VirtualAddress>,
+    physmap: Range<VirtualAddress>,
+    loader: Range<PhysicalAddress>,
+    pmm_arch: A,
+}
+
+// impl<A> KernelAddressSpace<A> {
+//     pub fn new(
+//         mut pmm_arch: A,
+//         frame_alloc: &mut BumpAllocator<A>,
+//         kernel: &Kernel,
+//         loader_regions: LoaderRegions,
+//         minfo: &MachineInfo,
+//     ) -> crate::Result<Self>
+//     where
+//         A: pmm::Arch,
+//         [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
+//     {
+//         // Set up the virtual memory "allocator" that we pull memory region assignments from for
+//         // the various kernel regions
+//         let mut page_alloc = if ENABLE_KASLR {
+//             PageAllocator::new(ChaCha20Rng::from_seed(
+//                 minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
+//             ))
+//         } else {
+//             PageAllocator::new_no_kaslr()
+//         };
+//
+
+//         let physmap = map_physical_memory(&mut pmm_arch, frame_alloc, &mut page_alloc, minfo)?;
+//
+
+//         let loader = identity_map_loader(&mut pmm_arch, frame_alloc, loader_regions)?;
+//
+
+//
+//         
+//     }
+//
+//     /// The kernel entry address as specified in the ELF file.
+//     pub fn entry_virt(&self) -> VirtualAddress {
+//         self.entry
+//     }
+//
+//     pub fn loader_phys(&self) -> Range<PhysicalAddress> {
+//         self.loader.clone()
+//     }
+//
+//     pub fn kernel_virt(&self) -> Range<VirtualAddress> {
+//         self.kernel_virt.clone()
+//     }
+//     pub fn physmap(&self) -> Range<VirtualAddress> {
+//         self.physmap.clone()
+//     }
+//
+//     pub fn tls_template(&self) -> Option<TlsTemplate> {
+//         self.maybe_tls_allocation
+//             .as_ref()
+//             .map(|a| a.tls_template.clone())
+//     }
+//
+//     /// The kernel stack region for a given hartid.
+//     pub fn stack_region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
+//         let end = self.stacks_virt.end.sub(self.per_hart_stack_size * hartid);
+//
+//         end.sub(self.per_hart_stack_size)..end
+//     }
+//
+//     /// The thread-local storage region for a given hartid.
+//     pub fn tls_region_for_hart(&self, hartid: usize) -> Option<Range<VirtualAddress>> {
+//         Some(self.maybe_tls_allocation.as_ref()?.region_for_hart(hartid))
+//     }
+//
+//     /// Initialize the TLS region for a given hartid.
+//     /// This will copy the `.tdata` section from the TLS template to the TLS region.
+//     pub fn init_tls_region_for_hart(&self, hartid: usize) {
+//         if let Some(allocation) = &self.maybe_tls_allocation {
+//             allocation.initialize_for_hart(hartid);
+//         }
+//     }
+//
+//     /// Active the page table.
+//     ///
+//     /// This will switch to the new page table, and flush the TLB.
+//     ///
+//     /// # Safety
+//     ///
+//     /// This function is probably **the** most unsafe function in the entire loader,
+//     /// it will invalidate all pointers and references that are not covered by the
+//     /// loaders identity mapping (everything that doesn't live in the loader data/rodata/bss sections
+//     /// or on the loader stack).
+//     ///
+//     /// Extreme care must be taken to ensure that pointers passed to the kernel have been "translated"
+//     /// to virtual addresses before leaving the kernel.
+//     pub unsafe fn activate(&self) -> crate::Result<()>
+//     where
+//         A: pmm::Arch,
+//     {
+//         self.pmm_arch.activate().map_err(Into::into)
+//     }
+// }
 
 pub struct TlsAllocation {
     /// The TLS region in virtual memory
@@ -164,45 +303,45 @@ pub struct TlsAllocation {
     pub tls_template: TlsTemplate,
 }
 
-impl TlsAllocation {
-    pub fn region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
-        let start = self.virt.start.add(self.per_hart_size * hartid);
-
-        start..start.add(self.per_hart_size)
-    }
-
-    pub fn initialize_for_hart(&self, hartid: usize) {
-        if self.tls_template.file_size == 0 {
-            return;
-        }
-
-        let src = unsafe {
-            slice::from_raw_parts(
-                self.tls_template.start_addr.as_raw() as *const u8,
-                self.tls_template.file_size,
-            )
-        };
-
-        let dst = unsafe {
-            slice::from_raw_parts_mut(
-                self.virt.start.add(self.per_hart_size * hartid).as_raw() as *mut u8,
-                self.tls_template.file_size,
-            )
-        };
-
-        log::trace!(
-            "Copying tdata from {:?} to {:?}",
-            src.as_ptr_range(),
-            dst.as_ptr_range()
-        );
-
-        debug_assert_eq!(src.len(), dst.len());
-        unsafe {
-            ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
-        }
-    }
-}
-
+// impl TlsAllocation {
+//     pub fn region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
+//         let start = self.virt.start.add(self.per_hart_size * hartid);
+//
+//         start..start.add(self.per_hart_size)
+//     }
+//
+//     pub fn initialize_for_hart(&self, hartid: usize) {
+//         if self.tls_template.file_size == 0 {
+//             return;
+//         }
+//
+//         let src = unsafe {
+//             slice::from_raw_parts(
+//                 self.tls_template.start_addr.as_raw() as *const u8,
+//                 self.tls_template.file_size,
+//             )
+//         };
+//
+//         let dst = unsafe {
+//             slice::from_raw_parts_mut(
+//                 self.virt.start.add(self.per_hart_size * hartid).as_raw() as *mut u8,
+//                 self.tls_template.file_size,
+//             )
+//         };
+//
+//         log::trace!(
+//             "Copying tdata from {:?} to {:?}",
+//             src.as_ptr_range(),
+//             dst.as_ptr_range()
+//         );
+//
+//         debug_assert_eq!(src.len(), dst.len());
+//         unsafe {
+//             ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
+//         }
+//     }
+// }
+//
 fn map_kernel<A>(
     arch: &mut A,
     frame_alloc: &mut BumpAllocator<A>,
@@ -218,6 +357,9 @@ where
     let align = kernel.max_align() as usize;
 
     let virt_range = page_alloc.reserve_range(mem_size, align);
+    log::trace!("kernel_virt {virt_range:?}");
+    log::trace!("kernel_phys {:?}", kernel.elf_file.input.as_ptr_range());
+
     let virt_base = virt_range.start;
 
     let phys_base = PhysicalAddress::new(kernel.elf_file.input.as_ptr() as usize);
@@ -280,99 +422,6 @@ where
     Ok((virt_range, maybe_tls_allocation))
 }
 
-/// Map the kernel stacks for each hart.
-// TODO add guard pages below each stack allocation
-fn map_kernel_stacks<A>(
-    arch: &mut A,
-    frame_alloc: &mut BumpAllocator<A>,
-    page_alloc: &mut PageAllocator<A>,
-    machine_info: &MachineInfo,
-    per_hart_stack_size: usize,
-) -> crate::Result<Range<VirtualAddress>>
-where
-    A: pmm::Arch,
-    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
-{
-    let stacks_phys = {
-        let start = frame_alloc.allocate_frames(per_hart_stack_size)?;
-
-        start..start.add(per_hart_stack_size * A::PAGE_SIZE * machine_info.cpus)
-    };
-
-    let stacks_virt = page_alloc.reserve_range(
-        per_hart_stack_size * A::PAGE_SIZE * machine_info.cpus,
-        A::PAGE_SIZE,
-    );
-
-    log::trace!("Mapping stack region {stacks_virt:?} => {stacks_phys:?}...");
-    arch.map_contiguous(
-        stacks_virt.clone(),
-        stacks_phys,
-        ArchFlags::READ | ArchFlags::WRITE,
-    )?;
-
-    Ok(stacks_virt)
-}
-
-fn map_physical_memory<A>(
-    arch: &mut A,
-    page_alloc: &mut PageAllocator<A>,
-    minfo: &MachineInfo,
-) -> crate::Result<Range<VirtualAddress>>
-where
-    A: pmm::Arch,
-    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
-{
-    let physmap_virt = page_alloc.reserve_range(minfo.memory_hull().size(), A::PAGE_SIZE);
-
-    for region_phys in &minfo.memories {
-        let region_virt = physmap_virt.start.add(region_phys.start.as_raw())
-            ..physmap_virt.start.add(region_phys.end.as_raw());
-
-        log::trace!("Mapping physical memory region {region_virt:?} => {region_phys:?}...");
-        arch.map_contiguous(
-            region_virt,
-            region_phys.clone(),
-            ArchFlags::READ | ArchFlags::WRITE,
-        )?;
-    }
-
-    Ok(physmap_virt)
-}
-
-fn identity_map_loader<A>(
-    arch: &mut A,
-    loader_regions: LoaderRegions,
-) -> crate::Result<Range<PhysicalAddress>>
-where
-    A: pmm::Arch,
-{
-    log::trace!(
-        "Identity mapping own executable region {:?}...",
-        loader_regions.executable
-    );
-    arch.identity_map_contiguous(
-        loader_regions.executable.clone(),
-        ArchFlags::READ | ArchFlags::EXECUTE,
-    )?;
-
-    log::trace!(
-        "Identity mapping own read-only region {:?}...",
-        loader_regions.read_only
-    );
-    arch.identity_map_contiguous(loader_regions.read_only.clone(), ArchFlags::READ)?;
-
-    log::trace!(
-        "Identity mapping own read-write region {:?}...",
-        loader_regions.read_write
-    );
-    arch.identity_map_contiguous(
-        loader_regions.read_write.clone(),
-        ArchFlags::READ | ArchFlags::WRITE,
-    )?;
-
-    Ok(loader_regions.executable.start..loader_regions.read_write.end)
-}
 
 fn handle_load_segment<A>(
     arch: &mut A,
@@ -410,7 +459,7 @@ where
     };
 
     log::trace!("mapping {virt:?} => {phys:?}");
-    arch.map_contiguous(virt, phys, flags)?;
+    arch.map_contiguous(frame_alloc, virt, phys, flags)?;
 
     if ph.file_size < ph.mem_size {
         handle_bss_section(arch, frame_alloc, ph, flags, phys_base, virt_base)?;
@@ -468,14 +517,10 @@ where
         // additional_virt should be page-aligned, but just to make sure
         debug_assert!(additional_virt.is_aligned(ph.align));
 
-        let additional_phys = {
-            let start = frame_alloc.allocate_frames_zeroed(additional_virt.size().div(ph.align))?;
+        let additional_phys = frame_alloc.allocate_frames(additional_virt.size().div(ph.align));
 
-            start..start.add(additional_virt.size())
-        };
-
-        log::trace!("mapping additional zeros {additional_virt:?} => {additional_phys:?}");
-        arch.map_contiguous(additional_virt, additional_phys, flags)?;
+        log::trace!("mapping additional zeros {additional_virt:?}...");
+        arch.map(additional_virt, additional_phys, flags)?;
     }
 
     Ok(())
@@ -496,20 +541,11 @@ where
     let size_pages = ph.mem_size.div_ceil(A::PAGE_SIZE);
     let size = size_pages * A::PAGE_SIZE * minfo.cpus;
 
-    let phys = {
-        let start = frame_alloc.allocate_frames_zeroed(size_pages * minfo.cpus)?;
-
-        start..start.add(size)
-    };
-
+    let phys = frame_alloc.allocate_frames(size_pages * minfo.cpus);
     let virt = page_alloc.reserve_range(size, A::PAGE_SIZE);
 
-    log::trace!("Mapping TLS region {:?} => {:?}...", virt, phys);
-    arch.map_contiguous(
-        virt.clone(),
-        phys.clone(),
-        ArchFlags::READ | ArchFlags::WRITE,
-    )?;
+    log::trace!("Mapping TLS region {virt:?}...");
+    arch.map(virt.clone(), phys, ArchFlags::READ | ArchFlags::WRITE)?;
 
     let allocation = TlsAllocation {
         virt,
@@ -530,6 +566,8 @@ fn handle_dynamic_segment(
     phys_base: PhysicalAddress,
     virt_base: VirtualAddress,
 ) -> crate::Result<()> {
+    log::trace!("parsing RELA info...");
+
     if let Some(rela_info) = ph.parse_rela(elf_file)? {
         let relas = unsafe {
             let ptr = phys_base.add(rela_info.offset as usize).as_raw()
@@ -538,6 +576,7 @@ fn handle_dynamic_segment(
             slice::from_raw_parts(ptr, rela_info.count as usize)
         };
 
+        log::trace!("applying relocations...");
         for rela in relas {
             apply_relocation(rela, phys_base, virt_base)?;
         }
@@ -562,12 +601,17 @@ fn apply_relocation(
     match rela.get_type() {
         R_RISCV_RELATIVE => {
             // Calculate address at which to apply the relocation.
-            let target_phys = phys_base.add(rela.get_offset() as usize);
+            // dynamic relocations offsets are relative to the virtual layout of the elf,
+            // not the physical file
+            let target = virt_base.add(rela.get_offset() as usize);
 
             // Calculate the value to store at the relocation target.
             let value = virt_base.offset(rela.get_addend() as isize);
 
-            unsafe { (target_phys.as_raw() as *mut usize).write_unaligned(value.as_raw()) };
+            todo!()
+
+            // log::trace!("reloc R_RISCV_RELATIVE offset: {:#x}; addend: {:#x} => target {target_phys:?} value {value:?}", rela.get_offset(), rela.get_addend());
+            // unsafe { (target_phys.as_raw() as *mut usize).write_unaligned(value.as_raw()) };
         }
         _ => unimplemented!("unsupported relocation type {}", rela.get_type()),
     }
@@ -597,6 +641,36 @@ where
     Ok(())
 }
 
+/// Map the kernel stacks for each hart.
+// TODO add guard pages below each stack allocation
+fn map_kernel_stacks<A>(
+    arch: &mut A,
+    frame_alloc: &mut BumpAllocator<A>,
+    page_alloc: &mut PageAllocator<A>,
+    machine_info: &MachineInfo,
+    per_hart_stack_size: usize,
+) -> crate::Result<Range<VirtualAddress>>
+where
+    A: pmm::Arch,
+    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
+{
+    let stacks_phys = frame_alloc.allocate_frames(per_hart_stack_size * machine_info.cpus);
+
+    let stacks_virt = page_alloc.reserve_range(
+        per_hart_stack_size * A::PAGE_SIZE * machine_info.cpus,
+        A::PAGE_SIZE,
+    );
+
+    log::trace!("Mapping stack region {stacks_virt:?}...");
+    arch.map(
+        stacks_virt.clone(),
+        stacks_phys,
+        ArchFlags::READ | ArchFlags::WRITE,
+    )?;
+
+    Ok(stacks_virt)
+}
+
 fn allocate_and_copy<A>(
     frame_alloc: &mut BumpAllocator<A>,
     src: PhysicalAddress,
@@ -606,7 +680,8 @@ where
     A: pmm::Arch,
 {
     let frames = len.div_ceil(A::PAGE_SIZE);
-    let dst = frame_alloc.allocate_frames(frames)?;
+    // FIXME use .map here instead
+    let dst = frame_alloc.allocate_frames_contiguous(frames)?;
 
     unsafe {
         let src = slice::from_raw_parts_mut(src.as_raw() as *mut u8, len);
@@ -649,7 +724,7 @@ impl ProgramHeader<'_> {
             let tag = field.get_tag().map_err(Error::Elf)?;
             match tag {
                 Tag::Rela => {
-                    let ptr = field.get_val().map_err(Error::Elf)?;
+                    let ptr = field.get_ptr().map_err(Error::Elf)?;
                     let prev = rela.replace(ptr);
                     if prev.is_some() {
                         panic!("Dynamic section contains more than one Rela entry");

@@ -6,6 +6,8 @@ extern crate kernel as _;
 
 #[no_mangle]
 extern "Rust" fn kmain(_hartid: usize, _boot_info: &'static loader_api::BootInfo) -> ! {
+    log::trace!("hello world");
+    
     // Eventually this will all be hidden behind other abstractions (the scheduler, etc.) and this
     // function will just jump into the scheduling loop
 

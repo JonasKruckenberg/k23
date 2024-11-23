@@ -151,6 +151,7 @@ impl<T: 'static> LocalKey<T> {
     {
         unsafe {
             let mut init = Some(init);
+            // assert!(!(self.inner as *const u8).is_null());
             let reference = (self.inner)(Some(&mut init)).expect(
                 "cannot access a Thread Local Storage value \
                  during or after destruction",

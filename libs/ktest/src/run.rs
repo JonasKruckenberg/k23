@@ -19,7 +19,15 @@ extern "Rust" fn kmain(_hartid: usize, boot_info: &'static loader_api::BootInfo)
         }
     }
 
-    let machine_info = unsafe { MachineInfo::from_dtb(boot_info.fdt_virt.as_raw() as *const u8) };
+    let machine_info = unsafe {
+        MachineInfo::from_dtb(
+            boot_info
+                .physmap
+                .start
+                .add(boot_info.fdt_phys.as_raw())
+                .as_raw() as *const u8,
+        )
+    };
     let args = machine_info
         .bootargs
         .map(|bootargs| Arguments::from_str(bootargs.to_str().unwrap()))
