@@ -38,7 +38,7 @@ impl PageAllocator {
         }
     }
 
-    pub fn reserve_pages(&mut self, num_pages: usize) -> usize {
+    fn reserve_pages(&mut self, num_pages: usize) -> usize {
         // find a consecutive range of `num` entries that are not used
         let mut free_pages = self
             .page_state

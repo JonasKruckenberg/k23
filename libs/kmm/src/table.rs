@@ -1,7 +1,6 @@
 use crate::entry::Entry;
 use crate::{phys_to_virt, Mode, VirtualAddress};
 use core::marker::PhantomData;
-use core::mem;
 
 pub struct Table<M> {
     /// The level of this table entry.
@@ -41,7 +40,7 @@ impl<M: Mode> Table<M> {
 
     pub fn entry_mut(&mut self, index: usize) -> &mut Entry<M> {
         debug_assert!(index < M::PAGE_TABLE_ENTRIES, "index was {index}");
-        let ptr = self.addr.add(index * mem::size_of::<Entry<M>>()).as_raw() as *mut Entry<M>;
+        let ptr = self.addr.add(index * size_of::<Entry<M>>()).as_raw() as *mut Entry<M>;
         // log::trace!("{ptr:?} self.addr {:?} index: {index}", self.addr);
         unsafe { &mut *ptr }
     }
@@ -49,7 +48,7 @@ impl<M: Mode> Table<M> {
     #[must_use]
     pub fn entry(&self, index: usize) -> &Entry<M> {
         debug_assert!(index < M::PAGE_TABLE_ENTRIES, "index was {index}");
-        let ptr = self.addr.add(index * mem::size_of::<Entry<M>>()).as_raw() as *mut Entry<M>;
+        let ptr = self.addr.add(index * size_of::<Entry<M>>()).as_raw() as *mut Entry<M>;
         // log::trace!("{ptr:?} self.addr {:?} index: {index}", self.addr);
         unsafe { &*ptr }
     }
@@ -74,7 +73,7 @@ impl<M: Mode> Table<M> {
         let raw = ((index & M::PAGE_ENTRY_MASK)
             << (self.level * M::PAGE_ENTRY_SHIFT + M::PAGE_SHIFT)) as isize;
 
-        let shift = mem::size_of::<usize>() as u32 * 8 - 38;
+        let shift = size_of::<usize>() as u32 * 8 - 38;
         VirtualAddress(raw.wrapping_shl(shift).wrapping_shr(shift) as usize)
     }
 }
