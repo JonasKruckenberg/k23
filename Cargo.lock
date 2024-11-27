@@ -545,9 +545,9 @@ name = "loader"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
+ "bitflags",
  "cfg-if",
  "dtb-parser",
- "kmm",
  "loader-api",
  "log",
  "onlyerror",

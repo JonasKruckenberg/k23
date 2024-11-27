@@ -1,11 +1,11 @@
-use crate::pmm::PhysicalAddress;
 use arrayvec::ArrayVec;
 use core::cmp::Ordering;
 use core::ffi::CStr;
-use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
+use core::{fmt, mem};
 use dtb_parser::{DevTree, Node, Visitor};
+use kmm::{AddressRangeExt, PhysicalAddress};
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
@@ -129,8 +129,7 @@ impl<'dt> MachineInfo<'dt> {
         }
 
         // remove memory regions that are left as zero-sized from the previous step
-        info.memories
-            .retain(|region| region.end.as_raw() - region.start.as_raw() > 0);
+        info.memories.retain(|region| region.size() > 0);
 
         // ensure the memory regions are sorted.
         // this is important for the allocation logic to be correct
@@ -181,7 +180,7 @@ impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
     }
 
     fn visit_address_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
-        let size_in_bytes = size_in_cells as usize * size_of::<u32>();
+        let size_in_bytes = size_in_cells as usize * mem::size_of::<u32>();
 
         self.memories.address_size = size_in_bytes;
         self.reservations.address_size = size_in_bytes;
@@ -190,7 +189,7 @@ impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
     }
 
     fn visit_size_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
-        let size_in_bytes = size_in_cells as usize * size_of::<u32>();
+        let size_in_bytes = size_in_cells as usize * mem::size_of::<u32>();
 
         self.memories.width_size = size_in_bytes;
         self.reservations.width_size = size_in_bytes;
@@ -397,4 +396,15 @@ impl<'dt> Visitor<'dt> for CpuVisitor<'dt> {
 
         Ok(())
     }
+
+    // fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
+    //     if name.starts_with("cpu@") {
+    //         self.cpus += 1;
+    //
+    //
+    //         // node.visit(&mut self.regs_visitor)?;
+    //     }
+    //
+    //     Ok(())
+    // }
 }

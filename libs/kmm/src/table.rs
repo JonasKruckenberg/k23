@@ -1,5 +1,7 @@
 use crate::entry::Entry;
 use crate::{phys_to_virt, Mode, VirtualAddress};
+use core::fmt;
+use core::fmt::Formatter;
 use core::marker::PhantomData;
 
 pub struct Table<M> {
@@ -10,6 +12,20 @@ pub struct Table<M> {
     level: usize,
     addr: VirtualAddress,
     _m: PhantomData<M>,
+}
+
+impl<M> fmt::Debug for Table<M>
+where
+    M: Mode,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut f = f.debug_list();
+        for i in 0..M::PAGE_TABLE_ENTRIES {
+            let entry = self.entry(i);
+            f.entry(entry);
+        }
+        f.finish()
+    }
 }
 
 impl<M: Mode> Table<M> {

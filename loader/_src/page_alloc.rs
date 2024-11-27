@@ -1,6 +1,6 @@
-use crate::pmm;
-use crate::pmm::VirtualAddress;
+use crate::kconfig;
 use core::ops::Range;
+use kmm::{Mode, VirtualAddress};
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
@@ -11,7 +11,7 @@ use rand_chacha::ChaCha20Rng;
 #[derive(Debug)]
 pub struct PageAllocator {
     /// Whether a top-level page is in use.
-    page_state: [bool; pmm::arch::PAGE_TABLE_ENTRIES / 2],
+    page_state: [bool; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
     /// A random number generator that should be used to generate random addresses or
     /// `None` if aslr is disabled.
     rng: Option<ChaCha20Rng>,
@@ -23,7 +23,7 @@ impl PageAllocator {
     /// This means regions will be randomly placed in the higher half of the address space.
     pub fn new(rng: ChaCha20Rng) -> Self {
         Self {
-            page_state: [false; pmm::arch::PAGE_TABLE_ENTRIES / 2],
+            page_state: [false; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
             rng: Some(rng),
         }
     }
@@ -33,7 +33,7 @@ impl PageAllocator {
     /// Allocated regions will be placed consecutively in the higher half of the address space.
     pub fn new_no_kaslr() -> Self {
         Self {
-            page_state: [false; pmm::arch::PAGE_TABLE_ENTRIES / 2],
+            page_state: [false; kconfig::MEMORY_MODE::PAGE_TABLE_ENTRIES / 2],
             rng: None,
         }
     }
@@ -72,8 +72,9 @@ impl PageAllocator {
     pub fn reserve_range(&mut self, size: usize, alignment: usize) -> Range<VirtualAddress> {
         assert!(alignment.is_power_of_two());
 
-        const TOP_LEVEL_PAGE_SIZE: usize = pmm::arch::PAGE_SIZE
-            << (pmm::arch::PAGE_ENTRY_SHIFT * (pmm::arch::PAGE_TABLE_LEVELS - 1));
+        const TOP_LEVEL_PAGE_SIZE: usize = kconfig::PAGE_SIZE
+            << (kconfig::MEMORY_MODE::PAGE_ENTRY_SHIFT
+                * (kconfig::MEMORY_MODE::PAGE_TABLE_LEVELS - 1));
 
         // how many top-level pages are needed to map `size` bytes
         // and attempt to allocate them
@@ -87,20 +88,15 @@ impl PageAllocator {
         // we can then take the lowest possible address of the higher half (`usize::MAX << VA_BITS`)
         // and add the `idx` multiple of the size of a top-level entry to it
         let base = VirtualAddress::new(
-            (usize::MAX << pmm::arch::VA_BITS) + page_idx * TOP_LEVEL_PAGE_SIZE,
+            (usize::MAX << kconfig::MEMORY_MODE::VA_BITS) + page_idx * TOP_LEVEL_PAGE_SIZE,
         );
 
         let offset = if let Some(rng) = self.rng.as_mut() {
             // Choose a random offset.
             let max_offset = TOP_LEVEL_PAGE_SIZE - (size % TOP_LEVEL_PAGE_SIZE);
+            let uniform_range = Uniform::new(0, max_offset / alignment);
 
-            if max_offset / alignment > 0 {
-                let uniform_range = Uniform::new(0, max_offset / alignment);
-
-                uniform_range.sample(rng) * alignment
-            } else {
-                0
-            }
+            uniform_range.sample(rng) * alignment
         } else {
             0
         };

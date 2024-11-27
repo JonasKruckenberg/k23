@@ -14,11 +14,11 @@ harness = false
 
 [dependencies]
 loader-api.workspace = true
-kmm.workspace = true
 semihosting-logger.workspace = true
 sync.workspace = true
 dtb-parser.workspace = true
 
+bitflags.workspace = true
 cfg-if.workspace = true
 log.workspace = true
 arrayvec.workspace = true

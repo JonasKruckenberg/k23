@@ -36,7 +36,10 @@ impl<'a, M: Mode> Mapper<'a, M> {
     pub fn from_active(asid: usize, allocator: &'a mut dyn FrameAllocator<M>) -> Self {
         let root_table = M::get_active_table(asid);
         let root_table_virt = allocator.phys_to_virt(root_table);
-        debug_assert!(root_table.0 != 0);
+        debug_assert!(root_table_virt.0 != 0);
+
+        // unsafe { Table::<M>::new(root_table_virt, 2).debug_print_table(allocator.phys_to_virt(PhysicalAddress::default())); }
+        // log::trace!("root table {:#?}", unsafe {  });
 
         Self {
             asid,
