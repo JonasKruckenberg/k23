@@ -8,6 +8,7 @@ mod machine_info;
 mod error;
 mod pmm;
 mod page_alloc;
+mod kernel;
 
 pub use error::Error;
 pub type Result<T> = core::result::Result<T, Error>;
