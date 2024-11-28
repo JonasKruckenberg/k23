@@ -71,7 +71,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
     // when it's ready to handle them
     riscv::interrupt::disable();
 
-    INIT.call_once(|| {
+    INIT.try_call_once(|| -> crate::Result<_> {
         // zero out the BSS section, under QEMU we already get zeroed memory
         // but on actual hardware this might not be the case
         zero_bss();
@@ -102,9 +102,12 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
         // This will be used by the kernel to access the page tables, BootInfo struct and maybe
         // more in the future.
         map_physical_memory(&mut pmm, &mut frame_alloc, &minfo).unwrap();
-    });
 
     log::trace!("done...");
+
+        Ok(())
+    })
+    .unwrap();
 
     loop {}
 }
