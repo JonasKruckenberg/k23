@@ -1,5 +1,6 @@
 use crate::pmm::{Error, Flags, FrameAllocator, FramesIter, PhysicalAddress, VirtualAddress};
 use bitflags::bitflags;
+use core::fmt;
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 use riscv::satp;
@@ -19,6 +20,7 @@ pub const PAGE_TABLE_ENTRIES: usize = 512;
 pub const PAGE_SHIFT: usize = (PAGE_SIZE - 1).count_ones() as usize;
 /// Number of bits we need to shift an address by to reach the next page table entry
 pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usize;
+const PAGE_ENTRY_MASK: usize = PAGE_TABLE_ENTRIES - 1;
 
 /// On `RiscV` targets the page table entry's physical address bits are shifted 2 bits to the right.
 pub const PTE_PPN_SHIFT: usize = 2;
@@ -27,7 +29,7 @@ pub const PTE_PPN_SHIFT: usize = 2;
 // Below this is the user address space.
 // riscv64 with sv39 means a page-based 39-bit virtual memory space.  The
 // base kernel address is chosen so that kernel addresses have a 1 in the
-// most significant bit whereas user addresses have a 0. 
+// most significant bit whereas user addresses have a 0.
 pub const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(usize::MAX << VA_BITS); // 0xffffffc000000000
 
 pub const fn page_size_for_level(lvl: usize) -> usize {
@@ -169,11 +171,11 @@ impl Riscv64Sv39 {
         let mut len = len.get();
 
         'outer: while len > 0 {
-            let mut ptable: NonNull<PageTableEntry> = self.root_pgtable;
+            let mut pgtable: NonNull<PageTableEntry> = self.root_pgtable;
 
             for lvl in (0..PAGE_TABLE_LEVELS).rev() {
                 let index = virt_to_vpn(virt, lvl);
-                let pte = unsafe { &mut *ptable.as_ptr().add(index) };
+                let pte = unsafe { &mut *pgtable.as_ptr().add(index) };
 
                 if pte.is_valid() && pte.is_leaf() {
                     let page_size = page_size_for_level(lvl);
@@ -186,7 +188,7 @@ impl Riscv64Sv39 {
                     len -= page_size;
                     continue 'outer;
                 } else if pte.is_valid() {
-                    ptable = pgtable_ptr_from_phys(pte.phys_addr(), self.phys_offset);
+                    pgtable = pgtable_ptr_from_phys(pte.phys_addr(), self.phys_offset);
                 } else {
                     panic!()
                 }
@@ -195,6 +197,52 @@ impl Riscv64Sv39 {
 
         Ok(())
     }
+
+    pub unsafe fn activate(&self) -> Result<(), Error> {
+        let ppn = self.root_pgtable.as_ptr() as usize >> 12;
+        satp::set(satp::Mode::Sv39, self.asid, ppn);
+        Ok(())
+    }
+}
+
+impl fmt::Display for Riscv64Sv39 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn fmt_entry(
+            f: &mut fmt::Formatter,
+            depth: usize,
+            pgtable: NonNull<PageTableEntry>,
+            phys_offset: VirtualAddress,
+            parent_virt: VirtualAddress,
+        ) -> fmt::Result {
+            let padding = depth * 4;
+
+            for i in 0..PAGE_TABLE_ENTRIES {
+                let pte = unsafe { &mut *pgtable.as_ptr().add(i) };
+                let virt = VirtualAddress(parent_virt.as_raw() | virt_from_vpn(PAGE_TABLE_LEVELS - 1 - depth, i).as_raw());
+
+                if pte.is_valid() && pte.is_leaf() {
+                    writeln!(
+                        f,
+                        "{:^padding$}{}:{i:<3} {:?} => {:?} {:?}",
+                        "",
+                        PAGE_TABLE_LEVELS - 1 - depth,
+                        virt,
+                        pte.phys_addr(),
+                        pte.get_flags()
+                    )?;
+                } else if pte.is_valid() {
+                    writeln!(f, "{:^padding$}{}:{i:<3}:", "", PAGE_TABLE_LEVELS - 1 - depth)?;
+
+                    let pgtable = pgtable_ptr_from_phys(pte.phys_addr(), phys_offset);
+                    fmt_entry(f, depth + 1, pgtable, phys_offset, virt)?;
+                }
+            }
+
+            Ok(())
+        }
+
+        fmt_entry(f, 0, self.root_pgtable, self.phys_offset, VirtualAddress::default())
+    }
 }
 
 #[repr(transparent)]
@@ -202,8 +250,8 @@ struct PageTableEntry {
     bits: usize,
 }
 
-impl core::fmt::Debug for PageTableEntry {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl fmt::Debug for PageTableEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rsw = (self.bits & ((1 << 2) - 1) << 8) >> 8;
         let ppn0 = (self.bits & ((1 << 9) - 1) << 10) >> 10;
         let ppn1 = (self.bits & ((1 << 9) - 1) << 19) >> 19;
@@ -254,7 +302,7 @@ impl PageTableEntry {
     }
 
     pub fn get_flags(&self) -> PTEFlags {
-        PTEFlags::from_bits_retain(self.bits)
+        PTEFlags::from_bits_truncate(self.bits)
     }
 }
 
@@ -271,4 +319,15 @@ fn virt_to_vpn(virt: VirtualAddress, vpn_nr: usize) -> usize {
         (virt.as_raw() >> (PAGE_SHIFT + vpn_nr * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
     debug_assert!(index < PAGE_TABLE_ENTRIES);
     index
+}
+#[allow(
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap
+)]
+pub fn virt_from_vpn(level: usize, index: usize) -> VirtualAddress {
+    let raw = ((index & PAGE_ENTRY_MASK) << (level * PAGE_ENTRY_SHIFT + PAGE_SHIFT)) as isize;
+    
+    let shift = size_of::<usize>() as u32 * size_of::<usize>() as u32 - VA_BITS - 1;
+    VirtualAddress(raw.wrapping_shl(shift).wrapping_shr(shift) as usize)
 }
