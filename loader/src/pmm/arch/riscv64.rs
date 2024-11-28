@@ -2,6 +2,7 @@ use crate::pmm::{Error, Flags, FrameAllocator, FramesIter, PhysicalAddress, Virt
 use bitflags::bitflags;
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
+use riscv::satp;
 
 /// Number of usable bits in a virtual address
 pub const VA_BITS: u32 = 38;
@@ -69,18 +70,33 @@ impl From<Flags> for PTEFlags {
 pub struct Riscv64Sv39 {
     root_pgtable: NonNull<PageTableEntry>,
     phys_offset: VirtualAddress,
+    asid: usize,
 }
 
 impl Riscv64Sv39 {
     pub fn new(
         frame_alloc: &mut dyn FrameAllocator,
         phys_offset: VirtualAddress,
+        asid: usize,
     ) -> Result<Self, Error> {
         let root_pgtable = pgtable_ptr_from_phys(frame_alloc.allocate_frame_zeroed()?, phys_offset);
 
         Ok(Self {
             root_pgtable,
             phys_offset,
+            asid,
+        })
+    }
+
+    pub fn from_active(phys_offset: VirtualAddress, asid: usize) -> Result<Self, Error> {
+        let satp = satp::read();
+        let pgtable_phys = PhysicalAddress(satp.ppn() << 12);
+        let root_pgtable = pgtable_ptr_from_phys(pgtable_phys, phys_offset);
+
+        Ok(Self {
+            root_pgtable,
+            phys_offset,
+            asid,
         })
     }
 
