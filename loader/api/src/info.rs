@@ -1,5 +1,5 @@
 use core::ops::Range;
-use kmm::{PhysicalAddress, VirtualAddress};
+use pmm::{PhysicalAddress, VirtualAddress};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -13,7 +13,7 @@ pub struct BootInfo {
     /// information to Rust types. It also marks any memory regions that the bootloader uses in
     /// the memory map before passing it to the kernel. Regions marked as usable can be freely
     /// used by the kernel.
-    pub memory_regions: &'static mut [MemoryRegion],
+    pub memory_regions: *const MemoryRegion,
     /// The thread local storage (TLS) template of the kernel executable, if present.
     ///
     /// Note that the loader will already set up TLS regions for each hart reported as `online`
@@ -41,31 +41,28 @@ pub struct BootInfo {
     ///
     /// The kernel should use this information to unmap the loader region after taking control.
     pub loader_region: Range<VirtualAddress>,
-    /// Virtual memory region reserved for the kernel heap.
-    ///
-    /// Note that this is **not** mapped, as the kernel should map
-    /// this region on-demand.
-    pub heap_region: Option<Range<VirtualAddress>>,
     /// Virtual address of the loaded kernel image.
-    pub kernel_image_offset: VirtualAddress,
+    pub kernel_virt: Range<VirtualAddress>,
     /// Physical memory region where the kernel ELF file resides.
     ///
     /// This field can be used by the kernel to perform introspection of its own ELF file.
     pub kernel_elf: Range<PhysicalAddress>,
 }
 
+unsafe impl Send for BootInfo {}
+unsafe impl Sync for BootInfo {}
+
 impl BootInfo {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         boot_hart: usize,
         physical_memory_offset: VirtualAddress,
-        kernel_image_offset: VirtualAddress,
-        memory_regions: &'static mut [MemoryRegion],
+        kernel_virt: Range<VirtualAddress>,
+        memory_regions: *const MemoryRegion,
         tls_template: Option<TlsTemplate>,
         fdt_offset: VirtualAddress,
         loader_region: Range<VirtualAddress>,
         kernel_elf: Range<PhysicalAddress>,
-        heap_region: Option<Range<VirtualAddress>>,
     ) -> Self {
         Self {
             boot_hart,
@@ -73,10 +70,9 @@ impl BootInfo {
             memory_regions,
             tls_template,
             fdt_offset,
-            kernel_image_offset,
+            kernel_virt,
             loader_region,
             kernel_elf,
-            heap_region,
         }
     }
 }

@@ -6,6 +6,6 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-kmm = { workspace = true }
+pmm = { workspace = true }
 loader-api-macros = { path = "macros" }
 cfg-if.workspace = true

@@ -1,6 +1,6 @@
-use crate::pmm;
-use crate::pmm::VirtualAddress;
+use core::alloc::Layout;
 use core::ops::Range;
+use pmm::VirtualAddress;
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
@@ -9,21 +9,29 @@ use rand_chacha::ChaCha20Rng;
 ///
 /// All regions will be huge page (1GiB) aligned.
 #[derive(Debug)]
-pub struct PageAllocator {
+pub struct PageAllocator<A>
+where
+    A: pmm::arch::Arch,
+    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
+{
     /// Whether a top-level page is in use.
-    page_state: [bool; pmm::arch::PAGE_TABLE_ENTRIES / 2],
+    page_state: [bool; A::PAGE_TABLE_ENTRIES / 2],
     /// A random number generator that should be used to generate random addresses or
     /// `None` if aslr is disabled.
     rng: Option<ChaCha20Rng>,
 }
 
-impl PageAllocator {
+impl<A> PageAllocator<A>
+where
+    A: pmm::arch::Arch,
+    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
+{
     /// Create a new `PageAllocator` with KASLR enabled.
     ///
     /// This means regions will be randomly placed in the higher half of the address space.
     pub fn new(rng: ChaCha20Rng) -> Self {
         Self {
-            page_state: [false; pmm::arch::PAGE_TABLE_ENTRIES / 2],
+            page_state: [false; A::PAGE_TABLE_ENTRIES / 2],
             rng: Some(rng),
         }
     }
@@ -33,12 +41,12 @@ impl PageAllocator {
     /// Allocated regions will be placed consecutively in the higher half of the address space.
     pub fn new_no_kaslr() -> Self {
         Self {
-            page_state: [false; pmm::arch::PAGE_TABLE_ENTRIES / 2],
+            page_state: [false; A::PAGE_TABLE_ENTRIES / 2],
             rng: None,
         }
     }
 
-    fn reserve_pages(&mut self, num_pages: usize) -> usize {
+    fn allocate_pages(&mut self, num_pages: usize) -> usize {
         // find a consecutive range of `num` entries that are not used
         let mut free_pages = self
             .page_state
@@ -69,15 +77,34 @@ impl PageAllocator {
         }
     }
 
-    pub fn reserve_range(&mut self, size: usize, alignment: usize) -> Range<VirtualAddress> {
-        assert!(alignment.is_power_of_two());
+    pub fn reserve(&mut self, mut virt_base: VirtualAddress, mut remaining_bytes: usize) {
+        log::trace!(
+            "marking {virt_base:?}..{:?} as used",
+            virt_base.add(remaining_bytes)
+        );
 
-        const TOP_LEVEL_PAGE_SIZE: usize = pmm::arch::PAGE_SIZE
-            << (pmm::arch::PAGE_ENTRY_SHIFT * (pmm::arch::PAGE_TABLE_LEVELS - 1));
+        let top_level_page_size = A::page_size_for_level(A::PAGE_TABLE_LEVELS - 1);
+        assert!(virt_base.is_aligned(top_level_page_size));
+
+        while remaining_bytes > 0 {
+            let page_idx =
+                (virt_base.as_raw() - (usize::MAX << A::VIRT_ADDR_BITS)) / top_level_page_size;
+
+            self.page_state[page_idx] = true;
+
+            virt_base = virt_base.add(top_level_page_size);
+            remaining_bytes -= top_level_page_size;
+        }
+    }
+
+    pub fn allocate(&mut self, layout: Layout) -> Range<VirtualAddress> {
+        assert!(layout.align().is_power_of_two());
+
+        let top_level_page_size = A::page_size_for_level(A::PAGE_TABLE_LEVELS - 1);
 
         // how many top-level pages are needed to map `size` bytes
         // and attempt to allocate them
-        let page_idx = self.reserve_pages(size.div_ceil(TOP_LEVEL_PAGE_SIZE));
+        let page_idx = self.allocate_pages(layout.size().div_ceil(top_level_page_size));
 
         // calculate the base address of the page
         //
@@ -86,18 +113,17 @@ impl PageAllocator {
         //
         // we can then take the lowest possible address of the higher half (`usize::MAX << VA_BITS`)
         // and add the `idx` multiple of the size of a top-level entry to it
-        let base = VirtualAddress::new(
-            (usize::MAX << pmm::arch::VA_BITS) + page_idx * TOP_LEVEL_PAGE_SIZE,
-        );
+        let base =
+            VirtualAddress::new((usize::MAX << A::VIRT_ADDR_BITS) + page_idx * top_level_page_size);
 
         let offset = if let Some(rng) = self.rng.as_mut() {
             // Choose a random offset.
-            let max_offset = TOP_LEVEL_PAGE_SIZE - (size % TOP_LEVEL_PAGE_SIZE);
+            let max_offset = top_level_page_size - (layout.size() % top_level_page_size);
 
-            if max_offset / alignment > 0 {
-                let uniform_range = Uniform::new(0, max_offset / alignment);
+            if max_offset / layout.align() > 0 {
+                let uniform_range = Uniform::new(0, max_offset / layout.align());
 
-                uniform_range.sample(rng) * alignment
+                uniform_range.sample(rng) * layout.align()
             } else {
                 0
             }
@@ -105,6 +131,6 @@ impl PageAllocator {
             0
         };
 
-        base.add(offset)..base.add(offset + size)
+        base.add(offset)..base.add(offset + layout.size())
     }
 }

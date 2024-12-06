@@ -71,9 +71,9 @@ impl Once {
         let mut f = Some(f);
         self.call(&mut || match f.take().unwrap()() {
             Ok(_) => {}
-            Err(err) => error = Some(err)
+            Err(err) => error = Some(err),
         });
-        
+
         if let Some(err) = error {
             Err(err)
         } else {

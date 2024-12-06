@@ -1,4 +1,3 @@
-use crate::pmm::PhysicalAddress;
 use arrayvec::ArrayVec;
 use core::cmp::Ordering;
 use core::ffi::CStr;
@@ -6,13 +5,14 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use dtb_parser::{DevTree, Node, Visitor};
+use pmm::PhysicalAddress;
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
 pub struct MachineInfo<'dt> {
-    /// The hart ID of the booting CPU (the CPU which ran all global setup)
-    /// as reported by the previous stage loader
-    pub boot_hart: u32,
+    // /// The hart ID of the booting CPU (the CPU which ran all global setup)
+    // /// as reported by the previous stage loader
+    // pub boot_hart: u32,
     /// The FDT blob passed to us by the previous stage loader
     pub fdt: &'dt [u8],
     /// The number of "standalone" CPUs in the system
@@ -72,14 +72,12 @@ impl<'dt> MachineInfo<'dt> {
         let mut reservations = fdt.reserved_entries();
         let fdt_slice = fdt.as_slice();
 
-        let boot_hart = fdt.boot_cpuid_phys();
-
         let mut v = BootInfoVisitor::default();
         fdt.visit(&mut v).unwrap();
 
         let mut info = MachineInfo {
             fdt: fdt_slice,
-            boot_hart,
+            // boot_hart,
             cpus: v.cpus.cpus,
             hart_mask: v.cpus.hart_mask,
             memories: v.memories.regs,
@@ -127,6 +125,13 @@ impl<'dt> MachineInfo<'dt> {
                 exclude_region(region);
             }
         }
+
+        // exclude the FDT blob from the available memory regions so that we don't accidentally
+        // override it
+        exclude_region({
+            let range = fdt_slice.as_ptr_range();
+            PhysicalAddress::new(range.start as usize)..PhysicalAddress::new(range.end as usize)
+        });
 
         // remove memory regions that are left as zero-sized from the previous step
         info.memories
