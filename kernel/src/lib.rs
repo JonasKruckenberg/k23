@@ -12,10 +12,8 @@
 
 extern crate alloc;
 
-pub mod allocator;
+mod allocator;
 pub mod arch;
-mod frame_alloc;
 pub mod kconfig;
-pub mod runtime;
 mod start;
 // mod tests;
