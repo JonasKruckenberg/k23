@@ -154,7 +154,7 @@ _run_riscv64 binary *args: (_build_bootimg binary)
         -machine virt \
         -cpu rv64 \
         -smp 1 \
-        -m 512M \
+        -m 64M \
         -d guest_errors,int \
         -display none \
         -serial stdio \
