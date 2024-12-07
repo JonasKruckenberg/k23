@@ -14,7 +14,7 @@ use xmas_elf::program::{SegmentData, Type};
 use xmas_elf::P64;
 
 pub struct KernelAddressSpace<A> {
-    aspace: AddressSpace<A>,
+    pub aspace: AddressSpace<A>,
 
     /// The entry point address of the kernel
     entry: VirtualAddress,

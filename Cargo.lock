@@ -335,19 +335,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kmm"
-version = "0.1.0"
-dependencies = [
- "bitflags",
- "cfg-if",
- "kernel",
- "ktest",
- "log",
- "onlyerror",
- "riscv",
-]
-
-[[package]]
 name = "ktest"
 version = "0.1.0"
 dependencies = [
@@ -381,14 +368,6 @@ name = "libc"
 version = "0.2.164"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "433bfe06b8c75da9b2e3fbea6e5329ff87748f0b144ef75306e674c3f6f7c13f"
-
-[[package]]
-name = "linked-list-allocator"
-version = "0.1.0"
-dependencies = [
- "kmm",
- "sync",
-]
 
 [[package]]
 name = "loader"

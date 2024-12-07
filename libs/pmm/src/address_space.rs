@@ -2,6 +2,8 @@ use crate::arch::{Arch, PageTableEntry};
 use crate::frame_alloc::{FrameAllocator, NonContiguousFrames};
 use crate::{arch, Flush, PhysicalAddress, VirtualAddress};
 use bitflags::Flags;
+use core::fmt;
+use core::fmt::Formatter;
 use core::marker::PhantomData;
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
@@ -347,4 +349,79 @@ where
     fn pgtable_ptr_from_phys(&self, phys: PhysicalAddress) -> NonNull<A::PageTableEntry> {
         NonNull::new(self.phys_offset.add(phys.as_raw()).as_raw() as *mut _).unwrap()
     }
+}
+
+impl<A> fmt::Display for AddressSpace<A>
+where
+    A: Arch,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        fn fmt_table<A>(
+            f: &mut Formatter<'_>,
+            aspace: &AddressSpace<A>,
+            pgtable: NonNull<A::PageTableEntry>,
+            acc: VirtualAddress,
+            lvl: usize,
+        ) -> fmt::Result
+        where
+            A: Arch,
+        {
+            let padding = match lvl {
+                0 => 8,
+                1 => 4,
+                _ => 0,
+            };
+
+            for index in 0..A::PAGE_TABLE_ENTRIES {
+                let pte = unsafe { pgtable.add(index).as_mut() };
+                let virt = VirtualAddress(acc.as_raw() | virt_from_index::<A>(lvl, index).as_raw());
+                let (address, flags) = pte.get_address_and_flags();
+
+                if pte.is_valid() && pte.is_leaf() {
+                    writeln!(
+                        f,
+                        "{:^padding$}{}:{index:<3} is a leaf {} => {} {:?}",
+                        "", lvl, virt, address, flags
+                    )?;
+                } else if pte.is_valid() {
+                    writeln!(f, "{:^padding$}{}:{index} is a table node", "", lvl)?;
+                    let (address, _) = pte.get_address_and_flags();
+                    let pgtable = aspace.pgtable_ptr_from_phys(address);
+                    fmt_table(f, aspace, pgtable, virt, lvl - 1)?
+                }
+            }
+
+            Ok(())
+        }
+
+        fmt_table::<A>(
+            f,
+            self,
+            self.pgtable_ptr_from_phys(self.root_pgtable),
+            VirtualAddress::default(),
+            A::PAGE_TABLE_LEVELS - 1,
+        )
+    }
+}
+
+#[allow(
+    clippy::cast_sign_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap
+)]
+fn virt_from_index<A>(lvl: usize, index: usize) -> VirtualAddress
+where
+    A: Arch,
+{
+    let raw = ((index & M::PAGE_ENTRY_MASK)
+        << (lvl * A::PAGE_ENTRY_SHIFT + arch::PAGE_SHIFT)) as isize;
+
+    let shift = size_of::<usize>() as u32 * 8 - 38;
+    VirtualAddress(raw.wrapping_shl(shift).wrapping_shr(shift) as usize)
+    
+    // let raw = ((index & (arch::PAGE_SIZE - 1)) << (lvl * A::PAGE_ENTRY_SHIFT + arch::PAGE_SHIFT))
+    //     as isize;
+    // 
+    // let shift = size_of::<usize>() as u32 * 8 - A::VIRT_ADDR_BITS;
+    // VirtualAddress(raw.wrapping_shl(shift).wrapping_shr(shift) as usize)
 }

@@ -164,6 +164,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 &minfo,
                 loader_region,
             )?;
+            
+            log::trace!("\n{}", kernel_aspace.aspace);
 
             let boot_info = init_boot_info(
                 &mut frame_alloc,
