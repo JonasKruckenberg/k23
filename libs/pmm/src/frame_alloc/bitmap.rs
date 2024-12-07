@@ -1,102 +1,35 @@
-use crate::alloc::{BumpAllocator, FrameAllocator, FrameUsage};
+use crate::arch;
+use crate::frame_alloc::zero_pages;
 use crate::{
-    phys_to_virt, zero_frames, AddressRangeExt, Error, Mode, PhysicalAddress, VirtualAddress,
+    frame_alloc::{BumpAllocator, FrameAllocator, FrameUsage},
+    Error, PhysicalAddress, VirtualAddress,
 };
-use core::fmt;
-use core::fmt::Formatter;
-use core::marker::PhantomData;
+use core::num::NonZeroUsize;
 use core::ops::Range;
+use core::{fmt, ptr};
 
-struct TableEntry<M> {
-    /// The region of physical memory this table entry manages
-    region: Range<PhysicalAddress>,
-    /// The first free page
-    skip: usize,
-    /// The number of used pages
-    used: usize,
-    _m: PhantomData<M>,
-}
-
-impl<M> fmt::Debug for TableEntry<M> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TableEntry")
-            .field("region", &self.region)
-            .field("skip", &self.skip)
-            .field("used", &self.used)
-            .finish()
-    }
-}
-
-impl<M: Mode> TableEntry<M> {
-    /// The number of pages this entry represents
-    pub fn pages(&self) -> usize {
-        let region_size = self.region.end.0 - self.region.start.0;
-        region_size >> M::PAGE_SHIFT
-    }
-
-    pub fn is_page_used(&self, page: usize, physmem_off: VirtualAddress) -> bool {
-        let phys = self.region.start.add(page / 8);
-        let bits = unsafe {
-            let virt = phys_to_virt(physmem_off, phys);
-            *(virt.0 as *const u8)
-        };
-        bits & (1 << (page % 8)) != 0
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    pub fn mark_page_as_used(&mut self, page: usize, physmem_off: VirtualAddress) {
-        let phys = self.region.start.add(page / 8);
-        let virt = phys_to_virt(physmem_off, phys);
-
-        unsafe {
-            let bits = core::ptr::read_volatile(virt.0 as *const u8);
-            core::ptr::write_volatile(virt.0 as *mut u8, bits | 1 << (page as u8 % 8));
-        }
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    pub fn mark_page_as_free(&mut self, page: usize, physmem_off: VirtualAddress) {
-        let phys = self.region.start.add(page / 8);
-        unsafe {
-            let virt = phys_to_virt(physmem_off, phys);
-            let bits = core::ptr::read_volatile(virt.0 as *const u8);
-            core::ptr::write_volatile(virt.0 as *mut u8, bits & !(1 << (page as u8 % 8)));
-        }
-    }
-
-    /// The number of pages required to store the usage map for this entry
-    pub fn usage_map_pages(&self) -> usize {
-        // we can fit 8 bits into one byte
-        let bytes = self.pages() / 8;
-
-        // align-up to next page
-        (bytes + (M::PAGE_SIZE - 1)) >> M::PAGE_SHIFT
-    }
-}
-
-pub struct BitMapAllocator<A> {
+pub struct BitMapAllocator {
     /// The base address of the allocation table
     table_virt: VirtualAddress,
-    physmem_off: VirtualAddress,
-    _m: PhantomData<A>,
+    phys_offset: VirtualAddress,
 }
 
-impl<M: Mode> BitMapAllocator<M> {
-    const NUM_ENTRIES: usize = M::PAGE_SIZE / size_of::<TableEntry<M>>();
+impl BitMapAllocator {
+    const NUM_ENTRIES: usize = arch::PAGE_SIZE / size_of::<TableEntry>();
 
-    fn entries_mut(&mut self) -> &mut [TableEntry<M>] {
+    fn entries_mut(&mut self) -> &mut [TableEntry] {
         unsafe {
             core::slice::from_raw_parts_mut(
-                self.table_virt.as_raw() as *mut TableEntry<M>,
+                self.table_virt.as_raw() as *mut TableEntry,
                 Self::NUM_ENTRIES,
             )
         }
     }
 
-    fn entries(&self) -> &[TableEntry<M>] {
+    fn entries(&self) -> &[TableEntry] {
         unsafe {
             core::slice::from_raw_parts(
-                self.table_virt.as_raw() as *const TableEntry<M>,
+                self.table_virt.as_raw() as *const TableEntry,
                 Self::NUM_ENTRIES,
             )
         }
@@ -107,28 +40,28 @@ impl<M: Mode> BitMapAllocator<M> {
     /// # Errors
     ///
     /// Returns an error if the backing table could not be allocated.
-    pub fn new(mut bump_allocator: BumpAllocator<M>) -> crate::Result<Self> {
-        let physmem_off = bump_allocator.physmem_off;
-
+    pub fn new(
+        mut bump_allocator: BumpAllocator,
+        phys_offset: VirtualAddress,
+    ) -> crate::Result<Self> {
         // allocate a frame to hold the table
-        let table_phys = bump_allocator.allocate_frame_zeroed()?;
-        let table_virt = phys_to_virt(physmem_off, table_phys);
+        let table_phys = bump_allocator.allocate_one_zeroed(phys_offset)?;
+        let table_virt = VirtualAddress::from_phys(table_phys, phys_offset);
 
         let mut this = Self {
             table_virt,
-            physmem_off,
-            _m: PhantomData,
+            phys_offset,
         };
 
         log::debug!(
             "allocator table region {:?}",
-            table_virt..table_virt.add(M::PAGE_SIZE)
+            table_virt..table_virt.add(arch::PAGE_SIZE)
         );
 
         log::trace!("filling table with memory regions...");
         let mut offset = bump_allocator.offset();
         for mut region in bump_allocator.regions().iter().cloned() {
-            let region_size = region.size();
+            let region_size = region.end.as_raw() - region.start.as_raw();
 
             // keep advancing past already fully used memory regions
             if offset >= region_size {
@@ -157,77 +90,58 @@ impl<M: Mode> BitMapAllocator<M> {
 
         log::trace!("mark entries...");
         for entry in this.entries_mut() {
-            let usage_map_pages = entry.usage_map_pages();
+            if let Some(usage_map_pages) = NonZeroUsize::new(entry.usage_map_pages()) {
+                for page in 0..usage_map_pages.get() {
+                    entry.mark_page_as_used(page, phys_offset);
+                }
 
-            for page in 0..usage_map_pages {
-                entry.mark_page_as_used(page, physmem_off);
+                let addr = VirtualAddress::from_phys(entry.region.start, phys_offset);
+                unsafe {
+                    zero_pages(addr.as_raw() as *mut u64, usage_map_pages);
+                }
+
+                entry.skip = usage_map_pages.get();
+                entry.used = usage_map_pages.get();
             }
-
-            if usage_map_pages > 0 {
-                let addr = phys_to_virt(physmem_off, entry.region.start);
-                zero_frames::<M>(addr.as_raw() as *mut u64, usage_map_pages);
-            }
-
-            entry.skip = usage_map_pages;
-            entry.used = usage_map_pages;
         }
 
         Ok(this)
     }
-
-    pub fn debug_print_table(&self) {
-        for entry in self.entries() {
-            log::debug!("{entry:?}");
-        }
-    }
 }
 
-impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
-    fn allocate_frame(&mut self) -> crate::Result<PhysicalAddress> {
-        let physical_memory_offset = self.physmem_off;
-
+impl FrameAllocator for BitMapAllocator {
+    fn allocate_contiguous(
+        &mut self,
+        frames: NonZeroUsize,
+    ) -> crate::Result<(PhysicalAddress, NonZeroUsize)> {
+        let phys_offset = self.phys_offset;
         for entry in self.entries_mut() {
-            for page in entry.skip..entry.pages() {
-                if !entry.is_page_used(page, physical_memory_offset) {
-                    entry.mark_page_as_used(page, physical_memory_offset);
-                    entry.skip = page;
-                    entry.used += 1;
-
-                    return Ok(entry.region.start.add(page * M::PAGE_SIZE));
-                }
-            }
-        }
-
-        Err(Error::OutOfMemory)
-    }
-
-    fn allocate_frames(&mut self, num_frames: usize) -> crate::Result<PhysicalAddress> {
-        let physmem_off = self.physmem_off;
-
-        for entry in self.entries_mut() {
-            // find a consecutive run of free pages
             let mut free_page = entry.skip;
             let mut free_len = 0;
 
             for page in entry.skip..entry.pages() {
-                if entry.is_page_used(page, physmem_off) {
+                let is_used = entry.is_page_used(page, phys_offset);
+                if let Some(free_len) = NonZeroUsize::new(free_len)
+                    && is_used
+                {
+                    for page in free_page..free_page + free_len.get() {
+                        entry.mark_page_as_used(page, phys_offset);
+                    }
+
+                    if entry.skip == free_page {
+                        entry.skip = free_page + free_len.get();
+                    }
+                    entry.used += frames.get();
+
+                    return Ok((
+                        entry.region.start.add(free_page << arch::PAGE_SHIFT),
+                        free_len,
+                    ));
+                } else if is_used {
                     free_page = page + 1;
                     free_len = 0;
                 } else {
                     free_len += 1;
-
-                    if free_len == num_frames {
-                        for page in free_page..free_page + free_len {
-                            entry.mark_page_as_used(page, physmem_off);
-                        }
-
-                        if entry.skip == free_page {
-                            entry.skip = free_page + free_len;
-                        }
-                        entry.used += num_frames;
-
-                        return Ok(entry.region.start.add(free_page << M::PAGE_SHIFT));
-                    }
                 }
             }
         }
@@ -235,15 +149,16 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
         Err(Error::OutOfMemory)
     }
 
-    fn deallocate_frames(&mut self, base: PhysicalAddress, num_frames: usize) -> crate::Result<()> {
-        let physmem_off = self.physmem_off;
+    fn deallocate(&mut self, base: PhysicalAddress, frames: NonZeroUsize) -> crate::Result<()> {
+        let frames = frames.get();
+        let physmem_off = self.phys_offset;
 
         for entry in self.entries_mut() {
-            if base >= entry.region.start && base.add(num_frames * M::PAGE_SIZE) <= entry.region.end
+            if base >= entry.region.start && base.add(frames * arch::PAGE_SIZE) <= entry.region.end
             {
-                let start_page = (base.0 - entry.region.start.0) >> M::PAGE_SHIFT;
+                let start_page = (base.0 - entry.region.start.0) >> arch::PAGE_SHIFT;
 
-                for page in start_page..start_page + num_frames {
+                for page in start_page..start_page + frames {
                     if entry.is_page_used(page, physmem_off) {
                         // Update skip if necessary
                         if page < entry.skip {
@@ -256,7 +171,7 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
                         entry.mark_page_as_free(page, physmem_off);
                     } else {
                         return Err(Error::DoubleFree(
-                            entry.region.start.add(page << M::PAGE_SHIFT),
+                            entry.region.start.add(page << arch::PAGE_SHIFT),
                         ));
                     }
                 }
@@ -273,15 +188,77 @@ impl<M: Mode> FrameAllocator<M> for BitMapAllocator<M> {
         let mut used = 0;
         for entry in self.entries() {
             let region_size = entry.region.end.0 - entry.region.start.0;
-            total += region_size >> M::PAGE_SHIFT;
+            total += region_size >> arch::PAGE_SHIFT;
             used += entry.used;
         }
 
         FrameUsage { used, total }
     }
+}
 
-    fn phys_to_virt(&self, phys: PhysicalAddress) -> VirtualAddress {
-        self.physmem_off.add(phys.0)
+struct TableEntry {
+    /// The region of physical memory this table entry manages
+    region: Range<PhysicalAddress>,
+    /// The first free page
+    skip: usize,
+    /// The number of used pages
+    used: usize,
+}
+
+impl fmt::Debug for TableEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TableEntry")
+            .field("region", &self.region)
+            .field("skip", &self.skip)
+            .field("used", &self.used)
+            .finish()
+    }
+}
+
+impl TableEntry {
+    /// The number of pages this entry represents
+    pub fn pages(&self) -> usize {
+        let region_size = self.region.end.0 - self.region.start.0;
+        region_size >> arch::PAGE_SHIFT
+    }
+
+    pub fn is_page_used(&self, page: usize, phys_offset: VirtualAddress) -> bool {
+        let phys = self.region.start.add(page / 8);
+        let bits = unsafe {
+            let virt = VirtualAddress::from_phys(phys, phys_offset);
+            *(virt.0 as *const u8)
+        };
+        bits & (1 << (page % 8)) != 0
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn mark_page_as_used(&mut self, page: usize, phys_offset: VirtualAddress) {
+        let phys = self.region.start.add(page / 8);
+        let virt = VirtualAddress::from_phys(phys, phys_offset);
+
+        unsafe {
+            let bits = ptr::read_volatile(virt.0 as *const u8);
+            ptr::write_volatile(virt.0 as *mut u8, bits | 1 << (page as u8 % 8));
+        }
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn mark_page_as_free(&mut self, page: usize, phys_offset: VirtualAddress) {
+        let phys = self.region.start.add(page / 8);
+        unsafe {
+            let virt = VirtualAddress::from_phys(phys, phys_offset);
+            let bits = ptr::read_volatile(virt.0 as *const u8);
+            ptr::write_volatile(virt.0 as *mut u8, bits & !(1 << (page as u8 % 8)));
+        }
+    }
+
+    /// The number of pages required to store the usage map for this entry
+    pub fn usage_map_pages(&self) -> usize {
+        // we can fit 8 bits into one byte
+        let bytes = self.pages() / 8;
+
+        // align-up to next page
+        (bytes + (arch::PAGE_SIZE - 1)) >> arch::PAGE_SHIFT
     }
 }
 
