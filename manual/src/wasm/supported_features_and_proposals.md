@@ -74,7 +74,7 @@ Explainer
 
 ## WASI Features & Proposals
 
-In addition to the main WASM features, k23 applications will interact with the host through WASM (WebAssembly System
+In addition to the main WASM features, k23 applications will interact with the host through WASI (WebAssembly System
 Interface) APIs.
 The following table lists all current proposals and their implementation status.
 

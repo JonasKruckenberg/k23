@@ -413,15 +413,9 @@ fn virt_from_index<A>(lvl: usize, index: usize) -> VirtualAddress
 where
     A: Arch,
 {
-    let raw = ((index & M::PAGE_ENTRY_MASK)
+    let raw = ((index & (A::PAGE_TABLE_ENTRIES - 1))
         << (lvl * A::PAGE_ENTRY_SHIFT + arch::PAGE_SHIFT)) as isize;
 
-    let shift = size_of::<usize>() as u32 * 8 - 38;
+    let shift = size_of::<usize>() as u32 * 8 - (A::VIRT_ADDR_BITS + 1);
     VirtualAddress(raw.wrapping_shl(shift).wrapping_shr(shift) as usize)
-    
-    // let raw = ((index & (arch::PAGE_SIZE - 1)) << (lvl * A::PAGE_ENTRY_SHIFT + arch::PAGE_SHIFT))
-    //     as isize;
-    // 
-    // let shift = size_of::<usize>() as u32 * 8 - A::VIRT_ADDR_BITS;
-    // VirtualAddress(raw.wrapping_shl(shift).wrapping_shr(shift) as usize)
 }
