@@ -241,7 +241,7 @@ impl<'a, M: Mode> Mapper<'a, M> {
         //  |----------------|----------------------|-------------------|
         // base         aligned_base           aligned_top             top
         //
-        for page_size in page_sizes.into_iter().rev() {
+        for page_size in page_sizes[1..].into_iter().rev() {
             let page_mask = !(page_size - 1);
 
             let aligned_virt_base = (virt_base + page_size - 1) & page_mask;
@@ -287,9 +287,10 @@ impl<'a, M: Mode> Mapper<'a, M> {
                     flush,
                 )?;
             }
-            break;
+            return Ok(());
         }
-        Ok(())
+        // can't map with superpages
+        self.map_aligned(range_virt, range_phys, M::PAGE_SIZE, flags, flush)
     }
 
     pub fn map_aligned(
