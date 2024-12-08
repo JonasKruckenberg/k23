@@ -136,7 +136,8 @@ impl<'a, M: Mode> Mapper<'a, M> {
             Ok(())
         };
 
-        self.walk_mut(virt, self.root_table(), on_leaf, |_, _| Ok(()))
+        // FIXME: fix for superpages
+        self.walk_mut(virt, self.root_table(), 0, on_leaf, |_, _| Ok(()))
     }
 
     /// Identity maps a physical address range with the given flags.
@@ -221,13 +222,94 @@ impl<'a, M: Mode> Mapper<'a, M> {
             range_phys.size() >= M::PAGE_SIZE,
             "physical address range must span be at least one page"
         );
+        let virt_base = range_virt.start.0;
+        let virt_top = range_virt.end.0;
+        let phys_base = range_phys.start.0;
+        let phys_top = range_phys.end.0;
+        log::trace!(
+            "test mapping virt: [{:x}, {:x}), phys: [{:x}, {:x})",
+            virt_base,
+            virt_top,
+            phys_base,
+            phys_top
+        );
+        // TODO: move this into the Mode struct for each architecture
+        let page_sizes = [1 << 12, 1 << 21, 1 << 30];
+        // searches for a chunk of memory of size `k * page_size` aligned on a `page_size` boundary
+        //  |----------------|----------------------|-------------------|
+        //  | pre-padding    | map with `page_size` | post-padding      |
+        //  |----------------|----------------------|-------------------|
+        // base         aligned_base           aligned_top             top
+        //
+        for page_size in page_sizes.into_iter().rev() {
+            let page_mask = !(page_size - 1);
 
-        Self::for_pages_in_range(&range_virt, |i, _, page_size| {
+            let aligned_virt_base = (virt_base + page_size - 1) & page_mask;
+            let aligned_virt_top = virt_top & page_mask;
+            // skip if no chunk of memory of minimum size `page_size` fits into the memory range
+            if aligned_virt_base >= aligned_virt_top {
+                continue;
+            }
+            let aligned_base_offset = aligned_virt_base - virt_base;
+            let aligned_top_offset = aligned_virt_top - virt_base;
+            let aligned_phys_base = phys_base + aligned_base_offset;
+            let aligned_phys_top = phys_base + aligned_top_offset;
+
+            // skip if the physical memory region is not aligned on the same `page_size` boundary
+            if aligned_phys_base & !page_mask != 0 || aligned_phys_top & !page_mask != 0 {
+                continue;
+            }
+
+            log::trace!("mapping using {}B page(s)", page_size);
+            // map middle section that is multiple of `page_size` and correctly aligned
+            self.map_aligned(
+                VirtualAddress(aligned_virt_base)..VirtualAddress(aligned_virt_top),
+                PhysicalAddress(aligned_phys_base)..PhysicalAddress(aligned_phys_top),
+                page_size,
+                flags,
+                flush,
+            )?;
+            // map pre-padding if it exists
+            if virt_base < aligned_virt_base {
+                self.map_range(
+                    VirtualAddress(virt_base)..VirtualAddress(aligned_virt_base),
+                    PhysicalAddress(phys_base)..PhysicalAddress(aligned_phys_base),
+                    flags,
+                    flush,
+                )?;
+            }
+            // map post-padding if it exists
+            if aligned_virt_top < virt_top {
+                self.map_range(
+                    VirtualAddress(aligned_virt_top)..VirtualAddress(virt_top),
+                    PhysicalAddress(aligned_phys_top)..PhysicalAddress(phys_top),
+                    flags,
+                    flush,
+                )?;
+            }
+            break;
+        }
+        Ok(())
+    }
+
+    pub fn map_aligned(
+        &mut self,
+        range_virt: Range<VirtualAddress>,
+        range_phys: Range<PhysicalAddress>,
+        page_size: usize,
+        flags: M::EntryFlags,
+        flush: &mut Flush<M>,
+    ) -> crate::Result<()> {
+        log::trace!("aligned: {:?}", range_virt);
+
+        let len_pages = range_virt.size() / M::PAGE_SIZE;
+
+        for i in 0..len_pages {
             let virt = range_virt.start.add(i * page_size);
             let phys = range_phys.start.add(i * page_size);
-
-            self.map(virt, phys, flags, flush)
-        })
+            self.map(virt, phys, flags, flush)?;
+        }
+        Ok(())
     }
 
     /// Maps a virtual address to a physical address with the given flags.
@@ -280,7 +362,8 @@ impl<'a, M: Mode> Mapper<'a, M> {
             Ok(())
         };
 
-        self.walk_mut(virt, table, on_leaf, on_node)
+        // FIXME: fix for superpages
+        self.walk_mut(virt, table, 0, on_leaf, on_node)
     }
 
     #[must_use]
@@ -293,7 +376,8 @@ impl<'a, M: Mode> Mapper<'a, M> {
             Ok(phys)
         };
 
-        self.walk(virt, self.root_table(), on_leaf, |_| Ok(())).ok()
+        self.walk(virt, self.root_table(), 0, on_leaf, |_| Ok(()))
+            .ok()
     }
 
     /// Unmaps the virtual address range **without deallocating its physical frames**.
@@ -480,20 +564,24 @@ impl<'a, M: Mode> Mapper<'a, M> {
             Ok(())
         };
 
-        self.walk_mut(virt, table, on_leaf, on_node)
+        // FIXME: fix for superpages
+        self.walk_mut(virt, table, 0, on_leaf, on_node)
     }
 
     fn walk_mut<R>(
         &mut self,
         virt: VirtualAddress,
         mut table: Table<M>,
+        leaf_lvl: usize,
         on_leaf: impl FnOnce(&mut Self, &mut Entry<M>) -> crate::Result<R>,
         mut on_node: impl FnMut(&mut Self, &mut Entry<M>) -> crate::Result<()>,
     ) -> crate::Result<R> {
+        debug_assert!(leaf_lvl < M::PAGE_TABLE_LEVELS, "leaf level is invalid");
+
         for lvl in (0..M::PAGE_TABLE_LEVELS).rev() {
             let entry = table.entry_mut(table.index_of_virt(virt));
 
-            if lvl == 0 {
+            if lvl == leaf_lvl {
                 return on_leaf(self, entry);
             } else {
                 on_node(self, entry)?;
@@ -515,13 +603,16 @@ impl<'a, M: Mode> Mapper<'a, M> {
         &self,
         virt: VirtualAddress,
         mut table: Table<M>,
+        leaf_lvl: usize,
         on_leaf: impl FnOnce(&Entry<M>) -> crate::Result<R>,
         mut on_node: impl FnMut(&Entry<M>) -> crate::Result<()>,
     ) -> crate::Result<R> {
+        debug_assert!(leaf_lvl < M::PAGE_TABLE_LEVELS, "leaf level is invalid");
+
         for lvl in (0..M::PAGE_TABLE_LEVELS).rev() {
             let entry = table.entry(table.index_of_virt(virt));
 
-            if lvl == 0 {
+            if lvl == leaf_lvl {
                 return on_leaf(entry);
             } else {
                 on_node(entry)?;
