@@ -1,4 +1,4 @@
-use crate::{arch, kconfig};
+use crate::{arch, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_SIZE_PAGES};
 use core::mem;
 use loader_api::LoaderConfig;
 use sync::OnceLock;
@@ -7,8 +7,8 @@ pub static BOOT_INFO: OnceLock<&'static loader_api::BootInfo> = OnceLock::new();
 
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = LoaderConfig::new_default();
-    cfg.kernel_stack_size_pages = kconfig::STACK_SIZE_PAGES;
-    cfg.kernel_heap_size_pages = Some(kconfig::HEAP_SIZE_PAGES);
+    cfg.kernel_stack_size_pages = STACK_SIZE_PAGES;
+    cfg.kernel_heap_size_pages = Some(HEAP_SIZE_PAGES);
     cfg
 };
 
@@ -45,7 +45,7 @@ fn pre_init_hart(hartid: usize) {
 }
 
 fn init(_boot_info: &'static loader_api::BootInfo) {
-    semihosting_logger::init(kconfig::LOG_LEVEL.to_level_filter());
+    semihosting_logger::init(LOG_LEVEL.to_level_filter());
 
     // log::debug!("initializing frame alloc...");
     // frame_alloc::init(boot_info, |alloc| -> Result<(), pmm::Error> {
