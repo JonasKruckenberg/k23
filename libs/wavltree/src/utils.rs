@@ -91,3 +91,65 @@ pub unsafe fn find_maximum<T: Linked + ?Sized>(mut curr: NonNull<T>) -> NonNull<
 
     curr
 }
+
+pub(crate) unsafe fn next<T>(node: NonNull<T>) -> Link<T>
+where
+    T: Linked + ?Sized,
+{
+    let node_links = T::links(node).as_ref();
+
+    // If we have a right child, its least descendant is our next node
+    if let Some(right) = node_links.right() {
+        Some(find_minimum(right))
+    } else {
+        let mut curr = node;
+
+        loop {
+            if let Some(parent) = T::links(curr).as_ref().parent() {
+                let parent_links = T::links(parent).as_ref();
+
+                // if we have a parent, and we're not their right/greater child, that parent is our
+                // next node
+                if parent_links.right() != Some(curr) {
+                    return Some(parent);
+                }
+
+                curr = parent;
+            } else {
+                // we reached the tree root without finding a next node
+                return None;
+            }
+        }
+    }
+}
+
+pub(crate) unsafe fn prev<T>(node: NonNull<T>) -> Link<T>
+where
+    T: Linked + ?Sized,
+{
+    let node_links = T::links(node).as_ref();
+
+    // If we have a left child, its greatest descendant is our previous node
+    if let Some(left) = node_links.left() {
+        Some(find_maximum(left))
+    } else {
+        let mut curr = node;
+
+        loop {
+            if let Some(parent) = T::links(curr).as_ref().parent() {
+                let parent_links = T::links(parent).as_ref();
+
+                // if we have a parent, and we're not their left/lesser child, that parent is our
+                // previous node
+                if parent_links.left() != Some(curr) {
+                    return Some(parent);
+                }
+
+                curr = parent;
+            } else {
+                // we reached the tree root without finding a previous node
+                return None;
+            }
+        }
+    }
+}
