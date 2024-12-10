@@ -62,6 +62,10 @@ where
         self.phys_offset.add(phys.as_raw())
     }
 
+    pub fn asid(&self) -> usize {
+        self.asid
+    }
+
     pub fn map_contiguous(
         &mut self,
         frame_alloc: &mut dyn FrameAllocator,
@@ -78,11 +82,11 @@ where
         );
         debug_assert!(
             virt.is_aligned(arch::PAGE_SIZE),
-            "virtual address must be aligned to at least 4KiB page size"
+            "virtual address must be aligned to at least 4KiB page size {virt:?}"
         );
         debug_assert!(
             phys.is_aligned(arch::PAGE_SIZE),
-            "physical address must be aligned to at least 4KiB page size"
+            "physical address must be aligned to at least 4KiB page size {phys:?}"
         );
 
         'outer: while remaining_bytes > 0 {
@@ -307,6 +311,67 @@ where
         }
 
         Ok(())
+    }
+
+    pub fn unmap(
+        &mut self,
+        frame_alloc: &mut dyn FrameAllocator,
+        mut virt: VirtualAddress,
+        len: NonZeroUsize,
+        flush: &mut Flush<A>,
+    ) -> crate::Result<()> {
+        let mut remaining_bytes = len.get();
+        debug_assert!(
+            remaining_bytes >= arch::PAGE_SIZE,
+            "virtual address range must span be at least one page"
+        );
+        debug_assert!(
+            virt.is_aligned(arch::PAGE_SIZE),
+            "virtual address must be aligned to at least 4KiB page size"
+        );
+
+        'outer: while remaining_bytes > 0 {
+            let mut pgtable = self.pgtable_ptr_from_phys(self.root_pgtable);
+
+            for lvl in (0..A::PAGE_TABLE_LEVELS).rev() {
+                let pte = unsafe {
+                    let index = A::pte_index_for_level(virt, lvl);
+                    pgtable.add(index).as_mut()
+                };
+
+                if pte.is_valid() && pte.is_leaf() {
+                    let page_size = A::page_size_for_level(lvl);
+
+                    pte.clear();
+                    let frame = pte.get_address_and_flags().0;
+                    frame_alloc.deallocate(
+                        frame,
+                        NonZeroUsize::new(page_size / arch::PAGE_SIZE).unwrap(),
+                    )?;
+
+                    flush.extend_range(self.asid, virt..virt.add(page_size))?;
+                    virt = virt.add(page_size);
+                    remaining_bytes -= page_size;
+                    continue 'outer;
+                } else if pte.is_valid() {
+                    // This PTE is an internal node pointing to another page table
+                    pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
+
+                    let is_still_populated = (0..A::PAGE_TABLE_ENTRIES)
+                        .any(|index| unsafe { pgtable.add(index).as_ref().is_valid() });
+
+                    if !is_still_populated {
+                        let frame = pte.get_address_and_flags().0;
+                        frame_alloc.deallocate_one(frame)?;
+                        pte.clear();
+                    }
+                } else {
+                    unreachable!("Invalid state: PTE cant be vacant or invalid+leaf {pte:?}");
+                }
+            }
+        }
+
+        todo!()
     }
 
     pub fn query(

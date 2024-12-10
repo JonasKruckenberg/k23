@@ -38,6 +38,7 @@ unwind2 = { path = "libs/unwind2" }
 leb128 = { path = "libs/leb128" }
 wasm-encoder = { path = "libs/wasm-encoder" }
 wast = { path = "libs/wast" }
+wavltree = { path = "libs/wavltree" }
 
 cfg-if = "1.0.0"
 lock_api = "0.4.12"

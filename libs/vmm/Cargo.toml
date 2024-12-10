@@ -1,23 +1,18 @@
 [package]
-name = "wavltree"
+name = "vmm"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [dependencies]
+pmm.workspace = true
+wavltree = { workspace = true, features = ["dot"] }
+pin-project-lite = "0.2.15"
 log.workspace = true
 
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
-rand = "0.9.0-alpha.2"
-criterion = "0.5.1"
-
-[features]
-dot = []
+test-log = "0.2.16"
 
 [lints]
 workspace = true
-
-[[bench]]
-name = "insertions_deletions"
-harness = false

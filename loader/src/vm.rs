@@ -568,7 +568,7 @@ fn map_kernel_stacks<A>(
     frame_alloc: &mut dyn FrameAllocator,
     page_alloc: &mut PageAllocator<A>,
     machine_info: &MachineInfo,
-    per_hart_stack_size: usize,
+    per_hart_stack_size_pages: usize,
     flush: &mut Flush<A>,
 ) -> crate::Result<Range<VirtualAddress>>
 where
@@ -577,12 +577,12 @@ where
 {
     let stacks_phys = NonContiguousFrames::new(
         frame_alloc,
-        NonZeroUsize::new(per_hart_stack_size * machine_info.cpus).unwrap(),
+        NonZeroUsize::new(per_hart_stack_size_pages * machine_info.cpus).unwrap(),
     );
 
     let stacks_virt = page_alloc.allocate(
         Layout::from_size_align(
-            per_hart_stack_size * arch::PAGE_SIZE * machine_info.cpus,
+            per_hart_stack_size_pages * arch::PAGE_SIZE * machine_info.cpus,
             arch::PAGE_SIZE,
         )
         .unwrap(),

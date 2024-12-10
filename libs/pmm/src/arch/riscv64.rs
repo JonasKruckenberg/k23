@@ -1,5 +1,4 @@
 use super::Arch;
-use crate::arch::PAGE_SHIFT;
 use crate::{PhysicalAddress, VirtualAddress};
 use bitflags::bitflags;
 use core::fmt;
@@ -7,7 +6,8 @@ use core::ops::Range;
 use riscv::satp;
 use riscv::sbi::rfence::{sfence_vma, sfence_vma_asid};
 
-pub const PAGE_SIZE: usize = 4096;
+/// Number of bits we need to shift an address by to reach the next page
+pub const PAGE_SHIFT: usize = 12; // 4096 bytes
 
 /// On `RiscV` targets the page table entry's physical address bits are shifted 2 bits to the right.
 const PTE_PPN_SHIFT: usize = 2;
@@ -18,7 +18,7 @@ impl Arch for Riscv64Sv39 {
     type PageTableEntry = PageTableEntry;
     const VIRT_ADDR_BITS: u32 = 38;
     const PAGE_TABLE_LEVELS: usize = 3; // L0, L1, L2
-    const PAGE_TABLE_ENTRIES: usize = 512;
+    const PAGE_ENTRY_SHIFT: usize = 9; // 512 entries, 8 bytes each
 
     fn can_map_at_level(
         virt: VirtualAddress,
@@ -124,6 +124,10 @@ impl super::PageTableEntry for PageTableEntry {
             PhysicalAddress((self.bits & !PageTableEntryFlags::all().bits()) << PTE_PPN_SHIFT);
         let flags = PageTableEntryFlags::from_bits_truncate(self.bits);
         (addr, flags)
+    }
+
+    fn clear(&mut self) {
+        self.bits = 0;
     }
 }
 

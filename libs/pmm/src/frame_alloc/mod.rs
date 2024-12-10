@@ -73,6 +73,10 @@ pub trait FrameAllocator {
         Ok(phys)
     }
 
+    fn deallocate_one(&mut self, base: PhysicalAddress) -> crate::Result<()> {
+        self.deallocate(base, NonZeroUsize::new(1).unwrap())
+    }
+
     /// Information about the number of physical frames used and available
     fn frame_usage(&self) -> FrameUsage;
 }

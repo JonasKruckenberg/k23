@@ -2,6 +2,9 @@ cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
         mod riscv64;
         pub use riscv64::*;
+    } else if #[cfg(target_arch = "aarch64")] {
+        mod aarch64;
+        pub use aarch64::*;
     }
 }
 
@@ -9,8 +12,7 @@ use crate::{PhysicalAddress, VirtualAddress};
 use core::fmt;
 use core::ops::Range;
 
-/// Number of bits we need to shift an address by to reach the next page
-pub const PAGE_SHIFT: usize = (PAGE_SIZE - 1).count_ones() as usize;
+pub const PAGE_SIZE: usize = 1 << PAGE_SHIFT;
 
 pub trait Arch {
     type PageTableEntry: PageTableEntry + fmt::Debug;
@@ -20,9 +22,9 @@ pub trait Arch {
     /// The number of levels the page table has
     const PAGE_TABLE_LEVELS: usize;
     /// The number of page table entries in one table
-    const PAGE_TABLE_ENTRIES: usize;
+    const PAGE_TABLE_ENTRIES: usize = 1 << Self::PAGE_ENTRY_SHIFT;
     /// Number of bits we need to shift an address by to reach the next page table entry
-    const PAGE_ENTRY_SHIFT: usize = (Self::PAGE_TABLE_ENTRIES - 1).count_ones() as usize;
+    const PAGE_ENTRY_SHIFT: usize;
 
     /// Return whether the combination of `virt`,`phys`, and `remaining_bytes` can be mapped at the given `level`.
     fn can_map_at_level(
@@ -81,4 +83,6 @@ pub trait PageTableEntry {
     fn replace_address_and_flags(&mut self, addr: PhysicalAddress, flags: Self::Flags);
     /// Return this page table entries address and flags.
     fn get_address_and_flags(&self) -> (PhysicalAddress, Self::Flags);
+    /// Clear this page table entry.
+    fn clear(&mut self);
 }
