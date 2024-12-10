@@ -41,6 +41,11 @@ pub struct BootInfo {
     ///
     /// The kernel should use this information to unmap the loader region after taking control.
     pub loader_region: Range<VirtualAddress>,
+    /// Virtual memory region reserved for the kernel heap.
+    ///
+    /// Note that this is **not** mapped, as the kernel should map
+    /// this region on-demand.
+    pub heap_region: Option<Range<VirtualAddress>>,
     /// Virtual address of the loaded kernel image.
     pub kernel_virt: Range<VirtualAddress>,
     /// Physical memory region where the kernel ELF file resides.
@@ -62,6 +67,7 @@ impl BootInfo {
         tls_template: Option<TlsTemplate>,
         fdt_offset: VirtualAddress,
         loader_region: Range<VirtualAddress>,
+        heap_region: Option<Range<VirtualAddress>>,
         kernel_elf: Range<PhysicalAddress>,
     ) -> Self {
         Self {
@@ -72,6 +78,7 @@ impl BootInfo {
             fdt_offset,
             kernel_virt,
             loader_region,
+            heap_region,
             kernel_elf,
         }
     }

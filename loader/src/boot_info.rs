@@ -30,6 +30,7 @@ pub fn init_boot_info<A>(
                 .map(|a| a.tls_template.clone()),
             fdt_offset,
             kernel_aspace.loader_region.clone(),
+            kernel_aspace.heap_virt.clone(),
             {
                 let r = kernel.elf_file.input.as_ptr_range();
 

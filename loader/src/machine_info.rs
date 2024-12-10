@@ -6,13 +6,11 @@ use core::fmt::Formatter;
 use core::ops::Range;
 use dtb_parser::{DevTree, Node, Visitor};
 use pmm::PhysicalAddress;
+use crate::arch;
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
 pub struct MachineInfo<'dt> {
-    // /// The hart ID of the booting CPU (the CPU which ran all global setup)
-    // /// as reported by the previous stage loader
-    // pub boot_hart: u32,
     /// The FDT blob passed to us by the previous stage loader
     pub fdt: &'dt [u8],
     /// The number of "standalone" CPUs in the system
@@ -77,7 +75,6 @@ impl<'dt> MachineInfo<'dt> {
 
         let mut info = MachineInfo {
             fdt: fdt_slice,
-            // boot_hart,
             cpus: v.cpus.cpus,
             hart_mask: v.cpus.hart_mask,
             memories: v.memories.regs,
@@ -137,6 +134,13 @@ impl<'dt> MachineInfo<'dt> {
         info.memories
             .retain(|region| region.end.as_raw() - region.start.as_raw() > 0);
 
+        // page-align all memory regions, this will waste some physical memory in the process, 
+        // but we can't make use of it either way
+        info.memories.iter_mut().for_each(|region| {
+            region.start = region.start.align_up(arch::PAGE_SIZE);
+            region.end = region.end.align_down(arch::PAGE_SIZE);
+        });
+        
         // ensure the memory regions are sorted.
         // this is important for the allocation logic to be correct
         info.memories.sort_unstable_by(compare_memory_regions);

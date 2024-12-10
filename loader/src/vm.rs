@@ -29,8 +29,8 @@ pub struct KernelAddressSpace<A> {
 
     /// Memory region allocated for loader itself
     pub loader_region: Range<VirtualAddress>,
-
     pub kernel_virt: Range<VirtualAddress>,
+    pub heap_virt: Option<Range<VirtualAddress>>,
 }
 
 impl<A> KernelAddressSpace<A> {
@@ -120,6 +120,17 @@ where
         flush,
     )?;
 
+    let heap_virt = if let Some(heap_size_pages) = kernel.loader_config.kernel_heap_size_pages {
+        let heap_size_pages = usize::try_from(heap_size_pages)?;
+    
+        let heap_virt =
+            map_kernel_heap(&mut aspace, frame_alloc, page_alloc, heap_size_pages, flush)?;
+    
+        Some(heap_virt)
+    } else {
+        None
+    };
+
     const KIB: usize = 1024;
     const MIB: usize = 1024 * KIB;
 
@@ -141,6 +152,7 @@ where
         per_hart_stack_size: per_hart_stack_size_pages * arch::PAGE_SIZE,
         loader_region,
         kernel_virt,
+        heap_virt,
     })
 }
 
@@ -585,6 +597,39 @@ where
     )?;
 
     Ok(stacks_virt)
+}
+
+/// Allocate and map the kernel heap.
+fn map_kernel_heap<A>(
+    aspace: &mut AddressSpace<A>,
+    frame_alloc: &mut dyn FrameAllocator,
+    page_alloc: &mut PageAllocator<A>,
+    heap_size_pages: usize,
+    flush: &mut Flush<A>,
+) -> crate::Result<Range<VirtualAddress>>
+where
+    A: arch::Arch,
+    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
+{
+    let heap_phys = NonContiguousFrames::new(
+        frame_alloc,
+        NonZeroUsize::new(heap_size_pages).unwrap(),
+    );
+
+    let heap_virt = page_alloc.allocate(
+        Layout::from_size_align(heap_size_pages * arch::PAGE_SIZE, arch::PAGE_SIZE)
+            .unwrap(),
+    );
+
+    log::trace!("Mapping heap region {heap_virt:?}...");
+    aspace.map(
+        heap_virt.start,
+        heap_phys,
+        pmm::Flags::READ | pmm::Flags::WRITE,
+        flush,
+    )?;
+
+    Ok(heap_virt)
 }
 
 struct ProgramHeader<'a> {
