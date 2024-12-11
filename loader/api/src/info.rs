@@ -14,6 +14,7 @@ pub struct BootInfo {
     /// the memory map before passing it to the kernel. Regions marked as usable can be freely
     /// used by the kernel.
     pub memory_regions: *const MemoryRegion,
+    pub memory_regions_len: usize,
     /// The thread local storage (TLS) template of the kernel executable, if present.
     ///
     /// Note that the loader will already set up TLS regions for each hart reported as `online`
@@ -64,6 +65,7 @@ impl BootInfo {
         physical_memory_offset: VirtualAddress,
         kernel_virt: Range<VirtualAddress>,
         memory_regions: *const MemoryRegion,
+        memory_regions_len: usize,
         tls_template: Option<TlsTemplate>,
         fdt_offset: VirtualAddress,
         loader_region: Range<VirtualAddress>,
@@ -74,6 +76,7 @@ impl BootInfo {
             boot_hart,
             physical_memory_offset,
             memory_regions,
+            memory_regions_len,
             tls_template,
             fdt_offset,
             kernel_virt,

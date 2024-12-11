@@ -15,7 +15,7 @@ pub fn init_boot_info<A>(
     let page =
         physical_memory_offset.add(alloc.allocate_one_zeroed(physical_memory_offset)?.as_raw());
 
-    let memory_regions = init_boot_info_memory_regions(alloc, page);
+    let (memory_regions, memory_regions_len) = init_boot_info_memory_regions(alloc, page);
 
     let boot_info = page.as_raw() as *mut BootInfo;
     unsafe {
@@ -24,6 +24,7 @@ pub fn init_boot_info<A>(
             physical_memory_offset,
             kernel_aspace.kernel_virt.clone(),
             memory_regions,
+            memory_regions_len,
             kernel_aspace
                 .maybe_tls_allocation
                 .as_ref()
@@ -42,12 +43,15 @@ pub fn init_boot_info<A>(
     Ok(boot_info)
 }
 
-fn init_boot_info_memory_regions(alloc: &BumpAllocator, page: VirtualAddress) -> *mut MemoryRegion {
-    let mut ptr = page.add(size_of::<BootInfo>()).as_raw() as *mut MemoryRegion;
+fn init_boot_info_memory_regions(alloc: &BumpAllocator, page: VirtualAddress) -> (*mut MemoryRegion, usize) {
+    let base_ptr = page.add(size_of::<BootInfo>()).as_raw() as *mut MemoryRegion;
+    let mut ptr = base_ptr;
+    let mut memory_regions_len = 0;
 
     let mut push_region = |region: MemoryRegion| unsafe {
         ptr.write(region);
         ptr = ptr.add(1);
+        memory_regions_len += 1;
     };
 
     for used_region in alloc.used_regions() {
@@ -64,5 +68,5 @@ fn init_boot_info_memory_regions(alloc: &BumpAllocator, page: VirtualAddress) ->
         });
     }
 
-    ptr
+    (base_ptr, memory_regions_len)
 }
