@@ -15,6 +15,7 @@ extern crate alloc;
 mod allocator;
 pub mod arch;
 mod start;
+mod vm;
 // mod tests;
 
 /// The log level for the kernel

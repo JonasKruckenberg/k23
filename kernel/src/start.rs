@@ -1,4 +1,5 @@
-use crate::{arch, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_SIZE_PAGES};
+use crate::{allocator, arch, vm, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_SIZE_PAGES};
+use alloc::vec;
 use core::mem;
 use loader_api::LoaderConfig;
 use sync::OnceLock;
@@ -44,20 +45,16 @@ fn pre_init_hart(hartid: usize) {
     // setup trap handler
 }
 
-fn init(_boot_info: &'static loader_api::BootInfo) {
+fn init(boot_info: &'static loader_api::BootInfo) {
     semihosting_logger::init(LOG_LEVEL.to_level_filter());
 
-    // log::debug!("initializing frame alloc...");
-    // frame_alloc::init(boot_info, |alloc| -> Result<(), pmm::Error> {
-    //     // log::debug!("Unmapping loader region {:?}...", boot_info.loader_region);
-    //     // unmap_loader(alloc, boot_info.loader_region.clone())?;
-    //
-    //     // log::debug!("Setting up kernel heap...");
-    //     // allocator::init(alloc, boot_info)?;
-    //
-    //     Ok(())
-    // })
-    // .expect("failed to initialize frame allocator");
+    log::debug!("Setting up kernel heap...");
+    allocator::init(boot_info);
+
+    vm::init(boot_info);
+
+    let mut kernel_aspace = vm::KERNEL_ASPACE.get().unwrap().lock();
+    // kernel_aspace.reserve();
 
     // panic_unwind::set_hook(Box::new(|info| {
     //     let location = info.location();

@@ -22,11 +22,12 @@ panic-unwind.workspace = true
 semihosting-logger = { workspace = true, features = ["hartid"] }
 sync.workspace = true
 thread-local.workspace = true
+wavltree.workspace = true
 
+talc.workspace = true
 log.workspace = true
 cfg-if.workspace = true
-target-lexicon.workspace = true
-
+pin-project-lite.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true

@@ -1,15 +1,32 @@
-use core::alloc::{GlobalAlloc, Layout};
+use alloc::vec;
+use loader_api::BootInfo;
+use talc::{ErrOnOom, Span, Talc, Talck};
 
 #[global_allocator]
-static KERNEL_ALLOCATOR: Heap = Heap;
+static KERNEL_ALLOCATOR: Talck<sync::RawMutex, ErrOnOom> = Talc::new(ErrOnOom).lock();
 
-struct Heap;
-unsafe impl GlobalAlloc for Heap {
-    unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
-        todo!()
-    }
+pub fn init(boot_info: &BootInfo) {
+    let heap = boot_info
+        .heap_region
+        .as_ref()
+        .expect("missing heap region, this is a bug!");
 
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-        todo!()
+    log::debug!("Kernel heap: {heap:?}");
+
+    let mut alloc = KERNEL_ALLOCATOR.lock();
+    let span = Span::from_base_size(
+        heap.start.as_raw() as *mut u8,
+        heap.end.sub_addr(heap.start),
+    );
+    unsafe {
+        let old_heap = alloc.claim(span).unwrap();
+        alloc.extend(old_heap, span);
     }
+    drop(alloc);
+
+    let mut test = vec![];
+    test.push(1);
+    test.push(2);
+    test.push(3);
+    log::trace!("test: {test:?}");
 }
