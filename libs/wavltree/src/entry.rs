@@ -107,7 +107,7 @@ where
     pub fn peek_prev(&self) -> Option<&T> {
         Some(unsafe { self.peek_prev_inner()?.as_ref() })
     }
-    pub fn peek_next_mut(&mut self) -> Option<Pin<&mut T>>{
+    pub fn peek_next_mut(&mut self) -> Option<Pin<&mut T>> {
         let mut node = self.peek_next_inner()?;
         unsafe { Some(Pin::new_unchecked(node.as_mut())) }
     }
@@ -153,7 +153,7 @@ where
             Some(unsafe { utils::find_minimum(right) })
         } else {
             let mut parent = Some(parent);
-            
+
             while let Some(_parent) = parent {
                 let parent_links = unsafe { T::links(_parent).as_ref() };
                 // if we have a parent, and we're not their right/greater child, that parent is our
@@ -161,7 +161,7 @@ where
                 if side == Side::Left {
                     return Some(_parent);
                 }
-                
+
                 parent = parent_links.parent();
             }
 
@@ -188,7 +188,7 @@ where
                 if side == Side::Right {
                     return Some(_parent);
                 }
-                
+
                 parent = parent_links.parent();
             }
 

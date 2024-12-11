@@ -409,7 +409,7 @@ where
     pub fn cursor(&self) -> Cursor<'_, T> {
         Cursor {
             current: None,
-            _tree: self
+            _tree: self,
         }
     }
 
@@ -417,25 +417,25 @@ where
     pub fn cursor_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
             current: None,
-            _tree: self
+            _tree: self,
         }
     }
-    
+
     #[inline]
     pub unsafe fn cursor_from_ptr(&self, ptr: NonNull<T>) -> Cursor<'_, T> {
         debug_assert!(T::links(ptr).as_ref().is_linked());
         Cursor {
             current: Some(ptr),
-            _tree: self
+            _tree: self,
         }
     }
-    
+
     #[inline]
     pub unsafe fn cursor_mut_from_ptr(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
         debug_assert!(T::links(ptr).as_ref().is_linked());
         CursorMut {
             current: Some(ptr),
-            _tree: self
+            _tree: self,
         }
     }
 

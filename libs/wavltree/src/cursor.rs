@@ -1,5 +1,5 @@
-use core::pin::Pin;
 use crate::{utils, Link, Linked, WAVLTree};
+use core::pin::Pin;
 
 /// A cursor which provides read-only access to a [`WAVLTree`].
 pub struct Cursor<'a, T>

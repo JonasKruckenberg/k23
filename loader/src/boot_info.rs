@@ -43,7 +43,10 @@ pub fn init_boot_info<A>(
     Ok(boot_info)
 }
 
-fn init_boot_info_memory_regions(alloc: &BumpAllocator, page: VirtualAddress) -> (*mut MemoryRegion, usize) {
+fn init_boot_info_memory_regions(
+    alloc: &BumpAllocator,
+    page: VirtualAddress,
+) -> (*mut MemoryRegion, usize) {
     let base_ptr = page.add(size_of::<BootInfo>()).as_raw() as *mut MemoryRegion;
     let mut ptr = base_ptr;
     let mut memory_regions_len = 0;

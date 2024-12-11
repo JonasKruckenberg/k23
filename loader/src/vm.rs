@@ -122,10 +122,10 @@ where
 
     let heap_virt = if let Some(heap_size_pages) = kernel.loader_config.kernel_heap_size_pages {
         let heap_size_pages = usize::try_from(heap_size_pages)?;
-    
+
         let heap_virt =
             map_kernel_heap(&mut aspace, frame_alloc, page_alloc, heap_size_pages, flush)?;
-    
+
         Some(heap_virt)
     } else {
         None
@@ -611,14 +611,11 @@ where
     A: arch::Arch,
     [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
 {
-    let heap_phys = NonContiguousFrames::new(
-        frame_alloc,
-        NonZeroUsize::new(heap_size_pages).unwrap(),
-    );
+    let heap_phys =
+        NonContiguousFrames::new(frame_alloc, NonZeroUsize::new(heap_size_pages).unwrap());
 
     let heap_virt = page_alloc.allocate(
-        Layout::from_size_align(heap_size_pages * arch::PAGE_SIZE, arch::PAGE_SIZE)
-            .unwrap(),
+        Layout::from_size_align(heap_size_pages * arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
     );
 
     log::trace!("Mapping heap region {heap_virt:?}...");

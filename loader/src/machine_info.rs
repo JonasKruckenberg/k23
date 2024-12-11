@@ -1,3 +1,4 @@
+use crate::arch;
 use arrayvec::ArrayVec;
 use core::cmp::Ordering;
 use core::ffi::CStr;
@@ -6,7 +7,6 @@ use core::fmt::Formatter;
 use core::ops::Range;
 use dtb_parser::{DevTree, Node, Visitor};
 use pmm::PhysicalAddress;
-use crate::arch;
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
@@ -134,13 +134,13 @@ impl<'dt> MachineInfo<'dt> {
         info.memories
             .retain(|region| region.end.as_raw() - region.start.as_raw() > 0);
 
-        // page-align all memory regions, this will waste some physical memory in the process, 
+        // page-align all memory regions, this will waste some physical memory in the process,
         // but we can't make use of it either way
         info.memories.iter_mut().for_each(|region| {
             region.start = region.start.align_up(arch::PAGE_SIZE);
             region.end = region.end.align_down(arch::PAGE_SIZE);
         });
-        
+
         // ensure the memory regions are sorted.
         // this is important for the allocation logic to be correct
         info.memories.sort_unstable_by(compare_memory_regions);
