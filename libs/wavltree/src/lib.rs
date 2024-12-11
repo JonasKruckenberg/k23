@@ -295,6 +295,9 @@ where
     size: usize,
 }
 
+unsafe impl<T> Send for WAVLTree<T> where T: Linked + ?Sized {}
+unsafe impl<T> Sync for WAVLTree<T> where T: Linked + ?Sized {}
+
 impl<T> Drop for WAVLTree<T>
 where
     T: Linked + ?Sized,
