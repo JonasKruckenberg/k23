@@ -1,8 +1,5 @@
-#![cfg_attr(not(test), no_std)]
-
-extern crate alloc;
-
 use alloc::boxed::Box;
+use alloc::vec;
 use core::alloc::Layout;
 use core::fmt::Formatter;
 use core::mem::offset_of;
@@ -11,10 +8,37 @@ use core::ops::Range;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{cmp, fmt};
+use loader_api::{BootInfo, MemoryRegionKind};
 use pin_project_lite::pin_project;
 use pmm::frame_alloc::{BitMapAllocator, BumpAllocator};
 use pmm::{Flush, VirtualAddress};
+use sync::{Mutex, OnceLock};
 use wavltree::Entry;
+
+pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace<pmm::arch::Riscv64Sv39>>> = OnceLock::new();
+
+const KERNEL_ASID: usize = 0;
+
+pub fn init(boot_info: &BootInfo) {
+    KERNEL_ASPACE.get_or_init(|| {
+        let mut memories = vec![];
+
+        for i in 0..boot_info.memory_regions_len {
+            let region = unsafe { boot_info.memory_regions.add(i).as_ref().unwrap() };
+            if region.kind == MemoryRegionKind::Usable {
+                memories.push(region.range.clone());
+            }
+        }
+
+        let bump_alloc = BumpAllocator::new(&memories);
+
+        let (arch, _) =
+            pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_offset);
+
+        let aspace = AddressSpace::new(arch, bump_alloc);
+        Mutex::new(aspace)
+    });
+}
 
 pub struct PageAllocator {}
 impl PageAllocator {
@@ -23,22 +47,18 @@ impl PageAllocator {
 
 pub struct AddressSpace<A> {
     tree: wavltree::WAVLTree<Mapping>,
-    arch: pmm::AddressSpace<A>,
     frame_alloc: BitMapAllocator,
+    arch: pmm::AddressSpace<A>,
 }
 impl<A> AddressSpace<A>
 where
     A: pmm::arch::Arch,
 {
-    pub fn new(
-        arch: pmm::AddressSpace<A>,
-        bump_allocator: BumpAllocator,
-        phys_offset: VirtualAddress,
-    ) -> Self {
+    pub fn new(arch: pmm::AddressSpace<A>, bump_allocator: BumpAllocator) -> Self {
         Self {
             tree: wavltree::WAVLTree::default(),
+            frame_alloc: BitMapAllocator::new(bump_allocator, arch.phys_offset()).unwrap(),
             arch,
-            frame_alloc: BitMapAllocator::new(bump_allocator, phys_offset).unwrap(),
         }
     }
 
@@ -53,33 +73,33 @@ where
         todo!()
     }
 
-    pub fn reserve(&mut self, range: Range<VirtualAddress>, flags: pmm::Flags) {
-        // FIXME turn these into errors instead of panics
-        match self.tree.entry(&range.start) {
-            Entry::Occupied(_) => panic!("already reserved"),
-            Entry::Vacant(mut entry) => {
-                if let Some(next_mapping) = entry.peek_next_mut() {
-                    assert!(range.end <= next_mapping.range.start);
-
-                    if next_mapping.range.start == range.end && next_mapping.flags == flags {
-                        next_mapping.project().range.start = range.start;
-                        return;
-                    }
-                }
-
-                if let Some(prev_mapping) = entry.peek_prev_mut() {
-                    assert!(prev_mapping.range.end <= range.start);
-
-                    if prev_mapping.range.end == range.start && prev_mapping.flags == flags {
-                        prev_mapping.project().range.end = range.end;
-                        return;
-                    }
-                }
-
-                entry.insert(Box::pin(Mapping::new(range, flags)));
-            }
-        }
-    }
+    // pub fn reserve(&mut self, range: Range<VirtualAddress>, flags: pmm::Flags) {
+    //     // FIXME turn these into errors instead of panics
+    //     match self.tree.entry(&range.start) {
+    //         Entry::Occupied(_) => panic!("already reserved"),
+    //         Entry::Vacant(mut entry) => {
+    //             if let Some(next_mapping) = entry.peek_next_mut() {
+    //                 assert!(range.end <= next_mapping.range.start);
+    //
+    //                 if next_mapping.range.start == range.end && next_mapping.flags == flags {
+    //                     next_mapping.project().range.start = range.start;
+    //                     return;
+    //                 }
+    //             }
+    //
+    //             if let Some(prev_mapping) = entry.peek_prev_mut() {
+    //                 assert!(prev_mapping.range.end <= range.start);
+    //
+    //                 if prev_mapping.range.end == range.start && prev_mapping.flags == flags {
+    //                     prev_mapping.project().range.end = range.end;
+    //                     return;
+    //                 }
+    //             }
+    //
+    //             entry.insert(Box::pin(Mapping::new(range, flags)));
+    //         }
+    //     }
+    // }
 
     pub fn unmap(&mut self, range: Range<VirtualAddress>) {
         let mut iter = self.tree.range_mut(range.clone());
@@ -272,3 +292,29 @@ unsafe impl wavltree::Linked for Mapping {
     }
 }
 
+pub trait VmObject {
+    fn commit_range(&mut self, offset: usize, len: usize);
+    fn decommit_range(&mut self, offset: usize, len: usize);
+    fn zero_range(&mut self, offset: usize, len: usize);
+    fn prefetch_range(&mut self, offset: usize, len: usize);
+}
+
+pub struct PhysicalMemoryObject {}
+
+impl VmObject for PhysicalMemoryObject {
+    fn commit_range(&mut self, offset: usize, len: usize) {
+        todo!()
+    }
+
+    fn decommit_range(&mut self, offset: usize, len: usize) {
+        todo!()
+    }
+
+    fn zero_range(&mut self, offset: usize, len: usize) {
+        todo!()
+    }
+
+    fn prefetch_range(&mut self, offset: usize, len: usize) {
+        todo!()
+    }
+}
