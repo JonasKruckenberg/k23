@@ -29,7 +29,7 @@ impl AddressSpace {
     }
 
     pub fn from_active(asid: usize, phys_offset: VirtualAddress) -> (Self, Flush) {
-        let root_pgtable = unsafe { arch::get_active_pgtable(asid) };
+        let root_pgtable = arch::get_active_pgtable(asid);
         debug_assert!(root_pgtable.as_raw() != 0);
 
         let this = Self {

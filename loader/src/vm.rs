@@ -26,7 +26,7 @@ pub struct KernelAddressSpace {
     pub stacks_virt: Range<VirtualAddress>,
     /// The size of each stack in bytes
     per_hart_stack_size: usize,
-    
+
     pub kernel_virt: Range<VirtualAddress>,
     pub heap_virt: Option<Range<VirtualAddress>>,
 }

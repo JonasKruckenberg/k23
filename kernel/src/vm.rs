@@ -178,7 +178,7 @@ impl AddressSpace {
 
                 mapping.range.start = range.end;
                 iter.tree()
-                    .insert(Box::pin(Mapping::new(left, mapping.flags.clone())));
+                    .insert(Box::pin(Mapping::new(left, *mapping.flags)));
             } else if range.start > mapping.range.start {
                 // `range` is mostly past this mappings range, but overlaps partially
                 // we need adjust the ranges end

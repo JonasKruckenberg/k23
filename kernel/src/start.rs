@@ -52,7 +52,7 @@ fn init(boot_info: &'static loader_api::BootInfo) {
 
     log::debug!("Setting up kernel virtual address space...");
     vm::init(boot_info);
-    
+
     // panic_unwind::set_hook(Box::new(|info| {
     //     let location = info.location();
     //     let msg = payload_as_str(info.payload());

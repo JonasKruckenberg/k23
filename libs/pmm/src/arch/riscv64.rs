@@ -22,18 +22,32 @@ pub const PTE_FLAGS_RWX_MASK: PTEFlags = PTEFlags::from_bits_retain(
 /// On `RiscV` targets the page table entry's physical address bits are shifted 2 bits to the right.
 const PTE_PPN_SHIFT: usize = 2;
 
+/// Return the page size for the given page table level.
+///
+/// # Panics
+///
+/// Panics if the provided level is `>= PAGE_TABLE_LEVELS`.
 pub fn page_size_for_level(level: usize) -> usize {
+    assert!(level < PAGE_TABLE_LEVELS);
     let page_size = 1 << (PAGE_SHIFT + level * PAGE_ENTRY_SHIFT);
     debug_assert!(page_size == 4096 || page_size == 2097152 || page_size == 1073741824);
     page_size
 }
+
+/// Parse the `level`nth page table entry index from the given virtual address.
+///
+/// # Panics
+///
+/// Panics if the provided level is `>= PAGE_TABLE_LEVELS`.
 pub fn pte_index_for_level(virt: VirtualAddress, lvl: usize) -> usize {
-    debug_assert!(lvl < PAGE_TABLE_LEVELS);
+    assert!(lvl < PAGE_TABLE_LEVELS);
     let index = (virt.as_raw() >> (PAGE_SHIFT + lvl * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
     debug_assert!(index < PAGE_TABLE_ENTRIES);
 
     index
 }
+
+/// Return whether the combination of `virt`,`phys`, and `remaining_bytes` can be mapped at the given `level`.
 pub fn can_map_at_level(
     virt: VirtualAddress,
     phys: PhysicalAddress,
@@ -44,16 +58,29 @@ pub fn can_map_at_level(
     virt.is_aligned(page_size) && phys.is_aligned(page_size) && remaining_bytes >= page_size
 }
 
+/// Invalidate address translation caches for the given `address_range` in the given `address_space`.
+///
+/// # Errors
+///
+/// Should return an error if the underlying operation failed and the caches could not be invalidated.
 pub fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> crate::Result<()> {
     let base_addr = address_range.start.0;
     let size = address_range.end.0 - address_range.start.0;
     sfence_vma_asid(0, usize::MAX, base_addr, size, asid)?;
     Ok(())
 }
-pub unsafe fn get_active_pgtable(_asid: usize) -> PhysicalAddress {
+
+/// Return a pointer to the currently active page table.
+pub fn get_active_pgtable(_asid: usize) -> PhysicalAddress {
     let satp = satp::read();
     PhysicalAddress(satp.ppn() << 12)
 }
+
+/// Set the given page table as the currently active page table.
+///
+/// # Safety
+///
+/// This will invalidate pointers if not used carefully
 pub unsafe fn activate_pgtable(asid: usize, pgtable: PhysicalAddress) {
     unsafe {
         let ppn = pgtable.as_raw() >> 12;

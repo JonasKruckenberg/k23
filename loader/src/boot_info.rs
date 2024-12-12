@@ -17,8 +17,7 @@ pub fn init_boot_info(
     let page =
         physical_memory_offset.add(alloc.allocate_one_zeroed(physical_memory_offset)?.as_raw());
 
-    let (memory_regions, memory_regions_len) =
-        init_boot_info_memory_regions(page, alloc, fdt_phys);
+    let (memory_regions, memory_regions_len) = init_boot_info_memory_regions(page, alloc, fdt_phys);
 
     let boot_info = page.as_raw() as *mut BootInfo;
     unsafe {
