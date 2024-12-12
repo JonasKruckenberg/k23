@@ -1,50 +1,41 @@
-use crate::arch::{Arch, PageTableEntry};
 use crate::frame_alloc::{FrameAllocator, NonContiguousFrames};
 use crate::{arch, Flush, PhysicalAddress, VirtualAddress};
-use bitflags::Flags;
 use core::fmt;
 use core::fmt::Formatter;
-use core::marker::PhantomData;
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 
-pub struct AddressSpace<A> {
+pub struct AddressSpace {
     root_pgtable: PhysicalAddress,
     phys_offset: VirtualAddress,
     asid: usize,
-    _m: PhantomData<A>,
 }
 
-impl<A> AddressSpace<A>
-where
-    A: Arch,
-{
+impl AddressSpace {
     pub fn new(
         frame_alloc: &mut dyn FrameAllocator,
         asid: usize,
         phys_offset: VirtualAddress,
-    ) -> crate::Result<(Self, Flush<A>)> {
+    ) -> crate::Result<(Self, Flush)> {
         let root_pgtable = frame_alloc.allocate_one_zeroed(phys_offset)?;
 
         let this = Self {
             asid,
             phys_offset,
             root_pgtable,
-            _m: PhantomData,
         };
 
         Ok((this, Flush::empty(asid)))
     }
 
-    pub fn from_active(asid: usize, phys_offset: VirtualAddress) -> (Self, Flush<A>) {
-        let root_pgtable = A::get_active_pgtable(asid);
+    pub fn from_active(asid: usize, phys_offset: VirtualAddress) -> (Self, Flush) {
+        let root_pgtable = unsafe { arch::get_active_pgtable(asid) };
         debug_assert!(root_pgtable.as_raw() != 0);
 
         let this = Self {
             asid,
             phys_offset,
             root_pgtable,
-            _m: PhantomData,
         };
 
         (this, Flush::empty(asid))
@@ -73,7 +64,7 @@ where
         mut phys: PhysicalAddress,
         len: NonZeroUsize,
         flags: crate::Flags,
-        flush: &mut Flush<A>,
+        flush: &mut Flush,
     ) -> crate::Result<()> {
         let mut remaining_bytes = len.get();
         debug_assert!(
@@ -90,18 +81,19 @@ where
         );
 
         'outer: while remaining_bytes > 0 {
-            let mut pgtable: NonNull<A::PageTableEntry> =
+            let mut pgtable: NonNull<arch::PageTableEntry> =
                 self.pgtable_ptr_from_phys(self.root_pgtable);
             // log::trace!("outer (pgtable {pgtable:?})");
 
-            for lvl in (0..A::PAGE_TABLE_LEVELS).rev() {
-                let index = A::pte_index_for_level(virt, lvl);
+            for lvl in (0..arch::PAGE_TABLE_LEVELS).rev() {
+                let index = arch::pte_index_for_level(virt, lvl);
                 let pte = unsafe { pgtable.add(index).as_mut() };
+
                 // log::trace!("[lvl{lvl}::{index} pte {:?}]", pte as *mut _);
 
                 if !pte.is_valid() {
-                    if A::can_map_at_level(virt, phys, remaining_bytes, lvl) {
-                        let page_size = A::page_size_for_level(lvl);
+                    if arch::can_map_at_level(virt, phys, remaining_bytes, lvl) {
+                        let page_size = arch::page_size_for_level(lvl);
 
                         // log::trace!("[lvl{lvl}::{index} pte {:?}] mapping {phys:?}..{:?} {flags:?} ", pte as *mut _, phys.add(page_size));
 
@@ -109,7 +101,7 @@ where
                         // mark this PTE as a valid leaf node pointing to the physical frame
                         pte.replace_address_and_flags(
                             phys,
-                            <A::PageTableEntry as PageTableEntry>::FLAGS_VALID.union(flags.into()),
+                            arch::PTE_FLAGS_VALID.union(flags.into()),
                         );
 
                         flush.extend_range(self.asid, virt..virt.add(page_size))?;
@@ -128,10 +120,7 @@ where
 
                         // log::trace!("[lvl{lvl}::{index} pte {:?}] allocating sub table {frame:?}", pte as *mut _,);
 
-                        pte.replace_address_and_flags(
-                            frame,
-                            <A::PageTableEntry as PageTableEntry>::FLAGS_VALID,
-                        );
+                        pte.replace_address_and_flags(frame, arch::PTE_FLAGS_VALID);
 
                         pgtable = self.pgtable_ptr_from_phys(frame);
                     }
@@ -154,7 +143,7 @@ where
         mut virt: VirtualAddress,
         mut iter: NonContiguousFrames,
         flags: crate::Flags,
-        flush: &mut Flush<A>,
+        flush: &mut Flush,
     ) -> crate::Result<()> {
         while let Some((phys, len)) = iter.next().transpose()? {
             self.map_contiguous(
@@ -176,7 +165,7 @@ where
         mut virt: VirtualAddress,
         mut phys: PhysicalAddress,
         len: NonZeroUsize,
-        flush: &mut Flush<A>,
+        flush: &mut Flush,
     ) -> crate::Result<()> {
         let mut remaining_bytes = len.get();
         debug_assert!(
@@ -195,9 +184,9 @@ where
         'outer: while remaining_bytes > 0 {
             let mut pgtable = self.pgtable_ptr_from_phys(self.root_pgtable);
 
-            for lvl in (0..A::PAGE_TABLE_LEVELS).rev() {
+            for lvl in (0..arch::PAGE_TABLE_LEVELS).rev() {
                 let pte = unsafe {
-                    let index = A::pte_index_for_level(virt, lvl);
+                    let index = arch::pte_index_for_level(virt, lvl);
                     pgtable.add(index).as_mut()
                 };
 
@@ -205,16 +194,16 @@ where
                     // We reached the previously mapped leaf node that we want to edit
                     // assert that we can actually map at this level (remap requires users to remap
                     // only to equal or larger alignments, but we should make sure.
-                    let page_size = A::page_size_for_level(lvl);
+                    let page_size = arch::page_size_for_level(lvl);
 
                     // TODO replace this with an error
                     debug_assert!(
-                        A::can_map_at_level(virt, phys, remaining_bytes, lvl),
+                        arch::can_map_at_level(virt, phys, remaining_bytes, lvl),
                         "remapping requires the same alignment and page size ({page_size}) but found {phys:?}, {remaining_bytes}bytes"
                     );
 
                     let (_old_phys, flags) = pte.get_address_and_flags();
-                    pte.replace_address_and_flags(phys, flags);
+                    pte.replace_address_and_flags(phys, flags.into());
 
                     flush.extend_range(self.asid, virt..virt.add(page_size))?;
                     virt = virt.add(page_size);
@@ -237,7 +226,7 @@ where
         &mut self,
         mut virt: VirtualAddress,
         mut iter: NonContiguousFrames,
-        flush: &mut Flush<A>,
+        flush: &mut Flush,
     ) -> crate::Result<()> {
         while let Some((phys, len)) = iter.next().transpose()? {
             self.remap_contiguous(
@@ -257,7 +246,7 @@ where
         mut virt: VirtualAddress,
         len: NonZeroUsize,
         new_flags: crate::Flags,
-        flush: &mut Flush<A>,
+        flush: &mut Flush,
     ) -> crate::Result<()> {
         let mut remaining_bytes = len.get();
         debug_assert!(
@@ -272,9 +261,9 @@ where
         'outer: while remaining_bytes > 0 {
             let mut pgtable = self.pgtable_ptr_from_phys(self.root_pgtable);
 
-            for lvl in (0..A::PAGE_TABLE_LEVELS).rev() {
+            for lvl in (0..arch::PAGE_TABLE_LEVELS).rev() {
                 let pte = unsafe {
-                    let index = A::pte_index_for_level(virt, lvl);
+                    let index = arch::pte_index_for_level(virt, lvl);
                     pgtable.add(index).as_mut()
                 };
 
@@ -283,7 +272,7 @@ where
                     // firstly, ensure that this operation only removes permissions never adds any
                     // and secondly mask out the old permissions replacing them with the new. This must
                     // ensure we retain any other flags in the process.
-                    let rwx_mask = <A::PageTableEntry as PageTableEntry>::FLAGS_RWX;
+                    let rwx_mask = arch::PTE_FLAGS_RWX_MASK;
 
                     let new_flags = rwx_mask.intersection(new_flags.into());
                     let (phys, old_flags) = pte.get_address_and_flags();
@@ -296,7 +285,7 @@ where
                         old_flags.difference(rwx_mask).union(new_flags),
                     );
 
-                    let page_size = A::page_size_for_level(lvl);
+                    let page_size = arch::page_size_for_level(lvl);
                     flush.extend_range(self.asid, virt..virt.add(page_size))?;
                     virt = virt.add(page_size);
                     remaining_bytes -= page_size;
@@ -318,7 +307,7 @@ where
         frame_alloc: &mut dyn FrameAllocator,
         mut virt: VirtualAddress,
         len: NonZeroUsize,
-        flush: &mut Flush<A>,
+        flush: &mut Flush,
     ) -> crate::Result<()> {
         let mut remaining_bytes = len.get();
         debug_assert!(
@@ -333,14 +322,14 @@ where
         'outer: while remaining_bytes > 0 {
             let mut pgtable = self.pgtable_ptr_from_phys(self.root_pgtable);
 
-            for lvl in (0..A::PAGE_TABLE_LEVELS).rev() {
+            for lvl in (0..arch::PAGE_TABLE_LEVELS).rev() {
                 let pte = unsafe {
-                    let index = A::pte_index_for_level(virt, lvl);
+                    let index = arch::pte_index_for_level(virt, lvl);
                     pgtable.add(index).as_mut()
                 };
 
                 if pte.is_valid() && pte.is_leaf() {
-                    let page_size = A::page_size_for_level(lvl);
+                    let page_size = arch::page_size_for_level(lvl);
 
                     pte.clear();
                     let frame = pte.get_address_and_flags().0;
@@ -357,7 +346,7 @@ where
                     // This PTE is an internal node pointing to another page table
                     pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
 
-                    let is_still_populated = (0..A::PAGE_TABLE_ENTRIES)
+                    let is_still_populated = (0..arch::PAGE_TABLE_ENTRIES)
                         .any(|index| unsafe { pgtable.add(index).as_ref().is_valid() });
 
                     if !is_still_populated {
@@ -374,23 +363,19 @@ where
         todo!()
     }
 
-    pub fn query(
-        &mut self,
-        virt: VirtualAddress,
-    ) -> Option<(
-        PhysicalAddress,
-        <A::PageTableEntry as PageTableEntry>::Flags,
-    )> {
-        let mut pgtable: NonNull<A::PageTableEntry> = self.pgtable_ptr_from_phys(self.root_pgtable);
+    pub fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, crate::Flags)> {
+        let mut pgtable: NonNull<arch::PageTableEntry> =
+            self.pgtable_ptr_from_phys(self.root_pgtable);
 
-        for lvl in (0..A::PAGE_TABLE_LEVELS).rev() {
+        for lvl in (0..arch::PAGE_TABLE_LEVELS).rev() {
             let pte = unsafe {
-                let index = A::pte_index_for_level(virt, lvl);
+                let index = arch::pte_index_for_level(virt, lvl);
                 pgtable.add(index).as_mut()
             };
 
             if pte.is_valid() && pte.is_leaf() {
-                return Some(pte.get_address_and_flags());
+                let (addr, flags) = pte.get_address_and_flags();
+                return Some((addr, flags.into()));
             } else if pte.is_valid() {
                 // This PTE is an internal node pointing to another page table
                 pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
@@ -408,38 +393,32 @@ where
     ///
     /// This will invalidate pointers if not used carefully
     pub unsafe fn activate(&self) {
-        A::activate_pgtable(self.asid, self.root_pgtable)
+        arch::activate_pgtable(self.asid, self.root_pgtable)
     }
 
-    fn pgtable_ptr_from_phys(&self, phys: PhysicalAddress) -> NonNull<A::PageTableEntry> {
+    fn pgtable_ptr_from_phys(&self, phys: PhysicalAddress) -> NonNull<arch::PageTableEntry> {
         NonNull::new(self.phys_offset.add(phys.as_raw()).as_raw() as *mut _).unwrap()
     }
 }
 
-impl<A> fmt::Display for AddressSpace<A>
-where
-    A: Arch,
-{
+impl fmt::Display for AddressSpace {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        fn fmt_table<A>(
+        fn fmt_table(
             f: &mut Formatter<'_>,
-            aspace: &AddressSpace<A>,
-            pgtable: NonNull<A::PageTableEntry>,
+            aspace: &AddressSpace,
+            pgtable: NonNull<arch::PageTableEntry>,
             acc: VirtualAddress,
             lvl: usize,
-        ) -> fmt::Result
-        where
-            A: Arch,
-        {
+        ) -> fmt::Result {
             let padding = match lvl {
                 0 => 8,
                 1 => 4,
                 _ => 0,
             };
 
-            for index in 0..A::PAGE_TABLE_ENTRIES {
+            for index in 0..arch::PAGE_TABLE_ENTRIES {
                 let pte = unsafe { pgtable.add(index).as_mut() };
-                let virt = VirtualAddress(acc.as_raw() | virt_from_index::<A>(lvl, index).as_raw());
+                let virt = VirtualAddress(acc.as_raw() | virt_from_index(lvl, index).as_raw());
                 let (address, flags) = pte.get_address_and_flags();
 
                 if pte.is_valid() && pte.is_leaf() {
@@ -459,12 +438,12 @@ where
             Ok(())
         }
 
-        fmt_table::<A>(
+        fmt_table(
             f,
             self,
             self.pgtable_ptr_from_phys(self.root_pgtable),
             VirtualAddress::default(),
-            A::PAGE_TABLE_LEVELS - 1,
+            arch::PAGE_TABLE_LEVELS - 1,
         )
     }
 }
@@ -474,13 +453,10 @@ where
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap
 )]
-fn virt_from_index<A>(lvl: usize, index: usize) -> VirtualAddress
-where
-    A: Arch,
-{
-    let raw = ((index & (A::PAGE_TABLE_ENTRIES - 1))
-        << (lvl * A::PAGE_ENTRY_SHIFT + arch::PAGE_SHIFT)) as isize;
+fn virt_from_index(lvl: usize, index: usize) -> VirtualAddress {
+    let raw = ((index & (arch::PAGE_TABLE_ENTRIES - 1))
+        << (lvl * arch::PAGE_ENTRY_SHIFT + arch::PAGE_SHIFT)) as isize;
 
-    let shift = size_of::<usize>() as u32 * 8 - (A::VIRT_ADDR_BITS + 1);
+    let shift = size_of::<usize>() as u32 * 8 - (arch::VIRT_ADDR_BITS + 1);
     VirtualAddress(raw.wrapping_shl(shift).wrapping_shr(shift) as usize)
 }

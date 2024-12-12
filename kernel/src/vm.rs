@@ -15,7 +15,7 @@ use pmm::{Flush, VirtualAddress};
 use sync::{Mutex, OnceLock};
 use wavltree::Entry;
 
-pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace<pmm::arch::Riscv64Sv39>>> = OnceLock::new();
+pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 
 const KERNEL_ASID: usize = 0;
 
@@ -45,16 +45,13 @@ impl PageAllocator {
     pub fn allocate(&mut self, layout: Layout, flags: pmm::Flags) {}
 }
 
-pub struct AddressSpace<A> {
+pub struct AddressSpace {
     tree: wavltree::WAVLTree<Mapping>,
     frame_alloc: BitMapAllocator,
-    arch: pmm::AddressSpace<A>,
+    arch: pmm::AddressSpace,
 }
-impl<A> AddressSpace<A>
-where
-    A: pmm::arch::Arch,
-{
-    pub fn new(arch: pmm::AddressSpace<A>, bump_allocator: BumpAllocator) -> Self {
+impl AddressSpace {
+    pub fn new(arch: pmm::AddressSpace, bump_allocator: BumpAllocator) -> Self {
         Self {
             tree: wavltree::WAVLTree::default(),
             frame_alloc: BitMapAllocator::new(bump_allocator, arch.phys_offset()).unwrap(),

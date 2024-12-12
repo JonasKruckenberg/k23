@@ -8,7 +8,7 @@ use core::arch::{asm, naked_asm};
 use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::ptr::{addr_of, addr_of_mut};
-use pmm::arch::{Riscv64Sv39, PAGE_SIZE};
+use pmm::arch::PAGE_SIZE;
 use pmm::AddressSpace;
 use pmm::{
     frame_alloc::{BumpAllocator, FrameAllocator},
@@ -74,8 +74,7 @@ unsafe extern "C" fn fillstack() {
 
 /// Architecture specific startup code
 fn start(hartid: usize, opaque: *const u8) -> ! {
-    static INIT: sync::OnceLock<(KernelAddressSpace<Riscv64Sv39>, VirtualAddress)> =
-        sync::OnceLock::new();
+    static INIT: sync::OnceLock<(KernelAddressSpace, VirtualAddress)> = sync::OnceLock::new();
 
     // Disable interrupts. The kernel will re-enable interrupts
     // when it's ready to handle them
@@ -107,11 +106,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 PageAllocator::new_no_kaslr()
             };
 
-            let (mut aspace, mut flush) = AddressSpace::<Riscv64Sv39>::new(
-                &mut frame_alloc,
-                KERNEL_ASID,
-                VirtualAddress::default(),
-            )?;
+            let (mut aspace, mut flush) =
+                AddressSpace::new(&mut frame_alloc, KERNEL_ASID, VirtualAddress::default())?;
 
             // Identity map the loader itself (this binary).
             //
@@ -152,8 +148,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
 
             // Reconstruct the aspace with the new physical memory mapping offset since we're in virtual
             // memory mode now.
-            let (aspace, mut flush) =
-                AddressSpace::<Riscv64Sv39>::from_active(KERNEL_ASID, physmap.start);
+            let (aspace, mut flush) = AddressSpace::from_active(KERNEL_ASID, physmap.start);
 
             let kernel_aspace = init_kernel_aspace(
                 aspace,
@@ -258,15 +253,12 @@ impl SelfRegions {
     }
 }
 
-fn identity_map_self<A>(
-    aspace: &mut AddressSpace<A>,
+fn identity_map_self(
+    aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
     self_regions: &SelfRegions,
-    flush: &mut Flush<A>,
-) -> crate::Result<Range<VirtualAddress>>
-where
-    A: pmm::arch::Arch,
-{
+    flush: &mut Flush,
+) -> crate::Result<Range<VirtualAddress>> {
     log::trace!(
         "Identity mapping loader executable region {:?}...",
         self_regions.executable
@@ -308,16 +300,13 @@ where
 }
 
 #[inline]
-fn identity_map_range<A>(
-    aspace: &mut AddressSpace<A>,
+fn identity_map_range(
+    aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
     phys: Range<PhysicalAddress>,
     flags: pmm::Flags,
-    flush: &mut Flush<A>,
-) -> crate::Result<()>
-where
-    A: pmm::arch::Arch,
-{
+    flush: &mut Flush,
+) -> crate::Result<()> {
     let virt = VirtualAddress::new(phys.start.as_raw());
     let len = NonZeroUsize::new(phys.end.as_raw() - phys.start.as_raw()).unwrap();
 
@@ -327,19 +316,15 @@ where
 }
 
 // TODO explain why no ASLR here
-pub fn map_physical_memory<A>(
-    aspace: &mut AddressSpace<A>,
+pub fn map_physical_memory(
+    aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
-    page_alloc: &mut PageAllocator<A>,
+    page_alloc: &mut PageAllocator,
     minfo: &MachineInfo,
-    flush: &mut Flush<A>,
-) -> crate::Result<Range<VirtualAddress>>
-where
-    A: pmm::arch::Arch,
-    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
-{
+    flush: &mut Flush,
+) -> crate::Result<Range<VirtualAddress>> {
     let phys = minfo.memory_hull();
-    let alignment = A::page_size_for_level(2);
+    let alignment = pmm::arch::page_size_for_level(2);
 
     let phys_aligned = phys.start.align_down(alignment);
     let size = phys.end.align_up(alignment).as_raw() - phys_aligned.as_raw();

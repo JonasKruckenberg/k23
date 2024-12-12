@@ -1,33 +1,22 @@
-use crate::arch::Arch;
-use crate::{Error, VirtualAddress};
+use crate::{arch, Error, VirtualAddress};
 use core::cmp;
-use core::marker::PhantomData;
 use core::ops::Range;
 
 #[must_use]
-pub struct Flush<A> {
+pub struct Flush {
     asid: usize,
     range: Option<Range<VirtualAddress>>,
-    _m: PhantomData<A>,
 }
 
-impl<A> Flush<A>
-where
-    A: Arch,
-{
+impl Flush {
     pub fn empty(asid: usize) -> Self {
-        Self {
-            asid,
-            range: None,
-            _m: PhantomData,
-        }
+        Self { asid, range: None }
     }
 
     pub fn new(asid: usize, range: Range<VirtualAddress>) -> Self {
         Self {
             asid,
             range: Some(range),
-            _m: PhantomData,
         }
     }
 
@@ -39,7 +28,7 @@ where
     pub fn flush(self) -> crate::Result<()> {
         log::trace!("flushing range {:?}", self.range);
         if let Some(range) = self.range {
-            A::invalidate_range(self.asid, range)?;
+            arch::invalidate_range(self.asid, range)?;
         } else {
             log::warn!("attempted to flush empty range, ignoring");
         }

@@ -4,11 +4,11 @@ use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
 use pmm::frame_alloc::{BumpAllocator, FrameAllocator};
 use pmm::{PhysicalAddress, VirtualAddress};
 
-pub fn init_boot_info<A>(
+pub fn init_boot_info(
     alloc: &mut BumpAllocator,
     boot_hart: usize,
     kernel: &Kernel,
-    kernel_aspace: &KernelAddressSpace<A>,
+    kernel_aspace: &KernelAddressSpace,
     physical_memory_offset: VirtualAddress,
     fdt_offset: VirtualAddress,
 ) -> crate::Result<*mut BootInfo> {

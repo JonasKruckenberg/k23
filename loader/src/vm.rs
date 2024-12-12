@@ -13,8 +13,8 @@ use xmas_elf::dynamic::Tag;
 use xmas_elf::program::{SegmentData, Type};
 use xmas_elf::P64;
 
-pub struct KernelAddressSpace<A> {
-    pub aspace: AddressSpace<A>,
+pub struct KernelAddressSpace {
+    pub aspace: AddressSpace,
 
     /// The entry point address of the kernel
     entry: VirtualAddress,
@@ -33,7 +33,7 @@ pub struct KernelAddressSpace<A> {
     pub heap_virt: Option<Range<VirtualAddress>>,
 }
 
-impl<A> KernelAddressSpace<A> {
+impl KernelAddressSpace {
     /// The kernel entry address as specified in the ELF file.
     pub fn kernel_entry(&self) -> VirtualAddress {
         self.entry
@@ -72,29 +72,22 @@ impl<A> KernelAddressSpace<A> {
     ///
     /// Extreme care must be taken to ensure that pointers passed to the kernel have been "translated"
     /// to virtual addresses before leaving the kernel.
-    pub unsafe fn activate(&self)
-    where
-        A: arch::Arch,
-    {
+    pub unsafe fn activate(&self) {
         self.aspace.activate();
     }
 }
 
 /// Initialize the kernel address space, this will map the kernel ELF file into virtual memory,
 /// and map stack & TLS regions for each hart.
-pub fn init_kernel_aspace<A>(
-    mut aspace: AddressSpace<A>,
-    flush: &mut Flush<A>,
+pub fn init_kernel_aspace(
+    mut aspace: AddressSpace,
+    flush: &mut Flush,
     frame_alloc: &mut dyn FrameAllocator,
-    page_alloc: &mut PageAllocator<A>,
+    page_alloc: &mut PageAllocator,
     kernel: &Kernel,
     minfo: &MachineInfo,
     loader_region: Range<VirtualAddress>,
-) -> crate::Result<KernelAddressSpace<A>>
-where
-    A: arch::Arch,
-    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
-{
+) -> crate::Result<KernelAddressSpace> {
     let kernel_virt = page_alloc.allocate(
         Layout::from_size_align(kernel.mem_size() as usize, kernel.max_align() as usize).unwrap(),
     );
@@ -157,19 +150,15 @@ where
 }
 
 /// Map an ELF file into virtual memory at the given `virt_base` offset.
-fn map_elf<A>(
-    aspace: &mut AddressSpace<A>,
+fn map_elf(
+    aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
-    page_alloc: &mut PageAllocator<A>,
+    page_alloc: &mut PageAllocator,
     elf_file: &xmas_elf::ElfFile,
     minfo: &MachineInfo,
     virt_base: VirtualAddress,
-    flush: &mut Flush<A>,
-) -> crate::Result<Option<TlsAllocation>>
-where
-    A: arch::Arch,
-    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
-{
+    flush: &mut Flush,
+) -> crate::Result<Option<TlsAllocation>> {
     let phys_base = PhysicalAddress::new(elf_file.input.as_ptr() as usize);
     assert!(
         phys_base.is_aligned(arch::PAGE_SIZE),
@@ -234,17 +223,14 @@ where
 }
 
 /// Map an ELF LOAD segment.
-fn handle_load_segment<A>(
-    aspace: &mut AddressSpace<A>,
+fn handle_load_segment(
+    aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
     ph: &ProgramHeader,
     phys_base: PhysicalAddress,
     virt_base: VirtualAddress,
-    flush: &mut Flush<A>,
-) -> crate::Result<()>
-where
-    A: arch::Arch,
-{
+    flush: &mut Flush,
+) -> crate::Result<()> {
     let flags = flags_for_segment(ph);
 
     log::debug!(
@@ -301,18 +287,15 @@ where
 ///     2.2. we then copy over the relevant data from the DATA section into the new frame
 ///     2.3. and lastly replace last page previously mapped by `handle_load_segment` to stitch things up.
 /// 3. If the BSS section is larger than that one page, we allocate additional zeroed frames and map them in.
-fn handle_bss_section<A>(
-    aspace: &mut AddressSpace<A>,
+fn handle_bss_section(
+    aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
     ph: &ProgramHeader,
     flags: pmm::Flags,
     phys_base: PhysicalAddress,
     virt_base: VirtualAddress,
-    flush: &mut Flush<A>,
-) -> crate::Result<()>
-where
-    A: pmm::arch::Arch,
-{
+    flush: &mut Flush,
+) -> crate::Result<()> {
     let virt_start = virt_base.add(ph.virtual_address);
     let zero_start = virt_start.add(ph.file_size);
     let zero_end = virt_start.add(ph.mem_size);
@@ -382,19 +365,15 @@ where
 }
 
 /// Map the kernel thread-local storage (TLS) memory regions.
-fn handle_tls_segment<A>(
-    aspace: &mut AddressSpace<A>,
+fn handle_tls_segment(
+    aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
-    page_alloc: &mut PageAllocator<A>,
+    page_alloc: &mut PageAllocator,
     ph: &ProgramHeader,
     virt_base: VirtualAddress,
     minfo: &MachineInfo,
-    flush: &mut Flush<A>,
-) -> crate::Result<TlsAllocation>
-where
-    A: arch::Arch,
-    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
-{
+    flush: &mut Flush,
+) -> crate::Result<TlsAllocation> {
     let per_hart_size_pages = ph.mem_size.div_ceil(arch::PAGE_SIZE);
     let total_size = per_hart_size_pages * arch::PAGE_SIZE * minfo.cpus;
 
@@ -483,15 +462,12 @@ fn apply_relocation(
     Ok(())
 }
 
-fn handle_relro_segment<A>(
-    aspace: &mut AddressSpace<A>,
+fn handle_relro_segment(
+    aspace: &mut AddressSpace,
     ph: &ProgramHeader,
     virt_base: VirtualAddress,
-    flush: &mut Flush<A>,
-) -> crate::Result<()>
-where
-    A: pmm::arch::Arch,
-{
+    flush: &mut Flush,
+) -> crate::Result<()> {
     let virt = {
         let start = virt_base.add(ph.virtual_address);
 
@@ -563,18 +539,14 @@ impl TlsAllocation {
 
 /// Map the kernel stacks for each hart.
 // TODO add guard pages below each stack allocation
-fn map_kernel_stacks<A>(
-    aspace: &mut AddressSpace<A>,
+fn map_kernel_stacks(
+    aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
-    page_alloc: &mut PageAllocator<A>,
+    page_alloc: &mut PageAllocator,
     machine_info: &MachineInfo,
     per_hart_stack_size_pages: usize,
-    flush: &mut Flush<A>,
-) -> crate::Result<Range<VirtualAddress>>
-where
-    A: arch::Arch,
-    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
-{
+    flush: &mut Flush,
+) -> crate::Result<Range<VirtualAddress>> {
     let stacks_phys = NonContiguousFrames::new(
         frame_alloc,
         NonZeroUsize::new(per_hart_stack_size_pages * machine_info.cpus).unwrap(),
@@ -600,17 +572,13 @@ where
 }
 
 /// Allocate and map the kernel heap.
-fn map_kernel_heap<A>(
-    aspace: &mut AddressSpace<A>,
+fn map_kernel_heap(
+    aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
-    page_alloc: &mut PageAllocator<A>,
+    page_alloc: &mut PageAllocator,
     heap_size_pages: usize,
-    flush: &mut Flush<A>,
-) -> crate::Result<Range<VirtualAddress>>
-where
-    A: arch::Arch,
-    [(); A::PAGE_TABLE_ENTRIES / 2]: Sized,
-{
+    flush: &mut Flush,
+) -> crate::Result<Range<VirtualAddress>> {
     let heap_phys =
         NonContiguousFrames::new(frame_alloc, NonZeroUsize::new(heap_size_pages).unwrap());
 
