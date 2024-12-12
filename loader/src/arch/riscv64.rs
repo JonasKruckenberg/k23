@@ -167,7 +167,10 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 &kernel,
                 &kernel_aspace,
                 physmap.start,
-                physmap.start.add(minfo.fdt.as_ptr() as usize),
+                {
+                    let base = PhysicalAddress::new(minfo.fdt.as_ptr() as usize);
+                    base..base.add(minfo.fdt.len())
+                }
             )?;
 
             Ok((kernel_aspace, VirtualAddress::new(boot_info as usize)))

@@ -30,8 +30,6 @@ pub struct BootInfo {
     /// cause undefined behavior. Only frames reported as `USABLE` by the memory map in the `BootInfo`
     /// can be safely accessed.
     pub physical_memory_offset: VirtualAddress,
-    /// Virtual address of the flattened device tree.
-    pub fdt_offset: VirtualAddress,
     /// Virtual memory region occupied by the loader.
     ///
     /// This region is identity-mapped contains the loader executable.
@@ -67,7 +65,6 @@ impl BootInfo {
         memory_regions: *const MemoryRegion,
         memory_regions_len: usize,
         tls_template: Option<TlsTemplate>,
-        fdt_offset: VirtualAddress,
         loader_region: Range<VirtualAddress>,
         heap_region: Option<Range<VirtualAddress>>,
         kernel_elf: Range<PhysicalAddress>,
@@ -78,7 +75,6 @@ impl BootInfo {
             memory_regions,
             memory_regions_len,
             tls_template,
-            fdt_offset,
             kernel_virt,
             loader_region,
             heap_region,
@@ -123,6 +119,8 @@ pub enum MemoryRegionKind {
     ///
     /// This memory should _not_ be used by the kernel.
     Loader,
+    /// The memory region containing the flattened device tree (FDT).
+    FDT,
 }
 
 impl MemoryRegionKind {
