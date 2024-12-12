@@ -416,6 +416,11 @@ where
         self.size() == 0
     }
 
+    /// Returns a double-ended iterator over a sub-range of entries in the tree. The simplest way is 
+    /// to use the range syntax `min..max`, thus `range(min..max)` will yield elements from min (inclusive)
+    /// to max (exclusive). The range may also be entered as `(Bound<T>, Bound<T>)`, so for example
+    /// `range((Excluded(4), Included(10)))` will yield a left-exclusive, right-inclusive 
+    /// range from 4 to 10.
     pub fn range<Q, R>(&self, range: R) -> Iter<'_, T>
     where
         <T as Linked>::Key: Borrow<Q>,
@@ -440,6 +445,11 @@ where
         }
     }
 
+    /// Returns a mutable double-ended iterator over a sub-range of entries in the tree. The simplest way is 
+    /// to use the range syntax `min..max`, thus `range(min..max)` will yield elements from min (inclusive)
+    /// to max (exclusive). The range may also be entered as `(Bound<T>, Bound<T>)`, so for example
+    /// `range((Excluded(4), Included(10)))` will yield a left-exclusive, right-inclusive 
+    /// range from 4 to 10.
     pub fn range_mut<Q, R>(&mut self, range: R) -> IterMut<'_, T>
     where
         <T as Linked>::Key: Borrow<Q>,
@@ -464,6 +474,7 @@ where
         }
     }
 
+    /// Returns the given key's corresponding entry in the tree for in-place manipulation.
     pub fn entry<Q>(&mut self, key: &Q) -> Entry<'_, T>
     where
         <T as Linked>::Key: Borrow<Q>,
@@ -481,6 +492,7 @@ where
         }
     }
 
+    /// Returns a cursor over the entire tree.
     #[inline]
     pub fn cursor(&self) -> Cursor<'_, T> {
         Cursor {
@@ -489,6 +501,7 @@ where
         }
     }
 
+    /// Returns a mutable cursor over the entire tree.
     #[inline]
     pub fn cursor_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
@@ -497,6 +510,11 @@ where
         }
     }
 
+    /// Constructs a cursor from a raw pointer to a node.
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the pointer points to a valid node in the tree.
     #[inline]
     pub unsafe fn cursor_from_ptr(&self, ptr: NonNull<T>) -> Cursor<'_, T> {
         debug_assert!(T::links(ptr).as_ref().is_linked());
@@ -506,6 +524,11 @@ where
         }
     }
 
+    /// Constructs a mutable cursor from a raw pointer to a node.
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the pointer points to a valid node in the tree.
     #[inline]
     pub unsafe fn cursor_mut_from_ptr(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
         debug_assert!(T::links(ptr).as_ref().is_linked());
@@ -582,6 +605,7 @@ where
         }
     }
 
+    /// Returns a [`Cursor`] pointing at the gap before the smallest key greater than the given bound.
     #[inline]
     pub fn lower_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, T>
     where
@@ -594,6 +618,7 @@ where
         }
     }
 
+    /// Returns a [`CursorMut`] pointing at the gap before the smallest key greater than the given bound.
     #[inline]
     pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, T>
     where
@@ -606,6 +631,7 @@ where
         }
     }
 
+    /// Returns a [`Cursor`] pointing at the gap after the greatest key smaller than the given bound.
     #[inline]
     pub fn upper_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, T>
     where
@@ -618,6 +644,7 @@ where
         }
     }
 
+    /// Returns a [`CursorMut`] pointing at the gap after the greatest key smaller than the given bound.
     #[inline]
     pub fn upper_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, T>
     where
@@ -805,7 +832,7 @@ where
         result
     }
 
-    #[warn(clippy::type_complexity)]
+    #[allow(clippy::type_complexity)]
     unsafe fn find_internal<Q>(&self, key: &Q) -> (Option<NonNull<T>>, Option<(NonNull<T>, Side)>)
     where
         <T as Linked>::Key: Borrow<Q>,
