@@ -492,20 +492,20 @@ where
         }
     }
 
-    /// Returns a cursor over the entire tree.
+    /// Returns a cursor to the root of the tree.
     #[inline]
-    pub fn cursor(&self) -> Cursor<'_, T> {
+    pub fn root(&self) -> Cursor<'_, T> {
         Cursor {
-            current: None,
+            current: self.root,
             _tree: self,
         }
     }
 
-    /// Returns a mutable cursor over the entire tree.
+    /// Returns a mutable cursor to the root of the tree.
     #[inline]
-    pub fn cursor_mut(&mut self) -> CursorMut<'_, T> {
+    pub fn root_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
-            current: None,
+            current: self.root,
             _tree: self,
         }
     }
