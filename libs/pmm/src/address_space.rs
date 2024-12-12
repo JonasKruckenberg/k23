@@ -319,48 +319,60 @@ impl AddressSpace {
             "virtual address must be aligned to at least 4KiB page size"
         );
 
-        'outer: while remaining_bytes > 0 {
-            let mut pgtable = self.pgtable_ptr_from_phys(self.root_pgtable);
+        while remaining_bytes > 0 {
+            self.unmap_inner(
+                self.pgtable_ptr_from_phys(self.root_pgtable),
+                frame_alloc,
+                &mut virt,
+                &mut remaining_bytes,
+                arch::PAGE_TABLE_LEVELS - 1,
+                flush,
+            )?;
+        }
 
-            for lvl in (0..arch::PAGE_TABLE_LEVELS).rev() {
-                let pte = unsafe {
-                    let index = arch::pte_index_for_level(virt, lvl);
-                    pgtable.add(index).as_mut()
-                };
+        Ok(())
+    }
 
-                if pte.is_valid() && pte.is_leaf() {
-                    let page_size = arch::page_size_for_level(lvl);
+    fn unmap_inner(
+        &mut self,
+        pgtable: NonNull<arch::PageTableEntry>,
+        frame_alloc: &mut dyn FrameAllocator,
+        virt: &mut VirtualAddress,
+        remaining_bytes: &mut usize,
+        lvl: usize,
+        flush: &mut Flush,
+    ) -> crate::Result<()> {
+        let index = arch::pte_index_for_level(*virt, lvl);
+        let pte = unsafe { pgtable.add(index).as_mut() };
 
-                    pte.clear();
-                    let frame = pte.get_address_and_flags().0;
-                    frame_alloc.deallocate(
-                        frame,
-                        NonZeroUsize::new(page_size / arch::PAGE_SIZE).unwrap(),
-                    )?;
+        if pte.is_valid() && pte.is_leaf() {
+            let page_size = arch::page_size_for_level(lvl);
+            let frame = pte.get_address_and_flags().0;
+            frame_alloc.deallocate(
+                frame,
+                NonZeroUsize::new(page_size / arch::PAGE_SIZE).unwrap(),
+            )?;
+            pte.clear();
 
-                    flush.extend_range(self.asid, virt..virt.add(page_size))?;
-                    virt = virt.add(page_size);
-                    remaining_bytes -= page_size;
-                    continue 'outer;
-                } else if pte.is_valid() {
-                    // This PTE is an internal node pointing to another page table
-                    pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
+            flush.extend_range(self.asid, *virt..virt.add(page_size))?;
+            *virt = virt.add(page_size);
+            *remaining_bytes -= page_size;
+        } else if pte.is_valid() {
+            // This PTE is an internal node pointing to another page table
+            let pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
+            self.unmap_inner(pgtable, frame_alloc, virt, remaining_bytes, lvl - 1, flush)?;
 
-                    let is_still_populated = (0..arch::PAGE_TABLE_ENTRIES)
-                        .any(|index| unsafe { pgtable.add(index).as_ref().is_valid() });
+            let is_still_populated = (0..arch::PAGE_TABLE_ENTRIES)
+                .any(|index| unsafe { pgtable.add(index).as_ref().is_valid() });
 
-                    if !is_still_populated {
-                        let frame = pte.get_address_and_flags().0;
-                        frame_alloc.deallocate_one(frame)?;
-                        pte.clear();
-                    }
-                } else {
-                    unreachable!("Invalid state: PTE cant be vacant or invalid+leaf {pte:?}");
-                }
+            if !is_still_populated {
+                let frame = pte.get_address_and_flags().0;
+                frame_alloc.deallocate(frame, NonZeroUsize::new(1).unwrap())?;
+                pte.clear();
             }
         }
 
-        todo!()
+        Ok(())
     }
 
     pub fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, crate::Flags)> {
