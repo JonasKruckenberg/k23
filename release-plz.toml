@@ -1,0 +1,7 @@
+[workspace]
+release = false
+
+[[package]]
+name = "wavltree"
+publish_all_features = true
+release = true
