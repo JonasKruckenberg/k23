@@ -5,9 +5,6 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[dependencies]
-log.workspace = true
-
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
 rand = "0.9.0-alpha.2"
 criterion = "0.5.1"

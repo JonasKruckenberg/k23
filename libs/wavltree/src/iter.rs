@@ -81,7 +81,7 @@ where
     pub(crate) tail: Link<T>,
     pub(crate) _tree: &'a mut WAVLTree<T>,
 }
-impl<'a, T> IterMut<'a, T>
+impl<T> IterMut<'_, T>
 where
     T: Linked + ?Sized,
 {

@@ -9,7 +9,79 @@
 //! Additionally, this implementation is *intrusive* meaning node data (pointers to other nodes etc.) are stored _within_
 //! participating values, rather than being allocated and owned by the tree itself.
 //!
-//! This crate is self-contained, fuzzed, and fully `no_std`.
+//! **This crate is self-contained, (somewhat) fuzzed, and fully `no_std`.**
+//!
+//! # Example
+//!
+//! The following example shows an implementation of a simple intrusive WAVL tree node (`MyNode`) and
+//! how it can be used with `WAVLTree`, notice how - due to the intrusive nature of the data structure -
+//! there is quite a lot more setup required, compared to e.g. a `BTreeMap` or `HashMap`.
+//! 
+//! ```rust
+//! # extern crate alloc;
+//! # use alloc::boxed::Box;
+//! # use core::mem::offset_of;
+//! # use core::pin::Pin;
+//! # use core::ptr::NonNull;
+//! #[derive(Default)]
+//! struct MyNode {
+//!     links: wavltree::Links<Self>,
+//!     value: usize,
+//! }
+//!
+//! impl MyNode {
+//!     pub fn new(value: usize) -> Self {
+//!         let mut this = Self::default();
+//!         this.value = value;
+//!         this
+//!     }
+//! }
+//!
+//! // Participation in an intrusive collection requires a bit more effort
+//! // on the values's part.
+//! unsafe impl wavltree::Linked for MyNode {
+//!     /// The owning handle type, must ensure participating values are pinned in memory.
+//!     type Handle = Pin<Box<Self>>;
+//!     /// The key type by which entries are identified.
+//!     type Key = usize;
+//!
+//!     /// Convert a `Handle` into a raw pointer to `Self`,
+//!     /// taking ownership of it in the process.
+//!     fn into_ptr(handle: Self::Handle) -> NonNull<Self> {
+//!         unsafe { NonNull::from(Box::leak(Pin::into_inner_unchecked(handle))) }
+//!     }
+//!
+//!     /// Convert a raw pointer back into an owned `Handle`.
+//!     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
+//!         Pin::new_unchecked(Box::from_raw(ptr.as_ptr()))
+//!     }
+//!
+//!     /// Return the links of the node pointed to by ptr.
+//!     unsafe fn links(ptr: NonNull<Self>) -> NonNull<wavltree::Links<Self>> {
+//!         ptr.map_addr(|addr| {
+//!             let offset = offset_of!(Self, links);
+//!             addr.checked_add(offset).unwrap()
+//!         })
+//!         .cast()
+//!     }
+//!
+//!     /// Retrieve the key identifying this node within the collection.
+//!     fn get_key(&self) -> &Self::Key {
+//!         &self.value
+//!    }
+//! }
+//!
+//! fn main() {
+//!     let mut tree = wavltree::WAVLTree::new();
+//!     tree.insert(Box::pin(MyNode::new(42)));
+//!     tree.insert(Box::pin(MyNode::new(17)));
+//!     tree.insert(Box::pin(MyNode::new(9)));
+//!
+//!     tree.remove(&9);
+//!
+//!     let _entry = tree.entry(&42);
+//! }
+//! ```
 //!
 //! ## when to use this
 //!
@@ -31,6 +103,9 @@
 //!   primitives such as strings or numbers, since they can't hold this metadata.
 //! - **can't use unsafe** - Both this implementation and code consuming it require `unsafe`, the `Linked` trait is unsafe
 //!   to implement since it requires implementors uphold special invariants.
+//! - **you are unsure if you need this** - Search trees and especially intrusive ones like this are niche data structures,
+//!   only use them if you are sure you need them. Very likely doing binary search on a sorted `Vec` or using a `HashMap`
+//!   works better for your use case.
 //!
 //! ## features
 //!
@@ -42,6 +117,7 @@
 //!
 //! [paper]: https://sidsen.azurewebsites.net/papers/rb-trees-talg.pdf
 //! [k23]: https://github.com/JonasKruckenberg/k23
+//! [graphviz format]: https://graphviz.org
 
 #![cfg_attr(not(test), no_std)]
 #![feature(let_chains)]
@@ -461,7 +537,9 @@ where
                     let curr_links = T::links(curr).as_mut();
 
                     let side = match key.cmp(curr.as_ref().get_key().borrow()) {
-                        Ordering::Equal => panic!("already inserted"),
+                        Ordering::Equal => {
+                            return;
+                        } // panic!("already inserted"),
                         Ordering::Less => Side::Left,
                         Ordering::Greater => Side::Right,
                     };
@@ -727,6 +805,7 @@ where
         result
     }
 
+    #[warn(clippy::type_complexity)]
     unsafe fn find_internal<Q>(&self, key: &Q) -> (Option<NonNull<T>>, Option<(NonNull<T>, Side)>)
     where
         <T as Linked>::Key: Borrow<Q>,

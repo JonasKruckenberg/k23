@@ -920,7 +920,6 @@ name = "wavltree"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "log",
  "rand 0.9.0-alpha.2",
 ]
 
