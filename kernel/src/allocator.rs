@@ -22,11 +22,4 @@ pub fn init(boot_info: &BootInfo) {
         let old_heap = alloc.claim(span).unwrap();
         alloc.extend(old_heap, span);
     }
-    drop(alloc);
-
-    let mut test = vec![];
-    test.push(1);
-    test.push(2);
-    test.push(3);
-    log::trace!("test: {test:?}");
 }

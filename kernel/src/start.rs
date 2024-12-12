@@ -53,7 +53,11 @@ fn init(boot_info: &'static loader_api::BootInfo) {
     vm::init(boot_info);
 
     let mut kernel_aspace = vm::KERNEL_ASPACE.get().unwrap().lock();
-    // kernel_aspace.reserve();
+    
+    
+    
+    
+    
 
     // panic_unwind::set_hook(Box::new(|info| {
     //     let location = info.location();
