@@ -62,7 +62,7 @@ hashbrown = { version = "0.14.5", default-features = false, features = [
     "nightly",
 ] }
 wasmparser = { version = "0.216.0", default-features = false }
-target-lexicon = { version = "0.12.14", default-features = false }
+target-lexicon = { version = "0.13.0", default-features = false }
 cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std3", default-features = false, features = [
     "core",
 ] }
