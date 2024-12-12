@@ -1,5 +1,4 @@
 use crate::{allocator, arch, vm, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_SIZE_PAGES};
-use alloc::vec;
 use core::mem;
 use loader_api::LoaderConfig;
 use sync::OnceLock;

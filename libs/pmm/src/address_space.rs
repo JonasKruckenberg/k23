@@ -203,7 +203,7 @@ impl AddressSpace {
                     );
 
                     let (_old_phys, flags) = pte.get_address_and_flags();
-                    pte.replace_address_and_flags(phys, flags.into());
+                    pte.replace_address_and_flags(phys, flags);
 
                     flush.extend_range(self.asid, virt..virt.add(page_size))?;
                     virt = virt.add(page_size);
