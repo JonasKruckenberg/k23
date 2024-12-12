@@ -45,7 +45,8 @@ impl AddressSpace {
         self.root_pgtable
     }
 
-    pub fn phys_offset(&self) -> VirtualAddress {
+    /// Return the offset of the physical memory mapping in this address space.
+    pub fn physical_memory_offset(&self) -> VirtualAddress {
         self.phys_offset
     }
 

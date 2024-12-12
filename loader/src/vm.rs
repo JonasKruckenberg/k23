@@ -309,7 +309,7 @@ fn handle_bss_section(
             .add(ph.offset + ph.file_size - 1)
             .align_down(ph.align);
 
-        let new_frame = frame_alloc.allocate_one_zeroed(aspace.phys_offset())?;
+        let new_frame = frame_alloc.allocate_one_zeroed(aspace.physical_memory_offset())?;
 
         unsafe {
             let src = slice::from_raw_parts(
@@ -347,7 +347,7 @@ fn handle_bss_section(
         let additional_phys = NonContiguousFrames::new_zeroed(
             frame_alloc,
             NonZeroUsize::new(additional_len.get() / arch::PAGE_SIZE).unwrap(),
-            aspace.phys_offset(),
+            aspace.physical_memory_offset(),
         );
 
         log::trace!(

@@ -99,7 +99,7 @@ impl AddressSpace {
     pub fn new(arch: pmm::AddressSpace, bump_allocator: BumpAllocator) -> Self {
         Self {
             tree: wavltree::WAVLTree::default(),
-            frame_alloc: BitMapAllocator::new(bump_allocator, arch.phys_offset()).unwrap(),
+            frame_alloc: BitMapAllocator::new(bump_allocator, arch.physical_memory_offset()).unwrap(),
             arch,
         }
     }
