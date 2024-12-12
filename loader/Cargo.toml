@@ -15,7 +15,6 @@ harness = false
 [dependencies]
 loader-api.workspace = true
 kmm.workspace = true
-panic-abort.workspace = true
 semihosting-logger = { workspace = true }
 sync.workspace = true
 linked-list-allocator.workspace = true

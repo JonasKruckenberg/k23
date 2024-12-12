@@ -4,7 +4,6 @@
 #![feature(maybe_uninit_slice)]
 
 extern crate alloc;
-extern crate panic_abort;
 
 mod arch;
 mod boot_info;
@@ -15,6 +14,7 @@ mod kernel;
 mod machine_info;
 mod page_alloc;
 mod paging;
+mod panic;
 
 use crate::boot_info::init_boot_info;
 use crate::kernel::Kernel;
