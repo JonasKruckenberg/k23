@@ -26,7 +26,14 @@ extern "Rust" fn kmain(_hartid: usize, boot_info: &'static loader_api::BootInfo)
             .find(|region| region.kind == MemoryRegionKind::FDT)
             .expect("no FDT region");
 
-    let machine_info = unsafe { MachineInfo::from_dtb(fdt.range.start.as_raw() as *const u8) };
+    let machine_info = unsafe {
+        MachineInfo::from_dtb(
+            boot_info
+                .physical_memory_offset
+                .add(fdt.range.start.as_raw())
+                .as_raw() as *const u8,
+        )
+    };
     let args = machine_info
         .bootargs
         .map(|bootargs| Arguments::from_str(bootargs.to_str().unwrap()))
