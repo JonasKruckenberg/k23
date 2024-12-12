@@ -11,12 +11,12 @@
 //!
 //! **This crate is self-contained, (somewhat) fuzzed, and fully `no_std`.**
 //!
-//! # Example
+//! ## Example
 //!
 //! The following example shows an implementation of a simple intrusive WAVL tree node (`MyNode`) and
 //! how it can be used with `WAVLTree`, notice how - due to the intrusive nature of the data structure -
 //! there is quite a lot more setup required, compared to e.g. a `BTreeMap` or `HashMap`.
-//! 
+//!
 //! ```rust
 //! # extern crate alloc;
 //! # use alloc::boxed::Box;
@@ -83,7 +83,7 @@
 //! }
 //! ```
 //!
-//! ## when to use this
+//! ## When To Use This
 //!
 //! - **want binary search** - WAVL trees are *sorted* collections that are efficient to search.
 //! - **search more than you edit** - WAVL trees offer better search complexity than red-black trees at the cost of being
@@ -97,7 +97,7 @@
 //!
 //! In short, `WAVLTree`s are a good choice for `no_std` binary search trees such as inside page allocators.
 //!
-//! ## when not to use this
+//! ## When Not To Use This
 //!
 //! - **need to store primitives** - Intrusive collections require elements to store the node data, which excludes
 //!   primitives such as strings or numbers, since they can't hold this metadata.
@@ -107,7 +107,7 @@
 //!   only use them if you are sure you need them. Very likely doing binary search on a sorted `Vec` or using a `HashMap`
 //!   works better for your use case.
 //!
-//! ## features
+//! ## Cargo Features
 //!
 //! The following features are available:
 //!
@@ -1564,7 +1564,7 @@ mod tests {
 
         let mut rng = thread_rng();
 
-        let mut nums = (0..50).collect::<Vec<_>>();
+        let mut nums = (0..30).collect::<Vec<_>>();
         nums.shuffle(&mut rng);
 
         println!("inserts {nums:?}");

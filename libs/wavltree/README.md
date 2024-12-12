@@ -26,7 +26,7 @@ participating values, rather than being allocated and owned by the tree itself.
 
 **This crate is self-contained, (somewhat) fuzzed, and fully `no_std`.**
 
-# Example
+## Example
 
 The following example shows an implementation of a simple intrusive WAVL tree node (`MyNode`) and
 how it can be used with `WAVLTree`, notice how - due to the intrusive nature of the data structure -
@@ -98,7 +98,7 @@ fn main() {
 }
 ```
 
-## when to use this
+## When To Use This
 
 - **want binary search** - WAVL trees are *sorted* collections that are efficient to search.
 - **search more than you edit** - WAVL trees offer better search complexity than red-black trees at the cost of being
@@ -112,7 +112,7 @@ fn main() {
 
 In short, `WAVLTree`s are a good choice for `no_std` binary search trees such as inside page allocators.
 
-## when not to use this
+## When Not To Use This
 
 - **need to store primitives** - Intrusive collections require elements to store the node data, which excludes
   primitives such as strings or numbers, since they can't hold this metadata.
@@ -122,7 +122,7 @@ In short, `WAVLTree`s are a good choice for `no_std` binary search trees such as
   only use them if you are sure you need them. Very likely doing binary search on a sorted `Vec` or using a `HashMap`
   works better for your use case.
 
-## features
+## Cargo Features
 
 The following features are available:
 
@@ -130,7 +130,7 @@ The following features are available:
 |:--------|:--------|:------------------------------------------------------------------------------------------|
 | `dot`   | `false` | Enables the `WAVLTree::dot` method, which allows display of the tree in [graphviz format] |
 
-## references
+## References
 
 This paper implements the Weak AVL tree algorithm in Rust as described in [Haeupler, Sen & Tarjan (2015)][paper], with
 additional
