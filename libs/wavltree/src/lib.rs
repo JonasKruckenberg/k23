@@ -416,10 +416,10 @@ where
         self.size() == 0
     }
 
-    /// Returns a double-ended iterator over a sub-range of entries in the tree. The simplest way is 
+    /// Returns a double-ended iterator over a sub-range of entries in the tree. The simplest way is
     /// to use the range syntax `min..max`, thus `range(min..max)` will yield elements from min (inclusive)
     /// to max (exclusive). The range may also be entered as `(Bound<T>, Bound<T>)`, so for example
-    /// `range((Excluded(4), Included(10)))` will yield a left-exclusive, right-inclusive 
+    /// `range((Excluded(4), Included(10)))` will yield a left-exclusive, right-inclusive
     /// range from 4 to 10.
     pub fn range<Q, R>(&self, range: R) -> Iter<'_, T>
     where
@@ -445,10 +445,10 @@ where
         }
     }
 
-    /// Returns a mutable double-ended iterator over a sub-range of entries in the tree. The simplest way is 
+    /// Returns a mutable double-ended iterator over a sub-range of entries in the tree. The simplest way is
     /// to use the range syntax `min..max`, thus `range(min..max)` will yield elements from min (inclusive)
     /// to max (exclusive). The range may also be entered as `(Bound<T>, Bound<T>)`, so for example
-    /// `range((Excluded(4), Included(10)))` will yield a left-exclusive, right-inclusive 
+    /// `range((Excluded(4), Included(10)))` will yield a left-exclusive, right-inclusive
     /// range from 4 to 10.
     pub fn range_mut<Q, R>(&mut self, range: R) -> IterMut<'_, T>
     where
