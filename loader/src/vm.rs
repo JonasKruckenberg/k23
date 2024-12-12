@@ -26,9 +26,7 @@ pub struct KernelAddressSpace {
     pub stacks_virt: Range<VirtualAddress>,
     /// The size of each stack in bytes
     per_hart_stack_size: usize,
-
-    /// Memory region allocated for loader itself
-    pub loader_region: Range<VirtualAddress>,
+    
     pub kernel_virt: Range<VirtualAddress>,
     pub heap_virt: Option<Range<VirtualAddress>>,
 }
@@ -86,7 +84,6 @@ pub fn init_kernel_aspace(
     page_alloc: &mut PageAllocator,
     kernel: &Kernel,
     minfo: &MachineInfo,
-    loader_region: Range<VirtualAddress>,
 ) -> crate::Result<KernelAddressSpace> {
     let kernel_virt = page_alloc.allocate(
         Layout::from_size_align(kernel.mem_size() as usize, kernel.max_align() as usize).unwrap(),
@@ -143,7 +140,6 @@ pub fn init_kernel_aspace(
         maybe_tls_allocation,
         stacks_virt,
         per_hart_stack_size: per_hart_stack_size_pages * arch::PAGE_SIZE,
-        loader_region,
         kernel_virt,
         heap_virt,
     })

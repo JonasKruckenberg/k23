@@ -1,6 +1,6 @@
-use core::ops::Range;
 use crate::kernel::Kernel;
 use crate::vm::KernelAddressSpace;
+use core::ops::Range;
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
 use pmm::frame_alloc::{BumpAllocator, FrameAllocator};
 use pmm::{PhysicalAddress, VirtualAddress};
@@ -12,11 +12,13 @@ pub fn init_boot_info(
     kernel_aspace: &KernelAddressSpace,
     physical_memory_offset: VirtualAddress,
     fdt_phys: Range<PhysicalAddress>,
+    loader_phys: Range<PhysicalAddress>,
 ) -> crate::Result<*mut BootInfo> {
     let page =
         physical_memory_offset.add(alloc.allocate_one_zeroed(physical_memory_offset)?.as_raw());
 
-    let (memory_regions, memory_regions_len) = init_boot_info_memory_regions(page, alloc, fdt_phys);
+    let (memory_regions, memory_regions_len) =
+        init_boot_info_memory_regions(page, alloc, fdt_phys);
 
     let boot_info = page.as_raw() as *mut BootInfo;
     unsafe {
@@ -30,7 +32,10 @@ pub fn init_boot_info(
                 .maybe_tls_allocation
                 .as_ref()
                 .map(|a| a.tls_template.clone()),
-            kernel_aspace.loader_region.clone(),
+            {
+                VirtualAddress::new(loader_phys.start.as_raw())
+                    ..VirtualAddress::new(loader_phys.end.as_raw())
+            },
             kernel_aspace.heap_virt.clone(),
             {
                 let r = kernel.elf_file.input.as_ptr_range();
@@ -46,7 +51,7 @@ pub fn init_boot_info(
 fn init_boot_info_memory_regions(
     page: VirtualAddress,
     alloc: &BumpAllocator,
-    fdt_phys: Range<PhysicalAddress>
+    fdt_phys: Range<PhysicalAddress>,
 ) -> (*mut MemoryRegion, usize) {
     let base_ptr = page.add(size_of::<BootInfo>()).as_raw() as *mut MemoryRegion;
     let mut ptr = base_ptr;

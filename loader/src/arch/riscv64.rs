@@ -115,8 +115,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             // as opposed to m-mode where it would take effect after jump tp u-mode.
             // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
             // We will then unmap the loader in the kernel.
-            let loader_region =
-                identity_map_self(&mut aspace, &mut frame_alloc, &self_regions, &mut flush)?;
+            identity_map_self(&mut aspace, &mut frame_alloc, &self_regions, &mut flush)?;
 
             // Map the physical memory into kernel address space.
             //
@@ -157,9 +156,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 &mut page_alloc,
                 &kernel,
                 &minfo,
-                loader_region,
             )?;
-            log::trace!("\n{}", kernel_aspace.aspace);
+            // log::trace!("\n{}", kernel_aspace.aspace);
 
             let boot_info = init_boot_info(
                 &mut frame_alloc,
@@ -170,7 +168,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 {
                     let base = PhysicalAddress::new(minfo.fdt.as_ptr() as usize);
                     base..base.add(minfo.fdt.len())
-                }
+                },
+                self_regions.executable.start..self_regions.read_write.end,
             )?;
 
             Ok((kernel_aspace, VirtualAddress::new(boot_info as usize)))
@@ -261,7 +260,7 @@ fn identity_map_self(
     frame_alloc: &mut dyn FrameAllocator,
     self_regions: &SelfRegions,
     flush: &mut Flush,
-) -> crate::Result<Range<VirtualAddress>> {
+) -> crate::Result<()> {
     log::trace!(
         "Identity mapping loader executable region {:?}...",
         self_regions.executable
@@ -298,8 +297,7 @@ fn identity_map_self(
         flush,
     )?;
 
-    Ok(VirtualAddress::new(self_regions.executable.start.as_raw())
-        ..VirtualAddress::new(self_regions.read_write.end.as_raw()))
+    Ok(())
 }
 
 #[inline]
