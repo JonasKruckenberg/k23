@@ -50,15 +50,9 @@ fn init(boot_info: &'static loader_api::BootInfo) {
     log::debug!("Setting up kernel heap...");
     allocator::init(boot_info);
 
+    log::debug!("Setting up kernel virtual address space...");
     vm::init(boot_info);
-
-    let mut kernel_aspace = vm::KERNEL_ASPACE.get().unwrap().lock();
     
-    
-    
-    
-    
-
     // panic_unwind::set_hook(Box::new(|info| {
     //     let location = info.location();
     //     let msg = payload_as_str(info.payload());

@@ -1,6 +1,8 @@
+#![allow(unused)]
+
 use alloc::boxed::Box;
 use alloc::vec;
-use core::alloc::Layout;
+use core::cmp::Ordering;
 use core::fmt::Formatter;
 use core::mem::offset_of;
 use core::num::{NonZero, NonZeroUsize};
@@ -8,10 +10,10 @@ use core::ops::Range;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{cmp, fmt};
-use loader_api::{BootInfo, MemoryRegionKind};
+use loader_api::BootInfo;
 use pin_project_lite::pin_project;
-use pmm::frame_alloc::{BitMapAllocator, BumpAllocator};
-use pmm::{Flush, VirtualAddress};
+use pmm::frame_alloc::{BitMapAllocator, BumpAllocator, FrameUsage};
+use pmm::{Flush, PhysicalAddress, VirtualAddress};
 use sync::{Mutex, OnceLock};
 use wavltree::Entry;
 
@@ -22,27 +24,70 @@ const KERNEL_ASID: usize = 0;
 pub fn init(boot_info: &BootInfo) {
     KERNEL_ASPACE.get_or_init(|| {
         let mut memories = vec![];
-
         for i in 0..boot_info.memory_regions_len {
             let region = unsafe { boot_info.memory_regions.add(i).as_ref().unwrap() };
-            if region.kind == MemoryRegionKind::Usable {
+            if region.kind.is_usable() {
                 memories.push(region.range.clone());
             }
         }
+        memories.sort_unstable_by(compare_memory_regions);
 
         let bump_alloc = BumpAllocator::new(&memories);
-
-        let (arch, _) =
+        let (arch, mut flush) =
             pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_offset);
+        let mut aspace = AddressSpace::new(arch, bump_alloc);
 
-        let aspace = AddressSpace::new(arch, bump_alloc);
+        log::debug!("unmapping loader {:?}...", boot_info.loader_region);
+        let loader_region_len = boot_info
+            .loader_region
+            .end
+            .sub_addr(boot_info.loader_region.start);
+        aspace
+            .arch
+            .unmap(
+                &mut IgnoreAlloc,
+                boot_info.loader_region.start,
+                NonZeroUsize::new(loader_region_len).unwrap(),
+                &mut flush,
+            )
+            .unwrap();
+        flush.flush().unwrap();
+
         Mutex::new(aspace)
     });
 }
 
-pub struct PageAllocator {}
-impl PageAllocator {
-    pub fn allocate(&mut self, layout: Layout, flags: pmm::Flags) {}
+fn compare_memory_regions(a: &Range<PhysicalAddress>, b: &Range<PhysicalAddress>) -> Ordering {
+    if a.end <= b.start {
+        Ordering::Less
+    } else if b.end <= a.start {
+        Ordering::Greater
+    } else {
+        // This should never happen if the `exclude_region` code about is correct
+        unreachable!("Memory region {a:?} and {b:?} are overlapping");
+    }
+}
+
+struct IgnoreAlloc;
+impl pmm::frame_alloc::FrameAllocator for IgnoreAlloc {
+    fn allocate_contiguous(
+        &mut self,
+        frames: NonZeroUsize,
+    ) -> Result<(PhysicalAddress, NonZeroUsize), pmm::Error> {
+        unimplemented!()
+    }
+
+    fn deallocate(
+        &mut self,
+        _base: PhysicalAddress,
+        _frames: NonZeroUsize,
+    ) -> Result<(), pmm::Error> {
+        Ok(())
+    }
+
+    fn frame_usage(&self) -> FrameUsage {
+        unreachable!()
+    }
 }
 
 pub struct AddressSpace {
@@ -286,32 +331,5 @@ unsafe impl wavltree::Linked for Mapping {
 
     fn get_key(&self) -> &Self::Key {
         &self.range.start
-    }
-}
-
-pub trait VmObject {
-    fn commit_range(&mut self, offset: usize, len: usize);
-    fn decommit_range(&mut self, offset: usize, len: usize);
-    fn zero_range(&mut self, offset: usize, len: usize);
-    fn prefetch_range(&mut self, offset: usize, len: usize);
-}
-
-pub struct PhysicalMemoryObject {}
-
-impl VmObject for PhysicalMemoryObject {
-    fn commit_range(&mut self, offset: usize, len: usize) {
-        todo!()
-    }
-
-    fn decommit_range(&mut self, offset: usize, len: usize) {
-        todo!()
-    }
-
-    fn zero_range(&mut self, offset: usize, len: usize) {
-        todo!()
-    }
-
-    fn prefetch_range(&mut self, offset: usize, len: usize) {
-        todo!()
     }
 }

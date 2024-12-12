@@ -1,4 +1,3 @@
-use alloc::vec;
 use loader_api::BootInfo;
 use talc::{ErrOnOom, Span, Talc, Talck};
 

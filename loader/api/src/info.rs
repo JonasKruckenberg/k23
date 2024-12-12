@@ -115,7 +115,7 @@ pub struct MemoryRegion {
 pub enum MemoryRegionKind {
     /// Unused conventional memory, can be used by the kernel.
     Usable,
-    /// Memory mappings created by the bootloader, including the page table and boot info mappings.
+    /// Memory mappings created by the loader, including the page table and boot info mappings.
     ///
     /// This memory should _not_ be used by the kernel.
     Loader,
