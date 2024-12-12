@@ -12,6 +12,7 @@ pub struct AddressSpace {
 }
 
 impl AddressSpace {
+    /// Create a new address space with a fresh hardware page table.
     pub fn new(
         frame_alloc: &mut dyn FrameAllocator,
         asid: usize,
@@ -28,6 +29,7 @@ impl AddressSpace {
         Ok((this, Flush::empty(asid)))
     }
 
+    /// Create an address space from the currently active hardware page table.
     pub fn from_active(asid: usize, phys_offset: VirtualAddress) -> (Self, Flush) {
         let root_pgtable = arch::get_active_pgtable(asid);
         debug_assert!(root_pgtable.as_raw() != 0);
@@ -41,6 +43,7 @@ impl AddressSpace {
         (this, Flush::empty(asid))
     }
 
+    /// Return the physical address of the hardware page table root.
     pub fn root_pgtable(&self) -> PhysicalAddress {
         self.root_pgtable
     }
@@ -50,14 +53,50 @@ impl AddressSpace {
         self.phys_offset
     }
 
+    /// Convert a physical address to a virtual address in this address space
     pub fn phys_to_virt(&self, phys: PhysicalAddress) -> VirtualAddress {
         self.phys_offset.add(phys.as_raw())
     }
 
+    /// Return the address space identifier (ASID) of this address space
     pub fn asid(&self) -> usize {
         self.asid
     }
 
+    /// Map an iterator of possibly non-contiguous physical frames into virtual memory starting
+    /// at `virt`. The size of the mapping is determined by the sum of the sizes of the frame regions.
+    ///
+    /// Note that this function expects the virtual memory to be unmapped, to remap an already mapped
+    /// region use [`self.remap`].
+    pub fn map(
+        &mut self,
+        mut virt: VirtualAddress,
+        mut frames: NonContiguousFrames,
+        flags: crate::Flags,
+        flush: &mut Flush,
+    ) -> crate::Result<()> {
+        while let Some((phys, len)) = frames.next().transpose()? {
+            self.map_contiguous(
+                frames.alloc_mut(),
+                virt,
+                phys,
+                NonZeroUsize::new(len.get() * arch::PAGE_SIZE).unwrap(),
+                flags,
+                flush,
+            )?;
+            virt = virt.add(len.get() * arch::PAGE_SIZE);
+        }
+
+        Ok(())
+    }
+
+    /// Map a contiguous run of physical frames of length `len` into virtual memory at `virt`.
+    ///
+    /// Unless you absolutely require the physical frames to be contiguous, you should use [`self.map`]
+    /// instead.
+    ///
+    /// Note that this function expects the virtual memory to be unmapped, to remap an already mapped
+    /// region use [`self.remap_contiguous`].
     pub fn map_contiguous(
         &mut self,
         frame_alloc: &mut dyn FrameAllocator,
@@ -139,20 +178,22 @@ impl AddressSpace {
         Ok(())
     }
 
-    pub fn map(
+    /// Remap an iterator of possibly non-contiguous physical frames into virtual memory starting
+    /// at `virt`. The size of the mapping is determined by the sum of the sizes of the frame regions.
+    ///
+    /// This function is similar to [`self.map`], but it expects the virtual memory to be already mapped
+    /// and simply changes the address of the backing frames.
+    pub fn remap(
         &mut self,
         mut virt: VirtualAddress,
         mut iter: NonContiguousFrames,
-        flags: crate::Flags,
         flush: &mut Flush,
     ) -> crate::Result<()> {
         while let Some((phys, len)) = iter.next().transpose()? {
-            self.map_contiguous(
-                iter.alloc_mut(),
+            self.remap_contiguous(
                 virt,
                 phys,
                 NonZeroUsize::new(len.get() * arch::PAGE_SIZE).unwrap(),
-                flags,
                 flush,
             )?;
             virt = virt.add(len.get() * arch::PAGE_SIZE);
@@ -161,6 +202,13 @@ impl AddressSpace {
         Ok(())
     }
 
+    /// Remap a contiguous run of physical frames of length `len` into virtual memory at `virt`.
+    ///
+    /// Unless you absolutely require the physical frames to be contiguous, you should use [`self.remap`]
+    /// instead.
+    ///
+    /// This function is similar to [`self.map_contiguous`], but it expects the virtual memory to be already mapped
+    /// and simply changes the address of the backing frames.
     pub fn remap_contiguous(
         &mut self,
         mut virt: VirtualAddress,
@@ -223,25 +271,10 @@ impl AddressSpace {
         Ok(())
     }
 
-    pub fn remap(
-        &mut self,
-        mut virt: VirtualAddress,
-        mut iter: NonContiguousFrames,
-        flush: &mut Flush,
-    ) -> crate::Result<()> {
-        while let Some((phys, len)) = iter.next().transpose()? {
-            self.remap_contiguous(
-                virt,
-                phys,
-                NonZeroUsize::new(len.get() * arch::PAGE_SIZE).unwrap(),
-                flush,
-            )?;
-            virt = virt.add(len.get() * arch::PAGE_SIZE);
-        }
-
-        Ok(())
-    }
-
+    /// Change the permissions of a range of virtual memory starting at `virt` and of length
+    /// `len` to `new_flags`.
+    ///
+    /// Note that you can only **reduce** permissions with this function, never increase them.
     pub fn protect(
         &mut self,
         mut virt: VirtualAddress,
@@ -279,7 +312,7 @@ impl AddressSpace {
                     let (phys, old_flags) = pte.get_address_and_flags();
 
                     // TODO replace this with an error
-                    debug_assert!(old_flags.intersection(rwx_mask).contains(new_flags));
+                    assert!(old_flags.intersection(rwx_mask).contains(new_flags));
 
                     pte.replace_address_and_flags(
                         phys,
@@ -303,6 +336,8 @@ impl AddressSpace {
         Ok(())
     }
 
+    /// Unmap a range of virtual memory starting at `virt` and of length `len`, this will also
+    /// free the physical frames backing the virtual memory and page table entries.
     pub fn unmap(
         &mut self,
         frame_alloc: &mut dyn FrameAllocator,
@@ -376,6 +411,7 @@ impl AddressSpace {
         Ok(())
     }
 
+    /// Resolve a virtual address to its backing physical address and associated page table entry flags.
     pub fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, crate::Flags)> {
         let mut pgtable: NonNull<arch::PageTableEntry> =
             self.pgtable_ptr_from_phys(self.root_pgtable);
