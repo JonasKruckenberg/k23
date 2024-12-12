@@ -52,38 +52,6 @@ impl Once {
     /// # Panics
     ///
     /// Panics if the closure panics.
-    #[track_caller]
-    pub fn try_call_once<F, E>(&self, f: F) -> Result<(), E>
-    where
-        F: FnOnce() -> Result<(), E>,
-    {
-        let mut error = None;
-
-        // Fast path check
-        if self.is_completed() {
-            if let Some(err) = error {
-                return Err(err);
-            } else {
-                return Ok(());
-            }
-        }
-
-        let mut f = Some(f);
-        self.call(&mut || match f.take().unwrap()() {
-            Ok(_) => {}
-            Err(err) => error = Some(err),
-        });
-
-        if let Some(err) = error {
-            Err(err)
-        } else {
-            Ok(())
-        }
-    }
-
-    /// # Panics
-    ///
-    /// Panics if the closure panics.
     #[inline]
     #[track_caller]
     pub fn call_once<F>(&self, f: F)
