@@ -1,15 +1,3 @@
-// pub fn lower_bound(&self) -> Cursor<'_, T> {
-//     todo!()
-// }
-// pub fn lower_bound_mut(&mut self) -> CursorMut<'_, T> {
-//     todo!()
-// }
-// pub fn upper_bound(&self) -> Cursor<'_, T> {
-//     todo!()
-// }
-// pub fn upper_bound_mut(&mut self) -> CursorMut<'_, T> {
-//     todo!()
-// }
 use crate::{utils, WAVLTree};
 use crate::{Link, Linked};
 use core::iter::FusedIterator;

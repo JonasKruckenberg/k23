@@ -40,11 +40,21 @@ where
             self.current = None
         }
     }
-    pub fn peek_prev(&self) -> Option<&'a T> {
-        todo!()
+    pub fn peek_prev(&self) -> Option<&T> {
+        if let Some(current) = self.current {
+            let prev = unsafe { utils::prev(current)? };
+            unsafe { Some(prev.as_ref()) }
+        } else {
+            None
+        }
     }
-    pub fn peek_next(&self) -> Option<&'a T> {
-        todo!()
+    pub fn peek_next(&self) -> Option<&T> {
+        if let Some(current) = self.current {
+            let next = unsafe { utils::next(current)? };
+            unsafe { Some(next.as_ref()) }
+        } else {
+            None
+        }
     }
 }
 
@@ -96,17 +106,37 @@ where
             Some(handle)
         }
     }
-    pub fn peek_prev(&self) -> Option<Pin<&T>> {
-        todo!()
+    pub fn peek_prev(&self) -> Option<&T> {
+        if let Some(current) = self.current {
+            let prev = unsafe { utils::prev(current)? };
+            unsafe { Some(prev.as_ref()) }
+        } else {
+            None
+        }
     }
-    pub fn peek_next(&self) -> Option<Pin<&T>> {
-        todo!()
+    pub fn peek_next(&self) -> Option<&T> {
+        if let Some(current) = self.current {
+            let next = unsafe { utils::next(current)? };
+            unsafe { Some(next.as_ref()) }
+        } else {
+            None
+        }
     }
     pub fn peek_prev_mut(&self) -> Option<Pin<&mut T>> {
-        todo!()
+        if let Some(current) = self.current {
+            let mut prev = unsafe { utils::prev(current)? };
+            unsafe { Some(Pin::new_unchecked(prev.as_mut())) }
+        } else {
+            None
+        }
     }
     pub fn peek_next_mut(&self) -> Option<Pin<&mut T>> {
-        todo!()
+        if let Some(current) = self.current {
+            let mut next = unsafe { utils::next(current)? };
+            unsafe { Some(Pin::new_unchecked(next.as_mut())) }
+        } else {
+            None
+        }
     }
     pub fn as_cursor(&self) -> Cursor<'_, T> {
         Cursor {
