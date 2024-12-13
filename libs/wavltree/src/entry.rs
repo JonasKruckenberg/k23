@@ -122,22 +122,25 @@ where
         let ptr_links = unsafe { T::links(ptr).as_mut() };
         assert!(!ptr_links.is_linked());
 
-        if let Some((parent, side)) = self.parent_and_side {
+        let was_leaf = if let Some((parent, side)) = self.parent_and_side {
             let parent_links = unsafe { T::links(parent).as_mut() };
 
             let was_leaf = parent_links.is_leaf();
             ptr_links.replace_parent(Some(parent));
             parent_links.replace_child(side, Some(ptr));
-
-            if was_leaf {
-                self._tree.balance_after_insert(ptr);
-            }
+            was_leaf
         } else {
             debug_assert!(self._tree.root.is_none());
             self._tree.root = Some(ptr);
-        }
+            false
+        };
 
         self._tree.size += 1;
+        unsafe { T::after_insert(Pin::new_unchecked(ptr.as_mut())); }
+
+        if was_leaf {
+            self._tree.balance_after_insert(ptr);
+        }
 
         unsafe { Pin::new_unchecked(ptr.as_mut()) }
     }

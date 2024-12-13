@@ -129,20 +129,22 @@ mod entry;
 mod iter;
 mod utils;
 
-use crate::utils::Side;
 use core::borrow::Borrow;
 use core::cell::UnsafeCell;
 use core::cmp::Ordering;
 use core::marker::PhantomPinned;
 use core::ops::{Bound, RangeBounds};
+use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{fmt, mem, ptr};
 
 pub use crate::cursor::{Cursor, CursorMut};
 pub use crate::entry::{Entry, OccupiedEntry, VacantEntry};
+use crate::utils::get_sibling;
 #[cfg(feature = "dot")]
 pub use dot::Dot;
 pub use iter::{Iter, IterMut};
+pub use utils::Side;
 
 /// Trait implemented by types which can be members of an [intrusive WAVL tree][WAVLTree].
 ///
@@ -349,6 +351,40 @@ pub unsafe trait Linked {
 
     /// Retrieve the key identifying this node within the collection. See [`Linked::Key`] for details.
     fn get_key(&self) -> &Self::Key;
+
+    /// Invoked on the pivot node, its parent, children, and sibling before a
+    /// rotation, just before updating the pointers in the relevant nodes.
+    /// The direction of rotation is given by `side`.
+    ///
+    /// The following diagrams the relationship of the nodes in a left rotation (right rotations are
+    /// mirrored):
+    ///
+    ///         parent                               self
+    ///         /    \                              /    \
+    ///     sibling   self        ------->      parent  rl_child
+    ///              /    \                      /   \
+    ///        lr_child  rl_child           sibling  lr_child
+    ///
+    /// Note that this hook will be called during double rotations too, once for the opposite side subtree
+    /// rotation and once for the final rotation.
+    #[allow(unused)]
+    fn after_rotate(
+        self: Pin<&mut Self>,
+        parent: NonNull<Self>,
+        sibling: Link<Self>,
+        lr_child: Link<Self>,
+        side: Side,
+    ) {
+    }
+
+    /// Invoked on the node to be erased and the node in the tree where the
+    /// augmented invariants become invalid, leading up to the root. Called just
+    /// after updating the pointers in the relevant nodes, but before rebalancing.
+    #[allow(unused)]
+    fn after_remove(self: Pin<&mut Self>, parent: Link<Self>) {}
+
+    /// Invoked on the newly inserted node before rebalancing.
+    fn after_insert(self: Pin<&mut Self>) {}
 }
 
 type Link<T> = Option<NonNull<T>>;
@@ -545,7 +581,7 @@ where
     /// Panics if the new entry is already linked to a different intrusive collection.
     pub fn insert(&mut self, element: T::Handle) {
         unsafe {
-            let ptr = T::into_ptr(element);
+            let mut ptr = T::into_ptr(element);
             debug_assert_ne!(self.root, Some(ptr));
 
             let ptr_links = T::links(ptr).as_mut();
@@ -553,16 +589,12 @@ where
 
             let key = T::get_key(ptr.as_ref());
 
-            if let Some(mut curr) = self.root {
-                let was_leaf;
-
+            let was_leaf = if let Some(mut curr) = self.root {
                 loop {
                     let curr_links = T::links(curr).as_mut();
 
                     let side = match key.cmp(curr.as_ref().get_key().borrow()) {
-                        Ordering::Equal => {
-                            return;
-                        } // panic!("already inserted"),
+                        Ordering::Equal => panic!("already inserted"),
                         Ordering::Less => Side::Left,
                         Ordering::Greater => Side::Right,
                     };
@@ -570,21 +602,23 @@ where
                     if let Some(child) = curr_links.child(side) {
                         curr = child;
                     } else {
-                        was_leaf = curr_links.is_leaf();
+                        let was_leaf = curr_links.is_leaf();
                         ptr_links.replace_parent(Some(curr));
                         curr_links.replace_child(side, Some(ptr));
-                        break;
+                        break was_leaf;
                     }
-                }
-
-                if was_leaf {
-                    self.balance_after_insert(ptr);
                 }
             } else {
                 self.root = Some(ptr);
-            }
+                false
+            };
 
+            T::after_insert(Pin::new_unchecked(ptr.as_mut()));
             self.size += 1;
+
+            if was_leaf {
+                self.balance_after_insert(ptr);
+            }
         }
     }
 
@@ -859,8 +893,9 @@ where
         (None, parent)
     }
 
-    unsafe fn remove_internal(&mut self, node: NonNull<T>) -> T::Handle {
+    unsafe fn remove_internal(&mut self, mut node: NonNull<T>) -> T::Handle {
         let node_links = T::links(node).as_mut();
+        let parent = node_links.parent();
 
         // Figure out which node we need to splice in, replacing node
         let y = if let Some(right) = node_links.right()
@@ -912,16 +947,12 @@ where
             }
         }
 
+        T::after_remove(unsafe { Pin::new_unchecked(node.as_mut()) }, parent);
+
         if let Some(p_y) = p_y {
             if is_2_child {
-                // println!(
-                //     "x {:?} is 3-child of p_y {:?}",
-                //     x.map(|x| x.as_ref()),
-                //     p_y.as_ref()
-                // );
                 self.rebalance_after_remove_3_child(x, p_y);
             } else if x.is_none() && T::links(p_y).as_ref().is_leaf() {
-                // println!("p_y {:?} is a 2,2 leaf", p_y.as_ref());
                 self.rebalance_after_remove_2_2_leaf(p_y);
             }
 
@@ -1084,17 +1115,16 @@ where
             }
 
             if let Some(parent) = z_links.parent() {
-                // println!("climbing up...");
+                // climbing up
                 x = Some(z);
                 z = parent;
                 z_links = T::links(z).as_mut();
             } else {
-                // println!("no parent, done rebalancing");
+                // we reached the root so were done rebalancing
                 return;
             }
 
             if !creates_3_node {
-                // println!("process didn't create 3-child");
                 return;
             }
         }
@@ -1107,28 +1137,18 @@ where
         let w = y_links.child(y_side);
 
         if utils::get_link_parity(w) != y_links.rank_parity() {
-            // println!(
-            //     "w ({} child of y) is 1-child => {x_side} rotate at y {:?}, promote y {:?}, demote z {:?}",
-            //     x_side.opposite(),
-            //     y.unwrap().as_ref(),
-            //     y.unwrap().as_ref(),
-            //     z.as_ref()
-            // );
-
             self.rotate_at(y.unwrap(), y_side.opposite());
 
             y_links.promote();
             z_links.demote();
 
             if z_links.is_leaf() {
-                // println!("z {z:#?} is leaf, demoting again",);
                 z_links.demote();
             }
         } else {
             let v = v.unwrap();
             let v_links = T::links(v).as_mut();
 
-            // println!("w ({} child of y) is 2-child => {x_side} double rotate at v {:?}, demote y {:?}, double demote z {:?}", x_side.opposite(), v.as_ref(), y.unwrap().as_ref(), z.as_ref());
             self.double_rotate_at(v, y_side.opposite());
 
             v_links.double_promote();
@@ -1160,12 +1180,20 @@ where
         }
     }
 
-    unsafe fn rotate_at(&mut self, x: NonNull<T>, side: Side) {
+    unsafe fn rotate_at(&mut self, mut x: NonNull<T>, side: Side) {
         let x_links = T::links(x).as_mut();
         let y = x_links.child(side);
         let z = x_links.parent().unwrap();
         let z_links = T::links(z).as_mut();
         let p_z = z_links.parent();
+
+        T::after_rotate(
+            Pin::new_unchecked(x.as_mut()),
+            z,
+            get_sibling(Some(x), z).0,
+            y,
+            side,
+        );
 
         // Rotate X into place
         x_links.replace_parent(p_z);
@@ -1192,7 +1220,7 @@ where
         }
     }
 
-    unsafe fn double_rotate_at(&mut self, y: NonNull<T>, side: Side) {
+    unsafe fn double_rotate_at(&mut self, mut y: NonNull<T>, side: Side) {
         let y_links = T::links(y).as_mut();
 
         let x = y_links.parent().unwrap();
@@ -1200,6 +1228,21 @@ where
         let z = x_links.parent().unwrap();
         let z_links = T::links(z).as_ref();
         let p_z = z_links.parent();
+
+        T::after_rotate(
+            Pin::new_unchecked(y.as_mut()),
+            x,
+            get_sibling(Some(y), x).0,
+            y_links.child(side.opposite()),
+            side.opposite(),
+        );
+        T::after_rotate(
+            Pin::new_unchecked(y.as_mut()),
+            z,
+            get_sibling(Some(x), z).0,
+            y_links.child(side),
+            side,
+        );
 
         // Rotate Y into place
         y_links.replace_parent(p_z);
@@ -1371,12 +1414,38 @@ impl<T: ?Sized> Links<T> {
     }
 
     #[inline]
+    pub fn parent(&self) -> Link<T> {
+        unsafe { (*self.inner.get()).up }
+    }
+    #[inline]
+    pub fn left(&self) -> Link<T> {
+        unsafe { (*self.inner.get()).left }
+    }
+    #[inline]
+    pub fn right(&self) -> Link<T> {
+        unsafe { (*self.inner.get()).right }
+    }
+
+    #[inline]
+    pub fn replace_parent(&mut self, lk: Link<T>) -> Link<T> {
+        mem::replace(&mut self.inner.get_mut().up, lk)
+    }
+    #[inline]
+    pub fn replace_left(&mut self, lk: Link<T>) -> Link<T> {
+        mem::replace(&mut self.inner.get_mut().left, lk)
+    }
+    #[inline]
+    pub fn replace_right(&mut self, lk: Link<T>) -> Link<T> {
+        mem::replace(&mut self.inner.get_mut().right, lk)
+    }
+
+    #[inline]
     #[cfg(debug_assertions)]
-    pub(crate) fn rank(&self) -> usize {
+    fn rank(&self) -> usize {
         unsafe { (*self.inner.get()).rank }
     }
     #[inline]
-    pub(crate) fn rank_parity(&self) -> bool {
+    fn rank_parity(&self) -> bool {
         unsafe { (*self.inner.get()).rank_parity }
     }
     // TODO test
@@ -1421,38 +1490,12 @@ impl<T: ?Sized> Links<T> {
         }
     }
 
-    pub(crate) fn is_leaf(&self) -> bool {
+    pub fn is_leaf(&self) -> bool {
         self.left().is_none() && self.right().is_none()
     }
 
     #[inline]
-    pub(crate) fn parent(&self) -> Link<T> {
-        unsafe { (*self.inner.get()).up }
-    }
-    #[inline]
-    pub(crate) fn left(&self) -> Link<T> {
-        unsafe { (*self.inner.get()).left }
-    }
-    #[inline]
-    pub(crate) fn right(&self) -> Link<T> {
-        unsafe { (*self.inner.get()).right }
-    }
-
-    #[inline]
-    fn replace_parent(&mut self, lk: Link<T>) -> Link<T> {
-        mem::replace(&mut self.inner.get_mut().up, lk)
-    }
-    #[inline]
-    fn replace_left(&mut self, lk: Link<T>) -> Link<T> {
-        mem::replace(&mut self.inner.get_mut().left, lk)
-    }
-    #[inline]
-    fn replace_right(&mut self, lk: Link<T>) -> Link<T> {
-        mem::replace(&mut self.inner.get_mut().right, lk)
-    }
-
-    #[inline]
-    pub(crate) fn child(&self, side: Side) -> Link<T> {
+    fn child(&self, side: Side) -> Link<T> {
         match side {
             Side::Left => unsafe { (*self.inner.get()).left },
             Side::Right => unsafe { (*self.inner.get()).right },
