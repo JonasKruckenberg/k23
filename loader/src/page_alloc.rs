@@ -14,7 +14,7 @@ pub struct PageAllocator {
     page_state: [bool; pmm::arch::PAGE_TABLE_ENTRIES / 2],
     /// A random number generator that should be used to generate random addresses or
     /// `None` if aslr is disabled.
-    rng: Option<ChaCha20Rng>,
+    prng: Option<ChaCha20Rng>,
 }
 
 impl PageAllocator {
@@ -24,7 +24,7 @@ impl PageAllocator {
     pub fn new(rng: ChaCha20Rng) -> Self {
         Self {
             page_state: [false; pmm::arch::PAGE_TABLE_ENTRIES / 2],
-            rng: Some(rng),
+            prng: Some(rng),
         }
     }
 
@@ -34,7 +34,7 @@ impl PageAllocator {
     pub fn new_no_kaslr() -> Self {
         Self {
             page_state: [false; pmm::arch::PAGE_TABLE_ENTRIES / 2],
-            rng: None,
+            prng: None,
         }
     }
 
@@ -52,7 +52,7 @@ impl PageAllocator {
                 }
             });
 
-        let maybe_idx = if let Some(rng) = self.rng.as_mut() {
+        let maybe_idx = if let Some(rng) = self.prng.as_mut() {
             free_pages.choose(rng)
         } else {
             free_pages.next()
@@ -109,7 +109,7 @@ impl PageAllocator {
             (usize::MAX << pmm::arch::VIRT_ADDR_BITS) + page_idx * top_level_page_size,
         );
 
-        let offset = if let Some(rng) = self.rng.as_mut() {
+        let offset = if let Some(rng) = self.prng.as_mut() {
             // Choose a random offset.
             let max_offset = top_level_page_size - (layout.size() % top_level_page_size);
 

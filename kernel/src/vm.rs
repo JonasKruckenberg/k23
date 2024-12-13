@@ -14,6 +14,8 @@ use loader_api::BootInfo;
 use pin_project_lite::pin_project;
 use pmm::frame_alloc::{BitMapAllocator, BumpAllocator, FrameUsage};
 use pmm::{Flush, PhysicalAddress, VirtualAddress};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 use sync::{Mutex, OnceLock};
 use wavltree::Entry;
 
@@ -35,7 +37,9 @@ pub fn init(boot_info: &BootInfo) {
         let bump_alloc = BumpAllocator::new(&memories);
         let (arch, mut flush) =
             pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_offset);
-        let mut aspace = AddressSpace::new(arch, bump_alloc);
+
+        let prng = ChaCha20Rng::from_seed([42; 32]);
+        let mut aspace = AddressSpace::new(arch, bump_alloc, prng);
 
         log::debug!("unmapping loader {:?}...", boot_info.loader_region);
         let loader_region_len = boot_info
@@ -94,14 +98,16 @@ pub struct AddressSpace {
     tree: wavltree::WAVLTree<Mapping>,
     frame_alloc: BitMapAllocator,
     arch: pmm::AddressSpace,
+    prng: Option<ChaCha20Rng>,
 }
 impl AddressSpace {
-    pub fn new(arch: pmm::AddressSpace, bump_allocator: BumpAllocator) -> Self {
+    pub fn new(arch: pmm::AddressSpace, bump_allocator: BumpAllocator, prng: ChaCha20Rng) -> Self {
         Self {
             tree: wavltree::WAVLTree::default(),
             frame_alloc: BitMapAllocator::new(bump_allocator, arch.physical_memory_offset())
                 .unwrap(),
             arch,
+            prng: Some(prng),
         }
     }
 

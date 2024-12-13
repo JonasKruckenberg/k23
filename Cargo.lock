@@ -327,6 +327,8 @@ dependencies = [
  "panic-unwind",
  "pin-project-lite",
  "pmm",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
  "riscv",
  "semihosting-logger",
  "sync",
