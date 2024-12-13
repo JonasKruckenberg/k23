@@ -281,6 +281,143 @@ impl AddressSpace {
     pub fn decommit(&mut self, range: Range<VirtualAddress>) {
         todo!()
     }
+
+    // behaviour:
+    // - find the leftmost gap that satisfies the size and alignment requirements
+    //      - starting at the root,
+    pub fn find_spot(&mut self, layout: Layout, entropy: u8) -> VirtualAddress {
+        log::trace!("finding spot for {layout:?} entropy {entropy}");
+
+        let max_candidate_spaces: usize = 1 << entropy;
+        log::trace!("max_candidate_spaces {max_candidate_spaces}");
+
+        let selected_index: usize = self
+            .prng
+            .as_mut()
+            .map(|prng| prng.sample(Uniform::new(0, max_candidate_spaces)))
+            .unwrap_or_default();
+
+        let spot = match self.find_spot_at_index(selected_index, layout) {
+            Ok(spot) => spot,
+            Err(0) => panic!("out of virtual memory"),
+            Err(candidate_spot_count) => {
+                log::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
+                let selected_index: usize = self
+                    .prng
+                    .as_mut()
+                    .unwrap()
+                    .sample(Uniform::new(0, candidate_spot_count));
+
+                self.find_spot_at_index(selected_index, layout).unwrap()
+            }
+        };
+        log::trace!("picked spot {spot:?}");
+
+        spot
+    }
+
+    pub fn find_spot_at_index(
+        &self,
+        mut target_index: usize,
+        layout: Layout,
+    ) -> Result<VirtualAddress, usize> {
+        log::trace!("attempting to find spot for {layout:?} at index {target_index}");
+
+        let spots_in_range = |layout: Layout, range: Range<VirtualAddress>| -> usize {
+            ((range.end.sub_addr(range.start) - layout.size()) >> layout.align().ilog2()) + 1
+        };
+
+        let mut candidate_spot_count = 0;
+
+        const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
+
+        // see if there is a suitable gap between the start of the address space and the first mapping
+        if let Some(root) = self.tree.root().get() {
+            let gap_size = root.min_first_byte.sub_addr(KERNEL_ASPACE_BASE);
+            let aligned_gap = KERNEL_ASPACE_BASE.align_up(layout.align())
+                ..KERNEL_ASPACE_BASE.add(gap_size).align_down(layout.align());
+            let spot_count = spots_in_range(layout, aligned_gap.clone());
+            candidate_spot_count += spot_count;
+            if target_index < spot_count {
+                return Ok(aligned_gap
+                    .start
+                    .add(target_index << layout.align().ilog2()));
+            }
+            target_index -= spot_count;
+        }
+
+        let mut maybe_node = self.tree.root().get();
+        let mut already_visited = VirtualAddress::default();
+
+        while let Some(node) = maybe_node {
+            if node.max_gap >= layout.size() {
+                if let Some(left) = node.links.left() {
+                    let left = unsafe { left.as_ref() };
+
+                    if left.max_gap >= layout.size() && left.max_last_byte > already_visited {
+                        maybe_node = Some(left);
+                        continue;
+                    }
+
+                    let gap_base = left.max_last_byte;
+                    let gap_size = node.range.end.sub_addr(left.max_last_byte);
+                    let aligned_gap = gap_base.align_up(layout.align())
+                        ..gap_base.add(gap_size).align_down(layout.align());
+                    let spot_count = spots_in_range(layout, aligned_gap.clone());
+
+                    candidate_spot_count += spot_count;
+                    if target_index < spot_count {
+                        return Ok(aligned_gap
+                            .start
+                            .add(target_index << layout.align().ilog2()));
+                    }
+                    target_index -= spot_count;
+                }
+
+                if let Some(right) = node.links.right() {
+                    let right = unsafe { right.as_ref() };
+
+                    let gap_base = node.range.end;
+                    let gap_size = right.min_first_byte.sub_addr(node.range.end);
+                    let aligned_gap = gap_base.align_up(layout.align())
+                        ..gap_base.add(gap_size).align_down(layout.align());
+                    let spot_count = spots_in_range(layout, aligned_gap.clone());
+
+                    candidate_spot_count += spot_count;
+                    if target_index < spot_count {
+                        return Ok(aligned_gap
+                            .start
+                            .add(target_index << layout.align().ilog2()));
+                    }
+                    target_index -= spot_count;
+
+                    if right.max_gap >= layout.size() && right.max_last_byte > already_visited {
+                        maybe_node = Some(right);
+                        continue;
+                    }
+                }
+            }
+            already_visited = node.max_last_byte;
+            maybe_node = node.links.parent().map(|ptr| unsafe { ptr.as_ref() });
+        }
+
+        // see if there is a suitable gap between the end of the last mapping and the end of the address space
+        if let Some(root) = self.tree.root().get() {
+            let gap_size = usize::MAX - root.max_last_byte.as_raw();
+            let aligned_gap = root.max_last_byte.align_up(layout.align())
+                ..root.max_last_byte.add(gap_size).align_down(layout.align());
+            let spot_count = spots_in_range(layout, aligned_gap.clone());
+            candidate_spot_count += spot_count;
+            if target_index < spot_count {
+                return Ok(aligned_gap
+                    .start
+                    .add(target_index << layout.align().ilog2()));
+            }
+            target_index -= spot_count;
+        }
+
+        Err(candidate_spot_count)
+    }
 }
 
 pin_project! {

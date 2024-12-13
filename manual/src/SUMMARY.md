@@ -13,6 +13,7 @@
 
 - [Overview of k23's Architecture](overview.md)
 - [Boot Flow](boot_flow.md)
+- [Address Space Layout Randomization (ASLR)](aslr.md)
 
 # CPU Architectures
 
