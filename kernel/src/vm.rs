@@ -18,12 +18,13 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sync::{Mutex, OnceLock};
 use wavltree::Entry;
+use crate::machine_info::MachineInfo;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 
 const KERNEL_ASID: usize = 0;
 
-pub fn init(boot_info: &BootInfo) {
+pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
     KERNEL_ASPACE.get_or_init(|| {
         let mut memories = vec![];
         for i in 0..boot_info.memory_regions_len {
@@ -38,7 +39,7 @@ pub fn init(boot_info: &BootInfo) {
         let (arch, mut flush) =
             pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_offset);
 
-        let prng = ChaCha20Rng::from_seed([42; 32]);
+        let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
         let mut aspace = AddressSpace::new(arch, bump_alloc, prng);
 
         log::debug!("unmapping loader {:?}...", boot_info.loader_region);
