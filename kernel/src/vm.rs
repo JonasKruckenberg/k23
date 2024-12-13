@@ -278,9 +278,12 @@ impl AddressSpace {
 
 pin_project! {
     pub struct Mapping {
+        links: wavltree::Links<Mapping>,
         range: Range<VirtualAddress>,
         flags: pmm::Flags,
-        links: wavltree::Links<Mapping>,
+        min_first_byte: VirtualAddress,
+        max_last_byte: VirtualAddress,
+        max_gap: usize
     }
 }
 impl fmt::Debug for Mapping {
@@ -288,6 +291,9 @@ impl fmt::Debug for Mapping {
         f.debug_struct("Mapping")
             .field("range", &self.range)
             .field("flags", &self.flags)
+            .field("min_first_byte", &self.min_first_byte)
+            .field("max_last_byte", &self.max_last_byte)
+            .field("max_gap", &self.max_gap)
             .finish_non_exhaustive()
     }
 }
@@ -295,8 +301,59 @@ impl Mapping {
     pub fn new(range: Range<VirtualAddress>, flags: pmm::Flags) -> Self {
         Self {
             links: wavltree::Links::default(),
+            min_first_byte: range.start,
+            max_last_byte: range.end,
             range,
             flags,
+            max_gap: 0,
+        }
+    }
+
+    unsafe fn update(
+        mut node: NonNull<Self>,
+        left: Option<NonNull<Self>>,
+        right: Option<NonNull<Self>>,
+    ) {
+        let node = node.as_mut();
+        let mut left_max_gap = 0;
+        let mut right_max_gap = 0;
+
+        if let Some(left) = left {
+            let left = left.as_ref();
+            let left_gap = gap(left.max_last_byte, node.range.start);
+            left_max_gap = cmp::max(left_gap, left.max_gap);
+            node.min_first_byte = left.min_first_byte;
+        } else {
+            node.min_first_byte = node.range.start;
+        }
+
+        if let Some(right) = right {
+            let right = right.as_ref();
+            let right_gap = gap(node.range.end, right.min_first_byte);
+            right_max_gap = cmp::max(right_gap, unsafe { right.max_gap });
+            node.max_last_byte = right.max_last_byte;
+        } else {
+            node.max_last_byte = node.range.end;
+        }
+
+        node.max_gap = cmp::max(left_max_gap, right_max_gap);
+
+        fn gap(left_last_byte: VirtualAddress, right_first_byte: VirtualAddress) -> usize {
+            debug_assert!(
+                left_last_byte < right_first_byte,
+                "subtraction would underflow: {left_last_byte} >= {right_first_byte}"
+            );
+            right_first_byte.sub_addr(left_last_byte)
+        }
+    }
+
+    fn propagate_to_root(mut maybe_node: Option<NonNull<Self>>) {
+        while let Some(node) = maybe_node {
+            let links = unsafe { &node.as_ref().links };
+            unsafe {
+                Self::update(node, links.left(), links.right());
+            }
+            maybe_node = links.parent();
         }
     }
 }
@@ -332,5 +389,43 @@ unsafe impl wavltree::Linked for Mapping {
 
     fn get_key(&self) -> &Self::Key {
         &self.range.start
+    }
+
+    fn after_insert(self: Pin<&mut Self>) {
+        debug_assert_eq!(self.min_first_byte, self.range.start);
+        debug_assert_eq!(self.max_last_byte, self.range.end);
+        debug_assert_eq!(self.max_gap, 0);
+        Self::propagate_to_root(self.links.parent());
+    }
+
+    fn after_remove(self: Pin<&mut Self>, parent: Option<NonNull<Self>>) {
+        Self::propagate_to_root(parent);
+    }
+
+    fn after_rotate(
+        mut self: Pin<&mut Self>,
+        parent: NonNull<Self>,
+        sibling: Option<NonNull<Self>>,
+        lr_child: Option<NonNull<Self>>,
+        side: Side,
+    ) {
+        log::trace!("after rotate pivot: {self:?} parent: {parent:?} sibling: {sibling:?} lr_child: {lr_child:?}");
+
+        let mut this = self.project();
+        let _parent = unsafe { parent.as_ref() };
+
+        *this.min_first_byte = _parent.min_first_byte;
+        *this.max_last_byte = _parent.max_last_byte;
+        *this.max_gap = _parent.max_gap;
+
+        if side == Side::Left {
+            unsafe {
+                Self::update(parent, sibling, lr_child);
+            }
+        } else {
+            unsafe {
+                Self::update(parent, lr_child, sibling);
+            }
+        }
     }
 }
