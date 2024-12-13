@@ -2,6 +2,7 @@
 
 use alloc::boxed::Box;
 use alloc::vec;
+use core::alloc::Layout;
 use core::cmp::Ordering;
 use core::fmt::Formatter;
 use core::mem::offset_of;
@@ -14,10 +15,11 @@ use loader_api::BootInfo;
 use pin_project_lite::pin_project;
 use pmm::frame_alloc::{BitMapAllocator, BumpAllocator, FrameUsage};
 use pmm::{Flush, PhysicalAddress, VirtualAddress};
+use rand::distributions::Uniform;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sync::{Mutex, OnceLock};
-use wavltree::Entry;
+use wavltree::{Entry, Side};
 use crate::machine_info::MachineInfo;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
@@ -96,7 +98,7 @@ impl pmm::frame_alloc::FrameAllocator for IgnoreAlloc {
 }
 
 pub struct AddressSpace {
-    tree: wavltree::WAVLTree<Mapping>,
+    pub tree: wavltree::WAVLTree<Mapping>,
     frame_alloc: BitMapAllocator,
     arch: pmm::AddressSpace,
     prng: Option<ChaCha20Rng>,
@@ -123,33 +125,33 @@ impl AddressSpace {
         todo!()
     }
 
-    // pub fn reserve(&mut self, range: Range<VirtualAddress>, flags: pmm::Flags) {
-    //     // FIXME turn these into errors instead of panics
-    //     match self.tree.entry(&range.start) {
-    //         Entry::Occupied(_) => panic!("already reserved"),
-    //         Entry::Vacant(mut entry) => {
-    //             if let Some(next_mapping) = entry.peek_next_mut() {
-    //                 assert!(range.end <= next_mapping.range.start);
-    //
-    //                 if next_mapping.range.start == range.end && next_mapping.flags == flags {
-    //                     next_mapping.project().range.start = range.start;
-    //                     return;
-    //                 }
-    //             }
-    //
-    //             if let Some(prev_mapping) = entry.peek_prev_mut() {
-    //                 assert!(prev_mapping.range.end <= range.start);
-    //
-    //                 if prev_mapping.range.end == range.start && prev_mapping.flags == flags {
-    //                     prev_mapping.project().range.end = range.end;
-    //                     return;
-    //                 }
-    //             }
-    //
-    //             entry.insert(Box::pin(Mapping::new(range, flags)));
-    //         }
-    //     }
-    // }
+    pub fn reserve(&mut self, range: Range<VirtualAddress>, flags: pmm::Flags) {
+        // FIXME turn these into errors instead of panics
+        match self.tree.entry(&range.start) {
+            Entry::Occupied(_) => panic!("already reserved"),
+            Entry::Vacant(mut entry) => {
+                if let Some(next_mapping) = entry.peek_next_mut() {
+                    assert!(range.end <= next_mapping.range.start);
+
+                    if next_mapping.range.start == range.end && next_mapping.flags == flags {
+                        next_mapping.project().range.start = range.start;
+                        return;
+                    }
+                }
+
+                if let Some(prev_mapping) = entry.peek_prev_mut() {
+                    assert!(prev_mapping.range.end <= range.start);
+
+                    if prev_mapping.range.end == range.start && prev_mapping.flags == flags {
+                        prev_mapping.project().range.end = range.end;
+                        return;
+                    }
+                }
+
+                entry.insert(Box::pin(Mapping::new(range, flags)));
+            }
+        }
+    }
 
     pub fn unmap(&mut self, range: Range<VirtualAddress>) {
         let mut iter = self.tree.range_mut(range.clone());
