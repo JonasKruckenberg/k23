@@ -321,9 +321,11 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
+ "dtb-parser",
  "ktest",
  "loader-api",
  "log",
+ "onlyerror",
  "panic-unwind",
  "pin-project-lite",
  "pmm",

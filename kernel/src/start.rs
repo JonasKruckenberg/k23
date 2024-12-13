@@ -1,9 +1,8 @@
 use crate::{allocator, arch, vm, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_SIZE_PAGES};
-use core::mem;
-use loader_api::LoaderConfig;
+use core::{mem, slice};
+use loader_api::{LoaderConfig, MemoryRegionKind};
 use sync::OnceLock;
-
-pub static BOOT_INFO: OnceLock<&'static loader_api::BootInfo> = OnceLock::new();
+use crate::machine_info::MachineInfo;
 
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = LoaderConfig::new_default();
@@ -12,15 +11,37 @@ const LOADER_CFG: LoaderConfig = {
     cfg
 };
 
+pub static BOOT_INFO: OnceLock<&'static loader_api::BootInfo> = OnceLock::new();
+pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
+
 #[loader_api::entry(LOADER_CFG)]
 fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
     panic_unwind::catch_unwind(|| {
         pre_init_hart(hartid);
-        // reuse the OnceLock to also ensure the global initialization is done only once
-        BOOT_INFO.get_or_init(|| {
-            init(boot_info);
-            boot_info
-        });
+        
+        BOOT_INFO.get_or_init(|| boot_info);
+        
+        MACHINE_INFO.get_or_try_init(|| -> crate::Result<_> {
+            let fdt =
+                unsafe { slice::from_raw_parts(boot_info.memory_regions, boot_info.memory_regions_len) }
+                    .iter()
+                    .find(|region| region.kind == MemoryRegionKind::FDT)
+                    .expect("no FDT region");
+        
+            let minfo = unsafe {
+                MachineInfo::from_dtb(
+                    boot_info
+                        .physical_memory_offset
+                        .add(fdt.range.start.as_raw())
+                        .as_raw() as *const u8,
+                )?
+            };
+
+            init(boot_info, &minfo);
+            
+            Ok(minfo)
+        }).unwrap();
+
         post_init_hart();
     })
     .unwrap_or_else(|e| {
@@ -28,12 +49,12 @@ fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
         log::error!("failed to initialize");
         arch::abort();
     });
-
+    
     extern "Rust" {
-        fn kmain(hartid: usize, boot_info: &'static loader_api::BootInfo) -> !;
+        fn kmain(hartid: usize, boot_info: &'static loader_api::BootInfo, minfo: &'static MachineInfo) -> !;
     }
 
-    panic_unwind::catch_unwind(|| unsafe { kmain(hartid, boot_info) }).unwrap_or_else(|_| {
+    panic_unwind::catch_unwind(|| unsafe { kmain(hartid, boot_info, MACHINE_INFO.get().unwrap()) }).unwrap_or_else(|_| {
         log::error!("unrecoverable failure");
         arch::abort();
     })
@@ -44,14 +65,16 @@ fn pre_init_hart(hartid: usize) {
     // setup trap handler
 }
 
-fn init(boot_info: &'static loader_api::BootInfo) {
+fn init(boot_info: &'static loader_api::BootInfo, minfo: &MachineInfo) {
     semihosting_logger::init(LOG_LEVEL.to_level_filter());
+    
+    log::trace!("{boot_info:?}");
 
     log::debug!("Setting up kernel heap...");
     allocator::init(boot_info);
 
     log::debug!("Setting up kernel virtual address space...");
-    vm::init(boot_info);
+    vm::init(boot_info, minfo);
 
     // panic_unwind::set_hook(Box::new(|info| {
     //     let location = info.location();
@@ -83,21 +106,6 @@ fn init(boot_info: &'static loader_api::BootInfo) {
 fn post_init_hart() {
     // enable interrupts
 }
-
-// fn unmap_loader(
-//     alloc: &mut BitMapAllocator,
-//     loader_region: Range<VirtualAddress>,
-// ) -> Result<(), pmm::Error> {
-//     // let mut mapper: Mapper<kconfig::MEMORY_MODE> = Mapper::from_active(0, alloc);
-//     // let mut flush = Flush::empty(0);
-//
-//     // Unmap the loader regions
-//     // mapper.unmap_forget_range(loader_region, &mut flush)?;
-//
-//     // flush.flush()?;
-//
-//     Ok(())
-// }
 
 // fn payload_as_str(payload: &dyn Any) -> &str {
 //     if let Some(&s) = payload.downcast_ref::<&'static str>() {
