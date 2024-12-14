@@ -347,7 +347,7 @@ where
             _list: self,
         }
     }
-    pub fn cusor_front_mut(&mut self) -> CursorMut<'_, T> {
+    pub fn cursor_front_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
             current: self.head,
             list: self,
@@ -444,7 +444,7 @@ where
     next: Link<T>,
     prev: Link<T>,
     /// Linked list links must always be `!Unpin`, in order to ensure that they
-    /// never recieve LLVM `noalias` annotations; see also
+    /// never receive LLVM `noalias` annotations; see also
     /// <https://github.com/rust-lang/rust/issues/63818>.
     _unpin: PhantomPinned,
 }
