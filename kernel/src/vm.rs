@@ -579,7 +579,7 @@ unsafe impl wavltree::Linked for Mapping {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[ktest::test]
     fn alloc_spot() {
         let mut kernel_aspace = crate::vm::KERNEL_ASPACE.get().unwrap().lock();

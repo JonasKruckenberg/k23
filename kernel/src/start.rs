@@ -54,17 +54,13 @@ fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
     });
 
     extern "Rust" {
-        fn kmain(
-            hartid: usize,
-            boot_info: &'static loader_api::BootInfo,
-        ) -> !;
+        fn kmain(hartid: usize, boot_info: &'static loader_api::BootInfo) -> !;
     }
 
-    panic_unwind::catch_unwind(|| unsafe { kmain(hartid, boot_info) })
-        .unwrap_or_else(|_| {
-            log::error!("unrecoverable failure");
-            arch::abort();
-        })
+    panic_unwind::catch_unwind(|| unsafe { kmain(hartid, boot_info) }).unwrap_or_else(|_| {
+        log::error!("unrecoverable failure");
+        arch::abort();
+    })
 }
 
 fn pre_init_hart(hartid: usize) {
