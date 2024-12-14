@@ -1,12 +1,127 @@
 #![cfg_attr(not(test), no_std)]
 
 use core::cell::UnsafeCell;
+use core::iter::FusedIterator;
 use core::marker::PhantomPinned;
+use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{fmt, mem, ptr};
-use core::iter::FusedIterator;
-use core::pin::Pin;
 
+/// Trait implemented by types which can be members of an intrusive doubly-linked list.
+///
+/// In order to be part of an intrusive WAVL tree, a type must contain a
+/// `Links` type that stores the pointers to other nodes in the tree.
+///
+/// # Safety
+///
+/// This is unsafe to implement because it's the implementation's responsibility
+/// to ensure that types implementing this trait are valid intrusive collection
+/// nodes. In particular:
+///
+/// - Implementations **must** ensure that implementors are pinned in memory while they
+///   are in an intrusive collection. While a given `Linked` type is in an intrusive
+///   data structure, it may not be deallocated or moved to a different memory
+///   location.
+/// - The type implementing this trait **must not** implement [`Unpin`].
+/// - Additional safety requirements for individual methods on this trait are
+///   documented on those methods.
+///
+/// Failure to uphold these invariants will result in corruption of the
+/// intrusive data structure, including dangling pointers.
+///
+/// # Implementing `Linked::links`
+///
+/// The [`Linked::links`] method provides access to a `Linked` type's `Links`
+/// field through a [`NonNull`] pointer. This is necessary for a type to
+/// participate in an intrusive structure, as it tells the intrusive structure
+/// how to access the links to other parts of that data structure. However, this
+/// method is somewhat difficult to implement correctly.
+///
+/// Suppose we have an element type like this:
+/// ```rust
+/// struct Entry {
+///     links: linked_list::Links<Self>,
+///     data: usize,
+/// }
+/// ```
+///
+/// The naive implementation of [`links`](Linked::links) for this `Entry` type
+/// might look like this:
+///
+/// ```
+/// use linked_list::Linked;
+/// use core::ptr::NonNull;
+///
+/// # struct Entry {
+/// #    links: linked_list::Links<Self>,
+/// #    data: usize
+/// # }
+///
+/// unsafe impl Linked for Entry {
+///     # type Handle = NonNull<Self>;
+///     # fn into_ptr(r: Self::Handle) -> NonNull<Self> { r }
+///     # unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle { ptr }
+///     // ...
+///
+///     unsafe fn links(mut target: NonNull<Self>) -> NonNull<linked_list::Links<Self>> {
+///         // Borrow the target's `links` field.
+///         let links = &mut target.as_mut().links;
+///         // Convert that reference into a pointer.
+///         NonNull::from(links)
+///     }
+/// }
+/// ```
+///
+/// However, this implementation **is not sound** under [Stacked Borrows]! It
+/// creates a temporary reference from the original raw pointer, and then
+/// creates a new raw pointer from that temporary reference. Stacked Borrows
+/// will reject this reborrow as unsound.[^1]
+///
+/// There are two ways we can implement [`Linked::links`] without creating a
+/// temporary reference in this manner. The recommended one is to use the
+/// [`ptr::addr_of_mut!`] macro, as follows:
+///
+/// ```
+/// use core::ptr::{self, NonNull};
+/// # use linked_list::Linked;
+/// # struct Entry {
+/// #    links: linked_list::Links<Self>,
+/// #    data: usize,
+/// # }
+///
+/// unsafe impl Linked for Entry {
+///     # type Handle = NonNull<Self>;
+///     # fn into_ptr(r: Self::Handle) -> NonNull<Self> { r }
+///     # unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle { ptr }
+///     // ...
+///
+///     unsafe fn links(target: NonNull<Self>) -> NonNull<linked_list::Links<Self>> {
+///        // Note that we use the `map_addr` method here that is part of the strict-provenance
+///         target
+///             .map_addr(|addr| {
+///                 // Using the `offset_of!` macro here to calculate the offset of the `links` field
+///                 // in our overall struct.
+///                 let offset = core::mem::offset_of!(Self, links);
+///                 addr.checked_add(offset).unwrap()
+///             })
+///             .cast()
+///     }
+/// }
+/// ```
+///
+/// [^1]: Note that code like this is not *currently* known to result in
+///     miscompiles, but it is rejected by tools like Miri as being unsound.
+///     Like all undefined behavior, there is no guarantee that future Rust
+///     compilers will not miscompile code like this, with disastrous results.
+///
+/// [^2]: And two different fields cannot both be the first field at the same
+///      time...by definition.
+///
+/// [intrusive collection]: crate#intrusive-data-structures
+/// [`Unpin`]: Unpin
+/// [doubly-linked list]: crate::list
+/// [MSPC queue]: crate::mpsc_queue
+/// [Stacked Borrows]: https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md
 pub unsafe trait Linked {
     /// The handle owning nodes in the tree.
     ///
@@ -250,7 +365,7 @@ where
             list: self,
         }
     }
-    
+
     pub fn assert_valid(&self) {
         let Some(head) = self.head else {
             assert!(
@@ -468,13 +583,23 @@ where
 }
 
 #[derive(Clone)]
-pub struct Cursor<'a, T> where T: Linked + ?Sized {
+pub struct Cursor<'a, T>
+where
+    T: Linked + ?Sized,
+{
     current: Link<T>,
     _list: &'a List<T>,
 }
-impl<'a, T> Cursor<'a, T> where T: Linked + ?Sized {
-    pub fn get(&self) -> Option<&'a T> { self.current.map(|ptr| unsafe { ptr.as_ref() }) }
-    pub fn get_ptr(&self) -> Link<T> { self.current }
+impl<'a, T> Cursor<'a, T>
+where
+    T: Linked + ?Sized,
+{
+    pub fn get(&self) -> Option<&'a T> {
+        self.current.map(|ptr| unsafe { ptr.as_ref() })
+    }
+    pub fn get_ptr(&self) -> Link<T> {
+        self.current
+    }
     pub fn move_next(&mut self) {
         if let Some(ptr) = self.current {
             self.current = unsafe { next(ptr) };
@@ -503,19 +628,26 @@ impl<'a, T> Cursor<'a, T> where T: Linked + ?Sized {
     }
 }
 
-pub struct CursorMut<'a, T> where T: Linked + ?Sized {
+pub struct CursorMut<'a, T>
+where
+    T: Linked + ?Sized,
+{
     current: Link<T>,
     list: &'a mut List<T>,
 }
-impl<'a, T> CursorMut<'a, T> where T: Linked + ?Sized {
-    pub fn get(&self) -> Option<&'a T> { self.current.map(|ptr| unsafe { ptr.as_ref() }) }
-    pub fn get_ptr(&self) -> Link<T> { self.current }
+impl<'a, T> CursorMut<'a, T>
+where
+    T: Linked + ?Sized,
+{
+    pub fn get(&self) -> Option<&'a T> {
+        self.current.map(|ptr| unsafe { ptr.as_ref() })
+    }
+    pub fn get_ptr(&self) -> Link<T> {
+        self.current
+    }
     pub fn get_mut(&mut self) -> Option<Pin<&'a mut T>> {
-        if let Some(mut ptr) = self.current {
-            Some(unsafe { Pin::new_unchecked(ptr.as_mut()) })
-        } else {
-            None
-        }
+        self.current
+            .map(|mut ptr| unsafe { Pin::new_unchecked(ptr.as_mut()) })
     }
     pub fn move_next(&mut self) {
         if let Some(ptr) = self.current {
@@ -577,7 +709,10 @@ impl<'a, T> CursorMut<'a, T> where T: Linked + ?Sized {
     }
 }
 
-pub struct Iter<'a, T> where T: Linked + ?Sized {
+pub struct Iter<'a, T>
+where
+    T: Linked + ?Sized,
+{
     _list: &'a List<T>,
 
     /// The current node when iterating head -> tail.
@@ -592,7 +727,10 @@ pub struct Iter<'a, T> where T: Linked + ?Sized {
     len: usize,
 }
 
-impl<'a, T> Iterator for Iter<'a, T> where T: Linked + ?Sized {
+impl<'a, T> Iterator for Iter<'a, T>
+where
+    T: Linked + ?Sized,
+{
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -617,13 +755,19 @@ impl<'a, T> Iterator for Iter<'a, T> where T: Linked + ?Sized {
     }
 }
 
-impl<T> ExactSizeIterator for Iter<'_, T> where T: Linked + ?Sized {
+impl<T> ExactSizeIterator for Iter<'_, T>
+where
+    T: Linked + ?Sized,
+{
     fn len(&self) -> usize {
         self.len
     }
 }
 
-impl<'a, T> DoubleEndedIterator for Iter<'a, T> where T: Linked + ?Sized {
+impl<T> DoubleEndedIterator for Iter<'_, T>
+where
+    T: Linked + ?Sized,
+{
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             return None;
@@ -644,7 +788,10 @@ impl<'a, T> DoubleEndedIterator for Iter<'a, T> where T: Linked + ?Sized {
 
 impl<T> FusedIterator for Iter<'_, T> where T: Linked + ?Sized {}
 
-pub struct IterMut<'a, T> where T: Linked + ?Sized {
+pub struct IterMut<'a, T>
+where
+    T: Linked + ?Sized,
+{
     _list: &'a mut List<T>,
 
     /// The current node when iterating head -> tail.
@@ -659,7 +806,10 @@ pub struct IterMut<'a, T> where T: Linked + ?Sized {
     len: usize,
 }
 
-impl<'a, T> Iterator for IterMut<'a, T> where T: Linked + ?Sized {
+impl<'a, T> Iterator for IterMut<'a, T>
+where
+    T: Linked + ?Sized,
+{
     type Item = Pin<&'a mut T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -689,13 +839,19 @@ impl<'a, T> Iterator for IterMut<'a, T> where T: Linked + ?Sized {
     }
 }
 
-impl<T> ExactSizeIterator for IterMut<'_, T> where T: Linked + ?Sized {
+impl<T> ExactSizeIterator for IterMut<'_, T>
+where
+    T: Linked + ?Sized,
+{
     fn len(&self) -> usize {
         self.len
     }
 }
 
-impl<'a, T> DoubleEndedIterator for IterMut<'a, T> where T: Linked + ?Sized {
+impl<T> DoubleEndedIterator for IterMut<'_, T>
+where
+    T: Linked + ?Sized,
+{
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.len == 0 {
             return None;
@@ -737,11 +893,11 @@ where
 #[cfg(test)]
 mod tests {
     extern crate alloc;
-    
+
+    use super::*;
     use alloc::boxed::Box;
     use alloc::vec::Vec;
     use core::mem::offset_of;
-    use super::*;
 
     #[derive(Debug)]
     struct TestNode {
@@ -751,8 +907,7 @@ mod tests {
 
     impl TestNode {
         fn new(value: usize) -> Pin<Box<Self>> {
-            Box::pin(
-            Self {
+            Box::pin(Self {
                 links: Links::new(),
                 value,
             })
@@ -779,7 +934,7 @@ mod tests {
                 let offset = offset_of!(Self, links);
                 addr.checked_add(offset).unwrap()
             })
-                .cast()
+            .cast()
         }
     }
 
@@ -793,7 +948,7 @@ mod tests {
         list.push_back(TestNode::new(3));
 
         let v = list.iter().map(|n| n.value).collect::<Vec<_>>();
-        assert_eq!(v, [0,1,2,3])
+        assert_eq!(v, [0, 1, 2, 3])
     }
 
     #[test]
