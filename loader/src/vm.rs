@@ -577,7 +577,7 @@ fn map_kernel_heap(
 ) -> crate::Result<Range<VirtualAddress>> {
     let heap_phys =
         NonContiguousFrames::new(frame_alloc, NonZeroUsize::new(heap_size_pages).unwrap());
-    
+
     let heap_virt = page_alloc.allocate(
         Layout::from_size_align(heap_size_pages * arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
     );

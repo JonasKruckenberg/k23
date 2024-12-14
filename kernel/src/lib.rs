@@ -14,10 +14,10 @@ extern crate alloc;
 
 mod allocator;
 pub mod arch;
+mod error;
+pub mod machine_info;
 mod start;
 pub mod vm;
-pub mod machine_info;
-mod error;
 // mod tests;
 
 pub use error::Error;

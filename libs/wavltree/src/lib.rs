@@ -359,11 +359,13 @@ pub unsafe trait Linked {
     /// The following diagrams the relationship of the nodes in a left rotation (right rotations are
     /// mirrored):
     ///
+    /// ```text
     ///         parent                               self
     ///         /    \                              /    \
     ///     sibling   self        ------->      parent  rl_child
     ///              /    \                      /   \
     ///        lr_child  rl_child           sibling  lr_child
+    /// ```
     ///
     /// Note that this hook will be called during double rotations too, once for the opposite side subtree
     /// rotation and once for the final rotation.

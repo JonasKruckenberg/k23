@@ -136,7 +136,9 @@ where
         };
 
         self._tree.size += 1;
-        unsafe { T::after_insert(Pin::new_unchecked(ptr.as_mut())); }
+        unsafe {
+            T::after_insert(Pin::new_unchecked(ptr.as_mut()));
+        }
 
         if was_leaf {
             self._tree.balance_after_insert(ptr);

@@ -21,7 +21,7 @@ pub struct MachineInfo<'dt> {
     pub rng_seed: Option<&'dt [u8]>,
 }
 
-impl<'dt> fmt::Debug for MachineInfo<'dt> {
+impl fmt::Debug for MachineInfo<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("MachineInfo")
             .field("fdt", &self.fdt.as_ptr_range())
@@ -33,7 +33,12 @@ impl<'dt> fmt::Debug for MachineInfo<'dt> {
     }
 }
 
-impl<'dt> MachineInfo<'dt> {
+impl MachineInfo<'_> {
+    /// Parse the FDT blob and extract the machine information.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the `dtb_ptr` points to a valid FDT blob.
     pub unsafe fn from_dtb(dtb_ptr: *const u8) -> crate::Result<Self> {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }?;
         let fdt_slice = fdt.as_slice();
@@ -133,7 +138,7 @@ struct CpuVisitor<'dt> {
     hartid: usize,
 }
 
-impl<'dt> CpuVisitor<'dt> {
+impl CpuVisitor<'_> {
     fn result(self) -> (usize, bool) {
         let enabled = self.status.unwrap() != c"disabled";
 

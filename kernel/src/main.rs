@@ -9,7 +9,11 @@ use kernel::machine_info::MachineInfo;
 use pmm::VirtualAddress;
 
 #[no_mangle]
-extern "Rust" fn kmain(_hartid: usize, _boot_info: &'static loader_api::BootInfo, _minfo: &'static MachineInfo) -> ! {
+extern "Rust" fn kmain(
+    _hartid: usize,
+    _boot_info: &'static loader_api::BootInfo,
+    _minfo: &'static MachineInfo,
+) -> ! {
     log::trace!("kmain");
 
     let mut kernel_aspace = kernel::vm::KERNEL_ASPACE.get().unwrap().lock();
@@ -37,10 +41,10 @@ extern "Rust" fn kmain(_hartid: usize, _boot_info: &'static loader_api::BootInfo
         VirtualAddress::new(0xffffffc140000000)..VirtualAddress::new(0xffffffc140100000),
         pmm::Flags::READ | pmm::Flags::WRITE,
     );
-    
+
     for _ in 0..50 {
         kernel_aspace.find_spot(Layout::from_size_align(4096, 4096).unwrap(), 27);
     }
-    
+
     kernel::arch::exit(0);
 }

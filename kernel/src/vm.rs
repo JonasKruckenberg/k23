@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use crate::machine_info::MachineInfo;
 use alloc::boxed::Box;
 use alloc::vec;
 use core::alloc::Layout;
@@ -20,7 +21,6 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sync::{Mutex, OnceLock};
 use wavltree::{Entry, Side};
-use crate::machine_info::MachineInfo;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 
