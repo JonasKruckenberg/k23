@@ -575,3 +575,41 @@ unsafe impl wavltree::Linked for Mapping {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[ktest::test]
+    fn alloc_spot() {
+        let mut kernel_aspace = crate::vm::KERNEL_ASPACE.get().unwrap().lock();
+
+        // kernel
+        kernel_aspace.reserve(
+            VirtualAddress::new(0xffffffc0c0000000)..VirtualAddress::new(0xffffffc0c011b5e0),
+            pmm::Flags::READ,
+        );
+
+        // TLS
+        kernel_aspace.reserve(
+            VirtualAddress::new(0xffffffc100000000)..VirtualAddress::new(0xffffffc100001000),
+            pmm::Flags::READ | pmm::Flags::WRITE,
+        );
+
+        // heap
+        kernel_aspace.reserve(
+            VirtualAddress::new(0xffffffc180000000)..VirtualAddress::new(0xffffffc182000000),
+            pmm::Flags::READ | pmm::Flags::WRITE,
+        );
+
+        // stacks
+        kernel_aspace.reserve(
+            VirtualAddress::new(0xffffffc140000000)..VirtualAddress::new(0xffffffc140100000),
+            pmm::Flags::READ | pmm::Flags::WRITE,
+        );
+
+        for _ in 0..50 {
+            kernel_aspace.find_spot(Layout::from_size_align(4096, 4096).unwrap(), 27);
+        }
+    }
+}

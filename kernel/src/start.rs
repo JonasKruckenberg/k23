@@ -57,11 +57,10 @@ fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
         fn kmain(
             hartid: usize,
             boot_info: &'static loader_api::BootInfo,
-            minfo: &'static MachineInfo,
         ) -> !;
     }
 
-    panic_unwind::catch_unwind(|| unsafe { kmain(hartid, boot_info, MACHINE_INFO.get().unwrap()) })
+    panic_unwind::catch_unwind(|| unsafe { kmain(hartid, boot_info) })
         .unwrap_or_else(|_| {
             log::error!("unrecoverable failure");
             arch::abort();
