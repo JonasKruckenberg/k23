@@ -1,4 +1,5 @@
 mod bitmap;
+mod buddy;
 mod bump;
 
 use crate::arch::PAGE_SIZE;
@@ -6,6 +7,7 @@ use crate::{Error, PhysicalAddress, VirtualAddress};
 use core::num::NonZeroUsize;
 
 pub use bitmap::BitMapAllocator;
+pub use buddy::BuddyAllocator;
 pub use bump::{BumpAllocator, FreeRegions, UsedRegions};
 
 #[derive(Debug)]
