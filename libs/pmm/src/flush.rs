@@ -1,28 +1,22 @@
-use crate::{AddressRangeExt, Error, Mode, VirtualAddress};
-use core::marker::PhantomData;
+use crate::{arch, Error, VirtualAddress};
+use core::cmp;
 use core::ops::Range;
 
 #[must_use]
-pub struct Flush<M> {
+pub struct Flush {
     asid: usize,
     range: Option<Range<VirtualAddress>>,
-    _m: PhantomData<M>,
 }
 
-impl<M: Mode> Flush<M> {
+impl Flush {
     pub fn empty(asid: usize) -> Self {
-        Self {
-            asid,
-            range: None,
-            _m: PhantomData,
-        }
+        Self { asid, range: None }
     }
 
     pub fn new(asid: usize, range: Range<VirtualAddress>) -> Self {
         Self {
             asid,
             range: Some(range),
-            _m: PhantomData,
         }
     }
 
@@ -34,7 +28,7 @@ impl<M: Mode> Flush<M> {
     pub fn flush(self) -> crate::Result<()> {
         log::trace!("flushing range {:?}", self.range);
         if let Some(range) = self.range {
-            M::invalidate_range(self.asid, range)?;
+            arch::invalidate_range(self.asid, range)?;
         } else {
             log::warn!("attempted to flush empty range, ignoring");
         }
@@ -58,7 +52,10 @@ impl<M: Mode> Flush<M> {
     pub fn extend_range(&mut self, asid: usize, other: Range<VirtualAddress>) -> crate::Result<()> {
         if self.asid == asid {
             if let Some(this) = self.range.take() {
-                self.range = Some(this.concat(other));
+                self.range = Some(Range {
+                    start: cmp::min(this.start, other.start),
+                    end: cmp::max(this.end, other.end),
+                });
             } else {
                 self.range = Some(other);
             }

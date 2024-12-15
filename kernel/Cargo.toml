@@ -17,16 +17,18 @@ harness = false
 
 [dependencies]
 loader-api.workspace = true
-kmm.workspace = true
+pmm.workspace = true
 panic-unwind.workspace = true
 semihosting-logger = { workspace = true, features = ["hartid"] }
 sync.workspace = true
 thread-local.workspace = true
+wavltree.workspace = true
 
-log.workspace = true
 talc.workspace = true
-arrayvec.workspace = true
+log.workspace = true
 cfg-if.workspace = true
+pin-project-lite.workspace = true
+
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true

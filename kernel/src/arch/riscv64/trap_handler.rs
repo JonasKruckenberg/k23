@@ -1,18 +1,18 @@
-use crate::kconfig;
+use crate::{arch, TRAP_STACK_SIZE_PAGES};
 use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Trap};
 use riscv::{scause, sepc, sstatus, stval, stvec};
 use thread_local::declare_thread_local;
 
 declare_thread_local! {
-    static TRAP_STACK: [u8; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE] = const { [0; kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE] };
+    static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * arch::PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * arch::PAGE_SIZE] };
 }
 
 pub fn init() {
     let trap_stack_top = unsafe {
         TRAP_STACK
             .as_ptr()
-            .byte_add(kconfig::TRAP_STACK_SIZE_PAGES * kconfig::PAGE_SIZE) as *mut u8
+            .byte_add(TRAP_STACK_SIZE_PAGES * arch::PAGE_SIZE) as *mut u8
     };
 
     log::debug!("setting sscratch to {:p}", trap_stack_top);

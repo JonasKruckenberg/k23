@@ -26,9 +26,8 @@ kernel = { path = "kernel" }
 loader-api = { path = "loader/api" }
 backtrace = { path = "libs/backtrace" }
 dtb-parser = { path = "libs/dtb-parser" }
-kmm = { path = "libs/kmm" }
+pmm = { path = "libs/pmm" }
 ktest = { path = "libs/ktest" }
-linked-list-allocator = { path = "libs/linked-list-allocator" }
 linked-list = { path = "libs/linked-list" }
 panic-common = { path = "libs/panic-common" }
 panic-unwind = { path = "libs/panic-unwind" }
@@ -40,6 +39,7 @@ unwind2 = { path = "libs/unwind2" }
 leb128 = { path = "libs/leb128" }
 wasm-encoder = { path = "libs/wasm-encoder" }
 wast = { path = "libs/wast" }
+wavltree = { path = "libs/wavltree" }
 
 cfg-if = "1.0.0"
 lock_api = "0.4.12"
@@ -47,10 +47,11 @@ log = "0.4.21"
 bitflags = "2.6.0"
 onlyerror = { version = "0.1.4", default-features = false }
 arrayvec = { version = "0.7.4", default-features = false }
-lz4_flex = { version = "0.11", default-features = false }
 object = { version = "0.36.4", default-features = false }
 gimli = { version = "0.31.0", default-features = false, features = ["read"] }
-talc = "4.4.1"
+xmas-elf = "0.9.1"
+talc = "4.4.2"
+pin-project-lite = "0.2.15"
 
 # wast dependencies
 bumpalo = "3.14.0"

@@ -1,20 +1,25 @@
-use crate::kconfig;
+use crate::boot_info::init_boot_info;
+use crate::kernel::parse_inlined_kernel;
 use crate::machine_info::MachineInfo;
+use crate::page_alloc::PageAllocator;
+use crate::vm::{init_kernel_aspace, KernelAddressSpace};
+use crate::ENABLE_KASLR;
 use core::arch::{asm, naked_asm};
+use core::num::NonZeroUsize;
 use core::ops::Range;
-use core::ptr;
-use core::ptr::addr_of_mut;
-use core::sync::atomic::{AtomicPtr, Ordering};
-use kmm::VirtualAddress;
-use loader_api::BootInfo;
-use sync::OnceLock;
+use core::ptr::{addr_of, addr_of_mut};
+use pmm::arch::PAGE_SIZE;
+use pmm::AddressSpace;
+use pmm::{
+    frame_alloc::{BumpAllocator, FrameAllocator},
+    Flush, PhysicalAddress, VirtualAddress,
+};
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 
-static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
-static RAW_MACHINE_INFO: AtomicPtr<u8> = AtomicPtr::new(ptr::null_mut());
-
-pub fn machine_info() -> &'static MachineInfo<'static> {
-    MACHINE_INFO.get().expect("MachineInfo not initialized")
-}
+const STACK_SIZE_PAGES: usize = 32;
+const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
+const KERNEL_ASID: usize = 0;
 
 /// The main entry point for the loader
 ///
@@ -40,52 +45,11 @@ unsafe extern "C" fn _start() -> ! {
 
         "jal zero, {start_rust}",   // jump into Rust
 
-        stack_size = const kconfig::STACK_SIZE_PAGES * kconfig::PAGE_SIZE,
+        stack_size = const STACK_SIZE_PAGES * PAGE_SIZE,
 
         fillstack = sym fillstack,
         start_rust = sym start,
     )
-}
-
-/// Architecture specific startup code
-fn start(hartid: usize, opaque: *const u8) -> ! {
-    // Disable interrupts. The kernel will re-enable interrupts
-    // when it's ready to handle them
-    riscv::interrupt::disable();
-
-    if hartid == 0 {
-        // zero out the BSS section, under QEMU we already get zeroed memory
-        // but on actual hardware this might not be the case
-        zero_bss();
-
-        semihosting_logger::init(kconfig::LOG_LEVEL.to_level_filter());
-
-        RAW_MACHINE_INFO.store(opaque as *mut u8, Ordering::Relaxed);
-        MACHINE_INFO
-            .get_or_try_init(|| unsafe { MachineInfo::from_dtb(opaque) })
-            .expect("failed to parse machine info");
-
-        log::info!("{MACHINE_INFO:?}");
-    }
-
-    crate::main(hartid);
-}
-
-fn zero_bss() {
-    extern "C" {
-        static mut __bss_start: u64;
-        static mut __bss_end: u64;
-    }
-
-    unsafe {
-        // Zero BSS section
-        let mut ptr = addr_of_mut!(__bss_start);
-        let end = addr_of_mut!(__bss_end);
-        while ptr < end {
-            ptr.write_volatile(0);
-            ptr = ptr.offset(1);
-        }
-    }
 }
 
 /// Fill the stack with a canary pattern (0xACE0BACE) so that we can identify unused stack memory
@@ -108,41 +72,320 @@ unsafe extern "C" fn fillstack() {
     )
 }
 
-pub unsafe fn switch_to_kernel(
+/// Architecture specific startup code
+fn start(hartid: usize, opaque: *const u8) -> ! {
+    static INIT: sync::OnceLock<(KernelAddressSpace, VirtualAddress)> = sync::OnceLock::new();
+
+    // Disable interrupts. The kernel will re-enable interrupts
+    // when it's ready to handle them
+    riscv::interrupt::disable();
+
+    let (kernel_aspace, boot_info) = INIT
+        .get_or_try_init(|| -> crate::Result<_> {
+            // zero out the BSS section, under QEMU we already get zeroed memory
+            // but on actual hardware this might not be the case
+            zero_bss();
+
+            semihosting_logger::init(log::LevelFilter::Trace);
+
+            let minfo =
+                unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
+            log::info!("{minfo:?}");
+
+            let self_regions = SelfRegions::collect(&minfo);
+            log::trace!("{self_regions:?}");
+
+            let mut frame_alloc =
+                BumpAllocator::new_with_lower_bound(&minfo.memories, self_regions.read_write.end);
+
+            let mut page_alloc = if ENABLE_KASLR {
+                PageAllocator::new(ChaCha20Rng::from_seed(
+                    minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
+                ))
+            } else {
+                PageAllocator::new_no_kaslr()
+            };
+
+            let (mut aspace, mut flush) =
+                AddressSpace::new(&mut frame_alloc, KERNEL_ASID, VirtualAddress::default())?;
+
+            // Identity map the loader itself (this binary).
+            //
+            // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
+            // as opposed to m-mode where it would take effect after jump tp u-mode.
+            // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
+            // We will then unmap the loader in the kernel.
+            identity_map_self(&mut aspace, &mut frame_alloc, &self_regions, &mut flush)?;
+
+            // Map the physical memory into kernel address space.
+            //
+            // This will be used by the kernel to access the page tables, BootInfo struct and maybe
+            // more in the future.
+            let physmap = map_physical_memory(
+                &mut aspace,
+                &mut frame_alloc,
+                &mut page_alloc,
+                &minfo,
+                &mut flush,
+            )?;
+
+            // Activate the MMU with the address space we have built so far.
+            // the rest of the address space setup will happen in virtual memory (mostly so that we
+            // can correctly apply relocations without having to do expensive virt to phys queries)
+            unsafe {
+                log::trace!("activating MMU...");
+                flush.ignore();
+                aspace.activate();
+                log::trace!("activated.");
+            }
+
+            // The kernel elf file is inlined into the loader executable as part of the build setup
+            // which means we just need to parse it here.
+            let kernel = parse_inlined_kernel()?;
+            // print the elf sections for debugging purposes
+            log::debug!("\n{kernel}");
+
+            // Reconstruct the aspace with the new physical memory mapping offset since we're in virtual
+            // memory mode now.
+            let (aspace, mut flush) = AddressSpace::from_active(KERNEL_ASID, physmap.start);
+
+            let kernel_aspace = init_kernel_aspace(
+                aspace,
+                &mut flush,
+                &mut frame_alloc,
+                &mut page_alloc,
+                &kernel,
+                &minfo,
+            )?;
+            // log::trace!("\n{}", kernel_aspace.aspace);
+
+            let boot_info = init_boot_info(
+                &mut frame_alloc,
+                hartid,
+                &kernel,
+                &kernel_aspace,
+                physmap.start,
+                {
+                    let base = PhysicalAddress::new(minfo.fdt.as_ptr() as usize);
+                    base..base.add(minfo.fdt.len())
+                },
+                self_regions.executable.start..self_regions.read_write.end,
+            )?;
+
+            Ok((kernel_aspace, VirtualAddress::new(boot_info as usize)))
+        })
+        .unwrap();
+
+    kernel_aspace.init_tls_region_for_hart(hartid);
+    unsafe {
+        kernel_aspace.activate();
+        handoff_to_kernel(
+            hartid,
+            kernel_aspace.kernel_entry(),
+            kernel_aspace.stack_region_for_hart(hartid),
+            kernel_aspace
+                .tls_region_for_hart(hartid)
+                .unwrap_or_default()
+                .start,
+            *boot_info,
+        );
+    }
+}
+
+fn zero_bss() {
+    extern "C" {
+        static mut __bss_start: u64;
+        static mut __bss_end: u64;
+    }
+
+    unsafe {
+        // Zero BSS section
+        let mut ptr = addr_of_mut!(__bss_start);
+        let end = addr_of_mut!(__bss_end);
+        while ptr < end {
+            ptr.write_volatile(0);
+            ptr = ptr.offset(1);
+        }
+    }
+}
+
+/// Information about our own memory regions.
+/// Used for identity mapping and calculating available physical memory.
+#[derive(Debug)]
+pub struct SelfRegions {
+    pub executable: Range<PhysicalAddress>,
+    pub read_only: Range<PhysicalAddress>,
+    pub read_write: Range<PhysicalAddress>,
+}
+
+impl SelfRegions {
+    #[must_use]
+    pub fn collect(machine_info: &MachineInfo) -> Self {
+        extern "C" {
+            static __text_start: u8;
+            static __text_end: u8;
+            static __rodata_start: u8;
+            static __rodata_end: u8;
+            static __bss_start: u8;
+            static __stack_start: u8;
+        }
+
+        let executable: Range<PhysicalAddress> = {
+            PhysicalAddress::new(addr_of!(__text_start) as usize)
+                ..PhysicalAddress::new(addr_of!(__text_end) as usize)
+        };
+
+        let read_only: Range<PhysicalAddress> = {
+            PhysicalAddress::new(addr_of!(__rodata_start) as usize)
+                ..PhysicalAddress::new(addr_of!(__rodata_end) as usize)
+        };
+
+        let read_write: Range<PhysicalAddress> = {
+            let start = PhysicalAddress::new(addr_of!(__bss_start) as usize);
+            let stack_start = PhysicalAddress::new(addr_of!(__stack_start) as usize);
+
+            start..stack_start.add(machine_info.cpus * STACK_SIZE_PAGES * PAGE_SIZE)
+        };
+
+        SelfRegions {
+            executable,
+            read_only,
+            read_write,
+        }
+    }
+}
+
+fn identity_map_self(
+    aspace: &mut AddressSpace,
+    frame_alloc: &mut dyn FrameAllocator,
+    self_regions: &SelfRegions,
+    flush: &mut Flush,
+) -> crate::Result<()> {
+    log::trace!(
+        "Identity mapping loader executable region {:?}...",
+        self_regions.executable
+    );
+    identity_map_range(
+        aspace,
+        frame_alloc,
+        self_regions.executable.clone(),
+        pmm::Flags::READ | pmm::Flags::EXECUTE,
+        flush,
+    )?;
+
+    log::trace!(
+        "Identity mapping loader read-only region {:?}...",
+        self_regions.read_only
+    );
+    identity_map_range(
+        aspace,
+        frame_alloc,
+        self_regions.read_only.clone(),
+        pmm::Flags::READ,
+        flush,
+    )?;
+
+    log::trace!(
+        "Identity mapping loader read-write region {:?}...",
+        self_regions.read_write
+    );
+    identity_map_range(
+        aspace,
+        frame_alloc,
+        self_regions.read_write.clone(),
+        pmm::Flags::READ | pmm::Flags::WRITE,
+        flush,
+    )?;
+
+    Ok(())
+}
+
+#[inline]
+fn identity_map_range(
+    aspace: &mut AddressSpace,
+    frame_alloc: &mut dyn FrameAllocator,
+    phys: Range<PhysicalAddress>,
+    flags: pmm::Flags,
+    flush: &mut Flush,
+) -> crate::Result<()> {
+    let virt = VirtualAddress::new(phys.start.as_raw());
+    let len = NonZeroUsize::new(phys.end.as_raw() - phys.start.as_raw()).unwrap();
+
+    aspace
+        .map_contiguous(frame_alloc, virt, phys.start, len, flags, flush)
+        .map_err(Into::into)
+}
+
+// TODO explain why no ASLR here
+pub fn map_physical_memory(
+    aspace: &mut AddressSpace,
+    frame_alloc: &mut dyn FrameAllocator,
+    page_alloc: &mut PageAllocator,
+    minfo: &MachineInfo,
+    flush: &mut Flush,
+) -> crate::Result<Range<VirtualAddress>> {
+    let phys = minfo.memory_hull();
+    let alignment = pmm::arch::page_size_for_level(2);
+
+    let phys_aligned = phys.start.align_down(alignment);
+    let size = phys.end.align_up(alignment).as_raw() - phys_aligned.as_raw();
+    let virt = KERNEL_ASPACE_BASE.add(phys_aligned.as_raw())
+        ..KERNEL_ASPACE_BASE.add(phys_aligned.as_raw()).add(size);
+
+    log::trace!(
+        "Mapping physical memory {phys_aligned:?}..{:?} => {virt:?}...",
+        phys_aligned.add(size)
+    );
+    aspace.map_contiguous(
+        frame_alloc,
+        virt.start,
+        phys_aligned,
+        NonZeroUsize::new(size).unwrap(),
+        pmm::Flags::READ | pmm::Flags::WRITE,
+        flush,
+    )?;
+
+    // exclude the physical memory map region from page allocation
+    page_alloc.reserve(KERNEL_ASPACE_BASE, phys_aligned.as_raw() + size);
+
+    Ok(KERNEL_ASPACE_BASE..KERNEL_ASPACE_BASE.add(phys_aligned.as_raw()).add(size))
+}
+
+pub unsafe fn handoff_to_kernel(
     hartid: usize,
     entry: VirtualAddress,
     stack: Range<VirtualAddress>,
     thread_ptr: VirtualAddress,
-    boot_info: &'static BootInfo,
+    boot_info: VirtualAddress,
 ) -> ! {
     let stack_ptr = stack.end;
     let stack_size = stack_ptr.sub_addr(stack.start);
 
     log::debug!("Hart {hartid} Jumping to kernel ({entry:?})...");
-    log::trace!("Hart {hartid} Kernel arguments: sp = {stack_ptr:?}, tp = {thread_ptr:?}, a0 = {hartid}, a1 = {boot_info:p}");
+    log::trace!("Hart {hartid} Kernel arguments: sp = {stack_ptr:?}, tp = {thread_ptr:?}, a0 = {hartid}, a1 = {boot_info:?}");
 
     asm!(
-        "mv  sp, {stack_ptr}", // Set the kernel stack ptr
+    "mv  sp, {stack_ptr}", // Set the kernel stack ptr
 
-        //  fill stack with canary pattern
-        "call {fillstack}",
+    //  fill stack with canary pattern
+    "call {fillstack}",
 
-        "mv tp, {thread_ptr}",  // Set thread ptr
-        "mv ra, zero", // Reset return address
+    "mv tp, {thread_ptr}",  // Set thread ptr
+    "mv ra, zero", // Reset return address
 
-        "jalr zero, {func}", // Jump to kernel
+    "jalr zero, {func}", // Jump to kernel
 
-        // We should never ever reach this code, but if we do just spin indefinitely
-        "1:",
-        "   wfi",
-        "   j 1b",
-        in("a0") hartid,
-        in("a1") boot_info,
-        in("t0") stack_size,
-        stack_ptr = in(reg) stack_ptr.as_raw(),
-        thread_ptr = in(reg) thread_ptr.as_raw(),
-        func = in(reg) entry.as_raw(),
-        fillstack = sym fillstack,
-        options(noreturn)
+    // We should never ever reach this code, but if we do just spin indefinitely
+    "1:",
+    "   wfi",
+    "   j 1b",
+    in("a0") hartid,
+    in("a1") boot_info.as_raw(),
+    in("t0") stack_size,
+    stack_ptr = in(reg) stack_ptr.as_raw(),
+    thread_ptr = in(reg) thread_ptr.as_raw(),
+    func = in(reg) entry.as_raw(),
+    fillstack = sym fillstack,
+    options(noreturn)
     )
 }

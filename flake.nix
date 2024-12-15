@@ -35,6 +35,7 @@
             socat
             wabt
             dtc
+            cargo-fuzz
 
             # for testing the kernel
             qemu
