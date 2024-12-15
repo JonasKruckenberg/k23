@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.1](https://github.com/JonasKruckenberg/k23/compare/v0.0.0...v0.0.1) - 2024-12-12
+
+### Other
+
+- remove ambiguous and broken `cursor`/`cursor_mut` in favor of `root`/`root_mut` methods (#164)
+- *(wavltree)* release v0.0.0 (#160)
+
 ## [0.0.0](https://github.com/JonasKruckenberg/k23/releases/tag/v0.0.0) - 2024-12-12
 
 ### Added

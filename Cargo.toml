@@ -28,6 +28,7 @@ backtrace = { path = "libs/backtrace" }
 dtb-parser = { path = "libs/dtb-parser" }
 pmm = { path = "libs/pmm" }
 ktest = { path = "libs/ktest" }
+linked-list = { path = "libs/linked-list" }
 panic-common = { path = "libs/panic-common" }
 panic-unwind = { path = "libs/panic-unwind" }
 riscv = { path = "libs/riscv" }
@@ -62,8 +63,8 @@ hashbrown = { version = "0.14.5", default-features = false, features = [
     "inline-more",
     "nightly",
 ] }
-wasmparser = { version = "0.216.0", default-features = false }
-target-lexicon = { version = "0.12.14", default-features = false }
+wasmparser = { version = "0.221.0", default-features = false }
+target-lexicon = { version = "0.13.0", default-features = false }
 cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std3", default-features = false, features = [
     "core",
 ] }
