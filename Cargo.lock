@@ -321,12 +321,16 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
+ "dtb-parser",
  "ktest",
  "loader-api",
  "log",
+ "onlyerror",
  "panic-unwind",
  "pin-project-lite",
  "pmm",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
  "riscv",
  "semihosting-logger",
  "sync",

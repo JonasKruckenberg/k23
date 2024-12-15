@@ -14,9 +14,14 @@ extern crate alloc;
 
 mod allocator;
 pub mod arch;
+mod error;
+pub mod machine_info;
 mod start;
-mod vm;
+pub mod vm;
 // mod tests;
+
+pub use error::Error;
+pub type Result<T> = core::result::Result<T, Error>;
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;

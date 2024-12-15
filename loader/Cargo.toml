@@ -24,8 +24,8 @@ log.workspace = true
 arrayvec.workspace = true
 xmas-elf.workspace = true
 onlyerror.workspace = true
-rand_chacha = { version = "0.3.1", default-features = false }
-rand = { version = "0.8.5", default-features = false }
+rand_chacha.workspace = true
+rand.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true

@@ -447,7 +447,7 @@ fn apply_relocation(
             // Calculate the value to store at the relocation target.
             let value = virt_base.offset(rela.get_addend() as isize);
 
-            log::trace!("reloc R_RISCV_RELATIVE offset: {:#x}; addend: {:#x} => target {target:?} value {value:?}", rela.get_offset(), rela.get_addend());
+            // log::trace!("reloc R_RISCV_RELATIVE offset: {:#x}; addend: {:#x} => target {target:?} value {value:?}", rela.get_offset(), rela.get_addend());
             unsafe {
                 (target.as_raw() as *mut usize).write_unaligned(value.as_raw());
             }
