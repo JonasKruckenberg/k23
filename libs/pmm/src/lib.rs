@@ -1,4 +1,5 @@
 #![feature(let_chains)]
+#![feature(debug_closure_helpers)]
 #![no_std]
 
 mod address_space;
@@ -13,6 +14,10 @@ pub use address_space::AddressSpace;
 pub use error::Error;
 pub use flush::Flush;
 pub(crate) type Result<T> = core::result::Result<T, Error>;
+
+pub const KIB: usize = 1024;
+pub const MIB: usize = 1024 * KIB;
+pub const GIB: usize = 1024 * MIB;
 
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq)]

@@ -8,7 +8,7 @@ use core::ops::Range;
 use core::{ptr, slice};
 use loader_api::TlsTemplate;
 use pmm::frame_alloc::{FrameAllocator, NonContiguousFrames};
-use pmm::{AddressSpace, Flush, PhysicalAddress, VirtualAddress};
+use pmm::{AddressSpace, Flush, PhysicalAddress, VirtualAddress, KIB, MIB};
 use xmas_elf::dynamic::Tag;
 use xmas_elf::program::{SegmentData, Type};
 use xmas_elf::P64;
@@ -120,9 +120,6 @@ pub fn init_kernel_aspace(
     } else {
         None
     };
-
-    const KIB: usize = 1024;
-    const MIB: usize = 1024 * KIB;
 
     let frame_usage = frame_alloc.frame_usage();
     log::info!(
