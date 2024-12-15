@@ -29,6 +29,7 @@ dtb-parser = { path = "libs/dtb-parser" }
 kmm = { path = "libs/kmm" }
 ktest = { path = "libs/ktest" }
 linked-list-allocator = { path = "libs/linked-list-allocator" }
+linked-list = { path = "libs/linked-list" }
 panic-common = { path = "libs/panic-common" }
 panic-unwind = { path = "libs/panic-unwind" }
 riscv = { path = "libs/riscv" }

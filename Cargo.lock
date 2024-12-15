@@ -400,6 +400,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5aaeb2981e0606ca11d79718f8bb01164f1d6ed75080182d3abf017e6d244b6d"
 
 [[package]]
+name = "linked-list"
+version = "0.1.0"
+
+[[package]]
 name = "linked-list-allocator"
 version = "0.1.0"
 dependencies = [
