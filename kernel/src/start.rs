@@ -109,13 +109,3 @@ fn init(boot_info: &'static loader_api::BootInfo, minfo: &MachineInfo) {
 fn post_init_hart() {
     // enable interrupts
 }
-
-// fn payload_as_str(payload: &dyn Any) -> &str {
-//     if let Some(&s) = payload.downcast_ref::<&'static str>() {
-//         s
-//     } else if let Some(s) = payload.downcast_ref::<String>() {
-//         s.as_str()
-//     } else {
-//         "Box<dyn Any>"
-//     }
-// }
