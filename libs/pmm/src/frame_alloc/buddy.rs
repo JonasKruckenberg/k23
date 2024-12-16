@@ -1,22 +1,37 @@
-use crate::arch;
-use crate::{PhysicalAddress, VirtualAddress};
+use crate::frame_alloc::{FrameAllocator, FrameUsage};
+use crate::{arch, PhysicalAddress, VirtualAddress};
 use core::alloc::Layout;
-use core::fmt::Formatter;
 use core::marker::PhantomData;
 use core::mem::{offset_of, MaybeUninit};
-use core::ops::{Deref, Div, Range};
+use core::ops::{Deref, Range};
 use core::pin::Pin;
 use core::ptr::NonNull;
-use core::{array, cmp, fmt};
+use core::{array, cmp, fmt, ptr};
 
-pub struct BuddyAllocator<const MAX_ORDER: usize = 11> {
+const DEFAULT_MAX_ORDER: usize = 11;
+
+pub struct BuddyAllocator<const MAX_ORDER: usize = DEFAULT_MAX_ORDER> {
     free_lists: [linked_list::List<FreeArea>; MAX_ORDER],
-    phys_offset: VirtualAddress,
+    pub phys_offset: VirtualAddress,
     max_order: usize,
+    used: usize,
+    total: usize,
+}
+
+impl<const MAX_ORDER: usize> Default for BuddyAllocator<MAX_ORDER> {
+    fn default() -> Self {
+        Self {
+            free_lists: array::from_fn(|_| linked_list::List::new()),
+            phys_offset: Default::default(),
+            max_order: 0,
+            used: 0,
+            total: 0,
+        }
+    }
 }
 
 impl<const MAX_ORDER: usize> fmt::Debug for BuddyAllocator<MAX_ORDER> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BuddyAllocator")
             .field_with("free_lists", |f| {
                 let mut f = f.debug_map();
@@ -33,12 +48,33 @@ impl<const MAX_ORDER: usize> fmt::Debug for BuddyAllocator<MAX_ORDER> {
 }
 
 impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
+    /// Create a new **empty** buddy allocator.
+    ///
+    /// Physical memory to manage must be added with `add_range`.
     pub fn new(phys_offset: VirtualAddress) -> Self {
         Self {
             free_lists: array::from_fn(|_| linked_list::List::new()),
             phys_offset,
             max_order: 0,
+            used: 0,
+            total: 0,
         }
+    }
+
+    /// Create a buddy allocator from an iterator of physical memory ranges.
+    ///
+    /// # Safety
+    ///
+    /// The caller has to ensure that the ranges are valid physical memory and not already "owned" by other parts of the system.
+    pub unsafe fn from_iter<I: IntoIterator<Item = Range<PhysicalAddress>>>(
+        iter: I,
+        phys_offset: VirtualAddress,
+    ) -> Self {
+        let mut alloc = BuddyAllocator::new(phys_offset);
+        for range in iter {
+            alloc.add_range(range)
+        }
+        alloc
     }
 
     /// Add a range of physical memory to the buddy allocator.
@@ -60,8 +96,10 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
                 cmp::min(lowbit, prev_power_of_two(remaining_bytes)),
                 arch::PAGE_SIZE << (MAX_ORDER - 1),
             );
-            let order = size.div(arch::PAGE_SIZE).trailing_zeros() as usize;
 
+            let size_pages = size / arch::PAGE_SIZE;
+            let order = size_pages.trailing_zeros() as usize;
+            self.total += size / arch::PAGE_SIZE;
             self.max_order = cmp::max(self.max_order, order);
 
             let area = FreeArea::from_addr(addr, self.phys_offset);
@@ -76,14 +114,9 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
         arch::PAGE_SIZE << self.max_order
     }
 
-    pub fn allocate(&mut self, layout: Layout) -> Option<PhysicalAddress> {
-        assert!(layout.align() >= arch::PAGE_SIZE);
-        let size = cmp::max(layout.size().next_power_of_two(), layout.align());
-        self.alloc_power_of_two(size)
-    }
-
-    fn alloc_power_of_two(&mut self, size: usize) -> Option<PhysicalAddress> {
-        let order = size.div(arch::PAGE_SIZE).trailing_zeros() as usize;
+    fn allocate_inner(&mut self, size: usize) -> Option<PhysicalAddress> {
+        let size_pages = size / arch::PAGE_SIZE;
+        let order = size_pages.trailing_zeros() as usize;
 
         for i in order..(self.max_order + 1) {
             if let Some(free_area) = self.free_lists[i].pop_back() {
@@ -95,6 +128,7 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
                     self.free_lists[j - 1].push_back(buddy);
                 }
 
+                self.used += size_pages;
                 return Some(FreeArea::into_addr(free_area, self.phys_offset));
             }
         }
@@ -102,14 +136,9 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
         None
     }
 
-    pub fn deallocate(&mut self, addr: PhysicalAddress, layout: Layout) {
-        assert!(layout.align() >= arch::PAGE_SIZE);
-        let size = cmp::max(layout.size().next_power_of_two(), layout.align());
-        self.dealloc_power_of_two(addr, size)
-    }
-
-    fn dealloc_power_of_two(&mut self, addr: PhysicalAddress, size: usize) {
-        let order = size.div(arch::PAGE_SIZE).trailing_zeros() as usize;
+    fn deallocate_inner(&mut self, addr: PhysicalAddress, size: usize) {
+        let size_pages = size / arch::PAGE_SIZE;
+        let order = size_pages.trailing_zeros() as usize;
 
         let mut ptr = addr;
         'outer: for order in order..self.max_order {
@@ -127,27 +156,143 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
                 c.move_next();
             }
 
+            // TODO this should not use saturating_sub as it ignores double-freeing
+            self.used = self.used.saturating_sub(size_pages);
+
             self.free_lists[order].push_back(unsafe { FreeArea::from_addr(ptr, self.phys_offset) });
             return;
         }
 
-        panic!()
+        panic!("deallocating memory that was not allocated by the buddy allocator");
     }
 }
 
-// impl<const MAX_ORDER: usize> FrameAllocator for BuddyAllocator<MAX_ORDER> {
-//     fn allocate_contiguous(&mut self, frames: NonZeroUsize) -> crate::Result<(PhysicalAddress, NonZeroUsize)> {
-//         todo!()
-//     }
-//
-//     fn deallocate(&mut self, base: PhysicalAddress, frames: NonZeroUsize) -> crate::Result<()> {
-//         todo!()
-//     }
-//
-//     fn frame_usage(&self) -> FrameUsage {
-//         todo!()
-//     }
-// }
+impl<const MAX_ORDER: usize> FrameAllocator for BuddyAllocator<MAX_ORDER> {
+    fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+        assert!(layout.align() >= arch::PAGE_SIZE);
+        assert!(layout.size() >= arch::PAGE_SIZE);
+
+        let size = cmp::max(layout.size().next_power_of_two(), layout.align());
+        self.allocate_inner(size)
+    }
+
+    fn deallocate_contiguous(&mut self, addr: PhysicalAddress, layout: Layout) {
+        assert!(layout.align() >= arch::PAGE_SIZE);
+        assert!(layout.size() >= arch::PAGE_SIZE);
+
+        let size = cmp::max(layout.size().next_power_of_two(), layout.align());
+        self.deallocate_inner(addr, size)
+    }
+
+    fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+        let addr = self.allocate_contiguous(layout)?;
+        unsafe {
+            ptr::write_bytes(
+                self.phys_offset.add(addr.as_raw()).as_raw() as *mut u8,
+                0,
+                layout.size(),
+            )
+        }
+        Some(addr)
+    }
+
+    fn frame_usage(&self) -> FrameUsage {
+        FrameUsage {
+            used: self.used,
+            total: self.total,
+        }
+    }
+
+    fn allocate_partial(&mut self, layout: Layout) -> Option<(PhysicalAddress, usize)> {
+        let size = cmp::min(
+            cmp::max(layout.align(), prev_power_of_two(layout.size())),
+            arch::PAGE_SIZE << self.max_order,
+        );
+        debug_assert!(size.is_power_of_two());
+
+        // if the block size we picked is less that the alignment, this means we can't satisfy the alignment
+        if size < layout.align() {
+            return None;
+        }
+
+        let order = (size / arch::PAGE_SIZE).trailing_zeros() as usize;
+
+        // log::trace!(
+        //     "align: {} remaining_pot: {} max: {} == {size} (order {order})",
+        //     layout.align(),
+        //     prev_power_of_two(layout.size()),
+        //     arch::PAGE_SIZE << (self.max_order - 1)
+        // );
+
+        for i in order..(self.max_order + 1) {
+            if let Some(free_area) = self.free_lists[i].pop_back() {
+                for j in (order + 1..i + 1).rev() {
+                    // Insert the "upper half" of the block into the free list.
+                    let buddy_addr = FreeArea::into_addr(free_area, self.phys_offset)
+                        .add(arch::PAGE_SIZE << (j - 1));
+                    let buddy = unsafe { FreeArea::from_addr(buddy_addr, self.phys_offset) };
+                    self.free_lists[j - 1].push_back(buddy);
+                }
+
+                if size > layout.size() {
+                    log::trace!(
+                        "overaligned allocation: {} > {}, wasting {} bytes in the process",
+                        size,
+                        layout.size(),
+                        size - layout.size()
+                    );
+                }
+
+                let alloc_size = cmp::min(size, layout.size());
+                self.used += alloc_size / arch::PAGE_SIZE;
+
+                let addr = FreeArea::into_addr(free_area, self.phys_offset);
+                debug_assert!(
+                    addr.is_aligned(layout.align()),
+                    "addr {addr:?} is not correctly aligned (align {})",
+                    layout.align()
+                );
+                return Some((addr, alloc_size));
+            }
+        }
+
+        None
+    }
+}
+
+impl<const MAX_ORDER: usize> IntoIterator for BuddyAllocator<MAX_ORDER> {
+    type Item = Range<PhysicalAddress>;
+    type IntoIter = IntoIter<MAX_ORDER>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            alloc: self,
+            current_order: 0,
+        }
+    }
+}
+
+pub struct IntoIter<const MAX_ORDER: usize = DEFAULT_MAX_ORDER> {
+    alloc: BuddyAllocator<MAX_ORDER>,
+    current_order: usize,
+}
+
+impl<const MAX_ORDER: usize> Iterator for IntoIter<MAX_ORDER> {
+    type Item = Range<PhysicalAddress>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for i in self.current_order..(self.alloc.max_order + 1) {
+            if let Some(area) = self.alloc.free_lists[i].pop_back() {
+                let size = arch::PAGE_SIZE << i;
+                let start = FreeArea::into_addr(area, self.alloc.phys_offset);
+                self.current_order = i;
+                return Some(start..start.add(size));
+            }
+        }
+
+        None
+    }
+}
 
 #[derive(Default)]
 struct FreeArea {
@@ -155,7 +300,7 @@ struct FreeArea {
 }
 
 impl fmt::Debug for FreeArea {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FreeArea")
             .field("self", &format_args!("{self:p}"))
             .finish()
