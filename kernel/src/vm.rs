@@ -28,14 +28,15 @@ const KERNEL_ASID: usize = 0;
 
 pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
     KERNEL_ASPACE.get_or_init(|| {
-        let mut memories = vec![];
-        for i in 0..boot_info.memory_regions_len {
-            let region = unsafe { boot_info.memory_regions.add(i).as_ref().unwrap() };
-            if region.kind.is_usable() {
-                memories.push(region.range.clone());
-            }
-        }
-        memories.sort_unstable_by(compare_memory_regions);
+        let mut frame_alloc = unsafe {
+            let usable_regions = boot_info
+                .memory_regions()
+                .iter()
+                .filter(|region| region.kind.is_usable())
+                .map(|region| region.range.clone());
+
+            BuddyAllocator::from_iter(usable_regions, boot_info.physical_memory_offset)
+        };
 
         let bump_alloc = BumpAllocator::new(&memories);
         let (arch, mut flush) =

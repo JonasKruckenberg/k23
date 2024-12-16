@@ -1,4 +1,5 @@
 use core::ops::Range;
+use core::slice;
 use pmm::{PhysicalAddress, VirtualAddress};
 
 #[derive(Debug)]
@@ -80,6 +81,10 @@ impl BootInfo {
             heap_region,
             kernel_elf,
         }
+    }
+
+    pub fn memory_regions(&self) -> &[MemoryRegion] {
+        unsafe { slice::from_raw_parts(self.memory_regions, self.memory_regions_len) }
     }
 }
 
