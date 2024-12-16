@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use crate::arch;
 use crate::machine_info::MachineInfo;
 use alloc::boxed::Box;
 use alloc::vec;
@@ -24,10 +25,8 @@ use wavltree::{Entry, Side};
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 
-const KERNEL_ASID: usize = 0;
-
 pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
-    KERNEL_ASPACE.get_or_init(|| {
+    KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let mut frame_alloc = unsafe {
             let usable_regions = boot_info
                 .memory_regions()
@@ -38,51 +37,13 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
             BuddyAllocator::from_iter(usable_regions, boot_info.physical_memory_offset)
         };
 
-        let (arch, mut flush) =
-            pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_offset);
+        let arch = arch::vm::init(boot_info, &mut frame_alloc)?;
 
         let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
         let mut aspace = AddressSpace::new(arch, frame_alloc, prng);
 
-        log::debug!("unmapping loader {:?}...", boot_info.loader_region);
-        let loader_region_len = boot_info
-            .loader_region
-            .end
-            .sub_addr(boot_info.loader_region.start);
-        aspace
-            .arch
-            .unmap(
-                &mut IgnoreAlloc,
-                boot_info.loader_region.start,
-                NonZeroUsize::new(loader_region_len).unwrap(),
-                &mut flush,
-            )
-            .unwrap();
-        flush.flush().unwrap();
-
-        Mutex::new(aspace)
+        Ok(Mutex::new(aspace))
     });
-}
-
-struct IgnoreAlloc;
-impl pmm::frame_alloc::FrameAllocator for IgnoreAlloc {
-    fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
-        unimplemented!()
-    }
-
-    fn deallocate_contiguous(&mut self, addr: PhysicalAddress, layout: Layout) {}
-
-    fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
-        unimplemented!()
-    }
-
-    fn allocate_partial(&mut self, layout: Layout) -> Option<(PhysicalAddress, usize)> {
-        unimplemented!()
-    }
-
-    fn frame_usage(&self) -> FrameUsage {
-        unimplemented!()
-    }
 }
 
 pub struct AddressSpace {
