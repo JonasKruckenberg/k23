@@ -12,7 +12,7 @@ use core::ptr::{addr_of, addr_of_mut};
 use pmm::arch::PAGE_SIZE;
 use pmm::AddressSpace;
 use pmm::{
-    frame_alloc::{BumpAllocator, FrameAllocator},
+    frame_alloc::{BuddyAllocator, FrameAllocator},
     Flush, PhysicalAddress, VirtualAddress,
 };
 use rand::SeedableRng;
@@ -96,8 +96,12 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             let self_regions = SelfRegions::collect(&minfo);
             log::trace!("{self_regions:?}");
 
-            let mut frame_alloc =
-                BumpAllocator::new_with_lower_bound(&minfo.memories, self_regions.read_write.end);
+            let mut frame_alloc: BuddyAllocator = unsafe {
+                BuddyAllocator::from_iter(
+                    minfo.memories.iter().cloned(),
+                    VirtualAddress::default(), // MMU is turned off still, so no offset
+                )
+            };
 
             let mut page_alloc = if ENABLE_KASLR {
                 PageAllocator::new(ChaCha20Rng::from_seed(
@@ -130,6 +134,13 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 &mut flush,
             )?;
 
+            // BuddyAllocator internally uses linked-lists to manage free memory regions, the nodes of
+            // which are pointers into memory. Switching on the MMU means all these pointers will be
+            // invalidated, and would trap on access.
+            // We therefore save all free memory regions onto the (identity-mapped) stack, and then
+            // reconstruct the BuddyAllocator after the MMU is switched on.
+            let memory_regions: ArrayVec<_, 64> = ArrayVec::from_iter(frame_alloc);
+
             // Activate the MMU with the address space we have built so far.
             // the rest of the address space setup will happen in virtual memory (mostly so that we
             // can correctly apply relocations without having to do expensive virt to phys queries)
@@ -139,6 +150,11 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 aspace.activate();
                 log::trace!("activated.");
             }
+
+            // Reconstruct the BuddyAllocator with the new physical memory mapping offset and the
+            // previously saved free memory regions.
+            let mut frame_alloc: BuddyAllocator =
+                unsafe { BuddyAllocator::from_iter(memory_regions, physmap.start) };
 
             // The kernel elf file is inlined into the loader executable as part of the build setup
             // which means we just need to parse it here.
@@ -161,7 +177,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             // log::trace!("\n{}", kernel_aspace.aspace);
 
             let boot_info = init_boot_info(
-                &mut frame_alloc,
+                frame_alloc,
                 hartid,
                 &kernel,
                 &kernel_aspace,
