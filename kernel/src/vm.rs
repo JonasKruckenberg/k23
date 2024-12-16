@@ -1,5 +1,6 @@
 #![allow(unused)]
 
+use crate::arch;
 use crate::machine_info::MachineInfo;
 use alloc::boxed::Box;
 use alloc::vec;
@@ -14,7 +15,7 @@ use core::ptr::NonNull;
 use core::{cmp, fmt};
 use loader_api::BootInfo;
 use pin_project_lite::pin_project;
-use pmm::frame_alloc::{BitMapAllocator, BumpAllocator, FrameUsage};
+use pmm::frame_alloc::{BuddyAllocator, FrameUsage};
 use pmm::{Flush, PhysicalAddress, VirtualAddress};
 use rand::distributions::Uniform;
 use rand::{Rng, SeedableRng};
@@ -24,91 +25,38 @@ use wavltree::{Entry, Side};
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 
-const KERNEL_ASID: usize = 0;
-
 pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
-    KERNEL_ASPACE.get_or_init(|| {
-        let mut memories = vec![];
-        for i in 0..boot_info.memory_regions_len {
-            let region = unsafe { boot_info.memory_regions.add(i).as_ref().unwrap() };
-            if region.kind.is_usable() {
-                memories.push(region.range.clone());
-            }
-        }
-        memories.sort_unstable_by(compare_memory_regions);
+    KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
+        let mut frame_alloc = unsafe {
+            let usable_regions = boot_info
+                .memory_regions()
+                .iter()
+                .filter(|region| region.kind.is_usable())
+                .map(|region| region.range.clone());
 
-        let bump_alloc = BumpAllocator::new(&memories);
-        let (arch, mut flush) =
-            pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_offset);
+            BuddyAllocator::from_iter(usable_regions, boot_info.physical_memory_offset)
+        };
+
+        let arch = arch::vm::init(boot_info, &mut frame_alloc)?;
 
         let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
-        let mut aspace = AddressSpace::new(arch, bump_alloc, prng);
+        let mut aspace = AddressSpace::new(arch, frame_alloc, prng);
 
-        log::debug!("unmapping loader {:?}...", boot_info.loader_region);
-        let loader_region_len = boot_info
-            .loader_region
-            .end
-            .sub_addr(boot_info.loader_region.start);
-        aspace
-            .arch
-            .unmap(
-                &mut IgnoreAlloc,
-                boot_info.loader_region.start,
-                NonZeroUsize::new(loader_region_len).unwrap(),
-                &mut flush,
-            )
-            .unwrap();
-        flush.flush().unwrap();
-
-        Mutex::new(aspace)
+        Ok(Mutex::new(aspace))
     });
-}
-
-fn compare_memory_regions(a: &Range<PhysicalAddress>, b: &Range<PhysicalAddress>) -> Ordering {
-    if a.end <= b.start {
-        Ordering::Less
-    } else if b.end <= a.start {
-        Ordering::Greater
-    } else {
-        // This should never happen if the `exclude_region` code about is correct
-        unreachable!("Memory region {a:?} and {b:?} are overlapping");
-    }
-}
-
-struct IgnoreAlloc;
-impl pmm::frame_alloc::FrameAllocator for IgnoreAlloc {
-    fn allocate_contiguous(
-        &mut self,
-        frames: NonZeroUsize,
-    ) -> Result<(PhysicalAddress, NonZeroUsize), pmm::Error> {
-        unimplemented!()
-    }
-
-    fn deallocate(
-        &mut self,
-        _base: PhysicalAddress,
-        _frames: NonZeroUsize,
-    ) -> Result<(), pmm::Error> {
-        Ok(())
-    }
-
-    fn frame_usage(&self) -> FrameUsage {
-        unreachable!()
-    }
 }
 
 pub struct AddressSpace {
     pub tree: wavltree::WAVLTree<Mapping>,
-    frame_alloc: BitMapAllocator,
+    frame_alloc: BuddyAllocator,
     arch: pmm::AddressSpace,
     prng: Option<ChaCha20Rng>,
 }
 impl AddressSpace {
-    pub fn new(arch: pmm::AddressSpace, bump_allocator: BumpAllocator, prng: ChaCha20Rng) -> Self {
+    pub fn new(arch: pmm::AddressSpace, frame_alloc: BuddyAllocator, prng: ChaCha20Rng) -> Self {
         Self {
             tree: wavltree::WAVLTree::default(),
-            frame_alloc: BitMapAllocator::new(bump_allocator, arch.physical_memory_offset())
-                .unwrap(),
+            frame_alloc,
             arch,
             prng: Some(prng),
         }

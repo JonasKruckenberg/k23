@@ -1,5 +1,6 @@
 mod setjmp_longjmp;
 pub mod trap_handler;
+pub mod vm;
 
 use riscv::sstatus::FS;
 use riscv::{interrupt, sie, sstatus};

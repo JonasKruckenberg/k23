@@ -1,5 +1,6 @@
 use crate::frame_alloc::{FrameAllocator, NonContiguousFrames};
-use crate::{arch, Flush, PhysicalAddress, VirtualAddress};
+use crate::{arch, Error, Flush, PhysicalAddress, VirtualAddress};
+use core::alloc::Layout;
 use core::fmt;
 use core::fmt::Formatter;
 use core::num::NonZeroUsize;
@@ -18,7 +19,11 @@ impl AddressSpace {
         asid: usize,
         phys_offset: VirtualAddress,
     ) -> crate::Result<(Self, Flush)> {
-        let root_pgtable = frame_alloc.allocate_one_zeroed(phys_offset)?;
+        let root_pgtable = frame_alloc
+            .allocate_contiguous_zeroed(
+                Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
+            )
+            .ok_or(Error::OutOfMemory)?; // we should also be able to map a single page
 
         let this = Self {
             asid,
@@ -75,16 +80,21 @@ impl AddressSpace {
         flags: crate::Flags,
         flush: &mut Flush,
     ) -> crate::Result<()> {
-        while let Some((phys, len)) = frames.next().transpose()? {
+        while let Some((phys, len)) = frames.next() {
+            log::trace!(
+                "mapping contiguous subregion {virt:?}..{:?} => {phys:?}..{:?}",
+                virt.add(len),
+                phys.add(len)
+            );
             self.map_contiguous(
                 frames.alloc_mut(),
                 virt,
                 phys,
-                NonZeroUsize::new(len.get() * arch::PAGE_SIZE).unwrap(),
+                NonZeroUsize::new(len).unwrap(),
                 flags,
                 flush,
             )?;
-            virt = virt.add(len.get() * arch::PAGE_SIZE);
+            virt = virt.add(len);
         }
 
         Ok(())
@@ -156,7 +166,13 @@ impl AddressSpace {
                         // we need to allocate a new sub-table and retry.
                         // allocate a new physical frame to hold the next level table and
                         // mark this PTE as a valid internal node pointing to that sub-table.
-                        let frame = frame_alloc.allocate_one_zeroed(self.phys_offset)?;
+                        let frame = frame_alloc
+                            .allocate_contiguous_zeroed(
+                                Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
+                            )
+                            .ok_or(Error::OutOfMemory)?; // we should also be able to map a single page
+
+                        // TODO memory barrier
 
                         // log::trace!("[lvl{lvl}::{index} pte {:?}] allocating sub table {frame:?}", pte as *mut _,);
 
@@ -186,17 +202,12 @@ impl AddressSpace {
     pub fn remap(
         &mut self,
         mut virt: VirtualAddress,
-        mut iter: NonContiguousFrames,
+        iter: NonContiguousFrames,
         flush: &mut Flush,
     ) -> crate::Result<()> {
-        while let Some((phys, len)) = iter.next().transpose()? {
-            self.remap_contiguous(
-                virt,
-                phys,
-                NonZeroUsize::new(len.get() * arch::PAGE_SIZE).unwrap(),
-                flush,
-            )?;
-            virt = virt.add(len.get() * arch::PAGE_SIZE);
+        for (phys, len) in iter {
+            self.remap_contiguous(virt, phys, NonZeroUsize::new(len).unwrap(), flush)?;
+            virt = virt.add(len);
         }
 
         Ok(())
@@ -384,15 +395,21 @@ impl AddressSpace {
         if pte.is_valid() && pte.is_leaf() {
             let page_size = arch::page_size_for_level(lvl);
             let frame = pte.get_address_and_flags().0;
-            frame_alloc.deallocate(
+
+            frame_alloc.deallocate_contiguous(
                 frame,
-                NonZeroUsize::new(page_size / arch::PAGE_SIZE).unwrap(),
-            )?;
+                Layout::from_size_align(page_size, page_size).unwrap(),
+            );
             pte.clear();
 
             flush.extend_range(self.asid, *virt..virt.add(page_size))?;
             *virt = virt.add(page_size);
             *remaining_bytes -= page_size;
+
+            log::trace!(
+                "unmapped {frame:?}..{:?} {page_size} remaining {remaining_bytes}",
+                frame.add(page_size)
+            );
         } else if pte.is_valid() {
             // This PTE is an internal node pointing to another page table
             let pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
@@ -403,7 +420,10 @@ impl AddressSpace {
 
             if !is_still_populated {
                 let frame = pte.get_address_and_flags().0;
-                frame_alloc.deallocate(frame, NonZeroUsize::new(1).unwrap())?;
+                frame_alloc.deallocate_contiguous(
+                    frame,
+                    Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
+                );
                 pte.clear();
             }
         }

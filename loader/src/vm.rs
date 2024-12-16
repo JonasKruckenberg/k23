@@ -306,7 +306,11 @@ fn handle_bss_section(
             .add(ph.offset + ph.file_size - 1)
             .align_down(ph.align);
 
-        let new_frame = frame_alloc.allocate_one_zeroed(aspace.physical_memory_offset())?;
+        let new_frame = frame_alloc
+            .allocate_contiguous_zeroed(
+                Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
+            )
+            .ok_or(pmm::Error::OutOfMemory)?;
 
         unsafe {
             let src = slice::from_raw_parts(
@@ -340,16 +344,16 @@ fn handle_bss_section(
         (start, end.as_raw() - start.as_raw())
     };
 
-    if let Some(additional_len) = NonZeroUsize::new(additional_len) {
+    if additional_len > 0 {
         let additional_phys = NonContiguousFrames::new_zeroed(
             frame_alloc,
-            NonZeroUsize::new(additional_len.get() / arch::PAGE_SIZE).unwrap(),
+            Layout::from_size_align(additional_len, arch::PAGE_SIZE).unwrap(),
             aspace.physical_memory_offset(),
         );
 
         log::trace!(
             "mapping additional zeros {additional_virt_base:?}..{:?}",
-            additional_virt_base.add(additional_len.get())
+            additional_virt_base.add(additional_len)
         );
         aspace.map(additional_virt_base, additional_phys, flags, flush)?;
     }
@@ -368,13 +372,15 @@ fn handle_tls_segment(
     flush: &mut Flush,
 ) -> crate::Result<TlsAllocation> {
     let per_hart_size_pages = ph.mem_size.div_ceil(arch::PAGE_SIZE);
-    let total_size = per_hart_size_pages * arch::PAGE_SIZE * minfo.cpus;
+    let layout = Layout::from_size_align(
+        per_hart_size_pages * arch::PAGE_SIZE * minfo.cpus,
+        arch::PAGE_SIZE,
+    )
+    .unwrap();
 
-    let phys = NonContiguousFrames::new(
-        frame_alloc,
-        NonZeroUsize::new(per_hart_size_pages * minfo.cpus).unwrap(),
-    );
-    let virt = page_alloc.allocate(Layout::from_size_align(total_size, arch::PAGE_SIZE).unwrap());
+    let phys =
+        NonContiguousFrames::new_zeroed(frame_alloc, layout, aspace.physical_memory_offset());
+    let virt = page_alloc.allocate(layout);
 
     log::trace!("Mapping TLS region {virt:?}...");
     aspace.map(
@@ -540,28 +546,26 @@ fn map_kernel_stacks(
     per_hart_stack_size_pages: usize,
     flush: &mut Flush,
 ) -> crate::Result<Range<VirtualAddress>> {
-    let stacks_phys = NonContiguousFrames::new(
-        frame_alloc,
-        NonZeroUsize::new(per_hart_stack_size_pages * machine_info.cpus).unwrap(),
-    );
+    let layout = Layout::from_size_align(
+        per_hart_stack_size_pages * arch::PAGE_SIZE * machine_info.cpus,
+        arch::PAGE_SIZE,
+    )
+    .unwrap();
 
-    let stacks_virt = page_alloc.allocate(
-        Layout::from_size_align(
-            per_hart_stack_size_pages * arch::PAGE_SIZE * machine_info.cpus,
-            arch::PAGE_SIZE,
-        )
-        .unwrap(),
-    );
+    // The stacks region doesn't need to be zeroed, since we will be filling it with
+    // the canary pattern anyway
+    let phys = NonContiguousFrames::new(frame_alloc, layout);
+    let virt = page_alloc.allocate(layout);
 
-    log::trace!("Mapping stack region {stacks_virt:?}...");
+    log::trace!("Mapping stack region {virt:?}...");
     aspace.map(
-        stacks_virt.start,
-        stacks_phys,
+        virt.start,
+        phys,
         pmm::Flags::READ | pmm::Flags::WRITE,
         flush,
     )?;
 
-    Ok(stacks_virt)
+    Ok(virt)
 }
 
 /// Allocate and map the kernel heap.
@@ -572,22 +576,23 @@ fn map_kernel_heap(
     heap_size_pages: usize,
     flush: &mut Flush,
 ) -> crate::Result<Range<VirtualAddress>> {
-    let heap_phys =
-        NonContiguousFrames::new(frame_alloc, NonZeroUsize::new(heap_size_pages).unwrap());
+    let layout =
+        Layout::from_size_align(heap_size_pages * arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap();
 
-    let heap_virt = page_alloc.allocate(
-        Layout::from_size_align(heap_size_pages * arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
-    );
+    // Since the kernel heap region is likely quite large and should only be exposed through Rusts
+    // allocator APIs, we don't zero it here. Instead, it should be zeroed on demand by the allocator.
+    let phys = NonContiguousFrames::new(frame_alloc, layout);
+    let virt = page_alloc.allocate(layout);
 
-    log::trace!("Mapping heap region {heap_virt:?}...");
+    log::trace!("Mapping heap region {virt:?}...");
     aspace.map(
-        heap_virt.start,
-        heap_phys,
+        virt.start,
+        phys,
         pmm::Flags::READ | pmm::Flags::WRITE,
         flush,
     )?;
 
-    Ok(heap_virt)
+    Ok(virt)
 }
 
 struct ProgramHeader<'a> {
