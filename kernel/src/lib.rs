@@ -29,5 +29,10 @@ pub const LOG_LEVEL: log::Level = log::Level::Trace;
 pub const STACK_SIZE_PAGES: u32 = 256;
 /// The size of the trap handler stack in pages
 pub const TRAP_STACK_SIZE_PAGES: usize = 16;
-/// The size of the kernel heap in pages
-pub const HEAP_SIZE_PAGES: u32 = 8192; // 32 MiB
+/// The initial size of the kernel heap in pages.
+/// 
+/// This initial size should be small enough so the loaders less sophisticated allocator can
+/// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
+/// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap
+/// size and can dynamically grow the heap as needed.
+pub const HEAP_SIZE_PAGES: u32 = 16; // 32 MiB
