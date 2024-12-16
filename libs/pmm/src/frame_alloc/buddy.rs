@@ -12,7 +12,7 @@ const DEFAULT_MAX_ORDER: usize = 11;
 
 pub struct BuddyAllocator<const MAX_ORDER: usize = DEFAULT_MAX_ORDER> {
     free_lists: [linked_list::List<FreeArea>; MAX_ORDER],
-    pub phys_offset: VirtualAddress,
+    phys_offset: VirtualAddress,
     max_order: usize,
     used: usize,
     total: usize,

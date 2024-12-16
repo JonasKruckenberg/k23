@@ -578,7 +578,7 @@ fn map_kernel_heap(
 ) -> crate::Result<Range<VirtualAddress>> {
     let layout = Layout::from_size_align(
         heap_size_pages * arch::PAGE_SIZE,
-        pmm::arch::page_size_for_level(1),
+        arch::PAGE_SIZE
     )
     .unwrap();
 

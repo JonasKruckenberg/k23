@@ -1,10 +1,12 @@
 mod buddy;
+mod bootstrap;
 
 use crate::{PhysicalAddress, VirtualAddress};
 use core::alloc::Layout;
 use core::ptr;
 
 pub use buddy::BuddyAllocator;
+pub use bootstrap::BootstrapAllocator;
 
 #[derive(Debug)]
 pub struct FrameUsage {
