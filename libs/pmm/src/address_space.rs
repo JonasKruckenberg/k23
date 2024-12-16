@@ -182,7 +182,7 @@ impl AddressSpace {
                     // This PTE is an internal node pointing to another page table
                     pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
                 } else {
-                    unreachable!("Invalid state: PTE can't be valid leaf (this means {virt:?} is already mapped) {pte:?}");
+                    unreachable!("Invalid state: PTE can't be valid leaf (this means {virt:?} is already mapped) {pte:?} {pte:p}");
                 }
             }
         }
