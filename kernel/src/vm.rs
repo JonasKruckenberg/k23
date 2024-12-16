@@ -14,7 +14,7 @@ use core::ptr::NonNull;
 use core::{cmp, fmt};
 use loader_api::BootInfo;
 use pin_project_lite::pin_project;
-use pmm::frame_alloc::{BitMapAllocator, BumpAllocator, FrameUsage};
+use pmm::frame_alloc::{BuddyAllocator, FrameUsage};
 use pmm::{Flush, PhysicalAddress, VirtualAddress};
 use rand::distributions::Uniform;
 use rand::{Rng, SeedableRng};
@@ -38,12 +38,11 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
             BuddyAllocator::from_iter(usable_regions, boot_info.physical_memory_offset)
         };
 
-        let bump_alloc = BumpAllocator::new(&memories);
         let (arch, mut flush) =
             pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_offset);
 
         let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
-        let mut aspace = AddressSpace::new(arch, bump_alloc, prng);
+        let mut aspace = AddressSpace::new(arch, frame_alloc, prng);
 
         log::debug!("unmapping loader {:?}...", boot_info.loader_region);
         let loader_region_len = boot_info
@@ -65,51 +64,38 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
     });
 }
 
-fn compare_memory_regions(a: &Range<PhysicalAddress>, b: &Range<PhysicalAddress>) -> Ordering {
-    if a.end <= b.start {
-        Ordering::Less
-    } else if b.end <= a.start {
-        Ordering::Greater
-    } else {
-        // This should never happen if the `exclude_region` code about is correct
-        unreachable!("Memory region {a:?} and {b:?} are overlapping");
-    }
-}
-
 struct IgnoreAlloc;
 impl pmm::frame_alloc::FrameAllocator for IgnoreAlloc {
-    fn allocate_contiguous(
-        &mut self,
-        frames: NonZeroUsize,
-    ) -> Result<(PhysicalAddress, NonZeroUsize), pmm::Error> {
+    fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
         unimplemented!()
     }
 
-    fn deallocate(
-        &mut self,
-        _base: PhysicalAddress,
-        _frames: NonZeroUsize,
-    ) -> Result<(), pmm::Error> {
-        Ok(())
+    fn deallocate_contiguous(&mut self, addr: PhysicalAddress, layout: Layout) {}
+
+    fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+        unimplemented!()
+    }
+
+    fn allocate_partial(&mut self, layout: Layout) -> Option<(PhysicalAddress, usize)> {
+        unimplemented!()
     }
 
     fn frame_usage(&self) -> FrameUsage {
-        unreachable!()
+        unimplemented!()
     }
 }
 
 pub struct AddressSpace {
     pub tree: wavltree::WAVLTree<Mapping>,
-    frame_alloc: BitMapAllocator,
+    frame_alloc: BuddyAllocator,
     arch: pmm::AddressSpace,
     prng: Option<ChaCha20Rng>,
 }
 impl AddressSpace {
-    pub fn new(arch: pmm::AddressSpace, bump_allocator: BumpAllocator, prng: ChaCha20Rng) -> Self {
+    pub fn new(arch: pmm::AddressSpace, frame_alloc: BuddyAllocator, prng: ChaCha20Rng) -> Self {
         Self {
             tree: wavltree::WAVLTree::default(),
-            frame_alloc: BitMapAllocator::new(bump_allocator, arch.physical_memory_offset())
-                .unwrap(),
+            frame_alloc,
             arch,
             prng: Some(prng),
         }
