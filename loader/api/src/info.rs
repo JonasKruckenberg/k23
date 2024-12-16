@@ -139,9 +139,13 @@ impl fmt::Display for BootInfo {
             writeln!(f, "{:<23} : None", "TLS TEMPLATE")?;
         }
 
-        // for (idx, r) in self.0.memory_regions().iter().enumerate() {
-        //     writeln!(f, "MEMORY REGION {:<10}: {}..{} {:?}", idx, r.range.start, r.range.end, r.kind)?;
-        // }
+        for (idx, r) in self.memory_regions().iter().enumerate() {
+            writeln!(
+                f,
+                "MEMORY REGION {:<10}: {}..{} {:?}",
+                idx, r.range.start, r.range.end, r.kind
+            )?;
+        }
 
         Ok(())
     }
