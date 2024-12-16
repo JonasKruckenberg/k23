@@ -962,7 +962,7 @@ dependencies = [
 
 [[package]]
 name = "wavltree"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "criterion",
  "rand 0.9.0-beta.1",
