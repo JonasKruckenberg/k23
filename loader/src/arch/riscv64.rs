@@ -6,11 +6,12 @@ use crate::vm::{init_kernel_aspace, KernelAddressSpace};
 use crate::{ENABLE_KASLR, LOG_LEVEL};
 use arrayvec::ArrayVec;
 use core::arch::{asm, naked_asm};
+use core::cmp;
 use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::ptr::{addr_of, addr_of_mut};
 use pmm::arch::PAGE_SIZE;
-use pmm::AddressSpace;
+use pmm::{arch, AddressSpace};
 use pmm::{
     frame_alloc::{BuddyAllocator, FrameAllocator},
     Flush, PhysicalAddress, VirtualAddress,
@@ -139,7 +140,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             // invalidated, and would trap on access.
             // We therefore save all free memory regions onto the (identity-mapped) stack, and then
             // reconstruct the BuddyAllocator after the MMU is switched on.
-            let memory_regions: ArrayVec<_, 64> = ArrayVec::from_iter(frame_alloc);
+            let memory_regions: ArrayVec<_, 128> = ArrayVec::from_iter(frame_alloc);
 
             // Activate the MMU with the address space we have built so far.
             // the rest of the address space setup will happen in virtual memory (mostly so that we
@@ -342,10 +343,11 @@ pub fn map_physical_memory(
     flush: &mut Flush,
 ) -> crate::Result<Range<VirtualAddress>> {
     let phys = minfo.memory_hull();
-    let alignment = pmm::arch::page_size_for_level(2);
+    let alignment = arch::page_size_for_level(2);
 
     let phys_aligned = phys.start.align_down(alignment);
-    let size = phys.end.align_up(alignment).as_raw() - phys_aligned.as_raw();
+    let size = phys.end.align_up(alignment).sub_addr(phys_aligned);
+
     let virt = KERNEL_ASPACE_BASE.add(phys_aligned.as_raw())
         ..KERNEL_ASPACE_BASE.add(phys_aligned.as_raw()).add(size);
 

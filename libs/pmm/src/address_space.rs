@@ -81,11 +81,7 @@ impl AddressSpace {
         flush: &mut Flush,
     ) -> crate::Result<()> {
         while let Some((phys, len)) = frames.next() {
-            log::trace!(
-                "mapping contiguous subregion {virt:?}..{:?} => {phys:?}..{:?}",
-                virt.add(len),
-                phys.add(len)
-            );
+            // log::trace!("mapping contiguous chunk {virt:?}..{:?} => {phys:?}..{:?}", virt.add(len), phys.add(len));
             self.map_contiguous(
                 frames.alloc_mut(),
                 virt,
@@ -405,11 +401,6 @@ impl AddressSpace {
             flush.extend_range(self.asid, *virt..virt.add(page_size))?;
             *virt = virt.add(page_size);
             *remaining_bytes -= page_size;
-
-            log::trace!(
-                "unmapped {frame:?}..{:?} {page_size} remaining {remaining_bytes}",
-                frame.add(page_size)
-            );
         } else if pte.is_valid() {
             // This PTE is an internal node pointing to another page table
             let pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);

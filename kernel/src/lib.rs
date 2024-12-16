@@ -24,7 +24,7 @@ pub use error::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
 /// The log level for the kernel
-pub const LOG_LEVEL: log::Level = log::Level::Debug;
+pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256;
 /// The size of the trap handler stack in pages
