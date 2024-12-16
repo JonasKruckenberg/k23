@@ -1,7 +1,6 @@
 use crate::kernel::Kernel;
 use crate::vm::KernelAddressSpace;
 use core::alloc::Layout;
-use core::mem;
 use core::ops::Range;
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
 use pmm::frame_alloc::{BuddyAllocator, FrameAllocator};
