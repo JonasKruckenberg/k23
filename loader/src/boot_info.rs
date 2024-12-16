@@ -1,6 +1,7 @@
 use crate::kernel::Kernel;
 use crate::vm::KernelAddressSpace;
 use core::alloc::Layout;
+use core::mem;
 use core::ops::Range;
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
 use pmm::frame_alloc::{BuddyAllocator, FrameAllocator};
@@ -61,8 +62,10 @@ fn init_boot_info_memory_regions(
     let base_ptr = page.add(size_of::<BootInfo>()).as_raw() as *mut MemoryRegion;
     let mut ptr = base_ptr;
     let mut memory_regions_len = 0;
+    let max_regions = (arch::PAGE_SIZE - size_of::<BootInfo>()) / size_of::<MemoryRegion>();
 
     let mut push_region = |region: MemoryRegion| unsafe {
+        assert!(memory_regions_len < max_regions);
         ptr.write(region);
         ptr = ptr.add(1);
         memory_regions_len += 1;
