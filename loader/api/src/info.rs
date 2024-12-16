@@ -1,3 +1,5 @@
+use core::fmt;
+use core::fmt::Formatter;
 use core::ops::Range;
 use pmm::{PhysicalAddress, VirtualAddress};
 
@@ -80,6 +82,63 @@ impl BootInfo {
             heap_region,
             kernel_elf,
         }
+    }
+}
+
+impl fmt::Display for BootInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{:<23} : {}", "BOOT HART", self.boot_hart)?;
+        writeln!(
+            f,
+            "{:<23} : {}",
+            "PHYSICAL MEMORY OFFSET", self.physical_memory_offset
+        )?;
+        writeln!(
+            f,
+            "{:<23} : {}..{}",
+            "KERNEL VIRT", self.kernel_virt.start, self.kernel_virt.end
+        )?;
+        writeln!(
+            f,
+            "{:<23} : {}..{}",
+            "KERNEL PHYS", self.kernel_elf.start, self.kernel_elf.end
+        )?;
+        if let Some(heap) = self.heap_region.as_ref() {
+            writeln!(
+                f,
+                "{:<23} : {}..{} ({}) bytes",
+                "KERNEL HEAP",
+                heap.start,
+                heap.end,
+                heap.end.sub_addr(heap.start)
+            )?;
+        } else {
+            writeln!(f, "{:<23} : None", "KERNEL HEAP")?;
+        }
+        writeln!(
+            f,
+            "{:<23} : {}..{}",
+            "LOADER REGION", self.loader_region.start, self.loader_region.end
+        )?;
+        if let Some(tls) = self.tls_template.as_ref() {
+            writeln!(
+                f,
+                "{:<23} : .tdata: {}..{}, .tbss: {}..{}",
+                "TLS TEMPLATE",
+                tls.start_addr,
+                tls.start_addr.add(tls.file_size),
+                tls.start_addr.add(tls.file_size),
+                tls.start_addr.add(tls.file_size + tls.mem_size)
+            )?;
+        } else {
+            writeln!(f, "{:<23} : None", "TLS TEMPLATE")?;
+        }
+
+        // for (idx, r) in self.0.memory_regions().iter().enumerate() {
+        //     writeln!(f, "MEMORY REGION {:<10}: {}..{} {:?}", idx, r.range.start, r.range.end, r.kind)?;
+        // }
+
+        Ok(())
     }
 }
 

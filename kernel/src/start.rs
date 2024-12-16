@@ -71,7 +71,7 @@ fn pre_init_hart(hartid: usize) {
 fn init(boot_info: &'static loader_api::BootInfo, minfo: &MachineInfo) {
     semihosting_logger::init(LOG_LEVEL.to_level_filter());
 
-    log::trace!("{boot_info:?}");
+    log::debug!("\n{boot_info}");
 
     log::debug!("Setting up kernel heap...");
     allocator::init(boot_info);

@@ -122,7 +122,7 @@ pub fn init_kernel_aspace(
     };
 
     let frame_usage = frame_alloc.frame_usage();
-    log::info!(
+    log::debug!(
         "Mapping complete. Permanently used: {} KiB of {} MiB total ({:.3}%).",
         (frame_usage.used * arch::PAGE_SIZE) / KIB,
         (frame_usage.total * arch::PAGE_SIZE) / MIB,

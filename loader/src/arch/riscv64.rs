@@ -3,7 +3,8 @@ use crate::kernel::parse_inlined_kernel;
 use crate::machine_info::MachineInfo;
 use crate::page_alloc::PageAllocator;
 use crate::vm::{init_kernel_aspace, KernelAddressSpace};
-use crate::ENABLE_KASLR;
+use crate::{ENABLE_KASLR, LOG_LEVEL};
+use arrayvec::ArrayVec;
 use core::arch::{asm, naked_asm};
 use core::num::NonZeroUsize;
 use core::ops::Range;
@@ -86,11 +87,11 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             // but on actual hardware this might not be the case
             zero_bss();
 
-            semihosting_logger::init(log::LevelFilter::Trace);
+            semihosting_logger::init(LOG_LEVEL);
 
             let minfo =
                 unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
-            log::info!("{minfo:?}");
+            log::debug!("\n{minfo}");
 
             let self_regions = SelfRegions::collect(&minfo);
             log::trace!("{self_regions:?}");

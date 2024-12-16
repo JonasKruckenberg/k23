@@ -21,3 +21,4 @@ pub use error::Error;
 pub type Result<T> = core::result::Result<T, Error>;
 
 pub const ENABLE_KASLR: bool = false;
+pub const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Debug;
