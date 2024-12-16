@@ -1,3 +1,4 @@
+use core::alloc::Layout;
 use crate::boot_info::init_boot_info;
 use crate::kernel::parse_inlined_kernel;
 use crate::machine_info::MachineInfo;
@@ -6,18 +7,19 @@ use crate::vm::{init_kernel_aspace, KernelAddressSpace};
 use crate::{ENABLE_KASLR, LOG_LEVEL};
 use arrayvec::ArrayVec;
 use core::arch::{asm, naked_asm};
-use core::cmp;
+use core::{cmp, ptr, slice};
 use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::ptr::{addr_of, addr_of_mut};
 use pmm::arch::PAGE_SIZE;
-use pmm::{arch, AddressSpace};
+use pmm::{arch, AddressSpace, Error};
 use pmm::{
     frame_alloc::{BuddyAllocator, FrameAllocator},
     Flush, PhysicalAddress, VirtualAddress,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use pmm::frame_alloc::BootstrapAllocator;
 
 const STACK_SIZE_PAGES: usize = 32;
 const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
@@ -110,6 +112,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             let (mut aspace, mut flush) =
                 AddressSpace::new(&mut frame_alloc, KERNEL_ASID, VirtualAddress::default())?;
 
+            let fdt_phys = allocate_and_copy_fdt(&minfo, &mut frame_alloc)?;
+            
             // Identity map the loader itself (this binary).
             //
             // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
@@ -167,10 +171,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 &kernel,
                 &kernel_aspace,
                 physmap.start,
-                {
-                    let base = PhysicalAddress::new(minfo.fdt.as_ptr() as usize);
-                    base..base.add(minfo.fdt.len())
-                },
+                fdt_phys,
                 self_regions.executable.start..self_regions.read_write.end,
             )?;
 
@@ -352,6 +353,29 @@ pub fn map_physical_memory(
     page_alloc.reserve(KERNEL_ASPACE_BASE, phys_aligned.as_raw() + size);
 
     Ok(KERNEL_ASPACE_BASE..KERNEL_ASPACE_BASE.add(phys_aligned.as_raw()).add(size))
+}
+
+/// Moves the FDT from wherever the previous bootloader placed it into a properly allocated place,
+/// so we don't accidentally override it
+///
+/// # Errors
+///
+/// Returns an error if allocation fails.
+pub fn allocate_and_copy_fdt(
+    machine_info: &MachineInfo,
+    frame_alloc: &mut dyn FrameAllocator,
+) -> crate::Result<Range<PhysicalAddress>> {
+    let layout = Layout::from_size_align(machine_info.fdt.len(), PAGE_SIZE).unwrap();
+    let base = frame_alloc.allocate_contiguous(layout).ok_or(Error::OutOfMemory)?;
+    log::trace!("Allocating space for FDT ({layout:?}) = {base:?}");
+
+    unsafe {
+        let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, machine_info.fdt.len());
+
+        ptr::copy_nonoverlapping(machine_info.fdt.as_ptr(), dst.as_mut_ptr(), dst.len());
+    }
+
+    Ok(base..base.add(layout.size()))
 }
 
 pub unsafe fn handoff_to_kernel(
