@@ -59,6 +59,39 @@ impl<'dt> fmt::Debug for MachineInfo<'dt> {
     }
 }
 
+impl fmt::Display for MachineInfo<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{:<17} : {:?}",
+            "DEVICE TREE BLOB",
+            self.fdt.as_ptr_range()
+        )?;
+        writeln!(f, "{:<17} : {}", "CPUS", self.cpus)?;
+        writeln!(f, "{:<17} : {}", "HART MASK", self.hart_mask)?;
+        if let Some(bootargs) = self.bootargs {
+            writeln!(f, "{:<17} : {:?}", "BOOTARGS", bootargs)?;
+        } else {
+            writeln!(f, "{:<17} : None", "BOOTARGS")?;
+        }
+        if let Some(rng_seed) = self.rng_seed {
+            writeln!(f, "{:<17} : {:?}", "PRNG SEED", rng_seed)?;
+        } else {
+            writeln!(f, "{:<17} : None", "PRNG SEED")?;
+        }
+
+        for (idx, r) in self.memories.iter().enumerate() {
+            writeln!(f, "MEMORY REGION {:<4}: {}..{}", idx, r.start, r.end)?;
+        }
+
+        // for (idx, r) in self.0.memory_regions().iter().enumerate() {
+        //     writeln!(f, "MEMORY REGION {}: {:#>10x?}", idx, r.range.start.as_raw()..r.range.end.as_raw())?;
+        // }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 enum MemoryReservation<'dt> {
     NoMap(&'dt str, ArrayVec<Range<PhysicalAddress>, 16>),
