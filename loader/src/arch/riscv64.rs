@@ -5,13 +5,15 @@ use crate::page_alloc::PageAllocator;
 use crate::vm::{init_kernel_aspace, KernelAddressSpace};
 use crate::{ENABLE_KASLR, LOG_LEVEL};
 use arrayvec::ArrayVec;
+use core::alloc::Layout;
 use core::arch::{asm, naked_asm};
-use core::cmp;
 use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::ptr::{addr_of, addr_of_mut};
+use core::{cmp, ptr, slice};
 use pmm::arch::PAGE_SIZE;
-use pmm::{arch, AddressSpace};
+use pmm::frame_alloc::BootstrapAllocator;
+use pmm::{arch, AddressSpace, Error};
 use pmm::{
     frame_alloc::{BuddyAllocator, FrameAllocator},
     Flush, PhysicalAddress, VirtualAddress,
@@ -97,12 +99,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             let self_regions = SelfRegions::collect(&minfo);
             log::trace!("{self_regions:?}");
 
-            let mut frame_alloc: BuddyAllocator = unsafe {
-                BuddyAllocator::from_iter(
-                    minfo.memories.iter().cloned(),
-                    VirtualAddress::default(), // MMU is turned off still, so no offset
-                )
-            };
+            let mut frame_alloc = BootstrapAllocator::new(&minfo.memories);
 
             let mut page_alloc = if ENABLE_KASLR {
                 PageAllocator::new(ChaCha20Rng::from_seed(
@@ -114,6 +111,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
 
             let (mut aspace, mut flush) =
                 AddressSpace::new(&mut frame_alloc, KERNEL_ASID, VirtualAddress::default())?;
+
+            let fdt_phys = allocate_and_copy_fdt(&minfo, &mut frame_alloc)?;
 
             // Identity map the loader itself (this binary).
             //
@@ -135,13 +134,6 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 &mut flush,
             )?;
 
-            // BuddyAllocator internally uses linked-lists to manage free memory regions, the nodes of
-            // which are pointers into memory. Switching on the MMU means all these pointers will be
-            // invalidated, and would trap on access.
-            // We therefore save all free memory regions onto the (identity-mapped) stack, and then
-            // reconstruct the BuddyAllocator after the MMU is switched on.
-            let memory_regions: ArrayVec<_, 128> = ArrayVec::from_iter(frame_alloc);
-
             // Activate the MMU with the address space we have built so far.
             // the rest of the address space setup will happen in virtual memory (mostly so that we
             // can correctly apply relocations without having to do expensive virt to phys queries)
@@ -151,11 +143,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 aspace.activate();
                 log::trace!("activated.");
             }
-
-            // Reconstruct the BuddyAllocator with the new physical memory mapping offset and the
-            // previously saved free memory regions.
-            let mut frame_alloc: BuddyAllocator =
-                unsafe { BuddyAllocator::from_iter(memory_regions, physmap.start) };
+            frame_alloc.set_phys_offset(physmap.start);
 
             // The kernel elf file is inlined into the loader executable as part of the build setup
             // which means we just need to parse it here.
@@ -183,10 +171,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 &kernel,
                 &kernel_aspace,
                 physmap.start,
-                {
-                    let base = PhysicalAddress::new(minfo.fdt.as_ptr() as usize);
-                    base..base.add(minfo.fdt.len())
-                },
+                fdt_phys,
                 self_regions.executable.start..self_regions.read_write.end,
             )?;
 
@@ -368,6 +353,31 @@ pub fn map_physical_memory(
     page_alloc.reserve(KERNEL_ASPACE_BASE, phys_aligned.as_raw() + size);
 
     Ok(KERNEL_ASPACE_BASE..KERNEL_ASPACE_BASE.add(phys_aligned.as_raw()).add(size))
+}
+
+/// Moves the FDT from wherever the previous bootloader placed it into a properly allocated place,
+/// so we don't accidentally override it
+///
+/// # Errors
+///
+/// Returns an error if allocation fails.
+pub fn allocate_and_copy_fdt(
+    machine_info: &MachineInfo,
+    frame_alloc: &mut dyn FrameAllocator,
+) -> crate::Result<Range<PhysicalAddress>> {
+    let layout = Layout::from_size_align(machine_info.fdt.len(), PAGE_SIZE).unwrap();
+    let base = frame_alloc
+        .allocate_contiguous(layout)
+        .ok_or(Error::OutOfMemory)?;
+    log::trace!("Allocating space for FDT ({layout:?}) = {base:?}");
+
+    unsafe {
+        let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, machine_info.fdt.len());
+
+        ptr::copy_nonoverlapping(machine_info.fdt.as_ptr(), dst.as_mut_ptr(), dst.len());
+    }
+
+    Ok(base..base.add(layout.size()))
 }
 
 pub unsafe fn handoff_to_kernel(

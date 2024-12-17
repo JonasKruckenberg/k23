@@ -38,6 +38,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
         };
 
         let arch = arch::vm::init(boot_info, &mut frame_alloc)?;
+        // log::trace!("\n{arch}");
 
         let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
         let mut aspace = AddressSpace::new(arch, frame_alloc, prng);

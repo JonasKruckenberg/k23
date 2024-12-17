@@ -1,9 +1,11 @@
+mod bootstrap;
 mod buddy;
 
 use crate::{PhysicalAddress, VirtualAddress};
 use core::alloc::Layout;
 use core::ptr;
 
+pub use bootstrap::BootstrapAllocator;
 pub use buddy::BuddyAllocator;
 
 #[derive(Debug)]

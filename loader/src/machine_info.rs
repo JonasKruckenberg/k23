@@ -156,13 +156,6 @@ impl<'dt> MachineInfo<'dt> {
             }
         }
 
-        // exclude the FDT blob from the available memory regions so that we don't accidentally
-        // override it
-        exclude_region({
-            let range = fdt_slice.as_ptr_range();
-            PhysicalAddress::new(range.start as usize)..PhysicalAddress::new(range.end as usize)
-        });
-
         // remove memory regions that are left as zero-sized from the previous step
         info.memories
             .retain(|region| region.end.as_raw() - region.start.as_raw() > 0);

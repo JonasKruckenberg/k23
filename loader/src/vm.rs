@@ -576,11 +576,8 @@ fn map_kernel_heap(
     heap_size_pages: usize,
     flush: &mut Flush,
 ) -> crate::Result<Range<VirtualAddress>> {
-    let layout = Layout::from_size_align(
-        heap_size_pages * arch::PAGE_SIZE,
-        pmm::arch::page_size_for_level(1),
-    )
-    .unwrap();
+    let layout =
+        Layout::from_size_align(heap_size_pages * arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap();
 
     // Since the kernel heap region is likely quite large and should only be exposed through Rusts
     // allocator APIs, we don't zero it here. Instead, it should be zeroed on demand by the allocator.
