@@ -16,7 +16,7 @@ use core::{cmp, fmt};
 use loader_api::BootInfo;
 use pin_project_lite::pin_project;
 use pmm::frame_alloc::{BuddyAllocator, FrameUsage};
-use pmm::{Flush, PhysicalAddress, VirtualAddress};
+use pmm::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress, MIB};
 use rand::distributions::Uniform;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
@@ -42,6 +42,10 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
 
         let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
         let mut aspace = AddressSpace::new(arch, frame_alloc, prng);
+
+        // let kernel_heap_spot =
+        //     aspace.find_spot(Layout::from_size_align(3 * MIB, 4096).unwrap(), 27);
+        // log::trace!("kernel heap spot: {kernel_heap_spot:?}");
 
         Ok(Mutex::new(aspace))
     });
@@ -124,7 +128,7 @@ impl AddressSpace {
                     .unmap(
                         &mut self.frame_alloc,
                         mapping.range.start,
-                        NonZero::new(mapping.range.end.sub_addr(mapping.range.start)).unwrap(),
+                        NonZero::new(mapping.range.size()).unwrap(),
                         &mut flush,
                     )
                     .unwrap();
@@ -184,9 +188,9 @@ impl AddressSpace {
         let mut bytes_checked = 0;
         for mapping in iter {
             assert!(mapping.flags.contains(new_flags));
-            bytes_checked += mapping.range.end.sub_addr(mapping.range.start);
+            bytes_checked += mapping.range.size();
         }
-        assert_eq!(bytes_checked, range.end.sub_addr(range.start));
+        assert_eq!(bytes_checked, range.size());
 
         // at this point we know the operation is valid, so can start updating the mappings
         let mut iter = self.tree.range_mut(range.clone());
@@ -207,7 +211,7 @@ impl AddressSpace {
                     .unmap(
                         &mut self.frame_alloc,
                         mapping.range.start,
-                        NonZero::new(mapping.range.end.sub_addr(mapping.range.start)).unwrap(),
+                        NonZero::new(mapping.range.size()).unwrap(),
                         &mut flush,
                     )
                     .unwrap();
@@ -275,7 +279,7 @@ impl AddressSpace {
         log::trace!("attempting to find spot for {layout:?} at index {target_index}");
 
         let spots_in_range = |layout: Layout, range: Range<VirtualAddress>| -> usize {
-            ((range.end.sub_addr(range.start) - layout.size()) >> layout.align().ilog2()) + 1
+            ((range.size() - layout.size()) >> layout.align().ilog2()) + 1
         };
 
         let mut candidate_spot_count = 0;

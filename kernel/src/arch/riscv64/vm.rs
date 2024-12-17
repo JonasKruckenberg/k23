@@ -3,7 +3,7 @@ use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use loader_api::BootInfo;
 use pmm::frame_alloc::{BuddyAllocator, FrameAllocator, FrameUsage};
-use pmm::{Flush, PhysicalAddress};
+use pmm::{AddressRangeExt, Flush, PhysicalAddress};
 
 const KERNEL_ASID: usize = 0;
 
@@ -32,10 +32,7 @@ fn unmap_loader(
     // unmap the identity mapped loader, but - since the physical memory is unmanaged - we
     // use a special "IgnoreAlloc" allocator that doesn't actually deallocate the frames
     // and instead just ignores the deallocation request
-    let loader_region_len = boot_info
-        .loader_region
-        .end
-        .sub_addr(boot_info.loader_region.start);
+    let loader_region_len = boot_info.loader_region.size();
     arch.unmap(
         &mut IgnoreAlloc,
         boot_info.loader_region.start,

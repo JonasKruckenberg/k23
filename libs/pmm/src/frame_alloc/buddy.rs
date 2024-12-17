@@ -1,5 +1,5 @@
 use crate::frame_alloc::{FrameAllocator, FrameUsage};
-use crate::{arch, PhysicalAddress, VirtualAddress};
+use crate::{arch, AddressRangeExt, PhysicalAddress, VirtualAddress};
 use core::alloc::Layout;
 use core::marker::PhantomData;
 use core::mem::{offset_of, MaybeUninit};
@@ -83,11 +83,9 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
     ///
     /// The range must be valid physical memory and not already "owned" by other parts of the system.
     pub unsafe fn add_range(&mut self, range: Range<PhysicalAddress>) {
-        let mut remaining_bytes = range
-            .end
-            .align_up(arch::PAGE_SIZE)
-            .sub_addr(range.start.align_down(arch::PAGE_SIZE));
-        let mut addr = range.start;
+        let aligned = range.align_in(arch::PAGE_SIZE);
+        let mut remaining_bytes = aligned.size();
+        let mut addr = aligned.start;
 
         while remaining_bytes > 0 {
             let lowbit = addr.as_raw() & (!addr.as_raw() + 1);

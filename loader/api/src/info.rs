@@ -2,7 +2,7 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use core::slice;
-use pmm::{PhysicalAddress, VirtualAddress};
+use pmm::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -115,7 +115,7 @@ impl fmt::Display for BootInfo {
                 "KERNEL HEAP",
                 heap.start,
                 heap.end,
-                heap.end.sub_addr(heap.start)
+                heap.size()
             )?;
         } else {
             writeln!(f, "{:<23} : None", "KERNEL HEAP")?;
