@@ -20,7 +20,7 @@ impl<'a> BootstrapAllocator<'a> {
             phys_offset: VirtualAddress::default(),
         }
     }
-    
+
     pub fn set_phys_offset(&mut self, phys_offset: VirtualAddress) {
         self.phys_offset = phys_offset;
     }

@@ -155,7 +155,7 @@ impl<'dt> MachineInfo<'dt> {
                 exclude_region(region);
             }
         }
-        
+
         // remove memory regions that are left as zero-sized from the previous step
         info.memories
             .retain(|region| region.end.as_raw() - region.start.as_raw() > 0);

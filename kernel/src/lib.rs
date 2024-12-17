@@ -30,7 +30,7 @@ pub const STACK_SIZE_PAGES: u32 = 256;
 /// The size of the trap handler stack in pages
 pub const TRAP_STACK_SIZE_PAGES: usize = 16;
 /// The initial size of the kernel heap in pages.
-/// 
+///
 /// This initial size should be small enough so the loaders less sophisticated allocator can
 /// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
 /// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap

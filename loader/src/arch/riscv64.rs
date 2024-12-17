@@ -1,4 +1,3 @@
-use core::alloc::Layout;
 use crate::boot_info::init_boot_info;
 use crate::kernel::parse_inlined_kernel;
 use crate::machine_info::MachineInfo;
@@ -6,12 +5,14 @@ use crate::page_alloc::PageAllocator;
 use crate::vm::{init_kernel_aspace, KernelAddressSpace};
 use crate::{ENABLE_KASLR, LOG_LEVEL};
 use arrayvec::ArrayVec;
+use core::alloc::Layout;
 use core::arch::{asm, naked_asm};
-use core::{cmp, ptr, slice};
 use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::ptr::{addr_of, addr_of_mut};
+use core::{cmp, ptr, slice};
 use pmm::arch::PAGE_SIZE;
+use pmm::frame_alloc::BootstrapAllocator;
 use pmm::{arch, AddressSpace, Error};
 use pmm::{
     frame_alloc::{BuddyAllocator, FrameAllocator},
@@ -19,7 +20,6 @@ use pmm::{
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use pmm::frame_alloc::BootstrapAllocator;
 
 const STACK_SIZE_PAGES: usize = 32;
 const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
@@ -113,7 +113,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 AddressSpace::new(&mut frame_alloc, KERNEL_ASID, VirtualAddress::default())?;
 
             let fdt_phys = allocate_and_copy_fdt(&minfo, &mut frame_alloc)?;
-            
+
             // Identity map the loader itself (this binary).
             //
             // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
@@ -133,7 +133,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 &minfo,
                 &mut flush,
             )?;
-            
+
             // Activate the MMU with the address space we have built so far.
             // the rest of the address space setup will happen in virtual memory (mostly so that we
             // can correctly apply relocations without having to do expensive virt to phys queries)
@@ -366,7 +366,9 @@ pub fn allocate_and_copy_fdt(
     frame_alloc: &mut dyn FrameAllocator,
 ) -> crate::Result<Range<PhysicalAddress>> {
     let layout = Layout::from_size_align(machine_info.fdt.len(), PAGE_SIZE).unwrap();
-    let base = frame_alloc.allocate_contiguous(layout).ok_or(Error::OutOfMemory)?;
+    let base = frame_alloc
+        .allocate_contiguous(layout)
+        .ok_or(Error::OutOfMemory)?;
     log::trace!("Allocating space for FDT ({layout:?}) = {base:?}");
 
     unsafe {
