@@ -5,13 +5,13 @@ use loader_api::LoaderConfig;
 use xmas_elf::program::{ProgramHeader, Type};
 
 /// The inlined kernel
-static KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KERNEL")));
+pub static INLINED_KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KERNEL")));
 /// Wrapper type for the inlined bytes to ensure proper alignment
 #[repr(C, align(4096))]
 pub struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
 
-pub fn parse_inlined_kernel() -> crate::Result<Kernel<'static>> {
-    let elf_file = xmas_elf::ElfFile::new(&KERNEL_BYTES.0).map_err(Error::Elf)?;
+pub fn parse_kernel(bytes: &'static [u8]) -> crate::Result<Kernel<'static>> {
+    let elf_file = xmas_elf::ElfFile::new(bytes).map_err(Error::Elf)?;
 
     let loader_config = unsafe {
         let section = elf_file

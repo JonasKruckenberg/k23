@@ -14,19 +14,14 @@ pub fn init(
     let (mut arch, mut flush) =
         pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_offset);
 
-    unmap_loader(boot_info, frame_alloc, &mut arch, &mut flush);
+    unmap_loader(boot_info, &mut arch, &mut flush);
 
     flush.flush()?;
 
     Ok(arch)
 }
 
-fn unmap_loader(
-    boot_info: &BootInfo,
-    frame_alloc: &mut BuddyAllocator,
-    arch: &mut pmm::AddressSpace,
-    flush: &mut Flush,
-) {
+fn unmap_loader(boot_info: &BootInfo, arch: &mut pmm::AddressSpace, flush: &mut Flush) {
     log::debug!("unmapping loader {:?}...", boot_info.loader_region);
 
     // unmap the identity mapped loader, but - since the physical memory is unmanaged - we
@@ -40,19 +35,6 @@ fn unmap_loader(
         flush,
     )
     .unwrap();
-
-    // The kernel ELF is inlined by the loader, but we don't want it to be managed by the frame allocator
-    // so instead we form the "pre-range" of all physical memory before the kernel ELF and the "post-range"
-    // of all physical memory after the kernel ELF and add them to the frame allocator
-    let pre_range =
-        PhysicalAddress::new(boot_info.loader_region.start.as_raw())..boot_info.kernel_elf.start;
-    let post_range = boot_info.kernel_elf.end.align_up(arch::PAGE_SIZE)
-        ..PhysicalAddress::new(boot_info.loader_region.end.as_raw());
-
-    unsafe {
-        frame_alloc.add_range(pre_range);
-        frame_alloc.add_range(post_range);
-    }
 }
 
 struct IgnoreAlloc;

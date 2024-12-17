@@ -152,7 +152,9 @@ fn map_elf(
     virt_base: VirtualAddress,
     flush: &mut Flush,
 ) -> crate::Result<Option<TlsAllocation>> {
-    let phys_base = PhysicalAddress::new(elf_file.input.as_ptr() as usize);
+    let phys_base = PhysicalAddress::new(
+        elf_file.input.as_ptr() as usize - aspace.physical_memory_offset().as_raw(),
+    );
     assert!(
         phys_base.is_aligned(arch::PAGE_SIZE),
         "Loaded ELF file is not sufficiently aligned"
@@ -190,12 +192,7 @@ fn map_elf(
     // Apply relocations in virtual memory.
     for ph in elf_file.program_iter() {
         if ph.get_type().unwrap() == Type::Dynamic {
-            handle_dynamic_segment(
-                &ProgramHeader::try_from(ph).unwrap(),
-                &elf_file,
-                phys_base,
-                virt_base,
-            )?;
+            handle_dynamic_segment(&ProgramHeader::try_from(ph).unwrap(), &elf_file, virt_base)?;
         }
     }
 
@@ -404,14 +401,13 @@ fn handle_tls_segment(
 fn handle_dynamic_segment(
     ph: &ProgramHeader,
     elf_file: &xmas_elf::ElfFile,
-    phys_base: PhysicalAddress,
     virt_base: VirtualAddress,
 ) -> crate::Result<()> {
     log::trace!("parsing RELA info...");
 
     if let Some(rela_info) = ph.parse_rela(elf_file)? {
         let relas = unsafe {
-            let ptr = phys_base.add(rela_info.offset as usize).as_raw()
+            let ptr = elf_file.input.as_ptr().byte_add(rela_info.offset as usize)
                 as *const xmas_elf::sections::Rela<P64>;
 
             slice::from_raw_parts(ptr, rela_info.count as usize)

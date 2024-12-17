@@ -7,6 +7,7 @@
 )]
 #![feature(generic_const_exprs)]
 #![feature(maybe_uninit_slice)]
+#![feature(slice_from_ptr_range)]
 
 mod arch;
 mod boot_info;
