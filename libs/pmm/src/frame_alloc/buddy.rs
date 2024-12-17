@@ -260,40 +260,6 @@ impl<const MAX_ORDER: usize> FrameAllocator for BuddyAllocator<MAX_ORDER> {
     }
 }
 
-impl<const MAX_ORDER: usize> IntoIterator for BuddyAllocator<MAX_ORDER> {
-    type Item = Range<PhysicalAddress>;
-    type IntoIter = IntoIter<MAX_ORDER>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter {
-            alloc: self,
-            current_order: 0,
-        }
-    }
-}
-
-pub struct IntoIter<const MAX_ORDER: usize = DEFAULT_MAX_ORDER> {
-    alloc: BuddyAllocator<MAX_ORDER>,
-    current_order: usize,
-}
-
-impl<const MAX_ORDER: usize> Iterator for IntoIter<MAX_ORDER> {
-    type Item = Range<PhysicalAddress>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        for i in self.current_order..(self.alloc.max_order + 1) {
-            if let Some(area) = self.alloc.free_lists[i].pop_back() {
-                let size = arch::PAGE_SIZE << i;
-                let start = FreeArea::into_addr(area, self.alloc.phys_offset);
-                self.current_order = i;
-                return Some(start..start.add(size));
-            }
-        }
-
-        None
-    }
-}
-
 #[derive(Default)]
 struct FreeArea {
     links: linked_list::Links<FreeArea>,
