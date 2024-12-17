@@ -228,18 +228,18 @@ where
         if self.head.is_none() {
             debug_assert!(
                 self.tail.is_none(),
-                "inconsistent state: head is None, but tail is not"
+                "inconsistent state: head is None, but tail is not; self={self:?}",
             );
             debug_assert_eq!(
                 self.len, 0,
-                "inconsistent state: a list was empty, but its length was not zero"
+                "inconsistent state: a list was empty, but its length was not zero; self={self:?}"
             );
             return true;
         }
 
         debug_assert_ne!(
             self.len, 0,
-            "inconsistent state: a list was not empty, but its length was zero"
+            "inconsistent state: a list was not empty, but its length was zero; self={self:?}"
         );
         false
     }
@@ -249,6 +249,11 @@ where
         assert_ne!(self.tail, Some(ptr));
 
         unsafe {
+            debug_assert!(
+                !T::links(ptr).as_ref().is_linked(),
+                "cannot insert an already linked node into a list"
+            );
+
             T::links(ptr).as_mut().replace_next(None);
             T::links(ptr).as_mut().replace_prev(self.tail);
             if let Some(tail) = self.tail {
@@ -269,6 +274,11 @@ where
         assert_ne!(self.head, Some(ptr));
 
         unsafe {
+            debug_assert!(
+                !T::links(ptr).as_ref().is_linked(),
+                "cannot insert an already linked node into a list"
+            );
+
             T::links(ptr).as_mut().replace_next(self.head);
             T::links(ptr).as_mut().replace_prev(None);
             if let Some(head) = self.head {
@@ -426,6 +436,36 @@ where
             self.len, actual_len,
             "linked list's actual length did not match its `len` variable"
         );
+    }
+}
+
+impl<'a, T: Linked + ?Sized> IntoIterator for &'a List<T> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T: Linked + ?Sized> IntoIterator for &'a mut List<T> {
+    type Item = Pin<&'a mut T>;
+    type IntoIter = IterMut<'a, T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+impl<T: Linked + ?Sized> IntoIterator for List<T> {
+    type Item = T::Handle;
+    type IntoIter = IntoIter<T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter { list: self }
     }
 }
 
@@ -685,6 +725,7 @@ where
         unsafe {
             let node = self.current?;
             let node_links = T::links(node).as_mut();
+            self.list.len -= 1;
 
             let prev = node_links.replace_prev(None);
             let next = node_links.replace_next(None);
@@ -703,7 +744,6 @@ where
                 self.list.tail = prev;
             }
 
-            self.list.len -= 1;
             Some(T::from_ptr(self.current?))
         }
     }
@@ -877,6 +917,40 @@ where
 
 impl<T> FusedIterator for IterMut<'_, T> where T: Linked + ?Sized {}
 
+pub struct IntoIter<T: Linked + ?Sized> {
+    list: List<T>,
+}
+
+impl<T: Linked + ?Sized> Iterator for IntoIter<T> {
+    type Item = T::Handle;
+
+    #[inline]
+    fn next(&mut self) -> Option<T::Handle> {
+        self.list.pop_front()
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.list.len, Some(self.list.len))
+    }
+}
+
+impl<T: Linked + ?Sized> DoubleEndedIterator for IntoIter<T> {
+    #[inline]
+    fn next_back(&mut self) -> Option<T::Handle> {
+        self.list.pop_back()
+    }
+}
+
+impl<T: Linked + ?Sized> ExactSizeIterator for IntoIter<T> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.list.len
+    }
+}
+
+impl<T: Linked + ?Sized> FusedIterator for IntoIter<T> {}
+
 unsafe fn next<T>(node: NonNull<T>) -> Link<T>
 where
     T: Linked + ?Sized,
@@ -977,5 +1051,17 @@ mod tests {
         assert_eq!(list.pop_front().unwrap().value, 1);
         assert_eq!(list.pop_front().unwrap().value, 2);
         assert_eq!(list.pop_front().unwrap().value, 3);
+    }
+
+    #[test]
+    fn _drop() {
+        let mut list: List<TestNode> = List::new();
+
+        list.push_back(TestNode::new(0));
+        list.push_back(TestNode::new(1));
+        list.push_back(TestNode::new(2));
+        list.push_back(TestNode::new(3));
+
+        drop(list);
     }
 }
