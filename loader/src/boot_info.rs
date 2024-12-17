@@ -1,4 +1,3 @@
-use crate::kernel::Kernel;
 use crate::vm::KernelAddressSpace;
 use core::alloc::Layout;
 use core::ops::Range;
@@ -9,11 +8,11 @@ use pmm::{arch, Error, PhysicalAddress, VirtualAddress};
 pub fn init_boot_info(
     mut frame_alloc: BootstrapAllocator,
     boot_hart: usize,
-    kernel: &Kernel,
     kernel_aspace: &KernelAddressSpace,
     physical_memory_offset: VirtualAddress,
     fdt_phys: Range<PhysicalAddress>,
     loader_phys: Range<PhysicalAddress>,
+    kernel_phys: Range<PhysicalAddress>,
 ) -> crate::Result<*mut BootInfo> {
     let frame = frame_alloc
         .allocate_contiguous_zeroed(
@@ -42,11 +41,7 @@ pub fn init_boot_info(
                     ..VirtualAddress::new(loader_phys.end.as_raw())
             },
             kernel_aspace.heap_virt.clone(),
-            {
-                let r = kernel.elf_file.input.as_ptr_range();
-
-                PhysicalAddress::new(r.start as usize)..PhysicalAddress::new(r.end as usize)
-            },
+            kernel_phys,
         ));
     }
 

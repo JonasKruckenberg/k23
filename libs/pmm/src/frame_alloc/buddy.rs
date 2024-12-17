@@ -81,7 +81,8 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
     ///
     /// # Safety
     ///
-    /// The range must be valid physical memory and not already "owned" by other parts of the system.
+    /// The range must be valid physical memory and not already managed by other parts of the system
+    /// or the allocator itself.
     pub unsafe fn add_range(&mut self, range: Range<PhysicalAddress>) {
         let aligned = range.align_in(arch::PAGE_SIZE);
         let mut remaining_bytes = aligned.size();

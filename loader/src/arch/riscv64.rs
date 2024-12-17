@@ -1,5 +1,5 @@
 use crate::boot_info::init_boot_info;
-use crate::kernel::parse_inlined_kernel;
+use crate::kernel::{parse_kernel, INLINED_KERNEL_BYTES};
 use crate::machine_info::MachineInfo;
 use crate::page_alloc::PageAllocator;
 use crate::vm::{init_kernel_aspace, KernelAddressSpace};
@@ -13,7 +13,7 @@ use core::ptr::{addr_of, addr_of_mut};
 use core::{cmp, ptr, slice};
 use pmm::arch::PAGE_SIZE;
 use pmm::frame_alloc::BootstrapAllocator;
-use pmm::{arch, AddressSpace, Error};
+use pmm::{arch, AddressRangeExt, AddressSpace, Error};
 use pmm::{
     frame_alloc::{BuddyAllocator, FrameAllocator},
     Flush, PhysicalAddress, VirtualAddress,
@@ -112,7 +112,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             let (mut aspace, mut flush) =
                 AddressSpace::new(&mut frame_alloc, KERNEL_ASID, VirtualAddress::default())?;
 
-            let fdt_phys = allocate_and_copy_fdt(&minfo, &mut frame_alloc)?;
+            let fdt_phys = allocate_and_copy(&mut frame_alloc, minfo.fdt)?;
+            let kernel_phys = allocate_and_copy(&mut frame_alloc, &INLINED_KERNEL_BYTES.0)?;
 
             // Identity map the loader itself (this binary).
             //
@@ -147,7 +148,14 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
 
             // The kernel elf file is inlined into the loader executable as part of the build setup
             // which means we just need to parse it here.
-            let kernel = parse_inlined_kernel()?;
+            let kernel = parse_kernel(unsafe {
+                slice::from_ptr_range(
+                    kernel_phys
+                        .clone()
+                        .add(physmap.start.as_raw())
+                        .as_ptr_range(),
+                )
+            })?;
             // print the elf sections for debugging purposes
             log::debug!("\n{kernel}");
 
@@ -168,11 +176,11 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             let boot_info = init_boot_info(
                 frame_alloc,
                 hartid,
-                &kernel,
                 &kernel_aspace,
                 physmap.start,
                 fdt_phys,
                 self_regions.executable.start..self_regions.read_write.end,
+                kernel_phys,
             )?;
 
             Ok((kernel_aspace, VirtualAddress::new(boot_info as usize)))
@@ -361,20 +369,19 @@ pub fn map_physical_memory(
 /// # Errors
 ///
 /// Returns an error if allocation fails.
-pub fn allocate_and_copy_fdt(
-    machine_info: &MachineInfo,
+pub fn allocate_and_copy(
     frame_alloc: &mut dyn FrameAllocator,
+    src: &[u8],
 ) -> crate::Result<Range<PhysicalAddress>> {
-    let layout = Layout::from_size_align(machine_info.fdt.len(), PAGE_SIZE).unwrap();
+    let layout = Layout::from_size_align(src.len(), PAGE_SIZE).unwrap();
     let base = frame_alloc
         .allocate_contiguous(layout)
         .ok_or(Error::OutOfMemory)?;
-    log::trace!("Allocating space for FDT ({layout:?}) = {base:?}");
 
     unsafe {
-        let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, machine_info.fdt.len());
+        let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, src.len());
 
-        ptr::copy_nonoverlapping(machine_info.fdt.as_ptr(), dst.as_mut_ptr(), dst.len());
+        ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
     }
 
     Ok(base..base.add(layout.size()))
