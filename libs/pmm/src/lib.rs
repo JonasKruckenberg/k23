@@ -9,6 +9,7 @@ mod flush;
 pub mod frame_alloc;
 
 use core::fmt;
+use core::ops::Range;
 
 pub use address_space::AddressSpace;
 pub use error::Error;
@@ -206,5 +207,61 @@ impl fmt::Debug for PhysicalAddress {
         f.debug_tuple("PhysicalAddress")
             .field(&format_args!("{:#x}", self.0))
             .finish()
+    }
+}
+
+pub trait AddressRangeExt {
+    fn size(&self) -> usize;
+    #[must_use]
+    fn add(self, offset: usize) -> Self;
+    #[must_use]
+    fn as_ptr_range(&self) -> Range<*const u8>;
+    #[must_use]
+    fn as_mut_ptr_range(&self) -> Range<*mut u8>;
+    #[must_use]
+    fn align_in(self, align: usize) -> Self;
+    #[must_use]
+    fn align_out(self, align: usize) -> Self;
+}
+
+impl AddressRangeExt for Range<PhysicalAddress> {
+    fn size(&self) -> usize {
+        self.end.sub_addr(self.start)
+    }
+    fn add(self, offset: usize) -> Self {
+        self.start.add(offset)..self.end.add(offset)
+    }
+    fn as_ptr_range(&self) -> Range<*const u8> {
+        self.start.as_raw() as *const u8..self.end.as_raw() as *const u8
+    }
+    fn as_mut_ptr_range(&self) -> Range<*mut u8> {
+        self.start.as_raw() as *mut u8..self.end.as_raw() as *mut u8
+    }
+    fn align_in(self, align: usize) -> Self {
+        self.start.align_up(align)..self.end.align_down(align)
+    }
+    fn align_out(self, align: usize) -> Self {
+        self.start.align_down(align)..self.end.align_up(align)
+    }
+}
+
+impl AddressRangeExt for Range<VirtualAddress> {
+    fn size(&self) -> usize {
+        self.end.sub_addr(self.start)
+    }
+    fn add(self, offset: usize) -> Self {
+        self.start.add(offset)..self.end.add(offset)
+    }
+    fn as_ptr_range(&self) -> Range<*const u8> {
+        self.start.as_raw() as *const u8..self.end.as_raw() as *const u8
+    }
+    fn as_mut_ptr_range(&self) -> Range<*mut u8> {
+        self.start.as_raw() as *mut u8..self.end.as_raw() as *mut u8
+    }
+    fn align_in(self, align: usize) -> Self {
+        self.start.align_up(align)..self.end.align_down(align)
+    }
+    fn align_out(self, align: usize) -> Self {
+        self.start.align_down(align)..self.end.align_up(align)
     }
 }

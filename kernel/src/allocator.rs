@@ -1,5 +1,6 @@
 use loader_api::BootInfo;
 use talc::{ErrOnOom, Span, Talc, Talck};
+use pmm::AddressRangeExt;
 
 #[global_allocator]
 static KERNEL_ALLOCATOR: Talck<sync::RawMutex, ErrOnOom> = Talc::new(ErrOnOom).lock();
@@ -15,7 +16,7 @@ pub fn init(boot_info: &BootInfo) {
     let mut alloc = KERNEL_ALLOCATOR.lock();
     let span = Span::from_base_size(
         heap.start.as_raw() as *mut u8,
-        heap.end.sub_addr(heap.start),
+        heap.size()
     );
     unsafe {
         let old_heap = alloc.claim(span).unwrap();
