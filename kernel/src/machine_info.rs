@@ -68,6 +68,32 @@ impl MachineInfo<'_> {
     }
 }
 
+pub struct HartLocalMachineInfo {
+    /// The hartid of the current hart.
+    pub hartid: usize,
+    /// Timebase frequency in Hertz for the Hart.
+    pub timebase_frequency: usize,
+}
+
+impl HartLocalMachineInfo {
+    /// Parse the FDT blob and extract the machine information.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the `dtb_ptr` points to a valid FDT blob.
+    pub unsafe fn from_dtb(hartid: usize, dtb_ptr: *const u8) -> crate::Result<Self> {
+        let fdt = unsafe { DevTree::from_raw(dtb_ptr) }?;
+
+        let mut v = HartLocalMachineInfoVisitor::default();
+        fdt.visit(&mut v)?;
+
+        Ok(Self {
+            hartid,
+            timebase_frequency: v.cpus.timebase_frequency,
+        })
+    }
+}
+
 /*--------------------------------------------------------------------------------------------------
     visitors
 ---------------------------------------------------------------------------------------------------*/
@@ -110,9 +136,27 @@ impl<'dt> Visitor<'dt> for ChosenVisitor<'dt> {
 }
 
 #[derive(Default)]
+struct HartLocalMachineInfoVisitor {
+    cpus: CpusVisitor,
+}
+impl Visitor<'_> for HartLocalMachineInfoVisitor {
+    type Error = dtb_parser::Error;
+    fn visit_subnode(&mut self, name: &str, node: Node) -> Result<(), Self::Error> {
+        if name.is_empty() {
+            node.visit(self)?;
+        } else if name == "cpus" {
+            node.visit(&mut self.cpus)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Default)]
 struct CpusVisitor {
-    cpus: usize,
-    hart_mask: usize,
+    hartid: usize,
+    default_timebase_frequency: Option<usize>,
+    timebase_frequency: usize,
 }
 
 impl CpusVisitor {
@@ -125,16 +169,32 @@ impl<'dt> Visitor<'dt> for CpusVisitor {
     type Error = dtb_parser::Error;
 
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
-        if name.starts_with("cpu@") {
-            self.cpus += 1;
+        if let Some((_, str)) = name.split_once("cpu@") {
+            let hartid: usize = str.parse().expect("invalid hartid");
 
-            let mut v = self.cpu_visitor();
-            node.visit(&mut v)?;
-            let (hartid, enabled) = v.result();
-
-            if enabled {
-                self.hart_mask |= 1 << hartid;
+            if hartid == self.hartid {
+                let mut v = self.cpu_visitor();
+                node.visit(&mut v)?;
+                let timebase_frequency = v.result();
+                self.timebase_frequency = timebase_frequency
+                    .or(self.default_timebase_frequency)
+                    .expect("RISC-V system with no 'timebase-frequency' in FDT");
             }
+        }
+
+        Ok(())
+    }
+
+    fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
+        if name == "timebase-frequency" {
+            // timebase-frequency can either be 32 or 64 bits
+            // https://devicetree-specification.readthedocs.io/en/latest/chapter3-devicenodes.html#cpus-cpu-node-properties
+            let value = match value.len() {
+                4 => usize::try_from(u32::from_be_bytes(value.try_into()?))?,
+                8 => usize::try_from(u64::from_be_bytes(value.try_into()?))?,
+                _ => unreachable!(),
+            };
+            self.default_timebase_frequency = Some(value);
         }
 
         Ok(())
@@ -142,35 +202,29 @@ impl<'dt> Visitor<'dt> for CpusVisitor {
 }
 
 #[derive(Default)]
-struct CpuVisitor<'dt> {
-    status: Option<&'dt CStr>,
-    hartid: usize,
+struct CpuVisitor {
+    timebase_frequency: Option<usize>,
 }
 
-impl CpuVisitor<'_> {
-    fn result(self) -> (usize, bool) {
-        let enabled = self.status.unwrap() != c"disabled";
-
-        (self.hartid, enabled)
+impl CpuVisitor {
+    fn result(self) -> Option<usize> {
+        self.timebase_frequency
     }
 }
 
-impl<'dt> Visitor<'dt> for CpuVisitor<'dt> {
+impl<'dt> Visitor<'dt> for CpuVisitor {
     type Error = dtb_parser::Error;
 
-    fn visit_reg(&mut self, reg: &'dt [u8]) -> Result<(), Self::Error> {
-        self.hartid = match reg.len() {
-            4 => usize::try_from(u32::from_be_bytes(reg.try_into()?))?,
-            8 => usize::try_from(u64::from_be_bytes(reg.try_into()?))?,
-            _ => unreachable!(),
-        };
-
-        Ok(())
-    }
-
     fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
-        if name == "status" {
-            self.status = Some(CStr::from_bytes_until_nul(value)?);
+        if name == "timebase-frequency" {
+            // timebase-frequency can either be 32 or 64 bits
+            // https://devicetree-specification.readthedocs.io/en/latest/chapter3-devicenodes.html#cpus-cpu-node-properties
+            let value = match value.len() {
+                4 => usize::try_from(u32::from_be_bytes(value.try_into()?))?,
+                8 => usize::try_from(u64::from_be_bytes(value.try_into()?))?,
+                _ => unreachable!(),
+            };
+            self.timebase_frequency = Some(value);
         }
 
         Ok(())

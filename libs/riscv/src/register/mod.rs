@@ -9,6 +9,7 @@ pub mod sie;
 pub mod sstatus;
 pub mod stval;
 pub mod stvec;
+pub mod time;
 
 macro_rules! csr_base_and_read {
     ($ty_name: ident, $csr_name: literal) => {

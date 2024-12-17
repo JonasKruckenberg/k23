@@ -1,8 +1,9 @@
-use crate::machine_info::MachineInfo;
+use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use crate::{allocator, arch, vm, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_SIZE_PAGES};
 use core::{mem, slice};
 use loader_api::{LoaderConfig, MemoryRegionKind};
 use sync::OnceLock;
+use thread_local::declare_thread_local;
 
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = LoaderConfig::new_default();
@@ -13,6 +14,8 @@ const LOADER_CFG: LoaderConfig = {
 
 pub static BOOT_INFO: OnceLock<&'static loader_api::BootInfo> = OnceLock::new();
 pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
+
+declare_thread_local!(pub static HART_LOCAL_MACHINE_INFO: HartLocalMachineInfo);
 
 #[loader_api::entry(LOADER_CFG)]
 fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
@@ -59,6 +62,9 @@ fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
 fn begin_hart_init(hartid: usize, fdt: *const u8) -> crate::Result<()> {
     semihosting_logger::hartid::set(hartid);
     arch::trap_handler::init();
+
+    let minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt)? };
+    HART_LOCAL_MACHINE_INFO.initialize_with(minfo, |_, _| {});
 
     Ok(())
 }
