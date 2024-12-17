@@ -84,10 +84,6 @@ impl fmt::Display for MachineInfo<'_> {
             writeln!(f, "MEMORY REGION {:<4}: {}..{}", idx, r.start, r.end)?;
         }
 
-        // for (idx, r) in self.0.memory_regions().iter().enumerate() {
-        //     writeln!(f, "MEMORY REGION {}: {:#>10x?}", idx, r.range.start.as_raw()..r.range.end.as_raw())?;
-        // }
-
         Ok(())
     }
 }
@@ -103,7 +99,7 @@ impl<'dt> MachineInfo<'dt> {
         let mut reservations = fdt.reserved_entries();
         let fdt_slice = fdt.as_slice();
 
-        let mut v = BootInfoVisitor::default();
+        let mut v = MachineInfoVisitor::default();
         fdt.visit(&mut v).unwrap();
 
         let mut info = MachineInfo {
@@ -190,14 +186,14 @@ fn compare_memory_regions(a: &Range<PhysicalAddress>, b: &Range<PhysicalAddress>
     visitors
 ---------------------------------------------------------------------------------------------------*/
 #[derive(Default)]
-struct BootInfoVisitor<'dt> {
+struct MachineInfoVisitor<'dt> {
     cpus: CpusVisitor,
     memories: RegsVisitor,
     reservations: ReservationsVisitor<'dt>,
     chosen_visitor: ChosenVisitor<'dt>,
 }
 
-impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
+impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
     type Error = dtb_parser::Error;
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
         if name.is_empty() {

@@ -8,13 +8,6 @@ use dtb_parser::{DevTree, Node, Visitor};
 pub struct MachineInfo<'dt> {
     /// The FDT blob passed to us by the previous stage loader
     pub fdt: &'dt [u8],
-    /// The number of "standalone" CPUs in the system
-    pub cpus: usize,
-    /// A bitfield where each bit corresponds to a CPU in the system.
-    /// A `1` bit indicates the CPU is "online" and can be used,
-    ///     while a `0` bit indicates the CPU is "offline" and can't be used by the system.
-    /// This is used across SBI calls to dispatch IPIs to the correct CPUs.
-    pub hart_mask: usize,
     /// The boot arguments passed to us by the previous stage loader.
     pub bootargs: Option<&'dt CStr>,
     /// The RNG seed passed to us by the previous stage loader.
@@ -25,11 +18,32 @@ impl fmt::Debug for MachineInfo<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("MachineInfo")
             .field("fdt", &self.fdt.as_ptr_range())
-            .field("cpus", &self.cpus)
-            .field("hart_mask", &format_args!("{:b}", self.hart_mask))
             .field("bootargs", &self.bootargs)
             .field("rng_seed", &self.rng_seed)
             .finish()
+    }
+}
+
+impl fmt::Display for MachineInfo<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{:<20} : {:?}",
+            "DEVICE TREE BLOB",
+            self.fdt.as_ptr_range()
+        )?;
+        if let Some(bootargs) = self.bootargs {
+            writeln!(f, "{:<20} : {:?}", "BOOTARGS", bootargs)?;
+        } else {
+            writeln!(f, "{:<20} : None", "BOOTARGS")?;
+        }
+        if let Some(rng_seed) = self.rng_seed {
+            writeln!(f, "{:<20} : {:?}", "PRNG SEED", rng_seed)?;
+        } else {
+            writeln!(f, "{:<20} : None", "PRNG SEED")?;
+        }
+
+        Ok(())
     }
 }
 
@@ -43,13 +57,11 @@ impl MachineInfo<'_> {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }?;
         let fdt_slice = fdt.as_slice();
 
-        let mut v = BootInfoVisitor::default();
-        fdt.visit(&mut v).unwrap();
+        let mut v = MachineInfoVisitor::default();
+        fdt.visit(&mut v)?;
 
         Ok(MachineInfo {
             fdt: fdt_slice,
-            cpus: v.cpus.cpus,
-            hart_mask: v.cpus.hart_mask,
             bootargs: v.chosen_visitor.bootargs,
             rng_seed: v.chosen_visitor.rng_seed,
         })
@@ -60,18 +72,15 @@ impl MachineInfo<'_> {
     visitors
 ---------------------------------------------------------------------------------------------------*/
 #[derive(Default)]
-struct BootInfoVisitor<'dt> {
-    cpus: CpusVisitor,
+struct MachineInfoVisitor<'dt> {
     chosen_visitor: ChosenVisitor<'dt>,
 }
 
-impl<'dt> Visitor<'dt> for BootInfoVisitor<'dt> {
+impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
     type Error = dtb_parser::Error;
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
         if name.is_empty() {
             node.visit(self)?;
-        } else if name == "cpus" {
-            node.visit(&mut self.cpus)?;
         } else if name == "chosen" {
             node.visit(&mut self.chosen_visitor)?;
         }

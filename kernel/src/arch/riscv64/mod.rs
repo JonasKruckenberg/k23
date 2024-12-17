@@ -7,7 +7,7 @@ use riscv::{interrupt, sie, sstatus};
 
 pub use setjmp_longjmp::{longjmp, setjmp, JumpBuf};
 
-pub fn finish_processor_init() {
+pub fn finish_hart_init() {
     unsafe {
         interrupt::enable();
         sie::set_stie();
