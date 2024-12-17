@@ -1,8 +1,9 @@
-use crate::machine_info::MachineInfo;
+use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use crate::{allocator, arch, vm, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_SIZE_PAGES};
 use core::{mem, slice};
 use loader_api::{LoaderConfig, MemoryRegionKind};
 use sync::OnceLock;
+use thread_local::declare_thread_local;
 
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = LoaderConfig::new_default();
@@ -14,38 +15,33 @@ const LOADER_CFG: LoaderConfig = {
 pub static BOOT_INFO: OnceLock<&'static loader_api::BootInfo> = OnceLock::new();
 pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
 
+declare_thread_local!(pub static HART_LOCAL_MACHINE_INFO: HartLocalMachineInfo);
+
 #[loader_api::entry(LOADER_CFG)]
 fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
     panic_unwind::catch_unwind(|| {
-        pre_init_hart(hartid);
-
-        BOOT_INFO.get_or_init(|| boot_info);
-
-        MACHINE_INFO
-            .get_or_try_init(|| -> crate::Result<_> {
-                let fdt = unsafe {
-                    slice::from_raw_parts(boot_info.memory_regions, boot_info.memory_regions_len)
-                }
+        let fdt = unsafe {
+            let fdt = slice::from_raw_parts(boot_info.memory_regions, boot_info.memory_regions_len)
                 .iter()
                 .find(|region| region.kind == MemoryRegionKind::FDT)
                 .expect("no FDT region");
 
-                let minfo = unsafe {
-                    MachineInfo::from_dtb(
-                        boot_info
-                            .physical_memory_offset
-                            .add(fdt.range.start.as_raw())
-                            .as_raw() as *const u8,
-                    )?
-                };
+            boot_info
+                .physical_memory_offset
+                .add(fdt.range.start.as_raw())
+                .as_raw() as *const u8
+        };
 
-                init(boot_info, &minfo);
+        begin_hart_init(hartid, fdt).unwrap();
 
-                Ok(minfo)
-            })
-            .unwrap();
+        BOOT_INFO.get_or_init(|| {
+            // reuse OnceLock for one-time initialization
+            init(boot_info, fdt).unwrap();
 
-        post_init_hart();
+            boot_info
+        });
+
+        finish_hart_init();
     })
     .unwrap_or_else(|e| {
         mem::forget(e);
@@ -63,12 +59,17 @@ fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
     })
 }
 
-fn pre_init_hart(hartid: usize) {
+fn begin_hart_init(hartid: usize, fdt: *const u8) -> crate::Result<()> {
     semihosting_logger::hartid::set(hartid);
-    // setup trap handler
+    arch::trap_handler::init();
+
+    let minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt)? };
+    HART_LOCAL_MACHINE_INFO.initialize_with(minfo, |_, _| {});
+
+    Ok(())
 }
 
-fn init(boot_info: &'static loader_api::BootInfo, minfo: &MachineInfo) {
+fn init(boot_info: &'static loader_api::BootInfo, fdt: *const u8) -> crate::Result<()> {
     semihosting_logger::init(LOG_LEVEL.to_level_filter());
 
     log::debug!("\n{boot_info}");
@@ -76,8 +77,11 @@ fn init(boot_info: &'static loader_api::BootInfo, minfo: &MachineInfo) {
     log::debug!("Setting up kernel heap...");
     allocator::init(boot_info);
 
+    let minfo = MACHINE_INFO.get_or_try_init(|| unsafe { MachineInfo::from_dtb(fdt) })?;
+    log::trace!("\n{minfo}");
+
     log::debug!("Setting up kernel virtual address space...");
-    vm::init(boot_info, minfo);
+    vm::init(boot_info, minfo)?;
 
     // panic_unwind::set_hook(Box::new(|info| {
     //     let location = info.location();
@@ -104,8 +108,10 @@ fn init(boot_info: &'static loader_api::BootInfo, minfo: &MachineInfo) {
     // }));
 
     log::info!("Welcome to k23 {}", env!("CARGO_PKG_VERSION"));
+
+    Ok(())
 }
 
-fn post_init_hart() {
-    // enable interrupts
+fn finish_hart_init() {
+    arch::finish_hart_init()
 }

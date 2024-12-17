@@ -25,7 +25,7 @@ use wavltree::{Entry, Side};
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 
-pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
+pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let mut frame_alloc = unsafe {
             let usable_regions = boot_info
@@ -43,12 +43,10 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) {
         let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
         let mut aspace = AddressSpace::new(arch, frame_alloc, prng);
 
-        // let kernel_heap_spot =
-        //     aspace.find_spot(Layout::from_size_align(3 * MIB, 4096).unwrap(), 27);
-        // log::trace!("kernel heap spot: {kernel_heap_spot:?}");
-
         Ok(Mutex::new(aspace))
-    });
+    })?;
+
+    Ok(())
 }
 
 pub struct AddressSpace {
