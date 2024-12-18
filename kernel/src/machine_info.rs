@@ -15,6 +15,7 @@ pub struct MachineInfo<'dt> {
     pub bootargs: Option<&'dt CStr>,
     /// The RNG seed passed to us by the previous stage loader.
     pub rng_seed: Option<&'dt [u8]>,
+    /// The MMIO region of the real-time clock device.
     pub rtc: Option<Range<PhysicalAddress>>,
 }
 
