@@ -259,8 +259,11 @@ impl<const MAX_ORDER: usize> FrameAllocator for BuddyAllocator<MAX_ORDER> {
     }
 }
 
-#[derive(Default)]
+pub const FREE_AREA_MAGIC: u32 = u32::from_le_bytes(*b"bddy");
+
+#[repr(C)]
 struct FreeArea {
+    _magic: u32,
     links: linked_list::Links<FreeArea>,
 }
 
@@ -278,8 +281,13 @@ impl FreeArea {
         phys_offset: VirtualAddress,
     ) -> Pin<Unique<Self>> {
         let ptr = &mut *(phys_offset.add(addr.as_raw()).as_raw() as *mut MaybeUninit<Self>);
-        let this = ptr.write(FreeArea::default());
-
+        
+        let this = if *ptr.as_ptr().cast::<u32>() == FREE_AREA_MAGIC {
+            ptr.assume_init_mut()
+        } else { 
+            ptr.write(FreeArea { _magic: FREE_AREA_MAGIC, links: Default::default() })
+        };
+        
         Unique::from(this).into_pin()
     }
 
