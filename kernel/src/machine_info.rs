@@ -281,7 +281,7 @@ impl<'dt> Visitor<'dt> for SocVisitor {
 
 #[derive(Default, Debug)]
 struct RtcVisitor {
-    regs: RegsVisitor
+    regs: RegsVisitor,
 }
 
 impl<'dt> Visitor<'dt> for RtcVisitor {

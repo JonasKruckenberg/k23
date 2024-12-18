@@ -150,9 +150,9 @@ impl fmt::Debug for Instant {
 
 impl SystemTime {
     pub fn now() -> Self {
-        // Only device supported right now is "google,goldfish-rtc" 
+        // Only device supported right now is "google,goldfish-rtc"
         // https://android.googlesource.com/platform/external/qemu/+/master/docs/GOLDFISH-VIRTUAL-HARDWARE.TXT
-        
+
         let rtc = MACHINE_INFO.get().unwrap().rtc.as_ref().unwrap();
         let time_ns = unsafe {
             let time_low = AtomicPtr::new(rtc.start.as_raw() as *mut u32);
