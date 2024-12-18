@@ -1,6 +1,7 @@
+use crate::time::Instant;
 use crate::{arch, TRAP_STACK_SIZE_PAGES};
 use core::arch::{asm, naked_asm};
-use riscv::scause::{Exception, Trap};
+use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{scause, sepc, sstatus, stval, stvec};
 use thread_local::declare_thread_local;
 
@@ -230,6 +231,11 @@ fn default_trap_handler(
 
             log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
             unsafe { sepc::write(trap_panic_trampoline as usize) }
+        }
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            // just clear the timer interrupt when it happens for now, this is required to make the
+            // tests in the `time` module work
+            riscv::sbi::time::set_timer(u64::MAX);
         }
         _ => {
             unsafe { sepc::write(trap_panic_trampoline as usize) }
