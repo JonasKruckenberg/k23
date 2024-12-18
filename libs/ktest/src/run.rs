@@ -29,7 +29,8 @@ extern "Rust" fn kmain(_hartid: usize, boot_info: &'static loader_api::BootInfo)
     let machine_info = unsafe {
         MachineInfo::from_dtb(
             boot_info
-                .physical_memory_offset
+                .physical_memory_map
+                .start
                 .add(fdt.range.start.as_raw())
                 .as_raw() as *const u8,
         )

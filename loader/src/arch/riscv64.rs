@@ -177,7 +177,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 frame_alloc,
                 hartid,
                 &kernel_aspace,
-                physmap.start,
+                physmap,
                 fdt_phys,
                 self_regions.executable.start..self_regions.read_write.end,
                 kernel_phys,
