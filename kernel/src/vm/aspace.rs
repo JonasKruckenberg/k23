@@ -60,6 +60,7 @@ impl AddressSpace {
         // the address wasn't in the last fault range, so we need to look it up
         // and update the last fault range
         if let Some(mapping) = self.find_mapping(virt) {
+            // TODO actually update self.last_fault here
             mapping.page_fault(virt, flags)
         } else {
             log::trace!("page fault at unmapped address {virt}");
