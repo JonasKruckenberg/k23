@@ -17,6 +17,7 @@ pub mod arch;
 mod error;
 pub mod machine_info;
 mod start;
+pub mod time;
 pub mod vm;
 // mod tests;
 
