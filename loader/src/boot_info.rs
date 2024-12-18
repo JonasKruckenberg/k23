@@ -8,6 +8,7 @@ use pmm::{arch, Error, PhysicalAddress, VirtualAddress};
 pub fn init_boot_info(
     mut frame_alloc: BootstrapAllocator,
     boot_hart: usize,
+    hart_mask: usize,
     kernel_aspace: &KernelAddressSpace,
     physical_memory_map: Range<VirtualAddress>,
     fdt_phys: Range<PhysicalAddress>,
@@ -28,6 +29,7 @@ pub fn init_boot_info(
     unsafe {
         boot_info.write(BootInfo::new(
             boot_hart,
+            hart_mask,
             physical_memory_map,
             kernel_aspace.kernel_virt.clone(),
             memory_regions,
@@ -41,6 +43,11 @@ pub fn init_boot_info(
                     ..VirtualAddress::new(loader_phys.end.as_raw())
             },
             kernel_aspace.heap_virt.clone(),
+            kernel_aspace.stacks_virt.clone(),
+            kernel_aspace
+                .maybe_tls_allocation
+                .as_ref()
+                .map(|tls| tls.total_region().clone()),
             kernel_phys,
         ));
     }

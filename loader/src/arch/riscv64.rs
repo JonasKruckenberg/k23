@@ -176,6 +176,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             let boot_info = init_boot_info(
                 frame_alloc,
                 hartid,
+                minfo.hart_mask,
                 &kernel_aspace,
                 physmap,
                 fdt_phys,

@@ -10,6 +10,7 @@ use pmm::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub struct BootInfo {
     /// The hart that booted the machine, for debugging purposes
     pub boot_hart: usize,
+    pub hart_mask: usize,
     /// A map of the physical memory regions of the underlying machine.
     ///
     /// The bootloader queries this information from the BIOS/UEFI firmware and translates this
@@ -48,6 +49,8 @@ pub struct BootInfo {
     /// Note that this is **not** mapped, as the kernel should map
     /// this region on-demand.
     pub heap_region: Option<Range<VirtualAddress>>,
+    pub stacks_region: Range<VirtualAddress>,
+    pub tls_region: Option<Range<VirtualAddress>>,
     /// Virtual address of the loaded kernel image.
     pub kernel_virt: Range<VirtualAddress>,
     /// Physical memory region where the kernel ELF file resides.
@@ -63,6 +66,7 @@ impl BootInfo {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         boot_hart: usize,
+        hart_mask: usize,
         physical_memory_map: Range<VirtualAddress>,
         kernel_virt: Range<VirtualAddress>,
         memory_regions: *const MemoryRegion,
@@ -70,10 +74,13 @@ impl BootInfo {
         tls_template: Option<TlsTemplate>,
         loader_region: Range<VirtualAddress>,
         heap_region: Option<Range<VirtualAddress>>,
+        stacks_region: Range<VirtualAddress>,
+        tls_region: Option<Range<VirtualAddress>>,
         kernel_elf: Range<PhysicalAddress>,
     ) -> Self {
         Self {
             boot_hart,
+            hart_mask,
             physical_memory_map,
             memory_regions,
             memory_regions_len,
@@ -81,6 +88,8 @@ impl BootInfo {
             kernel_virt,
             loader_region,
             heap_region,
+            stacks_region,
+            tls_region,
             kernel_elf,
         }
     }
