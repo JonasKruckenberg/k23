@@ -17,10 +17,12 @@ pub mod arch;
 mod error;
 pub mod machine_info;
 mod start;
+pub mod time;
 pub mod vm;
 // mod tests;
 
 pub use error::Error;
+pub use start::{BOOT_INFO, HART_LOCAL_MACHINE_INFO, MACHINE_INFO};
 pub type Result<T> = core::result::Result<T, Error>;
 
 /// The log level for the kernel
