@@ -1,7 +1,10 @@
+use alloc::vec::Vec;
 use core::ffi::CStr;
 use core::fmt;
 use core::fmt::Formatter;
-use dtb_parser::{DevTree, Node, Visitor};
+use core::ops::Range;
+use dtb_parser::{DevTree, Node, Strings, Visitor};
+use pmm::PhysicalAddress;
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
@@ -12,6 +15,7 @@ pub struct MachineInfo<'dt> {
     pub bootargs: Option<&'dt CStr>,
     /// The RNG seed passed to us by the previous stage loader.
     pub rng_seed: Option<&'dt [u8]>,
+    pub rtc: Option<Range<PhysicalAddress>>,
 }
 
 impl fmt::Debug for MachineInfo<'_> {
@@ -28,19 +32,28 @@ impl fmt::Display for MachineInfo<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{:<20} : {:?}",
+            "{:<22} : {:?}",
             "DEVICE TREE BLOB",
             self.fdt.as_ptr_range()
         )?;
         if let Some(bootargs) = self.bootargs {
-            writeln!(f, "{:<20} : {:?}", "BOOTARGS", bootargs)?;
+            writeln!(f, "{:<22} : {:?}", "BOOTARGS", bootargs)?;
         } else {
-            writeln!(f, "{:<20} : None", "BOOTARGS")?;
+            writeln!(f, "{:<22} : None", "BOOTARGS")?;
         }
         if let Some(rng_seed) = self.rng_seed {
-            writeln!(f, "{:<20} : {:?}", "PRNG SEED", rng_seed)?;
+            writeln!(f, "{:<22} : {:?}", "PRNG SEED", rng_seed)?;
         } else {
-            writeln!(f, "{:<20} : None", "PRNG SEED")?;
+            writeln!(f, "{:<22} : None", "PRNG SEED")?;
+        }
+        if let Some(rtc) = &self.rtc {
+            writeln!(
+                f,
+                "{:<22} : {}..{}",
+                "REAL-TIME CLOCK DEVICE", rtc.start, rtc.end
+            )?;
+        } else {
+            writeln!(f, "{:<22} : None", "REAL-TIME CLOCK DEVICE")?;
         }
 
         Ok(())
@@ -64,6 +77,7 @@ impl MachineInfo<'_> {
             fdt: fdt_slice,
             bootargs: v.chosen_visitor.bootargs,
             rng_seed: v.chosen_visitor.rng_seed,
+            rtc: v.soc_visitor.rtc.regs.regs.first().cloned(),
         })
     }
 }
@@ -100,6 +114,7 @@ impl HartLocalMachineInfo {
 #[derive(Default)]
 struct MachineInfoVisitor<'dt> {
     chosen_visitor: ChosenVisitor<'dt>,
+    soc_visitor: SocVisitor,
 }
 
 impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
@@ -109,6 +124,8 @@ impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
             node.visit(self)?;
         } else if name == "chosen" {
             node.visit(&mut self.chosen_visitor)?;
+        } else if name == "soc" {
+            node.visit(&mut self.soc_visitor)?;
         }
 
         Ok(())
@@ -225,6 +242,85 @@ impl<'dt> Visitor<'dt> for CpuVisitor {
                 _ => unreachable!(),
             };
             self.timebase_frequency = Some(value);
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Default, Debug)]
+struct SocVisitor {
+    rtc: RtcVisitor,
+}
+impl<'dt> Visitor<'dt> for SocVisitor {
+    type Error = dtb_parser::Error;
+
+    fn visit_address_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
+        let size_in_bytes = size_in_cells as usize * size_of::<u32>();
+
+        self.rtc.regs.address_size = size_in_bytes;
+
+        Ok(())
+    }
+
+    fn visit_size_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
+        let size_in_bytes = size_in_cells as usize * size_of::<u32>();
+
+        self.rtc.regs.width_size = size_in_bytes;
+
+        Ok(())
+    }
+
+    fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
+        if name.starts_with("rtc@") {
+            node.visit(&mut self.rtc)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Default, Debug)]
+struct RtcVisitor {
+    regs: RegsVisitor
+}
+
+impl<'dt> Visitor<'dt> for RtcVisitor {
+    type Error = dtb_parser::Error;
+    fn visit_reg(&mut self, reg: &'dt [u8]) -> Result<(), Self::Error> {
+        self.regs.visit_reg(reg)
+    }
+    fn visit_compatible(&mut self, mut strings: Strings<'dt>) -> Result<(), Self::Error> {
+        let s = strings.next()?.unwrap();
+        assert_eq!(s, "google,goldfish-rtc");
+        Ok(())
+    }
+}
+
+#[derive(Default, Debug)]
+struct RegsVisitor {
+    address_size: usize,
+    width_size: usize,
+    regs: Vec<Range<PhysicalAddress>>,
+}
+
+impl<'dt> Visitor<'dt> for RegsVisitor {
+    type Error = dtb_parser::Error;
+
+    fn visit_reg(&mut self, mut reg: &'dt [u8]) -> Result<(), Self::Error> {
+        debug_assert_ne!(self.address_size, 0);
+        debug_assert_ne!(self.width_size, 0);
+
+        while !reg.is_empty() {
+            let (start, rest) = reg.split_at(self.address_size);
+            let (width, rest) = rest.split_at(self.width_size);
+            reg = rest;
+
+            let start = usize::from_be_bytes(start.try_into()?);
+            let width = usize::from_be_bytes(width.try_into()?);
+
+            let start = PhysicalAddress::new(start);
+
+            self.regs.push(start..start.add(width));
         }
 
         Ok(())

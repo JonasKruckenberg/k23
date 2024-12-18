@@ -1,5 +1,9 @@
+//! Support for time-related functionality. This module mirrors Rusts `std::time` module.
+
+use crate::MACHINE_INFO;
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
+use core::sync::atomic::{AtomicPtr, Ordering};
 use core::time::Duration;
 
 pub const UNIX_EPOCH: SystemTime = SystemTime(Duration::ZERO);
@@ -11,6 +15,14 @@ const NANOS_PER_SEC: u64 = 1_000_000_000;
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Instant(Duration);
 
+/// A measurement of the system clock
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SystemTime(Duration);
+
+/// An error returned from the `duration_since` and `elapsed` methods on
+/// `SystemTime`, used to learn how far in the opposite direction a system time
+/// lies.
+#[derive(Clone, Debug)]
 pub struct SystemTimeError(Duration);
 
 impl Instant {
@@ -136,6 +148,121 @@ impl fmt::Debug for Instant {
     }
 }
 
+impl SystemTime {
+    pub fn now() -> Self {
+        // Only device supported right now is "google,goldfish-rtc" 
+        // https://android.googlesource.com/platform/external/qemu/+/master/docs/GOLDFISH-VIRTUAL-HARDWARE.TXT
+        
+        let rtc = MACHINE_INFO.get().unwrap().rtc.as_ref().unwrap();
+        let time_ns = unsafe {
+            let time_low = AtomicPtr::new(rtc.start.as_raw() as *mut u32);
+            let time_high = AtomicPtr::new(rtc.start.add(0x04).as_raw() as *mut u32);
+
+            let low = time_low.load(Ordering::Relaxed).read_volatile();
+            let high = time_high.load(Ordering::Relaxed).read_volatile();
+
+            ((high as u64) << 32) | low as u64
+        };
+
+        SystemTime(Duration::new(
+            time_ns / NANOS_PER_SEC,
+            (time_ns % NANOS_PER_SEC) as u32,
+        ))
+    }
+    pub fn duration_since(&self, earlier: SystemTime) -> Result<Duration, SystemTimeError> {
+        if self >= &earlier {
+            Ok(self.0 - earlier.0)
+        } else {
+            Err(SystemTimeError(earlier.0 - self.0))
+        }
+    }
+    pub fn elapsed(&self) -> Result<Duration, SystemTimeError> {
+        SystemTime::now().duration_since(*self)
+    }
+    pub fn checked_add(&self, duration: Duration) -> Option<SystemTime> {
+        self.0.checked_add(duration).map(SystemTime)
+    }
+    pub fn checked_sub(&self, duration: Duration) -> Option<SystemTime> {
+        self.0.checked_sub(duration).map(SystemTime)
+    }
+}
+
+impl Add<Duration> for SystemTime {
+    type Output = SystemTime;
+
+    /// # Panics
+    ///
+    /// This function may panic if the resulting point in time cannot be represented by the
+    /// underlying data structure. See [`SystemTime::checked_add`] for a version without panic.
+    fn add(self, dur: Duration) -> SystemTime {
+        self.checked_add(dur)
+            .expect("overflow when adding duration to instant")
+    }
+}
+
+impl AddAssign<Duration> for SystemTime {
+    fn add_assign(&mut self, other: Duration) {
+        *self = *self + other;
+    }
+}
+
+impl Sub<Duration> for SystemTime {
+    type Output = SystemTime;
+
+    fn sub(self, dur: Duration) -> SystemTime {
+        self.checked_sub(dur)
+            .expect("overflow when subtracting duration from instant")
+    }
+}
+
+impl SubAssign<Duration> for SystemTime {
+    fn sub_assign(&mut self, other: Duration) {
+        *self = *self - other;
+    }
+}
+
+impl fmt::Debug for SystemTime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl SystemTimeError {
+    /// Returns the positive duration which represents how far forward the
+    /// second system time was from the first.
+    ///
+    /// A `SystemTimeError` is returned from the [`SystemTime::duration_since`]
+    /// and [`SystemTime::elapsed`] methods whenever the second system time
+    /// represents a point later in time than the `self` of the method call.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::thread::sleep;
+    /// use std::time::{Duration, SystemTime};
+    ///
+    /// let sys_time = SystemTime::now();
+    /// sleep(Duration::from_secs(1));
+    /// let new_sys_time = SystemTime::now();
+    /// match sys_time.duration_since(new_sys_time) {
+    ///     Ok(_) => {}
+    ///     Err(e) => println!("SystemTimeError difference: {:?}", e.duration()),
+    /// }
+    /// ```
+    #[must_use]
+    pub fn duration(&self) -> Duration {
+        self.0
+    }
+}
+
+impl core::error::Error for SystemTimeError {}
+
+impl fmt::Display for SystemTimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "second time provided was later than self")
+    }
+}
+
 fn ticks_to_duration(ticks: u64, timebase_freq: u64) -> Duration {
     let secs = ticks / timebase_freq;
     let subsec_nanos = ((ticks % timebase_freq) * NANOS_PER_SEC / timebase_freq) as u32;
@@ -171,3 +298,5 @@ mod tests {
         log::trace!("Time elapsed: {elapsed:?}");
 
         assert_eq!(elapsed.as_secs(), 1);
+    }
+}

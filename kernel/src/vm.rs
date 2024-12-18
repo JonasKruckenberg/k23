@@ -37,7 +37,21 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
             BuddyAllocator::from_iter(usable_regions, boot_info.physical_memory_offset)
         };
 
-        let arch = arch::vm::init(boot_info, &mut frame_alloc)?;
+        let mut arch = arch::vm::init(boot_info, &mut frame_alloc)?;
+
+        if let Some(rtc) = &minfo.rtc {
+            let mut flush = Flush::empty(0);
+            arch.map_contiguous(
+                &mut frame_alloc,
+                VirtualAddress::new(rtc.start.as_raw()),
+                rtc.start,
+                NonZeroUsize::new(rtc.size()).unwrap(),
+                pmm::Flags::READ | pmm::Flags::WRITE,
+                &mut flush,
+            )?;
+            flush.flush()?;
+        }
+
         // log::trace!("\n{arch}");
 
         let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
