@@ -334,6 +334,7 @@ dependencies = [
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "cfg-if",
  "dtb-parser",
  "ktest",
@@ -352,6 +353,7 @@ dependencies = [
  "thread-local",
  "wast",
  "wavltree",
+ "xmas-elf",
 ]
 
 [[package]]

@@ -494,6 +494,10 @@ pub struct TlsAllocation {
 }
 
 impl TlsAllocation {
+    pub fn total_region(&self) -> &Range<VirtualAddress> {
+        &self.virt
+    }
+
     pub fn region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
         let start = self.virt.start.add(self.per_hart_size * hartid);
 
