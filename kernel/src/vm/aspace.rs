@@ -1,20 +1,20 @@
-use pmm::frame_alloc::BuddyAllocator;
-use rand_chacha::ChaCha20Rng;
-use core::ptr::NonNull;
-use core::pin::Pin;
-use core::ops::Range;
-use alloc::string::String;
+use crate::vm::mapping::Mapping;
+use crate::vm::PageFaultFlags;
+use crate::Error;
 use alloc::boxed::Box;
+use alloc::string::String;
 use core::alloc::Layout;
 use core::cmp;
 use core::num::{NonZero, NonZeroUsize};
+use core::ops::Range;
+use core::pin::Pin;
+use core::ptr::NonNull;
+use pmm::frame_alloc::BuddyAllocator;
 use pmm::{arch, AddressRangeExt, Flush, VirtualAddress};
 use rand::distributions::Uniform;
 use rand::Rng;
+use rand_chacha::ChaCha20Rng;
 use wavltree::Entry;
-use crate::Error;
-use crate::vm::mapping::Mapping;
-use crate::vm::PageFaultFlags;
 
 pub struct AddressSpace {
     pub tree: wavltree::WAVLTree<Mapping>,
@@ -47,6 +47,8 @@ impl AddressSpace {
 
         let virt = virt.align_down(arch::PAGE_SIZE);
 
+        // check if the address is within the last fault range
+        // if so, we can save ourselves a tree lookup
         if let Some(mut last_fault) = self.last_fault {
             let last_fault = unsafe { Pin::new_unchecked(last_fault.as_mut()) };
 
@@ -55,6 +57,8 @@ impl AddressSpace {
             }
         }
 
+        // the address wasn't in the last fault range, so we need to look it up
+        // and update the last fault range
         if let Some(mapping) = self.find_mapping(virt) {
             mapping.page_fault(virt, flags)
         } else {
@@ -64,13 +68,9 @@ impl AddressSpace {
     }
 
     fn find_mapping(&mut self, virt: VirtualAddress) -> Option<Pin<&mut Mapping>> {
-        for mapping in self.tree.range_mut(virt..virt) {
-            if mapping.range.contains(&virt) {
-                return Some(mapping);
-            }
-        }
-
-        None
+        self.tree
+            .range_mut(virt..virt)
+            .find(|mapping| mapping.range.contains(&virt))
     }
 
     pub fn access_fault(&mut self, addr: VirtualAddress) -> crate::Result<()> {
@@ -119,21 +119,21 @@ impl AddressSpace {
     pub fn unmap(&mut self, range: Range<VirtualAddress>) {
         let mut iter = self.tree.range_mut(range.clone());
         let mut flush = Flush::empty(self.arch.asid());
-    
+
         while let Some(mapping) = iter.next() {
             log::trace!("{mapping:?}");
             let base = cmp::max(mapping.range.start, range.start);
             let len = cmp::min(mapping.range.end, range.end).sub_addr(base);
-    
+
             if range.start <= mapping.range.start && range.end >= mapping.range.end {
                 // this mappings range is entirely contained within `range`, so we need
                 // fully remove the mapping from the tree
                 // TODO verify if this absolutely insane code is actually any good
-    
+
                 let ptr = NonNull::from(mapping.get_mut());
                 let mut cursor = unsafe { iter.tree().cursor_mut_from_ptr(ptr) };
                 let mapping = cursor.remove().unwrap();
-    
+
                 self.arch
                     .unmap(
                         &mut self.frame_alloc,
@@ -147,10 +147,13 @@ impl AddressSpace {
                 // need to split the range in two
                 let mapping = mapping.project();
                 let left = mapping.range.start..range.start;
-    
+
                 mapping.range.start = range.end;
-                iter.tree()
-                    .insert(Box::pin(Mapping::new(left, *mapping.flags)));
+                iter.tree().insert(Box::pin(Mapping::new(
+                    left,
+                    *mapping.flags,
+                    mapping.name.clone(),
+                )));
             } else if range.start > mapping.range.start {
                 // `range` is mostly past this mappings range, but overlaps partially
                 // we need adjust the ranges end
@@ -164,7 +167,7 @@ impl AddressSpace {
             } else {
                 unreachable!()
             }
-    
+
             log::trace!("decommit {base:?}..{:?}", base.add(len));
             self.arch
                 .unmap(
@@ -175,10 +178,10 @@ impl AddressSpace {
                 )
                 .unwrap();
         }
-    
+
         flush.flush().unwrap();
     }
-    
+
     // behaviour:
     //  - `range` must be fully mapped
     //  - `new_flags` must be a subset of the current mappings flags (permissions can only be reduced)
@@ -187,9 +190,9 @@ impl AddressSpace {
     //  - if old and new flags are the same protect is a no-op
     pub fn protect(&mut self, range: Range<VirtualAddress>, new_flags: pmm::Flags) {
         let iter = self.tree.range(range.clone());
-    
+
         assert!(!range.is_empty());
-    
+
         // check whether part of the range is not mapped, or the new flags are invalid for some mapping
         // in the range. If so, we need to terminate before actually materializing any changes
         let mut bytes_checked = 0;
@@ -198,22 +201,22 @@ impl AddressSpace {
             bytes_checked += mapping.range.size();
         }
         assert_eq!(bytes_checked, range.size());
-    
+
         // at this point we know the operation is valid, so can start updating the mappings
         let mut iter = self.tree.range_mut(range.clone());
         let mut flush = Flush::empty(self.arch.asid());
-    
+
         while let Some(mapping) = iter.next() {
             // If the old and new flags are the same, nothing need to be materialized
             if mapping.flags == new_flags {
                 continue;
             }
-    
+
             if new_flags.is_empty() {
                 let ptr = NonNull::from(mapping.get_mut());
                 let mut cursor = unsafe { iter.tree().cursor_mut_from_ptr(ptr) };
                 let mapping = cursor.remove().unwrap();
-    
+
                 self.arch
                     .unmap(
                         &mut self.frame_alloc,
@@ -226,16 +229,16 @@ impl AddressSpace {
                 let base = cmp::max(mapping.range.start, range.start);
                 let len = NonZeroUsize::new(cmp::min(mapping.range.end, range.end).sub_addr(base))
                     .unwrap();
-    
+
                 self.arch.protect(base, len, new_flags, &mut flush).unwrap();
                 *mapping.project().flags = new_flags;
             }
         }
-    
+
         // synchronize the changes
         flush.flush().unwrap();
     }
-    
+
     // pub fn commit(&mut self, range: Range<VirtualAddress>) {
     //     todo!()
     // }

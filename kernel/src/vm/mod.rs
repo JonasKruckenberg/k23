@@ -3,8 +3,9 @@
 use crate::machine_info::MachineInfo;
 use crate::{arch, STACK_SIZE_PAGES};
 use alloc::borrow::ToOwned;
-use alloc::string::ToString;
 use alloc::format;
+use alloc::string::ToString;
+use aspace::AddressSpace;
 use core::alloc::Layout;
 use core::ops::{Add, Range};
 use core::slice;
@@ -15,10 +16,9 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sync::{Mutex, OnceLock};
 use xmas_elf::program::Type;
-use aspace::AddressSpace;
 
-mod mapping;
 mod aspace;
+mod mapping;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 
@@ -71,7 +71,11 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) {
 
     // reserve the allocated initial heap region
     if let Some(heap) = &boot_info.heap_region {
-        aspace.reserve(heap.to_owned(), pmm::Flags::READ | pmm::Flags::WRITE, "Kernel Heap".to_string());
+        aspace.reserve(
+            heap.to_owned(),
+            pmm::Flags::READ | pmm::Flags::WRITE,
+            "Kernel Heap".to_string(),
+        );
     }
 
     // reserve the stack for each hart
@@ -93,7 +97,11 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) {
 
     // reserve the TLS region if present
     if let Some(tls) = &boot_info.tls_region {
-        aspace.reserve(tls.to_owned(), pmm::Flags::READ | pmm::Flags::WRITE, "Kernel TLS".to_string());
+        aspace.reserve(
+            tls.to_owned(),
+            pmm::Flags::READ | pmm::Flags::WRITE,
+            "Kernel TLS".to_string(),
+        );
     }
 
     let own_elf = unsafe {
@@ -133,11 +141,15 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) {
             ph.virtual_addr() + ph.mem_size()
         );
 
-        aspace.reserve(virt..virt.add(ph.mem_size() as usize), mmu_flags, format!("Kernel {ty:?}"));
+        aspace.reserve(
+            virt..virt.add(ph.mem_size() as usize),
+            mmu_flags,
+            format!("Kernel {ty:?}"),
+        );
     }
 }
 
-trait VMO {
+trait Vmo {
     // Returns true if the object is backed by a contiguous range of physical
     // memory.
     fn is_contiguous() -> bool;

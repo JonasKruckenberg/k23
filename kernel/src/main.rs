@@ -5,6 +5,6 @@
 extern crate kernel as _;
 
 #[no_mangle]
-extern "Rust" fn kmain(_hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
+extern "Rust" fn kmain(_hartid: usize, _boot_info: &'static loader_api::BootInfo) -> ! {
     kernel::arch::exit(0);
 }
