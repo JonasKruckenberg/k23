@@ -281,13 +281,16 @@ impl FreeArea {
         phys_offset: VirtualAddress,
     ) -> Pin<Unique<Self>> {
         let ptr = &mut *(phys_offset.add(addr.as_raw()).as_raw() as *mut MaybeUninit<Self>);
-        
+
         let this = if *ptr.as_ptr().cast::<u32>() == FREE_AREA_MAGIC {
             ptr.assume_init_mut()
-        } else { 
-            ptr.write(FreeArea { _magic: FREE_AREA_MAGIC, links: Default::default() })
+        } else {
+            ptr.write(FreeArea {
+                _magic: FREE_AREA_MAGIC,
+                links: Default::default(),
+            })
         };
-        
+
         Unique::from(this).into_pin()
     }
 
