@@ -13,7 +13,7 @@ use core::ops::Range;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{cmp, fmt};
-use loader_api::BootInfo;
+use loader_api::{BootInfo, MemoryRegionKind};
 use pin_project_lite::pin_project;
 use pmm::frame_alloc::{BuddyAllocator, FrameUsage};
 use pmm::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress, MIB};
@@ -34,7 +34,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
                 .filter(|region| region.kind.is_usable())
                 .map(|region| region.range.clone());
 
-            BuddyAllocator::from_iter(usable_regions, boot_info.physical_memory_offset)
+            BuddyAllocator::from_iter(usable_regions, boot_info.physical_memory_map.start)
         };
 
         let arch = arch::vm::init(boot_info, &mut frame_alloc)?;
@@ -43,6 +43,11 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
         let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
         let mut aspace = AddressSpace::new(arch, frame_alloc, prng);
 
+        aspace.reserve(boot_info.kernel_virt.clone(), pmm::Flags::READ);
+        aspace.reserve(
+            boot_info.physical_memory_map.clone(),
+            pmm::Flags::READ | pmm::Flags::WRITE,
+        );
         Ok(Mutex::new(aspace))
     })?;
 

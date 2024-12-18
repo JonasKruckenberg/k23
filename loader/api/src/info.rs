@@ -32,7 +32,7 @@ pub struct BootInfo {
     /// frames that are also mapped at other virtual addresses can easily break memory safety and
     /// cause undefined behavior. Only frames reported as `USABLE` by the memory map in the `BootInfo`
     /// can be safely accessed.
-    pub physical_memory_offset: VirtualAddress,
+    pub physical_memory_map: Range<VirtualAddress>,
     /// Virtual memory region occupied by the loader.
     ///
     /// This region is identity-mapped contains the loader executable.
@@ -63,7 +63,7 @@ impl BootInfo {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         boot_hart: usize,
-        physical_memory_offset: VirtualAddress,
+        physical_memory_map: Range<VirtualAddress>,
         kernel_virt: Range<VirtualAddress>,
         memory_regions: *const MemoryRegion,
         memory_regions_len: usize,
@@ -74,7 +74,7 @@ impl BootInfo {
     ) -> Self {
         Self {
             boot_hart,
-            physical_memory_offset,
+            physical_memory_map,
             memory_regions,
             memory_regions_len,
             tls_template,
@@ -95,8 +95,8 @@ impl fmt::Display for BootInfo {
         writeln!(f, "{:<23} : {}", "BOOT HART", self.boot_hart)?;
         writeln!(
             f,
-            "{:<23} : {}",
-            "PHYSICAL MEMORY OFFSET", self.physical_memory_offset
+            "{:<23} : {}..{}",
+            "PHYSICAL MEMORY OFFSET", self.physical_memory_map.start, self.physical_memory_map.end
         )?;
         writeln!(
             f,

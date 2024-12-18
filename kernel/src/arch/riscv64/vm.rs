@@ -12,7 +12,7 @@ pub fn init(
     frame_alloc: &mut BuddyAllocator,
 ) -> crate::Result<pmm::AddressSpace> {
     let (mut arch, mut flush) =
-        pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_offset);
+        pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_map.start);
 
     unmap_loader(boot_info, &mut arch, &mut flush);
 
