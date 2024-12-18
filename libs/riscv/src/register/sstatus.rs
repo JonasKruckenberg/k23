@@ -1,12 +1,18 @@
 //! Supervisor Status Register
 
-use super::{csr_base_and_read, csr_clear, csr_write};
+use super::{clear_csr, read_csr_as, write_csr};
 use core::fmt;
 use core::fmt::Formatter;
 
-csr_base_and_read!(Sstatus, "sstatus");
-csr_write!("sstatus");
-csr_clear!("sstatus");
+/// Supervisor Status Register
+#[derive(Clone, Copy)]
+pub struct Sstatus {
+    bits: usize,
+}
+
+read_csr_as!(Sstatus, 0x100);
+write_csr!(0x100);
+clear_csr!(0x100);
 
 /// Supervisor Interrupt Enable
 pub unsafe fn set_sie() {

@@ -1,12 +1,18 @@
 //! Supervisor Interrupt Enable Register
 
-use super::{csr_base_and_read, csr_clear, csr_write};
+use super::{clear_csr, read_csr_as, write_csr};
 use core::fmt;
 use core::fmt::Formatter;
 
-csr_base_and_read!(Sie, "sie");
-csr_write!("sie");
-csr_clear!("sie");
+/// sie register
+#[derive(Clone, Copy)]
+pub struct Sie {
+    bits: usize,
+}
+
+read_csr_as!(Sie, 0x104);
+write_csr!(0x104);
+clear_csr!(0x104);
 
 pub unsafe fn set_ssie() {
     _write(1 << 1);

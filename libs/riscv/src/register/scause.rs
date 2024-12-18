@@ -1,11 +1,17 @@
 //! Supervisor Cause Register
 
-use super::{csr_base_and_read, csr_write};
+use super::{read_csr_as, write_csr};
 use core::fmt;
 use core::fmt::Formatter;
 
-csr_base_and_read!(Scause, "scause");
-csr_write!("scause");
+/// scause register
+#[derive(Clone, Copy)]
+pub struct Scause {
+    bits: usize,
+}
+
+read_csr_as!(Scause, 0x142);
+write_csr!(0x142);
 
 pub unsafe fn write(trap: Trap) {
     match trap {
@@ -153,6 +159,6 @@ impl TryFrom<usize> for Exception {
 
 impl fmt::Debug for Scause {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Stvec").field(&self.cause()).finish()
+        f.debug_tuple("Scause").field(&self.cause()).finish()
     }
 }
