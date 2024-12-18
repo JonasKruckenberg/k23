@@ -73,7 +73,7 @@ where
         sstatus::set_spie();
     }
     sstatus::set_spp(sstatus.spp());
-    sepc::write(sepc.as_bits());
+    sepc::write(sepc);
 
     r
 }

@@ -1,35 +1,86 @@
 //! Supervisor Address Translation and Protection Register
 
-use super::{csr_base_and_read, csr_write};
+use super::{read_csr_as, write_csr_as_usize};
+use crate::Error;
 use core::fmt;
-use core::fmt::Formatter;
 
-csr_base_and_read!(Satp, "satp");
-csr_write!("satp");
-
-#[cfg(target_arch = "riscv32")]
-pub unsafe fn set(mode: Mode, asid: usize, ppn: usize) {
-    let mode = match mode {
-        Mode::Bare => 0,
-        Mode::Sv32 => 1,
-    };
-
-    _write(ppn | (asid << 22) | (mode << 31))
+/// satp register
+#[derive(Clone, Copy)]
+pub struct Satp {
+    bits: usize,
 }
 
-#[cfg(target_arch = "riscv64")]
-pub unsafe fn set(mode: Mode, asid: usize, ppn: usize) {
-    let mode = match mode {
-        Mode::Bare => 0,
-        Mode::Sv39 => 8,
-        Mode::Sv48 => 9,
-        Mode::Sv57 => 10,
-        Mode::Sv64 => 11,
-    };
+read_csr_as!(Satp, 0x180);
+write_csr_as_usize!(0x180);
 
-    _write(ppn | (asid << 44) | (mode << 60));
+/// Sets the register to corresponding page table mode, physical page number and address space id.
+///
+/// **WARNING**: panics on:
+///
+/// - non-`riscv` targets
+/// - invalid field values
+#[inline]
+#[cfg(target_pointer_width = "32")]
+pub unsafe fn set(mode: Mode, asid: usize, ppn: usize) {
+    try_set(mode, asid, ppn).unwrap();
 }
 
+/// Attempts to set the register to corresponding page table mode, physical page number and address space id.
+#[inline]
+#[cfg(target_pointer_width = "32")]
+pub unsafe fn try_set(mode: Mode, asid: usize, ppn: usize) -> Result<()> {
+    if asid != asid & 0x1FF {
+        Err(Error::InvalidFieldValue {
+            field: "asid",
+            value: asid,
+            bitmask: 0x1FF,
+        })
+    } else if ppn != ppn & 0x3F_FFFF {
+        Err(Error::InvalidFieldValue {
+            field: "ppn",
+            value: ppn,
+            bitmask: 0x3F_FFFF,
+        })
+    } else {
+        let bits = (mode as usize) << 31 | (asid << 22) | ppn;
+        _try_write(bits)
+    }
+}
+
+/// Sets the register to corresponding page table mode, physical page number and address space id.
+///
+/// **WARNING**: panics on:
+///
+/// - non-`riscv` targets
+/// - invalid field values
+#[inline]
+#[cfg(target_pointer_width = "64")]
+pub unsafe fn set(mode: Mode, asid: usize, ppn: usize) {
+    try_set(mode, asid, ppn).unwrap()
+}
+
+/// Attempts to set the register to corresponding page table mode, physical page number and address space id.
+#[inline]
+#[cfg(target_pointer_width = "64")]
+pub unsafe fn try_set(mode: Mode, asid: usize, ppn: usize) -> crate::Result<()> {
+    if asid != asid & 0xFFFF {
+        Err(Error::InvalidFieldValue {
+            field: "asid",
+            value: asid,
+            bitmask: 0xFFFF,
+        })
+    } else if ppn != ppn & 0xFFF_FFFF_FFFF {
+        Err(Error::InvalidFieldValue {
+            field: "ppn",
+            value: ppn,
+            bitmask: 0xFFF_FFFF_FFFF,
+        })
+    } else {
+        let bits = (mode as usize) << 60 | (asid << 44) | ppn;
+        _write(bits);
+        Ok(())
+    }
+}
 impl Satp {
     #[cfg(target_arch = "riscv32")]
     pub fn ppn(&self) -> usize {
@@ -71,14 +122,14 @@ impl Satp {
     }
 }
 
-#[cfg(target_arch = "riscv32")]
+#[cfg(target_pointer_width = "32")]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Mode {
     Bare = 0,
     Rv32 = 1,
 }
 
-#[cfg(target_arch = "riscv64")]
+#[cfg(target_pointer_width = "64")]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Mode {
     Bare = 0,
@@ -90,7 +141,7 @@ pub enum Mode {
 
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 impl fmt::Debug for Satp {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Satp")
             .field("ppn", &self.ppn())
             .field("asid", &self.asid())
