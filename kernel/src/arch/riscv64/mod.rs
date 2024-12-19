@@ -11,8 +11,8 @@ use static_assertions::{const_assert, const_assert_eq};
 pub use setjmp_longjmp::{longjmp, setjmp, JumpBuf};
 
 /// Virtual address where the kernel address space starts.
-/// 
-/// 
+///
+///
 pub const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
 pub const KERNEL_ASPACE_SIZE: usize = (1 << pmm::arch::VIRT_ADDR_BITS);
 const_assert_eq!(
@@ -22,7 +22,7 @@ const_assert_eq!(
 const_assert_eq!(KERNEL_ASPACE_SIZE - 1, !pmm::arch::CANONICAL_ADDRESS_MASK);
 
 /// Virtual address where the user address space starts.
-/// 
+///
 /// The first 2MiB are reserved for catching null pointer dereferences, but this might
 /// change in the future if we decide that the null-checking performed by the WASM runtime
 /// is sufficiently robust.
