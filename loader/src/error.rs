@@ -1,7 +1,7 @@
 #[derive(Debug, onlyerror::Error)]
 pub enum Error {
     /// Failed to set up mappings
-    Pmm(#[from] pmm::Error),
+    Pmm(#[from] mmu::Error),
     /// Failed to convert number
     TryFromInt(#[from] core::num::TryFromIntError),
     /// Failed to parse device tree blob

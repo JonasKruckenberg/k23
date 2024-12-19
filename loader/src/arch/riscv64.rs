@@ -11,10 +11,10 @@ use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::ptr::{addr_of, addr_of_mut};
 use core::{cmp, ptr, slice};
-use pmm::arch::PAGE_SIZE;
-use pmm::frame_alloc::BootstrapAllocator;
-use pmm::{arch, AddressRangeExt, AddressSpace, Error};
-use pmm::{
+use mmu::arch::PAGE_SIZE;
+use mmu::frame_alloc::BootstrapAllocator;
+use mmu::{arch, AddressRangeExt, AddressSpace, Error};
+use mmu::{
     frame_alloc::{BuddyAllocator, FrameAllocator},
     Flush, PhysicalAddress, VirtualAddress,
 };
@@ -281,7 +281,7 @@ fn identity_map_self(
         aspace,
         frame_alloc,
         self_regions.executable.clone(),
-        pmm::Flags::READ | pmm::Flags::EXECUTE,
+        mmu::Flags::READ | mmu::Flags::EXECUTE,
         flush,
     )?;
 
@@ -293,7 +293,7 @@ fn identity_map_self(
         aspace,
         frame_alloc,
         self_regions.read_only.clone(),
-        pmm::Flags::READ,
+        mmu::Flags::READ,
         flush,
     )?;
 
@@ -305,7 +305,7 @@ fn identity_map_self(
         aspace,
         frame_alloc,
         self_regions.read_write.clone(),
-        pmm::Flags::READ | pmm::Flags::WRITE,
+        mmu::Flags::READ | mmu::Flags::WRITE,
         flush,
     )?;
 
@@ -317,7 +317,7 @@ fn identity_map_range(
     aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
     phys: Range<PhysicalAddress>,
-    flags: pmm::Flags,
+    flags: mmu::Flags,
     flush: &mut Flush,
 ) -> crate::Result<()> {
     let virt = VirtualAddress::new(phys.start.as_raw());
@@ -354,7 +354,7 @@ pub fn map_physical_memory(
         virt.start,
         phys_aligned,
         NonZeroUsize::new(size).unwrap(),
-        pmm::Flags::READ | pmm::Flags::WRITE,
+        mmu::Flags::READ | mmu::Flags::WRITE,
         flush,
     )?;
 

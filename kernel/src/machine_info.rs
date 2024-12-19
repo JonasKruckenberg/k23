@@ -4,7 +4,7 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use dtb_parser::{DevTree, Node, Strings, Visitor};
-use pmm::PhysicalAddress;
+use mmu::PhysicalAddress;
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.

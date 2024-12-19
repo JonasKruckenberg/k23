@@ -18,7 +18,7 @@ semihosting-logger.workspace = true
 sync.workspace = true
 dtb-parser.workspace = true
 
-pmm.workspace = true
+mmu.workspace = true
 cfg-if.workspace = true
 log.workspace = true
 arrayvec.workspace = true

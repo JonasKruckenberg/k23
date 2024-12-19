@@ -1,5 +1,5 @@
 use loader_api::BootInfo;
-use pmm::AddressRangeExt;
+use mmu::AddressRangeExt;
 use talc::{ErrOnOom, Span, Talc, Talck};
 
 #[global_allocator]

@@ -1,6 +1,6 @@
 use core::alloc::Layout;
 use core::ops::Range;
-use pmm::VirtualAddress;
+use mmu::VirtualAddress;
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
@@ -11,7 +11,7 @@ use rand_chacha::ChaCha20Rng;
 #[derive(Debug)]
 pub struct PageAllocator {
     /// Whether a top-level page is in use.
-    page_state: [bool; pmm::arch::PAGE_TABLE_ENTRIES / 2],
+    page_state: [bool; mmu::arch::PAGE_TABLE_ENTRIES / 2],
     /// A random number generator that should be used to generate random addresses or
     /// `None` if aslr is disabled.
     prng: Option<ChaCha20Rng>,
@@ -23,7 +23,7 @@ impl PageAllocator {
     /// This means regions will be randomly placed in the higher half of the address space.
     pub fn new(rng: ChaCha20Rng) -> Self {
         Self {
-            page_state: [false; pmm::arch::PAGE_TABLE_ENTRIES / 2],
+            page_state: [false; mmu::arch::PAGE_TABLE_ENTRIES / 2],
             prng: Some(rng),
         }
     }
@@ -33,7 +33,7 @@ impl PageAllocator {
     /// Allocated regions will be placed consecutively in the higher half of the address space.
     pub fn new_no_kaslr() -> Self {
         Self {
-            page_state: [false; pmm::arch::PAGE_TABLE_ENTRIES / 2],
+            page_state: [false; mmu::arch::PAGE_TABLE_ENTRIES / 2],
             prng: None,
         }
     }
@@ -75,11 +75,11 @@ impl PageAllocator {
             virt_base.add(remaining_bytes)
         );
 
-        let top_level_page_size = pmm::arch::page_size_for_level(pmm::arch::PAGE_TABLE_LEVELS - 1);
+        let top_level_page_size = mmu::arch::page_size_for_level(mmu::arch::PAGE_TABLE_LEVELS - 1);
         assert!(virt_base.is_aligned(top_level_page_size));
 
         while remaining_bytes > 0 {
-            let page_idx = (virt_base.as_raw() - (usize::MAX << pmm::arch::VIRT_ADDR_BITS))
+            let page_idx = (virt_base.as_raw() - (usize::MAX << mmu::arch::VIRT_ADDR_BITS))
                 / top_level_page_size;
 
             self.page_state[page_idx] = true;
@@ -92,7 +92,7 @@ impl PageAllocator {
     pub fn allocate(&mut self, layout: Layout) -> Range<VirtualAddress> {
         assert!(layout.align().is_power_of_two());
 
-        let top_level_page_size = pmm::arch::page_size_for_level(pmm::arch::PAGE_TABLE_LEVELS - 1);
+        let top_level_page_size = mmu::arch::page_size_for_level(mmu::arch::PAGE_TABLE_LEVELS - 1);
 
         // how many top-level pages are needed to map `size` bytes
         // and attempt to allocate them
@@ -106,7 +106,7 @@ impl PageAllocator {
         // we can then take the lowest possible address of the higher half (`usize::MAX << VA_BITS`)
         // and add the `idx` multiple of the size of a top-level entry to it
         let base = VirtualAddress::new(
-            (usize::MAX << pmm::arch::VIRT_ADDR_BITS) + page_idx * top_level_page_size,
+            (usize::MAX << mmu::arch::VIRT_ADDR_BITS) + page_idx * top_level_page_size,
         );
 
         let offset = if let Some(rng) = self.prng.as_mut() {

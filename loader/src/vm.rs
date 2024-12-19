@@ -7,8 +7,8 @@ use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::{ptr, slice};
 use loader_api::TlsTemplate;
-use pmm::frame_alloc::{FrameAllocator, NonContiguousFrames};
-use pmm::{AddressSpace, Flush, PhysicalAddress, VirtualAddress, KIB, MIB};
+use mmu::frame_alloc::{FrameAllocator, NonContiguousFrames};
+use mmu::{AddressSpace, Flush, PhysicalAddress, VirtualAddress, KIB, MIB};
 use xmas_elf::dynamic::Tag;
 use xmas_elf::program::{SegmentData, Type};
 use xmas_elf::P64;
@@ -281,7 +281,7 @@ fn handle_bss_section(
     aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
     ph: &ProgramHeader,
-    flags: pmm::Flags,
+    flags: mmu::Flags,
     phys_base: PhysicalAddress,
     virt_base: VirtualAddress,
     flush: &mut Flush,
@@ -307,7 +307,7 @@ fn handle_bss_section(
             .allocate_contiguous_zeroed(
                 Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
             )
-            .ok_or(pmm::Error::OutOfMemory)?;
+            .ok_or(mmu::Error::OutOfMemory)?;
 
         unsafe {
             let src = slice::from_raw_parts(
@@ -383,7 +383,7 @@ fn handle_tls_segment(
     aspace.map(
         virt.start,
         phys,
-        pmm::Flags::READ | pmm::Flags::WRITE,
+        mmu::Flags::READ | mmu::Flags::WRITE,
         flush,
     )?;
 
@@ -476,7 +476,7 @@ fn handle_relro_segment(
     aspace.protect(
         virt_aligned.start,
         NonZeroUsize::new(virt_aligned.end.as_raw() - virt_aligned.start.as_raw()).unwrap(),
-        pmm::Flags::READ,
+        mmu::Flags::READ,
         flush,
     )?;
 
@@ -561,7 +561,7 @@ fn map_kernel_stacks(
     aspace.map(
         virt.start,
         phys,
-        pmm::Flags::READ | pmm::Flags::WRITE,
+        mmu::Flags::READ | mmu::Flags::WRITE,
         flush,
     )?;
 
@@ -588,7 +588,7 @@ fn map_kernel_heap(
     aspace.map(
         virt.start,
         phys,
-        pmm::Flags::READ | pmm::Flags::WRITE,
+        mmu::Flags::READ | mmu::Flags::WRITE,
         flush,
     )?;
 
@@ -692,23 +692,23 @@ impl<'a> TryFrom<xmas_elf::program::ProgramHeader<'a>> for ProgramHeader<'a> {
     }
 }
 
-fn flags_for_segment(ph: &ProgramHeader) -> pmm::Flags {
-    let mut out = pmm::Flags::empty();
+fn flags_for_segment(ph: &ProgramHeader) -> mmu::Flags {
+    let mut out = mmu::Flags::empty();
 
     if ph.p_flags.is_read() {
-        out |= pmm::Flags::READ;
+        out |= mmu::Flags::READ;
     }
 
     if ph.p_flags.is_write() {
-        out |= pmm::Flags::WRITE;
+        out |= mmu::Flags::WRITE;
     }
 
     if ph.p_flags.is_execute() {
-        out |= pmm::Flags::EXECUTE;
+        out |= mmu::Flags::EXECUTE;
     }
 
     assert!(
-        !out.contains(pmm::Flags::WRITE | pmm::Flags::EXECUTE),
+        !out.contains(mmu::Flags::WRITE | mmu::Flags::EXECUTE),
         "elf segment (virtual range {:#x}..{:#x}) is marked as write-execute",
         ph.virtual_address,
         ph.virtual_address + ph.mem_size

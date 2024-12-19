@@ -10,8 +10,8 @@ use core::num::{NonZero, NonZeroUsize};
 use core::ops::Range;
 use core::pin::Pin;
 use core::ptr::NonNull;
-use pmm::frame_alloc::BuddyAllocator;
-use pmm::{AddressRangeExt, Flush, VirtualAddress};
+use mmu::frame_alloc::BuddyAllocator;
+use mmu::{AddressRangeExt, Flush, VirtualAddress};
 use rand::distributions::Uniform;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
@@ -21,7 +21,7 @@ pub struct AddressSpace {
     pub tree: wavltree::WAVLTree<Mapping>,
     address_range: Range<VirtualAddress>,
     frame_alloc: BuddyAllocator,
-    arch: pmm::AddressSpace,
+    arch: mmu::AddressSpace,
     prng: Option<ChaCha20Rng>,
     last_fault: Option<NonNull<Mapping>>,
 }
@@ -33,7 +33,7 @@ unsafe impl Sync for AddressSpace {}
 
 impl AddressSpace {
     pub fn new_user(
-        arch: pmm::AddressSpace,
+        arch: mmu::AddressSpace,
         frame_alloc: BuddyAllocator,
         prng: ChaCha20Rng,
     ) -> Self {
@@ -48,7 +48,7 @@ impl AddressSpace {
     }
 
     pub fn new_kernel(
-        arch: pmm::AddressSpace,
+        arch: mmu::AddressSpace,
         frame_alloc: BuddyAllocator,
         prng: ChaCha20Rng,
     ) -> Self {
@@ -118,7 +118,7 @@ impl AddressSpace {
     //     &mut self,
     //     vmo: (),
     //     vmo_offset: usize,
-    //     flags: pmm::Flags,
+    //     flags: mmu::Flags,
     // ) {
     //     let virt = vmo.range.start.add(usize)..vmo.range.end;
     //     self.map()
@@ -128,14 +128,14 @@ impl AddressSpace {
     // pub fn map(
     //     &mut self,
     //     range: Range<VirtualAddress>,
-    //     flags: pmm::Flags,
+    //     flags: mmu::Flags,
     //     vmo: (),
     //     vmo_offset: (),
     // ) {
     //     todo!()
     // }
-    // 
-    // pub fn reserve(&mut self, range: Range<VirtualAddress>, flags: pmm::Flags, name: String) {
+    //
+    // pub fn reserve(&mut self, range: Range<VirtualAddress>, flags: mmu::Flags, name: String) {
     //     // FIXME turn these into errors instead of panics
     //     match self.tree.entry(&range.start) {
     //         Entry::Occupied(_) => panic!("already reserved"),
@@ -235,7 +235,7 @@ impl AddressSpace {
     // //  - `range` must not be empty
     // //  - the above checks are done atomically ie they hold for all affected mappings
     // //  - if old and new flags are the same protect is a no-op
-    // pub fn protect(&mut self, range: Range<VirtualAddress>, new_flags: pmm::Flags) {
+    // pub fn protect(&mut self, range: Range<VirtualAddress>, new_flags: mmu::Flags) {
     //     let iter = self.tree.range(range.clone());
     // 
     //     assert!(!range.is_empty());

@@ -8,7 +8,7 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{cmp, fmt};
 use pin_project_lite::pin_project;
-use pmm::{arch, VirtualAddress};
+use mmu::{arch, VirtualAddress};
 use wavltree::Side;
 
 pin_project! {
@@ -18,8 +18,8 @@ pin_project! {
         pub max_last_byte: VirtualAddress,
         pub max_gap: usize,
         pub range: Range<VirtualAddress>,
-        pub flags: pmm::Flags,
-        pub name: String
+        pub flags: mmu::Flags,
+        pub name: String,
     }
 }
 
@@ -37,8 +37,11 @@ impl fmt::Debug for Mapping {
 }
 
 impl Mapping {
-    pub fn new(range: Range<VirtualAddress>, flags: pmm::Flags, name: String) -> Self {
-        Self {
+    pub fn new(
+        range: Range<VirtualAddress>,
+        flags: mmu::Flags,
+        name: String,
+    ) -> Pin<Box<Self>> {
             links: wavltree::Links::default(),
             min_first_byte: range.start,
             max_last_byte: range.end,
@@ -58,26 +61,26 @@ impl Mapping {
         debug_assert!(virt.is_aligned(arch::PAGE_SIZE));
         debug_assert!(self.range.contains(&virt));
 
-        let mut mmu_flags = pmm::Flags::empty();
+        let mut mmu_flags = mmu::Flags::empty();
         if flags.contains(PageFaultFlags::WRITE) {
-            mmu_flags |= pmm::Flags::WRITE;
+            mmu_flags |= mmu::Flags::WRITE;
         } else {
-            mmu_flags |= pmm::Flags::READ;
+            mmu_flags |= mmu::Flags::READ;
         }
         if flags.contains(PageFaultFlags::INSTRUCTION) {
-            mmu_flags |= pmm::Flags::EXECUTE;
+            mmu_flags |= mmu::Flags::EXECUTE;
         }
 
         if !self.flags.contains(mmu_flags) {
             let diff = mmu_flags.difference(self.flags);
 
-            if diff.contains(pmm::Flags::WRITE) {
+            if diff.contains(mmu::Flags::WRITE) {
                 log::trace!("permission failure: write fault on non-writable region");
             }
-            if diff.contains(pmm::Flags::READ) {
+            if diff.contains(mmu::Flags::READ) {
                 log::trace!("permission failure: read fault on non-readable region");
             }
-            if diff.contains(pmm::Flags::EXECUTE) {
+            if diff.contains(mmu::Flags::EXECUTE) {
                 log::trace!("permission failure: execute fault on non-executable region");
             }
 

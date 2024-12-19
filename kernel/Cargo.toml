@@ -17,7 +17,7 @@ harness = false
 
 [dependencies]
 loader-api.workspace = true
-pmm.workspace = true
+mmu.workspace = true
 panic-unwind.workspace = true
 semihosting-logger = { workspace = true, features = ["hartid"] }
 sync.workspace = true

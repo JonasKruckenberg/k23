@@ -11,8 +11,8 @@ use core::num::NonZeroUsize;
 use core::ops::{Add, Range};
 use core::slice;
 use loader_api::BootInfo;
-use pmm::frame_alloc::BuddyAllocator;
-use pmm::{AddressRangeExt, VirtualAddress};
+use mmu::frame_alloc::BuddyAllocator;
+use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use sync::{Mutex, OnceLock};
@@ -66,7 +66,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) {
     // reserve the physical memory map
     aspace.reserve(
         boot_info.physical_memory_map.clone(),
-        pmm::Flags::READ | pmm::Flags::WRITE,
+        mmu::Flags::READ | mmu::Flags::WRITE,
         "Physical Memory Map".to_string(),
     );
 
@@ -74,7 +74,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) {
     if let Some(heap) = &boot_info.heap_region {
         aspace.reserve(
             heap.to_owned(),
-            pmm::Flags::READ | pmm::Flags::WRITE,
+            mmu::Flags::READ | mmu::Flags::WRITE,
             "Kernel Heap".to_string(),
         );
     }
@@ -91,7 +91,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) {
 
         aspace.reserve(
             end.sub(per_hart_stack_size)..end,
-            pmm::Flags::READ | pmm::Flags::WRITE,
+            mmu::Flags::READ | mmu::Flags::WRITE,
             format!("Hart {} Stack", hartid),
         )
     }
@@ -100,7 +100,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) {
     if let Some(tls) = &boot_info.tls_region {
         aspace.reserve(
             tls.to_owned(),
-            pmm::Flags::READ | pmm::Flags::WRITE,
+            mmu::Flags::READ | mmu::Flags::WRITE,
             "Kernel TLS".to_string(),
         );
     }
@@ -124,19 +124,19 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) {
 
         let virt = boot_info.kernel_virt.start.add(ph.virtual_addr() as usize);
 
-        let mut mmu_flags = pmm::Flags::empty();
+        let mut mmu_flags = mmu::Flags::empty();
         if ph.flags().is_read() {
-            mmu_flags |= pmm::Flags::READ;
+            mmu_flags |= mmu::Flags::READ;
         }
         if ph.flags().is_write() {
-            mmu_flags |= pmm::Flags::WRITE;
+            mmu_flags |= mmu::Flags::WRITE;
         }
         if ph.flags().is_execute() {
-            mmu_flags |= pmm::Flags::EXECUTE;
+            mmu_flags |= mmu::Flags::EXECUTE;
         }
 
         assert!(
-            !mmu_flags.contains(pmm::Flags::WRITE | pmm::Flags::EXECUTE),
+            !mmu_flags.contains(mmu::Flags::WRITE | mmu::Flags::EXECUTE),
             "elf segment (virtual range {:#x}..{:#x}) is marked as write-execute",
             ph.virtual_addr(),
             ph.virtual_addr() + ph.mem_size()

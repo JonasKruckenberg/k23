@@ -2,8 +2,8 @@ use crate::vm::KernelAddressSpace;
 use core::alloc::Layout;
 use core::ops::Range;
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
-use pmm::frame_alloc::{BootstrapAllocator, FrameAllocator};
-use pmm::{arch, Error, PhysicalAddress, VirtualAddress};
+use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
+use mmu::{arch, Error, PhysicalAddress, VirtualAddress};
 
 pub fn init_boot_info(
     mut frame_alloc: BootstrapAllocator,

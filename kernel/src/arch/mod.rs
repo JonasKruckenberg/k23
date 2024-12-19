@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-pub use pmm::arch::*;
+pub use mmu::arch::*;
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {

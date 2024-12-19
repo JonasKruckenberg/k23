@@ -26,7 +26,7 @@ kernel = { path = "kernel" }
 loader-api = { path = "loader/api" }
 backtrace = { path = "libs/backtrace" }
 dtb-parser = { path = "libs/dtb-parser" }
-pmm = { path = "libs/pmm" }
+mmu = { path = "libs/mmu" }
 ktest = { path = "libs/ktest" }
 linked-list = { path = "libs/linked-list" }
 panic-common = { path = "libs/panic-common" }

@@ -2,7 +2,7 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use core::slice;
-use pmm::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 #[derive(Debug)]
 #[repr(C)]
