@@ -9,7 +9,7 @@
 #![allow(internal_features)]
 #![feature(used_with_arg, naked_functions, thread_local, allocator_api)]
 #![feature(panic_can_unwind, std_internals, fmt_internals)]
-
+#![feature(slice_from_ptr_range)]
 extern crate alloc;
 
 mod allocator;

@@ -245,7 +245,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -334,8 +334,10 @@ dependencies = [
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "cfg-if",
  "dtb-parser",
+ "hashbrown",
  "ktest",
  "loader-api",
  "log",
@@ -347,11 +349,13 @@ dependencies = [
  "rand_chacha 0.3.1",
  "riscv",
  "semihosting-logger",
+ "static_assertions",
  "sync",
  "talc",
  "thread-local",
  "wast",
  "wavltree",
+ "xmas-elf",
 ]
 
 [[package]]
@@ -567,6 +571,7 @@ dependencies = [
  "log",
  "onlyerror",
  "riscv",
+ "static_assertions",
 ]
 
 [[package]]
@@ -726,7 +731,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -791,6 +796,12 @@ dependencies = [
  "ryu",
  "serde",
 ]
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "syn"

@@ -294,19 +294,22 @@ pub unsafe fn sleep(duration: Duration) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::arch::asm;
     use core::time::Duration;
 
     #[ktest::test]
-    fn instant() {
+    fn measure_and_timeout() {
+        let start_sys = SystemTime::now();
         let start = Instant::now();
 
-        sleep(Duration::from_secs(1));
+        unsafe {
+            sleep(Duration::from_secs(1));
+        }
 
         let end = Instant::now();
         let elapsed = end.duration_since(start);
         log::trace!("Time elapsed: {elapsed:?}");
 
         assert_eq!(elapsed.as_secs(), 1);
+        assert_eq!(start_sys.elapsed().unwrap().as_secs(), 1)
     }
 }

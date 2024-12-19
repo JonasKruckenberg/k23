@@ -1,107 +1,123 @@
-#![allow(unused)]
-
 use crate::arch;
-use crate::machine_info::MachineInfo;
+use crate::vm::mapping::Mapping;
+use crate::vm::PageFaultFlags;
+use crate::Error;
 use alloc::boxed::Box;
-use alloc::vec;
+use alloc::string::String;
 use core::alloc::Layout;
-use core::cmp::Ordering;
-use core::fmt::Formatter;
-use core::mem::offset_of;
+use core::cmp;
 use core::num::{NonZero, NonZeroUsize};
 use core::ops::Range;
 use core::pin::Pin;
 use core::ptr::NonNull;
-use core::{cmp, fmt};
-use loader_api::{BootInfo, MemoryRegionKind};
-use pin_project_lite::pin_project;
-use pmm::frame_alloc::{BuddyAllocator, FrameUsage};
-use pmm::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress, MIB};
+use pmm::frame_alloc::BuddyAllocator;
+use pmm::{AddressRangeExt, Flush, VirtualAddress};
 use rand::distributions::Uniform;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use rand_chacha::ChaCha20Rng;
-use sync::{Mutex, OnceLock};
-use wavltree::{Entry, Side};
-
-pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
-
-pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
-    KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
-        let mut frame_alloc = unsafe {
-            let usable_regions = boot_info
-                .memory_regions()
-                .iter()
-                .filter(|region| region.kind.is_usable())
-                .map(|region| region.range.clone());
-
-            BuddyAllocator::from_iter(usable_regions, boot_info.physical_memory_map.start)
-        };
-
-        let mut arch = arch::vm::init(boot_info, &mut frame_alloc)?;
-
-        if let Some(rtc) = &minfo.rtc {
-            let mut flush = Flush::empty(0);
-            arch.map_contiguous(
-                &mut frame_alloc,
-                VirtualAddress::new(rtc.start.as_raw()),
-                rtc.start,
-                NonZeroUsize::new(rtc.size()).unwrap(),
-                pmm::Flags::READ | pmm::Flags::WRITE,
-                &mut flush,
-            )?;
-            flush.flush()?;
-        }
-
-        // log::trace!("\n{arch}");
-
-        let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
-        let mut aspace = AddressSpace::new(arch, frame_alloc, prng);
-
-        aspace.reserve(boot_info.kernel_virt.clone(), pmm::Flags::READ);
-        aspace.reserve(
-            boot_info.physical_memory_map.clone(),
-            pmm::Flags::READ | pmm::Flags::WRITE,
-        );
-        Ok(Mutex::new(aspace))
-    })?;
-
-    Ok(())
-}
+use wavltree::Entry;
 
 pub struct AddressSpace {
     pub tree: wavltree::WAVLTree<Mapping>,
+    address_range: Range<VirtualAddress>,
     frame_alloc: BuddyAllocator,
     arch: pmm::AddressSpace,
     prng: Option<ChaCha20Rng>,
+    last_fault: Option<NonNull<Mapping>>,
 }
+
+// TODO this isnt right
+unsafe impl Send for AddressSpace {}
+
+unsafe impl Sync for AddressSpace {}
+
 impl AddressSpace {
-    pub fn new(arch: pmm::AddressSpace, frame_alloc: BuddyAllocator, prng: ChaCha20Rng) -> Self {
+    pub fn new_user(
+        arch: pmm::AddressSpace,
+        frame_alloc: BuddyAllocator,
+        prng: ChaCha20Rng,
+    ) -> Self {
         Self {
             tree: wavltree::WAVLTree::default(),
+            address_range: arch::USER_ASPACE_BASE..VirtualAddress::MAX,
             frame_alloc,
             arch,
             prng: Some(prng),
+            last_fault: None,
         }
     }
 
-    /// Map an object into virtual memory
-    pub fn map(
-        &mut self,
-        range: Range<VirtualAddress>,
-        flags: pmm::Flags,
-        vmo: (),
-        vmo_offset: (),
-    ) {
+    pub fn new_kernel(
+        arch: pmm::AddressSpace,
+        frame_alloc: BuddyAllocator,
+        prng: ChaCha20Rng,
+    ) -> Self {
+        Self {
+            tree: wavltree::WAVLTree::default(),
+            address_range: arch::KERNEL_ASPACE_BASE..VirtualAddress::MAX,
+            frame_alloc,
+            arch,
+            prng: Some(prng),
+            last_fault: None,
+        }
+    }
+
+    pub fn page_fault(&mut self, virt: VirtualAddress, flags: PageFaultFlags) -> crate::Result<()> {
+        if flags.contains(PageFaultFlags::ACCESS) {
+            return self.access_fault(virt);
+        }
+
+        let virt = virt.align_down(arch::PAGE_SIZE);
+
+        // check if the address is within the last fault range
+        // if so, we can save ourselves a tree lookup
+        if let Some(mut last_fault) = self.last_fault {
+            let last_fault = unsafe { Pin::new_unchecked(last_fault.as_mut()) };
+
+            if last_fault.range.contains(&virt) {
+                return last_fault.page_fault(virt, flags);
+            }
+        }
+
+        // the address wasn't in the last fault range, so we need to look it up
+        // and update the last fault range
+        if let Some(mapping) = self.find_mapping(virt) {
+            // TODO actually update self.last_fault here
+            mapping.page_fault(virt, flags)
+        } else {
+            log::trace!("page fault at unmapped address {virt}");
+            Err(Error::AccessDenied)
+        }
+    }
+
+    fn find_mapping(&mut self, virt: VirtualAddress) -> Option<Pin<&mut Mapping>> {
+        self.tree
+            .range_mut(virt..virt)
+            .find(|mapping| mapping.range.contains(&virt))
+    }
+
+    pub fn access_fault(&mut self, addr: VirtualAddress) -> crate::Result<()> {
         todo!()
     }
 
-    pub fn reserve(&mut self, range: Range<VirtualAddress>, flags: pmm::Flags) {
+    // /// Map an object into virtual memory
+    // pub fn map(
+    //     &mut self,
+    //     range: Range<VirtualAddress>,
+    //     flags: pmm::Flags,
+    //     vmo: (),
+    //     vmo_offset: (),
+    // ) {
+    //     todo!()
+    // }
+
+    pub fn reserve(&mut self, range: Range<VirtualAddress>, flags: pmm::Flags, name: String) {
         // FIXME turn these into errors instead of panics
         match self.tree.entry(&range.start) {
             Entry::Occupied(_) => panic!("already reserved"),
             Entry::Vacant(mut entry) => {
                 if let Some(next_mapping) = entry.peek_next_mut() {
-                    assert!(range.end <= next_mapping.range.start);
+                    assert!(range.end <= next_mapping.range.start,);
 
                     if next_mapping.range.start == range.end && next_mapping.flags == flags {
                         next_mapping.project().range.start = range.start;
@@ -118,7 +134,7 @@ impl AddressSpace {
                     }
                 }
 
-                entry.insert(Box::pin(Mapping::new(range, flags)));
+                entry.insert(Box::pin(Mapping::new(range, flags, name)));
             }
         }
     }
@@ -152,23 +168,23 @@ impl AddressSpace {
             } else if range.start > mapping.range.start && range.end < mapping.range.end {
                 // `range` is entirely contained within the mappings range, we
                 // need to split the range in two
-
                 let mapping = mapping.project();
                 let left = mapping.range.start..range.start;
 
                 mapping.range.start = range.end;
-                iter.tree()
-                    .insert(Box::pin(Mapping::new(left, *mapping.flags)));
+                iter.tree().insert(Box::pin(Mapping::new(
+                    left,
+                    *mapping.flags,
+                    mapping.name.clone(),
+                )));
             } else if range.start > mapping.range.start {
                 // `range` is mostly past this mappings range, but overlaps partially
                 // we need adjust the ranges end
-
                 let mapping = mapping.project();
                 mapping.range.end = range.start;
             } else if range.end < mapping.range.end {
                 // `range` is mostly before this mappings range, but overlaps partially
                 // we need adjust the ranges start
-
                 let mapping = mapping.project();
                 mapping.range.start = range.end;
             } else {
@@ -246,13 +262,13 @@ impl AddressSpace {
         flush.flush().unwrap();
     }
 
-    pub fn commit(&mut self, range: Range<VirtualAddress>) {
-        todo!()
-    }
-
-    pub fn decommit(&mut self, range: Range<VirtualAddress>) {
-        todo!()
-    }
+    // pub fn commit(&mut self, range: Range<VirtualAddress>) {
+    //     todo!()
+    // }
+    //
+    // pub fn decommit(&mut self, range: Range<VirtualAddress>) {
+    //     todo!()
+    // }
 
     // behaviour:
     // - find the leftmost gap that satisfies the size and alignment requirements
@@ -296,18 +312,20 @@ impl AddressSpace {
         log::trace!("attempting to find spot for {layout:?} at index {target_index}");
 
         let spots_in_range = |layout: Layout, range: Range<VirtualAddress>| -> usize {
-            ((range.size() - layout.size()) >> layout.align().ilog2()) + 1
+            ((range.size().saturating_sub(layout.size())) >> layout.align().ilog2()) + 1
         };
 
         let mut candidate_spot_count = 0;
 
-        const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
-
         // see if there is a suitable gap between the start of the address space and the first mapping
         if let Some(root) = self.tree.root().get() {
-            let gap_size = root.min_first_byte.sub_addr(KERNEL_ASPACE_BASE);
-            let aligned_gap = KERNEL_ASPACE_BASE.align_up(layout.align())
-                ..KERNEL_ASPACE_BASE.add(gap_size).align_down(layout.align());
+            let gap_size = root.min_first_byte.sub_addr(self.address_range.start);
+            let aligned_gap = self.address_range.start.align_up(layout.align())
+                ..self
+                    .address_range
+                    .start
+                    .add(gap_size)
+                    .align_down(layout.align());
             let spot_count = spots_in_range(layout, aligned_gap.clone());
             candidate_spot_count += spot_count;
             if target_index < spot_count {
@@ -389,197 +407,5 @@ impl AddressSpace {
         }
 
         Err(candidate_spot_count)
-    }
-}
-
-pin_project! {
-    pub struct Mapping {
-        links: wavltree::Links<Mapping>,
-        range: Range<VirtualAddress>,
-        flags: pmm::Flags,
-        min_first_byte: VirtualAddress,
-        max_last_byte: VirtualAddress,
-        max_gap: usize
-    }
-}
-impl fmt::Debug for Mapping {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Mapping")
-            .field("range", &self.range)
-            .field("flags", &self.flags)
-            .field("min_first_byte", &self.min_first_byte)
-            .field("max_last_byte", &self.max_last_byte)
-            .field("max_gap", &self.max_gap)
-            .finish_non_exhaustive()
-    }
-}
-impl Mapping {
-    pub fn new(range: Range<VirtualAddress>, flags: pmm::Flags) -> Self {
-        Self {
-            links: wavltree::Links::default(),
-            min_first_byte: range.start,
-            max_last_byte: range.end,
-            range,
-            flags,
-            max_gap: 0,
-        }
-    }
-
-    unsafe fn update(
-        mut node: NonNull<Self>,
-        left: Option<NonNull<Self>>,
-        right: Option<NonNull<Self>>,
-    ) {
-        let node = node.as_mut();
-        let mut left_max_gap = 0;
-        let mut right_max_gap = 0;
-
-        if let Some(left) = left {
-            let left = left.as_ref();
-            let left_gap = gap(left.max_last_byte, node.range.start);
-            left_max_gap = cmp::max(left_gap, left.max_gap);
-            node.min_first_byte = left.min_first_byte;
-        } else {
-            node.min_first_byte = node.range.start;
-        }
-
-        if let Some(right) = right {
-            let right = right.as_ref();
-            let right_gap = gap(node.range.end, right.min_first_byte);
-            right_max_gap = cmp::max(right_gap, unsafe { right.max_gap });
-            node.max_last_byte = right.max_last_byte;
-        } else {
-            node.max_last_byte = node.range.end;
-        }
-
-        node.max_gap = cmp::max(left_max_gap, right_max_gap);
-
-        fn gap(left_last_byte: VirtualAddress, right_first_byte: VirtualAddress) -> usize {
-            debug_assert!(
-                left_last_byte < right_first_byte,
-                "subtraction would underflow: {left_last_byte} >= {right_first_byte}"
-            );
-            right_first_byte.sub_addr(left_last_byte)
-        }
-    }
-
-    fn propagate_to_root(mut maybe_node: Option<NonNull<Self>>) {
-        while let Some(node) = maybe_node {
-            let links = unsafe { &node.as_ref().links };
-            unsafe {
-                Self::update(node, links.left(), links.right());
-            }
-            maybe_node = links.parent();
-        }
-    }
-}
-
-unsafe impl wavltree::Linked for Mapping {
-    /// Any heap-allocated type that owns an element may be used.
-    ///
-    /// An element *must not* move while part of an intrusive data
-    /// structure. In many cases, `Pin` may be used to enforce this.
-    type Handle = Pin<Box<Self>>;
-
-    type Key = VirtualAddress;
-
-    /// Convert an owned `Handle` into a raw pointer
-    fn into_ptr(handle: Self::Handle) -> NonNull<Self> {
-        unsafe { NonNull::from(Box::leak(Pin::into_inner_unchecked(handle))) }
-    }
-
-    /// Convert a raw pointer back into an owned `Handle`.
-    unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
-        // Safety: `NonNull` *must* be constructed from a pinned reference
-        // which the tree implementation upholds.
-        Pin::new_unchecked(Box::from_raw(ptr.as_ptr()))
-    }
-
-    unsafe fn links(ptr: NonNull<Self>) -> NonNull<wavltree::Links<Self>> {
-        ptr.map_addr(|addr| {
-            let offset = offset_of!(Self, links);
-            addr.checked_add(offset).unwrap()
-        })
-        .cast()
-    }
-
-    fn get_key(&self) -> &Self::Key {
-        &self.range.start
-    }
-
-    fn after_insert(self: Pin<&mut Self>) {
-        debug_assert_eq!(self.min_first_byte, self.range.start);
-        debug_assert_eq!(self.max_last_byte, self.range.end);
-        debug_assert_eq!(self.max_gap, 0);
-        Self::propagate_to_root(self.links.parent());
-    }
-
-    fn after_remove(self: Pin<&mut Self>, parent: Option<NonNull<Self>>) {
-        Self::propagate_to_root(parent);
-    }
-
-    fn after_rotate(
-        mut self: Pin<&mut Self>,
-        parent: NonNull<Self>,
-        sibling: Option<NonNull<Self>>,
-        lr_child: Option<NonNull<Self>>,
-        side: Side,
-    ) {
-        log::trace!("after rotate pivot: {self:?} parent: {parent:?} sibling: {sibling:?} lr_child: {lr_child:?}");
-
-        let mut this = self.project();
-        let _parent = unsafe { parent.as_ref() };
-
-        *this.min_first_byte = _parent.min_first_byte;
-        *this.max_last_byte = _parent.max_last_byte;
-        *this.max_gap = _parent.max_gap;
-
-        if side == Side::Left {
-            unsafe {
-                Self::update(parent, sibling, lr_child);
-            }
-        } else {
-            unsafe {
-                Self::update(parent, lr_child, sibling);
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[ktest::test]
-    fn alloc_spot() {
-        let mut kernel_aspace = crate::vm::KERNEL_ASPACE.get().unwrap().lock();
-
-        // kernel
-        kernel_aspace.reserve(
-            VirtualAddress::new(0xffffffc0c0000000)..VirtualAddress::new(0xffffffc0c011b5e0),
-            pmm::Flags::READ,
-        );
-
-        // TLS
-        kernel_aspace.reserve(
-            VirtualAddress::new(0xffffffc100000000)..VirtualAddress::new(0xffffffc100001000),
-            pmm::Flags::READ | pmm::Flags::WRITE,
-        );
-
-        // heap
-        kernel_aspace.reserve(
-            VirtualAddress::new(0xffffffc180000000)..VirtualAddress::new(0xffffffc182000000),
-            pmm::Flags::READ | pmm::Flags::WRITE,
-        );
-
-        // stacks
-        kernel_aspace.reserve(
-            VirtualAddress::new(0xffffffc140000000)..VirtualAddress::new(0xffffffc140100000),
-            pmm::Flags::READ | pmm::Flags::WRITE,
-        );
-
-        for _ in 0..50 {
-            kernel_aspace.find_spot(Layout::from_size_align(4096, 4096).unwrap(), 27);
-        }
     }
 }
