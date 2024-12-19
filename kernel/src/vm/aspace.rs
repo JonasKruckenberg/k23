@@ -1,3 +1,4 @@
+use crate::arch;
 use crate::vm::mapping::Mapping;
 use crate::vm::PageFaultFlags;
 use crate::Error;
@@ -10,7 +11,7 @@ use core::ops::Range;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use pmm::frame_alloc::BuddyAllocator;
-use pmm::{arch, AddressRangeExt, Flush, VirtualAddress};
+use pmm::{AddressRangeExt, Flush, VirtualAddress};
 use rand::distributions::Uniform;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
@@ -18,6 +19,7 @@ use wavltree::Entry;
 
 pub struct AddressSpace {
     pub tree: wavltree::WAVLTree<Mapping>,
+    address_range: Range<VirtualAddress>,
     frame_alloc: BuddyAllocator,
     arch: pmm::AddressSpace,
     prng: Option<ChaCha20Rng>,
@@ -30,9 +32,29 @@ unsafe impl Send for AddressSpace {}
 unsafe impl Sync for AddressSpace {}
 
 impl AddressSpace {
-    pub fn new(arch: pmm::AddressSpace, frame_alloc: BuddyAllocator, prng: ChaCha20Rng) -> Self {
+    pub fn new_user(
+        arch: pmm::AddressSpace,
+        frame_alloc: BuddyAllocator,
+        prng: ChaCha20Rng,
+    ) -> Self {
         Self {
             tree: wavltree::WAVLTree::default(),
+            address_range: arch::USER_ASPACE_BASE..VirtualAddress::MAX,
+            frame_alloc,
+            arch,
+            prng: Some(prng),
+            last_fault: None,
+        }
+    }
+
+    pub fn new_kernel(
+        arch: pmm::AddressSpace,
+        frame_alloc: BuddyAllocator,
+        prng: ChaCha20Rng,
+    ) -> Self {
+        Self {
+            tree: wavltree::WAVLTree::default(),
+            address_range: arch::KERNEL_ASPACE_BASE..VirtualAddress::MAX,
             frame_alloc,
             arch,
             prng: Some(prng),
@@ -295,13 +317,15 @@ impl AddressSpace {
 
         let mut candidate_spot_count = 0;
 
-        const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
-
         // see if there is a suitable gap between the start of the address space and the first mapping
         if let Some(root) = self.tree.root().get() {
-            let gap_size = root.min_first_byte.sub_addr(KERNEL_ASPACE_BASE);
-            let aligned_gap = KERNEL_ASPACE_BASE.align_up(layout.align())
-                ..KERNEL_ASPACE_BASE.add(gap_size).align_down(layout.align());
+            let gap_size = root.min_first_byte.sub_addr(self.address_range.start);
+            let aligned_gap = self.address_range.start.align_up(layout.align())
+                ..self
+                    .address_range
+                    .start
+                    .add(gap_size)
+                    .align_down(layout.align());
             let spot_count = spots_in_range(layout, aligned_gap.clone());
             candidate_spot_count += spot_count;
             if target_index < spot_count {

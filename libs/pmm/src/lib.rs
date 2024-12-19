@@ -33,6 +33,8 @@ bitflags::bitflags! {
 #[derive(Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct VirtualAddress(usize);
 impl VirtualAddress {
+    pub const MAX: Self = Self(usize::MAX);
+
     #[must_use]
     pub const fn new(bits: usize) -> Self {
         debug_assert!(bits != 0);
@@ -108,12 +110,22 @@ impl VirtualAddress {
     pub const fn align_up(self, alignment: usize) -> Self {
         Self((self.0 + alignment - 1) & !(alignment - 1))
     }
+
+    #[inline]
+    pub const fn is_user_accessible(&self) -> bool {
+        // This address refers to userspace if it is in the lower half of the
+        // canonical addresses.  IOW - if all of the bits in the canonical address
+        // mask are zero.
+        (self.0 & arch::CANONICAL_ADDRESS_MASK) == 0
+    }
 }
+
 impl fmt::Display for VirtualAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{:#x}", self.0))
     }
 }
+
 impl fmt::Debug for VirtualAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("VirtualAddress")
@@ -197,11 +209,13 @@ impl PhysicalAddress {
         Self((self.0 + alignment - 1) & !(alignment - 1))
     }
 }
+
 impl fmt::Display for PhysicalAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{:#x}", self.0))
     }
 }
+
 impl fmt::Debug for PhysicalAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("PhysicalAddress")
@@ -222,6 +236,7 @@ pub trait AddressRangeExt {
     fn align_in(self, align: usize) -> Self;
     #[must_use]
     fn align_out(self, align: usize) -> Self;
+    fn is_user_accessible(&self) -> bool;
 }
 
 impl AddressRangeExt for Range<PhysicalAddress> {
@@ -243,6 +258,9 @@ impl AddressRangeExt for Range<PhysicalAddress> {
     fn align_out(self, align: usize) -> Self {
         self.start.align_down(align)..self.end.align_up(align)
     }
+    fn is_user_accessible(&self) -> bool {
+        unimplemented!("PhysicalAddress is never user accessible")
+    }
 }
 
 impl AddressRangeExt for Range<VirtualAddress> {
@@ -263,5 +281,12 @@ impl AddressRangeExt for Range<VirtualAddress> {
     }
     fn align_out(self, align: usize) -> Self {
         self.start.align_down(align)..self.end.align_up(align)
+    }
+    fn is_user_accessible(&self) -> bool {
+        if self.is_empty() {
+            return false;
+        }
+
+        self.start.is_user_accessible() && self.end.sub(1).is_user_accessible()
     }
 }

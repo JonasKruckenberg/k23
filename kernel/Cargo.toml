@@ -34,6 +34,7 @@ rand.workspace = true
 onlyerror.workspace = true
 bitflags.workspace = true
 xmas-elf.workspace = true
+static_assertions.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
@@ -41,3 +42,4 @@ riscv.workspace = true
 [dev-dependencies]
 ktest.workspace = true
 wast.workspace = true
+hashbrown.workspace = true

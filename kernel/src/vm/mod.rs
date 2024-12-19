@@ -51,7 +51,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
         let arch = arch::vm::init(boot_info, &mut frame_alloc)?;
 
         let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
-        let mut aspace = AddressSpace::new(arch, frame_alloc, prng);
+        let mut aspace = AddressSpace::new_kernel(arch, frame_alloc, prng);
 
         reserve_wired_regions(&mut aspace, boot_info);
 
