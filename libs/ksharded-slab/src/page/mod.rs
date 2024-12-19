@@ -84,7 +84,7 @@ pub(crate) struct Shared<T, C> {
     // Total size of the page.
     //
     // If the head index of the local or remote free list is greater than the size of the
-    // page, then that free list is emtpy. If the head of both free lists is greater than `size`
+    // page, then that free list is empty. If the head of both free lists is greater than `size`
     // then there are no slots left in that page.
     size: usize,
     prev_sz: usize,

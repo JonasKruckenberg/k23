@@ -652,8 +652,8 @@ fn owned_entry_send_out_of_local() {
 }
 
 #[test]
-fn owned_entrys_outlive_slab() {
-    run_model("owned_entrys_outlive_slab", || {
+fn owned_entries_outlive_slab() {
+    run_model("owned_entries_outlive_slab", || {
         let slab = Arc::new(Slab::<alloc::Track<String>>::new());
         let key1 = slab
             .insert(alloc::Track::new(String::from("hello")))

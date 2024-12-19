@@ -92,7 +92,7 @@
 //!
 //! The size of the first page in a shard is always a power of two, and every
 //! subsequent page added after the first is twice as large as the page that
-//! preceeds it.
+//! precedes it.
 //!
 //! ```text
 //!

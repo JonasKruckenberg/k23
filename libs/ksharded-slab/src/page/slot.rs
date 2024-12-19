@@ -344,7 +344,7 @@ where
 
     /// Insert a value into a slot
     ///
-    /// We first initialize the state and then insert the pased in value into the slot.
+    /// We first initialize the state and then insert the passed in value into the slot.
     #[inline]
     pub(crate) fn insert(&self, value: &mut Option<T>) -> Option<Generation<C>> {
         debug_assert!(self.is_empty(), "inserted into full slot");
@@ -478,7 +478,7 @@ where
         offset: usize,
         free: &F,
     ) -> bool {
-        // release_with will _always_ wait unitl it can release the slot or just return if the slot
+        // release_with will _always_ wait until it can release the slot or just return if the slot
         // has already been released.
         self.release_with(gen, offset, free, |item| {
             let cleared = item.map(|inner| Clear::clear(inner)).is_some();

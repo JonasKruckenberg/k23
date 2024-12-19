@@ -29,7 +29,7 @@ use core::{fmt, marker::PhantomData};
 ///
 /// The `Pool` type shares similar semantics to [`Slab`] when it comes to sharing across threads
 /// and storing mutable shared data. The biggest difference is there are no [`Slab::insert`] and
-/// [`Slab::take`] analouges for the `Pool` type. Instead new items are added to the pool by using
+/// [`Slab::take`] analogues for the `Pool` type. Instead new items are added to the pool by using
 /// the [`Pool::create`] method, and marked for clearing by the [`Pool::clear`] method.
 ///
 /// # Examples

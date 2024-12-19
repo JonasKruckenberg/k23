@@ -1053,7 +1053,7 @@ pub(crate) trait Pack<C: cfg::Config>: Sized {
     /// A number consisting of `Self::LEN` 1 bits, starting at the least
     /// significant bit.
     ///
-    /// This is the higest value this type can represent. This number is shifted
+    /// This is the highest value this type can represent. This number is shifted
     /// left by `Self::SHIFT` bits to calculate this type's `MASK`.
     ///
     /// This is computed automatically based on `Self::LEN`.
@@ -1064,7 +1064,7 @@ pub(crate) trait Pack<C: cfg::Config>: Sized {
     /// The number of bits to shift a number to pack it into a usize with other
     /// values.
     ///
-    /// This is caculated automatically based on the `LEN` and `SHIFT` constants
+    /// This is calculated automatically based on the `LEN` and `SHIFT` constants
     /// of the previous value.
     const SHIFT: usize = Self::Prev::SHIFT + Self::Prev::LEN;
 
