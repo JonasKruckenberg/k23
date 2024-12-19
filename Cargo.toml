@@ -21,6 +21,9 @@ large_stack_frames = "deny"
 large_stack_arrays = "deny"
 recursive_format_impl = "deny"
 
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
 [workspace.dependencies]
 kernel = { path = "kernel" }
 loader-api = { path = "loader/api" }
@@ -33,6 +36,7 @@ panic-common = { path = "libs/panic-common" }
 panic-unwind = { path = "libs/panic-unwind" }
 riscv = { path = "libs/riscv" }
 semihosting-logger = { path = "libs/semihosting-logger" }
+ksharded-slab = { path = "libs/ksharded-slab" }
 sync = { path = "libs/sync" }
 thread-local = { path = "libs/thread-local" }
 unwind2 = { path = "libs/unwind2" }
