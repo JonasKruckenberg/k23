@@ -1,0 +1,29 @@
+[package]
+name = "sharded-slab"
+version = "0.1.7"
+authors = ["Eliza Weisman <eliza@buoyant.io>"]
+edition.workspace = true
+documentation = "https://docs.rs/sharded-slab/"
+homepage = "https://github.com/hawkw/sharded-slab"
+repository = "https://github.com/hawkw/sharded-slab"
+license = "MIT"
+keywords = ["slab", "allocator", "lock-free", "atomic"]
+categories = ["memory-management", "data-structures", "concurrency"]
+description = """
+A lock-free concurrent slab.
+"""
+
+[dependencies]
+log.workspace = true
+sync.workspace = true
+thread-local.workspace = true
+panic-unwind.workspace = true
+
+[target.'cfg(loom)'.dependencies]
+loom = { workspace = true, features = ["checkpoint"], optional = true }
+
+[target.'cfg(loom)'.dev-dependencies]
+loom = { workspace = true, features = ["checkpoint"] }
+
+[lints]
+workspace = true
