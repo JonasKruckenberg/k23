@@ -312,7 +312,7 @@ impl AddressSpace {
         log::trace!("attempting to find spot for {layout:?} at index {target_index}");
 
         let spots_in_range = |layout: Layout, range: Range<VirtualAddress>| -> usize {
-            ((range.size() - layout.size()) >> layout.align().ilog2()) + 1
+            ((range.size().saturating_sub(layout.size())) >> layout.align().ilog2()) + 1
         };
 
         let mut candidate_spot_count = 0;

@@ -7,6 +7,7 @@ use alloc::format;
 use alloc::string::ToString;
 use aspace::AddressSpace;
 use core::alloc::Layout;
+use core::num::NonZeroUsize;
 use core::ops::{Add, Range};
 use core::slice;
 use loader_api::BootInfo;
@@ -48,7 +49,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
             BuddyAllocator::from_iter(usable_regions, boot_info.physical_memory_map.start)
         };
 
-        let arch = arch::vm::init(boot_info, &mut frame_alloc)?;
+        let mut arch = arch::vm::init(&mut frame_alloc, boot_info, minfo)?;
 
         let prng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
         let mut aspace = AddressSpace::new_kernel(arch, frame_alloc, prng);

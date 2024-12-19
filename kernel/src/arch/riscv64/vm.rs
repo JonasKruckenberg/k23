@@ -3,18 +3,31 @@ use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use loader_api::BootInfo;
 use pmm::frame_alloc::{BuddyAllocator, FrameAllocator, FrameUsage};
-use pmm::{AddressRangeExt, Flush, PhysicalAddress};
+use pmm::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress};
+use crate::machine_info::MachineInfo;
 
 const KERNEL_ASID: usize = 0;
 
 pub fn init(
-    boot_info: &BootInfo,
     frame_alloc: &mut BuddyAllocator,
+    boot_info: &BootInfo,
+    minfo: &MachineInfo
 ) -> crate::Result<pmm::AddressSpace> {
     let (mut arch, mut flush) =
         pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_map.start);
 
     unmap_loader(boot_info, &mut arch, &mut flush);
+
+    if let Some(rtc) = &minfo.rtc {
+        arch.map_contiguous(
+            frame_alloc,
+            VirtualAddress::new(rtc.start.as_raw()),
+            rtc.start,
+            NonZeroUsize::new(rtc.size()).unwrap(),
+            pmm::Flags::READ | pmm::Flags::WRITE,
+            &mut flush
+        )?;
+    }
 
     flush.flush()?;
 
