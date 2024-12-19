@@ -3,7 +3,7 @@ use crate::{allocator, arch, vm, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_SIZE_PAGES};
 use core::{mem, slice};
 use loader_api::{LoaderConfig, MemoryRegionKind};
 use sync::OnceLock;
-use thread_local::declare_thread_local;
+use crate::thread_local::declare_thread_local;
 
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = LoaderConfig::new_default();

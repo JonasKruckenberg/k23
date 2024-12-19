@@ -3,7 +3,7 @@ use crate::{arch, TRAP_STACK_SIZE_PAGES};
 use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{scause, sepc, sstatus, stval, stvec};
-use thread_local::declare_thread_local;
+use crate::thread_local::declare_thread_local;
 
 declare_thread_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * arch::PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * arch::PAGE_SIZE] };
