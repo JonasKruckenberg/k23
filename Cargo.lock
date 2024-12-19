@@ -337,6 +337,7 @@ version = "0.1.0"
 dependencies = [
  "cfg-if",
  "dtb-parser",
+ "ksharded-slab",
  "ktest",
  "loader-api",
  "log",
@@ -348,9 +349,12 @@ dependencies = [
  "rand_chacha 0.3.1",
  "riscv",
  "semihosting-logger",
+ "static_assertions",
  "sync",
  "talc",
  "thread-local",
+ "tracing",
+ "tracing-core",
  "wast",
  "wavltree",
 ]
@@ -804,6 +808,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
 name = "syn"
 version = "2.0.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -843,6 +853,20 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "tracing"
+version = "0.2.0"
+source = "git+https://github.com/tokio-rs/tracing?branch=master#b02a700ba6850ad813f77e65144114f866074a8f"
+dependencies = [
+ "pin-project-lite",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-core"
+version = "0.2.0"
+source = "git+https://github.com/tokio-rs/tracing?branch=master#b02a700ba6850ad813f77e65144114f866074a8f"
 
 [[package]]
 name = "unicode-ident"

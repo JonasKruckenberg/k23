@@ -32,6 +32,10 @@ pin-project-lite.workspace = true
 rand_chacha.workspace = true
 rand.workspace = true
 onlyerror.workspace = true
+static_assertions.workspace = true
+tracing.workspace = true
+tracing-core.workspace = true
+ksharded-slab.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
