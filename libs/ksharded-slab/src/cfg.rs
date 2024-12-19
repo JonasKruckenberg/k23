@@ -170,7 +170,7 @@ mod tests {
     use crate::test_util;
     use crate::Slab;
 
-    #[test]
+    #[ktest::test]
     #[cfg_attr(loom, ignore)]
     #[should_panic]
     fn validates_max_refs() {
@@ -188,7 +188,7 @@ mod tests {
         let _slab = Slab::<usize>::new_with_config::<GiantGenConfig>();
     }
 
-    #[test]
+    #[ktest::test]
     #[cfg_attr(loom, ignore)]
     fn big() {
         let slab = Slab::new();
@@ -200,7 +200,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[ktest::test]
     #[cfg_attr(loom, ignore)]
     fn custom_page_sz() {
         let slab = Slab::new_with_config::<test_util::TinyConfig>();

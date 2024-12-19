@@ -36,7 +36,7 @@ panic-common = { path = "libs/panic-common" }
 panic-unwind = { path = "libs/panic-unwind" }
 riscv = { path = "libs/riscv" }
 semihosting-logger = { path = "libs/semihosting-logger" }
-sharded-slab = { path = "libs/sharded-slab" }
+ksharded-slab = { path = "libs/ksharded-slab" }
 sync = { path = "libs/sync" }
 thread-local = { path = "libs/thread-local" }
 unwind2 = { path = "libs/unwind2" }
@@ -58,7 +58,6 @@ talc = "4.4.2"
 pin-project-lite = "0.2.15"
 rand_chacha = { version = "0.3.1", default-features = false }
 rand = { version = "0.8.5", default-features = false }
-loom = "0.7.2"
 
 # wast dependencies
 bumpalo = "3.14.0"

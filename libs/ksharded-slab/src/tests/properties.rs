@@ -9,7 +9,9 @@
 //! The test is supposed to be deterministic, so it doesn't spawn real threads
 //! and uses `tid::with()` to override the TID for the current thread.
 
-use core::{ops::Range, sync::Arc};
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::ops::Range;
 
 use indexmap::IndexMap;
 use proptest::prelude::*;

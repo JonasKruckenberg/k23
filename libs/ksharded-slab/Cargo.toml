@@ -1,5 +1,5 @@
 [package]
-name = "sharded-slab"
+name = "ksharded-slab"
 version = "0.1.7"
 authors = ["Eliza Weisman <eliza@buoyant.io>"]
 edition.workspace = true
@@ -19,11 +19,8 @@ sync.workspace = true
 thread-local.workspace = true
 panic-unwind.workspace = true
 
-[target.'cfg(loom)'.dependencies]
-loom = { workspace = true, features = ["checkpoint"], optional = true }
-
-[target.'cfg(loom)'.dev-dependencies]
-loom = { workspace = true, features = ["checkpoint"] }
+[features]
+loom = []
 
 [lints]
 workspace = true

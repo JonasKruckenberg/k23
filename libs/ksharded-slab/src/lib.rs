@@ -203,6 +203,7 @@
 #![warn(missing_debug_implementations, missing_docs)]
 #![no_std]
 #![feature(thread_local)]
+#![feature(used_with_arg)]
 
 extern crate alloc;
 
@@ -368,7 +369,7 @@ pub struct VacantEntry<'a, T, C: cfg::Config = DefaultConfig> {
 /// ```
 ///
 /// [`get`]: Slab::get
-/// [`Arc`]: core::sync::Arc
+/// [`Arc`]: alloc::sync::Arc
 pub struct OwnedEntry<T, C = DefaultConfig>
 where
     C: cfg::Config,
@@ -711,7 +712,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// ```
     ///
     /// [`get`]: Slab::get
-    /// [`Arc`]: core::sync::Arc
+    /// [`Arc`]: alloc::sync::Arc
     pub fn get_owned(self: Arc<Self>, key: usize) -> Option<OwnedEntry<T, C>> {
         let tid = C::unpack_tid(key);
 
