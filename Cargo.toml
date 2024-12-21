@@ -52,8 +52,6 @@ gimli = { version = "0.31.0", default-features = false, features = ["read"] }
 xmas-elf = "0.9.1"
 talc = "4.4.2"
 pin-project-lite = "0.2.15"
-rand_chacha = { version = "0.3.1", default-features = false }
-rand = { version = "0.8.5", default-features = false }
 
 # wast dependencies
 bumpalo = "3.14.0"
