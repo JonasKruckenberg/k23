@@ -294,12 +294,8 @@ impl<'dt> Strings<'dt> {
             err: false,
         }
     }
-
-    /// # Errors
-    ///
-    /// Returns an error if the string is not valid UTF-8.
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Result<Option<&'dt str>> {
+    
+    fn next(&mut self) -> Result<Option<&'dt str>> {
         if self.offset == self.bytes.len() || self.err {
             return Ok(None);
         }
@@ -308,5 +304,15 @@ impl<'dt> Strings<'dt> {
         self.offset += str.len() + 1;
 
         Ok(Some(str))
+    }
+}
+
+impl<'dt> Iterator for Strings<'dt> {
+    type Item = Result<&'dt str>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let res = self.next();
+        self.err = res.is_err();
+        res.transpose()
     }
 }

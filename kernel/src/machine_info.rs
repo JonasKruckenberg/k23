@@ -1,8 +1,8 @@
 use alloc::vec::Vec;
 use core::ffi::CStr;
-use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
+use core::{fmt, mem};
 use dtb_parser::{DevTree, Node, Strings, Visitor};
 use mmu::PhysicalAddress;
 
@@ -15,8 +15,14 @@ pub struct MachineInfo<'dt> {
     pub bootargs: Option<&'dt CStr>,
     /// The RNG seed passed to us by the previous stage loader.
     pub rng_seed: Option<&'dt [u8]>,
-    /// The MMIO region of the real-time clock device.
-    pub rtc: Option<Range<PhysicalAddress>>,
+    /// MMIO devices
+    pub mmio_devices: Vec<MmioDevice<'dt>>,
+}
+
+pub struct MmioDevice<'dt> {
+    pub regions: Vec<Range<PhysicalAddress>>,
+    pub name: &'dt str,
+    pub compatible: Vec<&'dt str>,
 }
 
 impl fmt::Debug for MachineInfo<'_> {
@@ -47,14 +53,14 @@ impl fmt::Display for MachineInfo<'_> {
         } else {
             writeln!(f, "{:<22} : None", "PRNG SEED")?;
         }
-        if let Some(rtc) = &self.rtc {
-            writeln!(
-                f,
-                "{:<22} : {}..{}",
-                "REAL-TIME CLOCK DEVICE", rtc.start, rtc.end
-            )?;
-        } else {
-            writeln!(f, "{:<22} : None", "REAL-TIME CLOCK DEVICE")?;
+        for (idx, r) in self.mmio_devices.iter().enumerate() {
+            for range in &r.regions {
+                writeln!(
+                    f,
+                    "MMIO DEVICE {:<4}: {}..{} {:<20} {:?}",
+                    idx, range.start, range.end, r.name, r.compatible
+                )?;
+            }
         }
 
         Ok(())
@@ -78,7 +84,7 @@ impl MachineInfo<'_> {
             fdt: fdt_slice,
             bootargs: v.chosen_visitor.bootargs,
             rng_seed: v.chosen_visitor.rng_seed,
-            rtc: v.soc_visitor.rtc.regs.regs.first().cloned(),
+            mmio_devices: v.soc_visitor.regions,
         })
     }
 }
@@ -115,7 +121,7 @@ impl HartLocalMachineInfo {
 #[derive(Default)]
 struct MachineInfoVisitor<'dt> {
     chosen_visitor: ChosenVisitor<'dt>,
-    soc_visitor: SocVisitor,
+    soc_visitor: SocVisitor<'dt>,
 }
 
 impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
@@ -249,17 +255,30 @@ impl<'dt> Visitor<'dt> for CpuVisitor {
     }
 }
 
-#[derive(Default, Debug)]
-struct SocVisitor {
-    rtc: RtcVisitor,
+#[derive(Default)]
+struct SocVisitor<'dt> {
+    regions: Vec<MmioDevice<'dt>>,
+    address_size: usize,
+    width_size: usize,
+    child: SocVisitorChildVisitor<'dt>,
 }
-impl<'dt> Visitor<'dt> for SocVisitor {
+
+#[derive(Default)]
+struct SocVisitorChildVisitor<'dt> {
+    regs: Vec<Range<PhysicalAddress>>,
+    address_size: usize,
+    width_size: usize,
+    name: &'dt str,
+    compatible: Vec<&'dt str>,
+}
+
+impl<'dt> Visitor<'dt> for SocVisitor<'dt> {
     type Error = dtb_parser::Error;
 
     fn visit_address_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
         let size_in_bytes = size_in_cells as usize * size_of::<u32>();
 
-        self.rtc.regs.address_size = size_in_bytes;
+        self.address_size = size_in_bytes;
 
         Ok(())
     }
@@ -267,45 +286,55 @@ impl<'dt> Visitor<'dt> for SocVisitor {
     fn visit_size_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
         let size_in_bytes = size_in_cells as usize * size_of::<u32>();
 
-        self.rtc.regs.width_size = size_in_bytes;
+        self.width_size = size_in_bytes;
 
         Ok(())
     }
 
     fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
-        if name.starts_with("rtc@") {
-            node.visit(&mut self.rtc)?;
+        self.child.name = name;
+        self.child.address_size = self.address_size;
+        self.child.width_size = self.width_size;
+        node.visit(&mut self.child)?;
+        self.regions.push(self.child.result());
+        Ok(())
+    }
+}
+
+impl<'dt> SocVisitorChildVisitor<'dt> {
+    fn result(&mut self) -> MmioDevice<'dt> {
+        MmioDevice {
+            regions: mem::take(&mut self.regs),
+            name: self.name,
+            compatible: mem::take(&mut self.compatible),
         }
+    }
+}
+
+impl<'dt> Visitor<'dt> for SocVisitorChildVisitor<'dt> {
+    type Error = dtb_parser::Error;
+
+    fn visit_address_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
+        let size_in_bytes = size_in_cells as usize * size_of::<u32>();
+
+        self.address_size = size_in_bytes;
+
         Ok(())
     }
-}
 
-#[derive(Default, Debug)]
-struct RtcVisitor {
-    regs: RegsVisitor,
-}
+    fn visit_size_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
+        let size_in_bytes = size_in_cells as usize * size_of::<u32>();
 
-impl<'dt> Visitor<'dt> for RtcVisitor {
-    type Error = dtb_parser::Error;
-    fn visit_reg(&mut self, reg: &'dt [u8]) -> Result<(), Self::Error> {
-        self.regs.visit_reg(reg)
+        self.width_size = size_in_bytes;
+
+        Ok(())
     }
+
     fn visit_compatible(&mut self, mut strings: Strings<'dt>) -> Result<(), Self::Error> {
-        let s = strings.next()?.unwrap();
-        assert_eq!(s, "google,goldfish-rtc");
+        self.compatible = strings.collect::<Result<_,_>>()?;
+
         Ok(())
     }
-}
-
-#[derive(Default, Debug)]
-struct RegsVisitor {
-    address_size: usize,
-    width_size: usize,
-    regs: Vec<Range<PhysicalAddress>>,
-}
-
-impl<'dt> Visitor<'dt> for RegsVisitor {
-    type Error = dtb_parser::Error;
 
     fn visit_reg(&mut self, mut reg: &'dt [u8]) -> Result<(), Self::Error> {
         debug_assert_ne!(self.address_size, 0);
@@ -320,7 +349,6 @@ impl<'dt> Visitor<'dt> for RegsVisitor {
             let width = usize::from_be_bytes(width.try_into()?);
 
             let start = PhysicalAddress::new(start);
-
             self.regs.push(start..start.add(width));
         }
 
