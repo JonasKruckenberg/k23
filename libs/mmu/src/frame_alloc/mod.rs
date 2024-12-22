@@ -23,6 +23,10 @@ pub trait FrameAllocator {
     fn frame_usage(&self) -> FrameUsage;
 }
 
+pub trait FramesIterator: Iterator<Item = (PhysicalAddress, usize)> {
+    fn alloc_mut(&mut self) -> &mut dyn FrameAllocator;
+}
+
 pub struct NonContiguousFrames<'a> {
     alloc: &'a mut dyn FrameAllocator,
     remaining: usize,
@@ -51,10 +55,14 @@ impl<'a> NonContiguousFrames<'a> {
             zeroed: Some(phys_offset),
         }
     }
-    pub fn alloc_mut(&mut self) -> &mut dyn FrameAllocator {
+}
+
+impl FramesIterator for NonContiguousFrames<'_> {
+    fn alloc_mut(&mut self) -> &mut dyn FrameAllocator {
         self.alloc
     }
 }
+
 impl Iterator for NonContiguousFrames<'_> {
     type Item = (PhysicalAddress, usize);
 

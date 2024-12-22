@@ -1,4 +1,4 @@
-use crate::frame_alloc::{FrameAllocator, NonContiguousFrames};
+use crate::frame_alloc::{FrameAllocator, FramesIterator};
 use crate::{arch, Error, Flush, PhysicalAddress, VirtualAddress};
 use core::alloc::Layout;
 use core::fmt;
@@ -76,7 +76,7 @@ impl AddressSpace {
     pub fn map(
         &mut self,
         mut virt: VirtualAddress,
-        mut frames: NonContiguousFrames,
+        mut frames: impl FramesIterator,
         flags: crate::Flags,
         flush: &mut Flush,
     ) -> crate::Result<()> {
@@ -198,7 +198,7 @@ impl AddressSpace {
     pub fn remap(
         &mut self,
         mut virt: VirtualAddress,
-        iter: NonContiguousFrames,
+        iter: impl FramesIterator,
         flush: &mut Flush,
     ) -> crate::Result<()> {
         for (phys, len) in iter {
