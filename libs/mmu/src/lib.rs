@@ -8,7 +8,9 @@ mod error;
 mod flush;
 pub mod frame_alloc;
 
+use core::alloc::{Layout, LayoutError};
 use core::fmt;
+use core::fmt::Formatter;
 use core::ops::Range;
 
 pub use address_space::AddressSpace;
@@ -26,6 +28,12 @@ bitflags::bitflags! {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
         const EXECUTE = 1 << 2;
+    }
+}
+
+impl fmt::Display for Flags {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        bitflags::parser::to_writer(self, f)
     }
 }
 
@@ -236,6 +244,8 @@ pub trait AddressRangeExt {
     fn align_in(self, align: usize) -> Self;
     #[must_use]
     fn align_out(self, align: usize) -> Self;
+    fn align(&self) -> usize;
+    fn into_layout(self) -> core::result::Result<Layout, LayoutError>;
     fn is_user_accessible(&self) -> bool;
 }
 
@@ -257,6 +267,13 @@ impl AddressRangeExt for Range<PhysicalAddress> {
     }
     fn align_out(self, align: usize) -> Self {
         self.start.align_down(align)..self.end.align_up(align)
+    }
+    // TODO test
+    fn align(&self) -> usize {
+        self.start.as_raw() & (!self.start.as_raw() + 1)
+    }
+    fn into_layout(self) -> core::result::Result<Layout, LayoutError> {
+        Layout::from_size_align(self.size(), self.align())
     }
     fn is_user_accessible(&self) -> bool {
         unimplemented!("PhysicalAddress is never user accessible")
@@ -281,6 +298,13 @@ impl AddressRangeExt for Range<VirtualAddress> {
     }
     fn align_out(self, align: usize) -> Self {
         self.start.align_down(align)..self.end.align_up(align)
+    }
+    // TODO test
+    fn align(&self) -> usize {
+        self.start.as_raw() & (!self.start.as_raw() + 1)
+    }
+    fn into_layout(self) -> core::result::Result<Layout, LayoutError> {
+        Layout::from_size_align(self.size(), self.align())
     }
     fn is_user_accessible(&self) -> bool {
         if self.is_empty() {
