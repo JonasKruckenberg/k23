@@ -27,8 +27,7 @@ fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
                 .expect("no FDT region");
 
             boot_info
-                .physical_memory_map
-                .start
+                .physical_address_offset
                 .add(fdt.range.start.as_raw())
                 .as_raw() as *const u8
         };

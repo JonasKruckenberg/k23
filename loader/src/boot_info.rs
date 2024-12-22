@@ -10,6 +10,7 @@ pub fn init_boot_info(
     boot_hart: usize,
     hart_mask: usize,
     kernel_aspace: &KernelAddressSpace,
+    physical_memory_offset: VirtualAddress,
     physical_memory_map: Range<VirtualAddress>,
     fdt_phys: Range<PhysicalAddress>,
     loader_phys: Range<PhysicalAddress>,
@@ -20,7 +21,7 @@ pub fn init_boot_info(
             Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
         )
         .ok_or(Error::OutOfMemory)?;
-    let page = physical_memory_map.start.add(frame.as_raw());
+    let page = physical_memory_offset.add(frame.as_raw());
 
     let (memory_regions, memory_regions_len) =
         init_boot_info_memory_regions(page, frame_alloc, fdt_phys);
@@ -30,6 +31,7 @@ pub fn init_boot_info(
         boot_info.write(BootInfo::new(
             boot_hart,
             hart_mask,
+            physical_memory_offset,
             physical_memory_map,
             kernel_aspace.kernel_virt.clone(),
             memory_regions,

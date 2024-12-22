@@ -33,6 +33,7 @@ pub struct BootInfo {
     /// frames that are also mapped at other virtual addresses can easily break memory safety and
     /// cause undefined behavior. Only frames reported as `USABLE` by the memory map in the `BootInfo`
     /// can be safely accessed.
+    pub physical_address_offset: VirtualAddress,
     pub physical_memory_map: Range<VirtualAddress>,
     /// Virtual memory region occupied by the loader.
     ///
@@ -67,6 +68,7 @@ impl BootInfo {
     pub fn new(
         boot_hart: usize,
         hart_mask: usize,
+        physical_memory_offset: VirtualAddress,
         physical_memory_map: Range<VirtualAddress>,
         kernel_virt: Range<VirtualAddress>,
         memory_regions: *const MemoryRegion,
@@ -81,6 +83,7 @@ impl BootInfo {
         Self {
             boot_hart,
             hart_mask,
+            physical_address_offset: physical_memory_offset,
             physical_memory_map,
             memory_regions,
             memory_regions_len,
@@ -104,8 +107,8 @@ impl fmt::Display for BootInfo {
         writeln!(f, "{:<23} : {}", "BOOT HART", self.boot_hart)?;
         writeln!(
             f,
-            "{:<23} : {}..{}",
-            "PHYSICAL MEMORY OFFSET", self.physical_memory_map.start, self.physical_memory_map.end
+            "{:<23} : {}",
+            "PHYSICAL MEMORY OFFSET", self.physical_address_offset
         )?;
         writeln!(
             f,

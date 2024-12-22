@@ -2,6 +2,7 @@ use crate::arch;
 use crate::machine_info::MachineInfo;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
+use core::ops::DerefMut;
 use loader_api::BootInfo;
 use mmu::frame_alloc::{BuddyAllocator, FrameAllocator, FrameUsage};
 use mmu::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress};
@@ -9,12 +10,13 @@ use mmu::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress};
 const KERNEL_ASID: usize = 0;
 
 pub fn init(
-    frame_alloc: &mut BuddyAllocator,
     boot_info: &BootInfo,
     minfo: &MachineInfo,
 ) -> crate::Result<mmu::AddressSpace> {
+    let mut frame_alloc = crate::vm::FRAME_ALLOC.get().unwrap().lock();
+
     let (mut arch, mut flush) =
-        mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_map.start);
+        mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
 
     unmap_loader(boot_info, &mut arch, &mut flush);
 

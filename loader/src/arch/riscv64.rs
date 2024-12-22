@@ -127,7 +127,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             //
             // This will be used by the kernel to access the page tables, BootInfo struct and maybe
             // more in the future.
-            let physmap = map_physical_memory(
+            let (phys_off, phys_map) = map_physical_memory(
                 &mut aspace,
                 &mut frame_alloc,
                 &mut page_alloc,
@@ -144,7 +144,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 aspace.activate();
                 log::trace!("activated.");
             }
-            frame_alloc.set_phys_offset(physmap.start);
+            frame_alloc.set_phys_offset(phys_off);
 
             // The kernel elf file is inlined into the loader executable as part of the build setup
             // which means we just need to parse it here.
@@ -152,7 +152,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 slice::from_ptr_range(
                     kernel_phys
                         .clone()
-                        .add(physmap.start.as_raw())
+                        .add(phys_off.as_raw())
                         .as_ptr_range(),
                 )
             })?;
@@ -161,7 +161,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
 
             // Reconstruct the aspace with the new physical memory mapping offset since we're in virtual
             // memory mode now.
-            let (aspace, mut flush) = AddressSpace::from_active(KERNEL_ASID, physmap.start);
+            let (aspace, mut flush) = AddressSpace::from_active(KERNEL_ASID, phys_off);
 
             let kernel_aspace = init_kernel_aspace(
                 aspace,
@@ -178,7 +178,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 hartid,
                 minfo.hart_mask,
                 &kernel_aspace,
-                physmap,
+                phys_off,
+                phys_map,
                 fdt_phys,
                 self_regions.executable.start..self_regions.read_write.end,
                 kernel_phys,
@@ -335,7 +336,7 @@ pub fn map_physical_memory(
     page_alloc: &mut PageAllocator,
     minfo: &MachineInfo,
     flush: &mut Flush,
-) -> crate::Result<Range<VirtualAddress>> {
+) -> crate::Result<(VirtualAddress, Range<VirtualAddress>)> {
     let phys = minfo.memory_hull();
     let alignment = arch::page_size_for_level(2);
 
@@ -361,7 +362,7 @@ pub fn map_physical_memory(
     // exclude the physical memory map region from page allocation
     page_alloc.reserve(KERNEL_ASPACE_BASE, phys_aligned.as_raw() + size);
 
-    Ok(KERNEL_ASPACE_BASE..KERNEL_ASPACE_BASE.add(phys_aligned.as_raw()).add(size))
+    Ok((KERNEL_ASPACE_BASE, virt))
 }
 
 /// Moves the FDT from wherever the previous bootloader placed it into a properly allocated place,
