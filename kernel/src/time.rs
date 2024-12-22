@@ -155,10 +155,17 @@ impl SystemTime {
         // Only device supported right now is "google,goldfish-rtc"
         // https://android.googlesource.com/platform/external/qemu/+/master/docs/GOLDFISH-VIRTUAL-HARDWARE.TXT
 
-        let rtc = MACHINE_INFO.get().unwrap().rtc.as_ref().unwrap();
+        let rtc = MACHINE_INFO
+            .get()
+            .unwrap()
+            .mmio_devices
+            .iter()
+            .find(|region| region.compatible.contains(&"google,goldfish-rtc"))
+            .unwrap();
+
         let time_ns = unsafe {
-            let time_low = AtomicPtr::new(rtc.start.as_raw() as *mut u32);
-            let time_high = AtomicPtr::new(rtc.start.add(0x04).as_raw() as *mut u32);
+            let time_low = AtomicPtr::new(rtc.regions[0].start.as_raw() as *mut u32);
+            let time_high = AtomicPtr::new(rtc.regions[0].start.add(0x04).as_raw() as *mut u32);
 
             let low = time_low.load(Ordering::Relaxed).read_volatile();
             let high = time_high.load(Ordering::Relaxed).read_volatile();
@@ -171,6 +178,7 @@ impl SystemTime {
             (time_ns % NANOS_PER_SEC) as u32,
         ))
     }
+    
     pub fn duration_since(&self, earlier: SystemTime) -> Result<Duration, SystemTimeError> {
         if self >= &earlier {
             Ok(self.0 - earlier.0)

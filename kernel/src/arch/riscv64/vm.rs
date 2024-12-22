@@ -19,18 +19,7 @@ pub fn init(
         mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
 
     unmap_loader(boot_info, &mut arch, &mut flush);
-
-    if let Some(rtc) = &minfo.rtc {
-        arch.map_contiguous(
-            frame_alloc,
-            VirtualAddress::new(rtc.start.as_raw()),
-            rtc.start,
-            NonZeroUsize::new(rtc.size()).unwrap(),
-            mmu::Flags::READ | mmu::Flags::WRITE,
-            &mut flush,
-        )?;
-    }
-
+    
     flush.flush()?;
 
     Ok(arch)
