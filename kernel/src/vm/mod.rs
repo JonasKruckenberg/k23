@@ -63,12 +63,17 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
         reserve_wired_regions(&mut aspace, boot_info, &mut flush);
         flush.flush()?;
 
+        let mut batch = aspace.begin_batch();
         for device in &minfo.mmio_devices {
             for region in &device.regions {
-                let vmo = WiredVmo::new(region.clone());
+                log::trace!("mapping device region {:?}", region);
+                let aligned = region.clone().align_out(arch::PAGE_SIZE);
+                
+                let vmo = WiredVmo::new(aligned.clone());
 
                 aspace.create_mapping(
-                    region.clone().into_layout().unwrap(),
+                    &mut batch,
+                    aligned.into_layout().unwrap(),
                     vmo,
                     0,
                     mmu::Flags::READ | mmu::Flags::WRITE,
@@ -76,6 +81,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
                 )?;
             }
         }
+        batch.flush()?;
 
         Ok(Mutex::new(aspace))
     })?;
@@ -218,17 +224,70 @@ fn reserve_wired_regions(
 }
 
 trait Vmo {
-    // Returns true if the object is backed by a contiguous range of physical
-    // memory.
-    fn is_contiguous() -> bool;
-    // Returns true if the object size can be changed.
-    fn is_resizable() -> bool;
-    // Returns true if the object's pages are discardable by the kernel.
-    fn is_discardable() -> bool;
-    fn commit_range(&mut self, range: Range<u64>);
-    fn prefetch_range(&mut self, range: Range<u64>);
-    fn decommit_range(&mut self, range: Range<u64>);
-    fn zero_range(&mut self, range: Range<u64>);
+    fn is_contiguous(&self) -> bool;
+    fn is_resizable(&self) -> bool;
+    fn is_discardable(&self) -> bool;
+    fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>>;
+    fn as_any(&self) -> &dyn Any;
+}
+
+struct WiredVmo {
+    range: Range<PhysicalAddress>,
+}
+
+impl WiredVmo {
+    fn new(range: Range<PhysicalAddress>) -> Arc<dyn Vmo> {
+        assert!(range.start.is_aligned(arch::PAGE_SIZE), "range start {:?} is not aligned to page size", range.start);
+        assert!(range.end.is_aligned(arch::PAGE_SIZE), "range end {:?} is not aligned to page size", range.end);
+
+        Arc::new(Self { range })
+    }
+}
+
+impl Vmo for WiredVmo {
+    fn is_contiguous(&self) -> bool {
+        true
+    }
+    fn is_resizable(&self) -> bool {
+        false
+    }
+    fn is_discardable(&self) -> bool {
+        false
+    }
+    fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {
+        assert_eq!(range.start % arch::PAGE_SIZE, 0);
+        let start = self.range.start.add(range.start);
+        let end = self.range.start.add(range.end);
+
+        assert!(self.range.start <= start && self.range.end >= end, "requested range {start:?}..{end:?} is out of bounds for {:?}", self.range);
+        
+        Ok(start..end)
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug)]
+struct PagedVmo {}
+
+impl Vmo for PagedVmo {
+    fn is_contiguous(&self) -> bool {
+        todo!()
+    }
+    fn is_resizable(&self) -> bool {
+        todo!()
+    }
+    fn is_discardable(&self) -> bool {
+        todo!()
+    }
+    fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {
+        todo!()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 #[cfg(test)]

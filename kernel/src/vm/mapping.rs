@@ -1,15 +1,20 @@
-use crate::vm::PageFaultFlags;
+use crate::vm::{PageFaultFlags, PagedVmo, Vmo, WiredVmo, FRAME_ALLOC};
 use alloc::boxed::Box;
 use alloc::string::String;
+use alloc::sync::Arc;
+use core::any::Any;
 use core::fmt::Formatter;
 use core::mem::offset_of;
-use core::ops::Range;
+use core::num::NonZeroUsize;
+use core::ops::{DerefMut, Range};
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{cmp, fmt};
+use mmu::{arch, AddressRangeExt, VirtualAddress};
 use pin_project_lite::pin_project;
-use mmu::{arch, VirtualAddress};
+use sync::Mutex;
 use wavltree::Side;
+use crate::vm::aspace::Batch;
 
 pin_project! {
     pub struct Mapping {
@@ -17,9 +22,34 @@ pin_project! {
         pub min_first_byte: VirtualAddress,
         pub max_last_byte: VirtualAddress,
         pub max_gap: usize,
+        pub aspace: Arc<Mutex<mmu::AddressSpace>>,
         pub range: Range<VirtualAddress>,
         pub flags: mmu::Flags,
         pub name: String,
+        // TODO replace with ksharded_slab::pool:OwnedRef
+        pub vmo: Arc<dyn Vmo>,
+        pub vmo_offset: usize
+    }
+
+    impl PinnedDrop for Mapping {
+        fn drop(this: Pin<&mut Self>) {
+            let mut frame_alloc = FRAME_ALLOC.get().unwrap().lock();
+
+            let this = this.project();
+            let mut aspace = this.aspace.lock();
+            let mut flush = mmu::Flush::empty(aspace.asid());
+
+
+            if let Err(err) = aspace.unmap(
+                frame_alloc.deref_mut(),
+                this.range.start,
+                NonZeroUsize::new(
+                this.range.size()).unwrap(),
+                &mut flush
+            ) {
+                panic_unwind::panic_in_drop!("failed to unmap {}: {err}", this.name);
+            }
+        }
     }
 }
 
@@ -38,18 +68,36 @@ impl fmt::Debug for Mapping {
 
 impl Mapping {
     pub fn new(
+        mmu_aspace: Arc<Mutex<mmu::AddressSpace>>,
         range: Range<VirtualAddress>,
         flags: mmu::Flags,
+        vmo: Arc<dyn Vmo>,
+        vmo_offset: usize,
         name: String,
     ) -> Pin<Box<Self>> {
+        Box::pin(Self {
             links: wavltree::Links::default(),
             min_first_byte: range.start,
             max_last_byte: range.end,
+            max_gap: 0,
+            aspace: mmu_aspace,
             range,
             flags,
-            max_gap: 0,
+            vmo,
+            vmo_offset,
             name,
-        }
+        })
+    }
+
+    pub fn map_range(&self, batch: &mut Batch, range: Range<VirtualAddress>) -> crate::Result<()> {
+        assert!(!range.is_empty());
+        assert!(self.range.start <= range.start && self.range.end >= range.end);
+        
+        let phys = self.vmo.lookup_contiguous(self.vmo_offset..self.vmo_offset + range.size())?;
+        
+        batch.append(range.start, (phys.start, phys.size()), self.flags)?;
+        
+        Ok(())
     }
 
     pub fn page_fault(
@@ -87,12 +135,20 @@ impl Mapping {
             return Err(crate::Error::AccessDenied);
         }
 
-        // TODO
-        //      IF mapping is backed by paged memory
-        //          ->
-        //      IF mapping is backed by physical memory
-        //          -> MAYBE? ensure mapping is materialized into page table
-        //          -> fail
+        if let Some(paged) = self.vmo.as_any().downcast_ref::<PagedVmo>() {
+            todo!("paged VMO fault")
+            //     // TODO
+            //     //      IF mapping is backed by paged memory
+            //     //          ->
+        } else if let Some(wired) = self.vmo.as_any().downcast_ref::<WiredVmo>() {
+            todo!("wired VMO fault")
+            //     // TODO
+            //     //      IF mapping is backed by physical memory
+            //     //          -> MAYBE? ensure mapping is materialized into page table
+            //     //          -> fail
+        } else {
+            unreachable!("unknown VMO type");
+        }
 
         todo!()
     }
@@ -128,7 +184,7 @@ impl Mapping {
 
         fn gap(left_last_byte: VirtualAddress, right_first_byte: VirtualAddress) -> usize {
             debug_assert!(
-                left_last_byte < right_first_byte,
+                left_last_byte <= right_first_byte,
                 "subtraction would underflow: {left_last_byte} >= {right_first_byte}"
             );
             right_first_byte.sub_addr(left_last_byte)
