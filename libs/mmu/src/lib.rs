@@ -130,14 +130,14 @@ impl VirtualAddress {
 
 impl fmt::Display for VirtualAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{:0<#16x}", self.0))
+        f.write_fmt(format_args!("{:#016x}", self.0))
     }
 }
 
 impl fmt::Debug for VirtualAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("VirtualAddress")
-            .field(&format_args!("{:0<#16x}", self.0))
+            .field(&format_args!("{:#016x}", self.0))
             .finish()
     }
 }
@@ -220,14 +220,14 @@ impl PhysicalAddress {
 
 impl fmt::Display for PhysicalAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{:0<#16x}", self.0))
+        f.write_fmt(format_args!("{:#016x}", self.0))
     }
 }
 
 impl fmt::Debug for PhysicalAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("PhysicalAddress")
-            .field(&format_args!("{:0<#16x}", self.0))
+            .field(&format_args!("{:#016x}", self.0))
             .finish()
     }
 }
