@@ -285,6 +285,12 @@ impl AddressSpace {
         log::trace!("attempting to find spot for {layout:?} at index {target_index}");
 
         let spots_in_range = |layout: Layout, range: Range<VirtualAddress>| -> usize {
+            // ranges passed in here can become empty for a number of reasons (aligning might produce ranges
+            // where end > start, or the range might be empty to begin with) in either case an empty
+            // range means no spots are available
+            if range.is_empty() {
+                return 0;
+            }
             ((range.size().saturating_sub(layout.size())) >> layout.align().ilog2()) + 1
         };
 
