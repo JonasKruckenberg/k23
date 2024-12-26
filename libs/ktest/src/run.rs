@@ -30,7 +30,6 @@ extern "Rust" fn kmain(_hartid: usize, boot_info: &'static loader_api::BootInfo)
         MachineInfo::from_dtb(
             boot_info
                 .physical_address_offset
-                .start
                 .add(fdt.range.start.as_raw())
                 .as_raw() as *const u8,
         )
