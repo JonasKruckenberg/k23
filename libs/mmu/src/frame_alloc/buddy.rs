@@ -162,7 +162,8 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
             return;
         }
 
-        panic!("deallocating memory that was not allocated by the buddy allocator");
+        // panic!("deallocating memory that was not allocated by the buddy allocator");
+        log::error!("deallocating memory that was not allocated by the buddy allocator");
     }
 }
 
