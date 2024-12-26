@@ -38,4 +38,4 @@ pub const TRAP_STACK_SIZE_PAGES: usize = 16;
 /// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
 /// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap
 /// size and can dynamically grow the heap as needed.
-pub const HEAP_SIZE_PAGES: u32 = 16; // 32 MiB
+pub const HEAP_SIZE_PAGES: u32 = 2048; // 32 MiB
