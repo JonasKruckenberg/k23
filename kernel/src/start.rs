@@ -109,3 +109,46 @@ fn locate_device_tree(boot_info: &'static loader_api::BootInfo) -> *const u8 {
         .add(fdt.range.start.as_raw())
         .as_raw() as *const u8
 }
+
+static SYMBOLIZE_CONTEXT: LazyLock<Mutex<SymbolizeContext>> = LazyLock::new(|| {
+    log::trace!("Setting up symbolize context...");
+    let boot_info = BOOT_INFO.get().unwrap();
+
+    let elf = xmas_elf::ElfFile::new(unsafe {
+        slice::from_ptr_range(
+            boot_info
+                .kernel_elf
+                .clone()
+                .add(boot_info.physical_address_offset.as_raw())
+                .as_ptr_range(),
+        )
+    })
+    .unwrap();
+
+    let ctx = SymbolizeContext::new(elf, boot_info.kernel_virt.start.as_raw() as u64).unwrap();
+
+    Mutex::new(ctx)
+});
+
+fn init_panic_hook() {
+    panic_unwind::set_hook(Box::new(|info| {
+        let loc = info.location();
+        let msg = payload_as_str(info.payload());
+
+        log::error!("hook hart panicked at {loc}:\n{msg}");
+
+        let ctx = SYMBOLIZE_CONTEXT.lock();
+        let backtrace = Backtrace::capture(&ctx);
+        log::error!("{backtrace}");
+    }));
+}
+
+fn payload_as_str(payload: &dyn Any) -> &str {
+    if let Some(&s) = payload.downcast_ref::<&'static str>() {
+        s
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.as_str()
+    } else {
+        "Box<dyn Any>"
+    }
+}
