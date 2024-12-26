@@ -338,7 +338,8 @@ impl AddressSpace {
                 if let Some(right) = node.links.right() {
                     let right = unsafe { right.as_ref() };
 
-                    let aligned_gap = (node.range.end..right.min_first_byte).align_in(layout.align());
+                    let aligned_gap =
+                        (node.range.end..right.min_first_byte).align_in(layout.align());
                     let spot_count = spots_in_range(layout, aligned_gap.clone());
 
                     candidate_spot_count += spot_count;
@@ -361,8 +362,7 @@ impl AddressSpace {
 
         // see if there is a suitable gap between the end of the last mapping and the end of the address space
         if let Some(root) = self.tree.root().get() {
-            let aligned_gap =
-                (root.max_last_byte..self.address_range.end).align_in(layout.align());
+            let aligned_gap = (root.max_last_byte..self.address_range.end).align_in(layout.align());
             let spot_count = spots_in_range(layout, aligned_gap.clone());
             candidate_spot_count += spot_count;
             if target_index < spot_count {
