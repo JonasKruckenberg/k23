@@ -1,3 +1,4 @@
+use crate::vm::aspace::Batch;
 use crate::vm::{PageFaultFlags, PagedVmo, Vmo, WiredVmo, FRAME_ALLOC};
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -14,7 +15,6 @@ use mmu::{arch, AddressRangeExt, VirtualAddress};
 use pin_project_lite::pin_project;
 use sync::Mutex;
 use wavltree::Side;
-use crate::vm::aspace::Batch;
 
 pin_project! {
     pub struct Mapping {
@@ -47,7 +47,7 @@ pin_project! {
                 this.range.size()).unwrap(),
                 &mut flush
             ) {
-                panic_unwind::panic_in_drop!("failed to unmap {}: {err}", this.name);
+                log::error!("failed to unmap {}: {err}", this.name);
             }
         }
     }
@@ -75,6 +75,8 @@ impl Mapping {
         vmo_offset: usize,
         name: String,
     ) -> Pin<Box<Self>> {
+        debug_assert!(range.start <= range.end);
+
         Box::pin(Self {
             links: wavltree::Links::default(),
             min_first_byte: range.start,
@@ -92,11 +94,13 @@ impl Mapping {
     pub fn map_range(&self, batch: &mut Batch, range: Range<VirtualAddress>) -> crate::Result<()> {
         assert!(!range.is_empty());
         assert!(self.range.start <= range.start && self.range.end >= range.end);
-        
-        let phys = self.vmo.lookup_contiguous(self.vmo_offset..self.vmo_offset + range.size())?;
-        
+
+        let phys = self
+            .vmo
+            .lookup_contiguous(self.vmo_offset..self.vmo_offset + range.size())?;
+
         batch.append(range.start, (phys.start, phys.size()), self.flags)?;
-        
+
         Ok(())
     }
 

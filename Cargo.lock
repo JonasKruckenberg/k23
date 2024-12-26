@@ -70,9 +70,9 @@ dependencies = [
  "cfg-if",
  "gimli",
  "log",
- "object",
  "rustc-demangle",
  "unwind2",
+ "xmas-elf",
 ]
 
 [[package]]
@@ -334,6 +334,7 @@ dependencies = [
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "backtrace",
  "bitflags",
  "cfg-if",
  "dtb-parser",
@@ -348,7 +349,6 @@ dependencies = [
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "riscv",
- "semihosting-logger",
  "static_assertions",
  "sync",
  "talc",
@@ -491,15 +491,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "object"
-version = "0.36.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "084f1a5821ac4c651660a94a7153d27ac9d8a53736203f58b31945ded098070a"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "once_cell"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -534,6 +525,7 @@ dependencies = [
 name = "panic-unwind"
 version = "0.1.0"
 dependencies = [
+ "backtrace",
  "log",
  "panic-common",
  "thread-local",

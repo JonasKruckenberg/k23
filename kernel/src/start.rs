@@ -60,7 +60,7 @@ fn start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
 }
 
 fn begin_hart_init(hartid: usize, fdt: *const u8) -> crate::Result<()> {
-    semihosting_logger::hartid::set(hartid);
+    logger::init_hart(hartid);
     arch::trap_handler::init();
 
     let minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt)? };
@@ -70,7 +70,7 @@ fn begin_hart_init(hartid: usize, fdt: *const u8) -> crate::Result<()> {
 }
 
 fn init(boot_info: &'static loader_api::BootInfo, fdt: *const u8) -> crate::Result<()> {
-    semihosting_logger::init(LOG_LEVEL.to_level_filter());
+    logger::init(LOG_LEVEL.to_level_filter());
 
     log::debug!("\n{boot_info}");
 

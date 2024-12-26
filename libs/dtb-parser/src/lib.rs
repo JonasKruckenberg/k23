@@ -294,7 +294,7 @@ impl<'dt> Strings<'dt> {
             err: false,
         }
     }
-    
+
     fn next(&mut self) -> Result<Option<&'dt str>> {
         if self.offset == self.bytes.len() || self.err {
             return Ok(None);

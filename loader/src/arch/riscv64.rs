@@ -149,12 +149,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             // The kernel elf file is inlined into the loader executable as part of the build setup
             // which means we just need to parse it here.
             let kernel = parse_kernel(unsafe {
-                slice::from_ptr_range(
-                    kernel_phys
-                        .clone()
-                        .add(phys_off.as_raw())
-                        .as_ptr_range(),
-                )
+                slice::from_ptr_range(kernel_phys.clone().add(phys_off.as_raw()).as_ptr_range())
             })?;
             // print the elf sections for debugging purposes
             log::debug!("\n{kernel}");

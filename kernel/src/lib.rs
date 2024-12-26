@@ -15,6 +15,7 @@ extern crate alloc;
 mod allocator;
 pub mod arch;
 mod error;
+mod logger;
 pub mod machine_info;
 mod start;
 pub mod time;

@@ -40,11 +40,17 @@ pub fn wait_for_interrupt() {
     unsafe { asm!("wfi") }
 }
 
-/// Finish architecture-specific, hart-local initialization.
-pub fn finish_hart_init() {
+/// Early architecture-specific, per-hart initialization.
+pub fn hart_init_early() {}
+
+/// Late architecture-specific, per-hart initialization.
+pub fn hart_init_late() {
     unsafe {
+        // Enable interrupts
         interrupt::enable();
+        // Enable supervisor timer interrupts
         sie::set_stie();
+        // Enable FPU
         sstatus::set_fs(FS::Initial);
     }
 }

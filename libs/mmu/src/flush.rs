@@ -1,6 +1,6 @@
 use crate::{arch, Error, VirtualAddress};
-use core::{cmp, mem};
 use core::ops::Range;
+use core::{cmp, mem};
 
 #[must_use]
 pub struct Flush {
@@ -27,7 +27,7 @@ impl Flush {
             range: Some(range),
         }
     }
-    
+
     pub fn range(&self) -> Option<&Range<VirtualAddress>> {
         self.range.as_ref()
     }

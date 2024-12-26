@@ -68,7 +68,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
             for region in &device.regions {
                 log::trace!("mapping device region {:?}", region);
                 let aligned = region.clone().align_out(arch::PAGE_SIZE);
-                
+
                 let vmo = WiredVmo::new(aligned.clone());
 
                 aspace.create_mapping(
@@ -223,7 +223,7 @@ fn reserve_wired_regions(
     Ok(())
 }
 
-trait Vmo {
+pub trait Vmo {
     fn is_contiguous(&self) -> bool;
     fn is_resizable(&self) -> bool;
     fn is_discardable(&self) -> bool;
@@ -236,9 +236,18 @@ struct WiredVmo {
 }
 
 impl WiredVmo {
+    #[allow(clippy::new_ret_no_self)]
     fn new(range: Range<PhysicalAddress>) -> Arc<dyn Vmo> {
-        assert!(range.start.is_aligned(arch::PAGE_SIZE), "range start {:?} is not aligned to page size", range.start);
-        assert!(range.end.is_aligned(arch::PAGE_SIZE), "range end {:?} is not aligned to page size", range.end);
+        assert!(
+            range.start.is_aligned(arch::PAGE_SIZE),
+            "range start {:?} is not aligned to page size",
+            range.start
+        );
+        assert!(
+            range.end.is_aligned(arch::PAGE_SIZE),
+            "range end {:?} is not aligned to page size",
+            range.end
+        );
 
         Arc::new(Self { range })
     }
@@ -259,8 +268,12 @@ impl Vmo for WiredVmo {
         let start = self.range.start.add(range.start);
         let end = self.range.start.add(range.end);
 
-        assert!(self.range.start <= start && self.range.end >= end, "requested range {start:?}..{end:?} is out of bounds for {:?}", self.range);
-        
+        assert!(
+            self.range.start <= start && self.range.end >= end,
+            "requested range {start:?}..{end:?} is out of bounds for {:?}",
+            self.range
+        );
+
         Ok(start..end)
     }
     fn as_any(&self) -> &dyn Any {

@@ -57,7 +57,7 @@ impl fmt::Display for MachineInfo<'_> {
             for range in &r.regions {
                 writeln!(
                     f,
-                    "MMIO DEVICE {:<4}: {}..{} {:<20} {:?}",
+                    "MMIO DEVICE {:<11}: {}..{} {:<20} {:?}",
                     idx, range.start, range.end, r.name, r.compatible
                 )?;
             }
@@ -330,8 +330,8 @@ impl<'dt> Visitor<'dt> for SocVisitorChildVisitor<'dt> {
         Ok(())
     }
 
-    fn visit_compatible(&mut self, mut strings: Strings<'dt>) -> Result<(), Self::Error> {
-        self.compatible = strings.collect::<Result<_,_>>()?;
+    fn visit_compatible(&mut self, strings: Strings<'dt>) -> Result<(), Self::Error> {
+        self.compatible = strings.collect::<Result<_, _>>()?;
 
         Ok(())
     }

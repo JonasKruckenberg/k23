@@ -19,13 +19,13 @@ harness = false
 loader-api.workspace = true
 mmu.workspace = true
 panic-unwind.workspace = true
-semihosting-logger = { workspace = true, features = ["hartid"] }
 sync.workspace = true
 thread-local.workspace = true
 wavltree= { workspace = true, features = ["dot"] }
 dtb-parser.workspace = true
+backtrace.workspace = true
 
-talc.workspace = true
+talc = { workspace = true, features = ["lock_api", "counters"] }
 log.workspace = true
 cfg-if.workspace = true
 pin-project-lite.workspace = true

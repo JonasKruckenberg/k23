@@ -621,7 +621,7 @@ where
             if was_leaf {
                 self.balance_after_insert(ptr);
             }
-            
+
             Pin::new_unchecked(ptr.as_mut())
         }
     }

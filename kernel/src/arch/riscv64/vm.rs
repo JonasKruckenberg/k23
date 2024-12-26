@@ -9,17 +9,14 @@ use mmu::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress};
 
 const KERNEL_ASID: usize = 0;
 
-pub fn init(
-    boot_info: &BootInfo,
-    minfo: &MachineInfo,
-) -> crate::Result<mmu::AddressSpace> {
+pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<mmu::AddressSpace> {
     let mut frame_alloc = crate::vm::FRAME_ALLOC.get().unwrap().lock();
 
     let (mut arch, mut flush) =
         mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
 
     unmap_loader(boot_info, &mut arch, &mut flush);
-    
+
     flush.flush()?;
 
     Ok(arch)

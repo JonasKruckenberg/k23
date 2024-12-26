@@ -243,7 +243,7 @@ impl AddressSpace {
     /// If the algorithm fails to find a suitable spot in the first attempt, it will have collected the
     /// total number of candidate spots and retry with a new `target_index` in the range [0, candidate_spot_count)
     /// which guarantees that a spot will be found as long as `candidate_spot_count > 0`.
-    fn find_spot(&mut self, layout: Layout, entropy: u8) -> VirtualAddress {
+    pub fn find_spot(&mut self, layout: Layout, entropy: u8) -> VirtualAddress {
         // behaviour:
         // - find the leftmost gap that satisfies the size and alignment requirements
         //      - starting at the root,
@@ -292,13 +292,8 @@ impl AddressSpace {
 
         // see if there is a suitable gap between the start of the address space and the first mapping
         if let Some(root) = self.tree.root().get() {
-            let gap_size = root.min_first_byte.sub_addr(self.address_range.start);
-            let aligned_gap = self.address_range.start.align_up(layout.align())
-                ..self
-                    .address_range
-                    .start
-                    .add(gap_size)
-                    .align_down(layout.align());
+            let aligned_gap =
+                (self.address_range.start..root.min_first_byte).align_in(layout.align());
             let spot_count = spots_in_range(layout, aligned_gap.clone());
             candidate_spot_count += spot_count;
             if target_index < spot_count {
@@ -322,10 +317,7 @@ impl AddressSpace {
                         continue;
                     }
 
-                    let gap_base = left.max_last_byte;
-                    let gap_size = node.range.end.sub_addr(left.max_last_byte);
-                    let aligned_gap = gap_base.align_up(layout.align())
-                        ..gap_base.add(gap_size).align_down(layout.align());
+                    let aligned_gap = (left.max_last_byte..node.range.end).align_in(layout.align());
                     let spot_count = spots_in_range(layout, aligned_gap.clone());
 
                     candidate_spot_count += spot_count;
@@ -340,10 +332,7 @@ impl AddressSpace {
                 if let Some(right) = node.links.right() {
                     let right = unsafe { right.as_ref() };
 
-                    let gap_base = node.range.end;
-                    let gap_size = right.min_first_byte.sub_addr(node.range.end);
-                    let aligned_gap = gap_base.align_up(layout.align())
-                        ..gap_base.add(gap_size).align_down(layout.align());
+                    let aligned_gap = (node.range.end..right.min_first_byte).align_in(layout.align());
                     let spot_count = spots_in_range(layout, aligned_gap.clone());
 
                     candidate_spot_count += spot_count;
@@ -366,9 +355,8 @@ impl AddressSpace {
 
         // see if there is a suitable gap between the end of the last mapping and the end of the address space
         if let Some(root) = self.tree.root().get() {
-            let gap_size = usize::MAX - root.max_last_byte.as_raw();
-            let aligned_gap = root.max_last_byte.align_up(layout.align())
-                ..root.max_last_byte.add(gap_size).align_down(layout.align());
+            let aligned_gap =
+                (root.max_last_byte..self.address_range.end).align_in(layout.align());
             let spot_count = spots_in_range(layout, aligned_gap.clone());
             candidate_spot_count += spot_count;
             if target_index < spot_count {
@@ -535,7 +523,7 @@ impl AddressSpace {
     // // }
 }
 
-pub(crate) struct Batch {
+pub struct Batch {
     mmu: Arc<Mutex<mmu::AddressSpace>>,
     range: Range<VirtualAddress>,
     flags: mmu::Flags,
