@@ -16,3 +16,4 @@ panic-common.workspace = true
 thread-local.workspace = true
 log.workspace = true
 unwind2.workspace = true
+backtrace.workspace = true

@@ -33,6 +33,9 @@ impl fmt::Display for Backtrace<'_, '_> {
         let mut frame_idx = 0;
 
         let mut frames = self.frames.clone();
+        let mut print = false;
+        let mut omitted_count: usize = 0;
+        let mut first_omit = true;
 
         while let Some(frame) = frames.next().unwrap() {
             let mut syms = self
@@ -41,28 +44,61 @@ impl fmt::Display for Backtrace<'_, '_> {
                 .unwrap();
 
             while let Some(sym) = syms.next().unwrap() {
-                write!(
-                    f,
-                    "{frame_idx}: {address:#x}    -",
-                    address = frame.region_start()
-                )?;
-                if let Some(name) = sym.name() {
-                    writeln!(f, "      {name}")?;
-                } else {
-                    writeln!(f, "      <unknown>")?;
-                }
-
-                if let Some(filename) = sym.filename() {
-                    write!(f, "      at {filename}")?;
-                    if let Some(lineno) = sym.lineno() {
-                        write!(f, ":{lineno}")?;
-                    } else {
-                        write!(f, "??")?;
+                // if print_fmt == PrintFmt::Short {
+                if let Some(sym) = sym.name().map(|s| s.as_raw_str()) {
+                    if sym.contains("__rust_end_short_backtrace") {
+                        print = true;
+                        continue;
                     }
-                    if let Some(colno) = sym.colno() {
-                        writeln!(f, ":{colno}")?;
+                    if print && sym.contains("__rust_begin_short_backtrace") {
+                        print = false;
+                        continue;
+                    }
+                    if !print {
+                        omitted_count += 1;
+                    }
+                }
+                // }
+
+                if print {
+                    if omitted_count > 0 {
+                        // debug_assert!(print_fmt == PrintFmt::Short);
+                        // only print the message between the middle of frames
+                        if !first_omit {
+                            let _ = writeln!(
+                                f,
+                                "      [... omitted {} frame{} ...]",
+                                omitted_count,
+                                if omitted_count > 1 { "s" } else { "" }
+                            );
+                        }
+                        first_omit = false;
+                        omitted_count = 0;
+                    }
+
+                    write!(
+                        f,
+                        "{frame_idx}: {address:#x}    -",
+                        address = frame.region_start()
+                    )?;
+                    if let Some(name) = sym.name() {
+                        writeln!(f, "      {name}")?;
                     } else {
-                        writeln!(f, "??")?;
+                        writeln!(f, "      <unknown>")?;
+                    }
+
+                    if let Some(filename) = sym.filename() {
+                        write!(f, "      at {filename}")?;
+                        if let Some(lineno) = sym.lineno() {
+                            write!(f, ":{lineno}")?;
+                        } else {
+                            write!(f, "??")?;
+                        }
+                        if let Some(colno) = sym.colno() {
+                            writeln!(f, ":{colno}")?;
+                        } else {
+                            writeln!(f, "??")?;
+                        }
                     }
                 }
 
@@ -78,4 +114,36 @@ impl fmt::Display for Backtrace<'_, '_> {
 
         Ok(())
     }
+}
+
+/// Fixed frame used to clean the backtrace with `RUST_BACKTRACE=1`. Note that
+/// this is only inline(never) when backtraces in std are enabled, otherwise
+/// it's fine to optimize away.
+#[inline(never)]
+pub fn __rust_begin_short_backtrace<F, T>(f: F) -> T
+where
+    F: FnOnce() -> T,
+{
+    let result = f();
+
+    // prevent this frame from being tail-call optimised away
+    core::hint::black_box(());
+
+    result
+}
+
+/// Fixed frame used to clean the backtrace with `RUST_BACKTRACE=1`. Note that
+/// this is only inline(never) when backtraces in std are enabled, otherwise
+/// it's fine to optimize away.
+#[inline(never)]
+pub fn __rust_end_short_backtrace<F, T>(f: F) -> T
+where
+    F: FnOnce() -> T,
+{
+    let result = f();
+
+    // prevent this frame from being tail-call optimised away
+    core::hint::black_box(());
+
+    result
 }
