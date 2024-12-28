@@ -99,7 +99,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             let self_regions = SelfRegions::collect(&minfo);
             log::trace!("{self_regions:?}");
 
-            let mut frame_alloc = BootstrapAllocator::new(&minfo.memories);
+            let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions);
+            let mut frame_alloc = BootstrapAllocator::new(&allocatable_memories);
 
             let mut page_alloc = if ENABLE_KASLR {
                 PageAllocator::new(ChaCha20Rng::from_seed(
@@ -385,6 +386,34 @@ pub fn allocate_and_copy(
     }
 
     Ok(base..base.add(layout.size()))
+}
+
+fn allocatable_memory_regions(
+    minfo: &MachineInfo,
+    self_regions: &SelfRegions,
+) -> ArrayVec<Range<PhysicalAddress>, 16> {
+    let mut out = ArrayVec::new();
+    let to_exclude = self_regions.executable.start..self_regions.read_write.end;
+
+    for mut region in minfo.memories.clone() {
+        if to_exclude.contains(&region.start) && to_exclude.contains(&region.end) {
+            // remove region
+            continue;
+        } else if region.contains(&to_exclude.start) && region.contains(&to_exclude.end) {
+            out.push(region.start..to_exclude.start);
+            out.push(to_exclude.end..region.end);
+        } else if to_exclude.contains(&region.start) {
+            region.start = to_exclude.end;
+            out.push(region);
+        } else if to_exclude.contains(&region.end) {
+            region.end = to_exclude.start;
+            out.push(region);
+        } else {
+            out.push(region);
+        }
+    }
+
+    out
 }
 
 pub unsafe fn handoff_to_kernel(
