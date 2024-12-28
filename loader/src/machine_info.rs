@@ -161,7 +161,7 @@ impl<'dt> MachineInfo<'dt> {
         // but we can't make use of it either way
         info.memories.iter_mut().for_each(|region| {
             region.start = region.start.checked_align_up(arch::PAGE_SIZE).unwrap();
-            region.end = region.end.checked_align_down(arch::PAGE_SIZE).unwrap();
+            region.end = region.end.align_down(arch::PAGE_SIZE);
         });
 
         // ensure the memory regions are sorted.

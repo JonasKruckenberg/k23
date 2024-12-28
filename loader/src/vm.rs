@@ -309,13 +309,11 @@ fn handle_bss_section(
         let last_page = virt_start
             .checked_add(ph.file_size - 1)
             .unwrap()
-            .checked_align_down(ph.align)
-            .unwrap();
+            .align_down(ph.align);
         let last_frame = phys_base
             .checked_add(ph.offset + ph.file_size - 1)
             .unwrap()
-            .checked_align_down(ph.align)
-            .unwrap();
+            .align_down(ph.align);
 
         let new_frame = frame_alloc
             .allocate_contiguous_zeroed(
@@ -489,8 +487,8 @@ fn handle_relro_segment(
     };
 
     let virt_aligned = {
-        virt.start.checked_align_down(arch::PAGE_SIZE).unwrap()
-            ..virt.end.checked_align_down(arch::PAGE_SIZE).unwrap()
+        virt.start.align_down(arch::PAGE_SIZE)
+            ..virt.end.align_down(arch::PAGE_SIZE)
     };
 
     log::debug!("Marking RELRO segment {virt_aligned:?} as read-only");

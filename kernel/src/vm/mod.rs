@@ -218,7 +218,7 @@ fn reserve_wired_regions(
         );
 
         aspace.reserve(
-            virt.checked_align_down(arch::PAGE_SIZE).unwrap()
+            virt.align_down(arch::PAGE_SIZE)
                 ..virt
                     .checked_add(ph.mem_size() as usize)
                     .unwrap()

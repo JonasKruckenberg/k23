@@ -193,7 +193,7 @@ impl AddressSpace {
         if flags.contains(PageFaultFlags::ACCESS) {
             return self.access_fault(virt);
         }
-        let virt = virt.checked_align_down(arch::PAGE_SIZE).unwrap();
+        let virt = virt.align_down(arch::PAGE_SIZE);
 
         // check if the address is within the last fault range
         // if so, we can save ourselves a tree lookup

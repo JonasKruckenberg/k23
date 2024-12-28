@@ -185,61 +185,47 @@ macro_rules! address_impl {
                 }
 
                 // SAFETY: `align` has been checked to be a power of 2 above
-                let offset = unsafe { align_offset(self.0, align) };
+                let align_minus_one = unsafe { align.unchecked_sub(1) };
 
-                let Some(out) = self.checked_add(offset) else {
-                    return None;
-                };
-                debug_assert!(out.is_aligned_to(align));
-                Some(out)
+                // addr.wrapping_add(align_minus_one) & 0usize.wrapping_sub(align)
+                if let Some(addr_plus_align) = self.0.checked_add(align_minus_one) {
+                    let aligned = Self(addr_plus_align & 0usize.wrapping_sub(align));
+                    debug_assert!(aligned.is_aligned_to(align));
+                    debug_assert!(aligned.0 >= self.0);
+                    Some(aligned)
+                } else {
+                    None
+                }
             }
+
+            // #[must_use]
+            // #[inline]
+            // pub const fn wrapping_align_up(self, align: usize) -> Self {
+            //     if !align.is_power_of_two() {
+            //         panic!("checked_align_up: align is not a power-of-two");
+            //     }
+            //
+            //     // SAFETY: `align` has been checked to be a power of 2 above
+            //     let align_minus_one = unsafe { align.unchecked_sub(1) };
+            //
+            //     // addr.wrapping_add(align_minus_one) & 0usize.wrapping_sub(align)
+            //     let out = addr.wrapping_add(align_minus_one) & 0usize.wrapping_sub(align);
+            //     debug_assert!(out.is_aligned_to(align));
+            //     out
+            // }
 
             #[must_use]
             #[inline]
-            pub const fn checked_align_down(self, align: usize) -> Option<Self> {
+            pub const fn align_down(self, align: usize) -> Self {
                 if !align.is_power_of_two() {
                     panic!("checked_align_up: align is not a power-of-two");
                 }
 
-                // SAFETY: `align` has been checked to be a power of 2 above
-                let offset = align - unsafe { align_offset(self.0, align) };
-
-                let Some(out) = self.checked_sub(offset) else {
-                    return None;
-                };
-                debug_assert!(out.is_aligned_to(align));
-                Some(out)
+                let aligned = Self(self.0 & 0usize.wrapping_sub(align));
+                debug_assert!(aligned.is_aligned_to(align));
+                debug_assert!(aligned.0 <= self.0);
+                aligned
             }
-
-            // #[must_use]
-            // #[inline]
-            // pub const fn saturating_align_up(self, align: usize) -> Self {
-            //     if !align.is_power_of_two() {
-            //         panic!("checked_align_up: align is not a power-of-two");
-            //     }
-            //
-            //     // SAFETY: `align` has been checked to be a power of 2 above
-            //     let offset = unsafe { align_offset(self.0, align) };
-            //
-            //     let out = self.saturating_add(offset);
-            //     debug_assert!(out.is_aligned_to(align));
-            //     out
-            // }
-            //
-            // #[must_use]
-            // #[inline]
-            // pub const fn saturating_align_down(self, align: usize) -> Self {
-            //     if !align.is_power_of_two() {
-            //         panic!("checked_align_up: align is not a power-of-two");
-            //     }
-            //
-            //     // SAFETY: `align` has been checked to be a power of 2 above
-            //     let offset = align - unsafe { align_offset(self.0, align) };
-            //
-            //     let out = self.saturating_sub(offset);
-            //     debug_assert!(out.is_aligned_to(align));
-            //     out
-            // }
 
             #[inline]
             pub const fn as_ptr(self) -> *const u8 {
@@ -302,13 +288,17 @@ macro_rules! address_range_impl {
         where
             Self: Sized,
         {
-            Some(self.start.checked_align_up(align)?..self.end.checked_align_down(align)?)
+            let res = self.start.checked_align_up(align)?..self.end.align_down(align);
+            Some(res)
         }
         fn checked_align_out(self, align: usize) -> Option<Self>
         where
             Self: Sized,
         {
-            Some(self.start.checked_align_down(align)?..self.end.checked_align_up(align)?)
+            let res = self.start.align_down(align)..self.end.checked_align_up(align)?;
+            // aligning outwards can only increase the size
+            debug_assert!(res.start.0 <= res.end.0);
+            Some(res)
         }
         // fn saturating_align_in(self, align: usize) -> Self {
         //     self.start.saturating_align_up(align)..self.end.saturating_align_down(align)
@@ -415,37 +405,10 @@ impl AddressRangeExt for Range<VirtualAddress> {
     }
 }
 
-const unsafe fn align_offset(addr: usize, a: usize) -> usize {
-    // SAFETY: `a` is a power-of-two, therefore non-zero.
-    let a_minus_one = unsafe { a.unchecked_sub(1) };
-
-    // SPECIAL_CASE: In cases where the `a` is divisible by `STRIDE`, byte offset to align a
-    // pointer can be computed more simply through `-p (mod a)`. In the off-chance the byte
-    // offset is not a multiple of `STRIDE`, the input pointer was misaligned and no pointer
-    // offset will be able to produce a `p` aligned to the specified `a`.
-    //
-    // The naive `-p (mod a)` equation inhibits LLVM's ability to select instructions
-    // like `lea`. We compute `(round_up_to_next_alignment(p, a) - p)` instead. This
-    // redistributes operations around the load-bearing, but pessimizing `and` instruction
-    // sufficiently for LLVM to be able to utilize the various optimizations it knows about.
-    //
-    // LLVM handles the branch here particularly nicely. If this branch needs to be evaluated
-    // at runtime, it will produce a mask `if addr_mod_stride == 0 { 0 } else { usize::MAX }`
-    // in a branch-free way and then bitwise-OR it with whatever result the `-p mod a`
-    // computation produces.
-
-    let aligned_address = addr.wrapping_add(a_minus_one) & 0usize.wrapping_sub(a);
-    let byte_offset = aligned_address.wrapping_sub(addr);
-    // FIXME: Remove the assume after <https://github.com/llvm/llvm-project/issues/62502>
-    // SAFETY: Masking by `-a` can only affect the low bits, and thus cannot have reduced
-    // the value by more than `a-1`, so even though the intermediate values might have
-    // wrapped, the byte_offset is always in `[0, a)`.
-    unsafe {
-        core::hint::assert_unchecked(byte_offset < a);
-    }
-
-    byte_offset
-}
+static_assertions::const_assert!(VirtualAddress(0xffffffc000000000).is_aligned_to(4096));
+static_assertions::const_assert_eq!(VirtualAddress(0xffffffc0000156e8).align_down(4096).0, 0xffffffc000015000);
+static_assertions::const_assert_eq!(VirtualAddress(0xffffffc000000000).checked_align_up(4096).unwrap().0, 0xffffffc000000000);
+static_assertions::const_assert_eq!(VirtualAddress(0xffffffc0000156e8).checked_align_up(4096).unwrap().0, 0xffffffc000016000);
 
 #[cfg(test)]
 mod tests {
