@@ -415,31 +415,6 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    // #[must_use]
-    // #[inline]
-    // pub const fn from_phys(phys: PhysicalAddress, physmap_offset: VirtualAddress) -> Self {
-    //     physmap_offset.add(phys.as_raw())
-    // }
-    //
-    // #[must_use]
-    // #[inline]
-    // #[allow(clippy::cast_sign_loss)]
-    // pub const fn offset(self, offset: isize) -> Self {
-    //     if offset.is_negative() {
-    //         self.sub(offset.wrapping_abs() as usize)
-    //     } else {
-    //         self.add(offset as usize)
-    //     }
-    // }
-
-    // #[inline]
-    // pub const fn is_user_accessible(&self) -> bool {
-    //     // This address refers to userspace if it is in the lower half of the
-    //     // canonical addresses.  IOW - if all of the bits in the canonical address
-    //     // mask are zero.
-    //     (self.0 & arch::CANONICAL_ADDRESS_MASK) == 0
-    // }
-
     #[ktest::test]
     fn virt_addr_new() {
         assert_eq!(VirtualAddress::new(0x1234).unwrap().0, 0x1234);
@@ -455,6 +430,19 @@ mod tests {
         assert_eq!(VirtualAddress::new(usize::MAX).unwrap().0, usize::MAX);
     }
 
+    prop_compose! {
+        fn canonical_address()
+                    (b: bool, lower in 0..0x0000004000000000usize, upper in 0xffffffc000000000..0xffffffffffffffffusize)
+                    -> usize {
+            if b {
+                lower
+            } else {
+                upper
+            }
+        }
+    }
+
+
     proptest! {
         #[ktest::test]
         fn virt_addr_add(a in 0..10000usize, b in 0..10000usize) {
@@ -463,34 +451,34 @@ mod tests {
         }
 
         #[ktest::test]
-        fn virt_addr_sub(a in 0..10000usize, b in 0..10000usize) {
+        fn virt_addr_sub(a in canonical_address(), b in canonical_address()) {
             let addr = VirtualAddress::new(a).unwrap();
             assert_eq!(addr.checked_sub(b), a.checked_sub(b).map(VirtualAddress));
         }
 
         #[ktest::test]
-        fn virt_addr_sub_addr(a in 0..10000usize, b in 0..10000usize) {
+        fn virt_addr_sub_addr(a in canonical_address(), b in canonical_address()) {
             let addra = VirtualAddress::new(a).unwrap();
             let addrb = VirtualAddress::new(b).unwrap();
             assert_eq!(addra.checked_sub_addr(addrb), a.checked_sub(b));
         }
 
         #[ktest::test]
-        fn virt_addr_is_aligned(a: usize, align in prop::sample::select(&[1, 2, 8, 16, 32, 64, 4096])) {
+        fn virt_addr_is_aligned(a in canonical_address(), align in prop::sample::select(&[1, 2, 8, 16, 32, 64, 4096])) {
             let addr = VirtualAddress::new(a).unwrap();
             assert_eq!(addr.is_aligned_to(align), a % align == 0);
         }
 
         #[ktest::test]
-        fn virt_addr_align_down(a: usize, align in prop::sample::select(&[1, 2, 8, 16, 32, 64, 4096])) {
+        fn virt_addr_align_down(a in canonical_address(), align in prop::sample::select(&[1, 2, 8, 16, 32, 64, 4096])) {
             let addr = VirtualAddress::new(a).unwrap();
-            let aligned = addr.checked_align_down(align).unwrap();
+            let aligned = addr.align_down(align);
             assert!(aligned.is_aligned_to(align));
             assert!(aligned <= addr);
         }
 
         #[ktest::test]
-        fn virt_addr_align_up(a: usize, align in prop::sample::select(&[1, 2, 8, 16, 32, 64, 4096])) {
+        fn virt_addr_align_up(a in canonical_address(), align in prop::sample::select(&[1, 2, 8, 16, 32, 64, 4096])) {
             let addr = VirtualAddress::new(a).unwrap();
             let aligned = addr.checked_align_up(align).unwrap();
             assert!(aligned.is_aligned_to(align));
@@ -502,23 +490,29 @@ mod tests {
             let addr = VirtualAddress::new(a).unwrap();
             assert!(addr.is_user_accessible());
         }
+
+        #[ktest::test]
+        fn virt_addr_is_not_user_accessible(a in 0xffffffc000000000..0xffffffffffffffffusize) {
+            let addr = VirtualAddress::new(a).unwrap();
+            assert!(!addr.is_user_accessible());
+        }
     }
 
     proptest! {
         #[ktest::test]
-        fn phys_addr_add(a in 0..10000usize, b in 0..10000usize) {
+        fn phys_addr_add(a: usize, b: usize) {
             let addr = PhysicalAddress::new(a);
             assert_eq!(addr.checked_add(b), a.checked_add(b).map(PhysicalAddress));
         }
 
         #[ktest::test]
-        fn phys_addr_sub(a in 0..10000usize, b in 0..10000usize) {
+        fn phys_addr_sub(a: usize, b: usize) {
             let addr = PhysicalAddress::new(a);
             assert_eq!(addr.checked_sub(b), a.checked_sub(b).map(PhysicalAddress));
         }
 
         #[ktest::test]
-        fn phys_addr_sub_addr(a in 0..10000usize, b in 0..10000usize) {
+        fn phys_addr_sub_addr(a: usize, b: usize) {
             let addra = PhysicalAddress::new(a);
             let addrb = PhysicalAddress::new(b);
             assert_eq!(addra.checked_sub_addr(addrb), a.checked_sub(b));
@@ -533,7 +527,7 @@ mod tests {
         #[ktest::test]
         fn phys_addr_align_down(a: usize, align in prop::sample::select(&[1, 2, 8, 16, 32, 64, 4096])) {
             let addr = PhysicalAddress::new(a);
-            let aligned = addr.checked_align_down(align).unwrap();
+            let aligned = addr.align_down(align);
             assert!(aligned.is_aligned_to(align));
             assert!(aligned <= addr);
         }
