@@ -394,6 +394,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "433bfe06b8c75da9b2e3fbea6e5329ff87748f0b144ef75306e674c3f6f7c13f"
 
 [[package]]
+name = "libm"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8355be11b20d696c8f18f6cc018c4e372165b1fa8126cef092399c9951984ffa"
+
+[[package]]
 name = "linked-list"
 version = "0.1.0"
 
@@ -468,9 +474,13 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "cfg-if",
+ "kernel",
+ "ktest",
  "linked-list",
  "log",
  "onlyerror",
+ "panic-unwind",
+ "proptest",
  "riscv",
  "static_assertions",
 ]
@@ -488,6 +498,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+ "libm",
 ]
 
 [[package]]
@@ -585,6 +596,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "proptest"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14cae93065090804185d3b75f0bf93b8eeda30c7a9b4a33d3bdb3988d6229e50"
+dependencies = [
+ "bitflags",
+ "num-traits",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rand_xorshift",
+ "unarray",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -647,6 +672,15 @@ checksum = "a98fa0b8309344136abe6244130311e76997e546f76fae8054422a7539b43df7"
 dependencies = [
  "getrandom",
  "zerocopy 0.8.13",
+]
+
+[[package]]
+name = "rand_xorshift"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d25bf25ec5ae4a3f1b92f929810509a2f53d7dca2f50b794ff57e3face536c8f"
+dependencies = [
+ "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -835,6 +869,12 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "unarray"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
 
 [[package]]
 name = "unicode-ident"

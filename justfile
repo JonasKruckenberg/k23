@@ -126,6 +126,7 @@ test-docs crate="" *cargo_args="":
 # run all tests
 test $K23_PROFILE=(profile) cargo_args="" *args="": && (test-docs cargo_args)
     {{ _cargo }} test \
+        -p mmu \
         -p kernel \
         --target kernel/riscv64gc-k23-none-kernel.json \
         --profile {{ profile }} \
