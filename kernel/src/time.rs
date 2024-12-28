@@ -300,7 +300,9 @@ mod tests {
     fn instant() {
         let start = Instant::now();
 
-        unsafe { sleep(Duration::from_secs(1)); }
+        unsafe {
+            sleep(Duration::from_secs(1));
+        }
 
         let end = Instant::now();
         let elapsed = end.duration_since(start);
