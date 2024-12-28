@@ -294,14 +294,13 @@ pub unsafe fn sleep(duration: Duration) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::arch::asm;
     use core::time::Duration;
 
     #[ktest::test]
     fn instant() {
         let start = Instant::now();
 
-        sleep(Duration::from_secs(1));
+        unsafe { sleep(Duration::from_secs(1)); }
 
         let end = Instant::now();
         let elapsed = end.duration_since(start);
