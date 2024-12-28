@@ -366,6 +366,7 @@ dependencies = [
  "kernel",
  "ktest-macros",
  "loader-api",
+ "mmu",
  "panic-unwind",
  "riscv",
 ]

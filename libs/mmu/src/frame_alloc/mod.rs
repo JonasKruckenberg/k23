@@ -77,9 +77,9 @@ impl Iterator for NonContiguousFrames<'_> {
             self.remaining -= len;
 
             if let Some(phys_offset) = self.zeroed {
-                let virt = VirtualAddress::from_phys(phys, phys_offset);
+                let virt = VirtualAddress::from_phys(phys, phys_offset).unwrap();
                 unsafe {
-                    ptr::write_bytes(virt.as_raw() as *mut u8, 0, layout.size());
+                    ptr::write_bytes::<u8>(virt.as_mut_ptr(), 0, layout.size());
                 }
             }
 

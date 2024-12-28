@@ -37,7 +37,7 @@ impl AddressSpace {
     /// Create an address space from the currently active hardware page table.
     pub fn from_active(asid: usize, phys_offset: VirtualAddress) -> (Self, Flush) {
         let root_pgtable = arch::get_active_pgtable(asid);
-        debug_assert!(root_pgtable.as_raw() != 0);
+        debug_assert!(root_pgtable.get() != 0);
 
         let this = Self {
             asid,
@@ -60,7 +60,7 @@ impl AddressSpace {
 
     /// Convert a physical address to a virtual address in this address space
     pub fn phys_to_virt(&self, phys: PhysicalAddress) -> VirtualAddress {
-        self.phys_offset.add(phys.as_raw())
+        self.phys_offset.checked_add(phys.get()).unwrap()
     }
 
     /// Return the address space identifier (ASID) of this address space
@@ -90,7 +90,7 @@ impl AddressSpace {
                 flags,
                 flush,
             )?;
-            virt = virt.add(len);
+            virt = virt.checked_add(len).unwrap();
         }
 
         Ok(())
@@ -118,11 +118,11 @@ impl AddressSpace {
             "address range span be at least one page"
         );
         debug_assert!(
-            virt.is_aligned(arch::PAGE_SIZE),
+            virt.is_aligned_to(arch::PAGE_SIZE),
             "virtual address must be aligned to at least 4KiB page size {virt:?}"
         );
         debug_assert!(
-            phys.is_aligned(arch::PAGE_SIZE),
+            phys.is_aligned_to(arch::PAGE_SIZE),
             "physical address must be aligned to at least 4KiB page size {phys:?}"
         );
 
@@ -141,7 +141,7 @@ impl AddressSpace {
                     if arch::can_map_at_level(virt, phys, remaining_bytes, lvl) {
                         let page_size = arch::page_size_for_level(lvl);
 
-                        // log::trace!("[lvl{lvl}::{index} pte {:?}] mapping {phys:?}..{:?} {flags:?} ", pte as *mut _, phys.add(page_size));
+                        // log::trace!("[lvl{lvl}::{index} pte {:?}] mapping {phys:?}..{:?} {flags:?} ", pte as *mut _, phys.checked_add(page_size).unwrap());
 
                         // This PTE is vacant AND we can map at this level
                         // mark this PTE as a valid leaf node pointing to the physical frame
@@ -150,9 +150,10 @@ impl AddressSpace {
                             arch::PTE_FLAGS_VALID.union(flags.into()),
                         );
 
-                        flush.extend_range(self.asid, virt..virt.add(page_size))?;
-                        virt = virt.add(page_size);
-                        phys = phys.add(page_size);
+                        flush
+                            .extend_range(self.asid, virt..virt.checked_add(page_size).unwrap())?;
+                        virt = virt.checked_add(page_size).unwrap();
+                        phys = phys.checked_add(page_size).unwrap();
                         remaining_bytes -= page_size;
                         continue 'outer;
                     } else {
@@ -203,7 +204,7 @@ impl AddressSpace {
     ) -> crate::Result<()> {
         for (phys, len) in iter {
             self.remap_contiguous(virt, phys, NonZeroUsize::new(len).unwrap(), flush)?;
-            virt = virt.add(len);
+            virt = virt.checked_add(len).unwrap();
         }
 
         Ok(())
@@ -229,11 +230,11 @@ impl AddressSpace {
             "virtual address range must span be at least one page"
         );
         debug_assert!(
-            virt.is_aligned(arch::PAGE_SIZE),
+            virt.is_aligned_to(arch::PAGE_SIZE),
             "virtual address must be aligned to at least 4KiB page size"
         );
         debug_assert!(
-            phys.is_aligned(arch::PAGE_SIZE),
+            phys.is_aligned_to(arch::PAGE_SIZE),
             "physical address must be aligned to at least 4KiB page size"
         );
 
@@ -261,9 +262,9 @@ impl AddressSpace {
                     let (_old_phys, flags) = pte.get_address_and_flags();
                     pte.replace_address_and_flags(phys, flags);
 
-                    flush.extend_range(self.asid, virt..virt.add(page_size))?;
-                    virt = virt.add(page_size);
-                    phys = phys.add(page_size);
+                    flush.extend_range(self.asid, virt..virt.checked_add(page_size).unwrap())?;
+                    virt = virt.checked_add(page_size).unwrap();
+                    phys = phys.checked_add(page_size).unwrap();
                     remaining_bytes -= page_size;
                     continue 'outer;
                 } else if pte.is_valid() {
@@ -295,7 +296,7 @@ impl AddressSpace {
             "virtual address range must span be at least one page"
         );
         debug_assert!(
-            virt.is_aligned(arch::PAGE_SIZE),
+            virt.is_aligned_to(arch::PAGE_SIZE),
             "virtual address must be aligned to at least 4KiB page size"
         );
 
@@ -327,8 +328,8 @@ impl AddressSpace {
                     );
 
                     let page_size = arch::page_size_for_level(lvl);
-                    flush.extend_range(self.asid, virt..virt.add(page_size))?;
-                    virt = virt.add(page_size);
+                    flush.extend_range(self.asid, virt..virt.checked_add(page_size).unwrap())?;
+                    virt = virt.checked_add(page_size).unwrap();
                     remaining_bytes -= page_size;
                     continue 'outer;
                 } else if pte.is_valid() {
@@ -358,7 +359,7 @@ impl AddressSpace {
             "virtual address range must span be at least one page"
         );
         debug_assert!(
-            virt.is_aligned(arch::PAGE_SIZE),
+            virt.is_aligned_to(arch::PAGE_SIZE),
             "virtual address must be aligned to at least 4KiB page size"
         );
 
@@ -398,8 +399,8 @@ impl AddressSpace {
             );
             pte.clear();
 
-            flush.extend_range(self.asid, *virt..virt.add(page_size))?;
-            *virt = virt.add(page_size);
+            flush.extend_range(self.asid, *virt..virt.checked_add(page_size).unwrap())?;
+            *virt = virt.checked_add(page_size).unwrap();
             *remaining_bytes -= page_size;
         } else if pte.is_valid() {
             // This PTE is an internal node pointing to another page table
@@ -457,7 +458,14 @@ impl AddressSpace {
     }
 
     fn pgtable_ptr_from_phys(&self, phys: PhysicalAddress) -> NonNull<arch::PageTableEntry> {
-        NonNull::new(self.phys_offset.add(phys.as_raw()).as_raw() as *mut _).unwrap()
+        NonNull::new(
+            self.phys_offset
+                .checked_add(phys.get())
+                .unwrap()
+                .as_mut_ptr()
+                .cast(),
+        )
+        .unwrap()
     }
 }
 
@@ -478,7 +486,7 @@ impl fmt::Display for AddressSpace {
 
             for index in 0..arch::PAGE_TABLE_ENTRIES {
                 let pte = unsafe { pgtable.add(index).as_mut() };
-                let virt = VirtualAddress(acc.as_raw() | virt_from_index(lvl, index).as_raw());
+                let virt = VirtualAddress(acc.get() | virt_from_index(lvl, index).get());
                 let (address, flags) = pte.get_address_and_flags();
 
                 if pte.is_valid() && pte.is_leaf() {

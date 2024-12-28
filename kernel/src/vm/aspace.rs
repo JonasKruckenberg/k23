@@ -92,7 +92,7 @@ impl AddressSpace {
         name: String,
     ) -> crate::Result<Pin<&mut Mapping>> {
         let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY);
-        let virt = base..base.add(layout.size());
+        let virt = base..base.checked_add(layout.size()).unwrap();
 
         let mapping = self.tree.insert(Mapping::new(
             self.mmu.clone(),
@@ -119,8 +119,8 @@ impl AddressSpace {
         flags: mmu::Flags,
         name: String,
     ) -> crate::Result<Pin<&mut Mapping>> {
-        assert!(virt.start.is_aligned(arch::PAGE_SIZE));
-        assert!(virt.end.is_aligned(arch::PAGE_SIZE));
+        assert!(virt.start.is_aligned_to(arch::PAGE_SIZE));
+        assert!(virt.end.is_aligned_to(arch::PAGE_SIZE));
         assert_eq!(vmo_offset % arch::PAGE_SIZE, 0);
 
         if let Some(prev) = self.tree.upper_bound(virt.start_bound()).get() {
@@ -193,8 +193,7 @@ impl AddressSpace {
         if flags.contains(PageFaultFlags::ACCESS) {
             return self.access_fault(virt);
         }
-
-        let virt = virt.align_down(arch::PAGE_SIZE);
+        let virt = virt.checked_align_down(arch::PAGE_SIZE).unwrap();
 
         // check if the address is within the last fault range
         // if so, we can save ourselves a tree lookup
@@ -298,14 +297,16 @@ impl AddressSpace {
 
         // see if there is a suitable gap between the start of the address space and the first mapping
         if let Some(root) = self.tree.root().get() {
-            let aligned_gap =
-                (self.address_range.start..root.min_first_byte).align_in(layout.align());
+            let aligned_gap = (self.address_range.start..root.min_first_byte)
+                .checked_align_in(layout.align())
+                .unwrap();
             let spot_count = spots_in_range(layout, aligned_gap.clone());
             candidate_spot_count += spot_count;
             if target_index < spot_count {
                 return Ok(aligned_gap
                     .start
-                    .add(target_index << layout.align().ilog2()));
+                    .checked_add(target_index << layout.align().ilog2())
+                    .unwrap());
             }
             target_index -= spot_count;
         }
@@ -323,14 +324,18 @@ impl AddressSpace {
                         continue;
                     }
 
-                    let aligned_gap = (left.max_last_byte..node.range.end).align_in(layout.align());
+                    let aligned_gap = (left.max_last_byte..node.range.end)
+                        .checked_align_in(layout.align())
+                        .unwrap();
+
                     let spot_count = spots_in_range(layout, aligned_gap.clone());
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
                         return Ok(aligned_gap
                             .start
-                            .add(target_index << layout.align().ilog2()));
+                            .checked_add(target_index << layout.align().ilog2())
+                            .unwrap());
                     }
                     target_index -= spot_count;
                 }
@@ -338,15 +343,18 @@ impl AddressSpace {
                 if let Some(right) = node.links.right() {
                     let right = unsafe { right.as_ref() };
 
-                    let aligned_gap =
-                        (node.range.end..right.min_first_byte).align_in(layout.align());
+                    let aligned_gap = (node.range.end..right.min_first_byte)
+                        .checked_align_in(layout.align())
+                        .unwrap();
+
                     let spot_count = spots_in_range(layout, aligned_gap.clone());
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
                         return Ok(aligned_gap
                             .start
-                            .add(target_index << layout.align().ilog2()));
+                            .checked_add(target_index << layout.align().ilog2())
+                            .unwrap());
                     }
                     target_index -= spot_count;
 
@@ -362,13 +370,16 @@ impl AddressSpace {
 
         // see if there is a suitable gap between the end of the last mapping and the end of the address space
         if let Some(root) = self.tree.root().get() {
-            let aligned_gap = (root.max_last_byte..self.address_range.end).align_in(layout.align());
+            let aligned_gap = (root.max_last_byte..self.address_range.end)
+                .checked_align_in(layout.align())
+                .unwrap();
             let spot_count = spots_in_range(layout, aligned_gap.clone());
             candidate_spot_count += spot_count;
             if target_index < spot_count {
                 return Ok(aligned_gap
                     .start
-                    .add(target_index << layout.align().ilog2()));
+                    .checked_add(target_index << layout.align().ilog2())
+                    .unwrap());
             }
             target_index -= spot_count;
         }
@@ -556,9 +567,9 @@ impl Batch {
         if !self.can_append(base) || self.flags != flags {
             self.flush()?;
             self.flags = flags;
-            self.range = base..base.add(phys.1);
+            self.range = base..base.checked_add(phys.1).unwrap();
         } else {
-            self.range.end = self.range.end.add(phys.1);
+            self.range.end = self.range.end.checked_add(phys.1).unwrap();
         }
 
         self.phys.push(phys);

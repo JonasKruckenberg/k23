@@ -48,7 +48,7 @@ pub fn page_size_for_level(level: usize) -> usize {
 /// Panics if the provided level is `>= PAGE_TABLE_LEVELS`.
 pub fn pte_index_for_level(virt: VirtualAddress, lvl: usize) -> usize {
     assert!(lvl < PAGE_TABLE_LEVELS);
-    let index = (virt.as_raw() >> (PAGE_SHIFT + lvl * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
+    let index = (virt.get() >> (PAGE_SHIFT + lvl * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
     debug_assert!(index < PAGE_TABLE_ENTRIES);
 
     index
@@ -62,7 +62,7 @@ pub fn can_map_at_level(
     lvl: usize,
 ) -> bool {
     let page_size = page_size_for_level(lvl);
-    virt.is_aligned(page_size) && phys.is_aligned(page_size) && remaining_bytes >= page_size
+    virt.is_aligned_to(page_size) && phys.is_aligned_to(page_size) && remaining_bytes >= page_size
 }
 
 /// Invalidate address translation caches for the given `address_range` in the given `address_space`.
@@ -90,7 +90,7 @@ pub fn get_active_pgtable(_asid: usize) -> PhysicalAddress {
 /// This will invalidate pointers if not used carefully
 pub unsafe fn activate_pgtable(asid: usize, pgtable: PhysicalAddress) {
     unsafe {
-        let ppn = pgtable.as_raw() >> 12;
+        let ppn = pgtable.get() >> 12;
         satp::set(satp::Mode::Sv39, asid, ppn);
     }
 }

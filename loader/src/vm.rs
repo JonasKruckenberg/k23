@@ -8,7 +8,7 @@ use core::ops::Range;
 use core::{ptr, slice};
 use loader_api::TlsTemplate;
 use mmu::frame_alloc::{FrameAllocator, NonContiguousFrames};
-use mmu::{AddressSpace, Flush, PhysicalAddress, VirtualAddress, KIB, MIB};
+use mmu::{AddressRangeExt, AddressSpace, Flush, PhysicalAddress, VirtualAddress, KIB, MIB};
 use xmas_elf::dynamic::Tag;
 use xmas_elf::program::{SegmentData, Type};
 use xmas_elf::P64;
@@ -39,9 +39,13 @@ impl KernelAddressSpace {
 
     /// The kernel stack region for a given hartid.
     pub fn stack_region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
-        let end = self.stacks_virt.end.sub(self.per_hart_stack_size * hartid);
+        let end = self
+            .stacks_virt
+            .end
+            .checked_sub(self.per_hart_stack_size * hartid)
+            .unwrap();
 
-        end.sub(self.per_hart_stack_size)..end
+        end.checked_sub(self.per_hart_stack_size).unwrap()..end
     }
 
     /// The thread-local storage region for a given hartid.
@@ -133,7 +137,8 @@ pub fn init_kernel_aspace(
         aspace,
         entry: kernel_virt
             .start
-            .add(usize::try_from(kernel.elf_file.header.pt2.entry_point())?),
+            .checked_add(usize::try_from(kernel.elf_file.header.pt2.entry_point())?)
+            .unwrap(),
         maybe_tls_allocation,
         stacks_virt,
         per_hart_stack_size: per_hart_stack_size_pages * arch::PAGE_SIZE,
@@ -153,14 +158,17 @@ fn map_elf(
     flush: &mut Flush,
 ) -> crate::Result<Option<TlsAllocation>> {
     let phys_base = PhysicalAddress::new(
-        elf_file.input.as_ptr() as usize - aspace.physical_memory_offset().as_raw(),
+        elf_file.input.as_ptr() as usize - aspace.physical_memory_offset().get(),
     );
     assert!(
-        phys_base.is_aligned(arch::PAGE_SIZE),
+        phys_base.is_aligned_to(arch::PAGE_SIZE),
         "Loaded ELF file is not sufficiently aligned"
     );
 
     let mut maybe_tls_allocation = None;
+
+    // physmem VirtualAddress(0xffffffc080000000)..VirtualAddress(0xffffffc0c0000000)
+    // load    VirtualAddress(0xffffffc0bffff000)..VirtualAddress(0xffffffc0c008b000)
 
     // Load the segments into virtual memory.
     for ph in elf_file.program_iter() {
@@ -233,17 +241,17 @@ fn handle_load_segment(
     );
 
     let phys = {
-        let start = phys_base.add(ph.offset);
-        let end = start.add(ph.file_size);
+        let start = phys_base.checked_add(ph.offset).unwrap();
+        let end = start.checked_add(ph.file_size).unwrap();
 
-        start.align_down(ph.align)..end.align_up(ph.align)
+        (start..end).checked_align_out(ph.align).unwrap()
     };
 
     let virt = {
-        let start = virt_base.add(ph.virtual_address);
-        let end = start.add(ph.file_size);
+        let start = virt_base.checked_add(ph.virtual_address).unwrap();
+        let end = start.checked_add(ph.file_size).unwrap();
 
-        start.align_down(ph.align)..end.align_up(ph.align)
+        (start..end).checked_align_out(ph.align).unwrap()
     };
 
     log::trace!("mapping {virt:?} => {phys:?}");
@@ -251,7 +259,7 @@ fn handle_load_segment(
         frame_alloc,
         virt.start,
         phys.start,
-        NonZeroUsize::new(phys.end.as_raw() - phys.start.as_raw()).unwrap(),
+        NonZeroUsize::new(phys.size()).unwrap(),
         flags,
         flush,
     )?;
@@ -286,11 +294,11 @@ fn handle_bss_section(
     virt_base: VirtualAddress,
     flush: &mut Flush,
 ) -> crate::Result<()> {
-    let virt_start = virt_base.add(ph.virtual_address);
-    let zero_start = virt_start.add(ph.file_size);
-    let zero_end = virt_start.add(ph.mem_size);
+    let virt_start = virt_base.checked_add(ph.virtual_address).unwrap();
+    let zero_start = virt_start.checked_add(ph.file_size).unwrap();
+    let zero_end = virt_start.checked_add(ph.mem_size).unwrap();
 
-    let data_bytes_before_zero = zero_start.as_raw() & 0xfff;
+    let data_bytes_before_zero = zero_start.get() & 0xfff;
 
     log::debug!(
         "handling BSS {:?}, data bytes before {data_bytes_before_zero}",
@@ -298,10 +306,16 @@ fn handle_bss_section(
     );
 
     if data_bytes_before_zero != 0 {
-        let last_page = virt_start.add(ph.file_size - 1).align_down(ph.align);
+        let last_page = virt_start
+            .checked_add(ph.file_size - 1)
+            .unwrap()
+            .checked_align_down(ph.align)
+            .unwrap();
         let last_frame = phys_base
-            .add(ph.offset + ph.file_size - 1)
-            .align_down(ph.align);
+            .checked_add(ph.offset + ph.file_size - 1)
+            .unwrap()
+            .checked_align_down(ph.align)
+            .unwrap();
 
         let new_frame = frame_alloc
             .allocate_contiguous_zeroed(
@@ -311,12 +325,12 @@ fn handle_bss_section(
 
         unsafe {
             let src = slice::from_raw_parts(
-                aspace.phys_to_virt(last_frame).as_raw() as *mut u8,
+                aspace.phys_to_virt(last_frame).as_ptr(),
                 data_bytes_before_zero,
             );
 
             let dst = slice::from_raw_parts_mut(
-                aspace.phys_to_virt(new_frame).as_raw() as *mut u8,
+                aspace.phys_to_virt(new_frame).as_mut_ptr(),
                 data_bytes_before_zero,
             );
 
@@ -336,9 +350,9 @@ fn handle_bss_section(
     let (additional_virt_base, additional_len) = {
         // zero_start either lies at a page boundary OR somewhere within the first page
         // by aligning up, we move it to the beginning of the *next* page.
-        let start = zero_start.align_up(ph.align);
-        let end = zero_end.align_up(ph.align);
-        (start, end.as_raw() - start.as_raw())
+        let start = zero_start.checked_align_up(ph.align).unwrap();
+        let end = zero_end.checked_align_up(ph.align).unwrap();
+        (start, (start..end).size())
     };
 
     if additional_len > 0 {
@@ -350,7 +364,7 @@ fn handle_bss_section(
 
         log::trace!(
             "mapping additional zeros {additional_virt_base:?}..{:?}",
-            additional_virt_base.add(additional_len)
+            additional_virt_base.checked_add(additional_len).unwrap()
         );
         aspace.map(additional_virt_base, additional_phys, flags, flush)?;
     }
@@ -391,7 +405,7 @@ fn handle_tls_segment(
         virt,
         per_hart_size: per_hart_size_pages,
         tls_template: TlsTemplate {
-            start_addr: virt_base.add(ph.virtual_address),
+            start_addr: virt_base.checked_add(ph.virtual_address).unwrap(),
             mem_size: ph.mem_size,
             file_size: ph.file_size,
         },
@@ -441,14 +455,19 @@ fn apply_relocation(
             // Calculate address at which to apply the relocation.
             // dynamic relocations offsets are relative to the virtual layout of the elf,
             // not the physical file
-            let target = virt_base.add(rela.get_offset() as usize);
+            let target = virt_base.checked_add(rela.get_offset() as usize).unwrap();
 
             // Calculate the value to store at the relocation target.
-            let value = virt_base.offset(rela.get_addend() as isize);
+            let value = virt_base
+                .checked_add_signed(rela.get_addend() as isize)
+                .unwrap();
 
             // log::trace!("reloc R_RISCV_RELATIVE offset: {:#x}; addend: {:#x} => target {target:?} value {value:?}", rela.get_offset(), rela.get_addend());
             unsafe {
-                (target.as_raw() as *mut usize).write_unaligned(value.as_raw());
+                target
+                    .as_mut_ptr()
+                    .cast::<usize>()
+                    .write_unaligned(value.get());
             }
         }
         _ => unimplemented!("unsupported relocation type {}", rela.get_type()),
@@ -464,18 +483,20 @@ fn handle_relro_segment(
     flush: &mut Flush,
 ) -> crate::Result<()> {
     let virt = {
-        let start = virt_base.add(ph.virtual_address);
+        let start = virt_base.checked_add(ph.virtual_address).unwrap();
 
-        start..start.add(ph.mem_size)
+        start..start.checked_add(ph.mem_size).unwrap()
     };
 
-    let virt_aligned =
-        { virt.start.align_down(arch::PAGE_SIZE)..virt.end.align_down(arch::PAGE_SIZE) };
+    let virt_aligned = {
+        virt.start.checked_align_down(arch::PAGE_SIZE).unwrap()
+            ..virt.end.checked_align_down(arch::PAGE_SIZE).unwrap()
+    };
 
     log::debug!("Marking RELRO segment {virt_aligned:?} as read-only");
     aspace.protect(
         virt_aligned.start,
-        NonZeroUsize::new(virt_aligned.end.as_raw() - virt_aligned.start.as_raw()).unwrap(),
+        NonZeroUsize::new(virt_aligned.size()).unwrap(),
         mmu::Flags::READ,
         flush,
     )?;
@@ -499,9 +520,13 @@ impl TlsAllocation {
     }
 
     pub fn region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
-        let start = self.virt.start.add(self.per_hart_size * hartid);
+        let start = self
+            .virt
+            .start
+            .checked_add(self.per_hart_size * hartid)
+            .unwrap();
 
-        start..start.add(self.per_hart_size)
+        start..start.checked_add(self.per_hart_size).unwrap()
     }
 
     pub fn initialize_for_hart(&self, hartid: usize) {
@@ -509,16 +534,20 @@ impl TlsAllocation {
             return;
         }
 
-        let src = unsafe {
+        let src: &[u8] = unsafe {
             slice::from_raw_parts(
-                self.tls_template.start_addr.as_raw() as *const u8,
+                self.tls_template.start_addr.as_ptr(),
                 self.tls_template.file_size,
             )
         };
 
         let dst = unsafe {
             slice::from_raw_parts_mut(
-                self.virt.start.add(self.per_hart_size * hartid).as_raw() as *mut u8,
+                self.virt
+                    .start
+                    .checked_add(self.per_hart_size * hartid)
+                    .unwrap()
+                    .as_mut_ptr(),
                 self.tls_template.file_size,
             )
         };

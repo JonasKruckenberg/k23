@@ -164,8 +164,15 @@ impl SystemTime {
             .unwrap();
 
         let time_ns = unsafe {
-            let time_low = AtomicPtr::new(rtc.regions[0].start.as_raw() as *mut u32);
-            let time_high = AtomicPtr::new(rtc.regions[0].start.add(0x04).as_raw() as *mut u32);
+            let time_low = AtomicPtr::new(rtc.regions[0].start.as_mut_ptr().cast::<u32>());
+            let time_high = AtomicPtr::new(
+                rtc.regions[0]
+                    .start
+                    .checked_add(0x04)
+                    .unwrap()
+                    .as_mut_ptr()
+                    .cast::<u32>(),
+            );
 
             let low = time_low.load(Ordering::Relaxed).read_volatile();
             let high = time_high.load(Ordering::Relaxed).read_volatile();

@@ -72,19 +72,19 @@ impl PageAllocator {
     pub fn reserve(&mut self, mut virt_base: VirtualAddress, mut remaining_bytes: usize) {
         log::trace!(
             "marking {virt_base:?}..{:?} as used",
-            virt_base.add(remaining_bytes)
+            virt_base.checked_add(remaining_bytes).unwrap()
         );
 
         let top_level_page_size = mmu::arch::page_size_for_level(mmu::arch::PAGE_TABLE_LEVELS - 1);
-        assert!(virt_base.is_aligned(top_level_page_size));
+        assert!(virt_base.is_aligned_to(top_level_page_size));
 
         while remaining_bytes > 0 {
-            let page_idx = (virt_base.as_raw() - (usize::MAX << mmu::arch::VIRT_ADDR_BITS))
-                / top_level_page_size;
+            let page_idx =
+                (virt_base.get() - (usize::MAX << mmu::arch::VIRT_ADDR_BITS)) / top_level_page_size;
 
             self.page_state[page_idx] = true;
 
-            virt_base = virt_base.add(top_level_page_size);
+            virt_base = virt_base.checked_add(top_level_page_size).unwrap();
             remaining_bytes -= top_level_page_size;
         }
     }
@@ -107,7 +107,8 @@ impl PageAllocator {
         // and add the `idx` multiple of the size of a top-level entry to it
         let base = VirtualAddress::new(
             (usize::MAX << mmu::arch::VIRT_ADDR_BITS) + page_idx * top_level_page_size,
-        );
+        )
+        .unwrap();
 
         let offset = if let Some(rng) = self.prng.as_mut() {
             // Choose a random offset.
@@ -124,6 +125,6 @@ impl PageAllocator {
             0
         };
 
-        base.add(offset)..base.add(offset + layout.size())
+        base.checked_add(offset).unwrap()..base.checked_add(offset + layout.size()).unwrap()
     }
 }

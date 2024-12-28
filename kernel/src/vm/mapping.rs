@@ -110,7 +110,7 @@ impl Mapping {
         flags: PageFaultFlags,
     ) -> crate::Result<()> {
         log::trace!("page fault at {virt:?} flags {flags:?} against {self:?}");
-        debug_assert!(virt.is_aligned(arch::PAGE_SIZE));
+        debug_assert!(virt.is_aligned_to(arch::PAGE_SIZE));
         debug_assert!(self.range.contains(&virt));
 
         let mut mmu_flags = mmu::Flags::empty();
@@ -187,11 +187,7 @@ impl Mapping {
         node.max_gap = cmp::max(left_max_gap, right_max_gap);
 
         fn gap(left_last_byte: VirtualAddress, right_first_byte: VirtualAddress) -> usize {
-            debug_assert!(
-                left_last_byte <= right_first_byte,
-                "subtraction would underflow: {left_last_byte} >= {right_first_byte}"
-            );
-            right_first_byte.sub_addr(left_last_byte)
+            right_first_byte.checked_sub_addr(left_last_byte).unwrap()
         }
     }
 

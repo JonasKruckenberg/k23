@@ -67,7 +67,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
         for device in &minfo.mmio_devices {
             for region in &device.regions {
                 log::trace!("mapping device region {:?}", region);
-                let aligned = region.clone().align_out(arch::PAGE_SIZE);
+                let aligned = region.clone().checked_align_out(arch::PAGE_SIZE).unwrap();
 
                 let vmo = WiredVmo::new(aligned.clone());
 
@@ -155,10 +155,11 @@ fn reserve_wired_regions(
         let end = boot_info
             .stacks_region
             .end
-            .sub(per_hart_stack_size * hartid as usize);
+            .checked_sub(per_hart_stack_size * hartid as usize)
+            .unwrap();
 
         aspace.reserve(
-            end.sub(per_hart_stack_size)..end,
+            end.checked_sub(per_hart_stack_size).unwrap()..end,
             mmu::Flags::READ | mmu::Flags::WRITE,
             format!("Hart {} Stack", hartid),
             flush,
@@ -180,7 +181,8 @@ fn reserve_wired_regions(
             boot_info
                 .kernel_elf
                 .clone()
-                .add(boot_info.physical_address_offset.as_raw())
+                .checked_add(boot_info.physical_address_offset.get())
+                .unwrap()
                 .as_ptr_range(),
         )
     };
@@ -191,7 +193,11 @@ fn reserve_wired_regions(
             continue;
         }
 
-        let virt = boot_info.kernel_virt.start.add(ph.virtual_addr() as usize);
+        let virt = boot_info
+            .kernel_virt
+            .start
+            .checked_add(ph.virtual_addr() as usize)
+            .unwrap();
 
         let mut mmu_flags = mmu::Flags::empty();
         if ph.flags().is_read() {
@@ -212,8 +218,12 @@ fn reserve_wired_regions(
         );
 
         aspace.reserve(
-            virt.align_down(arch::PAGE_SIZE)
-                ..virt.add(ph.mem_size() as usize).align_up(arch::PAGE_SIZE),
+            virt.checked_align_down(arch::PAGE_SIZE).unwrap()
+                ..virt
+                    .checked_add(ph.mem_size() as usize)
+                    .unwrap()
+                    .checked_align_up(arch::PAGE_SIZE)
+                    .unwrap(),
             mmu_flags,
             format!("Kernel {mmu_flags} Segment"),
             flush,
@@ -239,12 +249,12 @@ impl WiredVmo {
     #[allow(clippy::new_ret_no_self)]
     fn new(range: Range<PhysicalAddress>) -> Arc<dyn Vmo> {
         assert!(
-            range.start.is_aligned(arch::PAGE_SIZE),
+            range.start.is_aligned_to(arch::PAGE_SIZE),
             "range start {:?} is not aligned to page size",
             range.start
         );
         assert!(
-            range.end.is_aligned(arch::PAGE_SIZE),
+            range.end.is_aligned_to(arch::PAGE_SIZE),
             "range end {:?} is not aligned to page size",
             range.end
         );
@@ -265,8 +275,8 @@ impl Vmo for WiredVmo {
     }
     fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {
         assert_eq!(range.start % arch::PAGE_SIZE, 0);
-        let start = self.range.start.add(range.start);
-        let end = self.range.start.add(range.end);
+        let start = self.range.start.checked_add(range.start).unwrap();
+        let end = self.range.start.checked_add(range.end).unwrap();
 
         assert!(
             self.range.start <= start && self.range.end >= end,

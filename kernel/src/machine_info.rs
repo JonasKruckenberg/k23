@@ -349,7 +349,7 @@ impl<'dt> Visitor<'dt> for SocVisitorChildVisitor<'dt> {
             let width = usize::from_be_bytes(width.try_into()?);
 
             let start = PhysicalAddress::new(start);
-            self.regs.push(start..start.add(width));
+            self.regs.push(start..start.checked_add(width).unwrap());
         }
 
         Ok(())

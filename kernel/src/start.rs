@@ -106,8 +106,9 @@ fn locate_device_tree(boot_info: &'static loader_api::BootInfo) -> *const u8 {
 
     boot_info
         .physical_address_offset
-        .add(fdt.range.start.as_raw())
-        .as_raw() as *const u8
+        .checked_add(fdt.range.start.get())
+        .unwrap()
+        .as_ptr()
 }
 
 static SYMBOLIZE_CONTEXT: LazyLock<Mutex<SymbolizeContext>> = LazyLock::new(|| {
@@ -119,13 +120,14 @@ static SYMBOLIZE_CONTEXT: LazyLock<Mutex<SymbolizeContext>> = LazyLock::new(|| {
             boot_info
                 .kernel_elf
                 .clone()
-                .add(boot_info.physical_address_offset.as_raw())
+                .checked_add(boot_info.physical_address_offset.get())
+                .unwrap()
                 .as_ptr_range(),
         )
     })
     .unwrap();
 
-    let ctx = SymbolizeContext::new(elf, boot_info.kernel_virt.start.as_raw() as u64).unwrap();
+    let ctx = SymbolizeContext::new(elf, boot_info.kernel_virt.start.get() as u64).unwrap();
 
     Mutex::new(ctx)
 });
