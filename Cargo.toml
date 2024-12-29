@@ -94,6 +94,7 @@ lto = true
 strip = true
 overflow-checks = true
 split-debuginfo = "packed"
+debug-assertions = true
 
 [profile.bench]
 debug = true
