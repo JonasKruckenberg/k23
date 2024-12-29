@@ -1,11 +1,9 @@
-use crate::arch;
 use crate::machine_info::MachineInfo;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
-use core::ops::DerefMut;
 use loader_api::BootInfo;
-use mmu::frame_alloc::{BuddyAllocator, FrameAllocator, FrameUsage};
-use mmu::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress};
+use mmu::frame_alloc::{FrameAllocator, FrameUsage};
+use mmu::{AddressRangeExt, Flush, PhysicalAddress};
 
 const KERNEL_ASID: usize = 0;
 

@@ -187,7 +187,9 @@ impl Mapping {
         node.max_gap = cmp::max(left_max_gap, right_max_gap);
 
         fn gap(left_last_byte: VirtualAddress, right_first_byte: VirtualAddress) -> usize {
-            right_first_byte.checked_sub_addr(left_last_byte).unwrap_or_default() // TODO use saturating_sub_addr
+            right_first_byte
+                .checked_sub_addr(left_last_byte)
+                .unwrap_or_default() // TODO use saturating_sub_addr
         }
     }
 

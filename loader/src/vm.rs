@@ -486,10 +486,8 @@ fn handle_relro_segment(
         start..start.checked_add(ph.mem_size).unwrap()
     };
 
-    let virt_aligned = {
-        virt.start.align_down(arch::PAGE_SIZE)
-            ..virt.end.align_down(arch::PAGE_SIZE)
-    };
+    let virt_aligned =
+        { virt.start.align_down(arch::PAGE_SIZE)..virt.end.align_down(arch::PAGE_SIZE) };
 
     log::debug!("Marking RELRO segment {virt_aligned:?} as read-only");
     aspace.protect(

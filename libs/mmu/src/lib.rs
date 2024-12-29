@@ -406,9 +406,24 @@ impl AddressRangeExt for Range<VirtualAddress> {
 }
 
 static_assertions::const_assert!(VirtualAddress(0xffffffc000000000).is_aligned_to(4096));
-static_assertions::const_assert_eq!(VirtualAddress(0xffffffc0000156e8).align_down(4096).0, 0xffffffc000015000);
-static_assertions::const_assert_eq!(VirtualAddress(0xffffffc000000000).checked_align_up(4096).unwrap().0, 0xffffffc000000000);
-static_assertions::const_assert_eq!(VirtualAddress(0xffffffc0000156e8).checked_align_up(4096).unwrap().0, 0xffffffc000016000);
+static_assertions::const_assert_eq!(
+    VirtualAddress(0xffffffc0000156e8).align_down(4096).0,
+    0xffffffc000015000
+);
+static_assertions::const_assert_eq!(
+    VirtualAddress(0xffffffc000000000)
+        .checked_align_up(4096)
+        .unwrap()
+        .0,
+    0xffffffc000000000
+);
+static_assertions::const_assert_eq!(
+    VirtualAddress(0xffffffc0000156e8)
+        .checked_align_up(4096)
+        .unwrap()
+        .0,
+    0xffffffc000016000
+);
 
 #[cfg(test)]
 mod tests {
@@ -441,7 +456,6 @@ mod tests {
             }
         }
     }
-
 
     proptest! {
         #[ktest::test]

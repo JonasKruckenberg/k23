@@ -3,10 +3,10 @@ pub mod trap_handler;
 pub mod vm;
 
 use core::arch::asm;
-use mmu::{AddressRangeExt, VirtualAddress};
+use mmu::VirtualAddress;
 use riscv::sstatus::FS;
 use riscv::{interrupt, sie, sstatus};
-use static_assertions::{const_assert, const_assert_eq};
+use static_assertions::const_assert_eq;
 
 pub use setjmp_longjmp::{call_with_setjmp, longjmp, setjmp, JmpBuf, JmpBufStruct};
 
@@ -14,7 +14,7 @@ pub use setjmp_longjmp::{call_with_setjmp, longjmp, setjmp, JmpBuf, JmpBufStruct
 ///
 ///
 pub const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000).unwrap();
-pub const KERNEL_ASPACE_SIZE: usize = (1 << mmu::arch::VIRT_ADDR_BITS);
+pub const KERNEL_ASPACE_SIZE: usize = 1 << mmu::arch::VIRT_ADDR_BITS;
 const_assert_eq!(KERNEL_ASPACE_BASE.get(), mmu::arch::CANONICAL_ADDRESS_MASK);
 const_assert_eq!(KERNEL_ASPACE_SIZE - 1, !mmu::arch::CANONICAL_ADDRESS_MASK);
 
