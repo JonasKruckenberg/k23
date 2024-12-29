@@ -36,31 +36,39 @@
 //! result. In a nested calls scenario (e.g. host->wasm->host->wasm) it is therefore up to each host function
 //! to propagate the trap and each host function therefore gets to clean up all its resources.
 
-use core::arch::naked_asm;
-use core::ptr;
+use core::arch::{asm, naked_asm};
+use core::marker::{PhantomData, PhantomPinned};
+use core::mem::MaybeUninit;
+use core::ptr::addr_of_mut;
 
 /// A store for the register state used by `setjmp` and `longjmp`.
 ///
 /// In essence this marks a "checkpoint" in the program's execution that can be returned to later.
 #[repr(C)]
 #[derive(Clone, Debug, Default)]
-pub struct JumpBuf {
+pub struct JmpBufStruct {
     pc: usize,
     s: [usize; 12],
     sp: usize,
     fs: [usize; 12],
+    _neither_send_nor_sync: PhantomData<*const u8>,
+    _not_unpin: PhantomPinned,
 }
 
-impl JumpBuf {
+impl JmpBufStruct {
     pub const fn new() -> Self {
         Self {
             pc: 0,
             sp: 0,
             s: [0; 12],
             fs: [0; 12],
+            _neither_send_nor_sync: PhantomData,
+            _not_unpin: PhantomPinned,
         }
     }
 }
+
+pub type JmpBuf = *const JmpBufStruct;
 
 /// Helper macro for constructing the inline assembly, used below.
 macro_rules! define_op {
@@ -142,8 +150,9 @@ cfg_if::cfg_if! {
 ///
 /// Due to the weird multi-return nature of `setjmp` it is very easy to make mistakes, this
 /// function be used with extreme care.
+#[no_mangle]
 #[naked]
-pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
+pub unsafe extern "C" fn setjmp(env: JmpBuf) -> isize {
     cfg_if::cfg_if! {
         if #[cfg(target_feature = "d")] {
             naked_asm! {
@@ -212,7 +221,7 @@ pub unsafe extern "C" fn setjmp(buf: *mut JumpBuf) -> isize {
 /// Additionally, the whole point of this function is to continue execution at a wildly different
 /// address, so this might cause confusing and hard-to-debug behavior.
 #[naked]
-pub unsafe extern "C" fn longjmp(buf: *mut JumpBuf, val: isize) -> ! {
+pub unsafe extern "C" fn longjmp(env: JmpBuf, val: isize) -> ! {
     cfg_if::cfg_if! {
         if #[cfg(target_feature = "d")] {
             naked_asm! {
@@ -271,6 +280,77 @@ pub unsafe extern "C" fn longjmp(buf: *mut JumpBuf, val: isize) -> ! {
     }
 }
 
+/// Invokes a closure, setting up the environment for contained code to safely use `longjmp`.
+///
+/// This function acts as a somewhat-safe wrapper around `setjmp` that prevents LLVM miscompilations
+/// caused by the fact that its optimization passes don't know about the *returns-twice* nature of `setjmp`.
+///
+/// Note for the pedantic: Yes LLVM *could* know about this, and does have logic to handle it, but Rust
+/// has (sensibly) decided to remove the `returns_twice` attribute from the language, so instead
+/// we have to rely on this wrapper.
+///
+/// # Safety
+///
+/// While `longjmp` is still very sketchy, skipping over destructors and such, this function does
+/// the necessary ceremony to ensure safe, Rust compatible usage of `setjmp`. In particular, it ensures
+/// that the `JmpBuf` cannot be leaked out of the closure, and that it cannot be shared between
+/// threads.
+// The code below is adapted from https://github.com/pnkfelix/cee-scape/blob/d6ffeca6bd56b46b83c8c9118dbe75e38d423d28/src/asm_based.rs
+// which in turn is adapted from this Zulip thread: https://rust-lang.zulipchat.com/#narrow/stream/210922-project-ffi-unwind/topic/cost.20of.20supporting.20longjmp.20without.20annotations/near/301840755
+#[inline(never)]
+pub fn call_with_setjmp<F>(f: F) -> isize
+where
+    F: for<'a> FnOnce(&'a JmpBufStruct) -> isize,
+{
+    let mut f = MaybeUninit::new(f);
+
+    extern "C" fn do_call<F>(env: JmpBuf, closure_env_ptr: *mut F) -> isize
+    where
+        F: for<'a> FnOnce(&'a JmpBufStruct) -> isize,
+    {
+        // Dereference `closure_env_ptr` with .read() to acquire ownership of
+        // the FnOnce object, then call it. (See also the forget note below.)
+        //
+        // Note that `closure_env_ptr` is not a raw function pointer, it's a
+        // pointer to a FnOnce; the code we call comes from the generic `F`.
+        unsafe { closure_env_ptr.read()(&*env) }
+    }
+
+    unsafe {
+        let mut jbuf = MaybeUninit::<JmpBufStruct>::zeroed().assume_init();
+        let ret: isize;
+        let env_ptr = addr_of_mut!(jbuf);
+        let closure_ptr = addr_of_mut!(f);
+
+        // The callback is now effectively owned by `closure_env_ptr` (i.e., the
+        // `closure_env_ptr.read()` call in `call_from_c_to_rust` will take a
+        // direct bitwise copy of its state, and pass that ownership into the
+        // FnOnce::call_once invocation.)
+        //
+        // Therefore, we need to forget about our own ownership of the callback now.
+        #[allow(clippy::forget_non_drop)]
+        core::mem::forget(f);
+
+        asm! {
+            "call {setjmp}",        // fills in jbuf; future longjmp calls go here.
+            "bnez a0, 1f",          // if return value non-zero, skip the callback invocation
+            "mv a0, {env_ptr}",     // move saved jmp buf into do_call's first arg position
+            "mv a1, {closure_ptr}", // move saved closure env into do_call's second arg position
+            "call {do_call}",       // invoke the do_call and through it the callback
+            "1:",                   // at this point, a0 carries the return value (from either outcome)
+
+            in("a0") env_ptr,
+            setjmp = sym setjmp,
+            do_call = sym do_call::<F>,
+            env_ptr = in(reg) env_ptr,
+            closure_ptr = in(reg) closure_ptr,
+            lateout("a0") ret,
+            clobber_abi("C")
+        }
+        ret
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,24 +358,53 @@ mod tests {
     use core::ptr::addr_of_mut;
 
     #[ktest::test]
-    fn setjmp_longjmp_simple() {
+    fn _call_with_setjmp() {
         unsafe {
-            let mut c = 0;
-            let mut buf = JumpBuf::new();
+            let ret = call_with_setjmp(|_env| {
+                log::trace!("called 1!");
+
+                1234
+            });
+            assert_eq!(ret, 1234);
+
+            let ret = call_with_setjmp(|env| {
+                log::trace!("called 2!");
+
+                longjmp(env, 4321);
+            });
+            assert_eq!(ret, 4321);
+        }
+    }
+
+    #[ktest::test]
+    #[allow(static_mut_refs)]
+    fn setjmp_longjmp_simple() {
+        // The LLVM optimizer doesn't understand the "setjmp returns twice" behaviour and would
+        // turn the `C += 1` into a constant store instruction instead of a load-add-store sequence.
+        // To force this, we use a static variable here, but forcing the location of the variable
+        // into a different (longer-lived) stack frame would also work.
+        //
+        // Note that this only exists to test the behaviour of setjmp/longjmp, in real code you
+        // should use `call_with_setjmp` as it limits much of the footguns.
+
+        static mut C: u32 = 0;
+
+        unsafe {
+            let mut buf = JmpBufStruct::new();
 
             let r = setjmp(ptr::from_mut(&mut buf));
-            c += 1;
+            C += 1;
             if r == 0 {
-                assert_eq!(c, 1);
+                assert_eq!(C, 1);
                 longjmp(ptr::from_mut(&mut buf), 1234567);
             }
-            assert_eq!(c, 2);
+            assert_eq!(C, 2);
             assert_eq!(r, 1234567);
         }
     }
 
-    static mut BUFFER_A: JumpBuf = JumpBuf::new();
-    static mut BUFFER_B: JumpBuf = JumpBuf::new();
+    static mut BUFFER_A: JmpBufStruct = JmpBufStruct::new();
+    static mut BUFFER_B: JmpBufStruct = JmpBufStruct::new();
 
     #[ktest::test]
     fn setjmp_longjmp_complex() {

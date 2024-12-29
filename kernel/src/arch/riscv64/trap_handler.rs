@@ -1,4 +1,3 @@
-use crate::time::Instant;
 use crate::{arch, TRAP_STACK_SIZE_PAGES};
 use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Interrupt, Trap};
@@ -223,22 +222,22 @@ fn default_trap_handler(
             let tval = stval::read();
 
             log::error!("KERNEL LOAD PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
-            unsafe { sepc::write(trap_panic_trampoline as usize) }
+            sepc::write(trap_panic_trampoline as usize)
         }
         Trap::Exception(Exception::StorePageFault) => {
             let epc = sepc::read();
             let tval = stval::read();
 
             log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
-            unsafe { sepc::write(trap_panic_trampoline as usize) }
+            sepc::write(trap_panic_trampoline as usize)
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             // just clear the timer interrupt when it happens for now, this is required to make the
             // tests in the `time` module work
-            riscv::sbi::time::set_timer(u64::MAX);
+            riscv::sbi::time::set_timer(u64::MAX).unwrap();
         }
         _ => {
-            unsafe { sepc::write(trap_panic_trampoline as usize) }
+            sepc::write(trap_panic_trampoline as usize)
             // panic!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
         }
     }
