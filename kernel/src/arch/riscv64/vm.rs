@@ -1,4 +1,3 @@
-use crate::arch;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use loader_api::BootInfo;
@@ -9,7 +8,7 @@ const KERNEL_ASID: usize = 0;
 
 pub fn init(
     boot_info: &BootInfo,
-    frame_alloc: &mut BuddyAllocator,
+    _frame_alloc: &mut BuddyAllocator,
 ) -> crate::Result<pmm::AddressSpace> {
     let (mut arch, mut flush) =
         pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_map.start);
@@ -39,17 +38,17 @@ fn unmap_loader(boot_info: &BootInfo, arch: &mut pmm::AddressSpace, flush: &mut 
 
 struct IgnoreAlloc;
 impl FrameAllocator for IgnoreAlloc {
-    fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+    fn allocate_contiguous(&mut self, _layout: Layout) -> Option<PhysicalAddress> {
         unimplemented!()
     }
 
-    fn deallocate_contiguous(&mut self, addr: PhysicalAddress, layout: Layout) {}
+    fn deallocate_contiguous(&mut self, _addr: PhysicalAddress, _layout: Layout) {}
 
-    fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+    fn allocate_contiguous_zeroed(&mut self, _layout: Layout) -> Option<PhysicalAddress> {
         unimplemented!()
     }
 
-    fn allocate_partial(&mut self, layout: Layout) -> Option<(PhysicalAddress, usize)> {
+    fn allocate_partial(&mut self, _layout: Layout) -> Option<(PhysicalAddress, usize)> {
         unimplemented!()
     }
 

@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 pub use pmm::arch::*;
 
 cfg_if::cfg_if! {
