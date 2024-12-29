@@ -392,7 +392,6 @@ mod tests {
         static mut C: u32 = 0;
 
         unsafe {
-            // let mut c = 0;
             let mut buf = JmpBufStruct::new();
 
             let r = setjmp(ptr::from_mut(&mut buf));
