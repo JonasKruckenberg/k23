@@ -38,7 +38,7 @@
 
 use core::arch::{asm, naked_asm};
 use core::marker::{PhantomData, PhantomPinned};
-use core::mem::MaybeUninit;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ptr::addr_of_mut;
 
 /// A store for the register state used by `setjmp` and `longjmp`.
@@ -53,19 +53,6 @@ pub struct JmpBufStruct {
     fs: [usize; 12],
     _neither_send_nor_sync: PhantomData<*const u8>,
     _not_unpin: PhantomPinned,
-}
-
-impl JmpBufStruct {
-    pub const fn new() -> Self {
-        Self {
-            pc: 0,
-            sp: 0,
-            s: [0; 12],
-            fs: [0; 12],
-            _neither_send_nor_sync: PhantomData,
-            _not_unpin: PhantomPinned,
-        }
-    }
 }
 
 pub type JmpBuf = *const JmpBufStruct;
@@ -302,8 +289,6 @@ pub fn call_with_setjmp<F>(f: F) -> isize
 where
     F: for<'a> FnOnce(&'a JmpBufStruct) -> isize,
 {
-    let mut f = MaybeUninit::new(f);
-
     extern "C" fn do_call<F>(env: JmpBuf, closure_env_ptr: *mut F) -> isize
     where
         F: for<'a> FnOnce(&'a JmpBufStruct) -> isize,
@@ -317,19 +302,11 @@ where
     }
 
     unsafe {
+        let mut f = ManuallyDrop::new(f);
         let mut jbuf = MaybeUninit::<JmpBufStruct>::zeroed().assume_init();
         let ret: isize;
         let env_ptr = addr_of_mut!(jbuf);
         let closure_ptr = addr_of_mut!(f);
-
-        // The callback is now effectively owned by `closure_env_ptr` (i.e., the
-        // `closure_env_ptr.read()` call in `call_from_c_to_rust` will take a
-        // direct bitwise copy of its state, and pass that ownership into the
-        // FnOnce::call_once invocation.)
-        //
-        // Therefore, we need to forget about our own ownership of the callback now.
-        #[allow(clippy::forget_non_drop)]
-        core::mem::forget(f);
 
         asm! {
             "call {setjmp}",        // fills in jbuf; future longjmp calls go here.
@@ -360,16 +337,10 @@ mod tests {
     #[ktest::test]
     fn _call_with_setjmp() {
         unsafe {
-            let ret = call_with_setjmp(|_env| {
-                log::trace!("called 1!");
-
-                1234
-            });
+            let ret = call_with_setjmp(|_env| 1234);
             assert_eq!(ret, 1234);
 
             let ret = call_with_setjmp(|env| {
-                log::trace!("called 2!");
-
                 longjmp(env, 4321);
             });
             assert_eq!(ret, 4321);
@@ -390,7 +361,7 @@ mod tests {
         static mut C: u32 = 0;
 
         unsafe {
-            let mut buf = JmpBufStruct::new();
+            let mut buf = MaybeUninit::<JmpBufStruct>::zeroed().assume_init();
 
             let r = setjmp(ptr::from_mut(&mut buf));
             C += 1;
@@ -403,8 +374,10 @@ mod tests {
         }
     }
 
-    static mut BUFFER_A: JmpBufStruct = JmpBufStruct::new();
-    static mut BUFFER_B: JmpBufStruct = JmpBufStruct::new();
+    static mut BUFFER_A: JmpBufStruct =
+        unsafe { MaybeUninit::<JmpBufStruct>::zeroed().assume_init() };
+    static mut BUFFER_B: JmpBufStruct =
+        unsafe { MaybeUninit::<JmpBufStruct>::zeroed().assume_init() };
 
     #[ktest::test]
     fn setjmp_longjmp_complex() {
