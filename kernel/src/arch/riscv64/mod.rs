@@ -8,7 +8,7 @@ use riscv::sstatus::FS;
 use riscv::{interrupt, sie, sstatus};
 use static_assertions::{const_assert, const_assert_eq};
 
-pub use setjmp_longjmp::{longjmp, setjmp, JumpBuf};
+pub use setjmp_longjmp::{call_with_setjmp, longjmp, setjmp, JmpBuf, JmpBufStruct};
 
 /// Virtual address where the kernel address space starts.
 ///

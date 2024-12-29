@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 pub use mmu::arch::*;
 
 cfg_if::cfg_if! {

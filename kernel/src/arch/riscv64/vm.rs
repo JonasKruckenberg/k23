@@ -9,9 +9,7 @@ use mmu::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress};
 
 const KERNEL_ASID: usize = 0;
 
-pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<mmu::AddressSpace> {
-    let mut frame_alloc = crate::vm::FRAME_ALLOC.get().unwrap().lock();
-
+pub fn init(boot_info: &BootInfo, _minfo: &MachineInfo) -> crate::Result<mmu::AddressSpace> {
     let (mut arch, mut flush) =
         mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
 
@@ -40,17 +38,17 @@ fn unmap_loader(boot_info: &BootInfo, arch: &mut mmu::AddressSpace, flush: &mut 
 
 struct IgnoreAlloc;
 impl FrameAllocator for IgnoreAlloc {
-    fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+    fn allocate_contiguous(&mut self, _layout: Layout) -> Option<PhysicalAddress> {
         unimplemented!()
     }
 
-    fn deallocate_contiguous(&mut self, addr: PhysicalAddress, layout: Layout) {}
+    fn deallocate_contiguous(&mut self, _addr: PhysicalAddress, _layout: Layout) {}
 
-    fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+    fn allocate_contiguous_zeroed(&mut self, _layout: Layout) -> Option<PhysicalAddress> {
         unimplemented!()
     }
 
-    fn allocate_partial(&mut self, layout: Layout) -> Option<(PhysicalAddress, usize)> {
+    fn allocate_partial(&mut self, _layout: Layout) -> Option<(PhysicalAddress, usize)> {
         unimplemented!()
     }
 
