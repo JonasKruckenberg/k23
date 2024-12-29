@@ -1,5 +1,5 @@
 use loader_api::BootInfo;
-use pmm::AddressRangeExt;
+use mmu::AddressRangeExt;
 use talc::{ErrOnOom, Span, Talc, Talck};
 
 #[global_allocator]
@@ -14,7 +14,7 @@ pub fn init(boot_info: &BootInfo) {
     log::debug!("Kernel heap: {heap:?}");
 
     let mut alloc = KERNEL_ALLOCATOR.lock();
-    let span = Span::from_base_size(heap.start.as_raw() as *mut u8, heap.size());
+    let span = Span::from_base_size(heap.start.as_mut_ptr(), heap.size());
     unsafe {
         let old_heap = alloc.claim(span).unwrap();
         alloc.extend(old_heap, span);

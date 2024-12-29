@@ -5,6 +5,7 @@ use core::fmt;
 use core::ops::Range;
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
+use static_assertions::const_assert_eq;
 
 /// Number of bits we need to shift an address by to reach the next page
 pub const PAGE_SHIFT: usize = 12; // 4096 bytes
@@ -12,7 +13,13 @@ pub const PAGE_SHIFT: usize = 12; // 4096 bytes
 pub const PAGE_TABLE_LEVELS: usize = 3; // L0, L1, L2
 
 pub const PAGE_ENTRY_SHIFT: usize = 9; // 512 entries, 8 bytes each
+
 pub const VIRT_ADDR_BITS: u32 = 38;
+
+/// Canonical addresses are addresses where the tops bits (`VIRT_ADDR_BITS` to 63)
+/// are all either 0 or 1.
+pub const CANONICAL_ADDRESS_MASK: usize = !((1 << (VIRT_ADDR_BITS)) - 1);
+const_assert_eq!(CANONICAL_ADDRESS_MASK, 0xffffffc000000000);
 
 pub const PTE_FLAGS_VALID: PTEFlags = PTEFlags::VALID;
 pub const PTE_FLAGS_RWX_MASK: PTEFlags = PTEFlags::from_bits_retain(
@@ -41,7 +48,7 @@ pub fn page_size_for_level(level: usize) -> usize {
 /// Panics if the provided level is `>= PAGE_TABLE_LEVELS`.
 pub fn pte_index_for_level(virt: VirtualAddress, lvl: usize) -> usize {
     assert!(lvl < PAGE_TABLE_LEVELS);
-    let index = (virt.as_raw() >> (PAGE_SHIFT + lvl * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
+    let index = (virt.get() >> (PAGE_SHIFT + lvl * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
     debug_assert!(index < PAGE_TABLE_ENTRIES);
 
     index
@@ -55,7 +62,7 @@ pub fn can_map_at_level(
     lvl: usize,
 ) -> bool {
     let page_size = page_size_for_level(lvl);
-    virt.is_aligned(page_size) && phys.is_aligned(page_size) && remaining_bytes >= page_size
+    virt.is_aligned_to(page_size) && phys.is_aligned_to(page_size) && remaining_bytes >= page_size
 }
 
 /// Invalidate address translation caches for the given `address_range` in the given `address_space`.
@@ -83,7 +90,7 @@ pub fn get_active_pgtable(_asid: usize) -> PhysicalAddress {
 /// This will invalidate pointers if not used carefully
 pub unsafe fn activate_pgtable(asid: usize, pgtable: PhysicalAddress) {
     unsafe {
-        let ppn = pgtable.as_raw() >> 12;
+        let ppn = pgtable.get() >> 12;
         satp::set(satp::Mode::Sv39, asid, ppn);
     }
 }

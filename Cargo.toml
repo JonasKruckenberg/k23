@@ -26,7 +26,7 @@ kernel = { path = "kernel" }
 loader-api = { path = "loader/api" }
 backtrace = { path = "libs/backtrace" }
 dtb-parser = { path = "libs/dtb-parser" }
-pmm = { path = "libs/pmm" }
+mmu = { path = "libs/mmu" }
 ktest = { path = "libs/ktest" }
 linked-list = { path = "libs/linked-list" }
 panic-common = { path = "libs/panic-common" }
@@ -50,10 +50,13 @@ arrayvec = { version = "0.7.4", default-features = false }
 object = { version = "0.36.4", default-features = false }
 gimli = { version = "0.31.0", default-features = false, features = ["read"] }
 xmas-elf = "0.9.1"
-talc = "4.4.2"
+talc = { version = "4.4.2", default-features = false }
 pin-project-lite = "0.2.15"
 rand_chacha = { version = "0.3.1", default-features = false }
 rand = { version = "0.8.5", default-features = false }
+static_assertions = "1.1.0"
+addr2line = { version = "0.24.2", default-features = false }
+rustc-demangle = { version = "0.1.24", default-features = false }
 
 # wast dependencies
 bumpalo = "3.14.0"
@@ -91,6 +94,7 @@ lto = true
 strip = true
 overflow-checks = true
 split-debuginfo = "packed"
+debug-assertions = true
 
 [profile.bench]
 debug = true

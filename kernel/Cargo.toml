@@ -17,21 +17,24 @@ harness = false
 
 [dependencies]
 loader-api.workspace = true
-pmm.workspace = true
+mmu.workspace = true
 panic-unwind.workspace = true
-semihosting-logger = { workspace = true, features = ["hartid"] }
 sync.workspace = true
 thread-local.workspace = true
 wavltree= { workspace = true, features = ["dot"] }
 dtb-parser.workspace = true
+backtrace.workspace = true
 
-talc.workspace = true
+talc = { workspace = true, features = ["lock_api", "counters"] }
 log.workspace = true
 cfg-if.workspace = true
 pin-project-lite.workspace = true
 rand_chacha.workspace = true
 rand.workspace = true
 onlyerror.workspace = true
+bitflags.workspace = true
+xmas-elf.workspace = true
+static_assertions.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
@@ -39,3 +42,4 @@ riscv.workspace = true
 [dev-dependencies]
 ktest.workspace = true
 wast.workspace = true
+hashbrown.workspace = true

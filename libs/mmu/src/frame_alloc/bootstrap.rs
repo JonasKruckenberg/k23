@@ -1,5 +1,5 @@
 use crate::frame_alloc::{FrameAllocator, FrameUsage};
-use crate::{arch, PhysicalAddress, VirtualAddress};
+use crate::{arch, AddressRangeExt, PhysicalAddress, VirtualAddress};
 use core::alloc::Layout;
 use core::ops::Range;
 use core::{cmp, iter, ptr, slice};
@@ -53,28 +53,26 @@ impl FrameAllocator for BootstrapAllocator<'_> {
         let mut offset = self.offset;
 
         for region in self.regions.iter().rev() {
-            let region_size = region.end.sub_addr(region.start);
-
             // only consider regions that we haven't already exhausted
-            if offset < region_size {
+            if offset < region.size() {
                 // Allocating a contiguous range has different requirements than "regular" allocation
                 // contiguous are rare and often happen in very critical paths where e.g. virtual
                 // memory is not available yet. So we rather waste some memory than outright crash.
-                if region_size - offset < requested_size {
-                    log::warn!("Skipped memory region {region:?} since it was fulfill request for {requested_size} bytes. Wasted {} bytes in the process...", region_size - offset);
+                if region.size() - offset < requested_size {
+                    log::warn!("Skipped memory region {region:?} since it was fulfill request for {requested_size} bytes. Wasted {} bytes in the process...", region.size() - offset);
 
-                    self.offset += region_size - offset;
+                    self.offset += region.size() - offset;
                     offset = 0;
                     continue;
                 }
 
-                let frame = region.end.sub(offset + requested_size);
+                let frame = region.end.checked_sub(offset + requested_size).unwrap();
                 self.offset += requested_size;
 
                 return Some(frame);
             }
 
-            offset -= region_size;
+            offset -= region.size();
         }
 
         None
@@ -88,8 +86,11 @@ impl FrameAllocator for BootstrapAllocator<'_> {
         let requested_size = layout.pad_to_align().size();
         let addr = self.allocate_contiguous(layout)?;
         unsafe {
-            ptr::write_bytes(
-                self.phys_offset.add(addr.as_raw()).as_raw() as *mut u8,
+            ptr::write_bytes::<u8>(
+                self.phys_offset
+                    .checked_add(addr.get())
+                    .unwrap()
+                    .as_mut_ptr(),
                 0,
                 requested_size,
             )
@@ -107,19 +108,17 @@ impl FrameAllocator for BootstrapAllocator<'_> {
         let mut offset = self.offset;
 
         for region in self.regions.iter().rev() {
-            let region_size = region.end.sub_addr(region.start);
-
             // only consider regions that we haven't already exhausted
-            if offset < region_size {
-                let alloc_size = cmp::min(requested_size, region_size - offset);
+            if offset < region.size() {
+                let alloc_size = cmp::min(requested_size, region.size() - offset);
 
-                let frame = region.end.sub(offset + alloc_size);
+                let frame = region.end.checked_sub(offset + alloc_size).unwrap();
                 self.offset += alloc_size;
 
                 return Some((frame, alloc_size));
             }
 
-            offset -= region_size;
+            offset -= region.size();
         }
 
         None
@@ -147,13 +146,12 @@ impl Iterator for FreeRegions<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let mut region = self.inner.next()?;
-            let region_size = region.end.as_raw() - region.start.as_raw();
             // keep advancing past already fully used memory regions
-            if self.offset >= region_size {
-                self.offset -= region_size;
+            if self.offset >= region.size() {
+                self.offset -= region.size();
                 continue;
             } else if self.offset > 0 {
-                region.end = region.end.sub(self.offset);
+                region.end = region.end.checked_sub(self.offset).unwrap();
                 self.offset = 0;
             }
 
@@ -172,12 +170,11 @@ impl Iterator for UsedRegions<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut region = self.inner.next()?;
-        let region_size = region.end.as_raw() - region.start.as_raw();
 
-        if self.offset >= region_size {
+        if self.offset >= region.size() {
             Some(region)
         } else if self.offset > 0 {
-            region.start = region.end.sub(self.offset);
+            region.start = region.end.checked_sub(self.offset).unwrap();
             self.offset = 0;
 
             Some(region)

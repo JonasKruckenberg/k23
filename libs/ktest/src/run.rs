@@ -7,6 +7,7 @@ use core::ptr::addr_of;
 use core::{fmt, hint, mem, slice};
 use dtb_parser::{DevTree, Node, Visitor};
 use loader_api::MemoryRegionKind;
+use mmu::VirtualAddress;
 
 #[no_mangle]
 extern "Rust" fn kmain(_hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
@@ -28,11 +29,9 @@ extern "Rust" fn kmain(_hartid: usize, boot_info: &'static loader_api::BootInfo)
 
     let machine_info = unsafe {
         MachineInfo::from_dtb(
-            boot_info
-                .physical_memory_map
-                .start
-                .add(fdt.range.start.as_raw())
-                .as_raw() as *const u8,
+            VirtualAddress::from_phys(fdt.range.start, boot_info.physical_address_offset)
+                .unwrap()
+                .as_ptr(),
         )
     };
     let args = machine_info

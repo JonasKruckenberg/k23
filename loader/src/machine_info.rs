@@ -6,7 +6,7 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use dtb_parser::{DevTree, Node, Visitor};
-use pmm::PhysicalAddress;
+use mmu::{AddressRangeExt, PhysicalAddress};
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
@@ -127,16 +127,18 @@ impl<'dt> MachineInfo<'dt> {
                 } else if entry.contains(&region.end) {
                     region.end = entry.start;
                     info.memories.push(region);
+                } else {
+                    info.memories.push(region);
                 }
             }
         };
 
         // Apply reserved_entries
-        while let Some(entry) = reservations.next_entry().unwrap() {
+        while let Some(entry) = reservations.next_entry()? {
             let entry = {
                 let start = PhysicalAddress::new(usize::try_from(entry.address)?);
 
-                start..start.add(usize::try_from(entry.size)?)
+                start..start.checked_add(usize::try_from(entry.size)?).unwrap()
             };
 
             exclude_region(entry);
@@ -153,13 +155,12 @@ impl<'dt> MachineInfo<'dt> {
         }
 
         // remove memory regions that are left as zero-sized from the previous step
-        info.memories
-            .retain(|region| region.end.as_raw() - region.start.as_raw() > 0);
+        info.memories.retain(|region| region.size() > 0);
 
         // page-align all memory regions, this will waste some physical memory in the process,
         // but we can't make use of it either way
         info.memories.iter_mut().for_each(|region| {
-            region.start = region.start.align_up(arch::PAGE_SIZE);
+            region.start = region.start.checked_align_up(arch::PAGE_SIZE).unwrap();
             region.end = region.end.align_down(arch::PAGE_SIZE);
         });
 
@@ -254,7 +255,7 @@ impl<'dt> Visitor<'dt> for RegsVisitor {
 
             let start = PhysicalAddress::new(start);
 
-            self.regs.push(start..start.add(width));
+            self.regs.push(start..start.checked_add(width).unwrap());
         }
 
         Ok(())

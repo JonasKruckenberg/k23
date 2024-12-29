@@ -581,7 +581,7 @@ where
     /// # Panics
     ///
     /// Panics if the new entry is already linked to a different intrusive collection.
-    pub fn insert(&mut self, element: T::Handle) {
+    pub fn insert(&mut self, element: T::Handle) -> Pin<&mut T> {
         unsafe {
             let mut ptr = T::into_ptr(element);
             debug_assert_ne!(self.root, Some(ptr));
@@ -621,6 +621,8 @@ where
             if was_leaf {
                 self.balance_after_insert(ptr);
             }
+
+            Pin::new_unchecked(ptr.as_mut())
         }
     }
 

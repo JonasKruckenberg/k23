@@ -2,13 +2,15 @@ use crate::vm::KernelAddressSpace;
 use core::alloc::Layout;
 use core::ops::Range;
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
-use pmm::frame_alloc::{BootstrapAllocator, FrameAllocator};
-use pmm::{arch, Error, PhysicalAddress, VirtualAddress};
+use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
+use mmu::{arch, Error, PhysicalAddress, VirtualAddress};
 
 pub fn init_boot_info(
     mut frame_alloc: BootstrapAllocator,
     boot_hart: usize,
+    hart_mask: usize,
     kernel_aspace: &KernelAddressSpace,
+    physical_memory_offset: VirtualAddress,
     physical_memory_map: Range<VirtualAddress>,
     fdt_phys: Range<PhysicalAddress>,
     loader_phys: Range<PhysicalAddress>,
@@ -19,15 +21,17 @@ pub fn init_boot_info(
             Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
         )
         .ok_or(Error::OutOfMemory)?;
-    let page = physical_memory_map.start.add(frame.as_raw());
+    let page = VirtualAddress::from_phys(frame, physical_memory_offset).unwrap();
 
     let (memory_regions, memory_regions_len) =
         init_boot_info_memory_regions(page, frame_alloc, fdt_phys, loader_phys.clone());
 
-    let boot_info = page.as_raw() as *mut BootInfo;
+    let boot_info = page.as_mut_ptr().cast::<BootInfo>();
     unsafe {
         boot_info.write(BootInfo::new(
             boot_hart,
+            hart_mask,
+            physical_memory_offset,
             physical_memory_map,
             kernel_aspace.kernel_virt.clone(),
             memory_regions,
@@ -37,10 +41,15 @@ pub fn init_boot_info(
                 .as_ref()
                 .map(|a| a.tls_template.clone()),
             {
-                VirtualAddress::new(loader_phys.start.as_raw())
-                    ..VirtualAddress::new(loader_phys.end.as_raw())
+                VirtualAddress::new(loader_phys.start.get()).unwrap()
+                    ..VirtualAddress::new(loader_phys.end.get()).unwrap()
             },
             kernel_aspace.heap_virt.clone(),
+            kernel_aspace.stacks_virt.clone(),
+            kernel_aspace
+                .maybe_tls_allocation
+                .as_ref()
+                .map(|tls| tls.total_region().clone()),
             kernel_phys,
         ));
     }
@@ -54,7 +63,11 @@ fn init_boot_info_memory_regions(
     fdt_phys: Range<PhysicalAddress>,
     loader_phys: Range<PhysicalAddress>,
 ) -> (*mut MemoryRegion, usize) {
-    let base_ptr = page.add(size_of::<BootInfo>()).as_raw() as *mut MemoryRegion;
+    let base_ptr = page
+        .checked_add(size_of::<BootInfo>())
+        .unwrap()
+        .as_mut_ptr()
+        .cast::<MemoryRegion>();
     let mut ptr = base_ptr;
     let mut memory_regions_len = 0;
     let max_regions = (arch::PAGE_SIZE - size_of::<BootInfo>()) / size_of::<MemoryRegion>();

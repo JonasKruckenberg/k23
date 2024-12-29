@@ -1,11 +1,19 @@
 use crate::{arch, Error, VirtualAddress};
-use core::cmp;
 use core::ops::Range;
+use core::{cmp, mem};
 
 #[must_use]
 pub struct Flush {
     asid: usize,
     range: Option<Range<VirtualAddress>>,
+}
+
+impl Drop for Flush {
+    fn drop(&mut self) {
+        if self.range.is_some() {
+            log::error!("dropped Flush without calling ignore/flush");
+        }
+    }
 }
 
 impl Flush {
@@ -20,14 +28,18 @@ impl Flush {
         }
     }
 
+    pub fn range(&self) -> Option<&Range<VirtualAddress>> {
+        self.range.as_ref()
+    }
+
     /// Flush the range of virtual addresses from the TLB.
     ///
     /// # Errors
     ///
     /// Returns an error if the range could not be flushed due to an underlying hardware error.
-    pub fn flush(self) -> crate::Result<()> {
+    pub fn flush(mut self) -> crate::Result<()> {
         log::trace!("flushing range {:?}", self.range);
-        if let Some(range) = self.range {
+        if let Some(range) = self.range.take() {
             arch::invalidate_range(self.asid, range)?;
         } else {
             log::warn!("attempted to flush empty range, ignoring");
@@ -42,7 +54,9 @@ impl Flush {
     /// consequences such as inconsistent views of the address space between different harts.
     ///
     /// You should only call this if you know what you're doing.
-    pub unsafe fn ignore(self) {}
+    pub unsafe fn ignore(self) {
+        mem::forget(self);
+    }
 
     /// Extend the range to include the given range.
     ///

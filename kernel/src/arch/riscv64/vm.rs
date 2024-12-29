@@ -1,17 +1,15 @@
+use crate::machine_info::MachineInfo;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use loader_api::BootInfo;
-use pmm::frame_alloc::{BuddyAllocator, FrameAllocator, FrameUsage};
-use pmm::{AddressRangeExt, Flush, PhysicalAddress};
+use mmu::frame_alloc::{FrameAllocator, FrameUsage};
+use mmu::{AddressRangeExt, Flush, PhysicalAddress};
 
 const KERNEL_ASID: usize = 0;
 
-pub fn init(
-    boot_info: &BootInfo,
-    _frame_alloc: &mut BuddyAllocator,
-) -> crate::Result<pmm::AddressSpace> {
+pub fn init(boot_info: &BootInfo, _minfo: &MachineInfo) -> crate::Result<mmu::AddressSpace> {
     let (mut arch, mut flush) =
-        pmm::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_memory_map.start);
+        mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
 
     unmap_loader(boot_info, &mut arch, &mut flush);
 
@@ -20,7 +18,7 @@ pub fn init(
     Ok(arch)
 }
 
-fn unmap_loader(boot_info: &BootInfo, arch: &mut pmm::AddressSpace, flush: &mut Flush) {
+fn unmap_loader(boot_info: &BootInfo, arch: &mut mmu::AddressSpace, flush: &mut Flush) {
     log::debug!("unmapping loader {:?}...", boot_info.loader_region);
 
     // unmap the identity mapped loader, but - since the physical memory is unmanaged - we

@@ -11,10 +11,10 @@ use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::ptr::{addr_of, addr_of_mut};
 use core::{cmp, ptr, slice};
-use pmm::arch::PAGE_SIZE;
-use pmm::frame_alloc::BootstrapAllocator;
-use pmm::{arch, AddressRangeExt, AddressSpace, Error};
-use pmm::{
+use mmu::arch::PAGE_SIZE;
+use mmu::frame_alloc::BootstrapAllocator;
+use mmu::{arch, AddressRangeExt, AddressSpace, Error};
+use mmu::{
     frame_alloc::{BuddyAllocator, FrameAllocator},
     Flush, PhysicalAddress, VirtualAddress,
 };
@@ -22,7 +22,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
 const STACK_SIZE_PAGES: usize = 32;
-const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
+const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000).unwrap();
 const KERNEL_ASID: usize = 0;
 
 /// The main entry point for the loader
@@ -128,7 +128,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             //
             // This will be used by the kernel to access the page tables, BootInfo struct and maybe
             // more in the future.
-            let physmap = map_physical_memory(
+            let (phys_off, phys_map) = map_physical_memory(
                 &mut aspace,
                 &mut frame_alloc,
                 &mut page_alloc,
@@ -145,7 +145,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 aspace.activate();
                 log::trace!("activated.");
             }
-            frame_alloc.set_phys_offset(physmap.start);
+            frame_alloc.set_phys_offset(phys_off);
 
             // The kernel elf file is inlined into the loader executable as part of the build setup
             // which means we just need to parse it here.
@@ -153,7 +153,8 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 slice::from_ptr_range(
                     kernel_phys
                         .clone()
-                        .add(physmap.start.as_raw())
+                        .checked_add(phys_off.get())
+                        .unwrap()
                         .as_ptr_range(),
                 )
             })?;
@@ -162,7 +163,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
 
             // Reconstruct the aspace with the new physical memory mapping offset since we're in virtual
             // memory mode now.
-            let (aspace, mut flush) = AddressSpace::from_active(KERNEL_ASID, physmap.start);
+            let (aspace, mut flush) = AddressSpace::from_active(KERNEL_ASID, phys_off);
 
             let kernel_aspace = init_kernel_aspace(
                 aspace,
@@ -177,14 +178,19 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
             let boot_info = init_boot_info(
                 frame_alloc,
                 hartid,
+                minfo.hart_mask,
                 &kernel_aspace,
-                physmap,
+                phys_off,
+                phys_map,
                 fdt_phys,
                 self_regions.executable.start..self_regions.read_write.end,
                 kernel_phys,
             )?;
 
-            Ok((kernel_aspace, VirtualAddress::new(boot_info as usize)))
+            Ok((
+                kernel_aspace,
+                VirtualAddress::new(boot_info as usize).unwrap(),
+            ))
         })
         .unwrap();
 
@@ -256,7 +262,10 @@ impl SelfRegions {
             let start = PhysicalAddress::new(addr_of!(__bss_start) as usize);
             let stack_start = PhysicalAddress::new(addr_of!(__stack_start) as usize);
 
-            start..stack_start.add(machine_info.cpus * STACK_SIZE_PAGES * PAGE_SIZE)
+            start
+                ..stack_start
+                    .checked_add(machine_info.cpus * STACK_SIZE_PAGES * PAGE_SIZE)
+                    .unwrap()
         };
 
         SelfRegions {
@@ -281,7 +290,7 @@ fn identity_map_self(
         aspace,
         frame_alloc,
         self_regions.executable.clone(),
-        pmm::Flags::READ | pmm::Flags::EXECUTE,
+        mmu::Flags::READ | mmu::Flags::EXECUTE,
         flush,
     )?;
 
@@ -293,7 +302,7 @@ fn identity_map_self(
         aspace,
         frame_alloc,
         self_regions.read_only.clone(),
-        pmm::Flags::READ,
+        mmu::Flags::READ,
         flush,
     )?;
 
@@ -305,7 +314,7 @@ fn identity_map_self(
         aspace,
         frame_alloc,
         self_regions.read_write.clone(),
-        pmm::Flags::READ | pmm::Flags::WRITE,
+        mmu::Flags::READ | mmu::Flags::WRITE,
         flush,
     )?;
 
@@ -317,11 +326,11 @@ fn identity_map_range(
     aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
     phys: Range<PhysicalAddress>,
-    flags: pmm::Flags,
+    flags: mmu::Flags,
     flush: &mut Flush,
 ) -> crate::Result<()> {
-    let virt = VirtualAddress::new(phys.start.as_raw());
-    let len = NonZeroUsize::new(phys.end.as_raw() - phys.start.as_raw()).unwrap();
+    let virt = VirtualAddress::new(phys.start.get()).unwrap();
+    let len = NonZeroUsize::new(phys.size()).unwrap();
 
     aspace
         .map_contiguous(frame_alloc, virt, phys.start, len, flags, flush)
@@ -335,33 +344,31 @@ pub fn map_physical_memory(
     page_alloc: &mut PageAllocator,
     minfo: &MachineInfo,
     flush: &mut Flush,
-) -> crate::Result<Range<VirtualAddress>> {
-    let phys = minfo.memory_hull();
+) -> crate::Result<(VirtualAddress, Range<VirtualAddress>)> {
     let alignment = arch::page_size_for_level(2);
 
-    let phys_aligned = phys.start.align_down(alignment);
-    let size = phys.end.align_up(alignment).sub_addr(phys_aligned);
+    let phys = minfo.memory_hull().checked_align_out(alignment).unwrap();
+    let virt = VirtualAddress::from_phys(phys.start, KERNEL_ASPACE_BASE).unwrap()
+        ..VirtualAddress::from_phys(phys.end, KERNEL_ASPACE_BASE).unwrap();
 
-    let virt = KERNEL_ASPACE_BASE.add(phys_aligned.as_raw())
-        ..KERNEL_ASPACE_BASE.add(phys_aligned.as_raw()).add(size);
+    debug_assert!(phys.start.is_aligned_to(alignment) && phys.end.is_aligned_to(alignment));
+    debug_assert!(virt.start.is_aligned_to(alignment) && virt.end.is_aligned_to(alignment));
+    debug_assert_eq!(phys.size(), virt.size());
 
-    log::trace!(
-        "Mapping physical memory {phys_aligned:?}..{:?} => {virt:?}...",
-        phys_aligned.add(size)
-    );
+    log::trace!("Mapping physical memory {phys:?} => {virt:?}...",);
     aspace.map_contiguous(
         frame_alloc,
         virt.start,
-        phys_aligned,
-        NonZeroUsize::new(size).unwrap(),
-        pmm::Flags::READ | pmm::Flags::WRITE,
+        phys.start,
+        NonZeroUsize::new(phys.size()).unwrap(),
+        mmu::Flags::READ | mmu::Flags::WRITE,
         flush,
     )?;
 
     // exclude the physical memory map region from page allocation
-    page_alloc.reserve(KERNEL_ASPACE_BASE, phys_aligned.as_raw() + size);
+    page_alloc.reserve(virt.start, phys.size());
 
-    Ok(KERNEL_ASPACE_BASE..KERNEL_ASPACE_BASE.add(phys_aligned.as_raw()).add(size))
+    Ok((KERNEL_ASPACE_BASE, virt))
 }
 
 /// Moves the FDT from wherever the previous bootloader placed it into a properly allocated place,
@@ -380,12 +387,12 @@ pub fn allocate_and_copy(
         .ok_or(Error::OutOfMemory)?;
 
     unsafe {
-        let dst = slice::from_raw_parts_mut(base.as_raw() as *mut u8, src.len());
+        let dst = slice::from_raw_parts_mut(base.as_mut_ptr(), src.len());
 
         ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
     }
 
-    Ok(base..base.add(layout.size()))
+    Ok(base..base.checked_add(layout.size()).unwrap())
 }
 
 fn allocatable_memory_regions(
@@ -424,7 +431,7 @@ pub unsafe fn handoff_to_kernel(
     boot_info: VirtualAddress,
 ) -> ! {
     let stack_ptr = stack.end;
-    let stack_size = stack_ptr.sub_addr(stack.start);
+    let stack_size = stack_ptr.checked_sub_addr(stack.start).unwrap();
 
     log::debug!("Hart {hartid} Jumping to kernel ({entry:?})...");
     log::trace!("Hart {hartid} Kernel arguments: sp = {stack_ptr:?}, tp = {thread_ptr:?}, a0 = {hartid}, a1 = {boot_info:?}");
@@ -445,11 +452,11 @@ pub unsafe fn handoff_to_kernel(
     "   wfi",
     "   j 1b",
     in("a0") hartid,
-    in("a1") boot_info.as_raw(),
+    in("a1") boot_info.get(),
     in("t0") stack_size,
-    stack_ptr = in(reg) stack_ptr.as_raw(),
-    thread_ptr = in(reg) thread_ptr.as_raw(),
-    func = in(reg) entry.as_raw(),
+    stack_ptr = in(reg) stack_ptr.get(),
+    thread_ptr = in(reg) thread_ptr.get(),
+    func = in(reg) entry.get(),
     fillstack = sym fillstack,
     options(noreturn)
     )

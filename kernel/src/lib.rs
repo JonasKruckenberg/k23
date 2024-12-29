@@ -9,12 +9,13 @@
 #![allow(internal_features)]
 #![feature(used_with_arg, naked_functions, thread_local, allocator_api)]
 #![feature(panic_can_unwind, std_internals, fmt_internals)]
-
+#![feature(slice_from_ptr_range)]
 extern crate alloc;
 
 mod allocator;
 pub mod arch;
 mod error;
+mod logger;
 pub mod machine_info;
 mod start;
 pub mod time;
@@ -37,4 +38,4 @@ pub const TRAP_STACK_SIZE_PAGES: usize = 16;
 /// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
 /// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap
 /// size and can dynamically grow the heap as needed.
-pub const HEAP_SIZE_PAGES: u32 = 16; // 32 MiB
+pub const HEAP_SIZE_PAGES: u32 = 2048; // 32 MiB

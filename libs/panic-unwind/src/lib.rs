@@ -62,33 +62,35 @@ pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
 /// Entry point for panics from the `core` crate.
 #[panic_handler]
 fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
-    panic_common::with_panic_info(info, |payload, location, can_unwind| {
-        if let Some(must_abort) = panic_count::increase(true) {
-            match must_abort {
-                MustAbort::PanicInHook => {
-                    let msg = payload_as_str(payload.get());
-                    log::error!(
-                        "panicked at {location}:\n{msg}\nhart panicked while processing panic. aborting.\n"
-                    );
+    backtrace::__rust_end_short_backtrace(|| {
+        panic_common::with_panic_info(info, |payload, location, can_unwind| {
+            if let Some(must_abort) = panic_count::increase(true) {
+                match must_abort {
+                    MustAbort::PanicInHook => {
+                        let msg = payload_as_str(payload.get());
+                        log::error!(
+                            "panicked at {location}:\n{msg}\nhart panicked while processing panic. aborting.\n"
+                        );
+                    }
                 }
+
+                panic_common::abort();
             }
 
-            panic_common::abort();
-        }
+            panic_common::hook::call(&PanicHookInfo::new(location, payload.get(), can_unwind));
+            panic_count::finished_panic_hook();
 
-        panic_common::hook::call(&PanicHookInfo::new(location, payload.get(), can_unwind));
-        panic_count::finished_panic_hook();
+            if !can_unwind {
+                // If a thread panics while running destructors or tries to unwind
+                // through a nounwind function (e.g. extern "C") then we cannot continue
+                // unwinding and have to abort immediately.
+                log::error!("hart caused non-unwinding panic. aborting.\n");
 
-        if !can_unwind {
-            // If a thread panics while running destructors or tries to unwind
-            // through a nounwind function (e.g. extern "C") then we cannot continue
-            // unwinding and have to abort immediately.
-            log::error!("hart caused non-unwinding panic. aborting.\n");
+                panic_common::abort();
+            }
 
-            panic_common::abort();
-        }
-
-        rust_panic(payload)
+            rust_panic(payload)
+        })
     })
 }
 

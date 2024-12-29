@@ -17,6 +17,7 @@ kernel.workspace = true
 loader-api.workspace = true
 dtb-parser.workspace = true
 panic-unwind.workspace = true
+mmu.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true

@@ -1,9 +1,12 @@
 [package]
-name = "pmm"
+name = "mmu"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+
+[lib]
+harness = false
 
 [dependencies]
 bitflags.workspace = true
@@ -11,9 +14,16 @@ cfg-if.workspace = true
 log.workspace = true
 onlyerror.workspace = true
 linked-list.workspace = true
+static_assertions.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
+
+[dev-dependencies]
+kernel.workspace = true
+ktest.workspace = true
+panic-unwind.workspace = true
+proptest = { version = "1.6.0", default-features = false, features = ["alloc", "unstable", "no_std"] }
 
 [lints]
 workspace = true

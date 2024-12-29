@@ -2,7 +2,7 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use core::slice;
-use pmm::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -10,6 +10,7 @@ use pmm::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub struct BootInfo {
     /// The hart that booted the machine, for debugging purposes
     pub boot_hart: usize,
+    pub hart_mask: usize,
     /// A map of the physical memory regions of the underlying machine.
     ///
     /// The bootloader queries this information from the BIOS/UEFI firmware and translates this
@@ -32,6 +33,7 @@ pub struct BootInfo {
     /// frames that are also mapped at other virtual addresses can easily break memory safety and
     /// cause undefined behavior. Only frames reported as `USABLE` by the memory map in the `BootInfo`
     /// can be safely accessed.
+    pub physical_address_offset: VirtualAddress,
     pub physical_memory_map: Range<VirtualAddress>,
     /// Virtual memory region occupied by the loader.
     ///
@@ -48,6 +50,8 @@ pub struct BootInfo {
     /// Note that this is **not** mapped, as the kernel should map
     /// this region on-demand.
     pub heap_region: Option<Range<VirtualAddress>>,
+    pub stacks_region: Range<VirtualAddress>,
+    pub tls_region: Option<Range<VirtualAddress>>,
     /// Virtual address of the loaded kernel image.
     pub kernel_virt: Range<VirtualAddress>,
     /// Physical memory region where the kernel ELF file resides.
@@ -63,6 +67,8 @@ impl BootInfo {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         boot_hart: usize,
+        hart_mask: usize,
+        physical_memory_offset: VirtualAddress,
         physical_memory_map: Range<VirtualAddress>,
         kernel_virt: Range<VirtualAddress>,
         memory_regions: *const MemoryRegion,
@@ -70,10 +76,14 @@ impl BootInfo {
         tls_template: Option<TlsTemplate>,
         loader_region: Range<VirtualAddress>,
         heap_region: Option<Range<VirtualAddress>>,
+        stacks_region: Range<VirtualAddress>,
+        tls_region: Option<Range<VirtualAddress>>,
         kernel_elf: Range<PhysicalAddress>,
     ) -> Self {
         Self {
             boot_hart,
+            hart_mask,
+            physical_address_offset: physical_memory_offset,
             physical_memory_map,
             memory_regions,
             memory_regions_len,
@@ -81,6 +91,8 @@ impl BootInfo {
             kernel_virt,
             loader_region,
             heap_region,
+            stacks_region,
+            tls_region,
             kernel_elf,
         }
     }
@@ -95,8 +107,8 @@ impl fmt::Display for BootInfo {
         writeln!(f, "{:<23} : {}", "BOOT HART", self.boot_hart)?;
         writeln!(
             f,
-            "{:<23} : {}..{}",
-            "PHYSICAL MEMORY OFFSET", self.physical_memory_map.start, self.physical_memory_map.end
+            "{:<23} : {}",
+            "PHYSICAL MEMORY OFFSET", self.physical_address_offset
         )?;
         writeln!(
             f,
@@ -131,9 +143,11 @@ impl fmt::Display for BootInfo {
                 "{:<23} : .tdata: {}..{}, .tbss: {}..{}",
                 "TLS TEMPLATE",
                 tls.start_addr,
-                tls.start_addr.add(tls.file_size),
-                tls.start_addr.add(tls.file_size),
-                tls.start_addr.add(tls.file_size + tls.mem_size)
+                tls.start_addr.checked_add(tls.file_size).unwrap(),
+                tls.start_addr.checked_add(tls.file_size).unwrap(),
+                tls.start_addr
+                    .checked_add(tls.file_size + tls.mem_size)
+                    .unwrap()
             )?;
         } else {
             writeln!(f, "{:<23} : None", "TLS TEMPLATE")?;

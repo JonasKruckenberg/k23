@@ -1,9 +1,9 @@
 use core::ffi::c_void;
 use core::{fmt, str};
 use gimli::{EndianSlice, NativeEndian};
-use object::read::elf::ElfFile64;
-use object::{Object, ObjectSection};
 use rustc_demangle::{try_demangle, Demangle};
+use xmas_elf::sections::SectionData;
+use xmas_elf::symbol_table::Entry;
 
 pub enum Symbol<'a> {
     /// We were able to locate frame information for this symbol, and
@@ -115,14 +115,18 @@ impl fmt::Debug for SymbolName<'_> {
 
 pub struct SymbolsIter<'a, 'ctx> {
     addr: u64,
-    symtab: object::SymbolMap<object::SymbolMapName<'a>>,
+    elf: &'ctx xmas_elf::ElfFile<'a>,
+    symtab: &'ctx [xmas_elf::symbol_table::Entry64],
     iter: addr2line::FrameIter<'ctx, EndianSlice<'a, NativeEndian>>,
     anything: bool,
 }
 
-impl<'a, 'ctx> SymbolsIter<'a, 'ctx> {
-    fn search_symtab(&self) -> Option<&'a str> {
-        Some(self.symtab.get(self.addr)?.name())
+impl<'ctx> SymbolsIter<'_, 'ctx> {
+    fn search_symtab(&self) -> Option<&'ctx str> {
+        self.symtab
+            .iter()
+            .find(|sym| sym.value() == self.addr)
+            .map(|sym| sym.get_name(self.elf).unwrap())
     }
 
     pub fn next(&mut self) -> gimli::Result<Option<Symbol<'ctx>>> {
@@ -157,15 +161,15 @@ impl<'a, 'ctx> SymbolsIter<'a, 'ctx> {
 /// Context necessary to resolve an address to its symbol name and source location.
 pub struct SymbolizeContext<'a> {
     addr2line: addr2line::Context<EndianSlice<'a, NativeEndian>>,
-    elf: ElfFile64<'a>,
+    elf: xmas_elf::ElfFile<'a>,
     adjust_vma: u64,
 }
 
 impl<'a> SymbolizeContext<'a> {
-    pub fn new(elf: ElfFile64<'a>, adjust_vma: u64) -> gimli::Result<Self> {
+    pub fn new(elf: xmas_elf::ElfFile<'a>, adjust_vma: u64) -> gimli::Result<Self> {
         let dwarf = gimli::Dwarf::load(|section_id| -> gimli::Result<_> {
-            let data = match elf.section_by_name(section_id.name()) {
-                Some(section) => section.data().unwrap(),
+            let data = match elf.find_section_by_name(section_id.name()) {
+                Some(section) => section.raw_data(&elf),
                 None => &[],
             };
             Ok(EndianSlice::new(data, NativeEndian))
@@ -183,9 +187,24 @@ impl<'a> SymbolizeContext<'a> {
         let probe = probe - self.adjust_vma;
         let iter = self.addr2line.find_frames(probe).skip_all_loads()?;
 
+        let symtab = self
+            .elf
+            .section_iter()
+            .find_map(|section| {
+                section
+                    .get_data(&self.elf)
+                    .ok()
+                    .and_then(|data| match data {
+                        SectionData::SymbolTable64(symtab) => Some(symtab),
+                        _ => None,
+                    })
+            })
+            .unwrap();
+
         Ok(SymbolsIter {
             addr: probe,
-            symtab: self.elf.symbol_map(),
+            elf: &self.elf,
+            symtab,
             iter,
             anything: false,
         })

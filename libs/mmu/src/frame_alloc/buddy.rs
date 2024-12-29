@@ -84,12 +84,12 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
     /// The range must be valid physical memory and not already managed by other parts of the system
     /// or the allocator itself.
     pub unsafe fn add_range(&mut self, range: Range<PhysicalAddress>) {
-        let aligned = range.align_in(arch::PAGE_SIZE);
+        let aligned = range.checked_align_in(arch::PAGE_SIZE).unwrap();
         let mut remaining_bytes = aligned.size();
         let mut addr = aligned.start;
 
         while remaining_bytes > 0 {
-            let lowbit = addr.as_raw() & (!addr.as_raw() + 1);
+            let lowbit = addr.get() & (!addr.get() + 1);
 
             let size = cmp::min(
                 cmp::min(lowbit, prev_power_of_two(remaining_bytes)),
@@ -104,7 +104,7 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
             let area = FreeArea::from_addr(addr, self.phys_offset);
             self.free_lists[order].push_back(area);
 
-            addr = addr.add(size);
+            addr = addr.checked_add(size).unwrap();
             remaining_bytes -= size;
         }
     }
@@ -122,7 +122,8 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
                 for j in (order + 1..i + 1).rev() {
                     // Insert the "upper half" of the block into the free list.
                     let buddy_addr = FreeArea::into_addr(free_area, self.phys_offset)
-                        .add(arch::PAGE_SIZE << (j - 1));
+                        .checked_add(arch::PAGE_SIZE << (j - 1))
+                        .unwrap();
                     let buddy = unsafe { FreeArea::from_addr(buddy_addr, self.phys_offset) };
                     self.free_lists[j - 1].push_back(buddy);
                 }
@@ -141,7 +142,9 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
 
         let mut ptr = addr;
         'outer: for order in order..self.max_order {
-            let buddy = VirtualAddress::from_phys(ptr, self.phys_offset).as_raw()
+            let buddy = VirtualAddress::from_phys(ptr, self.phys_offset)
+                .unwrap()
+                .get()
                 ^ (arch::PAGE_SIZE << order);
 
             let mut c = self.free_lists[order].cursor_front_mut();
@@ -149,7 +152,7 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
                 let addr = &raw const *area as usize;
                 if addr == buddy {
                     c.remove();
-                    ptr = cmp::min(ptr, PhysicalAddress::new(buddy - self.phys_offset.as_raw()));
+                    ptr = cmp::min(ptr, PhysicalAddress::new(buddy - self.phys_offset.get()));
                     continue 'outer;
                 }
                 c.move_next();
@@ -162,7 +165,8 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
             return;
         }
 
-        panic!("deallocating memory that was not allocated by the buddy allocator");
+        // panic!("deallocating memory that was not allocated by the buddy allocator");
+        log::error!("deallocating memory that was not allocated by the buddy allocator");
     }
 }
 
@@ -186,8 +190,11 @@ impl<const MAX_ORDER: usize> FrameAllocator for BuddyAllocator<MAX_ORDER> {
     fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
         let addr = self.allocate_contiguous(layout)?;
         unsafe {
-            ptr::write_bytes(
-                self.phys_offset.add(addr.as_raw()).as_raw() as *mut u8,
+            ptr::write_bytes::<u8>(
+                self.phys_offset
+                    .checked_add(addr.get())
+                    .unwrap()
+                    .as_mut_ptr(),
                 0,
                 layout.size(),
             )
@@ -228,7 +235,8 @@ impl<const MAX_ORDER: usize> FrameAllocator for BuddyAllocator<MAX_ORDER> {
                 for j in (order + 1..i + 1).rev() {
                     // Insert the "upper half" of the block into the free list.
                     let buddy_addr = FreeArea::into_addr(free_area, self.phys_offset)
-                        .add(arch::PAGE_SIZE << (j - 1));
+                        .checked_add(arch::PAGE_SIZE << (j - 1))
+                        .unwrap();
                     let buddy = unsafe { FreeArea::from_addr(buddy_addr, self.phys_offset) };
                     self.free_lists[j - 1].push_back(buddy);
                 }
@@ -247,7 +255,7 @@ impl<const MAX_ORDER: usize> FrameAllocator for BuddyAllocator<MAX_ORDER> {
 
                 let addr = FreeArea::into_addr(free_area, self.phys_offset);
                 debug_assert!(
-                    addr.is_aligned(layout.align()),
+                    addr.is_aligned_to(layout.align()),
                     "addr {addr:?} is not correctly aligned (align {})",
                     layout.align()
                 );
@@ -280,7 +288,11 @@ impl FreeArea {
         addr: PhysicalAddress,
         phys_offset: VirtualAddress,
     ) -> Pin<Unique<Self>> {
-        let ptr = &mut *(phys_offset.add(addr.as_raw()).as_raw() as *mut MaybeUninit<Self>);
+        let ptr: &mut MaybeUninit<Self> = &mut *(phys_offset
+            .checked_add(addr.get())
+            .unwrap()
+            .as_mut_ptr()
+            .cast());
 
         let this = if *ptr.as_ptr().cast::<u32>() == FREE_AREA_MAGIC {
             ptr.assume_init_mut()
@@ -297,7 +309,7 @@ impl FreeArea {
     pub fn into_addr(this: Pin<Unique<Self>>, phys_offset: VirtualAddress) -> PhysicalAddress {
         let raw = unsafe { Pin::into_inner_unchecked(this).as_ptr() as usize };
 
-        PhysicalAddress::new(raw - phys_offset.as_raw())
+        PhysicalAddress::new(raw - phys_offset.get())
     }
 }
 

@@ -70,9 +70,9 @@ dependencies = [
  "cfg-if",
  "gimli",
  "log",
- "object",
  "rustc-demangle",
  "unwind2",
+ "xmas-elf",
 ]
 
 [[package]]
@@ -245,7 +245,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -334,24 +334,28 @@ dependencies = [
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "backtrace",
+ "bitflags",
  "cfg-if",
  "dtb-parser",
+ "hashbrown",
  "ktest",
  "loader-api",
  "log",
+ "mmu",
  "onlyerror",
  "panic-unwind",
  "pin-project-lite",
- "pmm",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "riscv",
- "semihosting-logger",
+ "static_assertions",
  "sync",
  "talc",
  "thread-local",
  "wast",
  "wavltree",
+ "xmas-elf",
 ]
 
 [[package]]
@@ -362,6 +366,7 @@ dependencies = [
  "kernel",
  "ktest-macros",
  "loader-api",
+ "mmu",
  "panic-unwind",
  "riscv",
 ]
@@ -390,6 +395,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "433bfe06b8c75da9b2e3fbea6e5329ff87748f0b144ef75306e674c3f6f7c13f"
 
 [[package]]
+name = "libm"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8355be11b20d696c8f18f6cc018c4e372165b1fa8126cef092399c9951984ffa"
+
+[[package]]
 name = "linked-list"
 version = "0.1.0"
 
@@ -408,8 +419,8 @@ dependencies = [
  "dtb-parser",
  "loader-api",
  "log",
+ "mmu",
  "onlyerror",
- "pmm",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "riscv",
@@ -424,7 +435,7 @@ version = "0.1.0"
 dependencies = [
  "cfg-if",
  "loader-api-macros",
- "pmm",
+ "mmu",
 ]
 
 [[package]]
@@ -459,6 +470,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
+name = "mmu"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "kernel",
+ "ktest",
+ "linked-list",
+ "log",
+ "onlyerror",
+ "panic-unwind",
+ "proptest",
+ "riscv",
+ "static_assertions",
+]
+
+[[package]]
 name = "myn"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -471,15 +499,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "object"
-version = "0.36.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "084f1a5821ac4c651660a94a7153d27ac9d8a53736203f58b31945ded098070a"
-dependencies = [
- "memchr",
+ "libm",
 ]
 
 [[package]]
@@ -517,6 +537,7 @@ dependencies = [
 name = "panic-unwind"
 version = "0.1.0"
 dependencies = [
+ "backtrace",
  "log",
  "panic-common",
  "thread-local",
@@ -558,18 +579,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pmm"
-version = "0.1.0"
-dependencies = [
- "bitflags",
- "cfg-if",
- "linked-list",
- "log",
- "onlyerror",
- "riscv",
-]
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -585,6 +594,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37d3544b3f2748c54e147655edb5025752e2303145b5aefb3c3ea2c78b973bb0"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "proptest"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14cae93065090804185d3b75f0bf93b8eeda30c7a9b4a33d3bdb3988d6229e50"
+dependencies = [
+ "bitflags",
+ "num-traits",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rand_xorshift",
+ "unarray",
 ]
 
 [[package]]
@@ -650,6 +673,15 @@ checksum = "a98fa0b8309344136abe6244130311e76997e546f76fae8054422a7539b43df7"
 dependencies = [
  "getrandom",
  "zerocopy 0.8.13",
+]
+
+[[package]]
+name = "rand_xorshift"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d25bf25ec5ae4a3f1b92f929810509a2f53d7dca2f50b794ff57e3face536c8f"
+dependencies = [
+ "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -726,7 +758,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -793,6 +825,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
 name = "syn"
 version = "2.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -832,6 +870,12 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "unarray"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
 
 [[package]]
 name = "unicode-ident"
