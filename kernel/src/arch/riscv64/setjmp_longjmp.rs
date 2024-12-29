@@ -360,7 +360,7 @@ mod tests {
     #[ktest::test]
     fn _call_with_setjmp() {
         unsafe {
-            let ret = call_with_setjmp(|env| {
+            let ret = call_with_setjmp(|_env| {
                 log::trace!("called 1!");
 
                 1234
@@ -371,8 +371,6 @@ mod tests {
                 log::trace!("called 2!");
 
                 longjmp(env, 4321);
-
-                1234
             });
             assert_eq!(ret, 4321);
         }
