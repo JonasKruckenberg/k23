@@ -22,7 +22,7 @@ pub fn init_boot_info(
     let page = physical_memory_map.start.add(frame.as_raw());
 
     let (memory_regions, memory_regions_len) =
-        init_boot_info_memory_regions(page, frame_alloc, fdt_phys);
+        init_boot_info_memory_regions(page, frame_alloc, fdt_phys, loader_phys.clone());
 
     let boot_info = page.as_raw() as *mut BootInfo;
     unsafe {
@@ -52,6 +52,7 @@ fn init_boot_info_memory_regions(
     page: VirtualAddress,
     frame_alloc: BootstrapAllocator,
     fdt_phys: Range<PhysicalAddress>,
+    loader_phys: Range<PhysicalAddress>,
 ) -> (*mut MemoryRegion, usize) {
     let base_ptr = page.add(size_of::<BootInfo>()).as_raw() as *mut MemoryRegion;
     let mut ptr = base_ptr;
@@ -64,13 +65,6 @@ fn init_boot_info_memory_regions(
         ptr = ptr.add(1);
         memory_regions_len += 1;
     };
-
-    // for region in frame_alloc.into_iter() {
-    //     push_region(MemoryRegion {
-    //         range: region,
-    //         kind: MemoryRegionKind::Usable,
-    //     });
-    // }
 
     for used_region in frame_alloc.used_regions() {
         push_region(MemoryRegion {
@@ -85,6 +79,13 @@ fn init_boot_info_memory_regions(
             kind: MemoryRegionKind::Usable,
         });
     }
+
+    // The memory occupied by the loader is not needed once the kernel is running.
+    // Mark it as usable.
+    push_region(MemoryRegion {
+        range: loader_phys,
+        kind: MemoryRegionKind::Usable,
+    });
 
     push_region(MemoryRegion {
         range: fdt_phys,
