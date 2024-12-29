@@ -282,13 +282,21 @@ pub unsafe extern "C" fn longjmp(env: JmpBuf, val: isize) -> ! {
 
 /// Invokes a closure, setting up the environment for contained code to safely use `longjmp`.
 ///
-/// # Reason
+/// This function acts as a somewhat-safe wrapper around `setjmp` that prevents LLVM miscompilations
+/// caused by the fact that its optimization passes don't know about the *returns-twice* nature of `setjmp`.
 ///
-/// TODO
+/// Note for the pedantic: Yes LLVM *could* know about this, and does have logic to handle it, but Rust
+/// has (sensibly) decided to remove the `returns_twice` attribute from the language, so instead
+/// we have to rely on this wrapper.
 ///
 /// # Safety
 ///
-/// TODO
+/// While `longjmp` is still very sketchy, skipping over destructors and such, this function does
+/// the necessary ceremony to ensure safe, Rust compatible usage of `setjmp`. In particular, it ensures
+/// that the `JmpBuf` cannot be leaked out of the closure, and that it cannot be shared between
+/// threads.
+// The code below is adapted from https://github.com/pnkfelix/cee-scape/blob/d6ffeca6bd56b46b83c8c9118dbe75e38d423d28/src/asm_based.rs
+// which in turn is adapted from this Zulip thread: https://rust-lang.zulipchat.com/#narrow/stream/210922-project-ffi-unwind/topic/cost.20of.20supporting.20longjmp.20without.20annotations/near/301840755
 #[inline(never)]
 pub fn call_with_setjmp<F>(f: F) -> isize
 where
@@ -305,7 +313,7 @@ where
         //
         // Note that `closure_env_ptr` is not a raw function pointer, it's a
         // pointer to a FnOnce; the code we call comes from the generic `F`.
-        unsafe { (closure_env_ptr.read())(&*env) }
+        unsafe { closure_env_ptr.read()(&*env) }
     }
 
     unsafe {
