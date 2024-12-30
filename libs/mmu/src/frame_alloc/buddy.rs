@@ -115,25 +115,29 @@ impl<const MAX_ORDER: usize> BuddyAllocator<MAX_ORDER> {
 
     fn allocate_inner(&mut self, size: usize) -> Option<PhysicalAddress> {
         let size_pages = size / arch::PAGE_SIZE;
-        let order = size_pages.trailing_zeros() as usize;
+        let min_order = size_pages.trailing_zeros() as usize;
 
-        for i in order..(self.max_order + 1) {
-            if let Some(free_area) = self.free_lists[i].pop_back() {
-                for j in (order + 1..i + 1).rev() {
-                    // Insert the "upper half" of the block into the free list.
-                    let buddy_addr = FreeArea::into_addr(free_area, self.phys_offset)
-                        .checked_add(arch::PAGE_SIZE << (j - 1))
-                        .unwrap();
-                    let buddy = unsafe { FreeArea::from_addr(buddy_addr, self.phys_offset) };
-                    self.free_lists[j - 1].push_back(buddy);
-                }
+        // locate a free area of the requested alignment from the freelists
+        let (frame_order, free_area) = self
+            .free_lists
+            .iter_mut()
+            .enumerate()
+            .skip(min_order)
+            .find_map(|(i, list)| list.pop_back().map(|area| (i, area)))?;
 
-                self.used += size_pages;
-                return Some(FreeArea::into_addr(free_area, self.phys_offset));
-            }
+        // if the free area we found was of higher order (ie larger) that we requested
+        // we need to split it up
+        for order in (min_order + 1..frame_order + 1).rev() {
+            // Insert the "upper half" of the block into the free list.
+            let buddy_addr = FreeArea::into_addr(free_area, self.phys_offset)
+                .checked_add(arch::PAGE_SIZE << (order - 1))
+                .unwrap();
+            let buddy = unsafe { FreeArea::from_addr(buddy_addr, self.phys_offset) };
+            self.free_lists[order - 1].push_back(buddy);
         }
 
-        None
+        self.used += size_pages;
+        Some(FreeArea::into_addr(free_area, self.phys_offset))
     }
 
     fn deallocate_inner(&mut self, addr: PhysicalAddress, size: usize) {
@@ -436,22 +440,3 @@ impl<T: ?Sized> Deref for Unique<T> {
 fn prev_power_of_two(num: usize) -> usize {
     1 << (usize::BITS as usize - num.leading_zeros() as usize - 1)
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use core::slice;
-//
-//     #[test]
-//     fn init() {
-//         let mut alloc = crate::frame_alloc::BuddyAllocator::<19>::new(boot_info.physical_memory_offset);
-//
-//         for region in unsafe { slice::from_raw_parts(boot_info.memory_regions, boot_info.memory_regions_len) } {
-//             if region.kind.is_usable() {
-//                 log::trace!("adding memory region: {:?}", region);
-//                 unsafe { alloc.add_range(region.range.clone()); }
-//             }
-//         }
-//
-//         log::trace!("allocator is initialized {alloc:#?}");
-//     }
-// }
