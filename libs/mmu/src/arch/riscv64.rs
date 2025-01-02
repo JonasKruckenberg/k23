@@ -78,8 +78,9 @@ pub fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> cr
 }
 
 /// Return a pointer to the currently active page table.
-pub fn get_active_pgtable(_asid: usize) -> PhysicalAddress {
+pub fn get_active_pgtable(asid: usize) -> PhysicalAddress {
     let satp = satp::read();
+    assert_eq!(satp.asid(), asid);
     PhysicalAddress(satp.ppn() << 12)
 }
 
