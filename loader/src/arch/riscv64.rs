@@ -39,12 +39,31 @@ unsafe extern "C" fn _start() -> ! {
         "la		gp, __global_pointer$",
         ".option pop",
 
+        // Clear return address and frame pointer
+        "mv ra, zero",
+        "mv s0, zero",
+
+        // Clear the gp register in case anything tries to use it.
+        "mv gp, zero",
+
+        // Mask all interrupts in case the previous stage left them on.
+        "csrc sstatus, 1 << 1",
+        "csrw sie, zero",
+
+        // Reset the trap vector in case the previous stage left one installed.
+        "csrw stvec, zero",
+
+        // Disable the MMU in case it was left on.
+        "csrw satp, zero",
+
+        // Setup the stack pointer
         "la     sp, __stack_start", // set the stack pointer to the bottom of the stack
         "li     t0, {stack_size}", // load the stack size
         "addi   t1, a0, 1", // add one to the hart id so that we add at least one stack size (stack grows from the top downwards)
         "mul    t1, t0, t1", // multiply the stack size by the hart id to get the offset
         "add    sp, sp, t1", // add the offset from sp to get the harts stack pointer
 
+        // Fill the stack with a canary pattern
         "call {fillstack}",
 
         "jal zero, {start_rust}",   // jump into Rust
