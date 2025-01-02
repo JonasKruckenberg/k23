@@ -343,7 +343,6 @@ dependencies = [
  "loader-api",
  "log",
  "mmu",
- "onlyerror",
  "panic-unwind",
  "pin-project-lite",
  "rand 0.8.5",

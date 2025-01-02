@@ -31,7 +31,6 @@ cfg-if.workspace = true
 pin-project-lite.workspace = true
 rand_chacha.workspace = true
 rand.workspace = true
-onlyerror.workspace = true
 bitflags.workspace = true
 xmas-elf.workspace = true
 static_assertions.workspace = true
