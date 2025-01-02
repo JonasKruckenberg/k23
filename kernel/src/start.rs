@@ -1,5 +1,7 @@
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
-use crate::{allocator, arch, logger, vm, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_GUARD_PAGES, STACK_SIZE_PAGES};
+use crate::{
+    allocator, arch, logger, vm, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_GUARD_PAGES, STACK_SIZE_PAGES,
+};
 use alloc::boxed::Box;
 use alloc::string::String;
 use backtrace::{Backtrace, SymbolizeContext};
