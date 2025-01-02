@@ -32,7 +32,7 @@ impl Instant {
 
         Self::from_ticks(ticks)
     }
-    
+
     pub fn from_ticks(ticks: u64) -> Self {
         let timebase_freq =
             crate::HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.timebase_frequency) as u64;

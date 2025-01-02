@@ -187,7 +187,7 @@ fn start(hartid: usize, opaque: *const u8, boot_ticks: u64) -> ! {
                 fdt_phys,
                 self_regions.executable.start..self_regions.read_write.end,
                 kernel_phys,
-                boot_ticks
+                boot_ticks,
             )?;
 
             Ok((
