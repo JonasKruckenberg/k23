@@ -1,5 +1,5 @@
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
-use crate::{allocator, arch, logger, vm, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_SIZE_PAGES};
+use crate::{allocator, arch, logger, vm, HEAP_SIZE_PAGES, LOG_LEVEL, STACK_GUARD_PAGES, STACK_SIZE_PAGES};
 use alloc::boxed::Box;
 use alloc::string::String;
 use backtrace::{Backtrace, SymbolizeContext};
@@ -13,6 +13,7 @@ use thread_local::declare_thread_local;
 const LOADER_CFG: LoaderConfig = {
     let mut cfg = LoaderConfig::new_default();
     cfg.kernel_stack_size_pages = STACK_SIZE_PAGES;
+    cfg.kernel_stack_guard_pages = STACK_GUARD_PAGES;
     cfg.kernel_heap_size_pages = Some(HEAP_SIZE_PAGES);
     cfg
 };

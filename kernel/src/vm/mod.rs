@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use crate::machine_info::MachineInfo;
-use crate::{arch, STACK_SIZE_PAGES};
+use crate::{arch, STACK_GUARD_PAGES, STACK_SIZE_PAGES};
 use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::ToString;
@@ -151,11 +151,12 @@ fn reserve_wired_regions(
     // TODO keep in sync with loader/vm.rs KernelAddressSpace::stack_region_for_hart
     // TODO account for guard pages
     let per_hart_stack_size = STACK_SIZE_PAGES as usize * arch::PAGE_SIZE;
+    let stack_guard_size = STACK_GUARD_PAGES as usize * arch::PAGE_SIZE;
     for hartid in 0..boot_info.hart_mask.count_ones() {
         let end = boot_info
             .stacks_region
             .end
-            .checked_sub(per_hart_stack_size * hartid as usize)
+            .checked_sub((per_hart_stack_size + stack_guard_size) * hartid as usize)
             .unwrap();
 
         aspace.reserve(

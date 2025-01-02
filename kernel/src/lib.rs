@@ -30,6 +30,8 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256;
+/// The number of guard pages below each kernel stack
+pub const STACK_GUARD_PAGES: u32 = 1;
 /// The size of the trap handler stack in pages
 pub const TRAP_STACK_SIZE_PAGES: usize = 16;
 /// The initial size of the kernel heap in pages.
