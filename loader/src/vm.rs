@@ -380,18 +380,15 @@ fn handle_tls_segment(
     minfo: &MachineInfo,
     flush: &mut Flush,
 ) -> crate::Result<TlsAllocation> {
-    let per_hart_size_pages = ph.mem_size.div_ceil(arch::PAGE_SIZE);
-    let layout = Layout::from_size_align(
-        per_hart_size_pages * arch::PAGE_SIZE * minfo.cpus,
-        arch::PAGE_SIZE,
-    )
-    .unwrap();
-
-    let phys =
-        NonContiguousFrames::new_zeroed(frame_alloc, layout, aspace.physical_memory_offset());
+    let layout = Layout::from_size_align(ph.mem_size * minfo.cpus, arch::PAGE_SIZE).unwrap();
+    let phys = NonContiguousFrames::new_zeroed(
+        frame_alloc,
+        layout.pad_to_align(),
+        aspace.physical_memory_offset(),
+    );
     let virt = page_alloc.allocate(layout);
 
-    log::trace!("Mapping TLS region {virt:?}...");
+    log::trace!("Mapping TLS region {virt:?} for {} cpus...", minfo.cpus);
     aspace.map(
         virt.start,
         phys,
@@ -401,7 +398,6 @@ fn handle_tls_segment(
 
     Ok(TlsAllocation {
         virt,
-        per_hart_size: per_hart_size_pages,
         tls_template: TlsTemplate {
             start_addr: virt_base.checked_add(ph.virtual_address).unwrap(),
             mem_size: ph.mem_size,
@@ -503,9 +499,6 @@ fn handle_relro_segment(
 pub struct TlsAllocation {
     /// The TLS region in virtual memory
     virt: Range<VirtualAddress>,
-    /// The per-hart size of the TLS region.
-    /// Both `virt` and `phys` size is an integer multiple of this.
-    per_hart_size: usize,
     /// The template we allocated for
     pub tls_template: TlsTemplate,
 }
@@ -519,10 +512,10 @@ impl TlsAllocation {
         let start = self
             .virt
             .start
-            .checked_add(self.per_hart_size * hartid)
+            .checked_add(self.tls_template.mem_size * hartid)
             .unwrap();
 
-        start..start.checked_add(self.per_hart_size).unwrap()
+        start..start.checked_add(self.tls_template.mem_size).unwrap()
     }
 
     pub fn initialize_for_hart(&self, hartid: usize) {
@@ -541,7 +534,7 @@ impl TlsAllocation {
             slice::from_raw_parts_mut(
                 self.virt
                     .start
-                    .checked_add(self.per_hart_size * hartid)
+                    .checked_add(self.tls_template.mem_size * hartid)
                     .unwrap()
                     .as_mut_ptr(),
                 self.tls_template.file_size,
