@@ -1,5 +1,3 @@
-use cfg_if::cfg_if;
-
 const CFG_MAGIC: u32 = u32::from_le_bytes(*b"lcfg");
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -23,8 +21,6 @@ pub struct LoaderConfig {
     ///
     /// If specified the loader will create and map a heap for the kernel.
     pub kernel_heap_size_pages: Option<u32>,
-    /// The virtual memory mode to use when setting up the page tables.
-    pub memory_mode: MemoryMode,
 }
 
 impl LoaderConfig {
@@ -40,7 +36,6 @@ impl LoaderConfig {
             kernel_stack_size_pages: 20,
             kernel_heap_size_pages: None,
             kernel_stack_guard_pages: 1,
-            memory_mode: MemoryMode::new_default(),
         }
     }
 
@@ -55,32 +50,6 @@ impl LoaderConfig {
 }
 
 impl Default for LoaderConfig {
-    fn default() -> Self {
-        Self::new_default()
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[non_exhaustive]
-pub enum MemoryMode {
-    Riscv64Sv39,
-    Riscv64Sv48,
-    Riscv64Sv57,
-}
-
-impl MemoryMode {
-    pub const fn new_default() -> Self {
-        cfg_if! {
-            if #[cfg(target_arch = "riscv64")] {
-                Self::Riscv64Sv39
-            } else {
-                panic!("Unsupported target architecture");
-            }
-        }
-    }
-}
-
-impl Default for MemoryMode {
     fn default() -> Self {
         Self::new_default()
     }
