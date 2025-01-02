@@ -15,6 +15,7 @@ pub fn init_boot_info(
     fdt_phys: Range<PhysicalAddress>,
     loader_phys: Range<PhysicalAddress>,
     kernel_phys: Range<PhysicalAddress>,
+    boot_ticks: u64,
 ) -> crate::Result<*mut BootInfo> {
     let frame = frame_alloc
         .allocate_contiguous_zeroed(
@@ -51,6 +52,7 @@ pub fn init_boot_info(
                 .as_ref()
                 .map(|tls| tls.total_region().clone()),
             kernel_phys,
+            boot_ticks,
         ));
     }
 

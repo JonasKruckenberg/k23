@@ -27,9 +27,13 @@ pub struct SystemTimeError(Duration);
 
 impl Instant {
     /// Returns an instant corresponding to "now".
-    pub fn now() -> Instant {
+    pub fn now() -> Self {
         let ticks = arch::time::read64();
 
+        Self::from_ticks(ticks)
+    }
+
+    pub fn from_ticks(ticks: u64) -> Self {
         let timebase_freq =
             crate::HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.timebase_frequency) as u64;
 
@@ -38,13 +42,13 @@ impl Instant {
 
     /// Returns the amount of time elapsed from another instant to this one,
     /// or zero duration if that instant is later than this one.
-    pub fn duration_since(&self, earlier: Instant) -> Duration {
+    pub fn duration_since(&self, earlier: Self) -> Duration {
         self.checked_duration_since(earlier).unwrap_or_default()
     }
 
     /// Returns the amount of time elapsed from another instant to this one,
     /// or zero duration if that instant is later than this one.
-    pub fn saturating_duration_since(&self, earlier: Instant) -> Duration {
+    pub fn saturating_duration_since(&self, earlier: Self) -> Duration {
         self.checked_duration_since(earlier).unwrap_or_default()
     }
 
@@ -53,7 +57,7 @@ impl Instant {
     ///
     /// Due to [monotonicity bugs], even under correct logical ordering of the passed `Instant`s,
     /// this method can return `None`.
-    pub fn checked_duration_since(&self, earlier: Instant) -> Option<Duration> {
+    pub fn checked_duration_since(&self, earlier: Self) -> Option<Duration> {
         if *self >= earlier {
             let (secs, nanos) = if self.0.subsec_nanos() >= earlier.0.subsec_nanos() {
                 (
@@ -75,19 +79,19 @@ impl Instant {
 
     /// Returns the amount of time elapsed since this instant.
     pub fn elapsed(&self) -> Duration {
-        Instant::now() - *self
+        Self::now() - *self
     }
 
     /// Returns `Some(t)` where `t` is the time `self + duration` if `t` can be represented as
     /// `Instant` or `None` otherwise.
-    pub fn checked_add(&self, duration: Duration) -> Option<Instant> {
-        self.0.checked_add(duration).map(Instant)
+    pub fn checked_add(&self, duration: Duration) -> Option<Self> {
+        self.0.checked_add(duration).map(Self)
     }
 
     /// Returns `Some(t)` where `t` is the time `self - duration` if `t` can be represented as
     /// `Instant` or `None` otherwise.
-    pub fn checked_sub(&self, duration: Duration) -> Option<Instant> {
-        self.0.checked_sub(duration).map(Instant)
+    pub fn checked_sub(&self, duration: Duration) -> Option<Self> {
+        self.0.checked_sub(duration).map(Self)
     }
 }
 

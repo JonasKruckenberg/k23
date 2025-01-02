@@ -38,6 +38,8 @@ unsafe extern "C" fn _start() -> ! {
         ".option norelax",
         "la		gp, __global_pointer$",
         ".option pop",
+        // read boot time stamp as early as possible
+        "rdtime a2",
 
         // Clear return address and frame pointer
         "mv ra, zero",
@@ -96,7 +98,7 @@ unsafe extern "C" fn fillstack() {
 }
 
 /// Architecture specific startup code
-fn start(hartid: usize, opaque: *const u8) -> ! {
+fn start(hartid: usize, opaque: *const u8, boot_ticks: u64) -> ! {
     static INIT: sync::OnceLock<(KernelAddressSpace, VirtualAddress)> = sync::OnceLock::new();
 
     // Disable interrupts. The kernel will re-enable interrupts
@@ -204,6 +206,7 @@ fn start(hartid: usize, opaque: *const u8) -> ! {
                 fdt_phys,
                 self_regions.executable.start..self_regions.read_write.end,
                 kernel_phys,
+                boot_ticks,
             )?;
 
             Ok((
