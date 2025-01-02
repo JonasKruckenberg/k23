@@ -15,6 +15,10 @@ pub struct LoaderConfig {
     /// The stack is created with an additional guard page, so a stack overflow will lead to
     /// a page fault.
     pub kernel_stack_size_pages: u32,
+    /// The number of guard pages allocated below each harts stack.
+    ///
+    /// This region will be left unmapped to catch any stack overflows that happen in the kernel.
+    pub kernel_stack_guard_pages: u32,
     /// The size of the kernel heap in pages.
     ///
     /// If specified the loader will create and map a heap for the kernel.
@@ -35,6 +39,7 @@ impl LoaderConfig {
             magic: CFG_MAGIC,
             kernel_stack_size_pages: 20,
             kernel_heap_size_pages: None,
+            kernel_stack_guard_pages: 1,
             memory_mode: MemoryMode::new_default(),
         }
     }

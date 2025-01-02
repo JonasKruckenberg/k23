@@ -26,6 +26,7 @@ pub struct KernelAddressSpace {
     pub stacks_virt: Range<VirtualAddress>,
     /// The size of each stack in bytes
     per_hart_stack_size: usize,
+    per_hart_stack_guard_size: usize,
 
     pub kernel_virt: Range<VirtualAddress>,
     pub heap_virt: Option<Range<VirtualAddress>>,
@@ -42,7 +43,7 @@ impl KernelAddressSpace {
         let end = self
             .stacks_virt
             .end
-            .checked_sub(self.per_hart_stack_size * hartid)
+            .checked_sub((self.per_hart_stack_size + self.per_hart_stack_guard_size) * hartid)
             .unwrap();
 
         end.checked_sub(self.per_hart_stack_size).unwrap()..end
@@ -105,12 +106,14 @@ pub fn init_kernel_aspace(
 
     // Map stacks for kernel
     let per_hart_stack_size_pages = usize::try_from(kernel.loader_config.kernel_stack_size_pages)?;
+    let stack_guard_pages = usize::try_from(kernel.loader_config.kernel_stack_guard_pages)?;
     let stacks_virt = map_kernel_stacks(
         &mut aspace,
         frame_alloc,
         page_alloc,
         minfo,
         per_hart_stack_size_pages,
+        stack_guard_pages,
         flush,
     )?;
 
@@ -142,6 +145,7 @@ pub fn init_kernel_aspace(
         maybe_tls_allocation,
         stacks_virt,
         per_hart_stack_size: per_hart_stack_size_pages * arch::PAGE_SIZE,
+        per_hart_stack_guard_size: stack_guard_pages * arch::PAGE_SIZE,
         kernel_virt,
         heap_virt,
     })
@@ -567,28 +571,50 @@ fn map_kernel_stacks(
     aspace: &mut AddressSpace,
     frame_alloc: &mut dyn FrameAllocator,
     page_alloc: &mut PageAllocator,
-    machine_info: &MachineInfo,
+    minfo: &MachineInfo,
     per_hart_stack_size_pages: usize,
+    stack_guard_pages: usize,
     flush: &mut Flush,
 ) -> crate::Result<Range<VirtualAddress>> {
     let layout = Layout::from_size_align(
-        per_hart_stack_size_pages * arch::PAGE_SIZE * machine_info.cpus,
+        (per_hart_stack_size_pages + stack_guard_pages) * arch::PAGE_SIZE * minfo.cpus,
         arch::PAGE_SIZE,
     )
     .unwrap();
 
-    // The stacks region doesn't need to be zeroed, since we will be filling it with
-    // the canary pattern anyway
-    let phys = NonContiguousFrames::new(frame_alloc, layout);
     let virt = page_alloc.allocate(layout);
+    log::trace!("total stack region {virt:?}");
 
-    log::trace!("Mapping stack region {virt:?}...");
-    aspace.map(
-        virt.start,
-        phys,
-        mmu::Flags::READ | mmu::Flags::WRITE,
-        flush,
-    )?;
+    for cpu in 0..minfo.cpus {
+        let layout =
+            Layout::from_size_align(per_hart_stack_size_pages * arch::PAGE_SIZE, arch::PAGE_SIZE)
+                .unwrap();
+
+        // The stack region doesn't need to be zeroed, since we will be filling it with
+        // the canary pattern anyway
+        let phys = NonContiguousFrames::new(frame_alloc, layout);
+
+        let virt = {
+            let end = virt
+                .end
+                .checked_sub(
+                    (per_hart_stack_size_pages + stack_guard_pages) * arch::PAGE_SIZE * cpu,
+                )
+                .unwrap();
+
+            end.checked_sub(per_hart_stack_size_pages * arch::PAGE_SIZE)
+                .unwrap()..end
+        };
+
+        log::trace!("Mapping hart {cpu} stack region {virt:?}...");
+
+        aspace.map(
+            virt.start,
+            phys,
+            mmu::Flags::READ | mmu::Flags::WRITE,
+            flush,
+        )?;
+    }
 
     Ok(virt)
 }
