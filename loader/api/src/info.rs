@@ -58,6 +58,7 @@ pub struct BootInfo {
     ///
     /// This field can be used by the kernel to perform introspection of its own ELF file.
     pub kernel_elf: Range<PhysicalAddress>,
+    pub boot_ticks: u64
 }
 
 unsafe impl Send for BootInfo {}
@@ -79,6 +80,7 @@ impl BootInfo {
         stacks_region: Range<VirtualAddress>,
         tls_region: Option<Range<VirtualAddress>>,
         kernel_elf: Range<PhysicalAddress>,
+        boot_ticks: u64
     ) -> Self {
         Self {
             boot_hart,
@@ -94,6 +96,7 @@ impl BootInfo {
             stacks_region,
             tls_region,
             kernel_elf,
+            boot_ticks
         }
     }
 
@@ -152,7 +155,7 @@ impl fmt::Display for BootInfo {
         } else {
             writeln!(f, "{:<23} : None", "TLS TEMPLATE")?;
         }
-
+        writeln!(f, "{:<23} : {}", "BOOT TICKS", self.boot_ticks)?;
         for (idx, r) in self.memory_regions().iter().enumerate() {
             writeln!(
                 f,
