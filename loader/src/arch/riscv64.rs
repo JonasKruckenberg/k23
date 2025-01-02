@@ -225,8 +225,7 @@ fn start(hartid: usize, opaque: *const u8, boot_ticks: u64) -> ! {
             kernel_aspace.stack_region_for_hart(hartid),
             kernel_aspace
                 .tls_region_for_hart(hartid)
-                .unwrap_or_default()
-                .start,
+                .unwrap_or_default(),
             *boot_info,
         );
     }
@@ -449,13 +448,14 @@ pub unsafe fn handoff_to_kernel(
     hartid: usize,
     entry: VirtualAddress,
     stack: Range<VirtualAddress>,
-    thread_ptr: VirtualAddress,
+    tls: Range<VirtualAddress>,
     boot_info: VirtualAddress,
 ) -> ! {
     let stack_ptr = stack.end;
     let stack_size = stack_ptr.checked_sub_addr(stack.start).unwrap();
+    let thread_ptr = tls.start;
 
-    log::debug!("Hart {hartid} Jumping to kernel ({entry:?})...");
+    log::debug!("Hart {hartid} Jumping to kernel (entry={entry},stack={stack:?},tls={tls:?})...");
     log::trace!("Hart {hartid} Kernel arguments: sp = {stack_ptr:?}, tp = {thread_ptr:?}, a0 = {hartid}, a1 = {boot_info:?}");
 
     asm!(

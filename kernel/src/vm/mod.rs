@@ -169,7 +169,7 @@ fn reserve_wired_regions(
     // reserve the TLS region if present
     if let Some(tls) = &boot_info.tls_region {
         aspace.reserve(
-            tls.to_owned(),
+            tls.clone().checked_align_out(arch::PAGE_SIZE).unwrap(),
             mmu::Flags::READ | mmu::Flags::WRITE,
             "Kernel TLS".to_string(),
             flush,
