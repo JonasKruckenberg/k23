@@ -113,7 +113,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     // - initialize other parts of the kernel
     // - kickoff the scheduler
     // - `platform_init()`
-    //     - using systen topology -> start other harts in the system
+    //     - using system topology -> start other harts in the system
     // - `arch_late_init_percpu()`
     //     - IF RiscvFeatureVector => setup the vector hardware
     // - `kernel_shell_init()`
