@@ -1,6 +1,6 @@
 //! RFENCE Extension
 
-use super::{sbi_call, EID_RFENCE};
+use super::{sbi_call, EID_RFNC};
 
 /// # Errors
 ///
@@ -12,7 +12,7 @@ pub fn sfence_vma(
     start_addr: usize,
     size: usize,
 ) -> super::Result<()> {
-    sbi_call!(ext: EID_RFENCE, func: 2, "a0": hart_mask, "a1": hart_mask_base, "a2": start_addr, "a3": size)?;
+    sbi_call!(ext: EID_RFNC, func: 2, "a0": hart_mask, "a1": hart_mask_base, "a2": start_addr, "a3": size)?;
     Ok(())
 }
 
@@ -27,6 +27,6 @@ pub fn sfence_vma_asid(
     size: usize,
     asid: usize,
 ) -> super::Result<()> {
-    sbi_call!(ext: EID_RFENCE, func: 2, "a0": hart_mask, "a1": hart_mask_base, "a2": start_addr, "a3": size, "a4": asid)?;
+    sbi_call!(ext: EID_RFNC, func: 2, "a0": hart_mask, "a1": hart_mask_base, "a2": start_addr, "a3": size, "a4": asid)?;
     Ok(())
 }

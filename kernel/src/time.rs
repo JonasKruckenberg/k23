@@ -1,9 +1,9 @@
 //! Support for time-related functionality. This module mirrors Rusts `std::time` module.
 
-use crate::{arch, MACHINE_INFO};
+use crate::arch;
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
-use core::sync::atomic::{AtomicPtr, Ordering};
+// use core::sync::atomic::{AtomicPtr, Ordering};
 use core::time::Duration;
 
 pub const UNIX_EPOCH: SystemTime = SystemTime(Duration::ZERO);
@@ -34,10 +34,11 @@ impl Instant {
     }
 
     pub fn from_ticks(ticks: u64) -> Self {
-        let timebase_freq =
-            crate::HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.timebase_frequency) as u64;
-
-        Instant(ticks_to_duration(ticks, timebase_freq))
+        todo!()
+        // let timebase_freq =
+        //     crate::HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.timebase_frequency) as u64;
+        //
+        // Instant(ticks_to_duration(ticks, timebase_freq))
     }
 
     /// Returns the amount of time elapsed from another instant to this one,
@@ -159,35 +160,37 @@ impl SystemTime {
         // Only device supported right now is "google,goldfish-rtc"
         // https://android.googlesource.com/platform/external/qemu/+/master/docs/GOLDFISH-VIRTUAL-HARDWARE.TXT
 
-        let rtc = MACHINE_INFO
-            .get()
-            .unwrap()
-            .mmio_devices
-            .iter()
-            .find(|region| region.compatible.contains(&"google,goldfish-rtc"))
-            .unwrap();
+        todo!()
 
-        let time_ns = unsafe {
-            let time_low = AtomicPtr::new(rtc.regions[0].start.as_mut_ptr().cast::<u32>());
-            let time_high = AtomicPtr::new(
-                rtc.regions[0]
-                    .start
-                    .checked_add(0x04)
-                    .unwrap()
-                    .as_mut_ptr()
-                    .cast::<u32>(),
-            );
-
-            let low = time_low.load(Ordering::Relaxed).read_volatile();
-            let high = time_high.load(Ordering::Relaxed).read_volatile();
-
-            ((high as u64) << 32) | low as u64
-        };
-
-        SystemTime(Duration::new(
-            time_ns / NANOS_PER_SEC,
-            (time_ns % NANOS_PER_SEC) as u32,
-        ))
+        // let rtc = MACHINE_INFO
+        //     .get()
+        //     .unwrap()
+        //     .mmio_devices
+        //     .iter()
+        //     .find(|region| region.compatible.contains(&"google,goldfish-rtc"))
+        //     .unwrap();
+        //
+        // let time_ns = unsafe {
+        //     let time_low = AtomicPtr::new(rtc.regions[0].start.as_mut_ptr().cast::<u32>());
+        //     let time_high = AtomicPtr::new(
+        //         rtc.regions[0]
+        //             .start
+        //             .checked_add(0x04)
+        //             .unwrap()
+        //             .as_mut_ptr()
+        //             .cast::<u32>(),
+        //     );
+        //
+        //     let low = time_low.load(Ordering::Relaxed).read_volatile();
+        //     let high = time_high.load(Ordering::Relaxed).read_volatile();
+        //
+        //     ((high as u64) << 32) | low as u64
+        // };
+        //
+        // SystemTime(Duration::new(
+        //     time_ns / NANOS_PER_SEC,
+        //     (time_ns % NANOS_PER_SEC) as u32,
+        // ))
     }
 
     pub fn duration_since(&self, earlier: SystemTime) -> Result<Duration, SystemTimeError> {
@@ -294,41 +297,41 @@ pub fn duration_to_ticks(d: Duration, timebase_freq: u64) -> u64 {
     d.as_secs() * timebase_freq + d.subsec_nanos() as u64 * timebase_freq / NANOS_PER_SEC
 }
 
-/// low-level sleep primitive, will sleep the calling hart for at least the specified duration
-///
-/// # Safety
-///
-/// This function is very low level and will block the calling hart until a timer interrupt is received.
-/// No checking is performed however if the timer interrupt is the correct one.
-pub unsafe fn sleep(duration: Duration) {
-    let timebase_freq =
-        crate::HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.timebase_frequency) as u64;
+// /// low-level sleep primitive, will sleep the calling hart for at least the specified duration
+// ///
+// /// # Safety
+// ///
+// /// This function is very low level and will block the calling hart until a timer interrupt is received.
+// /// No checking is performed however if the timer interrupt is the correct one.
+// pub unsafe fn sleep(duration: Duration) {
+//     let timebase_freq =
+//         crate::HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.timebase_frequency) as u64;
+//
+//     riscv::sbi::time::set_timer(riscv::time::read64() + duration_to_ticks(duration, timebase_freq))
+//         .unwrap();
+//
+//     arch::wait_for_interrupt();
+// }
 
-    riscv::sbi::time::set_timer(riscv::time::read64() + duration_to_ticks(duration, timebase_freq))
-        .unwrap();
-
-    arch::wait_for_interrupt();
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use core::time::Duration;
-
-    #[ktest::test]
-    fn measure_and_timeout() {
-        // let start_sys = SystemTime::now();
-        let start = Instant::now();
-
-        unsafe {
-            sleep(Duration::from_secs(1));
-        }
-
-        let end = Instant::now();
-        let elapsed = end.duration_since(start);
-        log::trace!("Time elapsed: {elapsed:?}");
-
-        assert_eq!(elapsed.as_secs(), 1);
-        // assert_eq!(start_sys.elapsed().unwrap().as_secs(), 1)
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use core::time::Duration;
+//
+//     #[ktest::test]
+//     fn measure_and_timeout() {
+//         // let start_sys = SystemTime::now();
+//         let start = Instant::now();
+//
+//         unsafe {
+//             sleep(Duration::from_secs(1));
+//         }
+//
+//         let end = Instant::now();
+//         let elapsed = end.duration_since(start);
+//         log::trace!("Time elapsed: {elapsed:?}");
+//
+//         assert_eq!(elapsed.as_secs(), 1);
+//         // assert_eq!(start_sys.elapsed().unwrap().as_secs(), 1)
+//     }
+// }

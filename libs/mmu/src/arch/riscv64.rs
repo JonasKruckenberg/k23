@@ -2,7 +2,7 @@ use crate::arch::PAGE_TABLE_ENTRIES;
 use crate::{PhysicalAddress, VirtualAddress};
 use bitflags::bitflags;
 use core::fmt;
-use core::ops::Range;
+use core::range::Range;
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
@@ -10,7 +10,7 @@ use static_assertions::const_assert_eq;
 /// Number of bits we need to shift an address by to reach the next page
 pub const PAGE_SHIFT: usize = 12; // 4096 bytes
 
-pub const PAGE_TABLE_LEVELS: usize = 3; // L0, L1, L2
+pub const PAGE_TABLE_LEVELS: usize = 3; // L0, L1, L2 Sv39
 
 pub const PAGE_ENTRY_SHIFT: usize = 9; // 512 entries, 8 bytes each
 

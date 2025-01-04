@@ -147,6 +147,13 @@ build: && (_build_bootimg _kernel_artifact)
 manual:
     cd manual && mdbook serve --open
 
+# This default configuration produces a 8-cpu system with a NUMA topology like this:
+#  _____________      _____________
+# |             |    |             |
+# | Node 0      |    | Node 1      |
+# | cpu 0,1,2,3 |-20-| cpu 4,5,6,7 |
+# |_____________|    |_____________|
+#
 _run_riscv64 binary *args: (_build_bootimg binary)
     @echo Running {{binary}}
     qemu-system-riscv64 \

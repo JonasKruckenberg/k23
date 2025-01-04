@@ -1,26 +1,26 @@
-use crate::{arch, TRAP_STACK_SIZE_PAGES};
+use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
+use mmu::arch::PAGE_SIZE;
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{scause, sepc, sstatus, stval, stvec};
 use thread_local::declare_thread_local;
 
 declare_thread_local! {
-    static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * arch::PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * arch::PAGE_SIZE] };
+    static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
 }
 
 pub fn init() {
     let trap_stack_top = unsafe {
         TRAP_STACK
             .as_ptr()
-            .byte_add(TRAP_STACK_SIZE_PAGES * arch::PAGE_SIZE) as *mut u8
+            .byte_add(TRAP_STACK_SIZE_PAGES * PAGE_SIZE) as *mut u8
     };
 
     log::debug!("setting sscratch to {:p}", trap_stack_top);
-
     unsafe {
         asm!(
-        "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
-        trap_frame = in(reg) trap_stack_top
+            "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
+            trap_frame = in(reg) trap_stack_top
         );
     }
 
@@ -222,14 +222,14 @@ fn default_trap_handler(
             let tval = stval::read();
 
             log::error!("KERNEL LOAD PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
-            sepc::write(trap_panic_trampoline as usize)
+            sepc::set(trap_panic_trampoline as usize)
         }
         Trap::Exception(Exception::StorePageFault) => {
             let epc = sepc::read();
             let tval = stval::read();
 
             log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
-            sepc::write(trap_panic_trampoline as usize)
+            sepc::set(trap_panic_trampoline as usize)
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             // just clear the timer interrupt when it happens for now, this is required to make the
@@ -237,7 +237,7 @@ fn default_trap_handler(
             riscv::sbi::time::set_timer(u64::MAX).unwrap();
         }
         _ => {
-            sepc::write(trap_panic_trampoline as usize)
+            sepc::set(trap_panic_trampoline as usize)
             // panic!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
         }
     }

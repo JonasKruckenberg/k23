@@ -1,23 +1,60 @@
-#[derive(Debug, onlyerror::Error)]
+use core::fmt::{Display, Formatter};
+
+#[derive(Debug)]
 pub enum Error {
-    #[error("invalid magic number")]
     InvalidMagic,
-    #[error("invalid version")]
     InvalidVersion,
-    #[error("invalid token: {0}")]
     InvalidToken(u32),
-    #[error("invalid tree nesting")]
     InvalidNesting,
-    #[error("unexpected end of file")]
     UnexpectedEOF,
-    #[error("failed to parse u32")]
-    TryFromSlice(#[from] core::array::TryFromSliceError),
-    #[error("failed to parse utf8")]
-    Utf8(#[from] core::str::Utf8Error),
-    #[error("failed to parse C-string")]
-    FromBytesUntilNulError(#[from] core::ffi::FromBytesUntilNulError),
-    #[error("DTB properties must be preceded by their parent node")]
+    TryFromSlice(core::array::TryFromSliceError),
+    Utf8(core::str::Utf8Error),
+    FromBytesUntilNulError(core::ffi::FromBytesUntilNulError),
     MissingParent,
-    #[error("failed to convert integer")]
-    IntConvert(#[from] core::num::TryFromIntError),
+    IntConvert(core::num::TryFromIntError),
 }
+
+impl From<core::array::TryFromSliceError> for Error {
+    fn from(err: core::array::TryFromSliceError) -> Self {
+        Error::TryFromSlice(err)
+    }
+}
+
+impl From<core::str::Utf8Error> for Error {
+    fn from(err: core::str::Utf8Error) -> Self {
+        Error::Utf8(err)
+    }
+}
+
+impl From<core::ffi::FromBytesUntilNulError> for Error {
+    fn from(err: core::ffi::FromBytesUntilNulError) -> Self {
+        Error::FromBytesUntilNulError(err)
+    }
+}
+
+impl From<core::num::TryFromIntError> for Error {
+    fn from(err: core::num::TryFromIntError) -> Self {
+        Error::IntConvert(err)
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::InvalidMagic => write!(f, "invalid magic number"),
+            Error::InvalidVersion => write!(f, "invalid version"),
+            Error::InvalidToken(t) => write!(f, "invalid token: {t}"),
+            Error::InvalidNesting => write!(f, "invalid tree nesting"),
+            Error::UnexpectedEOF => write!(f, "unexpected end of file"),
+            Error::TryFromSlice(err) => write!(f, "failed to parse slice: {err}"),
+            Error::Utf8(err) => write!(f, "failed to parse utf8: {err}"),
+            Error::FromBytesUntilNulError(err) => write!(f, "failed to parse C-string: {err}"),
+            Error::MissingParent => {
+                write!(f, "DTB properties must be preceded by their parent node")
+            }
+            Error::IntConvert(err) => write!(f, "failed to convert integer: {err}"),
+        }
+    }
+}
+
+impl core::error::Error for Error {}

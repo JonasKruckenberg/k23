@@ -1,7 +1,9 @@
+use crate::arch;
+use crate::arch::RiscvExtensions;
 use alloc::vec::Vec;
 use core::ffi::CStr;
 use core::fmt::Formatter;
-use core::ops::Range;
+use core::range::Range;
 use core::{fmt, mem};
 use dtb_parser::{DevTree, Node, Strings, Visitor};
 use mmu::PhysicalAddress;
@@ -82,9 +84,9 @@ impl MachineInfo<'_> {
 
         Ok(MachineInfo {
             fdt: fdt_slice,
-            bootargs: v.chosen_visitor.bootargs,
-            rng_seed: v.chosen_visitor.rng_seed,
-            mmio_devices: v.soc_visitor.regions,
+            bootargs: v.chosen.bootargs,
+            rng_seed: v.chosen.rng_seed,
+            mmio_devices: v.soc.regions,
         })
     }
 }
@@ -94,6 +96,43 @@ pub struct HartLocalMachineInfo {
     pub hartid: usize,
     /// Timebase frequency in Hertz for the Hart.
     pub timebase_frequency: usize,
+    pub riscv_extensions: RiscvExtensions,
+    pub riscv_cbop_block_size: Option<usize>,
+    pub riscv_cboz_block_size: Option<usize>,
+    pub riscv_cbom_block_size: Option<usize>,
+}
+
+impl fmt::Display for HartLocalMachineInfo {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{:<22} : {}", "HARTID", self.hartid)?;
+        writeln!(
+            f,
+            "{:<22} : {}",
+            "TIMEBASE FREQUENCY", self.timebase_frequency
+        )?;
+        writeln!(
+            f,
+            "{:<22} : {:?}",
+            "RISCV EXTENSIONS", self.riscv_extensions
+        )?;
+        if let Some(size) = self.riscv_cbop_block_size {
+            writeln!(f, "{:<22} : {}", "CBOP BLOCK SIZE", size)?;
+        } else {
+            writeln!(f, "{:<22} : None", "CBOP BLOCK SIZE")?;
+        }
+        if let Some(size) = self.riscv_cboz_block_size {
+            writeln!(f, "{:<22} : {}", "CBOZ BLOCK SIZE", size)?;
+        } else {
+            writeln!(f, "{:<22} : None", "CBOZ BLOCK SIZE")?;
+        }
+        if let Some(size) = self.riscv_cbom_block_size {
+            writeln!(f, "{:<22} : {}", "CBOM BLOCK SIZE", size)?;
+        } else {
+            writeln!(f, "{:<22} : None", "CBOM BLOCK SIZE")?;
+        }
+
+        Ok(())
+    }
 }
 
 impl HartLocalMachineInfo {
@@ -111,6 +150,10 @@ impl HartLocalMachineInfo {
         Ok(Self {
             hartid,
             timebase_frequency: v.cpus.timebase_frequency,
+            riscv_extensions: v.cpus.riscv_extensions,
+            riscv_cbop_block_size: v.cpus.riscv_cbop_block_size,
+            riscv_cboz_block_size: v.cpus.riscv_cboz_block_size,
+            riscv_cbom_block_size: v.cpus.riscv_cbom_block_size,
         })
     }
 }
@@ -120,8 +163,8 @@ impl HartLocalMachineInfo {
 ---------------------------------------------------------------------------------------------------*/
 #[derive(Default)]
 struct MachineInfoVisitor<'dt> {
-    chosen_visitor: ChosenVisitor<'dt>,
-    soc_visitor: SocVisitor<'dt>,
+    chosen: ChosenVisitor<'dt>,
+    soc: SocVisitor<'dt>,
 }
 
 impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
@@ -130,9 +173,9 @@ impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
         if name.is_empty() {
             node.visit(self)?;
         } else if name == "chosen" {
-            node.visit(&mut self.chosen_visitor)?;
+            node.visit(&mut self.chosen)?;
         } else if name == "soc" {
-            node.visit(&mut self.soc_visitor)?;
+            node.visit(&mut self.soc)?;
         }
 
         Ok(())
@@ -163,9 +206,9 @@ impl<'dt> Visitor<'dt> for ChosenVisitor<'dt> {
 struct HartLocalMachineInfoVisitor {
     cpus: CpusVisitor,
 }
-impl Visitor<'_> for HartLocalMachineInfoVisitor {
+impl<'dt> Visitor<'dt> for HartLocalMachineInfoVisitor {
     type Error = dtb_parser::Error;
-    fn visit_subnode(&mut self, name: &str, node: Node) -> Result<(), Self::Error> {
+    fn visit_subnode(&mut self, name: &str, node: Node<'dt>) -> Result<(), Self::Error> {
         if name.is_empty() {
             node.visit(self)?;
         } else if name == "cpus" {
@@ -181,6 +224,10 @@ struct CpusVisitor {
     hartid: usize,
     default_timebase_frequency: Option<usize>,
     timebase_frequency: usize,
+    riscv_extensions: RiscvExtensions,
+    riscv_cbop_block_size: Option<usize>,
+    riscv_cboz_block_size: Option<usize>,
+    riscv_cbom_block_size: Option<usize>,
 }
 
 impl CpusVisitor {
@@ -199,10 +246,14 @@ impl<'dt> Visitor<'dt> for CpusVisitor {
             if hartid == self.hartid {
                 let mut v = self.cpu_visitor();
                 node.visit(&mut v)?;
-                let timebase_frequency = v.result();
-                self.timebase_frequency = timebase_frequency
+                self.timebase_frequency = v
+                    .timebase_frequency
                     .or(self.default_timebase_frequency)
                     .expect("RISC-V system with no 'timebase-frequency' in FDT");
+                self.riscv_extensions = v.riscv_extensions;
+                self.riscv_cbop_block_size = v.riscv_cbop_block_size;
+                self.riscv_cboz_block_size = v.riscv_cboz_block_size;
+                self.riscv_cbom_block_size = v.riscv_cbom_block_size;
             }
         }
 
@@ -228,12 +279,11 @@ impl<'dt> Visitor<'dt> for CpusVisitor {
 #[derive(Default)]
 struct CpuVisitor {
     timebase_frequency: Option<usize>,
-}
-
-impl CpuVisitor {
-    fn result(self) -> Option<usize> {
-        self.timebase_frequency
-    }
+    // TODO maybe move arch-specific info into an arch-specific module
+    riscv_extensions: RiscvExtensions,
+    riscv_cbop_block_size: Option<usize>,
+    riscv_cboz_block_size: Option<usize>,
+    riscv_cbom_block_size: Option<usize>,
 }
 
 impl<'dt> Visitor<'dt> for CpuVisitor {
@@ -249,6 +299,29 @@ impl<'dt> Visitor<'dt> for CpuVisitor {
                 _ => unreachable!(),
             };
             self.timebase_frequency = Some(value);
+        } else if name == "riscv,isa-extensions" {
+            self.riscv_extensions = arch::parse_riscv_extensions(Strings::new(value))?;
+        } else if name == "riscv,cbop-block-size" {
+            let value = match value.len() {
+                4 => usize::try_from(u32::from_be_bytes(value.try_into()?))?,
+                8 => usize::try_from(u64::from_be_bytes(value.try_into()?))?,
+                _ => unreachable!(),
+            };
+            self.riscv_cbop_block_size = Some(value);
+        } else if name == "riscv,cboz-block-size" {
+            let value = match value.len() {
+                4 => usize::try_from(u32::from_be_bytes(value.try_into()?))?,
+                8 => usize::try_from(u64::from_be_bytes(value.try_into()?))?,
+                _ => unreachable!(),
+            };
+            self.riscv_cboz_block_size = Some(value);
+        } else if name == "riscv,cbom-block-size" {
+            let value = match value.len() {
+                4 => usize::try_from(u32::from_be_bytes(value.try_into()?))?,
+                8 => usize::try_from(u64::from_be_bytes(value.try_into()?))?,
+                _ => unreachable!(),
+            };
+            self.riscv_cbom_block_size = Some(value);
         }
 
         Ok(())
@@ -349,7 +422,8 @@ impl<'dt> Visitor<'dt> for SocVisitorChildVisitor<'dt> {
             let width = usize::from_be_bytes(width.try_into()?);
 
             let start = PhysicalAddress::new(start);
-            self.regs.push(start..start.checked_add(width).unwrap());
+            self.regs
+                .push(Range::from(start..start.checked_add(width).unwrap()));
         }
 
         Ok(())

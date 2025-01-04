@@ -1,27 +1,28 @@
-use crate::vm::KernelAddressSpace;
+use crate::error::Error;
 use core::alloc::Layout;
-use core::ops::Range;
-use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind};
+use core::range::Range;
+use core::slice;
+use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, TlsTemplate};
 use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
-use mmu::{arch, Error, PhysicalAddress, VirtualAddress};
+use mmu::{arch, PhysicalAddress, VirtualAddress};
 
-pub fn init_boot_info(
+pub fn prepare_boot_info(
     mut frame_alloc: BootstrapAllocator,
     boot_hart: usize,
-    hart_mask: usize,
-    kernel_aspace: &KernelAddressSpace,
     physical_memory_offset: VirtualAddress,
     physical_memory_map: Range<VirtualAddress>,
-    fdt_phys: Range<PhysicalAddress>,
+    kernel_virt: Range<VirtualAddress>,
+    maybe_tls_template: Option<TlsTemplate>,
     loader_phys: Range<PhysicalAddress>,
     kernel_phys: Range<PhysicalAddress>,
+    fdt_phys: Range<PhysicalAddress>,
     boot_ticks: u64,
 ) -> crate::Result<*mut BootInfo> {
     let frame = frame_alloc
         .allocate_contiguous_zeroed(
             Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
         )
-        .ok_or(Error::OutOfMemory)?;
+        .ok_or(Error::NoMemory)?;
     let page = VirtualAddress::from_phys(frame, physical_memory_offset).unwrap();
 
     let (memory_regions, memory_regions_len) =
@@ -31,26 +32,16 @@ pub fn init_boot_info(
     unsafe {
         boot_info.write(BootInfo::new(
             boot_hart,
-            hart_mask,
             physical_memory_offset,
             physical_memory_map,
-            kernel_aspace.kernel_virt.clone(),
+            kernel_virt,
             memory_regions,
             memory_regions_len,
-            kernel_aspace
-                .maybe_tls_allocation
-                .as_ref()
-                .map(|a| a.tls_template.clone()),
-            {
+            maybe_tls_template,
+            Range::from(
                 VirtualAddress::new(loader_phys.start.get()).unwrap()
-                    ..VirtualAddress::new(loader_phys.end.get()).unwrap()
-            },
-            kernel_aspace.heap_virt.clone(),
-            kernel_aspace.stacks_virt.clone(),
-            kernel_aspace
-                .maybe_tls_allocation
-                .as_ref()
-                .map(|tls| tls.total_region().clone()),
+                    ..VirtualAddress::new(loader_phys.end.get()).unwrap(),
+            ),
             kernel_phys,
             boot_ticks,
         ));
@@ -81,6 +72,7 @@ fn init_boot_info_memory_regions(
         memory_regions_len += 1;
     };
 
+    // Report the memory we consumed during startup as used.
     for used_region in frame_alloc.used_regions() {
         push_region(MemoryRegion {
             range: used_region,
@@ -88,6 +80,7 @@ fn init_boot_info_memory_regions(
         });
     }
 
+    // Report the free regions as usable.
     for free_region in frame_alloc.free_regions() {
         push_region(MemoryRegion {
             range: free_region,
@@ -102,10 +95,18 @@ fn init_boot_info_memory_regions(
         kind: MemoryRegionKind::Usable,
     });
 
+    // Report the flattened device tree as a separate region.
     push_region(MemoryRegion {
         range: fdt_phys,
         kind: MemoryRegionKind::FDT,
     });
+
+    // Sort the memory regions by start address, we do this now in the loader
+    // because the BootInfo struct will be passed as a read-only static reference to the kernel.
+    unsafe {
+        slice::from_raw_parts_mut(base_ptr, memory_regions_len)
+            .sort_unstable_by_key(|region| region.range.start);
+    }
 
     (base_ptr, memory_regions_len)
 }

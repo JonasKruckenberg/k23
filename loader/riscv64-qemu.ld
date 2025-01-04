@@ -26,8 +26,11 @@ SECTIONS {
     }
 
     .bss (NOLOAD) : {
-        . = ALIGN(8); # 8-byte alignment for u64 ptr trick
         __bss_start = .;
+        # Place the BOOT_STACK into BSS, but before the region that we zero out so we don't override it
+        *(.bss.uninit)
+        . = ALIGN(8); # 8-byte alignment for u64 ptr trick
+        __bss_zero_start = .;
         *(.bss .bss.*)
         *(.sbss .sbss.*)
         __bss_end = .;
@@ -41,9 +44,6 @@ SECTIONS {
         . = ALIGN(4096); # 4KB page alignment for mapping
         __data_end = .;
     }
-
-    . = ALIGN(4096);
-    __stack_start = .;
 
     /DISCARD/ : {
         *(.comment*)

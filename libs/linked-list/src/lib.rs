@@ -376,6 +376,115 @@ where
         }
     }
 
+    pub fn split_off(&mut self, at: usize) -> Option<Self> {
+        let len = self.len();
+        // what is the index of the last node that should be left in this list?
+        let split_idx = match at {
+            // trying to split at the 0th index. we can just return the whole
+            // list, leaving `self` empty.
+            0 => return Some(mem::replace(self, Self::new())),
+            // trying to split at the last index. the new list will be empty.
+            at if at == len => return Some(Self::new()),
+            // we cannot split at an index that is greater than the length of
+            // this list.
+            at if at > len => return None,
+            // otherwise, the last node in this list will be `at - 1`.
+            at => at - 1,
+        };
+
+        let mut iter = self.iter();
+
+        // advance to the node at `split_idx`, starting either from the head or
+        // tail of the list.
+        let dist_from_tail = len - 1 - split_idx;
+        let split_node = if split_idx <= dist_from_tail {
+            // advance from the head of the list.
+            for _ in 0..split_idx {
+                iter.next();
+            }
+            iter.curr
+        } else {
+            // advance from the tail of the list.
+            for _ in 0..dist_from_tail {
+                iter.next_back();
+            }
+            iter.curr_back
+        };
+
+        let Some(split_node) = split_node else {
+            return Some(mem::replace(self, Self::new()));
+        };
+
+        // the head of the new list is the split node's `next` node (which is
+        // replaced with `None`)
+        let head = unsafe { T::links(split_node).as_mut().replace_next(None) };
+        let tail = if let Some(head) = head {
+            // since `head` is now the head of its own list, it has no `prev`
+            // link any more.
+            let _prev = unsafe { T::links(head).as_mut().replace_prev(None) };
+            debug_assert_eq!(_prev, Some(split_node));
+
+            // the tail of the new list is this list's old tail, if the split list
+            // is not empty.
+            self.tail.replace(split_node)
+        } else {
+            None
+        };
+
+        let split = Self {
+            head,
+            tail,
+            len: self.len - at,
+        };
+
+        // update this list's length (note that this occurs after constructing
+        // the new list, because we use this list's length to determine the new
+        // list's length).
+        self.len = at;
+
+        Some(split)
+    }
+
+    pub fn append(&mut self, other: &mut Self) {
+        let Some(tail) = self.tail else {
+            // if this list is empty, simply replace it with `other`
+            debug_assert!(self.is_empty());
+            mem::swap(self, other);
+            return;
+        };
+
+        if let Some((other_head, other_tail, other_len)) = other.take_all() {
+            // attach the other list's head node to this list's tail node.
+            unsafe {
+                T::links(tail).as_mut().replace_next(Some(other_head));
+                T::links(other_head).as_mut().replace_prev(Some(tail));
+            }
+
+            // this list's tail node is now the other list's tail node.
+            self.tail = Some(other_tail);
+            // this list's length increases by the other list's length, which
+            // becomes 0.
+            self.len += other_len;
+        }
+    }
+
+    #[inline]
+    fn take_all(&mut self) -> Option<(NonNull<T>, NonNull<T>, usize)> {
+        let head = self.head.take()?;
+        let tail = self.tail.take();
+        debug_assert!(
+            tail.is_some(),
+            "if a list's `head` is `Some`, its tail must also be `Some`"
+        );
+        let tail = tail?;
+        let len = mem::replace(&mut self.len, 0);
+        debug_assert_ne!(
+            len, 0,
+            "if a list is non-empty, its `len` must be greater than 0"
+        );
+        Some((head, tail, len))
+    }
+
     pub fn assert_valid(&self) {
         let Some(head) = self.head else {
             assert!(
@@ -436,6 +545,17 @@ where
             self.len, actual_len,
             "linked list's actual length did not match its `len` variable"
         );
+    }
+}
+
+impl<T> Extend<T::Handle> for List<T>
+where
+    T: Linked + ?Sized,
+{
+    fn extend<I: IntoIterator<Item = T::Handle>>(&mut self, iter: I) {
+        for item in iter {
+            self.push_back(item);
+        }
     }
 }
 
@@ -622,7 +742,6 @@ where
     }
 }
 
-#[derive(Clone)]
 pub struct Cursor<'a, T>
 where
     T: Linked + ?Sized,
@@ -630,6 +749,19 @@ where
     current: Link<T>,
     _list: &'a List<T>,
 }
+
+impl<T> Clone for Cursor<'_, T>
+where
+    T: Linked + ?Sized,
+{
+    fn clone(&self) -> Self {
+        Self {
+            current: self.current,
+            _list: self._list,
+        }
+    }
+}
+
 impl<'a, T> Cursor<'a, T>
 where
     T: Linked + ?Sized,

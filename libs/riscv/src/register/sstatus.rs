@@ -1,6 +1,6 @@
 //! Supervisor Status Register
 
-use super::{clear_csr, read_csr_as, write_csr};
+use super::{clear, read_csr_as, set};
 use core::fmt;
 use core::fmt::Formatter;
 
@@ -11,12 +11,12 @@ pub struct Sstatus {
 }
 
 read_csr_as!(Sstatus, 0x100);
-write_csr!(0x100);
-clear_csr!(0x100);
+set!(0x100);
+clear!(0x100);
 
 /// Supervisor Interrupt Enable
 pub unsafe fn set_sie() {
-    _write(1 << 1);
+    _set(1 << 1);
 }
 
 /// Supervisor Interrupt Enable
@@ -26,14 +26,14 @@ pub unsafe fn clear_sie() {
 
 /// Supervisor Previous Interrupt Enable
 pub unsafe fn set_spie() {
-    _write(1 << 5);
+    _set(1 << 5);
 }
 
 /// Supervisor Previous Privilege Mode
 #[inline]
 pub unsafe fn set_spp(spp: SPP) {
     match spp {
-        SPP::Supervisor => _write(1 << 8),
+        SPP::Supervisor => _set(1 << 8),
         SPP::User => _clear(1 << 8),
     }
 }
@@ -43,7 +43,7 @@ pub unsafe fn set_fs(fs: FS) {
     let mut value = read().bits;
     value &= !(0x3 << 13); // clear previous value
     value |= (fs as usize) << 13;
-    _write(value);
+    _set(value);
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
