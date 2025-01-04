@@ -33,16 +33,16 @@ pub fn init(boot_alloc: BootstrapAllocator, phys_off: VirtualAddress) {
             }
         }
 
-        arenas.sort_unstable_by(|a, b| -> Ordering {
-            if a.range_phys().end <= b.range_phys().start {
-                Ordering::Less
-            } else if b.range_phys().end <= a.range_phys().start {
-                Ordering::Greater
-            } else {
-                // This should never happen if the `exclude_region` code about is correct
-                unreachable!("Memory region {a:?} and {b:?} are overlapping");
-            }
-        });
+        // arenas.sort_unstable_by(|a, b| -> Ordering {
+        //     if a.range_phys().end <= b.range_phys().start {
+        //         Ordering::Less
+        //     } else if b.range_phys().end <= a.range_phys().start {
+        //         Ordering::Greater
+        //     } else {
+        //         // This should never happen if the `exclude_region` code about is correct
+        //         unreachable!("Memory region {a:?} and {b:?} are overlapping");
+        //     }
+        // });
 
         Mutex::new(FrameAllocator { arenas })
     });
