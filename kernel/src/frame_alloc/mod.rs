@@ -4,13 +4,12 @@ use arrayvec::ArrayVec;
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::cmp;
-use core::cmp::Ordering;
 use frame::Frame;
 use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::BootstrapAllocator;
 use mmu::VirtualAddress;
 use sync::{Mutex, OnceLock};
-use thread_local::declare_thread_local;
+use thread_local::thread_local;
 
 mod arena;
 mod frame;
@@ -68,7 +67,7 @@ pub fn init(boot_alloc: BootstrapAllocator, phys_off: VirtualAddress) {
         .is_aligned_to(4 * PAGE_SIZE));
 }
 
-declare_thread_local!(static PER_HART_FRAME_CACHE: RefCell<linked_list::List<Frame>> = RefCell::new(linked_list::List::new()));
+thread_local!(static PER_HART_FRAME_CACHE: RefCell<linked_list::List<Frame>> = RefCell::new(linked_list::List::new()));
 
 pub fn allocate_frames(layout: Layout) -> crate::Result<linked_list::List<Frame>> {
     PER_HART_FRAME_CACHE.with(|cache| {

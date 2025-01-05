@@ -110,11 +110,11 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
-    
+
     frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
-    
+
     // TODO init kernel address space (requires global allocator)
-    
+
     // - `pmm_init()`
     //     - [all][global]   init arenas/sections
     //         - for each reported memory region
