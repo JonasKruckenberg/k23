@@ -336,7 +336,7 @@ mod tests {
     //     unsafe {
     //         let ret = call_with_setjmp(|_env| 1234);
     //         assert_eq!(ret, 1234);
-    // 
+    //
     //         let ret = call_with_setjmp(|env| {
     //             longjmp(env, 4321);
     //         });
@@ -355,12 +355,12 @@ mod tests {
     //     //
     //     // Note that this only exists to test the behaviour of setjmp/longjmp, in real code you
     //     // should use `call_with_setjmp` as it limits much of the footguns.
-    // 
+    //
     //     static mut C: u32 = 0;
-    // 
+    //
     //     unsafe {
     //         let mut buf = MaybeUninit::<JmpBufStruct>::zeroed().assume_init();
-    // 
+    //
     //         let r = setjmp(ptr::from_mut(&mut buf));
     //         C += 1;
     //         if r == 0 {
@@ -386,39 +386,39 @@ mod tests {
     //             routine_b()
     //         }
     //         assert_eq!(r, 10001);
-    // 
+    //
     //         let r = setjmp(addr_of_mut!(BUFFER_A));
     //         if r == 0 {
     //             longjmp(addr_of_mut!(BUFFER_B), 20001);
     //         }
     //         assert_eq!(r, 10002);
-    // 
+    //
     //         let r = setjmp(addr_of_mut!(BUFFER_A));
     //         if r == 0 {
     //             longjmp(addr_of_mut!(BUFFER_B), 20002);
     //         }
     //         debug_assert!(r == 10003);
     //     }
-    // 
+    //
     //     unsafe fn routine_b() {
     //         let r = setjmp(addr_of_mut!(BUFFER_B));
     //         if r == 0 {
     //             longjmp(addr_of_mut!(BUFFER_A), 10001);
     //         }
     //         assert_eq!(r, 20001);
-    // 
+    //
     //         let r = setjmp(addr_of_mut!(BUFFER_B));
     //         if r == 0 {
     //             longjmp(addr_of_mut!(BUFFER_A), 10002);
     //         }
     //         assert_eq!(r, 20002);
-    // 
+    //
     //         let r = setjmp(addr_of_mut!(BUFFER_B));
     //         if r == 0 {
     //             longjmp(addr_of_mut!(BUFFER_A), 10003);
     //         }
     //     }
-    // 
+    //
     //     unsafe {
     //         routine_a();
     //     }

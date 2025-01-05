@@ -11,7 +11,7 @@ targets = [
 allow = [
     "MIT", # requires license notice
     "Apache-2.0", # requires license notice
-    "Unicode-DFS-2016", # requires license notice
+    "Unicode-3.0", # requires license notice
     "Apache-2.0 WITH LLVM-exception",
 ]
 
