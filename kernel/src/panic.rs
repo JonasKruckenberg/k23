@@ -132,18 +132,20 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 
 fn panic_handler(payload: &mut dyn PanicPayload, loc: &Location<'_>, can_unwind: bool) -> ! {
     backtrace::__rust_end_short_backtrace(|| {
+        let msg = payload_as_str(payload.get());
+        
         if let Some(must_abort) = panic_count::increase(true) {
             match must_abort {
                 MustAbort::PanicInHook => {
-                    let msg = payload_as_str(payload.get());
                     log::error!("panicked at {loc}:\n{msg}\nhart panicked while processing panic. aborting.\n");
                 }
             }
 
             arch::abort();
         }
-
+        
         // TODO panic processing here
+        log::error!("hart panicked at {loc}:\n{msg}");
 
         panic_count::finished_panic_hook();
 

@@ -29,11 +29,11 @@ use arrayvec::ArrayVec;
 use core::alloc::Layout;
 use core::cell::{RefCell};
 use core::range::Range;
-use core::{ptr, slice};
+use core::{cmp, slice};
 use loader_api::{BootInfo, MemoryRegionKind};
 use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
-use mmu::PhysicalAddress;
+use mmu::{PhysicalAddress, VirtualAddress};
 use sync::OnceLock;
 use thread_local::thread_local;
 use crate::time::Instant;
@@ -105,7 +105,6 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::trace!("Booted in ~{:?} ({:?} in k23)", Instant::now().duration_since(Instant::ZERO), Instant::from_ticks(boot_info.boot_ticks).elapsed());
     
     // frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
-
     // TODO init frame allocation (requires boot info)
     //      - init PMM zones
     //          - init PMM arenas
@@ -141,35 +140,26 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
 fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     if let Some(template) = &boot_info.tls_template {
-        let layout = Layout::from_size_align(template.mem_size, PAGE_SIZE).unwrap();
-        let phys = boot_alloc.allocate_contiguous(layout).unwrap();
+        let layout =
+            Layout::from_size_align(template.mem_size, cmp::max(template.align, PAGE_SIZE))
+                .unwrap();
+        let phys = boot_alloc.allocate_contiguous_zeroed(layout).unwrap();
 
         // Use the phys_map to access the newly allocated TLS region
-        let virt = boot_info
-            .physical_address_offset
-            .checked_add(phys.get())
-            .unwrap();
+        let virt = VirtualAddress::from_phys(phys, boot_info.physical_address_offset).unwrap();
 
-        // Copy any TDATA from the template to the new TLS region
         if template.file_size != 0 {
-            let src: &[u8] =
-                unsafe { slice::from_raw_parts(template.start_addr.as_ptr(), template.file_size) };
-
-            let dst = unsafe {
-                slice::from_raw_parts_mut(
-                    virt.checked_add(template.mem_size).unwrap().as_mut_ptr(),
-                    template.file_size,
-                )
-            };
-
-            log::trace!(
-                "Copying tdata from {:?} to {:?}",
-                src.as_ptr_range(),
-                dst.as_ptr_range()
-            );
-            debug_assert_eq!(src.len(), dst.len());
             unsafe {
-                ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
+                let src: &[u8] =
+                    slice::from_raw_parts(template.start_addr.as_ptr(), template.file_size);
+                let dst: &mut [u8] =
+                    slice::from_raw_parts_mut(virt.as_mut_ptr(), template.file_size);
+                
+                // sanity check to ensure our destination allocated memory is actually zeroed.
+                // if it's not, that likely means we're about to override something important
+                debug_assert!(dst.iter().all(|&x| x == 0));
+
+                dst.copy_from_slice(src);
             }
         }
 

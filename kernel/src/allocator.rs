@@ -24,8 +24,6 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
         Range::from(start..start.checked_add(layout.size()).unwrap())
     };
 
-    log::debug!("Kernel heap: {virt:?}");
-
     let mut alloc = KERNEL_ALLOCATOR.lock();
     let span = Span::from_base_size(virt.start.as_mut_ptr(), virt.size());
     unsafe {
