@@ -7,4 +7,3 @@ license.workspace = true
 
 [dependencies]
 mmu = { workspace = true }
-loader-api-macros = { path = "macros" }

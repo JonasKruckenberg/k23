@@ -1,12 +1,5 @@
 [workspace]
-members = [
-    "kernel",
-    "libs/*",
-    "loader",
-    "loader/api",
-    "loader/api/macros",
-    "libs/ktest/macros"
-]
+members = ["kernel", "libs/*", "loader", "loader/api"]
 resolver = "2"
 
 [workspace.package]
@@ -22,41 +15,33 @@ large_stack_arrays = "deny"
 recursive_format_impl = "deny"
 
 [workspace.dependencies]
-kernel = { path = "kernel" }
-loader-api = { path = "loader/api" }
 backtrace = { path = "libs/backtrace" }
 dtb-parser = { path = "libs/dtb-parser" }
-mmu = { path = "libs/mmu" }
-ktest = { path = "libs/ktest" }
+leb128 = { path = "libs/leb128" }
 linked-list = { path = "libs/linked-list" }
-panic-common = { path = "libs/panic-common" }
-panic-unwind = { path = "libs/panic-unwind" }
+mmu = { path = "libs/mmu" }
 riscv = { path = "libs/riscv" }
-semihosting-logger = { path = "libs/semihosting-logger" }
 sync = { path = "libs/sync" }
 thread-local = { path = "libs/thread-local" }
 unwind2 = { path = "libs/unwind2" }
-leb128 = { path = "libs/leb128" }
 wasm-encoder = { path = "libs/wasm-encoder" }
 wast = { path = "libs/wast" }
 wavltree = { path = "libs/wavltree" }
+loader-api = { path = "loader/api" }
 
+# third-party dependencies
 cfg-if = "1.0.0"
-lock_api = "0.4.12"
 log = "0.4.21"
 bitflags = "2.6.0"
-onlyerror = { version = "0.1.4", default-features = false }
-arrayvec = { version = "0.7.4", default-features = false }
-object = { version = "0.36.4", default-features = false }
-gimli = { version = "0.31.0", default-features = false, features = ["read"] }
+lock_api = "0.4.12"
 xmas-elf = "0.9.1"
-talc = { version = "4.4.2", default-features = false }
-pin-project-lite = "0.2.15"
-rand_chacha = { version = "0.3.1", default-features = false }
-rand = { version = "0.8.5", default-features = false }
 static_assertions = "1.1.0"
-addr2line = { version = "0.24.2", default-features = false }
-rustc-demangle = { version = "0.1.24", default-features = false }
+rand = { version = "0.8.5", default-features = false }
+rand_chacha = { version = "0.3.1", default-features = false }
+arrayvec = { version = "0.7.4", default-features = false }
+gimli = { version = "0.31.0", default-features = false, features = ["read"] }
+talc = { version = "4.4.2", default-features = false, features = ["lock_api", "counters"] }
+pin-project-lite = "0.2.15"
 
 # wast dependencies
 bumpalo = "3.14.0"
@@ -68,33 +53,3 @@ hashbrown = { version = "0.14.5", default-features = false, features = [
     "inline-more",
     "nightly",
 ] }
-wasmparser = { version = "0.221.0", default-features = false }
-target-lexicon = { version = "0.13.0", default-features = false }
-cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std3", default-features = false, features = [
-    "core",
-] }
-cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std3", default-features = false, features = [
-    "core",
-    "host-arch",
-] }
-cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std3", default-features = false, features = [
-    "core",
-] }
-cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std3", default-features = false }
-
-# build dependencies
-proc-macro2 = "1"
-quote = "1"
-syn = { version = "2", features = ["full"] }
-
-[profile.release]
-opt-level = 3
-codegen-units = 1
-lto = true
-strip = true
-overflow-checks = true
-split-debuginfo = "packed"
-debug-assertions = true
-
-[profile.bench]
-debug = true

@@ -28,14 +28,14 @@ pub fn parse_kernel(bytes: &'static [u8]) -> crate::Result<Kernel<'static>> {
 
     Ok(Kernel {
         elf_file,
-        loader_config,
+        _loader_config: loader_config,
     })
 }
 
 /// The decompressed and parsed kernel ELF plus the embedded loader configuration data
 pub struct Kernel<'a> {
     pub elf_file: xmas_elf::ElfFile<'a>,
-    pub loader_config: &'a LoaderConfig,
+    pub _loader_config: &'a LoaderConfig,
 }
 
 impl<'a> Kernel<'a> {

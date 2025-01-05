@@ -4,6 +4,7 @@
 
 pub mod satp;
 pub mod scause;
+pub mod scounteren;
 pub mod sepc;
 pub mod sie;
 pub mod sstatus;
@@ -85,12 +86,12 @@ macro_rules! read_composite_csr {
     };
 }
 
-macro_rules! write_csr {
+macro_rules! set {
     ($csr_number: literal) => {
-        /// Writes the CSR
+        /// Sets the CSR
         #[inline]
         #[allow(unused_variables)]
-        unsafe fn _write(bits: usize) {
+        unsafe fn _set(bits: usize) {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
                     core::arch::asm!(concat!("csrrw x0, ", stringify!($csr_number), ", {0}"), in(reg) bits);
@@ -102,21 +103,21 @@ macro_rules! write_csr {
     };
 }
 
-macro_rules! write_csr_as_usize {
+macro_rules! set_csr_as_usize {
     ($csr_number:literal) => {
-        $crate::write_csr!($csr_number);
+        $crate::set!($csr_number);
 
-        /// Writes the CSR.
+        /// Sets the CSR.
         ///
         /// **WARNING**: panics on non-`riscv` targets.
         #[inline]
-        pub fn write(bits: usize) {
-            unsafe { _write(bits) }
+        pub fn set(bits: usize) {
+            unsafe { _set(bits) }
         }
     };
 }
 
-macro_rules! clear_csr {
+macro_rules! clear {
     ($csr_number: literal) => {
         /// Writes the CSR
         #[inline]
@@ -133,7 +134,37 @@ macro_rules! clear_csr {
     };
 }
 
+#[macro_export]
+macro_rules! set_csr {
+    ($(#[$attr:meta])*, $set_field:ident, $e:expr) => {
+        $(#[$attr])*
+        #[inline]
+        pub unsafe fn $set_field() {
+            _set($e);
+        }
+    };
+}
+
+/// Convenience macro to define field clear functions for a CSR type.
+#[macro_export]
+macro_rules! clear_csr {
+    ($(#[$attr:meta])*, $clear_field:ident, $e:expr) => {
+        $(#[$attr])*
+        #[inline]
+        pub unsafe fn $clear_field() {
+            _clear($e);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! set_clear_csr {
+    ($(#[$attr:meta])*, $set_field:ident, $clear_field:ident, $e:expr) => {
+        $crate::set_csr!($(#[$attr])*, $set_field, $e);
+        $crate::clear_csr!($(#[$attr])*, $clear_field, $e);
+    }
+}
+
 pub(crate) use {
-    clear_csr, read_composite_csr, read_csr, read_csr_as, read_csr_as_usize, write_csr,
-    write_csr_as_usize,
+    clear, read_composite_csr, read_csr, read_csr_as, read_csr_as_usize, set, set_csr_as_usize,
 };

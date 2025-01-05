@@ -5,6 +5,7 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
+use core::range::Range;
 
 pub struct AddressSpace {
     root_pgtable: PhysicalAddress,
@@ -23,7 +24,7 @@ impl AddressSpace {
             .allocate_contiguous_zeroed(
                 Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
             )
-            .ok_or(Error::OutOfMemory)?; // we should also be able to map a single page
+            .ok_or(Error::NoMemory)?; // we should be able to map a single page
 
         let this = Self {
             asid,
@@ -150,8 +151,10 @@ impl AddressSpace {
                             arch::PTE_FLAGS_VALID.union(flags.into()),
                         );
 
-                        flush
-                            .extend_range(self.asid, virt..virt.checked_add(page_size).unwrap())?;
+                        flush.extend_range(
+                            self.asid,
+                            Range::from(virt..virt.checked_add(page_size).unwrap()),
+                        )?;
                         virt = virt.checked_add(page_size).unwrap();
                         phys = phys.checked_add(page_size).unwrap();
                         remaining_bytes -= page_size;
@@ -167,7 +170,7 @@ impl AddressSpace {
                             .allocate_contiguous_zeroed(
                                 Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
                             )
-                            .ok_or(Error::OutOfMemory)?; // we should also be able to map a single page
+                            .ok_or(Error::NoMemory)?; // we should also be able to map a single page
 
                         // TODO memory barrier
 
@@ -262,7 +265,10 @@ impl AddressSpace {
                     let (_old_phys, flags) = pte.get_address_and_flags();
                     pte.replace_address_and_flags(phys, flags);
 
-                    flush.extend_range(self.asid, virt..virt.checked_add(page_size).unwrap())?;
+                    flush.extend_range(
+                        self.asid,
+                        Range::from(virt..virt.checked_add(page_size).unwrap()),
+                    )?;
                     virt = virt.checked_add(page_size).unwrap();
                     phys = phys.checked_add(page_size).unwrap();
                     remaining_bytes -= page_size;
@@ -328,7 +334,10 @@ impl AddressSpace {
                     );
 
                     let page_size = arch::page_size_for_level(lvl);
-                    flush.extend_range(self.asid, virt..virt.checked_add(page_size).unwrap())?;
+                    flush.extend_range(
+                        self.asid,
+                        Range::from(virt..virt.checked_add(page_size).unwrap()),
+                    )?;
                     virt = virt.checked_add(page_size).unwrap();
                     remaining_bytes -= page_size;
                     continue 'outer;
@@ -399,7 +408,10 @@ impl AddressSpace {
             );
             pte.clear();
 
-            flush.extend_range(self.asid, *virt..virt.checked_add(page_size).unwrap())?;
+            flush.extend_range(
+                self.asid,
+                Range::from(*virt..virt.checked_add(page_size).unwrap()),
+            )?;
             *virt = virt.checked_add(page_size).unwrap();
             *remaining_bytes -= page_size;
         } else if pte.is_valid() {

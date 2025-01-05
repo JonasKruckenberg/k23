@@ -1,9 +1,21 @@
+use crate::machine_info::MachineInfo;
+use crate::ENABLE_KASLR;
 use core::alloc::Layout;
-use core::ops::Range;
+use core::range::Range;
 use mmu::VirtualAddress;
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
+use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+
+pub fn init(minfo: &MachineInfo) -> PageAllocator {
+    PageAllocator {
+        page_state: [false; mmu::arch::PAGE_TABLE_ENTRIES / 2],
+        prng: ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
+            minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
+        )),
+    }
+}
 
 /// Virtual memory allocator for setting up initial mappings.
 ///
@@ -18,26 +30,6 @@ pub struct PageAllocator {
 }
 
 impl PageAllocator {
-    /// Create a new `PageAllocator` with KASLR enabled.
-    ///
-    /// This means regions will be randomly placed in the higher half of the address space.
-    pub fn new(rng: ChaCha20Rng) -> Self {
-        Self {
-            page_state: [false; mmu::arch::PAGE_TABLE_ENTRIES / 2],
-            prng: Some(rng),
-        }
-    }
-
-    /// Create a new `PageAllocator` with KASLR **disabled**.
-    ///
-    /// Allocated regions will be placed consecutively in the higher half of the address space.
-    pub fn new_no_kaslr() -> Self {
-        Self {
-            page_state: [false; mmu::arch::PAGE_TABLE_ENTRIES / 2],
-            prng: None,
-        }
-    }
-
     fn allocate_pages(&mut self, num_pages: usize) -> usize {
         // find a consecutive range of `num` entries that are not used
         let mut free_pages = self
@@ -125,6 +117,8 @@ impl PageAllocator {
             0
         };
 
-        base.checked_add(offset).unwrap()..base.checked_add(offset + layout.size()).unwrap()
+        Range::from(
+            base.checked_add(offset).unwrap()..base.checked_add(offset + layout.size()).unwrap(),
+        )
     }
 }

@@ -1,5 +1,5 @@
 use crate::{arch, Error, VirtualAddress};
-use core::ops::Range;
+use core::range::Range;
 use core::{cmp, mem};
 
 #[must_use]

@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 use core::fmt::Write;
 use log::{LevelFilter, Metadata, Record};
-use thread_local::declare_thread_local;
+use thread_local::thread_local;
 
 /// Initializes the global logger with the semihosting logger.
 ///
@@ -16,13 +16,12 @@ pub fn init(lvl: LevelFilter) {
 }
 
 pub fn init_hart(hartid: usize) {
-    let hio = riscv::hio::HostStream::new_stdout();
-
-    STDOUT.initialize_with((RefCell::new(hio), hartid), |_, _| {});
+    STATE.with_borrow_mut(|state| state.1 = hartid);
 }
 
-declare_thread_local!(
-    static STDOUT: (RefCell<riscv::hio::HostStream>, usize);
+thread_local!(
+    static STATE: RefCell<(riscv::hio::HostStream, usize)> =
+        RefCell::new((riscv::hio::HostStream::new_stdout(), 0));
 );
 
 struct Logger;
@@ -34,9 +33,10 @@ impl log::Log for Logger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            STDOUT.with(|(stdout, hartid)| {
-                let mut stdout = stdout.borrow_mut();
-                let _ = stdout.write_fmt(format_args!(
+            STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                let hartid = state.1;
+                let _ = state.0.write_fmt(format_args!(
                     "[{:<5} HART {} {}] {}\n",
                     record.level(),
                     hartid,

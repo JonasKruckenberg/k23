@@ -1,8 +1,8 @@
 use core::fmt;
 use core::fmt::Formatter;
-use core::ops::Range;
+use core::range::Range;
 use core::slice;
-use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use mmu::{PhysicalAddress, VirtualAddress};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -10,23 +10,21 @@ use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub struct BootInfo {
     /// The hart that booted the machine, for debugging purposes
     pub boot_hart: usize,
-    pub hart_mask: usize,
     /// A map of the physical memory regions of the underlying machine.
     ///
     /// The bootloader queries this information from the BIOS/UEFI firmware and translates this
     /// information to Rust types. It also marks any memory regions that the bootloader uses in
     /// the memory map before passing it to the kernel. Regions marked as usable can be freely
     /// used by the kernel.
+    ///
+    /// Note: Memory regions are *guaranteed* to not overlap and be sorted by their start address.
+    /// But they might not be optimally packed, i.e. adjacent regions that could be merged are not.
     pub memory_regions: *const MemoryRegion,
     pub memory_regions_len: usize,
+
     /// The thread local storage (TLS) template of the kernel executable, if present.
-    ///
-    /// Note that the loader will already set up TLS regions for each hart reported as `online`
-    /// by the previous stage bootloader, so this field is rarely needed. Only when the kernel
-    /// has ways to bring new harts online after booting, this field is useful.
     pub tls_template: Option<TlsTemplate>,
-    /// The virtual address at which the mapping of the physical memory starts.
-    ///
+
     /// Physical addresses can be converted to virtual addresses by adding this offset to them.
     ///
     /// The mapping of the physical memory allows to access arbitrary physical frames. Accessing
@@ -45,13 +43,6 @@ pub struct BootInfo {
     ///
     /// The kernel should use this information to unmap the loader region after taking control.
     pub loader_region: Range<VirtualAddress>,
-    /// Virtual memory region reserved for the kernel heap.
-    ///
-    /// Note that this is **not** mapped, as the kernel should map
-    /// this region on-demand.
-    pub heap_region: Option<Range<VirtualAddress>>,
-    pub stacks_region: Range<VirtualAddress>,
-    pub tls_region: Option<Range<VirtualAddress>>,
     /// Virtual address of the loaded kernel image.
     pub kernel_virt: Range<VirtualAddress>,
     /// Physical memory region where the kernel ELF file resides.
@@ -68,7 +59,6 @@ impl BootInfo {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         boot_hart: usize,
-        hart_mask: usize,
         physical_memory_offset: VirtualAddress,
         physical_memory_map: Range<VirtualAddress>,
         kernel_virt: Range<VirtualAddress>,
@@ -76,15 +66,11 @@ impl BootInfo {
         memory_regions_len: usize,
         tls_template: Option<TlsTemplate>,
         loader_region: Range<VirtualAddress>,
-        heap_region: Option<Range<VirtualAddress>>,
-        stacks_region: Range<VirtualAddress>,
-        tls_region: Option<Range<VirtualAddress>>,
         kernel_elf: Range<PhysicalAddress>,
         boot_ticks: u64,
     ) -> Self {
         Self {
             boot_hart,
-            hart_mask,
             physical_address_offset: physical_memory_offset,
             physical_memory_map,
             memory_regions,
@@ -92,9 +78,6 @@ impl BootInfo {
             tls_template,
             kernel_virt,
             loader_region,
-            heap_region,
-            stacks_region,
-            tls_region,
             kernel_elf,
             boot_ticks,
         }
@@ -123,18 +106,6 @@ impl fmt::Display for BootInfo {
             "{:<23} : {}..{}",
             "KERNEL PHYS", self.kernel_elf.start, self.kernel_elf.end
         )?;
-        if let Some(heap) = self.heap_region.as_ref() {
-            writeln!(
-                f,
-                "{:<23} : {}..{} ({}) bytes",
-                "KERNEL HEAP",
-                heap.start,
-                heap.end,
-                heap.size()
-            )?;
-        } else {
-            writeln!(f, "{:<23} : None", "KERNEL HEAP")?;
-        }
         writeln!(
             f,
             "{:<23} : {}..{}",
@@ -160,7 +131,7 @@ impl fmt::Display for BootInfo {
             writeln!(
                 f,
                 "MEMORY REGION {:<10}: {}..{} {:?}",
-                idx, r.range.start, r.range.end, r.kind
+                idx, r.range.start, r.range.end, r.kind,
             )?;
         }
 
@@ -179,10 +150,11 @@ pub struct TlsTemplate {
     /// If the TLS segment contains zero-initialized data (tbss) then this size will be smaller than
     /// `mem_size`
     pub file_size: usize,
+    pub align: usize,
 }
 
 /// Represent a physical memory region.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(C)]
 pub struct MemoryRegion {
     /// The physical region.
@@ -209,7 +181,6 @@ pub enum MemoryRegionKind {
 }
 
 impl MemoryRegionKind {
-    #[must_use]
     pub fn is_usable(&self) -> bool {
         matches!(self, MemoryRegionKind::Usable)
     }

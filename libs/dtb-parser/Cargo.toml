@@ -11,4 +11,3 @@ workspace = true
 
 [dependencies]
 log.workspace = true
-onlyerror.workspace = true

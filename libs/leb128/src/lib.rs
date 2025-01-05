@@ -41,17 +41,31 @@
 //! ```
 #![no_std]
 
+use core::fmt::{Display, Formatter};
 use core::mem;
 
-#[derive(Debug, onlyerror::Error)]
+#[derive(Debug)]
 pub enum Error {
     /// Failed to write to the provided buffer.
     UnexpectedEof,
-    /// gg
+    /// The number is too large to fit in the target type.
     Overflow,
-    /// h
+    /// Not enough space in the provided buffer.
     NotEnoughSpace,
 }
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::UnexpectedEof => f.write_str("Unexpected end of file"),
+            Error::Overflow => f.write_str("Overflow"),
+            Error::NotEnoughSpace => f.write_str("Not enough space"),
+        }
+    }
+}
+
+impl core::error::Error for Error {}
+
 type Result<T> = core::result::Result<T, Error>;
 
 pub trait Leb128Read {

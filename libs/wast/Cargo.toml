@@ -28,9 +28,6 @@ memchr.workspace = true
 bumpalo.workspace = true
 thread-local.workspace = true
 
-[dev-dependencies]
-ktest.workspace = true
-
 [features]
 default = ['wasm-module']
 

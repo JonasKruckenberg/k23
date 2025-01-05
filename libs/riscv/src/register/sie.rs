@@ -1,6 +1,6 @@
 //! Supervisor Interrupt Enable Register
 
-use super::{clear_csr, read_csr_as, write_csr};
+use super::{clear, read_csr_as, set};
 use core::fmt;
 use core::fmt::Formatter;
 
@@ -11,19 +11,19 @@ pub struct Sie {
 }
 
 read_csr_as!(Sie, 0x104);
-write_csr!(0x104);
-clear_csr!(0x104);
+set!(0x104);
+clear!(0x104);
 
 pub unsafe fn set_ssie() {
-    _write(1 << 1);
+    _set(1 << 1);
 }
 
 pub unsafe fn set_stie() {
-    _write(1 << 5);
+    _set(1 << 5);
 }
 
 pub unsafe fn set_seie() {
-    _write(1 << 9);
+    _set(1 << 9);
 }
 
 pub unsafe fn clear_ssie() {

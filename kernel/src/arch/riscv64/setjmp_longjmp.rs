@@ -330,98 +330,97 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use core::ptr;
-    use core::ptr::addr_of_mut;
+    // TODO reenable with test runner
+    // #[ktest::test]
+    // fn _call_with_setjmp() {
+    //     unsafe {
+    //         let ret = call_with_setjmp(|_env| 1234);
+    //         assert_eq!(ret, 1234);
+    //
+    //         let ret = call_with_setjmp(|env| {
+    //             longjmp(env, 4321);
+    //         });
+    //         assert_eq!(ret, 4321);
+    //     }
+    // }
 
-    #[ktest::test]
-    fn _call_with_setjmp() {
-        unsafe {
-            let ret = call_with_setjmp(|_env| 1234);
-            assert_eq!(ret, 1234);
+    // TODO reenable with test runner
+    // #[ktest::test]
+    // #[allow(static_mut_refs)]
+    // fn setjmp_longjmp_simple() {
+    //     // The LLVM optimizer doesn't understand the "setjmp returns twice" behaviour and would
+    //     // turn the `C += 1` into a constant store instruction instead of a load-add-store sequence.
+    //     // To force this, we use a static variable here, but forcing the location of the variable
+    //     // into a different (longer-lived) stack frame would also work.
+    //     //
+    //     // Note that this only exists to test the behaviour of setjmp/longjmp, in real code you
+    //     // should use `call_with_setjmp` as it limits much of the footguns.
+    //
+    //     static mut C: u32 = 0;
+    //
+    //     unsafe {
+    //         let mut buf = MaybeUninit::<JmpBufStruct>::zeroed().assume_init();
+    //
+    //         let r = setjmp(ptr::from_mut(&mut buf));
+    //         C += 1;
+    //         if r == 0 {
+    //             assert_eq!(C, 1);
+    //             longjmp(ptr::from_mut(&mut buf), 1234567);
+    //         }
+    //         assert_eq!(C, 2);
+    //         assert_eq!(r, 1234567);
+    //     }
+    // }
 
-            let ret = call_with_setjmp(|env| {
-                longjmp(env, 4321);
-            });
-            assert_eq!(ret, 4321);
-        }
-    }
+    // static mut BUFFER_A: JmpBufStruct =
+    //     unsafe { MaybeUninit::<JmpBufStruct>::zeroed().assume_init() };
+    // static mut BUFFER_B: JmpBufStruct =
+    //     unsafe { MaybeUninit::<JmpBufStruct>::zeroed().assume_init() };
 
-    #[ktest::test]
-    #[allow(static_mut_refs)]
-    fn setjmp_longjmp_simple() {
-        // The LLVM optimizer doesn't understand the "setjmp returns twice" behaviour and would
-        // turn the `C += 1` into a constant store instruction instead of a load-add-store sequence.
-        // To force this, we use a static variable here, but forcing the location of the variable
-        // into a different (longer-lived) stack frame would also work.
-        //
-        // Note that this only exists to test the behaviour of setjmp/longjmp, in real code you
-        // should use `call_with_setjmp` as it limits much of the footguns.
-
-        static mut C: u32 = 0;
-
-        unsafe {
-            let mut buf = MaybeUninit::<JmpBufStruct>::zeroed().assume_init();
-
-            let r = setjmp(ptr::from_mut(&mut buf));
-            C += 1;
-            if r == 0 {
-                assert_eq!(C, 1);
-                longjmp(ptr::from_mut(&mut buf), 1234567);
-            }
-            assert_eq!(C, 2);
-            assert_eq!(r, 1234567);
-        }
-    }
-
-    static mut BUFFER_A: JmpBufStruct =
-        unsafe { MaybeUninit::<JmpBufStruct>::zeroed().assume_init() };
-    static mut BUFFER_B: JmpBufStruct =
-        unsafe { MaybeUninit::<JmpBufStruct>::zeroed().assume_init() };
-
-    #[ktest::test]
-    fn setjmp_longjmp_complex() {
-        unsafe fn routine_a() {
-            let r = setjmp(addr_of_mut!(BUFFER_A));
-            if r == 0 {
-                routine_b()
-            }
-            assert_eq!(r, 10001);
-
-            let r = setjmp(addr_of_mut!(BUFFER_A));
-            if r == 0 {
-                longjmp(addr_of_mut!(BUFFER_B), 20001);
-            }
-            assert_eq!(r, 10002);
-
-            let r = setjmp(addr_of_mut!(BUFFER_A));
-            if r == 0 {
-                longjmp(addr_of_mut!(BUFFER_B), 20002);
-            }
-            debug_assert!(r == 10003);
-        }
-
-        unsafe fn routine_b() {
-            let r = setjmp(addr_of_mut!(BUFFER_B));
-            if r == 0 {
-                longjmp(addr_of_mut!(BUFFER_A), 10001);
-            }
-            assert_eq!(r, 20001);
-
-            let r = setjmp(addr_of_mut!(BUFFER_B));
-            if r == 0 {
-                longjmp(addr_of_mut!(BUFFER_A), 10002);
-            }
-            assert_eq!(r, 20002);
-
-            let r = setjmp(addr_of_mut!(BUFFER_B));
-            if r == 0 {
-                longjmp(addr_of_mut!(BUFFER_A), 10003);
-            }
-        }
-
-        unsafe {
-            routine_a();
-        }
-    }
+    // TODO reenable with test runner
+    // #[ktest::test]
+    // fn setjmp_longjmp_complex() {
+    //     unsafe fn routine_a() {
+    //         let r = setjmp(addr_of_mut!(BUFFER_A));
+    //         if r == 0 {
+    //             routine_b()
+    //         }
+    //         assert_eq!(r, 10001);
+    //
+    //         let r = setjmp(addr_of_mut!(BUFFER_A));
+    //         if r == 0 {
+    //             longjmp(addr_of_mut!(BUFFER_B), 20001);
+    //         }
+    //         assert_eq!(r, 10002);
+    //
+    //         let r = setjmp(addr_of_mut!(BUFFER_A));
+    //         if r == 0 {
+    //             longjmp(addr_of_mut!(BUFFER_B), 20002);
+    //         }
+    //         debug_assert!(r == 10003);
+    //     }
+    //
+    //     unsafe fn routine_b() {
+    //         let r = setjmp(addr_of_mut!(BUFFER_B));
+    //         if r == 0 {
+    //             longjmp(addr_of_mut!(BUFFER_A), 10001);
+    //         }
+    //         assert_eq!(r, 20001);
+    //
+    //         let r = setjmp(addr_of_mut!(BUFFER_B));
+    //         if r == 0 {
+    //             longjmp(addr_of_mut!(BUFFER_A), 10002);
+    //         }
+    //         assert_eq!(r, 20002);
+    //
+    //         let r = setjmp(addr_of_mut!(BUFFER_B));
+    //         if r == 0 {
+    //             longjmp(addr_of_mut!(BUFFER_A), 10003);
+    //         }
+    //     }
+    //
+    //     unsafe {
+    //         routine_a();
+    //     }
+    // }
 }

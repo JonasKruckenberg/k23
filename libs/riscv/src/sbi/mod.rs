@@ -14,13 +14,19 @@ pub mod hsm;
 pub mod rfence;
 pub mod time;
 
-pub use error::Error;
-
 const EID_BASE: usize = 0x10;
-const EID_HSM: usize = 0x0048_534D;
-const EID_TIME: usize = 0x5449_4D45;
-const EID_RFENCE: usize = 0x5246_4E43;
-const EID_DBCN: usize = 0x4442_434E;
+const EID_TIME: usize = 0x735049;
+const EID_IPI: usize = 0x735_049;
+const EID_RFNC: usize = 0x52464E43;
+const EID_HSM: usize = 0x48534D;
+const EID_SRST: usize = 0x53525354;
+const EID_PMU: usize = 0x504D55;
+const EID_DBCN: usize = 0x4442434E;
+const EID_SUSP: usize = 0x53555350;
+const EID_CPPC: usize = 0x43505043;
+
+use bitflags::bitflags;
+pub use error::Error;
 
 type Result<T> = core::result::Result<T, Error>;
 
@@ -109,3 +115,34 @@ macro_rules! sbi_call {
 }
 
 pub(crate) use sbi_call;
+
+bitflags! {
+    #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+    pub struct Extension: u16 {
+        const BASE = 1 << 0;
+        const TIME = 1 << 1;
+        const IPI = 1 << 2;
+        const RFENCE = 1 << 3;
+        const HSM = 1 << 4;
+        const SRST = 1 << 5;
+        const PMU = 1 << 6;
+        const DBCN = 1 << 7;
+        const SUSP = 1 << 8;
+        const CPPC = 1 << 9;
+    }
+}
+
+/// Probe the SBI implementation for supported extensions.
+pub fn supported_extensions() -> Result<Extension> {
+    let mut supported = Extension::BASE;
+    supported.set(Extension::TIME, base::probe_sbi_extension(EID_TIME)?);
+    supported.set(Extension::IPI, base::probe_sbi_extension(EID_IPI)?);
+    supported.set(Extension::RFENCE, base::probe_sbi_extension(EID_RFNC)?);
+    supported.set(Extension::HSM, base::probe_sbi_extension(EID_HSM)?);
+    supported.set(Extension::SRST, base::probe_sbi_extension(EID_SRST)?);
+    supported.set(Extension::PMU, base::probe_sbi_extension(EID_PMU)?);
+    supported.set(Extension::DBCN, base::probe_sbi_extension(EID_DBCN)?);
+    supported.set(Extension::SUSP, base::probe_sbi_extension(EID_SUSP)?);
+    supported.set(Extension::CPPC, base::probe_sbi_extension(EID_CPPC)?);
+    Ok(supported)
+}

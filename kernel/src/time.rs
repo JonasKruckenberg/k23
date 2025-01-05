@@ -1,6 +1,6 @@
 //! Support for time-related functionality. This module mirrors Rusts `std::time` module.
 
-use crate::{arch, MACHINE_INFO};
+use crate::{arch, HART_LOCAL_MACHINE_INFO, MACHINE_INFO};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::sync::atomic::{AtomicPtr, Ordering};
@@ -26,6 +26,8 @@ pub struct SystemTime(Duration);
 pub struct SystemTimeError(Duration);
 
 impl Instant {
+    pub const ZERO: Self = Self(Duration::ZERO);
+
     /// Returns an instant corresponding to "now".
     pub fn now() -> Self {
         let ticks = arch::time::read64();
@@ -34,9 +36,7 @@ impl Instant {
     }
 
     pub fn from_ticks(ticks: u64) -> Self {
-        let timebase_freq =
-            crate::HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.timebase_frequency) as u64;
-
+        let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
         Instant(ticks_to_duration(ticks, timebase_freq))
     }
 
@@ -155,6 +155,7 @@ impl fmt::Debug for Instant {
 
 impl SystemTime {
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+    #[allow(unused)]
     pub fn now() -> Self {
         // Only device supported right now is "google,goldfish-rtc"
         // https://android.googlesource.com/platform/external/qemu/+/master/docs/GOLDFISH-VIRTUAL-HARDWARE.TXT
@@ -197,12 +198,15 @@ impl SystemTime {
             Err(SystemTimeError(earlier.0 - self.0))
         }
     }
+
     pub fn elapsed(&self) -> Result<Duration, SystemTimeError> {
         SystemTime::now().duration_since(*self)
     }
+
     pub fn checked_add(&self, duration: Duration) -> Option<SystemTime> {
         self.0.checked_add(duration).map(SystemTime)
     }
+
     pub fn checked_sub(&self, duration: Duration) -> Option<SystemTime> {
         self.0.checked_sub(duration).map(SystemTime)
     }
@@ -271,6 +275,7 @@ impl SystemTimeError {
     /// }
     /// ```
     #[must_use]
+    #[allow(unused)]
     pub fn duration(&self) -> Duration {
         self.0
     }
@@ -290,7 +295,7 @@ fn ticks_to_duration(ticks: u64, timebase_freq: u64) -> Duration {
     Duration::new(secs, subsec_nanos)
 }
 
-pub fn duration_to_ticks(d: Duration, timebase_freq: u64) -> u64 {
+fn duration_to_ticks(d: Duration, timebase_freq: u64) -> u64 {
     d.as_secs() * timebase_freq + d.subsec_nanos() as u64 * timebase_freq / NANOS_PER_SEC
 }
 
@@ -301,8 +306,7 @@ pub fn duration_to_ticks(d: Duration, timebase_freq: u64) -> u64 {
 /// This function is very low level and will block the calling hart until a timer interrupt is received.
 /// No checking is performed however if the timer interrupt is the correct one.
 pub unsafe fn sleep(duration: Duration) {
-    let timebase_freq =
-        crate::HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.timebase_frequency) as u64;
+    let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
 
     riscv::sbi::time::set_timer(riscv::time::read64() + duration_to_ticks(duration, timebase_freq))
         .unwrap();
@@ -310,25 +314,25 @@ pub unsafe fn sleep(duration: Duration) {
     arch::wait_for_interrupt();
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use core::time::Duration;
-
-    #[ktest::test]
-    fn measure_and_timeout() {
-        // let start_sys = SystemTime::now();
-        let start = Instant::now();
-
-        unsafe {
-            sleep(Duration::from_secs(1));
-        }
-
-        let end = Instant::now();
-        let elapsed = end.duration_since(start);
-        log::trace!("Time elapsed: {elapsed:?}");
-
-        assert_eq!(elapsed.as_secs(), 1);
-        // assert_eq!(start_sys.elapsed().unwrap().as_secs(), 1)
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use core::time::Duration;
+//
+//     #[ktest::test]
+//     fn measure_and_timeout() {
+//         // let start_sys = SystemTime::now();
+//         let start = Instant::now();
+//
+//         unsafe {
+//             sleep(Duration::from_secs(1));
+//         }
+//
+//         let end = Instant::now();
+//         let elapsed = end.duration_since(start);
+//         log::trace!("Time elapsed: {elapsed:?}");
+//
+//         assert_eq!(elapsed.as_secs(), 1);
+//         // assert_eq!(start_sys.elapsed().unwrap().as_secs(), 1)
+//     }
+// }

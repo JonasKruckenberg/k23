@@ -1,7 +1,7 @@
 use crate::frame_alloc::{FrameAllocator, FrameUsage};
 use crate::{arch, AddressRangeExt, PhysicalAddress, VirtualAddress};
 use core::alloc::Layout;
-use core::ops::Range;
+use core::range::Range;
 use core::{cmp, iter, ptr, slice};
 
 pub struct BootstrapAllocator<'a> {
@@ -10,6 +10,7 @@ pub struct BootstrapAllocator<'a> {
     offset: usize,
     phys_offset: VirtualAddress,
 }
+
 impl<'a> BootstrapAllocator<'a> {
     /// Create a new frame allocator over a given set of physical memory regions.
     #[must_use]
@@ -127,7 +128,7 @@ impl FrameAllocator for BootstrapAllocator<'_> {
     fn frame_usage(&self) -> FrameUsage {
         let mut total = 0;
         for region in self.regions {
-            let region_size = region.end.0 - region.start.0;
+            let region_size = region.size();
             total += region_size >> arch::PAGE_SHIFT;
         }
         let used = self.offset >> arch::PAGE_SHIFT;
