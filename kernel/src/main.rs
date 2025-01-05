@@ -36,6 +36,7 @@ use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
 use mmu::PhysicalAddress;
 use sync::OnceLock;
 use thread_local::thread_local;
+use crate::time::Instant;
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
@@ -97,13 +98,12 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         .unwrap();
     log::debug!("\n{minfo}");
 
-    // TODO move this into a per_hart_init function
     let hart_local_minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt).unwrap() };
     log::debug!("\n{hart_local_minfo}");
-
-    log::trace!("Hello from hart {}", hartid);
-
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
+    
+    log::trace!("Booted in ~{:?} ({:?} in k23)", Instant::now().duration_since(Instant::ZERO), Instant::from_ticks(boot_info.boot_ticks).elapsed());
+    
     // frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
 
     // TODO init frame allocation (requires boot info)

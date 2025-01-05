@@ -91,11 +91,12 @@ impl MachineInfo<'_> {
     }
 }
 
+#[derive(Debug, Default)]
 pub struct HartLocalMachineInfo {
     /// The hartid of the current hart.
     pub hartid: usize,
     /// Timebase frequency in Hertz for the Hart.
-    pub timebase_frequency: usize,
+    pub timebase_frequency: u64,
     pub riscv_extensions: RiscvExtensions,
     pub riscv_cbop_block_size: Option<usize>,
     pub riscv_cboz_block_size: Option<usize>,
@@ -222,8 +223,8 @@ impl<'dt> Visitor<'dt> for HartLocalMachineInfoVisitor {
 #[derive(Default)]
 struct CpusVisitor {
     hartid: usize,
-    default_timebase_frequency: Option<usize>,
-    timebase_frequency: usize,
+    default_timebase_frequency: Option<u64>,
+    timebase_frequency: u64,
     riscv_extensions: RiscvExtensions,
     riscv_cbop_block_size: Option<usize>,
     riscv_cboz_block_size: Option<usize>,
@@ -265,8 +266,8 @@ impl<'dt> Visitor<'dt> for CpusVisitor {
             // timebase-frequency can either be 32 or 64 bits
             // https://devicetree-specification.readthedocs.io/en/latest/chapter3-devicenodes.html#cpus-cpu-node-properties
             let value = match value.len() {
-                4 => usize::try_from(u32::from_be_bytes(value.try_into()?))?,
-                8 => usize::try_from(u64::from_be_bytes(value.try_into()?))?,
+                4 => u64::from(u32::from_be_bytes(value.try_into()?)),
+                8 => u64::from_be_bytes(value.try_into()?),
                 _ => unreachable!(),
             };
             self.default_timebase_frequency = Some(value);
@@ -278,7 +279,7 @@ impl<'dt> Visitor<'dt> for CpusVisitor {
 
 #[derive(Default)]
 struct CpuVisitor {
-    timebase_frequency: Option<usize>,
+    timebase_frequency: Option<u64>,
     // TODO maybe move arch-specific info into an arch-specific module
     riscv_extensions: RiscvExtensions,
     riscv_cbop_block_size: Option<usize>,
@@ -294,8 +295,8 @@ impl<'dt> Visitor<'dt> for CpuVisitor {
             // timebase-frequency can either be 32 or 64 bits
             // https://devicetree-specification.readthedocs.io/en/latest/chapter3-devicenodes.html#cpus-cpu-node-properties
             let value = match value.len() {
-                4 => usize::try_from(u32::from_be_bytes(value.try_into()?))?,
-                8 => usize::try_from(u64::from_be_bytes(value.try_into()?))?,
+                4 => u64::from(u32::from_be_bytes(value.try_into()?)),
+                8 => u64::from_be_bytes(value.try_into()?),
                 _ => unreachable!(),
             };
             self.timebase_frequency = Some(value);

@@ -1,9 +1,9 @@
 //! Support for time-related functionality. This module mirrors Rusts `std::time` module.
 
-use crate::arch;
+use crate::{arch, HART_LOCAL_MACHINE_INFO, MACHINE_INFO};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
-// use core::sync::atomic::{AtomicPtr, Ordering};
+use core::sync::atomic::{AtomicPtr, Ordering};
 use core::time::Duration;
 
 pub const UNIX_EPOCH: SystemTime = SystemTime(Duration::ZERO);
@@ -26,6 +26,8 @@ pub struct SystemTime(Duration);
 pub struct SystemTimeError(Duration);
 
 impl Instant {
+    pub const ZERO: Self = Self(Duration::ZERO);
+    
     /// Returns an instant corresponding to "now".
     pub fn now() -> Self {
         let ticks = arch::time::read64();
@@ -34,11 +36,8 @@ impl Instant {
     }
 
     pub fn from_ticks(ticks: u64) -> Self {
-        todo!()
-        // let timebase_freq =
-        //     crate::HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.timebase_frequency) as u64;
-        //
-        // Instant(ticks_to_duration(ticks, timebase_freq))
+        let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
+        Instant(ticks_to_duration(ticks, timebase_freq))
     }
 
     /// Returns the amount of time elapsed from another instant to this one,
@@ -160,37 +159,35 @@ impl SystemTime {
         // Only device supported right now is "google,goldfish-rtc"
         // https://android.googlesource.com/platform/external/qemu/+/master/docs/GOLDFISH-VIRTUAL-HARDWARE.TXT
 
-        todo!()
+        let rtc = MACHINE_INFO
+            .get()
+            .unwrap()
+            .mmio_devices
+            .iter()
+            .find(|region| region.compatible.contains(&"google,goldfish-rtc"))
+            .unwrap();
 
-        // let rtc = MACHINE_INFO
-        //     .get()
-        //     .unwrap()
-        //     .mmio_devices
-        //     .iter()
-        //     .find(|region| region.compatible.contains(&"google,goldfish-rtc"))
-        //     .unwrap();
-        //
-        // let time_ns = unsafe {
-        //     let time_low = AtomicPtr::new(rtc.regions[0].start.as_mut_ptr().cast::<u32>());
-        //     let time_high = AtomicPtr::new(
-        //         rtc.regions[0]
-        //             .start
-        //             .checked_add(0x04)
-        //             .unwrap()
-        //             .as_mut_ptr()
-        //             .cast::<u32>(),
-        //     );
-        //
-        //     let low = time_low.load(Ordering::Relaxed).read_volatile();
-        //     let high = time_high.load(Ordering::Relaxed).read_volatile();
-        //
-        //     ((high as u64) << 32) | low as u64
-        // };
-        //
-        // SystemTime(Duration::new(
-        //     time_ns / NANOS_PER_SEC,
-        //     (time_ns % NANOS_PER_SEC) as u32,
-        // ))
+        let time_ns = unsafe {
+            let time_low = AtomicPtr::new(rtc.regions[0].start.as_mut_ptr().cast::<u32>());
+            let time_high = AtomicPtr::new(
+                rtc.regions[0]
+                    .start
+                    .checked_add(0x04)
+                    .unwrap()
+                    .as_mut_ptr()
+                    .cast::<u32>(),
+            );
+
+            let low = time_low.load(Ordering::Relaxed).read_volatile();
+            let high = time_high.load(Ordering::Relaxed).read_volatile();
+
+            ((high as u64) << 32) | low as u64
+        };
+
+        SystemTime(Duration::new(
+            time_ns / NANOS_PER_SEC,
+            (time_ns % NANOS_PER_SEC) as u32,
+        ))
     }
 
     pub fn duration_since(&self, earlier: SystemTime) -> Result<Duration, SystemTimeError> {
