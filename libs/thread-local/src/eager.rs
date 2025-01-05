@@ -1,6 +1,6 @@
+use crate::{abort_on_dtor_unwind, destructors};
 use core::cell::{Cell, UnsafeCell};
 use core::ptr;
-use crate::{abort_on_dtor_unwind, destructors};
 
 #[derive(Clone, Copy)]
 enum State {
@@ -16,7 +16,10 @@ pub struct EagerStorage<T> {
 
 impl<T> EagerStorage<T> {
     pub const fn new(val: T) -> EagerStorage<T> {
-        EagerStorage { state: Cell::new(State::Initial), val: UnsafeCell::new(val) }
+        EagerStorage {
+            state: Cell::new(State::Initial),
+            val: UnsafeCell::new(val),
+        }
     }
 
     /// Gets a pointer to the TLS value. If the TLS variable has been destroyed,
@@ -70,4 +73,3 @@ unsafe extern "C" fn destroy<T>(ptr: *mut u8) {
         }
     })
 }
-

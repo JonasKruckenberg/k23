@@ -149,7 +149,7 @@ pub fn map_kernel(
                     start_addr: kernel_virt.start.checked_add(ph.virtual_address).unwrap(),
                     mem_size: ph.mem_size,
                     file_size: ph.file_size,
-                    align: ph.align
+                    align: ph.align,
                 });
                 log::trace!("{maybe_tls_allocation:?}");
                 assert!(old.is_none(), "multiple TLS segments not supported");

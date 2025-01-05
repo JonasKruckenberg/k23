@@ -4,18 +4,18 @@
 
 extern crate alloc;
 
+pub mod destructors;
 mod eager;
 mod lazy;
-pub mod destructors;
 
+use cfg_if::cfg_if;
 use core::cell::{Cell, RefCell};
 use core::fmt;
-use cfg_if::cfg_if;
 
 #[doc(hidden)]
-pub use lazy::LazyStorage;
-#[doc(hidden)]
 pub use eager::EagerStorage;
+#[doc(hidden)]
+pub use lazy::LazyStorage;
 
 #[macro_export]
 macro_rules! thread_local {

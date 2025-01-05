@@ -12,6 +12,7 @@
 #![feature(std_internals)]
 #![feature(panic_can_unwind)]
 #![feature(fmt_internals)]
+#![allow(dead_code)] // TODO remove
 
 extern crate alloc;
 
@@ -25,9 +26,10 @@ mod time;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
+use crate::time::Instant;
 use arrayvec::ArrayVec;
 use core::alloc::Layout;
-use core::cell::{RefCell};
+use core::cell::RefCell;
 use core::range::Range;
 use core::{cmp, slice};
 use loader_api::{BootInfo, MemoryRegionKind};
@@ -36,7 +38,6 @@ use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
 use mmu::{PhysicalAddress, VirtualAddress};
 use sync::OnceLock;
 use thread_local::thread_local;
-use crate::time::Instant;
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
@@ -57,7 +58,8 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
 
 thread_local!(
-    pub static HART_LOCAL_MACHINE_INFO: RefCell<HartLocalMachineInfo> = RefCell::new(HartLocalMachineInfo::default());
+    pub static HART_LOCAL_MACHINE_INFO: RefCell<HartLocalMachineInfo> =
+        RefCell::new(HartLocalMachineInfo::default());
 );
 
 pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
@@ -66,10 +68,10 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     let allocatable_memories = allocatable_memory_regions(boot_info);
     let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
     boot_alloc.set_phys_offset(boot_info.physical_address_offset);
-    
+
     // initializing the global allocator
     allocator::init(&mut boot_alloc, boot_info);
-    
+
     // initialize thread-local storage
     // done after global allocator initialization since TLS destructors are registered in a heap
     // allocated Vec
@@ -101,9 +103,13 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     let hart_local_minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt).unwrap() };
     log::debug!("\n{hart_local_minfo}");
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
-    
-    log::trace!("Booted in ~{:?} ({:?} in k23)", Instant::now().duration_since(Instant::ZERO), Instant::from_ticks(boot_info.boot_ticks).elapsed());
-    
+
+    log::trace!(
+        "Booted in ~{:?} ({:?} in k23)",
+        Instant::now().duration_since(Instant::ZERO),
+        Instant::from_ticks(boot_info.boot_ticks).elapsed()
+    );
+
     // frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
     // TODO init frame allocation (requires boot info)
     //      - init PMM zones
@@ -135,6 +141,11 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     // - `kernel_shell_init()`
     // - `userboot_init()`
 
+    // Run thread-local destructors
+    unsafe {
+        thread_local::destructors::run();
+    }
+
     arch::exit(0);
 }
 
@@ -154,7 +165,7 @@ fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
                     slice::from_raw_parts(template.start_addr.as_ptr(), template.file_size);
                 let dst: &mut [u8] =
                     slice::from_raw_parts_mut(virt.as_mut_ptr(), template.file_size);
-                
+
                 // sanity check to ensure our destination allocated memory is actually zeroed.
                 // if it's not, that likely means we're about to override something important
                 debug_assert!(dst.iter().all(|&x| x == 0));
@@ -193,7 +204,7 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
             }
         }
 
-        out.push(region.clone());
+        out.push(region);
     }
 
     out

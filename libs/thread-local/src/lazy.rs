@@ -1,8 +1,9 @@
+use crate::{abort_on_dtor_unwind, destructors};
 use core::cell::UnsafeCell;
 use core::hint::unreachable_unchecked;
 use core::ptr;
-use crate::{abort_on_dtor_unwind, destructors};
 
+#[allow(clippy::missing_safety_doc)]
 pub unsafe trait DestroyedState: Sized {
     fn register_dtor<T>(s: &LazyStorage<T, Self>);
 }
@@ -29,6 +30,15 @@ pub struct LazyStorage<T, D> {
     state: UnsafeCell<State<T, D>>,
 }
 
+impl<T, D> Default for LazyStorage<T, D>
+where
+    D: DestroyedState,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T, D> LazyStorage<T, D>
 where
     D: DestroyedState,
@@ -40,6 +50,7 @@ where
     }
 
     #[inline]
+    #[allow(clippy::missing_safety_doc)]
     pub unsafe fn get_or_init(&self, i: Option<&mut Option<T>>, f: impl FnOnce() -> T) -> *const T {
         let state = unsafe { &*self.state.get() };
         match state {

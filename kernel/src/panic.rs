@@ -133,7 +133,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 fn panic_handler(payload: &mut dyn PanicPayload, loc: &Location<'_>, can_unwind: bool) -> ! {
     backtrace::__rust_end_short_backtrace(|| {
         let msg = payload_as_str(payload.get());
-        
+
         if let Some(must_abort) = panic_count::increase(true) {
             match must_abort {
                 MustAbort::PanicInHook => {
@@ -143,9 +143,14 @@ fn panic_handler(payload: &mut dyn PanicPayload, loc: &Location<'_>, can_unwind:
 
             arch::abort();
         }
-        
+
         // TODO panic processing here
         log::error!("hart panicked at {loc}:\n{msg}");
+
+        // Run thread-local destructors
+        unsafe {
+            thread_local::destructors::run();
+        }
 
         panic_count::finished_panic_hook();
 
@@ -199,7 +204,7 @@ mod panic_count {
     // Panic count for the current thread and whether a panic hook is currently
     // being executed.
     thread_local! {
-        static LOCAL_PANIC_COUNT: Cell<(usize, bool)> = const { Cell::new((0, false)) }
+        static LOCAL_PANIC_COUNT: Cell<(usize, bool)> = Cell::new((0, false));
     }
 
     static GLOBAL_PANIC_COUNT: AtomicUsize = AtomicUsize::new(0);

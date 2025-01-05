@@ -150,7 +150,7 @@ pub struct TlsTemplate {
     /// If the TLS segment contains zero-initialized data (tbss) then this size will be smaller than
     /// `mem_size`
     pub file_size: usize,
-    pub align: usize
+    pub align: usize,
 }
 
 /// Represent a physical memory region.

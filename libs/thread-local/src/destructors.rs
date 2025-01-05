@@ -1,7 +1,7 @@
+use crate::abort;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::fmt::Write;
-use crate::abort;
 
 #[thread_local]
 static DTORS: RefCell<Vec<(*mut u8, unsafe extern "C" fn(*mut u8))>> = RefCell::new(Vec::new());
@@ -14,15 +14,15 @@ pub(crate) unsafe fn register(t: *mut u8, dtor: unsafe extern "C" fn(*mut u8)) {
         log::error!("the global allocator may not use TLS with destructors");
         abort()
     };
-    
+
     riscv::hio::HostStream::new_stdout()
-        .write_fmt(format_args!("registering destructor")).unwrap();
-    
+        .write_fmt(format_args!("registering destructor"))
+        .unwrap();
+
     dtors.push((t, dtor));
 }
 
-/// The [`guard`] module contains platform-specific functions which will run this
-/// function on thread exit if [`guard::enable`] has been called.
+/// Run thread-local destructors
 ///
 /// # Safety
 ///

@@ -20,7 +20,8 @@ pub fn init_hart(hartid: usize) {
 }
 
 thread_local!(
-    static STATE: RefCell<(riscv::hio::HostStream, usize)> = RefCell::new((riscv::hio::HostStream::new_stdout(), 0));
+    static STATE: RefCell<(riscv::hio::HostStream, usize)> =
+        RefCell::new((riscv::hio::HostStream::new_stdout(), 0));
 );
 
 struct Logger;
