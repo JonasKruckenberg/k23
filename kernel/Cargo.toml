@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "kernel"
+harness = false
+
 [lints]
 workspace = true
 

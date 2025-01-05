@@ -53,6 +53,10 @@ pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
 /// Entry point for panics from the `core` crate.
 #[panic_handler]
 fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
+    // disable interrupts as soon as we enter the panic subsystem
+    // no need to bother with those now as we're about to shut down anyway
+    arch::interrupt::disable();
+
     struct FormatStringPayload<'a> {
         inner: &'a core::panic::PanicMessage<'a>,
         string: Option<String>,
@@ -145,6 +149,7 @@ fn panic_handler(payload: &mut dyn PanicPayload, loc: &Location<'_>, can_unwind:
         }
 
         // TODO panic processing here
+
         log::error!("hart panicked at {loc}:\n{msg}");
 
         // Run thread-local destructors
