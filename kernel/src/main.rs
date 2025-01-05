@@ -3,6 +3,7 @@
 #![feature(used_with_arg)]
 #![feature(naked_functions)]
 #![feature(thread_local)]
+#![feature(never_type)]
 #![feature(new_range_api)]
 #![feature(maybe_uninit_slice)]
 #![feature(debug_closure_helpers)]
@@ -26,6 +27,7 @@ use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use arrayvec::ArrayVec;
 use core::alloc::Layout;
+use core::cell::{RefCell};
 use core::range::Range;
 use core::{ptr, slice};
 use loader_api::{BootInfo, MemoryRegionKind};
@@ -33,7 +35,7 @@ use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
 use mmu::PhysicalAddress;
 use sync::OnceLock;
-use thread_local::declare_thread_local;
+use thread_local::thread_local;
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
@@ -52,25 +54,40 @@ pub const INITIAL_HEAP_SIZE_PAGES: usize = 2048; // 32 MiB
 pub type Result<T> = core::result::Result<T, Error>;
 
 pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
-declare_thread_local!(pub static HART_LOCAL_MACHINE_INFO: HartLocalMachineInfo);
+
+thread_local!(
+    pub static HART_LOCAL_MACHINE_INFO: RefCell<HartLocalMachineInfo> = RefCell::new(HartLocalMachineInfo::default());
+);
 
 pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
+    // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
+    // is available
     let allocatable_memories = allocatable_memory_regions(boot_info);
     let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
-
+    boot_alloc.set_phys_offset(boot_info.physical_address_offset);
+    
+    // initializing the global allocator
+    allocator::init(&mut boot_alloc, boot_info);
+    
+    // initialize thread-local storage
+    // done after global allocator initialization since TLS destructors are registered in a heap
+    // allocated Vec
     init_tls(&mut boot_alloc, boot_info);
 
+    // initialize the logger
+    // done after TLS initialization since we maintain per-hart host stdio channels
     logger::init_hart(hartid);
     logger::init(LOG_LEVEL.to_level_filter());
 
     log::debug!("\n{boot_info}");
     log::trace!("Allocatable memory regions: {allocatable_memories:?}");
 
-    arch::per_hart_init_early();
+    // perform per-hart, architecture-specific initialization
+    // (e.g. setting the trap vector and resetting the FPU)
+    arch::per_hart_init();
 
+    // perform global, architecture-specific initialization
     arch::init();
-
-    allocator::init(&mut boot_alloc, boot_info);
 
     let fdt = locate_device_tree(boot_info);
 
@@ -83,10 +100,10 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     // TODO move this into a per_hart_init function
     let hart_local_minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt).unwrap() };
     log::debug!("\n{hart_local_minfo}");
-    HART_LOCAL_MACHINE_INFO.initialize_with(hart_local_minfo, |_, _| {});
 
     log::trace!("Hello from hart {}", hartid);
 
+    HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
     // frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
 
     // TODO init frame allocation (requires boot info)

@@ -732,6 +732,11 @@ dependencies = [
 [[package]]
 name = "thread-local"
 version = "0.1.0"
+dependencies = [
+ "cfg-if",
+ "log",
+ "riscv",
+]
 
 [[package]]
 name = "tinytemplate"

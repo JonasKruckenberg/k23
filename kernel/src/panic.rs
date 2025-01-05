@@ -185,7 +185,7 @@ mod panic_count {
         cell::Cell,
         sync::atomic::{AtomicUsize, Ordering},
     };
-    use thread_local::declare_thread_local;
+    use thread_local::thread_local;
 
     /// A reason for forcing an immediate abort on panic.
     #[derive(Debug)]
@@ -196,7 +196,7 @@ mod panic_count {
 
     // Panic count for the current thread and whether a panic hook is currently
     // being executed.
-    declare_thread_local! {
+    thread_local! {
         static LOCAL_PANIC_COUNT: Cell<(usize, bool)> = const { Cell::new((0, false)) }
     }
 

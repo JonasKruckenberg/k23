@@ -134,7 +134,7 @@ pub fn init() {
     // TODO riscv64_mmu_early_init_percpu
 }
 
-pub fn per_hart_init_early() {
+pub fn per_hart_init() {
     unsafe {
         // Initialize the trap handler
         trap_handler::init();
