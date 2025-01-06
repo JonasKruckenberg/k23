@@ -5,10 +5,11 @@ version = 4
 [[package]]
 name = "addr2line"
 version = "0.24.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfbe277e56a376000877090da837660b4427aad530e3028d44e0bffe4f89a1c1"
 dependencies = [
+ "fallible-iterator",
  "gimli",
+ "smallvec",
+ "sync",
 ]
 
 [[package]]
@@ -67,9 +68,7 @@ name = "backtrace"
 version = "0.1.0"
 dependencies = [
  "addr2line",
- "cfg-if",
  "gimli",
- "log",
  "rustc-demangle",
  "unwind2",
  "xmas-elf",
@@ -246,6 +245,12 @@ dependencies = [
  "libc",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
 
 [[package]]
 name = "getrandom"
@@ -689,6 +694,12 @@ dependencies = [
  "ryu",
  "serde",
 ]
+
+[[package]]
+name = "smallvec"
+version = "1.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 
 [[package]]
 name = "static_assertions"

@@ -7,11 +7,9 @@ use core::any::Any;
 use core::panic::{PanicPayload, UnwindSafe};
 use core::{fmt, mem, slice};
 use mmu::{AddressRangeExt, VirtualAddress};
-use sync::{LazyLock, Mutex};
+use sync::LazyLock;
 
-// TODO: SymbolizeContext uses a non-thread safe OnceCell "polyfill" replace with thread-safe version
-// and remove this Mutex
-static SYMBOLIZE_CONTEXT: LazyLock<Mutex<SymbolizeContext>> = LazyLock::new(|| {
+static SYMBOLIZE_CONTEXT: LazyLock<SymbolizeContext> = LazyLock::new(|| {
     log::trace!("Setting up symbolize context...");
     let boot_info = BOOT_INFO.get().unwrap();
 
@@ -26,8 +24,7 @@ static SYMBOLIZE_CONTEXT: LazyLock<Mutex<SymbolizeContext>> = LazyLock::new(|| {
     })
     .unwrap();
 
-    let ctx = SymbolizeContext::new(elf, boot_info.kernel_virt.start.get() as u64).unwrap();
-    Mutex::new(ctx)
+    SymbolizeContext::new(elf, boot_info.kernel_virt.start.get() as u64).unwrap()
 });
 
 /// Determines whether the current thread is unwinding because of panic.
@@ -78,8 +75,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             thread_local::destructors::run();
         }
 
-        let ctx = SYMBOLIZE_CONTEXT.lock();
-        let backtrace = Backtrace::capture(&ctx);
+        let backtrace = Backtrace::capture(&SYMBOLIZE_CONTEXT);
         log::error!("{backtrace}");
 
         panic_count::finished_panic_hook();
