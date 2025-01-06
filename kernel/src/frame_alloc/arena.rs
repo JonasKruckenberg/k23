@@ -159,14 +159,19 @@ impl Arena {
             self.free_lists[order - 1].push_back(buddy);
         }
 
-        let frames_uninit: &mut [MaybeUninit<Frame>] =
-            unsafe { slice::from_raw_parts_mut(frame.cast().as_ptr(), size_frames) };
+        // Initialize all frame structs
+        // The base frame we pulled from the freelist is already correctly initialized, but all following
+        // frames of its buddy "block" are left uninitialized, so we need to do that now.
+        let frames = {
+            let uninit: &mut [MaybeUninit<Frame>] =
+                unsafe { slice::from_raw_parts_mut(frame.cast().as_ptr(), size_frames) };
 
-        let base = unsafe { frame.as_ref().phys };
+            let base = unsafe { frame.as_ref().phys };
 
-        let frames = frames_uninit.into_iter().enumerate().map(|(idx, slot)| {
-            NonNull::from(slot.write(Frame::new(base.checked_add(idx * PAGE_SIZE).unwrap())))
-        });
+            uninit.iter_mut().enumerate().map(move |(idx, slot)| {
+                NonNull::from(slot.write(Frame::new(base.checked_add(idx * PAGE_SIZE).unwrap())))
+            })
+        };
 
         self.used_frames += size_frames;
         Some(linked_list::List::from_iter(frames))

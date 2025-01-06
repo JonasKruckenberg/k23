@@ -1,17 +1,17 @@
-use crate::error::Error;
-use arena::Arena;
+mod arena;
+mod frame;
+
+use arena::{select_arenas, Arena};
 use arrayvec::ArrayVec;
 use core::alloc::Layout;
 use core::cell::RefCell;
-use frame::Frame;
+use core::ptr::NonNull;
+pub use frame::Frame;
 use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::BootstrapAllocator;
 use mmu::VirtualAddress;
 use sync::{Mutex, OnceLock};
 use thread_local::thread_local;
-
-mod arena;
-mod frame;
 
 static GLOBAL_FRAME_ALLOCATOR: OnceLock<Mutex<GlobalFrameAllocator>> = OnceLock::new();
 
@@ -19,12 +19,49 @@ thread_local! {
     static HART_LOCAL_FRAME_CACHE: RefCell<PerHartFrameCache> = RefCell::new(PerHartFrameCache::default());
 }
 
+pub fn allocate_one() -> Option<NonNull<Frame>> {
+    HART_LOCAL_FRAME_CACHE.with_borrow_mut(|hart_local_cache| {
+        hart_local_cache.allocate_one().or_else(|| {
+            let mut global_alloc = GLOBAL_FRAME_ALLOCATOR.get().unwrap().lock();
+
+            global_alloc.allocate_one()
+        })
+    })
+}
+
+pub fn allocate_contiguous(layout: Layout) -> Option<linked_list::List<Frame>> {
+    HART_LOCAL_FRAME_CACHE.with_borrow_mut(|hart_local_cache| {
+        // try to allocate from the per-hart cache first
+        hart_local_cache.allocate_contiguous(layout).or_else(|| {
+            let mut global_alloc = GLOBAL_FRAME_ALLOCATOR.get().unwrap().lock();
+
+            log::trace!(
+                "Hart-local cache exhausted, refilling {} frames...",
+                layout.size() / PAGE_SIZE
+            );
+            let mut frames = global_alloc.allocate_contiguous(layout)?;
+            hart_local_cache.free_list.append(&mut frames);
+
+            log::trace!("retrying allocation...");
+            // If this fails then we failed to pull enough frames from the global allocator
+            // which means we're fully out of frames
+            hart_local_cache.allocate_contiguous(layout)
+        })
+    })
+}
+
+pub fn deallocate(mut frames: linked_list::List<Frame>) {
+    HART_LOCAL_FRAME_CACHE.with_borrow_mut(|hart_local_cache| {
+        hart_local_cache.free_list.append(&mut frames);
+    });
+}
+
 #[cold]
 pub fn init(boot_alloc: BootstrapAllocator, phys_off: VirtualAddress) {
     GLOBAL_FRAME_ALLOCATOR.get_or_init(|| {
         let mut arenas: ArrayVec<_, 16> = ArrayVec::new();
 
-        for selection_result in arena::select_arenas(boot_alloc.free_regions()) {
+        for selection_result in select_arenas(boot_alloc.free_regions()) {
             match selection_result {
                 Ok(selection) => {
                     log::trace!("selection {selection:?}");
@@ -40,23 +77,29 @@ pub fn init(boot_alloc: BootstrapAllocator, phys_off: VirtualAddress) {
     });
 }
 
-pub struct GlobalFrameAllocator {
+struct GlobalFrameAllocator {
     arenas: ArrayVec<Arena, 16>,
 }
 
 impl GlobalFrameAllocator {
-    pub fn allocate_contiguous(
-        &mut self,
-        layout: Layout,
-        list: &mut linked_list::List<Frame>,
-    ) -> crate::Result<()> {
+    fn allocate_one(&mut self) -> Option<NonNull<Frame>> {
         for arena in &mut self.arenas {
-            if arena.allocate_contiguous(layout, list).is_ok() {
-                return Ok(());
+            if let Some(frame) = arena.allocate_one() {
+                return Some(frame);
             }
         }
 
-        Err(Error::NoResources)
+        None
+    }
+
+    fn allocate_contiguous(&mut self, layout: Layout) -> Option<linked_list::List<Frame>> {
+        for arena in &mut self.arenas {
+            if let Some(frames) = arena.allocate_contiguous(layout) {
+                return Some(frames);
+            }
+        }
+
+        None
     }
 }
 
@@ -66,7 +109,11 @@ struct PerHartFrameCache {
 }
 
 impl PerHartFrameCache {
-    fn allocate(&mut self, layout: Layout) -> Option<linked_list::List<Frame>> {
+    fn allocate_one(&mut self) -> Option<NonNull<Frame>> {
+        self.free_list.pop_front()
+    }
+
+    fn allocate_contiguous(&mut self, layout: Layout) -> Option<linked_list::List<Frame>> {
         let frames = layout.size() / PAGE_SIZE;
 
         // short-circuit if the cache doesn't even have enough pages
@@ -117,32 +164,4 @@ impl PerHartFrameCache {
 
         Some(split)
     }
-}
-
-pub fn allocate(layout: Layout) -> crate::Result<linked_list::List<Frame>> {
-    HART_LOCAL_FRAME_CACHE.with_borrow_mut(|hart_local_cache| {
-        // try to allocate from the per-hart cache first
-        if let Some(frames) = hart_local_cache.allocate(layout) {
-            Ok(frames)
-        } else {
-            let mut global_alloc = GLOBAL_FRAME_ALLOCATOR.get().unwrap().lock();
-
-            log::trace!(
-                "Hart-local cache exhausted, refilling {} frames...",
-                layout.size() / PAGE_SIZE
-            );
-            global_alloc.allocate_contiguous(layout, &mut hart_local_cache.free_list)?;
-
-            log::trace!("retrying allocation...");
-            // If this fails then we failed to pull enough frames from the global allocator
-            // which means we're fully out of frames
-            hart_local_cache.allocate(layout).ok_or(Error::NoResources)
-        }
-    })
-}
-
-pub fn deallocate(mut frames: linked_list::List<Frame>) {
-    HART_LOCAL_FRAME_CACHE.with_borrow_mut(|hart_local_cache| {
-        hart_local_cache.free_list.append(&mut frames);
-    });
 }
