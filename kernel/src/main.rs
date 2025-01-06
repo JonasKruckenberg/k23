@@ -19,6 +19,7 @@ extern crate alloc;
 mod allocator;
 mod arch;
 mod error;
+mod frame_alloc;
 mod logger;
 mod machine_info;
 mod panic;
@@ -104,30 +105,16 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::debug!("\n{hart_local_minfo}");
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
 
+    frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
+
+    // TODO init kernel address space (requires global allocator)
+
     log::trace!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
 
-    // frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
-    // TODO init frame allocation (requires boot info)
-    //      - init PMM zones
-    //          - init PMM arenas
-    //              - init buddy allocator
-    // TODO init kernel address space (requires global allocator)
-    // TODO init TLS (requires kernel address space)
-
-    // - `pmm_init()`
-    //     - [all][global]   init arenas/sections
-    //         - for each reported memory region
-    //             - calculate & create bookkeeping slice (region size / page size) * size_of::<Page>()
-    //             - mark bookkeeping pages as wired
-    //             - initialize buddy allocator with non-bookkeeping pages
-    //             - create arena/section
-    //                 struct Arena { pages: &'static [Page] }
-    //         - for each loader-used region => mark as used & wired
-    //         - for each used region => mark as used & wired
     // - [all][global] parse cmdline
     // - [all][global] `vm::init()` init virtual memory management
     // - [all][global] `lockup::init()` initialize lockup detector
