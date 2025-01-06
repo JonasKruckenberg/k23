@@ -559,6 +559,19 @@ where
     }
 }
 
+impl<T> FromIterator<T::Handle> for List<T>
+where
+    T: Linked + ?Sized,
+{
+    fn from_iter<I: IntoIterator<Item = T::Handle>>(iter: I) -> Self {
+        let mut out = Self::new();
+        for item in iter.into_iter() {
+            out.push_back(item);
+        }
+        out
+    }
+}
+
 impl<'a, T: Linked + ?Sized> IntoIterator for &'a List<T> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
