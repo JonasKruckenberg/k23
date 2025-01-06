@@ -66,7 +66,7 @@ thread_local!(
 
 pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     BOOT_INFO.get_or_init(|| boot_info);
-    
+
     // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
     // is available
     let allocatable_memories = allocatable_memory_regions(boot_info);

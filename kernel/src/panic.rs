@@ -59,7 +59,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 
     let loc = info.location().unwrap(); // Currently always returns Some
     let msg = info.message();
-    
+
     backtrace::__rust_end_short_backtrace(|| {
         if let Some(must_abort) = panic_count::increase(true) {
             match must_abort {
