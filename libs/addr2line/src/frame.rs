@@ -1,5 +1,6 @@
 use crate::{maybe_small, Error, Function, InlinedFunction, ResUnit};
 use core::iter;
+use fallible_iterator::FallibleIterator;
 
 /// A source location.
 pub struct Location<'a> {
@@ -75,10 +76,17 @@ where
             next: location,
         }))
     }
+}
 
-    /// Advances the iterator and returns the next frame.
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Result<Option<Frame<'ctx, R>>, Error> {
+impl<'ctx, R> FallibleIterator for FrameIter<'ctx, R>
+where
+    R: gimli::Reader + 'ctx,
+{
+    type Item = Frame<'ctx, R>;
+    type Error = Error;
+
+    #[inline]
+    fn next(&mut self) -> Result<Option<Frame<'ctx, R>>, Error> {
         let frames = match &mut self.0 {
             FrameIterState::Empty => return Ok(None),
             FrameIterState::Location(location) => {
@@ -139,19 +147,6 @@ where
             }),
             location: loc,
         }))
-    }
-}
-
-impl<'ctx, R> fallible_iterator::FallibleIterator for FrameIter<'ctx, R>
-where
-    R: gimli::Reader + 'ctx,
-{
-    type Item = Frame<'ctx, R>;
-    type Error = Error;
-
-    #[inline]
-    fn next(&mut self) -> Result<Option<Frame<'ctx, R>>, Error> {
-        self.next()
     }
 }
 

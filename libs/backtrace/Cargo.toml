@@ -14,3 +14,4 @@ gimli.workspace = true
 addr2line.workspace = true
 xmas-elf.workspace = true
 rustc-demangle.workspace = true
+fallible-iterator.workspace = true

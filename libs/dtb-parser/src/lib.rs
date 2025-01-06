@@ -11,11 +11,11 @@ pub mod debug;
 mod error;
 mod parser;
 
+use crate::parser::Parser;
 use core::ffi::CStr;
 use core::{mem, slice, str};
-
-use crate::parser::Parser;
 pub use error::Error;
+use fallible_iterator::FallibleIterator;
 
 type Result<T> = core::result::Result<T, Error>;
 
@@ -249,11 +249,13 @@ impl ReserveEntries<'_> {
 
         Ok(u64::from_be_bytes(bytes.try_into()?))
     }
+}
 
-    /// # Errors
-    ///
-    /// Returns an error if the next entry could not be read.
-    pub fn next_entry(&mut self) -> Result<Option<ReserveEntry>> {
+impl FallibleIterator for ReserveEntries<'_> {
+    type Item = ReserveEntry;
+    type Error = Error;
+
+    fn next(&mut self) -> core::result::Result<Option<Self::Item>, Self::Error> {
         if self.done || self.offset == self.buf.len() {
             Ok(None)
         } else {
@@ -294,8 +296,13 @@ impl<'dt> Strings<'dt> {
             err: false,
         }
     }
+}
 
-    fn next(&mut self) -> Result<Option<&'dt str>> {
+impl<'dt> FallibleIterator for Strings<'dt> {
+    type Item = &'dt str;
+    type Error = Error;
+
+    fn next(&mut self) -> core::result::Result<Option<Self::Item>, Self::Error> {
         if self.offset == self.bytes.len() || self.err {
             return Ok(None);
         }
@@ -304,15 +311,5 @@ impl<'dt> Strings<'dt> {
         self.offset += str.len() + 1;
 
         Ok(Some(str))
-    }
-}
-
-impl<'dt> Iterator for Strings<'dt> {
-    type Item = Result<&'dt str>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let res = self.next();
-        self.err = res.is_err();
-        res.transpose()
     }
 }

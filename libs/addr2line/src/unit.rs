@@ -1,13 +1,13 @@
-use alloc::boxed::Box;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
-use core::cmp;
-
 use crate::{
     Context, DebugFile, Error, Function, LazyFunctions, LazyLines, LazyResult,
     LineLocationRangeIter, Lines, Location, LookupContinuation, LookupResult, RangeAttributes,
     SimpleLookup, SplitDwarfLoad,
 };
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::cmp;
+use fallible_iterator::FallibleIterator;
 
 pub(crate) struct UnitRange {
     unit_id: usize,
@@ -510,8 +510,15 @@ pub struct LocationRangeIter<'ctx, R: gimli::Reader> {
     sections: &'ctx gimli::Dwarf<R>,
 }
 
-impl<'ctx, R: gimli::Reader> LocationRangeIter<'ctx, R> {
-    fn next_loc(&mut self) -> Result<Option<(u64, u64, Location<'ctx>)>, Error> {
+impl<'ctx, R> FallibleIterator for LocationRangeIter<'ctx, R>
+where
+    R: gimli::Reader + 'ctx,
+{
+    type Item = (u64, u64, Location<'ctx>);
+    type Error = Error;
+
+    #[inline]
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
         loop {
             let iter = self.iter.take();
             match iter {
@@ -533,30 +540,5 @@ impl<'ctx, R: gimli::Reader> LocationRangeIter<'ctx, R> {
                 }
             }
         }
-    }
-}
-
-impl<'ctx, R> Iterator for LocationRangeIter<'ctx, R>
-where
-    R: gimli::Reader + 'ctx,
-{
-    type Item = (u64, u64, Location<'ctx>);
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        self.next_loc().unwrap_or_default()
-    }
-}
-
-impl<'ctx, R> fallible_iterator::FallibleIterator for LocationRangeIter<'ctx, R>
-where
-    R: gimli::Reader + 'ctx,
-{
-    type Item = (u64, u64, Location<'ctx>);
-    type Error = Error;
-
-    #[inline]
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        self.next_loc()
     }
 }

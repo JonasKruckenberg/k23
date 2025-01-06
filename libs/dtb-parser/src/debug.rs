@@ -1,5 +1,6 @@
 use crate::{Error, Node, Strings, Visitor};
 use core::fmt;
+use fallible_iterator::FallibleIterator;
 
 #[allow(clippy::module_name_repetitions)]
 pub struct DebugVisitor<'a, T: fmt::Write> {

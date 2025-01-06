@@ -10,4 +10,4 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-log.workspace = true
+fallible-iterator.workspace = true

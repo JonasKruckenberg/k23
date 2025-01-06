@@ -1,6 +1,7 @@
 use crate::arch;
 use crate::eh_info::obtain_eh_info;
 use crate::utils::{deref_pointer, get_unlimited_slice, with_context, StoreOnStack};
+use fallible_iterator::FallibleIterator;
 use gimli::{
     CfaRule, EhFrame, EndianSlice, FrameDescriptionEntry, NativeEndian, Register, RegisterRule,
     UnwindSection, UnwindTableRow,
@@ -163,9 +164,13 @@ impl FramesIter {
     pub fn from_context(ctx: arch::Context) -> Self {
         Self { ctx, signal: false }
     }
+}
 
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> crate::Result<Option<Frame<'static>>> {
+impl FallibleIterator for FramesIter {
+    type Item = Frame<'static>;
+    type Error = crate::Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
         if let Some(frame) = Frame::from_context(&self.ctx, self.signal)? {
             self.ctx = frame.unwind()?;
             self.signal = frame.is_signal_trampoline();

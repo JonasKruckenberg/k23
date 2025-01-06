@@ -6,6 +6,7 @@ use arrayvec::ArrayVec;
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::ptr::NonNull;
+use fallible_iterator::FallibleIterator;
 pub use frame::Frame;
 use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::BootstrapAllocator;
@@ -61,7 +62,7 @@ pub fn init(boot_alloc: BootstrapAllocator, phys_off: VirtualAddress) {
     GLOBAL_FRAME_ALLOCATOR.get_or_init(|| {
         let mut arenas: ArrayVec<_, 16> = ArrayVec::new();
 
-        for selection_result in select_arenas(boot_alloc.free_regions()) {
+        for selection_result in select_arenas(boot_alloc.free_regions()).iterator() {
             match selection_result {
                 Ok(selection) => {
                     log::trace!("selection {selection:?}");
