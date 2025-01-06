@@ -1,0 +1,13 @@
+[package]
+name = "addr2line"
+version = "0.24.2"
+description = "A cross-platform symbolication library written in Rust, using `gimli`"
+edition.workspace = true
+authors.workspace = true
+license = "Apache-2.0 OR MIT"
+
+[dependencies]
+sync.workspace = true
+gimli = { workspace = true, default-features = false, features = ["read"] }
+smallvec.workspace = true
+fallible-iterator.workspace = true

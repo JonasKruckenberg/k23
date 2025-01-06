@@ -106,11 +106,11 @@ impl fmt::Display for Backtrace<'_, '_> {
             }
         }
 
-        writeln!(
-            f,
-            "note: Some details are omitted, \
-             run with `RUST_BACKTRACE=full` for a verbose backtrace."
-        )?;
+        // writeln!(
+        //     f,
+        //     "note: Some details are omitted, \
+        //      run with `RUST_BACKTRACE=full` for a verbose backtrace."
+        // )?;
 
         Ok(())
     }
