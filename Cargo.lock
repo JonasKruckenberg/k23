@@ -343,13 +343,13 @@ dependencies = [
  "loader-api",
  "log",
  "mmu",
- "pin-project-lite",
  "riscv",
  "static_assertions",
  "sync",
  "talc",
  "thread-local",
  "unwind2",
+ "xmas-elf",
 ]
 
 [[package]]
@@ -448,12 +448,6 @@ name = "oorandom"
 version = "11.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b410bbe7e14ab526a0e86877eb47c6996a2bd7746f027ba551028c925390e4e9"
-
-[[package]]
-name = "pin-project-lite"
-version = "0.2.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "915a1e146535de9163f3987b8944ed8cf49a18bb0056bcebcdcece385cece4ff"
 
 [[package]]
 name = "plotters"

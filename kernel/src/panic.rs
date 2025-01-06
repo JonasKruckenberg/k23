@@ -1,10 +1,34 @@
-use crate::arch;
 use crate::panic::panic_count::MustAbort;
+use crate::{arch, BOOT_INFO};
 use alloc::boxed::Box;
 use alloc::string::String;
+use backtrace::{Backtrace, SymbolizeContext};
 use core::any::Any;
-use core::panic::{Location, PanicPayload, UnwindSafe};
-use core::{fmt, mem};
+use core::panic::{PanicPayload, UnwindSafe};
+use core::{fmt, mem, slice};
+use mmu::{AddressRangeExt, VirtualAddress};
+use sync::{LazyLock, Mutex};
+
+// TODO: SymbolizeContext uses a non-thread safe OnceCell "polyfill" replace with thread-safe version
+// and remove this Mutex
+static SYMBOLIZE_CONTEXT: LazyLock<Mutex<SymbolizeContext>> = LazyLock::new(|| {
+    log::trace!("Setting up symbolize context...");
+    let boot_info = BOOT_INFO.get().unwrap();
+
+    let elf = xmas_elf::ElfFile::new(unsafe {
+        let base = VirtualAddress::from_phys(
+            boot_info.kernel_elf.start,
+            boot_info.physical_address_offset,
+        )
+        .unwrap();
+
+        slice::from_raw_parts(base.as_ptr(), boot_info.kernel_elf.size())
+    })
+    .unwrap();
+
+    let ctx = SymbolizeContext::new(elf, boot_info.kernel_virt.start.get() as u64).unwrap();
+    Mutex::new(ctx)
+});
 
 /// Determines whether the current thread is unwinding because of panic.
 #[inline]
@@ -26,30 +50,6 @@ where
     })
 }
 
-/// Triggers a panic, bypassing the panic hook.
-pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
-    struct RewrapBox(Box<dyn Any + Send>);
-
-    unsafe impl PanicPayload for RewrapBox {
-        fn take_box(&mut self) -> *mut (dyn Any + Send) {
-            Box::into_raw(mem::replace(&mut self.0, Box::new(())))
-        }
-
-        fn get(&mut self) -> &(dyn Any + Send) {
-            &*self.0
-        }
-    }
-
-    impl fmt::Display for RewrapBox {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.write_str(payload_as_str(&self.0))
-        }
-    }
-
-    panic_count::increase(false);
-    rust_panic(&mut RewrapBox(payload))
-}
-
 /// Entry point for panics from the `core` crate.
 #[panic_handler]
 fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
@@ -57,6 +57,57 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
     // no need to bother with those now as we're about to shut down anyway
     arch::interrupt::disable();
 
+    let loc = info.location().unwrap(); // Currently always returns Some
+    let msg = info.message();
+    
+    backtrace::__rust_end_short_backtrace(|| {
+        if let Some(must_abort) = panic_count::increase(true) {
+            match must_abort {
+                MustAbort::PanicInHook => {
+                    log::error!("panicked at {loc}:\n{msg}\nhart panicked while processing panic. aborting.\n");
+                }
+            }
+
+            arch::abort();
+        }
+
+        log::error!("hart panicked at {loc}:\n{msg}");
+
+        // Run thread-local destructors
+        unsafe {
+            thread_local::destructors::run();
+        }
+
+        let ctx = SYMBOLIZE_CONTEXT.lock();
+        let backtrace = Backtrace::capture(&ctx);
+        log::error!("{backtrace}");
+
+        panic_count::finished_panic_hook();
+
+        if !info.can_unwind() {
+            // If a thread panics while running destructors or tries to unwind
+            // through a nounwind function (e.g. extern "C") then we cannot continue
+            // unwinding and have to abort immediately.
+            log::error!("hart caused non-unwinding panic. aborting.\n");
+            arch::abort();
+        }
+
+        rust_panic(construct_panic_payload(info))
+    })
+}
+
+/// Mirroring std, this is an unmangled function on which to slap
+/// yer breakpoints for backtracing panics.
+#[inline(never)]
+#[no_mangle]
+fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
+    match unwind2::begin_panic(payload) {
+        Ok(_) => arch::exit(0),
+        Err(_) => arch::abort(),
+    }
+}
+
+fn construct_panic_payload(info: &core::panic::PanicInfo) -> Box<dyn Any + Send> {
     struct FormatStringPayload<'a> {
         inner: &'a core::panic::PanicMessage<'a>,
         string: Option<String>,
@@ -119,76 +170,18 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
     }
 
     let msg = info.message();
-    let loc = info.location().unwrap(); // Currently, this is always `Some`.
     if let Some(s) = msg.as_str() {
-        panic_handler(&mut StaticStrPayload(s), loc, info.can_unwind())
+        unsafe { Box::from_raw(StaticStrPayload(s).take_box()) }
     } else {
-        panic_handler(
-            &mut FormatStringPayload {
-                inner: &msg,
-                string: None,
-            },
-            loc,
-            info.can_unwind(),
-        )
-    }
-}
-
-fn panic_handler(payload: &mut dyn PanicPayload, loc: &Location<'_>, can_unwind: bool) -> ! {
-    backtrace::__rust_end_short_backtrace(|| {
-        let msg = payload_as_str(payload.get());
-
-        if let Some(must_abort) = panic_count::increase(true) {
-            match must_abort {
-                MustAbort::PanicInHook => {
-                    log::error!("panicked at {loc}:\n{msg}\nhart panicked while processing panic. aborting.\n");
-                }
-            }
-
-            arch::abort();
-        }
-
-        // TODO panic processing here
-
-        log::error!("hart panicked at {loc}:\n{msg}");
-
-        // Run thread-local destructors
         unsafe {
-            thread_local::destructors::run();
+            Box::from_raw(
+                FormatStringPayload {
+                    inner: &msg,
+                    string: None,
+                }
+                .take_box(),
+            )
         }
-
-        panic_count::finished_panic_hook();
-
-        if !can_unwind {
-            // If a thread panics while running destructors or tries to unwind
-            // through a nounwind function (e.g. extern "C") then we cannot continue
-            // unwinding and have to abort immediately.
-            log::error!("hart caused non-unwinding panic. aborting.\n");
-            arch::abort();
-        }
-
-        rust_panic(payload)
-    })
-}
-
-/// Mirroring std, this is an unmangled function on which to slap
-/// yer breakpoints for backtracing panics.
-#[inline(never)]
-#[no_mangle]
-fn rust_panic(payload: &mut dyn PanicPayload) -> ! {
-    match unwind2::begin_panic(unsafe { Box::from_raw(payload.take_box()) }) {
-        Ok(_) => arch::exit(0),
-        Err(_) => arch::abort(),
-    }
-}
-
-fn payload_as_str(payload: &dyn Any) -> &str {
-    if let Some(&s) = payload.downcast_ref::<&'static str>() {
-        s
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.as_str()
-    } else {
-        "Box<dyn Any>"
     }
 }
 

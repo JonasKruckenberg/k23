@@ -56,6 +56,7 @@ pub const INITIAL_HEAP_SIZE_PAGES: usize = 2048; // 32 MiB
 
 pub type Result<T> = core::result::Result<T, Error>;
 
+pub static BOOT_INFO: OnceLock<&'static BootInfo> = OnceLock::new();
 pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
 
 thread_local!(
@@ -64,6 +65,8 @@ thread_local!(
 );
 
 pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
+    BOOT_INFO.get_or_init(|| boot_info);
+    
     // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
     // is available
     let allocatable_memories = allocatable_memory_regions(boot_info);
