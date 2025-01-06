@@ -108,13 +108,13 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
 
     // TODO init kernel address space (requires global allocator)
-
+    
     log::trace!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
-
+    
     // - [all][global] parse cmdline
     // - [all][global] `vm::init()` init virtual memory management
     // - [all][global] `lockup::init()` initialize lockup detector
