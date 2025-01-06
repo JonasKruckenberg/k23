@@ -29,9 +29,9 @@ use core::intrinsics;
 use core::mem::ManuallyDrop;
 use core::panic::UnwindSafe;
 use core::ptr::addr_of_mut;
-
 pub use eh_info::EhInfo;
 pub use error::Error;
+use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FramesIter};
 
 pub(crate) type Result<T> = core::result::Result<T, Error>;

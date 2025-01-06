@@ -4,6 +4,7 @@ use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core::range::Range;
 use core::{cmp, fmt, mem, slice};
+use fallible_iterator::FallibleIterator;
 use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::FreeRegions;
 use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
@@ -208,11 +209,14 @@ pub struct ArenaSelections<'a> {
     wasted_bytes: usize,
 }
 
-impl Iterator for ArenaSelections<'_> {
-    type Item = Result<ArenaSelection, SelectionError>;
+impl FallibleIterator for ArenaSelections<'_> {
+    type Item = ArenaSelection;
+    type Error = SelectionError;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut arena = self.inner.next()?;
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        let Some(mut arena) = self.inner.next() else {
+            return Ok(None);
+        };
 
         for region in self.inner.by_ref() {
             let pages_in_hole = region.start.checked_sub_addr(arena.end).unwrap() / PAGE_SIZE;
@@ -232,7 +236,7 @@ impl Iterator for ArenaSelections<'_> {
         // We can't use empty arenas anyway
         if aligned.is_empty() {
             log::error!("arena is too small");
-            return Some(Err(SelectionError { range: aligned }));
+            return Err(SelectionError { range: aligned });
         }
 
         let bookkeeping_start = aligned
@@ -244,13 +248,13 @@ impl Iterator for ArenaSelections<'_> {
         // The arena has no space to hold its own bookkeeping
         if bookkeeping_start < aligned.start {
             log::error!("arena is too small");
-            return Some(Err(SelectionError { range: aligned }));
+            return Err(SelectionError { range: aligned });
         }
 
         let bookkeeping = Range::from(bookkeeping_start..aligned.end);
         aligned.end = bookkeeping.start;
 
-        Some(Ok(ArenaSelection {
+        Ok(Some(ArenaSelection {
             arena: aligned,
             bookkeeping,
             wasted_bytes: mem::take(&mut self.wasted_bytes),

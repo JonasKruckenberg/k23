@@ -6,6 +6,7 @@ use core::fmt::Formatter;
 use core::range::Range;
 use core::{fmt, mem};
 use dtb_parser::{DevTree, Node, Strings, Visitor};
+use fallible_iterator::FallibleIterator;
 use mmu::PhysicalAddress;
 
 /// Information about the machine we're running on.
@@ -405,7 +406,7 @@ impl<'dt> Visitor<'dt> for SocVisitorChildVisitor<'dt> {
     }
 
     fn visit_compatible(&mut self, strings: Strings<'dt>) -> Result<(), Self::Error> {
-        self.compatible = strings.collect::<Result<_, _>>()?;
+        self.compatible = strings.collect::<Vec<_>>()?;
 
         Ok(())
     }

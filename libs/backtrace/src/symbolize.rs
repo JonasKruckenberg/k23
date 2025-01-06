@@ -1,5 +1,6 @@
 use core::ffi::c_void;
 use core::{fmt, str};
+use fallible_iterator::FallibleIterator;
 use gimli::{EndianSlice, NativeEndian};
 use rustc_demangle::{try_demangle, Demangle};
 use xmas_elf::sections::SectionData;
@@ -128,8 +129,13 @@ impl<'ctx> SymbolsIter<'_, 'ctx> {
             .find(|sym| sym.value() == self.addr)
             .map(|sym| sym.get_name(self.elf).unwrap())
     }
+}
 
-    pub fn next(&mut self) -> gimli::Result<Option<Symbol<'ctx>>> {
+impl<'ctx> FallibleIterator for SymbolsIter<'_, 'ctx> {
+    type Item = Symbol<'ctx>;
+    type Error = gimli::Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
         if let Some(frame) = self.iter.next()? {
             self.anything = true;
 

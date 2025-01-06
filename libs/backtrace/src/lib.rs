@@ -4,6 +4,7 @@ mod symbolize;
 
 use core::fmt;
 use core::fmt::Formatter;
+use fallible_iterator::FallibleIterator;
 use unwind2::FramesIter;
 
 pub use crate::symbolize::SymbolizeContext;

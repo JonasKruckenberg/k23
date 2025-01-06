@@ -5,6 +5,7 @@ use core::fmt;
 use core::fmt::Formatter;
 use core::range::Range;
 use dtb_parser::{DevTree, Node, Visitor};
+use fallible_iterator::FallibleIterator;
 use mmu::{arch, AddressRangeExt, PhysicalAddress};
 
 /// Information about the machine we're running on.
@@ -56,7 +57,7 @@ impl<'dt> MachineInfo<'dt> {
         };
 
         // Apply reserved_entries
-        while let Some(entry) = reservations.next_entry()? {
+        while let Some(entry) = reservations.next()? {
             let entry = {
                 let start = PhysicalAddress::new(usize::try_from(entry.address)?);
 

@@ -68,6 +68,7 @@ name = "backtrace"
 version = "0.1.0"
 dependencies = [
  "addr2line",
+ "fallible-iterator",
  "gimli",
  "rustc-demangle",
  "unwind2",
@@ -227,7 +228,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 name = "dtb-parser"
 version = "0.1.0"
 dependencies = [
- "log",
+ "fallible-iterator",
 ]
 
 [[package]]
@@ -344,6 +345,7 @@ dependencies = [
  "bitflags",
  "cfg-if",
  "dtb-parser",
+ "fallible-iterator",
  "linked-list",
  "loader-api",
  "log",
@@ -384,6 +386,7 @@ dependencies = [
  "arrayvec",
  "cfg-if",
  "dtb-parser",
+ "fallible-iterator",
  "loader-api",
  "log",
  "mmu",
@@ -770,6 +773,7 @@ name = "unwind2"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
+ "fallible-iterator",
  "gimli",
  "log",
  "riscv",

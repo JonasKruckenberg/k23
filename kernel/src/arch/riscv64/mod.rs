@@ -5,6 +5,7 @@ mod trap_handler;
 use bitflags::bitflags;
 use core::arch::asm;
 use dtb_parser::Strings;
+use fallible_iterator::FallibleIterator;
 use mmu::VirtualAddress;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
@@ -71,11 +72,11 @@ bitflags! {
     }
 }
 
-pub fn parse_riscv_extensions(strs: Strings) -> Result<RiscvExtensions, dtb_parser::Error> {
+pub fn parse_riscv_extensions(mut strs: Strings) -> Result<RiscvExtensions, dtb_parser::Error> {
     let mut out = RiscvExtensions::empty();
 
-    for str in strs {
-        out |= match str? {
+    while let Some(str) = strs.next()? {
+        out |= match str {
             "i" => RiscvExtensions::I,
             "m" => RiscvExtensions::M,
             "a" => RiscvExtensions::A,
