@@ -23,9 +23,11 @@ mod frame_alloc;
 mod logger;
 mod machine_info;
 mod panic;
+mod thread_local;
 mod time;
 
 use crate::error::Error;
+use crate::frame_alloc::FrameAllocator;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use crate::time::Instant;
 use arrayvec::ArrayVec;
@@ -35,7 +37,7 @@ use core::range::Range;
 use core::{cmp, slice};
 use loader_api::{BootInfo, MemoryRegionKind};
 use mmu::arch::PAGE_SIZE;
-use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
+use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator as _};
 use mmu::{PhysicalAddress, VirtualAddress};
 use sync::OnceLock;
 use thread_local::thread_local;
@@ -108,7 +110,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::debug!("\n{hart_local_minfo}");
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
 
-    frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
+    let frame_alloc = FrameAllocator::new(boot_alloc, boot_info.physical_address_offset);
 
     // TODO init kernel address space (requires global allocator)
 
