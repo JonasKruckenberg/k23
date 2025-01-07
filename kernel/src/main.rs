@@ -25,9 +25,9 @@ mod machine_info;
 mod panic;
 mod thread_local;
 mod time;
+mod vm;
 
 use crate::error::Error;
-use crate::frame_alloc::FrameAllocator;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use crate::time::Instant;
 use arrayvec::ArrayVec;
@@ -110,7 +110,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::debug!("\n{hart_local_minfo}");
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
 
-    let frame_alloc = FrameAllocator::new(boot_alloc, boot_info.physical_address_offset);
+    let frame_alloc = frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
     log::trace!("{:?}", frame_alloc.frame_usage());
 
     // TODO init kernel address space (requires global allocator)
@@ -120,6 +120,8 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
+
+    vm::test(boot_info).unwrap();
 
     // - [all][global] parse cmdline
     // - [all][global] `vm::init()` init virtual memory management

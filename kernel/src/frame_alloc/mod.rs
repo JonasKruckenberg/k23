@@ -16,22 +16,13 @@ pub use frame::Frame;
 use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::{BootstrapAllocator, FrameUsage};
 use mmu::{PhysicalAddress, VirtualAddress};
-use sync::Mutex;
+use sync::{Mutex, OnceLock};
 
-pub struct FrameAllocator {
-    /// Global list of arenas that can be allocated from.
-    arenas: Mutex<Vec<Arena>>,
-    /// Per-hart cache of frames to speed up allocation.
-    hart_local_cache: ThreadLocal<RefCell<linked_list::List<Frame>>>,
-    /// Number of frames - across all harts - that are in hart-local caches.
-    /// This value must only ever be treated as a hint and should only be used to
-    /// produce more accurate frame usage statistics.
-    frames_in_caches_hint: AtomicUsize,
-}
+pub static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 
-impl FrameAllocator {
-    #[cold]
-    pub fn new(boot_alloc: BootstrapAllocator, phys_offset: VirtualAddress) -> Self {
+#[cold]
+pub fn init(boot_alloc: BootstrapAllocator, phys_offset: VirtualAddress) -> &'static FrameAllocator {
+    FRAME_ALLOC.get_or_init(|| {
         let mut arenas = Vec::new();
 
         for selection_result in select_arenas(boot_alloc.free_regions()).iterator() {
@@ -46,13 +37,26 @@ impl FrameAllocator {
             }
         }
 
-        Self {
+        FrameAllocator {
             arenas: Mutex::new(arenas),
             frames_in_caches_hint: AtomicUsize::new(0),
             hart_local_cache: ThreadLocal::new(),
         }
-    }
+    })
+}
 
+pub struct FrameAllocator {
+    /// Global list of arenas that can be allocated from.
+    arenas: Mutex<Vec<Arena>>,
+    /// Per-hart cache of frames to speed up allocation.
+    hart_local_cache: ThreadLocal<RefCell<linked_list::List<Frame>>>,
+    /// Number of frames - across all harts - that are in hart-local caches.
+    /// This value must only ever be treated as a hint and should only be used to
+    /// produce more accurate frame usage statistics.
+    frames_in_caches_hint: AtomicUsize,
+}
+
+impl FrameAllocator {
     pub fn allocate_one(&self) -> Option<NonNull<Frame>> {
         self.hart_local_allocate_one()
             .or_else(|| self.global_allocate_one())
@@ -175,9 +179,9 @@ impl FrameAllocator {
     }
 }
 
-impl mmu::frame_alloc::FrameAllocator for FrameAllocator {
+impl mmu::frame_alloc::FrameAllocator for &'_ FrameAllocator {
     fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
-        let frames = Self::allocate_contiguous(self, layout)?;
+        let frames = FrameAllocator::allocate_contiguous(self, layout)?;
         Some(frames.front().unwrap().phys)
     }
 

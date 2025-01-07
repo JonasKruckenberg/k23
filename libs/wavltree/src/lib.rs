@@ -530,6 +530,30 @@ where
         }
     }
 
+    pub fn find<Q>(&self, key: &Q) -> Cursor<'_, T>
+    where
+        <T as Linked>::Key: Borrow<Q>,
+        Q: Ord,
+    {
+        let (current, _) = unsafe { self.find_internal(key) };
+        Cursor {
+            current,
+            _tree: self,
+        }
+    }
+
+    pub fn find_mut<Q>(&mut self, key: &Q) -> CursorMut<'_, T>
+    where
+        <T as Linked>::Key: Borrow<Q>,
+        Q: Ord,
+    {
+        let (current, _) = unsafe { self.find_internal(key) };
+        CursorMut {
+            current,
+            _tree: self,
+        }
+    }
+
     /// Returns a cursor to the root of the tree.
     #[inline]
     pub fn root(&self) -> Cursor<'_, T> {

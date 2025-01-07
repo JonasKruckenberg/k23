@@ -350,12 +350,16 @@ dependencies = [
  "loader-api",
  "log",
  "mmu",
+ "pin-project",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
  "riscv",
  "static_assertions",
  "sync",
  "talc",
  "thread-local",
  "unwind2",
+ "wavltree",
  "xmas-elf",
 ]
 
@@ -456,6 +460,26 @@ name = "oorandom"
 version = "11.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b410bbe7e14ab526a0e86877eb47c6996a2bd7746f027ba551028c925390e4e9"
+
+[[package]]
+name = "pin-project"
+version = "1.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e2ec53ad785f4d35dac0adea7f7dc6f1bb277ad84a680c7afefeae05d1f5916"
+dependencies = [
+ "pin-project-internal",
+]
+
+[[package]]
+name = "pin-project-internal"
+version = "1.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d56a66c0c55993aa927429d0f8a0abfd74f084e4d9c192cffed01e418d83eefb"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "plotters"
