@@ -6,7 +6,7 @@ use core::range::Range;
 use core::{cmp, fmt, mem, slice};
 use fallible_iterator::FallibleIterator;
 use mmu::arch::PAGE_SIZE;
-use mmu::frame_alloc::FreeRegions;
+use mmu::frame_alloc::{FrameUsage, FreeRegions};
 use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 const ARENA_PAGE_BOOKKEEPING_SIZE: usize = size_of::<Frame>();
@@ -176,6 +176,13 @@ impl Arena {
 
         self.used_frames += size_frames;
         Some(linked_list::List::from_iter(frames))
+    }
+
+    pub(super) fn frame_usage(&self) -> FrameUsage {
+        FrameUsage {
+            used: self.used_frames,
+            total: self.total_frames,
+        }
     }
 
     #[inline]

@@ -6,7 +6,7 @@ use core::ptr;
 
 pub use bootstrap::{BootstrapAllocator, FreeRegions, UsedRegions};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FrameUsage {
     pub used: usize,
     pub total: usize,

@@ -351,24 +351,57 @@ where
         }
     }
 
+    pub fn front(&self) -> Option<&T> {
+        let node = self.head?;
+        Some(unsafe { node.as_ref() })
+    }
+
+    pub fn front_mut(&mut self) -> Option<Pin<&mut T>> {
+        let mut node = self.head?;
+        let pin = unsafe {
+            // Pin the reference to ensure intrusively linked
+            // elements cannot be moved while in a collection.
+            Pin::new_unchecked(node.as_mut())
+        };
+        Some(pin)
+    }
+
+    pub fn back(&self) -> Option<&T> {
+        let node = self.tail?;
+        Some(unsafe { node.as_ref() })
+    }
+
+    pub fn back_mut(&mut self) -> Option<Pin<&mut T>> {
+        let mut node = self.tail?;
+        let pin = unsafe {
+            // Pin the reference to ensure intrusively linked
+            // elements cannot be moved while in a collection.
+            Pin::new_unchecked(node.as_mut())
+        };
+        Some(pin)
+    }
+
     pub fn cursor_front(&self) -> Cursor<'_, T> {
         Cursor {
             current: self.head,
             _list: self,
         }
     }
+
     pub fn cursor_front_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
             current: self.head,
             list: self,
         }
     }
+
     pub fn cursor_back(&self) -> Cursor<'_, T> {
         Cursor {
             current: self.tail,
             _list: self,
         }
     }
+
     pub fn cursor_back_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
             current: self.tail,

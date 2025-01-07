@@ -174,4 +174,51 @@ impl FrameAllocator {
         None
     }
 }
+
+impl mmu::frame_alloc::FrameAllocator for FrameAllocator {
+    fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+        let frames = Self::allocate_contiguous(self, layout)?;
+        Some(frames.front().unwrap().phys)
+    }
+
+    fn deallocate_contiguous(&mut self, _addr: PhysicalAddress, _layout: Layout) {
+        todo!("FrameAllocator::deallocate_contiguous")
+    }
+
+    fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+        let requested_size = layout.pad_to_align().size();
+        let addr = self.allocate_contiguous(layout)?;
+
+        let phys_offset = BOOT_INFO.get().unwrap().physical_address_offset;
+
+        unsafe {
+            ptr::write_bytes::<u8>(
+                phys_offset.checked_add(addr.get()).unwrap().as_mut_ptr(),
+                0,
+                requested_size,
+            )
+        }
+        Some(addr)
+    }
+
+    fn allocate_partial(&mut self, _layout: Layout) -> Option<(PhysicalAddress, usize)> {
+        todo!("FrameAllocator::allocate_partial")
+    }
+
+    fn frame_usage(&self) -> FrameUsage {
+        let mut frame_usage = FrameUsage::default();
+
+        let arenas = self.arenas.lock();
+        for arena in arenas.iter() {
+            let FrameUsage { used, total } = arena.frame_usage();
+            frame_usage.used += used;
+            frame_usage.total += total;
+        }
+
+        // frames that are in hart-local caches are counted by the global arenas as "used"
+        // so to get the accurate usage counts we need to subtract the cache freelist lengths
+        frame_usage.used -= self.frames_in_caches_hint.load(Ordering::Relaxed);
+
+        frame_usage
+    }
 }
