@@ -169,7 +169,7 @@ impl Deref for Frame {
 
     #[inline]
     fn deref(&self) -> &FrameInfo {
-        &self.info()
+        self.info()
     }
 }
 

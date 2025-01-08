@@ -1,7 +1,7 @@
 use super::frame::Frame;
 use alloc::boxed::Box;
 use core::fmt::Formatter;
-use core::iter::{FilterMap, FlatMap, FusedIterator};
+use core::iter::{FlatMap, Flatten, FusedIterator};
 use core::mem::offset_of;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -112,10 +112,7 @@ impl FrameList {
 // FrameList IntoIterator
 // =============================================================================
 
-type FramesWithoutHoles = FilterMap<
-    array::IntoIter<Option<Frame>, FRAME_LIST_NODE_FANOUT>,
-    fn(Option<Frame>) -> Option<Frame>,
->;
+type FramesWithoutHoles = Flatten<array::IntoIter<Option<Frame>, FRAME_LIST_NODE_FANOUT>>;
 type IntoIterInner = FlatMap<
     wavltree::IntoIter<FrameListNode>,
     FramesWithoutHoles,
@@ -146,7 +143,7 @@ impl IntoIterator for FrameList {
             .nodes
             .take()
             .into_iter()
-            .flat_map(|node| Pin::into_inner(node).frames.into_iter().filter_map(|f| f));
+            .flat_map(|node| Pin::into_inner(node).frames.into_iter().flatten());
 
         IntoIter(inner)
     }

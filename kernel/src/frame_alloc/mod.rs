@@ -117,7 +117,7 @@ pub fn alloc_one_zeroed() -> Result<Frame, AllocError> {
     Ok(frame)
 }
 
-/// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of [`layout`].
+/// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`.
 pub fn alloc_contiguous(layout: Layout) -> Result<FrameList, AllocError> {
     let alloc = FRAME_ALLOC
         .get()
@@ -144,13 +144,13 @@ pub fn alloc_contiguous(layout: Layout) -> Result<FrameList, AllocError> {
         })
         .ok_or(AllocError)?;
 
-    let frames = FrameList::from_iter(frames.into_iter().map(|frame| Frame::from_free_info(frame)));
+    let frames = FrameList::from_iter(frames.into_iter().map(Frame::from_free_info));
     #[cfg(debug_assertions)]
     frames.assert_valid();
     Ok(frames)
 }
 
-/// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of [`layout`]
+/// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`
 /// and ensuring the backing physical memory is zero initialized.
 pub fn alloc_contiguous_zeroed(layout: Layout) -> Result<FrameList, AllocError> {
     let frames = alloc_contiguous(layout)?;
