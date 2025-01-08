@@ -110,9 +110,8 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::debug!("\n{hart_local_minfo}");
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
 
-    let frame_alloc = frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
-    log::trace!("{:?}", frame_alloc.frame_usage());
-
+    frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
+    
     // TODO init kernel address space (requires global allocator)
 
     log::trace!(
