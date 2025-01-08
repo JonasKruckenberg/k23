@@ -741,7 +741,7 @@ where
     ///
     /// This will properly unlink and drop all entries, which requires iterating through the tree.
     pub fn clear(&mut self) {
-        if let Some(root) = self.root {
+        if let Some(root) = self.root.take() {
             self.clear_inner(root);
         }
     }
