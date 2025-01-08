@@ -791,6 +791,17 @@ where
         }
     }
 
+    /// Takes all the elements out of the `WAVLTree`, leaving it empty. The taken elements are returned as a new `WAVLTree`.
+    #[inline]
+    pub fn take(&mut self) -> Self {
+        let tree = Self {
+            root: self.root,
+            size: self.size,
+        };
+        self.root = None;
+        tree
+    }
+
     /// Asserts as many of the tree's invariants as possible.
     ///
     /// Note that with debug assertions enabled, this includes validating the WAVL rank-balancing
