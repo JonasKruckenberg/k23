@@ -1,9 +1,12 @@
 use crate::arch;
 use crate::error::Error;
+use crate::frame_alloc::FrameAllocator;
 use crate::vm::address_space_region::AddressSpaceRegion;
 use crate::vm::{PageFaultFlags, Permissions, Vmo, WiredVmo};
 use alloc::string::String;
 use alloc::sync::Arc;
+use alloc::vec;
+use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::ops::Bound;
 use core::pin::Pin;
@@ -95,9 +98,9 @@ impl AddressSpace {
         let vmo = self
             .placeholder_vmo
             .get_or_insert_with(|| {
-                Arc::new(Vmo::Wired(WiredVmo {
-                    range: Range::from(PhysicalAddress::default()..PhysicalAddress::default()),
-                }))
+                Arc::new(Vmo::Wired(WiredVmo::new(Range::from(
+                    PhysicalAddress::default()..PhysicalAddress::default(),
+                ))))
             })
             .clone();
 
@@ -141,7 +144,7 @@ impl AddressSpace {
 
     pub fn page_fault(&mut self, virt: VirtualAddress, flags: PageFaultFlags) -> crate::Result<()> {
         assert!(flags.is_valid());
-        
+
         let virt = virt.align_down(PAGE_SIZE);
 
         if let Some(region) = self.find_region(virt) {
@@ -340,5 +343,108 @@ impl AddressSpace {
         }
 
         Err(candidate_spot_count)
+    }
+}
+
+pub struct Batch {
+    // mmu: Arc<Mutex<mmu::AddressSpace>>,
+    range: Range<VirtualAddress>,
+    flags: mmu::Flags,
+    phys: Vec<(PhysicalAddress, usize)>,
+}
+
+impl Drop for Batch {
+    fn drop(&mut self) {
+        if !self.phys.is_empty() {
+            log::error!("batch was not flushed before dropping");
+            // panic_unwind::panic_in_drop!("batch was not flushed before dropping");
+        }
+    }
+}
+
+impl Batch {
+    pub fn new() -> Self {
+        Self {
+            range: Default::default(),
+            flags: mmu::Flags::empty(),
+            phys: vec![],
+        }
+    }
+
+    pub fn append(
+        &mut self,
+        base: VirtualAddress,
+        phys: (PhysicalAddress, usize),
+        flags: mmu::Flags,
+    ) -> crate::Result<()> {
+        debug_assert!(
+            phys.1 % PAGE_SIZE == 0,
+            "physical address range must be multiple of page size"
+        );
+
+        log::trace!("appending {phys:?} at {base:?} with flags {flags:?}");
+        if !self.can_append(base) || self.flags != flags {
+            self.flush()?;
+            self.flags = flags;
+            self.range = Range::from(base..base.checked_add(phys.1).unwrap());
+        } else {
+            self.range.end = self.range.end.checked_add(phys.1).unwrap();
+        }
+
+        self.phys.push(phys);
+
+        Ok(())
+    }
+
+    pub fn flush(&mut self) -> crate::Result<()> {
+        log::trace!("flushing batch {:?} {:?}...", self.range, self.phys);
+        if self.phys.is_empty() {
+            return Ok(());
+        }
+
+        log::trace!(
+            "materializing changes to MMU {:?} {:?} {:?}",
+            self.range,
+            self.phys,
+            self.flags
+        );
+        self.phys.clear();
+        // let mut mmu = self.mmu.lock();
+        // let mut flush = Flush::empty(mmu.asid());
+        // let iter = BatchFramesIter {
+        //     iter: self.phys.drain(..),
+        // };
+        // mmu.map(self.range.start, iter, self.flags, &mut flush)?;
+        // todo!();
+
+        self.range = Range::from(self.range.end..self.range.end);
+
+        Ok(())
+    }
+
+    pub fn ignore(&mut self) {
+        self.phys.clear();
+    }
+
+    fn can_append(&self, virt: VirtualAddress) -> bool {
+        self.range.end == virt
+    }
+}
+
+struct BatchFramesIter<'a> {
+    iter: vec::Drain<'a, (PhysicalAddress, usize)>,
+    alloc: &'static FrameAllocator,
+}
+impl mmu::frame_alloc::FramesIterator for BatchFramesIter<'_> {
+    fn alloc_mut(&mut self) -> &mut dyn mmu::frame_alloc::FrameAllocator {
+        todo!()
+        // &mut self.alloc
+    }
+}
+impl Iterator for BatchFramesIter<'_> {
+    type Item = (PhysicalAddress, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
     }
 }

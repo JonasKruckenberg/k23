@@ -111,7 +111,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
 
     frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
-    
+
     // TODO init kernel address space (requires global allocator)
 
     log::trace!(

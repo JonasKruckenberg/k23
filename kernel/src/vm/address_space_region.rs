@@ -1,5 +1,6 @@
 use crate::error::Error;
-use crate::vm::{Batch, Vmo};
+use crate::vm::address_space::Batch;
+use crate::vm::Vmo;
 use crate::vm::{PageFaultFlags, Permissions};
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -87,7 +88,7 @@ impl AddressSpaceRegion {
 
             return Err(Error::AccessDenied);
         }
-        
+
         let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
 
         let mut batch = Batch::new();
@@ -118,9 +119,15 @@ impl AddressSpaceRegion {
                     unreachable!()
                 };
 
-                batch.append(self.range.start, (frame.phys, 1), self.permissions.into())?;
+                batch.append(
+                    self.range.start,
+                    (frame.addr(), PAGE_SIZE),
+                    self.permissions.into(),
+                )?;
             }
         }
+
+        batch.flush()?;
 
         Ok(())
     }
