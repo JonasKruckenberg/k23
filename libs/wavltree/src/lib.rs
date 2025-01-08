@@ -598,6 +598,42 @@ where
         }
     }
 
+    /// Returns a cursor to the first element of the tree.
+    #[inline]
+    pub fn front(&self) -> Cursor<'_, T> {
+        Cursor {
+            current: self.root.map(|root| unsafe { utils::find_minimum(root) }),
+            _tree: self,
+        }
+    }
+
+    /// Returns a mutable cursor to the first element of the tree.
+    #[inline]
+    pub fn front_mut(&mut self) -> CursorMut<'_, T> {
+        CursorMut {
+            current: self.root.map(|root| unsafe { utils::find_minimum(root) }),
+            _tree: self,
+        }
+    }
+
+    /// Returns a cursor to the last element of the tree.
+    #[inline]
+    pub fn back(&self) -> Cursor<'_, T> {
+        Cursor {
+            current: self.root.map(|root| unsafe { utils::find_maximum(root) }),
+            _tree: self,
+        }
+    }
+
+    /// Returns a mutable cursor to the last element of the tree.
+    #[inline]
+    pub fn back_mut(&mut self) -> CursorMut<'_, T> {
+        CursorMut {
+            current: self.root.map(|root| unsafe { utils::find_maximum(root) }),
+            _tree: self,
+        }
+    }
+
     /// Constructs a cursor from a raw pointer to a node.
     ///
     /// # Safety
