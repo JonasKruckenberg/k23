@@ -143,6 +143,7 @@ pub use crate::entry::{Entry, OccupiedEntry, VacantEntry};
 use crate::utils::get_sibling;
 #[cfg(feature = "dot")]
 pub use dot::Dot;
+pub use iter::IntoIter;
 pub use iter::{Iter, IterMut};
 pub use utils::Side;
 
@@ -427,6 +428,31 @@ where
 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<T> IntoIterator for WAVLTree<T>
+where
+    T: Linked + ?Sized,
+{
+    type Item = T::Handle;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        if let Some(root) = self.root {
+            IntoIter {
+                // TODO this could be optimized by caching the head and tail nodes in the WAVLTree
+                head: Some(unsafe { utils::find_minimum(root) }),
+                tail: Some(unsafe { utils::find_maximum(root) }),
+                _tree: self,
+            }
+        } else {
+            IntoIter {
+                head: None,
+                tail: None,
+                _tree: self,
+            }
+        }
     }
 }
 
@@ -1744,5 +1770,35 @@ mod tests {
         assert!(matches!(entry, Entry::Vacant(_)));
 
         assert_eq!(entry.peek_next().unwrap().value, 3000);
+    }
+
+    #[cfg(not(target_os = "none"))]
+    #[test]
+    fn into_iter() {
+        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
+
+        tree.insert(Box::pin(TestEntry::new(1000)));
+        tree.insert(Box::pin(TestEntry::new(3000)));
+        tree.insert(Box::pin(TestEntry::new(500)));
+
+        let mut iter = tree.into_iter();
+        assert_eq!(iter.next().unwrap().value, 500);
+        assert_eq!(iter.next().unwrap().value, 1000);
+        assert_eq!(iter.next().unwrap().value, 3000);
+    }
+
+    #[cfg(not(target_os = "none"))]
+    #[test]
+    fn into_iter_back() {
+        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
+
+        tree.insert(Box::pin(TestEntry::new(1000)));
+        tree.insert(Box::pin(TestEntry::new(3000)));
+        tree.insert(Box::pin(TestEntry::new(500)));
+
+        let mut iter = tree.into_iter();
+        assert_eq!(iter.next_back().unwrap().value, 3000);
+        assert_eq!(iter.next_back().unwrap().value, 1000);
+        assert_eq!(iter.next_back().unwrap().value, 500);
     }
 }

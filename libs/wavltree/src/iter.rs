@@ -115,3 +115,88 @@ where
     }
 }
 impl<'a, T> FusedIterator for IterMut<'a, T> where T: Linked + ?Sized + 'a {}
+
+/// An iterator which consumes a [`WAVLTree`].
+pub struct IntoIter<T>
+where
+    T: Linked + ?Sized,
+{
+    pub(crate) head: Link<T>,
+    pub(crate) tail: Link<T>,
+    pub(crate) _tree: WAVLTree<T>,
+}
+impl<T> Iterator for IntoIter<T>
+where
+    T: Linked + ?Sized,
+{
+    type Item = T::Handle;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let head = self.head?;
+        let head_links = unsafe { T::links(head).as_mut() };
+        let parent = head_links.parent();
+
+        if let Some(parent) = parent {
+            unsafe {
+                T::links(parent).as_mut().replace_left(head_links.right());
+            }
+        } else {
+            self._tree.root = head_links.right();
+            if head_links.right().is_none() {
+                self.tail = None;
+            }
+        }
+
+        if let Some(right) = head_links.right() {
+            unsafe {
+                T::links(right).as_mut().replace_parent(parent);
+            }
+            self.head = Some(unsafe { utils::find_minimum(right) });
+        } else {
+            self.head = parent;
+        }
+
+        unsafe {
+            // unlink the node from the tree and return
+            head_links.unlink();
+            Some(T::from_ptr(head))
+        }
+    }
+}
+impl<T> DoubleEndedIterator for IntoIter<T>
+where
+    T: Linked + ?Sized,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let tail = self.tail?;
+        let tail_links = unsafe { T::links(tail).as_mut() };
+        let parent = tail_links.parent();
+
+        if let Some(parent) = parent {
+            unsafe {
+                T::links(parent).as_mut().replace_right(tail_links.left());
+            }
+        } else {
+            self._tree.root = tail_links.left();
+            if tail_links.left().is_none() {
+                self.tail = None;
+            }
+        }
+
+        if let Some(left) = tail_links.left() {
+            unsafe {
+                T::links(left).as_mut().replace_parent(parent);
+            }
+            self.tail = Some(unsafe { utils::find_maximum(left) });
+        } else {
+            self.tail = parent;
+        }
+
+        unsafe {
+            // unlink the node from the tree and return
+            tail_links.unlink();
+            Some(T::from_ptr(tail))
+        }
+    }
+}
+impl<T> FusedIterator for IntoIter<T> where T: Linked + ?Sized {}
