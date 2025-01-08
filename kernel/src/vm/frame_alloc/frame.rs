@@ -1,11 +1,11 @@
 use crate::vm::frame_alloc::FRAME_ALLOC;
-use core::{fmt, ptr};
 use core::marker::PhantomData;
 use core::mem::offset_of;
 use core::ops::Deref;
 use core::ptr::NonNull;
 use core::sync::atomic;
 use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{fmt, ptr};
 use mmu::PhysicalAddress;
 use static_assertions::assert_impl_all;
 
@@ -122,7 +122,7 @@ impl Frame {
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
         ptr::addr_eq(this.ptr.as_ptr(), other.ptr.as_ptr())
     }
-    
+
     /// Asserts the `Frame` is in a valid state.
     pub fn assert_valid(&self) {
         let refcount = self.info().refcount.load(Ordering::Acquire);

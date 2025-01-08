@@ -3,6 +3,7 @@
 #![feature(naked_functions)]
 #![feature(new_range_api)]
 #![feature(slice_from_ptr_range)]
+#![feature(maybe_uninit_slice)]
 
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;
@@ -134,7 +135,6 @@ pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
 
     let boot_info = prepare_boot_info(
         frame_alloc,
-        hartid,
         phys_off,
         phys_map,
         kernel_virt,

@@ -1,10 +1,11 @@
 mod address_space;
 mod address_space_region;
+pub mod frame_alloc;
+mod frame_list;
 mod paged_vmo;
 mod wired_vmo;
-mod frame_list;
-pub mod frame_alloc;
 
+use crate::vm::frame_alloc::Frame;
 pub use address_space::AddressSpace;
 use alloc::format;
 use alloc::string::ToString;
@@ -19,14 +20,14 @@ use paged_vmo::PagedVmo;
 use sync::LazyLock;
 use wired_vmo::WiredVmo;
 use xmas_elf::program::Type;
-use crate::vm::frame_alloc::Frame;
 
 const KERNEL_ASID: usize = 0;
 
 static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| frame_alloc::alloc_one_zeroed().unwrap());
 
 pub fn test(boot_info: &BootInfo) -> crate::Result<()> {
-    let (hw_aspace, _) = mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
+    let (hw_aspace, _) =
+        mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
 
     let mut aspace = AddressSpace::new_kernel(hw_aspace, None);
     reserve_wired_regions(&mut aspace, boot_info)?;
@@ -72,12 +73,12 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) -> cra
 
     let own_elf = unsafe {
         let base = VirtualAddress::from_phys(
-            boot_info.kernel_elf.start,
+            boot_info.kernel_phys.start,
             boot_info.physical_address_offset,
         )
         .unwrap();
 
-        slice::from_raw_parts(base.as_ptr(), boot_info.kernel_elf.size())
+        slice::from_raw_parts(base.as_ptr(), boot_info.kernel_phys.size())
     };
     let own_elf = xmas_elf::ElfFile::new(own_elf).unwrap();
 

@@ -21,7 +21,7 @@ dtb-parser.workspace = true
 linked-list.workspace = true
 unwind2.workspace = true
 backtrace.workspace = true
-wavltree ={ workspace = true, features = ["dot"] }
+wavltree = { workspace = true, features = ["dot"] }
 
 log.workspace = true
 cfg-if.workspace = true

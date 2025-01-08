@@ -58,7 +58,7 @@ impl AddressSpaceRegion {
 
     pub fn page_fault(
         self: Pin<&mut Self>,
-        hw_aspace: &mut mmu::AddressSpace,
+        mmu_aspace: &mut mmu::AddressSpace,
         addr: VirtualAddress,
         flags: PageFaultFlags,
     ) -> crate::Result<()> {
@@ -92,7 +92,7 @@ impl AddressSpaceRegion {
 
         let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
 
-        let mut batch = Batch::new(hw_aspace);
+        let mut batch = Batch::new(mmu_aspace);
 
         match self.vmo.as_ref() {
             Vmo::Wired(vmo) => {

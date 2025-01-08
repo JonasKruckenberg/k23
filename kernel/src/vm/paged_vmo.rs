@@ -46,7 +46,7 @@ impl PagedVmo {
 
         if let Some(frame) = pages.get(offset) {
             log::trace!("require_read_page() frame exists for offset {frame:?}");
-            
+
             // match page {
             //     Page::Frame(frame) => Ok(unsafe { frame.as_ref() }),
             //     Page::Zero => {

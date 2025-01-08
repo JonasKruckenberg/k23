@@ -179,7 +179,7 @@ fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
 /// attempt to compact the list by merging adjacent regions.
 fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAddress>, 16> {
     let temp: ArrayVec<Range<PhysicalAddress>, 16> = boot_info
-        .memory_regions()
+        .memory_regions
         .iter()
         .filter_map(|region| region.kind.is_usable().then_some(region.range))
         .collect();
@@ -204,9 +204,9 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
     out
 }
 
-fn locate_device_tree(boot_info: &'static BootInfo) -> *const u8 {
+fn locate_device_tree(boot_info: &BootInfo) -> *const u8 {
     let fdt = boot_info
-        .memory_regions()
+        .memory_regions
         .iter()
         .find(|region| region.kind == MemoryRegionKind::FDT)
         .expect("no FDT region");

@@ -1,15 +1,15 @@
 use crate::error::Error;
 use core::alloc::Layout;
+use core::mem::MaybeUninit;
 use core::range::Range;
 use core::slice;
-use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, TlsTemplate};
+use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
 use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
 use mmu::{arch, PhysicalAddress, VirtualAddress};
 
 pub fn prepare_boot_info(
     mut frame_alloc: BootstrapAllocator,
-    boot_hart: usize,
-    physical_memory_offset: VirtualAddress,
+    physical_address_offset: VirtualAddress,
     physical_memory_map: Range<VirtualAddress>,
     kernel_virt: Range<VirtualAddress>,
     maybe_tls_template: Option<TlsTemplate>,
@@ -23,31 +23,23 @@ pub fn prepare_boot_info(
             Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
         )
         .ok_or(Error::NoMemory)?;
-    let page = VirtualAddress::from_phys(frame, physical_memory_offset).unwrap();
+    let page = VirtualAddress::from_phys(frame, physical_address_offset).unwrap();
 
-    let (memory_regions, memory_regions_len) =
+    let memory_regions =
         init_boot_info_memory_regions(page, frame_alloc, fdt_phys, loader_phys.clone());
 
-    let boot_info = page.as_mut_ptr().cast::<BootInfo>();
-    unsafe {
-        boot_info.write(BootInfo::new(
-            boot_hart,
-            physical_memory_offset,
-            physical_memory_map,
-            kernel_virt,
-            memory_regions,
-            memory_regions_len,
-            maybe_tls_template,
-            Range::from(
-                VirtualAddress::new(loader_phys.start.get()).unwrap()
-                    ..VirtualAddress::new(loader_phys.end.get()).unwrap(),
-            ),
-            kernel_phys,
-            boot_ticks,
-        ));
-    }
+    let mut boot_info = BootInfo::new(memory_regions);
+    boot_info.physical_address_offset = physical_address_offset;
+    boot_info.physical_memory_map = physical_memory_map;
+    boot_info.tls_template = maybe_tls_template;
+    boot_info.kernel_virt = kernel_virt;
+    boot_info.kernel_phys = kernel_phys;
+    boot_info.boot_ticks = boot_ticks;
 
-    Ok(boot_info)
+    let boot_info_ptr = page.as_mut_ptr().cast::<BootInfo>();
+    unsafe { boot_info_ptr.write(boot_info) }
+
+    Ok(boot_info_ptr)
 }
 
 fn init_boot_info_memory_regions(
@@ -55,21 +47,18 @@ fn init_boot_info_memory_regions(
     frame_alloc: BootstrapAllocator,
     fdt_phys: Range<PhysicalAddress>,
     loader_phys: Range<PhysicalAddress>,
-) -> (*mut MemoryRegion, usize) {
-    let base_ptr = page
-        .checked_add(size_of::<BootInfo>())
-        .unwrap()
-        .as_mut_ptr()
-        .cast::<MemoryRegion>();
-    let mut ptr = base_ptr;
-    let mut memory_regions_len = 0;
-    let max_regions = (arch::PAGE_SIZE - size_of::<BootInfo>()) / size_of::<MemoryRegion>();
+) -> MemoryRegions {
+    let regions: &mut [MaybeUninit<MemoryRegion>] = unsafe {
+        let base = page.checked_add(size_of::<BootInfo>()).unwrap();
+        let len = (arch::PAGE_SIZE - size_of::<BootInfo>()) / size_of::<MemoryRegion>();
 
-    let mut push_region = |region: MemoryRegion| unsafe {
-        assert!(memory_regions_len < max_regions);
-        ptr.write(region);
-        ptr = ptr.add(1);
-        memory_regions_len += 1;
+        slice::from_raw_parts_mut(base.as_mut_ptr().cast(), len)
+    };
+
+    let mut len = 0;
+    let mut push_region = |region: MemoryRegion| {
+        regions[len].write(region);
+        len += 1;
     };
 
     // Report the memory we consumed during startup as used.
@@ -101,12 +90,12 @@ fn init_boot_info_memory_regions(
         kind: MemoryRegionKind::FDT,
     });
 
+    // Truncate the slice to include only initialized elements
+    let regions = unsafe { MaybeUninit::slice_assume_init_mut(&mut regions[0..len]) };
+
     // Sort the memory regions by start address, we do this now in the loader
     // because the BootInfo struct will be passed as a read-only static reference to the kernel.
-    unsafe {
-        slice::from_raw_parts_mut(base_ptr, memory_regions_len)
-            .sort_unstable_by_key(|region| region.range.start);
-    }
+    regions.sort_unstable_by_key(|region| region.range.start);
 
-    (base_ptr, memory_regions_len)
+    MemoryRegions::from(regions)
 }

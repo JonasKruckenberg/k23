@@ -1,5 +1,5 @@
-use core::fmt::{Display, Formatter};
 use crate::vm::frame_alloc;
+use core::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum Error {
