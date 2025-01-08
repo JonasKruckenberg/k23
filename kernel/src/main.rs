@@ -19,7 +19,6 @@ extern crate alloc;
 mod allocator;
 mod arch;
 mod error;
-mod frame_alloc;
 mod logger;
 mod machine_info;
 mod panic;
@@ -41,6 +40,7 @@ use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator as _};
 use mmu::{PhysicalAddress, VirtualAddress};
 use sync::OnceLock;
 use thread_local::thread_local;
+use vm::frame_alloc;
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;

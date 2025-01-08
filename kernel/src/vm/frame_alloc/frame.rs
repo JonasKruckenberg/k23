@@ -1,5 +1,5 @@
-use crate::frame_alloc::FRAME_ALLOC;
-use core::fmt;
+use crate::vm::frame_alloc::FRAME_ALLOC;
+use core::{fmt, ptr};
 use core::marker::PhantomData;
 use core::mem::offset_of;
 use core::ops::Deref;
@@ -117,6 +117,12 @@ impl Drop for Frame {
 }
 
 impl Frame {
+    #[inline]
+    #[must_use]
+    pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+        ptr::addr_eq(this.ptr.as_ptr(), other.ptr.as_ptr())
+    }
+    
     /// Asserts the `Frame` is in a valid state.
     pub fn assert_valid(&self) {
         let refcount = self.info().refcount.load(Ordering::Acquire);
@@ -134,7 +140,7 @@ impl Frame {
         unsafe { self.ptr.as_ref() }
     }
 
-    pub(super) fn from_free_info(info: NonNull<FrameInfo>) -> Frame {
+    pub(crate) fn from_free_info(info: NonNull<FrameInfo>) -> Frame {
         unsafe {
             let prev_refcount = info.as_ref().refcount.swap(1, Ordering::Acquire);
             debug_assert_eq!(
@@ -191,7 +197,7 @@ impl fmt::Pointer for Frame {
 
 impl FrameInfo {
     /// Private constructor for use in `frame_alloc/arena.rs`
-    pub(super) fn new(addr: PhysicalAddress) -> Self {
+    pub(crate) fn new(addr: PhysicalAddress) -> Self {
         Self {
             links: Default::default(),
             addr,

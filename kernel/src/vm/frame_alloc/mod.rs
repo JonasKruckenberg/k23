@@ -1,6 +1,5 @@
 mod arena;
 mod frame;
-mod frame_list;
 
 use crate::thread_local::ThreadLocal;
 use crate::BOOT_INFO;
@@ -14,7 +13,7 @@ use core::sync::atomic::AtomicUsize;
 use core::{fmt, slice};
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
-pub use frame_list::FrameList;
+pub use crate::vm::frame_list::FrameList;
 use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::BootstrapAllocator;
 use mmu::VirtualAddress;

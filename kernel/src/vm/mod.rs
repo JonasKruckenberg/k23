@@ -2,21 +2,33 @@ mod address_space;
 mod address_space_region;
 mod paged_vmo;
 mod wired_vmo;
+mod frame_list;
+pub mod frame_alloc;
 
 pub use address_space::AddressSpace;
 use alloc::format;
 use alloc::string::ToString;
+use alloc::sync::Arc;
+use core::alloc::Layout;
 use core::range::Range;
-use core::{fmt, slice};
+use core::{fmt, iter, slice};
 use loader_api::BootInfo;
 use mmu::arch::PAGE_SIZE;
 use mmu::{AddressRangeExt, VirtualAddress};
 use paged_vmo::PagedVmo;
+use sync::LazyLock;
 use wired_vmo::WiredVmo;
 use xmas_elf::program::Type;
+use crate::vm::frame_alloc::Frame;
+
+const KERNEL_ASID: usize = 0;
+
+static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| frame_alloc::alloc_one_zeroed().unwrap());
 
 pub fn test(boot_info: &BootInfo) -> crate::Result<()> {
-    let mut aspace = AddressSpace::new_kernel(None);
+    let (hw_aspace, _) = mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
+
+    let mut aspace = AddressSpace::new_kernel(hw_aspace, None);
     reserve_wired_regions(&mut aspace, boot_info)?;
 
     for region in aspace.regions.iter() {
@@ -29,26 +41,23 @@ pub fn test(boot_info: &BootInfo) -> crate::Result<()> {
         )
     }
 
-    // let the_zero_frame = THE_ZERO_FRAME.get_or_init(|| {
-    //     FRAME_ALLOC.get().unwrap().allocate_one().unwrap()
-    // });
-    //
-    // let layout = Layout::from_size_align(4 * PAGE_SIZE, PAGE_SIZE).unwrap();
-    // let vmo = Arc::new(Vmo::Paged(PagedVmo {
-    //     pages: Mutex::new(FrameList::from_iter(iter::repeat_n(the_zero_frame.clone(), 4))),
-    // }));
-    // log::trace!("{vmo:?}");
+    let layout = Layout::from_size_align(4 * PAGE_SIZE, PAGE_SIZE).unwrap();
 
-    // let range = aspace
-    //     .map(layout, vmo, 0, Permissions::READ, "Test".to_string())?
-    //     .range;
-    //
-    // aspace
-    //     .page_fault(
-    //         range.start.checked_add(3 * PAGE_SIZE).unwrap(),
-    //         PageFaultFlags::WRITE,
-    //     )
-    //     .unwrap();
+    let vmo = Arc::new(Vmo::Paged(PagedVmo::from_iter(iter::repeat_n(
+        THE_ZERO_FRAME.clone(),
+        layout.size() / PAGE_SIZE,
+    ))));
+
+    let range = aspace
+        .map(layout, vmo, 0, Permissions::READ, "Test".to_string())?
+        .range;
+
+    aspace
+        .page_fault(
+            range.start.checked_add(3 * PAGE_SIZE).unwrap(),
+            PageFaultFlags::WRITE,
+        )
+        .unwrap();
 
     Ok(())
 }

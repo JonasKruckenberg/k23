@@ -1,4 +1,4 @@
-use super::frame::Frame;
+use crate::vm::frame_alloc::Frame;
 use alloc::boxed::Box;
 use core::fmt::Formatter;
 use core::iter::{FlatMap, Flatten, FusedIterator};

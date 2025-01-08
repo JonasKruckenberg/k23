@@ -14,10 +14,7 @@ impl WiredVmo {
         Self { range }
     }
 
-    pub(super) fn lookup_contiguous(
-        &self,
-        range: Range<usize>,
-    ) -> crate::Result<Range<PhysicalAddress>> {
+    pub fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {
         ensure!(
             range.start % PAGE_SIZE == 0,
             Error::InvalidArgument,

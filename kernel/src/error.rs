@@ -1,4 +1,5 @@
 use core::fmt::{Display, Formatter};
+use crate::vm::frame_alloc;
 
 #[derive(Debug)]
 pub enum Error {
@@ -27,6 +28,12 @@ impl From<mmu::Error> for Error {
 impl From<dtb_parser::Error> for Error {
     fn from(err: dtb_parser::Error) -> Self {
         Self::Dtb(err)
+    }
+}
+
+impl From<frame_alloc::AllocError> for Error {
+    fn from(_value: frame_alloc::AllocError) -> Self {
+        Self::NoResources
     }
 }
 
