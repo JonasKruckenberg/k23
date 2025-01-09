@@ -40,9 +40,9 @@ use vm::frame_alloc;
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages
-pub const STACK_SIZE_PAGES: usize = 256;
+pub const STACK_SIZE_PAGES: usize = 128; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
-pub const TRAP_STACK_SIZE_PAGES: usize = 16;
+pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropriate value
 /// The initial size of the kernel heap in pages.
 ///
 /// This initial size should be small enough so the loaders less sophisticated allocator can
