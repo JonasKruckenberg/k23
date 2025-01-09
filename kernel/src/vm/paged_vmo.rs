@@ -45,7 +45,7 @@ impl PagedVmo {
                 log::trace!("performing copy-on-write...");
                 let src = old_frame.as_slice(phys_off);
                 let dst = Frame::get_mut(&mut new_frame)
-                    .expect("newly allocated frame should be unqiue")
+                    .expect("newly allocated frame should be unique")
                     .as_mut_slice(phys_off);
 
                 dst.copy_from_slice(src);
