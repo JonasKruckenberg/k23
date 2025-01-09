@@ -96,7 +96,7 @@ impl AddressSpace {
         vmo: Arc<Vmo>,
         vmo_offset: usize,
         permissions: Permissions,
-        name: String,
+        name: Option<String>,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY);
         let virt = Range::from(base..base.checked_add(layout.size()).unwrap());
@@ -122,7 +122,7 @@ impl AddressSpace {
         vmo: Arc<Vmo>,
         vmo_offset: usize,
         permissions: Permissions,
-        name: String,
+        name: Option<String>,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         assert!(virt.start.is_aligned_to(PAGE_SIZE));
         assert!(virt.end.is_aligned_to(PAGE_SIZE));
@@ -149,10 +149,10 @@ impl AddressSpace {
         &mut self,
         range: Range<VirtualAddress>,
         permissions: Permissions,
-        name: String,
+        name: Option<String>,
         flush: &mut Flush,
     ) -> crate::Result<()> {
-        log::trace!("reserving {range:?} with flags {permissions:?} and name {name}");
+        log::trace!("reserving {range:?} with flags {permissions:?} and name {name:?}");
 
         let vmo = self
             .placeholder_vmo
