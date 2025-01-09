@@ -38,7 +38,7 @@ pub struct AddressSpaceRegion {
     /// The permissions of this region
     pub permissions: Permissions,
     /// The name of this region, for debugging
-    pub name: String,
+    pub name: Option<String>,
     /// The Virtual Memory Object backing this region
     pub vmo: Arc<Vmo>,
     pub vmo_offset: usize,
@@ -50,7 +50,7 @@ impl AddressSpaceRegion {
         permissions: Permissions,
         vmo: Arc<Vmo>,
         vmo_offset: usize,
-        name: String,
+        name: Option<String>,
     ) -> Pin<Box<Self>> {
         Box::pin(Self {
             links: Default::default(),
