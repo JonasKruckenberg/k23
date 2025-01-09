@@ -50,15 +50,24 @@ pub fn test(boot_info: &BootInfo) -> crate::Result<()> {
     )))));
 
     let range = aspace
-        .map(layout, vmo, 0, Permissions::READ, "Test".to_string())?
+        .map(
+            layout,
+            vmo,
+            0,
+            Permissions::READ | Permissions::WRITE,
+            "Test".to_string(),
+        )?
         .range;
 
     aspace
-        .page_fault(
-            range.start.checked_add(3 * PAGE_SIZE).unwrap(),
-            PageFaultFlags::WRITE,
-        )
+        .page_fault(range.start, PageFaultFlags::WRITE)
         .unwrap();
+
+    unsafe {
+        let ptr = range.start.as_mut_ptr();
+        log::trace!("writing to {ptr:?}");
+        ptr.write(6);
+    }
 
     Ok(())
 }

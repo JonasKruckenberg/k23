@@ -1,7 +1,8 @@
 use crate::arch;
 use crate::error::Error;
 use crate::vm::address_space_region::AddressSpaceRegion;
-use crate::vm::{PageFaultFlags, Permissions, Vmo, WiredVmo};
+use crate::vm::frame_alloc::Frame;
+use crate::vm::{frame_alloc, PageFaultFlags, Permissions, Vmo, WiredVmo};
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec;
@@ -11,7 +12,7 @@ use core::ops::Bound;
 use core::pin::Pin;
 use core::range::Range;
 use mmu::arch::PAGE_SIZE;
-use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use mmu::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress};
 use rand::distributions::Uniform;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
@@ -26,6 +27,7 @@ pub struct AddressSpace {
     /// The hardware address space backing this "logical" address space that changes need to be
     /// materialized into in order to take effect.
     mmu: mmu::AddressSpace,
+    mmu_frames: MmuFrames,
     /// The maximum range this address space can encompass.
     ///
     /// This is used to check new mappings against and speed up page fault handling.
@@ -41,8 +43,9 @@ impl AddressSpace {
     pub fn new_user(hw_aspace: mmu::AddressSpace, prng: ChaCha20Rng) -> Self {
         Self {
             regions: wavltree::WAVLTree::default(),
-            max_range: Range::from(arch::USER_ASPACE_BASE..VirtualAddress::MAX),
             mmu: hw_aspace,
+            mmu_frames: MmuFrames::default(),
+            max_range: Range::from(arch::USER_ASPACE_BASE..VirtualAddress::MAX),
             prng: Some(prng),
             placeholder_vmo: None,
         }
@@ -51,8 +54,9 @@ impl AddressSpace {
     pub fn new_kernel(hw_aspace: mmu::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
         Self {
             regions: wavltree::WAVLTree::default(),
-            max_range: Range::from(arch::KERNEL_ASPACE_BASE..VirtualAddress::MAX),
             mmu: hw_aspace,
+            mmu_frames: MmuFrames::default(),
+            max_range: Range::from(arch::KERNEL_ASPACE_BASE..VirtualAddress::MAX),
             prng,
             placeholder_vmo: None,
         }
@@ -169,7 +173,10 @@ impl AddressSpace {
             .and_then(|region| region.range.contains(&addr).then_some(region));
 
         if let Some(region) = region {
-            region.page_fault(&mut self.mmu, addr, flags)
+            let mut batch = Batch::new(&mut self.mmu, &mut self.mmu_frames);
+            region.page_fault(&mut batch, addr, flags)?;
+            batch.flush()?;
+            Ok(())
         } else {
             log::trace!("page fault at unmapped address {addr}");
             Err(Error::AccessDenied)
@@ -366,8 +373,13 @@ impl AddressSpace {
     }
 }
 
+// =============================================================================
+// Batch
+// =============================================================================
+
 pub struct Batch<'a> {
     mmu_aspace: &'a mut mmu::AddressSpace,
+    mmu_frames: &'a mut MmuFrames,
     range: Range<VirtualAddress>,
     flags: mmu::Flags,
     phys: Vec<(PhysicalAddress, usize)>,
@@ -383,9 +395,10 @@ impl Drop for Batch<'_> {
 }
 
 impl<'a> Batch<'a> {
-    pub fn new(mmu_aspace: &'a mut mmu::AddressSpace) -> Self {
+    pub fn new(mmu_aspace: &'a mut mmu::AddressSpace, wired_frames: &'a mut MmuFrames) -> Self {
         Self {
             mmu_aspace,
+            mmu_frames: wired_frames,
             range: Default::default(),
             flags: mmu::Flags::empty(),
             phys: vec![],
@@ -430,12 +443,15 @@ impl<'a> Batch<'a> {
             self.phys,
             self.flags
         );
-        let _iter = BatchFramesIter(self.phys.drain(..));
+        let iter = BatchFramesIter {
+            iter: self.phys.drain(..),
+            mmu_frames: self.mmu_frames,
+        };
 
-        // let mut flush = Flush::empty(self.mmu_aspace.asid());
-        // self.mmu_aspace
-        //     .map(self.range.start, iter, self.flags, &mut flush)?;
-        // flush.flush()?;
+        let mut flush = Flush::empty(self.mmu_aspace.asid());
+        self.mmu_aspace
+            .map(self.range.start, iter, self.flags, &mut flush)?;
+        flush.flush()?;
 
         self.range = Range::from(self.range.end..self.range.end);
 
@@ -451,17 +467,67 @@ impl<'a> Batch<'a> {
     }
 }
 
-struct BatchFramesIter<'a>(vec::Drain<'a, (PhysicalAddress, usize)>);
+struct BatchFramesIter<'a> {
+    iter: vec::Drain<'a, (PhysicalAddress, usize)>,
+    mmu_frames: &'a mut MmuFrames,
+}
 
 impl mmu::frame_alloc::FramesIterator for BatchFramesIter<'_> {
     fn alloc_mut(&mut self) -> &mut dyn mmu::frame_alloc::FrameAllocator {
-        todo!()
+        self.mmu_frames
     }
 }
 impl Iterator for BatchFramesIter<'_> {
     type Item = (PhysicalAddress, usize);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
+        self.iter.next()
+    }
+}
+
+// =============================================================================
+// MmuFrames
+// =============================================================================
+
+#[derive(Default)]
+pub struct MmuFrames {
+    frames: Vec<Frame>,
+}
+
+impl mmu::frame_alloc::FrameAllocator for MmuFrames {
+    fn allocate_one(&mut self) -> Option<PhysicalAddress> {
+        let frame = frame_alloc::alloc_one().ok()?;
+        let addr = frame.addr();
+        self.frames.push(frame);
+        Some(addr)
+    }
+
+    fn allocate_one_zeroed(&mut self) -> Option<PhysicalAddress> {
+        let frame = frame_alloc::alloc_one_zeroed().ok()?;
+        let addr = frame.addr();
+        self.frames.push(frame);
+        Some(addr)
+    }
+
+    fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+        let frame = frame_alloc::alloc_contiguous(layout).ok()?;
+        let addr = frame.first()?.addr();
+        self.frames.extend(frame);
+        Some(addr)
+    }
+
+    fn deallocate_contiguous(&mut self, _addr: PhysicalAddress, _layout: Layout) {
+        todo!()
+    }
+
+    fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+        let frame = frame_alloc::alloc_contiguous_zeroed(layout).ok()?;
+        let addr = frame.first()?.addr();
+        self.frames.extend(frame);
+        Some(addr)
+    }
+
+    fn allocate_partial(&mut self, _layout: Layout) -> Option<(PhysicalAddress, usize)> {
+        todo!()
     }
 }

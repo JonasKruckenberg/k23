@@ -59,7 +59,7 @@ impl AddressSpaceRegion {
 
     pub fn page_fault(
         self: Pin<&mut Self>,
-        mmu_aspace: &mut mmu::AddressSpace,
+        batch: &mut Batch,
         addr: VirtualAddress,
         flags: PageFaultFlags,
     ) -> crate::Result<()> {
@@ -69,8 +69,8 @@ impl AddressSpaceRegion {
 
         // Check that the access (read,write or execute) is permitted given this region's permissions
         let access_permission = Permissions::from(flags);
-        if self.permissions.contains(access_permission) {
-            let diff = access_permission.difference(self.permissions);
+        let diff = access_permission.difference(self.permissions);
+        if !diff.is_empty() {
             // diff being empty here means there is no permission mismatch e.g. a read fault against
             // a read-accessible mapping. Hardware *should* never generate such faults, and for soft
             // faults it is a programmer error. either way, a bug is afoot.
@@ -105,8 +105,6 @@ impl AddressSpaceRegion {
 
         let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
 
-        let mut batch = Batch::new(mmu_aspace);
-
         match self.vmo.as_ref() {
             Vmo::Wired(vmo) => {
                 let range_phys = vmo
@@ -135,8 +133,6 @@ impl AddressSpaceRegion {
                 //  - if frames are present in range => append to batch
             }
         }
-
-        batch.flush()?;
 
         Ok(())
     }
