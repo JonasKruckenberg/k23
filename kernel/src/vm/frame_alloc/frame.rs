@@ -162,6 +162,8 @@ impl Frame {
 
     #[inline(never)]
     fn drop_slow(&mut self) {
+        // TODO if we ever add more fields to FrameInfo we should reset them here
+
         let alloc = FRAME_ALLOC
             .get()
             .expect("cannot access FRAME_ALLOC before it is initialized");
@@ -215,11 +217,6 @@ impl FrameInfo {
     #[must_use]
     pub fn refcount(&self) -> usize {
         self.refcount.load(Ordering::Relaxed)
-    }
-
-    #[inline]
-    pub fn is_unique(&self) -> bool {
-        self.refcount() == 1
     }
 
     #[inline]
