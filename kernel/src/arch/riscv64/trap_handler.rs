@@ -264,15 +264,19 @@ fn default_trap_handler(
             let epc = sepc::read();
             let tval = stval::read();
 
-            log::error!("KERNEL LOAD PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
-            sepc::set(trap_panic_trampoline as usize)
+            handle_page_fault(epc, tval, PageFaultFlags::LOAD)
         }
         Trap::Exception(Exception::StorePageFault) => {
             let epc = sepc::read();
             let tval = stval::read();
 
-            log::error!("KERNEL STORE PAGE FAULT: epc {epc:#x?} tval {tval:#x?}");
-            sepc::set(trap_panic_trampoline as usize)
+            handle_page_fault(epc, tval, PageFaultFlags::STORE)
+        }
+        Trap::Exception(Exception::InstructionFault) => {
+            let epc = sepc::read();
+            let tval = stval::read();
+
+            handle_page_fault(epc, tval, PageFaultFlags::INSTRUCTION)
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             // just clear the timer interrupt when it happens for now, this is required to make the
@@ -287,4 +291,20 @@ fn default_trap_handler(
 
     IN_TRAP_HANDLER.swap(false, Ordering::AcqRel);
     raw_frame
+}
+
+fn handle_page_fault(epc: usize, tval: usize, flags: PageFaultFlags) {
+    if let Err(err) = handle_page_fault_inner(tval, flags) {
+        log::error!("{flags} PAGE FAULT at {epc:#x} {tval:#x} {err:?}");
+
+        sepc::set(trap_panic_trampoline as usize)
+    }
+}
+
+fn handle_page_fault_inner(tval: usize, flags: PageFaultFlags) -> crate::Result<()> {
+    let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
+
+    let addr = VirtualAddress::new(tval).ok_or(Error::AccessDenied)?;
+
+    aspace.page_fault(addr, flags)
 }

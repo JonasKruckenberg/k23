@@ -16,20 +16,7 @@ impl FromIterator<Frame> for PagedVmo {
 }
 
 impl PagedVmo {
-    pub fn require_frame(
-        &mut self,
-        at_offset: usize,
-        will_write: bool,
-        phys_off: VirtualAddress,
-    ) -> crate::Result<&Frame> {
-        if will_write {
-            self.require_owned_frame(at_offset, phys_off)
-        } else {
-            self.require_read_frame(at_offset)
-        }
-    }
-
-    fn require_owned_frame(
+    pub fn require_owned_frame(
         &mut self,
         at_offset: usize,
         phys_off: VirtualAddress,
@@ -48,6 +35,11 @@ impl PagedVmo {
                     .expect("newly allocated frame should be unique")
                     .as_mut_slice(phys_off);
 
+                log::trace!(
+                    "copying from {:?} to {:?}",
+                    src.as_ptr_range(),
+                    dst.as_ptr_range()
+                );
                 dst.copy_from_slice(src);
             }
 
@@ -58,9 +50,8 @@ impl PagedVmo {
         }
     }
 
-    fn require_read_frame(&self, at_offset: usize) -> crate::Result<&Frame> {
+    pub fn require_read_frame(&self, at_offset: usize) -> crate::Result<&Frame> {
         if let Some(frame) = self.frames.get(at_offset) {
-            log::warn!("required resident read frame, this should not happen!");
             Ok(frame)
         } else {
             todo!("TODO request bytes from source (later when we actually have sources)");

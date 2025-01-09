@@ -5,79 +5,75 @@ mod frame_list;
 mod paged_vmo;
 mod wired_vmo;
 
+use crate::machine_info::MachineInfo;
 use crate::vm::frame_alloc::Frame;
 pub use address_space::AddressSpace;
 use alloc::format;
 use alloc::string::ToString;
-use alloc::sync::Arc;
-use core::alloc::Layout;
+use core::fmt::Formatter;
 use core::range::Range;
-use core::{fmt, iter, slice};
+use core::{fmt, slice};
 use loader_api::BootInfo;
 use mmu::arch::PAGE_SIZE;
-use mmu::{AddressRangeExt, VirtualAddress};
+use mmu::{AddressRangeExt, Flush, VirtualAddress};
 use paged_vmo::PagedVmo;
-use sync::{LazyLock, Mutex};
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
+use sync::{LazyLock, Mutex, OnceLock, RwLock};
 use wired_vmo::WiredVmo;
 use xmas_elf::program::Type;
 
 const KERNEL_ASID: usize = 0;
 
-static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| frame_alloc::alloc_one_zeroed().unwrap());
+pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
+static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
+    let frame = frame_alloc::alloc_one_zeroed().unwrap();
+    log::trace!("THE_ZERO_FRAME: {}", frame.addr());
+    frame
+});
 
-pub fn test(boot_info: &BootInfo) -> crate::Result<()> {
-    let (hw_aspace, _) =
-        mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
+pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
+    KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
+        let (hw_aspace, mut flush) =
+            mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
 
-    let mut aspace = AddressSpace::new_kernel(hw_aspace, None);
-    reserve_wired_regions(&mut aspace, boot_info)?;
+        let mut aspace = AddressSpace::from_active_kernel(
+            hw_aspace,
+            Some(ChaCha20Rng::from_seed(
+                minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
+            )),
+        );
 
-    for region in aspace.regions.iter() {
-        log::trace!(
-            "{:<40} {}..{} {}",
-            region.name,
-            region.range.start,
-            region.range.end,
-            region.permissions
-        )
-    }
+        reserve_wired_regions(&mut aspace, boot_info, &mut flush)?;
+        flush.flush()?;
 
-    let layout = Layout::from_size_align(4 * PAGE_SIZE, PAGE_SIZE).unwrap();
+        for region in aspace.regions.iter() {
+            log::trace!(
+                "{:<40} {}..{} {}",
+                region.name,
+                region.range.start,
+                region.range.end,
+                region.permissions
+            )
+        }
 
-    let vmo = Arc::new(Vmo::Paged(Mutex::new(PagedVmo::from_iter(iter::repeat_n(
-        THE_ZERO_FRAME.clone(),
-        layout.size() / PAGE_SIZE,
-    )))));
-
-    let range = aspace
-        .map(
-            layout,
-            vmo,
-            0,
-            Permissions::READ | Permissions::WRITE,
-            "Test".to_string(),
-        )?
-        .range;
-
-    aspace
-        .page_fault(range.start, PageFaultFlags::WRITE)
-        .unwrap();
-
-    unsafe {
-        let ptr = range.start.as_mut_ptr();
-        log::trace!("writing to {ptr:?}");
-        ptr.write(6);
-    }
+        Ok(Mutex::new(aspace))
+    })?;
 
     Ok(())
 }
 
-fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) -> crate::Result<()> {
+fn reserve_wired_regions(
+    aspace: &mut AddressSpace,
+    boot_info: &BootInfo,
+    flush: &mut Flush,
+) -> crate::Result<()> {
     // reserve the physical memory map
     aspace.reserve(
         boot_info.physical_memory_map,
         Permissions::READ | Permissions::WRITE,
         "Physical Memory Map".to_string(),
+        flush,
     )?;
 
     let own_elf = unsafe {
@@ -131,6 +127,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) -> cra
             },
             permissions,
             format!("Kernel {permissions} Segment"),
+            flush,
         )?;
     }
 
@@ -140,25 +137,31 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo) -> cra
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
     pub struct PageFaultFlags: u8 {
-        /// The fault was caused by a memory read
-        const READ = 1 << 0;
-        /// The fault was caused by a memory write
-        const WRITE = 1 << 1;
+        /// The fault was caused by a memory load
+        const LOAD = 1 << 0;
+        /// The fault was caused by a memory store
+        const STORE = 1 << 1;
         /// The fault was caused by an instruction fetch
         const INSTRUCTION = 1 << 3;
     }
 }
 
+impl fmt::Display for PageFaultFlags {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        bitflags::parser::to_writer(self, f)
+    }
+}
+
 impl PageFaultFlags {
     pub fn is_valid(&self) -> bool {
-        self.contains(PageFaultFlags::READ) != self.contains(PageFaultFlags::WRITE)
+        self.contains(PageFaultFlags::LOAD) != self.contains(PageFaultFlags::STORE)
     }
 
     pub fn cause_is_read(&self) -> bool {
-        self.contains(PageFaultFlags::READ)
+        self.contains(PageFaultFlags::LOAD)
     }
     pub fn cause_is_write(&self) -> bool {
-        self.contains(PageFaultFlags::WRITE)
+        self.contains(PageFaultFlags::STORE)
     }
     pub fn cause_is_instr_fetch(&self) -> bool {
         self.contains(PageFaultFlags::INSTRUCTION)
@@ -183,7 +186,7 @@ impl fmt::Display for Permissions {
 impl From<PageFaultFlags> for Permissions {
     fn from(value: PageFaultFlags) -> Self {
         let mut out = Permissions::empty();
-        if value.contains(PageFaultFlags::WRITE) {
+        if value.contains(PageFaultFlags::STORE) {
             out |= Permissions::WRITE;
         } else {
             out |= Permissions::READ;
@@ -208,5 +211,5 @@ impl From<Permissions> for mmu::Flags {
 #[derive(Debug)]
 pub enum Vmo {
     Wired(WiredVmo),
-    Paged(Mutex<PagedVmo>),
+    Paged(RwLock<PagedVmo>),
 }

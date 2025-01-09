@@ -1,13 +1,14 @@
-use crate::arch;
 use crate::error::Error;
 use crate::vm::address_space_region::AddressSpaceRegion;
 use crate::vm::frame_alloc::Frame;
 use crate::vm::{frame_alloc, PageFaultFlags, Permissions, Vmo, WiredVmo};
+use crate::{arch, ensure};
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::alloc::Layout;
+use core::num::NonZeroUsize;
 use core::ops::Bound;
 use core::pin::Pin;
 use core::range::Range;
@@ -19,6 +20,11 @@ use rand_chacha::ChaCha20Rng;
 
 // const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();
 const VIRT_ALLOC_ENTROPY: u8 = 27;
+
+pub enum AddressSpaceKind {
+    User,
+    Kernel,
+}
 
 /// Represents the address space of a process (or the kernel).
 pub struct AddressSpace {
@@ -37,21 +43,23 @@ pub struct AddressSpace {
     prng: Option<ChaCha20Rng>,
     /// "Empty" placeholder VMO to back regions created by `reserve`
     placeholder_vmo: Option<Arc<Vmo>>,
+    kind: AddressSpaceKind,
 }
 
 impl AddressSpace {
-    pub fn new_user(hw_aspace: mmu::AddressSpace, prng: ChaCha20Rng) -> Self {
+    pub fn new_user(hw_aspace: mmu::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
         Self {
             regions: wavltree::WAVLTree::default(),
             mmu: hw_aspace,
             mmu_frames: MmuFrames::default(),
             max_range: Range::from(arch::USER_ASPACE_BASE..VirtualAddress::MAX),
-            prng: Some(prng),
+            prng,
             placeholder_vmo: None,
+            kind: AddressSpaceKind::User,
         }
     }
 
-    pub fn new_kernel(hw_aspace: mmu::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
+    pub fn from_active_kernel(hw_aspace: mmu::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
         Self {
             regions: wavltree::WAVLTree::default(),
             mmu: hw_aspace,
@@ -59,6 +67,7 @@ impl AddressSpace {
             max_range: Range::from(arch::KERNEL_ASPACE_BASE..VirtualAddress::MAX),
             prng,
             placeholder_vmo: None,
+            kind: AddressSpaceKind::Kernel,
         }
     }
 
@@ -74,7 +83,6 @@ impl AddressSpace {
         let virt = Range::from(base..base.checked_add(layout.size()).unwrap());
 
         let region = self.regions.insert(AddressSpaceRegion::new(
-            // self.mmu.clone(),
             virt,
             permissions,
             vmo,
@@ -95,6 +103,7 @@ impl AddressSpace {
         range: Range<VirtualAddress>,
         permissions: Permissions,
         name: String,
+        flush: &mut Flush,
     ) -> crate::Result<()> {
         log::trace!("reserving {range:?} with flags {permissions:?} and name {name}");
 
@@ -107,36 +116,29 @@ impl AddressSpace {
             })
             .clone();
 
-        let _region = self.regions.insert(AddressSpaceRegion::new(
-            // self.mmu.clone(),
-            range,
-            permissions,
-            vmo,
-            0,
-            name,
-        ));
+        let _region =
+            self.regions
+                .insert(AddressSpaceRegion::new(range, permissions, vmo, 0, name));
 
-        log::debug!("TODO: reserve() materialize changes");
-
-        // let mut mmu_aspace = self.mmu.lock();
-        // let mut frame_alloc = FRAME_ALLOC.get().unwrap().lock();
-        //
-        // if flags.is_empty() {
-        //     log::trace!("calling mmu_aspace.unmap({range:?}, {flags:?})");
-        //     mmu_aspace.unmap(
-        //         frame_alloc.deref_mut(),
-        //         range.start,
-        //         NonZeroUsize::new(range.size()).unwrap(),
-        //         flush,
-        //     )?;
-        // } else {
-        //     mmu_aspace.protect(
-        //         range.start,
-        //         NonZeroUsize::new(range.size()).unwrap(),
-        //         flags,
-        //         flush,
-        //     )?;
-        // }
+        if permissions.is_empty() {
+            log::trace!(
+                "calling mmu_aspace.unmap({range:?}, {:?})",
+                mmu::Flags::from(permissions)
+            );
+            self.mmu.unmap(
+                &mut self.mmu_frames,
+                range.start,
+                NonZeroUsize::new(range.size()).unwrap(),
+                flush,
+            )?;
+        } else {
+            self.mmu.protect(
+                range.start,
+                NonZeroUsize::new(range.size()).unwrap(),
+                permissions.into(),
+                flush,
+            )?;
+        }
 
         Ok(())
     }
@@ -163,6 +165,25 @@ impl AddressSpace {
     ///                      - update MMU page table
     pub fn page_fault(&mut self, addr: VirtualAddress, flags: PageFaultFlags) -> crate::Result<()> {
         assert!(flags.is_valid());
+
+        // make sure addr is even a valid address for this address space
+        match self.kind {
+            AddressSpaceKind::User => ensure!(
+                addr.is_user_accessible(),
+                Error::AccessDenied,
+                "non-user address fault in user address space"
+            ),
+            AddressSpaceKind::Kernel => ensure!(
+                arch::is_kernel_address(addr),
+                Error::AccessDenied,
+                "non-kernel address fault in kernel address space"
+            ),
+        }
+        ensure!(
+            self.max_range.contains(&addr),
+            Error::AccessDenied,
+            "non-kernel address fault in kernel address space"
+        );
 
         let addr = addr.align_down(PAGE_SIZE);
 
@@ -432,17 +453,11 @@ impl<'a> Batch<'a> {
     }
 
     pub fn flush(&mut self) -> crate::Result<()> {
-        log::trace!("flushing batch {:?} {:?}...", self.range, self.phys);
         if self.phys.is_empty() {
             return Ok(());
         }
+        log::trace!("flushing batch {:?} {:?}...", self.range, self.phys);
 
-        log::trace!(
-            "materializing changes to MMU {:?} {:?} {:?}",
-            self.range,
-            self.phys,
-            self.flags
-        );
         let iter = BatchFramesIter {
             iter: self.phys.drain(..),
             mmu_frames: self.mmu_frames,

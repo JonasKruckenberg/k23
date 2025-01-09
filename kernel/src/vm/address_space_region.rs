@@ -121,13 +121,24 @@ impl AddressSpaceRegion {
                 )?;
             }
             Vmo::Paged(vmo) => {
-                let mut vmo = vmo.lock();
-
                 let phys_off = BOOT_INFO.get().unwrap().physical_address_offset;
-                let frame =
-                    vmo.require_frame(vmo_relative_offset, flags.cause_is_write(), phys_off)?;
 
-                batch.append(addr, frame.addr(), PAGE_SIZE, self.permissions.into())?;
+                if flags.cause_is_write() {
+                    let mut vmo = vmo.write();
+
+                    let frame = vmo.require_owned_frame(vmo_relative_offset, phys_off)?;
+                    batch.append(addr, frame.addr(), PAGE_SIZE, self.permissions.into())?;
+                } else {
+                    let vmo = vmo.read();
+
+                    let frame = vmo.require_read_frame(vmo_relative_offset)?;
+                    batch.append(
+                        addr,
+                        frame.addr(),
+                        PAGE_SIZE,
+                        self.permissions.difference(Permissions::WRITE).into(),
+                    )?;
+                }
 
                 // TODO if we have space in batch attempt to "fault ahead"
                 //  - if frames are present in range => append to batch

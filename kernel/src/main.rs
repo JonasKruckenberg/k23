@@ -109,7 +109,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
     // TODO init kernel address space (requires global allocator)
 
-    vm::test(boot_info).unwrap();
+    vm::init(boot_info, minfo).unwrap();
 
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
