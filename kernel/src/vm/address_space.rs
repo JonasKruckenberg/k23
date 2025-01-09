@@ -112,7 +112,7 @@ impl AddressSpace {
         name: Option<String>,
         flush: &mut Flush,
     ) -> crate::Result<()> {
-        log::trace!("reserving {range:?} with flags {permissions:?} and name {name}");
+        log::trace!("reserving {range:?} with flags {permissions:?} and name {name:?}");
 
         let vmo = self
             .placeholder_vmo
