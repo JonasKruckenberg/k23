@@ -121,7 +121,7 @@ impl AddressSpace {
         vmo: Arc<Vmo>,
         vmo_offset: usize,
         permissions: Permissions,
-        name: Option<String>,
+        name: String,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         assert!(virt.start.is_aligned_to(PAGE_SIZE));
         assert!(virt.end.is_aligned_to(PAGE_SIZE));
