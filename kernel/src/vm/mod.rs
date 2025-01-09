@@ -9,6 +9,7 @@ mod address_space;
 mod address_space_region;
 pub mod frame_alloc;
 mod frame_list;
+mod mmap;
 mod paged_vmo;
 mod wired_vmo;
 
@@ -17,12 +18,13 @@ use crate::vm::frame_alloc::Frame;
 pub use address_space::AddressSpace;
 use alloc::format;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use core::fmt::Formatter;
 use core::range::Range;
 use core::{fmt, slice};
 use loader_api::BootInfo;
 use mmu::arch::PAGE_SIZE;
-use mmu::{AddressRangeExt, Flush, VirtualAddress};
+use mmu::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress};
 use paged_vmo::PagedVmo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -219,4 +221,13 @@ impl From<Permissions> for mmu::Flags {
 pub enum Vmo {
     Wired(WiredVmo),
     Paged(RwLock<PagedVmo>),
+}
+
+impl Vmo {
+    pub fn new_wired(range: Range<PhysicalAddress>) -> Arc<Self> {
+        Arc::new(Self::Wired(WiredVmo::new(range)))
+    }
+    pub fn new_paged<T: IntoIterator<Item = Frame>>(iter: T) -> Arc<Self> {
+        Arc::new(Self::Paged(RwLock::new(PagedVmo::from_iter(iter))))
+    }
 }

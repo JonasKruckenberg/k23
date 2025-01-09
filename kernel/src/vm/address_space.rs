@@ -250,6 +250,53 @@ impl AddressSpace {
         Ok(())
     }
 
+    pub fn protect(
+        &mut self,
+        range: Range<VirtualAddress>,
+        new_permissions: Permissions,
+    ) -> crate::Result<()> {
+        assert!(range.start.is_aligned_to(PAGE_SIZE));
+        let range = range.checked_align_out(PAGE_SIZE).unwrap();
+        let mut iter = self.regions.range_mut(range);
+
+        #[allow(clippy::while_let_on_iterator)]
+        while let Some(region) = iter.next() {
+            // If the old and new flags are the same, nothing need to be materialized
+            if region.permissions == new_permissions {
+                continue;
+            }
+
+            log::trace!("{region:?}");
+            let _start = cmp::max(region.range.start, range.start);
+            let _end = cmp::min(region.range.end, range.end);
+
+            if range.start <= region.range.start && range.end >= region.range.end {
+                // this mappings range is entirely contained within `range`, so we just update
+                // the mapping itself
+                log::trace!("TODO remove region");
+            } else if range.start > region.range.start && range.end < region.range.end {
+                // `range` is entirely contained within the mappings range, we
+                // need to split the range into three
+                log::trace!("splitting region");
+            } else if range.start > region.range.start {
+                // `range` is mostly past this mappings range, but overlaps partially
+                // we need to split the range
+                log::trace!("adjusting region end");
+            } else if range.end < region.range.end {
+                // `range` is mostly before this mappings range, but overlaps partially
+                // we need to split the range
+                log::trace!("adjusting region start");
+            } else {
+                unreachable!()
+            }
+
+            todo!()
+            // region.unmap(Range::from(start..end))?;
+        }
+
+        Ok(())
+    }
+
     /// Page fault handling
     ///
     /// - Is there an `AddressSpaceRegion` for the address?
