@@ -5,8 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::vm::frame_alloc::{Frame, FrameList};
+use crate::vm::frame_alloc::Frame;
+use crate::vm::frame_list::FrameList;
 use crate::vm::{frame_alloc, THE_ZERO_FRAME};
+use core::range::Range;
 use mmu::VirtualAddress;
 
 #[derive(Debug)]
@@ -62,6 +64,16 @@ impl PagedVmo {
             Ok(frame)
         } else {
             todo!("TODO request bytes from source (later when we actually have sources)");
+        }
+    }
+
+    pub fn free_frames(&mut self, range: Range<usize>) {
+        let mut c = self.frames.cursor_mut(range.start);
+
+        while c.offset() < range.end {
+            let _frame = c.remove();
+
+            c.move_next();
         }
     }
 }

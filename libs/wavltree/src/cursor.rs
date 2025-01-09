@@ -110,6 +110,7 @@ where
     pub fn remove(&mut self) -> Option<T::Handle> {
         unsafe {
             let handle = self._tree.remove_internal(self.current?);
+            self.current = None;
             Some(handle)
         }
     }
