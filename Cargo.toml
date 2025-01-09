@@ -6,7 +6,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 authors = ["Jonas Kruckenberg <iterpre@protonmail.com>"]
-license = "MIT"
+license = "MIT or Apache-2.0"
 
 [workspace.lints.clippy]
 large_futures = "deny"

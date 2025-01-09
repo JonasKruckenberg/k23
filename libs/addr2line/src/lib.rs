@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 //! `addr2line` provides a cross-platform library for retrieving per-address debug information
 //! from files with DWARF debug information. Given an address, it can return the file name,
 //! line number, and function name associated with that address, as well as the inline call
