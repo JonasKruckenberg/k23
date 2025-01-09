@@ -289,29 +289,6 @@ impl<'a> Cursor<'a> {
         self.index_in_node = 0;
     }
 
-    /// Moves the cursor to the next [`Frame`] in the list skipping any missing pages
-    pub fn move_next_present(&mut self) {
-        self.offset += PAGE_SIZE;
-
-        // if there is a current node AND the node still has unseen frames in it
-        // advance the index
-        if let Some(node) = self.cursor.get() {
-            while node.frames.len() > self.index_in_node {
-                self.index_in_node += 1;
-
-                if node.frames.len() > self.index_in_node
-                    && node.frames[self.index_in_node].is_some()
-                {
-                    return;
-                }
-            }
-        }
-
-        // otherwise advance the cursor and reset the index
-        self.cursor.move_next();
-        self.index_in_node = 0;
-    }
-
     /// Returns the offset of the [`Frame`] in this list, will always be a multiple
     /// of [`PAGE_SIZE`].
     pub fn offset(&self) -> usize {
@@ -348,33 +325,23 @@ impl<'a> CursorMut<'a> {
         self.index_in_node = 0;
     }
 
-    /// Moves the cursor to the next [`Frame`] in the list skipping any missing pages
-    pub fn move_next_present(&mut self) {
-        self.offset += PAGE_SIZE;
-
-        // if there is a current node AND the node still has unseen frames in it
-        // advance the offset
-        if let Some(node) = self.cursor.get() {
-            while node.frames.len() > self.index_in_node {
-                self.index_in_node += 1;
-
-                if node.frames.len() > self.index_in_node
-                    && node.frames[self.index_in_node].is_some()
-                {
-                    return;
-                }
-            }
-        }
-
-        // otherwise advance the cursor and reset the offset
-        self.cursor.move_next();
-        self.index_in_node = 0;
-    }
-
     /// Returns the offset of the [`Frame`] in this list, will always be a multiple
     /// of [`PAGE_SIZE`].
     pub fn offset(&self) -> usize {
         self.offset
+    }
+
+    pub fn remove(&mut self) -> Option<Frame> {
+        let node = Pin::into_inner(self.cursor.get_mut()?);
+        let frame = node.frames.get_mut(self.index_in_node)?.take()?;
+
+        // if the node has become empty remove it too
+        if node.frames.iter().all(Option::is_none) {
+            let _node = self.cursor.remove();
+            self.index_in_node = 0;
+        }
+
+        Some(frame)
     }
 
     /// Returns a reference to the current [`Frame`] if any.

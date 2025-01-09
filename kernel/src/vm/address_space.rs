@@ -15,6 +15,7 @@ use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::alloc::Layout;
+use core::cmp;
 use core::num::NonZeroUsize;
 use core::ops::Bound;
 use core::pin::Pin;
@@ -189,8 +190,64 @@ impl AddressSpace {
         Ok(())
     }
 
-    pub fn unmap(&mut self) {
-        todo!()
+    pub fn unmap(&mut self, range: Range<VirtualAddress>) -> crate::Result<()> {
+        assert!(range.start.is_aligned_to(PAGE_SIZE));
+        let range = range.checked_align_out(PAGE_SIZE).unwrap();
+        let mut iter = self.regions.range_mut(range);
+
+        while let Some(mut region) = iter.next() {
+            log::trace!("{region:?}");
+            let start = cmp::max(region.range.start, range.start);
+            let end = cmp::min(region.range.end, range.end);
+
+            if range.start <= region.range.start && range.end >= region.range.end {
+                // this mappings range is entirely contained within `range`, so we need
+                // fully remove the mapping from the tree
+                log::trace!("TODO remove region");
+            } else if range.start > region.range.start && range.end < region.range.end {
+                // `range` is entirely contained within the mappings range, we
+                // need to split the range in two
+                log::trace!("splitting region");
+                let right = Range::from(range.end..region.range.end);
+                let right_vmo_offset = region.range.end.checked_sub_addr(range.end).unwrap();
+                log::trace!("right_vmo_offset {right_vmo_offset}");
+
+                iter.tree().insert(AddressSpaceRegion::new(
+                    right,
+                    region.permissions,
+                    region.vmo.clone(),
+                    right_vmo_offset,
+                    region.name.clone(),
+                ));
+
+                region.range.end = range.start;
+            } else if range.start > region.range.start {
+                // `range` is mostly past this mappings range, but overlaps partially
+                // we need adjust the ranges end
+                log::trace!("adjusting region end");
+                region.range.end = range.start;
+            } else if range.end < region.range.end {
+                // `range` is mostly before this mappings range, but overlaps partially
+                // we need adjust the ranges start
+                log::trace!("adjusting region start");
+                region.range.start = range.end;
+            } else {
+                unreachable!()
+            }
+
+            region.unmap(Range::from(start..end))?;
+        }
+
+        let mut flush = Flush::empty(self.mmu.asid());
+        self.mmu.unmap(
+            &mut self.mmu_frames,
+            range.start,
+            NonZeroUsize::new(range.size()).unwrap(),
+            &mut flush,
+        )?;
+        flush.flush()?;
+
+        Ok(())
     }
 
     /// Page fault handling
@@ -577,9 +634,7 @@ impl mmu::frame_alloc::FrameAllocator for MmuFrames {
         Some(addr)
     }
 
-    fn deallocate_contiguous(&mut self, _addr: PhysicalAddress, _layout: Layout) {
-        todo!()
-    }
+    fn deallocate_contiguous(&mut self, _addr: PhysicalAddress, _layout: Layout) {}
 
     fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
         let frame = frame_alloc::alloc_contiguous_zeroed(layout).ok()?;
