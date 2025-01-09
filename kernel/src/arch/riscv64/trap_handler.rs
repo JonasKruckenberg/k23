@@ -234,6 +234,8 @@ extern "C-unwind" fn trap_panic_trampoline() {
     panic!("UNRECOVERABLE KERNEL TRAP");
 }
 
+static IN_TRAP_HANDLER: AtomicBool = AtomicBool::new(false);
+
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
 #[allow(clippy::too_many_arguments)]
 fn default_trap_handler(
@@ -246,6 +248,12 @@ fn default_trap_handler(
     a6: usize,
     a7: usize,
 ) -> *mut TrapFrame {
+    if IN_TRAP_HANDLER.swap(true, Ordering::AcqRel) {
+        let _ = riscv::hio::HostStream::new_stdout()
+            .write_str("trap occurred while in trap handler!\n");
+        arch::abort();
+    }
+
     let cause = scause::read().cause();
 
     log::trace!("{:?}", sstatus::read());
@@ -277,5 +285,6 @@ fn default_trap_handler(
         }
     }
 
+    IN_TRAP_HANDLER.swap(false, Ordering::AcqRel);
     raw_frame
 }
