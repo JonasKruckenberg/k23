@@ -143,6 +143,7 @@ pub use crate::entry::{Entry, OccupiedEntry, VacantEntry};
 use crate::utils::get_sibling;
 #[cfg(feature = "dot")]
 pub use dot::Dot;
+pub use iter::IntoIter;
 pub use iter::{Iter, IterMut};
 pub use utils::Side;
 
@@ -430,6 +431,31 @@ where
     }
 }
 
+impl<T> IntoIterator for WAVLTree<T>
+where
+    T: Linked + ?Sized,
+{
+    type Item = T::Handle;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        if let Some(root) = self.root {
+            IntoIter {
+                // TODO this could be optimized by caching the head and tail nodes in the WAVLTree
+                head: Some(unsafe { utils::find_minimum(root) }),
+                tail: Some(unsafe { utils::find_maximum(root) }),
+                _tree: self,
+            }
+        } else {
+            IntoIter {
+                head: None,
+                tail: None,
+                _tree: self,
+            }
+        }
+    }
+}
+
 impl<T> WAVLTree<T>
 where
     T: Linked + ?Sized,
@@ -530,6 +556,30 @@ where
         }
     }
 
+    pub fn find<Q>(&self, key: &Q) -> Cursor<'_, T>
+    where
+        <T as Linked>::Key: Borrow<Q>,
+        Q: Ord,
+    {
+        let (current, _) = unsafe { self.find_internal(key) };
+        Cursor {
+            current,
+            _tree: self,
+        }
+    }
+
+    pub fn find_mut<Q>(&mut self, key: &Q) -> CursorMut<'_, T>
+    where
+        <T as Linked>::Key: Borrow<Q>,
+        Q: Ord,
+    {
+        let (current, _) = unsafe { self.find_internal(key) };
+        CursorMut {
+            current,
+            _tree: self,
+        }
+    }
+
     /// Returns a cursor to the root of the tree.
     #[inline]
     pub fn root(&self) -> Cursor<'_, T> {
@@ -544,6 +594,42 @@ where
     pub fn root_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
             current: self.root,
+            _tree: self,
+        }
+    }
+
+    /// Returns a cursor to the first element of the tree.
+    #[inline]
+    pub fn front(&self) -> Cursor<'_, T> {
+        Cursor {
+            current: self.root.map(|root| unsafe { utils::find_minimum(root) }),
+            _tree: self,
+        }
+    }
+
+    /// Returns a mutable cursor to the first element of the tree.
+    #[inline]
+    pub fn front_mut(&mut self) -> CursorMut<'_, T> {
+        CursorMut {
+            current: self.root.map(|root| unsafe { utils::find_minimum(root) }),
+            _tree: self,
+        }
+    }
+
+    /// Returns a cursor to the last element of the tree.
+    #[inline]
+    pub fn back(&self) -> Cursor<'_, T> {
+        Cursor {
+            current: self.root.map(|root| unsafe { utils::find_maximum(root) }),
+            _tree: self,
+        }
+    }
+
+    /// Returns a mutable cursor to the last element of the tree.
+    #[inline]
+    pub fn back_mut(&mut self) -> CursorMut<'_, T> {
+        CursorMut {
+            current: self.root.map(|root| unsafe { utils::find_maximum(root) }),
             _tree: self,
         }
     }
@@ -717,7 +803,7 @@ where
     ///
     /// This will properly unlink and drop all entries, which requires iterating through the tree.
     pub fn clear(&mut self) {
-        if let Some(root) = self.root {
+        if let Some(root) = self.root.take() {
             self.clear_inner(root);
         }
     }
@@ -739,6 +825,17 @@ where
             node_links.unlink();
             T::from_ptr(node);
         }
+    }
+
+    /// Takes all the elements out of the `WAVLTree`, leaving it empty. The taken elements are returned as a new `WAVLTree`.
+    #[inline]
+    pub fn take(&mut self) -> Self {
+        let tree = Self {
+            root: self.root,
+            size: self.size,
+        };
+        self.root = None;
+        tree
     }
 
     /// Asserts as many of the tree's invariants as possible.
@@ -1720,5 +1817,35 @@ mod tests {
         assert!(matches!(entry, Entry::Vacant(_)));
 
         assert_eq!(entry.peek_next().unwrap().value, 3000);
+    }
+
+    #[cfg(not(target_os = "none"))]
+    #[test]
+    fn into_iter() {
+        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
+
+        tree.insert(Box::pin(TestEntry::new(1000)));
+        tree.insert(Box::pin(TestEntry::new(3000)));
+        tree.insert(Box::pin(TestEntry::new(500)));
+
+        let mut iter = tree.into_iter();
+        assert_eq!(iter.next().unwrap().value, 500);
+        assert_eq!(iter.next().unwrap().value, 1000);
+        assert_eq!(iter.next().unwrap().value, 3000);
+    }
+
+    #[cfg(not(target_os = "none"))]
+    #[test]
+    fn into_iter_back() {
+        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
+
+        tree.insert(Box::pin(TestEntry::new(1000)));
+        tree.insert(Box::pin(TestEntry::new(3000)));
+        tree.insert(Box::pin(TestEntry::new(500)));
+
+        let mut iter = tree.into_iter();
+        assert_eq!(iter.next_back().unwrap().value, 3000);
+        assert_eq!(iter.next_back().unwrap().value, 1000);
+        assert_eq!(iter.next_back().unwrap().value, 500);
     }
 }

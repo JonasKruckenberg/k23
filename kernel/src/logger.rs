@@ -33,13 +33,12 @@ impl log::Log for Logger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            STATE.with(|state| {
-                let mut state = state.borrow_mut();
-                let hartid = state.1;
-                let _ = state.0.write_fmt(format_args!(
+            let _ = STATE.try_with(|state| {
+                let (stdout, hartid) = unsafe { &mut *state.as_ptr() };
+                let _ = stdout.write_fmt(format_args!(
                     "[{:<5} HART {} {}] {}\n",
                     record.level(),
-                    hartid,
+                    *hartid,
                     record.module_path_static().unwrap_or_default(),
                     record.args()
                 ));

@@ -15,12 +15,12 @@ static SYMBOLIZE_CONTEXT: LazyLock<SymbolizeContext> = LazyLock::new(|| {
 
     let elf = xmas_elf::ElfFile::new(unsafe {
         let base = VirtualAddress::from_phys(
-            boot_info.kernel_elf.start,
+            boot_info.kernel_phys.start,
             boot_info.physical_address_offset,
         )
         .unwrap();
 
-        slice::from_raw_parts(base.as_ptr(), boot_info.kernel_elf.size())
+        slice::from_raw_parts(base.as_ptr(), boot_info.kernel_phys.size())
     })
     .unwrap();
 

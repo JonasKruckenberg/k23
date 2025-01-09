@@ -6,4 +6,4 @@ mod config;
 mod info;
 
 pub use config::LoaderConfig;
-pub use info::{BootInfo, MemoryRegion, MemoryRegionKind, TlsTemplate};
+pub use info::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};

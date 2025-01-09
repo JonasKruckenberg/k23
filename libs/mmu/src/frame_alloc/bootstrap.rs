@@ -1,8 +1,15 @@
-use crate::frame_alloc::{FrameAllocator, FrameUsage};
+use crate::arch::PAGE_SIZE;
+use crate::frame_alloc::FrameAllocator;
 use crate::{arch, AddressRangeExt, PhysicalAddress, VirtualAddress};
 use core::alloc::Layout;
 use core::range::Range;
 use core::{cmp, iter, ptr, slice};
+
+#[derive(Debug, Default)]
+pub struct FrameUsage {
+    pub used: usize,
+    pub total: usize,
+}
 
 pub struct BootstrapAllocator<'a> {
     regions: &'a [Range<PhysicalAddress>],
@@ -41,9 +48,29 @@ impl<'a> BootstrapAllocator<'a> {
             inner: self.regions.iter().rev().cloned(),
         }
     }
+
+    pub fn frame_usage(&self) -> FrameUsage {
+        let mut total = 0;
+        for region in self.regions {
+            let region_size = region.size();
+            total += region_size >> arch::PAGE_SHIFT;
+        }
+        let used = self.offset >> arch::PAGE_SHIFT;
+        FrameUsage { used, total }
+    }
 }
 
 impl FrameAllocator for BootstrapAllocator<'_> {
+    fn allocate_one(&mut self) -> Option<PhysicalAddress> {
+        self.allocate_contiguous(unsafe { Layout::from_size_align_unchecked(PAGE_SIZE, PAGE_SIZE) })
+    }
+
+    fn allocate_one_zeroed(&mut self) -> Option<PhysicalAddress> {
+        self.allocate_contiguous_zeroed(unsafe {
+            Layout::from_size_align_unchecked(PAGE_SIZE, PAGE_SIZE)
+        })
+    }
+
     fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
         let requested_size = layout.pad_to_align().size();
         assert_eq!(
@@ -123,16 +150,6 @@ impl FrameAllocator for BootstrapAllocator<'_> {
         }
 
         None
-    }
-
-    fn frame_usage(&self) -> FrameUsage {
-        let mut total = 0;
-        for region in self.regions {
-            let region_size = region.size();
-            total += region_size >> arch::PAGE_SHIFT;
-        }
-        let used = self.offset >> arch::PAGE_SHIFT;
-        FrameUsage { used, total }
     }
 }
 

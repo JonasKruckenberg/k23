@@ -1,4 +1,4 @@
-use super::frame::Frame;
+use super::frame::FrameInfo;
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
@@ -9,14 +9,14 @@ use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::FreeRegions;
 use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
-const ARENA_PAGE_BOOKKEEPING_SIZE: usize = size_of::<Frame>();
+const ARENA_PAGE_BOOKKEEPING_SIZE: usize = size_of::<FrameInfo>();
 const MAX_WASTED_ARENA_BYTES: usize = 0x8_4000; // 528 KiB
 const MAX_ORDER: usize = 11;
 
 pub struct Arena {
-    free_lists: [linked_list::List<Frame>; MAX_ORDER],
+    free_lists: [linked_list::List<FrameInfo>; MAX_ORDER],
     range: Range<PhysicalAddress>,
-    _frames: &'static mut [MaybeUninit<Frame>],
+    slots: &'static mut [MaybeUninit<FrameInfo>],
     max_order: usize,
     used_frames: usize,
     total_frames: usize,
@@ -27,8 +27,8 @@ impl fmt::Debug for Arena {
         f.debug_struct("Arena")
             .field("range", &self.range)
             .field(
-                "frames",
-                &format_args!("&[MaybeUninit<Frame>; {}]", self._frames.len()),
+                "slots",
+                &format_args!("&[MaybeUninit<FrameInner>; {}]", self.slots.len()),
             )
             .field_with("free_lists", |f| {
                 let mut f = f.debug_map();
@@ -49,7 +49,7 @@ impl Arena {
     pub fn from_selection(selection: ArenaSelection, phys_off: VirtualAddress) -> Self {
         debug_assert!(selection.bookkeeping.size() >= bookkeeping_size(selection.arena.size()));
 
-        let raw_frames: &mut [MaybeUninit<Frame>] = unsafe {
+        let slots: &mut [MaybeUninit<FrameInfo>] = unsafe {
             let ptr = VirtualAddress::from_phys(selection.bookkeeping.start, phys_off)
                 .unwrap()
                 .as_mut_ptr()
@@ -85,7 +85,7 @@ impl Arena {
                 let offset = addr.checked_sub_addr(selection.arena.start).unwrap();
                 let idx = offset / PAGE_SIZE;
 
-                let frame = raw_frames[idx].write(Frame::new(addr)).into();
+                let frame = slots[idx].write(FrameInfo::new(addr)).into();
                 free_lists[order].push_back(frame);
             }
 
@@ -98,7 +98,7 @@ impl Arena {
 
         Self {
             range: selection.arena,
-            _frames: raw_frames,
+            slots,
             free_lists,
             max_order,
             used_frames: 0,
@@ -106,7 +106,7 @@ impl Arena {
         }
     }
 
-    pub fn allocate_one(&mut self) -> Option<NonNull<Frame>> {
+    pub fn allocate_one(&mut self) -> Option<NonNull<FrameInfo>> {
         let (frame_order, mut frame) = self.free_lists[..=self.max_order]
             .iter_mut()
             .enumerate()
@@ -115,12 +115,12 @@ impl Arena {
         for order in (1..frame_order + 1).rev() {
             let frame = unsafe { frame.as_mut() };
 
-            let buddy_addr = frame.phys.checked_add(PAGE_SIZE << (order - 1)).unwrap();
+            let buddy_addr = frame.addr().checked_add(PAGE_SIZE << (order - 1)).unwrap();
 
             let buddy = self
                 .find_specific(buddy_addr)
                 .unwrap()
-                .write(Frame::new(buddy_addr))
+                .write(FrameInfo::new(buddy_addr))
                 .into();
 
             self.free_lists[order - 1].push_back(buddy);
@@ -129,7 +129,7 @@ impl Arena {
         Some(frame)
     }
 
-    pub fn allocate_contiguous(&mut self, layout: Layout) -> Option<linked_list::List<Frame>> {
+    pub fn allocate_contiguous(&mut self, layout: Layout) -> Option<linked_list::List<FrameInfo>> {
         assert!(layout.align() >= PAGE_SIZE);
         assert!(layout.size() >= PAGE_SIZE);
 
@@ -149,12 +149,12 @@ impl Arena {
         for order in (min_order + 1..frame_order + 1).rev() {
             let frame = unsafe { frame.as_mut() };
 
-            let buddy_addr = frame.phys.checked_add(PAGE_SIZE << (order - 1)).unwrap();
+            let buddy_addr = frame.addr().checked_add(PAGE_SIZE << (order - 1)).unwrap();
 
             let buddy = self
                 .find_specific(buddy_addr)
                 .unwrap()
-                .write(Frame::new(buddy_addr))
+                .write(FrameInfo::new(buddy_addr))
                 .into();
 
             self.free_lists[order - 1].push_back(buddy);
@@ -164,13 +164,15 @@ impl Arena {
         // The base frame we pulled from the freelist is already correctly initialized, but all following
         // frames of its buddy "block" are left uninitialized, so we need to do that now.
         let frames = {
-            let uninit: &mut [MaybeUninit<Frame>] =
+            let uninit: &mut [MaybeUninit<FrameInfo>] =
                 unsafe { slice::from_raw_parts_mut(frame.cast().as_ptr(), size_frames) };
 
-            let base = unsafe { frame.as_ref().phys };
+            let base = unsafe { frame.as_ref().addr() };
 
             uninit.iter_mut().enumerate().map(move |(idx, slot)| {
-                NonNull::from(slot.write(Frame::new(base.checked_add(idx * PAGE_SIZE).unwrap())))
+                NonNull::from(
+                    slot.write(FrameInfo::new(base.checked_add(idx * PAGE_SIZE).unwrap())),
+                )
             })
         };
 
@@ -179,11 +181,15 @@ impl Arena {
     }
 
     #[inline]
-    fn find_specific(&mut self, addr: PhysicalAddress) -> Option<&mut MaybeUninit<Frame>> {
+    fn find_specific(&mut self, addr: PhysicalAddress) -> Option<&mut MaybeUninit<FrameInfo>> {
         let index = addr.checked_sub_addr(self.range.start).unwrap() / PAGE_SIZE;
-        self._frames.get_mut(index)
+        self.slots.get_mut(index)
     }
 }
+
+// =============================================================================
+// Arena selection
+// =============================================================================
 
 pub fn select_arenas(free_regions: FreeRegions) -> ArenaSelections {
     ArenaSelections {

@@ -138,56 +138,53 @@ impl AddressSpace {
 
                 // log::trace!("[lvl{lvl}::{index} pte {:?}]", pte as *mut _);
 
-                if !pte.is_valid() {
-                    if arch::can_map_at_level(virt, phys, remaining_bytes, lvl) {
-                        let page_size = arch::page_size_for_level(lvl);
+                // if !pte.is_valid() {
+                if arch::can_map_at_level(virt, phys, remaining_bytes, lvl) {
+                    let page_size = arch::page_size_for_level(lvl);
 
-                        // log::trace!("[lvl{lvl}::{index} pte {:?}] mapping {phys:?}..{:?} {flags:?} ", pte as *mut _, phys.checked_add(page_size).unwrap());
+                    // log::trace!("[lvl{lvl}::{index} pte {:?}] mapping {phys:?}..{:?} {flags:?} ", pte as *mut _, phys.checked_add(page_size).unwrap());
 
-                        // This PTE is vacant AND we can map at this level
-                        // mark this PTE as a valid leaf node pointing to the physical frame
-                        pte.replace_address_and_flags(
-                            phys,
-                            arch::PTE_FLAGS_VALID.union(flags.into()),
-                        );
+                    // This PTE is vacant AND we can map at this level
+                    // mark this PTE as a valid leaf node pointing to the physical frame
+                    pte.replace_address_and_flags(phys, arch::PTE_FLAGS_VALID.union(flags.into()));
 
-                        flush.extend_range(
-                            self.asid,
-                            Range::from(virt..virt.checked_add(page_size).unwrap()),
-                        )?;
-                        virt = virt.checked_add(page_size).unwrap();
-                        phys = phys.checked_add(page_size).unwrap();
-                        remaining_bytes -= page_size;
-                        continue 'outer;
-                    } else {
-                        // The current PTE is vacant, but we couldn't map at this level (because the
-                        // page size was too large, or the request wasn't sufficiently aligned or
-                        // because the architecture just can't map at this level). This means
-                        // we need to allocate a new sub-table and retry.
-                        // allocate a new physical frame to hold the next level table and
-                        // mark this PTE as a valid internal node pointing to that sub-table.
-                        let frame = frame_alloc
-                            .allocate_contiguous_zeroed(
-                                Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
-                            )
-                            .ok_or(Error::NoMemory)?; // we should also be able to map a single page
+                    flush.extend_range(
+                        self.asid,
+                        Range::from(virt..virt.checked_add(page_size).unwrap()),
+                    )?;
+                    virt = virt.checked_add(page_size).unwrap();
+                    phys = phys.checked_add(page_size).unwrap();
+                    remaining_bytes -= page_size;
+                    continue 'outer;
+                } else if !pte.is_valid() {
+                    // The current PTE is vacant, but we couldn't map at this level (because the
+                    // page size was too large, or the request wasn't sufficiently aligned or
+                    // because the architecture just can't map at this level). This means
+                    // we need to allocate a new sub-table and retry.
+                    // allocate a new physical frame to hold the next level table and
+                    // mark this PTE as a valid internal node pointing to that sub-table.
+                    let frame = frame_alloc
+                        .allocate_contiguous_zeroed(
+                            Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
+                        )
+                        .ok_or(Error::NoMemory)?; // we should also be able to map a single page
 
-                        // TODO memory barrier
+                    // TODO memory barrier
 
-                        // log::trace!("[lvl{lvl}::{index} pte {:?}] allocating sub table {frame:?}", pte as *mut _,);
+                    // log::trace!("[lvl{lvl}::{index} pte {:?}] allocating sub table {frame:?}", pte as *mut _,);
 
-                        pte.replace_address_and_flags(frame, arch::PTE_FLAGS_VALID);
+                    pte.replace_address_and_flags(frame, arch::PTE_FLAGS_VALID);
 
-                        pgtable = self.pgtable_ptr_from_phys(frame);
-                    }
+                    pgtable = self.pgtable_ptr_from_phys(frame);
                 } else if !pte.is_leaf() {
                     // log::trace!("[lvl{lvl}::{index} pte {:?}] is sub-table => {:?}", pte as *mut _, pte.get_address_and_flags().0);
 
                     // This PTE is an internal node pointing to another page table
                     pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
-                } else {
-                    unreachable!("Invalid state: PTE can't be valid leaf (this means {virt:?} is already mapped) {pte:?} {pte:p}");
                 }
+                // else {
+                //     unreachable!("Invalid state: PTE can't be valid leaf (this means {virt:?} is already mapped) {pte:?} {pte:p}");
+                // }
             }
         }
 

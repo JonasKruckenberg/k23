@@ -6,7 +6,8 @@ use core::fmt::Formatter;
 use core::range::Range;
 use dtb_parser::{DevTree, Node, Visitor};
 use fallible_iterator::FallibleIterator;
-use mmu::{arch, AddressRangeExt, PhysicalAddress};
+use mmu::arch::PAGE_SIZE;
+use mmu::{AddressRangeExt, PhysicalAddress};
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
@@ -58,21 +59,22 @@ impl<'dt> MachineInfo<'dt> {
 
         // Apply reserved_entries
         while let Some(entry) = reservations.next()? {
-            let entry = {
+            let region = {
                 let start = PhysicalAddress::new(usize::try_from(entry.address)?);
 
                 Range::from(start..start.checked_add(usize::try_from(entry.size)?).unwrap())
             };
+            log::trace!("applying reservation {region:?}");
 
-            exclude_region(entry);
+            exclude_region(region);
         }
 
         // Apply memory reservations
         for reservation in v.reservations.memory_reservations {
             let MemoryReservation::NoMap(name, regions) = reservation;
-            log::trace!("applying reservations for {name}");
 
             for region in regions {
+                log::trace!("applying reservation for {name} {region:?}");
                 exclude_region(region);
             }
         }
@@ -83,8 +85,7 @@ impl<'dt> MachineInfo<'dt> {
         // page-align all memory regions, this will waste some physical memory in the process,
         // but we can't make use of it either way
         info.memories.iter_mut().for_each(|region| {
-            region.start = region.start.checked_align_up(arch::PAGE_SIZE).unwrap();
-            region.end = region.end.align_down(arch::PAGE_SIZE);
+            *region = region.checked_align_in(PAGE_SIZE).unwrap();
         });
 
         // ensure the memory regions are sorted.

@@ -4,21 +4,15 @@ use crate::{PhysicalAddress, VirtualAddress};
 use core::alloc::Layout;
 use core::ptr;
 
-pub use bootstrap::{BootstrapAllocator, FreeRegions, UsedRegions};
-
-#[derive(Debug)]
-pub struct FrameUsage {
-    pub used: usize,
-    pub total: usize,
-}
+pub use bootstrap::{BootstrapAllocator, FrameUsage, FreeRegions, UsedRegions};
 
 pub trait FrameAllocator {
+    fn allocate_one(&mut self) -> Option<PhysicalAddress>;
+    fn allocate_one_zeroed(&mut self) -> Option<PhysicalAddress>;
     fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress>;
     fn deallocate_contiguous(&mut self, addr: PhysicalAddress, layout: Layout);
     fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress>;
     fn allocate_partial(&mut self, layout: Layout) -> Option<(PhysicalAddress, usize)>;
-
-    fn frame_usage(&self) -> FrameUsage;
 }
 
 pub trait FramesIterator: Iterator<Item = (PhysicalAddress, usize)> {

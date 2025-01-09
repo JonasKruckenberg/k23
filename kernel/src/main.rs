@@ -2,16 +2,11 @@
 #![no_main]
 #![feature(used_with_arg)]
 #![feature(naked_functions)]
-#![feature(thread_local)]
-#![feature(never_type)]
+#![feature(thread_local, never_type)]
 #![feature(new_range_api)]
-#![feature(maybe_uninit_slice)]
 #![feature(debug_closure_helpers)]
-#![feature(maybe_uninit_fill)]
 #![allow(internal_features)]
-#![feature(std_internals)]
-#![feature(panic_can_unwind)]
-#![feature(fmt_internals)]
+#![feature(std_internals, panic_can_unwind, fmt_internals)]
 #![allow(dead_code)] // TODO remove
 
 extern crate alloc;
@@ -19,11 +14,12 @@ extern crate alloc;
 mod allocator;
 mod arch;
 mod error;
-mod frame_alloc;
 mod logger;
 mod machine_info;
 mod panic;
+mod thread_local;
 mod time;
+mod vm;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
@@ -35,17 +31,18 @@ use core::range::Range;
 use core::{cmp, slice};
 use loader_api::{BootInfo, MemoryRegionKind};
 use mmu::arch::PAGE_SIZE;
-use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
+use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator as _};
 use mmu::{PhysicalAddress, VirtualAddress};
 use sync::OnceLock;
 use thread_local::thread_local;
+use vm::frame_alloc;
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages
-pub const STACK_SIZE_PAGES: usize = 256;
+pub const STACK_SIZE_PAGES: usize = 128; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
-pub const TRAP_STACK_SIZE_PAGES: usize = 16;
+pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropriate value
 /// The initial size of the kernel heap in pages.
 ///
 /// This initial size should be small enough so the loaders less sophisticated allocator can
@@ -79,7 +76,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     // initialize thread-local storage
     // done after global allocator initialization since TLS destructors are registered in a heap
     // allocated Vec
-    init_tls(&mut boot_alloc, boot_info);
+    let tls = init_tls(&mut boot_alloc, boot_info);
 
     // initialize the logger
     // done after TLS initialization since we maintain per-hart host stdio channels
@@ -88,6 +85,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
     log::debug!("\n{boot_info}");
     log::trace!("Allocatable memory regions: {allocatable_memories:?}");
+    log::trace!("Thread pointer: {tls:?}");
 
     // perform per-hart, architecture-specific initialization
     // (e.g. setting the trap vector and resetting the FPU)
@@ -112,7 +110,9 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
     // TODO init kernel address space (requires global allocator)
 
-    log::trace!(
+    vm::init(boot_info, minfo).unwrap();
+
+    log::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
@@ -139,7 +139,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     arch::exit(0);
 }
 
-fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
+fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) -> Option<VirtualAddress> {
     if let Some(template) = &boot_info.tls_template {
         let layout =
             Layout::from_size_align(template.mem_size, cmp::max(template.align, PAGE_SIZE))
@@ -165,6 +165,9 @@ fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
         }
 
         arch::set_thread_ptr(virt);
+        Some(virt)
+    } else {
+        None
     }
 }
 
@@ -175,7 +178,7 @@ fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
 /// attempt to compact the list by merging adjacent regions.
 fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAddress>, 16> {
     let temp: ArrayVec<Range<PhysicalAddress>, 16> = boot_info
-        .memory_regions()
+        .memory_regions
         .iter()
         .filter_map(|region| region.kind.is_usable().then_some(region.range))
         .collect();
@@ -200,9 +203,9 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
     out
 }
 
-fn locate_device_tree(boot_info: &'static BootInfo) -> *const u8 {
+fn locate_device_tree(boot_info: &BootInfo) -> *const u8 {
     let fdt = boot_info
-        .memory_regions()
+        .memory_regions
         .iter()
         .find(|region| region.kind == MemoryRegionKind::FDT)
         .expect("no FDT region");

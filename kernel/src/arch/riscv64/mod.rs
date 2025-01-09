@@ -1,6 +1,7 @@
 mod setjmp_longjmp;
 mod start;
 mod trap_handler;
+mod utils;
 
 use bitflags::bitflags;
 use core::arch::asm;
