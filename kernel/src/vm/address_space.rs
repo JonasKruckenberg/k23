@@ -18,7 +18,7 @@ use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::ops::Bound;
 use core::pin::Pin;
-use core::range::Range;
+use core::range::{Range, RangeBounds};
 use mmu::arch::PAGE_SIZE;
 use mmu::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress};
 use rand::distributions::Uniform;
@@ -78,6 +78,17 @@ impl AddressSpace {
         }
     }
 
+    /// Crate a new region in this address space.
+    ///
+    /// The mapping will be placed at a chosen spot in the address space that
+    /// satisfies the given `layout` requirements.
+    /// It's memory will be backed by the provided `vmo` at the given `vmo_offset`.
+    ///
+    /// # ASLR
+    ///
+    /// When address space layout randomization (ASLR) is enabled, the spot will be chosen
+    /// randomly from a set of candidate spots. The number of candidate spots is determined by the
+    /// `entropy` config. (TODO make actual config)
     pub fn map(
         &mut self,
         layout: Layout,
@@ -101,8 +112,36 @@ impl AddressSpace {
         Ok(region)
     }
 
-    pub fn map_specific(&mut self) {
-        todo!()
+    /// Create a new region at the provided range in this address space.
+    ///
+    /// It's memory will be backed by the provided `vmo` at the given `vmo_offset`.
+    pub fn map_specific(
+        &mut self,
+        virt: Range<VirtualAddress>,
+        vmo: Arc<Vmo>,
+        vmo_offset: usize,
+        permissions: Permissions,
+        name: String,
+    ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
+        assert!(virt.start.is_aligned_to(PAGE_SIZE));
+        assert!(virt.end.is_aligned_to(PAGE_SIZE));
+        assert_eq!(vmo_offset % PAGE_SIZE, 0);
+
+        if let Some(prev) = self.regions.upper_bound(virt.start_bound()).get() {
+            assert!(prev.range.end <= virt.start);
+        }
+
+        // TODO can we reuse the cursor we previously created for this?
+        let region = self.regions.insert(AddressSpaceRegion::new(
+            virt,
+            permissions,
+            vmo,
+            vmo_offset,
+            name,
+        ));
+        // mapping.map_range(batch, virt)?;
+
+        Ok(region)
     }
 
     pub fn reserve(
