@@ -109,13 +109,13 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
     // TODO init kernel address space (requires global allocator)
 
-    log::trace!(
+    vm::test(boot_info).unwrap();
+
+    log::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
-
-    vm::test(boot_info).unwrap();
 
     // - [all][global] parse cmdline
     // - [all][global] `vm::init()` init virtual memory management

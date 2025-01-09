@@ -2,6 +2,7 @@ use crate::error::Error;
 use crate::vm::address_space::Batch;
 use crate::vm::Vmo;
 use crate::vm::{PageFaultFlags, Permissions};
+use crate::BOOT_INFO;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
@@ -62,10 +63,11 @@ impl AddressSpaceRegion {
         addr: VirtualAddress,
         flags: PageFaultFlags,
     ) -> crate::Result<()> {
-        log::trace!("page fault at {addr:?} flags {flags:?} against {self:?}");
+        log::trace!("page fault at {addr:?} flags {flags:?}");
         debug_assert!(addr.is_aligned_to(PAGE_SIZE));
         debug_assert!(self.range.contains(&addr));
 
+        // Check that the access (read,write or execute) is permitted given this region's permissions
         let access_permission = Permissions::from(flags);
         if self.permissions.contains(access_permission) {
             let diff = access_permission.difference(self.permissions);
@@ -90,6 +92,17 @@ impl AddressSpaceRegion {
             return Err(Error::AccessDenied);
         }
 
+        // At this point we know that the access was legal, so either we faulted because the Frame
+        // was missing because we paged it out (THIS IS NOT POSSIBLE YET) or the actual MMU flags
+        // didn't match the logical permissions.
+        // This either means MMU flags were set incorrectly (DOES THIS EVEN HAPPEN?) or - and this
+        // is the most common case - we attempted to write to a non-writable region which means we
+        // need to do copy-on-write.
+        //
+        // There is another small optimization here: The physical memory can also be *Wired* which means
+        // it is always mapped, cannot be paged-out, and also doesn't support COW. This is used to
+        // simplify handling of regions like kernel memory which must always be present anyway.
+
         let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
 
         let mut batch = Batch::new(mmu_aspace);
@@ -102,21 +115,24 @@ impl AddressSpaceRegion {
                     ))
                     .expect("contiguous lookup for wired VMOs should never fail");
 
-                log::trace!("CASE wired VMO => materializing permission changes for range {range_phys:?} {:?}", self.permissions);
                 batch.append(
-                    self.range.start,
-                    (range_phys.start, range_phys.size()),
+                    addr,
+                    range_phys.start,
+                    range_phys.size(),
                     self.permissions.into(),
                 )?;
             }
             Vmo::Paged(vmo) => {
-                let frame = vmo.require_frame(vmo_relative_offset, flags.cause_is_write())?;
+                let mut vmo = vmo.lock();
 
-                batch.append(
-                    self.range.start,
-                    (frame.addr(), PAGE_SIZE),
-                    self.permissions.into(),
-                )?;
+                let phys_off = BOOT_INFO.get().unwrap().physical_address_offset;
+                let frame =
+                    vmo.require_frame(vmo_relative_offset, flags.cause_is_write(), phys_off)?;
+
+                batch.append(addr, frame.addr(), PAGE_SIZE, self.permissions.into())?;
+
+                // TODO if we have space in batch attempt to "fault ahead"
+                //  - if frames are present in range => append to batch
             }
         }
 

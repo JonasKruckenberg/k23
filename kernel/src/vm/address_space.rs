@@ -11,7 +11,7 @@ use core::ops::Bound;
 use core::pin::Pin;
 use core::range::Range;
 use mmu::arch::PAGE_SIZE;
-use mmu::{AddressRangeExt, Flush, PhysicalAddress, VirtualAddress};
+use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use rand::distributions::Uniform;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
@@ -141,6 +141,22 @@ impl AddressSpace {
         todo!()
     }
 
+    /// Page fault handling
+    ///
+    /// - Is there an `AddressSpaceRegion` for the address?
+    ///     - NO => Error::AccessDenied (fault at unmapped address)
+    ///     - YES
+    ///         - ensure access is coherent with logical permissions
+    ///         - Is there a `Frame` for the address?
+    ///             - NO  => TODO this means frame got paged-out, need to reload it from pager
+    ///             - YES (frame is resident in memory, but flags were off, either a fluke or COW)
+    ///                 - Is access WRITE?
+    ///                     - NO  => (do nothing)
+    ///                     - YES => Need to do COW
+    ///                         - allocate new frame
+    ///                         - copy content from old to new frame (OMIT FOR ZERO FRAME)
+    ///                         - replace old frame with new frame
+    ///                      - update MMU page table
     pub fn page_fault(&mut self, addr: VirtualAddress, flags: PageFaultFlags) -> crate::Result<()> {
         assert!(flags.is_valid());
 
@@ -153,7 +169,6 @@ impl AddressSpace {
             .and_then(|region| region.range.contains(&addr).then_some(region));
 
         if let Some(region) = region {
-            // TODO actually update self.last_fault here
             region.page_fault(&mut self.mmu, addr, flags)
         } else {
             log::trace!("page fault at unmapped address {addr}");
@@ -380,11 +395,12 @@ impl<'a> Batch<'a> {
     pub fn append(
         &mut self,
         base: VirtualAddress,
-        phys: (PhysicalAddress, usize),
+        phys: PhysicalAddress,
+        len: usize,
         flags: mmu::Flags,
     ) -> crate::Result<()> {
         debug_assert!(
-            phys.1 % PAGE_SIZE == 0,
+            len % PAGE_SIZE == 0,
             "physical address range must be multiple of page size"
         );
 
@@ -392,12 +408,12 @@ impl<'a> Batch<'a> {
         if !self.can_append(base) || self.flags != flags {
             self.flush()?;
             self.flags = flags;
-            self.range = Range::from(base..base.checked_add(phys.1).unwrap());
+            self.range = Range::from(base..base.checked_add(len).unwrap());
         } else {
-            self.range.end = self.range.end.checked_add(phys.1).unwrap();
+            self.range.end = self.range.end.checked_add(len).unwrap();
         }
 
-        self.phys.push(phys);
+        self.phys.push((phys, len));
 
         Ok(())
     }
@@ -414,12 +430,12 @@ impl<'a> Batch<'a> {
             self.phys,
             self.flags
         );
-        let iter = BatchFramesIter(self.phys.drain(..));
+        let _iter = BatchFramesIter(self.phys.drain(..));
 
-        let mut flush = Flush::empty(self.mmu_aspace.asid());
-        self.mmu_aspace
-            .map(self.range.start, iter, self.flags, &mut flush)?;
-        flush.flush()?;
+        // let mut flush = Flush::empty(self.mmu_aspace.asid());
+        // self.mmu_aspace
+        //     .map(self.range.start, iter, self.flags, &mut flush)?;
+        // flush.flush()?;
 
         self.range = Range::from(self.range.end..self.range.end);
 

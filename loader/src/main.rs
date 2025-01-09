@@ -15,7 +15,6 @@ use core::alloc::Layout;
 use core::ffi::c_void;
 use core::range::Range;
 use core::{ptr, slice};
-use log::LevelFilter;
 use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
 use mmu::{AddressRangeExt, AddressSpace, Flush, PhysicalAddress, VirtualAddress, KIB};
@@ -31,6 +30,7 @@ mod page_alloc;
 mod panic;
 
 pub const ENABLE_KASLR: bool = false;
+pub const LOG_LEVEL: log::Level = log::Level::Trace;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -50,7 +50,7 @@ pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
         }
     }
 
-    logger::init(LevelFilter::Trace);
+    logger::init(LOG_LEVEL.to_level_filter());
 
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");

@@ -12,16 +12,28 @@ use pin_project::pin_project;
 const FRAME_LIST_NODE_FANOUT: usize = 16;
 
 pub struct FrameList {
-    nodes: wavltree::WAVLTree<FrameListNode>,
+    pub nodes: wavltree::WAVLTree<FrameListNode>,
     len: usize,
 }
 
 #[pin_project]
 #[derive(Debug)]
-struct FrameListNode {
+pub struct FrameListNode {
     links: wavltree::Links<FrameListNode>,
     offset: usize,
     frames: [Option<Frame>; FRAME_LIST_NODE_FANOUT],
+}
+
+pub struct Cursor<'a> {
+    cursor: wavltree::Cursor<'a, FrameListNode>,
+    index_in_node: usize,
+    offset: usize,
+}
+
+pub struct CursorMut<'a> {
+    cursor: wavltree::CursorMut<'a, FrameListNode>,
+    index_in_node: usize,
+    offset: usize,
 }
 
 // =============================================================================
@@ -42,12 +54,6 @@ impl fmt::Debug for FrameList {
     }
 }
 
-// impl Drop for FrameList {
-//     fn drop(&mut self) {
-//         self.clear();
-//     }
-// }
-
 impl FrameList {
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
@@ -63,6 +69,14 @@ impl FrameList {
 
         let page = node.frames.get(offset_to_node_index(offset))?;
         page.as_ref()
+    }
+
+    pub fn get_mut(&mut self, offset: usize) -> Option<&mut Frame> {
+        let node_offset = offset_to_node_offset(offset);
+        let node = Pin::into_inner(self.nodes.find_mut(&node_offset).get_mut()?);
+
+        let page = node.frames.get_mut(offset_to_node_index(offset))?;
+        page.as_mut()
     }
 
     pub fn take(&mut self, offset: usize) -> Option<Frame> {
@@ -81,6 +95,14 @@ impl FrameList {
         page.replace(new)
     }
 
+    pub fn insert(&mut self, offset: usize, new: Frame) -> &mut Frame {
+        let node_offset = offset_to_node_offset(offset);
+        let node = Pin::into_inner(self.nodes.find_mut(&node_offset).get_mut().unwrap());
+
+        let frame = node.frames.get_mut(offset_to_node_index(offset)).unwrap();
+        frame.insert(new)
+    }
+
     pub fn first(&self) -> Option<&Frame> {
         let node = self.nodes.front().get()?;
         node.frames.iter().find(|f| f.is_some())?.as_ref()
@@ -89,6 +111,28 @@ impl FrameList {
     pub fn last(&self) -> Option<&Frame> {
         let node = self.nodes.back().get()?;
         node.frames.iter().rfind(|f| f.is_some())?.as_ref()
+    }
+
+    pub fn cursor(&self, offset: usize) -> Cursor {
+        let node_offset = offset_to_node_offset(offset);
+        let cursor = self.nodes.find(&node_offset);
+
+        Cursor {
+            cursor,
+            index_in_node: offset_to_node_index(offset),
+            offset,
+        }
+    }
+
+    pub fn cursor_mut(&mut self, offset: usize) -> CursorMut {
+        let node_offset = offset_to_node_offset(offset);
+        let cursor = self.nodes.find_mut(&node_offset);
+
+        CursorMut {
+            cursor,
+            index_in_node: offset_to_node_index(offset),
+            offset,
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Frame> {
@@ -213,4 +257,128 @@ fn offset_to_node_offset(offset: usize) -> usize {
 
 fn offset_to_node_index(offset: usize) -> usize {
     (offset >> mmu::arch::PAGE_SHIFT) % FRAME_LIST_NODE_FANOUT
+}
+
+// =============================================================================
+// Cursor
+// =============================================================================
+
+impl<'a> Cursor<'a> {
+    /// Moves the cursor to the next [`Frame`] in the list
+    pub fn move_next(&mut self) {
+        self.offset += PAGE_SIZE;
+
+        // if there is a current node AND the node still has unseen frames in it
+        // advance the offset
+        if let Some(node) = self.cursor.get() {
+            self.index_in_node += 1;
+            if node.frames.len() > self.index_in_node {
+                return;
+            }
+        }
+
+        // otherwise advance the cursor and reset the offset
+        self.cursor.move_next();
+        self.index_in_node = 0;
+    }
+
+    /// Moves the cursor to the next [`Frame`] in the list skipping any missing pages
+    pub fn move_next_present(&mut self) {
+        self.offset += PAGE_SIZE;
+
+        // if there is a current node AND the node still has unseen frames in it
+        // advance the index
+        if let Some(node) = self.cursor.get() {
+            while node.frames.len() > self.index_in_node {
+                self.index_in_node += 1;
+
+                if node.frames.len() > self.index_in_node
+                    && node.frames[self.index_in_node].is_some()
+                {
+                    return;
+                }
+            }
+        }
+
+        // otherwise advance the cursor and reset the index
+        self.cursor.move_next();
+        self.index_in_node = 0;
+    }
+
+    /// Returns the offset of the [`Frame`] in this list, will always be a multiple
+    /// of [`PAGE_SIZE`].
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    /// Returns a reference to the current [`Frame`] if any.
+    pub fn get(&self) -> Option<&'a Frame> {
+        let node = self.cursor.get()?;
+        node.frames.get(self.index_in_node)?.as_ref()
+    }
+}
+
+// =============================================================================
+// CursorMut
+// =============================================================================
+
+impl<'a> CursorMut<'a> {
+    /// Moves the cursor to the next [`Frame`] in the list
+    pub fn move_next(&mut self) {
+        self.offset += PAGE_SIZE;
+
+        // if there is a current node AND the node still has unseen frames in it
+        // advance the index
+        if let Some(node) = self.cursor.get() {
+            self.index_in_node += 1;
+            if node.frames.len() > self.index_in_node {
+                return;
+            }
+        }
+
+        // otherwise advance the cursor and reset the index
+        self.cursor.move_next();
+        self.index_in_node = 0;
+    }
+
+    /// Moves the cursor to the next [`Frame`] in the list skipping any missing pages
+    pub fn move_next_present(&mut self) {
+        self.offset += PAGE_SIZE;
+
+        // if there is a current node AND the node still has unseen frames in it
+        // advance the offset
+        if let Some(node) = self.cursor.get() {
+            while node.frames.len() > self.index_in_node {
+                self.index_in_node += 1;
+
+                if node.frames.len() > self.index_in_node
+                    && node.frames[self.index_in_node].is_some()
+                {
+                    return;
+                }
+            }
+        }
+
+        // otherwise advance the cursor and reset the offset
+        self.cursor.move_next();
+        self.index_in_node = 0;
+    }
+
+    /// Returns the offset of the [`Frame`] in this list, will always be a multiple
+    /// of [`PAGE_SIZE`].
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    /// Returns a reference to the current [`Frame`] if any.
+    pub fn get(&self) -> Option<&'a Frame> {
+        let node = self.cursor.get()?;
+        node.frames.get(self.index_in_node)?.as_ref()
+    }
+
+    /// Returns a mutable reference to the current [`Frame`] if any.
+    pub fn get_mut(&mut self) -> Option<&mut Frame> {
+        let node = Pin::into_inner(self.cursor.get_mut()?);
+        node.frames.get_mut(self.index_in_node)?.as_mut()
+    }
 }

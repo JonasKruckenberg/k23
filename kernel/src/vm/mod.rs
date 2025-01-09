@@ -17,7 +17,7 @@ use loader_api::BootInfo;
 use mmu::arch::PAGE_SIZE;
 use mmu::{AddressRangeExt, VirtualAddress};
 use paged_vmo::PagedVmo;
-use sync::LazyLock;
+use sync::{LazyLock, Mutex};
 use wired_vmo::WiredVmo;
 use xmas_elf::program::Type;
 
@@ -44,10 +44,10 @@ pub fn test(boot_info: &BootInfo) -> crate::Result<()> {
 
     let layout = Layout::from_size_align(4 * PAGE_SIZE, PAGE_SIZE).unwrap();
 
-    let vmo = Arc::new(Vmo::Paged(PagedVmo::from_iter(iter::repeat_n(
+    let vmo = Arc::new(Vmo::Paged(Mutex::new(PagedVmo::from_iter(iter::repeat_n(
         THE_ZERO_FRAME.clone(),
         layout.size() / PAGE_SIZE,
-    ))));
+    )))));
 
     let range = aspace
         .map(layout, vmo, 0, Permissions::READ, "Test".to_string())?
@@ -199,5 +199,5 @@ impl From<Permissions> for mmu::Flags {
 #[derive(Debug)]
 pub enum Vmo {
     Wired(WiredVmo),
-    Paged(PagedVmo),
+    Paged(Mutex<PagedVmo>),
 }

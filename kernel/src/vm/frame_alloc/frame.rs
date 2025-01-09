@@ -1,4 +1,5 @@
 use crate::vm::frame_alloc::FRAME_ALLOC;
+use alloc::slice;
 use core::marker::PhantomData;
 use core::mem::offset_of;
 use core::ops::Deref;
@@ -6,7 +7,8 @@ use core::ptr::NonNull;
 use core::sync::atomic;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
-use mmu::PhysicalAddress;
+use mmu::arch::PAGE_SIZE;
+use mmu::{PhysicalAddress, VirtualAddress};
 use static_assertions::assert_impl_all;
 
 /// Soft limit on the amount of references that may be made to a `Frame`.
@@ -160,6 +162,27 @@ impl Frame {
         }
     }
 
+    pub fn get_mut(this: &mut Frame) -> Option<&mut FrameInfo> {
+        if this.is_unique() {
+            // This unsafety is ok because we're guaranteed that the pointer
+            // returned is the *only* pointer that will ever be returned to T. Our
+            // reference count is guaranteed to be 1 at this point, and we required
+            // the Arc itself to be `mut`, so we're returning the only possible
+            // reference to the inner data.
+            unsafe { Some(Frame::get_mut_unchecked(this)) }
+        } else {
+            None
+        }
+    }
+
+    pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut FrameInfo {
+        this.ptr.as_mut()
+    }
+
+    fn is_unique(&self) -> bool {
+        self.refcount() == 1
+    }
+
     #[inline(never)]
     fn drop_slow(&mut self) {
         // TODO if we ever add more fields to FrameInfo we should reset them here
@@ -217,6 +240,24 @@ impl FrameInfo {
     #[must_use]
     pub fn refcount(&self) -> usize {
         self.refcount.load(Ordering::Relaxed)
+    }
+
+    /// Returns a slice of the corresponding physical memory
+    #[inline]
+    pub fn as_slice(&self, phys_off: VirtualAddress) -> &[u8] {
+        let base = VirtualAddress::from_phys(self.addr, phys_off)
+            .unwrap()
+            .as_ptr();
+        unsafe { slice::from_raw_parts(base, PAGE_SIZE) }
+    }
+
+    /// Returns a mutable slice of the corresponding physical memory
+    #[inline]
+    pub fn as_mut_slice(&mut self, phys_off: VirtualAddress) -> &mut [u8] {
+        let base = VirtualAddress::from_phys(self.addr, phys_off)
+            .unwrap()
+            .as_mut_ptr();
+        unsafe { slice::from_raw_parts_mut(base, PAGE_SIZE) }
     }
 
     #[inline]
