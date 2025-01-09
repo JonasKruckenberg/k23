@@ -76,7 +76,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     // initialize thread-local storage
     // done after global allocator initialization since TLS destructors are registered in a heap
     // allocated Vec
-    init_tls(&mut boot_alloc, boot_info);
+    let tls = init_tls(&mut boot_alloc, boot_info);
 
     // initialize the logger
     // done after TLS initialization since we maintain per-hart host stdio channels
@@ -85,6 +85,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
     log::debug!("\n{boot_info}");
     log::trace!("Allocatable memory regions: {allocatable_memories:?}");
+    log::trace!("Thread pointer: {tls:?}");
 
     // perform per-hart, architecture-specific initialization
     // (e.g. setting the trap vector and resetting the FPU)
@@ -138,7 +139,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     arch::exit(0);
 }
 
-fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
+fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) -> Option<VirtualAddress> {
     if let Some(template) = &boot_info.tls_template {
         let layout =
             Layout::from_size_align(template.mem_size, cmp::max(template.align, PAGE_SIZE))
@@ -164,6 +165,9 @@ fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
         }
 
         arch::set_thread_ptr(virt);
+        Some(virt)
+    } else {
+        None
     }
 }
 

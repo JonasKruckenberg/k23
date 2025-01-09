@@ -244,14 +244,14 @@ macro_rules! address_impl {
 
         impl fmt::Display for $addr {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_fmt(format_args!("{:#016x}", self.0))
+                f.write_fmt(format_args!("{:#018x}", self.0)) // 18 digits to account for the leading 0x
             }
         }
 
         impl fmt::Debug for $addr {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.debug_tuple(stringify!($addr))
-                    .field(&format_args!("{:#016x}", self.0))
+                    .field(&format_args!("{:#018x}", self.0)) // 18 digits to account for the leading 0x
                     .finish()
             }
         }
