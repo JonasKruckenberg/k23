@@ -56,7 +56,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
 
         for region in aspace.regions.iter() {
             log::trace!(
-                "{:<40} {}..{} {}",
+                "{:<40?} {}..{} {}",
                 region.name,
                 region.range.start,
                 region.range.end,
@@ -79,7 +79,7 @@ fn reserve_wired_regions(
     aspace.reserve(
         boot_info.physical_memory_map,
         Permissions::READ | Permissions::WRITE,
-        "Physical Memory Map".to_string(),
+        Some("Physical Memory Map".to_string()),
         flush,
     )?;
 
@@ -133,7 +133,7 @@ fn reserve_wired_regions(
                     .unwrap(),
             },
             permissions,
-            format!("Kernel {permissions} Segment"),
+            Some(format!("Kernel {permissions} Segment")),
             flush,
         )?;
     }
