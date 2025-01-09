@@ -1,6 +1,12 @@
-use crate::TRAP_STACK_SIZE_PAGES;
+use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
+use crate::error::Error;
+use crate::vm::{PageFaultFlags, KERNEL_ASPACE};
+use crate::{arch, TRAP_STACK_SIZE_PAGES};
 use core::arch::{asm, naked_asm};
+use core::fmt::Write;
+use core::sync::atomic::{AtomicBool, Ordering};
 use mmu::arch::PAGE_SIZE;
+use mmu::VirtualAddress;
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{scause, sepc, sstatus, stval, stvec};
 use thread_local::thread_local;
@@ -68,47 +74,77 @@ unsafe extern "C" fn trap_vec() {
 unsafe extern "C" fn default_trap_entry() {
     naked_asm! {
         ".align 2",
-
-        "mv t0, sp", // save the correct stack pointer
-        "csrrw sp, sscratch, sp", // t6 points to the TrapFrame
+        // "mv t0, sp", // save the correct stack pointer
+        "csrrw sp, sscratch, sp", // sp points to the TrapFrame
         "add sp, sp, -0x210",
 
-        // save gp
-        "
-            sd x0, 0x00(sp)
-            sd ra, 0x08(sp)
-            sd t0, 0x10(sp)
-            sd gp, 0x18(sp)
-            sd tp, 0x20(sp)
-            sd s0, 0x40(sp)
-            sd s1, 0x48(sp)
-            sd s2, 0x90(sp)
-            sd s3, 0x98(sp)
-            sd s4, 0xA0(sp)
-            sd s5, 0xA8(sp)
-            sd s6, 0xB0(sp)
-            sd s7, 0xB8(sp)
-            sd s8, 0xC0(sp)
-            sd s9, 0xC8(sp)
-            sd s10, 0xD0(sp)
-            sd s11, 0xD8(sp)
-            ",
+        // save gp regs
+        save_gp!(x0 => sp[0]),
+        save_gp!(x1 => sp[1]),
+        // skip sp since it is saved in sscratch
+        save_gp!(x3 => sp[3]),
+        save_gp!(x4 => sp[4]),
+        save_gp!(x5 => sp[5]),
+        save_gp!(x6 => sp[6]),
+        save_gp!(x7 => sp[7]),
+        save_gp!(x8 => sp[8]),
+        save_gp!(x9 => sp[9]),
+        save_gp!(x10 => sp[10]),
+        save_gp!(x11 => sp[11]),
+        save_gp!(x12 => sp[12]),
+        save_gp!(x13 => sp[13]),
+        save_gp!(x14 => sp[14]),
+        save_gp!(x15 => sp[15]),
+        save_gp!(x16 => sp[16]),
+        save_gp!(x17 => sp[17]),
+        save_gp!(x18 => sp[18]),
+        save_gp!(x19 => sp[19]),
+        save_gp!(x20 => sp[20]),
+        save_gp!(x21 => sp[21]),
+        save_gp!(x22 => sp[22]),
+        save_gp!(x23 => sp[23]),
+        save_gp!(x24 => sp[24]),
+        save_gp!(x25 => sp[25]),
+        save_gp!(x26 => sp[26]),
+        save_gp!(x27 => sp[27]),
+        save_gp!(x28 => sp[28]),
+        save_gp!(x29 => sp[29]),
+        save_gp!(x30 => sp[30]),
+        save_gp!(x31 => sp[31]),
 
-        // save fp
-        "
-            fsd fs0, 0x140(sp)
-            fsd fs1, 0x148(sp)
-            fsd fs2, 0x190(sp)
-            fsd fs3, 0x198(sp)
-            fsd fs4, 0x1A0(sp)
-            fsd fs5, 0x1A8(sp)
-            fsd fs6, 0x1B0(sp)
-            fsd fs7, 0x1B8(sp)
-            fsd fs8, 0x1C0(sp)
-            fsd fs9, 0x1C8(sp)
-            fsd fs10, 0x1D0(sp)
-            fsd fs11, 0x1D8(sp)
-        ",
+        // save fp regs
+        save_fp!(f0 => sp[32]),
+        save_fp!(f1 => sp[33]),
+        save_fp!(f2 => sp[34]),
+        save_fp!(f3 => sp[35]),
+        save_fp!(f4 => sp[36]),
+        save_fp!(f5 => sp[37]),
+        save_fp!(f6 => sp[38]),
+        save_fp!(f7 => sp[39]),
+        save_fp!(f8 => sp[40]),
+        save_fp!(f9 => sp[41]),
+        save_fp!(f10 => sp[42]),
+        save_fp!(f11 => sp[43]),
+        save_fp!(f12 => sp[44]),
+        save_fp!(f13 => sp[45]),
+        save_fp!(f14 => sp[46]),
+        save_fp!(f15 => sp[47]),
+        save_fp!(f16 => sp[48]),
+        save_fp!(f17 => sp[49]),
+        save_fp!(f18 => sp[50]),
+        save_fp!(f19 => sp[51]),
+        save_fp!(f20 => sp[52]),
+        save_fp!(f21 => sp[53]),
+        save_fp!(f22 => sp[54]),
+        save_fp!(f23 => sp[55]),
+        save_fp!(f24 => sp[56]),
+        save_fp!(f25 => sp[57]),
+        save_fp!(f26 => sp[58]),
+        save_fp!(f27 => sp[59]),
+        save_fp!(f28 => sp[60]),
+        save_fp!(f29 => sp[61]),
+        save_fp!(f30 => sp[62]),
+        save_fp!(f31 => sp[63]),
 
         "mv a0, sp",
 
@@ -116,74 +152,73 @@ unsafe extern "C" fn default_trap_entry() {
 
         "mv sp, a0",
 
-        // restore gp
-        "ld ra, 0x08(a0)",
+        // restore gp regs
+        // skip x0 since its always zero
+        load_gp!(sp[1] => x1),
         // skip sp since it is saved in sscratch
-        "ld gp, 0x18(a0)
-            ld tp, 0x20(a0)
-            ld t0, 0x28(a0)
-            ld t1, 0x30(a0)
-            ld t2, 0x38(a0)
-            ld s0, 0x40(a0)
-            ld s1, 0x48(a0)
-            ld a1, 0x58(a0)
-            ld a2, 0x60(a0)
-            ld a3, 0x68(a0)
-            ld a4, 0x70(a0)
-            ld a5, 0x78(a0)
-            ld a6, 0x80(a0)
-            ld a7, 0x88(a0)
-            ld s2, 0x90(a0)
-            ld s3, 0x98(a0)
-            ld s4, 0xA0(a0)
-            ld s5, 0xA8(a0)
-            ld s6, 0xB0(a0)
-            ld s7, 0xB8(a0)
-            ld s8, 0xC0(a0)
-            ld s9, 0xC8(a0)
-            ld s10, 0xD0(a0)
-            ld s11, 0xD8(a0)
-            ld t3, 0xE0(a0)
-            ld t4, 0xE8(a0)
-            ld t5, 0xF0(a0)
-            ld t6, 0xF8(a0)
-            ",
+        load_gp!(sp[3] => x3),
+        load_gp!(sp[4] => x4),
+        load_gp!(sp[5] => x5),
+        load_gp!(sp[6] => x6),
+        load_gp!(sp[7] => x7),
+        load_gp!(sp[8] => x8),
+        load_gp!(sp[9] => x9),
+        load_gp!(sp[10] => x10),
+        load_gp!(sp[11] => x11),
+        load_gp!(sp[12] => x12),
+        load_gp!(sp[13] => x13),
+        load_gp!(sp[14] => x14),
+        load_gp!(sp[15] => x15),
+        load_gp!(sp[16] => x16),
+        load_gp!(sp[17] => x17),
+        load_gp!(sp[18] => x18),
+        load_gp!(sp[19] => x19),
+        load_gp!(sp[20] => x20),
+        load_gp!(sp[21] => x21),
+        load_gp!(sp[22] => x22),
+        load_gp!(sp[23] => x23),
+        load_gp!(sp[24] => x24),
+        load_gp!(sp[25] => x25),
+        load_gp!(sp[26] => x26),
+        load_gp!(sp[27] => x27),
+        load_gp!(sp[28] => x28),
+        load_gp!(sp[29] => x29),
+        load_gp!(sp[30] => x30),
+        load_gp!(sp[31] => x31),
 
-        // restore fp
-        "
-            fld ft0, 0x100(a0)
-            fld ft1, 0x108(a0)
-            fld ft2, 0x110(a0)
-            fld ft3, 0x118(a0)
-            fld ft4, 0x120(a0)
-            fld ft5, 0x128(a0)
-            fld ft6, 0x130(a0)
-            fld ft7, 0x138(a0)
-            fld fs0, 0x140(a0)
-            fld fs1, 0x148(a0)
-            fld fa0, 0x150(a0)
-            fld fa1, 0x158(a0)
-            fld fa2, 0x160(a0)
-            fld fa3, 0x168(a0)
-            fld fa4, 0x170(a0)
-            fld fa5, 0x178(a0)
-            fld fa6, 0x180(a0)
-            fld fa7, 0x188(a0)
-            fld fs2, 0x190(a0)
-            fld fs3, 0x198(a0)
-            fld fs4, 0x1A0(a0)
-            fld fs5, 0x1A8(a0)
-            fld fs6, 0x1B0(a0)
-            fld fs7, 0x1B8(a0)
-            fld fs8, 0x1C0(a0)
-            fld fs9, 0x1C8(a0)
-            fld fs10, 0x1D0(a0)
-            fld fs11, 0x1D8(a0)
-            fld ft8, 0x1E0(a0)
-            fld ft9, 0x1E8(a0)
-            fld ft10, 0x1F0(a0)
-            fld ft11, 0x1F8(a0)
-        ",
+        // restore fp regs
+        load_fp!(sp[32] => f0),
+        load_fp!(sp[33] => f1),
+        load_fp!(sp[34] => f2),
+        load_fp!(sp[35] => f3),
+        load_fp!(sp[36] => f4),
+        load_fp!(sp[37] => f5),
+        load_fp!(sp[38] => f6),
+        load_fp!(sp[39] => f7),
+        load_fp!(sp[40] => f8),
+        load_fp!(sp[41] => f9),
+        load_fp!(sp[42] => f10),
+        load_fp!(sp[43] => f11),
+        load_fp!(sp[44] => f12),
+        load_fp!(sp[45] => f13),
+        load_fp!(sp[46] => f14),
+        load_fp!(sp[47] => f15),
+        load_fp!(sp[48] => f16),
+        load_fp!(sp[49] => f17),
+        load_fp!(sp[50] => f18),
+        load_fp!(sp[51] => f19),
+        load_fp!(sp[52] => f20),
+        load_fp!(sp[53] => f21),
+        load_fp!(sp[54] => f22),
+        load_fp!(sp[55] => f23),
+        load_fp!(sp[56] => f24),
+        load_fp!(sp[57] => f25),
+        load_fp!(sp[58] => f26),
+        load_fp!(sp[59] => f27),
+        load_fp!(sp[60] => f28),
+        load_fp!(sp[61] => f29),
+        load_fp!(sp[62] => f30),
+        load_fp!(sp[63] => f31),
 
         "add sp, sp, 0x210",
         "csrrw sp, sscratch, sp",
