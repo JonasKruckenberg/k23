@@ -1,7 +1,5 @@
 use crate::vm::frame_alloc::{Frame, FrameList};
-use crate::vm::{frame_alloc, THE_ZERO_FRAME};
 use sync::RwLock;
-use crate::vm::frame_list::FrameState;
 
 #[derive(Debug)]
 pub struct PagedVmo {
@@ -19,16 +17,8 @@ impl PagedVmo {
 
     fn require_owned_frame(&self, offset: usize) -> crate::Result<Frame> {
         self.with_pages_mut(|pages| {
-            if let Some(frame) = pages.get(offset) {
-                match frame {
-                    FrameState::Borrowed(_) => {}
-                    FrameState::Owned(_) => {}
-                    FrameState::Vacant => {}
-                }
-                
-                
+            if let Some(_frame) = pages.get(offset) {
                 todo!()
-                
                 // if frame.is_unique() {
                 //     // we're the sole owner of the frame, so we're good to just return it
                 //     Ok(frame.clone())
@@ -45,7 +35,7 @@ impl PagedVmo {
                 //     //         //         -> replace frame
                 //     //         //         -> drop old frame clone (should free if refcount == 1)
                 //     //         //         -> return new frame
-                // 
+                //
                 //     todo!()
                 // }
             } else {
