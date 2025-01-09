@@ -64,6 +64,23 @@ impl AddressSpaceRegion {
         })
     }
 
+    pub fn unmap(self: Pin<&mut Self>, range: Range<VirtualAddress>) -> crate::Result<()> {
+        match self.vmo.as_ref() {
+            Vmo::Wired(_) => panic!("cannot unmap wired frames"),
+            Vmo::Paged(vmo) => {
+                let vmo_relative_range = Range {
+                    start: range.start.checked_sub_addr(self.range.start).unwrap(),
+                    end: range.end.checked_sub_addr(self.range.start).unwrap(),
+                };
+
+                let mut vmo = vmo.write();
+                vmo.free_frames(vmo_relative_range);
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn page_fault(
         self: Pin<&mut Self>,
         batch: &mut Batch,

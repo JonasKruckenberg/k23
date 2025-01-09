@@ -401,9 +401,9 @@ impl AddressSpace {
     ) -> crate::Result<()> {
         let index = arch::pte_index_for_level(*virt, lvl);
         let pte = unsafe { pgtable.add(index).as_mut() };
+        let page_size = arch::page_size_for_level(lvl);
 
         if pte.is_valid() && pte.is_leaf() {
-            let page_size = arch::page_size_for_level(lvl);
             let frame = pte.get_address_and_flags().0;
 
             frame_alloc.deallocate_contiguous(
@@ -423,6 +423,7 @@ impl AddressSpace {
             let pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
             self.unmap_inner(pgtable, frame_alloc, virt, remaining_bytes, lvl - 1, flush)?;
 
+            // TODO optimize this
             let is_still_populated = (0..arch::PAGE_TABLE_ENTRIES)
                 .any(|index| unsafe { pgtable.add(index).as_ref().is_valid() });
 
@@ -434,6 +435,11 @@ impl AddressSpace {
                 );
                 pte.clear();
             }
+        } else {
+            log::trace!("unmapping already unmapped frame");
+            *virt = virt.checked_add(page_size).unwrap();
+            *remaining_bytes = remaining_bytes.saturating_sub(page_size);
+            // unreachable!("Invalid state: PTE cant be invalid (this means {virt:?} is already unmapped) {pte:?}");
         }
 
         Ok(())
