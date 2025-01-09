@@ -110,15 +110,7 @@ impl AddressSpaceRegion {
                 )?;
             }
             Vmo::Paged(vmo) => {
-                let frame = if flags.cause_is_write() {
-                    log::trace!("CASE paged VMO & store access => require OWNED frames for {vmo_relative_offset}");
-                    vmo.require_owned_page(vmo_relative_offset)?
-                } else if flags.cause_is_read() || flags.cause_is_instr_fetch() {
-                    log::trace!("CASE paged VMO & load access => require READ frames for {vmo_relative_offset}");
-                    vmo.require_read_page(vmo_relative_offset)?
-                } else {
-                    unreachable!()
-                };
+                let frame = vmo.require_frame(vmo_relative_offset, flags.cause_is_write())?;
 
                 batch.append(
                     self.range.start,

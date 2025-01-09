@@ -2,16 +2,11 @@
 #![no_main]
 #![feature(used_with_arg)]
 #![feature(naked_functions)]
-#![feature(thread_local)]
-#![feature(never_type)]
+#![feature(thread_local, never_type)]
 #![feature(new_range_api)]
-#![feature(maybe_uninit_slice)]
 #![feature(debug_closure_helpers)]
-#![feature(maybe_uninit_fill)]
 #![allow(internal_features)]
-#![feature(std_internals)]
-#![feature(panic_can_unwind)]
-#![feature(fmt_internals)]
+#![feature(std_internals, panic_can_unwind, fmt_internals)]
 #![allow(dead_code)] // TODO remove
 
 extern crate alloc;

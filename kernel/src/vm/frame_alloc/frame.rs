@@ -218,6 +218,11 @@ impl FrameInfo {
     }
 
     #[inline]
+    pub fn is_unique(&self) -> bool {
+        self.refcount() == 1
+    }
+
+    #[inline]
     pub fn assert_valid(&self) {
         // TODO add asserts here as we add more fields
     }
