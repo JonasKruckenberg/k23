@@ -169,19 +169,21 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
             Payload::End(offset) => {
                 self.validator.end(offset)?;
             }
-            Payload::ModuleSection { .. }
-            | Payload::InstanceSection(_)
-            | Payload::CoreTypeSection(_)
-            | Payload::ComponentSection { .. }
-            | Payload::ComponentInstanceSection(_)
-            | Payload::ComponentAliasSection(_)
-            | Payload::ComponentTypeSection(_)
-            | Payload::ComponentCanonicalSection(_)
-            | Payload::ComponentStartSection { .. }
-            | Payload::ComponentImportSection(_)
-            | Payload::ComponentExportSection(_) => {
-                return Err(wasm_unsupported!("component model is unsupported"));
-            }
+            
+            // Payload::ModuleSection { .. }
+            // | Payload::InstanceSection(_)
+            // | Payload::CoreTypeSection(_)
+            // | Payload::ComponentSection { .. }
+            // | Payload::ComponentInstanceSection(_)
+            // | Payload::ComponentAliasSection(_)
+            // | Payload::ComponentTypeSection(_)
+            // | Payload::ComponentCanonicalSection(_)
+            // | Payload::ComponentStartSection { .. }
+            // | Payload::ComponentImportSection(_)
+            // | Payload::ComponentExportSection(_) => {
+            //     return Err(wasm_unsupported!("component model is unsupported"));
+            // }
+            
             p => log::warn!("unknown section {p:?}"),
         }
         Ok(())

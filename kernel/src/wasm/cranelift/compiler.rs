@@ -24,6 +24,7 @@ use cranelift_frontend::FunctionBuilder;
 use sync::Mutex;
 use target_lexicon::Triple;
 use wasmparser::{FuncValidatorAllocations, FunctionBody};
+use crate::arch;
 
 pub struct CraneliftCompiler {
     isa: OwnedTargetIsa,

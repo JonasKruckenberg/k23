@@ -5,9 +5,10 @@ use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
 use crate::wasm::{runtime, Store, MAX_WASM_STACK};
-use alloc::string::ToString;
+// use alloc::string::ToString;
 use core::ffi::c_void;
 use core::mem;
+use crate::arch;
 
 /// A WebAssembly function.
 #[derive(Debug, Clone, Copy)]
@@ -58,16 +59,16 @@ impl Func {
         // copy the arguments into the storage
         values_vec.resize_with(values_vec_size, || VMVal::v128(0));
         for (arg, slot) in params.iter().copied().zip(&mut values_vec) {
-            *slot = arg.as_vmval(store);
+            unsafe { *slot = arg.as_vmval(store); }
         }
 
         // do the actual call
-        self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)?;
+        unsafe { self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)?; }
 
         // copy the results out of the storage
         for ((i, slot), vmval) in results.iter_mut().enumerate().zip(&values_vec) {
             let ty = &ty.results[i];
-            *slot = Val::from_vmval(store, *vmval, ty);
+            *slot = unsafe { Val::from_vmval(store, *vmval, ty) };
         }
 
         // clean up and return the argument storage
@@ -83,12 +84,14 @@ impl Func {
         args_results_ptr: *mut VMVal,
         args_results_len: usize,
     ) -> crate::wasm::Result<()> {
-        let func_ref = store[self.0].func_ref.as_ref();
-        let vmctx = VMContext::from_opaque(func_ref.vmctx);
+        let func_ref = unsafe { store[self.0].func_ref.as_ref() };
+        let vmctx = unsafe { VMContext::from_opaque(func_ref.vmctx) };
         let module = store[store.get_instance_from_vmctx(vmctx)].module();
 
         let _guard = enter_wasm(vmctx, &module.offsets().static_);
 
+        todo!();
+        
         // Safety: this does syscalls
         // unsafe { placeholder::signals::ensure_signal_handlers_are_registered() }
         // 
@@ -100,21 +103,21 @@ impl Func {
         //     },
         // );
 
-        if let Err(trap) = res {
-            let (_pc, trap_code, message) = match trap.reason {
-                TrapReason::Wasm(trap_code) => (None, trap_code, "k23 builtin produced a trap"),
-                TrapReason::Jit {
-                    pc,
-                    faulting_addr: _, // TODO make use of this
-                    trap: trap_code,
-                } => (Some(pc), trap_code, "JIT-compiled WASM produced a trap"),
-            };
-
-            return Err(crate::wasm::Error::Trap {
-                trap: trap_code,
-                message: message.to_string(),
-            });
-        }
+        // if let Err(trap) = res {
+        //     let (_pc, trap_code, message) = match trap.reason {
+        //         TrapReason::Wasm(trap_code) => (None, trap_code, "k23 builtin produced a trap"),
+        //         TrapReason::Jit {
+        //             pc,
+        //             faulting_addr: _, // TODO make use of this
+        //             trap: trap_code,
+        //         } => (Some(pc), trap_code, "JIT-compiled WASM produced a trap"),
+        //     };
+        // 
+        //     return Err(crate::wasm::Error::Trap {
+        //         trap: trap_code,
+        //         message: message.to_string(),
+        //     });
+        // }
 
         Ok(())
     }
@@ -139,7 +142,7 @@ impl Func {
 }
 
 fn enter_wasm(vmctx: *mut VMContext, offsets: &StaticVMOffsets) -> WasmExecutionGuard {
-    // let stack_pointer = placeholder::arch::get_stack_pointer();
+    let stack_pointer = arch::get_stack_pointer();
     let wasm_stack_limit = stack_pointer.checked_sub(MAX_WASM_STACK).unwrap();
 
     // Safety: at this point the `VMContext` is initialized and accessing its fields is safe.

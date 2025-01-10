@@ -16,13 +16,17 @@ impl OwnedVMContext {
         self.0.as_mut_ptr().cast()
     }
     pub unsafe fn plus_offset<T>(&self, offset: u32) -> *const T {
-        self.as_ptr()
-            .byte_add(usize::try_from(offset).unwrap())
-            .cast()
+        unsafe {
+            self.as_ptr()
+                .byte_add(usize::try_from(offset).unwrap())
+                .cast()
+        }
     }
     pub unsafe fn plus_offset_mut<T>(&mut self, offset: u32) -> *mut T {
-        self.as_mut_ptr()
-            .byte_add(usize::try_from(offset).unwrap())
-            .cast()
+        unsafe {
+            self.as_mut_ptr()
+                .byte_add(usize::try_from(offset).unwrap())
+                .cast()
+        }
     }
 }

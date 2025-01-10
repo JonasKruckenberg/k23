@@ -42,7 +42,7 @@ impl VMContext {
         // bugs, meaning we don't actually read the magic and act differently
         // at runtime depending what it is, so this is a debug assertion as
         // opposed to a regular assertion.
-        debug_assert_eq!((*opaque).magic, VMCONTEXT_MAGIC);
+        debug_assert_eq!(unsafe { (*opaque).magic }, VMCONTEXT_MAGIC);
         opaque.cast()
     }
 }
@@ -356,22 +356,22 @@ pub struct VMGlobalDefinition {
 )]
 impl VMGlobalDefinition {
     pub unsafe fn from_vmval(vmval: VMVal) -> Self {
-        Self { data: vmval.v128 }
+        unsafe { Self { data: vmval.v128 } }
     }
 
     pub unsafe fn to_vmval(&self, wasm_ty: ValType) -> VMVal {
         match wasm_ty {
             ValType::I32 => VMVal {
-                i32: *self.as_i32(),
+                i32: unsafe { *self.as_i32() },
             },
             ValType::I64 => VMVal {
-                i64: *self.as_i64(),
+                i64: unsafe { *self.as_i64() },
             },
             ValType::F32 => VMVal {
-                f32: *self.as_f32_bits(),
+                f32: unsafe { *self.as_f32_bits() },
             },
             ValType::F64 => VMVal {
-                f64: *self.as_f64_bits(),
+                f64: unsafe { *self.as_f64_bits() },
             },
             ValType::V128 => VMVal { v128: self.data },
             ValType::Ref(_) => todo!(),
@@ -380,102 +380,102 @@ impl VMGlobalDefinition {
 
     /// Return a reference to the value as an i32.
     pub unsafe fn as_i32(&self) -> &i32 {
-        &*(self.data.as_ref().as_ptr().cast::<i32>())
+        unsafe { &*(self.data.as_ref().as_ptr().cast::<i32>()) }
     }
 
     /// Return a mutable reference to the value as an i32.
     pub unsafe fn as_i32_mut(&mut self) -> &mut i32 {
-        &mut *(self.data.as_mut().as_mut_ptr().cast::<i32>())
+        unsafe { &mut *(self.data.as_mut().as_mut_ptr().cast::<i32>()) }
     }
 
     /// Return a reference to the value as a u32.
     pub unsafe fn as_u32(&self) -> &u32 {
-        &*(self.data.as_ref().as_ptr().cast::<u32>())
+        unsafe { &*(self.data.as_ref().as_ptr().cast::<u32>()) }
     }
 
     /// Return a mutable reference to the value as an u32.
     pub unsafe fn as_u32_mut(&mut self) -> &mut u32 {
-        &mut *(self.data.as_mut().as_mut_ptr().cast::<u32>())
+        unsafe { &mut *(self.data.as_mut().as_mut_ptr().cast::<u32>()) }
     }
 
     /// Return a reference to the value as an i64.
     pub unsafe fn as_i64(&self) -> &i64 {
-        &*(self.data.as_ref().as_ptr().cast::<i64>())
+        unsafe { &*(self.data.as_ref().as_ptr().cast::<i64>()) }
     }
 
     /// Return a mutable reference to the value as an i64.
     pub unsafe fn as_i64_mut(&mut self) -> &mut i64 {
-        &mut *(self.data.as_mut().as_mut_ptr().cast::<i64>())
+        unsafe { &mut *(self.data.as_mut().as_mut_ptr().cast::<i64>()) }
     }
 
     /// Return a reference to the value as an u64.
     pub unsafe fn as_u64(&self) -> &u64 {
-        &*(self.data.as_ref().as_ptr().cast::<u64>())
+        unsafe { &*(self.data.as_ref().as_ptr().cast::<u64>()) }
     }
 
     /// Return a mutable reference to the value as an u64.
     pub unsafe fn as_u64_mut(&mut self) -> &mut u64 {
-        &mut *(self.data.as_mut().as_mut_ptr().cast::<u64>())
+        unsafe { &mut *(self.data.as_mut().as_mut_ptr().cast::<u64>()) }
     }
 
     /// Return a reference to the value as an f32.
     pub unsafe fn as_f32(&self) -> &f32 {
-        &*(self.data.as_ref().as_ptr().cast::<f32>())
+        unsafe { &*(self.data.as_ref().as_ptr().cast::<f32>()) }
     }
 
     /// Return a mutable reference to the value as an f32.
     pub unsafe fn as_f32_mut(&mut self) -> &mut f32 {
-        &mut *(self.data.as_mut().as_mut_ptr().cast::<f32>())
+        unsafe { &mut *(self.data.as_mut().as_mut_ptr().cast::<f32>()) }
     }
 
     /// Return a reference to the value as f32 bits.
     pub unsafe fn as_f32_bits(&self) -> &u32 {
-        &*(self.data.as_ref().as_ptr().cast::<u32>())
+        unsafe { &*(self.data.as_ref().as_ptr().cast::<u32>()) }
     }
 
     /// Return a mutable reference to the value as f32 bits.
     pub unsafe fn as_f32_bits_mut(&mut self) -> &mut u32 {
-        &mut *(self.data.as_mut().as_mut_ptr().cast::<u32>())
+        unsafe { &mut *(self.data.as_mut().as_mut_ptr().cast::<u32>()) }
     }
 
     /// Return a reference to the value as an f64.
     pub unsafe fn as_f64(&self) -> &f64 {
-        &*(self.data.as_ref().as_ptr().cast::<f64>())
+        unsafe { &*(self.data.as_ref().as_ptr().cast::<f64>()) }
     }
 
     /// Return a mutable reference to the value as an f64.
     pub unsafe fn as_f64_mut(&mut self) -> &mut f64 {
-        &mut *(self.data.as_mut().as_mut_ptr().cast::<f64>())
+        unsafe { &mut *(self.data.as_mut().as_mut_ptr().cast::<f64>()) }
     }
 
     /// Return a reference to the value as f64 bits.
     pub unsafe fn as_f64_bits(&self) -> &u64 {
-        &*(self.data.as_ref().as_ptr().cast::<u64>())
+        unsafe { &*(self.data.as_ref().as_ptr().cast::<u64>()) }
     }
 
     /// Return a mutable reference to the value as f64 bits.
     pub unsafe fn as_f64_bits_mut(&mut self) -> &mut u64 {
-        &mut *(self.data.as_mut().as_mut_ptr().cast::<u64>())
+        unsafe { &mut *(self.data.as_mut().as_mut_ptr().cast::<u64>()) }
     }
 
     /// Return a reference to the value as an u128.
     pub unsafe fn as_u128(&self) -> &u128 {
-        &*(self.data.as_ref().as_ptr().cast::<u128>())
+        unsafe { &*(self.data.as_ref().as_ptr().cast::<u128>()) }
     }
 
     /// Return a mutable reference to the value as an u128.
     pub unsafe fn as_u128_mut(&mut self) -> &mut u128 {
-        &mut *(self.data.as_mut().as_mut_ptr().cast::<u128>())
+        unsafe { &mut *(self.data.as_mut().as_mut_ptr().cast::<u128>()) }
     }
 
     /// Return a reference to the value as u128 bits.
     pub unsafe fn as_u128_bits(&self) -> &[u8; 16] {
-        &*(self.data.as_ref().as_ptr().cast::<[u8; 16]>())
+        unsafe { &*(self.data.as_ref().as_ptr().cast::<[u8; 16]>()) }
     }
 
     /// Return a mutable reference to the value as u128 bits.
     pub unsafe fn as_u128_bits_mut(&mut self) -> &mut [u8; 16] {
-        &mut *(self.data.as_mut().as_mut_ptr().cast::<[u8; 16]>())
+        unsafe { &mut *(self.data.as_mut().as_mut_ptr().cast::<[u8; 16]>()) }
     }
 }
 

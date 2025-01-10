@@ -100,7 +100,7 @@ pub trait InstanceAllocator {
     ) -> crate::wasm::Result<()> {
         for (index, plan) in &module.memories {
             if let Some(def_index) = module.defined_memory_index(index) {
-                let new_def_index = memories.push(self.allocate_memory(module, plan, def_index)?);
+                let new_def_index = memories.push(unsafe { self.allocate_memory(module, plan, def_index)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
         }
@@ -125,7 +125,7 @@ pub trait InstanceAllocator {
     ) -> crate::wasm::Result<()> {
         for (index, plan) in &module.tables {
             if let Some(def_index) = module.defined_table_index(index) {
-                let new_def_index = tables.push(self.allocate_table(module, plan, def_index)?);
+                let new_def_index = tables.push(unsafe { self.allocate_table(module, plan, def_index)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
         }
@@ -146,7 +146,7 @@ pub trait InstanceAllocator {
             // about leaking subsequent memories if the first memory failed to
             // deallocate. If deallocating memory ever becomes fallible, we will
             // need to be careful here!
-            self.deallocate_memory(memory_index, memory);
+            unsafe { self.deallocate_memory(memory_index, memory); }
         }
     }
 
@@ -160,7 +160,7 @@ pub trait InstanceAllocator {
     /// `Self::allocate_tables`/`Self::allocate_table` and must never be used again.
     unsafe fn deallocate_tables(&self, tables: &mut PrimaryMap<DefinedTableIndex, Table>) {
         for (table_index, table) in mem::take(tables) {
-            self.deallocate_table(table_index, table);
+            unsafe { self.deallocate_table(table_index, table); }
         }
     }
 
@@ -173,15 +173,11 @@ pub trait InstanceAllocator {
     ///
     /// Returns an error if any of the allocations fail. In this case, the resources are cleaned up
     /// automatically.
-    ///
-    /// # Safety
-    ///
-    /// The safety of the entire VM depends on the correct implementation of this method.
     #[expect(
         clippy::type_complexity,
         reason = "TODO clean up the return type and remove"
     )]
-    unsafe fn allocate_module(
+    fn allocate_module(
         &self,
         module: &Module,
     ) -> crate::wasm::Result<(
@@ -198,13 +194,13 @@ pub trait InstanceAllocator {
         let mut memories =
             PrimaryMap::with_capacity(usize::try_from(num_defined_memories).unwrap());
 
-        match (|| {
+        match (|| unsafe {
             self.allocate_tables(module.translated(), &mut tables)?;
             self.allocate_memories(module.translated(), &mut memories)?;
             self.allocate_vmctx(module.translated(), module.offsets())
         })() {
             Ok(vmctx) => Ok((vmctx, tables, memories)),
-            Err(e) => {
+            Err(e) => unsafe {
                 self.deallocate_memories(&mut memories);
                 self.deallocate_tables(&mut tables);
                 Err(e)

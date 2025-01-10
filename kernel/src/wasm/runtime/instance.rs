@@ -5,7 +5,9 @@ use crate::wasm::indices::{
 use crate::wasm::runtime::builtins::VMBuiltinFunctionsArray;
 use crate::wasm::runtime::memory::Memory;
 use crate::wasm::runtime::table::Table;
-use crate::wasm::runtime::vmcontext::{VMArrayCallFunction, VMGlobalDefinition, VMWasmCallFunction};
+use crate::wasm::runtime::vmcontext::{
+    VMArrayCallFunction, VMGlobalDefinition, VMWasmCallFunction,
+};
 use crate::wasm::runtime::{
     ConstExprEvaluator, Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable,
     Imports, InstanceAllocator, OwnedVMContext, VMContext, VMFuncRef, VMFunctionImport,
@@ -43,16 +45,18 @@ impl Instance {
     ) -> crate::wasm::Result<Self> {
         let (mut vmctx, mut tables, mut memories) = alloc.allocate_module(&module)?;
 
-        initialize_vmctx(
-            const_eval,
-            &mut vmctx,
-            &mut tables,
-            &mut memories,
-            &module,
-            imports,
-        )?;
-        initialize_tables(const_eval, &mut tables, &module)?;
-        initialize_memories(const_eval, &mut memories, &module)?;
+        unsafe {
+            initialize_vmctx(
+                const_eval,
+                &mut vmctx,
+                &mut tables,
+                &mut memories,
+                &module,
+                imports,
+            )?;
+            initialize_tables(const_eval, &mut tables, &module)?;
+            initialize_memories(const_eval, &mut memories, &module)?;
+        }
 
         let exports = vec![None; module.exports().len()];
 
@@ -254,102 +258,134 @@ impl Instance {
     }
 
     pub(crate) unsafe fn vmctx_magic(&self) -> u32 {
-        *self
-            .vmctx
-            .plus_offset::<u32>(u32::from(self.module.offsets().static_.vmctx_magic()))
+        unsafe {
+            *self
+                .vmctx
+                .plus_offset::<u32>(u32::from(self.module.offsets().static_.vmctx_magic()))
+        }
     }
     pub(crate) unsafe fn vmctx_type_ids(&self) -> &[VMSharedTypeIndex] {
-        let ptr = *self
-            .vmctx
-            .plus_offset(u32::from(self.module.offsets().static_.vmctx_type_ids()));
+        unsafe {
+            let ptr = *self
+                .vmctx
+                .plus_offset(u32::from(self.module.offsets().static_.vmctx_type_ids()));
 
-        let len = self.module.type_collection().type_map().len();
+            let len = self.module.type_collection().type_map().len();
 
-        slice::from_raw_parts(ptr, len)
+            slice::from_raw_parts(ptr, len)
+        }
     }
     pub(crate) unsafe fn vmctx_builtin_functions(&self) -> *const VMBuiltinFunctionsArray {
-        self.vmctx.plus_offset::<VMBuiltinFunctionsArray>(u32::from(
-            self.module.offsets().static_.vmctx_builtin_functions(),
-        ))
+        unsafe {
+            self.vmctx.plus_offset::<VMBuiltinFunctionsArray>(u32::from(
+                self.module.offsets().static_.vmctx_builtin_functions(),
+            ))
+        }
     }
     pub(crate) unsafe fn vmctx_stack_limit(&self) -> usize {
-        *self
-            .vmctx
-            .plus_offset::<usize>(u32::from(self.module.offsets().static_.vmctx_stack_limit()))
+        unsafe {
+            *self
+                .vmctx
+                .plus_offset::<usize>(u32::from(self.module.offsets().static_.vmctx_stack_limit()))
+        }
     }
     pub(crate) unsafe fn vmctx_last_wasm_exit_fp(&self) -> usize {
-        *self.vmctx.plus_offset::<usize>(u32::from(
-            self.module.offsets().static_.vmctx_last_wasm_exit_fp(),
-        ))
+        unsafe {
+            *self.vmctx.plus_offset::<usize>(u32::from(
+                self.module.offsets().static_.vmctx_last_wasm_exit_fp(),
+            ))
+        }
     }
     pub(crate) unsafe fn vmctx_last_wasm_exit_pc(&self) -> usize {
-        *self.vmctx.plus_offset::<usize>(u32::from(
-            self.module.offsets().static_.vmctx_last_wasm_exit_pc(),
-        ))
+        unsafe {
+            *self.vmctx.plus_offset::<usize>(u32::from(
+                self.module.offsets().static_.vmctx_last_wasm_exit_pc(),
+            ))
+        }
     }
     pub(crate) unsafe fn vmctx_last_wasm_entry_fp(&self) -> usize {
-        *self.vmctx.plus_offset::<usize>(u32::from(
-            self.module.offsets().static_.vmctx_last_wasm_entry_fp(),
-        ))
+        unsafe {
+            *self.vmctx.plus_offset::<usize>(u32::from(
+                self.module.offsets().static_.vmctx_last_wasm_entry_fp(),
+            ))
+        }
     }
     pub(crate) unsafe fn vmctx_table_definitions(&self) -> &[VMTableDefinition] {
-        slice::from_raw_parts(
-            self.vmctx
-                .plus_offset::<VMTableDefinition>(self.module.offsets().vmctx_tables_begin()),
-            usize::try_from(self.module.translated().num_defined_tables()).unwrap(),
-        )
+        unsafe {
+            slice::from_raw_parts(
+                self.vmctx
+                    .plus_offset::<VMTableDefinition>(self.module.offsets().vmctx_tables_begin()),
+                usize::try_from(self.module.translated().num_defined_tables()).unwrap(),
+            )
+        }
     }
     pub(crate) unsafe fn vmctx_memory_definitions(&self) -> &[VMMemoryDefinition] {
-        slice::from_raw_parts(
-            self.vmctx
-                .plus_offset::<VMMemoryDefinition>(self.module.offsets().vmctx_memories_begin()),
-            usize::try_from(self.module.translated().num_defined_memories()).unwrap(),
-        )
+        unsafe {
+            slice::from_raw_parts(
+                self.vmctx.plus_offset::<VMMemoryDefinition>(
+                    self.module.offsets().vmctx_memories_begin(),
+                ),
+                usize::try_from(self.module.translated().num_defined_memories()).unwrap(),
+            )
+        }
     }
     pub(crate) unsafe fn vmctx_global_definitions(&self) -> &[VMGlobalDefinition] {
-        slice::from_raw_parts(
-            self.vmctx
-                .plus_offset::<VMGlobalDefinition>(self.module.offsets().vmctx_globals_begin()),
-            usize::try_from(self.module.translated().num_defined_globals()).unwrap(),
-        )
+        unsafe {
+            slice::from_raw_parts(
+                self.vmctx
+                    .plus_offset::<VMGlobalDefinition>(self.module.offsets().vmctx_globals_begin()),
+                usize::try_from(self.module.translated().num_defined_globals()).unwrap(),
+            )
+        }
     }
     pub(crate) unsafe fn vmctx_func_refs(&self) -> &[VMFuncRef] {
-        slice::from_raw_parts(
-            self.vmctx
-                .plus_offset::<VMFuncRef>(self.module.offsets().vmctx_func_refs_begin()),
-            usize::try_from(self.module.translated().num_escaped_funcs()).unwrap(),
-        )
+        unsafe {
+            slice::from_raw_parts(
+                self.vmctx
+                    .plus_offset::<VMFuncRef>(self.module.offsets().vmctx_func_refs_begin()),
+                usize::try_from(self.module.translated().num_escaped_funcs()).unwrap(),
+            )
+        }
     }
     pub(crate) unsafe fn vmctx_function_imports(&self) -> &[VMFunctionImport] {
-        slice::from_raw_parts(
-            self.vmctx.plus_offset::<VMFunctionImport>(
-                self.module.offsets().vmctx_imported_functions_begin(),
-            ),
-            usize::try_from(self.module.translated().num_imported_functions()).unwrap(),
-        )
+        unsafe {
+            slice::from_raw_parts(
+                self.vmctx.plus_offset::<VMFunctionImport>(
+                    self.module.offsets().vmctx_imported_functions_begin(),
+                ),
+                usize::try_from(self.module.translated().num_imported_functions()).unwrap(),
+            )
+        }
     }
     pub(crate) unsafe fn vmctx_table_imports(&self) -> &[VMTableImport] {
-        slice::from_raw_parts(
-            self.vmctx
-                .plus_offset::<VMTableImport>(self.module.offsets().vmctx_imported_tables_begin()),
-            usize::try_from(self.module.translated().num_imported_tables()).unwrap(),
-        )
+        unsafe {
+            slice::from_raw_parts(
+                self.vmctx.plus_offset::<VMTableImport>(
+                    self.module.offsets().vmctx_imported_tables_begin(),
+                ),
+                usize::try_from(self.module.translated().num_imported_tables()).unwrap(),
+            )
+        }
     }
     pub(crate) unsafe fn vmctx_memory_imports(&self) -> &[VMMemoryImport] {
-        slice::from_raw_parts(
-            self.vmctx.plus_offset::<VMMemoryImport>(
-                self.module.offsets().vmctx_imported_memories_begin(),
-            ),
-            usize::try_from(self.module.translated().num_imported_memories()).unwrap(),
-        )
+        unsafe {
+            slice::from_raw_parts(
+                self.vmctx.plus_offset::<VMMemoryImport>(
+                    self.module.offsets().vmctx_imported_memories_begin(),
+                ),
+                usize::try_from(self.module.translated().num_imported_memories()).unwrap(),
+            )
+        }
     }
     pub(crate) unsafe fn vmctx_global_imports(&self) -> &[VMGlobalImport] {
-        slice::from_raw_parts(
-            self.vmctx.plus_offset::<VMGlobalImport>(
-                self.module.offsets().vmctx_imported_globals_begin(),
-            ),
-            usize::try_from(self.module.translated().num_imported_globals()).unwrap(),
-        )
+        unsafe {
+            slice::from_raw_parts(
+                self.vmctx.plus_offset::<VMGlobalImport>(
+                    self.module.offsets().vmctx_imported_globals_begin(),
+                ),
+                usize::try_from(self.module.translated().num_imported_globals()).unwrap(),
+            )
+        }
     }
 }
 
@@ -365,84 +401,89 @@ unsafe fn initialize_vmctx(
     module: &Module,
     imports: Imports,
 ) -> crate::wasm::Result<()> {
-    let offsets = module.offsets();
+    unsafe {
+        let offsets = module.offsets();
 
-    // initialize vmctx magic
-    *vmctx.plus_offset_mut(u32::from(offsets.static_.vmctx_magic())) = VMCONTEXT_MAGIC;
+        // initialize vmctx magic
+        *vmctx.plus_offset_mut(u32::from(offsets.static_.vmctx_magic())) = VMCONTEXT_MAGIC;
 
-    // Initialize the built-in functions
-    *vmctx.plus_offset_mut::<*const VMBuiltinFunctionsArray>(u32::from(
-        offsets.static_.vmctx_builtin_functions(),
-    )) = ptr::from_ref(&VMBuiltinFunctionsArray::INIT);
+        // Initialize the built-in functions
+        *vmctx.plus_offset_mut::<*const VMBuiltinFunctionsArray>(u32::from(
+            offsets.static_.vmctx_builtin_functions(),
+        )) = ptr::from_ref(&VMBuiltinFunctionsArray::INIT);
 
-    // initialize the type ids array ptr
-    let type_ids = module.type_ids();
-    *vmctx.plus_offset_mut(u32::from(offsets.static_.vmctx_type_ids())) = type_ids.as_ptr();
+        // initialize the type ids array ptr
+        let type_ids = module.type_ids();
+        *vmctx.plus_offset_mut(u32::from(offsets.static_.vmctx_type_ids())) = type_ids.as_ptr();
 
-    // initialize func_refs array
-    initialize_vmfunc_refs(vmctx, &module, &imports, offsets);
+        // initialize func_refs array
+        initialize_vmfunc_refs(vmctx, &module, &imports, offsets);
 
-    // initialize the imports
-    ptr::copy_nonoverlapping(
-        imports.functions.as_ptr(),
-        vmctx.plus_offset_mut::<VMFunctionImport>(offsets.vmctx_imported_functions_begin()),
-        imports.functions.len(),
-    );
-    ptr::copy_nonoverlapping(
-        imports.tables.as_ptr(),
-        vmctx.plus_offset_mut::<VMTableImport>(offsets.vmctx_imported_tables_begin()),
-        imports.tables.len(),
-    );
-    ptr::copy_nonoverlapping(
-        imports.memories.as_ptr(),
-        vmctx.plus_offset_mut::<VMMemoryImport>(offsets.vmctx_imported_memories_begin()),
-        imports.memories.len(),
-    );
-    ptr::copy_nonoverlapping(
-        imports.globals.as_ptr(),
-        vmctx.plus_offset_mut::<VMGlobalImport>(offsets.vmctx_imported_globals_begin()),
-        imports.globals.len(),
-    );
-
-    // Initialize the defined tables
-    for def_index in module
-        .translated()
-        .tables
-        .keys()
-        .filter_map(|index| module.translated().defined_table_index(index))
-    {
-        let ptr =
-            vmctx.plus_offset_mut::<VMTableDefinition>(offsets.vmctx_vmtable_definition(def_index));
-        ptr.write(tables[def_index].as_vmtable_definition());
-    }
-
-    // Initialize the `defined_memories` table.
-    for (def_index, plan) in module
-        .translated()
-        .memories
-        .iter()
-        .filter_map(|(index, plan)| Some((module.translated().defined_memory_index(index)?, plan)))
-    {
-        assert!(!plan.shared, "shared memories are not currently supported");
-
-        let ptr = vmctx
-            .plus_offset_mut::<VMMemoryDefinition>(offsets.vmctx_vmmemory_definition(def_index));
-
-        ptr.write(memories[def_index].as_vmmemory_definition());
-    }
-
-    for (def_index, init_expr) in &module.translated().global_initializers {
-        let val = const_eval.eval(init_expr)?;
-        let ptr = vmctx.plus_offset_mut::<VMGlobalDefinition>(
-            module.offsets().vmctx_vmglobal_definition(def_index),
+        // initialize the imports
+        ptr::copy_nonoverlapping(
+            imports.functions.as_ptr(),
+            vmctx.plus_offset_mut::<VMFunctionImport>(offsets.vmctx_imported_functions_begin()),
+            imports.functions.len(),
         );
-        ptr.write(VMGlobalDefinition::from_vmval(val));
-    }
+        ptr::copy_nonoverlapping(
+            imports.tables.as_ptr(),
+            vmctx.plus_offset_mut::<VMTableImport>(offsets.vmctx_imported_tables_begin()),
+            imports.tables.len(),
+        );
+        ptr::copy_nonoverlapping(
+            imports.memories.as_ptr(),
+            vmctx.plus_offset_mut::<VMMemoryImport>(offsets.vmctx_imported_memories_begin()),
+            imports.memories.len(),
+        );
+        ptr::copy_nonoverlapping(
+            imports.globals.as_ptr(),
+            vmctx.plus_offset_mut::<VMGlobalImport>(offsets.vmctx_imported_globals_begin()),
+            imports.globals.len(),
+        );
 
-    Ok(())
+        // Initialize the defined tables
+        for def_index in module
+            .translated()
+            .tables
+            .keys()
+            .filter_map(|index| module.translated().defined_table_index(index))
+        {
+            let ptr = vmctx
+                .plus_offset_mut::<VMTableDefinition>(offsets.vmctx_vmtable_definition(def_index));
+            ptr.write(tables[def_index].as_vmtable_definition());
+        }
+
+        // Initialize the `defined_memories` table.
+        for (def_index, plan) in module
+            .translated()
+            .memories
+            .iter()
+            .filter_map(|(index, plan)| {
+                Some((module.translated().defined_memory_index(index)?, plan))
+            })
+        {
+            assert!(!plan.shared, "shared memories are not currently supported");
+
+            let ptr = vmctx.plus_offset_mut::<VMMemoryDefinition>(
+                offsets.vmctx_vmmemory_definition(def_index),
+            );
+
+            ptr.write(memories[def_index].as_vmmemory_definition());
+        }
+
+        for (def_index, init_expr) in &module.translated().global_initializers {
+            let val = const_eval.eval(init_expr)?;
+            let ptr = vmctx.plus_offset_mut::<VMGlobalDefinition>(
+                module.offsets().vmctx_vmglobal_definition(def_index),
+            );
+            ptr.write(VMGlobalDefinition::from_vmval(val));
+        }
+
+        Ok(())
+    }
 }
 
-unsafe fn initialize_vmfunc_refs(
+fn initialize_vmfunc_refs(
     vmctx: &mut OwnedVMContext,
     module: &&Module,
     imports: &Imports,
@@ -462,9 +503,11 @@ unsafe fn initialize_vmfunc_refs(
             let wasm_call = info.wasm_func_loc;
 
             VMFuncRef {
-                array_call: mem::transmute::<usize, VMArrayCallFunction>(
-                    module.code().resolve_function_loc(array_call),
-                ),
+                array_call: unsafe {
+                    mem::transmute::<usize, VMArrayCallFunction>(
+                        module.code().resolve_function_loc(array_call),
+                    )
+                },
                 wasm_call: NonNull::new(
                     module.code().resolve_function_loc(wasm_call) as *mut VMWasmCallFunction
                 )
@@ -490,7 +533,8 @@ unsafe fn initialize_vmfunc_refs(
             }
         };
 
-        let into = vmctx.plus_offset_mut::<VMFuncRef>(offsets.vmctx_vmfunc_ref(func.func_ref));
+        let into =
+            unsafe { vmctx.plus_offset_mut::<VMFuncRef>(offsets.vmctx_vmfunc_ref(func.func_ref)) };
 
         // Safety: we have a `&mut self`, so we have exclusive access
         // to this Instance.

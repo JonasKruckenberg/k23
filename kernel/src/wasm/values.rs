@@ -61,7 +61,7 @@ impl Val {
             Val::F64(u) => VMVal::f64(*u),
             Val::V128(b) => VMVal::v128(*b),
             Val::FuncRef(f) => VMVal::funcref(match f {
-                Some(f) => f.as_raw(store),
+                Some(f) => unsafe { f.as_raw(store) },
                 None => ptr::null_mut(),
             }),
         }

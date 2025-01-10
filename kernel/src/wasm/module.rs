@@ -30,17 +30,17 @@ struct ModuleInner {
 }
 
 impl Module {
-    /// Creates a new module from the given WebAssembly text format.
-    ///
-    /// This will parse, translate and compile the module and is the first step in Wasm execution.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the WebAssembly text file is malformed, or compilation fails.
-    pub fn from_str(engine: &Engine, validator: &mut Validator, str: &str) -> crate::wasm::Result<Self> {
-        let bytes = wat::parse_str(str)?;
-        Self::from_bytes(engine, validator, &bytes)
-    }
+    // /// Creates a new module from the given WebAssembly text format.
+    // ///
+    // /// This will parse, translate and compile the module and is the first step in Wasm execution.
+    // ///
+    // /// # Errors
+    // ///
+    // /// Returns an error if the WebAssembly text file is malformed, or compilation fails.
+    // pub fn from_str(engine: &Engine, validator: &mut Validator, str: &str) -> crate::wasm::Result<Self> {
+    //     let bytes = wat::parse_str(str)?;
+    //     Self::from_bytes(engine, validator, &bytes)
+    // }
 
     /// Creates a new module from the given WebAssembly bytes.
     ///

@@ -41,8 +41,8 @@ pub enum Error {
     },
     /// Failed to parse DWARF debug information.
     Gimli(gimli::Error),
-    /// Failed to parse a wat file.
-    Wat(wat::Error),
+    // /// Failed to parse a wat file.
+    // Wat(wat::Error),
     /// A WebAssembly trap occurred.
     Trap {
         /// The trap that occurred.
@@ -91,7 +91,7 @@ impl fmt::Display for Error {
             Self::Gimli(e) => {
                 f.write_fmt(format_args!("Failed to parse DWARF debug information: {e}"))
             }
-            Self::Wat(e) => f.write_fmt(format_args!("Failed to parse wat: {e}")),
+            // Self::Wat(e) => f.write_fmt(format_args!("Failed to parse wat: {e}")),
             Self::Trap { trap, message, .. } => {
                 f.write_fmt(format_args!("{message}. Reason {trap}"))?;
                 Ok(())
@@ -124,7 +124,7 @@ impl From<cranelift_codegen::CompileError<'_>> for Error {
                 CodegenError::Unsupported(feature) => format!("Unsupported feature: {feature}"),
                 CodegenError::Regalloc(errors) => format!("Regalloc validation errors: {errors:?}"),
                 CodegenError::Pcc(e) => format!("Proof-carrying-code validation error: {e:?}"),
-                CodegenError::RegisterMappingError(e) => format!("Register mapping error {e}"),
+                // CodegenError::RegisterMappingError(e) => format!("Register mapping error {e}"),
             },
         }
     }
@@ -136,11 +136,11 @@ impl From<gimli::Error> for Error {
     }
 }
 
-impl From<wat::Error> for Error {
-    fn from(value: wat::Error) -> Self {
-        Self::Wat(value)
-    }
-}
+// impl From<wat::Error> for Error {
+//     fn from(value: wat::Error) -> Self {
+//         Self::Wat(value)
+//     }
+// }
 
 impl core::error::Error for Error {}
 
