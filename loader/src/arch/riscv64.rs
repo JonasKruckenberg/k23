@@ -89,9 +89,9 @@ pub unsafe fn handoff_to_kernel(
     unsafe {
         asm! {
             "mv ra, zero", // Reset return address
-    
+
             "jalr zero, {kernel_entry}",
-    
+
             // Loop forever.
             // The kernel should never return, but in case it does prevent the hart from executing
             // random code
