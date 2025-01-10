@@ -29,6 +29,8 @@ mod trap;
 mod type_registry;
 mod utils;
 mod values;
+mod trap_handler;
+mod instance_allocator;
 
 pub use errors::Error;
 pub(crate) type Result<T> = core::result::Result<T, Error>;

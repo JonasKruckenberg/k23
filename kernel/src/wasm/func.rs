@@ -1,14 +1,16 @@
+use alloc::string::ToString;
 use crate::wasm::indices::VMSharedTypeIndex;
 use crate::wasm::runtime::{StaticVMOffsets, VMContext, VMFunctionImport, VMVal};
 use crate::wasm::store::Stored;
 use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
-use crate::wasm::{runtime, Store, MAX_WASM_STACK};
+use crate::wasm::{runtime, trap_handler, Store, MAX_WASM_STACK};
 // use alloc::string::ToString;
 use core::ffi::c_void;
 use core::mem;
 use crate::arch;
+use crate::wasm::trap_handler::TrapReason;
 
 /// A WebAssembly function.
 #[derive(Debug, Clone, Copy)]
@@ -89,35 +91,31 @@ impl Func {
         let module = store[store.get_instance_from_vmctx(vmctx)].module();
 
         let _guard = enter_wasm(vmctx, &module.offsets().static_);
-
-        todo!();
         
-        // Safety: this does syscalls
-        // unsafe { placeholder::signals::ensure_signal_handlers_are_registered() }
-        // 
-        // let res = placeholder::trap_handling::catch_traps(
-        //     vmctx,
-        //     module.offsets().static_.clone(),
-        //     |caller| {
-        //         (func_ref.array_call)(vmctx, caller, args_results_ptr, args_results_len);
-        //     },
-        // );
+        let res = trap_handler::catch_traps(
+            vmctx,
+            module.offsets().static_.clone(),
+            |caller| unsafe {
+                (func_ref.array_call)(vmctx, caller, args_results_ptr, args_results_len);
+            },
+        );
 
-        // if let Err(trap) = res {
-        //     let (_pc, trap_code, message) = match trap.reason {
-        //         TrapReason::Wasm(trap_code) => (None, trap_code, "k23 builtin produced a trap"),
-        //         TrapReason::Jit {
-        //             pc,
-        //             faulting_addr: _, // TODO make use of this
-        //             trap: trap_code,
-        //         } => (Some(pc), trap_code, "JIT-compiled WASM produced a trap"),
-        //     };
-        // 
-        //     return Err(crate::wasm::Error::Trap {
-        //         trap: trap_code,
-        //         message: message.to_string(),
-        //     });
-        // }
+        if let Err(trap) = res {
+            let (pc, faulting_addr, trap_code, message) = match trap.reason {
+                TrapReason::Wasm(trap_code) => (None, None, trap_code, "k23 builtin produced a trap"),
+                TrapReason::Jit {
+                    pc,
+                    faulting_addr,
+                    trap: trap_code,
+                } => (Some(pc), Some(faulting_addr), trap_code, "JIT-compiled WASM produced a trap"),
+            };
+        
+            return Err(crate::wasm::Error::Trap {
+                pc, faulting_addr,
+                trap: trap_code,
+                message: message.to_string(),
+            });
+        }
 
         Ok(())
     }

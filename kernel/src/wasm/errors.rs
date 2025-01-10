@@ -45,6 +45,10 @@ pub enum Error {
     // Wat(wat::Error),
     /// A WebAssembly trap occurred.
     Trap {
+        /// The program counter where this trap originated.
+        pc: Option<usize>,
+        /// The address of the inaccessible data or zero if trap wasn't caused by data access.
+        faulting_addr: Option<usize>,
         /// The trap that occurred.
         trap: Trap,
         /// A human-readable description of the trap.

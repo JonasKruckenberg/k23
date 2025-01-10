@@ -1,16 +1,23 @@
-use crate::wasm::runtime::{StaticVMOffsets, VMContext};
-pub use backtrace::Backtrace;
-use core::cell::{Cell, UnsafeCell};
-use core::mem::MaybeUninit;
-use core::ptr;
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
 
 mod backtrace;
 
-pub fn raise_trap(reason: TrapReason) {
-    // Safety: TLS storage is always initialized
-    let state = unsafe { &*TLS.get().unwrap() };
-    state.unwind_with(UnwindReason::Trap(reason))
-}
+use crate::arch;
+use crate::wasm::runtime::{CodeMemory, StaticVMOffsets, VMContext};
+use crate::wasm::trap_handler::backtrace::Backtrace;
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
+use core::cell::{Cell, RefCell, UnsafeCell};
+use core::mem::MaybeUninit;
+use core::panic::UnwindSafe;
+use core::ptr;
+use sync::{OnceLock, RwLock};
+use thread_local::thread_local;
 
 pub fn catch_traps<F>(
     caller: *mut VMContext,
@@ -22,8 +29,8 @@ where
 {
     let result = CallThreadState::new(caller, vmctx_plan).with(|state| {
         // Safety: call to extern
-        let r = unsafe { crate::wasm::placeholder::setjmp::setjmp(state.jmp_buf.as_ptr().cast()) };
-        if r == 0i32 {
+        let r = unsafe { arch::setjmp(state.jmp_buf.as_ptr()) };
+        if r == 0isize {
             closure(caller);
         }
         r
@@ -57,14 +64,8 @@ pub enum TrapReason {
         /// This is later used with side tables from compilation to translate
         /// the trapping address to a trap code.
         pc: usize,
-        /// If the trap was a memory-related trap such as SIGSEGV then this
-        /// field will contain the address of the inaccessible data.
-        ///
-        /// Note that wasm loads/stores are not guaranteed to fill in this
-        /// information. Dynamically-bounds-checked memories, for example, will
-        /// not access an invalid address but may instead load from NULL or may
-        /// explicitly jump to a `ud2` instruction.
-        faulting_addr: Option<usize>,
+        /// The address of the inaccessible data or zero if trap wasn't caused by data access.
+        faulting_addr: usize,
         /// The trap code associated with this trap.
         trap: crate::wasm::trap::Trap,
     },
@@ -76,12 +77,13 @@ enum UnwindReason {
     Trap(TrapReason),
 }
 
-#[thread_local]
-pub static TLS: Cell<Option<*const CallThreadState>> = Cell::new(None);
+thread_local! {
+    static CURRENT_STATE: Cell<Option<*const CallThreadState>> = Cell::new(None);
+}
 
 pub struct CallThreadState {
     unwind: UnsafeCell<MaybeUninit<(UnwindReason, Option<Backtrace>)>>,
-    pub jmp_buf: Cell<crate::wasm::placeholder::setjmp::jmp_buf>,
+    pub jmp_buf: RefCell<arch::JmpBufStruct>,
     offsets: StaticVMOffsets,
     vmctx: *mut VMContext,
     prev: Cell<*const CallThreadState>,
@@ -105,7 +107,7 @@ impl CallThreadState {
         unsafe {
             Self {
                 unwind: UnsafeCell::new(MaybeUninit::uninit()),
-                jmp_buf: Cell::new(crate::wasm::placeholder::setjmp::jmp_buf::from([0; 48])),
+                jmp_buf: RefCell::new(arch::JmpBufStruct::default()),
                 vmctx,
                 prev: Cell::new(ptr::null()),
                 old_last_wasm_exit_fp: Cell::new(
@@ -130,7 +132,7 @@ impl CallThreadState {
 
     fn with(
         self,
-        closure: impl FnOnce(&Self) -> i32,
+        closure: impl FnOnce(&Self) -> isize,
     ) -> Result<(), (UnwindReason, Option<Backtrace>)> {
         struct Reset<'a> {
             state: &'a CallThreadState,
@@ -159,7 +161,7 @@ impl CallThreadState {
 
     #[cold]
     unsafe fn read_unwind(&self) -> (UnwindReason, Option<Backtrace>) {
-        (*self.unwind.get()).as_ptr().read()
+        unsafe { (*self.unwind.get()).as_ptr().read() }
     }
 
     fn unwind_with(&self, reason: UnwindReason) -> ! {
@@ -177,7 +179,7 @@ impl CallThreadState {
 
         // Safety: call to extern
         unsafe {
-            crate::wasm::placeholder::setjmp::longjmp(self.jmp_buf.as_ptr().cast(), 1);
+            arch::longjmp(self.jmp_buf.as_ptr(), 1);
         }
     }
 
@@ -185,19 +187,21 @@ impl CallThreadState {
         &self,
         pc: usize,
         fp: usize,
-        faulting_addr: Option<usize>,
+        faulting_addr: usize,
         trap: crate::wasm::trap::Trap,
     ) {
-        let backtrace = Backtrace::new_with_trap_state(self, Some((pc, fp)));
+        let backtrace = unsafe { Backtrace::new_with_trap_state(self, Some((pc, fp))) };
         // Safety: `MaybeUninit` ensures proper alignment.
-        (*self.unwind.get()).as_mut_ptr().write((
-            UnwindReason::Trap(TrapReason::Jit {
-                pc,
-                faulting_addr,
-                trap,
-            }),
-            Some(backtrace),
-        ));
+        unsafe {
+            (*self.unwind.get()).as_mut_ptr().write((
+                UnwindReason::Trap(TrapReason::Jit {
+                    pc,
+                    faulting_addr,
+                    trap,
+                }),
+                Some(backtrace),
+            ));
+        }
     }
 
     /// Get the previous `CallThreadState`.
@@ -209,7 +213,8 @@ impl CallThreadState {
     pub(crate) fn push(&self) {
         assert!(self.prev.get().is_null());
         self.prev.set(
-            TLS.replace(Some(ptr::from_ref(self)))
+            CURRENT_STATE
+                .replace(Some(ptr::from_ref(self)))
                 .unwrap_or(ptr::null_mut()),
         );
     }
@@ -217,7 +222,7 @@ impl CallThreadState {
     #[inline]
     pub(crate) fn pop(&self) {
         let prev = self.prev.replace(ptr::null());
-        let head = TLS.replace(Some(prev)).unwrap_or(ptr::null_mut());
+        let head = CURRENT_STATE.replace(Some(prev)).unwrap_or(ptr::null_mut());
         assert!(ptr::eq(head, self));
     }
 
@@ -252,4 +257,71 @@ impl Drop for CallThreadState {
                 .cast::<usize>() = self.old_last_wasm_entry_fp.get();
         }
     }
+}
+
+pub fn trap_handler(pc: usize, fp: usize, faulting_addr: usize) -> Result<(), !> {
+    if let Some(state) = CURRENT_STATE.get() {
+        let state = unsafe { &*state };
+
+        // If this fault wasn't in wasm code, then it's not our problem
+        let Some((code, text_offset)) = lookup_code(pc) else {
+            return Ok(());
+        };
+
+        // If we don't have a trap code for this offset, that is bad, and it means
+        // we messed up somehow
+        let Some(trap) = code.lookup_trap_code(text_offset) else {
+            panic!("no trap code for text offset {text_offset}");
+            // return Ok(());
+        };
+
+        // Save the trap information into our thread local
+        unsafe {
+            state.set_jit_trap(pc, fp, faulting_addr, trap);
+        }
+
+        // And finally do the longjmp back to the last `catch_trap` that we know of
+        unsafe {
+            arch::longjmp(state.jmp_buf.as_ptr(), 1);
+        }
+    }
+
+    // If no wasm code is executing, we don't handle this as a wasm
+    // trap.
+    Ok(())
+}
+
+fn global_code() -> &'static RwLock<GlobalRegistry> {
+    static GLOBAL_CODE: OnceLock<RwLock<GlobalRegistry>> = OnceLock::new();
+    GLOBAL_CODE.get_or_init(Default::default)
+}
+
+type GlobalRegistry = BTreeMap<usize, (usize, Arc<CodeMemory>)>;
+
+/// Find which registered region of code contains the given program counter, and
+/// what offset that PC is within that module's code.
+pub fn lookup_code(pc: usize) -> Option<(Arc<CodeMemory>, usize)> {
+    let all_modules = global_code().read();
+
+    let (_end, (start, module)) = all_modules.range(pc..).next()?;
+    let text_offset = pc.checked_sub(*start)?;
+    Some((module.clone(), text_offset))
+}
+
+/// Registers a new region of code.
+///
+/// Must not have been previously registered and must be `unregister`'d to
+/// prevent leaking memory.
+///
+/// This is used by trap handling to determine which region of code a faulting
+/// address.
+pub fn register_code(code: &Arc<CodeMemory>) {
+    let text = code.text();
+    if text.is_empty() {
+        return;
+    }
+    let start = text.as_ptr() as usize;
+    let end = start + text.len() - 1;
+    let prev = global_code().write().insert(end, (start, code.clone()));
+    assert!(prev.is_none());
 }

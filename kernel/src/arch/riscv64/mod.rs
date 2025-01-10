@@ -18,6 +18,7 @@ use mmu::VirtualAddress;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
 use static_assertions::const_assert_eq;
+pub use setjmp_longjmp::{longjmp, setjmp, call_with_setjmp, JmpBuf, JmpBufStruct};
 
 /// Virtual address where the kernel address space starts.
 ///

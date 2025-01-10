@@ -1,5 +1,12 @@
-use crate::wasm::placeholder::arch;
-use crate::wasm::placeholder::trap_handling::CallThreadState;
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
+use crate::arch;
+use crate::wasm::trap_handler::CallThreadState;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::ControlFlow;
@@ -12,12 +19,14 @@ impl Backtrace {
         state: &CallThreadState,
         trap_pc_and_fp: Option<(usize, usize)>,
     ) -> Self {
-        let mut frames = vec![];
-        Self::trace_with_trap_state(state, trap_pc_and_fp, |frame| {
-            frames.push(frame);
-            ControlFlow::Continue(())
-        });
-        Backtrace(frames)
+        unsafe {
+            let mut frames = vec![];
+            Self::trace_with_trap_state(state, trap_pc_and_fp, |frame| {
+                frames.push(frame);
+                ControlFlow::Continue(())
+            });
+            Backtrace(frames)
+        }
     }
 
     /// Walk the current Wasm stack, calling `f` for each frame we walk.
@@ -31,7 +40,7 @@ impl Backtrace {
         // If we exited Wasm by catching a trap, then the Wasm-to-host
         // trampoline did not get a chance to save the last Wasm PC and FP,
         // and we need to use the plumbed-through values instead.
-        let (last_wasm_exit_pc, last_wasm_exit_fp) = trap_pc_and_fp.unwrap_or_else(|| {
+        let (last_wasm_exit_pc, last_wasm_exit_fp) = trap_pc_and_fp.unwrap_or_else(|| unsafe {
             // TODO this is horrible can we improve this?
             let pc = *state
                 .vmctx
@@ -45,10 +54,12 @@ impl Backtrace {
             (pc, fp)
         });
 
-        let last_wasm_entry_fp = *state
-            .vmctx
-            .byte_add(state.offsets.vmctx_last_wasm_entry_fp() as usize)
-            .cast::<usize>();
+        let last_wasm_entry_fp = unsafe {
+            *state
+                .vmctx
+                .byte_add(state.offsets.vmctx_last_wasm_entry_fp() as usize)
+                .cast::<usize>()
+        };
 
         let activations =
             core::iter::once((last_wasm_exit_pc, last_wasm_exit_fp, last_wasm_entry_fp))
@@ -68,7 +79,7 @@ impl Backtrace {
                 });
 
         for (pc, fp, sp) in activations {
-            if let ControlFlow::Break(()) = Self::trace_through_wasm(pc, fp, sp, &mut f) {
+            if let ControlFlow::Break(()) = unsafe { Self::trace_through_wasm(pc, fp, sp, &mut f) } {
                 log::trace!("====== Done Capturing Backtrace (closure break) ======");
                 return;
             }
@@ -156,7 +167,7 @@ impl Backtrace {
 
             f(Frame { pc, fp })?;
 
-            pc = arch::get_next_older_pc_from_fp(fp);
+            pc = unsafe { arch::get_next_older_pc_from_fp(fp) };
 
             // We rely on this offset being zero for all supported architectures
             // in `crates/cranelift/src/component/compiler.rs` when we set the
@@ -166,7 +177,7 @@ impl Backtrace {
 
             // Get the next older frame pointer from the current Wasm frame
             // pointer.
-            let next_older_fp = *(fp as *mut usize).add(arch::NEXT_OLDER_FP_FROM_FP_OFFSET);
+            let next_older_fp = unsafe { *(fp as *mut usize).add(arch::NEXT_OLDER_FP_FROM_FP_OFFSET) };
 
             // Because the stack always grows down, the older FP must be greater
             // than the current FP.

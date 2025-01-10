@@ -11,7 +11,9 @@ pub mod frame_alloc;
 mod frame_list;
 mod paged_vmo;
 mod wired_vmo;
+mod trap_handler;
 
+pub use trap_handler::trap_handler;
 use crate::machine_info::MachineInfo;
 use crate::vm::frame_alloc::Frame;
 pub use address_space::AddressSpace;
