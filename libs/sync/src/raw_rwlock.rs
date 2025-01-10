@@ -169,7 +169,9 @@ unsafe impl lock_api::RawRwLockUpgradeDowngrade for RawRwLock {
         // Reserve the read guard for ourselves
         self.acquire_reader();
 
-        self.unlock_upgradable();
+        unsafe {
+            self.unlock_upgradable();
+        }
     }
 
     unsafe fn downgrade_to_upgradable(&self) {

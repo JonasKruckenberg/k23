@@ -42,7 +42,7 @@ where
             self.head = None;
             self.tail = None;
         } else {
-            self.head = unsafe { utils::next(head) };
+            self.head = utils::next(head);
         }
 
         Some(unsafe { head.as_ref() })
@@ -98,7 +98,7 @@ where
             self.head = None;
             self.tail = None;
         } else {
-            self.head = unsafe { utils::next(head) };
+            self.head = utils::next(head);
         }
 
         Some(unsafe { Pin::new_unchecked(head.as_mut()) })
@@ -158,7 +158,7 @@ where
             unsafe {
                 T::links(right).as_mut().replace_parent(parent);
             }
-            self.head = Some(unsafe { utils::find_minimum(right) });
+            self.head = Some(utils::find_minimum(right));
         } else {
             self.head = parent;
         }
@@ -194,7 +194,7 @@ where
             unsafe {
                 T::links(left).as_mut().replace_parent(parent);
             }
-            self.tail = Some(unsafe { utils::find_maximum(left) });
+            self.tail = Some(utils::find_maximum(left));
         } else {
             self.tail = parent;
         }

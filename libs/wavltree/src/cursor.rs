@@ -35,7 +35,7 @@ where
     }
     pub fn move_next(&mut self) {
         if let Some(current) = self.current {
-            self.current = unsafe { utils::next(current) };
+            self.current = utils::next(current);
         } else {
             self.current = None
         }
@@ -57,7 +57,7 @@ where
     }
     pub fn peek_next(&self) -> Option<&'a T> {
         if let Some(current) = self.current {
-            let next = unsafe { utils::next(current)? };
+            let next = utils::next(current)?;
             unsafe { Some(next.as_ref()) }
         } else {
             None
@@ -95,7 +95,7 @@ where
     }
     pub fn move_next(&mut self) {
         if let Some(current) = self.current {
-            self.current = unsafe { utils::next(current) };
+            self.current = utils::next(current);
         } else {
             self.current = None
         }
@@ -108,11 +108,9 @@ where
         }
     }
     pub fn remove(&mut self) -> Option<T::Handle> {
-        unsafe {
-            let handle = self._tree.remove_internal(self.current?);
-            self.current = None;
-            Some(handle)
-        }
+        let handle = self._tree.remove_internal(self.current?);
+        self.current = None;
+        Some(handle)
     }
     pub fn peek_prev(&self) -> Option<&'a T> {
         if let Some(current) = self.current {
@@ -124,7 +122,7 @@ where
     }
     pub fn peek_next(&self) -> Option<&'a T> {
         if let Some(current) = self.current {
-            let next = unsafe { utils::next(current)? };
+            let next = utils::next(current)?;
             unsafe { Some(next.as_ref()) }
         } else {
             None
@@ -140,7 +138,7 @@ where
     }
     pub fn peek_next_mut(&self) -> Option<Pin<&'a mut T>> {
         if let Some(current) = self.current {
-            let mut next = unsafe { utils::next(current)? };
+            let mut next = utils::next(current)?;
             unsafe { Some(Pin::new_unchecked(next.as_mut())) }
         } else {
             None

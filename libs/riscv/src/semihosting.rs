@@ -49,19 +49,20 @@ pub(crate) unsafe fn syscall_inner(_nr: usize, _arg: usize) -> usize {
             // it will be treated as a regular break, hence the norvc option.
             //
             // See https://github.com/riscv/riscv-semihosting-spec for more details.
-            asm!("
-                .balign 16
-                .option push
-                .option norvc
-                slli x0, x0, 0x1f
-                ebreak
-                srai x0, x0, 0x7
-                .option pop
-            ",
-            inout("a0") nr,
-            inout("a1") arg => _,
-            options(nostack, preserves_flags),
-            );
+            unsafe {
+                asm! {
+                    ".balign 16",
+                    ".option push",
+                    ".option norvc",
+                    "slli x0, x0, 0x1f",
+                    "ebreak",
+                    "srai x0, x0, 0x7",
+                    ".option pop",
+                    inout("a0") nr,
+                    inout("a1") arg => _,
+                    options(nostack, preserves_flags),
+                };
+            }
             nr
         } else {
             unimplemented!();

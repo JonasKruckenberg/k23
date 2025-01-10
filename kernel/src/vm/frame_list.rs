@@ -189,6 +189,7 @@ impl IntoIterator for FrameList {
     type Item = Frame;
     type IntoIter = IntoIter;
 
+    #[allow(tail_expr_drop_order)]
     fn into_iter(mut self) -> Self::IntoIter {
         let inner: IntoIterInner = self
             .nodes
@@ -242,7 +243,7 @@ unsafe impl wavltree::Linked for FrameListNode {
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
         // Safety: `NonNull` *must* be constructed from a pinned reference
         // which the tree implementation upholds.
-        Pin::new_unchecked(Box::from_raw(ptr.as_ptr()))
+        unsafe { Pin::new_unchecked(Box::from_raw(ptr.as_ptr())) }
     }
 
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<wavltree::Links<Self>> {

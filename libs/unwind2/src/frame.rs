@@ -79,7 +79,7 @@ impl<'a> Frame<'a> {
     /// This method is *highly* unsafe because it installs this frames register context, **without
     /// any checking**. If used improperly, much terrible things will happen, big sadness.
     pub unsafe fn restore(self) -> ! {
-        arch::restore_context(&self.ctx)
+        unsafe { arch::restore_context(&self.ctx) }
     }
 
     fn from_context(ctx: &arch::Context, signal: bool) -> Result<Option<Self>, gimli::Error> {

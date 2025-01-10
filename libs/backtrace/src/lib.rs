@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 #![no_std]
+#![allow(tail_expr_drop_order)]
 
 mod symbolize;
 

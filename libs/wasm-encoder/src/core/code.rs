@@ -3751,6 +3751,7 @@ impl ConstExpr {
 
     /// Create a constant expression with the specified raw encoding of instructions.
     pub fn raw(bytes: impl IntoIterator<Item = u8>) -> Self {
+        #[allow(tail_expr_drop_order)]
         Self {
             bytes: bytes.into_iter().collect(),
         }

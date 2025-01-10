@@ -49,6 +49,7 @@ pub fn catch_unwind<F, R>(f: F) -> Result<R, Box<dyn Any + Send + 'static>>
 where
     F: FnOnce() -> R + UnwindSafe,
 {
+    #[allow(tail_expr_drop_order)]
     unwind2::catch_unwind(f).inspect_err(|_| {
         panic_count::decrease() // decrease the panic count, since we caught it
     })
@@ -102,7 +103,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 /// Mirroring std, this is an unmangled function on which to slap
 /// yer breakpoints for backtracing panics.
 #[inline(never)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
     match unwind2::begin_panic(payload) {
         Ok(_) => arch::exit(0),

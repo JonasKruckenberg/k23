@@ -183,7 +183,7 @@ impl Frame {
     }
 
     pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut FrameInfo {
-        this.ptr.as_mut()
+        unsafe { this.ptr.as_mut() }
     }
 
     fn is_unique(&self) -> bool {

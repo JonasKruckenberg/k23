@@ -15,6 +15,7 @@
 #![allow(internal_features)]
 #![feature(std_internals, panic_can_unwind, fmt_internals)]
 #![allow(dead_code)] // TODO remove
+#![allow(edition_2024_expr_fragment_specifier)]
 
 extern crate alloc;
 

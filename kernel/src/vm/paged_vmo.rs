@@ -17,6 +17,7 @@ pub struct PagedVmo {
 }
 
 impl FromIterator<Frame> for PagedVmo {
+    #[allow(tail_expr_drop_order)]
     fn from_iter<T: IntoIterator<Item = Frame>>(iter: T) -> Self {
         Self {
             frames: FrameList::from_iter(iter),

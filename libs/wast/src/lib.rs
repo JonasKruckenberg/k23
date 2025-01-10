@@ -54,6 +54,8 @@
 #![deny(missing_docs, rustdoc::broken_intra_doc_links)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![feature(thread_local, never_type)]
+#![allow(edition_2024_expr_fragment_specifier)]
+#![allow(tail_expr_drop_order)]
 
 extern crate alloc;
 

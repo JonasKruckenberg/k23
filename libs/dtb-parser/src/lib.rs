@@ -118,26 +118,26 @@ impl<'dt> DevTree<'dt> {
             return Err(Error::InvalidVersion);
         }
 
-        let struct_slice = {
+        let struct_slice = unsafe {
             let addr = base.add(u32::from_be_bytes(header.off_dt_struct) as usize);
             let len = u32::from_be_bytes(header.size_dt_struct) as usize;
             slice::from_raw_parts(addr, len)
         };
 
-        let strings_slice = {
+        let strings_slice = unsafe {
             let addr = base.add(u32::from_be_bytes(header.off_dt_strings) as usize);
             let length = u32::from_be_bytes(header.size_dt_strings) as usize;
             slice::from_raw_parts(addr, length)
         };
 
-        let memory_slice = {
+        let memory_slice = unsafe {
             let addr = base.add(u32::from_be_bytes(header.off_mem_rsvmap) as usize);
             let length =
                 u32::from_be_bytes(header.totalsize) - u32::from_be_bytes(header.off_mem_rsvmap);
             slice::from_raw_parts(addr, length as usize)
         };
 
-        let total_slice = {
+        let total_slice = unsafe {
             let length = u32::from_be_bytes(header.totalsize);
             slice::from_raw_parts(base, length as usize)
         };

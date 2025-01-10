@@ -21,7 +21,7 @@ pub fn ensure_personality_stub(ptr: u64) -> crate::Result<()> {
 }
 
 #[inline(never)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
     with_context(|ctx| {
         if let Err(err) = raise_exception_phase2(ctx.clone(), exception) {

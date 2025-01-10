@@ -8,6 +8,19 @@ edition = "2021"
 authors = ["Jonas Kruckenberg <iterpre@protonmail.com>"]
 license = "MIT OR Apache-2.0"
 
+[workspace.lints.rust]
+rust-2024-compatibility = "deny"
+if_let_rescope = "allow"
+
+#keyword_idents_2024 = 'warn'
+#unsafe-attr-outside-unsafe = 'warn'
+#deprecated-safe-2024 = 'warn'
+#rust-2024-guarded-string-incompatible-syntax = 'warn'
+#rust-2024-prelude-collisions = 'warn'
+#rust-2024-incompatible-pat = 'warn'
+#missing-unsafe-on-extern = 'warn'
+#impl-trait-overcaptures = 'warn'
+
 [workspace.lints.clippy]
 large_futures = "deny"
 large_stack_frames = "deny"

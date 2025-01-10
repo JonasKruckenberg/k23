@@ -22,8 +22,10 @@ set!(0x142);
 
 pub unsafe fn set(trap: Trap) {
     match trap {
-        Trap::Interrupt(interrupt) => _set(1 << (usize::BITS as usize - 1) | interrupt as usize),
-        Trap::Exception(exception) => _set(exception as usize),
+        Trap::Interrupt(interrupt) => unsafe {
+            _set(1 << (usize::BITS as usize - 1) | interrupt as usize)
+        },
+        Trap::Exception(exception) => unsafe { _set(exception as usize) },
     }
 }
 

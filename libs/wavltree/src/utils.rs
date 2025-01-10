@@ -33,19 +33,19 @@ impl Side {
     }
 }
 
-pub unsafe fn get_sibling<T>(node: Link<T>, parent: NonNull<T>) -> (Link<T>, Side)
+pub fn get_sibling<T>(node: Link<T>, parent: NonNull<T>) -> (Link<T>, Side)
 where
     T: Linked + ?Sized,
 {
     if let Some(node) = node {
         debug_assert_eq!(
-            T::links(node).as_ref().parent(),
+            unsafe { T::links(node).as_ref() }.parent(),
             Some(parent),
             "node {parent:#?} is not a parent of {node:#?}"
         );
     }
 
-    let parent_lks = T::links(parent).as_ref();
+    let parent_lks = unsafe { T::links(parent).as_ref() };
     if parent_lks.left() == node {
         (parent_lks.right(), Side::Right)
     } else {
@@ -53,9 +53,9 @@ where
     }
 }
 
-pub unsafe fn get_link_parity<T: Linked + ?Sized>(p_x: Link<T>) -> bool {
+pub fn get_link_parity<T: Linked + ?Sized>(p_x: Link<T>) -> bool {
     if let Some(p_x) = p_x {
-        T::links(p_x).as_ref().rank_parity()
+        unsafe { T::links(p_x).as_ref() }.rank_parity()
     } else {
         // `None` means "missing node" which has rank -1 and therefore parity 1
         true
@@ -64,9 +64,9 @@ pub unsafe fn get_link_parity<T: Linked + ?Sized>(p_x: Link<T>) -> bool {
 
 /// Returns whether the given `node` is a 2-child of `parent` ie whether the rank-difference
 /// between `node` and `parent` is 2.
-pub unsafe fn node_is_2_child<T: Linked + ?Sized>(node: NonNull<T>, parent: NonNull<T>) -> bool {
-    let node_links = T::links(node).as_ref();
-    let parent_links = T::links(parent).as_ref();
+pub fn node_is_2_child<T: Linked + ?Sized>(node: NonNull<T>, parent: NonNull<T>) -> bool {
+    let node_links = unsafe { T::links(node).as_ref() };
+    let parent_links = unsafe { T::links(parent).as_ref() };
 
     // do a bit of sanity checking
     debug_assert!(!parent_links.is_leaf(), "parent must be non-leaf");
@@ -83,27 +83,27 @@ pub unsafe fn node_is_2_child<T: Linked + ?Sized>(node: NonNull<T>, parent: NonN
     node_links.rank_parity() == parent_links.rank_parity()
 }
 
-pub unsafe fn find_minimum<T: Linked + ?Sized>(mut curr: NonNull<T>) -> NonNull<T> {
-    while let Some(left) = T::links(curr).as_ref().left() {
+pub fn find_minimum<T: Linked + ?Sized>(mut curr: NonNull<T>) -> NonNull<T> {
+    while let Some(left) = unsafe { T::links(curr).as_ref() }.left() {
         curr = left;
     }
 
     curr
 }
 
-pub unsafe fn find_maximum<T: Linked + ?Sized>(mut curr: NonNull<T>) -> NonNull<T> {
-    while let Some(right) = T::links(curr).as_ref().right() {
+pub fn find_maximum<T: Linked + ?Sized>(mut curr: NonNull<T>) -> NonNull<T> {
+    while let Some(right) = unsafe { T::links(curr).as_ref() }.right() {
         curr = right;
     }
 
     curr
 }
 
-pub(crate) unsafe fn next<T>(node: NonNull<T>) -> Link<T>
+pub(crate) fn next<T>(node: NonNull<T>) -> Link<T>
 where
     T: Linked + ?Sized,
 {
-    let node_links = T::links(node).as_ref();
+    let node_links = unsafe { T::links(node).as_ref() };
 
     // If we have a right child, its least descendant is our next node
     if let Some(right) = node_links.right() {
@@ -112,8 +112,8 @@ where
         let mut curr = node;
 
         loop {
-            if let Some(parent) = T::links(curr).as_ref().parent() {
-                let parent_links = T::links(parent).as_ref();
+            if let Some(parent) = unsafe { T::links(curr).as_ref() }.parent() {
+                let parent_links = unsafe { T::links(parent).as_ref() };
 
                 // if we have a parent, and we're not their right/greater child, that parent is our
                 // next node
@@ -134,7 +134,7 @@ pub(crate) unsafe fn prev<T>(node: NonNull<T>) -> Link<T>
 where
     T: Linked + ?Sized,
 {
-    let node_links = T::links(node).as_ref();
+    let node_links = unsafe { T::links(node).as_ref() };
 
     // If we have a left child, its greatest descendant is our previous node
     if let Some(left) = node_links.left() {
@@ -143,8 +143,8 @@ where
         let mut curr = node;
 
         loop {
-            if let Some(parent) = T::links(curr).as_ref().parent() {
-                let parent_links = T::links(parent).as_ref();
+            if let Some(parent) = unsafe { T::links(curr).as_ref() }.parent() {
+                let parent_links = unsafe { T::links(parent).as_ref() };
 
                 // if we have a parent, and we're not their left/lesser child, that parent is our
                 // previous node

@@ -23,25 +23,31 @@ clear!(0x100);
 
 /// Supervisor Interrupt Enable
 pub unsafe fn set_sie() {
-    _set(1 << 1);
+    unsafe {
+        _set(1 << 1);
+    }
 }
 
 /// Supervisor Interrupt Enable
 pub unsafe fn clear_sie() {
-    _clear(1 << 1);
+    unsafe {
+        _clear(1 << 1);
+    }
 }
 
 /// Supervisor Previous Interrupt Enable
 pub unsafe fn set_spie() {
-    _set(1 << 5);
+    unsafe {
+        _set(1 << 5);
+    }
 }
 
 /// Supervisor Previous Privilege Mode
 #[inline]
 pub unsafe fn set_spp(spp: SPP) {
     match spp {
-        SPP::Supervisor => _set(1 << 8),
-        SPP::User => _clear(1 << 8),
+        SPP::Supervisor => unsafe { _set(1 << 8) },
+        SPP::User => unsafe { _clear(1 << 8) },
     }
 }
 
@@ -50,7 +56,9 @@ pub unsafe fn set_fs(fs: FS) {
     let mut value = read().bits;
     value &= !(0x3 << 13); // clear previous value
     value |= (fs as usize) << 13;
-    _set(value);
+    unsafe {
+        _set(value);
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

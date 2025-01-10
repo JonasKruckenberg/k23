@@ -76,10 +76,10 @@ where
         unsafe { Pin::new_unchecked(self.node.as_mut()) }
     }
     pub fn remove(self) -> T::Handle {
-        unsafe { self._tree.remove_internal(self.node) }
+        self._tree.remove_internal(self.node)
     }
     pub fn peek_next(&self) -> Option<&T> {
-        let node = unsafe { utils::next(self.node)? };
+        let node = utils::next(self.node)?;
         unsafe { Some(node.as_ref()) }
     }
     pub fn peek_prev(&self) -> Option<&T> {
@@ -87,7 +87,7 @@ where
         unsafe { Some(node.as_ref()) }
     }
     pub fn peek_next_mut(&mut self) -> Option<Pin<&mut T>> {
-        let mut node = unsafe { utils::next(self.node)? };
+        let mut node = utils::next(self.node)?;
         unsafe { Some(Pin::new_unchecked(node.as_mut())) }
     }
     pub fn peek_prev_mut(&mut self) -> Option<Pin<&mut T>> {
@@ -162,7 +162,7 @@ where
             && side == Side::Left
         {
             // If we have a right sibling, the next node is its left-most child
-            Some(unsafe { utils::find_minimum(right) })
+            Some(utils::find_minimum(right))
         } else {
             let mut parent = Some(parent);
 
@@ -189,7 +189,7 @@ where
             && side == Side::Right
         {
             // If we have a left sibling, the next node is its right-most child
-            Some(unsafe { utils::find_maximum(left) })
+            Some(utils::find_maximum(left))
         } else {
             let mut parent = Some(parent);
 
