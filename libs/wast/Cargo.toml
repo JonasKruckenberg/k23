@@ -22,7 +22,7 @@ workspace = true
 leb128.workspace = true
 wasm-encoder.workspace = true
 gimli = { workspace = true, optional = true }
-hashbrown = { workspace = true, features = ["ahash"] }
+hashbrown.workspace = true
 unicode-width.workspace = true
 memchr.workspace = true
 bumpalo.workspace = true

@@ -64,11 +64,20 @@ bumpalo = "3.14.0"
 unicode-width = { version = "0.2.0" }
 memchr = { version = "2.4.1", default-features = false }
 
+#wat = "1.219.1"
+
 # cranelift dependencies
-hashbrown = { version = "0.14.5", default-features = false, features = [
+hashbrown = { version = "0.15", default-features = false, features = [
     "inline-more",
     "nightly",
+    "default-hasher",
 ] }
+wasmparser = { version = "0.219", default-features = false, features = ["features", "validate"] }
+target-lexicon = { version = "0.13.1", default-features = false }
+cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["host-arch", "core"] }
+cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["core"] }
+cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false }
+wasmtime-slab = "28.0.0"
 
 [profile.release]
 debug = "limited" # The kernel should be able to print stack traces of itself even in release mode

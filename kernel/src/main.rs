@@ -28,6 +28,7 @@ mod panic;
 mod thread_local;
 mod time;
 mod vm;
+mod wasm;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
