@@ -26,16 +26,16 @@ macro_rules! read_csr {
         /// **WARNING**: panics on non-`riscv` targets.
         #[inline]
         unsafe fn _read() -> usize {
-            match () {
-                #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
-                () => {
-                    let r: usize;
-                    core::arch::asm!(concat!("csrrs {0}, ", stringify!($csr_number), ", x0"), out(reg) r);
-                    r
+            cfg_if::cfg_if! {
+                if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                    unsafe {
+                        let r: usize;
+                        ::core::arch::asm!(concat!("csrrs {0}, ", stringify!($csr_number), ", x0"), out(reg) r);
+                        r
+                    }
+                } else {
+                    unimplemented!()
                 }
-
-                #[cfg(not(any(target_arch = "riscv32", target_arch = "riscv64")))]
-                () => unimplemented!()
             }
         }
     };
@@ -76,18 +76,18 @@ macro_rules! read_composite_csr {
         /// Reads the CSR as a 64-bit value
         #[inline]
         pub fn read64() -> u64 {
-            match () {
-                #[cfg(target_arch = "riscv32")]
-                () => loop {
+            cfg_if::cfg_if! {
+                if #[cfg(target_arch = "riscv64")] {
+                   $lo as u64
+                } else if #[cfg(target_arch = "riscv32")] {
                     let hi = $hi;
                     let lo = $lo;
                     if hi == $hi {
                         return ((hi as u64) << 32) | lo as u64;
                     }
-                },
-
-                #[cfg(not(target_arch = "riscv32"))]
-                () => $lo as u64,
+                } else {
+                    unimplemented!()
+                }
             }
         }
     };
@@ -101,7 +101,9 @@ macro_rules! set {
         unsafe fn _set(bits: usize) {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-                    core::arch::asm!(concat!("csrrw x0, ", stringify!($csr_number), ", {0}"), in(reg) bits);
+                    unsafe {
+                        ::core::arch::asm!(concat!("csrrw x0, ", stringify!($csr_number), ", {0}"), in(reg) bits);
+                    }
                 } else {
                     unimplemented!()
                 }
@@ -132,7 +134,9 @@ macro_rules! clear {
         unsafe fn _clear(bits: usize) {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-                    ::core::arch::asm!(concat!("csrrc x0, ", stringify!($csr_number), ", {0}"), in(reg) bits)
+                    unsafe {
+                        ::core::arch::asm!(concat!("csrrc x0, ", stringify!($csr_number), ", {0}"), in(reg) bits)
+                    }
                 } else {
                     unimplemented!()
                 }
@@ -147,7 +151,8 @@ macro_rules! set_csr {
         $(#[$attr])*
         #[inline]
         pub unsafe fn $set_field() {
-            _set($e);
+            let e =  $e;
+            unsafe { _set(e); }
         }
     };
 }
@@ -159,7 +164,8 @@ macro_rules! clear_csr {
         $(#[$attr])*
         #[inline]
         pub unsafe fn $clear_field() {
-            _clear($e);
+            let e = $e;
+            unsafe { _clear(e); }
         }
     };
 }

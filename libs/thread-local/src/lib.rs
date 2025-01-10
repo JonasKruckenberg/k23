@@ -8,6 +8,7 @@
 #![no_std]
 #![feature(never_type)]
 #![feature(thread_local)]
+#![allow(tail_expr_drop_order)]
 
 extern crate alloc;
 
@@ -25,6 +26,7 @@ pub use eager::EagerStorage;
 pub use lazy::LazyStorage;
 
 #[macro_export]
+#[allow(edition_2024_expr_fragment_specifier)]
 macro_rules! thread_local {
     // empty (base case for the recursion)
     () => {};
@@ -56,7 +58,9 @@ macro_rules! thread_local {
 #[macro_export]
 macro_rules! thread_local_inner {
     // Used to generate the `LocalKey` value for const-initialized thread locals.
-    (@key $t:ty, const $init:expr) => {{
+    // Note the explicit use of the expr_2021 specifier to distinguish between const and non-const
+    // expressions since we have different implementations for them.
+    (@key $t:ty, const $init:expr_2021) => {{
         const __INIT: $t = $init;
 
         unsafe {
@@ -79,7 +83,7 @@ macro_rules! thread_local_inner {
         }
     }};
     // Used to generate the `LocalKey` value for regular thread locals.
-    (@key $t:ty, $init:expr) => {{
+    (@key $t:ty, $init:expr_2021) => {{
         #[inline]
         fn __init() -> $t {
             $init

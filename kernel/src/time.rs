@@ -43,6 +43,7 @@ impl Instant {
     }
 
     pub fn from_ticks(ticks: u64) -> Self {
+        #[allow(tail_expr_drop_order)]
         let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
         Instant(ticks_to_duration(ticks, timebase_freq))
     }
@@ -313,6 +314,7 @@ fn duration_to_ticks(d: Duration, timebase_freq: u64) -> u64 {
 /// This function is very low level and will block the calling hart until a timer interrupt is received.
 /// No checking is performed however if the timer interrupt is the correct one.
 pub unsafe fn sleep(duration: Duration) {
+    #[allow(tail_expr_drop_order)]
     let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
 
     riscv::sbi::time::set_timer(riscv::time::read64() + duration_to_ticks(duration, timebase_freq))

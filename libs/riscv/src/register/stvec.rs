@@ -19,7 +19,9 @@ read_csr_as!(Stvec, 0x105);
 set!(0x105);
 
 pub unsafe fn write(base: usize, mode: Mode) {
-    _set(base + mode as usize);
+    unsafe {
+        _set(base + mode as usize);
+    }
 }
 
 impl Stvec {

@@ -14,11 +14,11 @@ use sync::LazyLock;
 // like below we get a reference to the section start AND force it to not be garbage collected.
 
 #[used(linker)]
-#[link_section = ".eh_frame"]
+#[unsafe(link_section = ".eh_frame")]
 static mut EH_FRAME: [u8; 0] = [];
 
 #[used(linker)]
-#[link_section = ".eh_frame_hdr"]
+#[unsafe(link_section = ".eh_frame_hdr")]
 static mut EH_FRAME_HDR: [u8; 0] = [];
 
 #[derive(Debug)]

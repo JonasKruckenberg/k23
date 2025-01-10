@@ -23,7 +23,7 @@ pub fn disable() {
 /// The caller must ensure the remaining code is signal-safe.
 #[inline]
 pub unsafe fn enable() {
-    sstatus::set_sie()
+    unsafe { sstatus::set_sie() }
 }
 
 /// Execute closure `f` with interrupts disabled for the current hart.
@@ -65,7 +65,7 @@ where
     let sepc = sepc::read();
 
     // enable interrupts to allow nested interrupts
-    enable();
+    unsafe { enable() };
 
     let r = f();
 
@@ -77,9 +77,9 @@ where
 
     // Restore SSTATUS.SPIE, SSTATUS.SPP, and SEPC
     if sstatus.spie() {
-        sstatus::set_spie();
+        unsafe { sstatus::set_spie() };
     }
-    sstatus::set_spp(sstatus.spp());
+    unsafe { sstatus::set_spp(sstatus.spp()) };
     sepc::set(sepc);
 
     r

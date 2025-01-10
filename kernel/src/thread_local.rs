@@ -120,7 +120,10 @@ impl<T: Send> ThreadLocal<T> {
     where
         F: FnOnce() -> T,
     {
-        unsafe { self.get_or_try(|| Ok::<T, ()>(create())).unwrap_unchecked() }
+        #[allow(tail_expr_drop_order)]
+        unsafe {
+            self.get_or_try(|| Ok::<T, ()>(create())).unwrap_unchecked()
+        }
     }
 
     /// Returns the element for the current thread, or creates it if it doesn't
@@ -137,6 +140,7 @@ impl<T: Send> ThreadLocal<T> {
             return Ok(val);
         }
 
+        #[allow(tail_expr_drop_order)]
         Ok(self.insert(hartid, create()?))
     }
 
@@ -471,7 +475,7 @@ fn allocate_bucket<T>(size: usize) -> *mut Entry<T> {
 }
 
 unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
-    let _ = Box::from_raw(slice::from_raw_parts_mut(bucket, size));
+    let _ = unsafe { Box::from_raw(slice::from_raw_parts_mut(bucket, size)) };
 }
 
 // #[cfg(test)]

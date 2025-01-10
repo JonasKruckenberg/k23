@@ -14,6 +14,7 @@
     lang_items,
     naked_functions
 )]
+#![allow(tail_expr_drop_order)]
 
 extern crate alloc;
 

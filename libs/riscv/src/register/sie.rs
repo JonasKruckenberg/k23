@@ -22,27 +22,39 @@ set!(0x104);
 clear!(0x104);
 
 pub unsafe fn set_ssie() {
-    _set(1 << 1);
+    unsafe {
+        _set(1 << 1);
+    }
 }
 
 pub unsafe fn set_stie() {
-    _set(1 << 5);
+    unsafe {
+        _set(1 << 5);
+    }
 }
 
 pub unsafe fn set_seie() {
-    _set(1 << 9);
+    unsafe {
+        _set(1 << 9);
+    }
 }
 
 pub unsafe fn clear_ssie() {
-    _clear(1 << 1);
+    unsafe {
+        _clear(1 << 1);
+    }
 }
 
 pub unsafe fn clear_stie() {
-    _clear(1 << 5);
+    unsafe {
+        _clear(1 << 5);
+    }
 }
 
 pub unsafe fn clear_seie() {
-    _clear(1 << 9);
+    unsafe {
+        _clear(1 << 9);
+    }
 }
 
 impl Sie {

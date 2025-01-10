@@ -24,7 +24,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 /// Mirroring std, this is an unmangled function on which to slap
 /// yer breakpoints for backtracing panics.
 #[inline(never)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn rust_panic() -> ! {
     arch::abort()
 }

@@ -40,6 +40,7 @@ static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
 });
 
 pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
+    #[allow(tail_expr_drop_order)]
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, mut flush) =
             mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);

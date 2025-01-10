@@ -68,6 +68,7 @@ impl<'a> Kernel<'a> {
     pub fn max_align(&self) -> u64 {
         let load_program_headers = self.loadable_program_headers();
 
+        #[allow(tail_expr_drop_order)]
         load_program_headers.map(|ph| ph.align()).max().unwrap_or(1)
     }
 

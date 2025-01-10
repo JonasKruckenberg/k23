@@ -45,6 +45,7 @@ pub struct AddressSpaceRegion {
 }
 
 impl AddressSpaceRegion {
+    #[allow(tail_expr_drop_order)]
     pub(crate) fn new(
         range: Range<VirtualAddress>,
         permissions: Permissions,
@@ -172,17 +173,13 @@ impl AddressSpaceRegion {
         Ok(())
     }
 
-    unsafe fn update(
-        mut node: NonNull<Self>,
-        left: Option<NonNull<Self>>,
-        right: Option<NonNull<Self>>,
-    ) {
-        let node = node.as_mut();
+    fn update(mut node: NonNull<Self>, left: Option<NonNull<Self>>, right: Option<NonNull<Self>>) {
+        let node = unsafe { node.as_mut() };
         let mut left_max_gap = 0;
         let mut right_max_gap = 0;
 
         if let Some(left) = left {
-            let left = left.as_ref();
+            let left = unsafe { left.as_ref() };
             let left_gap = gap(left.max_range.end, node.range.start);
             left_max_gap = cmp::max(left_gap, left.max_gap);
             node.max_range.start = left.max_range.start;
@@ -191,7 +188,7 @@ impl AddressSpaceRegion {
         }
 
         if let Some(right) = right {
-            let right = right.as_ref();
+            let right = unsafe { right.as_ref() };
             let right_gap = gap(node.range.end, right.max_range.start);
             right_max_gap = cmp::max(right_gap, right.max_gap);
             node.max_range.end = right.max_range.end;
@@ -211,9 +208,8 @@ impl AddressSpaceRegion {
     fn propagate_to_root(mut maybe_node: Option<NonNull<Self>>) {
         while let Some(node) = maybe_node {
             let links = unsafe { &node.as_ref().links };
-            unsafe {
-                Self::update(node, links.left(), links.right());
-            }
+            Self::update(node, links.left(), links.right());
+
             maybe_node = links.parent();
         }
     }
@@ -237,7 +233,7 @@ unsafe impl wavltree::Linked for AddressSpaceRegion {
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
         // Safety: `NonNull` *must* be constructed from a pinned reference
         // which the tree implementation upholds.
-        Pin::new_unchecked(Box::from_raw(ptr.as_ptr()))
+        unsafe { Pin::new_unchecked(Box::from_raw(ptr.as_ptr())) }
     }
 
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<wavltree::Links<Self>> {
@@ -278,13 +274,9 @@ unsafe impl wavltree::Linked for AddressSpaceRegion {
         *this.max_gap = _parent.max_gap;
 
         if side == Side::Left {
-            unsafe {
-                Self::update(parent, sibling, lr_child);
-            }
+            Self::update(parent, sibling, lr_child);
         } else {
-            unsafe {
-                Self::update(parent, lr_child, sibling);
-            }
+            Self::update(parent, lr_child, sibling);
         }
     }
 }

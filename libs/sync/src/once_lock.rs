@@ -59,6 +59,7 @@ impl<T> OnceLock<T> {
         let mut error = None;
 
         self.once.call_once(|| {
+            #[allow(tail_expr_drop_order)]
             match f() {
                 Ok(val) => {
                     // SAFETY: `Once` ensures this is only called once
@@ -70,6 +71,7 @@ impl<T> OnceLock<T> {
             }
         });
 
+        #[allow(if_let_rescope)]
         if let Some(err) = error {
             Err(err)
         } else {
@@ -94,14 +96,14 @@ impl<T> OnceLock<T> {
         // SAFETY:
         // * `UnsafeCell`/inner deref: data never changes again
         // * `MaybeUninit`/outer deref: data was initialized
-        &*(*self.data.get()).as_ptr()
+        unsafe { &*(*self.data.get()).as_ptr() }
     }
 
     unsafe fn force_get_mut(&mut self) -> &mut T {
         // SAFETY:
         // * `UnsafeCell`/inner deref: data never changes again
         // * `MaybeUninit`/outer deref: data was initialized
-        &mut *(*self.data.get()).as_mut_ptr()
+        unsafe { &mut *(*self.data.get()).as_mut_ptr() }
     }
 }
 

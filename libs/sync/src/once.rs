@@ -71,6 +71,7 @@ impl Once {
         }
 
         let mut f = Some(f);
+        #[allow(tail_expr_drop_order)]
         self.call(&mut || f.take().unwrap()());
     }
 

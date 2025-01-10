@@ -30,6 +30,7 @@ static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 
 #[cold]
 pub fn init(boot_alloc: BootstrapAllocator, phys_offset: VirtualAddress) {
+    #[allow(tail_expr_drop_order)]
     FRAME_ALLOC.get_or_init(|| {
         let mut arenas = Vec::new();
 

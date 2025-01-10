@@ -43,7 +43,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     // zero out the BSS section
-    extern "C" {
+    unsafe extern "C" {
         static mut __bss_zero_start: u64;
         static mut __bss_end: u64;
     }
@@ -170,7 +170,7 @@ struct SelfRegions {
 
 impl SelfRegions {
     pub fn collect() -> Self {
-        extern "C" {
+        unsafe extern "C" {
             static __text_start: u8;
             static __text_end: u8;
             static __rodata_start: u8;

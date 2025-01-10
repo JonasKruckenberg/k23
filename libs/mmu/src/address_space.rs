@@ -476,7 +476,7 @@ impl AddressSpace {
     ///
     /// This will invalidate pointers if not used carefully
     pub unsafe fn activate(&self) {
-        arch::activate_pgtable(self.asid, self.root_pgtable)
+        unsafe { arch::activate_pgtable(self.asid, self.root_pgtable) }
     }
 
     fn pgtable_ptr_from_phys(&self, phys: PhysicalAddress) -> NonNull<arch::PageTableEntry> {
