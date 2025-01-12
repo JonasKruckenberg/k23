@@ -21,6 +21,10 @@ impl WiredVmo {
         Self { range }
     }
 
+    pub(crate) fn is_valid_offset(&self, offset: usize) -> bool {
+        todo!()
+    }
+
     pub fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {
         ensure!(
             range.start % PAGE_SIZE == 0,

@@ -26,6 +26,10 @@ impl FromIterator<Frame> for PagedVmo {
 }
 
 impl PagedVmo {
+    pub fn is_valid_offset(&self, offset: usize) -> bool {
+        todo!()
+    }
+
     pub fn require_owned_frame(
         &mut self,
         at_offset: usize,

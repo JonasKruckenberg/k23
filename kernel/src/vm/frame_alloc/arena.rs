@@ -112,6 +112,10 @@ impl Arena {
             total_frames,
         }
     }
+    
+    pub fn max_alignment(&self) -> usize {
+        PAGE_SIZE << self.max_order
+    }
 
     pub fn allocate_one(&mut self) -> Option<NonNull<FrameInfo>> {
         let (frame_order, mut frame) = self.free_lists[..=self.max_order]

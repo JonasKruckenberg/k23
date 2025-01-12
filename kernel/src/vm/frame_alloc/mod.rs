@@ -18,7 +18,7 @@ use core::cell::RefCell;
 use core::fmt::Formatter;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;
-use core::{fmt, slice};
+use core::{cmp, fmt, slice};
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
 use mmu::arch::PAGE_SIZE;
@@ -32,13 +32,16 @@ static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 pub fn init(boot_alloc: BootstrapAllocator, phys_offset: VirtualAddress) {
     #[allow(tail_expr_drop_order)]
     FRAME_ALLOC.get_or_init(|| {
+        let mut max_alignment = PAGE_SIZE;
         let mut arenas = Vec::new();
 
         for selection_result in select_arenas(boot_alloc.free_regions()).iterator() {
             match selection_result {
                 Ok(selection) => {
                     log::trace!("selection {selection:?}");
-                    arenas.push(Arena::from_selection(selection, phys_offset));
+                    let arena = Arena::from_selection(selection, phys_offset);
+                    max_alignment = cmp::max(max_alignment, arena.)
+                    arenas.push(arena);
                 }
                 Err(err) => {
                     log::error!("unable to include RAM region {:?}", err.range)
@@ -47,7 +50,7 @@ pub fn init(boot_alloc: BootstrapAllocator, phys_offset: VirtualAddress) {
         }
 
         FrameAllocator {
-            global: Mutex::new(GlobalFrameAllocator { arenas }),
+            global: Mutex::new(GlobalFrameAllocator { arenas, max_alignment }),
             frames_in_caches_hint: AtomicUsize::new(0),
             hart_local_cache: ThreadLocal::new(),
         }
@@ -180,8 +183,17 @@ pub fn alloc_contiguous_zeroed(layout: Layout) -> Result<FrameList, AllocError> 
     Ok(frames)
 }
 
+pub fn max_alignment() -> usize {
+    let alloc = FRAME_ALLOC
+        .get()
+        .expect("cannot access FRAME_ALLOC before it is initialized");
+
+    alloc.global.lock().max_alignment
+}
+
 struct GlobalFrameAllocator {
     arenas: Vec<Arena>,
+    max_alignment: usize
 }
 
 impl GlobalFrameAllocator {

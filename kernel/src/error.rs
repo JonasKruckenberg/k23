@@ -73,10 +73,18 @@ macro_rules! ensure {
             return Err($error);
         }
     };
+    ($cond:expr, $error:expr) => {
+        if !$cond {
+            return Err($error);
+        }
+    };
 }
 
 #[macro_export]
 macro_rules! bail {
+    ($error:expr) => {
+        return Err($error);
+    };
     ($error:expr, $msg:expr) => {
         log::error!($msg);
         return Err($error);

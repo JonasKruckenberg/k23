@@ -11,6 +11,7 @@ pub mod frame_alloc;
 mod frame_list;
 mod paged_vmo;
 mod wired_vmo;
+mod error;
 
 use crate::machine_info::MachineInfo;
 use crate::vm::frame_alloc::Frame;
@@ -216,8 +217,33 @@ impl From<Permissions> for mmu::Flags {
     }
 }
 
+impl Permissions {
+    /// Returns whether the set of permissions is `R^X` ie doesn't allow
+    /// write-execute at the same time.
+    pub fn is_valid(&self) -> bool {
+        !self.contains(Permissions::WRITE | Permissions::EXECUTE)
+    }
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+    pub struct Flags: u8 {
+        const EAGER = 1 << 0;
+    }
+}
+
+
 #[derive(Debug)]
 pub enum Vmo {
     Wired(WiredVmo),
     Paged(RwLock<PagedVmo>),
+}
+
+impl Vmo {
+    pub fn is_valid_offset(&self, offset: usize) -> bool {
+        match self {
+            Vmo::Wired(vmo) => vmo.is_valid_offset(offset),
+            Vmo::Paged(vmo) => vmo.read().is_valid_offset(offset)
+        }
+    }
 }
