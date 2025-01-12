@@ -172,19 +172,23 @@ impl AddressSpace {
                 "calling mmu_aspace.unmap({range:?}, {:?})",
                 mmu::Flags::from(permissions)
             );
-            self.mmu.unmap(
-                &mut self.mmu_frames,
-                range.start,
-                NonZeroUsize::new(range.size()).unwrap(),
-                flush,
-            )?;
+            unsafe {
+                self.mmu.unmap(
+                    &mut self.mmu_frames,
+                    range.start,
+                    NonZeroUsize::new(range.size()).unwrap(),
+                    flush,
+                )?;
+            }
         } else {
-            self.mmu.protect(
-                range.start,
-                NonZeroUsize::new(range.size()).unwrap(),
-                permissions.into(),
-                flush,
-            )?;
+            unsafe {
+                self.mmu.protect(
+                    range.start,
+                    NonZeroUsize::new(range.size()).unwrap(),
+                    permissions.into(),
+                    flush,
+                )?;
+            }
         }
 
         Ok(())
@@ -239,12 +243,14 @@ impl AddressSpace {
         }
 
         let mut flush = Flush::empty(self.mmu.asid());
-        self.mmu.unmap(
-            &mut self.mmu_frames,
-            range.start,
-            NonZeroUsize::new(range.size()).unwrap(),
-            &mut flush,
-        )?;
+        unsafe {
+            self.mmu.unmap(
+                &mut self.mmu_frames,
+                range.start,
+                NonZeroUsize::new(range.size()).unwrap(),
+                &mut flush,
+            )?;
+        }
         flush.flush()?;
 
         Ok(())
@@ -567,8 +573,10 @@ impl<'a> Batch<'a> {
         };
 
         let mut flush = Flush::empty(self.mmu_aspace.asid());
-        self.mmu_aspace
-            .map(self.range.start, iter, self.flags, &mut flush)?;
+        unsafe {
+            self.mmu_aspace
+                .map(self.range.start, iter, self.flags, &mut flush)?;
+        }
         flush.flush()?;
 
         self.range = Range::from(self.range.end..self.range.end);

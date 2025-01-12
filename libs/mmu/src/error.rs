@@ -13,11 +13,14 @@ pub enum Error {
     NoMemory,
     /// Attempted to operate on mismatched address space.
     AddressSpaceMismatch { expected: usize, found: usize },
+    /// The operation attempted to increase permissions.
+    PermissionIncrease,
     /// Errors returned by SBI calls
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     SBI(riscv::sbi::Error),
 }
 
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
 impl From<riscv::sbi::Error> for Error {
     fn from(err: riscv::sbi::Error) -> Self {
         Error::SBI(err)
@@ -29,9 +32,21 @@ impl Display for Error {
         match self {
             Error::NoMemory => write!(f, "The system was not able to allocate memory needed for the operation"),
             Error::AddressSpaceMismatch { expected, found } => write!(f, "Attempted to operate on mismatched address space. Expected {expected} but found {found}."),
+            Error::PermissionIncrease => write!(f, "The operation attempted to increase permissions"),
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
             Error::SBI(err) => write!(f, "SBI call failed: {err}"),
         }
     }
 }
 
 impl core::error::Error for Error {}
+
+#[macro_export]
+#[allow(edition_2024_expr_fragment_specifier)]
+macro_rules! ensure {
+    ($cond:expr, $error:expr) => {
+        if !$cond {
+            return Err($error);
+        }
+    };
+}

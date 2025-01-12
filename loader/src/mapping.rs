@@ -78,9 +78,13 @@ fn identity_map_range(
     let virt = VirtualAddress::new(phys.start.get()).unwrap();
     let len = NonZeroUsize::new(phys.size()).unwrap();
 
-    aspace
-        .map_contiguous(frame_alloc, virt, phys.start, len, flags, flush)
-        .map_err(Into::into)
+    // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+    // abort startup anyway
+    unsafe {
+        aspace
+            .map_contiguous(frame_alloc, virt, phys.start, len, flags, flush)
+            .map_err(Into::into)
+    }
 }
 
 pub fn map_physical_memory(
@@ -102,15 +106,19 @@ pub fn map_physical_memory(
     debug_assert!(virt.start.is_aligned_to(alignment) && virt.end.is_aligned_to(alignment));
     debug_assert_eq!(phys.size(), virt.size());
 
-    log::trace!("Mapping physical memory {phys:?} => {virt:?}...",);
-    aspace.map_contiguous(
-        frame_alloc,
-        virt.start,
-        phys.start,
-        NonZeroUsize::new(phys.size()).unwrap(),
-        mmu::Flags::READ | mmu::Flags::WRITE,
-        flush,
-    )?;
+    log::trace!("Mapping physical memory {phys:?} => {virt:?}...");
+    // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+    // abort startup anyway
+    unsafe {
+        aspace.map_contiguous(
+            frame_alloc,
+            virt.start,
+            phys.start,
+            NonZeroUsize::new(phys.size()).unwrap(),
+            mmu::Flags::READ | mmu::Flags::WRITE,
+            flush,
+        )?;
+    }
 
     // exclude the physical memory map region from page allocation
     page_alloc.reserve(virt.start, phys.size());
@@ -227,14 +235,18 @@ fn handle_load_segment(
     };
 
     log::trace!("mapping {virt:?} => {phys:?}");
-    aspace.map_contiguous(
-        frame_alloc,
-        virt.start,
-        phys.start,
-        NonZeroUsize::new(phys.size()).unwrap(),
-        flags,
-        flush,
-    )?;
+    // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+    // abort startup anyway
+    unsafe {
+        aspace.map_contiguous(
+            frame_alloc,
+            virt.start,
+            phys.start,
+            NonZeroUsize::new(phys.size()).unwrap(),
+            flags,
+            flush,
+        )?;
+    }
 
     if ph.file_size < ph.mem_size {
         handle_bss_section(aspace, frame_alloc, ph, flags, phys_base, virt_base, flush)?;
@@ -306,12 +318,16 @@ fn handle_bss_section(
             ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
         }
 
-        aspace.remap_contiguous(
-            last_page,
-            new_frame,
-            NonZeroUsize::new(PAGE_SIZE).unwrap(),
-            flush,
-        )?;
+        // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+        // abort startup anyway
+        unsafe {
+            aspace.remap_contiguous(
+                last_page,
+                new_frame,
+                NonZeroUsize::new(PAGE_SIZE).unwrap(),
+                flush,
+            )?;
+        }
     }
 
     log::trace!("zero_start {zero_start:?} zero_end {zero_end:?}");
@@ -334,7 +350,11 @@ fn handle_bss_section(
             "mapping additional zeros {additional_virt_base:?}..{:?}",
             additional_virt_base.checked_add(additional_len).unwrap()
         );
-        aspace.map(additional_virt_base, additional_phys, flags, flush)?;
+        // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+        // abort startup anyway
+        unsafe {
+            aspace.map(additional_virt_base, additional_phys, flags, flush)?;
+        }
     }
 
     Ok(())
@@ -420,12 +440,17 @@ fn handle_relro_segment(
         Range::from(virt.start.align_down(PAGE_SIZE)..virt.end.align_down(PAGE_SIZE));
 
     log::debug!("Marking RELRO segment {virt_aligned:?} as read-only");
-    aspace.protect(
-        virt_aligned.start,
-        NonZeroUsize::new(virt_aligned.size()).unwrap(),
-        mmu::Flags::READ,
-        flush,
-    )?;
+
+    // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+    // abort startup anyway
+    unsafe {
+        aspace.protect(
+            virt_aligned.start,
+            NonZeroUsize::new(virt_aligned.size()).unwrap(),
+            mmu::Flags::READ,
+            flush,
+        )?;
+    }
 
     Ok(())
 }
