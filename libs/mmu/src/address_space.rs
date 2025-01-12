@@ -264,7 +264,7 @@ impl AddressSpace {
     /// - `virt + mapped len` must not overflow
     /// - the entire range must be mapped
     /// - the alignment of `virt`, and `phys` addresses produced by `frames` must be the same as the
-    ///     existing mappings. That means when the mapping was intially created with a 2MiB alignment
+    ///     existing mappings. That means when the mapping was initially created with a 2MiB alignment
     ///     `remap` must also be called with 2MiB aligned addresses.
     ///
     /// With debug assertions enabled the following additional invariants are also enforced:
@@ -307,7 +307,7 @@ impl AddressSpace {
     /// - `virt + mapped len` must not overflow
     /// - the entire range must be mapped
     /// - the alignment of `virt`, and `phys` must be the same as the existing mappings. That means
-    ///     when the mapping was intially created with a 2MiB alignment `remap` must also be called
+    ///     when the mapping was initially created with a 2MiB alignment `remap` must also be called
     ///     with 2MiB aligned addresses.
     ///
     /// With debug assertions enabled the following additional invariants are also enforced:
