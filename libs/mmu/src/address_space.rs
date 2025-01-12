@@ -278,7 +278,9 @@ impl AddressSpace {
         flush: &mut Flush,
     ) -> crate::Result<()> {
         for (phys, len) in frames {
-            unsafe { self.remap_contiguous(virt, phys, NonZeroUsize::new(len).unwrap(), flush)?; }
+            unsafe {
+                self.remap_contiguous(virt, phys, NonZeroUsize::new(len).unwrap(), flush)?;
+            }
             virt = virt.checked_add(len).unwrap();
         }
 
@@ -441,7 +443,10 @@ impl AddressSpace {
                     let new_flags = rwx_mask.intersection(new_flags.into());
                     let (phys, old_flags) = pte.get_address_and_flags();
 
-                    ensure!(old_flags.intersection(rwx_mask).contains(new_flags), Error::PermissionIncrease);
+                    ensure!(
+                        old_flags.intersection(rwx_mask).contains(new_flags),
+                        Error::PermissionIncrease
+                    );
 
                     pte.replace_address_and_flags(
                         phys,
@@ -553,7 +558,9 @@ impl AddressSpace {
         } else if pte.is_valid() {
             // This PTE is an internal node pointing to another page table
             let pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
-            self.unmap_inner(pgtable, frame_alloc, virt, remaining_bytes, lvl - 1, flush)?;
+            unsafe {
+                self.unmap_inner(pgtable, frame_alloc, virt, remaining_bytes, lvl - 1, flush)?;
+            }
 
             // The recursive descend above might have unmapped the last child of this PTE in which
             // case we need to unmap it as well

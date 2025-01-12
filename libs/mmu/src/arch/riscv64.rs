@@ -62,7 +62,7 @@ pub fn pte_index_for_level(virt: VirtualAddress, lvl: usize) -> usize {
 }
 
 /// Return whether the combination of `virt`,`phys`, and `remaining_bytes` can be mapped at the given `level`.
-/// 
+///
 /// This is the case when both the virtual and physical address are aligned to the page size at this level
 /// AND the remaining size is at least the page size.
 pub fn can_map_at_level(
