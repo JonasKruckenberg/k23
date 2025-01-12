@@ -352,7 +352,9 @@ fn handle_bss_section(
         );
         // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
         // abort startup anyway
-        unsafe { aspace.map(additional_virt_base, additional_phys, flags, flush)?; }
+        unsafe {
+            aspace.map(additional_virt_base, additional_phys, flags, flush)?;
+        }
     }
 
     Ok(())
@@ -438,7 +440,7 @@ fn handle_relro_segment(
         Range::from(virt.start.align_down(PAGE_SIZE)..virt.end.align_down(PAGE_SIZE));
 
     log::debug!("Marking RELRO segment {virt_aligned:?} as read-only");
-    
+
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
     unsafe {
