@@ -53,7 +53,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
             )),
         );
 
-        reserve_wired_regions(&mut aspace, boot_info, &mut flush)?;
+        reserve_wired_regions(&mut aspace, boot_info, &mut flush);
         flush.flush()?;
 
         for region in aspace.regions.iter() {
@@ -76,14 +76,14 @@ fn reserve_wired_regions(
     aspace: &mut AddressSpace,
     boot_info: &BootInfo,
     flush: &mut Flush,
-) -> crate::Result<()> {
+) {
     // reserve the physical memory map
     aspace.reserve(
         boot_info.physical_memory_map,
         Permissions::READ | Permissions::WRITE,
         Some("Physical Memory Map".to_string()),
         flush,
-    )?;
+    ).unwrap();
 
     let own_elf = unsafe {
         let base = VirtualAddress::from_phys(
@@ -137,10 +137,8 @@ fn reserve_wired_regions(
             permissions,
             Some(format!("Kernel {permissions} Segment")),
             flush,
-        )?;
+        ).unwrap();
     }
-
-    Ok(())
 }
 
 bitflags::bitflags! {

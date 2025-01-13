@@ -420,7 +420,7 @@ impl AddressSpace {
     /// Calls the provided callback for each `AddressSpaceRegion` in the given virtual address range.
     /// This method will ensure the provided range does not cover any holes where no region exists,
     /// returning an error on the first hole encountered.
-    fn for_each_region_in_range<F>(&self, range: Range<VirtualAddress>, f: F) -> Result<(), Error>
+    fn for_each_region_in_range<F>(&self, range: Range<VirtualAddress>, mut f: F) -> Result<(), Error>
     where
         F: FnMut(&AddressSpaceRegion) -> Result<(), Error>
     {
@@ -434,7 +434,7 @@ impl AddressSpace {
             }
 
             // call the callback
-            f()?
+            f(region)?
         }
 
         Ok(())

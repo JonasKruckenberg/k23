@@ -18,6 +18,7 @@ pub enum Error {
     SBI(riscv::sbi::Error),
 }
 
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
 impl From<riscv::sbi::Error> for Error {
     fn from(err: riscv::sbi::Error) -> Self {
         Error::SBI(err)
@@ -29,6 +30,7 @@ impl Display for Error {
         match self {
             Error::NoMemory => write!(f, "The system was not able to allocate memory needed for the operation"),
             Error::AddressSpaceMismatch { expected, found } => write!(f, "Attempted to operate on mismatched address space. Expected {expected} but found {found}."),
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
             Error::SBI(err) => write!(f, "SBI call failed: {err}"),
         }
     }

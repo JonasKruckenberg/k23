@@ -18,6 +18,19 @@ pub enum Error {
     PermissionIncrease,
     AlreadyMapped,
     NotMapped,
+    NoMemory,
+    #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+    CacheInvalidationFailed(riscv::sbi::Error),
+}
+
+impl From<mmu::Error> for Error {
+    fn from(value: mmu::Error) -> Self {
+        match value {
+            mmu::Error::NoMemory => Self::NoMemory,
+            mmu::Error::AddressSpaceMismatch { expected, found } => panic!("Attempted to operate on mismatched address space. Expected {expected} but found {found}."),
+            mmu::Error::SBI(err) => Self::CacheInvalidationFailed(err)
+        }
+    }
 }
 
 impl Display for Error {
@@ -32,6 +45,9 @@ impl Display for Error {
             Error::PermissionIncrease => f.write_str("protect can only be used to reduce permissions, never increase them"),
             Error::AlreadyMapped => f.write_str("requested address range is already mapped"),
             Error::NotMapped => f.write_str("requested address range is not mapped"),
+            Error::NoMemory => f.write_str("failed to allocate memory for page table entry"),
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+            Error::CacheInvalidationFailed(err) => f.write_fmt(format_args!("failed to invalidate page table caches: {err}")),
         }
     }
 }

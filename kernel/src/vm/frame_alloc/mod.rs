@@ -40,7 +40,7 @@ pub fn init(boot_alloc: BootstrapAllocator, phys_offset: VirtualAddress) {
                 Ok(selection) => {
                     log::trace!("selection {selection:?}");
                     let arena = Arena::from_selection(selection, phys_offset);
-                    max_alignment = cmp::max(max_alignment, arena.)
+                    max_alignment = cmp::max(max_alignment, arena.max_alignment());
                     arenas.push(arena);
                 }
                 Err(err) => {
