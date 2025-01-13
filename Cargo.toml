@@ -81,3 +81,6 @@ wasmtime-slab = "28.0.0"
 
 [profile.release]
 debug = "limited" # The kernel should be able to print stack traces of itself even in release mode
+
+[patch.crates-io]
+regalloc2 = { git = "https://github.com/JonasKruckenberg/regalloc2", branch = "jonas/refactor/static-machine-env" }

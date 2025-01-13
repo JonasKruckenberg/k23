@@ -163,7 +163,7 @@ checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 [[package]]
 name = "cranelift-bforest"
 version = "0.117.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#69092f57288d6f833dec5365fa3ee9fb57dbb21c"
+source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#854f9cbda0451ce07d03e7df8779c74015a46aa1"
 dependencies = [
  "cranelift-entity",
 ]
@@ -171,12 +171,12 @@ dependencies = [
 [[package]]
 name = "cranelift-bitset"
 version = "0.117.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#69092f57288d6f833dec5365fa3ee9fb57dbb21c"
+source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#854f9cbda0451ce07d03e7df8779c74015a46aa1"
 
 [[package]]
 name = "cranelift-codegen"
 version = "0.117.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#69092f57288d6f833dec5365fa3ee9fb57dbb21c"
+source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#854f9cbda0451ce07d03e7df8779c74015a46aa1"
 dependencies = [
  "bumpalo",
  "cranelift-bforest",
@@ -192,14 +192,13 @@ dependencies = [
  "regalloc2",
  "rustc-hash",
  "smallvec",
- "spin",
  "target-lexicon",
 ]
 
 [[package]]
 name = "cranelift-codegen-meta"
 version = "0.117.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#69092f57288d6f833dec5365fa3ee9fb57dbb21c"
+source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#854f9cbda0451ce07d03e7df8779c74015a46aa1"
 dependencies = [
  "cranelift-codegen-shared",
 ]
@@ -207,17 +206,17 @@ dependencies = [
 [[package]]
 name = "cranelift-codegen-shared"
 version = "0.117.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#69092f57288d6f833dec5365fa3ee9fb57dbb21c"
+source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#854f9cbda0451ce07d03e7df8779c74015a46aa1"
 
 [[package]]
 name = "cranelift-control"
 version = "0.117.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#69092f57288d6f833dec5365fa3ee9fb57dbb21c"
+source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#854f9cbda0451ce07d03e7df8779c74015a46aa1"
 
 [[package]]
 name = "cranelift-entity"
 version = "0.117.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#69092f57288d6f833dec5365fa3ee9fb57dbb21c"
+source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#854f9cbda0451ce07d03e7df8779c74015a46aa1"
 dependencies = [
  "cranelift-bitset",
 ]
@@ -225,7 +224,7 @@ dependencies = [
 [[package]]
 name = "cranelift-frontend"
 version = "0.117.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#69092f57288d6f833dec5365fa3ee9fb57dbb21c"
+source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#854f9cbda0451ce07d03e7df8779c74015a46aa1"
 dependencies = [
  "cranelift-codegen",
  "hashbrown 0.15.2",
@@ -237,7 +236,7 @@ dependencies = [
 [[package]]
 name = "cranelift-isle"
 version = "0.117.0"
-source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#69092f57288d6f833dec5365fa3ee9fb57dbb21c"
+source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#854f9cbda0451ce07d03e7df8779c74015a46aa1"
 
 [[package]]
 name = "criterion"
@@ -441,9 +440,9 @@ checksum = "d75a2a4b1b190afb6f5425f10f6a8f959d2ea0b9c2b1d79553551850539e4674"
 
 [[package]]
 name = "js-sys"
-version = "0.3.76"
+version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6717b6b5b077764fb5966237269cb3c64edddde4b14ce42647430a78ced9e7b7"
+checksum = "1cfaf33c695fc6e08064efbc1f72ec937429614f25eef83af942d0e227c3a28f"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
@@ -648,9 +647,9 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.92"
+version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37d3544b3f2748c54e147655edb5025752e2303145b5aefb3c3ea2c78b973bb0"
+checksum = "60946a68e5f9d28b0dc1c21bb8a97ee7d018a8b322fa57838ba31cc878e22d99"
 dependencies = [
  "unicode-ident",
 ]
@@ -743,8 +742,7 @@ dependencies = [
 [[package]]
 name = "regalloc2"
 version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "145c1c267e14f20fb0f88aa76a1c5ffec42d592c1d28b3cd9148ae35916158d3"
+source = "git+https://github.com/JonasKruckenberg/regalloc2?branch=jonas%2Frefactor%2Fstatic-machine-env#305811667665047d750521973be4b3b7a6a7d312"
 dependencies = [
  "allocator-api2",
  "bumpalo",
@@ -818,6 +816,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustversion"
+version = "1.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7c45b9784283f1b2e7fb61b42047c2fd678ef0960d4f6f1eba131594cc369d4"
+
+[[package]]
 name = "ryu"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -881,12 +885,6 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
-
-[[package]]
-name = "spin"
-version = "0.9.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 
 [[package]]
 name = "static_assertions"
@@ -997,20 +995,21 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.99"
+version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a474f6281d1d70c17ae7aa6a613c87fce69a127e2624002df63dcb39d6cf6396"
+checksum = "1edc8929d7499fc4e8f0be2262a241556cfc54a0bea223790e71446f2aab1ef5"
 dependencies = [
  "cfg-if",
  "once_cell",
+ "rustversion",
  "wasm-bindgen-macro",
 ]
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.99"
+version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f89bb38646b4f81674e8f5c3fb81b562be1fd936d84320f3264486418519c79"
+checksum = "2f0a0651a5c2bc21487bde11ee802ccaf4c51935d0d3d42a6101f98161700bc6"
 dependencies = [
  "bumpalo",
  "log",
@@ -1022,9 +1021,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.99"
+version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cc6181fd9a7492eef6fef1f33961e3695e4579b9872a6f7c83aee556666d4fe"
+checksum = "7fe63fc6d09ed3792bd0897b314f53de8e16568c2b3f7982f468c0bf9bd0b407"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -1032,9 +1031,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.99"
+version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30d7a95b763d3c45903ed6c81f156801839e5ee968bb07e534c44df0fcd330c2"
+checksum = "8ae87ea40c9f689fc23f209965b6fb8a99ad69aeeb0231408be24920604395de"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1045,9 +1044,12 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.99"
+version = "0.2.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "943aab3fdaaa029a6e0271b35ea10b72b943135afe9bffca82384098ad0e06a6"
+checksum = "1a05d73b933a847d6cccdda8f838a22ff101ad9bf93e33684f39c1f5f0eece3d"
+dependencies = [
+ "unicode-ident",
+]
 
 [[package]]
 name = "wasm-encoder"
@@ -1099,9 +1101,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.76"
+version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04dd7223427d52553d3702c004d3b2fe07c148165faa56313cb00211e31c12bc"
+checksum = "33b6dd2ef9186f1f2072e409e99cd22a975331a6b3591b12c764e0e55c60d5d2"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
