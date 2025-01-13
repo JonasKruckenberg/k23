@@ -377,19 +377,23 @@ impl AddressSpace {
         // since `reserve` will only be called for kernel memory setup by the loader. For which it is
         // critical that the MMUs and our "logical" view are in sync.
         if permissions.is_empty() {
-            self.mmu.unmap(
-                &mut self.mmu_frames,
-                range.start,
-                NonZeroUsize::new(range.size()).unwrap(),
-                flush,
-            )?;
+            unsafe {
+                self.mmu.unmap(
+                    &mut self.mmu_frames,
+                    range.start,
+                    NonZeroUsize::new(range.size()).unwrap(),
+                    flush,
+                )?;
+            }
         } else {
-            self.mmu.protect(
-                range.start,
-                NonZeroUsize::new(range.size()).unwrap(),
-                permissions.into(),
-                flush,
-            )?;
+            unsafe {
+                self.mmu.protect(
+                    range.start,
+                    NonZeroUsize::new(range.size()).unwrap(),
+                    permissions.into(),
+                    flush,
+                )?;
+            }
         }
 
         Ok(region)
@@ -416,13 +420,16 @@ impl AddressSpace {
         Ok(region)
     }
 
-
     /// Calls the provided callback for each `AddressSpaceRegion` in the given virtual address range.
     /// This method will ensure the provided range does not cover any holes where no region exists,
     /// returning an error on the first hole encountered.
-    fn for_each_region_in_range<F>(&self, range: Range<VirtualAddress>, mut f: F) -> Result<(), Error>
+    fn for_each_region_in_range<F>(
+        &self,
+        range: Range<VirtualAddress>,
+        mut f: F,
+    ) -> Result<(), Error>
     where
-        F: FnMut(&AddressSpaceRegion) -> Result<(), Error>
+        F: FnMut(&AddressSpaceRegion) -> Result<(), Error>,
     {
         let mut prev_end = None;
         for region in self.regions.range(range) {
@@ -701,8 +708,10 @@ impl<'a> Batch<'a> {
         };
 
         let mut flush = Flush::empty(self.mmu_aspace.asid());
-        self.mmu_aspace
-            .map(self.range.start, iter, self.flags, &mut flush)?;
+        unsafe {
+            self.mmu_aspace
+                .map(self.range.start, iter, self.flags, &mut flush)?;
+        }
         flush.flush()?;
 
         self.range = Range::from(self.range.end..self.range.end);
