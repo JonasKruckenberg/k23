@@ -28,7 +28,8 @@ impl From<mmu::Error> for Error {
         match value {
             mmu::Error::NoMemory => Self::NoMemory,
             mmu::Error::AddressSpaceMismatch { expected, found } => panic!("Attempted to operate on mismatched address space. Expected {expected} but found {found}."),
-            mmu::Error::SBI(err) => Self::CacheInvalidationFailed(err)
+            mmu::Error::SBI(err) => Self::CacheInvalidationFailed(err),
+            mmu::Error::PermissionIncrease => Self::PermissionIncrease,
         }
     }
 }
