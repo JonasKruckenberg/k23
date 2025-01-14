@@ -94,7 +94,7 @@ clippy crate="" *cargo_args="":
         {{ _buildstd }} \
         {{ _fmt_clippy }} \
         {{ cargo_args }}
-    KERNEL=main.rs {{ _cargo }} clippy \
+    KERNEL=Cargo.toml {{ _cargo }} clippy \
             -p loader \
             --target loader/riscv64imac-k23-none-loader.json \
             {{ _buildstd }} \
