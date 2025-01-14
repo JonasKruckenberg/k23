@@ -94,6 +94,12 @@ clippy crate="" *cargo_args="":
         {{ _buildstd }} \
         {{ _fmt_clippy }} \
         {{ cargo_args }}
+    KERNEL=Cargo.toml {{ _cargo }} clippy \
+            -p loader \
+            --target loader/riscv64imac-k23-none-loader.json \
+            {{ _buildstd }} \
+            {{ _fmt_clippy }} \
+            {{ cargo_args }}
 
 # check formatting for a crate or the entire workspace.
 check-fmt crate="" *cargo_args="":
@@ -113,6 +119,12 @@ build-docs crate="" *cargo_args="":
         {{ _buildstd }} \
         {{ _fmt }} \
         {{ cargo_args }}
+    KERNEL=Cargo.toml {{ _rustdoc }} \
+            -p loader \
+            --target loader/riscv64imac-k23-none-loader.json \
+            {{ _buildstd }} \
+            {{ _fmt }} \
+            {{ cargo_args }}
 
 # test documentation for a crate or the entire workspace.
 test-docs crate="" *cargo_args="":

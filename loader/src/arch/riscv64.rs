@@ -5,13 +5,30 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::error::Error;
+use crate::frame_alloc::FrameAllocator;
+use crate::mapping::Flags;
+use bitflags::bitflags;
 use core::arch::{asm, naked_asm};
+use core::fmt;
+use core::num::NonZero;
+use core::ptr::NonNull;
 use loader_api::BootInfo;
-use mmu::arch::PAGE_SIZE;
-use mmu::VirtualAddress;
+use riscv::satp;
 
 pub const KERNEL_ASID: usize = 0;
-pub const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000).unwrap();
+pub const KERNEL_ASPACE_BASE: usize = 0xffffffc000000000;
+pub const PAGE_SIZE: usize = 4096;
+/// The number of page table entries in one table
+pub const PAGE_TABLE_ENTRIES: usize = 512;
+pub const PAGE_TABLE_LEVELS: usize = 3; // L0, L1, L2 Sv39
+pub const VIRT_ADDR_BITS: u32 = 38;
+
+pub const PAGE_SHIFT: usize = (PAGE_SIZE - 1).count_ones() as usize;
+pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usize;
+
+/// On `RiscV` targets the page table entry's physical address bits are shifted 2 bits to the right.
+const PTE_PPN_SHIFT: usize = 2;
 
 const BOOT_STACK_SIZE: usize = 32 * PAGE_SIZE;
 
@@ -78,13 +95,9 @@ unsafe extern "C" fn _start() -> ! {
     }
 }
 
-pub unsafe fn handoff_to_kernel(
-    hartid: usize,
-    boot_info: *mut BootInfo,
-    entry: VirtualAddress,
-) -> ! {
+pub unsafe fn handoff_to_kernel(hartid: usize, boot_info: *mut BootInfo, entry: usize) -> ! {
     log::debug!("Hart {hartid} Jumping to kernel...");
-    log::trace!("Hart {hartid} entry: {entry}, arguments: a0={hartid} a1={boot_info:?}");
+    log::trace!("Hart {hartid} entry: {entry:#x}, arguments: a0={hartid} a1={boot_info:?}");
 
     unsafe {
         asm! {
@@ -100,8 +113,308 @@ pub unsafe fn handoff_to_kernel(
             "   j 1b",
             in("a0") hartid,
             in("a1") boot_info,
-            kernel_entry = in(reg) entry.get(),
+            kernel_entry = in(reg) entry,
             options(noreturn)
         }
+    }
+}
+
+pub unsafe fn map_contiguous(
+    root_pgtable: usize,
+    frame_alloc: &mut FrameAllocator,
+    mut virt: usize,
+    mut phys: usize,
+    len: NonZero<usize>,
+    flags: Flags,
+    phys_off: usize,
+) -> crate::Result<()> {
+    let mut remaining_bytes = len.get();
+    debug_assert!(
+        remaining_bytes >= PAGE_SIZE,
+        "address range span be at least one page"
+    );
+    debug_assert!(
+        virt % PAGE_SIZE == 0,
+        "virtual address must be aligned to at least 4KiB page size {virt:?}"
+    );
+    debug_assert!(
+        phys % PAGE_SIZE == 0,
+        "physical address must be aligned to at least 4KiB page size {phys:?}"
+    );
+
+    // To map out contiguous chunk of physical memory into the virtual address space efficiently
+    // we'll attempt to map as much of the chunk using as large of a page size as possible.
+    //
+    // We'll follow the page table down starting at the root page table entry (PTE) and check at
+    // every level if we can map there. This is dictated by the combination of virtual and
+    // physical address alignment as well as chunk size. If we can map at the current level
+    // well subtract the page size from `remaining_bytes`, advance the current virtual and physical
+    // addresses by the page size and repeat the process until there are no more bytes to map.
+    //
+    // IF we can't map at a given level, we'll either allocate a new PTE or follow and existing PTE
+    // to the next level (and therefore smaller page size) until we reach a level that we can map at.
+    // Note that, because we require a minimum alignment and size of PAGE_SIZE, we will always be
+    // able to map a chunk using level 0 pages.
+    //
+    // In effect this algorithm will map the start and ends of chunks using smaller page sizes
+    // while mapping the vast majority of the middle of a chunk using larger page sizes.
+    'outer: while remaining_bytes > 0 {
+        let mut pgtable: NonNull<PageTableEntry> = pgtable_ptr_from_phys(root_pgtable, phys_off);
+
+        for lvl in (0..PAGE_TABLE_LEVELS).rev() {
+            let index = pte_index_for_level(virt, lvl);
+            let pte = unsafe { pgtable.add(index).as_mut() };
+
+            if !pte.is_valid() {
+                // If the PTE is invalid that means we reached a vacant slot to map into.
+                //
+                // First, lets check if we can map at this level of the page table given our
+                // current virtual and physical address as well as the number of remaining bytes.
+                if can_map_at_level(virt, phys, remaining_bytes, lvl) {
+                    let page_size = page_size_for_level(lvl);
+
+                    // This PTE is vacant AND we can map at this level
+                    // mark this PTE as a valid leaf node pointing to the physical frame
+                    pte.replace_address_and_flags(phys, PTEFlags::VALID | PTEFlags::from(flags));
+
+                    virt = virt.checked_add(page_size).unwrap();
+                    phys = phys.checked_add(page_size).unwrap();
+                    remaining_bytes -= page_size;
+                    continue 'outer;
+                } else if !pte.is_valid() {
+                    // The current PTE is vacant, but we couldn't map at this level (because the
+                    // page size was too large, or the request wasn't sufficiently aligned or
+                    // because the architecture just can't map at this level). This means
+                    // we need to allocate a new sub-table and retry.
+                    // allocate a new physical frame to hold the next level table and
+                    // mark this PTE as a valid internal node pointing to that sub-table.
+                    let frame = frame_alloc
+                        .allocate_one_zeroed(phys_off)
+                        .ok_or(Error::NoMemory)?; // we should always be able to map a single page
+
+                    // TODO memory barrier
+
+                    pte.replace_address_and_flags(frame, PTEFlags::VALID);
+
+                    pgtable = pgtable_ptr_from_phys(frame, phys_off);
+                }
+            } else if !pte.is_leaf() {
+                // This PTE is an internal node pointing to another page table
+                pgtable = pgtable_ptr_from_phys(pte.get_address_and_flags().0, phys_off);
+            } else {
+                unreachable!("Invalid state: PTE can't be valid leaf (this means {virt:?} is already mapped) {pte:?} {pte:p}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub unsafe fn remap_contiguous(
+    root_pgtable: usize,
+    mut virt: usize,
+    mut phys: usize,
+    len: NonZero<usize>,
+    phys_off: usize,
+) -> crate::Result<()> {
+    let mut remaining_bytes = len.get();
+    debug_assert!(
+        remaining_bytes >= PAGE_SIZE,
+        "virtual address range must span be at least one page"
+    );
+    debug_assert!(
+        virt % PAGE_SIZE == 0,
+        "virtual address must be aligned to at least 4KiB page size"
+    );
+    debug_assert!(
+        phys % PAGE_SIZE == 0,
+        "physical address must be aligned to at least 4KiB page size"
+    );
+
+    // This algorithm behaves a lot like the above one for `map_contiguous` but with an important
+    // distinction: Since we require the entire range to already be mapped, we follow the page tables
+    // until we reach a valid PTE. Once we reached, we assert that we can map the given physical
+    // address here and simply update the PTEs address. We then again repeat this until we have
+    // no more bytes to process.
+    'outer: while remaining_bytes > 0 {
+        let mut pgtable = pgtable_ptr_from_phys(root_pgtable, phys_off);
+
+        for lvl in (0..PAGE_TABLE_LEVELS).rev() {
+            let pte = unsafe {
+                let index = pte_index_for_level(virt, lvl);
+                pgtable.add(index).as_mut()
+            };
+
+            if pte.is_valid() && pte.is_leaf() {
+                // We reached the previously mapped leaf node that we want to edit
+                // assert that we can actually map at this level (remap requires users to remap
+                // only to equal or larger alignments, but we should make sure.
+                let page_size = page_size_for_level(lvl);
+
+                debug_assert!(
+                    can_map_at_level(virt, phys, remaining_bytes, lvl),
+                    "remapping requires the same alignment ({page_size}) but found {phys:?}, {remaining_bytes}bytes"
+                );
+
+                let (_old_phys, flags) = pte.get_address_and_flags();
+                pte.replace_address_and_flags(phys, flags);
+
+                virt = virt.checked_add(page_size).unwrap();
+                phys = phys.checked_add(page_size).unwrap();
+                remaining_bytes -= page_size;
+                continue 'outer;
+            } else if pte.is_valid() {
+                // This PTE is an internal node pointing to another page table
+                pgtable = pgtable_ptr_from_phys(pte.get_address_and_flags().0, phys_off);
+            } else {
+                unreachable!("Invalid state: PTE cant be vacant or invalid+leaf {pte:?}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub unsafe fn activate_aspace(pgtable: usize) {
+    unsafe {
+        let ppn = pgtable >> 12;
+        satp::set(satp::Mode::Sv39, KERNEL_ASID, ppn);
+    }
+}
+
+/// Return the page size for the given page table level.
+///
+/// # Panics
+///
+/// Panics if the provided level is `>= PAGE_TABLE_LEVELS`.
+pub fn page_size_for_level(level: usize) -> usize {
+    assert!(level < PAGE_TABLE_LEVELS);
+    let page_size = 1 << (PAGE_SHIFT + level * PAGE_ENTRY_SHIFT);
+    debug_assert!(page_size == 4096 || page_size == 2097152 || page_size == 1073741824);
+    page_size
+}
+
+/// Parse the `level`nth page table entry index from the given virtual address.
+///
+/// # Panics
+///
+/// Panics if the provided level is `>= PAGE_TABLE_LEVELS`.
+pub fn pte_index_for_level(virt: usize, lvl: usize) -> usize {
+    assert!(lvl < PAGE_TABLE_LEVELS);
+    let index = (virt >> (PAGE_SHIFT + lvl * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
+    debug_assert!(index < PAGE_TABLE_ENTRIES);
+
+    index
+}
+
+/// Return whether the combination of `virt`,`phys`, and `remaining_bytes` can be mapped at the given `level`.
+///
+/// This is the case when both the virtual and physical address are aligned to the page size at this level
+/// AND the remaining size is at least the page size.
+pub fn can_map_at_level(virt: usize, phys: usize, remaining_bytes: usize, lvl: usize) -> bool {
+    let page_size = page_size_for_level(lvl);
+    virt % page_size == 0 && phys % page_size == 0 && remaining_bytes >= page_size
+}
+
+fn pgtable_ptr_from_phys(phys: usize, phys_off: usize) -> NonNull<PageTableEntry> {
+    NonNull::new(phys_off.checked_add(phys).unwrap() as *mut PageTableEntry).unwrap()
+}
+
+#[repr(transparent)]
+pub struct PageTableEntry {
+    bits: usize,
+}
+
+impl fmt::Debug for PageTableEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let rsw = (self.bits & ((1 << 2) - 1) << 8) >> 8;
+        let ppn0 = (self.bits & ((1 << 9) - 1) << 10) >> 10;
+        let ppn1 = (self.bits & ((1 << 9) - 1) << 19) >> 19;
+        let ppn2 = (self.bits & ((1 << 26) - 1) << 28) >> 28;
+        let reserved = (self.bits & ((1 << 7) - 1) << 54) >> 54;
+        let pbmt = (self.bits & ((1 << 2) - 1) << 61) >> 61;
+        let n = (self.bits & ((1 << 1) - 1) << 63) >> 63;
+
+        f.debug_struct("PageTableEntry")
+            .field("n", &format_args!("{n:01b}"))
+            .field("pbmt", &format_args!("{pbmt:02b}"))
+            .field("reserved", &format_args!("{reserved:07b}"))
+            .field("ppn2", &format_args!("{ppn2:026b}"))
+            .field("ppn1", &format_args!("{ppn1:09b}"))
+            .field("ppn0", &format_args!("{ppn0:09b}"))
+            .field("rsw", &format_args!("{rsw:02b}"))
+            .field("flags", &self.get_address_and_flags().1)
+            .finish()
+    }
+}
+
+impl PageTableEntry {
+    pub fn is_valid(&self) -> bool {
+        PTEFlags::from_bits_retain(self.bits).contains(PTEFlags::VALID)
+    }
+
+    pub fn is_leaf(&self) -> bool {
+        PTEFlags::from_bits_retain(self.bits)
+            .intersects(PTEFlags::READ | PTEFlags::WRITE | PTEFlags::EXECUTE)
+    }
+
+    pub fn replace_address_and_flags(&mut self, address: usize, flags: PTEFlags) {
+        self.bits &= PTEFlags::all().bits(); // clear all previous flags
+        self.bits |= (address >> PTE_PPN_SHIFT) | flags.bits();
+    }
+
+    pub fn get_address_and_flags(&self) -> (usize, PTEFlags) {
+        // TODO correctly mask out address
+        let addr = (self.bits & !PTEFlags::all().bits()) << PTE_PPN_SHIFT;
+        let flags = PTEFlags::from_bits_truncate(self.bits);
+        (addr, flags)
+    }
+}
+
+bitflags! {
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
+    pub struct PTEFlags: usize {
+        const VALID     = 1 << 0;
+        const READ      = 1 << 1;
+        const WRITE     = 1 << 2;
+        const EXECUTE   = 1 << 3;
+        const USER      = 1 << 4;
+        const GLOBAL    = 1 << 5;
+        const ACCESSED    = 1 << 6;
+        const DIRTY     = 1 << 7;
+    }
+}
+
+impl From<Flags> for PTEFlags {
+    fn from(flags: Flags) -> Self {
+        let mut out = Self::VALID | Self::DIRTY | Self::ACCESSED;
+
+        for flag in flags {
+            match flag {
+                Flags::READ => out.insert(Self::READ),
+                Flags::WRITE => out.insert(Self::WRITE),
+                Flags::EXECUTE => out.insert(Self::EXECUTE),
+                _ => unreachable!(),
+            }
+        }
+
+        out
+    }
+}
+
+impl From<PTEFlags> for Flags {
+    fn from(arch_flags: PTEFlags) -> Self {
+        let mut out = Flags::empty();
+
+        for flag in arch_flags {
+            match flag {
+                PTEFlags::READ => out.insert(Self::READ),
+                PTEFlags::WRITE => out.insert(Self::WRITE),
+                PTEFlags::EXECUTE => out.insert(Self::EXECUTE),
+                _ => unreachable!(),
+            }
+        }
+
+        out
     }
 }

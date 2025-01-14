@@ -11,7 +11,6 @@ use core::range::Range;
 use loader_api::BootInfo;
 use mmu::arch::PAGE_SIZE;
 use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
-use mmu::AddressRangeExt;
 use talc::{ErrOnOom, Span, Talc, Talck};
 
 #[global_allocator]
@@ -32,7 +31,10 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     };
 
     let mut alloc = KERNEL_ALLOCATOR.lock();
-    let span = Span::from_base_size(virt.start.as_mut_ptr(), virt.size());
+    let span = Span::from_base_size(
+        virt.start as *mut u8,
+        virt.end.checked_sub(virt.start).unwrap(),
+    );
     unsafe {
         let old_heap = alloc.claim(span).unwrap();
         alloc.extend(old_heap, span);

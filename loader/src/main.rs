@@ -9,11 +9,11 @@
 #![no_main]
 #![feature(naked_functions)]
 #![feature(new_range_api)]
-#![feature(slice_from_ptr_range)]
 #![feature(maybe_uninit_slice)]
 
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;
+use crate::frame_alloc::FrameAllocator;
 use crate::kernel::{parse_kernel, INLINED_KERNEL_BYTES};
 use crate::machine_info::MachineInfo;
 use crate::mapping::{identity_map_self, map_kernel, map_physical_memory};
@@ -22,13 +22,11 @@ use core::alloc::Layout;
 use core::ffi::c_void;
 use core::range::Range;
 use core::{ptr, slice};
-use mmu::arch::PAGE_SIZE;
-use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
-use mmu::{AddressRangeExt, AddressSpace, Flush, PhysicalAddress, VirtualAddress, KIB};
 
 mod arch;
 mod boot_info;
 mod error;
+mod frame_alloc;
 mod kernel;
 mod logger;
 mod machine_info;
@@ -41,7 +39,10 @@ pub const LOG_LEVEL: log::Level = log::Level::Trace;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
+/// # Safety
+///
+/// The passed `opaque` ptr must point to a valid memory region.
+pub unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     // zero out the BSS section
     unsafe extern "C" {
         static mut __bss_zero_start: u64;
@@ -63,11 +64,11 @@ pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     log::debug!("\n{minfo}");
 
     let self_regions = SelfRegions::collect();
-    log::debug!("{self_regions:?}");
+    log::debug!("{self_regions:#x?}");
 
     // Initialize the frame allocator
     let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions);
-    let mut frame_alloc = BootstrapAllocator::new(&allocatable_memories);
+    let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
 
     // Initialize the page allocator
     let mut page_alloc = page_alloc::init(&minfo);
@@ -75,13 +76,11 @@ pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     let fdt_phys = allocate_and_copy(&mut frame_alloc, minfo.fdt).unwrap();
     let kernel_phys = allocate_and_copy(&mut frame_alloc, &INLINED_KERNEL_BYTES.0).unwrap();
 
-    // Initialize the kernel address space
-    let (mut aspace, mut flush) = AddressSpace::new(
-        &mut frame_alloc,
-        arch::KERNEL_ASID,
-        VirtualAddress::default(),
-    )
-    .unwrap();
+    let root_pgtable = frame_alloc
+        .allocate_one_zeroed(
+            0, // called before translation into higher half
+        )
+        .unwrap();
 
     // Identity map the loader itself (this binary).
     //
@@ -89,55 +88,52 @@ pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     // as opposed to m-mode where it would take effect after the jump to s-mode.
     // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
     // We will then unmap the loader in the kernel.
-    identity_map_self(&mut aspace, &mut frame_alloc, &self_regions, &mut flush).unwrap();
+    identity_map_self(root_pgtable, &mut frame_alloc, &self_regions).unwrap();
 
     // Map the physical memory into kernel address space.
     //
     // This will be used by the kernel to access the page tables, BootInfo struct and maybe
     // more in the future.
-    let (phys_off, phys_map) = map_physical_memory(
-        &mut aspace,
-        &mut frame_alloc,
-        &mut page_alloc,
-        &minfo,
-        &mut flush,
-    )
-    .unwrap();
+    let (phys_off, phys_map) =
+        map_physical_memory(root_pgtable, &mut frame_alloc, &mut page_alloc, &minfo).unwrap();
 
-    // Turn on the MMU
-    let (mut aspace, mut flush) = enable_mmu(aspace, flush, &mut frame_alloc, phys_off);
+    // Activate the MMU with the address space we have built so far.
+    // the rest of the address space setup will happen in virtual memory (mostly so that we
+    // can correctly apply relocations without having to do expensive virt to phys queries)
+    unsafe {
+        log::trace!("activating MMU...");
+        arch::activate_aspace(root_pgtable);
+        log::trace!("activated.");
+    }
+    frame_alloc.set_phys_offset(phys_off);
 
     // The kernel elf file is inlined into the loader executable as part of the build setup
     // which means we just need to parse it here.
     let kernel = parse_kernel(unsafe {
-        slice::from_ptr_range(
-            kernel_phys
-                .clone()
-                .checked_add(phys_off.get())
-                .unwrap()
-                .as_ptr_range()
-                .into(),
-        )
+        let base = phys_off.checked_add(kernel_phys.start).unwrap();
+        let len = kernel_phys.end.checked_sub(kernel_phys.start).unwrap();
+
+        slice::from_raw_parts(base as *mut u8, len)
     })
     .unwrap();
     // print the elf sections for debugging purposes
     log::debug!("\n{kernel}");
 
     let (kernel_virt, maybe_tls_template) = map_kernel(
-        &mut aspace,
+        root_pgtable,
         &mut frame_alloc,
         &mut page_alloc,
         &kernel,
-        &mut flush,
+        phys_off,
     )
     .unwrap();
 
-    log::trace!("KASLR: Kernel image at {}", kernel_virt.start);
+    log::trace!("KASLR: Kernel image at {:#x}", kernel_virt.start);
 
     let frame_usage = frame_alloc.frame_usage();
     log::debug!(
         "Mapping complete, permanently used {} KiB.",
-        (frame_usage.used * PAGE_SIZE) / KIB,
+        (frame_usage * arch::PAGE_SIZE) / 1024,
     );
 
     let boot_info = prepare_boot_info(
@@ -163,9 +159,9 @@ pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
 
 #[derive(Debug)]
 struct SelfRegions {
-    pub executable: Range<PhysicalAddress>,
-    pub read_only: Range<PhysicalAddress>,
-    pub read_write: Range<PhysicalAddress>,
+    pub executable: Range<usize>,
+    pub read_only: Range<usize>,
+    pub read_write: Range<usize>,
 }
 
 impl SelfRegions {
@@ -181,16 +177,16 @@ impl SelfRegions {
 
         SelfRegions {
             executable: Range {
-                start: PhysicalAddress::new(&raw const __text_start as usize),
-                end: PhysicalAddress::new(&raw const __text_end as usize),
+                start: &raw const __text_start as usize,
+                end: &raw const __text_end as usize,
             },
             read_only: Range {
-                start: PhysicalAddress::new(&raw const __rodata_start as usize),
-                end: PhysicalAddress::new(&raw const __rodata_end as usize),
+                start: &raw const __rodata_start as usize,
+                end: &raw const __rodata_end as usize,
             },
             read_write: Range {
-                start: PhysicalAddress::new(&raw const __bss_start as usize),
-                end: PhysicalAddress::new(&raw const __data_end as usize),
+                start: &raw const __bss_start as usize,
+                end: &raw const __data_end as usize,
             },
         }
     }
@@ -199,7 +195,7 @@ impl SelfRegions {
 fn allocatable_memory_regions(
     minfo: &MachineInfo,
     self_regions: &SelfRegions,
-) -> ArrayVec<Range<PhysicalAddress>, 16> {
+) -> ArrayVec<Range<usize>, 16> {
     let mut out = ArrayVec::new();
     let to_exclude = Range::from(self_regions.executable.start..self_regions.read_write.end);
 
@@ -224,42 +220,17 @@ fn allocatable_memory_regions(
     out
 }
 
-fn allocate_and_copy(
-    frame_alloc: &mut BootstrapAllocator,
-    src: &[u8],
-) -> Result<Range<PhysicalAddress>> {
-    let layout = Layout::from_size_align(src.len(), PAGE_SIZE).unwrap();
+fn allocate_and_copy(frame_alloc: &mut FrameAllocator, src: &[u8]) -> Result<Range<usize>> {
+    let layout = Layout::from_size_align(src.len(), arch::PAGE_SIZE).unwrap();
     let base = frame_alloc
         .allocate_contiguous(layout)
         .ok_or(Error::NoMemory)?;
 
     unsafe {
-        let dst = slice::from_raw_parts_mut(base.as_mut_ptr(), src.len());
+        let dst = slice::from_raw_parts_mut(base as *mut u8, src.len());
 
         ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
     }
 
     Ok(Range::from(base..base.checked_add(layout.size()).unwrap()))
-}
-
-fn enable_mmu(
-    aspace: AddressSpace,
-    flush: Flush,
-    frame_alloc: &mut BootstrapAllocator,
-    phys_off: VirtualAddress,
-) -> (AddressSpace, Flush) {
-    // Activate the MMU with the address space we have built so far.
-    // the rest of the address space setup will happen in virtual memory (mostly so that we
-    // can correctly apply relocations without having to do expensive virt to phys queries)
-    unsafe {
-        log::trace!("activating MMU...");
-        flush.ignore();
-        aspace.activate();
-        log::trace!("activated.");
-    }
-    frame_alloc.set_phys_offset(phys_off);
-
-    // Reconstruct the aspace with the new physical memory mapping offset since we're in virtual
-    // memory mode now.
-    AddressSpace::from_active(arch::KERNEL_ASID, phys_off)
 }
