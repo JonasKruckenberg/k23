@@ -388,12 +388,12 @@ name = "loader"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
+ "bitflags",
  "cfg-if",
  "dtb-parser",
  "fallible-iterator",
  "loader-api",
  "log",
- "mmu",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "riscv",
@@ -403,9 +403,6 @@ dependencies = [
 [[package]]
 name = "loader-api"
 version = "0.1.0"
-dependencies = [
- "mmu",
-]
 
 [[package]]
 name = "lock_api"

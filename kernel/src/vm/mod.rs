@@ -22,7 +22,7 @@ use core::range::Range;
 use core::{fmt, slice};
 use loader_api::BootInfo;
 use mmu::arch::PAGE_SIZE;
-use mmu::{AddressRangeExt, Flush, VirtualAddress};
+use mmu::{Flush, VirtualAddress};
 use paged_vmo::PagedVmo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -42,8 +42,10 @@ static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
 pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
     #[allow(tail_expr_drop_order)]
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
-        let (hw_aspace, mut flush) =
-            mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
+        let (hw_aspace, mut flush) = mmu::AddressSpace::from_active(
+            KERNEL_ASID,
+            VirtualAddress::new(boot_info.physical_address_offset).unwrap(),
+        );
 
         let mut aspace = AddressSpace::from_active_kernel(
             hw_aspace,
@@ -78,20 +80,29 @@ fn reserve_wired_regions(
 ) -> crate::Result<()> {
     // reserve the physical memory map
     aspace.reserve(
-        boot_info.physical_memory_map,
+        Range::from(
+            VirtualAddress::new(boot_info.physical_memory_map.start).unwrap()
+                ..VirtualAddress::new(boot_info.physical_memory_map.end).unwrap(),
+        ),
         Permissions::READ | Permissions::WRITE,
         Some("Physical Memory Map".to_string()),
         flush,
     )?;
 
     let own_elf = unsafe {
-        let base = VirtualAddress::from_phys(
-            boot_info.kernel_phys.start,
-            boot_info.physical_address_offset,
-        )
-        .unwrap();
+        let base = boot_info
+            .physical_address_offset
+            .checked_add(boot_info.kernel_phys.start)
+            .unwrap() as *const u8;
 
-        slice::from_raw_parts(base.as_ptr(), boot_info.kernel_phys.size())
+        slice::from_raw_parts(
+            base,
+            boot_info
+                .kernel_phys
+                .end
+                .checked_sub(boot_info.kernel_phys.start)
+                .unwrap(),
+        )
     };
     let own_elf = xmas_elf::ElfFile::new(own_elf).unwrap();
 
@@ -100,9 +111,8 @@ fn reserve_wired_regions(
             continue;
         }
 
-        let virt = boot_info
-            .kernel_virt
-            .start
+        let virt = VirtualAddress::new(boot_info.kernel_virt.start)
+            .unwrap()
             .checked_add(ph.virtual_addr() as usize)
             .unwrap();
 

@@ -5,6 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::frame_alloc::FrameAllocator;
+use crate::mapping::Flags;
+use core::num::NonZero;
+
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
         mod riscv64;
@@ -23,4 +27,26 @@ pub fn abort() -> ! {
             loop {}
         }
     }
+}
+
+pub(crate) unsafe fn map_contiguous(
+    p0: &mut FrameAllocator,
+    p1: usize,
+    p2: usize,
+    p3: NonZero<usize>,
+    p4: Flags,
+) -> crate::Result<()> {
+    todo!()
+}
+
+pub(crate) unsafe fn remap_contiguous(
+    p0: usize,
+    p1: usize,
+    p2: NonZero<usize>,
+) -> crate::Result<()> {
+    todo!()
+}
+
+pub(crate) unsafe fn activate_aspace(p0: usize) {
+    todo!()
 }

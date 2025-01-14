@@ -8,7 +8,6 @@
 use core::ops::{Deref, DerefMut};
 use core::range::Range;
 use core::{fmt, slice};
-use mmu::{PhysicalAddress, VirtualAddress};
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -28,25 +27,18 @@ pub struct BootInfo {
     /// frames that are also mapped at other virtual addresses can easily break memory safety and
     /// cause undefined behavior. Only frames reported as `USABLE` by the memory map in the `BootInfo`
     /// can be safely accessed.
-    pub physical_address_offset: VirtualAddress,
-    pub physical_memory_map: Range<VirtualAddress>,
+    pub physical_address_offset: usize, // VirtualAddress
+    pub physical_memory_map: Range<usize>, // VirtualAddress
     /// The thread local storage (TLS) template of the kernel executable, if present.
     pub tls_template: Option<TlsTemplate>,
     /// Virtual address of the loaded kernel image.
-    pub kernel_virt: Range<VirtualAddress>,
+    pub kernel_virt: Range<usize>, // VirtualAddress
     /// Physical memory region where the kernel ELF file resides.
     ///
     /// This field can be used by the kernel to perform introspection of its own ELF file.
-    pub kernel_phys: Range<PhysicalAddress>,
+    pub kernel_phys: Range<usize>, // PhysicalAddress
     pub boot_ticks: u64,
 }
-
-// TODO remove these as they are most definitely not sound. But removing these impls below right now
-//  means  we cant stick it into a `static` anymore which breaks *a lot*.
-//  Our current use is unproblematic (i think) as we're careful to only ever read and never write.
-//  Nonetheless this sucks.
-unsafe impl Send for BootInfo {}
-unsafe impl Sync for BootInfo {}
 
 impl BootInfo {
     /// Create a new boot info structure with the given memory map.
@@ -112,7 +104,7 @@ impl From<MemoryRegions> for &'static mut [MemoryRegion] {
 #[repr(C)]
 pub struct MemoryRegion {
     /// The physical start address region.
-    pub range: Range<PhysicalAddress>,
+    pub range: Range<usize>, // PhysicalAddress
     /// The memory type of the memory region.
     ///
     /// Only [`Usable`][MemoryRegionKind::Usable] regions can be freely used.
@@ -193,7 +185,7 @@ impl fmt::Display for BootInfo {
 #[derive(Debug, Clone)]
 pub struct TlsTemplate {
     /// The address of TLS template
-    pub start_addr: VirtualAddress,
+    pub start_addr: usize, // VirtualAddress
     /// The size of the TLS segment in memory
     pub mem_size: usize,
     /// The size of the TLS segment in the elf file.

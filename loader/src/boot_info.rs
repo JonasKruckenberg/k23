@@ -5,24 +5,24 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
 use crate::error::Error;
+use crate::frame_alloc::FrameAllocator;
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
 use core::range::Range;
 use core::slice;
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
-use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
-use mmu::{arch, PhysicalAddress, VirtualAddress};
 
 pub fn prepare_boot_info(
-    mut frame_alloc: BootstrapAllocator,
-    physical_address_offset: VirtualAddress,
-    physical_memory_map: Range<VirtualAddress>,
-    kernel_virt: Range<VirtualAddress>,
+    mut frame_alloc: FrameAllocator,
+    physical_address_offset: usize,
+    physical_memory_map: Range<usize>,
+    kernel_virt: Range<usize>,
     maybe_tls_template: Option<TlsTemplate>,
-    loader_phys: Range<PhysicalAddress>,
-    kernel_phys: Range<PhysicalAddress>,
-    fdt_phys: Range<PhysicalAddress>,
+    loader_phys: Range<usize>,
+    kernel_phys: Range<usize>,
+    fdt_phys: Range<usize>,
     boot_ticks: u64,
 ) -> crate::Result<*mut BootInfo> {
     let frame = frame_alloc
@@ -30,7 +30,7 @@ pub fn prepare_boot_info(
             Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
         )
         .ok_or(Error::NoMemory)?;
-    let page = VirtualAddress::from_phys(frame, physical_address_offset).unwrap();
+    let page = physical_address_offset.checked_add(frame).unwrap();
 
     let memory_regions =
         init_boot_info_memory_regions(page, frame_alloc, fdt_phys, loader_phys.clone());
@@ -43,23 +43,23 @@ pub fn prepare_boot_info(
     boot_info.kernel_phys = kernel_phys;
     boot_info.boot_ticks = boot_ticks;
 
-    let boot_info_ptr = page.as_mut_ptr().cast::<BootInfo>();
+    let boot_info_ptr = page as *mut BootInfo;
     unsafe { boot_info_ptr.write(boot_info) }
 
     Ok(boot_info_ptr)
 }
 
 fn init_boot_info_memory_regions(
-    page: VirtualAddress,
-    frame_alloc: BootstrapAllocator,
-    fdt_phys: Range<PhysicalAddress>,
-    loader_phys: Range<PhysicalAddress>,
+    page: usize,
+    frame_alloc: FrameAllocator,
+    fdt_phys: Range<usize>,
+    loader_phys: Range<usize>,
 ) -> MemoryRegions {
     let regions: &mut [MaybeUninit<MemoryRegion>] = unsafe {
         let base = page.checked_add(size_of::<BootInfo>()).unwrap();
         let len = (arch::PAGE_SIZE - size_of::<BootInfo>()) / size_of::<MemoryRegion>();
 
-        slice::from_raw_parts_mut(base.as_mut_ptr().cast(), len)
+        slice::from_raw_parts_mut(base as *mut MaybeUninit<MemoryRegion>, len)
     };
 
     let mut len = 0;

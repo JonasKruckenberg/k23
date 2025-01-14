@@ -9,7 +9,6 @@ use crate::error::Error;
 use crate::vm::address_space::Batch;
 use crate::vm::Vmo;
 use crate::vm::{PageFaultFlags, Permissions};
-use crate::BOOT_INFO;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
@@ -146,12 +145,10 @@ impl AddressSpaceRegion {
                 )?;
             }
             Vmo::Paged(vmo) => {
-                let phys_off = BOOT_INFO.get().unwrap().physical_address_offset;
-
                 if flags.cause_is_write() {
                     let mut vmo = vmo.write();
 
-                    let frame = vmo.require_owned_frame(vmo_relative_offset, phys_off)?;
+                    let frame = vmo.require_owned_frame(vmo_relative_offset)?;
                     batch.append(addr, frame.addr(), PAGE_SIZE, self.permissions.into())?;
                 } else {
                     let vmo = vmo.read();

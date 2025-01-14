@@ -8,9 +8,9 @@
 mod arena;
 mod frame;
 
+use crate::physical_address_offset;
 use crate::thread_local::ThreadLocal;
 use crate::vm::frame_list::FrameList;
-use crate::BOOT_INFO;
 use alloc::vec::Vec;
 use arena::{select_arenas, Arena};
 use core::alloc::Layout;
@@ -107,14 +107,7 @@ pub fn alloc_one_zeroed() -> Result<Frame, AllocError> {
     let frame = alloc_one()?;
 
     // Translate the physical address into a virtual one through the physmap
-    let virt = VirtualAddress::from_phys(
-        frame.addr(),
-        BOOT_INFO
-            .get()
-            .expect("cannot access BOOT_INFO before it is initialized")
-            .physical_address_offset,
-    )
-    .unwrap();
+    let virt = VirtualAddress::from_phys(frame.addr(), physical_address_offset()).unwrap();
 
     // memset'ing the slice to zero
     unsafe {
@@ -163,14 +156,8 @@ pub fn alloc_contiguous_zeroed(layout: Layout) -> Result<FrameList, AllocError> 
     let frames = alloc_contiguous(layout)?;
 
     // Translate the physical address into a virtual one through the physmap
-    let virt = VirtualAddress::from_phys(
-        frames.first().unwrap().addr(),
-        BOOT_INFO
-            .get()
-            .expect("cannot access BOOT_INFO before it is initialized")
-            .physical_address_offset,
-    )
-    .unwrap();
+    let virt = VirtualAddress::from_phys(frames.first().unwrap().addr(), physical_address_offset())
+        .unwrap();
 
     // memset'ing the slice to zero
     unsafe {

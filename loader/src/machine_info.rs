@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch::PAGE_SIZE;
+use crate::mapping::{align_down, checked_align_up};
 use arrayvec::ArrayVec;
 use core::cmp::Ordering;
 use core::ffi::c_void;
@@ -13,8 +15,6 @@ use core::fmt::Formatter;
 use core::range::Range;
 use dtb_parser::{DevTree, Node, Visitor};
 use fallible_iterator::FallibleIterator;
-use mmu::arch::PAGE_SIZE;
-use mmu::{AddressRangeExt, PhysicalAddress};
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
@@ -22,7 +22,7 @@ pub struct MachineInfo<'dt> {
     /// The FDT blob passed to us by the previous stage loader
     pub fdt: &'dt [u8],
     /// Address ranges we may use for allocation
-    pub memories: ArrayVec<Range<PhysicalAddress>, 16>,
+    pub memories: ArrayVec<Range<usize>, 16>,
     /// The RNG seed passed to us by the previous stage loader.
     pub rng_seed: Option<&'dt [u8]>,
 }
@@ -42,7 +42,7 @@ impl<'dt> MachineInfo<'dt> {
             rng_seed: v.chosen_visitor.rng_seed,
         };
 
-        let mut exclude_region = |entry: Range<PhysicalAddress>| {
+        let mut exclude_region = |entry: Range<usize>| {
             let memories = info.memories.take();
 
             for mut region in memories {
@@ -67,7 +67,7 @@ impl<'dt> MachineInfo<'dt> {
         // Apply reserved_entries
         while let Some(entry) = reservations.next()? {
             let region = {
-                let start = PhysicalAddress::new(usize::try_from(entry.address)?);
+                let start = usize::try_from(entry.address)?;
 
                 Range::from(start..start.checked_add(usize::try_from(entry.size)?).unwrap())
             };
@@ -87,12 +87,14 @@ impl<'dt> MachineInfo<'dt> {
         }
 
         // remove memory regions that are left as zero-sized from the previous step
-        info.memories.retain(|region| region.size() > 0);
+        info.memories
+            .retain(|region| region.end.checked_sub(region.start).unwrap() > 0);
 
         // page-align all memory regions, this will waste some physical memory in the process,
         // but we can't make use of it either way
         info.memories.iter_mut().for_each(|region| {
-            *region = region.checked_align_in(PAGE_SIZE).unwrap();
+            region.start = checked_align_up(region.start, PAGE_SIZE).unwrap();
+            region.end = align_down(region.end, PAGE_SIZE);
         });
 
         // ensure the memory regions are sorted.
@@ -117,7 +119,7 @@ impl<'dt> MachineInfo<'dt> {
     /// Since we *could* have multiple memory regions, and those regions need not be contiguous,
     /// this function should be used to determine the range of addresses that we should map in the
     /// [`map_physical_memory`][crate::PageTableBuilder::map_physical_memory] step.
-    pub fn memory_hull(&self) -> Range<PhysicalAddress> {
+    pub fn memory_hull(&self) -> Range<usize> {
         // This relies on the memory regions being sorted by the constructor
         debug_assert!(self.memories.is_sorted_by(|a, b| { a.end <= b.start }));
 
@@ -152,7 +154,7 @@ impl fmt::Display for MachineInfo<'_> {
 
 #[derive(Debug)]
 enum MemoryReservation<'dt> {
-    NoMap(&'dt str, ArrayVec<Range<PhysicalAddress>, 16>),
+    NoMap(&'dt str, ArrayVec<Range<usize>, 16>),
 }
 
 /*--------------------------------------------------------------------------------------------------
@@ -162,7 +164,7 @@ enum MemoryReservation<'dt> {
 struct MachineInfoVisitor<'dt> {
     reservations: ReservationsVisitor<'dt>,
     chosen_visitor: ChosenVisitor<'dt>,
-    memory_regions: ArrayVec<Range<PhysicalAddress>, 16>,
+    memory_regions: ArrayVec<Range<usize>, 16>,
     address_size: usize,
     width_size: usize,
 }
@@ -211,7 +213,7 @@ impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
 struct MemoryVisitor {
     address_size: usize,
     width_size: usize,
-    regs: ArrayVec<Range<PhysicalAddress>, 16>,
+    regs: ArrayVec<Range<usize>, 16>,
 }
 
 impl<'dt> Visitor<'dt> for MemoryVisitor {
@@ -229,8 +231,6 @@ impl<'dt> Visitor<'dt> for MemoryVisitor {
             let start = usize::from_be_bytes(start.try_into()?);
             let width = usize::from_be_bytes(width.try_into()?);
 
-            let start = PhysicalAddress::new(start);
-
             self.regs
                 .push(Range::from(start..start.checked_add(width).unwrap()));
         }
@@ -243,7 +243,7 @@ impl<'dt> Visitor<'dt> for MemoryVisitor {
 struct RegsVisitor {
     address_size: usize,
     width_size: usize,
-    regs: ArrayVec<Range<PhysicalAddress>, 16>,
+    regs: ArrayVec<Range<usize>, 16>,
 }
 
 impl<'dt> Visitor<'dt> for RegsVisitor {
@@ -260,8 +260,6 @@ impl<'dt> Visitor<'dt> for RegsVisitor {
 
             let start = usize::from_be_bytes(start.try_into()?);
             let width = usize::from_be_bytes(width.try_into()?);
-
-            let start = PhysicalAddress::new(start);
 
             self.regs
                 .push(Range::from(start..start.checked_add(width).unwrap()));
