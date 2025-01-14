@@ -19,14 +19,14 @@ use sync::{LazyLock, OnceLock};
 static GLOBAL_PANIC_STATE: OnceLock<GlobalPanicState> = OnceLock::new();
 
 struct GlobalPanicState {
-    kernerl_virt_base: u64,
+    kernel_virt_base: u64,
     elf: &'static [u8],
 }
 
 #[cold]
 pub fn init(boot_info: &BootInfo) {
     GLOBAL_PANIC_STATE.get_or_init(|| GlobalPanicState {
-        kernerl_virt_base: boot_info.kernel_virt.start as u64,
+        kernel_virt_base: boot_info.kernel_virt.start as u64,
         elf: unsafe {
             let base = boot_info
                 .physical_address_offset
@@ -50,7 +50,7 @@ static SYMBOLIZE_CONTEXT: LazyLock<Option<SymbolizeContext>> = LazyLock::new(|| 
     let state = GLOBAL_PANIC_STATE.get()?;
 
     let elf = xmas_elf::ElfFile::new(state.elf).unwrap();
-    Some(SymbolizeContext::new(elf, state.kernerl_virt_base).unwrap())
+    Some(SymbolizeContext::new(elf, state.kernel_virt_base).unwrap())
 });
 
 /// Determines whether the current thread is unwinding because of panic.
