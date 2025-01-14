@@ -39,7 +39,10 @@ pub const LOG_LEVEL: log::Level = log::Level::Trace;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
+/// # Safety
+///
+/// The passed `opaque` ptr must point to a valid memory region.
+pub unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     // zero out the BSS section
     unsafe extern "C" {
         static mut __bss_zero_start: u64;
@@ -61,7 +64,7 @@ pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     log::debug!("\n{minfo}");
 
     let self_regions = SelfRegions::collect();
-    log::debug!("{self_regions:?}");
+    log::debug!("{self_regions:#x?}");
 
     // Initialize the frame allocator
     let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions);
@@ -73,7 +76,11 @@ pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     let fdt_phys = allocate_and_copy(&mut frame_alloc, minfo.fdt).unwrap();
     let kernel_phys = allocate_and_copy(&mut frame_alloc, &INLINED_KERNEL_BYTES.0).unwrap();
 
-    let root_pgtable = frame_alloc.allocate_one_zeroed().unwrap();
+    let root_pgtable = frame_alloc
+        .allocate_one_zeroed(
+            0, // called before translation into higher half
+        )
+        .unwrap();
 
     // Identity map the loader itself (this binary).
     //
@@ -81,14 +88,14 @@ pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     // as opposed to m-mode where it would take effect after the jump to s-mode.
     // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
     // We will then unmap the loader in the kernel.
-    identity_map_self(&mut frame_alloc, &self_regions).unwrap();
+    identity_map_self(root_pgtable, &mut frame_alloc, &self_regions).unwrap();
 
     // Map the physical memory into kernel address space.
     //
     // This will be used by the kernel to access the page tables, BootInfo struct and maybe
     // more in the future.
     let (phys_off, phys_map) =
-        map_physical_memory(&mut frame_alloc, &mut page_alloc, &minfo).unwrap();
+        map_physical_memory(root_pgtable, &mut frame_alloc, &mut page_alloc, &minfo).unwrap();
 
     // Activate the MMU with the address space we have built so far.
     // the rest of the address space setup will happen in virtual memory (mostly so that we
@@ -112,15 +119,21 @@ pub fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     // print the elf sections for debugging purposes
     log::debug!("\n{kernel}");
 
-    let (kernel_virt, maybe_tls_template) =
-        map_kernel(&mut frame_alloc, &mut page_alloc, &kernel).unwrap();
+    let (kernel_virt, maybe_tls_template) = map_kernel(
+        root_pgtable,
+        &mut frame_alloc,
+        &mut page_alloc,
+        &kernel,
+        phys_off,
+    )
+    .unwrap();
 
-    log::trace!("KASLR: Kernel image at {}", kernel_virt.start);
+    log::trace!("KASLR: Kernel image at {:#x}", kernel_virt.start);
 
     let frame_usage = frame_alloc.frame_usage();
     log::debug!(
         "Mapping complete, permanently used {} KiB.",
-        (frame_usage.used * arch::PAGE_SIZE) / 1024,
+        (frame_usage * arch::PAGE_SIZE) / 1024,
     );
 
     let boot_info = prepare_boot_info(

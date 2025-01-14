@@ -45,7 +45,7 @@ pub struct Kernel<'a> {
     pub _loader_config: &'a LoaderConfig,
 }
 
-impl<'a> Kernel<'a> {
+impl Kernel<'_> {
     /// Returns the size of the kernel in memory.
     pub fn mem_size(&self) -> u64 {
         let max_addr = self

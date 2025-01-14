@@ -31,32 +31,40 @@ bitflags! {
 }
 
 pub fn identity_map_self(
+    root_pgtable: usize,
     frame_alloc: &mut FrameAllocator,
     self_regions: &SelfRegions,
 ) -> crate::Result<()> {
     log::trace!(
-        "Identity mapping loader executable region {:?}...",
+        "Identity mapping loader executable region {:#x?}...",
         self_regions.executable
     );
     identity_map_range(
+        root_pgtable,
         frame_alloc,
-        self_regions.executable.clone(),
+        self_regions.executable,
         Flags::READ | Flags::EXECUTE,
     )?;
 
     log::trace!(
-        "Identity mapping loader read-only region {:?}...",
+        "Identity mapping loader read-only region {:#x?}...",
         self_regions.read_only
     );
-    identity_map_range(frame_alloc, self_regions.read_only.clone(), Flags::READ)?;
+    identity_map_range(
+        root_pgtable,
+        frame_alloc,
+        self_regions.read_only,
+        Flags::READ,
+    )?;
 
     log::trace!(
-        "Identity mapping loader read-write region {:?}...",
+        "Identity mapping loader read-write region {:#x?}...",
         self_regions.read_write
     );
     identity_map_range(
+        root_pgtable,
         frame_alloc,
-        self_regions.read_write.clone(),
+        self_regions.read_write,
         Flags::READ | Flags::WRITE,
     )?;
 
@@ -65,6 +73,7 @@ pub fn identity_map_self(
 
 #[inline]
 fn identity_map_range(
+    root_pgtable: usize,
     frame_alloc: &mut FrameAllocator,
     phys: Range<usize>,
     flags: Flags,
@@ -73,10 +82,21 @@ fn identity_map_range(
 
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
-    unsafe { arch::map_contiguous(frame_alloc, phys.start, phys.start, len, flags) }
+    unsafe {
+        arch::map_contiguous(
+            root_pgtable,
+            frame_alloc,
+            phys.start,
+            phys.start,
+            len,
+            flags,
+            0, // called before translation into higher half
+        )
+    }
 }
 
 pub fn map_physical_memory(
+    root_pgtable: usize,
     frame_alloc: &mut FrameAllocator,
     page_alloc: &mut PageAllocator,
     minfo: &MachineInfo,
@@ -94,18 +114,20 @@ pub fn map_physical_memory(
     let size = NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap();
 
     debug_assert!(phys.start % alignment == 0 && phys.end % alignment == 0);
-    debug_assert!(virt.end % alignment == 0 && virt.end % alignment == 0);
+    debug_assert!(virt.start % alignment == 0 && virt.end % alignment == 0);
 
-    log::trace!("Mapping physical memory {phys:?} => {virt:?}...");
+    log::trace!("Mapping physical memory {phys:#x?} => {virt:#x?}...");
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
     unsafe {
         arch::map_contiguous(
+            root_pgtable,
             frame_alloc,
             virt.start,
             phys.start,
             size,
             Flags::READ | Flags::WRITE,
+            0, // called before translation into higher half
         )?;
     }
 
@@ -116,9 +138,11 @@ pub fn map_physical_memory(
 }
 
 pub fn map_kernel(
+    root_pgtable: usize,
     frame_alloc: &mut FrameAllocator,
     page_alloc: &mut PageAllocator,
     kernel: &Kernel,
+    phys_off: usize,
 ) -> crate::Result<(Range<usize>, Option<TlsTemplate>)> {
     let kernel_virt = page_alloc.allocate(
         Layout::from_size_align(kernel.mem_size() as usize, kernel.max_align() as usize).unwrap(),
@@ -136,10 +160,12 @@ pub fn map_kernel(
     for ph in kernel.elf_file.program_iter() {
         match ph.get_type().unwrap() {
             Type::Load => handle_load_segment(
+                root_pgtable,
                 frame_alloc,
                 &ProgramHeader::try_from(ph)?,
                 phys_base,
                 kernel_virt.start,
+                phys_off,
             )?,
             Type::Tls => {
                 let ph = ProgramHeader::try_from(ph)?;
@@ -185,10 +211,12 @@ pub fn map_kernel(
 
 /// Map an ELF LOAD segment.
 fn handle_load_segment(
+    root_pgtable: usize,
     frame_alloc: &mut FrameAllocator,
     ph: &ProgramHeader,
     phys_base: usize,
     virt_base: usize,
+    phys_off: usize,
 ) -> crate::Result<()> {
     let flags = flags_for_segment(ph);
 
@@ -215,21 +243,31 @@ fn handle_load_segment(
         Range::from(align_down(start, ph.align)..checked_align_up(end, ph.align).unwrap())
     };
 
-    log::trace!("mapping {virt:?} => {phys:?}");
+    log::trace!("mapping {virt:#x?} => {phys:#x?}");
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
     unsafe {
         arch::map_contiguous(
+            root_pgtable,
             frame_alloc,
             virt.start,
             phys.start,
             NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap(),
             flags,
+            arch::KERNEL_ASPACE_BASE,
         )?;
     }
 
     if ph.file_size < ph.mem_size {
-        handle_bss_section(frame_alloc, ph, flags, phys_base, virt_base)?;
+        handle_bss_section(
+            root_pgtable,
+            frame_alloc,
+            ph,
+            flags,
+            phys_base,
+            virt_base,
+            phys_off,
+        )?;
     }
 
     Ok(())
@@ -250,11 +288,13 @@ fn handle_load_segment(
 ///     2.3. and lastly replace last page previously mapped by `handle_load_segment` to stitch things up.
 /// 3. If the BSS section is larger than that one page, we allocate additional zeroed frames and map them in.
 fn handle_bss_section(
+    root_pgtable: usize,
     frame_alloc: &mut FrameAllocator,
     ph: &ProgramHeader,
     flags: Flags,
     phys_base: usize,
     virt_base: usize,
+    phys_off: usize,
 ) -> crate::Result<()> {
     let virt_start = virt_base.checked_add(ph.virtual_address).unwrap();
     let zero_start = virt_start.checked_add(ph.file_size).unwrap();
@@ -263,7 +303,7 @@ fn handle_bss_section(
     let data_bytes_before_zero = zero_start & 0xfff;
 
     log::debug!(
-        "handling BSS {:?}, data bytes before {data_bytes_before_zero}",
+        "handling BSS {:#x?}, data bytes before {data_bytes_before_zero}",
         zero_start..zero_end
     );
 
@@ -282,6 +322,7 @@ fn handle_bss_section(
         let new_frame = frame_alloc
             .allocate_contiguous_zeroed(
                 Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
+                arch::KERNEL_ASPACE_BASE,
             )
             .ok_or(Error::NoMemory)?;
 
@@ -304,14 +345,16 @@ fn handle_bss_section(
         // abort startup anyway
         unsafe {
             arch::remap_contiguous(
+                root_pgtable,
                 last_page,
                 new_frame,
                 NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
+                phys_off,
             )?;
         }
     }
 
-    log::trace!("zero_start {zero_start:?} zero_end {zero_end:?}");
+    log::trace!("zero_start {zero_start:#x} zero_end {zero_end:#x}");
     let (additional_virt, additional_len) = {
         // zero_start either lies at a page boundary OR somewhere within the first page
         // by aligning up, we move it to the beginning of the *next* page.
@@ -324,22 +367,25 @@ fn handle_bss_section(
         let additional_phys = frame_alloc
             .allocate_contiguous_zeroed(
                 Layout::from_size_align(additional_len, arch::PAGE_SIZE).unwrap(),
+                arch::KERNEL_ASPACE_BASE,
             )
             .unwrap();
 
         log::trace!(
-            "mapping additional zeros {additional_virt:?}..{:?}",
+            "mapping additional zeros {additional_virt:#x}..{:#x}",
             additional_virt.checked_add(additional_len).unwrap()
         );
         // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
         // abort startup anyway
         unsafe {
             arch::map_contiguous(
+                root_pgtable,
                 frame_alloc,
                 additional_virt,
                 additional_phys,
                 NonZeroUsize::new(additional_len).unwrap(),
                 flags,
+                arch::KERNEL_ASPACE_BASE,
             )?;
         }
     }

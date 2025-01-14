@@ -14,6 +14,7 @@ use core::range::Range;
 use core::slice;
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
 
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_boot_info(
     mut frame_alloc: FrameAllocator,
     physical_address_offset: usize,
@@ -28,12 +29,12 @@ pub fn prepare_boot_info(
     let frame = frame_alloc
         .allocate_contiguous_zeroed(
             Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
+            arch::KERNEL_ASPACE_BASE,
         )
         .ok_or(Error::NoMemory)?;
     let page = physical_address_offset.checked_add(frame).unwrap();
 
-    let memory_regions =
-        init_boot_info_memory_regions(page, frame_alloc, fdt_phys, loader_phys.clone());
+    let memory_regions = init_boot_info_memory_regions(page, frame_alloc, fdt_phys, loader_phys);
 
     let mut boot_info = BootInfo::new(memory_regions);
     boot_info.physical_address_offset = physical_address_offset;

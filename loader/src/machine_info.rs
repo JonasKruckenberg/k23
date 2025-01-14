@@ -27,7 +27,7 @@ pub struct MachineInfo<'dt> {
     pub rng_seed: Option<&'dt [u8]>,
 }
 
-impl<'dt> MachineInfo<'dt> {
+impl MachineInfo<'_> {
     pub unsafe fn from_dtb(dtb_ptr: *const c_void) -> crate::Result<Self> {
         let fdt = unsafe { DevTree::from_raw(dtb_ptr.cast()) }?;
         let mut reservations = fdt.reserved_entries();
@@ -118,7 +118,7 @@ impl<'dt> MachineInfo<'dt> {
     ///
     /// Since we *could* have multiple memory regions, and those regions need not be contiguous,
     /// this function should be used to determine the range of addresses that we should map in the
-    /// [`map_physical_memory`][crate::PageTableBuilder::map_physical_memory] step.
+    /// [`map_physical_memory`][crate::mapping::map_physical_memory] step.
     pub fn memory_hull(&self) -> Range<usize> {
         // This relies on the memory regions being sorted by the constructor
         debug_assert!(self.memories.is_sorted_by(|a, b| { a.end <= b.start }));
@@ -175,9 +175,11 @@ impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
         if name.is_empty() {
             node.visit(self)?;
         } else if name.starts_with("memory@") {
-            let mut v = MemoryVisitor::default();
-            v.address_size = self.address_size;
-            v.width_size = self.width_size;
+            let mut v = MemoryVisitor {
+                address_size: self.address_size,
+                width_size: self.width_size,
+                regs: Default::default(),
+            };
 
             node.visit(&mut v)?;
             self.memory_regions.extend(v.regs);

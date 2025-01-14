@@ -136,28 +136,28 @@ impl fmt::Display for BootInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{:<23} : {}",
+            "{:<23} : {:#x}",
             "PHYSICAL ADDRESS OFFSET", self.physical_address_offset
         )?;
         writeln!(
             f,
-            "{:<23} : {}..{}",
+            "{:<23} : {:#x}..{:#x}",
             "PHYSICAL MEMORY MAP", self.physical_memory_map.start, self.physical_memory_map.end
         )?;
         writeln!(
             f,
-            "{:<23} : {}..{}",
+            "{:<23} : {:#x}..{:#x}",
             "KERNEL VIRT", self.kernel_virt.start, self.kernel_virt.end
         )?;
         writeln!(
             f,
-            "{:<23} : {}..{}",
+            "{:<23} : {:#x}..{:#x}",
             "KERNEL PHYS", self.kernel_phys.start, self.kernel_phys.end
         )?;
         if let Some(tls) = self.tls_template.as_ref() {
             writeln!(
                 f,
-                "{:<23} : .tdata: {}..{}, .tbss: {}..{}",
+                "{:<23} : .tdata: {:#x}..{:#x}, .tbss: {:#x}..{:#x}",
                 "TLS TEMPLATE",
                 tls.start_addr,
                 tls.start_addr.checked_add(tls.file_size).unwrap(),
@@ -171,7 +171,7 @@ impl fmt::Display for BootInfo {
             for (idx, region) in self.memory_regions.iter().enumerate() {
                 writeln!(
                     f,
-                    "MEMORY REGION {:<10}: {}..{} {:?}",
+                    "MEMORY REGION {:<10}: {:#x}..{:#x} {:?}",
                     idx, region.range.start, region.range.end, region.kind,
                 )?;
             }

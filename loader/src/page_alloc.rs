@@ -70,7 +70,7 @@ impl PageAllocator {
 
     pub fn reserve(&mut self, mut virt_base: usize, mut remaining_bytes: usize) {
         log::trace!(
-            "marking {virt_base:?}..{:?} as used",
+            "marking {virt_base:#x}..{:#x} as used",
             virt_base.checked_add(remaining_bytes).unwrap()
         );
 
