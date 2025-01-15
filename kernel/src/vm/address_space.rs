@@ -329,7 +329,7 @@ impl AddressSpace {
     /// If the algorithm fails to find a suitable spot in the first attempt, it will have collected the
     /// total number of candidate spots and retry with a new `target_index` in the range [0, candidate_spot_count)
     /// which guarantees that a spot will be found as long as `candidate_spot_count > 0`.
-    pub fn find_spot(&mut self, layout: Layout, entropy: u8) -> VirtualAddress {
+    fn find_spot(&mut self, layout: Layout, entropy: u8) -> VirtualAddress {
         // behaviour:
         // - find the leftmost gap that satisfies the size and alignment requirements
         //      - starting at the root,
