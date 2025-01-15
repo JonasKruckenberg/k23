@@ -5,10 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch::PAGE_SIZE;
 use crate::STACK_SIZE_PAGES;
 use core::arch::naked_asm;
 use loader_api::LoaderConfig;
-use mmu::arch::PAGE_SIZE;
 
 #[unsafe(link_section = ".bss.uninit")]
 pub static BOOT_STACK: Stack = Stack([0; STACK_SIZE_PAGES * PAGE_SIZE]);

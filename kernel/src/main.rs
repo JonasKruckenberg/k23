@@ -32,18 +32,17 @@ mod vm;
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use crate::time::Instant;
+use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::range::Range;
 use core::{cmp, slice};
 use loader_api::{BootInfo, MemoryRegionKind, TlsTemplate};
-use mmu::arch::PAGE_SIZE;
-use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator as _};
-use mmu::{PhysicalAddress, VirtualAddress};
 use sync::OnceLock;
 use thread_local::thread_local;
 use vm::frame_alloc;
+use vm::{PhysicalAddress, VirtualAddress};
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
@@ -61,12 +60,6 @@ pub const INITIAL_HEAP_SIZE_PAGES: usize = 2048; // 32 MiB
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub static PHYS_OFFSET: OnceLock<VirtualAddress> = OnceLock::new();
-#[inline]
-pub fn physical_address_offset() -> VirtualAddress {
-    *PHYS_OFFSET.get().unwrap()
-}
-
 pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
 
 thread_local!(
@@ -75,14 +68,10 @@ thread_local!(
 );
 
 pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
-    let physical_address_offset = *PHYS_OFFSET
-        .get_or_init(|| VirtualAddress::new(boot_info.physical_address_offset).unwrap());
-
     // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
     // is available
     let allocatable_memories = allocatable_memory_regions(boot_info);
     let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
-    boot_alloc.set_phys_offset(physical_address_offset);
 
     // initializing the global allocator
     allocator::init(&mut boot_alloc, boot_info);
@@ -94,11 +83,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     // initialize thread-local storage
     // done after global allocator initialization since TLS destructors are registered in a heap
     // allocated Vec
-    let tls = init_tls(
-        &mut boot_alloc,
-        &boot_info.tls_template,
-        physical_address_offset,
-    );
+    let tls = init_tls(&mut boot_alloc, &boot_info.tls_template);
 
     // initialize the logger
     // done after TLS initialization since we maintain per-hart host stdio channels
@@ -128,7 +113,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::debug!("\n{hart_local_minfo}");
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
 
-    frame_alloc::init(boot_alloc, physical_address_offset);
+    frame_alloc::init(boot_alloc);
 
     // TODO init kernel address space (requires global allocator)
 
@@ -164,16 +149,15 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 fn init_tls(
     boot_alloc: &mut BootstrapAllocator,
     maybe_tls_template: &Option<TlsTemplate>,
-    physical_address_offset: VirtualAddress,
 ) -> Option<VirtualAddress> {
     if let Some(template) = &maybe_tls_template {
         let layout =
-            Layout::from_size_align(template.mem_size, cmp::max(template.align, PAGE_SIZE))
+            Layout::from_size_align(template.mem_size, cmp::max(template.align, arch::PAGE_SIZE))
                 .unwrap();
         let phys = boot_alloc.allocate_contiguous_zeroed(layout).unwrap();
 
         // Use the phys_map to access the newly allocated TLS region
-        let virt = VirtualAddress::from_phys(phys, physical_address_offset).unwrap();
+        let virt = VirtualAddress::from_phys(phys).unwrap();
 
         if template.file_size != 0 {
             unsafe {

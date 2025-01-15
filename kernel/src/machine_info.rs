@@ -7,6 +7,7 @@
 
 use crate::arch;
 use crate::arch::RiscvExtensions;
+use crate::vm::PhysicalAddress;
 use alloc::vec::Vec;
 use core::ffi::CStr;
 use core::fmt::Formatter;
@@ -14,7 +15,6 @@ use core::range::Range;
 use core::{fmt, mem};
 use dtb_parser::{DevTree, Node, Strings, Visitor};
 use fallible_iterator::FallibleIterator;
-use mmu::PhysicalAddress;
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.

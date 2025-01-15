@@ -5,39 +5,23 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::PAGE_SIZE;
-use crate::frame_alloc::FrameAllocator;
-use crate::{arch, AddressRangeExt, PhysicalAddress, VirtualAddress};
+use crate::arch;
+use crate::vm::address::{AddressRangeExt, PhysicalAddress};
 use core::alloc::Layout;
 use core::range::Range;
-use core::{cmp, iter, ptr, slice};
-
-#[derive(Debug, Default)]
-pub struct FrameUsage {
-    pub used: usize,
-    pub total: usize,
-}
+use core::{iter, ptr, slice};
 
 pub struct BootstrapAllocator<'a> {
     regions: &'a [Range<PhysicalAddress>],
     // offset from the top of memory regions
     offset: usize,
-    phys_offset: VirtualAddress,
 }
 
 impl<'a> BootstrapAllocator<'a> {
     /// Create a new frame allocator over a given set of physical memory regions.
     #[must_use]
     pub fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
-        Self {
-            regions,
-            offset: 0,
-            phys_offset: VirtualAddress::default(),
-        }
-    }
-
-    pub fn set_phys_offset(&mut self, phys_offset: VirtualAddress) {
-        self.phys_offset = phys_offset;
+        Self { regions, offset: 0 }
     }
 
     #[must_use]
@@ -48,37 +32,19 @@ impl<'a> BootstrapAllocator<'a> {
         }
     }
 
-    #[must_use]
-    pub fn used_regions(&self) -> UsedRegions<'_> {
-        UsedRegions {
-            offset: self.offset,
-            inner: self.regions.iter().rev().cloned(),
-        }
-    }
-
-    pub fn frame_usage(&self) -> FrameUsage {
-        let mut total = 0;
-        for region in self.regions {
-            let region_size = region.size();
-            total += region_size >> arch::PAGE_SHIFT;
-        }
-        let used = self.offset >> arch::PAGE_SHIFT;
-        FrameUsage { used, total }
-    }
-}
-
-impl FrameAllocator for BootstrapAllocator<'_> {
-    fn allocate_one(&mut self) -> Option<PhysicalAddress> {
-        self.allocate_contiguous(unsafe { Layout::from_size_align_unchecked(PAGE_SIZE, PAGE_SIZE) })
-    }
-
-    fn allocate_one_zeroed(&mut self) -> Option<PhysicalAddress> {
-        self.allocate_contiguous_zeroed(unsafe {
-            Layout::from_size_align_unchecked(PAGE_SIZE, PAGE_SIZE)
+    pub fn allocate_one(&mut self) -> Option<PhysicalAddress> {
+        self.allocate_contiguous(unsafe {
+            Layout::from_size_align_unchecked(arch::PAGE_SIZE, arch::PAGE_SIZE)
         })
     }
 
-    fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+    pub fn allocate_one_zeroed(&mut self) -> Option<PhysicalAddress> {
+        self.allocate_contiguous_zeroed(unsafe {
+            Layout::from_size_align_unchecked(arch::PAGE_SIZE, arch::PAGE_SIZE)
+        })
+    }
+
+    pub fn allocate_contiguous(&mut self, layout: Layout) -> Option<PhysicalAddress> {
         let requested_size = layout.pad_to_align().size();
         assert_eq!(
             layout.align(),
@@ -113,16 +79,16 @@ impl FrameAllocator for BootstrapAllocator<'_> {
         None
     }
 
-    fn deallocate_contiguous(&mut self, _addr: PhysicalAddress, _layout: Layout) {
+    pub fn deallocate_contiguous(&mut self, _addr: PhysicalAddress, _layout: Layout) {
         unimplemented!("Bootstrap allocator can't free");
     }
 
-    fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
+    pub fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
         let requested_size = layout.pad_to_align().size();
         let addr = self.allocate_contiguous(layout)?;
         unsafe {
             ptr::write_bytes::<u8>(
-                self.phys_offset
+                arch::KERNEL_ASPACE_BASE
                     .checked_add(addr.get())
                     .unwrap()
                     .as_mut_ptr(),
@@ -131,32 +97,6 @@ impl FrameAllocator for BootstrapAllocator<'_> {
             )
         }
         Some(addr)
-    }
-
-    fn allocate_partial(&mut self, layout: Layout) -> Option<(PhysicalAddress, usize)> {
-        let requested_size = layout.pad_to_align().size();
-        assert_eq!(
-            layout.align(),
-            arch::PAGE_SIZE,
-            "BootstrapAllocator only supports page-aligned allocations"
-        );
-        let mut offset = self.offset;
-
-        for region in self.regions.iter().rev() {
-            // only consider regions that we haven't already exhausted
-            if offset < region.size() {
-                let alloc_size = cmp::min(requested_size, region.size() - offset);
-
-                let frame = region.end.checked_sub(offset + alloc_size).unwrap();
-                self.offset += alloc_size;
-
-                return Some((frame, alloc_size));
-            }
-
-            offset -= region.size();
-        }
-
-        None
     }
 }
 
@@ -181,30 +121,6 @@ impl Iterator for FreeRegions<'_> {
             }
 
             return Some(region);
-        }
-    }
-}
-
-pub struct UsedRegions<'a> {
-    offset: usize,
-    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
-}
-
-impl Iterator for UsedRegions<'_> {
-    type Item = Range<PhysicalAddress>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let mut region = self.inner.next()?;
-
-        if self.offset >= region.size() {
-            Some(region)
-        } else if self.offset > 0 {
-            region.start = region.end.checked_sub(self.offset).unwrap();
-            self.offset = 0;
-
-            Some(region)
-        } else {
-            None
         }
     }
 }

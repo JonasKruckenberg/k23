@@ -16,7 +16,7 @@ use core::ptr::NonNull;
 use loader_api::BootInfo;
 use riscv::satp;
 
-pub const KERNEL_ASID: usize = 0;
+pub const DEFAULT_ASID: usize = 0;
 pub const KERNEL_ASPACE_BASE: usize = 0xffffffc000000000;
 pub const PAGE_SIZE: usize = 4096;
 /// The number of page table entries in one table
@@ -278,7 +278,7 @@ pub unsafe fn remap_contiguous(
 pub unsafe fn activate_aspace(pgtable: usize) {
     unsafe {
         let ppn = pgtable >> 12;
-        satp::set(satp::Mode::Sv39, KERNEL_ASID, ppn);
+        satp::set(satp::Mode::Sv39, DEFAULT_ASID, ppn);
     }
 }
 

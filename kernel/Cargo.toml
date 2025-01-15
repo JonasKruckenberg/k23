@@ -13,7 +13,6 @@ harness = false
 workspace = true
 
 [dependencies]
-mmu.workspace = true
 loader-api.workspace = true
 thread-local.workspace = true
 sync.workspace = true
