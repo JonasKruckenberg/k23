@@ -17,3 +17,13 @@ pub enum Vmo {
     Wired(WiredVmo),
     Paged(RwLock<PagedVmo>),
 }
+
+impl Vmo {
+
+    pub fn is_valid_offset(&self, offset: usize) -> bool {
+        match self {
+            Vmo::Wired(vmo) => vmo.is_valid_offset(offset),
+            Vmo::Paged(vmo) => vmo.read().is_valid_offset(offset)
+        }
+    }
+}
