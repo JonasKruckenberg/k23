@@ -69,8 +69,16 @@ impl AddressSpaceRegion {
             Vmo::Wired(_) => panic!("cannot unmap wired frames"),
             Vmo::Paged(vmo) => {
                 let vmo_relative_range = Range {
-                    start: range.start.checked_sub_addr(self.range.start).and_then(|start| start.checked_add(self.vmo_offset)).unwrap(),
-                    end: range.end.checked_sub_addr(self.range.start).and_then(|end| end.checked_add(self.vmo_offset)).unwrap(),
+                    start: range
+                        .start
+                        .checked_sub_addr(self.range.start)
+                        .and_then(|start| start.checked_add(self.vmo_offset))
+                        .unwrap(),
+                    end: range
+                        .end
+                        .checked_sub_addr(self.range.start)
+                        .and_then(|end| end.checked_add(self.vmo_offset))
+                        .unwrap(),
                 };
 
                 let mut vmo = vmo.write();

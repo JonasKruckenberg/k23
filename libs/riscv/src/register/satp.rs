@@ -70,13 +70,7 @@ pub unsafe fn set(mode: Mode, asid: u16, ppn: usize) {
 #[inline]
 #[cfg(target_pointer_width = "64")]
 pub unsafe fn try_set(mode: Mode, asid: u16, ppn: usize) -> crate::Result<()> {
-    if asid != asid & 0xFFFF {
-        Err(Error::InvalidFieldValue {
-            field: "asid",
-            value: asid as usize,
-            bitmask: 0xFFFF,
-        })
-    } else if ppn != ppn & 0xFFF_FFFF_FFFF {
+    if ppn != ppn & 0xFFF_FFFF_FFFF {
         Err(Error::InvalidFieldValue {
             field: "ppn",
             value: ppn,

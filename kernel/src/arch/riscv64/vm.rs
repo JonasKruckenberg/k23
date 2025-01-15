@@ -236,7 +236,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             for lvl in (0..PAGE_TABLE_LEVELS).rev() {
                 let index = pte_index_for_level(virt, lvl);
                 let pte = unsafe { pgtable.add(index).as_mut() };
-                
+
                 // Let's check if we can map at this level of the page table given our
                 // current virtual and physical address as well as the number of remaining bytes.
                 if can_map_at_level(virt, phys, remaining_bytes, lvl) {

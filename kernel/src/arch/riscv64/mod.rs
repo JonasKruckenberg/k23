@@ -31,7 +31,7 @@ pub fn init() {
     log::trace!("BOOT STACK {:?}", start::BOOT_STACK.0.as_ptr_range());
 
     vm::init();
-    
+
     // TODO riscv64_mmu_early_init_percpu
 }
 
@@ -152,8 +152,8 @@ pub fn parse_riscv_extensions(mut strs: Strings) -> Result<RiscvExtensions, dtb_
             _ => {
                 log::error!("unknown RISCV extension {str}");
                 // TODO better error type
-                return Err(dtb_parser::Error::InvalidToken(0)) 
-            },
+                return Err(dtb_parser::Error::InvalidToken(0));
+            }
         }
     }
 

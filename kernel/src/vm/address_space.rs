@@ -225,11 +225,11 @@ impl AddressSpace {
             Ok(())
         })?;
         ensure!(bytes_seen == range.size(), Error::NotMapped);
-        
+
         // Actually do the unmapping now
         unsafe { self.unmap_unchecked(range) }
     }
-    
+
     pub unsafe fn unmap_unchecked(&mut self, range: Range<VirtualAddress>) -> Result<(), Error> {
         let mut bytes_remaining = range.size();
         let mut c = self.regions.find_mut(&range.start);
@@ -241,11 +241,17 @@ impl AddressSpace {
         }
 
         let mut flush = self.arch.new_flush();
-        unsafe { self.arch.unmap(range.start, NonZeroUsize::new(range.size()).unwrap(), &mut flush)?; }
+        unsafe {
+            self.arch.unmap(
+                range.start,
+                NonZeroUsize::new(range.size()).unwrap(),
+                &mut flush,
+            )?;
+        }
         flush.flush()?;
 
         // TODO materialize changes to MMU
-        
+
         Ok(())
     }
 

@@ -19,22 +19,19 @@ use crate::arch;
 use crate::machine_info::MachineInfo;
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
-use crate::vm::vmo::{PagedVmo, Vmo};
 pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_space::AddressSpace;
 use alloc::format;
 use alloc::string::ToString;
-use alloc::sync::Arc;
-use core::alloc::Layout;
-use core::{fmt, iter, slice};
 use core::num::NonZeroUsize;
 use core::range::Range;
+use core::{fmt, slice};
+pub use error::Error;
 use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{LazyLock, Mutex, OnceLock, RwLock};
+use sync::{LazyLock, Mutex, OnceLock};
 use xmas_elf::program::Type;
-pub use error::Error;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
@@ -45,7 +42,7 @@ static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
 
 pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
     #[allow(tail_expr_drop_order)]
-    let aspace = KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
+    KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
         let mut aspace = AddressSpace::from_active_kernel(
@@ -239,7 +236,7 @@ pub trait ArchAddressSpace {
         flags: Self::Flags,
         flush: &mut Flush,
     ) -> Result<(), Error>;
-    
+
     unsafe fn protect(
         &mut self,
         virt: VirtualAddress,
