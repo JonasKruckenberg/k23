@@ -335,6 +335,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
                     pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
                 } else {
                     unreachable!("Invalid state: PTE cant be vacant or invalid+leaf {pte:?}");
+                    remaining_bytes = remaining_bytes.saturating_sub(page_size);
                 }
             }
         }
@@ -516,8 +517,7 @@ impl PageTableEntry {
     }
 
     pub fn replace_address_and_flags(&mut self, address: PhysicalAddress, flags: PTEFlags) {
-        self.bits &= PTEFlags::all().bits(); // clear all previous flags
-        self.bits |= (address.get() >> PTE_PPN_SHIFT) | flags.bits();
+        self.bits = (address.get() >> PTE_PPN_SHIFT) | flags.bits();
     }
 
     pub fn get_address_and_flags(&self) -> (PhysicalAddress, PTEFlags) {

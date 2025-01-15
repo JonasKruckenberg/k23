@@ -250,8 +250,6 @@ impl AddressSpace {
         }
         flush.flush()?;
 
-        // TODO materialize changes to MMU
-
         Ok(())
     }
 
@@ -310,7 +308,26 @@ impl AddressSpace {
         range: Range<VirtualAddress>,
         new_permissions: Permissions,
     ) -> Result<(), Error> {
-        todo!()
+        let mut bytes_remaining = range.size();
+        let mut c = self.regions.find_mut(&range.start);
+        while bytes_remaining > 0 {
+            let mut region = c.get_mut().unwrap();
+            region.permissions = new_permissions;
+            bytes_remaining -= range.size();
+        }
+
+        let mut flush = self.arch.new_flush();
+        unsafe {
+            self.arch.protect(
+                range.start,
+                NonZeroUsize::new(range.size()).unwrap(),
+                new_permissions.into(),
+                &mut flush,
+            )?;
+        }
+        flush.flush()?;
+        
+        Ok(())
     }
 
     /// Page fault handling
