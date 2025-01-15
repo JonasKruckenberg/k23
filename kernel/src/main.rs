@@ -137,10 +137,6 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     //     - IF RiscvFeatureVector => setup the vector hardware
     // - `kernel_shell_init()`
     // - `userboot_init()`
-    
-    loop {
-        arch::wait_for_interrupt();
-    }
 
     // Run thread-local destructors
     unsafe {

@@ -71,27 +71,6 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
         Ok(Mutex::new(aspace))
     })?;
 
-    {
-        let mut aspace = aspace.lock();
-
-        let layout =
-            unsafe { Layout::from_size_align_unchecked(5 * arch::PAGE_SIZE, arch::PAGE_SIZE) };
-        let vmo = Arc::new(Vmo::Paged(RwLock::new(PagedVmo::from_iter(
-            iter::repeat_n(THE_ZERO_FRAME.clone(), 5),
-        ))));
-
-        let range = aspace
-            .map(layout, vmo, 0, Permissions::READ | Permissions::WRITE, None)
-            .unwrap()
-            .range;
-        
-        log::trace!("mapped");
-        
-        aspace.unmap(range).unwrap();
-        
-        log::trace!("unmapped");
-    }
-
     Ok(())
 }
 
@@ -260,15 +239,7 @@ pub trait ArchAddressSpace {
         flags: Self::Flags,
         flush: &mut Flush,
     ) -> Result<(), Error>;
-
-    unsafe fn remap_contiguous(
-        &mut self,
-        virt: VirtualAddress,
-        phys: PhysicalAddress,
-        len: NonZeroUsize,
-        flush: &mut Flush,
-    ) -> Result<(), Error>;
-
+    
     unsafe fn protect(
         &mut self,
         virt: VirtualAddress,
