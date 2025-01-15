@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch::{mb, wmb};
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
 use crate::vm::Error;
@@ -19,7 +20,6 @@ use core::{fmt, slice};
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
-use crate::arch::{mb, wmb};
 
 pub const DEFAULT_ASID: u16 = 0;
 

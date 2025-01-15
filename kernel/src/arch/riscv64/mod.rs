@@ -173,11 +173,17 @@ pub fn wait_for_interrupt() {
 }
 
 pub fn mb() {
-    unsafe { asm!("fence iorw,iorw"); }
+    unsafe {
+        asm!("fence iorw,iorw");
+    }
 }
 pub fn wmb() {
-    unsafe { asm!("fence ow,ow"); }
+    unsafe {
+        asm!("fence ow,ow");
+    }
 }
 pub fn rmb() {
-    unsafe { asm!("fence ir,ir"); }
+    unsafe {
+        asm!("fence ir,ir");
+    }
 }
