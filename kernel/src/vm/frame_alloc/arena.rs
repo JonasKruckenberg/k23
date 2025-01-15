@@ -114,7 +114,7 @@ impl Arena {
     }
     
     pub fn max_alignment(&self) -> usize {
-        PAGE_SIZE << self.max_order
+        arch::PAGE_SIZE << self.max_order
     }
 
     pub fn allocate_one(&mut self) -> Option<NonNull<FrameInfo>> {

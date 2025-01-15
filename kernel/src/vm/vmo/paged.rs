@@ -7,7 +7,7 @@
 
 use crate::vm::frame_alloc::Frame;
 use crate::vm::frame_list::FrameList;
-use crate::vm::{frame_alloc, THE_ZERO_FRAME};
+use crate::vm::{frame_alloc, Error, THE_ZERO_FRAME};
 use core::range::Range;
 
 #[derive(Debug)]
@@ -28,7 +28,7 @@ impl PagedVmo {
     pub fn is_valid_offset(&self, offset: usize) -> bool {
         todo!()
     }
-    pub fn require_owned_frame(&mut self, at_offset: usize) -> crate::Result<&Frame> {
+    pub fn require_owned_frame(&mut self, at_offset: usize) -> Result<&Frame, Error> {
         if let Some(old_frame) = self.frames.get(at_offset) {
             log::trace!("require_owned_frame for resident frame, allocating new...");
 
@@ -58,7 +58,7 @@ impl PagedVmo {
         }
     }
 
-    pub fn require_read_frame(&self, at_offset: usize) -> crate::Result<&Frame> {
+    pub fn require_read_frame(&self, at_offset: usize) -> Result<&Frame, Error> {
         if let Some(frame) = self.frames.get(at_offset) {
             Ok(frame)
         } else {

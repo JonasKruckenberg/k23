@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::error::Error;
+use crate::vm::Error;
 use crate::vm::address::{AddressRangeExt, VirtualAddress};
 use crate::vm::address_space::Batch;
 use crate::vm::vmo::Vmo;
@@ -86,7 +86,7 @@ impl AddressSpaceRegion {
         batch: &mut Batch,
         addr: VirtualAddress,
         flags: PageFaultFlags,
-    ) -> crate::Result<()> {
+    ) -> Result<(), Error> {
         log::trace!("page fault at {addr:?} flags {flags:?}");
         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
         debug_assert!(self.range.contains(&addr));
@@ -113,7 +113,7 @@ impl AddressSpaceRegion {
                 log::trace!("permission failure: execute fault on non-executable region");
             }
 
-            return Err(Error::AccessDenied);
+            return Err(Error::InvalidPermissions);
         }
 
         // At this point we know that the access was legal, so either we faulted because the Frame

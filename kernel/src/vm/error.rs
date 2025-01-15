@@ -21,18 +21,26 @@ pub enum Error {
     NoMemory,
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     CacheInvalidationFailed(riscv::sbi::Error),
+    /// Attempted to operate on mismatched address space.
+    AddressSpaceMismatch { expected: usize, found: usize },
+    /// Errors returned by SBI calls
+    #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+    Sbi(riscv::sbi::Error),
 }
 
-impl From<mmu::Error> for Error {
-    fn from(value: mmu::Error) -> Self {
-        match value {
-            mmu::Error::NoMemory => Self::NoMemory,
-            mmu::Error::AddressSpaceMismatch { expected, found } => panic!("Attempted to operate on mismatched address space. Expected {expected} but found {found}."),
-            mmu::Error::SBI(err) => Self::CacheInvalidationFailed(err),
-            mmu::Error::PermissionIncrease => Self::PermissionIncrease,
-        }
+impl From<crate::vm::frame_alloc::AllocError> for Error {
+    fn from(_: crate::vm::frame_alloc::AllocError) -> Self {
+        Self::NoMemory
     }
 }
+
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+impl From<riscv::sbi::Error> for Error {
+    fn from(err: riscv::sbi::Error) -> Self {
+        Error::Sbi(err)
+    }
+}
+
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -49,6 +57,9 @@ impl Display for Error {
             Error::NoMemory => f.write_str("failed to allocate memory for page table entry"),
             #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
             Error::CacheInvalidationFailed(err) => f.write_fmt(format_args!("failed to invalidate page table caches: {err}")),
+            Error::AddressSpaceMismatch { expected, found } => write!(f, "Attempted to operate on mismatched address space. Expected {expected} but found {found}."),
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+            Error::Sbi(err) => write!(f, "SBI call failed: {err}"),
         }
     }
 }

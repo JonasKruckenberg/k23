@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::error::Error;
+use crate::vm::Error;
 use crate::vm::address::VirtualAddress;
 use core::range::Range;
 use core::{cmp, mem};
@@ -46,10 +46,10 @@ impl Flush {
     /// # Errors
     ///
     /// Returns an error if the range could not be flushed due to an underlying hardware error.
-    pub fn flush(mut self) -> crate::Result<()> {
+    pub fn flush(mut self) -> Result<(), Error> {
         log::trace!("flushing range {:?}", self.range);
         if let Some(range) = self.range.take() {
-            arch::invalidate_range(self.asid, range)?;
+            arch::invalidate_range(self.asid, range) ?;
         } else {
             log::warn!("attempted to flush empty range, ignoring");
         }
@@ -72,7 +72,7 @@ impl Flush {
     /// # Errors
     ///
     /// Returns an error if the given ASID does not match the ASID of this `Flush`.
-    pub fn extend_range(&mut self, asid: usize, other: Range<VirtualAddress>) -> crate::Result<()> {
+    pub fn extend_range(&mut self, asid: usize, other: Range<VirtualAddress>) -> Result<(), Error> {
         if self.asid == asid {
             if let Some(this) = self.range.take() {
                 self.range = Some(Range {

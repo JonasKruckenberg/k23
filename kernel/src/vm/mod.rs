@@ -15,6 +15,7 @@ mod frame_list;
 mod error;
 mod vmo;
 
+pub use error::Error;
 use crate::arch;
 use crate::machine_info::MachineInfo;
 use crate::vm::flush::Flush;
@@ -52,8 +53,8 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
             )),
         );
 
-        reserve_wired_regions(&mut aspace, boot_info, &mut flush);
-        flush.flush()?;
+        reserve_wired_regions(&mut aspace, boot_info, &mut flush).unwrap();
+        flush.flush().unwrap();
 
         for region in aspace.regions.iter() {
             log::trace!(
@@ -217,7 +218,7 @@ impl From<PageFaultFlags> for Permissions {
 pub trait ArchAddressSpace {
     type Flags: From<Permissions> + bitflags::Flags;
     
-    fn new(asid: usize) -> crate::Result<(Self, Flush)>
+    fn new(asid: usize) -> Result<(Self, Flush), Error>
     where
         Self: Sized;
     fn from_active(asid: usize) -> (Self, Flush)
@@ -231,7 +232,7 @@ pub trait ArchAddressSpace {
         len: NonZeroUsize,
         flags: Self::Flags,
         flush: &mut Flush,
-    ) -> crate::Result<()>;
+    ) -> Result<(), Error>;
 
     unsafe fn remap_contiguous(
         &mut self,
@@ -239,7 +240,7 @@ pub trait ArchAddressSpace {
         phys: PhysicalAddress,
         len: NonZeroUsize,
         flush: &mut Flush,
-    ) -> crate::Result<()>;
+    ) -> Result<(), Error>;
 
     unsafe fn protect(
         &mut self,
@@ -247,14 +248,14 @@ pub trait ArchAddressSpace {
         len: NonZeroUsize,
         new_flags: Self::Flags,
         flush: &mut Flush,
-    ) -> crate::Result<()>;
+    ) -> Result<(), Error>;
 
     unsafe fn unmap(
         &mut self,
         virt: VirtualAddress,
         len: NonZeroUsize,
         flush: &mut Flush,
-    ) -> crate::Result<()>;
+    ) -> Result<(), Error>;
 
     unsafe fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, Self::Flags)>;
 

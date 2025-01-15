@@ -5,14 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::error::Error;
+use crate::vm::error::Error;
 use crate::vm::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use crate::vm::address_space_region::AddressSpaceRegion;
 use crate::vm::flush::Flush;
 use crate::vm::vmo::{Vmo, WiredVmo};
-use crate::vm::ArchAddressSpace;
+use crate::vm::{frame_alloc, ArchAddressSpace};
 use crate::vm::{PageFaultFlags, Permissions};
-use crate::{arch, ensure};
+use crate::{arch, bail, ensure};
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec;
@@ -108,7 +108,7 @@ impl AddressSpace {
         name: Option<String>,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
         ensure!(
-            layout.pad_to_align().size() % PAGE_SIZE == 0,
+            layout.pad_to_align().size() % arch::PAGE_SIZE == 0,
             Error::MisalignedEnd
         );
         ensure!(
@@ -165,8 +165,8 @@ impl AddressSpace {
         permissions: Permissions,
         name: Option<String>,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        ensure!(range.start.is_aligned_to(PAGE_SIZE), Error::MisalignedStart);
-        ensure!(range.end.is_aligned_to(PAGE_SIZE), Error::MisalignedEnd);
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedStart);
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedEnd);
         ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
         ensure!(vmo.is_valid_offset(vmo_offset), Error::InvalidVmoOffset);
         debug_assert!(
@@ -200,8 +200,8 @@ impl AddressSpace {
     /// - `size` must less than or equal to the maximum size for this address space
     /// - preconditions must be checked before any mutations
     pub fn unmap(&mut self, range: Range<VirtualAddress>) -> Result<(), Error> {
-        ensure!(range.start.is_aligned_to(PAGE_SIZE), Error::MisalignedStart);
-        ensure!(range.end.is_aligned_to(PAGE_SIZE), Error::MisalignedEnd);
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedStart);
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedEnd);
         ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
 
         // ensure the entire range is mapped and doesn't cover any holes
@@ -236,8 +236,8 @@ impl AddressSpace {
         range: Range<VirtualAddress>,
         new_permissions: Permissions,
     ) -> Result<(), Error> {
-        ensure!(range.start.is_aligned_to(PAGE_SIZE), Error::MisalignedStart);
-        ensure!(range.end.is_aligned_to(PAGE_SIZE), Error::MisalignedEnd);
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedStart);
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedEnd);
         ensure!(
             range.size() <= self.max_range.size(),
             Error::AlignmentTooLarge
@@ -292,26 +292,24 @@ impl AddressSpace {
     ///                         - copy content from old to new frame (OMIT FOR ZERO FRAME)
     ///                         - replace old frame with new frame
     ///                      - update MMU page table
-    pub fn page_fault(&mut self, addr: VirtualAddress, flags: PageFaultFlags) -> crate::Result<()> {
+    pub fn page_fault(&mut self, addr: VirtualAddress, flags: PageFaultFlags) -> Result<(), Error> {
         assert!(flags.is_valid());
 
         // make sure addr is even a valid address for this address space
         match self.kind {
-            AddressSpaceKind::User => ensure!(
+            AddressSpaceKind::User => assert!(
                 addr.is_user_accessible(),
-                crate::Error::AccessDenied,
                 "non-user address fault in user address space"
             ),
-            AddressSpaceKind::Kernel => ensure!(
+            AddressSpaceKind::Kernel => assert!(
                 arch::is_kernel_address(addr),
-                crate::Error::AccessDenied,
                 "non-kernel address fault in kernel address space"
             ),
         }
         ensure!(
             self.max_range.contains(&addr),
-            crate::Error::AccessDenied,
-            "non-kernel address fault in kernel address space"
+            Error::NotMapped,
+            "page fault at address outside of address space range"
         );
 
         let addr = addr.align_down(arch::PAGE_SIZE);
@@ -328,8 +326,7 @@ impl AddressSpace {
             batch.flush()?;
             Ok(())
         } else {
-            log::trace!("page fault at unmapped address {addr}");
-            Err(crate::Error::AccessDenied)
+            bail!(Error::NotMapped, "page fault at unmapped address {addr}");
         }
     }
 
@@ -347,8 +344,8 @@ impl AddressSpace {
         name: Option<String>,
         flush: &mut Flush,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        ensure!(range.start.is_aligned_to(PAGE_SIZE), Error::MisalignedStart);
-        ensure!(range.end.is_aligned_to(PAGE_SIZE), Error::MisalignedEnd);
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedStart);
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedEnd);
         ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
         ensure!(permissions.is_valid(), Error::InvalidPermissions);
 
@@ -378,8 +375,7 @@ impl AddressSpace {
         // critical that the MMUs and our "logical" view are in sync.
         if permissions.is_empty() {
             unsafe {
-                self.mmu.unmap(
-                    &mut self.mmu_frames,
+                self.arch.unmap(
                     range.start,
                     NonZeroUsize::new(range.size()).unwrap(),
                     flush,
@@ -387,7 +383,7 @@ impl AddressSpace {
             }
         } else {
             unsafe {
-                self.mmu.protect(
+                self.arch.protect(
                     range.start,
                     NonZeroUsize::new(range.size()).unwrap(),
                     permissions.into(),
@@ -674,7 +670,7 @@ impl<'a> Batch<'a> {
         phys: PhysicalAddress,
         len: usize,
         flags: <arch::AddressSpace as ArchAddressSpace>::Flags,
-    ) -> crate::Result<()> {
+    ) -> Result<(), Error> {
         debug_assert!(
             len % arch::PAGE_SIZE == 0,
             "physical address range must be multiple of page size"
@@ -694,7 +690,7 @@ impl<'a> Batch<'a> {
         Ok(())
     }
 
-    pub fn flush(&mut self) -> crate::Result<()> {
+    pub fn flush(&mut self) -> Result<(), Error> {
         if self.phys.is_empty() {
             return Ok(());
         }

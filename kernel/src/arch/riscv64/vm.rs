@@ -18,6 +18,7 @@ use core::range::Range;
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
+use crate::vm::Error;
 
 pub const DEFAULT_ASID: usize = 0;
 
@@ -103,7 +104,7 @@ pub fn can_map_at_level(
 /// # Errors
 ///
 /// Should return an error if the underlying operation failed and the caches could not be invalidated.
-pub fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> crate::Result<()> {
+pub fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> Result<(), Error> {
     let base_addr = address_range.start.get();
     let size = address_range
         .end
@@ -122,7 +123,7 @@ pub struct AddressSpace {
 impl crate::vm::ArchAddressSpace for AddressSpace {
     type Flags = PTEFlags;
 
-    fn new(asid: usize) -> crate::Result<(Self, Flush)>
+    fn new(asid: usize) -> Result<(Self, Flush), Error>
     where
         Self: Sized,
     {
@@ -164,7 +165,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         len: NonZeroUsize,
         flags: Self::Flags,
         flush: &mut Flush,
-    ) -> crate::Result<()> {
+    ) -> Result<(), Error> {
         let mut remaining_bytes = len.get();
         debug_assert!(
             remaining_bytes >= PAGE_SIZE,
@@ -256,7 +257,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         mut phys: PhysicalAddress,
         len: NonZeroUsize,
         flush: &mut Flush,
-    ) -> crate::Result<()> {
+    ) -> Result<(), Error> {
         let mut remaining_bytes = len.get();
         debug_assert!(
             remaining_bytes >= PAGE_SIZE,
@@ -325,7 +326,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         len: NonZeroUsize,
         new_flags: Self::Flags,
         flush: &mut Flush,
-    ) -> crate::Result<()> {
+    ) -> Result<(), Error> {
         let mut remaining_bytes = len.get();
         debug_assert!(
             remaining_bytes >= PAGE_SIZE,
@@ -393,7 +394,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         mut virt: VirtualAddress,
         len: NonZeroUsize,
         flush: &mut Flush,
-    ) -> crate::Result<()> {
+    ) -> Result<(), Error> {
         let mut remaining_bytes = len.get();
         debug_assert!(
             remaining_bytes >= PAGE_SIZE,
@@ -470,7 +471,7 @@ impl AddressSpace {
         remaining_bytes: &mut usize,
         lvl: usize,
         flush: &mut Flush,
-    ) -> crate::Result<()> {
+    ) -> Result<(), Error> {
         let index = pte_index_for_level(*virt, lvl);
         let pte = unsafe { pgtable.add(index).as_mut() };
         let page_size = page_size_for_level(lvl);
