@@ -222,10 +222,10 @@ impl From<PageFaultFlags> for Permissions {
 pub trait ArchAddressSpace {
     type Flags: From<Permissions> + bitflags::Flags;
 
-    fn new(asid: usize) -> Result<(Self, Flush), Error>
+    fn new(asid: u16) -> Result<(Self, Flush), Error>
     where
         Self: Sized;
-    fn from_active(asid: usize) -> (Self, Flush)
+    fn from_active(asid: u16) -> (Self, Flush)
     where
         Self: Sized;
 

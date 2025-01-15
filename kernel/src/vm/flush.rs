@@ -13,7 +13,7 @@ use core::{cmp, mem};
 
 #[must_use]
 pub struct Flush {
-    asid: usize,
+    asid: u16,
     range: Option<Range<VirtualAddress>>,
 }
 
@@ -26,11 +26,11 @@ impl Drop for Flush {
 }
 
 impl Flush {
-    pub fn empty(asid: usize) -> Self {
+    pub fn empty(asid: u16) -> Self {
         Self { asid, range: None }
     }
 
-    pub fn new(asid: usize, range: Range<VirtualAddress>) -> Self {
+    pub fn new(asid: u16, range: Range<VirtualAddress>) -> Self {
         Self {
             asid,
             range: Some(range),
@@ -72,7 +72,7 @@ impl Flush {
     /// # Errors
     ///
     /// Returns an error if the given ASID does not match the ASID of this `Flush`.
-    pub fn extend_range(&mut self, asid: usize, other: Range<VirtualAddress>) -> Result<(), Error> {
+    pub fn extend_range(&mut self, asid: u16, other: Range<VirtualAddress>) -> Result<(), Error> {
         if self.asid == asid {
             if let Some(this) = self.range.take() {
                 self.range = Some(Range {

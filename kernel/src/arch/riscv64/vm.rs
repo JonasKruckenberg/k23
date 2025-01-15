@@ -12,15 +12,15 @@ use crate::vm::{frame_alloc, PhysicalAddress, VirtualAddress};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::bitflags;
-use core::fmt;
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 use core::range::Range;
+use core::{fmt, slice};
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
 
-pub const DEFAULT_ASID: usize = 0;
+pub const DEFAULT_ASID: u16 = 0;
 
 /// Virtual address where the kernel address space starts.
 ///
@@ -54,10 +54,40 @@ pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usi
 /// On `RiscV` targets the page table entry's physical address bits are shifted 2 bits to the right.
 const PTE_PPN_SHIFT: usize = 2;
 
+#[cold]
+pub fn init() {
+    // Determine the number of supported ASID bits. The ASID is a "WARL" (Write Any Values, Reads Legal Values)
+    // so we can write all 1s to and see which ones "stick".
+    unsafe {
+        let orig = satp::read();
+        satp::set(orig.mode(), 0xFFFF, orig.ppn());
+        let max_asid = satp::read().asid();
+        satp::set(orig.mode(), orig.asid(), orig.ppn());
+
+        // TODO use this to initialize an ASID allocator
+        log::trace!("supported ASID bits: {}", max_asid.count_ones());
+    }
+}
+
 /// Return whether the given virtual address is in the kernel address space.
 pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
     virt.get() >= KERNEL_ASPACE_BASE.get()
         && virt.checked_sub_addr(KERNEL_ASPACE_BASE).unwrap() < KERNEL_ASPACE_SIZE
+}
+
+/// Invalidate address translation caches for the given `address_range` in the given `address_space`.
+///
+/// # Errors
+///
+/// Should return an error if the underlying operation failed and the caches could not be invalidated.
+pub fn invalidate_range(asid: u16, address_range: Range<VirtualAddress>) -> Result<(), Error> {
+    let base_addr = address_range.start.get();
+    let size = address_range
+        .end
+        .checked_sub_addr(address_range.start)
+        .unwrap();
+    sfence_vma_asid(0, usize::MAX, base_addr, size, asid)?;
+    Ok(())
 }
 
 /// Return the page size for the given page table level.
@@ -65,7 +95,7 @@ pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
 /// # Panics
 ///
 /// Panics if the provided level is `>= PAGE_TABLE_LEVELS`.
-pub fn page_size_for_level(level: usize) -> usize {
+fn page_size_for_level(level: usize) -> usize {
     assert!(level < PAGE_TABLE_LEVELS);
     let page_size = 1 << (PAGE_SHIFT + level * PAGE_ENTRY_SHIFT);
     debug_assert!(page_size == 4096 || page_size == 2097152 || page_size == 1073741824);
@@ -77,7 +107,7 @@ pub fn page_size_for_level(level: usize) -> usize {
 /// # Panics
 ///
 /// Panics if the provided level is `>= PAGE_TABLE_LEVELS`.
-pub fn pte_index_for_level(virt: VirtualAddress, lvl: usize) -> usize {
+fn pte_index_for_level(virt: VirtualAddress, lvl: usize) -> usize {
     assert!(lvl < PAGE_TABLE_LEVELS);
     let index = (virt.get() >> (PAGE_SHIFT + lvl * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
     debug_assert!(index < PAGE_TABLE_ENTRIES);
@@ -89,7 +119,7 @@ pub fn pte_index_for_level(virt: VirtualAddress, lvl: usize) -> usize {
 ///
 /// This is the case when both the virtual and physical address are aligned to the page size at this level
 /// AND the remaining size is at least the page size.
-pub fn can_map_at_level(
+fn can_map_at_level(
     virt: VirtualAddress,
     phys: PhysicalAddress,
     remaining_bytes: usize,
@@ -99,31 +129,24 @@ pub fn can_map_at_level(
     virt.is_aligned_to(page_size) && phys.is_aligned_to(page_size) && remaining_bytes >= page_size
 }
 
-/// Invalidate address translation caches for the given `address_range` in the given `address_space`.
-///
-/// # Errors
-///
-/// Should return an error if the underlying operation failed and the caches could not be invalidated.
-pub fn invalidate_range(asid: usize, address_range: Range<VirtualAddress>) -> Result<(), Error> {
-    let base_addr = address_range.start.get();
-    let size = address_range
-        .end
-        .checked_sub_addr(address_range.start)
-        .unwrap();
-    sfence_vma_asid(0, usize::MAX, base_addr, size, asid)?;
-    Ok(())
+fn get_active_pgtable(expected_asid: u16) -> PhysicalAddress {
+    let satp = satp::read();
+    assert_eq!(satp.asid(), expected_asid);
+    let root_pgtable = PhysicalAddress::new(satp.ppn() << 12);
+    debug_assert!(root_pgtable.get() != 0);
+    root_pgtable
 }
 
 pub struct AddressSpace {
     root_pgtable: PhysicalAddress,
     wired_frames: Vec<Frame>,
-    asid: usize,
+    asid: u16,
 }
 
 impl crate::vm::ArchAddressSpace for AddressSpace {
     type Flags = PTEFlags;
 
-    fn new(asid: usize) -> Result<(Self, Flush), Error>
+    fn new(asid: u16) -> Result<(Self, Flush), Error>
     where
         Self: Sized,
     {
@@ -139,14 +162,11 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         Ok((this, Flush::empty(asid)))
     }
 
-    fn from_active(asid: usize) -> (Self, Flush)
+    fn from_active(asid: u16) -> (Self, Flush)
     where
         Self: Sized,
     {
-        let satp = satp::read();
-        assert_eq!(satp.asid(), asid);
-        let root_pgtable = PhysicalAddress::new(satp.ppn() << 12);
-        debug_assert!(root_pgtable.get() != 0);
+        let root_pgtable = get_active_pgtable(asid);
 
         let this = Self {
             asid,

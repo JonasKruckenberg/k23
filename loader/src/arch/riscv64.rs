@@ -16,7 +16,7 @@ use core::ptr::NonNull;
 use loader_api::BootInfo;
 use riscv::satp;
 
-pub const DEFAULT_ASID: usize = 0;
+pub const DEFAULT_ASID: u16 = 0;
 pub const KERNEL_ASPACE_BASE: usize = 0xffffffc000000000;
 pub const PAGE_SIZE: usize = 4096;
 /// The number of page table entries in one table

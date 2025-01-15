@@ -23,8 +23,8 @@ pub enum Error {
     CacheInvalidationFailed(riscv::sbi::Error),
     /// Attempted to operate on mismatched address space.
     AddressSpaceMismatch {
-        expected: usize,
-        found: usize,
+        expected: u16,
+        found: u16,
     },
     /// Errors returned by SBI calls
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
