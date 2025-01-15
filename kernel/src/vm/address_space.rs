@@ -239,7 +239,11 @@ impl AddressSpace {
             Pin::as_mut(&mut region).unmap(range)?;
             bytes_remaining -= range.size();
         }
-        
+
+        let mut flush = self.arch.new_flush();
+        unsafe { self.arch.unmap(range.start, NonZeroUsize::new(range.size()).unwrap(), &mut flush)?; }
+        flush.flush()?;
+
         // TODO materialize changes to MMU
         
         Ok(())

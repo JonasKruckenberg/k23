@@ -533,7 +533,7 @@ impl AddressSpace {
                 pte.clear();
             }
         } else {
-            unreachable!("Invalid state: PTE cant be invalid (this means {virt:?} is already unmapped) {pte:?}");
+            *remaining_bytes = remaining_bytes.saturating_sub(page_size);
         }
 
         Ok(())
