@@ -8,9 +8,11 @@
 mod arena;
 mod frame;
 
+use crate::arch;
 use crate::thread_local::ThreadLocal;
+use crate::vm::address::VirtualAddress;
+use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use crate::vm::frame_list::FrameList;
-use crate::BOOT_INFO;
 use alloc::vec::Vec;
 use arena::{select_arenas, Arena};
 use core::alloc::Layout;
@@ -21,25 +23,22 @@ use core::sync::atomic::AtomicUsize;
 use core::{cmp, fmt, slice};
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
-use mmu::arch::PAGE_SIZE;
-use mmu::frame_alloc::BootstrapAllocator;
-use mmu::VirtualAddress;
 use sync::{Mutex, OnceLock};
 
 static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 
 #[cold]
-pub fn init(boot_alloc: BootstrapAllocator, phys_offset: VirtualAddress) {
+pub fn init(boot_alloc: BootstrapAllocator) {
     #[allow(tail_expr_drop_order)]
     FRAME_ALLOC.get_or_init(|| {
-        let mut max_alignment = PAGE_SIZE;
+        let mut max_alignment = arch::PAGE_SIZE;
         let mut arenas = Vec::new();
 
         for selection_result in select_arenas(boot_alloc.free_regions()).iterator() {
             match selection_result {
                 Ok(selection) => {
                     log::trace!("selection {selection:?}");
-                    let arena = Arena::from_selection(selection, phys_offset);
+                    let arena = Arena::from_selection(selection);
                     max_alignment = cmp::max(max_alignment, arena.max_alignment());
                     arenas.push(arena);
                 }
@@ -110,18 +109,11 @@ pub fn alloc_one_zeroed() -> Result<Frame, AllocError> {
     let frame = alloc_one()?;
 
     // Translate the physical address into a virtual one through the physmap
-    let virt = VirtualAddress::from_phys(
-        frame.addr(),
-        BOOT_INFO
-            .get()
-            .expect("cannot access BOOT_INFO before it is initialized")
-            .physical_address_offset,
-    )
-    .unwrap();
+    let virt = VirtualAddress::from_phys(frame.addr()).unwrap();
 
     // memset'ing the slice to zero
     unsafe {
-        slice::from_raw_parts_mut(virt.as_mut_ptr(), PAGE_SIZE).fill(0);
+        slice::from_raw_parts_mut(virt.as_mut_ptr(), arch::PAGE_SIZE).fill(0);
     }
 
     Ok(frame)
@@ -142,7 +134,7 @@ pub fn alloc_contiguous(layout: Layout) -> Result<FrameList, AllocError> {
 
             log::trace!(
                 "Hart-local cache exhausted, refilling {} frames...",
-                layout.size() / PAGE_SIZE
+                layout.size() / arch::PAGE_SIZE
             );
             let mut frames = global_alloc.allocate_contiguous(layout)?;
             hart_local_cache.free_list.append(&mut frames);
@@ -166,18 +158,11 @@ pub fn alloc_contiguous_zeroed(layout: Layout) -> Result<FrameList, AllocError> 
     let frames = alloc_contiguous(layout)?;
 
     // Translate the physical address into a virtual one through the physmap
-    let virt = VirtualAddress::from_phys(
-        frames.first().unwrap().addr(),
-        BOOT_INFO
-            .get()
-            .expect("cannot access BOOT_INFO before it is initialized")
-            .physical_address_offset,
-    )
-    .unwrap();
+    let virt = VirtualAddress::from_phys(frames.first().unwrap().addr()).unwrap();
 
     // memset'ing the slice to zero
     unsafe {
-        slice::from_raw_parts_mut(virt.as_mut_ptr(), frames.len() * PAGE_SIZE).fill(0);
+        slice::from_raw_parts_mut(virt.as_mut_ptr(), frames.len() * arch::PAGE_SIZE).fill(0);
     }
 
     Ok(frames)
@@ -229,7 +214,7 @@ impl HartLocalFrameCache {
     }
 
     fn allocate_contiguous(&mut self, layout: Layout) -> Option<linked_list::List<FrameInfo>> {
-        let frames = layout.size() / PAGE_SIZE;
+        let frames = layout.size() / arch::PAGE_SIZE;
 
         // short-circuit if the cache doesn't even have enough pages
         if self.free_list.len() < frames {
@@ -250,7 +235,7 @@ impl HartLocalFrameCache {
                         break 'outer;
                     }
 
-                    if frame.addr().checked_sub_addr(prev_addr).unwrap() > PAGE_SIZE {
+                    if frame.addr().checked_sub_addr(prev_addr).unwrap() > arch::PAGE_SIZE {
                         // frames aren't contiguous, so let's try the next one
                         log::trace!("frames not contiguous, trying next");
                         continue 'outer;

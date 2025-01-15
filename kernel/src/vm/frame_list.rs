@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
 use crate::vm::frame_alloc::Frame;
 use alloc::boxed::Box;
 use core::fmt::Formatter;
@@ -13,7 +14,6 @@ use core::mem::offset_of;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{array, fmt};
-use mmu::arch::PAGE_SIZE;
 use pin_project::pin_project;
 
 const FRAME_LIST_NODE_FANOUT: usize = 16;
@@ -218,12 +218,12 @@ impl FromIterator<Frame> for FrameList {
                 });
 
             node.project().frames[offset_to_node_index(offset)] = Some(frame);
-            offset += PAGE_SIZE;
+            offset += arch::PAGE_SIZE;
         }
 
         Self {
             nodes,
-            len: offset / PAGE_SIZE,
+            len: offset / arch::PAGE_SIZE,
         }
     }
 }
@@ -260,11 +260,11 @@ unsafe impl wavltree::Linked for FrameListNode {
 }
 
 fn offset_to_node_offset(offset: usize) -> usize {
-    (offset) & 0usize.wrapping_sub(PAGE_SIZE * FRAME_LIST_NODE_FANOUT)
+    (offset) & 0usize.wrapping_sub(arch::PAGE_SIZE * FRAME_LIST_NODE_FANOUT)
 }
 
 fn offset_to_node_index(offset: usize) -> usize {
-    (offset >> mmu::arch::PAGE_SHIFT) % FRAME_LIST_NODE_FANOUT
+    (offset >> arch::PAGE_SHIFT) % FRAME_LIST_NODE_FANOUT
 }
 
 // =============================================================================
@@ -274,7 +274,7 @@ fn offset_to_node_index(offset: usize) -> usize {
 impl<'a> Cursor<'a> {
     /// Moves the cursor to the next [`Frame`] in the list
     pub fn move_next(&mut self) {
-        self.offset += PAGE_SIZE;
+        self.offset += arch::PAGE_SIZE;
 
         // if there is a current node AND the node still has unseen frames in it
         // advance the offset
@@ -291,7 +291,7 @@ impl<'a> Cursor<'a> {
     }
 
     /// Returns the offset of the [`Frame`] in this list, will always be a multiple
-    /// of [`PAGE_SIZE`].
+    /// of [`arch::PAGE_SIZE`].
     pub fn offset(&self) -> usize {
         self.offset
     }
@@ -310,7 +310,7 @@ impl<'a> Cursor<'a> {
 impl<'a> CursorMut<'a> {
     /// Moves the cursor to the next [`Frame`] in the list
     pub fn move_next(&mut self) {
-        self.offset += PAGE_SIZE;
+        self.offset += arch::PAGE_SIZE;
 
         // if there is a current node AND the node still has unseen frames in it
         // advance the index
@@ -327,7 +327,7 @@ impl<'a> CursorMut<'a> {
     }
 
     /// Returns the offset of the [`Frame`] in this list, will always be a multiple
-    /// of [`PAGE_SIZE`].
+    /// of [`arch::PAGE_SIZE`].
     pub fn offset(&self) -> usize {
         self.offset
     }

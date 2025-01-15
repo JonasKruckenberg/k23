@@ -5,11 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
 use crate::machine_info::MachineInfo;
 use crate::ENABLE_KASLR;
 use core::alloc::Layout;
 use core::range::Range;
-use mmu::VirtualAddress;
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use rand::SeedableRng;
@@ -17,7 +17,7 @@ use rand_chacha::ChaCha20Rng;
 
 pub fn init(minfo: &MachineInfo) -> PageAllocator {
     PageAllocator {
-        page_state: [false; mmu::arch::PAGE_TABLE_ENTRIES / 2],
+        page_state: [false; arch::PAGE_TABLE_ENTRIES / 2],
         prng: ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
             minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
         )),
@@ -30,7 +30,7 @@ pub fn init(minfo: &MachineInfo) -> PageAllocator {
 #[derive(Debug)]
 pub struct PageAllocator {
     /// Whether a top-level page is in use.
-    page_state: [bool; mmu::arch::PAGE_TABLE_ENTRIES / 2],
+    page_state: [bool; arch::PAGE_TABLE_ENTRIES / 2],
     /// A random number generator that should be used to generate random addresses or
     /// `None` if aslr is disabled.
     prng: Option<ChaCha20Rng>,
@@ -68,18 +68,17 @@ impl PageAllocator {
         }
     }
 
-    pub fn reserve(&mut self, mut virt_base: VirtualAddress, mut remaining_bytes: usize) {
+    pub fn reserve(&mut self, mut virt_base: usize, mut remaining_bytes: usize) {
         log::trace!(
-            "marking {virt_base:?}..{:?} as used",
+            "marking {virt_base:#x}..{:#x} as used",
             virt_base.checked_add(remaining_bytes).unwrap()
         );
 
-        let top_level_page_size = mmu::arch::page_size_for_level(mmu::arch::PAGE_TABLE_LEVELS - 1);
-        assert!(virt_base.is_aligned_to(top_level_page_size));
+        let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
+        debug_assert!(virt_base % top_level_page_size == 0);
 
         while remaining_bytes > 0 {
-            let page_idx =
-                (virt_base.get() - (usize::MAX << mmu::arch::VIRT_ADDR_BITS)) / top_level_page_size;
+            let page_idx = (virt_base - (usize::MAX << arch::VIRT_ADDR_BITS)) / top_level_page_size;
 
             self.page_state[page_idx] = true;
 
@@ -88,10 +87,10 @@ impl PageAllocator {
         }
     }
 
-    pub fn allocate(&mut self, layout: Layout) -> Range<VirtualAddress> {
+    pub fn allocate(&mut self, layout: Layout) -> Range<usize> {
         assert!(layout.align().is_power_of_two());
 
-        let top_level_page_size = mmu::arch::page_size_for_level(mmu::arch::PAGE_TABLE_LEVELS - 1);
+        let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
 
         // how many top-level pages are needed to map `size` bytes
         // and attempt to allocate them
@@ -104,10 +103,7 @@ impl PageAllocator {
         //
         // we can then take the lowest possible address of the higher half (`usize::MAX << VA_BITS`)
         // and add the `idx` multiple of the size of a top-level entry to it
-        let base = VirtualAddress::new(
-            (usize::MAX << mmu::arch::VIRT_ADDR_BITS) + page_idx * top_level_page_size,
-        )
-        .unwrap();
+        let base = (usize::MAX << arch::VIRT_ADDR_BITS) + page_idx * top_level_page_size;
 
         let offset = if let Some(rng) = self.prng.as_mut() {
             // Choose a random offset.

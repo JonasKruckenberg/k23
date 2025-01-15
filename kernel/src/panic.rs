@@ -5,33 +5,52 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
 use crate::panic::panic_count::MustAbort;
-use crate::{arch, BOOT_INFO};
 use alloc::boxed::Box;
 use alloc::string::String;
 use backtrace::{Backtrace, SymbolizeContext};
 use core::any::Any;
 use core::panic::{PanicPayload, UnwindSafe};
 use core::{fmt, mem, slice};
-use mmu::{AddressRangeExt, VirtualAddress};
-use sync::LazyLock;
+use loader_api::BootInfo;
+use sync::{LazyLock, OnceLock};
 
-static SYMBOLIZE_CONTEXT: LazyLock<SymbolizeContext> = LazyLock::new(|| {
+static GLOBAL_PANIC_STATE: OnceLock<GlobalPanicState> = OnceLock::new();
+
+struct GlobalPanicState {
+    kernel_virt_base: u64,
+    elf: &'static [u8],
+}
+
+#[cold]
+pub fn init(boot_info: &BootInfo) {
+    GLOBAL_PANIC_STATE.get_or_init(|| GlobalPanicState {
+        kernel_virt_base: boot_info.kernel_virt.start as u64,
+        elf: unsafe {
+            let base = boot_info
+                .physical_address_offset
+                .checked_add(boot_info.kernel_phys.start)
+                .unwrap() as *const u8;
+
+            slice::from_raw_parts(
+                base,
+                boot_info
+                    .kernel_phys
+                    .end
+                    .checked_sub(boot_info.kernel_phys.start)
+                    .unwrap(),
+            )
+        },
+    });
+}
+
+static SYMBOLIZE_CONTEXT: LazyLock<Option<SymbolizeContext>> = LazyLock::new(|| {
     log::trace!("Setting up symbolize context...");
-    let boot_info = BOOT_INFO.get().unwrap();
+    let state = GLOBAL_PANIC_STATE.get()?;
 
-    let elf = xmas_elf::ElfFile::new(unsafe {
-        let base = VirtualAddress::from_phys(
-            boot_info.kernel_phys.start,
-            boot_info.physical_address_offset,
-        )
-        .unwrap();
-
-        slice::from_raw_parts(base.as_ptr(), boot_info.kernel_phys.size())
-    })
-    .unwrap();
-
-    SymbolizeContext::new(elf, boot_info.kernel_virt.start.get() as u64).unwrap()
+    let elf = xmas_elf::ElfFile::new(state.elf).unwrap();
+    Some(SymbolizeContext::new(elf, state.kernel_virt_base).unwrap())
 });
 
 /// Determines whether the current thread is unwinding because of panic.
@@ -83,8 +102,14 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             thread_local::destructors::run();
         }
 
-        let backtrace = Backtrace::capture(&SYMBOLIZE_CONTEXT);
-        log::error!("{backtrace}");
+        if let Some(ctx) = SYMBOLIZE_CONTEXT.as_ref() {
+            let backtrace = Backtrace::capture(ctx);
+            log::error!("{backtrace}");
+        } else {
+            log::error!(
+                "Backtrace unavailable. Panic happened before panic subsystem initialization."
+            );
+        }
 
         panic_count::finished_panic_hook();
 

@@ -5,33 +5,33 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+mod address;
 mod address_space;
 mod address_space_region;
+pub mod bootstrap_alloc;
+pub mod flush;
 pub mod frame_alloc;
 mod frame_list;
-mod paged_vmo;
-mod wired_vmo;
 mod error;
+mod vmo;
 
+use crate::arch;
 use crate::machine_info::MachineInfo;
+use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
+pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_space::AddressSpace;
 use alloc::format;
 use alloc::string::ToString;
 use core::fmt::Formatter;
+use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
 use loader_api::BootInfo;
-use mmu::arch::PAGE_SIZE;
-use mmu::{AddressRangeExt, Flush, VirtualAddress};
-use paged_vmo::PagedVmo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{LazyLock, Mutex, OnceLock, RwLock};
-use wired_vmo::WiredVmo;
+use sync::{LazyLock, Mutex, OnceLock};
 use xmas_elf::program::Type;
-
-const KERNEL_ASID: usize = 0;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
@@ -43,8 +43,7 @@ static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
 pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
     #[allow(tail_expr_drop_order)]
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
-        let (hw_aspace, mut flush) =
-            mmu::AddressSpace::from_active(KERNEL_ASID, boot_info.physical_address_offset);
+        let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
         let mut aspace = AddressSpace::from_active_kernel(
             hw_aspace,
@@ -76,23 +75,32 @@ fn reserve_wired_regions(
     aspace: &mut AddressSpace,
     boot_info: &BootInfo,
     flush: &mut Flush,
-) {
+) -> crate::Result<()> {
     // reserve the physical memory map
     aspace.reserve(
-        boot_info.physical_memory_map,
+        Range::from(
+            VirtualAddress::new(boot_info.physical_memory_map.start).unwrap()
+                ..VirtualAddress::new(boot_info.physical_memory_map.end).unwrap(),
+        ),
         Permissions::READ | Permissions::WRITE,
         Some("Physical Memory Map".to_string()),
         flush,
     ).unwrap();
 
     let own_elf = unsafe {
-        let base = VirtualAddress::from_phys(
-            boot_info.kernel_phys.start,
-            boot_info.physical_address_offset,
-        )
-        .unwrap();
+        let base = boot_info
+            .physical_address_offset
+            .checked_add(boot_info.kernel_phys.start)
+            .unwrap() as *const u8;
 
-        slice::from_raw_parts(base.as_ptr(), boot_info.kernel_phys.size())
+        slice::from_raw_parts(
+            base,
+            boot_info
+                .kernel_phys
+                .end
+                .checked_sub(boot_info.kernel_phys.start)
+                .unwrap(),
+        )
     };
     let own_elf = xmas_elf::ElfFile::new(own_elf).unwrap();
 
@@ -101,9 +109,8 @@ fn reserve_wired_regions(
             continue;
         }
 
-        let virt = boot_info
-            .kernel_virt
-            .start
+        let virt = VirtualAddress::new(boot_info.kernel_virt.start)
+            .unwrap()
             .checked_add(ph.virtual_addr() as usize)
             .unwrap();
 
@@ -127,11 +134,11 @@ fn reserve_wired_regions(
 
         aspace.reserve(
             Range {
-                start: virt.align_down(PAGE_SIZE),
+                start: virt.align_down(arch::PAGE_SIZE),
                 end: virt
                     .checked_add(ph.mem_size() as usize)
                     .unwrap()
-                    .checked_align_up(PAGE_SIZE)
+                    .checked_align_up(arch::PAGE_SIZE)
                     .unwrap(),
             },
             permissions,
@@ -139,6 +146,8 @@ fn reserve_wired_regions(
             flush,
         ).unwrap();
     }
+    
+    Ok(())
 }
 
 bitflags::bitflags! {
@@ -205,14 +214,53 @@ impl From<PageFaultFlags> for Permissions {
     }
 }
 
-impl From<Permissions> for mmu::Flags {
-    fn from(value: Permissions) -> Self {
-        let mut out = mmu::Flags::empty();
-        out.set(mmu::Flags::READ, value.contains(Permissions::READ));
-        out.set(mmu::Flags::WRITE, value.contains(Permissions::WRITE));
-        out.set(mmu::Flags::EXECUTE, value.contains(Permissions::EXECUTE));
-        out
-    }
+pub trait ArchAddressSpace {
+    type Flags: From<Permissions> + bitflags::Flags;
+    
+    fn new(asid: usize) -> crate::Result<(Self, Flush)>
+    where
+        Self: Sized;
+    fn from_active(asid: usize) -> (Self, Flush)
+    where
+        Self: Sized;
+
+    unsafe fn map_contiguous(
+        &mut self,
+        virt: VirtualAddress,
+        phys: PhysicalAddress,
+        len: NonZeroUsize,
+        flags: Self::Flags,
+        flush: &mut Flush,
+    ) -> crate::Result<()>;
+
+    unsafe fn remap_contiguous(
+        &mut self,
+        virt: VirtualAddress,
+        phys: PhysicalAddress,
+        len: NonZeroUsize,
+        flush: &mut Flush,
+    ) -> crate::Result<()>;
+
+    unsafe fn protect(
+        &mut self,
+        virt: VirtualAddress,
+        len: NonZeroUsize,
+        new_flags: Self::Flags,
+        flush: &mut Flush,
+    ) -> crate::Result<()>;
+
+    unsafe fn unmap(
+        &mut self,
+        virt: VirtualAddress,
+        len: NonZeroUsize,
+        flush: &mut Flush,
+    ) -> crate::Result<()>;
+
+    unsafe fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, Self::Flags)>;
+
+    unsafe fn activate(&self);
+
+    fn new_flush(&self) -> Flush;
 }
 
 impl Permissions {
@@ -227,21 +275,5 @@ bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
     pub struct Flags: u8 {
         const EAGER = 1 << 0;
-    }
-}
-
-
-#[derive(Debug)]
-pub enum Vmo {
-    Wired(WiredVmo),
-    Paged(RwLock<PagedVmo>),
-}
-
-impl Vmo {
-    pub fn is_valid_offset(&self, offset: usize) -> bool {
-        match self {
-            Vmo::Wired(vmo) => vmo.is_valid_offset(offset),
-            Vmo::Paged(vmo) => vmo.read().is_valid_offset(offset)
-        }
     }
 }

@@ -10,10 +10,13 @@ use core::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum Error {
-    /// Failed to set up mappings
-    Mmu(mmu::Error),
     /// Failed to parse device tree blob
     Dtb(dtb_parser::Error),
+    /// Errors returned by SBI calls
+    #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+    Sbi(riscv::sbi::Error),
+    /// Attempted to operate on mismatched address space.
+    AddressSpaceMismatch { expected: usize, found: usize },
     /// The caller did not have permission to perform the specified operation.
     AccessDenied,
     /// An argument is invalid.
@@ -24,12 +27,6 @@ pub enum Error {
     AlreadyExists,
     /// The system was not able to allocate some resource needed for the operation.
     NoResources,
-}
-
-impl From<mmu::Error> for Error {
-    fn from(err: mmu::Error) -> Self {
-        Self::Mmu(err)
-    }
 }
 
 impl From<dtb_parser::Error> for Error {
@@ -44,19 +41,33 @@ impl From<frame_alloc::AllocError> for Error {
     }
 }
 
+#[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+impl From<riscv::sbi::Error> for Error {
+    fn from(err: riscv::sbi::Error) -> Self {
+        Error::Sbi(err)
+    }
+}
+
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            Error::Mmu(_) => f.write_str("Failed to set up mappings"),
-            Error::Dtb(_) => f.write_str("Failed to parse device tree blob"),
+            Error::Dtb(err) => write!(f, "Failed to parse device tree blob: {err}"),
+            Error::AddressSpaceMismatch { expected, found } => write!(f, "Attempted to operate on mismatched address space. Expected {expected} but found {found}."),
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+            Error::Sbi(err) => write!(f, "SBI call failed: {err}"),
             Error::AccessDenied => {
-                f.write_str("The caller did not have permission to perform the specified operation")
+                write!(
+                    f,
+                    "The caller did not have permission to perform the specified operation"
+                )
             }
-            Error::InvalidArgument => f.write_str("An argument is invalid"),
-            Error::AlreadyExists => f.write_str(
+            Error::InvalidArgument => write!(f, "An argument is invalid"),
+            Error::AlreadyExists => write!(
+                f,
                 "An object with the specified identifier or at the specified place already exists",
             ),
-            Error::NoResources => f.write_str(
+            Error::NoResources => write!(
+                f,
                 "The system was not able to allocate some resource needed for the operation",
             ),
         }

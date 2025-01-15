@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
+use crate::vm::address::{PhysicalAddress, VirtualAddress};
 use crate::vm::frame_alloc::FRAME_ALLOC;
 use alloc::slice;
 use core::marker::PhantomData;
@@ -14,8 +16,6 @@ use core::ptr::NonNull;
 use core::sync::atomic;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
-use mmu::arch::PAGE_SIZE;
-use mmu::{PhysicalAddress, VirtualAddress};
 use static_assertions::assert_impl_all;
 
 /// Soft limit on the amount of references that may be made to a `Frame`.
@@ -251,20 +251,16 @@ impl FrameInfo {
 
     /// Returns a slice of the corresponding physical memory
     #[inline]
-    pub fn as_slice(&self, phys_off: VirtualAddress) -> &[u8] {
-        let base = VirtualAddress::from_phys(self.addr, phys_off)
-            .unwrap()
-            .as_ptr();
-        unsafe { slice::from_raw_parts(base, PAGE_SIZE) }
+    pub fn as_slice(&self) -> &[u8] {
+        let base = VirtualAddress::from_phys(self.addr).unwrap().as_ptr();
+        unsafe { slice::from_raw_parts(base, arch::PAGE_SIZE) }
     }
 
     /// Returns a mutable slice of the corresponding physical memory
     #[inline]
-    pub fn as_mut_slice(&mut self, phys_off: VirtualAddress) -> &mut [u8] {
-        let base = VirtualAddress::from_phys(self.addr, phys_off)
-            .unwrap()
-            .as_mut_ptr();
-        unsafe { slice::from_raw_parts_mut(base, PAGE_SIZE) }
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        let base = VirtualAddress::from_phys(self.addr).unwrap().as_mut_ptr();
+        unsafe { slice::from_raw_parts_mut(base, arch::PAGE_SIZE) }
     }
 
     #[inline]

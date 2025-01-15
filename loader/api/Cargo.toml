@@ -6,4 +6,3 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-mmu = { workspace = true }

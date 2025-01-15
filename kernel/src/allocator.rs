@@ -5,20 +5,20 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::INITIAL_HEAP_SIZE_PAGES;
+use crate::vm::bootstrap_alloc::BootstrapAllocator;
+use crate::{arch, INITIAL_HEAP_SIZE_PAGES};
 use core::alloc::Layout;
 use core::range::Range;
 use loader_api::BootInfo;
-use mmu::arch::PAGE_SIZE;
-use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator};
-use mmu::AddressRangeExt;
 use talc::{ErrOnOom, Span, Talc, Talck};
 
 #[global_allocator]
 static KERNEL_ALLOCATOR: Talck<sync::RawMutex, ErrOnOom> = Talc::new(ErrOnOom).lock();
 
 pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
-    let layout = Layout::from_size_align(INITIAL_HEAP_SIZE_PAGES * PAGE_SIZE, PAGE_SIZE).unwrap();
+    let layout =
+        Layout::from_size_align(INITIAL_HEAP_SIZE_PAGES * arch::PAGE_SIZE, arch::PAGE_SIZE)
+            .unwrap();
 
     let phys = boot_alloc.allocate_contiguous(layout).unwrap();
 
@@ -32,7 +32,10 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     };
 
     let mut alloc = KERNEL_ALLOCATOR.lock();
-    let span = Span::from_base_size(virt.start.as_mut_ptr(), virt.size());
+    let span = Span::from_base_size(
+        virt.start as *mut u8,
+        virt.end.checked_sub(virt.start).unwrap(),
+    );
     unsafe {
         let old_heap = alloc.claim(span).unwrap();
         alloc.extend(old_heap, span);

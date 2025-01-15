@@ -32,18 +32,17 @@ mod vm;
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use crate::time::Instant;
+use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::range::Range;
 use core::{cmp, slice};
-use loader_api::{BootInfo, MemoryRegionKind};
-use mmu::arch::PAGE_SIZE;
-use mmu::frame_alloc::{BootstrapAllocator, FrameAllocator as _};
-use mmu::{PhysicalAddress, VirtualAddress};
+use loader_api::{BootInfo, MemoryRegionKind, TlsTemplate};
 use sync::OnceLock;
 use thread_local::thread_local;
 use vm::frame_alloc;
+use vm::{PhysicalAddress, VirtualAddress};
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
@@ -61,7 +60,6 @@ pub const INITIAL_HEAP_SIZE_PAGES: usize = 2048; // 32 MiB
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub static BOOT_INFO: OnceLock<&'static BootInfo> = OnceLock::new();
 pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
 
 thread_local!(
@@ -70,21 +68,22 @@ thread_local!(
 );
 
 pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
-    BOOT_INFO.get_or_init(|| boot_info);
-
     // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
     // is available
     let allocatable_memories = allocatable_memory_regions(boot_info);
     let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
-    boot_alloc.set_phys_offset(boot_info.physical_address_offset);
 
     // initializing the global allocator
     allocator::init(&mut boot_alloc, boot_info);
 
+    // initialize the panic backtracing subsystem after the allocator has been set up
+    // since setting up the symbolization context requires allocation
+    panic::init(boot_info);
+
     // initialize thread-local storage
     // done after global allocator initialization since TLS destructors are registered in a heap
     // allocated Vec
-    let tls = init_tls(&mut boot_alloc, boot_info);
+    let tls = init_tls(&mut boot_alloc, &boot_info.tls_template);
 
     // initialize the logger
     // done after TLS initialization since we maintain per-hart host stdio channels
@@ -114,7 +113,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::debug!("\n{hart_local_minfo}");
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
 
-    frame_alloc::init(boot_alloc, boot_info.physical_address_offset);
+    frame_alloc::init(boot_alloc);
 
     // TODO init kernel address space (requires global allocator)
 
@@ -147,20 +146,23 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     arch::exit(0);
 }
 
-fn init_tls(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) -> Option<VirtualAddress> {
-    if let Some(template) = &boot_info.tls_template {
+fn init_tls(
+    boot_alloc: &mut BootstrapAllocator,
+    maybe_tls_template: &Option<TlsTemplate>,
+) -> Option<VirtualAddress> {
+    if let Some(template) = &maybe_tls_template {
         let layout =
-            Layout::from_size_align(template.mem_size, cmp::max(template.align, PAGE_SIZE))
+            Layout::from_size_align(template.mem_size, cmp::max(template.align, arch::PAGE_SIZE))
                 .unwrap();
         let phys = boot_alloc.allocate_contiguous_zeroed(layout).unwrap();
 
         // Use the phys_map to access the newly allocated TLS region
-        let virt = VirtualAddress::from_phys(phys, boot_info.physical_address_offset).unwrap();
+        let virt = VirtualAddress::from_phys(phys).unwrap();
 
         if template.file_size != 0 {
             unsafe {
                 let src: &[u8] =
-                    slice::from_raw_parts(template.start_addr.as_ptr(), template.file_size);
+                    slice::from_raw_parts(template.start_addr as *const u8, template.file_size);
                 let dst: &mut [u8] =
                     slice::from_raw_parts_mut(virt.as_mut_ptr(), template.file_size);
 
@@ -188,7 +190,13 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
     let temp: ArrayVec<Range<PhysicalAddress>, 16> = boot_info
         .memory_regions
         .iter()
-        .filter_map(|region| region.kind.is_usable().then_some(region.range))
+        .filter_map(|region| {
+            let range = Range::from(
+                PhysicalAddress::new(region.range.start)..PhysicalAddress::new(region.range.end),
+            );
+
+            region.kind.is_usable().then_some(range)
+        })
         .collect();
 
     // merge adjacent regions
@@ -220,7 +228,6 @@ fn locate_device_tree(boot_info: &BootInfo) -> *const u8 {
 
     boot_info
         .physical_address_offset
-        .checked_add(fdt.range.start.get())
-        .unwrap()
-        .as_ptr()
+        .checked_add(fdt.range.start)
+        .unwrap() as *const u8
 }
