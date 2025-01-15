@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::error::Error;
-use crate::vm::address::PhysicalAddress;
+use crate::vm::address::{AddressRangeExt, PhysicalAddress};
 use crate::{arch, ensure};
 use core::range::Range;
 
@@ -20,8 +20,8 @@ impl WiredVmo {
         Self { range }
     }
 
-    pub(crate) fn is_valid_offset(&self, offset: usize) -> bool {
-        todo!()
+    pub fn is_valid_offset(&self, offset: usize) -> bool {
+        offset <= self.range.size()
     }
 
     pub fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {

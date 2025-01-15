@@ -26,8 +26,9 @@ impl FromIterator<Frame> for PagedVmo {
 
 impl PagedVmo {
     pub fn is_valid_offset(&self, offset: usize) -> bool {
-        todo!()
+        offset <= self.frames.size()
     }
+
     pub fn require_owned_frame(&mut self, at_offset: usize) -> Result<&Frame, Error> {
         if let Some(old_frame) = self.frames.get(at_offset) {
             log::trace!("require_owned_frame for resident frame, allocating new...");

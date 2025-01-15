@@ -165,7 +165,7 @@ pub fn alloc_contiguous_zeroed(layout: Layout) -> Result<FrameList, AllocError> 
 
     // memset'ing the slice to zero
     unsafe {
-        slice::from_raw_parts_mut(virt.as_mut_ptr(), frames.len() * arch::PAGE_SIZE).fill(0);
+        slice::from_raw_parts_mut(virt.as_mut_ptr(), frames.size()).fill(0);
     }
 
     Ok(frames)
