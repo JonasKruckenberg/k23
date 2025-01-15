@@ -5,9 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::vm::error::Error;
 use crate::vm::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use crate::vm::address_space_region::AddressSpaceRegion;
+use crate::vm::error::Error;
 use crate::vm::flush::Flush;
 use crate::vm::vmo::{Vmo, WiredVmo};
 use crate::vm::{frame_alloc, ArchAddressSpace};
@@ -18,8 +18,6 @@ use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::alloc::Layout;
-use core::cmp;
-use core::fmt::{Display, Formatter};
 use core::num::NonZeroUsize;
 use core::ops::Bound;
 use core::pin::Pin;
@@ -165,8 +163,14 @@ impl AddressSpace {
         permissions: Permissions,
         name: Option<String>,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedStart);
-        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedEnd);
+        ensure!(
+            range.start.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedStart
+        );
+        ensure!(
+            range.end.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedEnd
+        );
         ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
         ensure!(vmo.is_valid_offset(vmo_offset), Error::InvalidVmoOffset);
         debug_assert!(
@@ -200,8 +204,14 @@ impl AddressSpace {
     /// - `size` must less than or equal to the maximum size for this address space
     /// - preconditions must be checked before any mutations
     pub fn unmap(&mut self, range: Range<VirtualAddress>) -> Result<(), Error> {
-        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedStart);
-        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedEnd);
+        ensure!(
+            range.start.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedStart
+        );
+        ensure!(
+            range.end.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedEnd
+        );
         ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
 
         // ensure the entire range is mapped and doesn't cover any holes
@@ -236,8 +246,14 @@ impl AddressSpace {
         range: Range<VirtualAddress>,
         new_permissions: Permissions,
     ) -> Result<(), Error> {
-        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedStart);
-        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedEnd);
+        ensure!(
+            range.start.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedStart
+        );
+        ensure!(
+            range.end.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedEnd
+        );
         ensure!(
             range.size() <= self.max_range.size(),
             Error::AlignmentTooLarge
@@ -344,8 +360,14 @@ impl AddressSpace {
         name: Option<String>,
         flush: &mut Flush,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedStart);
-        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE), Error::MisalignedEnd);
+        ensure!(
+            range.start.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedStart
+        );
+        ensure!(
+            range.end.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedEnd
+        );
         ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
         ensure!(permissions.is_valid(), Error::InvalidPermissions);
 
@@ -375,11 +397,8 @@ impl AddressSpace {
         // critical that the MMUs and our "logical" view are in sync.
         if permissions.is_empty() {
             unsafe {
-                self.arch.unmap(
-                    range.start,
-                    NonZeroUsize::new(range.size()).unwrap(),
-                    flush,
-                )?;
+                self.arch
+                    .unmap(range.start, NonZeroUsize::new(range.size()).unwrap(), flush)?;
             }
         } else {
             unsafe {

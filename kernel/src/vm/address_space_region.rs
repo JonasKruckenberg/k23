@@ -6,10 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::Error;
 use crate::vm::address::{AddressRangeExt, VirtualAddress};
 use crate::vm::address_space::Batch;
 use crate::vm::vmo::Vmo;
+use crate::vm::Error;
 use crate::vm::{PageFaultFlags, Permissions};
 use alloc::boxed::Box;
 use alloc::string::String;

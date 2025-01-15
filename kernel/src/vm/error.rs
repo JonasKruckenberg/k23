@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::fmt::{Display, Formatter, Write};
+use core::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum Error {
@@ -22,7 +22,10 @@ pub enum Error {
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     CacheInvalidationFailed(riscv::sbi::Error),
     /// Attempted to operate on mismatched address space.
-    AddressSpaceMismatch { expected: usize, found: usize },
+    AddressSpaceMismatch {
+        expected: usize,
+        found: usize,
+    },
     /// Errors returned by SBI calls
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     Sbi(riscv::sbi::Error),
@@ -40,7 +43,6 @@ impl From<riscv::sbi::Error> for Error {
         Error::Sbi(err)
     }
 }
-
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {

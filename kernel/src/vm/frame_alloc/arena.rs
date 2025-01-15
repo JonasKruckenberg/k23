@@ -112,7 +112,7 @@ impl Arena {
             total_frames,
         }
     }
-    
+
     pub fn max_alignment(&self) -> usize {
         arch::PAGE_SIZE << self.max_order
     }

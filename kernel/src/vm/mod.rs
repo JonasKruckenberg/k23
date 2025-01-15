@@ -9,13 +9,12 @@ mod address;
 mod address_space;
 mod address_space_region;
 pub mod bootstrap_alloc;
+mod error;
 pub mod flush;
 pub mod frame_alloc;
 mod frame_list;
-mod error;
 mod vmo;
 
-pub use error::Error;
 use crate::arch;
 use crate::machine_info::MachineInfo;
 use crate::vm::flush::Flush;
@@ -28,6 +27,7 @@ use core::fmt::Formatter;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
+pub use error::Error;
 use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -78,15 +78,17 @@ fn reserve_wired_regions(
     flush: &mut Flush,
 ) -> crate::Result<()> {
     // reserve the physical memory map
-    aspace.reserve(
-        Range::from(
-            VirtualAddress::new(boot_info.physical_memory_map.start).unwrap()
-                ..VirtualAddress::new(boot_info.physical_memory_map.end).unwrap(),
-        ),
-        Permissions::READ | Permissions::WRITE,
-        Some("Physical Memory Map".to_string()),
-        flush,
-    ).unwrap();
+    aspace
+        .reserve(
+            Range::from(
+                VirtualAddress::new(boot_info.physical_memory_map.start).unwrap()
+                    ..VirtualAddress::new(boot_info.physical_memory_map.end).unwrap(),
+            ),
+            Permissions::READ | Permissions::WRITE,
+            Some("Physical Memory Map".to_string()),
+            flush,
+        )
+        .unwrap();
 
     let own_elf = unsafe {
         let base = boot_info
@@ -133,21 +135,23 @@ fn reserve_wired_regions(
             ph.virtual_addr() + ph.mem_size()
         );
 
-        aspace.reserve(
-            Range {
-                start: virt.align_down(arch::PAGE_SIZE),
-                end: virt
-                    .checked_add(ph.mem_size() as usize)
-                    .unwrap()
-                    .checked_align_up(arch::PAGE_SIZE)
-                    .unwrap(),
-            },
-            permissions,
-            Some(format!("Kernel {permissions} Segment")),
-            flush,
-        ).unwrap();
+        aspace
+            .reserve(
+                Range {
+                    start: virt.align_down(arch::PAGE_SIZE),
+                    end: virt
+                        .checked_add(ph.mem_size() as usize)
+                        .unwrap()
+                        .checked_align_up(arch::PAGE_SIZE)
+                        .unwrap(),
+                },
+                permissions,
+                Some(format!("Kernel {permissions} Segment")),
+                flush,
+            )
+            .unwrap();
     }
-    
+
     Ok(())
 }
 
@@ -217,7 +221,7 @@ impl From<PageFaultFlags> for Permissions {
 
 pub trait ArchAddressSpace {
     type Flags: From<Permissions> + bitflags::Flags;
-    
+
     fn new(asid: usize) -> Result<(Self, Flush), Error>
     where
         Self: Sized;

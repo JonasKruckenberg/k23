@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::Error;
 use crate::vm::address::VirtualAddress;
+use crate::vm::Error;
 use core::range::Range;
 use core::{cmp, mem};
 
@@ -49,7 +49,7 @@ impl Flush {
     pub fn flush(mut self) -> Result<(), Error> {
         log::trace!("flushing range {:?}", self.range);
         if let Some(range) = self.range.take() {
-            arch::invalidate_range(self.asid, range) ?;
+            arch::invalidate_range(self.asid, range)?;
         } else {
             log::warn!("attempted to flush empty range, ignoring");
         }

@@ -7,6 +7,7 @@
 
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
+use crate::vm::Error;
 use crate::vm::{frame_alloc, PhysicalAddress, VirtualAddress};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -18,7 +19,6 @@ use core::range::Range;
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
-use crate::vm::Error;
 
 pub const DEFAULT_ASID: usize = 0;
 

@@ -49,7 +49,10 @@ pub fn init(boot_alloc: BootstrapAllocator) {
         }
 
         FrameAllocator {
-            global: Mutex::new(GlobalFrameAllocator { arenas, max_alignment }),
+            global: Mutex::new(GlobalFrameAllocator {
+                arenas,
+                max_alignment,
+            }),
             frames_in_caches_hint: AtomicUsize::new(0),
             hart_local_cache: ThreadLocal::new(),
         }
@@ -178,7 +181,7 @@ pub fn max_alignment() -> usize {
 
 struct GlobalFrameAllocator {
     arenas: Vec<Arena>,
-    max_alignment: usize
+    max_alignment: usize,
 }
 
 impl GlobalFrameAllocator {
