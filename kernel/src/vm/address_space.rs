@@ -557,22 +557,22 @@ impl<'a> Batch<'a> {
         }
         log::trace!("flushing batch {:?} {:?}...", self.range, self.phys);
 
-        todo!();
-        // let iter = BatchFramesIter {
-        //     iter: self.phys.drain(..),
-        //     mmu_frames: self.mmu_frames,
-        // };
-        //
-        // let mut flush = Flush::empty(self.arch_aspace.asid());
-        // unsafe {
-        //     self.arch_aspace
-        //         .map(self.range.start, iter, self.flags, &mut flush)?;
-        // }
-        // flush.flush()?;
+        let mut flush = self.arch_aspace.new_flush();
+        for (phys, len) in self.phys.drain(..) {
+            unsafe {
+                self.arch_aspace.map_contiguous(
+                    self.range.start,
+                    phys,
+                    NonZeroUsize::new(len).unwrap(),
+                    self.flags,
+                    &mut flush,
+                )?;
+            }
+        }
+        flush.flush()?;
 
-        // self.range = Range::from(self.range.end..self.range.end);
-
-        // Ok(())
+        self.range = Range::from(self.range.end..self.range.end);
+        Ok(())
     }
 
     pub fn ignore(&mut self) {
