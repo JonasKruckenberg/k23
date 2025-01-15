@@ -56,6 +56,13 @@ const PTE_PPN_SHIFT: usize = 2;
 
 #[cold]
 pub fn init() {
+    let root_pgtable = get_active_pgtable(DEFAULT_ASID);
+
+    // Zero out the lower half of the kernel address space to remove e.g. the leftover loader identity mappings
+    unsafe {
+        slice::from_raw_parts_mut(VirtualAddress::from_phys(root_pgtable).unwrap().as_mut_ptr(), PAGE_SIZE / 2).fill(0);
+    }
+
     // Determine the number of supported ASID bits. The ASID is a "WARL" (Write Any Values, Reads Legal Values)
     // so we can write all 1s to and see which ones "stick".
     unsafe {
