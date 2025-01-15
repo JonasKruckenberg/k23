@@ -5,9 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
 use crate::error::Error;
+use crate::vm::address::{AddressRangeExt, VirtualAddress};
 use crate::vm::address_space::Batch;
-use crate::vm::Vmo;
+use crate::vm::vmo::Vmo;
 use crate::vm::{PageFaultFlags, Permissions};
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -17,8 +19,6 @@ use core::mem::offset_of;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::range::Range;
-use mmu::arch::PAGE_SIZE;
-use mmu::{AddressRangeExt, VirtualAddress};
 use pin_project::pin_project;
 use wavltree::Side;
 
@@ -88,7 +88,7 @@ impl AddressSpaceRegion {
         flags: PageFaultFlags,
     ) -> crate::Result<()> {
         log::trace!("page fault at {addr:?} flags {flags:?}");
-        debug_assert!(addr.is_aligned_to(PAGE_SIZE));
+        debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
         debug_assert!(self.range.contains(&addr));
 
         // Check that the access (read,write or execute) is permitted given this region's permissions
@@ -133,7 +133,8 @@ impl AddressSpaceRegion {
             Vmo::Wired(vmo) => {
                 let range_phys = vmo
                     .lookup_contiguous(Range::from(
-                        vmo_relative_offset..vmo_relative_offset.checked_add(PAGE_SIZE).unwrap(),
+                        vmo_relative_offset
+                            ..vmo_relative_offset.checked_add(arch::PAGE_SIZE).unwrap(),
                     ))
                     .expect("contiguous lookup for wired VMOs should never fail");
 
@@ -149,7 +150,7 @@ impl AddressSpaceRegion {
                     let mut vmo = vmo.write();
 
                     let frame = vmo.require_owned_frame(vmo_relative_offset)?;
-                    batch.append(addr, frame.addr(), PAGE_SIZE, self.permissions.into())?;
+                    batch.append(addr, frame.addr(), arch::PAGE_SIZE, self.permissions.into())?;
                 } else {
                     let vmo = vmo.read();
 
@@ -157,7 +158,7 @@ impl AddressSpaceRegion {
                     batch.append(
                         addr,
                         frame.addr(),
-                        PAGE_SIZE,
+                        arch::PAGE_SIZE,
                         self.permissions.difference(Permissions::WRITE).into(),
                     )?;
                 }

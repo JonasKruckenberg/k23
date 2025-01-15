@@ -5,32 +5,32 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+mod address;
 mod address_space;
 mod address_space_region;
+pub mod bootstrap_alloc;
+pub mod flush;
 pub mod frame_alloc;
 mod frame_list;
-mod paged_vmo;
-mod wired_vmo;
+mod vmo;
 
+use crate::arch;
 use crate::machine_info::MachineInfo;
+use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
+pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_space::AddressSpace;
 use alloc::format;
 use alloc::string::ToString;
 use core::fmt::Formatter;
+use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
 use loader_api::BootInfo;
-use mmu::arch::PAGE_SIZE;
-use mmu::{Flush, VirtualAddress};
-use paged_vmo::PagedVmo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{LazyLock, Mutex, OnceLock, RwLock};
-use wired_vmo::WiredVmo;
+use sync::{LazyLock, Mutex, OnceLock};
 use xmas_elf::program::Type;
-
-const KERNEL_ASID: usize = 0;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
@@ -42,10 +42,7 @@ static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
 pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
     #[allow(tail_expr_drop_order)]
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
-        let (hw_aspace, mut flush) = mmu::AddressSpace::from_active(
-            KERNEL_ASID,
-            VirtualAddress::new(boot_info.physical_address_offset).unwrap(),
-        );
+        let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
         let mut aspace = AddressSpace::from_active_kernel(
             hw_aspace,
@@ -76,7 +73,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
 fn reserve_wired_regions(
     aspace: &mut AddressSpace,
     boot_info: &BootInfo,
-    flush: &mut Flush,
+    flush: &mut flush::Flush,
 ) -> crate::Result<()> {
     // reserve the physical memory map
     aspace.reserve(
@@ -136,11 +133,11 @@ fn reserve_wired_regions(
 
         aspace.reserve(
             Range {
-                start: virt.align_down(PAGE_SIZE),
+                start: virt.align_down(arch::PAGE_SIZE),
                 end: virt
                     .checked_add(ph.mem_size() as usize)
                     .unwrap()
-                    .checked_align_up(PAGE_SIZE)
+                    .checked_align_up(arch::PAGE_SIZE)
                     .unwrap(),
             },
             permissions,
@@ -216,18 +213,51 @@ impl From<PageFaultFlags> for Permissions {
     }
 }
 
-impl From<Permissions> for mmu::Flags {
-    fn from(value: Permissions) -> Self {
-        let mut out = mmu::Flags::empty();
-        out.set(mmu::Flags::READ, value.contains(Permissions::READ));
-        out.set(mmu::Flags::WRITE, value.contains(Permissions::WRITE));
-        out.set(mmu::Flags::EXECUTE, value.contains(Permissions::EXECUTE));
-        out
-    }
-}
+pub trait ArchAddressSpace {
+    type Flags: From<Permissions> + bitflags::Flags;
 
-#[derive(Debug)]
-pub enum Vmo {
-    Wired(WiredVmo),
-    Paged(RwLock<PagedVmo>),
+    fn new(asid: usize) -> crate::Result<(Self, Flush)>
+    where
+        Self: Sized;
+    fn from_active(asid: usize) -> (Self, Flush)
+    where
+        Self: Sized;
+
+    unsafe fn map_contiguous(
+        &mut self,
+        virt: VirtualAddress,
+        phys: PhysicalAddress,
+        len: NonZeroUsize,
+        flags: Self::Flags,
+        flush: &mut Flush,
+    ) -> crate::Result<()>;
+
+    unsafe fn remap_contiguous(
+        &mut self,
+        virt: VirtualAddress,
+        phys: PhysicalAddress,
+        len: NonZeroUsize,
+        flush: &mut Flush,
+    ) -> crate::Result<()>;
+
+    unsafe fn protect(
+        &mut self,
+        virt: VirtualAddress,
+        len: NonZeroUsize,
+        new_flags: Self::Flags,
+        flush: &mut Flush,
+    ) -> crate::Result<()>;
+
+    unsafe fn unmap(
+        &mut self,
+        virt: VirtualAddress,
+        len: NonZeroUsize,
+        flush: &mut Flush,
+    ) -> crate::Result<()>;
+
+    unsafe fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, Self::Flags)>;
+
+    unsafe fn activate(&self);
+
+    fn new_flush(&self) -> Flush;
 }

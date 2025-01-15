@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::physical_address_offset;
 use crate::vm::frame_alloc::Frame;
 use crate::vm::frame_list::FrameList;
 use crate::vm::{frame_alloc, THE_ZERO_FRAME};
@@ -36,10 +35,10 @@ impl PagedVmo {
             // all zeroes anyway
             if !Frame::ptr_eq(old_frame, &THE_ZERO_FRAME) {
                 log::trace!("performing copy-on-write...");
-                let src = old_frame.as_slice(physical_address_offset());
+                let src = old_frame.as_slice();
                 let dst = Frame::get_mut(&mut new_frame)
                     .expect("newly allocated frame should be unique")
-                    .as_mut_slice(physical_address_offset());
+                    .as_mut_slice();
 
                 log::trace!(
                     "copying from {:?} to {:?}",

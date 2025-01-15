@@ -5,11 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::ensure;
 use crate::error::Error;
+use crate::vm::address::PhysicalAddress;
+use crate::{arch, ensure};
 use core::range::Range;
-use mmu::arch::PAGE_SIZE;
-use mmu::PhysicalAddress;
 
 #[derive(Debug)]
 pub struct WiredVmo {
@@ -23,9 +22,9 @@ impl WiredVmo {
 
     pub fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {
         ensure!(
-            range.start % PAGE_SIZE == 0,
+            range.start % arch::PAGE_SIZE == 0,
             Error::InvalidArgument,
-            "range is not PAGE_SIZE aligned"
+            "range is not arch::PAGE_SIZE aligned"
         );
         let start = self.range.start.checked_add(range.start).unwrap();
         let end = self.range.start.checked_add(range.end).unwrap();
