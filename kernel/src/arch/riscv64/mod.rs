@@ -171,3 +171,13 @@ pub fn set_thread_ptr(addr: VirtualAddress) {
 pub fn wait_for_interrupt() {
     unsafe { asm!("wfi") }
 }
+
+pub fn mb() {
+    unsafe { asm!("fence iorw,iorw"); }
+}
+pub fn wmb() {
+    unsafe { asm!("fence ow,ow"); }
+}
+pub fn rmb() {
+    unsafe { asm!("fence ir,ir"); }
+}

@@ -48,6 +48,7 @@ impl Flush {
     /// Returns an error if the range could not be flushed due to an underlying hardware error.
     pub fn flush(mut self) -> Result<(), Error> {
         if let Some(range) = self.range.take() {
+            log::trace!("flushing range {range:?} for ASID {}", self.asid);
             arch::invalidate_range(self.asid, range)?;
         } else {
             log::warn!("attempted to flush empty range, ignoring");

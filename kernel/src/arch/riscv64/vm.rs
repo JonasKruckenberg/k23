@@ -19,6 +19,7 @@ use core::{fmt, slice};
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
+use crate::arch::{mb, wmb};
 
 pub const DEFAULT_ASID: u16 = 0;
 
@@ -80,6 +81,8 @@ pub fn init() {
         // TODO use this to initialize an ASID allocator
         log::trace!("supported ASID bits: {}", max_asid.count_ones());
     }
+
+    wmb();
 }
 
 /// Return whether the given virtual address is in the kernel address space.
@@ -94,12 +97,17 @@ pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
 ///
 /// Should return an error if the underlying operation failed and the caches could not be invalidated.
 pub fn invalidate_range(asid: u16, address_range: Range<VirtualAddress>) -> Result<(), Error> {
+    mb();
+
     let base_addr = address_range.start.get();
     let size = address_range
         .end
         .checked_sub_addr(address_range.start)
         .unwrap();
     sfence_vma_asid(0, usize::MAX, base_addr, size, asid)?;
+
+    mb();
+
     Ok(())
 }
 
@@ -164,6 +172,8 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         Self: Sized,
     {
         let root_pgtable = frame_alloc::alloc_one_zeroed()?;
+
+        mb();
 
         let this = Self {
             asid,
@@ -266,7 +276,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
                     // mark this PTE as a valid internal node pointing to that sub-table.
                     let frame = frame_alloc::alloc_one_zeroed()?;
 
-                    // TODO memory barrier
+                    mb();
 
                     pte.replace_address_and_flags(frame.addr(), PTEFlags::VALID);
                     pgtable = self.pgtable_ptr_from_phys(frame.addr());
@@ -274,6 +284,8 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
                 }
             }
         }
+
+        mb();
 
         Ok(())
     }
@@ -306,6 +318,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
                     let index = pte_index_for_level(virt, lvl);
                     pgtable.add(index).as_mut()
                 };
+                let page_size = page_size_for_level(lvl);
 
                 if pte.is_valid() && pte.is_leaf() {
                     // We reached the previously mapped leaf node that we want to edit
@@ -322,7 +335,6 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
                         old_flags.difference(rwx_mask).union(new_flags),
                     );
 
-                    let page_size = page_size_for_level(lvl);
                     flush.extend_range(
                         self.asid,
                         Range::from(virt..virt.checked_add(page_size).unwrap()),
@@ -334,11 +346,12 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
                     // This PTE is an internal node pointing to another page table
                     pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
                 } else {
-                    unreachable!("Invalid state: PTE cant be vacant or invalid+leaf {pte:?}");
                     remaining_bytes = remaining_bytes.saturating_sub(page_size);
                 }
             }
         }
+
+        mb();
 
         Ok(())
     }
@@ -374,6 +387,8 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
                 )?;
             }
         }
+
+        mb();
 
         Ok(())
     }
