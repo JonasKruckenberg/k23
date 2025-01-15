@@ -224,14 +224,24 @@ impl AddressSpace {
             bytes_seen += region.range.size();
             Ok(())
         })?;
-        ensure!(bytes_seen >= range.size(), Error::NotMapped);
+        ensure!(bytes_seen == range.size(), Error::NotMapped);
 
         // Actually do the unmapping now
         unsafe { self.unmap_unchecked(range) }
     }
 
     pub unsafe fn unmap_unchecked(&mut self, range: Range<VirtualAddress>) -> Result<(), Error> {
-        todo!()
+        
+        let mut bytes_remaining = range.size();
+        let mut c = self.regions.find_mut(&range.start);
+        while bytes_remaining > 0 {
+            let mut region = c.remove().unwrap();
+            let range = region.range;
+            Pin::as_mut(&mut region).unmap(range)?;
+            bytes_remaining -= range.size();
+        }
+        
+        Ok(())
     }
 
     /// - The *entire* range must be occupied
@@ -278,7 +288,7 @@ impl AddressSpace {
 
             Ok(())
         })?;
-        ensure!(bytes_seen >= range.size(), Error::NotMapped);
+        ensure!(bytes_seen == range.size(), Error::NotMapped);
 
         // Actually do the permission changes now
         unsafe { self.protect_unchecked(range, new_permissions) }
