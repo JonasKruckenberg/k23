@@ -230,102 +230,15 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             for lvl in (0..PAGE_TABLE_LEVELS).rev() {
                 let index = pte_index_for_level(virt, lvl);
                 let pte = unsafe { pgtable.add(index).as_mut() };
-
-                if !pte.is_valid() {
-                    // If the PTE is invalid that means we reached a vacant slot to map into.
-                    //
-                    // First, lets check if we can map at this level of the page table given our
-                    // current virtual and physical address as well as the number of remaining bytes.
-                    if can_map_at_level(virt, phys, remaining_bytes, lvl) {
-                        let page_size = page_size_for_level(lvl);
-
-                        // This PTE is vacant AND we can map at this level
-                        // mark this PTE as a valid leaf node pointing to the physical frame
-                        pte.replace_address_and_flags(phys, PTEFlags::VALID | flags);
-
-                        flush.extend_range(
-                            self.asid,
-                            Range::from(virt..virt.checked_add(page_size).unwrap()),
-                        )?;
-                        virt = virt.checked_add(page_size).unwrap();
-                        phys = phys.checked_add(page_size).unwrap();
-                        remaining_bytes -= page_size;
-                        continue 'outer;
-                    } else if !pte.is_valid() {
-                        // The current PTE is vacant, but we couldn't map at this level (because the
-                        // page size was too large, or the request wasn't sufficiently aligned or
-                        // because the architecture just can't map at this level). This means
-                        // we need to allocate a new sub-table and retry.
-                        // allocate a new physical frame to hold the next level table and
-                        // mark this PTE as a valid internal node pointing to that sub-table.
-                        let frame = frame_alloc::alloc_one_zeroed()?;
-
-                        // TODO memory barrier
-
-                        pte.replace_address_and_flags(frame.addr(), PTEFlags::VALID);
-                        pgtable = self.pgtable_ptr_from_phys(frame.addr());
-                        self.wired_frames.push(frame);
-                    }
-                } else if !pte.is_leaf() {
-                    // This PTE is an internal node pointing to another page table
-                    pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
-                } else {
-                    unreachable!("Invalid state: PTE can't be valid leaf (this means {virt:?} is already mapped) {pte:?} {pte:p}");
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    unsafe fn remap_contiguous(
-        &mut self,
-        mut virt: VirtualAddress,
-        mut phys: PhysicalAddress,
-        len: NonZeroUsize,
-        flush: &mut Flush,
-    ) -> Result<(), Error> {
-        let mut remaining_bytes = len.get();
-        debug_assert!(
-            remaining_bytes >= PAGE_SIZE,
-            "virtual address range must span be at least one page"
-        );
-        debug_assert!(
-            virt.is_aligned_to(PAGE_SIZE),
-            "virtual address must be aligned to at least 4KiB page size"
-        );
-        debug_assert!(
-            phys.is_aligned_to(PAGE_SIZE),
-            "physical address must be aligned to at least 4KiB page size"
-        );
-
-        // This algorithm behaves a lot like the above one for `map_contiguous` but with an important
-        // distinction: Since we require the entire range to already be mapped, we follow the page tables
-        // until we reach a valid PTE. Once we reached, we assert that we can map the given physical
-        // address here and simply update the PTEs address. We then again repeat this until we have
-        // no more bytes to process.
-        'outer: while remaining_bytes > 0 {
-            let mut pgtable = self.pgtable_ptr_from_phys(self.root_pgtable);
-
-            for lvl in (0..PAGE_TABLE_LEVELS).rev() {
-                let pte = unsafe {
-                    let index = pte_index_for_level(virt, lvl);
-                    pgtable.add(index).as_mut()
-                };
-
-                if pte.is_valid() && pte.is_leaf() {
-                    // We reached the previously mapped leaf node that we want to edit
-                    // assert that we can actually map at this level (remap requires users to remap
-                    // only to equal or larger alignments, but we should make sure.
+                
+                // Let's check if we can map at this level of the page table given our
+                // current virtual and physical address as well as the number of remaining bytes.
+                if can_map_at_level(virt, phys, remaining_bytes, lvl) {
                     let page_size = page_size_for_level(lvl);
 
-                    debug_assert!(
-                        can_map_at_level(virt, phys, remaining_bytes, lvl),
-                        "remapping requires the same alignment ({page_size}) but found {phys:?}, {remaining_bytes}bytes"
-                    );
-
-                    let (_old_phys, flags) = pte.get_address_and_flags();
-                    pte.replace_address_and_flags(phys, flags);
+                    // This PTE is vacant AND we can map at this level
+                    // mark this PTE as a valid leaf node pointing to the physical frame
+                    pte.replace_address_and_flags(phys, PTEFlags::VALID | flags);
 
                     flush.extend_range(
                         self.asid,
@@ -335,11 +248,23 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
                     phys = phys.checked_add(page_size).unwrap();
                     remaining_bytes -= page_size;
                     continue 'outer;
-                } else if pte.is_valid() {
+                } else if pte.is_valid() && !pte.is_leaf() {
                     // This PTE is an internal node pointing to another page table
                     pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
                 } else {
-                    unreachable!("Invalid state: PTE cant be vacant or invalid+leaf {pte:?}");
+                    // The current PTE is vacant, but we couldn't map at this level (because the
+                    // page size was too large, or the request wasn't sufficiently aligned or
+                    // because the architecture just can't map at this level). This means
+                    // we need to allocate a new sub-table and retry.
+                    // allocate a new physical frame to hold the next level table and
+                    // mark this PTE as a valid internal node pointing to that sub-table.
+                    let frame = frame_alloc::alloc_one_zeroed()?;
+
+                    // TODO memory barrier
+
+                    pte.replace_address_and_flags(frame.addr(), PTEFlags::VALID);
+                    pgtable = self.pgtable_ptr_from_phys(frame.addr());
+                    self.wired_frames.push(frame);
                 }
             }
         }
@@ -385,11 +310,6 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
 
                     let new_flags = rwx_mask & new_flags;
                     let (phys, old_flags) = pte.get_address_and_flags();
-
-                    // ensure!(
-                    //     old_flags.intersection(rwx_mask).contains(new_flags),
-                    //     Error::PermissionIncrease
-                    // );
 
                     pte.replace_address_and_flags(
                         phys,
