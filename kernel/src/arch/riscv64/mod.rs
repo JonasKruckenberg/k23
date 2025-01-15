@@ -65,6 +65,7 @@ bitflags! {
         const SSTVALA = 1 << 36;
         const SSTVECD = 1 << 37;
         const SVADU = 1 << 38;
+        const SVVPTC = 1 << 39;
     }
 }
 
@@ -112,7 +113,12 @@ pub fn parse_riscv_extensions(mut strs: Strings) -> Result<RiscvExtensions, dtb_
             "sstvala" => RiscvExtensions::SSTVALA,
             "sstvecd" => RiscvExtensions::SSTVECD,
             "svadu" => RiscvExtensions::SVADU,
-            _ => return Err(dtb_parser::Error::InvalidToken(0)), // TODO better error type
+            "svvptc" => RiscvExtensions::SVVPTC,
+            _ => {
+                log::error!("unknown RISCV extension {str}");
+                // TODO better error type
+                return Err(dtb_parser::Error::InvalidToken(0)) 
+            },
         }
     }
 
