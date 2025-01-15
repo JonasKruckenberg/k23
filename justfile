@@ -184,6 +184,7 @@ _run_riscv64 binary *args: (_build_bootimg binary)
         -numa node,cpus=0-3,nodeid=0,memdev=m0 \
         -numa node,cpus=4-7,nodeid=1,memdev=m1 \
         -numa dist,src=0,dst=1,val=20 \
+        -monitor unix:qemu-monitor-socket,server,nowait \
         {{args}}
 
 _build_bootimg $KERNEL:

@@ -19,20 +19,22 @@ use crate::arch;
 use crate::machine_info::MachineInfo;
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
+use crate::vm::vmo::{PagedVmo, Vmo};
 pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_space::AddressSpace;
 use alloc::format;
 use alloc::string::ToString;
-use core::fmt::Formatter;
+use alloc::sync::Arc;
+use core::alloc::Layout;
+use core::{fmt, iter, slice};
 use core::num::NonZeroUsize;
 use core::range::Range;
-use core::{fmt, slice};
-pub use error::Error;
 use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{LazyLock, Mutex, OnceLock};
+use sync::{LazyLock, Mutex, OnceLock, RwLock};
 use xmas_elf::program::Type;
+pub use error::Error;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
@@ -43,7 +45,7 @@ static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
 
 pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
     #[allow(tail_expr_drop_order)]
-    KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
+    let aspace = KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
         let mut aspace = AddressSpace::from_active_kernel(
@@ -68,6 +70,27 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
 
         Ok(Mutex::new(aspace))
     })?;
+
+    {
+        let mut aspace = aspace.lock();
+
+        let layout =
+            unsafe { Layout::from_size_align_unchecked(5 * arch::PAGE_SIZE, arch::PAGE_SIZE) };
+        let vmo = Arc::new(Vmo::Paged(RwLock::new(PagedVmo::from_iter(
+            iter::repeat_n(THE_ZERO_FRAME.clone(), 5),
+        ))));
+
+        let range = aspace
+            .map(layout, vmo, 0, Permissions::READ | Permissions::WRITE, None)
+            .unwrap()
+            .range;
+        
+        log::trace!("mapped");
+        
+        aspace.unmap(range).unwrap();
+        
+        log::trace!("unmapped");
+    }
 
     Ok(())
 }
@@ -168,7 +191,7 @@ bitflags::bitflags! {
 }
 
 impl fmt::Display for PageFaultFlags {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         bitflags::parser::to_writer(self, f)
     }
 }
