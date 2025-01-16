@@ -7,7 +7,7 @@
 //! Kernel counters
 //!
 //! Kernel counters are per-hart, unsigned integer counters that facilitate diagnostics across the
-//! whole kernel. Questions like "how many times has <x> happened over <n> seconds?", "has <x> ever happened?"
+//! whole kernel. Questions like "how many times has X happened over N seconds?", "has X ever happened?"
 //! can be answered using this API.
 //!
 //! Counters are declared in their respective modules like so:
