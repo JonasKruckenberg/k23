@@ -13,6 +13,7 @@ mod error;
 pub mod flush;
 pub mod frame_alloc;
 mod frame_list;
+mod mmap;
 mod vmo;
 
 use crate::arch;
