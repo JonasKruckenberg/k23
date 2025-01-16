@@ -42,6 +42,7 @@ struct Stack([u8; BOOT_STACK_SIZE]);
 #[unsafe(no_mangle)]
 #[naked]
 unsafe extern "C" fn _start() -> ! {
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             // read boot time stamp as early as possible
@@ -99,6 +100,7 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_info: *mut BootInfo, entry: 
     log::debug!("Hart {hartid} Jumping to kernel...");
     log::trace!("Hart {hartid} entry: {entry:#x}, arguments: a0={hartid} a1={boot_info:?}");
 
+    // Safety: inline assembly
     unsafe {
         asm! {
             "mv ra, zero", // Reset return address
@@ -163,6 +165,7 @@ pub unsafe fn map_contiguous(
 
         for lvl in (0..PAGE_TABLE_LEVELS).rev() {
             let index = pte_index_for_level(virt, lvl);
+            // Safety: index is always valid within a table
             let pte = unsafe { pgtable.add(index).as_mut() };
 
             if !pte.is_valid() {
@@ -216,7 +219,7 @@ pub unsafe fn remap_contiguous(
     mut phys: usize,
     len: NonZero<usize>,
     phys_off: usize,
-) -> crate::Result<()> {
+) {
     let mut remaining_bytes = len.get();
     debug_assert!(
         remaining_bytes >= PAGE_SIZE,
@@ -237,9 +240,11 @@ pub unsafe fn remap_contiguous(
     // address here and simply update the PTEs address. We then again repeat this until we have
     // no more bytes to process.
     'outer: while remaining_bytes > 0 {
+        // Safety: caller has to ensure root_pgtable is valid
         let mut pgtable = pgtable_ptr_from_phys(root_pgtable, phys_off);
 
         for lvl in (0..PAGE_TABLE_LEVELS).rev() {
+            // Safety: index is always valid within a table
             let pte = unsafe {
                 let index = pte_index_for_level(virt, lvl);
                 pgtable.add(index).as_mut()
@@ -271,13 +276,12 @@ pub unsafe fn remap_contiguous(
             }
         }
     }
-
-    Ok(())
 }
 
 pub unsafe fn activate_aspace(pgtable: usize) {
+    // Safety: register access
     unsafe {
-        let ppn = pgtable >> 12;
+        let ppn = pgtable >> 12_i32;
         satp::set(satp::Mode::Sv39, DEFAULT_ASID, ppn);
     }
 }
@@ -327,13 +331,13 @@ pub struct PageTableEntry {
 
 impl fmt::Debug for PageTableEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let rsw = (self.bits & ((1 << 2) - 1) << 8) >> 8;
-        let ppn0 = (self.bits & ((1 << 9) - 1) << 10) >> 10;
-        let ppn1 = (self.bits & ((1 << 9) - 1) << 19) >> 19;
-        let ppn2 = (self.bits & ((1 << 26) - 1) << 28) >> 28;
-        let reserved = (self.bits & ((1 << 7) - 1) << 54) >> 54;
-        let pbmt = (self.bits & ((1 << 2) - 1) << 61) >> 61;
-        let n = (self.bits & ((1 << 1) - 1) << 63) >> 63;
+        let rsw = (self.bits & ((1 << 2_i32) - 1) << 8_i32) >> 8_i32;
+        let ppn0 = (self.bits & ((1 << 9_i32) - 1) << 10_i32) >> 10_i32;
+        let ppn1 = (self.bits & ((1 << 9_i32) - 1) << 19_i32) >> 19_i32;
+        let ppn2 = (self.bits & ((1 << 26_i32) - 1) << 28_i32) >> 28_i32;
+        let reserved = (self.bits & ((1 << 7_i32) - 1) << 54_i32) >> 54_i32;
+        let pbmt = (self.bits & ((1 << 2_i32) - 1) << 61_i32) >> 61_i32;
+        let n = (self.bits & ((1 << 1_i32) - 1) << 63_i32) >> 63_i32;
 
         f.debug_struct("PageTableEntry")
             .field("n", &format_args!("{n:01b}"))

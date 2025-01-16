@@ -103,13 +103,13 @@ clippy crate="" *cargo_args="":
         {{ _buildstd }} \
         {{ _fmt_clippy }} \
         {{ cargo_args }}
-#    KERNEL=Cargo.toml {{ _cargo }} clippy \
-#            -p loader \
-#            --target loader/riscv64imac-k23-none-loader.json \
-#            --locked \
-#            {{ _buildstd }} \
-#            {{ _fmt_clippy }} \
-#            {{ cargo_args }}
+    KERNEL=Cargo.toml {{ _cargo }} clippy \
+            -p loader \
+            --target loader/riscv64imac-k23-none-loader.json \
+            --locked \
+            {{ _buildstd }} \
+            {{ _fmt_clippy }} \
+            {{ cargo_args }}
 
 # check formatting for a crate or the entire workspace.
 check-fmt crate="" *cargo_args="":

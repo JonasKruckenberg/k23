@@ -29,6 +29,7 @@ pub struct MachineInfo<'dt> {
 
 impl MachineInfo<'_> {
     pub unsafe fn from_dtb(dtb_ptr: *const c_void) -> crate::Result<Self> {
+        // Safety: caller has to ensure `dtb_ptr` is valid
         let fdt = unsafe { DevTree::from_raw(dtb_ptr.cast()) }?;
         let mut reservations = fdt.reserved_entries();
         let fdt_slice = fdt.as_slice();
@@ -178,7 +179,7 @@ impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
             let mut v = MemoryVisitor {
                 address_size: self.address_size,
                 width_size: self.width_size,
-                regs: Default::default(),
+                regs: ArrayVec::default(),
             };
 
             node.visit(&mut v)?;

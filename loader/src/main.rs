@@ -42,14 +42,14 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// # Safety
 ///
 /// The passed `opaque` ptr must point to a valid memory region.
-pub unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
+unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     // zero out the BSS section
     unsafe extern "C" {
         static mut __bss_zero_start: u64;
         static mut __bss_end: u64;
     }
+    // Safety: Zero BSS section
     unsafe {
-        // Zero BSS section
         let mut ptr = &raw mut __bss_zero_start;
         let end = &raw mut __bss_end;
         while ptr < end {
@@ -60,6 +60,7 @@ pub unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
 
     logger::init(LOG_LEVEL.to_level_filter());
 
+    // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");
 
@@ -100,6 +101,7 @@ pub unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     // Activate the MMU with the address space we have built so far.
     // the rest of the address space setup will happen in virtual memory (mostly so that we
     // can correctly apply relocations without having to do expensive virt to phys queries)
+    // Safety: there is no safety
     unsafe {
         log::trace!("activating MMU...");
         arch::activate_aspace(root_pgtable);
@@ -107,7 +109,7 @@ pub unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     }
     frame_alloc.set_phys_offset(phys_off);
 
-    // The kernel elf file is inlined into the loader executable as part of the build setup
+    // Safety: The kernel elf file is inlined into the loader executable as part of the build setup
     // which means we just need to parse it here.
     let kernel = parse_kernel(unsafe {
         let base = phys_off.checked_add(kernel_phys.start).unwrap();
@@ -154,6 +156,7 @@ pub unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
         .checked_add(usize::try_from(kernel.elf_file.header.pt2.entry_point()).unwrap())
         .unwrap();
 
+    // Safety: this will jump to the kernel entry
     unsafe { arch::handoff_to_kernel(hartid, boot_info, kernel_entry) }
 }
 
@@ -226,6 +229,7 @@ fn allocate_and_copy(frame_alloc: &mut FrameAllocator, src: &[u8]) -> Result<Ran
         .allocate_contiguous(layout)
         .ok_or(Error::NoMemory)?;
 
+    // Safety: we just allocated the frame
     unsafe {
         let dst = slice::from_raw_parts_mut(base as *mut u8, src.len());
 

@@ -14,7 +14,7 @@ use core::range::Range;
 use core::slice;
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
 
-#[expect(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "")]
 pub fn prepare_boot_info(
     mut frame_alloc: FrameAllocator,
     physical_address_offset: usize,
@@ -45,6 +45,7 @@ pub fn prepare_boot_info(
     boot_info.boot_ticks = boot_ticks;
 
     let boot_info_ptr = page as *mut BootInfo;
+    // Safety: we just allocated the boot info frame
     unsafe { boot_info_ptr.write(boot_info) }
 
     Ok(boot_info_ptr)
@@ -56,6 +57,7 @@ fn init_boot_info_memory_regions(
     fdt_phys: Range<usize>,
     loader_phys: Range<usize>,
 ) -> MemoryRegions {
+    // Safety: we just allocated a whole frame for the boot info
     let regions: &mut [MaybeUninit<MemoryRegion>] = unsafe {
         let base = page.checked_add(size_of::<BootInfo>()).unwrap();
         let len = (arch::PAGE_SIZE - size_of::<BootInfo>()) / size_of::<MemoryRegion>();
@@ -99,6 +101,7 @@ fn init_boot_info_memory_regions(
     });
 
     // Truncate the slice to include only initialized elements
+    // Safety: closure above ensures the slice up to len is valid
     let regions = unsafe { MaybeUninit::slice_assume_init_mut(&mut regions[0..len]) };
 
     // Sort the memory regions by start address, we do this now in the loader
