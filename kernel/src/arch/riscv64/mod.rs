@@ -117,8 +117,8 @@ pub fn parse_riscv_extensions(mut strs: Strings) -> Result<RiscvExtensions, dtb_
             _ => {
                 log::error!("unknown RISCV extension {str}");
                 // TODO better error type
-                return Err(dtb_parser::Error::InvalidToken(0)) 
-            },
+                return Err(dtb_parser::Error::InvalidToken(0));
+            }
         }
     }
 
