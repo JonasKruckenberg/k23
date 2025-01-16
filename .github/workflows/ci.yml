@@ -33,7 +33,7 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - uses: Swatinem/rust-cache@v2
       - name: cargo check
-        run: nix develop --command just check
+        run: nix develop --command just check "" --locked
 
   rustfmt:
     name: Rustfmt
@@ -63,7 +63,7 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - uses: Swatinem/rust-cache@v2
       - name: cargo clippy
-        run: nix develop --command just clippy
+        run: nix develop --command just clippy "" --locked
 
   cargo-deny:
     name: Cargo deny
