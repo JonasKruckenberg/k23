@@ -569,7 +569,7 @@ impl AddressSpace {
         spot
     }
 
-    #[expect(clippy::undocumented_unsafe_blocks, reason = "intrusive tree acess")]
+    #[expect(clippy::undocumented_unsafe_blocks, reason = "intrusive tree access")]
     fn find_spot_at_index(
         &self,
         mut target_index: usize,

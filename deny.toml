@@ -13,6 +13,7 @@ allow = [
     "Apache-2.0", # requires license notice
     "Unicode-3.0", # requires license notice
     "Apache-2.0 WITH LLVM-exception",
+    "Zlib"
 ]
 
 [sources]

@@ -110,7 +110,7 @@ pub enum ExitReason {
 
 #[expect(
     clippy::cast_sign_loss,
-    reason = "sign extended coversion from i32 to usize"
+    reason = "sign extended conversion from i32 to usize"
 )]
 pub(crate) fn exit(code: i32) {
     // TODO: check sh_ext_exit_extended first

@@ -2112,13 +2112,13 @@ pub fn translate_operator(
         }
         Operator::I32x4DotI16x8S => {
             let (a, b) = pop2_with_bitcast(state, I16X8, builder);
-            let alow = builder.ins().swiden_low(a);
-            let blow = builder.ins().swiden_low(b);
-            let low = builder.ins().imul(alow, blow);
-            let ahigh = builder.ins().swiden_high(a);
-            let bhigh = builder.ins().swiden_high(b);
-            let high = builder.ins().imul(ahigh, bhigh);
-            state.push1(builder.ins().iadd_pairwise(low, high));
+            let alo = builder.ins().swiden_low(a);
+            let blo = builder.ins().swiden_low(b);
+            let lo = builder.ins().imul(alo, blo);
+            let ahi = builder.ins().swiden_high(a);
+            let bhi = builder.ins().swiden_high(b);
+            let hi = builder.ins().imul(ahi, bhi);
+            state.push1(builder.ins().iadd_pairwise(lo, hi));
         }
         Operator::I8x16Popcnt => {
             let arg = pop1_with_bitcast(state, type_of(op), builder);

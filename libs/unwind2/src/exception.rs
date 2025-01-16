@@ -78,7 +78,7 @@ impl Exception {
     pub unsafe fn unwrap(exception: *mut Self) -> Result<Box<dyn Any + Send>, Error> {
         // First check whether this is a Rust exception
         let exception = exception.cast::<UnwindException>();
-        // Safety: caller has to ensure `expection` is a valid pointer
+        // Safety: caller has to ensure `exception` is a valid pointer
         let _exception = unsafe { &*exception };
         if _exception.exception_class != Self::CLASS {
             (_exception.cleanup)(URC_FOREIGN_EXCEPTION_CAUGHT, exception);
@@ -89,7 +89,7 @@ impl Exception {
         // rust unwinder. Make sure to only access the canary field, as the rest of the
         // structure is unknown.
         let exception = exception.cast::<Exception>();
-        // Safety: caller has to ensure `expection` is a valid pointer
+        // Safety: caller has to ensure `exception` is a valid pointer
         let canary = unsafe { ptr::addr_of!((*exception).canary).read() };
         if !ptr::eq(canary, &CANARY) {
             return Err(Error::ForeignException);
