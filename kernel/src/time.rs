@@ -43,7 +43,7 @@ impl Instant {
     }
 
     pub fn from_ticks(ticks: u64) -> Self {
-        #[allow(tail_expr_drop_order)]
+        #[expect(tail_expr_drop_order, reason = "")]
         let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
         Instant(ticks_to_duration(ticks, timebase_freq))
     }
@@ -75,7 +75,10 @@ impl Instant {
             } else {
                 (
                     self.0.as_secs() - earlier.0.as_secs() - 1,
-                    self.0.subsec_nanos() + NANOS_PER_SEC as u32 - earlier.0.subsec_nanos(),
+                    self.0.subsec_nanos()
+                    // Safety: always fits
+                        + unsafe { u32::try_from(NANOS_PER_SEC).unwrap_unchecked() }
+                        - earlier.0.subsec_nanos(),
                 )
             };
 
@@ -163,7 +166,6 @@ impl fmt::Debug for Instant {
 
 impl SystemTime {
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
-    #[allow(unused)]
     pub fn now() -> Self {
         // Only device supported right now is "google,goldfish-rtc"
         // https://android.googlesource.com/platform/external/qemu/+/master/docs/GOLDFISH-VIRTUAL-HARDWARE.TXT
@@ -176,8 +178,13 @@ impl SystemTime {
             .find(|region| region.compatible.contains(&"google,goldfish-rtc"))
             .unwrap();
 
+        // Safety: MMIO device access
         let time_ns = unsafe {
+            assert!(rtc.regions[0].start.is_aligned_to(4));
+
+            #[expect(clippy::cast_ptr_alignment, reason = "checked above")]
             let time_low = AtomicPtr::new(rtc.regions[0].start.as_mut_ptr().cast::<u32>());
+            #[expect(clippy::cast_ptr_alignment, reason = "checked above")]
             let time_high = AtomicPtr::new(
                 rtc.regions[0]
                     .start
@@ -190,7 +197,7 @@ impl SystemTime {
             let low = time_low.load(Ordering::Relaxed).read_volatile();
             let high = time_high.load(Ordering::Relaxed).read_volatile();
 
-            ((high as u64) << 32) | low as u64
+            (u64::from(high) << 32_i32) | u64::from(low)
         };
 
         SystemTime(Duration::new(
@@ -283,7 +290,7 @@ impl SystemTimeError {
     /// }
     /// ```
     #[must_use]
-    #[allow(unused)]
+    #[expect(unused, reason = "")]
     pub fn duration(&self) -> Duration {
         self.0
     }
@@ -299,12 +306,13 @@ impl fmt::Display for SystemTimeError {
 
 fn ticks_to_duration(ticks: u64, timebase_freq: u64) -> Duration {
     let secs = ticks / timebase_freq;
+    #[expect(clippy::cast_possible_truncation, reason = "truncation on purpose")]
     let subsec_nanos = ((ticks % timebase_freq) * NANOS_PER_SEC / timebase_freq) as u32;
     Duration::new(secs, subsec_nanos)
 }
 
 fn duration_to_ticks(d: Duration, timebase_freq: u64) -> u64 {
-    d.as_secs() * timebase_freq + d.subsec_nanos() as u64 * timebase_freq / NANOS_PER_SEC
+    d.as_secs() * timebase_freq + u64::from(d.subsec_nanos()) * timebase_freq / NANOS_PER_SEC
 }
 
 /// low-level sleep primitive, will sleep the calling hart for at least the specified duration
@@ -314,7 +322,7 @@ fn duration_to_ticks(d: Duration, timebase_freq: u64) -> u64 {
 /// This function is very low level and will block the calling hart until a timer interrupt is received.
 /// No checking is performed however if the timer interrupt is the correct one.
 pub unsafe fn sleep(duration: Duration) {
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
 
     riscv::sbi::time::set_timer(riscv::time::read64() + duration_to_ticks(duration, timebase_freq))

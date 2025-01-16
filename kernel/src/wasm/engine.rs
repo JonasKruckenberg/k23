@@ -19,6 +19,7 @@ pub struct EngineInner {
 }
 
 impl Default for Engine {
+    #[expect(tail_expr_drop_order, reason = "")]
     fn default() -> Self {
         let isa_builder = cranelift_codegen::isa::lookup(target_lexicon::HOST).unwrap();
         let mut b = cranelift_codegen::settings::builder();

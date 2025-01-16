@@ -84,6 +84,7 @@ impl MachineInfo<'_> {
     ///
     /// The caller must ensure that the `dtb_ptr` points to a valid FDT blob.
     pub unsafe fn from_dtb(dtb_ptr: *const u8) -> crate::Result<Self> {
+        // Safety: caller has to ensure `dtb_ptr` is valid
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }?;
         let fdt_slice = fdt.as_slice();
 
@@ -151,6 +152,7 @@ impl HartLocalMachineInfo {
     ///
     /// The caller must ensure that the `dtb_ptr` points to a valid FDT blob.
     pub unsafe fn from_dtb(hartid: usize, dtb_ptr: *const u8) -> crate::Result<Self> {
+        // Safety: caller has to ensure the `dtb_ptr` is valid
         let fdt = unsafe { DevTree::from_raw(dtb_ptr) }?;
 
         let mut v = HartLocalMachineInfoVisitor::default();

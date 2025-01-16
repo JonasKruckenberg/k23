@@ -24,11 +24,10 @@ pub enum Vmo {
 
 impl Vmo {
     pub fn new_wired(range: Range<PhysicalAddress>) -> Arc<Self> {
-        #[allow(tail_expr_drop_order)]
         Arc::new(Self::Wired(WiredVmo::new(range)))
     }
     pub fn new_paged(into_iter: impl IntoIterator<Item = Frame>) -> Arc<Self> {
-        #[allow(tail_expr_drop_order)]
+        #[expect(tail_expr_drop_order, reason = "")]
         Arc::new(Self::Paged(RwLock::new(PagedVmo::from_iter(into_iter))))
     }
 }

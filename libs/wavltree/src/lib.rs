@@ -128,6 +128,10 @@
 
 #![cfg_attr(not(test), no_std)]
 #![feature(let_chains)]
+#![allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "too many trivial unsafe blocks"
+)]
 
 mod cursor;
 #[cfg(feature = "dot")]
@@ -377,7 +381,7 @@ pub unsafe trait Linked {
     ///
     /// Note that this hook will be called during double rotations too, once for the opposite side subtree
     /// rotation and once for the final rotation.
-    #[allow(unused)]
+    #[allow(unused, reason = "trait declaration")]
     fn after_rotate(
         self: Pin<&mut Self>,
         parent: NonNull<Self>,
@@ -390,7 +394,7 @@ pub unsafe trait Linked {
     /// Invoked on the node to be erased and the node in the tree where the
     /// augmented invariants become invalid, leading up to the root. Called just
     /// after updating the pointers in the relevant nodes, but before rebalancing.
-    #[allow(unused)]
+    #[allow(unused, reason = "trait declaration")]
     fn after_remove(self: Pin<&mut Self>, parent: Link<Self>) {}
 
     /// Invoked on the newly inserted node before rebalancing.
@@ -446,7 +450,7 @@ where
     type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        #[allow(if_let_rescope)]
+        #[allow(if_let_rescope, reason = "")]
         if let Some(root) = self.root {
             IntoIter {
                 // TODO this could be optimized by caching the head and tail nodes in the WAVLTree
@@ -975,7 +979,7 @@ where
         result
     }
 
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity, reason = "internal")]
     fn find_internal<Q>(&self, key: &Q) -> (Option<NonNull<T>>, Option<(NonNull<T>, Side)>)
     where
         <T as Linked>::Key: Borrow<Q>,
@@ -994,7 +998,7 @@ where
                 }
                 Ordering::Greater => {
                     parent = Some((curr, Side::Right));
-                    tree = curr_lks.right()
+                    tree = curr_lks.right();
                 }
             }
         }
@@ -1021,9 +1025,7 @@ where
         let x = y_links.left().or(y_links.right());
 
         // Check if y is a 2-child of its parent
-        let is_2_child = p_y
-            .map(|parent| utils::node_is_2_child(y, parent))
-            .unwrap_or_default();
+        let is_2_child = p_y.is_some_and(|parent| utils::node_is_2_child(y, parent));
 
         // Replace Y with X which will effectively remove Y from the tree
         {
@@ -1190,10 +1192,9 @@ where
                 z_links.left()
             };
 
-            let creates_3_node = z_links
-                .parent()
-                .map(|p_z| unsafe { T::links(p_z).as_ref() }.rank_parity() == z_links.rank_parity())
-                .unwrap_or_default();
+            let creates_3_node = z_links.parent().is_some_and(|p_z| {
+                unsafe { T::links(p_z).as_ref() }.rank_parity() == z_links.rank_parity()
+            });
 
             if utils::get_link_parity(y) == z_links.rank_parity() {
                 z_links.demote();
@@ -1581,7 +1582,6 @@ impl<T: ?Sized> Links<T> {
         }
     }
     #[inline]
-    #[allow(unused)]
     fn double_promote(&mut self) {
         #[cfg(debug_assertions)]
         {
@@ -1589,7 +1589,6 @@ impl<T: ?Sized> Links<T> {
         }
     }
     #[inline]
-    #[allow(unused)]
     fn double_demote(&mut self) {
         #[cfg(debug_assertions)]
         {
@@ -1624,6 +1623,10 @@ impl<T: ?Sized> Links<T> {
     }
 
     /// Asserts as many invariants about this particular node as possible.
+    ///
+    /// # Panics
+    ///
+    /// Panics when an assertion does not hold.
     #[track_caller]
     pub fn assert_valid(&self)
     where

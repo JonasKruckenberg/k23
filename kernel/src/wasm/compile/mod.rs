@@ -119,6 +119,7 @@ pub type CompileInput<'a> =
 pub struct CompileInputs<'a>(Vec<CompileInput<'a>>);
 
 impl<'a> CompileInputs<'a> {
+    #[expect(tail_expr_drop_order, reason = "")]
     pub fn from_module(
         translation: &'a ModuleTranslation,
         types: &'a ModuleTypes,
@@ -175,6 +176,7 @@ impl<'a> CompileInputs<'a> {
         Self(inputs)
     }
 
+    #[expect(tail_expr_drop_order, reason = "")]
     pub fn compile(self, compiler: &dyn Compiler) -> crate::wasm::Result<UnlinkedCompileOutputs> {
         let mut outputs = self
             .0

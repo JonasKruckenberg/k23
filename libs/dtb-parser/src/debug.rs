@@ -9,7 +9,7 @@ use crate::{Error, Node, Strings, Visitor};
 use core::fmt;
 use fallible_iterator::FallibleIterator;
 
-#[allow(clippy::module_name_repetitions)]
+#[expect(clippy::module_name_repetitions, reason = "style choice")]
 pub struct DebugVisitor<'a, T: fmt::Write> {
     write: &'a mut T,
     padding: usize,

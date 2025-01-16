@@ -8,7 +8,6 @@
 use crate::abort;
 use alloc::vec::Vec;
 use core::cell::RefCell;
-use core::fmt::Write;
 
 #[thread_local]
 static DTORS: RefCell<Vec<(*mut u8, unsafe extern "C" fn(*mut u8))>> = RefCell::new(Vec::new());
@@ -21,10 +20,6 @@ pub(crate) unsafe fn register(t: *mut u8, dtor: unsafe extern "C" fn(*mut u8)) {
         log::error!("the global allocator may not use TLS with destructors");
         abort()
     };
-
-    riscv::hio::HostStream::new_stdout()
-        .write_fmt(format_args!("registering destructor"))
-        .unwrap();
 
     dtors.push((t, dtor));
 }
@@ -41,6 +36,9 @@ pub unsafe fn run() {
         match dtors.pop() {
             Some((t, dtor)) => {
                 drop(dtors);
+
+                // Safety: The crates API ensured the memory cannot be accessed after destructors ran
+                // plus this module ensures dtors will be run only once
                 unsafe {
                     dtor(t);
                 }

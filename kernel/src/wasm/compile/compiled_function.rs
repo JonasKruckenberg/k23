@@ -22,6 +22,7 @@ pub struct CompiledFunction {
 }
 
 impl CompiledFunction {
+    #[expect(tail_expr_drop_order, reason = "")]
     pub fn new(
         buffer: MachBufferFinalized<Final>,
         name_map: PrimaryMap<UserExternalNameRef, UserExternalName>,

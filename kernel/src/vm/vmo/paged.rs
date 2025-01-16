@@ -16,7 +16,7 @@ pub struct PagedVmo {
 }
 
 impl FromIterator<Frame> for PagedVmo {
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     fn from_iter<T: IntoIterator<Item = Frame>>(iter: T) -> Self {
         Self {
             frames: FrameList::from_iter(iter),
@@ -59,6 +59,7 @@ impl PagedVmo {
         }
     }
 
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub fn require_read_frame(&self, at_offset: usize) -> Result<&Frame, Error> {
         if let Some(frame) = self.frames.get(at_offset) {
             Ok(frame)

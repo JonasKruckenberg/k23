@@ -1,51 +1,45 @@
+use crate::vm::{AddressSpace, MmapSlice};
 use crate::wasm::utils::round_usize_up_to_host_pages;
+use crate::wasm::Error;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::{mem, ptr, slice};
 
 #[derive(Debug)]
 pub struct MmapVec<T> {
-    mmap: Mmap,
+    mmap: MmapSlice,
     len: usize,
     _m: PhantomData<T>,
 }
 
 impl<T> MmapVec<T> {
-    pub fn new() -> Self {
+    pub fn new_empty() -> Self {
         Self {
-            mmap: Mmap::new_empty(),
+            mmap: MmapSlice::new_empty(),
             len: 0,
             _m: PhantomData,
         }
     }
-    pub fn new_zeroed(len: usize) -> crate::wasm::Result<Self> {
+
+    pub fn new_zeroed(aspace: &mut AddressSpace, len: usize) -> crate::wasm::Result<Self> {
         Ok(Self {
-            mmap: Mmap::new(len)?,
+            mmap: MmapSlice::new_zeroed(aspace, len).map_err(|_| Error::MmapFailed)?,
             len,
             _m: PhantomData,
         })
     }
 
-    pub fn with_reserved(capacity: usize) -> crate::wasm::Result<Self> {
-        Ok(Self {
-            mmap: Mmap::with_reserve(capacity)?,
-            len: 0,
-            _m: PhantomData,
-        })
-    }
-
-    pub fn from_slice(slice: &[T]) -> crate::wasm::Result<Self> {
+    pub fn from_slice(aspace: &mut AddressSpace, slice: &[T]) -> crate::wasm::Result<Self>
+    where
+        T: Clone,
+    {
         if slice.is_empty() {
-            Ok(Self::new())
+            Ok(Self::new_empty())
         } else {
-            let mut this = Self::with_reserved(round_usize_up_to_host_pages(slice.len()))?;
-            this.try_extend_from_slice(slice)?;
+            let mut this = Self::new_zeroed(aspace, slice.len())?;
+            this.extend_from_slice(slice);
             Ok(this)
         }
-    }
-
-    pub fn reserve(&self) -> usize {
-        self.mmap.len()
     }
 
     pub fn len(&self) -> usize {
@@ -84,65 +78,30 @@ impl<T> MmapVec<T> {
         self.mmap.as_mut_ptr().cast()
     }
 
-    pub fn try_extend_from_slice(&mut self, other: &[T]) -> crate::wasm::Result<()> {
-        let count = (other).len();
-
-        let mut tx = self.guard();
-        let old_len = tx.try_grow(count)?;
-        // Safety: `try_grow` ensures there is enough space for `count` elements.
-        unsafe {
-            ptr::copy_nonoverlapping(other.as_ptr(), tx.vec.as_mut_ptr().add(old_len), count);
-        };
-        tx.finish();
-
-        Ok(())
-    }
-
-    pub(crate) fn try_extend_with(&mut self, count: usize, elem: T) -> crate::wasm::Result<()>
+    pub fn extend_from_slice(&mut self, other: &[T])
     where
         T: Clone,
     {
-        let mut tx = self.guard();
-        let old_len = tx.try_grow(count)?;
-        tx.slice_mut()[old_len..].fill(elem);
-        tx.finish();
+        let start = self.len;
+        let end = self.len + other.len();
 
-        Ok(())
+        assert!(end * size_of::<T>() < self.mmap.len());
+        self.slice_mut()[start..end].clone_from_slice(other);
     }
 
-    pub(crate) fn into_parts(self) -> (Mmap, usize) {
+    pub(crate) fn extend_with(&mut self, count: usize, elem: T)
+    where
+        T: Clone,
+    {
+        let start = self.len;
+        let end = self.len + count;
+
+        assert!(end * size_of::<T>() < self.mmap.len());
+        self.slice_mut()[start..end].fill(elem);
+    }
+
+    pub(crate) fn into_parts(self) -> (MmapSlice, usize) {
         (self.mmap, self.len)
-    }
-
-    fn try_grow(&mut self, additional: usize) -> crate::wasm::Result<usize> {
-        let old_size = self.len;
-        let old_accessible = self.accessible();
-
-        if self.len + additional < self.mmap.len() {
-            self.len = self.len + additional;
-        } else {
-            panic!("oom")
-        }
-
-        if self.accessible() > old_accessible {
-            self.mmap
-                .make_accessible(old_accessible, self.accessible() - old_accessible)?;
-        }
-
-        Ok(old_size)
-    }
-
-    fn accessible(&self) -> usize {
-        let accessible = round_usize_up_to_host_pages(self.len);
-        debug_assert!(accessible <= self.mmap.len());
-        accessible
-    }
-
-    fn guard(&mut self) -> MmapVecGuard<'_, T> {
-        MmapVecGuard {
-            len: self.len,
-            vec: self,
-        }
     }
 }
 
@@ -151,36 +110,5 @@ impl<T> Deref for MmapVec<T> {
 
     fn deref(&self) -> &Self::Target {
         self.slice()
-    }
-}
-
-struct MmapVecGuard<'a, T> {
-    len: usize,
-    vec: &'a mut MmapVec<T>,
-}
-
-impl<T> Deref for MmapVecGuard<'_, T> {
-    type Target = MmapVec<T>;
-
-    fn deref(&self) -> &Self::Target {
-        self.vec
-    }
-}
-
-impl<T> DerefMut for MmapVecGuard<'_, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.vec
-    }
-}
-
-impl<T> MmapVecGuard<'_, T> {
-    pub fn finish(self) {
-        mem::forget(self);
-    }
-}
-
-impl<T> Drop for MmapVecGuard<'_, T> {
-    fn drop(&mut self) {
-        self.vec.len = self.len;
     }
 }

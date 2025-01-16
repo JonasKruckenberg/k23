@@ -32,7 +32,7 @@ pub enum WastVal<'a> {
     Flags(Vec<&'a str>),
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 static CASES: &[(&str, fn(Parser<'_>) -> Result<WastVal<'_>>)] = {
     use WastVal::*;
     &[

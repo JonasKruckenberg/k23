@@ -55,7 +55,7 @@ pub struct AddressSpace {
 
 impl AddressSpace {
     pub fn new_user(arch_aspace: arch::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
-        #![allow(tail_expr_drop_order)]
+        #![allow(tail_expr_drop_order, reason = "")]
         Self {
             regions: wavltree::WAVLTree::default(),
             arch: arch_aspace,
@@ -67,7 +67,7 @@ impl AddressSpace {
     }
 
     pub fn from_active_kernel(arch_aspace: arch::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
-        #![allow(tail_expr_drop_order)]
+        #![allow(tail_expr_drop_order, reason = "")]
         Self {
             regions: wavltree::WAVLTree::default(),
             arch: arch_aspace,
@@ -125,6 +125,7 @@ impl AddressSpace {
         ensure!(permissions.is_valid(), Error::InvalidPermissions);
 
         // Actually do the mapping now
+        // Safety: we checked all invariants above
         unsafe { self.map_unchecked(layout, vmo, vmo_offset, permissions, name) }
     }
 
@@ -185,6 +186,7 @@ impl AddressSpace {
         }
 
         // Actually do the mapping now
+        // Safety: we checked all invariants above
         unsafe { self.map_specific_unchecked(range, vmo, vmo_offset, permissions, name) }
     }
 
@@ -228,6 +230,7 @@ impl AddressSpace {
         ensure!(bytes_seen == range.size(), Error::NotMapped);
 
         // Actually do the unmapping now
+        // Safety: we checked all invariant above
         unsafe { self.unmap_unchecked(range) }
     }
 
@@ -242,6 +245,7 @@ impl AddressSpace {
         }
 
         let mut flush = self.arch.new_flush();
+        // Safety: caller has to ensure invariants are checked
         unsafe {
             self.arch.unmap(
                 range.start,
@@ -301,6 +305,7 @@ impl AddressSpace {
         ensure!(bytes_seen == range.size(), Error::NotMapped);
 
         // Actually do the permission changes now
+        // Safety: we checked all invariant above
         unsafe { self.protect_unchecked(range, new_permissions) }
     }
 
@@ -318,6 +323,7 @@ impl AddressSpace {
         }
 
         let mut flush = self.arch.new_flush();
+        // Safety: caller has to ensure invariants are checked
         unsafe {
             self.arch.protect(
                 range.start,
@@ -435,11 +441,13 @@ impl AddressSpace {
         // since `reserve` will only be called for kernel memory setup by the loader. For which it is
         // critical that the MMUs and our "logical" view are in sync.
         if permissions.is_empty() {
+            // Safety: we checked all invariants above
             unsafe {
                 self.arch
                     .unmap(range.start, NonZeroUsize::new(range.size()).unwrap(), flush)?;
             }
         } else {
+            // Safety: we checked all invariants above
             unsafe {
                 self.arch.protect(
                     range.start,
@@ -453,6 +461,7 @@ impl AddressSpace {
         Ok(region)
     }
 
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     fn map_internal(
         &mut self,
         range: Range<VirtualAddress>,
@@ -495,7 +504,7 @@ impl AddressSpace {
             }
 
             // call the callback
-            f(region)?
+            f(region)?;
         }
 
         Ok(())
@@ -560,6 +569,7 @@ impl AddressSpace {
         spot
     }
 
+    #[expect(clippy::undocumented_unsafe_blocks, reason = "intrusive tree acess")]
     fn find_spot_at_index(
         &self,
         mut target_index: usize,
@@ -716,7 +726,7 @@ impl<'a> Batch<'a> {
     pub fn new(arch_aspace: &'a mut arch::AddressSpace) -> Self {
         Self {
             arch_aspace,
-            range: Default::default(),
+            range: Range::default(),
             flags: <arch::AddressSpace as ArchAddressSpace>::Flags::empty(),
             phys: vec![],
         }
@@ -756,6 +766,7 @@ impl<'a> Batch<'a> {
 
         let mut flush = self.arch_aspace.new_flush();
         for (phys, len) in self.phys.drain(..) {
+            // Safety: we have checked all the invariants
             unsafe {
                 self.arch_aspace.map_contiguous(
                     self.range.start,

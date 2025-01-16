@@ -1,3 +1,4 @@
+use crate::vm::AddressSpace;
 use crate::wasm::runtime::{MmapVec, VMFuncRef, VMTableDefinition};
 use crate::wasm::translate::TableDesc;
 use crate::wasm::utils::round_usize_up_to_host_pages;
@@ -13,14 +14,18 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn try_new(desc: &TableDesc, actual_maximum: Option<usize>) -> crate::wasm::Result<Self> {
+    pub fn try_new(
+        aspace: &mut AddressSpace,
+        desc: &TableDesc,
+        actual_maximum: Option<usize>,
+    ) -> crate::wasm::Result<Self> {
         let reserve_size = TABLE_MAX.min(actual_maximum.unwrap_or(usize::MAX));
 
         let elements = if reserve_size == 0 {
-            MmapVec::new()
+            MmapVec::new_empty()
         } else {
-            let mut elements = MmapVec::with_reserved(round_usize_up_to_host_pages(reserve_size))?;
-            elements.try_extend_with(usize::try_from(desc.minimum).unwrap(), None)?;
+            let mut elements = MmapVec::new_zeroed(aspace, reserve_size)?;
+            elements.extend_with(usize::try_from(desc.minimum).unwrap(), None);
             elements
         };
 
@@ -29,6 +34,7 @@ impl Table {
             maximum: actual_maximum,
         })
     }
+
     pub fn elements_mut(&mut self) -> &mut [Option<NonNull<VMFuncRef>>] {
         self.elements.slice_mut()
     }

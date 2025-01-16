@@ -123,7 +123,7 @@ impl DataSection {
         D: IntoIterator<Item = u8>,
         D::IntoIter: ExactSizeIterator,
     {
-        #[allow(tail_expr_drop_order)]
+        #[allow(tail_expr_drop_order, reason = "")]
         self.segment(DataSegment {
             mode: DataSegmentMode::Active {
                 memory_index,
@@ -141,7 +141,7 @@ impl DataSection {
         D: IntoIterator<Item = u8>,
         D::IntoIter: ExactSizeIterator,
     {
-        #[allow(tail_expr_drop_order)]
+        #[allow(tail_expr_drop_order, reason = "")]
         self.segment(DataSegment {
             mode: DataSegmentMode::Passive,
             data,

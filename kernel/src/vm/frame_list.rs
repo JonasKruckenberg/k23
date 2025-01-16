@@ -50,6 +50,7 @@ pub struct CursorMut<'a> {
 impl fmt::Debug for FrameList {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("FrameList")
+            .field("size", &self.size)
             .field_with("nodes", |f| {
                 let mut f = f.debug_list();
                 self.nodes.iter().for_each(|node| {
@@ -189,7 +190,7 @@ impl IntoIterator for FrameList {
     type Item = Frame;
     type IntoIter = IntoIter;
 
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     fn into_iter(mut self) -> Self::IntoIter {
         let inner: IntoIterInner = self
             .nodes
@@ -211,7 +212,7 @@ impl FromIterator<Frame> for FrameList {
                 .entry(&offset_to_node_offset(offset))
                 .or_insert_with(|| {
                     Box::pin(FrameListNode {
-                        links: Default::default(),
+                        links: wavltree::Links::default(),
                         offset,
                         frames: [const { None }; FRAME_LIST_NODE_FANOUT],
                     })
@@ -232,11 +233,13 @@ impl FromIterator<Frame> for FrameList {
 // FrameListNode
 // =============================================================================
 
+// Safety: unsafe trait
 unsafe impl wavltree::Linked for FrameListNode {
     type Handle = Pin<Box<FrameListNode>>;
     type Key = usize;
 
     fn into_ptr(handle: Self::Handle) -> NonNull<Self> {
+        // Safety: wavltree treats the ptr as pinned
         unsafe { NonNull::from(Box::leak(Pin::into_inner_unchecked(handle))) }
     }
 

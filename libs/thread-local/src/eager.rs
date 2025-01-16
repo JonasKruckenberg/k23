@@ -38,10 +38,11 @@ impl<T> EagerStorage<T> {
     /// # Safety
     /// The `self` reference must remain valid until the TLS destructor is run.
     #[inline]
-    pub unsafe fn get(&self) -> *const T {
+    pub fn get(&self) -> *const T {
         match self.state.get() {
             State::Alive => self.val.get(),
             State::Destroyed => ptr::null(),
+            // Safety: thread local is not initialized yet
             State::Initial => unsafe { self.initialize() },
         }
     }
@@ -71,12 +72,16 @@ impl<T> EagerStorage<T> {
 unsafe extern "C" fn destroy<T>(ptr: *mut u8) {
     // Print a nice abort message if a panic occurs.
     abort_on_dtor_unwind(|| {
+        // Safety: caller has to ensure `ptr` is valid
         let storage = unsafe { &*(ptr as *const EagerStorage<T>) };
         // Update the state before running the destructor as it may attempt to
         // access the variable.
         storage.state.set(State::Destroyed);
+
+        // Safety: destroy is only called during destruction and the rest of the crate ensures
+        // reads during or after destruction fail
         unsafe {
             ptr::drop_in_place(storage.val.get());
         }
-    })
+    });
 }

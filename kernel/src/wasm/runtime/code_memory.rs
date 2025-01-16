@@ -1,11 +1,14 @@
+use crate::vm::{AddressSpace, MmapSlice};
 use crate::wasm::compile::FunctionLoc;
 use crate::wasm::runtime::MmapVec;
 use crate::wasm::trap::Trap;
+use crate::wasm::Error;
 use alloc::vec::Vec;
+use core::range::Range;
 
 #[derive(Debug)]
 pub struct CodeMemory {
-    mmap: Mmap,
+    mmap: MmapSlice,
     len: usize,
     published: bool,
 
@@ -25,7 +28,7 @@ impl CodeMemory {
         }
     }
 
-    pub fn publish(&mut self) -> crate::wasm::Result<()> {
+    pub fn publish(&mut self, aspace: &mut AddressSpace) -> crate::wasm::Result<()> {
         debug_assert!(!self.published);
         self.published = true;
 
@@ -34,10 +37,10 @@ impl CodeMemory {
             return Ok(());
         }
 
-        self.mmap.make_readonly(0..self.len)?;
-
         // Switch the executable portion from readonly to read/execute.
-        self.mmap.make_executable(0..self.len, true)?;
+        self.mmap
+            .make_executable(aspace, true)
+            .map_err(|_| Error::MmapFailed)?;
 
         Ok(())
     }
@@ -45,7 +48,7 @@ impl CodeMemory {
     #[inline]
     pub fn text(&self) -> &[u8] {
         // Safety: The constructor has to ensure that `self.len` is valid.
-        unsafe { self.mmap.slice(0..self.len) }
+        unsafe { self.mmap.slice(Range::from(0..self.len)) }
     }
 
     pub fn resolve_function_loc(&self, func_loc: FunctionLoc) -> usize {

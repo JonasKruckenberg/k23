@@ -1,4 +1,4 @@
-//! ```rust,ignore
+//! ```text
 //! struct VMContext {
 //!     magic: u32,
 //!     _padding: u32, // on 64-bit platforms

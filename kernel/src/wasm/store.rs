@@ -113,19 +113,19 @@ macro_rules! stored_impls {
     ($bind:ident $(($ty:path, $has:ident, $get:ident, $get_mut:ident, $field:expr))*) => {
         $(
             impl Store {
-                #[expect(missing_docs, reason = "inside macro")]
+                // #[expect(missing_docs, reason = "inside macro")]
                 pub fn $has(&self, index: Stored<$ty>) -> bool {
                     let $bind = self;
                     $field.get(index.index).is_some()
                 }
 
-                #[expect(missing_docs, reason = "inside macro")]
+                // #[expect(missing_docs, reason = "inside macro")]
                 pub fn $get(&self, index: Stored<$ty>) -> Option<&$ty> {
                     let $bind = self;
                     $field.get(index.index)
                 }
 
-                #[expect(missing_docs, reason = "inside macro")]
+                // #[expect(missing_docs, reason = "inside macro")]
                 pub fn $get_mut(&mut self, index: Stored<$ty>) -> Option<&mut $ty> {
                     let $bind = self;
                     $field.get_mut(index.index)

@@ -33,6 +33,7 @@ impl Instance {
         module: Module,
         imports: Imports,
     ) -> crate::wasm::Result<Self> {
+        // Safety: caller has to ensure safety
         let instance =
             unsafe { runtime::Instance::new_unchecked(alloc, const_eval, module, imports)? };
         let handle = store.push_instance(instance);
@@ -40,7 +41,7 @@ impl Instance {
     }
 
     /// Returns the module this instance was instantiated from.
-    pub fn module<'s>(&self, store: &'s Store) -> &'s Module {
+    pub fn module(self, store: &Store) -> &Module {
         store[self.0].module()
     }
 
@@ -73,34 +74,34 @@ impl Instance {
     }
 
     /// Attempts to get an export from this instance.
-    pub fn get_export(&self, store: &mut Store, name: &str) -> Option<Extern> {
+    pub fn get_export(self, store: &mut Store, name: &str) -> Option<Extern> {
         let (export_name_index, _, index) =
             self.module(store).translated().exports.get_full(name)?;
         Some(self.get_export_inner(store, *index, export_name_index))
     }
 
     /// Attempts to get an exported `Func` from this instance.
-    pub fn get_func(&self, store: &mut Store, name: &str) -> Option<Func> {
+    pub fn get_func(self, store: &mut Store, name: &str) -> Option<Func> {
         self.get_export(store, name)?.into_func()
     }
 
     /// Attempts to get an exported `Table` from this instance.
-    pub fn get_table(&self, store: &mut Store, name: &str) -> Option<Table> {
+    pub fn get_table(self, store: &mut Store, name: &str) -> Option<Table> {
         self.get_export(store, name)?.into_table()
     }
 
     /// Attempts to get an exported `Memory` from this instance.
-    pub fn get_memory(&self, store: &mut Store, name: &str) -> Option<Memory> {
+    pub fn get_memory(self, store: &mut Store, name: &str) -> Option<Memory> {
         self.get_export(store, name)?.into_memory()
     }
 
     /// Attempts to get an exported `Global` from this instance.
-    pub fn get_global(&self, store: &mut Store, name: &str) -> Option<Global> {
+    pub fn get_global(self, store: &mut Store, name: &str) -> Option<Global> {
         self.get_export(store, name)?.into_global()
     }
 
     /// Print a debug representation of this instances `VMContext` to the logger.
-    pub fn debug_vmctx(&self, store: &Store) {
+    pub fn debug_vmctx(self, store: &Store) {
         store[self.0].debug_vmctx();
     }
 

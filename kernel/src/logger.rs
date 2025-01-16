@@ -41,6 +41,7 @@ impl log::Log for Logger {
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             let _ = STATE.try_with(|state| {
+                // Safety: state is always initialized
                 let (stdout, hartid) = unsafe { &mut *state.as_ptr() };
                 let _ = stdout.write_fmt(format_args!(
                     "[{:<5} HART {} {}] {}\n",

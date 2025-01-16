@@ -565,6 +565,7 @@ impl TranslationEnvironment<'_> {
     /// Return the call instruction whose results are the WebAssembly return values.
     /// Returns `None` if this statically trap_handling instead of creating a call
     /// instruction.
+    #[expect(clippy::too_many_arguments, reason = "")]
     pub fn translate_call_indirect(
         &mut self,
         builder: &mut FunctionBuilder,
@@ -1072,6 +1073,7 @@ impl TranslationEnvironment<'_> {
     }
 
     /// Translate an `array.copy` instruction.
+    #[expect(clippy::too_many_arguments, reason = "")]
     pub fn translate_array_copy(
         &mut self,
         builder: &mut FunctionBuilder,
@@ -1100,6 +1102,7 @@ impl TranslationEnvironment<'_> {
     }
 
     /// Translate an `array.init_data` instruction.
+    #[expect(clippy::too_many_arguments, reason = "")]
     pub fn translate_array_init_data(
         &mut self,
         builder: &mut FunctionBuilder,
@@ -1114,6 +1117,7 @@ impl TranslationEnvironment<'_> {
     }
 
     /// Translate an `array.init_elem` instruction.
+    #[expect(clippy::too_many_arguments, reason = "")]
     pub fn translate_array_init_elem(
         &mut self,
         builder: &mut FunctionBuilder,

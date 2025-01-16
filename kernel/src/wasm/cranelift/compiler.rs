@@ -39,6 +39,7 @@ impl fmt::Debug for CraneliftCompiler {
 }
 
 impl CraneliftCompiler {
+    #[expect(tail_expr_drop_order, reason = "")]
     pub(crate) fn new(isa: OwnedTargetIsa) -> CraneliftCompiler {
         Self {
             offsets: StaticVMOffsets::new(isa.pointer_bytes()),
@@ -51,6 +52,7 @@ impl CraneliftCompiler {
         self.isa.as_ref()
     }
 
+    #[expect(tail_expr_drop_order, reason = "")]
     fn function_compiler(&self) -> FunctionCompiler<'_> {
         let saved_context = self.contexts.lock().pop();
         FunctionCompiler {

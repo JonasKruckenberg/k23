@@ -1,6 +1,6 @@
 //! #k23VM - k23 WebAssembly Virtual Machine
 
-#![allow(unused_imports)]
+#![expect(unused_imports, reason = "TODO")]
 
 extern crate alloc;
 extern crate core;

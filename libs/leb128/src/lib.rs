@@ -78,7 +78,13 @@ type Result<T> = core::result::Result<T, Error>;
 pub trait Leb128Read {
     #[doc(hidden)]
     fn read_byte(&mut self) -> Result<u8>;
+    /// # Errors
+    ///
+    /// Return an error when the value is not a valid `u64`.
     fn read_uleb128(&mut self) -> Result<u64>;
+    /// # Errors
+    ///
+    /// Return an error when the value is not a valid `i64`.
     fn read_sleb128(&mut self) -> Result<i64>;
 }
 
@@ -91,7 +97,7 @@ impl Leb128Read for &'_ [u8] {
 
     fn read_uleb128(&mut self) -> Result<u64> {
         let mut result = 0;
-        let mut shift = 0;
+        let mut shift: i32 = 0;
 
         loop {
             let mut byte = self.read_byte()?;
@@ -103,7 +109,7 @@ impl Leb128Read for &'_ [u8] {
                 return Err(Error::Overflow);
             }
 
-            let low_bits = low_bits_of_byte(byte) as u64;
+            let low_bits = u64::from(low_bits_of_byte(byte));
             result |= low_bits << shift;
 
             if byte & CONTINUATION_BIT == 0 {
@@ -116,23 +122,23 @@ impl Leb128Read for &'_ [u8] {
 
     fn read_sleb128(&mut self) -> Result<i64> {
         let mut result = 0;
-        let mut shift = 0;
-        let size = 64;
+        let mut shift: i32 = 0;
+        let size: i32 = 64;
         let mut byte;
 
         loop {
             let mut b = self.read_byte()?;
             byte = b;
-            if shift == 63 && byte != 0x00 && byte != 0x7f {
+            if shift == 63i32 && byte != 0x00 && byte != 0x7f {
                 while b & CONTINUATION_BIT != 0 {
                     b = self.read_byte()?;
                 }
                 return Err(Error::Overflow);
             }
 
-            let low_bits = low_bits_of_byte(byte) as i64;
+            let low_bits = i64::from(low_bits_of_byte(byte));
             result |= low_bits << shift;
-            shift += 7;
+            shift += 7i32;
 
             if byte & CONTINUATION_BIT == 0 {
                 break;
@@ -149,8 +155,17 @@ impl Leb128Read for &'_ [u8] {
 }
 
 pub trait Leb128Write {
+    /// # Errors
+    ///
+    /// Return an error when writing the value failed.
     fn write_byte(&mut self, val: u8) -> Result<()>;
+    /// # Errors
+    ///
+    /// Return an error when writing the value failed.
     fn write_uleb128(&mut self, val: u64) -> Result<usize>;
+    /// # Errors
+    ///
+    /// Return an error when writing the value failed.
     fn write_sleb128(&mut self, val: i64) -> Result<usize>;
 }
 
@@ -187,6 +202,11 @@ impl Leb128Write for &'_ mut [u8] {
     fn write_sleb128(&mut self, mut val: i64) -> Result<usize> {
         let mut bytes_written = 0;
         loop {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "getting the first byte of larger int"
+            )]
             let mut byte = val as u8;
             // Keep the sign bit for testing
             val >>= 6;
@@ -219,7 +239,11 @@ fn low_bits_of_byte(byte: u8) -> u8 {
 }
 #[inline]
 fn low_bits_of_u64(val: u64) -> u8 {
-    let byte = val & (u8::MAX as u64);
+    let byte = val & (u64::from(u8::MAX));
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "getting the first byte of u64 int"
+    )]
     low_bits_of_byte(byte as u8)
 }
 

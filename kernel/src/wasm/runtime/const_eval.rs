@@ -23,7 +23,7 @@ impl ConstExprEvaluator {
     ///
     /// The only uses of const expressions require them to evaluate to exactly one result.
     /// This method will panic if there is not exactly one result.
-    pub fn eval(&mut self, expr: &ConstExpr) -> crate::wasm::Result<VMVal> {
+    pub fn eval(&mut self, expr: &ConstExpr) -> VMVal {
         for op in expr.ops() {
             match op {
                 ConstOp::I32Const(value) => self.push(VMVal::i32(value)),
@@ -69,7 +69,7 @@ impl ConstExprEvaluator {
         }
 
         assert_eq!(self.stack.len(), 1);
-        Ok(self.stack.pop().expect("empty stack"))
+        self.stack.pop().expect("empty stack")
     }
 
     fn push(&mut self, val: VMVal) {

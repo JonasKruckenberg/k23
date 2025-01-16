@@ -25,7 +25,7 @@ impl fmt::Display for Side {
 }
 
 impl Side {
-    pub(crate) fn opposite(&self) -> Side {
+    pub(crate) fn opposite(self) -> Side {
         match self {
             Side::Left => Side::Right,
             Side::Right => Side::Left,

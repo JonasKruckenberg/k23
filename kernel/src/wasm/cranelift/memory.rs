@@ -312,6 +312,7 @@ impl CraneliftMemory {
         }
     }
 
+    #[expect(clippy::too_many_arguments, reason = "")]
     fn explicit_check_oob_condition_and_compute_addr(
         &self,
         builder: &mut FunctionBuilder,

@@ -15,8 +15,9 @@ pub struct RawMutex {
     lock: AtomicBool,
 }
 
+// Safety: unsafe trait
 unsafe impl lock_api::RawMutex for RawMutex {
-    #[allow(clippy::declare_interior_mutable_const)] // TODO figure out
+    #[expect(clippy::declare_interior_mutable_const, reason = "")] // TODO figure out
     const INIT: Self = Self {
         lock: AtomicBool::new(false),
     };

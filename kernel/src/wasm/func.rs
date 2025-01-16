@@ -22,7 +22,7 @@ impl Func {
     /// # Panics
     ///
     /// TODO
-    pub fn ty(&self, store: &Store) -> FuncType {
+    pub fn ty(self, store: &Store) -> FuncType {
         // Safety: at this point `VMContext` is initialized, so accessing its fields is safe
         let func_ref = unsafe { store[self.0].func_ref.as_ref() };
         let ty = store
@@ -61,12 +61,11 @@ impl Func {
         // copy the arguments into the storage
         values_vec.resize_with(values_vec_size, || VMVal::v128(0));
         for (arg, slot) in params.iter().copied().zip(&mut values_vec) {
-            unsafe {
-                *slot = arg.as_vmval(store);
-            }
+            *slot = arg.as_vmval(store);
         }
 
         // do the actual call
+        // Safety: caller has to ensure safety
         unsafe {
             self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)?;
         }
@@ -74,6 +73,7 @@ impl Func {
         // copy the results out of the storage
         for ((i, slot), vmval) in results.iter_mut().enumerate().zip(&values_vec) {
             let ty = &ty.results[i];
+            // Safety: caller has to ensure safety
             *slot = unsafe { Val::from_vmval(store, *vmval, ty) };
         }
 
@@ -90,16 +90,20 @@ impl Func {
         args_results_ptr: *mut VMVal,
         args_results_len: usize,
     ) -> crate::wasm::Result<()> {
+        // Safety: funcref is always initialized
         let func_ref = unsafe { store[self.0].func_ref.as_ref() };
+        // Safety: funcref is always initialized
         let vmctx = unsafe { VMContext::from_opaque(func_ref.vmctx) };
         let module = store[store.get_instance_from_vmctx(vmctx)].module();
 
         let _guard = enter_wasm(vmctx, &module.offsets().static_);
 
-        let res =
-            trap_handler::catch_traps(vmctx, module.offsets().static_.clone(), |caller| unsafe {
+        let res = trap_handler::catch_traps(vmctx, module.offsets().static_.clone(), |caller| {
+            // Safety: caller has to ensure safety
+            unsafe {
                 (func_ref.array_call)(vmctx, caller, args_results_ptr, args_results_len);
-            });
+            }
+        });
 
         if let Err(trap) = res {
             let (pc, faulting_addr, trap_code, message) = match trap.reason {
@@ -129,7 +133,7 @@ impl Func {
         Ok(())
     }
 
-    pub(crate) unsafe fn as_raw(&self, store: &mut Store) -> *mut c_void {
+    pub(crate) fn as_raw(&self, store: &mut Store) -> *mut c_void {
         store[self.0].func_ref.as_ptr().cast()
     }
 

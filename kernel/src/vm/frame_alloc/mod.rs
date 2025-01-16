@@ -29,7 +29,7 @@ static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 
 #[cold]
 pub fn init(boot_alloc: BootstrapAllocator) {
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     FRAME_ALLOC.get_or_init(|| {
         let mut max_alignment = arch::PAGE_SIZE;
         let mut arenas = Vec::new();
@@ -43,7 +43,7 @@ pub fn init(boot_alloc: BootstrapAllocator) {
                     arenas.push(arena);
                 }
                 Err(err) => {
-                    log::error!("unable to include RAM region {:?}", err.range)
+                    log::error!("unable to include RAM region {:?}", err.range);
                 }
             }
         }
@@ -101,7 +101,9 @@ pub fn alloc_one() -> Result<Frame, AllocError> {
         })
         .ok_or(AllocError)?;
 
-    let frame = Frame::from_free_info(frame);
+    // Safety: we just allocated the frame
+    let frame = unsafe { Frame::from_free_info(frame) };
+
     #[cfg(debug_assertions)]
     frame.assert_valid();
     Ok(frame)
@@ -115,6 +117,7 @@ pub fn alloc_one_zeroed() -> Result<Frame, AllocError> {
     let virt = VirtualAddress::from_phys(frame.addr()).unwrap();
 
     // memset'ing the slice to zero
+    // Safety: the slice has just been allocated
     unsafe {
         slice::from_raw_parts_mut(virt.as_mut_ptr(), arch::PAGE_SIZE).fill(0);
     }
@@ -149,7 +152,10 @@ pub fn alloc_contiguous(layout: Layout) -> Result<FrameList, AllocError> {
         })
         .ok_or(AllocError)?;
 
-    let frames = FrameList::from_iter(frames.into_iter().map(Frame::from_free_info));
+    let frames = FrameList::from_iter(frames.into_iter().map(|info| {
+        // Safety: we just allocated the frame
+        unsafe { Frame::from_free_info(info) }
+    }));
     #[cfg(debug_assertions)]
     frames.assert_valid();
     Ok(frames)
@@ -164,6 +170,7 @@ pub fn alloc_contiguous_zeroed(layout: Layout) -> Result<FrameList, AllocError> 
     let virt = VirtualAddress::from_phys(frames.first().unwrap().addr()).unwrap();
 
     // memset'ing the slice to zero
+    // Safety: the slice has just been allocated
     unsafe {
         slice::from_raw_parts_mut(virt.as_mut_ptr(), frames.size()).fill(0);
     }

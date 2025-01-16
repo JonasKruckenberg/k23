@@ -7,7 +7,11 @@
 
 //! RISC-V CSRs
 
-#![allow(clippy::missing_safety_doc)]
+#![expect(
+    clippy::missing_safety_doc,
+    clippy::undocumented_unsafe_blocks,
+    reason = "register access"
+)]
 
 pub mod satp;
 pub mod scause;
@@ -66,6 +70,7 @@ macro_rules! read_csr_as_usize {
         /// **WARNING**: panics on non-`riscv` targets.
         #[inline]
         pub fn read() -> usize {
+            // Safety: register access
             unsafe { _read() }
         }
     };
@@ -97,7 +102,6 @@ macro_rules! set {
     ($csr_number: literal) => {
         /// Sets the CSR
         #[inline]
-        #[allow(unused_variables)]
         unsafe fn _set(bits: usize) {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
@@ -130,7 +134,6 @@ macro_rules! clear {
     ($csr_number: literal) => {
         /// Writes the CSR
         #[inline]
-        #[allow(unused_variables)]
         unsafe fn _clear(bits: usize) {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {

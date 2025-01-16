@@ -190,6 +190,7 @@ macro_rules! code {
 pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), ptr: *mut ()) {
     // No need to save caller-saved registers here.
     #[cfg(target_feature = "d")]
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             "
@@ -214,6 +215,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
         };
     }
     #[cfg(not(target_feature = "d"))]
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             "
@@ -244,6 +246,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
 /// **without** performing any sort of validation.
 pub unsafe fn restore_context(ctx: &Context) -> ! {
     #[cfg(target_feature = "d")]
+    // Safety: inline assembly
     unsafe {
         asm!(
             code!(restore_fp),
@@ -257,6 +260,7 @@ pub unsafe fn restore_context(ctx: &Context) -> ! {
         );
     }
     #[cfg(not(target_feature = "d"))]
+    // Safety: inline assembly
     unsafe {
         asm!(
             code!(restore_gp),

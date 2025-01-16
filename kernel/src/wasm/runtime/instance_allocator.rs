@@ -101,6 +101,7 @@ pub trait InstanceAllocator {
         for (index, plan) in &module.memories {
             if let Some(def_index) = module.defined_memory_index(index) {
                 let new_def_index =
+                // Safety: caller has to ensure safety
                     memories.push(unsafe { self.allocate_memory(module, plan, def_index)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
@@ -127,6 +128,7 @@ pub trait InstanceAllocator {
         for (index, plan) in &module.tables {
             if let Some(def_index) = module.defined_table_index(index) {
                 let new_def_index =
+                // Safety: caller has to ensure safety
                     tables.push(unsafe { self.allocate_table(module, plan, def_index)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
@@ -148,6 +150,7 @@ pub trait InstanceAllocator {
             // about leaking subsequent memories if the first memory failed to
             // deallocate. If deallocating memory ever becomes fallible, we will
             // need to be careful here!
+            // Safety: caller has to ensure safety
             unsafe {
                 self.deallocate_memory(memory_index, memory);
             }
@@ -164,6 +167,7 @@ pub trait InstanceAllocator {
     /// `Self::allocate_tables`/`Self::allocate_table` and must never be used again.
     unsafe fn deallocate_tables(&self, tables: &mut PrimaryMap<DefinedTableIndex, Table>) {
         for (table_index, table) in mem::take(tables) {
+            // Safety: caller has to ensure safety
             unsafe {
                 self.deallocate_table(table_index, table);
             }
@@ -200,12 +204,14 @@ pub trait InstanceAllocator {
         let mut memories =
             PrimaryMap::with_capacity(usize::try_from(num_defined_memories).unwrap());
 
+        // Safety: TODO
         match (|| unsafe {
             self.allocate_tables(module.translated(), &mut tables)?;
             self.allocate_memories(module.translated(), &mut memories)?;
             self.allocate_vmctx(module.translated(), module.offsets())
         })() {
             Ok(vmctx) => Ok((vmctx, tables, memories)),
+            // Safety: memories and tables have just been allocated and will not be handed out
             Err(e) => unsafe {
                 self.deallocate_memories(&mut memories);
                 self.deallocate_tables(&mut tables);

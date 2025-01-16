@@ -14,7 +14,7 @@ use core::range::Range;
 use core::slice;
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub fn prepare_boot_info(
     mut frame_alloc: FrameAllocator,
     physical_address_offset: usize,

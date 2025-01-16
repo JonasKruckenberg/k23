@@ -6,6 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 #![cfg_attr(not(test), no_std)]
+#![allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "too many trivial unsafe blocks"
+)]
 
 use core::cell::UnsafeCell;
 use core::iter::FusedIterator;
@@ -251,12 +255,15 @@ where
         false
     }
 
+    /// # Panics
+    ///
+    /// Panics if the element is already linked to a collection.
     pub fn push_back(&mut self, element: T::Handle) {
         let ptr = T::into_ptr(element);
-        assert_ne!(self.tail, Some(ptr));
+        debug_assert_ne!(self.tail, Some(ptr));
 
         unsafe {
-            debug_assert!(
+            assert!(
                 !T::links(ptr).as_ref().is_linked(),
                 "cannot insert an already linked node into a list"
             );
@@ -276,12 +283,15 @@ where
         self.len += 1;
     }
 
+    /// # Panics
+    ///
+    /// Panics if the element is already linked to a collection.
     pub fn push_front(&mut self, element: T::Handle) {
         let ptr = T::into_ptr(element);
-        assert_ne!(self.head, Some(ptr));
+        debug_assert_ne!(self.head, Some(ptr));
 
         unsafe {
-            debug_assert!(
+            assert!(
                 !T::links(ptr).as_ref().is_linked(),
                 "cannot insert an already linked node into a list"
             );
@@ -525,6 +535,11 @@ where
         Some((head, tail, len))
     }
 
+    /// Asserts as many invariants as possible.
+    ///
+    /// # Panics
+    ///
+    /// Panics when an assertion does not hold.
     pub fn assert_valid(&self) {
         let Some(head) = self.head else {
             assert!(

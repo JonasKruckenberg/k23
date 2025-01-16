@@ -71,10 +71,12 @@ pub enum Alias<'a> {
         name: &'a str,
     },
     /// Same as `InstanceExport`, but for core instances.
-    #[allow(missing_docs)]
     CoreInstanceExport {
+        /// The index of the instance that's being aliased from.
         instance: u32,
+        /// The kind of item that's being extracted from the instance.
         kind: ExportKind,
+        /// The name of the export that's being aliased.
         name: &'a str,
     },
     /// Aliasing an item from an outer component.

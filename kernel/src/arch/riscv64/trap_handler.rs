@@ -21,6 +21,7 @@ thread_local! {
 }
 
 pub fn init() {
+    // Safety: this is fine
     let trap_stack_top = unsafe {
         TRAP_STACK
             .as_ptr()
@@ -28,6 +29,7 @@ pub fn init() {
     };
 
     log::debug!("setting sscratch to {:p}", trap_stack_top);
+    // Safety: inline assembly
     unsafe {
         asm!(
             "csrrw x0, sscratch, {trap_frame}", // sscratch points to the trap frame
@@ -36,6 +38,7 @@ pub fn init() {
     }
 
     log::debug!("setting trap vec to {:#x}", trap_vec as usize);
+    // Safety: register access
     unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
 }
 
@@ -55,6 +58,7 @@ unsafe extern "C" fn trap_vec() {
     //
     // We can use this to direct some traps that don't need
     // expensive SBI call handling to cheaper handlers (like timers)
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             ".align 2",
@@ -76,9 +80,9 @@ unsafe extern "C" fn trap_vec() {
     }
 }
 
-#[allow(clippy::too_many_lines)]
 #[naked]
 unsafe extern "C" fn default_trap_entry() {
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             ".align 2",
@@ -246,7 +250,7 @@ extern "C-unwind" fn trap_panic_trampoline() {
 static IN_TRAP_HANDLER: AtomicBool = AtomicBool::new(false);
 
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments, reason = "")]
 fn default_trap_handler(
     raw_frame: *mut TrapFrame,
     a1: usize,
@@ -276,7 +280,7 @@ fn default_trap_handler(
             if let Err(err) = vm::trap_handler(tval, PageFaultFlags::LOAD) {
                 log::error!("LOAD PAGE FAULT at {epc:#x} {tval:#x} {err:?}");
 
-                sepc::set(trap_panic_trampoline as usize)
+                sepc::set(trap_panic_trampoline as usize);
             }
         }
         Trap::Exception(Exception::StorePageFault) => {
@@ -286,7 +290,7 @@ fn default_trap_handler(
             if let Err(err) = vm::trap_handler(tval, PageFaultFlags::STORE) {
                 log::error!("STORE PAGE FAULT at {epc:#x} {tval:#x} {err:?}");
 
-                sepc::set(trap_panic_trampoline as usize)
+                sepc::set(trap_panic_trampoline as usize);
             }
         }
         Trap::Exception(Exception::InstructionFault) => {
@@ -296,7 +300,7 @@ fn default_trap_handler(
             if let Err(err) = vm::trap_handler(tval, PageFaultFlags::INSTRUCTION) {
                 log::error!("INSTRUCTION PAGE FAULT at {epc:#x} {tval:#x} {err:?}");
 
-                sepc::set(trap_panic_trampoline as usize)
+                sepc::set(trap_panic_trampoline as usize);
             }
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
@@ -305,7 +309,7 @@ fn default_trap_handler(
             riscv::sbi::time::set_timer(u64::MAX).unwrap();
         }
         _ => {
-            sepc::set(trap_panic_trampoline as usize)
+            sepc::set(trap_panic_trampoline as usize);
             // panic!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
         }
     }

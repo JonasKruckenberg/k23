@@ -27,6 +27,7 @@ struct GlobalPanicState {
 pub fn init(boot_info: &BootInfo) {
     GLOBAL_PANIC_STATE.get_or_init(|| GlobalPanicState {
         kernel_virt_base: boot_info.kernel_virt.start as u64,
+        // Safety: we have to trust the loaders BootInfo here
         elf: unsafe {
             let base = boot_info
                 .physical_address_offset
@@ -68,9 +69,9 @@ pub fn catch_unwind<F, R>(f: F) -> Result<R, Box<dyn Any + Send + 'static>>
 where
     F: FnOnce() -> R + UnwindSafe,
 {
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     unwind2::catch_unwind(f).inspect_err(|_| {
-        panic_count::decrease() // decrease the panic count, since we caught it
+        panic_count::decrease(); // decrease the panic count, since we caught it
     })
 }
 
@@ -92,15 +93,16 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
                 }
             }
 
+            // Run thread-local destructors
+            // Safety: after this point we cannot access thread locals anyway
+            unsafe {
+                thread_local::destructors::run();
+            }
+
             arch::abort();
         }
 
         log::error!("hart panicked at {loc}:\n{msg}");
-
-        // Run thread-local destructors
-        unsafe {
-            thread_local::destructors::run();
-        }
 
         if let Some(ctx) = SYMBOLIZE_CONTEXT.as_ref() {
             let backtrace = Backtrace::capture(ctx);
@@ -130,7 +132,15 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 #[inline(never)]
 #[unsafe(no_mangle)]
 fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
-    match unwind2::begin_panic(payload) {
+    let res = unwind2::begin_panic(payload);
+
+    // Run thread-local destructors
+    // Safety: after this point we cannot access thread locals anyway
+    unsafe {
+        thread_local::destructors::run();
+    }
+
+    match res {
         Ok(_) => arch::exit(0),
         Err(_) => arch::abort(),
     }
@@ -155,6 +165,7 @@ fn construct_panic_payload(info: &core::panic::PanicInfo) -> Box<dyn Any + Send>
         }
     }
 
+    // Safety: TODO
     unsafe impl PanicPayload for FormatStringPayload<'_> {
         fn take_box(&mut self) -> *mut (dyn Any + Send) {
             let contents = mem::take(self.fill());
@@ -178,6 +189,7 @@ fn construct_panic_payload(info: &core::panic::PanicInfo) -> Box<dyn Any + Send>
 
     struct StaticStrPayload(&'static str);
 
+    // Safety: TODO
     unsafe impl PanicPayload for StaticStrPayload {
         fn take_box(&mut self) -> *mut (dyn Any + Send) {
             Box::into_raw(Box::new(self.0))
@@ -200,8 +212,10 @@ fn construct_panic_payload(info: &core::panic::PanicInfo) -> Box<dyn Any + Send>
 
     let msg = info.message();
     if let Some(s) = msg.as_str() {
+        // Safety: take_box returns an unwrapped box
         unsafe { Box::from_raw(StaticStrPayload(s).take_box()) }
     } else {
+        // Safety: take_box returns an unwrapped box
         unsafe {
             Box::from_raw(
                 FormatStringPayload {

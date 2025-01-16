@@ -56,10 +56,10 @@ pub unsafe fn try_set(mode: Mode, asid: u16, ppn: usize) -> Result<()> {
 
 /// Sets the register to corresponding page table mode, physical page number and address space id.
 ///
-/// **WARNING**: panics on:
+/// # Panics
 ///
-/// - non-`riscv` targets
-/// - invalid field values
+/// - panics on non-`riscv` targets
+/// - panics on invalid field values
 #[inline]
 #[cfg(target_pointer_width = "64")]
 pub unsafe fn set(mode: Mode, asid: u16, ppn: usize) {
@@ -67,6 +67,10 @@ pub unsafe fn set(mode: Mode, asid: u16, ppn: usize) {
 }
 
 /// Attempts to set the register to corresponding page table mode, physical page number and address space id.
+///
+/// # Errors
+///
+/// Returns an error if the values are out of range for their fields.
 #[inline]
 #[cfg(target_pointer_width = "64")]
 pub unsafe fn try_set(mode: Mode, asid: u16, ppn: usize) -> crate::Result<()> {
@@ -101,7 +105,8 @@ impl Satp {
     #[cfg(target_arch = "riscv64")]
     #[must_use]
     pub fn asid(&self) -> u16 {
-        ((self.bits >> 44) & 0xffff) as u16 // bits 44-60
+        // Safety: `& 0xffff` ensures the number must be 16 bit
+        unsafe { u16::try_from((self.bits >> 44) & 0xffff).unwrap_unchecked() } // bits 44-60
     }
     #[cfg(target_arch = "riscv32")]
     pub fn mode(&self) -> Mode {

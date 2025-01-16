@@ -20,15 +20,15 @@ clear!(0x106);
 
 set_clear_csr!(
 /// User cycle Enable
-    , set_cy, clear_cy, 1 << 0);
+    , set_cy, clear_cy, 1 << 0_i32);
 
 set_clear_csr!(
 /// User time Enable
-    , set_tm, clear_tm, 1 << 1);
+    , set_tm, clear_tm, 1 << 1_i32);
 
 set_clear_csr!(
 /// User instret Enable
-    , set_ir, clear_ir, 1 << 2);
+    , set_ir, clear_ir, 1 << 2_i32);
 
 impl Scounteren {
     /// User "cycle\[h\]" Enable
@@ -50,15 +50,23 @@ impl Scounteren {
     }
 
     /// User "hpm\[x\]" Enable (bits 3-31)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is invalid.
     #[inline]
     pub fn hpm(&self, index: usize) -> bool {
-        assert!((3..32).contains(&index));
+        assert!((3..32_usize).contains(&index));
         self.bits & (1 << index) != 0
     }
 
     /// User "hpm\[x\]" Enable (bits 3-31)
     ///
-    /// Attempts to read the "hpm\[x\]" value, and returns an error if the index is invalid.
+    /// Attempts to read the "hpm\[x\]" value
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index is invalid.
     #[inline]
     pub fn try_hpm(&self, index: usize) -> crate::Result<bool> {
         if (3..32).contains(&index) {

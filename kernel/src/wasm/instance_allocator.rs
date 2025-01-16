@@ -1,3 +1,4 @@
+use crate::vm::KERNEL_ASPACE;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::{InstanceAllocator, Memory, Table};
 use crate::wasm::runtime::{OwnedVMContext, VMOffsets};
@@ -12,7 +13,8 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         _module: &TranslatedModule,
         plan: &VMOffsets,
     ) -> crate::wasm::Result<OwnedVMContext> {
-        OwnedVMContext::try_new(plan)
+        let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
+        OwnedVMContext::try_new(&mut aspace, plan)
     }
 
     unsafe fn deallocate_vmctx(&self, _vmctx: OwnedVMContext) {}
@@ -48,7 +50,8 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
             .ok()
             .and_then(|m| usize::try_from(m).ok());
 
-        Memory::try_new(memory_desc, minimum, maximum)
+        let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
+        Memory::try_new(&mut aspace, memory_desc, minimum, maximum)
     }
 
     unsafe fn deallocate_memory(&self, _memory_index: DefinedMemoryIndex, _memory: Memory) {}
@@ -64,7 +67,8 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         // memory consumption
         let maximum = table_desc.maximum.and_then(|m| usize::try_from(m).ok());
 
-        Table::try_new(table_desc, maximum)
+        let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
+        Table::try_new(&mut aspace, table_desc, maximum)
     }
 
     unsafe fn deallocate_table(&self, _table_index: DefinedTableIndex, _table: Table) {}

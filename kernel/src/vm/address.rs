@@ -314,7 +314,7 @@ impl VirtualAddress {
     }
 
     #[inline]
-    pub const fn is_user_accessible(&self) -> bool {
+    pub const fn is_user_accessible(self) -> bool {
         // This address refers to userspace if it is in the lower half of the
         // canonical addresses.  IOW - if all of the bits in the canonical address
         // mask are zero.

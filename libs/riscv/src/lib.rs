@@ -7,7 +7,7 @@
 
 //! RISC-V architecture support crate.
 #![no_std]
-#![allow(edition_2024_expr_fragment_specifier)]
+#![allow(edition_2024_expr_fragment_specifier, reason = "vetted usage")]
 
 mod error;
 pub mod hio;
@@ -30,6 +30,7 @@ pub fn exit(code: i32) -> ! {
     semihosting::exit(code);
 
     // fall back to a wfi loop if exiting using semihosting failed
+    // Safety: inline assembly
     unsafe {
         loop {
             asm!("wfi");

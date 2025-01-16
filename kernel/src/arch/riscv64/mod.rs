@@ -38,6 +38,7 @@ pub fn init() {
 
 #[cold]
 pub fn per_hart_init() {
+    // Safety: register access
     unsafe {
         // Initialize the trap handler
         trap_handler::init();
@@ -163,6 +164,7 @@ pub fn parse_riscv_extensions(mut strs: Strings) -> Result<RiscvExtensions, dtb_
 
 /// Set the thread pointer on the calling hart to the given address.
 pub fn set_thread_ptr(addr: VirtualAddress) {
+    // Safety: inline assembly
     unsafe {
         asm!("mv tp, {addr}", addr = in(reg) addr.get());
     }
@@ -172,6 +174,7 @@ pub fn set_thread_ptr(addr: VirtualAddress) {
 /// Returns the current stack pointer.
 pub fn get_stack_pointer() -> usize {
     let stack_pointer: usize;
+    // Safety: inline assembly
     unsafe {
         asm!(
             "mv {}, sp",
@@ -184,11 +187,13 @@ pub fn get_stack_pointer() -> usize {
 
 /// Suspend the calling hart until an interrupt is received.
 pub fn wait_for_interrupt() {
+    // Safety: inline assembly
     unsafe { asm!("wfi") }
 }
 
 /// Retrieves the next older program counter and stack pointer from the current frame pointer.
 pub unsafe fn get_next_older_pc_from_fp(fp: usize) -> usize {
+    // Safety: caller has to ensure fp is valid
     unsafe { *(fp as *mut usize).offset(1) }
 }
 
@@ -201,16 +206,19 @@ pub fn assert_fp_is_aligned(fp: usize) {
 }
 
 pub fn mb() {
+    // Safety: inline assembly
     unsafe {
         asm!("fence iorw,iorw");
     }
 }
 pub fn wmb() {
+    // Safety: inline assembly
     unsafe {
         asm!("fence ow,ow");
     }
 }
 pub fn rmb() {
+    // Safety: inline assembly
     unsafe {
         asm!("fence ir,ir");
     }

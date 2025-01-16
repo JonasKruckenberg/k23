@@ -1,3 +1,8 @@
+#![expect(
+    clippy::undocumented_unsafe_blocks,
+    reason = "too many trivial unsafe blocks"
+)]
+
 use crate::wasm::indices::VMSharedTypeIndex;
 use core::ffi::c_void;
 use core::fmt;

@@ -231,6 +231,7 @@ impl TypeRegistry {
         Self::default()
     }
 
+    #[expect(tail_expr_drop_order, reason = "")]
     pub fn register_module_types(
         &self,
         engine: &Engine,
@@ -245,6 +246,7 @@ impl TypeRegistry {
         }
     }
 
+    #[expect(tail_expr_drop_order, reason = "")]
     pub fn get_type(&self, engine: &Engine, index: VMSharedTypeIndex) -> Option<RegisteredType> {
         let id = shared_type_index_to_slab_id(index);
         let inner = self.0.read();

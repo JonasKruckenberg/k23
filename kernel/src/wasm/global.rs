@@ -14,7 +14,7 @@ impl Global {
     //     todo!()
     // }
     /// Get the current value of the global.
-    pub fn get(&self, _store: &Store) -> Val {
+    pub fn get(self, _store: &Store) -> Val {
         todo!()
     }
     // pub fn set(&self, store: &mut Store, val: Val) {

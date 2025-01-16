@@ -1,3 +1,8 @@
+#![expect(
+    clippy::undocumented_unsafe_blocks,
+    reason = "too many trivial unsafe blocks"
+)]
+
 use crate::wasm::indices::{
     DataIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, ElemIndex, EntityIndex,
     FuncIndex, GlobalIndex, MemoryIndex, TableIndex, VMSharedTypeIndex,
@@ -37,6 +42,7 @@ pub struct Instance {
 }
 
 impl Instance {
+    #[expect(tail_expr_drop_order, reason = "")]
     pub unsafe fn new_unchecked(
         alloc: &dyn InstanceAllocator,
         const_eval: &mut ConstExprEvaluator,
@@ -393,6 +399,7 @@ impl Instance {
     clippy::needless_pass_by_value,
     reason = "imports should be a linear type"
 )]
+#[expect(clippy::unnecessary_wraps, reason = "TODO")]
 unsafe fn initialize_vmctx(
     const_eval: &mut ConstExprEvaluator,
     vmctx: &mut OwnedVMContext,
@@ -472,7 +479,7 @@ unsafe fn initialize_vmctx(
         }
 
         for (def_index, init_expr) in &module.translated().global_initializers {
-            let val = const_eval.eval(init_expr)?;
+            let val = const_eval.eval(init_expr);
             let ptr = vmctx.plus_offset_mut::<VMGlobalDefinition>(
                 module.offsets().vmctx_vmglobal_definition(def_index),
             );
@@ -554,7 +561,7 @@ unsafe fn initialize_tables(
         let val = match init {
             TableInitialValue::RefNull => None,
             TableInitialValue::ConstExpr(expr) => {
-                let funcref = const_eval.eval(expr)?.get_funcref();
+                let funcref = const_eval.eval(expr).get_funcref();
                 // TODO assert funcref ptr is valid
                 Some(NonNull::new(funcref.cast()).unwrap())
             }
@@ -572,14 +579,14 @@ unsafe fn initialize_tables(
             TableSegmentElements::Expressions(exprs) => exprs
                 .iter()
                 .map(|expr| -> crate::wasm::Result<Option<NonNull<VMFuncRef>>> {
-                    let funcref = const_eval.eval(expr)?.get_funcref();
+                    let funcref = const_eval.eval(expr).get_funcref();
                     // TODO assert funcref ptr is valid
                     Ok(Some(NonNull::new(funcref.cast()).unwrap()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         };
 
-        let offset = const_eval.eval(&segment.offset)?;
+        let offset = const_eval.eval(&segment.offset);
         let offset = usize::try_from(offset.get_u64()).unwrap();
 
         if let Some(def_index) = module.translated().defined_table_index(segment.table_index) {
@@ -593,13 +600,14 @@ unsafe fn initialize_tables(
     Ok(())
 }
 
+#[expect(clippy::unnecessary_wraps, reason = "TODO")]
 unsafe fn initialize_memories(
     const_eval: &mut ConstExprEvaluator,
     memories: &mut PrimaryMap<DefinedMemoryIndex, Memory>,
     module: &Module,
 ) -> crate::wasm::Result<()> {
     for init in &module.translated().memory_initializers {
-        let offset = const_eval.eval(&init.offset)?;
+        let offset = const_eval.eval(&init.offset);
         let offset = usize::try_from(offset.get_u64()).unwrap();
 
         if let Some(def_index) = module.translated().defined_memory_index(init.memory_index) {

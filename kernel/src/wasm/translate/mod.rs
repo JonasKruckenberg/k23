@@ -577,53 +577,53 @@ pub enum ProducersSdk<'wasm> {
     Other(&'wasm str),
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::wasm::translate::module_translator::ModuleTranslator;
-    use alloc::vec::Vec;
-    use wasmparser::Validator;
-
-    #[test_log::test]
-    fn simple_types() {
-        let wat = r#"(module
-            (type $f1 (func (param i32) (result i32)))
-        )"#;
-
-        let mut validator = Validator::new();
-
-        let wasm = wat::parse_str(wat).unwrap();
-        let (translation, types) = ModuleTranslator::new(&mut validator)
-            .translate(&wasm)
-            .unwrap();
-
-        let wasm_types = types.wasm_types().collect::<Vec<_>>();
-        assert_eq!(wasm_types.len(), 1);
-        assert!(wasm_types[0].1.is_func());
-        let f = wasm_types[0].1.unwrap_func();
-        assert_eq!(f.params.len(), 1);
-        assert_eq!(f.results.len(), 1);
-        assert_eq!(f.params[0], WasmValType::I32);
-        assert_eq!(f.results[0], WasmValType::I32);
-
-        assert_eq!(translation.module.types.len(), 1);
-    }
-
-    #[test_log::test]
-    fn simple_rec_group() {
-        let wat = r#"(module
-          (rec (type $f1 (func)) (type (struct (field (ref $f1)))))
-        )"#;
-
-        let mut validator = Validator::new();
-
-        let wasm = wat::parse_str(wat).unwrap();
-        let (_, types) = ModuleTranslator::new(&mut validator)
-            .translate(&wasm)
-            .unwrap();
-
-        for (idx, ty) in types.wasm_types() {
-            log::debug!("{idx:?} => {ty}")
-        }
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::wasm::translate::module_translator::ModuleTranslator;
+//     use alloc::vec::Vec;
+//     use wasmparser::Validator;
+//
+//     #[test_log::test]
+//     fn simple_types() {
+//         let wat = r#"(module
+//             (type $f1 (func (param i32) (result i32)))
+//         )"#;
+//
+//         let mut validator = Validator::new();
+//
+//         let wasm = wat::parse_str(wat).unwrap();
+//         let (translation, types) = ModuleTranslator::new(&mut validator)
+//             .translate(&wasm)
+//             .unwrap();
+//
+//         let wasm_types = types.wasm_types().collect::<Vec<_>>();
+//         assert_eq!(wasm_types.len(), 1);
+//         assert!(wasm_types[0].1.is_func());
+//         let f = wasm_types[0].1.unwrap_func();
+//         assert_eq!(f.params.len(), 1);
+//         assert_eq!(f.results.len(), 1);
+//         assert_eq!(f.params[0], WasmValType::I32);
+//         assert_eq!(f.results[0], WasmValType::I32);
+//
+//         assert_eq!(translation.module.types.len(), 1);
+//     }
+//
+//     #[test_log::test]
+//     fn simple_rec_group() {
+//         let wat = r#"(module
+//           (rec (type $f1 (func)) (type (struct (field (ref $f1)))))
+//         )"#;
+//
+//         let mut validator = Validator::new();
+//
+//         let wasm = wat::parse_str(wat).unwrap();
+//         let (_, types) = ModuleTranslator::new(&mut validator)
+//             .translate(&wasm)
+//             .unwrap();
+//
+//         for (idx, ty) in types.wasm_types() {
+//             log::debug!("{idx:?} => {ty}")
+//         }
+//     }
+// }

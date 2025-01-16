@@ -15,10 +15,11 @@ use core::ops::ControlFlow;
 pub struct Backtrace(Vec<Frame>);
 
 impl Backtrace {
-    pub(crate) unsafe fn new_with_trap_state(
+    pub(crate) fn new_with_trap_state(
         state: &CallThreadState,
         trap_pc_and_fp: Option<(usize, usize)>,
     ) -> Self {
+        // Safety: TODO validate pc and fp
         unsafe {
             let mut frames = vec![];
             Self::trace_with_trap_state(state, trap_pc_and_fp, |frame| {
@@ -40,6 +41,7 @@ impl Backtrace {
         // If we exited Wasm by catching a trap, then the Wasm-to-host
         // trampoline did not get a chance to save the last Wasm PC and FP,
         // and we need to use the plumbed-through values instead.
+        // Safety: state is always initialized
         let (last_wasm_exit_pc, last_wasm_exit_fp) = trap_pc_and_fp.unwrap_or_else(|| unsafe {
             // TODO this is horrible can we improve this?
             let pc = *state
@@ -54,6 +56,7 @@ impl Backtrace {
             (pc, fp)
         });
 
+        // Safety: state is always initialized
         let last_wasm_entry_fp = unsafe {
             *state
                 .vmctx
@@ -79,6 +82,7 @@ impl Backtrace {
                 });
 
         for (pc, fp, sp) in activations {
+            // Safety: caller has to ensure fp is valid
             if let ControlFlow::Break(()) = unsafe { Self::trace_through_wasm(pc, fp, sp, &mut f) }
             {
                 log::trace!("====== Done Capturing Backtrace (closure break) ======");
@@ -168,6 +172,7 @@ impl Backtrace {
 
             f(Frame { pc, fp })?;
 
+            // Safety: caller has to ensure fp is valid
             pc = unsafe { arch::get_next_older_pc_from_fp(fp) };
 
             // We rely on this offset being zero for all supported architectures
@@ -178,6 +183,7 @@ impl Backtrace {
 
             // Get the next older frame pointer from the current Wasm frame
             // pointer.
+            // Safety: caller has to ensure fp is valid
             let next_older_fp =
                 unsafe { *(fp as *mut usize).add(arch::NEXT_OLDER_FP_FROM_FP_OFFSET) };
 

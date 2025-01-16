@@ -49,6 +49,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     /// # Errors
     ///
     /// TODO
+    #[expect(tail_expr_drop_order, reason = "")]
     pub fn translate(
         mut self,
         data: &'data [u8],
@@ -72,7 +73,6 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     }
 
     /// Translates a single payload (essentially a section) of a WASM module.
-    #[expect(clippy::too_many_lines, reason = "big match statement")]
     fn translate_payload(&mut self, payload: Payload<'data>) -> crate::wasm::Result<()> {
         match payload {
             Payload::Version {

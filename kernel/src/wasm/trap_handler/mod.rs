@@ -160,6 +160,7 @@ impl CallThreadState {
 
     #[cold]
     unsafe fn read_unwind(&self) -> (UnwindReason, Option<Backtrace>) {
+        // Safety: Caller has to ensure ptr is initialized
         unsafe { (*self.unwind.get()).as_ptr().read() }
     }
 
@@ -167,7 +168,7 @@ impl CallThreadState {
         let backtrace = match reason {
             // Safety: since we pass None to `new_with_trap_state`, pc and fp will be read from the
             // `VMContext` instead. We have to trust that those are valid.
-            UnwindReason::Trap(_) => unsafe { Some(Backtrace::new_with_trap_state(self, None)) },
+            UnwindReason::Trap(_) => Some(Backtrace::new_with_trap_state(self, None)),
             // UnwindReason::Panic(_) => None,
         };
 
@@ -182,14 +183,14 @@ impl CallThreadState {
         }
     }
 
-    pub(crate) unsafe fn set_jit_trap(
+    pub(crate) fn set_jit_trap(
         &self,
         pc: usize,
         fp: usize,
         faulting_addr: usize,
         trap: crate::wasm::trap::Trap,
     ) {
-        let backtrace = unsafe { Backtrace::new_with_trap_state(self, Some((pc, fp))) };
+        let backtrace = Backtrace::new_with_trap_state(self, Some((pc, fp)));
         // Safety: `MaybeUninit` ensures proper alignment.
         unsafe {
             (*self.unwind.get()).as_mut_ptr().write((
@@ -258,13 +259,14 @@ impl Drop for CallThreadState {
     }
 }
 
-pub fn trap_handler(pc: usize, fp: usize, faulting_addr: usize) -> Result<(), !> {
+pub fn trap_handler(pc: usize, fp: usize, faulting_addr: usize) {
     if let Some(state) = CURRENT_STATE.get() {
+        // Safety: state ptr is always initialized
         let state = unsafe { &*state };
 
         // If this fault wasn't in wasm code, then it's not our problem
         let Some((code, text_offset)) = lookup_code(pc) else {
-            return Ok(());
+            return;
         };
 
         // If we don't have a trap code for this offset, that is bad, and it means
@@ -275,11 +277,10 @@ pub fn trap_handler(pc: usize, fp: usize, faulting_addr: usize) -> Result<(), !>
         };
 
         // Save the trap information into our thread local
-        unsafe {
-            state.set_jit_trap(pc, fp, faulting_addr, trap);
-        }
+        state.set_jit_trap(pc, fp, faulting_addr, trap);
 
         // And finally do the longjmp back to the last `catch_trap` that we know of
+        // Safety: longjmp
         unsafe {
             arch::longjmp(state.jmp_buf.as_ptr(), 1);
         }
@@ -287,7 +288,6 @@ pub fn trap_handler(pc: usize, fp: usize, faulting_addr: usize) -> Result<(), !>
 
     // If no wasm code is executing, we don't handle this as a wasm
     // trap.
-    Ok(())
 }
 
 fn global_code() -> &'static RwLock<GlobalRegistry> {

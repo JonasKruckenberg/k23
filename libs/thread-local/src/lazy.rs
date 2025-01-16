@@ -10,17 +10,20 @@ use core::cell::UnsafeCell;
 use core::hint::unreachable_unchecked;
 use core::ptr;
 
-#[allow(clippy::missing_safety_doc)]
+#[expect(clippy::missing_safety_doc, reason = "")]
 pub unsafe trait DestroyedState: Sized {
     fn register_dtor<T>(s: &LazyStorage<T, Self>);
 }
 
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
 unsafe impl DestroyedState for ! {
     fn register_dtor<T>(_: &LazyStorage<T, !>) {}
 }
 
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
 unsafe impl DestroyedState for () {
     fn register_dtor<T>(s: &LazyStorage<T, ()>) {
+        // Safety: this will only be called once
         unsafe {
             destructors::register(ptr::from_ref(s).cast_mut().cast(), destroy::<T>);
         }
@@ -57,12 +60,13 @@ where
     }
 
     #[inline]
-    #[allow(clippy::missing_safety_doc)]
-    pub unsafe fn get_or_init(&self, i: Option<&mut Option<T>>, f: impl FnOnce() -> T) -> *const T {
+    pub fn get_or_init(&self, i: Option<&mut Option<T>>, f: impl FnOnce() -> T) -> *const T {
+        // Safety: memory location is always initialized
         let state = unsafe { &*self.state.get() };
         match state {
             State::Alive(v) => v,
             State::Destroyed(_) => ptr::null(),
+            // Safety: thread local is not initialized yet
             State::Initial => unsafe { self.initialize(i, f) },
         }
     }
@@ -73,6 +77,7 @@ where
 
         let v = i.and_then(Option::take).unwrap_or_else(f);
 
+        // Safety: memory location is always initialized
         let old = unsafe { self.state.get().replace(State::Alive(v)) };
         match old {
             // If the variable is not being recursively initialized, register
@@ -103,10 +108,12 @@ where
 unsafe extern "C" fn destroy<T>(ptr: *mut u8) {
     // Print a nice abort message if a panic occurs.
     abort_on_dtor_unwind(|| {
+        // Safety: it is up to caller to ensure `ptr` is valid
         let storage = unsafe { &*(ptr as *const LazyStorage<T, ()>) };
         // Update the state before running the destructor as it may attempt to
         // access the variable.
+        // Safety: memory location is always initialized
         let val = unsafe { storage.state.get().replace(State::Destroyed(())) };
         drop(val);
-    })
+    });
 }

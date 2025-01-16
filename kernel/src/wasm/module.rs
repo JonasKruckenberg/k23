@@ -1,3 +1,4 @@
+use crate::vm::AddressSpace;
 use crate::wasm::compile::{CompileInputs, CompiledFunctionInfo};
 use crate::wasm::indices::{DefinedFuncIndex, EntityIndex, VMSharedTypeIndex};
 use crate::wasm::runtime::CodeMemory;
@@ -53,8 +54,10 @@ impl Module {
     /// # Panics
     ///
     /// TODO
+    #[expect(tail_expr_drop_order, reason = "")]
     pub fn from_bytes(
         engine: &Engine,
+        aspace: &mut AddressSpace,
         validator: &mut Validator,
         bytes: &[u8],
     ) -> crate::wasm::Result<Self> {
@@ -74,12 +77,13 @@ impl Module {
         let type_collection = engine.type_registry().register_module_types(engine, types);
 
         log::debug!("Allocating new memory map...");
-        let vec = MmapVec::from_slice(&code)?;
+        let vec = MmapVec::from_slice(aspace, &code)?;
         let mut code = CodeMemory::new(vec, trap_offsets, traps);
-        code.publish()?;
+        code.publish(aspace)?;
         let code = Arc::new(code);
 
-        // crate::wasm::placeholder::code_registry::register_code(&code);
+        // register this code memory with the trap handler, so we can correctly unwind from traps
+        crate::wasm::trap_handler::register_code(&code);
 
         Ok(Self(Arc::new(ModuleInner {
             offsets: VMOffsets::for_module(

@@ -47,13 +47,13 @@ impl Val {
         Self::FuncRef(None)
     }
 
-    /// Convenience method to convert this [`Val`] into a [`ValRaw`].
+    /// Convenience method to convert this [`Val`] into a [`VMVal`].
     ///
     /// # Safety
     ///
     /// Returned reference are essentially raw pointers and live only as long as
     /// the store does. It should be used with care.
-    pub unsafe fn as_vmval(&self, store: &mut Store) -> VMVal {
+    pub fn as_vmval(&self, store: &mut Store) -> VMVal {
         match self {
             Val::I32(i) => VMVal::i32(*i),
             Val::I64(i) => VMVal::i64(*i),
@@ -61,13 +61,13 @@ impl Val {
             Val::F64(u) => VMVal::f64(*u),
             Val::V128(b) => VMVal::v128(*b),
             Val::FuncRef(f) => VMVal::funcref(match f {
-                Some(f) => unsafe { f.as_raw(store) },
+                Some(f) => f.as_raw(store),
                 None => ptr::null_mut(),
             }),
         }
     }
 
-    /// Convenience method to convert a [`ValRaw`] into a [`Val`].
+    /// Convenience method to convert a [`VMVal`] into a [`Val`].
     ///
     /// # Safety
     ///
