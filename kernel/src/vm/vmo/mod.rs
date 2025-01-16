@@ -8,6 +8,10 @@
 mod paged;
 mod wired;
 
+use crate::vm::frame_alloc::Frame;
+use crate::vm::PhysicalAddress;
+use alloc::sync::Arc;
+use core::range::Range;
 pub use paged::PagedVmo;
 use sync::RwLock;
 pub use wired::WiredVmo;
@@ -16,6 +20,17 @@ pub use wired::WiredVmo;
 pub enum Vmo {
     Wired(WiredVmo),
     Paged(RwLock<PagedVmo>),
+}
+
+impl Vmo {
+    pub fn new_wired(range: Range<PhysicalAddress>) -> Arc<Self> {
+        #[allow(tail_expr_drop_order)]
+        Arc::new(Self::Wired(WiredVmo::new(range)))
+    }
+    pub fn new_paged(into_iter: impl IntoIterator<Item = Frame>) -> Arc<Self> {
+        #[allow(tail_expr_drop_order)]
+        Arc::new(Self::Paged(RwLock::new(PagedVmo::from_iter(into_iter))))
+    }
 }
 
 impl Vmo {

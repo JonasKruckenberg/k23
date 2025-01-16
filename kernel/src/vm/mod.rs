@@ -13,10 +13,8 @@ mod error;
 pub mod flush;
 pub mod frame_alloc;
 mod frame_list;
+mod mmap;
 mod trap_handler;
-
-pub use trap_handler::trap_handler;
-
 mod vmo;
 
 use crate::arch;
@@ -35,6 +33,7 @@ use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::{LazyLock, Mutex, OnceLock};
+pub use trap_handler::trap_handler;
 use xmas_elf::program::Type;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
