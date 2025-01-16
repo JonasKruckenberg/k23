@@ -20,7 +20,7 @@ const FRAME_LIST_NODE_FANOUT: usize = 16;
 
 pub struct FrameList {
     pub nodes: wavltree::WAVLTree<FrameListNode>,
-    len: usize,
+    size: usize,
 }
 
 #[pin_project]
@@ -66,8 +66,8 @@ impl FrameList {
         self.nodes.is_empty()
     }
 
-    pub fn len(&self) -> usize {
-        self.len
+    pub fn size(&self) -> usize {
+        self.size
     }
 
     pub fn get(&self, offset: usize) -> Option<&Frame> {
@@ -223,7 +223,7 @@ impl FromIterator<Frame> for FrameList {
 
         Self {
             nodes,
-            len: offset / arch::PAGE_SIZE,
+            size: offset,
         }
     }
 }

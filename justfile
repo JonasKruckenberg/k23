@@ -66,6 +66,7 @@ run cargo_args="" *args="":
     {{ _cargo }} run \
         -p kernel \
         --target kernel/riscv64gc-k23-none-kernel.json \
+        --locked \
         --profile {{ profile }} \
         {{ _buildstd }} \
         {{ cargo_args }} \
@@ -76,6 +77,13 @@ check crate="" *cargo_args="":
     {{ _cargo }} check \
         {{ if crate == "" { "--workspace --exclude loader" } else { "-p" } }} {{ crate }} \
         --target kernel/riscv64gc-k23-none-kernel.json \
+        --locked \
+        {{ _buildstd }} \
+        {{ _fmt }} \
+        {{ cargo_args }}
+    KERNEL=Cargo.toml {{ _cargo }} check \
+        -p loader \
+        --target loader/riscv64imac-k23-none-loader.json \
         {{ _buildstd }} \
         {{ _fmt }} \
         {{ cargo_args }}
@@ -91,12 +99,14 @@ clippy crate="" *cargo_args="":
     {{ _cargo }} clippy \
         {{ if crate == "" { "--workspace --exclude loader" } else { "-p" } }} {{ crate }} \
         --target kernel/riscv64gc-k23-none-kernel.json \
+        --locked \
         {{ _buildstd }} \
         {{ _fmt_clippy }} \
         {{ cargo_args }}
     KERNEL=Cargo.toml {{ _cargo }} clippy \
             -p loader \
             --target loader/riscv64imac-k23-none-loader.json \
+            --locked \
             {{ _buildstd }} \
             {{ _fmt_clippy }} \
             {{ cargo_args }}
@@ -131,6 +141,7 @@ test-docs crate="" *cargo_args="":
     {{ _cargo }} test --doc \
         {{ if crate == "" { "--workspace --exclude loader" } else { "--package" } }} {{ crate }} \
         --target kernel/riscv64gc-k23-none-kernel.json \
+        --locked \
         {{ _buildstd }} \
         {{ _fmt }} \
         {{ cargo_args }}
@@ -139,6 +150,7 @@ test-docs crate="" *cargo_args="":
 test $K23_PROFILE=(profile) cargo_args="" *args="": && (test-docs cargo_args)
     {{ _cargo }} test \
         -p kernel \
+        --locked \
         --target kernel/riscv64gc-k23-none-kernel.json \
         --profile {{ profile }} \
         {{ _buildstd }} \
@@ -149,6 +161,7 @@ test $K23_PROFILE=(profile) cargo_args="" *args="": && (test-docs cargo_args)
 build: && (_build_bootimg _kernel_artifact)
     {{_cargo}} build \
         -p kernel \
+        --locked \
         --target kernel/riscv64gc-k23-none-kernel.json \
         --profile {{ profile }} \
         {{ _buildstd }} \
@@ -184,11 +197,13 @@ _run_riscv64 binary *args: (_build_bootimg binary)
         -numa node,cpus=0-3,nodeid=0,memdev=m0 \
         -numa node,cpus=4-7,nodeid=1,memdev=m1 \
         -numa dist,src=0,dst=1,val=20 \
+        -monitor unix:qemu-monitor-socket,server,nowait \
         {{args}}
 
 _build_bootimg $KERNEL:
     {{_cargo}} build \
         -p loader \
+        --locked \
         --target loader/riscv64imac-k23-none-loader.json \
         --profile {{ profile }} \
         {{ _buildstd }} \

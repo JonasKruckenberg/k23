@@ -317,5 +317,7 @@ fn handle_page_fault_inner(tval: usize, flags: PageFaultFlags) -> crate::Result<
 
     let addr = VirtualAddress::new(tval).ok_or(Error::AccessDenied)?;
 
-    aspace.page_fault(addr, flags)
+    aspace
+        .page_fault(addr, flags)
+        .map_err(|_| Error::AccessDenied)
 }

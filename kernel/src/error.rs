@@ -15,8 +15,6 @@ pub enum Error {
     /// Errors returned by SBI calls
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     Sbi(riscv::sbi::Error),
-    /// Attempted to operate on mismatched address space.
-    AddressSpaceMismatch { expected: usize, found: usize },
     /// The caller did not have permission to perform the specified operation.
     AccessDenied,
     /// An argument is invalid.
@@ -52,7 +50,6 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             Error::Dtb(err) => write!(f, "Failed to parse device tree blob: {err}"),
-            Error::AddressSpaceMismatch { expected, found } => write!(f, "Attempted to operate on mismatched address space. Expected {expected} but found {found}."),
             #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
             Error::Sbi(err) => write!(f, "SBI call failed: {err}"),
             Error::AccessDenied => {
@@ -84,10 +81,18 @@ macro_rules! ensure {
             return Err($error);
         }
     };
+    ($cond:expr, $error:expr) => {
+        if !$cond {
+            return Err($error);
+        }
+    };
 }
 
 #[macro_export]
 macro_rules! bail {
+    ($error:expr) => {
+        return Err($error);
+    };
     ($error:expr, $msg:expr) => {
         log::error!($msg);
         return Err($error);

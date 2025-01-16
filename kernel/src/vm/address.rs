@@ -282,6 +282,15 @@ macro_rules! address_range_impl {
         fn into_layout(self) -> core::result::Result<Layout, LayoutError> {
             Layout::from_size_align(self.size(), self.alignment())
         }
+        fn is_overlapping(&self, other: &Self) -> bool {
+            (self.start < other.end) & (other.start < self.end)
+        }
+        fn difference(&self, other: Self) -> (Option<Self>, Option<Self>) {
+            debug_assert!(self.is_overlapping(&other));
+            let a = Range::from(self.start..other.start);
+            let b = Range::from(other.end..self.end);
+            ((!a.is_empty()).then_some(a), (!b.is_empty()).then_some(b))
+        }
     };
 }
 
@@ -350,6 +359,10 @@ pub trait AddressRangeExt {
     fn alignment(&self) -> usize;
     fn into_layout(self) -> core::result::Result<Layout, LayoutError>;
     fn is_user_accessible(&self) -> bool;
+    fn is_overlapping(&self, other: &Self) -> bool;
+    fn difference(&self, other: Self) -> (Option<Self>, Option<Self>)
+    where
+        Self: Sized;
 }
 
 impl AddressRangeExt for Range<PhysicalAddress> {

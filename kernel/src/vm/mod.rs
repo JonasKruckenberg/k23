@@ -9,6 +9,7 @@ mod address;
 mod address_space;
 mod address_space_region;
 pub mod bootstrap_alloc;
+mod error;
 pub mod flush;
 pub mod frame_alloc;
 mod frame_list;
@@ -22,10 +23,10 @@ pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_space::AddressSpace;
 use alloc::format;
 use alloc::string::ToString;
-use core::fmt::Formatter;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
+pub use error::Error;
 use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -51,8 +52,8 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
             )),
         );
 
-        reserve_wired_regions(&mut aspace, boot_info, &mut flush)?;
-        flush.flush()?;
+        reserve_wired_regions(&mut aspace, boot_info, &mut flush).unwrap();
+        flush.flush().unwrap();
 
         for region in aspace.regions.iter() {
             log::trace!(
@@ -73,18 +74,20 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
 fn reserve_wired_regions(
     aspace: &mut AddressSpace,
     boot_info: &BootInfo,
-    flush: &mut flush::Flush,
+    flush: &mut Flush,
 ) -> crate::Result<()> {
     // reserve the physical memory map
-    aspace.reserve(
-        Range::from(
-            VirtualAddress::new(boot_info.physical_memory_map.start).unwrap()
-                ..VirtualAddress::new(boot_info.physical_memory_map.end).unwrap(),
-        ),
-        Permissions::READ | Permissions::WRITE,
-        Some("Physical Memory Map".to_string()),
-        flush,
-    )?;
+    aspace
+        .reserve(
+            Range::from(
+                VirtualAddress::new(boot_info.physical_memory_map.start).unwrap()
+                    ..VirtualAddress::new(boot_info.physical_memory_map.end).unwrap(),
+            ),
+            Permissions::READ | Permissions::WRITE,
+            Some("Physical Memory Map".to_string()),
+            flush,
+        )
+        .unwrap();
 
     let own_elf = unsafe {
         let base = boot_info
@@ -131,19 +134,21 @@ fn reserve_wired_regions(
             ph.virtual_addr() + ph.mem_size()
         );
 
-        aspace.reserve(
-            Range {
-                start: virt.align_down(arch::PAGE_SIZE),
-                end: virt
-                    .checked_add(ph.mem_size() as usize)
-                    .unwrap()
-                    .checked_align_up(arch::PAGE_SIZE)
-                    .unwrap(),
-            },
-            permissions,
-            Some(format!("Kernel {permissions} Segment")),
-            flush,
-        )?;
+        aspace
+            .reserve(
+                Range {
+                    start: virt.align_down(arch::PAGE_SIZE),
+                    end: virt
+                        .checked_add(ph.mem_size() as usize)
+                        .unwrap()
+                        .checked_align_up(arch::PAGE_SIZE)
+                        .unwrap(),
+                },
+                permissions,
+                Some(format!("Kernel {permissions} Segment")),
+                flush,
+            )
+            .unwrap();
     }
 
     Ok(())
@@ -162,7 +167,7 @@ bitflags::bitflags! {
 }
 
 impl fmt::Display for PageFaultFlags {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         bitflags::parser::to_writer(self, f)
     }
 }
@@ -216,10 +221,10 @@ impl From<PageFaultFlags> for Permissions {
 pub trait ArchAddressSpace {
     type Flags: From<Permissions> + bitflags::Flags;
 
-    fn new(asid: usize) -> crate::Result<(Self, Flush)>
+    fn new(asid: u16) -> Result<(Self, Flush), Error>
     where
         Self: Sized;
-    fn from_active(asid: usize) -> (Self, Flush)
+    fn from_active(asid: u16) -> (Self, Flush)
     where
         Self: Sized;
 
@@ -230,15 +235,7 @@ pub trait ArchAddressSpace {
         len: NonZeroUsize,
         flags: Self::Flags,
         flush: &mut Flush,
-    ) -> crate::Result<()>;
-
-    unsafe fn remap_contiguous(
-        &mut self,
-        virt: VirtualAddress,
-        phys: PhysicalAddress,
-        len: NonZeroUsize,
-        flush: &mut Flush,
-    ) -> crate::Result<()>;
+    ) -> Result<(), Error>;
 
     unsafe fn protect(
         &mut self,
@@ -246,18 +243,33 @@ pub trait ArchAddressSpace {
         len: NonZeroUsize,
         new_flags: Self::Flags,
         flush: &mut Flush,
-    ) -> crate::Result<()>;
+    ) -> Result<(), Error>;
 
     unsafe fn unmap(
         &mut self,
         virt: VirtualAddress,
         len: NonZeroUsize,
         flush: &mut Flush,
-    ) -> crate::Result<()>;
+    ) -> Result<(), Error>;
 
     unsafe fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, Self::Flags)>;
 
     unsafe fn activate(&self);
 
     fn new_flush(&self) -> Flush;
+}
+
+impl Permissions {
+    /// Returns whether the set of permissions is `R^X` ie doesn't allow
+    /// write-execute at the same time.
+    pub fn is_valid(&self) -> bool {
+        !self.contains(Permissions::WRITE | Permissions::EXECUTE)
+    }
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+    pub struct Flags: u8 {
+        const EAGER = 1 << 0;
+    }
 }

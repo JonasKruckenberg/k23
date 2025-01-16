@@ -28,18 +28,18 @@ set!(0x180);
 /// - invalid field values
 #[inline]
 #[cfg(target_pointer_width = "32")]
-pub unsafe fn set(mode: Mode, asid: usize, ppn: usize) {
+pub unsafe fn set(mode: Mode, asid: u16, ppn: usize) {
     try_set(mode, asid, ppn).unwrap();
 }
 
 /// Attempts to set the register to corresponding page table mode, physical page number and address space id.
 #[inline]
 #[cfg(target_pointer_width = "32")]
-pub unsafe fn try_set(mode: Mode, asid: usize, ppn: usize) -> Result<()> {
+pub unsafe fn try_set(mode: Mode, asid: u16, ppn: usize) -> Result<()> {
     if asid != asid & 0x1FF {
         Err(Error::InvalidFieldValue {
             field: "asid",
-            value: asid,
+            value: asid as usize,
             bitmask: 0x1FF,
         })
     } else if ppn != ppn & 0x3F_FFFF {
@@ -49,7 +49,7 @@ pub unsafe fn try_set(mode: Mode, asid: usize, ppn: usize) -> Result<()> {
             bitmask: 0x3F_FFFF,
         })
     } else {
-        let bits = (mode as usize) << 31 | (asid << 22) | ppn;
+        let bits = (mode as usize) << 31 | ((asid as usize) << 22) | ppn;
         _set(bits)
     }
 }
@@ -62,28 +62,22 @@ pub unsafe fn try_set(mode: Mode, asid: usize, ppn: usize) -> Result<()> {
 /// - invalid field values
 #[inline]
 #[cfg(target_pointer_width = "64")]
-pub unsafe fn set(mode: Mode, asid: usize, ppn: usize) {
+pub unsafe fn set(mode: Mode, asid: u16, ppn: usize) {
     unsafe { try_set(mode, asid, ppn).unwrap() }
 }
 
 /// Attempts to set the register to corresponding page table mode, physical page number and address space id.
 #[inline]
 #[cfg(target_pointer_width = "64")]
-pub unsafe fn try_set(mode: Mode, asid: usize, ppn: usize) -> crate::Result<()> {
-    if asid != asid & 0xFFFF {
-        Err(Error::InvalidFieldValue {
-            field: "asid",
-            value: asid,
-            bitmask: 0xFFFF,
-        })
-    } else if ppn != ppn & 0xFFF_FFFF_FFFF {
+pub unsafe fn try_set(mode: Mode, asid: u16, ppn: usize) -> crate::Result<()> {
+    if ppn != ppn & 0xFFF_FFFF_FFFF {
         Err(Error::InvalidFieldValue {
             field: "ppn",
             value: ppn,
             bitmask: 0xFFF_FFFF_FFFF,
         })
     } else {
-        let bits = (mode as usize) << 60 | (asid << 44) | ppn;
+        let bits = (mode as usize) << 60 | ((asid as usize) << 44) | ppn;
         unsafe {
             _set(bits);
         }
@@ -106,8 +100,8 @@ impl Satp {
     }
     #[cfg(target_arch = "riscv64")]
     #[must_use]
-    pub fn asid(&self) -> usize {
-        (self.bits >> 44) & 0xffff // bits 44-60
+    pub fn asid(&self) -> u16 {
+        ((self.bits >> 44) & 0xffff) as u16 // bits 44-60
     }
     #[cfg(target_arch = "riscv32")]
     pub fn mode(&self) -> Mode {

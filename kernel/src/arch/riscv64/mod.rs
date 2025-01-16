@@ -23,6 +23,41 @@ pub use vm::{
     KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_BASE,
 };
 
+#[cold]
+pub fn init() {
+    let supported = riscv::sbi::supported_extensions().unwrap();
+    log::trace!("Supported SBI extensions: {supported:?}");
+
+    log::trace!("BOOT STACK {:?}", start::BOOT_STACK.0.as_ptr_range());
+
+    vm::init();
+
+    // TODO riscv64_mmu_early_init_percpu
+}
+
+#[cold]
+pub fn per_hart_init() {
+    unsafe {
+        // Initialize the trap handler
+        trap_handler::init();
+
+        // Enable interrupts
+        interrupt::enable();
+
+        // Enable supervisor timer and external interrupts
+        sie::set_stie();
+        sie::set_seie();
+
+        // enable counters
+        scounteren::set_cy();
+        scounteren::set_tm();
+        scounteren::set_ir();
+
+        // Set the FPU state to initial
+        sstatus::set_fs(FS::Initial);
+    }
+}
+
 bitflags! {
     #[derive(Debug, Default, Copy, Clone, Hash, PartialEq, Eq)]
     pub struct RiscvExtensions: u64 {
@@ -125,40 +160,6 @@ pub fn parse_riscv_extensions(mut strs: Strings) -> Result<RiscvExtensions, dtb_
     Ok(out)
 }
 
-pub fn init() {
-    let supported = riscv::sbi::supported_extensions().unwrap();
-    log::trace!("Supported SBI extensions: {supported:?}");
-
-    log::trace!("BOOT STACK {:?}", start::BOOT_STACK.0.as_ptr_range())
-
-    // TODO riscv64_mmu_early_init
-    //      - figure out ASID bits
-    //      -  Zero the bottom of the kernel page table to remove any left over boot mappings.
-    // TODO riscv64_mmu_early_init_percpu
-}
-
-pub fn per_hart_init() {
-    unsafe {
-        // Initialize the trap handler
-        trap_handler::init();
-
-        // Enable interrupts
-        interrupt::enable();
-
-        // Enable supervisor timer and external interrupts
-        sie::set_stie();
-        sie::set_seie();
-
-        // enable counters
-        scounteren::set_cy();
-        scounteren::set_tm();
-        scounteren::set_ir();
-
-        // Set the FPU state to initial
-        sstatus::set_fs(FS::Initial);
-    }
-}
-
 /// Set the thread pointer on the calling hart to the given address.
 pub fn set_thread_ptr(addr: VirtualAddress) {
     unsafe {
@@ -169,4 +170,20 @@ pub fn set_thread_ptr(addr: VirtualAddress) {
 /// Suspend the calling hart until an interrupt is received.
 pub fn wait_for_interrupt() {
     unsafe { asm!("wfi") }
+}
+
+pub fn mb() {
+    unsafe {
+        asm!("fence iorw,iorw");
+    }
+}
+pub fn wmb() {
+    unsafe {
+        asm!("fence ow,ow");
+    }
+}
+pub fn rmb() {
+    unsafe {
+        asm!("fence ir,ir");
+    }
 }
