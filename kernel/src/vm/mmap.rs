@@ -20,8 +20,11 @@ pub struct MmapSlice {
 }
 
 impl MmapSlice {
-    pub unsafe fn from_raw(ptr: *mut AddressSpaceRegion, range: Range<VirtualAddress>) -> Self {
-        Self { ptr, range }
+    pub unsafe fn from_raw(ptr: *mut AddressSpaceRegion) -> Self {
+        Self {
+            ptr,
+            range: unsafe { ptr.as_ref().unwrap().range },
+        }
     }
 
     // /// Creates a new empty `Mmap`.
