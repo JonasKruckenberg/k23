@@ -18,19 +18,20 @@ mod linker;
 mod memory;
 mod module;
 // mod placeholder;
+mod instance_allocator;
 mod runtime;
 mod store;
 mod table;
 mod translate;
 mod trap;
+mod trap_handler;
 mod type_registry;
 mod utils;
 mod values;
-mod trap_handler;
-mod instance_allocator;
 
 pub use errors::Error;
 pub(crate) type Result<T> = core::result::Result<T, Error>;
+use crate::{enum_accessors, owned_enum_accessors};
 pub use engine::Engine;
 pub use func::Func;
 pub use global::Global;
@@ -43,7 +44,6 @@ pub use store::Store;
 pub use table::Table;
 pub use translate::ModuleTranslator;
 pub use values::{Ref, Val};
-use crate::{enum_accessors, owned_enum_accessors};
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.

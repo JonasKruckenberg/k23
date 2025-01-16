@@ -6,7 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
-use crate::vm::{PageFaultFlags};
+use crate::arch::PAGE_SIZE;
+use crate::vm::PageFaultFlags;
 use crate::{arch, vm, TRAP_STACK_SIZE_PAGES};
 use core::arch::{asm, naked_asm};
 use core::fmt::Write;
@@ -14,7 +15,6 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{scause, sepc, sstatus, stval, stvec};
 use thread_local::thread_local;
-use crate::arch::PAGE_SIZE;
 
 thread_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };

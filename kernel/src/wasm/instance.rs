@@ -33,7 +33,8 @@ impl Instance {
         module: Module,
         imports: Imports,
     ) -> crate::wasm::Result<Self> {
-        let instance = unsafe { runtime::Instance::new_unchecked(alloc, const_eval, module, imports)? };
+        let instance =
+            unsafe { runtime::Instance::new_unchecked(alloc, const_eval, module, imports)? };
         let handle = store.push_instance(instance);
         Ok(Self(handle))
     }

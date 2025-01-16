@@ -19,6 +19,7 @@
 //! }
 //! ```
 
+use crate::u32_offset_of;
 use crate::wasm::indices::{
     DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, FuncIndex, FuncRefIndex,
     GlobalIndex, MemoryIndex, TableIndex,
@@ -28,7 +29,6 @@ use crate::wasm::runtime::vmcontext::{
     VMMemoryImport, VMTableDefinition, VMTableImport,
 };
 use crate::wasm::translate::TranslatedModule;
-use crate::u32_offset_of;
 use core::fmt;
 use core::mem::offset_of;
 use cranelift_entity::packed_option::ReservedValue;

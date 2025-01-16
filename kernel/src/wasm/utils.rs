@@ -1,8 +1,8 @@
+use crate::arch::PAGE_SIZE;
 use crate::wasm::translate::{WasmFuncType, WasmHeapTopTypeInner, WasmHeapType, WasmValType};
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
-use crate::arch::PAGE_SIZE;
 
 /// Helper macro to generate accessors for an enum.
 #[macro_export]

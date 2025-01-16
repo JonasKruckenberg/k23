@@ -79,7 +79,8 @@ impl Backtrace {
                 });
 
         for (pc, fp, sp) in activations {
-            if let ControlFlow::Break(()) = unsafe { Self::trace_through_wasm(pc, fp, sp, &mut f) } {
+            if let ControlFlow::Break(()) = unsafe { Self::trace_through_wasm(pc, fp, sp, &mut f) }
+            {
                 log::trace!("====== Done Capturing Backtrace (closure break) ======");
                 return;
             }
@@ -177,7 +178,8 @@ impl Backtrace {
 
             // Get the next older frame pointer from the current Wasm frame
             // pointer.
-            let next_older_fp = unsafe { *(fp as *mut usize).add(arch::NEXT_OLDER_FP_FROM_FP_OFFSET) };
+            let next_older_fp =
+                unsafe { *(fp as *mut usize).add(arch::NEXT_OLDER_FP_FROM_FP_OFFSET) };
 
             // Because the stack always grows down, the older FP must be greater
             // than the current FP.

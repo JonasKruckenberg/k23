@@ -49,7 +49,11 @@ impl Linker {
     /// # Errors
     ///
     /// TODO
-    pub fn alias_module(&mut self, module: &str, as_module: &str) -> crate::wasm::Result<&mut Self> {
+    pub fn alias_module(
+        &mut self,
+        module: &str,
+        as_module: &str,
+    ) -> crate::wasm::Result<&mut Self> {
         let module = self.intern_str(module);
         let as_module = self.intern_str(as_module);
         let items = self

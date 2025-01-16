@@ -169,7 +169,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
             Payload::End(offset) => {
                 self.validator.end(offset)?;
             }
-            
+
             // Payload::ModuleSection { .. }
             // | Payload::InstanceSection(_)
             // | Payload::CoreTypeSection(_)
@@ -183,7 +183,6 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
             // | Payload::ComponentExportSection(_) => {
             //     return Err(wasm_unsupported!("component model is unsupported"));
             // }
-            
             p => log::warn!("unknown section {p:?}"),
         }
         Ok(())
@@ -333,7 +332,10 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
         Ok(())
     }
 
-    fn translate_table_section(&mut self, tables: TableSectionReader<'data>) -> crate::wasm::Result<()> {
+    fn translate_table_section(
+        &mut self,
+        tables: TableSectionReader<'data>,
+    ) -> crate::wasm::Result<()> {
         self.result
             .module
             .tables
@@ -556,7 +558,10 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
         Ok(())
     }
 
-    fn translate_data_section(&mut self, section: DataSectionReader<'data>) -> crate::wasm::Result<()> {
+    fn translate_data_section(
+        &mut self,
+        section: DataSectionReader<'data>,
+    ) -> crate::wasm::Result<()> {
         for (data_index, entry) in section.into_iter().enumerate() {
             let entry = entry?;
             let data_index = DataIndex::from_u32(u32::try_from(data_index).unwrap());
@@ -643,7 +648,10 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     }
 
     #[expect(clippy::too_many_lines, reason = "big match statement")]
-    fn translate_name_section(&mut self, reader: NameSectionReader<'data>) -> crate::wasm::Result<()> {
+    fn translate_name_section(
+        &mut self,
+        reader: NameSectionReader<'data>,
+    ) -> crate::wasm::Result<()> {
         for subsection in reader {
             fn for_each_direct_name<'data>(
                 names: NameMap<'data>,

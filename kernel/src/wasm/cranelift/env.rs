@@ -927,17 +927,29 @@ impl TranslationEnvironment<'_> {
     }
 
     /// Translate an `i32` value into an `i31ref`.
-    pub fn translate_ref_i31(&mut self, pos: FuncCursor, value: Value) -> crate::wasm::Result<Value> {
+    pub fn translate_ref_i31(
+        &mut self,
+        pos: FuncCursor,
+        value: Value,
+    ) -> crate::wasm::Result<Value> {
         todo!()
     }
 
     /// Sign-extend an `i31ref` into an `i32`.
-    pub fn translate_i31_get_s(&mut self, pos: FuncCursor, value: Value) -> crate::wasm::Result<Value> {
+    pub fn translate_i31_get_s(
+        &mut self,
+        pos: FuncCursor,
+        value: Value,
+    ) -> crate::wasm::Result<Value> {
         todo!()
     }
 
     /// Zero-extend an `i31ref` into an `i32`.
-    pub fn translate_i31_get_u(&mut self, pos: FuncCursor, value: Value) -> crate::wasm::Result<Value> {
+    pub fn translate_i31_get_u(
+        &mut self,
+        pos: FuncCursor,
+        value: Value,
+    ) -> crate::wasm::Result<Value> {
         todo!()
     }
     // Translate a `struct.new` instruction.

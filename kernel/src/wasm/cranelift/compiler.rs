@@ -1,3 +1,4 @@
+use crate::arch;
 use crate::wasm::builtins::BuiltinFunctionIndex;
 use crate::wasm::compile::{CompiledFunction, Compiler, FilePos, NS_WASM_FUNC};
 use crate::wasm::cranelift::builtins::BuiltinFunctionSignatures;
@@ -24,7 +25,6 @@ use cranelift_frontend::FunctionBuilder;
 use sync::Mutex;
 use target_lexicon::Triple;
 use wasmparser::{FuncValidatorAllocations, FunctionBody};
-use crate::arch;
 
 pub struct CraneliftCompiler {
     isa: OwnedTargetIsa,

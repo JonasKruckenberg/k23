@@ -100,7 +100,8 @@ pub trait InstanceAllocator {
     ) -> crate::wasm::Result<()> {
         for (index, plan) in &module.memories {
             if let Some(def_index) = module.defined_memory_index(index) {
-                let new_def_index = memories.push(unsafe { self.allocate_memory(module, plan, def_index)? });
+                let new_def_index =
+                    memories.push(unsafe { self.allocate_memory(module, plan, def_index)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
         }
@@ -125,7 +126,8 @@ pub trait InstanceAllocator {
     ) -> crate::wasm::Result<()> {
         for (index, plan) in &module.tables {
             if let Some(def_index) = module.defined_table_index(index) {
-                let new_def_index = tables.push(unsafe { self.allocate_table(module, plan, def_index)? });
+                let new_def_index =
+                    tables.push(unsafe { self.allocate_table(module, plan, def_index)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
         }
@@ -146,7 +148,9 @@ pub trait InstanceAllocator {
             // about leaking subsequent memories if the first memory failed to
             // deallocate. If deallocating memory ever becomes fallible, we will
             // need to be careful here!
-            unsafe { self.deallocate_memory(memory_index, memory); }
+            unsafe {
+                self.deallocate_memory(memory_index, memory);
+            }
         }
     }
 
@@ -160,7 +164,9 @@ pub trait InstanceAllocator {
     /// `Self::allocate_tables`/`Self::allocate_table` and must never be used again.
     unsafe fn deallocate_tables(&self, tables: &mut PrimaryMap<DefinedTableIndex, Table>) {
         for (table_index, table) in mem::take(tables) {
-            unsafe { self.deallocate_table(table_index, table); }
+            unsafe {
+                self.deallocate_table(table_index, table);
+            }
         }
     }
 
@@ -204,7 +210,7 @@ pub trait InstanceAllocator {
                 self.deallocate_memories(&mut memories);
                 self.deallocate_tables(&mut tables);
                 Err(e)
-            }
+            },
         }
     }
 }
