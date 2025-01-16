@@ -18,8 +18,7 @@ use dtb_parser::Strings;
 use fallible_iterator::FallibleIterator;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
-use static_assertions::const_assert_eq;
-pub use setjmp_longjmp::{longjmp, setjmp, call_with_setjmp, JmpBuf, JmpBufStruct};
+pub use setjmp_longjmp::{longjmp, setjmp, JmpBufStruct};
 pub use vm::{
     invalidate_range, is_kernel_address, AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID,
     KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_BASE,

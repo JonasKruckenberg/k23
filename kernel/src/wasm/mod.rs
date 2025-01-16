@@ -1,9 +1,6 @@
 //! #k23VM - k23 WebAssembly Virtual Machine
 
-// #![cfg_attr(feature = "no_std", no_std)]
-// #![feature(allocator_api)]
-// #![feature(thread_local)]
-// #![deny(missing_docs)]
+#![allow(unused_imports)]
 
 extern crate alloc;
 extern crate core;

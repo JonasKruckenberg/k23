@@ -14,7 +14,6 @@ use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use core::cell::{Cell, RefCell, UnsafeCell};
 use core::mem::MaybeUninit;
-use core::panic::UnwindSafe;
 use core::ptr;
 use sync::{OnceLock, RwLock};
 use thread_local::thread_local;
