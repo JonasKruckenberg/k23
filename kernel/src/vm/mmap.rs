@@ -45,13 +45,7 @@ impl Mmap {
             layout.size().div_ceil(arch::PAGE_SIZE),
         ));
 
-        let region = aspace.map(
-            layout,
-            vmo,
-            0,
-            Permissions::READ | Permissions::WRITE,
-            None,
-        )?;
+        let region = aspace.map(layout, vmo, 0, Permissions::READ | Permissions::WRITE, None)?;
 
         #[allow(tail_expr_drop_order)]
         Ok(Self {

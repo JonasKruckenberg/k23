@@ -136,7 +136,7 @@ impl AddressSpace {
         permissions: Permissions,
         name: Option<String>,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        let layout = layout.pad_to_align(); 
+        let layout = layout.pad_to_align();
         let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY);
         let range = Range::from(base..base.checked_add(layout.size()).unwrap());
 
