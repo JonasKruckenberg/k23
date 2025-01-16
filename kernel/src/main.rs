@@ -24,6 +24,7 @@ mod arch;
 mod error;
 mod logger;
 mod machine_info;
+mod metrics;
 mod panic;
 mod thread_local;
 mod time;
