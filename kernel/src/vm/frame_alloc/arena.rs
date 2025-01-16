@@ -6,15 +6,15 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::frame::FrameInfo;
+use crate::arch;
+use crate::vm::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use crate::vm::bootstrap_alloc::FreeRegions;
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core::range::Range;
 use core::{cmp, fmt, mem, slice};
 use fallible_iterator::FallibleIterator;
-use mmu::arch::PAGE_SIZE;
-use mmu::frame_alloc::FreeRegions;
-use mmu::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 const ARENA_PAGE_BOOKKEEPING_SIZE: usize = size_of::<FrameInfo>();
 const MAX_WASTED_ARENA_BYTES: usize = 0x8_4000; // 528 KiB
@@ -53,11 +53,11 @@ impl fmt::Debug for Arena {
 }
 
 impl Arena {
-    pub fn from_selection(selection: ArenaSelection, phys_off: VirtualAddress) -> Self {
+    pub fn from_selection(selection: ArenaSelection) -> Self {
         debug_assert!(selection.bookkeeping.size() >= bookkeeping_size(selection.arena.size()));
 
         let slots: &mut [MaybeUninit<FrameInfo>] = unsafe {
-            let ptr = VirtualAddress::from_phys(selection.bookkeeping.start, phys_off)
+            let ptr = VirtualAddress::from_phys(selection.bookkeeping.start)
                 .unwrap()
                 .as_mut_ptr()
                 .cast();
@@ -79,18 +79,18 @@ impl Arena {
 
             let size = cmp::min(
                 cmp::min(lowbit, prev_power_of_two(remaining_bytes)),
-                PAGE_SIZE << (MAX_ORDER - 1),
+                arch::PAGE_SIZE << (MAX_ORDER - 1),
             );
 
-            let size_pages = size / PAGE_SIZE;
+            let size_pages = size / arch::PAGE_SIZE;
             let order = size_pages.trailing_zeros() as usize;
             total_frames += size_pages;
             max_order = cmp::max(max_order, order);
 
             {
-                debug_assert!(addr.is_aligned_to(PAGE_SIZE));
+                debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
                 let offset = addr.checked_sub_addr(selection.arena.start).unwrap();
-                let idx = offset / PAGE_SIZE;
+                let idx = offset / arch::PAGE_SIZE;
 
                 let frame = slots[idx].write(FrameInfo::new(addr)).into();
                 free_lists[order].push_back(frame);
@@ -101,7 +101,7 @@ impl Arena {
         }
 
         // Make sure we've accounted for all frames
-        debug_assert_eq!(total_frames, selection.arena.size() / PAGE_SIZE);
+        debug_assert_eq!(total_frames, selection.arena.size() / arch::PAGE_SIZE);
 
         Self {
             range: selection.arena,
@@ -113,6 +113,10 @@ impl Arena {
         }
     }
 
+    pub fn max_alignment(&self) -> usize {
+        arch::PAGE_SIZE << self.max_order
+    }
+
     pub fn allocate_one(&mut self) -> Option<NonNull<FrameInfo>> {
         let (frame_order, mut frame) = self.free_lists[..=self.max_order]
             .iter_mut()
@@ -122,7 +126,10 @@ impl Arena {
         for order in (1..frame_order + 1).rev() {
             let frame = unsafe { frame.as_mut() };
 
-            let buddy_addr = frame.addr().checked_add(PAGE_SIZE << (order - 1)).unwrap();
+            let buddy_addr = frame
+                .addr()
+                .checked_add(arch::PAGE_SIZE << (order - 1))
+                .unwrap();
 
             let buddy = self
                 .find_specific(buddy_addr)
@@ -137,11 +144,11 @@ impl Arena {
     }
 
     pub fn allocate_contiguous(&mut self, layout: Layout) -> Option<linked_list::List<FrameInfo>> {
-        assert!(layout.align() >= PAGE_SIZE);
-        assert!(layout.size() >= PAGE_SIZE);
+        assert!(layout.align() >= arch::PAGE_SIZE);
+        assert!(layout.size() >= arch::PAGE_SIZE);
 
         let size = cmp::max(layout.size().next_power_of_two(), layout.align());
-        let size_frames = size / PAGE_SIZE;
+        let size_frames = size / arch::PAGE_SIZE;
         let min_order = size_frames.trailing_zeros() as usize;
 
         // locate a free area of the requested alignment from the freelists
@@ -156,7 +163,10 @@ impl Arena {
         for order in (min_order + 1..frame_order + 1).rev() {
             let frame = unsafe { frame.as_mut() };
 
-            let buddy_addr = frame.addr().checked_add(PAGE_SIZE << (order - 1)).unwrap();
+            let buddy_addr = frame
+                .addr()
+                .checked_add(arch::PAGE_SIZE << (order - 1))
+                .unwrap();
 
             let buddy = self
                 .find_specific(buddy_addr)
@@ -177,9 +187,9 @@ impl Arena {
             let base = unsafe { frame.as_ref().addr() };
 
             uninit.iter_mut().enumerate().map(move |(idx, slot)| {
-                NonNull::from(
-                    slot.write(FrameInfo::new(base.checked_add(idx * PAGE_SIZE).unwrap())),
-                )
+                NonNull::from(slot.write(FrameInfo::new(
+                    base.checked_add(idx * arch::PAGE_SIZE).unwrap(),
+                )))
             })
         };
 
@@ -189,7 +199,7 @@ impl Arena {
 
     #[inline]
     fn find_specific(&mut self, addr: PhysicalAddress) -> Option<&mut MaybeUninit<FrameInfo>> {
-        let index = addr.checked_sub_addr(self.range.start).unwrap() / PAGE_SIZE;
+        let index = addr.checked_sub_addr(self.range.start).unwrap() / arch::PAGE_SIZE;
         self.slots.get_mut(index)
     }
 }
@@ -232,7 +242,7 @@ impl FallibleIterator for ArenaSelections<'_> {
         };
 
         for region in self.inner.by_ref() {
-            let pages_in_hole = region.start.checked_sub_addr(arena.end).unwrap() / PAGE_SIZE;
+            let pages_in_hole = region.start.checked_sub_addr(arena.end).unwrap() / arch::PAGE_SIZE;
             let waste_from_hole = ARENA_PAGE_BOOKKEEPING_SIZE * pages_in_hole;
 
             if self.wasted_bytes + waste_from_hole > MAX_WASTED_ARENA_BYTES {
@@ -243,7 +253,7 @@ impl FallibleIterator for ArenaSelections<'_> {
             }
         }
 
-        let mut aligned = arena.checked_align_in(PAGE_SIZE).unwrap();
+        let mut aligned = arena.checked_align_in(arch::PAGE_SIZE).unwrap();
         let bookkeeping_size = bookkeeping_size(aligned.size());
 
         // We can't use empty arenas anyway
@@ -256,7 +266,7 @@ impl FallibleIterator for ArenaSelections<'_> {
             .end
             .checked_sub(bookkeeping_size)
             .unwrap()
-            .align_down(PAGE_SIZE);
+            .align_down(arch::PAGE_SIZE);
 
         // The arena has no space to hold its own bookkeeping
         if bookkeeping_start < aligned.start {
@@ -280,5 +290,5 @@ fn prev_power_of_two(num: usize) -> usize {
 }
 
 fn bookkeeping_size(region_size: usize) -> usize {
-    (region_size / PAGE_SIZE) * ARENA_PAGE_BOOKKEEPING_SIZE
+    (region_size / arch::PAGE_SIZE) * ARENA_PAGE_BOOKKEEPING_SIZE
 }

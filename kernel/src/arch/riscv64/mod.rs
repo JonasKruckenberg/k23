@@ -9,32 +9,56 @@ mod setjmp_longjmp;
 mod start;
 mod trap_handler;
 mod utils;
+mod vm;
 
+use crate::vm::VirtualAddress;
 use bitflags::bitflags;
 use core::arch::asm;
 use dtb_parser::Strings;
 use fallible_iterator::FallibleIterator;
-use mmu::VirtualAddress;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
 use static_assertions::const_assert_eq;
 pub use setjmp_longjmp::{longjmp, setjmp, call_with_setjmp, JmpBuf, JmpBufStruct};
+pub use vm::{
+    invalidate_range, is_kernel_address, AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID,
+    KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_BASE,
+};
 
-/// Virtual address where the kernel address space starts.
-///
-///
-pub const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000).unwrap();
-pub const KERNEL_ASPACE_SIZE: usize = 1 << mmu::arch::VIRT_ADDR_BITS;
-const_assert_eq!(KERNEL_ASPACE_BASE.get(), mmu::arch::CANONICAL_ADDRESS_MASK);
-const_assert_eq!(KERNEL_ASPACE_SIZE - 1, !mmu::arch::CANONICAL_ADDRESS_MASK);
+#[cold]
+pub fn init() {
+    let supported = riscv::sbi::supported_extensions().unwrap();
+    log::trace!("Supported SBI extensions: {supported:?}");
 
-/// Virtual address where the user address space starts.
-///
-/// The first 2MiB are reserved for catching null pointer dereferences, but this might
-/// change in the future if we decide that the null-checking performed by the WASM runtime
-/// is sufficiently robust.
-pub const USER_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0x0000000000200000).unwrap();
-pub const USER_ASPACE_SIZE: usize = (1 << mmu::arch::VIRT_ADDR_BITS) - USER_ASPACE_BASE.get();
+    log::trace!("BOOT STACK {:?}", start::BOOT_STACK.0.as_ptr_range());
+
+    vm::init();
+
+    // TODO riscv64_mmu_early_init_percpu
+}
+
+#[cold]
+pub fn per_hart_init() {
+    unsafe {
+        // Initialize the trap handler
+        trap_handler::init();
+
+        // Enable interrupts
+        interrupt::enable();
+
+        // Enable supervisor timer and external interrupts
+        sie::set_stie();
+        sie::set_seie();
+
+        // enable counters
+        scounteren::set_cy();
+        scounteren::set_tm();
+        scounteren::set_ir();
+
+        // Set the FPU state to initial
+        sstatus::set_fs(FS::Initial);
+    }
+}
 
 bitflags! {
     #[derive(Debug, Default, Copy, Clone, Hash, PartialEq, Eq)]
@@ -78,6 +102,7 @@ bitflags! {
         const SSTVALA = 1 << 36;
         const SSTVECD = 1 << 37;
         const SVADU = 1 << 38;
+        const SVVPTC = 1 << 39;
     }
 }
 
@@ -125,51 +150,16 @@ pub fn parse_riscv_extensions(mut strs: Strings) -> Result<RiscvExtensions, dtb_
             "sstvala" => RiscvExtensions::SSTVALA,
             "sstvecd" => RiscvExtensions::SSTVECD,
             "svadu" => RiscvExtensions::SVADU,
-            _ => return Err(dtb_parser::Error::InvalidToken(0)), // TODO better error type
+            "svvptc" => RiscvExtensions::SVVPTC,
+            _ => {
+                log::error!("unknown RISCV extension {str}");
+                // TODO better error type
+                return Err(dtb_parser::Error::InvalidToken(0));
+            }
         }
     }
 
     Ok(out)
-}
-
-pub fn init() {
-    let supported = riscv::sbi::supported_extensions().unwrap();
-    log::trace!("Supported SBI extensions: {supported:?}");
-
-    log::trace!("BOOT STACK {:?}", start::BOOT_STACK.0.as_ptr_range())
-
-    // TODO riscv64_mmu_early_init
-    //      - figure out ASID bits
-    //      -  Zero the bottom of the kernel page table to remove any left over boot mappings.
-    // TODO riscv64_mmu_early_init_percpu
-}
-
-pub fn per_hart_init() {
-    unsafe {
-        // Initialize the trap handler
-        trap_handler::init();
-
-        // Enable interrupts
-        interrupt::enable();
-
-        // Enable supervisor timer and external interrupts
-        sie::set_stie();
-        sie::set_seie();
-
-        // enable counters
-        scounteren::set_cy();
-        scounteren::set_tm();
-        scounteren::set_ir();
-
-        // Set the FPU state to initial
-        sstatus::set_fs(FS::Initial);
-    }
-}
-
-/// Return whether the given virtual address is in the kernel address space.
-pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
-    virt.get() >= KERNEL_ASPACE_BASE.get()
-        && virt.checked_sub_addr(KERNEL_ASPACE_BASE).unwrap() < KERNEL_ASPACE_SIZE
 }
 
 /// Set the thread pointer on the calling hart to the given address.
@@ -209,4 +199,20 @@ pub const NEXT_OLDER_FP_FROM_FP_OFFSET: usize = 0;
 /// Asserts that the frame pointer is sufficiently aligned for the platform.
 pub fn assert_fp_is_aligned(fp: usize) {
     assert_eq!(fp % 16, 0, "stack should always be aligned to 16");
+}
+
+pub fn mb() {
+    unsafe {
+        asm!("fence iorw,iorw");
+    }
+}
+pub fn wmb() {
+    unsafe {
+        asm!("fence ow,ow");
+    }
+}
+pub fn rmb() {
+    unsafe {
+        asm!("fence ir,ir");
+    }
 }

@@ -5,3 +5,4 @@ release = false
 name = "wavltree"
 publish_all_features = true
 release = true
+git_release_name = "{{ package }}-v{{ version }}"
