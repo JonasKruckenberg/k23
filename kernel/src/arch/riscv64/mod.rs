@@ -16,6 +16,7 @@ use crate::error::Error;
 use crate::vm::VirtualAddress;
 use bitflags::bitflags;
 use core::arch::asm;
+use core::panic::RefUnwindSafe;
 use core::ptr;
 use dtb_parser::Strings;
 use fallible_iterator::FallibleIterator;
@@ -233,7 +234,10 @@ pub fn rmb() {
 /// # Errors
 ///
 /// Returns and error if the pointers are invalid or the copy operation failed.
-pub fn copy_from_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()> {
+pub fn copy_from_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()>
+where
+    T: Clone + RefUnwindSafe,
+{
     check_ranges(src, dst, count)?;
 
     // Safety: checked above
@@ -246,7 +250,10 @@ pub fn copy_from_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Res
 /// # Errors
 ///
 /// Returns and error if the pointers are invalid or the copy operation failed.
-pub fn copy_to_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()> {
+pub fn copy_to_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()>
+where
+    T: Clone + RefUnwindSafe,
+{
     check_ranges(dst, src, count)?;
 
     // Safety: checked above
@@ -281,7 +288,10 @@ fn check_ranges<T>(user: *const T, kernel: *const T, count: usize) -> crate::Res
     Ok(())
 }
 
-unsafe fn copy_inner<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()> {
+unsafe fn copy_inner<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()>
+where
+    T: Clone + RefUnwindSafe,
+{
     crate::trap_handler::catch_traps(|| {
         // Allow supervisor access to user memory
         // Safety: register access
