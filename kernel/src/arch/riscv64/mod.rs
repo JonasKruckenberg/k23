@@ -14,6 +14,7 @@ mod vm;
 use crate::vm::VirtualAddress;
 use bitflags::bitflags;
 use core::arch::asm;
+use core::{mem, slice};
 use dtb_parser::Strings;
 use fallible_iterator::FallibleIterator;
 use riscv::sstatus::FS;
@@ -221,5 +222,77 @@ pub fn rmb() {
     // Safety: inline assembly
     unsafe {
         asm!("fence ir,ir");
+    }
+}
+
+pub fn copy_from_user<T>(src: *const T, dst: *mut T, count: usize)
+where
+    T: Clone,
+{
+    // ensure src slice is in userspace
+    assert!(VirtualAddress::new(src as usize).is_some_and(|addr| addr.is_user_accessible()));
+    assert!(VirtualAddress::new(src as usize)
+        .and_then(|addr| addr.checked_add(count * mem::size_of::<T>()))
+        .is_some_and(|addr| addr.is_user_accessible()));
+
+    // ensure dst slice is in kernel space
+    assert!(VirtualAddress::new(dst as usize).is_some_and(is_kernel_address));
+    assert!(VirtualAddress::new(dst as usize)
+        .and_then(|addr| addr.checked_add(count * size_of::<T>()))
+        .is_some_and(is_kernel_address));
+
+    // Safety: checked above
+    let src = unsafe { slice::from_raw_parts(src, count) };
+    // Safety: checked above
+    let dst = unsafe { slice::from_raw_parts_mut(dst, count) };
+
+    // Allow supervisor access to user memory
+    // Safety: register access
+    unsafe {
+        sstatus::set_sum();
+    }
+
+    dst.clone_from_slice(src);
+
+    // Disable supervisor access to user memory
+    // Safety: register access
+    unsafe {
+        sstatus::clear_sum();
+    }
+}
+
+pub fn copy_to_user<T>(src: *const T, dst: *mut T, count: usize)
+where
+    T: Clone,
+{
+    // ensure src slice is in kernel space
+    assert!(VirtualAddress::new(src as usize).is_some_and(is_kernel_address));
+    assert!(VirtualAddress::new(src as usize)
+        .and_then(|addr| addr.checked_add(count * size_of::<T>()))
+        .is_some_and(is_kernel_address));
+
+    // ensure dst slice is in user space
+    assert!(VirtualAddress::new(dst as usize).is_some_and(|addr| addr.is_user_accessible()));
+    assert!(VirtualAddress::new(dst as usize)
+        .and_then(|addr| addr.checked_add(count * size_of::<T>()))
+        .is_some_and(|addr| addr.is_user_accessible()));
+
+    // Safety: checked above
+    let src = unsafe { slice::from_raw_parts(src, count) };
+    // Safety: checked above
+    let dst = unsafe { slice::from_raw_parts_mut(dst, count) };
+
+    // Allow supervisor access to user memory
+    // Safety: register access
+    unsafe {
+        sstatus::set_sum();
+    }
+
+    dst.clone_from_slice(src);
+
+    // Disable supervisor access to user memory
+    // Safety: register access
+    unsafe {
+        sstatus::clear_sum();
     }
 }
