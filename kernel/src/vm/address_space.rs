@@ -360,13 +360,13 @@ impl AddressSpace {
 
         // make sure addr is even a valid address for this address space
         match self.kind {
-            AddressSpaceKind::User => assert!(
+            AddressSpaceKind::User => ensure!(
                 addr.is_user_accessible(),
-                "non-user address fault in user address space addr={addr:?}"
+                Error::KernelFaultInUserSpace(addr)
             ),
-            AddressSpaceKind::Kernel => assert!(
+            AddressSpaceKind::Kernel => ensure!(
                 arch::is_kernel_address(addr),
-                "non-kernel address fault in kernel address space addr={addr:?}"
+                Error::UserFaultInKernelSpace(addr)
             ),
         }
         ensure!(
