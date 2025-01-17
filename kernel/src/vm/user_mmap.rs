@@ -7,6 +7,7 @@
 
 use crate::arch;
 use crate::vm::address::AddressRangeExt;
+use crate::vm::address_space::AddressSpaceKind;
 use crate::vm::address_space_region::AddressSpaceRegion;
 use crate::vm::vmo::Vmo;
 use crate::vm::{
@@ -19,27 +20,22 @@ use core::ptr::NonNull;
 use core::range::Range;
 use core::{iter, ptr, slice};
 
-/// A memory mapping, essentially handle to an `AddressSpaceRegion`
+/// A userspace memory mapping.
+///
+/// This is essentially a handle to an [`AddressSpaceRegion`] with convenience methods for userspace
+/// specific needs such as copying from and to memory.
 #[derive(Debug)]
-pub struct MmapSlice {
+pub struct UserMmap {
     ptr: *mut AddressSpaceRegion,
     range: Range<VirtualAddress>,
 }
 
 // Safety: All mutations of the `*mut AddressSpaceRegion` are happening through a `&mut AddressSpace`
-unsafe impl Send for MmapSlice {}
+unsafe impl Send for UserMmap {}
 // Safety: All mutations of the `*mut AddressSpaceRegion` are happening through a `&mut AddressSpace`
-unsafe impl Sync for MmapSlice {}
+unsafe impl Sync for UserMmap {}
 
-impl MmapSlice {
-    pub unsafe fn from_raw(ptr: *mut AddressSpaceRegion) -> Self {
-        Self {
-            ptr,
-            // Safety: caller has to ensure safety
-            range: unsafe { ptr.as_ref().unwrap().range },
-        }
-    }
-
+impl UserMmap {
     /// Creates a new empty `Mmap`.
     ///
     /// Note that the size of this cannot be changed after the fact, all accessors will return empty
@@ -53,13 +49,24 @@ impl MmapSlice {
 
     /// Creates a new read-write (`RW`) memory mapping in the given address space.
     pub fn new_zeroed(aspace: &mut AddressSpace, len: usize) -> Result<Self, Error> {
+        debug_assert!(
+            matches!(aspace.kind(), AddressSpaceKind::User),
+            "cannot create UserMmap in kernel address space"
+        );
+
         let layout = Layout::from_size_align(len, arch::PAGE_SIZE).unwrap();
         let vmo = Vmo::new_paged(iter::repeat_n(
             THE_ZERO_FRAME.clone(),
             layout.size().div_ceil(arch::PAGE_SIZE),
         ));
 
-        let region = aspace.map(layout, vmo, 0, Permissions::READ | Permissions::WRITE, None)?;
+        let region = aspace.map(
+            layout,
+            vmo,
+            0,
+            Permissions::READ | Permissions::WRITE | Permissions::USER,
+            None,
+        )?;
 
         Ok(Self {
             range: region.range,

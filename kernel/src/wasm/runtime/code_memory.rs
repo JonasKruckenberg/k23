@@ -1,4 +1,4 @@
-use crate::vm::{AddressSpace, MmapSlice, KERNEL_ASPACE};
+use crate::vm::{AddressSpace, UserMmap, KERNEL_ASPACE};
 use crate::wasm::compile::FunctionLoc;
 use crate::wasm::runtime::MmapVec;
 use crate::wasm::trap::Trap;
@@ -8,7 +8,7 @@ use core::range::Range;
 
 #[derive(Debug)]
 pub struct CodeMemory {
-    mmap: MmapSlice,
+    mmap: UserMmap,
     len: usize,
     published: bool,
 

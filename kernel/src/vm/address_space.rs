@@ -29,6 +29,7 @@ use rand_chacha::ChaCha20Rng;
 // const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();
 const VIRT_ALLOC_ENTROPY: u8 = 27;
 
+#[derive(Debug, Clone, Copy)]
 pub enum AddressSpaceKind {
     User,
     Kernel,
@@ -78,6 +79,10 @@ impl AddressSpace {
             placeholder_vmo: None,
             kind: AddressSpaceKind::Kernel,
         }
+    }
+
+    pub fn kind(&self) -> AddressSpaceKind {
+        self.kind
     }
 
     /// Crate a new region in this address space.

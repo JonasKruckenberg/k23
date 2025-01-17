@@ -1,4 +1,4 @@
-use crate::vm::{AddressSpace, MmapSlice};
+use crate::vm::{AddressSpace, UserMmap};
 use crate::wasm::runtime::VMMemoryDefinition;
 use crate::wasm::translate::MemoryDesc;
 use crate::wasm::utils::round_usize_up_to_host_pages;
@@ -8,7 +8,7 @@ use core::range::Range;
 #[derive(Debug)]
 pub struct Memory {
     /// The underlying allocation backing this memory
-    mmap: MmapSlice,
+    mmap: UserMmap,
     /// The current length of this Wasm memory, in bytes.
     len: usize,
     /// The optional maximum accessible size, in bytes, for this linear memory.
@@ -39,7 +39,7 @@ impl Memory {
         let request_bytes = allocation_bytes + offset_guard_bytes;
 
         Ok(Self {
-            mmap: MmapSlice::new_zeroed(aspace, request_bytes).map_err(|_| Error::MmapFailed)?,
+            mmap: UserMmap::new_zeroed(aspace, request_bytes).map_err(|_| Error::MmapFailed)?,
             len: actual_minimum_bytes,
             maximum: actual_maximum_bytes,
             page_size_log2: desc.page_size_log2,

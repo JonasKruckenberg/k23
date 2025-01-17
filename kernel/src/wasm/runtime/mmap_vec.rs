@@ -1,4 +1,4 @@
-use crate::vm::{AddressSpace, MmapSlice};
+use crate::vm::{AddressSpace, UserMmap};
 use crate::wasm::Error;
 use core::marker::PhantomData;
 use core::ops::Deref;
@@ -6,7 +6,7 @@ use core::slice;
 
 #[derive(Debug)]
 pub struct MmapVec<T> {
-    mmap: MmapSlice,
+    mmap: UserMmap,
     len: usize,
     _m: PhantomData<T>,
 }
@@ -14,7 +14,7 @@ pub struct MmapVec<T> {
 impl<T> MmapVec<T> {
     pub fn new_empty() -> Self {
         Self {
-            mmap: MmapSlice::new_empty(),
+            mmap: UserMmap::new_empty(),
             len: 0,
             _m: PhantomData,
         }
@@ -22,7 +22,7 @@ impl<T> MmapVec<T> {
 
     pub fn new_zeroed(aspace: &mut AddressSpace, len: usize) -> crate::wasm::Result<Self> {
         Ok(Self {
-            mmap: MmapSlice::new_zeroed(aspace, len).map_err(|_| Error::MmapFailed)?,
+            mmap: UserMmap::new_zeroed(aspace, len).map_err(|_| Error::MmapFailed)?,
             len: 0,
             _m: PhantomData,
         })
@@ -108,7 +108,7 @@ impl<T> MmapVec<T> {
         }
     }
 
-    pub(crate) fn into_parts(self) -> (MmapSlice, usize) {
+    pub(crate) fn into_parts(self) -> (UserMmap, usize) {
         (self.mmap, self.len)
     }
 }
