@@ -16,7 +16,7 @@ use crate::error::Error;
 use crate::vm::VirtualAddress;
 use bitflags::bitflags;
 use core::arch::asm;
-use core::slice;
+use core::ptr;
 use dtb_parser::Strings;
 use fallible_iterator::FallibleIterator;
 use riscv::sstatus::FS;
@@ -227,20 +227,26 @@ pub fn rmb() {
     }
 }
 
-pub fn copy_from_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()>
-where
-    T: Clone,
-{
+/// Copies `count * size_of::<T>()` bytes from `src` to `dst`. `src` must be a valid pointer in userspace, `dst`
+/// must be a valid pointer in kernelspace.
+///
+/// # Errors
+///
+/// Returns and error if the pointers are invalid or the copy operation failed.
+pub fn copy_from_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()> {
     check_ranges(src, dst, count)?;
 
     // Safety: checked above
     unsafe { copy_inner(src, dst, count) }
 }
 
-pub fn copy_to_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()>
-where
-    T: Clone,
-{
+/// Copies `count * size_of::<T>()` bytes from `src` to `dst`. `src` must be a valid pointer in kernelspace, `dst`
+/// must be a valid pointer in userspace.
+///
+/// # Errors
+///
+/// Returns and error if the pointers are invalid or the copy operation failed.
+pub fn copy_to_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()> {
     check_ranges(dst, src, count)?;
 
     // Safety: checked above
@@ -275,15 +281,7 @@ fn check_ranges<T>(user: *const T, kernel: *const T, count: usize) -> crate::Res
     Ok(())
 }
 
-unsafe fn copy_inner<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()>
-where
-    T: Clone,
-{
-    // Safety: checked by caller
-    let src = unsafe { slice::from_raw_parts(src, count) };
-    // Safety: checked by caller
-    let dst = unsafe { slice::from_raw_parts_mut(dst, count) };
-
+unsafe fn copy_inner<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()> {
     crate::trap_handler::catch_traps(|| {
         // Allow supervisor access to user memory
         // Safety: register access
@@ -291,7 +289,10 @@ where
             sstatus::set_sum();
         }
 
-        dst.clone_from_slice(src);
+        // Safety: checked by caller and `catch_traps`
+        unsafe {
+            ptr::copy_nonoverlapping(src, dst, count);
+        }
 
         // Disable supervisor access to user memory
         // Safety: register access
