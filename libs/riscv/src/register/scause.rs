@@ -117,23 +117,47 @@ impl From<Interrupt> for usize {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Exception {
+    /// Instruction address misaligned
     InstructionMisaligned = 0,
+    /// Instruction access fault
     InstructionFault = 1,
+    /// Illegal instruction
     IllegalInstruction = 2,
+    /// Breakpoint
     Breakpoint = 3,
+    /// Load address misaligned
     LoadMisaligned = 4,
+    /// Load access fault
     LoadFault = 5,
+    /// Store/AMO address misaligned
     StoreMisaligned = 6,
+    /// Store/AMO access fault
     StoreFault = 7,
+    /// Environment call from U-mode or VU-mode
     UserEnvCall = 8,
+    /// Environment call from HS-mode
     SupervisorEnvCall = 9,
+    /// Environment call from VS-mode
     VirtualSupervisorEnvCall = 10,
+    /// Environment call from M-mode
+    MachineEnvCall = 11,
+    /// Instruction page fault
     InstructionPageFault = 12,
+    /// Load page fault
     LoadPageFault = 13,
+    /// Store/AMO page fault
     StorePageFault = 15,
+    /// Software check
+    SoftwareCheck = 18,
+    /// Hardware error
+    HardwareError = 19,
+    /// Instruction guest-page fault
     InstructionGuestPageFault = 20,
+    /// Load guest-page fault
     LoadGuestPageFault = 21,
+    /// Virtual instruction
     VirtualInstruction = 22,
+    /// Store/AMO guest-page fault
     StoreGuestPageFault = 23,
 }
 

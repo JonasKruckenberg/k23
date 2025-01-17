@@ -6,35 +6,37 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::wasm::trap_handler::CallThreadState;
+use crate::wasm::runtime::{StaticVMOffsets, VMContext, VMOffsets};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ops::ControlFlow;
 
 #[derive(Debug)]
-pub struct Backtrace(Vec<Frame>);
+pub struct RawWasmBacktrace(Vec<RawWasmFrame>);
 
-impl Backtrace {
-    pub(crate) fn new_with_trap_state(
-        state: &CallThreadState,
+impl RawWasmBacktrace {
+    pub(crate) fn new_with_vmctx(
+        vmctx: *mut VMContext,
+        offsets: &StaticVMOffsets,
         trap_pc_and_fp: Option<(usize, usize)>,
     ) -> Self {
         // Safety: TODO validate pc and fp
         unsafe {
             let mut frames = vec![];
-            Self::trace_with_trap_state(state, trap_pc_and_fp, |frame| {
+            Self::trace_with_vmctx(vmctx, offsets, trap_pc_and_fp, |frame| {
                 frames.push(frame);
                 ControlFlow::Continue(())
             });
-            Backtrace(frames)
+            RawWasmBacktrace(frames)
         }
     }
 
     /// Walk the current Wasm stack, calling `f` for each frame we walk.
-    pub(crate) unsafe fn trace_with_trap_state(
-        state: &CallThreadState,
+    pub(crate) unsafe fn trace_with_vmctx(
+        vmctx: *mut VMContext,
+        offsets: &StaticVMOffsets,
         trap_pc_and_fp: Option<(usize, usize)>,
-        mut f: impl FnMut(Frame) -> ControlFlow<()>,
+        mut f: impl FnMut(RawWasmFrame) -> ControlFlow<()>,
     ) {
         log::trace!("====== Capturing Backtrace ======");
 
@@ -44,13 +46,11 @@ impl Backtrace {
         // Safety: state is always initialized
         let (last_wasm_exit_pc, last_wasm_exit_fp) = trap_pc_and_fp.unwrap_or_else(|| unsafe {
             // TODO this is horrible can we improve this?
-            let pc = *state
-                .vmctx
-                .byte_add(state.offsets.vmctx_last_wasm_exit_pc() as usize)
+            let pc = *vmctx
+                .byte_add(offsets.vmctx_last_wasm_exit_pc() as usize)
                 .cast::<usize>();
-            let fp = *state
-                .vmctx
-                .byte_add(state.offsets.vmctx_last_wasm_entry_fp() as usize)
+            let fp = *vmctx
+                .byte_add(offsets.vmctx_last_wasm_entry_fp() as usize)
                 .cast::<usize>();
 
             (pc, fp)
@@ -58,37 +58,42 @@ impl Backtrace {
 
         // Safety: state is always initialized
         let last_wasm_entry_fp = unsafe {
-            *state
-                .vmctx
-                .byte_add(state.offsets.vmctx_last_wasm_entry_fp() as usize)
+            *vmctx
+                .byte_add(offsets.vmctx_last_wasm_entry_fp() as usize)
                 .cast::<usize>()
         };
 
-        let activations =
-            core::iter::once((last_wasm_exit_pc, last_wasm_exit_fp, last_wasm_entry_fp))
-                .chain(state.iter().map(|state| {
-                    (
-                        state.old_last_wasm_exit_pc.get(),
-                        state.old_last_wasm_exit_fp.get(),
-                        state.old_last_wasm_entry_fp.get(),
-                    )
-                }))
-                .take_while(|&(pc, fp, sp)| {
-                    if pc == 0 {
-                        debug_assert_eq!(fp, 0);
-                        debug_assert_eq!(sp, 0);
-                    }
-                    pc != 0
-                });
+        // let activations =
+        //     core::iter::once((last_wasm_exit_pc, last_wasm_exit_fp, last_wasm_entry_fp))
+        //         .chain(state.iter().map(|state| {
+        //             (
+        //                 state.old_last_wasm_exit_pc.get(),
+        //                 state.old_last_wasm_exit_fp.get(),
+        //                 state.old_last_wasm_entry_fp.get(),
+        //             )
+        //         }))
+        //         .take_while(|&(pc, fp, sp)| {
+        //             if pc == 0 {
+        //                 debug_assert_eq!(fp, 0);
+        //                 debug_assert_eq!(sp, 0);
+        //             }
+        //             pc != 0
+        //         });
 
-        for (pc, fp, sp) in activations {
-            // Safety: caller has to ensure fp is valid
-            if let ControlFlow::Break(()) = unsafe { Self::trace_through_wasm(pc, fp, sp, &mut f) }
-            {
-                log::trace!("====== Done Capturing Backtrace (closure break) ======");
-                return;
-            }
+        // for (pc, fp, sp) in activations {
+        // Safety: caller has to ensure fp is valid
+        if let ControlFlow::Break(()) = unsafe {
+            Self::trace_through_wasm(
+                last_wasm_exit_pc,
+                last_wasm_exit_fp,
+                last_wasm_entry_fp,
+                &mut f,
+            )
+        } {
+            log::trace!("====== Done Capturing Backtrace (closure break) ======");
+            return;
         }
+        // }
 
         log::trace!("====== Done Capturing Backtrace (reached end of activations) ======");
     }
@@ -99,7 +104,7 @@ impl Backtrace {
         mut pc: usize,
         mut fp: usize,
         trampoline_fp: usize,
-        mut f: impl FnMut(Frame) -> ControlFlow<()>,
+        mut f: impl FnMut(RawWasmFrame) -> ControlFlow<()>,
     ) -> ControlFlow<()> {
         log::trace!("=== Tracing through contiguous sequence of Wasm frames ===");
         log::trace!("trampoline_fp = 0x{:016x}", trampoline_fp);
@@ -170,7 +175,7 @@ impl Backtrace {
             log::trace!("pc = {:p}", pc as *const ());
             log::trace!("fp = {:p}", fp as *const ());
 
-            f(Frame { pc, fp })?;
+            f(RawWasmFrame { pc, fp })?;
 
             // Safety: caller has to ensure fp is valid
             pc = unsafe { arch::get_next_older_pc_from_fp(fp) };
@@ -198,14 +203,14 @@ impl Backtrace {
     }
 
     /// Iterate over the frames inside this backtrace.
-    pub fn frames(&self) -> impl ExactSizeIterator<Item = &Frame> + DoubleEndedIterator {
+    pub fn frames(&self) -> impl ExactSizeIterator<Item = &RawWasmFrame> + DoubleEndedIterator {
         self.0.iter()
     }
 }
 
 /// A stack frame within a Wasm stack trace.
 #[derive(Debug)]
-pub struct Frame {
+pub struct RawWasmFrame {
     pub pc: usize,
     pub fp: usize,
 }

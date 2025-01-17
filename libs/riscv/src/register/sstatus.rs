@@ -61,6 +61,20 @@ pub unsafe fn set_fs(fs: FS) {
     }
 }
 
+/// Permit Supervisor User Memory access
+pub unsafe fn set_sum() {
+    unsafe {
+        _set(1 << 18);
+    }
+}
+
+/// Permit Supervisor User Memory access
+pub unsafe fn clear_sum() {
+    unsafe {
+        _clear(1 << 18);
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SPP {
     Supervisor = 1,

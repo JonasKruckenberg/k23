@@ -28,6 +28,7 @@ mod metrics;
 mod panic;
 mod thread_local;
 mod time;
+mod trap_handler;
 mod vm;
 mod wasm;
 
