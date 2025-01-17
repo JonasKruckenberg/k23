@@ -6,14 +6,27 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::error::Error;
+use crate::trap_handler::{Trap, TrapReason};
 use crate::vm::{PageFaultFlags, VirtualAddress, KERNEL_ASPACE};
+use core::ops::ControlFlow;
 
-pub fn trap_handler(faulting_addr: usize, flags: PageFaultFlags) -> crate::Result<()> {
+pub fn trap_handler(trap: Trap) -> ControlFlow<crate::Result<()>> {
     let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
 
-    let addr = VirtualAddress::new(faulting_addr).ok_or(Error::AccessDenied)?;
+    let Some(addr) = VirtualAddress::new(trap.faulting_address) else {
+        return ControlFlow::Break(Err(Error::AccessDenied));
+    };
 
-    aspace
-        .page_fault(addr, flags)
-        .map_err(|_| Error::AccessDenied)
+    let flags = match trap.reason {
+        TrapReason::InstructionPageFault => PageFaultFlags::INSTRUCTION,
+        TrapReason::LoadPageFault => PageFaultFlags::LOAD,
+        TrapReason::StorePageFault => PageFaultFlags::STORE,
+        _ => return ControlFlow::Continue(()),
+    };
+
+    if let Err(_err) = aspace.page_fault(addr, flags) {
+        ControlFlow::Break(Err(Error::AccessDenied))
+    } else {
+        ControlFlow::Break(Ok(()))
+    }
 }

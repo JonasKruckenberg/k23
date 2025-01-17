@@ -1,14 +1,13 @@
+use crate::arch;
+use crate::wasm::backtrace::RawWasmBacktrace;
 use crate::wasm::indices::VMSharedTypeIndex;
-use crate::wasm::runtime::{StaticVMOffsets, VMContext, VMFunctionImport, VMVal};
+use crate::wasm::runtime::{code_registry, StaticVMOffsets, VMContext, VMFunctionImport, VMVal};
 use crate::wasm::store::Stored;
 use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
-use crate::wasm::{runtime, trap_handler, Store, MAX_WASM_STACK};
+use crate::wasm::{runtime, Error, Store, MAX_WASM_STACK};
 use alloc::string::ToString;
-// use alloc::string::ToString;
-use crate::arch;
-use crate::wasm::trap_handler::TrapReason;
 use core::ffi::c_void;
 use core::mem;
 
@@ -98,35 +97,29 @@ impl Func {
 
         let _guard = enter_wasm(vmctx, &module.offsets().static_);
 
-        let res = trap_handler::catch_traps(vmctx, module.offsets().static_.clone(), |caller| {
+        if let Err(trap) = crate::trap_handler::catch_traps(|| {
             // Safety: caller has to ensure safety
             unsafe {
-                (func_ref.array_call)(vmctx, caller, args_results_ptr, args_results_len);
+                (func_ref.array_call)(vmctx, vmctx, args_results_ptr, args_results_len);
             }
-        });
+        }) {
+            // construct wasm trap
 
-        if let Err(trap) = res {
-            let (pc, faulting_addr, trap_code, message) = match trap.reason {
-                TrapReason::Wasm(trap_code) => {
-                    (None, None, trap_code, "k23 builtin produced a trap")
-                }
-                TrapReason::Jit {
-                    pc,
-                    faulting_addr,
-                    trap: trap_code,
-                } => (
-                    Some(pc),
-                    Some(faulting_addr),
-                    trap_code,
-                    "JIT-compiled WASM produced a trap",
-                ),
-            };
+            let (code, text_offset) = code_registry::lookup_code(trap.pc).unwrap();
+            let trap_code = code.lookup_trap_code(text_offset).unwrap();
 
-            return Err(crate::wasm::Error::Trap {
-                pc,
-                faulting_addr,
+            let backtrace = RawWasmBacktrace::new_with_vmctx(
+                vmctx,
+                &module.offsets().static_,
+                Some((trap.pc, trap.fp)),
+            );
+
+            return Err(Error::Trap {
+                pc: trap.pc,
+                faulting_addr: trap.faulting_address,
                 trap: trap_code,
-                message: message.to_string(),
+                message: "JIT-compiled WASM produced a trap".to_string(),
+                backtrace,
             });
         }
 

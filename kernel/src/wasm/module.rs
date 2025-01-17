@@ -1,7 +1,7 @@
 use crate::vm::AddressSpace;
 use crate::wasm::compile::{CompileInputs, CompiledFunctionInfo};
 use crate::wasm::indices::{DefinedFuncIndex, EntityIndex, VMSharedTypeIndex};
-use crate::wasm::runtime::CodeMemory;
+use crate::wasm::runtime::{code_registry, CodeMemory};
 use crate::wasm::runtime::{MmapVec, VMOffsets};
 use crate::wasm::translate::{Import, TranslatedModule};
 use crate::wasm::type_registry::RuntimeTypeCollection;
@@ -83,7 +83,7 @@ impl Module {
         let code = Arc::new(code);
 
         // register this code memory with the trap handler, so we can correctly unwind from traps
-        crate::wasm::trap_handler::register_code(&code);
+        code_registry::register_code(&code);
 
         Ok(Self(Arc::new(ModuleInner {
             offsets: VMOffsets::for_module(

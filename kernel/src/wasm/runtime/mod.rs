@@ -1,5 +1,6 @@
 mod builtins;
 mod code_memory;
+pub mod code_registry;
 mod const_eval;
 mod instance;
 mod instance_allocator;
