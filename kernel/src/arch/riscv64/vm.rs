@@ -174,7 +174,24 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
     where
         Self: Sized,
     {
-        let root_pgtable = frame_alloc::alloc_one_zeroed()?;
+        let src = unsafe {
+            let satp = satp::read();
+            let root_pgtable = PhysicalAddress::new(satp.ppn() << 12);
+            debug_assert!(root_pgtable.get() != 0);
+
+            let base = VirtualAddress::from_phys(root_pgtable)
+                .unwrap()
+                .checked_add(PAGE_SIZE / 2)
+                .unwrap()
+                .as_ptr();
+
+            slice::from_raw_parts(base, PAGE_SIZE / 2)
+        };
+
+        let mut root_pgtable = frame_alloc::alloc_one_zeroed()?;
+
+        Frame::get_mut(&mut root_pgtable).unwrap().as_mut_slice()[PAGE_SIZE / 2..]
+            .copy_from_slice(src);
 
         mb();
 
@@ -295,7 +312,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         Ok(())
     }
 
-    unsafe fn protect(
+    unsafe fn update_flags(
         &mut self,
         mut virt: VirtualAddress,
         len: NonZeroUsize,
@@ -427,10 +444,11 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
 
     unsafe fn activate(&self) {
         // Safety: register access
+        let ppn = self.root_pgtable.get() >> 12_i32;
         unsafe {
-            let ppn = self.root_pgtable.get() >> 12_i32;
-            satp::set(satp::Mode::Sv39, DEFAULT_ASID, ppn);
+            satp::set(satp::Mode::Sv39, self.asid, ppn);
         }
+        mb();
     }
 
     fn new_flush(&self) -> Flush {

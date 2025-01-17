@@ -54,16 +54,18 @@ pub struct AddressSpace {
 }
 
 impl AddressSpace {
-    pub fn new_user(arch_aspace: arch::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
-        Self {
+    pub fn new_user(asid: u16, prng: Option<ChaCha20Rng>) -> Result<Self, Error> {
+        let (arch, _) = arch::AddressSpace::new(asid)?;
+
         #[allow(tail_expr_drop_order, reason = "")]
+        Ok(Self {
             regions: wavltree::WAVLTree::default(),
-            arch: arch_aspace,
+            arch,
             max_range: Range::from(arch::USER_ASPACE_BASE..VirtualAddress::MAX),
             prng,
             placeholder_vmo: None,
             kind: AddressSpaceKind::User,
-        }
+        })
     }
 
     pub fn from_active_kernel(arch_aspace: arch::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
@@ -594,20 +596,20 @@ impl AddressSpace {
 
         debug_assert!(!self.regions.is_empty());
         // // if the tree is empty, treat max_range as the gap
-        // if self.regions.is_empty() {
-        //     let aligned_gap = Range::from(self.max_range)
-        //         .checked_align_in(layout.align())
-        //         .unwrap();
-        //     let spot_count = spots_in_range(layout, aligned_gap.clone());
-        //     candidate_spot_count += spot_count;
-        //     if target_index < spot_count {
-        //         return Ok(aligned_gap
-        //             .start
-        //             .checked_add(target_index << layout.align().ilog2())
-        //             .unwrap());
-        //     }
-        //     target_index -= spot_count;
-        // }
+        if self.regions.is_empty() {
+            let aligned_gap = Range::from(self.max_range)
+                .checked_align_in(layout.align())
+                .unwrap();
+            let spot_count = spots_in_range(layout, aligned_gap.clone());
+            candidate_spot_count += spot_count;
+            if target_index < spot_count {
+                return Ok(aligned_gap
+                    .start
+                    .checked_add(target_index << layout.align().ilog2())
+                    .unwrap());
+            }
+            target_index -= spot_count;
+        }
 
         // see if there is a suitable gap between the start of the address space and the first mapping
         if let Some(root) = self.regions.root().get() {

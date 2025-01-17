@@ -140,7 +140,7 @@ impl MmapSlice {
             let mut flush = aspace.arch.new_flush();
             // Safety: constructors ensure invariants are maintained
             unsafe {
-                aspace.arch.protect(
+                aspace.arch.update_flags(
                     self.range.start,
                     NonZeroUsize::new(self.range.size()).unwrap(),
                     new_permissions.into(),
