@@ -231,6 +231,12 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         flush: &mut Flush,
     ) -> Result<(), Error> {
         let mut remaining_bytes = len.get();
+        if flags.contains(PTEFlags::WRITE) {
+            debug_assert!(
+                flags.contains(PTEFlags::READ),
+                "writable pages must also be marked readable"
+            );
+        }
         debug_assert!(
             remaining_bytes >= PAGE_SIZE,
             "address range span be at least one page"
@@ -321,6 +327,12 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         flush: &mut Flush,
     ) -> Result<(), Error> {
         let mut remaining_bytes = len.get();
+        if new_flags.contains(PTEFlags::WRITE) {
+            debug_assert!(
+                new_flags.contains(PTEFlags::READ),
+                "writable pages must also be marked readable"
+            );
+        }
         debug_assert!(
             remaining_bytes >= PAGE_SIZE,
             "virtual address range must span be at least one page"
