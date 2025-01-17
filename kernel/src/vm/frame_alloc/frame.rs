@@ -86,10 +86,9 @@ impl Clone for Frame {
         // `usize::MAX` but that seems unlikely. The other option, doing the comparison and update in
         // one conditional atomic operation produces much worse code, so if its good enough for the
         // standard library, it is good enough for us.
-        if old_size > MAX_REFCOUNT {
-            panic!("Frame refcount overflow");
-        }
+        assert!(old_size <= MAX_REFCOUNT, "Frame refcount overflow");
 
+        // Safety: self was valid so it's info ptr is as well
         unsafe { Self::from_info(self.ptr) }
     }
 }
@@ -142,14 +141,15 @@ impl Frame {
 
     #[inline]
     fn info(&self) -> &FrameInfo {
-        // Through `Clone` and `Drop` we're guaranteed that the FrameInfo remains valid as long as
+        // Safety: Through `Clone` and `Drop` we're guaranteed that the FrameInfo remains valid as long as
         // this Frame is alive, we also know that `FrameInfo` is `Sync` and therefore - analogous to `Arc` -
         // handing out an immutable reference is fine.
         // Because it is an immutable reference, safe code can also not move out of `FrameInner`.
         unsafe { self.ptr.as_ref() }
     }
 
-    pub(crate) fn from_free_info(info: NonNull<FrameInfo>) -> Frame {
+    pub(crate) unsafe fn from_free_info(info: NonNull<FrameInfo>) -> Frame {
+        // Safety: caller has to ensure ptr is valid
         unsafe {
             let prev_refcount = info.as_ref().refcount.swap(1, Ordering::Acquire);
             debug_assert_eq!(
@@ -171,7 +171,7 @@ impl Frame {
 
     pub fn get_mut(this: &mut Frame) -> Option<&mut FrameInfo> {
         if this.is_unique() {
-            // This unsafety is ok because we're guaranteed that the pointer
+            // Safety: This unsafety is ok because we're guaranteed that the pointer
             // returned is the *only* pointer that will ever be returned to T. Our
             // reference count is guaranteed to be 1 at this point, and we required
             // the Arc itself to be `mut`, so we're returning the only possible
@@ -183,6 +183,7 @@ impl Frame {
     }
 
     pub unsafe fn get_mut_unchecked(this: &mut Self) -> &mut FrameInfo {
+        // Safety: construction ensures the base ptr is valid
         unsafe { this.ptr.as_mut() }
     }
 
@@ -213,6 +214,7 @@ impl Deref for Frame {
 
 impl fmt::Debug for Frame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Safety: construction ensures the base ptr is valid
         fmt::Debug::fmt(unsafe { self.ptr.as_ref() }, f)
     }
 }
@@ -231,7 +233,7 @@ impl FrameInfo {
     /// Private constructor for use in `frame_alloc/arena.rs`
     pub(crate) fn new(addr: PhysicalAddress) -> Self {
         Self {
-            links: Default::default(),
+            links: linked_list::Links::default(),
             addr,
             refcount: AtomicUsize::new(0),
         }
@@ -253,6 +255,7 @@ impl FrameInfo {
     #[inline]
     pub fn as_slice(&self) -> &[u8] {
         let base = VirtualAddress::from_phys(self.addr).unwrap().as_ptr();
+        // Safety: construction ensures the base ptr is valid
         unsafe { slice::from_raw_parts(base, arch::PAGE_SIZE) }
     }
 
@@ -260,6 +263,7 @@ impl FrameInfo {
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         let base = VirtualAddress::from_phys(self.addr).unwrap().as_mut_ptr();
+        // Safety: construction ensures the base ptr is valid
         unsafe { slice::from_raw_parts_mut(base, arch::PAGE_SIZE) }
     }
 
@@ -269,6 +273,7 @@ impl FrameInfo {
     }
 }
 
+// Safety: unsafe trait
 unsafe impl linked_list::Linked for FrameInfo {
     type Handle = NonNull<FrameInfo>;
 

@@ -41,7 +41,7 @@ impl<R: gimli::Reader> ResUnit<R> {
     /// Returns the DWARF sections and the unit.
     ///
     /// Loads the DWO unit if necessary.
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub(crate) fn dwarf_and_unit<'unit, 'ctx: 'unit>(
         &'unit self,
         ctx: &'ctx Context<R>,
@@ -151,7 +151,7 @@ impl<R: gimli::Reader> ResUnit<R> {
         lines.find_location_range(probe_low, probe_high).map(Some)
     }
 
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub(crate) fn find_function_or_location<'unit, 'ctx: 'unit>(
         &'unit self,
         probe: u64,

@@ -44,7 +44,7 @@ pub struct AddressSpaceRegion {
 }
 
 impl AddressSpaceRegion {
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     pub(crate) fn new(
         range: Range<VirtualAddress>,
         permissions: Permissions,
@@ -53,7 +53,7 @@ impl AddressSpaceRegion {
         name: Option<String>,
     ) -> Pin<Box<Self>> {
         Box::pin(Self {
-            links: Default::default(),
+            links: wavltree::Links::default(),
             max_range: range,
             max_gap: 0,
             range,
@@ -64,6 +64,7 @@ impl AddressSpaceRegion {
         })
     }
 
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub fn unmap(self: Pin<&mut Self>, range: Range<VirtualAddress>) -> Result<(), Error> {
         match self.vmo.as_ref() {
             Vmo::Wired(_) => panic!("cannot unmap wired frames"),
@@ -179,6 +180,7 @@ impl AddressSpaceRegion {
         Ok(())
     }
 
+    #[expect(clippy::undocumented_unsafe_blocks, reason = "intrusive tree access")]
     fn update(mut node: NonNull<Self>, left: Option<NonNull<Self>>, right: Option<NonNull<Self>>) {
         let node = unsafe { node.as_mut() };
         let mut left_max_gap = 0;
@@ -211,6 +213,7 @@ impl AddressSpaceRegion {
         }
     }
 
+    #[expect(clippy::undocumented_unsafe_blocks, reason = "intrusive tree access")]
     fn propagate_to_root(mut maybe_node: Option<NonNull<Self>>) {
         while let Some(node) = maybe_node {
             let links = unsafe { &node.as_ref().links };
@@ -221,6 +224,7 @@ impl AddressSpaceRegion {
     }
 }
 
+// Safety: unsafe trait
 unsafe impl wavltree::Linked for AddressSpaceRegion {
     /// Any heap-allocated type that owns an element may be used.
     ///
@@ -232,6 +236,7 @@ unsafe impl wavltree::Linked for AddressSpaceRegion {
 
     /// Convert an owned `Handle` into a raw pointer
     fn into_ptr(handle: Self::Handle) -> NonNull<Self> {
+        // Safety: wavltree treats the ptr as pinned
         unsafe { NonNull::from(Box::leak(Pin::into_inner_unchecked(handle))) }
     }
 
@@ -273,6 +278,7 @@ unsafe impl wavltree::Linked for AddressSpaceRegion {
         side: Side,
     ) {
         let this = self.project();
+        // Safety: caller ensures ptr is valid
         let _parent = unsafe { parent.as_ref() };
 
         this.max_range.start = _parent.max_range.start;

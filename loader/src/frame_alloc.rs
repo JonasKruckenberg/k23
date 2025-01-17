@@ -36,7 +36,7 @@ impl<'a> FrameAllocator<'a> {
     pub fn free_regions(&self) -> FreeRegions<'_> {
         FreeRegions {
             offset: self.offset,
-            inner: self.regions.iter().rev().cloned(),
+            inner: self.regions.iter().rev().copied(),
         }
     }
 
@@ -44,7 +44,7 @@ impl<'a> FrameAllocator<'a> {
     pub fn used_regions(&self) -> UsedRegions<'_> {
         UsedRegions {
             offset: self.offset,
-            inner: self.regions.iter().rev().cloned(),
+            inner: self.regions.iter().rev().copied(),
         }
     }
 
@@ -54,6 +54,7 @@ impl<'a> FrameAllocator<'a> {
 
     pub fn allocate_one_zeroed(&mut self, phys_offset: usize) -> Option<usize> {
         self.allocate_contiguous_zeroed(
+            // Safety: the layout is always valid
             unsafe { Layout::from_size_align_unchecked(arch::PAGE_SIZE, arch::PAGE_SIZE) },
             phys_offset,
         )
@@ -103,12 +104,13 @@ impl<'a> FrameAllocator<'a> {
     ) -> Option<usize> {
         let requested_size = layout.pad_to_align().size();
         let addr = self.allocate_contiguous(layout)?;
+        // Safety: we just allocated the frame
         unsafe {
             ptr::write_bytes::<u8>(
                 phys_offset.checked_add(addr).unwrap() as *mut u8,
                 0,
                 requested_size,
-            )
+            );
         }
         Some(addr)
     }
@@ -116,7 +118,7 @@ impl<'a> FrameAllocator<'a> {
 
 pub struct FreeRegions<'a> {
     offset: usize,
-    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<usize>>>>,
+    inner: iter::Copied<iter::Rev<slice::Iter<'a, Range<usize>>>>,
 }
 
 impl Iterator for FreeRegions<'_> {
@@ -142,7 +144,7 @@ impl Iterator for FreeRegions<'_> {
 
 pub struct UsedRegions<'a> {
     offset: usize,
-    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<usize>>>>,
+    inner: iter::Copied<iter::Rev<slice::Iter<'a, Range<usize>>>>,
 }
 
 impl Iterator for UsedRegions<'_> {

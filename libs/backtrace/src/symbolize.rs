@@ -179,6 +179,9 @@ pub struct SymbolizeContext<'a> {
 }
 
 impl<'a> SymbolizeContext<'a> {
+    /// # Errors
+    ///
+    /// Returns an error when parsing the DWARF fails.
     pub fn new(elf: xmas_elf::ElfFile<'a>, adjust_vma: u64) -> gimli::Result<Self> {
         let dwarf = gimli::Dwarf::load(|section_id| -> gimli::Result<_> {
             let data = match elf.find_section_by_name(section_id.name()) {
@@ -196,6 +199,14 @@ impl<'a> SymbolizeContext<'a> {
         })
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the given address doesn't correspond to a symbol or parsing the DWARF info
+    /// fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the ELF file doesn't contain a symbol table.
     pub fn resolve_unsynchronized(&self, probe: u64) -> gimli::Result<SymbolsIter<'a, '_>> {
         let probe = probe - self.adjust_vma;
         let iter = self.addr2line.find_frames(probe).skip_all_loads()?;

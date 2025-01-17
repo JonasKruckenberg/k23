@@ -31,6 +31,7 @@ impl<'a> Frame<'a> {
     }
 
     pub fn personality(&self) -> Option<u64> {
+        // Safety: we have to trust the DWARF info here
         self.fde.personality().map(|x| unsafe { deref_pointer(x) })
     }
 
@@ -39,10 +40,12 @@ impl<'a> Frame<'a> {
     }
 
     pub fn language_specific_data(&self) -> Option<EndianSlice<'a, NativeEndian>> {
+        // Safety: we have to trust the DWARF info here
         let addr = self.fde.lsda().map(|x| unsafe { deref_pointer(x) })?;
 
         Some(EndianSlice::new(
-            unsafe { get_unlimited_slice(addr as _) },
+            // Safety: we have to trust the DWARF info here
+            unsafe { get_unlimited_slice(addr as *const u8) },
             NativeEndian,
         ))
     }
@@ -79,6 +82,7 @@ impl<'a> Frame<'a> {
     /// This method is *highly* unsafe because it installs this frames register context, **without
     /// any checking**. If used improperly, much terrible things will happen, big sadness.
     pub unsafe fn restore(self) -> ! {
+        // Safety: caller has to ensure this is safe
         unsafe { arch::restore_context(&self.ctx) }
     }
 
@@ -107,7 +111,7 @@ impl<'a> Frame<'a> {
         let mut unwinder = gimli::UnwindContext::new_in();
 
         let row = fde
-            .unwind_info_for_address(&eh_info.eh_frame, &eh_info.bases, &mut unwinder, ra as _)?
+            .unwind_info_for_address(&eh_info.eh_frame, &eh_info.bases, &mut unwinder, ra as u64)?
             .clone();
 
         Ok(Some(Self {
@@ -117,11 +121,16 @@ impl<'a> Frame<'a> {
         }))
     }
 
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        reason = "numeric casts are all checked and behave as expected"
+    )]
     fn unwind(&self) -> Result<arch::Context, gimli::Error> {
         let row = &self.row;
         let mut new_ctx = self.ctx.clone();
 
-        #[allow(clippy::match_wildcard_for_single_variants)]
+        #[expect(clippy::match_wildcard_for_single_variants, reason = "style choice")]
         let cfa = match *row.cfa() {
             CfaRule::RegisterAndOffset { register, offset } => {
                 self.ctx[register].wrapping_add(offset as usize)
@@ -129,12 +138,13 @@ impl<'a> Frame<'a> {
             _ => return Err(gimli::Error::UnsupportedEvaluation),
         };
 
-        new_ctx[arch::SP] = cfa as _;
+        new_ctx[arch::SP] = cfa;
         new_ctx[arch::RA] = 0;
 
         for (reg, rule) in row.registers() {
             let value = match *rule {
                 RegisterRule::Undefined | RegisterRule::SameValue => self.ctx[*reg],
+                // Safety: we have to trust the DWARF info here
                 RegisterRule::Offset(offset) => unsafe {
                     *(cfa.wrapping_add(offset as usize) as *const usize)
                 },
@@ -158,9 +168,14 @@ pub struct FramesIter {
     signal: bool,
 }
 
+impl Default for FramesIter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FramesIter {
     #[inline(always)]
-    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         with_context(|ctx| Self {
             ctx: ctx.clone(),

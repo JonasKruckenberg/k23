@@ -18,6 +18,7 @@ use dtb_parser::Strings;
 use fallible_iterator::FallibleIterator;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
+pub use setjmp_longjmp::{longjmp, setjmp, JmpBufStruct};
 pub use vm::{
     invalidate_range, is_kernel_address, AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID,
     KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_BASE,
@@ -37,6 +38,7 @@ pub fn init() {
 
 #[cold]
 pub fn per_hart_init() {
+    // Safety: register access
     unsafe {
         // Initialize the trap handler
         trap_handler::init();
@@ -162,27 +164,61 @@ pub fn parse_riscv_extensions(mut strs: Strings) -> Result<RiscvExtensions, dtb_
 
 /// Set the thread pointer on the calling hart to the given address.
 pub fn set_thread_ptr(addr: VirtualAddress) {
+    // Safety: inline assembly
     unsafe {
         asm!("mv tp, {addr}", addr = in(reg) addr.get());
     }
 }
 
+#[inline]
+/// Returns the current stack pointer.
+pub fn get_stack_pointer() -> usize {
+    let stack_pointer: usize;
+    // Safety: inline assembly
+    unsafe {
+        asm!(
+            "mv {}, sp",
+            out(reg) stack_pointer,
+            options(nostack,nomem),
+        );
+    }
+    stack_pointer
+}
+
 /// Suspend the calling hart until an interrupt is received.
 pub fn wait_for_interrupt() {
+    // Safety: inline assembly
     unsafe { asm!("wfi") }
 }
 
+/// Retrieves the next older program counter and stack pointer from the current frame pointer.
+pub unsafe fn get_next_older_pc_from_fp(fp: usize) -> usize {
+    // Safety: caller has to ensure fp is valid
+    unsafe { *(fp as *mut usize).offset(1) }
+}
+
+// The current frame pointer points to the next older frame pointer.
+pub const NEXT_OLDER_FP_FROM_FP_OFFSET: usize = 0;
+
+/// Asserts that the frame pointer is sufficiently aligned for the platform.
+pub fn assert_fp_is_aligned(fp: usize) {
+    assert_eq!(fp % 16, 0, "stack should always be aligned to 16");
+}
+
 pub fn mb() {
+    // Safety: inline assembly
     unsafe {
         asm!("fence iorw,iorw");
     }
 }
 pub fn wmb() {
+    // Safety: inline assembly
     unsafe {
         asm!("fence ow,ow");
     }
 }
 pub fn rmb() {
+    // Safety: inline assembly
     unsafe {
         asm!("fence ir,ir");
     }

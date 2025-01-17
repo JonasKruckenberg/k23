@@ -56,6 +56,27 @@
 #![feature(thread_local, never_type)]
 #![allow(edition_2024_expr_fragment_specifier)]
 #![allow(tail_expr_drop_order)]
+#![expect(
+    clippy::manual_let_else,
+    clippy::default_trait_access,
+    clippy::missing_errors_doc,
+    clippy::cast_possible_truncation,
+    clippy::explicit_iter_loop,
+    clippy::semicolon_if_nothing_returned,
+    clippy::unnecessary_wraps,
+    clippy::default_numeric_fallback,
+    clippy::cast_sign_loss,
+    clippy::cloned_instead_of_copied,
+    clippy::cast_lossless,
+    clippy::needless_lifetimes,
+    clippy::cast_possible_wrap,
+    clippy::unnested_or_patterns,
+    clippy::allow_attributes_without_reason,
+    clippy::checked_conversions,
+    clippy::missing_panics_doc,
+    clippy::trivially_copy_pass_by_ref,
+    reason = "3rd party crate"
+)]
 
 extern crate alloc;
 

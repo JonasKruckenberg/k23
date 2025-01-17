@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 #![no_std]
-#![allow(tail_expr_drop_order)]
+#![expect(tail_expr_drop_order, reason = "vetted")]
 
 mod symbolize;
 
@@ -39,7 +39,7 @@ impl<'a, 'data> Backtrace<'a, 'data> {
 impl fmt::Display for Backtrace<'_, '_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "stack backtrace:")?;
-        let mut frame_idx = 0;
+        let mut frame_idx: i32 = 0;
 
         let mut frames = self.frames.clone();
         let mut print = false;
@@ -111,7 +111,7 @@ impl fmt::Display for Backtrace<'_, '_> {
                     }
                 }
 
-                frame_idx += 1;
+                frame_idx += 1i32;
             }
         }
 

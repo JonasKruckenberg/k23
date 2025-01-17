@@ -31,6 +31,7 @@ pub fn find_eh_action(
     let lpad_base = if start_encoding.is_absent() {
         func_start
     } else {
+        // Safety: We have to trust the DWARF info here
         unsafe { deref_pointer(parse_encoded_pointer(start_encoding, frame, reader)?) }
     };
 
@@ -44,10 +45,13 @@ pub fn find_eh_action(
     reader.truncate(call_site_table_length.try_into().unwrap())?;
 
     while !reader.is_empty() {
+        // Safety: We have to trust the DWARF info here
         let cs_start =
             unsafe { deref_pointer(parse_encoded_pointer(call_site_encoding, frame, reader)?) };
+        // Safety: We have to trust the DWARF info here
         let cs_len =
             unsafe { deref_pointer(parse_encoded_pointer(call_site_encoding, frame, reader)?) };
+        // Safety: We have to trust the DWARF info here
         let cs_lpad =
             unsafe { deref_pointer(parse_encoded_pointer(call_site_encoding, frame, reader)?) };
         let cs_action = reader.read_uleb128()?;
@@ -82,6 +86,10 @@ fn parse_pointer_encoding(
     }
 }
 
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "numeric casts are checked and behave as expected"
+)]
 fn parse_encoded_pointer(
     encoding: constants::DwEhPe,
     frame: &Frame,

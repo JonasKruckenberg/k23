@@ -54,20 +54,22 @@ pub struct AddressSpace {
 }
 
 impl AddressSpace {
-    pub fn new_user(arch_aspace: arch::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
-        #![allow(tail_expr_drop_order)]
-        Self {
+    pub fn new_user(asid: u16, prng: Option<ChaCha20Rng>) -> Result<Self, Error> {
+        let (arch, _) = arch::AddressSpace::new(asid)?;
+
+        #[allow(tail_expr_drop_order, reason = "")]
+        Ok(Self {
             regions: wavltree::WAVLTree::default(),
-            arch: arch_aspace,
+            arch,
             max_range: Range::from(arch::USER_ASPACE_BASE..VirtualAddress::MAX),
             prng,
             placeholder_vmo: None,
             kind: AddressSpaceKind::User,
-        }
+        })
     }
 
     pub fn from_active_kernel(arch_aspace: arch::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
-        #![allow(tail_expr_drop_order)]
+        #[allow(tail_expr_drop_order, reason = "")]
         Self {
             regions: wavltree::WAVLTree::default(),
             arch: arch_aspace,
@@ -125,6 +127,7 @@ impl AddressSpace {
         ensure!(permissions.is_valid(), Error::InvalidPermissions);
 
         // Actually do the mapping now
+        // Safety: we checked all invariants above
         unsafe { self.map_unchecked(layout, vmo, vmo_offset, permissions, name) }
     }
 
@@ -185,6 +188,7 @@ impl AddressSpace {
         }
 
         // Actually do the mapping now
+        // Safety: we checked all invariants above
         unsafe { self.map_specific_unchecked(range, vmo, vmo_offset, permissions, name) }
     }
 
@@ -228,6 +232,7 @@ impl AddressSpace {
         ensure!(bytes_seen == range.size(), Error::NotMapped);
 
         // Actually do the unmapping now
+        // Safety: we checked all invariant above
         unsafe { self.unmap_unchecked(range) }
     }
 
@@ -242,6 +247,7 @@ impl AddressSpace {
         }
 
         let mut flush = self.arch.new_flush();
+        // Safety: caller has to ensure invariants are checked
         unsafe {
             self.arch.unmap(
                 range.start,
@@ -301,6 +307,7 @@ impl AddressSpace {
         ensure!(bytes_seen == range.size(), Error::NotMapped);
 
         // Actually do the permission changes now
+        // Safety: we checked all invariant above
         unsafe { self.protect_unchecked(range, new_permissions) }
     }
 
@@ -318,8 +325,9 @@ impl AddressSpace {
         }
 
         let mut flush = self.arch.new_flush();
+        // Safety: caller has to ensure invariants are checked
         unsafe {
-            self.arch.protect(
+            self.arch.update_flags(
                 range.start,
                 NonZeroUsize::new(range.size()).unwrap(),
                 new_permissions.into(),
@@ -354,11 +362,11 @@ impl AddressSpace {
         match self.kind {
             AddressSpaceKind::User => assert!(
                 addr.is_user_accessible(),
-                "non-user address fault in user address space"
+                "non-user address fault in user address space addr={addr:?}"
             ),
             AddressSpaceKind::Kernel => assert!(
                 arch::is_kernel_address(addr),
-                "non-kernel address fault in kernel address space"
+                "non-kernel address fault in kernel address space addr={addr:?}"
             ),
         }
         ensure!(
@@ -435,13 +443,15 @@ impl AddressSpace {
         // since `reserve` will only be called for kernel memory setup by the loader. For which it is
         // critical that the MMUs and our "logical" view are in sync.
         if permissions.is_empty() {
+            // Safety: we checked all invariants above
             unsafe {
                 self.arch
                     .unmap(range.start, NonZeroUsize::new(range.size()).unwrap(), flush)?;
             }
         } else {
+            // Safety: we checked all invariants above
             unsafe {
-                self.arch.protect(
+                self.arch.update_flags(
                     range.start,
                     NonZeroUsize::new(range.size()).unwrap(),
                     permissions.into(),
@@ -453,6 +463,7 @@ impl AddressSpace {
         Ok(region)
     }
 
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     fn map_internal(
         &mut self,
         range: Range<VirtualAddress>,
@@ -495,7 +506,7 @@ impl AddressSpace {
             }
 
             // call the callback
-            f(region)?
+            f(region)?;
         }
 
         Ok(())
@@ -530,10 +541,10 @@ impl AddressSpace {
         // behaviour:
         // - find the leftmost gap that satisfies the size and alignment requirements
         //      - starting at the root,
-        log::trace!("finding spot for {layout:?} entropy {entropy}");
+        // log::trace!("finding spot for {layout:?} entropy {entropy}");
 
         let max_candidate_spaces: usize = 1 << entropy;
-        log::trace!("max_candidate_spaces {max_candidate_spaces}");
+        // log::trace!("max_candidate_spaces {max_candidate_spaces}");
 
         let selected_index: usize = self
             .prng
@@ -545,7 +556,7 @@ impl AddressSpace {
             Ok(spot) => spot,
             Err(0) => panic!("out of virtual memory"),
             Err(candidate_spot_count) => {
-                log::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
+                // log::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
                 let selected_index: usize = self
                     .prng
                     .as_mut()
@@ -555,17 +566,21 @@ impl AddressSpace {
                 self.find_spot_at_index(selected_index, layout).unwrap()
             }
         };
-        log::trace!("picked spot {spot:?}");
+        log::trace!(
+            "picked spot {spot}..{}",
+            spot.checked_add(layout.size()).unwrap()
+        );
 
         spot
     }
 
+    #[expect(clippy::undocumented_unsafe_blocks, reason = "intrusive tree access")]
     fn find_spot_at_index(
         &self,
         mut target_index: usize,
         layout: Layout,
     ) -> Result<VirtualAddress, usize> {
-        log::trace!("attempting to find spot for {layout:?} at index {target_index}");
+        // log::trace!("attempting to find spot for {layout:?} at index {target_index}");
 
         let spots_in_range = |layout: Layout, range: Range<VirtualAddress>| -> usize {
             // ranges passed in here can become empty for a number of reasons (aligning might produce ranges
@@ -581,20 +596,18 @@ impl AddressSpace {
 
         debug_assert!(!self.regions.is_empty());
         // // if the tree is empty, treat max_range as the gap
-        // if self.regions.is_empty() {
-        //     let aligned_gap = Range::from(self.max_range)
-        //         .checked_align_in(layout.align())
-        //         .unwrap();
-        //     let spot_count = spots_in_range(layout, aligned_gap.clone());
-        //     candidate_spot_count += spot_count;
-        //     if target_index < spot_count {
-        //         return Ok(aligned_gap
-        //             .start
-        //             .checked_add(target_index << layout.align().ilog2())
-        //             .unwrap());
-        //     }
-        //     target_index -= spot_count;
-        // }
+        if self.regions.is_empty() {
+            let aligned_gap = self.max_range.checked_align_in(layout.align()).unwrap();
+            let spot_count = spots_in_range(layout, aligned_gap);
+            candidate_spot_count += spot_count;
+            if target_index < spot_count {
+                return Ok(aligned_gap
+                    .start
+                    .checked_add(target_index << layout.align().ilog2())
+                    .unwrap());
+            }
+            target_index -= spot_count;
+        }
 
         // see if there is a suitable gap between the start of the address space and the first mapping
         if let Some(root) = self.regions.root().get() {
@@ -604,7 +617,7 @@ impl AddressSpace {
             let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
-                log::trace!("found gap left of tree in {aligned_gap:?}");
+                // log::trace!("found gap left of tree in {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
                     .checked_add(target_index << layout.align().ilog2())
@@ -634,7 +647,7 @@ impl AddressSpace {
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
-                        log::trace!("found gap in left subtree in {aligned_gap:?}");
+                        // log::trace!("found gap in left subtree in {aligned_gap:?}");
                         return Ok(aligned_gap
                             .start
                             .checked_add(target_index << layout.align().ilog2())
@@ -654,7 +667,7 @@ impl AddressSpace {
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
-                        log::trace!("found gap in right subtree in {aligned_gap:?}");
+                        // log::trace!("found gap in right subtree in {aligned_gap:?}");
                         return Ok(aligned_gap
                             .start
                             .checked_add(target_index << layout.align().ilog2())
@@ -680,7 +693,7 @@ impl AddressSpace {
             let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
-                log::trace!("found gap right of tree in {aligned_gap:?}");
+                // log::trace!("found gap right of tree in {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
                     .checked_add(target_index << layout.align().ilog2())
@@ -716,7 +729,7 @@ impl<'a> Batch<'a> {
     pub fn new(arch_aspace: &'a mut arch::AddressSpace) -> Self {
         Self {
             arch_aspace,
-            range: Default::default(),
+            range: Range::default(),
             flags: <arch::AddressSpace as ArchAddressSpace>::Flags::empty(),
             phys: vec![],
         }
@@ -756,6 +769,7 @@ impl<'a> Batch<'a> {
 
         let mut flush = self.arch_aspace.new_flush();
         for (phys, len) in self.phys.drain(..) {
+            // Safety: we have checked all the invariants
             unsafe {
                 self.arch_aspace.map_contiguous(
                     self.range.start,

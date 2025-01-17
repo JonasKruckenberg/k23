@@ -19,7 +19,7 @@ pub enum WastArgCore<'a> {
     RefHost(u32),
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 static ARGS: &[(&str, fn(Parser<'_>) -> Result<WastArgCore<'_>>)] = {
     use WastArgCore::*;
     &[
@@ -96,7 +96,7 @@ pub enum WastRetCore<'a> {
     Either(Vec<WastRetCore<'a>>),
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 static RETS: &[(&str, fn(Parser<'_>) -> Result<WastRetCore<'_>>)] = {
     use WastRetCore::*;
     &[

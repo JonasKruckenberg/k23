@@ -87,11 +87,11 @@ impl Section for LinkingSection {
     }
 }
 
-#[allow(unused)]
+#[expect(unused, reason = "")]
 const WASM_SEGMENT_INFO: u8 = 5;
-#[allow(unused)]
+#[expect(unused, reason = "")]
 const WASM_INIT_FUNCS: u8 = 6;
-#[allow(unused)]
+#[expect(unused, reason = "")]
 const WASM_COMDAT_INFO: u8 = 7;
 const WASM_SYMBOL_TABLE: u8 = 8;
 
@@ -107,9 +107,9 @@ pub struct SymbolTable {
 const SYMTAB_FUNCTION: u32 = 0;
 const SYMTAB_DATA: u32 = 1;
 const SYMTAB_GLOBAL: u32 = 2;
-#[allow(unused)]
+#[expect(unused, reason = "")]
 const SYMTAB_SECTION: u32 = 3;
-#[allow(unused)]
+#[expect(unused, reason = "")]
 const SYMTAB_TAG: u32 = 4;
 const SYMTAB_TABLE: u32 = 5;
 

@@ -38,6 +38,7 @@ struct Entry<T> {
 
 impl<T> Drop for Entry<T> {
     fn drop(&mut self) {
+        // Safety: the API ensures we cannot access the TLS value after drop
         unsafe {
             if *self.present.get_mut() {
                 ptr::drop_in_place((*self.value.get()).as_mut_ptr());
@@ -46,7 +47,7 @@ impl<T> Drop for Entry<T> {
     }
 }
 
-// ThreadLocal is always Sync, even if T isn't
+// Safety: ThreadLocal is always Sync, even if T isn't
 unsafe impl<T: Send> Sync for ThreadLocal<T> {}
 
 impl<T: Send> Default for ThreadLocal<T> {
@@ -67,6 +68,7 @@ impl<T: Send> Drop for ThreadLocal<T> {
                 continue;
             }
 
+            // Safety: the API ensures we cannot access the TLS value after drop
             unsafe { deallocate_bucket(bucket_ptr, this_bucket_size) };
         }
     }
@@ -120,7 +122,8 @@ impl<T: Send> ThreadLocal<T> {
     where
         F: FnOnce() -> T,
     {
-        #[allow(tail_expr_drop_order)]
+        #[expect(tail_expr_drop_order, reason = "")]
+        // Safety: value will be initialized by `create` if necessary
         unsafe {
             self.get_or_try(|| Ok::<T, ()>(create())).unwrap_unchecked()
         }
@@ -140,15 +143,18 @@ impl<T: Send> ThreadLocal<T> {
             return Ok(val);
         }
 
-        #[allow(tail_expr_drop_order)]
+        #[expect(tail_expr_drop_order, reason = "")]
         Ok(self.insert(hartid, create()?))
     }
 
     fn get_inner(&self, hart: Hart) -> Option<&T> {
+        // Safety: `Hart` constructors ensure correct bucket index
         let bucket_ptr = unsafe { self.buckets.get_unchecked(hart.bucket) }.load(Ordering::Acquire);
         if bucket_ptr.is_null() {
             return None;
         }
+
+        // Safety: bucket ptr is always valid
         unsafe {
             let entry = &*bucket_ptr.add(hart.index);
             if entry.present.load(Ordering::Relaxed) {
@@ -161,6 +167,7 @@ impl<T: Send> ThreadLocal<T> {
 
     #[cold]
     fn insert(&self, thread: Hart, data: T) -> &T {
+        // Safety: `Hart` constructors ensure correct bucket index
         let bucket_atomic_ptr = unsafe { self.buckets.get_unchecked(thread.bucket) };
         let bucket_ptr: *const _ = bucket_atomic_ptr.load(Ordering::Acquire);
 
@@ -179,6 +186,7 @@ impl<T: Send> ThreadLocal<T> {
                 // another thread stored a new bucket before we could,
                 // and we can free our bucket and use that one instead
                 Err(bucket_ptr) => {
+                    // Safety: bucket will not be read from
                     unsafe { deallocate_bucket(new_bucket, thread.bucket_size) }
                     bucket_ptr
                 }
@@ -188,13 +196,16 @@ impl<T: Send> ThreadLocal<T> {
         };
 
         // Insert the new element into the bucket
+        // Safety: `Hart` constructors ensure correct index
         let entry = unsafe { &*bucket_ptr.add(thread.index) };
         let value_ptr = entry.value.get();
+        // Safety: we just initialized the bucket
         unsafe { value_ptr.write(MaybeUninit::new(data)) };
         entry.present.store(true, Ordering::Release);
 
         self.values.fetch_add(1, Ordering::Release);
 
+        // Safety: we just initialized the value
         unsafe { &*(*value_ptr).as_ptr() }
     }
 
@@ -302,15 +313,18 @@ impl RawIter {
 
     fn next<'a, T: Send + Sync>(&mut self, thread_local: &'a ThreadLocal<T>) -> Option<&'a T> {
         while self.bucket < BUCKETS {
+            // Safety: `Hart` constructors ensure correct bucket index
             let bucket = unsafe { thread_local.buckets.get_unchecked(self.bucket) };
             let bucket = bucket.load(Ordering::Acquire);
 
             if !bucket.is_null() {
                 while self.index < self.bucket_size {
+                    // Safety: `Hart` constructors ensure correct index
                     let entry = unsafe { &*bucket.add(self.index) };
                     self.index += 1;
                     if entry.present.load(Ordering::Acquire) {
                         self.yielded += 1;
+                        // Safety: we just ensured the value is valid
                         return Some(unsafe { &*(*entry.value.get()).as_ptr() });
                     }
                 }
@@ -329,11 +343,13 @@ impl RawIter {
         }
 
         loop {
+            // Safety: `Hart` constructors ensure correct bucket index
             let bucket = unsafe { thread_local.buckets.get_unchecked_mut(self.bucket) };
             let bucket = *bucket.get_mut();
 
             if !bucket.is_null() {
                 while self.index < self.bucket_size {
+                    // Safety: `Hart` constructors ensure correct index
                     let entry = unsafe { &mut *bucket.add(self.index) };
                     self.index += 1;
                     if *entry.present.get_mut() {
@@ -349,7 +365,7 @@ impl RawIter {
 
     #[inline]
     fn next_bucket(&mut self) {
-        self.bucket_size <<= 1;
+        self.bucket_size <<= 1_i32;
         self.bucket += 1;
         self.index = 0;
     }
@@ -359,7 +375,8 @@ impl RawIter {
         (total - self.yielded, None)
     }
     fn size_hint_frozen<T: Send>(&self, thread_local: &ThreadLocal<T>) -> (usize, Option<usize>) {
-        let total = unsafe { *(&thread_local.values as *const AtomicUsize as *const usize) };
+        // Safety: used as a hint, so racily reading the value is fine
+        let total = unsafe { *ptr::from_ref::<AtomicUsize>(&thread_local.values).cast::<usize>() };
         let remaining = total - self.yielded;
         (remaining, Some(remaining))
     }
@@ -394,6 +411,7 @@ impl<'a, T: Send> Iterator for IterMut<'a, T> {
     fn next(&mut self) -> Option<&'a mut T> {
         self.raw
             .next_mut(self.thread_local)
+            // Safety: constructor ensures all ptrs are valid
             .map(|entry| unsafe { &mut *(*entry.value.get()).as_mut_ptr() })
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -424,6 +442,7 @@ impl<T: Send> Iterator for IntoIter<T> {
     fn next(&mut self) -> Option<T> {
         self.raw.next_mut(&mut self.thread_local).map(|entry| {
             *entry.present.get_mut() = false;
+            // Safety: constructor ensures all ptrs are valid
             unsafe { mem::replace(&mut *entry.value.get(), MaybeUninit::uninit()).assume_init() }
         })
     }
@@ -438,7 +457,7 @@ impl<T: Send> FusedIterator for IntoIter<T> {}
 /// Data which is unique to the current hart.
 #[derive(Clone, Copy)]
 struct Hart {
-    #[allow(unused)]
+    #[expect(unused, reason = "")]
     id: usize,
     /// The bucket this hart's local storage will be in.
     bucket: usize,
@@ -471,10 +490,12 @@ fn allocate_bucket<T>(size: usize) -> *mut Entry<T> {
                 value: UnsafeCell::new(MaybeUninit::uninit()),
             })
             .collect(),
-    ) as *mut _
+    )
+    .cast()
 }
 
 unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
+    // Safety: we allocated the entry through `Box::new`
     let _ = unsafe { Box::from_raw(slice::from_raw_parts_mut(bucket, size)) };
 }
 

@@ -23,6 +23,7 @@ static LOADER_CONFIG: LoaderConfig = LoaderConfig::new_default();
 #[unsafe(no_mangle)]
 #[naked]
 unsafe extern "C" fn _start(hartid: usize, boot_info: &'static loader_api::BootInfo) -> ! {
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             // Setup the stack pointer

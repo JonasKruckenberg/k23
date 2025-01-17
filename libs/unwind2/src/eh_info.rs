@@ -32,7 +32,7 @@ pub struct EhInfo {
 }
 
 pub static EH_INFO: LazyLock<EhInfo> = LazyLock::new(|| {
-    #[allow(static_mut_refs)]
+    #[allow(static_mut_refs, reason = "TODO remove")]
     let eh_frame_hdr = unsafe { get_unlimited_slice(EH_FRAME_HDR.as_ptr()) };
 
     let mut bases = BaseAddresses::default().set_eh_frame_hdr(eh_frame_hdr.as_ptr() as u64);

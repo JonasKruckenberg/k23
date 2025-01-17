@@ -36,6 +36,8 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
         virt.start as *mut u8,
         virt.end.checked_sub(virt.start).unwrap(),
     );
+
+    // Safety: just allocated the memory region
     unsafe {
         let old_heap = alloc.claim(span).unwrap();
         alloc.extend(old_heap, span);

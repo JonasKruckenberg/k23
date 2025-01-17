@@ -56,6 +56,7 @@ impl Arena {
     pub fn from_selection(selection: ArenaSelection) -> Self {
         debug_assert!(selection.bookkeeping.size() >= bookkeeping_size(selection.arena.size()));
 
+        // Safety: arena selection has ensured the region is valid
         let slots: &mut [MaybeUninit<FrameInfo>] = unsafe {
             let ptr = VirtualAddress::from_phys(selection.bookkeeping.start)
                 .unwrap()
@@ -124,6 +125,7 @@ impl Arena {
             .find_map(|(i, list)| list.pop_back().map(|area| (i, area)))?;
 
         for order in (1..frame_order + 1).rev() {
+            // Safety: we just allocated the frame
             let frame = unsafe { frame.as_mut() };
 
             let buddy_addr = frame
@@ -161,6 +163,7 @@ impl Arena {
         // if the free area we found was of higher order (ie larger) that we requested
         // we need to split it up
         for order in (min_order + 1..frame_order + 1).rev() {
+            // Safety: we just allocated the frame
             let frame = unsafe { frame.as_mut() };
 
             let buddy_addr = frame
@@ -182,8 +185,10 @@ impl Arena {
         // frames of its buddy "block" are left uninitialized, so we need to do that now.
         let frames = {
             let uninit: &mut [MaybeUninit<FrameInfo>] =
+                // Safety: we just allocate the frames
                 unsafe { slice::from_raw_parts_mut(frame.cast().as_ptr(), size_frames) };
 
+            // Safety: we just allocate `frame`
             let base = unsafe { frame.as_ref().addr() };
 
             uninit.iter_mut().enumerate().map(move |(idx, slot)| {

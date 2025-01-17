@@ -145,7 +145,11 @@ pub fn map_kernel(
     phys_off: usize,
 ) -> crate::Result<(Range<usize>, Option<TlsTemplate>)> {
     let kernel_virt = page_alloc.allocate(
-        Layout::from_size_align(kernel.mem_size() as usize, kernel.max_align() as usize).unwrap(),
+        Layout::from_size_align(
+            usize::try_from(kernel.mem_size())?,
+            usize::try_from(kernel.max_align())?,
+        )
+        .unwrap(),
     );
 
     let phys_base = kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE;
@@ -326,6 +330,7 @@ fn handle_bss_section(
             )
             .ok_or(Error::NoMemory)?;
 
+        // Safety: we just allocated the frame
         unsafe {
             let src = slice::from_raw_parts(
                 arch::KERNEL_ASPACE_BASE.checked_add(last_frame).unwrap() as *mut u8,
@@ -350,7 +355,7 @@ fn handle_bss_section(
                 new_frame,
                 NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
                 phys_off,
-            )?;
+            );
         }
     }
 
@@ -401,25 +406,30 @@ fn handle_dynamic_segment(
     log::trace!("parsing RELA info...");
 
     if let Some(rela_info) = ph.parse_rela(elf_file)? {
+        // Safety: we have to trust the ELF data
         let relas = unsafe {
-            let ptr = elf_file.input.as_ptr().byte_add(rela_info.offset as usize)
-                as *const xmas_elf::sections::Rela<P64>;
+            #[expect(clippy::cast_ptr_alignment, reason = "this is fine")]
+            let ptr = elf_file
+                .input
+                .as_ptr()
+                .byte_add(usize::try_from(rela_info.offset)?)
+                .cast::<xmas_elf::sections::Rela<P64>>();
 
-            slice::from_raw_parts(ptr, rela_info.count as usize)
+            slice::from_raw_parts(ptr, usize::try_from(rela_info.count)?)
         };
 
         // TODO memory fence here
 
         log::trace!("applying relocations in virtual memory...");
         for rela in relas {
-            apply_relocation(rela, virt_base)?;
+            apply_relocation(rela, virt_base);
         }
     }
 
     Ok(())
 }
 
-fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: usize) -> crate::Result<()> {
+fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: usize) {
     assert_eq!(
         rela.get_symbol_table_index(),
         0,
@@ -433,22 +443,23 @@ fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: usize) -> c
             // Calculate address at which to apply the relocation.
             // dynamic relocations offsets are relative to the virtual layout of the elf,
             // not the physical file
-            let target = virt_base.checked_add(rela.get_offset() as usize).unwrap();
+            let target = virt_base
+                .checked_add(usize::try_from(rela.get_offset()).unwrap())
+                .unwrap();
 
             // Calculate the value to store at the relocation target.
             let value = virt_base
-                .checked_add_signed(rela.get_addend() as isize)
+                .checked_add_signed(isize::try_from(rela.get_addend()).unwrap())
                 .unwrap();
 
             // log::trace!("reloc R_RISCV_RELATIVE offset: {:#x}; addend: {:#x} => target {target:?} value {value:?}", rela.get_offset(), rela.get_addend());
+            // Safety: we have to trust the ELF data here
             unsafe {
                 (target as *mut usize).write_unaligned(value);
             }
         }
         _ => unimplemented!("unsupported relocation type {}", rela.get_type()),
     }
-
-    Ok(())
 }
 
 struct ProgramHeader<'a> {
@@ -480,23 +491,26 @@ impl ProgramHeader<'_> {
                 Tag::Rela => {
                     let ptr = field.get_ptr().map_err(Error::Elf)?;
                     let prev = rela.replace(ptr);
-                    if prev.is_some() {
-                        panic!("Dynamic section contains more than one Rela entry");
-                    }
+                    assert!(
+                        prev.is_none(),
+                        "Dynamic section contains more than one Rela entry"
+                    );
                 }
                 Tag::RelaSize => {
                     let val = field.get_val().map_err(Error::Elf)?;
                     let prev = rela_size.replace(val);
-                    if prev.is_some() {
-                        panic!("Dynamic section contains more than one RelaSize entry");
-                    }
+                    assert!(
+                        prev.is_none(),
+                        "Dynamic section contains more than one RelaSize entry"
+                    );
                 }
                 Tag::RelaEnt => {
                     let val = field.get_val().map_err(Error::Elf)?;
                     let prev = rela_ent.replace(val);
-                    if prev.is_some() {
-                        panic!("Dynamic section contains more than one RelaEnt entry");
-                    }
+                    assert!(
+                        prev.is_none(),
+                        "Dynamic section contains more than one RelaEnt entry"
+                    );
                 }
 
                 Tag::Rel | Tag::RelSize | Tag::RelEnt => {
@@ -509,6 +523,7 @@ impl ProgramHeader<'_> {
             }
         }
 
+        #[expect(clippy::manual_assert, reason = "cleaner this way")]
         if rela.is_none() && (rela_size.is_some() || rela_ent.is_some()) {
             panic!("Rela entry is missing but RelaSize or RelaEnt have been provided");
         }
@@ -576,9 +591,10 @@ fn flags_for_segment(ph: &ProgramHeader) -> Flags {
 #[must_use]
 #[inline]
 pub const fn checked_align_up(this: usize, align: usize) -> Option<usize> {
-    if !align.is_power_of_two() {
-        panic!("checked_align_up: align is not a power-of-two");
-    }
+    assert!(
+        align.is_power_of_two(),
+        "checked_align_up: align is not a power-of-two"
+    );
 
     // SAFETY: `align` has been checked to be a power of 2 above
     let align_minus_one = unsafe { align.unchecked_sub(1) };
@@ -597,9 +613,10 @@ pub const fn checked_align_up(this: usize, align: usize) -> Option<usize> {
 #[must_use]
 #[inline]
 pub const fn align_down(this: usize, align: usize) -> usize {
-    if !align.is_power_of_two() {
-        panic!("checked_align_up: align is not a power-of-two");
-    }
+    assert!(
+        align.is_power_of_two(),
+        "align_down: align is not a power-of-two"
+    );
 
     let aligned = this & 0usize.wrapping_sub(align);
     debug_assert!(aligned % align == 0);

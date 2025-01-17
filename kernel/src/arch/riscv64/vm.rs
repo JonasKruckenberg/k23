@@ -60,6 +60,8 @@ pub fn init() {
     let root_pgtable = get_active_pgtable(DEFAULT_ASID);
 
     // Zero out the lower half of the kernel address space to remove e.g. the leftover loader identity mappings
+    // Safety: `get_active_pgtable` & `VirtualAddress::from_phys` do minimal checking that the address is valid
+    // but otherwise we have to trust the address is valid for the entire page.
     unsafe {
         slice::from_raw_parts_mut(
             VirtualAddress::from_phys(root_pgtable)
@@ -72,6 +74,7 @@ pub fn init() {
 
     // Determine the number of supported ASID bits. The ASID is a "WARL" (Write Any Values, Reads Legal Values)
     // so we can write all 1s to and see which ones "stick".
+    // Safety: register access
     unsafe {
         let orig = satp::read();
         satp::set(orig.mode(), 0xFFFF, orig.ppn());
@@ -171,7 +174,25 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
     where
         Self: Sized,
     {
-        let root_pgtable = frame_alloc::alloc_one_zeroed()?;
+        // Safety: we just allocated the page and we're only accessing the upper half of it
+        let src = unsafe {
+            let satp = satp::read();
+            let root_pgtable = PhysicalAddress::new(satp.ppn() << 12);
+            debug_assert!(root_pgtable.get() != 0);
+
+            let base = VirtualAddress::from_phys(root_pgtable)
+                .unwrap()
+                .checked_add(PAGE_SIZE / 2)
+                .unwrap()
+                .as_ptr();
+
+            slice::from_raw_parts(base, PAGE_SIZE / 2)
+        };
+
+        let mut root_pgtable = frame_alloc::alloc_one_zeroed()?;
+
+        Frame::get_mut(&mut root_pgtable).unwrap().as_mut_slice()[PAGE_SIZE / 2..]
+            .copy_from_slice(src);
 
         mb();
 
@@ -181,7 +202,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             wired_frames: vec![root_pgtable],
         };
 
-        #[allow(tail_expr_drop_order)]
+        #[expect(tail_expr_drop_order, reason = "")]
         Ok((this, Flush::empty(asid)))
     }
 
@@ -197,7 +218,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             wired_frames: vec![],
         };
 
-        #[allow(tail_expr_drop_order)]
+        #[expect(tail_expr_drop_order, reason = "")]
         (this, Flush::empty(asid))
     }
 
@@ -245,6 +266,8 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
 
             for lvl in (0..PAGE_TABLE_LEVELS).rev() {
                 let index = pte_index_for_level(virt, lvl);
+
+                // Safety: index is always within one page
                 let pte = unsafe { pgtable.add(index).as_mut() };
 
                 // Let's check if we can map at this level of the page table given our
@@ -290,7 +313,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         Ok(())
     }
 
-    unsafe fn protect(
+    unsafe fn update_flags(
         &mut self,
         mut virt: VirtualAddress,
         len: NonZeroUsize,
@@ -314,6 +337,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             let mut pgtable = self.pgtable_ptr_from_phys(self.root_pgtable);
 
             for lvl in (0..PAGE_TABLE_LEVELS).rev() {
+                // Safety: index is always within one page
                 let pte = unsafe {
                     let index = pte_index_for_level(virt, lvl);
                     pgtable.add(index).as_mut()
@@ -377,15 +401,13 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         // doing so recursively. The reason for this is that after unmapping a page we need to check
         // if by doing so the parent has become empty in which case we also need to unmap the parent.
         while remaining_bytes > 0 {
-            unsafe {
-                self.unmap_inner(
-                    self.pgtable_ptr_from_phys(self.root_pgtable),
-                    &mut virt,
-                    &mut remaining_bytes,
-                    PAGE_TABLE_LEVELS - 1,
-                    flush,
-                )?;
-            }
+            self.unmap_inner(
+                self.pgtable_ptr_from_phys(self.root_pgtable),
+                &mut virt,
+                &mut remaining_bytes,
+                PAGE_TABLE_LEVELS - 1,
+                flush,
+            )?;
         }
 
         mb();
@@ -397,6 +419,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         let mut pgtable: NonNull<PageTableEntry> = self.pgtable_ptr_from_phys(self.root_pgtable);
 
         for lvl in (0..PAGE_TABLE_LEVELS).rev() {
+            // Safety: index is always within one page
             let pte = unsafe {
                 let index = pte_index_for_level(virt, lvl);
                 pgtable.add(index).as_mut()
@@ -421,10 +444,12 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
     }
 
     unsafe fn activate(&self) {
+        // Safety: register access
         unsafe {
-            let ppn = self.root_pgtable.get() >> 12;
-            satp::set(satp::Mode::Sv39, DEFAULT_ASID, ppn);
+            let ppn = self.root_pgtable.get() >> 12_i32;
+            satp::set(satp::Mode::Sv39, self.asid, ppn);
         }
+        mb();
     }
 
     fn new_flush(&self) -> Flush {
@@ -433,7 +458,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
 }
 
 impl AddressSpace {
-    unsafe fn unmap_inner(
+    fn unmap_inner(
         &mut self,
         pgtable: NonNull<PageTableEntry>,
         virt: &mut VirtualAddress,
@@ -442,6 +467,7 @@ impl AddressSpace {
         flush: &mut Flush,
     ) -> Result<(), Error> {
         let index = pte_index_for_level(*virt, lvl);
+        // Safety: index is always within one page
         let pte = unsafe { pgtable.add(index).as_mut() };
         let page_size = page_size_for_level(lvl);
 
@@ -458,15 +484,14 @@ impl AddressSpace {
         } else if pte.is_valid() {
             // This PTE is an internal node pointing to another page table
             let pgtable = self.pgtable_ptr_from_phys(pte.get_address_and_flags().0);
-            unsafe {
-                self.unmap_inner(pgtable, virt, remaining_bytes, lvl - 1, flush)?;
-            }
+            self.unmap_inner(pgtable, virt, remaining_bytes, lvl - 1, flush)?;
 
             // The recursive descend above might have unmapped the last child of this PTE in which
             // case we need to unmap it as well
 
             // TODO optimize this
             let is_still_populated = (0..PAGE_TABLE_ENTRIES)
+                // Safety: index is always within one page
                 .any(|index| unsafe { pgtable.add(index).as_ref().is_valid() });
 
             if !is_still_populated {
@@ -500,13 +525,13 @@ pub struct PageTableEntry {
 
 impl fmt::Debug for PageTableEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let rsw = (self.bits & ((1 << 2) - 1) << 8) >> 8;
-        let ppn0 = (self.bits & ((1 << 9) - 1) << 10) >> 10;
-        let ppn1 = (self.bits & ((1 << 9) - 1) << 19) >> 19;
-        let ppn2 = (self.bits & ((1 << 26) - 1) << 28) >> 28;
-        let reserved = (self.bits & ((1 << 7) - 1) << 54) >> 54;
-        let pbmt = (self.bits & ((1 << 2) - 1) << 61) >> 61;
-        let n = (self.bits & ((1 << 1) - 1) << 63) >> 63;
+        let rsw = (self.bits & ((1 << 2_i32) - 1) << 8_i32) >> 8_i32;
+        let ppn0 = (self.bits & ((1 << 9_i32) - 1) << 10_i32) >> 10_i32;
+        let ppn1 = (self.bits & ((1 << 9_i32) - 1) << 19_i32) >> 19_i32;
+        let ppn2 = (self.bits & ((1 << 26_i32) - 1) << 28_i32) >> 28_i32;
+        let reserved = (self.bits & ((1 << 7_i32) - 1) << 54_i32) >> 54_i32;
+        let pbmt = (self.bits & ((1 << 2_i32) - 1) << 61_i32) >> 61_i32;
+        let n = (self.bits & ((1 << 1_i32) - 1) << 63_i32) >> 63_i32;
 
         f.debug_struct("PageTableEntry")
             .field("n", &format_args!("{n:01b}"))

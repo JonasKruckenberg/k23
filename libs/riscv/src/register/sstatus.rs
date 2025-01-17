@@ -54,8 +54,8 @@ pub unsafe fn set_spp(spp: SPP) {
 /// Floating-Point Unit Status
 pub unsafe fn set_fs(fs: FS) {
     let mut value = read().bits;
-    value &= !(0x3 << 13); // clear previous value
-    value |= (fs as usize) << 13;
+    value &= !(0x3 << 13_i32); // clear previous value
+    value |= (fs as usize) << 13_i32;
     unsafe {
         _set(value);
     }
@@ -128,7 +128,7 @@ impl Sstatus {
     #[inline]
     #[must_use]
     pub fn vs(&self) -> FS {
-        let fs = (self.bits >> 9) & 0x3; // bits 13-14
+        let fs = (self.bits >> 9_i32) & 0x3; // bits 13-14
         match fs {
             0 => FS::Off,
             1 => FS::Initial,
@@ -142,7 +142,7 @@ impl Sstatus {
     #[inline]
     #[must_use]
     pub fn fs(&self) -> FS {
-        let fs = (self.bits >> 13) & 0x3; // bits 13-14
+        let fs = (self.bits >> 13_i32) & 0x3; // bits 13-14
         match fs {
             0 => FS::Off,
             1 => FS::Initial,
@@ -157,7 +157,7 @@ impl Sstatus {
     #[inline]
     #[must_use]
     pub fn xs(&self) -> FS {
-        let xs = (self.bits >> 15) & 0x3; // bits 15-16
+        let xs = (self.bits >> 15_i32) & 0x3; // bits 15-16
         match xs {
             0 => FS::Off,
             1 => FS::Initial,
@@ -191,7 +191,7 @@ impl Sstatus {
             if #[cfg(target_arch = "riscv32")] {
                 XLEN::XLEN32
             } else {
-                #[allow(clippy::cast_possible_truncation)] // We actually want to truncate
+                #[expect(clippy::cast_possible_truncation, reason = "We actually want to truncate")]
                 match (self.bits >> 32) as u8 & 0x3 {
                     1 => XLEN::XLEN32,
                     2 => XLEN::XLEN64,

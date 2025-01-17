@@ -78,7 +78,7 @@ impl<R: gimli::Reader> Context<R> {
     /// Construct a new `Context` from DWARF sections.
     ///
     /// This method does not support using a supplementary object file.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn from_sections(
         debug_abbrev: gimli::DebugAbbrev<R>,
         debug_addr: gimli::DebugAddr<R>,

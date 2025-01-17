@@ -423,7 +423,6 @@ macro_rules! instructions {
         impl<'a> Parse<'a> for Instruction<'a> {
             fn parse(parser: Parser<'a>) -> Result<Self> {
                 $(
-                    #[allow(clippy::needless_lifetimes)]
                     fn $name<'a>(_parser: Parser<'a>) -> Result<Instruction<'a>> {
                         Ok(Instruction::$name $((
                             instructions!(@parse _parser $($arg)*)?

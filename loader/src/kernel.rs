@@ -20,14 +20,15 @@ pub struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
 pub fn parse_kernel(bytes: &'static [u8]) -> crate::Result<Kernel<'static>> {
     let elf_file = xmas_elf::ElfFile::new(bytes).map_err(Error::Elf)?;
 
-    let loader_config = unsafe {
+    let loader_config = {
         let section = elf_file
             .find_section_by_name(".loader_config")
             .expect("missing .loader_config section");
         let raw = section.raw_data(&elf_file);
 
         let ptr: *const LoaderConfig = raw.as_ptr().cast();
-        let cfg = &*ptr;
+        // Safety: kernel is inlined into the loader, so ptr is always valid
+        let cfg = unsafe { &*ptr };
 
         cfg.assert_valid();
         cfg
@@ -68,7 +69,7 @@ impl Kernel<'_> {
     pub fn max_align(&self) -> u64 {
         let load_program_headers = self.loadable_program_headers();
 
-        #[allow(tail_expr_drop_order)]
+        #[expect(tail_expr_drop_order, reason = "")]
         load_program_headers.map(|ph| ph.align()).max().unwrap_or(1)
     }
 

@@ -82,6 +82,7 @@ pub type JmpBuf = *const JmpBufStruct;
 /// function be used with extreme care.
 #[naked]
 pub unsafe extern "C" fn setjmp(env: JmpBuf) -> isize {
+    // Safety: inline assembly
     unsafe {
         cfg_if::cfg_if! {
             if #[cfg(target_feature = "d")] {
@@ -153,6 +154,7 @@ pub unsafe extern "C" fn setjmp(env: JmpBuf) -> isize {
 /// address, so this might cause confusing and hard-to-debug behavior.
 #[naked]
 pub unsafe extern "C" fn longjmp(env: JmpBuf, val: isize) -> ! {
+    // Safety: inline assembly
     unsafe {
         cfg_if::cfg_if! {
             if #[cfg(target_feature = "d")] {
@@ -244,9 +246,12 @@ where
         //
         // Note that `closure_env_ptr` is not a raw function pointer, it's a
         // pointer to a FnOnce; the code we call comes from the generic `F`.
+        //
+        // Safety: caller has to ensure ptr is valid
         unsafe { closure_env_ptr.read()(&*env) }
     }
 
+    // Safety: inline assembly
     unsafe {
         let mut f = ManuallyDrop::new(f);
         let mut jbuf = MaybeUninit::<JmpBufStruct>::zeroed().assume_init();

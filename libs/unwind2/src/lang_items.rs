@@ -29,6 +29,7 @@ pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
             arch::abort()
         }
 
+        // Safety: this replaces the register state, very unsafe
         unsafe { arch::restore_context(ctx) }
     })
 }

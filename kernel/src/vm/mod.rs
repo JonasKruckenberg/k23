@@ -14,6 +14,7 @@ pub mod flush;
 pub mod frame_alloc;
 mod frame_list;
 mod mmap;
+mod trap_handler;
 mod vmo;
 
 use crate::arch;
@@ -29,9 +30,11 @@ use core::range::Range;
 use core::{fmt, slice};
 pub use error::Error;
 use loader_api::BootInfo;
+pub use mmap::MmapSlice;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::{LazyLock, Mutex, OnceLock};
+pub use trap_handler::trap_handler;
 use xmas_elf::program::Type;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
@@ -42,7 +45,7 @@ static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
 });
 
 pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
@@ -53,7 +56,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
             )),
         );
 
-        reserve_wired_regions(&mut aspace, boot_info, &mut flush).unwrap();
+        reserve_wired_regions(&mut aspace, boot_info, &mut flush);
         flush.flush().unwrap();
 
         for region in aspace.regions.iter() {
@@ -63,20 +66,27 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
                 region.range.start,
                 region.range.end,
                 region.permissions
-            )
+            );
         }
 
         Ok(Mutex::new(aspace))
     })?;
 
+    // let mut aspace = vm::AddressSpace::new_user(2, Some(ChaCha20Rng::from_seed(
+    //     minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
+    // ))).unwrap();
+    // unsafe { aspace.arch.activate(); }
+    // log::trace!("everything is fine?!");
+    //
+    // let layout = Layout::from_size_align(5 * arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap();
+    // let vmo = Vmo::new_paged(iter::repeat_n(THE_ZERO_FRAME.clone(), 5));
+    // let range = aspace.map(layout, vmo, 0, Permissions::READ | Permissions::WRITE, None).unwrap().range;
+    // log::trace!("{region:?}");
+
     Ok(())
 }
 
-fn reserve_wired_regions(
-    aspace: &mut AddressSpace,
-    boot_info: &BootInfo,
-    flush: &mut Flush,
-) -> crate::Result<()> {
+fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush: &mut Flush) {
     // reserve the physical memory map
     aspace
         .reserve(
@@ -90,6 +100,7 @@ fn reserve_wired_regions(
         )
         .unwrap();
 
+    // Safety: we have to trust the loaders BootInfo here
     let own_elf = unsafe {
         let base = boot_info
             .physical_address_offset
@@ -114,7 +125,7 @@ fn reserve_wired_regions(
 
         let virt = VirtualAddress::new(boot_info.kernel_virt.start)
             .unwrap()
-            .checked_add(ph.virtual_addr() as usize)
+            .checked_add(usize::try_from(ph.virtual_addr()).unwrap())
             .unwrap();
 
         let mut permissions = Permissions::empty();
@@ -140,7 +151,7 @@ fn reserve_wired_regions(
                 Range {
                     start: virt.align_down(arch::PAGE_SIZE),
                     end: virt
-                        .checked_add(ph.mem_size() as usize)
+                        .checked_add(usize::try_from(ph.mem_size()).unwrap())
                         .unwrap()
                         .checked_align_up(arch::PAGE_SIZE)
                         .unwrap(),
@@ -151,8 +162,6 @@ fn reserve_wired_regions(
             )
             .unwrap();
     }
-
-    Ok(())
 }
 
 bitflags::bitflags! {
@@ -174,17 +183,17 @@ impl fmt::Display for PageFaultFlags {
 }
 
 impl PageFaultFlags {
-    pub fn is_valid(&self) -> bool {
+    pub fn is_valid(self) -> bool {
         self.contains(PageFaultFlags::LOAD) != self.contains(PageFaultFlags::STORE)
     }
 
-    pub fn cause_is_read(&self) -> bool {
+    pub fn cause_is_read(self) -> bool {
         self.contains(PageFaultFlags::LOAD)
     }
-    pub fn cause_is_write(&self) -> bool {
+    pub fn cause_is_write(self) -> bool {
         self.contains(PageFaultFlags::STORE)
     }
-    pub fn cause_is_instr_fetch(&self) -> bool {
+    pub fn cause_is_instr_fetch(self) -> bool {
         self.contains(PageFaultFlags::INSTRUCTION)
     }
 }
@@ -201,6 +210,14 @@ bitflags::bitflags! {
 impl fmt::Display for Permissions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         bitflags::parser::to_writer(self, f)
+    }
+}
+
+impl Permissions {
+    /// Returns whether the set of permissions is `R^X` ie doesn't allow
+    /// write-execute at the same time.
+    pub fn is_valid(self) -> bool {
+        !self.contains(Permissions::WRITE | Permissions::EXECUTE)
     }
 }
 
@@ -238,7 +255,7 @@ pub trait ArchAddressSpace {
         flush: &mut Flush,
     ) -> Result<(), Error>;
 
-    unsafe fn protect(
+    unsafe fn update_flags(
         &mut self,
         virt: VirtualAddress,
         len: NonZeroUsize,
@@ -258,19 +275,4 @@ pub trait ArchAddressSpace {
     unsafe fn activate(&self);
 
     fn new_flush(&self) -> Flush;
-}
-
-impl Permissions {
-    /// Returns whether the set of permissions is `R^X` ie doesn't allow
-    /// write-execute at the same time.
-    pub fn is_valid(&self) -> bool {
-        !self.contains(Permissions::WRITE | Permissions::EXECUTE)
-    }
-}
-
-bitflags::bitflags! {
-    #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-    pub struct Flags: u8 {
-        const EAGER = 1 << 0;
-    }
 }

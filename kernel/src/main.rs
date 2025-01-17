@@ -12,10 +12,10 @@
 #![feature(thread_local, never_type)]
 #![feature(new_range_api)]
 #![feature(debug_closure_helpers)]
-#![allow(internal_features)]
+#![expect(internal_features, reason = "panic internals")]
 #![feature(std_internals, panic_can_unwind, fmt_internals)]
-#![allow(dead_code)] // TODO remove
-#![allow(edition_2024_expr_fragment_specifier)]
+#![expect(dead_code, reason = "TODO")] // TODO remove
+#![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
 extern crate alloc;
 
@@ -29,6 +29,7 @@ mod panic;
 mod thread_local;
 mod time;
 mod vm;
+mod wasm;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
@@ -57,7 +58,7 @@ pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropria
 /// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
 /// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap
 /// size and can dynamically grow the heap as needed.
-pub const INITIAL_HEAP_SIZE_PAGES: usize = 2048; // 32 MiB
+pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096; // 32 MiB
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -68,7 +69,7 @@ thread_local!(
         RefCell::new(HartLocalMachineInfo::default());
 );
 
-pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
+fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
     // is available
     let allocatable_memories = allocatable_memory_regions(boot_info);
@@ -106,10 +107,14 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
 
     // TODO move this into a init function
     let minfo = MACHINE_INFO
-        .get_or_try_init(|| unsafe { MachineInfo::from_dtb(fdt) })
+        .get_or_try_init(|| {
+            // Safety: we have to trust the loader mapped the fdt correctly
+            unsafe { MachineInfo::from_dtb(fdt) }
+        })
         .unwrap();
     log::debug!("\n{minfo}");
 
+    // Safety: we have to trust the loader mapped the fdt correctly
     let hart_local_minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt).unwrap() };
     log::debug!("\n{hart_local_minfo}");
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
@@ -125,6 +130,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
+    // wasm::test();
 
     // - [all][global] parse cmdline
     // - [all][global] `vm::init()` init virtual memory management
@@ -140,6 +146,7 @@ pub fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     // - `userboot_init()`
 
     // Run thread-local destructors
+    // Safety: after this point thread-locals cannot be accessed anymore anyway
     unsafe {
         thread_local::destructors::run();
     }
@@ -161,6 +168,7 @@ fn init_tls(
         let virt = VirtualAddress::from_phys(phys).unwrap();
 
         if template.file_size != 0 {
+            // Safety: We have to trust the loaders BootInfo here
             unsafe {
                 let src: &[u8] =
                     slice::from_raw_parts(template.start_addr as *const u8, template.file_size);

@@ -43,11 +43,14 @@ macro_rules! sbi_call {
             if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
                 let error: isize;
                 let value: usize;
+                let ext: usize = $ext;
+                let func: usize = $func;
 
+                // Safety: inline assembly
                 unsafe {
                     ::core::arch::asm!(
                         "ecall",
-                        in("a6") $func, in("a7") $ext,
+                        in("a6") func, in("a7") ext,
                         lateout("a0") error, lateout("a1") value,
                     )
                 };
@@ -69,6 +72,9 @@ macro_rules! sbi_call {
                     }
                 }
             }  else {
+                let _: usize = $ext;
+                let _: usize = $func;
+
                 #[inline(always)]
                 fn unimplemented() -> super::Result<usize> {
                     unimplemented!()
@@ -82,12 +88,15 @@ macro_rules! sbi_call {
             if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
                 let error: isize;
                 let value: usize;
+                let ext: usize = $ext;
+                let func: usize = $func;
 
+                // Safety: inline assembly
                 unsafe {
                     ::core::arch::asm!(
                         "ecall",
                         $(in($reg) $args),*,
-                        in("a6") $func, in("a7") $ext,
+                        in("a6") func, in("a7") ext,
                         lateout("a0") error, lateout("a1") value,
                     )
                 };
@@ -109,6 +118,8 @@ macro_rules! sbi_call {
                     }
                 }
             } else {
+                let _: usize = $ext;
+                let _: usize = $func;
                 $(let _ = $args);*;
 
                 #[inline(always)]
@@ -140,6 +151,10 @@ bitflags! {
 }
 
 /// Probe the SBI implementation for supported extensions.
+///
+/// # Errors
+///
+/// Returns an error if one of the probing SBI calls fails.
 pub fn supported_extensions() -> Result<Extension> {
     let mut supported = Extension::BASE;
     supported.set(Extension::TIME, base::probe_sbi_extension(EID_TIME)?);

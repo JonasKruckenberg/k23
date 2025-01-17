@@ -59,7 +59,7 @@ impl<T> OnceLock<T> {
         let mut error = None;
 
         self.once.call_once(|| {
-            #[allow(tail_expr_drop_order)]
+            #[allow(tail_expr_drop_order, reason = "")]
             match f() {
                 Ok(val) => {
                     // SAFETY: `Once` ensures this is only called once
@@ -71,7 +71,7 @@ impl<T> OnceLock<T> {
             }
         });
 
-        #[allow(if_let_rescope)]
+        #[allow(if_let_rescope, reason = "")]
         if let Some(err) = error {
             Err(err)
         } else {
@@ -81,15 +81,17 @@ impl<T> OnceLock<T> {
     }
 
     pub fn get(&self) -> Option<&T> {
-        self.once
-            .is_completed()
-            .then(|| unsafe { self.force_get() })
+        self.once.is_completed().then(|| {
+            // Safety: `is_completed` ensures value is properly initialized
+            unsafe { self.force_get() }
+        })
     }
 
     pub fn get_mut(&mut self) -> Option<&mut T> {
-        self.once
-            .is_completed()
-            .then(|| unsafe { self.force_get_mut() })
+        self.once.is_completed().then(|| {
+            // Safety: `is_completed` ensures value is properly initialized
+            unsafe { self.force_get_mut() }
+        })
     }
 
     unsafe fn force_get(&self) -> &T {
@@ -107,7 +109,9 @@ impl<T> OnceLock<T> {
     }
 }
 
+// Safety: synchronization primitive
 unsafe impl<T: Sync + Send> Sync for OnceLock<T> {}
+// Safety: synchronization primitive
 unsafe impl<T: Send> Send for OnceLock<T> {}
 
 impl<T: RefUnwindSafe + UnwindSafe> RefUnwindSafe for OnceLock<T> {}

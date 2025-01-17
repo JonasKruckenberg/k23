@@ -122,6 +122,10 @@ where
         let mut node = self.peek_prev_inner()?;
         unsafe { Some(Pin::new_unchecked(node.as_mut())) }
     }
+
+    /// # Panics
+    ///
+    /// Panics if the element is already part of a collection.
     pub fn insert(self, element: T::Handle) -> Pin<&'a mut T> {
         let mut ptr = T::into_ptr(element);
         debug_assert_ne!(self._tree.root, Some(ptr));

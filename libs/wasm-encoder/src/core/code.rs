@@ -310,7 +310,7 @@ impl Encode for MemArg {
             self.align.encode(sink);
             self.offset.encode(sink);
         } else {
-            (self.align | (1 << 6)).encode(sink);
+            (self.align | (1 << 6i32)).encode(sink);
             self.memory_index.encode(sink);
             self.offset.encode(sink);
         }
@@ -364,7 +364,7 @@ impl Encode for BlockType {
         match *self {
             Self::Empty => sink.push(0x40),
             Self::Result(ty) => ty.encode(sink),
-            Self::FunctionType(f) => (f as i64).encode(sink),
+            Self::FunctionType(f) => (i64::from(f)).encode(sink),
         }
     }
 }
@@ -372,7 +372,7 @@ impl Encode for BlockType {
 /// WebAssembly instructions.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
-#[allow(missing_docs, non_camel_case_types)]
+#[allow(missing_docs, non_camel_case_types, reason = "")]
 pub enum Instruction<'a> {
     // Control instructions.
     Unreachable,
@@ -1844,7 +1844,7 @@ impl Encode for Instruction<'_> {
                 sink.push(0xfb);
                 sink.push(0x18);
                 let cast_flags =
-                    (from_ref_type.nullable as u8) | ((to_ref_type.nullable as u8) << 1);
+                    u8::from(from_ref_type.nullable) | (u8::from(to_ref_type.nullable) << 1i32);
                 sink.push(cast_flags);
                 relative_depth.encode(sink);
                 from_ref_type.heap_type.encode(sink);
@@ -1858,7 +1858,7 @@ impl Encode for Instruction<'_> {
                 sink.push(0xfb);
                 sink.push(0x19);
                 let cast_flags =
-                    (from_ref_type.nullable as u8) | ((to_ref_type.nullable as u8) << 1);
+                    u8::from(from_ref_type.nullable) | (u8::from(to_ref_type.nullable) << 1i32);
                 sink.push(cast_flags);
                 relative_depth.encode(sink);
                 from_ref_type.heap_type.encode(sink);
@@ -3702,7 +3702,7 @@ impl Encode for Instruction<'_> {
 }
 
 #[derive(Clone, Debug)]
-#[allow(missing_docs)]
+#[allow(missing_docs, reason = "")]
 pub enum Catch {
     One { tag: u32, label: u32 },
     OneRef { tag: u32, label: u32 },
@@ -3751,7 +3751,7 @@ impl ConstExpr {
 
     /// Create a constant expression with the specified raw encoding of instructions.
     pub fn raw(bytes: impl IntoIterator<Item = u8>) -> Self {
-        #[allow(tail_expr_drop_order)]
+        #[allow(tail_expr_drop_order, reason = "")]
         Self {
             bytes: bytes.into_iter().collect(),
         }

@@ -28,17 +28,19 @@ impl<'a> BootstrapAllocator<'a> {
     pub fn free_regions(&self) -> FreeRegions<'_> {
         FreeRegions {
             offset: self.offset,
-            inner: self.regions.iter().rev().cloned(),
+            inner: self.regions.iter().rev().copied(),
         }
     }
 
     pub fn allocate_one(&mut self) -> Option<PhysicalAddress> {
+        // Safety: layout is always valid
         self.allocate_contiguous(unsafe {
             Layout::from_size_align_unchecked(arch::PAGE_SIZE, arch::PAGE_SIZE)
         })
     }
 
     pub fn allocate_one_zeroed(&mut self) -> Option<PhysicalAddress> {
+        // Safety: layout is always valid
         self.allocate_contiguous_zeroed(unsafe {
             Layout::from_size_align_unchecked(arch::PAGE_SIZE, arch::PAGE_SIZE)
         })
@@ -86,6 +88,8 @@ impl<'a> BootstrapAllocator<'a> {
     pub fn allocate_contiguous_zeroed(&mut self, layout: Layout) -> Option<PhysicalAddress> {
         let requested_size = layout.pad_to_align().size();
         let addr = self.allocate_contiguous(layout)?;
+
+        // Safety: we just allocated the frame
         unsafe {
             ptr::write_bytes::<u8>(
                 arch::KERNEL_ASPACE_BASE
@@ -94,7 +98,7 @@ impl<'a> BootstrapAllocator<'a> {
                     .as_mut_ptr(),
                 0,
                 requested_size,
-            )
+            );
         }
         Some(addr)
     }
@@ -102,7 +106,7 @@ impl<'a> BootstrapAllocator<'a> {
 
 pub struct FreeRegions<'a> {
     offset: usize,
-    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
+    inner: iter::Copied<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
 }
 
 impl Iterator for FreeRegions<'_> {

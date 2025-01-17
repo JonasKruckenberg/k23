@@ -47,10 +47,10 @@ impl Encode for CompositeType {
                 ty.results().iter().copied(),
             ),
             CompositeInnerType::Array(ArrayType(ty)) => {
-                TypeSection::encode_array(sink, &ty.element_type, ty.mutable)
+                TypeSection::encode_array(sink, &ty.element_type, ty.mutable);
             }
             CompositeInnerType::Struct(ty) => {
-                TypeSection::encode_struct(sink, ty.fields.iter().cloned())
+                TypeSection::encode_struct(sink, ty.fields.iter().copied());
             }
         }
     }
@@ -251,7 +251,7 @@ impl Encode for ValType {
 /// additionally is used by the `funcref` and `externref` types. The full
 /// generality of this type is only exercised with function-references.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
-#[allow(missing_docs)]
+#[allow(missing_docs, reason = "")]
 pub struct RefType {
     pub nullable: bool,
     pub heap_type: HeapType,
@@ -549,8 +549,8 @@ impl TypeSection {
     pub fn func_type(&mut self, ty: &FuncType) -> &mut Self {
         Self::encode_function(
             &mut self.bytes,
-            ty.params().iter().cloned(),
-            ty.results().iter().cloned(),
+            ty.params().iter().copied(),
+            ty.results().iter().copied(),
         );
         self.num_added += 1;
         self
@@ -587,7 +587,7 @@ impl TypeSection {
 
     fn encode_field(sink: &mut Vec<u8>, ty: &StorageType, mutable: bool) {
         ty.encode(sink);
-        sink.push(mutable as u8);
+        sink.push(u8::from(mutable));
     }
 
     /// Define a struct type in this type section.

@@ -37,14 +37,14 @@ where
         if let Some(current) = self.current {
             self.current = utils::next(current);
         } else {
-            self.current = None
+            self.current = None;
         }
     }
     pub fn move_prev(&mut self) {
         if let Some(current) = self.current {
             self.current = unsafe { utils::prev(current) };
         } else {
-            self.current = None
+            self.current = None;
         }
     }
     pub fn peek_prev(&self) -> Option<&'a T> {
@@ -97,14 +97,14 @@ where
         if let Some(current) = self.current {
             self.current = utils::next(current);
         } else {
-            self.current = None
+            self.current = None;
         }
     }
     pub fn move_prev(&mut self) {
         if let Some(current) = self.current {
             self.current = unsafe { utils::prev(current) };
         } else {
-            self.current = None
+            self.current = None;
         }
     }
     pub fn remove(&mut self) -> Option<T::Handle> {

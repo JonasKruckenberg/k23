@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 //! Interrupts
+#![expect(clippy::undocumented_unsafe_blocks, reason = "register access")]
 
 use crate::{sepc, sstatus};
 

@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use lock_api::RawRwLockUpgrade;
+use lock_api::RawRwLockUpgrade as _;
 
 /// Low-level reader-writer lock.
 ///
@@ -59,8 +59,9 @@ impl RawRwLock {
     }
 }
 
+// Safety: unsafe trait
 unsafe impl lock_api::RawRwLock for RawRwLock {
-    #[allow(clippy::declare_interior_mutable_const)]
+    #[expect(clippy::declare_interior_mutable_const, reason = "")]
     const INIT: Self = Self {
         lock: AtomicUsize::new(0),
     };
@@ -115,6 +116,7 @@ unsafe impl lock_api::RawRwLock for RawRwLock {
     }
 }
 
+// Safety: unsafe trait
 unsafe impl lock_api::RawRwLockUpgrade for RawRwLock {
     fn lock_upgradable(&self) {
         while !self.try_lock_upgradable() {
@@ -151,6 +153,7 @@ unsafe impl lock_api::RawRwLockUpgrade for RawRwLock {
     }
 }
 
+// Safety: unsafe trait
 unsafe impl lock_api::RawRwLockDowngrade for RawRwLock {
     unsafe fn downgrade(&self) {
         // Reserve the read guard for ourselves
@@ -164,11 +167,13 @@ unsafe impl lock_api::RawRwLockDowngrade for RawRwLock {
     }
 }
 
+// Safety: unsafe trait
 unsafe impl lock_api::RawRwLockUpgradeDowngrade for RawRwLock {
     unsafe fn downgrade_upgradable(&self) {
         // Reserve the read guard for ourselves
         self.acquire_reader();
 
+        // Safety: we just acquired the lock
         unsafe {
             self.unlock_upgradable();
         }

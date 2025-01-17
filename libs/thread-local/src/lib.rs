@@ -8,7 +8,7 @@
 #![no_std]
 #![feature(never_type)]
 #![feature(thread_local)]
-#![allow(tail_expr_drop_order)]
+#![allow(tail_expr_drop_order, reason = "vetted")]
 
 extern crate alloc;
 
@@ -26,7 +26,7 @@ pub use eager::EagerStorage;
 pub use lazy::LazyStorage;
 
 #[macro_export]
-#[allow(edition_2024_expr_fragment_specifier)]
+#[allow(edition_2024_expr_fragment_specifier, reason = "expected usage")]
 macro_rules! thread_local {
     // empty (base case for the recursion)
     () => {};
@@ -164,6 +164,9 @@ impl<T: 'static> LocalKey<T> {
         LocalKey { inner }
     }
 
+    /// # Panics
+    ///
+    /// This method panics if the thread local storage value is accessed during or after destruction.
     pub fn with<F, R>(&'static self, f: F) -> R
     where
         F: FnOnce(&T) -> R,
@@ -174,10 +177,14 @@ impl<T: 'static> LocalKey<T> {
         )
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the thread local is accessed during or after destruction.
     pub fn try_with<F, R>(&'static self, f: F) -> Result<R, AccessError>
     where
         F: FnOnce(&T) -> R,
     {
+        // Safety: pointer is always valid
         let thread_local = unsafe { (self.inner)(None).as_ref().ok_or(AccessError)? };
         Ok(f(thread_local))
     }
@@ -193,6 +200,7 @@ impl<T: 'static> LocalKey<T> {
     /// This attempts to retrieve a raw pointer to the underlying data. You should prefer to use the getter methods.
     #[must_use]
     pub unsafe fn as_ptr(&self) -> *const T {
+        // Safety: pointer is always valid
         let value = unsafe { (self.inner)(None).as_ref().unwrap() };
         core::ptr::from_ref::<T>(value)
     }
@@ -203,6 +211,7 @@ impl<T: 'static> LocalKey<T> {
     {
         let mut init = Some(init);
 
+        // Safety: pointer is always valid
         let reference = unsafe {
             (self.inner)(Some(&mut init)).as_ref().expect(
                 "cannot access a Thread Local Storage value \
@@ -287,7 +296,6 @@ impl<T: 'static> LocalKey<RefCell<T>> {
 /// fn` declared in a user crate). If the callback unwinds anyway, then
 /// `rtabort` with a message about thread local panicking on drop.
 #[inline]
-#[allow(dead_code)]
 fn abort_on_dtor_unwind(f: impl FnOnce()) {
     // Using a guard like this is lower cost.
     let guard = DtorUnwindGuard;

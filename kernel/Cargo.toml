@@ -33,6 +33,16 @@ fallible-iterator.workspace = true
 rand_chacha.workspace = true
 rand.workspace = true
 pin-project = "1"
+smallvec.workspace = true
+hashbrown.workspace = true
+gimli.workspace = true
+
+wasmparser.workspace = true
+target-lexicon.workspace = true
+cranelift-codegen.workspace = true
+cranelift-frontend.workspace = true
+cranelift-entity.workspace = true
+wasmtime-slab.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true

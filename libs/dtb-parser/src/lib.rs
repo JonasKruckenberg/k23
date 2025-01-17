@@ -12,6 +12,7 @@
 //! MMIO regions, interrupt controllers, and other platform-specific information.
 //!
 //! The format is described in detail in the [Device Tree Specification](https://github.com/devicetree-org/devicetree-specification);
+
 #![no_std]
 
 pub mod debug;
@@ -34,7 +35,11 @@ const FDT_END: u32 = 0x0000_0009;
 const DTB_MAGIC: u32 = 0xD00D_FEED;
 const DTB_VERSION: u32 = 17;
 
-#[allow(unused_variables, clippy::missing_errors_doc)]
+#[expect(
+    unused_variables,
+    clippy::missing_errors_doc,
+    reason = "trait declaration"
+)]
 pub trait Visitor<'dt> {
     type Error: core::error::Error;
 
@@ -108,6 +113,7 @@ impl<'dt> DevTree<'dt> {
     ///
     /// Returns an error if the magic or version fields are invalid.
     pub unsafe fn from_raw(base: *const u8) -> Result<Self> {
+        // Safety: can't verify this is a valid pointer, caller has to uphold this invariant
         let header = unsafe { &*(base.cast::<Header>()) };
 
         if u32::from_be_bytes(header.magic) != DTB_MAGIC {
@@ -118,18 +124,21 @@ impl<'dt> DevTree<'dt> {
             return Err(Error::InvalidVersion);
         }
 
+        // Safety: TODO should enforce limits and verify header values
         let struct_slice = unsafe {
             let addr = base.add(u32::from_be_bytes(header.off_dt_struct) as usize);
             let len = u32::from_be_bytes(header.size_dt_struct) as usize;
             slice::from_raw_parts(addr, len)
         };
 
+        // Safety: TODO should enforce limits and verify header values
         let strings_slice = unsafe {
             let addr = base.add(u32::from_be_bytes(header.off_dt_strings) as usize);
             let length = u32::from_be_bytes(header.size_dt_strings) as usize;
             slice::from_raw_parts(addr, length)
         };
 
+        // Safety: TODO should enforce limits and verify header values
         let memory_slice = unsafe {
             let addr = base.add(u32::from_be_bytes(header.off_mem_rsvmap) as usize);
             let length =
@@ -137,6 +146,7 @@ impl<'dt> DevTree<'dt> {
             slice::from_raw_parts(addr, length as usize)
         };
 
+        // Safety: TODO should enforce limits and verify header values
         let total_slice = unsafe {
             let length = u32::from_be_bytes(header.totalsize);
             slice::from_raw_parts(base, length as usize)
@@ -216,7 +226,9 @@ impl<'dt> Node<'dt> {
         }
     }
 
-    #[allow(clippy::missing_errors_doc)]
+    /// # Errors
+    ///
+    /// Returns an error when parsing fails or when the visitor returned an error.
     pub fn visit<E: core::error::Error + From<Error>>(
         mut self,
         visitor: &mut dyn Visitor<'dt, Error = E>,
