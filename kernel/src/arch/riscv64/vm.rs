@@ -587,13 +587,31 @@ impl PageTableEntry {
 bitflags! {
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
     pub struct PTEFlags: usize {
+        /// Indicates the page table entry is initialized
         const VALID     = 1 << 0;
+        /// Whether the page is readable
         const READ      = 1 << 1;
+        /// Whether the page is writable
         const WRITE     = 1 << 2;
+        /// Whether the page is executable
         const EXECUTE   = 1 << 3;
+        /// Whether the page is accessible to user mode.
+        ///
+        /// By default, pages are only accessible in supervisor mode but marking a page as user-accessible
+        /// allows user mode code to access the page too.
         const USER      = 1 << 4;
+        /// Designates a global mapping.
+        ///
+        /// Global mappings exist in all address space.
+        ///
+        /// Note that as stated in the RISCV privileged spec, forgetting to mark a global mapping as gobal
+        /// is *fine* since it just results in slower performance. However, marking a non-global mapping as
+        /// global by accident will result in undefined behaviour (the CPU might use any of the competing
+        /// mappings for the address).
         const GLOBAL    = 1 << 5;
+        /// Indicated the page has been read, written, or executed from.
         const ACCESSED    = 1 << 6;
+        /// Indicates the page has been written to.
         const DIRTY     = 1 << 7;
     }
 }
@@ -602,13 +620,15 @@ impl From<crate::vm::Permissions> for PTEFlags {
     fn from(flags: crate::vm::Permissions) -> Self {
         use crate::vm::Permissions;
 
-        let mut out = Self::VALID | Self::DIRTY | Self::ACCESSED;
+        // we currently don't use the accessed & dirty bits and, it's recommended to set them if unused
+        let mut out = Self::VALID | Self::ACCESSED | Self::DIRTY;
 
         for flag in flags {
             match flag {
                 Permissions::READ => out.insert(Self::READ),
                 Permissions::WRITE => out.insert(Self::WRITE),
                 Permissions::EXECUTE => out.insert(Self::EXECUTE),
+                Permissions::USER => out.insert(Self::USER),
                 _ => unreachable!(),
             }
         }

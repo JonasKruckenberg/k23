@@ -13,8 +13,8 @@ mod error;
 pub mod flush;
 pub mod frame_alloc;
 mod frame_list;
-mod mmap;
 mod trap_handler;
+mod user_mmap;
 mod vmo;
 
 use crate::arch;
@@ -30,11 +30,11 @@ use core::range::Range;
 use core::{fmt, slice};
 pub use error::Error;
 use loader_api::BootInfo;
-pub use mmap::MmapSlice;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::{LazyLock, Mutex, OnceLock};
 pub use trap_handler::trap_handler;
+pub use user_mmap::UserMmap;
 use xmas_elf::program::Type;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
@@ -201,9 +201,14 @@ impl PageFaultFlags {
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
     pub struct Permissions: u8 {
+        /// Allow reads from the memory region
         const READ = 1 << 0;
+        /// Allow writes to the memory region
         const WRITE = 1 << 1;
+        /// Allow code execution from the memory region
         const EXECUTE = 1 << 2;
+        /// Allow userspace to access the memory region
+        const USER = 1 << 3;
     }
 }
 
