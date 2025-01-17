@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::vm::VirtualAddress;
 use core::fmt::{Display, Formatter};
 
 #[derive(Debug)]
@@ -29,6 +30,8 @@ pub enum Error {
     /// Errors returned by SBI calls
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     Sbi(riscv::sbi::Error),
+    KernelFaultInUserSpace(VirtualAddress),
+    UserFaultInKernelSpace(VirtualAddress),
 }
 
 impl From<crate::vm::frame_alloc::AllocError> for Error {
@@ -62,6 +65,8 @@ impl Display for Error {
             Error::AddressSpaceMismatch { expected, found } => write!(f, "Attempted to operate on mismatched address space. Expected {expected} but found {found}."),
             #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
             Error::Sbi(err) => write!(f, "SBI call failed: {err}"),
+            Error::KernelFaultInUserSpace(addr) => write!(f, "non-user address fault in user address space addr={addr:?}"),
+            Error::UserFaultInKernelSpace(addr) => write!(f, "non-kernel address fault in kernel address space addr={addr:?}")
         }
     }
 }
