@@ -285,7 +285,12 @@ fn default_trap_handler(
         _ => unreachable!(),
     };
 
-    crate::trap_handler::begin_trap(reason, epc, 0, tval);
+    crate::trap_handler::begin_trap(crate::trap_handler::Trap {
+        pc: epc,
+        fp: 0,
+        faulting_address: tval,
+        reason,
+    });
 
     raw_frame
 }

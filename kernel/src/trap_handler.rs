@@ -11,6 +11,7 @@ use core::cell::Cell;
 use core::fmt::Write;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::ControlFlow;
+use core::panic::UnwindSafe;
 use core::ptr;
 use core::ptr::addr_of_mut;
 use thread_local::thread_local;
@@ -71,7 +72,9 @@ struct TrapResumeState {
     jmp_buf: arch::JmpBuf,
 }
 
-pub fn raise_trap(trap: Trap) -> ! {
+/// Raises a trap on the current hart without triggering subsystem page fault routines (i.e. faulting
+/// in pages).
+pub fn resume_trap(trap: Trap) -> ! {
     IN_TRAP_HANDLER.set(false);
 
     let data = TRAP_RESUME_STATE.get();
@@ -94,9 +97,24 @@ pub fn raise_trap(trap: Trap) -> ! {
     }
 }
 
+/// Invokes a closure, capturing information about a hardware trap if one occurs.
+///
+/// Analogous to [`catch_unwind`][1] this will return `Ok` with the closures
+/// result if the closure didn't trigger a trap, and will return `Err(trap)` if it did. The `trap` object
+/// holds further information about the traps instruction pointer, faulting address and trap reason.
+///
+/// # `UnwindSafe`
+///
+/// This function borrows the [`UnwindSafe`] trait bound from [`catch_unwind`][1] for the same reasons.
+/// A hardware trap might happen while a data structure is in a temporarily invalid state (i.e. during
+/// mutation) and continuing to access such data would lead to hard to debug bugs. If in the future we
+/// determine the restrictions implied by `UnwindSafe` aren't enough for the purposes of
+/// signal safety we can introduce a new trait.
+///
+/// [1]: [crate::panic::catch_unwind]
 pub fn catch_traps<F, R>(f: F) -> Result<R, Trap>
 where
-    F: FnOnce() -> R,
+    F: FnOnce() -> R + UnwindSafe,
 {
     union Data<R> {
         // when the closure completed successfully, this will hold the return
@@ -146,28 +164,32 @@ fn fault_resume_panic(reason: TrapReason, pc: usize, fp: usize, faulting_address
     panic!("UNCAUGHT KERNEL TRAP {reason:?} pc={pc:#x};fp={fp:#x};faulting_address={faulting_address:#x};");
 }
 
-pub fn begin_trap(reason: TrapReason, pc: usize, fp: usize, faulting_address: usize) {
+/// Begins processing a trap.
+///
+/// Contrary to `resume_trap` this function will trigger all subsystem trap
+/// handlers and is expected to be called from the architecture specific trap handler.
+pub fn begin_trap(trap: Trap) {
     if IN_TRAP_HANDLER.replace(true) {
         let _ = riscv::hio::HostStream::new_stdout()
             .write_str("trap occurred while in trap handler!\n");
         arch::abort();
     }
 
-    let trap = Trap {
-        pc,
-        fp,
-        faulting_address,
-        reason,
-    };
-
+    // Consult the vm subsystem trap handler, does it have special handling?
+    // If it does, it will return a `ControlFlow::Break` with the result of the trap handler.
+    // If it doesn't, it will return `ControlFlow::Continue` and we will continue with the default
+    // behaviour (i.e. resuming the trap).
+    //
+    // Note that the trap handler also might break with an error indicating that the trap handler
+    // *did* have special handling but that logic says not to continue with program execution.
     if let ControlFlow::Break(res) = vm::trap_handler(trap) {
         if let Err(err) = res {
             log::error!("error in vm trap handler {err:?}");
-            raise_trap(trap);
+            resume_trap(trap);
         } else {
             return;
         }
     }
 
-    raise_trap(trap);
+    resume_trap(trap);
 }
