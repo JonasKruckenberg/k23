@@ -58,7 +58,7 @@ pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropria
 /// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
 /// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap
 /// size and can dynamically grow the heap as needed.
-pub const INITIAL_HEAP_SIZE_PAGES: usize = 2048; // 32 MiB
+pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096; // 32 MiB
 
 pub type Result<T> = core::result::Result<T, Error>;
 

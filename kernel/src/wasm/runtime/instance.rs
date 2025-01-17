@@ -27,6 +27,7 @@ use core::ptr::NonNull;
 use core::{fmt, mem, ptr, slice};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
+use crate::vm::AddressSpace;
 
 #[derive(Debug)]
 pub struct Instance {
@@ -45,11 +46,12 @@ impl Instance {
     #[expect(tail_expr_drop_order, reason = "")]
     pub unsafe fn new_unchecked(
         alloc: &dyn InstanceAllocator,
+        aspace: &mut AddressSpace,
         const_eval: &mut ConstExprEvaluator,
         module: Module,
         imports: Imports,
     ) -> crate::wasm::Result<Self> {
-        let (mut vmctx, mut tables, mut memories) = alloc.allocate_module(&module)?;
+        let (mut vmctx, mut tables, mut memories) = alloc.allocate_module(aspace, &module)?;
 
         unsafe {
             initialize_vmctx(

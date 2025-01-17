@@ -6,6 +6,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
+use crate::vm::AddressSpace;
 
 /// A dynamic linker for WebAssembly modules.
 #[derive(Debug)]
@@ -115,6 +116,7 @@ impl Linker {
         &self,
         store: &mut Store,
         alloc: &dyn InstanceAllocator,
+        aspace: &mut AddressSpace,
         const_eval: &mut ConstExprEvaluator,
         module: &Module,
     ) -> crate::wasm::Result<Instance> {
@@ -146,7 +148,7 @@ impl Linker {
         }
 
         // Safety: we have typechecked the imports above.
-        unsafe { Instance::new_unchecked(store, alloc, const_eval, module.clone(), imports) }
+        unsafe { Instance::new_unchecked(store, alloc, aspace, const_eval, module.clone(), imports) }
     }
 
     fn insert(&mut self, key: ImportKey, item: Extern) -> crate::wasm::Result<()> {

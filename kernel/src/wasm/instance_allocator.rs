@@ -1,4 +1,4 @@
-use crate::vm::KERNEL_ASPACE;
+use crate::vm::{AddressSpace};
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::{InstanceAllocator, Memory, Table};
 use crate::wasm::runtime::{OwnedVMContext, VMOffsets};
@@ -10,17 +10,18 @@ pub struct PlaceholderAllocatorDontUse;
 impl InstanceAllocator for PlaceholderAllocatorDontUse {
     unsafe fn allocate_vmctx(
         &self,
+        aspace: &mut AddressSpace,
         _module: &TranslatedModule,
         plan: &VMOffsets,
     ) -> crate::wasm::Result<OwnedVMContext> {
-        let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
-        OwnedVMContext::try_new(&mut aspace, plan)
+        OwnedVMContext::try_new(aspace, plan)
     }
 
-    unsafe fn deallocate_vmctx(&self, _vmctx: OwnedVMContext) {}
+    unsafe fn deallocate_vmctx(&self, _aspace: &mut AddressSpace, _vmctx: OwnedVMContext) {}
 
     unsafe fn allocate_memory(
         &self,
+        aspace: &mut AddressSpace,
         _module: &TranslatedModule,
         memory_desc: &MemoryDesc,
         _memory_index: DefinedMemoryIndex,
@@ -50,14 +51,20 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
             .ok()
             .and_then(|m| usize::try_from(m).ok());
 
-        let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
-        Memory::try_new(&mut aspace, memory_desc, minimum, maximum)
+        Memory::try_new(aspace, memory_desc, minimum, maximum)
     }
 
-    unsafe fn deallocate_memory(&self, _memory_index: DefinedMemoryIndex, _memory: Memory) {}
+    unsafe fn deallocate_memory(
+        &self,
+        _aspace: &mut AddressSpace,
+        _memory_index: DefinedMemoryIndex,
+        _memory: Memory,
+    ) {
+    }
 
     unsafe fn allocate_table(
         &self,
+        aspace: &mut AddressSpace,
         _module: &TranslatedModule,
         table_desc: &TableDesc,
         _table_index: DefinedTableIndex,
@@ -67,9 +74,14 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         // memory consumption
         let maximum = table_desc.maximum.and_then(|m| usize::try_from(m).ok());
 
-        let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
-        Table::try_new(&mut aspace, table_desc, maximum)
+        Table::try_new(aspace, table_desc, maximum)
     }
 
-    unsafe fn deallocate_table(&self, _table_index: DefinedTableIndex, _table: Table) {}
+    unsafe fn deallocate_table(
+        &self,
+        _aspace: &mut AddressSpace,
+        _table_index: DefinedTableIndex,
+        _table: Table,
+    ) {
+    }
 }

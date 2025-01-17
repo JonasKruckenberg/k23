@@ -185,15 +185,15 @@ _run_riscv64 binary *args: (_build_bootimg binary)
         {{_loader_artifact}} \
         -machine virt \
         -cpu rv64 \
-        -m 128M \
+        -m 256M \
         -d guest_errors,int \
         -display none \
         -serial stdio \
         -semihosting-config \
         enable=on,target=native \
         -smp cpus=8 \
-        -object memory-backend-ram,size=64M,id=m0 \
-        -object memory-backend-ram,size=64M,id=m1 \
+        -object memory-backend-ram,size=128M,id=m0 \
+        -object memory-backend-ram,size=128M,id=m1 \
         -numa node,cpus=0-3,nodeid=0,memdev=m0 \
         -numa node,cpus=4-7,nodeid=1,memdev=m1 \
         -numa dist,src=0,dst=1,val=20 \

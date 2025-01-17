@@ -1,9 +1,8 @@
 use crate::vm::{AddressSpace, MmapSlice};
-use crate::wasm::utils::round_usize_up_to_host_pages;
 use crate::wasm::Error;
 use core::marker::PhantomData;
-use core::ops::{Deref, DerefMut};
-use core::{mem, ptr, slice};
+use core::ops::Deref;
+use core::slice;
 
 #[derive(Debug)]
 pub struct MmapVec<T> {
@@ -24,7 +23,7 @@ impl<T> MmapVec<T> {
     pub fn new_zeroed(aspace: &mut AddressSpace, len: usize) -> crate::wasm::Result<Self> {
         Ok(Self {
             mmap: MmapSlice::new_zeroed(aspace, len).map_err(|_| Error::MmapFailed)?,
-            len,
+            len: 0,
             _m: PhantomData,
         })
     }
@@ -38,6 +37,7 @@ impl<T> MmapVec<T> {
         } else {
             let mut this = Self::new_zeroed(aspace, slice.len())?;
             this.extend_from_slice(slice);
+
             Ok(this)
         }
     }
@@ -86,7 +86,11 @@ impl<T> MmapVec<T> {
         let end = self.len + other.len();
 
         assert!(end * size_of::<T>() < self.mmap.len());
-        self.slice_mut()[start..end].clone_from_slice(other);
+        // Safety: checked above
+        unsafe {
+            slice::from_raw_parts_mut(self.mmap.as_mut_ptr().cast::<T>().add(start), other.len())
+                .clone_from_slice(other);
+        }
     }
 
     pub(crate) fn extend_with(&mut self, count: usize, elem: T)
@@ -97,7 +101,11 @@ impl<T> MmapVec<T> {
         let end = self.len + count;
 
         assert!(end * size_of::<T>() < self.mmap.len());
-        self.slice_mut()[start..end].fill(elem);
+        // Safety: checked above
+        unsafe {
+            slice::from_raw_parts_mut(self.mmap.as_mut_ptr().cast::<T>().add(start), count)
+                .fill(elem);
+        }
     }
 
     pub(crate) fn into_parts(self) -> (MmapSlice, usize) {

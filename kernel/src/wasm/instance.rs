@@ -1,3 +1,4 @@
+use crate::vm::AddressSpace;
 use crate::wasm::func::Func;
 use crate::wasm::global::Global;
 use crate::wasm::indices::EntityIndex;
@@ -29,13 +30,14 @@ impl Instance {
     pub(crate) unsafe fn new_unchecked(
         store: &mut Store,
         alloc: &dyn InstanceAllocator,
+        aspace: &mut AddressSpace,
         const_eval: &mut ConstExprEvaluator,
         module: Module,
         imports: Imports,
     ) -> crate::wasm::Result<Self> {
         // Safety: caller has to ensure safety
         let instance =
-            unsafe { runtime::Instance::new_unchecked(alloc, const_eval, module, imports)? };
+            unsafe { runtime::Instance::new_unchecked(alloc, aspace, const_eval, module, imports)? };
         let handle = store.push_instance(instance);
         Ok(Self(handle))
     }

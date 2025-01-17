@@ -29,6 +29,7 @@ mod type_registry;
 mod utils;
 mod values;
 
+use wasmparser::Validator;
 pub use errors::Error;
 pub(crate) type Result<T> = core::result::Result<T, Error>;
 use crate::{enum_accessors, owned_enum_accessors};
@@ -44,6 +45,8 @@ pub use store::Store;
 pub use table::Table;
 pub use translate::ModuleTranslator;
 pub use values::{Ref, Val};
+use crate::vm::{AddressSpace, KERNEL_ASPACE};
+use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.
@@ -115,5 +118,59 @@ impl Extern {
         (Table(Table) into_table e)
         (Memory(Memory) into_memory e)
         (Global(Global) into_global e)
+    }
+}
+
+#[cold]
+pub fn test() {
+    let engine = Engine::default();
+    let mut validator = Validator::new();
+    let mut linker = Linker::new(&engine);
+    let mut store = Store::new(&engine);
+    let mut const_eval = ConstExprEvaluator::default();
+    let mut aspace = AddressSpace::new_user(2, None).unwrap();
+
+    // instantiate & define the fib_cpp module
+    {
+        let module =
+            Module::from_bytes(&engine, &mut aspace, &mut validator, include_bytes!("../../fib_cpp.wasm")).unwrap();
+        log::debug!("here");
+
+        let instance = linker
+            .instantiate(
+                &mut store,
+                &PlaceholderAllocatorDontUse,
+                &mut aspace,
+                &mut const_eval,
+                &module,
+            )
+            .unwrap();
+        instance.debug_vmctx(&store);
+
+        linker
+            .define_instance(&mut store, "fib_cpp", instance)
+            .unwrap();
+    }
+
+    // instantiate the test module
+    {
+        let module =
+            Module::from_bytes(&engine, &mut aspace, &mut validator, include_bytes!("../../fib_cpp.wasm")).unwrap();
+
+        let instance = linker
+            .instantiate(
+                &mut store,
+                &PlaceholderAllocatorDontUse,
+                &mut aspace,
+                &mut const_eval,
+                &module,
+            )
+            .unwrap();
+
+        instance.debug_vmctx(&store);
+
+        let func = instance.get_func(&mut store, "fib_test").unwrap();
+        // TODO replace with checked
+        unsafe { func.call_unchecked(&mut store, &[], &mut []).unwrap(); }
     }
 }

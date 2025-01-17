@@ -1,4 +1,4 @@
-use crate::vm::{AddressSpace, MmapSlice};
+use crate::vm::{AddressSpace, MmapSlice, KERNEL_ASPACE};
 use crate::wasm::compile::FunctionLoc;
 use crate::wasm::runtime::MmapVec;
 use crate::wasm::trap::Trap;
@@ -28,7 +28,7 @@ impl CodeMemory {
         }
     }
 
-    pub fn publish(&mut self, aspace: &mut AddressSpace) -> crate::wasm::Result<()> {
+    pub fn publish(&mut self, aspace: &mut AddressSpace,) -> crate::wasm::Result<()> {
         debug_assert!(!self.published);
         self.published = true;
 

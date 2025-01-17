@@ -55,8 +55,8 @@ pub struct AddressSpace {
 
 impl AddressSpace {
     pub fn new_user(arch_aspace: arch::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
-        #![allow(tail_expr_drop_order, reason = "")]
         Self {
+        #[allow(tail_expr_drop_order, reason = "")]
             regions: wavltree::WAVLTree::default(),
             arch: arch_aspace,
             max_range: Range::from(arch::USER_ASPACE_BASE..VirtualAddress::MAX),
@@ -67,7 +67,7 @@ impl AddressSpace {
     }
 
     pub fn from_active_kernel(arch_aspace: arch::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
-        #![allow(tail_expr_drop_order, reason = "")]
+        #[allow(tail_expr_drop_order, reason = "")]
         Self {
             regions: wavltree::WAVLTree::default(),
             arch: arch_aspace,
@@ -360,11 +360,11 @@ impl AddressSpace {
         match self.kind {
             AddressSpaceKind::User => assert!(
                 addr.is_user_accessible(),
-                "non-user address fault in user address space"
+                "non-user address fault in user address space addr={addr:?}"
             ),
             AddressSpaceKind::Kernel => assert!(
                 arch::is_kernel_address(addr),
-                "non-kernel address fault in kernel address space"
+                "non-kernel address fault in kernel address space addr={addr:?}"
             ),
         }
         ensure!(
@@ -539,10 +539,10 @@ impl AddressSpace {
         // behaviour:
         // - find the leftmost gap that satisfies the size and alignment requirements
         //      - starting at the root,
-        log::trace!("finding spot for {layout:?} entropy {entropy}");
+        // log::trace!("finding spot for {layout:?} entropy {entropy}");
 
         let max_candidate_spaces: usize = 1 << entropy;
-        log::trace!("max_candidate_spaces {max_candidate_spaces}");
+        // log::trace!("max_candidate_spaces {max_candidate_spaces}");
 
         let selected_index: usize = self
             .prng
@@ -554,7 +554,7 @@ impl AddressSpace {
             Ok(spot) => spot,
             Err(0) => panic!("out of virtual memory"),
             Err(candidate_spot_count) => {
-                log::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
+                // log::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
                 let selected_index: usize = self
                     .prng
                     .as_mut()
@@ -564,7 +564,10 @@ impl AddressSpace {
                 self.find_spot_at_index(selected_index, layout).unwrap()
             }
         };
-        log::trace!("picked spot {spot:?}");
+        log::trace!(
+            "picked spot {spot}..{}",
+            spot.checked_add(layout.size()).unwrap()
+        );
 
         spot
     }
@@ -575,7 +578,7 @@ impl AddressSpace {
         mut target_index: usize,
         layout: Layout,
     ) -> Result<VirtualAddress, usize> {
-        log::trace!("attempting to find spot for {layout:?} at index {target_index}");
+        // log::trace!("attempting to find spot for {layout:?} at index {target_index}");
 
         let spots_in_range = |layout: Layout, range: Range<VirtualAddress>| -> usize {
             // ranges passed in here can become empty for a number of reasons (aligning might produce ranges
@@ -614,7 +617,7 @@ impl AddressSpace {
             let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
-                log::trace!("found gap left of tree in {aligned_gap:?}");
+                // log::trace!("found gap left of tree in {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
                     .checked_add(target_index << layout.align().ilog2())
@@ -644,7 +647,7 @@ impl AddressSpace {
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
-                        log::trace!("found gap in left subtree in {aligned_gap:?}");
+                        // log::trace!("found gap in left subtree in {aligned_gap:?}");
                         return Ok(aligned_gap
                             .start
                             .checked_add(target_index << layout.align().ilog2())
@@ -664,7 +667,7 @@ impl AddressSpace {
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
-                        log::trace!("found gap in right subtree in {aligned_gap:?}");
+                        // log::trace!("found gap in right subtree in {aligned_gap:?}");
                         return Ok(aligned_gap
                             .start
                             .checked_add(target_index << layout.align().ilog2())
@@ -690,7 +693,7 @@ impl AddressSpace {
             let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
-                log::trace!("found gap right of tree in {aligned_gap:?}");
+                // log::trace!("found gap right of tree in {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
                     .checked_add(target_index << layout.align().ilog2())
