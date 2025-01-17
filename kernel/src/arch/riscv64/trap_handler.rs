@@ -7,11 +7,9 @@
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
-use crate::vm::PageFaultFlags;
-use crate::{arch, vm, TRAP_STACK_SIZE_PAGES};
+use crate::trap_handler::TrapReason;
+use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
-use core::fmt::Write;
-use core::sync::atomic::{AtomicBool, Ordering};
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{scause, sepc, sstatus, stval, stvec};
 use thread_local::thread_local;
@@ -241,14 +239,6 @@ unsafe extern "C" fn default_trap_entry() {
     }
 }
 
-/// A special trampoline function that the trap handler switches to, to initiate a kernel panic & backtrace
-/// *after* switching back to the regular stack since printing a backtrace of the trap stack is seldom helpful.
-extern "C-unwind" fn trap_panic_trampoline() {
-    panic!("UNRECOVERABLE KERNEL TRAP");
-}
-
-static IN_TRAP_HANDLER: AtomicBool = AtomicBool::new(false);
-
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
 #[expect(clippy::too_many_arguments, reason = "")]
 fn default_trap_handler(
@@ -261,59 +251,41 @@ fn default_trap_handler(
     a6: usize,
     a7: usize,
 ) -> *mut TrapFrame {
-    if IN_TRAP_HANDLER.swap(true, Ordering::AcqRel) {
-        let _ = riscv::hio::HostStream::new_stdout()
-            .write_str("trap occurred while in trap handler!\n");
-        arch::abort();
-    }
-
     let cause = scause::read().cause();
 
     log::trace!("{:?}", sstatus::read());
     log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
+    let epc = sepc::read();
+    let tval = stval::read();
 
-    match cause {
-        Trap::Exception(Exception::LoadPageFault) => {
-            let epc = sepc::read();
-            let tval = stval::read();
-
-            if let Err(err) = vm::trap_handler(tval, PageFaultFlags::LOAD) {
-                log::error!("LOAD PAGE FAULT at {epc:#x} {tval:#x} {err:?}");
-
-                sepc::set(trap_panic_trampoline as usize);
-            }
+    let reason = match cause {
+        Trap::Interrupt(Interrupt::SupervisorSoft | Interrupt::VirtualSupervisorSoft) => {
+            TrapReason::SupervisorSoftwareInterrupt
         }
-        Trap::Exception(Exception::StorePageFault) => {
-            let epc = sepc::read();
-            let tval = stval::read();
-
-            if let Err(err) = vm::trap_handler(tval, PageFaultFlags::STORE) {
-                log::error!("STORE PAGE FAULT at {epc:#x} {tval:#x} {err:?}");
-
-                sepc::set(trap_panic_trampoline as usize);
-            }
+        Trap::Interrupt(Interrupt::SupervisorTimer | Interrupt::VirtualSupervisorTimer) => {
+            TrapReason::SupervisorTimerInterrupt
         }
-        Trap::Exception(Exception::InstructionFault) => {
-            let epc = sepc::read();
-            let tval = stval::read();
-
-            if let Err(err) = vm::trap_handler(tval, PageFaultFlags::INSTRUCTION) {
-                log::error!("INSTRUCTION PAGE FAULT at {epc:#x} {tval:#x} {err:?}");
-
-                sepc::set(trap_panic_trampoline as usize);
-            }
+        Trap::Interrupt(Interrupt::SupervisorExternal | Interrupt::VirtualSupervisorExternal) => {
+            TrapReason::SupervisorSoftwareInterrupt
         }
-        Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            // just clear the timer interrupt when it happens for now, this is required to make the
-            // tests in the `time` module work
-            riscv::sbi::time::set_timer(u64::MAX).unwrap();
+        Trap::Exception(Exception::InstructionMisaligned) => TrapReason::InstructionMisaligned,
+        Trap::Exception(Exception::InstructionFault) => TrapReason::InstructionFault,
+        Trap::Exception(Exception::IllegalInstruction) => TrapReason::IllegalInstruction,
+        Trap::Exception(Exception::Breakpoint) => TrapReason::Breakpoint,
+        Trap::Exception(Exception::LoadMisaligned) => TrapReason::LoadMisaligned,
+        Trap::Exception(Exception::LoadFault) => TrapReason::LoadFault,
+        Trap::Exception(Exception::StoreMisaligned) => TrapReason::StoreMisaligned,
+        Trap::Exception(Exception::StoreFault) => TrapReason::StoreFault,
+        Trap::Exception(Exception::InstructionPageFault) => TrapReason::InstructionPageFault,
+        Trap::Exception(Exception::LoadPageFault) => TrapReason::LoadPageFault,
+        Trap::Exception(Exception::StorePageFault) => TrapReason::StorePageFault,
+        Trap::Exception(Exception::SupervisorEnvCall | Exception::UserEnvCall) => {
+            TrapReason::EnvCall
         }
-        _ => {
-            sepc::set(trap_panic_trampoline as usize);
-            // panic!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
-        }
-    }
+        _ => unreachable!(),
+    };
 
-    IN_TRAP_HANDLER.swap(false, Ordering::AcqRel);
+    crate::trap_handler::begin_trap(reason, epc, 0, tval);
+
     raw_frame
 }

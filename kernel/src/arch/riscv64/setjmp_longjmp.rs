@@ -81,7 +81,7 @@ pub type JmpBuf = *const JmpBufStruct;
 /// Due to the weird multi-return nature of `setjmp` it is very easy to make mistakes, this
 /// function be used with extreme care.
 #[naked]
-pub unsafe extern "C" fn setjmp(env: JmpBuf) -> isize {
+pub unsafe extern "C" fn setjmp(env: JmpBuf) -> i32 {
     // Safety: inline assembly
     unsafe {
         cfg_if::cfg_if! {
@@ -153,7 +153,7 @@ pub unsafe extern "C" fn setjmp(env: JmpBuf) -> isize {
 /// Additionally, the whole point of this function is to continue execution at a wildly different
 /// address, so this might cause confusing and hard-to-debug behavior.
 #[naked]
-pub unsafe extern "C" fn longjmp(env: JmpBuf, val: isize) -> ! {
+pub unsafe extern "C" fn longjmp(env: JmpBuf, val: i32) -> ! {
     // Safety: inline assembly
     unsafe {
         cfg_if::cfg_if! {
@@ -233,13 +233,13 @@ pub unsafe extern "C" fn longjmp(env: JmpBuf, val: isize) -> ! {
 // The code below is adapted from https://github.com/pnkfelix/cee-scape/blob/d6ffeca6bd56b46b83c8c9118dbe75e38d423d28/src/asm_based.rs
 // which in turn is adapted from this Zulip thread: https://rust-lang.zulipchat.com/#narrow/stream/210922-project-ffi-unwind/topic/cost.20of.20supporting.20longjmp.20without.20annotations/near/301840755
 #[inline(never)]
-pub fn call_with_setjmp<F>(f: F) -> isize
+pub fn call_with_setjmp<F>(f: F) -> i32
 where
-    F: for<'a> FnOnce(&'a JmpBufStruct) -> isize,
+    F: for<'a> FnOnce(&'a JmpBufStruct) -> i32,
 {
-    extern "C" fn do_call<F>(env: JmpBuf, closure_env_ptr: *mut F) -> isize
+    extern "C" fn do_call<F>(env: JmpBuf, closure_env_ptr: *mut F) -> i32
     where
-        F: for<'a> FnOnce(&'a JmpBufStruct) -> isize,
+        F: for<'a> FnOnce(&'a JmpBufStruct) -> i32,
     {
         // Dereference `closure_env_ptr` with .read() to acquire ownership of
         // the FnOnce object, then call it. (See also the forget note below.)
@@ -255,7 +255,7 @@ where
     unsafe {
         let mut f = ManuallyDrop::new(f);
         let mut jbuf = MaybeUninit::<JmpBufStruct>::zeroed().assume_init();
-        let ret: isize;
+        let ret: i32;
         let env_ptr = addr_of_mut!(jbuf);
         let closure_ptr = addr_of_mut!(f);
 
