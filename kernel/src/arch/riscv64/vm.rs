@@ -174,6 +174,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
     where
         Self: Sized,
     {
+        // Safety: we just allocated the page and we're only accessing the upper half of it
         let src = unsafe {
             let satp = satp::read();
             let root_pgtable = PhysicalAddress::new(satp.ppn() << 12);
@@ -444,8 +445,8 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
 
     unsafe fn activate(&self) {
         // Safety: register access
-        let ppn = self.root_pgtable.get() >> 12_i32;
         unsafe {
+            let ppn = self.root_pgtable.get() >> 12_i32;
             satp::set(satp::Mode::Sv39, self.asid, ppn);
         }
         mb();

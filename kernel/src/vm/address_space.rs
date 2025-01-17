@@ -327,7 +327,7 @@ impl AddressSpace {
         let mut flush = self.arch.new_flush();
         // Safety: caller has to ensure invariants are checked
         unsafe {
-            self.arch.protect(
+            self.arch.update_flags(
                 range.start,
                 NonZeroUsize::new(range.size()).unwrap(),
                 new_permissions.into(),
@@ -451,7 +451,7 @@ impl AddressSpace {
         } else {
             // Safety: we checked all invariants above
             unsafe {
-                self.arch.protect(
+                self.arch.update_flags(
                     range.start,
                     NonZeroUsize::new(range.size()).unwrap(),
                     permissions.into(),
@@ -597,10 +597,8 @@ impl AddressSpace {
         debug_assert!(!self.regions.is_empty());
         // // if the tree is empty, treat max_range as the gap
         if self.regions.is_empty() {
-            let aligned_gap = Range::from(self.max_range)
-                .checked_align_in(layout.align())
-                .unwrap();
-            let spot_count = spots_in_range(layout, aligned_gap.clone());
+            let aligned_gap = self.max_range.checked_align_in(layout.align()).unwrap();
+            let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
                 return Ok(aligned_gap

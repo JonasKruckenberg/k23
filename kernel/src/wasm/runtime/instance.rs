@@ -3,6 +3,7 @@
     reason = "too many trivial unsafe blocks"
 )]
 
+use crate::vm::AddressSpace;
 use crate::wasm::indices::{
     DataIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, ElemIndex, EntityIndex,
     FuncIndex, GlobalIndex, MemoryIndex, TableIndex, VMSharedTypeIndex,
@@ -27,7 +28,6 @@ use core::ptr::NonNull;
 use core::{fmt, mem, ptr, slice};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
-use crate::vm::AddressSpace;
 
 #[derive(Debug)]
 pub struct Instance {

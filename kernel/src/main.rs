@@ -130,6 +130,7 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
+    // wasm::test();
 
     // - [all][global] parse cmdline
     // - [all][global] `vm::init()` init virtual memory management

@@ -29,9 +29,11 @@ mod type_registry;
 mod utils;
 mod values;
 
-use wasmparser::Validator;
 pub use errors::Error;
+use wasmparser::Validator;
 pub(crate) type Result<T> = core::result::Result<T, Error>;
+use crate::vm::{AddressSpace, KERNEL_ASPACE};
+use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 use crate::{enum_accessors, owned_enum_accessors};
 pub use engine::Engine;
 pub use func::Func;
@@ -45,8 +47,6 @@ pub use store::Store;
 pub use table::Table;
 pub use translate::ModuleTranslator;
 pub use values::{Ref, Val};
-use crate::vm::{AddressSpace, KERNEL_ASPACE};
-use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.
@@ -132,8 +132,13 @@ pub fn test() {
 
     // instantiate & define the fib_cpp module
     {
-        let module =
-            Module::from_bytes(&engine, &mut aspace, &mut validator, include_bytes!("../../fib_cpp.wasm")).unwrap();
+        let module = Module::from_bytes(
+            &engine,
+            &mut aspace,
+            &mut validator,
+            include_bytes!("../../fib_cpp.wasm"),
+        )
+        .unwrap();
         log::debug!("here");
 
         let instance = linker
@@ -154,8 +159,13 @@ pub fn test() {
 
     // instantiate the test module
     {
-        let module =
-            Module::from_bytes(&engine, &mut aspace, &mut validator, include_bytes!("../../fib_cpp.wasm")).unwrap();
+        let module = Module::from_bytes(
+            &engine,
+            &mut aspace,
+            &mut validator,
+            include_bytes!("../../fib_cpp.wasm"),
+        )
+        .unwrap();
 
         let instance = linker
             .instantiate(
@@ -171,6 +181,9 @@ pub fn test() {
 
         let func = instance.get_func(&mut store, "fib_test").unwrap();
         // TODO replace with checked
-        unsafe { func.call_unchecked(&mut store, &[], &mut []).unwrap(); }
+        // Safety: WIP
+        unsafe {
+            func.call_unchecked(&mut store, &[], &mut []).unwrap();
+        }
     }
 }

@@ -28,7 +28,7 @@ impl CodeMemory {
         }
     }
 
-    pub fn publish(&mut self, aspace: &mut AddressSpace,) -> crate::wasm::Result<()> {
+    pub fn publish(&mut self, aspace: &mut AddressSpace) -> crate::wasm::Result<()> {
         debug_assert!(!self.published);
         self.published = true;
 

@@ -17,7 +17,7 @@ mod mmap;
 mod trap_handler;
 mod vmo;
 
-use crate::{arch, vm};
+use crate::arch;
 use crate::machine_info::MachineInfo;
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
@@ -27,8 +27,7 @@ use alloc::format;
 use alloc::string::ToString;
 use core::num::NonZeroUsize;
 use core::range::Range;
-use core::{fmt, iter, slice};
-use core::alloc::Layout;
+use core::{fmt, slice};
 pub use error::Error;
 use loader_api::BootInfo;
 pub use mmap::MmapSlice;
@@ -37,7 +36,6 @@ use rand_chacha::ChaCha20Rng;
 use sync::{LazyLock, Mutex, OnceLock};
 pub use trap_handler::trap_handler;
 use xmas_elf::program::Type;
-use crate::vm::vmo::Vmo;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
@@ -74,13 +72,12 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
         Ok(Mutex::new(aspace))
     })?;
 
-
     // let mut aspace = vm::AddressSpace::new_user(2, Some(ChaCha20Rng::from_seed(
     //     minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
     // ))).unwrap();
     // unsafe { aspace.arch.activate(); }
     // log::trace!("everything is fine?!");
-    // 
+    //
     // let layout = Layout::from_size_align(5 * arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap();
     // let vmo = Vmo::new_paged(iter::repeat_n(THE_ZERO_FRAME.clone(), 5));
     // let range = aspace.map(layout, vmo, 0, Permissions::READ | Permissions::WRITE, None).unwrap().range;
@@ -213,6 +210,14 @@ bitflags::bitflags! {
 impl fmt::Display for Permissions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         bitflags::parser::to_writer(self, f)
+    }
+}
+
+impl Permissions {
+    /// Returns whether the set of permissions is `R^X` ie doesn't allow
+    /// write-execute at the same time.
+    pub fn is_valid(self) -> bool {
+        !self.contains(Permissions::WRITE | Permissions::EXECUTE)
     }
 }
 

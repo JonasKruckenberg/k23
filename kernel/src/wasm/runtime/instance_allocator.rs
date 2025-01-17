@@ -1,3 +1,4 @@
+use crate::vm::AddressSpace;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::memory::Memory;
 use crate::wasm::runtime::table::Table;
@@ -6,7 +7,6 @@ use crate::wasm::translate::{MemoryDesc, TableDesc, TranslatedModule};
 use crate::wasm::Module;
 use core::mem;
 use cranelift_entity::PrimaryMap;
-use crate::vm::AddressSpace;
 
 /// A type that knows how to allocate backing memory for instance resources.
 pub trait InstanceAllocator {
@@ -58,7 +58,12 @@ pub trait InstanceAllocator {
     /// The memory must have previously been allocated by
     /// `Self::allocate_memory`, be at the given index, and must currently be
     /// allocated. It must never be used again.
-    unsafe fn deallocate_memory(&self, aspace: &mut AddressSpace, memory_index: DefinedMemoryIndex, memory: Memory);
+    unsafe fn deallocate_memory(
+        &self,
+        aspace: &mut AddressSpace,
+        memory_index: DefinedMemoryIndex,
+        memory: Memory,
+    );
 
     /// Allocate a table for an instance.
     ///
@@ -84,7 +89,12 @@ pub trait InstanceAllocator {
     /// The table must have previously been allocated by `Self::allocate_table`,
     /// be at the given index, and must currently be allocated. It must never be
     /// used again.
-    unsafe fn deallocate_table(&self, aspace: &mut AddressSpace, table_index: DefinedTableIndex, table: Table);
+    unsafe fn deallocate_table(
+        &self,
+        aspace: &mut AddressSpace,
+        table_index: DefinedTableIndex,
+        table: Table,
+    );
 
     /// Allocate multiple memories at once.
     ///
@@ -150,7 +160,11 @@ pub trait InstanceAllocator {
     ///
     /// Just like `Self::deallocate_memory` all memories must have been allocated by
     /// `Self::allocate_memories`/`Self::allocate_memory` and must never be used again.
-    unsafe fn deallocate_memories(&self, aspace: &mut AddressSpace, memories: &mut PrimaryMap<DefinedMemoryIndex, Memory>) {
+    unsafe fn deallocate_memories(
+        &self,
+        aspace: &mut AddressSpace,
+        memories: &mut PrimaryMap<DefinedMemoryIndex, Memory>,
+    ) {
         for (memory_index, memory) in mem::take(memories) {
             // Because deallocating memory is infallible, we don't need to worry
             // about leaking subsequent memories if the first memory failed to
@@ -171,7 +185,11 @@ pub trait InstanceAllocator {
     ///
     /// Just like `Self::deallocate_table` all tables must have been allocated by
     /// `Self::allocate_tables`/`Self::allocate_table` and must never be used again.
-    unsafe fn deallocate_tables(&self, aspace: &mut AddressSpace, tables: &mut PrimaryMap<DefinedTableIndex, Table>) {
+    unsafe fn deallocate_tables(
+        &self,
+        aspace: &mut AddressSpace,
+        tables: &mut PrimaryMap<DefinedTableIndex, Table>,
+    ) {
         for (table_index, table) in mem::take(tables) {
             // Safety: caller has to ensure safety
             unsafe {
