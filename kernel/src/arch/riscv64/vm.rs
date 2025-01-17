@@ -604,7 +604,7 @@ bitflags! {
         ///
         /// Global mappings exist in all address space.
         ///
-        /// Note that as stated in the RISCV privileged spec, forgetting to mark a global mapping as gobal
+        /// Note that as stated in the RISCV privileged spec, forgetting to mark a global mapping as global
         /// is *fine* since it just results in slower performance. However, marking a non-global mapping as
         /// global by accident will result in undefined behaviour (the CPU might use any of the competing
         /// mappings for the address).
