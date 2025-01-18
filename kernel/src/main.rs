@@ -14,6 +14,7 @@
 #![feature(debug_closure_helpers)]
 #![expect(internal_features, reason = "panic internals")]
 #![feature(std_internals, panic_can_unwind, fmt_internals)]
+#![feature(step_trait)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 #![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
