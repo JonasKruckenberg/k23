@@ -361,7 +361,7 @@ impl AddressSpace {
     ///                         - replace old frame with new frame
     ///                      - update MMU page table
     pub fn page_fault(&mut self, addr: VirtualAddress, flags: PageFaultFlags) -> Result<(), Error> {
-        assert!(flags.is_valid());
+        assert!(flags.is_valid(), "invalid page fault flags {flags:?}");
 
         // make sure addr is even a valid address for this address space
         match self.kind {

@@ -667,7 +667,7 @@ where
     /// Caller has to ensure the pointer points to a valid node in the tree.
     #[inline]
     pub unsafe fn cursor_mut_from_ptr(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
-        debug_assert!(unsafe { T::links(ptr).as_ref() }.is_linked());
+        debug_assert!(unsafe { T::links(ptr).as_ref() }.is_linked(), "ptr {ptr:?} is not a linked element");
         CursorMut {
             current: Some(ptr),
             _tree: self,
