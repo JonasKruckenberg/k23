@@ -41,6 +41,6 @@ pub fn register_code(code: &Arc<CodeMemory>) {
     }
     let prev = global_code()
         .write()
-        .insert(text.start.get(), (text.end.get(), code.clone()));
+        .insert(text.end.get(), (text.start.get(), code.clone()));
     assert!(prev.is_none());
 }

@@ -13,6 +13,7 @@ use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{scause, sepc, sstatus, stval, stvec};
 use thread_local::thread_local;
+use crate::vm::VirtualAddress;
 
 thread_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
@@ -259,10 +260,10 @@ fn default_trap_handler(
 
     let cause = scause::read().cause();
 
-    log::trace!("{:?}", sstatus::read());
     log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
     let epc = sepc::read();
     let tval = stval::read();
+    log::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
 
     let reason = match cause {
         Trap::Interrupt(Interrupt::SupervisorSoft | Interrupt::VirtualSupervisorSoft) => {
@@ -292,9 +293,9 @@ fn default_trap_handler(
     };
 
     crate::trap_handler::begin_trap(crate::trap_handler::Trap {
-        pc: epc,
-        fp: 0,
-        faulting_address: tval,
+        pc: VirtualAddress::new(epc).unwrap(),
+        fp: VirtualAddress::default(),
+        faulting_address: VirtualAddress::new(tval).unwrap(),
         reason,
     });
 

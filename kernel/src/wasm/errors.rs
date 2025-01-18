@@ -5,6 +5,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use core::fmt;
 use cranelift_codegen::CodegenError;
+use crate::vm::VirtualAddress;
 
 /// Convenience macro for creating an `Error::Unsupported` variant.
 #[macro_export]
@@ -47,9 +48,9 @@ pub enum Error {
     /// A WebAssembly trap occurred.
     Trap {
         /// The program counter where this trap originated.
-        pc: usize,
+        pc: VirtualAddress,
         /// The address of the inaccessible data or zero if trap wasn't caused by data access.
-        faulting_addr: usize,
+        faulting_addr: VirtualAddress,
         /// The trap that occurred.
         trap: Trap,
         /// A human-readable description of the trap.

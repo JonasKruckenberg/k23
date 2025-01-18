@@ -14,6 +14,7 @@ use core::ops::ControlFlow;
 use core::ptr;
 use core::ptr::addr_of_mut;
 use thread_local::thread_local;
+use crate::vm::VirtualAddress;
 
 thread_local! {
     static TRAP_RESUME_STATE: Cell<*mut TrapResumeState> = Cell::new(ptr::null_mut());
@@ -22,9 +23,9 @@ thread_local! {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Trap {
-    pub pc: usize,
-    pub fp: usize,
-    pub faulting_address: usize,
+    pub pc: VirtualAddress,
+    pub fp: VirtualAddress,
+    pub faulting_address: VirtualAddress,
     pub reason: TrapReason,
 }
 
@@ -151,8 +152,8 @@ where
     }
 }
 
-fn fault_resume_panic(reason: TrapReason, pc: usize, fp: usize, faulting_address: usize) -> ! {
-    panic!("UNCAUGHT KERNEL TRAP {reason:?} pc={pc:#x};fp={fp:#x};faulting_address={faulting_address:#x};");
+fn fault_resume_panic(reason: TrapReason, pc: VirtualAddress, fp: VirtualAddress, faulting_address: VirtualAddress) -> ! {
+    panic!("UNCAUGHT KERNEL TRAP {reason:?} pc={pc};fp={fp};faulting_address={faulting_address};");
 }
 
 /// Begins processing a trap.
