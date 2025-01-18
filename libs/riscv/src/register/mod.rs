@@ -99,11 +99,11 @@ macro_rules! read_composite_csr {
     };
 }
 
-macro_rules! set {
+macro_rules! write_csr {
     ($csr_number: literal) => {
-        /// Sets the CSR
+        /// Writes the CSR
         #[inline]
-        unsafe fn _set(bits: usize) {
+        unsafe fn _write(bits: usize) {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
                     unsafe {
@@ -117,21 +117,39 @@ macro_rules! set {
     };
 }
 
-macro_rules! set_csr_as_usize {
+macro_rules! write_csr_as_usize {
     ($csr_number:literal) => {
-        $crate::set!($csr_number);
+        $crate::write_csr!($csr_number);
 
         /// Sets the CSR.
         ///
         /// **WARNING**: panics on non-`riscv` targets.
         #[inline]
         pub fn set(bits: usize) {
-            unsafe { _set(bits) }
+            unsafe { _write(bits) }
         }
     };
 }
 
-macro_rules! clear {
+macro_rules! set_csr {
+    ($csr_number: literal) => {
+        /// Sets the CSR
+        #[inline]
+        unsafe fn _set(bits: usize) {
+            cfg_if::cfg_if! {
+                if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+                    unsafe {
+                        ::core::arch::asm!(concat!("csrrs x0, ", stringify!($csr_number), ", {0}"), in(reg) bits);
+                    }
+                } else {
+                    unimplemented!()
+                }
+            }
+        }
+    };
+}
+
+macro_rules! clear_csr {
     ($csr_number: literal) => {
         /// Writes the CSR
         #[inline]
@@ -149,8 +167,7 @@ macro_rules! clear {
     };
 }
 
-#[macro_export]
-macro_rules! set_csr {
+macro_rules! set_csr_field {
     ($(#[$attr:meta])*, $set_field:ident, $e:expr) => {
         $(#[$attr])*
         #[inline]
@@ -161,9 +178,7 @@ macro_rules! set_csr {
     };
 }
 
-/// Convenience macro to define field clear functions for a CSR type.
-#[macro_export]
-macro_rules! clear_csr {
+macro_rules! clear_csr_field {
     ($(#[$attr:meta])*, $clear_field:ident, $e:expr) => {
         $(#[$attr])*
         #[inline]
@@ -174,14 +189,14 @@ macro_rules! clear_csr {
     };
 }
 
-#[macro_export]
-macro_rules! set_clear_csr {
+macro_rules! set_clear_csr_field {
     ($(#[$attr:meta])*, $set_field:ident, $clear_field:ident, $e:expr) => {
-        $crate::set_csr!($(#[$attr])*, $set_field, $e);
-        $crate::clear_csr!($(#[$attr])*, $clear_field, $e);
+        $crate::set_csr_field!($(#[$attr])*, $set_field, $e);
+        $crate::clear_csr_field!($(#[$attr])*, $clear_field, $e);
     }
 }
 
 pub(crate) use {
-    clear, read_composite_csr, read_csr, read_csr_as, read_csr_as_usize, set, set_csr_as_usize,
+    clear_csr, clear_csr_field, read_composite_csr, read_csr, read_csr_as, read_csr_as_usize,
+    set_clear_csr_field, set_csr, set_csr_field, write_csr, write_csr_as_usize,
 };

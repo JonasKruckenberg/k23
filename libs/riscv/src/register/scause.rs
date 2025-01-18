@@ -7,7 +7,7 @@
 
 //! Supervisor Cause Register
 
-use super::{read_csr_as, set};
+use super::{read_csr_as, write_csr};
 use core::fmt;
 use core::fmt::Formatter;
 
@@ -18,14 +18,14 @@ pub struct Scause {
 }
 
 read_csr_as!(Scause, 0x142);
-set!(0x142);
+write_csr!(0x142);
 
 pub unsafe fn set(trap: Trap) {
     match trap {
         Trap::Interrupt(interrupt) => unsafe {
-            _set(1 << (usize::BITS as usize - 1) | interrupt as usize);
+            _write(1 << (usize::BITS as usize - 1) | interrupt as usize);
         },
-        Trap::Exception(exception) => unsafe { _set(exception as usize) },
+        Trap::Exception(exception) => unsafe { _write(exception as usize) },
     }
 }
 

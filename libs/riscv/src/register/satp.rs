@@ -7,7 +7,7 @@
 
 //! Supervisor Address Translation and Protection Register
 
-use super::{read_csr_as, set};
+use super::{read_csr_as, write_csr};
 use crate::Error;
 use core::fmt;
 
@@ -18,7 +18,7 @@ pub struct Satp {
 }
 
 read_csr_as!(Satp, 0x180);
-set!(0x180);
+write_csr!(0x180);
 
 /// Sets the register to corresponding page table mode, physical page number and address space id.
 ///
@@ -83,7 +83,7 @@ pub unsafe fn try_set(mode: Mode, asid: u16, ppn: usize) -> crate::Result<()> {
     } else {
         let bits = (mode as usize) << 60 | ((asid as usize) << 44) | ppn;
         unsafe {
-            _set(bits);
+            _write(bits);
         }
         Ok(())
     }
