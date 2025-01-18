@@ -32,26 +32,26 @@ use core::sync::atomic::{AtomicU64, Ordering};
 #[macro_export]
 macro_rules! counter {
     ($name:expr) => {{
-        let name: &str = $name;
-
-        #[unsafe(link_section = concat!(".bss.kcounter.", name))]
-        static ARENA: $crate::thread_local::ThreadLocal<AtomicU64> =
+        #[unsafe(link_section = concat!(".bss.kcounter.", $name))]
+        static ARENA: $crate::thread_local::ThreadLocal<::core::sync::atomic::AtomicU64> =
             $crate::thread_local::ThreadLocal::new();
 
-        Counter {
-            arena: &ARENA,
-            name,
-        }
+        Counter::new(&ARENA, $name)
     }};
 }
 
 /// A kernel counter.
-struct Counter {
+pub struct Counter {
     arena: &'static ThreadLocal<AtomicU64>,
     name: &'static str,
 }
 
 impl Counter {
+    #[doc(hidden)]
+    pub const fn new(arena: &'static ThreadLocal<AtomicU64>, name: &'static str) -> Self {
+        Self { arena, name }
+    }
+
     /// Increment the counter.
     pub fn increment(&self, value: u64) {
         self.arena
