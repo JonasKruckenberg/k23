@@ -21,7 +21,7 @@ use crate::arch;
 use crate::machine_info::MachineInfo;
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
-pub use address::{PhysicalAddress, VirtualAddress};
+pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub use address_space::AddressSpace;
 use alloc::format;
 use alloc::string::ToString;
