@@ -84,7 +84,7 @@ unsafe extern "C" fn default_trap_entry() {
     unsafe {
         naked_asm! {
             ".align 2",
-            // "mv t0, sp", // save the correct stack pointer
+
             "csrrw sp, sscratch, sp", // sp points to the TrapFrame
             "add sp, sp, -0x210",
 
@@ -251,6 +251,12 @@ fn default_trap_handler(
     a6: usize,
     a7: usize,
 ) -> *mut TrapFrame {
+    // Clear the SUM bit to prevent userspace memory access in case we interrupted the kernel
+    // Safety: register access
+    unsafe {
+        sstatus::clear_sum();
+    }
+
     let cause = scause::read().cause();
 
     log::trace!("{:?}", sstatus::read());
