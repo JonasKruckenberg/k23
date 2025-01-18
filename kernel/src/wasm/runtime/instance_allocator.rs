@@ -204,7 +204,7 @@ pub trait InstanceAllocator {
             module.translated().num_memories() - module.translated().num_imported_memories();
         let mut memories =
             PrimaryMap::with_capacity(usize::try_from(num_defined_memories).unwrap());
-        
+
         // Safety: TODO
         match (|| unsafe {
             self.allocate_tables(module.translated(), &mut tables)?;

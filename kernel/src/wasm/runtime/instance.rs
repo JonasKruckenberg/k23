@@ -53,7 +53,7 @@ impl Instance {
         imports: Imports,
     ) -> crate::wasm::Result<Self> {
         let (mut vmctx, mut tables, mut memories) = store.alloc.allocate_module(&module)?;
-        
+
         log::trace!("initializing instance");
         unsafe {
             arch::with_user_memory_access(|| -> crate::wasm::Result<()> {

@@ -148,9 +148,7 @@ pub fn test() {
         linker
             .define_instance(&mut store, "fib_cpp", instance)
             .unwrap();
-
     }
-        crate::allocator::print_usage();
 
     // instantiate the test module
     {
@@ -162,13 +160,12 @@ pub fn test() {
         )
         .unwrap();
 
-        crate::allocator::print_usage();
         let instance = linker
             .instantiate(&mut store, &mut const_eval, &module)
             .unwrap();
 
         instance.debug_vmctx(&store);
-        
+
         let func = instance.get_func(&mut store, "fib_test").unwrap();
         // TODO replace with checked
         // Safety: WIP

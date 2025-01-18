@@ -242,6 +242,6 @@ where
     unsafe {
         sstatus::clear_sum();
     }
-    
+
     r
 }

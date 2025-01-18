@@ -9,23 +9,18 @@ use crate::arch;
 use crate::arch::with_user_memory_access;
 use crate::vm::address::AddressRangeExt;
 use crate::vm::address_space::{AddressSpaceKind, Batch};
-use crate::vm::address_space_region::AddressSpaceRegion;
 use crate::vm::vmo::Vmo;
 use crate::vm::{
     AddressSpace, ArchAddressSpace, Error, Permissions, VirtualAddress, THE_ZERO_FRAME,
 };
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
-use core::pin::Pin;
-use core::ptr::NonNull;
 use core::range::Range;
-use core::{iter, ptr, slice};
-use core::time::Duration;
-use crate::time::Instant;
+use core::{iter, slice};
 
 /// A userspace memory mapping.
 ///
-/// This is essentially a handle to an [`AddressSpaceRegion`] with convenience methods for userspace
+/// This is essentially a handle to an [`AddressSpaceRegion`][crate::vm::address_space_region::AddressSpaceRegion] with convenience methods for userspace
 /// specific needs such as copying from and to memory.
 #[derive(Debug)]
 pub struct UserMmap {
@@ -54,7 +49,10 @@ impl UserMmap {
             matches!(aspace.kind(), AddressSpaceKind::User),
             "cannot create UserMmap in kernel address space"
         );
-        debug_assert!(align >= arch::PAGE_SIZE, "alignment must be at least a page");
+        debug_assert!(
+            align >= arch::PAGE_SIZE,
+            "alignment must be at least a page"
+        );
 
         let layout = Layout::from_size_align(len, align).unwrap();
 
@@ -138,7 +136,10 @@ impl UserMmap {
         F: FnOnce(&mut [u8]),
     {
         self.ensure_mapped(aspace, range, true)?;
-        unsafe { aspace.arch.activate(); }
+        // Safety: user aspace also includes kernel mappings in higher half
+        unsafe {
+            aspace.arch.activate();
+        }
 
         #[expect(tail_expr_drop_order, reason = "")]
         crate::trap_handler::catch_traps(|| {
@@ -153,9 +154,7 @@ impl UserMmap {
                 });
             }
         })
-        .map_err(|trap| {
-            Error::Trap(trap)
-        })
+        .map_err(Error::Trap)
     }
 
     /// Returns a pointer to the start of the memory mapped by this `Mmap`.
@@ -229,7 +228,12 @@ impl UserMmap {
         Ok(())
     }
 
-    fn ensure_mapped(&self, aspace: &mut AddressSpace, range: Range<usize>, will_write: bool) -> Result<(), Error> {
+    fn ensure_mapped(
+        &self,
+        aspace: &mut AddressSpace,
+        range: Range<usize>,
+        will_write: bool,
+    ) -> Result<(), Error> {
         if !self.range.is_empty() {
             let mut cursor = aspace.regions.find_mut(&self.range.start);
 

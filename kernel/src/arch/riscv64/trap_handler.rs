@@ -8,12 +8,12 @@
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
 use crate::trap_handler::TrapReason;
+use crate::vm::VirtualAddress;
 use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{scause, sepc, sstatus, stval, stvec};
 use thread_local::thread_local;
-use crate::vm::VirtualAddress;
 
 thread_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };

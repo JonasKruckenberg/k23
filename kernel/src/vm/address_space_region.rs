@@ -100,7 +100,7 @@ impl AddressSpaceRegion {
             start: range.start.checked_sub_addr(self.range.start).unwrap(),
             end: range.end.checked_sub_addr(self.range.start).unwrap(),
         };
-        
+
         match self.vmo.as_ref() {
             Vmo::Wired(vmo) => {
                 let range_phys = vmo

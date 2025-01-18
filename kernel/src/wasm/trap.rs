@@ -18,8 +18,7 @@ pub const TRAP_NULL_REFERENCE: TrapCode =
     TrapCode::unwrap_user(Trap::NullReference as u8 + TRAP_OFFSET);
 pub const TRAP_I31_NULL_REFERENCE: TrapCode =
     TrapCode::unwrap_user(Trap::NullI31Ref as u8 + TRAP_OFFSET);
-pub const TRAP_EXIT: TrapCode =
-    TrapCode::unwrap_user(Trap::Exit as u8 + TRAP_OFFSET);
+pub const TRAP_EXIT: TrapCode = TrapCode::unwrap_user(Trap::Exit as u8 + TRAP_OFFSET);
 
 #[derive(Debug, Copy, Clone)]
 pub enum Trap {
@@ -50,7 +49,7 @@ pub enum Trap {
     IntegerDivisionByZero,
     /// Failed float-to-int conversion.
     BadConversionToInteger,
-    
+
     Exit,
 }
 
@@ -71,7 +70,7 @@ impl fmt::Display for Trap {
             Trap::IntegerOverflow => f.write_str("integer overflow"),
             Trap::IntegerDivisionByZero => f.write_str("integer divide by zero"),
             Trap::BadConversionToInteger => f.write_str("invalid conversion to integer"),
-            
+
             Trap::Exit => f.write_str("exit"),
         }
     }
@@ -96,9 +95,9 @@ impl Trap {
             TRAP_UNREACHABLE => Some(Trap::UnreachableCodeReached),
             TRAP_NULL_REFERENCE => Some(Trap::NullReference),
             TRAP_I31_NULL_REFERENCE => Some(Trap::NullI31Ref),
-            
+
             TRAP_EXIT => Some(Trap::Exit),
-            
+
             c => {
                 log::warn!("unknown trap code {c}");
                 None
@@ -124,7 +123,7 @@ impl From<Trap> for u8 {
             Trap::IntegerOverflow => 10,
             Trap::IntegerDivisionByZero => 11,
             Trap::BadConversionToInteger => 12,
-            
+
             Trap::Exit => 13,
         }
     }
@@ -149,9 +148,9 @@ impl TryFrom<u8> for Trap {
             10 => Ok(Self::IntegerOverflow),
             11 => Ok(Self::IntegerDivisionByZero),
             12 => Ok(Self::BadConversionToInteger),
-            
+
             13 => Ok(Self::Exit),
-            
+
             _ => Err(()),
         }
     }

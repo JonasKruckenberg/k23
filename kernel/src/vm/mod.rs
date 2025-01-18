@@ -23,22 +23,22 @@ use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
 pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub use address_space::AddressSpace;
+pub use address_space::Batch;
 use alloc::format;
 use alloc::string::ToString;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
 pub use error::Error;
+pub use frame_list::FrameList;
 use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::{LazyLock, Mutex, OnceLock};
 pub use trap_handler::trap_handler;
 pub use user_mmap::UserMmap;
-use xmas_elf::program::Type;
 pub use vmo::Vmo;
-pub use frame_list::FrameList;
-pub use address_space::Batch;
+use xmas_elf::program::Type;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
@@ -74,7 +74,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
 
         Ok(Mutex::new(aspace))
     })?;
-    
+
     Ok(())
 }
 

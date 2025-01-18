@@ -1,3 +1,4 @@
+use crate::vm::VirtualAddress;
 use crate::wasm::backtrace::RawWasmBacktrace;
 use crate::wasm::translate::EntityType;
 use crate::wasm::trap::Trap;
@@ -5,7 +6,6 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use core::fmt;
 use cranelift_codegen::CodegenError;
-use crate::vm::VirtualAddress;
 
 /// Convenience macro for creating an `Error::Unsupported` variant.
 #[macro_export]

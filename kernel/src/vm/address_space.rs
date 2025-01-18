@@ -468,7 +468,11 @@ impl AddressSpace {
         Ok(region)
     }
 
-    pub fn ensure_mapped(&mut self, range: Range<VirtualAddress>, will_write: bool) -> Result<(), Error> {
+    pub fn ensure_mapped(
+        &mut self,
+        range: Range<VirtualAddress>,
+        will_write: bool,
+    ) -> Result<(), Error> {
         ensure!(
             range.start.is_aligned_to(arch::PAGE_SIZE),
             Error::MisalignedStart
@@ -483,7 +487,7 @@ impl AddressSpace {
         let mut bytes_remaining = range.size();
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
-            let mut region = c.get_mut().unwrap();
+            let region = c.get_mut().unwrap();
             let clamped = range.clamp(region.range);
             region.ensure_mapped(&mut batch, clamped, will_write)?;
 

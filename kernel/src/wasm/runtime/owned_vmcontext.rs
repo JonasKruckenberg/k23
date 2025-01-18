@@ -1,7 +1,10 @@
-use alloc::string::ToString;
 use crate::arch;
-use crate::vm::{frame_alloc, AddressRangeExt, AddressSpace, ArchAddressSpace, Batch, FrameList, VirtualAddress, Vmo};
+use crate::vm::{
+    frame_alloc, AddressRangeExt, AddressSpace, ArchAddressSpace, Batch, FrameList, VirtualAddress,
+    Vmo,
+};
 use crate::wasm::runtime::{MmapVec, VMContext, VMOffsets};
+use alloc::string::ToString;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
@@ -14,6 +17,7 @@ pub struct OwnedVMContext {
 
 impl OwnedVMContext {
     #[expect(tail_expr_drop_order, reason = "")]
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub fn try_new(
         aspace: &mut AddressSpace,
         offsets: &VMOffsets,
@@ -36,13 +40,14 @@ impl OwnedVMContext {
                 crate::vm::Permissions::READ | crate::vm::Permissions::WRITE,
                 Some("VMContext".to_string()),
             )
-            .unwrap().range;
+            .unwrap()
+            .range;
         aspace.ensure_mapped(virt_range, true).unwrap();
-        
+
         // let mut batch = Batch::new(&mut aspace.arch);
         // region.ensure_mapped(&mut batch, virt_range, true).unwrap();
         // batch.flush().unwrap();
-        
+
         Ok(Self {
             frames,
             range: virt_range,

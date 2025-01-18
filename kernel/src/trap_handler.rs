@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::longjmp;
+use crate::vm::VirtualAddress;
 use crate::{arch, vm};
 use core::cell::Cell;
 use core::fmt::Write;
@@ -14,7 +15,6 @@ use core::ops::ControlFlow;
 use core::ptr;
 use core::ptr::addr_of_mut;
 use thread_local::thread_local;
-use crate::vm::VirtualAddress;
 
 thread_local! {
     static TRAP_RESUME_STATE: Cell<*mut TrapResumeState> = Cell::new(ptr::null_mut());
@@ -152,7 +152,12 @@ where
     }
 }
 
-fn fault_resume_panic(reason: TrapReason, pc: VirtualAddress, fp: VirtualAddress, faulting_address: VirtualAddress) -> ! {
+fn fault_resume_panic(
+    reason: TrapReason,
+    pc: VirtualAddress,
+    fp: VirtualAddress,
+    faulting_address: VirtualAddress,
+) -> ! {
     panic!("UNCAUGHT KERNEL TRAP {reason:?} pc={pc};fp={fp};faulting_address={faulting_address};");
 }
 

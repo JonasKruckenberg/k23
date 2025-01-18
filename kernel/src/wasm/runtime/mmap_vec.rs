@@ -1,11 +1,11 @@
-use core::cmp::max;
+use crate::arch;
 use crate::vm::{AddressSpace, UserMmap};
 use crate::wasm::Error;
+use core::cmp::max;
 use core::marker::PhantomData;
 use core::ops::Deref;
 use core::range::Range;
 use core::slice;
-use crate::arch;
 
 #[derive(Debug)]
 pub struct MmapVec<T> {
@@ -25,7 +25,8 @@ impl<T> MmapVec<T> {
 
     pub fn new_zeroed(aspace: &mut AddressSpace, capacity: usize) -> crate::wasm::Result<Self> {
         Ok(Self {
-            mmap: UserMmap::new_zeroed(aspace, capacity, max(align_of::<T>(), arch::PAGE_SIZE)).map_err(|_| Error::MmapFailed)?,
+            mmap: UserMmap::new_zeroed(aspace, capacity, max(align_of::<T>(), arch::PAGE_SIZE))
+                .map_err(|_| Error::MmapFailed)?,
             len: 0,
             _m: PhantomData,
         })
@@ -48,7 +49,7 @@ impl<T> MmapVec<T> {
     pub fn capacity(&self) -> usize {
         self.mmap.len() / size_of::<T>()
     }
-    
+
     pub fn len(&self) -> usize {
         self.len
     }
@@ -90,7 +91,7 @@ impl<T> MmapVec<T> {
         T: Clone,
     {
         assert!(self.len() + other.len() <= self.capacity());
-        
+
         // "Transmute" the slice to a byte slice
         // Safety: we're just converting the slice to a byte slice of the same length
         let src = unsafe { slice::from_raw_parts(other.as_ptr().cast::<u8>(), size_of_val(other)) };
@@ -109,7 +110,7 @@ impl<T> MmapVec<T> {
         T: Clone,
     {
         assert!(self.len() + count <= self.capacity());
-        
+
         self.mmap
             .with_user_slice_mut(aspace, Range::from(self.len..self.len + count), |dst| {
                 // "Transmute" the slice to a byte slice
