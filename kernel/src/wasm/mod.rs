@@ -32,9 +32,9 @@ mod values;
 pub use errors::Error;
 use wasmparser::Validator;
 pub(crate) type Result<T> = core::result::Result<T, Error>;
-use crate::vm::{AddressSpace, KERNEL_ASPACE};
+use crate::vm::{AddressSpace, ArchAddressSpace, VirtualAddress, KERNEL_ASPACE};
 use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
-use crate::{enum_accessors, owned_enum_accessors};
+use crate::{arch, enum_accessors, owned_enum_accessors};
 pub use engine::Engine;
 pub use func::Func;
 pub use global::Global;
@@ -128,57 +128,47 @@ pub fn test() {
     let mut linker = Linker::new(&engine);
     let mut store = Store::new(&engine);
     let mut const_eval = ConstExprEvaluator::default();
-    let mut aspace = AddressSpace::new_user(2, None).unwrap();
+    // let mut aspace = AddressSpace::new_user(2, None).unwrap();
 
     // instantiate & define the fib_cpp module
     {
         let module = Module::from_bytes(
             &engine,
-            &mut aspace,
+            &mut store,
             &mut validator,
             include_bytes!("../../fib_cpp.wasm"),
         )
         .unwrap();
-        log::debug!("here");
 
         let instance = linker
-            .instantiate(
-                &mut store,
-                &PlaceholderAllocatorDontUse,
-                &mut aspace,
-                &mut const_eval,
-                &module,
-            )
+            .instantiate(&mut store, &mut const_eval, &module)
             .unwrap();
         instance.debug_vmctx(&store);
 
         linker
             .define_instance(&mut store, "fib_cpp", instance)
             .unwrap();
+
     }
+        crate::allocator::print_usage();
 
     // instantiate the test module
     {
         let module = Module::from_bytes(
             &engine,
-            &mut aspace,
+            &mut store,
             &mut validator,
-            include_bytes!("../../fib_cpp.wasm"),
+            include_bytes!("../../fib_test.wasm"),
         )
         .unwrap();
 
+        crate::allocator::print_usage();
         let instance = linker
-            .instantiate(
-                &mut store,
-                &PlaceholderAllocatorDontUse,
-                &mut aspace,
-                &mut const_eval,
-                &module,
-            )
+            .instantiate(&mut store, &mut const_eval, &module)
             .unwrap();
 
         instance.debug_vmctx(&store);
-
+        
         let func = instance.get_func(&mut store, "fib_test").unwrap();
         // TODO replace with checked
         // Safety: WIP

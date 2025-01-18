@@ -21,7 +21,6 @@ pub trait InstanceAllocator {
     /// The safety of the entire VM depends on the correct implementation of this method.
     unsafe fn allocate_vmctx(
         &self,
-        aspace: &mut AddressSpace,
         module: &TranslatedModule,
         offsets: &VMOffsets,
     ) -> crate::wasm::Result<OwnedVMContext>;
@@ -32,7 +31,7 @@ pub trait InstanceAllocator {
     ///
     /// The `VMContext` must have previously been allocated by
     /// `Self::allocate_vmctx`
-    unsafe fn deallocate_vmctx(&self, aspace: &mut AddressSpace, vmctx: OwnedVMContext);
+    unsafe fn deallocate_vmctx(&self, vmctx: OwnedVMContext);
 
     /// Allocate a memory for an instance.
     ///
@@ -45,7 +44,6 @@ pub trait InstanceAllocator {
     /// The safety of the entire VM depends on the correct implementation of this method.
     unsafe fn allocate_memory(
         &self,
-        aspace: &mut AddressSpace,
         module: &TranslatedModule,
         memory_desc: &MemoryDesc,
         memory_index: DefinedMemoryIndex,
@@ -58,12 +56,7 @@ pub trait InstanceAllocator {
     /// The memory must have previously been allocated by
     /// `Self::allocate_memory`, be at the given index, and must currently be
     /// allocated. It must never be used again.
-    unsafe fn deallocate_memory(
-        &self,
-        aspace: &mut AddressSpace,
-        memory_index: DefinedMemoryIndex,
-        memory: Memory,
-    );
+    unsafe fn deallocate_memory(&self, memory_index: DefinedMemoryIndex, memory: Memory);
 
     /// Allocate a table for an instance.
     ///
@@ -76,7 +69,6 @@ pub trait InstanceAllocator {
     /// The safety of the entire VM depends on the correct implementation of this method.
     unsafe fn allocate_table(
         &self,
-        aspace: &mut AddressSpace,
         module: &TranslatedModule,
         table_desc: &TableDesc,
         table_index: DefinedTableIndex,
@@ -89,12 +81,7 @@ pub trait InstanceAllocator {
     /// The table must have previously been allocated by `Self::allocate_table`,
     /// be at the given index, and must currently be allocated. It must never be
     /// used again.
-    unsafe fn deallocate_table(
-        &self,
-        aspace: &mut AddressSpace,
-        table_index: DefinedTableIndex,
-        table: Table,
-    );
+    unsafe fn deallocate_table(&self, table_index: DefinedTableIndex, table: Table);
 
     /// Allocate multiple memories at once.
     ///
@@ -109,7 +96,6 @@ pub trait InstanceAllocator {
     /// The safety of the entire VM depends on the correct implementation of this method.
     unsafe fn allocate_memories(
         &self,
-        aspace: &mut AddressSpace,
         module: &TranslatedModule,
         memories: &mut PrimaryMap<DefinedMemoryIndex, Memory>,
     ) -> crate::wasm::Result<()> {
@@ -117,7 +103,7 @@ pub trait InstanceAllocator {
             if let Some(def_index) = module.defined_memory_index(index) {
                 let new_def_index =
                 // Safety: caller has to ensure safety
-                    memories.push(unsafe { self.allocate_memory(aspace, module, plan, def_index)? });
+                    memories.push(unsafe { self.allocate_memory(module, plan, def_index)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
         }
@@ -137,7 +123,6 @@ pub trait InstanceAllocator {
     /// The safety of the entire VM depends on the correct implementation of this method.
     unsafe fn allocate_tables(
         &self,
-        aspace: &mut AddressSpace,
         module: &TranslatedModule,
         tables: &mut PrimaryMap<DefinedTableIndex, Table>,
     ) -> crate::wasm::Result<()> {
@@ -145,7 +130,7 @@ pub trait InstanceAllocator {
             if let Some(def_index) = module.defined_table_index(index) {
                 let new_def_index =
                 // Safety: caller has to ensure safety
-                    tables.push(unsafe { self.allocate_table(aspace, module, plan, def_index)? });
+                    tables.push(unsafe { self.allocate_table(module, plan, def_index)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
         }
@@ -160,11 +145,7 @@ pub trait InstanceAllocator {
     ///
     /// Just like `Self::deallocate_memory` all memories must have been allocated by
     /// `Self::allocate_memories`/`Self::allocate_memory` and must never be used again.
-    unsafe fn deallocate_memories(
-        &self,
-        aspace: &mut AddressSpace,
-        memories: &mut PrimaryMap<DefinedMemoryIndex, Memory>,
-    ) {
+    unsafe fn deallocate_memories(&self, memories: &mut PrimaryMap<DefinedMemoryIndex, Memory>) {
         for (memory_index, memory) in mem::take(memories) {
             // Because deallocating memory is infallible, we don't need to worry
             // about leaking subsequent memories if the first memory failed to
@@ -172,7 +153,7 @@ pub trait InstanceAllocator {
             // need to be careful here!
             // Safety: caller has to ensure safety
             unsafe {
-                self.deallocate_memory(aspace, memory_index, memory);
+                self.deallocate_memory(memory_index, memory);
             }
         }
     }
@@ -185,15 +166,11 @@ pub trait InstanceAllocator {
     ///
     /// Just like `Self::deallocate_table` all tables must have been allocated by
     /// `Self::allocate_tables`/`Self::allocate_table` and must never be used again.
-    unsafe fn deallocate_tables(
-        &self,
-        aspace: &mut AddressSpace,
-        tables: &mut PrimaryMap<DefinedTableIndex, Table>,
-    ) {
+    unsafe fn deallocate_tables(&self, tables: &mut PrimaryMap<DefinedTableIndex, Table>) {
         for (table_index, table) in mem::take(tables) {
             // Safety: caller has to ensure safety
             unsafe {
-                self.deallocate_table(aspace, table_index, table);
+                self.deallocate_table(table_index, table);
             }
         }
     }
@@ -213,7 +190,6 @@ pub trait InstanceAllocator {
     )]
     fn allocate_module(
         &self,
-        aspace: &mut AddressSpace,
         module: &Module,
     ) -> crate::wasm::Result<(
         OwnedVMContext,
@@ -228,18 +204,18 @@ pub trait InstanceAllocator {
             module.translated().num_memories() - module.translated().num_imported_memories();
         let mut memories =
             PrimaryMap::with_capacity(usize::try_from(num_defined_memories).unwrap());
-
+        
         // Safety: TODO
         match (|| unsafe {
-            self.allocate_tables(aspace, module.translated(), &mut tables)?;
-            self.allocate_memories(aspace, module.translated(), &mut memories)?;
-            self.allocate_vmctx(aspace, module.translated(), module.offsets())
+            self.allocate_tables(module.translated(), &mut tables)?;
+            self.allocate_memories(module.translated(), &mut memories)?;
+            self.allocate_vmctx(module.translated(), module.offsets())
         })() {
             Ok(vmctx) => Ok((vmctx, tables, memories)),
             // Safety: memories and tables have just been allocated and will not be handed out
             Err(e) => unsafe {
-                self.deallocate_memories(aspace, &mut memories);
-                self.deallocate_tables(aspace, &mut tables);
+                self.deallocate_memories(&mut memories);
+                self.deallocate_tables(&mut tables);
                 Err(e)
             },
         }

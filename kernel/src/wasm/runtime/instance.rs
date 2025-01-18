@@ -3,6 +3,7 @@
     reason = "too many trivial unsafe blocks"
 )]
 
+use crate::arch;
 use crate::vm::AddressSpace;
 use crate::wasm::indices::{
     DataIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, ElemIndex, EntityIndex,
@@ -21,7 +22,7 @@ use crate::wasm::runtime::{
     VMTableDefinition, VMTableImport, VMCONTEXT_MAGIC,
 };
 use crate::wasm::translate::{TableInitialValue, TableSegmentElements};
-use crate::wasm::{Extern, Module};
+use crate::wasm::{Extern, Module, Store};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
@@ -46,26 +47,33 @@ pub struct Instance {
 impl Instance {
     #[expect(tail_expr_drop_order, reason = "")]
     pub unsafe fn new_unchecked(
-        alloc: &dyn InstanceAllocator,
-        aspace: &mut AddressSpace,
+        store: &mut Store,
         const_eval: &mut ConstExprEvaluator,
         module: Module,
         imports: Imports,
     ) -> crate::wasm::Result<Self> {
-        let (mut vmctx, mut tables, mut memories) = alloc.allocate_module(aspace, &module)?;
-
+        let (mut vmctx, mut tables, mut memories) = store.alloc.allocate_module(&module)?;
+        
+        log::trace!("initializing instance");
         unsafe {
-            initialize_vmctx(
-                const_eval,
-                &mut vmctx,
-                &mut tables,
-                &mut memories,
-                &module,
-                imports,
-            )?;
-            initialize_tables(const_eval, &mut tables, &module)?;
-            initialize_memories(const_eval, &mut memories, &module)?;
+            arch::with_user_memory_access(|| -> crate::wasm::Result<()> {
+                initialize_vmctx(
+                    const_eval,
+                    &mut vmctx,
+                    &mut tables,
+                    &mut memories,
+                    &module,
+                    imports,
+                )?;
+                initialize_tables(const_eval, &mut tables, &module)?;
+
+                let mut aspace = store.alloc.0.lock();
+                initialize_memories(&mut aspace, const_eval, &mut memories, &module)?;
+
+                Ok(())
+            })?;
         }
+        log::trace!("done initializing instance");
 
         let exports = vec![None; module.exports().len()];
 
@@ -415,36 +423,44 @@ unsafe fn initialize_vmctx(
         let offsets = module.offsets();
 
         // initialize vmctx magic
+        log::trace!("initializing vmctx magic");
         *vmctx.plus_offset_mut(u32::from(offsets.static_.vmctx_magic())) = VMCONTEXT_MAGIC;
 
         // Initialize the built-in functions
+        log::trace!("initializing built-in functions array ptr");
         *vmctx.plus_offset_mut::<*const VMBuiltinFunctionsArray>(u32::from(
             offsets.static_.vmctx_builtin_functions(),
         )) = ptr::from_ref(&VMBuiltinFunctionsArray::INIT);
 
         // initialize the type ids array ptr
+        log::trace!("initializing type ids array ptr");
         let type_ids = module.type_ids();
         *vmctx.plus_offset_mut(u32::from(offsets.static_.vmctx_type_ids())) = type_ids.as_ptr();
 
         // initialize func_refs array
+        log::trace!("initializing func refs array");
         initialize_vmfunc_refs(vmctx, &module, &imports, offsets);
 
         // initialize the imports
+        log::trace!("initializing function imports");
         ptr::copy_nonoverlapping(
             imports.functions.as_ptr(),
             vmctx.plus_offset_mut::<VMFunctionImport>(offsets.vmctx_imported_functions_begin()),
             imports.functions.len(),
         );
+        log::trace!("initialized table imports");
         ptr::copy_nonoverlapping(
             imports.tables.as_ptr(),
             vmctx.plus_offset_mut::<VMTableImport>(offsets.vmctx_imported_tables_begin()),
             imports.tables.len(),
         );
+        log::trace!("initialized memory imports");
         ptr::copy_nonoverlapping(
             imports.memories.as_ptr(),
             vmctx.plus_offset_mut::<VMMemoryImport>(offsets.vmctx_imported_memories_begin()),
             imports.memories.len(),
         );
+        log::trace!("initialized global imports");
         ptr::copy_nonoverlapping(
             imports.globals.as_ptr(),
             vmctx.plus_offset_mut::<VMGlobalImport>(offsets.vmctx_imported_globals_begin()),
@@ -452,6 +468,7 @@ unsafe fn initialize_vmctx(
         );
 
         // Initialize the defined tables
+        log::trace!("initializing defined tables");
         for def_index in module
             .translated()
             .tables
@@ -464,6 +481,7 @@ unsafe fn initialize_vmctx(
         }
 
         // Initialize the `defined_memories` table.
+        log::trace!("initializing defined memories");
         for (def_index, plan) in module
             .translated()
             .memories
@@ -481,6 +499,8 @@ unsafe fn initialize_vmctx(
             ptr.write(memories[def_index].as_vmmemory_definition());
         }
 
+        // Initialize the `defined_globals` table.
+        log::trace!("initializing defined globals");
         for (def_index, init_expr) in &module.translated().global_initializers {
             let val = const_eval.eval(init_expr);
             let ptr = vmctx.plus_offset_mut::<VMGlobalDefinition>(
@@ -605,6 +625,7 @@ unsafe fn initialize_tables(
 
 #[expect(clippy::unnecessary_wraps, reason = "TODO")]
 unsafe fn initialize_memories(
+    aspace: &mut AddressSpace,
     const_eval: &mut ConstExprEvaluator,
     memories: &mut PrimaryMap<DefinedMemoryIndex, Memory>,
     module: &Module,
@@ -614,9 +635,13 @@ unsafe fn initialize_memories(
         let offset = usize::try_from(offset.get_u64()).unwrap();
 
         if let Some(def_index) = module.translated().defined_memory_index(init.memory_index) {
-            memories[def_index].with_user_slice_mut(|slice| {
-                slice[offset..offset + init.data.len()].copy_from_slice(&init.data);
-            });
+            memories[def_index].with_user_slice_mut(
+                aspace,
+                Range::from(offset..offset + init.data.len()),
+                |slice| {
+                    slice.copy_from_slice(&init.data);
+                },
+            );
         } else {
             todo!("initializing imported table")
         }
