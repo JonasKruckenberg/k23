@@ -150,9 +150,9 @@ impl VMOffsets {
         let static_ = StaticVMOffsets::new(ptr_size);
 
         let mut offset = u32::from(static_.size());
-        let mut member_offset = |size_of_member: u32| -> u32 {
-            let out = offset;
-            offset += size_of_member;
+        let mut member_offset = |size_of_member: u32, align_of_member: u32| -> u32 {
+            let out = offset + (offset % align_of_member);
+            offset += size_of_member + (offset % align_of_member);
             out
         };
 
@@ -168,25 +168,37 @@ impl VMOffsets {
 
             // offsets
             static_,
-            func_refs: member_offset(u32_size_of::<VMFuncRef>() * module.num_escaped_funcs()),
+            func_refs: member_offset(
+                u32_size_of::<VMFuncRef>() * module.num_escaped_funcs(),
+                u32_align_of::<VMFuncRef>(),
+            ),
             imported_functions: member_offset(
                 u32_size_of::<VMFunctionImport>() * module.num_imported_functions(),
+                u32_align_of::<VMFunctionImport>(),
             ),
             imported_tables: member_offset(
                 u32_size_of::<VMTableImport>() * module.num_imported_tables(),
+                u32_align_of::<VMTableImport>(),
             ),
             imported_memories: member_offset(
                 u32_size_of::<VMMemoryImport>() * module.num_imported_memories(),
+                u32_align_of::<VMMemoryImport>(),
             ),
             imported_globals: member_offset(
                 u32_size_of::<VMGlobalImport>() * module.num_imported_globals(),
+                u32_align_of::<VMGlobalImport>(),
             ),
-            tables: member_offset(u32_size_of::<VMTableDefinition>() * module.num_defined_tables()),
+            tables: member_offset(
+                u32_size_of::<VMTableDefinition>() * module.num_defined_tables(),
+                u32_align_of::<VMTableDefinition>(),
+            ),
             memories: member_offset(
                 u32_size_of::<VMMemoryDefinition>() * module.num_defined_memories(),
+                u32_align_of::<VMMemoryDefinition>(),
             ),
             globals: member_offset(
                 u32_size_of::<VMGlobalDefinition>() * module.num_defined_globals(),
+                u32_align_of::<VMGlobalDefinition>(),
             ),
 
             size: offset,
@@ -394,4 +406,12 @@ impl VMOffsets {
 /// Panics if the size of `T` is greater than `u32::MAX`.
 fn u32_size_of<T: Sized>() -> u32 {
     u32::try_from(size_of::<T>()).unwrap()
+}
+
+/// Like `mem::align_of` but returns `u32` instead of `usize`
+/// # Panics
+///
+/// Panics if the size of `T` is greater than `u32::MAX`.
+fn u32_align_of<T: Sized>() -> u32 {
+    u32::try_from(align_of::<T>()).unwrap()
 }
