@@ -468,6 +468,32 @@ impl AddressSpace {
         Ok(region)
     }
 
+    pub fn ensure_mapped(&mut self, range: Range<VirtualAddress>, will_write: bool) -> Result<(), Error> {
+        ensure!(
+            range.start.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedStart
+        );
+        ensure!(
+            range.end.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedEnd
+        );
+        ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
+
+        let mut batch = Batch::new(&mut self.arch);
+        let mut bytes_remaining = range.size();
+        let mut c = self.regions.find_mut(&range.start);
+        while bytes_remaining > 0 {
+            let mut region = c.get_mut().unwrap();
+            let clamped = range.clamp(region.range);
+            region.ensure_mapped(&mut batch, clamped, will_write)?;
+
+            bytes_remaining -= range.size();
+        }
+        batch.flush()?;
+
+        Ok(())
+    }
+
     #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     fn map_internal(
         &mut self,

@@ -38,8 +38,10 @@ impl Memory {
         let allocation_bytes = bound_bytes.min(actual_maximum_bytes.unwrap_or(usize::MAX));
         let request_bytes = allocation_bytes + offset_guard_bytes;
 
+        // let mmap = UserMmap::new_zeroed(aspace, request_bytes, 2 * 1048576).map_err(|_| Error::MmapFailed)?;
+
         Ok(Self {
-            mmap: UserMmap::new_zeroed(aspace, request_bytes).map_err(|_| Error::MmapFailed)?,
+            mmap: UserMmap::new_empty(),
             len: actual_minimum_bytes,
             maximum: actual_maximum_bytes,
             page_size_log2: desc.page_size_log2,
@@ -47,11 +49,11 @@ impl Memory {
         })
     }
 
-    pub fn with_user_slice_mut<F>(&mut self, f: F)
+    pub fn with_user_slice_mut<F>(&mut self, aspace: &mut AddressSpace, range: Range<usize>, f: F)
     where
         F: FnOnce(&mut [u8]),
     {
-        self.mmap.with_user_slice_mut(f).unwrap();
+        self.mmap.with_user_slice_mut(aspace, range, f).unwrap();
     }
 
     pub(crate) fn as_vmmemory_definition(&mut self) -> VMMemoryDefinition {

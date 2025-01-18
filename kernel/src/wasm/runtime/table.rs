@@ -25,7 +25,7 @@ impl Table {
             MmapVec::new_empty()
         } else {
             let mut elements = MmapVec::new_zeroed(aspace, reserve_size)?;
-            elements.extend_with(usize::try_from(desc.minimum).unwrap(), None);
+            elements.extend_with(aspace, usize::try_from(desc.minimum).unwrap(), None);
             elements
         };
 

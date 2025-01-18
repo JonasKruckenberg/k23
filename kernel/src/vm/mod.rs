@@ -184,7 +184,7 @@ impl fmt::Display for PageFaultFlags {
 
 impl PageFaultFlags {
     pub fn is_valid(self) -> bool {
-        self.contains(PageFaultFlags::LOAD) != self.contains(PageFaultFlags::STORE)
+        !self.contains(PageFaultFlags::LOAD | PageFaultFlags::STORE)
     }
 
     pub fn cause_is_read(self) -> bool {

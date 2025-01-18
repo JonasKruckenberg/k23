@@ -1,3 +1,4 @@
+use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 use crate::wasm::runtime::{VMContext, VMOpaqueContext, VMVal};
 use crate::wasm::{runtime, Engine};
 use alloc::vec::Vec;
@@ -17,6 +18,8 @@ pub struct Store {
     wasm_vmval_storage: Vec<VMVal>,
 
     vmctx2instance: HashMap<*mut VMOpaqueContext, Stored<runtime::Instance>>,
+
+    pub(super) alloc: PlaceholderAllocatorDontUse,
 }
 
 impl Store {
@@ -32,6 +35,8 @@ impl Store {
             wasm_vmval_storage: Vec::new(),
 
             vmctx2instance: HashMap::new(),
+
+            alloc: PlaceholderAllocatorDontUse::default(),
         }
     }
 
