@@ -166,12 +166,15 @@ impl UserMmap {
         aspace: &mut AddressSpace,
         _branch_protection: bool,
     ) -> Result<(), Error> {
-        self.protect(aspace, Permissions::READ | Permissions::EXECUTE)
+        self.protect(
+            aspace,
+            Permissions::READ | Permissions::EXECUTE | Permissions::USER,
+        )
     }
 
     /// Mark this memory mapping as read-only (`R`) essentially removing the write permission.
     pub fn make_readonly(&mut self, aspace: &mut AddressSpace) -> Result<(), Error> {
-        self.protect(aspace, Permissions::READ)
+        self.protect(aspace, Permissions::READ | Permissions::USER)
     }
 
     fn protect(

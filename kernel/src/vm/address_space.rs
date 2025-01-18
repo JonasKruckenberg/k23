@@ -599,8 +599,7 @@ impl AddressSpace {
 
         let mut candidate_spot_count = 0;
 
-        debug_assert!(!self.regions.is_empty());
-        // // if the tree is empty, treat max_range as the gap
+        // if the tree is empty, treat max_range as the gap
         if self.regions.is_empty() {
             let aligned_gap = self.max_range.checked_align_in(layout.align()).unwrap();
             let spot_count = spots_in_range(layout, aligned_gap);

@@ -32,6 +32,7 @@ pub enum Error {
     Sbi(riscv::sbi::Error),
     KernelFaultInUserSpace(VirtualAddress),
     UserFaultInKernelSpace(VirtualAddress),
+    Trap(crate::trap_handler::Trap),
 }
 
 impl From<crate::vm::frame_alloc::AllocError> for Error {
@@ -66,7 +67,8 @@ impl Display for Error {
             #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
             Error::Sbi(err) => write!(f, "SBI call failed: {err}"),
             Error::KernelFaultInUserSpace(addr) => write!(f, "non-user address fault in user address space addr={addr:?}"),
-            Error::UserFaultInKernelSpace(addr) => write!(f, "non-kernel address fault in kernel address space addr={addr:?}")
+            Error::UserFaultInKernelSpace(addr) => write!(f, "non-kernel address fault in kernel address space addr={addr:?}"),
+            Error::Trap(trap) => write!(f, "operation failed with trap {trap:?}")
         }
     }
 }
