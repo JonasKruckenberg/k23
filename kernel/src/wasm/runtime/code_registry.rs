@@ -35,12 +35,12 @@ pub fn lookup_code(pc: usize) -> Option<(Arc<CodeMemory>, usize)> {
 /// This is used by trap handling to determine which region of code a faulting
 /// address.
 pub fn register_code(code: &Arc<CodeMemory>) {
-    let text = code.text();
+    let text = code.text_range();
     if text.is_empty() {
         return;
     }
-    let start = text.as_ptr() as usize;
-    let end = start + text.len() - 1;
-    let prev = global_code().write().insert(end, (start, code.clone()));
+    let prev = global_code()
+        .write()
+        .insert(text.start.get(), (text.end.get(), code.clone()));
     assert!(prev.is_none());
 }

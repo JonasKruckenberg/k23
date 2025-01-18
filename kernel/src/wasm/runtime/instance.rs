@@ -25,6 +25,7 @@ use crate::wasm::{Extern, Module};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
+use core::range::Range;
 use core::{fmt, mem, ptr, slice};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
@@ -613,8 +614,9 @@ unsafe fn initialize_memories(
         let offset = usize::try_from(offset.get_u64()).unwrap();
 
         if let Some(def_index) = module.translated().defined_memory_index(init.memory_index) {
-            memories[def_index].as_slice_mut()[offset..offset + init.data.len()]
-                .copy_from_slice(&init.data);
+            memories[def_index].with_user_slice_mut(|slice| {
+                slice[offset..offset + init.data.len()].copy_from_slice(&init.data);
+            });
         } else {
             todo!("initializing imported table")
         }

@@ -47,9 +47,11 @@ impl Memory {
         })
     }
 
-    pub(crate) fn as_slice_mut(&mut self) -> &mut [u8] {
-        // Safety: The constructor has to ensure that `self.len` is valid.
-        unsafe { self.mmap.slice_mut(Range::from(0..self.len)) }
+    pub fn with_user_slice_mut<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut [u8]),
+    {
+        self.mmap.with_user_slice_mut(f).unwrap();
     }
 
     pub(crate) fn as_vmmemory_definition(&mut self) -> VMMemoryDefinition {

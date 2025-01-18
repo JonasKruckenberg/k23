@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
+use crate::arch::with_user_memory_access;
 use crate::vm::address::AddressRangeExt;
 use crate::vm::address_space::AddressSpaceKind;
 use crate::vm::address_space_region::AddressSpaceRegion;
@@ -75,22 +76,63 @@ impl UserMmap {
         })
     }
 
-    /// Returns a slice to the memory mapped by this `Mmap`.
-    #[inline]
-    pub unsafe fn slice(&self, range: Range<usize>) -> &[u8] {
-        assert!(range.end <= self.len());
-        let len = range.end.checked_sub(range.start).unwrap();
-        // Safety: constructors ensure invariants are maintained
-        unsafe { slice::from_raw_parts(self.as_ptr().add(range.start), len) }
+    pub fn range(&self) -> Range<VirtualAddress> {
+        self.range
     }
 
-    /// Returns a mutable slice to the memory mapped by this `Mmap`.
-    #[inline]
-    pub unsafe fn slice_mut(&mut self, range: Range<usize>) -> &mut [u8] {
-        assert!(range.end <= self.len());
-        let len = range.end.checked_sub(range.start).unwrap();
-        // Safety: constructors ensure invariants are maintained
-        unsafe { slice::from_raw_parts_mut(self.as_mut_ptr().add(range.start), len) }
+    pub fn copy_from_userspace(
+        &self,
+        src_range: Range<usize>,
+        dst: &mut [u8],
+    ) -> Result<(), Error> {
+        self.with_user_slice(|src| dst.clone_from_slice(&src[src_range]))
+    }
+
+    pub fn copy_to_userspace(&mut self, src: &[u8], dst_range: Range<usize>) -> Result<(), Error> {
+        self.with_user_slice_mut(|dst| {
+            dst[dst_range].copy_from_slice(src);
+        })
+    }
+
+    pub fn with_user_slice<F>(&self, f: F) -> Result<(), Error>
+    where
+        F: FnOnce(&[u8]),
+    {
+        #[expect(tail_expr_drop_order, reason = "")]
+        crate::trap_handler::catch_traps(|| {
+            // Safety: checked by caller and `catch_traps`
+            unsafe {
+                with_user_memory_access(|| {
+                    let slice =
+                        slice::from_raw_parts(self.range.start.as_ptr(), self.range().size());
+                    f(slice);
+                });
+            }
+        })
+        .map_err(Error::Trap)
+    }
+
+    pub fn with_user_slice_mut<F>(&mut self, f: F) -> Result<(), Error>
+    where
+        F: FnOnce(&mut [u8]),
+    {
+        #[expect(tail_expr_drop_order, reason = "")]
+        crate::trap_handler::catch_traps(|| {
+            // Safety: checked by caller and `catch_traps`
+            unsafe {
+                with_user_memory_access(|| {
+                    let slice = slice::from_raw_parts_mut(
+                        self.range.start.as_mut_ptr(),
+                        self.range().size(),
+                    );
+                    f(slice);
+                });
+            }
+        })
+        .map_err(|trap| {
+            log::trace!("here");
+            Error::Trap(trap)
+        })
     }
 
     /// Returns a pointer to the start of the memory mapped by this `Mmap`.

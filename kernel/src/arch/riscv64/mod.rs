@@ -11,13 +11,9 @@ mod trap_handler;
 mod utils;
 mod vm;
 
-use crate::ensure;
-use crate::error::Error;
 use crate::vm::VirtualAddress;
 use bitflags::bitflags;
 use core::arch::asm;
-use core::panic::RefUnwindSafe;
-use core::ptr;
 use dtb_parser::Strings;
 use fallible_iterator::FallibleIterator;
 use riscv::sstatus::FS;
@@ -228,87 +224,22 @@ pub fn rmb() {
     }
 }
 
-/// Copies `count * size_of::<T>()` bytes from `src` to `dst`. `src` must be a valid pointer in userspace, `dst`
-/// must be a valid pointer in kernelspace.
-///
-/// # Errors
-///
-/// Returns and error if the pointers are invalid or the copy operation failed.
-pub fn copy_from_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()>
+#[inline]
+pub unsafe fn with_user_memory_access<F>(f: F)
 where
-    T: Clone + RefUnwindSafe,
+    F: FnOnce(),
 {
-    check_ranges(src, dst, count)?;
+    // Allow supervisor access to user memory
+    // Safety: register access
+    unsafe {
+        sstatus::set_sum();
+    }
 
-    // Safety: checked above
-    unsafe { copy_inner(src, dst, count) }
-}
+    f();
 
-/// Copies `count * size_of::<T>()` bytes from `src` to `dst`. `src` must be a valid pointer in kernelspace, `dst`
-/// must be a valid pointer in userspace.
-///
-/// # Errors
-///
-/// Returns and error if the pointers are invalid or the copy operation failed.
-pub fn copy_to_user<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()>
-where
-    T: Clone + RefUnwindSafe,
-{
-    check_ranges(dst, src, count)?;
-
-    // Safety: checked above
-    unsafe { copy_inner(src, dst, count) }
-}
-
-fn check_ranges<T>(user: *const T, kernel: *const T, count: usize) -> crate::Result<()> {
-    // ensure slice is in user space
-    ensure!(
-        VirtualAddress::new(user as usize).is_some_and(|addr| addr.is_user_accessible()),
-        Error::InvalidArgument
-    );
-    ensure!(
-        VirtualAddress::new(user as usize)
-            .and_then(|addr| addr.checked_add(count * size_of::<T>()))
-            .is_some_and(|addr| addr.is_user_accessible()),
-        Error::InvalidArgument
-    );
-
-    // ensure src slice is in kernel space
-    ensure!(
-        VirtualAddress::new(kernel as usize).is_some_and(is_kernel_address),
-        Error::InvalidArgument
-    );
-    ensure!(
-        VirtualAddress::new(kernel as usize)
-            .and_then(|addr| addr.checked_add(count * size_of::<T>()))
-            .is_some_and(is_kernel_address),
-        Error::InvalidArgument
-    );
-
-    Ok(())
-}
-
-unsafe fn copy_inner<T>(src: *const T, dst: *mut T, count: usize) -> crate::Result<()>
-where
-    T: Clone + RefUnwindSafe,
-{
-    crate::trap_handler::catch_traps(|| {
-        // Allow supervisor access to user memory
-        // Safety: register access
-        unsafe {
-            sstatus::set_sum();
-        }
-
-        // Safety: checked by caller and `catch_traps`
-        unsafe {
-            ptr::copy_nonoverlapping(src, dst, count);
-        }
-
-        // Disable supervisor access to user memory
-        // Safety: register access
-        unsafe {
-            sstatus::clear_sum();
-        }
-    })
-    .map_err(|_| Error::AccessDenied)
+    // Disable supervisor access to user memory
+    // Safety: register access
+    unsafe {
+        sstatus::clear_sum();
+    }
 }
