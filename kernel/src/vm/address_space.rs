@@ -38,10 +38,10 @@ pub enum AddressSpaceKind {
 /// Represents the address space of a process (or the kernel).
 pub struct AddressSpace {
     /// A binary search tree of regions that make up this address space.
-    pub(super) regions: wavltree::WAVLTree<AddressSpaceRegion>,
+    pub(crate) regions: wavltree::WAVLTree<AddressSpaceRegion>,
     /// The hardware address space backing this "logical" address space that changes need to be
     /// materialized into in order to take effect.
-    pub(super) arch: arch::AddressSpace,
+    pub arch: arch::AddressSpace,
     /// The maximum range this address space can encompass.
     ///
     /// This is used to check new mappings against and speed up page fault handling.

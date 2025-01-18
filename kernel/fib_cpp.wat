@@ -97,7 +97,7 @@
     local.get 21
     return)
   (table (;0;) 1 1 funcref)
-  (memory (;0;) 2)
+  (memory (;0;) 1)
   (global (;0;) (mut i32) (i32.const 66560))
   (export "memory" (memory 0))
   (export "fib" (func 0))

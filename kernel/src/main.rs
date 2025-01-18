@@ -60,7 +60,7 @@ pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropria
 /// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
 /// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap
 /// size and can dynamically grow the heap as needed.
-pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096; // 32 MiB
+pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -132,7 +132,7 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
-    // wasm::test();
+    wasm::test();
 
     // - [all][global] parse cmdline
     // - [all][global] `vm::init()` init virtual memory management

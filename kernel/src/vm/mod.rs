@@ -36,6 +36,9 @@ use sync::{LazyLock, Mutex, OnceLock};
 pub use trap_handler::trap_handler;
 pub use user_mmap::UserMmap;
 use xmas_elf::program::Type;
+pub use vmo::Vmo;
+pub use frame_list::FrameList;
+pub use address_space::Batch;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
@@ -71,18 +74,7 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
 
         Ok(Mutex::new(aspace))
     })?;
-
-    // let mut aspace = vm::AddressSpace::new_user(2, Some(ChaCha20Rng::from_seed(
-    //     minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
-    // ))).unwrap();
-    // unsafe { aspace.arch.activate(); }
-    // log::trace!("everything is fine?!");
-    //
-    // let layout = Layout::from_size_align(5 * arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap();
-    // let vmo = Vmo::new_paged(iter::repeat_n(THE_ZERO_FRAME.clone(), 5));
-    // let range = aspace.map(layout, vmo, 0, Permissions::READ | Permissions::WRITE, None).unwrap().range;
-    // log::trace!("{region:?}");
-
+    
     Ok(())
 }
 
