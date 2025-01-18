@@ -225,9 +225,9 @@ pub fn rmb() {
 }
 
 #[inline]
-pub unsafe fn with_user_memory_access<F>(f: F)
+pub unsafe fn with_user_memory_access<F, R>(f: F) -> R
 where
-    F: FnOnce(),
+    F: FnOnce() -> R,
 {
     // Allow supervisor access to user memory
     // Safety: register access
@@ -235,11 +235,13 @@ where
         sstatus::set_sum();
     }
 
-    f();
+    let r = f();
 
     // Disable supervisor access to user memory
     // Safety: register access
     unsafe {
         sstatus::clear_sum();
     }
+    
+    r
 }
