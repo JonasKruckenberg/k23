@@ -805,7 +805,6 @@ impl<'a> Batch<'a> {
         let mut virt = self.range.start;
         for (phys, len) in self.phys.drain(..) {
             // Safety: we have checked all the invariants
-            log::trace!("mapping contiguous {virt} => {phys}");
             unsafe {
                 self.arch_aspace.map_contiguous(
                     virt,
