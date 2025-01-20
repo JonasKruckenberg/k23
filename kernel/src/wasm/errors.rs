@@ -72,7 +72,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidWebAssembly { message, offset } => {
-                f.write_fmt(format_args!("invalid WASM input at {offset}: {message}"))
+                writeln!(f, "invalid WASM input at {offset}: {message}")
             }
             Self::MissingImport {
                 module,
@@ -85,28 +85,15 @@ impl fmt::Display for Error {
                     EntityType::Memory(_) => "memory",
                     EntityType::Global(_) => "global",
                 };
-                f.write_fmt(format_args!(
-                    "Missing required import {module}::{field} ({type_})"
-                ))
+                writeln!(f, "Missing required import {module}::{field} ({type_})")
             }
-            Self::Unsupported(feature) => f.write_fmt(format_args!(
-                "Feature used by the WebAssembly code is not supported: {feature}"
-            )),
-            Self::Cranelift { func_name, message } => f.write_fmt(format_args!(
-                "failed to compile function {func_name}: {message}"
-            )),
-            Self::Gimli(e) => {
-                f.write_fmt(format_args!("Failed to parse DWARF debug information: {e}"))
-            }
+            Self::Unsupported(feature) => writeln!(f, "Feature used by the WebAssembly code is not supported: {feature}"),
+            Self::Cranelift { func_name, message } => writeln!(f, "failed to compile function {func_name}: {message}"),
+            Self::Gimli(e) => writeln!(f, "Failed to parse DWARF debug information: {}", e),
             // Self::Wat(e) => f.write_fmt(format_args!("Failed to parse wat: {e}")),
-            Self::Trap { trap, message, .. } => {
-                f.write_fmt(format_args!("{message}. Reason {trap}"))?;
-                Ok(())
-            }
+            Self::Trap { trap, message, .. } => writeln!(f, "{message}. Reason {trap}"),
             Self::MmapFailed => f.write_str("Memory mapping failed"),
-            Self::AlreadyDefined { module, field } => {
-                f.write_fmt(format_args!("Name {module}::{field} is already defined"))
-            }
+            Self::AlreadyDefined { module, field } => writeln!(f, "Name {module}::{field} is already defined"),
         }
     }
 }
