@@ -7,7 +7,7 @@
 
 //! Supervisor Trap Vector Base Address Register
 
-use super::{read_csr_as, set};
+use super::{read_csr_as, set_csr};
 use core::fmt;
 use core::fmt::Formatter;
 
@@ -16,7 +16,7 @@ pub struct Stvec {
     bits: usize,
 }
 read_csr_as!(Stvec, 0x105);
-set!(0x105);
+set_csr!(0x105);
 
 pub unsafe fn write(base: usize, mode: Mode) {
     unsafe {

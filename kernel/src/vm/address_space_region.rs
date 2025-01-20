@@ -90,6 +90,66 @@ impl AddressSpaceRegion {
         Ok(())
     }
 
+    pub fn ensure_mapped(
+        self: Pin<&mut Self>,
+        batch: &mut Batch,
+        range: Range<VirtualAddress>,
+        will_write: bool,
+    ) -> Result<(), Error> {
+        let vmo_relative_range = Range {
+            start: range.start.checked_sub_addr(self.range.start).unwrap(),
+            end: range.end.checked_sub_addr(self.range.start).unwrap(),
+        };
+
+        match self.vmo.as_ref() {
+            Vmo::Wired(vmo) => {
+                let range_phys = vmo
+                    .lookup_contiguous(vmo_relative_range)
+                    .expect("contiguous lookup for wired VMOs should never fail");
+
+                batch.append(
+                    range.start,
+                    range_phys.start,
+                    range_phys.size(),
+                    self.permissions.into(),
+                )?;
+            }
+            Vmo::Paged(vmo) => {
+                if will_write {
+                    let mut vmo = vmo.write();
+
+                    for addr in range.iter().step_by(arch::PAGE_SIZE) {
+                        debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
+                        let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
+                        let frame = vmo.require_owned_frame(vmo_relative_offset)?;
+                        batch.append(
+                            addr,
+                            frame.addr(),
+                            arch::PAGE_SIZE,
+                            self.permissions.into(),
+                        )?;
+                    }
+                } else {
+                    let vmo = vmo.read();
+
+                    for addr in range.iter().step_by(arch::PAGE_SIZE) {
+                        debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
+                        let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
+                        let frame = vmo.require_read_frame(vmo_relative_offset)?;
+                        batch.append(
+                            addr,
+                            frame.addr(),
+                            arch::PAGE_SIZE,
+                            self.permissions.difference(Permissions::WRITE).into(),
+                        )?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn page_fault(
         self: Pin<&mut Self>,
         batch: &mut Batch,

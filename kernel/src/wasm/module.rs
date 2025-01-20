@@ -5,7 +5,7 @@ use crate::wasm::runtime::{code_registry, CodeMemory};
 use crate::wasm::runtime::{MmapVec, VMOffsets};
 use crate::wasm::translate::{Import, TranslatedModule};
 use crate::wasm::type_registry::RuntimeTypeCollection;
-use crate::wasm::{Engine, ModuleTranslator};
+use crate::wasm::{Engine, ModuleTranslator, Store};
 use alloc::sync::Arc;
 use core::mem;
 use cranelift_entity::PrimaryMap;
@@ -57,7 +57,7 @@ impl Module {
     #[expect(tail_expr_drop_order, reason = "")]
     pub fn from_bytes(
         engine: &Engine,
-        aspace: &mut AddressSpace,
+        store: &mut Store,
         validator: &mut Validator,
         bytes: &[u8],
     ) -> crate::wasm::Result<Self> {
@@ -77,10 +77,14 @@ impl Module {
         let type_collection = engine.type_registry().register_module_types(engine, types);
 
         log::debug!("Allocating new memory map...");
-        let vec = MmapVec::from_slice(aspace, &code)?;
-        let mut code = CodeMemory::new(vec, trap_offsets, traps);
-        code.publish(aspace)?;
-        let code = Arc::new(code);
+        let code = {
+            let mut aspace = store.alloc.0.lock();
+            let vec = MmapVec::from_slice(&mut aspace, &code)?;
+            let mut code = CodeMemory::new(vec, trap_offsets, traps);
+            code.publish(&mut aspace)?;
+            drop(aspace);
+            Arc::new(code)
+        };
 
         // register this code memory with the trap handler, so we can correctly unwind from traps
         code_registry::register_code(&code);

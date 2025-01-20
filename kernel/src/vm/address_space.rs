@@ -29,6 +29,7 @@ use rand_chacha::ChaCha20Rng;
 // const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();
 const VIRT_ALLOC_ENTROPY: u8 = 27;
 
+#[derive(Debug, Clone, Copy)]
 pub enum AddressSpaceKind {
     User,
     Kernel,
@@ -37,10 +38,10 @@ pub enum AddressSpaceKind {
 /// Represents the address space of a process (or the kernel).
 pub struct AddressSpace {
     /// A binary search tree of regions that make up this address space.
-    pub(super) regions: wavltree::WAVLTree<AddressSpaceRegion>,
+    pub(crate) regions: wavltree::WAVLTree<AddressSpaceRegion>,
     /// The hardware address space backing this "logical" address space that changes need to be
     /// materialized into in order to take effect.
-    pub(super) arch: arch::AddressSpace,
+    pub arch: arch::AddressSpace,
     /// The maximum range this address space can encompass.
     ///
     /// This is used to check new mappings against and speed up page fault handling.
@@ -78,6 +79,10 @@ impl AddressSpace {
             placeholder_vmo: None,
             kind: AddressSpaceKind::Kernel,
         }
+    }
+
+    pub fn kind(&self) -> AddressSpaceKind {
+        self.kind
     }
 
     /// Crate a new region in this address space.
@@ -356,7 +361,7 @@ impl AddressSpace {
     ///                         - replace old frame with new frame
     ///                      - update MMU page table
     pub fn page_fault(&mut self, addr: VirtualAddress, flags: PageFaultFlags) -> Result<(), Error> {
-        assert!(flags.is_valid());
+        assert!(flags.is_valid(), "invalid page fault flags {flags:?}");
 
         // make sure addr is even a valid address for this address space
         match self.kind {
@@ -461,6 +466,36 @@ impl AddressSpace {
         }
 
         Ok(region)
+    }
+
+    pub fn ensure_mapped(
+        &mut self,
+        range: Range<VirtualAddress>,
+        will_write: bool,
+    ) -> Result<(), Error> {
+        ensure!(
+            range.start.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedStart
+        );
+        ensure!(
+            range.end.is_aligned_to(arch::PAGE_SIZE),
+            Error::MisalignedEnd
+        );
+        ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
+
+        let mut batch = Batch::new(&mut self.arch);
+        let mut bytes_remaining = range.size();
+        let mut c = self.regions.find_mut(&range.start);
+        while bytes_remaining > 0 {
+            let region = c.get_mut().unwrap();
+            let clamped = range.clamp(region.range);
+            region.ensure_mapped(&mut batch, clamped, will_write)?;
+
+            bytes_remaining -= range.size();
+        }
+        batch.flush()?;
+
+        Ok(())
     }
 
     #[expect(clippy::unnecessary_wraps, reason = "TODO")]
@@ -594,8 +629,7 @@ impl AddressSpace {
 
         let mut candidate_spot_count = 0;
 
-        debug_assert!(!self.regions.is_empty());
-        // // if the tree is empty, treat max_range as the gap
+        // if the tree is empty, treat max_range as the gap
         if self.regions.is_empty() {
             let aligned_gap = self.max_range.checked_align_in(layout.align()).unwrap();
             let spot_count = spots_in_range(layout, aligned_gap);

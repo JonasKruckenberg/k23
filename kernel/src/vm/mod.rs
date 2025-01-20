@@ -13,28 +13,31 @@ mod error;
 pub mod flush;
 pub mod frame_alloc;
 mod frame_list;
-mod mmap;
 mod trap_handler;
+mod user_mmap;
 mod vmo;
 
 use crate::arch;
 use crate::machine_info::MachineInfo;
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
-pub use address::{PhysicalAddress, VirtualAddress};
+pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub use address_space::AddressSpace;
+pub use address_space::Batch;
 use alloc::format;
 use alloc::string::ToString;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
 pub use error::Error;
+pub use frame_list::FrameList;
 use loader_api::BootInfo;
-pub use mmap::MmapSlice;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::{LazyLock, Mutex, OnceLock};
 pub use trap_handler::trap_handler;
+pub use user_mmap::UserMmap;
+pub use vmo::Vmo;
 use xmas_elf::program::Type;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
@@ -71,17 +74,6 @@ pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
 
         Ok(Mutex::new(aspace))
     })?;
-
-    // let mut aspace = vm::AddressSpace::new_user(2, Some(ChaCha20Rng::from_seed(
-    //     minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
-    // ))).unwrap();
-    // unsafe { aspace.arch.activate(); }
-    // log::trace!("everything is fine?!");
-    //
-    // let layout = Layout::from_size_align(5 * arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap();
-    // let vmo = Vmo::new_paged(iter::repeat_n(THE_ZERO_FRAME.clone(), 5));
-    // let range = aspace.map(layout, vmo, 0, Permissions::READ | Permissions::WRITE, None).unwrap().range;
-    // log::trace!("{region:?}");
 
     Ok(())
 }
@@ -184,7 +176,7 @@ impl fmt::Display for PageFaultFlags {
 
 impl PageFaultFlags {
     pub fn is_valid(self) -> bool {
-        self.contains(PageFaultFlags::LOAD) != self.contains(PageFaultFlags::STORE)
+        !self.contains(PageFaultFlags::LOAD | PageFaultFlags::STORE)
     }
 
     pub fn cause_is_read(self) -> bool {
@@ -201,9 +193,14 @@ impl PageFaultFlags {
 bitflags::bitflags! {
     #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
     pub struct Permissions: u8 {
+        /// Allow reads from the memory region
         const READ = 1 << 0;
+        /// Allow writes to the memory region
         const WRITE = 1 << 1;
+        /// Allow code execution from the memory region
         const EXECUTE = 1 << 2;
+        /// Allow userspace to access the memory region
+        const USER = 1 << 3;
     }
 }
 

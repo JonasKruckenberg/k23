@@ -1,4 +1,4 @@
-use crate::vm::{AddressSpace, MmapSlice, KERNEL_ASPACE};
+use crate::vm::{AddressRangeExt, AddressSpace, UserMmap, VirtualAddress, KERNEL_ASPACE};
 use crate::wasm::compile::FunctionLoc;
 use crate::wasm::runtime::MmapVec;
 use crate::wasm::trap::Trap;
@@ -8,7 +8,7 @@ use core::range::Range;
 
 #[derive(Debug)]
 pub struct CodeMemory {
-    mmap: MmapSlice,
+    mmap: UserMmap,
     len: usize,
     published: bool,
 
@@ -46,15 +46,16 @@ impl CodeMemory {
     }
 
     #[inline]
-    pub fn text(&self) -> &[u8] {
-        // Safety: The constructor has to ensure that `self.len` is valid.
-        unsafe { self.mmap.slice(Range::from(0..self.len)) }
+    pub fn text_range(&self) -> Range<VirtualAddress> {
+        let start = self.mmap.range().start;
+
+        Range::from(start..start.checked_add(self.len).unwrap())
     }
 
     pub fn resolve_function_loc(&self, func_loc: FunctionLoc) -> usize {
         let text_range = {
-            let r = self.text().as_ptr_range();
-            r.start as usize..r.end as usize
+            let r = self.text_range();
+            r.start.get()..r.end.get()
         };
 
         let addr = text_range.start + func_loc.start as usize;

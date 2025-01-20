@@ -7,7 +7,7 @@
 
 //! sscratch register
 
-use crate::register::{read_csr_as_usize, set_csr_as_usize};
+use crate::register::{read_csr_as_usize, write_csr_as_usize};
 
 read_csr_as_usize!(0x140);
-set_csr_as_usize!(0x140);
+write_csr_as_usize!(0x140);

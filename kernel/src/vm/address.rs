@@ -225,6 +225,38 @@ macro_rules! address_impl {
                     .finish()
             }
         }
+
+        impl core::iter::Step for $addr {
+            fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+                core::iter::Step::steps_between(&start.0, &end.0)
+            }
+
+            fn forward_checked(start: Self, count: usize) -> Option<Self> {
+                core::iter::Step::forward_checked(start.0, count).map(Self)
+            }
+
+            fn forward(start: Self, count: usize) -> Self {
+                Self(core::iter::Step::forward(start.0, count))
+            }
+
+            unsafe fn forward_unchecked(start: Self, count: usize) -> Self {
+                // Safety: checked by the caller
+                Self(unsafe { core::iter::Step::forward_unchecked(start.0, count) })
+            }
+
+            fn backward_checked(start: Self, count: usize) -> Option<Self> {
+                core::iter::Step::backward_checked(start.0, count).map(Self)
+            }
+
+            fn backward(start: Self, count: usize) -> Self {
+                Self(core::iter::Step::backward(start.0, count))
+            }
+
+            unsafe fn backward_unchecked(start: Self, count: usize) -> Self {
+                // Safety: checked by the caller
+                Self(unsafe { core::iter::Step::backward_unchecked(start.0, count) })
+            }
+        }
     };
 }
 
@@ -290,6 +322,9 @@ macro_rules! address_range_impl {
             let a = Range::from(self.start..other.start);
             let b = Range::from(other.end..self.end);
             ((!a.is_empty()).then_some(a), (!b.is_empty()).then_some(b))
+        }
+        fn clamp(&self, range: Self) -> Self {
+            Range::from(self.start.max(range.start)..self.end.min(range.end))
         }
     };
 }
@@ -363,6 +398,7 @@ pub trait AddressRangeExt {
     fn difference(&self, other: Self) -> (Option<Self>, Option<Self>)
     where
         Self: Sized;
+    fn clamp(&self, range: Self) -> Self;
 }
 
 impl AddressRangeExt for Range<PhysicalAddress> {

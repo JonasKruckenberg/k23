@@ -7,7 +7,8 @@
 
 //! Supervisor Status Register
 
-use super::{clear, read_csr_as, set};
+use super::{clear_csr, read_csr_as, set_clear_csr_field, set_csr};
+use crate::set_csr_field;
 use core::fmt;
 use core::fmt::Formatter;
 
@@ -17,37 +18,35 @@ pub struct Sstatus {
     bits: usize,
 }
 
+set_csr!(0x100);
+clear_csr!(0x100);
+
 read_csr_as!(Sstatus, 0x100);
-set!(0x100);
-clear!(0x100);
-
-/// Supervisor Interrupt Enable
-pub unsafe fn set_sie() {
-    unsafe {
-        _set(1 << 1);
-    }
-}
-
-/// Supervisor Interrupt Enable
-pub unsafe fn clear_sie() {
-    unsafe {
-        _clear(1 << 1);
-    }
-}
-
-/// Supervisor Previous Interrupt Enable
-pub unsafe fn set_spie() {
-    unsafe {
-        _set(1 << 5);
-    }
-}
+set_clear_csr_field!(
+    /// User Interrupt Enable
+    , set_uie, clear_uie, 1 << 0_i32);
+set_clear_csr_field!(
+    /// Supervisor Interrupt Enable
+    , set_sie, clear_sie, 1 << 1_i32);
+set_csr_field!(
+    /// User Previous Interrupt Enable
+    , set_upie, 1 << 4_i32);
+set_csr_field!(
+    /// Supervisor Previous Interrupt Enable
+    , set_spie, 1 << 5_i32);
+set_clear_csr_field!(
+    /// Permit Supervisor User Memory access
+    , set_sum, clear_sum, 1 << 18_i32);
+set_clear_csr_field!(
+    /// Make eXecutable Readable
+    , set_mxr, clear_mxr, 1 << 19_i32);
 
 /// Supervisor Previous Privilege Mode
 #[inline]
 pub unsafe fn set_spp(spp: SPP) {
     match spp {
-        SPP::Supervisor => unsafe { _set(1 << 8) },
-        SPP::User => unsafe { _clear(1 << 8) },
+        SPP::Supervisor => unsafe { _set(1 << 8_i32) },
+        SPP::User => unsafe { _clear(1 << 8_i32) },
     }
 }
 
@@ -58,20 +57,6 @@ pub unsafe fn set_fs(fs: FS) {
     value |= (fs as usize) << 13_i32;
     unsafe {
         _set(value);
-    }
-}
-
-/// Permit Supervisor User Memory access
-pub unsafe fn set_sum() {
-    unsafe {
-        _set(1 << 18);
-    }
-}
-
-/// Permit Supervisor User Memory access
-pub unsafe fn clear_sum() {
-    unsafe {
-        _clear(1 << 18);
     }
 }
 

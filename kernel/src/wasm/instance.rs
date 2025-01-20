@@ -29,16 +29,13 @@ impl Instance {
     /// compatibility with the `module` being instantiated.
     pub(crate) unsafe fn new_unchecked(
         store: &mut Store,
-        alloc: &dyn InstanceAllocator,
-        aspace: &mut AddressSpace,
         const_eval: &mut ConstExprEvaluator,
         module: Module,
         imports: Imports,
     ) -> crate::wasm::Result<Self> {
         // Safety: caller has to ensure safety
-        let instance = unsafe {
-            runtime::Instance::new_unchecked(alloc, aspace, const_eval, module, imports)?
-        };
+        let instance =
+            unsafe { runtime::Instance::new_unchecked(store, const_eval, module, imports)? };
         let handle = store.push_instance(instance);
         Ok(Self(handle))
     }

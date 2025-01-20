@@ -8,6 +8,7 @@
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
 use crate::trap_handler::TrapReason;
+use crate::vm::VirtualAddress;
 use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Interrupt, Trap};
@@ -84,7 +85,7 @@ unsafe extern "C" fn default_trap_entry() {
     unsafe {
         naked_asm! {
             ".align 2",
-            // "mv t0, sp", // save the correct stack pointer
+
             "csrrw sp, sscratch, sp", // sp points to the TrapFrame
             "add sp, sp, -0x210",
 
@@ -251,12 +252,18 @@ fn default_trap_handler(
     a6: usize,
     a7: usize,
 ) -> *mut TrapFrame {
+    // Clear the SUM bit to prevent userspace memory access in case we interrupted the kernel
+    // Safety: register access
+    unsafe {
+        sstatus::clear_sum();
+    }
+
     let cause = scause::read().cause();
 
-    log::trace!("{:?}", sstatus::read());
     log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
     let epc = sepc::read();
     let tval = stval::read();
+    log::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
 
     let reason = match cause {
         Trap::Interrupt(Interrupt::SupervisorSoft | Interrupt::VirtualSupervisorSoft) => {
@@ -286,9 +293,9 @@ fn default_trap_handler(
     };
 
     crate::trap_handler::begin_trap(crate::trap_handler::Trap {
-        pc: epc,
-        fp: 0,
-        faulting_address: tval,
+        pc: VirtualAddress::new(epc).unwrap(),
+        fp: VirtualAddress::default(),
+        faulting_address: VirtualAddress::new(tval).unwrap(),
         reason,
     });
 

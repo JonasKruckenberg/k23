@@ -55,7 +55,7 @@ impl PagedVmo {
             let new_frame = self.frames.insert(at_offset, new_frame.clone());
             Ok(new_frame)
         } else {
-            todo!("TODO request bytes from source (later when we actually have sources)");
+            todo!("TODO request bytes from source (later when we actually have sources) requested_offset={at_offset};size={}", self.frames.size());
         }
     }
 
@@ -64,7 +64,7 @@ impl PagedVmo {
         if let Some(frame) = self.frames.get(at_offset) {
             Ok(frame)
         } else {
-            todo!("TODO request bytes from source (later when we actually have sources)");
+            todo!("TODO request bytes from source (later when we actually have sources) requested_offset={at_offset};size={}", self.frames.size());
         }
     }
 

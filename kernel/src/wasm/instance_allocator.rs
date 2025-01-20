@@ -3,25 +3,38 @@ use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::{InstanceAllocator, Memory, Table};
 use crate::wasm::runtime::{OwnedVMContext, VMOffsets};
 use crate::wasm::translate::{MemoryDesc, TableDesc, TranslatedModule};
+use core::fmt;
+use sync::Mutex;
 
 /// A placeholder allocator impl that just delegates to runtime types `new` methods.
-pub struct PlaceholderAllocatorDontUse;
+pub struct PlaceholderAllocatorDontUse(pub(super) Mutex<AddressSpace>);
+
+impl fmt::Debug for PlaceholderAllocatorDontUse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("PlaceholderAllocatorDontUse").finish()
+    }
+}
+
+impl Default for PlaceholderAllocatorDontUse {
+    fn default() -> Self {
+        Self(Mutex::new(AddressSpace::new_user(2, None).unwrap()))
+    }
+}
 
 impl InstanceAllocator for PlaceholderAllocatorDontUse {
     unsafe fn allocate_vmctx(
         &self,
-        aspace: &mut AddressSpace,
         _module: &TranslatedModule,
         plan: &VMOffsets,
     ) -> crate::wasm::Result<OwnedVMContext> {
-        OwnedVMContext::try_new(aspace, plan)
+        let mut aspace = self.0.lock();
+        OwnedVMContext::try_new(&mut aspace, plan)
     }
 
-    unsafe fn deallocate_vmctx(&self, _aspace: &mut AddressSpace, _vmctx: OwnedVMContext) {}
+    unsafe fn deallocate_vmctx(&self, _vmctx: OwnedVMContext) {}
 
     unsafe fn allocate_memory(
         &self,
-        aspace: &mut AddressSpace,
         _module: &TranslatedModule,
         memory_desc: &MemoryDesc,
         _memory_index: DefinedMemoryIndex,
@@ -51,20 +64,14 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
             .ok()
             .and_then(|m| usize::try_from(m).ok());
 
-        Memory::try_new(aspace, memory_desc, minimum, maximum)
+        let mut aspace = self.0.lock();
+        Memory::try_new(&mut aspace, memory_desc, minimum, maximum)
     }
 
-    unsafe fn deallocate_memory(
-        &self,
-        _aspace: &mut AddressSpace,
-        _memory_index: DefinedMemoryIndex,
-        _memory: Memory,
-    ) {
-    }
+    unsafe fn deallocate_memory(&self, _memory_index: DefinedMemoryIndex, _memory: Memory) {}
 
     unsafe fn allocate_table(
         &self,
-        aspace: &mut AddressSpace,
         _module: &TranslatedModule,
         table_desc: &TableDesc,
         _table_index: DefinedTableIndex,
@@ -74,14 +81,9 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         // memory consumption
         let maximum = table_desc.maximum.and_then(|m| usize::try_from(m).ok());
 
-        Table::try_new(aspace, table_desc, maximum)
+        let mut aspace = self.0.lock();
+        Table::try_new(&mut aspace, table_desc, maximum)
     }
 
-    unsafe fn deallocate_table(
-        &self,
-        _aspace: &mut AddressSpace,
-        _table_index: DefinedTableIndex,
-        _table: Table,
-    ) {
-    }
+    unsafe fn deallocate_table(&self, _table_index: DefinedTableIndex, _table: Table) {}
 }

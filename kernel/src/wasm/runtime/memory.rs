@@ -1,4 +1,4 @@
-use crate::vm::{AddressSpace, MmapSlice};
+use crate::vm::{AddressSpace, UserMmap};
 use crate::wasm::runtime::VMMemoryDefinition;
 use crate::wasm::translate::MemoryDesc;
 use crate::wasm::utils::round_usize_up_to_host_pages;
@@ -8,7 +8,7 @@ use core::range::Range;
 #[derive(Debug)]
 pub struct Memory {
     /// The underlying allocation backing this memory
-    mmap: MmapSlice,
+    mmap: UserMmap,
     /// The current length of this Wasm memory, in bytes.
     len: usize,
     /// The optional maximum accessible size, in bytes, for this linear memory.
@@ -24,8 +24,9 @@ pub struct Memory {
 }
 
 impl Memory {
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub fn try_new(
-        aspace: &mut AddressSpace,
+        _aspace: &mut AddressSpace,
         desc: &MemoryDesc,
         actual_minimum_bytes: usize,
         actual_maximum_bytes: Option<usize>,
@@ -34,12 +35,14 @@ impl Memory {
         // Ensure that our guard regions are multiples of the host page size.
         let offset_guard_bytes = round_usize_up_to_host_pages(offset_guard_bytes);
 
-        let bound_bytes = round_usize_up_to_host_pages(MEMORY_MAX);
-        let allocation_bytes = bound_bytes.min(actual_maximum_bytes.unwrap_or(usize::MAX));
-        let request_bytes = allocation_bytes + offset_guard_bytes;
+        // let bound_bytes = round_usize_up_to_host_pages(MEMORY_MAX);
+        // let allocation_bytes = bound_bytes.min(actual_maximum_bytes.unwrap_or(usize::MAX));
+        // let request_bytes = allocation_bytes + offset_guard_bytes;
+
+        // let mmap = UserMmap::new_zeroed(aspace, request_bytes, 2 * 1048576).map_err(|_| Error::MmapFailed)?;
 
         Ok(Self {
-            mmap: MmapSlice::new_zeroed(aspace, request_bytes).map_err(|_| Error::MmapFailed)?,
+            mmap: UserMmap::new_empty(),
             len: actual_minimum_bytes,
             maximum: actual_maximum_bytes,
             page_size_log2: desc.page_size_log2,
@@ -47,9 +50,11 @@ impl Memory {
         })
     }
 
-    pub(crate) fn as_slice_mut(&mut self) -> &mut [u8] {
-        // Safety: The constructor has to ensure that `self.len` is valid.
-        unsafe { self.mmap.slice_mut(Range::from(0..self.len)) }
+    pub fn with_user_slice_mut<F>(&mut self, aspace: &mut AddressSpace, range: Range<usize>, f: F)
+    where
+        F: FnOnce(&mut [u8]),
+    {
+        self.mmap.with_user_slice_mut(aspace, range, f).unwrap();
     }
 
     pub(crate) fn as_vmmemory_definition(&mut self) -> VMMemoryDefinition {

@@ -6,12 +6,12 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::longjmp;
+use crate::vm::VirtualAddress;
 use crate::{arch, vm};
 use core::cell::Cell;
 use core::fmt::Write;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::ControlFlow;
-use core::panic::UnwindSafe;
 use core::ptr;
 use core::ptr::addr_of_mut;
 use thread_local::thread_local;
@@ -23,9 +23,9 @@ thread_local! {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Trap {
-    pub pc: usize,
-    pub fp: usize,
-    pub faulting_address: usize,
+    pub pc: VirtualAddress,
+    pub fp: VirtualAddress,
+    pub faulting_address: VirtualAddress,
     pub reason: TrapReason,
 }
 
@@ -103,18 +103,10 @@ pub fn resume_trap(trap: Trap) -> ! {
 /// result if the closure didn't trigger a trap, and will return `Err(trap)` if it did. The `trap` object
 /// holds further information about the traps instruction pointer, faulting address and trap reason.
 ///
-/// # `UnwindSafe`
-///
-/// This function borrows the [`UnwindSafe`] trait bound from [`catch_unwind`][1] for the same reasons.
-/// A hardware trap might happen while a data structure is in a temporarily invalid state (i.e. during
-/// mutation) and continuing to access such data would lead to hard to debug bugs. If in the future we
-/// determine the restrictions implied by `UnwindSafe` aren't enough for the purposes of
-/// signal safety we can introduce a new trait.
-///
 /// [1]: [crate::panic::catch_unwind]
 pub fn catch_traps<F, R>(f: F) -> Result<R, Trap>
 where
-    F: FnOnce() -> R + UnwindSafe,
+    F: FnOnce() -> R,
 {
     union Data<R> {
         // when the closure completed successfully, this will hold the return
@@ -160,8 +152,13 @@ where
     }
 }
 
-fn fault_resume_panic(reason: TrapReason, pc: usize, fp: usize, faulting_address: usize) -> ! {
-    panic!("UNCAUGHT KERNEL TRAP {reason:?} pc={pc:#x};fp={fp:#x};faulting_address={faulting_address:#x};");
+fn fault_resume_panic(
+    reason: TrapReason,
+    pc: VirtualAddress,
+    fp: VirtualAddress,
+    faulting_address: VirtualAddress,
+) -> ! {
+    panic!("UNCAUGHT KERNEL TRAP {reason:?} pc={pc};fp={fp};faulting_address={faulting_address};");
 }
 
 /// Begins processing a trap.

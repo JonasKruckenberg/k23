@@ -1,3 +1,4 @@
+use crate::vm::VirtualAddress;
 use crate::wasm::backtrace::RawWasmBacktrace;
 use crate::wasm::translate::EntityType;
 use crate::wasm::trap::Trap;
@@ -47,9 +48,9 @@ pub enum Error {
     /// A WebAssembly trap occurred.
     Trap {
         /// The program counter where this trap originated.
-        pc: usize,
+        pc: VirtualAddress,
         /// The address of the inaccessible data or zero if trap wasn't caused by data access.
-        faulting_addr: usize,
+        faulting_addr: VirtualAddress,
         /// The trap that occurred.
         trap: Trap,
         /// A human-readable description of the trap.

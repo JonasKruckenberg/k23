@@ -8,6 +8,7 @@ use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
 use crate::wasm::{runtime, Error, Store, MAX_WASM_STACK};
 use alloc::string::ToString;
+use core::arch::asm;
 use core::ffi::c_void;
 use core::mem;
 
@@ -66,7 +67,9 @@ impl Func {
         // do the actual call
         // Safety: caller has to ensure safety
         unsafe {
-            self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)?;
+            arch::with_user_memory_access(|| {
+                self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)
+            })?;
         }
 
         // copy the results out of the storage
@@ -100,18 +103,31 @@ impl Func {
         if let Err(trap) = crate::trap_handler::catch_traps(|| {
             // Safety: caller has to ensure safety
             unsafe {
-                (func_ref.array_call)(vmctx, vmctx, args_results_ptr, args_results_len);
+                riscv::sstatus::set_spp(riscv::sstatus::SPP::User);
+                riscv::sepc::set(func_ref.array_call as usize);
+                asm! {
+                    "sret",
+                    in("a0") vmctx,
+                    in("a1") vmctx,
+                    in("a2") args_results_ptr,
+                    in("a3") args_results_len,
+                    options(noreturn)
+                }
             }
         }) {
             // construct wasm trap
 
-            let (code, text_offset) = code_registry::lookup_code(trap.pc).unwrap();
+            let (code, text_offset) = code_registry::lookup_code(trap.pc.get()).unwrap();
+            log::trace!(
+                "Trap at offset: pc={};text_offset={text_offset:#x}",
+                trap.pc
+            );
             let trap_code = code.lookup_trap_code(text_offset).unwrap();
 
             let backtrace = RawWasmBacktrace::new_with_vmctx(
                 vmctx,
                 &module.offsets().static_,
-                Some((trap.pc, trap.fp)),
+                Some((trap.pc.get(), trap.fp.get())),
             );
 
             return Err(Error::Trap {

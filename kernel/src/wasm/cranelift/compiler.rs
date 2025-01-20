@@ -9,7 +9,7 @@ use crate::wasm::runtime::{StaticVMOffsets, VMCONTEXT_MAGIC};
 use crate::wasm::translate::{
     FunctionBodyData, ModuleTranslation, ModuleTypes, WasmFuncType, WasmValType,
 };
-use crate::wasm::trap::TRAP_INTERNAL_ASSERT;
+use crate::wasm::trap::{TRAP_EXIT, TRAP_INTERNAL_ASSERT};
 use crate::wasm::utils::{array_call_signature, value_type, wasm_call_signature};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -191,7 +191,8 @@ impl Compiler for CraneliftCompiler {
             values_vec_len,
         );
 
-        builder.ins().return_(&[]);
+        builder.ins().trap(TRAP_EXIT);
+        // builder.ins().return_(&[]);
         builder.finalize();
 
         compiler.finish(None)
