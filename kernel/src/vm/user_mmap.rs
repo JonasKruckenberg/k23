@@ -228,7 +228,7 @@ impl UserMmap {
         Ok(())
     }
 
-    fn ensure_mapped(
+    pub fn ensure_mapped(
         &self,
         aspace: &mut AddressSpace,
         range: Range<usize>,

@@ -32,6 +32,7 @@ mod time;
 mod trap_handler;
 mod vm;
 mod wasm;
+mod fiber;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};

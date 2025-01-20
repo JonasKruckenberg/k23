@@ -75,6 +75,32 @@ where
     })
 }
 
+/// Triggers a panic without invoking the panic hook.
+pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
+    panic_count::increase(false);
+
+    struct RewrapBox(Box<dyn Any + Send>);
+
+    unsafe impl PanicPayload for RewrapBox {
+        fn take_box(&mut self) -> *mut (dyn Any + Send) {
+            Box::into_raw(mem::replace(&mut self.0, Box::new(())))
+        }
+
+        fn get(&mut self) -> &(dyn Any + Send) {
+            &*self.0
+        }
+    }
+
+    impl fmt::Display for RewrapBox {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str(payload_as_str(&self.0))
+        }
+    }
+
+    #[expect(tail_expr_drop_order, reason = "")]
+    rust_panic(unsafe { Box::from_raw(RewrapBox(payload).take_box()) })
+}
+
 /// Entry point for panics from the `core` crate.
 #[panic_handler]
 fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
@@ -225,6 +251,16 @@ fn construct_panic_payload(info: &core::panic::PanicInfo) -> Box<dyn Any + Send>
                 .take_box(),
             )
         }
+    }
+}
+
+fn payload_as_str(payload: &dyn Any) -> &str {
+    if let Some(&s) = payload.downcast_ref::<&'static str>() {
+        s
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.as_str()
+    } else {
+        "Box<dyn Any>"
     }
 }
 
