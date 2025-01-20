@@ -252,15 +252,15 @@ fn default_trap_handler(
     a6: usize,
     a7: usize,
 ) -> *mut TrapFrame {
+    let cause = scause::read().cause();
+    log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
+
     // Clear the SUM bit to prevent userspace memory access in case we interrupted the kernel
     // Safety: register access
     unsafe {
         sstatus::clear_sum();
     }
 
-    let cause = scause::read().cause();
-
-    log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
     let epc = sepc::read();
     let tval = stval::read();
     log::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
@@ -294,7 +294,7 @@ fn default_trap_handler(
 
     crate::trap_handler::begin_trap(crate::trap_handler::Trap {
         pc: VirtualAddress::new(epc).unwrap(),
-        fp: VirtualAddress::default(),
+        fp: VirtualAddress::new(unsafe { (&*raw_frame).gp[8] }).unwrap(),
         faulting_address: VirtualAddress::new(tval).unwrap(),
         reason,
     });

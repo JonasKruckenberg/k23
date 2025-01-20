@@ -66,6 +66,7 @@ pub enum Error {
         /// The defined field name.
         field: String,
     },
+    FutureDropped,
 }
 
 impl fmt::Display for Error {
@@ -107,6 +108,7 @@ impl fmt::Display for Error {
             Self::AlreadyDefined { module, field } => {
                 f.write_fmt(format_args!("Name {module}::{field} is already defined"))
             }
+            Self::FutureDropped => f.write_str("Fiber future dropped"),
         }
     }
 }

@@ -1,9 +1,14 @@
+use crate::arch;
+use crate::fiber::Fiber;
 use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 use crate::wasm::runtime::{VMContext, VMOpaqueContext, VMVal};
-use crate::wasm::{runtime, Engine};
+use crate::wasm::{runtime, Engine, Error, InstanceAllocator};
 use alloc::vec::Vec;
+use core::future::Future;
 use core::marker::PhantomData;
-use core::{fmt, mem};
+use core::pin::Pin;
+use core::task::{Context, Poll};
+use core::{fmt, mem, ptr};
 use hashbrown::HashMap;
 
 /// A store owns WebAssembly instances and their associated data (tables, memories, globals and functions).
@@ -111,6 +116,163 @@ impl Store {
         let index = self.exported_globals.len();
         self.exported_globals.push(global);
         Stored::new(index)
+    }
+
+    pub(super) async fn on_fiber<F, R>(&mut self, f: F) -> crate::wasm::Result<R>
+    where
+        F: FnOnce(&mut Store) -> R + Send,
+    {
+        let stack = self.alloc.allocate_fiber_stack()?;
+        let mut slot = None;
+        let mut current_poll_cx = PollContext::default();
+        let this = &mut *self;
+
+        let fiber = Fiber::new(stack, |keep_going, _suspend| {
+            // First check and see if we were interrupted/dropped, and only
+            // continue if we haven't been.
+            keep_going?;
+
+            // Configure our store's suspension context for the rest of the
+            // execution of this fiber. Note that a raw pointer is stored here
+            // which is only valid for the duration of this closure.
+            // Consequently, we at least replace it with the previous value when
+            // we're done. This reset is also required for correctness because
+            // otherwise our value will overwrite another active fiber's value.
+            // There should be a test that segfaults in `async_functions.rs` if
+            // this `Replace` is removed.
+            // let _reset = Reset(current_suspend, *current_suspend);
+            // *current_suspend = suspend;
+
+            slot = Some(f(this));
+
+            Ok(())
+        })?;
+
+        // Once we have the fiber representing our synchronous computation, we
+        // wrap that in a custom future implementation which does the
+        // translation from the future protocol to our fiber API.
+        let mut future = FiberFuture {
+            fiber: Some(fiber),
+            current_poll_cx: ptr::from_mut(&mut current_poll_cx),
+            // alloc: &mut self.alloc,
+            // engine,
+            // state: Some(crate::runtime::vm::AsyncWasmCallState::new()),
+        };
+        (&mut future).await?;
+        let stack = future.fiber.take().map(|f| f.into_stack());
+        drop(future);
+        if let Some(stack) = stack {
+            unsafe {
+                self.alloc.deallocate_fiber_stack(stack);
+            }
+        }
+
+        return Ok(slot.unwrap());
+
+        struct PollContext {
+            future_context: *mut Context<'static>,
+            // guard_range_start: *mut u8,
+            // guard_range_end: *mut u8,
+        }
+
+        impl Default for PollContext {
+            fn default() -> PollContext {
+                PollContext {
+                    future_context: ptr::null_mut(),
+                    // guard_range_start: core::ptr::null_mut(),
+                    // guard_range_end: core::ptr::null_mut(),
+                }
+            }
+        }
+
+        struct FiberFuture<'a> {
+            fiber: Option<Fiber<'a, crate::wasm::Result<()>, (), crate::wasm::Result<()>>>,
+            current_poll_cx: *mut PollContext,
+        }
+
+        unsafe impl Send for FiberFuture<'_> {}
+
+        impl FiberFuture<'_> {
+            fn fiber(&self) -> &Fiber<'_, crate::wasm::Result<()>, (), crate::wasm::Result<()>> {
+                self.fiber.as_ref().unwrap()
+            }
+
+            fn resume(
+                &mut self,
+                val: crate::wasm::Result<()>,
+            ) -> Result<crate::wasm::Result<()>, ()> {
+                self.fiber().resume(val)
+            }
+        }
+
+        impl Future for FiberFuture<'_> {
+            type Output = crate::wasm::Result<()>;
+
+            fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+                // We need to carry over this `cx` into our fiber's runtime
+                // for when it tries to poll sub-futures that are created. Doing
+                // this must be done unsafely, however, since `cx` is only alive
+                // for this one singular function call. Here we do a `transmute`
+                // to extend the lifetime of `Context` so it can be stored in
+                // our `Store`, and then we replace the current polling context
+                // with this one.
+                //
+                // Note that the replace is done for weird situations where
+                // futures might be switching contexts and there's multiple
+                // wasmtime futures in a chain of futures.
+                //
+                // On exit from this function, though, we reset the polling
+                // context back to what it was to signify that `Store` no longer
+                // has access to this pointer.
+                // let guard = self
+                //     .fiber()
+                //     .stack()
+                //     .guard_range()
+                //     .unwrap_or(core::ptr::null_mut()..core::ptr::null_mut());
+                unsafe {
+                    // let _reset = Reset(self.current_poll_cx, *self.current_poll_cx);
+                    *self.current_poll_cx = PollContext {
+                        future_context: mem::transmute::<&mut Context<'_>, *mut Context<'static>>(
+                            cx,
+                        ),
+                        // guard_range_start: guard.start,
+                        // guard_range_end: guard.end,
+                    };
+
+                    // After that's set up we resume execution of the fiber, which
+                    // may also start the fiber for the first time. This either
+                    // returns `Ok` saying the fiber finished (yay!) or it
+                    // returns `Err` with the payload passed to `suspend`, which
+                    // in our case is `()`.
+                    match self.resume(Ok(())) {
+                        Ok(result) => Poll::Ready(result),
+
+                        // If `Err` is returned that means the fiber polled a
+                        // future but it said "Pending", so we propagate that
+                        // here.
+                        //
+                        // An additional safety check is performed when leaving
+                        // this function to help bolster the guarantees of
+                        // `unsafe impl Send` above. Notably this future may get
+                        // re-polled on a different thread. Wasmtime's
+                        // thread-local state points to the stack, however,
+                        // meaning that it would be incorrect to leave a pointer
+                        // in TLS when this function returns. This function
+                        // performs a runtime assert to verify that this is the
+                        // case, notably that the one TLS pointer Wasmtime uses
+                        // is not pointing anywhere within the stack. If it is
+                        // then that's a bug indicating that TLS management in
+                        // Wasmtime is incorrect.
+                        Err(()) => {
+                            // if let Some(range) = self.fiber().stack().range() {
+                            // crate::runtime::vm::AsyncWasmCallState::assert_current_state_not_in_range(range);
+                            // }
+                            Poll::Pending
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
