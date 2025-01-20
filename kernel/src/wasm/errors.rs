@@ -87,13 +87,20 @@ impl fmt::Display for Error {
                 };
                 writeln!(f, "Missing required import {module}::{field} ({type_})")
             }
-            Self::Unsupported(feature) => writeln!(f, "Feature used by the WebAssembly code is not supported: {feature}"),
-            Self::Cranelift { func_name, message } => writeln!(f, "failed to compile function {func_name}: {message}"),
+            Self::Unsupported(feature) => writeln!(
+                f,
+                "Feature used by the WebAssembly code is not supported: {feature}"
+            ),
+            Self::Cranelift { func_name, message } => {
+                writeln!(f, "failed to compile function {func_name}: {message}")
+            }
             Self::Gimli(e) => writeln!(f, "Failed to parse DWARF debug information: {}", e),
             // Self::Wat(e) => f.write_fmt(format_args!("Failed to parse wat: {e}")),
             Self::Trap { trap, message, .. } => writeln!(f, "{message}. Reason {trap}"),
             Self::MmapFailed => f.write_str("Memory mapping failed"),
-            Self::AlreadyDefined { module, field } => writeln!(f, "Name {module}::{field} is already defined"),
+            Self::AlreadyDefined { module, field } => {
+                writeln!(f, "Name {module}::{field} is already defined")
+            }
         }
     }
 }
