@@ -252,6 +252,9 @@ fn default_trap_handler(
     a6: usize,
     a7: usize,
 ) -> *mut TrapFrame {
+    // Safety: `default_trap_entry` has to correctly set up the stack frame
+    let frame = unsafe { &*raw_frame };
+
     let cause = scause::read().cause();
     log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
 
@@ -294,7 +297,7 @@ fn default_trap_handler(
 
     crate::trap_handler::begin_trap(crate::trap_handler::Trap {
         pc: VirtualAddress::new(epc).unwrap(),
-        fp: VirtualAddress::new(unsafe { (&*raw_frame).gp[8] }).unwrap(),
+        fp: VirtualAddress::new(frame.gp[8]).unwrap(),
         faulting_address: VirtualAddress::new(tval).unwrap(),
         reason,
     });

@@ -146,7 +146,7 @@ impl Store {
             slot = Some(f(this));
 
             Ok(())
-        })?;
+        });
 
         // Once we have the fiber representing our synchronous computation, we
         // wrap that in a custom future implementation which does the
@@ -162,6 +162,7 @@ impl Store {
         let stack = future.fiber.take().map(|f| f.into_stack());
         drop(future);
         if let Some(stack) = stack {
+            // Safety: we're deallocating the stack in the same store it was allocated in
             unsafe {
                 self.alloc.deallocate_fiber_stack(stack);
             }
@@ -190,6 +191,7 @@ impl Store {
             current_poll_cx: *mut PollContext,
         }
 
+        // Safety: TODO
         unsafe impl Send for FiberFuture<'_> {}
 
         impl FiberFuture<'_> {
@@ -229,6 +231,7 @@ impl Store {
                 //     .stack()
                 //     .guard_range()
                 //     .unwrap_or(core::ptr::null_mut()..core::ptr::null_mut());
+                // Safety: TODO
                 unsafe {
                     // let _reset = Reset(self.current_poll_cx, *self.current_poll_cx);
                     *self.current_poll_cx = PollContext {

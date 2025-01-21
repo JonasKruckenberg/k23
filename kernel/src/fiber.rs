@@ -1,11 +1,12 @@
 use crate::arch;
-use crate::vm::{AddressSpace, UserMmap, KERNEL_ASPACE};
+use crate::vm::{AddressSpace, UserMmap};
 use alloc::boxed::Box;
-use alloc::rc::Rc;
 use core::arch::naked_asm;
 use core::cell::Cell;
 use core::marker::PhantomData;
 use core::panic::AssertUnwindSafe;
+use core::ptr;
+use core::ptr::addr_of_mut;
 use core::range::Range;
 
 pub struct FiberStack(UserMmap);
@@ -19,6 +20,7 @@ impl FiberStack {
     }
 
     pub fn top(&self) -> *mut u8 {
+        // Safety: UserMmap guarantees the base pointer and length are valid
         unsafe { self.0.as_ptr().cast_mut().byte_add(self.0.len()) }
     }
 }
@@ -48,33 +50,41 @@ impl<'a, Resume, Yield, Return> Fiber<'a, Resume, Yield, Return> {
     /// This function returns a `Fiber` which, when resumed, will execute `func`
     /// to completion. When desired the `func` can suspend itself via
     /// `Fiber::suspend`.
-    pub fn new<F>(stack: FiberStack, func: F) -> crate::wasm::Result<Self>
+    pub fn new<F>(stack: FiberStack, mut f: F) -> Self
     where
         F: FnOnce(Resume, &mut Suspend<Resume, Yield, Return>) -> Return + 'a,
     {
-        extern "C" fn fiber_start<F, A, B, C>(arg0: *mut u8, top_of_stack: *mut u8)
-        where
-            F: FnOnce(A, &mut Suspend<A, B, C>) -> C,
+        extern "C" fn fiber_start<F, Resume, Yield, Return>(
+            closure_ptr: *mut u8,
+            top_of_stack: *mut u8,
+        ) where
+            F: FnOnce(Resume, &mut Suspend<Resume, Yield, Return>) -> Return,
         {
             let mut suspend = Suspend {
                 top_of_stack,
                 _phantom: PhantomData,
             };
-            suspend.execute(unsafe { Box::from_raw(arg0.cast::<F>()) });
+
+            // Safety: code below & generics ensure the ptr is a valid `F` ptr
+            suspend.execute(unsafe { closure_ptr.cast::<F>().read() });
         }
 
+        let closure_ptr = addr_of_mut!(f);
+
+        // Safety: TODO
         unsafe {
-            let data = Box::into_raw(Box::new(func)).cast();
-
-            fiber_init(stack.top(), fiber_start::<F, Resume, Yield, Return>, data);
+            fiber_init(
+                stack.top(),
+                fiber_start::<F, Resume, Yield, Return>,
+                closure_ptr.cast(),
+            );
         }
 
-        #[expect(tail_expr_drop_order, reason = "")]
-        Ok(Self {
+        Self {
             stack: Some(stack),
             done: Cell::new(false),
             _phantom: PhantomData,
-        })
+        }
     }
 
     /// Resumes execution of this fiber.
@@ -96,11 +106,18 @@ impl<'a, Resume, Yield, Return> Fiber<'a, Resume, Yield, Return> {
         assert!(!self.done.replace(true), "cannot resume a finished fiber");
         let result = Cell::new(RunResult::Resuming(val));
 
+        // Safety: TODO
         unsafe {
+            debug_assert!(
+                self.stack.as_ref().unwrap().top().addr() % 16 == 0,
+                "stack needs to be 16-byte aligned"
+            );
+
             // Store where our result is going at the very tip-top of the
             // stack, otherwise known as our reserved slot for this information.
             //
             // In the diagram above this is updating address 0xAff8
+            #[expect(clippy::cast_ptr_alignment, reason = "checked above")]
             let addr = self
                 .stack
                 .as_ref()
@@ -108,7 +125,7 @@ impl<'a, Resume, Yield, Return> Fiber<'a, Resume, Yield, Return> {
                 .top()
                 .cast::<usize>()
                 .offset(-1);
-            addr.write(&result as *const _ as usize);
+            addr.write(ptr::from_ref(&result) as usize);
 
             fiber_switch(self.stack.as_ref().unwrap().top());
 
@@ -163,6 +180,7 @@ impl<Resume, Yield, Return> Suspend<Resume, Yield, Return> {
     }
 
     fn switch(&mut self, result: RunResult<Resume, Yield, Return>) -> Resume {
+        // Safety: TODO
         unsafe {
             // Calculate 0xAff8 and then write to it
             (*self.result_location()).set(result);
@@ -173,6 +191,7 @@ impl<Resume, Yield, Return> Suspend<Resume, Yield, Return> {
     }
 
     unsafe fn take_resume(&self) -> Resume {
+        // Safety: TODO
         let prev = unsafe { (*self.result_location()).replace(RunResult::Executing) };
         match prev {
             RunResult::Resuming(val) => val,
@@ -181,6 +200,8 @@ impl<Resume, Yield, Return> Suspend<Resume, Yield, Return> {
     }
 
     unsafe fn result_location(&self) -> *const Cell<RunResult<Resume, Yield, Return>> {
+        #[expect(clippy::cast_ptr_alignment, reason = "checked above")]
+        // Safety: TODO
         let ret = unsafe { self.top_of_stack.cast::<*const u8>().offset(-1).read() };
         assert!(!ret.is_null());
         ret.cast()
@@ -190,6 +211,7 @@ impl<Resume, Yield, Return> Suspend<Resume, Yield, Return> {
     where
         F: FnOnce(Resume, &mut Suspend<Resume, Yield, Return>) -> Return,
     {
+        // Safety: TODO
         let initial = unsafe { self.take_resume() };
 
         let result = crate::panic::catch_unwind(AssertUnwindSafe(|| (func)(initial, self)));
@@ -208,6 +230,7 @@ impl<A, B, C> Drop for Fiber<'_, A, B, C> {
 
 #[naked]
 unsafe extern "C" fn fiber_switch(top_of_stack: *mut u8) {
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             // We're switching to arbitrary code somewhere else, so pessimistically
@@ -286,6 +309,7 @@ unsafe extern "C" fn fiber_init(
     entry: extern "C" fn(*mut u8, *mut u8),
     entry_arg0: *mut u8,
 ) {
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             "lla t0, {fiber_start}",
@@ -305,6 +329,7 @@ unsafe extern "C" fn fiber_init(
 
 #[naked]
 unsafe extern "C" fn fiber_start() {
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             "

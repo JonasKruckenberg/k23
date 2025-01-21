@@ -81,6 +81,7 @@ pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
 
     struct RewrapBox(Box<dyn Any + Send>);
 
+    // Safety: TODO
     unsafe impl PanicPayload for RewrapBox {
         fn take_box(&mut self) -> *mut (dyn Any + Send) {
             Box::into_raw(mem::replace(&mut self.0, Box::new(())))
@@ -98,6 +99,7 @@ pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
     }
 
     #[expect(tail_expr_drop_order, reason = "")]
+    // Safety: take_box returns an unwrapped box
     rust_panic(unsafe { Box::from_raw(RewrapBox(payload).take_box()) })
 }
 

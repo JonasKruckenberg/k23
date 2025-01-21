@@ -1,6 +1,7 @@
+use crate::fiber::FiberStack;
 use crate::vm::AddressSpace;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
-use crate::wasm::runtime::{FiberStack, InstanceAllocator, Memory, Table};
+use crate::wasm::runtime::{InstanceAllocator, Memory, Table};
 use crate::wasm::runtime::{OwnedVMContext, VMOffsets};
 use crate::wasm::translate::{MemoryDesc, TableDesc, TranslatedModule};
 use core::fmt;

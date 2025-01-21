@@ -23,6 +23,7 @@ extern crate alloc;
 mod allocator;
 mod arch;
 mod error;
+mod fiber;
 mod logger;
 mod machine_info;
 mod metrics;
@@ -32,7 +33,6 @@ mod time;
 mod trap_handler;
 mod vm;
 mod wasm;
-mod fiber;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
