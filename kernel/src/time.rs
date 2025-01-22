@@ -328,7 +328,7 @@ pub unsafe fn sleep(duration: Duration) {
     riscv::sbi::time::set_timer(riscv::time::read64() + duration_to_ticks(duration, timebase_freq))
         .unwrap();
 
-    arch::wait_for_interrupt();
+    arch::park_hart();
 }
 
 // #[cfg(test)]

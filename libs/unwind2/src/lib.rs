@@ -42,21 +42,25 @@ pub use error::Error;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FramesIter};
 
+pub use arch::Context;
+
 pub(crate) type Result<T> = core::result::Result<T, Error>;
 
 /// # Errors
 ///
 /// Returns an error if unwinding fails.
 pub fn begin_panic(data: Box<dyn Any + Send>) -> Result<()> {
-    with_context(|ctx| {
-        raise_exception_phase_1(ctx.clone())?;
-
-        raise_exception_phase2(ctx.clone(), Exception::wrap(data))?;
-
-        Ok(())
-    })
+    with_context(|ctx| unwind(ctx, data))
 }
 
+pub fn unwind(ctx: arch::Context, data: Box<dyn Any + Send>) -> Result<()> {
+    raise_exception_phase_1(ctx.clone())?;
+
+    raise_exception_phase2(ctx.clone(), Exception::wrap(data))?;
+
+    Ok(())
+}
+ 
 fn raise_exception_phase_1(ctx: arch::Context) -> Result<usize> {
     let mut frames = FramesIter::from_context(ctx);
 

@@ -185,8 +185,7 @@ pub fn get_stack_pointer() -> usize {
     stack_pointer
 }
 
-/// Suspend the calling hart until an interrupt is received.
-pub fn wait_for_interrupt() {
+pub(crate) fn park_hart() {
     // Safety: inline assembly
     unsafe { asm!("wfi") }
 }

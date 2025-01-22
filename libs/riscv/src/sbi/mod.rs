@@ -20,10 +20,11 @@ mod error;
 pub mod hsm;
 pub mod rfence;
 pub mod time;
+pub mod ipi;
 
 const EID_BASE: usize = 0x10;
-const EID_TIME: usize = 0x735049;
-const EID_IPI: usize = 0x735_049;
+const EID_TIME: usize = 0x54494D45;
+const EID_IPI: usize = 0x735049;
 const EID_RFNC: usize = 0x52464E43;
 const EID_HSM: usize = 0x48534D;
 const EID_SRST: usize = 0x53525354;

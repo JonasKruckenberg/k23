@@ -1,4 +1,5 @@
 use crate::arch;
+use crate::trap_handler::TrapMask;
 use crate::wasm::backtrace::RawWasmBacktrace;
 use crate::wasm::indices::VMSharedTypeIndex;
 use crate::wasm::runtime::{code_registry, StaticVMOffsets, VMContext, VMFunctionImport, VMVal};
@@ -100,7 +101,7 @@ impl Func {
 
         let _guard = enter_wasm(vmctx, &module.offsets().static_);
 
-        if let Err(trap) = crate::trap_handler::catch_traps(|| {
+        if let Err(trap) = crate::trap_handler::catch_traps(TrapMask::all(), || {
             // Safety: caller has to ensure safety
             unsafe {
                 riscv::sstatus::set_spp(riscv::sstatus::SPP::User);

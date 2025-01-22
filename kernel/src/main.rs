@@ -15,6 +15,7 @@
 #![expect(internal_features, reason = "panic internals")]
 #![feature(std_internals, panic_can_unwind, fmt_internals)]
 #![feature(step_trait)]
+#![feature(box_into_inner)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 #![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
@@ -32,6 +33,7 @@ mod time;
 mod trap_handler;
 mod vm;
 mod wasm;
+mod scheduler2;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
@@ -39,11 +41,11 @@ use crate::time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use core::alloc::Layout;
-use core::cell::RefCell;
+use core::cell::{RefCell};
 use core::range::Range;
 use core::{cmp, slice};
 use loader_api::{BootInfo, MemoryRegionKind, TlsTemplate};
-use sync::OnceLock;
+use sync::{LazyLock, OnceLock};
 use thread_local::thread_local;
 use vm::frame_alloc;
 use vm::{PhysicalAddress, VirtualAddress};
@@ -132,6 +134,12 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
+    
+    static SCHEDULER: OnceLock<scheduler2::scheduler::Handle> = OnceLock::new();
+    let sched = SCHEDULER.get_or_init(|| scheduler2::scheduler::create(1));
+    
+    scheduler2::scheduler::worker::run(0, sched);
+    
     // wasm::test();
 
     // - [all][global] parse cmdline
