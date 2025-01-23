@@ -605,6 +605,14 @@ impl<T: Linked> MpscQueue<T> {
     }
 
     #[inline]
+    pub fn enqueue_many<I>(&self, iter: I)
+    where
+        I: Iterator<Item = T::Handle>,
+    {
+        iter.for_each(|elem| self.enqueue(elem));
+    }
+
+    #[inline]
     fn enqueue_inner(&self, ptr: NonNull<T>) {
         unsafe { links(ptr).next.store(ptr::null_mut(), Ordering::Relaxed) };
 
