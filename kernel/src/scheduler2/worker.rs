@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::scheduler2::fast_rand::FastRand;
 use crate::scheduler2::queue::Overflow;
 use crate::scheduler2::task::{JoinHandle, OwnedTasks, TaskRef};
 use crate::scheduler2::{queue, task};
@@ -21,7 +22,7 @@ pub struct Handle {
 }
 
 impl Handle {
-    pub fn new(num_cores: usize) -> Self {
+    pub fn new(num_cores: usize, rand: &mut impl rand::RngCore) -> Self {
         let mut cores = Vec::with_capacity(num_cores);
         let mut remotes = Vec::with_capacity(num_cores);
 
@@ -33,6 +34,7 @@ impl Handle {
                 run_queue,
                 lifo_slot: None,
                 is_searching: false,
+                rand: FastRand::new(rand.next_u64()),
             }));
             remotes.push(Remote { steal });
         }
@@ -96,7 +98,10 @@ pub struct Worker {
     /// True if the scheduler is being shutdown
     is_shutdown: bool,
     pub hartid: usize,
+    /// Counter used to track when to poll from the local queue vs. the
+    /// injection queue
     num_seq_local_queue_polls: u32,
+    /// How often to check the global queue
     global_queue_interval: u32,
 }
 
@@ -111,7 +116,11 @@ struct Core {
     run_queue: queue::Local,
     /// The LIFO slot
     lifo_slot: Option<TaskRef>,
+    /// True if the worker is currently searching for more work. Searching
+    /// involves attempting to steal from other workers.
     is_searching: bool,
+    /// Fast random number generator.
+    rand: FastRand,
 }
 
 /// State shared across all workers
@@ -285,7 +294,12 @@ impl Worker {
 
         let n = usize::min(n, max) + 1;
 
-        let mut tasks = cx.shared().run_queue.try_consume().expect("inconsistent state").take(n);
+        let mut tasks = cx
+            .shared()
+            .run_queue
+            .try_consume()
+            .expect("inconsistent state")
+            .take(n);
         let ret = tasks.next();
 
         // Safety: we calculated the max from the local queues remaining capacity, it can never overflow
@@ -304,7 +318,12 @@ impl Worker {
         todo!()
     }
 
-    fn run_task(&mut self, cx: &Context, mut core: Box<Core>, task: TaskRef) -> Result<Box<Core>, ()> {
+    fn run_task(
+        &mut self,
+        cx: &Context,
+        mut core: Box<Core>,
+        task: TaskRef,
+    ) -> Result<Box<Core>, ()> {
         if self.transition_from_searching(cx, &mut core) {
             // cx.shared().notify_parked_local();
         }
@@ -315,7 +334,6 @@ impl Worker {
         //          - poll the LIFO task
 
         Ok(core)
-
     }
 
     /// Returns `true` if another worker must be notified

@@ -9,3 +9,4 @@ mod task;
 mod atomic_cell;
 pub mod worker;
 mod queue;
+mod fast_rand;

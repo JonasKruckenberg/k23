@@ -45,6 +45,8 @@ use core::cell::RefCell;
 use core::range::Range;
 use core::{cmp, slice};
 use loader_api::{BootInfo, MemoryRegionKind, TlsTemplate};
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use sync::OnceLock;
 use thread_local::thread_local;
 use vm::frame_alloc;
@@ -126,8 +128,9 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     frame_alloc::init(boot_alloc);
 
     // TODO init kernel address space (requires global allocator)
+    let mut rand = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
 
-    vm::init(boot_info, minfo).unwrap();
+    vm::init(boot_info, &mut rand).unwrap();
 
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
@@ -136,14 +139,14 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     );
 
     static SCHEDULER: OnceLock<scheduler2::worker::Handle> = OnceLock::new();
-    let sched = SCHEDULER.get_or_init(|| scheduler2::worker::Handle::new(1));
-    
+    let sched = SCHEDULER.get_or_init(|| scheduler2::worker::Handle::new(1, &mut rand));
+
     sched.spawn(async {
         log::debug!("Hello from future");
     });
-    
+
     scheduler2::worker::Worker::new(0).run(sched).unwrap();
-    
+
     // wasm::test();
 
     // - [all][global] parse cmdline

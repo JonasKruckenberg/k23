@@ -47,16 +47,14 @@ static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
     frame
 });
 
-pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
+pub fn init(boot_info: &BootInfo, rand: &mut impl rand::RngCore) -> crate::Result<()> {
     #[expect(tail_expr_drop_order, reason = "")]
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
         let mut aspace = AddressSpace::from_active_kernel(
             hw_aspace,
-            Some(ChaCha20Rng::from_seed(
-                minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
-            )),
+            Some(ChaCha20Rng::from_rng(rand).unwrap()),
         );
 
         reserve_wired_regions(&mut aspace, boot_info, &mut flush);
