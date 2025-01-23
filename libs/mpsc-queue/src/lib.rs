@@ -1043,6 +1043,23 @@ where
     }
 }
 
+impl<T> fallible_iterator::FallibleIterator for Consumer<'_, T>
+where
+    T: Send + Linked,
+{
+    type Item = T::Handle;
+    type Error = TryDequeueError;
+
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        let res = self.try_dequeue();
+        match res {
+            Ok(res) => Ok(Some(res)),
+            Err(TryDequeueError::Empty) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+}
+
 // === impl Links ===
 
 impl<T> Links<T> {
@@ -1204,6 +1221,34 @@ impl<T: Linked> fmt::Debug for OwnedConsumer<T> {
             .field("q", &q)
             .field("tail", &tail)
             .finish()
+    }
+}
+
+impl<T> Iterator for OwnedConsumer<T>
+where
+    T: Linked,
+{
+    type Item = T::Handle;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.dequeue()
+    }
+}
+
+impl<T> fallible_iterator::FallibleIterator for OwnedConsumer<T>
+where
+    T: Linked,
+{
+    type Item = T::Handle;
+    type Error = TryDequeueError;
+
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        let res = self.try_dequeue();
+        match res {
+            Ok(res) => Ok(Some(res)),
+            Err(TryDequeueError::Empty) => Ok(None),
+            Err(err) => Err(err),
+        }
     }
 }
 
