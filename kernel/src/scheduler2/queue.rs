@@ -114,6 +114,10 @@ impl Local {
         !self.inner.is_empty()
     }
 
+    pub(crate) fn can_steal(&self) -> bool {
+        self.remaining_slots() >= self.max_capacity() - self.max_capacity() / 2
+    }
+
     /// Pops a task from the local queue.
     pub(crate) fn pop(&mut self) -> Option<TaskRef> {
         let mut head = self.inner.head.load(Ordering::Acquire);

@@ -182,12 +182,15 @@ impl Worker {
             lifo_enabled: Cell::new(true),
         });
 
-        // We just started up and do not have a core yet which means
-        // we need to acquire one.
-        let mut core = self
-            .try_acquire_available_core(&cx)
-            .or_else(|| self.wait_for_core())
-            .ok_or(())?; // this will only fail if we're in the process of shutting down, so return an error here
+        // First try to acquire an available core
+        let (maybe_task, mut core) = if let Some(core) = self.try_acquire_available_core(cx) {
+            // Try to poll a task from the global queue
+            // let maybe_task = cx.shared().nex();
+            (None, core)
+        } else {
+            // block the thread to wait for a core to be assigned to us
+            self.wait_for_core()?
+        };
 
         // once we have acquired a core, we can start the scheduling loop
         while !self.is_shutdown {
@@ -215,7 +218,7 @@ impl Worker {
     }
 
     // Block the current hart waiting until a core becomes available.
-    fn wait_for_core(&mut self) -> Option<Box<Core>> {
+    fn wait_for_core(&mut self) -> NextTaskResult {
         todo!()
     }
 
@@ -310,12 +313,75 @@ impl Worker {
         ret
     }
 
-    fn search_for_work(&mut self, cx: &Context, core: Box<Core>) -> NextTaskResult {
+    fn search_for_work(&mut self, cx: &Context, mut core: Box<Core>) -> NextTaskResult {
+        const ROUNDS: usize = 4;
+
+        debug_assert!(core.lifo_slot.is_none());
+        debug_assert!(core.run_queue.is_empty());
+
+        if !core.run_queue.can_steal() {
+            return Ok((None, core));
+        }
+
+        if !self.transition_to_searching(cx, &mut core) {
+            return Ok((None, core));
+        }
+
+        let num = cx.shared().remotes.len();
+
+        for i in 0..ROUNDS {
+            // Start from a random worker
+            let start = core.rand.fastrand_n(num as u32) as usize;
+
+            if let Some(task) = self.steal_one_round(cx, &mut core, start) {
+                return Ok((Some(task), core));
+            }
+
+            if let Some(task) = self.next_remote_task_and_refill_queue(cx, &mut core) {
+                return Ok((Some(task), core));
+            }
+
+            if i > 0 {
+                // super::counters::inc_num_spin_stall();
+                // std::thread::sleep(std::time::Duration::from_micros(i as u64));
+            }
+        }
+
         todo!()
     }
 
-    fn park(&mut self, cx: &Context, core: Box<Core>) -> NextTaskResult {
+    fn steal_one_round(&self, cx: &Context, core: &mut Core, start: usize) -> Option<TaskRef> {
         todo!()
+    }
+
+    #[allow(tail_expr_drop_order)]
+    fn park(&mut self, cx: &Context, mut core: Box<Core>) -> NextTaskResult {
+        if self.can_transition_to_parked(&mut core) {
+            debug_assert!(!self.is_shutdown);
+
+            core = try_next_task_step!(self.do_park(cx, core));
+        }
+
+        Ok((None, core))
+    }
+
+    fn do_park(&mut self, cx: &Context, mut core: Box<Core>) -> NextTaskResult {
+        let was_searching = core.is_searching;
+
+        // Try one last time to get tasks
+        if let Some(task) = self.next_remote_task_and_refill_queue(cx, &mut core) {
+            return Ok((Some(task), core));
+        }
+
+        if self.is_shutdown {
+            return Ok((None, core));
+        }
+
+        // Release the core
+        core.is_searching = false;
+
+        // Wait for a core to be assigned to us
+        self.wait_for_core()
     }
 
     fn run_task(
@@ -336,6 +402,14 @@ impl Worker {
         Ok(core)
     }
 
+    fn transition_to_searching(&self, cx: &Context, core: &mut Core) -> bool {
+        if !core.is_searching {
+            // TODO cx.shared().idle.try_transition_worker_to_searching(core);
+        }
+
+        core.is_searching
+    }
+
     /// Returns `true` if another worker must be notified
     fn transition_from_searching(&self, cx: &Context, core: &mut Core) -> bool {
         if !core.is_searching {
@@ -345,6 +419,14 @@ impl Worker {
         core.is_searching = false;
         // TODO cx.shared().idle.transition_worker_from_searching()
         todo!()
+    }
+
+    fn can_transition_to_parked(&self, core: &mut Core) -> bool {
+        !self.has_tasks(core) && !self.is_shutdown
+    }
+
+    fn has_tasks(&self, core: &Core) -> bool {
+        core.lifo_slot.is_some() || !core.run_queue.is_empty()
     }
 }
 
