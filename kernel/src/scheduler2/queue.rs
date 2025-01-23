@@ -161,28 +161,28 @@ impl Local {
     /// # Panics
     ///
     /// The method panics if there is not enough capacity to fit in the queue.
-    pub(crate) fn push_back(&mut self, tasks: impl ExactSizeIterator<Item = TaskRef>) {
-        let len = tasks.len();
-        assert!(len <= LOCAL_QUEUE_CAPACITY);
+    pub(crate) unsafe fn push_back_unchecked(&mut self, tasks: impl Iterator<Item = TaskRef>) {
+        // let len = tasks.len();
+        // assert!(len <= LOCAL_QUEUE_CAPACITY);
+        // 
+        // if len == 0 {
+        //     // Nothing to do
+        //     return;
+        // }
 
-        if len == 0 {
-            // Nothing to do
-            return;
-        }
-
-        let head = self.inner.head.load(Ordering::Acquire);
-        let (steal, _) = unpack(head);
+        // let head = self.inner.head.load(Ordering::Acquire);
+        // let (steal, _) = unpack(head);
 
         // safety: this is the **only** thread that updates this cell.
         let mut tail = unsafe { ptr::read(self.inner.tail.as_ptr()) };
 
-        if tail.wrapping_sub(steal) <= (LOCAL_QUEUE_CAPACITY - len) as u32 {
-            // Yes, this if condition is structured a bit weird (first block
-            // does nothing, second returns an error). It is this way to match
-            // `push_back_or_overflow`.
-        } else {
-            panic!()
-        }
+        // if tail.wrapping_sub(steal) <= (LOCAL_QUEUE_CAPACITY - len) as u32 {
+        //     // Yes, this if condition is structured a bit weird (first block
+        //     // does nothing, second returns an error). It is this way to match
+        //     // `push_back_or_overflow`.
+        // } else {
+        //     panic!()
+        // }
 
         for task in tasks {
             let idx = tail as usize & MASK;

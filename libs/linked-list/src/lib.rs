@@ -426,6 +426,20 @@ where
         }
     }
 
+    pub unsafe fn cursor_from_ptr(&self, ptr: NonNull<T>) -> Cursor<'_, T> {
+        Cursor {
+            current: Some(ptr),
+            _list: self,
+        }
+    }
+    
+    pub unsafe fn cursor_from_ptr_mut(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
+        CursorMut {
+            current: Some(ptr),
+            list: self,
+        }
+    }
+
     pub fn split_off(&mut self, at: usize) -> Option<Self> {
         let len = self.len();
         // what is the index of the last node that should be left in this list?

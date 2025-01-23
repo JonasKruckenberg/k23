@@ -16,13 +16,13 @@ use crate::scheduler2::task::state::{
 use crate::scheduler2::task::waker::waker_ref;
 use crate::scheduler2::task::{PollResult, Schedule};
 use alloc::boxed::Box;
+use core::alloc::Layout;
 use core::any::Any;
 use core::cell::UnsafeCell;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::mem;
-use core::mem::offset_of;
-use core::num::NonZeroU64;
+use core::mem::{offset_of, ManuallyDrop};
 use core::panic::AssertUnwindSafe;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -46,7 +46,7 @@ pub struct LocalTaskRef {
 /// A typed pointer to a spawned [`Task`]. It's roughly a lower-level version of [`TaskRef`]
 /// that is not reference counted and tied to a specific tasks future type and scheduler.
 struct RawTaskRef<F: Future, S> {
-    cell: NonNull<Task<F, S>>,
+    ptr: NonNull<Task<F, S>>,
 }
 
 /// A task.
@@ -156,7 +156,6 @@ struct RawTaskRef<F: Future, S> {
     repr(align(64))
 )]
 #[repr(C)]
-#[repr(C)]
 struct Task<F: Future, S> {
     header: Header,
     core: Core<F, S>,
@@ -179,18 +178,6 @@ pub struct Header {
     ///
     /// [waker vtable]: core::task::RawWakerVTable
     pub(super) vtable: &'static Vtable,
-    /// This integer contains the id of the `OwnedTasks` or `LocalOwnedTasks`
-    /// that this task is stored in. If the task is not in any list, should be
-    /// the id of the list that it was previously in, or `None` if it has never
-    /// been in any list.
-    ///
-    /// Once a task has been bound to a list, it can never be bound to another
-    /// list, even if removed from the first list.
-    ///
-    /// The id is not unset when removed from a list because we want to be able
-    /// to read the id without synchronization, even if it is concurrently being
-    /// removed from the list.
-    owner_id: UnsafeCell<Option<NonZeroU64>>,
 }
 
 #[repr(C)]
@@ -241,8 +228,14 @@ pub(super) struct Vtable {
 }
 
 impl TaskRef {
-    pub(crate) const fn new_stub() -> Self {
-        Self(NonNull::dangling())
+    pub(crate) fn new_stub() -> Self {
+        Self(RawTaskRef::new_stub().ptr.cast())
+    }
+
+    #[allow(tail_expr_drop_order)]
+    pub(crate) fn new<F, S>(future: F, scheduler: S, task_id: Id) -> (Self, Self, Self) where F: Future, S: Schedule {
+        let ptr = RawTaskRef::new(future, scheduler, task_id).ptr.cast();
+        (Self(ptr), Self(ptr), Self(ptr))
     }
 
     pub(crate) fn clone_from_raw(ptr: NonNull<Header>) -> Self {
@@ -266,7 +259,7 @@ impl TaskRef {
         &self.header().state
     }
 
-    pub(super) fn poll(&self) {
+    pub(in crate::scheduler2) fn poll(&self) {
         let vtable = self.header().vtable;
         unsafe {
             (vtable.poll)(self.0);
@@ -394,6 +387,31 @@ where
         trailer_offset: get_trailer_offset::<F, S>(),
     };
 
+    pub fn new(future: F, scheduler: S, task_id: Id) -> Self {
+        let ptr = Box::into_raw(Box::new(Task {
+            header: Header {
+                state: State::new(),
+                vtable: &Self::TASK_VTABLE,
+            },
+            core: Core {
+                scheduler,
+                stage: UnsafeCell::new(Stage::Running(future)),
+                task_id,
+            },
+            trailer: Trailer {
+                waker: UnsafeCell::new(None),
+                run_queue_links: mpsc_queue::Links::default(),
+                owned_tasks_links: linked_list::Links::default(),
+            },
+        }));
+
+        // Safety: we just allocated the stub so we know it's not a null ptr.
+        log::trace!("allocated task ptr {ptr:?} with layout {:?}", Layout::new::<Task<F,S>>());
+        Self {
+            ptr: unsafe { NonNull::new_unchecked(ptr) },
+        }
+    }
+
     unsafe fn poll(ptr: NonNull<Header>) {
         unsafe {
             let this = Self::from_raw(ptr);
@@ -486,7 +504,8 @@ where
         // are allowed to be dangling after their last use, even if the
         // reference has not yet gone out of scope.
         unsafe {
-            drop(Box::from_raw(ptr.as_ptr()));
+            log::trace!("about to dealloc task ptr {:?} with layout {:?}", ptr.as_ptr(), Layout::new::<Task<F,S>>());
+            drop(Box::from_raw(ptr.cast::<Task<F, S>>().as_ptr()));
         }
     }
 
@@ -564,11 +583,11 @@ where
     }
 
     unsafe fn from_raw(ptr: NonNull<Header>) -> Self {
-        Self { cell: ptr.cast() }
+        Self { ptr: ptr.cast() }
     }
 
     fn header_ptr(&self) -> NonNull<Header> {
-        self.cell.cast()
+        self.ptr.cast()
     }
 
     fn header(&self) -> &Header {
@@ -580,17 +599,17 @@ where
     }
 
     fn core(&self) -> &Core<F, S> {
-        unsafe { &self.cell.as_ref().core }
+        unsafe { &self.ptr.as_ref().core }
     }
 
     fn trailer(&self) -> &Trailer {
-        unsafe { &self.cell.as_ref().trailer }
+        unsafe { &self.ptr.as_ref().trailer }
     }
 
     fn drop_reference(self) {
         if self.state().ref_dec() {
             unsafe {
-                Self::dealloc(self.cell.cast());
+                Self::dealloc(self.ptr.cast());
             }
         }
     }
@@ -634,15 +653,6 @@ where
                 }
             }
         }));
-
-        // The task has completed execution and will no longer be scheduled.
-        let num_release = self.release();
-
-        if self.state().transition_to_terminal(num_release) {
-            unsafe {
-                Self::dealloc(self.cell.cast());
-            }
-        }
     }
 
     /// Releases the task from the scheduler. Returns the number of ref-counts
@@ -650,7 +660,9 @@ where
     fn release(&self) -> usize {
         // We don't actually increment the ref-count here, but the new task is
         // never destroyed, so that's ok.
-        if let Some(task) = self.core().scheduler.release(self.get_new_task()) {
+        let me = ManuallyDrop::new(self.get_new_task());
+        
+        if let Some(task) = self.core().scheduler.release(&me) {
             mem::forget(task);
             2
         } else {
@@ -661,26 +673,111 @@ where
     fn get_new_task(&self) -> TaskRef {
         // safety: The header is at the beginning of the cell, so this cast is
         // safe.
-        unsafe { TaskRef::from_raw(self.cell.cast()) }
+        unsafe { TaskRef::from_raw(self.ptr.cast()) }
+    }
+}
+
+struct Stub;
+impl Future for Stub {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        unreachable!("poll called on a stub future")
+    }
+}
+
+impl Schedule for Stub {
+    fn schedule(&self, _task: TaskRef) {
+        unreachable!("schedule called on a stub scheduler")
+    }
+
+    fn current_task(&self) -> Option<TaskRef> {
+        unreachable!("current_task called on a stub scheduler")
+    }
+
+    fn release(&self, _task: &TaskRef) -> Option<TaskRef> {
+        unreachable!("release called on a stub scheduler")
+    }
+
+    fn yield_now(&self, _task: TaskRef) {
+        unreachable!("yield_now called on a stub scheduler")
+    }
+}
+
+impl RawTaskRef<Stub, Stub> {
+    const STUB_VTABLE: Vtable = Vtable {
+        poll: Self::poll_stub,
+        schedule: Self::schedule_stub,
+        dealloc: Self::dealloc,
+        try_read_output: Self::try_read_output_stub,
+        drop_join_handle_slow: Self::drop_join_handle_slow_stub,
+        shutdown: Self::shutdown_stub,
+        id_offset: get_id_offset::<Stub, Stub>(),
+        trailer_offset: get_trailer_offset::<Stub, Stub>(),
+    };
+
+    pub fn new_stub() -> Self {
+        let ptr = Box::into_raw(Box::new(Task {
+            header: Header {
+                state: State::new(),
+                vtable: &Self::STUB_VTABLE,
+            },
+            core: Core {
+                scheduler: Stub,
+                stage: UnsafeCell::new(Stage::Running(Stub)),
+                task_id: Id::stub(),
+            },
+            trailer: Trailer {
+                waker: UnsafeCell::new(None),
+                run_queue_links: mpsc_queue::Links::default(),
+                owned_tasks_links: linked_list::Links::default(),
+            },
+        }));
+        log::trace!("allocated stub ptr {ptr:?}");
+
+        // Safety: we just allocated the stub so we know it's not a null ptr.
+        Self {
+            ptr: unsafe { NonNull::new_unchecked(ptr) },
+        }
+    }
+
+    unsafe fn poll_stub(_ptr: NonNull<Header>) {
+        unsafe {
+            debug_assert!(Header::get_id_ptr(_ptr).as_ref().is_stub());
+            unreachable!("poll_stub called on a stub task");
+        }
+    }
+
+    unsafe fn schedule_stub(_ptr: NonNull<Header>) {
+        unsafe {
+            debug_assert!(Header::get_id_ptr(_ptr).as_ref().is_stub());
+            unreachable!("schedule_stub called on a stub task");
+        }
+    }
+
+    unsafe fn try_read_output_stub(_ptr: NonNull<Header>, _dst: *mut (), _waker: &Waker) {
+        unsafe {
+            debug_assert!(Header::get_id_ptr(_ptr).as_ref().is_stub());
+            unreachable!("try_read_output_stub called on a stub task");
+        }
+    }
+
+    unsafe fn drop_join_handle_slow_stub(_ptr: NonNull<Header>) {
+        unsafe {
+            debug_assert!(Header::get_id_ptr(_ptr).as_ref().is_stub());
+            unreachable!("drop_join_handle_slow_stub called on a stub task");
+        }
+    }
+
+    unsafe fn shutdown_stub(_ptr: NonNull<Header>) {
+        unsafe {
+            debug_assert!(Header::get_id_ptr(_ptr).as_ref().is_stub());
+            unreachable!("shutdown_stub called on a stub task");
+        }
     }
 }
 
 impl Header {
-    // safety: The caller must guarantee exclusive access to this field, and
-    // must ensure that the id is either `None` or the id of the OwnedTasks
-    // containing this task.
-    pub(super) unsafe fn set_owner_id(&self, owner: NonZeroU64) {
-        unsafe {
-            *self.owner_id.get() = Some(owner);
-        }
-    }
-
-    pub(super) fn get_owner_id(&self) -> Option<NonZeroU64> {
-        // safety: If there are concurrent writes, then that write has violated
-        // the safety requirements on `set_owner_id`.
-        unsafe { *self.owner_id.get() }
-    }
-
     pub(super) unsafe fn get_id_ptr(me: NonNull<Header>) -> NonNull<Id> {
         unsafe {
             let offset = me.as_ref().vtable.id_offset;
@@ -701,12 +798,17 @@ impl Header {
 unsafe impl linked_list::Linked for Header {
     type Handle = TaskRef;
 
-    fn into_ptr(r: Self::Handle) -> NonNull<Self> {
-        r.0
+    fn into_ptr(task: Self::Handle) -> NonNull<Self> {
+        let ptr = task.0;
+        // converting a `TaskRef` into a pointer to enqueue it assigns ownership
+        // of the ref count to the queue, so we don't want to run its `Drop`
+        // impl.
+        mem::forget(task);
+        ptr
     }
 
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
-        unsafe { Self::Handle::from_raw(ptr) }
+        TaskRef(ptr)
     }
 
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<linked_list::Links<Self>> {
@@ -724,12 +826,17 @@ unsafe impl linked_list::Linked for Header {
 unsafe impl mpsc_queue::Linked for Header {
     type Handle = TaskRef;
 
-    fn into_ptr(r: Self::Handle) -> NonNull<Self> {
-        r.0
+    fn into_ptr(task: Self::Handle) -> NonNull<Self> {
+        let ptr = task.0;
+        // converting a `TaskRef` into a pointer to enqueue it assigns ownership
+        // of the ref count to the queue, so we don't want to run its `Drop`
+        // impl.
+        mem::forget(task);
+        ptr
     }
 
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
-        unsafe { Self::Handle::from_raw(ptr) }
+        TaskRef(ptr)
     }
 
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<mpsc_queue::Links<Self>>

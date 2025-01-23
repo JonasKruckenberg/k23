@@ -28,12 +28,12 @@ mod logger;
 mod machine_info;
 mod metrics;
 mod panic;
+mod scheduler2;
 mod thread_local;
 mod time;
 mod trap_handler;
 mod vm;
 mod wasm;
-mod scheduler2;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
@@ -41,11 +41,11 @@ use crate::time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use core::alloc::Layout;
-use core::cell::{RefCell};
+use core::cell::RefCell;
 use core::range::Range;
 use core::{cmp, slice};
 use loader_api::{BootInfo, MemoryRegionKind, TlsTemplate};
-use sync::{LazyLock, OnceLock};
+use sync::OnceLock;
 use thread_local::thread_local;
 use vm::frame_alloc;
 use vm::{PhysicalAddress, VirtualAddress};
@@ -134,11 +134,15 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
+
+    static SCHEDULER: OnceLock<scheduler2::worker::Handle> = OnceLock::new();
+    let sched = SCHEDULER.get_or_init(|| scheduler2::worker::Handle::new(1));
     
-    static SCHEDULER: OnceLock<scheduler2::scheduler::Handle> = OnceLock::new();
-    let sched = SCHEDULER.get_or_init(|| scheduler2::scheduler::create(1));
+    sched.spawn(async {
+        log::debug!("Hello from future");
+    });
     
-    scheduler2::scheduler::worker::run(0, sched);
+    scheduler2::worker::Worker::new(0).run(sched).unwrap();
     
     // wasm::test();
 

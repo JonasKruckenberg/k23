@@ -586,6 +586,36 @@ impl<T: Linked> MpscQueue<T> {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        // if the head is not the stub node we can be certain there are at least some elements in the
+        // queue
+        if !ptr::eq(self.head.load(Ordering::Acquire), self.stub.as_ptr()) {
+            return false;
+        }
+
+        // if the head *is* the stub node, the list might be in an inconsistent state (it is being mutated right now)
+        // so we need to check the whole length of the list to be sure
+        self.len() == 0
+    }
+
+    pub fn len(&self) -> usize {
+        self.lock_consumer();
+
+        let mut len = 0;
+        let mut ptr = unsafe { *self.tail.get() };
+
+        while let Some(node) = NonNull::new(ptr) {
+            if node != self.stub {
+                len += 1;
+            }
+            ptr = unsafe { links(node).next.load(Ordering::Acquire) };
+        }
+
+        self.has_consumer.store(false, Ordering::Release);
+        
+        len
+    }
+
     /// Enqueue a new element at the end of the queue.
     ///
     /// This takes ownership of a [`Handle`] that owns the element, and

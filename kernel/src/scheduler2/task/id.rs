@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::fmt;
-use core::num::NonZeroU64;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 /// An opaque ID that uniquely identifies a task relative to all other currently
@@ -23,22 +22,28 @@ use core::sync::atomic::{AtomicU64, Ordering};
 ///   [`task::id()`](crate::task::id()) functions and from outside the task via
 ///   the [`JoinHandle::id()`](crate::task::JoinHandle::id()) function.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
-pub struct Id(NonZeroU64);
+pub struct Id(u64);
 
 impl Id {
+    pub fn stub() -> Self {
+        Self(0)
+    }
+    
     pub(crate) fn next() -> Self {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
         loop {
             let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-            if let Some(id) = NonZeroU64::new(id) {
-                return Self(id);
-            }
+            return Self(id);
         }
     }
 
     pub(crate) fn as_u64(&self) -> u64 {
-        self.0.get()
+        self.0
+    }
+    
+    pub fn is_stub(&self) -> bool {
+        self.0 == 0
     }
 }
 

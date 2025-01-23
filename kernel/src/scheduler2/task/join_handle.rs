@@ -5,13 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::scheduler2::task::raw::{Header, TaskRef};
 use core::fmt;
 use core::future::Future;
+use core::marker::PhantomData;
+use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::pin::Pin;
 use core::task::{Context, Poll};
-use core::panic::{RefUnwindSafe, UnwindSafe};
-use core::marker::PhantomData;
-use crate::scheduler2::task::raw::{Header, TaskRef};
 
 pub struct JoinHandle<T> {
     raw: TaskRef,
@@ -85,6 +85,12 @@ impl<T> Future for JoinHandle<T> {
 }
 
 impl<T> JoinHandle<T> {
+    pub(super) fn new(raw: TaskRef) -> Self {
+        Self {
+            raw,
+            _p: PhantomData,
+        }
+    }
     pub fn abort(&self) {
         todo!()
     }

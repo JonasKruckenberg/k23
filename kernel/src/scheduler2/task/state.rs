@@ -197,21 +197,6 @@ impl State {
         Snapshot(prev.0 ^ DELTA)
     }
     
-    /// Transitions from `Complete` -> `Terminal`, decrementing the reference
-    /// count the specified number of times.
-    ///
-    /// Returns true if the task should be deallocated.
-    pub(super) fn transition_to_terminal(&self, count: usize) -> bool {
-        let prev = Snapshot(self.val.fetch_sub(count * REF_ONE, Ordering::AcqRel));
-        assert!(
-            prev.ref_count() >= count,
-            "current: {}, sub: {}",
-            prev.ref_count(),
-            count
-        );
-        prev.ref_count() == count
-    }
-    
     /// Transitions the state to `NOTIFIED`.
     ///
     /// If no task needs to be submitted, a ref-count is consumed.
@@ -373,7 +358,7 @@ impl State {
         self.val
             .compare_exchange_weak(
                 INITIAL_STATE,
-                (INITIAL_STATE - REF_ONE) & !JOIN_INTEREST,
+                (INITIAL_STATE) & !JOIN_INTEREST,
                 Ordering::Release,
                 Ordering::Relaxed,
             )
@@ -477,6 +462,7 @@ impl State {
     }
 
     pub(super) fn ref_inc(&self) {
+        log::trace!("State::ref_inc");
         // Using a relaxed ordering is alright here, as knowledge of the
         // original reference prevents other threads from erroneously deleting
         // the object.
@@ -498,6 +484,7 @@ impl State {
     
     /// Returns `true` if the task should be released.
     pub(super) fn ref_dec(&self) -> bool {
+        log::trace!("State::ref_dec");
         let prev = Snapshot(self.val.fetch_sub(REF_ONE, Ordering::AcqRel));
         assert!(prev.ref_count() >= 1);
         prev.ref_count() == 1
@@ -624,7 +611,7 @@ impl Snapshot {
         self.0 &= !JOIN_WAKER;
     }
 
-    pub(super) fn ref_count(self) -> usize {
+    pub fn ref_count(self) -> usize {
         (self.0 & REF_COUNT_MASK) >> REF_COUNT_SHIFT
     }
 

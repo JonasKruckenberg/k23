@@ -32,6 +32,12 @@ const EID_PMU: usize = 0x504D55;
 const EID_DBCN: usize = 0x4442434E;
 const EID_SUSP: usize = 0x53555350;
 const EID_CPPC: usize = 0x43505043;
+const EID_NACL: usize = 0x4E41434C;
+const EID_STA: usize = 0x535441;
+const EID_SSE: usize = 0x535345;
+const EID_FWFT: usize = 0x46574654;
+const EID_DBTR: usize = 0x44425452;
+const EID_MPXY: usize = 0x4D505859;
 
 use bitflags::bitflags;
 pub use error::Error;
@@ -148,6 +154,12 @@ bitflags! {
         const DBCN = 1 << 7;
         const SUSP = 1 << 8;
         const CPPC = 1 << 9;
+        const NACL = 1 << 10;
+        const STA = 1 << 11;
+        const SSE = 1 << 11;
+        const FWFT = 1 << 11;
+        const DBTR = 1 << 11;
+        const MPXY = 1 << 11;
     }
 }
 
@@ -167,5 +179,11 @@ pub fn supported_extensions() -> Result<Extension> {
     supported.set(Extension::DBCN, base::probe_sbi_extension(EID_DBCN)?);
     supported.set(Extension::SUSP, base::probe_sbi_extension(EID_SUSP)?);
     supported.set(Extension::CPPC, base::probe_sbi_extension(EID_CPPC)?);
+    supported.set(Extension::NACL, base::probe_sbi_extension(EID_NACL)?);
+    supported.set(Extension::STA, base::probe_sbi_extension(EID_STA)?);
+    supported.set(Extension::SSE, base::probe_sbi_extension(EID_SSE)?);
+    supported.set(Extension::FWFT, base::probe_sbi_extension(EID_FWFT)?);
+    supported.set(Extension::DBTR, base::probe_sbi_extension(EID_DBTR)?);
+    supported.set(Extension::MPXY, base::probe_sbi_extension(EID_MPXY)?);
     Ok(supported)
 }

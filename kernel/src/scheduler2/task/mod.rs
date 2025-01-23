@@ -8,17 +8,17 @@
 mod error;
 mod id;
 mod join_handle;
+mod owned_tasks;
 pub(crate) mod raw;
 mod state;
 mod waker;
-mod owned_tasks;
 
 use core::future::Future;
 pub use error::JoinError;
-pub use raw::{TaskRef, LocalTaskRef};
-pub use join_handle::JoinHandle;
 pub use id::Id;
+pub use join_handle::JoinHandle;
 pub use owned_tasks::OwnedTasks;
+pub use raw::TaskRef;
 
 pub type Result<T> = core::result::Result<T, JoinError>;
 
@@ -38,15 +38,18 @@ pub trait Schedule {
     /// the ref-dec with setting other options.
     ///
     /// If the scheduler has already released the task, then None is returned.
-    fn release(&self, task: TaskRef) -> Option<TaskRef>;
+    fn release(&self, task: &TaskRef) -> Option<TaskRef>;
     fn yield_now(&self, task: TaskRef);
 }
 
-
-fn new_task<F>(task: F, id: Id) -> (TaskRef, JoinHandle<F::Output>)
+fn new_task<F, S>(future: F, scheduler: S, id: Id) -> (TaskRef, TaskRef, JoinHandle<F::Output>)
 where
     F: Future + 'static,
     F::Output: 'static,
+    S: Schedule,
 {
-    todo!()
+    let (join, scheduler, owner) = TaskRef::new(future, scheduler, id);
+    let join = JoinHandle::new(join);
+
+    (owner, scheduler, join)
 }
