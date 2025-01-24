@@ -126,6 +126,64 @@ pub(super) struct Context {
     defer: RefCell<Vec<TaskRef>>,
 }
 
+#[cold]
+pub fn run(handle: &'static Handle, hartid: usize) -> Result<(), ()> {
+    let mut worker = Worker {
+        is_shutdown: false,
+        hartid,
+        num_seq_local_queue_polls: 0,
+        global_queue_interval: DEFAULT_GLOBAL_QUEUE_INTERVAL,
+        idle_snapshot: idle::Snapshot::new(&handle.shared.idle),
+        workers_to_notify: Vec::with_capacity(handle.shared.remotes.len()),
+    };
+    
+    #[allow(tail_expr_drop_order)]
+    let cx = handle.shared.tls.get_or(|| Context {
+        handle,
+        core: RefCell::new(None),
+        lifo_enabled: Cell::new(true),
+        current_task: AtomicPtr::new(ptr::null_mut()),
+        defer: RefCell::new(Vec::with_capacity(64)),
+    });
+
+    // First try to acquire an available core
+    let (maybe_task, mut core) = {
+        let mut synced = cx.shared().synced.lock();
+
+        if let Some(core) = worker.try_acquire_available_core(cx, &mut synced) {
+            // Try to poll a task from the global queue
+            // let maybe_task = cx.shared().nex();
+            (None, core)
+        } else {
+            // block the thread to wait for a core to be assigned to us
+            worker.wait_for_core(cx, synced)?
+        }
+    };
+
+    if let Some(task) = maybe_task {
+        core = worker.run_task(cx, core, task)?;
+    }
+
+    // once we have acquired a core, we can start the scheduling loop
+    while !worker.is_shutdown {
+        let (maybe_task, c) = worker.next_task(cx, core)?;
+        core = c;
+
+        if let Some(task) = maybe_task {
+            core = worker.run_task(cx, core, task)?;
+        } else {
+            // The only reason to get `None` from `next_task` is we have
+            // entered the shutdown phase.
+            assert!(worker.is_shutdown);
+            break;
+        }
+    }
+
+    // at this point we received the shutdown signal, so we need to clean up
+
+    todo!()
+}
+
 macro_rules! try_next_task_step {
     ($e:expr) => {{
         let res: NextTaskResult = $e;
@@ -138,65 +196,6 @@ macro_rules! try_next_task_step {
 }
 
 impl Worker {
-    pub fn new(handle: &'static Handle, hartid: usize) -> Self {
-        Self {
-            is_shutdown: false,
-            hartid,
-            num_seq_local_queue_polls: 0,
-            global_queue_interval: DEFAULT_GLOBAL_QUEUE_INTERVAL,
-            idle_snapshot: idle::Snapshot::new(&handle.shared.idle),
-            workers_to_notify: Vec::with_capacity(handle.shared.remotes.len()),
-        }
-    }
-
-    pub fn run(&mut self, handle: &'static Handle) -> Result<(), ()> {
-        #[allow(tail_expr_drop_order)]
-        let cx = handle.shared.tls.get_or(|| Context {
-            handle,
-            core: RefCell::new(None),
-            lifo_enabled: Cell::new(true),
-            current_task: AtomicPtr::new(ptr::null_mut()),
-            defer: RefCell::new(Vec::with_capacity(64)),
-        });
-
-        // First try to acquire an available core
-        let (maybe_task, mut core) = {
-            let mut synced = cx.shared().synced.lock();
-
-            if let Some(core) = self.try_acquire_available_core(cx, &mut synced) {
-                // Try to poll a task from the global queue
-                // let maybe_task = cx.shared().nex();
-                (None, core)
-            } else {
-                // block the thread to wait for a core to be assigned to us
-                self.wait_for_core(cx, synced)?
-            }
-        };
-
-        if let Some(task) = maybe_task {
-            core = self.run_task(cx, core, task)?;
-        }
-
-        // once we have acquired a core, we can start the scheduling loop
-        while !self.is_shutdown {
-            let (maybe_task, c) = self.next_task(cx, core)?;
-            core = c;
-
-            if let Some(task) = maybe_task {
-                core = self.run_task(cx, core, task)?;
-            } else {
-                // The only reason to get `None` from `next_task` is we have
-                // entered the shutdown phase.
-                assert!(self.is_shutdown);
-                break;
-            }
-        }
-
-        // at this point we received the shutdown signal, so we need to clean up
-
-        todo!()
-    }
-
     fn try_acquire_available_core(
         &mut self,
         cx: &Context,

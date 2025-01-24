@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 mod idle;
-mod worker;
+pub mod worker;
 
 use crate::async_rt::{queue, task, JoinHandle};
 use crate::util::fast_rand::FastRand;
