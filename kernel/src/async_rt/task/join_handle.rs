@@ -91,11 +91,13 @@ impl<T> JoinHandle<T> {
             _p: PhantomData,
         }
     }
+    
     pub fn abort(&self) {
-        todo!()
+        self.raw.remote_abort();
     }
 
     pub fn is_finished(&self) -> bool {
-        todo!()
+        let state = self.raw.header().state.load();
+        state.is_complete()
     }
 }

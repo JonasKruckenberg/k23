@@ -347,6 +347,25 @@ impl TaskRef {
             TransitionToNotifiedByRef::DoNothing => {}
         }
     }
+
+    /// Remotely aborts the task.
+    ///
+    /// The caller should hold a ref-count, but we do not consume it.
+    ///
+    /// This is similar to `shutdown` except that it asks the runtime to perform
+    /// the shutdown. This is necessary to avoid the shutdown happening in the
+    /// wrong thread for non-Send tasks.
+    pub(super) fn remote_abort(&self) {
+        if self.state().transition_to_notified_and_cancel() {
+            // The transition has created a new ref-count, which we turn into
+            // a Notified and pass to the task.
+            //
+            // Since the caller holds a ref-count, the task cannot be destroyed
+            // before the call to `schedule` returns even if the call drops the
+            // `Notified` internally.
+            self.schedule();
+        }
+    }
 }
 
 impl Clone for TaskRef {

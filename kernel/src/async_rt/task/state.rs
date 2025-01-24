@@ -286,41 +286,41 @@ impl State {
     //     })
     // }
 
-    // /// Sets the cancelled bit and transitions the state to `NOTIFIED` if idle.
-    // ///
-    // /// Returns `true` if the task needs to be submitted to the pool for
-    // /// execution.
-    // pub(super) fn transition_to_notified_and_cancel(&self) -> bool {
-    //     self.fetch_update_action(|mut snapshot| {
-    //         if snapshot.is_cancelled() || snapshot.is_complete() {
-    //             // Aborts to completed or cancelled tasks are no-ops.
-    //             (false, None)
-    //         } else if snapshot.is_running() {
-    //             // If the task is running, we mark it as cancelled. The thread
-    //             // running the task will notice the cancelled bit when it
-    //             // stops polling and it will kill the task.
-    //             //
-    //             // The set_notified() call is not strictly necessary but it will
-    //             // in some cases let a wake_by_ref call return without having
-    //             // to perform a compare_exchange.
-    //             snapshot.set_notified();
-    //             snapshot.set_cancelled();
-    //             (false, Some(snapshot))
-    //         } else {
-    //             // The task is idle. We set the cancelled and notified bits and
-    //             // submit a notification if the notified bit was not already
-    //             // set.
-    //             snapshot.set_cancelled();
-    //             if !snapshot.is_notified() {
-    //                 snapshot.set_notified();
-    //                 snapshot.ref_inc();
-    //                 (true, Some(snapshot))
-    //             } else {
-    //                 (false, Some(snapshot))
-    //             }
-    //         }
-    //     })
-    // }
+    /// Sets the cancelled bit and transitions the state to `NOTIFIED` if idle.
+    ///
+    /// Returns `true` if the task needs to be submitted to the pool for
+    /// execution.
+    pub(super) fn transition_to_notified_and_cancel(&self) -> bool {
+        self.fetch_update_action(|mut snapshot| {
+            if snapshot.is_cancelled() || snapshot.is_complete() {
+                // Aborts to completed or cancelled tasks are no-ops.
+                (false, None)
+            } else if snapshot.is_running() {
+                // If the task is running, we mark it as cancelled. The thread
+                // running the task will notice the cancelled bit when it
+                // stops polling and it will kill the task.
+                //
+                // The set_notified() call is not strictly necessary but it will
+                // in some cases let a wake_by_ref call return without having
+                // to perform a compare_exchange.
+                snapshot.set_notified();
+                snapshot.set_cancelled();
+                (false, Some(snapshot))
+            } else {
+                // The task is idle. We set the cancelled and notified bits and
+                // submit a notification if the notified bit was not already
+                // set.
+                snapshot.set_cancelled();
+                if !snapshot.is_notified() {
+                    snapshot.set_notified();
+                    snapshot.ref_inc();
+                    (true, Some(snapshot))
+                } else {
+                    (false, Some(snapshot))
+                }
+            }
+        })
+    }
     
     /// Sets the `CANCELLED` bit and attempts to transition to `Running`.
     ///
