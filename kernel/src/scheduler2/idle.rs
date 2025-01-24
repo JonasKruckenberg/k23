@@ -67,6 +67,14 @@ impl Idle {
         self.num_searching.load(Ordering::Acquire)
     }
 
+    pub(crate) fn num_idle(&self, synced: &Synced) -> usize {
+        debug_assert_eq!(
+            synced.available_cores.len(),
+            self.num_idle.load(Ordering::Acquire)
+        );
+        synced.available_cores.len()
+    }
+
     pub(super) fn needs_searching(&self) -> bool {
         self.needs_searching.load(Ordering::Acquire)
     }
@@ -199,6 +207,45 @@ impl Idle {
         // point is significant. `needs_searching` and `num_searching` must be
         // updated in the critical section.
         drop(synced);
+    }
+
+    pub(crate) fn notify_many(
+        &self,
+        synced: &mut MutexGuard<worker::Synced>,
+        workers: &mut Vec<usize>,
+        num: usize,
+    ) {
+        debug_assert!(workers.is_empty());
+
+        for _ in 0..num {
+            if let Some(worker) = synced.idle.sleepers.pop() {
+                if let Some(core) = synced.idle.available_cores.pop() {
+                    debug_assert!(!core.is_searching);
+
+                    self.idle_map.unset(core.index);
+
+                    synced.assigned_cores[worker] = Some(core);
+
+                    workers.push(worker);
+
+                    continue;
+                } else {
+                    synced.idle.sleepers.push(worker);
+                }
+            }
+        }
+
+        if !workers.is_empty() {
+            debug_assert!(self.idle_map.matches(&synced.idle.available_cores));
+            let num_idle = synced.idle.available_cores.len();
+            self.num_idle.store(num_idle, Ordering::Release);
+        } else {
+            debug_assert_eq!(
+                synced.idle.available_cores.len(),
+                self.num_idle.load(Ordering::Acquire)
+            );
+            self.needs_searching.store(true, Ordering::Release);
+        }
     }
 
     pub(super) fn transition_worker_to_parked(&self, synced: &mut worker::Synced, index: usize) {

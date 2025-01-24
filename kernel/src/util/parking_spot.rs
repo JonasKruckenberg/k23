@@ -161,7 +161,7 @@ impl ParkingSpot {
                     } else {
                         deadline - now
                     };
-                    
+
                     // Suspend the calling hart for at least `timeout` duration.
                     // This will put the hart into a "wait for interrupt" mode where it will wait until
                     // either the timeout interrupt arrives or it receives an interrupt from another hart.
@@ -179,7 +179,7 @@ impl ParkingSpot {
                     log::trace!("unparked!");
                     inner = self.inner.lock();
                 }
-                
+
                 if ptr.as_ref().notified {
                     break false;
                 }

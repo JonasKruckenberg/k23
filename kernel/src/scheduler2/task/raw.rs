@@ -233,7 +233,11 @@ impl TaskRef {
     }
 
     #[allow(tail_expr_drop_order)]
-    pub(crate) fn new<F, S>(future: F, scheduler: S, task_id: Id) -> (Self, Self, Self) where F: Future, S: Schedule {
+    pub(crate) fn new<F, S>(future: F, scheduler: S, task_id: Id) -> (Self, Self, Self)
+    where
+        F: Future,
+        S: Schedule + 'static,
+    {
         let ptr = RawTaskRef::new(future, scheduler, task_id).ptr.cast();
         (Self(ptr), Self(ptr), Self(ptr))
     }
@@ -257,6 +261,11 @@ impl TaskRef {
     /// Returns a reference to the task's state.
     pub(super) fn state(&self) -> &State {
         &self.header().state
+    }
+
+    pub(in crate::scheduler2) fn run(self) {
+        self.poll();
+        mem::forget(self);
     }
 
     pub(in crate::scheduler2) fn poll(&self) {
@@ -345,6 +354,7 @@ impl Clone for TaskRef {
     #[inline]
     #[track_caller]
     fn clone(&self) -> Self {
+        log::trace!("TaskRef::clone {:?}", self.0);
         self.state().ref_inc();
         Self(self.0)
     }
@@ -354,6 +364,7 @@ impl Drop for TaskRef {
     #[inline]
     #[track_caller]
     fn drop(&mut self) {
+        // log::trace!("TaskRef::drop {:?}", self.0);
         if self.state().ref_dec() {
             self.dealloc();
         }
@@ -374,7 +385,7 @@ impl LocalTaskRef {
 impl<F, S> RawTaskRef<F, S>
 where
     F: Future,
-    S: Schedule,
+    S: Schedule + 'static,
 {
     const TASK_VTABLE: Vtable = Vtable {
         poll: Self::poll,
@@ -406,7 +417,10 @@ where
         }));
 
         // Safety: we just allocated the stub so we know it's not a null ptr.
-        log::trace!("allocated task ptr {ptr:?} with layout {:?}", Layout::new::<Task<F,S>>());
+        log::trace!(
+            "allocated task ptr {ptr:?} with layout {:?}",
+            Layout::new::<Task<F, S>>()
+        );
         Self {
             ptr: unsafe { NonNull::new_unchecked(ptr) },
         }
@@ -419,6 +433,7 @@ where
             // We pass our ref-count to `poll_inner`.
             match Self::poll_inner(ptr) {
                 PollResult::Notified => {
+                    debug_assert!(this.state().load().ref_count() >= 2);
                     // The `poll_inner` call has given us two ref-counts back.
                     // We give one of them to a new task and call `yield_now`.
                     this.core().scheduler.yield_now(this.get_new_task());
@@ -455,7 +470,8 @@ where
                             TransitionToIdle::Cancelled => PollResult::Complete,
                         }
                     }
-                    let waker_ref = waker_ref(&ptr);
+                    let header_ptr = this.header_ptr();
+                    let waker_ref = waker_ref::<S>(&header_ptr);
                     let cx = Context::from_waker(&waker_ref);
                     let res = poll_future(this.core(), cx);
 
@@ -504,8 +520,13 @@ where
         // are allowed to be dangling after their last use, even if the
         // reference has not yet gone out of scope.
         unsafe {
-            log::trace!("about to dealloc task ptr {:?} with layout {:?}", ptr.as_ptr(), Layout::new::<Task<F,S>>());
+            log::trace!(
+                "about to dealloc task ptr {:?} with layout {:?}",
+                ptr.as_ptr(),
+                Layout::new::<Task<F, S>>()
+            );
             drop(Box::from_raw(ptr.cast::<Task<F, S>>().as_ptr()));
+            log::trace!("deallocated task")
         }
     }
 
@@ -661,7 +682,7 @@ where
         // We don't actually increment the ref-count here, but the new task is
         // never destroyed, so that's ok.
         let me = ManuallyDrop::new(self.get_new_task());
-        
+
         if let Some(task) = self.core().scheduler.release(&me) {
             mem::forget(task);
             2
@@ -1047,19 +1068,17 @@ fn panic_result_to_join_error(
 
 /// Polls the future. If the future completes, the output is written to the
 /// stage field.
-fn poll_future<T: Future, S>(core: &Core<T, S>, cx: Context<'_>) -> Poll<()> {
+fn poll_future<T: Future, S: Schedule>(core: &Core<T, S>, cx: Context<'_>) -> Poll<()> {
     // Poll the future.
     let output = panic::catch_unwind(AssertUnwindSafe(|| {
-        struct Guard<'a, T: Future, S> {
+        struct Guard<'a, T: Future, S: Schedule> {
             core: &'a Core<T, S>,
         }
-        impl<'a, T: Future, S> Drop for Guard<'a, T, S> {
+        impl<'a, T: Future, S: Schedule> Drop for Guard<'a, T, S> {
             fn drop(&mut self) {
                 // If the future panics on poll, we drop it inside the panic
                 // guard.
-                unsafe {
-                    self.core.drop_future_or_output();
-                }
+                unsafe { self.core.drop_future_or_output(); }
             }
         }
         let guard = Guard { core };
@@ -1081,8 +1100,7 @@ fn poll_future<T: Future, S>(core: &Core<T, S>, cx: Context<'_>) -> Poll<()> {
     }));
 
     if res.is_err() {
-        log::error!("unhandled panic");
-        // scheduler().unhandled_panic();
+        panic!("unhandled panic {res:?}");
     }
 
     Poll::Ready(())

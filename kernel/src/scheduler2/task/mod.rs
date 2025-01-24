@@ -46,7 +46,7 @@ fn new_task<F, S>(future: F, scheduler: S, id: Id) -> (TaskRef, TaskRef, JoinHan
 where
     F: Future + 'static,
     F::Output: 'static,
-    S: Schedule,
+    S: Schedule + 'static,
 {
     let (join, scheduler, owner) = TaskRef::new(future, scheduler, id);
     let join = JoinHandle::new(join);

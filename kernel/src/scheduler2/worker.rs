@@ -20,8 +20,9 @@ use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicPtr, Ordering};
+use core::task::Waker;
 use core::time::Duration;
-use core::{mem, ptr};
+use core::{cmp, mem, ptr};
 use sync::{Mutex, MutexGuard};
 
 type NextTaskResult = Result<(Option<TaskRef>, Box<Core>), ()>;
@@ -49,6 +50,8 @@ pub struct Worker {
     global_queue_interval: u32,
     /// Snapshot of idle core list. This helps speedup stealing
     idle_snapshot: idle::Snapshot,
+    /// Used to collect a list of workers to notify
+    workers_to_notify: Vec<usize>,
 }
 
 /// Core data
@@ -118,6 +121,9 @@ pub(super) struct Context {
     ///
     /// If no task is currently being polled, this will be [`ptr::null_mut`].
     current_task: AtomicPtr<task::raw::Header>,
+    /// Tasks to wake after resource drivers are polled. This is mostly to
+    /// handle yielded tasks.
+    defer: RefCell<Vec<TaskRef>>,
 }
 
 macro_rules! try_next_task_step {
@@ -139,6 +145,7 @@ impl Worker {
             num_seq_local_queue_polls: 0,
             global_queue_interval: DEFAULT_GLOBAL_QUEUE_INTERVAL,
             idle_snapshot: idle::Snapshot::new(&handle.shared.idle),
+            workers_to_notify: Vec::with_capacity(handle.shared.remotes.len()),
         }
     }
 
@@ -149,6 +156,7 @@ impl Worker {
             core: RefCell::new(None),
             lifo_enabled: Cell::new(true),
             current_task: AtomicPtr::new(ptr::null_mut()),
+            defer: RefCell::new(Vec::with_capacity(64)),
         });
 
         // First try to acquire an available core
@@ -236,7 +244,7 @@ impl Worker {
             //     self.shutdown_clear_defer(cx);
             //     return Err(());
             // }
-            
+
             cx.shared().condvars[self.hartid].wait(&cx.shared().parking_spot, &mut synced);
         };
 
@@ -293,6 +301,14 @@ impl Worker {
         }
 
         NUM_NO_LOCAL_WORK.increment(1);
+
+        if !cx.defer.borrow().is_empty() {
+            // We are deferring tasks, so poll the resource driver and schedule
+            // the deferred tasks.
+            try_next_task_step!(self.park_yield(cx, core));
+
+            panic!("what happened to the deferred tasks? 🤔");
+        }
 
         // If that also failed to provide us with a task to run, that means either
         //      - A: Other workers have tasks left in their local queues, in which case we should steal
@@ -398,7 +414,7 @@ impl Worker {
                 }
             }
         }
-        
+
         Ok((None, core))
     }
 
@@ -440,8 +456,6 @@ impl Worker {
     }
 
     fn do_park(&mut self, cx: &Context, mut core: Box<Core>) -> NextTaskResult {
-        log::trace!("parking");
-
         debug_assert!(core.run_queue.is_empty());
         // Try one last time to get tasks
         if let Some(task) = self.next_remote_task_and_refill_queue(cx, &mut core) {
@@ -452,16 +466,87 @@ impl Worker {
             return Ok((None, core));
         }
 
-        let mut synced = cx.shared().synced.lock();
-
         // Release the core
+        let mut synced = cx.shared().synced.lock();
         core.is_searching = false;
         cx.shared().idle.release_core(&mut synced, core);
-
-        NUM_PARKS.increment(1);
-
+        
         // Wait for a core to be assigned to us
+        NUM_PARKS.increment(1);
         self.wait_for_core(cx, synced)
+        
+    }
+
+    #[allow(tail_expr_drop_order)]
+    fn park_yield(&mut self, cx: &Context, core: Box<Core>) -> NextTaskResult {
+        // TODO poll driver
+
+        // If there are more I/O events, schedule them.
+        let (maybe_task, core) =
+            self.schedule_deferred_with_core(cx, core, || cx.shared().synced.lock())?;
+
+        Ok((maybe_task, core))
+    }
+
+    #[allow(tail_expr_drop_order)]
+    fn schedule_deferred_with_core<'a>(
+        &mut self,
+        cx: &'a Context,
+        mut core: Box<Core>,
+        synced: impl FnOnce() -> MutexGuard<'a, Synced>,
+    ) -> NextTaskResult {
+        let mut defer = cx.defer.borrow_mut();
+
+        // Grab a task to run next
+        let task = defer.pop();
+
+        if task.is_none() {
+            return Ok((None, core));
+        }
+
+        if !defer.is_empty() {
+            let mut synced = synced();
+
+            // Number of tasks we want to try to spread across idle workers
+            let num_fanout = cmp::min(defer.len(), cx.shared().idle.num_idle(&synced.idle));
+
+            // Cap the number of threads woken up at one time. This is to limit
+            // the number of no-op wakes and reduce mutext contention.
+            //
+            // This number was picked after some basic benchmarks, but it can
+            // probably be tuned using the mean poll time value (slower task
+            // polls can leverage more woken workers).
+            let num_fanout = cmp::min(2, num_fanout);
+
+            if num_fanout > 0 {
+                cx.shared()
+                    .run_queue
+                    .enqueue_many(defer.drain(..num_fanout));
+
+                cx.shared()
+                    .idle
+                    .notify_many(&mut synced, &mut self.workers_to_notify, num_fanout);
+            }
+
+            // Do not run the task while holding the lock...
+            drop(synced);
+        }
+
+        // Notify any workers
+        for worker in self.workers_to_notify.drain(..) {
+            cx.shared().condvars[worker].notify_one(&cx.shared().parking_spot);
+        }
+
+        if !defer.is_empty() {
+            // Push the rest of the tasks on the local queue
+            for task in defer.drain(..) {
+                core.run_queue.push_back_or_overflow(task, cx.shared());
+            }
+
+            cx.shared().notify_parked_local();
+        }
+
+        Ok((task, core))
     }
 
     fn run_task(
@@ -476,7 +561,7 @@ impl Worker {
         }
 
         NUM_POLLS.increment(1);
-        task.poll();
+        task.run();
 
         //      - TODO ensure we stay in our scheduling budget
         //          - super::counters::inc_lifo_schedules();
@@ -515,13 +600,17 @@ impl Worker {
 }
 
 impl Shared {
-    pub(super) fn schedule_task(&self, task: TaskRef, _is_yielding: bool) {
+    pub(super) fn schedule_task(&self, task: TaskRef, is_yield: bool) {
         if let Some(cx) = self.tls.get() {
             // And the current thread still holds a core
             if let Some(core) = cx.core.borrow_mut().as_mut() {
-                self.schedule_local(cx, core, task);
+                if is_yield {
+                    cx.defer.borrow_mut().push(task);
+                } else {
+                    self.schedule_local(cx, core, task);
+                }
             } else {
-                todo!()
+                cx.defer.borrow_mut().push(task);
             }
         } else {
             self.schedule_remote(task);
@@ -583,5 +672,10 @@ impl Context {
 
     fn shared(&self) -> &Shared {
         &self.handle.shared
+    }
+
+    pub(crate) fn defer(&self, waker: &Waker) {
+        // TODO: refactor defer across all runtimes
+        waker.wake_by_ref();
     }
 }

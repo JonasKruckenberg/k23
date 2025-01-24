@@ -7,20 +7,20 @@
 
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
-use core::ops;
+use core::{mem, ops};
 use core::ptr::NonNull;
 use core::task::{RawWaker, RawWakerVTable, Waker};
 use super::raw::{Header};
 use crate::scheduler2::task::raw::TaskRef;
 
-pub(super) struct WakerRef<'a> {
+pub(super) struct WakerRef<'a, S: 'static> {
     waker: ManuallyDrop<Waker>,
-    _p: PhantomData<&'a Header>,
+    _p: PhantomData<(&'a Header, S)>,
 }
 
 /// Returns a `WakerRef` which avoids having to preemptively increase the
 /// refcount if there is no need to do so.
-pub(super) fn waker_ref(header: &NonNull<Header>) -> WakerRef<'_> {
+pub(super) fn waker_ref<S>(header: &NonNull<Header>) -> WakerRef<'_, S> {
     // `Waker::will_wake` uses the VTABLE pointer as part of the check. This
     // means that `will_wake` will always return false when using the current
     // task's waker. (discussion at rust-lang/rust#66281).
@@ -37,7 +37,7 @@ pub(super) fn waker_ref(header: &NonNull<Header>) -> WakerRef<'_> {
     }
 }
 
-impl ops::Deref for WakerRef<'_> {
+impl<S> ops::Deref for WakerRef<'_, S> {
     type Target = Waker;
 
     fn deref(&self) -> &Waker {
@@ -48,6 +48,7 @@ impl ops::Deref for WakerRef<'_> {
 unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
     unsafe {
         let header = NonNull::new_unchecked(ptr as *mut Header);
+        log::trace!("waker.clone_waker {ptr:?}");
         header.as_ref().state.ref_inc();
         raw_waker(header)
     }
@@ -56,6 +57,7 @@ unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
 unsafe fn drop_waker(ptr: *const ()) {
     unsafe {
         let ptr = NonNull::new_unchecked(ptr as *mut Header);
+        log::trace!("waker.drop_waker {ptr:?}");
         let raw = TaskRef::from_raw(ptr);
         raw.drop_reference();
     }
@@ -64,6 +66,7 @@ unsafe fn drop_waker(ptr: *const ()) {
 unsafe fn wake_by_val(ptr: *const ()) {
     unsafe {
         let ptr = NonNull::new_unchecked(ptr as *mut Header);
+        log::trace!("waker.wake_by_val {ptr:?}");
         let raw = TaskRef::from_raw(ptr);
         raw.wake_by_val();
     }
@@ -73,8 +76,13 @@ unsafe fn wake_by_val(ptr: *const ()) {
 unsafe fn wake_by_ref(ptr: *const ()) {
     unsafe {
         let ptr = NonNull::new_unchecked(ptr as *mut Header);
-        let raw = TaskRef::from_raw(ptr);
-        raw.wake_by_ref();
+        log::trace!("waker.wake_by_ref {ptr:?}");
+        let task = TaskRef::from_raw(ptr);
+        task.wake_by_ref();
+        // Prevent dropping the `task` reference because we just fabricated that out of thin air
+        // we could also call `TaskRef::clone_from_raw` above and allow the drop here, but that
+        // would basically do two atomic operations for no real reason
+        mem::forget(task); 
     }
 }
 

@@ -38,7 +38,7 @@ mod wasm;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
-use crate::time::Instant;
+use time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use core::alloc::Layout;
@@ -56,7 +56,7 @@ use vm::{PhysicalAddress, VirtualAddress};
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages
-pub const STACK_SIZE_PAGES: usize = 128; // TODO find a lower more appropriate value
+pub const STACK_SIZE_PAGES: usize = 256; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
 pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropriate value
 /// The initial size of the kernel heap in pages.
@@ -139,15 +139,25 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
 
-    static SCHEDULER: OnceLock<scheduler2::Handle> = OnceLock::new();
-    let sched = SCHEDULER.get_or_init(|| scheduler2::Handle::new(8, &mut rand));
+    scheduler2::init(8, &mut rand);
 
-    sched.spawn(async {
-        log::debug!("Hello from future");
+    // scheduler2::scheduler().spawn(async {
+    //     loop {
+    //         log::debug!("Hello from future");
+    //         scheduler2::yield_now().await;
+    //         log::trace!("after yield");
+    //     }
+    // });
+
+    scheduler2::scheduler().spawn(async {
+        log::debug!("Hello from A");
+    });
+    scheduler2::scheduler().spawn(async {
+        log::debug!("Hello from B");
     });
 
-    scheduler2::worker::Worker::new(sched, hartid)
-        .run(sched)
+    scheduler2::worker::Worker::new(scheduler2::scheduler(), hartid)
+        .run(scheduler2::scheduler())
         .unwrap();
 
     // wasm::test();

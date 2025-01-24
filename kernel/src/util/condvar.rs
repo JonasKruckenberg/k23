@@ -139,7 +139,7 @@ impl Condvar {
         if bad_mutex {
             panic!("attempted to use a condition variable with more than one mutex");
         }
-        
+
         // Relock the mutex after sleeping...
         mutex.lock();
 

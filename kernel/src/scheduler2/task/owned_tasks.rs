@@ -37,7 +37,7 @@ impl OwnedTasks {
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
-        S: Schedule,
+        S: Schedule + 'static,
     {
         let (for_owner, for_scheduler, join) = super::new_task(task, scheduler, id);
         let task = unsafe { self.bind_inner(for_owner, for_scheduler) };
@@ -53,7 +53,7 @@ impl OwnedTasks {
     where
         F: Future + 'static,
         F::Output: 'static,
-        S: Schedule,
+        S: Schedule + 'static,
     {
         let (for_owner, for_scheduler, join) = super::new_task(task, scheduler, id);
         let task = unsafe { self.bind_inner(for_owner, for_scheduler) };
