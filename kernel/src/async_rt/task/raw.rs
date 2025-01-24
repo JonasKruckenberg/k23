@@ -532,8 +532,7 @@ where
     unsafe fn try_read_output(ptr: NonNull<Header>, dst: *mut (), waker: &Waker) {
         unsafe {
             let this = Self::from_raw(ptr);
-            let dst = &mut *(dst as *mut Poll<super::Result<F::Output>>);
-
+            let dst = dst.cast::<Poll<super::Result<F::Output>>>();
             if can_read_output(this.header(), this.trailer(), waker) {
                 *dst = Poll::Ready(this.core().take_output());
             }

@@ -51,7 +51,7 @@ where
 }
 
 impl<T> Future for JoinHandle<T> {
-    type Output = crate::Result<T>;
+    type Output = super::Result<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // ready!(crate::trace::trace_leaf(cx));
