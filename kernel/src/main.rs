@@ -32,6 +32,7 @@ mod scheduler2;
 mod thread_local;
 mod time;
 mod trap_handler;
+mod util;
 mod vm;
 mod wasm;
 
@@ -138,14 +139,16 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
 
-    static SCHEDULER: OnceLock<scheduler2::worker::Handle> = OnceLock::new();
-    let sched = SCHEDULER.get_or_init(|| scheduler2::worker::Handle::new(1, &mut rand));
+    static SCHEDULER: OnceLock<scheduler2::Handle> = OnceLock::new();
+    let sched = SCHEDULER.get_or_init(|| scheduler2::Handle::new(8, &mut rand));
 
     sched.spawn(async {
         log::debug!("Hello from future");
     });
 
-    scheduler2::worker::Worker::new(0).run(sched).unwrap();
+    scheduler2::worker::Worker::new(sched, hartid)
+        .run(sched)
+        .unwrap();
 
     // wasm::test();
 

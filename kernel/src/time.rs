@@ -304,31 +304,20 @@ impl fmt::Display for SystemTimeError {
     }
 }
 
-fn ticks_to_duration(ticks: u64, timebase_freq: u64) -> Duration {
+pub fn ticks_to_duration(ticks: u64, timebase_freq: u64) -> Duration {
     let secs = ticks / timebase_freq;
     #[expect(clippy::cast_possible_truncation, reason = "truncation on purpose")]
     let subsec_nanos = ((ticks % timebase_freq) * NANOS_PER_SEC / timebase_freq) as u32;
     Duration::new(secs, subsec_nanos)
 }
 
-fn duration_to_ticks(d: Duration, timebase_freq: u64) -> u64 {
-    d.as_secs() * timebase_freq + u64::from(d.subsec_nanos()) * timebase_freq / NANOS_PER_SEC
-}
-
-/// low-level sleep primitive, will sleep the calling hart for at least the specified duration
-///
 /// # Safety
-///
-/// This function is very low level and will block the calling hart until a timer interrupt is received.
-/// No checking is performed however if the timer interrupt is the correct one.
-pub unsafe fn sleep(duration: Duration) {
-    #[expect(tail_expr_drop_order, reason = "")]
-    let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
-
-    riscv::sbi::time::set_timer(riscv::time::read64() + duration_to_ticks(duration, timebase_freq))
-        .unwrap();
-
-    arch::park_hart();
+/// 
+/// In release mode this function does not protect against integer overflow, it is the 
+/// callers responsibility to ensure that durations passed to this function are within as safe
+/// margin.
+pub unsafe fn duration_to_ticks_unchecked(d: Duration, timebase_freq: u64) -> u64 {
+    d.as_secs() * timebase_freq + u64::from(d.subsec_nanos()) * (timebase_freq / NANOS_PER_SEC)
 }
 
 // #[cfg(test)]

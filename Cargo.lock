@@ -465,6 +465,7 @@ dependencies = [
  "hashbrown 0.15.2",
  "linked-list",
  "loader-api",
+ "lock_api",
  "log",
  "mpsc-queue",
  "pin-project",

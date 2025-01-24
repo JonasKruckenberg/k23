@@ -14,6 +14,7 @@ use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{sbi, scause, sepc, sstatus, stval, stvec};
 use thread_local::thread_local;
+use crate::arch::riscv64::IN_TIMEOUT;
 
 thread_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
@@ -271,7 +272,8 @@ fn default_trap_handler(
             return raw_frame;
         }
         Trap::Interrupt(Interrupt::SupervisorTimer | Interrupt::VirtualSupervisorTimer) => {
-            log::trace!("timer interrupt");
+            IN_TIMEOUT.set(false);
+            
             // Timer interrupts are always IPIs used for sleeping
             sbi::time::set_timer(u64::MAX).unwrap();
             return raw_frame;

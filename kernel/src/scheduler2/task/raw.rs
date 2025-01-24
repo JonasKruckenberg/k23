@@ -681,7 +681,7 @@ struct Stub;
 impl Future for Stub {
     type Output = ();
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         unreachable!("poll called on a stub future")
     }
 }
@@ -690,15 +690,9 @@ impl Schedule for Stub {
     fn schedule(&self, _task: TaskRef) {
         unreachable!("schedule called on a stub scheduler")
     }
-
-    fn current_task(&self) -> Option<TaskRef> {
-        unreachable!("current_task called on a stub scheduler")
-    }
-
     fn release(&self, _task: &TaskRef) -> Option<TaskRef> {
         unreachable!("release called on a stub scheduler")
     }
-
     fn yield_now(&self, _task: TaskRef) {
         unreachable!("yield_now called on a stub scheduler")
     }

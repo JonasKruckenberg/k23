@@ -462,7 +462,6 @@ impl State {
     }
 
     pub(super) fn ref_inc(&self) {
-        log::trace!("State::ref_inc");
         // Using a relaxed ordering is alright here, as knowledge of the
         // original reference prevents other threads from erroneously deleting
         // the object.
@@ -484,7 +483,6 @@ impl State {
     
     /// Returns `true` if the task should be released.
     pub(super) fn ref_dec(&self) -> bool {
-        log::trace!("State::ref_dec");
         let prev = Snapshot(self.val.fetch_sub(REF_ONE, Ordering::AcqRel));
         assert!(prev.ref_count() >= 1);
         prev.ref_count() == 1

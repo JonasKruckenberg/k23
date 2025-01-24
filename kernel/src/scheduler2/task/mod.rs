@@ -30,16 +30,16 @@ pub enum PollResult {
 }
 
 pub trait Schedule {
+    /// Schedule the task to run.
     fn schedule(&self, task: TaskRef);
-    #[must_use]
-    fn current_task(&self) -> Option<TaskRef>;
+    /// Schedule the task to run in the near future, but yield to other tasks right now.
+    fn yield_now(&self, task: TaskRef);
     /// The task has completed work and is ready to be released. The scheduler
     /// should release it immediately and return it. The task module will batch
     /// the ref-dec with setting other options.
     ///
     /// If the scheduler has already released the task, then None is returned.
     fn release(&self, task: &TaskRef) -> Option<TaskRef>;
-    fn yield_now(&self, task: TaskRef);
 }
 
 fn new_task<F, S>(future: F, scheduler: S, id: Id) -> (TaskRef, TaskRef, JoinHandle<F::Output>)

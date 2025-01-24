@@ -5,91 +5,35 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::scheduler2::fast_rand::FastRand;
+use crate::metrics::Counter;
+use crate::scheduler2::idle::Idle;
 use crate::scheduler2::queue::Overflow;
-use crate::scheduler2::task::{JoinHandle, OwnedTasks, TaskRef};
-use crate::scheduler2::{queue, task};
+use crate::scheduler2::task::{OwnedTasks, TaskRef};
+use crate::scheduler2::{idle, queue, task, Handle};
 use crate::thread_local::ThreadLocal;
+use crate::util::condvar::Condvar;
+use crate::util::fast_rand::FastRand;
+use crate::util::parking_spot::ParkingSpot;
+use crate::{arch, counter};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
-use core::future::Future;
-use core::mem;
-use sync::Mutex;
-
-pub struct Handle {
-    shared: Shared,
-}
-
-impl Handle {
-    pub fn new(num_cores: usize, rand: &mut impl rand::RngCore) -> Self {
-        let mut cores = Vec::with_capacity(num_cores);
-        let mut remotes = Vec::with_capacity(num_cores);
-
-        for i in 0..num_cores {
-            let (steal, run_queue) = queue::new();
-
-            cores.push(Box::new(Core {
-                index: i,
-                run_queue,
-                lifo_slot: None,
-                is_searching: false,
-                rand: FastRand::new(rand.next_u64()),
-            }));
-            remotes.push(Remote { steal });
-        }
-
-        let stub = TaskRef::new_stub();
-        let run_queue = mpsc_queue::MpscQueue::new_with_stub(stub);
-        #[allow(tail_expr_drop_order)]
-        Self {
-            shared: Shared {
-                remotes: Box::new([]),
-                owned: OwnedTasks::new(),
-                run_queue,
-                tls: Default::default(),
-                available_cores: Mutex::new(cores),
-            },
-        }
-    }
-
-    pub fn spawn<F>(&'static self, future: F) -> JoinHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        let id = task::Id::next();
-        let (handle, maybe_task) = self.shared.owned.bind(future, self, id);
-
-        if let Some(task) = maybe_task {
-            self.shared.schedule_task(task);
-        }
-
-        handle
-    }
-}
-
-impl task::Schedule for &'static Handle {
-    fn schedule(&self, task: TaskRef) {
-        self.shared.schedule_task(task);
-    }
-
-    fn current_task(&self) -> Option<TaskRef> {
-        todo!()
-    }
-
-    fn release(&self, task: &TaskRef) -> Option<TaskRef> {
-        self.shared.owned.remove(task)
-    }
-
-    fn yield_now(&self, task: TaskRef) {
-        todo!()
-    }
-}
-
-const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
+use core::ptr::NonNull;
+use core::sync::atomic::{AtomicPtr, Ordering};
+use core::time::Duration;
+use core::{mem, ptr};
+use sync::{Mutex, MutexGuard};
 
 type NextTaskResult = Result<(Option<TaskRef>, Box<Core>), ()>;
+const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
+
+static GLOBAL_QUEUE_INTERVAL: Counter = counter!("scheduler.global-queue-interval");
+static NUM_NO_LOCAL_WORK: Counter = counter!("scheduler.num-no-local-work");
+static NUM_REMOTE_REFILL: Counter = counter!("scheduler.num-remote-refill");
+static NUM_SPIN_STALL: Counter = counter!("scheduler.num-spin-stall");
+static NUM_PARKS: Counter = counter!("scheduler.num-parks");
+static NUM_POLLS: Counter = counter!("scheduler.num-polls");
+static NUM_NOTIFY_LOCAL: Counter = counter!("scheduler.num-notify-local");
 
 /// A scheduler worker
 ///
@@ -97,60 +41,83 @@ type NextTaskResult = Result<(Option<TaskRef>, Box<Core>), ()>;
 pub struct Worker {
     /// True if the scheduler is being shutdown
     is_shutdown: bool,
-    pub hartid: usize,
+    hartid: usize,
     /// Counter used to track when to poll from the local queue vs. the
-    /// injection queue
+    /// global queue
     num_seq_local_queue_polls: u32,
     /// How often to check the global queue
     global_queue_interval: u32,
+    /// Snapshot of idle core list. This helps speedup stealing
+    idle_snapshot: idle::Snapshot,
 }
 
 /// Core data
 ///
 /// Data is heap-allocated and migrates threads.
 #[repr(align(128))]
-struct Core {
+pub(super) struct Core {
     /// Index holding this core's remote/shared state.
-    index: usize,
+    pub(super) index: usize,
     /// The worker-local run queue.
-    run_queue: queue::Local,
+    pub(super) run_queue: queue::Local,
     /// The LIFO slot
-    lifo_slot: Option<TaskRef>,
+    pub(super) lifo_slot: Option<TaskRef>,
     /// True if the worker is currently searching for more work. Searching
     /// involves attempting to steal from other workers.
-    is_searching: bool,
+    pub(super) is_searching: bool,
     /// Fast random number generator.
-    rand: FastRand,
+    pub(super) rand: FastRand,
 }
 
 /// State shared across all workers
-pub struct Shared {
+pub(super) struct Shared {
     /// Per-core remote state.
-    remotes: Box<[Remote]>,
+    pub(super) remotes: Box<[Remote]>,
     /// All tasks currently scheduled on this runtime
-    owned: OwnedTasks,
+    pub(super) owned: OwnedTasks,
+    /// Data synchronized by the scheduler mutex
+    pub(super) synced: Mutex<Synced>,
     /// The global run queue
-    run_queue: mpsc_queue::MpscQueue<task::raw::Header>,
+    pub(super) run_queue: mpsc_queue::MpscQueue<task::raw::Header>,
+    /// Coordinates idle workers
+    pub(super) idle: Idle,
+    /// Condition variables used for parking and unparking harts. Each hart has its
+    /// own `condvar` it waits on.
+    pub(super) condvars: Vec<Condvar>,
+    /// Synchronization state used for parking and unparking harts. This is exclusively used
+    /// in conjunction with the `condvars` to coordinate parking and unparking.
+    pub(super) parking_spot: ParkingSpot,
+    /// Per-hart thread-local data. Logically this is part of the [`Worker`] struct, but placed here
+    /// into a TLS slot instead of stack allocated so we can access it from other places (i.e. we only
+    /// need access to the scheduler handle instead of access to the workers stack which wouldn't work).
+    pub(super) tls: ThreadLocal<Context>,
+}
 
-    tls: ThreadLocal<Context>,
-
-    available_cores: Mutex<Vec<Box<Core>>>,
+/// Various bits of shared state that are synchronized by the scheduler mutex.
+pub(super) struct Synced {
+    pub(super) assigned_cores: Vec<Option<Box<Core>>>,
+    pub(super) idle: idle::Synced,
 }
 
 /// Used to communicate with a worker from other threads.
-struct Remote {
+pub(super) struct Remote {
     /// Steals tasks from this worker.
     pub(super) steal: queue::Steal,
 }
 
 /// Thread-local context
-struct Context {
+pub(super) struct Context {
     /// Handle to the current scheduler
     handle: &'static Handle,
     /// Core data
     core: RefCell<Option<Box<Core>>>,
     /// True when the LIFO slot is enabled
     lifo_enabled: Cell<bool>,
+    /// The task currently being polled by this scheduler, if it is currently
+    /// polling a task.
+    ///
+    /// If no task is currently being polled, this will be [`ptr::null_mut`].
+    current_task: AtomicPtr<task::raw::Header>,
 }
 
 macro_rules! try_next_task_step {
@@ -165,12 +132,13 @@ macro_rules! try_next_task_step {
 }
 
 impl Worker {
-    pub fn new(hartid: usize) -> Self {
+    pub fn new(handle: &'static Handle, hartid: usize) -> Self {
         Self {
             is_shutdown: false,
             hartid,
             num_seq_local_queue_polls: 0,
             global_queue_interval: DEFAULT_GLOBAL_QUEUE_INTERVAL,
+            idle_snapshot: idle::Snapshot::new(&handle.shared.idle),
         }
     }
 
@@ -180,17 +148,26 @@ impl Worker {
             handle,
             core: RefCell::new(None),
             lifo_enabled: Cell::new(true),
+            current_task: AtomicPtr::new(ptr::null_mut()),
         });
 
         // First try to acquire an available core
-        let (maybe_task, mut core) = if let Some(core) = self.try_acquire_available_core(cx) {
-            // Try to poll a task from the global queue
-            // let maybe_task = cx.shared().nex();
-            (None, core)
-        } else {
-            // block the thread to wait for a core to be assigned to us
-            self.wait_for_core()?
+        let (maybe_task, mut core) = {
+            let mut synced = cx.shared().synced.lock();
+
+            if let Some(core) = self.try_acquire_available_core(cx, &mut synced) {
+                // Try to poll a task from the global queue
+                // let maybe_task = cx.shared().nex();
+                (None, core)
+            } else {
+                // block the thread to wait for a core to be assigned to us
+                self.wait_for_core(cx, synced)?
+            }
         };
+
+        if let Some(task) = maybe_task {
+            core = self.run_task(cx, core, task)?;
+        }
 
         // once we have acquired a core, we can start the scheduling loop
         while !self.is_shutdown {
@@ -212,14 +189,79 @@ impl Worker {
         todo!()
     }
 
-    fn try_acquire_available_core(&mut self, cx: &Context) -> Option<Box<Core>> {
-        let mut available_cores = cx.shared().available_cores.lock();
-        available_cores.pop()
+    fn try_acquire_available_core(
+        &mut self,
+        cx: &Context,
+        synced: &mut Synced,
+    ) -> Option<Box<Core>> {
+        if let Some(mut core) = cx
+            .shared()
+            .idle
+            .try_acquire_available_core(&mut synced.idle)
+        {
+            self.reset_acquired_core(cx, &mut core);
+            Some(core)
+        } else {
+            None
+        }
     }
 
     // Block the current hart waiting until a core becomes available.
-    fn wait_for_core(&mut self) -> NextTaskResult {
-        todo!()
+    #[allow(tail_expr_drop_order)]
+    fn wait_for_core(
+        &mut self,
+        cx: &Context,
+        mut synced: MutexGuard<'_, Synced>,
+    ) -> NextTaskResult {
+        // TODO why??
+        if cx.shared().idle.needs_searching() {
+            if let Some(mut core) = self.try_acquire_available_core(cx, &mut synced) {
+                cx.shared().idle.transition_worker_to_searching(&mut core);
+                return Ok((None, core));
+            }
+        }
+
+        cx.shared()
+            .idle
+            .transition_worker_to_parked(&mut synced, self.hartid);
+
+        // Wait until a core is available, then exit the loop.
+        let mut core = loop {
+            if let Some(core) = synced.assigned_cores[self.hartid].take() {
+                break core;
+            }
+
+            // // If shutting down, abort
+            // if cx.shared().inject.is_closed(&synced.inject) {
+            //     self.shutdown_clear_defer(cx);
+            //     return Err(());
+            // }
+            
+            cx.shared().condvars[self.hartid].wait(&cx.shared().parking_spot, &mut synced);
+        };
+
+        self.reset_acquired_core(cx, &mut core);
+
+        if self.is_shutdown {
+            // Currently shutting down, don't do any more work
+            return Ok((None, core));
+        }
+
+        let maybe_task = self.next_remote_task_and_refill_queue(cx, &mut core);
+
+        Ok((maybe_task, core))
+    }
+
+    /// Ensure core's state is set correctly for the worker to start using.
+    fn reset_acquired_core(&mut self, cx: &Context, core: &mut Core) {
+        self.global_queue_interval = DEFAULT_GLOBAL_QUEUE_INTERVAL;
+
+        // Reset `lifo_enabled` here in case the core was previously stolen from
+        // a task that had the LIFO slot disabled.
+        cx.lifo_enabled.set(true);
+
+        // At this point, the local queue should be empty
+        debug_assert!(core.run_queue.is_empty());
     }
 
     /// Get the next task to run, this encapsulates the core of the scheduling logic.
@@ -231,6 +273,7 @@ impl Worker {
         // to ensure that tasks in the global run queue make progress too.
         // If we reached a tick where we pull from the global queue that takes precedence.
         if self.num_seq_local_queue_polls % self.global_queue_interval == 0 {
+            GLOBAL_QUEUE_INTERVAL.increment(1);
             self.num_seq_local_queue_polls = 0;
 
             if let Some(task) = self.next_remote_task(cx) {
@@ -248,6 +291,8 @@ impl Worker {
         if let Some(task) = self.next_remote_task_and_refill_queue(cx, &mut core) {
             return Ok((Some(task), core));
         }
+
+        NUM_NO_LOCAL_WORK.increment(1);
 
         // If that also failed to provide us with a task to run, that means either
         //      - A: Other workers have tasks left in their local queues, in which case we should steal
@@ -276,6 +321,8 @@ impl Worker {
 
     /// Get a task from the global run queue but pick up a few more tasks to refill the local queue with.
     fn next_remote_task_and_refill_queue(&self, cx: &Context, core: &mut Core) -> Option<TaskRef> {
+        NUM_REMOTE_REFILL.increment(1);
+
         if cx.shared().run_queue.is_empty() {
             return None;
         }
@@ -290,7 +337,7 @@ impl Worker {
         );
 
         let n = if core.is_searching {
-            cx.shared().run_queue.len() / 2 /* TODO cx.shared().idle.num_searching() + 1 */
+            cx.shared().run_queue.len() / cx.shared().idle.num_searching() + 1
         } else {
             cx.shared().run_queue.len() / (cx.shared().remotes.len() + 1)
         };
@@ -313,6 +360,7 @@ impl Worker {
         ret
     }
 
+    #[allow(tail_expr_drop_order)]
     fn search_for_work(&mut self, cx: &Context, mut core: Box<Core>) -> NextTaskResult {
         const ROUNDS: usize = 4;
 
@@ -342,16 +390,42 @@ impl Worker {
             }
 
             if i > 0 {
-                // super::counters::inc_num_spin_stall();
-                // std::thread::sleep(std::time::Duration::from_micros(i as u64));
+                NUM_SPIN_STALL.increment(1);
+                unsafe {
+                    log::trace!("spin stalling for {:?}", Duration::from_micros(i as u64));
+                    arch::hart_park_timeout(Duration::from_micros(i as u64));
+                    log::trace!("after spin stall");
+                }
             }
         }
-
-        todo!()
+        
+        Ok((None, core))
     }
 
     fn steal_one_round(&self, cx: &Context, core: &mut Core, start: usize) -> Option<TaskRef> {
-        todo!()
+        let num = cx.shared().remotes.len();
+
+        for i in 0..num {
+            let i = (start + i) % num;
+
+            // Don't steal from ourself! We know we don't have work.
+            if i == core.index {
+                continue;
+            }
+
+            // If the core is currently idle, then there is nothing to steal.
+            if self.idle_snapshot.is_idle(i) {
+                continue;
+            }
+
+            let target = &cx.shared().remotes[i];
+
+            if let Some(task) = target.steal.steal_into(&mut core.run_queue) {
+                return Some(task);
+            }
+        }
+
+        None
     }
 
     #[allow(tail_expr_drop_order)]
@@ -366,8 +440,9 @@ impl Worker {
     }
 
     fn do_park(&mut self, cx: &Context, mut core: Box<Core>) -> NextTaskResult {
-        let was_searching = core.is_searching;
+        log::trace!("parking");
 
+        debug_assert!(core.run_queue.is_empty());
         // Try one last time to get tasks
         if let Some(task) = self.next_remote_task_and_refill_queue(cx, &mut core) {
             return Ok((Some(task), core));
@@ -377,11 +452,16 @@ impl Worker {
             return Ok((None, core));
         }
 
+        let mut synced = cx.shared().synced.lock();
+
         // Release the core
         core.is_searching = false;
+        cx.shared().idle.release_core(&mut synced, core);
+
+        NUM_PARKS.increment(1);
 
         // Wait for a core to be assigned to us
-        self.wait_for_core()
+        self.wait_for_core(cx, synced)
     }
 
     fn run_task(
@@ -391,12 +471,17 @@ impl Worker {
         task: TaskRef,
     ) -> Result<Box<Core>, ()> {
         if self.transition_from_searching(cx, &mut core) {
-            // cx.shared().notify_parked_local();
+            // super::counters::inc_num_relay_search();
+            cx.shared().notify_parked_local();
         }
 
+        NUM_POLLS.increment(1);
         task.poll();
 
         //      - TODO ensure we stay in our scheduling budget
+        //          - super::counters::inc_lifo_schedules();
+        //          - super::counters::inc_lifo_capped();
+        //          - super::counters::inc_num_lifo_polls();
         //          - poll the LIFO task
 
         Ok(core)
@@ -404,7 +489,7 @@ impl Worker {
 
     fn transition_to_searching(&self, cx: &Context, core: &mut Core) -> bool {
         if !core.is_searching {
-            // TODO cx.shared().idle.try_transition_worker_to_searching(core);
+            cx.shared().idle.try_transition_worker_to_searching(core);
         }
 
         core.is_searching
@@ -417,8 +502,7 @@ impl Worker {
         }
 
         core.is_searching = false;
-        // TODO cx.shared().idle.transition_worker_from_searching()
-        todo!()
+        cx.shared().idle.transition_worker_from_searching()
     }
 
     fn can_transition_to_parked(&self, core: &mut Core) -> bool {
@@ -431,7 +515,7 @@ impl Worker {
 }
 
 impl Shared {
-    fn schedule_task(&self, task: TaskRef) {
+    pub(super) fn schedule_task(&self, task: TaskRef, _is_yielding: bool) {
         if let Some(cx) = self.tls.get() {
             // And the current thread still holds a core
             if let Some(core) = cx.core.borrow_mut().as_mut() {
@@ -457,15 +541,19 @@ impl Shared {
             core.run_queue.push_back_or_overflow(task, self);
         }
 
-        log::warn!("TODO notify a worker");
-        // todo!("notify a worker")
+        self.notify_parked_local();
     }
 
     fn schedule_remote(&self, task: TaskRef) {
         self.run_queue.enqueue(task);
 
-        log::warn!("TODO notify a worker");
-        // todo!("notify a worker")
+        let synced = self.synced.lock();
+        self.idle.notify_remote(synced, self);
+    }
+
+    fn notify_parked_local(&self) {
+        NUM_NOTIFY_LOCAL.increment(1);
+        self.idle.notify_local(self);
     }
 }
 
@@ -483,6 +571,16 @@ impl Overflow for Shared {
 }
 
 impl Context {
+    /// Return a [`TaskRef`] referencing the task currently being polled by
+    /// this scheduler, if a task is currently being polled.
+    #[must_use]
+    #[inline]
+    pub fn current_task(&'static self) -> Option<TaskRef> {
+        let ptr = self.current_task.load(Ordering::Acquire);
+        let ptr = NonNull::new(ptr)?;
+        Some(TaskRef::clone_from_raw(ptr))
+    }
+
     fn shared(&self) -> &Shared {
         &self.handle.shared
     }

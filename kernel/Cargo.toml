@@ -37,6 +37,7 @@ pin-project = "1"
 smallvec.workspace = true
 hashbrown.workspace = true
 gimli.workspace = true
+lock_api.workspace = true
 
 wasmparser.workspace = true
 target-lexicon.workspace = true

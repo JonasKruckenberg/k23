@@ -18,7 +18,6 @@ mod user_mmap;
 mod vmo;
 
 use crate::arch;
-use crate::machine_info::MachineInfo;
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
 pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
