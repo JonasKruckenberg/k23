@@ -23,22 +23,21 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
+mod async_rt;
 mod error;
 mod logger;
 mod machine_info;
 mod metrics;
 mod panic;
-mod scheduler2;
 mod thread_local;
 mod time;
 mod trap_handler;
 mod util;
 mod vm;
-mod wasm;
+mod wasm_rt;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
-use time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use core::alloc::Layout;
@@ -50,6 +49,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::OnceLock;
 use thread_local::thread_local;
+use time::Instant;
 use vm::frame_alloc;
 use vm::{PhysicalAddress, VirtualAddress};
 
@@ -139,26 +139,26 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
 
-    scheduler2::init(8, &mut rand);
+    async_rt::init(8, &mut rand);
 
+    // // scheduler2::scheduler().spawn(async {
+    // //     loop {
+    // //         log::debug!("Hello from future");
+    // //         scheduler2::yield_now().await;
+    // //         log::trace!("after yield");
+    // //     }
+    // // });
+    // 
     // scheduler2::scheduler().spawn(async {
-    //     loop {
-    //         log::debug!("Hello from future");
-    //         scheduler2::yield_now().await;
-    //         log::trace!("after yield");
-    //     }
+    //     log::debug!("Hello from A");
     // });
-
-    scheduler2::scheduler().spawn(async {
-        log::debug!("Hello from A");
-    });
-    scheduler2::scheduler().spawn(async {
-        log::debug!("Hello from B");
-    });
-
-    scheduler2::worker::Worker::new(scheduler2::scheduler(), hartid)
-        .run(scheduler2::scheduler())
-        .unwrap();
+    // scheduler2::scheduler().spawn(async {
+    //     log::debug!("Hello from B");
+    // });
+    // 
+    // scheduler2::worker::Worker::new(scheduler2::scheduler(), hartid)
+    //     .run(scheduler2::scheduler())
+    //     .unwrap();
 
     // wasm::test();
 
