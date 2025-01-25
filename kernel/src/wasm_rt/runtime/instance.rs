@@ -601,11 +601,13 @@ unsafe fn initialize_tables(
             }
             TableSegmentElements::Expressions(exprs) => exprs
                 .iter()
-                .map(|expr| -> crate::wasm_rt::Result<Option<NonNull<VMFuncRef>>> {
-                    let funcref = const_eval.eval(expr).get_funcref();
-                    // TODO assert funcref ptr is valid
-                    Ok(Some(NonNull::new(funcref.cast()).unwrap()))
-                })
+                .map(
+                    |expr| -> crate::wasm_rt::Result<Option<NonNull<VMFuncRef>>> {
+                        let funcref = const_eval.eval(expr).get_funcref();
+                        // TODO assert funcref ptr is valid
+                        Ok(Some(NonNull::new(funcref.cast()).unwrap()))
+                    },
+                )
                 .collect::<Result<Vec<_>, _>>()?,
         };
 

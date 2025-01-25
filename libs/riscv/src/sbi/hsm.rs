@@ -28,7 +28,11 @@ pub enum SuspendType {
 ///
 /// Returns an error if the SBI call fails.
 #[inline]
-pub fn hart_suspend(suspend_type: SuspendType, resume_address: usize, opaque: usize) -> super::Result<()> {
+pub fn hart_suspend(
+    suspend_type: SuspendType,
+    resume_address: usize,
+    opaque: usize,
+) -> super::Result<()> {
     sbi_call!(ext: EID_HSM, func: 0, "a0": suspend_type as u32 as usize, "a1": resume_address, "a2": opaque)?;
     Ok(())
 }

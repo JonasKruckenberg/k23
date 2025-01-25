@@ -188,7 +188,12 @@ impl ParkingSpot {
             if timed_out {
                 // If this thread timed out then it is still present in the
                 // waiter queue, so remove it.
-                inner.get_mut(&key).unwrap().0.cursor_from_ptr_mut(ptr).remove();
+                inner
+                    .get_mut(&key)
+                    .unwrap()
+                    .0
+                    .cursor_from_ptr_mut(ptr)
+                    .remove();
                 WaitResult::TimedOut
             } else {
                 // If this node was notified then we should not be in a queue

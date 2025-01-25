@@ -8,8 +8,12 @@
 mod idle;
 pub mod worker;
 
+use crate::async_rt::task::{OwnedTasks, TaskRef};
 use crate::async_rt::{queue, task, JoinHandle};
+use crate::thread_local::ThreadLocal;
+use crate::util::condvar::Condvar;
 use crate::util::fast_rand::FastRand;
+use crate::util::parking_spot::ParkingSpot;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::future::Future;
@@ -18,12 +22,8 @@ use idle::Idle;
 use rand::RngCore;
 use sync::Mutex;
 use worker::{Core, Remote, Shared, Synced};
-use crate::async_rt::task::{OwnedTasks, TaskRef};
-use crate::thread_local::ThreadLocal;
-use crate::util::condvar::Condvar;
-use crate::util::parking_spot::ParkingSpot;
 
-pub struct Handle { 
+pub struct Handle {
     shared: Shared,
 }
 
@@ -82,7 +82,8 @@ impl Handle {
 
         handle
     }
-    
+
+    #[inline]
     pub(in crate::async_rt) fn defer(&self, waker: &Waker) {
         self.shared.tls.get().unwrap().defer(waker);
     }

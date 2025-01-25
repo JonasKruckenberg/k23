@@ -612,7 +612,7 @@ impl<T: Linked> MpscQueue<T> {
         }
 
         self.has_consumer.store(false, Ordering::Release);
-        
+
         len
     }
 

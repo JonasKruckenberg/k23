@@ -28,7 +28,7 @@ impl Id {
     pub fn stub() -> Self {
         Self(0)
     }
-    
+
     pub(crate) fn next() -> Self {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -41,7 +41,7 @@ impl Id {
     pub(crate) fn as_u64(&self) -> u64 {
         self.0
     }
-    
+
     pub fn is_stub(&self) -> bool {
         self.0 == 0
     }

@@ -18,9 +18,9 @@ pub mod base;
 pub mod dbcn;
 mod error;
 pub mod hsm;
+pub mod ipi;
 pub mod rfence;
 pub mod time;
-pub mod ipi;
 
 const EID_BASE: usize = 0x10;
 const EID_TIME: usize = 0x54494D45;

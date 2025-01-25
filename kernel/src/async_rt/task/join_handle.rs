@@ -91,7 +91,7 @@ impl<T> JoinHandle<T> {
             _p: PhantomData,
         }
     }
-    
+
     pub fn abort(&self) {
         self.raw.remote_abort();
     }

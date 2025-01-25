@@ -6,6 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 pub mod atomic_cell;
-pub mod fast_rand;
 pub mod condvar;
+pub mod fast_rand;
 pub mod parking_spot;

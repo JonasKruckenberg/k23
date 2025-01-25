@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::panic;
 use super::error::JoinError;
 use super::id::Id;
 use super::state::{
@@ -14,6 +13,7 @@ use super::state::{
 };
 use super::waker::waker_ref;
 use super::{PollResult, Schedule};
+use crate::panic;
 use alloc::boxed::Box;
 use core::alloc::Layout;
 use core::any::Any;
@@ -910,8 +910,6 @@ impl<F: Future, S> Core<F, S> {
 
             // Safety: The caller ensures the future is pinned.
             let future = unsafe { Pin::new_unchecked(future) };
-
-            let _guard = TaskIdGuard::enter(self.task_id);
             future.poll(&mut cx)
         };
 
@@ -962,7 +960,6 @@ impl<F: Future, S> Core<F, S> {
     }
 
     unsafe fn set_stage(&self, stage: Stage<F>) {
-        let _guard = TaskIdGuard::enter(self.task_id);
         unsafe {
             *self.stage.get() = stage;
         }
@@ -1095,7 +1092,9 @@ fn poll_future<T: Future, S: Schedule>(core: &Core<T, S>, cx: Context<'_>) -> Po
             fn drop(&mut self) {
                 // If the future panics on poll, we drop it inside the panic
                 // guard.
-                unsafe { self.core.drop_future_or_output(); }
+                unsafe {
+                    self.core.drop_future_or_output();
+                }
             }
         }
         let guard = Guard { core };
@@ -1183,25 +1182,4 @@ const fn get_trailer_offset<F: Future, S>() -> usize {
     }
 
     offset
-}
-
-/// Set and clear the task id in the context when the future is executed or
-/// dropped, or when the output produced by the future is dropped.
-pub(crate) struct TaskIdGuard {
-    parent_task_id: Option<Id>,
-}
-
-impl TaskIdGuard {
-    fn enter(_id: Id) -> Self {
-        TaskIdGuard {
-            // context::set_current_task_id(Some(id)),
-            parent_task_id: None,
-        }
-    }
-}
-
-impl Drop for TaskIdGuard {
-    fn drop(&mut self) {
-        // context::set_current_task_id(self.parent_task_id);
-    }
 }

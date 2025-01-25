@@ -5,6 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+//! Fixed-capacity, local queue for tasks.
+//!
+//! This is conceptually a simple intrusively linked list that can be pushed to and popped from using
+//! the [`Local`] handle. To complicate things we also allow "consuming" tasks from the queue through
+//! the [`Steal`] handle which other workers can use for work stealing purposes as the name implies.
+
 use super::task::TaskRef;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -107,9 +113,6 @@ impl Local {
     }
 
     /// Returns false if there are any entries in the queue
-    ///
-    /// Separate to `is_stealable` so that refactors of `is_stealable` to "protect"
-    /// some tasks from stealing won't affect this
     pub(crate) fn has_tasks(&self) -> bool {
         !self.inner.is_empty()
     }
@@ -166,27 +169,8 @@ impl Local {
     ///
     /// The method panics if there is not enough capacity to fit in the queue.
     pub(crate) unsafe fn push_back_unchecked(&mut self, tasks: impl Iterator<Item = TaskRef>) {
-        // let len = tasks.len();
-        // assert!(len <= LOCAL_QUEUE_CAPACITY);
-        // 
-        // if len == 0 {
-        //     // Nothing to do
-        //     return;
-        // }
-
-        // let head = self.inner.head.load(Ordering::Acquire);
-        // let (steal, _) = unpack(head);
-
         // safety: this is the **only** thread that updates this cell.
         let mut tail = unsafe { ptr::read(self.inner.tail.as_ptr()) };
-
-        // if tail.wrapping_sub(steal) <= (LOCAL_QUEUE_CAPACITY - len) as u32 {
-        //     // Yes, this if condition is structured a bit weird (first block
-        //     // does nothing, second returns an error). It is this way to match
-        //     // `push_back_or_overflow`.
-        // } else {
-        //     panic!()
-        // }
 
         for task in tasks {
             let idx = tail as usize & MASK;
@@ -270,7 +254,7 @@ impl Local {
             .store(tail.wrapping_add(1), Ordering::Release);
     }
 
-    /// Moves a batch of tasks into the inject queue.
+    /// Moves a batch of tasks into the global queue.
     ///
     /// This will temporarily make some of the tasks unavailable to stealers.
     /// Once `push_overflow` is done, a notification is sent out, so if other

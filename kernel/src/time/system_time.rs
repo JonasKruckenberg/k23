@@ -5,12 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::ops::{Add, AddAssign, Sub, SubAssign};
-use core::time::Duration;
-use core::fmt;
-use core::sync::atomic::{AtomicPtr, Ordering};
-use crate::MACHINE_INFO;
 use crate::time::NANOS_PER_SEC;
+use crate::MACHINE_INFO;
+use core::fmt;
+use core::ops::{Add, AddAssign, Sub, SubAssign};
+use core::sync::atomic::{AtomicPtr, Ordering};
+use core::time::Duration;
 
 pub const UNIX_EPOCH: SystemTime = SystemTime(Duration::ZERO);
 

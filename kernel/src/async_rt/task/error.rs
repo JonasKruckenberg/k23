@@ -5,11 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use super::id::Id;
 use crate::panic;
 use alloc::boxed::Box;
 use core::any::Any;
 use core::fmt;
-use super::id::Id;
 
 pub struct JoinError {
     repr: Repr,

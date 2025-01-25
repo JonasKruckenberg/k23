@@ -33,7 +33,7 @@ pub fn current() -> &'static Runtime {
 /// Initialize the global async runtime.
 ///
 /// This will allocate required state for `num_cores` of harts. Tasks can immediately be spawned
-/// using the returned runtime reference (a reference to the runtime can also be obtained using 
+/// using the returned runtime reference (a reference to the runtime can also be obtained using
 /// `async_rt::current()`) but no tasks will run until at least one hart in the system enters its
 /// runtime loop using `async_rt::run()`.
 #[cold]
@@ -45,7 +45,7 @@ pub fn init(num_cores: usize, rng: &mut impl RngCore) -> &'static Runtime {
 }
 
 /// Run the async runtime loop on the calling hart.
-/// 
+///
 /// This function will not return until the runtime is shut down.
 #[cold]
 pub fn run(rt: &'static Runtime, hartid: usize) -> Result<(), ()> {
@@ -54,7 +54,7 @@ pub fn run(rt: &'static Runtime, hartid: usize) -> Result<(), ()> {
 
 impl Runtime {
     /// Spawns a future onto the async runtime.
-    /// 
+    ///
     /// The returned [`JoinHandle`] can be used to await the result of the future or cancel it.
     pub fn spawn<F>(&'static self, future: F) -> JoinHandle<F::Output>
     where
@@ -64,4 +64,3 @@ impl Runtime {
         self.scheduler.spawn(future)
     }
 }
-

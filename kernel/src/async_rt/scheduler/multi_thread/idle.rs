@@ -78,7 +78,10 @@ impl Idle {
         self.needs_searching.load(Ordering::Acquire)
     }
 
-    pub(super) fn try_acquire_available_core(&self, synced: &mut Synced) -> Option<Box<worker::Core>> {
+    pub(super) fn try_acquire_available_core(
+        &self,
+        synced: &mut Synced,
+    ) -> Option<Box<worker::Core>> {
         let ret = synced.available_cores.pop();
 
         if let Some(core) = &ret {

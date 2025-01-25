@@ -5,9 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::metrics::Counter;
 use super::{idle, Handle};
+use crate::async_rt::queue::Overflow;
 use crate::async_rt::task::{OwnedTasks, TaskRef};
+use crate::async_rt::{queue, task};
+use crate::metrics::Counter;
 use crate::thread_local::ThreadLocal;
 use crate::util::condvar::Condvar;
 use crate::util::fast_rand::FastRand;
@@ -16,14 +18,11 @@ use crate::{arch, counter};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
-use core::ptr::NonNull;
-use core::sync::atomic::{AtomicPtr, Ordering};
+use core::sync::atomic::AtomicPtr;
 use core::task::Waker;
 use core::time::Duration;
 use core::{cmp, mem, ptr};
 use sync::{Mutex, MutexGuard};
-use crate::async_rt::{queue, task};
-use crate::async_rt::queue::Overflow;
 
 type NextTaskResult = Result<(Option<TaskRef>, Box<Core>), ()>;
 const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
@@ -126,6 +125,10 @@ pub(super) struct Context {
     defer: RefCell<Vec<TaskRef>>,
 }
 
+// pub fn new() -> Self {
+//
+// }
+
 #[cold]
 pub fn run(handle: &'static Handle, hartid: usize) -> Result<(), ()> {
     let mut worker = Worker {
@@ -136,7 +139,7 @@ pub fn run(handle: &'static Handle, hartid: usize) -> Result<(), ()> {
         idle_snapshot: idle::Snapshot::new(&handle.shared.idle),
         workers_to_notify: Vec::with_capacity(handle.shared.remotes.len()),
     };
-    
+
     #[allow(tail_expr_drop_order)]
     let cx = handle.shared.tls.get_or(|| Context {
         handle,
@@ -469,11 +472,10 @@ impl Worker {
         let mut synced = cx.shared().synced.lock();
         core.is_searching = false;
         cx.shared().idle.release_core(&mut synced, core);
-        
+
         // Wait for a core to be assigned to us
         NUM_PARKS.increment(1);
         self.wait_for_core(cx, synced)
-        
     }
 
     #[allow(tail_expr_drop_order)]
@@ -659,16 +661,6 @@ impl Overflow for Shared {
 }
 
 impl Context {
-    /// Return a [`TaskRef`] referencing the task currently being polled by
-    /// this scheduler, if a task is currently being polled.
-    #[must_use]
-    #[inline]
-    pub fn current_task(&'static self) -> Option<TaskRef> {
-        let ptr = self.current_task.load(Ordering::Acquire);
-        let ptr = NonNull::new(ptr)?;
-        Some(TaskRef::clone_from_raw(ptr))
-    }
-
     fn shared(&self) -> &Shared {
         &self.handle.shared
     }

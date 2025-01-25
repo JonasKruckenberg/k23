@@ -5,9 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
 use core::fmt;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use crate::arch;
 
 pub(super) struct State {
     val: AtomicUsize,
@@ -117,14 +117,14 @@ impl State {
     pub(super) fn load(&self) -> Snapshot {
         Snapshot(self.val.load(Ordering::Acquire))
     }
-    
+
     /// Attempts to transition the lifecycle to `Running`. This sets the
     /// notified bit to false so notifications during the poll can be detected.
     pub(super) fn transition_to_running(&self) -> TransitionToRunning {
         self.fetch_update_action(|mut next| {
             let action;
             assert!(next.is_notified());
-    
+
             if !next.is_idle() {
                 // This happens if the task is either currently running or if it
                 // has already completed, e.g. if it was cancelled during
@@ -139,7 +139,7 @@ impl State {
                 // We are able to lock the RUNNING bit.
                 next.set_running();
                 next.unset_notified();
-    
+
                 if next.is_cancelled() {
                     action = TransitionToRunning::Cancelled;
                 } else {
@@ -149,7 +149,7 @@ impl State {
             (action, Some(next))
         })
     }
-    
+
     /// Transitions the task from `Running` -> `Idle`.
     ///
     /// The transition to `Idle` fails if the task has been flagged to be
@@ -157,15 +157,15 @@ impl State {
     pub(super) fn transition_to_idle(&self) -> TransitionToIdle {
         self.fetch_update_action(|curr| {
             assert!(curr.is_running());
-    
+
             if curr.is_cancelled() {
                 return (TransitionToIdle::Cancelled, None);
             }
-    
+
             let mut next = curr;
             let action;
             next.unset_running();
-    
+
             if !next.is_notified() {
                 // Polling the future consumes the ref-count of the Notified.
                 next.ref_dec();
@@ -181,22 +181,22 @@ impl State {
                 next.ref_inc();
                 action = TransitionToIdle::OkNotified;
             }
-    
+
             (action, Some(next))
         })
     }
-    
+
     /// Transitions the task from `Running` -> `Complete`.
     pub(super) fn transition_to_complete(&self) -> Snapshot {
         const DELTA: usize = RUNNING | COMPLETE;
-    
+
         let prev = Snapshot(self.val.fetch_xor(DELTA, Ordering::AcqRel));
         assert!(prev.is_running());
         assert!(!prev.is_complete());
-    
+
         Snapshot(prev.0 ^ DELTA)
     }
-    
+
     /// Transitions the state to `NOTIFIED`.
     ///
     /// If no task needs to be submitted, a ref-count is consumed.
@@ -206,23 +206,23 @@ impl State {
     pub(super) fn transition_to_notified_by_val(&self) -> TransitionToNotifiedByVal {
         self.fetch_update_action(|mut snapshot| {
             let action;
-    
+
             if snapshot.is_running() {
                 // If the task is running, we mark it as notified, but we should
                 // not submit anything as the thread currently running the
                 // future is responsible for that.
                 snapshot.set_notified();
                 snapshot.ref_dec();
-    
+
                 // The thread that set the running bit also holds a ref-count.
                 assert!(snapshot.ref_count() > 0);
-    
+
                 action = TransitionToNotifiedByVal::DoNothing;
             } else if snapshot.is_complete() || snapshot.is_notified() {
                 // We do not need to submit any notifications, but we have to
                 // decrement the ref-count.
                 snapshot.ref_dec();
-    
+
                 if snapshot.ref_count() == 0 {
                     action = TransitionToNotifiedByVal::Dealloc;
                 } else {
@@ -235,11 +235,11 @@ impl State {
                 snapshot.ref_inc();
                 action = TransitionToNotifiedByVal::Submit;
             }
-    
+
             (action, Some(snapshot))
         })
     }
-    
+
     /// Transitions the state to `NOTIFIED`.
     pub(super) fn transition_to_notified_by_ref(&self) -> TransitionToNotifiedByRef {
         self.fetch_update_action(|mut snapshot| {
@@ -321,30 +321,30 @@ impl State {
             }
         })
     }
-    
+
     /// Sets the `CANCELLED` bit and attempts to transition to `Running`.
     ///
     /// Returns `true` if the transition to `Running` succeeded.
     pub(super) fn transition_to_shutdown(&self) -> bool {
         let mut prev = Snapshot(0);
-    
+
         let _ = self.fetch_update(|mut snapshot| {
             prev = snapshot;
-    
+
             if snapshot.is_idle() {
                 snapshot.set_running();
             }
-    
+
             // If the task was not idle, the thread currently running the task
             // will notice the cancelled bit and cancel it once the poll
             // completes.
             snapshot.set_cancelled();
             Some(snapshot)
         });
-    
+
         prev.is_idle()
     }
-    
+
     /// Optimistically tries to swap the state assuming the join handle is
     /// __immediately__ dropped on spawn.
     pub(super) fn drop_join_handle_fast(&self) -> Result<(), ()> {
@@ -365,7 +365,7 @@ impl State {
             .map(|_| ())
             .map_err(|_| ())
     }
-    
+
     /// Unsets the `JOIN_INTEREST` flag. If `COMPLETE` is not set, the `JOIN_WAKER`
     /// flag is also unset.
     /// The returned `TransitionToJoinHandleDrop` indicates whether the `JoinHandle` should drop
@@ -373,14 +373,14 @@ impl State {
     pub(super) fn transition_to_join_handle_dropped(&self) -> TransitionToJoinHandleDrop {
         self.fetch_update_action(|mut snapshot| {
             assert!(snapshot.is_join_interested());
-    
+
             let mut transition = TransitionToJoinHandleDrop {
                 drop_waker: false,
                 drop_output: false,
             };
-    
+
             snapshot.unset_join_interested();
-    
+
             if !snapshot.is_complete() {
                 // If `COMPLETE` is unset we also unset `JOIN_WAKER` to give the
                 // `JoinHandle` exclusive access to the waker following rule 6 in task/mod.rs.
@@ -392,7 +392,7 @@ impl State {
                 // for dropping the output.
                 transition.drop_output = true;
             }
-    
+
             if !snapshot.is_join_waker_set() {
                 // If the `JOIN_WAKER` bit is unset and the `JOIN_HANDLE` has exclusive access to
                 // the join waker and should drop it following this transition.
@@ -403,7 +403,7 @@ impl State {
                 //     by the runtime during completion.
                 transition.drop_waker = true;
             }
-    
+
             (transition, Some(snapshot))
         })
     }
@@ -416,14 +416,14 @@ impl State {
         self.fetch_update(|curr| {
             assert!(curr.is_join_interested());
             assert!(!curr.is_join_waker_set());
-    
+
             if curr.is_complete() {
                 return None;
             }
-    
+
             let mut next = curr;
             next.set_join_waker();
-    
+
             Some(next)
         })
     }
@@ -435,18 +435,18 @@ impl State {
     pub(super) fn unset_waker(&self) -> UpdateResult {
         self.fetch_update(|curr| {
             assert!(curr.is_join_interested());
-    
+
             if curr.is_complete() {
                 return None;
             }
-    
+
             // If the task is completed, this bit may have been unset by
             // `unset_waker_after_complete`.
             assert!(curr.is_join_waker_set());
-    
+
             let mut next = curr;
             next.unset_join_waker();
-    
+
             Some(next)
         })
     }
@@ -474,20 +474,20 @@ impl State {
         //
         // [1]: (www.boost.org/doc/libs/1_55_0/doc/html/atomic/usage_examples.html)
         let prev = self.val.fetch_add(REF_ONE, Ordering::Relaxed);
-    
+
         // If the reference count overflowed, abort.
         if prev > isize::MAX as usize {
             arch::abort();
         }
     }
-    
+
     /// Returns `true` if the task should be released.
     pub(super) fn ref_dec(&self) -> bool {
         let prev = Snapshot(self.val.fetch_sub(REF_ONE, Ordering::AcqRel));
         assert!(prev.ref_count() >= 1);
         prev.ref_count() == 1
     }
-    
+
     // /// Returns `true` if the task should be released.
     // pub(super) fn ref_dec_twice(&self) -> bool {
     //     let prev = Snapshot(self.val.fetch_sub(2 * REF_ONE, Ordering::AcqRel));

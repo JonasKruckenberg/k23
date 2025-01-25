@@ -11,14 +11,18 @@ mod trap_handler;
 mod utils;
 mod vm;
 
-use crate::vm::VirtualAddress;
-use crate::{time, HART_LOCAL_MACHINE_INFO};
+use crate::vm::{frame_alloc, VirtualAddress, Vmo};
+use crate::{arch, time, HART_LOCAL_MACHINE_INFO, STACK_SIZE_PAGES};
+use alloc::string::ToString;
 use bitflags::bitflags;
+use core::alloc::Layout;
 use core::arch::asm;
 use core::cell::Cell;
+use core::range::Range;
 use core::time::Duration;
 use dtb_parser::Strings;
 use fallible_iterator::FallibleIterator;
+use loader_api::BootInfo;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
 pub use setjmp_longjmp::{call_with_setjmp, longjmp, JmpBuf};
@@ -244,10 +248,6 @@ where
     r
 }
 
-thread_local! {
-    static IN_TIMEOUT: Cell<bool> = Cell::new(false);
-}
-
 pub unsafe fn hart_park() {
     log::trace!("parking hart");
     // Safety: inline assembly
@@ -256,6 +256,10 @@ pub unsafe fn hart_park() {
 
 pub unsafe fn hart_unpark(hartid: usize) {
     riscv::sbi::ipi::send_ipi(1 << hartid, 0).unwrap();
+}
+
+thread_local! {
+    static IN_TIMEOUT: Cell<bool> = Cell::new(false);
 }
 
 pub unsafe fn hart_park_timeout(duration: Duration) {

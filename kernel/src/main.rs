@@ -139,55 +139,26 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
         Instant::from_ticks(boot_info.boot_ticks).elapsed()
     );
 
-    let rt = async_rt::init(8, &mut rand);
+    // - [all][global] parse cmdline
+    // - [all][global] `vm::init()` init virtual memory management
+    // - [all][global] `lockup::init()` initialize lockup detector
+    // - [all][global] `topology::init()` initialize the system topology
+    // - initialize other parts of the kernel
+    // - kickoff the scheduler
+    // - `platform_init()`
+    //     - using system topology -> start other harts in the system
+    // - `arch_late_init_percpu()`
+    //     - IF RiscvFeatureVector => setup the vector hardware
+    // - `kernel_shell_init()`
+    // - `userboot_init()`
 
-    rt.spawn(async {
-        log::debug!("A: before spawn");
+    // Run thread-local destructors
+    // Safety: after this point thread-locals cannot be accessed anymore anyway
+    unsafe {
+        thread_local::destructors::run();
+    }
 
-        let h = rt.spawn(async {
-            // loop {
-                log::debug!("B: before yield");
-                async_rt::yield_now().await;
-                log::trace!("B: after yield");
-            // }
-        });
-        log::debug!("A: after spawn");
-        
-        log::debug!("A: before await");
-        h.await.unwrap();
-        log::trace!("A: after await");
-        
-        // h.abort();
-    });
-
-    async_rt::run(rt, hartid);
-
-// scheduler2::worker::Worker::new(scheduler2::scheduler(), hartid)
-//     .run(scheduler2::scheduler())
-//     .unwrap();
-
-// wasm::test();
-
-// - [all][global] parse cmdline
-// - [all][global] `vm::init()` init virtual memory management
-// - [all][global] `lockup::init()` initialize lockup detector
-// - [all][global] `topology::init()` initialize the system topology
-// - initialize other parts of the kernel
-// - kickoff the scheduler
-// - `platform_init()`
-//     - using system topology -> start other harts in the system
-// - `arch_late_init_percpu()`
-//     - IF RiscvFeatureVector => setup the vector hardware
-// - `kernel_shell_init()`
-// - `userboot_init()`
-
-// Run thread-local destructors
-// Safety: after this point thread-locals cannot be accessed anymore anyway
-unsafe {
-thread_local::destructors::run();
-}
-
-arch::exit(0);
+    arch::exit(0);
 }
 
 fn init_tls(

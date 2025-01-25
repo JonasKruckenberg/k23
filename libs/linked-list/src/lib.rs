@@ -432,7 +432,7 @@ where
             _list: self,
         }
     }
-    
+
     pub unsafe fn cursor_from_ptr_mut(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
         CursorMut {
             current: Some(ptr),

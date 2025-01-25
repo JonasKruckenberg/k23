@@ -19,7 +19,8 @@ use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{iter, slice};
 
-const TRAP_MASK: TrapMask = TrapMask::from_bits_retain(TrapMask::StorePageFault.bits() | TrapMask::LoadPageFault.bits());
+const TRAP_MASK: TrapMask =
+    TrapMask::from_bits_retain(TrapMask::StorePageFault.bits() | TrapMask::LoadPageFault.bits());
 
 /// A userspace memory mapping.
 ///

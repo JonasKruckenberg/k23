@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
+use crate::arch::riscv64::IN_TIMEOUT;
 use crate::arch::PAGE_SIZE;
 use crate::trap_handler::TrapReason;
 use crate::vm::VirtualAddress;
@@ -14,7 +15,6 @@ use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{sbi, scause, sepc, sstatus, stval, stvec};
 use thread_local::thread_local;
-use crate::arch::riscv64::IN_TIMEOUT;
 
 thread_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
@@ -273,7 +273,7 @@ fn default_trap_handler(
         }
         Trap::Interrupt(Interrupt::SupervisorTimer | Interrupt::VirtualSupervisorTimer) => {
             IN_TIMEOUT.set(false);
-            
+
             // Timer interrupts are always IPIs used for sleeping
             sbi::time::set_timer(u64::MAX).unwrap();
             return raw_frame;
