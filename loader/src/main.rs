@@ -73,10 +73,7 @@ fn do_global_init(opaque: *const c_void) -> GlobalInitResult {
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");
 
-    let n: usize = 0b111000;
-    let start = n.trailing_zeros();
-    let end = usize::BITS - n.leading_zeros();
-    log::trace!("{start}..{end} {:b}", n & (1usize << start));
+    arch::start_secondary_harts(hartid, &minfo).unwrap();
 
     let self_regions = SelfRegions::collect(&minfo);
     log::debug!("{self_regions:#x?}");

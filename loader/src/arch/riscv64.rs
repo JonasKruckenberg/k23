@@ -200,6 +200,29 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_info: *mut BootInfo, entry: 
     }
 }
 
+pub fn start_secondary_harts(boot_hart: usize, minfo: &MachineInfo) -> crate::Result<()> {
+    let start = minfo.hart_mask.trailing_zeros() as usize;
+    let end = (usize::BITS - minfo.hart_mask.leading_zeros()) as usize;
+    log::trace!("{start}..{end}");
+
+    for hartid in start..end {
+        // Don't try to start ourselves
+        if hartid == boot_hart {
+            continue;
+        }
+
+        log::trace!("[{boot_hart}] starting hart {hartid}...");
+        riscv::sbi::hsm::start_hart(
+            hartid,
+            _start_secondary as usize,
+            minfo.fdt.as_ptr() as usize,
+        )
+        .unwrap();
+    }
+
+    Ok(())
+}
+
 pub unsafe fn map_contiguous(
     root_pgtable: usize,
     frame_alloc: &mut FrameAllocator,
