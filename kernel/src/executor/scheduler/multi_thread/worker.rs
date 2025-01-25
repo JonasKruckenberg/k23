@@ -365,8 +365,7 @@ impl Worker {
         let mut tasks = cx
             .shared()
             .run_queue
-            .try_consume()
-            .expect("inconsistent state")
+            .consume()
             .take(n);
         let ret = tasks.next();
 
