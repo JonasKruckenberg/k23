@@ -37,7 +37,6 @@ pub struct BootInfo {
     ///
     /// This field can be used by the kernel to perform introspection of its own ELF file.
     pub kernel_phys: Range<usize>, // PhysicalAddress
-    pub boot_ticks: u64,
 }
 
 impl BootInfo {
@@ -52,7 +51,6 @@ impl BootInfo {
             tls_template: None,
             kernel_virt: Default::default(),
             kernel_phys: Default::default(),
-            boot_ticks: 0,
         }
     }
 }

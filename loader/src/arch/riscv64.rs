@@ -30,14 +30,6 @@ pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usi
 /// On `RiscV` targets the page table entry's physical address bits are shifted 2 bits to the right.
 const PTE_PPN_SHIFT: usize = 2;
 
-const BOOT_STACK_SIZE: usize = 32 * PAGE_SIZE;
-
-#[unsafe(link_section = ".bss.uninit")]
-static BOOT_STACK: Stack = Stack([0; BOOT_STACK_SIZE]);
-
-#[repr(C, align(128))]
-struct Stack([u8; BOOT_STACK_SIZE]);
-
 #[unsafe(link_section = ".text.start")]
 #[unsafe(no_mangle)]
 #[naked]
@@ -49,31 +41,31 @@ unsafe extern "C" fn _start() -> ! {
             "rdtime a2",
 
             // Clear return address and frame pointer
-            "mv ra, zero",
-            "mv s0, zero",
+            "mv     ra, zero",
+            "mv     s0, zero",
 
             // Clear the gp register in case anything tries to use it.
-            "mv gp, zero",
+            "mv     gp, zero",
 
             // Mask all interrupts in case the previous stage left them on.
-            "csrc sstatus, 1 << 1",
-            "csrw sie, zero",
+            "csrc   sstatus, 1 << 1",
+            "csrw   sie, zero",
 
             // Reset the trap vector in case the previous stage left one installed.
-            "csrw stvec, zero",
+            "csrw   stvec, zero",
 
             // Disable the MMU in case it was left on.
-            "csrw satp, zero",
-
+            "csrw   satp, zero",
+            
             // Setup the stack pointer
-            "la   t0, {boot_stack_start}",  // set the stack pointer to the bottom of the stack
-            "li   t1, {boot_stack_size}",   // load the stack size
-            "add  sp, t0, t1",              // add both to get the top of the stack
+            "la     t0, __stack_start",    // load the base of the stack
+            "li     t1, {stack_size}",     // load the stack size
+            "add    sp, t0, t1",           // add both to get the top of the stack
 
             // Fill the stack with a canary pattern (0xACE0BACE) so that we can identify unused stack memory
             // in dumps & calculate stack usage. This is also really great (don't ask my why I know this) to identify
             // when we tried executing stack memory.
-            "li          t1, 0xACE0BACE",
+            "li     t1, 0xACE0BACE",
             "1:",
             "   sw          t1, 0(t0)",     // write the canary as u64
             "   addi        t0, t0, 8",     // move to the next u64
@@ -89,14 +81,13 @@ unsafe extern "C" fn _start() -> ! {
             "   wfi",
             "   j 2b",
 
-            boot_stack_start = sym BOOT_STACK,
-            boot_stack_size = const BOOT_STACK_SIZE,
+            stack_size = const crate::STACK_SIZE,
             start_rust = sym crate::main,
         }
     }
 }
 
-pub unsafe fn handoff_to_kernel(hartid: usize, boot_info: *mut BootInfo, entry: usize) -> ! {
+pub unsafe fn handoff_to_kernel(hartid: usize, boot_info: *mut BootInfo, entry: usize, boot_ticks: u64) -> ! {
     log::debug!("Hart {hartid} Jumping to kernel...");
     log::trace!("Hart {hartid} entry: {entry:#x}, arguments: a0={hartid} a1={boot_info:?}");
 
@@ -115,6 +106,7 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_info: *mut BootInfo, entry: 
             "   j 1b",
             in("a0") hartid,
             in("a1") boot_info,
+            in("a2") boot_ticks,
             kernel_entry = in(reg) entry,
             options(noreturn)
         }

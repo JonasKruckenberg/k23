@@ -71,7 +71,7 @@ thread_local!(
         RefCell::new(HartLocalMachineInfo::default());
 );
 
-fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
+fn main(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
     // is available
     let allocatable_memories = allocatable_memory_regions(boot_info);
@@ -130,7 +130,7 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
-        Instant::from_ticks(boot_info.boot_ticks).elapsed()
+        Instant::from_ticks(boot_ticks).elapsed()
     );
     // wasm::test();
 

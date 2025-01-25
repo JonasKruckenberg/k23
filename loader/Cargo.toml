@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 dtb-parser.workspace = true
 loader-api.workspace = true
+sync.workspace = true
 
 log.workspace = true
 cfg-if.workspace = true

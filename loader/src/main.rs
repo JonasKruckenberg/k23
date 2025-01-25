@@ -22,6 +22,7 @@ use core::alloc::Layout;
 use core::ffi::c_void;
 use core::range::Range;
 use core::{ptr, slice};
+use sync::OnceLock;
 
 mod arch;
 mod boot_info;
@@ -36,6 +37,7 @@ mod panic;
 
 pub const ENABLE_KASLR: bool = false;
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
+pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -58,13 +60,40 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
         }
     }
 
-    logger::init(LOG_LEVEL.to_level_filter());
+    static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
+    let res = GLOBAL_INIT.get_or_init(|| do_global_init(opaque));
 
+    unsafe {
+        log::trace!("activating MMU...");
+        arch::activate_aspace(res.root_pgtable);
+        log::trace!("activated.");
+    }
+
+    // Safety: this will jump to the kernel entry
+    unsafe { arch::handoff_to_kernel(hartid, res.boot_info, res.kernel_entry, boot_ticks) }
+}
+
+struct GlobalInitResult {
+    boot_info: *mut loader_api::BootInfo,
+    kernel_entry: usize,
+    root_pgtable: usize,
+}
+
+unsafe impl Send for GlobalInitResult {}
+unsafe impl Sync for GlobalInitResult {}
+
+fn do_global_init(opaque: *const c_void) -> GlobalInitResult {
+    logger::init(LOG_LEVEL.to_level_filter());
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");
 
-    let self_regions = SelfRegions::collect();
+    let n: usize = 0b111000;
+    let start = n.trailing_zeros();
+    let end = usize::BITS - n.leading_zeros();
+    log::trace!("{start}..{end} {:b}", n & (1usize << start));
+
+    let self_regions = SelfRegions::collect(&minfo);
     log::debug!("{self_regions:#x?}");
 
     // Initialize the frame allocator
@@ -147,7 +176,6 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
         Range::from(self_regions.executable.start..self_regions.read_write.end),
         kernel_phys,
         fdt_phys,
-        boot_ticks,
     )
     .unwrap();
 
@@ -156,8 +184,11 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
         .checked_add(usize::try_from(kernel.elf_file.header.pt2.entry_point()).unwrap())
         .unwrap();
 
-    // Safety: this will jump to the kernel entry
-    unsafe { arch::handoff_to_kernel(hartid, boot_info, kernel_entry) }
+    GlobalInitResult {
+        boot_info,
+        kernel_entry,
+        root_pgtable,
+    }
 }
 
 #[derive(Debug)]
@@ -168,14 +199,14 @@ struct SelfRegions {
 }
 
 impl SelfRegions {
-    pub fn collect() -> Self {
+    pub fn collect(minfo: &MachineInfo) -> Self {
         unsafe extern "C" {
             static __text_start: u8;
             static __text_end: u8;
             static __rodata_start: u8;
             static __rodata_end: u8;
             static __bss_start: u8;
-            static __data_end: u8;
+            static __stack_start: u8;
         }
 
         SelfRegions {
@@ -189,7 +220,8 @@ impl SelfRegions {
             },
             read_write: Range {
                 start: &raw const __bss_start as usize,
-                end: &raw const __data_end as usize,
+                end: (&raw const __stack_start as usize)
+                    + (minfo.hart_mask.count_ones() as usize * STACK_SIZE),
             },
         }
     }
