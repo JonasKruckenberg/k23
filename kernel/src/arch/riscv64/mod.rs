@@ -34,8 +34,21 @@ pub fn init() {
 }
 
 #[cold]
-pub fn per_hart_init() {
+pub fn per_hart_init_early() {
     // Safety: register access
+    unsafe {
+        // enable counters
+        scounteren::set_cy();
+        scounteren::set_tm();
+        scounteren::set_ir();
+
+        // Set the FPU state to initial
+        sstatus::set_fs(FS::Initial);
+    }
+}
+
+#[cold]
+pub fn per_hart_init_late() {
     unsafe {
         // Initialize the trap handler
         trap_handler::init();
@@ -46,14 +59,6 @@ pub fn per_hart_init() {
         // Enable supervisor timer and external interrupts
         sie::set_stie();
         sie::set_seie();
-
-        // enable counters
-        scounteren::set_cy();
-        scounteren::set_tm();
-        scounteren::set_ir();
-
-        // Set the FPU state to initial
-        sstatus::set_fs(FS::Initial);
     }
 }
 
