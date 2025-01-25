@@ -120,11 +120,9 @@ impl Once {
         }
     }
 
-    fn wait(&self) {
-        loop {
-            if !self.poll() {
-                core::hint::spin_loop();
-            }
+    pub fn wait(&self) {
+        while !self.poll() {
+            core::hint::spin_loop();
         }
     }
 }

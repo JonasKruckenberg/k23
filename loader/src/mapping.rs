@@ -13,9 +13,9 @@ use crate::page_alloc::PageAllocator;
 use crate::{arch, SelfRegions};
 use bitflags::bitflags;
 use core::alloc::Layout;
-use core::num::NonZeroUsize;
+use core::num::{NonZero, NonZeroUsize};
 use core::range::Range;
-use core::{ptr, slice};
+use core::{cmp, ptr, slice};
 use loader_api::TlsTemplate;
 use xmas_elf::dynamic::Tag;
 use xmas_elf::program::{SegmentData, Type};
@@ -142,8 +142,9 @@ pub fn map_kernel(
     frame_alloc: &mut FrameAllocator,
     page_alloc: &mut PageAllocator,
     kernel: &Kernel,
+    minfo: &MachineInfo,
     phys_off: usize,
-) -> crate::Result<(Range<usize>, Option<TlsTemplate>)> {
+) -> crate::Result<(Range<usize>, Option<TlsAllocation>)> {
     let kernel_virt = page_alloc.allocate(
         Layout::from_size_align(
             usize::try_from(kernel.mem_size())?,
@@ -173,12 +174,15 @@ pub fn map_kernel(
             )?,
             Type::Tls => {
                 let ph = ProgramHeader::try_from(ph)?;
-                let old = maybe_tls_allocation.replace(TlsTemplate {
-                    start_addr: kernel_virt.start.checked_add(ph.virtual_address).unwrap(),
-                    mem_size: ph.mem_size,
-                    file_size: ph.file_size,
-                    align: ph.align,
-                });
+                let old = maybe_tls_allocation.replace(handle_tls_segment(
+                    root_pgtable,
+                    frame_alloc,
+                    page_alloc,
+                    &ph,
+                    kernel_virt.start,
+                    minfo,
+                    phys_off,
+                )?);
                 log::trace!("{maybe_tls_allocation:?}");
                 assert!(old.is_none(), "multiple TLS segments not supported");
             }
@@ -224,7 +228,7 @@ fn handle_load_segment(
 ) -> crate::Result<()> {
     let flags = flags_for_segment(ph);
 
-    log::debug!(
+    log::trace!(
         "Handling Segment: LOAD off {offset:#016x} vaddr {vaddr:#016x} align {align} filesz {filesz:#016x} memsz {memsz:#016x} flags {flags:?}",
         offset = ph.offset,
         vaddr = ph.virtual_address,
@@ -306,7 +310,7 @@ fn handle_bss_section(
 
     let data_bytes_before_zero = zero_start & 0xfff;
 
-    log::debug!(
+    log::trace!(
         "handling BSS {:#x?}, data bytes before {data_bytes_before_zero}",
         zero_start..zero_end
     );
@@ -342,7 +346,7 @@ fn handle_bss_section(
                 data_bytes_before_zero,
             );
 
-            log::debug!("copying {data_bytes_before_zero} bytes from {src:p} to {dst:p}...");
+            log::trace!("copying {data_bytes_before_zero} bytes from {src:p} to {dst:p}...");
             ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
         }
 
@@ -459,6 +463,157 @@ fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: usize) {
             }
         }
         _ => unimplemented!("unsupported relocation type {}", rela.get_type()),
+    }
+}
+
+/// Map the kernel thread-local storage (TLS) memory regions.
+fn handle_tls_segment(
+    root_pgtable: usize,
+    frame_alloc: &mut FrameAllocator,
+    page_alloc: &mut PageAllocator,
+    ph: &ProgramHeader,
+    virt_base: usize,
+    minfo: &MachineInfo,
+    phys_off: usize,
+) -> crate::Result<TlsAllocation> {
+    let layout = Layout::from_size_align(ph.mem_size, cmp::max(ph.align, arch::PAGE_SIZE))
+        .unwrap()
+        .repeat(minfo.hart_mask.count_ones() as usize)
+        .unwrap()
+        .0
+        .pad_to_align();
+
+    let phys = frame_alloc
+        .allocate_contiguous_zeroed(layout, phys_off)
+        .unwrap();
+    let virt = page_alloc.allocate(layout);
+
+    log::trace!("Mapping TLS region {virt:#x?}...");
+    // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+    // abort startup anyway
+    unsafe {
+        arch::map_contiguous(
+            root_pgtable,
+            frame_alloc,
+            virt.start,
+            phys,
+            NonZero::new(layout.size()).unwrap(),
+            Flags::READ | Flags::WRITE,
+            phys_off,
+        )?;
+    }
+    log::trace!("here");
+
+    Ok(TlsAllocation {
+        virt,
+        template: TlsTemplate {
+            start_addr: virt_base + ph.virtual_address,
+            mem_size: ph.mem_size,
+            file_size: ph.file_size,
+            align: ph.align,
+        },
+    })
+}
+
+#[derive(Debug)]
+pub struct TlsAllocation {
+    /// The TLS region in virtual memory
+    virt: Range<usize>,
+    /// The template we allocated for
+    pub template: TlsTemplate,
+}
+
+impl TlsAllocation {
+    pub fn region_for_hart(&self, hartid: usize) -> Range<usize> {
+        let aligned_size = checked_align_up(
+            self.template.mem_size,
+            cmp::max(self.template.align, arch::PAGE_SIZE),
+        )
+        .unwrap();
+        let start = self.virt.start + (aligned_size * hartid);
+
+        Range::from(start..start + self.template.mem_size)
+    }
+
+    pub fn initialize_for_hart(&self, hartid: usize) {
+        if self.template.file_size != 0 {
+            // Safety: We have to trust the loaders BootInfo here
+            unsafe {
+                let src: &[u8] = slice::from_raw_parts(
+                    self.template.start_addr as *const u8,
+                    self.template.file_size,
+                );
+                let dst: &mut [u8] = slice::from_raw_parts_mut(
+                    self.region_for_hart(hartid).start as *mut u8,
+                    self.template.file_size,
+                );
+
+                // sanity check to ensure our destination allocated memory is actually zeroed.
+                // if it's not, that likely means we're about to override something important
+                debug_assert!(dst.iter().all(|&x| x == 0));
+
+                dst.copy_from_slice(src);
+            }
+        }
+    }
+}
+
+pub fn map_kernel_stacks(
+    root_pgtable: usize,
+    frame_alloc: &mut FrameAllocator,
+    page_alloc: &mut PageAllocator,
+    minfo: &MachineInfo,
+    per_hart_size_pages: usize,
+    phys_off: usize,
+) -> crate::Result<StacksAllocation> {
+    let per_hart_size = per_hart_size_pages * arch::PAGE_SIZE;
+    let layout = Layout::from_size_align(per_hart_size, arch::PAGE_SIZE)
+        .unwrap()
+        .repeat(minfo.hart_mask.count_ones() as usize)
+        .unwrap()
+        .0;
+
+    log::trace!("Allocating stack region {layout:?}...");
+
+    // The stacks region doesn't need to be zeroed, since we will be filling it with
+    // the canary pattern anyway
+    let phys = frame_alloc
+        .allocate_contiguous(layout)
+        .ok_or(Error::NoMemory)?;
+    let virt = page_alloc.allocate(layout);
+
+    log::trace!("Mapping stack region {virt:#x?}...");
+    // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+    // abort startup anyway
+    unsafe {
+        arch::map_contiguous(
+            root_pgtable,
+            frame_alloc,
+            virt.start,
+            phys,
+            NonZero::new(layout.size()).unwrap(),
+            Flags::READ | Flags::WRITE,
+            phys_off,
+        )?;
+    }
+
+    Ok(StacksAllocation {
+        virt,
+        per_hart_size,
+    })
+}
+
+pub struct StacksAllocation {
+    /// The TLS region in virtual memory
+    virt: Range<usize>,
+    per_hart_size: usize,
+}
+
+impl StacksAllocation {
+    pub fn region_for_hart(&self, hartid: usize) -> Range<usize> {
+        let end = self.virt.end - (self.per_hart_size * hartid);
+
+        Range::from((end - self.per_hart_size)..end)
     }
 }
 

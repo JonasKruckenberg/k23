@@ -12,6 +12,7 @@ use core::{fmt, slice};
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct BootInfo {
+    pub hart_mask: usize,
     /// A map of the physical memory regions of the underlying machine.
     ///
     /// The loader parses this information from the firmware and also reports regions used
@@ -37,7 +38,6 @@ pub struct BootInfo {
     ///
     /// This field can be used by the kernel to perform introspection of its own ELF file.
     pub kernel_phys: Range<usize>, // PhysicalAddress
-    pub boot_ticks: u64,
 }
 
 impl BootInfo {
@@ -47,12 +47,12 @@ impl BootInfo {
     pub fn new(memory_regions: MemoryRegions) -> Self {
         Self {
             memory_regions,
+            hart_mask: 0,
             physical_address_offset: Default::default(),
             physical_memory_map: Default::default(),
             tls_template: None,
             kernel_virt: Default::default(),
             kernel_phys: Default::default(),
-            boot_ticks: 0,
         }
     }
 }

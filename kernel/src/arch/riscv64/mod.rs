@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 mod setjmp_longjmp;
-mod start;
 mod trap_handler;
 mod utils;
 mod vm;
@@ -32,20 +31,39 @@ pub use vm::{
     KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_BASE,
 };
 
+/// Global RISC-V specific initialization.
 #[cold]
 pub fn init() {
     let supported = riscv::sbi::supported_extensions().unwrap();
     log::trace!("Supported SBI extensions: {supported:?}");
 
-    log::trace!("BOOT STACK {:?}", start::BOOT_STACK.0.as_ptr_range());
-
     vm::init();
-
-    // TODO riscv64_mmu_early_init_percpu
 }
 
+/// Early per-hart and RISC-V specific initialization.
+///
+/// This function will be called before global initialization is done, notably this function
+/// cannot call logging functions, cannot allocate memory, cannot access hart-local state and should
+/// not panic as the panic handler is not initialized yet.
 #[cold]
-pub fn per_hart_init() {
+pub fn per_hart_init_early() {
+    // Safety: register access
+    unsafe {
+        // enable counters
+        scounteren::set_cy();
+        scounteren::set_tm();
+        scounteren::set_ir();
+
+        // Set the FPU state to initial
+        sstatus::set_fs(FS::Initial);
+    }
+}
+
+/// Late per-hart and RISC-V specific initialization.
+///
+/// This function will be called after all global initialization is done.
+#[cold]
+pub fn per_hart_init_late() {
     // Safety: register access
     unsafe {
         // Initialize the trap handler
@@ -57,14 +75,6 @@ pub fn per_hart_init() {
         // Enable supervisor timer and external interrupts
         sie::set_stie();
         sie::set_seie();
-
-        // enable counters
-        scounteren::set_cy();
-        scounteren::set_tm();
-        scounteren::set_ir();
-
-        // Set the FPU state to initial
-        sstatus::set_fs(FS::Initial);
     }
 }
 
