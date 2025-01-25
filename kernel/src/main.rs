@@ -23,8 +23,8 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
-mod async_rt;
 mod error;
+mod executor;
 mod logger;
 mod machine_info;
 mod metrics;
@@ -34,7 +34,7 @@ mod time;
 mod trap_handler;
 mod util;
 mod vm;
-mod wasm_rt;
+mod wasm;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
@@ -42,7 +42,7 @@ use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use core::cell::RefCell;
 use core::range::Range;
-use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind, TlsTemplate};
+use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::{Once, OnceLock};
@@ -130,6 +130,9 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
         // initialize the virtual memory subsystem
         vm::init(boot_info, &mut rng).unwrap();
+
+        // initialize the executor
+        executor::init(boot_info.hart_mask.count_ones() as usize, &mut rng);
     });
 
     // // Safety: we have to trust the loader mapped the fdt correctly
@@ -146,6 +149,8 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_ticks).elapsed()
     );
+
+    executor::run(executor::current(), hartid).unwrap();
 
     // wasm::test();
 
