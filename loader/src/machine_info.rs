@@ -9,7 +9,7 @@ use crate::arch::PAGE_SIZE;
 use crate::mapping::{align_down, checked_align_up};
 use arrayvec::ArrayVec;
 use core::cmp::Ordering;
-use core::ffi::c_void;
+use core::ffi::{c_void, CStr};
 use core::fmt;
 use core::fmt::Formatter;
 use core::range::Range;
@@ -25,6 +25,11 @@ pub struct MachineInfo<'dt> {
     pub memories: ArrayVec<Range<usize>, 16>,
     /// The RNG seed passed to us by the previous stage loader.
     pub rng_seed: Option<&'dt [u8]>,
+    /// A bitfield where each bit corresponds to a CPU in the system.
+    /// A `1` bit indicates the CPU is "online" and can be used,
+    ///     while a `0` bit indicates the CPU is "offline" and can't be used by the system.
+    /// This is used across SBI calls to dispatch IPIs to the correct CPUs.
+    pub hart_mask: usize,
 }
 
 impl MachineInfo<'_> {
@@ -40,7 +45,8 @@ impl MachineInfo<'_> {
         let mut info = MachineInfo {
             fdt: fdt_slice,
             memories: v.memory_regions,
-            rng_seed: v.chosen_visitor.rng_seed,
+            rng_seed: v.chosen.rng_seed,
+            hart_mask: v.cpus.hart_mask,
         };
 
         let mut exclude_region = |entry: Range<usize>| {
@@ -144,6 +150,7 @@ impl fmt::Display for MachineInfo<'_> {
         } else {
             writeln!(f, "{:<17} : None", "PRNG SEED")?;
         }
+        writeln!(f, "{:<17} : {:b}", "HART MASK", self.hart_mask)?;
 
         for (idx, r) in self.memories.iter().enumerate() {
             writeln!(f, "MEMORY REGION {:<4}: {}..{}", idx, r.start, r.end)?;
@@ -164,7 +171,8 @@ enum MemoryReservation<'dt> {
 #[derive(Default)]
 struct MachineInfoVisitor<'dt> {
     reservations: ReservationsVisitor<'dt>,
-    chosen_visitor: ChosenVisitor<'dt>,
+    chosen: ChosenVisitor<'dt>,
+    cpus: CpusVisitor,
     memory_regions: ArrayVec<Range<usize>, 16>,
     address_size: usize,
     width_size: usize,
@@ -187,7 +195,9 @@ impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
         } else if name == "reserved-memory" {
             node.visit(&mut self.reservations)?;
         } else if name == "chosen" {
-            node.visit(&mut self.chosen_visitor)?;
+            node.visit(&mut self.chosen)?;
+        } else if name == "cpus" {
+            node.visit(&mut self.cpus)?;
         }
 
         Ok(())
@@ -365,6 +375,71 @@ impl<'dt> Visitor<'dt> for ChosenVisitor<'dt> {
         match name {
             "rng-seed" => self.rng_seed = Some(value),
             _ => log::warn!("unknown /chosen property: {name}"),
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct CpusVisitor {
+    hart_mask: usize,
+}
+
+impl CpusVisitor {
+    fn cpu_visitor(&self) -> CpuVisitor {
+        CpuVisitor::default()
+    }
+}
+
+impl<'dt> Visitor<'dt> for CpusVisitor {
+    type Error = dtb_parser::Error;
+
+    fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
+        if name.starts_with("cpu@") {
+            let mut v = self.cpu_visitor();
+            node.visit(&mut v)?;
+            let (hartid, enabled) = v.result();
+
+            if enabled {
+                self.hart_mask |= 1 << hartid;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct CpuVisitor<'dt> {
+    status: Option<&'dt CStr>,
+    hartid: usize,
+}
+
+impl CpuVisitor<'_> {
+    fn result(self) -> (usize, bool) {
+        let enabled = self.status.unwrap() != c"disabled";
+
+        (self.hartid, enabled)
+    }
+}
+
+impl<'dt> Visitor<'dt> for CpuVisitor<'dt> {
+    type Error = dtb_parser::Error;
+
+    fn visit_reg(&mut self, reg: &'dt [u8]) -> Result<(), Self::Error> {
+        self.hartid = match reg.len() {
+            4 => usize::try_from(u32::from_be_bytes(reg.try_into()?))?,
+            8 => usize::try_from(u64::from_be_bytes(reg.try_into()?))?,
+            _ => unreachable!(),
+        };
+
+        Ok(())
+    }
+
+    fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
+        if name == "status" {
+            self.status = Some(CStr::from_bytes_until_nul(value)?);
         }
 
         Ok(())

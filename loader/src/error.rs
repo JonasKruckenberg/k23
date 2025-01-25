@@ -17,6 +17,9 @@ pub enum Error {
     Elf(&'static str),
     /// The system was not able to allocate memory needed for the operation.
     NoMemory,
+    /// Failed to start secondary hart
+    #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+    FailedToStartSecondaryHart(riscv::sbi::Error),
 }
 
 impl From<core::num::TryFromIntError> for Error {
@@ -41,6 +44,10 @@ impl Display for Error {
             Error::TryFromInt(_) => write!(f, "Failed to convert number"),
             Error::Dtb(err) => write!(f, "Failed to parse device tree blob: {err}"),
             Error::Elf(err) => write!(f, "Failed to parse kernel elf: {err}"),
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+            Error::FailedToStartSecondaryHart(err) => {
+                write!(f, "Failed to start secondary hart: {err}")
+            }
         }
     }
 }

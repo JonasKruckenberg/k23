@@ -27,7 +27,7 @@ pub fn init() {
             .byte_add(TRAP_STACK_SIZE_PAGES * PAGE_SIZE) as *mut u8
     };
 
-    log::debug!("setting sscratch to {:p}", trap_stack_top);
+    log::trace!("setting sscratch to {:p}", trap_stack_top);
     // Safety: inline assembly
     unsafe {
         asm!(
@@ -36,7 +36,7 @@ pub fn init() {
         );
     }
 
-    log::debug!("setting trap vec to {:#x}", trap_vec as usize);
+    log::trace!("setting trap vec to {:#x}", trap_vec as usize);
     // Safety: register access
     unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
 }

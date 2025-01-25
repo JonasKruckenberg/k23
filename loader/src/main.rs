@@ -10,18 +10,23 @@
 #![feature(naked_functions)]
 #![feature(new_range_api)]
 #![feature(maybe_uninit_slice)]
+#![feature(alloc_layout_extra)]
 
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
 use crate::kernel::{parse_kernel, INLINED_KERNEL_BYTES};
 use crate::machine_info::MachineInfo;
-use crate::mapping::{identity_map_self, map_kernel, map_physical_memory};
+use crate::mapping::{
+    identity_map_self, map_kernel, map_kernel_stacks, map_physical_memory, StacksAllocation,
+    TlsAllocation,
+};
 use arrayvec::ArrayVec;
 use core::alloc::Layout;
 use core::ffi::c_void;
 use core::range::Range;
 use core::{ptr, slice};
+use sync::{Barrier, OnceLock};
 
 mod arch;
 mod boot_info;
@@ -36,6 +41,7 @@ mod panic;
 
 pub const ENABLE_KASLR: bool = false;
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
+pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -43,28 +49,49 @@ pub type Result<T> = core::result::Result<T, Error>;
 ///
 /// The passed `opaque` ptr must point to a valid memory region.
 unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
-    // zero out the BSS section
-    unsafe extern "C" {
-        static mut __bss_zero_start: u64;
-        static mut __bss_end: u64;
-    }
-    // Safety: Zero BSS section
+    static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
+    let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
+
+    // Enable the MMU on all harts. Note that this technically reenables it on the initializing hart
+    // but there is no harm in that.
+    // Safety: there is no safety
     unsafe {
-        let mut ptr = &raw mut __bss_zero_start;
-        let end = &raw mut __bss_end;
-        while ptr < end {
-            ptr.write_volatile(0);
-            ptr = ptr.offset(1);
-        }
+        log::trace!("activating MMU...");
+        arch::activate_aspace(res.root_pgtable);
+        log::trace!("activated.");
     }
 
-    logger::init(LOG_LEVEL.to_level_filter());
+    if let Some(alloc) = &res.maybe_tls_alloc {
+        alloc.initialize_for_hart(hartid);
+    }
 
+    // Safety: this will jump to the kernel entry
+    unsafe { arch::handoff_to_kernel(hartid, boot_ticks, res) }
+}
+
+pub struct GlobalInitResult {
+    boot_info: *mut loader_api::BootInfo,
+    kernel_entry: usize,
+    root_pgtable: usize,
+    stacks_alloc: StacksAllocation,
+    maybe_tls_alloc: Option<TlsAllocation>,
+    barrier: Barrier,
+}
+
+// Safety: *mut BootInfo isn't Send but `GlobalInitResult` will only ever we read from, so this is fine.
+unsafe impl Send for GlobalInitResult {}
+// Safety: *mut BootInfo isn't Send but `GlobalInitResult` will only ever we read from, so this is fine.
+unsafe impl Sync for GlobalInitResult {}
+
+fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
+    logger::init(LOG_LEVEL.to_level_filter());
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");
 
-    let self_regions = SelfRegions::collect();
+    arch::start_secondary_harts(hartid, &minfo).unwrap();
+
+    let self_regions = SelfRegions::collect(&minfo);
     log::debug!("{self_regions:#x?}");
 
     // Initialize the frame allocator
@@ -121,16 +148,27 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     // print the elf sections for debugging purposes
     log::debug!("\n{kernel}");
 
-    let (kernel_virt, maybe_tls_template) = map_kernel(
+    let (kernel_virt, maybe_tls_alloc) = map_kernel(
         root_pgtable,
         &mut frame_alloc,
         &mut page_alloc,
         &kernel,
+        &minfo,
         phys_off,
     )
     .unwrap();
 
     log::trace!("KASLR: Kernel image at {:#x}", kernel_virt.start);
+
+    let stacks_alloc = map_kernel_stacks(
+        root_pgtable,
+        &mut frame_alloc,
+        &mut page_alloc,
+        &minfo,
+        usize::try_from(kernel._loader_config.kernel_stack_size_pages).unwrap(),
+        phys_off,
+    )
+    .unwrap();
 
     let frame_usage = frame_alloc.frame_usage();
     log::debug!(
@@ -143,11 +181,11 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
         phys_off,
         phys_map,
         kernel_virt,
-        maybe_tls_template,
+        maybe_tls_alloc.as_ref().map(|alloc| alloc.template.clone()),
         Range::from(self_regions.executable.start..self_regions.read_write.end),
         kernel_phys,
         fdt_phys,
-        boot_ticks,
+        minfo.hart_mask,
     )
     .unwrap();
 
@@ -156,8 +194,14 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
         .checked_add(usize::try_from(kernel.elf_file.header.pt2.entry_point()).unwrap())
         .unwrap();
 
-    // Safety: this will jump to the kernel entry
-    unsafe { arch::handoff_to_kernel(hartid, boot_info, kernel_entry) }
+    GlobalInitResult {
+        boot_info,
+        kernel_entry,
+        root_pgtable,
+        maybe_tls_alloc,
+        stacks_alloc,
+        barrier: Barrier::new(minfo.hart_mask.count_ones() as usize),
+    }
 }
 
 #[derive(Debug)]
@@ -168,14 +212,14 @@ struct SelfRegions {
 }
 
 impl SelfRegions {
-    pub fn collect() -> Self {
+    pub fn collect(minfo: &MachineInfo) -> Self {
         unsafe extern "C" {
             static __text_start: u8;
             static __text_end: u8;
             static __rodata_start: u8;
             static __rodata_end: u8;
             static __bss_start: u8;
-            static __data_end: u8;
+            static __stack_start: u8;
         }
 
         SelfRegions {
@@ -189,7 +233,8 @@ impl SelfRegions {
             },
             read_write: Range {
                 start: &raw const __bss_start as usize,
-                end: &raw const __data_end as usize,
+                end: (&raw const __stack_start as usize)
+                    + (minfo.hart_mask.count_ones() as usize * STACK_SIZE),
             },
         }
     }

@@ -38,20 +38,18 @@ use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use crate::time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
-use core::alloc::Layout;
 use core::cell::RefCell;
 use core::range::Range;
-use core::{cmp, slice};
-use loader_api::{BootInfo, MemoryRegionKind, TlsTemplate};
-use sync::OnceLock;
+use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
+use sync::{Once, OnceLock};
 use thread_local::thread_local;
 use vm::frame_alloc;
-use vm::{PhysicalAddress, VirtualAddress};
+use vm::PhysicalAddress;
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages
-pub const STACK_SIZE_PAGES: usize = 128; // TODO find a lower more appropriate value
+pub const STACK_SIZE_PAGES: u32 = 128; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
 pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropriate value
 /// The initial size of the kernel heap in pages.
@@ -71,67 +69,88 @@ thread_local!(
         RefCell::new(HartLocalMachineInfo::default());
 );
 
-fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
-    // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
-    // is available
-    let allocatable_memories = allocatable_memory_regions(boot_info);
-    let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
+#[used(linker)]
+#[unsafe(link_section = ".loader_config")]
+static LOADER_CONFIG: LoaderConfig = {
+    let mut cfg = LoaderConfig::new_default();
+    cfg.kernel_stack_size_pages = STACK_SIZE_PAGES;
+    cfg
+};
 
-    // initializing the global allocator
-    allocator::init(&mut boot_alloc, boot_info);
+// | hart | stack                                  | tls                                    |
+// |------|----------------------------------------|----------------------------------------|
+// | 0    | 0xffffffc0c008c000..0xffffffc0c00a0000 | 0xffffffc040000000..0xffffffc0400400c2 |
+// | 1    | 0xffffffc0c0078000..0xffffffc0c008c000 | 0xffffffc0400400c2..0xffffffc040080184 |
+// | 2    | 0xffffffc0c0064000..0xffffffc0c0078000 | 0xffffffc040080184..0xffffffc0400c0246 |
+// | 3    | 0xffffffc0c0050000..0xffffffc0c0064000 | 0xffffffc0400c0246..0xffffffc040100308 |
+// | 4    | 0xffffffc0c003c000..0xffffffc0c0050000 | 0xffffffc040100308..0xffffffc0401403ca |
+// | 5    | 0xffffffc0c0028000..0xffffffc0c003c000 | 0xffffffc0401403ca..0xffffffc04018048c |
+// | 6    | 0xffffffc0c0014000..0xffffffc0c0028000 | 0xffffffc04018048c..0xffffffc0401c054e |
+// | 7    | 0xffffffc0c0000000..0xffffffc0c0014000 | 0xffffffc0401c054e..0xffffffc040200610 |
 
-    // initialize the panic backtracing subsystem after the allocator has been set up
-    // since setting up the symbolization context requires allocation
-    panic::init(boot_info);
+#[unsafe(no_mangle)]
+fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    // initialize the hart local state of the logger before enabling it, so it is ready as soon as
+    // logging is turned on
+    logger::per_hart_init(hartid);
 
-    // initialize thread-local storage
-    // done after global allocator initialization since TLS destructors are registered in a heap
-    // allocated Vec
-    let tls = init_tls(&mut boot_alloc, &boot_info.tls_template);
-
-    // initialize the logger
-    // done after TLS initialization since we maintain per-hart host stdio channels
-    logger::init_hart(hartid);
-    logger::init(LOG_LEVEL.to_level_filter());
-
-    log::debug!("\n{boot_info}");
-    log::trace!("Allocatable memory regions: {allocatable_memories:?}");
-    log::trace!("Thread pointer: {tls:?}");
-
-    // perform per-hart, architecture-specific initialization
-    // (e.g. setting the trap vector and resetting the FPU)
-    arch::per_hart_init();
-
-    // perform global, architecture-specific initialization
-    arch::init();
+    // perform EARLY per-hart, architecture-specific initialization
+    // (e.g. resetting the FPU)
+    arch::per_hart_init_early();
 
     let fdt = locate_device_tree(boot_info);
 
-    // TODO move this into a init function
-    let minfo = MACHINE_INFO
-        .get_or_try_init(|| {
-            // Safety: we have to trust the loader mapped the fdt correctly
-            unsafe { MachineInfo::from_dtb(fdt) }
-        })
-        .unwrap();
-    log::debug!("\n{minfo}");
+    static SYNC: Once = Once::new();
+    SYNC.call_once(|| {
+        // initialize the global logger as early as possible
+        logger::init(LOG_LEVEL.to_level_filter());
 
-    // Safety: we have to trust the loader mapped the fdt correctly
+        // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
+        // is available
+        let allocatable_memories = allocatable_memory_regions(boot_info);
+        let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
+
+        // initializing the global allocator
+        allocator::init(&mut boot_alloc, boot_info);
+
+        // initialize the panic backtracing subsystem after the allocator has been set up
+        // since setting up the symbolization context requires allocation
+        panic::init(boot_info);
+
+        // perform global, architecture-specific initialization
+        arch::init();
+
+        // // TODO move this into a init function
+        let minfo = MACHINE_INFO
+            .get_or_try_init(|| {
+                // Safety: we have to trust the loader mapped the fdt correctly
+                unsafe { MachineInfo::from_dtb(fdt) }
+            })
+            .unwrap();
+        log::debug!("\n{minfo}");
+
+        // initialize the global frame allocator
+        frame_alloc::init(boot_alloc);
+
+        // initialize the virtual memory subsystem
+        vm::init(boot_info, minfo).unwrap();
+    });
+
+    // // Safety: we have to trust the loader mapped the fdt correctly
     let hart_local_minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt).unwrap() };
     log::debug!("\n{hart_local_minfo}");
     HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
 
-    frame_alloc::init(boot_alloc);
-
-    // TODO init kernel address space (requires global allocator)
-
-    vm::init(boot_info, minfo).unwrap();
+    // perform EARLY per-hart, architecture-specific initialization
+    // (e.g. setting the trap vector and enabling interrupts)
+    arch::per_hart_init_late();
 
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
-        Instant::from_ticks(boot_info.boot_ticks).elapsed()
+        Instant::from_ticks(boot_ticks).elapsed()
     );
+
     // wasm::test();
 
     // - [all][global] parse cmdline
@@ -154,42 +173,6 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     }
 
     arch::exit(0);
-}
-
-fn init_tls(
-    boot_alloc: &mut BootstrapAllocator,
-    maybe_tls_template: &Option<TlsTemplate>,
-) -> Option<VirtualAddress> {
-    if let Some(template) = &maybe_tls_template {
-        let layout =
-            Layout::from_size_align(template.mem_size, cmp::max(template.align, arch::PAGE_SIZE))
-                .unwrap();
-        let phys = boot_alloc.allocate_contiguous_zeroed(layout).unwrap();
-
-        // Use the phys_map to access the newly allocated TLS region
-        let virt = VirtualAddress::from_phys(phys).unwrap();
-
-        if template.file_size != 0 {
-            // Safety: We have to trust the loaders BootInfo here
-            unsafe {
-                let src: &[u8] =
-                    slice::from_raw_parts(template.start_addr as *const u8, template.file_size);
-                let dst: &mut [u8] =
-                    slice::from_raw_parts_mut(virt.as_mut_ptr(), template.file_size);
-
-                // sanity check to ensure our destination allocated memory is actually zeroed.
-                // if it's not, that likely means we're about to override something important
-                debug_assert!(dst.iter().all(|&x| x == 0));
-
-                dst.copy_from_slice(src);
-            }
-        }
-
-        arch::set_thread_ptr(virt);
-        Some(virt)
-    } else {
-        None
-    }
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.
