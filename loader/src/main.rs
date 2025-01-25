@@ -45,21 +45,6 @@ pub type Result<T> = core::result::Result<T, Error>;
 ///
 /// The passed `opaque` ptr must point to a valid memory region.
 unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
-    // zero out the BSS section
-    unsafe extern "C" {
-        static mut __bss_zero_start: u64;
-        static mut __bss_end: u64;
-    }
-    // Safety: Zero BSS section
-    unsafe {
-        let mut ptr = &raw mut __bss_zero_start;
-        let end = &raw mut __bss_end;
-        while ptr < end {
-            ptr.write_volatile(0);
-            ptr = ptr.offset(1);
-        }
-    }
-
     static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
     let res = GLOBAL_INIT.get_or_init(|| do_global_init(opaque));
 

@@ -7,13 +7,14 @@
 
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
+use crate::machine_info::MachineInfo;
 use crate::mapping::Flags;
+use crate::GlobalInitResult;
 use bitflags::bitflags;
 use core::arch::{asm, naked_asm};
 use core::fmt;
 use core::num::NonZero;
 use core::ptr::NonNull;
-use loader_api::BootInfo;
 use riscv::satp;
 
 pub const DEFAULT_ASID: u16 = 0;
@@ -56,20 +57,27 @@ unsafe extern "C" fn _start() -> ! {
 
             // Disable the MMU in case it was left on.
             "csrw   satp, zero",
-            
-            // Setup the stack pointer
-            "la     t0, __stack_start",    // load the base of the stack
-            "li     t1, {stack_size}",     // load the stack size
-            "add    sp, t0, t1",           // add both to get the top of the stack
 
-            // Fill the stack with a canary pattern (0xACE0BACE) so that we can identify unused stack memory
-            // in dumps & calculate stack usage. This is also really great (don't ask my why I know this) to identify
-            // when we tried executing stack memory.
-            "li     t1, 0xACE0BACE",
-            "1:",
-            "   sw          t1, 0(t0)",     // write the canary as u64
-            "   addi        t0, t0, 8",     // move to the next u64
-            "   bltu        t0, sp, 1b",    // loop until we reach the top of the stack
+            // Setup the stack pointer
+            "la     t0, __stack_start", // set the stack pointer to the bottom of the stack
+            "li     t1, {stack_size}",  // load the stack size
+            "mul    sp, a0, t1",        // multiply the stack size by the hart id to get the relative stack bottom offset
+            "add    t0, t0, sp",        // add the relative stack bottom offset to the absolute stack region offset to get
+                                        // the absolute stack bottom
+            "add    sp, t0, t1",        // add one stack size again to get to the top of the stack. This is our final stack pointer.
+
+            // fill stack with canary pattern
+            // $sp is set to stack top above, $t0 as well
+            "call   {fill_stack}",
+
+            // Clear .bss.  The linker script ensures these are aligned to 16 bytes.
+            "lla    a3, __bss_zero_start",
+            "lla    a4, __bss_end",
+            "0:",
+            "   sd      zero, (a3)",
+            "   sd      zero, 8(a3)",
+            "   add     a3, a3, 16",
+            "   blt     a3, a4, 0b",
 
             // Call the rust entry point
             "call {start_rust}",
@@ -83,6 +91,85 @@ unsafe extern "C" fn _start() -> ! {
 
             stack_size = const crate::STACK_SIZE,
             start_rust = sym crate::main,
+            fill_stack = sym fill_stack
+        }
+    }
+}
+
+#[naked]
+unsafe extern "C" fn _start_secondary() -> ! {
+    // Safety: inline assembly
+    unsafe {
+        naked_asm! {
+            // read boot time stamp as early as possible
+            "rdtime a2",
+
+            // Clear return address and frame pointer
+            "mv     ra, zero",
+            "mv     s0, zero",
+
+            // Clear the gp register in case anything tries to use it.
+            "mv     gp, zero",
+
+            // Mask all interrupts in case the previous stage left them on.
+            "csrc   sstatus, 1 << 1",
+            "csrw   sie, zero",
+
+            // Reset the trap vector in case the previous stage left one installed.
+            "csrw   stvec, zero",
+
+            // Disable the MMU in case it was left on.
+            "csrw   satp, zero",
+
+            // Setup the stack pointer
+            "la     t0, __stack_start", // set the stack pointer to the bottom of the stack
+            "li     t1, {stack_size}",  // load the stack size
+            "mul    sp, a0, t1",        // multiply the stack size by the hart id to get the relative stack bottom offset
+            "add    t0, t0, sp",        // add the relative stack bottom offset to the absolute stack region offset to get
+                                        // the absolute stack bottom
+            "add    sp, t0, t1",        // add one stack size again to get to the top of the stack. This is our final stack pointer.
+
+            // fill stack with canary pattern
+            // $sp is set to stack top above, $t0 as well
+            "call   {fill_stack}",
+
+            // Call the rust entry point
+            "call {start_rust}",
+
+            // Loop forever.
+            // `start_rust` should never return, but in case it does prevent the hart from executing
+            // random code
+            "2:",
+            "   wfi",
+            "   j 2b",
+
+            stack_size = const crate::STACK_SIZE,
+            start_rust = sym crate::main,
+            fill_stack = sym fill_stack
+        }
+    }
+}
+
+/// Fill the stack with a canary pattern (0xACE0BACE) so that we can identify unused stack memory
+/// in dumps & calculate stack usage. This is also really great (don't ask my why I know this) to identify
+/// when we tried executing stack memory.
+///
+/// # Safety
+///
+/// expects the bottom of the stack in `t0` and the top of stack in `sp`
+#[naked]
+unsafe extern "C" fn fill_stack() {
+    unsafe {
+        naked_asm! {
+            // Fill the stack with a canary pattern (0xACE0BACE) so that we can identify unused stack memory
+            // in dumps & calculate stack usage. This is also really great (don't ask my why I know this) to identify
+            // when we tried executing stack memory.
+            "li     t1, 0xACE0BACE",
+            "1:",
+            "   sw          t1, 0(t0)",     // write the canary as u64
+            "   addi        t0, t0, 8",     // move to the next u64
+            "   bltu        t0, sp, 1b",    // loop until we reach the top of the stack
+            "ret"
         }
     }
 }
