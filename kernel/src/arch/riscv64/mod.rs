@@ -23,16 +23,20 @@ pub use vm::{
     KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_BASE,
 };
 
+/// Global RISC-V specific initialization.
 #[cold]
 pub fn init() {
     let supported = riscv::sbi::supported_extensions().unwrap();
     log::trace!("Supported SBI extensions: {supported:?}");
 
     vm::init();
-
-    // TODO riscv64_mmu_early_init_percpu
 }
 
+/// Early per-hart and RISC-V specific initialization.
+///
+/// This function will be called before global initialization is done, notably this function
+/// cannot call logging functions, cannot allocate memory, cannot access hart-local state and should
+/// not panic as the panic handler is not initialized yet.
 #[cold]
 pub fn per_hart_init_early() {
     // Safety: register access
@@ -47,6 +51,9 @@ pub fn per_hart_init_early() {
     }
 }
 
+/// Late per-hart and RISC-V specific initialization.
+///
+/// This function will be called after all global initialization is done.
 #[cold]
 pub fn per_hart_init_late() {
     // Safety: register access

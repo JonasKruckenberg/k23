@@ -31,6 +31,10 @@ pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usi
 /// On `RiscV` targets the page table entry's physical address bits are shifted 2 bits to the right.
 const PTE_PPN_SHIFT: usize = 2;
 
+/// Entry point for the initializing hart, this will set up the CPU environment for Rust and then
+/// transfer control to [`crate::main`].
+///
+/// For the entry point of all secondary harts see [`_start_secondary`].
 #[unsafe(link_section = ".text.start")]
 #[unsafe(no_mangle)]
 #[naked]
@@ -96,6 +100,10 @@ unsafe extern "C" fn _start() -> ! {
     }
 }
 
+/// Entry point for all secondary harts, this is essentially the same as [`_start`] but it doesn't
+/// attempt to zero out the BSS.
+///
+/// It will however transfer control to the common [`crate::main`] routine.
 #[naked]
 unsafe extern "C" fn _start_secondary() -> ! {
     // Safety: inline assembly
@@ -175,6 +183,8 @@ unsafe extern "C" fn fill_stack() {
     }
 }
 
+/// This will hand off control over this CPU to the kernel. This is the last function executed in
+/// the loader and will never return.
 pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalInitResult) -> ! {
     let stack = init.stacks_alloc.region_for_hart(hartid);
     let tls = init
@@ -224,6 +234,7 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalIni
     }
 }
 
+/// Start all secondary harts on the system as reported by [`MachineInfo`].
 pub fn start_secondary_harts(boot_hart: usize, minfo: &MachineInfo) -> crate::Result<()> {
     let start = minfo.hart_mask.trailing_zeros() as usize;
     let end = (usize::BITS - minfo.hart_mask.leading_zeros()) as usize;
