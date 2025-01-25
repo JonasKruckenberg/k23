@@ -159,6 +159,7 @@ unsafe extern "C" fn _start_secondary() -> ! {
 /// expects the bottom of the stack in `t0` and the top of stack in `sp`
 #[naked]
 unsafe extern "C" fn fill_stack() {
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             // Fill the stack with a canary pattern (0xACE0BACE) so that we can identify unused stack memory
@@ -240,7 +241,7 @@ pub fn start_secondary_harts(boot_hart: usize, minfo: &MachineInfo) -> crate::Re
             _start_secondary as usize,
             minfo.fdt.as_ptr() as usize,
         )
-        .unwrap();
+        .map_err(Error::FailedToStartSecondaryHart)?;
     }
 
     Ok(())

@@ -52,6 +52,9 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
     let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
 
+    // Enable the MMU on all harts. Note that this technically reenables it on the initializing hart
+    // but there is no harm in that.
+    // Safety: there is no safety
     unsafe {
         log::trace!("activating MMU...");
         arch::activate_aspace(res.root_pgtable);
@@ -63,7 +66,7 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     }
 
     // Safety: this will jump to the kernel entry
-    unsafe { arch::handoff_to_kernel(hartid, boot_ticks, &res) }
+    unsafe { arch::handoff_to_kernel(hartid, boot_ticks, res) }
 }
 
 pub struct GlobalInitResult {
@@ -75,7 +78,9 @@ pub struct GlobalInitResult {
     barrier: Barrier,
 }
 
+// Safety: *mut BootInfo isn't Send but `GlobalInitResult` will only ever we read from, so this is fine.
 unsafe impl Send for GlobalInitResult {}
+// Safety: *mut BootInfo isn't Send but `GlobalInitResult` will only ever we read from, so this is fine.
 unsafe impl Sync for GlobalInitResult {}
 
 fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {

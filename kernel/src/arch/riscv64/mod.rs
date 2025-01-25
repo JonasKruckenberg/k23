@@ -49,6 +49,7 @@ pub fn per_hart_init_early() {
 
 #[cold]
 pub fn per_hart_init_late() {
+    // Safety: register access
     unsafe {
         // Initialize the trap handler
         trap_handler::init();

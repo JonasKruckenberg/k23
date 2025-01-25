@@ -489,6 +489,8 @@ fn handle_tls_segment(
     let virt = page_alloc.allocate(layout);
 
     log::trace!("Mapping TLS region {virt:#x?}...");
+    // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+    // abort startup anyway
     unsafe {
         arch::map_contiguous(
             root_pgtable,
@@ -581,6 +583,8 @@ pub fn map_kernel_stacks(
     let virt = page_alloc.allocate(layout);
 
     log::trace!("Mapping stack region {virt:#x?}...");
+    // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+    // abort startup anyway
     unsafe {
         arch::map_contiguous(
             root_pgtable,

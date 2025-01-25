@@ -416,7 +416,7 @@ struct CpuVisitor<'dt> {
     hartid: usize,
 }
 
-impl<'dt> CpuVisitor<'dt> {
+impl CpuVisitor<'_> {
     fn result(self) -> (usize, bool) {
         let enabled = self.status.unwrap() != c"disabled";
 

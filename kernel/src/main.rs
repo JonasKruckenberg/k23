@@ -133,7 +133,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         frame_alloc::init(boot_alloc);
 
         // initialize the virtual memory subsystem
-        vm::init(boot_info, &minfo).unwrap();
+        vm::init(boot_info, minfo).unwrap();
     });
 
     // // Safety: we have to trust the loader mapped the fdt correctly
