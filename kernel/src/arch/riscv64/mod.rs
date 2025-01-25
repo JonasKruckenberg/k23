@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 mod setjmp_longjmp;
-mod start;
 mod trap_handler;
 mod utils;
 mod vm;
@@ -28,8 +27,6 @@ pub use vm::{
 pub fn init() {
     let supported = riscv::sbi::supported_extensions().unwrap();
     log::trace!("Supported SBI extensions: {supported:?}");
-
-    log::trace!("BOOT STACK {:?}", start::BOOT_STACK.0.as_ptr_range());
 
     vm::init();
 

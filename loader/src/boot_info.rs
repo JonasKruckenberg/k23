@@ -24,6 +24,7 @@ pub fn prepare_boot_info(
     loader_phys: Range<usize>,
     kernel_phys: Range<usize>,
     fdt_phys: Range<usize>,
+    hart_mask: usize,
 ) -> crate::Result<*mut BootInfo> {
     let frame = frame_alloc
         .allocate_contiguous_zeroed(
@@ -41,6 +42,7 @@ pub fn prepare_boot_info(
     boot_info.tls_template = maybe_tls_template;
     boot_info.kernel_virt = kernel_virt;
     boot_info.kernel_phys = kernel_phys;
+    boot_info.hart_mask = hart_mask;
 
     let boot_info_ptr = page as *mut BootInfo;
     // Safety: we just allocated the boot info frame

@@ -156,42 +156,6 @@ fn main(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     arch::exit(0);
 }
 
-fn init_tls(
-    boot_alloc: &mut BootstrapAllocator,
-    maybe_tls_template: &Option<TlsTemplate>,
-) -> Option<VirtualAddress> {
-    if let Some(template) = &maybe_tls_template {
-        let layout =
-            Layout::from_size_align(template.mem_size, cmp::max(template.align, arch::PAGE_SIZE))
-                .unwrap();
-        let phys = boot_alloc.allocate_contiguous_zeroed(layout).unwrap();
-
-        // Use the phys_map to access the newly allocated TLS region
-        let virt = VirtualAddress::from_phys(phys).unwrap();
-
-        if template.file_size != 0 {
-            // Safety: We have to trust the loaders BootInfo here
-            unsafe {
-                let src: &[u8] =
-                    slice::from_raw_parts(template.start_addr as *const u8, template.file_size);
-                let dst: &mut [u8] =
-                    slice::from_raw_parts_mut(virt.as_mut_ptr(), template.file_size);
-
-                // sanity check to ensure our destination allocated memory is actually zeroed.
-                // if it's not, that likely means we're about to override something important
-                debug_assert!(dst.iter().all(|&x| x == 0));
-
-                dst.copy_from_slice(src);
-            }
-        }
-
-        arch::set_thread_ptr(virt);
-        Some(virt)
-    } else {
-        None
-    }
-}
-
 /// Builds a list of memory regions from the boot info that are usable for allocation.
 ///
 /// The regions passed by the loader are guaranteed to be non-overlapping, but might not be

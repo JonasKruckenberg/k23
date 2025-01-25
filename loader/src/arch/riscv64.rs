@@ -174,13 +174,32 @@ unsafe extern "C" fn fill_stack() {
     }
 }
 
-pub unsafe fn handoff_to_kernel(hartid: usize, boot_info: *mut BootInfo, entry: usize, boot_ticks: u64) -> ! {
+pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalInitResult) -> ! {
+    let stack = init.stacks_alloc.region_for_hart(hartid);
+    let tls = init
+        .maybe_tls_alloc
+        .as_ref()
+        .map(|tls| tls.region_for_hart(hartid))
+        .unwrap_or_default();
+
     log::debug!("Hart {hartid} Jumping to kernel...");
-    log::trace!("Hart {hartid} entry: {entry:#x}, arguments: a0={hartid} a1={boot_info:?}");
+    log::trace!("Hart {hartid} entry: {:#x}, arguments: a0={hartid} a1={:?} stack={stack:#x?} tls={tls:#x?}", init.kernel_entry, init.boot_info);
+
+    // Synchronize all harts before jumping to the kernel.
+    // Technically this isn't really necessary, but debugging output gets horribly mangled if we don't
+    // and that's terrible for this critical transition
+    init.barrier.wait();
 
     // Safety: inline assembly
     unsafe {
         asm! {
+            "mv  sp, {stack_top}", // Set the kernel stack ptr
+            "mv  tp, {tls_start}", // Set the kernel thread ptr
+
+            // fill stack with canary pattern
+            // $sp is set to stack top above, $t0 is set to stack bottom by the asm args below
+            "call {fill_stack}",
+
             "mv ra, zero", // Reset return address
 
             "jalr zero, {kernel_entry}",
@@ -192,9 +211,13 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_info: *mut BootInfo, entry: 
             "   wfi",
             "   j 1b",
             in("a0") hartid,
-            in("a1") boot_info,
+            in("a1") init.boot_info,
             in("a2") boot_ticks,
-            kernel_entry = in(reg) entry,
+            in("t0") stack.start,
+            stack_top = in(reg) stack.end,
+            tls_start = in(reg) tls.start,
+            kernel_entry = in(reg) init.kernel_entry,
+            fill_stack = sym fill_stack,
             options(noreturn)
         }
     }
