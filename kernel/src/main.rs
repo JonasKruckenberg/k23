@@ -114,7 +114,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // perform global, architecture-specific initialization
         arch::init();
 
-        // // TODO move this into a init function
+        // TODO move this into a init function
         let minfo = MACHINE_INFO
             .get_or_try_init(|| {
                 // Safety: we have to trust the loader mapped the fdt correctly
@@ -149,6 +149,10 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_ticks).elapsed()
     );
+    
+    executor::current().spawn(async move {
+        log::info!("Hello from hart {}", hartid);
+    });
 
     executor::run(executor::current(), hartid).unwrap();
 
