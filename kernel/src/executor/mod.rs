@@ -36,10 +36,10 @@ pub fn current() -> &'static Executor {
 /// [`current()`]) but no tasks will run until at least one hart in the system enters its
 /// runtime loop using [`run()`].
 #[cold]
-pub fn init(num_cores: usize, rng: &mut impl RngCore) -> &'static Executor {
+pub fn init(num_cores: usize, rng: &mut impl RngCore, shutdown_on_idle: bool) -> &'static Executor {
     #[expect(tail_expr_drop_order, reason = "")]
     EXECUTOR.get_or_init(|| Executor {
-        scheduler: scheduler::multi_thread::Handle::new(num_cores, rng),
+        scheduler: scheduler::multi_thread::Handle::new(num_cores, rng, shutdown_on_idle),
     })
 }
 

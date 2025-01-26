@@ -30,7 +30,7 @@ pub struct Handle {
 
 impl Handle {
     #[expect(tail_expr_drop_order, reason = "")]
-    pub fn new(num_cores: usize, rand: &mut impl RngCore) -> Self {
+    pub fn new(num_cores: usize, rand: &mut impl RngCore, shutdown_on_idle: bool) -> Self {
         let mut cores = Vec::with_capacity(num_cores);
         let mut remotes = Vec::with_capacity(num_cores);
 
@@ -60,13 +60,14 @@ impl Handle {
                 synced: Mutex::new(Synced {
                     assigned_cores: (0..num_cores).map(|_| None).collect(),
                     idle: idle_synced,
-                    shutdown_cores: Vec::with_capacity(num_cores)
+                    shutdown_cores: Vec::with_capacity(num_cores),
                 }),
                 run_queue,
                 idle,
                 condvars: (0..num_cores).map(|_| Condvar::new()).collect(),
                 parking_spot: ParkingSpot::default(),
                 tls: ThreadLocal::with_capacity(num_cores),
+                shutdown_on_idle,
             },
         }
     }
@@ -85,14 +86,14 @@ impl Handle {
 
         handle
     }
-    
+
     pub fn shutdown(&self) {
         if !self.shared.shutdown.swap(true, Ordering::AcqRel) {
             let mut synced = self.shared.synced.lock();
-            
+
             // Set the shutdown flag on all available cores
             self.shared.idle.shutdown(&mut synced, &self.shared);
-            
+
             // Any unassigned cores need to be shutdown, but we have to first drop
             // the lock
             drop(synced);

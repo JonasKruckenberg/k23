@@ -93,7 +93,10 @@ pub(super) struct Shared {
     /// into a TLS slot instead of stack allocated so we can access it from other places (i.e. we only
     /// need access to the scheduler handle instead of access to the workers stack which wouldn't work).
     pub(super) tls: ThreadLocal<Context>,
+    /// Signal to workers that they should be shutting down.
     pub(super) shutdown: AtomicBool,
+    /// Whether to shut down the executor when all tasks are processed, used in tests.
+    pub(super) shutdown_on_idle: bool,
 }
 
 /// Various bits of shared state that are synchronized by the scheduler mutex.
@@ -107,6 +110,7 @@ pub(super) struct Synced {
     ///
     /// The core is **not** placed back in the worker to avoid it from being
     /// stolen by a thread that was spawned as part of `block_in_place`.
+    #[expect(clippy::vec_box, reason = "we're moving the boxed core around")]
     pub(super) shutdown_cores: Vec<Box<Core>>,
 }
 
@@ -133,10 +137,6 @@ pub(super) struct Context {
     /// handle yielded tasks.
     defer: RefCell<Vec<TaskRef>>,
 }
-
-// pub fn new() -> Self {
-//
-// }
 
 #[cold]
 pub fn run(handle: &'static Handle, hartid: usize) -> Result<(), ()> {
@@ -260,10 +260,6 @@ impl Worker {
 
     // Block the current hart waiting until a core becomes available.
     #[expect(tail_expr_drop_order, reason = "")]
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "TODO the result will be needed in the future"
-    )]
     fn wait_for_core(
         &mut self,
         cx: &Context,
@@ -512,6 +508,15 @@ impl Worker {
         // Try one last time to get tasks
         if let Some(task) = self.next_remote_task_and_refill_queue(cx, &mut core) {
             return Ok((Some(task), core));
+        }
+
+        // If we're out of work and the `shutdown_on_idle` flags has been set on creation we should
+        // shut down instead of parking the hart.
+        // Note that we're out of work which doesn't mean other workers are idle too, but once they
+        // are done processing their currently running task (plus the lifo task potentially) they
+        // will check the shutdown flag and begin shutting down too.
+        if cx.shared().shutdown_on_idle {
+            cx.shared().shutdown.store(true, Ordering::Release);
         }
 
         // If the runtime is shutdown, skip parking

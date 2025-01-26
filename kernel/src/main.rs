@@ -132,7 +132,16 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         vm::init(boot_info, &mut rng).unwrap();
 
         // initialize the executor
-        executor::init(boot_info.hart_mask.count_ones() as usize, &mut rng);
+
+        // if we're executing tests we don't want idle harts to park indefinitely, instead the
+        // runtime should just shut down
+        let shutdown_on_idle = cfg!(test);
+
+        executor::init(
+            boot_info.hart_mask.count_ones() as usize,
+            &mut rng,
+            shutdown_on_idle,
+        );
     });
 
     // // Safety: we have to trust the loader mapped the fdt correctly
@@ -154,7 +163,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         log::info!("Hello from hart {}", hartid);
     });
 
-    executor::run(executor::current(), hartid).unwrap();
+    let _ = executor::run(executor::current(), hartid);
 
     // wasm::test();
 

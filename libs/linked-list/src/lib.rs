@@ -945,8 +945,8 @@ where
             _list: self.list,
         }
     }
-    
-    /// Removes the current element from the list returning it's owned handle, also moves the 
+
+    /// Removes the current element from the list returning it's owned handle, also moves the
     /// cursor to the next element in the list.
     pub fn remove(&mut self) -> Option<T::Handle> {
         unsafe {
