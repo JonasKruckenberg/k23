@@ -5,6 +5,64 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+//! A scheduler is initialized with a fixed number of workers. Each worker is
+//! driven by a thread. Each worker has a "core" which contains data such as the
+//! run queue and other state. When `block_in_place` is called, the worker's
+//! "core" is handed off to a new thread allowing the scheduler to continue to
+//! make progress while the originating thread blocks.
+//!
+//! # Shutdown
+//!
+//! Shutting down the runtime involves the following steps:
+//!
+//!  1. The Shared::close method is called. This closes the global queue and
+//!     `OwnedTasks` instance and wakes up all worker threads.
+//!
+//!  2. Each worker thread observes the close signal next time it runs
+//!     Core::maintenance by checking whether the global queue is closed.
+//!     The `Core::is_shutdown` flag is set to true.
+//!
+//!  3. The worker thread calls `pre_shutdown` in parallel. Here, the worker
+//!     will keep removing tasks from `OwnedTasks` until it is empty. No new
+//!     tasks can be pushed to the `OwnedTasks` during or after this step as it
+//!     was closed in step 1.
+//!
+//!  5. The workers call Shared::shutdown to enter the single-threaded phase of
+//!     shutdown. These calls will push their core to `Shared::shutdown_cores`,
+//!     and the last thread to push its core will finish the shutdown procedure.
+//!
+//!  6. The local run queue of each core is emptied, then the global queue is
+//!     emptied.
+//!
+//! At this point, shutdown has completed. It is not possible for any of the
+//! collections to contain any tasks at this point, as each collection was
+//! closed first, then emptied afterwards.
+//!
+//! ## Spawns during shutdown
+//!
+//! When spawning tasks during shutdown, there are two cases:
+//!
+//!  * The spawner observes the `OwnedTasks` being open, and the global queue is
+//!    closed.
+//!  * The spawner observes the `OwnedTasks` being closed and doesn't check the
+//!    global queue.
+//!
+//! The first case can only happen if the `OwnedTasks::bind` call happens before
+//! or during step 1 of shutdown. In this case, the runtime will clean up the
+//! task in step 3 of shutdown.
+//!
+//! In the latter case, the task was not spawned and the task is immediately
+//! cancelled by the spawner.
+//!
+//! The correctness of shutdown requires both the global queue and `OwnedTasks`
+//! collection to have a closed bit. With a close bit on only the global queue,
+//! spawning could run in to a situation where a task is successfully bound long
+//! after the runtime has shut down. With a close bit on only the `OwnedTasks`,
+//! the first spawning situation could result in the notification being pushed
+//! to the global queue after step 6 of shutdown, which would leave a task in
+//! the global queue indefinitely. This would be a ref-count cycle and a memory
+//! leak.
+
 use super::{idle, Handle};
 use crate::executor::queue::Overflow;
 use crate::executor::task::{OwnedTasks, TaskRef};
