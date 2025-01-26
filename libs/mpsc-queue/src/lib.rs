@@ -21,6 +21,24 @@ use core::{
     ptr::{self, NonNull},
 };
 
+/// Trait implemented by types which can be members of an intrusive linked mpsc queue.
+///
+/// In order to be part of the queue, a type must contain a
+/// `Links` type that stores the pointers to other nodes in the queue.
+///
+/// # Safety
+///
+/// This is unsafe to implement because it's the implementation's responsibility
+/// to ensure that types implementing this trait are valid intrusive collection
+/// nodes. In particular:
+///
+/// - Implementations **must** ensure that implementors are pinned in memory while they
+///   are in an intrusive collection. While a given `Linked` type is in an intrusive
+///   data structure, it may not be deallocated or moved to a different memory
+///   location.
+/// - The type implementing this trait **must not** implement [`Unpin`].
+/// - Additional safety requirements for individual methods on this trait are
+///   documented on those methods.
 pub unsafe trait Linked {
     /// The handle owning nodes in the tree.
     ///
@@ -63,7 +81,7 @@ pub unsafe trait Linked {
 /// In order to be part of a `MpscQueue`, a type `T` must implement [`Linked`] for
 /// [`mpsc_queue::Links<T>`].
 ///
-/// [`mpsc_queue::Links<T>`]: crate::mpsc_queue::Links
+/// [`mpsc_queue::Links<T>`]: crate::Links
 ///
 /// # Examples
 ///
@@ -480,6 +498,7 @@ impl<T: Linked> MpscQueue<T> {
         let stub = T::into_ptr(stub);
 
         // In debug mode, set the stub flag for consistency checking.
+        // Safety: caller must ensure the `Links` trait is implemented correctly.
         #[cfg(debug_assertions)]
         unsafe {
             links(stub).is_stub.store(true, Ordering::Release);
@@ -576,12 +595,13 @@ impl<T: Linked> MpscQueue<T> {
     ///
     #[must_use]
     pub const unsafe fn new_with_static_stub(stub: &'static T) -> Self {
-        let ptr = stub as *const T as *mut T;
+        let ptr = ptr::from_ref(stub).cast_mut();
         Self {
             head: CachePadded(AtomicPtr::new(ptr)),
             tail: CachePadded(UnsafeCell::new(ptr)),
             has_consumer: CachePadded(AtomicBool::new(false)),
             stub_is_static: true,
+            // Safety: `stub` has been created from a reference, so it is always valid.
             stub: unsafe { NonNull::new_unchecked(ptr) },
         }
     }
@@ -602,12 +622,14 @@ impl<T: Linked> MpscQueue<T> {
         self.lock_consumer();
 
         let mut len = 0;
+        // Safety: construction with stub node ensures the `UnsafeCell` is always valid.
         let mut ptr = unsafe { *self.tail.get() };
 
         while let Some(node) = NonNull::new(ptr) {
             if node != self.stub {
                 len += 1;
             }
+            // Safety: caller must ensure the `Links` trait is implemented correctly.
             ptr = unsafe { links(node).next.load(Ordering::Acquire) };
         }
 
@@ -629,9 +651,10 @@ impl<T: Linked> MpscQueue<T> {
         let ptr = T::into_ptr(element);
 
         #[cfg(debug_assertions)]
+        // Safety: caller must ensure the `Links` trait is implemented correctly.
         debug_assert!(!unsafe { T::links(ptr).as_ref() }.is_stub());
 
-        self.enqueue_inner(ptr)
+        self.enqueue_inner(ptr);
     }
 
     #[inline]
@@ -644,10 +667,12 @@ impl<T: Linked> MpscQueue<T> {
 
     #[inline]
     fn enqueue_inner(&self, ptr: NonNull<T>) {
+        // Safety: caller must ensure the `Links` trait is implemented correctly.
         unsafe { links(ptr).next.store(ptr::null_mut(), Ordering::Relaxed) };
 
         let ptr = ptr.as_ptr();
         let prev = self.head.swap(ptr, Ordering::AcqRel);
+        // Safety: caller must ensure the `Links` trait is implemented correctly.
         unsafe {
             // Safety: in release mode, we don't null check `prev`. This is
             // because no pointer in the list should ever be a null pointer, due
@@ -674,9 +699,11 @@ impl<T: Linked> MpscQueue<T> {
     ///
     /// This method will never wait.
     ///
-    /// # Returns
     ///
-    /// - `Ok`([`T::Handle`]`)` if an element was successfully dequeued
+    /// # Errors
+    ///
+    /// This method returns
+    ///
     /// - `Err(`[`TryDequeueError::Empty`]`)` if there are no elements in the queue
     /// - `Err(`[`TryDequeueError::Inconsistent`]`)` if the queue is currently in an
     ///   inconsistent state
@@ -694,11 +721,9 @@ impl<T: Linked> MpscQueue<T> {
             return Err(TryDequeueError::Busy);
         }
 
-        let res = unsafe {
-            // Safety: the `has_consumer` flag ensures mutual exclusion of
-            // consumers.
-            self.try_dequeue_unchecked()
-        };
+        // Safety: the `has_consumer` flag ensures mutual exclusion of
+        // consumers.
+        let res = unsafe { self.try_dequeue_unchecked() };
 
         self.has_consumer.store(false, Ordering::Release);
         res
@@ -771,9 +796,10 @@ impl<T: Linked> MpscQueue<T> {
     ///
     /// This method will never wait.
     ///
-    /// # Returns
+    /// # Errors
     ///
-    /// - `Ok`([`T::Handle`]`)` if an element was successfully dequeued
+    /// This method returns
+    ///
     /// - `Err(`[`TryDequeueError::Empty`]`)` if there are no elements in the queue
     /// - `Err(`[`TryDequeueError::Inconsistent`]`)` if the queue is currently in an
     ///   inconsistent state
@@ -788,6 +814,7 @@ impl<T: Linked> MpscQueue<T> {
     /// [inconsistent state]: Self#inconsistent-states
     /// [`T::Handle`]: crate::Linked::Handle
     pub unsafe fn try_dequeue_unchecked(&self) -> Result<T::Handle, TryDequeueError> {
+        // Safety: caller must ensure the `Links` trait is implemented correctly.
         unsafe {
             let tail = self.tail.get();
             let mut tail_node = NonNull::new(*tail).ok_or(TryDequeueError::Empty)?;
@@ -854,6 +881,7 @@ impl<T: Linked> MpscQueue<T> {
     pub unsafe fn dequeue_unchecked(&self) -> Option<T::Handle> {
         let mut boff = Backoff::new();
         loop {
+            // Safety: caller has to ensure that this method is only called by one thread at a time.
             match unsafe { self.try_dequeue_unchecked() } {
                 Ok(val) => return Some(val),
                 Err(TryDequeueError::Empty) => return None,
@@ -890,13 +918,13 @@ impl<T: Linked> MpscQueue<T> {
 
 impl<T: Linked> Drop for MpscQueue<T> {
     fn drop(&mut self) {
-        let mut current = unsafe {
-            // Safety: because `Drop` is called with `&mut self`, we have
-            // exclusive ownership over the queue, so it's always okay to touch
-            // the tail cell.
-            *self.tail.get()
-        };
+        // Safety: because `Drop` is called with `&mut self`, we have
+        // exclusive ownership over the queue, so it's always okay to touch
+        // the tail cell.
+        let mut current = unsafe { *self.tail.get() };
+
         while let Some(node) = NonNull::new(current) {
+            // Safety: caller must ensure the `Links` trait is implemented correctly.
             unsafe {
                 let links = links(node);
                 let next = links.next.load(Ordering::Relaxed);
@@ -918,6 +946,7 @@ impl<T: Linked> Drop for MpscQueue<T> {
             }
         }
 
+        // Safety: caller must ensure the `Links` trait is implemented correctly.
         unsafe {
             // If the stub is static, don't drop it. It lives 5eva
             // (that's one more than 4eva)
@@ -965,12 +994,14 @@ where
     }
 }
 
+// Safety: TODO
 unsafe impl<T> Send for MpscQueue<T>
 where
     T: Send + Linked,
     T::Handle: Send,
 {
 }
+// Safety: TODO
 unsafe impl<T: Send + Linked> Sync for MpscQueue<T> {}
 
 // === impl Consumer ===
@@ -994,10 +1025,8 @@ impl<T: Send + Linked> Consumer<'_, T> {
     #[inline]
     pub fn dequeue(&self) -> Option<T::Handle> {
         debug_assert!(self.q.has_consumer.load(Ordering::Acquire));
-        unsafe {
-            // Safety: we have reserved exclusive access to the queue.
-            self.q.dequeue_unchecked()
-        }
+        // Safety: we have reserved exclusive access to the queue.
+        unsafe { self.q.dequeue_unchecked() }
     }
 
     /// Try to dequeue an element from the queue, without waiting if the queue
@@ -1014,27 +1043,20 @@ impl<T: Send + Linked> Consumer<'_, T> {
     /// The [`Consumer::dequeue`] method will instead wait (by spinning with an
     /// exponential backoff) when the queue is in an inconsistent state.
     ///
-    /// # Returns
+    /// # Errors
     ///
-    /// - `T::Handle` if an element was successfully dequeued
+    /// This method returns
+    ///
     /// - [`TryDequeueError::Empty`] if there are no elements in the queue
     /// - [`TryDequeueError::Inconsistent`] if the queue is currently in an
     ///   inconsistent state
-    ///
-    ///
-    /// # Returns
-    ///
-    /// - `Some(T::Handle)` if an element was successfully dequeued
-    /// - `None` if the queue is empty
     ///
     /// [vyukov]: http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue
     #[inline]
     pub fn try_dequeue(&self) -> Result<T::Handle, TryDequeueError> {
         debug_assert!(self.q.has_consumer.load(Ordering::Acquire));
-        unsafe {
-            // Safety: we have reserved exclusive access to the queue.
-            self.q.try_dequeue_unchecked()
-        }
+        // Safety: we have reserved exclusive access to the queue.
+        unsafe { self.q.try_dequeue_unchecked() }
     }
 }
 
@@ -1050,11 +1072,9 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { q } = self;
-        let tail = unsafe {
-            // Safety: it's okay for the consumer to access the tail cell, since
-            // we have exclusive access to it.
-            *q.tail.get()
-        };
+        // Safety: it's okay for the consumer to access the tail cell, since
+        // we have exclusive access to it.
+        let tail = unsafe { *q.tail.get() };
         f.debug_struct("Consumer")
             .field("q", &q)
             .field("tail", &tail)
@@ -1127,6 +1147,7 @@ impl<T> Default for Links<T> {
     }
 }
 
+#[expect(clippy::missing_fields_in_debug, reason = "don't print PhantomPinned")]
 impl<T> fmt::Debug for Links<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = f.debug_struct("Links");
@@ -1184,10 +1205,8 @@ impl<T: Linked> OwnedConsumer<T> {
     #[inline]
     pub fn dequeue(&self) -> Option<T::Handle> {
         debug_assert!(self.q.has_consumer.load(Ordering::Acquire));
-        unsafe {
-            // Safety: we have reserved exclusive access to the queue.
-            self.q.dequeue_unchecked()
-        }
+        // Safety: we have reserved exclusive access to the queue.
+        unsafe { self.q.dequeue_unchecked() }
     }
 
     /// Try to dequeue an element from the queue, without waiting if the queue
@@ -1204,27 +1223,20 @@ impl<T: Linked> OwnedConsumer<T> {
     /// The [`Consumer::dequeue`] method will instead wait (by spinning with an
     /// exponential backoff) when the queue is in an inconsistent state.
     ///
-    /// # Returns
+    /// # Errors
     ///
-    /// - `T::Handle` if an element was successfully dequeued
+    /// This method returns
+    ///
     /// - [`TryDequeueError::Empty`] if there are no elements in the queue
     /// - [`TryDequeueError::Inconsistent`] if the queue is currently in an
     ///   inconsistent state
-    ///
-    ///
-    /// # Returns
-    ///
-    /// - `Some(T::Handle)` if an element was successfully dequeued
-    /// - `None` if the queue is empty
     ///
     /// [vyukov]: http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue
     #[inline]
     pub fn try_dequeue(&self) -> Result<T::Handle, TryDequeueError> {
         debug_assert!(self.q.has_consumer.load(Ordering::Acquire));
-        unsafe {
-            // Safety: we have reserved exclusive access to the queue.
-            self.q.try_dequeue_unchecked()
-        }
+        // Safety: we have reserved exclusive access to the queue.
+        unsafe { self.q.try_dequeue_unchecked() }
     }
 
     /// Returns `true` if any producers exist for this queue.
@@ -1242,11 +1254,9 @@ impl<T: Linked> Drop for OwnedConsumer<T> {
 impl<T: Linked> fmt::Debug for OwnedConsumer<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { q } = self;
-        let tail = unsafe {
-            // Safety: it's okay for the consumer to access the tail cell, since
-            // we have exclusive access to it.
-            *q.tail.get()
-        };
+        // Safety: it's okay for the consumer to access the tail cell, since
+        // we have exclusive access to it.
+        let tail = unsafe { *q.tail.get() };
         f.debug_struct("OwnedConsumer")
             .field("q", &q)
             .field("tail", &tail)
@@ -1300,7 +1310,7 @@ impl<T: Linked> MpscQueue<T> {
     ///
     /// If another thread is dequeueing, this returns `None` instead.
     pub fn try_consume_owned(self: Arc<Self>) -> Option<OwnedConsumer<T>> {
-        #[allow(tail_expr_drop_order)]
+        #[expect(tail_expr_drop_order, reason = "")]
         self.try_lock_consumer().map(|_| OwnedConsumer { q: self })
     }
 }
@@ -1308,6 +1318,7 @@ impl<T: Linked> MpscQueue<T> {
 /// Just a little helper so we don't have to add `.as_ref()` noise everywhere...
 #[inline(always)]
 unsafe fn links<'a, T: Linked>(ptr: NonNull<T>) -> &'a Links<T> {
+    // Safety: caller has to ensure that the pointer is valid.
     unsafe { T::links(ptr).as_ref() }
 }
 
@@ -1383,23 +1394,16 @@ impl Backoff {
         }
     }
 
-    /// Returns a new exponential backoff with the provided max exponent.
-    #[allow(dead_code)]
-    pub(crate) fn with_max_exponent(max: u8) -> Self {
-        assert!(max <= Self::DEFAULT_MAX_EXPONENT);
-        Self { exp: 0, max }
-    }
-
     /// Perform one spin, squarin the backoff
     #[inline(always)]
     pub(crate) fn spin(&mut self) {
         // Issue 2^exp pause instructions.
-        for _ in 0..(1 << self.exp) {
+        for _ in 0_usize..(1 << self.exp) {
             hint::spin_loop();
         }
 
         if self.exp < self.max {
-            self.exp += 1
+            self.exp += 1;
         }
     }
 }

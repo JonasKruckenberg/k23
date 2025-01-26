@@ -57,7 +57,9 @@ pub(crate) struct Inner {
     buffer: Box<[UnsafeCell<MaybeUninit<TaskRef>>; LOCAL_QUEUE_CAPACITY]>,
 }
 
+// Safety: methods on `Local`, `Steal` and `Inner` ensure that access to the queue is thread-safe
 unsafe impl Send for Inner {}
+// Safety: methods on `Local`, `Steal` and `Inner` ensure that access to the queue is thread-safe
 unsafe impl Sync for Inner {}
 
 // Constructing the fixed size array directly is very awkward. The only way to
@@ -159,6 +161,8 @@ impl Local {
             }
         };
 
+        // Safety: this is the **only** thread that updates this cell, and the index has
+        // been calculated above to be within the valid elements
         Some(unsafe { ptr::read(self.inner.buffer[idx].get()).assume_init() })
     }
 
@@ -209,6 +213,10 @@ impl Local {
             // safety: this is the **only** thread that updates this cell.
             let tail = unsafe { ptr::read(self.inner.tail.as_ptr()) };
 
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "LOCAL_QUEUE_CAPACITY is 256 which is within the range for u32"
+            )]
             if tail.wrapping_sub(steal) < LOCAL_QUEUE_CAPACITY as u32 {
                 // There is capacity for the task
                 break tail;
@@ -273,6 +281,10 @@ impl Local {
         ///
         /// This is one less than the number of tasks pushed to the inject
         /// queue as we are also inserting the `task` argument.
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "LOCAL_QUEUE_CAPACITY is 256 which is within the range for u32"
+        )]
         const NUM_TASKS_TAKEN: u32 = (LOCAL_QUEUE_CAPACITY / 2) as u32;
 
         assert_eq!(
@@ -319,7 +331,7 @@ impl Local {
             head: u64,
             i: u64,
         }
-        impl<'a> Iterator for BatchTaskIter<'a> {
+        impl Iterator for BatchTaskIter<'_> {
             type Item = TaskRef;
 
             #[inline]
@@ -327,6 +339,10 @@ impl Local {
                 if self.i == u64::from(NUM_TASKS_TAKEN) {
                     None
                 } else {
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "max value is 256 which cannot truncate either way"
+                    )]
                     let i_idx = self.i.wrapping_add(self.head) as usize & MASK;
                     let slot = &self.buffer[i_idx];
 
@@ -344,7 +360,7 @@ impl Local {
         // values again, and we are the only producer.
         let batch_iter = BatchTaskIter {
             buffer: &self.inner.buffer,
-            head: head as u64,
+            head: u64::from(head),
             i: 0,
         };
         overflow.push_batch(batch_iter.chain(iter::once(task)));
@@ -384,6 +400,10 @@ impl Steal {
         // from `dst` there may not be enough capacity to steal.
         let (steal, _) = unpack(dst.inner.head.load(Ordering::Acquire));
 
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "LOCAL_QUEUE_CAPACITY is 256 which is within the range for u32"
+        )]
         if dst_tail.wrapping_sub(steal) > LOCAL_QUEUE_CAPACITY as u32 / 2 {
             // we *could* try to steal less here, but for simplicity, we're just
             // going to abort.
@@ -427,6 +447,10 @@ impl Steal {
 
     // Steal tasks from `self`, placing them into `dst`. Returns the number of
     // tasks that were stolen.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "LOCAL_QUEUE_CAPACITY is 256 which is within the range for u32"
+    )]
     fn steal_into2(&self, dst: &mut Local, dst_tail: u32) -> u32 {
         let mut prev_packed = self.0.head.load(Ordering::Acquire);
         let mut next_packed;
@@ -562,14 +586,15 @@ pub(crate) trait Overflow {
 
 /// Split the head value into the real head and the index a stealer is working
 /// on.
+#[expect(clippy::cast_possible_truncation, reason = "truncating on purpose")]
 fn unpack(n: u64) -> (u32, u32) {
-    let real = n & u32::MAX as u64;
-    let steal = n >> (size_of::<u32>() * 8);
+    let real = n & u64::from(u32::MAX);
+    let steal = n >> u32::BITS as usize;
 
     (steal as u32, real as u32)
 }
 
 /// Join the two head values
 fn pack(steal: u32, real: u32) -> u64 {
-    (real as u64) | ((steal as u64) << (size_of::<u32>() * 8))
+    u64::from(real) | (u64::from(steal) << u32::BITS as usize)
 }

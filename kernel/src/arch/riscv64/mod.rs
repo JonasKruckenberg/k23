@@ -254,12 +254,23 @@ where
     r
 }
 
+/// Suspend the calling hart indefinitely.
+///
+/// # Safety
+///
+/// The caller must ensure it is safe to suspend the hart.
 pub unsafe fn hart_park() {
-    log::trace!("parking hart");
     // Safety: inline assembly
     unsafe { asm!("wfi") }
 }
 
+/// Send an interrupt to a parked hart waking it up.
+///
+/// # Safety
+///
+/// The caller must ensure it is safe to send an interrupt to the target hart, which it generally should
+/// be as the trap handler for software interrupts should be non-disruptive to already running harts,
+/// but the caller should still exercise caution.
 pub unsafe fn hart_unpark(hartid: usize) {
     riscv::sbi::ipi::send_ipi(1 << hartid, 0).unwrap();
 }
@@ -268,7 +279,14 @@ thread_local! {
     static IN_TIMEOUT: Cell<bool> = Cell::new(false);
 }
 
+/// Suspend the calling hart for at least `duration`.
+///
+/// # Safety
+///
+/// The caller must ensure the duration does not overflow when converted into ticks, and that it
+/// is safe to suspend the hart.
 pub unsafe fn hart_park_timeout(duration: Duration) {
+    // Safety: ensured by caller
     unsafe {
         IN_TIMEOUT.set(true);
 

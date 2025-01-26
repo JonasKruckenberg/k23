@@ -177,10 +177,7 @@ impl<'a> CompileInputs<'a> {
     }
 
     #[expect(tail_expr_drop_order, reason = "")]
-    pub fn compile(
-        self,
-        compiler: &dyn Compiler,
-    ) -> crate::wasm::Result<UnlinkedCompileOutputs> {
+    pub fn compile(self, compiler: &dyn Compiler) -> crate::wasm::Result<UnlinkedCompileOutputs> {
         let mut outputs = self
             .0
             .into_iter()

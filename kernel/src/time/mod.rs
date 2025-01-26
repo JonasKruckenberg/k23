@@ -10,7 +10,6 @@ mod system_time;
 
 pub use core::time::Duration;
 pub use instant::Instant;
-pub use system_time::{SystemTime, UNIX_EPOCH};
 
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 

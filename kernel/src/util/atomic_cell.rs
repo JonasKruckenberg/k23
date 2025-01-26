@@ -13,7 +13,9 @@ pub(crate) struct AtomicCell<T> {
     data: AtomicPtr<T>,
 }
 
+// Safety: `AtomicCell` uses atomic swaps, so as long as the data is Send `AtomicCell` is Send
 unsafe impl<T: Send> Send for AtomicCell<T> {}
+// Safety: `AtomicCell` uses atomic swaps, so as long as the data is Send `AtomicCell` is Sync
 unsafe impl<T: Send> Sync for AtomicCell<T> {}
 
 impl<T> AtomicCell<T> {
@@ -45,6 +47,8 @@ fn from_raw<T>(val: *mut T) -> Option<Box<T>> {
     if val.is_null() {
         None
     } else {
+        // Safety: `from_raw` is only called on pointers created using `to_raw` which are correctly
+        // boxed pointers
         Some(unsafe { Box::from_raw(val) })
     }
 }

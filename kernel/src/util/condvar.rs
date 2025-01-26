@@ -64,6 +64,9 @@ impl Condvar {
     pub fn wait<T: ?Sized>(&self, parking_spot: &ParkingSpot, mutex_guard: &mut MutexGuard<'_, T>) {
         self.wait_until_internal(
             parking_spot,
+            // Safety: `wait_until_internal` will unlock the mutex before parking this hart and relock
+            // it upon unparking which means that the `MutexGuard` cannot be accessed while the underlying
+            // raw mutex is in an unlocked state.
             unsafe { MutexGuard::mutex(mutex_guard).raw() },
             None,
         );
@@ -78,6 +81,9 @@ impl Condvar {
     ) -> WaitResult {
         self.wait_until_internal(
             parking_spot,
+            // Safety: `wait_until_internal` will unlock the mutex before parking this hart and relock
+            // it upon unparking which means that the `MutexGuard` cannot be accessed while the underlying
+            // raw mutex is in an unlocked state.
             unsafe { MutexGuard::mutex(mutex_guard).raw() },
             Some(deadline),
         )
@@ -92,6 +98,9 @@ impl Condvar {
     ) -> WaitResult {
         self.wait_until_internal(
             parking_spot,
+            // Safety: `wait_until_internal` will unlock the mutex before parking this hart and relock
+            // it upon unparking which means that the `MutexGuard` cannot be accessed while the underlying
+            // raw mutex is in an unlocked state.
             unsafe { MutexGuard::mutex(mutex_guard).raw() },
             Some(Instant::now().add(duration)),
         )
@@ -103,7 +112,7 @@ impl Condvar {
         mutex: &RawMutex,
         deadline: Option<Instant>,
     ) -> WaitResult {
-        let lock_addr = mutex as *const RawMutex as *mut RawMutex;
+        let lock_addr = ptr::from_ref(mutex).cast_mut();
 
         let mut waiter = Waiter::new();
         let mut bad_mutex = false;
@@ -123,6 +132,8 @@ impl Condvar {
         };
 
         // Unlock the mutex before sleeping...
+        // Safety: all callers of `wait_until_internal` create the `RawMutex` from a `MutexGuard`
+        // ensuring that we have to have called `lock` before this point
         unsafe { mutex.unlock() };
 
         let res = parking_spot.wait(lock_addr as u64, validate, deadline, &mut waiter);
@@ -131,9 +142,10 @@ impl Condvar {
         // Panic if we tried to use multiple mutexes with a Condvar. Note
         // that at this point the MutexGuard is still locked. It will be
         // unlocked by the unwinding logic.
-        if bad_mutex {
-            panic!("attempted to use a condition variable with more than one mutex");
-        }
+        assert!(
+            !bad_mutex,
+            "attempted to use a condition variable with more than one mutex"
+        );
 
         // Relock the mutex after sleeping...
         mutex.lock();

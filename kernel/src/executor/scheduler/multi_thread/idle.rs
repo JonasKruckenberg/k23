@@ -41,10 +41,12 @@ pub(super) struct Synced {
     sleepers: Vec<usize>,
 
     /// Cores available for workers
+    #[expect(clippy::vec_box, reason = "we're moving the boxed core around")]
     available_cores: Vec<Box<worker::Core>>,
 }
 
 impl Idle {
+    #[expect(clippy::vec_box, reason = "we're moving the boxed core around")]
     pub(super) fn new(cores: Vec<Box<worker::Core>>) -> (Idle, Synced) {
         let idle = Idle {
             num_searching: AtomicUsize::new(0),

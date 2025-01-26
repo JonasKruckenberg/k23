@@ -124,17 +124,19 @@ pub fn resume_trap(trap: Trap) -> ! {
     let mut data = TRAP_RESUME_STATE.get();
     loop {
         if let Some(_data) = NonNull::new(data) {
+            // Safety: data has to have been inserted by `catch_traps` therefore is valid
             let _data = unsafe { _data.as_ref() };
             if _data.mask.contains(trap.reason.into()) {
                 // Safety: If the data pointer is not null, it must point to some `TrapResumeState` struct
                 // so all fields are initialized and valid
+                let data = unsafe { &*data };
+
+                (data.catch_fn)(data.data_ptr, trap);
+
+                TRAP_RESUME_STATE.set(data.prev_state);
+
+                // Safety: this is a longjump across stack frames, there really isn't any safety here
                 unsafe {
-                    let data = &*data;
-
-                    (data.catch_fn)(data.data_ptr, trap);
-
-                    TRAP_RESUME_STATE.set(data.prev_state);
-
                     longjmp(data.jmp_buf, 1);
                 }
             } else {

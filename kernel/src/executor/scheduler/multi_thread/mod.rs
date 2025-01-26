@@ -28,7 +28,7 @@ pub struct Handle {
 }
 
 impl Handle {
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     pub fn new(num_cores: usize, rand: &mut impl RngCore) -> Self {
         let mut cores = Vec::with_capacity(num_cores);
         let mut remotes = Vec::with_capacity(num_cores);

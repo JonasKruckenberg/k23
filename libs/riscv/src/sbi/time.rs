@@ -12,9 +12,14 @@ use super::{sbi_call, EID_TIME};
 /// # Errors
 ///
 /// Returns an error if the SBI call fails.
+///
+/// # Panics
+///
+/// Panics if the conversion from `u64` to `usize` fails.
 #[inline]
 pub fn set_timer(stime_value: u64) -> super::Result<()> {
-    sbi_call!(ext: EID_TIME, func: 0, "a0": (stime_value as usize), "a1": 0)?;
+    let stime_value = usize::try_from(stime_value).unwrap();
+    sbi_call!(ext: EID_TIME, func: 0, "a0": stime_value, "a1": 0_usize)?;
 
     Ok(())
 }

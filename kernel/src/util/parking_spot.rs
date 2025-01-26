@@ -138,7 +138,10 @@ impl ParkingSpot {
         waiter.hartid = HART_LOCAL_MACHINE_INFO.with_borrow(|info| info.hartid);
 
         let ptr = NonNull::from(&mut **waiter);
-        let spot = inner.entry(key).or_insert_with(Spot::default);
+        let spot = inner.entry(key).or_default();
+
+        // Safety: the section below is incredibly critical, calling `arch::hart_park` or `arch::hart_park_timeout`
+        // will suspend the calling hart and potentially deadlock
         unsafe {
             // Enqueue our `waiter` in the internal queue for this spot.
             spot.0.push_back(ptr);
@@ -213,16 +216,24 @@ impl ParkingSpot {
         // It's known here that `n > 0` so dequeue items until `unparked`
         // equals `n` or the queue runs out. Each thread dequeued is signaled
         // that it's been notified and then woken up.
-        self.with_lot(addr, |spot| unsafe {
+        self.with_lot(addr, |spot| {
             while let Some(mut head) = spot.0.pop_front() {
-                let head = head.as_mut();
+                // Safety: linked-list ensures that pointers are valid.
+                let head = unsafe { head.as_mut() };
                 head.notified = true;
 
                 // Send an interrupt to the hart to wake it up, if the hart is already running (which
                 // shouldn't happen) then this will do nothing, but if the hart is parked at the call
                 // to `arch::hart_park_timeout` above then this will wake it up and it will return from
                 // the call to `wait`.
-                arch::hart_unpark(head.hartid);
+                // Safety: This will send an interrupt to the target hart to wake it up, if the hart
+                // is already running then the implementation of the trap handler ensures "nothing
+                // happens" i.e. the trap handler just temporarily interrupts the running code, does
+                // nothing and then return. But we have to be very careful here to ensure that the
+                // interrupt doesn't blow up the target hart.
+                unsafe {
+                    arch::hart_unpark(head.hartid);
+                }
 
                 unparked += 1;
                 if unparked == n {
@@ -242,6 +253,8 @@ impl ParkingSpot {
     }
 }
 
+// Safety: The rest of this module takes care of never moving out of `WaiterInner` for as long as
+// it is part of the wait queue.
 unsafe impl linked_list::Linked for WaiterInner {
     type Handle = NonNull<WaiterInner>;
 

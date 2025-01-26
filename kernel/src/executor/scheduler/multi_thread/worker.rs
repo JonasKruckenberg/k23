@@ -140,7 +140,7 @@ pub fn run(handle: &'static Handle, hartid: usize) -> Result<(), ()> {
         workers_to_notify: Vec::with_capacity(handle.shared.remotes.len()),
     };
 
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     let cx = handle.shared.tls.get_or(|| Context {
         handle,
         core: RefCell::new(None),
@@ -217,7 +217,11 @@ impl Worker {
     }
 
     // Block the current hart waiting until a core becomes available.
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "TODO the result will be needed in the future"
+    )]
     fn wait_for_core(
         &mut self,
         cx: &Context,
@@ -362,11 +366,7 @@ impl Worker {
 
         let n = usize::min(n, max) + 1;
 
-        let mut tasks = cx
-            .shared()
-            .run_queue
-            .consume()
-            .take(n);
+        let mut tasks = cx.shared().run_queue.consume().take(n);
         let ret = tasks.next();
 
         // Safety: we calculated the max from the local queues remaining capacity, it can never overflow
@@ -377,7 +377,11 @@ impl Worker {
         ret
     }
 
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "function signature needs to match"
+    )]
     fn search_for_work(&mut self, cx: &Context, mut core: Box<Core>) -> NextTaskResult {
         const ROUNDS: usize = 4;
 
@@ -396,7 +400,7 @@ impl Worker {
 
         for i in 0..ROUNDS {
             // Start from a random worker
-            let start = core.rand.fastrand_n(num as u32) as usize;
+            let start = core.rand.fastrand_n(u32::try_from(num).unwrap()) as usize;
 
             if let Some(task) = self.steal_one_round(cx, &mut core, start) {
                 return Ok((Some(task), core));
@@ -408,6 +412,8 @@ impl Worker {
 
             if i > 0 {
                 NUM_SPIN_STALL.increment(1);
+
+                // Safety: we're parking only for a very small amount of time, this is fine
                 unsafe {
                     log::trace!("spin stalling for {:?}", Duration::from_micros(i as u64));
                     arch::hart_park_timeout(Duration::from_micros(i as u64));
@@ -445,7 +451,7 @@ impl Worker {
         None
     }
 
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     fn park(&mut self, cx: &Context, mut core: Box<Core>) -> NextTaskResult {
         if self.can_transition_to_parked(&mut core) {
             debug_assert!(!self.is_shutdown);
@@ -477,7 +483,7 @@ impl Worker {
         self.wait_for_core(cx, synced)
     }
 
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     fn park_yield(&mut self, cx: &Context, core: Box<Core>) -> NextTaskResult {
         // TODO poll driver
 
@@ -488,7 +494,11 @@ impl Worker {
         Ok((maybe_task, core))
     }
 
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "function signature needs to match"
+    )]
     fn schedule_deferred_with_core<'a>(
         &mut self,
         cx: &'a Context,
@@ -549,6 +559,10 @@ impl Worker {
         Ok((task, core))
     }
 
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "function signature needs to match"
+    )]
     fn run_task(
         &mut self,
         cx: &Context,

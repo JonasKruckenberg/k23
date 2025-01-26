@@ -149,7 +149,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_ticks).elapsed()
     );
-    
+
     executor::current().spawn(async move {
         log::info!("Hello from hart {}", hartid);
     });

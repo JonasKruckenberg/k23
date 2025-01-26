@@ -14,7 +14,6 @@ use core::future::Future;
 use rand::RngCore;
 use sync::OnceLock;
 pub use task::JoinHandle;
-pub use yield_now::yield_now;
 
 static EXECUTOR: OnceLock<Executor> = OnceLock::new();
 
@@ -38,7 +37,7 @@ pub fn current() -> &'static Executor {
 /// runtime loop using [`run()`].
 #[cold]
 pub fn init(num_cores: usize, rng: &mut impl RngCore) -> &'static Executor {
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     EXECUTOR.get_or_init(|| Executor {
         scheduler: scheduler::multi_thread::Handle::new(num_cores, rng),
     })

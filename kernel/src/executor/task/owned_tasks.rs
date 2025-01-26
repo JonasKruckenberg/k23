@@ -40,11 +40,11 @@ impl OwnedTasks {
         S: Schedule + 'static,
     {
         let (for_owner, for_scheduler, join) = super::new_task(task, scheduler, id);
-        let task = unsafe { self.bind_inner(for_owner, for_scheduler) };
+        let task = self.bind_inner(for_owner, for_scheduler);
         (join, task)
     }
 
-    pub(in crate::executor) unsafe fn bind_local<F, S>(
+    pub(in crate::executor) fn bind_local<F, S>(
         &self,
         task: F,
         scheduler: S,
@@ -56,12 +56,12 @@ impl OwnedTasks {
         S: Schedule + 'static,
     {
         let (for_owner, for_scheduler, join) = super::new_task(task, scheduler, id);
-        let task = unsafe { self.bind_inner(for_owner, for_scheduler) };
+        let task = self.bind_inner(for_owner, for_scheduler);
         (join, task)
     }
 
     // The part of `bind` that's the same for every type of future.
-    unsafe fn bind_inner(&self, task: TaskRef, for_scheduler: TaskRef) -> Option<TaskRef> {
+    fn bind_inner(&self, task: TaskRef, for_scheduler: TaskRef) -> Option<TaskRef> {
         let mut list = self.list.lock();
         // Check the closed flag in the lock for ensuring all that tasks
         // will shut down after the OwnedTasks has been closed.
@@ -94,6 +94,8 @@ impl OwnedTasks {
             return None;
         }
 
+        // Safety: `OwnedTasks::bind`/`OwnedTasks::bind_local` are called during task creation
+        // so every task is necessarily in our list until this point
         unsafe { list.cursor_from_ptr_mut(task.header_ptr()).remove() }
     }
 }

@@ -17,10 +17,7 @@ pub struct JoinHandle<T> {
     raw: TaskRef,
     _p: PhantomData<T>,
 }
-
-unsafe impl<T: Send> Send for JoinHandle<T> {}
-
-unsafe impl<T: Send> Sync for JoinHandle<T> {}
+static_assertions::assert_impl_all!(JoinHandle<()>: Send, Sync);
 
 impl<T> UnwindSafe for JoinHandle<T> {}
 
@@ -44,9 +41,11 @@ where
 {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Safety: The header pointer is valid.
-        let id_ptr = unsafe { Header::get_id_ptr(self.raw.header_ptr()) };
-        let id = unsafe { id_ptr.as_ref() };
-        fmt.debug_struct("JoinHandle").field("id", id).finish()
+        unsafe {
+            let id_ptr = Header::get_id_ptr(self.raw.header_ptr());
+            let id = id_ptr.as_ref();
+            fmt.debug_struct("JoinHandle").field("id", id).finish()
+        }
     }
 }
 
@@ -73,7 +72,7 @@ impl<T> Future for JoinHandle<T> {
         // The type of `T` must match the task's output type.
         unsafe {
             self.raw
-                .try_read_output(&mut ret as *mut _ as *mut (), cx.waker());
+                .try_read_output(core::ptr::from_mut(&mut ret).cast::<()>(), cx.waker());
         }
 
         // if ret.is_ready() {

@@ -17,10 +17,6 @@ use core::sync::atomic::{AtomicU64, Ordering};
 ///   task completes, the same ID may be used for another task.
 /// - Task IDs are *not* sequential, and do not indicate the order in which
 ///   tasks are spawned, what runtime a task is spawned on, or any other data.
-/// - The task ID of the currently running task can be obtained from inside the
-///   task via the [`task::try_id()`](crate::task::try_id()) and
-///   [`task::id()`](crate::task::id()) functions and from outside the task via
-///   the [`JoinHandle::id()`](crate::task::JoinHandle::id()) function.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub struct Id(u64);
 
@@ -32,17 +28,15 @@ impl Id {
     pub(crate) fn next() -> Self {
         static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
-        loop {
-            let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-            return Self(id);
-        }
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        Self(id)
     }
 
-    pub(crate) fn as_u64(&self) -> u64 {
+    pub(crate) fn as_u64(self) -> u64 {
         self.0
     }
 
-    pub fn is_stub(&self) -> bool {
+    pub fn is_stub(self) -> bool {
         self.0 == 0
     }
 }

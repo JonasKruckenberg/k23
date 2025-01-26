@@ -7,13 +7,13 @@
 
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use crate::{arch, INITIAL_HEAP_SIZE_PAGES};
-use core::alloc::{GlobalAlloc, Layout};
+use core::alloc::Layout;
 use core::range::Range;
 use loader_api::BootInfo;
 use talc::{ErrOnOom, Span, Talc, Talck};
 
 #[global_allocator]
-static KERNEL_ALLOCATOR: Alloc = Alloc(Talc::new(ErrOnOom).lock());
+static KERNEL_ALLOCATOR: Talck<sync::RawMutex, ErrOnOom> = Talc::new(ErrOnOom).lock();
 
 pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     let layout =
@@ -31,7 +31,7 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
         Range::from(start..start.checked_add(layout.size()).unwrap())
     };
 
-    let mut alloc = KERNEL_ALLOCATOR.0.lock();
+    let mut alloc = KERNEL_ALLOCATOR.lock();
     let span = Span::from_base_size(
         virt.start as *mut u8,
         virt.end.checked_sub(virt.start).unwrap(),
@@ -41,43 +41,5 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     unsafe {
         let old_heap = alloc.claim(span).unwrap();
         alloc.extend(old_heap, span);
-    }
-}
-
-struct Alloc(Talck<sync::RawMutex, ErrOnOom>);
-
-unsafe impl GlobalAlloc for Alloc {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        unsafe {
-            // log::trace!("Alloc::alloc({layout:?}) ...");
-            let ptr = self.0.alloc(layout);
-            // log::trace!("-> {ptr:?}");
-            ptr
-        }
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        unsafe {
-            // log::trace!("Alloc::dealloc({ptr:?}, {layout:?}) ...");
-            self.0.dealloc(ptr, layout);
-        }
-    }
-
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        unsafe {
-            // log::trace!("Alloc::alloc_zeroed({layout:?}) ...");
-            let ptr = self.0.alloc_zeroed(layout);
-            // log::trace!("-> {ptr:?}");
-            ptr
-        }
-    }
-
-    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        unsafe {
-            // log::trace!("Alloc::realloc({ptr:?}, {layout:?}, {new_size:?}) ...");
-            let ptr = self.0.realloc(ptr, layout, new_size);
-            // log::trace!("-> {ptr:?}");
-            ptr
-        }
     }
 }

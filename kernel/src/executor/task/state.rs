@@ -68,9 +68,14 @@ const INITIAL_STATE: usize = (REF_ONE * 3) | JOIN_INTEREST | NOTIFIED;
 
 #[must_use]
 pub(super) enum TransitionToRunning {
+    /// We successfully transitioned the task to the RUNNING state
     Success,
+    /// Transition to the RUNNING state failed because the task has been cancelled
     Cancelled,
+    /// Transition to the RUNNING state failed because the task is already running
     Failed,
+    /// Transition to the RUNNING state failed because the task is already complete and the
+    /// caller should deallocate the task
     Dealloc,
 }
 
@@ -503,9 +508,8 @@ impl State {
 
         loop {
             let (output, next) = f(curr);
-            let next = match next {
-                Some(next) => next,
-                None => return output,
+            let Some(next) = next else {
+                return output;
             };
 
             let res =
@@ -526,9 +530,8 @@ impl State {
         let mut curr = self.load();
 
         loop {
-            let next = match f(curr) {
-                Some(next) => next,
-                None => return Err(curr),
+            let Some(next) = f(curr) else {
+                return Err(curr);
             };
 
             let res =
@@ -614,7 +617,7 @@ impl Snapshot {
     }
 
     fn ref_inc(&mut self) {
-        assert!(self.0 <= isize::MAX as usize);
+        assert!(isize::try_from(self.0).is_ok(), "refcount overflow");
         self.0 += REF_ONE;
     }
 

@@ -29,6 +29,7 @@ pub(super) fn waker_ref<S>(header: &NonNull<Header>) -> WakerRef<'_, S> {
     // point and not an *owned* waker, we must ensure that `drop` is never
     // called on this waker instance. This is done by wrapping it with
     // `ManuallyDrop` and then never calling drop.
+    // Safety: the raw waker and its vtable are constructed below
     let waker = unsafe { ManuallyDrop::new(Waker::from_raw(raw_waker(*header))) };
 
     WakerRef {
@@ -45,7 +46,11 @@ impl<S> ops::Deref for WakerRef<'_, S> {
     }
 }
 
+/// # Safety
+///
+/// The caller has to ensure `ptr` is a valid pointer to a task
 unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
+    // Safety: caller has to ensure `ptr` is a valid pointer to a task
     unsafe {
         let header = NonNull::new_unchecked(ptr as *mut Header);
         log::trace!("waker.clone_waker {ptr:?}");
@@ -54,7 +59,11 @@ unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
     }
 }
 
+/// # Safety
+///
+/// The caller has to ensure `ptr` is a valid pointer to a task
 unsafe fn drop_waker(ptr: *const ()) {
+    // Safety: caller has to ensure `ptr` is a valid pointer to a task
     unsafe {
         let ptr = NonNull::new_unchecked(ptr as *mut Header);
         log::trace!("waker.drop_waker {ptr:?}");
@@ -63,7 +72,13 @@ unsafe fn drop_waker(ptr: *const ()) {
     }
 }
 
+/// Wake with consuming the waker
+///
+/// # Safety
+///
+/// The caller has to ensure `ptr` is a valid pointer to a task
 unsafe fn wake_by_val(ptr: *const ()) {
+    // Safety: caller has to ensure `ptr` is a valid pointer to a task
     unsafe {
         let ptr = NonNull::new_unchecked(ptr as *mut Header);
         log::trace!("waker.wake_by_val {ptr:?}");
@@ -72,8 +87,13 @@ unsafe fn wake_by_val(ptr: *const ()) {
     }
 }
 
-// Wake without consuming the waker
+/// Wake without consuming the waker
+///
+/// # Safety
+///
+/// The caller has to ensure `ptr` is a valid pointer to a task
 unsafe fn wake_by_ref(ptr: *const ()) {
+    // Safety: caller has to ensure `ptr` is a valid pointer to a task
     unsafe {
         let ptr = NonNull::new_unchecked(ptr as *mut Header);
         log::trace!("waker.wake_by_ref {ptr:?}");

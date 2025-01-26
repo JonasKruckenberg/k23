@@ -41,7 +41,7 @@ impl JoinError {
     ///
     /// See [the module level docs] for more information on cancellation.
     ///
-    /// [the module level docs]: crate::task#cancellation
+    /// [the module level docs]: crate::executor::task#cancellation
     pub fn is_cancelled(&self) -> bool {
         matches!(&self.repr, Repr::Cancelled)
     }
@@ -129,7 +129,7 @@ impl JoinError {
     /// Returns a [task ID] that identifies the task which errored relative to
     /// other currently spawned tasks.
     ///
-    /// [task ID]: crate::task::Id
+    /// [task ID]: Id
     pub fn id(&self) -> Id {
         self.id
     }

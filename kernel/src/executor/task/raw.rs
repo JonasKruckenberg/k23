@@ -70,8 +70,7 @@ struct RawTaskRef<F: Future, S> {
 /// storage). Therefore, operations that are specific to the task's `S`-typed
 /// [scheduler], `F`-typed [`Future`] are performed via [dynamic dispatch].
 ///
-/// [scheduler]: crate::scheduler::Schedule
-/// [task storage]: Storage
+/// [scheduler]: crate::executor::scheduler::multi_thread::Handle
 /// [dynamic dispatch]: https://en.wikipedia.org/wiki/Dynamic_dispatch
 // # This struct should be cache padded to avoid false sharing. The cache padding rules are copied
 // from crossbeam-utils/src/cache_padded.rs
@@ -231,7 +230,7 @@ impl TaskRef {
         Self(RawTaskRef::new_stub().ptr.cast())
     }
 
-    #[allow(tail_expr_drop_order)]
+    #[expect(tail_expr_drop_order, reason = "")]
     pub(crate) fn new<F, S>(future: F, scheduler: S, task_id: Id) -> (Self, Self, Self)
     where
         F: Future,
@@ -255,6 +254,7 @@ impl TaskRef {
         self.0
     }
     pub(super) fn header(&self) -> &Header {
+        // Safety: constructor ensures the pointer is always valid
         unsafe { self.0.as_ref() }
     }
     /// Returns a reference to the task's state.
@@ -269,34 +269,40 @@ impl TaskRef {
 
     pub(in crate::executor) fn poll(&self) {
         let vtable = self.header().vtable;
+        // Safety: constructor ensures the pointer is always valid
         unsafe {
             (vtable.poll)(self.0);
         }
     }
     pub(super) fn schedule(&self) {
         let vtable = self.header().vtable;
+        // Safety: constructor ensures the pointer is always valid
         unsafe {
             (vtable.schedule)(self.0);
         }
     }
     pub(super) fn dealloc(&self) {
         let vtable = self.header().vtable;
+        // Safety: constructor ensures the pointer is always valid
         unsafe {
             (vtable.dealloc)(self.0);
         }
     }
     pub(super) unsafe fn try_read_output(&self, dst: *mut (), waker: &Waker) {
         let vtable = self.header().vtable;
+        // Safety: constructor ensures the pointer is always valid
         unsafe {
             (vtable.try_read_output)(self.0, dst, waker);
         }
     }
     pub(super) fn drop_join_handle_slow(&self) {
         let vtable = self.header().vtable;
+        // Safety: constructor ensures the pointer is always valid
         unsafe { (vtable.drop_join_handle_slow)(self.0) }
     }
     pub(super) fn shutdown(&self) {
         let vtable = self.header().vtable;
+        // Safety: constructor ensures the pointer is always valid
         unsafe { (vtable.shutdown)(self.0) }
     }
     pub(super) fn drop_reference(&self) {
@@ -389,7 +395,11 @@ impl Drop for TaskRef {
     }
 }
 
+// Safety: task refs are "just" atomically reference counted pointers and the state lifecycle system ensures mutual
+// exclusion for mutating methods, thus this type is always Send
 unsafe impl Send for TaskRef {}
+// Safety: task refs are "just" atomically reference counted pointers and the state lifecycle system ensures mutual
+// exclusion for mutating methods, thus this type is always Sync
 unsafe impl Sync for TaskRef {}
 
 impl LocalTaskRef {
@@ -434,17 +444,19 @@ where
             },
         }));
 
-        // Safety: we just allocated the stub so we know it's not a null ptr.
         log::trace!(
             "allocated task ptr {ptr:?} with layout {:?}",
             Layout::new::<Task<F, S>>()
         );
         Self {
+            // Safety: we just allocated the pointer, it is always valid
             ptr: unsafe { NonNull::new_unchecked(ptr) },
         }
     }
 
     unsafe fn poll(ptr: NonNull<Header>) {
+        // Safety: this method gets called through the vtable ensuring that the pointer is valid
+        // for this `RawTaskRef`'s `F` and `S` generics.
         unsafe {
             let this = Self::from_raw(ptr);
 
@@ -474,49 +486,56 @@ where
     }
 
     unsafe fn poll_inner(ptr: NonNull<Header>) -> PollResult {
-        unsafe {
-            let this = Self::from_raw(ptr);
+        // Safety: caller has to ensure `ptr` is valid
+        let this = unsafe { Self::from_raw(ptr) };
 
-            match this.state().transition_to_running() {
-                TransitionToRunning::Success => {
-                    // Separated to reduce LLVM codegen
-                    fn transition_result_to_poll_result(result: TransitionToIdle) -> PollResult {
-                        match result {
-                            TransitionToIdle::Ok => PollResult::Done,
-                            TransitionToIdle::OkNotified => PollResult::Notified,
-                            TransitionToIdle::OkDealloc => PollResult::Dealloc,
-                            TransitionToIdle::Cancelled => PollResult::Complete,
-                        }
+        match this.state().transition_to_running() {
+            TransitionToRunning::Success => {
+                // Separated to reduce LLVM codegen
+                fn transition_result_to_poll_result(result: TransitionToIdle) -> PollResult {
+                    match result {
+                        TransitionToIdle::Ok => PollResult::Done,
+                        TransitionToIdle::OkNotified => PollResult::Notified,
+                        TransitionToIdle::OkDealloc => PollResult::Dealloc,
+                        TransitionToIdle::Cancelled => PollResult::Complete,
                     }
-                    let header_ptr = this.header_ptr();
-                    let waker_ref = waker_ref::<S>(&header_ptr);
-                    let cx = Context::from_waker(&waker_ref);
-                    let res = poll_future(this.core(), cx);
-
-                    if res == Poll::Ready(()) {
-                        // The future completed. Move on to complete the task.
-                        return PollResult::Complete;
-                    }
-
-                    let transition_res = this.state().transition_to_idle();
-                    if let TransitionToIdle::Cancelled = transition_res {
-                        // The transition to idle failed because the task was
-                        // cancelled during the poll.
-                        cancel_task(this.core());
-                    }
-                    transition_result_to_poll_result(transition_res)
                 }
-                TransitionToRunning::Cancelled => {
-                    cancel_task(this.core());
-                    PollResult::Complete
+                let header_ptr = this.header_ptr();
+                let waker_ref = waker_ref::<S>(&header_ptr);
+                let cx = Context::from_waker(&waker_ref);
+                // Safety: `transition_to_running` returns `Success` only when we have exclusive
+                // access
+                let res = unsafe { poll_future(this.core(), cx) };
+
+                if res == Poll::Ready(()) {
+                    // The future completed. Move on to complete the task.
+                    return PollResult::Complete;
                 }
-                TransitionToRunning::Failed => PollResult::Done,
-                TransitionToRunning::Dealloc => PollResult::Dealloc,
+
+                let transition_res = this.state().transition_to_idle();
+                if let TransitionToIdle::Cancelled = transition_res {
+                    // The transition to idle failed because the task was
+                    // cancelled during the poll.
+                    // Safety: `transition_to_running` returns `Success` only when we have exclusive
+                    // access
+                    unsafe { cancel_task(this.core()) };
+                }
+                transition_result_to_poll_result(transition_res)
             }
+            TransitionToRunning::Cancelled => {
+                // Safety: `transition_to_running` returns `Cancelled` only when we have exclusive
+                // access
+                unsafe { cancel_task(this.core()) };
+                PollResult::Complete
+            }
+            TransitionToRunning::Failed => PollResult::Done,
+            TransitionToRunning::Dealloc => PollResult::Dealloc,
         }
     }
 
     unsafe fn schedule(ptr: NonNull<Header>) {
+        // Safety: this method gets called through the vtable ensuring that the pointer is valid
+        // for this `RawTaskRef`'s `F` and `S` generics.
         unsafe {
             let this = Self::from_raw(ptr);
             this.core().scheduler.schedule(this.get_new_task());
@@ -537,6 +556,9 @@ where
         // As explained in the documentation for `UnsafeCell`, such references
         // are allowed to be dangling after their last use, even if the
         // reference has not yet gone out of scope.
+        //
+        // Additionally, this method gets called through the vtable ensuring that
+        // the pointer is valid for this `RawTaskRef`'s `F` and `S` generics.
         unsafe {
             log::trace!(
                 "about to dealloc task ptr {:?} with layout {:?}",
@@ -544,11 +566,14 @@ where
                 Layout::new::<Task<F, S>>()
             );
             drop(Box::from_raw(ptr.cast::<Task<F, S>>().as_ptr()));
-            log::trace!("deallocated task")
+            log::trace!("deallocated task");
         }
     }
 
     unsafe fn try_read_output(ptr: NonNull<Header>, dst: *mut (), waker: &Waker) {
+        // Safety: this method gets called through the vtable ensuring that the pointer is valid
+        // for this `RawTaskRef`'s `F` and `S` generics. The caller has to ensure the `dst` pointer
+        // is valid.
         unsafe {
             let this = Self::from_raw(ptr);
             let dst = dst.cast::<Poll<super::Result<F::Output>>>();
@@ -559,6 +584,8 @@ where
     }
 
     unsafe fn drop_join_handle_slow(ptr: NonNull<Header>) {
+        // Safety: this method gets called through the vtable ensuring that the pointer is valid
+        // for this `RawTaskRef`'s `F` and `S` generics
         unsafe {
             let this = Self::from_raw(ptr);
 
@@ -604,6 +631,8 @@ where
     }
 
     unsafe fn shutdown(ptr: NonNull<Header>) {
+        // Safety: this method gets called through the vtable ensuring that the pointer is valid
+        // for this `RawTaskRef`'s `F` and `S` generics
         unsafe {
             let this = Self::from_raw(ptr);
 
@@ -620,6 +649,14 @@ where
         }
     }
 
+    /// Construct a typed task reference from an untyped pointer to a task.
+    ///
+    /// # Safety
+    ///
+    /// The caller has to ensure `ptr` is a valid task AND that the tasks output and scheduler
+    /// match this types generic arguments `F` and `S`. Getting this wrong e.g. calling
+    /// `RawTaskRef::<(), S>::from_raw` on a task that has the output type `i32` will likely lead
+    /// to stack corruption.
     unsafe fn from_raw(ptr: NonNull<Header>) -> Self {
         Self { ptr: ptr.cast() }
     }
@@ -629,6 +666,7 @@ where
     }
 
     fn header(&self) -> &Header {
+        // Safety: constructor ensures the pointer is always valid
         unsafe { &*self.header_ptr().as_ptr() }
     }
 
@@ -637,15 +675,18 @@ where
     }
 
     fn core(&self) -> &Core<F, S> {
+        // Safety: constructor ensures the pointer is always valid
         unsafe { &self.ptr.as_ref().core }
     }
 
     fn trailer(&self) -> &Trailer {
+        // Safety: constructor ensures the pointer is always valid
         unsafe { &self.ptr.as_ref().trailer }
     }
 
     fn drop_reference(self) {
         if self.state().ref_dec() {
+            // Safety: `ref_dec` returns true if no other references exist, so deallocation is safe
             unsafe {
                 Self::dealloc(self.ptr.cast());
             }
@@ -665,11 +706,14 @@ where
                 // this task. It is our responsibility to drop the
                 // output. The join waker was already dropped by the
                 // `JoinHandle` before.
+                // Safety: the COMPLETE bit has been set above and the JOIN_INTEREST bit is unset
+                // so according to rule 7 we have mutable exclusive access
                 unsafe {
                     self.core().drop_future_or_output();
                 }
             } else if snapshot.is_join_waker_set() {
-                // Notify the waker. Reading the waker field is safe per rule 4
+                // Notify the waker.
+                // Safety: Reading the waker field is safe per rule 4
                 // in task/mod.rs, since the JOIN_WAKER bit is set and the call
                 // to transition_to_complete() above set the COMPLETE bit.
                 unsafe {
@@ -767,13 +811,14 @@ impl RawTaskRef<Stub, Stub> {
         }));
         log::trace!("allocated stub ptr {ptr:?}");
 
-        // Safety: we just allocated the stub so we know it's not a null ptr.
         Self {
+            // Safety: we just allocated the pointer, it is always valid
             ptr: unsafe { NonNull::new_unchecked(ptr) },
         }
     }
 
     unsafe fn poll_stub(_ptr: NonNull<Header>) {
+        // Safety: this method should never be called
         unsafe {
             debug_assert!(Header::get_id_ptr(_ptr).as_ref().is_stub());
             unreachable!("poll_stub called on a stub task");
@@ -781,6 +826,7 @@ impl RawTaskRef<Stub, Stub> {
     }
 
     unsafe fn schedule_stub(_ptr: NonNull<Header>) {
+        // Safety: this method should never be called
         unsafe {
             debug_assert!(Header::get_id_ptr(_ptr).as_ref().is_stub());
             unreachable!("schedule_stub called on a stub task");
@@ -788,6 +834,7 @@ impl RawTaskRef<Stub, Stub> {
     }
 
     unsafe fn try_read_output_stub(_ptr: NonNull<Header>, _dst: *mut (), _waker: &Waker) {
+        // Safety: this method should never be called
         unsafe {
             debug_assert!(Header::get_id_ptr(_ptr).as_ref().is_stub());
             unreachable!("try_read_output_stub called on a stub task");
@@ -795,13 +842,18 @@ impl RawTaskRef<Stub, Stub> {
     }
 
     unsafe fn drop_join_handle_slow_stub(_ptr: NonNull<Header>) {
+        // Safety: this method should never be called
         unsafe {
             debug_assert!(Header::get_id_ptr(_ptr).as_ref().is_stub());
             unreachable!("drop_join_handle_slow_stub called on a stub task");
         }
     }
 
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid
     unsafe fn shutdown_stub(_ptr: NonNull<Header>) {
+        // Safety: this method should never be called
         unsafe {
             debug_assert!(Header::get_id_ptr(_ptr).as_ref().is_stub());
             unreachable!("shutdown_stub called on a stub task");
@@ -810,30 +862,49 @@ impl RawTaskRef<Stub, Stub> {
 }
 
 impl Header {
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid
     pub(super) unsafe fn get_id_ptr(me: NonNull<Header>) -> NonNull<Id> {
+        // Safety: validity of `me` ensured by caller and the rest is ensured by construction through the vtable
         unsafe {
             let offset = me.as_ref().vtable.id_offset;
+            #[expect(
+                clippy::cast_ptr_alignment,
+                reason = "`get_id_offset` ensures the offset is aligned correctly"
+            )]
             let id = me.as_ptr().cast::<u8>().add(offset).cast::<Id>();
             NonNull::new_unchecked(id)
         }
     }
 
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid
     unsafe fn get_trailer_ptr(me: NonNull<Header>) -> NonNull<Trailer> {
+        // Safety: validity of `me` ensured by caller and the rest is ensured by construction through the vtable
         unsafe {
             let offset = me.as_ref().vtable.trailer_offset;
+            #[expect(
+                clippy::cast_ptr_alignment,
+                reason = "`get_trailer_offset` ensures the offset is aligned correctly"
+            )]
             let id = me.as_ptr().cast::<u8>().add(offset).cast::<Trailer>();
             NonNull::new_unchecked(id)
         }
     }
 }
 
+// Safety: tasks are always treated as pinned in memory (a requirement for polling them)
+// and care has been taken below to ensure the underlying memory isn't freed as long as the
+// `TaskRef` is part of the owned tasks list.
 unsafe impl linked_list::Linked for Header {
     type Handle = TaskRef;
 
     fn into_ptr(task: Self::Handle) -> NonNull<Self> {
         let ptr = task.0;
         // converting a `TaskRef` into a pointer to enqueue it assigns ownership
-        // of the ref count to the queue, so we don't want to run its `Drop`
+        // of the ref count to the list, so we don't want to run its `Drop`
         // impl.
         mem::forget(task);
         ptr
@@ -844,6 +915,7 @@ unsafe impl linked_list::Linked for Header {
     }
 
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<linked_list::Links<Self>> {
+        // Safety: `TaskRef` is just a newtype wrapper around `NonNull<Header>`
         unsafe {
             Header::get_trailer_ptr(ptr)
                 .map_addr(|addr| {
@@ -855,6 +927,9 @@ unsafe impl linked_list::Linked for Header {
     }
 }
 
+// Safety: tasks are always treated as pinned in memory (a requirement for polling them)
+// and care has been taken below to ensure the underlying memory isn't freed as long as the
+// `TaskRef` is part of the queue.
 unsafe impl mpsc_queue::Linked for Header {
     type Handle = TaskRef;
 
@@ -875,6 +950,7 @@ unsafe impl mpsc_queue::Linked for Header {
     where
         Self: Sized,
     {
+        // Safety: `TaskRef` is just a newtype wrapper around `NonNull<Header>`
         unsafe {
             Header::get_trailer_ptr(ptr)
                 .map_addr(|addr| {
@@ -895,17 +971,14 @@ impl<F: Future, S> Core<F, S> {
     /// requires ensuring mutual exclusion between any concurrent thread that
     /// might modify the future or output field.
     ///
-    /// The mutual exclusion is implemented by `Harness` and the `Lifecycle`
-    /// component of the task state.
-    ///
     /// `self` must also be pinned. This is handled by storing the task on the
     /// heap.
     pub(super) unsafe fn poll(&self, mut cx: Context<'_>) -> Poll<F::Output> {
         let res = {
-            // Safety: The caller ensures mutual exclusion to the field.
-            let future = match unsafe { &mut *self.stage.get() } {
-                Stage::Running(future) => future,
-                _ => unreachable!("unexpected stage"),
+            // Safety: The caller ensures mutual exclusion
+            let stage = unsafe { &mut *self.stage.get() };
+            let Stage::Running(future) = stage else {
+                unreachable!("unexpected stage");
             };
 
             // Safety: The caller ensures the future is pinned.
@@ -914,6 +987,7 @@ impl<F: Future, S> Core<F, S> {
         };
 
         if res.is_ready() {
+            // Safety: The caller ensures mutual exclusion
             unsafe {
                 self.drop_future_or_output();
             }
@@ -926,7 +1000,8 @@ impl<F: Future, S> Core<F, S> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure it is safe to mutate the `stage` field.
+    /// The caller must ensure it is safe to mutate the `stage` field. This requires ensuring mutual
+    /// exclusion between any concurrent thread that might modify the future or output field.
     pub(super) unsafe fn drop_future_or_output(&self) {
         // Safety: the caller ensures mutual exclusion to the field.
         unsafe {
@@ -938,7 +1013,8 @@ impl<F: Future, S> Core<F, S> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure it is safe to mutate the `stage` field.
+    /// The caller must ensure it is safe to mutate the `stage` field. This requires ensuring mutual
+    /// exclusion between any concurrent thread that might modify the future or output field.
     pub(super) unsafe fn store_output(&self, output: super::Result<F::Output>) {
         // Safety: the caller ensures mutual exclusion to the field.
         unsafe {
@@ -950,7 +1026,8 @@ impl<F: Future, S> Core<F, S> {
     ///
     /// # Safety
     ///
-    /// The caller must ensure it is safe to mutate the `stage` field.
+    /// The caller must ensure it is safe to mutate the `stage` field. This requires ensuring mutual
+    /// exclusion between any concurrent thread that might modify the future or output field.
     pub(super) unsafe fn take_output(&self) -> super::Result<F::Output> {
         // Safety:: the caller ensures mutual exclusion to the field.
         match mem::replace(unsafe { &mut *self.stage.get() }, Stage::Consumed) {
@@ -959,7 +1036,12 @@ impl<F: Future, S> Core<F, S> {
         }
     }
 
+    /// # Safety
+    ///
+    /// The caller must ensure it is safe to mutate the `stage` field. This requires ensuring mutual
+    /// exclusion between any concurrent thread that might modify the future or output field.
     unsafe fn set_stage(&self, stage: Stage<F>) {
+        // Safety: ensured by the caller
         unsafe {
             *self.stage.get() = stage;
         }
@@ -967,17 +1049,31 @@ impl<F: Future, S> Core<F, S> {
 }
 
 impl Trailer {
+    /// # Safety
+    ///
+    /// The caller must ensure it is safe to mutate the `waker` field. This requires ensuring mutual
+    /// exclusion between any concurrent thread that might modify the field.
     pub(super) unsafe fn set_waker(&self, waker: Option<Waker>) {
+        // Safety: ensured by the caller
         unsafe {
             *self.waker.get() = waker;
         }
     }
 
+    /// # Safety
+    ///
+    /// The caller must ensure it is safe to mutate the `waker` field. This requires ensuring mutual
+    /// exclusion between any concurrent thread that might modify the field.
     pub(super) unsafe fn will_wake(&self, waker: &Waker) -> bool {
+        // Safety: ensured by the caller
         unsafe { (*self.waker.get()).as_ref().unwrap().will_wake(waker) }
     }
 
+    /// # Safety
+    ///
+    /// The caller must ensure it is safe to read the `waker` field.
     pub(super) unsafe fn wake_join(&self) {
+        // Safety: ensured by the caller
         match unsafe { &*self.waker.get() } {
             Some(waker) => waker.wake_by_ref(),
             None => panic!("waker missing"),
@@ -1001,8 +1097,8 @@ fn can_read_output(header: &Header, trailer: &Trailer, waker: &Waker) -> bool {
             // waker in the waker field per step (iii) of rule 5 in task/mod.rs.
 
             // Optimization: if the stored waker and the provided waker wake the
-            // same task, then return without touching the waker field. (Reading
-            // the waker field below is safe per rule 3 in task/mod.rs.)
+            // same task, then return without touching the waker field.
+            // Safety: Reading the waker field below is safe per rule 3 in task/mod.rs.
             if unsafe { trailer.will_wake(waker) } {
                 return false;
             }
@@ -1017,6 +1113,7 @@ fn can_read_output(header: &Header, trailer: &Trailer, waker: &Waker) -> bool {
             // If JOIN_WAKER is unset, then JoinHandle has mutable access to the
             // waker field per rule 2 in task/mod.rs; therefore, skip step (i)
             // of rule 5 and try to store the provided waker in the waker field.
+            // Safety: absence of JOIN_WAKER means we have exclusive access
             set_join_waker(header, trailer, waker.clone(), snapshot)
         };
 
@@ -1035,7 +1132,7 @@ fn set_join_waker(
     trailer: &Trailer,
     waker: Waker,
     snapshot: Snapshot,
-) -> core::result::Result<Snapshot, Snapshot> {
+) -> Result<Snapshot, Snapshot> {
     assert!(snapshot.is_join_interested());
     assert!(!snapshot.is_join_waker_set());
 
@@ -1043,61 +1140,62 @@ fn set_join_waker(
     // `JOIN_INTEREST` is **not** set, nothing else will touch the field.
     unsafe {
         trailer.set_waker(Some(waker));
-    }
 
-    // Update the `JoinWaker` state accordingly
-    let res = header.state.set_join_waker();
+        // Update the `JoinWaker` state accordingly
+        let res = header.state.set_join_waker();
 
-    // If the state could not be updated, then clear the join waker
-    if res.is_err() {
-        unsafe {
+        // If the state could not be updated, then clear the join waker
+        if res.is_err() {
             trailer.set_waker(None);
         }
-    }
 
-    res
+        res
+    }
 }
 
 /// Cancels the task and store the appropriate error in the stage field.
-fn cancel_task<T: Future, S>(core: &Core<T, S>) {
-    // Drop the future from a panic guard.
-    let res = panic::catch_unwind(AssertUnwindSafe(|| unsafe {
-        core.drop_future_or_output();
-    }));
-
+///
+/// # Safety
+///
+/// The caller has to ensure this hart has exclusive mutable access to the tasks `stage` field (ie the
+/// future or output).
+unsafe fn cancel_task<T: Future, S>(core: &Core<T, S>) {
+    // Safety: caller has to ensure mutual exclusion
     unsafe {
-        core.store_output(Err(panic_result_to_join_error(core.task_id, res)));
-    }
-}
+        // Drop the future from a panic guard.
+        let res = panic::catch_unwind(AssertUnwindSafe(|| {
+            core.drop_future_or_output();
+        }));
 
-fn panic_result_to_join_error(
-    task_id: Id,
-    res: core::result::Result<(), Box<dyn Any + Send + 'static>>,
-) -> JoinError {
-    match res {
-        Ok(()) => JoinError::cancelled(task_id),
-        Err(panic) => JoinError::panic(task_id, panic),
+        core.store_output(Err(panic_result_to_join_error(core.task_id, res)));
     }
 }
 
 /// Polls the future. If the future completes, the output is written to the
 /// stage field.
-fn poll_future<T: Future, S: Schedule>(core: &Core<T, S>, cx: Context<'_>) -> Poll<()> {
+///
+/// # Safety
+///
+/// The caller has to ensure this hart has exclusive mutable access to the tasks `stage` field (ie the
+/// future or output).
+unsafe fn poll_future<T: Future, S: Schedule>(core: &Core<T, S>, cx: Context<'_>) -> Poll<()> {
     // Poll the future.
     let output = panic::catch_unwind(AssertUnwindSafe(|| {
         struct Guard<'a, T: Future, S: Schedule> {
             core: &'a Core<T, S>,
         }
-        impl<'a, T: Future, S: Schedule> Drop for Guard<'a, T, S> {
+        impl<T: Future, S: Schedule> Drop for Guard<'_, T, S> {
             fn drop(&mut self) {
                 // If the future panics on poll, we drop it inside the panic
                 // guard.
+                // Safety: caller has to ensure mutual exclusion
                 unsafe {
                     self.core.drop_future_or_output();
                 }
             }
         }
         let guard = Guard { core };
+        // Safety: caller has to ensure mutual exclusion
         let res = unsafe { guard.core.poll(cx) };
         mem::forget(guard);
         res
@@ -1111,15 +1209,24 @@ fn poll_future<T: Future, S: Schedule>(core: &Core<T, S>, cx: Context<'_>) -> Po
     };
 
     // Catch and ignore panics if the future panics on drop.
+    // Safety: caller has to ensure mutual exclusion
     let res = panic::catch_unwind(AssertUnwindSafe(|| unsafe {
         core.store_output(output);
     }));
 
-    if res.is_err() {
-        panic!("unhandled panic {res:?}");
-    }
+    assert!(res.is_ok(), "unhandled panic {res:?}");
 
     Poll::Ready(())
+}
+
+fn panic_result_to_join_error(
+    task_id: Id,
+    res: Result<(), Box<dyn Any + Send + 'static>>,
+) -> JoinError {
+    match res {
+        Ok(()) => JoinError::cancelled(task_id),
+        Err(panic) => JoinError::panic(task_id, panic),
+    }
 }
 
 #[cold]

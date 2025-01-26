@@ -20,8 +20,8 @@ use core::{fmt, mem, ptr};
 
 /// Trait implemented by types which can be members of an intrusive doubly-linked list.
 ///
-/// In order to be part of an intrusive WAVL tree, a type must contain a
-/// `Links` type that stores the pointers to other nodes in the tree.
+/// In order to be part of an intrusive doubly-linked list tree, a type must contain a
+/// `Links` type that stores the pointers to other nodes in the list.
 ///
 /// # Safety
 ///
@@ -426,6 +426,11 @@ where
         }
     }
 
+    /// Constructs a cursor from a raw pointer to a node.
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the pointer points to a valid node in the tree.
     pub unsafe fn cursor_from_ptr(&self, ptr: NonNull<T>) -> Cursor<'_, T> {
         Cursor {
             current: Some(ptr),
@@ -433,6 +438,11 @@ where
         }
     }
 
+    /// Constructs a mutable cursor from a raw pointer to a node.
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the pointer points to a valid node in the tree.
     pub unsafe fn cursor_from_ptr_mut(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
         CursorMut {
             current: Some(ptr),

@@ -9,7 +9,6 @@
 ///
 /// In order to make certain functions within a runtime deterministic, a seed
 /// can be specified at the time of creation.
-#[allow(unreachable_pub)]
 #[derive(Clone, Debug)]
 pub struct RngSeed {
     s: u32,
@@ -31,8 +30,12 @@ pub(crate) struct FastRand {
 
 impl RngSeed {
     /// Creates a random seed using loom internally.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "we're truncating on purpose"
+    )]
     pub(crate) fn new(seed: u64) -> Self {
-        let one = (seed >> 32) as u32;
+        let one = (seed >> 32_u32) as u32;
         let mut two = seed as u32;
 
         if two == 0 {
@@ -65,7 +68,7 @@ impl FastRand {
     pub(crate) fn fastrand_n(&mut self, n: u32) -> u32 {
         // This is similar to fastrand() % n, but faster.
         // See https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
-        let mul = (self.fastrand() as u64).wrapping_mul(n as u64);
+        let mul = u64::from(self.fastrand()).wrapping_mul(u64::from(n));
         (mul >> 32) as u32
     }
 
@@ -73,8 +76,8 @@ impl FastRand {
         let mut s1 = self.one;
         let s0 = self.two;
 
-        s1 ^= s1 << 17;
-        s1 = s1 ^ s0 ^ s1 >> 7 ^ s0 >> 16;
+        s1 ^= s1 << 17_u32;
+        s1 = s1 ^ s0 ^ s1 >> 7_u32 ^ s0 >> 16_u32;
 
         self.one = s0;
         self.two = s1;

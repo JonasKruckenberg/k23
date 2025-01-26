@@ -313,10 +313,7 @@ impl FunctionCompiler<'_> {
         (builder, block0)
     }
 
-    fn finish(
-        mut self,
-        body: Option<&FunctionBody<'_>>,
-    ) -> crate::wasm::Result<CompiledFunction> {
+    fn finish(mut self, body: Option<&FunctionBody<'_>>) -> crate::wasm::Result<CompiledFunction> {
         let context = &mut self.ctx.codegen_context;
 
         context.set_disasm(true);
