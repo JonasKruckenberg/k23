@@ -76,12 +76,16 @@ impl OwnedTasks {
 
     pub(in crate::executor) fn close_and_shutdown_all(&self) {
         self.closed.store(true, Ordering::Release);
+
         let mut list = self.list.lock();
 
         let mut c = list.cursor_front_mut();
         while let Some(task) = c.remove() {
             task.shutdown();
+            drop(task);
         }
+
+        debug_assert!(list.is_empty(), "{list:?}");
     }
 
     pub(in crate::executor) fn remove(&self, task: &TaskRef) -> Option<TaskRef> {
