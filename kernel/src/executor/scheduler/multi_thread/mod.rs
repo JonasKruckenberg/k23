@@ -17,6 +17,7 @@ use crate::util::parking_spot::ParkingSpot;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::future::Future;
+use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::Waker;
 use idle::Idle;
 use rand::RngCore;
@@ -53,11 +54,13 @@ impl Handle {
 
         Self {
             shared: Shared {
+                shutdown: AtomicBool::new(false),
                 remotes: remotes.into_boxed_slice(),
                 owned: OwnedTasks::new(),
                 synced: Mutex::new(Synced {
                     assigned_cores: (0..num_cores).map(|_| None).collect(),
                     idle: idle_synced,
+                    shutdown_cores: Vec::with_capacity(num_cores)
                 }),
                 run_queue,
                 idle,
@@ -81,6 +84,20 @@ impl Handle {
         }
 
         handle
+    }
+    
+    pub fn shutdown(&self) {
+        if !self.shared.shutdown.swap(true, Ordering::AcqRel) {
+            let mut synced = self.shared.synced.lock();
+            
+            // Set the shutdown flag on all available cores
+            self.shared.idle.shutdown(&mut synced, &self.shared);
+            
+            // Any unassigned cores need to be shutdown, but we have to first drop
+            // the lock
+            drop(synced);
+            self.shared.idle.shutdown_unassigned_cores(&self.shared);
+        }
     }
 
     #[inline]

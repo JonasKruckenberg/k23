@@ -62,4 +62,8 @@ impl Executor {
     {
         self.scheduler.spawn(future)
     }
+
+    pub fn shutdown(&'static self) {
+        self.scheduler.shutdown();
+    }
 }

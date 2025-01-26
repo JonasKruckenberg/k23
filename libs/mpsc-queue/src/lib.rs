@@ -447,7 +447,7 @@ pub struct Links<T> {
     is_stub: AtomicBool,
 
     /// Linked list links must always be `!Unpin`, in order to ensure that they
-    /// never recieve LLVM `noalias` annotations; see also
+    /// never receive LLVM `noalias` annotations; see also
     /// <https://github.com/rust-lang/rust/issues/63818>.
     _unpin: PhantomPinned,
 }
@@ -1342,7 +1342,8 @@ unsafe fn non_null<T>(ptr: *mut T) -> NonNull<T> {
 #[cfg(not(debug_assertions))]
 #[inline(always)]
 unsafe fn non_null<T>(ptr: *mut T) -> NonNull<T> {
-    NonNull::new_unchecked(ptr)
+    // Safety: caller has to ensure that the pointer is valid.
+    unsafe { NonNull::new_unchecked(ptr) }
 }
 
 /// Determine cache alignment based on target architecture.

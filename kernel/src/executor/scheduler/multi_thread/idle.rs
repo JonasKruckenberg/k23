@@ -252,6 +252,38 @@ impl Idle {
         }
     }
 
+    pub(super) fn shutdown(&self, synced: &mut worker::Synced, shared: &worker::Shared) {
+        // Wake every sleeping worker and assign a core to it. There may not be
+        // enough sleeping workers for all cores, but other workers will
+        // eventually find the cores and shut them down.
+        while !synced.idle.sleepers.is_empty() && !synced.idle.available_cores.is_empty() {
+            let worker = synced.idle.sleepers.pop().unwrap();
+            let core = self.try_acquire_available_core(&mut synced.idle).unwrap();
+
+            synced.assigned_cores[worker] = Some(core);
+            shared.condvars[worker].notify_one(&shared.parking_spot);
+        }
+
+        debug_assert!(self.idle_map.matches(&synced.idle.available_cores));
+
+        // Wake up any other workers
+        while let Some(index) = synced.idle.sleepers.pop() {
+            shared.condvars[index].notify_one(&shared.parking_spot);
+        }
+    }
+
+    pub(super) fn shutdown_unassigned_cores(&self, shared: &worker::Shared) {
+        // If there are any remaining cores, shut them down here.
+        //
+        // This code is a bit convoluted to avoid lock-reentry.
+        while let Some(core) = {
+            let mut synced = shared.synced.lock();
+            self.try_acquire_available_core(&mut synced.idle)
+        } {
+            shared.shutdown_core(core);
+        }
+    }
+
     pub(super) fn transition_worker_to_parked(&self, synced: &mut worker::Synced, index: usize) {
         // Store the worker index in the list of sleepers
         synced.idle.sleepers.push(index);

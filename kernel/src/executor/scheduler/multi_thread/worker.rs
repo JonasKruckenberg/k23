@@ -18,7 +18,7 @@ use crate::{arch, counter};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
-use core::sync::atomic::AtomicPtr;
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use core::task::Waker;
 use core::time::Duration;
 use core::{cmp, mem, ptr};
@@ -39,9 +39,9 @@ static NUM_NOTIFY_LOCAL: Counter = counter!("scheduler.num-notify-local");
 ///
 /// Data is stack-allocated and never migrates threads
 pub struct Worker {
+    hartid: usize,
     /// True if the scheduler is being shutdown
     is_shutdown: bool,
-    hartid: usize,
     /// Counter used to track when to poll from the local queue vs. the
     /// global queue
     num_seq_local_queue_polls: u32,
@@ -93,12 +93,21 @@ pub(super) struct Shared {
     /// into a TLS slot instead of stack allocated so we can access it from other places (i.e. we only
     /// need access to the scheduler handle instead of access to the workers stack which wouldn't work).
     pub(super) tls: ThreadLocal<Context>,
+    pub(super) shutdown: AtomicBool,
 }
 
 /// Various bits of shared state that are synchronized by the scheduler mutex.
 pub(super) struct Synced {
+    /// When worker is notified, it is assigned a core. The core is placed here
+    /// until the worker wakes up to take it.
     pub(super) assigned_cores: Vec<Option<Box<Core>>>,
+    /// Synchronized state for `Idle`.
     pub(super) idle: idle::Synced,
+    /// Cores that have observed the shutdown signal
+    ///
+    /// The core is **not** placed back in the worker to avoid it from being
+    /// stolen by a thread that was spawned as part of `block_in_place`.
+    pub(super) shutdown_cores: Vec<Box<Core>>,
 }
 
 /// Used to communicate with a worker from other threads.
@@ -183,8 +192,14 @@ pub fn run(handle: &'static Handle, hartid: usize) -> Result<(), ()> {
     }
 
     // at this point we received the shutdown signal, so we need to clean up
+    log::trace!("shutting down worker...");
+    cx.shared().shutdown_core(core);
 
-    todo!()
+    // It is possible that tasks wake others during drop, so we need to
+    // clear the defer list.
+    worker.shutdown_clear_defer(cx);
+
+    Err(())
 }
 
 macro_rules! try_next_task_step {
@@ -199,6 +214,33 @@ macro_rules! try_next_task_step {
 }
 
 impl Worker {
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "function signature needs to match"
+    )]
+    fn run_task(
+        &mut self,
+        cx: &Context,
+        mut core: Box<Core>,
+        task: TaskRef,
+    ) -> Result<Box<Core>, ()> {
+        if self.transition_from_searching(cx, &mut core) {
+            // super::counters::inc_num_relay_search();
+            cx.shared().notify_parked_local();
+        }
+
+        NUM_POLLS.increment(1);
+        task.run();
+
+        //      - TODO ensure we stay in our scheduling budget
+        //          - super::counters::inc_lifo_schedules();
+        //          - super::counters::inc_lifo_capped();
+        //          - super::counters::inc_num_lifo_polls();
+        //          - poll the LIFO task
+
+        Ok(core)
+    }
+
     fn try_acquire_available_core(
         &mut self,
         cx: &Context,
@@ -245,11 +287,11 @@ impl Worker {
                 break core;
             }
 
-            // // If shutting down, abort
-            // if cx.shared().inject.is_closed(&synced.inject) {
-            //     self.shutdown_clear_defer(cx);
-            //     return Err(());
-            // }
+            // If shutting down, abort
+            if cx.shared().shutdown.load(Ordering::Acquire) {
+                self.shutdown_clear_defer(cx);
+                return Err(());
+            }
 
             cx.shared().condvars[self.hartid].wait(&cx.shared().parking_spot, &mut synced);
         };
@@ -276,6 +318,9 @@ impl Worker {
 
         // At this point, the local queue should be empty
         debug_assert!(core.run_queue.is_empty());
+
+        // Update shutdown state while locked
+        self.update_global_flags(cx);
     }
 
     /// Get the next task to run, this encapsulates the core of the scheduling logic.
@@ -297,7 +342,7 @@ impl Worker {
 
         // Now comes the "main" part of searching for the next task. We first consult our local run
         // queue for a task.
-        if let Some(task) = core.run_queue.pop() {
+        if let Some(task) = core.next_local_task() {
             return Ok((Some(task), core));
         }
 
@@ -469,6 +514,9 @@ impl Worker {
             return Ok((Some(task), core));
         }
 
+        // If the runtime is shutdown, skip parking
+        self.update_global_flags(cx);
+
         if self.is_shutdown {
             return Ok((None, core));
         }
@@ -490,6 +538,9 @@ impl Worker {
         // If there are more I/O events, schedule them.
         let (maybe_task, core) =
             self.schedule_deferred_with_core(cx, core, || cx.shared().synced.lock())?;
+
+        // Update shutdown state while locked
+        self.update_global_flags(cx);
 
         Ok((maybe_task, core))
     }
@@ -559,33 +610,6 @@ impl Worker {
         Ok((task, core))
     }
 
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "function signature needs to match"
-    )]
-    fn run_task(
-        &mut self,
-        cx: &Context,
-        mut core: Box<Core>,
-        task: TaskRef,
-    ) -> Result<Box<Core>, ()> {
-        if self.transition_from_searching(cx, &mut core) {
-            // super::counters::inc_num_relay_search();
-            cx.shared().notify_parked_local();
-        }
-
-        NUM_POLLS.increment(1);
-        task.run();
-
-        //      - TODO ensure we stay in our scheduling budget
-        //          - super::counters::inc_lifo_schedules();
-        //          - super::counters::inc_lifo_capped();
-        //          - super::counters::inc_num_lifo_polls();
-        //          - poll the LIFO task
-
-        Ok(core)
-    }
-
     fn transition_to_searching(&self, cx: &Context, core: &mut Core) -> bool {
         if !core.is_searching {
             cx.shared().idle.try_transition_worker_to_searching(core);
@@ -610,6 +634,39 @@ impl Worker {
 
     fn has_tasks(&self, core: &Core) -> bool {
         core.lifo_slot.is_some() || !core.run_queue.is_empty()
+    }
+
+    fn update_global_flags(&mut self, cx: &Context) {
+        if !self.is_shutdown {
+            self.is_shutdown = cx.shared().shutdown.load(Ordering::Acquire);
+        }
+    }
+
+    fn shutdown_clear_defer(&self, cx: &Context) {
+        let mut defer = cx.defer.borrow_mut();
+
+        for task in defer.drain(..) {
+            drop(task);
+        }
+    }
+
+    // fn tune_global_queue_interval(&mut self, cx: &Context, core: &mut Core) {
+    //     let next = core.stats.tuned_global_queue_interval(&cx.shared().config);
+    //
+    //     // Smooth out jitter
+    //     if u32::abs_diff(self.global_queue_interval, next) > 2 {
+    //         self.global_queue_interval = next;
+    //     }
+    // }
+}
+
+impl Core {
+    fn next_local_task(&mut self) -> Option<TaskRef> {
+        self.next_lifo_task().or_else(|| self.run_queue.pop())
+    }
+
+    fn next_lifo_task(&mut self) -> Option<TaskRef> {
+        self.lifo_slot.take()
     }
 }
 
@@ -657,6 +714,39 @@ impl Shared {
     fn notify_parked_local(&self) {
         NUM_NOTIFY_LOCAL.increment(1);
         self.idle.notify_local(self);
+    }
+
+    pub(super) fn shutdown_core(&self, core: Box<Core>) {
+        self.owned.close_and_shutdown_all();
+
+        let mut synced = self.synced.lock();
+        synced.shutdown_cores.push(core);
+
+        self.shutdown_finalize(&mut synced);
+    }
+
+    pub(super) fn shutdown_finalize(&self, synced: &mut Synced) {
+        // Wait for all cores
+        if synced.shutdown_cores.len() != self.remotes.len() {
+            return;
+        }
+
+        debug_assert!(self.owned.is_empty());
+
+        for mut core in synced.shutdown_cores.drain(..) {
+            // Drain tasks from the local queue
+            while core.next_local_task().is_some() {}
+        }
+
+        // Drain the injection queue
+        //
+        // We already shut down every task, so we can simply drop the tasks. We
+        // cannot call `next_remote_task()` because we already hold the lock.
+        //
+        // safety: passing in correct `idle::Synced`
+        while let Some(task) = self.run_queue.dequeue() {
+            drop(task);
+        }
     }
 }
 
