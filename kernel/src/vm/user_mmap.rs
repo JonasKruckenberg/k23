@@ -7,6 +7,7 @@
 
 use crate::arch;
 use crate::arch::with_user_memory_access;
+use crate::trap_handler::TrapMask;
 use crate::vm::address::AddressRangeExt;
 use crate::vm::address_space::{AddressSpaceKind, Batch};
 use crate::vm::vmo::Vmo;
@@ -17,6 +18,9 @@ use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{iter, slice};
+
+const TRAP_MASK: TrapMask =
+    TrapMask::from_bits_retain(TrapMask::StorePageFault.bits() | TrapMask::LoadPageFault.bits());
 
 /// A userspace memory mapping.
 ///
@@ -112,7 +116,7 @@ impl UserMmap {
         self.ensure_mapped(aspace, range, false)?;
 
         #[expect(tail_expr_drop_order, reason = "")]
-        crate::trap_handler::catch_traps(|| {
+        crate::trap_handler::catch_traps(TRAP_MASK, || {
             // Safety: checked by caller and `catch_traps`
             unsafe {
                 with_user_memory_access(|| {
@@ -142,7 +146,7 @@ impl UserMmap {
         }
 
         #[expect(tail_expr_drop_order, reason = "")]
-        crate::trap_handler::catch_traps(|| {
+        crate::trap_handler::catch_traps(TRAP_MASK, || {
             // Safety: checked by caller and `catch_traps`
             unsafe {
                 with_user_memory_access(|| {

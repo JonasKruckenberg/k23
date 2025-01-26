@@ -5,21 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! Timer Extension
+//! IPI Extension
 
-use super::{sbi_call, EID_TIME};
+use super::{sbi_call, EID_IPI};
 
 /// # Errors
 ///
 /// Returns an error if the SBI call fails.
-///
-/// # Panics
-///
-/// Panics if the conversion from `u64` to `usize` fails.
 #[inline]
-pub fn set_timer(stime_value: u64) -> super::Result<()> {
-    let stime_value = usize::try_from(stime_value).unwrap();
-    sbi_call!(ext: EID_TIME, func: 0, "a0": stime_value, "a1": 0_usize)?;
+pub fn send_ipi(hart_mask: usize, hart_mask_base: usize) -> super::Result<()> {
+    sbi_call!(ext: EID_IPI, func: 0, "a0": hart_mask, "a1": hart_mask_base)?;
 
     Ok(())
 }

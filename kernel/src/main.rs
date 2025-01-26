@@ -15,6 +15,7 @@
 #![expect(internal_features, reason = "panic internals")]
 #![feature(std_internals, panic_can_unwind, fmt_internals)]
 #![feature(step_trait)]
+#![feature(box_into_inner)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 #![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
@@ -23,6 +24,7 @@ extern crate alloc;
 mod allocator;
 mod arch;
 mod error;
+mod executor;
 mod logger;
 mod machine_info;
 mod metrics;
@@ -30,19 +32,22 @@ mod panic;
 mod thread_local;
 mod time;
 mod trap_handler;
+mod util;
 mod vm;
 mod wasm;
 
 use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
-use crate::time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use core::cell::RefCell;
 use core::range::Range;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use sync::{Once, OnceLock};
 use thread_local::thread_local;
+use time::Instant;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
 
@@ -77,17 +82,6 @@ static LOADER_CONFIG: LoaderConfig = {
     cfg
 };
 
-// | hart | stack                                  | tls                                    |
-// |------|----------------------------------------|----------------------------------------|
-// | 0    | 0xffffffc0c008c000..0xffffffc0c00a0000 | 0xffffffc040000000..0xffffffc0400400c2 |
-// | 1    | 0xffffffc0c0078000..0xffffffc0c008c000 | 0xffffffc0400400c2..0xffffffc040080184 |
-// | 2    | 0xffffffc0c0064000..0xffffffc0c0078000 | 0xffffffc040080184..0xffffffc0400c0246 |
-// | 3    | 0xffffffc0c0050000..0xffffffc0c0064000 | 0xffffffc0400c0246..0xffffffc040100308 |
-// | 4    | 0xffffffc0c003c000..0xffffffc0c0050000 | 0xffffffc040100308..0xffffffc0401403ca |
-// | 5    | 0xffffffc0c0028000..0xffffffc0c003c000 | 0xffffffc0401403ca..0xffffffc04018048c |
-// | 6    | 0xffffffc0c0014000..0xffffffc0c0028000 | 0xffffffc04018048c..0xffffffc0401c054e |
-// | 7    | 0xffffffc0c0000000..0xffffffc0c0014000 | 0xffffffc0401c054e..0xffffffc040200610 |
-
 #[unsafe(no_mangle)]
 fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // initialize the hart local state of the logger before enabling it, so it is ready as soon as
@@ -120,7 +114,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // perform global, architecture-specific initialization
         arch::init();
 
-        // // TODO move this into a init function
+        // TODO move this into a init function
         let minfo = MACHINE_INFO
             .get_or_try_init(|| {
                 // Safety: we have to trust the loader mapped the fdt correctly
@@ -132,8 +126,22 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // initialize the global frame allocator
         frame_alloc::init(boot_alloc);
 
+        let mut rng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
+
         // initialize the virtual memory subsystem
-        vm::init(boot_info, minfo).unwrap();
+        vm::init(boot_info, &mut rng).unwrap();
+
+        // initialize the executor
+
+        // if we're executing tests we don't want idle harts to park indefinitely, instead the
+        // runtime should just shut down
+        let shutdown_on_idle = cfg!(test);
+
+        executor::init(
+            boot_info.hart_mask.count_ones() as usize,
+            &mut rng,
+            shutdown_on_idle,
+        );
     });
 
     // // Safety: we have to trust the loader mapped the fdt correctly
@@ -150,6 +158,12 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_ticks).elapsed()
     );
+
+    executor::current().spawn(async move {
+        log::info!("Hello from hart {}", hartid);
+    });
+
+    let _ = executor::run(executor::current(), hartid);
 
     // wasm::test();
 

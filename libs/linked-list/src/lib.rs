@@ -20,8 +20,8 @@ use core::{fmt, mem, ptr};
 
 /// Trait implemented by types which can be members of an intrusive doubly-linked list.
 ///
-/// In order to be part of an intrusive WAVL tree, a type must contain a
-/// `Links` type that stores the pointers to other nodes in the tree.
+/// In order to be part of an intrusive doubly-linked list tree, a type must contain a
+/// `Links` type that stores the pointers to other nodes in the list.
 ///
 /// # Safety
 ///
@@ -422,6 +422,30 @@ where
     pub fn cursor_back_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
             current: self.tail,
+            list: self,
+        }
+    }
+
+    /// Constructs a cursor from a raw pointer to a node.
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the pointer points to a valid node in the tree.
+    pub unsafe fn cursor_from_ptr(&self, ptr: NonNull<T>) -> Cursor<'_, T> {
+        Cursor {
+            current: Some(ptr),
+            _list: self,
+        }
+    }
+
+    /// Constructs a mutable cursor from a raw pointer to a node.
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the pointer points to a valid node in the tree.
+    pub unsafe fn cursor_from_ptr_mut(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
+        CursorMut {
+            current: Some(ptr),
             list: self,
         }
     }
@@ -921,6 +945,9 @@ where
             _list: self.list,
         }
     }
+
+    /// Removes the current element from the list returning it's owned handle, also moves the
+    /// cursor to the next element in the list.
     pub fn remove(&mut self) -> Option<T::Handle> {
         unsafe {
             let node = self.current?;
@@ -944,7 +971,7 @@ where
                 self.list.tail = prev;
             }
 
-            Some(T::from_ptr(self.current?))
+            Some(T::from_ptr(mem::replace(&mut self.current, next)?))
         }
     }
 }

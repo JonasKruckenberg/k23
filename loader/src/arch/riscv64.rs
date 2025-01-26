@@ -247,7 +247,7 @@ pub fn start_secondary_harts(boot_hart: usize, minfo: &MachineInfo) -> crate::Re
         }
 
         log::trace!("[{boot_hart}] starting hart {hartid}...");
-        riscv::sbi::hsm::start_hart(
+        riscv::sbi::hsm::hart_start(
             hartid,
             _start_secondary as usize,
             minfo.fdt.as_ptr() as usize,

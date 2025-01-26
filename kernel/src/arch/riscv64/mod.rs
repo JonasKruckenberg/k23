@@ -11,13 +11,17 @@ mod utils;
 mod vm;
 
 use crate::vm::VirtualAddress;
+use crate::{time, HART_LOCAL_MACHINE_INFO};
 use bitflags::bitflags;
 use core::arch::asm;
+use core::cell::Cell;
+use core::time::Duration;
 use dtb_parser::Strings;
 use fallible_iterator::FallibleIterator;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
 pub use setjmp_longjmp::{call_with_setjmp, longjmp, JmpBuf};
+use thread_local::thread_local;
 pub use vm::{
     invalidate_range, is_kernel_address, AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID,
     KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_BASE,
@@ -195,12 +199,6 @@ pub fn get_stack_pointer() -> usize {
     stack_pointer
 }
 
-/// Suspend the calling hart until an interrupt is received.
-pub fn wait_for_interrupt() {
-    // Safety: inline assembly
-    unsafe { asm!("wfi") }
-}
-
 /// Retrieves the next older program counter and stack pointer from the current frame pointer.
 pub unsafe fn get_next_older_pc_from_fp(fp: usize) -> usize {
     // Safety: caller has to ensure fp is valid
@@ -254,4 +252,54 @@ where
     }
 
     r
+}
+
+/// Suspend the calling hart indefinitely.
+///
+/// # Safety
+///
+/// The caller must ensure it is safe to suspend the hart.
+pub unsafe fn hart_park() {
+    // Safety: inline assembly
+    unsafe { asm!("wfi") }
+}
+
+/// Send an interrupt to a parked hart waking it up.
+///
+/// # Safety
+///
+/// The caller must ensure it is safe to send an interrupt to the target hart, which it generally should
+/// be as the trap handler for software interrupts should be non-disruptive to already running harts,
+/// but the caller should still exercise caution.
+pub unsafe fn hart_unpark(hartid: usize) {
+    riscv::sbi::ipi::send_ipi(1 << hartid, 0).unwrap();
+}
+
+thread_local! {
+    static IN_TIMEOUT: Cell<bool> = Cell::new(false);
+}
+
+/// Suspend the calling hart for at least `duration`.
+///
+/// # Safety
+///
+/// The caller must ensure the duration does not overflow when converted into ticks, and that it
+/// is safe to suspend the hart.
+pub unsafe fn hart_park_timeout(duration: Duration) {
+    // Safety: ensured by caller
+    unsafe {
+        IN_TIMEOUT.set(true);
+
+        #[expect(tail_expr_drop_order, reason = "")]
+        let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
+
+        riscv::sbi::time::set_timer(
+            riscv::time::read64() + time::duration_to_ticks_unchecked(duration, timebase_freq),
+        )
+        .unwrap();
+
+        if IN_TIMEOUT.get() {
+            hart_park();
+        }
+    }
 }

@@ -42,6 +42,8 @@ pub use error::Error;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FramesIter};
 
+pub use arch::Context;
+
 pub(crate) type Result<T> = core::result::Result<T, Error>;
 
 /// # Errors

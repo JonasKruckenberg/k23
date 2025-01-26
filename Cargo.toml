@@ -91,6 +91,7 @@ backtrace = { path = "libs/backtrace" }
 dtb-parser = { path = "libs/dtb-parser" }
 leb128 = { path = "libs/leb128" }
 linked-list = { path = "libs/linked-list" }
+mpsc-queue = { path = "libs/mpsc-queue" }
 riscv = { path = "libs/riscv" }
 sync = { path = "libs/sync" }
 thread-local = { path = "libs/thread-local" }

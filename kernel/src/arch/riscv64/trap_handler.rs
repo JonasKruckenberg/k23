@@ -6,13 +6,14 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
+use crate::arch::riscv64::IN_TIMEOUT;
 use crate::arch::PAGE_SIZE;
 use crate::trap_handler::TrapReason;
 use crate::vm::VirtualAddress;
 use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Interrupt, Trap};
-use riscv::{scause, sepc, sstatus, stval, stvec};
+use riscv::{sbi, scause, sepc, sstatus, stval, stvec};
 use thread_local::thread_local;
 
 thread_local! {
@@ -267,10 +268,15 @@ fn default_trap_handler(
 
     let reason = match cause {
         Trap::Interrupt(Interrupt::SupervisorSoft | Interrupt::VirtualSupervisorSoft) => {
-            TrapReason::SupervisorSoftwareInterrupt
+            // Software interrupts are always IPIs used for unparking
+            return raw_frame;
         }
         Trap::Interrupt(Interrupt::SupervisorTimer | Interrupt::VirtualSupervisorTimer) => {
-            TrapReason::SupervisorTimerInterrupt
+            IN_TIMEOUT.set(false);
+
+            // Timer interrupts are always IPIs used for sleeping
+            sbi::time::set_timer(u64::MAX).unwrap();
+            return raw_frame;
         }
         Trap::Interrupt(Interrupt::SupervisorExternal | Interrupt::VirtualSupervisorExternal) => {
             TrapReason::SupervisorSoftwareInterrupt
