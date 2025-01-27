@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use log::{LevelFilter, Metadata, Record};
+use log::{Level, LevelFilter, Metadata, Record};
 
 pub fn init(lvl: LevelFilter) {
     static LOGGER: Logger = Logger;
@@ -23,8 +23,16 @@ impl log::Log for Logger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
+            let color = match record.level() {
+                Level::Trace => "\x1b[36m",
+                Level::Debug => "\x1b[34m",
+                Level::Info => "\x1b[32m",
+                Level::Warn => "\x1b[33m",
+                Level::Error => "\x1b[31;1m",
+            };
+
             print(format_args!(
-                "[{:<5} {}] {}\n",
+                "[{color}{:<5}\x1b[0m {}] {}\n",
                 record.level(),
                 record.module_path_static().unwrap_or_default(),
                 record.args()
