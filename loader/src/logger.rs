@@ -30,7 +30,7 @@ impl log::Log for Logger {
                 Level::Warn => "\x1b[33m",
                 Level::Error => "\x1b[31;1m",
             };
-            
+
             print(format_args!(
                 "[{color}{:<5}\x1b[0m {}] {}\n",
                 record.level(),
