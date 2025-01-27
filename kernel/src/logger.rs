@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::cell::Cell;
-use log::{LevelFilter, Metadata, Record};
+use log::{Level, LevelFilter, Metadata, Record};
 use thread_local::thread_local;
 
 thread_local!(
@@ -33,8 +33,16 @@ impl log::Log for Logger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
+            let color = match record.level() {
+                Level::Trace => "\x1b[36m",
+                Level::Debug => "\x1b[34m",
+                Level::Info => "\x1b[32m",
+                Level::Warn => "\x1b[33m",
+                Level::Error => "\x1b[31;1m",
+            };
+            
             print(format_args!(
-                "[{:<5} HART {} {}] {}\n",
+                "[{color}{:<5}\x1b[0m HART {} {}] {}\n",
                 record.level(),
                 HARTID.get(),
                 record.module_path_static().unwrap_or_default(),
