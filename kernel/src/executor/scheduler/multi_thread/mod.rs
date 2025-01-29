@@ -10,7 +10,7 @@ pub mod worker;
 
 use crate::executor::task::{OwnedTasks, TaskRef};
 use crate::executor::{queue, task, JoinHandle};
-use crate::thread_local::ThreadLocal;
+use crate::hart_local::HartLocal;
 use crate::util::condvar::Condvar;
 use crate::util::fast_rand::FastRand;
 use crate::util::parking_spot::ParkingSpot;
@@ -66,7 +66,7 @@ impl Handle {
                 idle,
                 condvars: (0..num_cores).map(|_| Condvar::new()).collect(),
                 parking_spot: ParkingSpot::default(),
-                tls: ThreadLocal::with_capacity(num_cores),
+                tls: HartLocal::with_capacity(num_cores),
                 shutdown_on_idle,
             },
         }

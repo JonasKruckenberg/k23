@@ -9,7 +9,7 @@ mod arena;
 mod frame;
 
 use crate::arch;
-use crate::thread_local::ThreadLocal;
+use crate::hart_local::HartLocal;
 use crate::vm::address::VirtualAddress;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use crate::vm::frame_list::FrameList;
@@ -54,7 +54,7 @@ pub fn init(boot_alloc: BootstrapAllocator) {
                 max_alignment,
             }),
             frames_in_caches_hint: AtomicUsize::new(0),
-            hart_local_cache: ThreadLocal::new(),
+            hart_local_cache: HartLocal::new(),
         }
     });
 }
@@ -63,7 +63,7 @@ pub struct FrameAllocator {
     /// Global list of arenas that can be allocated from.
     global: Mutex<GlobalFrameAllocator>,
     /// Per-hart cache of frames to speed up allocation.
-    hart_local_cache: ThreadLocal<RefCell<HartLocalFrameCache>>,
+    hart_local_cache: HartLocal<RefCell<HartLocalFrameCache>>,
     /// Number of frames - across all harts - that are in hart-local caches.
     /// This value must only ever be treated as a hint and should only be used to
     /// produce more accurate frame usage statistics.

@@ -25,7 +25,7 @@
 //! on `Counter` can be used to sum events across harts or even get the maximum or minimum value across
 //! harts.
 
-use crate::thread_local::ThreadLocal;
+use crate::hart_local::HartLocal;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Declares a new counter.
@@ -33,8 +33,8 @@ use core::sync::atomic::{AtomicU64, Ordering};
 macro_rules! counter {
     ($name:expr) => {{
         #[unsafe(link_section = concat!(".bss.kcounter.", $name))]
-        static ARENA: $crate::thread_local::ThreadLocal<::core::sync::atomic::AtomicU64> =
-            $crate::thread_local::ThreadLocal::new();
+        static ARENA: $crate::hart_local::HartLocal<::core::sync::atomic::AtomicU64> =
+            $crate::hart_local::HartLocal::new();
 
         Counter::new(&ARENA, $name)
     }};
@@ -42,13 +42,13 @@ macro_rules! counter {
 
 /// A kernel counter.
 pub struct Counter {
-    arena: &'static ThreadLocal<AtomicU64>,
+    arena: &'static HartLocal<AtomicU64>,
     name: &'static str,
 }
 
 impl Counter {
     #[doc(hidden)]
-    pub const fn new(arena: &'static ThreadLocal<AtomicU64>, name: &'static str) -> Self {
+    pub const fn new(arena: &'static HartLocal<AtomicU64>, name: &'static str) -> Self {
         Self { arena, name }
     }
 
