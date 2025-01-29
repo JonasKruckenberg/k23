@@ -331,6 +331,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
 
 [[package]]
+name = "fdt"
+version = "0.1.0"
+dependencies = [
+ "fallible-iterator",
+ "hashbrown 0.15.2",
+ "log",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -448,6 +457,7 @@ dependencies = [
  "cranelift-frontend",
  "dtb-parser",
  "fallible-iterator",
+ "fdt",
  "gimli",
  "hashbrown 0.15.2",
  "linked-list",

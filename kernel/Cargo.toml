@@ -22,6 +22,7 @@ unwind2.workspace = true
 backtrace.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
 mpsc-queue.workspace = true
+fdt.workspace = true
 
 log.workspace = true
 cfg-if.workspace = true

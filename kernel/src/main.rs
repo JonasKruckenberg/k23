@@ -16,6 +16,11 @@
 #![feature(std_internals, panic_can_unwind, fmt_internals)]
 #![feature(step_trait)]
 #![feature(box_into_inner)]
+#![feature(let_chains)]
+#![feature(array_chunks)]
+#![feature(iter_array_chunks)]
+#![feature(iter_next_chunk)]
+#![feature(if_let_guard)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 #![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
@@ -37,16 +42,16 @@ mod vm;
 mod wasm;
 
 use crate::error::Error;
-use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
-use core::cell::{Cell, RefCell};
+use core::cell::Cell;
 use core::range::Range;
+use core::slice;
 use hart_local::thread_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{Once, OnceLock};
+use sync::Once;
 use time::Instant;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
@@ -67,14 +72,9 @@ pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
-
 thread_local!(
-    pub static HART_LOCAL_MACHINE_INFO: RefCell<HartLocalMachineInfo> =
-        RefCell::new(HartLocalMachineInfo::default());
     pub static HARTID: Cell<usize> = Cell::new(usize::MAX);
 );
-
 #[used(linker)]
 #[unsafe(link_section = ".loader_config")]
 static LOADER_CONFIG: LoaderConfig = {
@@ -113,14 +113,8 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // perform global, architecture-specific initialization
         arch::init();
 
-        // TODO move this into a init function
-        let minfo = MACHINE_INFO
-            .get_or_try_init(|| {
-                // Safety: we have to trust the loader mapped the fdt correctly
-                unsafe { MachineInfo::from_dtb(fdt) }
-            })
-            .unwrap();
-        log::debug!("\n{minfo}");
+        let minfo = machine_info::init(fdt).unwrap();
+        log::debug!("{minfo:?}");
 
         // initialize the global frame allocator
         frame_alloc::init(boot_alloc);
@@ -142,11 +136,6 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
             shutdown_on_idle,
         );
     });
-
-    // // Safety: we have to trust the loader mapped the fdt correctly
-    let hart_local_minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt).unwrap() };
-    log::debug!("\n{hart_local_minfo}");
-    HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
 
     // perform EARLY per-hart, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
@@ -226,15 +215,18 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
     out
 }
 
-fn locate_device_tree(boot_info: &BootInfo) -> *const u8 {
+fn locate_device_tree(boot_info: &BootInfo) -> &'static [u8] {
     let fdt = boot_info
         .memory_regions
         .iter()
         .find(|region| region.kind == MemoryRegionKind::FDT)
         .expect("no FDT region");
 
-    boot_info
+    let base = boot_info
         .physical_address_offset
         .checked_add(fdt.range.start)
-        .unwrap() as *const u8
+        .unwrap() as *const u8;
+
+    // Safety: we need to trust the bootinfo data is correct
+    unsafe { slice::from_raw_parts(base, fdt.range.end.checked_sub(fdt.range.start).unwrap()) }
 }
