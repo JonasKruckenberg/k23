@@ -36,7 +36,7 @@ mod machine_info;
 mod metrics;
 mod panic;
 mod time;
-mod trap_handler;
+mod traps;
 mod util;
 mod vm;
 mod wasm;

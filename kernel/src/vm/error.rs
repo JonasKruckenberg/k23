@@ -32,7 +32,7 @@ pub enum Error {
     Sbi(riscv::sbi::Error),
     KernelFaultInUserSpace(VirtualAddress),
     UserFaultInKernelSpace(VirtualAddress),
-    Trap(crate::trap_handler::Trap),
+    Trap(crate::traps::Trap),
 }
 
 impl From<crate::vm::frame_alloc::AllocError> for Error {

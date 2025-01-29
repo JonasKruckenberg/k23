@@ -7,7 +7,7 @@
 
 use crate::arch;
 use crate::arch::with_user_memory_access;
-use crate::trap_handler::TrapMask;
+use crate::traps::TrapMask;
 use crate::vm::address::AddressRangeExt;
 use crate::vm::address_space::{AddressSpaceKind, Batch};
 use crate::vm::vmo::Vmo;
@@ -116,7 +116,7 @@ impl UserMmap {
         self.ensure_mapped(aspace, range, false)?;
 
         #[expect(tail_expr_drop_order, reason = "")]
-        crate::trap_handler::catch_traps(TRAP_MASK, || {
+        crate::traps::catch_traps(TRAP_MASK, || {
             // Safety: checked by caller and `catch_traps`
             unsafe {
                 with_user_memory_access(|| {
@@ -146,7 +146,7 @@ impl UserMmap {
         }
 
         #[expect(tail_expr_drop_order, reason = "")]
-        crate::trap_handler::catch_traps(TRAP_MASK, || {
+        crate::traps::catch_traps(TRAP_MASK, || {
             // Safety: checked by caller and `catch_traps`
             unsafe {
                 with_user_memory_access(|| {
