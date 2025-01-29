@@ -5,23 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::cell::Cell;
 use log::{Level, LevelFilter, Metadata, Record};
-use thread_local::thread_local;
-
-thread_local!(
-    static HARTID: Cell<usize> = Cell::new(usize::MAX);
-);
 
 pub fn init(lvl: LevelFilter) {
     static LOGGER: Logger = Logger;
 
     log::set_logger(&LOGGER).unwrap();
     log::set_max_level(lvl);
-}
-
-pub fn per_hart_init(hartid: usize) {
-    HARTID.set(hartid);
 }
 
 struct Logger;
@@ -44,7 +34,7 @@ impl log::Log for Logger {
             print(format_args!(
                 "[{color}{:<5}\x1b[0m HART {} {}] {}\n",
                 record.level(),
-                HARTID.get(),
+                crate::HARTID.get(),
                 record.module_path_static().unwrap_or_default(),
                 record.args()
             ));

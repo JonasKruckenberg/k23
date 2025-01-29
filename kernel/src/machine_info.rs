@@ -6,437 +6,366 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::arch::RiscvExtensions;
+use crate::hart_local::HartLocal;
 use crate::vm::PhysicalAddress;
+use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::ffi::CStr;
-use core::fmt::Formatter;
+use core::num::NonZero;
+use core::ops::ControlFlow;
 use core::range::Range;
-use core::{fmt, mem};
-use dtb_parser::{DevTree, Node, Strings, Visitor};
+use core::str::FromStr;
 use fallible_iterator::FallibleIterator;
+use fdt::{Fdt, Node, NodePath};
+use hashbrown::HashMap;
+use sync::OnceLock;
 
-/// Information about the machine we're running on.
-/// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
+static MACHINE_INFO: OnceLock<MachineInfo<'static>> = OnceLock::new();
+
+#[derive(Debug)]
 pub struct MachineInfo<'dt> {
-    /// The FDT blob passed to us by the previous stage loader
-    pub fdt: &'dt [u8],
+    pub fdt: Fdt<'dt>,
     /// The boot arguments passed to us by the previous stage loader.
     pub bootargs: Option<&'dt CStr>,
     /// The RNG seed passed to us by the previous stage loader.
     pub rng_seed: Option<&'dt [u8]>,
-    /// MMIO devices
-    pub mmio_devices: Vec<MmioDevice<'dt>>,
+    pub hart_local: HartLocal<HartLocalMachineInfo>,
+    pub interrupt_controllers: HashMap<u32, InterruptController<'dt>>,
+    pub atlas: NodeAtlas<'dt>,
 }
 
-pub struct MmioDevice<'dt> {
-    pub regions: Vec<Range<PhysicalAddress>>,
-    pub name: &'dt str,
-    pub compatible: Vec<&'dt str>,
-}
-
-impl fmt::Debug for MachineInfo<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MachineInfo")
-            .field("fdt", &self.fdt.as_ptr_range())
-            .field("bootargs", &self.bootargs)
-            .field("rng_seed", &self.rng_seed)
-            .finish()
-    }
-}
-
-impl fmt::Display for MachineInfo<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "{:<22} : {:?}",
-            "DEVICE TREE BLOB",
-            self.fdt.as_ptr_range()
-        )?;
-        if let Some(bootargs) = self.bootargs {
-            writeln!(f, "{:<22} : {:?}", "BOOTARGS", bootargs)?;
-        } else {
-            writeln!(f, "{:<22} : None", "BOOTARGS")?;
-        }
-        if let Some(rng_seed) = self.rng_seed {
-            writeln!(f, "{:<22} : {:?}", "PRNG SEED", rng_seed)?;
-        } else {
-            writeln!(f, "{:<22} : None", "PRNG SEED")?;
-        }
-        for (idx, r) in self.mmio_devices.iter().enumerate() {
-            for range in &r.regions {
-                writeln!(
-                    f,
-                    "MMIO DEVICE {:<11}: {}..{} {:<20} {:?}",
-                    idx, range.start, range.end, r.name, r.compatible
-                )?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl MachineInfo<'_> {
-    /// Parse the FDT blob and extract the machine information.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the `dtb_ptr` points to a valid FDT blob.
-    pub unsafe fn from_dtb(dtb_ptr: *const u8) -> crate::Result<Self> {
-        // Safety: caller has to ensure `dtb_ptr` is valid
-        let fdt = unsafe { DevTree::from_raw(dtb_ptr) }?;
-        let fdt_slice = fdt.as_slice();
-
-        let mut v = MachineInfoVisitor::default();
-        fdt.visit(&mut v)?;
-
-        Ok(MachineInfo {
-            fdt: fdt_slice,
-            bootargs: v.chosen.bootargs,
-            rng_seed: v.chosen.rng_seed,
-            mmio_devices: v.soc.regions,
-        })
-    }
-}
-
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct HartLocalMachineInfo {
-    /// The hartid of the current hart.
-    pub hartid: usize,
-    /// Timebase frequency in Hertz for the Hart.
+    /// Timebase frequency of the hart in Hertz.
     pub timebase_frequency: u64,
-    pub riscv_extensions: RiscvExtensions,
-    pub riscv_cbop_block_size: Option<usize>,
-    pub riscv_cboz_block_size: Option<usize>,
-    pub riscv_cbom_block_size: Option<usize>,
+    pub numa_node_id: usize,
+    pub arch: arch::machine_info::HartLocalMachineInfo,
 }
 
-impl fmt::Display for HartLocalMachineInfo {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{:<22} : {}", "HARTID", self.hartid)?;
-        writeln!(
-            f,
-            "{:<22} : {}",
-            "TIMEBASE FREQUENCY", self.timebase_frequency
-        )?;
-        writeln!(
-            f,
-            "{:<22} : {:?}",
-            "RISCV EXTENSIONS", self.riscv_extensions
-        )?;
-        if let Some(size) = self.riscv_cbop_block_size {
-            writeln!(f, "{:<22} : {}", "CBOP BLOCK SIZE", size)?;
-        } else {
-            writeln!(f, "{:<22} : None", "CBOP BLOCK SIZE")?;
-        }
-        if let Some(size) = self.riscv_cboz_block_size {
-            writeln!(f, "{:<22} : {}", "CBOZ BLOCK SIZE", size)?;
-        } else {
-            writeln!(f, "{:<22} : None", "CBOZ BLOCK SIZE")?;
-        }
-        if let Some(size) = self.riscv_cbom_block_size {
-            writeln!(f, "{:<22} : {}", "CBOM BLOCK SIZE", size)?;
-        } else {
-            writeln!(f, "{:<22} : None", "CBOM BLOCK SIZE")?;
-        }
-
-        Ok(())
-    }
+/// An interrupt source that can be wired to a parent interrupt controller.
+/// The number of cells in the interrupt specifier is determined by the parent interrupt controller.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum IrqSource {
+    /// RISC-V seems to exclusively use 1-cell interrupt sources.
+    C1(u32),
+    /// AArch64 uses exclusively 3-cell interrupt sources.
+    C3(u32, u32, u32),
 }
 
-impl HartLocalMachineInfo {
-    /// Parse the FDT blob and extract the machine information.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the `dtb_ptr` points to a valid FDT blob.
-    pub unsafe fn from_dtb(hartid: usize, dtb_ptr: *const u8) -> crate::Result<Self> {
-        // Safety: caller has to ensure the `dtb_ptr` is valid
-        let fdt = unsafe { DevTree::from_raw(dtb_ptr) }?;
-
-        let mut v = HartLocalMachineInfoVisitor::default();
-        fdt.visit(&mut v)?;
-
-        Ok(Self {
-            hartid,
-            timebase_frequency: v.cpus.timebase_frequency,
-            riscv_extensions: v.cpus.riscv_extensions,
-            riscv_cbop_block_size: v.cpus.riscv_cbop_block_size,
-            riscv_cboz_block_size: v.cpus.riscv_cboz_block_size,
-            riscv_cbom_block_size: v.cpus.riscv_cbom_block_size,
-        })
-    }
+// TODO better name
+#[derive(Debug)]
+pub struct InterruptController<'dt> {
+    pub compatible: &'dt str,
+    pub numa_node_id: usize,
+    pub mmio_regions: Vec<Range<PhysicalAddress>>,
+    pub children: HashMap<IrqSource, u32>,
+    pub parents: Vec<(u32, IrqSource)>,
 }
 
-/*--------------------------------------------------------------------------------------------------
-    visitors
----------------------------------------------------------------------------------------------------*/
-#[derive(Default)]
-struct MachineInfoVisitor<'dt> {
-    chosen: ChosenVisitor<'dt>,
-    soc: SocVisitor<'dt>,
+pub fn machine_info() -> &'static MachineInfo<'static> {
+    MACHINE_INFO.get().expect("MachineInfo not initialized")
 }
 
-impl<'dt> Visitor<'dt> for MachineInfoVisitor<'dt> {
-    type Error = dtb_parser::Error;
-    fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
-        if name.is_empty() {
-            node.visit(self)?;
-        } else if name == "chosen" {
-            node.visit(&mut self.chosen)?;
-        } else if name == "soc" {
-            node.visit(&mut self.soc)?;
+pub fn init(fdt: &'static [u8]) -> crate::Result<&'static MachineInfo<'static>> {
+    MACHINE_INFO.get_or_try_init(|| {
+        // Safety: u32 has no invalid bit patterns
+        let (left, aligned, _) = unsafe { fdt.align_to::<u32>() };
+        assert!(left.is_empty()); // TODO decide what to do with unaligned slices
+        let fdt = Fdt::new(aligned)?;
+
+        // collect all
+        let atlas = NodeAtlas::from_fdt(&fdt, |path, _| {
+            path.starts_with("/chosen") || path.starts_with("/cpus") || path.starts_with("/soc")
+        })?;
+
+        let mut bootargs = None;
+        let mut rng_seed = None;
+        if let Some(node) = atlas.find_node("/chosen") {
+            bootargs = node
+                .property("bootargs")
+                .and_then(|prop| prop.as_cstr().ok());
+            rng_seed = node.property("rng-seed").map(|prop| prop.raw);
         }
 
-        Ok(())
-    }
-}
+        let mut hart_local: HartLocal<HartLocalMachineInfo> = HartLocal::new();
+        let mut default_timebase_frequency: Option<u64> = None;
+        for (id, node) in atlas.find_nodes("/cpus").unwrap() {
+            let name = node.name()?;
+            if name.name == "cpus" {
+                default_timebase_frequency = node
+                    .property("timebase-frequency")
+                    .and_then(|prop| prop.as_u64().ok());
+            }
 
-#[derive(Default)]
-struct ChosenVisitor<'dt> {
-    bootargs: Option<&'dt CStr>,
-    rng_seed: Option<&'dt [u8]>,
-}
-
-impl<'dt> Visitor<'dt> for ChosenVisitor<'dt> {
-    type Error = dtb_parser::Error;
-
-    fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
-        match name {
-            "bootargs" => self.bootargs = Some(CStr::from_bytes_until_nul(value)?),
-            "rng-seed" => self.rng_seed = Some(value),
-            _ => log::warn!("unknown /chosen property: {name}"),
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Default)]
-struct HartLocalMachineInfoVisitor {
-    cpus: CpusVisitor,
-}
-impl<'dt> Visitor<'dt> for HartLocalMachineInfoVisitor {
-    type Error = dtb_parser::Error;
-    fn visit_subnode(&mut self, name: &str, node: Node<'dt>) -> Result<(), Self::Error> {
-        if name.is_empty() {
-            node.visit(self)?;
-        } else if name == "cpus" {
-            node.visit(&mut self.cpus)?;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Default)]
-struct CpusVisitor {
-    hartid: usize,
-    default_timebase_frequency: Option<u64>,
-    timebase_frequency: u64,
-    riscv_extensions: RiscvExtensions,
-    riscv_cbop_block_size: Option<usize>,
-    riscv_cboz_block_size: Option<usize>,
-    riscv_cbom_block_size: Option<usize>,
-}
-
-impl CpusVisitor {
-    fn cpu_visitor(&self) -> CpuVisitor {
-        CpuVisitor::default()
-    }
-}
-
-impl<'dt> Visitor<'dt> for CpusVisitor {
-    type Error = dtb_parser::Error;
-
-    fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
-        if let Some((_, str)) = name.split_once("cpu@") {
-            let hartid: usize = str.parse().expect("invalid hartid");
-
-            if hartid == self.hartid {
-                let mut v = self.cpu_visitor();
-                node.visit(&mut v)?;
-                self.timebase_frequency = v
-                    .timebase_frequency
-                    .or(self.default_timebase_frequency)
+            if name.name == "cpu"
+                && let Some(hartid) = name.unit_address.and_then(|s| usize::from_str(s).ok())
+            {
+                let timebase_frequency = node
+                    .property("timebase-frequency")
+                    .and_then(|prop| prop.as_u64().ok())
+                    .or(default_timebase_frequency)
                     .expect("RISC-V system with no 'timebase-frequency' in FDT");
-                self.riscv_extensions = v.riscv_extensions;
-                self.riscv_cbop_block_size = v.riscv_cbop_block_size;
-                self.riscv_cboz_block_size = v.riscv_cboz_block_size;
-                self.riscv_cbom_block_size = v.riscv_cbom_block_size;
+                let numa_node_id = node
+                    .property("numa-node-id")
+                    .and_then(|prop| prop.as_usize().ok())
+                    .unwrap_or_default();
+
+                hart_local.insert_for(
+                    hartid,
+                    HartLocalMachineInfo {
+                        timebase_frequency,
+                        numa_node_id,
+                        arch: arch::machine_info::parse_hart_local(&atlas, id, node),
+                    },
+                );
             }
         }
 
-        Ok(())
-    }
+        let mut interrupt_controllers: HashMap<u32, InterruptController> = HashMap::new();
+        for (_, node) in atlas.iter() {
+            if node.property("interrupt-controller").is_some() {
+                let phandle = node.property("phandle").unwrap().as_u32().unwrap();
 
-    fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
-        if name == "timebase-frequency" {
-            // timebase-frequency can either be 32 or 64 bits
-            // https://devicetree-specification.readthedocs.io/en/latest/chapter3-devicenodes.html#cpus-cpu-node-properties
-            let value = match value.len() {
-                4 => u64::from(u32::from_be_bytes(value.try_into()?)),
-                8 => u64::from_be_bytes(value.try_into()?),
-                _ => unreachable!(),
-            };
-            self.default_timebase_frequency = Some(value);
+                let mut mmio_regions = Vec::new();
+                if let Some(regs) = node.reg() {
+                    for reg in regs.unwrap() {
+                        let start = PhysicalAddress::new(reg.starting_address);
+                        let end = start.checked_add(reg.size.unwrap()).unwrap();
+                        mmio_regions.push(Range::from(start..end));
+                    }
+                }
+
+                let mut ctl = InterruptController {
+                    compatible: node.property("compatible").unwrap().as_str().unwrap(),
+                    numa_node_id: node
+                        .property("numa-node-id")
+                        .map(|prop| prop.as_usize().unwrap())
+                        .unwrap_or_default(),
+                    mmio_regions,
+                    children: HashMap::new(),
+                    parents: Vec::new(),
+                };
+
+                if let Some(intr_data) = node.property("interrupts-extended") {
+                    let mut intr_data = intr_data
+                        .raw
+                        .array_chunks::<4>()
+                        .map(|x| u32::from_be_bytes(*x));
+
+                    log::debug!("interrupts-extended begin:");
+                    while let Some(parent_phandle) = intr_data.next()
+                        && let Some(parent) = atlas.find_by_phandle(parent_phandle)
+                        && let Some(parent_interrupt_cells) = parent.interrupt_cells()
+                        && let Some(interrupt) =
+                            interrupt_source(&mut intr_data, parent_interrupt_cells)
+                    {
+                        log::debug!("interrupt {interrupt:?} is wired to node {parent:?}",);
+
+                        interrupt_controllers
+                            .get_mut(&parent_phandle)
+                            .unwrap()
+                            .children
+                            .insert(interrupt.clone(), phandle);
+                        ctl.parents.push((parent_phandle, interrupt));
+                    }
+                    log::debug!("interrupts-extended end");
+                } else if let (Some(interrupt_parent), Some(intr_data)) = (
+                    node.property("interrupt-parent"),
+                    node.property("interrupts"),
+                ) {
+                    let parent_phandle = interrupt_parent.as_u32().unwrap();
+                    let parent = atlas.find_by_phandle(parent_phandle).unwrap();
+                    let parent_interrupt_cells = parent.interrupt_cells().unwrap();
+
+                    let mut intr_data = intr_data
+                        .raw
+                        .array_chunks::<4>()
+                        .map(|x| u32::from_be_bytes(*x));
+
+                    log::debug!("interrupts begin:");
+                    while let Some(interrupt) =
+                        interrupt_source(&mut intr_data, parent_interrupt_cells)
+                    {
+                        log::debug!("interrupt {interrupt:?} is wired to node {parent:?}",);
+
+                        interrupt_controllers
+                            .get_mut(&parent_phandle)
+                            .unwrap()
+                            .children
+                            .insert(interrupt.clone(), phandle);
+                        ctl.parents.push((parent_phandle, interrupt));
+                    }
+                    log::debug!("interrupts end");
+                }
+
+                interrupt_controllers.insert(phandle, ctl);
+            }
         }
 
-        Ok(())
+        #[expect(tail_expr_drop_order, reason = "")]
+        Ok(MachineInfo {
+            fdt,
+            bootargs,
+            rng_seed,
+            hart_local,
+            interrupt_controllers,
+            atlas,
+        })
+    })
+}
+
+fn interrupt_source(
+    iter: &mut impl Iterator<Item = u32>,
+    interrupt_cells: usize,
+) -> Option<IrqSource> {
+    match interrupt_cells {
+        1 => Some(IrqSource::C1(iter.next()?)),
+        3 if let Ok([a, b, c]) = iter.next_chunk() => Some(IrqSource::C3(a, b, c)),
+        _ => None,
     }
 }
 
-#[derive(Default)]
-struct CpuVisitor {
-    timebase_frequency: Option<u64>,
-    // TODO maybe move arch-specific info into an arch-specific module
-    riscv_extensions: RiscvExtensions,
-    riscv_cbop_block_size: Option<usize>,
-    riscv_cboz_block_size: Option<usize>,
-    riscv_cbom_block_size: Option<usize>,
+fn is_supervisor_irq_source(source: &IrqSource) -> bool {
+    match source {
+        IrqSource::C1(u32::MAX) | IrqSource::C3(u32::MAX, _, _) => false,
+        // FIXME(RISCV): OpenSBI apparently doesn't support multiple PLICs and so only
+        //  rewrites the first PLICs machine-level interrupt sources to -1.
+        IrqSource::C1(0xb) => false,
+        _ => true,
+    }
 }
 
-impl<'dt> Visitor<'dt> for CpuVisitor {
-    type Error = dtb_parser::Error;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NodeId([Option<NonZero<usize>>; 6]);
 
-    fn visit_property(&mut self, name: &'dt str, value: &'dt [u8]) -> Result<(), Self::Error> {
-        if name == "timebase-frequency" {
-            // timebase-frequency can either be 32 or 64 bits
-            // https://devicetree-specification.readthedocs.io/en/latest/chapter3-devicenodes.html#cpus-cpu-node-properties
-            let value = match value.len() {
-                4 => u64::from(u32::from_be_bytes(value.try_into()?)),
-                8 => u64::from_be_bytes(value.try_into()?),
-                _ => unreachable!(),
-            };
-            self.timebase_frequency = Some(value);
-        } else if name == "riscv,isa-extensions" {
-            self.riscv_extensions = arch::parse_riscv_extensions(Strings::new(value))?;
-        } else if name == "riscv,cbop-block-size" {
-            let value = match value.len() {
-                4 => usize::try_from(u32::from_be_bytes(value.try_into()?))?,
-                8 => usize::try_from(u64::from_be_bytes(value.try_into()?))?,
-                _ => unreachable!(),
-            };
-            self.riscv_cbop_block_size = Some(value);
-        } else if name == "riscv,cboz-block-size" {
-            let value = match value.len() {
-                4 => usize::try_from(u32::from_be_bytes(value.try_into()?))?,
-                8 => usize::try_from(u64::from_be_bytes(value.try_into()?))?,
-                _ => unreachable!(),
-            };
-            self.riscv_cboz_block_size = Some(value);
-        } else if name == "riscv,cbom-block-size" {
-            let value = match value.len() {
-                4 => usize::try_from(u32::from_be_bytes(value.try_into()?))?,
-                8 => usize::try_from(u64::from_be_bytes(value.try_into()?))?,
-                _ => unreachable!(),
-            };
-            self.riscv_cbom_block_size = Some(value);
+impl NodeId {
+    fn depth(&self) -> usize {
+        self.0.iter().filter(|s| s.is_some()).count() - 1
+    }
+
+    pub fn append<'dt>(mut self, atlas: &NodeAtlas<'dt>, path: &'dt str) -> Option<NodeId> {
+        let start = self.depth() + 1;
+        for (idx, str) in path.split('/').skip(1).enumerate() {
+            self.0[start + idx] = Some(*atlas.string2idx.get(str)?);
         }
 
-        Ok(())
+        Some(self)
     }
 }
 
-#[derive(Default)]
-struct SocVisitor<'dt> {
-    regions: Vec<MmioDevice<'dt>>,
-    address_size: usize,
-    width_size: usize,
-    child: SocVisitorChildVisitor<'dt>,
+#[derive(Default, Debug)]
+pub struct NodeAtlas<'dt> {
+    nodes: BTreeMap<NodeId, Node<'dt>>,
+    phandle_to_nodeid: HashMap<u32, NodeId>,
+    string2idx: HashMap<&'dt str, NonZero<usize>>,
+    strings: Vec<&'dt str>,
 }
 
-#[derive(Default)]
-struct SocVisitorChildVisitor<'dt> {
-    regs: Vec<Range<PhysicalAddress>>,
-    address_size: usize,
-    width_size: usize,
-    name: &'dt str,
-    compatible: Vec<&'dt str>,
-}
+impl<'dt> NodeAtlas<'dt> {
+    pub fn from_fdt<F>(fdt: &Fdt<'dt>, mut filter: F) -> crate::Result<Self>
+    where
+        F: FnMut(&NodePath<'_, 'dt>, &Node<'dt>) -> bool,
+    {
+        let mut atlas = Self::default();
 
-impl<'dt> Visitor<'dt> for SocVisitor<'dt> {
-    type Error = dtb_parser::Error;
+        fdt.walk(|path, node| -> ControlFlow<()> {
+            if filter(&path, &node) {
+                atlas.insert(path, node);
+            }
+            ControlFlow::Continue(())
+        })?;
 
-    fn visit_address_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
-        let size_in_bytes = size_in_cells as usize * size_of::<u32>();
-
-        self.address_size = size_in_bytes;
-
-        Ok(())
+        Ok(atlas)
     }
 
-    fn visit_size_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
-        let size_in_bytes = size_in_cells as usize * size_of::<u32>();
+    pub fn insert(&mut self, path: NodePath<'_, 'dt>, node: Node<'dt>) -> NodeId {
+        let mut id = NodeId([None; 6]);
 
-        self.width_size = size_in_bytes;
+        for (idx, str) in path.into_iter().skip(1).enumerate() {
+            id.0[idx] = Some(self.intern_str(str));
 
-        Ok(())
-    }
-
-    fn visit_subnode(&mut self, name: &'dt str, node: Node<'dt>) -> Result<(), Self::Error> {
-        self.child.name = name;
-        self.child.address_size = self.address_size;
-        self.child.width_size = self.width_size;
-        node.visit(&mut self.child)?;
-        self.regions.push(self.child.result());
-        Ok(())
-    }
-}
-
-impl<'dt> SocVisitorChildVisitor<'dt> {
-    fn result(&mut self) -> MmioDevice<'dt> {
-        MmioDevice {
-            regions: mem::take(&mut self.regs),
-            name: self.name,
-            compatible: mem::take(&mut self.compatible),
-        }
-    }
-}
-
-impl<'dt> Visitor<'dt> for SocVisitorChildVisitor<'dt> {
-    type Error = dtb_parser::Error;
-
-    fn visit_address_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
-        let size_in_bytes = size_in_cells as usize * size_of::<u32>();
-
-        self.address_size = size_in_bytes;
-
-        Ok(())
-    }
-
-    fn visit_size_cells(&mut self, size_in_cells: u32) -> Result<(), Self::Error> {
-        let size_in_bytes = size_in_cells as usize * size_of::<u32>();
-
-        self.width_size = size_in_bytes;
-
-        Ok(())
-    }
-
-    fn visit_compatible(&mut self, strings: Strings<'dt>) -> Result<(), Self::Error> {
-        self.compatible = strings.collect::<Vec<_>>()?;
-
-        Ok(())
-    }
-
-    fn visit_reg(&mut self, mut reg: &'dt [u8]) -> Result<(), Self::Error> {
-        debug_assert_ne!(self.address_size, 0);
-        debug_assert_ne!(self.width_size, 0);
-
-        while !reg.is_empty() {
-            let (start, rest) = reg.split_at(self.address_size);
-            let (width, rest) = rest.split_at(self.width_size);
-            reg = rest;
-
-            let start = usize::from_be_bytes(start.try_into()?);
-            let width = usize::from_be_bytes(width.try_into()?);
-
-            let start = PhysicalAddress::new(start);
-            self.regs
-                .push(Range::from(start..start.checked_add(width).unwrap()));
+            self.intern_str(str);
         }
 
-        Ok(())
+        if let Some(phandle) = node.property("phandle") {
+            self.phandle_to_nodeid.insert(phandle.as_u32().unwrap(), id);
+        }
+        self.nodes.insert(id, node);
+
+        id
+    }
+
+    pub(crate) fn get(&self, id: &NodeId) -> Option<&Node<'dt>> {
+        self.nodes.get(id)
+    }
+
+    pub fn find_node(&self, path: &'dt str) -> Option<&Node<'dt>> {
+        let mut id = NodeId([None; 6]);
+
+        for (idx, str) in path.split('/').skip(1).enumerate() {
+            id.0[idx] = Some(*self.string2idx.get(str)?);
+        }
+
+        self.nodes.get(&id)
+    }
+
+    pub fn find_nodes(
+        &self,
+        path: &'dt str,
+    ) -> Option<impl Iterator<Item = (&NodeId, &Node<'dt>)>> {
+        let mut start = NodeId([None; 6]);
+        let mut depth = 0;
+
+        for (idx, str) in path.split('/').skip(1).enumerate() {
+            start.0[idx] = Some(*self.string2idx.get(str)?);
+            depth = idx;
+        }
+
+        let mut end = start;
+        end.0[depth + 1] = Some(NonZero::<usize>::MAX);
+
+        Some(self.nodes.range(start..end))
+    }
+
+    pub fn find_children(
+        &self,
+        path: &'dt str,
+    ) -> Option<impl Iterator<Item = (&NodeId, &Node<'dt>)>> {
+        let mut start = NodeId([None; 6]);
+        let mut depth = 0;
+
+        for (idx, str) in path.split('/').skip(1).enumerate() {
+            start.0[idx] = Some(*self.string2idx.get(str)?);
+            depth = idx;
+        }
+
+        let mut end = start;
+        end.0[depth + 1] = Some(NonZero::<usize>::MAX);
+
+        Some(
+            self.nodes
+                .range(start..end)
+                .filter(move |(id, _)| id.depth() == depth + 1),
+        )
+    }
+
+    pub fn find_by_phandle(&self, phandle: u32) -> Option<&Node<'dt>> {
+        self.phandle_to_nodeid
+            .get(&phandle)
+            .and_then(|id| self.nodes.get(id))
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&NodeId, &Node<'dt>)> {
+        self.nodes.iter()
+    }
+
+    fn intern_str(&mut self, str: &'dt str) -> NonZero<usize> {
+        if let Some(idx) = self.string2idx.get(str) {
+            return *idx;
+        }
+        let idx = NonZero::new(self.strings.len() + 1).unwrap();
+        self.strings.push(str);
+        self.string2idx.insert(str, idx);
+        idx
     }
 }

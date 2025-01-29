@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+pub mod machine_info;
 mod setjmp_longjmp;
 mod trap_handler;
 mod utils;
 mod vm;
 
+use crate::machine_info::machine_info;
+use crate::time;
 use crate::vm::VirtualAddress;
-use crate::{time, HART_LOCAL_MACHINE_INFO};
 use bitflags::bitflags;
 use core::arch::asm;
 use core::cell::Cell;
@@ -69,6 +71,7 @@ pub fn per_hart_init_late() {
         interrupt::enable();
 
         // Enable supervisor timer and external interrupts
+        sie::set_ssie();
         sie::set_stie();
         sie::set_seie();
     }
@@ -290,9 +293,7 @@ pub unsafe fn hart_park_timeout(duration: Duration) {
     unsafe {
         IN_TIMEOUT.set(true);
 
-        #[expect(tail_expr_drop_order, reason = "")]
-        let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
-
+        let timebase_freq = machine_info().hart_local.get().unwrap().timebase_frequency;
         riscv::sbi::time::set_timer(
             riscv::time::read64() + time::duration_to_ticks_unchecked(duration, timebase_freq),
         )

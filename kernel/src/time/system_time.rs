@@ -5,11 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::NANOS_PER_SEC;
-use crate::MACHINE_INFO;
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
-use core::sync::atomic::{AtomicPtr, Ordering};
 use core::time::Duration;
 
 pub const UNIX_EPOCH: SystemTime = SystemTime(Duration::ZERO);
@@ -30,40 +27,43 @@ impl SystemTime {
         // Only device supported right now is "google,goldfish-rtc"
         // https://android.googlesource.com/platform/external/qemu/+/master/docs/GOLDFISH-VIRTUAL-HARDWARE.TXT
 
-        let rtc = MACHINE_INFO
-            .get()
-            .unwrap()
-            .mmio_devices
-            .iter()
-            .find(|region| region.compatible.contains(&"google,goldfish-rtc"))
-            .unwrap();
+        // machine_info().
+        // let rtc = MACHINE_INFO
+        //     .get()
+        //     .unwrap()
+        //     .mmio_devices
+        //     .iter()
+        //     .find(|region| region.compatible.contains(&"google,goldfish-rtc"))
+        //     .unwrap();
 
         // Safety: MMIO device access
-        let time_ns = unsafe {
-            assert!(rtc.regions[0].start.is_aligned_to(4));
+        // let time_ns = unsafe {
+        //     assert!(rtc.regions[0].start.is_aligned_to(4));
+        //
+        //     #[expect(clippy::cast_ptr_alignment, reason = "checked above")]
+        //     let time_low = AtomicPtr::new(rtc.regions[0].start.as_mut_ptr().cast::<u32>());
+        //     #[expect(clippy::cast_ptr_alignment, reason = "checked above")]
+        //     let time_high = AtomicPtr::new(
+        //         rtc.regions[0]
+        //             .start
+        //             .checked_add(0x04)
+        //             .unwrap()
+        //             .as_mut_ptr()
+        //             .cast::<u32>(),
+        //     );
+        //
+        //     let low = time_low.load(Ordering::Relaxed).read_volatile();
+        //     let high = time_high.load(Ordering::Relaxed).read_volatile();
+        //
+        //     (u64::from(high) << 32_i32) | u64::from(low)
+        // };
+        //
+        // SystemTime(Duration::new(
+        //     time_ns / NANOS_PER_SEC,
+        //     (time_ns % NANOS_PER_SEC) as u32,
+        // ))
 
-            #[expect(clippy::cast_ptr_alignment, reason = "checked above")]
-            let time_low = AtomicPtr::new(rtc.regions[0].start.as_mut_ptr().cast::<u32>());
-            #[expect(clippy::cast_ptr_alignment, reason = "checked above")]
-            let time_high = AtomicPtr::new(
-                rtc.regions[0]
-                    .start
-                    .checked_add(0x04)
-                    .unwrap()
-                    .as_mut_ptr()
-                    .cast::<u32>(),
-            );
-
-            let low = time_low.load(Ordering::Relaxed).read_volatile();
-            let high = time_high.load(Ordering::Relaxed).read_volatile();
-
-            (u64::from(high) << 32_i32) | u64::from(low)
-        };
-
-        SystemTime(Duration::new(
-            time_ns / NANOS_PER_SEC,
-            (time_ns % NANOS_PER_SEC) as u32,
-        ))
+        todo!()
     }
 
     pub fn duration_since(&self, earlier: SystemTime) -> Result<Duration, SystemTimeError> {

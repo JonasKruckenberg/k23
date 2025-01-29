@@ -5,8 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::machine_info::machine_info;
+use crate::time;
 use crate::time::NANOS_PER_SEC;
-use crate::{time, HART_LOCAL_MACHINE_INFO};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
@@ -34,8 +35,7 @@ impl Instant {
     }
 
     pub fn from_ticks(ticks: u64) -> Self {
-        #[expect(tail_expr_drop_order, reason = "")]
-        let timebase_freq = HART_LOCAL_MACHINE_INFO.with(|minfo| minfo.borrow().timebase_frequency);
+        let timebase_freq = machine_info().hart_local.get().unwrap().timebase_frequency;
         Instant(time::ticks_to_duration(ticks, timebase_freq))
     }
 
