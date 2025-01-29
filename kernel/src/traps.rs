@@ -33,10 +33,6 @@ pub struct Trap {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub enum TrapReason {
-    SupervisorSoftwareInterrupt,
-    SupervisorTimerInterrupt,
-    SupervisorExternalInterrupt,
-
     /// Instruction address misaligned
     InstructionMisaligned,
     /// Instruction access fault
@@ -69,9 +65,6 @@ pub enum TrapReason {
 impl From<TrapReason> for TrapMask {
     fn from(value: TrapReason) -> Self {
         match value {
-            TrapReason::SupervisorSoftwareInterrupt => TrapMask::SupervisorSoftwareInterrupt,
-            TrapReason::SupervisorTimerInterrupt => TrapMask::SupervisorTimerInterrupt,
-            TrapReason::SupervisorExternalInterrupt => TrapMask::SupervisorExternalInterrupt,
             TrapReason::InstructionMisaligned => TrapMask::InstructionMisaligned,
             TrapReason::InstructionFault => TrapMask::InstructionFault,
             TrapReason::IllegalInstruction => TrapMask::IllegalInstruction,
