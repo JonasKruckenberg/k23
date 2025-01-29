@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
 use crate::time::Instant;
-use crate::{arch};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use core::mem::offset_of;
