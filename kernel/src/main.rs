@@ -25,11 +25,11 @@ mod allocator;
 mod arch;
 mod error;
 mod executor;
+mod hart_local;
 mod logger;
 mod machine_info;
 mod metrics;
 mod panic;
-mod thread_local;
 mod time;
 mod trap_handler;
 mod util;
@@ -40,13 +40,13 @@ use crate::error::Error;
 use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use core::range::Range;
+use hart_local::thread_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::{Once, OnceLock};
-use thread_local::thread_local;
 use time::Instant;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
@@ -72,6 +72,7 @@ pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
 thread_local!(
     pub static HART_LOCAL_MACHINE_INFO: RefCell<HartLocalMachineInfo> =
         RefCell::new(HartLocalMachineInfo::default());
+    pub static HARTID: Cell<usize> = Cell::new(usize::MAX);
 );
 
 #[used(linker)]
@@ -84,9 +85,7 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
-    // initialize the hart local state of the logger before enabling it, so it is ready as soon as
-    // logging is turned on
-    logger::per_hart_init(hartid);
+    HARTID.set(hartid);
 
     // perform EARLY per-hart, architecture-specific initialization
     // (e.g. resetting the FPU)
@@ -183,7 +182,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // Run thread-local destructors
     // Safety: after this point thread-locals cannot be accessed anymore anyway
     unsafe {
-        thread_local::destructors::run();
+        hart_local::destructors::run();
     }
 
     arch::exit(0);

@@ -68,7 +68,7 @@ use crate::executor::queue::Overflow;
 use crate::executor::task::{OwnedTasks, TaskRef};
 use crate::executor::{queue, task};
 use crate::metrics::Counter;
-use crate::thread_local::ThreadLocal;
+use crate::hart_local::HartLocal;
 use crate::util::condvar::Condvar;
 use crate::util::fast_rand::FastRand;
 use crate::util::parking_spot::ParkingSpot;
@@ -150,7 +150,7 @@ pub(super) struct Shared {
     /// Per-hart thread-local data. Logically this is part of the [`Worker`] struct, but placed here
     /// into a TLS slot instead of stack allocated so we can access it from other places (i.e. we only
     /// need access to the scheduler handle instead of access to the workers stack which wouldn't work).
-    pub(super) tls: ThreadLocal<Context>,
+    pub(super) tls: HartLocal<Context>,
     /// Signal to workers that they should be shutting down.
     pub(super) shutdown: AtomicBool,
     /// Whether to shut down the executor when all tasks are processed, used in tests.

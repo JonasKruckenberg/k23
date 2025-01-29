@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::time::Instant;
-use crate::{arch, HART_LOCAL_MACHINE_INFO};
+use crate::{arch};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use core::mem::offset_of;
@@ -128,14 +128,14 @@ impl ParkingSpot {
             Box::new(WaiterInner {
                 links: linked_list::Links::default(),
                 notified: false,
-                hartid: HART_LOCAL_MACHINE_INFO.with_borrow(|info| info.hartid),
+                hartid: crate::HARTID.get(),
             })
         });
 
         // Clear the `notified` flag if it was previously notified and
         // configure the thread to wakeup as our own.
         waiter.notified = false;
-        waiter.hartid = HART_LOCAL_MACHINE_INFO.with_borrow(|info| info.hartid);
+        waiter.hartid = crate::HARTID.get();
 
         let ptr = NonNull::from(&mut **waiter);
         let spot = inner.entry(key).or_default();
