@@ -39,6 +39,8 @@ smallvec.workspace = true
 hashbrown.workspace = true
 gimli.workspace = true
 lock_api.workspace = true
+bumpalo = { workspace = true, features = ["boxed"] }
+ouroboros = "0.18.5"
 
 wasmparser.workspace = true
 target-lexicon.workspace = true

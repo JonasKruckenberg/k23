@@ -25,6 +25,9 @@ pub enum Error {
     AlreadyExists,
     /// The system was not able to allocate some resource needed for the operation.
     NoResources,
+    #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+    /// An unknown RISC-V extension was found.
+    UnknownRiscvExtension,
 }
 
 impl From<fdt::Error> for Error {
@@ -67,6 +70,10 @@ impl Display for Error {
                 f,
                 "The system was not able to allocate some resource needed for the operation",
             ),
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+            Error::UnknownRiscvExtension => {
+                write!(f, "An unknown RISC-V extension was found")
+            }
         }
     }
 }

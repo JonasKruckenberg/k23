@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::machine_info::machine_info;
+use crate::arch::device::cpu::with_cpu_info;
 use crate::time;
 use crate::time::NANOS_PER_SEC;
 use core::fmt;
@@ -35,7 +35,7 @@ impl Instant {
     }
 
     pub fn from_ticks(ticks: u64) -> Self {
-        let timebase_freq = machine_info().hart_local.get().unwrap().timebase_frequency;
+        let timebase_freq = with_cpu_info(|cpu_info| cpu_info.timebase_frequency);
         Instant(time::ticks_to_duration(ticks, timebase_freq))
     }
 

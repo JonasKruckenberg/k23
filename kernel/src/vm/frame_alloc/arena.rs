@@ -8,7 +8,6 @@
 use super::frame::FrameInfo;
 use crate::arch;
 use crate::vm::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-use crate::vm::bootstrap_alloc::FreeRegions;
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
@@ -213,7 +212,7 @@ impl Arena {
 // Arena selection
 // =============================================================================
 
-pub fn select_arenas(free_regions: FreeRegions) -> ArenaSelections {
+pub fn select_arenas<I>(free_regions: I) -> ArenaSelections<I> {
     ArenaSelections {
         inner: free_regions,
         wasted_bytes: 0,
@@ -232,12 +231,15 @@ pub struct SelectionError {
     pub range: Range<PhysicalAddress>,
 }
 
-pub struct ArenaSelections<'a> {
-    inner: FreeRegions<'a>,
+pub struct ArenaSelections<I> {
+    inner: I,
     wasted_bytes: usize,
 }
 
-impl FallibleIterator for ArenaSelections<'_> {
+impl<I> FallibleIterator for ArenaSelections<I>
+where
+    I: Iterator<Item = Range<PhysicalAddress>>,
+{
     type Item = ArenaSelection;
     type Error = SelectionError;
 

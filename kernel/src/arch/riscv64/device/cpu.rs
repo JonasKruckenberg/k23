@@ -5,17 +5,25 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::machine_info::{NodeAtlas, NodeId};
+use crate::device_tree::DeviceTree;
+use crate::error::Error;
+use crate::HARTID;
 use bitflags::bitflags;
-use fdt::Node;
+use core::cell::OnceCell;
+use core::str::FromStr;
+use thread_local::thread_local;
+
+thread_local! {
+    static CPU_INFO: OnceCell<CPUInfo> = OnceCell::new();
+}
 
 #[derive(Debug)]
-pub struct HartLocalMachineInfo {
+pub struct CPUInfo {
+    pub timebase_frequency: u64,
     pub extensions: RiscvExtensions,
     pub cbop_block_size: Option<usize>,
     pub cboz_block_size: Option<usize>,
     pub cbom_block_size: Option<usize>,
-    pub hlic_phandle: u32,
 }
 
 bitflags! {
@@ -64,46 +72,64 @@ bitflags! {
     }
 }
 
-pub fn parse_hart_local(atlas: &NodeAtlas, id: &NodeId, node: &Node) -> HartLocalMachineInfo {
-    let cbop_block_size = node
+pub fn with_cpu_info<F, R>(f: F) -> R
+where
+    F: FnOnce(&CPUInfo) -> R,
+{
+    #[expect(tail_expr_drop_order, reason = "")]
+    CPU_INFO.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
+}
+
+#[cold]
+pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
+    let cpus = devtree
+        .find_by_path("/cpus")
+        .expect("required /cpus node not in device tree");
+
+    let cpu = cpus
+        .children()
+        .find(|dev| {
+            let name = dev.name.name;
+            let unit_addr =
+                usize::from_str(dev.name.unit_address.expect("CPU is missing unit address"))
+                    .expect("CPU unit address is not an integer");
+
+            name == "cpu" && unit_addr == HARTID.get()
+        })
+        .expect("CPU node not found in device tree");
+
+    let timebase_frequency = cpu.property("timebase-frequency").unwrap().as_u64()?;
+
+    let cbop_block_size = cpu
         .property("riscv,cbop-block-size")
         .map(|prop| prop.as_usize().unwrap());
 
-    let cboz_block_size = node
+    let cboz_block_size = cpu
         .property("riscv,cboz-block-size")
         .map(|prop| prop.as_usize().unwrap());
 
-    let cbom_block_size = node
+    let cbom_block_size = cpu
         .property("riscv,cbom-block-size")
         .map(|prop| prop.as_usize().unwrap());
 
-    let extensions = node
-        .property("riscv,isa-extensions")
-        .unwrap()
-        .as_strlist()
-        .unwrap();
-    let extensions = parse_riscv_extensions(extensions).unwrap();
+    let extensions = cpu.property("riscv,isa-extensions").unwrap().as_strlist()?;
+    let extensions = parse_riscv_extensions(extensions)?;
 
-    let hlic = atlas
-        .get(&id.append(atlas, "/interrupt-controller").unwrap())
+    CPU_INFO.with(|info| {
+        info.set(CPUInfo {
+            timebase_frequency,
+            extensions,
+            cbop_block_size,
+            cboz_block_size,
+            cbom_block_size,
+        })
         .unwrap();
-    let compatible = hlic.property("compatible").unwrap().as_str().unwrap();
-    assert!(
-        compatible.contains("riscv,cpu-intc"),
-        "compatible ({compatible}) is not a valid RISCV HLIC"
-    );
-    let hlic_phandle = hlic.property("phandle").unwrap().as_u32().unwrap();
+    });
 
-    HartLocalMachineInfo {
-        extensions,
-        cbop_block_size,
-        cboz_block_size,
-        cbom_block_size,
-        hlic_phandle,
-    }
+    Ok(())
 }
 
-pub fn parse_riscv_extensions(strs: fdt::StringList) -> Result<RiscvExtensions, dtb_parser::Error> {
+pub fn parse_riscv_extensions(strs: fdt::StringList) -> crate::Result<RiscvExtensions> {
     let mut out = RiscvExtensions::empty();
 
     for str in strs {
@@ -148,10 +174,9 @@ pub fn parse_riscv_extensions(strs: fdt::StringList) -> Result<RiscvExtensions, 
             "sstvecd" => RiscvExtensions::SSTVECD,
             "svadu" => RiscvExtensions::SVADU,
             "svvptc" => RiscvExtensions::SVVPTC,
-            _ => {
-                log::error!("unknown RISCV extension {str}");
-                // TODO better error type
-                return Err(dtb_parser::Error::InvalidToken(0));
+            ext => {
+                log::error!("unknown RISCV extension {}", ext);
+                return Err(Error::UnknownRiscvExtension);
             }
         }
     }

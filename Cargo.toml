@@ -119,7 +119,7 @@ rustc-demangle = "0.1"
 fallible-iterator = { version = "0.3.0", default-features = false }
 
 # wast dependencies
-bumpalo = "3.14.0"
+bumpalo = "3.17.0"
 unicode-width = { version = "0.2.0" }
 memchr = { version = "2.4.1", default-features = false }
 

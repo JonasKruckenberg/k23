@@ -6,12 +6,13 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::error::Error;
-use crate::Header;
+use crate::{Header, Node};
 
 #[derive(Clone)]
 pub struct Parser<'dt> {
     stream: Stream<'dt>,
-    strings: StringsBlock<'dt>,
+    pub strings: StringsBlock<'dt>,
+    pub structs: StructsBlock<'dt>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -33,11 +34,16 @@ pub struct StringsBlock<'dt>(pub(crate) &'dt [u8]);
 pub struct StructsBlock<'dt>(pub(crate) &'dt [u32]);
 
 impl<'dt> Parser<'dt> {
-    pub fn new(data: &'dt [u32], strings: StringsBlock<'dt>) -> Self {
+    pub fn new(data: &'dt [u32], strings: StringsBlock<'dt>, structs: StructsBlock<'dt>) -> Self {
         Self {
             stream: Stream::new(data),
             strings,
+            structs,
         }
+    }
+
+    pub fn data(&self) -> &'dt [u32] {
+        self.stream.0
     }
 
     pub fn byte_data(&self) -> &'dt [u8] {
@@ -48,10 +54,6 @@ impl<'dt> Parser<'dt> {
                 self.stream.0.len() * 4,
             )
         }
-    }
-
-    pub fn strings(&self) -> StringsBlock<'dt> {
-        self.strings
     }
 
     pub fn advance_token(&mut self) -> Result<BigEndianToken, Error> {
@@ -72,7 +74,7 @@ impl<'dt> Parser<'dt> {
         }
     }
 
-    pub(crate) fn peek_token(&mut self) -> Result<BigEndianToken, Error> {
+    pub(crate) fn peek_token(&self) -> Result<BigEndianToken, Error> {
         self.clone().advance_token()
     }
 
@@ -132,7 +134,40 @@ impl<'dt> Parser<'dt> {
         })
     }
 
-    pub(crate) fn parse_raw_property(&mut self) -> Result<(usize, &'dt [u8]), Error> {
+    pub fn parse_root(&mut self) -> Result<Node<'dt>, Error> {
+        match self.advance_token()? {
+            BigEndianToken::BEGIN_NODE => {}
+            t => return Err(Error::UnexpectedToken(t)),
+        }
+
+        let byte_data = self.byte_data();
+        match byte_data
+            .get(byte_data.len() - 4..)
+            .map(<[u8; 4]>::try_from)
+        {
+            Some(Ok(data @ [_, _, _, _])) => {
+                match BigEndianToken(BigEndianU32(u32::from_ne_bytes(data))) {
+                    BigEndianToken::END => {}
+                    t => return Err(Error::UnexpectedToken(t)),
+                }
+            }
+            _ => return Err(Error::UnexpectedEndOfData),
+        }
+
+        // advance past this nodes name
+        let name = self.advance_cstr()?;
+
+        let starting_data = self.data();
+
+        Ok(Node {
+            name,
+            raw: &starting_data[..starting_data.len() - 1],
+            strings: self.strings,
+            structs: self.structs,
+        })
+    }
+
+    pub fn parse_raw_property(&mut self) -> Result<(usize, &'dt [u8]), Error> {
         match self.advance_token()? {
             BigEndianToken::PROP => {
                 // Properties are in the format: <data len> <name offset> <data...>

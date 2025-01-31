@@ -13,14 +13,16 @@ use crate::hart_local::HartLocal;
 use crate::vm::address::VirtualAddress;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use crate::vm::frame_list::FrameList;
+use crate::vm::PhysicalAddress;
 use alloc::vec::Vec;
 use arena::{select_arenas, Arena};
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::fmt::Formatter;
 use core::ptr::NonNull;
+use core::range::Range;
 use core::sync::atomic::AtomicUsize;
-use core::{cmp, fmt, slice};
+use core::{cmp, fmt, iter, slice};
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
 use sync::{Mutex, OnceLock};
@@ -28,13 +30,14 @@ use sync::{Mutex, OnceLock};
 static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 
 #[cold]
-pub fn init(boot_alloc: BootstrapAllocator) {
+pub fn init(boot_alloc: BootstrapAllocator, fdt_region: Range<PhysicalAddress>) {
     #[expect(tail_expr_drop_order, reason = "")]
     FRAME_ALLOC.get_or_init(|| {
         let mut max_alignment = arch::PAGE_SIZE;
         let mut arenas = Vec::new();
 
-        for selection_result in select_arenas(boot_alloc.free_regions()).iterator() {
+        let phys_regions = boot_alloc.free_regions().chain(iter::once(fdt_region));
+        for selection_result in select_arenas(phys_regions).iterator() {
             match selection_result {
                 Ok(selection) => {
                     log::trace!("selection {selection:?}");

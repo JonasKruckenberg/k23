@@ -7,8 +7,6 @@ license.workspace = true
 
 [dependencies]
 fallible-iterator.workspace = true
-log.workspace = true
-hashbrown.workspace = true
 
 [lints]
 workspace = true

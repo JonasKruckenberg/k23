@@ -5,13 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-pub mod machine_info;
+pub mod device;
 mod setjmp_longjmp;
 mod trap_handler;
 mod utils;
 mod vm;
 
-use crate::machine_info::machine_info;
+use crate::arch::riscv64::device::cpu::with_cpu_info;
+use crate::device_tree::DeviceTree;
 use crate::time;
 use crate::vm::VirtualAddress;
 use bitflags::bitflags;
@@ -38,6 +39,14 @@ pub fn init() {
     vm::init();
 }
 
+/// Per-hart and RISC-V specific initialization.
+#[cold]
+pub fn per_hart_init(devtree: &DeviceTree) -> crate::Result<()> {
+    device::cpu::init(devtree)?;
+
+    Ok(())
+}
+
 /// Early per-hart and RISC-V specific initialization.
 ///
 /// This function will be called before global initialization is done, notably this function
@@ -61,7 +70,9 @@ pub fn per_hart_init_early() {
 ///
 /// This function will be called after all global initialization is done.
 #[cold]
-pub fn per_hart_init_late() {
+pub fn per_hart_init_late(devtree: &DeviceTree) -> crate::Result<()> {
+    device::cpu::init(devtree)?;
+
     // Safety: register access
     unsafe {
         // Initialize the trap handler
@@ -75,6 +86,8 @@ pub fn per_hart_init_late() {
         sie::set_stie();
         sie::set_seie();
     }
+
+    Ok(())
 }
 
 bitflags! {
@@ -293,7 +306,7 @@ pub unsafe fn hart_park_timeout(duration: Duration) {
     unsafe {
         IN_TIMEOUT.set(true);
 
-        let timebase_freq = machine_info().hart_local.get().unwrap().timebase_frequency;
+        let timebase_freq = with_cpu_info(|info| info.timebase_frequency);
         riscv::sbi::time::set_timer(
             riscv::time::read64() + time::duration_to_ticks_unchecked(duration, timebase_freq),
         )

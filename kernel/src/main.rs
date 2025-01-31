@@ -21,6 +21,7 @@
 #![feature(iter_array_chunks)]
 #![feature(iter_next_chunk)]
 #![feature(if_let_guard)]
+#![feature(allocator_api)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 #![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
@@ -28,11 +29,11 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
+mod device_tree;
 mod error;
 mod executor;
 mod hart_local;
 mod logger;
-mod machine_info;
 mod metrics;
 mod panic;
 mod time;
@@ -41,6 +42,7 @@ mod util;
 mod vm;
 mod wasm;
 
+use crate::device_tree::device_tree;
 use crate::error::Error;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
@@ -91,7 +93,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // (e.g. resetting the FPU)
     arch::per_hart_init_early();
 
-    let fdt = locate_device_tree(boot_info);
+    let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
 
     static SYNC: Once = Once::new();
     SYNC.call_once(|| {
@@ -113,13 +115,16 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // perform global, architecture-specific initialization
         arch::init();
 
-        let minfo = machine_info::init(fdt).unwrap();
+        let minfo = device_tree::init(fdt).unwrap();
         log::debug!("{minfo:?}");
 
         // initialize the global frame allocator
-        frame_alloc::init(boot_alloc);
+        // at this point we have parsed and processed the flattened device tree, so we pass it to the
+        // frame allocator for reuse
+        frame_alloc::init(boot_alloc, fdt_region_phys);
 
-        let mut rng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
+        // let mut rng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
+        let mut rng = ChaCha20Rng::from_seed([0; 32]);
 
         // initialize the virtual memory subsystem
         vm::init(boot_info, &mut rng).unwrap();
@@ -139,7 +144,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
     // perform EARLY per-hart, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
-    arch::per_hart_init_late();
+    arch::per_hart_init_late(device_tree()).unwrap();
 
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
@@ -215,7 +220,7 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
     out
 }
 
-fn locate_device_tree(boot_info: &BootInfo) -> &'static [u8] {
+fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAddress>) {
     let fdt = boot_info
         .memory_regions
         .iter()
@@ -228,5 +233,10 @@ fn locate_device_tree(boot_info: &BootInfo) -> &'static [u8] {
         .unwrap() as *const u8;
 
     // Safety: we need to trust the bootinfo data is correct
-    unsafe { slice::from_raw_parts(base, fdt.range.end.checked_sub(fdt.range.start).unwrap()) }
+    let slice =
+        unsafe { slice::from_raw_parts(base, fdt.range.end.checked_sub(fdt.range.start).unwrap()) };
+    (
+        slice,
+        Range::from(PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end)),
+    )
 }

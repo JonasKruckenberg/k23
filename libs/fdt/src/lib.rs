@@ -1,21 +1,19 @@
 #![no_std]
 
-use crate::parser::{BigEndianToken, BigEndianU32, Parser, StringsBlock, StructsBlock};
-use core::ffi::CStr;
-use core::mem::MaybeUninit;
-use core::ops::ControlFlow;
-use core::{fmt, iter, slice};
-pub use error::Error;
-use fallible_iterator::FallibleIterator;
-use hashbrown::HashMap;
-
 mod error;
 mod parser;
 
+pub use crate::error::Error;
+use crate::parser::{BigEndianToken, Parser, StringsBlock, StructsBlock};
+use core::ffi::CStr;
+use core::{fmt, slice};
+use fallible_iterator::FallibleIterator;
+
+const DTB_MAGIC: u32 = 0xD00D_FEED;
+
 pub struct Fdt<'dt> {
-    _header: Header,
-    parser: Parser<'dt>,
-    root_properties: HashMap<&'dt str, NodeProperty<'dt>>,
+    header: Header,
+    root: Node<'dt>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -44,16 +42,30 @@ pub struct Header {
     pub structs_size: u32,
 }
 
-impl Header {
-    fn valid_magic(&self) -> bool {
-        self.magic == 0xd00dfeed
-    }
+pub struct Node<'dt> {
+    name: &'dt CStr,
+    raw: &'dt [u32],
+    // parent: Option<&'dt [u32]>,
+    strings: StringsBlock<'dt>,
+    structs: StructsBlock<'dt>,
+}
+
+#[derive(Debug)]
+pub struct NodeName<'dt> {
+    pub name: &'dt str,
+    pub unit_address: Option<&'dt str>,
+}
+
+#[derive(Debug)]
+pub struct Property<'dt> {
+    pub name: &'dt str,
+    pub raw: &'dt [u8],
 }
 
 impl fmt::Debug for Fdt<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Fdt")
-            .field("header", &self._header)
+            .field("header", &self.header)
             .finish_non_exhaustive()
     }
 }
@@ -65,7 +77,7 @@ impl<'dt> Fdt<'dt> {
     ///
     /// Returns an error if parsing the FDT fails.
     pub fn new(data: &'dt [u32]) -> Result<Self, Error> {
-        let mut parser = Parser::new(data, StringsBlock(&[]));
+        let mut parser = Parser::new(data, StringsBlock(&[]), StructsBlock(&[]));
         let header = parser.parse_header()?;
 
         let strings_end = (header.strings_offset + header.strings_size) as usize / 4;
@@ -91,199 +103,42 @@ impl<'dt> Fdt<'dt> {
                 .ok_or(Error::UnexpectedEndOfData)?,
         );
 
-        if !header.valid_magic() {
+        if header.magic != DTB_MAGIC {
             return Err(Error::BadMagic);
         } else if data.len() < (header.total_size / 4) as usize {
             return Err(Error::UnexpectedEndOfData);
         }
 
-        let mut parser = Parser::new(structs.0, strings);
-
-        match parser.advance_token()? {
-            BigEndianToken::BEGIN_NODE => {}
-            t => return Err(Error::UnexpectedToken(t)),
-        }
-
-        let byte_data = parser.byte_data();
-        match byte_data
-            .get(byte_data.len() - 4..)
-            .map(<[u8; 4]>::try_from)
-        {
-            Some(Ok(data @ [_, _, _, _])) => {
-                match BigEndianToken(BigEndianU32(u32::from_ne_bytes(data))) {
-                    BigEndianToken::END => {}
-                    t => return Err(Error::UnexpectedToken(t)),
-                }
-            }
-            _ => return Err(Error::UnexpectedEndOfData),
-        }
-
-        // advance past this nodes name
-        parser
-            .advance_cstr()?
-            .to_str()
-            .map_err(Error::InvalidUtf8)?;
-
-        let mut root_properties = HashMap::new();
-        while parser.peek_token()? == BigEndianToken::PROP {
-            let (name_offset, raw) = parser.parse_raw_property()?;
-            let name = parser.strings().offset_at(name_offset)?;
-            root_properties.insert(name, NodeProperty { raw });
-        }
-
-        #[allow(tail_expr_drop_order, reason = "")]
         Ok(Self {
-            _header: header,
-            parser,
-            root_properties,
+            header,
+            root: Parser::new(structs.0, strings, structs).parse_root()?,
         })
     }
 
-    /// Create a new FDT from a pointer to a u32 slice.
+    /// Returns an iterator over all nodes in the tree.
     ///
     /// # Errors
     ///
     /// Returns an error if parsing the FDT fails.
-    ///
-    /// # Safety
-    ///
-    /// The caller has to ensure the pointer is valid and the entire FDT is accessible.
-    pub unsafe fn from_ptr(ptr: *const u32) -> Result<Self, Error> {
-        // Safety: the caller has to ensure the pointer is valid and the entire FDT is accessible
-        unsafe {
-            let tmp_header = slice::from_raw_parts(ptr, size_of::<Header>());
-            let real_size = usize::try_from(
-                Parser::new(tmp_header, StringsBlock(&[]))
-                    .parse_header()?
-                    .total_size,
-            )?;
+    pub fn nodes(&self) -> Result<NodesIter<'dt>, Error> {
+        let mut parser = Parser::new(self.root.raw, self.root.strings, self.root.structs);
 
-            Self::new(slice::from_raw_parts(ptr, real_size))
+        while parser.peek_token()? == BigEndianToken::PROP {
+            parser.parse_raw_property()?;
         }
+
+        Ok(NodesIter { parser, depth: 0 })
     }
 
-    pub fn cell_sizes(&self) -> CellSizes {
-        CellSizes::from_props(&self.root_properties).unwrap_or_default()
+    pub fn properties(&self) -> PropertiesIter<'dt> {
+        self.root.properties()
     }
-
-    /// Traverse the FDT tree and call the visitor function for each node.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if parsing the FDT fails.
-    #[inline]
-    pub fn walk<F, R>(&self, mut f: F) -> Result<Option<R>, Error>
-    where
-        F: FnMut(NodePath<'_, 'dt>, Node<'dt>) -> ControlFlow<R>,
-    {
-        self.walk_inner(&mut f)
-    }
-
-    fn walk_inner<R>(
-        &self,
-        f: &mut dyn FnMut(NodePath<'_, 'dt>, Node<'dt>) -> ControlFlow<R>,
-    ) -> Result<Option<R>, Error> {
-        let mut parser = self.parser.clone();
-
-        let mut parent_sizes: [MaybeUninit<CellSizes>; 16] = [
-            MaybeUninit::new(self.cell_sizes()),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-            MaybeUninit::uninit(),
-        ];
-        let mut path: [&str; 16] = [
-            "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
-        ];
-        let mut parent_index: usize = 0;
-
-        loop {
-            while let Ok(BigEndianToken::END_NODE) = parser.peek_token() {
-                let _ = parser.advance_token();
-                parent_index = parent_index.saturating_sub(1);
-            }
-
-            match parser.advance_token() {
-                Ok(BigEndianToken::BEGIN_NODE) => parent_index += 1,
-                Ok(BigEndianToken::END) | Err(Error::UnexpectedEndOfData) => return Ok(None),
-                Ok(t) => return Err(Error::UnexpectedToken(t)),
-                Err(e) => return Err(e),
-            }
-
-            // add the node name to the path
-            let name = parser.advance_cstr()?;
-            path[parent_index] = name.to_str().map_err(Error::InvalidUtf8)?;
-
-            // the call to `visit_node` above might have consumed some properties already,
-            // but we need to consume the rest of the properties before advancing to the next node
-            let mut properties = HashMap::new();
-            while parser.peek_token()? == BigEndianToken::PROP {
-                let (name_offset, raw) = parser.parse_raw_property()?;
-                let name = parser.strings().offset_at(name_offset)?;
-                properties.insert(name, NodeProperty { raw });
-            }
-
-            parent_sizes[parent_index].write(CellSizes::from_props(&properties).unwrap_or_else(
-                // Safety: the unwrap_or_else guarantees that the parent_sizes[parent_index] is initialized
-                || unsafe { MaybeUninit::assume_init(parent_sizes[parent_index - 1]) },
-            ));
-
-            // Call the visitor
-            if let Some(res) = f(
-                NodePath {
-                    components: &path[..parent_index + 1],
-                },
-                Node {
-                    name,
-                    properties,
-                    // Safety: the unwrap_or_else guarantees that the parent_sizes[parent_index] is initialized
-                    parent_cell_sizes: unsafe {
-                        MaybeUninit::assume_init(parent_sizes[parent_index])
-                    },
-                },
-            )
-            .break_value()
-            {
-                return Ok(Some(res));
-            }
-        }
-    }
-}
-
-pub struct Node<'dt> {
-    name: &'dt CStr,
-    properties: HashMap<&'dt str, NodeProperty<'dt>>,
-    parent_cell_sizes: CellSizes,
-}
-
-#[derive(Debug)]
-pub struct NodeName<'dt> {
-    pub name: &'dt str,
-    pub unit_address: Option<&'dt str>,
-}
-
-/// Generic node property.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct NodeProperty<'dt> {
-    pub raw: &'dt [u8],
 }
 
 impl fmt::Debug for Node<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Node")
             .field("name", &self.name())
-            .field("cell_sizes", &self.parent_cell_sizes)
             .finish_non_exhaustive()
     }
 }
@@ -311,29 +166,14 @@ impl<'dt> Node<'dt> {
         })
     }
 
-    pub fn property(&self, name: &str) -> Option<&NodeProperty<'dt>> {
-        self.properties.get(name)
-    }
-
-    pub fn properties(&self) -> hashbrown::hash_map::Iter<&'dt str, NodeProperty<'dt>> {
-        self.properties.iter()
-    }
-
-    pub fn reg(&self) -> Option<Regs<'dt>> {
-        Some(Regs {
-            cell_sizes: self.parent_cell_sizes,
-            encoded_array: self.properties.get("reg").map(|prop| prop.raw)?,
-        })
-    }
-
-    pub fn interrupt_cells(&self) -> Option<usize> {
-        self.properties
-            .get("#interrupt-cells")
-            .and_then(|prop| prop.as_usize().ok())
+    pub fn properties(&self) -> PropertiesIter<'dt> {
+        PropertiesIter {
+            parser: Parser::new(self.raw, self.strings, self.structs),
+        }
     }
 }
 
-impl<'dt> NodeProperty<'dt> {
+impl<'dt> Property<'dt> {
     /// Returns the property as a `u32`.
     ///
     /// # Errors
@@ -427,139 +267,61 @@ impl<'dt> Iterator for StringList<'dt> {
     }
 }
 
-#[derive(PartialEq, Eq, Hash)]
-pub struct NodePath<'a, 'dt> {
-    pub components: &'a [&'dt str],
+pub struct NodesIter<'dt> {
+    pub(crate) parser: Parser<'dt>,
+    pub(crate) depth: usize,
 }
-
-impl<'a, 'dt> IntoIterator for NodePath<'a, 'dt> {
-    type Item = &'dt str;
-    type IntoIter = iter::Copied<slice::Iter<'a, &'dt str>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.components.iter().copied()
-    }
-}
-
-impl fmt::Debug for NodePath<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("\"")?;
-
-        let mut started = false;
-        for c in self.components {
-            if started {
-                f.write_str("/")?;
-                f.write_str(c)?;
-            } else {
-                started = true;
-                f.write_str(c)?;
-            }
-        }
-        f.write_str("\"")?;
-
-        Ok(())
-    }
-}
-
-impl NodePath<'_, '_> {
-    pub fn ends_with(&self, base: &str) -> bool {
-        base.trim_start_matches('/')
-            .rsplit('/')
-            .eq(self.components.iter().rev().copied())
-    }
-
-    pub fn starts_with(&self, base: &str) -> bool {
-        base.trim_start_matches('/')
-            .split('/')
-            .zip(self.components.iter().skip(1).copied())
-            .all(|(a, b)| a == b)
-    }
-}
-
-/// The number of cells (big endian u32s) that addresses and sizes take
-#[derive(Debug, Clone, Copy)]
-pub struct CellSizes {
-    /// Size of values representing an address
-    pub address_cells: usize,
-    /// Size of values representing a size
-    pub size_cells: usize,
-}
-
-impl Default for CellSizes {
-    fn default() -> Self {
-        CellSizes {
-            address_cells: 2,
-            size_cells: 1,
-        }
-    }
-}
-
-impl CellSizes {
-    fn from_props(props: &HashMap<&str, NodeProperty<'_>>) -> Option<Self> {
-        if let (Some(address_cells), Some(size_cells)) =
-            (props.get("#address-cells"), props.get("#size-cells"))
-        {
-            Some(CellSizes {
-                address_cells: address_cells.as_usize().unwrap(),
-                size_cells: size_cells.as_usize().unwrap(),
-            })
-        } else {
-            None
-        }
-    }
-}
-
-pub struct Regs<'dt> {
-    cell_sizes: CellSizes,
-    encoded_array: &'dt [u8],
-}
-
-#[derive(Debug)]
-pub struct RegEntry {
-    pub starting_address: usize,
-    pub size: Option<usize>,
-}
-
-impl FallibleIterator for Regs<'_> {
-    type Item = RegEntry;
+impl<'dt> FallibleIterator for NodesIter<'dt> {
+    type Item = (usize, Node<'dt>);
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        if self.encoded_array.is_empty() {
-            return Ok(None);
+        while let Ok(BigEndianToken::END_NODE) = self.parser.peek_token() {
+            let _ = self.parser.advance_token();
+            self.depth = self.depth.saturating_sub(1);
         }
 
-        let address_bytes = self.cell_sizes.address_cells * 4;
-        let size_bytes = self.cell_sizes.size_cells * 4;
+        match self.parser.advance_token() {
+            Ok(BigEndianToken::BEGIN_NODE) => self.depth += 1,
+            Ok(BigEndianToken::END) | Err(Error::UnexpectedEndOfData) => return Ok(None),
+            Ok(t) => return Err(Error::UnexpectedToken(t)),
+            Err(e) => return Err(e),
+        }
 
-        let Some(encoded_address) = self.encoded_array.get(..address_bytes) else {
-            return Ok(None);
-        };
-        let Some(encoded_len) = self
-            .encoded_array
-            .get(address_bytes..address_bytes + size_bytes)
-        else {
-            return Ok(None);
-        };
+        let name = self.parser.advance_cstr()?;
+        let starting_data = self.parser.data();
 
-        self.encoded_array = &self.encoded_array[address_bytes + size_bytes..];
+        while self.parser.peek_token()? == BigEndianToken::PROP {
+            self.parser.parse_raw_property()?;
+        }
 
-        let starting_address = match self.cell_sizes.address_cells {
-            1 => usize::try_from(u32::from_be_bytes(encoded_address.try_into()?))?,
-            2 => usize::try_from(u64::from_be_bytes(encoded_address.try_into()?))?,
-            _ => return Err(Error::InalidCellSize),
-        };
+        Ok(Some((
+            self.depth,
+            Node {
+                name,
+                raw: starting_data,
+                strings: self.parser.strings,
+                structs: self.parser.structs,
+            },
+        )))
+    }
+}
 
-        let size = match self.cell_sizes.size_cells {
-            0 => None,
-            1 => usize::try_from(u32::from_be_bytes(encoded_len.try_into()?)).ok(),
-            2 => usize::try_from(u64::from_be_bytes(encoded_len.try_into()?)).ok(),
-            _ => return Err(Error::InalidCellSize),
-        };
+pub struct PropertiesIter<'dt> {
+    pub(crate) parser: Parser<'dt>,
+}
+impl<'dt> FallibleIterator for PropertiesIter<'dt> {
+    type Item = Property<'dt>;
+    type Error = Error;
 
-        Ok(Some(RegEntry {
-            starting_address,
-            size,
-        }))
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        if self.parser.peek_token()? == BigEndianToken::PROP {
+            let (name_offset, raw) = self.parser.parse_raw_property()?;
+            let name = self.parser.strings.offset_at(name_offset)?;
+
+            Ok(Some(Property { name, raw }))
+        } else {
+            Ok(None)
+        }
     }
 }
