@@ -802,16 +802,18 @@ impl<'a> Batch<'a> {
         log::trace!("flushing batch {:?} {:?}...", self.range, self.phys);
 
         let mut flush = self.arch_aspace.new_flush();
+        let mut virt = self.range.start;
         for (phys, len) in self.phys.drain(..) {
             // Safety: we have checked all the invariants
             unsafe {
                 self.arch_aspace.map_contiguous(
-                    self.range.start,
+                    virt,
                     phys,
                     NonZeroUsize::new(len).unwrap(),
                     self.flags,
                     &mut flush,
                 )?;
+                virt = virt.checked_add(len).unwrap();
             }
         }
         flush.flush()?;
