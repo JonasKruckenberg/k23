@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::error::Error;
-use crate::trap_handler::{Trap, TrapReason};
+use crate::traps::{Trap, TrapReason};
 use crate::vm::{PageFaultFlags, KERNEL_ASPACE};
 use core::ops::ControlFlow;
 

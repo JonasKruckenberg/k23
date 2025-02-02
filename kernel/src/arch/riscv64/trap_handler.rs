@@ -8,7 +8,7 @@
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::riscv64::IN_TIMEOUT;
 use crate::arch::PAGE_SIZE;
-use crate::trap_handler::TrapReason;
+use crate::traps::TrapReason;
 use crate::vm::VirtualAddress;
 use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
@@ -278,9 +278,6 @@ fn default_trap_handler(
             sbi::time::set_timer(u64::MAX).unwrap();
             return raw_frame;
         }
-        Trap::Interrupt(Interrupt::SupervisorExternal | Interrupt::VirtualSupervisorExternal) => {
-            TrapReason::SupervisorSoftwareInterrupt
-        }
         Trap::Exception(Exception::InstructionMisaligned) => TrapReason::InstructionMisaligned,
         Trap::Exception(Exception::InstructionFault) => TrapReason::InstructionFault,
         Trap::Exception(Exception::IllegalInstruction) => TrapReason::IllegalInstruction,
@@ -298,7 +295,7 @@ fn default_trap_handler(
         _ => unreachable!(),
     };
 
-    crate::trap_handler::begin_trap(crate::trap_handler::Trap {
+    crate::traps::begin_trap(crate::traps::Trap {
         pc: VirtualAddress::new(epc).unwrap(),
         fp: VirtualAddress::default(),
         faulting_address: VirtualAddress::new(tval).unwrap(),

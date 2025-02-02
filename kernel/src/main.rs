@@ -16,6 +16,12 @@
 #![feature(std_internals, panic_can_unwind, fmt_internals)]
 #![feature(step_trait)]
 #![feature(box_into_inner)]
+#![feature(let_chains)]
+#![feature(array_chunks)]
+#![feature(iter_array_chunks)]
+#![feature(iter_next_chunk)]
+#![feature(if_let_guard)]
+#![feature(allocator_api)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 #![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
@@ -23,30 +29,31 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
+mod device_tree;
 mod error;
 mod executor;
 mod hart_local;
 mod logger;
-mod machine_info;
 mod metrics;
 mod panic;
 mod time;
-mod trap_handler;
+mod traps;
 mod util;
 mod vm;
 mod wasm;
 
+use crate::device_tree::device_tree;
 use crate::error::Error;
-use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
-use core::cell::{Cell, RefCell};
+use core::cell::Cell;
 use core::range::Range;
+use core::slice;
 use hart_local::thread_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{Once, OnceLock};
+use sync::Once;
 use time::Instant;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
@@ -67,14 +74,9 @@ pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
-
 thread_local!(
-    pub static HART_LOCAL_MACHINE_INFO: RefCell<HartLocalMachineInfo> =
-        RefCell::new(HartLocalMachineInfo::default());
     pub static HARTID: Cell<usize> = Cell::new(usize::MAX);
 );
-
 #[used(linker)]
 #[unsafe(link_section = ".loader_config")]
 static LOADER_CONFIG: LoaderConfig = {
@@ -91,7 +93,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // (e.g. resetting the FPU)
     arch::per_hart_init_early();
 
-    let fdt = locate_device_tree(boot_info);
+    let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
 
     static SYNC: Once = Once::new();
     SYNC.call_once(|| {
@@ -113,19 +115,16 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // perform global, architecture-specific initialization
         arch::init();
 
-        // TODO move this into a init function
-        let minfo = MACHINE_INFO
-            .get_or_try_init(|| {
-                // Safety: we have to trust the loader mapped the fdt correctly
-                unsafe { MachineInfo::from_dtb(fdt) }
-            })
-            .unwrap();
-        log::debug!("\n{minfo}");
+        let minfo = device_tree::init(fdt).unwrap();
+        log::debug!("{minfo:?}");
 
         // initialize the global frame allocator
-        frame_alloc::init(boot_alloc);
+        // at this point we have parsed and processed the flattened device tree, so we pass it to the
+        // frame allocator for reuse
+        frame_alloc::init(boot_alloc, fdt_region_phys);
 
-        let mut rng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
+        // let mut rng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
+        let mut rng = ChaCha20Rng::from_seed([0; 32]);
 
         // initialize the virtual memory subsystem
         vm::init(boot_info, &mut rng).unwrap();
@@ -143,14 +142,9 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         );
     });
 
-    // // Safety: we have to trust the loader mapped the fdt correctly
-    let hart_local_minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt).unwrap() };
-    log::debug!("\n{hart_local_minfo}");
-    HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
-
     // perform EARLY per-hart, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
-    arch::per_hart_init_late();
+    arch::per_hart_init_late(device_tree()).unwrap();
 
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
@@ -226,15 +220,23 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
     out
 }
 
-fn locate_device_tree(boot_info: &BootInfo) -> *const u8 {
+fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAddress>) {
     let fdt = boot_info
         .memory_regions
         .iter()
         .find(|region| region.kind == MemoryRegionKind::FDT)
         .expect("no FDT region");
 
-    boot_info
+    let base = boot_info
         .physical_address_offset
         .checked_add(fdt.range.start)
-        .unwrap() as *const u8
+        .unwrap() as *const u8;
+
+    // Safety: we need to trust the bootinfo data is correct
+    let slice =
+        unsafe { slice::from_raw_parts(base, fdt.range.end.checked_sub(fdt.range.start).unwrap()) };
+    (
+        slice,
+        Range::from(PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end)),
+    )
 }

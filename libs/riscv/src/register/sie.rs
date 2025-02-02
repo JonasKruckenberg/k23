@@ -21,36 +21,42 @@ read_csr_as!(Sie, 0x104);
 set_csr!(0x104);
 clear_csr!(0x104);
 
+/// Enable supervisor-level software interrupts
 pub unsafe fn set_ssie() {
     unsafe {
         _set(1 << 1);
     }
 }
 
+/// Enable supervisor-level timer interrupts
 pub unsafe fn set_stie() {
     unsafe {
         _set(1 << 5);
     }
 }
 
+/// Enable supervisor-level external interrupts
 pub unsafe fn set_seie() {
     unsafe {
         _set(1 << 9);
     }
 }
 
+/// Disable supervisor-level software interrupts
 pub unsafe fn clear_ssie() {
     unsafe {
         _clear(1 << 1);
     }
 }
 
+/// Disable supervisor-level timer interrupts
 pub unsafe fn clear_stie() {
     unsafe {
         _clear(1 << 5);
     }
 }
 
+/// Disable supervisor-level external interrupts
 pub unsafe fn clear_seie() {
     unsafe {
         _clear(1 << 9);
