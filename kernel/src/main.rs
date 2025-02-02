@@ -152,11 +152,11 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::from_ticks(boot_ticks).elapsed()
     );
 
-    executor::current().spawn(async move {
-        log::info!("Hello from hart {}", hartid);
+    let _ = executor::run(executor::current(), hartid, || {
+        executor::current().spawn(async move {
+            log::info!("Hello from hart {}", hartid);
+        });
     });
-
-    let _ = executor::run(executor::current(), hartid);
 
     // wasm::test();
 
