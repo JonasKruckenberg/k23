@@ -13,7 +13,7 @@ use crate::vm::VirtualAddress;
 use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Interrupt, Trap};
-use riscv::{sbi, scause, sepc, sstatus, stval, stvec};
+use riscv::{sbi, scause, sepc, sip, sstatus, stval, stvec};
 use thread_local::thread_local;
 
 thread_local! {
@@ -261,13 +261,14 @@ fn default_trap_handler(
 
     let cause = scause::read().cause();
 
-    log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
+    // log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
     let epc = sepc::read();
     let tval = stval::read();
-    log::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
+    // log::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
 
     let reason = match cause {
         Trap::Interrupt(Interrupt::SupervisorSoft | Interrupt::VirtualSupervisorSoft) => {
+            unsafe { sip::clear_ssoft(); }
             // Software interrupts are always IPIs used for unparking
             return raw_frame;
         }

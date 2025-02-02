@@ -29,7 +29,7 @@ pub use vm::{
 
 /// Global RISC-V specific initialization.
 #[cold]
-pub fn init() {
+pub fn init_early() {
     let supported = riscv::sbi::supported_extensions().unwrap();
     log::trace!("Supported SBI extensions: {supported:?}");
 

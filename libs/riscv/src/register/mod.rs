@@ -23,6 +23,7 @@ pub mod sstatus;
 pub mod stval;
 pub mod stvec;
 pub mod time;
+pub mod sip;
 
 macro_rules! read_csr {
     ($csr_number:literal) => {
