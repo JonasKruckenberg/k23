@@ -12,7 +12,7 @@ pub enum Error {
     /// Failed to convert number
     TryFromInt(core::num::TryFromIntError),
     /// Failed to parse device tree blob
-    Dtb(dtb_parser::Error),
+    Fdt(fdt::Error),
     /// Failed to parse kernel elf
     Elf(&'static str),
     /// The system was not able to allocate memory needed for the operation.
@@ -20,17 +20,21 @@ pub enum Error {
     /// Failed to start secondary hart
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     FailedToStartSecondaryHart(riscv::sbi::Error),
+    TryFromSlice(core::array::TryFromSliceError),
 }
-
 impl From<core::num::TryFromIntError> for Error {
     fn from(err: core::num::TryFromIntError) -> Self {
         Error::TryFromInt(err)
     }
 }
-
-impl From<dtb_parser::Error> for Error {
-    fn from(err: dtb_parser::Error) -> Self {
-        Error::Dtb(err)
+impl From<fdt::Error> for Error {
+    fn from(err: fdt::Error) -> Self {
+        Error::Fdt(err)
+    }
+}
+impl From<core::array::TryFromSliceError> for Error {
+    fn from(err: core::array::TryFromSliceError) -> Self {
+        Error::TryFromSlice(err)
     }
 }
 
@@ -42,12 +46,13 @@ impl Display for Error {
                 "The system was not able to allocate memory needed for the operation"
             ),
             Error::TryFromInt(_) => write!(f, "Failed to convert number"),
-            Error::Dtb(err) => write!(f, "Failed to parse device tree blob: {err}"),
+            Error::Fdt(err) => write!(f, "Failed to parse device tree blob: {err}"),
             Error::Elf(err) => write!(f, "Failed to parse kernel elf: {err}"),
             #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
             Error::FailedToStartSecondaryHart(err) => {
                 write!(f, "Failed to start secondary hart: {err}")
             }
+            Error::TryFromSlice(err) => write!(f, "failed to parse slice: {err}"),
         }
     }
 }

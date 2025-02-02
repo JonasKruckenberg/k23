@@ -312,13 +312,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
-name = "dtb-parser"
-version = "0.1.0"
-dependencies = [
- "fallible-iterator",
-]
-
-[[package]]
 name = "either"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -466,7 +459,6 @@ dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
  "cranelift-frontend",
- "dtb-parser",
  "fallible-iterator",
  "fdt",
  "gimli",
@@ -521,8 +513,8 @@ dependencies = [
  "arrayvec",
  "bitflags",
  "cfg-if",
- "dtb-parser",
  "fallible-iterator",
+ "fdt",
  "loader-api",
  "log",
  "rand 0.8.5",

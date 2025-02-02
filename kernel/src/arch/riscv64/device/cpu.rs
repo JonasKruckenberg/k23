@@ -98,7 +98,11 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
         })
         .expect("CPU node not found in device tree");
 
-    let timebase_frequency = cpu.property("timebase-frequency").unwrap().as_u64()?;
+    let timebase_frequency = cpu
+        .property("timebase-frequency")
+        .or_else(|| cpu.parent().unwrap().property("timebase-frequency"))
+        .unwrap()
+        .as_u64()?;
 
     let cbop_block_size = cpu
         .property("riscv,cbop-block-size")

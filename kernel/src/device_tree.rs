@@ -52,6 +52,7 @@ pub struct Device<'a> {
     // linked list of device properties
     properties: Link<Property<'a>>,
     // links to other devices in the tree
+    parent: Link<Device<'a>>,
     first_child: Link<Device<'a>>,
     next_sibling: Link<Device<'a>>,
 }
@@ -151,7 +152,7 @@ impl fmt::Debug for Device<'_> {
     }
 }
 
-impl Device<'_> {
+impl<'a> Device<'a> {
     /// Returns `true` if this device is usable, i.e. its reported status property is "okay".
     pub fn is_available(&self) -> bool {
         self.properties()
@@ -161,6 +162,11 @@ impl Device<'_> {
     /// Matches the device `compatible` string against the given list of strings.
     pub fn is_compatible(&self, compats: &[&str]) -> bool {
         compats.iter().any(|&c| c == self.compatible)
+    }
+
+    pub fn parent(&self) -> Option<&Device<'a>> {
+        // Safety: tree construction guarantees that the pointer is valid
+        self.parent.map(|parent| unsafe { parent.as_ref() })
     }
 
     /// Returns an iterator over all immediate children of this device.
@@ -336,14 +342,7 @@ pub fn init(fdt: &[u8]) -> crate::Result<&'static DeviceTree> {
 
             let mut iter = fdt.nodes()?;
             while let Some((depth, node)) = iter.next()? {
-                let ptr = unflatten_node(
-                    node,
-                    // Safety: stack always contains at least the root node, so stack[depth - 1] is always `Some`
-                    unsafe { stack[depth - 1].unwrap().as_mut() },
-                    // Safety: stack[depth] is a node we just allocated, so it is valid
-                    stack[depth].map(|mut ptr| unsafe { ptr.as_mut() }),
-                    alloc,
-                )?;
+                let ptr = unflatten_node(node, stack[depth - 1].unwrap(), stack[depth], alloc)?;
 
                 // insert ourselves into the stack so we will become the new previous sibling in the next iteration
                 stack[depth] = Some(ptr);
@@ -376,6 +375,7 @@ fn unflatten_root<'a>(fdt: &Fdt, alloc: &'a Bump) -> crate::Result<NonNull<Devic
         },
         compatible: compatible.unwrap_or_default(),
         properties: props_head,
+        parent: None,
         first_child: None,
         next_sibling: None,
     }));
@@ -385,8 +385,8 @@ fn unflatten_root<'a>(fdt: &Fdt, alloc: &'a Bump) -> crate::Result<NonNull<Devic
 
 fn unflatten_node<'a>(
     node: fdt::Node,
-    parent: &mut Device<'a>,
-    prev_sibling: Option<&mut Device<'a>>,
+    mut parent: NonNull<Device<'a>>,
+    prev_sibling: Link<Device<'a>>,
     alloc: &'a Bump,
 ) -> crate::Result<NonNull<Device<'a>>> {
     let mut compatible: Option<&'a str> = None;
@@ -411,16 +411,23 @@ fn unflatten_node<'a>(
         },
         compatible: compatible.unwrap_or_default(),
         properties: props_head,
+        parent: Some(parent),
         first_child: None,
         next_sibling: None,
     }));
 
     // update the parents `first_child` pointer if necessary
-    parent.first_child.get_or_insert(node);
+    // Safety: callers responsibility to ensure that the parent pointer is valid
+    unsafe {
+        parent.as_mut().first_child.get_or_insert(node);
+    }
 
     // update the previous sibling's `next_sibling` pointer if necessary
-    if let Some(sibling) = prev_sibling {
-        sibling.next_sibling = Some(node);
+    if let Some(mut sibling) = prev_sibling {
+        // Safety: callers responsibility to ensure that the parent pointer is valid
+        unsafe {
+            sibling.as_mut().next_sibling = Some(node);
+        }
     }
 
     Ok(node)

@@ -16,7 +16,6 @@ workspace = true
 loader-api.workspace = true
 thread-local.workspace = true
 sync.workspace = true
-dtb-parser.workspace = true
 linked-list.workspace = true
 unwind2.workspace = true
 backtrace.workspace = true

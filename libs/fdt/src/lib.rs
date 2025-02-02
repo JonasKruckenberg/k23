@@ -12,6 +12,8 @@ use fallible_iterator::FallibleIterator;
 const DTB_MAGIC: u32 = 0xD00D_FEED;
 
 pub struct Fdt<'dt> {
+    data: &'dt [u32],
+    reservations: &'dt [u32],
     header: Header,
     root: Node<'dt>,
 }
@@ -45,7 +47,6 @@ pub struct Header {
 pub struct Node<'dt> {
     name: &'dt CStr,
     raw: &'dt [u32],
-    // parent: Option<&'dt [u32]>,
     strings: StringsBlock<'dt>,
     structs: StructsBlock<'dt>,
 }
@@ -103,6 +104,13 @@ impl<'dt> Fdt<'dt> {
                 .ok_or(Error::UnexpectedEndOfData)?,
         );
 
+        let reservations_start = header.memory_reserve_map_offset as usize / 4;
+        let reservations_end =
+            structs_start + ((header.total_size - header.memory_reserve_map_offset) as usize / 4);
+        let reservations = data
+            .get(reservations_start..reservations_end)
+            .ok_or(Error::UnexpectedEndOfData)?;
+
         if header.magic != DTB_MAGIC {
             return Err(Error::BadMagic);
         } else if data.len() < (header.total_size / 4) as usize {
@@ -110,9 +118,39 @@ impl<'dt> Fdt<'dt> {
         }
 
         Ok(Self {
+            data,
             header,
+            reservations,
             root: Parser::new(structs.0, strings, structs).parse_root()?,
         })
+    }
+
+    /// Create a new FDT from a raw pointer.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parsing the FDT fails.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the pointer is valid and points to a valid FDT.
+    pub unsafe fn from_ptr(ptr: *const u32) -> Result<Self, Error> {
+        // Safety: ensured by caller
+        unsafe {
+            let tmp_header = slice::from_raw_parts(ptr, size_of::<Header>());
+            let real_size = usize::try_from(
+                Parser::new(tmp_header, StringsBlock(&[]), StructsBlock(&[]))
+                    .parse_header()?
+                    .total_size,
+            )?;
+
+            Self::new(slice::from_raw_parts(ptr, real_size))
+        }
+    }
+
+    pub fn as_slice(&self) -> &'dt [u8] {
+        // SAFETY: it is always valid to cast a `u32` to 4 `u8`s
+        unsafe { slice::from_raw_parts(self.data.as_ptr().cast::<u8>(), size_of_val(self.data)) }
     }
 
     /// Returns an iterator over all nodes in the tree.
@@ -132,6 +170,15 @@ impl<'dt> Fdt<'dt> {
 
     pub fn properties(&self) -> PropertiesIter<'dt> {
         self.root.properties()
+    }
+
+    #[must_use]
+    pub fn reserved_entries(&self) -> ReserveEntries<'dt> {
+        ReserveEntries {
+            buf: self.reservations,
+            offset: 0,
+            done: false,
+        }
     }
 }
 
@@ -251,6 +298,13 @@ impl<'dt> Property<'dt> {
             strs: self.as_str()?.split('\0'),
         })
     }
+
+    pub fn as_regs(&self, cell_sizes: CellSizes) -> Regs<'dt> {
+        Regs {
+            cell_sizes,
+            encoded_array: self.raw,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -323,5 +377,129 @@ impl<'dt> FallibleIterator for PropertiesIter<'dt> {
         } else {
             Ok(None)
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ReserveEntry {
+    pub address: u64,
+    pub size: u64,
+}
+
+pub struct ReserveEntries<'dt> {
+    buf: &'dt [u32],
+    offset: usize,
+    done: bool,
+}
+
+impl ReserveEntries<'_> {
+    fn read_u64(&mut self) -> u64 {
+        let low = self.buf[self.offset];
+        let hi = self.buf[self.offset + 1];
+        self.offset += 2;
+
+        u64::from(low) | u64::from(hi) << 32
+    }
+}
+
+impl FallibleIterator for ReserveEntries<'_> {
+    type Item = ReserveEntry;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        if self.done || self.offset == self.buf.len() {
+            Ok(None)
+        } else {
+            let entry = {
+                let address = self.read_u64();
+                let size = self.read_u64();
+
+                Ok(ReserveEntry { address, size })
+            };
+
+            // entries where both address and size is zero mark the end
+            let is_empty = entry.as_ref().is_ok_and(|e| e.address == 0 || e.size == 0);
+
+            self.done = entry.is_err() || is_empty;
+
+            if is_empty {
+                Ok(None)
+            } else {
+                entry.map(Some)
+            }
+        }
+    }
+}
+
+/// The number of cells (big endian u32s) that addresses and sizes take
+#[derive(Debug, Clone, Copy)]
+pub struct CellSizes {
+    /// Size of values representing an address
+    pub address_cells: usize,
+    /// Size of values representing a size
+    pub size_cells: usize,
+}
+
+impl Default for CellSizes {
+    fn default() -> Self {
+        CellSizes {
+            address_cells: 2,
+            size_cells: 1,
+        }
+    }
+}
+
+pub struct Regs<'dt> {
+    cell_sizes: CellSizes,
+    encoded_array: &'dt [u8],
+}
+
+#[derive(Debug)]
+pub struct RegEntry {
+    pub starting_address: usize,
+    pub size: Option<usize>,
+}
+
+impl FallibleIterator for Regs<'_> {
+    type Item = RegEntry;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        if self.encoded_array.is_empty() {
+            return Ok(None);
+        }
+
+        let address_bytes = self.cell_sizes.address_cells * 4;
+        let size_bytes = self.cell_sizes.size_cells * 4;
+
+        let Some(encoded_address) = self.encoded_array.get(..address_bytes) else {
+            return Ok(None);
+        };
+        let Some(encoded_len) = self
+            .encoded_array
+            .get(address_bytes..address_bytes + size_bytes)
+        else {
+            return Ok(None);
+        };
+
+        self.encoded_array = &self.encoded_array[address_bytes + size_bytes..];
+
+        let starting_address = match self.cell_sizes.address_cells {
+            1 => usize::try_from(u32::from_be_bytes(encoded_address.try_into()?))?,
+            2 => usize::try_from(u64::from_be_bytes(encoded_address.try_into()?))?,
+            _ => unreachable!(),
+        };
+
+        let size = match self.cell_sizes.size_cells {
+            0 => None,
+            1 => usize::try_from(u32::from_be_bytes(encoded_len.try_into()?)).ok(),
+            2 => usize::try_from(u64::from_be_bytes(encoded_len.try_into()?)).ok(),
+            _ => unreachable!(),
+        };
+
+        Ok(Some(RegEntry {
+            starting_address,
+            size,
+        }))
     }
 }

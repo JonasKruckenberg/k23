@@ -11,6 +11,7 @@
 #![feature(new_range_api)]
 #![feature(maybe_uninit_slice)]
 #![feature(alloc_layout_extra)]
+#![feature(let_chains)]
 
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;

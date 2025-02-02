@@ -137,7 +137,6 @@ impl Condvar {
         unsafe { mutex.unlock() };
 
         let res = parking_spot.wait(lock_addr as u64, validate, deadline, &mut waiter);
-        log::trace!("here {res:?}");
 
         // Panic if we tried to use multiple mutexes with a Condvar. Note
         // that at this point the MutexGuard is still locked. It will be

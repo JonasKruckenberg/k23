@@ -502,7 +502,6 @@ fn handle_tls_segment(
             phys_off,
         )?;
     }
-    log::trace!("here");
 
     Ok(TlsAllocation {
         virt,
