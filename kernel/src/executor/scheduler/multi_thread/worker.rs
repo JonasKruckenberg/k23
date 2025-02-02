@@ -76,6 +76,7 @@ use crate::{arch, counter};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
+use core::future::Future;
 use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use core::task::Waker;
 use core::time::Duration;
@@ -197,7 +198,11 @@ pub(super) struct Context {
 }
 
 #[cold]
-pub fn run(handle: &'static Handle, hartid: usize) -> Result<(), ()> {
+pub fn run(
+    handle: &'static Handle,
+    hartid: usize,
+    initial: impl FnOnce()
+) -> Result<(), ()> {
     let mut worker = Worker {
         is_shutdown: false,
         hartid,
@@ -229,10 +234,12 @@ pub fn run(handle: &'static Handle, hartid: usize) -> Result<(), ()> {
             worker.wait_for_core(cx, synced)?
         }
     };
-
+    
     if let Some(task) = maybe_task {
         core = worker.run_task(cx, core, task)?;
     }
+    
+    initial();
 
     // once we have acquired a core, we can start the scheduling loop
     while !worker.is_shutdown {
@@ -347,7 +354,9 @@ impl Worker {
                 return Err(());
             }
 
+            log::trace!("[wait_for_core] parking hart..");
             cx.shared().condvars[self.hartid].wait(&cx.shared().parking_spot, &mut synced);
+            log::trace!("[wait_for_core] unparked hart");
         };
 
         self.reset_acquired_core(cx, &mut core);
@@ -658,6 +667,7 @@ impl Worker {
 
         // Notify any workers
         for worker in self.workers_to_notify.drain(..) {
+            log::trace!("notifying worker {worker} in local notify queue...");
             cx.shared().condvars[worker].notify_one(&cx.shared().parking_spot);
         }
 
@@ -771,11 +781,13 @@ impl Shared {
         self.run_queue.enqueue(task);
 
         let synced = self.synced.lock();
+        log::trace!("calling notify_remote as part of schedule_remote...");
         self.idle.notify_remote(synced, self);
     }
 
     fn notify_parked_local(&self) {
         NUM_NOTIFY_LOCAL.increment(1);
+        log::trace!("calling notify_local as part of schedule_local...");
         self.idle.notify_local(self);
     }
 

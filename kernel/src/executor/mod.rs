@@ -84,6 +84,7 @@ use core::future::Future;
 use rand::RngCore;
 use sync::OnceLock;
 pub use task::JoinHandle;
+use crate::executor::task::TaskRef;
 
 static EXECUTOR: OnceLock<Executor> = OnceLock::new();
 
@@ -116,9 +117,13 @@ pub fn init(num_cores: usize, rng: &mut impl RngCore, shutdown_on_idle: bool) ->
 /// Run the async runtime loop on the calling hart.
 ///
 /// This function will not return until the runtime is shut down.
-#[cold]
-pub fn run(rt: &'static Executor, hartid: usize) -> Result<(), ()> {
-    scheduler::multi_thread::worker::run(&rt.scheduler, hartid)
+#[inline]
+pub fn run(
+    rt: &'static Executor,
+    hartid: usize,
+    initial: impl FnOnce()
+) -> Result<(), ()> {
+    scheduler::multi_thread::worker::run(&rt.scheduler, hartid, initial)
 }
 
 impl Executor {

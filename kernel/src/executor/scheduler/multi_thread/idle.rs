@@ -261,14 +261,16 @@ impl Idle {
             let core = self.try_acquire_available_core(&mut synced.idle).unwrap();
 
             synced.assigned_cores[worker] = Some(core);
+            log::trace!("waking sleeping worker {worker} for shutdown...");
             shared.condvars[worker].notify_one(&shared.parking_spot);
         }
 
         debug_assert!(self.idle_map.matches(&synced.idle.available_cores));
 
         // Wake up any other workers
-        while let Some(index) = synced.idle.sleepers.pop() {
-            shared.condvars[index].notify_one(&shared.parking_spot);
+        while let Some(worker) = synced.idle.sleepers.pop() {
+            log::trace!("waking worker {worker} for shutdown...");
+            shared.condvars[worker].notify_one(&shared.parking_spot);
         }
     }
 

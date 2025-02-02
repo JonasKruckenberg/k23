@@ -169,17 +169,17 @@ impl ParkingSpot {
                     // This will put the hart into a "wait for interrupt" mode where it will wait until
                     // either the timeout interrupt arrives or it receives an interrupt from another hart.
                     drop(inner);
-                    log::trace!("parking for {timeout:?}...");
+                    // log::trace!("parking for {timeout:?}...");
                     arch::hart_park_timeout(timeout);
-                    log::trace!("unparked!");
+                    // log::trace!("unparked!");
                     inner = self.inner.lock();
                 } else {
                     // Suspend the calling hart for an indefinite amount of time.
                     // It will only wake up if it receives an interrupt from another hart.
                     drop(inner);
-                    log::trace!("parking indefinitely...");
+                    // log::trace!("parking indefinitely...");
                     arch::hart_park();
-                    log::trace!("unparked!");
+                    // log::trace!("unparked!");
                     inner = self.inner.lock();
                 }
 
