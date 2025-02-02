@@ -33,6 +33,7 @@ mod device_tree;
 mod error;
 mod executor;
 mod hart_local;
+mod irq;
 mod logger;
 mod metrics;
 mod panic;
@@ -41,7 +42,6 @@ mod traps;
 mod util;
 mod vm;
 mod wasm;
-mod irq;
 
 use crate::device_tree::device_tree;
 use crate::error::Error;
@@ -115,7 +115,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
         // perform global, architecture-specific initialization
         arch::init_early();
-        
+
         let devtree = device_tree::init(fdt).unwrap();
         log::debug!("{devtree:?}");
 

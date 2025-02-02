@@ -28,7 +28,7 @@ pub struct Plic {
     context: usize,
     /// The number of external interrupts supported by this controller.
     ///
-    /// https://github.com/torvalds/linux/blob/5bfc75d92efd494db37f5c4c173d3639d4772966/Documentation/devicetree/bindings/interrupt-controller/sifive%2Cplic-1.0.0.yaml#L69
+    /// <https://github.com/torvalds/linux/blob/5bfc75d92efd494db37f5c4c173d3639d4772966/Documentation/devicetree/bindings/interrupt-controller/sifive%2Cplic-1.0.0.yaml#L69>
     ndev: usize,
 }
 
@@ -143,17 +143,23 @@ impl Plic {
 
 impl InterruptController for Plic {
     fn irq_claim(&mut self) -> Option<IrqClaim> {
+        // Safety: constructor ensures this is valid, but at the end of the day, this is writing to
+        // an MMIO region, so it's inherently unsafe.
         let regs = unsafe { self.regs.as_mut().unwrap() };
         regs.claim(self.context)
     }
 
     fn irq_complete(&mut self, claim: IrqClaim) {
+        // Safety: constructor ensures this is valid, but at the end of the day, this is writing to
+        // an MMIO region, so it's inherently unsafe.
         let regs = unsafe { self.regs.as_mut().unwrap() };
         regs.complete(self.context, claim);
     }
 
     fn irq_mask(&mut self, irq_num: u32) {
         assert!(irq_num > 0 && irq_num as usize <= self.ndev);
+        // Safety: constructor ensures this is valid, but at the end of the day, this is writing to
+        // an MMIO region, so it's inherently unsafe.
         let regs = unsafe { self.regs.as_mut().unwrap() };
         regs.set_priority(NonZero::new(irq_num as usize).unwrap(), 1);
         regs.enable(self.context, NonZero::new(irq_num as usize).unwrap(), true);
@@ -161,6 +167,8 @@ impl InterruptController for Plic {
 
     fn irq_unmask(&mut self, irq_num: u32) {
         assert!(irq_num as usize <= self.ndev);
+        // Safety: constructor ensures this is valid, but at the end of the day, this is writing to
+        // an MMIO region, so it's inherently unsafe.
         let regs = unsafe { self.regs.as_mut().unwrap() };
         regs.set_priority(NonZero::new(irq_num as usize).unwrap(), 1);
         regs.enable(self.context, NonZero::new(irq_num as usize).unwrap(), false);
@@ -169,41 +177,56 @@ impl InterruptController for Plic {
 
 impl PlicRegs {
     /// Sets the priority of the given interrupt source.
-    pub fn set_priority(self: &mut Self, irq: NonZero<usize>, priority: usize) {
+    pub fn set_priority(&mut self, irq: NonZero<usize>, priority: u32) {
         assert!(priority < 8);
-        self.source_priority[irq.get()].write(priority as u32);
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the end of the day,
+        // this is writing to an MMIO region, so it's inherently unsafe.
+        unsafe {
+            self.source_priority[irq.get()].write(priority);
+        }
     }
 
     /// Retrieves the pending interrupts for the given IRQ lane. The returned `u32` should be interpreted
     /// as a bitfield to determine which interrupts are pending.
-    pub fn pending(self: &Self, irq_lane: usize) -> u32 {
+    pub fn pending(&self, irq_lane: usize) -> u32 {
         debug_assert!(irq_lane < 32);
-        self.pending[irq_lane].read()
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the end of the day,
+        // this is writing to an MMIO region, so it's inherently unsafe.
+        unsafe { self.pending[irq_lane].read() }
     }
 
     /// Enable or disable the given interrupt source for the given context.
-    pub fn enable(self: &mut Self, context: usize, irq: NonZero<usize>, enable: bool) {
+    pub fn enable(&mut self, context: usize, irq: NonZero<usize>, enable: bool) {
         assert!(irq.get() <= 1023 && context < MAX_CONTEXTS);
         let irq_lane = irq.get() / 32;
         let irq = irq.get() % 32;
-        self.enable[context][irq_lane].set_bits(1u32 << irq, enable);
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the end of the day,
+        // this is writing to an MMIO region, so it's inherently unsafe.
+        unsafe {
+            self.enable[context][irq_lane].set_bits(1u32 << irq, enable);
+        }
     }
 
     /// Sets the priority threshold for the given context. All interrupts to the given context with
     /// a priority less than or equal to the threshold will be masked.
-    pub fn set_priority_threshold(self: &mut Self, context: usize, priority: usize) {
+    pub fn set_priority_threshold(&mut self, context: usize, priority: u32) {
         assert!(context < MAX_CONTEXTS && priority <= 7);
-        self.thresholds_claims[context]
-            .threshold
-            .write(priority as u32);
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the end of the day,
+        // this is writing to an MMIO region, so it's inherently unsafe.
+        unsafe {
+            self.thresholds_claims[context].threshold.write(priority);
+        }
     }
 
     /// Send an interrupt claim message to the PLIC signalling that we will service an interrupt request
     /// for the given target context. Returns the highest priority interrupt that is pending or `None`
     /// if no interrupts where pending for the target context.
-    pub fn claim(self: &mut Self, context: usize) -> Option<IrqClaim> {
+    pub fn claim(&mut self, context: usize) -> Option<IrqClaim> {
         assert!(context < MAX_CONTEXTS);
-        let claim = self.thresholds_claims[context].claim_complete.read();
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the end of the day,
+        // this is writing to an MMIO region, so it's inherently unsafe.
+        let claim = unsafe { self.thresholds_claims[context].claim_complete.read() };
+        // Safety: we just obtained the value from the MMIO register, so it's valid.
         NonZero::new(claim).map(|raw| unsafe { IrqClaim::from_raw(raw) })
     }
 
@@ -212,11 +235,15 @@ impl PlicRegs {
     /// # Safety
     ///
     /// The `claim` must be *the same* value as the one returned by the `[claim`] method.
-    pub fn complete(self: &mut Self, context: usize, claim: IrqClaim) {
+    pub fn complete(&mut self, context: usize, claim: IrqClaim) {
         assert!(context < MAX_CONTEXTS);
-        self.thresholds_claims[context]
-            .claim_complete
-            .write(claim.as_u32());
+        // Safety: PLIC constructor & type layout ensure this ptr is valid, but at the end of the day,
+        // this is writing to an MMIO region, so it's inherently unsafe.
+        unsafe {
+            self.thresholds_claims[context]
+                .claim_complete
+                .write(claim.as_u32());
+        }
     }
 }
 
@@ -244,37 +271,44 @@ impl<T> MmioReg<T> {
 }
 
 // Generic implementation (WARNING: requires aligned pointers!)
-#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
 impl<T> MmioReg<T> {
-    fn read(&self) -> T {
+    unsafe fn read(&self) -> T {
+        // Safety: ensured by caller
         unsafe { ptr::read_volatile(ptr::addr_of!(self.value).cast::<T>()) }
     }
 
-    fn write(&mut self, value: T) {
+    unsafe fn write(&mut self, value: T) {
+        // Safety: ensured by caller
         unsafe { ptr::write_volatile(ptr::addr_of_mut!(self.value).cast::<T>(), value) };
     }
 
     #[inline(always)]
-    fn get_bits(&self, flags: T) -> bool
+    unsafe fn get_bits(&self, flags: T) -> bool
     where
         T: Copy + PartialEq + BitAnd<Output = T>,
     {
-        (self.read() & flags) == flags
+        // Safety: ensured by caller
+        unsafe { (self.read() & flags) == flags }
     }
 
     #[inline(always)]
-    fn set_bits(&mut self, flags: T, value: bool)
+    unsafe fn set_bits(&mut self, flags: T, value: bool)
     where
         T: BitOr<Output = T> + BitAnd<Output = T> + Not<Output = T>,
     {
-        let tmp: T = match value {
-            true => self.read() | flags,
-            false => self.read() & !flags,
-        };
-        self.write(tmp);
+        // Safety: ensured by caller
+        unsafe {
+            let tmp: T = if value {
+                self.read() | flags
+            } else {
+                self.read() & !flags
+            };
+            self.write(tmp);
+        }
     }
 }
 
+#[expect(clippy::match_like_matches_macro, reason = "its cleaner this way")]
 fn is_supervisor_source(addr: &IrqSource) -> bool {
     match addr {
         IrqSource::C1(u32::MAX) | IrqSource::C3(u32::MAX, _, _) => false,

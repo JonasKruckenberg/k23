@@ -47,4 +47,4 @@ clear_csr!(0x144);
 
 set_clear_csr_field!(
     /// Supervisor Software Interrupt Pending
-    , set_ssoft, clear_ssoft, 1 << 1);
+    , set_ssoft, clear_ssoft, 1 << 1_i32);

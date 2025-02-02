@@ -121,6 +121,7 @@ impl DeviceTree {
     }
 
     pub fn find_by_phandle(&self, phandle: u32) -> Option<&Device> {
+        // Safety: we only inserted valid pointers into the map, so we should only get valid pointers out...
         self.with_inner(|inner| unsafe { Some(inner.phandle2ptr.get(&phandle)?.as_ref()) })
     }
 
@@ -231,6 +232,7 @@ impl<'a> Device<'a> {
                 size_cells,
             }
         } else if let Some(parent) = self.parent {
+            // Safety: tree construction ensures the parent ptr is always valid
             unsafe { parent.as_ref() }.cell_sizes()
         } else {
             CellSizes::default()
@@ -253,10 +255,7 @@ impl<'a> Device<'a> {
             .and_then(|prop| devtree.find_by_phandle(prop.as_u32().ok()?))
     }
 
-    pub fn interrupts(
-        &'a self,
-        devtree: &'a DeviceTree,
-    ) -> Option<Interrupts<'a>> {
+    pub fn interrupts(&'a self, devtree: &'a DeviceTree) -> Option<Interrupts<'a>> {
         let prop = self.property("interrupts")?;
         let raw = prop.inner.raw.array_chunks::<4>();
         let parent = self.interrupt_parent(devtree)?;
@@ -412,6 +411,7 @@ pub enum IrqSource {
     C3(u32, u32, u32),
 }
 
+#[expect(clippy::type_complexity, reason = "this is not thaaat complex")]
 pub struct Interrupts<'a> {
     parent: &'a Device<'a>,
     parent_cells: usize,
@@ -428,6 +428,7 @@ impl<'a> Iterator for Interrupts<'a> {
     }
 }
 
+#[expect(clippy::type_complexity, reason = "this is not thaaat complex")]
 pub struct InterruptsExtended<'a> {
     devtree: &'a DeviceTree,
     raw: iter::Map<slice::ArrayChunks<'a, u8, 4>, fn(&[u8; 4]) -> u32>,
@@ -472,7 +473,7 @@ pub fn init(fdt: &[u8]) -> crate::Result<&'static DeviceTree> {
 
             let mut stack: [Link<Device>; 16] = [const { None }; 16];
 
-            let root = unflatten_root(&fdt, &alloc)?;
+            let root = unflatten_root(&fdt, alloc)?;
             stack[0] = Some(root);
 
             let mut iter = fdt.nodes()?;
@@ -482,7 +483,7 @@ pub fn init(fdt: &[u8]) -> crate::Result<&'static DeviceTree> {
                     &mut phandle2ptr,
                     stack[depth - 1].unwrap(),
                     stack[depth],
-                    &alloc,
+                    alloc,
                 )?;
 
                 // insert ourselves into the stack so we will become the new previous sibling in the next iteration
