@@ -76,7 +76,6 @@ use crate::{arch, counter};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
-use core::future::Future;
 use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use core::task::Waker;
 use core::time::Duration;
@@ -198,11 +197,7 @@ pub(super) struct Context {
 }
 
 #[cold]
-pub fn run(
-    handle: &'static Handle,
-    hartid: usize,
-    initial: impl FnOnce()
-) -> Result<(), ()> {
+pub fn run(handle: &'static Handle, hartid: usize, initial: impl FnOnce()) -> Result<(), ()> {
     let mut worker = Worker {
         is_shutdown: false,
         hartid,
@@ -234,11 +229,11 @@ pub fn run(
             worker.wait_for_core(cx, synced)?
         }
     };
-    
+
     if let Some(task) = maybe_task {
         core = worker.run_task(cx, core, task)?;
     }
-    
+
     initial();
 
     // once we have acquired a core, we can start the scheduling loop

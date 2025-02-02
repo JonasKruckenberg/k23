@@ -128,7 +128,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
         // initialize the virtual memory subsystem
         vm::init(boot_info, &mut rng).unwrap();
-        
+
         // initialize the executor
 
         // if we're executing tests we don't want idle harts to park indefinitely, instead the
@@ -151,7 +151,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(boot_ticks).elapsed()
     );
-    
+
     let _ = executor::run(executor::current(), hartid, || {
         executor::current().spawn(async move {
             log::info!("Hello from hart {}", hartid);
