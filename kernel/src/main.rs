@@ -33,6 +33,7 @@ mod device_tree;
 mod error;
 mod executor;
 mod hart_local;
+mod irq;
 mod logger;
 mod metrics;
 mod panic;
@@ -113,10 +114,10 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         panic::init(boot_info);
 
         // perform global, architecture-specific initialization
-        arch::init();
+        arch::init_early();
 
-        let minfo = device_tree::init(fdt).unwrap();
-        log::debug!("{minfo:?}");
+        let devtree = device_tree::init(fdt).unwrap();
+        log::debug!("{devtree:?}");
 
         // initialize the global frame allocator
         // at this point we have parsed and processed the flattened device tree, so we pass it to the

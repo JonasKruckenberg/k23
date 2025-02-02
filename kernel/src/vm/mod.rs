@@ -46,6 +46,17 @@ static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
     frame
 });
 
+pub fn with_kernel_aspace<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut AddressSpace) -> R,
+{
+    let mut aspace = KERNEL_ASPACE
+        .get()
+        .expect("kernel address space not initialized")
+        .lock();
+    f(&mut aspace)
+}
+
 pub fn init(boot_info: &BootInfo, rand: &mut impl rand::RngCore) -> crate::Result<()> {
     #[expect(tail_expr_drop_order, reason = "")]
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {

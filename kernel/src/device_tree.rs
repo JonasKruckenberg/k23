@@ -8,9 +8,10 @@
 use bumpalo::Bump;
 use core::ffi::CStr;
 use core::ptr::NonNull;
-use core::{fmt, mem};
+use core::{fmt, iter, mem, slice};
 use fallible_iterator::FallibleIterator;
-use fdt::{Error, Fdt, NodeName, StringList};
+use fdt::{CellSizes, Error, Fdt, NodeName, StringList};
+use hashbrown::HashMap;
 use smallvec::{smallvec, SmallVec};
 use sync::OnceLock;
 
@@ -28,7 +29,12 @@ pub struct DeviceTree {
     alloc: Bump,
     #[borrows(alloc)]
     #[covariant]
-    root: NonNull<Device<'this>>,
+    inner: DeviceTreeInner<'this>,
+}
+
+struct DeviceTreeInner<'devtree> {
+    phandle2ptr: HashMap<u32, NonNull<Device<'devtree>>>,
+    root: NonNull<Device<'devtree>>,
 }
 
 /// Tree of the following shape:
@@ -48,6 +54,7 @@ pub struct Device<'a> {
     /// The name of the device
     pub name: NodeName<'a>,
     pub compatible: &'a str,
+    pub phandle: Option<u32>,
 
     // linked list of device properties
     properties: Link<Property<'a>>,
@@ -79,7 +86,7 @@ impl fmt::Debug for DeviceTree {
 impl DeviceTree {
     /// Matches the root device tree `compatible` string against the given list of strings.
     #[inline]
-    pub fn is_compatible(&self, compats: &[&str]) -> bool {
+    pub fn is_compatible<'b>(&self, compats: impl IntoIterator<Item = &'b str>) -> bool {
         self.root().is_compatible(compats)
     }
 
@@ -113,10 +120,15 @@ impl DeviceTree {
         self.root().find_by_path(path)
     }
 
+    pub fn find_by_phandle(&self, phandle: u32) -> Option<&Device> {
+        // Safety: we only inserted valid pointers into the map, so we should only get valid pointers out...
+        self.with_inner(|inner| unsafe { Some(inner.phandle2ptr.get(&phandle)?.as_ref()) })
+    }
+
     #[inline]
     fn root(&self) -> &Device {
         // Safety: `init` guarantees the root node always exists and is correctly initialized
-        unsafe { self.borrow_root().as_ref() }
+        unsafe { self.borrow_inner().root.as_ref() }
     }
 }
 
@@ -126,8 +138,8 @@ impl fmt::Debug for Device<'_> {
 
         let mut s = f.debug_struct("Device");
         s.field("name", &self.name)
-            .field("compatible", &self.compatible);
-
+            .field("compatible", &self.compatible)
+            .field("phandle", &self.phandle);
         if alternate {
             s.field_with("<properties>", |f| {
                 let mut f = f.debug_list();
@@ -160,8 +172,9 @@ impl<'a> Device<'a> {
     }
 
     /// Matches the device `compatible` string against the given list of strings.
-    pub fn is_compatible(&self, compats: &[&str]) -> bool {
-        compats.iter().any(|&c| c == self.compatible)
+    pub fn is_compatible<'b>(&self, compats: impl IntoIterator<Item = &'b str>) -> bool {
+        #[expect(tail_expr_drop_order, reason = "")]
+        compats.into_iter().any(|c| self.compatible.contains(c))
     }
 
     pub fn parent(&self) -> Option<&Device<'a>> {
@@ -204,6 +217,66 @@ impl<'a> Device<'a> {
         }
         Some(node)
     }
+
+    pub fn cell_sizes(&self) -> CellSizes {
+        let address_cells = self
+            .property("#address-cells")
+            .and_then(|prop| prop.as_usize().ok());
+        let size_cells = self
+            .property("#size-cells")
+            .and_then(|prop| prop.as_usize().ok());
+
+        if let (Some(address_cells), Some(size_cells)) = (address_cells, size_cells) {
+            CellSizes {
+                address_cells,
+                size_cells,
+            }
+        } else if let Some(parent) = self.parent {
+            // Safety: tree construction ensures the parent ptr is always valid
+            unsafe { parent.as_ref() }.cell_sizes()
+        } else {
+            CellSizes::default()
+        }
+    }
+
+    pub fn regs(&self) -> Option<fdt::Regs> {
+        self.properties()
+            .find(|p| p.name() == "reg")
+            .map(|prop| prop.inner.as_regs(self.cell_sizes()))
+    }
+
+    pub fn interrupt_cells(&self) -> Option<usize> {
+        self.property("#interrupt-cells")?.as_usize().ok()
+    }
+
+    pub fn interrupt_parent(&self, devtree: &'a DeviceTree) -> Option<&Device<'a>> {
+        self.properties()
+            .find(|p| p.name() == "interrupt-parent")
+            .and_then(|prop| devtree.find_by_phandle(prop.as_u32().ok()?))
+    }
+
+    pub fn interrupts(&'a self, devtree: &'a DeviceTree) -> Option<Interrupts<'a>> {
+        let prop = self.property("interrupts")?;
+        let raw = prop.inner.raw.array_chunks::<4>();
+        let parent = self.interrupt_parent(devtree)?;
+        Some(Interrupts {
+            parent,
+            parent_cells: parent.interrupt_cells()?,
+            raw: raw.map(|chunk| u32::from_be_bytes(*chunk)),
+        })
+    }
+
+    pub fn interrupts_extended(
+        &'a self,
+        devtree: &'a DeviceTree,
+    ) -> Option<InterruptsExtended<'a>> {
+        let prop = self.property("interrupts-extended")?;
+        let raw = prop.inner.raw.array_chunks::<4>();
+        Some(InterruptsExtended {
+            devtree,
+            raw: raw.map(|chunk| u32::from_be_bytes(*chunk)),
+        })
+    }
 }
 
 impl fmt::Debug for Property<'_> {
@@ -216,6 +289,14 @@ impl fmt::Debug for Property<'_> {
 }
 
 impl<'a> Property<'a> {
+    pub fn name(&self) -> &'a str {
+        self.inner.name
+    }
+
+    pub fn raw(&self) -> &'a [u8] {
+        self.inner.raw
+    }
+
     /// Returns the property as a `u32`.
     ///
     /// # Errors
@@ -324,6 +405,59 @@ impl<'a> Iterator for Properties<'a> {
     }
 }
 
+#[derive(Debug)]
+pub enum IrqSource {
+    C1(u32),
+    C3(u32, u32, u32),
+}
+
+#[expect(clippy::type_complexity, reason = "this is not thaaat complex")]
+pub struct Interrupts<'a> {
+    parent: &'a Device<'a>,
+    parent_cells: usize,
+    raw: iter::Map<slice::ArrayChunks<'a, u8, 4>, fn(&[u8; 4]) -> u32>,
+}
+impl<'a> Iterator for Interrupts<'a> {
+    type Item = (&'a Device<'a>, IrqSource);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some((
+            self.parent,
+            interrupt_address(&mut self.raw, self.parent_cells)?,
+        ))
+    }
+}
+
+#[expect(clippy::type_complexity, reason = "this is not thaaat complex")]
+pub struct InterruptsExtended<'a> {
+    devtree: &'a DeviceTree,
+    raw: iter::Map<slice::ArrayChunks<'a, u8, 4>, fn(&[u8; 4]) -> u32>,
+}
+impl<'a> Iterator for InterruptsExtended<'a> {
+    type Item = (&'a Device<'a>, IrqSource);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let parent_phandle = self.raw.next()?;
+        let parent = self.devtree.find_by_phandle(parent_phandle)?;
+        let parent_interrupt_cells = parent.interrupt_cells()?;
+        Some((
+            parent,
+            interrupt_address(&mut self.raw, parent_interrupt_cells)?,
+        ))
+    }
+}
+
+fn interrupt_address(
+    iter: &mut impl Iterator<Item = u32>,
+    interrupt_cells: usize,
+) -> Option<IrqSource> {
+    match interrupt_cells {
+        1 => Some(IrqSource::C1(iter.next()?)),
+        3 if let Ok([a, b, c]) = iter.next_chunk() => Some(IrqSource::C3(a, b, c)),
+        _ => None,
+    }
+}
+
 #[cold]
 pub fn init(fdt: &[u8]) -> crate::Result<&'static DeviceTree> {
     DEVICE_TREE.get_or_try_init(|| {
@@ -334,7 +468,9 @@ pub fn init(fdt: &[u8]) -> crate::Result<&'static DeviceTree> {
 
         let alloc = Bump::new();
 
-        DeviceTree::try_new(alloc, move |alloc| {
+        DeviceTree::try_new(alloc, |alloc| {
+            let mut phandle2ptr = HashMap::new();
+
             let mut stack: [Link<Device>; 16] = [const { None }; 16];
 
             let root = unflatten_root(&fdt, alloc)?;
@@ -342,13 +478,20 @@ pub fn init(fdt: &[u8]) -> crate::Result<&'static DeviceTree> {
 
             let mut iter = fdt.nodes()?;
             while let Some((depth, node)) = iter.next()? {
-                let ptr = unflatten_node(node, stack[depth - 1].unwrap(), stack[depth], alloc)?;
+                let ptr = unflatten_node(
+                    node,
+                    &mut phandle2ptr,
+                    stack[depth - 1].unwrap(),
+                    stack[depth],
+                    alloc,
+                )?;
 
                 // insert ourselves into the stack so we will become the new previous sibling in the next iteration
                 stack[depth] = Some(ptr);
             }
 
-            Ok(root)
+            #[expect(tail_expr_drop_order, reason = "")]
+            Ok(DeviceTreeInner { phandle2ptr, root })
         })
     })
 }
@@ -374,6 +517,7 @@ fn unflatten_root<'a>(fdt: &Fdt, alloc: &'a Bump) -> crate::Result<NonNull<Devic
             unit_address: None,
         },
         compatible: compatible.unwrap_or_default(),
+        phandle: None,
         properties: props_head,
         parent: None,
         first_child: None,
@@ -385,11 +529,13 @@ fn unflatten_root<'a>(fdt: &Fdt, alloc: &'a Bump) -> crate::Result<NonNull<Devic
 
 fn unflatten_node<'a>(
     node: fdt::Node,
+    phandle2ptr: &mut HashMap<u32, NonNull<Device<'a>>>,
     mut parent: NonNull<Device<'a>>,
     prev_sibling: Link<Device<'a>>,
     alloc: &'a Bump,
 ) -> crate::Result<NonNull<Device<'a>>> {
     let mut compatible: Option<&'a str> = None;
+    let mut phandle: Option<u32> = None;
 
     let mut props_head: Link<Property> = None;
     let mut props_tail: Link<Property> = None;
@@ -398,6 +544,8 @@ fn unflatten_node<'a>(
     while let Some(prop) = props.next()? {
         if prop.name == "compatible" {
             compatible = Some(alloc.alloc_str(prop.as_str()?));
+        } else if prop.name == "phandle" {
+            phandle = prop.as_u32().ok();
         } else {
             unflatten_property(prop, &mut props_head, &mut props_tail, alloc);
         }
@@ -410,11 +558,16 @@ fn unflatten_node<'a>(
             unit_address: name.unit_address.map(|addr| &*alloc.alloc_str(addr)),
         },
         compatible: compatible.unwrap_or_default(),
+        phandle,
         properties: props_head,
         parent: Some(parent),
         first_child: None,
         next_sibling: None,
     }));
+
+    if let Some(phandle) = phandle {
+        phandle2ptr.insert(phandle, node);
+    }
 
     // update the parents `first_child` pointer if necessary
     // Safety: callers responsibility to ensure that the parent pointer is valid

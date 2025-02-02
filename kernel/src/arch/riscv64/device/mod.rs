@@ -6,3 +6,4 @@
 // copied, modified, or distributed except according to those terms.
 
 pub mod cpu;
+pub mod plic;

@@ -13,7 +13,7 @@ use crate::vm::VirtualAddress;
 use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
 use riscv::scause::{Exception, Interrupt, Trap};
-use riscv::{sbi, scause, sepc, sstatus, stval, stvec};
+use riscv::{sbi, scause, sepc, sip, sstatus, stval, stvec};
 use thread_local::thread_local;
 
 thread_local! {
@@ -268,6 +268,10 @@ fn default_trap_handler(
 
     let reason = match cause {
         Trap::Interrupt(Interrupt::SupervisorSoft | Interrupt::VirtualSupervisorSoft) => {
+            // Safety: register access
+            unsafe {
+                sip::clear_ssoft();
+            }
             // Software interrupts are always IPIs used for unparking
             return raw_frame;
         }

@@ -5,8 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch::device;
 use crate::device_tree::DeviceTree;
 use crate::error::Error;
+use crate::irq::InterruptController;
 use crate::HARTID;
 use bitflags::bitflags;
 use core::cell::OnceCell;
@@ -24,6 +26,7 @@ pub struct CPUInfo {
     pub cbop_block_size: Option<usize>,
     pub cboz_block_size: Option<usize>,
     pub cbom_block_size: Option<usize>,
+    pub plic: device::plic::Plic,
 }
 
 bitflags! {
@@ -119,6 +122,16 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
     let extensions = cpu.property("riscv,isa-extensions").unwrap().as_strlist()?;
     let extensions = parse_riscv_extensions(extensions)?;
 
+    // TODO find CLINT associated with this core
+    let hlic_node = cpu
+        .children()
+        .find(|c| c.name.name == "interrupt-controller")
+        .unwrap();
+    log::trace!("CPU interrupt controller: {:?}", hlic_node);
+
+    let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
+    plic.irq_unmask(10);
+
     CPU_INFO.with(|info| {
         info.set(CPUInfo {
             timebase_frequency,
@@ -126,6 +139,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
             cbop_block_size,
             cboz_block_size,
             cbom_block_size,
+            plic,
         })
         .unwrap();
     });
