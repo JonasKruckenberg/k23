@@ -5,17 +5,22 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! rough arch interface outline
+//! Architecture-specific code
 //!
-//! - call_with_setjmp, setjmp, longjmp, JumpBuf, JumpBufStruct
-//! - invalidate_range, is_kernel_address, AddressSpace, KERNEL_ASPACE_BASE,
-//!     USER_ASPACE_BASE, PAGE_SHIFT, CANONICAL_ADDRESS_MASK, PAGE_SIZE, DEFAULT_ASID
-//! - init_early, per_hart_init_early, per_hart_init_late
-//! - device::cpu::init, device::cpu::with_cpu_info
-//! - park_hart, park_hart_timeout
-//! - with_user_memory_access
-//! - mb, rmb, wmb
-//! - set_thread_ptr, get_stack_pointer, get_next_older_pc_from_fp, NEXT_OLDER_FP_FROM_FP_OFFSET, assert_fp_is_aligned
+//! This module contains different submodules for each supported architecture (RISC-V, AArch64, x86_64).
+//! and reexports them based on the compilation target. Each submodule has to adhere to roughly the
+//! same interface:
+//! - `call_with_setjmp`, `setjmp`, `longjmp`, `JumpBuf`, `JumpBufStruct` for setjmp/longjmp functionality
+//! - `init`, `per_hart_init_early`, `per_hart_init_late` for initialization
+//! - `park_hart`, `park_hart_timeout` for parking a hart
+//! - `with_user_memory_access` for temporarily enabling kernel access to userspace memory
+//! - `mb`, `rmb`, `wmb` for memory barriers
+//! - `set_thread_ptr`, `get_stack_pointer`, `get_next_older_pc_from_fp`, `assert_fp_is_aligned` for
+//!     WASM stack support
+//! - `device::cpu::init`, `device::cpu::with_cpu_info` for CPU initialization
+//! - `invalidate_range`, `is_kernel_address`, `AddressSpace`, `KERNEL_ASPACE_BASE`,
+//!     `USER_ASPACE_BASE`, `PAGE_SHIFT`, `CANONICAL_ADDRESS_MASK`, `PAGE_SIZE`, `DEFAULT_ASID` to
+//!      support the virtual memory subsystem
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
