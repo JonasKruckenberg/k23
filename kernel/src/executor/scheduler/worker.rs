@@ -5,10 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! A scheduler is initialized with a fixed number of workers. Each worker is
-//! driven by a thread. Each worker has a "core" which contains data such as the
-//! run queue and other state. When `block_in_place` is called, the worker's
-//! "core" is handed off to a new thread allowing the scheduler to continue to
+//! Scheduler worker implementation.
+//!
+//! A scheduler worker is a hart that is running the scheduling loop and which we therefore can
+//! schedule work on. A scheduler is initialized with a fixed number of workers. Each worker has
+//! a "core" which contains data such as the run queue and other state. When `block_in_place` is called,
+//! the worker's "core" is handed off to a new thread allowing the scheduler to continue to
 //! make progress while the originating thread blocks.
 //!
 //! # Shutdown
@@ -63,8 +65,8 @@
 //! the global queue indefinitely. This would be a ref-count cycle and a memory
 //! leak.
 
-use super::{idle, Handle};
 use crate::executor::queue::Overflow;
+use crate::executor::scheduler::{idle, Handle};
 use crate::executor::task::{OwnedTasks, TaskRef};
 use crate::executor::{queue, task};
 use crate::hart_local::HartLocal;
@@ -95,8 +97,8 @@ static NUM_NOTIFY_LOCAL: Counter = counter!("scheduler.num-notify-local");
 
 /// A scheduler worker
 ///
-/// Data is stack-allocated and never migrates threads
-pub struct Worker {
+/// Data is stack-allocated and never migrates harts.
+struct Worker {
     hartid: usize,
     /// True if the scheduler is being shutdown
     is_shutdown: bool,
@@ -113,9 +115,14 @@ pub struct Worker {
 
 /// Core data
 ///
-/// Data is heap-allocated and migrates threads.
+/// Data is heap-allocated and migrates harts.
+///
+/// You can think of `Core`s and `Worker`s a bit like robots with pluggable batteries. Just like a
+/// robot needs the battery to operate, a `Worker` needs a `Core` to operate. Workers are cooperative
+/// and will give up their `Core` if they are done with their work or become blocked waiting for
+/// interrupts. This allows other `Worker`s to pick up the `Core` and continue work.
 #[repr(align(128))]
-pub(super) struct Core {
+pub struct Core {
     /// Index holding this core's remote/shared state.
     pub(super) index: usize,
     /// The worker-local run queue.
@@ -150,7 +157,7 @@ pub(super) struct Shared {
     /// Per-hart thread-local data. Logically this is part of the [`Worker`] struct, but placed here
     /// into a TLS slot instead of stack allocated so we can access it from other places (i.e. we only
     /// need access to the scheduler handle instead of access to the workers stack which wouldn't work).
-    pub(super) tls: HartLocal<Context>,
+    pub(super) per_hart: HartLocal<Context>,
     /// Signal to workers that they should be shutting down.
     pub(super) shutdown: AtomicBool,
     /// Whether to shut down the executor when all tasks are processed, used in tests.
@@ -178,7 +185,10 @@ pub(super) struct Remote {
     pub(super) steal: queue::Steal,
 }
 
-/// Thread-local context
+/// Hart-local context
+///
+/// Logically this is part of the [`Worker`] struct, but is kept separate to allow access from
+/// other parts of the code.
 pub(super) struct Context {
     /// Handle to the current scheduler
     handle: &'static Handle,
@@ -208,7 +218,7 @@ pub fn run(handle: &'static Handle, hartid: usize, initial: impl FnOnce()) -> Re
     };
 
     #[expect(tail_expr_drop_order, reason = "")]
-    let cx = handle.shared.tls.get_or(|| Context {
+    let cx = handle.shared.per_hart.get_or(|| Context {
         handle,
         core: RefCell::new(None),
         lifo_enabled: Cell::new(true),
@@ -518,6 +528,7 @@ impl Worker {
 
                 // Safety: we're parking only for a very small amount of time, this is fine
                 unsafe {
+                    // TODO cleanup
                     log::trace!("spin stalling for {:?}", Duration::from_micros(i as u64));
                     arch::hart_park_timeout(Duration::from_micros(i as u64));
                     log::trace!("after spin stall");
@@ -740,7 +751,7 @@ impl Core {
 
 impl Shared {
     pub(in crate::executor) fn schedule_task(&self, task: TaskRef, is_yield: bool) {
-        if let Some(cx) = self.tls.get() {
+        if let Some(cx) = self.per_hart.get() {
             // And the current thread still holds a core
             if let Some(core) = cx.core.borrow_mut().as_mut() {
                 if is_yield {

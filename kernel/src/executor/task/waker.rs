@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::raw::Header;
-use super::raw::TaskRef;
+use crate::executor::task::TaskRef;
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
