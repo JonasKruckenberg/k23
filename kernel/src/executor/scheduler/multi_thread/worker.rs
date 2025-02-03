@@ -349,9 +349,9 @@ impl Worker {
                 return Err(());
             }
 
-            log::trace!("[wait_for_core] parking hart..");
+            log::trace!("parking hart waiting for core..");
             cx.shared().condvars[self.hartid].wait(&cx.shared().parking_spot, &mut synced);
-            log::trace!("[wait_for_core] unparked hart");
+            log::trace!("unparked hart, found core");
         };
 
         self.reset_acquired_core(cx, &mut core);
