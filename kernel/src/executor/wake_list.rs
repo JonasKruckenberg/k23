@@ -52,7 +52,7 @@ impl WakeList {
         impl Drop for DropGuard {
             fn drop(&mut self) {
                 // SAFETY: Both pointers are part of the same object, with `start <= end`.
-                let len = unsafe { self.end.offset_from(self.start) } as usize;
+                let len = usize::try_from(unsafe { self.end.offset_from(self.start) }).unwrap();
                 let slice = ptr::slice_from_raw_parts_mut(self.start, len);
                 // SAFETY: All elements in `start..len` are initialized, so we can drop them.
                 unsafe { ptr::drop_in_place(slice) };

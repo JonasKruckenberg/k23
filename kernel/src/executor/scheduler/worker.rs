@@ -9,7 +9,7 @@
 //!
 //! A scheduler worker is a hart that is running the scheduling loop and which we therefore can
 //! schedule work on. A scheduler is initialized with a fixed number of workers. Each worker has
-//! a "core" which contains data such as the run queue and other state. When `block_in_place` is called, 
+//! a "core" which contains data such as the run queue and other state. When `block_in_place` is called,
 //! the worker's "core" is handed off to a new thread allowing the scheduler to continue to
 //! make progress while the originating thread blocks.
 //!

@@ -76,7 +76,6 @@
 //! [`tokio`]: https://github.com/tokio-rs/tokio
 
 mod queue;
-mod queue;
 mod scheduler;
 mod task;
 mod wake_list;

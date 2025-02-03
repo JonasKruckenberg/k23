@@ -38,7 +38,7 @@ use core::task::{Context, Poll, Waker};
 /// storage). Therefore, operations that are specific to the task's `S`-typed
 /// [scheduler], `F`-typed [`Future`] are performed via [dynamic dispatch].
 ///
-/// [scheduler]: crate::executor::scheduler::multi_thread::Handle
+/// [scheduler]: crate::executor::scheduler::Handle
 /// [dynamic dispatch]: https://en.wikipedia.org/wiki/Dynamic_dispatch
 // # This struct should be cache padded to avoid false sharing. The cache padding rules are copied
 // from crossbeam-utils/src/cache_padded.rs
@@ -287,6 +287,7 @@ unsafe impl linked_list::Linked for Header {
         ptr
     }
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
+        // Safety: ensured by the caller
         unsafe { TaskRef::from_raw(ptr) }
     }
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<linked_list::Links<Self>> {
@@ -317,6 +318,7 @@ unsafe impl mpsc_queue::Linked for Header {
         ptr
     }
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
+        // Safety: ensured by the caller
         unsafe { TaskRef::from_raw(ptr) }
     }
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<mpsc_queue::Links<Self>>
