@@ -13,6 +13,9 @@
 //! - init_early, per_hart_init_early, per_hart_init_late
 //! - device::cpu::init, device::cpu::with_cpu_info
 //! - park_hart, park_hart_timeout
+//! - with_user_memory_access
+//! - mb, rmb, wmb
+//! - set_thread_ptr, get_stack_pointer, get_next_older_pc_from_fp, NEXT_OLDER_FP_FROM_FP_OFFSET, assert_fp_is_aligned
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
