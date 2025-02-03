@@ -8,7 +8,11 @@
 //! rough arch interface outline
 //!
 //! - call_with_setjmp, setjmp, longjmp, JumpBuf, JumpBufStruct
-//! - invalidate_range, is_kernel_address, KERNEL_ASPACE_BASE
+//! - invalidate_range, is_kernel_address, AddressSpace, KERNEL_ASPACE_BASE, 
+//!     USER_ASPACE_BASE, PAGE_SHIFT, CANONICAL_ADDRESS_MASK, PAGE_SIZE, DEFAULT_ASID
+//! - init_early, per_hart_init_early, per_hart_init_late
+//! - device::cpu::init, device::cpu::with_cpu_info
+//! - park_hart, park_hart_timeout
 
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
