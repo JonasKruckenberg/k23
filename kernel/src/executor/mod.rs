@@ -78,12 +78,13 @@
 mod queue;
 mod scheduler;
 mod task;
+mod wake_list;
 mod yield_now;
 
+use crate::executor::task::JoinHandle;
 use core::future::Future;
 use rand::RngCore;
 use sync::OnceLock;
-pub use task::JoinHandle;
 
 static EXECUTOR: OnceLock<Executor> = OnceLock::new();
 
@@ -91,7 +92,7 @@ pub struct Executor {
     /// Handle to the scheduler used by this runtime
     // If we ever want to support multiple runtimes, this should become an enum over the different
     // variants. For now, we only support the multithreaded scheduler.
-    scheduler: scheduler::multi_thread::Handle,
+    scheduler: scheduler::Handle,
 }
 
 /// Get a reference to the current executor.
@@ -109,7 +110,7 @@ pub fn current() -> &'static Executor {
 pub fn init(num_cores: usize, rng: &mut impl RngCore, shutdown_on_idle: bool) -> &'static Executor {
     #[expect(tail_expr_drop_order, reason = "")]
     EXECUTOR.get_or_init(|| Executor {
-        scheduler: scheduler::multi_thread::Handle::new(num_cores, rng, shutdown_on_idle),
+        scheduler: scheduler::Handle::new(num_cores, rng, shutdown_on_idle),
     })
 }
 
@@ -118,7 +119,7 @@ pub fn init(num_cores: usize, rng: &mut impl RngCore, shutdown_on_idle: bool) ->
 /// This function will not return until the runtime is shut down.
 #[inline]
 pub fn run(rt: &'static Executor, hartid: usize, initial: impl FnOnce()) -> Result<(), ()> {
-    scheduler::multi_thread::worker::run(&rt.scheduler, hartid, initial)
+    scheduler::worker::run(&rt.scheduler, hartid, initial)
 }
 
 impl Executor {

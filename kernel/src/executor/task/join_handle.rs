@@ -5,7 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use super::raw::{Header, TaskRef};
+use super::raw::Header;
+use crate::executor::task::TaskRef;
 use core::fmt;
 use core::future::Future;
 use core::marker::PhantomData;

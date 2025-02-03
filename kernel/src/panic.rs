@@ -75,6 +75,10 @@ where
     })
 }
 
+pub(crate) fn resume_unwind(payload: Box<dyn Any + Send>) {
+    rust_panic(payload)
+}
+
 /// Entry point for panics from the `core` crate.
 #[panic_handler]
 fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
