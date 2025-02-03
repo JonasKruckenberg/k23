@@ -5,6 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+//! rough arch interface outline
+//!
+//! - call_with_setjmp, setjmp, longjmp, JumpBuf, JumpBufStruct
+//! - invalidate_range, is_kernel_address, KERNEL_ASPACE_BASE
+
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
         mod riscv64;
