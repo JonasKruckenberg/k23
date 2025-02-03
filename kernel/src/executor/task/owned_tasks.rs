@@ -5,7 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use super::{raw, Id, JoinHandle, Schedule, TaskRef};
+use super::{raw, Schedule, TaskRef};
+use crate::executor::task::id::Id;
+use crate::executor::task::join_handle::JoinHandle;
 use core::future::Future;
 use core::sync::atomic::{AtomicBool, Ordering};
 use sync::Mutex;

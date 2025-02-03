@@ -9,16 +9,6 @@ use crate::arch;
 use core::fmt;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-pub(super) struct State {
-    val: AtomicUsize,
-}
-
-/// Current state value.
-#[derive(Copy, Clone)]
-pub(super) struct Snapshot(usize);
-
-type UpdateResult = Result<Snapshot, Snapshot>;
-
 /// The task is currently being run.
 const RUNNING: usize = 0b0001;
 
@@ -66,6 +56,35 @@ const REF_ONE: usize = 1 << REF_COUNT_SHIFT;
 /// As the task starts with a `Notified`, `NOTIFIED` is set.
 const INITIAL_STATE: usize = (REF_ONE * 3) | JOIN_INTEREST | NOTIFIED;
 
+/// Task state. The task stores its state in an atomic `usize` with various bitfields for the
+/// necessary information. The state has the following layout:
+///
+/// ```text
+/// | 63     6 | 5       5 | 4        4 | 3           3 | 2      2 | 1       0 |
+/// | refcount | cancelled | join waker | join interest | notified | lifecycle |
+/// ```
+///
+/// - `lifecycle` (bit 0n and 1)
+///     - `RUNNING` (bit 0) - Tracks whether the task is currently being polled or cancelled.
+///     - `COMPLETE` (bit 1) - Is one once the future has fully completed and has been dropped.
+///        Never unset once set. Never set together with `RUNNING`.
+/// - `NOTIFIED` (bit 2) - Tracks whether a Notified object currently exists.
+/// - `JOIN_INTEREST` - Is set to one if there exists a `JoinHandle`.
+/// - `JOIN_WAKER` - Acts as an access control bit for the join handle waker. The
+///    protocol for its usage is described below.
+/// - `CANCELLED` (bit 3) - Is set to one for tasks that should be cancelled as soon as possible.
+///
+/// The rest of the bits are used for the ref-count.
+pub(super) struct State {
+    val: AtomicUsize,
+}
+
+/// Current state value.
+#[derive(Copy, Clone)]
+pub(super) struct Snapshot(usize);
+
+type UpdateResult = Result<Snapshot, Snapshot>;
+
 #[must_use]
 pub(super) enum TransitionToRunning {
     /// We successfully transitioned the task to the RUNNING state
@@ -106,8 +125,6 @@ pub(super) struct TransitionToJoinHandleDrop {
     pub(super) drop_output: bool,
 }
 
-/// All transitions are performed via RMW operations. This establishes an
-/// unambiguous modification order.
 impl State {
     /// Returns a task's initial state.
     pub(super) fn new() -> State {
@@ -123,8 +140,6 @@ impl State {
         Snapshot(self.val.load(Ordering::Acquire))
     }
 
-    /// Attempts to transition the lifecycle to `Running`. This sets the
-    /// notified bit to false so notifications during the poll can be detected.
     pub(super) fn transition_to_running(&self) -> TransitionToRunning {
         self.fetch_update_action(|mut next| {
             let action;
@@ -203,11 +218,6 @@ impl State {
     }
 
     /// Transitions the state to `NOTIFIED`.
-    ///
-    /// If no task needs to be submitted, a ref-count is consumed.
-    ///
-    /// If a task needs to be submitted, the ref-count is incremented for the
-    /// new Notified.
     pub(super) fn transition_to_notified_by_val(&self) -> TransitionToNotifiedByVal {
         self.fetch_update_action(|mut snapshot| {
             let action;
@@ -246,6 +256,11 @@ impl State {
     }
 
     /// Transitions the state to `NOTIFIED`.
+    ///
+    /// If no task needs to be submitted, a ref-count is consumed.
+    ///
+    /// If a task needs to be submitted, the ref-count is incremented for the
+    /// new Notified.
     pub(super) fn transition_to_notified_by_ref(&self) -> TransitionToNotifiedByRef {
         self.fetch_update_action(|mut snapshot| {
             if snapshot.is_complete() || snapshot.is_notified() {
@@ -266,30 +281,6 @@ impl State {
             }
         })
     }
-
-    // /// Transitions the state to `NOTIFIED`, unconditionally increasing the ref
-    // /// count.
-    // ///
-    // /// Returns `true` if the notified bit was transitioned from `0` to `1`;
-    // /// otherwise `false.`
-    // #[cfg(all(
-    //     tokio_unstable,
-    //     tokio_taskdump,
-    //     feature = "rt",
-    //     target_os = "linux",
-    //     any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64")
-    // ))]
-    // pub(super) fn transition_to_notified_for_tracing(&self) -> bool {
-    //     self.fetch_update_action(|mut snapshot| {
-    //         if snapshot.is_notified() {
-    //             (false, None)
-    //         } else {
-    //             snapshot.set_notified();
-    //             snapshot.ref_inc();
-    //             (true, Some(snapshot))
-    //         }
-    //     })
-    // }
 
     /// Sets the cancelled bit and transitions the state to `NOTIFIED` if idle.
     ///
@@ -466,6 +457,7 @@ impl State {
         Snapshot(prev.0 & !JOIN_WAKER)
     }
 
+    /// Increases the reference count by one.
     pub(super) fn ref_inc(&self) {
         // Using a relaxed ordering is alright here, as knowledge of the
         // original reference prevents other threads from erroneously deleting
@@ -486,19 +478,12 @@ impl State {
         }
     }
 
-    /// Returns `true` if the task should be released.
+    /// Decreases the reference count by one, returning `true` if the task should be released.
     pub(super) fn ref_dec(&self) -> bool {
         let prev = Snapshot(self.val.fetch_sub(REF_ONE, Ordering::AcqRel));
         assert!(prev.ref_count() >= 1);
         prev.ref_count() == 1
     }
-
-    // /// Returns `true` if the task should be released.
-    // pub(super) fn ref_dec_twice(&self) -> bool {
-    //     let prev = Snapshot(self.val.fetch_sub(2 * REF_ONE, Ordering::AcqRel));
-    //     assert!(prev.ref_count() >= 2);
-    //     prev.ref_count() == 2
-    // }
 
     fn fetch_update_action<F, T>(&self, mut f: F) -> T
     where
@@ -545,8 +530,6 @@ impl State {
         }
     }
 }
-
-// ===== impl Snapshot =====
 
 impl Snapshot {
     /// Returns `true` if the task is in an idle state.
@@ -612,7 +595,7 @@ impl Snapshot {
         self.0 &= !JOIN_WAKER;
     }
 
-    pub fn ref_count(self) -> usize {
+    pub(super) fn ref_count(self) -> usize {
         (self.0 & REF_COUNT_MASK) >> REF_COUNT_SHIFT
     }
 
@@ -621,7 +604,7 @@ impl Snapshot {
         self.0 += REF_ONE;
     }
 
-    pub(super) fn ref_dec(&mut self) {
+    fn ref_dec(&mut self) {
         assert!(self.ref_count() > 0);
         self.0 -= REF_ONE;
     }

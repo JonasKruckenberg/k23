@@ -5,4 +5,116 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-pub mod multi_thread;
+mod idle;
+pub mod worker;
+
+use crate::executor::scheduler::idle::Idle;
+use crate::executor::task::{JoinHandle, OwnedTasks, TaskRef};
+use crate::executor::{queue, task};
+use crate::hart_local::HartLocal;
+use crate::util::condvar::Condvar;
+use crate::util::fast_rand::FastRand;
+use crate::util::parking_spot::ParkingSpot;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::future::Future;
+use core::sync::atomic::{AtomicBool, Ordering};
+use core::task::Waker;
+use rand::RngCore;
+use sync::Mutex;
+pub struct Handle {
+    shared: worker::Shared,
+}
+
+impl Handle {
+    #[expect(tail_expr_drop_order, reason = "")]
+    pub fn new(num_cores: usize, rand: &mut impl RngCore, shutdown_on_idle: bool) -> Self {
+        let mut cores = Vec::with_capacity(num_cores);
+        let mut remotes = Vec::with_capacity(num_cores);
+
+        for i in 0..num_cores {
+            let (steal, run_queue) = queue::new();
+
+            cores.push(Box::new(worker::Core {
+                index: i,
+                run_queue,
+                lifo_slot: None,
+                is_searching: false,
+                rand: FastRand::new(rand.next_u64()),
+            }));
+            remotes.push(worker::Remote { steal });
+        }
+
+        let (idle, idle_synced) = Idle::new(cores);
+
+        let stub = TaskRef::new_stub();
+        let run_queue = mpsc_queue::MpscQueue::new_with_stub(stub);
+
+        Self {
+            shared: worker::Shared {
+                shutdown: AtomicBool::new(false),
+                remotes: remotes.into_boxed_slice(),
+                owned: OwnedTasks::new(),
+                synced: Mutex::new(worker::Synced {
+                    assigned_cores: (0..num_cores).map(|_| None).collect(),
+                    idle: idle_synced,
+                    shutdown_cores: Vec::with_capacity(num_cores),
+                }),
+                run_queue,
+                idle,
+                condvars: (0..num_cores).map(|_| Condvar::new()).collect(),
+                parking_spot: ParkingSpot::default(),
+                per_hart: HartLocal::with_capacity(num_cores),
+                shutdown_on_idle,
+            },
+        }
+    }
+
+    pub fn spawn<F>(&'static self, future: F) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let id = task::Id::next();
+        let (handle, maybe_task) = self.shared.owned.bind(future, self, id);
+
+        if let Some(task) = maybe_task {
+            self.shared.schedule_task(task, false);
+        }
+
+        handle
+    }
+
+    pub fn shutdown(&self) {
+        if !self.shared.shutdown.swap(true, Ordering::AcqRel) {
+            let mut synced = self.shared.synced.lock();
+
+            // Set the shutdown flag on all available cores
+            self.shared.idle.shutdown(&mut synced, &self.shared);
+
+            // Any unassigned cores need to be shutdown, but we have to first drop
+            // the lock
+            drop(synced);
+            self.shared.idle.shutdown_unassigned_cores(&self.shared);
+        }
+    }
+
+    #[inline]
+    pub(in crate::executor) fn defer(&self, waker: &Waker) {
+        self.shared.per_hart.get().unwrap().defer(waker);
+    }
+}
+
+impl task::Schedule for &'static Handle {
+    fn schedule(&self, task: TaskRef) {
+        self.shared.schedule_task(task, false);
+    }
+
+    fn release(&self, task: &TaskRef) -> Option<TaskRef> {
+        self.shared.owned.remove(task)
+    }
+
+    fn yield_now(&self, task: TaskRef) {
+        self.shared.schedule_task(task, true);
+    }
+}
