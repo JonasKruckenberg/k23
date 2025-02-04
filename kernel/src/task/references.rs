@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::panic;
 use crate::task::error::JoinError;
 use crate::task::id::Id;
 use crate::task::raw::{
@@ -16,7 +17,6 @@ use crate::task::state::{
 };
 use crate::task::waker::waker_ref;
 use crate::task::Schedule;
-use crate::panic;
 use alloc::boxed::Box;
 use core::alloc::Layout;
 use core::any::Any;
@@ -265,7 +265,7 @@ where
 
     unsafe fn poll(ptr: NonNull<Header>) {
         log::trace!("RawTaskRef::poll {ptr:p}");
-        
+
         // Safety: this method gets called through the vtable ensuring that the pointer is valid
         // for this `RawTaskRef`'s `F` and `S` generics.
         unsafe {
@@ -346,7 +346,7 @@ where
 
     unsafe fn schedule(ptr: NonNull<Header>) {
         log::trace!("RawTaskRef::schedule {ptr:p}");
-        
+
         // Safety: this method gets called through the vtable ensuring that the pointer is valid
         // for this `RawTaskRef`'s `F` and `S` generics.
         unsafe {
@@ -357,7 +357,7 @@ where
 
     unsafe fn dealloc(ptr: NonNull<Header>) {
         log::trace!("RawTaskRef::dealloc {ptr:p}");
-        
+
         // Safety: The caller of this method just transitioned our ref-count to
         // zero, so it is our responsibility to release the allocation.
         //
@@ -382,7 +382,7 @@ where
 
     unsafe fn try_read_output(ptr: NonNull<Header>, dst: *mut (), waker: &Waker) {
         log::trace!("RawTaskRef::try_read_output {ptr:p}");
-        
+
         // Safety: this method gets called through the vtable ensuring that the pointer is valid
         // for this `RawTaskRef`'s `F` and `S` generics. The caller has to ensure the `dst` pointer
         // is valid.
@@ -397,7 +397,7 @@ where
 
     unsafe fn drop_join_handle_slow(ptr: NonNull<Header>) {
         log::trace!("RawTaskRef::drop_join_handle_slow {ptr:p}");
-        
+
         // Safety: this method gets called through the vtable ensuring that the pointer is valid
         // for this `RawTaskRef`'s `F` and `S` generics
         unsafe {
@@ -446,7 +446,7 @@ where
 
     unsafe fn shutdown(ptr: NonNull<Header>) {
         log::trace!("RawTaskRef::shutdown {ptr:p}");
-        
+
         // Safety: this method gets called through the vtable ensuring that the pointer is valid
         // for this `RawTaskRef`'s `F` and `S` generics
         unsafe {
@@ -575,11 +575,11 @@ where
         // We don't actually increment the ref-count here, but the new task is
         // never destroyed, so that's ok.
         let me = ManuallyDrop::new(self.get_new_task());
-    
+
         if let Some(task) = self.core().scheduler.release(&me) {
             mem::forget(task);
         }
-        
+
         1
     }
 }

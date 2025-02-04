@@ -103,10 +103,12 @@ impl Future for Sleep<'_> {
                 // timer IRQ fires, helping to increase timer accuracy.
                 this.timer.turn_locked(&mut lock);
 
+                // Safety: the timer impl promises to treat the pointer as pinned
                 let ptr = unsafe { NonNull::from(Pin::into_inner_unchecked(this.entry.as_mut())) };
 
                 *this.state = State::Registered;
-                if lock.register(ptr) == Poll::Ready(()) {
+                // Safety: we just created the pointer from a mutable reference
+                if unsafe { lock.register(ptr) } == Poll::Ready(()) {
                     return Poll::Ready(());
                 }
             }
@@ -160,6 +162,7 @@ impl Entry {
     }
 }
 
+// Safety: TODO
 unsafe impl linked_list::Linked for Entry {
     type Handle = NonNull<Entry>;
 

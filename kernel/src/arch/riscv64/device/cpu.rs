@@ -137,10 +137,16 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
 
     let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
     let clock = Clock::new(tick_duration, || Ticks(riscv::register::time::read64()));
-    
-    debug_assert_eq!(clock.ticks_to_duration(Ticks(timebase_frequency)), Duration::from_secs(1));
-    debug_assert_eq!(clock.duration_to_ticks(Duration::from_secs(1)).unwrap(), Ticks(timebase_frequency));
-    
+
+    debug_assert_eq!(
+        clock.ticks_to_duration(Ticks(timebase_frequency)),
+        Duration::from_secs(1)
+    );
+    debug_assert_eq!(
+        clock.duration_to_ticks(Duration::from_secs(1)).unwrap(),
+        Ticks(timebase_frequency)
+    );
+
     CPU_INFO.with(|info| {
         let _info = CPUInfo {
             clock,

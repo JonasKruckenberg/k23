@@ -38,7 +38,7 @@ use core::task::{Context, Poll, Waker};
 /// storage). Therefore, operations that are specific to the task's `S`-typed
 /// [scheduler], `F`-typed [`Future`] are performed via [dynamic dispatch].
 ///
-/// [scheduler]: crate::executor::scheduler::Handle
+/// [scheduler]: crate::scheduler::Scheduler
 /// [dynamic dispatch]: https://en.wikipedia.org/wiki/Dynamic_dispatch
 // # This struct should be cache padded to avoid false sharing. The cache padding rules are copied
 // from crossbeam-utils/src/cache_padded.rs

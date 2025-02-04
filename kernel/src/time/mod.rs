@@ -7,21 +7,21 @@
 
 #![allow(unused_imports, reason = "reexporting")]
 
-mod instant;
-mod system_time;
 pub mod clock;
-mod timer;
 mod error;
+mod instant;
 mod sleep;
+mod system_time;
+mod timer;
 
 pub const NANOS_PER_SEC: u64 = 1_000_000_000;
 
-pub use core::time::Duration;
-pub use instant::Instant;
-pub use error::Error;
 pub use clock::Clock;
-pub use timer::{Timer, Deadline};
-pub use sleep::{Sleep, sleep, sleep_until};
+pub use core::time::Duration;
+pub use error::Error;
+pub use instant::Instant;
+pub use sleep::{sleep, sleep_until, Sleep};
+pub use timer::{Deadline, Timer};
 
 // #[cfg(test)]
 // mod tests {

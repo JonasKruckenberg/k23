@@ -47,6 +47,7 @@ mod wasm;
 
 use crate::device_tree::device_tree;
 use crate::error::Error;
+use crate::time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use core::cell::Cell;
@@ -60,7 +61,6 @@ use rand_chacha::ChaCha20Rng;
 use sync::Once;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
-use crate::time::Instant;
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Debug;
@@ -154,7 +154,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, _boot_ticks: u64) -> ! {
             log::debug!("sleeping for 1 sec...");
             let start = Instant::now();
             time::sleep(Duration::from_secs(1)).await;
-            log::debug!("slept 1 sec! {:?}", start.elapsed())
+            log::debug!("slept 1 sec! {:?}", start.elapsed());
         });
     }
 

@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 pub mod atomic_cell;
+pub mod atomic_waker;
 pub mod condvar;
 pub mod fast_rand;
 pub mod parking_spot;
-pub mod atomic_waker;
 mod wake_list;

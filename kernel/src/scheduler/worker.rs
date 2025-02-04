@@ -66,12 +66,13 @@
 //! leak.
 
 use crate::arch::device::cpu::with_cpu_info;
+use crate::hart_local::HartLocal;
+use crate::metrics::Counter;
+use crate::scheduler::queue;
 use crate::scheduler::queue::Overflow;
 use crate::scheduler::{idle, Scheduler};
 use crate::task::{OwnedTasks, TaskRef};
-use crate::scheduler::queue;
-use crate::hart_local::HartLocal;
-use crate::metrics::Counter;
+use crate::time::clock::Ticks;
 use crate::time::Timer;
 use crate::util::condvar::Condvar;
 use crate::util::fast_rand::FastRand;
@@ -85,7 +86,6 @@ use core::task::Waker;
 use core::time::Duration;
 use core::{cmp, mem, ptr};
 use sync::{Mutex, MutexGuard};
-use crate::time::clock::Ticks;
 
 type NextTaskResult = Result<(Option<TaskRef>, Box<Core>), ()>;
 const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
@@ -308,7 +308,7 @@ impl Worker {
             // super::counters::inc_num_relay_search();
             cx.shared().notify_parked_local();
         }
-        
+
         NUM_POLLS.increment(1);
         task.run();
 
@@ -390,7 +390,7 @@ impl Worker {
         &mut self,
         cx: &Context,
         mut synced: MutexGuard<'_, Synced>,
-        deadline: Ticks
+        deadline: Ticks,
     ) -> NextTaskResult {
         cx.shared()
             .idle
@@ -403,7 +403,11 @@ impl Worker {
         }
 
         log::trace!("parking hart waiting for core..");
-        cx.shared().condvars[self.hartid].wait_until(&cx.shared().parking_spot, &mut synced, deadline);
+        cx.shared().condvars[self.hartid].wait_until(
+            &cx.shared().parking_spot,
+            &mut synced,
+            deadline,
+        );
         log::trace!("unparked hart, found core");
 
         // Try to acquire an available core to schedule the timer events
@@ -655,7 +659,7 @@ impl Worker {
         // if timer have expired in the previous turn of the timer, schedule them now
         if expired > 0 {
             cx.timer.turn();
-            return self.schedule_deferred_with_core(cx, core, move || synced)
+            return self.schedule_deferred_with_core(cx, core, move || synced);
         }
 
         // Release the core
@@ -668,8 +672,6 @@ impl Worker {
             NUM_PARKS.increment(1);
             self.wait_for_core(cx, synced)
         }
-
-
 
         // let (expired, timer_deadline) = cx.timer.turn();
         //

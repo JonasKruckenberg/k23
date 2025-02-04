@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::time::clock::Ticks;
 use crate::{arch, scheduler};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
@@ -12,7 +13,6 @@ use core::mem::offset_of;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use sync::Mutex;
-use crate::time::clock::Ticks;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum WaitResult {

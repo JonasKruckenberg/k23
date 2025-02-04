@@ -5,11 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::scheduler;
+use crate::time::{clock, NANOS_PER_SEC};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
-use crate::scheduler;
-use crate::time::{clock, NANOS_PER_SEC};
 
 /// A measurement of a monotonically nondecreasing clock.
 /// Opaque and useful only with [`Duration`].
@@ -30,7 +30,7 @@ impl Instant {
         // but doing checked or saturating conversions in those functions is too expensive.
         Self::now() + Duration::from_secs(86400 * 365 * 30)
     }
-    
+
     // pub fn from_ticks(ticks: u64) -> Self {
     //     let timebase_freq = with_cpu_info(|cpu_info| cpu_info.timebase_frequency);
     //     Instant(time::ticks_to_duration(ticks, timebase_freq))

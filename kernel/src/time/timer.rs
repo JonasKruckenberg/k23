@@ -138,9 +138,10 @@ impl Timer {
         lock.cancel(entry);
     }
 
-    fn register(&self, ptr: NonNull<Entry>) -> Poll<()> {
+    unsafe fn register(&self, ptr: NonNull<Entry>) -> Poll<()> {
         let mut lock = self.core.lock();
-        lock.register(ptr)
+        // Safety: callers responsibility
+        unsafe { lock.register(ptr) }
     }
 }
 
@@ -190,6 +191,7 @@ impl Core {
             // those entries again, or we'll end up in an infinite loop.
             let entries = self.wheels[deadline.wheel].take_slot(deadline.slot);
             for entry in entries {
+                // Safety: upon registering the caller promised the entry is valid
                 let entry_deadline = unsafe { entry.as_ref().deadline };
 
                 if entry_deadline > now {
@@ -204,6 +206,7 @@ impl Core {
                     pending_reschedule.push_front(entry);
                 } else {
                     // otherwise, fire the timer
+                    // Safety: upon registering the caller promised the entry is valid
                     unsafe {
                         expired += 1;
                         entry.as_ref().fire();
@@ -220,6 +223,7 @@ impl Core {
         let any = !pending_reschedule.is_empty();
 
         for entry in pending_reschedule {
+            // Safety: upon registering the caller promised the entry is valid
             let entry_deadline = unsafe { entry.as_ref().deadline };
 
             debug_assert!(entry_deadline > self.now);
@@ -248,8 +252,9 @@ impl Core {
         self.wheels[wheel].remove(deadline, entry);
     }
 
-    pub(super) fn register(&mut self, ptr: NonNull<Entry>) -> Poll<()> {
+    pub(super) unsafe fn register(&mut self, ptr: NonNull<Entry>) -> Poll<()> {
         let deadline = {
+            // Safety: callers responsibility
             let entry = unsafe { ptr.as_ref() };
 
             log::trace!("registering entry={entry:?};now={:?}", self.now);
@@ -308,6 +313,10 @@ impl Wheel {
     const SLOTS: usize = 64;
     const BITS: usize = Self::SLOTS.trailing_zeros() as usize;
 
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "slot index can be at most 64"
+    )]
     fn new(level: usize) -> Self {
         // how many ticks does a single slot represent in a wheel of this level?
         let ticks_per_slot = Ticks(Self::SLOTS.pow(level as u32) as u64);
@@ -347,14 +356,13 @@ impl Wheel {
         );
 
         let slot = self.slot_index(deadline);
+        // safety: we will not use the `NonNull` to violate pinning
+        // invariants; it's used only to insert the sleep into the intrusive
+        // list. It's safe to remove the sleep from the linked list because
+        // we know it's in this list (provided the rest of the timer wheel
+        // is like...working...)
         unsafe {
-            // safety: we will not use the `NonNull` to violate pinning
-            // invariants; it's used only to insert the sleep into the intrusive
-            // list. It's safe to remove the sleep from the linked list because
-            // we know it's in this list (provided the rest of the timer wheel
-            // is like...working...)
             let ptr = NonNull::from(Pin::into_inner_unchecked(entry));
-
             let _ = self.slots[slot].cursor_from_ptr_mut(ptr).remove();
         };
 
@@ -404,6 +412,10 @@ impl Wheel {
     }
 
     /// Returns the slot index of the next firing timer.
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "slot index can be at most 64"
+    )]
     fn next_slot_distance(&self, now: Ticks) -> Option<usize> {
         if self.occupied_slots == 0 {
             return None;
@@ -442,6 +454,10 @@ impl Wheel {
 
     /// Given a duration, returns the slot into which an entry for that duratio
     /// would be inserted.
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "slot index can be at most 64"
+    )]
     const fn slot_index(&self, ticks: Ticks) -> usize {
         let shift = self.level * Self::BITS;
         ((ticks.0 >> shift) % Self::SLOTS as u64) as usize

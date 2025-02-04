@@ -5,13 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::scheduler;
+use crate::time::clock::Ticks;
 use crate::util::parking_spot::{ParkingSpot, WaitResult, Waiter};
 use core::ptr;
 use core::sync::atomic::{AtomicPtr, Ordering};
 use lock_api::RawMutex as _;
 use sync::{MutexGuard, RawMutex};
-use crate::scheduler;
-use crate::time::clock::Ticks;
 
 pub struct Condvar {
     state: AtomicPtr<RawMutex>,
@@ -101,7 +101,9 @@ impl Condvar {
             // it upon unparking which means that the `MutexGuard` cannot be accessed while the underlying
             // raw mutex is in an unlocked state.
             unsafe { MutexGuard::mutex(mutex_guard).raw() },
-            Some(Ticks(scheduler::current().timer().clock.now_ticks().0 + duration.0))
+            Some(Ticks(
+                scheduler::current().timer().clock.now_ticks().0 + duration.0,
+            )),
         )
     }
 

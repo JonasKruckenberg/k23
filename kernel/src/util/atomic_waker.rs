@@ -192,8 +192,9 @@ impl AtomicWaker {
                 let mut old_waker = None;
                 match new_waker_or_panic {
                     Ok(new_waker) => {
-                        old_waker = unsafe { &mut *self.waker.get() }.take();
+                        // Safety: The state protocol ensures the ptr is valid
                         unsafe {
+                            old_waker = (*self.waker.get()).take();
                             *self.waker.get() = Some(new_waker);
                         }
                     }
@@ -231,6 +232,7 @@ impl AtomicWaker {
 
                         // Take the waker to wake once the atomic operation has
                         // completed.
+                        // Safety: The state protocol ensures the ptr is valid
                         let mut waker = unsafe { &mut *self.waker.get() }.take();
 
                         // Just swap, because no one could change state
@@ -313,6 +315,7 @@ impl AtomicWaker {
         match self.state.fetch_or(WAKING, Ordering::AcqRel) {
             WAITING => {
                 // The waking lock has been acquired.
+                // Safety: The state protocol ensures the ptr is valid
                 let waker = unsafe { &mut *self.waker.get() }.take();
 
                 // Release the lock
@@ -349,7 +352,9 @@ impl fmt::Debug for AtomicWaker {
     }
 }
 
+// Safety: `AtomicWaker` synchronizes all accesses through atomic operations
 unsafe impl Send for AtomicWaker {}
+// Safety: `AtomicWaker` synchronizes all accesses through atomic operations
 unsafe impl Sync for AtomicWaker {}
 
 trait WakerRef {

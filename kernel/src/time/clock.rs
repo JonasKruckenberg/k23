@@ -79,7 +79,7 @@ impl Clock {
 
     pub fn ticks_to_duration(&self, ticks: Ticks) -> Duration {
         // Multiply nanoseconds as u64, because it cannot overflow that way.
-        let total_nanos = self.tick_duration.subsec_nanos() as u64 * ticks.0;
+        let total_nanos = u64::from(self.tick_duration.subsec_nanos()) * ticks.0;
         let extra_secs = total_nanos / (NANOS_PER_SEC);
         let nanos = (total_nanos % (NANOS_PER_SEC)) as u32;
         let Some(secs) = self.tick_duration.as_secs().checked_mul(ticks.0) else {
@@ -92,7 +92,7 @@ impl Clock {
         let Some(secs) = secs.checked_add(extra_secs) else {
             panic!("ticks_to_dur({:?}, {ticks:?}): extra seconds from nanos ({extra_secs}s) would overflow total seconds", self.tick_duration)
         };
-        debug_assert!(nanos < NANOS_PER_SEC as u32);
+        debug_assert!(nanos < u32::try_from(NANOS_PER_SEC).unwrap());
         Duration::new(secs, nanos)
     }
 

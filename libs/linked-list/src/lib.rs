@@ -639,7 +639,6 @@ where
         self.len = 0;
         tree
     }
-
 }
 
 impl<T> Extend<T::Handle> for List<T>
