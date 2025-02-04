@@ -41,7 +41,7 @@ impl JoinError {
     ///
     /// See [the module level docs] for more information on cancellation.
     ///
-    /// [the module level docs]: crate::executor::task#cancellation
+    /// [the module level docs]: crate::task#cancellation
     pub fn is_cancelled(&self) -> bool {
         matches!(&self.repr, Repr::Cancelled)
     }

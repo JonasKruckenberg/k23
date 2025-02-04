@@ -625,6 +625,21 @@ where
             "linked list's actual length did not match its `len` variable"
         );
     }
+
+    /// Takes all the elements out of the `List`, leaving it empty. The taken elements are returned as a new `List`.
+    #[inline]
+    pub fn take(&mut self) -> Self {
+        let tree = Self {
+            head: self.head,
+            tail: self.tail,
+            len: self.len,
+        };
+        self.head = None;
+        self.tail = None;
+        self.len = 0;
+        tree
+    }
+
 }
 
 impl<T> Extend<T::Handle> for List<T>

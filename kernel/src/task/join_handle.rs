@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::raw::Header;
-use crate::executor::task::TaskRef;
+use crate::task::TaskRef;
 use core::fmt;
 use core::future::Future;
 use core::marker::PhantomData;
@@ -85,7 +85,7 @@ impl<T> Future for JoinHandle<T> {
 }
 
 impl<T> JoinHandle<T> {
-    pub(super) fn new(raw: TaskRef) -> Self {
+    pub(crate) fn new(raw: TaskRef) -> Self {
         Self {
             raw,
             _p: PhantomData,

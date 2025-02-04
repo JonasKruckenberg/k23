@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::executor::current;
+use crate::scheduler::current;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
@@ -29,7 +29,7 @@ pub async fn yield_now() {
 
             self.yielded = true;
 
-            current().scheduler.defer(cx.waker());
+            current().defer(cx.waker());
 
             Poll::Pending
         }

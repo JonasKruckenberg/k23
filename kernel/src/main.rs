@@ -31,12 +31,14 @@ mod allocator;
 mod arch;
 mod device_tree;
 mod error;
-mod executor;
+// mod executor;
 mod hart_local;
 mod irq;
 mod logger;
 mod metrics;
 mod panic;
+mod scheduler;
+mod task;
 mod time;
 mod traps;
 mod util;
@@ -50,17 +52,18 @@ use arrayvec::ArrayVec;
 use core::cell::Cell;
 use core::range::Range;
 use core::slice;
+use core::time::Duration;
 use hart_local::thread_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::Once;
-use time::Instant;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
+use crate::time::Instant;
 
 /// The log level for the kernel
-pub const LOG_LEVEL: log::Level = log::Level::Trace;
+pub const LOG_LEVEL: log::Level = log::Level::Debug;
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 128; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
@@ -87,7 +90,7 @@ static LOADER_CONFIG: LoaderConfig = {
 };
 
 #[unsafe(no_mangle)]
-fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+fn _start(hartid: usize, boot_info: &'static BootInfo, _boot_ticks: u64) -> ! {
     HARTID.set(hartid);
 
     // perform EARLY per-hart, architecture-specific initialization
@@ -95,6 +98,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     arch::per_hart_init_early();
 
     let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
+    let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
     static SYNC: Once = Once::new();
     SYNC.call_once(|| {
@@ -124,37 +128,38 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // frame allocator for reuse
         frame_alloc::init(boot_alloc, fdt_region_phys);
 
-        // let mut rng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
-        let mut rng = ChaCha20Rng::from_seed([0; 32]);
-
         // initialize the virtual memory subsystem
         vm::init(boot_info, &mut rng).unwrap();
-
-        // initialize the executor
-
-        // if we're executing tests we don't want idle harts to park indefinitely, instead the
-        // runtime should just shut down
-        let shutdown_on_idle = cfg!(test);
-
-        executor::init(
-            boot_info.hart_mask.count_ones() as usize,
-            &mut rng,
-            shutdown_on_idle,
-        );
     });
 
     // perform EARLY per-hart, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
     arch::per_hart_init_late(device_tree()).unwrap();
 
-    log::info!(
-        "Booted in ~{:?} ({:?} in k23)",
-        Instant::now().duration_since(Instant::ZERO),
-        Instant::from_ticks(boot_ticks).elapsed()
-    );
+    // initialize the executor
 
-    let _ = executor::run(executor::current(), hartid, || {
-        executor::current().spawn(async move {
+    // if we're executing tests we don't want idle harts to park indefinitely, instead the
+    // runtime should just shut down
+    let shutdown_on_idle = cfg!(test);
+    let sched = scheduler::init(boot_info.hart_mask.count_ones(), &mut rng, shutdown_on_idle);
+
+    // log::info!(
+    //     "Booted in ~{:?} ({:?} in k23)",
+    //     Instant::now().duration_since(Instant::ZERO),
+    //     Instant::from_ticks(boot_ticks).elapsed()
+    // );
+
+    if hartid == 0 {
+        sched.spawn(async move {
+            log::debug!("sleeping for 1 sec...");
+            let start = Instant::now();
+            time::sleep(Duration::from_secs(1)).await;
+            log::debug!("slept 1 sec! {:?}", start.elapsed())
+        });
+    }
+
+    let _ = scheduler::run(sched, hartid, || {
+        sched.spawn(async move {
             log::info!("Hello from hart {}", hartid);
         });
     });

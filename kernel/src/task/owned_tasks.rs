@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::{raw, Schedule, TaskRef};
-use crate::executor::task::id::Id;
-use crate::executor::task::join_handle::JoinHandle;
+use crate::task::id::Id;
+use crate::task::join_handle::JoinHandle;
 use core::future::Future;
 use core::sync::atomic::{AtomicBool, Ordering};
 use sync::Mutex;
@@ -19,18 +19,18 @@ pub struct OwnedTasks {
 }
 
 impl OwnedTasks {
-    pub(in crate::executor) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         OwnedTasks {
             list: Mutex::new(linked_list::List::new()),
             closed: AtomicBool::new(false),
         }
     }
 
-    pub(in crate::executor) fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.list.lock().is_empty()
     }
 
-    pub(in crate::executor) fn bind<F, S>(
+    pub(crate) fn bind<F, S>(
         &self,
         task: F,
         scheduler: S,
@@ -46,7 +46,7 @@ impl OwnedTasks {
         (join, task)
     }
 
-    pub(in crate::executor) fn bind_local<F, S>(
+    pub(crate) fn bind_local<F, S>(
         &self,
         task: F,
         scheduler: S,
@@ -76,7 +76,7 @@ impl OwnedTasks {
         Some(for_scheduler)
     }
 
-    pub(in crate::executor) fn close_and_shutdown_all(&self) {
+    pub(crate) fn close_and_shutdown_all(&self) {
         self.closed.store(true, Ordering::Release);
 
         let mut list = self.list.lock();
@@ -90,7 +90,7 @@ impl OwnedTasks {
         debug_assert!(list.is_empty(), "{list:?}");
     }
 
-    pub(in crate::executor) fn remove(&self, task: &TaskRef) -> Option<TaskRef> {
+    pub(crate) fn remove(&self, task: &TaskRef) -> Option<TaskRef> {
         let mut list = self.list.lock();
         // Check the closed flag in the lock for ensuring all that tasks
         // will shut down after the OwnedTasks has been closed.

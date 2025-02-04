@@ -6,12 +6,16 @@
 // copied, modified, or distributed except according to those terms.
 
 mod idle;
-pub mod worker;
+mod queue;
+mod worker;
+mod yield_now;
 
-use crate::executor::scheduler::idle::Idle;
-use crate::executor::task::{JoinHandle, OwnedTasks, TaskRef};
-use crate::executor::{queue, task};
+use crate::arch::device::cpu::with_cpu_info;
 use crate::hart_local::HartLocal;
+use crate::scheduler::idle::Idle;
+use crate::task;
+use crate::task::{JoinHandle, OwnedTasks, TaskRef};
+use crate::time::Timer;
 use crate::util::condvar::Condvar;
 use crate::util::fast_rand::FastRand;
 use crate::util::parking_spot::ParkingSpot;
@@ -21,12 +25,41 @@ use core::future::Future;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::Waker;
 use rand::RngCore;
-use sync::Mutex;
-pub struct Handle {
+use sync::{Mutex, OnceLock};
+
+static SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
+
+/// Get a reference to the current executor.
+pub fn current() -> &'static Scheduler {
+    SCHEDULER.get().expect("scheduler not initialized")
+}
+
+/// Initialize the global executor.
+///
+/// This will allocate required state for `num_cores` of harts. Tasks can immediately be spawned
+/// using the returned runtime reference (a reference to the runtime can also be obtained using
+/// [`current()`]) but no tasks will run until at least one hart in the system enters its
+/// runtime loop using [`run()`].
+#[cold]
+pub fn init(num_cores: u32, rng: &mut impl RngCore, shutdown_on_idle: bool) -> &'static Scheduler {
+    SCHEDULER.get_or_init(|| Scheduler::new(num_cores as usize, rng, shutdown_on_idle))
+}
+
+/// Run the async runtime loop on the calling hart.
+///
+/// This function will not return until the runtime is shut down.
+#[inline]
+pub fn run(sched: &'static Scheduler, hartid: usize, initial: impl FnOnce()) -> Result<(), ()> {
+    let clock = with_cpu_info(|info| info.clock.clone());
+    let timer = Timer::new(clock);
+    worker::run(sched, timer, hartid, initial)
+}
+
+pub struct Scheduler {
     shared: worker::Shared,
 }
 
-impl Handle {
+impl Scheduler {
     #[expect(tail_expr_drop_order, reason = "")]
     pub fn new(num_cores: usize, rand: &mut impl RngCore, shutdown_on_idle: bool) -> Self {
         let mut cores = Vec::with_capacity(num_cores);
@@ -100,12 +133,17 @@ impl Handle {
     }
 
     #[inline]
-    pub(in crate::executor) fn defer(&self, waker: &Waker) {
+    pub(crate) fn defer(&self, waker: &Waker) {
         self.shared.per_hart.get().unwrap().defer(waker);
+    }
+
+    #[inline]
+    pub(crate) fn timer(&self) -> &Timer {
+        self.shared.per_hart.get().unwrap().timer()
     }
 }
 
-impl task::Schedule for &'static Handle {
+impl task::Schedule for &'static Scheduler {
     fn schedule(&self, task: TaskRef) {
         self.shared.schedule_task(task, false);
     }

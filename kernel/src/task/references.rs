@@ -5,17 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::executor::task::error::JoinError;
-use crate::executor::task::id::Id;
-use crate::executor::task::raw::{
+use crate::task::error::JoinError;
+use crate::task::id::Id;
+use crate::task::raw::{
     get_id_offset, get_trailer_offset, Core, Header, Stage, Task, Trailer, Vtable,
 };
-use crate::executor::task::state::{
+use crate::task::state::{
     Snapshot, State, TransitionToIdle, TransitionToNotifiedByRef, TransitionToNotifiedByVal,
     TransitionToRunning,
 };
-use crate::executor::task::waker::waker_ref;
-use crate::executor::task::Schedule;
+use crate::task::waker::waker_ref;
+use crate::task::Schedule;
 use crate::panic;
 use alloc::boxed::Box;
 use core::alloc::Layout;
@@ -23,6 +23,7 @@ use core::any::Any;
 use core::cell::UnsafeCell;
 use core::future::Future;
 use core::mem;
+use core::mem::ManuallyDrop;
 use core::panic::AssertUnwindSafe;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -32,7 +33,7 @@ use core::task::{Context, Poll, Waker};
 ///
 /// `TaskRef`s are reference-counted, and the task will be deallocated when the
 /// last `TaskRef` pointing to it is dropped.
-#[derive(Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct TaskRef(NonNull<Header>);
 
 /// A typed pointer to a spawned [`Task`]. It's roughly a lower-level version of [`TaskRef`]
@@ -62,66 +63,66 @@ impl TaskRef {
         this
     }
 
-    pub(super) unsafe fn from_raw(ptr: NonNull<Header>) -> Self {
+    pub(crate) unsafe fn from_raw(ptr: NonNull<Header>) -> Self {
         Self(ptr)
     }
 
-    pub(in crate::executor) fn header_ptr(&self) -> NonNull<Header> {
+    pub(crate) fn header_ptr(&self) -> NonNull<Header> {
         self.0
     }
-    pub(super) fn header(&self) -> &Header {
+    pub(crate) fn header(&self) -> &Header {
         // Safety: constructor ensures the pointer is always valid
         unsafe { self.0.as_ref() }
     }
     /// Returns a reference to the task's state.
-    pub(super) fn state(&self) -> &State {
+    pub(crate) fn state(&self) -> &State {
         &self.header().state
     }
 
-    pub(in crate::executor) fn run(self) {
+    pub(crate) fn run(self) {
         self.poll();
         mem::forget(self);
     }
 
-    pub(in crate::executor) fn poll(&self) {
+    pub(crate) fn poll(&self) {
         let vtable = self.header().vtable;
         // Safety: constructor ensures the pointer is always valid
         unsafe {
             (vtable.poll)(self.0);
         }
     }
-    pub(super) fn schedule(&self) {
+    pub(crate) fn schedule(&self) {
         let vtable = self.header().vtable;
         // Safety: constructor ensures the pointer is always valid
         unsafe {
             (vtable.schedule)(self.0);
         }
     }
-    pub(super) fn dealloc(&self) {
+    pub(crate) fn dealloc(&self) {
         let vtable = self.header().vtable;
         // Safety: constructor ensures the pointer is always valid
         unsafe {
             (vtable.dealloc)(self.0);
         }
     }
-    pub(super) unsafe fn try_read_output(&self, dst: *mut (), waker: &Waker) {
+    pub(crate) unsafe fn try_read_output(&self, dst: *mut (), waker: &Waker) {
         let vtable = self.header().vtable;
         // Safety: constructor ensures the pointer is always valid
         unsafe {
             (vtable.try_read_output)(self.0, dst, waker);
         }
     }
-    pub(super) fn drop_join_handle_slow(&self) {
+    pub(crate) fn drop_join_handle_slow(&self) {
         let vtable = self.header().vtable;
         // Safety: constructor ensures the pointer is always valid
         unsafe { (vtable.drop_join_handle_slow)(self.0) }
     }
-    pub(super) fn shutdown(&self) {
+    pub(crate) fn shutdown(&self) {
         let vtable = self.header().vtable;
         // Safety: constructor ensures the pointer is always valid
         unsafe { (vtable.shutdown)(self.0) }
     }
-    pub(super) fn drop_reference(&self) {
+    pub(crate) fn drop_reference(&self) {
         if self.state().ref_dec() {
             self.dealloc();
         }
@@ -131,23 +132,21 @@ impl TaskRef {
     ///
     /// The caller does not need to hold a ref-count besides the one that was
     /// passed to this call.
-    pub(super) fn wake_by_val(&self) {
+    pub(crate) fn wake_by_val(&self) {
         match self.state().transition_to_notified_by_val() {
             TransitionToNotifiedByVal::Submit => {
-                todo!()
-
-                // // The caller has given us a ref-count, and the transition has
-                // // created a new ref-count, so we now hold two. We turn the new
-                // // ref-count Notified and pass it to the call to `schedule`.
-                // //
-                // // The old ref-count is retained for now to ensure that the task
-                // // is not dropped during the call to `schedule` if the call
-                // // drops the task it was given.
-                // self.schedule();
+                // The caller has given us a ref-count, and the transition has
+                // created a new ref-count, so we now hold two. We turn the new
+                // ref-count Notified and pass it to the call to `schedule`.
                 //
-                // // Now that we have completed the call to schedule, we can
-                // // release our ref-count.
-                // self.drop_reference();
+                // The old ref-count is retained for now to ensure that the task
+                // is not dropped during the call to `schedule` if the call
+                // drops the task it was given.
+                self.schedule();
+
+                // Now that we have completed the call to schedule, we can
+                // release our ref-count.
+                self.drop_reference();
             }
             TransitionToNotifiedByVal::Dealloc => {
                 self.dealloc();
@@ -159,7 +158,7 @@ impl TaskRef {
     /// This call notifies the task. It will not consume any ref-counts, but the
     /// caller should hold a ref-count.  This will create a new Notified and
     /// submit it if necessary.
-    pub(super) fn wake_by_ref(&self) {
+    pub(crate) fn wake_by_ref(&self) {
         match self.state().transition_to_notified_by_ref() {
             TransitionToNotifiedByRef::Submit => {
                 // The transition above incremented the ref-count for a new task
@@ -179,7 +178,7 @@ impl TaskRef {
     /// This is similar to `shutdown` except that it asks the runtime to perform
     /// the shutdown. This is necessary to avoid the shutdown happening in the
     /// wrong thread for non-Send tasks.
-    pub(super) fn remote_abort(&self) {
+    pub(crate) fn remote_abort(&self) {
         if self.state().transition_to_notified_and_cancel() {
             // The transition has created a new ref-count, which we turn into
             // a Notified and pass to the task.
@@ -265,6 +264,8 @@ where
     }
 
     unsafe fn poll(ptr: NonNull<Header>) {
+        log::trace!("RawTaskRef::poll {ptr:p}");
+        
         // Safety: this method gets called through the vtable ensuring that the pointer is valid
         // for this `RawTaskRef`'s `F` and `S` generics.
         unsafe {
@@ -344,6 +345,8 @@ where
     }
 
     unsafe fn schedule(ptr: NonNull<Header>) {
+        log::trace!("RawTaskRef::schedule {ptr:p}");
+        
         // Safety: this method gets called through the vtable ensuring that the pointer is valid
         // for this `RawTaskRef`'s `F` and `S` generics.
         unsafe {
@@ -353,6 +356,8 @@ where
     }
 
     unsafe fn dealloc(ptr: NonNull<Header>) {
+        log::trace!("RawTaskRef::dealloc {ptr:p}");
+        
         // Safety: The caller of this method just transitioned our ref-count to
         // zero, so it is our responsibility to release the allocation.
         //
@@ -371,17 +376,13 @@ where
         // the pointer is valid for this `RawTaskRef`'s `F` and `S` generics.
         unsafe {
             debug_assert_eq!(ptr.as_ref().state.load().ref_count(), 0);
-            log::trace!(
-                "about to dealloc task ptr {:?} with layout {:?}",
-                ptr.as_ptr(),
-                Layout::new::<Task<F, S>>()
-            );
             drop(Box::from_raw(ptr.cast::<Task<F, S>>().as_ptr()));
-            log::trace!("deallocated task");
         }
     }
 
     unsafe fn try_read_output(ptr: NonNull<Header>, dst: *mut (), waker: &Waker) {
+        log::trace!("RawTaskRef::try_read_output {ptr:p}");
+        
         // Safety: this method gets called through the vtable ensuring that the pointer is valid
         // for this `RawTaskRef`'s `F` and `S` generics. The caller has to ensure the `dst` pointer
         // is valid.
@@ -395,6 +396,8 @@ where
     }
 
     unsafe fn drop_join_handle_slow(ptr: NonNull<Header>) {
+        log::trace!("RawTaskRef::drop_join_handle_slow {ptr:p}");
+        
         // Safety: this method gets called through the vtable ensuring that the pointer is valid
         // for this `RawTaskRef`'s `F` and `S` generics
         unsafe {
@@ -442,6 +445,8 @@ where
     }
 
     unsafe fn shutdown(ptr: NonNull<Header>) {
+        log::trace!("RawTaskRef::shutdown {ptr:p}");
+        
         // Safety: this method gets called through the vtable ensuring that the pointer is valid
         // for this `RawTaskRef`'s `F` and `S` generics
         unsafe {
@@ -537,6 +542,16 @@ where
                 }
             }
         }));
+
+        // The task has completed execution and will no longer be scheduled.
+        let num_release = self.release();
+
+        if self.state().transition_to_terminal(num_release) {
+            // Safety: `ref_dec` returns true if no other references exist, so deallocation is safe
+            unsafe {
+                Self::dealloc(self.ptr.cast());
+            }
+        }
     }
 
     fn drop_reference(self) {
@@ -554,21 +569,19 @@ where
         unsafe { TaskRef::from_raw(self.ptr.cast()) }
     }
 
-    // /// Releases the task from the scheduler. Returns the number of ref-counts
-    // /// that should be decremented.
-    // fn release(&self) -> usize {
-    //     // We don't actually increment the ref-count here, but the new task is
-    //     // never destroyed, so that's ok.
-    //     let me = ManuallyDrop::new(self.get_new_task());
-    //
-    //     if let Some(task) = self.core().scheduler.release(&me) {
-    //         mem::forget(task);
-    //         2
-    //     } else {
-    //         1
-    //     }
-    // }
-    //
+    /// Releases the task from the scheduler. Returns the number of ref-counts
+    /// that should be decremented.
+    fn release(&self) -> usize {
+        // We don't actually increment the ref-count here, but the new task is
+        // never destroyed, so that's ok.
+        let me = ManuallyDrop::new(self.get_new_task());
+    
+        if let Some(task) = self.core().scheduler.release(&me) {
+            mem::forget(task);
+        }
+        
+        1
+    }
 }
 
 struct Stub;

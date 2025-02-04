@@ -6,21 +6,16 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::machine_info::MachineInfo;
-use crate::ENABLE_KASLR;
 use core::alloc::Layout;
 use core::range::Range;
 use rand::distributions::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
-use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 
-pub fn init(minfo: &MachineInfo) -> PageAllocator {
+pub fn init(prng: Option<ChaCha20Rng>) -> PageAllocator {
     PageAllocator {
         page_state: [false; arch::PAGE_TABLE_ENTRIES / 2],
-        prng: ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
-            minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
-        )),
+        prng,
     }
 }
 

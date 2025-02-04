@@ -11,7 +11,7 @@
 //! the [`Local`] handle. To complicate things we also allow "consuming" tasks from the queue through
 //! the [`Steal`] handle which other workers can use for work stealing purposes as the name implies.
 
-use super::task::TaskRef;
+use crate::task::TaskRef;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;

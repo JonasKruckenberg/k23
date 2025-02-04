@@ -25,6 +25,7 @@ pub fn prepare_boot_info(
     kernel_phys: Range<usize>,
     fdt_phys: Range<usize>,
     hart_mask: usize,
+    rng_seed: [u8; 32],
 ) -> crate::Result<*mut BootInfo> {
     let frame = frame_alloc
         .allocate_contiguous_zeroed(
@@ -43,6 +44,7 @@ pub fn prepare_boot_info(
     boot_info.kernel_virt = kernel_virt;
     boot_info.kernel_phys = kernel_phys;
     boot_info.hart_mask = hart_mask;
+    boot_info.rng_seed = rng_seed;
 
     let boot_info_ptr = page as *mut BootInfo;
     // Safety: we just allocated the boot info frame

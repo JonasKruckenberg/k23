@@ -6,21 +6,21 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::raw::Header;
-use crate::executor::task::TaskRef;
+use crate::task::TaskRef;
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
 use core::task::{RawWaker, RawWakerVTable, Waker};
 use core::{mem, ops};
 
-pub(super) struct WakerRef<'a, S: 'static> {
+pub(crate) struct WakerRef<'a, S: 'static> {
     waker: ManuallyDrop<Waker>,
     _p: PhantomData<(&'a Header, S)>,
 }
 
 /// Returns a `WakerRef` which avoids having to preemptively increase the
 /// refcount if there is no need to do so.
-pub(super) fn waker_ref<S>(header: &NonNull<Header>) -> WakerRef<'_, S> {
+pub(crate) fn waker_ref<S>(header: &NonNull<Header>) -> WakerRef<'_, S> {
     // `Waker::will_wake` uses the VTABLE pointer as part of the check. This
     // means that `will_wake` will always return false when using the current
     // task's waker. (discussion at rust-lang/rust#66281).

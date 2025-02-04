@@ -5,9 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::executor::task::id::Id;
-use crate::executor::task::state::State;
-use crate::executor::task::TaskRef;
+use crate::task::id::Id;
+use crate::task::state::State;
+use crate::task::TaskRef;
 use core::cell::UnsafeCell;
 use core::future::Future;
 use core::mem;
@@ -122,10 +122,10 @@ use core::task::{Context, Poll, Waker};
     repr(align(64))
 )]
 #[repr(C)]
-pub(super) struct Task<F: Future, S> {
-    pub(super) header: Header,
-    pub(super) core: Core<F, S>,
-    pub(super) trailer: Trailer,
+pub(crate) struct Task<F: Future, S> {
+    pub(crate) header: Header,
+    pub(crate) core: Core<F, S>,
+    pub(crate) trailer: Trailer,
 }
 
 #[repr(C)]
@@ -134,27 +134,27 @@ pub(crate) struct Header {
     /// The task's state.
     ///
     /// This field is access with atomic instructions, so it's always safe to access it.
-    pub(super) state: State,
-    pub(super) vtable: &'static Vtable,
+    pub(crate) state: State,
+    pub(crate) vtable: &'static Vtable,
 }
 
 #[repr(C)]
 #[derive(Debug)]
-pub(super) struct Core<F: Future, S> {
-    pub(super) scheduler: S,
+pub(crate) struct Core<F: Future, S> {
+    pub(crate) scheduler: S,
     /// The future that the task is running.
     ///
     /// If `COMPLETE` is one, then the `JoinHandle` has exclusive access to this field
     /// If COMPLETE is zero, then the RUNNING bitfield functions as
     /// a lock for the stage field, and it can be accessed only by the thread
     /// that set RUNNING to one.
-    pub(super) stage: UnsafeCell<Stage<F>>,
-    pub(super) task_id: Id,
+    pub(crate) stage: UnsafeCell<Stage<F>>,
+    pub(crate) task_id: Id,
 }
 
 #[repr(C)]
 #[derive(Debug)]
-pub(super) struct Trailer {
+pub(crate) struct Trailer {
     /// Consumer task waiting on completion of this task.
     ///
     /// This field may be access by different threads: on one hart we may complete a task and *read*
@@ -199,40 +199,40 @@ pub(super) struct Trailer {
     /// whether it should invoke the waker or not. After the runtime is done with using the waker
     /// during task completion, it unsets the `JOIN_WAKER` bit to give the `JoinHandle` exclusive
     /// access again so that it is able to drop the waker at a later point.
-    pub(super) waker: UnsafeCell<Option<Waker>>,
+    pub(crate) waker: UnsafeCell<Option<Waker>>,
     /// Links to other tasks in the intrusive global run queue.
     ///
     /// TODO ownership
-    pub(super) run_queue_links: mpsc_queue::Links<Header>,
+    pub(crate) run_queue_links: mpsc_queue::Links<Header>,
     /// Links to other tasks in the global "owned tasks" list.
     ///
     /// The `OwnedTask` reference has exclusive access to this field.
-    pub(super) owned_tasks_links: linked_list::Links<Header>,
+    pub(crate) owned_tasks_links: linked_list::Links<Header>,
 }
 
 #[derive(Debug)]
-pub(super) struct Vtable {
+pub(crate) struct Vtable {
     /// Polls the future.
-    pub(super) poll: unsafe fn(NonNull<Header>),
+    pub(crate) poll: unsafe fn(NonNull<Header>),
     /// Schedules the task for execution on the runtime.
-    pub(super) schedule: unsafe fn(NonNull<Header>),
+    pub(crate) schedule: unsafe fn(NonNull<Header>),
     /// Deallocates the memory.
-    pub(super) dealloc: unsafe fn(NonNull<Header>),
+    pub(crate) dealloc: unsafe fn(NonNull<Header>),
     /// Reads the task output, if complete.
-    pub(super) try_read_output: unsafe fn(NonNull<Header>, *mut (), &Waker),
+    pub(crate) try_read_output: unsafe fn(NonNull<Header>, *mut (), &Waker),
     /// The join handle has been dropped.
-    pub(super) drop_join_handle_slow: unsafe fn(NonNull<Header>),
+    pub(crate) drop_join_handle_slow: unsafe fn(NonNull<Header>),
     /// Scheduler is being shutdown.
-    pub(super) shutdown: unsafe fn(NonNull<Header>),
+    pub(crate) shutdown: unsafe fn(NonNull<Header>),
     /// The number of bytes that the `id` field is offset from the header.
-    pub(super) id_offset: usize,
+    pub(crate) id_offset: usize,
     /// The number of bytes that the `trailer` field is offset from the header.
-    pub(super) trailer_offset: usize,
+    pub(crate) trailer_offset: usize,
 }
 
 /// Either the future or the output.
 #[repr(C)] // https://github.com/rust-lang/miri/issues/3780
-pub(super) enum Stage<T: Future> {
+pub(crate) enum Stage<T: Future> {
     Running(T),
     Finished(super::Result<T::Output>),
     Consumed,
@@ -242,7 +242,7 @@ impl Header {
     /// # Safety
     ///
     /// The caller must ensure the pointer is valid
-    pub(super) unsafe fn get_id_ptr(me: NonNull<Header>) -> NonNull<Id> {
+    pub(crate) unsafe fn get_id_ptr(me: NonNull<Header>) -> NonNull<Id> {
         // Safety: validity of `me` ensured by caller and the rest is ensured by construction through the vtable
         unsafe {
             let offset = me.as_ref().vtable.id_offset;
@@ -348,7 +348,7 @@ impl<F: Future, S> Core<F, S> {
     ///
     /// `self` must also be pinned. This is handled by storing the task on the
     /// heap.
-    pub(super) unsafe fn poll(&self, mut cx: Context<'_>) -> Poll<F::Output> {
+    pub(crate) unsafe fn poll(&self, mut cx: Context<'_>) -> Poll<F::Output> {
         let res = {
             // Safety: The caller ensures mutual exclusion
             let stage = unsafe { &mut *self.stage.get() };
@@ -377,7 +377,7 @@ impl<F: Future, S> Core<F, S> {
     ///
     /// The caller must ensure it is safe to mutate the `stage` field. This requires ensuring mutual
     /// exclusion between any concurrent thread that might modify the future or output field.
-    pub(super) unsafe fn drop_future_or_output(&self) {
+    pub(crate) unsafe fn drop_future_or_output(&self) {
         // Safety: the caller ensures mutual exclusion to the field.
         unsafe {
             self.set_stage(Stage::Consumed);
@@ -390,7 +390,7 @@ impl<F: Future, S> Core<F, S> {
     ///
     /// The caller must ensure it is safe to mutate the `stage` field. This requires ensuring mutual
     /// exclusion between any concurrent thread that might modify the future or output field.
-    pub(super) unsafe fn store_output(&self, output: super::Result<F::Output>) {
+    pub(crate) unsafe fn store_output(&self, output: super::Result<F::Output>) {
         // Safety: the caller ensures mutual exclusion to the field.
         unsafe {
             self.set_stage(Stage::Finished(output));
@@ -403,7 +403,7 @@ impl<F: Future, S> Core<F, S> {
     ///
     /// The caller must ensure it is safe to mutate the `stage` field. This requires ensuring mutual
     /// exclusion between any concurrent thread that might modify the future or output field.
-    pub(super) unsafe fn take_output(&self) -> super::Result<F::Output> {
+    pub(crate) unsafe fn take_output(&self) -> super::Result<F::Output> {
         // Safety:: the caller ensures mutual exclusion to the field.
         match mem::replace(unsafe { &mut *self.stage.get() }, Stage::Consumed) {
             Stage::Finished(output) => output,
@@ -428,7 +428,7 @@ impl Trailer {
     ///
     /// The caller must ensure it is safe to mutate the `waker` field. This requires ensuring mutual
     /// exclusion between any concurrent thread that might modify the field.
-    pub(super) unsafe fn set_waker(&self, waker: Option<Waker>) {
+    pub(crate) unsafe fn set_waker(&self, waker: Option<Waker>) {
         // Safety: ensured by the caller
         unsafe {
             *self.waker.get() = waker;
@@ -439,7 +439,7 @@ impl Trailer {
     ///
     /// The caller must ensure it is safe to mutate the `waker` field. This requires ensuring mutual
     /// exclusion between any concurrent thread that might modify the field.
-    pub(super) unsafe fn will_wake(&self, waker: &Waker) -> bool {
+    pub(crate) unsafe fn will_wake(&self, waker: &Waker) -> bool {
         // Safety: ensured by the caller
         unsafe { (*self.waker.get()).as_ref().unwrap().will_wake(waker) }
     }
@@ -447,7 +447,7 @@ impl Trailer {
     /// # Safety
     ///
     /// The caller must ensure it is safe to read the `waker` field.
-    pub(super) unsafe fn wake_join(&self) {
+    pub(crate) unsafe fn wake_join(&self) {
         // Safety: ensured by the caller
         match unsafe { &*self.waker.get() } {
             Some(waker) => waker.wake_by_ref(),

@@ -5,9 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-pub mod atomic_cell;
-pub mod condvar;
-pub mod fast_rand;
-pub mod parking_spot;
-pub mod atomic_waker;
-mod wake_list;
+use core::time::Duration;
+
+#[derive(Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum Error {
+    /// No global default clock has been set
+    NoGlobalClock,
+    DurationTooLong {
+        requested: Duration,
+        max: Duration,
+    },
+}
