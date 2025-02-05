@@ -39,7 +39,6 @@ pub(crate) struct Snapshot {
 pub(crate) struct Synced {
     /// CPU IDs that are currently sleeping
     sleepers: Vec<usize>,
-
     /// Cores available for workers
     #[expect(clippy::vec_box, reason = "we're moving the boxed core around")]
     available_cores: Vec<Box<worker::Core>>,
@@ -123,7 +122,7 @@ impl Idle {
         // Increment the number of idle workers
         self.num_idle.store(num_idle + 1, Ordering::Release);
     }
-
+    
     /// Wakes up a single worker. This method is intended to be called from a worker cpu.
     pub(crate) fn notify_local(&self, shared: &worker::Shared) {
         if self.num_searching.load(Ordering::Acquire) != 0 {
@@ -155,7 +154,7 @@ impl Idle {
         let synced = shared.synced.lock();
         self.notify_synced(synced, shared);
     }
-
+    
     /// Wakes up a single worker. This method can be used from any cpu, even from outside worker
     /// cpus.
     pub(crate) fn notify_remote(
