@@ -43,7 +43,7 @@ pub fn prepare_boot_info(
     boot_info.tls_template = maybe_tls_template;
     boot_info.kernel_virt = kernel_virt;
     boot_info.kernel_phys = kernel_phys;
-    boot_info.hart_mask = hart_mask;
+    boot_info.cpu_mask = hart_mask;
     boot_info.rng_seed = rng_seed;
 
     let boot_info_ptr = page as *mut BootInfo;

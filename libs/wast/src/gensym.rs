@@ -1,8 +1,8 @@
 use crate::token::{Id, Span};
 use core::cell::Cell;
-use thread_local::thread_local;
+use cpu_local::cpu_local;
 
-thread_local!(static NEXT: Cell<u32> = Cell::new(0));
+cpu_local!(static NEXT: Cell<u32> = Cell::new(0));
 
 pub fn reset() {
     NEXT.with(|c| c.set(0));

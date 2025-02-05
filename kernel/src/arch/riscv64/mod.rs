@@ -16,10 +16,10 @@ use crate::time::clock::Ticks;
 use crate::vm::VirtualAddress;
 use core::arch::asm;
 use core::cell::Cell;
+use cpu_local::cpu_local;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
 pub use setjmp_longjmp::{call_with_setjmp, longjmp, JmpBuf};
-use thread_local::thread_local;
 pub use vm::{
     invalidate_range, is_kernel_address, AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID,
     KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_BASE,
@@ -34,21 +34,21 @@ pub fn init_early() {
     vm::init();
 }
 
-/// Per-hart and RISC-V specific initialization.
+/// Per-cpu and RISC-V specific initialization.
 #[cold]
-pub fn per_hart_init(devtree: &DeviceTree) -> crate::Result<()> {
+pub fn per_cpu_init(devtree: &DeviceTree) -> crate::Result<()> {
     device::cpu::init(devtree)?;
 
     Ok(())
 }
 
-/// Early per-hart and RISC-V specific initialization.
+/// Early per-cpu and RISC-V specific initialization.
 ///
 /// This function will be called before global initialization is done, notably this function
-/// cannot call logging functions, cannot allocate memory, cannot access hart-local state and should
+/// cannot call logging functions, cannot allocate memory, cannot access cpu-local state and should
 /// not panic as the panic handler is not initialized yet.
 #[cold]
-pub fn per_hart_init_early() {
+pub fn per_cpu_init_early() {
     // Safety: register access
     unsafe {
         // enable counters
@@ -61,11 +61,11 @@ pub fn per_hart_init_early() {
     }
 }
 
-/// Late per-hart and RISC-V specific initialization.
+/// Late per-cpu and RISC-V specific initialization.
 ///
 /// This function will be called after all global initialization is done.
 #[cold]
-pub fn per_hart_init_late(devtree: &DeviceTree) -> crate::Result<()> {
+pub fn per_cpu_init_late(devtree: &DeviceTree) -> crate::Result<()> {
     device::cpu::init(devtree)?;
 
     // Safety: register access
@@ -85,7 +85,7 @@ pub fn per_hart_init_late(devtree: &DeviceTree) -> crate::Result<()> {
     Ok(())
 }
 
-/// Set the thread pointer on the calling hart to the given address.
+/// Set the thread pointer on the calling cpu to the given address.
 pub fn set_thread_ptr(addr: VirtualAddress) {
     // Safety: inline assembly
     unsafe {
@@ -163,44 +163,44 @@ where
     r
 }
 
-/// Suspend the calling hart indefinitely.
+/// Suspend the calling cpu indefinitely.
 ///
 /// # Safety
 ///
-/// The caller must ensure it is safe to suspend the hart.
-pub unsafe fn hart_park() {
+/// The caller must ensure it is safe to suspend the cpu.
+pub unsafe fn cpu_park() {
     // Safety: inline assembly
     unsafe { asm!("wfi") }
 }
 
-/// Send an interrupt to a parked hart waking it up.
+/// Send an interrupt to a parked cpu waking it up.
 ///
 /// # Safety
 ///
-/// The caller must ensure it is safe to send an interrupt to the target hart, which it generally should
-/// be as the trap handler for software interrupts should be non-disruptive to already running harts,
+/// The caller must ensure it is safe to send an interrupt to the target cpu, which it generally should
+/// be as the trap handler for software interrupts should be non-disruptive to already running cpus,
 /// but the caller should still exercise caution.
-pub unsafe fn hart_unpark(hartid: usize) {
-    riscv::sbi::ipi::send_ipi(1 << hartid, 0).unwrap();
+pub unsafe fn cpu_unpark(cpuid: usize) {
+    riscv::sbi::ipi::send_ipi(1 << cpuid, 0).unwrap();
 }
 
-thread_local! {
+cpu_local! {
     static IN_TIMEOUT: Cell<bool> = Cell::new(false);
 }
 
-/// Suspend the calling hart for at least `duration`.
+/// Suspend the calling cpu for at least `duration`.
 ///
 /// # Safety
 ///
 /// The caller must ensure the duration does not overflow when converted into ticks, and that it
-/// is safe to suspend the hart.
-pub unsafe fn hart_park_ticks(ticks: Ticks) {
+/// is safe to suspend the cpu.
+pub unsafe fn cpu_park_ticks(ticks: Ticks) {
     // Safety: ensured by caller
     unsafe {
         IN_TIMEOUT.set(true);
         riscv::sbi::time::set_timer(riscv::time::read64() + ticks.0).unwrap();
         if IN_TIMEOUT.get() {
-            hart_park();
+            cpu_park();
         }
     }
 }

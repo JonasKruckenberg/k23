@@ -164,11 +164,11 @@ pub(crate) struct Task<F: Future, S> {
     pub(crate) stage: UnsafeCell<Stage<F>>,
     /// Consumer task waiting on completion of this task.
     ///
-    /// This field may be access by different threads: on one hart we may complete a task and *read*
+    /// This field may be access by different threads: on one cpu we may complete a task and *read*
     /// the waker field to invoke the waker, and in another thread the task's `JoinHandle` may be
     /// polled, and if the task hasn't yet completed, the `JoinHandle` may *write* a waker to the
     /// waker field. The `JOIN_WAKER` bit in the headers`state` field ensures safe access by multiple
-    /// hart to the waker field using the following rules:
+    /// cpu to the waker field using the following rules:
     ///
     /// 1. `JOIN_WAKER` is initialized to zero.
     ///
@@ -781,7 +781,7 @@ where
     ///
     /// # Safety
     ///
-    /// The caller has to ensure this hart has exclusive mutable access to the tasks `stage` field (ie the
+    /// The caller has to ensure this cpu has exclusive mutable access to the tasks `stage` field (ie the
     /// future or output).
     unsafe fn poll_inner(&self, mut cx: Context<'_>) -> Poll<()> {
         // let _span = self.span().enter();

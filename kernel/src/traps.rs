@@ -15,9 +15,9 @@ use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::ControlFlow;
 use core::ptr;
 use core::ptr::{addr_of_mut, NonNull};
-use thread_local::thread_local;
+use cpu_local::cpu_local;
 
-thread_local! {
+cpu_local! {
     static TRAP_RESUME_STATE: Cell<*mut TrapResumeState> = Cell::new(ptr::null_mut());
     static IN_TRAP_HANDLER: Cell<bool> = Cell::new(false);
 }
@@ -109,7 +109,7 @@ struct TrapResumeState {
     jmp_buf: arch::JmpBuf,
 }
 
-/// Raises a trap on the current hart without triggering subsystem page fault routines (i.e. faulting
+/// Raises a trap on the current cpu without triggering subsystem page fault routines (i.e. faulting
 /// in pages).
 pub fn resume_trap(trap: Trap) -> ! {
     IN_TRAP_HANDLER.set(false);

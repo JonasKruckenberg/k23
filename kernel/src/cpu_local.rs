@@ -12,21 +12,19 @@ use core::mem::MaybeUninit;
 use core::panic::UnwindSafe;
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::{fmt, mem, ptr, slice};
-pub use thread_local::*;
+pub use cpu_local::*;
 
-/// The total number of buckets stored in each hart local.
+/// The total number of buckets stored in each cpu-local storage.
 /// All buckets combined can hold up to `usize::MAX - 1` entries.
 const BUCKETS: usize = (usize::BITS - 1) as usize;
 
-/// hart-local variable wrapper
-///
-/// See the [module-level documentation](index.html) for more.
-pub struct HartLocal<T: Send> {
-    /// The buckets in the hart local. The nth bucket contains `2^n`
+/// cpu-local variable wrapper
+pub struct CpuLocal<T: Send> {
+    /// The buckets in the cpu-local storage. The nth bucket contains `2^n`
     /// elements. Each bucket is lazily allocated.
     buckets: [AtomicPtr<Entry<T>>; BUCKETS],
 
-    /// The number of values in the hart local. This can be less than the real number of values,
+    /// The number of values in the cpu-local storage. This can be less than the real number of values,
     /// but is never more.
     values: AtomicUsize,
 }
@@ -47,16 +45,16 @@ impl<T> Drop for Entry<T> {
     }
 }
 
-// Safety: HartLocal is always Sync, even if T isn't
-unsafe impl<T: Send> Sync for HartLocal<T> {}
+// Safety: CpuLocal is always Sync, even if T isn't
+unsafe impl<T: Send> Sync for CpuLocal<T> {}
 
-impl<T: Send> Default for HartLocal<T> {
-    fn default() -> HartLocal<T> {
-        HartLocal::new()
+impl<T: Send> Default for CpuLocal<T> {
+    fn default() -> CpuLocal<T> {
+        CpuLocal::new()
     }
 }
 
-impl<T: Send> Drop for HartLocal<T> {
+impl<T: Send> Drop for CpuLocal<T> {
     fn drop(&mut self) {
         // Free each non-null bucket
         for (i, bucket) in self.buckets.iter_mut().enumerate() {
@@ -74,9 +72,9 @@ impl<T: Send> Drop for HartLocal<T> {
     }
 }
 
-impl<T: Send> HartLocal<T> {
-    /// Creates a new empty `HartLocal`.
-    pub const fn new() -> HartLocal<T> {
+impl<T: Send> CpuLocal<T> {
+    /// Creates a new empty `CpuLocal`.
+    pub const fn new() -> CpuLocal<T> {
         let buckets = [ptr::null_mut::<Entry<T>>(); BUCKETS];
         Self {
             // Safety: AtomicPtr has the same representation as a pointer and arrays have the same
@@ -88,10 +86,10 @@ impl<T: Send> HartLocal<T> {
         }
     }
 
-    /// Creates a new `HartLocal` with an initial capacity. If less than the capacity harts
-    /// access the hart local it will never reallocate. The capacity may be rounded up to the
+    /// Creates a new `CpuLocal` with an initial capacity. If less than the capacity cpus
+    /// access the cpu-local storage it will never reallocate. The capacity may be rounded up to the
     /// nearest power of two.
-    pub fn with_capacity(capacity: usize) -> HartLocal<T> {
+    pub fn with_capacity(capacity: usize) -> CpuLocal<T> {
         let allocated_buckets =
             usize::try_from(usize::BITS).unwrap() - (capacity.leading_zeros() as usize);
 
@@ -110,13 +108,13 @@ impl<T: Send> HartLocal<T> {
         }
     }
 
-    /// Returns the element for the current hart, if it exists.
+    /// Returns the element for the current cpu, if it exists.
     pub fn get(&self) -> Option<&T> {
-        let hartid = crate::HARTID.get();
-        self.get_inner(Hart::new(hartid))
+        let cpuid = crate::CPUID.get();
+        self.get_inner(Cpu::new(cpuid))
     }
 
-    /// Returns the element for the current hart, or creates it if it doesn't
+    /// Returns the element for the current cpu, or creates it if it doesn't
     /// exist.
     pub fn get_or<F>(&self, create: F) -> &T
     where
@@ -129,34 +127,34 @@ impl<T: Send> HartLocal<T> {
         }
     }
 
-    /// Returns the element for the current hart, or creates it if it doesn't
+    /// Returns the element for the current cpu, or creates it if it doesn't
     /// exist. If `create` fails, that error is returned and no element is
     /// added.
     pub fn get_or_try<F, E>(&self, create: F) -> Result<&T, E>
     where
         F: FnOnce() -> Result<T, E>,
     {
-        let hartid = crate::HARTID.get();
-        let hartid = Hart::new(hartid);
+        let cpuid = crate::CPUID.get();
+        let cpuid = Cpu::new(cpuid);
 
-        if let Some(val) = self.get_inner(hartid) {
+        if let Some(val) = self.get_inner(cpuid) {
             return Ok(val);
         }
 
         #[expect(tail_expr_drop_order, reason = "")]
-        Ok(self.insert(hartid, create()?))
+        Ok(self.insert(cpuid, create()?))
     }
 
-    fn get_inner(&self, hart: Hart) -> Option<&T> {
-        // Safety: `Hart` constructors ensure correct bucket index
-        let bucket_ptr = unsafe { self.buckets.get_unchecked(hart.bucket) }.load(Ordering::Acquire);
+    fn get_inner(&self, cpu: Cpu) -> Option<&T> {
+        // Safety: `Cpu` constructors ensure correct bucket index
+        let bucket_ptr = unsafe { self.buckets.get_unchecked(cpu.bucket) }.load(Ordering::Acquire);
         if bucket_ptr.is_null() {
             return None;
         }
 
         // Safety: bucket ptr is always valid
         unsafe {
-            let entry = &*bucket_ptr.add(hart.index);
+            let entry = &*bucket_ptr.add(cpu.index);
             if entry.present.load(Ordering::Relaxed) {
                 Some(&*(*entry.value.get()).as_ptr())
             } else {
@@ -166,14 +164,14 @@ impl<T: Send> HartLocal<T> {
     }
 
     #[cold]
-    fn insert(&self, hart: Hart, data: T) -> &T {
-        // Safety: `Hart` constructors ensure correct bucket index
-        let bucket_atomic_ptr = unsafe { self.buckets.get_unchecked(hart.bucket) };
+    fn insert(&self, cpu: Cpu, data: T) -> &T {
+        // Safety: `Cpu` constructors ensure correct bucket index
+        let bucket_atomic_ptr = unsafe { self.buckets.get_unchecked(cpu.bucket) };
         let bucket_ptr: *const _ = bucket_atomic_ptr.load(Ordering::Acquire);
 
         // If the bucket doesn't already exist, we need to allocate it
         let bucket_ptr = if bucket_ptr.is_null() {
-            let new_bucket = allocate_bucket(hart.bucket_size);
+            let new_bucket = allocate_bucket(cpu.bucket_size);
 
             match bucket_atomic_ptr.compare_exchange(
                 ptr::null_mut(),
@@ -183,11 +181,11 @@ impl<T: Send> HartLocal<T> {
             ) {
                 Ok(_) => new_bucket,
                 // If the bucket value changed (from null), that means
-                // another hart stored a new bucket before we could,
+                // another cpu stored a new bucket before we could,
                 // and we can free our bucket and use that one instead
                 Err(bucket_ptr) => {
                     // Safety: bucket will not be read from
-                    unsafe { deallocate_bucket(new_bucket, hart.bucket_size) }
+                    unsafe { deallocate_bucket(new_bucket, cpu.bucket_size) }
                     bucket_ptr
                 }
             }
@@ -196,8 +194,8 @@ impl<T: Send> HartLocal<T> {
         };
 
         // Insert the new element into the bucket
-        // Safety: `Hart` constructors ensure correct index
-        let entry = unsafe { &*bucket_ptr.add(hart.index) };
+        // Safety: `Cpu` constructors ensure correct index
+        let entry = unsafe { &*bucket_ptr.add(cpu.index) };
         let value_ptr = entry.value.get();
         // Safety: we just initialized the bucket
         unsafe { value_ptr.write(MaybeUninit::new(data)) };
@@ -209,7 +207,7 @@ impl<T: Send> HartLocal<T> {
         unsafe { &*(*value_ptr).as_ptr() }
     }
 
-    /// Returns an iterator over the local values of all harts in unspecified
+    /// Returns an iterator over the local values of all cpus in unspecified
     /// order.
     ///
     /// This call can be done safely, as `T` is required to implement [`Sync`].
@@ -218,49 +216,49 @@ impl<T: Send> HartLocal<T> {
         T: Sync,
     {
         Iter {
-            hart_local: self,
+            cpu_local: self,
             raw: RawIter::new(),
         }
     }
 
-    /// Returns a mutable iterator over the local values of all harts in
+    /// Returns a mutable iterator over the local values of all cpus in
     /// unspecified order.
     ///
-    /// Since this call borrows the `HartLocal` mutably, this operation can
+    /// Since this call borrows the `CpuLocal` mutably, this operation can
     /// be done safely---the mutable borrow statically guarantees no other
-    /// harts are currently accessing their associated values.
+    /// cpus are currently accessing their associated values.
     pub fn iter_mut(&mut self) -> IterMut<T> {
         IterMut {
-            hart_local: self,
+            cpu_local: self,
             raw: RawIter::new(),
         }
     }
 
-    /// Removes all hart-specific values from the `HartLocal`, effectively
+    /// Removes all cpu-specific values from the `CpuLocal`, effectively
     /// resetting it to its original state.
     ///
-    /// Since this call borrows the `HartLocal` mutably, this operation can
+    /// Since this call borrows the `CpuLocal` mutably, this operation can
     /// be done safely---the mutable borrow statically guarantees no other
-    /// harts are currently accessing their associated values.
+    /// cpus are currently accessing their associated values.
     pub fn clear(&mut self) {
-        *self = HartLocal::new();
+        *self = CpuLocal::new();
     }
 
-    /// Insert a value for a specific hart.
+    /// Insert a value for a specific cpu.
     ///
-    /// Since this call borrows the `HartLocal` mutably, this operation can
+    /// Since this call borrows the `CpuLocal` mutably, this operation can
     /// be done safely---the mutable borrow statically guarantees no other
-    /// harts are currently accessing their associated values.
-    pub fn insert_for(&mut self, hartid: usize, data: T) {
-        let hart = Hart::new(hartid);
+    /// cpus are currently accessing their associated values.
+    pub fn insert_for(&mut self, cpuid: usize, data: T) {
+        let cpu = Cpu::new(cpuid);
 
-        // Safety: `Hart` constructors ensure correct bucket index
-        let bucket_atomic_ptr = unsafe { self.buckets.get_unchecked(hart.bucket) };
+        // Safety: `Cpu` constructors ensure correct bucket index
+        let bucket_atomic_ptr = unsafe { self.buckets.get_unchecked(cpu.bucket) };
         let bucket_ptr: *const _ = bucket_atomic_ptr.load(Ordering::Acquire);
 
         // If the bucket doesn't already exist, we need to allocate it
         let bucket_ptr = if bucket_ptr.is_null() {
-            let new_bucket = allocate_bucket(hart.bucket_size);
+            let new_bucket = allocate_bucket(cpu.bucket_size);
 
             match bucket_atomic_ptr.compare_exchange(
                 ptr::null_mut(),
@@ -270,11 +268,11 @@ impl<T: Send> HartLocal<T> {
             ) {
                 Ok(_) => new_bucket,
                 // If the bucket value changed (from null), that means
-                // another hart stored a new bucket before we could,
+                // another cpu stored a new bucket before we could,
                 // and we can free our bucket and use that one instead
                 Err(bucket_ptr) => {
                     // Safety: bucket will not be read from
-                    unsafe { deallocate_bucket(new_bucket, hart.bucket_size) }
+                    unsafe { deallocate_bucket(new_bucket, cpu.bucket_size) }
                     bucket_ptr
                 }
             }
@@ -283,8 +281,8 @@ impl<T: Send> HartLocal<T> {
         };
 
         // Insert the new element into the bucket
-        // Safety: `Hart` constructors ensure correct index
-        let entry = unsafe { &*bucket_ptr.add(hart.index) };
+        // Safety: `Cpu` constructors ensure correct index
+        let entry = unsafe { &*bucket_ptr.add(cpu.index) };
         let value_ptr = entry.value.get();
         // Safety: we just initialized the bucket
         unsafe { value_ptr.write(MaybeUninit::new(data)) };
@@ -294,19 +292,19 @@ impl<T: Send> HartLocal<T> {
     }
 }
 
-impl<T: Send> IntoIterator for HartLocal<T> {
+impl<T: Send> IntoIterator for CpuLocal<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> IntoIter<T> {
         IntoIter {
-            hart_local: self,
+            cpu_local: self,
             raw: RawIter::new(),
         }
     }
 }
 
-impl<'a, T: Send + Sync> IntoIterator for &'a HartLocal<T> {
+impl<'a, T: Send + Sync> IntoIterator for &'a CpuLocal<T> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
 
@@ -315,7 +313,7 @@ impl<'a, T: Send + Sync> IntoIterator for &'a HartLocal<T> {
     }
 }
 
-impl<'a, T: Send> IntoIterator for &'a mut HartLocal<T> {
+impl<'a, T: Send> IntoIterator for &'a mut CpuLocal<T> {
     type Item = &'a mut T;
     type IntoIter = IterMut<'a, T>;
 
@@ -324,21 +322,21 @@ impl<'a, T: Send> IntoIterator for &'a mut HartLocal<T> {
     }
 }
 
-impl<T: Send + Default> HartLocal<T> {
-    /// Returns the element for the current hart, or creates a default one if
+impl<T: Send + Default> CpuLocal<T> {
+    /// Returns the element for the current cpu, or creates a default one if
     /// it doesn't exist.
     pub fn get_or_default(&self) -> &T {
         self.get_or(Default::default)
     }
 }
 
-impl<T: Send + fmt::Debug> fmt::Debug for HartLocal<T> {
+impl<T: Send + fmt::Debug> fmt::Debug for CpuLocal<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "HartLocal {{ local_data: {:?} }}", self.get())
+        write!(f, "CpuLocal {{ local_data: {:?} }}", self.get())
     }
 }
 
-impl<T: Send + UnwindSafe> UnwindSafe for HartLocal<T> {}
+impl<T: Send + UnwindSafe> UnwindSafe for CpuLocal<T> {}
 
 #[derive(Debug)]
 struct RawIter {
@@ -358,15 +356,15 @@ impl RawIter {
         }
     }
 
-    fn next<'a, T: Send + Sync>(&mut self, hart_local: &'a HartLocal<T>) -> Option<&'a T> {
+    fn next<'a, T: Send + Sync>(&mut self, cpu_local: &'a CpuLocal<T>) -> Option<&'a T> {
         while self.bucket < BUCKETS {
-            // Safety: `Hart` constructors ensure correct bucket index
-            let bucket = unsafe { hart_local.buckets.get_unchecked(self.bucket) };
+            // Safety: `Cpu` constructors ensure correct bucket index
+            let bucket = unsafe { cpu_local.buckets.get_unchecked(self.bucket) };
             let bucket = bucket.load(Ordering::Acquire);
 
             if !bucket.is_null() {
                 while self.index < self.bucket_size {
-                    // Safety: `Hart` constructors ensure correct index
+                    // Safety: `Cpu` constructors ensure correct index
                     let entry = unsafe { &*bucket.add(self.index) };
                     self.index += 1;
                     if entry.present.load(Ordering::Acquire) {
@@ -383,20 +381,20 @@ impl RawIter {
     }
     fn next_mut<'a, T: Send>(
         &mut self,
-        hart_local: &'a mut HartLocal<T>,
+        cpu_local: &'a mut CpuLocal<T>,
     ) -> Option<&'a mut Entry<T>> {
-        if *hart_local.values.get_mut() == self.yielded {
+        if *cpu_local.values.get_mut() == self.yielded {
             return None;
         }
 
         loop {
-            // Safety: `Hart` constructors ensure correct bucket index
-            let bucket = unsafe { hart_local.buckets.get_unchecked_mut(self.bucket) };
+            // Safety: `Cpu` constructors ensure correct bucket index
+            let bucket = unsafe { cpu_local.buckets.get_unchecked_mut(self.bucket) };
             let bucket = *bucket.get_mut();
 
             if !bucket.is_null() {
                 while self.index < self.bucket_size {
-                    // Safety: `Hart` constructors ensure correct index
+                    // Safety: `Cpu` constructors ensure correct index
                     let entry = unsafe { &mut *bucket.add(self.index) };
                     self.index += 1;
                     if *entry.present.get_mut() {
@@ -417,39 +415,39 @@ impl RawIter {
         self.index = 0;
     }
 
-    fn size_hint<T: Send>(&self, hart_local: &HartLocal<T>) -> (usize, Option<usize>) {
-        let total = hart_local.values.load(Ordering::Acquire);
+    fn size_hint<T: Send>(&self, cpu_local: &CpuLocal<T>) -> (usize, Option<usize>) {
+        let total = cpu_local.values.load(Ordering::Acquire);
         (total - self.yielded, None)
     }
-    fn size_hint_frozen<T: Send>(&self, hart_local: &HartLocal<T>) -> (usize, Option<usize>) {
+    fn size_hint_frozen<T: Send>(&self, cpu_local: &CpuLocal<T>) -> (usize, Option<usize>) {
         // Safety: used as a hint, so racily reading the value is fine
-        let total = unsafe { *ptr::from_ref::<AtomicUsize>(&hart_local.values).cast::<usize>() };
+        let total = unsafe { *ptr::from_ref::<AtomicUsize>(&cpu_local.values).cast::<usize>() };
         let remaining = total - self.yielded;
         (remaining, Some(remaining))
     }
 }
 
-/// Iterator over the contents of a `HartLocal`.
+/// Iterator over the contents of a `CpuLocal`.
 #[derive(Debug)]
 pub struct Iter<'a, T: Send + Sync> {
-    hart_local: &'a HartLocal<T>,
+    cpu_local: &'a CpuLocal<T>,
     raw: RawIter,
 }
 
 impl<'a, T: Send + Sync> Iterator for Iter<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
-        self.raw.next(self.hart_local)
+        self.raw.next(self.cpu_local)
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.raw.size_hint(self.hart_local)
+        self.raw.size_hint(self.cpu_local)
     }
 }
 impl<T: Send + Sync> FusedIterator for Iter<'_, T> {}
 
-/// Mutable iterator over the contents of a `HartLocal`.
+/// Mutable iterator over the contents of a `CpuLocal`.
 pub struct IterMut<'a, T: Send> {
-    hart_local: &'a mut HartLocal<T>,
+    cpu_local: &'a mut CpuLocal<T>,
     raw: RawIter,
 }
 
@@ -457,63 +455,63 @@ impl<'a, T: Send> Iterator for IterMut<'a, T> {
     type Item = &'a mut T;
     fn next(&mut self) -> Option<&'a mut T> {
         self.raw
-            .next_mut(self.hart_local)
+            .next_mut(self.cpu_local)
             // Safety: constructor ensures all ptrs are valid
             .map(|entry| unsafe { &mut *(*entry.value.get()).as_mut_ptr() })
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.raw.size_hint_frozen(self.hart_local)
+        self.raw.size_hint_frozen(self.cpu_local)
     }
 }
 
 impl<T: Send> ExactSizeIterator for IterMut<'_, T> {}
 impl<T: Send> FusedIterator for IterMut<'_, T> {}
 
-// Manual impl so we don't call Debug on the HartLocal, as doing so would create a reference to
-// this hart's value that potentially aliases with a mutable reference we have given out.
+// Manual impl so we don't call Debug on the CpuLocal, as doing so would create a reference to
+// this cpu's value that potentially aliases with a mutable reference we have given out.
 impl<T: Send + fmt::Debug> fmt::Debug for IterMut<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IterMut").field("raw", &self.raw).finish()
     }
 }
 
-/// An iterator that moves out of a `HartLocal`.
+/// An iterator that moves out of a `CpuLocal`.
 #[derive(Debug)]
 pub struct IntoIter<T: Send> {
-    hart_local: HartLocal<T>,
+    cpu_local: CpuLocal<T>,
     raw: RawIter,
 }
 
 impl<T: Send> Iterator for IntoIter<T> {
     type Item = T;
     fn next(&mut self) -> Option<T> {
-        self.raw.next_mut(&mut self.hart_local).map(|entry| {
+        self.raw.next_mut(&mut self.cpu_local).map(|entry| {
             *entry.present.get_mut() = false;
             // Safety: constructor ensures all ptrs are valid
             unsafe { mem::replace(&mut *entry.value.get(), MaybeUninit::uninit()).assume_init() }
         })
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.raw.size_hint_frozen(&self.hart_local)
+        self.raw.size_hint_frozen(&self.cpu_local)
     }
 }
 
 impl<T: Send> ExactSizeIterator for IntoIter<T> {}
 impl<T: Send> FusedIterator for IntoIter<T> {}
 
-/// Data which is unique to the current hart.
+/// Data which is unique to the current cpu.
 #[derive(Clone, Copy)]
-struct Hart {
+struct Cpu {
     #[expect(unused, reason = "")]
     id: usize,
-    /// The bucket this hart's local storage will be in.
+    /// The bucket this cpu's local storage will be in.
     bucket: usize,
-    /// The size of the bucket this hart's local storage will be in.
+    /// The size of the bucket this cpu's local storage will be in.
     bucket_size: usize,
-    /// The index into the bucket this hart's local storage is in.
+    /// The index into the bucket this cpu's local storage is in.
     index: usize,
 }
-impl Hart {
+impl Cpu {
     fn new(id: usize) -> Self {
         let bucket =
             usize::try_from(usize::BITS).unwrap() - ((id + 1).leading_zeros() as usize) - 1;
@@ -562,33 +560,33 @@ unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
 //     // }
 //
 //     // #[ktest::test]
-//     // fn same_hart() {
+//     // fn same_cpu() {
 //     //     let create = make_create();
-//     //     let mut tls = HartLocal::new();
+//     //     let mut tls = CpuLocal::new();
 //     //     assert_eq!(None, tls.get());
-//     //     assert_eq!("HartLocal { local_data: None }", format!("{:?}", &tls));
+//     //     assert_eq!("CpuLocal { local_data: None }", format!("{:?}", &tls));
 //     //     assert_eq!(0, *tls.get_or(|| create()));
 //     //     assert_eq!(Some(&0), tls.get());
 //     //     assert_eq!(0, *tls.get_or(|| create()));
 //     //     assert_eq!(Some(&0), tls.get());
 //     //     assert_eq!(0, *tls.get_or(|| create()));
 //     //     assert_eq!(Some(&0), tls.get());
-//     //     assert_eq!("HartLocal { local_data: Some(0) }", format!("{:?}", &tls));
+//     //     assert_eq!("CpuLocal { local_data: Some(0) }", format!("{:?}", &tls));
 //     //     tls.clear();
 //     //     assert_eq!(None, tls.get());
 //     // }
 //
 //     // #[test]
-//     // fn different_hart() {
+//     // fn different_cpu() {
 //     //     let create = make_create();
-//     //     let tls = Arc::new(HartLocal::new());
+//     //     let tls = Arc::new(CpuLocal::new());
 //     //     assert_eq!(None, tls.get());
 //     //     assert_eq!(0, *tls.get_or(|| create()));
 //     //     assert_eq!(Some(&0), tls.get());
 //     //
 //     //     let tls2 = tls.clone();
 //     //     let create2 = create.clone();
-//     //     hart::spawn(move || {
+//     //     cpu::spawn(move || {
 //     //         assert_eq!(None, tls2.get());
 //     //         assert_eq!(1, *tls2.get_or(|| create2()));
 //     //         assert_eq!(Some(&1), tls2.get());
@@ -602,14 +600,14 @@ unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
 //
 //     // #[test]
 //     // fn iter() {
-//     //     let tls = Arc::new(HartLocal::new());
+//     //     let tls = Arc::new(CpuLocal::new());
 //     //     tls.get_or(|| Box::new(1));
 //     //
 //     //     let tls2 = tls.clone();
-//     //     hart::spawn(move || {
+//     //     cpu::spawn(move || {
 //     //         tls2.get_or(|| Box::new(2));
 //     //         let tls3 = tls2.clone();
-//     //         hart::spawn(move || {
+//     //         cpu::spawn(move || {
 //     //             tls3.get_or(|| Box::new(3));
 //     //         })
 //     //         .join()
@@ -636,11 +634,11 @@ unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
 //
 //     // #[test]
 //     // fn miri_iter_soundness_check() {
-//     //     let tls = Arc::new(HartLocal::new());
+//     //     let tls = Arc::new(CpuLocal::new());
 //     //     let _local = tls.get_or(|| Box::new(1));
 //     //
 //     //     let tls2 = tls.clone();
-//     //     let join_1 = hart::spawn(move || {
+//     //     let join_1 = cpu::spawn(move || {
 //     //         let _tls = tls2.get_or(|| Box::new(2));
 //     //         let iter = tls2.iter();
 //     //         for item in iter {
@@ -658,7 +656,7 @@ unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
 //
 //     #[ktest::test]
 //     fn test_drop() {
-//         let local = HartLocal::new();
+//         let local = CpuLocal::new();
 //         struct Dropped(Arc<AtomicUsize>);
 //         impl Drop for Dropped {
 //             fn drop(&mut self) {
@@ -685,11 +683,11 @@ unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
 //
 //         // We use a high `id` here to guarantee that a lazily allocated bucket somewhere in the middle is used.
 //         // Neither iteration nor `Drop` must early-return on `null` buckets that are used for lower `buckets`.
-//         let hart = Hart::new(1234);
-//         assert!(hart.bucket > 1);
+//         let cpu = Cpu::new(1234);
+//         assert!(cpu.bucket > 1);
 //
-//         let mut local = HartLocal::new();
-//         local.insert(hart, Dropped(dropped.clone()));
+//         let mut local = CpuLocal::new();
+//         local.insert(cpu, Dropped(dropped.clone()));
 //
 //         let item = local.iter().next().unwrap();
 //         assert_eq!(item.0.load(Relaxed), 0);
@@ -702,40 +700,40 @@ unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
 //     #[ktest::test]
 //     fn is_sync() {
 //         fn foo<T: Sync>() {}
-//         foo::<HartLocal<String>>();
-//         foo::<HartLocal<RefCell<String>>>();
+//         foo::<CpuLocal<String>>();
+//         foo::<CpuLocal<RefCell<String>>>();
 //     }
 //
 //     #[ktest::test]
-//     fn test_hart() {
-//         let hart = Hart::new(0);
-//         assert_eq!(hart.id, 0);
-//         assert_eq!(hart.bucket, 0);
-//         assert_eq!(hart.bucket_size, 1);
-//         assert_eq!(hart.index, 0);
+//     fn test_cpu() {
+//         let cpu = Cpu::new(0);
+//         assert_eq!(cpu.id, 0);
+//         assert_eq!(cpu.bucket, 0);
+//         assert_eq!(cpu.bucket_size, 1);
+//         assert_eq!(cpu.index, 0);
 //
-//         let hart = Hart::new(1);
-//         assert_eq!(hart.id, 1);
-//         assert_eq!(hart.bucket, 1);
-//         assert_eq!(hart.bucket_size, 2);
-//         assert_eq!(hart.index, 0);
+//         let cpu = Cpu::new(1);
+//         assert_eq!(cpu.id, 1);
+//         assert_eq!(cpu.bucket, 1);
+//         assert_eq!(cpu.bucket_size, 2);
+//         assert_eq!(cpu.index, 0);
 //
-//         let hart = Hart::new(2);
-//         assert_eq!(hart.id, 2);
-//         assert_eq!(hart.bucket, 1);
-//         assert_eq!(hart.bucket_size, 2);
-//         assert_eq!(hart.index, 1);
+//         let cpu = Cpu::new(2);
+//         assert_eq!(cpu.id, 2);
+//         assert_eq!(cpu.bucket, 1);
+//         assert_eq!(cpu.bucket_size, 2);
+//         assert_eq!(cpu.index, 1);
 //
-//         let hart = Hart::new(3);
-//         assert_eq!(hart.id, 3);
-//         assert_eq!(hart.bucket, 2);
-//         assert_eq!(hart.bucket_size, 4);
-//         assert_eq!(hart.index, 0);
+//         let cpu = Cpu::new(3);
+//         assert_eq!(cpu.id, 3);
+//         assert_eq!(cpu.bucket, 2);
+//         assert_eq!(cpu.bucket_size, 4);
+//         assert_eq!(cpu.index, 0);
 //
-//         let hart = Hart::new(19);
-//         assert_eq!(hart.id, 19);
-//         assert_eq!(hart.bucket, 4);
-//         assert_eq!(hart.bucket_size, 16);
-//         assert_eq!(hart.index, 4);
+//         let cpu = Cpu::new(19);
+//         assert_eq!(cpu.id, 19);
+//         assert_eq!(cpu.bucket, 4);
+//         assert_eq!(cpu.bucket_size, 16);
+//         assert_eq!(cpu.index, 4);
 //     }
 // }

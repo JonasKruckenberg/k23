@@ -44,7 +44,7 @@ impl CraneliftCompiler {
         Self {
             offsets: StaticVMOffsets::new(isa.pointer_bytes()),
             isa,
-            contexts: Mutex::new(Vec::new()), // TODO capacity should be equal to the number of harts
+            contexts: Mutex::new(Vec::new()), // TODO capacity should be equal to the number of cpus
         }
     }
 

@@ -10,7 +10,7 @@ mod queue;
 mod worker;
 mod yield_now;
 
-use crate::hart_local::HartLocal;
+use crate::cpu_local::CpuLocal;
 use crate::scheduler::idle::Idle;
 use crate::task;
 use crate::task::{JoinHandle, OwnedTasks, TaskRef};
@@ -36,21 +36,21 @@ pub fn current() -> &'static Scheduler {
 
 /// Initialize the global executor.
 ///
-/// This will allocate required state for `num_cores` of harts. Tasks can immediately be spawned
+/// This will allocate required state for `num_cores` of cpus. Tasks can immediately be spawned
 /// using the returned runtime reference (a reference to the runtime can also be obtained using
-/// [`current()`]) but no tasks will run until at least one hart in the system enters its
+/// [`current()`]) but no tasks will run until at least one cpu in the system enters its
 /// runtime loop using [`run()`].
 #[cold]
 pub fn init(num_cores: u32, rng: &mut impl RngCore) -> &'static Scheduler {
     SCHEDULER.get_or_init(|| Scheduler::new(num_cores as usize, rng))
 }
 
-/// Run the async runtime loop on the calling hart.
+/// Run the async runtime loop on the calling cpu.
 ///
 /// This function will not return until the runtime is shut down.
 #[inline]
-pub fn run(sched: &'static Scheduler, hartid: usize, initial: impl FnOnce()) -> Result<(), ()> {
-    worker::run(sched, hartid, initial)
+pub fn run(sched: &'static Scheduler, cpuid: usize, initial: impl FnOnce()) -> Result<(), ()> {
+    worker::run(sched, cpuid, initial)
 }
 
 pub struct Scheduler {
@@ -113,7 +113,7 @@ impl Scheduler {
                 idle,
                 condvars: (0..num_cores).map(|_| Condvar::new()).collect(),
                 parking_spot: ParkingSpot::default(),
-                per_hart: HartLocal::with_capacity(num_cores),
+                cpu_local: CpuLocal::with_capacity(num_cores),
             },
         }
     }
@@ -149,12 +149,12 @@ impl Scheduler {
 
     #[inline]
     pub(crate) fn defer(&self, waker: &Waker) {
-        self.shared.per_hart.get().unwrap().defer(waker);
+        self.shared.cpu_local.get().unwrap().defer(waker);
     }
 
     #[inline]
     pub(crate) fn timer(&self) -> &Timer {
-        self.shared.per_hart.get().unwrap().timer()
+        self.shared.cpu_local.get().unwrap().timer()
     }
 }
 

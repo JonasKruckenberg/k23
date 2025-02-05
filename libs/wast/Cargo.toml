@@ -26,7 +26,7 @@ hashbrown.workspace = true
 unicode-width.workspace = true
 memchr.workspace = true
 bumpalo.workspace = true
-thread-local.workspace = true
+cpu-local.workspace = true
 
 [features]
 default = ['wasm-module']

@@ -27,36 +27,36 @@ pub use lazy::LazyStorage;
 
 #[macro_export]
 #[allow(edition_2024_expr_fragment_specifier, reason = "expected usage")]
-macro_rules! thread_local {
+macro_rules! cpu_local {
     // empty (base case for the recursion)
     () => {};
 
     // declarations with constant initializers
     // process multiple declarations
     ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = const $init:block; $($rest:tt)*) => (
-        $crate::thread_local_inner!($(#[$attr])* $vis $name, $t, const $init);
-        $crate::thread_local!($($rest)*);
+        $crate::cpu_local_inner!($(#[$attr])* $vis $name, $t, const $init);
+        $crate::cpu_local!($($rest)*);
     );
     // handle a single declaration
     ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = const $init:block) => (
-        $crate::thread_local_inner!($(#[$attr])* $vis $name, $t, const $init);
+        $crate::cpu_local_inner!($(#[$attr])* $vis $name, $t, const $init);
     );
 
     // declarations with regular initializers
     // process multiple declarations
     ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = $init:expr; $($rest:tt)*) => (
-        $crate::thread_local_inner!($(#[$attr])* $vis $name, $t, $init);
-        $crate::thread_local!($($rest)*);
+        $crate::cpu_local_inner!($(#[$attr])* $vis $name, $t, $init);
+        $crate::cpu_local!($($rest)*);
     );
     // handle a single declaration
     ($(#[$attr:meta])* $vis:vis static $name:ident: $t:ty = $init:expr) => (
-        $crate::thread_local_inner!($(#[$attr])* $vis $name, $t, $init);
+        $crate::cpu_local_inner!($(#[$attr])* $vis $name, $t, $init);
     );
 }
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! thread_local_inner {
+macro_rules! cpu_local_inner {
     // Used to generate the `LocalKey` value for const-initialized thread locals.
     // Note the explicit use of the expr_2021 specifier to distinguish between const and non-const
     // expressions since we have different implementations for them.
@@ -112,7 +112,7 @@ macro_rules! thread_local_inner {
 
     ($(#[$attr:meta])* $vis:vis $name:ident, $t:ty, $($init:tt)*) => {
         $(#[$attr])* $vis const $name: $crate::LocalKey<$t> =
-        $crate::thread_local_inner!(@key $t, $($init)*);
+        $crate::cpu_local_inner!(@key $t, $($init)*);
     };
 }
 
