@@ -29,9 +29,9 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
+mod cpu_local;
 mod device_tree;
 mod error;
-mod cpu_local;
 mod irq;
 mod logger;
 mod metrics;
@@ -130,7 +130,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
         // initialize the virtual memory subsystem
         vm::init(boot_info, &mut rng).unwrap();
-        
+
         Barrier::new(boot_info.cpu_mask.count_ones() as usize)
     });
 
@@ -149,7 +149,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
-    
+
     if cpuid == 0 {
         sched.spawn(async move {
             log::debug!("sleeping for 1 sec...");
@@ -159,7 +159,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
             sched.shutdown();
         });
     }
-    
+
     let _ = scheduler::run(sched, cpuid, || {
         sched.spawn(async move {
             log::info!("Hello from cpu {}", cpuid);
