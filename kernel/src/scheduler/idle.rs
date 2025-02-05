@@ -37,9 +37,8 @@ pub(crate) struct Snapshot {
 
 /// Data synchronized by the scheduler mutex
 pub(crate) struct Synced {
-    /// Hart IDs that are currently sleeping
+    /// CPU IDs that are currently sleeping
     sleepers: Vec<usize>,
-
     /// Cores available for workers
     #[expect(clippy::vec_box, reason = "we're moving the boxed core around")]
     available_cores: Vec<Box<worker::Core>>,
@@ -124,12 +123,12 @@ impl Idle {
         self.num_idle.store(num_idle + 1, Ordering::Release);
     }
 
-    /// Wakes up a single worker. This method is intended to be called from a worker hart.
+    /// Wakes up a single worker. This method is intended to be called from a worker cpu.
     pub(crate) fn notify_local(&self, shared: &worker::Shared) {
         if self.num_searching.load(Ordering::Acquire) != 0 {
-            // There already is a searching hart. Note, that this could be a
+            // There already is a searching cpu. Note, that this could be a
             // false positive. However, because this method is called **from** a
-            // hart, we know that there is at least one worker currently
+            // cpu, we know that there is at least one worker currently
             // awake, so the scheduler won't deadlock.
             return;
         }
@@ -156,8 +155,8 @@ impl Idle {
         self.notify_synced(synced, shared);
     }
 
-    /// Wakes up a single worker. This method can be used from any hart, even from outside worker
-    /// harts.
+    /// Wakes up a single worker. This method can be used from any cpu, even from outside worker
+    /// cpus.
     pub(crate) fn notify_remote(
         &self,
         synced: MutexGuard<'_, worker::Synced>,

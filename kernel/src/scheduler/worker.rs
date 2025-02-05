@@ -7,7 +7,7 @@
 
 //! Scheduler worker implementation.
 //!
-//! A scheduler worker is a hart that is running the scheduling loop and which we therefore can
+//! A scheduler worker is a cpu that is running the scheduling loop and which we therefore can
 //! schedule work on. A scheduler is initialized with a fixed number of workers. Each worker has
 //! a "core" which contains data such as the run queue and other state. When `block_in_place` is called,
 //! the worker's "core" is handed off to a new thread allowing the scheduler to continue to
@@ -66,7 +66,7 @@
 //! leak.
 
 use crate::arch::device::cpu::with_cpu;
-use crate::hart_local::HartLocal;
+use crate::cpu_local::CpuLocal;
 use crate::metrics::Counter;
 use crate::scheduler::queue;
 use crate::scheduler::queue::Overflow;
@@ -101,9 +101,9 @@ static NUM_NOTIFY_LOCAL: Counter = counter!("scheduler.num-notify-local");
 
 /// A scheduler worker
 ///
-/// Data is stack-allocated and never migrates harts.
+/// Data is stack-allocated and never migrates cpus.
 struct Worker {
-    hartid: usize,
+    cpuid: usize,
     /// True if the scheduler is being shutdown
     is_shutdown: bool,
     /// Counter used to track when to poll from the local queue vs. the
@@ -119,7 +119,7 @@ struct Worker {
 
 /// Core data
 ///
-/// Data is heap-allocated and migrates harts.
+/// Data is heap-allocated and migrates cpus.
 ///
 /// You can think of `Core`s and `Worker`s a bit like robots with pluggable batteries. Just like a
 /// robot needs the battery to operate, a `Worker` needs a `Core` to operate. Workers are cooperative
@@ -152,16 +152,16 @@ pub(crate) struct Shared {
     pub(crate) run_queue: mpsc_queue::MpscQueue<task::Header>,
     /// Coordinates idle workers
     pub(crate) idle: idle::Idle,
-    /// Condition variables used for parking and unparking harts. Each hart has its
+    /// Condition variables used for parking and unparking cpus. Each cpu has its
     /// own `condvar` it waits on.
     pub(crate) condvars: Vec<Condvar>,
-    /// Synchronization state used for parking and unparking harts. This is exclusively used
+    /// Synchronization state used for parking and unparking cpus. This is exclusively used
     /// in conjunction with the `condvars` to coordinate parking and unparking.
     pub(crate) parking_spot: ParkingSpot,
-    /// Per-hart thread-local data. Logically this is part of the [`Worker`] struct, but placed here
+    /// Per-cpu thread-local data. Logically this is part of the [`Worker`] struct, but placed here
     /// into a TLS slot instead of stack allocated so we can access it from other places (i.e. we only
     /// need access to the scheduler handle instead of access to the workers stack which wouldn't work).
-    pub(crate) per_hart: HartLocal<Context>,
+    pub(crate) cpu_local: CpuLocal<Context>,
     /// Signal to workers that they should be shutting down.
     pub(crate) shutdown: AtomicBool,
 }
@@ -187,7 +187,7 @@ pub(crate) struct Remote {
     pub(crate) steal: queue::Steal,
 }
 
-/// Hart-local context
+/// CPU-local context
 ///
 /// Logically this is part of the [`Worker`] struct, but is kept separate to allow access from
 /// other parts of the code.
@@ -210,10 +210,10 @@ pub(crate) struct Context {
 }
 
 #[cold]
-pub fn run(handle: &'static Scheduler, hartid: usize, initial: impl FnOnce()) -> Result<(), ()> {
+pub fn run(handle: &'static Scheduler, cpuid: usize, initial: impl FnOnce()) -> Result<(), ()> {
     let mut worker = Worker {
         is_shutdown: false,
-        hartid,
+        cpuid,
         num_seq_local_queue_polls: 0,
         global_queue_interval: DEFAULT_GLOBAL_QUEUE_INTERVAL,
         idle_snapshot: idle::Snapshot::new(&handle.shared.idle),
@@ -221,7 +221,7 @@ pub fn run(handle: &'static Scheduler, hartid: usize, initial: impl FnOnce()) ->
     };
 
     #[expect(tail_expr_drop_order, reason = "")]
-    let cx = handle.shared.per_hart.get_or(|| Context {
+    let cx = handle.shared.cpu_local.get_or(|| Context {
         handle,
         core: RefCell::new(None),
         lifo_enabled: Cell::new(true),
@@ -339,7 +339,7 @@ impl Worker {
         }
     }
 
-    // Block the current hart waiting until a core becomes available.
+    // Block the current cpu waiting until a core becomes available.
     #[expect(tail_expr_drop_order, reason = "")]
     fn wait_for_core(
         &mut self,
@@ -356,11 +356,11 @@ impl Worker {
 
         cx.shared()
             .idle
-            .transition_worker_to_parked(&mut synced, self.hartid);
+            .transition_worker_to_parked(&mut synced, self.cpuid);
 
         // Wait until a core is available, then exit the loop.
         let mut core = loop {
-            if let Some(core) = synced.assigned_cores[self.hartid].take() {
+            if let Some(core) = synced.assigned_cores[self.cpuid].take() {
                 break core;
             }
 
@@ -370,9 +370,9 @@ impl Worker {
                 return Err(());
             }
 
-            log::trace!("parking hart waiting for core..");
-            cx.shared().condvars[self.hartid].wait(&cx.shared().parking_spot, &mut synced);
-            log::trace!("unparked hart, found core");
+            log::trace!("parking cpu waiting for core..");
+            cx.shared().condvars[self.cpuid].wait(&cx.shared().parking_spot, &mut synced);
+            log::trace!("unparked cpu, found core");
         };
 
         self.reset_acquired_core(cx, &mut core);
@@ -395,15 +395,15 @@ impl Worker {
     ) -> NextTaskResult {
         cx.shared()
             .idle
-            .transition_worker_to_parked(&mut synced, self.hartid);
+            .transition_worker_to_parked(&mut synced, self.cpuid);
 
-        log::trace!("parking hart waiting until deadline {deadline:?}..");
-        cx.shared().condvars[self.hartid].wait_until(
+        log::trace!("parking cpu waiting until deadline {deadline:?}..");
+        cx.shared().condvars[self.cpuid].wait_until(
             &cx.shared().parking_spot,
             &mut synced,
             deadline,
         );
-        log::trace!("unparked hart, deadline reached");
+        log::trace!("unparked cpu, deadline reached");
 
         // Try to acquire an available core to schedule the timer events
         if let Some(core) = self.try_acquire_available_core(cx, &mut synced) {
@@ -572,7 +572,7 @@ impl Worker {
                 unsafe {
                     // TODO cleanup
                     log::trace!("spin stalling for {:?}", Duration::from_micros(i as u64));
-                    arch::hart_park_ticks(with_cpu(|cpu| {
+                    arch::cpu_park_ticks(with_cpu(|cpu| {
                         cpu.clock
                             .duration_to_ticks(Duration::from_micros(i as u64))
                             .unwrap()
@@ -824,7 +824,7 @@ impl Core {
 
 impl Shared {
     pub(crate) fn schedule_task(&self, task: TaskRef, is_yield: bool) {
-        if let Some(cx) = self.per_hart.get() {
+        if let Some(cx) = self.cpu_local.get() {
             // And the current thread still holds a core
             if let Some(core) = cx.core.borrow_mut().as_mut() {
                 if is_yield {

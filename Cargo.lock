@@ -167,6 +167,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 
 [[package]]
+name = "cpu-local"
+version = "0.1.0"
+dependencies = [
+ "cfg-if",
+ "log",
+ "riscv",
+]
+
+[[package]]
 name = "cranelift-bforest"
 version = "0.117.0"
 source = "git+https://github.com/JonasKruckenberg/wasmtime.git?branch=main#854f9cbda0451ce07d03e7df8779c74015a46aa1"
@@ -456,6 +465,7 @@ dependencies = [
  "bitflags",
  "bumpalo",
  "cfg-if",
+ "cpu-local",
  "cranelift-codegen",
  "cranelift-entity",
  "cranelift-frontend",
@@ -479,7 +489,6 @@ dependencies = [
  "sync",
  "talc",
  "target-lexicon",
- "thread-local",
  "unwind2",
  "wasmparser",
  "wasmtime-slab",
@@ -947,15 +956,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc12939a1c9b9d391e0b7135f72fd30508b73450753e28341fed159317582a77"
 
 [[package]]
-name = "thread-local"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "log",
- "riscv",
-]
-
-[[package]]
 name = "tinytemplate"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1103,11 +1103,11 @@ name = "wast"
 version = "214.0.0"
 dependencies = [
  "bumpalo",
+ "cpu-local",
  "gimli",
  "hashbrown 0.15.2",
  "leb128",
  "memchr",
- "thread-local",
  "unicode-width",
  "wasm-encoder",
 ]

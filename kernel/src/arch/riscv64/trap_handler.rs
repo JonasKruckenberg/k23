@@ -12,11 +12,11 @@ use crate::traps::TrapReason;
 use crate::vm::VirtualAddress;
 use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
+use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{sbi, scause, sepc, sip, sstatus, stval, stvec};
-use thread_local::thread_local;
 
-thread_local! {
+cpu_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
 }
 

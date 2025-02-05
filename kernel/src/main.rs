@@ -29,10 +29,9 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
+mod cpu_local;
 mod device_tree;
 mod error;
-// mod executor;
-mod hart_local;
 mod irq;
 mod logger;
 mod metrics;
@@ -55,7 +54,7 @@ use core::cell::Cell;
 use core::range::Range;
 use core::slice;
 use core::time::Duration;
-use hart_local::thread_local;
+use cpu_local::cpu_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -79,8 +78,8 @@ pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-thread_local!(
-    pub static HARTID: Cell<usize> = Cell::new(usize::MAX);
+cpu_local!(
+    pub static CPUID: Cell<usize> = Cell::new(usize::MAX);
 );
 #[used(linker)]
 #[unsafe(link_section = ".loader_config")]
@@ -91,12 +90,12 @@ static LOADER_CONFIG: LoaderConfig = {
 };
 
 #[unsafe(no_mangle)]
-fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
-    HARTID.set(hartid);
+fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    CPUID.set(cpuid);
 
-    // perform EARLY per-hart, architecture-specific initialization
+    // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
-    arch::per_hart_init_early();
+    arch::per_cpu_init_early();
 
     let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
@@ -132,18 +131,18 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // initialize the virtual memory subsystem
         vm::init(boot_info, &mut rng).unwrap();
 
-        Barrier::new(boot_info.hart_mask.count_ones() as usize)
+        Barrier::new(boot_info.cpu_mask.count_ones() as usize)
     });
 
-    // perform EARLY per-hart, architecture-specific initialization
+    // perform LATE per-cpu, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
-    arch::per_hart_init_late(device_tree()).unwrap();
+    arch::per_cpu_init_late(device_tree()).unwrap();
 
     // initialize the executor
 
-    // if we're executing tests we don't want idle harts to park indefinitely, instead the
+    // if we're executing tests we don't want idle cpus to park indefinitely, instead the
     // runtime should just shut down
-    let sched = scheduler::init(boot_info.hart_mask.count_ones(), &mut rng);
+    let sched = scheduler::init(boot_info.cpu_mask.count_ones(), &mut rng);
 
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
@@ -151,7 +150,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
 
-    if hartid == 0 {
+    if cpuid == 0 {
         sched.spawn(async move {
             log::debug!("sleeping for 1 sec...");
             let start = Instant::now();
@@ -161,9 +160,9 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         });
     }
 
-    let _ = scheduler::run(sched, hartid, || {
+    let _ = scheduler::run(sched, cpuid, || {
         sched.spawn(async move {
-            log::info!("Hello from hart {}", hartid);
+            log::info!("Hello from cpu {}", cpuid);
         });
     });
 
@@ -176,7 +175,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // - initialize other parts of the kernel
     // - kickoff the scheduler
     // - `platform_init()`
-    //     - using system topology -> start other harts in the system
+    //     - using system topology -> start other cpus in the system
     // - `arch_late_init_percpu()`
     //     - IF RiscvFeatureVector => setup the vector hardware
     // - `kernel_shell_init()`
@@ -185,7 +184,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // Run thread-local destructors
     // Safety: after this point thread-locals cannot be accessed anymore anyway
     unsafe {
-        hart_local::destructors::run();
+        cpu_local::destructors::run();
     }
 
     log::trace!("waiting for shutdown");
@@ -197,7 +196,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     } else {
         loop {
             // Safety: we're about to shutdown the VM anyway
-            unsafe { arch::hart_park() }
+            unsafe { arch::cpu_park() }
         }
     }
 }

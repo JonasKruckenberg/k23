@@ -47,7 +47,7 @@ struct WaiterInner {
     // NB: these fields are only modified/read under the lock of a
     // `ParkingSpot`.
     notified: bool,
-    hartid: usize,
+    cpuid: usize,
 }
 
 impl Waiter {
@@ -129,26 +129,26 @@ impl ParkingSpot {
             Box::new(WaiterInner {
                 links: linked_list::Links::default(),
                 notified: false,
-                hartid: crate::HARTID.get(),
+                cpuid: crate::CPUID.get(),
             })
         });
 
         // Clear the `notified` flag if it was previously notified and
         // configure the thread to wakeup as our own.
         waiter.notified = false;
-        waiter.hartid = crate::HARTID.get();
+        waiter.cpuid = crate::CPUID.get();
 
         let ptr = NonNull::from(&mut **waiter);
         let spot = inner.entry(key).or_default();
 
-        // Safety: the section below is incredibly critical, calling `arch::hart_park` or `arch::hart_park_timeout`
-        // will suspend the calling hart and potentially deadlock
+        // Safety: the section below is incredibly critical, calling `arch::cpu_park` or `arch::cpu_park_timeout`
+        // will suspend the calling cpu and potentially deadlock
         unsafe {
             // Enqueue our `waiter` in the internal queue for this spot.
             spot.0.push_back(ptr);
 
             // Wait for a notification to arrive. This is done through
-            // `arch::hart_park_timeout` by dropping the lock that is held.
+            // `arch::cpu_park_timeout` by dropping the lock that is held.
             // This loop is somewhat similar to a condition variable.
             //
             // If no timeout was given then the maximum duration is effectively
@@ -166,18 +166,18 @@ impl ParkingSpot {
                         Ticks(deadline.0 - now.0)
                     };
 
-                    // Suspend the calling hart for at least `timeout` duration.
-                    // This will put the hart into a "wait for interrupt" mode where it will wait until
-                    // either the timeout interrupt arrives or it receives an interrupt from another hart.
+                    // Suspend the calling cpu for at least `timeout` duration.
+                    // This will put the cpu into a "wait for interrupt" mode where it will wait until
+                    // either the timeout interrupt arrives or it receives an interrupt from another cpu.
                     drop(inner);
-                    arch::hart_park_ticks(timeout);
+                    arch::cpu_park_ticks(timeout);
                     inner = self.inner.lock();
                 } else {
-                    // Suspend the calling hart for an indefinite amount of time.
-                    // It will only wake up if it receives an interrupt from another hart.
+                    // Suspend the calling cpu for an indefinite amount of time.
+                    // It will only wake up if it receives an interrupt from another cpu.
                     drop(inner);
                     // log::trace!("parking indefinitely...");
-                    arch::hart_park();
+                    arch::cpu_park();
                     // log::trace!("unparked!");
                     inner = self.inner.lock();
                 }
@@ -221,17 +221,17 @@ impl ParkingSpot {
                 let head = unsafe { head.as_mut() };
                 head.notified = true;
 
-                // Send an interrupt to the hart to wake it up, if the hart is already running (which
-                // shouldn't happen) then this will do nothing, but if the hart is parked at the call
-                // to `arch::hart_park_timeout` above then this will wake it up and it will return from
+                // Send an interrupt to the cpu to wake it up, if the cpu is already running (which
+                // shouldn't happen) then this will do nothing, but if the cpu is parked at the call
+                // to `arch::cpu_park_timeout` above then this will wake it up and it will return from
                 // the call to `wait`.
-                // Safety: This will send an interrupt to the target hart to wake it up, if the hart
+                // Safety: This will send an interrupt to the target cpu to wake it up, if the cpu
                 // is already running then the implementation of the trap handler ensures "nothing
                 // happens" i.e. the trap handler just temporarily interrupts the running code, does
                 // nothing and then return. But we have to be very careful here to ensure that the
-                // interrupt doesn't blow up the target hart.
+                // interrupt doesn't blow up the target cpu.
                 unsafe {
-                    arch::hart_unpark(head.hartid);
+                    arch::cpu_unpark(head.cpuid);
                 }
 
                 unparked += 1;

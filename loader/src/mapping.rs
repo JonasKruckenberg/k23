@@ -562,11 +562,11 @@ pub fn map_kernel_stacks(
     frame_alloc: &mut FrameAllocator,
     page_alloc: &mut PageAllocator,
     minfo: &MachineInfo,
-    per_hart_size_pages: usize,
+    per_cpu_size_pages: usize,
     phys_off: usize,
 ) -> crate::Result<StacksAllocation> {
-    let per_hart_size = per_hart_size_pages * arch::PAGE_SIZE;
-    let layout = Layout::from_size_align(per_hart_size, arch::PAGE_SIZE)
+    let per_cpu_size = per_cpu_size_pages * arch::PAGE_SIZE;
+    let layout = Layout::from_size_align(per_cpu_size, arch::PAGE_SIZE)
         .unwrap()
         .repeat(minfo.hart_mask.count_ones() as usize)
         .unwrap()
@@ -596,23 +596,20 @@ pub fn map_kernel_stacks(
         )?;
     }
 
-    Ok(StacksAllocation {
-        virt,
-        per_hart_size,
-    })
+    Ok(StacksAllocation { virt, per_cpu_size })
 }
 
 pub struct StacksAllocation {
     /// The TLS region in virtual memory
     virt: Range<usize>,
-    per_hart_size: usize,
+    per_cpu_size: usize,
 }
 
 impl StacksAllocation {
-    pub fn region_for_hart(&self, hartid: usize) -> Range<usize> {
-        let end = self.virt.end - (self.per_hart_size * hartid);
+    pub fn region_for_cpu(&self, cpuid: usize) -> Range<usize> {
+        let end = self.virt.end - (self.per_cpu_size * cpuid);
 
-        Range::from((end - self.per_hart_size)..end)
+        Range::from((end - self.per_cpu_size)..end)
     }
 }
 

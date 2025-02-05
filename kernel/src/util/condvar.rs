@@ -63,7 +63,7 @@ impl Condvar {
     pub fn wait<T: ?Sized>(&self, parking_spot: &ParkingSpot, mutex_guard: &mut MutexGuard<'_, T>) {
         self.wait_until_internal(
             parking_spot,
-            // Safety: `wait_until_internal` will unlock the mutex before parking this hart and relock
+            // Safety: `wait_until_internal` will unlock the mutex before parking this cpu and relock
             // it upon unparking which means that the `MutexGuard` cannot be accessed while the underlying
             // raw mutex is in an unlocked state.
             unsafe { MutexGuard::mutex(mutex_guard).raw() },
@@ -80,7 +80,7 @@ impl Condvar {
     ) -> WaitResult {
         self.wait_until_internal(
             parking_spot,
-            // Safety: `wait_until_internal` will unlock the mutex before parking this hart and relock
+            // Safety: `wait_until_internal` will unlock the mutex before parking this cpu and relock
             // it upon unparking which means that the `MutexGuard` cannot be accessed while the underlying
             // raw mutex is in an unlocked state.
             unsafe { MutexGuard::mutex(mutex_guard).raw() },
@@ -97,7 +97,7 @@ impl Condvar {
     ) -> WaitResult {
         self.wait_until_internal(
             parking_spot,
-            // Safety: `wait_until_internal` will unlock the mutex before parking this hart and relock
+            // Safety: `wait_until_internal` will unlock the mutex before parking this cpu and relock
             // it upon unparking which means that the `MutexGuard` cannot be accessed while the underlying
             // raw mutex is in an unlocked state.
             unsafe { MutexGuard::mutex(mutex_guard).raw() },

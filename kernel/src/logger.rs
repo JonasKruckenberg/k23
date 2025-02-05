@@ -34,7 +34,7 @@ impl log::Log for Logger {
             print(format_args!(
                 "[{color}{:<5}\x1b[0m HART {} {}] {}\n",
                 record.level(),
-                crate::HARTID.get(),
+                crate::CPUID.get(),
                 record.module_path_static().unwrap_or_default(),
                 record.args()
             ));

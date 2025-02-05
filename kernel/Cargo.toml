@@ -14,7 +14,7 @@ workspace = true
 
 [dependencies]
 loader-api.workspace = true
-thread-local.workspace = true
+cpu-local.workspace = true
 sync.workspace = true
 linked-list.workspace = true
 unwind2.workspace = true

@@ -11,8 +11,8 @@
 //! and reexports them based on the compilation target. Each submodule has to adhere to roughly the
 //! same interface:
 //! - `call_with_setjmp`, `setjmp`, `longjmp`, `JumpBuf`, `JumpBufStruct` for setjmp/longjmp functionality
-//! - `init`, `per_hart_init_early`, `per_hart_init_late` for initialization
-//! - `park_hart`, `park_hart_timeout` for parking a hart
+//! - `init`, `per_cpu_init_early`, `per_cpu_init_late` for initialization
+//! - `cpu_park`, `cpu_park_timeout` for parking a CPU
 //! - `with_user_memory_access` for temporarily enabling kernel access to userspace memory
 //! - `mb`, `rmb`, `wmb` for memory barriers
 //! - `set_thread_ptr`, `get_stack_pointer`, `get_next_older_pc_from_fp`, `assert_fp_is_aligned` for

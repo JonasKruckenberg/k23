@@ -186,7 +186,7 @@ unsafe extern "C" fn fill_stack() {
 /// This will hand off control over this CPU to the kernel. This is the last function executed in
 /// the loader and will never return.
 pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalInitResult) -> ! {
-    let stack = init.stacks_alloc.region_for_hart(hartid);
+    let stack = init.stacks_alloc.region_for_cpu(hartid);
     let tls = init
         .maybe_tls_alloc
         .as_ref()

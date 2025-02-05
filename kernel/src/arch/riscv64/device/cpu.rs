@@ -11,14 +11,14 @@ use crate::error::Error;
 use crate::irq::InterruptController;
 use crate::time::clock::Ticks;
 use crate::time::{Clock, NANOS_PER_SEC};
-use crate::HARTID;
+use crate::CPUID;
 use bitflags::bitflags;
 use core::cell::OnceCell;
 use core::str::FromStr;
 use core::time::Duration;
-use thread_local::thread_local;
+use cpu_local::cpu_local;
 
-thread_local! {
+cpu_local! {
     static CPU: OnceCell<Cpu> = OnceCell::new();
 }
 
@@ -100,7 +100,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
                 usize::from_str(dev.name.unit_address.expect("CPU is missing unit address"))
                     .expect("CPU unit address is not an integer");
 
-            name == "cpu" && unit_addr == HARTID.get()
+            name == "cpu" && unit_addr == CPUID.get()
         })
         .expect("CPU node not found in device tree");
 
