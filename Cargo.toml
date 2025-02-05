@@ -103,15 +103,15 @@ fdt = { path = "libs/fdt" }
 
 # third-party dependencies
 cfg-if = "1.0.0"
-log = "0.4.21"
-bitflags = "2.6.0"
+log = "0.4.25"
+bitflags = "2.8.0"
 lock_api = "0.4.12"
 xmas-elf = "0.9.1"
 static_assertions = "1.1.0"
 rand = { version = "0.8.5", default-features = false }
 rand_chacha = { version = "0.3.1", default-features = false }
-arrayvec = { version = "0.7.4", default-features = false }
-gimli = { version = "0.31.0", default-features = false, features = ["read"] }
+arrayvec = { version = "0.7.6", default-features = false }
+gimli = { version = "0.31.1", default-features = false, features = ["read"] }
 talc = { version = "4.4.2", default-features = false, features = ["lock_api", "counters"] }
 smallvec = { version = "1", default-features = false }
 rustc-demangle = "0.1"
@@ -120,7 +120,7 @@ fallible-iterator = { version = "0.3.0", default-features = false }
 # wast dependencies
 bumpalo = "3.17.0"
 unicode-width = { version = "0.2.0" }
-memchr = { version = "2.4.1", default-features = false }
+memchr = { version = "2.7.4", default-features = false }
 
 #wat = "1.219.1"
 
@@ -135,7 +135,7 @@ target-lexicon = { version = "0.13.1", default-features = false }
 cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["host-arch", "core"] }
 cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["core"] }
 cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false }
-wasmtime-slab = "28.0.0"
+wasmtime-slab = "28.0.1"
 
 [profile.release]
 debug = "limited" # The kernel should be able to print stack traces of itself even in release mode
