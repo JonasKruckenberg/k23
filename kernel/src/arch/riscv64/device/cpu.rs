@@ -19,11 +19,11 @@ use core::time::Duration;
 use thread_local::thread_local;
 
 thread_local! {
-    static CPU_INFO: OnceCell<CPUInfo> = OnceCell::new();
+    static CPU: OnceCell<CPU> = OnceCell::new();
 }
 
 #[derive(Debug)]
-pub struct CPUInfo {
+pub struct CPU {
     pub extensions: RiscvExtensions,
     pub cbop_block_size: Option<usize>,
     pub cboz_block_size: Option<usize>,
@@ -78,12 +78,12 @@ bitflags! {
     }
 }
 
-pub fn with_cpu_info<F, R>(f: F) -> R
+pub fn with_cpu<F, R>(f: F) -> R
 where
-    F: FnOnce(&CPUInfo) -> R,
+    F: FnOnce(&CPU) -> R,
 {
     #[expect(tail_expr_drop_order, reason = "")]
-    CPU_INFO.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
+    CPU.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
 }
 
 #[cold]
@@ -147,8 +147,8 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
         Ticks(timebase_frequency)
     );
 
-    CPU_INFO.with(|info| {
-        let _info = CPUInfo {
+    CPU.with(|info| {
+        let _info = CPU {
             clock,
             extensions,
             cbop_block_size,

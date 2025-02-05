@@ -10,6 +10,8 @@ use crate::time::{clock, NANOS_PER_SEC};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
+use crate::arch::device::cpu::with_cpu;
+use crate::time::clock::Ticks;
 
 /// A measurement of a monotonically nondecreasing clock.
 /// Opaque and useful only with [`Duration`].
@@ -21,7 +23,12 @@ impl Instant {
 
     /// Returns an instant corresponding to "now".
     pub fn now() -> Self {
-        scheduler::current().timer().clock.now()
+        with_cpu(|cpu| cpu.clock.now())
+    }
+
+    pub fn from_ticks(ticks: Ticks) -> Self {
+        let duration = with_cpu(|cpu| cpu.clock.ticks_to_duration(ticks));
+        Instant(duration)
     }
 
     pub fn far_future() -> Instant {
@@ -30,11 +37,6 @@ impl Instant {
         // but doing checked or saturating conversions in those functions is too expensive.
         Self::now() + Duration::from_secs(86400 * 365 * 30)
     }
-
-    // pub fn from_ticks(ticks: u64) -> Self {
-    //     let timebase_freq = with_cpu_info(|cpu_info| cpu_info.timebase_frequency);
-    //     Instant(time::ticks_to_duration(ticks, timebase_freq))
-    // }
 
     /// Returns the amount of time elapsed from another instant to this one,
     /// or zero duration if that instant is later than this one.

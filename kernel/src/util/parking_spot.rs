@@ -5,8 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
+use crate::arch::device::cpu::with_cpu;
 use crate::time::clock::Ticks;
-use crate::{arch, scheduler};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use core::mem::offset_of;
@@ -158,7 +159,7 @@ impl ParkingSpot {
             // notification wasn't received then the thread goes back to sleep.
             let timed_out = loop {
                 if let Some(deadline) = deadline {
-                    let now = scheduler::current().timer().clock.now_ticks();
+                    let now = with_cpu(|cpu| cpu.clock.now_ticks());
                     let timeout = if deadline <= now {
                         break true;
                     } else {

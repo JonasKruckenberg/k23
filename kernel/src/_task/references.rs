@@ -135,6 +135,7 @@ impl TaskRef {
     pub(crate) fn wake_by_val(&self) {
         match self.state().transition_to_notified_by_val() {
             TransitionToNotifiedByVal::Submit => {
+                debug_assert!(self.state().load().ref_count() >= 2);
                 // The caller has given us a ref-count, and the transition has
                 // created a new ref-count, so we now hold two. We turn the new
                 // ref-count Notified and pass it to the call to `schedule`.

@@ -47,6 +47,7 @@ mod wasm;
 
 use crate::device_tree::device_tree;
 use crate::error::Error;
+use crate::time::clock::Ticks;
 use crate::time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
@@ -58,14 +59,14 @@ use hart_local::thread_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::Once;
+use sync::{Barrier, OnceLock};
 use vm::frame_alloc;
 use vm::PhysicalAddress;
 
 /// The log level for the kernel
-pub const LOG_LEVEL: log::Level = log::Level::Debug;
+pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages
-pub const STACK_SIZE_PAGES: u32 = 128; // TODO find a lower more appropriate value
+pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
 pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropriate value
 /// The initial size of the kernel heap in pages.
@@ -90,7 +91,7 @@ static LOADER_CONFIG: LoaderConfig = {
 };
 
 #[unsafe(no_mangle)]
-fn _start(hartid: usize, boot_info: &'static BootInfo, _boot_ticks: u64) -> ! {
+fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     HARTID.set(hartid);
 
     // perform EARLY per-hart, architecture-specific initialization
@@ -100,8 +101,8 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, _boot_ticks: u64) -> ! {
     let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
-    static SYNC: Once = Once::new();
-    SYNC.call_once(|| {
+    static SYNC: OnceLock<Barrier> = OnceLock::new();
+    SYNC.get_or_init(|| {
         // initialize the global logger as early as possible
         logger::init(LOG_LEVEL.to_level_filter());
 
@@ -130,6 +131,8 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, _boot_ticks: u64) -> ! {
 
         // initialize the virtual memory subsystem
         vm::init(boot_info, &mut rng).unwrap();
+
+        Barrier::new(boot_info.hart_mask.count_ones() as usize)
     });
 
     // perform EARLY per-hart, architecture-specific initialization
@@ -140,14 +143,13 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, _boot_ticks: u64) -> ! {
 
     // if we're executing tests we don't want idle harts to park indefinitely, instead the
     // runtime should just shut down
-    let shutdown_on_idle = cfg!(test);
-    let sched = scheduler::init(boot_info.hart_mask.count_ones(), &mut rng, shutdown_on_idle);
+    let sched = scheduler::init(boot_info.hart_mask.count_ones(), &mut rng);
 
-    // log::info!(
-    //     "Booted in ~{:?} ({:?} in k23)",
-    //     Instant::now().duration_since(Instant::ZERO),
-    //     Instant::from_ticks(boot_ticks).elapsed()
-    // );
+    log::info!(
+        "Booted in ~{:?} ({:?} in k23)",
+        Instant::now().duration_since(Instant::ZERO),
+        Instant::from_ticks(Ticks(boot_ticks)).elapsed()
+    );
 
     if hartid == 0 {
         sched.spawn(async move {
@@ -155,6 +157,7 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, _boot_ticks: u64) -> ! {
             let start = Instant::now();
             time::sleep(Duration::from_secs(1)).await;
             log::debug!("slept 1 sec! {:?}", start.elapsed());
+            sched.shutdown();
         });
     }
 
@@ -185,7 +188,15 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, _boot_ticks: u64) -> ! {
         hart_local::destructors::run();
     }
 
-    arch::exit(0);
+    log::trace!("waiting for shutdown");
+    let res = SYNC.get().unwrap().wait();
+    // only let the leader exit the VM
+    if res.is_leader() {
+        log::trace!("all CPUs have shut down, bye bye...");
+        arch::exit(0);
+    } else {
+        loop { unsafe { arch::hart_park() } }
+    }
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.

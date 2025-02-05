@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::scheduler;
-use crate::scheduler::current;
 use crate::time::clock::Ticks;
 use crate::time::timer::Timer;
 use crate::time::Instant;
@@ -20,19 +19,20 @@ use core::ptr::NonNull;
 use core::task::{Context, Poll};
 use core::time::Duration;
 use pin_project::{pin_project, pinned_drop};
+use crate::arch::device::cpu::with_cpu;
 
 pub fn sleep(duration: Duration) -> Sleep<'static> {
     let timer = scheduler::current().timer();
-    let ticks = timer.clock.duration_to_ticks(duration).unwrap();
+    let ticks = with_cpu(|cpu| cpu.clock.duration_to_ticks(duration).unwrap());
 
     Sleep::new(timer, ticks)
 }
 
 pub fn sleep_until(instant: Instant) -> Sleep<'static> {
     let timer = scheduler::current().timer();
-    let now = timer.clock.now();
+    let now = with_cpu(|cpu| cpu.clock.now());
     let duration = instant.duration_since(now);
-    let ticks = timer.clock.duration_to_ticks(duration).unwrap();
+    let ticks = with_cpu(|cpu| cpu.clock.duration_to_ticks(duration).unwrap());
 
     Sleep::new(timer, ticks)
 }
@@ -64,7 +64,7 @@ pub struct Entry {
 
 impl<'t> Sleep<'t> {
     pub fn new(timer: &'t Timer, ticks: Ticks) -> Self {
-        let now = timer.clock.now_ticks();
+        let now = with_cpu(|cpu| cpu.clock.now_ticks());
         let deadline = Ticks(now.0 + ticks.0);
 
         Self {
@@ -82,7 +82,7 @@ impl<'t> Sleep<'t> {
 
     /// Returns the [`Duration`] that this `Sleep` future will sleep for.
     pub fn duration(&self) -> Duration {
-        self.timer.clock.ticks_to_duration(self.entry.ticks)
+        with_cpu(|cpu| cpu.clock.ticks_to_duration(self.entry.ticks))
     }
 }
 

@@ -69,6 +69,7 @@ unsafe fn drop_waker(ptr: *const ()) {
         log::trace!("waker.drop_waker {ptr:?}");
         let raw = TaskRef::from_raw(ptr);
         raw.drop_reference();
+        mem::forget(raw);
     }
 }
 

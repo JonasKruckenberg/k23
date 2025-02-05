@@ -10,7 +10,6 @@ mod queue;
 mod worker;
 mod yield_now;
 
-use crate::arch::device::cpu::with_cpu_info;
 use crate::hart_local::HartLocal;
 use crate::scheduler::idle::Idle;
 use crate::task;
@@ -22,6 +21,7 @@ use crate::util::parking_spot::ParkingSpot;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::future::Future;
+use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::Waker;
 use rand::RngCore;
@@ -41,8 +41,8 @@ pub fn current() -> &'static Scheduler {
 /// [`current()`]) but no tasks will run until at least one hart in the system enters its
 /// runtime loop using [`run()`].
 #[cold]
-pub fn init(num_cores: u32, rng: &mut impl RngCore, shutdown_on_idle: bool) -> &'static Scheduler {
-    SCHEDULER.get_or_init(|| Scheduler::new(num_cores as usize, rng, shutdown_on_idle))
+pub fn init(num_cores: u32, rng: &mut impl RngCore) -> &'static Scheduler {
+    SCHEDULER.get_or_init(|| Scheduler::new(num_cores as usize, rng))
 }
 
 /// Run the async runtime loop on the calling hart.
@@ -50,18 +50,30 @@ pub fn init(num_cores: u32, rng: &mut impl RngCore, shutdown_on_idle: bool) -> &
 /// This function will not return until the runtime is shut down.
 #[inline]
 pub fn run(sched: &'static Scheduler, hartid: usize, initial: impl FnOnce()) -> Result<(), ()> {
-    let clock = with_cpu_info(|info| info.clock.clone());
-    let timer = Timer::new(clock);
-    worker::run(sched, timer, hartid, initial)
+    worker::run(sched, hartid, initial)
 }
 
 pub struct Scheduler {
     shared: worker::Shared,
 }
 
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct TaskStub {
+    hdr: task::Header,
+}
+
+impl TaskStub {
+    pub const fn new() -> Self {
+        Self {
+            hdr: task::Header::new_static_stub(),
+        }
+    }
+}
+
 impl Scheduler {
     #[expect(tail_expr_drop_order, reason = "")]
-    pub fn new(num_cores: usize, rand: &mut impl RngCore, shutdown_on_idle: bool) -> Self {
+    pub fn new(num_cores: usize, rand: &mut impl RngCore) -> Self {
         let mut cores = Vec::with_capacity(num_cores);
         let mut remotes = Vec::with_capacity(num_cores);
 
@@ -80,8 +92,8 @@ impl Scheduler {
 
         let (idle, idle_synced) = Idle::new(cores);
 
-        let stub = TaskRef::new_stub();
-        let run_queue = mpsc_queue::MpscQueue::new_with_stub(stub);
+        static TASK_STUB: TaskStub = TaskStub::new();
+        let run_queue = mpsc_queue::MpscQueue::new_with_stub(unsafe { TaskRef::from_raw(NonNull::from(&TASK_STUB.hdr)) });
 
         Self {
             shared: worker::Shared {
@@ -98,7 +110,6 @@ impl Scheduler {
                 condvars: (0..num_cores).map(|_| Condvar::new()).collect(),
                 parking_spot: ParkingSpot::default(),
                 per_hart: HartLocal::with_capacity(num_cores),
-                shutdown_on_idle,
             },
         }
     }
@@ -148,8 +159,9 @@ impl task::Schedule for &'static Scheduler {
         self.shared.schedule_task(task, false);
     }
 
-    fn release(&self, task: &TaskRef) -> Option<TaskRef> {
-        self.shared.owned.remove(task)
+    fn release(&self, _task: &TaskRef) -> Option<TaskRef> {
+        todo!()
+        // self.shared.owned.remove(task)
     }
 
     fn yield_now(&self, task: TaskRef) {

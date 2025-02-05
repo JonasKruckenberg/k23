@@ -468,6 +468,7 @@ dependencies = [
  "lock_api",
  "log",
  "mpsc-queue",
+ "mycelium-bitfield",
  "ouroboros",
  "pin-project",
  "rand 0.8.5",
@@ -556,6 +557,12 @@ version = "0.1.0"
 dependencies = [
  "fallible-iterator",
 ]
+
+[[package]]
+name = "mycelium-bitfield"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24e0cc5e2c585acbd15c5ce911dff71e1f4d5313f43345873311c4f5efd741cc"
 
 [[package]]
 name = "num-traits"

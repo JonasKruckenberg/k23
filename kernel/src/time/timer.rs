@@ -13,6 +13,7 @@ use core::ptr::NonNull;
 use core::task::Poll;
 use core::time::Duration;
 use sync::Mutex;
+use crate::arch::device::cpu::with_cpu;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Deadline {
@@ -22,7 +23,6 @@ pub struct Deadline {
 }
 
 pub struct Timer {
-    pub clock: Clock,
     pub(super) core: Mutex<Core>,
 }
 
@@ -96,9 +96,8 @@ struct Wheel {
 }
 
 impl Timer {
-    pub(crate) fn new(clock: Clock) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            clock,
             core: Mutex::new(Core::new()),
         }
     }
@@ -109,7 +108,7 @@ impl Timer {
     }
 
     pub(super) fn turn_locked(&self, core: &mut Core) -> (usize, Option<Deadline>) {
-        let mut now = self.clock.now_ticks();
+        let mut now = with_cpu(|cpu| cpu.clock.now_ticks());
 
         if now < core.now {
             log::warn!("time went backwards!");
@@ -121,7 +120,7 @@ impl Timer {
             let (_expired, next_deadline) = core.poll(now);
             expired += _expired;
             if let Some(next) = next_deadline {
-                now = self.clock.now_ticks();
+                now = with_cpu(|cpu| cpu.clock.now_ticks());
                 if now >= next.ticks {
                     // we've advanced past the next deadline, so we need to
                     // advance again.
