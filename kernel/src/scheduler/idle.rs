@@ -14,7 +14,7 @@ use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use sync::MutexGuard;
 
-pub(super) struct Idle {
+pub(crate) struct Idle {
     /// Number of searching cores
     num_searching: AtomicUsize,
     /// Number of idle cores
@@ -27,16 +27,16 @@ pub(super) struct Idle {
     num_cores: usize,
 }
 
-pub(super) struct IdleMap {
+pub(crate) struct IdleMap {
     chunks: Vec<AtomicUsize>,
 }
 
-pub(super) struct Snapshot {
+pub(crate) struct Snapshot {
     chunks: Vec<usize>,
 }
 
 /// Data synchronized by the scheduler mutex
-pub(super) struct Synced {
+pub(crate) struct Synced {
     /// Hart IDs that are currently sleeping
     sleepers: Vec<usize>,
 
@@ -47,7 +47,7 @@ pub(super) struct Synced {
 
 impl Idle {
     #[expect(clippy::vec_box, reason = "we're moving the boxed core around")]
-    pub(super) fn new(cores: Vec<Box<worker::Core>>) -> (Idle, Synced) {
+    pub(crate) fn new(cores: Vec<Box<worker::Core>>) -> (Idle, Synced) {
         let idle = Idle {
             num_searching: AtomicUsize::new(0),
             num_idle: AtomicUsize::new(cores.len()),
@@ -64,7 +64,7 @@ impl Idle {
         (idle, synced)
     }
 
-    pub(super) fn num_searching(&self) -> usize {
+    pub(crate) fn num_searching(&self) -> usize {
         self.num_searching.load(Ordering::Acquire)
     }
 
@@ -76,11 +76,11 @@ impl Idle {
         synced.available_cores.len()
     }
 
-    pub(super) fn needs_searching(&self) -> bool {
+    pub(crate) fn needs_searching(&self) -> bool {
         self.needs_searching.load(Ordering::Acquire)
     }
 
-    pub(super) fn try_acquire_available_core(
+    pub(crate) fn try_acquire_available_core(
         &self,
         synced: &mut Synced,
     ) -> Option<Box<worker::Core>> {
@@ -102,7 +102,7 @@ impl Idle {
 
     /// The worker releases the given core, making it available to other workers
     /// that are waiting.
-    pub(super) fn release_core(&self, synced: &mut worker::Synced, core: Box<worker::Core>) {
+    pub(crate) fn release_core(&self, synced: &mut worker::Synced, core: Box<worker::Core>) {
         // The core should not be searching at this point
         debug_assert!(!core.is_searching);
         // Check that there are no pending tasks in the global queue
@@ -125,7 +125,7 @@ impl Idle {
     }
 
     /// Wakes up a single worker. This method is intended to be called from a worker hart.
-    pub(super) fn notify_local(&self, shared: &worker::Shared) {
+    pub(crate) fn notify_local(&self, shared: &worker::Shared) {
         if self.num_searching.load(Ordering::Acquire) != 0 {
             // There already is a searching hart. Note, that this could be a
             // false positive. However, because this method is called **from** a
@@ -158,7 +158,7 @@ impl Idle {
 
     /// Wakes up a single worker. This method can be used from any hart, even from outside worker
     /// harts.
-    pub(super) fn notify_remote(
+    pub(crate) fn notify_remote(
         &self,
         synced: MutexGuard<'_, worker::Synced>,
         shared: &worker::Shared,
@@ -252,7 +252,7 @@ impl Idle {
         }
     }
 
-    pub(super) fn shutdown(&self, synced: &mut worker::Synced, shared: &worker::Shared) {
+    pub(crate) fn shutdown(&self, synced: &mut worker::Synced, shared: &worker::Shared) {
         // Wake every sleeping worker and assign a core to it. There may not be
         // enough sleeping workers for all cores, but other workers will
         // eventually find the cores and shut them down.
@@ -274,7 +274,7 @@ impl Idle {
         }
     }
 
-    pub(super) fn shutdown_unassigned_cores(&self, shared: &worker::Shared) {
+    pub(crate) fn shutdown_unassigned_cores(&self, shared: &worker::Shared) {
         // If there are any remaining cores, shut them down here.
         //
         // This code is a bit convoluted to avoid lock-reentry.
@@ -286,7 +286,7 @@ impl Idle {
         }
     }
 
-    pub(super) fn transition_worker_to_parked(&self, synced: &mut worker::Synced, index: usize) {
+    pub(crate) fn transition_worker_to_parked(&self, synced: &mut worker::Synced, index: usize) {
         // Store the worker index in the list of sleepers
         synced.idle.sleepers.push(index);
 
@@ -294,7 +294,7 @@ impl Idle {
         debug_assert!(synced.assigned_cores[index].is_none());
     }
 
-    pub(super) fn try_transition_worker_to_searching(&self, core: &mut worker::Core) {
+    pub(crate) fn try_transition_worker_to_searching(&self, core: &mut worker::Core) {
         debug_assert!(!core.is_searching);
 
         let num_searching = self.num_searching.load(Ordering::Acquire);
@@ -307,13 +307,13 @@ impl Idle {
         self.transition_worker_to_searching(core);
     }
 
-    pub(super) fn transition_worker_to_searching(&self, core: &mut worker::Core) {
+    pub(crate) fn transition_worker_to_searching(&self, core: &mut worker::Core) {
         core.is_searching = true;
         self.num_searching.fetch_add(1, Ordering::AcqRel);
         self.needs_searching.store(false, Ordering::Release);
     }
 
-    pub(super) fn transition_worker_from_searching(&self) -> bool {
+    pub(crate) fn transition_worker_from_searching(&self) -> bool {
         let prev = self.num_searching.fetch_sub(1, Ordering::AcqRel);
         debug_assert!(prev > 0);
 
@@ -386,7 +386,7 @@ impl Snapshot {
         }
     }
 
-    pub(super) fn is_idle(&self, index: usize) -> bool {
+    pub(crate) fn is_idle(&self, index: usize) -> bool {
         let (chunk, mask) = index_to_mask(index);
         debug_assert!(
             chunk < self.chunks.len(),

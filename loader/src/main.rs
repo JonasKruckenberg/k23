@@ -27,6 +27,8 @@ use core::alloc::Layout;
 use core::ffi::c_void;
 use core::range::Range;
 use core::{ptr, slice};
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use sync::{Barrier, OnceLock};
 
 mod arch;
@@ -99,8 +101,14 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions);
     let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
 
+    // initialize the random number generator
+    let rng = ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
+        minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
+    ));
+    let rng_seed = rng.as_ref().map(|rng| rng.get_seed()).unwrap_or_default();
+
     // Initialize the page allocator
-    let mut page_alloc = page_alloc::init(&minfo);
+    let mut page_alloc = page_alloc::init(rng);
 
     let fdt_phys = allocate_and_copy(&mut frame_alloc, minfo.fdt).unwrap();
     let kernel_phys = allocate_and_copy(&mut frame_alloc, &INLINED_KERNEL_BYTES.0).unwrap();
@@ -187,6 +195,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         kernel_phys,
         fdt_phys,
         minfo.hart_mask,
+        rng_seed,
     )
     .unwrap();
 

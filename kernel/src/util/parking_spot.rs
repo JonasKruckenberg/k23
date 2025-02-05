@@ -6,7 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::time::Instant;
+use crate::arch::device::cpu::with_cpu;
+use crate::time::clock::Ticks;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use core::mem::offset_of;
@@ -80,7 +81,7 @@ impl ParkingSpot {
         &self,
         atomic: &AtomicU32,
         expected: u32,
-        deadline: Option<Instant>,
+        deadline: Option<Ticks>,
         waiter: &mut Waiter,
     ) -> WaitResult {
         self.wait(
@@ -96,7 +97,7 @@ impl ParkingSpot {
         &self,
         atomic: &AtomicU64,
         expected: u64,
-        deadline: Option<Instant>,
+        deadline: Option<Ticks>,
         waiter: &mut Waiter,
     ) -> WaitResult {
         self.wait(
@@ -111,7 +112,7 @@ impl ParkingSpot {
         &self,
         key: u64,
         validate: impl FnOnce() -> bool,
-        deadline: Option<Instant>,
+        deadline: Option<Ticks>,
         waiter: &mut Waiter,
     ) -> WaitResult {
         let mut inner = self.inner.lock();
@@ -158,20 +159,18 @@ impl ParkingSpot {
             // notification wasn't received then the thread goes back to sleep.
             let timed_out = loop {
                 if let Some(deadline) = deadline {
-                    let now = Instant::now();
+                    let now = with_cpu(|cpu| cpu.clock.now_ticks());
                     let timeout = if deadline <= now {
                         break true;
                     } else {
-                        deadline - now
+                        Ticks(deadline.0 - now.0)
                     };
 
                     // Suspend the calling hart for at least `timeout` duration.
                     // This will put the hart into a "wait for interrupt" mode where it will wait until
                     // either the timeout interrupt arrives or it receives an interrupt from another hart.
                     drop(inner);
-                    // log::trace!("parking for {timeout:?}...");
-                    arch::hart_park_timeout(timeout);
-                    // log::trace!("unparked!");
+                    arch::hart_park_ticks(timeout);
                     inner = self.inner.lock();
                 } else {
                     // Suspend the calling hart for an indefinite amount of time.

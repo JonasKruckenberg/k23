@@ -21,7 +21,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 pub struct Id(u64);
 
 impl Id {
-    pub fn stub() -> Self {
+    pub const fn stub() -> Self {
         Self(0)
     }
 

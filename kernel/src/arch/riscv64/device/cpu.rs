@@ -9,24 +9,27 @@ use crate::arch::device;
 use crate::device_tree::DeviceTree;
 use crate::error::Error;
 use crate::irq::InterruptController;
+use crate::time::clock::Ticks;
+use crate::time::{Clock, NANOS_PER_SEC};
 use crate::HARTID;
 use bitflags::bitflags;
 use core::cell::OnceCell;
 use core::str::FromStr;
+use core::time::Duration;
 use thread_local::thread_local;
 
 thread_local! {
-    static CPU_INFO: OnceCell<CPUInfo> = OnceCell::new();
+    static CPU: OnceCell<Cpu> = OnceCell::new();
 }
 
 #[derive(Debug)]
-pub struct CPUInfo {
-    pub timebase_frequency: u64,
+pub struct Cpu {
     pub extensions: RiscvExtensions,
     pub cbop_block_size: Option<usize>,
     pub cboz_block_size: Option<usize>,
     pub cbom_block_size: Option<usize>,
     pub plic: device::plic::Plic,
+    pub clock: Clock,
 }
 
 bitflags! {
@@ -75,12 +78,12 @@ bitflags! {
     }
 }
 
-pub fn with_cpu_info<F, R>(f: F) -> R
+pub fn with_cpu<F, R>(f: F) -> R
 where
-    F: FnOnce(&CPUInfo) -> R,
+    F: FnOnce(&Cpu) -> R,
 {
     #[expect(tail_expr_drop_order, reason = "")]
-    CPU_INFO.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
+    CPU.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
 }
 
 #[cold]
@@ -132,16 +135,30 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
     let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
     plic.irq_unmask(10);
 
-    CPU_INFO.with(|info| {
-        info.set(CPUInfo {
-            timebase_frequency,
+    let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
+    let clock = Clock::new(tick_duration, || Ticks(riscv::register::time::read64()));
+
+    debug_assert_eq!(
+        clock.ticks_to_duration(Ticks(timebase_frequency)),
+        Duration::from_secs(1)
+    );
+    debug_assert_eq!(
+        clock.duration_to_ticks(Duration::from_secs(1)).unwrap(),
+        Ticks(timebase_frequency)
+    );
+
+    CPU.with(|info| {
+        let _info = Cpu {
+            clock,
             extensions,
             cbop_block_size,
             cboz_block_size,
             cbom_block_size,
             plic,
-        })
-        .unwrap();
+        };
+        log::debug!("{_info:?}");
+
+        info.set(_info).unwrap();
     });
 
     Ok(())

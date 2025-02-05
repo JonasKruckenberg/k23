@@ -5,9 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::device::cpu::with_cpu_info;
-use crate::time;
-use crate::time::NANOS_PER_SEC;
+use crate::arch::device::cpu::with_cpu;
+use crate::scheduler;
+use crate::time::clock::Ticks;
+use crate::time::{clock, NANOS_PER_SEC};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
@@ -15,16 +16,19 @@ use core::time::Duration;
 /// A measurement of a monotonically nondecreasing clock.
 /// Opaque and useful only with [`Duration`].
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Instant(Duration);
+pub struct Instant(pub(super) Duration);
 
 impl Instant {
     pub const ZERO: Self = Self(Duration::ZERO);
 
     /// Returns an instant corresponding to "now".
     pub fn now() -> Self {
-        let ticks = riscv::time::read64();
+        with_cpu(|cpu| cpu.clock.now())
+    }
 
-        Self::from_ticks(ticks)
+    pub fn from_ticks(ticks: Ticks) -> Self {
+        let duration = with_cpu(|cpu| cpu.clock.ticks_to_duration(ticks));
+        Instant(duration)
     }
 
     pub fn far_future() -> Instant {
@@ -32,11 +36,6 @@ impl Instant {
         // This is used instead of `Duration::MAX` because conversion to ticks might cause an overflow
         // but doing checked or saturating conversions in those functions is too expensive.
         Self::now() + Duration::from_secs(86400 * 365 * 30)
-    }
-
-    pub fn from_ticks(ticks: u64) -> Self {
-        let timebase_freq = with_cpu_info(|cpu_info| cpu_info.timebase_frequency);
-        Instant(time::ticks_to_duration(ticks, timebase_freq))
     }
 
     /// Returns the amount of time elapsed from another instant to this one,

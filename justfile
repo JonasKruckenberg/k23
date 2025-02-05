@@ -186,7 +186,7 @@ _run_riscv64 binary *args: (_build_bootimg binary)
         -machine virt \
         -cpu rv64 \
         -m 256M \
-        -d guest_errors,int \
+        -d guest_errors \
         -display none \
         -semihosting-config \
         enable=on,target=native \

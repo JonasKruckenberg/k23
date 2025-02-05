@@ -6,29 +6,74 @@
 // copied, modified, or distributed except according to those terms.
 
 mod idle;
-pub mod worker;
+mod queue;
+mod worker;
+mod yield_now;
 
-use crate::executor::scheduler::idle::Idle;
-use crate::executor::task::{JoinHandle, OwnedTasks, TaskRef};
-use crate::executor::{queue, task};
 use crate::hart_local::HartLocal;
+use crate::scheduler::idle::Idle;
+use crate::task;
+use crate::task::{JoinHandle, OwnedTasks, TaskRef};
+use crate::time::Timer;
 use crate::util::condvar::Condvar;
 use crate::util::fast_rand::FastRand;
 use crate::util::parking_spot::ParkingSpot;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::future::Future;
+use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::Waker;
 use rand::RngCore;
-use sync::Mutex;
-pub struct Handle {
+use sync::{Mutex, OnceLock};
+
+static SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
+
+/// Get a reference to the current executor.
+pub fn current() -> &'static Scheduler {
+    SCHEDULER.get().expect("scheduler not initialized")
+}
+
+/// Initialize the global executor.
+///
+/// This will allocate required state for `num_cores` of harts. Tasks can immediately be spawned
+/// using the returned runtime reference (a reference to the runtime can also be obtained using
+/// [`current()`]) but no tasks will run until at least one hart in the system enters its
+/// runtime loop using [`run()`].
+#[cold]
+pub fn init(num_cores: u32, rng: &mut impl RngCore) -> &'static Scheduler {
+    SCHEDULER.get_or_init(|| Scheduler::new(num_cores as usize, rng))
+}
+
+/// Run the async runtime loop on the calling hart.
+///
+/// This function will not return until the runtime is shut down.
+#[inline]
+pub fn run(sched: &'static Scheduler, hartid: usize, initial: impl FnOnce()) -> Result<(), ()> {
+    worker::run(sched, hartid, initial)
+}
+
+pub struct Scheduler {
     shared: worker::Shared,
 }
 
-impl Handle {
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct TaskStub {
+    hdr: task::Header,
+}
+
+impl TaskStub {
+    pub const fn new() -> Self {
+        Self {
+            hdr: task::Header::new_static_stub(),
+        }
+    }
+}
+
+impl Scheduler {
     #[expect(tail_expr_drop_order, reason = "")]
-    pub fn new(num_cores: usize, rand: &mut impl RngCore, shutdown_on_idle: bool) -> Self {
+    pub fn new(num_cores: usize, rand: &mut impl RngCore) -> Self {
         let mut cores = Vec::with_capacity(num_cores);
         let mut remotes = Vec::with_capacity(num_cores);
 
@@ -47,8 +92,12 @@ impl Handle {
 
         let (idle, idle_synced) = Idle::new(cores);
 
-        let stub = TaskRef::new_stub();
-        let run_queue = mpsc_queue::MpscQueue::new_with_stub(stub);
+        static TASK_STUB: TaskStub = TaskStub::new();
+
+        // Safety: the reference comes from the static above, so should always be fine
+        let run_queue = mpsc_queue::MpscQueue::new_with_stub(unsafe {
+            TaskRef::from_raw(NonNull::from(&TASK_STUB.hdr))
+        });
 
         Self {
             shared: worker::Shared {
@@ -65,7 +114,6 @@ impl Handle {
                 condvars: (0..num_cores).map(|_| Condvar::new()).collect(),
                 parking_spot: ParkingSpot::default(),
                 per_hart: HartLocal::with_capacity(num_cores),
-                shutdown_on_idle,
             },
         }
     }
@@ -100,18 +148,24 @@ impl Handle {
     }
 
     #[inline]
-    pub(in crate::executor) fn defer(&self, waker: &Waker) {
+    pub(crate) fn defer(&self, waker: &Waker) {
         self.shared.per_hart.get().unwrap().defer(waker);
+    }
+
+    #[inline]
+    pub(crate) fn timer(&self) -> &Timer {
+        self.shared.per_hart.get().unwrap().timer()
     }
 }
 
-impl task::Schedule for &'static Handle {
+impl task::Schedule for &'static Scheduler {
     fn schedule(&self, task: TaskRef) {
         self.shared.schedule_task(task, false);
     }
 
-    fn release(&self, task: &TaskRef) -> Option<TaskRef> {
-        self.shared.owned.remove(task)
+    fn release(&self, _task: &TaskRef) -> Option<TaskRef> {
+        todo!()
+        // self.shared.owned.remove(task)
     }
 
     fn yield_now(&self, task: TaskRef) {

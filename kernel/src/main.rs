@@ -31,12 +31,14 @@ mod allocator;
 mod arch;
 mod device_tree;
 mod error;
-mod executor;
+// mod executor;
 mod hart_local;
 mod irq;
 mod logger;
 mod metrics;
 mod panic;
+mod scheduler;
+mod task;
 mod time;
 mod traps;
 mod util;
@@ -45,24 +47,26 @@ mod wasm;
 
 use crate::device_tree::device_tree;
 use crate::error::Error;
+use crate::time::clock::Ticks;
+use crate::time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use core::cell::Cell;
 use core::range::Range;
 use core::slice;
+use core::time::Duration;
 use hart_local::thread_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::Once;
-use time::Instant;
+use sync::{Barrier, OnceLock};
 use vm::frame_alloc;
 use vm::PhysicalAddress;
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages
-pub const STACK_SIZE_PAGES: u32 = 128; // TODO find a lower more appropriate value
+pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
 pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropriate value
 /// The initial size of the kernel heap in pages.
@@ -95,9 +99,10 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     arch::per_hart_init_early();
 
     let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
+    let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
-    static SYNC: Once = Once::new();
-    SYNC.call_once(|| {
+    static SYNC: OnceLock<Barrier> = OnceLock::new();
+    SYNC.get_or_init(|| {
         // initialize the global logger as early as possible
         logger::init(LOG_LEVEL.to_level_filter());
 
@@ -124,37 +129,40 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // frame allocator for reuse
         frame_alloc::init(boot_alloc, fdt_region_phys);
 
-        // let mut rng = ChaCha20Rng::from_seed(minfo.rng_seed.unwrap()[0..32].try_into().unwrap());
-        let mut rng = ChaCha20Rng::from_seed([0; 32]);
-
         // initialize the virtual memory subsystem
         vm::init(boot_info, &mut rng).unwrap();
 
-        // initialize the executor
-
-        // if we're executing tests we don't want idle harts to park indefinitely, instead the
-        // runtime should just shut down
-        let shutdown_on_idle = cfg!(test);
-
-        executor::init(
-            boot_info.hart_mask.count_ones() as usize,
-            &mut rng,
-            shutdown_on_idle,
-        );
+        Barrier::new(boot_info.hart_mask.count_ones() as usize)
     });
 
     // perform EARLY per-hart, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
     arch::per_hart_init_late(device_tree()).unwrap();
 
+    // initialize the executor
+
+    // if we're executing tests we don't want idle harts to park indefinitely, instead the
+    // runtime should just shut down
+    let sched = scheduler::init(boot_info.hart_mask.count_ones(), &mut rng);
+
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
-        Instant::from_ticks(boot_ticks).elapsed()
+        Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
 
-    let _ = executor::run(executor::current(), hartid, || {
-        executor::current().spawn(async move {
+    if hartid == 0 {
+        sched.spawn(async move {
+            log::debug!("sleeping for 1 sec...");
+            let start = Instant::now();
+            time::sleep(Duration::from_secs(1)).await;
+            log::debug!("slept 1 sec! {:?}", start.elapsed());
+            sched.shutdown();
+        });
+    }
+
+    let _ = scheduler::run(sched, hartid, || {
+        sched.spawn(async move {
             log::info!("Hello from hart {}", hartid);
         });
     });
@@ -180,7 +188,18 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         hart_local::destructors::run();
     }
 
-    arch::exit(0);
+    log::trace!("waiting for shutdown");
+    let res = SYNC.get().unwrap().wait();
+    // only let the leader exit the VM
+    if res.is_leader() {
+        log::trace!("all CPUs have shut down, bye bye...");
+        arch::exit(0);
+    } else {
+        loop {
+            // Safety: we're about to shutdown the VM anyway
+            unsafe { arch::hart_park() }
+        }
+    }
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.

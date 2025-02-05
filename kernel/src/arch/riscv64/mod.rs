@@ -11,13 +11,11 @@ mod trap_handler;
 mod utils;
 mod vm;
 
-use crate::arch::riscv64::device::cpu::with_cpu_info;
 use crate::device_tree::DeviceTree;
-use crate::time;
+use crate::time::clock::Ticks;
 use crate::vm::VirtualAddress;
 use core::arch::asm;
 use core::cell::Cell;
-use core::time::Duration;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
 pub use setjmp_longjmp::{call_with_setjmp, longjmp, JmpBuf};
@@ -196,17 +194,11 @@ thread_local! {
 ///
 /// The caller must ensure the duration does not overflow when converted into ticks, and that it
 /// is safe to suspend the hart.
-pub unsafe fn hart_park_timeout(duration: Duration) {
+pub unsafe fn hart_park_ticks(ticks: Ticks) {
     // Safety: ensured by caller
     unsafe {
         IN_TIMEOUT.set(true);
-
-        let timebase_freq = with_cpu_info(|info| info.timebase_frequency);
-        riscv::sbi::time::set_timer(
-            riscv::time::read64() + time::duration_to_ticks_unchecked(duration, timebase_freq),
-        )
-        .unwrap();
-
+        riscv::sbi::time::set_timer(riscv::time::read64() + ticks.0).unwrap();
         if IN_TIMEOUT.get() {
             hart_park();
         }

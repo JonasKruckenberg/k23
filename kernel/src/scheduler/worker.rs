@@ -65,16 +65,20 @@
 //! the global queue indefinitely. This would be a ref-count cycle and a memory
 //! leak.
 
-use crate::executor::queue::Overflow;
-use crate::executor::scheduler::{idle, Handle};
-use crate::executor::task::{OwnedTasks, TaskRef};
-use crate::executor::{queue, task};
+use crate::arch::device::cpu::with_cpu;
 use crate::hart_local::HartLocal;
 use crate::metrics::Counter;
+use crate::scheduler::queue;
+use crate::scheduler::queue::Overflow;
+use crate::scheduler::{idle, Scheduler};
+use crate::task::PollResult;
+use crate::task::{OwnedTasks, TaskRef};
+use crate::time::clock::Ticks;
+use crate::time::Timer;
 use crate::util::condvar::Condvar;
 use crate::util::fast_rand::FastRand;
 use crate::util::parking_spot::ParkingSpot;
-use crate::{arch, counter};
+use crate::{arch, counter, task};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::{Cell, RefCell};
@@ -124,74 +128,72 @@ struct Worker {
 #[repr(align(128))]
 pub struct Core {
     /// Index holding this core's remote/shared state.
-    pub(super) index: usize,
+    pub(crate) index: usize,
     /// The worker-local run queue.
-    pub(super) run_queue: queue::Local,
+    pub(crate) run_queue: queue::Local,
     /// The LIFO slot
-    pub(super) lifo_slot: Option<TaskRef>,
+    pub(crate) lifo_slot: Option<TaskRef>,
     /// True if the worker is currently searching for more work. Searching
     /// involves attempting to steal from other workers.
-    pub(super) is_searching: bool,
+    pub(crate) is_searching: bool,
     /// Fast random number generator.
-    pub(super) rand: FastRand,
+    pub(crate) rand: FastRand,
 }
 
 /// State shared across all workers
-pub(super) struct Shared {
+pub(crate) struct Shared {
     /// Per-core remote state.
-    pub(super) remotes: Box<[Remote]>,
+    pub(crate) remotes: Box<[Remote]>,
     /// All tasks currently scheduled on this runtime
-    pub(super) owned: OwnedTasks,
+    pub(crate) owned: OwnedTasks,
     /// Data synchronized by the scheduler mutex
-    pub(super) synced: Mutex<Synced>,
+    pub(crate) synced: Mutex<Synced>,
     /// The global run queue
-    pub(super) run_queue: mpsc_queue::MpscQueue<task::raw::Header>,
+    pub(crate) run_queue: mpsc_queue::MpscQueue<task::Header>,
     /// Coordinates idle workers
-    pub(super) idle: idle::Idle,
+    pub(crate) idle: idle::Idle,
     /// Condition variables used for parking and unparking harts. Each hart has its
     /// own `condvar` it waits on.
-    pub(super) condvars: Vec<Condvar>,
+    pub(crate) condvars: Vec<Condvar>,
     /// Synchronization state used for parking and unparking harts. This is exclusively used
     /// in conjunction with the `condvars` to coordinate parking and unparking.
-    pub(super) parking_spot: ParkingSpot,
+    pub(crate) parking_spot: ParkingSpot,
     /// Per-hart thread-local data. Logically this is part of the [`Worker`] struct, but placed here
     /// into a TLS slot instead of stack allocated so we can access it from other places (i.e. we only
     /// need access to the scheduler handle instead of access to the workers stack which wouldn't work).
-    pub(super) per_hart: HartLocal<Context>,
+    pub(crate) per_hart: HartLocal<Context>,
     /// Signal to workers that they should be shutting down.
-    pub(super) shutdown: AtomicBool,
-    /// Whether to shut down the executor when all tasks are processed, used in tests.
-    pub(super) shutdown_on_idle: bool,
+    pub(crate) shutdown: AtomicBool,
 }
 
 /// Various bits of shared state that are synchronized by the scheduler mutex.
-pub(super) struct Synced {
+pub(crate) struct Synced {
     /// When worker is notified, it is assigned a core. The core is placed here
     /// until the worker wakes up to take it.
-    pub(super) assigned_cores: Vec<Option<Box<Core>>>,
+    pub(crate) assigned_cores: Vec<Option<Box<Core>>>,
     /// Synchronized state for `Idle`.
-    pub(super) idle: idle::Synced,
+    pub(crate) idle: idle::Synced,
     /// Cores that have observed the shutdown signal
     ///
     /// The core is **not** placed back in the worker to avoid it from being
     /// stolen by a thread that was spawned as part of `block_in_place`.
     #[expect(clippy::vec_box, reason = "we're moving the boxed core around")]
-    pub(super) shutdown_cores: Vec<Box<Core>>,
+    pub(crate) shutdown_cores: Vec<Box<Core>>,
 }
 
 /// Used to communicate with a worker from other threads.
-pub(super) struct Remote {
+pub(crate) struct Remote {
     /// Steals tasks from this worker.
-    pub(super) steal: queue::Steal,
+    pub(crate) steal: queue::Steal,
 }
 
 /// Hart-local context
 ///
 /// Logically this is part of the [`Worker`] struct, but is kept separate to allow access from
 /// other parts of the code.
-pub(super) struct Context {
+pub(crate) struct Context {
     /// Handle to the current scheduler
-    handle: &'static Handle,
+    handle: &'static Scheduler,
     /// Core data
     core: RefCell<Option<Box<Core>>>,
     /// True when the LIFO slot is enabled
@@ -200,14 +202,15 @@ pub(super) struct Context {
     /// polling a task.
     ///
     /// If no task is currently being polled, this will be [`ptr::null_mut`].
-    current_task: AtomicPtr<task::raw::Header>,
+    current_task: AtomicPtr<task::Header>,
     /// Tasks to wake after resource drivers are polled. This is mostly to
     /// handle yielded tasks.
     defer: RefCell<Vec<TaskRef>>,
+    timer: Timer,
 }
 
 #[cold]
-pub fn run(handle: &'static Handle, hartid: usize, initial: impl FnOnce()) -> Result<(), ()> {
+pub fn run(handle: &'static Scheduler, hartid: usize, initial: impl FnOnce()) -> Result<(), ()> {
     let mut worker = Worker {
         is_shutdown: false,
         hartid,
@@ -224,6 +227,7 @@ pub fn run(handle: &'static Handle, hartid: usize, initial: impl FnOnce()) -> Re
         lifo_enabled: Cell::new(true),
         current_task: AtomicPtr::new(ptr::null_mut()),
         defer: RefCell::new(Vec::with_capacity(64)),
+        timer: Timer::new(),
     });
 
     // First try to acquire an available core
@@ -300,7 +304,14 @@ impl Worker {
         }
 
         NUM_POLLS.increment(1);
-        task.run();
+        let poll_result = task.poll();
+        match poll_result {
+            PollResult::Ready | PollResult::ReadyJoined => {}
+            PollResult::PendingSchedule => {
+                cx.shared().schedule_task(task, false);
+            }
+            PollResult::Pending => {}
+        }
 
         //      - TODO ensure we stay in our scheduling budget
         //          - super::counters::inc_lifo_schedules();
@@ -374,6 +385,37 @@ impl Worker {
         let maybe_task = self.next_remote_task_and_refill_queue(cx, &mut core);
 
         Ok((maybe_task, core))
+    }
+
+    fn wait_until_ticks(
+        &mut self,
+        cx: &Context,
+        mut synced: MutexGuard<'_, Synced>,
+        deadline: Ticks,
+    ) -> NextTaskResult {
+        cx.shared()
+            .idle
+            .transition_worker_to_parked(&mut synced, self.hartid);
+
+        log::trace!("parking hart waiting until deadline {deadline:?}..");
+        cx.shared().condvars[self.hartid].wait_until(
+            &cx.shared().parking_spot,
+            &mut synced,
+            deadline,
+        );
+        log::trace!("unparked hart, deadline reached");
+
+        // Try to acquire an available core to schedule the timer events
+        if let Some(core) = self.try_acquire_available_core(cx, &mut synced) {
+            // This may result in a task being run
+            self.schedule_deferred_with_core(cx, core, move || synced)
+        } else {
+            // Schedule any deferred tasks
+            self.schedule_deferred_without_core(cx, &mut synced);
+
+            // Wait for a core.
+            self.wait_for_core(cx, synced)
+        }
     }
 
     /// Ensure core's state is set correctly for the worker to start using.
@@ -530,7 +572,11 @@ impl Worker {
                 unsafe {
                     // TODO cleanup
                     log::trace!("spin stalling for {:?}", Duration::from_micros(i as u64));
-                    arch::hart_park_timeout(Duration::from_micros(i as u64));
+                    arch::hart_park_ticks(with_cpu(|cpu| {
+                        cpu.clock
+                            .duration_to_ticks(Duration::from_micros(i as u64))
+                            .unwrap()
+                    }));
                     log::trace!("after spin stall");
                 }
             }
@@ -545,7 +591,7 @@ impl Worker {
         for i in 0..num {
             let i = (start + i) % num;
 
-            // Don't steal from ourself! We know we don't have work.
+            // Don't steal from ourselves! We know we don't have work.
             if i == core.index {
                 continue;
             }
@@ -583,15 +629,6 @@ impl Worker {
             return Ok((Some(task), core));
         }
 
-        // If we're out of work and the `shutdown_on_idle` flags has been set on creation we should
-        // shut down instead of parking the hart.
-        // Note that we're out of work which doesn't mean other workers are idle too, but once they
-        // are done processing their currently running task (plus the lifo task potentially) they
-        // will check the shutdown flag and begin shutting down too.
-        if cx.shared().shutdown_on_idle {
-            cx.shared().shutdown.store(true, Ordering::Release);
-        }
-
         // If the runtime is shutdown, skip parking
         self.update_global_flags(cx);
 
@@ -599,14 +636,28 @@ impl Worker {
             return Ok((None, core));
         }
 
-        // Release the core
+        log::trace!("turning timer...");
+        let (expired, next_deadline) = cx.timer.turn();
+        log::trace!("turned timer expired={expired};next_deadline={next_deadline:?}");
+
         let mut synced = cx.shared().synced.lock();
+
+        // if timer have expired in the previous turn of the timer, schedule them now
+        if expired > 0 {
+            cx.timer.turn();
+            return self.schedule_deferred_with_core(cx, core, move || synced);
+        }
+
+        // Release the core
         core.is_searching = false;
         cx.shared().idle.release_core(&mut synced, core);
 
-        // Wait for a core to be assigned to us
-        NUM_PARKS.increment(1);
-        self.wait_for_core(cx, synced)
+        if let Some(deadline) = next_deadline {
+            self.wait_until_ticks(cx, synced, deadline.ticks)
+        } else {
+            NUM_PARKS.increment(1);
+            self.wait_for_core(cx, synced)
+        }
     }
 
     #[expect(tail_expr_drop_order, reason = "")]
@@ -689,6 +740,28 @@ impl Worker {
         Ok((task, core))
     }
 
+    fn schedule_deferred_without_core(&mut self, cx: &Context, synced: &mut MutexGuard<Synced>) {
+        let mut defer = cx.defer.borrow_mut();
+        let num = defer.len();
+
+        if num > 0 {
+            // Push all tasks to the injection queue
+            cx.shared().push_batch(defer.drain(..));
+
+            debug_assert!(self.workers_to_notify.is_empty());
+
+            // Notify workers
+            cx.shared()
+                .idle
+                .notify_many(synced, &mut self.workers_to_notify, num);
+
+            // Notify any workers
+            for worker in self.workers_to_notify.drain(..) {
+                cx.shared().condvars[worker].notify_one(&cx.shared().parking_spot);
+            }
+        }
+    }
+
     fn transition_to_searching(&self, cx: &Context, core: &mut Core) -> bool {
         if !core.is_searching {
             cx.shared().idle.try_transition_worker_to_searching(core);
@@ -750,7 +823,7 @@ impl Core {
 }
 
 impl Shared {
-    pub(in crate::executor) fn schedule_task(&self, task: TaskRef, is_yield: bool) {
+    pub(crate) fn schedule_task(&self, task: TaskRef, is_yield: bool) {
         if let Some(cx) = self.per_hart.get() {
             // And the current thread still holds a core
             if let Some(core) = cx.core.borrow_mut().as_mut() {
@@ -787,17 +860,16 @@ impl Shared {
         self.run_queue.enqueue(task);
 
         let synced = self.synced.lock();
-        log::trace!("calling notify_remote as part of schedule_remote...");
         self.idle.notify_remote(synced, self);
     }
 
     fn notify_parked_local(&self) {
         NUM_NOTIFY_LOCAL.increment(1);
-        log::trace!("calling notify_local as part of schedule_local...");
         self.idle.notify_local(self);
     }
 
-    pub(super) fn shutdown_core(&self, core: Box<Core>) {
+    pub(crate) fn shutdown_core(&self, core: Box<Core>) {
+        log::trace!("shutdown_core");
         self.owned.close_and_shutdown_all();
 
         let mut synced = self.synced.lock();
@@ -806,7 +878,7 @@ impl Shared {
         self.shutdown_finalize(&mut synced);
     }
 
-    pub(super) fn shutdown_finalize(&self, synced: &mut Synced) {
+    pub(crate) fn shutdown_finalize(&self, synced: &mut Synced) {
         // Wait for all cores
         if synced.shutdown_cores.len() != self.remotes.len() {
             return;
@@ -850,7 +922,10 @@ impl Context {
     }
 
     pub fn defer(&self, waker: &Waker) {
-        // TODO: refactor defer across all runtimes
         waker.wake_by_ref();
+    }
+
+    pub fn timer(&self) -> &Timer {
+        &self.timer
     }
 }
