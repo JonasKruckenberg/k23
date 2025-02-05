@@ -71,6 +71,7 @@ use crate::metrics::Counter;
 use crate::scheduler::queue;
 use crate::scheduler::queue::Overflow;
 use crate::scheduler::{idle, Scheduler};
+use crate::task::PollResult;
 use crate::task::{OwnedTasks, TaskRef};
 use crate::time::clock::Ticks;
 use crate::time::Timer;
@@ -86,7 +87,6 @@ use core::task::Waker;
 use core::time::Duration;
 use core::{cmp, mem, ptr};
 use sync::{Mutex, MutexGuard};
-use crate::task::PollResult;
 
 type NextTaskResult = Result<(Option<TaskRef>, Box<Core>), ()>;
 const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
@@ -210,11 +210,7 @@ pub(crate) struct Context {
 }
 
 #[cold]
-pub fn run(
-    handle: &'static Scheduler,
-    hartid: usize,
-    initial: impl FnOnce(),
-) -> Result<(), ()> {
+pub fn run(handle: &'static Scheduler, hartid: usize, initial: impl FnOnce()) -> Result<(), ()> {
     let mut worker = Worker {
         is_shutdown: false,
         hartid,
@@ -310,7 +306,7 @@ impl Worker {
         NUM_POLLS.increment(1);
         let poll_result = task.poll();
         match poll_result {
-            PollResult::Ready | PollResult::ReadyJoined => {},
+            PollResult::Ready | PollResult::ReadyJoined => {}
             PollResult::PendingSchedule => {
                 cx.shared().schedule_task(task, false);
             }

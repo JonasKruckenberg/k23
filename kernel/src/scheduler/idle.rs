@@ -75,7 +75,7 @@ impl Idle {
         );
         synced.available_cores.len()
     }
-    
+
     pub(crate) fn needs_searching(&self) -> bool {
         self.needs_searching.load(Ordering::Acquire)
     }

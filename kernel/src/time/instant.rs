@@ -5,13 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch::device::cpu::with_cpu;
 use crate::scheduler;
+use crate::time::clock::Ticks;
 use crate::time::{clock, NANOS_PER_SEC};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
-use crate::arch::device::cpu::with_cpu;
-use crate::time::clock::Ticks;
 
 /// A measurement of a monotonically nondecreasing clock.
 /// Opaque and useful only with [`Duration`].

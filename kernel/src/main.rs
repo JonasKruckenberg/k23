@@ -195,7 +195,10 @@ fn _start(hartid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         log::trace!("all CPUs have shut down, bye bye...");
         arch::exit(0);
     } else {
-        loop { unsafe { arch::hart_park() } }
+        loop {
+            // Safety: we're about to shutdown the VM anyway
+            unsafe { arch::hart_park() }
+        }
     }
 }
 

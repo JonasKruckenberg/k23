@@ -11,9 +11,7 @@ mod owned_tasks;
 mod state;
 
 use crate::panic;
-use crate::task::state::{
-    JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction,
-};
+use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use crate::util::non_null;
 use alloc::boxed::Box;
 use core::alloc::{AllocError, Allocator};
@@ -277,7 +275,7 @@ pub(crate) struct Vtable {
     /// [`Context`] is registered to be woken when the task completes.
     // Splitting this up into type aliases just makes it *harder* to understand
     // IMO...
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity, reason = "")]
     pub(super) poll_join: unsafe fn(
         ptr: NonNull<Header>,
         outptr: NonNull<()>,
@@ -323,6 +321,7 @@ impl TaskRef {
             alloc,
         )?);
 
+        // Safety: we just allocated the ptr so it is never null
         Ok(Self(unsafe { NonNull::new_unchecked(ptr).cast() }))
     }
 
@@ -368,14 +367,20 @@ impl TaskRef {
     pub(crate) fn wake_by_ref(&self) {
         log::trace!("TaskRef::wake_by_ref {self:?}");
         let wake_by_ref_fn = self.header().vtable.wake_by_ref;
+        // Safety: Called through our Vtable so this access should be fine
         unsafe { wake_by_ref_fn(self.0.as_ptr().cast::<()>()) }
     }
 
     pub fn poll(&self) -> PollResult {
         let poll_fn = self.header().vtable.poll;
+        // Safety: Called through our Vtable so this access should be fine
         unsafe { poll_fn(self.0) }
     }
 
+    /// # Safety
+    ///
+    /// The caller needs to make sure that `T` is the same type as the one that this `TaskRef` was
+    /// created with.
     pub(super) unsafe fn poll_join<T>(
         &self,
         cx: &mut Context<'_>,
@@ -383,20 +388,22 @@ impl TaskRef {
         let poll_join_fn = self.header().vtable.poll_join;
         let mut slot = MaybeUninit::<T>::uninit();
 
+        // Safety: This is called through the Vtable and as long as the caller makes sure that the `T` is the right
+        // type, this call is safe
         let result = unsafe { poll_join_fn(self.0, NonNull::from(&mut slot).cast::<()>(), cx) };
 
         result.map(|result| {
             if let Err(e) = result {
-                // if the task completed before being canceled, we can still
-                // take its output.
                 let output = if e.is_completed() {
+                    // Safety: if the task completed before being canceled, we can still
+                    // take its output.
                     Some(unsafe { slot.assume_init_read() })
                 } else {
                     None
                 };
                 Err(e.with_output(output))
             } else {
-                // if the poll function returned `Ok`, we get to take the
+                // Safety: if the poll function returned `Ok`, we get to take the
                 // output!
                 Ok(unsafe { slot.assume_init_read() })
             }
@@ -443,13 +450,16 @@ impl Drop for TaskRef {
             return;
         }
 
+        // Safety: as long as we're constructed from a NonNull<Header> this is safe
         unsafe {
             Header::deallocate(self.0);
         }
     }
 }
 
+// Safety: The state protocol ensured synchronized access to the inner task
 unsafe impl Send for TaskRef {}
+// Safety: The state protocol ensured synchronized access to the inner task
 unsafe impl Sync for TaskRef {}
 
 impl Header {
@@ -503,6 +513,7 @@ impl Header {
     }
 
     pub(super) unsafe fn deallocate(this: NonNull<Self>) {
+        // Safety: ensured by caller
         unsafe {
             #[cfg(debug_assertions)]
             {
@@ -511,7 +522,7 @@ impl Header {
             }
 
             let deallocate = this.as_ref().vtable.deallocate;
-            deallocate(this)
+            deallocate(this);
         }
     }
 }
@@ -665,7 +676,7 @@ where
             // if the task is ready and has a `JoinHandle` to wake, wake the join
             // waker now.
             if result == PollResult::ReadyJoined {
-                this.wake_join_waker()
+                this.wake_join_waker();
             }
 
             result
@@ -723,7 +734,7 @@ where
                 }
                 JoinAction::Register => {
                     let waker = this.join_waker.get();
-                    waker.write(Some(cx.waker().clone()))
+                    waker.write(Some(cx.waker().clone()));
                 }
                 JoinAction::Reregister => {
                     let waker = (*this.join_waker.get()).as_mut().unwrap();
@@ -772,9 +783,10 @@ where
     ///
     /// The caller has to ensure this hart has exclusive mutable access to the tasks `stage` field (ie the
     /// future or output).
-    fn poll_inner(&self, mut cx: Context<'_>) -> Poll<()> {
+    unsafe fn poll_inner(&self, mut cx: Context<'_>) -> Poll<()> {
         // let _span = self.span().enter();
 
+        // Safety: ensured by caller
         unsafe { &mut *self.stage.get() }.poll(&mut cx, *self.id())
     }
 
@@ -785,6 +797,7 @@ where
     /// - The caller must have exclusive access to the task's `JoinWaker`. This
     ///   is ensured by the task's state management.
     unsafe fn wake_join_waker(&self) {
+        // Safety: ensured by caller
         unsafe {
             if let Some(join_waker) = (*self.join_waker.get()).take() {
                 log::trace!("waking {join_waker:?}");
@@ -796,6 +809,7 @@ where
     }
 
     unsafe fn take_output(&self, dst: NonNull<()>) {
+        // Safety: ensured by caller
         unsafe {
             match mem::replace(&mut *self.stage.get(), Stage::Consumed) {
                 Stage::Ready(output) => {
@@ -879,7 +893,7 @@ impl<S: Schedule> Schedulable<S> {
     );
 
     fn raw_waker(this: *const Self) -> RawWaker {
-        RawWaker::new(this as *const (), &Self::WAKER_VTABLE)
+        RawWaker::new(this.cast::<()>(), &Self::WAKER_VTABLE)
     }
 
     #[inline(always)]
@@ -888,17 +902,19 @@ impl<S: Schedule> Schedulable<S> {
     }
 
     unsafe fn schedule(this: TaskRef) {
+        // Safety: ensured by caller
         unsafe {
             this.header_ptr()
                 .cast::<Self>()
                 .as_ref()
                 .scheduler
-                .schedule(this)
+                .schedule(this);
         }
     }
 
     #[inline]
     unsafe fn drop_ref(this: NonNull<Self>) {
+        // Safety: ensured by caller
         unsafe {
             log::trace!("Task::drop_ref {this:?}");
             if !this.as_ref().state().drop_ref() {
@@ -906,13 +922,14 @@ impl<S: Schedule> Schedulable<S> {
             }
 
             let deallocate = this.as_ref().header.vtable.deallocate;
-            deallocate(this.cast::<Header>())
+            deallocate(this.cast::<Header>());
         }
     }
 
     // === Waker vtable methods ===
 
     unsafe fn wake_by_val(ptr: *const ()) {
+        // Safety: called through RawWakerVtable
         unsafe {
             let ptr = ptr.cast::<Self>();
             // trace_waker_op!(ptr, wake_by_val);
@@ -938,6 +955,7 @@ impl<S: Schedule> Schedulable<S> {
     }
 
     unsafe fn wake_by_ref(ptr: *const ()) {
+        // Safety: called through RawWakerVtable
         unsafe {
             let ptr = ptr.cast::<Self>();
             // trace_waker_op!(ptr, wake_by_ref);
@@ -950,6 +968,7 @@ impl<S: Schedule> Schedulable<S> {
     }
 
     unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
+        // Safety: called through RawWakerVtable
         unsafe {
             let this = ptr.cast::<Self>();
             // trace_waker_op!(this, clone_waker, op: clone);
@@ -959,11 +978,12 @@ impl<S: Schedule> Schedulable<S> {
     }
 
     unsafe fn drop_waker(ptr: *const ()) {
+        // Safety: called through RawWakerVtable
         unsafe {
             let ptr = ptr.cast::<Self>();
             // trace_waker_op!(ptr, drop_waker, op: drop);
-            let this = ptr as *mut _;
-            Self::drop_ref(non_null(this))
+            let this = ptr.cast_mut();
+            Self::drop_ref(non_null(this));
         }
     }
 }

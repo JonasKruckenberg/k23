@@ -19,11 +19,11 @@ use core::time::Duration;
 use thread_local::thread_local;
 
 thread_local! {
-    static CPU: OnceCell<CPU> = OnceCell::new();
+    static CPU: OnceCell<Cpu> = OnceCell::new();
 }
 
 #[derive(Debug)]
-pub struct CPU {
+pub struct Cpu {
     pub extensions: RiscvExtensions,
     pub cbop_block_size: Option<usize>,
     pub cboz_block_size: Option<usize>,
@@ -80,7 +80,7 @@ bitflags! {
 
 pub fn with_cpu<F, R>(f: F) -> R
 where
-    F: FnOnce(&CPU) -> R,
+    F: FnOnce(&Cpu) -> R,
 {
     #[expect(tail_expr_drop_order, reason = "")]
     CPU.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
@@ -148,7 +148,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
     );
 
     CPU.with(|info| {
-        let _info = CPU {
+        let _info = Cpu {
             clock,
             extensions,
             cbop_block_size,

@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch::device::cpu::with_cpu;
 use crate::time::clock::Ticks;
 use crate::time::sleep::Entry;
 use crate::time::Clock;
@@ -13,7 +14,6 @@ use core::ptr::NonNull;
 use core::task::Poll;
 use core::time::Duration;
 use sync::Mutex;
-use crate::arch::device::cpu::with_cpu;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Deadline {

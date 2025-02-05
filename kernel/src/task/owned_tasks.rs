@@ -6,12 +6,12 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::{Schedule, TaskRef};
+use crate::task;
 use crate::task::id::Id;
 use crate::task::join_handle::JoinHandle;
 use core::future::Future;
 use core::sync::atomic::{AtomicBool, Ordering};
 use sync::Mutex;
-use crate::task;
 
 #[derive(Debug)]
 pub struct OwnedTasks {
@@ -103,9 +103,9 @@ impl OwnedTasks {
     //         task.shutdown();
     //         return None;
     //     }
-    // 
+    //
     //     log::trace!("removing task from owned tasks");
-    // 
+    //
     //     // Safety: `OwnedTasks::bind`/`OwnedTasks::bind_local` are called during task creation
     //     // so every task is necessarily in our list until this point
     //     unsafe { list.cursor_from_ptr_mut(task.header_ptr()).remove() }

@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::panic;
-use crate::task::TaskRef;
 use crate::task::Id;
+use crate::task::TaskRef;
 use alloc::boxed::Box;
 use core::any::Any;
 use core::fmt;
@@ -170,7 +170,7 @@ impl<T> JoinHandle<T> {
     #[expect(tail_expr_drop_order, reason = "")]
     pub(crate) fn new(task: TaskRef) -> Self {
         task.state().create_join_handle();
-        
+
         Self {
             id: task.id(),
             state: JoinHandleState::Task(task),
@@ -238,7 +238,7 @@ impl<T> JoinError<T> {
             output: None,
         }
     }
-    
+
     pub fn is_completed(&self) -> bool {
         matches!(&self.kind, JoinErrorKind::Cancelled { completed: true })
     }

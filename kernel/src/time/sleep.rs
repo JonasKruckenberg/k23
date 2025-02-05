@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch::device::cpu::with_cpu;
 use crate::scheduler;
 use crate::time::clock::Ticks;
 use crate::time::timer::Timer;
@@ -19,7 +20,6 @@ use core::ptr::NonNull;
 use core::task::{Context, Poll};
 use core::time::Duration;
 use pin_project::{pin_project, pinned_drop};
-use crate::arch::device::cpu::with_cpu;
 
 pub fn sleep(duration: Duration) -> Sleep<'static> {
     let timer = scheduler::current().timer();

@@ -5,7 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-#![allow(impl_trait_overcaptures)]
+#![expect(
+    impl_trait_overcaptures,
+    reason = "mycelium_bitfield is not updated to edition 2024 yet"
+)]
 
 use crate::task::PollResult;
 use core::fmt;
@@ -286,7 +289,7 @@ impl State {
             debug_assert_eq!(s.get(Snapshot::JOIN_WAKER), JoinWakerState::Registering);
             s.set(Snapshot::HAS_JOIN_HANDLE, true)
                 .set(Snapshot::JOIN_WAKER, JoinWakerState::Waiting);
-        })
+        });
     }
 
     pub(super) fn wake_by_val(&self) -> WakeByValAction {
@@ -366,9 +369,7 @@ impl State {
         //
         // We abort because such a program is incredibly degenerate, and we
         // don't care to support it.
-        if old_refs > REF_MAX {
-            panic!("task reference count overflow");
-        }
+        assert!(old_refs < REF_MAX, "task reference count overflow");
     }
 
     pub(super) fn drop_ref(&self) -> bool {
@@ -416,7 +417,7 @@ impl State {
             );
 
             *s = s.with(Snapshot::HAS_JOIN_HANDLE, true);
-        })
+        });
     }
 
     pub(super) fn drop_join_handle(&self) {
@@ -433,7 +434,7 @@ impl State {
             Snapshot(_prev).get(Snapshot::HAS_JOIN_HANDLE),
             "tried to drop a join handle when the task did not have a join handle!\nstate: {:#?}",
             Snapshot(_prev),
-        )
+        );
     }
 
     fn transition<T>(&self, mut transition: impl FnMut(&mut Snapshot) -> T) -> T {
@@ -469,7 +470,7 @@ impl fmt::Debug for State {
 }
 
 impl Snapshot {
-    pub fn ref_count(&self) -> usize {
+    pub fn ref_count(self) -> usize {
         Snapshot::REFS.unpack(self.0)
     }
 
@@ -519,7 +520,6 @@ impl mycelium_bitfield::FromBits<usize> for JoinWakerState {
     const BITS: u32 = 2;
 
     #[inline]
-    #[allow(clippy::literal_string_with_formatting_args)]
     fn try_from_bits(bits: usize) -> Result<Self, Self::Error> {
         match bits {
             b if b == Self::Registering as usize => Ok(Self::Registering),

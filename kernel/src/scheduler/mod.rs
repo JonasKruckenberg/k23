@@ -93,7 +93,11 @@ impl Scheduler {
         let (idle, idle_synced) = Idle::new(cores);
 
         static TASK_STUB: TaskStub = TaskStub::new();
-        let run_queue = mpsc_queue::MpscQueue::new_with_stub(unsafe { TaskRef::from_raw(NonNull::from(&TASK_STUB.hdr)) });
+
+        // Safety: the reference comes from the static above, so should always be fine
+        let run_queue = mpsc_queue::MpscQueue::new_with_stub(unsafe {
+            TaskRef::from_raw(NonNull::from(&TASK_STUB.hdr))
+        });
 
         Self {
             shared: worker::Shared {
