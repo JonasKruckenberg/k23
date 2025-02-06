@@ -7,6 +7,7 @@
 
 use crate::arch::device::cpu::with_cpu;
 use crate::scheduler;
+use crate::scheduler::scheduler;
 use crate::time::clock::Ticks;
 use crate::time::timer::Timer;
 use crate::time::Instant;
@@ -22,14 +23,14 @@ use core::time::Duration;
 use pin_project::{pin_project, pinned_drop};
 
 pub fn sleep(duration: Duration) -> Sleep<'static> {
-    let timer = scheduler::current().timer();
+    let timer = scheduler().cpu_local_timer();
     let ticks = with_cpu(|cpu| cpu.clock.duration_to_ticks(duration).unwrap());
 
     Sleep::new(timer, ticks)
 }
 
 pub fn sleep_until(instant: Instant) -> Sleep<'static> {
-    let timer = scheduler::current().timer();
+    let timer = scheduler().cpu_local_timer();
     let now = with_cpu(|cpu| cpu.clock.now());
     let duration = instant.duration_since(now);
     let ticks = with_cpu(|cpu| cpu.clock.duration_to_ticks(duration).unwrap());

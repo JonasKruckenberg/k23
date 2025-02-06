@@ -566,48 +566,73 @@ pub fn map_kernel_stacks(
     phys_off: usize,
 ) -> crate::Result<StacksAllocation> {
     let per_cpu_size = per_cpu_size_pages * arch::PAGE_SIZE;
-    let layout = Layout::from_size_align(per_cpu_size, arch::PAGE_SIZE)
+    let per_cpu_size_with_guard = per_cpu_size + arch::PAGE_SIZE;
+
+    let layout_with_guard = Layout::from_size_align(per_cpu_size_with_guard, arch::PAGE_SIZE)
         .unwrap()
         .repeat(minfo.hart_mask.count_ones() as usize)
         .unwrap()
         .0;
 
-    log::trace!("Allocating stack region {layout:?}...");
+    let virt = page_alloc.allocate(layout_with_guard);
+    log::trace!("Mapping stacks region {virt:#x?}...");
 
-    // The stacks region doesn't need to be zeroed, since we will be filling it with
-    // the canary pattern anyway
-    let phys = frame_alloc
-        .allocate_contiguous(layout)
-        .ok_or(Error::NoMemory)?;
-    let virt = page_alloc.allocate(layout);
+    // Mapping stacks region 0xffffffc0c0000000..0xffffffc0c0101000...
 
-    log::trace!("Mapping stack region {virt:#x?}...");
-    // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
-    // abort startup anyway
-    unsafe {
-        arch::map_contiguous(
-            root_pgtable,
-            frame_alloc,
-            virt.start,
-            phys,
-            NonZero::new(layout.size()).unwrap(),
-            Flags::READ | Flags::WRITE,
-            phys_off,
-        )?;
+    for hart in 0..minfo.hart_mask.count_ones() {
+        let layout = Layout::from_size_align(per_cpu_size, arch::PAGE_SIZE).unwrap();
+
+        log::trace!("Allocating stack {layout:?}...");
+        // The stacks region doesn't need to be zeroed, since we will be filling it with
+        // the canary pattern anyway
+        let phys = frame_alloc
+            .allocate_contiguous(layout)
+            .ok_or(Error::NoMemory)?;
+
+        let virt = virt
+            .end
+            .checked_sub(per_cpu_size_with_guard * hart as usize)
+            .and_then(|a| a.checked_sub(per_cpu_size))
+            .unwrap();
+
+        log::trace!(
+            "mapping stack for hart {hart} {virt:#x}..{:#x} => {phys:#x}..{:#x}",
+            virt.checked_add(per_cpu_size).unwrap(),
+            phys.checked_add(per_cpu_size).unwrap()
+        );
+
+        // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+        // abort startup anyway
+        unsafe {
+            arch::map_contiguous(
+                root_pgtable,
+                frame_alloc,
+                virt,
+                phys,
+                NonZero::new(layout.size()).unwrap(),
+                Flags::READ | Flags::WRITE,
+                phys_off,
+            )?;
+        }
     }
 
-    Ok(StacksAllocation { virt, per_cpu_size })
+    Ok(StacksAllocation {
+        virt,
+        per_cpu_size,
+        per_cpu_size_with_guard,
+    })
 }
 
 pub struct StacksAllocation {
     /// The TLS region in virtual memory
     virt: Range<usize>,
     per_cpu_size: usize,
+    per_cpu_size_with_guard: usize,
 }
 
 impl StacksAllocation {
     pub fn region_for_cpu(&self, cpuid: usize) -> Range<usize> {
-        let end = self.virt.end - (self.per_cpu_size * cpuid);
+        let end = self.virt.end - (self.per_cpu_size_with_guard * cpuid);
 
         Range::from((end - self.per_cpu_size)..end)
     }

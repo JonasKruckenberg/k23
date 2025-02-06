@@ -58,7 +58,7 @@ use cpu_local::cpu_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{Barrier, OnceLock};
+use sync::Once;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
 
@@ -100,8 +100,8 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
-    static SYNC: OnceLock<Barrier> = OnceLock::new();
-    SYNC.get_or_init(|| {
+    static SYNC: Once = Once::new();
+    SYNC.call_once(|| {
         // initialize the global logger as early as possible
         logger::init(LOG_LEVEL.to_level_filter());
 
@@ -130,8 +130,6 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
         // initialize the virtual memory subsystem
         vm::init(boot_info, &mut rng).unwrap();
-
-        Barrier::new(boot_info.cpu_mask.count_ones() as usize)
     });
 
     // perform LATE per-cpu, architecture-specific initialization
@@ -139,10 +137,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     arch::per_cpu_init_late(device_tree()).unwrap();
 
     // initialize the executor
-
-    // if we're executing tests we don't want idle cpus to park indefinitely, instead the
-    // runtime should just shut down
-    let sched = scheduler::init(boot_info.cpu_mask.count_ones(), &mut rng);
+    let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
 
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
@@ -156,15 +151,17 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
             let start = Instant::now();
             time::sleep(Duration::from_secs(1)).await;
             log::debug!("slept 1 sec! {:?}", start.elapsed());
-            sched.shutdown();
+            scheduler::scheduler().shutdown();
         });
+
+        // scheduler::scheduler().spawn(async move {
+        //     log::debug!("Point A");
+        //     scheduler::yield_now().await;
+        //     log::debug!("Point B");
+        // });
     }
 
-    let _ = scheduler::run(sched, cpuid, || {
-        sched.spawn(async move {
-            log::info!("Hello from cpu {}", cpuid);
-        });
-    });
+    scheduler::Worker::new(sched, cpuid, &mut rng).run();
 
     // wasm::test();
 
@@ -187,18 +184,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         cpu_local::destructors::run();
     }
 
-    log::trace!("waiting for shutdown");
-    let res = SYNC.get().unwrap().wait();
-    // only let the leader exit the VM
-    if res.is_leader() {
-        log::trace!("all CPUs have shut down, bye bye...");
-        arch::exit(0);
-    } else {
-        loop {
-            // Safety: we're about to shutdown the VM anyway
-            unsafe { arch::cpu_park() }
-        }
-    }
+    arch::exit(0);
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.

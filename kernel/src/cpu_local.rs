@@ -290,6 +290,10 @@ impl<T: Send> CpuLocal<T> {
 
         self.values.fetch_add(1, Ordering::Release);
     }
+
+    pub fn len(&self) -> usize {
+        self.values.load(Ordering::Acquire)
+    }
 }
 
 impl<T: Send> IntoIterator for CpuLocal<T> {

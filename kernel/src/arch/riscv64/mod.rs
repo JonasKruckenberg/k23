@@ -12,11 +12,8 @@ mod utils;
 mod vm;
 
 use crate::device_tree::DeviceTree;
-use crate::time::clock::Ticks;
 use crate::vm::VirtualAddress;
 use core::arch::asm;
-use core::cell::Cell;
-use cpu_local::cpu_local;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
 pub use setjmp_longjmp::{call_with_setjmp, longjmp, JmpBuf};
@@ -182,25 +179,4 @@ pub unsafe fn cpu_park() {
 /// but the caller should still exercise caution.
 pub unsafe fn cpu_unpark(cpuid: usize) {
     riscv::sbi::ipi::send_ipi(1 << cpuid, 0).unwrap();
-}
-
-cpu_local! {
-    static IN_TIMEOUT: Cell<bool> = Cell::new(false);
-}
-
-/// Suspend the calling cpu for at least `duration`.
-///
-/// # Safety
-///
-/// The caller must ensure the duration does not overflow when converted into ticks, and that it
-/// is safe to suspend the cpu.
-pub unsafe fn cpu_park_ticks(ticks: Ticks) {
-    // Safety: ensured by caller
-    unsafe {
-        IN_TIMEOUT.set(true);
-        riscv::sbi::time::set_timer(riscv::time::read64() + ticks.0).unwrap();
-        if IN_TIMEOUT.get() {
-            cpu_park();
-        }
-    }
 }

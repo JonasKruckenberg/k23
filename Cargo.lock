@@ -565,6 +565,7 @@ name = "mpsc-queue"
 version = "0.1.0"
 dependencies = [
  "fallible-iterator",
+ "sync",
 ]
 
 [[package]]

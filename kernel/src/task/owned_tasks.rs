@@ -20,7 +20,7 @@ pub struct OwnedTasks {
 }
 
 impl OwnedTasks {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         OwnedTasks {
             list: Mutex::new(linked_list::List::new()),
             closed: AtomicBool::new(false),
