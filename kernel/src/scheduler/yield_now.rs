@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::scheduler::current;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
@@ -29,8 +28,10 @@ pub async fn yield_now() {
 
             self.yielded = true;
 
-            current().defer(cx.waker());
-
+            // Yielding works by immediately calling `wake_by_ref` which will reinsert this
+            // task into the queue (essentially a reschedule) and then returning `Poll::Pending`
+            // to signal that this task is not done yet
+            cx.waker().wake_by_ref();
             Poll::Pending
         }
     }

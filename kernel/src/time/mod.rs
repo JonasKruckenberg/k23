@@ -12,15 +12,21 @@ mod error;
 mod instant;
 mod sleep;
 mod system_time;
+mod timeout;
 mod timer;
 
 pub const NANOS_PER_SEC: u64 = 1_000_000_000;
 
+use crate::arch::device::cpu::with_cpu;
 pub use clock::Clock;
+use core::future::Future;
+use core::pin::pin;
+use core::task::Context;
 pub use core::time::Duration;
 pub use error::Error;
 pub use instant::Instant;
 pub use sleep::{sleep, sleep_until, Sleep};
+pub use timeout::{timeout, Elapsed, Timeout};
 pub use timer::{Deadline, Timer};
 
 // #[cfg(test)]

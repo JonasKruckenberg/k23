@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::Backoff;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use lock_api::RawRwLockUpgrade as _;
 
@@ -98,8 +99,9 @@ unsafe impl lock_api::RawRwLock for RawRwLock {
     }
 
     fn lock_exclusive(&self) {
+        let mut boff = Backoff::default();
         while !self.try_lock_exclusive_internal(false) {
-            core::hint::spin_loop();
+            boff.spin();
         }
     }
 

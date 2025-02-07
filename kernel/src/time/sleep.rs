@@ -7,6 +7,7 @@
 
 use crate::arch::device::cpu::with_cpu;
 use crate::scheduler;
+use crate::scheduler::scheduler;
 use crate::time::clock::Ticks;
 use crate::time::timer::Timer;
 use crate::time::Instant;
@@ -17,19 +18,20 @@ use core::marker::PhantomPinned;
 use core::mem::offset_of;
 use core::pin::Pin;
 use core::ptr::NonNull;
+use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll};
 use core::time::Duration;
 use pin_project::{pin_project, pinned_drop};
 
 pub fn sleep(duration: Duration) -> Sleep<'static> {
-    let timer = scheduler::current().timer();
+    let timer = scheduler().cpu_local_timer();
     let ticks = with_cpu(|cpu| cpu.clock.duration_to_ticks(duration).unwrap());
 
     Sleep::new(timer, ticks)
 }
 
 pub fn sleep_until(instant: Instant) -> Sleep<'static> {
-    let timer = scheduler::current().timer();
+    let timer = scheduler().cpu_local_timer();
     let now = with_cpu(|cpu| cpu.clock.now());
     let duration = instant.duration_since(now);
     let ticks = with_cpu(|cpu| cpu.clock.duration_to_ticks(duration).unwrap());
@@ -42,6 +44,7 @@ pub fn sleep_until(instant: Instant) -> Sleep<'static> {
 pub struct Sleep<'t> {
     state: State,
     timer: &'t Timer,
+    ticks: Ticks,
     #[pin]
     entry: Entry,
 }
@@ -50,15 +53,16 @@ pub struct Sleep<'t> {
 enum State {
     Unregistered,
     Registered,
+    Completed,
 }
 
 #[derive(Debug)]
 pub struct Entry {
-    pub(crate) deadline: Ticks,
-    ticks: Ticks,
-    pub(super) links: linked_list::Links<Self>,
+    pub(super) deadline: Ticks,
+    pub(super) is_registered: AtomicBool,
     /// The currently-registered waker
     waker: AtomicWaker,
+    pub(super) links: linked_list::Links<Self>,
     _pin: PhantomPinned,
 }
 
@@ -70,11 +74,12 @@ impl<'t> Sleep<'t> {
         Self {
             state: State::Unregistered,
             timer,
+            ticks,
             entry: Entry {
-                links: linked_list::Links::new(),
-                waker: AtomicWaker::new(),
                 deadline,
-                ticks,
+                waker: AtomicWaker::new(),
+                is_registered: AtomicBool::new(false),
+                links: linked_list::Links::new(),
                 _pin: PhantomPinned,
             },
         }
@@ -82,7 +87,7 @@ impl<'t> Sleep<'t> {
 
     /// Returns the [`Duration`] that this `Sleep` future will sleep for.
     pub fn duration(&self) -> Duration {
-        with_cpu(|cpu| cpu.clock.ticks_to_duration(self.entry.ticks))
+        with_cpu(|cpu| cpu.clock.ticks_to_duration(self.ticks))
     }
 }
 
@@ -91,33 +96,38 @@ impl Future for Sleep<'_> {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         log::trace!("Sleep::poll {self:?}");
-        let mut this = self.as_mut().project();
+        let mut me = self.as_mut().project();
 
-        match this.state {
+        match me.state {
             State::Unregistered => {
-                let mut lock = this.timer.core.lock();
+                let mut lock = me.timer.core.lock();
 
                 // While we are holding the wheel lock, go ahead and advance the
                 // timer, too. This way, the timer wheel gets advanced more
                 // frequently than just when a scheduler tick completes or a
                 // timer IRQ fires, helping to increase timer accuracy.
-                this.timer.turn_locked(&mut lock);
+                me.timer.turn_locked(&mut lock);
 
                 // Safety: the timer impl promises to treat the pointer as pinned
-                let ptr = unsafe { NonNull::from(Pin::into_inner_unchecked(this.entry.as_mut())) };
+                let ptr = unsafe { NonNull::from(Pin::into_inner_unchecked(me.entry.as_mut())) };
 
-                *this.state = State::Registered;
                 // Safety: we just created the pointer from a mutable reference
-                if unsafe { lock.register(ptr) } == Poll::Ready(()) {
-                    return Poll::Ready(());
+                match unsafe { lock.register(ptr) } {
+                    Poll::Ready(()) => {
+                        *me.state = State::Completed;
+                        return Poll::Ready(());
+                    }
+                    Poll::Pending => {
+                        *me.state = State::Registered;
+                        drop(lock);
+                    }
                 }
             }
-            State::Registered if this.entry.links.is_linked() => {}
+            State::Registered if me.entry.is_registered.load(Ordering::Acquire) => {}
             _ => return Poll::Ready(()),
         }
 
-        // current().defer(cx.waker());
-        this.entry.waker.register_by_ref(cx.waker());
+        me.entry.waker.register_by_ref(cx.waker());
 
         Poll::Pending
     }
@@ -132,7 +142,7 @@ impl PinnedDrop for Sleep<'_> {
         // currently part of a linked list --- if the future hasn't been polled
         // yet, or it has already completed, we don't need to lock the timer to
         // remove it.
-        if this.entry.links.is_linked() {
+        if this.entry.is_registered.load(Ordering::Acquire) {
             let mut lock = this.timer.core.lock();
             lock.cancel(this.entry);
         }
@@ -145,6 +155,7 @@ impl fmt::Debug for Sleep<'_> {
             state,
             entry,
             timer,
+            ..
         } = self;
         f.debug_struct("Sleep")
             .field("duration", &self.duration())
@@ -157,7 +168,10 @@ impl fmt::Debug for Sleep<'_> {
 
 impl Entry {
     pub(super) fn fire(&self) {
-        log::trace!("firing sleep {self:p}");
+        let _was_linked =
+            self.is_registered
+                .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire);
+        log::trace!("firing sleep! was_registered = {}", _was_linked.is_ok());
         self.waker.wake();
     }
 }

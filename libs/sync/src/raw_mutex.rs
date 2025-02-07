@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::Backoff;
 use core::sync::atomic::{AtomicBool, Ordering};
 use lock_api::GuardSend;
 
@@ -25,13 +26,14 @@ unsafe impl lock_api::RawMutex for RawMutex {
     type GuardMarker = GuardSend;
 
     fn lock(&self) {
+        let mut boff = Backoff::default();
         while self
             .lock
-            .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
             .is_err()
         {
             while self.is_locked() {
-                core::hint::spin_loop();
+                boff.spin();
             }
         }
     }

@@ -33,14 +33,6 @@ pub use owned_tasks::OwnedTasks;
 pub trait Schedule {
     /// Schedule the task to run.
     fn schedule(&self, task: TaskRef);
-    /// Schedule the task to run in the near future, but yield to other tasks right now.
-    fn yield_now(&self, task: TaskRef);
-    /// The task has completed work and is ready to be released. The scheduler
-    /// should release it immediately and return it. The task module will batch
-    /// the ref-dec with setting other options.
-    ///
-    /// If the scheduler has already released the task, then None is returned.
-    fn release(&self, task: &TaskRef) -> Option<TaskRef>;
 }
 
 #[derive(Eq, PartialEq)]
@@ -445,7 +437,7 @@ impl Drop for TaskRef {
     #[inline]
     #[track_caller]
     fn drop(&mut self) {
-        log::debug!("TaskRef::drop task.addr={:?}", self.0);
+        log::trace!("TaskRef::drop task.addr={:?}", self.0);
         if !self.state().drop_ref() {
             return;
         }
@@ -463,7 +455,7 @@ unsafe impl Send for TaskRef {}
 unsafe impl Sync for TaskRef {}
 
 impl Header {
-    const STUB_VTABLE: Vtable = Vtable {
+    const STATIC_STUB_VTABLE: Vtable = Vtable {
         poll: Self::stub_poll,
         poll_join: Self::stub_poll_join,
         deallocate: Self::stub_deallocate,
@@ -473,9 +465,9 @@ impl Header {
     pub const fn new_static_stub() -> Self {
         Self {
             state: State::new(),
-            vtable: &Self::STUB_VTABLE,
+            vtable: &Self::STATIC_STUB_VTABLE,
             id: Id::stub(),
-            run_queue_links: mpsc_queue::Links::new(),
+            run_queue_links: mpsc_queue::Links::new_stub(),
             owned_tasks_links: linked_list::Links::new(),
         }
     }
