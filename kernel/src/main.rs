@@ -147,9 +147,26 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
     if cpuid == 0 {
         sched.spawn(async move {
+            log::debug!("before timeout");
+            let start = Instant::now();
+            let res =
+                time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
+            log::debug!("after timeout {res:?}");
+            assert!(res.is_err());
+            assert_eq!(start.elapsed().as_secs(), 1);
+
+            log::debug!("before timeout");
+            let start = Instant::now();
+            let res =
+                time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
+            log::debug!("after timeout {res:?}");
+            assert!(res.is_ok());
+            assert_eq!(start.elapsed().as_secs(), 1);
+
             log::debug!("sleeping for 1 sec...");
             let start = Instant::now();
             time::sleep(Duration::from_secs(1)).await;
+            assert_eq!(start.elapsed().as_secs(), 1);
             log::debug!("slept 1 sec! {:?}", start.elapsed());
 
             // FIXME this is a quite terrible hack to get the scheduler to close in tests (otherwise

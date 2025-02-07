@@ -278,7 +278,7 @@ fn default_trap_handler(
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             if let (_, Some(next_deadline)) = scheduler().cpu_local_timer().turn() {
                 // Timer interrupts are always IPIs used for sleeping
-                sbi::time::set_timer(riscv::time::read64() + next_deadline.ticks.0).unwrap();
+                sbi::time::set_timer(next_deadline.ticks.0).unwrap();
             } else {
                 // Timer interrupts are always IPIs used for sleeping
                 sbi::time::set_timer(u64::MAX).unwrap();
