@@ -39,7 +39,7 @@ impl Idle {
     }
 
     pub fn transition_worker_to_waiting(&self, worker: &super::Worker) {
-        log::trace!("Idle::transition_worker_to_waiting");
+        // log::trace!("Idle::transition_worker_to_waiting");
 
         // The worker should not be stealing at this point
         debug_assert!(!worker.is_stealing);
@@ -53,12 +53,11 @@ impl Idle {
         debug_assert!(prev < self.num_cores);
 
         // Store the worker index in the list of sleepers
-        log::trace!("locking sleepers...");
         self.sleepers.lock().push(worker.cpuid);
     }
 
     pub fn transition_worker_from_waiting(&self, worker: &super::Worker) {
-        log::trace!("Idle::transition_worker_from_waiting");
+        // log::trace!("Idle::transition_worker_from_waiting");
 
         // Decrement the number of idle cores
         let prev = self.num_idle.fetch_sub(1, Ordering::Acquire);
@@ -68,11 +67,11 @@ impl Idle {
 
         self.sleepers
             .lock()
-            .retain(|sleeper| *sleeper != worker.cpuid)
+            .retain(|sleeper| *sleeper != worker.cpuid);
     }
 
     pub fn try_transition_worker_to_stealing(&self, worker: &mut super::Worker) {
-        log::trace!("Idle::try_transition_worker_to_stealing");
+        // log::trace!("Idle::try_transition_worker_to_stealing");
 
         debug_assert!(!worker.is_stealing);
 
@@ -92,7 +91,7 @@ impl Idle {
     /// Returns `true` if this is the final searching worker. The caller
     /// **must** notify a new worker.
     pub fn transition_worker_from_stealing(&self) -> bool {
-        log::trace!("Idle::transition_worker_from_stealing");
+        // log::trace!("Idle::transition_worker_from_stealing");
 
         let prev = self.num_stealing.fetch_sub(1, Ordering::AcqRel);
         debug_assert!(prev > 0);
@@ -101,8 +100,9 @@ impl Idle {
     }
 
     pub fn notify_one(&self) {
-        log::trace!("Idle::notify_one");
+        // log::trace!("Idle::notify_one");
         if let Some(worker) = self.sleepers.lock().pop() {
+            // Safety: the worker placed itself into the sleepers list, so sending a wakeup is safe
             unsafe {
                 arch::cpu_unpark(worker);
             }
@@ -110,8 +110,9 @@ impl Idle {
     }
 
     pub fn notify_all(&self) {
-        log::trace!("Idle::notify_all");
+        // log::trace!("Idle::notify_all");
         while let Some(worker) = self.sleepers.lock().pop() {
+            // Safety: the worker placed itself into the sleepers list, so sending a wakeup is safe
             unsafe {
                 arch::cpu_unpark(worker);
             }

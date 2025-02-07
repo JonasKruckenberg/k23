@@ -25,22 +25,25 @@ const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
 
 static SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
 
-pub fn init(num_cores: usize) -> &'static Scheduler {
+pub fn init(num_cores: usize, shutdown_on_idle: bool) -> &'static Scheduler {
     static TASK_STUB: TaskStub = TaskStub::new();
 
     #[expect(tail_expr_drop_order, reason = "")]
     SCHEDULER.get_or_init(|| Scheduler {
         cores: CpuLocal::with_capacity(num_cores),
         owned: OwnedTasks::new(),
+        // Safety: the static is scoped to this function AND we call `new_with_static_stub` through
+        // `get_or_init` which guarantees the stub will only ever be used once here.
         run_queue: unsafe { mpsc_queue::MpscQueue::new_with_static_stub(&TASK_STUB.hdr) },
         shutdown: AtomicBool::new(false),
         idle: Idle::new(num_cores),
         shutdown_barrier: Barrier::new(num_cores),
+        shutdown_on_idle,
     })
 }
 
 pub fn scheduler() -> &'static Scheduler {
-    &SCHEDULER.get().unwrap()
+    SCHEDULER.get().expect("scheduler not initialized")
 }
 
 pub struct Scheduler {
@@ -52,6 +55,7 @@ pub struct Scheduler {
     shutdown: AtomicBool,
     idle: Idle,
     shutdown_barrier: Barrier,
+    shutdown_on_idle: bool,
 }
 
 struct Core {
@@ -63,7 +67,6 @@ struct Core {
 pub struct Worker {
     scheduler: &'static Scheduler,
     cpuid: usize,
-    is_shutdown: bool,
     rng: FastRand,
     /// Counter used to track when to poll from the local queue vs. the
     /// global queue
@@ -138,7 +141,6 @@ impl Worker {
         Self {
             scheduler,
             cpuid,
-            is_shutdown: false,
             is_stealing: false,
             rng: FastRand::new(rng.next_u64()),
             num_seq_local_queue_polls: 0,
@@ -160,9 +162,7 @@ impl Worker {
         });
 
         loop {
-            while let Some(task) = self.next_task(core)
-                && !self.is_shutdown
-            {
+            while let Some(task) = self.next_task(core) {
                 self.run_task(task);
             }
 
@@ -182,11 +182,12 @@ impl Worker {
 
             // if we have no tasks to run, we can sleep until an interrupt
             // occurs.
-            self.scheduler.idle.transition_worker_to_waiting(&self);
+            self.scheduler.idle.transition_worker_to_waiting(self);
+            // Safety: we park the
             unsafe {
                 arch::cpu_park();
             }
-            self.scheduler.idle.transition_worker_from_waiting(&self);
+            self.scheduler.idle.transition_worker_from_waiting(self);
         }
 
         self.shutdown_finalize(core);
@@ -202,7 +203,9 @@ impl Worker {
 
         let poll_result = task.poll();
         match poll_result {
-            PollResult::Ready | PollResult::ReadyJoined => {}
+            PollResult::Ready | PollResult::ReadyJoined => {
+                self.scheduler.owned.remove(task);
+            }
             PollResult::PendingSchedule => {
                 self.scheduler.schedule_task(task);
             }

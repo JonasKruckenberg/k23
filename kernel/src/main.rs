@@ -137,7 +137,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     arch::per_cpu_init_late(device_tree()).unwrap();
 
     // initialize the executor
-    let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
+    let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize, true);
 
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
@@ -151,6 +151,10 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
             let start = Instant::now();
             time::sleep(Duration::from_secs(1)).await;
             log::debug!("slept 1 sec! {:?}", start.elapsed());
+
+            // FIXME this is a quite terrible hack to get the scheduler to close in tests (otherwise
+            //  tests would run forever) we should find a proper way to shut down the scheduler when idle.
+            #[cfg(test)]
             scheduler::scheduler().shutdown();
         });
 
