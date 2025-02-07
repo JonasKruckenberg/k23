@@ -50,7 +50,7 @@
 //! If more tasks are added to the local run queue than can fit, then half of them are moved to the
 //! global queue to make space.
 //!
-//! Workers will prefer tasks from their own local queue nd will only pick a task from the global queue
+//! Workers will prefer tasks from their own local queue and will only pick a task from the global queue
 //! if the local queue is empty, or if it has picked a task from the local queue `global_queue_interval`
 //! times in a row (currently non-configurable and fixed at [`DEFAULT_GLOBAL_QUEUE_INTERVAL`]).
 //!
