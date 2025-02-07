@@ -482,7 +482,7 @@ dependencies = [
  "ouroboros",
  "pin-project",
  "rand 0.8.5",
- "rand_chacha 0.3.1",
+ "rand_chacha",
  "riscv",
  "smallvec",
  "static_assertions",
@@ -528,7 +528,7 @@ dependencies = [
  "loader-api",
  "log",
  "rand 0.8.5",
- "rand_chacha 0.3.1",
+ "rand_chacha",
  "riscv",
  "sync",
  "xmas-elf",
@@ -722,19 +722,9 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
 dependencies = [
- "rand_chacha 0.9.0",
+ "rand_chacha",
  "rand_core 0.9.0",
  "zerocopy 0.8.14",
-]
-
-[[package]]
-name = "rand_chacha"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
-dependencies = [
- "ppv-lite86",
- "rand_core 0.6.4",
 ]
 
 [[package]]
