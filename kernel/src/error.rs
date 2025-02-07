@@ -11,7 +11,7 @@ use core::fmt::{Display, Formatter};
 #[derive(Debug)]
 pub enum Error {
     /// Failed to parse device tree blob
-    Dtb(dtb_parser::Error),
+    Fdt(fdt::Error),
     /// Errors returned by SBI calls
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     Sbi(riscv::sbi::Error),
@@ -25,11 +25,14 @@ pub enum Error {
     AlreadyExists,
     /// The system was not able to allocate some resource needed for the operation.
     NoResources,
+    #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+    /// An unknown RISC-V extension was found.
+    UnknownRiscvExtension,
 }
 
-impl From<dtb_parser::Error> for Error {
-    fn from(err: dtb_parser::Error) -> Self {
-        Self::Dtb(err)
+impl From<fdt::Error> for Error {
+    fn from(err: fdt::Error) -> Self {
+        Self::Fdt(err)
     }
 }
 
@@ -49,7 +52,7 @@ impl From<riscv::sbi::Error> for Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            Error::Dtb(err) => write!(f, "Failed to parse device tree blob: {err}"),
+            Error::Fdt(err) => write!(f, "Failed to parse flattened device tree: {err}"),
             #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
             Error::Sbi(err) => write!(f, "SBI call failed: {err}"),
             Error::AccessDenied => {
@@ -67,6 +70,10 @@ impl Display for Error {
                 f,
                 "The system was not able to allocate some resource needed for the operation",
             ),
+            #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
+            Error::UnknownRiscvExtension => {
+                write!(f, "An unknown RISC-V extension was found")
+            }
         }
     }
 }

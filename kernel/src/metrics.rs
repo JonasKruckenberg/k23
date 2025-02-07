@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 //! Kernel counters
 //!
-//! Kernel counters are per-hart, unsigned integer counters that facilitate diagnostics across the
+//! Kernel counters are per-cpu, unsigned integer counters that facilitate diagnostics across the
 //! whole kernel. Questions like "how many times has X happened over N seconds?", "has X ever happened?"
 //! can be answered using this API.
 //!
@@ -21,11 +21,11 @@
 //! }
 //! ```
 //!
-//! Kernel counters are always per-hart, which means each hart keeps an individual counter. Methods
-//! on `Counter` can be used to sum events across harts or even get the maximum or minimum value across
-//! harts.
+//! Kernel counters are always per-cpu, which means each cpu keeps an individual counter. Methods
+//! on `Counter` can be used to sum events across cpus or even get the maximum or minimum value across
+//! cpus.
 
-use crate::thread_local::ThreadLocal;
+use crate::cpu_local::CpuLocal;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Declares a new counter.
@@ -33,8 +33,8 @@ use core::sync::atomic::{AtomicU64, Ordering};
 macro_rules! counter {
     ($name:expr) => {{
         #[unsafe(link_section = concat!(".bss.kcounter.", $name))]
-        static ARENA: $crate::thread_local::ThreadLocal<::core::sync::atomic::AtomicU64> =
-            $crate::thread_local::ThreadLocal::new();
+        static ARENA: $crate::cpu_local::CpuLocal<::core::sync::atomic::AtomicU64> =
+            $crate::cpu_local::CpuLocal::new();
 
         Counter::new(&ARENA, $name)
     }};
@@ -42,13 +42,13 @@ macro_rules! counter {
 
 /// A kernel counter.
 pub struct Counter {
-    arena: &'static ThreadLocal<AtomicU64>,
+    arena: &'static CpuLocal<AtomicU64>,
     name: &'static str,
 }
 
 impl Counter {
     #[doc(hidden)]
-    pub const fn new(arena: &'static ThreadLocal<AtomicU64>, name: &'static str) -> Self {
+    pub const fn new(arena: &'static CpuLocal<AtomicU64>, name: &'static str) -> Self {
         Self { arena, name }
     }
 
@@ -91,18 +91,18 @@ impl Counter {
                 });
     }
 
-    /// Get the counter value of the calling hart, or `None` if the counter was never written to.
+    /// Get the counter value of the calling cpu, or `None` if the counter was never written to.
     pub fn get(&self) -> Option<u64> {
         Some(self.arena.get()?.load(Ordering::Relaxed))
     }
 
-    /// Return the sum of all counters across all harts.
-    pub fn sum_across_all_harts(&self) -> u64 {
+    /// Return the sum of all counters across all cpus.
+    pub fn sum_across_all_cpus(&self) -> u64 {
         self.arena.iter().map(|v| v.load(Ordering::Relaxed)).sum()
     }
 
-    /// Return the largest value from across all harts.
-    pub fn max_across_all_harts(&self) -> u64 {
+    /// Return the largest value from across all CPUs.
+    pub fn max_across_all_cpus(&self) -> u64 {
         self.arena
             .iter()
             .map(|v| v.load(Ordering::Relaxed))
@@ -110,8 +110,8 @@ impl Counter {
             .unwrap()
     }
 
-    /// Return the smallest value from across all harts.
-    pub fn min_across_all_harts(&self) -> u64 {
+    /// Return the smallest value from across all CPUs.
+    pub fn min_across_all_cpus(&self) -> u64 {
         self.arena
             .iter()
             .map(|v| v.load(Ordering::Relaxed))

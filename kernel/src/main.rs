@@ -15,6 +15,13 @@
 #![expect(internal_features, reason = "panic internals")]
 #![feature(std_internals, panic_can_unwind, fmt_internals)]
 #![feature(step_trait)]
+#![feature(box_into_inner)]
+#![feature(let_chains)]
+#![feature(array_chunks)]
+#![feature(iter_array_chunks)]
+#![feature(iter_next_chunk)]
+#![feature(if_let_guard)]
+#![feature(allocator_api)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
 #![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
@@ -22,37 +29,44 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
+mod cpu_local;
+mod device_tree;
 mod error;
 mod fiber;
+mod irq;
 mod logger;
-mod machine_info;
 mod metrics;
 mod panic;
-mod thread_local;
+mod scheduler;
+mod task;
 mod time;
-mod trap_handler;
+mod traps;
+mod util;
 mod vm;
 mod wasm;
 
+use crate::device_tree::device_tree;
 use crate::error::Error;
-use crate::machine_info::{HartLocalMachineInfo, MachineInfo};
+use crate::time::clock::Ticks;
 use crate::time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
-use core::alloc::Layout;
-use core::cell::RefCell;
+use core::cell::Cell;
 use core::range::Range;
-use core::{cmp, slice};
-use loader_api::{BootInfo, MemoryRegionKind, TlsTemplate};
-use sync::OnceLock;
-use thread_local::thread_local;
+use core::slice;
+use core::time::Duration;
+use cpu_local::cpu_local;
+use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
+use sync::Once;
 use vm::frame_alloc;
-use vm::{PhysicalAddress, VirtualAddress};
+use vm::PhysicalAddress;
 
 /// The log level for the kernel
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages
-pub const STACK_SIZE_PAGES: usize = 128; // TODO find a lower more appropriate value
+pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
 pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropriate value
 /// The initial size of the kernel heap in pages.
@@ -65,74 +79,112 @@ pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-pub static MACHINE_INFO: OnceLock<MachineInfo> = OnceLock::new();
-
-thread_local!(
-    pub static HART_LOCAL_MACHINE_INFO: RefCell<HartLocalMachineInfo> =
-        RefCell::new(HartLocalMachineInfo::default());
+cpu_local!(
+    pub static CPUID: Cell<usize> = Cell::new(usize::MAX);
 );
+#[used(linker)]
+#[unsafe(link_section = ".loader_config")]
+static LOADER_CONFIG: LoaderConfig = {
+    let mut cfg = LoaderConfig::new_default();
+    cfg.kernel_stack_size_pages = STACK_SIZE_PAGES;
+    cfg
+};
 
-fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
-    // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
-    // is available
-    let allocatable_memories = allocatable_memory_regions(boot_info);
-    let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
+#[unsafe(no_mangle)]
+fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    CPUID.set(cpuid);
 
-    // initializing the global allocator
-    allocator::init(&mut boot_alloc, boot_info);
+    // perform EARLY per-cpu, architecture-specific initialization
+    // (e.g. resetting the FPU)
+    arch::per_cpu_init_early();
 
-    // initialize the panic backtracing subsystem after the allocator has been set up
-    // since setting up the symbolization context requires allocation
-    panic::init(boot_info);
+    let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
+    let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
-    // initialize thread-local storage
-    // done after global allocator initialization since TLS destructors are registered in a heap
-    // allocated Vec
-    let tls = init_tls(&mut boot_alloc, &boot_info.tls_template);
+    static SYNC: Once = Once::new();
+    SYNC.call_once(|| {
+        // initialize the global logger as early as possible
+        logger::init(LOG_LEVEL.to_level_filter());
 
-    // initialize the logger
-    // done after TLS initialization since we maintain per-hart host stdio channels
-    logger::init_hart(hartid);
-    logger::init(LOG_LEVEL.to_level_filter());
+        // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
+        // is available
+        let allocatable_memories = allocatable_memory_regions(boot_info);
+        let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
 
-    log::debug!("\n{boot_info}");
-    log::trace!("Allocatable memory regions: {allocatable_memories:?}");
-    log::trace!("Thread pointer: {tls:?}");
+        // initializing the global allocator
+        allocator::init(&mut boot_alloc, boot_info);
 
-    // perform per-hart, architecture-specific initialization
-    // (e.g. setting the trap vector and resetting the FPU)
-    arch::per_hart_init();
+        // initialize the panic backtracing subsystem after the allocator has been set up
+        // since setting up the symbolization context requires allocation
+        panic::init(boot_info);
 
-    // perform global, architecture-specific initialization
-    arch::init();
+        // perform global, architecture-specific initialization
+        arch::init_early();
 
-    let fdt = locate_device_tree(boot_info);
+        let devtree = device_tree::init(fdt).unwrap();
+        log::debug!("{devtree:?}");
 
-    // TODO move this into a init function
-    let minfo = MACHINE_INFO
-        .get_or_try_init(|| {
-            // Safety: we have to trust the loader mapped the fdt correctly
-            unsafe { MachineInfo::from_dtb(fdt) }
-        })
-        .unwrap();
-    log::debug!("\n{minfo}");
+        // initialize the global frame allocator
+        // at this point we have parsed and processed the flattened device tree, so we pass it to the
+        // frame allocator for reuse
+        frame_alloc::init(boot_alloc, fdt_region_phys);
 
-    // Safety: we have to trust the loader mapped the fdt correctly
-    let hart_local_minfo = unsafe { HartLocalMachineInfo::from_dtb(hartid, fdt).unwrap() };
-    log::debug!("\n{hart_local_minfo}");
-    HART_LOCAL_MACHINE_INFO.set(hart_local_minfo);
+        // initialize the virtual memory subsystem
+        vm::init(boot_info, &mut rng).unwrap();
+    });
 
-    frame_alloc::init(boot_alloc);
+    // perform LATE per-cpu, architecture-specific initialization
+    // (e.g. setting the trap vector and enabling interrupts)
+    arch::per_cpu_init_late(device_tree()).unwrap();
 
-    // TODO init kernel address space (requires global allocator)
-
-    vm::init(boot_info, minfo).unwrap();
+    // initialize the executor
+    let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
 
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
-        Instant::from_ticks(boot_info.boot_ticks).elapsed()
+        Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
+
+    if cpuid == 0 {
+        sched.spawn(async move {
+            log::debug!("before timeout");
+            let start = Instant::now();
+            let res =
+                time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
+            log::debug!("after timeout {res:?}");
+            assert!(res.is_err());
+            assert_eq!(start.elapsed().as_secs(), 1);
+
+            log::debug!("before timeout");
+            let start = Instant::now();
+            let res =
+                time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
+            log::debug!("after timeout {res:?}");
+            assert!(res.is_ok());
+            assert_eq!(start.elapsed().as_secs(), 1);
+
+            log::debug!("sleeping for 1 sec...");
+            let start = Instant::now();
+            time::sleep(Duration::from_secs(1)).await;
+            assert_eq!(start.elapsed().as_secs(), 1);
+            log::debug!("slept 1 sec! {:?}", start.elapsed());
+
+            // FIXME this is a quite terrible hack to get the scheduler to close in tests (otherwise
+            //  tests would run forever) we should find a proper way to shut down the scheduler when idle.
+            #[cfg(test)]
+            scheduler::scheduler().shutdown();
+        });
+
+        // scheduler::scheduler().spawn(async move {
+        //     log::debug!("Point A");
+        //     scheduler::yield_now().await;
+        //     log::debug!("Point B");
+        // });
+    }
+
+    scheduler::Worker::new(sched, cpuid, &mut rng).run();
+
     // wasm::test();
 
     // - [all][global] parse cmdline
@@ -142,7 +194,7 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     // - initialize other parts of the kernel
     // - kickoff the scheduler
     // - `platform_init()`
-    //     - using system topology -> start other harts in the system
+    //     - using system topology -> start other cpus in the system
     // - `arch_late_init_percpu()`
     //     - IF RiscvFeatureVector => setup the vector hardware
     // - `kernel_shell_init()`
@@ -151,46 +203,10 @@ fn main(hartid: usize, boot_info: &'static BootInfo) -> ! {
     // Run thread-local destructors
     // Safety: after this point thread-locals cannot be accessed anymore anyway
     unsafe {
-        thread_local::destructors::run();
+        cpu_local::destructors::run();
     }
 
     arch::exit(0);
-}
-
-fn init_tls(
-    boot_alloc: &mut BootstrapAllocator,
-    maybe_tls_template: &Option<TlsTemplate>,
-) -> Option<VirtualAddress> {
-    if let Some(template) = &maybe_tls_template {
-        let layout =
-            Layout::from_size_align(template.mem_size, cmp::max(template.align, arch::PAGE_SIZE))
-                .unwrap();
-        let phys = boot_alloc.allocate_contiguous_zeroed(layout).unwrap();
-
-        // Use the phys_map to access the newly allocated TLS region
-        let virt = VirtualAddress::from_phys(phys).unwrap();
-
-        if template.file_size != 0 {
-            // Safety: We have to trust the loaders BootInfo here
-            unsafe {
-                let src: &[u8] =
-                    slice::from_raw_parts(template.start_addr as *const u8, template.file_size);
-                let dst: &mut [u8] =
-                    slice::from_raw_parts_mut(virt.as_mut_ptr(), template.file_size);
-
-                // sanity check to ensure our destination allocated memory is actually zeroed.
-                // if it's not, that likely means we're about to override something important
-                debug_assert!(dst.iter().all(|&x| x == 0));
-
-                dst.copy_from_slice(src);
-            }
-        }
-
-        arch::set_thread_ptr(virt);
-        Some(virt)
-    } else {
-        None
-    }
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.
@@ -231,15 +247,23 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
     out
 }
 
-fn locate_device_tree(boot_info: &BootInfo) -> *const u8 {
+fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAddress>) {
     let fdt = boot_info
         .memory_regions
         .iter()
         .find(|region| region.kind == MemoryRegionKind::FDT)
         .expect("no FDT region");
 
-    boot_info
+    let base = boot_info
         .physical_address_offset
         .checked_add(fdt.range.start)
-        .unwrap() as *const u8
+        .unwrap() as *const u8;
+
+    // Safety: we need to trust the bootinfo data is correct
+    let slice =
+        unsafe { slice::from_raw_parts(base, fdt.range.end.checked_sub(fdt.range.start).unwrap()) };
+    (
+        slice,
+        Range::from(PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end)),
+    )
 }

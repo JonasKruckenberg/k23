@@ -5,31 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::cell::RefCell;
-use core::fmt::Write;
-use log::{LevelFilter, Metadata, Record};
-use thread_local::thread_local;
+use log::{Level, LevelFilter, Metadata, Record};
 
-/// Initializes the global logger with the semihosting logger.
-///
-/// # Panics
-///
-/// This function will panic if it is called more than once, or if another library has already initialized a global logger.
 pub fn init(lvl: LevelFilter) {
     static LOGGER: Logger = Logger;
 
     log::set_logger(&LOGGER).unwrap();
     log::set_max_level(lvl);
 }
-
-pub fn init_hart(hartid: usize) {
-    STATE.with_borrow_mut(|state| state.1 = hartid);
-}
-
-thread_local!(
-    static STATE: RefCell<(riscv::hio::HostStream, usize)> =
-        RefCell::new((riscv::hio::HostStream::new_stdout(), 0));
-);
 
 struct Logger;
 
@@ -40,19 +23,33 @@ impl log::Log for Logger {
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            let _ = STATE.try_with(|state| {
-                // Safety: state is always initialized
-                let (stdout, hartid) = unsafe { &mut *state.as_ptr() };
-                let _ = stdout.write_fmt(format_args!(
-                    "[{:<5} HART {} {}] {}\n",
-                    record.level(),
-                    *hartid,
-                    record.module_path_static().unwrap_or_default(),
-                    record.args()
-                ));
-            });
+            let color = match record.level() {
+                Level::Trace => "\x1b[36m",
+                Level::Debug => "\x1b[34m",
+                Level::Info => "\x1b[32m",
+                Level::Warn => "\x1b[33m",
+                Level::Error => "\x1b[31;1m",
+            };
+
+            print(format_args!(
+                "[{color}{:<5}\x1b[0m HART {} {}] {}\n",
+                record.level(),
+                crate::CPUID.get(),
+                record.module_path_static().unwrap_or_default(),
+                record.args()
+            ));
         }
     }
 
     fn flush(&self) {}
+}
+
+fn print(args: core::fmt::Arguments) {
+    cfg_if::cfg_if! {
+        if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
+            riscv::hio::_print(args);
+        } else {
+            compile_error!("unsupported target architecture");
+        }
+    }
 }

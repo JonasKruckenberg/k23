@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::panic::panic_count::MustAbort;
+use panic_count::MustAbort;
 use alloc::boxed::Box;
 use alloc::string::String;
 use backtrace::{Backtrace, SymbolizeContext};
@@ -77,6 +77,8 @@ where
 
 /// Triggers a panic without invoking the panic hook.
 pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
+    //     rust_panic(payload)
+    
     panic_count::increase(false);
 
     struct RewrapBox(Box<dyn Any + Send>);
@@ -117,20 +119,20 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
         if let Some(must_abort) = panic_count::increase(true) {
             match must_abort {
                 MustAbort::PanicInHook => {
-                    log::error!("panicked at {loc}:\n{msg}\nhart panicked while processing panic. aborting.\n");
+                    log::error!("panicked at {loc}:\n{msg}\ncpu panicked while processing panic. aborting.\n");
                 }
             }
 
             // Run thread-local destructors
             // Safety: after this point we cannot access thread locals anyway
             unsafe {
-                thread_local::destructors::run();
+                cpu_local::destructors::run();
             }
 
             arch::abort();
         }
 
-        log::error!("hart panicked at {loc}:\n{msg}");
+        log::error!("cpu panicked at {loc}:\n{msg}");
 
         if let Some(ctx) = SYMBOLIZE_CONTEXT.as_ref() {
             let backtrace = Backtrace::capture(ctx);
@@ -147,7 +149,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             // If a thread panics while running destructors or tries to unwind
             // through a nounwind function (e.g. extern "C") then we cannot continue
             // unwinding and have to abort immediately.
-            log::error!("hart caused non-unwinding panic. aborting.\n");
+            log::error!("cpu caused non-unwinding panic. aborting.\n");
             arch::abort();
         }
 
@@ -165,7 +167,7 @@ fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
     // Run thread-local destructors
     // Safety: after this point we cannot access thread locals anyway
     unsafe {
-        thread_local::destructors::run();
+        cpu_local::destructors::run();
     }
 
     match res {
@@ -256,7 +258,7 @@ fn construct_panic_payload(info: &core::panic::PanicInfo) -> Box<dyn Any + Send>
     }
 }
 
-fn payload_as_str(payload: &dyn Any) -> &str {
+pub fn payload_as_str(payload: &dyn Any) -> &str {
     if let Some(&s) = payload.downcast_ref::<&'static str>() {
         s
     } else if let Some(s) = payload.downcast_ref::<String>() {
@@ -271,7 +273,7 @@ mod panic_count {
         cell::Cell,
         sync::atomic::{AtomicUsize, Ordering},
     };
-    use thread_local::thread_local;
+    use cpu_local::cpu_local;
 
     /// A reason for forcing an immediate abort on panic.
     #[derive(Debug)]
@@ -282,7 +284,7 @@ mod panic_count {
 
     // Panic count for the current thread and whether a panic hook is currently
     // being executed.
-    thread_local! {
+    cpu_local! {
         static LOCAL_PANIC_COUNT: Cell<(usize, bool)> = Cell::new((0, false));
     }
 

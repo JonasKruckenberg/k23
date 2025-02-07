@@ -45,6 +45,8 @@ SECTIONS {
         __data_end = .;
     }
 
+    __stack_start = .;
+
     /DISCARD/ : {
         *(.comment*)
         *(.gcc_except_table*)

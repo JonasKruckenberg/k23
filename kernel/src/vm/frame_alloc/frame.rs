@@ -36,7 +36,7 @@ pub struct Frame {
 }
 
 pub struct FrameInfo {
-    /// Links to other frames in a freelist either a global `Arena` or hart-local page cache.
+    /// Links to other frames in a freelist either a global `Arena` or cpu-local page cache.
     links: linked_list::Links<FrameInfo>,
     /// Number of references to this frame, zero indicates a free frame.
     refcount: AtomicUsize,
@@ -82,7 +82,7 @@ impl Clone for Frame {
         // scenario. Realistically this branch should never be taken.
         //
         // Also worth noting: Just like `Arc`, the refcount could still overflow when in between
-        // the load above and this check some other hart increased the refcount from `isize::MAX` to
+        // the load above and this check some other cpu increased the refcount from `isize::MAX` to
         // `usize::MAX` but that seems unlikely. The other option, doing the comparison and update in
         // one conditional atomic operation produces much worse code, so if its good enough for the
         // standard library, it is good enough for us.
@@ -198,8 +198,8 @@ impl Frame {
         let alloc = FRAME_ALLOC
             .get()
             .expect("cannot access FRAME_ALLOC before it is initialized");
-        let mut hart_local_cache = alloc.hart_local_cache.get().unwrap().borrow_mut();
-        hart_local_cache.free_list.push_back(self.ptr);
+        let mut cpu_local_cache = alloc.cpu_local_cache.get().unwrap().borrow_mut();
+        cpu_local_cache.free_list.push_back(self.ptr);
     }
 }
 

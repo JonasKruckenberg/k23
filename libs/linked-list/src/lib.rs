@@ -20,8 +20,8 @@ use core::{fmt, mem, ptr};
 
 /// Trait implemented by types which can be members of an intrusive doubly-linked list.
 ///
-/// In order to be part of an intrusive WAVL tree, a type must contain a
-/// `Links` type that stores the pointers to other nodes in the tree.
+/// In order to be part of an intrusive doubly-linked list tree, a type must contain a
+/// `Links` type that stores the pointers to other nodes in the list.
 ///
 /// # Safety
 ///
@@ -426,6 +426,30 @@ where
         }
     }
 
+    /// Constructs a cursor from a raw pointer to a node.
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the pointer points to a valid node in the tree.
+    pub unsafe fn cursor_from_ptr(&self, ptr: NonNull<T>) -> Cursor<'_, T> {
+        Cursor {
+            current: Some(ptr),
+            _list: self,
+        }
+    }
+
+    /// Constructs a mutable cursor from a raw pointer to a node.
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the pointer points to a valid node in the tree.
+    pub unsafe fn cursor_from_ptr_mut(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
+        CursorMut {
+            current: Some(ptr),
+            list: self,
+        }
+    }
+
     pub fn split_off(&mut self, at: usize) -> Option<Self> {
         let len = self.len();
         // what is the index of the last node that should be left in this list?
@@ -600,6 +624,20 @@ where
             self.len, actual_len,
             "linked list's actual length did not match its `len` variable"
         );
+    }
+
+    /// Takes all the elements out of the `List`, leaving it empty. The taken elements are returned as a new `List`.
+    #[inline]
+    pub fn take(&mut self) -> Self {
+        let tree = Self {
+            head: self.head,
+            tail: self.tail,
+            len: self.len,
+        };
+        self.head = None;
+        self.tail = None;
+        self.len = 0;
+        tree
     }
 }
 
@@ -921,6 +959,9 @@ where
             _list: self.list,
         }
     }
+
+    /// Removes the current element from the list returning it's owned handle, also moves the
+    /// cursor to the next element in the list.
     pub fn remove(&mut self) -> Option<T::Handle> {
         unsafe {
             let node = self.current?;
@@ -944,7 +985,7 @@ where
                 self.list.tail = prev;
             }
 
-            Some(T::from_ptr(self.current?))
+            Some(T::from_ptr(mem::replace(&mut self.current, next)?))
         }
     }
 }

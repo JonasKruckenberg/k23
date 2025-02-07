@@ -8,15 +8,16 @@
 use crate::arch::longjmp;
 use crate::vm::VirtualAddress;
 use crate::{arch, vm};
+use bitflags::bitflags;
 use core::cell::Cell;
 use core::fmt::Write;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::ControlFlow;
 use core::ptr;
-use core::ptr::addr_of_mut;
-use thread_local::thread_local;
+use core::ptr::{addr_of_mut, NonNull};
+use cpu_local::cpu_local;
 
-thread_local! {
+cpu_local! {
     static TRAP_RESUME_STATE: Cell<*mut TrapResumeState> = Cell::new(ptr::null_mut());
     static IN_TRAP_HANDLER: Cell<bool> = Cell::new(false);
 }
@@ -32,10 +33,6 @@ pub struct Trap {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub enum TrapReason {
-    SupervisorSoftwareInterrupt,
-    SupervisorTimerInterrupt,
-    SupervisorExternalInterrupt,
-
     /// Instruction address misaligned
     InstructionMisaligned,
     /// Instruction access fault
@@ -65,34 +62,83 @@ pub enum TrapReason {
     EnvCall,
 }
 
+impl From<TrapReason> for TrapMask {
+    fn from(value: TrapReason) -> Self {
+        match value {
+            TrapReason::InstructionMisaligned => TrapMask::InstructionMisaligned,
+            TrapReason::InstructionFault => TrapMask::InstructionFault,
+            TrapReason::IllegalInstruction => TrapMask::IllegalInstruction,
+            TrapReason::Breakpoint => TrapMask::Breakpoint,
+            TrapReason::LoadMisaligned => TrapMask::LoadMisaligned,
+            TrapReason::LoadFault => TrapMask::LoadFault,
+            TrapReason::StoreMisaligned => TrapMask::StoreMisaligned,
+            TrapReason::StoreFault => TrapMask::StoreFault,
+            TrapReason::InstructionPageFault => TrapMask::InstructionPageFault,
+            TrapReason::LoadPageFault => TrapMask::LoadPageFault,
+            TrapReason::StorePageFault => TrapMask::StorePageFault,
+            TrapReason::EnvCall => TrapMask::EnvCall,
+        }
+    }
+}
+
+bitflags! {
+    pub struct TrapMask: usize {
+        const SupervisorSoftwareInterrupt = 1 << 0;
+        const SupervisorTimerInterrupt = 1 << 1;
+        const SupervisorExternalInterrupt = 1 << 2;
+        const InstructionMisaligned = 1 << 3;
+        const InstructionFault = 1 << 4;
+        const IllegalInstruction = 1 << 5;
+        const Breakpoint = 1 << 6;
+        const LoadMisaligned = 1 << 7;
+        const LoadFault = 1 << 8;
+        const StoreMisaligned = 1 << 9;
+        const StoreFault = 1 << 10;
+        const InstructionPageFault = 1 << 11;
+        const LoadPageFault = 1 << 12;
+        const StorePageFault = 1 << 13;
+        const EnvCall = 1 << 14;
+    }
+}
+
 struct TrapResumeState {
+    mask: TrapMask,
     catch_fn: fn(*mut u8, Trap),
     data_ptr: *mut u8,
     prev_state: *mut TrapResumeState,
     jmp_buf: arch::JmpBuf,
 }
 
-/// Raises a trap on the current hart without triggering subsystem page fault routines (i.e. faulting
+/// Raises a trap on the current cpu without triggering subsystem page fault routines (i.e. faulting
 /// in pages).
 pub fn resume_trap(trap: Trap) -> ! {
     IN_TRAP_HANDLER.set(false);
 
-    let data = TRAP_RESUME_STATE.get();
-    if data.is_null() {
-        // If data is null that means we encountered a trap without any `catch_traps`. So just
-        // delegate to the default resume function which just panics
-        fault_resume_panic(trap.reason, trap.pc, trap.fp, trap.faulting_address);
-    } else {
-        // Safety: If the data pointer is not null, it must point to some `TrapResumeState` struct
-        // so all fields are initialized and valid
-        unsafe {
-            let data = &*data;
+    let mut data = TRAP_RESUME_STATE.get();
+    loop {
+        if let Some(_data) = NonNull::new(data) {
+            // Safety: data has to have been inserted by `catch_traps` therefore is valid
+            let _data = unsafe { _data.as_ref() };
+            if _data.mask.contains(trap.reason.into()) {
+                // Safety: If the data pointer is not null, it must point to some `TrapResumeState` struct
+                // so all fields are initialized and valid
+                let data = unsafe { &*data };
 
-            (data.catch_fn)(data.data_ptr, trap);
+                (data.catch_fn)(data.data_ptr, trap);
 
-            TRAP_RESUME_STATE.set(data.prev_state);
+                TRAP_RESUME_STATE.set(data.prev_state);
 
-            longjmp(data.jmp_buf, 1);
+                // Safety: this is a longjump across stack frames, there really isn't any safety here
+                unsafe {
+                    longjmp(data.jmp_buf, 1);
+                }
+            } else {
+                data = _data.prev_state;
+            }
+        } else {
+            // If data is null that means we encountered a trap without any `catch_traps`. So just
+            // delegate to the default resume function which just panics
+            fault_resume_panic(trap.reason, trap.pc, trap.fp, trap.faulting_address);
         }
     }
 }
@@ -104,7 +150,7 @@ pub fn resume_trap(trap: Trap) -> ! {
 /// holds further information about the traps instruction pointer, faulting address and trap reason.
 ///
 /// [1]: [crate::panic::catch_unwind]
-pub fn catch_traps<F, R>(f: F) -> Result<R, Trap>
+pub fn catch_traps<F, R>(mask: TrapMask, f: F) -> Result<R, Trap>
 where
     F: FnOnce() -> R,
 {
@@ -129,6 +175,7 @@ where
     let ret_code = arch::call_with_setjmp(|jmp_buf| {
         let mut state = TrapResumeState {
             catch_fn: do_catch::<R>,
+            mask,
             data_ptr,
             prev_state: TRAP_RESUME_STATE.get(),
             jmp_buf: ptr::from_ref(jmp_buf),

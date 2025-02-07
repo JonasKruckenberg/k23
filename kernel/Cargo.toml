@@ -14,13 +14,14 @@ workspace = true
 
 [dependencies]
 loader-api.workspace = true
-thread-local.workspace = true
+cpu-local.workspace = true
 sync.workspace = true
-dtb-parser.workspace = true
 linked-list.workspace = true
 unwind2.workspace = true
 backtrace.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
+mpsc-queue.workspace = true
+fdt.workspace = true
 
 log.workspace = true
 cfg-if.workspace = true
@@ -36,6 +37,10 @@ pin-project = "1"
 smallvec.workspace = true
 hashbrown.workspace = true
 gimli.workspace = true
+lock_api.workspace = true
+bumpalo = { workspace = true, features = ["boxed"] }
+ouroboros = "0.18.5"
+mycelium-bitfield = "0.1.5"
 
 wasmparser.workspace = true
 target-lexicon.workspace = true

@@ -60,7 +60,7 @@ impl Flush {
     /// # Safety
     ///
     /// Not flushing after mutating the page translation tables will likely lead to unintended
-    /// consequences such as inconsistent views of the address space between different harts.
+    /// consequences such as inconsistent views of the address space between different cpus.
     ///
     /// You should only call this if you know what you're doing.
     pub unsafe fn ignore(self) {

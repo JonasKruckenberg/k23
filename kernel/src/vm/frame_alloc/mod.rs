@@ -9,18 +9,20 @@ mod arena;
 mod frame;
 
 use crate::arch;
-use crate::thread_local::ThreadLocal;
+use crate::cpu_local::CpuLocal;
 use crate::vm::address::VirtualAddress;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use crate::vm::frame_list::FrameList;
+use crate::vm::PhysicalAddress;
 use alloc::vec::Vec;
 use arena::{select_arenas, Arena};
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::fmt::Formatter;
 use core::ptr::NonNull;
+use core::range::Range;
 use core::sync::atomic::AtomicUsize;
-use core::{cmp, fmt, slice};
+use core::{cmp, fmt, iter, slice};
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
 use sync::{Mutex, OnceLock};
@@ -28,13 +30,14 @@ use sync::{Mutex, OnceLock};
 static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 
 #[cold]
-pub fn init(boot_alloc: BootstrapAllocator) {
+pub fn init(boot_alloc: BootstrapAllocator, fdt_region: Range<PhysicalAddress>) {
     #[expect(tail_expr_drop_order, reason = "")]
     FRAME_ALLOC.get_or_init(|| {
         let mut max_alignment = arch::PAGE_SIZE;
         let mut arenas = Vec::new();
 
-        for selection_result in select_arenas(boot_alloc.free_regions()).iterator() {
+        let phys_regions = boot_alloc.free_regions().chain(iter::once(fdt_region));
+        for selection_result in select_arenas(phys_regions).iterator() {
             match selection_result {
                 Ok(selection) => {
                     log::trace!("selection {selection:?}");
@@ -54,7 +57,7 @@ pub fn init(boot_alloc: BootstrapAllocator) {
                 max_alignment,
             }),
             frames_in_caches_hint: AtomicUsize::new(0),
-            hart_local_cache: ThreadLocal::new(),
+            cpu_local_cache: CpuLocal::new(),
         }
     });
 }
@@ -62,9 +65,9 @@ pub fn init(boot_alloc: BootstrapAllocator) {
 pub struct FrameAllocator {
     /// Global list of arenas that can be allocated from.
     global: Mutex<GlobalFrameAllocator>,
-    /// Per-hart cache of frames to speed up allocation.
-    hart_local_cache: ThreadLocal<RefCell<HartLocalFrameCache>>,
-    /// Number of frames - across all harts - that are in hart-local caches.
+    /// Per-cpu cache of frames to speed up allocation.
+    cpu_local_cache: CpuLocal<RefCell<CpuLocalFrameCache>>,
+    /// Number of frames - across all cpus - that are in cpu-local caches.
     /// This value must only ever be treated as a hint and should only be used to
     /// produce more accurate frame usage statistics.
     frames_in_caches_hint: AtomicUsize,
@@ -91,8 +94,8 @@ pub fn alloc_one() -> Result<Frame, AllocError> {
         .get()
         .expect("cannot access FRAME_ALLOC before it is initialized");
 
-    let mut hart_local_cache = alloc.hart_local_cache.get_or_default().borrow_mut();
-    let frame = hart_local_cache
+    let mut cpu_local_cache = alloc.cpu_local_cache.get_or_default().borrow_mut();
+    let frame = cpu_local_cache
         .allocate_one()
         .or_else(|| {
             let mut global_alloc = alloc.global.lock();
@@ -131,24 +134,24 @@ pub fn alloc_contiguous(layout: Layout) -> Result<FrameList, AllocError> {
         .get()
         .expect("cannot access FRAME_ALLOC before it is initialized");
 
-    // try to allocate from the per-hart cache first
-    let mut hart_local_cache = alloc.hart_local_cache.get_or_default().borrow_mut();
-    let frames = hart_local_cache
+    // try to allocate from the per-cpu cache first
+    let mut cpu_local_cache = alloc.cpu_local_cache.get_or_default().borrow_mut();
+    let frames = cpu_local_cache
         .allocate_contiguous(layout)
         .or_else(|| {
             let mut global_alloc = alloc.global.lock();
 
             log::trace!(
-                "Hart-local cache exhausted, refilling {} frames...",
+                "CPU-local cache exhausted, refilling {} frames...",
                 layout.size() / arch::PAGE_SIZE
             );
             let mut frames = global_alloc.allocate_contiguous(layout)?;
-            hart_local_cache.free_list.append(&mut frames);
+            cpu_local_cache.free_list.append(&mut frames);
 
             log::trace!("retrying allocation...");
             // If this fails then we failed to pull enough frames from the global allocator
             // which means we're fully out of frames
-            hart_local_cache.allocate_contiguous(layout)
+            cpu_local_cache.allocate_contiguous(layout)
         })
         .ok_or(AllocError)?;
 
@@ -214,11 +217,11 @@ impl GlobalFrameAllocator {
 }
 
 #[derive(Default)]
-struct HartLocalFrameCache {
+struct CpuLocalFrameCache {
     free_list: linked_list::List<FrameInfo>,
 }
 
-impl HartLocalFrameCache {
+impl CpuLocalFrameCache {
     fn allocate_one(&mut self) -> Option<NonNull<FrameInfo>> {
         self.free_list.pop_front()
     }

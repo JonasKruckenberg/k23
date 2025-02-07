@@ -18,6 +18,7 @@ pub mod scause;
 pub mod scounteren;
 pub mod sepc;
 pub mod sie;
+pub mod sip;
 pub mod sscratch;
 pub mod sstatus;
 pub mod stval;

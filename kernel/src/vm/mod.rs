@@ -18,7 +18,6 @@ mod user_mmap;
 mod vmo;
 
 use crate::arch;
-use crate::machine_info::MachineInfo;
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
 pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
@@ -47,17 +46,24 @@ static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
     frame
 });
 
-pub fn init(boot_info: &BootInfo, minfo: &MachineInfo) -> crate::Result<()> {
+pub fn with_kernel_aspace<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut AddressSpace) -> R,
+{
+    let mut aspace = KERNEL_ASPACE
+        .get()
+        .expect("kernel address space not initialized")
+        .lock();
+    f(&mut aspace)
+}
+
+pub fn init(boot_info: &BootInfo, rand: &mut impl rand::RngCore) -> crate::Result<()> {
     #[expect(tail_expr_drop_order, reason = "")]
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
-        let mut aspace = AddressSpace::from_active_kernel(
-            hw_aspace,
-            Some(ChaCha20Rng::from_seed(
-                minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
-            )),
-        );
+        let mut aspace =
+            AddressSpace::from_active_kernel(hw_aspace, Some(ChaCha20Rng::from_rng(rand).unwrap()));
 
         reserve_wired_regions(&mut aspace, boot_info, &mut flush);
         flush.flush().unwrap();

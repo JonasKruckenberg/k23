@@ -9,6 +9,8 @@
 #![no_std]
 #![cfg_attr(feature = "thread-local", feature(thread_local))]
 
+mod backoff;
+mod barrier;
 mod lazy_lock;
 mod once;
 mod once_lock;
@@ -20,6 +22,8 @@ mod reentrant_mutex;
 pub use raw_mutex::RawMutex;
 pub use raw_rwlock::RawRwLock;
 
+pub use backoff::Backoff;
+pub use barrier::{Barrier, BarrierWaitResult};
 pub use lazy_lock::LazyLock;
 pub use once::Once;
 pub use once_lock::OnceLock;

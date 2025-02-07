@@ -7,15 +7,16 @@
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
-use crate::trap_handler::TrapReason;
+use crate::scheduler::scheduler;
+use crate::traps::TrapReason;
 use crate::vm::VirtualAddress;
 use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
+use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
-use riscv::{scause, sepc, sstatus, stval, stvec};
-use thread_local::thread_local;
+use riscv::{sbi, scause, sepc, sip, sstatus, stval, stvec};
 
-thread_local! {
+cpu_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
 }
 
@@ -27,7 +28,7 @@ pub fn init() {
             .byte_add(TRAP_STACK_SIZE_PAGES * PAGE_SIZE) as *mut u8
     };
 
-    log::debug!("setting sscratch to {:p}", trap_stack_top);
+    log::trace!("setting sscratch to {:p}", trap_stack_top);
     // Safety: inline assembly
     unsafe {
         asm!(
@@ -36,7 +37,7 @@ pub fn init() {
         );
     }
 
-    log::debug!("setting trap vec to {:#x}", trap_vec as usize);
+    log::trace!("setting trap vec to {:#x}", trap_vec as usize);
     // Safety: register access
     unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
 }
@@ -269,14 +270,23 @@ fn default_trap_handler(
     log::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
 
     let reason = match cause {
-        Trap::Interrupt(Interrupt::SupervisorSoft | Interrupt::VirtualSupervisorSoft) => {
-            TrapReason::SupervisorSoftwareInterrupt
+        Trap::Interrupt(Interrupt::SupervisorSoft) => {
+            // Safety: register access
+            unsafe {
+                sip::clear_ssoft();
+            }
+            // Software interrupts are always IPIs used for unparking
+            return raw_frame;
         }
-        Trap::Interrupt(Interrupt::SupervisorTimer | Interrupt::VirtualSupervisorTimer) => {
-            TrapReason::SupervisorTimerInterrupt
-        }
-        Trap::Interrupt(Interrupt::SupervisorExternal | Interrupt::VirtualSupervisorExternal) => {
-            TrapReason::SupervisorSoftwareInterrupt
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            if let (_, Some(next_deadline)) = scheduler().cpu_local_timer().turn() {
+                // Timer interrupts are always IPIs used for sleeping
+                sbi::time::set_timer(next_deadline.ticks.0).unwrap();
+            } else {
+                // Timer interrupts are always IPIs used for sleeping
+                sbi::time::set_timer(u64::MAX).unwrap();
+            }
+            return raw_frame;
         }
         Trap::Exception(Exception::InstructionMisaligned) => TrapReason::InstructionMisaligned,
         Trap::Exception(Exception::InstructionFault) => TrapReason::InstructionFault,
@@ -295,7 +305,7 @@ fn default_trap_handler(
         _ => unreachable!(),
     };
 
-    crate::trap_handler::begin_trap(crate::trap_handler::Trap {
+    crate::traps::begin_trap(crate::traps::Trap {
         pc: VirtualAddress::new(epc).unwrap(),
         fp: VirtualAddress::new(frame.gp[8]).unwrap(),
         faulting_address: VirtualAddress::new(tval).unwrap(),

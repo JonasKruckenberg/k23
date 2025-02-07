@@ -1,13 +1,13 @@
 [package]
-name = "dtb-parser"
-description = "A device tree blob parser"
+name = "mpsc-queue"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
 fallible-iterator.workspace = true
+sync.workspace = true
+
+[lints]
+workspace = true
