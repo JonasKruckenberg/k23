@@ -137,7 +137,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     arch::per_cpu_init_late(device_tree()).unwrap();
 
     // initialize the executor
-    let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize, true);
+    let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
 
     log::info!(
         "Booted in ~{:?} ({:?} in k23)",

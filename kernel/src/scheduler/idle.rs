@@ -12,7 +12,7 @@ use sync::Mutex;
 
 pub struct Idle {
     /// Number of searching workers
-    num_stealing: AtomicUsize,
+    num_searching: AtomicUsize,
     /// Number of idle workers
     num_idle: AtomicUsize,
     /// Map of idle cores
@@ -30,7 +30,7 @@ pub(crate) struct IdleMap {
 impl Idle {
     pub fn new(num_cores: usize) -> Self {
         Self {
-            num_stealing: AtomicUsize::new(0),
+            num_searching: AtomicUsize::new(0),
             num_idle: AtomicUsize::new(0),
             idle_map: IdleMap::new(num_cores),
             num_cores,
@@ -38,11 +38,15 @@ impl Idle {
         }
     }
 
+    pub(crate) fn num_searching(&self) -> usize {
+        self.num_searching.load(Ordering::Acquire)
+    }
+
     pub fn transition_worker_to_waiting(&self, worker: &super::Worker) {
         // log::trace!("Idle::transition_worker_to_waiting");
 
         // The worker should not be stealing at this point
-        debug_assert!(!worker.is_stealing);
+        debug_assert!(!worker.is_searching);
         // Check that there are no pending tasks in the global queue
         debug_assert!(worker.scheduler.run_queue.is_empty());
 
@@ -70,30 +74,30 @@ impl Idle {
             .retain(|sleeper| *sleeper != worker.cpuid);
     }
 
-    pub fn try_transition_worker_to_stealing(&self, worker: &mut super::Worker) {
-        // log::trace!("Idle::try_transition_worker_to_stealing");
+    pub fn try_transition_worker_to_searching(&self, worker: &mut super::Worker) {
+        // log::trace!("Idle::try_transition_worker_to_searching");
 
-        debug_assert!(!worker.is_stealing);
+        debug_assert!(!worker.is_searching);
 
-        let num_searching = self.num_stealing.load(Ordering::Acquire);
+        let num_searching = self.num_searching.load(Ordering::Acquire);
         let num_idle = self.num_idle.load(Ordering::Acquire);
 
         if 2 * num_searching >= self.num_cores - num_idle {
             return;
         }
 
-        worker.is_stealing = true;
-        self.num_stealing.fetch_add(1, Ordering::AcqRel);
+        worker.is_searching = true;
+        self.num_searching.fetch_add(1, Ordering::AcqRel);
     }
 
-    /// A lightweight transition from stealing -> running.
+    /// A lightweight transition from searching -> running.
     ///
     /// Returns `true` if this is the final searching worker. The caller
     /// **must** notify a new worker.
-    pub fn transition_worker_from_stealing(&self) -> bool {
-        // log::trace!("Idle::transition_worker_from_stealing");
+    pub fn transition_worker_from_searching(&self) -> bool {
+        // log::trace!("Idle::transition_worker_from_searching");
 
-        let prev = self.num_stealing.fetch_sub(1, Ordering::AcqRel);
+        let prev = self.num_searching.fetch_sub(1, Ordering::AcqRel);
         debug_assert!(prev > 0);
 
         prev == 1

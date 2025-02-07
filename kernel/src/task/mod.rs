@@ -317,17 +317,6 @@ impl TaskRef {
         Ok(Self(unsafe { NonNull::new_unchecked(ptr).cast() }))
     }
 
-    #[expect(tail_expr_drop_order, reason = "")]
-    pub(crate) fn try_new_stub_in<A>(alloc: A) -> Result<Self, AllocError>
-    where
-        A: Allocator,
-    {
-        let ptr = Box::into_raw(Box::try_new_in(Task::<Stub, Stub>::new_stub(), alloc)?);
-
-        // Safety: we just allocated the ptr so it is never null
-        Ok(Self(unsafe { NonNull::new_unchecked(ptr).cast() }))
-    }
-
     pub(crate) unsafe fn from_raw(ptr: NonNull<Header>) -> Self {
         Self(ptr)
     }
@@ -448,7 +437,7 @@ impl Drop for TaskRef {
     #[inline]
     #[track_caller]
     fn drop(&mut self) {
-        log::debug!("TaskRef::drop task.addr={:?}", self.0);
+        log::trace!("TaskRef::drop task.addr={:?}", self.0);
         if !self.state().drop_ref() {
             return;
         }
@@ -839,34 +828,6 @@ where
     }
 }
 
-impl Task<Stub, Stub> {
-    const STUB_VTABLE: Vtable = Vtable {
-        poll: Header::stub_poll,
-        poll_join: Header::stub_poll_join,
-        // STUB_VTABLE points all methods to the static header stub methods EXCEPT for
-        // deallocate which we actually want to be a proper deallocation
-        deallocate: Task::<Stub, Stub>::deallocate,
-        wake_by_ref: Header::stub_wake_by_ref,
-    };
-
-    pub fn new_stub() -> Self {
-        Self {
-            schedulable: Schedulable {
-                header: Header {
-                    state: State::new(),
-                    vtable: &Self::STUB_VTABLE,
-                    id: Id::stub(),
-                    run_queue_links: mpsc_queue::Links::new_stub(),
-                    owned_tasks_links: linked_list::Links::new(),
-                },
-                scheduler: Stub,
-            },
-            stage: UnsafeCell::new(Stage::Pending(Stub)),
-            join_waker: UnsafeCell::new(None),
-        }
-    }
-}
-
 impl<F> Stage<F>
 where
     F: Future,
@@ -1016,20 +977,5 @@ impl<S: Schedule> Schedulable<S> {
             let this = ptr.cast_mut();
             Self::drop_ref(non_null(this));
         }
-    }
-}
-
-struct Stub;
-
-impl Schedule for Stub {
-    fn schedule(&self, _task: TaskRef) {
-        unreachable!()
-    }
-}
-impl Future for Stub {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        unreachable!()
     }
 }
