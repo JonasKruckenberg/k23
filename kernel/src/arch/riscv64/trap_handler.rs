@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
-use crate::arch::riscv64::IN_TIMEOUT;
 use crate::arch::PAGE_SIZE;
+use crate::scheduler::scheduler;
 use crate::traps::TrapReason;
 use crate::vm::VirtualAddress;
 use crate::TRAP_STACK_SIZE_PAGES;
@@ -267,7 +267,7 @@ fn default_trap_handler(
     log::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
 
     let reason = match cause {
-        Trap::Interrupt(Interrupt::SupervisorSoft | Interrupt::VirtualSupervisorSoft) => {
+        Trap::Interrupt(Interrupt::SupervisorSoft) => {
             // Safety: register access
             unsafe {
                 sip::clear_ssoft();
@@ -275,11 +275,14 @@ fn default_trap_handler(
             // Software interrupts are always IPIs used for unparking
             return raw_frame;
         }
-        Trap::Interrupt(Interrupt::SupervisorTimer | Interrupt::VirtualSupervisorTimer) => {
-            IN_TIMEOUT.set(false);
-
-            // Timer interrupts are always IPIs used for sleeping
-            sbi::time::set_timer(u64::MAX).unwrap();
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            if let (_, Some(next_deadline)) = scheduler().cpu_local_timer().turn() {
+                // Timer interrupts are always IPIs used for sleeping
+                sbi::time::set_timer(next_deadline.ticks.0).unwrap();
+            } else {
+                // Timer interrupts are always IPIs used for sleeping
+                sbi::time::set_timer(u64::MAX).unwrap();
+            }
             return raw_frame;
         }
         Trap::Exception(Exception::InstructionMisaligned) => TrapReason::InstructionMisaligned,

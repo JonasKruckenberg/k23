@@ -11,6 +11,7 @@ use crate::time::sleep::Entry;
 use crate::time::Clock;
 use core::pin::Pin;
 use core::ptr::NonNull;
+use core::sync::atomic::Ordering;
 use core::task::Poll;
 use core::time::Duration;
 use sync::Mutex;
@@ -200,7 +201,7 @@ impl Core {
                         deadline.wheel, 0,
                         "if a timer is being rescheduled, it must not have been on the lowest-level wheel"
                     );
-                    log::trace!("rescheduling entry {entry:?}");
+                    log::trace!("rescheduling entry {entry:?} because deadline {entry_deadline:?} is later than now {now:?}");
                     // this timer will need to be rescheduled.
                     pending_reschedule.push_front(entry);
                 } else {
@@ -264,10 +265,17 @@ impl Core {
                 return Poll::Ready(());
             }
 
+            let _did_link = entry.is_registered.compare_exchange(
+                false,
+                true,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            );
             debug_assert!(
-                !entry.links.is_linked(),
+                _did_link.is_ok(),
                 "tried to register a sleep that was already registered"
             );
+
             entry.deadline
         };
 
@@ -349,11 +357,6 @@ impl Wheel {
     }
 
     fn remove(&mut self, deadline: Ticks, entry: Pin<&mut Entry>) {
-        debug_assert!(
-            entry.links.is_linked(),
-            "removed a sleep whose linked bit was already unset, this is potentially real bad"
-        );
-
         let slot = self.slot_index(deadline);
         // safety: we will not use the `NonNull` to violate pinning
         // invariants; it's used only to insert the sleep into the intrusive
@@ -362,7 +365,18 @@ impl Wheel {
         // is like...working...)
         unsafe {
             let ptr = NonNull::from(Pin::into_inner_unchecked(entry));
-            let _ = self.slots[slot].cursor_from_ptr_mut(ptr).remove();
+            if let Some(entry) = self.slots[slot].cursor_from_ptr_mut(ptr).remove() {
+                let _did_unlink = entry.as_ref().is_registered.compare_exchange(
+                    true,
+                    false,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                );
+                debug_assert!(
+                    _did_unlink.is_ok(),
+                    "removed a sleep whose linked bit was already unset, this is potentially real bad"
+                );
+            }
         };
 
         if self.slots[slot].is_empty() {

@@ -20,18 +20,18 @@ pub struct OwnedTasks {
 }
 
 impl OwnedTasks {
-    pub(crate) fn new() -> Self {
+    pub const fn new() -> Self {
         OwnedTasks {
             list: Mutex::new(linked_list::List::new()),
             closed: AtomicBool::new(false),
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.list.lock().is_empty()
     }
 
-    pub(crate) fn bind<F, S>(
+    pub fn bind<F, S>(
         &self,
         future: F,
         scheduler: S,
@@ -49,7 +49,7 @@ impl OwnedTasks {
         (join, task)
     }
 
-    pub(crate) fn bind_local<F, S>(
+    pub fn bind_local<F, S>(
         &self,
         future: F,
         scheduler: S,
@@ -80,7 +80,7 @@ impl OwnedTasks {
         Some(task)
     }
 
-    pub(crate) fn close_and_shutdown_all(&self) {
+    pub fn close_and_shutdown_all(&self) {
         if !self.closed.swap(true, Ordering::AcqRel) {
             log::trace!("closing OwnedTasks");
             let mut list = self.list.lock();
@@ -94,20 +94,19 @@ impl OwnedTasks {
         }
     }
 
-    // pub(crate) fn remove(&self, task: &TaskRef) -> Option<TaskRef> {
-    //     let mut list = self.list.lock();
-    //     // Check the closed flag in the lock for ensuring all that tasks
-    //     // will shut down after the OwnedTasks has been closed.
-    //     if self.closed.load(Ordering::Acquire) {
-    //         drop(list);
-    //         task.shutdown();
-    //         return None;
-    //     }
-    //
-    //     log::trace!("removing task from owned tasks");
-    //
-    //     // Safety: `OwnedTasks::bind`/`OwnedTasks::bind_local` are called during task creation
-    //     // so every task is necessarily in our list until this point
-    //     unsafe { list.cursor_from_ptr_mut(task.header_ptr()).remove() }
-    // }
+    pub fn remove(&self, task: TaskRef) -> Option<TaskRef> {
+        let mut list = self.list.lock();
+        // Check the closed flag in the lock for ensuring all that tasks
+        // will shut down after the OwnedTasks has been closed.
+        if self.closed.load(Ordering::Acquire) {
+            drop(list);
+            return None;
+        }
+
+        log::trace!("removing task from owned tasks");
+
+        // Safety: `OwnedTasks::bind`/`OwnedTasks::bind_local` are called during task creation
+        // so every task is necessarily in our list until this point
+        unsafe { list.cursor_from_ptr_mut(task.header_ptr()).remove() }
+    }
 }
