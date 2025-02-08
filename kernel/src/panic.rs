@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use panic_count::MustAbort;
 use alloc::boxed::Box;
 use alloc::string::String;
 use backtrace::{Backtrace, SymbolizeContext};
@@ -14,6 +13,7 @@ use core::any::Any;
 use core::panic::{PanicPayload, UnwindSafe};
 use core::{fmt, mem, slice};
 use loader_api::BootInfo;
+use panic_count::MustAbort;
 use sync::{LazyLock, OnceLock};
 
 static GLOBAL_PANIC_STATE: OnceLock<GlobalPanicState> = OnceLock::new();
@@ -78,7 +78,7 @@ where
 /// Triggers a panic without invoking the panic hook.
 pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
     //     rust_panic(payload)
-    
+
     panic_count::increase(false);
 
     struct RewrapBox(Box<dyn Any + Send>);
