@@ -22,7 +22,7 @@ use core::num::NonZeroUsize;
 use core::ops::Bound;
 use core::pin::Pin;
 use core::range::{Range, RangeBounds};
-use rand::distributions::Uniform;
+use rand::distr::Uniform;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 
@@ -584,7 +584,7 @@ impl AddressSpace {
         let selected_index: usize = self
             .prng
             .as_mut()
-            .map(|prng| prng.sample(Uniform::new(0, max_candidate_spaces)))
+            .map(|prng| prng.sample(Uniform::new(0, max_candidate_spaces).unwrap()))
             .unwrap_or_default();
 
         let spot = match self.find_spot_at_index(selected_index, layout) {
@@ -596,7 +596,7 @@ impl AddressSpace {
                     .prng
                     .as_mut()
                     .unwrap()
-                    .sample(Uniform::new(0, candidate_spot_count));
+                    .sample(Uniform::new(0, candidate_spot_count).unwrap());
 
                 self.find_spot_at_index(selected_index, layout).unwrap()
             }
