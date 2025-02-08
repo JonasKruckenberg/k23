@@ -63,7 +63,7 @@ pub fn init(boot_info: &BootInfo, rand: &mut impl rand::RngCore) -> crate::Resul
         let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
         let mut aspace =
-            AddressSpace::from_active_kernel(hw_aspace, Some(ChaCha20Rng::from_rng(rand).unwrap()));
+            AddressSpace::from_active_kernel(hw_aspace, Some(ChaCha20Rng::from_rng(rand)));
 
         reserve_wired_regions(&mut aspace, boot_info, &mut flush);
         flush.flush().unwrap();
