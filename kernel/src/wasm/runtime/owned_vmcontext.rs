@@ -24,7 +24,7 @@ impl OwnedVMContext {
                 Permissions::READ | Permissions::WRITE,
                 |range, flags, batch| {
                     let region =
-                        AddressSpaceRegion::new_zeroed(range, flags, Some("VMCOntext".to_string()));
+                        AddressSpaceRegion::new_zeroed(range, flags, Some("VMContext".to_string()));
 
                     region.commit(batch, range, true)?;
 
