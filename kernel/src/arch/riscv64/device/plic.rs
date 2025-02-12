@@ -8,7 +8,9 @@
 use crate::arch::PAGE_SIZE;
 use crate::device_tree::{Device, DeviceTree, IrqSource};
 use crate::irq::{InterruptController, IrqClaim};
-use crate::vm::{with_kernel_aspace, AddressRangeExt, Permissions, PhysicalAddress, Vmo};
+use crate::vm::{
+    with_kernel_aspace, AddressRangeExt, AddressSpaceRegion, Permissions, PhysicalAddress,
+};
 use alloc::string::ToString;
 use core::alloc::Layout;
 use core::mem::{offset_of, MaybeUninit};
@@ -103,7 +105,7 @@ impl Plic {
             })
             .unwrap();
 
-        let mmio_region = {
+        let mmio_range = {
             let reg = dev.regs().unwrap().next()?.unwrap();
 
             let start = PhysicalAddress::new(reg.starting_address);
@@ -111,21 +113,24 @@ impl Plic {
         };
 
         let mmio_region = with_kernel_aspace(|aspace| {
-            let layout = Layout::from_size_align(mmio_region.size(), PAGE_SIZE).unwrap();
-            let vmo = Vmo::new_wired(mmio_region);
-
-            let virt = aspace
+            let layout = Layout::from_size_align(mmio_range.size(), PAGE_SIZE).unwrap();
+            aspace
                 .map(
                     layout,
-                    vmo,
-                    0,
                     Permissions::READ | Permissions::WRITE,
-                    Some("PLIC".to_string()),
+                    |range, perms, batch| {
+                        let region = AddressSpaceRegion::new_phys(
+                            range,
+                            perms,
+                            mmio_range,
+                            Some("PLIC".to_string()),
+                        );
+                        region.commit(batch, range, true)?;
+                        Ok(region)
+                    },
                 )
                 .unwrap()
-                .range;
-            aspace.ensure_mapped(virt, true).unwrap();
-            virt
+                .range
         });
 
         // Specifies how many external interrupts are supported by this controller.

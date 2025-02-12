@@ -6,32 +6,24 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::address::{AddressRangeExt, VirtualAddress};
-use crate::vm::address_space::Batch;
-use crate::vm::vmo::Vmo;
-use crate::vm::Error;
-use crate::vm::{PageFaultFlags, Permissions};
+use crate::vm::address::VirtualAddress;
+use crate::vm::{AddressRangeExt, Batch, Error, PageFaultFlags, Permissions, PhysicalAddress, Vmo};
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
 use core::cmp;
 use core::mem::offset_of;
+use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::range::Range;
 use pin_project::pin_project;
-use wavltree::Side;
+use sync::LazyLock;
 
 /// A contiguous region of an address space
 #[pin_project]
 #[derive(Debug)]
 pub struct AddressSpaceRegion {
-    /// Links to other regions in the WAVL tree
-    pub(super) links: wavltree::Links<AddressSpaceRegion>,
-    /// The address range covered by this region and its WAVL tree subtree, used when allocating new regions
-    pub(super) max_range: Range<VirtualAddress>,
-    /// The largest gap in this subtree, used when allocating new regions
-    pub(super) max_gap: usize,
     /// The address range covered by this region
     pub range: Range<VirtualAddress>,
     /// The permissions of this region
@@ -41,33 +33,161 @@ pub struct AddressSpaceRegion {
     /// The Virtual Memory Object backing this region
     pub vmo: Arc<Vmo>,
     pub vmo_offset: usize,
+    /// The address range covered by this region and its WAVL tree subtree, used when allocating new regions
+    pub(super) max_range: Range<VirtualAddress>,
+    /// The largest gap in this subtree, used when allocating new regions
+    pub(super) max_gap: usize,
+    /// Links to other regions in the WAVL tree
+    pub(super) links: wavltree::Links<AddressSpaceRegion>,
 }
 
 impl AddressSpaceRegion {
-    #[expect(tail_expr_drop_order, reason = "")]
-    pub(crate) fn new(
+    pub fn new_zeroed(
         range: Range<VirtualAddress>,
         permissions: Permissions,
-        vmo: Arc<Vmo>,
-        vmo_offset: usize,
         name: Option<String>,
-    ) -> Pin<Box<Self>> {
-        Box::pin(Self {
-            links: wavltree::Links::default(),
-            max_range: range,
-            max_gap: 0,
+    ) -> Self {
+        Self {
             range,
             permissions,
             name,
-            vmo,
-            vmo_offset,
-        })
+            vmo: Arc::new(Vmo::new_zeroed()),
+            vmo_offset: 0,
+            max_gap: 0,
+            max_range: range,
+            links: wavltree::Links::default(),
+        }
     }
 
-    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
-    pub fn unmap(self: Pin<&mut Self>, range: Range<VirtualAddress>) -> Result<(), Error> {
+    pub fn new_phys(
+        virt: Range<VirtualAddress>,
+        permissions: Permissions,
+        phys: Range<PhysicalAddress>,
+        name: Option<String>,
+    ) -> AddressSpaceRegion {
+        Self {
+            range: virt,
+            permissions,
+            name,
+            vmo: Arc::new(Vmo::new_phys(phys)),
+            vmo_offset: 0,
+            max_gap: 0,
+            max_range: virt,
+            links: wavltree::Links::default(),
+        }
+    }
+
+    pub fn new_wired(
+        range: Range<VirtualAddress>,
+        permissions: Permissions,
+        name: Option<String>,
+    ) -> AddressSpaceRegion {
+        #[expect(tail_expr_drop_order, reason = "")]
+        static WIRED_VMO: LazyLock<Arc<Vmo>> = LazyLock::new(|| Arc::new(Vmo::Wired));
+
+        Self {
+            range,
+            permissions,
+            name,
+            vmo: WIRED_VMO.clone(),
+            vmo_offset: 0,
+            max_gap: 0,
+            max_range: range,
+            links: wavltree::Links::default(),
+        }
+    }
+
+    // #[expect(tail_expr_drop_order, reason = "")]
+    // pub(crate) fn new(
+    //     range: Range<VirtualAddress>,
+    //     permissions: Permissions,
+    //     vmo: Arc<Vmo>,
+    //     vmo_offset: usize,
+    //     name: Option<String>,
+    // ) -> Pin<Box<Self>> {
+    //     Box::pin(Self {
+    //         links: wavltree::Links::default(),
+    //         max_range: range,
+    //         max_gap: 0,
+    //         range,
+    //         permissions,
+    //         name,
+    //         vmo,
+    //         vmo_offset,
+    //     })
+    // }
+
+    pub fn commit(
+        &self,
+        batch: &mut Batch,
+        range: Range<VirtualAddress>,
+        will_write: bool,
+    ) -> Result<(), Error> {
+        let vmo_relative_range = Range {
+            start: range.start.checked_sub_addr(self.range.start).unwrap(),
+            end: range.end.checked_sub_addr(self.range.start).unwrap(),
+        };
+
         match self.vmo.as_ref() {
-            Vmo::Wired(_) => panic!("cannot unmap wired frames"),
+            Vmo::Wired => unreachable!(),
+            Vmo::Phys(vmo) => {
+                let range_phys = vmo
+                    .lookup_contiguous(vmo_relative_range)
+                    .expect("contiguous lookup for wired VMOs should never fail");
+
+                batch.queue_map(
+                    range.start,
+                    range_phys.start,
+                    NonZeroUsize::new(range_phys.size()).unwrap(),
+                    self.permissions.into(),
+                )?;
+            }
+            Vmo::Paged(vmo) => {
+                if will_write {
+                    let mut vmo = vmo.write();
+
+                    for addr in range.iter().step_by(arch::PAGE_SIZE) {
+                        debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
+                        let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
+                        let frame = vmo.require_owned_frame(vmo_relative_offset)?;
+                        batch.queue_map(
+                            addr,
+                            frame.addr(),
+                            NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
+                            self.permissions.into(),
+                        )?;
+                    }
+                } else {
+                    let mut vmo = vmo.write();
+
+                    for addr in range.iter().step_by(arch::PAGE_SIZE) {
+                        debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
+                        let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
+                        let frame = vmo.require_read_frame(vmo_relative_offset)?;
+                        batch.queue_map(
+                            addr,
+                            frame.addr(),
+                            NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
+                            self.permissions.difference(Permissions::WRITE).into(),
+                        )?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    // TODO this method should be changed to accept an `arch::AddressSpace` and flusher and perform
+    //  the unmapping by itself instead of the `AddressSpace` doing it
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
+    pub fn unmap(&self, range: Range<VirtualAddress>) -> Result<(), Error> {
+        match self.vmo.as_ref() {
+            Vmo::Wired => panic!("cannot unmap wired frames"),
+            Vmo::Phys(_) => {
+                // physical frames aren't managed by anyone, so there is nothing to free here
+                // the unmap handling in `AddressSpace` will take care of the unmapping
+            }
             Vmo::Paged(vmo) => {
                 let vmo_relative_range = Range {
                     start: range
@@ -84,66 +204,6 @@ impl AddressSpaceRegion {
 
                 let mut vmo = vmo.write();
                 vmo.free_frames(vmo_relative_range);
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn ensure_mapped(
-        self: Pin<&mut Self>,
-        batch: &mut Batch,
-        range: Range<VirtualAddress>,
-        will_write: bool,
-    ) -> Result<(), Error> {
-        let vmo_relative_range = Range {
-            start: range.start.checked_sub_addr(self.range.start).unwrap(),
-            end: range.end.checked_sub_addr(self.range.start).unwrap(),
-        };
-
-        match self.vmo.as_ref() {
-            Vmo::Wired(vmo) => {
-                let range_phys = vmo
-                    .lookup_contiguous(vmo_relative_range)
-                    .expect("contiguous lookup for wired VMOs should never fail");
-
-                batch.append(
-                    range.start,
-                    range_phys.start,
-                    range_phys.size(),
-                    self.permissions.into(),
-                )?;
-            }
-            Vmo::Paged(vmo) => {
-                if will_write {
-                    let mut vmo = vmo.write();
-
-                    for addr in range.iter().step_by(arch::PAGE_SIZE) {
-                        debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
-                        let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
-                        let frame = vmo.require_owned_frame(vmo_relative_offset)?;
-                        batch.append(
-                            addr,
-                            frame.addr(),
-                            arch::PAGE_SIZE,
-                            self.permissions.into(),
-                        )?;
-                    }
-                } else {
-                    let vmo = vmo.read();
-
-                    for addr in range.iter().step_by(arch::PAGE_SIZE) {
-                        debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
-                        let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
-                        let frame = vmo.require_read_frame(vmo_relative_offset)?;
-                        batch.append(
-                            addr,
-                            frame.addr(),
-                            arch::PAGE_SIZE,
-                            self.permissions.difference(Permissions::WRITE).into(),
-                        )?;
-                    }
-                }
             }
         }
 
@@ -199,7 +259,8 @@ impl AddressSpaceRegion {
         let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
 
         match self.vmo.as_ref() {
-            Vmo::Wired(vmo) => {
+            Vmo::Wired => unreachable!("Wired VMO can never page fault"),
+            Vmo::Phys(vmo) => {
                 let range_phys = vmo
                     .lookup_contiguous(Range::from(
                         vmo_relative_offset
@@ -207,10 +268,10 @@ impl AddressSpaceRegion {
                     ))
                     .expect("contiguous lookup for wired VMOs should never fail");
 
-                batch.append(
+                batch.queue_map(
                     addr,
                     range_phys.start,
-                    range_phys.size(),
+                    NonZeroUsize::new(range_phys.size()).unwrap(),
                     self.permissions.into(),
                 )?;
             }
@@ -219,21 +280,26 @@ impl AddressSpaceRegion {
                     let mut vmo = vmo.write();
 
                     let frame = vmo.require_owned_frame(vmo_relative_offset)?;
-                    batch.append(addr, frame.addr(), arch::PAGE_SIZE, self.permissions.into())?;
-                } else {
-                    let vmo = vmo.read();
-
-                    let frame = vmo.require_read_frame(vmo_relative_offset)?;
-                    batch.append(
+                    batch.queue_map(
                         addr,
                         frame.addr(),
-                        arch::PAGE_SIZE,
+                        NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
+                        self.permissions.into(),
+                    )?;
+                } else {
+                    let mut vmo = vmo.write();
+
+                    let frame = vmo.require_read_frame(vmo_relative_offset)?;
+                    batch.queue_map(
+                        addr,
+                        frame.addr(),
+                        NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
                         self.permissions.difference(Permissions::WRITE).into(),
                     )?;
                 }
 
-                // TODO if we have space in batch attempt to "fault ahead"
-                //  - if frames are present in range => append to batch
+                // TODO fault-ahead or fault-behind here
+                //  see #282 and #283 for details
             }
         }
 
@@ -335,7 +401,7 @@ unsafe impl wavltree::Linked for AddressSpaceRegion {
         parent: NonNull<Self>,
         sibling: Option<NonNull<Self>>,
         lr_child: Option<NonNull<Self>>,
-        side: Side,
+        side: wavltree::Side,
     ) {
         let this = self.project();
         // Safety: caller ensures ptr is valid
@@ -345,7 +411,7 @@ unsafe impl wavltree::Linked for AddressSpaceRegion {
         this.max_range.end = _parent.max_range.end;
         *this.max_gap = _parent.max_gap;
 
-        if side == Side::Left {
+        if side == wavltree::Side::Left {
             Self::update(parent, sibling, lr_child);
         } else {
             Self::update(parent, lr_child, sibling);

@@ -5,23 +5,20 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::vm::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use crate::vm::address_space_region::AddressSpaceRegion;
-use crate::vm::error::Error;
-use crate::vm::flush::Flush;
-use crate::vm::vmo::{Vmo, WiredVmo};
-use crate::vm::{frame_alloc, ArchAddressSpace};
-use crate::vm::{PageFaultFlags, Permissions};
+use crate::vm::{
+    frame_alloc, AddressRangeExt, ArchAddressSpace, Error, Flush, PageFaultFlags, Permissions,
+    PhysicalAddress, VirtualAddress,
+};
 use crate::{arch, bail, ensure};
+use alloc::boxed::Box;
 use alloc::string::String;
-use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
-use core::ops::Bound;
 use core::pin::Pin;
-use core::range::{Range, RangeBounds};
+use core::range::{Bound, Range, RangeBounds};
 use rand::distr::Uniform;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
@@ -35,27 +32,24 @@ pub enum AddressSpaceKind {
     Kernel,
 }
 
-/// Represents the address space of a process (or the kernel).
 pub struct AddressSpace {
     /// A binary search tree of regions that make up this address space.
-    pub(crate) regions: wavltree::WAVLTree<AddressSpaceRegion>,
-    /// The hardware address space backing this "logical" address space that changes need to be
-    /// materialized into in order to take effect.
-    pub arch: arch::AddressSpace,
+    pub(super) regions: wavltree::WAVLTree<AddressSpaceRegion>,
     /// The maximum range this address space can encompass.
     ///
     /// This is used to check new mappings against and speed up page fault handling.
     max_range: Range<VirtualAddress>,
     /// The pseudo-random number generator used for address space layout randomization or `None`
     /// if ASLR is disabled.
-    prng: Option<ChaCha20Rng>,
-    /// "Empty" placeholder VMO to back regions created by `reserve`
-    placeholder_vmo: Option<Arc<Vmo>>,
+    rng: Option<ChaCha20Rng>,
+    /// The hardware address space backing this "logical" address space that changes need to be
+    /// materialized into in order to take effect.
+    pub arch: arch::AddressSpace,
     kind: AddressSpaceKind,
 }
 
 impl AddressSpace {
-    pub fn new_user(asid: u16, prng: Option<ChaCha20Rng>) -> Result<Self, Error> {
+    pub fn new_user(asid: u16, rng: Option<ChaCha20Rng>) -> Result<Self, Error> {
         let (arch, _) = arch::AddressSpace::new(asid)?;
 
         #[allow(tail_expr_drop_order, reason = "")]
@@ -63,20 +57,21 @@ impl AddressSpace {
             regions: wavltree::WAVLTree::default(),
             arch,
             max_range: Range::from(arch::USER_ASPACE_BASE..VirtualAddress::MAX),
-            prng,
-            placeholder_vmo: None,
+            rng,
             kind: AddressSpaceKind::User,
         })
     }
 
-    pub fn from_active_kernel(arch_aspace: arch::AddressSpace, prng: Option<ChaCha20Rng>) -> Self {
+    pub unsafe fn from_active_kernel(
+        arch_aspace: arch::AddressSpace,
+        rng: Option<ChaCha20Rng>,
+    ) -> Self {
         #[allow(tail_expr_drop_order, reason = "")]
         Self {
             regions: wavltree::WAVLTree::default(),
             arch: arch_aspace,
             max_range: Range::from(arch::KERNEL_ASPACE_BASE..VirtualAddress::MAX),
-            prng,
-            placeholder_vmo: None,
+            rng,
             kind: AddressSpaceKind::Kernel,
         }
     }
@@ -85,32 +80,15 @@ impl AddressSpace {
         self.kind
     }
 
-    /// Crate a new region in this address space.
-    ///
-    /// The mapping will be placed at a chosen spot in the address space that
-    /// satisfies the given `layout` requirements.
-    /// It's memory will be backed by the provided `vmo` at the given `vmo_offset`.
-    ///
-    /// # ASLR
-    ///
-    /// When address space layout randomization (ASLR) is enabled, the spot will be chosen
-    /// randomly from a set of candidate spots. The number of candidate spots is determined by the
-    /// `entropy` config. (TODO make actual config)
-    ///
-    /// - padded to alignment `layout.size()` must less than or equal to the maximum size for this address space
-    /// - `layout.align()` must be greater or equal to `PAGE_SIZE`
-    /// - `layout.align()` must be smaller or equal to the maximum alignment of the frame allocator
-    /// - `vmo_offset` must be in range for the given VMO
-    /// - `0` must always be a valid `vmo_offset`
-    /// - `permissions` must be `W^X` (ie either `R | W | X | RW | RX` but not `WX` or `RWX`)
-    /// - preconditions must be checked before any mutations
     pub fn map(
         &mut self,
         layout: Layout,
-        vmo: Arc<Vmo>,
-        vmo_offset: usize,
         permissions: Permissions,
-        name: Option<String>,
+        map: impl FnOnce(
+            Range<VirtualAddress>,
+            Permissions,
+            &mut Batch,
+        ) -> Result<AddressSpaceRegion, Error>,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
         ensure!(
             layout.pad_to_align().size() % arch::PAGE_SIZE == 0,
@@ -124,53 +102,39 @@ impl AddressSpace {
             layout.align() <= frame_alloc::max_alignment(),
             Error::AlignmentTooLarge
         );
-        ensure!(vmo.is_valid_offset(vmo_offset), Error::InvalidVmoOffset);
-        debug_assert!(
-            vmo.is_valid_offset(0),
-            "zero must always be a valid VMO offset"
-        );
         ensure!(permissions.is_valid(), Error::InvalidPermissions);
 
         // Actually do the mapping now
         // Safety: we checked all invariants above
-        unsafe { self.map_unchecked(layout, vmo, vmo_offset, permissions, name) }
+        unsafe { self.map_unchecked(layout, permissions, map) }
     }
 
     pub unsafe fn map_unchecked(
         &mut self,
         layout: Layout,
-        vmo: Arc<Vmo>,
-        vmo_offset: usize,
         permissions: Permissions,
-        name: Option<String>,
+        map: impl FnOnce(
+            Range<VirtualAddress>,
+            Permissions,
+            &mut Batch,
+        ) -> Result<AddressSpaceRegion, Error>,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
         let layout = layout.pad_to_align();
         let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY);
         let range = Range::from(base..base.checked_add(layout.size()).unwrap());
 
-        self.map_internal(range, vmo, vmo_offset, permissions, name)
+        self.map_internal(range, permissions, map)
     }
 
-    /// Create a new region at the provided range in this address space.
-    ///
-    /// It's memory will be backed by the provided `vmo` at the given `vmo_offset`.
-    ///
-    /// - The *entire* range must be unoccupied (no overlapping `AddressSpaceRegion`s)
-    /// - `range` start must be aligned to `PAGE_SIZE`
-    /// - `range` end must be aligned to `PAGE_SIZE`
-    /// - `size` must less than or equal to the maximum size for this address space
-    /// - `vmo_offset` must be in range for the given VMO
-    /// - `vmo_offset` must be integer multiple of `PAGE_SIZE`
-    /// - `0` must always be a valid `vmo_offset`
-    /// - `permissions` must be `W^X` (ie either `R | W | X | RW | RX` but not `WX` or `RWX`)
-    /// - preconditions must be checked before any mutations
     pub fn map_specific(
         &mut self,
         range: Range<VirtualAddress>,
-        vmo: Arc<Vmo>,
-        vmo_offset: usize,
         permissions: Permissions,
-        name: Option<String>,
+        map: impl FnOnce(
+            Range<VirtualAddress>,
+            Permissions,
+            &mut Batch,
+        ) -> Result<AddressSpaceRegion, Error>,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
         ensure!(
             range.start.is_aligned_to(arch::PAGE_SIZE),
@@ -181,11 +145,6 @@ impl AddressSpace {
             Error::MisalignedEnd
         );
         ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
-        ensure!(vmo.is_valid_offset(vmo_offset), Error::InvalidVmoOffset);
-        debug_assert!(
-            vmo.is_valid_offset(0),
-            "zero must always be a valid VMO offset"
-        );
         ensure!(permissions.is_valid(), Error::InvalidPermissions);
         // ensure the entire address space range is free
         if let Some(prev) = self.regions.upper_bound(range.start_bound()).get() {
@@ -194,25 +153,113 @@ impl AddressSpace {
 
         // Actually do the mapping now
         // Safety: we checked all invariants above
-        unsafe { self.map_specific_unchecked(range, vmo, vmo_offset, permissions, name) }
+        unsafe { self.map_specific_unchecked(range, permissions, map) }
     }
 
     pub unsafe fn map_specific_unchecked(
         &mut self,
         range: Range<VirtualAddress>,
-        vmo: Arc<Vmo>,
-        vmo_offset: usize,
         permissions: Permissions,
-        name: Option<String>,
+        map: impl FnOnce(
+            Range<VirtualAddress>,
+            Permissions,
+            &mut Batch,
+        ) -> Result<AddressSpaceRegion, Error>,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        self.map_internal(range, vmo, vmo_offset, permissions, name)
+        self.map_internal(range, permissions, map)
     }
 
-    /// - The *entire* range must be occupied
-    /// - `range` start must be aligned to `PAGE_SIZE`
-    /// - `range` end must be aligned to `PAGE_SIZE`
-    /// - `size` must less than or equal to the maximum size for this address space
-    /// - preconditions must be checked before any mutations
+    // pub fn map(
+    //     &mut self,
+    //     layout: Layout,
+    //     vmo: Arc<Vmo>,
+    //     vmo_offset: usize,
+    //     permissions: Permissions,
+    //     name: Option<String>,
+    // ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
+    //     ensure!(
+    //         layout.pad_to_align().size() % arch::PAGE_SIZE == 0,
+    //         Error::MisalignedEnd
+    //     );
+    //     ensure!(
+    //         layout.pad_to_align().size() <= self.max_range.size(),
+    //         Error::SizeTooLarge
+    //     );
+    //     ensure!(
+    //         layout.align() <= frame_alloc::max_alignment(),
+    //         Error::AlignmentTooLarge
+    //     );
+    //     ensure!(vmo.is_valid_offset(vmo_offset), Error::InvalidVmoOffset);
+    //     debug_assert!(
+    //         vmo.is_valid_offset(0),
+    //         "zero must always be a valid VMO offset"
+    //     );
+    //     ensure!(permissions.is_valid(), Error::InvalidPermissions);
+    //
+    //     // Actually do the mapping now
+    //     // Safety: we checked all invariants above
+    //     unsafe { self.map_unchecked(layout, vmo, vmo_offset, permissions, name) }
+    // }
+    //
+    // pub unsafe fn map_unchecked(
+    //     &mut self,
+    //     layout: Layout,
+    //     vmo: Arc<Vmo>,
+    //     vmo_offset: usize,
+    //     permissions: Permissions,
+    //     name: Option<String>,
+    // ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
+    //     let layout = layout.pad_to_align();
+    //     let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY);
+    //     let range = Range::from(base..base.checked_add(layout.size()).unwrap());
+    //
+    //     self.map_internal(range, vmo, vmo_offset, permissions, name)
+    // }
+    //
+    // pub fn map_specific(
+    //     &mut self,
+    //     range: Range<VirtualAddress>,
+    //     vmo: Arc<Vmo>,
+    //     vmo_offset: usize,
+    //     permissions: Permissions,
+    //     name: Option<String>,
+    // ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
+    //     ensure!(
+    //         range.start.is_aligned_to(arch::PAGE_SIZE),
+    //         Error::MisalignedStart
+    //     );
+    //     ensure!(
+    //         range.end.is_aligned_to(arch::PAGE_SIZE),
+    //         Error::MisalignedEnd
+    //     );
+    //     ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
+    //     ensure!(vmo.is_valid_offset(vmo_offset), Error::InvalidVmoOffset);
+    //     debug_assert!(
+    //         vmo.is_valid_offset(0),
+    //         "zero must always be a valid VMO offset"
+    //     );
+    //     ensure!(permissions.is_valid(), Error::InvalidPermissions);
+    //     // ensure the entire address space range is free
+    //     if let Some(prev) = self.regions.upper_bound(range.start_bound()).get() {
+    //         ensure!(prev.range.end <= range.start, Error::AlreadyMapped);
+    //     }
+    //
+    //     // Actually do the mapping now
+    //     // Safety: we checked all invariants above
+    //     unsafe { self.map_specific_unchecked(range, vmo, vmo_offset, permissions, name) }
+    // }
+    //
+    // pub unsafe fn map_specific_unchecked(
+    //     &mut self,
+    //     range: Range<VirtualAddress>,
+    //     vmo: Arc<Vmo>,
+    //     vmo_offset: usize,
+    //     permissions: Permissions,
+    //     name: Option<String>,
+    // ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
+    //     self.map_internal(range, vmo, vmo_offset, permissions, name)
+    // }
+
     pub fn unmap(&mut self, range: Range<VirtualAddress>) -> Result<(), Error> {
         ensure!(
             range.start.is_aligned_to(arch::PAGE_SIZE),
@@ -265,13 +312,6 @@ impl AddressSpace {
         Ok(())
     }
 
-    /// - The *entire* range must be occupied
-    /// - `range` start must be aligned to `PAGE_SIZE`
-    /// - `range` end must be aligned to `PAGE_SIZE`
-    /// - `size` must less than or equal to the maximum size for this address space
-    /// - `new_permissions` must be `W^X` (ie either `R | W | X | RW | RX` but not `WX` or `RWX`)
-    /// - `new_permissions` must always be a subset of current permissions (for all regions)
-    /// - preconditions must be checked before any mutations
     pub fn protect(
         &mut self,
         range: Range<VirtualAddress>,
@@ -344,22 +384,6 @@ impl AddressSpace {
         Ok(())
     }
 
-    /// Page fault handling
-    ///
-    /// - Is there an `AddressSpaceRegion` for the address?
-    ///     - NO => Error::AccessDenied (fault at unmapped address)
-    ///     - YES
-    ///         - ensure access is coherent with logical permissions
-    ///         - Is there a `Frame` for the address?
-    ///             - NO  => TODO this means frame got paged-out, need to reload it from pager
-    ///             - YES (frame is resident in memory, but flags were off, either a fluke or COW)
-    ///                 - Is access WRITE?
-    ///                     - NO  => (do nothing)
-    ///                     - YES => Need to do COW
-    ///                         - allocate new frame
-    ///                         - copy content from old to new frame (OMIT FOR ZERO FRAME)
-    ///                         - replace old frame with new frame
-    ///                      - update MMU page table
     pub fn page_fault(&mut self, addr: VirtualAddress, flags: PageFaultFlags) -> Result<(), Error> {
         assert!(flags.is_valid(), "invalid page fault flags {flags:?}");
 
@@ -398,13 +422,6 @@ impl AddressSpace {
         }
     }
 
-    /// - The *entire* range must be unoccupied (no overlapping `AddressSpaceRegion`s)
-    /// - `range` start must be aligned to `PAGE_SIZE`
-    /// - `range` end must be aligned to `PAGE_SIZE`
-    /// - `size` must less than or equal to the maximum size for this address space
-    /// - `permissions` must be `W^X` (ie either `R | W | X | RW | RX` but not `WX` or `RWX`)
-    /// - The given virtual memory must already be mapped to physical memory through other means
-    /// - preconditions must be checked before any mutations
     pub fn reserve(
         &mut self,
         range: Range<VirtualAddress>,
@@ -428,21 +445,8 @@ impl AddressSpace {
             ensure!(prev.range.end <= range.start, Error::AlreadyMapped);
         }
 
-        // reserved regions are backed by a "fake" wired vmo with an empty range inside
-        // since their memory is always backed by physical memory, but figuring out the exact
-        // physical memory range here would require quite a lot of page table walking for little
-        // benefit
-        let vmo = self
-            .placeholder_vmo
-            .get_or_insert_with(|| {
-                Arc::new(Vmo::Wired(WiredVmo::new(Range::from(
-                    PhysicalAddress::default()..PhysicalAddress::default(),
-                ))))
-            })
-            .clone();
-        let region = self
-            .regions
-            .insert(AddressSpaceRegion::new(range, permissions, vmo, 0, name));
+        let region = AddressSpaceRegion::new_wired(range, permissions, name);
+        let region = self.regions.insert(Box::pin(region));
 
         // eagerly materialize any possible changes, we do this eagerly for the entire range here
         // since `reserve` will only be called for kernel memory setup by the loader. For which it is
@@ -468,11 +472,7 @@ impl AddressSpace {
         Ok(region)
     }
 
-    pub fn ensure_mapped(
-        &mut self,
-        range: Range<VirtualAddress>,
-        will_write: bool,
-    ) -> Result<(), Error> {
+    pub fn commit(&mut self, range: Range<VirtualAddress>, will_write: bool) -> Result<(), Error> {
         ensure!(
             range.start.is_aligned_to(arch::PAGE_SIZE),
             Error::MisalignedStart
@@ -489,7 +489,7 @@ impl AddressSpace {
         while bytes_remaining > 0 {
             let region = c.get_mut().unwrap();
             let clamped = range.clamp(region.range);
-            region.ensure_mapped(&mut batch, clamped, will_write)?;
+            region.commit(&mut batch, clamped, will_write)?;
 
             bytes_remaining -= range.size();
         }
@@ -498,25 +498,23 @@ impl AddressSpace {
         Ok(())
     }
 
-    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     fn map_internal(
         &mut self,
         range: Range<VirtualAddress>,
-        vmo: Arc<Vmo>,
-        vmo_offset: usize,
         permissions: Permissions,
-        name: Option<String>,
+        map: impl FnOnce(
+            Range<VirtualAddress>,
+            Permissions,
+            &mut Batch,
+        ) -> Result<AddressSpaceRegion, Error>,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        let region = self.regions.insert(AddressSpaceRegion::new(
-            range,
-            permissions,
-            vmo,
-            vmo_offset,
-            name,
-        ));
+        let mut batch = Batch::new(&mut self.arch);
+        let region = map(range, permissions, &mut batch)?;
+        let region = self.regions.insert(Box::pin(region));
 
         // TODO eagerly map a few pages now
 
+        batch.flush()?;
         Ok(region)
     }
 
@@ -582,7 +580,7 @@ impl AddressSpace {
         // log::trace!("max_candidate_spaces {max_candidate_spaces}");
 
         let selected_index: usize = self
-            .prng
+            .rng
             .as_mut()
             .map(|prng| prng.sample(Uniform::new(0, max_candidate_spaces).unwrap()))
             .unwrap_or_default();
@@ -593,7 +591,7 @@ impl AddressSpace {
             Err(candidate_spot_count) => {
                 // log::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
                 let selected_index: usize = self
-                    .prng
+                    .rng
                     .as_mut()
                     .unwrap()
                     .sample(Uniform::new(0, candidate_spot_count).unwrap());
@@ -744,15 +742,20 @@ impl AddressSpace {
 // =============================================================================
 
 pub struct Batch<'a> {
-    arch_aspace: &'a mut arch::AddressSpace,
+    aspace: &'a mut arch::AddressSpace,
     range: Range<VirtualAddress>,
     flags: <arch::AddressSpace as ArchAddressSpace>::Flags,
-    phys: Vec<(PhysicalAddress, usize)>,
+    actions: Vec<BBatchAction>,
+}
+
+#[derive(Debug)]
+enum BBatchAction {
+    Map(PhysicalAddress, usize),
 }
 
 impl Drop for Batch<'_> {
     fn drop(&mut self) {
-        if !self.phys.is_empty() {
+        if !self.actions.is_empty() {
             log::error!("batch was not flushed before dropping");
             // panic_unwind::panic_in_drop!("batch was not flushed before dropping");
         }
@@ -760,60 +763,62 @@ impl Drop for Batch<'_> {
 }
 
 impl<'a> Batch<'a> {
-    pub fn new(arch_aspace: &'a mut arch::AddressSpace) -> Self {
+    pub fn new(aspace: &'a mut arch::AddressSpace) -> Self {
         Self {
-            arch_aspace,
+            aspace,
             range: Range::default(),
             flags: <arch::AddressSpace as ArchAddressSpace>::Flags::empty(),
-            phys: vec![],
+            actions: vec![],
         }
     }
 
-    pub fn append(
+    pub fn queue_map(
         &mut self,
-        base: VirtualAddress,
+        virt: VirtualAddress,
         phys: PhysicalAddress,
-        len: usize,
+        len: NonZeroUsize,
         flags: <arch::AddressSpace as ArchAddressSpace>::Flags,
     ) -> Result<(), Error> {
         debug_assert!(
-            len % arch::PAGE_SIZE == 0,
+            len.get() % arch::PAGE_SIZE == 0,
             "physical address range must be multiple of page size"
         );
 
-        log::trace!("appending {phys:?} at {base:?} with flags {flags:?}");
-        if !self.can_append(base) || self.flags != flags {
+        log::trace!("appending {phys:?} at {virt:?} with flags {flags:?}");
+        if self.range.end != virt || self.flags != flags {
             self.flush()?;
             self.flags = flags;
-            self.range = Range::from(base..base.checked_add(len).unwrap());
+            self.range = Range::from(virt..virt.checked_add(len.get()).unwrap());
         } else {
-            self.range.end = self.range.end.checked_add(len).unwrap();
+            self.range.end = self.range.end.checked_add(len.get()).unwrap();
         }
 
-        self.phys.push((phys, len));
+        self.actions.push(BBatchAction::Map(phys, len.get()));
 
         Ok(())
     }
 
     pub fn flush(&mut self) -> Result<(), Error> {
-        if self.phys.is_empty() {
+        if self.actions.is_empty() {
             return Ok(());
         }
-        log::trace!("flushing batch {:?} {:?}...", self.range, self.phys);
+        log::trace!("flushing batch {:?} {:?}...", self.range, self.actions);
 
-        let mut flush = self.arch_aspace.new_flush();
+        let mut flush = self.aspace.new_flush();
         let mut virt = self.range.start;
-        for (phys, len) in self.phys.drain(..) {
-            // Safety: we have checked all the invariants
-            unsafe {
-                self.arch_aspace.map_contiguous(
-                    virt,
-                    phys,
-                    NonZeroUsize::new(len).unwrap(),
-                    self.flags,
-                    &mut flush,
-                )?;
-                virt = virt.checked_add(len).unwrap();
+        for action in self.actions.drain(..) {
+            match action {
+                // Safety: we have checked all the invariants
+                BBatchAction::Map(phys, len) => unsafe {
+                    self.aspace.map_contiguous(
+                        virt,
+                        phys,
+                        NonZeroUsize::new(len).unwrap(),
+                        self.flags,
+                        &mut flush,
+                    )?;
+                    virt = virt.checked_add(len).unwrap();
+                },
             }
         }
         flush.flush()?;
@@ -823,10 +828,6 @@ impl<'a> Batch<'a> {
     }
 
     pub fn ignore(&mut self) {
-        self.phys.clear();
-    }
-
-    fn can_append(&self, virt: VirtualAddress) -> bool {
-        self.range.end == virt
+        self.actions.clear();
     }
 }

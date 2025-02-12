@@ -187,7 +187,7 @@ impl Frame {
         unsafe { this.ptr.as_mut() }
     }
 
-    fn is_unique(&self) -> bool {
+    pub fn is_unique(&self) -> bool {
         self.refcount() == 1
     }
 

@@ -7,12 +7,12 @@
 
 mod arena;
 mod frame;
+mod frame_list;
 
 use crate::arch;
 use crate::cpu_local::CpuLocal;
 use crate::vm::address::VirtualAddress;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
-use crate::vm::frame_list::FrameList;
 use crate::vm::PhysicalAddress;
 use alloc::vec::Vec;
 use arena::{select_arenas, Arena};
@@ -25,6 +25,7 @@ use core::sync::atomic::AtomicUsize;
 use core::{cmp, fmt, iter, slice};
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
+pub use frame_list::{Entry, FrameList};
 use sync::{Mutex, OnceLock};
 
 static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
