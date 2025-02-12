@@ -51,7 +51,7 @@ impl AddressSpaceRegion {
             range,
             permissions,
             name,
-            vmo: Arc::new(Vmo::new_zeroed(range.size())),
+            vmo: Arc::new(Vmo::new_zeroed()),
             vmo_offset: 0,
             max_gap: 0,
             max_range: range,

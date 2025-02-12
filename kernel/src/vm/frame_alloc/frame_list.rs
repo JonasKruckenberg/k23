@@ -85,31 +85,6 @@ impl FrameList {
         }
     }
 
-    pub fn with_capacity(n: usize) -> FrameList {
-        debug_assert_eq!(
-            n % arch::PAGE_SIZE,
-            0,
-            "FrameList capacity must be multiple of PAGE_SIZE"
-        );
-
-        let mut nodes: WAVLTree<FrameListNode> = WAVLTree::new();
-
-        let mut offset = 0;
-        while offset < n {
-            nodes.insert(Box::pin(FrameListNode {
-                links: wavltree::Links::default(),
-                offset,
-                frames: [const { None }; FRAME_LIST_NODE_FANOUT],
-            }));
-            offset += arch::PAGE_SIZE * FRAME_LIST_NODE_FANOUT;
-        }
-
-        Self {
-            nodes,
-            size: offset,
-        }
-    }
-
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
     }
@@ -122,39 +97,60 @@ impl FrameList {
         let node_offset = offset_to_node_offset(offset);
         let node = self.nodes.find(&node_offset).get()?;
 
-        let page = node.frames.get(offset_to_node_index(offset))?;
-        page.as_ref()
+        let frame = node.frames.get(offset_to_node_index(offset))?;
+        frame.as_ref()
     }
 
     pub fn get_mut(&mut self, offset: usize) -> Option<&mut Frame> {
         let node_offset = offset_to_node_offset(offset);
         let node = Pin::into_inner(self.nodes.find_mut(&node_offset).get_mut()?);
 
-        let page = node.frames.get_mut(offset_to_node_index(offset))?;
-        page.as_mut()
+        let frame = node.frames.get_mut(offset_to_node_index(offset))?;
+        frame.as_mut()
     }
 
     pub fn take(&mut self, offset: usize) -> Option<Frame> {
         let node_offset = offset_to_node_offset(offset);
-        let mut node = self.nodes.find_mut(&node_offset).get_mut()?;
+        let node = Pin::into_inner(self.nodes.find_mut(&node_offset).get_mut()?);
 
-        let page = node.frames.get_mut(offset_to_node_index(offset))?;
-        page.take()
+        let frame = node.frames.get_mut(offset_to_node_index(offset))?;
+        frame.take()
     }
 
     pub fn replace(&mut self, offset: usize, new: Frame) -> Option<Frame> {
         let node_offset = offset_to_node_offset(offset);
-        let mut node = self.nodes.find_mut(&node_offset).get_mut()?;
+        let node = self.nodes.entry(&node_offset).or_insert_with(|| {
+            Box::pin(FrameListNode {
+                links: wavltree::Links::default(),
+                offset,
+                frames: [const { None }; FRAME_LIST_NODE_FANOUT],
+            })
+        });
 
-        let page = node.frames.get_mut(offset_to_node_index(offset))?;
-        page.replace(new)
+        // Safety: we'll not move out of the node, just manipulate its fields
+        let frame = unsafe { Pin::into_inner_unchecked(node) }
+            .frames
+            .get_mut(offset_to_node_index(offset))?;
+
+        frame.replace(new)
     }
 
     pub fn insert(&mut self, offset: usize, new: Frame) -> &mut Frame {
         let node_offset = offset_to_node_offset(offset);
-        let node = Pin::into_inner(self.nodes.find_mut(&node_offset).get_mut().unwrap());
+        let node = self.nodes.entry(&node_offset).or_insert_with(|| {
+            Box::pin(FrameListNode {
+                links: wavltree::Links::default(),
+                offset,
+                frames: [const { None }; FRAME_LIST_NODE_FANOUT],
+            })
+        });
 
-        let frame = node.frames.get_mut(offset_to_node_index(offset)).unwrap();
+        // Safety: we'll not move out of the node, just manipulate its fields
+        let frame = unsafe { Pin::into_inner_unchecked(node) }
+            .frames
+            .get_mut(offset_to_node_index(offset))
+            .unwrap();
+
         frame.insert(new)
     }
 

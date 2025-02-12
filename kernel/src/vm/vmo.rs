@@ -29,9 +29,9 @@ impl Vmo {
         Self::Phys(PhysVmo { range })
     }
 
-    pub fn new_zeroed(n: usize) -> Self {
+    pub fn new_zeroed() -> Self {
         Self::Paged(RwLock::new(PagedVmo {
-            frames: FrameList::with_capacity(n),
+            frames: FrameList::new(),
             provider: THE_ZERO_FRAME.clone(),
         }))
     }

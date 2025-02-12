@@ -38,6 +38,10 @@ pub use user_mmap::UserMmap;
 pub use vmo::Vmo;
 use xmas_elf::program::Type;
 
+pub const KIB: usize = 1024;
+pub const MIB: usize = KIB * 1024;
+pub const GIB: usize = MIB * 1024;
+
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
 
 pub fn with_kernel_aspace<F, R>(f: F) -> R
