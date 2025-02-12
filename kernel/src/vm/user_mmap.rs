@@ -9,22 +9,21 @@ use crate::arch;
 use crate::arch::with_user_memory_access;
 use crate::traps::TrapMask;
 use crate::vm::address::AddressRangeExt;
-use crate::vm::address_space::{AddressSpaceKind, Batch};
-use crate::vm::vmo::Vmo;
 use crate::vm::{
-    AddressSpace, ArchAddressSpace, Error, Permissions, VirtualAddress, THE_ZERO_FRAME,
+    AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Error,
+    Permissions, VirtualAddress,
 };
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
-use core::{iter, slice};
+use core::slice;
 
 const TRAP_MASK: TrapMask =
     TrapMask::from_bits_retain(TrapMask::StorePageFault.bits() | TrapMask::LoadPageFault.bits());
 
 /// A userspace memory mapping.
 ///
-/// This is essentially a handle to an [`AddressSpaceRegion`][crate::vm::address_space_region::AddressSpaceRegion] with convenience methods for userspace
+/// This is essentially a handle to an [`AddressSpaceRegion`] with convenience methods for userspace
 /// specific needs such as copying from and to memory.
 #[derive(Debug)]
 pub struct UserMmap {
@@ -60,17 +59,11 @@ impl UserMmap {
 
         let layout = Layout::from_size_align(len, align).unwrap();
 
-        let vmo = Vmo::new_paged(iter::repeat_n(
-            THE_ZERO_FRAME.clone(),
-            layout.size().div_ceil(arch::PAGE_SIZE),
-        ));
-
         let region = aspace.map(
             layout,
-            vmo,
-            0,
             Permissions::READ | Permissions::WRITE | Permissions::USER,
-            None,
+            #[expect(tail_expr_drop_order, reason = "")]
+            |range, perms, _batch| Ok(AddressSpaceRegion::new_zeroed(range, perms, None)),
         )?;
 
         log::trace!("new_zeroed: {len} {:?}", region.range);
@@ -113,7 +106,7 @@ impl UserMmap {
     where
         F: FnOnce(&[u8]),
     {
-        self.ensure_mapped(aspace, range, false)?;
+        self.commit(aspace, range, false)?;
 
         #[expect(tail_expr_drop_order, reason = "")]
         crate::traps::catch_traps(TRAP_MASK, || {
@@ -139,7 +132,7 @@ impl UserMmap {
     where
         F: FnOnce(&mut [u8]),
     {
-        self.ensure_mapped(aspace, range, true)?;
+        self.commit(aspace, range, true)?;
         // Safety: user aspace also includes kernel mappings in higher half
         unsafe {
             aspace.arch.activate();
@@ -232,7 +225,7 @@ impl UserMmap {
         Ok(())
     }
 
-    fn ensure_mapped(
+    fn commit(
         &self,
         aspace: &mut AddressSpace,
         range: Range<usize>,
@@ -250,7 +243,7 @@ impl UserMmap {
             cursor
                 .get_mut()
                 .unwrap()
-                .ensure_mapped(&mut batch, src_range, will_write)?;
+                .commit(&mut batch, src_range, will_write)?;
             batch.flush()?;
         }
 

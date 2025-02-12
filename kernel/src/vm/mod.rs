@@ -12,39 +12,33 @@ pub mod bootstrap_alloc;
 mod error;
 pub mod flush;
 pub mod frame_alloc;
-mod frame_list;
+mod provider;
 mod trap_handler;
 mod user_mmap;
 mod vmo;
 
 use crate::arch;
-use crate::vm::flush::Flush;
-use crate::vm::frame_alloc::Frame;
 pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-pub use address_space::AddressSpace;
-pub use address_space::Batch;
+pub use address_space::{AddressSpace, AddressSpaceKind, Batch};
+pub use address_space_region::AddressSpaceRegion;
 use alloc::format;
 use alloc::string::ToString;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
 pub use error::Error;
-pub use frame_list::FrameList;
+pub use flush::Flush;
+pub use frame_alloc::{Frame, FrameList};
 use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{LazyLock, Mutex, OnceLock};
+use sync::{Mutex, OnceLock};
 pub use trap_handler::trap_handler;
 pub use user_mmap::UserMmap;
 pub use vmo::Vmo;
 use xmas_elf::program::Type;
 
 pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
-static THE_ZERO_FRAME: LazyLock<Frame> = LazyLock::new(|| {
-    let frame = frame_alloc::alloc_one_zeroed().unwrap();
-    log::trace!("THE_ZERO_FRAME: {}", frame.addr());
-    frame
-});
 
 pub fn with_kernel_aspace<F, R>(f: F) -> R
 where
@@ -62,8 +56,10 @@ pub fn init(boot_info: &BootInfo, rand: &mut impl rand::RngCore) -> crate::Resul
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
-        let mut aspace =
-            AddressSpace::from_active_kernel(hw_aspace, Some(ChaCha20Rng::from_rng(rand)));
+        // Safety: `init` is called during startup where the kernel address space is the only address space available
+        let mut aspace = unsafe {
+            AddressSpace::from_active_kernel(hw_aspace, Some(ChaCha20Rng::from_rng(rand)))
+        };
 
         reserve_wired_regions(&mut aspace, boot_info, &mut flush);
         flush.flush().unwrap();

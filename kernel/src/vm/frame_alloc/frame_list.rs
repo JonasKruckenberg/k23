@@ -13,13 +13,14 @@ use core::iter::{FlatMap, Flatten, FusedIterator};
 use core::mem::offset_of;
 use core::pin::Pin;
 use core::ptr::NonNull;
-use core::{array, fmt};
+use core::{array, fmt, mem};
 use pin_project::pin_project;
+use wavltree::WAVLTree;
 
 const FRAME_LIST_NODE_FANOUT: usize = 16;
 
 pub struct FrameList {
-    pub nodes: wavltree::WAVLTree<FrameListNode>,
+    pub nodes: WAVLTree<FrameListNode>,
     size: usize,
 }
 
@@ -39,6 +40,20 @@ pub struct Cursor<'a> {
 
 pub struct CursorMut<'a> {
     cursor: wavltree::CursorMut<'a, FrameListNode>,
+    index_in_node: usize,
+    offset: usize,
+}
+
+pub enum Entry<'a> {
+    Occupied(OccupiedEntry<'a>),
+    Vacant(VacantEntry<'a>),
+}
+pub struct OccupiedEntry<'a> {
+    entry: wavltree::OccupiedEntry<'a, FrameListNode>,
+    index_in_node: usize,
+}
+pub struct VacantEntry<'a> {
+    entry: wavltree::Entry<'a, FrameListNode>,
     index_in_node: usize,
     offset: usize,
 }
@@ -63,6 +78,38 @@ impl fmt::Debug for FrameList {
 }
 
 impl FrameList {
+    pub fn new() -> Self {
+        Self {
+            nodes: WAVLTree::new(),
+            size: 0,
+        }
+    }
+
+    pub fn with_capacity(n: usize) -> FrameList {
+        debug_assert_eq!(
+            n % arch::PAGE_SIZE,
+            0,
+            "FrameList capacity must be multiple of PAGE_SIZE"
+        );
+
+        let mut nodes: WAVLTree<FrameListNode> = WAVLTree::new();
+
+        let mut offset = 0;
+        while offset < n {
+            nodes.insert(Box::pin(FrameListNode {
+                links: wavltree::Links::default(),
+                offset,
+                frames: [const { None }; FRAME_LIST_NODE_FANOUT],
+            }));
+            offset += arch::PAGE_SIZE * FRAME_LIST_NODE_FANOUT;
+        }
+
+        Self {
+            nodes,
+            size: offset,
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
     }
@@ -143,6 +190,26 @@ impl FrameList {
         }
     }
 
+    pub(crate) fn entry(&mut self, offset: usize) -> Entry {
+        let node_offset = offset_to_node_offset(offset);
+        let index_in_node = offset_to_node_index(offset);
+        let entry = self.nodes.entry(&node_offset);
+
+        match entry {
+            wavltree::Entry::Occupied(entry) if entry.get().frames[index_in_node].is_some() => {
+                Entry::Occupied(OccupiedEntry {
+                    entry,
+                    index_in_node,
+                })
+            }
+            entry => Entry::Vacant(VacantEntry {
+                entry,
+                index_in_node,
+                offset: node_offset,
+            }),
+        }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Frame> {
         self.nodes
             .iter()
@@ -204,7 +271,7 @@ impl IntoIterator for FrameList {
 
 impl FromIterator<Frame> for FrameList {
     fn from_iter<T: IntoIterator<Item = Frame>>(iter: T) -> Self {
-        let mut nodes: wavltree::WAVLTree<FrameListNode> = wavltree::WAVLTree::new();
+        let mut nodes: WAVLTree<FrameListNode> = WAVLTree::new();
 
         let mut offset = 0;
         for frame in iter.into_iter() {
@@ -358,5 +425,142 @@ impl<'a> CursorMut<'a> {
     pub fn get_mut(&mut self) -> Option<&mut Frame> {
         let node = Pin::into_inner(self.cursor.get_mut()?);
         node.frames.get_mut(self.index_in_node)?.as_mut()
+    }
+}
+
+// =============================================================================
+// Entry
+// =============================================================================
+
+impl<'a> Entry<'a> {
+    #[inline]
+    pub fn and_modify<F>(self, f: F) -> Self
+    where
+        F: FnOnce(&mut Frame),
+    {
+        match self {
+            Entry::Occupied(mut entry) => {
+                f(entry.get_mut());
+                Entry::Occupied(entry)
+            }
+            Entry::Vacant(entry) => Entry::Vacant(entry),
+        }
+    }
+
+    #[inline]
+    pub fn or_insert(self, default: Frame) -> &'a mut Frame {
+        match self {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(default),
+        }
+    }
+
+    #[inline]
+    pub fn or_insert_with<F: FnOnce() -> Frame>(self, default: F) -> &'a mut Frame {
+        match self {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(default()),
+        }
+    }
+}
+
+impl<'a> OccupiedEntry<'a> {
+    pub fn into_mut(mut self) -> &'a mut Frame {
+        // Safety: guaranteed by `FrameList::entry`
+        unsafe {
+            Pin::into_inner_unchecked(self.entry.get_mut())
+                .frames
+                .get_unchecked_mut(self.index_in_node)
+                .as_mut()
+                .unwrap_unchecked()
+        }
+    }
+
+    pub fn get(&self) -> &Frame {
+        // Safety: guaranteed by `FrameList::entry`
+        unsafe {
+            self.entry
+                .get()
+                .frames
+                .get_unchecked(self.index_in_node)
+                .as_ref()
+                .unwrap_unchecked()
+        }
+    }
+    pub fn get_mut(&mut self) -> &mut Frame {
+        // Safety: guaranteed by `FrameList::entry`
+        unsafe {
+            Pin::into_inner_unchecked(self.entry.get_mut())
+                .frames
+                .get_unchecked_mut(self.index_in_node)
+                .as_mut()
+                .unwrap_unchecked()
+        }
+    }
+    pub fn insert(&mut self, frame: Frame) -> Frame {
+        // Safety: guaranteed by `FrameList::entry`
+        unsafe {
+            self.entry
+                .get_mut()
+                .frames
+                .get_unchecked_mut(self.index_in_node)
+                .replace(frame)
+                .unwrap_unchecked()
+        }
+    }
+
+    pub fn remove(&mut self) -> Frame {
+        // Safety: guaranteed by `FrameList::entry`
+        unsafe {
+            self.entry
+                .get_mut()
+                .frames
+                .get_unchecked_mut(self.index_in_node)
+                .take()
+                .unwrap_unchecked()
+        }
+    }
+}
+impl<'a> VacantEntry<'a> {
+    pub fn insert(self, value: Frame) -> &'a mut Frame {
+        let mut node = self.entry.or_insert_with(|| {
+            Box::pin(FrameListNode {
+                links: wavltree::Links::default(),
+                offset: self.offset,
+                frames: [const { None }; FRAME_LIST_NODE_FANOUT],
+            })
+        });
+        let old = mem::replace(&mut node.frames[self.index_in_node], Some(value));
+        debug_assert!(old.is_none());
+
+        // Safety: guaranteed by `FrameList::entry`
+        unsafe {
+            Pin::into_inner_unchecked(node)
+                .frames
+                .get_unchecked_mut(self.index_in_node)
+                .as_mut()
+                .unwrap_unchecked()
+        }
+    }
+
+    pub fn insert_entry(self, frame: Frame) -> OccupiedEntry<'a> {
+        let mut entry = match self.entry {
+            wavltree::Entry::Occupied(entry) => entry,
+            wavltree::Entry::Vacant(entry) => entry.insert_entry(Box::pin(FrameListNode {
+                links: wavltree::Links::default(),
+                offset: self.offset,
+                frames: [const { None }; FRAME_LIST_NODE_FANOUT],
+            })),
+        };
+
+        // Safety: guaranteed by `FrameList::entry`
+        unsafe {
+            *entry.get_mut().frames.get_unchecked_mut(self.index_in_node) = Some(frame);
+        }
+
+        OccupiedEntry {
+            entry,
+            index_in_node: self.index_in_node,
+        }
     }
 }
