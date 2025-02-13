@@ -9,10 +9,9 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-cfg-if.workspace = true
 unwind2.workspace = true
 gimli.workspace = true
-object = { workspace = true, features = ["read_core", "elf"] }
-addr2line = { version = "0.24.1", default-features = false }
-rustc-demangle = { version = "0.1.24", default-features = false }
-log.workspace = true
+addr2line.workspace = true
+xmas-elf.workspace = true
+rustc-demangle.workspace = true
+fallible-iterator.workspace = true

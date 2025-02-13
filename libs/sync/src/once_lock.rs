@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use super::Once;
 use core::{
     cell::UnsafeCell,
@@ -52,6 +59,7 @@ impl<T> OnceLock<T> {
         let mut error = None;
 
         self.once.call_once(|| {
+            #[allow(tail_expr_drop_order, reason = "")]
             match f() {
                 Ok(val) => {
                     // SAFETY: `Once` ensures this is only called once
@@ -63,6 +71,7 @@ impl<T> OnceLock<T> {
             }
         });
 
+        #[allow(if_let_rescope, reason = "")]
         if let Some(err) = error {
             Err(err)
         } else {
@@ -72,33 +81,37 @@ impl<T> OnceLock<T> {
     }
 
     pub fn get(&self) -> Option<&T> {
-        self.once
-            .is_completed()
-            .then(|| unsafe { self.force_get() })
+        self.once.is_completed().then(|| {
+            // Safety: `is_completed` ensures value is properly initialized
+            unsafe { self.force_get() }
+        })
     }
 
     pub fn get_mut(&mut self) -> Option<&mut T> {
-        self.once
-            .is_completed()
-            .then(|| unsafe { self.force_get_mut() })
+        self.once.is_completed().then(|| {
+            // Safety: `is_completed` ensures value is properly initialized
+            unsafe { self.force_get_mut() }
+        })
     }
 
     unsafe fn force_get(&self) -> &T {
         // SAFETY:
         // * `UnsafeCell`/inner deref: data never changes again
         // * `MaybeUninit`/outer deref: data was initialized
-        &*(*self.data.get()).as_ptr()
+        unsafe { &*(*self.data.get()).as_ptr() }
     }
 
     unsafe fn force_get_mut(&mut self) -> &mut T {
         // SAFETY:
         // * `UnsafeCell`/inner deref: data never changes again
         // * `MaybeUninit`/outer deref: data was initialized
-        &mut *(*self.data.get()).as_mut_ptr()
+        unsafe { &mut *(*self.data.get()).as_mut_ptr() }
     }
 }
 
+// Safety: synchronization primitive
 unsafe impl<T: Sync + Send> Sync for OnceLock<T> {}
+// Safety: synchronization primitive
 unsafe impl<T: Send> Send for OnceLock<T> {}
 
 impl<T: RefUnwindSafe + UnwindSafe> RefUnwindSafe for OnceLock<T> {}

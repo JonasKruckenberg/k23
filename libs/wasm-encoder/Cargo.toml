@@ -20,6 +20,3 @@ workspace = true
 
 [dependencies]
 leb128.workspace = true
-
-[dev-dependencies]
-ktest.workspace = true

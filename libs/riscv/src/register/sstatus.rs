@@ -1,6 +1,14 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 //! Supervisor Status Register
 
-use super::{clear_csr, read_csr_as, write_csr};
+use super::{clear_csr, read_csr_as, set_clear_csr_field, set_csr};
+use crate::set_csr_field;
 use core::fmt;
 use core::fmt::Formatter;
 
@@ -10,40 +18,46 @@ pub struct Sstatus {
     bits: usize,
 }
 
-read_csr_as!(Sstatus, 0x100);
-write_csr!(0x100);
+set_csr!(0x100);
 clear_csr!(0x100);
 
-/// Supervisor Interrupt Enable
-pub unsafe fn set_sie() {
-    _write(1 << 1);
-}
-
-/// Supervisor Interrupt Enable
-pub unsafe fn clear_sie() {
-    _clear(1 << 1);
-}
-
-/// Supervisor Previous Interrupt Enable
-pub unsafe fn set_spie() {
-    _write(1 << 5);
-}
+read_csr_as!(Sstatus, 0x100);
+set_clear_csr_field!(
+    /// User Interrupt Enable
+    , set_uie, clear_uie, 1 << 0_i32);
+set_clear_csr_field!(
+    /// Supervisor Interrupt Enable
+    , set_sie, clear_sie, 1 << 1_i32);
+set_csr_field!(
+    /// User Previous Interrupt Enable
+    , set_upie, 1 << 4_i32);
+set_csr_field!(
+    /// Supervisor Previous Interrupt Enable
+    , set_spie, 1 << 5_i32);
+set_clear_csr_field!(
+    /// Permit Supervisor User Memory access
+    , set_sum, clear_sum, 1 << 18_i32);
+set_clear_csr_field!(
+    /// Make eXecutable Readable
+    , set_mxr, clear_mxr, 1 << 19_i32);
 
 /// Supervisor Previous Privilege Mode
 #[inline]
 pub unsafe fn set_spp(spp: SPP) {
     match spp {
-        SPP::Supervisor => _write(1 << 8),
-        SPP::User => _clear(1 << 8),
+        SPP::Supervisor => unsafe { _set(1 << 8_i32) },
+        SPP::User => unsafe { _clear(1 << 8_i32) },
     }
 }
 
 /// Floating-Point Unit Status
 pub unsafe fn set_fs(fs: FS) {
     let mut value = read().bits;
-    value &= !(0x3 << 13); // clear previous value
-    value |= (fs as usize) << 13;
-    _write(value);
+    value &= !(0x3 << 13_i32); // clear previous value
+    value |= (fs as usize) << 13_i32;
+    unsafe {
+        _set(value);
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -113,7 +127,7 @@ impl Sstatus {
     #[inline]
     #[must_use]
     pub fn vs(&self) -> FS {
-        let fs = (self.bits >> 9) & 0x3; // bits 13-14
+        let fs = (self.bits >> 9_i32) & 0x3; // bits 13-14
         match fs {
             0 => FS::Off,
             1 => FS::Initial,
@@ -127,7 +141,7 @@ impl Sstatus {
     #[inline]
     #[must_use]
     pub fn fs(&self) -> FS {
-        let fs = (self.bits >> 13) & 0x3; // bits 13-14
+        let fs = (self.bits >> 13_i32) & 0x3; // bits 13-14
         match fs {
             0 => FS::Off,
             1 => FS::Initial,
@@ -142,7 +156,7 @@ impl Sstatus {
     #[inline]
     #[must_use]
     pub fn xs(&self) -> FS {
-        let xs = (self.bits >> 15) & 0x3; // bits 15-16
+        let xs = (self.bits >> 15_i32) & 0x3; // bits 15-16
         match xs {
             0 => FS::Off,
             1 => FS::Initial,
@@ -176,7 +190,7 @@ impl Sstatus {
             if #[cfg(target_arch = "riscv32")] {
                 XLEN::XLEN32
             } else {
-                #[allow(clippy::cast_possible_truncation)] // We actually want to truncate
+                #[expect(clippy::cast_possible_truncation, reason = "We actually want to truncate")]
                 match (self.bits >> 32) as u8 & 0x3 {
                     1 => XLEN::XLEN32,
                     2 => XLEN::XLEN64,

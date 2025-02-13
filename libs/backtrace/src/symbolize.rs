@@ -1,9 +1,17 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use core::ffi::c_void;
 use core::{fmt, str};
+use fallible_iterator::FallibleIterator;
 use gimli::{EndianSlice, NativeEndian};
-use object::read::elf::ElfFile64;
-use object::{Object, ObjectSection};
 use rustc_demangle::{try_demangle, Demangle};
+use xmas_elf::sections::SectionData;
+use xmas_elf::symbol_table::Entry;
 
 pub enum Symbol<'a> {
     /// We were able to locate frame information for this symbol, and
@@ -115,17 +123,26 @@ impl fmt::Debug for SymbolName<'_> {
 
 pub struct SymbolsIter<'a, 'ctx> {
     addr: u64,
-    symtab: object::SymbolMap<object::SymbolMapName<'a>>,
+    elf: &'ctx xmas_elf::ElfFile<'a>,
+    symtab: &'ctx [xmas_elf::symbol_table::Entry64],
     iter: addr2line::FrameIter<'ctx, EndianSlice<'a, NativeEndian>>,
     anything: bool,
 }
 
-impl<'a, 'ctx> SymbolsIter<'a, 'ctx> {
-    fn search_symtab(&self) -> Option<&'a str> {
-        Some(self.symtab.get(self.addr)?.name())
+impl<'ctx> SymbolsIter<'_, 'ctx> {
+    fn search_symtab(&self) -> Option<&'ctx str> {
+        self.symtab
+            .iter()
+            .find(|sym| sym.value() == self.addr)
+            .map(|sym| sym.get_name(self.elf).unwrap())
     }
+}
 
-    pub fn next(&mut self) -> gimli::Result<Option<Symbol<'ctx>>> {
+impl<'ctx> FallibleIterator for SymbolsIter<'_, 'ctx> {
+    type Item = Symbol<'ctx>;
+    type Error = gimli::Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
         if let Some(frame) = self.iter.next()? {
             self.anything = true;
 
@@ -157,15 +174,18 @@ impl<'a, 'ctx> SymbolsIter<'a, 'ctx> {
 /// Context necessary to resolve an address to its symbol name and source location.
 pub struct SymbolizeContext<'a> {
     addr2line: addr2line::Context<EndianSlice<'a, NativeEndian>>,
-    elf: ElfFile64<'a>,
+    elf: xmas_elf::ElfFile<'a>,
     adjust_vma: u64,
 }
 
 impl<'a> SymbolizeContext<'a> {
-    pub fn new(elf: ElfFile64<'a>, adjust_vma: u64) -> gimli::Result<Self> {
+    /// # Errors
+    ///
+    /// Returns an error when parsing the DWARF fails.
+    pub fn new(elf: xmas_elf::ElfFile<'a>, adjust_vma: u64) -> gimli::Result<Self> {
         let dwarf = gimli::Dwarf::load(|section_id| -> gimli::Result<_> {
-            let data = match elf.section_by_name(section_id.name()) {
-                Some(section) => section.data().unwrap(),
+            let data = match elf.find_section_by_name(section_id.name()) {
+                Some(section) => section.raw_data(&elf),
                 None => &[],
             };
             Ok(EndianSlice::new(data, NativeEndian))
@@ -179,13 +199,36 @@ impl<'a> SymbolizeContext<'a> {
         })
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the given address doesn't correspond to a symbol or parsing the DWARF info
+    /// fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the ELF file doesn't contain a symbol table.
     pub fn resolve_unsynchronized(&self, probe: u64) -> gimli::Result<SymbolsIter<'a, '_>> {
         let probe = probe - self.adjust_vma;
         let iter = self.addr2line.find_frames(probe).skip_all_loads()?;
 
+        let symtab = self
+            .elf
+            .section_iter()
+            .find_map(|section| {
+                section
+                    .get_data(&self.elf)
+                    .ok()
+                    .and_then(|data| match data {
+                        SectionData::SymbolTable64(symtab) => Some(symtab),
+                        _ => None,
+                    })
+            })
+            .unwrap();
+
         Ok(SymbolsIter {
             addr: probe,
-            symtab: self.elf.symbol_map(),
+            elf: &self.elf,
+            symtab,
             iter,
             anything: false,
         })

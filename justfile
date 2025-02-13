@@ -66,6 +66,7 @@ run cargo_args="" *args="":
     {{ _cargo }} run \
         -p kernel \
         --target kernel/riscv64gc-k23-none-kernel.json \
+        --locked \
         --profile {{ profile }} \
         {{ _buildstd }} \
         {{ cargo_args }} \
@@ -76,6 +77,13 @@ check crate="" *cargo_args="":
     {{ _cargo }} check \
         {{ if crate == "" { "--workspace --exclude loader" } else { "-p" } }} {{ crate }} \
         --target kernel/riscv64gc-k23-none-kernel.json \
+        --locked \
+        {{ _buildstd }} \
+        {{ _fmt }} \
+        {{ cargo_args }}
+    KERNEL=Cargo.toml {{ _cargo }} check \
+        -p loader \
+        --target loader/riscv64imac-k23-none-loader.json \
         {{ _buildstd }} \
         {{ _fmt }} \
         {{ cargo_args }}
@@ -91,9 +99,17 @@ clippy crate="" *cargo_args="":
     {{ _cargo }} clippy \
         {{ if crate == "" { "--workspace --exclude loader" } else { "-p" } }} {{ crate }} \
         --target kernel/riscv64gc-k23-none-kernel.json \
+        --locked \
         {{ _buildstd }} \
         {{ _fmt_clippy }} \
         {{ cargo_args }}
+    KERNEL=Cargo.toml {{ _cargo }} clippy \
+            -p loader \
+            --target loader/riscv64imac-k23-none-loader.json \
+            --locked \
+            {{ _buildstd }} \
+            {{ _fmt_clippy }} \
+            {{ cargo_args }}
 
 # check formatting for a crate or the entire workspace.
 check-fmt crate="" *cargo_args="":
@@ -113,12 +129,19 @@ build-docs crate="" *cargo_args="":
         {{ _buildstd }} \
         {{ _fmt }} \
         {{ cargo_args }}
+    KERNEL=Cargo.toml {{ _rustdoc }} \
+            -p loader \
+            --target loader/riscv64imac-k23-none-loader.json \
+            {{ _buildstd }} \
+            {{ _fmt }} \
+            {{ cargo_args }}
 
 # test documentation for a crate or the entire workspace.
 test-docs crate="" *cargo_args="":
     {{ _cargo }} test --doc \
         {{ if crate == "" { "--workspace --exclude loader" } else { "--package" } }} {{ crate }} \
         --target kernel/riscv64gc-k23-none-kernel.json \
+        --locked \
         {{ _buildstd }} \
         {{ _fmt }} \
         {{ cargo_args }}
@@ -127,6 +150,7 @@ test-docs crate="" *cargo_args="":
 test $K23_PROFILE=(profile) cargo_args="" *args="": && (test-docs cargo_args)
     {{ _cargo }} test \
         -p kernel \
+        --locked \
         --target kernel/riscv64gc-k23-none-kernel.json \
         --profile {{ profile }} \
         {{ _buildstd }} \
@@ -137,6 +161,7 @@ test $K23_PROFILE=(profile) cargo_args="" *args="": && (test-docs cargo_args)
 build: && (_build_bootimg _kernel_artifact)
     {{_cargo}} build \
         -p kernel \
+        --locked \
         --target kernel/riscv64gc-k23-none-kernel.json \
         --profile {{ profile }} \
         {{ _buildstd }} \
@@ -146,6 +171,13 @@ build: && (_build_bootimg _kernel_artifact)
 manual:
     cd manual && mdbook serve --open
 
+# This default configuration produces a 8-cpu system with a NUMA topology like this:
+#  _____________      _____________
+# |             |    |             |
+# | Node 0      |    | Node 1      |
+# | cpu 0,1,2,3 |-20-| cpu 4,5,6,7 |
+# |_____________|    |_____________|
+#
 _run_riscv64 binary *args: (_build_bootimg binary)
     @echo Running {{binary}}
     qemu-system-riscv64 \
@@ -153,18 +185,24 @@ _run_riscv64 binary *args: (_build_bootimg binary)
         {{_loader_artifact}} \
         -machine virt \
         -cpu rv64 \
-        -smp 1 \
-        -m 64M \
+        -m 256M \
         -d guest_errors,int \
         -display none \
-        -serial stdio \
         -semihosting-config \
         enable=on,target=native \
+        -smp cpus=8 \
+        -object memory-backend-ram,size=128M,id=m0 \
+        -object memory-backend-ram,size=128M,id=m1 \
+        -numa node,cpus=0-3,nodeid=0,memdev=m0 \
+        -numa node,cpus=4-7,nodeid=1,memdev=m1 \
+        -numa dist,src=0,dst=1,val=20 \
+        -monitor unix:qemu-monitor-socket,server,nowait \
         {{args}}
 
 _build_bootimg $KERNEL:
     {{_cargo}} build \
         -p loader \
+        --locked \
         --target loader/riscv64imac-k23-none-loader.json \
         --profile {{ profile }} \
         {{ _buildstd }} \

@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use crate::error::Error;
 use core::fmt;
 use core::fmt::Formatter;
@@ -13,14 +20,15 @@ pub struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
 pub fn parse_kernel(bytes: &'static [u8]) -> crate::Result<Kernel<'static>> {
     let elf_file = xmas_elf::ElfFile::new(bytes).map_err(Error::Elf)?;
 
-    let loader_config = unsafe {
+    let loader_config = {
         let section = elf_file
             .find_section_by_name(".loader_config")
             .expect("missing .loader_config section");
         let raw = section.raw_data(&elf_file);
 
         let ptr: *const LoaderConfig = raw.as_ptr().cast();
-        let cfg = &*ptr;
+        // Safety: kernel is inlined into the loader, so ptr is always valid
+        let cfg = unsafe { &*ptr };
 
         cfg.assert_valid();
         cfg
@@ -28,17 +36,17 @@ pub fn parse_kernel(bytes: &'static [u8]) -> crate::Result<Kernel<'static>> {
 
     Ok(Kernel {
         elf_file,
-        loader_config,
+        _loader_config: loader_config,
     })
 }
 
 /// The decompressed and parsed kernel ELF plus the embedded loader configuration data
 pub struct Kernel<'a> {
     pub elf_file: xmas_elf::ElfFile<'a>,
-    pub loader_config: &'a LoaderConfig,
+    pub _loader_config: &'a LoaderConfig,
 }
 
-impl<'a> Kernel<'a> {
+impl Kernel<'_> {
     /// Returns the size of the kernel in memory.
     pub fn mem_size(&self) -> u64 {
         let max_addr = self
@@ -61,6 +69,7 @@ impl<'a> Kernel<'a> {
     pub fn max_align(&self) -> u64 {
         let load_program_headers = self.loadable_program_headers();
 
+        #[expect(tail_expr_drop_order, reason = "")]
         load_program_headers.map(|ph| ph.align()).max().unwrap_or(1)
     }
 

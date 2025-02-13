@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use super::{once::ExclusiveState, Once};
 use core::{
     cell::UnsafeCell,
@@ -44,9 +51,13 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
             ExclusiveState::Poisoned => panic!("LazyLock instance has previously been poisoned"),
             state => {
                 let this = ManuallyDrop::new(this);
+                // Safety: constructor ensures this.data is initialized
                 let data = unsafe { ptr::read(&this.data) }.into_inner();
                 match state {
+                    // Safety: complete means self.data contains the init function, the other code
+                    // upholds this
                     ExclusiveState::Incomplete => Err(ManuallyDrop::into_inner(unsafe { data.f })),
+                    // Safety: complete means self.data contains the data, the other code upholds this
                     ExclusiveState::Complete => Ok(ManuallyDrop::into_inner(unsafe { data.value })),
                     ExclusiveState::Poisoned => unreachable!(),
                 }
@@ -59,11 +70,13 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
         this.once.call_once(|| {
             // SAFETY: `call_once` only runs this closure once, ever.
             let data = unsafe { &mut *this.data.get() };
+            // Safety: `call_once` ensures that data contains the init function
             let f = unsafe { ManuallyDrop::take(&mut data.f) };
             let value = f();
             data.value = ManuallyDrop::new(value);
         });
 
+        // Safety: the above infallibly initialized the value
         unsafe { &(*this.data.get()).value }
     }
 }
@@ -99,10 +112,17 @@ impl<T, F: FnOnce() -> T> Deref for LazyLock<T, F> {
 impl<T, F> Drop for LazyLock<T, F> {
     fn drop(&mut self) {
         match self.once.state() {
-            ExclusiveState::Incomplete => unsafe { ManuallyDrop::drop(&mut self.data.get_mut().f) },
-            ExclusiveState::Complete => unsafe {
-                ManuallyDrop::drop(&mut self.data.get_mut().value);
-            },
+            ExclusiveState::Incomplete => {
+                // Safety: complete means self.data still contains the init function, the other code
+                // upholds this
+                unsafe { ManuallyDrop::drop(&mut self.data.get_mut().f) }
+            }
+            ExclusiveState::Complete => {
+                // Safety: complete means self.data contains the data, the other code upholds this
+                unsafe {
+                    ManuallyDrop::drop(&mut self.data.get_mut().value);
+                }
+            }
             ExclusiveState::Poisoned => {}
         }
     }
@@ -127,6 +147,7 @@ impl<T: fmt::Debug, F> fmt::Debug for LazyLock<T, F> {
     }
 }
 
+// Safety: synchronization primitive
 unsafe impl<T: Sync + Send, F: Send> Sync for LazyLock<T, F> {}
 
 impl<T: RefUnwindSafe + UnwindSafe, F: UnwindSafe> RefUnwindSafe for LazyLock<T, F> {}

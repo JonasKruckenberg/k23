@@ -543,7 +543,7 @@ impl Encode for ComponentValType {
     fn encode(&self, sink: &mut Vec<u8>) {
         match self {
             Self::Primitive(ty) => ty.encode(sink),
-            Self::Type(index) => (*index as i64).encode(sink),
+            Self::Type(index) => i64::from(*index).encode(sink),
         }
     }
 }

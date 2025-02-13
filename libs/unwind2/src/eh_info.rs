@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use super::utils::{deref_pointer, get_unlimited_slice};
 use gimli::{BaseAddresses, EhFrame, EhFrameHdr, EndianSlice, NativeEndian, ParsedEhFrameHdr};
 use sync::LazyLock;
@@ -7,11 +14,11 @@ use sync::LazyLock;
 // like below we get a reference to the section start AND force it to not be garbage collected.
 
 #[used(linker)]
-#[link_section = ".eh_frame"]
+#[unsafe(link_section = ".eh_frame")]
 static mut EH_FRAME: [u8; 0] = [];
 
 #[used(linker)]
-#[link_section = ".eh_frame_hdr"]
+#[unsafe(link_section = ".eh_frame_hdr")]
 static mut EH_FRAME_HDR: [u8; 0] = [];
 
 #[derive(Debug)]
@@ -25,7 +32,7 @@ pub struct EhInfo {
 }
 
 pub static EH_INFO: LazyLock<EhInfo> = LazyLock::new(|| {
-    #[allow(static_mut_refs)]
+    #[allow(static_mut_refs, reason = "TODO remove")]
     let eh_frame_hdr = unsafe { get_unlimited_slice(EH_FRAME_HDR.as_ptr()) };
 
     let mut bases = BaseAddresses::default().set_eh_frame_hdr(eh_frame_hdr.as_ptr() as u64);

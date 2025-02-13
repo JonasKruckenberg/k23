@@ -7,9 +7,3 @@ license.workspace = true
 
 [lints]
 workspace = true
-
-[dependencies]
-onlyerror.workspace = true
-
-[dev-dependencies]
-ktest.workspace = true

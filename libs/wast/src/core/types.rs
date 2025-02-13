@@ -656,7 +656,7 @@ impl<'a> Parse<'a> for MemoryType {
 }
 
 /// A function type with parameters and results.
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 #[derive(Clone, Debug, Default)]
 pub struct FunctionType<'a> {
     /// The parameters of a function, optionally each having an identifier for

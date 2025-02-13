@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use crate::exception::Exception;
 use crate::utils::with_context;
 use crate::{arch, raise_exception_phase2, Error};
@@ -14,7 +21,7 @@ pub fn ensure_personality_stub(ptr: u64) -> crate::Result<()> {
 }
 
 #[inline(never)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
     with_context(|ctx| {
         if let Err(err) = raise_exception_phase2(ctx.clone(), exception) {
@@ -22,6 +29,7 @@ pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
             arch::abort()
         }
 
+        // Safety: this replaces the register state, very unsafe
         unsafe { arch::restore_context(ctx) }
     })
 }

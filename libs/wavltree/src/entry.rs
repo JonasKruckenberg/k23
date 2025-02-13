@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use crate::utils::Side;
 use crate::{utils, Link, Linked, WAVLTree};
 use core::pin::Pin;
@@ -58,32 +65,32 @@ where
     pub(crate) node: NonNull<T>,
     pub(crate) _tree: &'a mut WAVLTree<T>,
 }
-impl<T> OccupiedEntry<'_, T>
+impl<'a, T> OccupiedEntry<'a, T>
 where
     T: Linked + ?Sized,
 {
-    pub fn get(&self) -> &T {
+    pub fn get(&self) -> &'a T {
         unsafe { self.node.as_ref() }
     }
-    pub fn get_mut(&mut self) -> Pin<&mut T> {
+    pub fn get_mut(&mut self) -> Pin<&'a mut T> {
         unsafe { Pin::new_unchecked(self.node.as_mut()) }
     }
     pub fn remove(self) -> T::Handle {
-        unsafe { self._tree.remove_internal(self.node) }
+        self._tree.remove_internal(self.node)
     }
-    pub fn peek_next(&self) -> Option<&T> {
-        let node = unsafe { utils::next(self.node)? };
+    pub fn peek_next(&self) -> Option<&'a T> {
+        let node = utils::next(self.node)?;
         unsafe { Some(node.as_ref()) }
     }
-    pub fn peek_prev(&self) -> Option<&T> {
+    pub fn peek_prev(&self) -> Option<&'a T> {
         let node = unsafe { utils::prev(self.node)? };
         unsafe { Some(node.as_ref()) }
     }
-    pub fn peek_next_mut(&mut self) -> Option<Pin<&mut T>> {
-        let mut node = unsafe { utils::next(self.node)? };
+    pub fn peek_next_mut(&mut self) -> Option<Pin<&'a mut T>> {
+        let mut node = utils::next(self.node)?;
         unsafe { Some(Pin::new_unchecked(node.as_mut())) }
     }
-    pub fn peek_prev_mut(&mut self) -> Option<Pin<&mut T>> {
+    pub fn peek_prev_mut(&mut self) -> Option<Pin<&'a mut T>> {
         let mut node = unsafe { utils::prev(self.node)? };
         unsafe { Some(Pin::new_unchecked(node.as_mut())) }
     }
@@ -101,24 +108,42 @@ impl<'a, T> VacantEntry<'a, T>
 where
     T: Linked + ?Sized,
 {
-    pub fn peek_next(&self) -> Option<&T> {
+    pub fn peek_next(&self) -> Option<&'a T> {
         Some(unsafe { self.peek_next_inner()?.as_ref() })
     }
-    pub fn peek_prev(&self) -> Option<&T> {
+    pub fn peek_prev(&self) -> Option<&'a T> {
         Some(unsafe { self.peek_prev_inner()?.as_ref() })
     }
-    pub fn peek_next_mut(&mut self) -> Option<Pin<&mut T>> {
+    pub fn peek_next_mut(&mut self) -> Option<Pin<&'a mut T>> {
         let mut node = self.peek_next_inner()?;
         unsafe { Some(Pin::new_unchecked(node.as_mut())) }
     }
-    pub fn peek_prev_mut(&mut self) -> Option<Pin<&mut T>> {
+    pub fn peek_prev_mut(&mut self) -> Option<Pin<&'a mut T>> {
         let mut node = self.peek_prev_inner()?;
         unsafe { Some(Pin::new_unchecked(node.as_mut())) }
     }
-    pub fn insert(self, element: T::Handle) -> Pin<&'a mut T> {
+
+    /// # Panics
+    ///
+    /// Panics if the element is already part of a collection.
+    pub fn insert(mut self, element: T::Handle) -> Pin<&'a mut T> {
         let mut ptr = T::into_ptr(element);
         debug_assert_ne!(self._tree.root, Some(ptr));
+        self.insert_inner(ptr);
+        unsafe { Pin::new_unchecked(ptr.as_mut()) }
+    }
 
+    pub fn insert_entry(mut self, element: T::Handle) -> OccupiedEntry<'a, T> {
+        let ptr = T::into_ptr(element);
+        debug_assert_ne!(self._tree.root, Some(ptr));
+        self.insert_inner(ptr);
+        OccupiedEntry {
+            node: ptr,
+            _tree: self._tree,
+        }
+    }
+
+    fn insert_inner(&mut self, mut ptr: NonNull<T>) {
         let ptr_links = unsafe { T::links(ptr).as_mut() };
         assert!(!ptr_links.is_linked());
 
@@ -143,8 +168,6 @@ where
         if was_leaf {
             self._tree.balance_after_insert(ptr);
         }
-
-        unsafe { Pin::new_unchecked(ptr.as_mut()) }
     }
 
     fn peek_next_inner(&self) -> Link<T> {
@@ -155,7 +178,7 @@ where
             && side == Side::Left
         {
             // If we have a right sibling, the next node is its left-most child
-            Some(unsafe { utils::find_minimum(right) })
+            Some(utils::find_minimum(right))
         } else {
             let mut parent = Some(parent);
 
@@ -182,7 +205,7 @@ where
             && side == Side::Right
         {
             // If we have a left sibling, the next node is its right-most child
-            Some(unsafe { utils::find_maximum(left) })
+            Some(utils::find_maximum(left))
         } else {
             let mut parent = Some(parent);
 

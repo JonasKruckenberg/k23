@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 //! RISC-V specific unwinding code, mostly saving and restoring registers.
 use core::arch::{asm, naked_asm};
 use core::fmt;
@@ -183,6 +190,7 @@ macro_rules! code {
 pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), ptr: *mut ()) {
     // No need to save caller-saved registers here.
     #[cfg(target_feature = "d")]
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             "
@@ -207,6 +215,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
         };
     }
     #[cfg(not(target_feature = "d"))]
+    // Safety: inline assembly
     unsafe {
         naked_asm! {
             "
@@ -237,6 +246,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
 /// **without** performing any sort of validation.
 pub unsafe fn restore_context(ctx: &Context) -> ! {
     #[cfg(target_feature = "d")]
+    // Safety: inline assembly
     unsafe {
         asm!(
             code!(restore_fp),
@@ -250,6 +260,7 @@ pub unsafe fn restore_context(ctx: &Context) -> ! {
         );
     }
     #[cfg(not(target_feature = "d"))]
+    // Safety: inline assembly
     unsafe {
         asm!(
             code!(restore_gp),

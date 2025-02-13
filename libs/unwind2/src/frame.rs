@@ -1,6 +1,14 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use crate::arch;
 use crate::eh_info::obtain_eh_info;
 use crate::utils::{deref_pointer, get_unlimited_slice, with_context, StoreOnStack};
+use fallible_iterator::FallibleIterator;
 use gimli::{
     CfaRule, EhFrame, EndianSlice, FrameDescriptionEntry, NativeEndian, Register, RegisterRule,
     UnwindSection, UnwindTableRow,
@@ -23,6 +31,7 @@ impl<'a> Frame<'a> {
     }
 
     pub fn personality(&self) -> Option<u64> {
+        // Safety: we have to trust the DWARF info here
         self.fde.personality().map(|x| unsafe { deref_pointer(x) })
     }
 
@@ -31,10 +40,12 @@ impl<'a> Frame<'a> {
     }
 
     pub fn language_specific_data(&self) -> Option<EndianSlice<'a, NativeEndian>> {
+        // Safety: we have to trust the DWARF info here
         let addr = self.fde.lsda().map(|x| unsafe { deref_pointer(x) })?;
 
         Some(EndianSlice::new(
-            unsafe { get_unlimited_slice(addr as _) },
+            // Safety: we have to trust the DWARF info here
+            unsafe { get_unlimited_slice(addr as *const u8) },
             NativeEndian,
         ))
     }
@@ -71,7 +82,8 @@ impl<'a> Frame<'a> {
     /// This method is *highly* unsafe because it installs this frames register context, **without
     /// any checking**. If used improperly, much terrible things will happen, big sadness.
     pub unsafe fn restore(self) -> ! {
-        arch::restore_context(&self.ctx)
+        // Safety: caller has to ensure this is safe
+        unsafe { arch::restore_context(&self.ctx) }
     }
 
     fn from_context(ctx: &arch::Context, signal: bool) -> Result<Option<Self>, gimli::Error> {
@@ -99,7 +111,7 @@ impl<'a> Frame<'a> {
         let mut unwinder = gimli::UnwindContext::new_in();
 
         let row = fde
-            .unwind_info_for_address(&eh_info.eh_frame, &eh_info.bases, &mut unwinder, ra as _)?
+            .unwind_info_for_address(&eh_info.eh_frame, &eh_info.bases, &mut unwinder, ra as u64)?
             .clone();
 
         Ok(Some(Self {
@@ -109,11 +121,16 @@ impl<'a> Frame<'a> {
         }))
     }
 
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation,
+        reason = "numeric casts are all checked and behave as expected"
+    )]
     fn unwind(&self) -> Result<arch::Context, gimli::Error> {
         let row = &self.row;
         let mut new_ctx = self.ctx.clone();
 
-        #[allow(clippy::match_wildcard_for_single_variants)]
+        #[expect(clippy::match_wildcard_for_single_variants, reason = "style choice")]
         let cfa = match *row.cfa() {
             CfaRule::RegisterAndOffset { register, offset } => {
                 self.ctx[register].wrapping_add(offset as usize)
@@ -121,12 +138,13 @@ impl<'a> Frame<'a> {
             _ => return Err(gimli::Error::UnsupportedEvaluation),
         };
 
-        new_ctx[arch::SP] = cfa as _;
+        new_ctx[arch::SP] = cfa;
         new_ctx[arch::RA] = 0;
 
         for (reg, rule) in row.registers() {
             let value = match *rule {
                 RegisterRule::Undefined | RegisterRule::SameValue => self.ctx[*reg],
+                // Safety: we have to trust the DWARF info here
                 RegisterRule::Offset(offset) => unsafe {
                     *(cfa.wrapping_add(offset as usize) as *const usize)
                 },
@@ -150,9 +168,14 @@ pub struct FramesIter {
     signal: bool,
 }
 
+impl Default for FramesIter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FramesIter {
     #[inline(always)]
-    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         with_context(|ctx| Self {
             ctx: ctx.clone(),
@@ -163,9 +186,13 @@ impl FramesIter {
     pub fn from_context(ctx: arch::Context) -> Self {
         Self { ctx, signal: false }
     }
+}
 
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> crate::Result<Option<Frame<'static>>> {
+impl FallibleIterator for FramesIter {
+    type Item = Frame<'static>;
+    type Error = crate::Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
         if let Some(frame) = Frame::from_context(&self.ctx, self.signal)? {
             self.ctx = frame.unwind()?;
             self.signal = frame.is_signal_trampoline();

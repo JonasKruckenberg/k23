@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use core::{
     mem,
     sync::atomic::{AtomicU8, Ordering},
@@ -64,6 +71,7 @@ impl Once {
         }
 
         let mut f = Some(f);
+        #[allow(tail_expr_drop_order, reason = "")]
         self.call(&mut || f.take().unwrap()());
     }
 
@@ -112,11 +120,9 @@ impl Once {
         }
     }
 
-    fn wait(&self) {
-        loop {
-            if !self.poll() {
-                core::hint::spin_loop();
-            }
+    pub fn wait(&self) {
+        while !self.poll() {
+            core::hint::spin_loop();
         }
     }
 }

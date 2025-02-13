@@ -1,5 +1,13 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
+use crate::Backoff;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use lock_api::RawRwLockUpgrade;
+use lock_api::RawRwLockUpgrade as _;
 
 /// Low-level reader-writer lock.
 ///
@@ -52,8 +60,9 @@ impl RawRwLock {
     }
 }
 
+// Safety: unsafe trait
 unsafe impl lock_api::RawRwLock for RawRwLock {
-    #[allow(clippy::declare_interior_mutable_const)]
+    #[expect(clippy::declare_interior_mutable_const, reason = "")]
     const INIT: Self = Self {
         lock: AtomicUsize::new(0),
     };
@@ -90,8 +99,9 @@ unsafe impl lock_api::RawRwLock for RawRwLock {
     }
 
     fn lock_exclusive(&self) {
+        let mut boff = Backoff::default();
         while !self.try_lock_exclusive_internal(false) {
-            core::hint::spin_loop();
+            boff.spin();
         }
     }
 
@@ -108,6 +118,7 @@ unsafe impl lock_api::RawRwLock for RawRwLock {
     }
 }
 
+// Safety: unsafe trait
 unsafe impl lock_api::RawRwLockUpgrade for RawRwLock {
     fn lock_upgradable(&self) {
         while !self.try_lock_upgradable() {
@@ -144,6 +155,7 @@ unsafe impl lock_api::RawRwLockUpgrade for RawRwLock {
     }
 }
 
+// Safety: unsafe trait
 unsafe impl lock_api::RawRwLockDowngrade for RawRwLock {
     unsafe fn downgrade(&self) {
         // Reserve the read guard for ourselves
@@ -157,12 +169,16 @@ unsafe impl lock_api::RawRwLockDowngrade for RawRwLock {
     }
 }
 
+// Safety: unsafe trait
 unsafe impl lock_api::RawRwLockUpgradeDowngrade for RawRwLock {
     unsafe fn downgrade_upgradable(&self) {
         // Reserve the read guard for ourselves
         self.acquire_reader();
 
-        self.unlock_upgradable();
+        // Safety: we just acquired the lock
+        unsafe {
+            self.unlock_upgradable();
+        }
     }
 
     unsafe fn downgrade_to_upgradable(&self) {

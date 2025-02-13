@@ -1,5 +1,12 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 #![no_std]
-#![allow(internal_features)]
+#![expect(internal_features, reason = "lang items")]
 #![feature(
     core_intrinsics,
     rustc_attrs,
@@ -7,6 +14,7 @@
     lang_items,
     naked_functions
 )]
+#![expect(tail_expr_drop_order, reason = "vetted")]
 
 extern crate alloc;
 
@@ -29,13 +37,18 @@ use core::intrinsics;
 use core::mem::ManuallyDrop;
 use core::panic::UnwindSafe;
 use core::ptr::addr_of_mut;
-
 pub use eh_info::EhInfo;
 pub use error::Error;
+use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FramesIter};
+
+pub use arch::Context;
 
 pub(crate) type Result<T> = core::result::Result<T, Error>;
 
+/// # Errors
+///
+/// Returns an error if unwinding fails.
 pub fn begin_panic(data: Box<dyn Any + Send>) -> Result<()> {
     with_context(|ctx| {
         raise_exception_phase_1(ctx.clone())?;
@@ -99,10 +112,12 @@ fn raise_exception_phase2(ctx: arch::Context, exception: *mut Exception) -> Resu
 
         match eh_action {
             EHAction::None => continue,
+            // Safety: As long as the Rust compiler works correctly lpad is the correct instruction
+            // pointer.
             EHAction::Cleanup(lpad) | EHAction::Catch(lpad) => unsafe {
                 frame.set_reg(arch::UNWIND_DATA_REG.0, exception as usize);
                 frame.set_reg(arch::UNWIND_DATA_REG.1, 0);
-                frame.set_ip(lpad as usize);
+                frame.set_ip(usize::try_from(lpad).unwrap());
                 frame.adjust_stack_for_args();
                 frame.restore()
             },
@@ -112,6 +127,9 @@ fn raise_exception_phase2(ctx: arch::Context, exception: *mut Exception) -> Resu
     Err(Error::EndOfStack)
 }
 
+/// # Errors
+///
+/// Returns an error with the boxed panic payload when the provided closure panicked
 pub fn catch_unwind<F, R>(f: F) -> core::result::Result<R, Box<dyn Any + Send + 'static>>
 where
     F: FnOnce() -> R + UnwindSafe,
@@ -139,16 +157,16 @@ where
     #[cold]
     #[rustc_nounwind] // `intrinsic::catch_unwind` requires catch fn to be nounwind
     fn do_catch<F: FnOnce() -> R, R>(data: *mut u8, exception: *mut u8) {
-        unsafe {
-            let data = data.cast::<Data<F, R>>();
-            let data = &mut (*data);
+        let data = data.cast::<Data<F, R>>();
+        // Safety: data is correctly initialized
+        let data = unsafe { &mut (*data) };
 
-            match Exception::unwrap(exception.cast()) {
-                Ok(p) => data.p = ManuallyDrop::new(p),
-                Err(err) => {
-                    log::error!("Failed to catch exception: {err:?}");
-                    arch::abort();
-                }
+        // Safety: `exception comes from the Rust intrinsic, not much we do other than trust it`
+        match unsafe { Exception::unwrap(exception.cast()) } {
+            Ok(p) => data.p = ManuallyDrop::new(p),
+            Err(err) => {
+                log::error!("Failed to catch exception: {err:?}");
+                arch::abort();
             }
         }
     }
@@ -158,6 +176,7 @@ where
     };
     let data_ptr = addr_of_mut!(data).cast::<u8>();
 
+    // Safety: intrinsic call
     unsafe {
         if intrinsics::catch_unwind(do_call::<F, R>, data_ptr, do_catch::<F, R>) == 0 {
             Ok(ManuallyDrop::into_inner(data.r))

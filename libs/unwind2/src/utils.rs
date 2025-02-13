@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use crate::arch;
 use core::ptr;
 use gimli::{Pointer, Register, RegisterRule, UnwindTableRow};
@@ -25,14 +32,16 @@ impl<R: gimli::ReaderOffset> gimli::UnwindContextStorage<R> for StoreOnStack {
 pub unsafe fn get_unlimited_slice<'a>(start: *const u8) -> &'a [u8] {
     // Create the largest possible slice for this address.
     let start = start as usize;
-    let end = start.saturating_add(isize::MAX as _);
+    let end = start.saturating_add(isize::MAX as usize);
     let len = end - start;
-    unsafe { core::slice::from_raw_parts(start as *const _, len) }
+    // Safety: caller has to ensure start is valid
+    unsafe { core::slice::from_raw_parts(start as *const u8, len) }
 }
 
 pub unsafe fn deref_pointer(ptr: Pointer) -> u64 {
     match ptr {
         Pointer::Direct(x) => x,
+        // Safety: caller has to ensure `ptr` is valid
         Pointer::Indirect(x) => unsafe { *(x as *const u64) },
     }
 }
@@ -64,5 +73,7 @@ pub fn with_context<T, F: FnOnce(&mut arch::Context) -> T>(f: F) -> T {
         f: ManuallyDrop::new(f),
     };
     arch::save_context(delegate::<T, F>, ptr::addr_of_mut!(data).cast());
+
+    // Safety: `delegate` places the closure return value into `data.t`
     unsafe { ManuallyDrop::into_inner(data.t) }
 }

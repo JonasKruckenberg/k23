@@ -1,4 +1,15 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 #![cfg_attr(not(test), no_std)]
+#![allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "too many trivial unsafe blocks"
+)]
 
 use core::cell::UnsafeCell;
 use core::iter::FusedIterator;
@@ -9,8 +20,8 @@ use core::{fmt, mem, ptr};
 
 /// Trait implemented by types which can be members of an intrusive doubly-linked list.
 ///
-/// In order to be part of an intrusive WAVL tree, a type must contain a
-/// `Links` type that stores the pointers to other nodes in the tree.
+/// In order to be part of an intrusive doubly-linked list tree, a type must contain a
+/// `Links` type that stores the pointers to other nodes in the list.
 ///
 /// # Safety
 ///
@@ -244,12 +255,15 @@ where
         false
     }
 
+    /// # Panics
+    ///
+    /// Panics if the element is already linked to a collection.
     pub fn push_back(&mut self, element: T::Handle) {
         let ptr = T::into_ptr(element);
-        assert_ne!(self.tail, Some(ptr));
+        debug_assert_ne!(self.tail, Some(ptr));
 
         unsafe {
-            debug_assert!(
+            assert!(
                 !T::links(ptr).as_ref().is_linked(),
                 "cannot insert an already linked node into a list"
             );
@@ -269,12 +283,15 @@ where
         self.len += 1;
     }
 
+    /// # Panics
+    ///
+    /// Panics if the element is already linked to a collection.
     pub fn push_front(&mut self, element: T::Handle) {
         let ptr = T::into_ptr(element);
-        assert_ne!(self.head, Some(ptr));
+        debug_assert_ne!(self.head, Some(ptr));
 
         unsafe {
-            debug_assert!(
+            assert!(
                 !T::links(ptr).as_ref().is_linked(),
                 "cannot insert an already linked node into a list"
             );
@@ -351,24 +368,57 @@ where
         }
     }
 
+    pub fn front(&self) -> Option<&T> {
+        let node = self.head?;
+        Some(unsafe { node.as_ref() })
+    }
+
+    pub fn front_mut(&mut self) -> Option<Pin<&mut T>> {
+        let mut node = self.head?;
+        let pin = unsafe {
+            // Pin the reference to ensure intrusively linked
+            // elements cannot be moved while in a collection.
+            Pin::new_unchecked(node.as_mut())
+        };
+        Some(pin)
+    }
+
+    pub fn back(&self) -> Option<&T> {
+        let node = self.tail?;
+        Some(unsafe { node.as_ref() })
+    }
+
+    pub fn back_mut(&mut self) -> Option<Pin<&mut T>> {
+        let mut node = self.tail?;
+        let pin = unsafe {
+            // Pin the reference to ensure intrusively linked
+            // elements cannot be moved while in a collection.
+            Pin::new_unchecked(node.as_mut())
+        };
+        Some(pin)
+    }
+
     pub fn cursor_front(&self) -> Cursor<'_, T> {
         Cursor {
             current: self.head,
             _list: self,
         }
     }
+
     pub fn cursor_front_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
             current: self.head,
             list: self,
         }
     }
+
     pub fn cursor_back(&self) -> Cursor<'_, T> {
         Cursor {
             current: self.tail,
             _list: self,
         }
     }
+
     pub fn cursor_back_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
             current: self.tail,
@@ -376,6 +426,144 @@ where
         }
     }
 
+    /// Constructs a cursor from a raw pointer to a node.
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the pointer points to a valid node in the tree.
+    pub unsafe fn cursor_from_ptr(&self, ptr: NonNull<T>) -> Cursor<'_, T> {
+        Cursor {
+            current: Some(ptr),
+            _list: self,
+        }
+    }
+
+    /// Constructs a mutable cursor from a raw pointer to a node.
+    ///
+    /// # Safety
+    ///
+    /// Caller has to ensure the pointer points to a valid node in the tree.
+    pub unsafe fn cursor_from_ptr_mut(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
+        CursorMut {
+            current: Some(ptr),
+            list: self,
+        }
+    }
+
+    pub fn split_off(&mut self, at: usize) -> Option<Self> {
+        let len = self.len();
+        // what is the index of the last node that should be left in this list?
+        let split_idx = match at {
+            // trying to split at the 0th index. we can just return the whole
+            // list, leaving `self` empty.
+            0 => return Some(mem::replace(self, Self::new())),
+            // trying to split at the last index. the new list will be empty.
+            at if at == len => return Some(Self::new()),
+            // we cannot split at an index that is greater than the length of
+            // this list.
+            at if at > len => return None,
+            // otherwise, the last node in this list will be `at - 1`.
+            at => at - 1,
+        };
+
+        let mut iter = self.iter();
+
+        // advance to the node at `split_idx`, starting either from the head or
+        // tail of the list.
+        let dist_from_tail = len - 1 - split_idx;
+        let split_node = if split_idx <= dist_from_tail {
+            // advance from the head of the list.
+            for _ in 0..split_idx {
+                iter.next();
+            }
+            iter.curr
+        } else {
+            // advance from the tail of the list.
+            for _ in 0..dist_from_tail {
+                iter.next_back();
+            }
+            iter.curr_back
+        };
+
+        let Some(split_node) = split_node else {
+            return Some(mem::replace(self, Self::new()));
+        };
+
+        // the head of the new list is the split node's `next` node (which is
+        // replaced with `None`)
+        let head = unsafe { T::links(split_node).as_mut().replace_next(None) };
+        let tail = if let Some(head) = head {
+            // since `head` is now the head of its own list, it has no `prev`
+            // link any more.
+            let _prev = unsafe { T::links(head).as_mut().replace_prev(None) };
+            debug_assert_eq!(_prev, Some(split_node));
+
+            // the tail of the new list is this list's old tail, if the split list
+            // is not empty.
+            self.tail.replace(split_node)
+        } else {
+            None
+        };
+
+        let split = Self {
+            head,
+            tail,
+            len: self.len - at,
+        };
+
+        // update this list's length (note that this occurs after constructing
+        // the new list, because we use this list's length to determine the new
+        // list's length).
+        self.len = at;
+
+        Some(split)
+    }
+
+    pub fn append(&mut self, other: &mut Self) {
+        let Some(tail) = self.tail else {
+            // if this list is empty, simply replace it with `other`
+            debug_assert!(self.is_empty());
+            mem::swap(self, other);
+            return;
+        };
+
+        if let Some((other_head, other_tail, other_len)) = other.take_all() {
+            // attach the other list's head node to this list's tail node.
+            unsafe {
+                T::links(tail).as_mut().replace_next(Some(other_head));
+                T::links(other_head).as_mut().replace_prev(Some(tail));
+            }
+
+            // this list's tail node is now the other list's tail node.
+            self.tail = Some(other_tail);
+            // this list's length increases by the other list's length, which
+            // becomes 0.
+            self.len += other_len;
+        }
+    }
+
+    #[inline]
+    fn take_all(&mut self) -> Option<(NonNull<T>, NonNull<T>, usize)> {
+        let head = self.head.take()?;
+        let tail = self.tail.take();
+        debug_assert!(
+            tail.is_some(),
+            "if a list's `head` is `Some`, its tail must also be `Some`"
+        );
+        let tail = tail?;
+        let len = mem::replace(&mut self.len, 0);
+        debug_assert_ne!(
+            len, 0,
+            "if a list is non-empty, its `len` must be greater than 0"
+        );
+        Some((head, tail, len))
+    }
+
+    /// Asserts as many invariants as possible.
+    ///
+    /// # Panics
+    ///
+    /// Panics when an assertion does not hold.
     pub fn assert_valid(&self) {
         let Some(head) = self.head else {
             assert!(
@@ -436,6 +624,44 @@ where
             self.len, actual_len,
             "linked list's actual length did not match its `len` variable"
         );
+    }
+
+    /// Takes all the elements out of the `List`, leaving it empty. The taken elements are returned as a new `List`.
+    #[inline]
+    pub fn take(&mut self) -> Self {
+        let tree = Self {
+            head: self.head,
+            tail: self.tail,
+            len: self.len,
+        };
+        self.head = None;
+        self.tail = None;
+        self.len = 0;
+        tree
+    }
+}
+
+impl<T> Extend<T::Handle> for List<T>
+where
+    T: Linked + ?Sized,
+{
+    fn extend<I: IntoIterator<Item = T::Handle>>(&mut self, iter: I) {
+        for item in iter {
+            self.push_back(item);
+        }
+    }
+}
+
+impl<T> FromIterator<T::Handle> for List<T>
+where
+    T: Linked + ?Sized,
+{
+    fn from_iter<I: IntoIterator<Item = T::Handle>>(iter: I) -> Self {
+        let mut out = Self::new();
+        for item in iter.into_iter() {
+            out.push_back(item);
+        }
+        out
     }
 }
 
@@ -622,7 +848,6 @@ where
     }
 }
 
-#[derive(Clone)]
 pub struct Cursor<'a, T>
 where
     T: Linked + ?Sized,
@@ -630,6 +855,19 @@ where
     current: Link<T>,
     _list: &'a List<T>,
 }
+
+impl<T> Clone for Cursor<'_, T>
+where
+    T: Linked + ?Sized,
+{
+    fn clone(&self) -> Self {
+        Self {
+            current: self.current,
+            _list: self._list,
+        }
+    }
+}
+
 impl<'a, T> Cursor<'a, T>
 where
     T: Linked + ?Sized,
@@ -721,6 +959,9 @@ where
             _list: self.list,
         }
     }
+
+    /// Removes the current element from the list returning it's owned handle, also moves the
+    /// cursor to the next element in the list.
     pub fn remove(&mut self) -> Option<T::Handle> {
         unsafe {
             let node = self.current?;
@@ -744,7 +985,7 @@ where
                 self.list.tail = prev;
             }
 
-            Some(T::from_ptr(self.current?))
+            Some(T::from_ptr(mem::replace(&mut self.current, next)?))
         }
     }
 }

@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 //! Supervisor Cause Register
 
 use super::{read_csr_as, write_csr};
@@ -13,10 +20,12 @@ pub struct Scause {
 read_csr_as!(Scause, 0x142);
 write_csr!(0x142);
 
-pub unsafe fn write(trap: Trap) {
+pub unsafe fn set(trap: Trap) {
     match trap {
-        Trap::Interrupt(interrupt) => _write(1 << (usize::BITS as usize - 1) | interrupt as usize),
-        Trap::Exception(exception) => _write(exception as usize),
+        Trap::Interrupt(interrupt) => unsafe {
+            _write(1 << (usize::BITS as usize - 1) | interrupt as usize);
+        },
+        Trap::Exception(exception) => unsafe { _write(exception as usize) },
     }
 }
 
@@ -108,23 +117,47 @@ impl From<Interrupt> for usize {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Exception {
+    /// Instruction address misaligned
     InstructionMisaligned = 0,
+    /// Instruction access fault
     InstructionFault = 1,
+    /// Illegal instruction
     IllegalInstruction = 2,
+    /// Breakpoint
     Breakpoint = 3,
+    /// Load address misaligned
     LoadMisaligned = 4,
+    /// Load access fault
     LoadFault = 5,
+    /// Store/AMO address misaligned
     StoreMisaligned = 6,
+    /// Store/AMO access fault
     StoreFault = 7,
+    /// Environment call from U-mode or VU-mode
     UserEnvCall = 8,
+    /// Environment call from HS-mode
     SupervisorEnvCall = 9,
+    /// Environment call from VS-mode
     VirtualSupervisorEnvCall = 10,
+    /// Environment call from M-mode
+    MachineEnvCall = 11,
+    /// Instruction page fault
     InstructionPageFault = 12,
+    /// Load page fault
     LoadPageFault = 13,
+    /// Store/AMO page fault
     StorePageFault = 15,
+    /// Software check
+    SoftwareCheck = 18,
+    /// Hardware error
+    HardwareError = 19,
+    /// Instruction guest-page fault
     InstructionGuestPageFault = 20,
+    /// Load guest-page fault
     LoadGuestPageFault = 21,
+    /// Virtual instruction
     VirtualInstruction = 22,
+    /// Store/AMO guest-page fault
     StoreGuestPageFault = 23,
 }
 

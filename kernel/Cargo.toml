@@ -5,37 +5,49 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[lints]
-workspace = true
-
-[lib]
-harness = false
-
 [[bin]]
 name = "kernel"
 harness = false
 
+[lints]
+workspace = true
+
 [dependencies]
 loader-api.workspace = true
-pmm.workspace = true
-panic-unwind.workspace = true
-semihosting-logger = { workspace = true, features = ["hartid"] }
+cpu-local.workspace = true
 sync.workspace = true
-thread-local.workspace = true
-wavltree= { workspace = true, features = ["dot"] }
-dtb-parser.workspace = true
+linked-list.workspace = true
+unwind2.workspace = true
+backtrace.workspace = true
+wavltree = { workspace = true, features = ["dot"] }
+mpsc-queue.workspace = true
+fdt.workspace = true
 
-talc.workspace = true
 log.workspace = true
 cfg-if.workspace = true
-pin-project-lite.workspace = true
+talc.workspace = true
+static_assertions.workspace = true
+arrayvec.workspace = true
+bitflags.workspace = true
+xmas-elf.workspace = true
+fallible-iterator.workspace = true
 rand_chacha.workspace = true
 rand.workspace = true
-onlyerror.workspace = true
+pin-project = "1"
+smallvec.workspace = true
+hashbrown.workspace = true
+gimli.workspace = true
+lock_api.workspace = true
+bumpalo = { workspace = true, features = ["boxed"] }
+ouroboros = "0.18.5"
+mycelium-bitfield = "0.1.5"
+
+wasmparser.workspace = true
+target-lexicon.workspace = true
+cranelift-codegen.workspace = true
+cranelift-frontend.workspace = true
+cranelift-entity.workspace = true
+wasmtime-slab.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
-
-[dev-dependencies]
-ktest.workspace = true
-wast.workspace = true

@@ -11,9 +11,9 @@ workspace = true
 [dependencies]
 log.workspace = true
 cfg-if.workspace = true
-onlyerror.workspace = true
 gimli = { workspace = true, features = ["read-core"] }
 sync.workspace = true
+fallible-iterator.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true

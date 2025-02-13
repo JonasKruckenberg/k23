@@ -1,6 +1,13 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 //! Supervisor Interrupt Enable Register
 
-use super::{clear_csr, read_csr_as, write_csr};
+use super::{clear_csr, read_csr_as, set_csr};
 use core::fmt;
 use core::fmt::Formatter;
 
@@ -11,31 +18,49 @@ pub struct Sie {
 }
 
 read_csr_as!(Sie, 0x104);
-write_csr!(0x104);
+set_csr!(0x104);
 clear_csr!(0x104);
 
+/// Enable supervisor-level software interrupts
 pub unsafe fn set_ssie() {
-    _write(1 << 1);
+    unsafe {
+        _set(1 << 1);
+    }
 }
 
+/// Enable supervisor-level timer interrupts
 pub unsafe fn set_stie() {
-    _write(1 << 5);
+    unsafe {
+        _set(1 << 5);
+    }
 }
 
+/// Enable supervisor-level external interrupts
 pub unsafe fn set_seie() {
-    _write(1 << 9);
+    unsafe {
+        _set(1 << 9);
+    }
 }
 
+/// Disable supervisor-level software interrupts
 pub unsafe fn clear_ssie() {
-    _clear(1 << 1);
+    unsafe {
+        _clear(1 << 1);
+    }
 }
 
+/// Disable supervisor-level timer interrupts
 pub unsafe fn clear_stie() {
-    _clear(1 << 5);
+    unsafe {
+        _clear(1 << 5);
+    }
 }
 
+/// Disable supervisor-level external interrupts
 pub unsafe fn clear_seie() {
-    _clear(1 << 9);
+    unsafe {
+        _clear(1 << 9);
+    }
 }
 
 impl Sie {

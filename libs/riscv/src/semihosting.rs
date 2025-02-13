@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 #[macro_export]
 #[doc(hidden)]
 macro_rules! syscall {
@@ -5,32 +12,33 @@ macro_rules! syscall {
         $crate::semihosting::syscall_inner($nr, 0)
     };
     ($nr:path, $a1:expr) => {
-        $crate::semihosting::syscall_inner($nr, &[$a1 as usize] as *const usize as usize)
+        $crate::semihosting::syscall_inner($nr, ::core::ptr::from_ref(&[$a1 as usize]) as usize)
     };
     ($nr:path, $a1:expr, $a2:expr) => {
-        #[allow(clippy::ref_as_ptr)]
         $crate::semihosting::syscall_inner(
             $nr,
-            &[$a1 as usize, $a2 as usize] as *const usize as usize,
+            ::core::ptr::from_ref(&[$a1 as usize, $a2 as usize]) as usize,
         )
     };
     ($nr:path, $a1:expr, $a2:expr, $a3:expr) => {
-        #[allow(clippy::ref_as_ptr)]
         $crate::semihosting::syscall_inner(
             $nr,
-            &[$a1 as usize, $a2 as usize, $a3 as usize] as *const usize as usize,
+            ::core::ptr::from_ref(&[$a1 as usize, $a2 as usize, $a3 as usize]) as usize,
         )
     };
     ($nr:path, $a1:expr, $a2:expr, $a3:expr, $a4:expr) => {
         $crate::semihosting::syscall_inner(
             $nr,
-            &[$a1 as usize, $a2 as usize, $a3 as usize, $a4 as usize] as *const usize as usize,
+            ptr::from_ref(&[$a1 as usize, $a2 as usize, $a3 as usize, $a4 as usize]) as usize,
         )
     };
 }
 
 #[inline(always)]
-#[allow(clippy::used_underscore_binding)]
+#[expect(
+    clippy::used_underscore_binding,
+    reason = "compiler thinks nr and arg are unused otherwise"
+)]
 pub(crate) unsafe fn syscall_inner(_nr: usize, _arg: usize) -> usize {
     cfg_if::cfg_if! {
         if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
@@ -42,19 +50,21 @@ pub(crate) unsafe fn syscall_inner(_nr: usize, _arg: usize) -> usize {
             // it will be treated as a regular break, hence the norvc option.
             //
             // See https://github.com/riscv/riscv-semihosting-spec for more details.
-            asm!("
-                .balign 16
-                .option push
-                .option norvc
-                slli x0, x0, 0x1f
-                ebreak
-                srai x0, x0, 0x7
-                .option pop
-            ",
-            inout("a0") nr,
-            inout("a1") arg => _,
-            options(nostack, preserves_flags),
-            );
+            // Safety: inline assembly
+            unsafe {
+                asm! {
+                    ".balign 16",
+                    ".option push",
+                    ".option norvc",
+                    "slli x0, x0, 0x1f",
+                    "ebreak",
+                    "srai x0, x0, 0x7",
+                    ".option pop",
+                    inout("a0") nr,
+                    inout("a1") arg => _,
+                    options(nostack, preserves_flags),
+                };
+            }
             nr
         } else {
             unimplemented!();
@@ -98,7 +108,10 @@ pub enum ExitReason {
     // AdpStoppedOsspecific = 0x20029,
 }
 
-#[allow(clippy::cast_sign_loss)]
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "sign extended conversion from i32 to usize"
+)]
 pub(crate) fn exit(code: i32) {
     // TODO: check sh_ext_exit_extended first
     sys_exit_extended(
@@ -108,7 +121,7 @@ pub(crate) fn exit(code: i32) {
     // If SYS_EXIT_EXTENDED is not supported, above call doesn't exit program,
     // so try again with SYS_EXIT.
     let reason = match code {
-        0 => ExitReason::AdpStoppedApplicationExit,
+        0i32 => ExitReason::AdpStoppedApplicationExit,
         _ => ExitReason::AdpStoppedRunTimeErrorUnknown,
     };
     sys_exit(reason);
@@ -116,6 +129,7 @@ pub(crate) fn exit(code: i32) {
 
 /// [SYS_EXIT (0x18)](https://github.com/ARM-software/abi-aa/blob/HEAD/semihosting/semihosting.rst#sys_exit-0x18)
 pub fn sys_exit(reason: ExitReason) {
+    // Safety: syscall
     unsafe {
         #[cfg(target_pointer_width = "32")]
         syscall!(SYS_EXIT, reason as usize);
@@ -126,6 +140,7 @@ pub fn sys_exit(reason: ExitReason) {
 
 /// [SYS_EXIT_EXTENDED (0x20)](https://github.com/ARM-software/abi-aa/blob/HEAD/semihosting/semihosting.rst#sys_exit_extended-0x20)
 pub fn sys_exit_extended(reason: ExitReason, subcode: usize) {
+    // Safety: syscall
     unsafe {
         #[cfg(target_pointer_width = "32")]
         syscall!(SYS_EXIT_EXTENDED, reason as usize, subcode);

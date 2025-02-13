@@ -1,100 +1,144 @@
 [workspace]
-members = [
-    "kernel",
-    "libs/*",
-    "loader",
-    "loader/api",
-    "loader/api/macros",
-    "libs/ktest/macros"
-]
+members = ["kernel", "libs/*", "loader", "loader/api"]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 authors = ["Jonas Kruckenberg <iterpre@protonmail.com>"]
-license = "MIT"
-
-[workspace.lints.clippy]
-large_futures = "deny"
-large_stack_frames = "deny"
-large_stack_arrays = "deny"
-recursive_format_impl = "deny"
+license = "MIT OR Apache-2.0"
 
 [workspace.lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+rust-2024-compatibility = "deny"
+if_let_rescope = "allow"
+
+#keyword_idents_2024 = 'warn'
+#unsafe-attr-outside-unsafe = 'warn'
+#deprecated-safe-2024 = 'warn'
+#rust-2024-guarded-string-incompatible-syntax = 'warn'
+#rust-2024-prelude-collisions = 'warn'
+#rust-2024-incompatible-pat = 'warn'
+#missing-unsafe-on-extern = 'warn'
+#impl-trait-overcaptures = 'warn'
+
+[workspace.lints.clippy]
+# numeric safety
+#arithmetic_side_effects = "deny" TODO audit arithmetic & reenable
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_precision_loss = "deny"
+cast_sign_loss = "deny"
+cast_lossless = "deny"
+default_numeric_fallback = "deny"
+checked_conversions = "deny"
+float_arithmetic = "deny"
+float_cmp = "deny"
+
+# pointer safety
+cast_ptr_alignment = "deny"
+ptr_as_ptr = "deny"
+ptr_cast_constness = "deny"
+ref_as_ptr = "deny"
+transmute_ptr_to_ptr = "deny"
+
+## panic safety
+#indexing_slicing = "deny"
+#panic = "deny"
+#panic_in_result_fn = "deny"
+
+# stack overflow prevention
+large_futures = "deny"
+large_stack_arrays = "deny"
+large_stack_frames = "deny"
+large_types_passed_by_value = "deny"
+recursive_format_impl = "deny"
+
+# style
+undocumented_unsafe_blocks = "deny"
+as_underscore = "deny"
+alloc_instead_of_core = "deny"
+#allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+default_trait_access = "deny"
+cloned_instead_of_copied = "deny"
+fn_params_excessive_bools = "deny"
+struct_excessive_bools = "deny"
+filter_map_next = "deny"
+explicit_iter_loop = "deny"
+flat_map_option = "deny"
+iter_filter_is_ok = "deny"
+iter_filter_is_some = "deny"
+manual_assert = "deny"
+manual_is_power_of_two = "deny"
+manual_is_variant_and = "deny"
+manual_let_else = "deny"
+manual_ok_or = "deny"
+match_bool = "deny"
+missing_fields_in_debug = "deny"
+semicolon_if_nothing_returned = "deny"
+trivially_copy_pass_by_ref = "deny"
+unnecessary_wraps = "deny"
+unnested_or_patterns = "deny"
+too_many_arguments = "allow"
+
+# docs
+missing_panics_doc = "deny"
+missing_errors_doc = "deny"
 
 [workspace.dependencies]
-kernel = { path = "kernel" }
-loader-api = { path = "loader/api" }
+addr2line = { path = "libs/addr2line" }
 backtrace = { path = "libs/backtrace" }
-dtb-parser = { path = "libs/dtb-parser" }
-pmm = { path = "libs/pmm" }
-ktest = { path = "libs/ktest" }
-linked-list = { path = "libs/linked-list" }
-panic-common = { path = "libs/panic-common" }
-panic-unwind = { path = "libs/panic-unwind" }
-riscv = { path = "libs/riscv" }
-semihosting-logger = { path = "libs/semihosting-logger" }
-ksharded-slab = { path = "libs/ksharded-slab" }
-sync = { path = "libs/sync" }
-thread-local = { path = "libs/thread-local" }
-unwind2 = { path = "libs/unwind2" }
 leb128 = { path = "libs/leb128" }
+linked-list = { path = "libs/linked-list" }
+mpsc-queue = { path = "libs/mpsc-queue" }
+riscv = { path = "libs/riscv" }
+sync = { path = "libs/sync" }
+cpu-local = { path = "libs/cpu-local" }
+unwind2 = { path = "libs/unwind2" }
 wasm-encoder = { path = "libs/wasm-encoder" }
 wast = { path = "libs/wast" }
 wavltree = { path = "libs/wavltree" }
+loader-api = { path = "loader/api" }
+fdt = { path = "libs/fdt" }
 
+# third-party dependencies
 cfg-if = "1.0.0"
+log = "0.4.25"
+bitflags = "2.8.0"
 lock_api = "0.4.12"
-log = "0.4.21"
-bitflags = "2.6.0"
-onlyerror = { version = "0.1.4", default-features = false }
-arrayvec = { version = "0.7.4", default-features = false }
-object = { version = "0.36.4", default-features = false }
-gimli = { version = "0.31.0", default-features = false, features = ["read"] }
 xmas-elf = "0.9.1"
-talc = "4.4.2"
-pin-project-lite = "0.2.15"
-rand_chacha = { version = "0.3.1", default-features = false }
-rand = { version = "0.8.5", default-features = false }
+static_assertions = "1.1.0"
+rand = { version = "0.9.0", default-features = false }
+rand_chacha = { version = "0.9.0", default-features = false }
+arrayvec = { version = "0.7.6", default-features = false }
+gimli = { version = "0.31.1", default-features = false, features = ["read"] }
+talc = { version = "4.4.2", default-features = false, features = ["lock_api", "counters"] }
+smallvec = { version = "1", default-features = false }
+rustc-demangle = "0.1"
+fallible-iterator = { version = "0.3.0", default-features = false }
 
 # wast dependencies
-bumpalo = "3.14.0"
+bumpalo = "3.17.0"
 unicode-width = { version = "0.2.0" }
-memchr = { version = "2.4.1", default-features = false }
+memchr = { version = "2.7.4", default-features = false }
+
+#wat = "1.219.1"
 
 # cranelift dependencies
-hashbrown = { version = "0.14.5", default-features = false, features = [
+hashbrown = { version = "0.15", default-features = false, features = [
     "inline-more",
     "nightly",
+    "default-hasher",
 ] }
-wasmparser = { version = "0.221.0", default-features = false }
-target-lexicon = { version = "0.13.0", default-features = false }
-cranelift-wasm = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std3", default-features = false, features = [
-    "core",
-] }
-cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std3", default-features = false, features = [
-    "core",
-    "host-arch",
-] }
-cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std3", default-features = false, features = [
-    "core",
-] }
-cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime", branch = "no_std3", default-features = false }
-
-# build dependencies
-proc-macro2 = "1"
-quote = "1"
-syn = { version = "2", features = ["full"] }
+wasmparser = { version = "0.219", default-features = false, features = ["features", "validate"] }
+target-lexicon = { version = "0.13.1", default-features = false }
+cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["host-arch", "core"] }
+cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["core"] }
+cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false }
+wasmtime-slab = "28.0.1"
 
 [profile.release]
-opt-level = 3
-codegen-units = 1
-lto = true
-strip = true
-overflow-checks = true
-split-debuginfo = "packed"
+debug = "limited" # The kernel should be able to print stack traces of itself even in release mode
 
-[profile.bench]
-debug = true
+[patch.crates-io]
+regalloc2 = { git = "https://github.com/JonasKruckenberg/regalloc2", branch = "jonas/refactor/static-machine-env" }

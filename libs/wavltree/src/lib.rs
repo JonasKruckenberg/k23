@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 //! # An intrusive Weak AVL Tree.
 //!
 //! A Rust implementation of Weak AVL Trees, primarily for use in the [k23 operating system][k23].
@@ -121,6 +128,10 @@
 
 #![cfg_attr(not(test), no_std)]
 #![feature(let_chains)]
+#![allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "too many trivial unsafe blocks"
+)]
 
 mod cursor;
 #[cfg(feature = "dot")]
@@ -143,6 +154,7 @@ pub use crate::entry::{Entry, OccupiedEntry, VacantEntry};
 use crate::utils::get_sibling;
 #[cfg(feature = "dot")]
 pub use dot::Dot;
+pub use iter::IntoIter;
 pub use iter::{Iter, IterMut};
 pub use utils::Side;
 
@@ -369,7 +381,7 @@ pub unsafe trait Linked {
     ///
     /// Note that this hook will be called during double rotations too, once for the opposite side subtree
     /// rotation and once for the final rotation.
-    #[allow(unused)]
+    #[allow(unused, reason = "trait declaration")]
     fn after_rotate(
         self: Pin<&mut Self>,
         parent: NonNull<Self>,
@@ -382,7 +394,7 @@ pub unsafe trait Linked {
     /// Invoked on the node to be erased and the node in the tree where the
     /// augmented invariants become invalid, leading up to the root. Called just
     /// after updating the pointers in the relevant nodes, but before rebalancing.
-    #[allow(unused)]
+    #[allow(unused, reason = "trait declaration")]
     fn after_remove(self: Pin<&mut Self>, parent: Link<Self>) {}
 
     /// Invoked on the newly inserted node before rebalancing.
@@ -430,6 +442,32 @@ where
     }
 }
 
+impl<T> IntoIterator for WAVLTree<T>
+where
+    T: Linked + ?Sized,
+{
+    type Item = T::Handle;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        #[allow(if_let_rescope, reason = "")]
+        if let Some(root) = self.root {
+            IntoIter {
+                // TODO this could be optimized by caching the head and tail nodes in the WAVLTree
+                head: Some(utils::find_minimum(root)),
+                tail: Some(utils::find_maximum(root)),
+                _tree: self,
+            }
+        } else {
+            IntoIter {
+                head: None,
+                tail: None,
+                _tree: self,
+            }
+        }
+    }
+}
+
 impl<T> WAVLTree<T>
 where
     T: Linked + ?Sized,
@@ -473,8 +511,8 @@ where
             };
         }
 
-        let start = unsafe { self.find_lower_bound(range.start_bound()) };
-        let end = unsafe { self.find_upper_bound(range.end_bound()) };
+        let start = self.find_lower_bound(range.start_bound());
+        let end = self.find_upper_bound(range.end_bound());
 
         Iter {
             head: start,
@@ -502,8 +540,8 @@ where
             };
         }
 
-        let head = unsafe { self.find_lower_bound(range.start_bound()) };
-        let tail = unsafe { self.find_upper_bound(range.end_bound()) };
+        let head = self.find_lower_bound(range.start_bound());
+        let tail = self.find_upper_bound(range.end_bound());
 
         IterMut {
             head: head.or(tail),
@@ -518,7 +556,7 @@ where
         <T as Linked>::Key: Borrow<Q>,
         Q: Ord,
     {
-        let (node, parent_and_side) = unsafe { self.find_internal(key) };
+        let (node, parent_and_side) = self.find_internal(key);
 
         if let Some(node) = node {
             Entry::Occupied(OccupiedEntry { node, _tree: self })
@@ -527,6 +565,30 @@ where
                 parent_and_side,
                 _tree: self,
             })
+        }
+    }
+
+    pub fn find<Q>(&self, key: &Q) -> Cursor<'_, T>
+    where
+        <T as Linked>::Key: Borrow<Q>,
+        Q: Ord,
+    {
+        let (current, _) = self.find_internal(key);
+        Cursor {
+            current,
+            _tree: self,
+        }
+    }
+
+    pub fn find_mut<Q>(&mut self, key: &Q) -> CursorMut<'_, T>
+    where
+        <T as Linked>::Key: Borrow<Q>,
+        Q: Ord,
+    {
+        let (current, _) = self.find_internal(key);
+        CursorMut {
+            current,
+            _tree: self,
         }
     }
 
@@ -548,6 +610,42 @@ where
         }
     }
 
+    /// Returns a cursor to the first element of the tree.
+    #[inline]
+    pub fn front(&self) -> Cursor<'_, T> {
+        Cursor {
+            current: self.root.map(|root| utils::find_minimum(root)),
+            _tree: self,
+        }
+    }
+
+    /// Returns a mutable cursor to the first element of the tree.
+    #[inline]
+    pub fn front_mut(&mut self) -> CursorMut<'_, T> {
+        CursorMut {
+            current: self.root.map(|root| utils::find_minimum(root)),
+            _tree: self,
+        }
+    }
+
+    /// Returns a cursor to the last element of the tree.
+    #[inline]
+    pub fn back(&self) -> Cursor<'_, T> {
+        Cursor {
+            current: self.root.map(|root| utils::find_maximum(root)),
+            _tree: self,
+        }
+    }
+
+    /// Returns a mutable cursor to the last element of the tree.
+    #[inline]
+    pub fn back_mut(&mut self) -> CursorMut<'_, T> {
+        CursorMut {
+            current: self.root.map(|root| utils::find_maximum(root)),
+            _tree: self,
+        }
+    }
+
     /// Constructs a cursor from a raw pointer to a node.
     ///
     /// # Safety
@@ -555,7 +653,7 @@ where
     /// Caller has to ensure the pointer points to a valid node in the tree.
     #[inline]
     pub unsafe fn cursor_from_ptr(&self, ptr: NonNull<T>) -> Cursor<'_, T> {
-        debug_assert!(T::links(ptr).as_ref().is_linked());
+        debug_assert!(unsafe { T::links(ptr).as_ref() }.is_linked());
         Cursor {
             current: Some(ptr),
             _tree: self,
@@ -569,7 +667,10 @@ where
     /// Caller has to ensure the pointer points to a valid node in the tree.
     #[inline]
     pub unsafe fn cursor_mut_from_ptr(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
-        debug_assert!(T::links(ptr).as_ref().is_linked());
+        debug_assert!(
+            unsafe { T::links(ptr).as_ref() }.is_linked(),
+            "ptr {ptr:?} is not a linked element"
+        );
         CursorMut {
             current: Some(ptr),
             _tree: self,
@@ -581,7 +682,7 @@ where
     /// # Panics
     ///
     /// Panics if the new entry is already linked to a different intrusive collection.
-    pub fn insert(&mut self, element: T::Handle) {
+    pub fn insert(&mut self, element: T::Handle) -> Pin<&mut T> {
         unsafe {
             let mut ptr = T::into_ptr(element);
             debug_assert_ne!(self.root, Some(ptr));
@@ -621,6 +722,8 @@ where
             if was_leaf {
                 self.balance_after_insert(ptr);
             }
+
+            Pin::new_unchecked(ptr.as_mut())
         }
     }
 
@@ -634,11 +737,9 @@ where
         <T as Linked>::Key: Borrow<Q>,
         Q: Ord,
     {
-        unsafe {
-            let ptr = self.find_internal(key).0?;
-            self.size -= 1;
-            Some(self.remove_internal(ptr))
-        }
+        let ptr = self.find_internal(key).0?;
+        self.size -= 1;
+        Some(self.remove_internal(ptr))
     }
 
     /// Returns a [`Cursor`] pointing at the gap before the smallest key greater than the given bound.
@@ -649,7 +750,7 @@ where
         Q: Ord,
     {
         Cursor {
-            current: unsafe { self.find_lower_bound(bound) },
+            current: self.find_lower_bound(bound),
             _tree: self,
         }
     }
@@ -662,7 +763,7 @@ where
         Q: Ord,
     {
         CursorMut {
-            current: unsafe { self.find_lower_bound(bound) },
+            current: self.find_lower_bound(bound),
             _tree: self,
         }
     }
@@ -675,7 +776,7 @@ where
         Q: Ord,
     {
         Cursor {
-            current: unsafe { self.find_upper_bound(bound) },
+            current: self.find_upper_bound(bound),
             _tree: self,
         }
     }
@@ -688,7 +789,7 @@ where
         Q: Ord,
     {
         CursorMut {
-            current: unsafe { self.find_upper_bound(bound) },
+            current: self.find_upper_bound(bound),
             _tree: self,
         }
     }
@@ -696,8 +797,8 @@ where
     /// Gets an iterator over the entries in the tree, sorted by their key.
     pub fn iter(&self) -> Iter<'_, T> {
         Iter {
-            head: self.root.map(|root| unsafe { utils::find_minimum(root) }),
-            tail: self.root.map(|root| unsafe { utils::find_maximum(root) }),
+            head: self.root.map(|root| utils::find_minimum(root)),
+            tail: self.root.map(|root| utils::find_maximum(root)),
             _tree: self,
         }
     }
@@ -705,8 +806,8 @@ where
     /// Gets a mutable iterator over the entries in the tree, sorted by their key.
     pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         IterMut {
-            head: self.root.map(|root| unsafe { utils::find_minimum(root) }),
-            tail: self.root.map(|root| unsafe { utils::find_maximum(root) }),
+            head: self.root.map(|root| utils::find_minimum(root)),
+            tail: self.root.map(|root| utils::find_maximum(root)),
             _tree: self,
         }
     }
@@ -715,7 +816,7 @@ where
     ///
     /// This will properly unlink and drop all entries, which requires iterating through the tree.
     pub fn clear(&mut self) {
-        if let Some(root) = self.root {
+        if let Some(root) = self.root.take() {
             self.clear_inner(root);
         }
     }
@@ -737,6 +838,17 @@ where
             node_links.unlink();
             T::from_ptr(node);
         }
+    }
+
+    /// Takes all the elements out of the `WAVLTree`, leaving it empty. The taken elements are returned as a new `WAVLTree`.
+    #[inline]
+    pub fn take(&mut self) -> Self {
+        let tree = Self {
+            root: self.root,
+            size: self.size,
+        };
+        self.root = None;
+        tree
     }
 
     /// Asserts as many of the tree's invariants as possible.
@@ -763,49 +875,51 @@ where
 
     #[track_caller]
     #[cfg_attr(not(debug_assertions), allow(unused))]
-    unsafe fn assert_valid_inner(node: NonNull<T>, parent: NonNull<T>) {
-        let node_links = T::links(node).as_ref();
+    fn assert_valid_inner(node: NonNull<T>, parent: NonNull<T>) {
+        unsafe {
+            let node_links = T::links(node).as_ref();
 
-        // assert that all links are set up correctly (no loops, self references, etc.)
-        node_links.assert_valid();
+            // assert that all links are set up correctly (no loops, self references, etc.)
+            node_links.assert_valid();
 
-        // We can only check the WAVL rule if we track the rank, which we only do in debug builds
-        #[cfg(debug_assertions)]
-        {
-            let parent_links = T::links(parent).as_ref();
+            // We can only check the WAVL rule if we track the rank, which we only do in debug builds
+            #[cfg(debug_assertions)]
+            {
+                let parent_links = T::links(parent).as_ref();
 
-            // Weak AVL Rule: All rank differences are 1 or 2 and every leaf has rank 0.
-            let rank_diff = parent_links.rank() - node_links.rank();
-            assert!(
-                rank_diff <= 2 && rank_diff > 0,
-                "WAVL rank rule violation: rank difference must be 1 or 2, but was {rank_diff}; node = {node:#?}, parent = {parent:#?}",
-            );
-            if node_links.is_leaf() {
-                assert_eq!(
-                    node_links.rank(),
-                    0,
-                    "WAVL rank rule violation: leaf must be rank 0, but was {}",
-                    node_links.rank(),
+                // Weak AVL Rule: All rank differences are 1 or 2 and every leaf has rank 0.
+                let rank_diff = parent_links.rank() - node_links.rank();
+                assert!(
+                    rank_diff <= 2 && rank_diff > 0,
+                    "WAVL rank rule violation: rank difference must be 1 or 2, but was {rank_diff}; node = {node:#?}, parent = {parent:#?}",
                 );
+                if node_links.is_leaf() {
+                    assert_eq!(
+                        node_links.rank(),
+                        0,
+                        "WAVL rank rule violation: leaf must be rank 0, but was {}",
+                        node_links.rank(),
+                    );
+                }
             }
-        }
 
-        if let Some(left) = node_links.left() {
-            // Assert that values in the right subtree are indeed less
-            assert!(
-                left.as_ref().get_key() < node.as_ref().get_key(),
-                "Ordering violation: left subtree is not less than node"
-            );
-            Self::assert_valid_inner(left, node);
-        }
+            if let Some(left) = node_links.left() {
+                // Assert that values in the right subtree are indeed less
+                assert!(
+                    left.as_ref().get_key() < node.as_ref().get_key(),
+                    "Ordering violation: left subtree is not less than node"
+                );
+                Self::assert_valid_inner(left, node);
+            }
 
-        if let Some(right) = node_links.right() {
-            // Assert that values in the right subtree are indeed greater
-            assert!(
-                right.as_ref().get_key() > node.as_ref().get_key(),
-                "Ordering violation: right subtree is not greater than node"
-            );
-            Self::assert_valid_inner(right, node);
+            if let Some(right) = node_links.right() {
+                // Assert that values in the right subtree are indeed greater
+                assert!(
+                    right.as_ref().get_key() > node.as_ref().get_key(),
+                    "Ordering violation: right subtree is not greater than node"
+                );
+                Self::assert_valid_inner(right, node);
+            }
         }
     }
 
@@ -814,7 +928,7 @@ where
         Dot { tree: self }
     }
 
-    unsafe fn find_lower_bound<Q>(&self, bound: Bound<&Q>) -> Option<NonNull<T>>
+    fn find_lower_bound<Q>(&self, bound: Bound<&Q>) -> Option<NonNull<T>>
     where
         <T as Linked>::Key: Borrow<Q>,
         Q: Ord,
@@ -825,8 +939,8 @@ where
             let curr_lks = unsafe { T::links(curr).as_ref() };
 
             let cond = match bound {
-                Bound::Included(key) => key <= curr.as_ref().get_key().borrow(),
-                Bound::Excluded(key) => key < curr.as_ref().get_key().borrow(),
+                Bound::Included(key) => key <= unsafe { curr.as_ref() }.get_key().borrow(),
+                Bound::Excluded(key) => key < unsafe { curr.as_ref() }.get_key().borrow(),
                 Bound::Unbounded => true,
             };
 
@@ -841,7 +955,7 @@ where
         result
     }
 
-    unsafe fn find_upper_bound<Q>(&self, bound: Bound<&Q>) -> Option<NonNull<T>>
+    fn find_upper_bound<Q>(&self, bound: Bound<&Q>) -> Option<NonNull<T>>
     where
         <T as Linked>::Key: Borrow<Q>,
         Q: Ord,
@@ -852,8 +966,8 @@ where
             let curr_lks = unsafe { T::links(curr).as_ref() };
 
             let cond = match bound {
-                Bound::Included(key) => key < curr.as_ref().get_key().borrow(),
-                Bound::Excluded(key) => key <= curr.as_ref().get_key().borrow(),
+                Bound::Included(key) => key < unsafe { curr.as_ref() }.get_key().borrow(),
+                Bound::Excluded(key) => key <= unsafe { curr.as_ref() }.get_key().borrow(),
                 Bound::Unbounded => false,
             };
 
@@ -868,8 +982,8 @@ where
         result
     }
 
-    #[allow(clippy::type_complexity)]
-    unsafe fn find_internal<Q>(&self, key: &Q) -> (Option<NonNull<T>>, Option<(NonNull<T>, Side)>)
+    #[expect(clippy::type_complexity, reason = "internal")]
+    fn find_internal<Q>(&self, key: &Q) -> (Option<NonNull<T>>, Option<(NonNull<T>, Side)>)
     where
         <T as Linked>::Key: Borrow<Q>,
         Q: Ord,
@@ -879,7 +993,7 @@ where
         while let Some(curr) = tree {
             let curr_lks = unsafe { T::links(curr).as_ref() };
 
-            match key.cmp(curr.as_ref().get_key().borrow()) {
+            match key.cmp(unsafe { curr.as_ref() }.get_key().borrow()) {
                 Ordering::Equal => return (Some(curr), parent),
                 Ordering::Less => {
                     parent = Some((curr, Side::Left));
@@ -887,7 +1001,7 @@ where
                 }
                 Ordering::Greater => {
                     parent = Some((curr, Side::Right));
-                    tree = curr_lks.right()
+                    tree = curr_lks.right();
                 }
             }
         }
@@ -895,8 +1009,8 @@ where
         (None, parent)
     }
 
-    unsafe fn remove_internal(&mut self, mut node: NonNull<T>) -> T::Handle {
-        let node_links = T::links(node).as_mut();
+    fn remove_internal(&mut self, mut node: NonNull<T>) -> T::Handle {
+        let node_links = unsafe { T::links(node).as_mut() };
         let parent = node_links.parent();
 
         // Figure out which node we need to splice in, replacing node
@@ -909,19 +1023,17 @@ where
         };
 
         // Find the child if the node to that we will move up
-        let y_links = T::links(y).as_ref();
+        let y_links = unsafe { T::links(y).as_ref() };
         let mut p_y = y_links.parent();
         let x = y_links.left().or(y_links.right());
 
         // Check if y is a 2-child of its parent
-        let is_2_child = p_y
-            .map(|parent| utils::node_is_2_child(y, parent))
-            .unwrap_or_default();
+        let is_2_child = p_y.is_some_and(|parent| utils::node_is_2_child(y, parent));
 
         // Replace Y with X which will effectively remove Y from the tree
         {
             if let Some(p_y) = y_links.parent() {
-                let p_y_links = T::links(p_y).as_mut();
+                let p_y_links = unsafe { T::links(p_y).as_mut() };
 
                 // Ensure the right/left pointer of the parent of the node to
                 // be spliced out points to its new child
@@ -938,7 +1050,7 @@ where
 
             // Splice in the child of the node to be removed
             if let Some(x) = x {
-                T::links(x).as_mut().replace_parent(y_links.parent());
+                unsafe { T::links(x).as_mut() }.replace_parent(y_links.parent());
             }
         }
 
@@ -954,16 +1066,21 @@ where
         if let Some(p_y) = p_y {
             if is_2_child {
                 self.rebalance_after_remove_3_child(x, p_y);
-            } else if x.is_none() && T::links(p_y).as_ref().is_leaf() {
+            } else if x.is_none() && unsafe { T::links(p_y).as_ref() }.is_leaf() {
                 self.rebalance_after_remove_2_2_leaf(p_y);
             }
 
-            assert!(!(T::links(p_y).as_ref().is_leaf() && T::links(p_y).as_ref().rank_parity()));
+            assert!(
+                !(unsafe { T::links(p_y).as_ref() }.is_leaf()
+                    && unsafe { T::links(p_y).as_ref() }.rank_parity())
+            );
         }
 
         // unlink the node from the tree and return
-        node_links.unlink();
-        T::from_ptr(node)
+        unsafe {
+            node_links.unlink();
+            T::from_ptr(node)
+        }
     }
 
     pub(crate) fn balance_after_insert(&mut self, mut x: NonNull<T>) {
@@ -1065,8 +1182,8 @@ where
         }
     }
 
-    unsafe fn rebalance_after_remove_3_child(&mut self, mut x: Link<T>, mut z: NonNull<T>) {
-        let mut z_links = T::links(z).as_mut();
+    fn rebalance_after_remove_3_child(&mut self, mut x: Link<T>, mut z: NonNull<T>) {
+        let mut z_links = unsafe { T::links(z).as_mut() };
 
         // Step 1: Demotions.
         //
@@ -1078,15 +1195,14 @@ where
                 z_links.left()
             };
 
-            let creates_3_node = z_links
-                .parent()
-                .map(|p_z| T::links(p_z).as_ref().rank_parity() == z_links.rank_parity())
-                .unwrap_or_default();
+            let creates_3_node = z_links.parent().is_some_and(|p_z| {
+                unsafe { T::links(p_z).as_ref() }.rank_parity() == z_links.rank_parity()
+            });
 
             if utils::get_link_parity(y) == z_links.rank_parity() {
                 z_links.demote();
             } else {
-                let y_links = T::links(y.unwrap()).as_mut();
+                let y_links = unsafe { T::links(y.unwrap()).as_mut() };
 
                 // compute y_is_22_node
                 let y_is_22_node = if y_links.rank_parity() {
@@ -1098,8 +1214,8 @@ where
                 } else {
                     // If Y has even rank parity, it can only be a 2,2 node if it is
                     // a binary node and both of its children have even parity.
-                    let y_left_links = y_links.left().map(|l| T::links(l).as_ref());
-                    let y_right_links = y_links.right().map(|r| T::links(r).as_ref());
+                    let y_left_links = y_links.left().map(|l| unsafe { T::links(l).as_ref() });
+                    let y_right_links = y_links.right().map(|r| unsafe { T::links(r).as_ref() });
 
                     y_left_links.is_some_and(|l| !l.rank_parity())
                         && y_right_links.is_some_and(|l| !l.rank_parity())
@@ -1120,7 +1236,7 @@ where
                 // climbing up
                 x = Some(z);
                 z = parent;
-                z_links = T::links(z).as_mut();
+                z_links = unsafe { T::links(z).as_mut() };
             } else {
                 // we reached the root so were done rebalancing
                 return;
@@ -1132,8 +1248,8 @@ where
         }
 
         // Step 2: Rotation
-        let (y, y_side) = crate::utils::get_sibling(x, z);
-        let y_links = T::links(y.unwrap()).as_mut();
+        let (y, y_side) = get_sibling(x, z);
+        let y_links = unsafe { T::links(y.unwrap()).as_mut() };
 
         let v = y_links.child(y_side.opposite());
         let w = y_links.child(y_side);
@@ -1149,7 +1265,7 @@ where
             }
         } else {
             let v = v.unwrap();
-            let v_links = T::links(v).as_mut();
+            let v_links = unsafe { T::links(v).as_mut() };
 
             self.double_rotate_at(v, y_side.opposite());
 
@@ -1159,10 +1275,10 @@ where
         }
     }
 
-    unsafe fn rebalance_after_remove_2_2_leaf(&mut self, x: NonNull<T>) {
+    fn rebalance_after_remove_2_2_leaf(&mut self, x: NonNull<T>) {
         // If we just turned node into a 2,2 leaf, it will have no children and
         // odd rank-parity.
-        let x_links = T::links(x).as_mut();
+        let x_links = unsafe { T::links(x).as_mut() };
 
         if !x_links.rank_parity() || x_links.left().is_some() || x_links.right().is_some() {
             return;
@@ -1182,15 +1298,15 @@ where
         }
     }
 
-    unsafe fn rotate_at(&mut self, mut x: NonNull<T>, side: Side) {
-        let x_links = T::links(x).as_mut();
+    fn rotate_at(&mut self, mut x: NonNull<T>, side: Side) {
+        let x_links = unsafe { T::links(x).as_mut() };
         let y = x_links.child(side);
         let z = x_links.parent().unwrap();
-        let z_links = T::links(z).as_mut();
+        let z_links = unsafe { T::links(z).as_mut() };
         let p_z = z_links.parent();
 
         T::after_rotate(
-            Pin::new_unchecked(x.as_mut()),
+            unsafe { Pin::new_unchecked(x.as_mut()) },
             z,
             get_sibling(Some(x), z).0,
             y,
@@ -1200,7 +1316,7 @@ where
         // Rotate X into place
         x_links.replace_parent(p_z);
         if let Some(p_z) = p_z {
-            let p_z_links = T::links(p_z).as_mut();
+            let p_z_links = unsafe { T::links(p_z).as_mut() };
 
             if p_z_links.left() == Some(z) {
                 p_z_links.replace_left(Some(x));
@@ -1218,28 +1334,28 @@ where
         // make y the `opposite side`-child of z
         z_links.replace_child(side.opposite(), y);
         if let Some(y) = y {
-            T::links(y).as_mut().replace_parent(Some(z));
+            unsafe { T::links(y).as_mut() }.replace_parent(Some(z));
         }
     }
 
-    unsafe fn double_rotate_at(&mut self, mut y: NonNull<T>, side: Side) {
-        let y_links = T::links(y).as_mut();
+    fn double_rotate_at(&mut self, mut y: NonNull<T>, side: Side) {
+        let y_links = unsafe { T::links(y).as_mut() };
 
         let x = y_links.parent().unwrap();
-        let x_links = T::links(x).as_ref();
+        let x_links = unsafe { T::links(x).as_ref() };
         let z = x_links.parent().unwrap();
-        let z_links = T::links(z).as_ref();
+        let z_links = unsafe { T::links(z).as_ref() };
         let p_z = z_links.parent();
 
         T::after_rotate(
-            Pin::new_unchecked(y.as_mut()),
+            unsafe { Pin::new_unchecked(y.as_mut()) },
             x,
             get_sibling(Some(y), x).0,
             y_links.child(side.opposite()),
             side.opposite(),
         );
         T::after_rotate(
-            Pin::new_unchecked(y.as_mut()),
+            unsafe { Pin::new_unchecked(y.as_mut()) },
             z,
             get_sibling(Some(x), z).0,
             y_links.child(side),
@@ -1249,7 +1365,7 @@ where
         // Rotate Y into place
         y_links.replace_parent(p_z);
         if let Some(p_z) = p_z {
-            let p_z_links = T::links(p_z).as_mut();
+            let p_z_links = unsafe { T::links(p_z).as_mut() };
 
             if p_z_links.left() == Some(z) {
                 p_z_links.replace_left(Some(y));
@@ -1261,14 +1377,14 @@ where
         }
 
         let mut move_subtrees = |lt: NonNull<T>, gt: NonNull<T>| {
-            let lt_links = T::links(lt).as_mut();
-            let gt_links = T::links(gt).as_mut();
+            let lt_links = unsafe { T::links(lt).as_mut() };
+            let gt_links = unsafe { T::links(gt).as_mut() };
 
             // Move y's left subtree (since lt > left(y)) to lt's right subtree
             lt_links.replace_right(y_links.left());
 
             if let Some(left) = y_links.left() {
-                T::links(left).as_mut().replace_parent(Some(lt));
+                unsafe { T::links(left).as_mut() }.replace_parent(Some(lt));
             }
 
             y_links.replace_left(Some(lt));
@@ -1278,7 +1394,7 @@ where
             gt_links.replace_left(y_links.right());
 
             if let Some(right) = y_links.right() {
-                T::links(right).as_mut().replace_parent(Some(gt));
+                unsafe { T::links(right).as_mut() }.replace_parent(Some(gt));
             }
 
             y_links.replace_right(Some(gt));
@@ -1291,9 +1407,9 @@ where
         }
     }
 
-    unsafe fn swap_in_node_at(&mut self, old: NonNull<T>, new: NonNull<T>) {
-        let old_links = T::links(old).as_mut();
-        let new_links = T::links(new).as_mut();
+    fn swap_in_node_at(&mut self, old: NonNull<T>, new: NonNull<T>) {
+        let old_links = unsafe { T::links(old).as_mut() };
+        let new_links = unsafe { T::links(new).as_mut() };
 
         let parent = old_links.parent();
         let left = old_links.left();
@@ -1301,7 +1417,7 @@ where
 
         new_links.replace_parent(parent);
         if let Some(parent) = parent {
-            let parent_links = T::links(parent).as_mut();
+            let parent_links = unsafe { T::links(parent).as_mut() };
             if parent_links.left() == Some(old) {
                 parent_links.replace_left(Some(new));
             } else {
@@ -1313,13 +1429,13 @@ where
 
         new_links.replace_left(left);
         if let Some(left) = left {
-            T::links(left).as_mut().replace_parent(Some(new));
+            unsafe { T::links(left).as_mut() }.replace_parent(Some(new));
         }
         old_links.replace_left(None);
 
         new_links.replace_right(right);
         if let Some(right) = right {
-            T::links(right).as_mut().replace_parent(Some(new));
+            unsafe { T::links(right).as_mut() }.replace_parent(Some(new));
         }
         old_links.replace_right(None);
 
@@ -1469,7 +1585,6 @@ impl<T: ?Sized> Links<T> {
         }
     }
     #[inline]
-    #[allow(unused)]
     fn double_promote(&mut self) {
         #[cfg(debug_assertions)]
         {
@@ -1477,7 +1592,6 @@ impl<T: ?Sized> Links<T> {
         }
     }
     #[inline]
-    #[allow(unused)]
     fn double_demote(&mut self) {
         #[cfg(debug_assertions)]
         {
@@ -1512,6 +1626,10 @@ impl<T: ?Sized> Links<T> {
     }
 
     /// Asserts as many invariants about this particular node as possible.
+    ///
+    /// # Panics
+    ///
+    /// Panics when an assertion does not hold.
     #[track_caller]
     pub fn assert_valid(&self)
     where
@@ -1613,7 +1731,7 @@ mod tests {
         unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
             // Safety: `NonNull` *must* be constructed from a pinned reference
             // which the tree implementation upholds.
-            Pin::new_unchecked(Box::from_raw(ptr.as_ptr()))
+            unsafe { Pin::new_unchecked(Box::from_raw(ptr.as_ptr())) }
         }
 
         unsafe fn links(ptr: NonNull<Self>) -> NonNull<Links<Self>> {
@@ -1718,5 +1836,35 @@ mod tests {
         assert!(matches!(entry, Entry::Vacant(_)));
 
         assert_eq!(entry.peek_next().unwrap().value, 3000);
+    }
+
+    #[cfg(not(target_os = "none"))]
+    #[test]
+    fn into_iter() {
+        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
+
+        tree.insert(Box::pin(TestEntry::new(1000)));
+        tree.insert(Box::pin(TestEntry::new(3000)));
+        tree.insert(Box::pin(TestEntry::new(500)));
+
+        let mut iter = tree.into_iter();
+        assert_eq!(iter.next().unwrap().value, 500);
+        assert_eq!(iter.next().unwrap().value, 1000);
+        assert_eq!(iter.next().unwrap().value, 3000);
+    }
+
+    #[cfg(not(target_os = "none"))]
+    #[test]
+    fn into_iter_back() {
+        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
+
+        tree.insert(Box::pin(TestEntry::new(1000)));
+        tree.insert(Box::pin(TestEntry::new(3000)));
+        tree.insert(Box::pin(TestEntry::new(500)));
+
+        let mut iter = tree.into_iter();
+        assert_eq!(iter.next_back().unwrap().value, 3000);
+        assert_eq!(iter.next_back().unwrap().value, 1000);
+        assert_eq!(iter.next_back().unwrap().value, 500);
     }
 }

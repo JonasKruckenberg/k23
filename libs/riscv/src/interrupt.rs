@@ -1,4 +1,12 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 //! Interrupts
+#![expect(clippy::undocumented_unsafe_blocks, reason = "register access")]
 
 use crate::{sepc, sstatus};
 
@@ -16,7 +24,7 @@ pub fn disable() {
 /// The caller must ensure the remaining code is signal-safe.
 #[inline]
 pub unsafe fn enable() {
-    sstatus::set_sie()
+    unsafe { sstatus::set_sie() }
 }
 
 /// Execute closure `f` with interrupts disabled for the current hart.
@@ -58,7 +66,7 @@ where
     let sepc = sepc::read();
 
     // enable interrupts to allow nested interrupts
-    enable();
+    unsafe { enable() };
 
     let r = f();
 
@@ -70,10 +78,10 @@ where
 
     // Restore SSTATUS.SPIE, SSTATUS.SPP, and SEPC
     if sstatus.spie() {
-        sstatus::set_spie();
+        unsafe { sstatus::set_spie() };
     }
-    sstatus::set_spp(sstatus.spp());
-    sepc::write(sepc);
+    unsafe { sstatus::set_spp(sstatus.spp()) };
+    sepc::set(sepc);
 
     r
 }

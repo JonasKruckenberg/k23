@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use crate::{arch, Error};
 use alloc::boxed::Box;
 use core::any::Any;
@@ -34,7 +41,7 @@ pub struct UnwindException {
 impl Exception {
     /// Rust's exception class identifier.  This is used by personality routines to
     /// determine whether the exception was thrown by their own runtime.
-    #[allow(clippy::unusual_byte_groupings)]
+    #[expect(clippy::unusual_byte_groupings, reason = "its a bit pattern")]
     const CLASS: u64 = 0x4d4f5a_00_52555354; // M O Z \0  R U S T -- vendor, language
 
     /// Wraps the given payload in an exception.
@@ -46,6 +53,7 @@ impl Exception {
         // We don't really care about that too much since we don't use it at all, but we still
         // provide it just to be safe from nasty, hard to debug crashes.
         extern "C" fn exception_cleanup(_unwind_code: c_int, exception: *mut UnwindException) {
+            // Safety: Caller ensures `exception` is a valid exception
             unsafe {
                 drop(Box::from_raw(exception.cast::<Exception>()));
                 log::error!("Rust panics must be rethrown");
@@ -70,8 +78,10 @@ impl Exception {
     pub unsafe fn unwrap(exception: *mut Self) -> Result<Box<dyn Any + Send>, Error> {
         // First check whether this is a Rust exception
         let exception = exception.cast::<UnwindException>();
-        if (*exception).exception_class != Self::CLASS {
-            ((*exception).cleanup)(URC_FOREIGN_EXCEPTION_CAUGHT, exception);
+        // Safety: caller has to ensure `exception` is a valid pointer
+        let _exception = unsafe { &*exception };
+        if _exception.exception_class != Self::CLASS {
+            (_exception.cleanup)(URC_FOREIGN_EXCEPTION_CAUGHT, exception);
             return Err(Error::ForeignException);
         }
 
@@ -79,13 +89,15 @@ impl Exception {
         // rust unwinder. Make sure to only access the canary field, as the rest of the
         // structure is unknown.
         let exception = exception.cast::<Exception>();
-        let canary = ptr::addr_of!((*exception).canary).read();
+        // Safety: caller has to ensure `exception` is a valid pointer
+        let canary = unsafe { ptr::addr_of!((*exception).canary).read() };
         if !ptr::eq(canary, &CANARY) {
             return Err(Error::ForeignException);
         }
 
         // We can be certain it's our exception, so we can safely unwrap it.
-        let exception = Box::from_raw(exception);
+        // Safety: we checked this exhaustively above
+        let exception = unsafe { Box::from_raw(exception) };
         Ok(exception.payload)
     }
 }

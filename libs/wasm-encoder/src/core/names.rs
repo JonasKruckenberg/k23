@@ -63,6 +63,10 @@ impl NameSection {
     /// This will indicate that the name of the entire module should be the
     /// `name` specified. Note that this should be encoded first before other
     /// subsections.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the name is longer than `u32::MAX` bytes.
     pub fn module(&mut self, name: &str) {
         let len = encoding_size(u32::try_from(name.len()).unwrap());
         self.subsection_header(Subsection::Module, len + name.len());

@@ -93,7 +93,7 @@ pub trait Encode {
 
 impl<T: Encode + ?Sized> Encode for &'_ T {
     fn encode(&self, sink: &mut Vec<u8>) {
-        T::encode(self, sink)
+        T::encode(self, sink);
     }
 }
 
@@ -122,8 +122,9 @@ impl Encode for str {
 
 impl Encode for usize {
     fn encode(&self, sink: &mut Vec<u8>) {
-        assert!(*self <= u32::MAX as usize);
-        (*self as u32).encode(sink)
+        assert!(u32::try_from(*self).is_ok());
+        #[expect(clippy::cast_possible_truncation, reason = "encode as u32")]
+        (*self as u32).encode(sink);
     }
 }
 
@@ -154,14 +155,14 @@ impl Encode for i64 {
 impl Encode for f32 {
     fn encode(&self, sink: &mut Vec<u8>) {
         let bits = self.to_bits();
-        sink.extend(bits.to_le_bytes())
+        sink.extend(bits.to_le_bytes());
     }
 }
 
 impl Encode for f64 {
     fn encode(&self, sink: &mut Vec<u8>) {
         let bits = self.to_bits();
-        sink.extend(bits.to_le_bytes())
+        sink.extend(bits.to_le_bytes());
     }
 }
 
