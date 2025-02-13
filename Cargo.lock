@@ -485,6 +485,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ksharded-slab"
+version = "0.1.7"
+dependencies = [
+ "cpu-local",
+ "log",
+ "sync",
+]
+
+[[package]]
 name = "leb128"
 version = "0.1.0"
 
