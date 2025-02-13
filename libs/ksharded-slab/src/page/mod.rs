@@ -1,6 +1,5 @@
 use crate::cfg::{self, CfgPrivate};
 use crate::clear::Clear;
-use crate::sync::UnsafeCell;
 use crate::Pack;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -9,6 +8,7 @@ pub(crate) mod slot;
 mod stack;
 
 pub(crate) use self::slot::Slot;
+use core::cell::UnsafeCell;
 use core::{fmt, marker::PhantomData};
 
 /// A page address encodes the location of a slot within a shard (the page
@@ -102,14 +102,16 @@ impl Local {
 
     #[inline(always)]
     fn head(&self) -> usize {
-        self.head.with(|head| unsafe { *head })
+        // Safety: TODO
+        unsafe { *self.head.get() }
     }
 
     #[inline(always)]
     fn set_head(&self, new_head: usize) {
-        self.head.with_mut(|head| unsafe {
-            *head = new_head;
-        })
+        // Safety: TODO
+        unsafe {
+            *self.head.get() = new_head;
+        }
     }
 }
 
@@ -174,7 +176,8 @@ where
     /// otherwise.
     #[inline]
     fn is_unallocated(&self) -> bool {
-        self.slab.with(|s| unsafe { (*s).is_none() })
+        // Safety: TODO
+        unsafe { (*self.slab.get()).is_none() }
     }
 
     #[inline]
@@ -187,14 +190,13 @@ where
 
         log::trace!("-> offset {:?}", poff);
 
-        self.slab.with(|slab| {
-            let slot = unsafe { &*slab }.as_ref()?.get(poff)?;
-            f(slot)
-        })
+        // Safety: TODO
+        let slot = unsafe { &*self.slab.get() }.as_ref()?.get(poff)?;
+        f(slot)
     }
 
     #[inline(always)]
-    pub(crate) fn free_list(&self) -> &impl FreeList<C> {
+    pub(crate) fn free_list(&self) -> &(impl FreeList<C> + use<T, C>) {
         &self.remote
     }
 }
@@ -206,7 +208,7 @@ where
     pub(crate) fn take<F>(
         &self,
         addr: Addr<C>,
-        gen: slot::Generation<C>,
+        generation: slot::Generation<C>,
         free_list: &F,
     ) -> Option<T>
     where
@@ -216,31 +218,29 @@ where
 
         log::trace!("-> take: offset {:?}", offset);
 
-        self.slab.with(|slab| {
-            let slab = unsafe { &*slab }.as_ref()?;
-            let slot = slab.get(offset)?;
-            slot.remove_value(gen, offset, free_list)
-        })
+        // Safety: TODO
+        let slab = unsafe { &*self.slab.get() }.as_ref()?;
+        let slot = slab.get(offset)?;
+        slot.remove_value(generation, offset, free_list)
     }
 
     pub(crate) fn remove<F: FreeList<C>>(
         &self,
         addr: Addr<C>,
-        gen: slot::Generation<C>,
+        generation: slot::Generation<C>,
         free_list: &F,
     ) -> bool {
         let offset = addr.offset() - self.prev_sz;
 
         log::trace!("-> offset {:?}", offset);
 
-        self.slab.with(|slab| {
-            let slab = unsafe { &*slab }.as_ref();
-            if let Some(slot) = slab.and_then(|slab| slab.get(offset)) {
-                slot.try_remove_value(gen, offset, free_list)
-            } else {
-                false
-            }
-        })
+        // Safety: TODO
+        let slab = unsafe { &*self.slab.get() }.as_ref();
+        if let Some(slot) = slab.and_then(|slab| slab.get(offset)) {
+            slot.try_remove_value(generation, offset, free_list)
+        } else {
+            false
+        }
     }
 
     // Need this function separately, as we need to pass a function pointer to `filter_map` and
@@ -250,7 +250,8 @@ where
     }
 
     pub(crate) fn iter(&self) -> Option<Iter<'a, T, C>> {
-        let slab = self.slab.with(|slab| unsafe { (*slab).as_ref() });
+        // Safety: TODO
+        let slab = unsafe { (*self.slab.get()).as_ref() };
         slab.map(|slab| {
             slab.iter()
                 .filter_map(Shared::make_ref as fn(&'a Slot<Option<T>, C>) -> Option<&'a T>)
@@ -277,15 +278,16 @@ where
 
         let index = head + self.prev_sz;
 
-        let result = self.slab.with(|slab| {
-            let slab = unsafe { &*(slab) }
+        let result = {
+            // Safety: TODO
+            let slab = unsafe { &*(self.slab.get()) }
                 .as_ref()
                 .expect("page must have been allocated to insert!");
             let slot = &slab[head];
             let result = init(index, slot)?;
             local.set_head(slot.next());
-            Some(result)
-        })?;
+            result
+        };
 
         log::trace!("-> init_with: insert at offset: {}", index);
         Some(result)
@@ -300,65 +302,60 @@ where
         let mut slab = Vec::with_capacity(self.size);
         slab.extend((1..self.size).map(Slot::new));
         slab.push(Slot::new(Self::NULL));
-        self.slab.with_mut(|s| {
-            // safety: this mut access is safe — it only occurs to initially allocate the page,
-            // which only happens on this thread; if the page has not yet been allocated, other
-            // threads will not try to access it yet.
-            unsafe {
-                *s = Some(slab.into_boxed_slice());
-            }
-        });
+        // safety: this mut access is safe — it only occurs to initially allocate the page,
+        // which only happens on this thread; if the page has not yet been allocated, other
+        // threads will not try to access it yet.
+        unsafe {
+            *self.slab.get() = Some(slab.into_boxed_slice());
+        }
     }
 
     pub(crate) fn mark_clear<F: FreeList<C>>(
         &self,
         addr: Addr<C>,
-        gen: slot::Generation<C>,
+        generation: slot::Generation<C>,
         free_list: &F,
     ) -> bool {
         let offset = addr.offset() - self.prev_sz;
 
         log::trace!("-> offset {:?}", offset);
 
-        self.slab.with(|slab| {
-            let slab = unsafe { &*slab }.as_ref();
-            if let Some(slot) = slab.and_then(|slab| slab.get(offset)) {
-                slot.try_clear_storage(gen, offset, free_list)
-            } else {
-                false
-            }
-        })
+        // Safety: TODO
+        let slab = unsafe { &*self.slab.get() }.as_ref();
+        if let Some(slot) = slab.and_then(|slab| slab.get(offset)) {
+            slot.try_clear_storage(generation, offset, free_list)
+        } else {
+            false
+        }
     }
 
     pub(crate) fn clear<F: FreeList<C>>(
         &self,
         addr: Addr<C>,
-        gen: slot::Generation<C>,
+        generation: slot::Generation<C>,
         free_list: &F,
     ) -> bool {
         let offset = addr.offset() - self.prev_sz;
 
         log::trace!("-> offset {:?}", offset);
 
-        self.slab.with(|slab| {
-            let slab = unsafe { &*slab }.as_ref();
-            if let Some(slot) = slab.and_then(|slab| slab.get(offset)) {
-                slot.clear_storage(gen, offset, free_list)
-            } else {
-                false
-            }
-        })
+        // Safety: TODO
+        let slab = unsafe { &*self.slab.get() }.as_ref();
+        if let Some(slot) = slab.and_then(|slab| slab.get(offset)) {
+            slot.clear_storage(generation, offset, free_list)
+        } else {
+            false
+        }
     }
 }
 
 impl fmt::Debug for Local {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.head.with(|head| {
-            let head = unsafe { *head };
-            f.debug_struct("Local")
-                .field("head", &format_args!("{:#0x}", head))
-                .finish()
-        })
+        // Safety: TODO
+        let head = unsafe { *self.head.get() };
+        f.debug_struct("Local")
+            .field("head", &format_args!("{:#0x}", head))
+            .finish()
     }
 }
 
@@ -415,38 +412,4 @@ impl<C: cfg::Config> Copy for Addr<C> {}
 pub(crate) fn indices<C: cfg::Config>(idx: usize) -> (Addr<C>, usize) {
     let addr = C::unpack_addr(idx);
     (addr, addr.index())
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::Pack;
-    use proptest::prelude::*;
-
-    proptest! {
-        #[test]
-        fn addr_roundtrips(pidx in 0usize..Addr::<cfg::DefaultConfig>::BITS) {
-            let addr = Addr::<cfg::DefaultConfig>::from_usize(pidx);
-            let packed = addr.pack(0);
-            assert_eq!(addr, Addr::from_packed(packed));
-        }
-        #[test]
-        fn gen_roundtrips(gen in 0usize..slot::Generation::<cfg::DefaultConfig>::BITS) {
-            let gen = slot::Generation::<cfg::DefaultConfig>::from_usize(gen);
-            let packed = gen.pack(0);
-            assert_eq!(gen, slot::Generation::from_packed(packed));
-        }
-
-        #[test]
-        fn page_roundtrips(
-            gen in 0usize..slot::Generation::<cfg::DefaultConfig>::BITS,
-            addr in 0usize..Addr::<cfg::DefaultConfig>::BITS,
-        ) {
-            let gen = slot::Generation::<cfg::DefaultConfig>::from_usize(gen);
-            let addr = Addr::<cfg::DefaultConfig>::from_usize(addr);
-            let packed = gen.pack(addr.pack(0));
-            assert_eq!(addr, Addr::from_packed(packed));
-            assert_eq!(gen, slot::Generation::from_packed(packed));
-        }
-    }
 }

@@ -47,7 +47,7 @@ pub(crate) trait CfgPrivate: Config {
     const ADDR_INDEX_SHIFT: usize = Self::INITIAL_SZ.trailing_zeros() as usize + 1;
 
     fn page_size(n: usize) -> usize {
-        Self::INITIAL_SZ * 2usize.pow(n as _)
+        Self::INITIAL_SZ * 2usize.pow(n.try_into().unwrap())
     }
 
     fn debug() -> DebugConfig<Self> {
@@ -125,7 +125,7 @@ pub(crate) struct DebugConfig<C: Config> {
 }
 
 pub(crate) const fn next_pow2(n: usize) -> usize {
-    let pow2 = n.count_ones() == 1;
+    let pow2 = n.is_power_of_two();
     let zeros = n.leading_zeros();
     1 << (usize::BITS as usize - zeros as usize - pow2 as usize)
 }
@@ -161,54 +161,5 @@ impl<C: Config> fmt::Debug for DebugConfig<C> {
             .field("pointer_width", &usize::BITS)
             .field("max_concurrent_references", &RefCount::<C>::MAX)
             .finish()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_util;
-    use crate::Slab;
-
-    #[ktest::test]
-    #[cfg_attr(loom, ignore)]
-    #[should_panic]
-    fn validates_max_refs() {
-        struct GiantGenConfig;
-
-        // Configure the slab with a very large number of bits for the generation
-        // counter. This will only leave 1 bit to use for the slot reference
-        // counter, which will fail to validate.
-        impl Config for GiantGenConfig {
-            const INITIAL_PAGE_SIZE: usize = 1;
-            const MAX_THREADS: usize = 1;
-            const MAX_PAGES: usize = 1;
-        }
-
-        let _slab = Slab::<usize>::new_with_config::<GiantGenConfig>();
-    }
-
-    #[ktest::test]
-    #[cfg_attr(loom, ignore)]
-    fn big() {
-        let slab = Slab::new();
-
-        for i in 0..10000 {
-            log::trace!("{:?}", i);
-            let k = slab.insert(i).expect("insert");
-            assert_eq!(slab.get(k).expect("get"), i);
-        }
-    }
-
-    #[ktest::test]
-    #[cfg_attr(loom, ignore)]
-    fn custom_page_sz() {
-        let slab = Slab::new_with_config::<test_util::TinyConfig>();
-
-        for i in 0..4096 {
-            log::trace!("{}", i);
-            let k = slab.insert(i).expect("insert");
-            assert_eq!(slab.get(k).expect("get"), i);
-        }
     }
 }

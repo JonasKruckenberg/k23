@@ -16,8 +16,7 @@ A lock-free concurrent slab.
 [dependencies]
 log.workspace = true
 sync.workspace = true
-thread-local.workspace = true
-panic-unwind.workspace = true
+cpu-local.workspace = true
 
 [features]
 loom = []

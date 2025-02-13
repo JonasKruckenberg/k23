@@ -1,4 +1,3 @@
-use crate::sync::atomic::{AtomicPtr, AtomicUsize, Ordering::*};
 use crate::{
     cfg::{self, CfgPrivate},
     clear::Clear,
@@ -8,7 +7,8 @@ use crate::{
 };
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::sync::atomic::Ordering;
+use core::sync::atomic;
+use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use core::{fmt, ptr, slice};
 
 // ┌─────────────┐      ┌────────┐
@@ -52,7 +52,7 @@ pub(crate) struct Array<T, C: cfg::Config> {
 }
 
 #[derive(Debug)]
-struct Ptr<T, C: cfg::Config>(AtomicPtr<crate::sync::alloc::Track<Shard<T, C>>>);
+struct Ptr<T, C: cfg::Config>(AtomicPtr<Shard<T, C>>);
 
 #[derive(Debug)]
 pub(crate) struct IterMut<'a, T: 'a, C: cfg::Config + 'a>(slice::IterMut<'a, Ptr<T, C>>);
@@ -69,7 +69,7 @@ where
         idx: usize,
         f: impl FnOnce(&'a page::Slot<T, C>) -> Option<U>,
     ) -> Option<U> {
-        debug_assert_eq_in_drop!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
+        debug_assert_eq!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
         let (addr, page_index) = page::indices::<C>(idx);
 
         log::trace!("-> {:?}", addr);
@@ -101,7 +101,7 @@ where
 {
     /// Remove an item on the shard's local thread.
     pub(crate) fn take_local(&self, idx: usize) -> Option<T> {
-        debug_assert_eq_in_drop!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
+        debug_assert_eq!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
         let (addr, page_index) = page::indices::<C>(idx);
 
         log::trace!("-> remove_local {:?}", addr);
@@ -113,7 +113,7 @@ where
 
     /// Remove an item, while on a different thread from the shard's local thread.
     pub(crate) fn take_remote(&self, idx: usize) -> Option<T> {
-        debug_assert_eq_in_drop!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
+        debug_assert_eq!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
         debug_assert!(Tid::<C>::current().as_usize() != self.tid);
 
         let (addr, page_index) = page::indices::<C>(idx);
@@ -125,7 +125,7 @@ where
     }
 
     pub(crate) fn remove_local(&self, idx: usize) -> bool {
-        debug_assert_eq_in_drop!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
+        debug_assert_eq!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
         let (addr, page_index) = page::indices::<C>(idx);
 
         if page_index >= self.shared.len() {
@@ -136,7 +136,7 @@ where
     }
 
     pub(crate) fn remove_remote(&self, idx: usize) -> bool {
-        debug_assert_eq_in_drop!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
+        debug_assert_eq!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
         let (addr, page_index) = page::indices::<C>(idx);
 
         if page_index >= self.shared.len() {
@@ -176,7 +176,7 @@ where
     }
 
     pub(crate) fn mark_clear_local(&self, idx: usize) -> bool {
-        debug_assert_eq_in_drop!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
+        debug_assert_eq!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
         let (addr, page_index) = page::indices::<C>(idx);
 
         if page_index >= self.shared.len() {
@@ -187,7 +187,7 @@ where
     }
 
     pub(crate) fn mark_clear_remote(&self, idx: usize) -> bool {
-        debug_assert_eq_in_drop!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
+        debug_assert_eq!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
         let (addr, page_index) = page::indices::<C>(idx);
 
         if page_index >= self.shared.len() {
@@ -199,7 +199,7 @@ where
     }
 
     pub(crate) fn clear_after_release(&self, idx: usize) {
-        crate::sync::atomic::fence(crate::sync::atomic::Ordering::Acquire);
+        atomic::fence(Ordering::Acquire);
         let tid = Tid::<C>::current().as_usize();
         log::trace!(
             "-> clear_after_release; self.tid={:?}; current.tid={:?};",
@@ -214,7 +214,7 @@ where
     }
 
     fn clear_local(&self, idx: usize) -> bool {
-        debug_assert_eq_in_drop!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
+        debug_assert_eq!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
         let (addr, page_index) = page::indices::<C>(idx);
 
         if page_index >= self.shared.len() {
@@ -225,7 +225,7 @@ where
     }
 
     fn clear_remote(&self, idx: usize) -> bool {
-        debug_assert_eq_in_drop!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
+        debug_assert_eq!(Tid::<C>::from_packed(idx).as_usize(), self.tid);
         let (addr, page_index) = page::indices::<C>(idx);
 
         if page_index >= self.shared.len() {
@@ -239,7 +239,7 @@ where
     #[inline(always)]
     fn local(&self, i: usize) -> &page::Local {
         #[cfg(debug_assertions)]
-        debug_assert_eq_in_drop!(
+        debug_assert_eq!(
             Tid::<C>::current().as_usize(),
             self.tid,
             "tried to access local data from another thread!"
@@ -255,7 +255,7 @@ impl<T: fmt::Debug, C: cfg::Config> fmt::Debug for Shard<T, C> {
 
         #[cfg(debug_assertions)]
         d.field("tid", &self.tid);
-        d.field("shared", &self.shared).finish()
+        d.field("shared", &self.shared).finish_non_exhaustive()
     }
 }
 
@@ -280,7 +280,7 @@ where
     #[inline]
     pub(crate) fn get(&self, idx: usize) -> Option<&Shard<T, C>> {
         log::trace!("-> get shard={}", idx);
-        self.shards.get(idx)?.load(Acquire)
+        self.shards.get(idx)?.load(Ordering::Acquire)
     }
 
     #[inline]
@@ -297,13 +297,16 @@ where
         );
         // It's okay for this to be relaxed. The value is only ever stored by
         // the thread that corresponds to the index, and we are that thread.
-        let shard = self.shards[idx].load(Relaxed).unwrap_or_else(|| {
-            let ptr = Box::into_raw(Box::new(crate::sync::alloc::Track::new(Shard::new(idx))));
+        let shard = self.shards[idx].load(Ordering::Relaxed).unwrap_or_else(|| {
+            let ptr = Box::into_raw(Box::new(Shard::new(idx)));
             log::trace!("-> allocated new shard for index {} at {:p}", idx, ptr);
             self.shards[idx].set(ptr);
-            let mut max = self.max.load(Acquire);
+            let mut max = self.max.load(Ordering::Acquire);
             while max < idx {
-                match self.max.compare_exchange(max, idx, AcqRel, Acquire) {
+                match self
+                    .max
+                    .compare_exchange(max, idx, Ordering::AcqRel, Ordering::Acquire)
+                {
                     Ok(_) => break,
                     Err(actual) => max = actual,
                 }
@@ -313,18 +316,15 @@ where
                 core::cmp::max(max, idx),
                 max
             );
-            unsafe {
-                // Safety: we just put it there!
-                &*ptr
-            }
-            .get_ref()
+            // Safety: we just put it there!
+            unsafe { &*ptr }
         });
         (tid, shard)
     }
 
     pub(crate) fn iter_mut(&mut self) -> IterMut<'_, T, C> {
         log::trace!("Array::iter_mut");
-        let max = self.max.load(Acquire);
+        let max = self.max.load(Ordering::Acquire);
         log::trace!("-> highest index={}", max);
         IterMut(self.shards[0..=max].iter_mut())
     }
@@ -333,31 +333,30 @@ where
 impl<T, C: cfg::Config> Drop for Array<T, C> {
     fn drop(&mut self) {
         // XXX(eliza): this could be `with_mut` if we wanted to impl a wrapper for std atomics to change `get_mut` to `with_mut`...
-        let max = self.max.load(Acquire);
+        let max = self.max.load(Ordering::Acquire);
         for shard in &self.shards[0..=max] {
             // XXX(eliza): this could be `with_mut` if we wanted to impl a wrapper for std atomics to change `get_mut` to `with_mut`...
-            let ptr = shard.0.load(Acquire);
+            let ptr = shard.0.load(Ordering::Acquire);
             if ptr.is_null() {
                 continue;
             }
-            let shard = unsafe {
-                // Safety: this is the only place where these boxes are
-                // deallocated, and we have exclusive access to the shard array,
-                // because...we are dropping it...
-                Box::from_raw(ptr)
-            };
-            drop(shard)
+            // Safety: this is the only place where these boxes are
+            // deallocated, and we have exclusive access to the shard array,
+            // because...we are dropping it...
+            let shard = unsafe { Box::from_raw(ptr) };
+            drop(shard);
         }
     }
 }
 
 impl<T: fmt::Debug, C: cfg::Config> fmt::Debug for Array<T, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let max = self.max.load(Acquire);
+        let max = self.max.load(Ordering::Acquire);
         let mut set = f.debug_map();
         for shard in &self.shards[0..=max] {
-            let ptr = shard.0.load(Acquire);
+            let ptr = shard.0.load(Ordering::Acquire);
             if let Some(shard) = ptr::NonNull::new(ptr) {
+                // Safety: TODO
                 set.entry(&format_args!("{:p}", ptr), unsafe { shard.as_ref() });
             } else {
                 set.entry(&format_args!("{:p}", ptr), &());
@@ -383,25 +382,23 @@ impl<T, C: cfg::Config> Ptr<T, C> {
             log::trace!("---> null");
             return None;
         }
-        let track = unsafe {
-            // Safety: The returned reference will have the same lifetime as the
-            // reference to the shard pointer, which (morally, if not actually)
-            // owns the shard. The shard is only deallocated when the shard
-            // array is dropped, and it won't be dropped while this pointer is
-            // borrowed --- and the returned reference has the same lifetime.
-            //
-            // We know that the pointer is not null, because we just
-            // null-checked it immediately prior.
-            &*ptr
-        };
+        // Safety: The returned reference will have the same lifetime as the
+        // reference to the shard pointer, which (morally, if not actually)
+        // owns the shard. The shard is only deallocated when the shard
+        // array is dropped, and it won't be dropped while this pointer is
+        // borrowed --- and the returned reference has the same lifetime.
+        //
+        // We know that the pointer is not null, because we just
+        // null-checked it immediately prior.
+        let shard = unsafe { &*ptr };
 
-        Some(track.get_ref())
+        Some(shard)
     }
 
     #[inline]
-    fn set(&self, new: *mut crate::sync::alloc::Track<Shard<T, C>>) {
+    fn set(&self, new: *mut Shard<T, C>) {
         self.0
-            .compare_exchange(ptr::null_mut(), new, AcqRel, Acquire)
+            .compare_exchange(ptr::null_mut(), new, Ordering::AcqRel, Ordering::Acquire)
             .expect("a shard can only be inserted by the thread that owns it, this is a bug!");
     }
 }
@@ -423,7 +420,7 @@ where
             // they may have never allocated a shard.
             let next = self.0.next();
             log::trace!("-> next.is_some={}", next.is_some());
-            if let Some(shard) = next?.load(Acquire) {
+            if let Some(shard) = next?.load(Ordering::Acquire) {
                 log::trace!("-> done");
                 return Some(shard);
             }

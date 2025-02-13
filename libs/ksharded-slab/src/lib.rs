@@ -49,7 +49,7 @@
 //!
 //! Inserting an item into the slab, returning an index:
 //! ```rust
-//! # use sharded_slab::Slab;
+//! # use ksharded_slab::Slab;
 //! let slab = Slab::new();
 //!
 //! let key = slab.insert("hello world").unwrap();
@@ -58,7 +58,7 @@
 //!
 //! To share a slab across threads, it may be wrapped in an `Arc`:
 //! ```rust
-//! # use sharded_slab::Slab;
+//! # use ksharded_slab::Slab;
 //! use alloc::sync::Arc;
 //! let slab = Arc::new(Slab::new());
 //!
@@ -83,7 +83,7 @@
 //! each item, providing granular locking of items rather than of the slab:
 //!
 //! ```rust
-//! # use sharded_slab::Slab;
+//! # use ksharded_slab::Slab;
 //! use core::sync::{Arc, Mutex};
 //! let slab = Arc::new(Slab::new());
 //!
@@ -204,17 +204,14 @@
 #![no_std]
 #![feature(thread_local)]
 #![feature(used_with_arg)]
+#![feature(never_type)]
 
 extern crate alloc;
-
-#[macro_use]
-mod macros;
 
 pub mod implementation;
 pub mod pool;
 
 pub(crate) mod cfg;
-pub(crate) mod sync;
 
 mod clear;
 mod iter;
@@ -266,7 +263,7 @@ pub struct Entry<'a, T, C: cfg::Config = DefaultConfig> {
 /// # Examples
 ///
 /// ```
-/// # use sharded_slab::Slab;
+/// # use ksharded_slab::Slab;
 /// let mut slab = Slab::new();
 ///
 /// let hello = {
@@ -302,7 +299,8 @@ pub struct VacantEntry<'a, T, C: cfg::Config = DefaultConfig> {
 /// # Examples
 ///
 /// ```
-/// # use sharded_slab::Slab;
+/// # use ksharded_slab::Slab;
+/// # extern crate alloc;
 /// use alloc::sync::Arc;
 ///
 /// let slab: Arc<Slab<&'static str>> = Arc::new(Slab::new());
@@ -320,8 +318,9 @@ pub struct VacantEntry<'a, T, C: cfg::Config = DefaultConfig> {
 /// for the `'static` lifetime:
 ///
 /// ```
-/// # use sharded_slab::Slab;
-/// use sharded_slab::OwnedEntry;
+/// # use ksharded_slab::Slab;
+/// # extern crate alloc;
+/// use ksharded_slab::OwnedEntry;
 /// use alloc::sync::Arc;
 ///
 /// pub struct MyStruct {
@@ -353,7 +352,7 @@ pub struct VacantEntry<'a, T, C: cfg::Config = DefaultConfig> {
 /// `OwnedEntry`s may be sent between threads:
 ///
 /// ```
-/// # use sharded_slab::Slab;
+/// # use ksharded_slab::Slab;
 /// use core::{thread, sync::Arc};
 ///
 /// let slab: Arc<Slab<&'static str>> = Arc::new(Slab::new());
@@ -419,7 +418,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     ///
     /// # Examples
     /// ```rust
-    /// # use sharded_slab::Slab;
+    /// # use ksharded_slab::Slab;
     /// let slab = Slab::new();
     ///
     /// let key = slab.insert("hello world").unwrap();
@@ -431,8 +430,8 @@ impl<T, C: cfg::Config> Slab<T, C> {
         let mut value = Some(value);
         shard
             .init_with(|idx, slot| {
-                let gen = slot.insert(&mut value)?;
-                Some(gen.pack(idx))
+                let generation = slot.insert(&mut value)?;
+                Some(generation.pack(idx))
             })
             .map(|idx| tid.pack(idx))
     }
@@ -446,7 +445,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```
-    /// # use sharded_slab::Slab;
+    /// # use ksharded_slab::Slab;
     /// let mut slab = Slab::new();
     ///
     /// let hello = {
@@ -485,7 +484,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```rust
-    /// let slab = sharded_slab::Slab::new();
+    /// let slab = ksharded_slab::Slab::new();
     /// let key = slab.insert("hello world").unwrap();
     ///
     /// // Remove the item from the slab.
@@ -554,7 +553,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```rust
-    /// let slab = sharded_slab::Slab::new();
+    /// let slab = ksharded_slab::Slab::new();
     /// let key = slab.insert("hello world").unwrap();
     ///
     /// // Remove the item from the slab, returning it.
@@ -609,12 +608,16 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```rust
-    /// let slab = sharded_slab::Slab::new();
+    /// let slab = ksharded_slab::Slab::new();
     /// let key = slab.insert("hello world").unwrap();
     ///
     /// assert_eq!(slab.get(key).unwrap(), "hello world");
     /// assert!(slab.get(12345).is_none());
     /// ```
+    ///
+    /// # Panics
+    ///  
+    /// TODO
     pub fn get(&self, key: usize) -> Option<Entry<'_, T, C>> {
         let tid = C::unpack_tid(key);
 
@@ -645,7 +648,8 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```
-    /// # use sharded_slab::Slab;
+    /// # use ksharded_slab::Slab;
+    /// # extern crate alloc;
     /// use alloc::sync::Arc;
     ///
     /// let slab: Arc<Slab<&'static str>> = Arc::new(Slab::new());
@@ -663,8 +667,9 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// for the `'static` lifetime:
     ///
     /// ```
-    /// # use sharded_slab::Slab;
-    /// use sharded_slab::OwnedEntry;
+    /// # use ksharded_slab::Slab;
+    /// # extern crate alloc;
+    /// use ksharded_slab::OwnedEntry;
     /// use alloc::sync::Arc;
     ///
     /// pub struct MyStruct {
@@ -693,23 +698,9 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// function_requiring_static(&my_struct);
     /// ```
     ///
-    /// [`OwnedEntry`]s may be sent between threads:
-    ///
-    /// ```
-    /// # use sharded_slab::Slab;
-    /// use core::{thread, sync::Arc};
-    ///
-    /// let slab: Arc<Slab<&'static str>> = Arc::new(Slab::new());
-    /// let key = slab.insert("hello world").unwrap();
-    ///
-    /// // Look up the created key, returning an `OwnedEntry`.
-    /// let value = slab.clone().get_owned(key).unwrap();
-    ///
-    /// thread::spawn(move || {
-    ///     assert_eq!(value, "hello world");
-    ///     // ...
-    /// }).join().unwrap();
-    /// ```
+    /// # Panics
+    ///  
+    /// TODO
     ///
     /// [`get`]: Slab::get
     /// [`Arc`]: alloc::sync::Arc
@@ -735,7 +726,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```
-    /// let slab = sharded_slab::Slab::new();
+    /// let slab = ksharded_slab::Slab::new();
     ///
     /// let key = slab.insert("hello world").unwrap();
     /// assert!(slab.contains(key));
@@ -787,7 +778,9 @@ impl<T: fmt::Debug, C: cfg::Config> fmt::Debug for Slab<T, C> {
     }
 }
 
+// Safety: TODO
 unsafe impl<T: Send, C: cfg::Config> Send for Slab<T, C> {}
+// Safety: TODO
 unsafe impl<T: Sync, C: cfg::Config> Sync for Slab<T, C> {}
 
 // === impl Entry ===
@@ -800,12 +793,10 @@ impl<T, C: cfg::Config> Entry<'_, T, C> {
 
     #[inline(always)]
     fn value(&self) -> &T {
-        unsafe {
-            // Safety: this is always going to be valid, as it's projected from
-            // the safe reference to `self.value` --- this is just to avoid
-            // having to `expect` an option in the hot path when dereferencing.
-            self.value.as_ref()
-        }
+        // Safety: this is always going to be valid, as it's projected from
+        // the safe reference to `self.value` --- this is just to avoid
+        // having to `expect` an option in the hot path when dereferencing.
+        unsafe { self.value.as_ref() }
     }
 }
 
@@ -819,17 +810,15 @@ impl<T, C: cfg::Config> core::ops::Deref for Entry<'_, T, C> {
 
 impl<T, C: cfg::Config> Drop for Entry<'_, T, C> {
     fn drop(&mut self) {
-        let should_remove = unsafe {
-            // Safety: calling `slot::Guard::release` is unsafe, since the
-            // `Guard` value contains a pointer to the slot that may outlive the
-            // slab containing that slot. Here, the `Entry` guard owns a
-            // borrowed reference to the shard containing that slot, which
-            // ensures that the slot will not be dropped while this `Guard`
-            // exists.
-            self.inner.release()
-        };
+        // Safety: calling `slot::Guard::release` is unsafe, since the
+        // `Guard` value contains a pointer to the slot that may outlive the
+        // slab containing that slot. Here, the `Entry` guard owns a
+        // borrowed reference to the shard containing that slot, which
+        // ensures that the slot will not be dropped while this `Guard`
+        // exists.
+        let should_remove = unsafe { self.inner.release() };
         if should_remove {
-            self.shard.clear_after_release(self.key)
+            self.shard.clear_after_release(self.key);
         }
     }
 }
@@ -844,6 +833,7 @@ where
     }
 }
 
+// Safety: TODO
 impl<T, C> PartialEq<T> for Entry<'_, T, C>
 where
     T: PartialEq<T>,
@@ -854,6 +844,7 @@ where
     }
 }
 
+// Safety: TODO
 unsafe impl<T, C> Send for Entry<'_, T, C>
 where
     T: Sync,
@@ -872,7 +863,7 @@ impl<T, C: cfg::Config> VacantEntry<'_, T, C> {
     /// # Examples
     ///
     /// ```
-    /// # use sharded_slab::Slab;
+    /// # use ksharded_slab::Slab;
     /// let mut slab = Slab::new();
     ///
     /// let hello = {
@@ -889,26 +880,22 @@ impl<T, C: cfg::Config> VacantEntry<'_, T, C> {
     ///
     /// [`key`]: VacantEntry::key
     pub fn insert(mut self, val: T) {
-        let value = unsafe {
-            // Safety: this `VacantEntry` only lives as long as the `Slab` it was
-            // borrowed from, so it cannot outlive the entry's slot.
-            self.inner.value_mut()
-        };
+        // Safety: this `VacantEntry` only lives as long as the `Slab` it was
+        // borrowed from, so it cannot outlive the entry's slot.
+        let value = unsafe { self.inner.value_mut() };
         debug_assert!(
             value.is_none(),
             "tried to insert to a slot that already had a value!"
         );
         *value = Some(val);
-        let _released = unsafe {
-            // Safety: again, this `VacantEntry` only lives as long as the
-            // `Slab` it was borrowed from, so it cannot outlive the entry's
-            // slot.
-            self.inner.release()
-        };
+        // Safety: again, this `VacantEntry` only lives as long as the
+        // `Slab` it was borrowed from, so it cannot outlive the entry's
+        // slot.
+        let _released = unsafe { self.inner.release() };
         debug_assert!(
             !_released,
             "removing a value before it was inserted should be a no-op"
-        )
+        );
     }
 
     /// Return the integer index at which this entry will be inserted.
@@ -918,7 +905,7 @@ impl<T, C: cfg::Config> VacantEntry<'_, T, C> {
     /// # Examples
     ///
     /// ```
-    /// # use sharded_slab::*;
+    /// # use ksharded_slab::*;
     /// let mut slab = Slab::new();
     ///
     /// let hello = {
@@ -949,12 +936,10 @@ where
 
     #[inline(always)]
     fn value(&self) -> &T {
-        unsafe {
-            // Safety: this is always going to be valid, as it's projected from
-            // the safe reference to `self.value` --- this is just to avoid
-            // having to `expect` an option in the hot path when dereferencing.
-            self.value.as_ref()
-        }
+        // Safety: this is always going to be valid, as it's projected from
+        // the safe reference to `self.value` --- this is just to avoid
+        // having to `expect` an option in the hot path when dereferencing.
+        unsafe { self.value.as_ref() }
     }
 }
 
@@ -975,22 +960,20 @@ where
 {
     fn drop(&mut self) {
         log::trace!("drop OwnedEntry: try clearing data");
-        let should_clear = unsafe {
-            // Safety: calling `slot::Guard::release` is unsafe, since the
-            // `Guard` value contains a pointer to the slot that may outlive the
-            // slab containing that slot. Here, the `OwnedEntry` owns an `Arc`
-            // clone of the pool, which keeps it alive as long as the `OwnedEntry`
-            // exists.
-            self.inner.release()
-        };
+        // Safety: calling `slot::Guard::release` is unsafe, since the
+        // `Guard` value contains a pointer to the slot that may outlive the
+        // slab containing that slot. Here, the `OwnedEntry` owns an `Arc`
+        // clone of the pool, which keeps it alive as long as the `OwnedEntry`
+        // exists.
+        let should_clear = unsafe { self.inner.release() };
         if should_clear {
             let shard_idx = Tid::<C>::from_packed(self.key);
             log::trace!("-> shard={:?}", shard_idx);
             if let Some(shard) = self.slab.shards.get(shard_idx.as_usize()) {
-                shard.clear_after_release(self.key)
+                shard.clear_after_release(self.key);
             } else {
                 log::trace!("-> shard={:?} does not exist! THIS IS A BUG", shard_idx);
-                debug_assert!(panic_unwind::panicking(), "[internal error] tried to drop an `OwnedEntry` to a slot on a shard that never existed!");
+                panic!("[internal error] tried to drop an `OwnedEntry` to a slot on a shard that never existed!");
             }
         }
     }
@@ -1016,6 +999,7 @@ where
     }
 }
 
+// Safety: TODO
 unsafe impl<T, C> Sync for OwnedEntry<T, C>
 where
     T: Sync,
@@ -1023,6 +1007,7 @@ where
 {
 }
 
+// Safety: TODO
 unsafe impl<T, C> Send for OwnedEntry<T, C>
 where
     T: Sync,
@@ -1115,9 +1100,3 @@ impl<C: cfg::Config> Pack<C> for () {
         unreachable!()
     }
 }
-
-#[cfg(test)]
-pub(crate) use self::tests::util as test_util;
-
-#[cfg(test)]
-mod tests;

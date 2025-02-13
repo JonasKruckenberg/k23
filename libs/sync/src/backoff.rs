@@ -76,6 +76,11 @@ impl Backoff {
             self.exp += 1;
         }
     }
+
+    #[inline(always)]
+    pub fn reset(&mut self) {
+        self.exp = 0;
+    }
 }
 
 impl Default for Backoff {

@@ -1,10 +1,9 @@
 use super::FreeList;
-use crate::sync::{
-    atomic::{AtomicUsize, Ordering},
-    hint, UnsafeCell,
-};
 use crate::{cfg, clear::Clear, Pack, Tid};
+use core::cell::UnsafeCell;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, marker::PhantomData, mem, ptr};
+use sync::Backoff;
 
 pub(crate) struct Slot<T, C> {
     lifecycle: AtomicUsize,
@@ -88,23 +87,26 @@ where
 {
     #[inline(always)]
     pub(super) fn next(&self) -> usize {
-        self.next.with(|next| unsafe { *next })
+        // Safety: TODO
+        unsafe { *self.next.get() }
     }
 
     #[inline(always)]
     pub(crate) fn value(&self) -> &T {
-        self.item.with(|item| unsafe { &*item })
+        // Safety: TODO
+        unsafe { &*self.item.get() }
     }
 
     #[inline(always)]
     pub(super) fn set_next(&self, next: usize) {
-        self.next.with_mut(|n| unsafe {
-            (*n) = next;
-        })
+        // Safety: TODO
+        unsafe {
+            *self.next.get() = next;
+        }
     }
 
     #[inline(always)]
-    pub(crate) fn get(&self, gen: Generation<C>) -> Option<Guard<T, C>> {
+    pub(crate) fn get(&self, generation: Generation<C>) -> Option<Guard<T, C>> {
         let mut lifecycle = self.lifecycle.load(Ordering::Acquire);
         loop {
             // Unpack the current state.
@@ -114,7 +116,7 @@ where
 
             log::trace!(
                 "-> get {:?}; current_gen={:?}; lifecycle={:#x}; state={:?}; refs={:?};",
-                gen,
+                generation,
                 current_gen,
                 lifecycle,
                 state,
@@ -125,7 +127,7 @@ where
             // current, and the slot must not be in the process of being
             // removed. If we can no longer access the slot at the given
             // generation, return `None`.
-            if gen != current_gen || state != Lifecycle::PRESENT {
+            if generation != current_gen || state != Lifecycle::PRESENT {
                 log::trace!("-> get: no longer exists!");
                 return None;
             }
@@ -164,7 +166,7 @@ where
     /// This method checks if there are any references to this slot. If there _are_ valid
     /// references, it just marks them for modification and returns and the next thread calling
     /// either `clear_storage` or `remove_value` will try and modify the storage
-    fn mark_release(&self, gen: Generation<C>) -> Option<bool> {
+    fn mark_release(&self, generation: Generation<C>) -> Option<bool> {
         let mut lifecycle = self.lifecycle.load(Ordering::Acquire);
         let mut curr_gen;
 
@@ -174,12 +176,12 @@ where
             curr_gen = LifecycleGen::from_packed(lifecycle).0;
             log::trace!(
                 "-> mark_release; gen={:?}; current_gen={:?};",
-                gen,
+                generation,
                 curr_gen
             );
 
             // Is the slot still at the generation we are trying to remove?
-            if gen != curr_gen {
+            if generation != curr_gen {
                 return None;
             }
 
@@ -231,21 +233,27 @@ where
     /// Mutates this slot.
     ///
     /// This method spins until no references to this slot are left, and calls the mutator
-    fn release_with<F, M, R>(&self, gen: Generation<C>, offset: usize, free: &F, mutator: M) -> R
+    fn release_with<F, M, R>(
+        &self,
+        generation: Generation<C>,
+        offset: usize,
+        free: &F,
+        mutator: M,
+    ) -> R
     where
         F: FreeList<C>,
         M: FnOnce(Option<&mut T>) -> R,
     {
         let mut lifecycle = self.lifecycle.load(Ordering::Acquire);
         let mut advanced = false;
-        // Exponential spin backoff while waiting for the slot to be released.
-        let mut spin_exp = 0;
-        let next_gen = gen.advance();
+        let mut boff = Backoff::new();
+
+        let next_gen = generation.advance();
         loop {
             let current_gen = LifecycleGen::from_packed(lifecycle).0;
             log::trace!("-> release_with; lifecycle={:#x}; expected_gen={:?}; current_gen={:?}; next_gen={:?};",
                 lifecycle,
-                gen,
+                generation,
                 current_gen,
                 next_gen
             );
@@ -254,7 +262,7 @@ where
             // If we're going to remove the value, the generation has to match
             // the value that `remove_value` was called with...unless we've
             // already stored the new generation.
-            if (!advanced) && gen != current_gen {
+            if (!advanced) && generation != current_gen {
                 log::trace!("-> already removed!");
                 return mutator(None);
             }
@@ -278,9 +286,7 @@ where
                         // safety: we've modified the generation of this slot and any other thread
                         // calling this method will exit out at the generation check above in the
                         // next iteraton of the loop.
-                        let value = self
-                            .item
-                            .with_mut(|item| mutator(Some(unsafe { &mut *item })));
+                        let value = mutator(Some(unsafe { &mut *self.item.get() }));
                         free.push(offset, self);
                         return value;
                     }
@@ -289,14 +295,14 @@ where
                     // remove the value. Spin here until there are no refs remaining...
                     log::trace!("-> refs={:?}; spin...", refs);
 
-                    // Back off, spinning and possibly yielding.
-                    exponential_backoff(&mut spin_exp);
+                    // Back off
+                    boff.spin();
                 }
                 Err(actual) => {
                     log::trace!("-> retrying; lifecycle={:#x};", actual);
                     lifecycle = actual;
                     // The state changed; reset the spin backoff.
-                    spin_exp = 0;
+                    boff.reset();
                 }
             }
         }
@@ -310,13 +316,13 @@ where
     pub(crate) fn init(&self) -> Option<InitGuard<T, C>> {
         // Load the current lifecycle state.
         let lifecycle = self.lifecycle.load(Ordering::Acquire);
-        let gen = LifecycleGen::<C>::from_packed(lifecycle).0;
+        let generation = LifecycleGen::<C>::from_packed(lifecycle).0;
         let refs = RefCount::<C>::from_packed(lifecycle);
 
         log::trace!(
             "-> initialize_state; state={:?}; gen={:?}; refs={:?};",
             Lifecycle::<C>::from_packed(lifecycle),
-            gen,
+            generation,
             refs,
         );
 
@@ -339,7 +345,8 @@ where
     C: cfg::Config,
 {
     fn is_empty(&self) -> bool {
-        self.item.with(|item| unsafe { (*item).is_none() })
+        // Safety: TODO
+        unsafe { (*self.item.get()).is_none() }
     }
 
     /// Insert a value into a slot
@@ -351,18 +358,18 @@ where
         debug_assert!(value.is_some(), "inserted twice");
 
         let mut guard = self.init()?;
-        let gen = guard.generation();
+        let generation = guard.generation();
+        // Safety: Accessing the value of an `InitGuard` is unsafe because
+        // it has a pointer to a slot which may dangle. Here, we know the
+        // pointed slot is alive because we have a reference to it in scope,
+        // and the `InitGuard` will be dropped when this function returns.
         unsafe {
-            // Safety: Accessing the value of an `InitGuard` is unsafe because
-            // it has a pointer to a slot which may dangle. Here, we know the
-            // pointed slot is alive because we have a reference to it in scope,
-            // and the `InitGuard` will be dropped when this function returns.
             mem::swap(guard.value_mut(), value);
             guard.release();
         };
-        log::trace!("-> inserted at {:?}", gen);
+        log::trace!("-> inserted at {:?}", generation);
 
-        Some(gen)
+        Some(generation)
     }
 
     /// Tries to remove the value in the slot, returning `true` if the value was
@@ -374,24 +381,21 @@ where
     #[inline]
     pub(super) fn try_remove_value<F: FreeList<C>>(
         &self,
-        gen: Generation<C>,
+        generation: Generation<C>,
         offset: usize,
         free: &F,
     ) -> bool {
-        let should_remove = match self.mark_release(gen) {
-            // If `mark_release` returns `Some`, a value exists at this
-            // generation. The bool inside this option indicates whether or not
-            // _we're_ allowed to remove the value.
-            Some(should_remove) => should_remove,
+        // If `mark_release` returns `Some`, a value exists at this
+        // generation. The bool inside this option indicates whether or not
+        // _we're_ allowed to remove the value.
+        let Some(should_remove) = self.mark_release(generation) else {
             // Otherwise, the generation we tried to remove has already expired,
             // and we did not mark anything for removal.
-            None => {
-                log::trace!(
-                    "-> try_remove_value; nothing exists at generation={:?}",
-                    gen
-                );
-                return false;
-            }
+            log::trace!(
+                "-> try_remove_value; nothing exists at generation={:?}",
+                generation
+            );
+            return false;
         };
 
         log::trace!("-> try_remove_value; marked!");
@@ -399,7 +403,7 @@ where
         if should_remove {
             // We're allowed to remove the slot now!
             log::trace!("-> try_remove_value; can remove now");
-            self.remove_value(gen, offset, free);
+            self.remove_value(generation, offset, free);
         }
 
         true
@@ -408,11 +412,11 @@ where
     #[inline]
     pub(super) fn remove_value<F: FreeList<C>>(
         &self,
-        gen: Generation<C>,
+        generation: Generation<C>,
         offset: usize,
         free: &F,
     ) -> Option<T> {
-        self.release_with(gen, offset, free, |item| item.and_then(Option::take))
+        self.release_with(generation, offset, free, |item| item.and_then(Option::take))
     }
 }
 
@@ -438,24 +442,21 @@ where
     #[inline]
     pub(super) fn try_clear_storage<F: FreeList<C>>(
         &self,
-        gen: Generation<C>,
+        generation: Generation<C>,
         offset: usize,
         free: &F,
     ) -> bool {
-        let should_clear = match self.mark_release(gen) {
-            // If `mark_release` returns `Some`, a value exists at this
-            // generation. The bool inside this option indicates whether or not
-            // _we're_ allowed to clear the value.
-            Some(should_clear) => should_clear,
+        // If `mark_release` returns `Some`, a value exists at this
+        // generation. The bool inside this option indicates whether or not
+        // _we're_ allowed to clear the value.
+        let Some(should_clear) = self.mark_release(generation) else {
             // Otherwise, the generation we tried to remove has already expired,
             // and we did not mark anything for removal.
-            None => {
-                log::trace!(
-                    "-> try_clear_storage; nothing exists at generation={:?}",
-                    gen
-                );
-                return false;
-            }
+            log::trace!(
+                "-> try_clear_storage; nothing exists at generation={:?}",
+                generation
+            );
+            return false;
         };
 
         log::trace!("-> try_clear_storage; marked!");
@@ -463,7 +464,7 @@ where
         if should_clear {
             // We're allowed to remove the slot now!
             log::trace!("-> try_remove_value; can clear now");
-            return self.clear_storage(gen, offset, free);
+            return self.clear_storage(generation, offset, free);
         }
 
         true
@@ -474,13 +475,13 @@ where
     /// This method blocks until all references have been dropped and clears the storage.
     pub(super) fn clear_storage<F: FreeList<C>>(
         &self,
-        gen: Generation<C>,
+        generation: Generation<C>,
         offset: usize,
         free: &F,
     ) -> bool {
         // release_with will _always_ wait until it can release the slot or just return if the slot
         // has already been released.
-        self.release_with(gen, offset, free, |item| {
+        self.release_with(generation, offset, free, |item| {
             let cleared = item.map(|inner| Clear::clear(inner)).is_some();
             log::trace!("-> cleared: {}", cleared);
             cleared
@@ -494,14 +495,14 @@ impl<T, C: cfg::Config> Slot<T, C> {
         loop {
             let refs = RefCount::<C>::from_packed(lifecycle);
             let state = Lifecycle::<C>::from_packed(lifecycle).state;
-            let gen = LifecycleGen::<C>::from_packed(lifecycle).0;
+            let generation = LifecycleGen::<C>::from_packed(lifecycle).0;
 
             // Are we the last guard, and is the slot marked for removal?
             let dropping = refs.value == 1 && state == State::Marked;
             let new_lifecycle = if dropping {
                 // If so, we want to advance the state to "removing".
                 // Also, reset the ref count to 0.
-                LifecycleGen(gen).pack(State::Removing as usize)
+                LifecycleGen(generation).pack(State::Removing as usize)
             } else {
                 // Otherwise, just subtract 1 from the ref count.
                 refs.decr().pack(lifecycle)
@@ -510,7 +511,7 @@ impl<T, C: cfg::Config> Slot<T, C> {
             log::trace!(
                 "-> drop guard: state={:?}; gen={:?}; refs={:?}; lifecycle={:#x}; new_lifecycle={:#x}; dropping={:?}",
                 state,
-                gen,
+                generation,
                 refs,
                 lifecycle,
                 new_lifecycle,
@@ -544,7 +545,7 @@ impl<T, C: cfg::Config> fmt::Debug for Slot<T, C> {
             .field("gen", &LifecycleGen::<C>::from_packed(lifecycle).0)
             .field("refs", &RefCount::<C>::from_packed(lifecycle))
             .field("next", &self.next())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -602,7 +603,8 @@ impl<T, C: cfg::Config> Guard<T, C> {
     /// the pointed slot. Failure to do so means this pointer may dangle.
     #[inline]
     pub(crate) unsafe fn release(&self) -> bool {
-        self.slot().release()
+        // Safety: ensured by caller
+        unsafe { self.slot() }.release()
     }
 
     /// Returns a borrowed reference to the slot.
@@ -614,7 +616,8 @@ impl<T, C: cfg::Config> Guard<T, C> {
     /// the pointed slot. Failure to do so means this pointer may dangle.
     #[inline]
     pub(crate) unsafe fn slot(&self) -> &Slot<T, C> {
-        self.slot.as_ref()
+        // Safety: ensured by caller
+        unsafe { self.slot.as_ref() }
     }
 
     /// Returns a borrowed reference to the slot's value.
@@ -626,7 +629,8 @@ impl<T, C: cfg::Config> Guard<T, C> {
     /// the pointed slot. Failure to do so means this pointer may dangle.
     #[inline(always)]
     pub(crate) unsafe fn value(&self) -> &T {
-        self.slot().item.with(|item| &*item)
+        // Safety: ensured by caller
+        unsafe { &*self.slot().item.get() }
     }
 }
 
@@ -783,7 +787,8 @@ impl<T, C: cfg::Config> InitGuard<T, C> {
     /// contains the pointed slot. Failure to do so means this pointer may
     /// dangle.
     pub(crate) unsafe fn value(&self) -> &T {
-        self.slot.as_ref().item.with(|val| &*val)
+        // Safety: ensured by caller
+        unsafe { &*self.slot.as_ref().item.get() }
     }
 
     /// Returns a mutably borrowed reference to the slot's value.
@@ -798,7 +803,8 @@ impl<T, C: cfg::Config> InitGuard<T, C> {
     /// It's safe to reference the slot mutably, though, because creating an
     /// `InitGuard` ensures there are no outstanding immutable references.
     pub(crate) unsafe fn value_mut(&mut self) -> &mut T {
-        self.slot.as_ref().item.with_mut(|val| &mut *val)
+        // Safety: ensured by caller
+        unsafe { &mut *self.slot.as_ref().item.get() }
     }
 
     /// Releases the guard, returning `true` if the slot should be cleared.
@@ -810,7 +816,8 @@ impl<T, C: cfg::Config> InitGuard<T, C> {
     /// contains the pointed slot. Failure to do so means this pointer may
     /// dangle.
     pub(crate) unsafe fn release(&mut self) -> bool {
-        self.release2(0)
+        // Safety: ensured by caller
+        unsafe { self.release2(0) }
     }
 
     /// Downgrades the guard to an immutable guard
@@ -822,7 +829,8 @@ impl<T, C: cfg::Config> InitGuard<T, C> {
     /// contains the pointed slot. Failure to do so means this pointer may
     /// dangle.
     pub(crate) unsafe fn downgrade(&mut self) -> Guard<T, C> {
-        let _ = self.release2(RefCount::<C>::from_usize(1).pack(0));
+        // Safety: ensured by caller
+        let _ = unsafe { self.release2(RefCount::<C>::from_usize(1).pack(0)) };
         Guard { slot: self.slot }
     }
 
@@ -838,7 +846,8 @@ impl<T, C: cfg::Config> InitGuard<T, C> {
         }
         self.released = true;
         let mut curr_lifecycle = self.curr_lifecycle;
-        let slot = self.slot.as_ref();
+        // Safety: ensured by caller
+        let slot = unsafe { self.slot.as_ref() };
         let new_lifecycle = LifecycleGen::<C>::from_packed(self.curr_lifecycle)
             .pack(Lifecycle::<C>::PRESENT.pack(new_refs));
 
@@ -874,8 +883,8 @@ impl<T, C: cfg::Config> InitGuard<T, C> {
                 refs,
             );
 
-            debug_assert!(state == State::Marked || panic_unwind::panicking(), "state was not MARKED; someone else has removed the slot while we have exclusive access!\nactual={:?}", state);
-            debug_assert!(refs.value == 0 || panic_unwind::panicking(), "ref count was not 0; someone else has referenced the slot while we have exclusive access!\nactual={:?}", refs);
+            debug_assert!(state == State::Marked, "state was not MARKED; someone else has removed the slot while we have exclusive access!\nactual={:?}", state);
+            debug_assert!(refs.value == 0, "ref count was not 0; someone else has referenced the slot while we have exclusive access!\nactual={:?}", refs);
 
             let new_lifecycle = LifecycleGen(self.generation()).pack(State::Removing as usize);
 
@@ -890,37 +899,11 @@ impl<T, C: cfg::Config> InitGuard<T, C> {
                     return true;
                 }
                 Err(actual) => {
-                    debug_assert!(
-                        panic_unwind::panicking(),
-                        "we should not have to retry this CAS!"
-                    );
                     log::trace!("-> InitGuard::release; retry, actual={:#x}", actual);
+                    // panic!("we should not have to retry this CAS!");
                     curr_lifecycle = actual;
                 }
             }
         }
-    }
-}
-
-// === helpers ===
-
-#[inline(always)]
-fn exponential_backoff(exp: &mut usize) {
-    /// Maximum exponent we can back off to.
-    const MAX_EXPONENT: usize = 8;
-
-    // Issue 2^exp pause instructions.
-    for _ in 0..(1 << *exp) {
-        hint::spin_loop();
-    }
-
-    if *exp >= MAX_EXPONENT {
-        // If we have reached the max backoff, also yield to the scheduler
-        // explicitly.
-        todo!()
-        // crate::sync::yield_now();
-    } else {
-        // Otherwise, increment the exponent.
-        *exp += 1;
     }
 }
