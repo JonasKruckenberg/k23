@@ -6,9 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::tracing::color::{AnsiEscapes, Color, SetColor};
+use core::cell::UnsafeCell;
 use core::fmt::{Arguments, Write};
 use core::{cmp, fmt};
-use sync::{Mutex, MutexGuard};
+use sync::{ReentrantMutex, ReentrantMutexGuard};
 use tracing_core::Metadata;
 
 pub trait MakeWriter<'a> {
@@ -160,12 +161,14 @@ impl<W: Write> Drop for Writer<W> {
     }
 }
 
-pub struct Semihosting(Mutex<riscv::hio::HostStream>);
-pub struct SemihostingWriter<'a>(MutexGuard<'a, riscv::hio::HostStream>);
+pub struct Semihosting(ReentrantMutex<UnsafeCell<riscv::hio::HostStream>>);
+pub struct SemihostingWriter<'a>(ReentrantMutexGuard<'a, UnsafeCell<riscv::hio::HostStream>>);
 
 impl Semihosting {
     pub fn new() -> Self {
-        Self(Mutex::new(riscv::hio::HostStream::new_stdout()))
+        Self(ReentrantMutex::new(UnsafeCell::new(
+            riscv::hio::HostStream::new_stdout(),
+        )))
     }
 }
 
@@ -179,14 +182,20 @@ impl<'a> MakeWriter<'a> for Semihosting {
 
 impl Write for SemihostingWriter<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.0.write_str(s)
+        // Safety: Racy access to the HostStream is safe, at worst this produces interleaved debug output
+        let this = unsafe { &mut *self.0.get() };
+        this.write_str(s)
     }
 
     fn write_char(&mut self, c: char) -> fmt::Result {
-        self.0.write_char(c)
+        // Safety: Racy access to the HostStream is safe, at worst this produces interleaved debug output
+        let this = unsafe { &mut *self.0.get() };
+        this.write_char(c)
     }
 
     fn write_fmt(&mut self, args: Arguments<'_>) -> fmt::Result {
-        self.0.write_fmt(args)
+        // Safety: Racy access to the HostStream is safe, at worst this produces interleaved debug output
+        let this = unsafe { &mut *self.0.get() };
+        this.write_fmt(args)
     }
 }

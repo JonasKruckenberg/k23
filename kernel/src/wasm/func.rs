@@ -119,7 +119,7 @@ impl Func {
             // construct wasm trap
 
             let (code, text_offset) = code_registry::lookup_code(trap.pc.get()).unwrap();
-            log::trace!(
+            tracing::trace!(
                 "Trap at offset: pc={};text_offset={text_offset:#x}",
                 trap.pc
             );

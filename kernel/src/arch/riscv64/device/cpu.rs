@@ -138,7 +138,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
         .children()
         .find(|c| c.name.name == "interrupt-controller")
         .unwrap();
-    log::trace!("CPU interrupt controller: {:?}", hlic_node);
+    tracing::trace!("CPU interrupt controller: {:?}", hlic_node);
 
     let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
     plic.irq_unmask(10);
@@ -164,7 +164,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
             cbom_block_size,
             plic,
         };
-        log::debug!("{_info:?}");
+        tracing::debug!("{_info:?}");
 
         info.set(_info).unwrap();
     });
@@ -218,7 +218,7 @@ pub fn parse_riscv_extensions(strs: fdt::StringList) -> crate::Result<RiscvExten
             "svadu" => RiscvExtensions::SVADU,
             "svvptc" => RiscvExtensions::SVVPTC,
             ext => {
-                log::error!("unknown RISCV extension {}", ext);
+                tracing::error!("unknown RISCV extension {}", ext);
                 return Err(Error::UnknownRiscvExtension);
             }
         }

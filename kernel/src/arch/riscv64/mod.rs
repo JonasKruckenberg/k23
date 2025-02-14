@@ -26,7 +26,7 @@ pub use vm::{
 #[cold]
 pub fn init_early() {
     let supported = riscv::sbi::supported_extensions().unwrap();
-    log::trace!("Supported SBI extensions: {supported:?}");
+    tracing::trace!("Supported SBI extensions: {supported:?}");
 
     vm::init();
 }

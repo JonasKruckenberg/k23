@@ -16,6 +16,7 @@ mod writer;
 use crate::time::Instant;
 use crate::tracing::writer::{IndentKind, MakeWriter, Semihosting, Writer};
 use crate::CPUID;
+pub use ::tracing::*;
 use color::{Color, SetColor};
 use core::fmt;
 use core::fmt::Write;

@@ -265,7 +265,7 @@ where
 
         // We can't use empty arenas anyway
         if aligned.is_empty() {
-            log::error!("arena is too small");
+            tracing::error!("arena is too small");
             return Err(SelectionError { range: aligned });
         }
 
@@ -277,7 +277,7 @@ where
 
         // The arena has no space to hold its own bookkeeping
         if bookkeeping_start < aligned.start {
-            log::error!("arena is too small");
+            tracing::error!("arena is too small");
             return Err(SelectionError { range: aligned });
         }
 

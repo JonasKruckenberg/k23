@@ -41,13 +41,13 @@ pub fn init(boot_alloc: BootstrapAllocator, fdt_region: Range<PhysicalAddress>) 
         for selection_result in select_arenas(phys_regions).iterator() {
             match selection_result {
                 Ok(selection) => {
-                    log::trace!("selection {selection:?}");
+                    tracing::trace!("selection {selection:?}");
                     let arena = Arena::from_selection(selection);
                     max_alignment = cmp::max(max_alignment, arena.max_alignment());
                     arenas.push(arena);
                 }
                 Err(err) => {
-                    log::error!("unable to include RAM region {:?}", err.range);
+                    tracing::error!("unable to include RAM region {:?}", err.range);
                 }
             }
         }
@@ -142,14 +142,14 @@ pub fn alloc_contiguous(layout: Layout) -> Result<FrameList, AllocError> {
         .or_else(|| {
             let mut global_alloc = alloc.global.lock();
 
-            log::trace!(
+            tracing::trace!(
                 "CPU-local cache exhausted, refilling {} frames...",
                 layout.size() / arch::PAGE_SIZE
             );
             let mut frames = global_alloc.allocate_contiguous(layout)?;
             cpu_local_cache.free_list.append(&mut frames);
 
-            log::trace!("retrying allocation...");
+            tracing::trace!("retrying allocation...");
             // If this fails then we failed to pull enough frames from the global allocator
             // which means we're fully out of frames
             cpu_local_cache.allocate_contiguous(layout)
@@ -251,7 +251,7 @@ impl CpuLocalFrameCache {
 
                     if frame.addr().checked_sub_addr(prev_addr).unwrap() > arch::PAGE_SIZE {
                         // frames aren't contiguous, so let's try the next one
-                        log::trace!("frames not contiguous, trying next");
+                        tracing::trace!("frames not contiguous, trying next");
                         continue 'outer;
                     }
 
@@ -260,13 +260,13 @@ impl CpuLocalFrameCache {
                 }
             }
 
-            log::trace!("base frame not aligned, trying next");
+            tracing::trace!("base frame not aligned, trying next");
             // the base wasn't aligned, try the next one
             index += 1;
             base.move_next();
         }
 
-        log::trace!("found contiguous block at index {index}");
+        tracing::trace!("found contiguous block at index {index}");
 
         // split the cache first at the start of the contiguous block. This will return the contiguous block
         // plus everything after it

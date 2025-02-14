@@ -76,6 +76,7 @@ use crate::{arch, task};
 use core::cell::RefCell;
 use core::future::Future;
 use core::mem;
+use core::ops::DerefMut;
 use core::sync::atomic::{AtomicBool, Ordering};
 use rand::RngCore;
 use sync::{Backoff, Barrier, OnceLock};
@@ -204,8 +205,10 @@ impl Scheduler {
     }
 
     fn schedule_task(&self, task: TaskRef) {
-        if let Some(core) = self.cores.get() {
-            self.schedule_local(&mut core.borrow_mut(), task);
+        if let Some(core) = self.cores.get()
+            && let Ok(mut core) = core.try_borrow_mut()
+        {
+            self.schedule_local(core.deref_mut(), task);
         } else {
             self.schedule_remote(task);
         }
@@ -499,7 +502,7 @@ impl Worker {
         while core.run_queue.pop().is_some() {}
 
         // Wait for all workers
-        log::trace!("waiting for other workers to shut down...");
+        tracing::trace!("waiting for other workers to shut down...");
         if self.scheduler.shutdown_barrier.wait().is_leader() {
             debug_assert!(self.scheduler.owned.is_empty());
 
@@ -513,7 +516,7 @@ impl Worker {
                 drop(task);
             }
 
-            log::trace!("scheduler shut down, bye bye...");
+            tracing::trace!("scheduler shut down, bye bye...");
         }
     }
 }

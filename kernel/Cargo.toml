@@ -15,7 +15,7 @@ workspace = true
 [dependencies]
 loader-api.workspace = true
 cpu-local.workspace = true
-sync.workspace = true
+sync = { workspace = true, features = ["thread-local"] }
 linked-list.workspace = true
 unwind2.workspace = true
 backtrace.workspace = true

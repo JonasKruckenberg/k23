@@ -228,7 +228,7 @@ pub fn begin_trap(trap: Trap) {
     // *did* have special handling but that logic says not to continue with program execution.
     if let ControlFlow::Break(res) = vm::trap_handler(trap) {
         if let Err(err) = res {
-            log::error!("error in vm trap handler {err:?}");
+            tracing::error!("error in vm trap handler {err:?}");
             resume_trap(trap);
         } else {
             return;

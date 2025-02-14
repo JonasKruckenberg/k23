@@ -82,7 +82,7 @@ impl OwnedTasks {
 
     pub fn close_and_shutdown_all(&self) {
         if !self.closed.swap(true, Ordering::AcqRel) {
-            log::trace!("closing OwnedTasks");
+            tracing::trace!("closing OwnedTasks");
             let mut list = self.list.lock();
 
             let mut c = list.cursor_front_mut();
@@ -103,7 +103,7 @@ impl OwnedTasks {
             return None;
         }
 
-        log::trace!("removing task from owned tasks");
+        tracing::trace!("removing task from owned tasks");
 
         // Safety: `OwnedTasks::bind`/`OwnedTasks::bind_local` are called during task creation
         // so every task is necessarily in our list until this point

@@ -30,7 +30,7 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
 
         Range::from(start..start.checked_add(layout.size()).unwrap())
     };
-    log::debug!("Kernel Heap: {virt:#x?}");
+    tracing::debug!("Kernel Heap: {virt:#x?}");
 
     let mut alloc = KERNEL_ALLOCATOR.lock();
     let span = Span::from_base_size(

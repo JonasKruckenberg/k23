@@ -69,7 +69,7 @@ pub fn init(boot_info: &BootInfo, rand: &mut impl rand::RngCore) -> crate::Resul
         flush.flush().unwrap();
 
         for region in aspace.regions.iter() {
-            log::trace!(
+            tracing::trace!(
                 "{:<40?} {}..{} {}",
                 region.name,
                 region.range.start,

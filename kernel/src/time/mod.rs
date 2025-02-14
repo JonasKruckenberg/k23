@@ -45,7 +45,7 @@ pub use timer::{Deadline, Timer};
 //
 //         let end = Instant::now();
 //         let elapsed = end.duration_since(start);
-//         log::trace!("Time elapsed: {elapsed:?}");
+//         tracing::trace!("Time elapsed: {elapsed:?}");
 //
 //         assert_eq!(elapsed.as_secs(), 1);
 //         // assert_eq!(start_sys.elapsed().unwrap().as_secs(), 1)

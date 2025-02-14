@@ -124,7 +124,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         arch::init_early();
 
         let devtree = device_tree::init(fdt).unwrap();
-        log::debug!("{devtree:?}");
+        tracing::debug!("{devtree:?}");
 
         // initialize the global frame allocator
         // at this point we have parsed and processed the flattened device tree, so we pass it to the
@@ -144,7 +144,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // initialize the executor
     let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
 
-    log::info!(
+    tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
@@ -152,27 +152,27 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
     if cpuid == 0 {
         sched.spawn(async move {
-            log::debug!("before timeout");
+            tracing::debug!("before timeout");
             let start = Instant::now();
             let res =
                 time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
-            log::debug!("after timeout {res:?}");
+            tracing::debug!("after timeout {res:?}");
             assert!(res.is_err());
             assert_eq!(start.elapsed().as_secs(), 1);
 
-            log::debug!("before timeout");
+            tracing::debug!("before timeout");
             let start = Instant::now();
             let res =
                 time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
-            log::debug!("after timeout {res:?}");
+            tracing::debug!("after timeout {res:?}");
             assert!(res.is_ok());
             assert_eq!(start.elapsed().as_secs(), 1);
 
-            log::debug!("sleeping for 1 sec...");
+            tracing::debug!("sleeping for 1 sec...");
             let start = Instant::now();
             time::sleep(Duration::from_secs(1)).await;
             assert_eq!(start.elapsed().as_secs(), 1);
-            log::debug!("slept 1 sec! {:?}", start.elapsed());
+            tracing::debug!("slept 1 sec! {:?}", start.elapsed());
 
             // FIXME this is a quite terrible hack to get the scheduler to close in tests (otherwise
             //  tests would run forever) we should find a proper way to shut down the scheduler when idle.
@@ -181,9 +181,9 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         });
 
         // scheduler::scheduler().spawn(async move {
-        //     log::debug!("Point A");
+        //     tracing::debug!("Point A");
         //     scheduler::yield_now().await;
-        //     log::debug!("Point B");
+        //     tracing::debug!("Point B");
         // });
     }
 

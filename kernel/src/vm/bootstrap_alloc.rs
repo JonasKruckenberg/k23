@@ -62,7 +62,7 @@ impl<'a> BootstrapAllocator<'a> {
                 // contiguous are rare and often happen in very critical paths where e.g. virtual
                 // memory is not available yet. So we rather waste some memory than outright crash.
                 if region.size() - offset < requested_size {
-                    log::warn!("Skipped memory region {region:?} since it was fulfill request for {requested_size} bytes. Wasted {} bytes in the process...", region.size() - offset);
+                    tracing::warn!("Skipped memory region {region:?} since it was fulfill request for {requested_size} bytes. Wasted {} bytes in the process...", region.size() - offset);
 
                     self.offset += region.size() - offset;
                     offset = 0;

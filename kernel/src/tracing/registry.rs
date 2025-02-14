@@ -18,18 +18,6 @@ use tracing_core::{dispatch, Collect, Dispatch, Event, Interest, Metadata};
 
 /// A shared, reusable store for spans.
 ///
-/// A `Registry` is a [`Collect`] around which multiple subscribers
-/// implementing various behaviors may be [added]. Unlike other types
-/// implementing `Collect`, `Registry` does not actually record traces itself:
-/// instead, it collects and stores span data that is exposed to any [subscriber]s
-/// wrapping it through implementations of the [`LookupSpan`] trait.
-/// The `Registry` is responsible for storing span metadata, recording
-/// relationships between spans, and tracking which spans are active and which
-/// are closed. In addition, it provides a mechanism for [subscriber]s to store
-/// user-defined per-span data, called [extensions], in the registry. This
-/// allows `Subscriber`-specific data to benefit from the `Registry`'s
-/// high-performance concurrent storage.
-///
 /// This registry is implemented using a [lock-free sharded slab][slab], and is
 /// highly optimized for concurrent access.
 ///
@@ -40,7 +28,7 @@ use tracing_core::{dispatch, Collect, Dispatch, Event, Interest, Metadata};
 ///
 /// One of the primary responsibilities of the registry is to generate [span
 /// IDs]. Therefore, it's important for other code that interacts with the
-/// registry, such as [subscriber]s, to understand the guarantees of the
+/// registry, such as subscribers, to understand the guarantees of the
 /// span IDs that are generated.
 ///
 /// The registry's span IDs are guaranteed to be unique **at a given point
@@ -73,15 +61,12 @@ use tracing_core::{dispatch, Collect, Dispatch, Event, Interest, Metadata};
 ///
 /// [span IDs]: https://docs.rs/tracing-core/latest/tracing_core/span/struct.Id.html
 /// [slab]: https://docs.rs/crate/sharded-slab/
-/// [subscriber]: crate::Subscribe
-/// [added]: crate::subscribe::Subscribe#composing-subscribers
 /// [extensions]: super::Extensions
 /// [closed]: https://docs.rs/tracing/latest/tracing/span/index.html#closing-spans
 /// [considered closed]: https://docs.rs/tracing-core/latest/tracing_core/subscriber/trait.Subscriber.html#method.try_close
 /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html
 /// [opentelemetry]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md#spancontext
 /// [fields]: https://docs.rs/tracing-core/latest/tracing-core/field/index.html
-/// [stored span data]: crate::registry::SpanData::extensions_mut
 #[derive(Debug)]
 pub struct Registry {
     spans: Pool<DataInner>,
@@ -111,12 +96,9 @@ struct DataInner {
     ref_count: AtomicUsize,
 }
 
-/// A reference to [span data] and the associated [registry].
+/// A reference to [`Data`] and the associated [`Registry`].
 ///
-/// This type implements all the same methods as [`SpanData`], and provides
-/// additional methods for querying the registry based on values from the span.
-///
-/// [registry]: LookupSpan
+/// This type implements all the same methods as [`Data`], and provides
 #[derive(Debug)]
 pub struct SpanRef<'a> {
     registry: &'a Registry,
@@ -426,68 +408,6 @@ impl<'a> SpanRef<'a> {
     ///
     /// The iterator will first return the span, then the span's immediate parent,
     /// followed by that span's parent, and so on, until it reaches a root span.
-    ///
-    /// ```rust
-    /// use tracing::{span, Collect};
-    /// use tracing_subscriber::{
-    ///     subscribe::{Context, Subscribe},
-    ///     prelude::*,
-    ///     registry::LookupSpan,
-    /// };
-    ///
-    /// struct PrintingSubscriber;
-    /// impl<C> Subscribe<C> for PrintingSubscriber
-    /// where
-    ///     C: Collect + for<'lookup> LookupSpan<'lookup>,
-    /// {
-    ///     fn on_enter(&self, id: &span::Id, ctx: Context<C>) {
-    ///         let span = ctx.span(id).unwrap();
-    ///         let scope = span.scope().map(|span| span.name()).collect::<Vec<_>>();
-    ///         println!("Entering span: {:?}", scope);
-    ///     }
-    /// }
-    ///
-    /// tracing::collect::with_default(tracing_subscriber::registry().with(PrintingSubscriber), || {
-    ///     let _root = tracing::info_span!("root").entered();
-    ///     // Prints: Entering span: ["root"]
-    ///     let _child = tracing::info_span!("child").entered();
-    ///     // Prints: Entering span: ["child", "root"]
-    ///     let _leaf = tracing::info_span!("leaf").entered();
-    ///     // Prints: Entering span: ["leaf", "child", "root"]
-    /// });
-    /// ```
-    ///
-    /// If the opposite order (from the root to this span) is desired, calling [`Scope::from_root`] on
-    /// the returned iterator reverses the order.
-    ///
-    /// ```rust
-    /// # use tracing::{span, Collect};
-    /// # use tracing_subscriber::{
-    /// #     subscribe::{Context, Subscribe},
-    /// #     prelude::*,
-    /// #     registry::LookupSpan,
-    /// # };
-    /// # struct PrintingSubscriber;
-    /// impl<C> Subscribe<C> for PrintingSubscriber
-    /// where
-    ///     C: Collect + for<'lookup> LookupSpan<'lookup>,
-    /// {
-    ///     fn on_enter(&self, id: &span::Id, ctx: Context<C>) {
-    ///         let span = ctx.span(id).unwrap();
-    ///         let scope = span.scope().from_root().map(|span| span.name()).collect::<Vec<_>>();
-    ///         println!("Entering span: {:?}", scope);
-    ///     }
-    /// }
-    ///
-    /// tracing::collect::with_default(tracing_subscriber::registry().with(PrintingSubscriber), || {
-    ///     let _root = tracing::info_span!("root").entered();
-    ///     // Prints: Entering span: ["root"]
-    ///     let _child = tracing::info_span!("child").entered();
-    ///     // Prints: Entering span: ["root", "child"]
-    ///     let _leaf = tracing::info_span!("leaf").entered();
-    ///     // Prints: Entering span: ["root", "child", "leaf"]
-    /// });
-    /// ```
     pub fn scope(&self) -> Scope<'a> {
         Scope {
             registry: self.registry,

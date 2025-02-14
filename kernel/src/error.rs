@@ -93,7 +93,7 @@ impl core::error::Error for Error {}
 macro_rules! ensure {
     ($cond:expr, $error:expr, $msg:expr) => {
         if !$cond {
-            log::error!($msg);
+            tracing::error!($msg);
             return Err($error);
         }
     };
@@ -110,7 +110,7 @@ macro_rules! bail {
         return Err($error);
     };
     ($error:expr, $msg:expr) => {
-        log::error!($msg);
+        tracing::error!($msg);
         return Err($error);
     };
 }

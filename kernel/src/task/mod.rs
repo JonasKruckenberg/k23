@@ -349,7 +349,7 @@ impl TaskRef {
         // if the task was successfully canceled, wake it so that it can clean
         // up after itself.
         if canceled {
-            log::trace!("woke canceled task");
+            tracing::trace!("woke canceled task");
             self.wake_by_ref();
         }
 
@@ -357,7 +357,7 @@ impl TaskRef {
     }
 
     pub(crate) fn wake_by_ref(&self) {
-        log::trace!("TaskRef::wake_by_ref {self:?}");
+        tracing::trace!("TaskRef::wake_by_ref {self:?}");
         let wake_by_ref_fn = self.header().vtable.wake_by_ref;
         // Safety: Called through our Vtable so this access should be fine
         unsafe { wake_by_ref_fn(self.0.as_ptr().cast::<()>()) }
@@ -423,10 +423,10 @@ impl Clone for TaskRef {
     #[inline]
     #[track_caller]
     fn clone(&self) -> Self {
-        log::trace!(
-            "TaskRef::clone task.addr={:?};location={}",
-            self.0,
-            core::panic::Location::caller()
+        tracing::trace!(
+            task.addr=?self.0,
+            location=%core::panic::Location::caller(),
+            "TaskRef::clone",
         );
         self.state().clone_ref();
         Self(self.0)
@@ -437,7 +437,7 @@ impl Drop for TaskRef {
     #[inline]
     #[track_caller]
     fn drop(&mut self) {
-        log::trace!("TaskRef::drop task.addr={:?}", self.0);
+        tracing::trace!(task.addr=?self.0, "TaskRef::drop");
         if !self.state().drop_ref() {
             return;
         }
@@ -623,10 +623,11 @@ where
         unsafe {
             let this = ptr.cast::<Self>().as_ref();
 
-            log::trace!(
-                "Task::poll task.addr={ptr:?};task.output={};task.id={:?}",
-                type_name::<F::Output>(),
-                this.id()
+            tracing::trace!(
+                task.addr=?ptr,
+                task.output=type_name::<F::Output>(),
+                task.id=?this.id(),
+                "Task::poll",
             );
 
             match this.state().start_poll() {
@@ -634,11 +635,11 @@ where
                 StartPollAction::Poll => {}
                 // Something isn't right, we shouldn't poll the task right now...
                 StartPollAction::DontPoll => {
-                    log::warn!("failed to transition to polling task.addr={ptr:?}",);
+                    tracing::warn!(task.addr=?ptr, "failed to transition to polling",);
                     return PollResult::Ready;
                 }
                 StartPollAction::Cancelled { wake_join_waker } => {
-                    log::trace!("task cancelled task.addr={ptr:?}");
+                    tracing::trace!(task.addr=?ptr, "task cancelled");
                     if wake_join_waker {
                         this.wake_join_waker();
                         return PollResult::ReadyJoined;
@@ -699,10 +700,11 @@ where
         // Safety: ensured by caller
         unsafe {
             let this = ptr.cast::<Self>().as_ref();
-            log::trace!(
-                "Task::poll_join task.addr={ptr:?};task.output={};task.id={:?}",
-                type_name::<F::Output>(),
-                this.id()
+            tracing::trace!(
+                task.addr=?ptr,
+                task.output=type_name::<F::Output>(),
+                task.id=?this.id(),
+                "Task::poll_join"
             );
 
             match this.state().try_join() {
@@ -754,10 +756,11 @@ where
         // Safety: ensured by caller
         unsafe {
             let this = ptr.cast::<Self>();
-            log::trace!(
-                "Task::deallocate task.addr={ptr:?};task.output={};task.id={:?}",
-                type_name::<F::Output>(),
-                this.as_ref().id()
+            tracing::trace!(
+                task.addr=?ptr,
+                task.output=type_name::<F::Output>(),
+                task.id=?this.as_ref().id(),
+                "Task::deallocate",
             );
             debug_assert_eq!(
                 ptr.as_ref().state.load(Ordering::Acquire).ref_count(),
@@ -792,10 +795,10 @@ where
         // Safety: ensured by caller
         unsafe {
             if let Some(join_waker) = (*self.join_waker.get()).take() {
-                log::trace!("waking {join_waker:?}");
+                tracing::trace!("waking {join_waker:?}");
                 join_waker.wake();
             } else {
-                log::trace!("called wake_join_waker on non-existing waker");
+                tracing::trace!("called wake_join_waker on non-existing waker");
             }
         }
     }
@@ -908,7 +911,7 @@ impl<S: Schedule> Schedulable<S> {
     unsafe fn drop_ref(this: NonNull<Self>) {
         // Safety: ensured by caller
         unsafe {
-            log::trace!("Task::drop_ref {this:?}");
+            tracing::trace!(task.addr=?this, task.id=?this.as_ref().header.id, "Task::drop_ref");
             if !this.as_ref().state().drop_ref() {
                 return;
             }

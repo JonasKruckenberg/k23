@@ -82,7 +82,7 @@ pub fn init() {
         satp::set(orig.mode(), orig.asid(), orig.ppn());
 
         // TODO use this to initialize an ASID allocator
-        log::trace!("supported ASID bits: {}", max_asid.count_ones());
+        tracing::trace!("supported ASID bits: {}", max_asid.count_ones());
     }
 
     wmb();

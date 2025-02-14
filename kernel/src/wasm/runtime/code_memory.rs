@@ -33,7 +33,7 @@ impl CodeMemory {
         self.published = true;
 
         if self.mmap.is_empty() {
-            log::warn!("Compiled module has no code to publish");
+            tracing::warn!("Compiled module has no code to publish");
             return Ok(());
         }
 
@@ -60,7 +60,7 @@ impl CodeMemory {
 
         let addr = text_range.start + func_loc.start as usize;
 
-        log::trace!(
+        tracing::trace!(
             "resolve_function_loc {func_loc:?}, text {:?} => {:?}",
             self.mmap.as_ptr(),
             addr,

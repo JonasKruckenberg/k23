@@ -34,7 +34,7 @@ impl FuncTranslator {
         env: &mut TranslationEnvironment,
     ) -> crate::wasm::Result<()> {
         let mut reader = body.get_binary_reader();
-        log::trace!(
+        tracing::trace!(
             "parsing {} bytes, {}{}",
             reader.bytes_remaining(),
             func.name,
@@ -66,7 +66,7 @@ impl FuncTranslator {
         translate_function_body(validator, reader, &mut builder, &mut self.state, env)?;
 
         builder.finalize();
-        log::trace!("translated Wasm to CLIF:\n{}", func.display());
+        tracing::trace!("translated Wasm to CLIF:\n{}", func.display());
         Ok(())
     }
 }

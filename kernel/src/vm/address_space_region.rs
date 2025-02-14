@@ -216,7 +216,7 @@ impl AddressSpaceRegion {
         addr: VirtualAddress,
         flags: PageFaultFlags,
     ) -> Result<(), Error> {
-        log::trace!("page fault at {addr:?} flags {flags:?}");
+        tracing::trace!(addr=%addr, flags=%flags, "page fault");
         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
         debug_assert!(self.range.contains(&addr));
 
@@ -233,13 +233,13 @@ impl AddressSpaceRegion {
             );
 
             if diff.contains(Permissions::WRITE) {
-                log::trace!("permission failure: write fault on non-writable region");
+                tracing::trace!("permission failure: write fault on non-writable region");
             }
             if diff.contains(Permissions::READ) {
-                log::trace!("permission failure: read fault on non-readable region");
+                tracing::trace!("permission failure: read fault on non-readable region");
             }
             if diff.contains(Permissions::EXECUTE) {
-                log::trace!("permission failure: execute fault on non-executable region");
+                tracing::trace!("permission failure: execute fault on non-executable region");
             }
 
             return Err(Error::InvalidPermissions);
