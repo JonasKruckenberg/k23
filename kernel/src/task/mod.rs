@@ -220,6 +220,7 @@ pub(crate) struct Header {
     ///
     /// The `OwnedTask` reference has exclusive access to this field.
     pub(crate) owned_tasks_links: linked_list::Links<Header>,
+    span: tracing::Span,
 }
 
 #[repr(C)]
@@ -301,6 +302,7 @@ impl TaskRef {
         future: F,
         scheduler: S,
         task_id: Id,
+        span: tracing::Span,
         alloc: A,
     ) -> Result<Self, AllocError>
     where
@@ -309,7 +311,7 @@ impl TaskRef {
         A: Allocator,
     {
         let ptr = Box::into_raw(Box::try_new_in(
-            Task::new(future, scheduler, task_id),
+            Task::new(future, scheduler, task_id, span),
             alloc,
         )?);
 
@@ -469,6 +471,7 @@ impl Header {
             id: Id::stub(),
             run_queue_links: mpsc_queue::Links::new_stub(),
             owned_tasks_links: linked_list::Links::new(),
+            span: tracing::Span::none(),
         }
     }
 
@@ -591,7 +594,7 @@ where
     };
 
     #[expect(tail_expr_drop_order, reason = "")]
-    pub const fn new(future: F, scheduler: S, task_id: Id) -> Self {
+    pub const fn new(future: F, scheduler: S, task_id: Id, span: tracing::Span) -> Self {
         Self {
             schedulable: Schedulable {
                 header: Header {
@@ -600,6 +603,7 @@ where
                     id: task_id,
                     run_queue_links: mpsc_queue::Links::new(),
                     owned_tasks_links: linked_list::Links::new(),
+                    span,
                 },
                 scheduler,
             },
@@ -779,7 +783,7 @@ where
     /// The caller has to ensure this cpu has exclusive mutable access to the tasks `stage` field (ie the
     /// future or output).
     unsafe fn poll_inner(&self, mut cx: Context<'_>) -> Poll<()> {
-        // let _span = self.span().enter();
+        let _span = self.span().enter();
 
         // Safety: ensured by caller
         unsafe { &mut *self.stage.get() }.poll(&mut cx, *self.id())
@@ -828,6 +832,10 @@ where
     }
     fn state(&self) -> &State {
         &self.schedulable.header.state
+    }
+    #[inline]
+    fn span(&self) -> &tracing::Span {
+        &self.schedulable.header.span
     }
 }
 
@@ -927,7 +935,14 @@ impl<S: Schedule> Schedulable<S> {
         // Safety: called through RawWakerVtable
         unsafe {
             let ptr = ptr.cast::<Self>();
-            // trace_waker_op!(ptr, wake_by_val);
+            tracing::trace!(
+                target: "scheduler:waker",
+                {
+                    task.addr = ?ptr,
+                    task.tid = (*ptr).header.id.as_u64()
+                },
+                "Task::wake_by_val"
+            );
 
             let this = non_null(ptr.cast_mut());
             match this.as_ref().header.state.wake_by_val() {
@@ -952,10 +967,17 @@ impl<S: Schedule> Schedulable<S> {
     unsafe fn wake_by_ref(ptr: *const ()) {
         // Safety: called through RawWakerVtable
         unsafe {
-            let ptr = ptr.cast::<Self>();
-            // trace_waker_op!(ptr, wake_by_ref);
+            let this = ptr.cast::<Self>();
+            tracing::trace!(
+                target: "scheduler:waker",
+                {
+                    task.addr = ?this,
+                    task.tid = (*this).header.id.as_u64()
+                },
+                "Task::wake_by_ref"
+            );
 
-            let this = non_null(ptr.cast_mut()).cast::<Self>();
+            let this = non_null(this.cast_mut()).cast::<Self>();
             if this.as_ref().state().wake_by_ref() == WakeByRefAction::Enqueue {
                 Self::schedule(TaskRef::from_raw(this.cast::<Header>()));
             }
@@ -965,10 +987,18 @@ impl<S: Schedule> Schedulable<S> {
     unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
         // Safety: called through RawWakerVtable
         unsafe {
-            let this = ptr.cast::<Self>();
-            // trace_waker_op!(this, clone_waker, op: clone);
-            (*this).header.state.clone_ref();
-            Self::raw_waker(this)
+            let ptr = ptr.cast::<Self>();
+            tracing::trace!(
+                target: "scheduler:waker",
+                {
+                    task.addr = ?ptr,
+                    task.tid = (*ptr).header.id.as_u64()
+                },
+                "Task::clone_waker"
+            );
+            
+            (*ptr).header.state.clone_ref();
+            Self::raw_waker(ptr)
         }
     }
 
@@ -976,7 +1006,15 @@ impl<S: Schedule> Schedulable<S> {
         // Safety: called through RawWakerVtable
         unsafe {
             let ptr = ptr.cast::<Self>();
-            // trace_waker_op!(ptr, drop_waker, op: drop);
+            tracing::trace!(
+                target: "scheduler:waker",
+                {
+                    task.addr = ?ptr,
+                    task.tid = (*ptr).header.id.as_u64()
+                },
+                "Task::drop_waker"
+            );
+            
             let this = ptr.cast_mut();
             Self::drop_ref(non_null(this));
         }

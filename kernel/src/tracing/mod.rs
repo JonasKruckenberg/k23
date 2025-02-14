@@ -187,7 +187,7 @@ impl<W> Output<W> {
 
     #[inline]
     fn exit(&self) {
-        let prev = OUTPUT_INDENT.replace(OUTPUT_INDENT.get() + 1);
+        let prev = OUTPUT_INDENT.replace(OUTPUT_INDENT.get() - 1);
         debug_assert!(prev > 0);
     }
 

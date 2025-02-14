@@ -73,6 +73,7 @@ use crate::task::{JoinHandle, OwnedTasks, PollResult, Schedule, TaskRef};
 use crate::time::Timer;
 use crate::util::fast_rand::FastRand;
 use crate::{arch, task};
+use core::any::type_name;
 use core::cell::RefCell;
 use core::future::Future;
 use core::mem;
@@ -178,13 +179,25 @@ pub struct Worker {
 }
 
 impl Scheduler {
+    #[track_caller]
     pub fn spawn<F>(&'static self, future: F) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
         let id = task::Id::next();
-        let (handle, maybe_task) = self.owned.bind(future, self, id);
+
+        let loc = core::panic::Location::caller();
+        let span = tracing::trace_span!(
+            "scheduler.spawn",
+            task.tid = id.as_u64(),
+            task.output = %type_name::<F::Output>(),
+            loc.file = loc.file(),
+            loc.line = loc.line(),
+            loc.col = loc.column(),
+        );
+
+        let (handle, maybe_task) = self.owned.bind(future, self, id, span);
 
         if let Some(task) = maybe_task {
             self.schedule(task);
