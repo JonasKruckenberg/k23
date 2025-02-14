@@ -5,12 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::device::cpu::with_cpu;
+use crate::arch::device::cpu::{try_with_cpu, with_cpu};
+use crate::error::Error;
 use crate::time::clock::Ticks;
 use crate::time::{clock, NANOS_PER_SEC};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
+use cpu_local::AccessError;
 
 /// A measurement of a monotonically nondecreasing clock.
 /// Opaque and useful only with [`Duration`].
@@ -23,6 +25,10 @@ impl Instant {
     /// Returns an instant corresponding to "now".
     pub fn now() -> Self {
         with_cpu(|cpu| cpu.clock.now())
+    }
+
+    pub fn try_now() -> Result<Self, Error> {
+        try_with_cpu(|cpu| cpu.clock.now())
     }
 
     pub fn from_ticks(ticks: Ticks) -> Self {

@@ -28,6 +28,8 @@ pub enum Error {
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     /// An unknown RISC-V extension was found.
     UnknownRiscvExtension,
+    /// The given resource was not yet initialized
+    Uninitialized,
 }
 
 impl From<fdt::Error> for Error {
@@ -46,6 +48,12 @@ impl From<frame_alloc::AllocError> for Error {
 impl From<riscv::sbi::Error> for Error {
     fn from(err: riscv::sbi::Error) -> Self {
         Error::Sbi(err)
+    }
+}
+
+impl From<cpu_local::AccessError> for Error {
+    fn from(_value: cpu_local::AccessError) -> Self {
+        Error::Uninitialized
     }
 }
 
@@ -74,6 +82,7 @@ impl Display for Error {
             Error::UnknownRiscvExtension => {
                 write!(f, "An unknown RISC-V extension was found")
             }
+            Error::Uninitialized => write!(f, "The resource was not yet initialized"),
         }
     }
 }

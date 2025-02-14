@@ -117,12 +117,15 @@ talc = { version = "4.4.2", default-features = false, features = ["lock_api", "c
 smallvec = { version = "1", default-features = false }
 rustc-demangle = "0.1"
 fallible-iterator = { version = "0.3.0", default-features = false }
+bumpalo = "3.17.0"
+ouroboros = "0.18.5"
+mycelium-bitfield = "0.1.5"
+tracing = { version = "0.2", git = "https://github.com/tokio-rs/tracing", branch = "master", default-features = false }
+tracing-core = { version = "0.2", git = "https://github.com/tokio-rs/tracing", branch = "master", default-features = false }
 
 # wast dependencies
-bumpalo = "3.17.0"
 unicode-width = { version = "0.2.0" }
 memchr = { version = "2.7.4", default-features = false }
-
 #wat = "1.219.1"
 
 # cranelift dependencies

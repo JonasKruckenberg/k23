@@ -86,6 +86,14 @@ where
     CPU.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
 }
 
+pub fn try_with_cpu<F, R>(f: F) -> Result<R, Error>
+where
+    F: FnOnce(&Cpu) -> R,
+{
+    #[expect(tail_expr_drop_order, reason = "")]
+    CPU.try_with(|cpu_info| Ok(f(cpu_info.get().ok_or(Error::Uninitialized)?)))?
+}
+
 #[cold]
 pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
     let cpus = devtree

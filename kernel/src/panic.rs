@@ -93,7 +93,9 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
         if let Some(must_abort) = panic_count::increase(true) {
             match must_abort {
                 MustAbort::PanicInHook => {
-                    log::error!("panicked at {loc}:\n{msg}\ncpu panicked while processing panic. aborting.\n");
+                    log::error!(
+                        "panicked at {loc}:\n{msg}\ncpu panicked while processing panic. aborting."
+                    );
                 }
             }
 
