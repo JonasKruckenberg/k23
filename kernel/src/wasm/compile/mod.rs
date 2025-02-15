@@ -131,7 +131,7 @@ impl<'a> CompileInputs<'a> {
             // push the "main" function compilation job
             inputs.push(Box::new(move |compiler| {
                 let symbol = format!("wasm[0]::function[{}]", def_func_index.as_u32());
-                log::debug!("compiling {symbol}...");
+                tracing::debug!("compiling {symbol}...");
 
                 let function = compiler.compile_function(
                     translation,
@@ -154,7 +154,7 @@ impl<'a> CompileInputs<'a> {
                 inputs.push(Box::new(move |compiler| {
                     let symbol =
                         format!("wasm[0]::array_to_wasm_trampoline[{}]", func_index.as_u32());
-                    log::debug!("compiling {symbol}...");
+                    tracing::debug!("compiling {symbol}...");
 
                     let function = compiler.compile_array_to_wasm_trampoline(
                         translation,
@@ -216,7 +216,7 @@ fn compile_required_builtin_trampolines(
     let compile_builtin = |builtin: BuiltinFunctionIndex| -> CompileInput {
         Box::new(move |compiler: &dyn Compiler| {
             let symbol = format!("wasm_builtin_{}", builtin.name());
-            log::debug!("compiling {symbol}...");
+            tracing::debug!("compiling {symbol}...");
             Ok(CompileOutput {
                 key: CompileKey::wasm_to_builtin_trampoline(builtin),
                 symbol,

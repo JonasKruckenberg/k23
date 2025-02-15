@@ -86,6 +86,14 @@ where
     CPU.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
 }
 
+pub fn try_with_cpu<F, R>(f: F) -> Result<R, Error>
+where
+    F: FnOnce(&Cpu) -> R,
+{
+    #[expect(tail_expr_drop_order, reason = "")]
+    CPU.try_with(|cpu_info| Ok(f(cpu_info.get().ok_or(Error::Uninitialized)?)))?
+}
+
 #[cold]
 pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
     let cpus = devtree
@@ -130,7 +138,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
         .children()
         .find(|c| c.name.name == "interrupt-controller")
         .unwrap();
-    log::trace!("CPU interrupt controller: {:?}", hlic_node);
+    tracing::trace!("CPU interrupt controller: {:?}", hlic_node);
 
     let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
     plic.irq_unmask(10);
@@ -156,7 +164,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
             cbom_block_size,
             plic,
         };
-        log::debug!("{_info:?}");
+        tracing::debug!("{_info:?}");
 
         info.set(_info).unwrap();
     });
@@ -210,7 +218,7 @@ pub fn parse_riscv_extensions(strs: fdt::StringList) -> crate::Result<RiscvExten
             "svadu" => RiscvExtensions::SVADU,
             "svvptc" => RiscvExtensions::SVVPTC,
             ext => {
-                log::error!("unknown RISCV extension {}", ext);
+                tracing::error!("unknown RISCV extension {}", ext);
                 return Err(Error::UnknownRiscvExtension);
             }
         }

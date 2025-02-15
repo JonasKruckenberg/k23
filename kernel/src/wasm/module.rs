@@ -63,20 +63,20 @@ impl Module {
     ) -> crate::wasm::Result<Self> {
         let (mut translation, types) = ModuleTranslator::new(validator).translate(bytes)?;
 
-        log::debug!("Gathering compile inputs...");
+        tracing::debug!("Gathering compile inputs...");
         let function_body_data = mem::take(&mut translation.function_bodies);
         let inputs = CompileInputs::from_module(&translation, &types, function_body_data);
 
-        log::debug!("Compiling inputs...");
+        tracing::debug!("Compiling inputs...");
         let unlinked_outputs = inputs.compile(engine.compiler())?;
 
-        log::debug!("Applying static relocations...");
+        tracing::debug!("Applying static relocations...");
         let (code, function_info, (trap_offsets, traps)) =
             unlinked_outputs.link_and_finish(engine, &translation.module);
 
         let type_collection = engine.type_registry().register_module_types(engine, types);
 
-        log::debug!("Allocating new memory map...");
+        tracing::debug!("Allocating new memory map...");
         let code = {
             let mut aspace = store.alloc.0.lock();
             let vec = MmapVec::from_slice(&mut aspace, &code)?;

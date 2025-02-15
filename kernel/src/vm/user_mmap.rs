@@ -66,7 +66,7 @@ impl UserMmap {
             |range, perms, _batch| Ok(AddressSpaceRegion::new_zeroed(range, perms, None)),
         )?;
 
-        log::trace!("new_zeroed: {len} {:?}", region.range);
+        tracing::trace!("new_zeroed: {len} {:?}", region.range);
 
         Ok(Self {
             range: region.range,
@@ -185,7 +185,7 @@ impl UserMmap {
         aspace: &mut AddressSpace,
         _branch_protection: bool,
     ) -> Result<(), Error> {
-        log::trace!("UserMmap::make_executable: {:?}", self.range);
+        tracing::trace!("UserMmap::make_executable: {:?}", self.range);
         self.protect(
             aspace,
             Permissions::READ | Permissions::EXECUTE | Permissions::USER,
@@ -194,7 +194,7 @@ impl UserMmap {
 
     /// Mark this memory mapping as read-only (`R`) essentially removing the write permission.
     pub fn make_readonly(&mut self, aspace: &mut AddressSpace) -> Result<(), Error> {
-        log::trace!("UserMmap::make_readonly: {:?}", self.range);
+        tracing::trace!("UserMmap::make_readonly: {:?}", self.range);
         self.protect(aspace, Permissions::READ | Permissions::USER)
     }
 

@@ -36,13 +36,14 @@ impl OwnedTasks {
         future: F,
         scheduler: S,
         id: Id,
+        span: tracing::Span,
     ) -> (JoinHandle<F::Output>, Option<TaskRef>)
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
         S: Schedule + 'static,
     {
-        let task = TaskRef::try_new_in(future, scheduler, id, alloc::alloc::Global).unwrap();
+        let task = TaskRef::try_new_in(future, scheduler, id, span, alloc::alloc::Global).unwrap();
         let join = JoinHandle::new(task.clone());
 
         let task = self.bind_inner(task);
@@ -54,13 +55,14 @@ impl OwnedTasks {
         future: F,
         scheduler: S,
         id: Id,
+        span: tracing::Span,
     ) -> (JoinHandle<F::Output>, Option<TaskRef>)
     where
         F: Future + 'static,
         F::Output: 'static,
         S: Schedule + 'static,
     {
-        let task = TaskRef::try_new_in(future, scheduler, id, alloc::alloc::Global).unwrap();
+        let task = TaskRef::try_new_in(future, scheduler, id, span, alloc::alloc::Global).unwrap();
         let join = JoinHandle::new(task.clone());
 
         let task = self.bind_inner(task);
@@ -82,7 +84,7 @@ impl OwnedTasks {
 
     pub fn close_and_shutdown_all(&self) {
         if !self.closed.swap(true, Ordering::AcqRel) {
-            log::trace!("closing OwnedTasks");
+            tracing::trace!("closing OwnedTasks");
             let mut list = self.list.lock();
 
             let mut c = list.cursor_front_mut();
@@ -103,7 +105,7 @@ impl OwnedTasks {
             return None;
         }
 
-        log::trace!("removing task from owned tasks");
+        tracing::trace!("removing task from owned tasks");
 
         // Safety: `OwnedTasks::bind`/`OwnedTasks::bind_local` are called during task creation
         // so every task is necessarily in our list until this point

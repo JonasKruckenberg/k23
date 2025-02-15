@@ -387,7 +387,7 @@ impl TypeRegistryInner {
             shared_type_indices: engine_type_indices,
             registrations: AtomicUsize::new(1),
         }));
-        log::trace!("create new entry {entry:?} (registrations -> 1)");
+        tracing::trace!("create new entry {entry:?} (registrations -> 1)");
 
         let is_new_entry = self.hash_consing_map.insert(entry.clone());
         debug_assert!(is_new_entry);
@@ -415,7 +415,7 @@ impl TypeRegistryInner {
         // Add the type to our slab.
         let id = self.types.alloc(Arc::new(ty));
         let engine_index = slab_id_to_shared_type_index(id);
-        log::trace!(
+        tracing::trace!(
             "registered type {module_index:?} as {engine_index:?} = {:?}",
             &self.types[id]
         );
@@ -441,7 +441,7 @@ impl TypeRegistryInner {
         self.drop_stack.push(entry);
 
         while let Some(entry) = self.drop_stack.pop() {
-            log::trace!("Start unregistering {entry:?}");
+            tracing::trace!("Start unregistering {entry:?}");
 
             // We need to double check whether the entry is still at zero
             // registrations: Between the time that we observed a zero and
@@ -455,7 +455,7 @@ impl TypeRegistryInner {
             // create a new reference to this entry and bring it back to life.
             let registrations = entry.0.registrations.load(Acquire);
             if registrations != 0 {
-                log::trace!(
+                tracing::trace!(
                     "{entry:?} was concurrently resurrected and no longer has \
                      zero registrations (registrations -> {registrations})",
                 );
@@ -496,7 +496,7 @@ impl TypeRegistryInner {
             // well as their entries from the reverse type-to-rec-group
             // map.
             for index in entry.0.shared_type_indices.iter().copied() {
-                log::trace!("removing {index:?} from registry");
+                tracing::trace!("removing {index:?} from registry");
 
                 let removed_entry = self.type_to_rec_group[index].take();
                 debug_assert_eq!(removed_entry.unwrap(), entry);
@@ -505,7 +505,7 @@ impl TypeRegistryInner {
                 self.types.dealloc(id);
             }
 
-            log::trace!("End unregistering {entry:?}");
+            tracing::trace!("End unregistering {entry:?}");
         }
     }
 }
@@ -515,7 +515,7 @@ impl TypeRegistryInner {
 #[cfg(debug_assertions)]
 impl Drop for TypeRegistryInner {
     fn drop(&mut self) {
-        log::trace!("Dropping type registry: {self:#?}");
+        tracing::trace!("Dropping type registry: {self:#?}");
         let TypeRegistryInner {
             hash_consing_map,
             types,
@@ -575,7 +575,7 @@ impl RecGroupEntry {
     fn incr_ref_count(&self, why: &str) {
         let old_count = self.0.registrations.fetch_add(1, Ordering::AcqRel);
         let new_count = old_count + 1;
-        log::trace!(
+        tracing::trace!(
             "increment registration count for {self:?} (registrations -> {new_count}): {why}",
         );
     }
@@ -584,7 +584,7 @@ impl RecGroupEntry {
     fn decr_ref_count(&self, why: &str) -> bool {
         let old_count = self.0.registrations.fetch_sub(1, Ordering::AcqRel);
         let new_count = old_count - 1;
-        log::trace!(
+        tracing::trace!(
             "decrement registration count for {self:?} (registrations -> {new_count}): {why}",
         );
         old_count == 1

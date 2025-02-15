@@ -574,10 +574,10 @@ impl AddressSpace {
         // behaviour:
         // - find the leftmost gap that satisfies the size and alignment requirements
         //      - starting at the root,
-        // log::trace!("finding spot for {layout:?} entropy {entropy}");
+        // tracing::trace!("finding spot for {layout:?} entropy {entropy}");
 
         let max_candidate_spaces: usize = 1 << entropy;
-        // log::trace!("max_candidate_spaces {max_candidate_spaces}");
+        // tracing::trace!("max_candidate_spaces {max_candidate_spaces}");
 
         let selected_index: usize = self
             .rng
@@ -589,7 +589,7 @@ impl AddressSpace {
             Ok(spot) => spot,
             Err(0) => panic!("out of virtual memory"),
             Err(candidate_spot_count) => {
-                // log::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
+                // tracing::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
                 let selected_index: usize = self
                     .rng
                     .as_mut()
@@ -599,7 +599,7 @@ impl AddressSpace {
                 self.find_spot_at_index(selected_index, layout).unwrap()
             }
         };
-        log::trace!(
+        tracing::trace!(
             "picked spot {spot}..{}",
             spot.checked_add(layout.size()).unwrap()
         );
@@ -613,7 +613,7 @@ impl AddressSpace {
         mut target_index: usize,
         layout: Layout,
     ) -> Result<VirtualAddress, usize> {
-        // log::trace!("attempting to find spot for {layout:?} at index {target_index}");
+        // tracing::trace!("attempting to find spot for {layout:?} at index {target_index}");
 
         let spots_in_range = |layout: Layout, range: Range<VirtualAddress>| -> usize {
             // ranges passed in here can become empty for a number of reasons (aligning might produce ranges
@@ -649,7 +649,7 @@ impl AddressSpace {
             let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
-                // log::trace!("found gap left of tree in {aligned_gap:?}");
+                // tracing::trace!("found gap left of tree in {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
                     .checked_add(target_index << layout.align().ilog2())
@@ -679,7 +679,7 @@ impl AddressSpace {
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
-                        // log::trace!("found gap in left subtree in {aligned_gap:?}");
+                        // tracing::trace!("found gap in left subtree in {aligned_gap:?}");
                         return Ok(aligned_gap
                             .start
                             .checked_add(target_index << layout.align().ilog2())
@@ -699,7 +699,7 @@ impl AddressSpace {
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
-                        // log::trace!("found gap in right subtree in {aligned_gap:?}");
+                        // tracing::trace!("found gap in right subtree in {aligned_gap:?}");
                         return Ok(aligned_gap
                             .start
                             .checked_add(target_index << layout.align().ilog2())
@@ -725,7 +725,7 @@ impl AddressSpace {
             let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
-                // log::trace!("found gap right of tree in {aligned_gap:?}");
+                // tracing::trace!("found gap right of tree in {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
                     .checked_add(target_index << layout.align().ilog2())
@@ -756,7 +756,7 @@ enum BBatchAction {
 impl Drop for Batch<'_> {
     fn drop(&mut self) {
         if !self.actions.is_empty() {
-            log::error!("batch was not flushed before dropping");
+            tracing::error!("batch was not flushed before dropping");
             // panic_unwind::panic_in_drop!("batch was not flushed before dropping");
         }
     }
@@ -784,7 +784,7 @@ impl<'a> Batch<'a> {
             "physical address range must be multiple of page size"
         );
 
-        log::trace!("appending {phys:?} at {virt:?} with flags {flags:?}");
+        tracing::trace!("appending {phys:?} at {virt:?} with flags {flags:?}");
         if self.range.end != virt || self.flags != flags {
             self.flush()?;
             self.flags = flags;
@@ -802,7 +802,7 @@ impl<'a> Batch<'a> {
         if self.actions.is_empty() {
             return Ok(());
         }
-        log::trace!("flushing batch {:?} {:?}...", self.range, self.actions);
+        tracing::trace!("flushing batch {:?} {:?}...", self.range, self.actions);
 
         let mut flush = self.aspace.new_flush();
         let mut virt = self.range.start;

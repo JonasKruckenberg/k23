@@ -33,12 +33,12 @@ mod cpu_local;
 mod device_tree;
 mod error;
 mod irq;
-mod logger;
 mod metrics;
 mod panic;
 mod scheduler;
 mod task;
 mod time;
+mod tracing;
 mod traps;
 mod util;
 mod vm;
@@ -59,11 +59,12 @@ use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::Once;
+use tracing_core::LevelFilter;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
 
 /// The log level for the kernel
-pub const LOG_LEVEL: log::Level = log::Level::Trace;
+pub const LOG_LEVEL: LevelFilter = LevelFilter::TRACE;
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
@@ -102,8 +103,8 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
     static SYNC: Once = Once::new();
     SYNC.call_once(|| {
-        // initialize the global logger as early as possible
-        logger::init(LOG_LEVEL.to_level_filter());
+        // set up the basic functionality of the tracing subsystem as early as possible
+        tracing::init_early(LOG_LEVEL);
 
         // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
         // is available
@@ -113,6 +114,9 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
+        // fully initialize the tracing subsystem now that we can allocate
+        tracing::init();
+
         // initialize the panic backtracing subsystem after the allocator has been set up
         // since setting up the symbolization context requires allocation
         panic::init(boot_info);
@@ -121,7 +125,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         arch::init_early();
 
         let devtree = device_tree::init(fdt).unwrap();
-        log::debug!("{devtree:?}");
+        tracing::debug!("{devtree:?}");
 
         // initialize the global frame allocator
         // at this point we have parsed and processed the flattened device tree, so we pass it to the
@@ -136,10 +140,13 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // (e.g. setting the trap vector and enabling interrupts)
     arch::per_cpu_init_late(device_tree()).unwrap();
 
+    // now that clocks are online we can make the tracing subsystem print out timestamps
+    tracing::per_cpu_init_late(Instant::from_ticks(Ticks(boot_ticks)));
+
     // initialize the executor
     let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
 
-    log::info!(
+    tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
@@ -147,27 +154,27 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
     if cpuid == 0 {
         sched.spawn(async move {
-            log::debug!("before timeout");
+            tracing::debug!("before timeout");
             let start = Instant::now();
             let res =
                 time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
-            log::debug!("after timeout {res:?}");
+            tracing::debug!("after timeout {res:?}");
             assert!(res.is_err());
             assert_eq!(start.elapsed().as_secs(), 1);
 
-            log::debug!("before timeout");
+            tracing::debug!("before timeout");
             let start = Instant::now();
             let res =
                 time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
-            log::debug!("after timeout {res:?}");
+            tracing::debug!("after timeout {res:?}");
             assert!(res.is_ok());
             assert_eq!(start.elapsed().as_secs(), 1);
 
-            log::debug!("sleeping for 1 sec...");
+            tracing::debug!("sleeping for 1 sec...");
             let start = Instant::now();
             time::sleep(Duration::from_secs(1)).await;
             assert_eq!(start.elapsed().as_secs(), 1);
-            log::debug!("slept 1 sec! {:?}", start.elapsed());
+            tracing::debug!("slept 1 sec! {:?}", start.elapsed());
 
             // FIXME this is a quite terrible hack to get the scheduler to close in tests (otherwise
             //  tests would run forever) we should find a proper way to shut down the scheduler when idle.
@@ -176,9 +183,9 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         });
 
         // scheduler::scheduler().spawn(async move {
-        //     log::debug!("Point A");
+        //     tracing::debug!("Point A");
         //     scheduler::yield_now().await;
-        //     log::debug!("Point B");
+        //     tracing::debug!("Point B");
         // });
     }
 

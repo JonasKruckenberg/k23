@@ -24,7 +24,7 @@ pub trait Provider: Debug {
 #[expect(tail_expr_drop_order, reason = "")]
 pub static THE_ZERO_FRAME: LazyLock<Arc<TheZeroFrame>> = LazyLock::new(|| {
     let frame = frame_alloc::alloc_one_zeroed().unwrap();
-    log::trace!("THE_ZERO_FRAME: {}", frame.addr());
+    tracing::trace!("THE_ZERO_FRAME: {}", frame.addr());
     Arc::new(TheZeroFrame(frame))
 });
 

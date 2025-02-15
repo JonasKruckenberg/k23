@@ -42,14 +42,20 @@ impl<T> Drop for JoinHandle<T> {
         // if the JoinHandle has not already been consumed, clear the join
         // handle flag on the task.
         if let JoinHandleState::Task(ref task) = self.state {
-            log::trace!(
-                "drop JoinHandle task={task:?};task.id={:?};consumed=false;",
-                task.id()
+            tracing::trace!(
+                state=?self.state,
+                task.id=?task.id(),
+                consumed=false,
+                "drop JoinHandle"
             );
 
             task.state().drop_join_handle();
         } else {
-            log::trace!("drop JoinHandle state={:?};consumed=false;", self.state);
+            tracing::trace!(
+                state=?self.state,
+                consumed=false,
+                "drop JoinHandle"
+            );
         }
     }
 }

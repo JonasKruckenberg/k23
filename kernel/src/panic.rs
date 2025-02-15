@@ -47,7 +47,7 @@ pub fn init(boot_info: &BootInfo) {
 }
 
 static SYMBOLIZE_CONTEXT: LazyLock<Option<SymbolizeContext>> = LazyLock::new(|| {
-    log::trace!("Setting up symbolize context...");
+    tracing::trace!("Setting up symbolize context...");
     let state = GLOBAL_PANIC_STATE.get()?;
 
     let elf = xmas_elf::ElfFile::new(state.elf).unwrap();
@@ -93,7 +93,9 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
         if let Some(must_abort) = panic_count::increase(true) {
             match must_abort {
                 MustAbort::PanicInHook => {
-                    log::error!("panicked at {loc}:\n{msg}\ncpu panicked while processing panic. aborting.\n");
+                    tracing::error!(
+                        "panicked at {loc}:\n{msg}\ncpu panicked while processing panic. aborting."
+                    );
                 }
             }
 
@@ -106,13 +108,13 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             arch::abort();
         }
 
-        log::error!("cpu panicked at {loc}:\n{msg}");
+        tracing::error!("cpu panicked at {loc}:\n{msg}");
 
         if let Some(ctx) = SYMBOLIZE_CONTEXT.as_ref() {
             let backtrace = Backtrace::capture(ctx);
-            log::error!("{backtrace}");
+            tracing::error!("{backtrace}");
         } else {
-            log::error!(
+            tracing::error!(
                 "Backtrace unavailable. Panic happened before panic subsystem initialization."
             );
         }
@@ -123,7 +125,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             // If a thread panics while running destructors or tries to unwind
             // through a nounwind function (e.g. extern "C") then we cannot continue
             // unwinding and have to abort immediately.
-            log::error!("cpu caused non-unwinding panic. aborting.\n");
+            tracing::error!("cpu caused non-unwinding panic. aborting.\n");
             arch::abort();
         }
 

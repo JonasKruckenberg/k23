@@ -95,7 +95,7 @@ impl Future for Sleep<'_> {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        log::trace!("Sleep::poll {self:?}");
+        tracing::trace!(self=?self, "Sleep::poll");
         let mut me = self.as_mut().project();
 
         match me.state {
@@ -136,7 +136,7 @@ impl Future for Sleep<'_> {
 #[pinned_drop]
 impl PinnedDrop for Sleep<'_> {
     fn drop(mut self: Pin<&mut Self>) {
-        log::trace!("Sleep::drop");
+        tracing::trace!("Sleep::drop");
         let this = self.project();
         // we only need to remove the sleep from the timer wheel if it's
         // currently part of a linked list --- if the future hasn't been polled
@@ -168,10 +168,10 @@ impl fmt::Debug for Sleep<'_> {
 
 impl Entry {
     pub(super) fn fire(&self) {
-        let _was_linked =
+        let was_registered =
             self.is_registered
                 .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire);
-        log::trace!("firing sleep! was_registered = {}", _was_linked.is_ok());
+        tracing::trace!(was_registered = was_registered.is_ok(), "firing sleep!");
         self.waker.wake();
     }
 }

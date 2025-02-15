@@ -90,20 +90,20 @@ impl PagedVmo {
             // we already have a unique frame reference, a write page fault against it shouldn't happen
             assert!(!old_frame.is_unique());
 
-            log::trace!("require_owned_frame for resident frame, allocating new...");
+            tracing::trace!("require_owned_frame for resident frame, allocating new...");
 
             let mut new_frame = frame_alloc::alloc_one_zeroed()?;
 
             // If `old_frame` is the zero frame we don't need to copy any data around, it's
             // all zeroes anyway
             if !Frame::ptr_eq(old_frame, THE_ZERO_FRAME.frame()) {
-                log::trace!("performing copy-on-write...");
+                tracing::trace!("performing copy-on-write...");
                 let src = old_frame.as_slice();
                 let dst = Frame::get_mut(&mut new_frame)
                     .expect("newly allocated frame should be unique")
                     .as_mut_slice();
 
-                log::trace!(
+                tracing::trace!(
                     "copying from {:?} to {:?}",
                     src.as_ptr_range(),
                     dst.as_ptr_range()

@@ -38,7 +38,7 @@ impl RawWasmBacktrace {
         trap_pc_and_fp: Option<(usize, usize)>,
         mut f: impl FnMut(RawWasmFrame) -> ControlFlow<()>,
     ) {
-        log::trace!("====== Capturing Backtrace ======");
+        tracing::trace!("====== Capturing Backtrace ======");
 
         // If we exited Wasm by catching a trap, then the Wasm-to-host
         // trampoline did not get a chance to save the last Wasm PC and FP,
@@ -90,12 +90,12 @@ impl RawWasmBacktrace {
                 &mut f,
             )
         } {
-            log::trace!("====== Done Capturing Backtrace (closure break) ======");
+            tracing::trace!("====== Done Capturing Backtrace (closure break) ======");
             return;
         }
         // }
 
-        log::trace!("====== Done Capturing Backtrace (reached end of activations) ======");
+        tracing::trace!("====== Done Capturing Backtrace (reached end of activations) ======");
     }
 
     /// Walk through a contiguous sequence of Wasm frames starting with the
@@ -106,10 +106,10 @@ impl RawWasmBacktrace {
         trampoline_fp: usize,
         mut f: impl FnMut(RawWasmFrame) -> ControlFlow<()>,
     ) -> ControlFlow<()> {
-        log::trace!("=== Tracing through contiguous sequence of Wasm frames ===");
-        log::trace!("trampoline_fp = 0x{:016x}", trampoline_fp);
-        log::trace!("   initial pc = 0x{:016x}", pc);
-        log::trace!("   initial fp = 0x{:016x}", fp);
+        tracing::trace!("=== Tracing through contiguous sequence of Wasm frames ===");
+        tracing::trace!("trampoline_fp = 0x{:016x}", trampoline_fp);
+        tracing::trace!("   initial pc = 0x{:016x}", pc);
+        tracing::trace!("   initial fp = 0x{:016x}", fp);
 
         // We already checked for this case in the `trace_with_trap_state`
         // caller.
@@ -171,9 +171,9 @@ impl RawWasmBacktrace {
             assert!(trampoline_fp > fp, "{trampoline_fp:#x} > {fp:#x}");
             arch::assert_fp_is_aligned(fp);
 
-            log::trace!("--- Tracing through one Wasm frame ---");
-            log::trace!("pc = {:p}", pc as *const ());
-            log::trace!("fp = {:p}", fp as *const ());
+            tracing::trace!("--- Tracing through one Wasm frame ---");
+            tracing::trace!("pc = {:p}", pc as *const ());
+            tracing::trace!("fp = {:p}", fp as *const ());
 
             f(RawWasmFrame { pc, fp })?;
 
@@ -198,7 +198,7 @@ impl RawWasmBacktrace {
             fp = next_older_fp;
         }
 
-        log::trace!("=== Done tracing contiguous sequence of Wasm frames ===");
+        tracing::trace!("=== Done tracing contiguous sequence of Wasm frames ===");
         ControlFlow::Continue(())
     }
 

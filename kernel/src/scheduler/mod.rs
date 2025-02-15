@@ -73,9 +73,11 @@ use crate::task::{JoinHandle, OwnedTasks, PollResult, Schedule, TaskRef};
 use crate::time::Timer;
 use crate::util::fast_rand::FastRand;
 use crate::{arch, task};
+use core::any::type_name;
 use core::cell::RefCell;
 use core::future::Future;
 use core::mem;
+use core::ops::DerefMut;
 use core::sync::atomic::{AtomicBool, Ordering};
 use rand::RngCore;
 use sync::{Backoff, Barrier, OnceLock};
@@ -177,13 +179,25 @@ pub struct Worker {
 }
 
 impl Scheduler {
+    #[track_caller]
     pub fn spawn<F>(&'static self, future: F) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
         let id = task::Id::next();
-        let (handle, maybe_task) = self.owned.bind(future, self, id);
+
+        let loc = core::panic::Location::caller();
+        let span = tracing::trace_span!(
+            "scheduler.spawn",
+            task.tid = id.as_u64(),
+            task.output = %type_name::<F::Output>(),
+            loc.file = loc.file(),
+            loc.line = loc.line(),
+            loc.col = loc.column(),
+        );
+
+        let (handle, maybe_task) = self.owned.bind(future, self, id, span);
 
         if let Some(task) = maybe_task {
             self.schedule(task);
@@ -204,8 +218,10 @@ impl Scheduler {
     }
 
     fn schedule_task(&self, task: TaskRef) {
-        if let Some(core) = self.cores.get() {
-            self.schedule_local(&mut core.borrow_mut(), task);
+        if let Some(core) = self.cores.get()
+            && let Ok(mut core) = core.try_borrow_mut()
+        {
+            self.schedule_local(core.deref_mut(), task);
         } else {
             self.schedule_remote(task);
         }
@@ -499,7 +515,7 @@ impl Worker {
         while core.run_queue.pop().is_some() {}
 
         // Wait for all workers
-        log::trace!("waiting for other workers to shut down...");
+        tracing::trace!("waiting for other workers to shut down...");
         if self.scheduler.shutdown_barrier.wait().is_leader() {
             debug_assert!(self.scheduler.owned.is_empty());
 
@@ -513,7 +529,7 @@ impl Worker {
                 drop(task);
             }
 
-            log::trace!("scheduler shut down, bye bye...");
+            tracing::trace!("scheduler shut down, bye bye...");
         }
     }
 }

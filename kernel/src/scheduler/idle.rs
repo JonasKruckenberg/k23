@@ -43,7 +43,7 @@ impl Idle {
     }
 
     pub fn transition_worker_to_waiting(&self, worker: &super::Worker) {
-        // log::trace!("Idle::transition_worker_to_waiting");
+        // tracing::trace!("Idle::transition_worker_to_waiting");
 
         // The worker should not be stealing at this point
         debug_assert!(!worker.is_searching);
@@ -61,7 +61,7 @@ impl Idle {
     }
 
     pub fn transition_worker_from_waiting(&self, worker: &super::Worker) {
-        // log::trace!("Idle::transition_worker_from_waiting");
+        // tracing::trace!("Idle::transition_worker_from_waiting");
 
         // Decrement the number of idle cores
         let prev = self.num_idle.fetch_sub(1, Ordering::Acquire);
@@ -75,7 +75,7 @@ impl Idle {
     }
 
     pub fn try_transition_worker_to_searching(&self, worker: &mut super::Worker) {
-        // log::trace!("Idle::try_transition_worker_to_searching");
+        // tracing::trace!("Idle::try_transition_worker_to_searching");
 
         debug_assert!(!worker.is_searching);
 
@@ -95,7 +95,7 @@ impl Idle {
     /// Returns `true` if this is the final searching worker. The caller
     /// **must** notify a new worker.
     pub fn transition_worker_from_searching(&self) -> bool {
-        // log::trace!("Idle::transition_worker_from_searching");
+        // tracing::trace!("Idle::transition_worker_from_searching");
 
         let prev = self.num_searching.fetch_sub(1, Ordering::AcqRel);
         debug_assert!(prev > 0);
@@ -104,7 +104,7 @@ impl Idle {
     }
 
     pub fn notify_one(&self) {
-        // log::trace!("Idle::notify_one");
+        // tracing::trace!("Idle::notify_one");
         if let Some(worker) = self.sleepers.lock().pop() {
             // Safety: the worker placed itself into the sleepers list, so sending a wakeup is safe
             unsafe {
@@ -114,7 +114,7 @@ impl Idle {
     }
 
     pub fn notify_all(&self) {
-        // log::trace!("Idle::notify_all");
+        // tracing::trace!("Idle::notify_all");
         while let Some(worker) = self.sleepers.lock().pop() {
             // Safety: the worker placed itself into the sleepers list, so sending a wakeup is safe
             unsafe {

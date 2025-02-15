@@ -40,13 +40,13 @@ pub type MappedReentrantMutexGuard<'a, T> =
 /// value is *not* human-readable, sequential or even stable across versions or runs.
 pub struct LocalThreadId;
 
+// Safety: The address of a thread-local variable is guaranteed to be unique t<o the
+// current thread, and is also guaranteed to be non-zero. The variable has to have a
+// non-zero size to guarantee it has a unique address for each thread.>
 unsafe impl GetThreadId for LocalThreadId {
     const INIT: Self = LocalThreadId;
 
     fn nonzero_thread_id(&self) -> NonZeroUsize {
-        // The address of a thread-local variable is guaranteed to be unique t<o the
-        // current thread, and is also guaranteed to be non-zero. The variable has to have a
-        // non-zero size to guarantee it has a unique address for each thread.>
         #[thread_local]
         static X: u8 = 0;
         NonZeroUsize::new(addr_of!(X) as usize).expect("thread ID was zero")

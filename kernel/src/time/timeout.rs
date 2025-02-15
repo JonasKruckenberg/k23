@@ -41,7 +41,7 @@ where
     type Output = Result<F::Output, Elapsed>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        log::trace!("Timeout::Poll");
+        tracing::trace!("Timeout::Poll");
         let me = self.project();
 
         if let Poll::Ready(v) = me.future.poll(cx) {

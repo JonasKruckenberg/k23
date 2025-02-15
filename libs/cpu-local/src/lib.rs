@@ -255,6 +255,9 @@ impl<T: 'static> LocalKey<Cell<T>> {
 }
 
 impl<T: 'static> LocalKey<RefCell<T>> {
+    /// # Panics
+    ///
+    /// This method panics if the thread local storage value is accessed during or after destruction.
     pub fn with_borrow<F, R>(&'static self, f: F) -> R
     where
         F: FnOnce(&T) -> R,
@@ -262,11 +265,34 @@ impl<T: 'static> LocalKey<RefCell<T>> {
         self.with(|cell| f(&cell.borrow()))
     }
 
+    /// # Panics
+    ///
+    /// This method panics if the thread local storage value is accessed during or after destruction.
     pub fn with_borrow_mut<F, R>(&'static self, f: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {
         self.with(|cell| f(&mut cell.borrow_mut()))
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error if the thread local is accessed during or after destruction.
+    pub fn try_with_borrow<F, R>(&'static self, f: F) -> Result<R, AccessError>
+    where
+        F: FnOnce(&T) -> R,
+    {
+        self.try_with(|cell| f(&cell.borrow()))
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error if the thread local is accessed during or after destruction.
+    pub fn try_with_borrow_mut<F, R>(&'static self, f: F) -> Result<R, AccessError>
+    where
+        F: FnOnce(&mut T) -> R,
+    {
+        self.try_with(|cell| f(&mut cell.borrow_mut()))
     }
 
     pub fn set(&'static self, value: T) {
