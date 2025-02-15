@@ -1270,7 +1270,7 @@ dependencies = [
 
 [[package]]
 name = "wavltree"
-version = "0.0.5"
+version = "0.0.6"
 dependencies = [
  "criterion",
  "rand",
