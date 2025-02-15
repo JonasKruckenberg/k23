@@ -10,7 +10,12 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-lock_api.workspace = true
+cfg-if.workspace = true
+lock_api = { workspace = true, optional = true }
+
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
 
 [features]
 thread-local = []
+lock_api = ["dep:lock_api"]

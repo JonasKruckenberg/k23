@@ -12,6 +12,9 @@ license = "MIT OR Apache-2.0"
 rust-2024-compatibility = "deny"
 if_let_rescope = "allow"
 
+# allow loom
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
 #keyword_idents_2024 = 'warn'
 #unsafe-attr-outside-unsafe = 'warn'
 #deprecated-safe-2024 = 'warn'

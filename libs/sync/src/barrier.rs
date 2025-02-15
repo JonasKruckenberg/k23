@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::loom::loom_const_fn;
 use crate::Mutex;
 use core::hint;
 
@@ -22,13 +23,15 @@ struct BarrierState {
 pub struct BarrierWaitResult(bool);
 
 impl Barrier {
-    pub const fn new(n: usize) -> Self {
-        Self {
-            lock: Mutex::new(BarrierState {
-                count: 0,
-                generation_id: 0,
-            }),
-            num_threads: n,
+    loom_const_fn! {
+        pub fn new(n: usize) -> Self {
+            Self {
+                lock: Mutex::new(BarrierState {
+                    count: 0,
+                    generation_id: 0,
+                }),
+                num_threads: n,
+            }
         }
     }
 
@@ -59,5 +62,44 @@ impl Barrier {
 impl BarrierWaitResult {
     pub fn is_leader(&self) -> bool {
         self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::loom::thread;
+    use crate::loom::Arc;
+    use std::sync::mpsc::{channel, TryRecvError};
+
+    #[test]
+    fn test_barrier() {
+        const N: usize = 10;
+
+        let barrier = Arc::new(Barrier::new(N));
+        let (tx, rx) = channel();
+
+        for _ in 0..N - 1 {
+            let c = barrier.clone();
+            let tx = tx.clone();
+            thread::spawn(move || {
+                tx.send(c.wait().is_leader()).unwrap();
+            });
+        }
+
+        // At this point, all spawned threads should be blocked,
+        // so we shouldn't get anything from the port
+        assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+
+        let mut leader_found = barrier.wait().is_leader();
+
+        // Now, the barrier is cleared and we should get data.
+        for _ in 0..N - 1 {
+            if rx.recv().unwrap() {
+                assert!(!leader_found);
+                leader_found = true;
+            }
+        }
+        assert!(leader_found);
     }
 }

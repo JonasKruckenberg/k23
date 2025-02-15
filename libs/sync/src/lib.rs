@@ -6,47 +6,36 @@
 // copied, modified, or distributed except according to those terms.
 
 //! Synchronization primitives for use in k23.
-#![no_std]
+
+#![cfg_attr(not(test), no_std)]
 #![cfg_attr(feature = "thread-local", feature(thread_local))]
+#![feature(dropck_eyepatch)]
+#![feature(negative_impls)]
 
 mod backoff;
 mod barrier;
 mod lazy_lock;
+mod loom;
+mod mutex;
 mod once;
 mod once_lock;
-mod raw_mutex;
-mod raw_rwlock;
-#[cfg(feature = "thread-local")]
-mod reentrant_mutex;
+mod rw_lock;
 
-pub use raw_mutex::RawMutex;
-pub use raw_rwlock::RawRwLock;
+#[cfg(feature = "thread-local")]
+mod remutex;
 
 pub use backoff::Backoff;
 pub use barrier::{Barrier, BarrierWaitResult};
 pub use lazy_lock::LazyLock;
-pub use once::Once;
+pub use mutex::{Mutex, MutexGuard};
+pub use once::{ExclusiveState, Once};
 pub use once_lock::OnceLock;
-
-/// A mutual exclusion lock.
-pub type Mutex<T> = lock_api::Mutex<RawMutex, T>;
-/// RAII structure used to release the lock when dropped.
-pub type MutexGuard<'a, T> = lock_api::MutexGuard<'a, RawMutex, T>;
-/// RAII structure used to release lock when dropped, which can point to a subfield of the protected data.
-pub type MappedMutexGuard<'a, T> = lock_api::MappedMutexGuard<'a, RawMutex, T>;
-
-/// A reader-writer lock.
-pub type RwLock<T> = lock_api::RwLock<RawRwLock, T>;
-/// RAII structure used to release the exclusive write access of a lock when dropped.
-pub type RwLockReadGuard<'a, T> = lock_api::RwLockReadGuard<'a, RawRwLock, T>;
-/// RAII structure used to release the shared read access of a lock when dropped.
-pub type RwLockWriteGuard<'a, T> = lock_api::RwLockWriteGuard<'a, RawRwLock, T>;
-/// `RwLockReadGuard` which can be upgraded to a `RwLockWriteGuard`.
-pub type RwLockUpgradableReadGuard<'a, T> = lock_api::RwLockUpgradableReadGuard<'a, RawRwLock, T>;
-/// RAII structure used to release the shared read access of a lock when dropped, which can point to a subfield of the protected data.
-pub type MappedRwLockReadGuard<'a, T> = lock_api::MappedRwLockReadGuard<'a, RawRwLock, T>;
-/// RAII structure used to release the exclusive write access of a lock when dropped, which can point to a subfield of the protected data.
-pub type MappedRwLockWriteGuard<'a, T> = lock_api::MappedRwLockWriteGuard<'a, RawRwLock, T>;
-
 #[cfg(feature = "thread-local")]
-pub use reentrant_mutex::*;
+pub use remutex::{ReentrantMutex, ReentrantMutexGuard};
+pub use rw_lock::{RwLock, RwLockReadGuard, RwLockUpgradableReadGuard, RwLockWriteGuard};
+
+/// Marker type which indicates that the Guard type for a lock is not `Send`.
+#[expect(dead_code, reason = "inner pointer is unused")]
+pub(crate) struct GuardNoSend(*mut ());
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Sync for GuardNoSend {}
