@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::{once::ExclusiveState, Once};
+use crate::loom::UnsafeCell;
 use core::{
-    cell::UnsafeCell,
     fmt,
     mem::ManuallyDrop,
     ops::Deref,
@@ -68,16 +68,21 @@ impl<T, F: FnOnce() -> T> LazyLock<T, F> {
     #[inline]
     pub fn force(this: &LazyLock<T, F>) -> &T {
         this.once.call_once(|| {
-            // SAFETY: `call_once` only runs this closure once, ever.
-            let data = unsafe { &mut *this.data.get() };
+            let data = this.data.with_mut(|data| {
+                // SAFETY: `call_once` only runs this closure once, ever.
+                unsafe { &mut *data }
+            });
+
             // Safety: `call_once` ensures that data contains the init function
             let f = unsafe { ManuallyDrop::take(&mut data.f) };
             let value = f();
             data.value = ManuallyDrop::new(value);
         });
 
-        // Safety: the above infallibly initialized the value
-        unsafe { &(*this.data.get()).value }
+        this.data.with(|data| {
+            // Safety: the above infallibly initialized the value
+            unsafe { &(*data).value }
+        })
     }
 }
 
@@ -85,10 +90,11 @@ impl<T, F> LazyLock<T, F> {
     /// Get the inner value if it has already been initialized.
     fn get(&self) -> Option<&T> {
         if self.once.is_completed() {
-            // SAFETY:
-            // The closure has been run successfully, so `value` has been initialized
-            // and will not be modified again.
-            Some(unsafe { &*(*self.data.get()).value })
+            self.data.with(|data| {
+                // Safety: The closure has been run successfully, so `value` has been initialized
+                // and will not be modified again.
+                Some(unsafe { &*(*data).value })
+            })
         } else {
             None
         }
@@ -113,15 +119,18 @@ impl<T, F> Drop for LazyLock<T, F> {
     fn drop(&mut self) {
         match self.once.state() {
             ExclusiveState::Incomplete => {
-                // Safety: complete means self.data still contains the init function, the other code
-                // upholds this
-                unsafe { ManuallyDrop::drop(&mut self.data.get_mut().f) }
+                self.data.with_mut(|data| {
+                    // Safety: complete means self.data still contains the init function, the other code
+                    // upholds this
+                    unsafe { ManuallyDrop::drop(&mut (*data).f) }
+                });
             }
             ExclusiveState::Complete => {
-                // Safety: complete means self.data contains the data, the other code upholds this
-                unsafe {
-                    ManuallyDrop::drop(&mut self.data.get_mut().value);
-                }
+                self.data.with_mut(|data| {
+                    // Safety: complete means self.data still contains the init function, the other code
+                    // upholds this
+                    unsafe { ManuallyDrop::drop(&mut (*data).value) }
+                });
             }
             ExclusiveState::Poisoned => {}
         }
@@ -152,3 +161,120 @@ unsafe impl<T: Sync + Send, F: Send> Sync for LazyLock<T, F> {}
 
 impl<T: RefUnwindSafe + UnwindSafe, F: UnwindSafe> RefUnwindSafe for LazyLock<T, F> {}
 impl<T: UnwindSafe, F: UnwindSafe> UnwindSafe for LazyLock<T, F> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::loom::thread;
+    use crate::loom::{AtomicUsize, Ordering};
+    use crate::{Mutex, OnceLock};
+    use std::cell::LazyCell;
+
+    #[expect(tail_expr_drop_order, reason = "")]
+    fn spawn_and_wait<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
+        thread::spawn(f).join().unwrap()
+    }
+
+    #[test]
+    fn lazy_default() {
+        static CALLED: AtomicUsize = AtomicUsize::new(0);
+
+        struct Foo(u8);
+        impl Default for Foo {
+            fn default() -> Self {
+                CALLED.fetch_add(1, Ordering::SeqCst);
+                Foo(42)
+            }
+        }
+
+        let lazy: LazyCell<Mutex<Foo>> = <_>::default();
+
+        assert_eq!(CALLED.load(Ordering::SeqCst), 0);
+
+        assert_eq!(lazy.lock().0, 42);
+        assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+
+        lazy.lock().0 = 21;
+
+        assert_eq!(lazy.lock().0, 21);
+        assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn sync_lazy_new() {
+        static CALLED: AtomicUsize = AtomicUsize::new(0);
+        static SYNC_LAZY: LazyLock<i32> = LazyLock::new(|| {
+            CALLED.fetch_add(1, Ordering::SeqCst);
+            92
+        });
+
+        assert_eq!(CALLED.load(Ordering::SeqCst), 0);
+
+        spawn_and_wait(|| {
+            let y = *SYNC_LAZY - 30;
+            assert_eq!(y, 62);
+            assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+        });
+
+        let y = *SYNC_LAZY - 30;
+        assert_eq!(y, 62);
+        assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn sync_lazy_default() {
+        static CALLED: AtomicUsize = AtomicUsize::new(0);
+
+        struct Foo(u8);
+        impl Default for Foo {
+            fn default() -> Self {
+                CALLED.fetch_add(1, Ordering::SeqCst);
+                Foo(42)
+            }
+        }
+
+        let lazy: LazyLock<Mutex<Foo>> = <_>::default();
+
+        assert_eq!(CALLED.load(Ordering::SeqCst), 0);
+
+        assert_eq!(lazy.lock().0, 42);
+        assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+
+        lazy.lock().0 = 21;
+
+        assert_eq!(lazy.lock().0, 21);
+        assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn static_sync_lazy() {
+        static XS: LazyLock<Vec<i32>> = LazyLock::new(|| {
+            let mut xs = Vec::new();
+            xs.push(1);
+            xs.push(2);
+            xs.push(3);
+            xs
+        });
+
+        spawn_and_wait(|| {
+            assert_eq!(&*XS, &vec![1, 2, 3]);
+        });
+
+        assert_eq!(&*XS, &vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn static_sync_lazy_via_fn() {
+        fn xs() -> &'static Vec<i32> {
+            static XS: OnceLock<Vec<i32>> = OnceLock::new();
+            XS.get_or_init(|| {
+                let mut xs = Vec::new();
+                xs.push(1);
+                xs.push(2);
+                xs.push(3);
+                xs
+            })
+        }
+        assert_eq!(xs(), &vec![1, 2, 3]);
+    }
+}

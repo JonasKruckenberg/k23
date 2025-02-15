@@ -40,6 +40,7 @@ cpu_local! {
 /// events, but no spans yet.
 ///
 /// This should be called as early in the boot process as possible.
+#[expect(tail_expr_drop_order, reason = "")]
 pub fn init_early(level_filter: LevelFilter) {
     let subscriber = SUBSCRIBER.get_or_init(|| Subscriber {
         level_filter,

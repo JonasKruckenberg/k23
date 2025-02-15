@@ -13,7 +13,7 @@ use loader_api::BootInfo;
 use talc::{ErrOnOom, Span, Talc, Talck};
 
 #[global_allocator]
-static KERNEL_ALLOCATOR: Talck<sync::RawMutex, ErrOnOom> = Talc::new(ErrOnOom).lock();
+static KERNEL_ALLOCATOR: Talck<sync::Mutex<()>, ErrOnOom> = Talc::new(ErrOnOom).lock();
 
 pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     let layout =
