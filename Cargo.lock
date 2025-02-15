@@ -462,6 +462,7 @@ dependencies = [
  "gimli",
  "hashbrown 0.15.2",
  "ksharded-slab",
+ "ktest",
  "linked-list",
  "loader-api",
  "log",
@@ -493,6 +494,23 @@ dependencies = [
  "cpu-local",
  "log",
  "sync",
+]
+
+[[package]]
+name = "ktest"
+version = "0.1.0"
+dependencies = [
+ "ktest-macros",
+ "loader-api",
+]
+
+[[package]]
+name = "ktest-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
