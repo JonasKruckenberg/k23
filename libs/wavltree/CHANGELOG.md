@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.6](https://github.com/JonasKruckenberg/k23/compare/v0.0.5...v0.0.6) - 2025-02-15
+
+### Added
+
+- user address space functionality (#246)
+- integrate k23VM Wasm Engine (#224)
+
+### Fixed
+
+- reduce time spent on large allocations (#288)
+
+### Other
+
+- update rand crates ([#271](https://github.com/JonasKruckenberg/k23/pull/271))
+- upgrade deps ([#268](https://github.com/JonasKruckenberg/k23/pull/268))
+
 ## [0.0.5](https://github.com/JonasKruckenberg/k23/compare/v0.0.4...v0.0.5) - 2025-01-11
 
 ### Other
