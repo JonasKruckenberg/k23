@@ -103,8 +103,8 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
     static SYNC: Once = Once::new();
     SYNC.call_once(|| {
-        // initialize the global logger as early as possible
-        tracing::init(LOG_LEVEL);
+        // set up the basic functionality of the tracing subsystem as early as possible
+        tracing::init_early(LOG_LEVEL);
 
         // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
         // is available
@@ -114,7 +114,8 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
-        tracing::init_late();
+        // fully initialize the tracing subsystem now that we can allocate
+        tracing::init();
 
         // initialize the panic backtracing subsystem after the allocator has been set up
         // since setting up the symbolization context requires allocation
@@ -139,6 +140,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // (e.g. setting the trap vector and enabling interrupts)
     arch::per_cpu_init_late(device_tree()).unwrap();
 
+    // now that clocks are online we can make the tracing subsystem print out timestamps
     tracing::per_cpu_init_late(Instant::from_ticks(Ticks(boot_ticks)));
 
     // initialize the executor

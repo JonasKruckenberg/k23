@@ -21,7 +21,7 @@ use color::{Color, SetColor};
 use core::fmt;
 use core::fmt::Write;
 use registry::Registry;
-use sync::{LazyLock, OnceLock};
+use sync::OnceLock;
 use tracing::field;
 use tracing_core::span::{Attributes, Current, Id, Record};
 use tracing_core::{Collect, Dispatch, Event, Interest, Level, LevelFilter, Metadata};
@@ -29,16 +29,22 @@ use tracing_core::{Collect, Dispatch, Event, Interest, Level, LevelFilter, Metad
 static SUBSCRIBER: OnceLock<Subscriber> = OnceLock::new();
 
 cpu_local! {
+    /// Per-cpu indentation representing the span depth we're currently in
     static OUTPUT_INDENT: Cell<usize> = Cell::new(0);
+    /// Per-cpu time base for printing the timestamp in log messages, this will be set by
+    /// `per_cpu_init_late`
     static TIME_BASE: RefCell<Option<Instant>> = RefCell::new(None);
 }
 
-#[expect(tail_expr_drop_order, reason = "")]
-pub fn init(level_filter: LevelFilter) {
+/// Perform early initialization of the tracing subsystem. This will enable printing of `log` and `span`
+/// events, but no spans yet.
+///
+/// This should be called as early in the boot process as possible.
+pub fn init_early(level_filter: LevelFilter) {
     let subscriber = SUBSCRIBER.get_or_init(|| Subscriber {
         level_filter,
         output: Output::new(Semihosting::new()),
-        registry: LazyLock::new(Registry::default),
+        registry: OnceLock::new(),
     });
 
     ::log::set_max_level(match level_filter {
@@ -50,14 +56,22 @@ pub fn init(level_filter: LevelFilter) {
         LevelFilter::ERROR => ::log::LevelFilter::Error,
     });
     ::log::set_logger(subscriber).unwrap();
-}
 
-pub fn init_late() {
     let subscriber = SUBSCRIBER.get().unwrap();
     let dispatch = Dispatch::from_static(subscriber);
-    tracing::dispatch::set_global_default(dispatch).unwrap();
+    dispatch::set_global_default(dispatch).unwrap();
 }
 
+/// Fully initialize the subsystem, after this point tracing [`Span`]s will be processed as well.
+pub fn init() {
+    let subscriber = SUBSCRIBER
+        .get()
+        .expect("tracing::init must be called after tracing::init_early");
+    subscriber.registry.get_or_init(Registry::default);
+}
+
+/// Perform late, per-CPU initialization. This will enable the proper printing of timestamps and
+/// should be called *after* per-CPU clocks have been brought online.
 pub fn per_cpu_init_late(time_base: Instant) {
     TIME_BASE.set(Some(time_base));
 }
@@ -65,7 +79,7 @@ pub fn per_cpu_init_late(time_base: Instant) {
 struct Subscriber {
     level_filter: LevelFilter,
     output: Output<Semihosting>,
-    registry: LazyLock<Registry>,
+    registry: OnceLock<Registry>,
 }
 
 impl Collect for Subscriber {
@@ -82,7 +96,12 @@ impl Collect for Subscriber {
     }
 
     fn new_span(&self, attrs: &Attributes<'_>) -> Id {
-        let id = self.registry.new_span(attrs);
+        let Some(registry) = self.registry.get() else {
+            tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
+            return Id::from_u64(0xDEAD);
+        };
+
+        let id = registry.new_span(attrs);
         let meta = attrs.metadata();
 
         let Some(mut writer) = self.output.writer(meta) else {
@@ -134,25 +153,48 @@ impl Collect for Subscriber {
     }
 
     fn enter(&self, id: &Id) {
-        self.registry.enter(id);
         self.output.enter();
+        if let Some(registry) = self.registry.get() {
+            registry.enter(id);
+        } else {
+            tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
+        }
     }
 
     fn exit(&self, id: &Id) {
-        self.registry.exit(id);
         self.output.exit();
+        if let Some(registry) = self.registry.get() {
+            registry.exit(id);
+        } else {
+            tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
+        }
     }
 
     fn clone_span(&self, id: &Id) -> Id {
-        self.registry.clone_span(id)
+        if let Some(registry) = self.registry.get() {
+            registry.clone_span(id)
+        } else {
+            tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
+            Id::from_u64(0xDEAD)
+        }
     }
 
     fn try_close(&self, id: Id) -> bool {
-        self.registry.try_close(id)
+        if let Some(registry) = self.registry.get() {
+            registry.try_close(id)
+        } else {
+            tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
+            false
+        }
     }
 
     fn current_span(&self) -> Current {
-        self.registry.current_span()
+        if let Some(registry) = self.registry.get() {
+            registry.current_span()
+        } else {
+            tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
+            Current::none()
+        }
     }
 }
 

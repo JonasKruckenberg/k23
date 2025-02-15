@@ -157,7 +157,7 @@ impl State {
     /// This method should always be followed by a call to [`Self::end_poll`] after the actual poll
     /// is completed.
     pub(super) fn start_poll(&self) -> StartPollAction {
-        tracing::trace!("State::start_poll");
+        // tracing::trace!("State::start_poll");
 
         let mut should_wait_for_join_waker = false;
         let action = self.transition(|s| {
@@ -195,7 +195,7 @@ impl State {
     /// The `completed` argument should be set to true if the polled future returned a `Poll::Ready`
     /// indicating the task is completed and should not be rescheduled.
     pub(super) fn end_poll(&self, completed: bool) -> PollResult {
-        tracing::trace!(completed, "State::end_poll");
+        // tracing::trace!(completed, "State::end_poll");
 
         let mut should_wait_for_join_waker = false;
         let action = self.transition(|s| {
@@ -243,7 +243,7 @@ impl State {
     }
 
     pub(super) fn try_join(&self) -> JoinAction {
-        tracing::trace!("State::try_join");
+        // tracing::trace!("State::try_join");
 
         fn should_register(s: &mut Snapshot) -> JoinAction {
             let action = match s.get(Snapshot::JOIN_WAKER) {
@@ -283,7 +283,7 @@ impl State {
     }
 
     pub(super) fn join_waker_registered(&self) {
-        tracing::trace!("State::join_waker_registered");
+        // tracing::trace!("State::join_waker_registered");
 
         self.transition(|s| {
             debug_assert_eq!(s.get(Snapshot::JOIN_WAKER), JoinWakerState::Registering);
@@ -293,7 +293,7 @@ impl State {
     }
 
     pub(super) fn wake_by_val(&self) -> WakeByValAction {
-        tracing::trace!("State::wake_by_val");
+        // tracing::trace!("State::wake_by_val");
 
         self.transition(|s| {
             // If the task was woken *during* a poll, it will be re-queued by the
@@ -325,7 +325,7 @@ impl State {
     }
 
     pub(super) fn wake_by_ref(&self) -> WakeByRefAction {
-        tracing::trace!("State::wake_by_ref");
+        // tracing::trace!("State::wake_by_ref");
 
         self.transition(|state| {
             if state.get(Snapshot::COMPLETE) || state.get(Snapshot::WOKEN) {
@@ -344,7 +344,7 @@ impl State {
     }
 
     pub(super) fn clone_ref(&self) {
-        tracing::trace!("State::clone_ref");
+        // tracing::trace!("State::clone_ref");
 
         // Using a relaxed ordering is alright here, as knowledge of the
         // original reference prevents other threads from erroneously deleting
@@ -373,7 +373,7 @@ impl State {
     }
 
     pub(super) fn drop_ref(&self) -> bool {
-        tracing::trace!("State::drop_ref");
+        // tracing::trace!("State::drop_ref");
 
         // We do not need to synchronize with other cores unless we are going to
         // delete the task.

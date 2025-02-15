@@ -36,7 +36,7 @@ impl OwnedTasks {
         future: F,
         scheduler: S,
         id: Id,
-        span: tracing::Span
+        span: tracing::Span,
     ) -> (JoinHandle<F::Output>, Option<TaskRef>)
     where
         F: Future + Send + 'static,
@@ -55,7 +55,7 @@ impl OwnedTasks {
         future: F,
         scheduler: S,
         id: Id,
-        span: tracing::Span
+        span: tracing::Span,
     ) -> (JoinHandle<F::Output>, Option<TaskRef>)
     where
         F: Future + 'static,

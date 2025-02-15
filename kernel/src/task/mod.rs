@@ -425,9 +425,12 @@ impl Clone for TaskRef {
     #[inline]
     #[track_caller]
     fn clone(&self) -> Self {
+        let loc = core::panic::Location::caller();
         tracing::trace!(
             task.addr=?self.0,
-            location=%core::panic::Location::caller(),
+            loc.file = loc.file(),
+            loc.line = loc.line(),
+            loc.col = loc.column(),
             "TaskRef::clone",
         );
         self.state().clone_ref();
@@ -439,7 +442,10 @@ impl Drop for TaskRef {
     #[inline]
     #[track_caller]
     fn drop(&mut self) {
-        tracing::trace!(task.addr=?self.0, "TaskRef::drop");
+        tracing::trace!(
+            task.addr=?self.0,
+            "TaskRef::drop"
+        );
         if !self.state().drop_ref() {
             return;
         }
@@ -996,7 +1002,7 @@ impl<S: Schedule> Schedulable<S> {
                 },
                 "Task::clone_waker"
             );
-            
+
             (*ptr).header.state.clone_ref();
             Self::raw_waker(ptr)
         }
@@ -1014,7 +1020,7 @@ impl<S: Schedule> Schedulable<S> {
                 },
                 "Task::drop_waker"
             );
-            
+
             let this = ptr.cast_mut();
             Self::drop_ref(non_null(this));
         }
