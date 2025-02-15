@@ -37,6 +37,8 @@ mod metrics;
 mod panic;
 mod scheduler;
 mod task;
+#[cfg(test)]
+mod tests;
 mod time;
 mod tracing;
 mod traps;
@@ -50,10 +52,10 @@ use crate::time::clock::Ticks;
 use crate::time::Instant;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
+use cfg_if::cfg_if;
 use core::cell::Cell;
 use core::range::Range;
 use core::slice;
-use core::time::Duration;
 use cpu_local::cpu_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
@@ -144,7 +146,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     tracing::per_cpu_init_late(Instant::from_ticks(Ticks(boot_ticks)));
 
     // initialize the executor
-    let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
+    let _sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
 
     tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
@@ -152,44 +154,50 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
 
-    if cpuid == 0 {
-        sched.spawn(async move {
-            tracing::debug!("before timeout");
-            let start = Instant::now();
-            let res =
-                time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
-            tracing::debug!("after timeout {res:?}");
-            assert!(res.is_err());
-            assert_eq!(start.elapsed().as_secs(), 1);
-
-            tracing::debug!("before timeout");
-            let start = Instant::now();
-            let res =
-                time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
-            tracing::debug!("after timeout {res:?}");
-            assert!(res.is_ok());
-            assert_eq!(start.elapsed().as_secs(), 1);
-
-            tracing::debug!("sleeping for 1 sec...");
-            let start = Instant::now();
-            time::sleep(Duration::from_secs(1)).await;
-            assert_eq!(start.elapsed().as_secs(), 1);
-            tracing::debug!("slept 1 sec! {:?}", start.elapsed());
-
-            // FIXME this is a quite terrible hack to get the scheduler to close in tests (otherwise
-            //  tests would run forever) we should find a proper way to shut down the scheduler when idle.
-            #[cfg(test)]
-            scheduler::scheduler().shutdown();
-        });
-
-        // scheduler::scheduler().spawn(async move {
-        //     tracing::debug!("Point A");
-        //     scheduler::yield_now().await;
-        //     tracing::debug!("Point B");
-        // });
+    cfg_if! {
+        if #[cfg(test)] {
+            let mut output = riscv::hio::HostStream::new_stderr();
+            tests::run_tests(&mut output, boot_info);
+        } else {
+            scheduler::Worker::new(_sched, cpuid, &mut rng).run();
+        }
     }
 
-    scheduler::Worker::new(sched, cpuid, &mut rng).run();
+    // if cpuid == 0 {
+    //     sched.spawn(async move {
+    //         tracing::debug!("before timeout");
+    //         let start = Instant::now();
+    //         let res =
+    //             time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
+    //         tracing::debug!("after timeout {res:?}");
+    //         assert!(res.is_err());
+    //         assert_eq!(start.elapsed().as_secs(), 1);
+    //
+    //         tracing::debug!("before timeout");
+    //         let start = Instant::now();
+    //         let res =
+    //             time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
+    //         tracing::debug!("after timeout {res:?}");
+    //         assert!(res.is_ok());
+    //         assert_eq!(start.elapsed().as_secs(), 1);
+    //
+    //         tracing::debug!("sleeping for 1 sec...");
+    //         let start = Instant::now();
+    //         time::sleep(Duration::from_secs(1)).await;
+    //         assert_eq!(start.elapsed().as_secs(), 1);
+    //         tracing::debug!("slept 1 sec! {:?}", start.elapsed());
+    //
+    //
+    //         #[cfg(test)]
+    //         scheduler::scheduler().shutdown();
+    //     });
+    //
+    //     // scheduler::scheduler().spawn(async move {
+    //     //     tracing::debug!("Point A");
+    //     //     scheduler::yield_now().await;
+    //     //     tracing::debug!("Point B");
+    //     // });
+    // }
 
     // wasm::test();
 

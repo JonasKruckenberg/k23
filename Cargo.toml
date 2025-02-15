@@ -1,5 +1,5 @@
 [workspace]
-members = ["kernel", "libs/*", "loader", "loader/api"]
+members = ["kernel", "libs/*", "loader", "loader/api", "libs/ktest/macros"]
 resolver = "2"
 
 [workspace.package]
@@ -104,6 +104,7 @@ wavltree = { path = "libs/wavltree" }
 loader-api = { path = "loader/api" }
 fdt = { path = "libs/fdt" }
 ksharded-slab = { path = "libs/ksharded-slab" }
+ktest = { path = "libs/ktest" }
 
 # third-party dependencies
 cfg-if = "1.0.0"
@@ -143,6 +144,11 @@ cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime.git", 
 cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["core"] }
 cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false }
 wasmtime-slab = "28.0.1"
+
+# build dependencies
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
 
 [profile.release]
 debug = "limited" # The kernel should be able to print stack traces of itself even in release mode

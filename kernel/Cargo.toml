@@ -23,6 +23,7 @@ wavltree = { workspace = true, features = ["dot"] }
 mpsc-queue.workspace = true
 fdt.workspace = true
 ksharded-slab.workspace = true
+ktest.workspace = true
 
 log.workspace = true
 cfg-if.workspace = true
