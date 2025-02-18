@@ -9,6 +9,7 @@ use core::cell::{Cell, RefCell};
 use cpu_local::cpu_local;
 
 mod color;
+mod filter;
 mod log;
 mod registry;
 mod writer;
@@ -20,6 +21,7 @@ pub use ::tracing::*;
 use color::{Color, SetColor};
 use core::fmt;
 use core::fmt::Write;
+pub use filter::Filter;
 use registry::Registry;
 use sync::OnceLock;
 use tracing::field;
@@ -41,20 +43,11 @@ cpu_local! {
 ///
 /// This should be called as early in the boot process as possible.
 #[expect(tail_expr_drop_order, reason = "")]
-pub fn init_early(level_filter: LevelFilter) {
+pub fn init_early() {
     let subscriber = SUBSCRIBER.get_or_init(|| Subscriber {
-        level_filter,
+        // level_filter,
         output: Output::new(Semihosting::new()),
-        registry: OnceLock::new(),
-    });
-
-    ::log::set_max_level(match level_filter {
-        LevelFilter::OFF => ::log::LevelFilter::Off,
-        LevelFilter::TRACE => ::log::LevelFilter::Trace,
-        LevelFilter::DEBUG => ::log::LevelFilter::Debug,
-        LevelFilter::INFO => ::log::LevelFilter::Info,
-        LevelFilter::WARN => ::log::LevelFilter::Warn,
-        LevelFilter::ERROR => ::log::LevelFilter::Error,
+        lateinit: OnceLock::new(),
     });
     ::log::set_logger(subscriber).unwrap();
 
@@ -64,11 +57,32 @@ pub fn init_early(level_filter: LevelFilter) {
 }
 
 /// Fully initialize the subsystem, after this point tracing [`Span`]s will be processed as well.
-pub fn init() {
+#[expect(tail_expr_drop_order, reason = "")]
+pub fn init(filter: Filter) {
     let subscriber = SUBSCRIBER
         .get()
         .expect("tracing::init must be called after tracing::init_early");
-    subscriber.registry.get_or_init(Registry::default);
+
+    ::log::set_max_level(match filter.max_level() {
+        LevelFilter::OFF => ::log::LevelFilter::Off,
+        LevelFilter::TRACE => ::log::LevelFilter::Trace,
+        LevelFilter::DEBUG => ::log::LevelFilter::Debug,
+        LevelFilter::INFO => ::log::LevelFilter::Info,
+        LevelFilter::WARN => ::log::LevelFilter::Warn,
+        LevelFilter::ERROR => ::log::LevelFilter::Error,
+    });
+
+    subscriber
+        .lateinit
+        .get_or_init(|| (Registry::default(), filter));
+
+    // tracing::trace!("Trace");
+    // tracing::debug!("Debug");
+    // tracing::info!("Info");
+    // tracing::warn!("Warn");
+    // tracing::error!("Error");
+    //
+    // todo!();
 }
 
 /// Perform late, per-CPU initialization. This will enable the proper printing of timestamps and
@@ -78,26 +92,38 @@ pub fn per_cpu_init_late(time_base: Instant) {
 }
 
 struct Subscriber {
-    level_filter: LevelFilter,
+    // level_filter: LevelFilter,
     output: Output<Semihosting>,
-    registry: OnceLock<Registry>,
+    lateinit: OnceLock<(Registry, Filter)>,
 }
 
 impl Collect for Subscriber {
-    fn register_callsite(&self, _metadata: &'static Metadata<'static>) -> Interest {
-        Interest::always()
+    fn register_callsite(&self, meta: &'static Metadata<'static>) -> Interest {
+        if self.enabled(meta) {
+            Interest::always()
+        } else {
+            Interest::never()
+        }
     }
 
-    fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
-        true
+    fn enabled(&self, meta: &Metadata<'_>) -> bool {
+        if let Some((_, filter)) = self.lateinit.get() {
+            filter.enabled(meta)
+        } else {
+            true
+        }
     }
 
     fn max_level_hint(&self) -> Option<LevelFilter> {
-        Some(self.level_filter)
+        if let Some((_, filter)) = self.lateinit.get() {
+            Some(filter.max_level())
+        } else {
+            None
+        }
     }
 
     fn new_span(&self, attrs: &Attributes<'_>) -> Id {
-        let Some(registry) = self.registry.get() else {
+        let Some((registry, _)) = self.lateinit.get() else {
             tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
             return Id::from_u64(0xDEAD);
         };
@@ -155,7 +181,7 @@ impl Collect for Subscriber {
 
     fn enter(&self, id: &Id) {
         self.output.enter();
-        if let Some(registry) = self.registry.get() {
+        if let Some((registry, _)) = self.lateinit.get() {
             registry.enter(id);
         } else {
             tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
@@ -164,7 +190,7 @@ impl Collect for Subscriber {
 
     fn exit(&self, id: &Id) {
         self.output.exit();
-        if let Some(registry) = self.registry.get() {
+        if let Some((registry, _)) = self.lateinit.get() {
             registry.exit(id);
         } else {
             tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
@@ -172,7 +198,7 @@ impl Collect for Subscriber {
     }
 
     fn clone_span(&self, id: &Id) -> Id {
-        if let Some(registry) = self.registry.get() {
+        if let Some((registry, _)) = self.lateinit.get() {
             registry.clone_span(id)
         } else {
             tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
@@ -181,7 +207,7 @@ impl Collect for Subscriber {
     }
 
     fn try_close(&self, id: Id) -> bool {
-        if let Some(registry) = self.registry.get() {
+        if let Some((registry, _)) = self.lateinit.get() {
             registry.try_close(id)
         } else {
             tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");
@@ -190,7 +216,7 @@ impl Collect for Subscriber {
     }
 
     fn current_span(&self) -> Current {
-        if let Some(registry) = self.registry.get() {
+        if let Some((registry, _)) = self.lateinit.get() {
             registry.current_span()
         } else {
             tracing::warn!("tracing spans be only be tracked *after* tracing::init is called");

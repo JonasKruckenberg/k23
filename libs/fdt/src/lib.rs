@@ -94,14 +94,14 @@ impl<'dt> Fdt<'dt> {
         let strings = StringsBlock(unsafe {
             slice::from_raw_parts(data.as_ptr().cast(), size_of_val(data))
                 .get(strings_start..strings_end)
-                .ok_or(Error::UnexpectedEndOfData)?
+                .ok_or(Error::UnexpectedEof)?
         });
 
         let structs_start = header.structs_offset as usize / 4;
         let structs_end = structs_start + (header.structs_size as usize / 4);
         let structs = StructsBlock(
             data.get(structs_start..structs_end)
-                .ok_or(Error::UnexpectedEndOfData)?,
+                .ok_or(Error::UnexpectedEof)?,
         );
 
         let reservations_start = header.memory_reserve_map_offset as usize / 4;
@@ -109,12 +109,12 @@ impl<'dt> Fdt<'dt> {
             structs_start + ((header.total_size - header.memory_reserve_map_offset) as usize / 4);
         let reservations = data
             .get(reservations_start..reservations_end)
-            .ok_or(Error::UnexpectedEndOfData)?;
+            .ok_or(Error::UnexpectedEof)?;
 
         if header.magic != DTB_MAGIC {
             return Err(Error::BadMagic);
         } else if data.len() < (header.total_size / 4) as usize {
-            return Err(Error::UnexpectedEndOfData);
+            return Err(Error::UnexpectedEof);
         }
 
         Ok(Self {
@@ -337,7 +337,7 @@ impl<'dt> FallibleIterator for NodesIter<'dt> {
 
         match self.parser.advance_token() {
             Ok(BigEndianToken::BEGIN_NODE) => self.depth += 1,
-            Ok(BigEndianToken::END) | Err(Error::UnexpectedEndOfData) => return Ok(None),
+            Ok(BigEndianToken::END) | Err(Error::UnexpectedEof) => return Ok(None),
             Ok(t) => return Err(Error::UnexpectedToken(t)),
             Err(e) => return Err(e),
         }

@@ -29,6 +29,7 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
+mod cmdline;
 mod cpu_local;
 mod device_tree;
 mod error;
@@ -61,12 +62,9 @@ use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::Once;
-use tracing_core::LevelFilter;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
 
-/// The log level for the kernel
-pub const LOG_LEVEL: LevelFilter = LevelFilter::TRACE;
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
@@ -106,7 +104,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     static SYNC: Once = Once::new();
     SYNC.call_once(|| {
         // set up the basic functionality of the tracing subsystem as early as possible
-        tracing::init_early(LOG_LEVEL);
+        tracing::init_early();
 
         // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
         // is available
@@ -116,8 +114,13 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
+        let devtree = device_tree::init(fdt).unwrap();
+        tracing::debug!("{devtree:?}");
+
+        let cmdline = cmdline::parse(devtree).unwrap();
+
         // fully initialize the tracing subsystem now that we can allocate
-        tracing::init();
+        tracing::init(cmdline.log);
 
         // initialize the panic backtracing subsystem after the allocator has been set up
         // since setting up the symbolization context requires allocation
@@ -125,9 +128,6 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
         // perform global, architecture-specific initialization
         arch::init_early();
-
-        let devtree = device_tree::init(fdt).unwrap();
-        tracing::debug!("{devtree:?}");
 
         // initialize the global frame allocator
         // at this point we have parsed and processed the flattened device tree, so we pass it to the
@@ -202,15 +202,8 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // wasm::test();
 
     // - [all][global] parse cmdline
-    // - [all][global] `vm::init()` init virtual memory management
     // - [all][global] `lockup::init()` initialize lockup detector
     // - [all][global] `topology::init()` initialize the system topology
-    // - initialize other parts of the kernel
-    // - kickoff the scheduler
-    // - `platform_init()`
-    //     - using system topology -> start other cpus in the system
-    // - `arch_late_init_percpu()`
-    //     - IF RiscvFeatureVector => setup the vector hardware
     // - `kernel_shell_init()`
     // - `userboot_init()`
 

@@ -9,7 +9,7 @@ use core::fmt;
 
 #[derive(Debug)]
 pub enum Error {
-    UnexpectedEndOfData,
+    UnexpectedEof,
     InvalidUtf8(core::str::Utf8Error),
     InvalidCStr(core::ffi::FromBytesUntilNulError),
     InvalidToken(crate::parser::BigEndianToken),
@@ -46,7 +46,7 @@ impl From<core::array::TryFromSliceError> for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::UnexpectedEndOfData => write!(f, "unexpected end of data"),
+            Error::UnexpectedEof => write!(f, "unexpected end of data"),
             Error::InvalidUtf8(err) => write!(f, "invalid utf8: {err}"),
             Error::InvalidCStr(err) => write!(f, "invalid C string: {err}"),
             Error::InvalidToken(t) => write!(f, "invalid token: {}", t.0.to_ne()),

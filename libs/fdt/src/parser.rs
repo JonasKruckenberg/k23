@@ -62,7 +62,7 @@ impl<'dt> Parser<'dt> {
                 self.stream
                     .advance()
                     .map(BigEndianU32)
-                    .ok_or(Error::UnexpectedEndOfData)?,
+                    .ok_or(Error::UnexpectedEof)?,
             ) {
                 BigEndianToken::NOP => continue,
                 token @ (BigEndianToken::BEGIN_NODE
@@ -82,7 +82,7 @@ impl<'dt> Parser<'dt> {
         self.stream
             .advance()
             .map(BigEndianU32)
-            .ok_or(Error::UnexpectedEndOfData)
+            .ok_or(Error::UnexpectedEof)
     }
 
     pub fn advance_cstr(&mut self) -> Result<&'dt core::ffi::CStr, Error> {
@@ -151,7 +151,7 @@ impl<'dt> Parser<'dt> {
                     t => return Err(Error::UnexpectedToken(t)),
                 }
             }
-            _ => return Err(Error::UnexpectedEndOfData),
+            _ => return Err(Error::UnexpectedEof),
         }
 
         // advance past this nodes name
@@ -173,10 +173,7 @@ impl<'dt> Parser<'dt> {
                 // Properties are in the format: <data len> <name offset> <data...>
                 let len = usize::try_from(self.advance_u32()?.to_ne())?;
                 let name_offset = usize::try_from(self.advance_u32()?.to_ne())?;
-                let data = self
-                    .byte_data()
-                    .get(..len)
-                    .ok_or(Error::UnexpectedEndOfData)?;
+                let data = self.byte_data().get(..len).ok_or(Error::UnexpectedEof)?;
 
                 self.advance_aligned(data.len());
 
@@ -231,10 +228,8 @@ impl Clone for Stream<'_> {
 
 impl<'a> StringsBlock<'a> {
     pub fn offset_at(self, offset: usize) -> Result<&'a str, Error> {
-        core::ffi::CStr::from_bytes_until_nul(
-            self.0.get(offset..).ok_or(Error::UnexpectedEndOfData)?,
-        )?
-        .to_str()
-        .map_err(Into::into)
+        core::ffi::CStr::from_bytes_until_nul(self.0.get(offset..).ok_or(Error::UnexpectedEof)?)?
+            .to_str()
+            .map_err(Into::into)
     }
 }
