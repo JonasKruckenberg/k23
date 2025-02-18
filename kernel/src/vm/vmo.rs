@@ -114,7 +114,8 @@ impl PagedVmo {
             let new_frame = self.frames.insert(at_offset, new_frame.clone());
             Ok(new_frame)
         } else {
-            let new_frame = self.provider.get_frame(at_offset)?;
+            let new_frame = self.provider.get_frame(at_offset, true)?;
+            debug_assert!(new_frame.is_unique());
             let new_frame = self.frames.insert(at_offset, new_frame);
             Ok(new_frame)
         }
@@ -124,7 +125,7 @@ impl PagedVmo {
         let frame = match self.frames.entry(at_offset) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
-                let new_frame = self.provider.get_frame(at_offset)?;
+                let new_frame = self.provider.get_frame(at_offset, false)?;
                 entry.insert(new_frame)
             }
         };
