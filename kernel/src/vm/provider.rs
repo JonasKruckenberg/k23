@@ -14,7 +14,7 @@ use sync::LazyLock;
 
 pub trait Provider: Debug {
     // TODO make async
-    fn get_frame(&self, at_offset: usize) -> Result<Frame, Error>;
+    fn get_frame(&self, at_offset: usize, will_read: bool) -> Result<Frame, Error>;
     // TODO make async
     fn get_frames(&self, at_offset: usize, len: NonZeroUsize) -> Result<FrameList, Error>;
     fn free_frame(&self, frame: Frame);
@@ -38,8 +38,12 @@ impl TheZeroFrame {
 }
 
 impl Provider for TheZeroFrame {
-    fn get_frame(&self, _at_offset: usize) -> Result<Frame, Error> {
-        Ok(self.0.clone())
+    fn get_frame(&self, _at_offset: usize, will_read: bool) -> Result<Frame, Error> {
+        if will_read {
+            frame_alloc::alloc_one_zeroed().map_err(Into::into)
+        } else {
+            Ok(self.0.clone())
+        }
     }
 
     fn get_frames(&self, _at_offset: usize, len: NonZeroUsize) -> Result<FrameList, Error> {
