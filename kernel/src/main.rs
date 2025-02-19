@@ -154,15 +154,20 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
 
-    cfg_if! {
-        if #[cfg(test)] {
-            let mut output = riscv::hio::HostStream::new_stderr();
-            tests::run_tests(&mut output, boot_info);
-        } else {
-            scheduler::Worker::new(_sched, cpuid, &mut rng).run();
-        }
-    }
+    // cfg_if! {
+    //     if #[cfg(test)] {
+    //         let mut output = riscv::hio::HostStream::new_stderr();
+    //         tests::run_tests(&mut output, boot_info);
+    //     } else {
+    //         scheduler::Worker::new(_sched, cpuid, &mut rng).run();
+    //     }
+    // }
 
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        wasm::test();
+    });
+    
     // if cpuid == 0 {
     //     sched.spawn(async move {
     //         tracing::debug!("before timeout");
