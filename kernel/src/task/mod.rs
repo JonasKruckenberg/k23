@@ -380,7 +380,7 @@ impl TaskRef {
         cx: &mut Context<'_>,
     ) -> Poll<Result<T, JoinError<T>>> {
         let poll_join_fn = self.header().vtable.poll_join;
-        let mut slot = MaybeUninit::<T>::uninit();
+        let mut slot = MaybeUninit::<Result<T, JoinError<T>>>::uninit();
 
         // Safety: This is called through the Vtable and as long as the caller makes sure that the `T` is the right
         // type, this call is safe
@@ -391,7 +391,7 @@ impl TaskRef {
                 let output = if e.is_completed() {
                     // Safety: if the task completed before being canceled, we can still
                     // take its output.
-                    Some(unsafe { slot.assume_init_read() })
+                    Some(unsafe { slot.assume_init_read() }?)
                 } else {
                     None
                 };
@@ -399,7 +399,7 @@ impl TaskRef {
             } else {
                 // Safety: if the poll function returned `Ok`, we get to take the
                 // output!
-                Ok(unsafe { slot.assume_init_read() })
+                unsafe { slot.assume_init_read() }
             }
         })
     }
