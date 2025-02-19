@@ -26,7 +26,7 @@ pub struct Memory {
 impl Memory {
     #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub fn try_new(
-        _aspace: &mut AddressSpace,
+        aspace: &mut AddressSpace,
         desc: &MemoryDesc,
         actual_minimum_bytes: usize,
         actual_maximum_bytes: Option<usize>,
@@ -35,14 +35,15 @@ impl Memory {
         // Ensure that our guard regions are multiples of the host page size.
         let offset_guard_bytes = round_usize_up_to_host_pages(offset_guard_bytes);
 
-        // let bound_bytes = round_usize_up_to_host_pages(MEMORY_MAX);
-        // let allocation_bytes = bound_bytes.min(actual_maximum_bytes.unwrap_or(usize::MAX));
-        // let request_bytes = allocation_bytes + offset_guard_bytes;
+        let bound_bytes = round_usize_up_to_host_pages(MEMORY_MAX);
+        let allocation_bytes = bound_bytes.min(actual_maximum_bytes.unwrap_or(usize::MAX));
+        let request_bytes = allocation_bytes + offset_guard_bytes;
 
-        // let mmap = UserMmap::new_zeroed(aspace, request_bytes, 2 * 1048576).map_err(|_| Error::MmapFailed)?;
+        let mmap = UserMmap::new_zeroed(aspace, request_bytes, 2 * 1048576, None)
+            .map_err(|_| Error::MmapFailed)?;
 
         Ok(Self {
-            mmap: UserMmap::new_empty(),
+            mmap,
             len: actual_minimum_bytes,
             maximum: actual_maximum_bytes,
             page_size_log2: desc.page_size_log2,
@@ -64,3 +65,6 @@ impl Memory {
         }
     }
 }
+
+// 0x0000000000400000
+// 0x00000000004103fc

@@ -13,6 +13,7 @@ use crate::vm::{
     AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Error,
     Permissions, VirtualAddress,
 };
+use alloc::string::String;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
@@ -47,7 +48,12 @@ impl UserMmap {
     }
 
     /// Creates a new read-write (`RW`) memory mapping in the given address space.
-    pub fn new_zeroed(aspace: &mut AddressSpace, len: usize, align: usize) -> Result<Self, Error> {
+    pub fn new_zeroed(
+        aspace: &mut AddressSpace,
+        len: usize,
+        align: usize,
+        name: Option<String>,
+    ) -> Result<Self, Error> {
         debug_assert!(
             matches!(aspace.kind(), AddressSpaceKind::User),
             "cannot create UserMmap in kernel address space"
@@ -63,7 +69,7 @@ impl UserMmap {
             layout,
             Permissions::READ | Permissions::WRITE | Permissions::USER,
             #[expect(tail_expr_drop_order, reason = "")]
-            |range, perms, _batch| Ok(AddressSpaceRegion::new_zeroed(range, perms, None)),
+            |range, perms, _batch| Ok(AddressSpaceRegion::new_zeroed(range, perms, name)),
         )?;
 
         tracing::trace!("new_zeroed: {len} {:?}", region.range);
@@ -225,7 +231,7 @@ impl UserMmap {
         Ok(())
     }
 
-    fn commit(
+    pub fn commit(
         &self,
         aspace: &mut AddressSpace,
         range: Range<usize>,
