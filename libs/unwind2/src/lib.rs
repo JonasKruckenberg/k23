@@ -166,7 +166,7 @@ where
             Ok(p) => data.p = ManuallyDrop::new(p),
             Err(err) => {
                 log::error!("Failed to catch exception: {err:?}");
-                arch::abort();
+                arch::abort("Failed to catch exception");
             }
         }
     }
