@@ -26,7 +26,7 @@ pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
     with_context(|ctx| {
         if let Err(err) = raise_exception_phase2(ctx.clone(), exception) {
             log::error!("Failed to resume exception: {err:?}");
-            arch::abort()
+            arch::abort("Failed to resume exception")
         }
 
         // Safety: this replaces the register state, very unsafe

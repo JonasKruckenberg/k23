@@ -10,7 +10,6 @@ use crate::vm::VirtualAddress;
 use crate::{arch, vm};
 use bitflags::bitflags;
 use core::cell::Cell;
-use core::fmt::Write;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::ControlFlow;
 use core::ptr;
@@ -214,9 +213,7 @@ fn fault_resume_panic(
 /// handlers and is expected to be called from the architecture specific trap handler.
 pub fn begin_trap(trap: Trap) {
     if IN_TRAP_HANDLER.replace(true) {
-        let _ = riscv::hio::HostStream::new_stdout()
-            .write_str("trap occurred while in trap handler!\n");
-        arch::abort();
+        arch::abort("trap occurred while in trap handler!");
     }
 
     // Consult the vm subsystem trap handler, does it have special handling?

@@ -93,9 +93,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
         if let Some(must_abort) = panic_count::increase(true) {
             match must_abort {
                 MustAbort::PanicInHook => {
-                    tracing::error!(
-                        "panicked at {loc}:\n{msg}\ncpu panicked while processing panic. aborting."
-                    );
+                    tracing::error!("panicked at {loc}:\n{msg}\n");
                 }
             }
 
@@ -105,7 +103,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
                 cpu_local::destructors::run();
             }
 
-            arch::abort();
+            arch::abort("cpu panicked while processing panic. aborting.");
         }
 
         tracing::error!("cpu panicked at {loc}:\n{msg}");
@@ -125,8 +123,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             // If a thread panics while running destructors or tries to unwind
             // through a nounwind function (e.g. extern "C") then we cannot continue
             // unwinding and have to abort immediately.
-            tracing::error!("cpu caused non-unwinding panic. aborting.\n");
-            arch::abort();
+            arch::abort("cpu caused non-unwinding panic. aborting.");
         }
 
         rust_panic(construct_panic_payload(info))
@@ -148,7 +145,7 @@ fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
 
     match res {
         Ok(_) => arch::exit(0),
-        Err(_) => arch::abort(),
+        Err(_) => arch::abort("unwinding failed. aborting."),
     }
 }
 
