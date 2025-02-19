@@ -68,9 +68,7 @@ impl Func {
         // do the actual call
         // Safety: caller has to ensure safety
         unsafe {
-            arch::with_user_memory_access(|| {
-                self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)
-            })?;
+            self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)?;
         }
 
         // copy the results out of the storage
@@ -115,15 +113,17 @@ impl Func {
                     options(noreturn)
                 }
             }
+            // unsafe { (func_ref.array_call)(vmctx, vmctx, args_results_ptr, args_results_len) }
         }) {
-            // construct wasm trap
-
             let (code, text_offset) = code_registry::lookup_code(trap.pc.get()).unwrap();
-            tracing::trace!(
-                "Trap at offset: pc={};text_offset={text_offset:#x}",
-                trap.pc
-            );
             let trap_code = code.lookup_trap_code(text_offset).unwrap();
+
+            tracing::debug!(
+                pc=%trap.pc,
+                text_offset=%format_args!("{text_offset:#x}"),
+                trap=?trap_code,
+                "Trap in WASM"
+            );
 
             let backtrace = RawWasmBacktrace::new_with_vmctx(
                 vmctx,
