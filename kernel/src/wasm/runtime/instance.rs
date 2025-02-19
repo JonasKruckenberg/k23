@@ -241,8 +241,12 @@ impl Instance {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 // Safety: Reading from JIT-owned memory is inherently unsafe.
                 unsafe {
+                    let magic_bytes = self.data.vmctx_magic().to_ne_bytes();
+                    let magic_str = core::str::from_utf8(&magic_bytes).unwrap();
+
                     f.debug_struct("VMContext")
-                        .field("magic", &self.data.vmctx_magic())
+                        .field("<addr>", &self.data.vmctx.as_ptr())
+                        .field("magic", &magic_str)
                         .field("builtin_functions", &self.data.vmctx_builtin_functions())
                         .field("type_ids", &self.data.vmctx_type_ids())
                         .field("stack_limit", &(self.data.vmctx_stack_limit() as *const u8))
