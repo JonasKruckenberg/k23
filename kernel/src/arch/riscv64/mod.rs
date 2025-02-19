@@ -31,14 +31,6 @@ pub fn init_early() {
     vm::init();
 }
 
-/// Per-cpu and RISC-V specific initialization.
-#[cold]
-pub fn per_cpu_init(devtree: &DeviceTree) -> crate::Result<()> {
-    device::cpu::init(devtree)?;
-
-    Ok(())
-}
-
 /// Early per-cpu and RISC-V specific initialization.
 ///
 /// This function will be called before global initialization is done, notably this function
@@ -136,28 +128,6 @@ pub fn rmb() {
     unsafe {
         asm!("fence ir,ir");
     }
-}
-
-#[inline]
-pub unsafe fn with_user_memory_access<F, R>(f: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    // Allow supervisor access to user memory
-    // Safety: register access
-    unsafe {
-        sstatus::set_sum();
-    }
-
-    let r = f();
-
-    // Disable supervisor access to user memory
-    // Safety: register access
-    unsafe {
-        sstatus::clear_sum();
-    }
-
-    r
 }
 
 /// Suspend the calling cpu indefinitely.

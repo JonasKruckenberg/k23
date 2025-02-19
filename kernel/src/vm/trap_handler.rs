@@ -20,7 +20,8 @@ pub fn trap_handler(trap: Trap) -> ControlFlow<crate::Result<()>> {
         _ => return ControlFlow::Continue(()),
     };
 
-    if let Err(_err) = aspace.page_fault(trap.faulting_address, flags) {
+    if let Err(err) = aspace.page_fault(trap.faulting_address, flags) {
+        tracing::warn!(reason = %err, "Access denied");
         ControlFlow::Break(Err(Error::AccessDenied))
     } else {
         ControlFlow::Break(Ok(()))

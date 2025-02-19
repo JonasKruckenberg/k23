@@ -37,10 +37,46 @@ pub fn init() {
         );
     }
 
-    tracing::trace!("setting trap vec to {:#x}", trap_vec as usize);
+    tracing::trace!("setting trap vec to {:#x}", default_trap_entry as usize);
     // Safety: register access
-    unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
+    unsafe { stvec::write(default_trap_entry as usize, stvec::Mode::Direct) };
+    
+    // FIXME Vectored trap mode appears to be broken in QEMU 9.2.0 where for certain
+    //  exceptions it jumps to an unaligned address (BASE + 5 or something weird like that)
+    //  we didn't use the vectored mode anyway through, so it is disabled for now
+    // unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
 }
+
+// FIXME disabled for now, see comment above
+// #[naked]
+// unsafe extern "C" fn trap_vec() {
+//     // When in vectored mode
+//     // exceptions i.e. sync traps => BASE
+//     // interrupts i.e. async traps => BASE + 4 * CAUSE
+//     //
+//     // We can use this to direct some traps that don't need
+//     // expensive SBI call handling to cheaper handlers (like timers)
+//     // Safety: inline assembly
+//     unsafe {
+//         naked_asm! {
+//             ".align 2",
+//             ".option push",
+//             ".option norvc",
+//             "j {default}", // exception
+//             "j {default}", // supervisor software interrupt
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // supervisor timer interrupt
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // supervisor external interrupt
+//             ".option pop",
+//             default = sym default_trap_entry,
+//         }
+//     }
+// }
 
 #[repr(C)]
 #[derive(Clone, Default)]
@@ -48,36 +84,6 @@ pub struct TrapFrame {
     pub gp: [usize; 32],
     #[cfg(target_feature = "d")]
     pub fp: [usize; 32],
-}
-
-#[naked]
-unsafe extern "C" fn trap_vec() {
-    // When in vectored mode
-    // exceptions i.e. sync traps => BASE
-    // interrupts i.e. async traps => BASE + 4 * CAUSE
-    //
-    // We can use this to direct some traps that don't need
-    // expensive SBI call handling to cheaper handlers (like timers)
-    // Safety: inline assembly
-    unsafe {
-        naked_asm! {
-            ".align 2",
-            ".option push",
-            ".option norvc",
-            "j {default}", // exception
-            "j {default}", // supervisor software interrupt
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // supervisor timer interrupt
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // supervisor external interrupt
-            ".option pop",
-            default = sym default_trap_entry,
-        }
-    }
 }
 
 #[naked]
@@ -253,18 +259,12 @@ fn default_trap_handler(
     a6: usize,
     a7: usize,
 ) -> *mut TrapFrame {
-    // Clear the SUM bit to prevent userspace memory access in case we interrupted the kernel
-    // Safety: register access
-    unsafe {
-        sstatus::clear_sum();
-    }
-
     let cause = scause::read().cause();
 
-    tracing::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
+    tracing::debug!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
     let epc = sepc::read();
     let tval = stval::read();
-    tracing::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
+    tracing::debug!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
 
     let reason = match cause {
         Trap::Interrupt(Interrupt::SupervisorSoft) => {
