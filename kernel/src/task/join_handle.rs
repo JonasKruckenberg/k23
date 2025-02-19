@@ -31,6 +31,21 @@ enum JoinHandleState {
     Error(JoinErrorKind),
 }
 
+pub struct JoinError<T> {
+    kind: JoinErrorKind,
+    id: Id,
+    output: Option<T>,
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum JoinErrorKind {
+    Cancelled { completed: bool },
+    Panic(Box<dyn Any + Send + 'static>),
+}
+
+// === impl JoinHandle ===
+
 impl<T> UnwindSafe for JoinHandle<T> {}
 
 impl<T> RefUnwindSafe for JoinHandle<T> {}
@@ -204,18 +219,7 @@ impl<T> JoinHandle<T> {
     }
 }
 
-pub struct JoinError<T> {
-    kind: JoinErrorKind,
-    id: Id,
-    output: Option<T>,
-}
-
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum JoinErrorKind {
-    Cancelled { completed: bool },
-    Panic(Box<dyn Any + Send + 'static>),
-}
+// === impl JoinError ===
 
 impl JoinError<()> {
     pub(super) fn cancelled(completed: bool, id: Id) -> Self {
