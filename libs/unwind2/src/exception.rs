@@ -56,8 +56,7 @@ impl Exception {
             // Safety: Caller ensures `exception` is a valid exception
             unsafe {
                 drop(Box::from_raw(exception.cast::<Exception>()));
-                log::error!("Rust panics must be rethrown");
-                arch::abort();
+                arch::abort("Rust panics must be rethrown");
             }
         }
 

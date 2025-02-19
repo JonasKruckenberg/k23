@@ -17,7 +17,7 @@ pub mod sbi;
 pub mod semihosting;
 
 use core::arch::asm;
-
+use core::fmt::Write;
 pub use error::Error;
 pub use register::*;
 pub type Result<T> = core::result::Result<T, Error>;
@@ -39,6 +39,7 @@ pub fn exit(code: i32) -> ! {
 }
 
 /// Terminates the current execution in an abnormal fashion.
-pub fn abort() -> ! {
+pub fn abort(err: &str) -> ! {
+    let _ = hio::HostStream::new_stdout().write_fmt(format_args!("{err}\n"));
     exit(1);
 }

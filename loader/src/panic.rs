@@ -16,7 +16,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     let loc = info.location().unwrap(); // The current implementation always returns Some
     let msg = info.message();
 
-    log::error!("hart panicked at {loc}:\n{msg}");
+    log::error!("cpu panicked at {loc}:\n{msg}");
 
     rust_panic()
 }
@@ -26,5 +26,5 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 #[inline(never)]
 #[unsafe(no_mangle)]
 fn rust_panic() -> ! {
-    arch::abort()
+    arch::abort("panic")
 }

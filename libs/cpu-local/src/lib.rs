@@ -334,16 +334,15 @@ fn abort_on_dtor_unwind(f: impl FnOnce()) {
         fn drop(&mut self) {
             // This is not terribly descriptive, but it doesn't need to be as we'll
             // already have printed a panic message at this point.
-            log::error!("thread local panicked on drop");
-            abort();
+            abort("thread local panicked on drop");
         }
     }
 }
 
-pub(crate) fn abort() -> ! {
+pub(crate) fn abort(err: &str) -> ! {
     cfg_if! {
         if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-            riscv::abort();
+            riscv::abort(err);
         } else {
             compile_error!("unsupported target architecture")
         }
