@@ -208,9 +208,7 @@ impl Arena {
     }
 }
 
-// =============================================================================
-// Arena selection
-// =============================================================================
+// === Arena selection ===
 
 pub fn select_arenas<I>(free_regions: I) -> ArenaSelections<I> {
     ArenaSelections {

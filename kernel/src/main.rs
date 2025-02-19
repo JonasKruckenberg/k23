@@ -29,7 +29,7 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
-mod cmdline;
+mod bootargs;
 mod cpu_local;
 mod device_tree;
 mod error;
@@ -46,6 +46,7 @@ mod traps;
 mod util;
 mod vm;
 mod wasm;
+mod shell;
 
 use crate::device_tree::device_tree;
 use crate::error::Error;
@@ -117,7 +118,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         let devtree = device_tree::init(fdt).unwrap();
         tracing::debug!("{devtree:?}");
 
-        let cmdline = cmdline::parse(devtree).unwrap();
+        let cmdline = bootargs::parse(devtree).unwrap();
 
         // fully initialize the tracing subsystem now that we can allocate
         tracing::init(cmdline.log);

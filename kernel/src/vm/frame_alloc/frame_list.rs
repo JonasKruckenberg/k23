@@ -58,9 +58,7 @@ pub struct VacantEntry<'a> {
     offset: usize,
 }
 
-// =============================================================================
-// FrameList
-// =============================================================================
+// === FrameList ===
 
 impl fmt::Debug for FrameList {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -223,9 +221,7 @@ impl FrameList {
     }
 }
 
-// =============================================================================
-// FrameList IntoIterator
-// =============================================================================
+// === FrameList IntoIterator ===
 
 type FramesWithoutHoles = Flatten<array::IntoIter<Option<Frame>, FRAME_LIST_NODE_FANOUT>>;
 type IntoIterInner = FlatMap<
@@ -292,9 +288,7 @@ impl FromIterator<Frame> for FrameList {
     }
 }
 
-// =============================================================================
-// FrameListNode
-// =============================================================================
+// === FrameListNode ===
 
 // Safety: unsafe trait
 unsafe impl wavltree::Linked for FrameListNode {
@@ -333,9 +327,7 @@ fn offset_to_node_index(offset: usize) -> usize {
     (offset >> arch::PAGE_SHIFT) % FRAME_LIST_NODE_FANOUT
 }
 
-// =============================================================================
-// Cursor
-// =============================================================================
+// === Cursor ===
 
 impl<'a> Cursor<'a> {
     /// Moves the cursor to the next [`Frame`] in the list
@@ -369,9 +361,7 @@ impl<'a> Cursor<'a> {
     }
 }
 
-// =============================================================================
-// CursorMut
-// =============================================================================
+// === CursorMut ===
 
 impl<'a> CursorMut<'a> {
     /// Moves the cursor to the next [`Frame`] in the list
@@ -424,9 +414,7 @@ impl<'a> CursorMut<'a> {
     }
 }
 
-// =============================================================================
-// Entry
-// =============================================================================
+// === Entry ===
 
 impl<'a> Entry<'a> {
     #[inline]
