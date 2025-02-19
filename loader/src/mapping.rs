@@ -27,6 +27,7 @@ bitflags! {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
         const EXECUTE = 1 << 2;
+        const USER      = 1 << 3;
     }
 }
 
@@ -610,7 +611,7 @@ pub fn map_kernel_stacks(
                 virt,
                 phys,
                 NonZero::new(layout.size()).unwrap(),
-                Flags::READ | Flags::WRITE,
+                Flags::READ | Flags::WRITE | Flags::USER,
                 phys_off,
             )?;
         }

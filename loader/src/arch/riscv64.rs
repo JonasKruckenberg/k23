@@ -203,6 +203,8 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalIni
 
     // Safety: inline assembly
     unsafe {
+        riscv::sstatus::set_sum();
+
         asm! {
             "mv  sp, {stack_top}", // Set the kernel stack ptr
             "mv  tp, {tls_start}", // Set the kernel thread ptr
@@ -535,6 +537,7 @@ impl From<Flags> for PTEFlags {
                 Flags::READ => out.insert(Self::READ),
                 Flags::WRITE => out.insert(Self::WRITE),
                 Flags::EXECUTE => out.insert(Self::EXECUTE),
+                Flags::USER => out.insert(Self::USER),
                 _ => unreachable!(),
             }
         }
