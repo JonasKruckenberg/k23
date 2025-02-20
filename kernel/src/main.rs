@@ -142,54 +142,59 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
     // now that clocks are online we can make the tracing subsystem print out timestamps
     tracing::per_cpu_init_late(Instant::from_ticks(Ticks(boot_ticks)));
-
-    // initialize the executor
-    let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
+    // 
+    // // initialize the executor
+    // let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
 
     tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
+    
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        panic!();
+    });
 
-    if cpuid == 0 {
-        sched.spawn(async move {
-            tracing::debug!("before timeout");
-            let start = Instant::now();
-            let res =
-                time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
-            tracing::debug!("after timeout {res:?}");
-            assert!(res.is_err());
-            assert_eq!(start.elapsed().as_secs(), 1);
-
-            tracing::debug!("before timeout");
-            let start = Instant::now();
-            let res =
-                time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
-            tracing::debug!("after timeout {res:?}");
-            assert!(res.is_ok());
-            assert_eq!(start.elapsed().as_secs(), 1);
-
-            tracing::debug!("sleeping for 1 sec...");
-            let start = Instant::now();
-            time::sleep(Duration::from_secs(1)).await;
-            assert_eq!(start.elapsed().as_secs(), 1);
-            tracing::debug!("slept 1 sec! {:?}", start.elapsed());
-
-            // FIXME this is a quite terrible hack to get the scheduler to close in tests (otherwise
-            //  tests would run forever) we should find a proper way to shut down the scheduler when idle.
-            #[cfg(test)]
-            scheduler::scheduler().shutdown();
-        });
-
-        // scheduler::scheduler().spawn(async move {
-        //     tracing::debug!("Point A");
-        //     scheduler::yield_now().await;
-        //     tracing::debug!("Point B");
-        // });
-    }
-
-    scheduler::Worker::new(sched, cpuid, &mut rng).run();
+    // if cpuid == 0 {
+    //     sched.spawn(async move {
+    //         tracing::debug!("before timeout");
+    //         let start = Instant::now();
+    //         let res =
+    //             time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
+    //         tracing::debug!("after timeout {res:?}");
+    //         assert!(res.is_err());
+    //         assert_eq!(start.elapsed().as_secs(), 1);
+    // 
+    //         tracing::debug!("before timeout");
+    //         let start = Instant::now();
+    //         let res =
+    //             time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
+    //         tracing::debug!("after timeout {res:?}");
+    //         assert!(res.is_ok());
+    //         assert_eq!(start.elapsed().as_secs(), 1);
+    // 
+    //         tracing::debug!("sleeping for 1 sec...");
+    //         let start = Instant::now();
+    //         time::sleep(Duration::from_secs(1)).await;
+    //         assert_eq!(start.elapsed().as_secs(), 1);
+    //         tracing::debug!("slept 1 sec! {:?}", start.elapsed());
+    // 
+    //         // FIXME this is a quite terrible hack to get the scheduler to close in tests (otherwise
+    //         //  tests would run forever) we should find a proper way to shut down the scheduler when idle.
+    //         #[cfg(test)]
+    //         scheduler::scheduler().shutdown();
+    //     });
+    // 
+    //     // scheduler::scheduler().spawn(async move {
+    //     //     tracing::debug!("Point A");
+    //     //     scheduler::yield_now().await;
+    //     //     tracing::debug!("Point B");
+    //     // });
+    // }
+    // 
+    // scheduler::Worker::new(sched, cpuid, &mut rng).run();
 
     // wasm::test();
 
