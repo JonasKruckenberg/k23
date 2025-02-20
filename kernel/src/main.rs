@@ -92,6 +92,9 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    // Unwinding expects at least one landing pad in the callstack, but capturing all unwinds that
+    // bubble up to this point is also a good idea since we can perform some last cleanup and
+    // print an error message.
     let res = panic::catch_unwind(|| {
         backtrace::__rust_begin_short_backtrace(|| kmain(cpuid, boot_info, boot_ticks));
     });
