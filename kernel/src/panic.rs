@@ -47,7 +47,7 @@ pub fn init(boot_info: &BootInfo) {
 }
 
 static SYMBOLIZE_CONTEXT: LazyLock<Option<SymbolizeContext>> = LazyLock::new(|| {
-    tracing::trace!("Setting up symbolize context...");
+    tracing::debug!("Setting up symbolize context...");
     let state = GLOBAL_PANIC_STATE.get()?;
 
     let elf = xmas_elf::ElfFile::new(state.elf).unwrap();
@@ -109,8 +109,19 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
         tracing::error!("cpu panicked at {loc}:\n{msg}");
 
         if let Some(ctx) = SYMBOLIZE_CONTEXT.as_ref() {
-            let backtrace = Backtrace::capture(ctx);
+            // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
+            //  but (at least at the moment) is absolute overkill for optimized builds. Sadly there
+            //  is no good way to do conditional compilation based on the opt-level.
+            const MAX_BACKTRACE_FRAMES: usize = 32;
+
+            let backtrace = Backtrace::<MAX_BACKTRACE_FRAMES>::capture(ctx).unwrap();
             tracing::error!("{backtrace}");
+            if backtrace.frames_omitted > 0 {
+                let total_frames = backtrace.frames.len() + backtrace.frames_omitted;
+                let omitted_frames = backtrace.frames_omitted;
+
+                tracing::warn!("Stack trace was {total_frames} frames, but backtrace buffer capacity was {MAX_BACKTRACE_FRAMES}. Omitted {omitted_frames} frames. Consider increasing `MAX_BACKTRACE_FRAMES` to at least {total_frames} to capture the entire trace.");
+            }
         } else {
             tracing::error!(
                 "Backtrace unavailable. Panic happened before panic subsystem initialization."
@@ -135,17 +146,16 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 #[inline(never)]
 #[unsafe(no_mangle)]
 fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
-    let res = unwind2::begin_panic(payload);
-
-    // Run thread-local destructors
-    // Safety: after this point we cannot access thread locals anyway
-    unsafe {
-        cpu_local::destructors::run();
-    }
-
-    match res {
+    match unwind2::begin_panic(payload) {
         Ok(_) => arch::exit(0),
-        Err(_) => arch::abort("unwinding failed. aborting."),
+        Err(unwind2::Error::EndOfStack) => {
+            log::error!("unwinding completed without finding a `catch_unwind` make sure there is at least a root level catch unwind wrapping the main function");
+            arch::abort("uncaught kernel exception");
+        }
+        Err(err) => {
+            log::error!("unwinding failed with error {err}");
+            arch::abort("unwinding failed. aborting.")
+        }
     }
 }
 

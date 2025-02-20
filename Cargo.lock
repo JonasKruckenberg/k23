@@ -74,6 +74,7 @@ name = "backtrace"
 version = "0.1.0"
 dependencies = [
  "addr2line",
+ "arrayvec",
  "fallible-iterator",
  "gimli",
  "rustc-demangle",

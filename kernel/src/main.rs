@@ -92,6 +92,25 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    let res = panic::catch_unwind(|| {
+        backtrace::__rust_begin_short_backtrace(|| kmain(cpuid, boot_info, boot_ticks));
+    });
+
+    // Run thread-local destructors
+    // Safety: after this point thread-locals cannot be accessed anymore anyway
+    unsafe {
+        cpu_local::destructors::run();
+    }
+
+    match res {
+        Ok(_) => arch::exit(0),
+        // If the panic propagates up to this catch here there is nothing we can do, this is a terminal
+        // failure.
+        Err(_) => arch::abort("unrecoverable kernel panic"),
+    }
+}
+
+fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     CPUID.set(cpuid);
 
     // perform EARLY per-cpu, architecture-specific initialization
@@ -206,14 +225,6 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // - [all][global] `topology::init()` initialize the system topology
     // - `kernel_shell_init()`
     // - `userboot_init()`
-
-    // Run thread-local destructors
-    // Safety: after this point thread-locals cannot be accessed anymore anyway
-    unsafe {
-        cpu_local::destructors::run();
-    }
-
-    arch::exit(0);
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.
