@@ -112,7 +112,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 
         if let Some(ctx) = SYMBOLIZE_CONTEXT.as_ref() {
             let backtrace = Backtrace::capture(ctx);
-            log::error!("{backtrace}");
+            tracing::error!("{backtrace}");
         } else {
             tracing::error!(
                 "Backtrace unavailable. Panic happened before panic subsystem initialization."
