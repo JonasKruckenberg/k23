@@ -190,12 +190,7 @@ _run_riscv64 binary *args: (_build_bootimg binary)
         -display none \
         -semihosting-config \
         enable=on,target=native \
-        -smp cpus=8 \
-        -object memory-backend-ram,size=128M,id=m0 \
-        -object memory-backend-ram,size=128M,id=m1 \
-        -numa node,cpus=0-3,nodeid=0,memdev=m0 \
-        -numa node,cpus=4-7,nodeid=1,memdev=m1 \
-        -numa dist,src=0,dst=1,val=20 \
+        -smp 1 \
         -monitor unix:qemu-monitor-socket,server,nowait \
         {{args}}
 
