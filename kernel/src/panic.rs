@@ -5,54 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
+use crate::{arch, backtrace};
+use crate::backtrace::Backtrace;
 use crate::panic::panic_count::MustAbort;
 use alloc::boxed::Box;
 use alloc::string::String;
-use backtrace::{Backtrace, SymbolizeContext};
 use core::any::Any;
 use core::panic::{PanicPayload, UnwindSafe};
 use core::{fmt, mem, slice};
 use loader_api::BootInfo;
 use sync::{LazyLock, OnceLock};
-
-static GLOBAL_PANIC_STATE: OnceLock<GlobalPanicState> = OnceLock::new();
-
-struct GlobalPanicState {
-    kernel_virt_base: u64,
-    elf: &'static [u8],
-}
-
-#[cold]
-pub fn init(boot_info: &BootInfo) {
-    GLOBAL_PANIC_STATE.get_or_init(|| GlobalPanicState {
-        kernel_virt_base: boot_info.kernel_virt.start as u64,
-        // Safety: we have to trust the loaders BootInfo here
-        elf: unsafe {
-            let base = boot_info
-                .physical_address_offset
-                .checked_add(boot_info.kernel_phys.start)
-                .unwrap() as *const u8;
-
-            slice::from_raw_parts(
-                base,
-                boot_info
-                    .kernel_phys
-                    .end
-                    .checked_sub(boot_info.kernel_phys.start)
-                    .unwrap(),
-            )
-        },
-    });
-}
-
-static SYMBOLIZE_CONTEXT: LazyLock<Option<SymbolizeContext>> = LazyLock::new(|| {
-    tracing::debug!("Setting up symbolize context...");
-    let state = GLOBAL_PANIC_STATE.get()?;
-
-    let elf = xmas_elf::ElfFile::new(state.elf).unwrap();
-    Some(SymbolizeContext::new(elf, state.kernel_virt_base).unwrap())
-});
 
 /// Determines whether the current thread is unwinding because of panic.
 #[inline]
@@ -69,7 +31,6 @@ pub fn catch_unwind<F, R>(f: F) -> Result<R, Box<dyn Any + Send + 'static>>
 where
     F: FnOnce() -> R + UnwindSafe,
 {
-    #[expect(tail_expr_drop_order, reason = "")]
     unwind2::catch_unwind(f).inspect_err(|_| {
         panic_count::decrease(); // decrease the panic count, since we caught it
     })
@@ -108,24 +69,19 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 
         tracing::error!("cpu panicked at {loc}:\n{msg}");
 
-        if let Some(ctx) = SYMBOLIZE_CONTEXT.as_ref() {
-            // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
-            //  but (at least at the moment) is absolute overkill for optimized builds. Sadly there
-            //  is no good way to do conditional compilation based on the opt-level.
-            const MAX_BACKTRACE_FRAMES: usize = 32;
+        // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
+        //  but (at least at the moment) is absolute overkill for optimized builds. Sadly there
+        //  is no good way to do conditional compilation based on the opt-level.
+        const MAX_BACKTRACE_FRAMES: usize = 32;
 
-            let backtrace = Backtrace::<MAX_BACKTRACE_FRAMES>::capture(ctx).unwrap();
-            tracing::error!("{backtrace}");
-            if backtrace.frames_omitted > 0 {
-                let total_frames = backtrace.frames.len() + backtrace.frames_omitted;
-                let omitted_frames = backtrace.frames_omitted;
+        let backtrace = Backtrace::<MAX_BACKTRACE_FRAMES>::capture().unwrap();
+        tracing::error!("{backtrace}");
+        
+        if backtrace.frames_omitted > 0 {
+            let total_frames = backtrace.frames.len() + backtrace.frames_omitted;
+            let omitted_frames = backtrace.frames_omitted;
 
-                tracing::warn!("Stack trace was {total_frames} frames, but backtrace buffer capacity was {MAX_BACKTRACE_FRAMES}. Omitted {omitted_frames} frames. Consider increasing `MAX_BACKTRACE_FRAMES` to at least {total_frames} to capture the entire trace.");
-            }
-        } else {
-            tracing::error!(
-                "Backtrace unavailable. Panic happened before panic subsystem initialization."
-            );
+            tracing::warn!("Stack trace was {total_frames} frames, but backtrace buffer capacity was {MAX_BACKTRACE_FRAMES}. Omitted {omitted_frames} frames. Consider increasing `MAX_BACKTRACE_FRAMES` to at least {total_frames} to capture the entire trace.");
         }
 
         panic_count::finished_panic_hook();
@@ -171,7 +127,7 @@ fn construct_panic_payload(info: &core::panic::PanicInfo) -> Box<dyn Any + Send>
             // Lazily, the first time this gets called, run the actual string formatting.
             self.string.get_or_insert_with(|| {
                 let mut s = String::new();
-                let mut fmt = fmt::Formatter::new(&mut s);
+                let mut fmt = fmt::Formatter::new(&mut s, fmt::FormattingOptions::new());
                 let _err = fmt::Display::fmt(&inner, &mut fmt);
                 s
             })

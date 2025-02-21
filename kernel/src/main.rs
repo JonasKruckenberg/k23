@@ -46,6 +46,7 @@ mod traps;
 mod util;
 mod vm;
 mod wasm;
+mod backtrace;
 
 use crate::device_tree::device_tree;
 use crate::error::Error;
@@ -61,6 +62,7 @@ use cpu_local::cpu_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use backtrace::Backtrace;
 use sync::Once;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
@@ -136,6 +138,10 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
+        // initialize the backtracing subsystem after the allocator has been set up
+        // since setting up the symbolization context requires allocation
+        backtrace::init(boot_info);
+
         let devtree = device_tree::init(fdt).unwrap();
         tracing::debug!("{devtree:?}");
 
@@ -143,11 +149,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
         // fully initialize the tracing subsystem now that we can allocate
         tracing::init(cmdline.log);
-
-        // initialize the panic backtracing subsystem after the allocator has been set up
-        // since setting up the symbolization context requires allocation
-        panic::init(boot_info);
-
+        
         // perform global, architecture-specific initialization
         arch::init_early();
 
