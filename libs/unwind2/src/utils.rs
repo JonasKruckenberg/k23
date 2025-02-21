@@ -47,7 +47,7 @@ pub unsafe fn deref_pointer(ptr: Pointer) -> u64 {
 }
 
 // Helper function to turn `save_context` which takes function pointer to a closure-taking function.
-pub fn with_context<T, F: FnOnce(&mut arch::Context) -> T>(f: F) -> T {
+pub fn with_context<T, F: FnOnce(&mut arch::Registers, usize) -> T>(f: F) -> T {
     use core::mem::ManuallyDrop;
 
     union Data<T, F> {
@@ -55,8 +55,8 @@ pub fn with_context<T, F: FnOnce(&mut arch::Context) -> T>(f: F) -> T {
         t: ManuallyDrop<T>,
     }
 
-    extern "C" fn delegate<T, F: FnOnce(&mut arch::Context) -> T>(
-        ctx: &mut arch::Context,
+    extern "C" fn delegate<T, F: FnOnce(&mut arch::Registers, usize) -> T>(
+        regs: &mut arch::Registers,
         ptr: *mut (),
     ) {
         // SAFETY: This function is called exactly once; it extracts the function, call it and
@@ -64,7 +64,12 @@ pub fn with_context<T, F: FnOnce(&mut arch::Context) -> T>(f: F) -> T {
         // unwinding past it.
         unsafe {
             let data = &mut *ptr.cast::<Data<T, F>>();
-            let t = ManuallyDrop::take(&mut data.f)(ctx);
+
+            // Due to the way we capture the register context the effective program counter for unwinding
+            // is the return address. TODO explain why
+            let pc = regs[arch::RA];
+
+            let t = ManuallyDrop::take(&mut data.f)(regs, pc);
             data.t = ManuallyDrop::new(t);
         }
     }

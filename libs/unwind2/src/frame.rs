@@ -16,18 +16,19 @@ use gimli::{
 
 #[derive(Debug)]
 pub struct Frame<'a> {
-    ctx: arch::Context,
+    regs: arch::Registers,
     fde: FrameDescriptionEntry<EndianSlice<'a, NativeEndian>, usize>,
     row: UnwindTableRow<usize, StoreOnStack>,
+    return_address_register: Register,
 }
 
 impl<'a> Frame<'a> {
     pub fn ip(&self) -> usize {
-        self.ctx[arch::RA]
+        self.regs[self.return_address_register]
     }
 
     pub fn sp(&self) -> usize {
-        self.ctx[arch::SP]
+        self.regs[arch::SP]
     }
 
     pub fn personality(&self) -> Option<u64> {
@@ -64,15 +65,15 @@ impl<'a> Frame<'a> {
 
     pub(crate) fn adjust_stack_for_args(&mut self) {
         let size = self.row.saved_args_size();
-        self.ctx[arch::SP] = self.ctx[arch::SP].wrapping_add(usize::try_from(size).unwrap());
+        self.regs[arch::SP] = self.regs[arch::SP].wrapping_add(usize::try_from(size).unwrap());
     }
 
     pub fn set_ip(&mut self, value: usize) {
-        self.ctx[arch::RA] = value;
+        self.regs[self.return_address_register] = value;
     }
 
     pub fn set_reg(&mut self, reg: Register, value: usize) {
-        self.ctx[reg] = value;
+        self.regs[reg] = value;
     }
 
     /// Restore control to this frame.
@@ -83,89 +84,97 @@ impl<'a> Frame<'a> {
     /// any checking**. If used improperly, much terrible things will happen, big sadness.
     pub unsafe fn restore(self) -> ! {
         // Safety: caller has to ensure this is safe
-        unsafe { arch::restore_context(&self.ctx) }
+        unsafe { arch::restore_context(&self.regs) }
     }
 
-    fn from_context(ctx: &arch::Context, signal: bool) -> Result<Option<Self>, gimli::Error> {
-        let mut ra = ctx[arch::RA];
-
-        // Reached end of stack
-        if ra == 0 {
-            return Ok(None);
-        }
-
-        // RA points to the *next* instruction, so move it back 1 byte for the call instruction.
-        if !signal {
-            ra -= 1;
-        }
-
+    fn from_context(regs: &arch::Registers, pc: usize) -> Result<Self, gimli::Error> {
         let eh_info = obtain_eh_info();
 
         let fde = eh_info.hdr.table().unwrap().fde_for_address(
             &eh_info.eh_frame,
             &eh_info.bases,
-            ra as u64,
+            pc as u64,
             EhFrame::cie_from_offset,
         )?;
 
         let mut unwinder = gimli::UnwindContext::new_in();
 
         let row = fde
-            .unwind_info_for_address(&eh_info.eh_frame, &eh_info.bases, &mut unwinder, ra as u64)?
+            .unwind_info_for_address(&eh_info.eh_frame, &eh_info.bases, &mut unwinder, pc as u64)?
             .clone();
 
-        Ok(Some(Self {
+        Ok(Self {
+            return_address_register: fde.cie().return_address_register(),
             fde,
             row,
-            ctx: ctx.clone(),
-        }))
+            regs: regs.clone(),
+        })
     }
-
+    
     #[expect(
         clippy::cast_sign_loss,
         clippy::cast_possible_truncation,
         reason = "numeric casts are all checked and behave as expected"
     )]
-    fn unwind(&self) -> Result<arch::Context, gimli::Error> {
+    fn unwind(&self) -> Result<arch::Registers, gimli::Error> {
         let row = &self.row;
-        let mut new_ctx = self.ctx.clone();
-
+        let mut new_regs = self.regs.clone();
+        
         #[expect(clippy::match_wildcard_for_single_variants, reason = "style choice")]
         let cfa = match *row.cfa() {
             CfaRule::RegisterAndOffset { register, offset } => {
-                self.ctx[register].wrapping_add(offset as usize)
+                self.regs[register].wrapping_add(offset as usize)
             }
             _ => return Err(gimli::Error::UnsupportedEvaluation),
         };
 
-        new_ctx[arch::SP] = cfa;
-        new_ctx[arch::RA] = 0;
-
-        for (reg, rule) in row.registers() {
-            let value = match *rule {
-                RegisterRule::Undefined | RegisterRule::SameValue => self.ctx[*reg],
+        new_regs[arch::SP] = cfa;
+        
+        debug_assert_eq!(self.return_address_register, arch::RA);
+        new_regs[self.return_address_register] = 0;
+        
+        for reg in 0..64 {
+            let reg = Register(reg as u16);
+        
+            let rule = row.register(reg);
+            
+            match rule {
+                // According to LLVM libunwind (and this appears to be true in practice as well)
+                // leaf functions don't actually store their return address on the stack instead 
+                // keeping it in register and there is no explicit EH_FRAME instruction on how to restore it.
+                // (great btw that stuff like this is well documented - not)
+                // This means if the register is the return address register AND there isn't a register 
+                // rule for it, we need to maintain it nonetheless.
+                RegisterRule::Undefined if reg == self.return_address_register => {
+                    new_regs[reg] = self.regs[self.return_address_register]
+                }
+                RegisterRule::Undefined => {},
+                RegisterRule::SameValue => new_regs[reg] = self.regs[reg],
                 // Safety: we have to trust the DWARF info here
                 RegisterRule::Offset(offset) => unsafe {
-                    *(cfa.wrapping_add(offset as usize) as *const usize)
+                    new_regs[reg] = *(cfa.wrapping_add(offset as usize) as *const usize)
                 },
-                RegisterRule::ValOffset(offset) => cfa.wrapping_add(offset as usize),
+                RegisterRule::ValOffset(offset) => new_regs[reg] = cfa.wrapping_add(offset as usize),
+                RegisterRule::Register(reg) => new_regs[reg] = self.regs[reg],
                 RegisterRule::Expression(_) | RegisterRule::ValExpression(_) => {
                     return Err(gimli::Error::UnsupportedEvaluation)
                 }
-                RegisterRule::Constant(value) => usize::try_from(value).unwrap(),
+                RegisterRule::Architectural => unreachable!(),
+                RegisterRule::Constant(value) => new_regs[reg] = usize::try_from(value).unwrap(),
                 _ => unreachable!(),
-            };
-            new_ctx[*reg] = value;
+            }
         }
 
-        Ok(new_ctx)
+        Ok(new_regs)
     }
 }
 
 #[derive(Clone)]
 pub struct FramesIter {
-    ctx: arch::Context,
+    regs: arch::Registers,
     signal: bool,
+    pc: usize,
+    limit: usize
 }
 
 impl Default for FramesIter {
@@ -177,14 +186,21 @@ impl Default for FramesIter {
 impl FramesIter {
     #[inline(always)]
     pub fn new() -> Self {
-        with_context(|ctx| Self {
-            ctx: ctx.clone(),
+        with_context(|ctx, pc| Self {
+            pc,
+            regs: ctx.clone(),
             signal: false,
+            limit: 64
         })
     }
 
-    pub fn from_context(ctx: arch::Context) -> Self {
-        Self { ctx, signal: false }
+    pub fn from_registers(regs: arch::Registers, pc: usize) -> Self {
+        Self {
+            regs,
+            signal: false,
+            pc,
+            limit: 64
+        }
     }
 }
 
@@ -193,12 +209,31 @@ impl FallibleIterator for FramesIter {
     type Error = crate::Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        if let Some(frame) = Frame::from_context(&self.ctx, self.signal)? {
-            self.ctx = frame.unwind()?;
-            self.signal = frame.is_signal_trampoline();
-            Ok(Some(frame))
-        } else {
-            Ok(None)
+        debug_assert!(self.limit > 0);
+        let mut pc = self.pc;
+
+        // The previous call to `Frame::unwind` set the return address to zero (meaning there was no
+        // information on how to restore the return address) this means we're done walking the stack.
+        // Reached end of stack
+        if pc == 0 {
+            return Ok(None);
         }
+
+        // RA points to the *next* instruction, so move it back 1 byte for the call instruction.
+        if !self.signal {
+            pc -= 1;
+        }
+
+        let frame = Frame::from_context(&self.regs, pc)?;
+        self.regs = frame.unwind()?;
+        self.signal = frame.is_signal_trampoline();
+
+        // Use the return address as the next value of `pc` this essentially simulates a
+        // function return.
+        self.pc = self.regs[arch::RA];
+        
+        self.limit -= 1;
+
+        Ok(Some(frame))
     }
 }

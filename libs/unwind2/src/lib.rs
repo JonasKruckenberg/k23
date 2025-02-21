@@ -42,7 +42,7 @@ pub use error::Error;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FramesIter};
 
-pub use arch::Context;
+pub use arch::Registers;
 
 pub(crate) type Result<T> = core::result::Result<T, Error>;
 
@@ -50,18 +50,18 @@ pub(crate) type Result<T> = core::result::Result<T, Error>;
 ///
 /// Returns an error if unwinding fails.
 pub fn begin_panic(data: Box<dyn Any + Send>) -> Result<()> {
-    with_context(|ctx| {
-        raise_exception_phase_1(ctx.clone())?;
+    with_context(|regs, pc| {
+        let frames = FramesIter::from_registers(regs.clone(), pc);
 
-        raise_exception_phase2(ctx.clone(), Exception::wrap(data))?;
+        raise_exception_phase_1(frames.clone())?;
+
+        raise_exception_phase2(frames, Exception::wrap(data))?;
 
         Ok(())
     })
 }
 
-fn raise_exception_phase_1(ctx: arch::Context) -> Result<usize> {
-    let mut frames = FramesIter::from_context(ctx);
-
+fn raise_exception_phase_1(mut frames: FramesIter) -> Result<usize> {
     while let Some(frame) = frames.next()? {
         if frame
             .personality()
@@ -91,9 +91,7 @@ fn raise_exception_phase_1(ctx: arch::Context) -> Result<usize> {
     Err(Error::EndOfStack)
 }
 
-fn raise_exception_phase2(ctx: arch::Context, exception: *mut Exception) -> Result<()> {
-    let mut frames = FramesIter::from_context(ctx);
-
+fn raise_exception_phase2(mut frames: FramesIter, exception: *mut Exception) -> Result<()> {
     while let Some(mut frame) = frames.next()? {
         if frame
             .personality()

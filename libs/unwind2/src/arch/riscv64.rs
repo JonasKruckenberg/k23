@@ -26,13 +26,13 @@ compile_error!("RISC-V with only F extension is not supported");
 
 #[repr(C)]
 #[derive(Clone, Default)]
-pub struct Context {
+pub struct Registers {
     pub gp: [usize; 32],
     #[cfg(target_feature = "d")]
     pub fp: [usize; 32],
 }
 
-impl fmt::Debug for Context {
+impl fmt::Debug for Registers {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut fmt = fmt.debug_struct("Context");
         for i in 0..=31u16 {
@@ -52,7 +52,7 @@ impl fmt::Debug for Context {
     }
 }
 
-impl ops::Index<Register> for Context {
+impl ops::Index<Register> for Registers {
     type Output = usize;
 
     fn index(&self, reg: Register) -> &usize {
@@ -60,12 +60,12 @@ impl ops::Index<Register> for Context {
             Register(0..=31) => &self.gp[reg.0 as usize],
             #[cfg(target_feature = "d")]
             Register(32..=63) => &self.fp[(reg.0 - 32) as usize],
-            _ => unimplemented!(),
+            _ => unimplemented!("register {reg:?}"),
         }
     }
 }
 
-impl ops::IndexMut<gimli::Register> for Context {
+impl ops::IndexMut<gimli::Register> for Registers {
     fn index_mut(&mut self, reg: Register) -> &mut usize {
         match reg {
             Register(0..=31) => &mut self.gp[reg.0 as usize],
@@ -187,7 +187,7 @@ macro_rules! code {
 }
 
 #[naked]
-pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), ptr: *mut ()) {
+pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()), ptr: *mut ()) {
     // No need to save caller-saved registers here.
     #[cfg(target_feature = "d")]
     // Safety: inline assembly
@@ -244,7 +244,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Context, *mut ()), p
 ///
 /// This function will restore whatever values are in the given `Context` into the machine registers
 /// **without** performing any sort of validation.
-pub unsafe fn restore_context(ctx: &Context) -> ! {
+pub unsafe fn restore_context(ctx: &Registers) -> ! {
     #[cfg(target_feature = "d")]
     // Safety: inline assembly
     unsafe {
