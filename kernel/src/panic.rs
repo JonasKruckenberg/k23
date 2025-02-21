@@ -93,7 +93,6 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             arch::abort("cpu caused non-unwinding panic. aborting.");
         }
 
-        #[expect(tail_expr_drop_order, reason = "")]
         rust_panic(construct_panic_payload(info))
     })
 }
