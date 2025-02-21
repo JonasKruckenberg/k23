@@ -90,7 +90,6 @@ missing_errors_doc = "deny"
 
 [workspace.dependencies]
 addr2line = { path = "libs/addr2line" }
-backtrace = { path = "libs/backtrace" }
 leb128 = { path = "libs/leb128" }
 linked-list = { path = "libs/linked-list" }
 mpsc-queue = { path = "libs/mpsc-queue" }

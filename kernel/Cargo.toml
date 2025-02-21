@@ -18,13 +18,14 @@ cpu-local.workspace = true
 sync = { workspace = true, features = ["thread-local", "lock_api"] }
 linked-list.workspace = true
 unwind2.workspace = true
-backtrace.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
 mpsc-queue.workspace = true
 fdt.workspace = true
 ksharded-slab.workspace = true
 ktest.workspace = true
+addr2line.workspace = true
 
+rustc-demangle.workspace = true
 log.workspace = true
 cfg-if.workspace = true
 talc.workspace = true
