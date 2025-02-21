@@ -43,7 +43,7 @@ impl<'a, 'data, const MAX_FRAMES: usize> Backtrace<'a, 'data, MAX_FRAMES> {
     }
 
     /// Constructs a backtrace from the provided register context, returning an owned representation.
-    /// 
+    ///
     /// The returned object is almost entirely self-contained. It can be cloned, or send to other threads.
     ///
     /// Note that this step is quite cheap, contrary to the `Backtrace` implementation in the standard
@@ -62,8 +62,11 @@ impl<'a, 'data, const MAX_FRAMES: usize> Backtrace<'a, 'data, MAX_FRAMES> {
         let iter = FrameIter::from_registers(regs, ip);
         Self::new_inner(ctx, iter)
     }
-    
-    fn new_inner(ctx: &'a SymbolizeContext<'data>, mut iter: FrameIter) -> Result<Self, unwind2::Error> {
+
+    fn new_inner(
+        ctx: &'a SymbolizeContext<'data>,
+        mut iter: FrameIter,
+    ) -> Result<Self, unwind2::Error> {
         let mut frames = ArrayVec::new();
         let mut frames_omitted: usize = 0;
 
