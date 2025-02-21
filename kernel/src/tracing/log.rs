@@ -8,7 +8,7 @@
 use log::Record;
 use sync::LazyLock;
 use tracing::field;
-use tracing_core::{dispatch, identify_callsite, Callsite, Collect, Event, Kind, Level, Metadata};
+use tracing_core::{Callsite, Collect, Event, Kind, Level, Metadata, dispatch, identify_callsite};
 
 impl log::Log for super::Subscriber {
     fn enabled(&self, metadata: &log::Metadata) -> bool {

@@ -13,7 +13,7 @@
 #![feature(new_range_api)]
 #![feature(debug_closure_helpers)]
 #![expect(internal_features, reason = "panic internals")]
-#![feature(std_internals, panic_can_unwind, fmt_internals)]
+#![feature(std_internals, panic_can_unwind, formatting_options)]
 #![feature(step_trait)]
 #![feature(box_into_inner)]
 #![feature(let_chains)]
@@ -23,7 +23,6 @@
 #![feature(if_let_guard)]
 #![feature(allocator_api)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
-#![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
 extern crate alloc;
 
@@ -49,8 +48,8 @@ mod wasm;
 
 use crate::device_tree::device_tree;
 use crate::error::Error;
-use crate::time::clock::Ticks;
 use crate::time::Instant;
+use crate::time::clock::Ticks;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use cfg_if::cfg_if;
@@ -62,8 +61,8 @@ use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::Once;
-use vm::frame_alloc;
 use vm::PhysicalAddress;
+use vm::frame_alloc;
 
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value

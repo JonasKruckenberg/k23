@@ -103,7 +103,7 @@ impl<T> Future for JoinHandle<T> {
                     kind,
                     id: this.id,
                     output: None,
-                }))
+                }));
             }
         };
 
@@ -188,7 +188,6 @@ impl<T> PartialEq<&'_ JoinHandle<T>> for Id {
 }
 
 impl<T> JoinHandle<T> {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub(crate) fn new(task: TaskRef) -> Self {
         task.state().create_join_handle();
 
@@ -240,7 +239,6 @@ impl JoinError<()> {
 }
 
 impl<T> JoinError<T> {
-    #[expect(tail_expr_drop_order, reason = "TODO")]
     pub(super) fn panic(id: Id, err: Box<dyn Any + Send + 'static>) -> Self {
         Self {
             kind: JoinErrorKind::Panic(err),
@@ -308,7 +306,6 @@ impl<T> JoinError<T> {
     /// }
     /// ```
     #[track_caller]
-    #[expect(tail_expr_drop_order, reason = "TODO")]
     pub fn into_panic(self) -> Box<dyn Any + Send + 'static> {
         self.try_into_panic()
             .expect("`JoinError` reason is not a panic.")

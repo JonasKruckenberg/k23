@@ -973,7 +973,9 @@ where
                 shard.clear_after_release(self.key);
             } else {
                 log::trace!("-> shard={:?} does not exist! THIS IS A BUG", shard_idx);
-                panic!("[internal error] tried to drop an `OwnedEntry` to a slot on a shard that never existed!");
+                panic!(
+                    "[internal error] tried to drop an `OwnedEntry` to a slot on a shard that never existed!"
+                );
             }
         }
     }

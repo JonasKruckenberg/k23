@@ -6,7 +6,7 @@ use crate::wasm::memory::Memory;
 use crate::wasm::runtime::{ConstExprEvaluator, Imports, InstanceAllocator};
 use crate::wasm::store::Stored;
 use crate::wasm::table::Table;
-use crate::wasm::{runtime, Export, Extern, Module, Store};
+use crate::wasm::{Export, Extern, Module, Store, runtime};
 
 /// An instantiated WebAssembly module.
 ///

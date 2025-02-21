@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::{arch, Error};
+use crate::{Error, arch};
 use alloc::boxed::Box;
 use core::any::Any;
 use core::ffi::c_int;

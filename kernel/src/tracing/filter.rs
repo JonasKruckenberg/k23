@@ -82,7 +82,6 @@ impl FromStr for Filter {
 }
 
 impl Filter {
-    #[expect(tail_expr_drop_order, reason = "")]
     fn from_directives(
         mut directives: impl FallibleIterator<Item = Directive, Error = Error>,
     ) -> Result<Self, Error> {
@@ -143,7 +142,9 @@ impl Filter {
                 (feature, format!("{} ", filter))
             };
             let (feature, earlier_level) = help_msg();
-            tracing::warn!("to enable {earlier_level}logging, remove the `{feature}` feature from the `tracing` crate");
+            tracing::warn!(
+                "to enable {earlier_level}logging, remove the `{feature}` feature from the `tracing` crate"
+            );
         }
 
         tracing::debug!("{enabled:?} {max_level:?}");

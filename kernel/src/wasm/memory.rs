@@ -1,6 +1,6 @@
 use crate::wasm::runtime::VMMemoryImport;
 use crate::wasm::store::Stored;
-use crate::wasm::{runtime, Store};
+use crate::wasm::{Store, runtime};
 
 /// A WebAssembly linear memory instance.
 #[derive(Debug, Clone, Copy)]

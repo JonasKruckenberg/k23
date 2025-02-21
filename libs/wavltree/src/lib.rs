@@ -274,8 +274,6 @@ pub use utils::Side;
 ///
 /// [intrusive collection]: crate#intrusive-data-structures
 /// [`Unpin`]: Unpin
-/// [doubly-linked list]: crate::list
-/// [MSPC queue]: crate::mpsc_queue
 /// [Stacked Borrows]: https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md
 pub unsafe trait Linked {
     /// The handle owning nodes in the tree.

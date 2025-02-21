@@ -1,5 +1,5 @@
 use super::FreeList;
-use crate::{cfg, clear::Clear, Pack, Tid};
+use crate::{Pack, Tid, cfg, clear::Clear};
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, marker::PhantomData, mem, ptr};
@@ -251,7 +251,8 @@ where
         let next_gen = generation.advance();
         loop {
             let current_gen = LifecycleGen::from_packed(lifecycle).0;
-            log::trace!("-> release_with; lifecycle={:#x}; expected_gen={:?}; current_gen={:?}; next_gen={:?};",
+            log::trace!(
+                "-> release_with; lifecycle={:#x}; expected_gen={:?}; current_gen={:?}; next_gen={:?};",
                 lifecycle,
                 generation,
                 current_gen,
@@ -883,8 +884,16 @@ impl<T, C: cfg::Config> InitGuard<T, C> {
                 refs,
             );
 
-            debug_assert!(state == State::Marked, "state was not MARKED; someone else has removed the slot while we have exclusive access!\nactual={:?}", state);
-            debug_assert!(refs.value == 0, "ref count was not 0; someone else has referenced the slot while we have exclusive access!\nactual={:?}", refs);
+            debug_assert!(
+                state == State::Marked,
+                "state was not MARKED; someone else has removed the slot while we have exclusive access!\nactual={:?}",
+                state
+            );
+            debug_assert!(
+                refs.value == 0,
+                "ref count was not 0; someone else has referenced the slot while we have exclusive access!\nactual={:?}",
+                refs
+            );
 
             let new_lifecycle = LifecycleGen(self.generation()).pack(State::Removing as usize);
 

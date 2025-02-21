@@ -1,6 +1,6 @@
 use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 use crate::wasm::runtime::{VMContext, VMOpaqueContext, VMVal};
-use crate::wasm::{runtime, Engine};
+use crate::wasm::{Engine, runtime};
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::{fmt, mem};

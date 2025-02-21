@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::{maybe_small, Error, Function, InlinedFunction, ResUnit};
+use crate::{Error, Function, InlinedFunction, ResUnit, maybe_small};
 use core::iter;
 use fallible_iterator::FallibleIterator;
 

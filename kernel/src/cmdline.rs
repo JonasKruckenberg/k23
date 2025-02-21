@@ -27,7 +27,6 @@ pub struct Cmdline {
 impl FromStr for Cmdline {
     type Err = Error;
 
-    #[expect(tail_expr_drop_order, reason = "")]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut log = None;
 

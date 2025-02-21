@@ -7,7 +7,7 @@
 
 //! Timer Extension
 
-use super::{sbi_call, EID_TIME};
+use super::{EID_TIME, sbi_call};
 
 /// # Errors
 ///

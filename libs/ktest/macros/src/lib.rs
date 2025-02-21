@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 // use std::{fs, path::PathBuf};
-use syn::{parse_macro_input, parse_quote, Attribute, Error, ItemFn, Path};
+use syn::{Attribute, Error, ItemFn, Path, parse_macro_input, parse_quote};
 
 #[proc_macro_attribute]
 pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {

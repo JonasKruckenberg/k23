@@ -12,7 +12,7 @@ use core::{fmt, iter, mem, slice};
 use fallible_iterator::FallibleIterator;
 use fdt::{CellSizes, Error, Fdt, NodeName, StringList};
 use hashbrown::HashMap;
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 use sync::OnceLock;
 
 type Link<T> = Option<NonNull<T>>;
@@ -173,7 +173,6 @@ impl<'a> Device<'a> {
 
     /// Matches the device `compatible` string against the given list of strings.
     pub fn is_compatible<'b>(&self, compats: impl IntoIterator<Item = &'b str>) -> bool {
-        #[expect(tail_expr_drop_order, reason = "")]
         compats.into_iter().any(|c| self.compatible.contains(c))
     }
 
@@ -490,7 +489,6 @@ pub fn init(fdt: &[u8]) -> crate::Result<&'static DeviceTree> {
                 stack[depth] = Some(ptr);
             }
 
-            #[expect(tail_expr_drop_order, reason = "")]
             Ok(DeviceTreeInner { phandle2ptr, root })
         })
     })

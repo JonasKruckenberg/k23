@@ -7,7 +7,7 @@
 
 //! RFENCE Extension
 
-use super::{sbi_call, EID_RFNC};
+use super::{EID_RFNC, sbi_call};
 
 /// # Errors
 ///

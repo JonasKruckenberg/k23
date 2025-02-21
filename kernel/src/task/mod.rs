@@ -18,7 +18,7 @@ use core::alloc::{AllocError, Allocator};
 use core::any::type_name;
 use core::cell::UnsafeCell;
 use core::future::Future;
-use core::mem::{offset_of, MaybeUninit};
+use core::mem::{MaybeUninit, offset_of};
 use core::panic::AssertUnwindSafe;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -297,7 +297,6 @@ pub(crate) enum Stage<F: Future> {
 }
 
 impl TaskRef {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub(crate) fn try_new_in<F, S, A>(
         future: F,
         scheduler: S,
@@ -599,7 +598,6 @@ where
         wake_by_ref: Schedulable::<S>::wake_by_ref,
     };
 
-    #[expect(tail_expr_drop_order, reason = "")]
     pub const fn new(future: F, scheduler: S, task_id: Id, span: tracing::Span) -> Self {
         Self {
             schedulable: Schedulable {

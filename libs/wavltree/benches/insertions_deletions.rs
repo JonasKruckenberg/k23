@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use rand::prelude::SliceRandom;
 use rand::thread_rng;
 use std::fmt;

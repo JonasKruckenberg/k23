@@ -1,7 +1,7 @@
 use crate::vm::AddressSpace;
 use crate::wasm::compile::{CompileInputs, CompiledFunctionInfo};
 use crate::wasm::indices::{DefinedFuncIndex, EntityIndex, VMSharedTypeIndex};
-use crate::wasm::runtime::{code_registry, CodeMemory};
+use crate::wasm::runtime::{CodeMemory, code_registry};
 use crate::wasm::runtime::{MmapVec, VMOffsets};
 use crate::wasm::translate::{Import, TranslatedModule};
 use crate::wasm::type_registry::RuntimeTypeCollection;
@@ -54,7 +54,6 @@ impl Module {
     /// # Panics
     ///
     /// TODO
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn from_bytes(
         engine: &Engine,
         store: &mut Store,

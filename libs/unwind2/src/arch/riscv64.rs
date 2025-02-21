@@ -212,6 +212,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()),
                 // No need to save caller-saved registers here.
                 naked_asm! {
                     "
+                    .cfi_startproc
                     mv t0, sp
                     add sp, sp, -0x210
                     .cfi_def_cfa_offset 0x210
@@ -229,6 +230,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()),
                     .cfi_def_cfa_offset 0
                     .cfi_restore ra
                     ret
+                    .cfi_endproc
                     "
                 };
             } else {

@@ -6,11 +6,11 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
+use crate::TRAP_STACK_SIZE_PAGES;
 use crate::arch::PAGE_SIZE;
 use crate::scheduler::scheduler;
 use crate::traps::TrapReason;
 use crate::vm::VirtualAddress;
-use crate::TRAP_STACK_SIZE_PAGES;
 use core::arch::{asm, naked_asm};
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
@@ -261,7 +261,9 @@ fn default_trap_handler(
 
     let cause = scause::read().cause();
 
-    tracing::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
+    tracing::trace!(
+        "trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}"
+    );
     let epc = sepc::read();
     let tval = stval::read();
     tracing::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());

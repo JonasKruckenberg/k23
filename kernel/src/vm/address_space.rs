@@ -7,8 +7,8 @@
 
 use crate::vm::address_space_region::AddressSpaceRegion;
 use crate::vm::{
-    frame_alloc, AddressRangeExt, ArchAddressSpace, Error, Flush, PageFaultFlags, Permissions,
-    PhysicalAddress, VirtualAddress,
+    AddressRangeExt, ArchAddressSpace, Error, Flush, PageFaultFlags, Permissions, PhysicalAddress,
+    VirtualAddress, frame_alloc,
 };
 use crate::{arch, bail, ensure};
 use alloc::boxed::Box;
@@ -19,8 +19,8 @@ use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::range::{Bound, Range, RangeBounds};
-use rand::distr::Uniform;
 use rand::Rng;
+use rand::distr::Uniform;
 use rand_chacha::ChaCha20Rng;
 
 // const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();

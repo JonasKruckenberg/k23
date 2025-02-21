@@ -1,8 +1,8 @@
 use crate::vm::AddressSpace;
+use crate::wasm::TABLE_MAX;
 use crate::wasm::runtime::{MmapVec, VMFuncRef, VMTableDefinition};
 use crate::wasm::translate::TableDesc;
 use crate::wasm::utils::round_usize_up_to_host_pages;
-use crate::wasm::TABLE_MAX;
 use core::ptr::NonNull;
 
 #[derive(Debug)]

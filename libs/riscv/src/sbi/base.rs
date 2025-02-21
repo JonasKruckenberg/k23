@@ -7,7 +7,7 @@
 
 //! Base Extension
 
-use super::{sbi_call, EID_BASE};
+use super::{EID_BASE, sbi_call};
 
 pub struct SbiVersion {
     pub minor: usize,

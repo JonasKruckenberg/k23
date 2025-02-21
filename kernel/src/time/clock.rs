@@ -90,7 +90,10 @@ impl Clock {
             );
         };
         let Some(secs) = secs.checked_add(extra_secs) else {
-            panic!("ticks_to_dur({:?}, {ticks:?}): extra seconds from nanos ({extra_secs}s) would overflow total seconds", self.tick_duration)
+            panic!(
+                "ticks_to_dur({:?}, {ticks:?}): extra seconds from nanos ({extra_secs}s) would overflow total seconds",
+                self.tick_duration
+            )
         };
         debug_assert!(nanos < u32::try_from(NANOS_PER_SEC).unwrap());
         Duration::new(secs, nanos)

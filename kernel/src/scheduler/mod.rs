@@ -89,7 +89,6 @@ static SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
 pub fn init(num_cores: usize) -> &'static Scheduler {
     static TASK_STUB: TaskStub = TaskStub::new();
 
-    #[expect(tail_expr_drop_order, reason = "")]
     SCHEDULER.get_or_init(|| Scheduler {
         cores: CpuLocal::with_capacity(num_cores),
         remotes: CpuLocal::with_capacity(num_cores),
@@ -268,7 +267,6 @@ impl Worker {
     pub fn new(scheduler: &'static Scheduler, cpuid: usize, rng: &mut impl RngCore) -> Self {
         let (steal, run_queue) = queue::new();
 
-        #[expect(tail_expr_drop_order, reason = "")]
         scheduler.cores.get_or(|| {
             RefCell::new(Core {
                 lifo_slot: None,
@@ -276,7 +274,6 @@ impl Worker {
             })
         });
 
-        #[expect(tail_expr_drop_order, reason = "")]
         scheduler.remotes.get_or(|| Remote {
             steal,
             timer: Timer::new(),

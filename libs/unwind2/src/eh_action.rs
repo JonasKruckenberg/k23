@@ -7,7 +7,7 @@
 
 use crate::frame::Frame;
 use crate::utils::deref_pointer;
-use gimli::{constants, EndianSlice, NativeEndian, Pointer, Reader};
+use gimli::{EndianSlice, NativeEndian, Pointer, Reader, constants};
 
 #[derive(Debug)]
 pub enum EHAction {

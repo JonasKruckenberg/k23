@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 #![no_std]
-#![expect(tail_expr_drop_order, reason = "vetted")]
 
 mod symbolize;
 

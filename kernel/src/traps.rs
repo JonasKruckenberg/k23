@@ -13,7 +13,7 @@ use core::cell::Cell;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::ControlFlow;
 use core::ptr;
-use core::ptr::{addr_of_mut, NonNull};
+use core::ptr::{NonNull, addr_of_mut};
 use cpu_local::cpu_local;
 
 cpu_local! {

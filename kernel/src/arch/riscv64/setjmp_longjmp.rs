@@ -72,7 +72,7 @@ pub type JmpBuf = *const JmpBufStruct;
 /// This function pretty weird, it can return more than one time:
 /// - The first time it returns, the return value is `0` indicating that the context has been saved.
 /// - Subsequently, calls to `longjmp` that transfer control to the `*mut JumpBuf` used by this `setjmp`
-///     will cause this function to return again, this time with the value passed to `longjmp`.
+///   will cause this function to return again, this time with the value passed to `longjmp`.
 ///
 /// This implementation has been adapted from the [LLVM libc implementation (Apache License v2.0 with LLVM Exceptions)](https://github.com/llvm/llvm-project/blob/bbf2ad026eb0b399364a889799ef6b45878cd299/libc/src/setjmp/riscv/setjmp.cpp)
 ///

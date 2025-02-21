@@ -7,7 +7,7 @@
 
 //! IPI Extension
 
-use super::{sbi_call, EID_IPI};
+use super::{EID_IPI, sbi_call};
 
 /// # Errors
 ///

@@ -1,6 +1,6 @@
 use crate::wasm::runtime::VMGlobalImport;
 use crate::wasm::store::Stored;
-use crate::wasm::{runtime, Store, Val};
+use crate::wasm::{Store, Val, runtime};
 
 /// A WebAssembly global instance.
 #[derive(Debug, Clone, Copy)]

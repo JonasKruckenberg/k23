@@ -7,7 +7,7 @@
 
 use crate::exception::Exception;
 use crate::utils::with_context;
-use crate::{arch, raise_exception_phase2, Error, FrameIter};
+use crate::{Error, FrameIter, arch, raise_exception_phase2};
 
 #[lang = "eh_personality"]
 extern "C" fn personality_stub() {}

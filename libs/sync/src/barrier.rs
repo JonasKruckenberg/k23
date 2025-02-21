@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::loom_const_fn;
 use crate::Mutex;
+use crate::loom::loom_const_fn;
 use core::hint;
 
 pub struct Barrier {
@@ -68,9 +68,9 @@ impl BarrierWaitResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loom::thread;
     use crate::loom::Arc;
-    use std::sync::mpsc::{channel, TryRecvError};
+    use crate::loom::thread;
+    use std::sync::mpsc::{TryRecvError, channel};
 
     #[test]
     fn test_barrier() {

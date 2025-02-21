@@ -5,13 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::CPUID;
 use crate::arch::device;
 use crate::device_tree::DeviceTree;
 use crate::error::Error;
 use crate::irq::InterruptController;
 use crate::time::clock::Ticks;
 use crate::time::{Clock, NANOS_PER_SEC};
-use crate::CPUID;
 use bitflags::bitflags;
 use core::cell::OnceCell;
 use core::str::FromStr;
@@ -82,7 +82,6 @@ pub fn with_cpu<F, R>(f: F) -> R
 where
     F: FnOnce(&Cpu) -> R,
 {
-    #[expect(tail_expr_drop_order, reason = "")]
     CPU.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
 }
 
@@ -90,7 +89,6 @@ pub fn try_with_cpu<F, R>(f: F) -> Result<R, Error>
 where
     F: FnOnce(&Cpu) -> R,
 {
-    #[expect(tail_expr_drop_order, reason = "")]
     CPU.try_with(|cpu_info| Ok(f(cpu_info.get().ok_or(Error::Uninitialized)?)))?
 }
 

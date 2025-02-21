@@ -1,6 +1,7 @@
 mod compile_key;
 mod compiled_function;
 
+use crate::wasm::Engine;
 use crate::wasm::builtins::BuiltinFunctionIndex;
 use crate::wasm::compile::compiled_function::{RelocationTarget, TrapInfo};
 use crate::wasm::indices::DefinedFuncIndex;
@@ -8,7 +9,6 @@ use crate::wasm::translate::{
     FunctionBodyData, ModuleTranslation, ModuleTypes, TranslatedModule, WasmFuncType,
 };
 use crate::wasm::trap::Trap;
-use crate::wasm::Engine;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -119,7 +119,6 @@ pub type CompileInput<'a> =
 pub struct CompileInputs<'a>(Vec<CompileInput<'a>>);
 
 impl<'a> CompileInputs<'a> {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn from_module(
         translation: &'a ModuleTranslation,
         types: &'a ModuleTypes,
@@ -176,7 +175,6 @@ impl<'a> CompileInputs<'a> {
         Self(inputs)
     }
 
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn compile(self, compiler: &dyn Compiler) -> crate::wasm::Result<UnlinkedCompileOutputs> {
         let mut outputs = self
             .0

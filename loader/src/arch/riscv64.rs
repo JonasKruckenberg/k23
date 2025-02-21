@@ -5,11 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::GlobalInitResult;
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
 use crate::machine_info::MachineInfo;
 use crate::mapping::Flags;
-use crate::GlobalInitResult;
 use bitflags::bitflags;
 use core::arch::{asm, naked_asm};
 use core::fmt;
@@ -194,7 +194,11 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalIni
         .unwrap_or_default();
 
     log::debug!("Hart {hartid} Jumping to kernel...");
-    log::trace!("Hart {hartid} entry: {:#x}, arguments: a0={hartid} a1={:?} stack={stack:#x?} tls={tls:#x?}", init.kernel_entry, init.boot_info);
+    log::trace!(
+        "Hart {hartid} entry: {:#x}, arguments: a0={hartid} a1={:?} stack={stack:#x?} tls={tls:#x?}",
+        init.kernel_entry,
+        init.boot_info
+    );
 
     // Synchronize all harts before jumping to the kernel.
     // Technically this isn't really necessary, but debugging output gets horribly mangled if we don't
@@ -342,7 +346,9 @@ pub unsafe fn map_contiguous(
                 // This PTE is an internal node pointing to another page table
                 pgtable = pgtable_ptr_from_phys(pte.get_address_and_flags().0, phys_off);
             } else {
-                unreachable!("Invalid state: PTE can't be valid leaf (this means {virt:?} is already mapped) {pte:?} {pte:p}");
+                unreachable!(
+                    "Invalid state: PTE can't be valid leaf (this means {virt:?} is already mapped) {pte:?} {pte:p}"
+                );
             }
         }
     }

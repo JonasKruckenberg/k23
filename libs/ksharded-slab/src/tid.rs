@@ -1,6 +1,7 @@
 use crate::{
+    Pack,
     cfg::{self, CfgPrivate},
-    page, Pack,
+    page,
 };
 use alloc::collections::VecDeque;
 use core::sync::atomic::{AtomicUsize, Ordering};

@@ -20,7 +20,7 @@ use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::{Endianness, InstBuilder, Type, Value};
 use cranelift_codegen::ir::{GlobalValueData, MemFlags, Signature, UserExternalName, UserFuncName};
 use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
-use cranelift_codegen::{ir, TextSectionBuilder};
+use cranelift_codegen::{TextSectionBuilder, ir};
 use cranelift_frontend::FunctionBuilder;
 use sync::Mutex;
 use target_lexicon::Triple;
@@ -39,7 +39,6 @@ impl fmt::Debug for CraneliftCompiler {
 }
 
 impl CraneliftCompiler {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub(crate) fn new(isa: OwnedTargetIsa) -> CraneliftCompiler {
         Self {
             offsets: StaticVMOffsets::new(isa.pointer_bytes()),
@@ -52,7 +51,6 @@ impl CraneliftCompiler {
         self.isa.as_ref()
     }
 
-    #[expect(tail_expr_drop_order, reason = "")]
     fn function_compiler(&self) -> FunctionCompiler<'_> {
         let saved_context = self.contexts.lock().pop();
         FunctionCompiler {

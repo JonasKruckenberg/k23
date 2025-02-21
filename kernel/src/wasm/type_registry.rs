@@ -1,8 +1,8 @@
+use crate::wasm::Engine;
 use crate::wasm::indices::{
     CanonicalizedTypeIndex, ModuleInternedTypeIndex, RecGroupRelativeTypeIndex, VMSharedTypeIndex,
 };
 use crate::wasm::translate::{ModuleTypes, WasmRecGroup, WasmSubType};
-use crate::wasm::Engine;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -13,7 +13,7 @@ use core::hash::{Hash, Hasher};
 use core::ops::Range;
 use core::sync::atomic::Ordering::Acquire;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use cranelift_entity::{iter_entity_range, PrimaryMap, SecondaryMap};
+use cranelift_entity::{PrimaryMap, SecondaryMap, iter_entity_range};
 use hashbrown::HashSet;
 use sync::RwLock;
 use wasmtime_slab::Slab;
@@ -231,7 +231,6 @@ impl TypeRegistry {
         Self::default()
     }
 
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn register_module_types(
         &self,
         engine: &Engine,
@@ -246,7 +245,6 @@ impl TypeRegistry {
         }
     }
 
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn get_type(&self, engine: &Engine, index: VMSharedTypeIndex) -> Option<RegisteredType> {
         let id = shared_type_index_to_slab_id(index);
         let inner = self.0.read();

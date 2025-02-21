@@ -8,7 +8,7 @@
 use crate::arch::device::cpu::{try_with_cpu, with_cpu};
 use crate::error::Error;
 use crate::time::clock::Ticks;
-use crate::time::{clock, NANOS_PER_SEC};
+use crate::time::{NANOS_PER_SEC, clock};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;

@@ -7,7 +7,7 @@
 
 use crate::error::Error;
 use crate::traps::{Trap, TrapReason};
-use crate::vm::{PageFaultFlags, KERNEL_ASPACE};
+use crate::vm::{KERNEL_ASPACE, PageFaultFlags};
 use core::ops::ControlFlow;
 
 pub fn trap_handler(trap: Trap) -> ControlFlow<crate::Result<()>> {

@@ -1,7 +1,7 @@
 use crate::wasm::indices::{ModuleInternedRecGroupIndex, ModuleInternedTypeIndex};
+use crate::wasm::translate::TranslatedModule;
 use crate::wasm::translate::type_convert::WasmparserTypeConverter;
 use crate::wasm::translate::types::WasmSubType;
-use crate::wasm::translate::TranslatedModule;
 use core::fmt;
 use core::ops::Range;
 use cranelift_entity::{EntityRef, PrimaryMap};

@@ -24,8 +24,8 @@
 //!
 //! [`Lexer`]: crate::lexer::Lexer
 
-use crate::token::Span;
 use crate::Error;
+use crate::token::Span;
 use alloc::borrow::Cow;
 use alloc::string::String;
 use alloc::string::ToString;
@@ -668,7 +668,7 @@ impl<'a> Lexer<'a> {
                     has_underscores,
                     sign,
                     hex,
-                }))
+                }));
             }
         }
 
@@ -797,7 +797,7 @@ impl<'a> Lexer<'a> {
                         State::String(_) => {}
                         State::Start => {
                             let pos = orig.len() - it.as_str().len() - 1;
-                            state = State::String(orig[..pos].as_bytes().to_vec());
+                            state = State::String(orig.as_bytes()[..pos].to_vec());
                         }
                     }
                     let buf = match &mut state {
@@ -826,10 +826,10 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 c if (c as u32) < 0x20 || c as u32 == 0x7f => {
-                    return Err(LexError::InvalidStringElement(c))
+                    return Err(LexError::InvalidStringElement(c));
                 }
                 c if !allow_confusing_unicode && is_confusing_unicode(c) => {
-                    return Err(LexError::ConfusingUnicode(c))
+                    return Err(LexError::ConfusingUnicode(c));
                 }
                 c => match &mut state {
                     State::Start => {}
@@ -840,7 +840,7 @@ impl<'a> Lexer<'a> {
             }
         }
         match state {
-            State::Start => Ok(orig[..orig.len() - it.as_str().len() - 1].as_bytes().into()),
+            State::Start => Ok(orig.as_bytes()[..orig.len() - it.as_str().len() - 1].into()),
             State::String(s) => Ok(s.into()),
         }
     }

@@ -120,7 +120,6 @@ impl<T> OnceLock<T> {
     ///
     /// Returns the value in the `Err` variant is the cell was full.
     #[inline]
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn set(&self, value: T) -> Result<(), T> {
         match self.try_insert(value) {
             Ok(_) => Ok(()),
@@ -259,7 +258,6 @@ impl<T> From<T> for OnceLock<T> {
     /// # }
     /// ```
     #[inline]
-    #[expect(tail_expr_drop_order, reason = "")]
     fn from(value: T) -> Self {
         let cell = Self::new();
         match cell.set(value) {
@@ -455,13 +453,15 @@ mod tests {
 
         for _ in 0..n_readers {
             let tx = tx.clone();
-            thread::spawn(move || loop {
-                if let Some(msg) = ONCE_CELL.get() {
-                    tx.send(msg).unwrap();
-                    break;
+            thread::spawn(move || {
+                loop {
+                    if let Some(msg) = ONCE_CELL.get() {
+                        tx.send(msg).unwrap();
+                        break;
+                    }
+                    #[cfg(target_env = "sgx")]
+                    std::thread::yield_now();
                 }
-                #[cfg(target_env = "sgx")]
-                std::thread::yield_now();
             });
         }
         for _ in 0..n_writers {

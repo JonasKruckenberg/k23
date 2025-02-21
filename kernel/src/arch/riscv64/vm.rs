@@ -6,10 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::{mb, wmb};
+use crate::vm::Error;
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::Frame;
-use crate::vm::Error;
-use crate::vm::{frame_alloc, PhysicalAddress, VirtualAddress};
+use crate::vm::{PhysicalAddress, VirtualAddress, frame_alloc};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::bitflags;
@@ -202,7 +202,6 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             wired_frames: vec![root_pgtable],
         };
 
-        #[expect(tail_expr_drop_order, reason = "")]
         Ok((this, Flush::empty(asid)))
     }
 
@@ -218,7 +217,6 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             wired_frames: vec![],
         };
 
-        #[expect(tail_expr_drop_order, reason = "")]
         (this, Flush::empty(asid))
     }
 
