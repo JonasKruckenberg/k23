@@ -29,6 +29,7 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
+mod backtrace;
 mod cmdline;
 mod cpu_local;
 mod device_tree;
@@ -136,6 +137,10 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
+        // initialize the backtracing subsystem after the allocator has been set up
+        // since setting up the symbolization context requires allocation
+        backtrace::init(boot_info);
+
         let devtree = device_tree::init(fdt).unwrap();
         tracing::debug!("{devtree:?}");
 
@@ -143,10 +148,6 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
         // fully initialize the tracing subsystem now that we can allocate
         tracing::init(cmdline.log);
-
-        // initialize the panic backtracing subsystem after the allocator has been set up
-        // since setting up the symbolization context requires allocation
-        panic::init(boot_info);
 
         // perform global, architecture-specific initialization
         arch::init_early();
