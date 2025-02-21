@@ -42,6 +42,10 @@ unsafe extern "C" fn _start() -> ! {
     // Safety: inline assembly
     unsafe {
         naked_asm! {
+            // FIXME this is a workaround for bug in rustc/llvm
+            //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
+            ".attribute arch, \"rv64gc\"",
+            
             // read boot time stamp as early as possible
             "rdtime a2",
 

@@ -85,9 +85,13 @@ unsafe extern "C" fn default_trap_entry() {
     // Safety: inline assembly
     unsafe {
         naked_asm! {
+            // FIXME this is a workaround for bug in rustc/llvm
+            //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
+            ".attribute arch, \"rv64gc\"",
+            
             ".align 2",
-
             "csrrw sp, sscratch, sp", // sp points to the TrapFrame
+            
             "add sp, sp, -0x210",
 
             // save gp regs

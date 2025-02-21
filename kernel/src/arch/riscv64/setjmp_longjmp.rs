@@ -87,6 +87,10 @@ pub unsafe extern "C" fn setjmp(env: JmpBuf) -> i32 {
         cfg_if::cfg_if! {
             if #[cfg(target_feature = "d")] {
                 naked_asm! {
+                    // FIXME this is a workaround for bug in rustc/llvm
+                    //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
+                    ".attribute arch, \"rv64gc\"",
+
                     save_gp!(ra => a0[0]),
                     save_gp!(s0 => a0[1]),
                     save_gp!(s1 => a0[2]),
@@ -159,6 +163,10 @@ pub unsafe extern "C" fn longjmp(env: JmpBuf, val: i32) -> ! {
         cfg_if::cfg_if! {
             if #[cfg(target_feature = "d")] {
                 naked_asm! {
+                    // FIXME this is a workaround for bug in rustc/llvm
+                    //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
+                    ".attribute arch, \"rv64gc\"",
+
                     load_gp!(a0[0] => ra),
                     load_gp!(a0[1] => s0),
                     load_gp!(a0[2] => s1),
