@@ -13,7 +13,7 @@ pub enum Error {
     Gimli(gimli::Error),
     /// Rust cannot catch foreign exceptions
     ForeignException,
-    /// End of stack
+    /// Reached the end of the stack without finding a landing pad
     EndOfStack,
     /// The personality function is not a Rust personality function
     DifferentPersonality,

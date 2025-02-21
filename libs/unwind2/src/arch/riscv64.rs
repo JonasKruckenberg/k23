@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 //! RISC-V specific unwinding code, mostly saving and restoring registers.
+use cfg_if::cfg_if;
 use core::arch::{asm, naked_asm};
 use core::fmt;
 use core::ops;
@@ -15,7 +16,16 @@ pub use riscv::abort;
 
 // Match DWARF_FRAME_REGISTERS in libgcc
 pub const MAX_REG_RULES: usize = 65;
-pub const MAX_REG: u16 = 64;
+
+cfg_if! {
+    if #[cfg(target_feature = "d")] {
+        /// The largest register number on this architecture.
+        pub const MAX_REG: u16 = 64;
+    } else {
+        /// The largest register number on this architecture.
+        pub const MAX_REG: u16 = 32;
+    }
+}
 
 pub const SP: Register = RiscV::SP;
 pub const RA: Register = RiscV::RA;
@@ -25,11 +35,17 @@ pub const UNWIND_DATA_REG: (Register, Register) = (RiscV::A0, RiscV::A1);
 #[cfg(all(target_feature = "f", not(target_feature = "d")))]
 compile_error!("RISC-V with only F extension is not supported");
 
+/// Register context when unwinding.
+///
+/// This type is architecture-dependent, but generally holds a copy of all registers that are required
+/// to look up values while unwinding the stack.
 #[repr(C)]
 #[derive(Clone, Default)]
 pub struct Registers {
+    /// General purpose registers
     pub gp: [usize; 32],
     #[cfg(target_feature = "d")]
+    /// Floating point registers
     pub fp: [usize; 32],
 }
 
@@ -66,7 +82,7 @@ impl ops::Index<Register> for Registers {
     }
 }
 
-impl ops::IndexMut<gimli::Register> for Registers {
+impl ops::IndexMut<Register> for Registers {
     fn index_mut(&mut self, reg: Register) -> &mut usize {
         match reg {
             Register(0..=31) => &mut self.gp[reg.0 as usize],
@@ -189,55 +205,56 @@ macro_rules! code {
 
 #[naked]
 pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()), ptr: *mut ()) {
-    // No need to save caller-saved registers here.
-    #[cfg(target_feature = "d")]
     // Safety: inline assembly
     unsafe {
-        naked_asm! {
-            "
-            mv t0, sp
-            add sp, sp, -0x210
-            .cfi_def_cfa_offset 0x210
-            sd ra, 0x200(sp)
-            .cfi_offset ra, -16
-            ",
-            code!(save_gp),
-            code!(save_fp),
-            "
-            mv t0, a0
-            mv a0, sp
-            jalr t0
-            ld ra, 0x200(sp)
-            add sp, sp, 0x210
-            .cfi_def_cfa_offset 0
-            .cfi_restore ra
-            ret
-            "
-        };
-    }
-    #[cfg(not(target_feature = "d"))]
-    // Safety: inline assembly
-    unsafe {
-        naked_asm! {
-            "
-            mv t0, sp
-            add sp, sp, -0x110
-            .cfi_def_cfa_offset 0x110
-            sd ra, 0x100(sp)
-            .cfi_offset ra, -16
-            ",
-            code!(save_gp),
-            "
-            mv t0, a0
-            mv a0, sp
-            jalr t0
-            ld ra, 0x100(sp)
-            add sp, sp, 0x110
-            .cfi_def_cfa_offset 0
-            .cfi_restore ra
-            ret
-            ",
-        };
+        cfg_if! {
+            if #[cfg(target_feature = "d")] {
+                // No need to save caller-saved registers here.
+                naked_asm! {
+                    "
+                    mv t0, sp
+                    add sp, sp, -0x210
+                    .cfi_def_cfa_offset 0x210
+                    sd ra, 0x200(sp)
+                    .cfi_offset ra, -16
+                    ",
+                    code!(save_gp),
+                    code!(save_fp),
+                    "
+                    mv t0, a0
+                    mv a0, sp
+                    jalr t0
+                    ld ra, 0x200(sp)
+                    add sp, sp, 0x210
+                    .cfi_def_cfa_offset 0
+                    .cfi_restore ra
+                    ret
+                    "
+                };
+            } else {
+                // No need to save caller-saved registers here.
+                naked_asm! {
+                    "
+                    mv t0, sp
+                    add sp, sp, -0x110
+                    .cfi_def_cfa_offset 0x110
+                    sd ra, 0x100(sp)
+                    .cfi_offset ra, -16
+                    ",
+                    code!(save_gp),
+                    "
+                    mv t0, a0
+                    mv a0, sp
+                    jalr t0
+                    ld ra, 0x100(sp)
+                    add sp, sp, 0x110
+                    .cfi_def_cfa_offset 0
+                    .cfi_restore ra
+                    ret
+                    ",
+                };
+            }
+        }
     }
 }
 
@@ -246,31 +263,31 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()),
 /// This function will restore whatever values are in the given `Context` into the machine registers
 /// **without** performing any sort of validation.
 pub unsafe fn restore_context(ctx: &Registers) -> ! {
-    #[cfg(target_feature = "d")]
     // Safety: inline assembly
     unsafe {
-        asm!(
-            code!(restore_fp),
-            code!(restore_gp),
-            "
-            ld a0, 0x50(a0)
-            ret
-            ",
-            in("a0") ctx,
-            options(noreturn)
-        );
-    }
-    #[cfg(not(target_feature = "d"))]
-    // Safety: inline assembly
-    unsafe {
-        asm!(
-            code!(restore_gp),
-            "
-            ld a0, 0x50(a0)
-            ret
-            ",
-            in("a0") ctx,
-            options(noreturn)
-        );
+        cfg_if! {
+            if #[cfg(target_feature = "d")] {
+                asm!(
+                    code!(restore_fp),
+                    code!(restore_gp),
+                    "
+                    ld a0, 0x50(a0)
+                    ret
+                    ",
+                    in("a0") ctx,
+                    options(noreturn)
+                );
+            } else {
+                asm!(
+                    code!(restore_gp),
+                    "
+                    ld a0, 0x50(a0)
+                    ret
+                    ",
+                    in("a0") ctx,
+                    options(noreturn)
+                );
+            }
+        }
     }
 }

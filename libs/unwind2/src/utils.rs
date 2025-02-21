@@ -67,9 +67,9 @@ pub fn with_context<T, F: FnOnce(&mut arch::Registers, usize) -> T>(f: F) -> T {
 
             // Due to the way we capture the register context the effective program counter for unwinding
             // is the return address. TODO explain why
-            let pc = regs[arch::RA];
+            let ip = regs[arch::RA];
 
-            let t = ManuallyDrop::take(&mut data.f)(regs, pc);
+            let t = ManuallyDrop::take(&mut data.f)(regs, ip);
             data.t = ManuallyDrop::new(t);
         }
     }

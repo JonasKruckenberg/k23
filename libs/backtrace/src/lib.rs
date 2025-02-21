@@ -14,7 +14,7 @@ use arrayvec::ArrayVec;
 use core::fmt;
 use core::fmt::Formatter;
 use fallible_iterator::FallibleIterator;
-use unwind2::FramesIter;
+use unwind2::FrameIter;
 
 pub use crate::symbolize::SymbolizeContext;
 
@@ -41,7 +41,7 @@ impl<'a, 'data, const MAX_FRAMES: usize> Backtrace<'a, 'data, MAX_FRAMES> {
         let mut frames = ArrayVec::new();
         let mut frames_omitted: usize = 0;
 
-        let mut iter = FramesIter::new();
+        let mut iter = FrameIter::new();
         while let Some(frame) = iter.next()? {
             if frames.try_push(frame.ip()).is_err() {
                 frames_omitted += 1;
