@@ -15,6 +15,7 @@ pub use riscv::abort;
 
 // Match DWARF_FRAME_REGISTERS in libgcc
 pub const MAX_REG_RULES: usize = 65;
+pub const MAX_REG: u16 = 64;
 
 pub const SP: Register = RiscV::SP;
 pub const RA: Register = RiscV::RA;

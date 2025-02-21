@@ -25,7 +25,7 @@ pub fn ensure_personality_stub(ptr: u64) -> crate::Result<()> {
 pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
     with_context(|regs, pc| {
         let frames = FramesIter::from_registers(regs.clone(), pc);
-        
+
         if let Err(err) = raise_exception_phase2(frames, exception) {
             log::error!("Failed to resume exception: {err:?}");
             arch::abort("Failed to resume exception")

@@ -110,7 +110,7 @@ impl<'a> Frame<'a> {
             regs: regs.clone(),
         })
     }
-    
+
     #[expect(
         clippy::cast_sign_loss,
         clippy::cast_possible_truncation,
@@ -119,7 +119,7 @@ impl<'a> Frame<'a> {
     fn unwind(&self) -> Result<arch::Registers, gimli::Error> {
         let row = &self.row;
         let mut new_regs = self.regs.clone();
-        
+
         #[expect(clippy::match_wildcard_for_single_variants, reason = "style choice")]
         let cfa = match *row.cfa() {
             CfaRule::RegisterAndOffset { register, offset } => {
@@ -129,32 +129,34 @@ impl<'a> Frame<'a> {
         };
 
         new_regs[arch::SP] = cfa;
-        
+
         debug_assert_eq!(self.return_address_register, arch::RA);
         new_regs[self.return_address_register] = 0;
-        
-        for reg in 0..64 {
-            let reg = Register(reg as u16);
-        
+
+        for reg in 0..arch::MAX_REG {
+            let reg = Register(reg);
+
             let rule = row.register(reg);
-            
+
             match rule {
                 // According to LLVM libunwind (and this appears to be true in practice as well)
-                // leaf functions don't actually store their return address on the stack instead 
+                // leaf functions don't actually store their return address on the stack instead
                 // keeping it in register and there is no explicit EH_FRAME instruction on how to restore it.
                 // (great btw that stuff like this is well documented - not)
-                // This means if the register is the return address register AND there isn't a register 
+                // This means if the register is the return address register AND there isn't a register
                 // rule for it, we need to maintain it nonetheless.
                 RegisterRule::Undefined if reg == self.return_address_register => {
-                    new_regs[reg] = self.regs[self.return_address_register]
+                    new_regs[reg] = self.regs[self.return_address_register];
                 }
-                RegisterRule::Undefined => {},
+                RegisterRule::Undefined => {}
                 RegisterRule::SameValue => new_regs[reg] = self.regs[reg],
                 // Safety: we have to trust the DWARF info here
                 RegisterRule::Offset(offset) => unsafe {
-                    new_regs[reg] = *(cfa.wrapping_add(offset as usize) as *const usize)
+                    new_regs[reg] = *(cfa.wrapping_add(offset as usize) as *const usize);
                 },
-                RegisterRule::ValOffset(offset) => new_regs[reg] = cfa.wrapping_add(offset as usize),
+                RegisterRule::ValOffset(offset) => {
+                    new_regs[reg] = cfa.wrapping_add(offset as usize);
+                }
                 RegisterRule::Register(reg) => new_regs[reg] = self.regs[reg],
                 RegisterRule::Expression(_) | RegisterRule::ValExpression(_) => {
                     return Err(gimli::Error::UnsupportedEvaluation)
@@ -174,7 +176,7 @@ pub struct FramesIter {
     regs: arch::Registers,
     signal: bool,
     pc: usize,
-    limit: usize
+    limit: usize,
 }
 
 impl Default for FramesIter {
@@ -190,7 +192,7 @@ impl FramesIter {
             pc,
             regs: ctx.clone(),
             signal: false,
-            limit: 64
+            limit: 64,
         })
     }
 
@@ -199,7 +201,7 @@ impl FramesIter {
             regs,
             signal: false,
             pc,
-            limit: 64
+            limit: 64,
         }
     }
 }
@@ -231,7 +233,7 @@ impl FallibleIterator for FramesIter {
         // Use the return address as the next value of `pc` this essentially simulates a
         // function return.
         self.pc = self.regs[arch::RA];
-        
+
         self.limit -= 1;
 
         Ok(Some(frame))
