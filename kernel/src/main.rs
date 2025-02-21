@@ -29,6 +29,7 @@ extern crate alloc;
 
 mod allocator;
 mod arch;
+mod backtrace;
 mod cmdline;
 mod cpu_local;
 mod device_tree;
@@ -46,7 +47,6 @@ mod traps;
 mod util;
 mod vm;
 mod wasm;
-mod backtrace;
 
 use crate::device_tree::device_tree;
 use crate::error::Error;
@@ -62,7 +62,6 @@ use cpu_local::cpu_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use backtrace::Backtrace;
 use sync::Once;
 use vm::frame_alloc;
 use vm::PhysicalAddress;
@@ -149,7 +148,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
         // fully initialize the tracing subsystem now that we can allocate
         tracing::init(cmdline.log);
-        
+
         // perform global, architecture-specific initialization
         arch::init_early();
 

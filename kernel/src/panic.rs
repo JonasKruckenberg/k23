@@ -5,16 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::{arch, backtrace};
 use crate::backtrace::Backtrace;
 use crate::panic::panic_count::MustAbort;
+use crate::{arch, backtrace};
 use alloc::boxed::Box;
 use alloc::string::String;
 use core::any::Any;
 use core::panic::{PanicPayload, UnwindSafe};
-use core::{fmt, mem, slice};
-use loader_api::BootInfo;
-use sync::{LazyLock, OnceLock};
+use core::{fmt, mem};
 
 /// Determines whether the current thread is unwinding because of panic.
 #[inline]
@@ -31,6 +29,7 @@ pub fn catch_unwind<F, R>(f: F) -> Result<R, Box<dyn Any + Send + 'static>>
 where
     F: FnOnce() -> R + UnwindSafe,
 {
+    #[expect(tail_expr_drop_order, reason = "")]
     unwind2::catch_unwind(f).inspect_err(|_| {
         panic_count::decrease(); // decrease the panic count, since we caught it
     })
@@ -76,7 +75,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 
         let backtrace = Backtrace::<MAX_BACKTRACE_FRAMES>::capture().unwrap();
         tracing::error!("{backtrace}");
-        
+
         if backtrace.frames_omitted > 0 {
             let total_frames = backtrace.frames.len() + backtrace.frames_omitted;
             let omitted_frames = backtrace.frames_omitted;
@@ -93,6 +92,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             arch::abort("cpu caused non-unwinding panic. aborting.");
         }
 
+        #[expect(tail_expr_drop_order, reason = "")]
         rust_panic(construct_panic_payload(info))
     })
 }
@@ -127,7 +127,7 @@ fn construct_panic_payload(info: &core::panic::PanicInfo) -> Box<dyn Any + Send>
             // Lazily, the first time this gets called, run the actual string formatting.
             self.string.get_or_insert_with(|| {
                 let mut s = String::new();
-                let mut fmt = fmt::Formatter::new(&mut s, fmt::FormattingOptions::new());
+                let mut fmt = fmt::Formatter::new(&mut s);
                 let _err = fmt::Display::fmt(&inner, &mut fmt);
                 s
             })

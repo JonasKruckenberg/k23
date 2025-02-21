@@ -192,6 +192,7 @@ impl<'a> SymbolizeContext<'a> {
         })?;
         let addr2line = addr2line::Context::from_dwarf(dwarf)?;
 
+        #[expect(tail_expr_drop_order, reason = "")]
         Ok(Self {
             addr2line,
             elf,
@@ -225,6 +226,7 @@ impl<'a> SymbolizeContext<'a> {
             })
             .unwrap();
 
+        #[expect(tail_expr_drop_order, reason = "")]
         Ok(SymbolsIter {
             addr: probe,
             elf: &self.elf,

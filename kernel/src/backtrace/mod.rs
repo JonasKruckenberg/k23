@@ -60,7 +60,7 @@ pub struct Backtrace<'a, const MAX_FRAMES: usize> {
     pub frames_omitted: usize,
 }
 
-impl<'a, const MAX_FRAMES: usize> Backtrace<'a, MAX_FRAMES> {
+impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
     /// Captures a backtrace at the callsite of this function, returning an owned representation.
     ///
     /// The returned object is almost entirely self-contained. It can be cloned, or send to other threads.
@@ -104,6 +104,7 @@ impl<'a, const MAX_FRAMES: usize> Backtrace<'a, MAX_FRAMES> {
             }
         }
 
+        #[expect(tail_expr_drop_order, reason = "")]
         Ok(Self {
             symbolize_ctx: SYMBOLIZE_CONTEXT.as_ref(),
             frames,
@@ -116,8 +117,7 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "stack backtrace:")?;
 
-        let mut frame_idx: i32 = 0;
-        for ip in &self.frames {
+        for (frame_idx, ip) in self.frames.iter().enumerate() {
             // if the symbolication state isn't setup, yet we can't print symbols the addresses will have
             // to suffice...
             if let Some(symbolize_ctx) = self.symbolize_ctx {
@@ -147,12 +147,13 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
             } else {
                 writeln!(f, "{frame_idx}: {address:#x}", address = ip)?;
             }
-
-            frame_idx += 1i32;
         }
 
         if self.symbolize_ctx.is_none() {
-            let _ = writeln!(f, "note: backtrace subsystem wasn't initialized, no symbols were printed.");
+            let _ = writeln!(
+                f,
+                "note: backtrace subsystem wasn't initialized, no symbols were printed."
+            );
         }
 
         Ok(())
