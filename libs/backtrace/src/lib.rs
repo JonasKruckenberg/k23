@@ -37,11 +37,36 @@ impl<'a, 'data, const MAX_FRAMES: usize> Backtrace<'a, 'data, MAX_FRAMES> {
     /// # Errors
     ///
     /// Returns the underlying [`unwind2::Error`] if walking the stack fails.
+    #[inline]
     pub fn capture(ctx: &'a SymbolizeContext<'data>) -> Result<Self, unwind2::Error> {
+        Self::new_inner(ctx, FrameIter::new())
+    }
+
+    /// Constructs a backtrace from the provided register context, returning an owned representation.
+    /// 
+    /// The returned object is almost entirely self-contained. It can be cloned, or send to other threads.
+    ///
+    /// Note that this step is quite cheap, contrary to the `Backtrace` implementation in the standard
+    /// library this resolves the symbols (the expensive step) lazily, so this struct can be constructed
+    /// in performance sensitive codepaths and only later resolved.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying [`unwind2::Error`] if walking the stack fails.
+    #[inline]
+    pub fn from_registers(
+        ctx: &'a SymbolizeContext<'data>,
+        regs: unwind2::Registers,
+        ip: usize,
+    ) -> Result<Self, unwind2::Error> {
+        let iter = FrameIter::from_registers(regs, ip);
+        Self::new_inner(ctx, iter)
+    }
+    
+    fn new_inner(ctx: &'a SymbolizeContext<'data>, mut iter: FrameIter) -> Result<Self, unwind2::Error> {
         let mut frames = ArrayVec::new();
         let mut frames_omitted: usize = 0;
 
-        let mut iter = FrameIter::new();
         while let Some(frame) = iter.next()? {
             if frames.try_push(frame.ip()).is_err() {
                 frames_omitted += 1;
