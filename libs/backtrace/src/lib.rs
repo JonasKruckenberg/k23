@@ -59,12 +59,8 @@ impl<'a, 'data, const MAX_FRAMES: usize> Backtrace<'a, 'data, MAX_FRAMES> {
 impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, '_, MAX_FRAMES> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "stack backtrace:")?;
+
         let mut frame_idx: i32 = 0;
-
-        let mut print = false;
-        let mut omitted_count: usize = 0;
-        let mut first_omit = true;
-
         for ip in &self.frames {
             let mut syms = self
                 .symbolize_ctx
@@ -72,69 +68,29 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, '_, MAX_FRAMES> {
                 .unwrap();
 
             while let Some(sym) = syms.next().unwrap() {
-                // if print_fmt == PrintFmt::Short {
-                if let Some(sym) = sym.name().map(|s| s.as_raw_str()) {
-                    if sym.contains("__rust_end_short_backtrace") {
-                        print = true;
-                        continue;
-                    }
-                    if print && sym.contains("__rust_begin_short_backtrace") {
-                        print = false;
-                        continue;
-                    }
-                    if !print {
-                        omitted_count += 1;
-                    }
+                write!(f, "{frame_idx}: {address:#x}    -", address = ip)?;
+                if let Some(name) = sym.name() {
+                    writeln!(f, "      {name}")?;
+                } else {
+                    writeln!(f, "      <unknown>")?;
                 }
-                // }
-
-                if print {
-                    if omitted_count > 0 {
-                        // debug_assert!(print_fmt == PrintFmt::Short);
-                        // only print the message between the middle of frames
-                        if !first_omit {
-                            let _ = writeln!(
-                                f,
-                                "      [... omitted {} frame{} ...]",
-                                omitted_count,
-                                if omitted_count > 1 { "s" } else { "" }
-                            );
-                        }
-                        first_omit = false;
-                        omitted_count = 0;
-                    }
-
-                    write!(f, "{frame_idx}: {address:#x}    -", address = ip)?;
-                    if let Some(name) = sym.name() {
-                        writeln!(f, "      {name}")?;
+                if let Some(filename) = sym.filename() {
+                    write!(f, "      at {filename}")?;
+                    if let Some(lineno) = sym.lineno() {
+                        write!(f, ":{lineno}")?;
                     } else {
-                        writeln!(f, "      <unknown>")?;
+                        write!(f, "??")?;
                     }
-
-                    if let Some(filename) = sym.filename() {
-                        write!(f, "      at {filename}")?;
-                        if let Some(lineno) = sym.lineno() {
-                            write!(f, ":{lineno}")?;
-                        } else {
-                            write!(f, "??")?;
-                        }
-                        if let Some(colno) = sym.colno() {
-                            writeln!(f, ":{colno}")?;
-                        } else {
-                            writeln!(f, "??")?;
-                        }
+                    if let Some(colno) = sym.colno() {
+                        writeln!(f, ":{colno}")?;
+                    } else {
+                        writeln!(f, "??")?;
                     }
                 }
 
                 frame_idx += 1i32;
             }
         }
-
-        // writeln!(
-        //     f,
-        //     "note: Some details are omitted, \
-        //      run with `RUST_BACKTRACE=full` for a verbose backtrace."
-        // )?;
 
         Ok(())
     }
