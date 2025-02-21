@@ -7,7 +7,7 @@
 
 use crate::exception::Exception;
 use crate::utils::with_context;
-use crate::{arch, raise_exception_phase2, Error};
+use crate::{arch, raise_exception_phase2, Error, FrameIter};
 
 #[lang = "eh_personality"]
 extern "C" fn personality_stub() {}
@@ -23,13 +23,15 @@ pub fn ensure_personality_stub(ptr: u64) -> crate::Result<()> {
 #[inline(never)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
-    with_context(|ctx| {
-        if let Err(err) = raise_exception_phase2(ctx.clone(), exception) {
+    with_context(|regs, pc| {
+        let frames = FrameIter::from_registers(regs.clone(), pc);
+
+        if let Err(err) = raise_exception_phase2(frames, exception) {
             log::error!("Failed to resume exception: {err:?}");
             arch::abort("Failed to resume exception")
         }
 
         // Safety: this replaces the register state, very unsafe
-        unsafe { arch::restore_context(ctx) }
+        unsafe { arch::restore_context(regs) }
     })
 }

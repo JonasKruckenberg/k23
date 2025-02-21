@@ -146,7 +146,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 #[inline(never)]
 #[unsafe(no_mangle)]
 fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
-    match unwind2::begin_panic(payload) {
+    match unwind2::begin_unwind(payload) {
         Ok(_) => arch::exit(0),
         Err(unwind2::Error::EndOfStack) => {
             log::error!("unwinding completed without finding a `catch_unwind` make sure there is at least a root level catch unwind wrapping the main function");
