@@ -7,7 +7,7 @@
 
 use crate::vm::frame_alloc::Entry;
 use crate::vm::provider::{Provider, THE_ZERO_FRAME};
-use crate::vm::{frame_alloc, AddressRangeExt, Error, Frame, FrameList, PhysicalAddress};
+use crate::vm::{AddressRangeExt, Error, Frame, FrameList, PhysicalAddress, frame_alloc};
 use crate::{arch, ensure};
 use alloc::sync::Arc;
 use core::range::Range;

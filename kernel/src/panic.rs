@@ -29,7 +29,6 @@ pub fn catch_unwind<F, R>(f: F) -> Result<R, Box<dyn Any + Send + 'static>>
 where
     F: FnOnce() -> R + UnwindSafe,
 {
-    #[expect(tail_expr_drop_order, reason = "")]
     unwind2::catch_unwind(f).inspect_err(|_| {
         panic_count::decrease(); // decrease the panic count, since we caught it
     })
@@ -80,7 +79,9 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             let total_frames = backtrace.frames.len() + backtrace.frames_omitted;
             let omitted_frames = backtrace.frames_omitted;
 
-            tracing::warn!("Stack trace was {total_frames} frames, but backtrace buffer capacity was {MAX_BACKTRACE_FRAMES}. Omitted {omitted_frames} frames. Consider increasing `MAX_BACKTRACE_FRAMES` to at least {total_frames} to capture the entire trace.");
+            tracing::warn!(
+                "Stack trace was {total_frames} frames, but backtrace buffer capacity was {MAX_BACKTRACE_FRAMES}. Omitted {omitted_frames} frames. Consider increasing `MAX_BACKTRACE_FRAMES` to at least {total_frames} to capture the entire trace."
+            );
         }
 
         panic_count::finished_panic_hook();
@@ -92,7 +93,6 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             arch::abort("cpu caused non-unwinding panic. aborting.");
         }
 
-        #[expect(tail_expr_drop_order, reason = "")]
         rust_panic(construct_panic_payload(info))
     })
 }
@@ -105,7 +105,9 @@ fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
     match unwind2::begin_unwind(payload) {
         Ok(_) => arch::exit(0),
         Err(unwind2::Error::EndOfStack) => {
-            log::error!("unwinding completed without finding a `catch_unwind` make sure there is at least a root level catch unwind wrapping the main function");
+            log::error!(
+                "unwinding completed without finding a `catch_unwind` make sure there is at least a root level catch unwind wrapping the main function"
+            );
             arch::abort("uncaught kernel exception");
         }
         Err(err) => {
@@ -127,7 +129,7 @@ fn construct_panic_payload(info: &core::panic::PanicInfo) -> Box<dyn Any + Send>
             // Lazily, the first time this gets called, run the actual string formatting.
             self.string.get_or_insert_with(|| {
                 let mut s = String::new();
-                let mut fmt = fmt::Formatter::new(&mut s);
+                let mut fmt = fmt::Formatter::new(&mut s, fmt::FormattingOptions::new());
                 let _err = fmt::Display::fmt(&inner, &mut fmt);
                 s
             })

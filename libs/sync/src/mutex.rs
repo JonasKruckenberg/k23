@@ -15,8 +15,8 @@
 // An RAII mutex guard returned by the Arc locking operations on Mutex.
 
 use crate::backoff::Backoff;
-use crate::loom::{loom_const_fn, Ordering};
 use crate::loom::{AtomicBool, UnsafeCell};
+use crate::loom::{Ordering, loom_const_fn};
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::{fmt, mem};
@@ -53,7 +53,6 @@ unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
     loom_const_fn! {
-        #[expect(tail_expr_drop_order, reason = "")]
         pub fn new(val: T) -> Mutex<T> {
             Mutex {
                 lock: AtomicBool::new(false),
@@ -399,7 +398,7 @@ mod tests {
 
     #[test]
     fn basic_multi_threaded() {
-        use crate::loom::{self, thread, Arc};
+        use crate::loom::{self, Arc, thread};
 
         #[allow(tail_expr_drop_order)]
         fn incr(lock: &Arc<Mutex<i32>>) -> thread::JoinHandle<()> {

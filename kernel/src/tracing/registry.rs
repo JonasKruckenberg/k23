@@ -10,11 +10,11 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::sync::atomic;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use ksharded_slab::pool::Ref;
 use ksharded_slab::Pool;
+use ksharded_slab::pool::Ref;
 use tracing_core::field::FieldSet;
 use tracing_core::span::{Attributes, Current, Id, Record};
-use tracing_core::{dispatch, Collect, Dispatch, Event, Interest, Metadata};
+use tracing_core::{Collect, Dispatch, Event, Interest, Metadata, dispatch};
 
 /// A shared, reusable store for spans.
 ///
@@ -61,7 +61,6 @@ use tracing_core::{dispatch, Collect, Dispatch, Event, Interest, Metadata};
 ///
 /// [span IDs]: https://docs.rs/tracing-core/latest/tracing_core/span/struct.Id.html
 /// [slab]: https://docs.rs/crate/sharded-slab/
-/// [extensions]: super::Extensions
 /// [closed]: https://docs.rs/tracing/latest/tracing/span/index.html#closing-spans
 /// [considered closed]: https://docs.rs/tracing-core/latest/tracing_core/subscriber/trait.Subscriber.html#method.try_close
 /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html
@@ -145,13 +144,11 @@ impl Registry {
         self.spans.get(id_to_idx(id))
     }
 
-    #[expect(tail_expr_drop_order, reason = "")]
     fn span_data(&self, id: &Id) -> Option<Data> {
         let inner = self.get(id)?;
         Some(Data { inner })
     }
 
-    #[expect(tail_expr_drop_order, reason = "")]
     fn span(&self, id: &Id) -> Option<SpanRef>
     where
         Self: Sized,
@@ -392,7 +389,6 @@ impl<'a> SpanRef<'a> {
 
     /// Returns a `SpanRef` describing this span's parent, or `None` if this
     /// span is the root of its trace tree.
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn parent(&self) -> Option<Self> {
         let id = self.data.parent()?;
         let data = self.registry.span_data(id)?;

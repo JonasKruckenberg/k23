@@ -120,11 +120,8 @@ impl<T: Send> CpuLocal<T> {
     where
         F: FnOnce() -> T,
     {
-        #[expect(tail_expr_drop_order, reason = "")]
         // Safety: value will be initialized by `create` if necessary
-        unsafe {
-            self.get_or_try(|| Ok::<T, ()>(create())).unwrap_unchecked()
-        }
+        unsafe { self.get_or_try(|| Ok::<T, ()>(create())).unwrap_unchecked() }
     }
 
     /// Returns the element for the current cpu, or creates it if it doesn't
@@ -141,7 +138,6 @@ impl<T: Send> CpuLocal<T> {
             return Ok(val);
         }
 
-        #[expect(tail_expr_drop_order, reason = "")]
         Ok(self.insert(cpuid, create()?))
     }
 

@@ -1,8 +1,8 @@
-use crate::page::{
-    slot::{Generation, RefCount},
-    Addr,
-};
 use crate::Pack;
+use crate::page::{
+    Addr,
+    slot::{Generation, RefCount},
+};
 use core::{fmt, marker::PhantomData};
 
 /// Configuration parameters which can be overridden to tune the behavior of a slab.

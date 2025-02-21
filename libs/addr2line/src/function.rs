@@ -10,8 +10,8 @@ use alloc::vec::Vec;
 use core::cmp::Ordering;
 
 // use crate::lazy::LazyResult;
-use crate::{maybe_small, LazyResult};
 use crate::{Context, DebugFile, Error, RangeAttributes};
+use crate::{LazyResult, maybe_small};
 
 pub(crate) struct LazyFunctions<R: gimli::Reader>(LazyResult<Functions<R>>);
 

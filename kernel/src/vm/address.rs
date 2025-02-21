@@ -227,7 +227,7 @@ macro_rules! address_impl {
         }
 
         impl core::iter::Step for $addr {
-            fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+            fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
                 core::iter::Step::steps_between(&start.0, &end.0)
             }
 

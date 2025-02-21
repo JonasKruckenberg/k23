@@ -6,9 +6,9 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::device::cpu::with_cpu;
+use crate::time::Clock;
 use crate::time::clock::Ticks;
 use crate::time::sleep::Entry;
-use crate::time::Clock;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
@@ -201,7 +201,9 @@ impl Core {
                         deadline.wheel, 0,
                         "if a timer is being rescheduled, it must not have been on the lowest-level wheel"
                     );
-                    tracing::trace!("rescheduling entry {entry:?} because deadline {entry_deadline:?} is later than now {now:?}");
+                    tracing::trace!(
+                        "rescheduling entry {entry:?} because deadline {entry_deadline:?} is later than now {now:?}"
+                    );
                     // this timer will need to be rescheduled.
                     pending_reschedule.push_front(entry);
                 } else {

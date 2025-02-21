@@ -10,7 +10,7 @@ use crate::error::Error;
 use crate::mapping::{align_down, checked_align_up};
 use arrayvec::ArrayVec;
 use core::cmp::Ordering;
-use core::ffi::{c_void, CStr};
+use core::ffi::{CStr, c_void};
 use core::fmt;
 use core::fmt::Formatter;
 use core::range::Range;
@@ -173,7 +173,6 @@ impl MachineInfo<'_> {
             }
         });
 
-        #[expect(tail_expr_drop_order, reason = "")]
         Ok(MachineInfo {
             fdt: fdt_slice,
             memories,

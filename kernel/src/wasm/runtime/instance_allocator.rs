@@ -1,10 +1,10 @@
 use crate::vm::AddressSpace;
+use crate::wasm::Module;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::memory::Memory;
 use crate::wasm::runtime::table::Table;
 use crate::wasm::runtime::{OwnedVMContext, VMOffsets};
 use crate::wasm::translate::{MemoryDesc, TableDesc, TranslatedModule};
-use crate::wasm::Module;
 use core::mem;
 use cranelift_entity::PrimaryMap;
 

@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
-use crate::{arch, INITIAL_HEAP_SIZE_PAGES};
+use crate::{INITIAL_HEAP_SIZE_PAGES, arch};
 use core::alloc::Layout;
 use core::range::Range;
 use loader_api::BootInfo;

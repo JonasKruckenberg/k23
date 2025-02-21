@@ -51,24 +51,43 @@ impl From<riscv::sbi::Error> for Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            Error::SizeTooLarge => f.write_str("address range size must be less than or equal to the maximum address space size"),
-            Error::MisalignedStart => f.write_str("address range start must be at least page aligned"),
+            Error::SizeTooLarge => f.write_str(
+                "address range size must be less than or equal to the maximum address space size",
+            ),
+            Error::MisalignedStart => {
+                f.write_str("address range start must be at least page aligned")
+            }
             Error::MisalignedEnd => f.write_str("address range end must be at least page aligned"),
-            Error::AlignmentTooLarge => f.write_str("alignment must less than or equal to the maximum support alignment"),
+            Error::AlignmentTooLarge => {
+                f.write_str("alignment must less than or equal to the maximum support alignment")
+            }
             Error::InvalidVmoOffset => f.write_str("offset must be valid for the given VMO"),
             Error::InvalidPermissions => f.write_str("requested permissions must be R^X"),
-            Error::PermissionIncrease => f.write_str("protect can only be used to reduce permissions, never increase them"),
+            Error::PermissionIncrease => {
+                f.write_str("protect can only be used to reduce permissions, never increase them")
+            }
             Error::AlreadyMapped => f.write_str("requested address range is already mapped"),
             Error::NotMapped => f.write_str("requested address range is not mapped"),
             Error::NoMemory => f.write_str("failed to allocate memory for page table entry"),
             #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
-            Error::CacheInvalidationFailed(err) => f.write_fmt(format_args!("failed to invalidate page table caches: {err}")),
-            Error::AddressSpaceMismatch { expected, found } => write!(f, "Attempted to operate on mismatched address space. Expected {expected} but found {found}."),
+            Error::CacheInvalidationFailed(err) => f.write_fmt(format_args!(
+                "failed to invalidate page table caches: {err}"
+            )),
+            Error::AddressSpaceMismatch { expected, found } => write!(
+                f,
+                "Attempted to operate on mismatched address space. Expected {expected} but found {found}."
+            ),
             #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
             Error::Sbi(err) => write!(f, "SBI call failed: {err}"),
-            Error::KernelFaultInUserSpace(addr) => write!(f, "non-user address fault in user address space addr={addr:?}"),
-            Error::UserFaultInKernelSpace(addr) => write!(f, "non-kernel address fault in kernel address space addr={addr:?}"),
-            Error::Trap(trap) => write!(f, "operation failed with trap {trap:?}")
+            Error::KernelFaultInUserSpace(addr) => write!(
+                f,
+                "non-user address fault in user address space addr={addr:?}"
+            ),
+            Error::UserFaultInKernelSpace(addr) => write!(
+                f,
+                "non-kernel address fault in kernel address space addr={addr:?}"
+            ),
+            Error::Trap(trap) => write!(f, "operation failed with trap {trap:?}"),
         }
     }
 }

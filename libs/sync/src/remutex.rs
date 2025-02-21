@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::loom_const_fn;
 use crate::loom::AtomicUsize;
+use crate::loom::loom_const_fn;
 use crate::loom::{Ordering, UnsafeCell};
 use crate::{Backoff, GuardNoSend};
 use core::cell::Cell;
@@ -56,7 +56,6 @@ impl<T> ReentrantMutex<T> {
     loom_const_fn! {
         /// Creates a new reentrant mutex in an unlocked state ready for use.
         #[inline]
-        #[expect(tail_expr_drop_order, reason = "")]
         pub fn new(val: T) -> ReentrantMutex<T> {
             ReentrantMutex {
                 owner: AtomicUsize::new(0),

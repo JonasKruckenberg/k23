@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::{loom_const_fn, AtomicU8, Ordering};
+use crate::loom::{AtomicU8, Ordering, loom_const_fn};
 use core::mem;
 
 /// No initialization has run yet, and no thread is currently using the Once.

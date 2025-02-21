@@ -9,7 +9,7 @@ use core::ffi::c_void;
 use core::{fmt, str};
 use fallible_iterator::FallibleIterator;
 use gimli::{EndianSlice, NativeEndian};
-use rustc_demangle::{try_demangle, Demangle};
+use rustc_demangle::{Demangle, try_demangle};
 use xmas_elf::sections::SectionData;
 use xmas_elf::symbol_table::Entry;
 
@@ -192,7 +192,6 @@ impl<'a> SymbolizeContext<'a> {
         })?;
         let addr2line = addr2line::Context::from_dwarf(dwarf)?;
 
-        #[expect(tail_expr_drop_order, reason = "")]
         Ok(Self {
             addr2line,
             elf,
@@ -226,7 +225,6 @@ impl<'a> SymbolizeContext<'a> {
             })
             .unwrap();
 
-        #[expect(tail_expr_drop_order, reason = "")]
         Ok(SymbolsIter {
             addr: probe,
             elf: &self.elf,

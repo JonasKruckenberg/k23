@@ -62,7 +62,6 @@ impl UserMmap {
         let region = aspace.map(
             layout,
             Permissions::READ | Permissions::WRITE | Permissions::USER,
-            #[expect(tail_expr_drop_order, reason = "")]
             |range, perms, _batch| Ok(AddressSpaceRegion::new_zeroed(range, perms, None)),
         )?;
 
@@ -108,7 +107,6 @@ impl UserMmap {
     {
         self.commit(aspace, range, false)?;
 
-        #[expect(tail_expr_drop_order, reason = "")]
         crate::traps::catch_traps(TRAP_MASK, || {
             // Safety: checked by caller and `catch_traps`
             unsafe {
@@ -138,7 +136,6 @@ impl UserMmap {
             aspace.arch.activate();
         }
 
-        #[expect(tail_expr_drop_order, reason = "")]
         crate::traps::catch_traps(TRAP_MASK, || {
             // Safety: checked by caller and `catch_traps`
             unsafe {

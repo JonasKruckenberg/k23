@@ -7,7 +7,7 @@
 
 use crate::arch;
 use crate::eh_info::obtain_eh_info;
-use crate::utils::{deref_pointer, get_unlimited_slice, with_context, StoreOnStack};
+use crate::utils::{StoreOnStack, deref_pointer, get_unlimited_slice, with_context};
 use fallible_iterator::FallibleIterator;
 use gimli::{
     CfaRule, EhFrame, EndianSlice, FrameDescriptionEntry, NativeEndian, Register, RegisterRule,
@@ -211,7 +211,7 @@ impl<'a> Frame<'a> {
                 }
                 RegisterRule::Register(reg) => new_regs[reg] = self.regs[reg],
                 RegisterRule::Expression(_) | RegisterRule::ValExpression(_) => {
-                    return Err(gimli::Error::UnsupportedEvaluation)
+                    return Err(gimli::Error::UnsupportedEvaluation);
                 }
                 RegisterRule::Architectural => unreachable!(),
                 RegisterRule::Constant(value) => new_regs[reg] = usize::try_from(value).unwrap(),

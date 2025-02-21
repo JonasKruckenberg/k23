@@ -16,10 +16,10 @@ use crate::vm::VirtualAddress;
 use core::arch::asm;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
-pub use setjmp_longjmp::{call_with_setjmp, longjmp, JmpBuf};
+pub use setjmp_longjmp::{JmpBuf, call_with_setjmp, longjmp};
 pub use vm::{
-    invalidate_range, is_kernel_address, AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID,
-    KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_BASE,
+    AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID, KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE,
+    USER_ASPACE_BASE, invalidate_range, is_kernel_address,
 };
 
 /// Global RISC-V specific initialization.

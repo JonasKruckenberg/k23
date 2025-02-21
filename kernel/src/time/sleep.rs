@@ -8,9 +8,9 @@
 use crate::arch::device::cpu::with_cpu;
 use crate::scheduler;
 use crate::scheduler::scheduler;
+use crate::time::Instant;
 use crate::time::clock::Ticks;
 use crate::time::timer::Timer;
-use crate::time::Instant;
 use crate::util::atomic_waker::AtomicWaker;
 use core::fmt;
 use core::future::Future;

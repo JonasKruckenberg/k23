@@ -7,7 +7,7 @@
 
 //! Debug Console Extension
 
-use super::{sbi_call, EID_DBCN};
+use super::{EID_DBCN, sbi_call};
 
 /// # Errors
 ///

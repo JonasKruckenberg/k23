@@ -14,9 +14,9 @@ mod log;
 mod registry;
 mod writer;
 
+use crate::CPUID;
 use crate::time::Instant;
 use crate::tracing::writer::{IndentKind, MakeWriter, Semihosting, Writer};
-use crate::CPUID;
 pub use ::tracing::*;
 use color::{Color, SetColor};
 use core::fmt;
@@ -42,7 +42,6 @@ cpu_local! {
 /// events, but no spans yet.
 ///
 /// This should be called as early in the boot process as possible.
-#[expect(tail_expr_drop_order, reason = "")]
 pub fn init_early() {
     let subscriber = SUBSCRIBER.get_or_init(|| Subscriber {
         // level_filter,
@@ -57,7 +56,6 @@ pub fn init_early() {
 }
 
 /// Fully initialize the subsystem, after this point tracing [`Span`]s will be processed as well.
-#[expect(tail_expr_drop_order, reason = "")]
 pub fn init(filter: Filter) {
     let subscriber = SUBSCRIBER
         .get()
@@ -75,14 +73,6 @@ pub fn init(filter: Filter) {
     subscriber
         .lateinit
         .get_or_init(|| (Registry::default(), filter));
-
-    // tracing::trace!("Trace");
-    // tracing::debug!("Debug");
-    // tracing::info!("Info");
-    // tracing::warn!("Warn");
-    // tracing::error!("Error");
-    //
-    // todo!();
 }
 
 /// Perform late, per-CPU initialization. This will enable the proper printing of timestamps and
@@ -260,7 +250,6 @@ impl<W> Output<W> {
         debug_assert!(prev > 0);
     }
 
-    #[expect(tail_expr_drop_order, reason = "")]
     fn writer<'a>(&'a self, meta: &Metadata<'_>) -> Option<Writer<W::Writer>>
     where
         W: MakeWriter<'a>,

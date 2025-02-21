@@ -104,7 +104,6 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
             }
         }
 
-        #[expect(tail_expr_drop_order, reason = "")]
         Ok(Self {
             symbolize_ctx: SYMBOLIZE_CONTEXT.as_ref(),
             frames,

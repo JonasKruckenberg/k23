@@ -5,9 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::utils::Side;
 use crate::Linked;
 use crate::WAVLTree;
+use crate::utils::Side;
 use core::fmt;
 use core::ptr::NonNull;
 

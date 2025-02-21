@@ -2,12 +2,12 @@ use crate::arch;
 use crate::traps::TrapMask;
 use crate::wasm::backtrace::RawWasmBacktrace;
 use crate::wasm::indices::VMSharedTypeIndex;
-use crate::wasm::runtime::{code_registry, StaticVMOffsets, VMContext, VMFunctionImport, VMVal};
+use crate::wasm::runtime::{StaticVMOffsets, VMContext, VMFunctionImport, VMVal, code_registry};
 use crate::wasm::store::Stored;
 use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
-use crate::wasm::{runtime, Error, Store, MAX_WASM_STACK};
+use crate::wasm::{Error, MAX_WASM_STACK, Store, runtime};
 use alloc::string::ToString;
 use core::arch::asm;
 use core::ffi::c_void;
@@ -101,6 +101,10 @@ impl Func {
 
         let _guard = enter_wasm(vmctx, &module.offsets().static_);
 
+        #[allow(
+            irrefutable_let_patterns,
+            reason = "yes this is technically irrefutable, the `options(noreturn)` makes Rust mad, but its fine."
+        )]
         if let Err(trap) = crate::traps::catch_traps(TrapMask::all(), || {
             // Safety: caller has to ensure safety
             unsafe {

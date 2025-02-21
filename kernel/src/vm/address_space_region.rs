@@ -82,7 +82,6 @@ impl AddressSpaceRegion {
         permissions: Permissions,
         name: Option<String>,
     ) -> AddressSpaceRegion {
-        #[expect(tail_expr_drop_order, reason = "")]
         static WIRED_VMO: LazyLock<Arc<Vmo>> = LazyLock::new(|| Arc::new(Vmo::Wired));
 
         Self {

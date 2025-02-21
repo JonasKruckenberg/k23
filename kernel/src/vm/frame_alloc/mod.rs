@@ -11,11 +11,11 @@ mod frame_list;
 
 use crate::arch;
 use crate::cpu_local::CpuLocal;
+use crate::vm::PhysicalAddress;
 use crate::vm::address::VirtualAddress;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
-use crate::vm::PhysicalAddress;
 use alloc::vec::Vec;
-use arena::{select_arenas, Arena};
+use arena::{Arena, select_arenas};
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::fmt::Formatter;
@@ -32,7 +32,6 @@ static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 
 #[cold]
 pub fn init(boot_alloc: BootstrapAllocator, fdt_region: Range<PhysicalAddress>) {
-    #[expect(tail_expr_drop_order, reason = "")]
     FRAME_ALLOC.get_or_init(|| {
         let mut max_alignment = arch::PAGE_SIZE;
         let mut arenas = Vec::new();

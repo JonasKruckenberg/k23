@@ -14,7 +14,6 @@
     lang_items,
     naked_functions
 )]
-#![expect(tail_expr_drop_order, reason = "vetted")]
 
 extern crate alloc;
 
@@ -27,7 +26,7 @@ mod frame;
 mod lang_items;
 mod utils;
 
-use crate::eh_action::{find_eh_action, EHAction};
+use crate::eh_action::{EHAction, find_eh_action};
 use crate::exception::Exception;
 use crate::lang_items::ensure_personality_stub;
 use crate::utils::with_context;

@@ -1,7 +1,7 @@
 use crate::wasm::func::Func;
 use crate::wasm::runtime::VMVal;
 use crate::wasm::translate::{WasmHeapTopTypeInner, WasmHeapType, WasmValType};
-use crate::wasm::{enum_accessors, Store};
+use crate::wasm::{Store, enum_accessors};
 use core::ptr;
 
 /// A reference value that a WebAssembly module can consume or produce.

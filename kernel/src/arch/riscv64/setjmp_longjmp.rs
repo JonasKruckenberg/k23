@@ -72,7 +72,7 @@ pub type JmpBuf = *const JmpBufStruct;
 /// This function pretty weird, it can return more than one time:
 /// - The first time it returns, the return value is `0` indicating that the context has been saved.
 /// - Subsequently, calls to `longjmp` that transfer control to the `*mut JumpBuf` used by this `setjmp`
-///     will cause this function to return again, this time with the value passed to `longjmp`.
+///   will cause this function to return again, this time with the value passed to `longjmp`.
 ///
 /// This implementation has been adapted from the [LLVM libc implementation (Apache License v2.0 with LLVM Exceptions)](https://github.com/llvm/llvm-project/blob/bbf2ad026eb0b399364a889799ef6b45878cd299/libc/src/setjmp/riscv/setjmp.cpp)
 ///
@@ -87,6 +87,10 @@ pub unsafe extern "C" fn setjmp(env: JmpBuf) -> i32 {
         cfg_if::cfg_if! {
             if #[cfg(target_feature = "d")] {
                 naked_asm! {
+                    // FIXME this is a workaround for bug in rustc/llvm
+                    //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
+                    ".attribute arch, \"rv64gc\"",
+
                     save_gp!(ra => a0[0]),
                     save_gp!(s0 => a0[1]),
                     save_gp!(s1 => a0[2]),
@@ -159,6 +163,10 @@ pub unsafe extern "C" fn longjmp(env: JmpBuf, val: i32) -> ! {
         cfg_if::cfg_if! {
             if #[cfg(target_feature = "d")] {
                 naked_asm! {
+                    // FIXME this is a workaround for bug in rustc/llvm
+                    //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
+                    ".attribute arch, \"rv64gc\"",
+
                     load_gp!(a0[0] => ra),
                     load_gp!(a0[1] => s0),
                     load_gp!(a0[2] => s1),

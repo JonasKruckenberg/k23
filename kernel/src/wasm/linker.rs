@@ -5,8 +5,8 @@ use crate::wasm::{Engine, Error, Extern, Instance, Module, Store};
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
+use hashbrown::hash_map::Entry;
 
 /// A dynamic linker for WebAssembly modules.
 #[derive(Debug)]

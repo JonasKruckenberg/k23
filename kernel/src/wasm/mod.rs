@@ -32,7 +32,7 @@ mod values;
 pub use errors::Error;
 use wasmparser::Validator;
 pub(crate) type Result<T> = core::result::Result<T, Error>;
-use crate::vm::{AddressSpace, ArchAddressSpace, VirtualAddress, KERNEL_ASPACE};
+use crate::vm::{AddressSpace, ArchAddressSpace, KERNEL_ASPACE, VirtualAddress};
 use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 use crate::{arch, enum_accessors, owned_enum_accessors};
 pub use engine::Engine;

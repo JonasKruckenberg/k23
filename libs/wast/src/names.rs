@@ -1,5 +1,5 @@
-use crate::token::{Id, Index};
 use crate::Error;
+use crate::token::{Id, Index};
 use alloc::format;
 use hashbrown::HashMap;
 

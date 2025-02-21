@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::{loom_const_fn, AtomicUsize, Ordering, UnsafeCell};
 use crate::Backoff;
+use crate::loom::{AtomicUsize, Ordering, UnsafeCell, loom_const_fn};
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::{fmt, mem};
@@ -63,7 +63,6 @@ impl<T> RwLock<T> {
     loom_const_fn! {
         /// Creates a new instance of an `RwLock<T>` which is unlocked.
         #[inline]
-        #[expect(tail_expr_drop_order, reason = "")]
         pub fn new(val: T) -> RwLock<T> {
             RwLock {
                 data: UnsafeCell::new(val),
@@ -618,8 +617,8 @@ fn compare_exchange(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loom::thread;
     use crate::loom::Arc;
+    use crate::loom::thread;
     use core::fmt::Debug;
     use core::mem;
     use std::hint;

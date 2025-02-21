@@ -56,7 +56,6 @@ where
 }
 
 pub fn init(boot_info: &BootInfo, rand: &mut impl rand::RngCore) -> crate::Result<()> {
-    #[expect(tail_expr_drop_order, reason = "")]
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 

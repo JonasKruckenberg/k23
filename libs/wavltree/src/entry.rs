@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::utils::Side;
-use crate::{utils, Link, Linked, WAVLTree};
+use crate::{Link, Linked, WAVLTree, utils};
 use core::pin::Pin;
 use core::ptr::NonNull;
 

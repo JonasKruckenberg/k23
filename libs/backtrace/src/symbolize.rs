@@ -9,7 +9,7 @@ use core::ffi::c_void;
 use core::{fmt, str};
 use fallible_iterator::FallibleIterator;
 use gimli::{EndianSlice, NativeEndian};
-use rustc_demangle::{try_demangle, Demangle};
+use rustc_demangle::{Demangle, try_demangle};
 use xmas_elf::sections::SectionData;
 use xmas_elf::symbol_table::Entry;
 

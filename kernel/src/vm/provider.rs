@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::vm::{frame_alloc, Error, Frame, FrameList};
+use crate::vm::{Error, Frame, FrameList, frame_alloc};
 use alloc::sync::Arc;
 use core::fmt::Debug;
 use core::iter;
@@ -21,7 +21,6 @@ pub trait Provider: Debug {
     fn free_frames(&self, frames: FrameList);
 }
 
-#[expect(tail_expr_drop_order, reason = "")]
 pub static THE_ZERO_FRAME: LazyLock<Arc<TheZeroFrame>> = LazyLock::new(|| {
     let frame = frame_alloc::alloc_one_zeroed().unwrap();
     tracing::trace!("THE_ZERO_FRAME: {}", frame.addr());

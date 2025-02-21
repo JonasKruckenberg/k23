@@ -22,7 +22,6 @@ cfg_if::cfg_if! {
         pub(crate) struct UnsafeCell<T: ?Sized>(core::cell::UnsafeCell<T>);
 
         impl<T> UnsafeCell<T> {
-            #[expect(tail_expr_drop_order, reason = "")]
             pub const fn new(data: T) -> UnsafeCell<T> {
                 UnsafeCell(core::cell::UnsafeCell::new(data))
             }

@@ -15,7 +15,6 @@ impl ConstExpr {
     ///
     /// Returns the new const expression as well as the escaping function
     /// indices that appeared in `ref.func` instructions, if any.
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn from_wasmparser(
         expr: &wasmparser::ConstExpr<'_>,
     ) -> crate::wasm::Result<(Self, SmallVec<[FuncIndex; 1]>)> {
