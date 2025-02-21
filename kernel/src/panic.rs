@@ -79,7 +79,9 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             let total_frames = backtrace.frames.len() + backtrace.frames_omitted;
             let omitted_frames = backtrace.frames_omitted;
 
-            tracing::warn!("Stack trace was {total_frames} frames, but backtrace buffer capacity was {MAX_BACKTRACE_FRAMES}. Omitted {omitted_frames} frames. Consider increasing `MAX_BACKTRACE_FRAMES` to at least {total_frames} to capture the entire trace.");
+            tracing::warn!(
+                "Stack trace was {total_frames} frames, but backtrace buffer capacity was {MAX_BACKTRACE_FRAMES}. Omitted {omitted_frames} frames. Consider increasing `MAX_BACKTRACE_FRAMES` to at least {total_frames} to capture the entire trace."
+            );
         }
 
         panic_count::finished_panic_hook();
