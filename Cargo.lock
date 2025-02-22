@@ -1252,9 +1252,9 @@ dependencies = [
 
 [[package]]
 name = "wasmtime-slab"
-version = "28.0.1"
+version = "30.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "564905638c132c275d365c1fa074f0b499790568f43148d29de84ccecfb5cb31"
+checksum = "bd3f9ff8c57443c76d90f7cbc855381b2bc6f5c9bb6a2c0d003ed9fc784a9311"
 
 [[package]]
 name = "wast"
