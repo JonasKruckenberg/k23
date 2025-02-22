@@ -87,12 +87,18 @@ unsafe extern "C" fn default_trap_entry() {
         naked_asm! {
             // FIXME this is a workaround for bug in rustc/llvm
             //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
-            ".attribute arch, \"rv64gc\"",
-
             ".align 2",
+            ".attribute arch, \"rv64gc\"",
+            ".cfi_startproc",
+
+            // Set the CFI rule for the return address to always return zero
+            // This is always the first frame on stack, there is nowhere to return to
+            ".cfi_register ra, zero",
+
             "csrrw sp, sscratch, sp", // sp points to the TrapFrame
 
             "add sp, sp, -0x210",
+            ".cfi_def_cfa_offset 0x210",
 
             // save gp regs
             save_gp!(x0 => sp[0]),
@@ -237,8 +243,11 @@ unsafe extern "C" fn default_trap_entry() {
             load_fp!(sp[63] => f31),
 
             "add sp, sp, 0x210",
+            ".cfi_def_cfa_offset 0",
+
             "csrrw sp, sscratch, sp",
             "sret",
+            ".cfi_endproc",
 
             trap_handler = sym default_trap_handler,
         }
