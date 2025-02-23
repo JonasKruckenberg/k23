@@ -57,7 +57,7 @@ pub fn init(boot_info: &BootInfo) {
 pub struct Backtrace<'a, const MAX_FRAMES: usize> {
     symbolize_ctx: Option<&'a SymbolizeContext<'static>>,
     pub frames: ArrayVec<usize, MAX_FRAMES>,
-    pub frames_omitted: usize,
+    pub frames_omitted: bool,
 }
 
 impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
@@ -94,15 +94,15 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
         Self::new_inner(iter)
     }
 
-    fn new_inner(mut iter: FrameIter) -> Result<Self, unwind2::Error> {
+    fn new_inner(iter: FrameIter) -> Result<Self, unwind2::Error> {
         let mut frames = ArrayVec::new();
-        let mut frames_omitted: usize = 0;
+
+        let mut iter = iter.take(MAX_FRAMES);
 
         while let Some(frame) = iter.next()? {
-            if frames.try_push(frame.ip()).is_err() {
-                frames_omitted += 1;
-            }
+            frames.try_push(frame.ip()).unwrap();
         }
+        let frames_omitted = iter.next()?.is_some();
 
         Ok(Self {
             symbolize_ctx: SYMBOLIZE_CONTEXT.as_ref(),
@@ -123,7 +123,10 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
                 let mut syms = symbolize_ctx.resolve_unsynchronized(*ip as u64).unwrap();
 
                 write!(f, "{frame_idx}: {address:#x}    -", address = ip)?;
+
+                let mut any = false; // did we print any symbols?
                 while let Some(sym) = syms.next().unwrap() {
+                    any = true;
                     if let Some(name) = sym.name() {
                         writeln!(f, "      {name}")?;
                     } else {
@@ -142,6 +145,9 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
                             writeln!(f, "??")?;
                         }
                     }
+                }
+                if !any {
+                    writeln!(f, "      <unknown>")?;
                 }
             } else {
                 writeln!(f, "{frame_idx}: {address:#x}", address = ip)?;

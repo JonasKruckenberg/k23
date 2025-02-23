@@ -75,13 +75,8 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
         let backtrace = Backtrace::<MAX_BACKTRACE_FRAMES>::capture().unwrap();
         tracing::error!("{backtrace}");
 
-        if backtrace.frames_omitted > 0 {
-            let total_frames = backtrace.frames.len() + backtrace.frames_omitted;
-            let omitted_frames = backtrace.frames_omitted;
-
-            tracing::warn!(
-                "Stack trace was {total_frames} frames, but backtrace buffer capacity was {MAX_BACKTRACE_FRAMES}. Omitted {omitted_frames} frames. Consider increasing `MAX_BACKTRACE_FRAMES` to at least {total_frames} to capture the entire trace."
-            );
+        if backtrace.frames_omitted {
+            tracing::warn!("Stack trace was larger than backtrace buffer, omitted some frames.");
         }
 
         panic_count::finished_panic_hook();
@@ -103,7 +98,10 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 #[unsafe(no_mangle)]
 fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
     match unwind2::begin_unwind(payload) {
-        Ok(_) => arch::exit(0),
+        Ok(_) => {
+            tracing::debug!("here");
+            arch::exit(0)
+        }
         Err(unwind2::Error::EndOfStack) => {
             log::error!(
                 "unwinding completed without finding a `catch_unwind` make sure there is at least a root level catch unwind wrapping the main function"
