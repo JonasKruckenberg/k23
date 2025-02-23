@@ -370,7 +370,7 @@ impl<T> fmt::Display for JoinError<T> {
                     fmt,
                     "task {} panicked with message {:?}",
                     self.id,
-                    panic::payload_as_str(p)
+                    panic::payload_as_str(p.as_ref())
                 )
             }
         }
@@ -390,7 +390,7 @@ impl<T> fmt::Debug for JoinError<T> {
                     fmt,
                     "JoinError::Panic({:?}, {:?}, ...)",
                     self.id,
-                    panic::payload_as_str(p)
+                    panic::payload_as_str(p.as_ref())
                 )
             }
         }
