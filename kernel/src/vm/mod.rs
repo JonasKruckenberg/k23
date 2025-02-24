@@ -65,15 +65,7 @@ pub fn init(boot_info: &BootInfo, rand: &mut impl rand::RngCore) -> crate::Resul
         reserve_wired_regions(&mut aspace, boot_info, &mut flush);
         flush.flush().unwrap();
 
-        for region in aspace.regions.iter() {
-            tracing::trace!(
-                "{:<40?} {}..{} {}",
-                region.name,
-                region.range.start,
-                region.range.end,
-                region.permissions
-            );
-        }
+        log::trace!("Kernel AddressSpace {aspace:?}");
 
         Ok(Mutex::new(aspace))
     })?;

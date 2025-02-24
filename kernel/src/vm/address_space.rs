@@ -16,6 +16,7 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::alloc::Layout;
+use core::fmt;
 use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::range::{Bound, Range, RangeBounds};
@@ -33,6 +34,7 @@ pub enum AddressSpaceKind {
 }
 
 pub struct AddressSpace {
+    kind: AddressSpaceKind,
     /// A binary search tree of regions that make up this address space.
     pub(super) regions: wavltree::WAVLTree<AddressSpaceRegion>,
     /// The maximum range this address space can encompass.
@@ -45,7 +47,26 @@ pub struct AddressSpace {
     /// The hardware address space backing this "logical" address space that changes need to be
     /// materialized into in order to take effect.
     pub arch: arch::AddressSpace,
-    kind: AddressSpaceKind,
+}
+
+impl fmt::Debug for AddressSpace {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AddressSpace")
+            .field_with("regions", |f| {
+                let mut f = f.debug_list();
+                for region in self.regions.iter() {
+                    f.entry(&format_args!(
+                        "{:<40?} {}..{} {}",
+                        region.name, region.range.start, region.range.end, region.permissions
+                    ));
+                }
+                f.finish()
+            })
+            .field("max_range", &self.max_range)
+            .field("kind", &self.kind)
+            .field("rng", &self.rng)
+            .finish_non_exhaustive()
+    }
 }
 
 impl AddressSpace {
