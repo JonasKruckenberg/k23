@@ -6,15 +6,17 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
-use crate::TRAP_STACK_SIZE_PAGES;
 use crate::arch::PAGE_SIZE;
+use crate::backtrace::Backtrace;
 use crate::scheduler::scheduler;
-use crate::traps::TrapReason;
 use crate::vm::VirtualAddress;
+use crate::{TRAP_STACK_SIZE_PAGES, panic};
+use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
+use core::ops::ControlFlow;
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
-use riscv::{sbi, scause, sepc, sip, sstatus, stval, stvec};
+use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
 cpu_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
@@ -169,10 +171,7 @@ unsafe extern "C" fn default_trap_entry() {
             save_fp!(f31 => sp[63]),
 
             "mv a0, sp",
-
             "call {trap_handler}",
-
-            "mv sp, a0",
 
             // restore gp regs
             // skip x0 since its always zero
@@ -255,40 +254,31 @@ unsafe extern "C" fn default_trap_entry() {
 }
 
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
-#[expect(clippy::too_many_arguments, reason = "")]
-fn default_trap_handler(
-    raw_frame: *mut TrapFrame,
-    a1: usize,
-    a2: usize,
-    a3: usize,
-    a4: usize,
-    a5: usize,
-    a6: usize,
-    a7: usize,
-) -> *mut TrapFrame {
-    // Clear the SUM bit to prevent userspace memory access in case we interrupted the kernel
-    // Safety: register access
-    unsafe {
-        sstatus::clear_sum();
-    }
-
+extern "C" fn default_trap_handler(
+    frame: &mut TrapFrame,
+    _a1: usize,
+    _a2: usize,
+    _a3: usize,
+    _a4: usize,
+    _a5: usize,
+    _a6: usize,
+    _a7: usize,
+) {
     let cause = scause::read().cause();
 
-    tracing::trace!(
-        "trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}"
-    );
     let epc = sepc::read();
-    let tval = stval::read();
-    tracing::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
+    let tval = VirtualAddress::new(stval::read()).unwrap();
+    tracing::trace!("{cause:?} {:?};epc={epc:#x};tval={tval}", sstatus::read());
 
-    let reason = match cause {
+    match cause {
         Trap::Interrupt(Interrupt::SupervisorSoft) => {
+            // Just a nop, software interrupts are only used as wakeup calls
+            // TODO this should be an specialized routine in the trap vector
+
             // Safety: register access
             unsafe {
                 sip::clear_ssoft();
             }
-            // Software interrupts are always IPIs used for unparking
-            return raw_frame;
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             if let (_, Some(next_deadline)) = scheduler().cpu_local_timer().turn() {
@@ -298,31 +288,87 @@ fn default_trap_handler(
                 // Timer interrupts are always IPIs used for sleeping
                 sbi::time::set_timer(u64::MAX).unwrap();
             }
-            return raw_frame;
         }
-        Trap::Exception(Exception::InstructionMisaligned) => TrapReason::InstructionMisaligned,
-        Trap::Exception(Exception::InstructionFault) => TrapReason::InstructionFault,
-        Trap::Exception(Exception::IllegalInstruction) => TrapReason::IllegalInstruction,
-        Trap::Exception(Exception::Breakpoint) => TrapReason::Breakpoint,
-        Trap::Exception(Exception::LoadMisaligned) => TrapReason::LoadMisaligned,
-        Trap::Exception(Exception::LoadFault) => TrapReason::LoadFault,
-        Trap::Exception(Exception::StoreMisaligned) => TrapReason::StoreMisaligned,
-        Trap::Exception(Exception::StoreFault) => TrapReason::StoreFault,
-        Trap::Exception(Exception::InstructionPageFault) => TrapReason::InstructionPageFault,
-        Trap::Exception(Exception::LoadPageFault) => TrapReason::LoadPageFault,
-        Trap::Exception(Exception::StorePageFault) => TrapReason::StorePageFault,
-        Trap::Exception(Exception::SupervisorEnvCall | Exception::UserEnvCall) => {
-            TrapReason::EnvCall
+        Trap::Interrupt(Interrupt::SupervisorExternal) => todo!("run IO reactor"),
+        Trap::Exception(
+            Exception::LoadPageFault | Exception::StorePageFault | Exception::InstructionPageFault,
+        ) => {
+            // first attempt the page fault handler, can it recover us from this by fixing up mappings?
+            if handle_page_fault(cause, tval).is_break() {
+                return;
+            }
+
+            // if not attempt the wasm fault handler, is the current trap caused by a user program?
+            // if so can it kill the program?
+            if handle_wasm_exception().is_break() {
+                return;
+            }
+
+            handle_kernel_exception(cause, frame, epc, tval)
         }
-        _ => unreachable!(),
+        Trap::Exception(Exception::IllegalInstruction) => {
+            if handle_wasm_exception().is_break() {
+                return;
+            }
+
+            handle_kernel_exception(cause, frame, epc, tval)
+        }
+        _ => handle_kernel_exception(cause, frame, epc, tval),
+    }
+}
+
+fn handle_page_fault(_trap: Trap, _tval: VirtualAddress) -> ControlFlow<()> {
+    // crate::vm::with_current_aspace(|aspace| {
+    //     let flags = match trap {
+    //         Trap::Exception(Exception::LoadPageFault) => PageFaultFlags::LOAD,
+    //         Trap::Exception(Exception::StorePageFault) => PageFaultFlags::STORE,
+    //         Trap::Exception(Exception::InstructionPageFault) => PageFaultFlags::INSTRUCTION,
+    //         // not a page fault exception, continue with the next fault handler
+    //         _ => return ControlFlow::Continue(())
+    //     };
+    //
+    //     if let Err(_err) = aspace.page_fault(tval, flags) {
+    //         // the address space knew about the faulting address, but the requested access was invalid
+    //         ControlFlow::Continue(())
+    //     } else {
+    //         // the address space knew about the faulting address and could correct the fault
+    //         ControlFlow::Break(())
+    //     }
+    // })
+
+    // TODO find the CURRENT address space
+
+    ControlFlow::Continue(())
+}
+
+fn handle_wasm_exception() -> ControlFlow<()> {
+    // TODO The trap occurred while executing a WASM program
+    //      => capture backtrace
+    //      => unwind stack to next rust frame (before all the WASM frames)
+
+    ControlFlow::Continue(())
+}
+
+fn handle_kernel_exception(cause: Trap, frame: &TrapFrame, epc: usize, tval: VirtualAddress) -> ! {
+    // let's go ahead and begin unwinding the stack that caused the fault
+    // Note: we use unwinding here to give kernel code the chance to catch this and recover from it.
+    // If the unwinding reaches the root `catch_unwind` in `main.rs` this will tear down the entire
+    // system causing all CPUs to shut down.
+
+    tracing::error!("KERNEL TRAP {cause:?} epc={epc:#x};tval={tval}");
+
+    let mut regs = unwind2::Registers {
+        gp: frame.gp,
+        fp: frame.fp,
     };
+    regs.gp[2] = sscratch::read();
 
-    crate::traps::begin_trap(crate::traps::Trap {
-        pc: VirtualAddress::new(epc).unwrap(),
-        fp: VirtualAddress::default(),
-        faulting_address: VirtualAddress::new(tval).unwrap(),
-        reason,
-    });
+    let backtrace = Backtrace::<32>::from_registers(regs.clone(), epc + 1).unwrap();
+    tracing::error!("{backtrace}");
 
-    raw_frame
+    // FIXME it would be great to get rid of the allocation here :/
+    let payload = Box::new(cause);
+
+    // begin a panic on the original stack
+    panic::begin_unwind_with(payload, regs, epc + 1);
 }

@@ -32,7 +32,6 @@ pub enum Error {
     Sbi(riscv::sbi::Error),
     KernelFaultInUserSpace(VirtualAddress),
     UserFaultInKernelSpace(VirtualAddress),
-    Trap(crate::traps::Trap),
 }
 
 impl From<crate::vm::frame_alloc::AllocError> for Error {
@@ -87,7 +86,6 @@ impl Display for Error {
                 f,
                 "non-kernel address fault in kernel address space addr={addr:?}"
             ),
-            Error::Trap(trap) => write!(f, "operation failed with trap {trap:?}"),
         }
     }
 }

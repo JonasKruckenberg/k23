@@ -42,7 +42,6 @@ mod task;
 mod tests;
 mod time;
 mod tracing;
-mod traps;
 mod util;
 mod vm;
 mod wasm;

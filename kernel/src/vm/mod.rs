@@ -13,7 +13,6 @@ mod error;
 pub mod flush;
 pub mod frame_alloc;
 mod provider;
-mod trap_handler;
 mod user_mmap;
 mod vmo;
 
@@ -33,7 +32,6 @@ use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::{Mutex, OnceLock};
-pub use trap_handler::trap_handler;
 pub use user_mmap::UserMmap;
 pub use vmo::Vmo;
 use xmas_elf::program::Type;

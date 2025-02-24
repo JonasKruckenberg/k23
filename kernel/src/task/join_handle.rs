@@ -301,7 +301,7 @@ impl<T> JoinError<T> {
     ///
     ///     if err.is_panic() {
     ///         // Resume the panic on the main task
-    ///         panic::resume_unwind(err.into_panic());
+    ///         panic::begin_unwind(err.into_panic());
     ///     }
     /// }
     /// ```
@@ -328,7 +328,7 @@ impl<T> JoinError<T> {
     ///
     ///     if let Ok(reason) = err.try_into_panic() {
     ///         // Resume the panic on the main task
-    ///         panic::resume_unwind(reason);
+    ///         panic::begin_unwind(reason);
     ///     }
     /// }
     /// ```

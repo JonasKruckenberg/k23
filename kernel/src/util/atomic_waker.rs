@@ -267,7 +267,7 @@ impl AtomicWaker {
 
                 if let Some(panic) = maybe_panic {
                     // If `into_waker` panicked, return the panic to the caller.
-                    panic::resume_unwind(panic);
+                    panic::begin_unwind(panic);
                 }
             }
             WAKING => {
