@@ -17,8 +17,8 @@ use core::arch::asm;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
 pub use vm::{
-    AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID, KERNEL_ASPACE_BASE, PAGE_SHIFT, PAGE_SIZE,
-    USER_ASPACE_BASE, invalidate_range, is_kernel_address,
+    invalidate_range, is_kernel_address, AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID,
+    KERNEL_ASPACE_RANGE, USER_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE,
 };
 
 /// Global RISC-V specific initialization.

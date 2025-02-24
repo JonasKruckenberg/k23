@@ -19,7 +19,7 @@ use core::alloc::Layout;
 use core::fmt;
 use core::num::NonZeroUsize;
 use core::pin::Pin;
-use core::range::{Bound, Range, RangeBounds};
+use core::range::{Bound, Range, RangeBounds, RangeInclusive};
 use rand::Rng;
 use rand::distr::Uniform;
 use rand_chacha::ChaCha20Rng;
@@ -40,7 +40,7 @@ pub struct AddressSpace {
     /// The maximum range this address space can encompass.
     ///
     /// This is used to check new mappings against and speed up page fault handling.
-    max_range: Range<VirtualAddress>,
+    max_range: RangeInclusive<VirtualAddress>,
     /// The pseudo-random number generator used for address space layout randomization or `None`
     /// if ASLR is disabled.
     rng: Option<ChaCha20Rng>,
@@ -77,7 +77,7 @@ impl AddressSpace {
         Ok(Self {
             regions: wavltree::WAVLTree::default(),
             arch,
-            max_range: Range::from(arch::USER_ASPACE_BASE..VirtualAddress::MAX),
+            max_range: arch::USER_ASPACE_RANGE,
             rng,
             kind: AddressSpaceKind::User,
         })
@@ -91,7 +91,7 @@ impl AddressSpace {
         Self {
             regions: wavltree::WAVLTree::default(),
             arch: arch_aspace,
-            max_range: Range::from(arch::KERNEL_ASPACE_BASE..VirtualAddress::MAX),
+            max_range: arch::KERNEL_ASPACE_RANGE,
             rng,
             kind: AddressSpaceKind::Kernel,
         }
@@ -116,7 +116,7 @@ impl AddressSpace {
             Error::MisalignedEnd
         );
         ensure!(
-            layout.pad_to_align().size() <= self.max_range.size(),
+            layout.pad_to_align().size() <= self.max_range.end.checked_sub_addr(self.max_range.start).unwrap_or_default(),
             Error::SizeTooLarge
         );
         ensure!(
@@ -165,7 +165,7 @@ impl AddressSpace {
             range.end.is_aligned_to(arch::PAGE_SIZE),
             Error::MisalignedEnd
         );
-        ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
+        ensure!(range.size() <= self.max_range.end.checked_sub_addr(self.max_range.start).unwrap_or_default(), Error::SizeTooLarge);
         ensure!(permissions.is_valid(), Error::InvalidPermissions);
         // ensure the entire address space range is free
         if let Some(prev) = self.regions.upper_bound(range.start_bound()).get() {
@@ -290,7 +290,7 @@ impl AddressSpace {
             range.end.is_aligned_to(arch::PAGE_SIZE),
             Error::MisalignedEnd
         );
-        ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
+        ensure!(range.size() <= self.max_range.end.checked_sub_addr(self.max_range.start).unwrap_or_default(), Error::SizeTooLarge);
 
         // ensure the entire range is mapped and doesn't cover any holes
         // `for_each_region_in_range` covers the last half so we just need to check that the regions
@@ -347,7 +347,7 @@ impl AddressSpace {
             Error::MisalignedEnd
         );
         ensure!(
-            range.size() <= self.max_range.size(),
+            range.size() <= self.max_range.end.checked_sub_addr(self.max_range.start).unwrap_or_default(),
             Error::AlignmentTooLarge
         );
         ensure!(new_permissions.is_valid(), Error::InvalidPermissions);
@@ -458,7 +458,7 @@ impl AddressSpace {
             range.end.is_aligned_to(arch::PAGE_SIZE),
             Error::MisalignedEnd
         );
-        ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
+        ensure!(range.size() <= self.max_range.end.checked_sub_addr(self.max_range.start).unwrap_or_default(), Error::SizeTooLarge);
         ensure!(permissions.is_valid(), Error::InvalidPermissions);
 
         // ensure the entire address space range is free
@@ -502,7 +502,7 @@ impl AddressSpace {
             range.end.is_aligned_to(arch::PAGE_SIZE),
             Error::MisalignedEnd
         );
-        ensure!(range.size() <= self.max_range.size(), Error::SizeTooLarge);
+        ensure!(range.size() <= self.max_range.end.checked_sub_addr(self.max_range.start).unwrap_or_default(), Error::SizeTooLarge);
 
         let mut batch = Batch::new(&mut self.arch);
         let mut bytes_remaining = range.size();
@@ -625,6 +625,7 @@ impl AddressSpace {
             spot.checked_add(layout.size()).unwrap()
         );
 
+        debug_assert!(spot.is_canonical());
         spot
     }
 
@@ -650,7 +651,11 @@ impl AddressSpace {
 
         // if the tree is empty, treat max_range as the gap
         if self.regions.is_empty() {
-            let aligned_gap = self.max_range.checked_align_in(layout.align()).unwrap();
+            let aligned_gap = Range { 
+                start: self.max_range.start.checked_align_up(layout.align()).unwrap(), 
+                end: self.max_range.end.checked_sub(1).unwrap().align_down(layout.align())
+            };
+            
             let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {

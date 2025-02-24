@@ -95,7 +95,7 @@ impl<'a> BootstrapAllocator<'a> {
         // Safety: we just allocated the frame
         unsafe {
             ptr::write_bytes::<u8>(
-                arch::KERNEL_ASPACE_BASE
+                arch::KERNEL_ASPACE_RANGE.start
                     .checked_add(addr.get())
                     .unwrap()
                     .as_mut_ptr(),
