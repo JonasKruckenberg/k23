@@ -36,7 +36,7 @@ pub enum AddressSpaceKind {
 pub struct AddressSpace {
     kind: AddressSpaceKind,
     /// A binary search tree of regions that make up this address space.
-    regions: wavltree::WAVLTree<AddressSpaceRegion>,
+    pub(super) regions: wavltree::WAVLTree<AddressSpaceRegion>,
     /// The maximum range this address space can encompass.
     ///
     /// This is used to check new mappings against and speed up page fault handling.
@@ -65,7 +65,7 @@ impl fmt::Debug for AddressSpace {
             .field("max_range", &self.max_range)
             .field("kind", &self.kind)
             .field("rng", &self.rng)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
