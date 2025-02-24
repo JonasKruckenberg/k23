@@ -9,9 +9,15 @@ use crate::exception::Exception;
 use crate::utils::with_context;
 use crate::{Error, FrameIter, arch, raise_exception_phase2};
 
+/// In traditional unwinders the personality routine is responsible for determining the unwinders
+/// behaviour for each frame (stop unwinding because a handler has been found, continue etc.)
+/// Since `unwind2` only cares about Rust code, the personality routine here is just a stub to make
+/// the compiler happy and ensure we're not unwinding across language boundaries. The real unwinding
+/// happens in [`raise_exception_phase2`].
 #[lang = "eh_personality"]
 extern "C" fn personality_stub() {}
 
+/// Ensure the ptr points to the expected personality routine stub.
 pub fn ensure_personality_stub(ptr: u64) -> crate::Result<()> {
     if ptr == personality_stub as usize as u64 {
         Ok(())
@@ -20,6 +26,8 @@ pub fn ensure_personality_stub(ptr: u64) -> crate::Result<()> {
     }
 }
 
+/// Rust generated landing pads for `Drop` cleanups end with calls to `_Unwind_Resume`
+/// to continue unwinding the stack. This is what transfers control back to the unwinder.
 #[inline(never)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {

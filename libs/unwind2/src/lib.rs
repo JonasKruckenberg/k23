@@ -27,20 +27,20 @@ mod frame;
 mod lang_items;
 mod utils;
 
-use eh_action::{EHAction, find_eh_action};
-use exception::Exception;
-use lang_items::ensure_personality_stub;
-pub use utils::with_context;
 use alloc::boxed::Box;
 use core::any::Any;
 use core::intrinsics;
 use core::mem::ManuallyDrop;
 use core::panic::UnwindSafe;
 use core::ptr::addr_of_mut;
+use eh_action::{EHAction, find_eh_action};
 pub use eh_info::EhInfo;
 pub use error::Error;
+use exception::Exception;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameIter};
+use lang_items::ensure_personality_stub;
+pub use utils::with_context;
 
 pub use arch::Registers;
 
@@ -48,76 +48,74 @@ pub(crate) type Result<T> = core::result::Result<T, Error>;
 
 /// Begin unwinding the stack.
 ///
-/// This will perform [`Drop`] cleanup and call [`catch_unwind`] handlers.
+/// Unwinding will walk up the stack, calling [`Drop`] handlers along the way to perform cleanup until
+/// it reaches a [`catch_unwind`] handler.
 ///
-/// The provided `payload` argument will be passed in the `Err` variant returned by any [`catch_unwind`]
-/// handlers that are encountered in the callstack.
+/// When reached, control is transferred to the [`catch_unwind`] handler with the `payload` argument
+/// returned in the `Err` variant of the [`catch_unwind`] return. In that case, this function will *not*
+/// return.
 ///
 /// # Errors
 ///
-/// Returns an error if unwinding fails.
+/// If there is no [`catch_unwind`] handler anywhere in the call chain then this function returns
+/// `Err(Error::EndOfStack)`. This roughly equivalent to an uncaught exception in C++ and should
+/// be treated as a fatal error.
 pub fn begin_unwind(payload: Box<dyn Any + Send>) -> Result<!> {
     with_context(|regs, pc| {
         let frames = FrameIter::from_registers(regs.clone(), pc);
-
-        // TODO at this point libunwind *would* have a 2 phase unwinding process where we
-        //  walk the stack once to find the closest exception handler and then a second time
-        //  up to that handler calling the personality routine on the way to determine if we
-        //  need to perform cleanup. Buuuuut since we rolled this all into one here, raise_exception_phase_1
-        //  actually didn't do anything and unwinding appears to be correct even without so win??
-        // raise_exception_phase_1(frames.clone())?;
 
         raise_exception_phase2(frames, Exception::wrap(payload))
     })
 }
 
+/// Begin unwinding *a* stack. The specific stack location at which unwinding will begin is determined
+/// by the register set and program counter provided.
+///
+/// Unwinding will walk up the stack, calling [`Drop`] handlers along the way to perform cleanup until
+/// it reaches a [`catch_unwind`] handler.
+///
+/// When reached, control is transferred to the [`catch_unwind`] handler with the `payload` argument
+/// returned in the `Err` variant of the [`catch_unwind`] return. In that case, this function will *not*
+/// return.
+///
+/// # Errors
+///
+/// If there is no [`catch_unwind`] handler anywhere in the call chain then this function returns
+/// `Err(Error::EndOfStack)`. This roughly equivalent to an uncaught exception in C++ and should
+/// be treated as a fatal error.
+///
+/// # Safety
+///
+/// This function does not perform any checking of the provided register values, if they are incorrect
+/// this might lead to segfaults.
+pub unsafe fn begin_unwind_with(
+    payload: Box<dyn Any + Send>,
+    regs: Registers,
+    pc: usize,
+) -> Result<!> {
+    let frames = FrameIter::from_registers(regs, pc);
 
-pub fn begin_unwind_with(payload: Box<dyn Any + Send>, regs: Registers, pc: usize) -> Result<!> {
-        let frames = FrameIter::from_registers(regs, pc);
-
-        // TODO at this point libunwind *would* have a 2 phase unwinding process where we
-        //  walk the stack once to find the closest exception handler and then a second time
-        //  up to that handler calling the personality routine on the way to determine if we
-        //  need to perform cleanup. Buuuuut since we rolled this all into one here, raise_exception_phase_1
-        //  actually didn't do anything and unwinding appears to be correct even without so win??
-        // raise_exception_phase_1(frames.clone())?;
-
-        raise_exception_phase2(frames, Exception::wrap(payload))
+    raise_exception_phase2(frames, Exception::wrap(payload))
 }
 
-
-// /// The first phase of stack unwinding, in this phase we walk the stack attempting to find the next
-// /// closest
-// fn raise_exception_phase_1(mut frames: FrameIter) -> Result<usize> {
-//     while let Some(frame) = frames.next()? {
-//         if frame
-//             .personality()
-//             .map(ensure_personality_stub)
-//             .transpose()?
-//             .is_none()
-//         {
-//             continue;
-//         }
-//
-//         let Some(mut lsda) = frame.language_specific_data() else {
-//             continue;
-//         };
-//
-//         let eh_action = find_eh_action(&mut lsda, &frame)?;
-//
-//         match eh_action {
-//             EHAction::None | EHAction::Cleanup(_) => continue,
-//             EHAction::Catch(_) => {
-//                 let handler_cfa = frame.sp() - usize::from(frame.is_signal_trampoline());
-//
-//                 return Ok(handler_cfa);
-//             }
-//         }
-//     }
-//
-//     Err(Error::EndOfStack)
-// }
-
+/// Walk up the stack until either a landing pad is encountered or we reach the end of the stack.
+///
+/// If a landing pad is found control is transferred to it and this function will not return, if there
+/// is no landing pad, this function will return `Err(Error::EndOfStack)`.
+///
+/// Note that the traditional unwinding process has 2 phases, the first where the landing pad is discovered
+/// and the second where the stack is actually unwound up to that landing pad.
+/// In `unwind2` we can get away with one phase because we bypass the language personality routine:
+/// Traditional unwinders call the personality routine on each frame to discover a landing pad, and
+/// then during cleanup call the personality routine again to determine if control should actually be
+/// transferred. This is done so that languages have maximum flexibility in how they treat exceptions.
+///
+/// `unwind2` - being Rust-only - doesn't need that flexibility since Rust landing pads are called
+/// unconditionally. Furthermore, `unwind2` never actually calls the personality routine, instead
+/// parsing the [`EHAction`] for each frame directly.
+///
+/// The name `raise_exception_phase2` is kept though to make it easier to understand what this function
+/// does when coming from traditional unwinders.
 fn raise_exception_phase2(mut frames: FrameIter, exception: *mut Exception) -> Result<!> {
     while let Some(mut frame) = frames.next()? {
         if frame

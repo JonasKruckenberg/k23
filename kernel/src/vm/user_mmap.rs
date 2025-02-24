@@ -111,7 +111,7 @@ impl UserMmap {
                 f(&slice[range]);
             });
         }
-        
+
         Ok(())
     }
 
@@ -138,7 +138,7 @@ impl UserMmap {
                 f(&mut slice[range]);
             });
         }
-        
+
         Ok(())
     }
 

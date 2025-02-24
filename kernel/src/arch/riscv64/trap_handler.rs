@@ -8,18 +8,14 @@
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
 use crate::backtrace::Backtrace;
-use crate::error::Error;
 use crate::scheduler::scheduler;
-use crate::vm::{PageFaultFlags, VirtualAddress};
-use crate::{arch, panic, TRAP_STACK_SIZE_PAGES};
+use crate::vm::VirtualAddress;
+use crate::{TRAP_STACK_SIZE_PAGES, panic};
 use alloc::boxed::Box;
-use alloc::string::ToString;
-use arrayvec::ArrayVec;
 use core::arch::{asm, naked_asm};
 use core::ops::ControlFlow;
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
-use riscv::sstatus::SPP;
 use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
 cpu_local! {
@@ -175,10 +171,7 @@ unsafe extern "C" fn default_trap_entry() {
             save_fp!(f31 => sp[63]),
 
             "mv a0, sp",
-
             "call {trap_handler}",
-
-            "mv sp, a0",
 
             // restore gp regs
             // skip x0 since its always zero
@@ -261,9 +254,8 @@ unsafe extern "C" fn default_trap_entry() {
 }
 
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
-#[expect(clippy::too_many_arguments, reason = "")]
 extern "C" fn default_trap_handler(
-    raw_frame: *mut TrapFrame,
+    frame: &mut TrapFrame,
     _a1: usize,
     _a2: usize,
     _a3: usize,
@@ -271,7 +263,7 @@ extern "C" fn default_trap_handler(
     _a5: usize,
     _a6: usize,
     _a7: usize,
-) -> *mut TrapFrame {
+) {
     let cause = scause::read().cause();
 
     let epc = sepc::read();
@@ -287,8 +279,6 @@ extern "C" fn default_trap_handler(
             unsafe {
                 sip::clear_ssoft();
             }
-
-            raw_frame
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             if let (_, Some(next_deadline)) = scheduler().cpu_local_timer().turn() {
@@ -298,38 +288,36 @@ extern "C" fn default_trap_handler(
                 // Timer interrupts are always IPIs used for sleeping
                 sbi::time::set_timer(u64::MAX).unwrap();
             }
-
-            raw_frame
         }
         Trap::Interrupt(Interrupt::SupervisorExternal) => todo!("run IO reactor"),
-        Trap::Exception(Exception::LoadPageFault)
-        | Trap::Exception(Exception::StorePageFault)
-        | Trap::Exception(Exception::InstructionPageFault) => {
+        Trap::Exception(
+            Exception::LoadPageFault | Exception::StorePageFault | Exception::InstructionPageFault,
+        ) => {
             // first attempt the page fault handler, can it recover us from this by fixing up mappings?
             if handle_page_fault(cause, tval).is_break() {
-                return raw_frame;
+                return;
             }
 
             // if not attempt the wasm fault handler, is the current trap caused by a user program?
             // if so can it kill the program?
             if handle_wasm_exception().is_break() {
-                return raw_frame;
+                return;
             }
 
-            handle_kernel_exception(cause, raw_frame, epc, tval)
+            handle_kernel_exception(cause, frame, epc, tval)
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             if handle_wasm_exception().is_break() {
-                return raw_frame;
+                return;
             }
 
-            handle_kernel_exception(cause, raw_frame, epc, tval)
+            handle_kernel_exception(cause, frame, epc, tval)
         }
-        _ => handle_kernel_exception(cause, raw_frame, epc, tval),
+        _ => handle_kernel_exception(cause, frame, epc, tval),
     }
 }
 
-fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
+fn handle_page_fault(_trap: Trap, _tval: VirtualAddress) -> ControlFlow<()> {
     // crate::vm::with_current_aspace(|aspace| {
     //     let flags = match trap {
     //         Trap::Exception(Exception::LoadPageFault) => PageFaultFlags::LOAD,
@@ -361,12 +349,7 @@ fn handle_wasm_exception() -> ControlFlow<()> {
     ControlFlow::Continue(())
 }
 
-fn handle_kernel_exception(
-    cause: Trap,
-    frame: *mut TrapFrame,
-    epc: usize,
-    tval: VirtualAddress,
-) -> ! {
+fn handle_kernel_exception(cause: Trap, frame: &TrapFrame, epc: usize, tval: VirtualAddress) -> ! {
     // let's go ahead and begin unwinding the stack that caused the fault
     // Note: we use unwinding here to give kernel code the chance to catch this and recover from it.
     // If the unwinding reaches the root `catch_unwind` in `main.rs` this will tear down the entire
@@ -374,7 +357,6 @@ fn handle_kernel_exception(
 
     tracing::error!("KERNEL TRAP {cause:?} epc={epc:#x};tval={tval}");
 
-    let frame = unsafe { &*frame };
     let mut regs = unwind2::Registers {
         gp: frame.gp,
         fp: frame.fp,

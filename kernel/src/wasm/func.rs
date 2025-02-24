@@ -5,7 +5,7 @@ use crate::wasm::store::Stored;
 use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
-use crate::wasm::{runtime, Store, MAX_WASM_STACK};
+use crate::wasm::{MAX_WASM_STACK, Store, runtime};
 use core::arch::asm;
 use core::ffi::c_void;
 use core::mem;
@@ -84,6 +84,11 @@ impl Func {
         Ok(())
     }
 
+    #[allow(
+        unreachable_code,
+        clippy::unnecessary_wraps,
+        reason = "TODO rework in progress. see #298"
+    )]
     unsafe fn call_unchecked_raw(
         &self,
         store: &mut Store,
