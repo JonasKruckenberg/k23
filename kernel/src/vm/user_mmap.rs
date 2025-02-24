@@ -7,7 +7,6 @@
 
 use crate::arch;
 use crate::arch::with_user_memory_access;
-use crate::traps::TrapMask;
 use crate::vm::address::AddressRangeExt;
 use crate::vm::{
     AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Error,
@@ -17,9 +16,6 @@ use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::slice;
-
-const TRAP_MASK: TrapMask =
-    TrapMask::from_bits_retain(TrapMask::StorePageFault.bits() | TrapMask::LoadPageFault.bits());
 
 /// A userspace memory mapping.
 ///
@@ -107,18 +103,16 @@ impl UserMmap {
     {
         self.commit(aspace, range, false)?;
 
-        crate::traps::catch_traps(TRAP_MASK, || {
-            // Safety: checked by caller and `catch_traps`
-            unsafe {
-                with_user_memory_access(|| {
-                    let slice =
-                        slice::from_raw_parts(self.range.start.as_ptr(), self.range().size());
+        // Safety: checked by caller
+        unsafe {
+            with_user_memory_access(|| {
+                let slice = slice::from_raw_parts(self.range.start.as_ptr(), self.range().size());
 
-                    f(&slice[range]);
-                });
-            }
-        })
-        .map_err(Error::Trap)
+                f(&slice[range]);
+            });
+        }
+        
+        Ok(())
     }
 
     pub fn with_user_slice_mut<F>(
@@ -136,19 +130,16 @@ impl UserMmap {
             aspace.arch.activate();
         }
 
-        crate::traps::catch_traps(TRAP_MASK, || {
-            // Safety: checked by caller and `catch_traps`
-            unsafe {
-                with_user_memory_access(|| {
-                    let slice = slice::from_raw_parts_mut(
-                        self.range.start.as_mut_ptr(),
-                        self.range().size(),
-                    );
-                    f(&mut slice[range]);
-                });
-            }
-        })
-        .map_err(Error::Trap)
+        // Safety: checked by caller
+        unsafe {
+            with_user_memory_access(|| {
+                let slice =
+                    slice::from_raw_parts_mut(self.range.start.as_mut_ptr(), self.range().size());
+                f(&mut slice[range]);
+            });
+        }
+        
+        Ok(())
     }
 
     /// Returns a pointer to the start of the memory mapped by this `Mmap`.

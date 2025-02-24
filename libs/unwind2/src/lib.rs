@@ -12,7 +12,8 @@
     rustc_attrs,
     used_with_arg,
     lang_items,
-    naked_functions
+    naked_functions,
+    never_type
 )]
 
 extern crate alloc;
@@ -26,10 +27,10 @@ mod frame;
 mod lang_items;
 mod utils;
 
-use crate::eh_action::{EHAction, find_eh_action};
-use crate::exception::Exception;
-use crate::lang_items::ensure_personality_stub;
-use crate::utils::with_context;
+use eh_action::{EHAction, find_eh_action};
+use exception::Exception;
+use lang_items::ensure_personality_stub;
+pub use utils::with_context;
 use alloc::boxed::Box;
 use core::any::Any;
 use core::intrinsics;
@@ -55,7 +56,7 @@ pub(crate) type Result<T> = core::result::Result<T, Error>;
 /// # Errors
 ///
 /// Returns an error if unwinding fails.
-pub fn begin_unwind(payload: Box<dyn Any + Send>) -> Result<()> {
+pub fn begin_unwind(payload: Box<dyn Any + Send>) -> Result<!> {
     with_context(|regs, pc| {
         let frames = FrameIter::from_registers(regs.clone(), pc);
 
@@ -66,11 +67,24 @@ pub fn begin_unwind(payload: Box<dyn Any + Send>) -> Result<()> {
         //  actually didn't do anything and unwinding appears to be correct even without so win??
         // raise_exception_phase_1(frames.clone())?;
 
-        raise_exception_phase2(frames, Exception::wrap(payload))?;
-
-        Ok(())
+        raise_exception_phase2(frames, Exception::wrap(payload))
     })
 }
+
+
+pub fn begin_unwind_with(payload: Box<dyn Any + Send>, regs: Registers, pc: usize) -> Result<!> {
+        let frames = FrameIter::from_registers(regs, pc);
+
+        // TODO at this point libunwind *would* have a 2 phase unwinding process where we
+        //  walk the stack once to find the closest exception handler and then a second time
+        //  up to that handler calling the personality routine on the way to determine if we
+        //  need to perform cleanup. Buuuuut since we rolled this all into one here, raise_exception_phase_1
+        //  actually didn't do anything and unwinding appears to be correct even without so win??
+        // raise_exception_phase_1(frames.clone())?;
+
+        raise_exception_phase2(frames, Exception::wrap(payload))
+}
+
 
 // /// The first phase of stack unwinding, in this phase we walk the stack attempting to find the next
 // /// closest
@@ -104,7 +118,7 @@ pub fn begin_unwind(payload: Box<dyn Any + Send>) -> Result<()> {
 //     Err(Error::EndOfStack)
 // }
 
-fn raise_exception_phase2(mut frames: FrameIter, exception: *mut Exception) -> Result<()> {
+fn raise_exception_phase2(mut frames: FrameIter, exception: *mut Exception) -> Result<!> {
     while let Some(mut frame) = frames.next()? {
         if frame
             .personality()

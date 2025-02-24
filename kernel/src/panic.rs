@@ -34,8 +34,14 @@ where
     })
 }
 
-pub(crate) fn resume_unwind(payload: Box<dyn Any + Send>) {
-    rust_panic(payload)
+pub fn begin_unwind(payload: Box<dyn Any + Send>) -> ! {
+    debug_assert!(panic_count::increase(false).is_none());
+    unwind2::with_context(|regs, pc| rust_panic(payload, regs.clone(), pc))
+}
+
+pub fn begin_unwind_with(payload: Box<dyn Any + Send>, regs: unwind2::Registers, pc: usize) -> ! {
+    debug_assert!(panic_count::increase(false).is_none());
+    rust_panic(payload, regs, pc)
 }
 
 /// Entry point for panics from the `core` crate.
@@ -88,7 +94,9 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             arch::abort("cpu caused non-unwinding panic. aborting.");
         }
 
-        rust_panic(construct_panic_payload(info))
+        unwind2::with_context(|regs, pc| {
+            rust_panic(construct_panic_payload(info), regs.clone(), pc)
+        })
     })
 }
 
@@ -96,19 +104,16 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 /// yer breakpoints for backtracing panics.
 #[inline(never)]
 #[unsafe(no_mangle)]
-fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
-    match unwind2::begin_unwind(payload) {
-        Ok(_) => {
-            tracing::debug!("here");
-            arch::exit(0)
-        }
-        Err(unwind2::Error::EndOfStack) => {
+fn rust_panic(payload: Box<dyn Any + Send>, regs: unwind2::Registers, pc: usize) -> ! {
+    // Safety: `begin_unwind` will either return an error or not return at all
+    match unsafe { unwind2::begin_unwind_with(payload, regs, pc).unwrap_err_unchecked() } {
+        unwind2::Error::EndOfStack => {
             log::error!(
                 "unwinding completed without finding a `catch_unwind` make sure there is at least a root level catch unwind wrapping the main function"
             );
             arch::abort("uncaught kernel exception");
         }
-        Err(err) => {
+        err => {
             log::error!("unwinding failed with error {err}");
             arch::abort("unwinding failed. aborting.")
         }

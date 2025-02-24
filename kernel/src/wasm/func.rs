@@ -1,14 +1,11 @@
 use crate::arch;
-use crate::traps::TrapMask;
-use crate::wasm::backtrace::RawWasmBacktrace;
 use crate::wasm::indices::VMSharedTypeIndex;
-use crate::wasm::runtime::{StaticVMOffsets, VMContext, VMFunctionImport, VMVal, code_registry};
+use crate::wasm::runtime::{StaticVMOffsets, VMContext, VMFunctionImport, VMVal};
 use crate::wasm::store::Stored;
 use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
-use crate::wasm::{Error, MAX_WASM_STACK, Store, runtime};
-use alloc::string::ToString;
+use crate::wasm::{runtime, Store, MAX_WASM_STACK};
 use core::arch::asm;
 use core::ffi::c_void;
 use core::mem;
@@ -101,47 +98,18 @@ impl Func {
 
         let _guard = enter_wasm(vmctx, &module.offsets().static_);
 
-        #[allow(
-            irrefutable_let_patterns,
-            reason = "yes this is technically irrefutable, the `options(noreturn)` makes Rust mad, but its fine."
-        )]
-        if let Err(trap) = crate::traps::catch_traps(TrapMask::all(), || {
-            // Safety: caller has to ensure safety
-            unsafe {
-                riscv::sstatus::set_spp(riscv::sstatus::SPP::User);
-                riscv::sepc::set(func_ref.array_call as usize);
-                asm! {
-                    "sret",
-                    in("a0") vmctx,
-                    in("a1") vmctx,
-                    in("a2") args_results_ptr,
-                    in("a3") args_results_len,
-                    options(noreturn)
-                }
+        // Safety: caller has to ensure safety
+        unsafe {
+            riscv::sstatus::set_spp(riscv::sstatus::SPP::User);
+            riscv::sepc::set(func_ref.array_call as usize);
+            asm! {
+                "sret",
+                in("a0") vmctx,
+                in("a1") vmctx,
+                in("a2") args_results_ptr,
+                in("a3") args_results_len,
+                options(noreturn)
             }
-        }) {
-            // construct wasm trap
-
-            let (code, text_offset) = code_registry::lookup_code(trap.pc.get()).unwrap();
-            tracing::trace!(
-                "Trap at offset: pc={};text_offset={text_offset:#x}",
-                trap.pc
-            );
-            let trap_code = code.lookup_trap_code(text_offset).unwrap();
-
-            let backtrace = RawWasmBacktrace::new_with_vmctx(
-                vmctx,
-                &module.offsets().static_,
-                Some((trap.pc.get(), trap.fp.get())),
-            );
-
-            return Err(Error::Trap {
-                pc: trap.pc,
-                faulting_addr: trap.faulting_address,
-                trap: trap_code,
-                message: "JIT-compiled WASM produced a trap".to_string(),
-                backtrace,
-            });
         }
 
         Ok(())

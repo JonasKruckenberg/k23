@@ -1,4 +1,4 @@
-use crate::vm::{AddressRangeExt, AddressSpace, KERNEL_ASPACE, UserMmap, VirtualAddress};
+use crate::vm::{AddressRangeExt, AddressSpace, UserMmap, VirtualAddress};
 use crate::wasm::Error;
 use crate::wasm::compile::FunctionLoc;
 use crate::wasm::runtime::MmapVec;
