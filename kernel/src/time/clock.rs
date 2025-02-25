@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::time::{Instant, NANOS_PER_SEC};
+use core::fmt;
 use core::time::Duration;
 
 /// [`Clock`] ticks are always counted by a 64-bit unsigned integer.
@@ -22,6 +23,12 @@ pub struct Clock {
     now: fn() -> Ticks,
     tick_duration: Duration,
     name: &'static str,
+}
+
+impl fmt::Display for Clock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}, {:?} precision", self.name, self.tick_duration)
+    }
 }
 
 impl Clock {

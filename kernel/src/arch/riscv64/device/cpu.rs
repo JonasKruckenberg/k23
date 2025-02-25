@@ -14,6 +14,7 @@ use crate::time::clock::Ticks;
 use crate::time::{Clock, NANOS_PER_SEC};
 use bitflags::bitflags;
 use core::cell::OnceCell;
+use core::fmt;
 use core::str::FromStr;
 use core::time::Duration;
 use cpu_local::cpu_local;
@@ -75,6 +76,19 @@ bitflags! {
         const SSTVECD = 1 << 37;
         const SVADU = 1 << 38;
         const SVVPTC = 1 << 39;
+    }
+}
+
+impl fmt::Display for Cpu {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{:<17} : {}", "RISCV EXTENSIONS", self.extensions)?;
+        writeln!(f, "{:<17} : {:?}", "CBOP BLOCK SIZE", self.cbop_block_size)?;
+        writeln!(f, "{:<17} : {:?}", "CBOZ BLOCK SIZE", self.cboz_block_size)?;
+        writeln!(f, "{:<17} : {:?}", "CBOM BLOCK SIZE", self.cbom_block_size)?;
+        writeln!(f, "{:<17} : {:?}", "PLIC", self.plic)?;
+        writeln!(f, "{:<17} : {}", "CLOCK", self.clock)?;
+
+        Ok(())
     }
 }
 
@@ -154,7 +168,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
     );
 
     CPU.with(|info| {
-        let _info = Cpu {
+        let info_ = Cpu {
             clock,
             extensions,
             cbop_block_size,
@@ -162,9 +176,9 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
             cbom_block_size,
             plic,
         };
-        tracing::debug!("{_info:?}");
+        tracing::debug!("\n{info_}");
 
-        info.set(_info).unwrap();
+        info.set(info_).unwrap();
     });
 
     Ok(())
@@ -223,4 +237,10 @@ pub fn parse_riscv_extensions(strs: fdt::StringList) -> crate::Result<RiscvExten
     }
 
     Ok(out)
+}
+
+impl fmt::Display for RiscvExtensions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        bitflags::parser::to_writer(self, f)
+    }
 }
