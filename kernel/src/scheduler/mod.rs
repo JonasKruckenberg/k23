@@ -72,15 +72,17 @@ use crate::scheduler::queue::Overflow;
 use crate::task::{JoinHandle, OwnedTasks, PollResult, Schedule, TaskRef};
 use crate::time::Timer;
 use crate::util::fast_rand::FastRand;
+use crate::vm::AddressSpace;
 use crate::{arch, task};
+use alloc::sync::Arc;
 use core::any::type_name;
-use core::cell::RefCell;
+use core::cell::{Ref, RefCell};
 use core::future::Future;
 use core::mem;
 use core::ops::DerefMut;
 use core::sync::atomic::{AtomicBool, Ordering};
 use rand::RngCore;
-use sync::{Backoff, Barrier, OnceLock};
+use sync::{Backoff, Barrier, Mutex, OnceLock};
 
 const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
 
@@ -137,6 +139,7 @@ struct Core {
     /// next (LIFO). This is an optimization for improving locality which
     /// benefits message passing patterns and helps to reduce latency.
     lifo_slot: Option<TaskRef>,
+    current_task: Option<TaskRef>,
 }
 
 /// Per-CPU state accessed by other workers
@@ -179,7 +182,11 @@ pub struct Worker {
 
 impl Scheduler {
     #[track_caller]
-    pub fn spawn<F>(&'static self, future: F) -> JoinHandle<F::Output>
+    pub fn spawn<F>(
+        &'static self,
+        aspace: Arc<Mutex<AddressSpace>>,
+        future: F,
+    ) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
@@ -196,7 +203,7 @@ impl Scheduler {
             loc.col = loc.column(),
         );
 
-        let (handle, maybe_task) = self.owned.bind(future, self, id, span);
+        let (handle, maybe_task) = self.owned.bind(future, self, id, span, aspace);
 
         if let Some(task) = maybe_task {
             self.schedule(task);
@@ -210,6 +217,11 @@ impl Scheduler {
             // wake up all workers for shutdown
             self.idle.notify_all();
         }
+    }
+
+    pub fn current_task(&self) -> Ref<'_, Option<TaskRef>> {
+        let core = self.cores.get().unwrap().borrow();
+        Ref::map(core, |core| &core.current_task)
     }
 
     pub fn cpu_local_timer(&self) -> &Timer {
@@ -271,6 +283,7 @@ impl Worker {
             RefCell::new(Core {
                 lifo_slot: None,
                 run_queue,
+                current_task: None,
             })
         });
 
@@ -326,7 +339,7 @@ impl Worker {
             self.scheduler.idle.notify_one();
         }
 
-        let poll_result = task.poll();
+        let (poll_result, task) = self.with_task_as_current(task, |task| task.poll());
         match poll_result {
             PollResult::Ready | PollResult::ReadyJoined => {
                 self.scheduler.owned.remove(task);
@@ -336,6 +349,21 @@ impl Worker {
             }
             PollResult::Pending => {}
         }
+    }
+
+    /// Execute a provided callback with the provided task as the current task for this CPU
+    pub fn with_task_as_current<F, R>(&mut self, task: TaskRef, f: F) -> (R, TaskRef)
+    where
+        F: FnOnce(TaskRef) -> R,
+    {
+        let mut core = self.scheduler.cores.get().unwrap().borrow_mut();
+        core.current_task = Some(task.clone());
+        drop(core);
+
+        let r = f(task);
+
+        let mut core = self.scheduler.cores.get().unwrap().borrow_mut();
+        (r, core.current_task.take().unwrap())
     }
 
     fn turn_timer(&self) -> bool {

@@ -9,7 +9,7 @@ use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
 use crate::backtrace::Backtrace;
 use crate::scheduler::scheduler;
-use crate::vm::VirtualAddress;
+use crate::vm::{PageFaultFlags, VirtualAddress};
 use crate::{TRAP_STACK_SIZE_PAGES, panic};
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
@@ -317,28 +317,34 @@ extern "C" fn default_trap_handler(
     }
 }
 
-fn handle_page_fault(_trap: Trap, _tval: VirtualAddress) -> ControlFlow<()> {
-    // crate::vm::with_current_aspace(|aspace| {
-    //     let flags = match trap {
-    //         Trap::Exception(Exception::LoadPageFault) => PageFaultFlags::LOAD,
-    //         Trap::Exception(Exception::StorePageFault) => PageFaultFlags::STORE,
-    //         Trap::Exception(Exception::InstructionPageFault) => PageFaultFlags::INSTRUCTION,
-    //         // not a page fault exception, continue with the next fault handler
-    //         _ => return ControlFlow::Continue(())
-    //     };
-    //
-    //     if let Err(_err) = aspace.page_fault(tval, flags) {
-    //         // the address space knew about the faulting address, but the requested access was invalid
-    //         ControlFlow::Continue(())
-    //     } else {
-    //         // the address space knew about the faulting address and could correct the fault
-    //         ControlFlow::Break(())
-    //     }
-    // })
+fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
+    let current_task = scheduler().current_task();
+    let Some(current_task) = current_task.as_ref() else {
+        // if we're not inside a task we're inside some critical kernel code
+        // none of that should use ever trap
+        tracing::debug!("no currently active task");
+        return ControlFlow::Continue(());
+    };
 
-    // TODO find the CURRENT address space
+    let mut aspace = current_task.header().aspace.as_ref().unwrap().lock();
 
-    ControlFlow::Continue(())
+    let flags = match trap {
+        Trap::Exception(Exception::LoadPageFault) => PageFaultFlags::LOAD,
+        Trap::Exception(Exception::StorePageFault) => PageFaultFlags::STORE,
+        Trap::Exception(Exception::InstructionPageFault) => PageFaultFlags::INSTRUCTION,
+        // not a page fault exception, continue with the next fault handler
+        _ => return ControlFlow::Continue(()),
+    };
+
+    if let Err(_err) = aspace.page_fault(tval, flags) {
+        // the address space knew about the faulting address, but the requested access was invalid
+        tracing::debug!("page fault handler couldn't correct fault");
+        ControlFlow::Continue(())
+    } else {
+        // the address space knew about the faulting address and could correct the fault
+        tracing::debug!("page fault handler successfully corrected fault");
+        ControlFlow::Break(())
+    }
 }
 
 fn handle_wasm_exception() -> ControlFlow<()> {

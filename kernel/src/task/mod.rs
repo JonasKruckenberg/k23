@@ -14,6 +14,7 @@ use crate::panic;
 use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use crate::util::non_null;
 use alloc::boxed::Box;
+use alloc::sync::Arc;
 use core::alloc::{AllocError, Allocator};
 use core::any::type_name;
 use core::cell::UnsafeCell;
@@ -26,9 +27,11 @@ use core::sync::atomic::Ordering;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
 
+use crate::vm::AddressSpace;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinErrorKind, JoinHandle};
 pub use owned_tasks::OwnedTasks;
+use sync::Mutex;
 
 pub trait Schedule {
     /// Schedule the task to run.
@@ -207,19 +210,21 @@ pub(crate) struct Header {
     /// The task's state.
     ///
     /// This field is access with atomic instructions, so it's always safe to access it.
-    pub(crate) state: State,
+    pub state: State,
     /// The task vtable for this task.
-    pub(crate) vtable: &'static Vtable,
+    pub vtable: &'static Vtable,
     /// The task's ID.
-    pub(crate) id: Id,
+    pub id: Id,
     /// Links to other tasks in the intrusive global run queue.
     ///
     /// TODO ownership
-    pub(crate) run_queue_links: mpsc_queue::Links<Header>,
+    pub run_queue_links: mpsc_queue::Links<Header>,
     /// Links to other tasks in the global "owned tasks" list.
     ///
     /// The `OwnedTask` reference has exclusive access to this field.
-    pub(crate) owned_tasks_links: linked_list::Links<Header>,
+    pub owned_tasks_links: linked_list::Links<Header>,
+    /// The address space associated with this task
+    pub aspace: Option<Arc<Mutex<AddressSpace>>>,
     span: tracing::Span,
 }
 
@@ -302,6 +307,7 @@ impl TaskRef {
         scheduler: S,
         task_id: Id,
         span: tracing::Span,
+        aspace: Arc<Mutex<AddressSpace>>,
         alloc: A,
     ) -> Result<Self, AllocError>
     where
@@ -310,7 +316,7 @@ impl TaskRef {
         A: Allocator,
     {
         let ptr = Box::into_raw(Box::try_new_in(
-            Task::new(future, scheduler, task_id, span),
+            Task::new(future, scheduler, task_id, aspace, span),
             alloc,
         )?);
 
@@ -319,8 +325,11 @@ impl TaskRef {
     }
 
     pub(crate) unsafe fn from_raw(ptr: NonNull<Header>) -> Self {
-        Self(ptr)
+        let this = Self(ptr);
+        this.state().clone_ref();
+        this
     }
+
     pub(crate) fn header_ptr(&self) -> NonNull<Header> {
         self.0
     }
@@ -477,6 +486,7 @@ impl Header {
             run_queue_links: mpsc_queue::Links::new_stub(),
             owned_tasks_links: linked_list::Links::new(),
             span: tracing::Span::none(),
+            aspace: None,
         }
     }
 
@@ -542,8 +552,7 @@ unsafe impl linked_list::Linked for Header {
         ptr
     }
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
-        // Safety: ensured by the caller
-        unsafe { TaskRef::from_raw(ptr) }
+        TaskRef(ptr)
     }
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<linked_list::Links<Self>> {
         // Safety: `TaskRef` is just a newtype wrapper around `NonNull<Header>`
@@ -571,7 +580,7 @@ unsafe impl mpsc_queue::Linked for Header {
     }
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
         // Safety: ensured by the caller
-        unsafe { TaskRef::from_raw(ptr) }
+        TaskRef(ptr)
     }
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<mpsc_queue::Links<Self>>
     where
@@ -598,7 +607,13 @@ where
         wake_by_ref: Schedulable::<S>::wake_by_ref,
     };
 
-    pub const fn new(future: F, scheduler: S, task_id: Id, span: tracing::Span) -> Self {
+    pub const fn new(
+        future: F,
+        scheduler: S,
+        task_id: Id,
+        aspace: Arc<Mutex<AddressSpace>>,
+        span: tracing::Span,
+    ) -> Self {
         Self {
             schedulable: Schedulable {
                 header: Header {
@@ -608,6 +623,7 @@ where
                     run_queue_links: mpsc_queue::Links::new(),
                     owned_tasks_links: linked_list::Links::new(),
                     span,
+                    aspace: Some(aspace),
                 },
                 scheduler,
             },
@@ -957,7 +973,7 @@ impl<S: Schedule> Schedulable<S> {
                     // transition does *not* decrement the reference count. this is
                     // in order to avoid dropping the task while it is being
                     // scheduled. one reference is consumed by enqueuing the task...
-                    Self::schedule(TaskRef::from_raw(this.cast::<Header>()));
+                    Self::schedule(TaskRef(this.cast::<Header>()));
                     // now that the task has been enqueued, decrement the reference
                     // count to drop the waker that performed the `wake_by_val`.
                     Self::drop_ref(this);
@@ -983,7 +999,7 @@ impl<S: Schedule> Schedulable<S> {
 
             let this = non_null(this.cast_mut()).cast::<Self>();
             if this.as_ref().state().wake_by_ref() == WakeByRefAction::Enqueue {
-                Self::schedule(TaskRef::from_raw(this.cast::<Header>()));
+                Self::schedule(TaskRef(this.cast::<Header>()));
             }
         }
     }

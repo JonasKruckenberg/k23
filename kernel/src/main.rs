@@ -167,7 +167,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     tracing::per_cpu_init_late(Instant::from_ticks(Ticks(boot_ticks)));
 
     // initialize the executor
-    let _sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
+    let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
 
     tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
@@ -180,7 +180,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
             let mut output = riscv::hio::HostStream::new_stderr();
             tests::run_tests(&mut output, boot_info);
         } else {
-            scheduler::Worker::new(_sched, cpuid, &mut rng).run();
+            scheduler::Worker::new(sched, cpuid, &mut rng).run();
         }
     }
 
@@ -218,6 +218,17 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     //     //     scheduler::yield_now().await;
     //     //     tracing::debug!("Point B");
     //     // });
+    // let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
+    // let mut mmap = UserMmap::new_zeroed(&mut aspace, 2 * 4096, 4096).unwrap();
+    //
+    // sched.spawn(KERNEL_ASPACE.get().unwrap(), async move {
+    //     let ptr = mmap.as_mut_ptr();
+    //     unsafe {
+    //         ptr.write(17);
+    //         assert_eq!(mmap.as_ptr().read(), 17);
+    //     }
+    //     // unsafe { asm!("ld zero, 0(zero)") };
+    // });
     // }
 
     // wasm::test();
