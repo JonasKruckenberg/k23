@@ -1,23 +1,37 @@
 use crate::vm::AddressSpace;
+use crate::wasm::Engine;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::{InstanceAllocator, Memory, Table};
 use crate::wasm::runtime::{OwnedVMContext, VMOffsets};
 use crate::wasm::translate::{MemoryDesc, TableDesc, TranslatedModule};
-use core::fmt;
+use alloc::sync::Arc;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use sync::Mutex;
 
 /// A placeholder allocator impl that just delegates to runtime types `new` methods.
-pub struct PlaceholderAllocatorDontUse(pub(super) Mutex<AddressSpace>);
+#[derive(Debug)]
+pub struct PlaceholderAllocatorDontUse(pub(super) Arc<Mutex<AddressSpace>>);
 
-impl fmt::Debug for PlaceholderAllocatorDontUse {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("PlaceholderAllocatorDontUse").finish()
+impl PlaceholderAllocatorDontUse {
+    pub fn new(engine: &Engine) -> Self {
+        let aspace = AddressSpace::new_user(
+            engine.allocate_asid(),
+            engine.rng().map(|mut rng| ChaCha20Rng::from_rng(&mut rng)),
+        )
+        .unwrap();
+
+        Self(Arc::new(Mutex::new(aspace)))
     }
 }
 
-impl Default for PlaceholderAllocatorDontUse {
-    fn default() -> Self {
-        Self(Mutex::new(AddressSpace::new_user(2, None).unwrap()))
+impl Drop for PlaceholderAllocatorDontUse {
+    fn drop(&mut self) {
+        assert_eq!(
+            Arc::strong_count(&self.0),
+            1,
+            "InstanceAllocator AddressSpace had outstanding references during drop. This indicates a leak somewhere."
+        );
     }
 }
 

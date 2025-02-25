@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+mod asid_allocator;
 pub mod device;
 mod setjmp_longjmp;
 mod trap_handler;
@@ -13,6 +14,7 @@ mod vm;
 
 use crate::device_tree::DeviceTree;
 use crate::vm::VirtualAddress;
+pub use asid_allocator::AsidAllocator;
 use core::arch::asm;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
@@ -28,6 +30,7 @@ pub fn init_early() {
     tracing::trace!("Supported SBI extensions: {supported:?}");
 
     vm::init();
+    asid_allocator::init();
 }
 
 /// Per-cpu and RISC-V specific initialization.
