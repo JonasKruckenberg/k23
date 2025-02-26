@@ -13,44 +13,61 @@ use core::{fmt, slice};
 use fallible_iterator::FallibleIterator;
 use loader_api::BootInfo;
 use symbolize::SymbolizeContext;
-use sync::{LazyLock, OnceLock};
+use sync::OnceLock;
 use unwind2::FrameIter;
 
-static ELF_INFO: OnceLock<ElfInfo> = OnceLock::new();
-static SYMBOLIZE_CONTEXT: LazyLock<Option<SymbolizeContext>> = LazyLock::new(|| {
-    tracing::debug!("Setting up symbolize context...");
-    let state = ELF_INFO.get()?;
-
-    let elf = xmas_elf::ElfFile::new(state.elf).unwrap();
-    Some(SymbolizeContext::new(elf, state.kernel_virt_base).unwrap())
-});
-
-struct ElfInfo {
-    kernel_virt_base: u64,
-    elf: &'static [u8],
-}
+static BACKTRACE_INFO: OnceLock<BacktraceInfo> = OnceLock::new();
 
 #[cold]
-pub fn init(boot_info: &BootInfo) {
-    ELF_INFO.get_or_init(|| ElfInfo {
-        kernel_virt_base: boot_info.kernel_virt.start as u64,
-        // Safety: we have to trust the loaders BootInfo here
-        elf: unsafe {
-            let base = boot_info
-                .physical_address_offset
-                .checked_add(boot_info.kernel_phys.start)
-                .unwrap() as *const u8;
+pub fn init(boot_info: &'static BootInfo) {
+    BACKTRACE_INFO.get_or_init(|| BacktraceInfo::new(boot_info));
+}
 
-            slice::from_raw_parts(
-                base,
-                boot_info
-                    .kernel_phys
-                    .end
-                    .checked_sub(boot_info.kernel_phys.start)
-                    .unwrap(),
-            )
-        },
-    });
+/// Information about the kernel required to build a backtrace
+struct BacktraceInfo {
+    /// The base virtual address of the kernel ELF. ELF debug info expects zero-based addresses,
+    /// but the kernel is located at some address in the higher half. This offset is used to convert
+    /// between the two.
+    kernel_virt_base: u64,
+    /// The memory of our own ELF
+    elf: &'static [u8],
+    /// The actual state required for converting addresses into symbols. This is *very* heavy to
+    /// compute though, so we only construct it lazily in [`BacktraceInfo::symbolize_context`].
+    symbolize_context: OnceLock<SymbolizeContext<'static>>,
+}
+
+impl BacktraceInfo {
+    fn new(boot_info: &'static BootInfo) -> Self {
+        BacktraceInfo {
+            kernel_virt_base: boot_info.kernel_virt.start as u64,
+            // Safety: we have to trust the loaders BootInfo here
+            elf: unsafe {
+                let base = boot_info
+                    .physical_address_offset
+                    .checked_add(boot_info.kernel_phys.start)
+                    .unwrap() as *const u8;
+
+                slice::from_raw_parts(
+                    base,
+                    boot_info
+                        .kernel_phys
+                        .end
+                        .checked_sub(boot_info.kernel_phys.start)
+                        .unwrap(),
+                )
+            },
+            symbolize_context: OnceLock::new(),
+        }
+    }
+
+    fn symbolize_context(&self) -> &SymbolizeContext<'static> {
+        self.symbolize_context.get_or_init(|| {
+            tracing::debug!("Setting up symbolize context...");
+
+            let elf = xmas_elf::ElfFile::new(self.elf).unwrap();
+            SymbolizeContext::new(elf, self.kernel_virt_base).unwrap()
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -105,7 +122,7 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
         let frames_omitted = iter.next()?.is_some();
 
         Ok(Self {
-            symbolize_ctx: SYMBOLIZE_CONTEXT.as_ref(),
+            symbolize_ctx: BACKTRACE_INFO.get().map(|info| info.symbolize_context()),
             frames,
             frames_omitted,
         })
