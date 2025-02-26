@@ -219,9 +219,9 @@ impl Scheduler {
         }
     }
 
-    pub fn current_task(&self) -> Ref<'_, Option<TaskRef>> {
-        let core = self.cores.get().unwrap().borrow();
-        Ref::map(core, |core| &core.current_task)
+    pub fn current_task(&self) -> Option<Ref<'_, TaskRef>> {
+        let core = self.cores.get()?.borrow();
+        Ref::filter_map(core, |core| core.current_task.as_ref()).ok()
     }
 
     pub fn cpu_local_timer(&self) -> &Timer {

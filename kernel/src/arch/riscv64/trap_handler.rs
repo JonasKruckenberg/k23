@@ -254,7 +254,10 @@ unsafe extern "C" fn default_trap_entry() {
 }
 
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
-extern "C" fn default_trap_handler(
+// Note: The C-unwind here is important, we want the stable C ABI so we can call this function from
+// assembly, but we also want to be able to unwind past it into the trampoline above (so stack traces
+// are fully accurate)
+extern "C-unwind" fn default_trap_handler(
     frame: &mut TrapFrame,
     _a1: usize,
     _a2: usize,
