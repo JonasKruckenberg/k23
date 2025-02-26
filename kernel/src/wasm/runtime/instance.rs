@@ -17,9 +17,9 @@ use crate::wasm::runtime::vmcontext::{
 };
 use crate::wasm::runtime::{
     ConstExprEvaluator, Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable,
-    Imports, InstanceAllocator, OwnedVMContext, VMContext, VMFuncRef, VMFunctionImport,
-    VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOffsets, VMOpaqueContext,
-    VMTableDefinition, VMTableImport, VMCONTEXT_MAGIC,
+    Imports, InstanceAllocator, OwnedVMContext, VMCONTEXT_MAGIC, VMContext, VMFuncRef,
+    VMFunctionImport, VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOffsets,
+    VMOpaqueContext, VMTableDefinition, VMTableImport,
 };
 use crate::wasm::translate::{TableInitialValue, TableSegmentElements};
 use crate::wasm::{Extern, Module, Store};
