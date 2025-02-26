@@ -221,7 +221,7 @@ impl UserMmap {
         Ok(())
     }
 
-    fn commit(
+    pub fn commit(
         &self,
         aspace: &mut AddressSpace,
         range: Range<usize>,
