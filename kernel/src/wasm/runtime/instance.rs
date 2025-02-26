@@ -55,22 +55,18 @@ impl Instance {
 
         tracing::trace!("initializing instance");
         unsafe {
-            arch::with_user_memory_access(|| -> crate::wasm::Result<()> {
-                initialize_vmctx(
-                    const_eval,
-                    &mut vmctx,
-                    &mut tables,
-                    &mut memories,
-                    &module,
-                    imports,
-                )?;
-                initialize_tables(const_eval, &mut tables, &module)?;
+            initialize_vmctx(
+                const_eval,
+                &mut vmctx,
+                &mut tables,
+                &mut memories,
+                &module,
+                imports,
+            )?;
+            initialize_tables(const_eval, &mut tables, &module)?;
 
-                let mut aspace = store.alloc.0.lock();
-                initialize_memories(&mut aspace, const_eval, &mut memories, &module)?;
-
-                Ok(())
-            })?;
+            let mut aspace = store.alloc.0.lock();
+            initialize_memories(&mut aspace, const_eval, &mut memories, &module)?;
         }
         tracing::trace!("done initializing instance");
 

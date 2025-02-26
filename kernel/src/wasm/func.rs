@@ -65,9 +65,7 @@ impl Func {
         // do the actual call
         // Safety: caller has to ensure safety
         unsafe {
-            arch::with_user_memory_access(|| {
-                self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)
-            })?;
+            self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)?;
         }
 
         // copy the results out of the storage

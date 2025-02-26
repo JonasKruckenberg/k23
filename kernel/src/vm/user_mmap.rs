@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::arch::with_user_memory_access;
 use crate::vm::address::AddressRangeExt;
 use crate::vm::{
     AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Error,
@@ -118,11 +117,9 @@ impl UserMmap {
 
         // Safety: checked by caller
         unsafe {
-            with_user_memory_access(|| {
-                let slice = slice::from_raw_parts(self.range.start.as_ptr(), self.range().size());
+            let slice = slice::from_raw_parts(self.range.start.as_ptr(), self.range().size());
 
-                f(&slice[range]);
-            });
+            f(&slice[range]);
         }
 
         Ok(())
@@ -145,11 +142,9 @@ impl UserMmap {
 
         // Safety: checked by caller
         unsafe {
-            with_user_memory_access(|| {
-                let slice =
-                    slice::from_raw_parts_mut(self.range.start.as_mut_ptr(), self.range().size());
-                f(&mut slice[range]);
-            });
+            let slice =
+                slice::from_raw_parts_mut(self.range.start.as_mut_ptr(), self.range().size());
+            f(&mut slice[range]);
         }
 
         Ok(())
