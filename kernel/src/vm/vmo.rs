@@ -5,9 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::vm::frame_alloc::Entry;
+use crate::vm::frame_alloc::FrameAllocator;
 use crate::vm::provider::{Provider, THE_ZERO_FRAME};
-use crate::vm::{AddressRangeExt, Error, Frame, FrameList, PhysicalAddress, frame_alloc};
+use crate::vm::{
+    AddressRangeExt, Error, PhysicalAddress,
+    frame_alloc::{
+        Frame,
+        frame_list::{Entry, FrameList},
+    },
+};
 use crate::{arch, ensure};
 use alloc::sync::Arc;
 use core::range::Range;
@@ -29,10 +35,11 @@ impl Vmo {
         Self::Phys(PhysVmo { range })
     }
 
-    pub fn new_zeroed() -> Self {
+    pub fn new_zeroed(frame_alloc: &'static FrameAllocator) -> Self {
         Self::Paged(RwLock::new(PagedVmo {
             frames: FrameList::new(),
             provider: THE_ZERO_FRAME.clone(),
+            frame_alloc,
         }))
     }
 
@@ -78,6 +85,7 @@ impl PhysVmo {
 pub struct PagedVmo {
     frames: FrameList,
     provider: Arc<dyn Provider + Send + Sync>,
+    frame_alloc: &'static FrameAllocator,
 }
 
 impl PagedVmo {
@@ -92,7 +100,7 @@ impl PagedVmo {
 
             tracing::trace!("require_owned_frame for resident frame, allocating new...");
 
-            let mut new_frame = frame_alloc::alloc_one_zeroed()?;
+            let mut new_frame = self.frame_alloc.alloc_one_zeroed()?;
 
             // If `old_frame` is the zero frame we don't need to copy any data around, it's
             // all zeroes anyway

@@ -153,10 +153,10 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // initialize the global frame allocator
         // at this point we have parsed and processed the flattened device tree, so we pass it to the
         // frame allocator for reuse
-        frame_alloc::init(boot_alloc, fdt_region_phys);
+        let frame_alloc = frame_alloc::init(boot_alloc, fdt_region_phys);
 
         // initialize the virtual memory subsystem
-        vm::init(boot_info, &mut rng).unwrap();
+        vm::init(boot_info, &mut rng, frame_alloc).unwrap();
     });
 
     // perform LATE per-cpu, architecture-specific initialization
@@ -298,3 +298,12 @@ fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAdd
         Range::from(PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end)),
     )
 }
+
+// struct System {
+//     rng: Mutex<ChaCha20Rng>,
+//     devtree: device_tree::DeviceTree,
+//     cmdline: cmdline::Cmdline,
+//     backtrace: (),
+//     frame_alloc: (),
+//
+// }

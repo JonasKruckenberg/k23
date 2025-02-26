@@ -64,7 +64,14 @@ impl UserMmap {
         let region = aspace.map(
             layout,
             Permissions::READ | Permissions::WRITE | Permissions::USER,
-            |range, perms, _batch| Ok(AddressSpaceRegion::new_zeroed(range, perms, name)),
+            |range, perms, batch| {
+                Ok(AddressSpaceRegion::new_zeroed(
+                    batch.frame_alloc,
+                    range,
+                    perms,
+                    name,
+                ))
+            },
         )?;
 
         tracing::trace!("new_zeroed: {len} {:?}", region.range);
@@ -233,7 +240,7 @@ impl UserMmap {
                 end: self.range.end.checked_add(range.start).unwrap(),
             };
 
-            let mut batch = Batch::new(&mut aspace.arch);
+            let mut batch = Batch::new(&mut aspace.arch, aspace.frame_alloc);
             cursor
                 .get_mut()
                 .unwrap()

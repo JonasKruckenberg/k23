@@ -5,56 +5,92 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::vm::{Error, Frame, FrameList, frame_alloc};
+use crate::arch;
+use crate::vm::frame_alloc::{FRAME_ALLOC, FrameAllocator};
+use crate::vm::{
+    Error,
+    frame_alloc::{Frame, frame_list::FrameList},
+};
 use alloc::sync::Arc;
+use core::alloc::Layout;
 use core::fmt::Debug;
 use core::iter;
 use core::num::NonZeroUsize;
-use sync::LazyLock;
+use sync::{LazyLock, OnceLock};
 
 pub trait Provider: Debug {
     // TODO make async
-    fn get_frame(&self, at_offset: usize, will_read: bool) -> Result<Frame, Error>;
+    fn get_frame(&self, at_offset: usize, will_write: bool) -> Result<Frame, Error>;
     // TODO make async
-    fn get_frames(&self, at_offset: usize, len: NonZeroUsize) -> Result<FrameList, Error>;
+    fn get_frames(
+        &self,
+        at_offset: usize,
+        len: NonZeroUsize,
+        will_write: bool,
+    ) -> Result<FrameList, Error>;
     fn free_frame(&self, frame: Frame);
     fn free_frames(&self, frames: FrameList);
 }
 
 pub static THE_ZERO_FRAME: LazyLock<Arc<TheZeroFrame>> = LazyLock::new(|| {
-    let frame = frame_alloc::alloc_one_zeroed().unwrap();
-    tracing::trace!("THE_ZERO_FRAME: {}", frame.addr());
-    Arc::new(TheZeroFrame(frame))
+    let frame_alloc = FRAME_ALLOC.get().unwrap();
+    Arc::new(TheZeroFrame::new(frame_alloc))
 });
 
-#[derive(Debug, Clone)]
-pub struct TheZeroFrame(Frame);
+#[derive(Debug)]
+pub struct TheZeroFrame {
+    frame_alloc: &'static FrameAllocator,
+    frame: OnceLock<Frame>,
+}
 
 impl TheZeroFrame {
+    pub fn new(frame_alloc: &'static FrameAllocator) -> Self {
+        Self {
+            frame_alloc,
+            frame: OnceLock::new(),
+        }
+    }
     pub(super) fn frame(&self) -> &Frame {
-        &self.0
+        self.frame.get_or_init(|| {
+            let frame = self.frame_alloc.alloc_one_zeroed().unwrap();
+            tracing::trace!("THE_ZERO_FRAME: {}", frame.addr());
+            frame
+        })
     }
 }
 
 impl Provider for TheZeroFrame {
-    fn get_frame(&self, _at_offset: usize, will_read: bool) -> Result<Frame, Error> {
-        if will_read {
-            frame_alloc::alloc_one_zeroed().map_err(Into::into)
+    fn get_frame(&self, _at_offset: usize, will_write: bool) -> Result<Frame, Error> {
+        if will_write {
+            self.frame_alloc.alloc_one_zeroed().map_err(Into::into)
         } else {
-            Ok(self.0.clone())
+            Ok(self.frame().clone())
         }
     }
 
-    fn get_frames(&self, _at_offset: usize, len: NonZeroUsize) -> Result<FrameList, Error> {
-        Ok(FrameList::from_iter(iter::repeat_n(
-            self.0.clone(),
-            len.get(),
-        )))
+    fn get_frames(
+        &self,
+        _at_offset: usize,
+        len: NonZeroUsize,
+        will_write: bool,
+    ) -> Result<FrameList, Error> {
+        if will_write {
+            self.frame_alloc
+                .alloc_contiguous_zeroed(
+                    Layout::from_size_align(len.get(), arch::PAGE_SIZE).unwrap(),
+                )
+                .map_err(Into::into)
+        } else {
+            Ok(FrameList::from_iter(iter::repeat_n(
+                self.frame().clone(),
+                len.get(),
+            )))
+        }
     }
 
     fn free_frame(&self, frame: Frame) {
         debug_assert!(
-            Frame::ptr_eq(&frame, &self.0),
+            Frame::ptr_eq(&frame, self.frame()),
             "attempted to free unrelated frame with the zero frame provider"
         );
         drop(frame);

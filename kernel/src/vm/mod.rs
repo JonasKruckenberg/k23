@@ -17,6 +17,7 @@ mod user_mmap;
 mod vmo;
 
 use crate::arch;
+use crate::vm::frame_alloc::FrameAllocator;
 pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub use address_space::{AddressSpace, AddressSpaceKind, Batch};
 pub use address_space_region::AddressSpaceRegion;
@@ -27,7 +28,6 @@ use core::range::Range;
 use core::{fmt, slice};
 pub use error::Error;
 pub use flush::Flush;
-pub use frame_alloc::{Frame, FrameList};
 use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -53,13 +53,21 @@ where
     f(&mut aspace)
 }
 
-pub fn init(boot_info: &BootInfo, rand: &mut impl rand::RngCore) -> crate::Result<()> {
+pub fn init(
+    boot_info: &BootInfo,
+    rand: &mut impl rand::RngCore,
+    frame_alloc: &'static FrameAllocator,
+) -> crate::Result<()> {
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
         // Safety: `init` is called during startup where the kernel address space is the only address space available
         let mut aspace = unsafe {
-            AddressSpace::from_active_kernel(hw_aspace, Some(ChaCha20Rng::from_rng(rand)))
+            AddressSpace::from_active_kernel(
+                hw_aspace,
+                Some(ChaCha20Rng::from_rng(rand)),
+                frame_alloc,
+            )
         };
 
         reserve_wired_regions(&mut aspace, boot_info, &mut flush);
@@ -231,7 +239,7 @@ impl From<PageFaultFlags> for Permissions {
 pub trait ArchAddressSpace {
     type Flags: From<Permissions> + bitflags::Flags;
 
-    fn new(asid: u16) -> Result<(Self, Flush), Error>
+    fn new(asid: u16, frame_alloc: &FrameAllocator) -> Result<(Self, Flush), Error>
     where
         Self: Sized;
     fn from_active(asid: u16) -> (Self, Flush)
@@ -240,6 +248,7 @@ pub trait ArchAddressSpace {
 
     unsafe fn map_contiguous(
         &mut self,
+        frame_alloc: &FrameAllocator,
         virt: VirtualAddress,
         phys: PhysicalAddress,
         len: NonZeroUsize,
