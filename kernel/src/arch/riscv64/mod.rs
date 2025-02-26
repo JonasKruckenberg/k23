@@ -33,14 +33,6 @@ pub fn init_early() {
     asid_allocator::init();
 }
 
-/// Per-cpu and RISC-V specific initialization.
-#[cold]
-pub fn per_cpu_init(devtree: &DeviceTree) -> crate::Result<()> {
-    device::cpu::init(devtree)?;
-
-    Ok(())
-}
-
 /// Early per-cpu and RISC-V specific initialization.
 ///
 /// This function will be called before global initialization is done, notably this function
