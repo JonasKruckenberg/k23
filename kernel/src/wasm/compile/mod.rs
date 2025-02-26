@@ -278,10 +278,10 @@ impl UnlinkedCompileOutputs {
             let off = text_builder.append(true, body, alignment, &mut ctrl_plane);
 
             tracing::debug!(
-                 "Function {}: {off:#x}..{:#x}",
-                 output.symbol,
-                 off + body_len
-             );
+                "Function {}: {off:#x}..{:#x}",
+                output.symbol,
+                off + body_len
+            );
 
             for r in output.function.relocations() {
                 let target = match r.target {
