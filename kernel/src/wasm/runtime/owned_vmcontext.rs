@@ -2,6 +2,7 @@ use crate::arch;
 use crate::vm::{AddressRangeExt, AddressSpace, UserMmap};
 use crate::wasm::runtime::{VMContext, VMOffsets};
 use alloc::string::ToString;
+use core::range::Range;
 
 #[derive(Debug)]
 pub struct OwnedVMContext(UserMmap);
@@ -19,6 +20,8 @@ impl OwnedVMContext {
             Some("VMContext".to_string()),
         )
         .unwrap();
+        mmap.commit(aspace, Range::from(0..offsets.size() as usize), true)
+            .unwrap();
 
         Ok(Self(mmap))
     }
