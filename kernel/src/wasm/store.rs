@@ -1,3 +1,4 @@
+use crate::vm::frame_alloc::FrameAllocator;
 use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 use crate::wasm::runtime::{VMContext, VMOpaqueContext, VMVal};
 use crate::wasm::{Engine, runtime};
@@ -24,7 +25,7 @@ pub struct Store {
 
 impl Store {
     /// Constructs a new store with the given engine.
-    pub fn new(engine: &Engine) -> Self {
+    pub fn new(engine: &Engine, frame_alloc: &'static FrameAllocator) -> Self {
         Self {
             engine: engine.clone(),
             instances: Vec::new(),
@@ -36,7 +37,7 @@ impl Store {
 
             vmctx2instance: HashMap::new(),
 
-            alloc: PlaceholderAllocatorDontUse::new(engine),
+            alloc: PlaceholderAllocatorDontUse::new(engine, frame_alloc),
         }
     }
 

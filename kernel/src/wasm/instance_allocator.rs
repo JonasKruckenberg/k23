@@ -1,4 +1,5 @@
 use crate::vm::AddressSpace;
+use crate::vm::frame_alloc::FrameAllocator;
 use crate::wasm::Engine;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::{InstanceAllocator, Memory, Table};
@@ -14,10 +15,11 @@ use sync::Mutex;
 pub struct PlaceholderAllocatorDontUse(pub(super) Arc<Mutex<AddressSpace>>);
 
 impl PlaceholderAllocatorDontUse {
-    pub fn new(engine: &Engine) -> Self {
+    pub fn new(engine: &Engine, frame_alloc: &'static FrameAllocator) -> Self {
         let aspace = AddressSpace::new_user(
             engine.allocate_asid(),
             engine.rng().map(|mut rng| ChaCha20Rng::from_rng(&mut rng)),
+            frame_alloc,
         )
         .unwrap();
 

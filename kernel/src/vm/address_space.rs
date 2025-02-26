@@ -6,9 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::vm::address_space_region::AddressSpaceRegion;
+use crate::vm::frame_alloc::FrameAllocator;
 use crate::vm::{
     AddressRangeExt, ArchAddressSpace, Error, Flush, PageFaultFlags, Permissions, PhysicalAddress,
-    VirtualAddress, frame_alloc,
+    VirtualAddress,
 };
 use crate::{arch, bail, ensure};
 use alloc::boxed::Box;
@@ -47,6 +48,7 @@ pub struct AddressSpace {
     /// The hardware address space backing this "logical" address space that changes need to be
     /// materialized into in order to take effect.
     pub arch: arch::AddressSpace,
+    pub frame_alloc: &'static FrameAllocator,
 }
 
 impl fmt::Debug for AddressSpace {
@@ -70,8 +72,12 @@ impl fmt::Debug for AddressSpace {
 }
 
 impl AddressSpace {
-    pub fn new_user(asid: u16, rng: Option<ChaCha20Rng>) -> Result<Self, Error> {
-        let (arch, _) = arch::AddressSpace::new(asid)?;
+    pub fn new_user(
+        asid: u16,
+        rng: Option<ChaCha20Rng>,
+        frame_alloc: &'static FrameAllocator,
+    ) -> Result<Self, Error> {
+        let (arch, _) = arch::AddressSpace::new(asid, frame_alloc)?;
 
         #[allow(tail_expr_drop_order, reason = "")]
         Ok(Self {
@@ -80,12 +86,14 @@ impl AddressSpace {
             max_range: arch::USER_ASPACE_RANGE,
             rng,
             kind: AddressSpaceKind::User,
+            frame_alloc,
         })
     }
 
     pub unsafe fn from_active_kernel(
         arch_aspace: arch::AddressSpace,
         rng: Option<ChaCha20Rng>,
+        frame_alloc: &'static FrameAllocator,
     ) -> Self {
         #[allow(tail_expr_drop_order, reason = "")]
         Self {
@@ -94,6 +102,7 @@ impl AddressSpace {
             max_range: arch::KERNEL_ASPACE_RANGE,
             rng,
             kind: AddressSpaceKind::Kernel,
+            frame_alloc,
         }
     }
 
@@ -125,7 +134,7 @@ impl AddressSpace {
             Error::SizeTooLarge
         );
         ensure!(
-            layout.align() <= frame_alloc::max_alignment(),
+            layout.align() <= self.frame_alloc.max_alignment(),
             Error::AlignmentTooLarge
         );
         ensure!(permissions.is_valid(), Error::InvalidPermissions);
@@ -460,7 +469,7 @@ impl AddressSpace {
             .and_then(|region| region.range.contains(&addr).then_some(region));
 
         if let Some(region) = region {
-            let mut batch = Batch::new(&mut self.arch);
+            let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
             region.page_fault(&mut batch, addr, flags)?;
             batch.flush()?;
             Ok(())
@@ -546,7 +555,7 @@ impl AddressSpace {
             Error::SizeTooLarge
         );
 
-        let mut batch = Batch::new(&mut self.arch);
+        let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
         let mut bytes_remaining = range.size();
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
@@ -571,7 +580,7 @@ impl AddressSpace {
             &mut Batch,
         ) -> Result<AddressSpaceRegion, Error>,
     ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        let mut batch = Batch::new(&mut self.arch);
+        let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
         let region = map(range, permissions, &mut batch)?;
         let region = self.regions.insert(Box::pin(region));
 
@@ -819,7 +828,8 @@ impl AddressSpace {
 // =============================================================================
 
 pub struct Batch<'a> {
-    aspace: &'a mut arch::AddressSpace,
+    pub aspace: &'a mut arch::AddressSpace,
+    pub frame_alloc: &'static FrameAllocator,
     range: Range<VirtualAddress>,
     flags: <arch::AddressSpace as ArchAddressSpace>::Flags,
     actions: Vec<BBatchAction>,
@@ -840,9 +850,10 @@ impl Drop for Batch<'_> {
 }
 
 impl<'a> Batch<'a> {
-    pub fn new(aspace: &'a mut arch::AddressSpace) -> Self {
+    pub fn new(aspace: &'a mut arch::AddressSpace, frame_alloc: &'static FrameAllocator) -> Self {
         Self {
             aspace,
+            frame_alloc,
             range: Range::default(),
             flags: <arch::AddressSpace as ArchAddressSpace>::Flags::empty(),
             actions: vec![],
@@ -888,6 +899,7 @@ impl<'a> Batch<'a> {
                 // Safety: we have checked all the invariants
                 BBatchAction::Map(phys, len) => unsafe {
                     self.aspace.map_contiguous(
+                        self.frame_alloc,
                         virt,
                         phys,
                         NonZeroUsize::new(len).unwrap(),

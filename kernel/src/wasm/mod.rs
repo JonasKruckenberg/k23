@@ -32,6 +32,7 @@ mod values;
 pub use errors::Error;
 use wasmparser::Validator;
 pub(crate) type Result<T> = core::result::Result<T, Error>;
+use crate::vm::frame_alloc::FRAME_ALLOC;
 use crate::vm::{AddressSpace, ArchAddressSpace, KERNEL_ASPACE, VirtualAddress};
 use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 use crate::{arch, enum_accessors, owned_enum_accessors};
@@ -126,7 +127,7 @@ pub fn test() {
     let engine = Engine::default();
     let mut validator = Validator::new();
     let mut linker = Linker::new(&engine);
-    let mut store = Store::new(&engine);
+    let mut store = Store::new(&engine, FRAME_ALLOC.get().unwrap());
     let mut const_eval = ConstExprEvaluator::default();
     // let mut aspace = AddressSpace::new_user(2, None).unwrap();
 

@@ -8,8 +8,8 @@
 use crate::arch::{mb, wmb};
 use crate::vm::Error;
 use crate::vm::flush::Flush;
-use crate::vm::frame_alloc::Frame;
-use crate::vm::{PhysicalAddress, VirtualAddress, frame_alloc};
+use crate::vm::frame_alloc::{Frame, FrameAllocator};
+use crate::vm::{PhysicalAddress, VirtualAddress};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::bitflags;
@@ -163,7 +163,7 @@ pub struct AddressSpace {
 impl crate::vm::ArchAddressSpace for AddressSpace {
     type Flags = PTEFlags;
 
-    fn new(asid: u16) -> Result<(Self, Flush), Error>
+    fn new(asid: u16, frame_alloc: &FrameAllocator) -> Result<(Self, Flush), Error>
     where
         Self: Sized,
     {
@@ -182,7 +182,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             slice::from_raw_parts(base, PAGE_SIZE / 2)
         };
 
-        let mut root_pgtable = frame_alloc::alloc_one_zeroed()?;
+        let mut root_pgtable = frame_alloc.alloc_one_zeroed()?;
 
         Frame::get_mut(&mut root_pgtable).unwrap().as_mut_slice()[PAGE_SIZE / 2..]
             .copy_from_slice(src);
@@ -215,6 +215,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
 
     unsafe fn map_contiguous(
         &mut self,
+        frame_alloc: &FrameAllocator,
         mut virt: VirtualAddress,
         mut phys: PhysicalAddress,
         len: NonZeroUsize,
@@ -294,7 +295,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
                     // we need to allocate a new sub-table and retry.
                     // allocate a new physical frame to hold the next level table and
                     // mark this PTE as a valid internal node pointing to that sub-table.
-                    let frame = frame_alloc::alloc_one_zeroed()?;
+                    let frame = frame_alloc.alloc_one_zeroed()?;
 
                     mb();
 
@@ -475,6 +476,8 @@ impl AddressSpace {
         let page_size = page_size_for_level(lvl);
 
         if pte.is_valid() && pte.is_leaf() {
+            self.wired_frames
+                .retain(|wired| wired.addr() != pte.get_address_and_flags().0);
             // The PTE is mapped, so go ahead and clear it unmapping the frame
             pte.clear();
 
