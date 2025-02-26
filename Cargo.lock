@@ -1079,7 +1079,18 @@ version = "0.2.0"
 source = "git+https://github.com/tokio-rs/tracing?branch=master#b4868674ba73f3963b125ec38b57efaadc714d90"
 dependencies = [
  "pin-project-lite",
+ "tracing-attributes",
  "tracing-core 0.2.0",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.2.0"
+source = "git+https://github.com/tokio-rs/tracing?branch=master#b4868674ba73f3963b125ec38b57efaadc714d90"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

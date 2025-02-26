@@ -406,6 +406,7 @@ impl Instance {
     reason = "imports should be a linear type"
 )]
 #[expect(clippy::unnecessary_wraps, reason = "TODO")]
+#[tracing::instrument(skip(module))]
 unsafe fn initialize_vmctx(
     const_eval: &mut ConstExprEvaluator,
     vmctx: &mut OwnedVMContext,
@@ -508,6 +509,7 @@ unsafe fn initialize_vmctx(
     }
 }
 
+#[tracing::instrument(skip(module))]
 fn initialize_vmfunc_refs(
     vmctx: &mut OwnedVMContext,
     module: &&Module,
@@ -569,6 +571,7 @@ fn initialize_vmfunc_refs(
     }
 }
 
+#[tracing::instrument(skip(module))]
 unsafe fn initialize_tables(
     const_eval: &mut ConstExprEvaluator,
     tables: &mut PrimaryMap<DefinedTableIndex, Table>,
@@ -619,6 +622,7 @@ unsafe fn initialize_tables(
 }
 
 #[expect(clippy::unnecessary_wraps, reason = "TODO")]
+#[tracing::instrument(skip(module))]
 unsafe fn initialize_memories(
     aspace: &mut AddressSpace,
     const_eval: &mut ConstExprEvaluator,
