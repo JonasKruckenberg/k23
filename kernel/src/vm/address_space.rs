@@ -110,6 +110,10 @@ impl AddressSpace {
         self.kind
     }
 
+    pub unsafe fn activate(&self) {
+        unsafe { self.arch.activate() }
+    }
+
     pub fn map(
         &mut self,
         layout: Layout,
