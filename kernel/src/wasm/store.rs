@@ -36,7 +36,7 @@ impl Store {
 
             vmctx2instance: HashMap::new(),
 
-            alloc: PlaceholderAllocatorDontUse::default(),
+            alloc: PlaceholderAllocatorDontUse::new(engine),
         }
     }
 

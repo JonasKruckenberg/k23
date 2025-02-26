@@ -79,19 +79,6 @@ pub fn init() {
         .fill(0);
     }
 
-    // Determine the number of supported ASID bits. The ASID is a "WARL" (Write Any Values, Reads Legal Values)
-    // so we can write all 1s to and see which ones "stick".
-    // Safety: register access
-    unsafe {
-        let orig = satp::read();
-        satp::set(orig.mode(), 0xFFFF, orig.ppn());
-        let max_asid = satp::read().asid();
-        satp::set(orig.mode(), orig.asid(), orig.ppn());
-
-        // TODO use this to initialize an ASID allocator
-        tracing::trace!("supported ASID bits: {}", max_asid.count_ones());
-    }
-
     wmb();
 }
 
