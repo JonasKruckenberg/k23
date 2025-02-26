@@ -18,7 +18,10 @@ use sync::OnceLock;
 type Link<T> = Option<NonNull<T>>;
 
 static DEVICE_TREE: OnceLock<DeviceTree> = OnceLock::new();
-
+#[cold]
+pub fn init(fdt: &[u8]) -> crate::Result<&'static DeviceTree> {
+    DEVICE_TREE.get_or_try_init(|| DeviceTree::parse(fdt))
+}
 pub fn device_tree() -> &'static DeviceTree {
     DEVICE_TREE.get().expect("device tree not initialized")
 }
@@ -84,6 +87,40 @@ impl fmt::Debug for DeviceTree {
 }
 
 impl DeviceTree {
+    pub fn parse(fdt: &[u8]) -> crate::Result<Self> {
+        // Safety: u32 has no invalid bit patterns
+        let (left, aligned, _) = unsafe { fdt.align_to::<u32>() };
+        assert!(left.is_empty()); // TODO decide what to do with unaligned slices
+        let fdt = Fdt::new(aligned)?;
+
+        let alloc = Bump::new();
+
+        DeviceTree::try_new(alloc, |alloc| {
+            let mut phandle2ptr = HashMap::new();
+
+            let mut stack: [Link<Device>; 16] = [const { None }; 16];
+
+            let root = unflatten_root(&fdt, alloc)?;
+            stack[0] = Some(root);
+
+            let mut iter = fdt.nodes()?;
+            while let Some((depth, node)) = iter.next()? {
+                let ptr = unflatten_node(
+                    node,
+                    &mut phandle2ptr,
+                    stack[depth - 1].unwrap(),
+                    stack[depth],
+                    alloc,
+                )?;
+
+                // insert ourselves into the stack so we will become the new previous sibling in the next iteration
+                stack[depth] = Some(ptr);
+            }
+
+            Ok(DeviceTreeInner { phandle2ptr, root })
+        })
+    }
+
     /// Matches the root device tree `compatible` string against the given list of strings.
     #[inline]
     pub fn is_compatible<'b>(&self, compats: impl IntoIterator<Item = &'b str>) -> bool {
@@ -455,43 +492,6 @@ fn interrupt_address(
         3 if let Ok([a, b, c]) = iter.next_chunk() => Some(IrqSource::C3(a, b, c)),
         _ => None,
     }
-}
-
-#[cold]
-pub fn init(fdt: &[u8]) -> crate::Result<&'static DeviceTree> {
-    DEVICE_TREE.get_or_try_init(|| {
-        // Safety: u32 has no invalid bit patterns
-        let (left, aligned, _) = unsafe { fdt.align_to::<u32>() };
-        assert!(left.is_empty()); // TODO decide what to do with unaligned slices
-        let fdt = Fdt::new(aligned)?;
-
-        let alloc = Bump::new();
-
-        DeviceTree::try_new(alloc, |alloc| {
-            let mut phandle2ptr = HashMap::new();
-
-            let mut stack: [Link<Device>; 16] = [const { None }; 16];
-
-            let root = unflatten_root(&fdt, alloc)?;
-            stack[0] = Some(root);
-
-            let mut iter = fdt.nodes()?;
-            while let Some((depth, node)) = iter.next()? {
-                let ptr = unflatten_node(
-                    node,
-                    &mut phandle2ptr,
-                    stack[depth - 1].unwrap(),
-                    stack[depth],
-                    alloc,
-                )?;
-
-                // insert ourselves into the stack so we will become the new previous sibling in the next iteration
-                stack[depth] = Some(ptr);
-            }
-
-            Ok(DeviceTreeInner { phandle2ptr, root })
-        })
-    })
 }
 
 fn unflatten_root<'a>(fdt: &Fdt, alloc: &'a Bump) -> crate::Result<NonNull<Device<'a>>> {
