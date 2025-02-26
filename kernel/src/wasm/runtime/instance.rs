@@ -53,7 +53,6 @@ impl Instance {
     ) -> crate::wasm::Result<Self> {
         let (mut vmctx, mut tables, mut memories) = store.alloc.allocate_module(&module)?;
 
-
         tracing::trace!("initializing instance");
         unsafe {
             let mut aspace = store.alloc.0.lock();

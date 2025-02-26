@@ -111,6 +111,7 @@ impl AddressSpace {
     }
 
     pub unsafe fn activate(&self) {
+        // Safety: ensured by caller
         unsafe { self.arch.activate() }
     }
 
