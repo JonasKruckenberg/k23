@@ -401,11 +401,6 @@ impl Instance {
     }
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "imports should be a linear type"
-)]
-#[expect(clippy::unnecessary_wraps, reason = "TODO")]
 #[tracing::instrument(skip(module))]
 unsafe fn initialize_vmctx(
     const_eval: &mut ConstExprEvaluator,
@@ -621,7 +616,6 @@ unsafe fn initialize_tables(
     Ok(())
 }
 
-#[expect(clippy::unnecessary_wraps, reason = "TODO")]
 #[tracing::instrument(skip(module))]
 unsafe fn initialize_memories(
     aspace: &mut AddressSpace,
