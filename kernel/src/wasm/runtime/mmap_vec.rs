@@ -25,8 +25,13 @@ impl<T> MmapVec<T> {
 
     pub fn new_zeroed(aspace: &mut AddressSpace, capacity: usize) -> crate::wasm::Result<Self> {
         Ok(Self {
-            mmap: UserMmap::new_zeroed(aspace, capacity, max(align_of::<T>(), arch::PAGE_SIZE))
-                .map_err(|_| Error::MmapFailed)?,
+            mmap: UserMmap::new_zeroed(
+                aspace,
+                capacity,
+                max(align_of::<T>(), arch::PAGE_SIZE),
+                None,
+            )
+            .map_err(|_| Error::MmapFailed)?,
             len: 0,
             _m: PhantomData,
         })
