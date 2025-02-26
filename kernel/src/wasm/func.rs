@@ -5,7 +5,7 @@ use crate::wasm::store::Stored;
 use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
-use crate::wasm::{MAX_WASM_STACK, Store, runtime};
+use crate::wasm::{runtime, Store, MAX_WASM_STACK};
 use core::arch::asm;
 use core::ffi::c_void;
 use core::mem;
@@ -65,9 +65,7 @@ impl Func {
         // do the actual call
         // Safety: caller has to ensure safety
         unsafe {
-            arch::with_user_memory_access(|| {
-                self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)
-            })?;
+            self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)?;
         }
 
         // copy the results out of the storage

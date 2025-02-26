@@ -17,9 +17,9 @@ use crate::wasm::runtime::vmcontext::{
 };
 use crate::wasm::runtime::{
     ConstExprEvaluator, Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable,
-    Imports, InstanceAllocator, OwnedVMContext, VMCONTEXT_MAGIC, VMContext, VMFuncRef,
-    VMFunctionImport, VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOffsets,
-    VMOpaqueContext, VMTableDefinition, VMTableImport,
+    Imports, InstanceAllocator, OwnedVMContext, VMContext, VMFuncRef, VMFunctionImport,
+    VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOffsets, VMOpaqueContext,
+    VMTableDefinition, VMTableImport, VMCONTEXT_MAGIC,
 };
 use crate::wasm::translate::{TableInitialValue, TableSegmentElements};
 use crate::wasm::{Extern, Module, Store};
@@ -55,22 +55,18 @@ impl Instance {
 
         tracing::trace!("initializing instance");
         unsafe {
-            arch::with_user_memory_access(|| -> crate::wasm::Result<()> {
-                initialize_vmctx(
-                    const_eval,
-                    &mut vmctx,
-                    &mut tables,
-                    &mut memories,
-                    &module,
-                    imports,
-                )?;
-                initialize_tables(const_eval, &mut tables, &module)?;
+            initialize_vmctx(
+                const_eval,
+                &mut vmctx,
+                &mut tables,
+                &mut memories,
+                &module,
+                imports,
+            )?;
+            initialize_tables(const_eval, &mut tables, &module)?;
 
-                let mut aspace = store.alloc.0.lock();
-                initialize_memories(&mut aspace, const_eval, &mut memories, &module)?;
-
-                Ok(())
-            })?;
+            let mut aspace = store.alloc.0.lock();
+            initialize_memories(&mut aspace, const_eval, &mut memories, &module)?;
         }
         tracing::trace!("done initializing instance");
 

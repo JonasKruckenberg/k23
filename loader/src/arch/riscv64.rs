@@ -211,6 +211,8 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalIni
 
     // Safety: inline assembly
     unsafe {
+        riscv::sstatus::set_sum();
+
         asm! {
             "mv  sp, {stack_top}", // Set the kernel stack ptr
             "mv  tp, {tls_start}", // Set the kernel thread ptr
