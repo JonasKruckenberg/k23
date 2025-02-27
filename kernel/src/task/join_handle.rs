@@ -334,7 +334,7 @@ impl<T> JoinError<T> {
     /// ```
     pub fn try_into_panic(self) -> Result<Box<dyn Any + Send + 'static>, Self> {
         match self.kind {
-            super::JoinErrorKind::Panic(p) => Ok(p),
+            JoinErrorKind::Panic(p) => Ok(p),
             _ => Err(self),
         }
     }

@@ -7,9 +7,8 @@
 
 use core::ptr::NonNull;
 
-pub mod atomic_cell;
-pub mod atomic_waker;
-pub mod fast_rand;
+pub mod cache_padded;
+pub mod maybe_uninit;
 
 /// Helper to construct a `NonNull<T>` from a raw pointer to `T`, with null
 /// checks elided in release mode.

@@ -172,7 +172,6 @@ name = "cpu-local"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
- "log",
  "riscv",
 ]
 

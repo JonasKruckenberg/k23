@@ -7,303 +7,118 @@
 
 #![no_std]
 #![no_main]
-#![feature(used_with_arg)]
-#![feature(naked_functions)]
-#![feature(thread_local, never_type)]
-#![feature(new_range_api)]
-#![feature(debug_closure_helpers)]
-#![expect(internal_features, reason = "panic internals")]
-#![feature(std_internals, panic_can_unwind, formatting_options)]
-#![feature(step_trait)]
-#![feature(box_into_inner)]
-#![feature(let_chains)]
-#![feature(array_chunks)]
-#![feature(iter_array_chunks)]
-#![feature(iter_next_chunk)]
-#![feature(if_let_guard)]
 #![feature(allocator_api)]
-#![expect(dead_code, reason = "TODO")] // TODO remove
 
 extern crate alloc;
 
-mod allocator;
-mod arch;
-mod backtrace;
-mod cmdline;
 mod cpu_local;
-mod device_tree;
-mod error;
-mod irq;
-mod metrics;
-mod panic;
-mod scheduler;
+mod cpu_set;
 mod task;
-#[cfg(test)]
-mod tests;
-mod time;
-mod tracing;
-mod util;
-mod vm;
-mod wasm;
+mod utils;
 
-use crate::device_tree::device_tree;
-use crate::error::Error;
-use crate::time::Instant;
-use crate::time::clock::Ticks;
-use crate::vm::bootstrap_alloc::BootstrapAllocator;
-use arrayvec::ArrayVec;
-use cfg_if::cfg_if;
-use core::cell::Cell;
-use core::range::Range;
-use core::slice;
-use cpu_local::cpu_local;
-use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
-use rand::SeedableRng;
+use crate::cpu_set::LogicalCpuId;
+use loader_api::BootInfo;
 use rand_chacha::ChaCha20Rng;
-use sync::Once;
-use vm::PhysicalAddress;
-use vm::frame_alloc;
-
-/// The size of the stack in pages
-pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
-/// The size of the trap handler stack in pages
-pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropriate value
-/// The initial size of the kernel heap in pages.
-///
-/// This initial size should be small enough so the loaders less sophisticated allocator can
-/// doesn't cause startup slowdown & inefficient mapping, but large enough so we can bootstrap
-/// our own virtual memory subsystem. At that point we are no longer reliant on this initial heap
-/// size and can dynamically grow the heap as needed.
-pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
-
-pub type Result<T> = core::result::Result<T, Error>;
-
-cpu_local!(
-    pub static CPUID: Cell<usize> = Cell::new(usize::MAX);
-);
-#[used(linker)]
-#[unsafe(link_section = ".loader_config")]
-static LOADER_CONFIG: LoaderConfig = {
-    let mut cfg = LoaderConfig::new_default();
-    cfg.kernel_stack_size_pages = STACK_SIZE_PAGES;
-    cfg
-};
+use sync::Mutex;
 
 #[unsafe(no_mangle)]
-fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
-    // Unwinding expects at least one landing pad in the callstack, but capturing all unwinds that
-    // bubble up to this point is also a good idea since we can perform some last cleanup and
-    // print an error message.
-    let res = panic::catch_unwind(|| {
-        backtrace::__rust_begin_short_backtrace(|| kmain(cpuid, boot_info, boot_ticks));
-    });
-
-    // Run thread-local destructors
-    // Safety: after this point thread-locals cannot be accessed anymore anyway
-    unsafe {
-        cpu_local::destructors::run();
-    }
-
-    match res {
-        Ok(_) => arch::exit(0),
-        // If the panic propagates up to this catch here there is nothing we can do, this is a terminal
-        // failure.
-        Err(_) => arch::abort("unrecoverable kernel panic"),
-    }
+pub extern "C" fn _start(cpuid: LogicalCpuId, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    todo!()
 }
 
-fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
-    CPUID.set(cpuid);
+fn kmain(cpuid: LogicalCpuId, boot_info: &'static BootInfo, boot_ticks: u64) {
+    // TODO BOOTSTRAP
+    //      => [ARCH PER_CPU]
+    //          => enable counters                                      needs:
+    //          => Set the FPU state to initial                         needs:
+    //      => [GLOBAL GLOBAL] init EARLY tracing subscriber            needs:
+    //      => [GLOBAL GLOBAL] init boot_alloc                          needs: boot_info
+    //      => [GLOBAL GLOBAL] init allocator                           needs: boot_alloc
+    //      => [GLOBAL GLOBAL] init backtrace                           needs: boot_info
+    //      => [GLOBAL GLOBAL] find FDT                                 needs: boot_info
+    //      => [GLOBAL GLOBAL] parse devicetree                         needs: alloc, FDT
+    //      => [GLOBAL GLOBAL] init rng                                 needs: boot_info
+    //      => [GLOBAL PER_CPU] init boot time                          needs: boot_ticks
+    //      => [GLOBAL PER_CPU] init CPU ID                             needs: cpuid
+    //      => [ARCH PER_CPU]
+    //          => probe SBI extensions                                 needs:
+    //          => parse CPU info                                       needs:
+    //              => parse RISCV ISA extensions                       needs: devicetree
+    //              => parse cbop/cboz/cbom sizes                       needs: devicetree
+    //              => init clock                                       needs: devicetree
+    //              => init plic                                        needs: devicetree, kernel_aspace
+    //      => [GLOBAL PER_CPU] init cpu_local_frame_cache              needs:
+    //      => [GLOBAL GLOBAL] init frame_alloc                         needs: bootalloc, FDT
+    //      => [ARCH GLOBAL] init arch_aspace                           needs:
+    //          => [ARCH GLOBAL] zero lower kernel aspace half          needs:
+    //      => [GLOBAL GLOBAL] init kernel_aspace                       needs: frame_alloc, arch_aspace, rng
+    //          => [GLOBAL GLOBAL] reserve physmap region               needs: kernel_aspace
+    //          => [GLOBAL GLOBAL] reserve kernel ELF regions           needs: kernel_aspace
+    //      => [GLOBAL GLOBAL] init WASM engine                         needs:
+    //          => [GLOBAL GLOBAL] init JIT compiler                    needs:
+    //      => [GLOBAL GLOBAL] init all_tasks                           needs:
+    //      => [GLOBAL GLOBAL] init scheduler                           needs: alloc
+    //      => [GLOBAL PER_CPU] init scheduler CpuLocal data            needs:
+    //      => [GLOBAL PER_CPU] init scheduler worker                   needs: CPUID, rng
+    //      => [GLOBAL GLOBAL] parse bootargs                           needs: devicetree
+    //      => [GLOBAL GLOBAL] init tracing subscriber                  needs: alloc, filter
 
-    // perform EARLY per-cpu, architecture-specific initialization
-    // (e.g. resetting the FPU)
-    arch::per_cpu_init_early();
-
-    let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
-    let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
-
-    static SYNC: Once = Once::new();
-    SYNC.call_once(|| {
-        // set up the basic functionality of the tracing subsystem as early as possible
-        tracing::init_early();
-
-        // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
-        // is available
-        let allocatable_memories = allocatable_memory_regions(boot_info);
-        let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
-
-        // initializing the global allocator
-        allocator::init(&mut boot_alloc, boot_info);
-
-        // initialize the backtracing subsystem after the allocator has been set up
-        // since setting up the symbolization context requires allocation
-        backtrace::init(boot_info);
-
-        let devtree = device_tree::init(fdt).unwrap();
-        tracing::debug!("{devtree:?}");
-
-        let cmdline = cmdline::parse(devtree).unwrap();
-
-        // fully initialize the tracing subsystem now that we can allocate
-        tracing::init(cmdline.log);
-
-        // perform global, architecture-specific initialization
-        arch::init_early();
-
-        // initialize the global frame allocator
-        // at this point we have parsed and processed the flattened device tree, so we pass it to the
-        // frame allocator for reuse
-        let frame_alloc = frame_alloc::init(boot_alloc, fdt_region_phys);
-
-        // initialize the virtual memory subsystem
-        vm::init(boot_info, &mut rng, frame_alloc).unwrap();
-    });
-
-    // perform LATE per-cpu, architecture-specific initialization
-    // (e.g. setting the trap vector and enabling interrupts)
-    arch::per_cpu_init_late(device_tree()).unwrap();
-
-    // now that clocks are online we can make the tracing subsystem print out timestamps
-    tracing::per_cpu_init_late(Instant::from_ticks(Ticks(boot_ticks)));
-
-    // initialize the executor
-    let _sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
-
-    tracing::info!(
-        "Booted in ~{:?} ({:?} in k23)",
-        Instant::now().duration_since(Instant::ZERO),
-        Instant::from_ticks(Ticks(boot_ticks)).elapsed()
-    );
-
-    cfg_if! {
-        if #[cfg(test)] {
-            let mut output = riscv::hio::HostStream::new_stderr();
-            tests::run_tests(&mut output, boot_info);
-        } else {
-            scheduler::Worker::new(_sched, cpuid, &mut rng).run();
-        }
-    }
-
-    // if cpuid == 0 {
-    //     sched.spawn(async move {
-    //         tracing::debug!("before timeout");
-    //         let start = Instant::now();
-    //         let res =
-    //             time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
-    //         tracing::debug!("after timeout {res:?}");
-    //         assert!(res.is_err());
-    //         assert_eq!(start.elapsed().as_secs(), 1);
-    //
-    //         tracing::debug!("before timeout");
-    //         let start = Instant::now();
-    //         let res =
-    //             time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
-    //         tracing::debug!("after timeout {res:?}");
-    //         assert!(res.is_ok());
-    //         assert_eq!(start.elapsed().as_secs(), 1);
-    //
-    //         tracing::debug!("sleeping for 1 sec...");
-    //         let start = Instant::now();
-    //         time::sleep(Duration::from_secs(1)).await;
-    //         assert_eq!(start.elapsed().as_secs(), 1);
-    //         tracing::debug!("slept 1 sec! {:?}", start.elapsed());
-    //
-    //
-    //         #[cfg(test)]
-    //         scheduler::scheduler().shutdown();
-    //     });
-    //
-    //     // scheduler::scheduler().spawn(async move {
-    //     //     tracing::debug!("Point A");
-    //     //     scheduler::yield_now().await;
-    //     //     tracing::debug!("Point B");
-    //     // });
-    // let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
-    // let mut mmap = UserMmap::new_zeroed(&mut aspace, 2 * 4096, 4096).unwrap();
-    //
-    // sched.spawn(KERNEL_ASPACE.get().unwrap(), async move {
-    //     let ptr = mmap.as_mut_ptr();
-    //     unsafe {
-    //         ptr.write(17);
-    //         assert_eq!(mmap.as_ptr().read(), 17);
-    //     }
-    //     // unsafe { asm!("ld zero, 0(zero)") };
-    // });
-    // }
-
-    // wasm::test();
-
-    // - [all][global] parse cmdline
-    // - [all][global] `lockup::init()` initialize lockup detector
-    // - [all][global] `topology::init()` initialize the system topology
-    // - `kernel_shell_init()`
-    // - `userboot_init()`
+    // RUNTIME NEEDS
+    // | component      | global dep                      | cpu_local dep                     |
+    // |----------------|---------------------------------|-----------------------------------|
+    // | tracing        | subscriber (output)             | CPUID, boot_time, (output indent) |
+    // | backtrace      | backtrace_info                  |                                   |
+    // | devicetree     |                                 |                                   |
+    // | frame_alloc    | global_frame_alloc              | cpu_local_frame_cache             |
+    // | kernel_aspace  | frame_alloc, THE_ZERO_FRAME     |                                   |
+    // | panic          |                                 | panic_count                       |
+    // | scheduler      | scheduler                       | worker, timer                     |
+    // | wasm engine    | compiler, type registry, stores |
 }
 
-/// Builds a list of memory regions from the boot info that are usable for allocation.
-///
-/// The regions passed by the loader are guaranteed to be non-overlapping, but might not be
-/// sorted and might not be optimally "packed". This function will both sort regions and
-/// attempt to compact the list by merging adjacent regions.
-fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAddress>, 16> {
-    let temp: ArrayVec<Range<PhysicalAddress>, 16> = boot_info
-        .memory_regions
-        .iter()
-        .filter_map(|region| {
-            let range = Range::from(
-                PhysicalAddress::new(region.range.start)..PhysicalAddress::new(region.range.end),
-            );
-
-            region.kind.is_usable().then_some(range)
-        })
-        .collect();
-
-    // merge adjacent regions
-    let mut out: ArrayVec<Range<PhysicalAddress>, 16> = ArrayVec::new();
-    'outer: for region in temp {
-        for other in &mut out {
-            if region.start == other.end {
-                other.end = region.end;
-                continue 'outer;
-            }
-            if region.end == other.start {
-                other.start = region.start;
-                continue 'outer;
-            }
-        }
-
-        out.push(region);
-    }
-
-    out
+struct Global {
+    arch: RiscvGlobal,
+    /// Global root RNG
+    rng: Mutex<ChaCha20Rng>,
+    /// Information required to build backtraces
+    backtrace_info: (),
+    /// The device tree
+    devicetree: (),
+    /// Global frame allocator
+    frame_alloc: (),
+    kernel_aspace: (),
+}
+struct RiscvGlobal {
+    /// The set of SBI extensions supported by the firmware
+    sbi_extensions: (),
+    /// Address space identifier allocator
+    asid_alloc: (),
 }
 
-fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAddress>) {
-    let fdt = boot_info
-        .memory_regions
-        .iter()
-        .find(|region| region.kind == MemoryRegionKind::FDT)
-        .expect("no FDT region");
-
-    let base = boot_info
-        .physical_address_offset
-        .checked_add(fdt.range.start)
-        .unwrap() as *const u8;
-
-    // Safety: we need to trust the bootinfo data is correct
-    let slice =
-        unsafe { slice::from_raw_parts(base, fdt.range.end.checked_sub(fdt.range.start).unwrap()) };
-    (
-        slice,
-        Range::from(PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end)),
-    )
+struct CpuLocal {
+    arch: RiscvCpuLocal,
+    /// The ID of this CPU
+    cpuid: LogicalCpuId,
+    /// The canonical boot time of this CPU, all absolute time durations are based off this value
+    boot_time: (),
+    /// CPU-local frame allocator cache
+    frame_cache: (),
+    /// Clock driver for this CPU's monotonic clock
+    clock: (),
+    /// CPU-local task scheduler state
+    scheduler: (),
+    /// Linked list of WASM activations
+    activations: (),
 }
-
-// struct System {
-//     rng: Mutex<ChaCha20Rng>,
-//     devtree: device_tree::DeviceTree,
-//     cmdline: cmdline::Cmdline,
-//     backtrace: (),
-//     frame_alloc: (),
-//
-// }
+struct RiscvCpuLocal {
+    /// The set of RISCV ISA extensions supported by the CPU
+    isa_extensions: (),
+    /// The blocksize for Zicbom (Cache-Block Management) operations in bytes
+    cbom_block_size: Option<usize>,
+    /// The blocksize for Zicbop (Cache-Block Prefetch) operations in bytes
+    cbop_block_size: Option<usize>,
+    /// The blocksize for Zicboz (Cache-Block Zero) operations in bytes
+    cboz_block_size: Option<usize>,
+    /// Driver for the RISCV Platform-Local Interrupt Controller
+    plic: (),
+}
