@@ -19,7 +19,7 @@ use core::alloc::{AllocError, Allocator};
 use core::any::type_name;
 use core::cell::UnsafeCell;
 use core::future::Future;
-use core::mem::{MaybeUninit, offset_of};
+use core::mem::offset_of;
 use core::panic::AssertUnwindSafe;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -27,6 +27,7 @@ use core::sync::atomic::Ordering;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
 
+use crate::util::maybe_uninit::CheckedMaybeUninit;
 use crate::vm::AddressSpace;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinErrorKind, JoinHandle};
@@ -388,7 +389,7 @@ impl TaskRef {
         cx: &mut Context<'_>,
     ) -> Poll<Result<T, JoinError<T>>> {
         let poll_join_fn = self.header().vtable.poll_join;
-        let mut slot = MaybeUninit::<Result<T, JoinError<T>>>::uninit();
+        let mut slot = CheckedMaybeUninit::<Result<T, JoinError<T>>>::uninit();
 
         // Safety: This is called through the Vtable and as long as the caller makes sure that the `T` is the right
         // type, this call is safe
@@ -836,7 +837,7 @@ where
                     // safety: the caller is responsible for ensuring that this
                     // points to a `MaybeUninit<F::Output>`.
                     let dst = dst
-                        .cast::<MaybeUninit<Result<F::Output, JoinError<F::Output>>>>()
+                        .cast::<CheckedMaybeUninit<Result<F::Output, JoinError<F::Output>>>>()
                         .as_mut();
 
                     // that's right, it goes in the `NonNull<()>` hole!
