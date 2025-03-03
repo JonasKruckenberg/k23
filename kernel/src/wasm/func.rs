@@ -4,7 +4,7 @@ use crate::wasm::store::Stored;
 use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
-use crate::wasm::{Error, MAX_WASM_STACK, Store, Trap, runtime};
+use crate::wasm::{runtime, Error, Store, Trap, MAX_WASM_STACK};
 use crate::{arch, wasm};
 use core::arch::asm;
 use core::ffi::c_void;
@@ -31,6 +31,15 @@ impl Func {
         FuncType(ty)
     }
 
+    pub async fn call(
+        &self,
+        store: &mut Store,
+        params: &[Val],
+        results: &mut [Val],
+    ) -> wasm::Result<()> {
+        store.on_fiber(|store| unsafe { self.call_unchecked(store, params, results) }).await?
+    }
+
     /// Calls the given function with the provided arguments and places the results in the provided
     /// results slice.
     ///
@@ -42,12 +51,12 @@ impl Func {
     ///
     /// It is up to the caller to ensure the provided arguments are of the correct types and that
     /// the `results` slice has enough space to hold the results of the function.
-    pub unsafe fn call_unchecked(
+    unsafe fn call_unchecked(
         &self,
         store: &mut Store,
         params: &[Val],
         results: &mut [Val],
-    ) -> crate::wasm::Result<()> {
+    ) -> wasm::Result<()> {
         let ty = self.ty(store);
         let ty = ty.as_wasm_func_type();
         let values_vec_size = params.len().max(ty.results.len());
@@ -108,25 +117,25 @@ impl Func {
                 riscv::sstatus::set_spp(riscv::sstatus::SPP::User);
                 riscv::sepc::set(func_ref.array_call as usize);
                 asm! {
-                    "sret",
-                    in("a0") vmctx,
-                    in("a1") vmctx,
-                    in("a2") args_results_ptr,
-                    in("a3") args_results_len,
-                    options(noreturn)
+                "sret",
+                in("a0") vmctx,
+                in("a1") vmctx,
+                in("a2") args_results_ptr,
+                in("a3") args_results_len,
+                options(noreturn)
                 }
             }
         });
 
         tracing::trace!("returned from WASM {res:?}");
         match res {
-            Ok(_)
-            // The userspace ABI uses the Trap::Exit code to signal a graceful exit
-            | Err(Error::Trap {
-                trap: Trap::Exit, ..
-            }) => Ok(()),
-            Err(err) => Err(err),
-        }
+                Ok(_)
+                // The userspace ABI uses the Trap::Exit code to signal a graceful exit
+                | Err(Error::Trap {
+                          trap: Trap::Exit, ..
+                      }) => Ok(()),
+                Err(err) => Err(err),
+            }
     }
 
     pub(crate) fn as_raw(&self, store: &mut Store) -> *mut c_void {
