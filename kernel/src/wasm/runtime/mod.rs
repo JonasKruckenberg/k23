@@ -47,6 +47,11 @@ pub struct ExportedFunction {
     pub func_ref: NonNull<VMFuncRef>,
 }
 
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Send for ExportedFunction {}
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Sync for ExportedFunction {}
+
 /// A table export value.
 #[derive(Debug, Clone)]
 pub struct ExportedTable {
@@ -57,6 +62,11 @@ pub struct ExportedTable {
     /// The table declaration, used for compatibility checking.
     pub table: TableDesc,
 }
+
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Send for ExportedTable {}
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Sync for ExportedTable {}
 
 /// A memory export value.
 #[derive(Debug, Clone)]
@@ -69,6 +79,11 @@ pub struct ExportedMemory {
     pub memory: MemoryDesc,
 }
 
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Send for ExportedMemory {}
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Sync for ExportedMemory {}
+
 /// A global export value.
 #[derive(Debug, Clone)]
 pub struct ExportedGlobal {
@@ -80,6 +95,11 @@ pub struct ExportedGlobal {
     /// The global declaration, used for compatibility checking.
     pub ty: GlobalDesc,
 }
+
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Send for ExportedGlobal {}
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Sync for ExportedGlobal {}
 
 #[derive(Debug, Default)]
 pub struct Imports {
