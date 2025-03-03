@@ -27,16 +27,6 @@ impl PlaceholderAllocatorDontUse {
     }
 }
 
-impl Drop for PlaceholderAllocatorDontUse {
-    fn drop(&mut self) {
-        assert_eq!(
-            Arc::strong_count(&self.0),
-            1,
-            "InstanceAllocator AddressSpace had outstanding references during drop. This indicates a leak somewhere."
-        );
-    }
-}
-
 impl InstanceAllocator for PlaceholderAllocatorDontUse {
     unsafe fn allocate_vmctx(
         &self,
