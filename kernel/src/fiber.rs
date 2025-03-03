@@ -1,6 +1,7 @@
 use crate::arch;
-use crate::vm::{AddressSpace, UserMmap};
+use crate::vm::{AddressSpace, UserMmap, VirtualAddress};
 use alloc::boxed::Box;
+use alloc::string::ToString;
 use core::arch::naked_asm;
 use core::cell::Cell;
 use core::marker::PhantomData;
@@ -9,12 +10,20 @@ use core::ptr;
 use core::ptr::addr_of_mut;
 use core::range::Range;
 
+#[derive(Debug)]
 pub struct FiberStack(UserMmap);
 
 impl FiberStack {
     pub fn new(aspace: &mut AddressSpace) -> Self {
-        let mmap = UserMmap::new_zeroed(aspace, 16 * arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap();
-        mmap.ensure_mapped(aspace, Range::from(0..16 * arch::PAGE_SIZE), true)
+        let stack_size = 16 * arch::PAGE_SIZE;
+        let mmap = UserMmap::new_zeroed(
+            aspace,
+            stack_size,
+            arch::PAGE_SIZE,
+            Some("FiberStack".to_string()),
+        )
+        .unwrap();
+        mmap.commit(aspace, Range::from(0..stack_size), true)
             .unwrap();
         Self(mmap)
     }
@@ -22,6 +31,14 @@ impl FiberStack {
     pub fn top(&self) -> *mut u8 {
         // Safety: UserMmap guarantees the base pointer and length are valid
         unsafe { self.0.as_ptr().cast_mut().byte_add(self.0.len()) }
+    }
+
+    pub fn guard_range(&self) -> Option<Range<*mut u8>> {
+        None
+    }
+
+    pub fn range(&self) -> Range<VirtualAddress> {
+        self.0.range()
     }
 }
 
@@ -133,7 +150,6 @@ impl<'a, Resume, Yield, Return> Fiber<'a, Resume, Yield, Return> {
             addr.write(0);
         }
 
-        #[expect(tail_expr_drop_order, reason = "")]
         match result.into_inner() {
             RunResult::Resuming(_) | RunResult::Executing => unreachable!(),
             RunResult::Yield(y) => {
@@ -142,7 +158,7 @@ impl<'a, Resume, Yield, Return> Fiber<'a, Resume, Yield, Return> {
             }
             RunResult::Returned(r) => Ok(r),
             RunResult::Panicked(_payload) => {
-                crate::panic::resume_unwind(_payload);
+                crate::panic::begin_unwind(_payload);
             }
         }
     }
@@ -175,7 +191,6 @@ impl<Resume, Yield, Return> Suspend<Resume, Yield, Return> {
     ///
     /// Panics if the current thread is not executing a fiber from this library.
     pub fn suspend(&mut self, value: Yield) -> Resume {
-        #[expect(tail_expr_drop_order, reason = "")]
         self.switch(RunResult::Yield(value))
     }
 
@@ -333,6 +348,7 @@ unsafe extern "C" fn fiber_start() {
     unsafe {
         naked_asm! {
             "
+            .cfi_startproc
             .cfi_escape 0x0f, /* DW_CFA_def_cfa_expression */ \
             5,             /* the byte length of this expression */ \
             0x52,          /* DW_OP_reg2 (sp) */ \
@@ -372,6 +388,7 @@ unsafe extern "C" fn fiber_start() {
             // .4byte 0 will cause panic.
             // for safety just like x86_64.rs.
             .4byte 0
+            .cfi_endproc
             "
         }
     }

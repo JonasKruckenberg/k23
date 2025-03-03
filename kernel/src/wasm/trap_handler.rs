@@ -15,10 +15,10 @@ use alloc::vec::Vec;
 use core::cell::Cell;
 use core::mem::ManuallyDrop;
 use core::ops::ControlFlow;
-use core::ptr;
 use core::ptr::{NonNull, addr_of_mut};
 use core::range::Range;
 use core::slice::SliceIndex;
+use core::{mem, ptr};
 use cpu_local::cpu_local;
 
 cpu_local! {
@@ -58,7 +58,7 @@ enum UnwindReason {
 pub struct Activation {
     unwind: Cell<Option<(UnwindReason, Option<RawBacktrace>)>>,
     jmp_buf: arch::JmpBuf,
-    prev: *mut Activation,
+    prev: Cell<*mut Activation>,
     async_guard_range: Range<*mut u8>,
 
     vmctx: *mut VMContext,
@@ -86,7 +86,7 @@ impl Activation {
         Self {
             unwind: Cell::new(None),
             jmp_buf: ptr::from_ref(jmp_buf),
-            prev: ACTIVATION.get(),
+            prev: Cell::new(ACTIVATION.get()),
             async_guard_range: Range::from(ptr::null_mut()..ptr::null_mut()), // TODO
 
             #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
@@ -119,9 +119,23 @@ impl Activation {
             let this = state?;
             // Safety: `prev` is always either a null ptr (indicating the end of the list) or a valid pointer to a `CallThreadState`.
             // This is ensured by the `push` method.
-            state = unsafe { this.prev.as_ref() };
+            state = unsafe { this.prev.get().as_ref() };
             Some(this)
         })
+    }
+
+    #[inline]
+    pub(crate) unsafe fn push(&mut self) {
+        assert!(self.prev.get().is_null());
+        let prev = ACTIVATION.replace(ptr::from_mut(self));
+        self.prev.set(prev);
+    }
+
+    #[inline]
+    pub(crate) unsafe fn pop(&self) {
+        let prev = self.prev.replace(ptr::null_mut());
+        let head = ACTIVATION.replace(prev);
+        assert!(ptr::eq(head, self));
     }
 }
 
@@ -450,5 +464,69 @@ impl RawBacktrace {
     /// Iterate over the frames inside this backtrace.
     pub fn frames(&self) -> impl ExactSizeIterator<Item = &Frame> + DoubleEndedIterator {
         self.0.iter()
+    }
+}
+
+pub struct AsyncActivation(*mut Activation);
+impl AsyncActivation {
+    pub const fn new() -> AsyncActivation {
+        AsyncActivation(ptr::null_mut())
+    }
+    pub unsafe fn push(self) -> PreviousAsyncActivation {
+        // Safety: TODO
+        unsafe {
+            let ret = PreviousAsyncActivation(ACTIVATION.get());
+            let mut ptr = self.0;
+            while let Some(state) = ptr.as_mut() {
+                ptr = state.prev.replace(ptr::null_mut());
+                state.push();
+            }
+            ret
+        }
+    }
+    pub fn assert_null(&self) {
+        assert!(self.0.is_null());
+    }
+    pub fn assert_current_state_not_in_range(range: Range<VirtualAddress>) {
+        let p = VirtualAddress::new(ACTIVATION.get() as usize).unwrap();
+        assert!(p < range.start || range.end < p);
+    }
+}
+
+pub struct PreviousAsyncActivation(*mut Activation);
+
+impl PreviousAsyncActivation {
+    pub unsafe fn restore(self) -> AsyncActivation {
+        let thread_head = self.0;
+        mem::forget(self);
+        let mut ret = AsyncActivation::new();
+        loop {
+            // If the current TLS state is as we originally found it, then
+            // this loop is finished.
+            let ptr = ACTIVATION.get();
+            if ptr == thread_head {
+                break ret;
+            }
+
+            // Pop this activation from the current thread's TLS state, and
+            // then afterwards push it onto our own linked list within this
+            // `AsyncWasmCallState`. Note that the linked list in `AsyncWasmCallState` is stored
+            // in reverse order so a subsequent `push` later on pushes
+            // everything in the right order.
+            // Safety: TODO
+            unsafe {
+                (*ptr).pop();
+                if let Some(state) = ret.0.as_mut() {
+                    (*ptr).prev.set(state);
+                }
+            }
+            ret.0 = ptr;
+        }
+    }
+}
+
+impl Drop for PreviousAsyncActivation {
+    fn drop(&mut self) {
+        panic!("must be consumed with `restore`");
     }
 }
