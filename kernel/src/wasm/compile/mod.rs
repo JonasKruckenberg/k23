@@ -298,12 +298,9 @@ impl UnlinkedCompileOutputs {
                 };
 
                 // Ensure that we actually resolved the relocation
-                debug_assert!(text_builder.resolve_reloc(
-                    off + u64::from(r.offset),
-                    r.kind,
-                    r.addend,
-                    target
-                ));
+                let resolved =
+                    text_builder.resolve_reloc(off + u64::from(r.offset), r.kind, r.addend, target);
+                debug_assert!(resolved);
             }
 
             let loc = FunctionLoc {
