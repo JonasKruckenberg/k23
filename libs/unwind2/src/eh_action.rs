@@ -7,7 +7,7 @@
 
 use crate::frame::Frame;
 use crate::utils::deref_pointer;
-use gimli::{constants, EndianSlice, NativeEndian, Pointer, Reader};
+use gimli::{EndianSlice, NativeEndian, Pointer, Reader, constants};
 
 #[derive(Debug)]
 pub enum EHAction {
@@ -20,7 +20,7 @@ pub fn find_eh_action(
     reader: &mut EndianSlice<'static, NativeEndian>,
     frame: &Frame<'_>,
 ) -> crate::Result<EHAction> {
-    let func_start = frame.region_start();
+    let func_start = frame.symbol_address();
     let ip = if frame.is_signal_trampoline() {
         frame.ip() as u64
     } else {
@@ -104,7 +104,7 @@ fn parse_encoded_pointer(
         constants::DW_EH_PE_pcrel => input.slice().as_ptr() as u64,
         constants::DW_EH_PE_textrel => frame.text_rel_base().unwrap_or(0),
         constants::DW_EH_PE_datarel => frame.data_rel_base().unwrap_or(0),
-        constants::DW_EH_PE_funcrel => frame.region_start(),
+        constants::DW_EH_PE_funcrel => frame.symbol_address(),
         constants::DW_EH_PE_aligned => return Err(gimli::Error::UnsupportedPointerEncoding),
         _ => unreachable!(),
     };

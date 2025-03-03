@@ -4,8 +4,8 @@ use crate::wasm::indices::FuncIndex;
 use crate::wasm::trap::Trap;
 use cranelift_codegen::ir::{ExternalName, StackSlots, UserExternalName, UserExternalNameRef};
 use cranelift_codegen::{
-    binemit, Final, FinalizedMachReloc, FinalizedRelocTarget, MachBufferFinalized,
-    ValueLabelsRanges,
+    Final, FinalizedMachReloc, FinalizedRelocTarget, MachBufferFinalized, ValueLabelsRanges,
+    binemit,
 };
 use cranelift_entity::PrimaryMap;
 
@@ -22,7 +22,6 @@ pub struct CompiledFunction {
 }
 
 impl CompiledFunction {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn new(
         buffer: MachBufferFinalized<Final>,
         name_map: PrimaryMap<UserExternalNameRef, UserExternalName>,

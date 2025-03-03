@@ -31,6 +31,21 @@ enum JoinHandleState {
     Error(JoinErrorKind),
 }
 
+pub struct JoinError<T> {
+    kind: JoinErrorKind,
+    id: Id,
+    output: Option<T>,
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum JoinErrorKind {
+    Cancelled { completed: bool },
+    Panic(Box<dyn Any + Send + 'static>),
+}
+
+// === impl JoinHandle ===
+
 impl<T> UnwindSafe for JoinHandle<T> {}
 
 impl<T> RefUnwindSafe for JoinHandle<T> {}
@@ -42,14 +57,20 @@ impl<T> Drop for JoinHandle<T> {
         // if the JoinHandle has not already been consumed, clear the join
         // handle flag on the task.
         if let JoinHandleState::Task(ref task) = self.state {
-            log::trace!(
-                "drop JoinHandle task={task:?};task.id={:?};consumed=false;",
-                task.id()
+            tracing::trace!(
+                state=?self.state,
+                task.id=?task.id(),
+                consumed=false,
+                "drop JoinHandle"
             );
 
             task.state().drop_join_handle();
         } else {
-            log::trace!("drop JoinHandle state={:?};consumed=false;", self.state);
+            tracing::trace!(
+                state=?self.state,
+                consumed=false,
+                "drop JoinHandle"
+            );
         }
     }
 }
@@ -82,7 +103,7 @@ impl<T> Future for JoinHandle<T> {
                     kind,
                     id: this.id,
                     output: None,
-                }))
+                }));
             }
         };
 
@@ -167,7 +188,6 @@ impl<T> PartialEq<&'_ JoinHandle<T>> for Id {
 }
 
 impl<T> JoinHandle<T> {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub(crate) fn new(task: TaskRef) -> Self {
         task.state().create_join_handle();
 
@@ -198,18 +218,7 @@ impl<T> JoinHandle<T> {
     }
 }
 
-pub struct JoinError<T> {
-    kind: JoinErrorKind,
-    id: Id,
-    output: Option<T>,
-}
-
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum JoinErrorKind {
-    Cancelled { completed: bool },
-    Panic(Box<dyn Any + Send + 'static>),
-}
+// === impl JoinError ===
 
 impl JoinError<()> {
     pub(super) fn cancelled(completed: bool, id: Id) -> Self {
@@ -230,7 +239,6 @@ impl JoinError<()> {
 }
 
 impl<T> JoinError<T> {
-    #[expect(tail_expr_drop_order, reason = "TODO")]
     pub(super) fn panic(id: Id, err: Box<dyn Any + Send + 'static>) -> Self {
         Self {
             kind: JoinErrorKind::Panic(err),
@@ -293,12 +301,11 @@ impl<T> JoinError<T> {
     ///
     ///     if err.is_panic() {
     ///         // Resume the panic on the main task
-    ///         panic::resume_unwind(err.into_panic());
+    ///         panic::begin_unwind(err.into_panic());
     ///     }
     /// }
     /// ```
     #[track_caller]
-    #[expect(tail_expr_drop_order, reason = "TODO")]
     pub fn into_panic(self) -> Box<dyn Any + Send + 'static> {
         self.try_into_panic()
             .expect("`JoinError` reason is not a panic.")
@@ -321,7 +328,7 @@ impl<T> JoinError<T> {
     ///
     ///     if let Ok(reason) = err.try_into_panic() {
     ///         // Resume the panic on the main task
-    ///         panic::resume_unwind(reason);
+    ///         panic::begin_unwind(reason);
     ///     }
     /// }
     /// ```

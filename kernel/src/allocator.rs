@@ -6,14 +6,14 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
-use crate::{arch, INITIAL_HEAP_SIZE_PAGES};
+use crate::{INITIAL_HEAP_SIZE_PAGES, arch};
 use core::alloc::Layout;
 use core::range::Range;
 use loader_api::BootInfo;
 use talc::{ErrOnOom, Span, Talc, Talck};
 
 #[global_allocator]
-static KERNEL_ALLOCATOR: Talck<sync::RawMutex, ErrOnOom> = Talc::new(ErrOnOom).lock();
+static KERNEL_ALLOCATOR: Talck<sync::Mutex<()>, ErrOnOom> = Talc::new(ErrOnOom).lock();
 
 pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     let layout =
@@ -30,7 +30,7 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
 
         Range::from(start..start.checked_add(layout.size()).unwrap())
     };
-    log::debug!("Kernel Heap: {virt:#x?}");
+    tracing::debug!("Kernel Heap: {virt:#x?}");
 
     let mut alloc = KERNEL_ALLOCATOR.lock();
     let span = Span::from_base_size(

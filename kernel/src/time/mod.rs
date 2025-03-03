@@ -25,8 +25,8 @@ use core::task::Context;
 pub use core::time::Duration;
 pub use error::Error;
 pub use instant::Instant;
-pub use sleep::{sleep, sleep_until, Sleep};
-pub use timeout::{timeout, Elapsed, Timeout};
+pub use sleep::{Sleep, sleep, sleep_until};
+pub use timeout::{Elapsed, Timeout, timeout};
 pub use timer::{Deadline, Timer};
 
 // #[cfg(test)]
@@ -45,7 +45,7 @@ pub use timer::{Deadline, Timer};
 //
 //         let end = Instant::now();
 //         let elapsed = end.duration_since(start);
-//         log::trace!("Time elapsed: {elapsed:?}");
+//         tracing::trace!("Time elapsed: {elapsed:?}");
 //
 //         assert_eq!(elapsed.as_secs(), 1);
 //         // assert_eq!(start_sys.elapsed().unwrap().as_secs(), 1)

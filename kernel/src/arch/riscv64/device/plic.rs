@@ -8,10 +8,12 @@
 use crate::arch::PAGE_SIZE;
 use crate::device_tree::{Device, DeviceTree, IrqSource};
 use crate::irq::{InterruptController, IrqClaim};
-use crate::vm::{with_kernel_aspace, AddressRangeExt, Permissions, PhysicalAddress, Vmo};
+use crate::vm::{
+    AddressRangeExt, AddressSpaceRegion, Permissions, PhysicalAddress, with_kernel_aspace,
+};
 use alloc::string::ToString;
 use core::alloc::Layout;
-use core::mem::{offset_of, MaybeUninit};
+use core::mem::{MaybeUninit, offset_of};
 use core::num::NonZero;
 use core::ops::{BitAnd, BitOr, Not};
 use core::ptr;
@@ -32,8 +34,7 @@ pub struct Plic {
     ndev: usize,
 }
 
-#[repr(packed(4))]
-#[repr(C)]
+#[repr(C, packed(4))]
 struct PlicRegs {
     source_priority: [MmioReg<u32>; 1024], // 0x0000000 -- 0x0000fff
     /// A 32x32 array of 32-bit registers, each representing a bitfield of 1024 pending interrupt bits.
@@ -65,8 +66,7 @@ const_assert_eq!(offset_of!(PlicRegs, pending), 0x001000);
 const_assert_eq!(offset_of!(PlicRegs, enable), 0x002000);
 const_assert_eq!(offset_of!(PlicRegs, thresholds_claims), 0x0200000);
 
-#[repr(packed(4))]
-#[repr(C)]
+#[repr(C, packed(4))]
 struct ThresholdsClaimsRegs {
     threshold: MmioReg<u32>,
     claim_complete: MmioReg<u32>,
@@ -103,7 +103,7 @@ impl Plic {
             })
             .unwrap();
 
-        let mmio_region = {
+        let mmio_range = {
             let reg = dev.regs().unwrap().next()?.unwrap();
 
             let start = PhysicalAddress::new(reg.starting_address);
@@ -111,21 +111,24 @@ impl Plic {
         };
 
         let mmio_region = with_kernel_aspace(|aspace| {
-            let layout = Layout::from_size_align(mmio_region.size(), PAGE_SIZE).unwrap();
-            let vmo = Vmo::new_wired(mmio_region);
-
-            let virt = aspace
+            let layout = Layout::from_size_align(mmio_range.size(), PAGE_SIZE).unwrap();
+            aspace
                 .map(
                     layout,
-                    vmo,
-                    0,
                     Permissions::READ | Permissions::WRITE,
-                    Some("PLIC".to_string()),
+                    |range, perms, batch| {
+                        let region = AddressSpaceRegion::new_phys(
+                            range,
+                            perms,
+                            mmio_range,
+                            Some("PLIC".to_string()),
+                        );
+                        region.commit(batch, range, true)?;
+                        Ok(region)
+                    },
                 )
                 .unwrap()
-                .range;
-            aspace.ensure_mapped(virt, true).unwrap();
-            virt
+                .range
         });
 
         // Specifies how many external interrupts are supported by this controller.

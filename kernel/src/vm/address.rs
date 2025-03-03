@@ -227,7 +227,7 @@ macro_rules! address_impl {
         }
 
         impl core::iter::Step for $addr {
-            fn steps_between(start: &Self, end: &Self) -> Option<usize> {
+            fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
                 core::iter::Step::steps_between(&start.0, &end.0)
             }
 
@@ -337,15 +337,21 @@ address_impl!(VirtualAddress);
 impl VirtualAddress {
     #[must_use]
     pub const fn new(n: usize) -> Option<Self> {
-        if (n & arch::CANONICAL_ADDRESS_MASK).wrapping_sub(1) >= arch::CANONICAL_ADDRESS_MASK - 1 {
-            Some(Self(n))
+        let this = Self(n);
+        if this.is_canonical() {
+            Some(this)
         } else {
             None
         }
     }
+
+    pub const fn is_canonical(self) -> bool {
+        (self.0 & arch::CANONICAL_ADDRESS_MASK).wrapping_sub(1) >= arch::CANONICAL_ADDRESS_MASK - 1
+    }
+
     #[must_use]
     pub fn from_phys(phys: PhysicalAddress) -> Option<VirtualAddress> {
-        arch::KERNEL_ASPACE_BASE.checked_add(phys.0)
+        arch::KERNEL_ASPACE_RANGE.start.checked_add(phys.0)
     }
 
     #[inline]

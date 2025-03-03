@@ -25,8 +25,8 @@ pub use types::{
     EntityType, WasmFuncType, WasmHeapTopTypeInner, WasmHeapType, WasmHeapTypeInner, WasmRecGroup,
     WasmRefType, WasmSubType, WasmValType,
 };
-use wasmparser::collections::IndexMap;
 use wasmparser::WasmFeatures;
+use wasmparser::collections::IndexMap;
 
 #[derive(Debug)]
 pub struct ModuleTranslation<'data> {
@@ -623,7 +623,7 @@ pub enum ProducersSdk<'wasm> {
 //             .unwrap();
 //
 //         for (idx, ty) in types.wasm_types() {
-//             log::debug!("{idx:?} => {ty}")
+//             tracing::debug!("{idx:?} => {ty}")
 //         }
 //     }
 // }

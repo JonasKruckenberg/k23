@@ -1,6 +1,7 @@
 mod compile_key;
 mod compiled_function;
 
+use crate::wasm::Engine;
 use crate::wasm::builtins::BuiltinFunctionIndex;
 use crate::wasm::compile::compiled_function::{RelocationTarget, TrapInfo};
 use crate::wasm::indices::DefinedFuncIndex;
@@ -8,7 +9,6 @@ use crate::wasm::translate::{
     FunctionBodyData, ModuleTranslation, ModuleTypes, TranslatedModule, WasmFuncType,
 };
 use crate::wasm::trap::Trap;
-use crate::wasm::Engine;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -119,7 +119,6 @@ pub type CompileInput<'a> =
 pub struct CompileInputs<'a>(Vec<CompileInput<'a>>);
 
 impl<'a> CompileInputs<'a> {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn from_module(
         translation: &'a ModuleTranslation,
         types: &'a ModuleTypes,
@@ -131,7 +130,7 @@ impl<'a> CompileInputs<'a> {
             // push the "main" function compilation job
             inputs.push(Box::new(move |compiler| {
                 let symbol = format!("wasm[0]::function[{}]", def_func_index.as_u32());
-                log::debug!("compiling {symbol}...");
+                tracing::debug!("compiling {symbol}...");
 
                 let function = compiler.compile_function(
                     translation,
@@ -154,7 +153,7 @@ impl<'a> CompileInputs<'a> {
                 inputs.push(Box::new(move |compiler| {
                     let symbol =
                         format!("wasm[0]::array_to_wasm_trampoline[{}]", func_index.as_u32());
-                    log::debug!("compiling {symbol}...");
+                    tracing::debug!("compiling {symbol}...");
 
                     let function = compiler.compile_array_to_wasm_trampoline(
                         translation,
@@ -176,7 +175,6 @@ impl<'a> CompileInputs<'a> {
         Self(inputs)
     }
 
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn compile(self, compiler: &dyn Compiler) -> crate::wasm::Result<UnlinkedCompileOutputs> {
         let mut outputs = self
             .0
@@ -216,7 +214,7 @@ fn compile_required_builtin_trampolines(
     let compile_builtin = |builtin: BuiltinFunctionIndex| -> CompileInput {
         Box::new(move |compiler: &dyn Compiler| {
             let symbol = format!("wasm_builtin_{}", builtin.name());
-            log::debug!("compiling {symbol}...");
+            tracing::debug!("compiling {symbol}...");
             Ok(CompileOutput {
                 key: CompileKey::wasm_to_builtin_trampoline(builtin),
                 symbol,
@@ -279,6 +277,12 @@ impl UnlinkedCompileOutputs {
             let body_len = body.len() as u64;
             let off = text_builder.append(true, body, alignment, &mut ctrl_plane);
 
+            tracing::debug!(
+                "Function {}: {off:#x}..{:#x}",
+                output.symbol,
+                off + body_len
+            );
+
             for r in output.function.relocations() {
                 let target = match r.target {
                     RelocationTarget::Wasm(callee_index) => {
@@ -294,12 +298,9 @@ impl UnlinkedCompileOutputs {
                 };
 
                 // Ensure that we actually resolved the relocation
-                debug_assert!(text_builder.resolve_reloc(
-                    off + u64::from(r.offset),
-                    r.kind,
-                    r.addend,
-                    target
-                ));
+                let resolved =
+                    text_builder.resolve_reloc(off + u64::from(r.offset), r.kind, r.addend, target);
+                debug_assert!(resolved);
             }
 
             let loc = FunctionLoc {

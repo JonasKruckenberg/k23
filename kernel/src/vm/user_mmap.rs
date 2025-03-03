@@ -6,25 +6,20 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::arch::with_user_memory_access;
-use crate::traps::TrapMask;
 use crate::vm::address::AddressRangeExt;
-use crate::vm::address_space::{AddressSpaceKind, Batch};
-use crate::vm::vmo::Vmo;
 use crate::vm::{
-    AddressSpace, ArchAddressSpace, Error, Permissions, VirtualAddress, THE_ZERO_FRAME,
+    AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Error,
+    Permissions, VirtualAddress,
 };
+use alloc::string::String;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
-use core::{iter, slice};
-
-const TRAP_MASK: TrapMask =
-    TrapMask::from_bits_retain(TrapMask::StorePageFault.bits() | TrapMask::LoadPageFault.bits());
+use core::slice;
 
 /// A userspace memory mapping.
 ///
-/// This is essentially a handle to an [`AddressSpaceRegion`][crate::vm::address_space_region::AddressSpaceRegion] with convenience methods for userspace
+/// This is essentially a handle to an [`AddressSpaceRegion`] with convenience methods for userspace
 /// specific needs such as copying from and to memory.
 #[derive(Debug)]
 pub struct UserMmap {
@@ -48,7 +43,12 @@ impl UserMmap {
     }
 
     /// Creates a new read-write (`RW`) memory mapping in the given address space.
-    pub fn new_zeroed(aspace: &mut AddressSpace, len: usize, align: usize) -> Result<Self, Error> {
+    pub fn new_zeroed(
+        aspace: &mut AddressSpace,
+        len: usize,
+        align: usize,
+        name: Option<String>,
+    ) -> Result<Self, Error> {
         debug_assert!(
             matches!(aspace.kind(), AddressSpaceKind::User),
             "cannot create UserMmap in kernel address space"
@@ -60,20 +60,20 @@ impl UserMmap {
 
         let layout = Layout::from_size_align(len, align).unwrap();
 
-        let vmo = Vmo::new_paged(iter::repeat_n(
-            THE_ZERO_FRAME.clone(),
-            layout.size().div_ceil(arch::PAGE_SIZE),
-        ));
-
         let region = aspace.map(
             layout,
-            vmo,
-            0,
             Permissions::READ | Permissions::WRITE | Permissions::USER,
-            None,
+            |range, perms, batch| {
+                Ok(AddressSpaceRegion::new_zeroed(
+                    batch.frame_alloc,
+                    range,
+                    perms,
+                    name,
+                ))
+            },
         )?;
 
-        log::trace!("new_zeroed: {len} {:?}", region.range);
+        tracing::trace!("new_zeroed: {len} {:?}", region.range);
 
         Ok(Self {
             range: region.range,
@@ -113,21 +113,16 @@ impl UserMmap {
     where
         F: FnOnce(&[u8]),
     {
-        self.ensure_mapped(aspace, range, false)?;
+        self.commit(aspace, range, false)?;
 
-        #[expect(tail_expr_drop_order, reason = "")]
-        crate::traps::catch_traps(TRAP_MASK, || {
-            // Safety: checked by caller and `catch_traps`
-            unsafe {
-                with_user_memory_access(|| {
-                    let slice =
-                        slice::from_raw_parts(self.range.start.as_ptr(), self.range().size());
+        // Safety: checked by caller
+        unsafe {
+            let slice = slice::from_raw_parts(self.range.start.as_ptr(), self.range().size());
 
-                    f(&slice[range]);
-                });
-            }
-        })
-        .map_err(Error::Trap)
+            f(&slice[range]);
+        }
+
+        Ok(())
     }
 
     pub fn with_user_slice_mut<F>(
@@ -139,26 +134,20 @@ impl UserMmap {
     where
         F: FnOnce(&mut [u8]),
     {
-        self.ensure_mapped(aspace, range, true)?;
+        self.commit(aspace, range, true)?;
         // Safety: user aspace also includes kernel mappings in higher half
         unsafe {
             aspace.arch.activate();
         }
 
-        #[expect(tail_expr_drop_order, reason = "")]
-        crate::traps::catch_traps(TRAP_MASK, || {
-            // Safety: checked by caller and `catch_traps`
-            unsafe {
-                with_user_memory_access(|| {
-                    let slice = slice::from_raw_parts_mut(
-                        self.range.start.as_mut_ptr(),
-                        self.range().size(),
-                    );
-                    f(&mut slice[range]);
-                });
-            }
-        })
-        .map_err(Error::Trap)
+        // Safety: checked by caller
+        unsafe {
+            let slice =
+                slice::from_raw_parts_mut(self.range.start.as_mut_ptr(), self.range().size());
+            f(&mut slice[range]);
+        }
+
+        Ok(())
     }
 
     /// Returns a pointer to the start of the memory mapped by this `Mmap`.
@@ -192,7 +181,7 @@ impl UserMmap {
         aspace: &mut AddressSpace,
         _branch_protection: bool,
     ) -> Result<(), Error> {
-        log::trace!("UserMmap::make_executable: {:?}", self.range);
+        tracing::trace!("UserMmap::make_executable: {:?}", self.range);
         self.protect(
             aspace,
             Permissions::READ | Permissions::EXECUTE | Permissions::USER,
@@ -201,7 +190,7 @@ impl UserMmap {
 
     /// Mark this memory mapping as read-only (`R`) essentially removing the write permission.
     pub fn make_readonly(&mut self, aspace: &mut AddressSpace) -> Result<(), Error> {
-        log::trace!("UserMmap::make_readonly: {:?}", self.range);
+        tracing::trace!("UserMmap::make_readonly: {:?}", self.range);
         self.protect(aspace, Permissions::READ | Permissions::USER)
     }
 
@@ -232,7 +221,7 @@ impl UserMmap {
         Ok(())
     }
 
-    pub fn ensure_mapped(
+    pub fn commit(
         &self,
         aspace: &mut AddressSpace,
         range: Range<usize>,
@@ -246,11 +235,11 @@ impl UserMmap {
                 end: self.range.end.checked_add(range.start).unwrap(),
             };
 
-            let mut batch = Batch::new(&mut aspace.arch);
+            let mut batch = Batch::new(&mut aspace.arch, aspace.frame_alloc);
             cursor
                 .get_mut()
                 .unwrap()
-                .ensure_mapped(&mut batch, src_range, will_write)?;
+                .commit(&mut batch, src_range, will_write)?;
             batch.flush()?;
         }
 

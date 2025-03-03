@@ -7,14 +7,15 @@
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
+use crate::backtrace::Backtrace;
 use crate::scheduler::scheduler;
-use crate::traps::TrapReason;
 use crate::vm::VirtualAddress;
-use crate::TRAP_STACK_SIZE_PAGES;
+use crate::{TRAP_STACK_SIZE_PAGES, panic};
+use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
-use riscv::{sbi, scause, sepc, sip, sstatus, stval, stvec};
+use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
 cpu_local! {
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
@@ -28,7 +29,7 @@ pub fn init() {
             .byte_add(TRAP_STACK_SIZE_PAGES * PAGE_SIZE) as *mut u8
     };
 
-    log::trace!("setting sscratch to {:p}", trap_stack_top);
+    tracing::trace!("setting sscratch to {:p}", trap_stack_top);
     // Safety: inline assembly
     unsafe {
         asm!(
@@ -37,9 +38,9 @@ pub fn init() {
         );
     }
 
-    log::trace!("setting trap vec to {:#x}", trap_vec as usize);
+    tracing::trace!("setting trap vec to {:#x}", default_trap_entry as usize);
     // Safety: register access
-    unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
+    unsafe { stvec::write(default_trap_entry as usize, stvec::Mode::Direct) };
 }
 
 #[repr(C)]
@@ -50,45 +51,55 @@ pub struct TrapFrame {
     pub fp: [usize; 32],
 }
 
-#[naked]
-unsafe extern "C" fn trap_vec() {
-    // When in vectored mode
-    // exceptions i.e. sync traps => BASE
-    // interrupts i.e. async traps => BASE + 4 * CAUSE
-    //
-    // We can use this to direct some traps that don't need
-    // expensive SBI call handling to cheaper handlers (like timers)
-    // Safety: inline assembly
-    unsafe {
-        naked_asm! {
-            ".align 2",
-            ".option push",
-            ".option norvc",
-            "j {default}", // exception
-            "j {default}", // supervisor software interrupt
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // supervisor timer interrupt
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // supervisor external interrupt
-            ".option pop",
-            default = sym default_trap_entry,
-        }
-    }
-}
+// #[naked]
+// unsafe extern "C" fn trap_vec() {
+//     // When in vectored mode
+//     // exceptions i.e. sync traps => BASE
+//     // interrupts i.e. async traps => BASE + 4 * CAUSE
+//     //
+//     // We can use this to direct some traps that don't need
+//     // expensive SBI call handling to cheaper handlers (like timers)
+//     // Safety: inline assembly
+//     unsafe {
+//         naked_asm! {
+//             ".align 2",
+//             ".option push",
+//             ".option norvc",
+//             "j {default}", // exception
+//             "j {default}", // supervisor software interrupt
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // supervisor timer interrupt
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // supervisor external interrupt
+//             ".option pop",
+//             default = sym default_trap_entry,
+//         }
+//     }
+// }
 
 #[naked]
 unsafe extern "C" fn default_trap_entry() {
     // Safety: inline assembly
     unsafe {
         naked_asm! {
-            ".align 2",
+            // FIXME this is a workaround for bug in rustc/llvm
+            //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
+            ".align 4",
+            ".attribute arch, \"rv64gc\"",
+            ".cfi_startproc",
+
+            // Set the CFI rule for the return address to always return zero
+            // This is always the first frame on stack, there is nowhere to return to
+            ".cfi_register ra, zero",
 
             "csrrw sp, sscratch, sp", // sp points to the TrapFrame
+
             "add sp, sp, -0x210",
+            ".cfi_def_cfa_offset 0x210",
 
             // save gp regs
             save_gp!(x0 => sp[0]),
@@ -159,10 +170,7 @@ unsafe extern "C" fn default_trap_entry() {
             save_fp!(f31 => sp[63]),
 
             "mv a0, sp",
-
             "call {trap_handler}",
-
-            "mv sp, a0",
 
             // restore gp regs
             // skip x0 since its always zero
@@ -233,8 +241,11 @@ unsafe extern "C" fn default_trap_entry() {
             load_fp!(sp[63] => f31),
 
             "add sp, sp, 0x210",
+            ".cfi_def_cfa_offset 0",
+
             "csrrw sp, sscratch, sp",
             "sret",
+            ".cfi_endproc",
 
             trap_handler = sym default_trap_handler,
         }
@@ -242,41 +253,40 @@ unsafe extern "C" fn default_trap_entry() {
 }
 
 // https://github.com/emb-riscv/specs-markdown/blob/develop/exceptions-and-interrupts.md
-#[expect(clippy::too_many_arguments, reason = "")]
-fn default_trap_handler(
-    raw_frame: *mut TrapFrame,
-    a1: usize,
-    a2: usize,
-    a3: usize,
-    a4: usize,
-    a5: usize,
-    a6: usize,
-    a7: usize,
-) -> *mut TrapFrame {
-    // Safety: `default_trap_entry` has to correctly set up the stack frame
-    let frame = unsafe { &*raw_frame };
-
+// Note: The C-unwind here is important, we want the stable C ABI so we can call this function from
+// assembly, but we also want to be able to unwind past it into the trampoline above (so stack traces
+// are fully accurate)
+extern "C-unwind" fn default_trap_handler(
+    frame: &mut TrapFrame,
+    _a1: usize,
+    _a2: usize,
+    _a3: usize,
+    _a4: usize,
+    _a5: usize,
+    _a6: usize,
+    _a7: usize,
+) {
     let cause = scause::read().cause();
-    log::trace!("trap_handler cause {cause:?}, a1 {a1:#x} a2 {a2:#x} a3 {a3:#x} a4 {a4:#x} a5 {a5:#x} a6 {a6:#x} a7 {a7:#x}");
-
-    // Clear the SUM bit to prevent userspace memory access in case we interrupted the kernel
-    // Safety: register access
-    unsafe {
-        sstatus::clear_sum();
-    }
 
     let epc = sepc::read();
     let tval = stval::read();
-    log::trace!("{:?};epc={epc:#x};tval={tval:#x}", sstatus::read());
+    tracing::trace!(
+        "{cause:?} {:?};epc={epc:#x};tval={tval:#x}",
+        sstatus::read()
+    );
+    let epc = VirtualAddress::new(epc).unwrap();
+    let tval = VirtualAddress::new(tval).unwrap();
+    let fp = VirtualAddress::new(frame.gp[8]).unwrap(); // fp is x8
 
-    let reason = match cause {
+    match cause {
         Trap::Interrupt(Interrupt::SupervisorSoft) => {
+            // Just a nop, software interrupts are only used as wakeup calls
+            // TODO this should be an specialized routine in the trap vector
+
             // Safety: register access
             unsafe {
                 sip::clear_ssoft();
             }
-            // Software interrupts are always IPIs used for unparking
-            return raw_frame;
         }
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             if let (_, Some(next_deadline)) = scheduler().cpu_local_timer().turn() {
@@ -286,31 +296,61 @@ fn default_trap_handler(
                 // Timer interrupts are always IPIs used for sleeping
                 sbi::time::set_timer(u64::MAX).unwrap();
             }
-            return raw_frame;
         }
-        Trap::Exception(Exception::InstructionMisaligned) => TrapReason::InstructionMisaligned,
-        Trap::Exception(Exception::InstructionFault) => TrapReason::InstructionFault,
-        Trap::Exception(Exception::IllegalInstruction) => TrapReason::IllegalInstruction,
-        Trap::Exception(Exception::Breakpoint) => TrapReason::Breakpoint,
-        Trap::Exception(Exception::LoadMisaligned) => TrapReason::LoadMisaligned,
-        Trap::Exception(Exception::LoadFault) => TrapReason::LoadFault,
-        Trap::Exception(Exception::StoreMisaligned) => TrapReason::StoreMisaligned,
-        Trap::Exception(Exception::StoreFault) => TrapReason::StoreFault,
-        Trap::Exception(Exception::InstructionPageFault) => TrapReason::InstructionPageFault,
-        Trap::Exception(Exception::LoadPageFault) => TrapReason::LoadPageFault,
-        Trap::Exception(Exception::StorePageFault) => TrapReason::StorePageFault,
-        Trap::Exception(Exception::SupervisorEnvCall | Exception::UserEnvCall) => {
-            TrapReason::EnvCall
+        Trap::Interrupt(Interrupt::SupervisorExternal) => todo!("run IO reactor"),
+        Trap::Exception(
+            Exception::LoadPageFault | Exception::StorePageFault | Exception::InstructionPageFault,
+        ) => {
+            // first attempt the page fault handler, can it recover us from this by fixing up mappings?
+            if crate::vm::handle_page_fault(cause, tval).is_break() {
+                return;
+            }
+
+            // if not attempt the wasm fault handler, is the current trap caused by a user program?
+            // if so can it kill the program?
+            if crate::wasm::handle_wasm_exception(epc, fp, tval).is_break() {
+                return;
+            }
+
+            handle_kernel_exception(cause, frame, epc, tval)
         }
-        _ => unreachable!(),
+        Trap::Exception(Exception::IllegalInstruction) => {
+            if crate::wasm::handle_wasm_exception(epc, fp, tval).is_break() {
+                return;
+            }
+
+            handle_kernel_exception(cause, frame, epc, tval)
+        }
+        _ => handle_kernel_exception(cause, frame, epc, tval),
+    }
+}
+
+fn handle_kernel_exception(
+    cause: Trap,
+    frame: &TrapFrame,
+    epc: VirtualAddress,
+    tval: VirtualAddress,
+) -> ! {
+    // let's go ahead and begin unwinding the stack that caused the fault
+    // Note: we use unwinding here to give kernel code the chance to catch this and recover from it.
+    // If the unwinding reaches the root `catch_unwind` in `main.rs` this will tear down the entire
+    // system causing all CPUs to shut down.
+
+    tracing::error!("KERNEL TRAP {cause:?} epc={epc};tval={tval}");
+
+    let mut regs = unwind2::Registers {
+        gp: frame.gp,
+        fp: frame.fp,
     };
+    regs.gp[2] = sscratch::read();
 
-    crate::traps::begin_trap(crate::traps::Trap {
-        pc: VirtualAddress::new(epc).unwrap(),
-        fp: VirtualAddress::new(frame.gp[8]).unwrap(),
-        faulting_address: VirtualAddress::new(tval).unwrap(),
-        reason,
-    });
+    let backtrace =
+        Backtrace::<32>::from_registers(regs.clone(), epc.checked_add(1).unwrap()).unwrap();
+    tracing::error!("{backtrace}");
 
-    raw_frame
+    // FIXME it would be great to get rid of the allocation here :/
+    let payload = Box::new(cause);
+
+    // begin a panic on the original stack
+    panic::begin_unwind_with(payload, regs, epc.checked_add(1).unwrap());
 }

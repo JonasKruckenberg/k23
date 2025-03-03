@@ -5,24 +5,37 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::error::Error;
-use crate::traps::{Trap, TrapReason};
-use crate::vm::{PageFaultFlags, KERNEL_ASPACE};
+use crate::scheduler::scheduler;
+use crate::vm::{PageFaultFlags, VirtualAddress};
 use core::ops::ControlFlow;
+use riscv::scause::{Exception, Trap};
 
-pub fn trap_handler(trap: Trap) -> ControlFlow<crate::Result<()>> {
-    let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
+pub fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
+    let current_task = scheduler().current_task();
+    let Some(current_task) = current_task.as_ref() else {
+        // if we're not inside a task we're inside some critical kernel code
+        // none of that should use ever trap
+        tracing::warn!("no currently active task");
+        return ControlFlow::Continue(());
+    };
 
-    let flags = match trap.reason {
-        TrapReason::InstructionPageFault => PageFaultFlags::INSTRUCTION,
-        TrapReason::LoadPageFault => PageFaultFlags::LOAD,
-        TrapReason::StorePageFault => PageFaultFlags::STORE,
+    let mut aspace = current_task.header().aspace.as_ref().unwrap().lock();
+
+    let flags = match trap {
+        Trap::Exception(Exception::LoadPageFault) => PageFaultFlags::LOAD,
+        Trap::Exception(Exception::StorePageFault) => PageFaultFlags::STORE,
+        Trap::Exception(Exception::InstructionPageFault) => PageFaultFlags::INSTRUCTION,
+        // not a page fault exception, continue with the next fault handler
         _ => return ControlFlow::Continue(()),
     };
 
-    if let Err(_err) = aspace.page_fault(trap.faulting_address, flags) {
-        ControlFlow::Break(Err(Error::AccessDenied))
+    if let Err(err) = aspace.page_fault(tval, flags) {
+        // the address space knew about the faulting address, but the requested access was invalid
+        tracing::warn!("page fault handler couldn't correct fault {err}");
+        ControlFlow::Continue(())
     } else {
-        ControlFlow::Break(Ok(()))
+        // the address space knew about the faulting address and could correct the fault
+        tracing::trace!("page fault handler successfully corrected fault");
+        ControlFlow::Break(())
     }
 }

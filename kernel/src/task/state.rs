@@ -157,7 +157,7 @@ impl State {
     /// This method should always be followed by a call to [`Self::end_poll`] after the actual poll
     /// is completed.
     pub(super) fn start_poll(&self) -> StartPollAction {
-        log::trace!("State::start_poll");
+        // tracing::trace!("State::start_poll");
 
         let mut should_wait_for_join_waker = false;
         let action = self.transition(|s| {
@@ -195,7 +195,7 @@ impl State {
     /// The `completed` argument should be set to true if the polled future returned a `Poll::Ready`
     /// indicating the task is completed and should not be rescheduled.
     pub(super) fn end_poll(&self, completed: bool) -> PollResult {
-        log::trace!("State::end_poll completed={completed};");
+        // tracing::trace!(completed, "State::end_poll");
 
         let mut should_wait_for_join_waker = false;
         let action = self.transition(|s| {
@@ -243,7 +243,7 @@ impl State {
     }
 
     pub(super) fn try_join(&self) -> JoinAction {
-        log::trace!("State::try_join");
+        // tracing::trace!("State::try_join");
 
         fn should_register(s: &mut Snapshot) -> JoinAction {
             let action = match s.get(Snapshot::JOIN_WAKER) {
@@ -283,7 +283,7 @@ impl State {
     }
 
     pub(super) fn join_waker_registered(&self) {
-        log::trace!("State::join_waker_registered");
+        // tracing::trace!("State::join_waker_registered");
 
         self.transition(|s| {
             debug_assert_eq!(s.get(Snapshot::JOIN_WAKER), JoinWakerState::Registering);
@@ -293,7 +293,7 @@ impl State {
     }
 
     pub(super) fn wake_by_val(&self) -> WakeByValAction {
-        log::trace!("State::wake_by_val");
+        // tracing::trace!("State::wake_by_val");
 
         self.transition(|s| {
             // If the task was woken *during* a poll, it will be re-queued by the
@@ -325,7 +325,7 @@ impl State {
     }
 
     pub(super) fn wake_by_ref(&self) -> WakeByRefAction {
-        log::trace!("State::wake_by_ref");
+        // tracing::trace!("State::wake_by_ref");
 
         self.transition(|state| {
             if state.get(Snapshot::COMPLETE) || state.get(Snapshot::WOKEN) {
@@ -344,7 +344,7 @@ impl State {
     }
 
     pub(super) fn clone_ref(&self) {
-        log::trace!("State::clone_ref");
+        // tracing::trace!("State::clone_ref");
 
         // Using a relaxed ordering is alright here, as knowledge of the
         // original reference prevents other threads from erroneously deleting
@@ -373,7 +373,7 @@ impl State {
     }
 
     pub(super) fn drop_ref(&self) -> bool {
-        log::trace!("State::drop_ref");
+        // tracing::trace!("State::drop_ref");
 
         // We do not need to synchronize with other cores unless we are going to
         // delete the task.
@@ -393,7 +393,7 @@ impl State {
     ///
     /// Returns `true` if the task was successfully canceled.
     pub(super) fn cancel(&self) -> bool {
-        log::trace!("State::cancel");
+        tracing::trace!("State::cancel");
 
         self.transition(|s| {
             // you can't cancel a task that has already been canceled, that doesn't make sense.
@@ -408,7 +408,7 @@ impl State {
     }
 
     pub(super) fn create_join_handle(&self) {
-        log::trace!("State::create_join_handle");
+        tracing::trace!("State::create_join_handle");
 
         self.transition(|s| {
             debug_assert!(
@@ -421,11 +421,11 @@ impl State {
     }
 
     pub(super) fn drop_join_handle(&self) {
-        log::trace!("State::drop_join_handle");
+        tracing::trace!("State::drop_join_handle");
 
         const MASK: usize = !Snapshot::HAS_JOIN_HANDLE.raw_mask();
         let _prev = self.val.fetch_and(MASK, Ordering::Release);
-        log::trace!(
+        tracing::trace!(
             "drop_join_handle; prev_state:\n{}\nstate:\n{}",
             Snapshot::from_bits(_prev),
             self.load(Ordering::Acquire),
@@ -440,7 +440,7 @@ impl State {
     fn transition<T>(&self, mut transition: impl FnMut(&mut Snapshot) -> T) -> T {
         let mut current = self.load(Ordering::Acquire);
         loop {
-            log::trace!("State::transition; current:\n{}", current);
+            tracing::trace!("State::transition; current:\n{}", current);
             let mut next = current;
             // Run the transition function.
             let res = transition(&mut next);
@@ -449,7 +449,7 @@ impl State {
                 return res;
             }
 
-            log::trace!("State::transition; next:\n{}", next);
+            tracing::trace!("State::transition; next:\n{}", next);
             match self.val.compare_exchange_weak(
                 current.0,
                 next.0,

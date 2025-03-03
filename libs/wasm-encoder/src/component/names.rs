@@ -1,5 +1,5 @@
 use super::*;
-use crate::{encoding_size, ExportKind, NameMap, SectionId};
+use crate::{ExportKind, NameMap, SectionId, encoding_size};
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
 

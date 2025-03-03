@@ -49,7 +49,6 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     /// # Errors
     ///
     /// TODO
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn translate(
         mut self,
         data: &'data [u8],
@@ -158,11 +157,11 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
                     )?)?;
                 }
                 name => {
-                    log::trace!("custom section {name}");
+                    tracing::trace!("custom section {name}");
                     if name.trim_end_matches(".dwo").starts_with(".debug_") {
                         self.translate_dwarf_section(name, &section);
                     } else {
-                        log::warn!("unhandled custom section {section:?}");
+                        tracing::warn!("unhandled custom section {section:?}");
                     }
                 }
             },
@@ -183,7 +182,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
             // | Payload::ComponentExportSection(_) => {
             //     return Err(wasm_unsupported!("component model is unsupported"));
             // }
-            p => log::warn!("unknown section {p:?}"),
+            p => tracing::warn!("unknown section {p:?}"),
         }
         Ok(())
     }
@@ -214,7 +213,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
             let validator_types = self.validator.types(0).unwrap();
 
             let core_type_id = validator_types.core_type_at_in_module(type_index);
-            log::trace!(
+            tracing::trace!(
                 "about to intern rec group for {core_type_id:?} = {:?}",
                 validator_types[core_type_id]
             );
@@ -640,7 +639,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
                 "shared-everything" => {
                     required_features.insert(WasmFeatures::SHARED_EVERYTHING_THREADS);
                 }
-                _ => log::warn!("unknown required WASM feature `{feature}`"),
+                _ => tracing::warn!("unknown required WASM feature `{feature}`"),
             }
         }
 
@@ -946,7 +945,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
             // We don't use these at the moment.
             ".debug_aranges" | ".debug_pubnames" | ".debug_pubtypes" => return,
             other => {
-                log::warn!("unknown debug section `{}`", other);
+                tracing::warn!("unknown debug section `{}`", other);
                 return;
             }
         }

@@ -1,0 +1,25 @@
+[package]
+name = "ksharded-slab"
+version = "0.1.7"
+authors = ["Eliza Weisman <eliza@buoyant.io>"]
+edition.workspace = true
+documentation = "https://docs.rs/sharded-slab/"
+homepage = "https://github.com/hawkw/sharded-slab"
+repository = "https://github.com/hawkw/sharded-slab"
+license = "MIT"
+keywords = ["slab", "allocator", "lock-free", "atomic"]
+categories = ["memory-management", "data-structures", "concurrency"]
+description = """
+A lock-free concurrent slab.
+"""
+
+[dependencies]
+log.workspace = true
+sync.workspace = true
+cpu-local.workspace = true
+
+[features]
+loom = []
+
+[lints]
+workspace = true

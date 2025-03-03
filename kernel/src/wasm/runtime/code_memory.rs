@@ -1,8 +1,8 @@
-use crate::vm::{AddressRangeExt, AddressSpace, UserMmap, VirtualAddress, KERNEL_ASPACE};
+use crate::vm::{AddressRangeExt, AddressSpace, UserMmap, VirtualAddress};
+use crate::wasm::Error;
 use crate::wasm::compile::FunctionLoc;
 use crate::wasm::runtime::MmapVec;
 use crate::wasm::trap::Trap;
-use crate::wasm::Error;
 use alloc::vec::Vec;
 use core::range::Range;
 
@@ -33,7 +33,7 @@ impl CodeMemory {
         self.published = true;
 
         if self.mmap.is_empty() {
-            log::warn!("Compiled module has no code to publish");
+            tracing::warn!("Compiled module has no code to publish");
             return Ok(());
         }
 
@@ -60,7 +60,7 @@ impl CodeMemory {
 
         let addr = text_range.start + func_loc.start as usize;
 
-        log::trace!(
+        tracing::trace!(
             "resolve_function_loc {func_loc:?}, text {:?} => {:?}",
             self.mmap.as_ptr(),
             addr,

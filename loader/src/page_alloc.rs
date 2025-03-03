@@ -8,7 +8,7 @@
 use crate::arch;
 use core::alloc::Layout;
 use core::range::Range;
-use rand::distributions::{Distribution, Uniform};
+use rand::distr::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
 
@@ -105,7 +105,7 @@ impl PageAllocator {
             let max_offset = top_level_page_size - (layout.size() % top_level_page_size);
 
             if max_offset / layout.align() > 0 {
-                let uniform_range = Uniform::new(0, max_offset / layout.align());
+                let uniform_range = Uniform::new(0, max_offset / layout.align()).unwrap();
 
                 uniform_range.sample(rng) * layout.align()
             } else {

@@ -6,9 +6,9 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::device::cpu::with_cpu;
+use crate::time::Clock;
 use crate::time::clock::Ticks;
 use crate::time::sleep::Entry;
-use crate::time::Clock;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
@@ -112,7 +112,7 @@ impl Timer {
         let mut now = with_cpu(|cpu| cpu.clock.now_ticks());
 
         if now < core.now {
-            log::warn!("time went backwards!");
+            tracing::warn!("time went backwards!");
             now = core.now;
         }
 
@@ -201,7 +201,9 @@ impl Core {
                         deadline.wheel, 0,
                         "if a timer is being rescheduled, it must not have been on the lowest-level wheel"
                     );
-                    log::trace!("rescheduling entry {entry:?} because deadline {entry_deadline:?} is later than now {now:?}");
+                    tracing::trace!(
+                        "rescheduling entry {entry:?} because deadline {entry_deadline:?} is later than now {now:?}"
+                    );
                     // this timer will need to be rescheduled.
                     pending_reschedule.push_front(entry);
                 } else {
@@ -247,7 +249,7 @@ impl Core {
 
     pub(super) fn cancel(&mut self, entry: Pin<&mut Entry>) {
         let deadline = entry.deadline;
-        log::trace!("canceling entry={entry:?};now={:?}", self.now);
+        tracing::trace!("canceling entry={entry:?};now={:?}", self.now);
         let wheel = self.wheel_index(deadline);
         self.wheels[wheel].remove(deadline, entry);
     }
@@ -257,10 +259,10 @@ impl Core {
             // Safety: callers responsibility
             let entry = unsafe { ptr.as_ref() };
 
-            log::trace!("registering entry={entry:?};now={:?}", self.now);
+            tracing::trace!("registering entry={entry:?};now={:?}", self.now);
 
             if entry.deadline <= self.now {
-                log::trace!("timer already completed, firing immediately");
+                tracing::trace!("timer already completed, firing immediately");
                 entry.fire();
                 return Poll::Ready(());
             }

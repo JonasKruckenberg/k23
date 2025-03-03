@@ -1,4 +1,4 @@
-use crate::{encode_section, Encode, HeapType, RefType, Section, SectionId, ValType};
+use crate::{Encode, HeapType, RefType, Section, SectionId, ValType, encode_section};
 use alloc::borrow::Cow;
 use alloc::{vec, vec::Vec};
 use leb128::Leb128Read;

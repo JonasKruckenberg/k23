@@ -16,11 +16,11 @@
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
-use crate::kernel::{parse_kernel, INLINED_KERNEL_BYTES};
+use crate::kernel::{INLINED_KERNEL_BYTES, parse_kernel};
 use crate::machine_info::MachineInfo;
 use crate::mapping::{
-    identity_map_self, map_kernel, map_kernel_stacks, map_physical_memory, StacksAllocation,
-    TlsAllocation,
+    StacksAllocation, TlsAllocation, identity_map_self, map_kernel, map_kernel_stacks,
+    map_physical_memory,
 };
 use arrayvec::ArrayVec;
 use core::alloc::Layout;

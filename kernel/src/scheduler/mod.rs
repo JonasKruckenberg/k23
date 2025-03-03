@@ -72,13 +72,17 @@ use crate::scheduler::queue::Overflow;
 use crate::task::{JoinHandle, OwnedTasks, PollResult, Schedule, TaskRef};
 use crate::time::Timer;
 use crate::util::fast_rand::FastRand;
+use crate::vm::AddressSpace;
 use crate::{arch, task};
-use core::cell::RefCell;
+use alloc::sync::Arc;
+use core::any::type_name;
+use core::cell::{Ref, RefCell};
 use core::future::Future;
 use core::mem;
+use core::ops::DerefMut;
 use core::sync::atomic::{AtomicBool, Ordering};
 use rand::RngCore;
-use sync::{Backoff, Barrier, OnceLock};
+use sync::{Backoff, Barrier, Mutex, OnceLock};
 
 const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
 
@@ -87,7 +91,6 @@ static SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
 pub fn init(num_cores: usize) -> &'static Scheduler {
     static TASK_STUB: TaskStub = TaskStub::new();
 
-    #[expect(tail_expr_drop_order, reason = "")]
     SCHEDULER.get_or_init(|| Scheduler {
         cores: CpuLocal::with_capacity(num_cores),
         remotes: CpuLocal::with_capacity(num_cores),
@@ -136,6 +139,7 @@ struct Core {
     /// next (LIFO). This is an optimization for improving locality which
     /// benefits message passing patterns and helps to reduce latency.
     lifo_slot: Option<TaskRef>,
+    current_task: Option<TaskRef>,
 }
 
 /// Per-CPU state accessed by other workers
@@ -177,13 +181,29 @@ pub struct Worker {
 }
 
 impl Scheduler {
-    pub fn spawn<F>(&'static self, future: F) -> JoinHandle<F::Output>
+    #[track_caller]
+    pub fn spawn<F>(
+        &'static self,
+        aspace: Arc<Mutex<AddressSpace>>,
+        future: F,
+    ) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
         let id = task::Id::next();
-        let (handle, maybe_task) = self.owned.bind(future, self, id);
+
+        let loc = core::panic::Location::caller();
+        let span = tracing::trace_span!(
+            "scheduler.spawn",
+            task.tid = id.as_u64(),
+            task.output = %type_name::<F::Output>(),
+            loc.file = loc.file(),
+            loc.line = loc.line(),
+            loc.col = loc.column(),
+        );
+
+        let (handle, maybe_task) = self.owned.bind(future, self, id, span, aspace);
 
         if let Some(task) = maybe_task {
             self.schedule(task);
@@ -199,13 +219,20 @@ impl Scheduler {
         }
     }
 
+    pub fn current_task(&self) -> Option<Ref<'_, TaskRef>> {
+        let core = self.cores.get()?.borrow();
+        Ref::filter_map(core, |core| core.current_task.as_ref()).ok()
+    }
+
     pub fn cpu_local_timer(&self) -> &Timer {
         &self.remotes.get().unwrap().timer
     }
 
     fn schedule_task(&self, task: TaskRef) {
-        if let Some(core) = self.cores.get() {
-            self.schedule_local(&mut core.borrow_mut(), task);
+        if let Some(core) = self.cores.get()
+            && let Ok(mut core) = core.try_borrow_mut()
+        {
+            self.schedule_local(core.deref_mut(), task);
         } else {
             self.schedule_remote(task);
         }
@@ -252,15 +279,14 @@ impl Worker {
     pub fn new(scheduler: &'static Scheduler, cpuid: usize, rng: &mut impl RngCore) -> Self {
         let (steal, run_queue) = queue::new();
 
-        #[expect(tail_expr_drop_order, reason = "")]
         scheduler.cores.get_or(|| {
             RefCell::new(Core {
                 lifo_slot: None,
                 run_queue,
+                current_task: None,
             })
         });
 
-        #[expect(tail_expr_drop_order, reason = "")]
         scheduler.remotes.get_or(|| Remote {
             steal,
             timer: Timer::new(),
@@ -313,7 +339,14 @@ impl Worker {
             self.scheduler.idle.notify_one();
         }
 
-        let poll_result = task.poll();
+        let (poll_result, task) = self.with_task_as_current(task, |task| {
+            if let Some(aspace) = &task.header().aspace {
+                // Safety: the task had to be constructed from this address space
+                unsafe { aspace.lock().activate() }
+            }
+
+            task.poll()
+        });
         match poll_result {
             PollResult::Ready | PollResult::ReadyJoined => {
                 self.scheduler.owned.remove(task);
@@ -323,6 +356,21 @@ impl Worker {
             }
             PollResult::Pending => {}
         }
+    }
+
+    /// Execute a provided callback with the provided task as the current task for this CPU
+    pub fn with_task_as_current<F, R>(&mut self, task: TaskRef, f: F) -> (R, TaskRef)
+    where
+        F: FnOnce(TaskRef) -> R,
+    {
+        let mut core = self.scheduler.cores.get().unwrap().borrow_mut();
+        core.current_task = Some(task.clone());
+        drop(core);
+
+        let r = f(task);
+
+        let mut core = self.scheduler.cores.get().unwrap().borrow_mut();
+        (r, core.current_task.take().unwrap())
     }
 
     fn turn_timer(&self) -> bool {
@@ -499,7 +547,7 @@ impl Worker {
         while core.run_queue.pop().is_some() {}
 
         // Wait for all workers
-        log::trace!("waiting for other workers to shut down...");
+        tracing::trace!("waiting for other workers to shut down...");
         if self.scheduler.shutdown_barrier.wait().is_leader() {
             debug_assert!(self.scheduler.owned.is_empty());
 
@@ -513,7 +561,7 @@ impl Worker {
                 drop(task);
             }
 
-            log::trace!("scheduler shut down, bye bye...");
+            tracing::trace!("scheduler shut down, bye bye...");
         }
     }
 }

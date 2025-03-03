@@ -15,10 +15,10 @@ cfg_if::cfg_if! {
     }
 }
 
-pub fn abort() -> ! {
+pub fn abort(err: &str) -> ! {
     cfg_if::cfg_if! {
         if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-            riscv::abort();
+            riscv::abort(err);
         } else {
             loop {}
         }

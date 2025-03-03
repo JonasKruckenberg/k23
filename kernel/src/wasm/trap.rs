@@ -99,7 +99,7 @@ impl Trap {
             TRAP_EXIT => Some(Trap::Exit),
 
             c => {
-                log::warn!("unknown trap code {c}");
+                tracing::warn!("unknown trap code {c}");
                 None
             }
         }

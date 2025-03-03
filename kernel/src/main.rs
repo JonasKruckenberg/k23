@@ -13,7 +13,7 @@
 #![feature(new_range_api)]
 #![feature(debug_closure_helpers)]
 #![expect(internal_features, reason = "panic internals")]
-#![feature(std_internals, panic_can_unwind, fmt_internals)]
+#![feature(std_internals, panic_can_unwind, formatting_options)]
 #![feature(step_trait)]
 #![feature(box_into_inner)]
 #![feature(let_chains)]
@@ -23,48 +23,48 @@
 #![feature(if_let_guard)]
 #![feature(allocator_api)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
-#![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
 extern crate alloc;
 
 mod allocator;
 mod arch;
+mod backtrace;
+mod cmdline;
 mod cpu_local;
 mod device_tree;
 mod error;
 mod fiber;
 mod irq;
-mod logger;
 mod metrics;
 mod panic;
 mod scheduler;
 mod task;
+#[cfg(test)]
+mod tests;
 mod time;
-mod traps;
+mod tracing;
 mod util;
 mod vm;
 mod wasm;
 
 use crate::device_tree::device_tree;
 use crate::error::Error;
-use crate::time::clock::Ticks;
 use crate::time::Instant;
+use crate::time::clock::Ticks;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
+use cfg_if::cfg_if;
 use core::cell::Cell;
 use core::range::Range;
 use core::slice;
-use core::time::Duration;
 use cpu_local::cpu_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::Once;
-use vm::frame_alloc;
 use vm::PhysicalAddress;
+use vm::frame_alloc;
 
-/// The log level for the kernel
-pub const LOG_LEVEL: log::Level = log::Level::Trace;
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
 /// The size of the trap handler stack in pages
@@ -92,6 +92,28 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    // Unwinding expects at least one landing pad in the callstack, but capturing all unwinds that
+    // bubble up to this point is also a good idea since we can perform some last cleanup and
+    // print an error message.
+    let res = panic::catch_unwind(|| {
+        backtrace::__rust_begin_short_backtrace(|| kmain(cpuid, boot_info, boot_ticks));
+    });
+
+    // Run thread-local destructors
+    // Safety: after this point thread-locals cannot be accessed anymore anyway
+    unsafe {
+        cpu_local::destructors::run();
+    }
+
+    match res {
+        Ok(_) => arch::exit(0),
+        // If the panic propagates up to this catch here there is nothing we can do, this is a terminal
+        // failure.
+        Err(_) => arch::abort("unrecoverable kernel panic"),
+    }
+}
+
+fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     CPUID.set(cpuid);
 
     // perform EARLY per-cpu, architecture-specific initialization
@@ -103,8 +125,8 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 
     static SYNC: Once = Once::new();
     SYNC.call_once(|| {
-        // initialize the global logger as early as possible
-        logger::init(LOG_LEVEL.to_level_filter());
+        // set up the basic functionality of the tracing subsystem as early as possible
+        tracing::init_early();
 
         // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
         // is available
@@ -114,99 +136,109 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
-        // initialize the panic backtracing subsystem after the allocator has been set up
+        // initialize the backtracing subsystem after the allocator has been set up
         // since setting up the symbolization context requires allocation
-        panic::init(boot_info);
+        backtrace::init(boot_info);
+
+        let devtree = device_tree::init(fdt).unwrap();
+        tracing::debug!("{devtree:?}");
+
+        let cmdline = cmdline::parse(devtree).unwrap();
+
+        // fully initialize the tracing subsystem now that we can allocate
+        tracing::init(cmdline.log);
 
         // perform global, architecture-specific initialization
         arch::init_early();
 
-        let devtree = device_tree::init(fdt).unwrap();
-        log::debug!("{devtree:?}");
-
         // initialize the global frame allocator
         // at this point we have parsed and processed the flattened device tree, so we pass it to the
         // frame allocator for reuse
-        frame_alloc::init(boot_alloc, fdt_region_phys);
+        let frame_alloc = frame_alloc::init(boot_alloc, fdt_region_phys);
 
         // initialize the virtual memory subsystem
-        vm::init(boot_info, &mut rng).unwrap();
+        vm::init(boot_info, &mut rng, frame_alloc).unwrap();
     });
 
     // perform LATE per-cpu, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
     arch::per_cpu_init_late(device_tree()).unwrap();
 
-    // initialize the executor
-    let sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
+    // now that clocks are online we can make the tracing subsystem print out timestamps
+    tracing::per_cpu_init_late(Instant::from_ticks(Ticks(boot_ticks)));
 
-    log::info!(
+    // initialize the executor
+    let _sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
+
+    tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
 
-    if cpuid == 0 {
-        sched.spawn(async move {
-            log::debug!("before timeout");
-            let start = Instant::now();
-            let res =
-                time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
-            log::debug!("after timeout {res:?}");
-            assert!(res.is_err());
-            assert_eq!(start.elapsed().as_secs(), 1);
-
-            log::debug!("before timeout");
-            let start = Instant::now();
-            let res =
-                time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
-            log::debug!("after timeout {res:?}");
-            assert!(res.is_ok());
-            assert_eq!(start.elapsed().as_secs(), 1);
-
-            log::debug!("sleeping for 1 sec...");
-            let start = Instant::now();
-            time::sleep(Duration::from_secs(1)).await;
-            assert_eq!(start.elapsed().as_secs(), 1);
-            log::debug!("slept 1 sec! {:?}", start.elapsed());
-
-            // FIXME this is a quite terrible hack to get the scheduler to close in tests (otherwise
-            //  tests would run forever) we should find a proper way to shut down the scheduler when idle.
-            #[cfg(test)]
-            scheduler::scheduler().shutdown();
-        });
-
-        // scheduler::scheduler().spawn(async move {
-        //     log::debug!("Point A");
-        //     scheduler::yield_now().await;
-        //     log::debug!("Point B");
-        // });
+    cfg_if! {
+        if #[cfg(test)] {
+            let mut output = riscv::hio::HostStream::new_stderr();
+            tests::run_tests(&mut output, boot_info);
+        } else {
+            scheduler::Worker::new(_sched, cpuid, &mut rng).run();
+        }
     }
 
-    scheduler::Worker::new(sched, cpuid, &mut rng).run();
+    // if cpuid == 0 {
+    //     sched.spawn(async move {
+    //         tracing::debug!("before timeout");
+    //         let start = Instant::now();
+    //         let res =
+    //             time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
+    //         tracing::debug!("after timeout {res:?}");
+    //         assert!(res.is_err());
+    //         assert_eq!(start.elapsed().as_secs(), 1);
+    //
+    //         tracing::debug!("before timeout");
+    //         let start = Instant::now();
+    //         let res =
+    //             time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
+    //         tracing::debug!("after timeout {res:?}");
+    //         assert!(res.is_ok());
+    //         assert_eq!(start.elapsed().as_secs(), 1);
+    //
+    //         tracing::debug!("sleeping for 1 sec...");
+    //         let start = Instant::now();
+    //         time::sleep(Duration::from_secs(1)).await;
+    //         assert_eq!(start.elapsed().as_secs(), 1);
+    //         tracing::debug!("slept 1 sec! {:?}", start.elapsed());
+    //
+    //
+    //         #[cfg(test)]
+    //         scheduler::scheduler().shutdown();
+    //     });
+    //
+    //     // scheduler::scheduler().spawn(async move {
+    //     //     tracing::debug!("Point A");
+    //     //     scheduler::yield_now().await;
+    //     //     tracing::debug!("Point B");
+    //     // });
+    // let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
+    // let mut mmap = UserMmap::new_zeroed(&mut aspace, 2 * 4096, 4096).unwrap();
+    //
+    // sched.spawn(KERNEL_ASPACE.get().unwrap(), async move {
+    //     let ptr = mmap.as_mut_ptr();
+    //     unsafe {
+    //         ptr.write(17);
+    //         assert_eq!(mmap.as_ptr().read(), 17);
+    //     }
+    //     // unsafe { asm!("ld zero, 0(zero)") };
+    // });
+    // }
 
     // wasm::test();
 
     // - [all][global] parse cmdline
-    // - [all][global] `vm::init()` init virtual memory management
     // - [all][global] `lockup::init()` initialize lockup detector
     // - [all][global] `topology::init()` initialize the system topology
-    // - initialize other parts of the kernel
-    // - kickoff the scheduler
-    // - `platform_init()`
-    //     - using system topology -> start other cpus in the system
-    // - `arch_late_init_percpu()`
-    //     - IF RiscvFeatureVector => setup the vector hardware
     // - `kernel_shell_init()`
     // - `userboot_init()`
-
-    // Run thread-local destructors
-    // Safety: after this point thread-locals cannot be accessed anymore anyway
-    unsafe {
-        cpu_local::destructors::run();
-    }
-
-    arch::exit(0);
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.
@@ -267,3 +299,12 @@ fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAdd
         Range::from(PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end)),
     )
 }
+
+// struct System {
+//     rng: Mutex<ChaCha20Rng>,
+//     devtree: device_tree::DeviceTree,
+//     cmdline: cmdline::Cmdline,
+//     backtrace: (),
+//     frame_alloc: (),
+//
+// }

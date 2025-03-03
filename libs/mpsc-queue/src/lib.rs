@@ -1304,7 +1304,6 @@ impl<T: Linked> MpscQueue<T> {
     ///
     /// If another thread is dequeueing, this returns `None` instead.
     pub fn try_consume_owned(self: Arc<Self>) -> Option<OwnedConsumer<T>> {
-        #[expect(tail_expr_drop_order, reason = "")]
         self.try_lock_consumer().map(|_| OwnedConsumer { q: self })
     }
 }

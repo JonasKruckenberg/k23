@@ -5,15 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::CPUID;
 use crate::arch::device;
 use crate::device_tree::DeviceTree;
 use crate::error::Error;
 use crate::irq::InterruptController;
 use crate::time::clock::Ticks;
 use crate::time::{Clock, NANOS_PER_SEC};
-use crate::CPUID;
 use bitflags::bitflags;
 use core::cell::OnceCell;
+use core::fmt;
 use core::str::FromStr;
 use core::time::Duration;
 use cpu_local::cpu_local;
@@ -78,12 +79,31 @@ bitflags! {
     }
 }
 
+impl fmt::Display for Cpu {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{:<17} : {}", "RISCV EXTENSIONS", self.extensions)?;
+        writeln!(f, "{:<17} : {:?}", "CBOP BLOCK SIZE", self.cbop_block_size)?;
+        writeln!(f, "{:<17} : {:?}", "CBOZ BLOCK SIZE", self.cboz_block_size)?;
+        writeln!(f, "{:<17} : {:?}", "CBOM BLOCK SIZE", self.cbom_block_size)?;
+        writeln!(f, "{:<17} : {:?}", "PLIC", self.plic)?;
+        writeln!(f, "{:<17} : {}", "CLOCK", self.clock)?;
+
+        Ok(())
+    }
+}
+
 pub fn with_cpu<F, R>(f: F) -> R
 where
     F: FnOnce(&Cpu) -> R,
 {
-    #[expect(tail_expr_drop_order, reason = "")]
     CPU.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
+}
+
+pub fn try_with_cpu<F, R>(f: F) -> Result<R, Error>
+where
+    F: FnOnce(&Cpu) -> R,
+{
+    CPU.try_with(|cpu_info| Ok(f(cpu_info.get().ok_or(Error::Uninitialized)?)))?
 }
 
 #[cold]
@@ -130,7 +150,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
         .children()
         .find(|c| c.name.name == "interrupt-controller")
         .unwrap();
-    log::trace!("CPU interrupt controller: {:?}", hlic_node);
+    tracing::trace!("CPU interrupt controller: {:?}", hlic_node);
 
     let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
     plic.irq_unmask(10);
@@ -148,7 +168,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
     );
 
     CPU.with(|info| {
-        let _info = Cpu {
+        let info_ = Cpu {
             clock,
             extensions,
             cbop_block_size,
@@ -156,9 +176,9 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
             cbom_block_size,
             plic,
         };
-        log::debug!("{_info:?}");
+        tracing::debug!("\n{info_}");
 
-        info.set(_info).unwrap();
+        info.set(info_).unwrap();
     });
 
     Ok(())
@@ -210,11 +230,17 @@ pub fn parse_riscv_extensions(strs: fdt::StringList) -> crate::Result<RiscvExten
             "svadu" => RiscvExtensions::SVADU,
             "svvptc" => RiscvExtensions::SVVPTC,
             ext => {
-                log::error!("unknown RISCV extension {}", ext);
+                tracing::error!("unknown RISCV extension {}", ext);
                 return Err(Error::UnknownRiscvExtension);
             }
         }
     }
 
     Ok(out)
+}
+
+impl fmt::Display for RiscvExtensions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        bitflags::parser::to_writer(self, f)
+    }
 }

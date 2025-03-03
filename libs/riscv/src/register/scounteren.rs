@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::register::{clear_csr, read_csr_as, set_clear_csr_field, set_csr};
 use crate::Error;
+use crate::register::{clear_csr, read_csr_as, set_clear_csr_field, set_csr};
 
 /// Scounteren register
 #[derive(Clone, Copy)]

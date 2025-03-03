@@ -1,7 +1,7 @@
 use crate::wasm::indices::{ModuleInternedRecGroupIndex, ModuleInternedTypeIndex};
+use crate::wasm::translate::TranslatedModule;
 use crate::wasm::translate::type_convert::WasmparserTypeConverter;
 use crate::wasm::translate::types::WasmSubType;
-use crate::wasm::translate::TranslatedModule;
 use core::fmt;
 use core::ops::Range;
 use cranelift_entity::{EntityRef, PrimaryMap};
@@ -142,7 +142,7 @@ impl ModuleTypesBuilder {
         validator_types: wasmparser::types::TypesRef<'_>,
         elems: impl ExactSizeIterator<Item = wasmparser::types::CoreTypeId>,
     ) {
-        log::trace!("Starting rec group of length {}", elems.len());
+        tracing::trace!("Starting rec group of length {}", elems.len());
 
         assert!(self.rec_group_in_progress.is_none());
         assert_eq!(validator_types.id(), self.validator_id);
@@ -150,7 +150,7 @@ impl ModuleTypesBuilder {
         let len = elems.len();
         for (i, wasmparser_id) in elems.enumerate() {
             let interned = ModuleInternedTypeIndex::new(self.types.len_wasm_types() + i);
-            log::trace!(
+            tracing::trace!(
                 "Reserving {interned:?} for {wasmparser_id:?} = {:?}",
                 validator_types[wasmparser_id]
             );
@@ -183,7 +183,7 @@ impl ModuleTypesBuilder {
             .take()
             .expect("should be defining a rec group");
 
-        log::trace!("Ending rec group {start:?}..{end:?}");
+        tracing::trace!("Ending rec group {start:?}..{end:?}");
 
         debug_assert!(start.index() < self.types.len_wasm_types());
         debug_assert_eq!(

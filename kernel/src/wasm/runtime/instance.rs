@@ -17,9 +17,9 @@ use crate::wasm::runtime::vmcontext::{
 };
 use crate::wasm::runtime::{
     ConstExprEvaluator, Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable,
-    Imports, InstanceAllocator, OwnedVMContext, VMContext, VMFuncRef, VMFunctionImport,
-    VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOffsets, VMOpaqueContext,
-    VMTableDefinition, VMTableImport, VMCONTEXT_MAGIC,
+    Imports, InstanceAllocator, OwnedVMContext, VMCONTEXT_MAGIC, VMContext, VMFuncRef,
+    VMFunctionImport, VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOffsets,
+    VMOpaqueContext, VMTableDefinition, VMTableImport,
 };
 use crate::wasm::translate::{TableInitialValue, TableSegmentElements};
 use crate::wasm::{Extern, Module, Store};
@@ -45,7 +45,6 @@ pub struct Instance {
 }
 
 impl Instance {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub unsafe fn new_unchecked(
         store: &mut Store,
         const_eval: &mut ConstExprEvaluator,
@@ -54,26 +53,24 @@ impl Instance {
     ) -> crate::wasm::Result<Self> {
         let (mut vmctx, mut tables, mut memories) = store.alloc.allocate_module(&module)?;
 
-        log::trace!("initializing instance");
+        tracing::trace!("initializing instance");
         unsafe {
-            arch::with_user_memory_access(|| -> crate::wasm::Result<()> {
-                initialize_vmctx(
-                    const_eval,
-                    &mut vmctx,
-                    &mut tables,
-                    &mut memories,
-                    &module,
-                    imports,
-                )?;
-                initialize_tables(const_eval, &mut tables, &module)?;
+            let mut aspace = store.alloc.0.lock();
+            aspace.activate();
 
-                let mut aspace = store.alloc.0.lock();
-                initialize_memories(&mut aspace, const_eval, &mut memories, &module)?;
+            initialize_vmctx(
+                const_eval,
+                &mut vmctx,
+                &mut tables,
+                &mut memories,
+                &module,
+                imports,
+            )?;
+            initialize_tables(const_eval, &mut tables, &module)?;
 
-                Ok(())
-            })?;
+            initialize_memories(&mut aspace, const_eval, &mut memories, &module)?;
         }
-        log::trace!("done initializing instance");
+        tracing::trace!("done initializing instance");
 
         let exports = vec![None; module.exports().len()];
 
@@ -271,7 +268,7 @@ impl Instance {
             }
         }
 
-        log::debug!("{:#?}", Dbg { data: self });
+        tracing::debug!("{:#?}", Dbg { data: self });
     }
 
     pub(crate) unsafe fn vmctx_magic(&self) -> u32 {
@@ -406,11 +403,7 @@ impl Instance {
     }
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "imports should be a linear type"
-)]
-#[expect(clippy::unnecessary_wraps, reason = "TODO")]
+#[tracing::instrument(skip(module))]
 unsafe fn initialize_vmctx(
     const_eval: &mut ConstExprEvaluator,
     vmctx: &mut OwnedVMContext,
@@ -423,44 +416,44 @@ unsafe fn initialize_vmctx(
         let offsets = module.offsets();
 
         // initialize vmctx magic
-        log::trace!("initializing vmctx magic");
+        tracing::trace!("initializing vmctx magic");
         *vmctx.plus_offset_mut(u32::from(offsets.static_.vmctx_magic())) = VMCONTEXT_MAGIC;
 
         // Initialize the built-in functions
-        log::trace!("initializing built-in functions array ptr");
+        tracing::trace!("initializing built-in functions array ptr");
         *vmctx.plus_offset_mut::<*const VMBuiltinFunctionsArray>(u32::from(
             offsets.static_.vmctx_builtin_functions(),
         )) = ptr::from_ref(&VMBuiltinFunctionsArray::INIT);
 
         // initialize the type ids array ptr
-        log::trace!("initializing type ids array ptr");
+        tracing::trace!("initializing type ids array ptr");
         let type_ids = module.type_ids();
         *vmctx.plus_offset_mut(u32::from(offsets.static_.vmctx_type_ids())) = type_ids.as_ptr();
 
         // initialize func_refs array
-        log::trace!("initializing func refs array");
+        tracing::trace!("initializing func refs array");
         initialize_vmfunc_refs(vmctx, &module, &imports, offsets);
 
         // initialize the imports
-        log::trace!("initializing function imports");
+        tracing::trace!("initializing function imports");
         ptr::copy_nonoverlapping(
             imports.functions.as_ptr(),
             vmctx.plus_offset_mut::<VMFunctionImport>(offsets.vmctx_imported_functions_begin()),
             imports.functions.len(),
         );
-        log::trace!("initialized table imports");
+        tracing::trace!("initialized table imports");
         ptr::copy_nonoverlapping(
             imports.tables.as_ptr(),
             vmctx.plus_offset_mut::<VMTableImport>(offsets.vmctx_imported_tables_begin()),
             imports.tables.len(),
         );
-        log::trace!("initialized memory imports");
+        tracing::trace!("initialized memory imports");
         ptr::copy_nonoverlapping(
             imports.memories.as_ptr(),
             vmctx.plus_offset_mut::<VMMemoryImport>(offsets.vmctx_imported_memories_begin()),
             imports.memories.len(),
         );
-        log::trace!("initialized global imports");
+        tracing::trace!("initialized global imports");
         ptr::copy_nonoverlapping(
             imports.globals.as_ptr(),
             vmctx.plus_offset_mut::<VMGlobalImport>(offsets.vmctx_imported_globals_begin()),
@@ -468,7 +461,7 @@ unsafe fn initialize_vmctx(
         );
 
         // Initialize the defined tables
-        log::trace!("initializing defined tables");
+        tracing::trace!("initializing defined tables");
         for def_index in module
             .translated()
             .tables
@@ -481,7 +474,7 @@ unsafe fn initialize_vmctx(
         }
 
         // Initialize the `defined_memories` table.
-        log::trace!("initializing defined memories");
+        tracing::trace!("initializing defined memories");
         for (def_index, plan) in module
             .translated()
             .memories
@@ -500,7 +493,7 @@ unsafe fn initialize_vmctx(
         }
 
         // Initialize the `defined_globals` table.
-        log::trace!("initializing defined globals");
+        tracing::trace!("initializing defined globals");
         for (def_index, init_expr) in &module.translated().global_initializers {
             let val = const_eval.eval(init_expr);
             let ptr = vmctx.plus_offset_mut::<VMGlobalDefinition>(
@@ -513,6 +506,7 @@ unsafe fn initialize_vmctx(
     }
 }
 
+#[tracing::instrument(skip(module))]
 fn initialize_vmfunc_refs(
     vmctx: &mut OwnedVMContext,
     module: &&Module,
@@ -574,6 +568,7 @@ fn initialize_vmfunc_refs(
     }
 }
 
+#[tracing::instrument(skip(module))]
 unsafe fn initialize_tables(
     const_eval: &mut ConstExprEvaluator,
     tables: &mut PrimaryMap<DefinedTableIndex, Table>,
@@ -623,7 +618,7 @@ unsafe fn initialize_tables(
     Ok(())
 }
 
-#[expect(clippy::unnecessary_wraps, reason = "TODO")]
+#[tracing::instrument(skip(module))]
 unsafe fn initialize_memories(
     aspace: &mut AddressSpace,
     const_eval: &mut ConstExprEvaluator,

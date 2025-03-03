@@ -5,54 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
+use crate::backtrace::Backtrace;
+use crate::panic::panic_count::MustAbort;
+use crate::vm::VirtualAddress;
+use crate::{arch, backtrace};
 use alloc::boxed::Box;
 use alloc::string::String;
-use backtrace::{Backtrace, SymbolizeContext};
 use core::any::Any;
 use core::panic::{PanicPayload, UnwindSafe};
-use core::{fmt, mem, slice};
-use loader_api::BootInfo;
-use panic_count::MustAbort;
-use sync::{LazyLock, OnceLock};
-
-static GLOBAL_PANIC_STATE: OnceLock<GlobalPanicState> = OnceLock::new();
-
-struct GlobalPanicState {
-    kernel_virt_base: u64,
-    elf: &'static [u8],
-}
-
-#[cold]
-pub fn init(boot_info: &BootInfo) {
-    GLOBAL_PANIC_STATE.get_or_init(|| GlobalPanicState {
-        kernel_virt_base: boot_info.kernel_virt.start as u64,
-        // Safety: we have to trust the loaders BootInfo here
-        elf: unsafe {
-            let base = boot_info
-                .physical_address_offset
-                .checked_add(boot_info.kernel_phys.start)
-                .unwrap() as *const u8;
-
-            slice::from_raw_parts(
-                base,
-                boot_info
-                    .kernel_phys
-                    .end
-                    .checked_sub(boot_info.kernel_phys.start)
-                    .unwrap(),
-            )
-        },
-    });
-}
-
-static SYMBOLIZE_CONTEXT: LazyLock<Option<SymbolizeContext>> = LazyLock::new(|| {
-    log::trace!("Setting up symbolize context...");
-    let state = GLOBAL_PANIC_STATE.get()?;
-
-    let elf = xmas_elf::ElfFile::new(state.elf).unwrap();
-    Some(SymbolizeContext::new(elf, state.kernel_virt_base).unwrap())
-});
+use core::{fmt, mem};
 
 /// Determines whether the current thread is unwinding because of panic.
 #[inline]
@@ -69,40 +30,25 @@ pub fn catch_unwind<F, R>(f: F) -> Result<R, Box<dyn Any + Send + 'static>>
 where
     F: FnOnce() -> R + UnwindSafe,
 {
-    #[expect(tail_expr_drop_order, reason = "")]
     unwind2::catch_unwind(f).inspect_err(|_| {
         panic_count::decrease(); // decrease the panic count, since we caught it
     })
 }
 
-/// Triggers a panic without invoking the panic hook.
-pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
-    //     rust_panic(payload)
+pub fn begin_unwind(payload: Box<dyn Any + Send>) -> ! {
+    debug_assert!(panic_count::increase(false).is_none());
+    unwind2::with_context(|regs, pc| {
+        rust_panic(payload, regs.clone(), VirtualAddress::new(pc).unwrap())
+    })
+}
 
-    panic_count::increase(false);
-
-    struct RewrapBox(Box<dyn Any + Send>);
-
-    // Safety: TODO
-    unsafe impl PanicPayload for RewrapBox {
-        fn take_box(&mut self) -> *mut (dyn Any + Send) {
-            Box::into_raw(mem::replace(&mut self.0, Box::new(())))
-        }
-
-        fn get(&mut self) -> &(dyn Any + Send) {
-            &*self.0
-        }
-    }
-
-    impl fmt::Display for RewrapBox {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.write_str(payload_as_str(&self.0))
-        }
-    }
-
-    #[expect(tail_expr_drop_order, reason = "")]
-    // Safety: take_box returns an unwrapped box
-    rust_panic(unsafe { Box::from_raw(RewrapBox(payload).take_box()) })
+pub fn begin_unwind_with(
+    payload: Box<dyn Any + Send>,
+    regs: unwind2::Registers,
+    pc: VirtualAddress,
+) -> ! {
+    debug_assert!(panic_count::increase(false).is_none());
+    rust_panic(payload, regs, pc)
 }
 
 /// Entry point for panics from the `core` crate.
@@ -119,7 +65,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
         if let Some(must_abort) = panic_count::increase(true) {
             match must_abort {
                 MustAbort::PanicInHook => {
-                    log::error!("panicked at {loc}:\n{msg}\ncpu panicked while processing panic. aborting.\n");
+                    tracing::error!("panicked at {loc}:\n{msg}\n");
                 }
             }
 
@@ -129,18 +75,21 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
                 cpu_local::destructors::run();
             }
 
-            arch::abort();
+            arch::abort("cpu panicked while processing panic. aborting.");
         }
 
-        log::error!("cpu panicked at {loc}:\n{msg}");
+        tracing::error!("cpu panicked at {loc}:\n{msg}");
 
-        if let Some(ctx) = SYMBOLIZE_CONTEXT.as_ref() {
-            let backtrace = Backtrace::capture(ctx);
-            log::error!("{backtrace}");
-        } else {
-            log::error!(
-                "Backtrace unavailable. Panic happened before panic subsystem initialization."
-            );
+        // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
+        //  but (at least at the moment) is absolute overkill for optimized builds. Sadly there
+        //  is no good way to do conditional compilation based on the opt-level.
+        const MAX_BACKTRACE_FRAMES: usize = 32;
+
+        let backtrace = Backtrace::<MAX_BACKTRACE_FRAMES>::capture().unwrap();
+        tracing::error!("{backtrace}");
+
+        if backtrace.frames_omitted {
+            tracing::warn!("Stack trace was larger than backtrace buffer, omitted some frames.");
         }
 
         panic_count::finished_panic_hook();
@@ -149,11 +98,16 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             // If a thread panics while running destructors or tries to unwind
             // through a nounwind function (e.g. extern "C") then we cannot continue
             // unwinding and have to abort immediately.
-            log::error!("cpu caused non-unwinding panic. aborting.\n");
-            arch::abort();
+            arch::abort("cpu caused non-unwinding panic. aborting.");
         }
 
-        rust_panic(construct_panic_payload(info))
+        unwind2::with_context(|regs, pc| {
+            rust_panic(
+                construct_panic_payload(info),
+                regs.clone(),
+                VirtualAddress::new(pc).unwrap(),
+            )
+        })
     })
 }
 
@@ -161,18 +115,19 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 /// yer breakpoints for backtracing panics.
 #[inline(never)]
 #[unsafe(no_mangle)]
-fn rust_panic(payload: Box<dyn Any + Send>) -> ! {
-    let res = unwind2::begin_panic(payload);
-
-    // Run thread-local destructors
-    // Safety: after this point we cannot access thread locals anyway
-    unsafe {
-        cpu_local::destructors::run();
-    }
-
-    match res {
-        Ok(_) => arch::exit(0),
-        Err(_) => arch::abort(),
+fn rust_panic(payload: Box<dyn Any + Send>, regs: unwind2::Registers, pc: VirtualAddress) -> ! {
+    // Safety: `begin_unwind` will either return an error or not return at all
+    match unsafe { unwind2::begin_unwind_with(payload, regs, pc.get()).unwrap_err_unchecked() } {
+        unwind2::Error::EndOfStack => {
+            log::error!(
+                "unwinding completed without finding a `catch_unwind` make sure there is at least a root level catch unwind wrapping the main function"
+            );
+            arch::abort("uncaught kernel exception");
+        }
+        err => {
+            log::error!("unwinding failed with error {err}");
+            arch::abort("unwinding failed. aborting.")
+        }
     }
 }
 
@@ -188,7 +143,7 @@ fn construct_panic_payload(info: &core::panic::PanicInfo) -> Box<dyn Any + Send>
             // Lazily, the first time this gets called, run the actual string formatting.
             self.string.get_or_insert_with(|| {
                 let mut s = String::new();
-                let mut fmt = fmt::Formatter::new(&mut s);
+                let mut fmt = fmt::Formatter::new(&mut s, fmt::FormattingOptions::new());
                 let _err = fmt::Display::fmt(&inner, &mut fmt);
                 s
             })

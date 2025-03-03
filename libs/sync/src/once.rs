@@ -5,10 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::{
-    mem,
-    sync::atomic::{AtomicU8, Ordering},
-};
+use crate::loom::{AtomicU8, Ordering, loom_const_fn};
+use core::mem;
 
 /// No initialization has run yet, and no thread is currently using the Once.
 const STATUS_INCOMPLETE: u8 = 0;
@@ -34,11 +32,13 @@ pub struct Once {
 }
 
 impl Once {
-    #[inline]
-    #[must_use]
-    pub const fn new() -> Once {
-        Once {
-            status: AtomicU8::new(STATUS_INCOMPLETE),
+    loom_const_fn! {
+        #[inline]
+        #[must_use]
+        pub fn new() -> Once {
+            Once {
+                status: AtomicU8::new(STATUS_INCOMPLETE),
+            }
         }
     }
 
@@ -48,12 +48,12 @@ impl Once {
     }
 
     pub fn state(&mut self) -> ExclusiveState {
-        match *self.status.get_mut() {
+        self.status.with_mut(|status| match *status {
             STATUS_INCOMPLETE => ExclusiveState::Incomplete,
             STATUS_POISONED => ExclusiveState::Poisoned,
             STATUS_COMPLETE => ExclusiveState::Complete,
             _ => unreachable!("invalid Once state"),
-        }
+        })
     }
 
     /// # Panics
@@ -140,5 +140,84 @@ struct PanicGuard<'a> {
 impl Drop for PanicGuard<'_> {
     fn drop(&mut self) {
         self.status.store(STATUS_POISONED, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::loom::thread;
+    use std::sync::mpsc::channel;
+
+    #[test]
+    fn smoke_once() {
+        static O: std::sync::LazyLock<Once> = std::sync::LazyLock::new(|| Once::new());
+        let mut a = 0;
+        O.call_once(|| a += 1);
+        assert_eq!(a, 1);
+        O.call_once(|| a += 1);
+        assert_eq!(a, 1);
+    }
+
+    #[test]
+    fn stampede_once() {
+        crate::loom::model(|| {
+            static O: std::sync::LazyLock<Once> = std::sync::LazyLock::new(|| Once::new());
+            static mut RUN: bool = false;
+
+            const MAX_THREADS: usize = 4;
+
+            let (tx, rx) = channel();
+            for _ in 0..MAX_THREADS {
+                let tx = tx.clone();
+                thread::spawn(move || {
+                    // for _ in 0..2 {
+                    //     thread::yield_now()
+                    // }
+                    unsafe {
+                        O.call_once(|| {
+                            assert!(!RUN);
+                            RUN = true;
+                        });
+                        assert!(RUN);
+                    }
+                    tx.send(()).unwrap();
+                });
+            }
+
+            unsafe {
+                O.call_once(|| {
+                    assert!(!RUN);
+                    RUN = true;
+                });
+                assert!(RUN);
+            }
+
+            for _ in 0..MAX_THREADS {
+                rx.recv().unwrap();
+            }
+        })
+    }
+
+    #[cfg(not(loom))]
+    #[test]
+    fn wait() {
+        use crate::loom::{AtomicBool, Ordering};
+
+        for _ in 0..50 {
+            let val = AtomicBool::new(false);
+            let once = Once::new();
+
+            thread::scope(|s| {
+                for _ in 0..4 {
+                    s.spawn(|| {
+                        once.wait();
+                        assert!(val.load(Ordering::Relaxed));
+                    });
+                }
+
+                once.call_once(|| val.store(true, Ordering::Relaxed));
+            });
+        }
     }
 }
