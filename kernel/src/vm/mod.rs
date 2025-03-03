@@ -13,28 +13,31 @@ mod error;
 pub mod flush;
 pub mod frame_alloc;
 mod provider;
+mod trap_handler;
 mod user_mmap;
 mod vmo;
 
 use crate::arch;
 use crate::vm::frame_alloc::FrameAllocator;
-pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-pub use address_space::{AddressSpace, AddressSpaceKind, Batch};
-pub use address_space_region::AddressSpaceRegion;
 use alloc::format;
 use alloc::string::ToString;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
-pub use error::Error;
-pub use flush::Flush;
 use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sync::{Mutex, OnceLock};
+use xmas_elf::program::Type;
+
+pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+pub use address_space::{AddressSpace, AddressSpaceKind, Batch};
+pub use address_space_region::AddressSpaceRegion;
+pub use error::Error;
+pub use flush::Flush;
+pub use trap_handler::handle_page_fault;
 pub use user_mmap::UserMmap;
 pub use vmo::Vmo;
-use xmas_elf::program::Type;
 
 pub const KIB: usize = 1024;
 pub const MIB: usize = KIB * 1024;
