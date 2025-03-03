@@ -1,3 +1,4 @@
+use crate::fiber::FiberStack;
 use crate::vm::AddressSpace;
 use crate::vm::frame_alloc::FrameAllocator;
 use crate::wasm::Engine;
@@ -75,6 +76,13 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
     }
 
     unsafe fn deallocate_memory(&self, _memory_index: DefinedMemoryIndex, _memory: Memory) {}
+
+    fn allocate_fiber_stack(&self) -> crate::wasm::Result<FiberStack> {
+        let mut aspace = self.0.lock();
+        Ok(FiberStack::new(&mut aspace))
+    }
+
+    unsafe fn deallocate_fiber_stack(&self, _stack: FiberStack) {}
 
     unsafe fn allocate_table(
         &self,

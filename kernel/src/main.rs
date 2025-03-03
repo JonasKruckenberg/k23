@@ -33,6 +33,7 @@ mod cmdline;
 mod cpu_local;
 mod device_tree;
 mod error;
+mod fiber;
 mod irq;
 mod metrics;
 mod panic;
