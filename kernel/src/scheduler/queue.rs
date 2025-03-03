@@ -19,11 +19,11 @@
 //! the [`Steal`] handle which other workers can use for work stealing purposes as the name implies.
 
 use crate::task::TaskRef;
+use crate::util::maybe_uninit::CheckedMaybeUninit;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
-use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use core::{iter, ptr};
 
@@ -61,7 +61,7 @@ pub(crate) struct Inner {
     tail: AtomicU32,
 
     /// Elements
-    buffer: Box<[UnsafeCell<MaybeUninit<TaskRef>>; LOCAL_QUEUE_CAPACITY]>,
+    buffer: Box<[UnsafeCell<CheckedMaybeUninit<TaskRef>>; LOCAL_QUEUE_CAPACITY]>,
 }
 
 // Safety: methods on `Local`, `Steal` and `Inner` ensure that access to the queue is thread-safe
@@ -84,7 +84,7 @@ pub fn new() -> (Steal, Local) {
     let mut buffer = Vec::with_capacity(LOCAL_QUEUE_CAPACITY);
 
     for _ in 0..LOCAL_QUEUE_CAPACITY {
-        buffer.push(UnsafeCell::new(MaybeUninit::uninit()));
+        buffer.push(UnsafeCell::new(CheckedMaybeUninit::uninit()));
     }
 
     let inner = Arc::new(Inner {
@@ -334,7 +334,7 @@ impl Local {
 
         /// An iterator that takes elements out of the run queue.
         struct BatchTaskIter<'a> {
-            buffer: &'a [UnsafeCell<MaybeUninit<TaskRef>>; LOCAL_QUEUE_CAPACITY],
+            buffer: &'a [UnsafeCell<CheckedMaybeUninit<TaskRef>>; LOCAL_QUEUE_CAPACITY],
             head: u64,
             i: u64,
         }
