@@ -2,9 +2,6 @@
 
 #![expect(unused_imports, reason = "TODO")]
 
-extern crate alloc;
-extern crate core;
-
 mod builtins;
 mod compile;
 mod cranelift;
@@ -14,29 +11,29 @@ mod func;
 mod global;
 mod indices;
 mod instance;
+mod instance_allocator;
 mod linker;
 mod memory;
 mod module;
-// mod placeholder;
-pub(crate) mod backtrace;
-mod instance_allocator;
 mod runtime;
 mod store;
 mod table;
 mod translate;
 mod trap;
+mod trap_handler;
 mod type_registry;
 mod utils;
 mod values;
 
-pub use errors::Error;
-use wasmparser::Validator;
-pub(crate) type Result<T> = core::result::Result<T, Error>;
+use crate::scheduler::scheduler;
+use crate::vm::ArchAddressSpace;
 use crate::vm::frame_alloc::FRAME_ALLOC;
-use crate::vm::{AddressSpace, ArchAddressSpace, KERNEL_ASPACE, VirtualAddress};
-use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
-use crate::{arch, enum_accessors, owned_enum_accessors};
+use crate::{enum_accessors, owned_enum_accessors};
+use core::fmt::Write;
+use wasmparser::Validator;
+
 pub use engine::Engine;
+pub use errors::Error;
 pub use func::Func;
 pub use global::Global;
 pub use instance::Instance;
@@ -47,7 +44,11 @@ pub use runtime::{ConstExprEvaluator, InstanceAllocator};
 pub use store::Store;
 pub use table::Table;
 pub use translate::ModuleTranslator;
-pub use values::{Ref, Val};
+pub use trap::Trap;
+pub use trap_handler::handle_wasm_exception;
+pub use values::Val;
+
+pub(crate) type Result<T> = core::result::Result<T, Error>;
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.
@@ -168,10 +169,14 @@ pub fn test() {
         instance.debug_vmctx(&store);
 
         let func = instance.get_func(&mut store, "fib_test").unwrap();
-        // TODO replace with checked
-        // Safety: WIP
-        unsafe {
-            func.call_unchecked(&mut store, &[], &mut []).unwrap();
-        }
+
+        scheduler().spawn(store.alloc.0.clone(), async move {
+            // TODO replace with checked
+            // Safety: WIP
+            unsafe {
+                func.call_unchecked(&mut store, &[], &mut []).unwrap();
+            }
+            tracing::info!("done");
+        });
     }
 }

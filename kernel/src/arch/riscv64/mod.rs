@@ -18,6 +18,7 @@ pub use asid_allocator::AsidAllocator;
 use core::arch::asm;
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
+pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
 pub use vm::{
     AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE,
     USER_ASPACE_RANGE, invalidate_range, is_kernel_address,
@@ -100,17 +101,20 @@ pub fn get_stack_pointer() -> usize {
 }
 
 /// Retrieves the next older program counter and stack pointer from the current frame pointer.
-pub unsafe fn get_next_older_pc_from_fp(fp: usize) -> usize {
+pub unsafe fn get_next_older_pc_from_fp(fp: VirtualAddress) -> VirtualAddress {
     // Safety: caller has to ensure fp is valid
-    unsafe { *(fp as *mut usize).offset(1) }
+    #[expect(clippy::cast_ptr_alignment, reason = "")]
+    unsafe {
+        *(fp.as_ptr() as *mut VirtualAddress).offset(1)
+    }
 }
 
 // The current frame pointer points to the next older frame pointer.
 pub const NEXT_OLDER_FP_FROM_FP_OFFSET: usize = 0;
 
 /// Asserts that the frame pointer is sufficiently aligned for the platform.
-pub fn assert_fp_is_aligned(fp: usize) {
-    assert_eq!(fp % 16, 0, "stack should always be aligned to 16");
+pub fn assert_fp_is_aligned(fp: VirtualAddress) {
+    assert_eq!(fp.get() % 16, 0, "stack should always be aligned to 16");
 }
 
 pub fn mb() {

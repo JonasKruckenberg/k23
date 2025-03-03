@@ -7,6 +7,7 @@
 
 use crate::backtrace::Backtrace;
 use crate::panic::panic_count::MustAbort;
+use crate::vm::VirtualAddress;
 use crate::{arch, backtrace};
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -36,10 +37,16 @@ where
 
 pub fn begin_unwind(payload: Box<dyn Any + Send>) -> ! {
     debug_assert!(panic_count::increase(false).is_none());
-    unwind2::with_context(|regs, pc| rust_panic(payload, regs.clone(), pc))
+    unwind2::with_context(|regs, pc| {
+        rust_panic(payload, regs.clone(), VirtualAddress::new(pc).unwrap())
+    })
 }
 
-pub fn begin_unwind_with(payload: Box<dyn Any + Send>, regs: unwind2::Registers, pc: usize) -> ! {
+pub fn begin_unwind_with(
+    payload: Box<dyn Any + Send>,
+    regs: unwind2::Registers,
+    pc: VirtualAddress,
+) -> ! {
     debug_assert!(panic_count::increase(false).is_none());
     rust_panic(payload, regs, pc)
 }
@@ -95,7 +102,11 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
         }
 
         unwind2::with_context(|regs, pc| {
-            rust_panic(construct_panic_payload(info), regs.clone(), pc)
+            rust_panic(
+                construct_panic_payload(info),
+                regs.clone(),
+                VirtualAddress::new(pc).unwrap(),
+            )
         })
     })
 }
@@ -104,9 +115,9 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 /// yer breakpoints for backtracing panics.
 #[inline(never)]
 #[unsafe(no_mangle)]
-fn rust_panic(payload: Box<dyn Any + Send>, regs: unwind2::Registers, pc: usize) -> ! {
+fn rust_panic(payload: Box<dyn Any + Send>, regs: unwind2::Registers, pc: VirtualAddress) -> ! {
     // Safety: `begin_unwind` will either return an error or not return at all
-    match unsafe { unwind2::begin_unwind_with(payload, regs, pc).unwrap_err_unchecked() } {
+    match unsafe { unwind2::begin_unwind_with(payload, regs, pc.get()).unwrap_err_unchecked() } {
         unwind2::Error::EndOfStack => {
             log::error!(
                 "unwinding completed without finding a `catch_unwind` make sure there is at least a root level catch unwind wrapping the main function"

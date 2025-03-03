@@ -9,11 +9,10 @@ use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
 use crate::backtrace::Backtrace;
 use crate::scheduler::scheduler;
-use crate::vm::{PageFaultFlags, VirtualAddress};
+use crate::vm::VirtualAddress;
 use crate::{TRAP_STACK_SIZE_PAGES, panic};
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
-use core::ops::ControlFlow;
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
@@ -39,9 +38,9 @@ pub fn init() {
         );
     }
 
-    tracing::trace!("setting trap vec to {:#x}", trap_vec as usize);
+    tracing::trace!("setting trap vec to {:#x}", default_trap_entry as usize);
     // Safety: register access
-    unsafe { stvec::write(trap_vec as usize, stvec::Mode::Vectored) };
+    unsafe { stvec::write(default_trap_entry as usize, stvec::Mode::Direct) };
 }
 
 #[repr(C)]
@@ -52,35 +51,35 @@ pub struct TrapFrame {
     pub fp: [usize; 32],
 }
 
-#[naked]
-unsafe extern "C" fn trap_vec() {
-    // When in vectored mode
-    // exceptions i.e. sync traps => BASE
-    // interrupts i.e. async traps => BASE + 4 * CAUSE
-    //
-    // We can use this to direct some traps that don't need
-    // expensive SBI call handling to cheaper handlers (like timers)
-    // Safety: inline assembly
-    unsafe {
-        naked_asm! {
-            ".align 2",
-            ".option push",
-            ".option norvc",
-            "j {default}", // exception
-            "j {default}", // supervisor software interrupt
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // supervisor timer interrupt
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // reserved
-            "j {default}", // supervisor external interrupt
-            ".option pop",
-            default = sym default_trap_entry,
-        }
-    }
-}
+// #[naked]
+// unsafe extern "C" fn trap_vec() {
+//     // When in vectored mode
+//     // exceptions i.e. sync traps => BASE
+//     // interrupts i.e. async traps => BASE + 4 * CAUSE
+//     //
+//     // We can use this to direct some traps that don't need
+//     // expensive SBI call handling to cheaper handlers (like timers)
+//     // Safety: inline assembly
+//     unsafe {
+//         naked_asm! {
+//             ".align 2",
+//             ".option push",
+//             ".option norvc",
+//             "j {default}", // exception
+//             "j {default}", // supervisor software interrupt
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // supervisor timer interrupt
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // reserved
+//             "j {default}", // supervisor external interrupt
+//             ".option pop",
+//             default = sym default_trap_entry,
+//         }
+//     }
+// }
 
 #[naked]
 unsafe extern "C" fn default_trap_entry() {
@@ -89,7 +88,7 @@ unsafe extern "C" fn default_trap_entry() {
         naked_asm! {
             // FIXME this is a workaround for bug in rustc/llvm
             //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
-            ".align 2",
+            ".align 4",
             ".attribute arch, \"rv64gc\"",
             ".cfi_startproc",
 
@@ -270,8 +269,14 @@ extern "C-unwind" fn default_trap_handler(
     let cause = scause::read().cause();
 
     let epc = sepc::read();
-    let tval = VirtualAddress::new(stval::read()).unwrap();
-    tracing::trace!("{cause:?} {:?};epc={epc:#x};tval={tval}", sstatus::read());
+    let tval = stval::read();
+    tracing::trace!(
+        "{cause:?} {:?};epc={epc:#x};tval={tval:#x}",
+        sstatus::read()
+    );
+    let epc = VirtualAddress::new(epc).unwrap();
+    let tval = VirtualAddress::new(tval).unwrap();
+    let fp = VirtualAddress::new(frame.gp[8]).unwrap(); // fp is x8
 
     match cause {
         Trap::Interrupt(Interrupt::SupervisorSoft) => {
@@ -297,20 +302,20 @@ extern "C-unwind" fn default_trap_handler(
             Exception::LoadPageFault | Exception::StorePageFault | Exception::InstructionPageFault,
         ) => {
             // first attempt the page fault handler, can it recover us from this by fixing up mappings?
-            if handle_page_fault(cause, tval).is_break() {
+            if crate::vm::handle_page_fault(cause, tval).is_break() {
                 return;
             }
 
             // if not attempt the wasm fault handler, is the current trap caused by a user program?
             // if so can it kill the program?
-            if handle_wasm_exception().is_break() {
+            if crate::wasm::handle_wasm_exception(epc, fp, tval).is_break() {
                 return;
             }
 
             handle_kernel_exception(cause, frame, epc, tval)
         }
         Trap::Exception(Exception::IllegalInstruction) => {
-            if handle_wasm_exception().is_break() {
+            if crate::wasm::handle_wasm_exception(epc, fp, tval).is_break() {
                 return;
             }
 
@@ -320,51 +325,18 @@ extern "C-unwind" fn default_trap_handler(
     }
 }
 
-fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
-    let current_task = scheduler().current_task();
-    let Some(current_task) = current_task.as_ref() else {
-        // if we're not inside a task we're inside some critical kernel code
-        // none of that should use ever trap
-        tracing::debug!("no currently active task");
-        return ControlFlow::Continue(());
-    };
-
-    let mut aspace = current_task.header().aspace.as_ref().unwrap().lock();
-
-    let flags = match trap {
-        Trap::Exception(Exception::LoadPageFault) => PageFaultFlags::LOAD,
-        Trap::Exception(Exception::StorePageFault) => PageFaultFlags::STORE,
-        Trap::Exception(Exception::InstructionPageFault) => PageFaultFlags::INSTRUCTION,
-        // not a page fault exception, continue with the next fault handler
-        _ => return ControlFlow::Continue(()),
-    };
-
-    if let Err(_err) = aspace.page_fault(tval, flags) {
-        // the address space knew about the faulting address, but the requested access was invalid
-        tracing::debug!("page fault handler couldn't correct fault");
-        ControlFlow::Continue(())
-    } else {
-        // the address space knew about the faulting address and could correct the fault
-        tracing::debug!("page fault handler successfully corrected fault");
-        ControlFlow::Break(())
-    }
-}
-
-fn handle_wasm_exception() -> ControlFlow<()> {
-    // TODO The trap occurred while executing a WASM program
-    //      => capture backtrace
-    //      => unwind stack to next rust frame (before all the WASM frames)
-
-    ControlFlow::Continue(())
-}
-
-fn handle_kernel_exception(cause: Trap, frame: &TrapFrame, epc: usize, tval: VirtualAddress) -> ! {
+fn handle_kernel_exception(
+    cause: Trap,
+    frame: &TrapFrame,
+    epc: VirtualAddress,
+    tval: VirtualAddress,
+) -> ! {
     // let's go ahead and begin unwinding the stack that caused the fault
     // Note: we use unwinding here to give kernel code the chance to catch this and recover from it.
     // If the unwinding reaches the root `catch_unwind` in `main.rs` this will tear down the entire
     // system causing all CPUs to shut down.
 
-    tracing::error!("KERNEL TRAP {cause:?} epc={epc:#x};tval={tval}");
+    tracing::error!("KERNEL TRAP {cause:?} epc={epc};tval={tval}");
 
     let mut regs = unwind2::Registers {
         gp: frame.gp,
@@ -372,12 +344,13 @@ fn handle_kernel_exception(cause: Trap, frame: &TrapFrame, epc: usize, tval: Vir
     };
     regs.gp[2] = sscratch::read();
 
-    let backtrace = Backtrace::<32>::from_registers(regs.clone(), epc + 1).unwrap();
+    let backtrace =
+        Backtrace::<32>::from_registers(regs.clone(), epc.checked_add(1).unwrap()).unwrap();
     tracing::error!("{backtrace}");
 
     // FIXME it would be great to get rid of the allocation here :/
     let payload = Box::new(cause);
 
     // begin a panic on the original stack
-    panic::begin_unwind_with(payload, regs, epc + 1);
+    panic::begin_unwind_with(payload, regs, epc.checked_add(1).unwrap());
 }

@@ -7,6 +7,7 @@
 
 mod symbolize;
 
+use crate::vm::VirtualAddress;
 use arrayvec::ArrayVec;
 use core::fmt::Formatter;
 use core::{fmt, slice};
@@ -106,8 +107,11 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
     ///
     /// Returns the underlying [`unwind2::Error`] if walking the stack fails.
     #[inline]
-    pub fn from_registers(regs: unwind2::Registers, ip: usize) -> Result<Self, unwind2::Error> {
-        let iter = FrameIter::from_registers(regs, ip);
+    pub fn from_registers(
+        regs: unwind2::Registers,
+        pc: VirtualAddress,
+    ) -> Result<Self, unwind2::Error> {
+        let iter = FrameIter::from_registers(regs, pc.get());
         Self::new_inner(iter)
     }
 

@@ -1,11 +1,11 @@
-use crate::arch;
 use crate::wasm::indices::VMSharedTypeIndex;
 use crate::wasm::runtime::{StaticVMOffsets, VMContext, VMFunctionImport, VMVal};
 use crate::wasm::store::Stored;
 use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
-use crate::wasm::{MAX_WASM_STACK, Store, runtime};
+use crate::wasm::{Error, MAX_WASM_STACK, Store, Trap, runtime};
+use crate::{arch, wasm};
 use core::arch::asm;
 use core::ffi::c_void;
 use core::mem;
@@ -101,21 +101,32 @@ impl Func {
 
         let _guard = enter_wasm(vmctx, &module.offsets().static_);
 
-        // Safety: caller has to ensure safety
-        unsafe {
-            riscv::sstatus::set_spp(riscv::sstatus::SPP::User);
-            riscv::sepc::set(func_ref.array_call as usize);
-            asm! {
-                "sret",
-                in("a0") vmctx,
-                in("a1") vmctx,
-                in("a2") args_results_ptr,
-                in("a3") args_results_len,
-                options(noreturn)
+        let res = wasm::trap_handler::catch_traps(vmctx, module.offsets().static_.clone(), || {
+            tracing::debug!("jumping to WASM");
+            // Safety: caller has to ensure safety
+            unsafe {
+                riscv::sstatus::set_spp(riscv::sstatus::SPP::User);
+                riscv::sepc::set(func_ref.array_call as usize);
+                asm! {
+                    "sret",
+                    in("a0") vmctx,
+                    in("a1") vmctx,
+                    in("a2") args_results_ptr,
+                    in("a3") args_results_len,
+                    options(noreturn)
+                }
             }
-        }
+        });
 
-        Ok(())
+        tracing::trace!("returned from WASM {res:?}");
+        match res {
+            Ok(_)
+            // The userspace ABI uses the Trap::Exit code to signal a graceful exit
+            | Err(Error::Trap {
+                trap: Trap::Exit, ..
+            }) => Ok(()),
+            Err(err) => Err(err),
+        }
     }
 
     pub(crate) fn as_raw(&self, store: &mut Store) -> *mut c_void {
