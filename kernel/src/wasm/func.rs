@@ -4,7 +4,7 @@ use crate::wasm::store::Stored;
 use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
-use crate::wasm::{runtime, Error, Store, Trap, MAX_WASM_STACK};
+use crate::wasm::{Error, MAX_WASM_STACK, Store, Trap, runtime};
 use crate::{arch, wasm};
 use core::arch::asm;
 use core::ffi::c_void;
@@ -37,7 +37,10 @@ impl Func {
         params: &[Val],
         results: &mut [Val],
     ) -> wasm::Result<()> {
-        store.on_fiber(|store| unsafe { self.call_unchecked(store, params, results) }).await?
+        // Safety: TODO should check arg & ret types and count here
+        store
+            .on_fiber(|store| unsafe { self.call_unchecked(store, params, results) })
+            .await?
     }
 
     /// Calls the given function with the provided arguments and places the results in the provided

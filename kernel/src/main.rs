@@ -176,10 +176,6 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
 
-    if cpuid == 0 {
-        wasm::test();
-    }
-
     cfg_if! {
         if #[cfg(test)] {
             let mut output = riscv::hio::HostStream::new_stderr();

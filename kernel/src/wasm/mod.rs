@@ -26,8 +26,8 @@ mod utils;
 mod values;
 
 use crate::scheduler::scheduler;
-use crate::vm::frame_alloc::FRAME_ALLOC;
 use crate::vm::ArchAddressSpace;
+use crate::vm::frame_alloc::FRAME_ALLOC;
 use crate::{enum_accessors, owned_enum_accessors};
 use core::fmt::Write;
 use wasmparser::Validator;
