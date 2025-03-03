@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::{fmt, mem};
 use hashbrown::HashMap;
+use static_assertions::assert_impl_all;
 
 /// A store owns WebAssembly instances and their associated data (tables, memories, globals and functions).
 #[derive(Debug)]
@@ -18,10 +19,19 @@ pub struct Store {
     exported_globals: Vec<runtime::ExportedGlobal>,
     wasm_vmval_storage: Vec<VMVal>,
 
-    vmctx2instance: HashMap<*mut VMOpaqueContext, Stored<runtime::Instance>>,
+    vmctx2instance: Vmctx2Instance,
 
     pub(super) alloc: PlaceholderAllocatorDontUse,
 }
+assert_impl_all!(Store: Send, Sync);
+
+#[derive(Debug)]
+struct Vmctx2Instance(HashMap<*mut VMOpaqueContext, Stored<runtime::Instance>>);
+
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Send for Vmctx2Instance {}
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Sync for Vmctx2Instance {}
 
 impl Store {
     /// Constructs a new store with the given engine.
@@ -35,7 +45,7 @@ impl Store {
             exported_globals: Vec::new(),
             wasm_vmval_storage: Vec::new(),
 
-            vmctx2instance: HashMap::new(),
+            vmctx2instance: Vmctx2Instance(HashMap::new()),
 
             alloc: PlaceholderAllocatorDontUse::new(engine, frame_alloc),
         }
@@ -57,7 +67,7 @@ impl Store {
         vmctx: *mut VMContext,
     ) -> Stored<runtime::Instance> {
         let vmctx = VMOpaqueContext::from_vmcontext(vmctx);
-        self.vmctx2instance[&vmctx]
+        self.vmctx2instance.0[&vmctx]
     }
 
     /// Inserts a new instance into the store and returns a handle to it.
@@ -66,7 +76,7 @@ impl Store {
         mut instance: runtime::Instance,
     ) -> Stored<runtime::Instance> {
         let handle = Stored::new(self.instances.len());
-        self.vmctx2instance.insert(
+        self.vmctx2instance.0.insert(
             VMOpaqueContext::from_vmcontext(instance.vmctx_mut()),
             handle,
         );
