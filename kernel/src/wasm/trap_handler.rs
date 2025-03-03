@@ -89,16 +89,19 @@ impl Activation {
             prev: ACTIVATION.get(),
             async_guard_range: Range::from(ptr::null_mut()..ptr::null_mut()), // TODO
 
+            #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
             old_last_wasm_exit_fp: Cell::new(unsafe {
                 *vmctx
                     .byte_add(vmoffsets.vmctx_last_wasm_exit_fp() as usize)
                     .cast::<VirtualAddress>()
             }),
+            #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
             old_last_wasm_exit_pc: Cell::new(unsafe {
                 *vmctx
                     .byte_add(vmoffsets.vmctx_last_wasm_exit_pc() as usize)
                     .cast::<VirtualAddress>()
             }),
+            #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
             old_last_wasm_entry_fp: Cell::new(unsafe {
                 *vmctx
                     .byte_add(vmoffsets.vmctx_last_wasm_entry_fp() as usize)
@@ -124,8 +127,8 @@ impl Activation {
 
 impl Drop for Activation {
     fn drop(&mut self) {
-        // Safety: offsets are small so the code below *should* overflow
         // FIXME this is horrific
+        // Safety: offsets are small so the code below *shouldn't* overflow
         unsafe {
             *self
                 .vmctx
@@ -144,6 +147,7 @@ impl Drop for Activation {
 }
 
 pub fn raise_trap(reason: TrapReason) {
+    #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
     let activation = unsafe { ACTIVATION.get().as_ref().unwrap() };
 
     // record the unwind details
@@ -153,6 +157,7 @@ pub fn raise_trap(reason: TrapReason) {
         .set(Some((UnwindReason::Trap(reason), Some(backtrace))));
 
     // longjmp back to Rust
+    #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
     unsafe {
         arch::longjmp(activation.jmp_buf, 1);
     }
@@ -174,6 +179,7 @@ pub fn handle_wasm_exception(
             return ControlFlow::Continue(());
         };
 
+        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
         let activation = unsafe { activation.as_ref() };
 
         // record the unwind details
@@ -188,6 +194,7 @@ pub fn handle_wasm_exception(
         )));
 
         // longjmp back to Rust
+        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
         unsafe {
             arch::longjmp(activation.jmp_buf, 1);
         }
@@ -218,6 +225,7 @@ where
 
         Ok(())
     } else {
+        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
         let (unwind_reason, backtrace) = unsafe { ACTIVATION.get().as_ref() }
             .unwrap()
             .unwind
@@ -274,6 +282,7 @@ impl RawBacktrace {
         // If we exited Wasm by catching a trap, then the Wasm-to-host
         // trampoline did not get a chance to save the last Wasm PC and FP,
         // and we need to use the plumbed-through values instead.
+        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
         let (last_wasm_exit_pc, last_wasm_exit_fp) = trap_pc_and_fp.unwrap_or_else(|| unsafe {
             // TODO this is horrible can we improve this?
             let pc = *activation
@@ -288,6 +297,7 @@ impl RawBacktrace {
             (pc, fp)
         });
 
+        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
         let last_wasm_entry_fp = unsafe {
             *activation
                 .vmctx
@@ -406,6 +416,7 @@ impl RawBacktrace {
 
             f(Frame { pc, fp })?;
 
+            #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
             unsafe {
                 pc = arch::get_next_older_pc_from_fp(fp);
             }
@@ -418,6 +429,8 @@ impl RawBacktrace {
 
             // Get the next older frame pointer from the current Wasm frame
             // pointer.
+            #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+            #[expect(clippy::cast_ptr_alignment, reason = "")]
             let next_older_fp = unsafe {
                 *fp.as_mut_ptr()
                     .cast::<VirtualAddress>()

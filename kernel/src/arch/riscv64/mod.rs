@@ -103,7 +103,10 @@ pub fn get_stack_pointer() -> usize {
 /// Retrieves the next older program counter and stack pointer from the current frame pointer.
 pub unsafe fn get_next_older_pc_from_fp(fp: VirtualAddress) -> VirtualAddress {
     // Safety: caller has to ensure fp is valid
-    unsafe { *(fp.as_ptr() as *mut VirtualAddress).offset(1) }
+    #[expect(clippy::cast_ptr_alignment, reason = "")]
+    unsafe {
+        *(fp.as_ptr() as *mut VirtualAddress).offset(1)
+    }
 }
 
 // The current frame pointer points to the next older frame pointer.
