@@ -339,7 +339,14 @@ impl Worker {
             self.scheduler.idle.notify_one();
         }
 
-        let (poll_result, task) = self.with_task_as_current(task, |task| task.poll());
+        let (poll_result, task) = self.with_task_as_current(task, |task| {
+            if let Some(aspace) = &task.header().aspace {
+                // Safety: the task had to be constructed from this address space
+                unsafe { aspace.lock().activate() }
+            }
+
+            task.poll()
+        });
         match poll_result {
             PollResult::Ready | PollResult::ReadyJoined => {
                 self.scheduler.owned.remove(task);
