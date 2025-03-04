@@ -220,6 +220,27 @@ impl<'a, T: ?Sized + 'a> MutexGuard<'a, T> {
         mem::forget(s);
         r
     }
+
+    pub fn unlocked<F, U>(s: &mut Self, f: F) -> U
+    where
+        F: FnOnce() -> U,
+    {
+        struct DropGuard<'a, T: ?Sized> {
+            mutex: &'a Mutex<T>,
+        }
+        impl<T: ?Sized> Drop for DropGuard<'_, T> {
+            fn drop(&mut self) {
+                mem::forget(self.mutex.lock());
+            }
+        }
+
+        // Safety: A MutexGuard always holds the lock.
+        unsafe {
+            s.mutex.force_unlock();
+        }
+        let _guard = DropGuard { mutex: s.mutex };
+        f()
+    }
 }
 
 impl<'a, T: ?Sized + 'a> Deref for MutexGuard<'a, T> {
