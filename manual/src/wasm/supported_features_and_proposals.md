@@ -12,7 +12,7 @@ These features have been adopted into the WebAssembly standard and k23 aims to s
 | [JS BigInt to Wasm i64 integration][bigint-to-i64]               | N/A    |                                                          |
 | [Bulk memory operations][bulk-memory]                            | ✅      |                                                          |
 | [Extended Constant Expressions][extended-const]                  | ❌      | [#31](https://github.com/JonasKruckenberg/k23/issues/31) |
-| [Garbage collection][garbage_collection]                         | ❌      | [#32](https://github.com/JonasKruckenberg/k23/issues/33) |
+| [Garbage collection][garbage_collection]                         | ❌      | [#32](https://github.com/JonasKruckenberg/k23/issues/32) |
 | [Multiple memories][multi-memory]                                | ❌      | [#33](https://github.com/JonasKruckenberg/k23/issues/33) |
 | [Multi-value][multi-value]                                       | ❌      | [#34](https://github.com/JonasKruckenberg/k23/issues/34) |
 | [Mutable globals][mutable-global]                                | ✅      |                                                          |
