@@ -8,7 +8,7 @@
 use crate::wasm::runtime::CodeMemory;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
-use sync::{OnceLock, RwLock};
+use spin::{OnceLock, RwLock};
 
 fn global_code() -> &'static RwLock<GlobalRegistry> {
     static GLOBAL_CODE: OnceLock<RwLock<GlobalRegistry>> = OnceLock::new();

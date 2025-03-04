@@ -3,7 +3,7 @@ use crate::{Pack, Tid, cfg, clear::Clear};
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, marker::PhantomData, mem, ptr};
-use sync::Backoff;
+use spin::Backoff;
 
 pub(crate) struct Slot<T, C> {
     lifecycle: AtomicUsize,

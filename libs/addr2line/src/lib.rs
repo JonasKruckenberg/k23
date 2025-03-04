@@ -48,7 +48,7 @@ mod line;
 
 mod lookup;
 pub use lookup::{LookupContinuation, LookupResult, SplitDwarfLoad};
-use sync::OnceLock;
+use spin::OnceLock;
 
 mod unit;
 pub use unit::LocationRangeIter;

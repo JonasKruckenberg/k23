@@ -20,7 +20,7 @@ use core::{
     marker::PhantomPinned,
     ptr::{self, NonNull},
 };
-use sync::Backoff;
+use spin::Backoff;
 
 /// Trait implemented by types which can be members of an intrusive linked mpsc queue.
 ///

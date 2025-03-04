@@ -27,7 +27,7 @@ use core::{fmt, slice};
 use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{Mutex, OnceLock};
+use spin::{Mutex, OnceLock};
 use xmas_elf::program::Type;
 
 pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};

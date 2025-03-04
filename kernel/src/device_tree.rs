@@ -13,7 +13,7 @@ use fallible_iterator::FallibleIterator;
 use fdt::{CellSizes, Error, Fdt, NodeName, StringList};
 use hashbrown::HashMap;
 use smallvec::{SmallVec, smallvec};
-use sync::OnceLock;
+use spin::OnceLock;
 
 type Link<T> = Option<NonNull<T>>;
 

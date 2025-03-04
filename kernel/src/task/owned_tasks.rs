@@ -13,7 +13,7 @@ use crate::vm::AddressSpace;
 use alloc::sync::Arc;
 use core::future::Future;
 use core::sync::atomic::{AtomicBool, Ordering};
-use sync::Mutex;
+use spin::Mutex;
 
 #[derive(Debug)]
 pub struct OwnedTasks {

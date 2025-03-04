@@ -7,7 +7,7 @@
 
 use super::utils::{deref_pointer, get_unlimited_slice};
 use gimli::{BaseAddresses, EhFrame, EhFrameHdr, EndianSlice, NativeEndian, ParsedEhFrameHdr};
-use sync::LazyLock;
+use spin::LazyLock;
 
 // Below is a fun hack: We need a reference to the `.eh_frame` and `.eh_frame_hdr` sections and
 // must therefore force the linker to retain those even in release builds. By abusing mutable statics

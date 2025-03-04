@@ -23,7 +23,7 @@ use core::fmt;
 use core::fmt::Write;
 pub use filter::Filter;
 use registry::Registry;
-use sync::OnceLock;
+use spin::OnceLock;
 use tracing::field;
 use tracing_core::span::{Attributes, Current, Id, Record};
 use tracing_core::{Collect, Dispatch, Event, Interest, Level, LevelFilter, Metadata};

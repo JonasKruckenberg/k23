@@ -61,7 +61,7 @@ use cpu_local::cpu_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::Once;
+use spin::Once;
 use vm::PhysicalAddress;
 use vm::frame_alloc;
 

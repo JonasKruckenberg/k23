@@ -59,14 +59,14 @@ impl Clear for String {
     }
 }
 
-impl<T: Clear> Clear for sync::Mutex<T> {
+impl<T: Clear> Clear for spin::Mutex<T> {
     #[inline]
     fn clear(&mut self) {
         self.get_mut().clear();
     }
 }
 
-impl<T: Clear> Clear for sync::RwLock<T> {
+impl<T: Clear> Clear for spin::RwLock<T> {
     #[inline]
     fn clear(&mut self) {
         self.write().clear();

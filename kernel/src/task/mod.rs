@@ -32,7 +32,7 @@ use crate::vm::AddressSpace;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinErrorKind, JoinHandle};
 pub use owned_tasks::OwnedTasks;
-use sync::Mutex;
+use spin::Mutex;
 
 pub trait Schedule {
     /// Schedule the task to run.

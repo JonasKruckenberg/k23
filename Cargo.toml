@@ -82,7 +82,7 @@ leb128 = { path = "libs/leb128" }
 linked-list = { path = "libs/linked-list" }
 mpsc-queue = { path = "libs/mpsc-queue" }
 riscv = { path = "libs/riscv" }
-sync = { path = "libs/sync" }
+spin = { path = "libs/spin" }
 cpu-local = { path = "libs/cpu-local" }
 unwind2 = { path = "libs/unwind2" }
 wasm-encoder = { path = "libs/wasm-encoder" }

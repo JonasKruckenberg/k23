@@ -23,7 +23,7 @@ use core::range::Range;
 use core::sync::atomic::AtomicUsize;
 use core::{cmp, fmt, iter, slice};
 use fallible_iterator::FallibleIterator;
-use sync::{Mutex, OnceLock};
+use spin::{Mutex, OnceLock};
 
 use crate::vm::frame_alloc::frame_list::FrameList;
 pub use frame::{Frame, FrameInfo};

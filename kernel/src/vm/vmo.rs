@@ -17,7 +17,7 @@ use crate::vm::{
 use crate::{arch, ensure};
 use alloc::sync::Arc;
 use core::range::Range;
-use sync::RwLock;
+use spin::RwLock;
 
 #[derive(Debug)]
 pub enum Vmo {
