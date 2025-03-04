@@ -16,7 +16,11 @@ rela = "rela" # the relocation format
 welp = "welp"
 alo = "alo" # for address-low
 
-[default.extend-identifier]
+[default]
+extend-ignore-identifiers-re = [
+    "(?i:WAKE_ALLS)"
+]
+#WAKE_ALLS = "WAKE_ALLS"
 
 [files]
 extend-exclude = ["**/emit_tests.rs", "tests/testsuite"]

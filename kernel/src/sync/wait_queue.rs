@@ -376,7 +376,7 @@ impl WaitQueue {
     /// [`Wait::subscribe()`] method for details on receiving wakeups from the
     /// queue prior to polling the `Wait` future for the first time.
     ///
-    /// A `Wait` future **is** is guaranteed to recieve wakeups from calls to
+    /// A `Wait` future **is** is guaranteed to receive wakeups from calls to
     /// [`wake_all()`] as soon as it is created, even if it has not yet been
     /// polled.
     ///
