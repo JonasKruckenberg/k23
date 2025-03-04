@@ -8,11 +8,93 @@
 //! Basic kernel shell for debugging purposes, taken from
 //! https://github.com/hawkw/mycelium/blob/main/src/shell.rs (MIT)
 
+use crate::device_tree::DeviceTree;
+use crate::scheduler::{Scheduler, scheduler};
+use crate::vm::{KERNEL_ASPACE, PhysicalAddress, UserMmap, with_kernel_aspace};
+use crate::{arch, irq};
+use alloc::string::{String, ToString};
 use core::fmt;
 use core::fmt::Write;
+use core::range::Range;
 use core::str::FromStr;
+use fallible_iterator::FallibleIterator;
+use spin::Once;
 
-static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION];
+static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
+
+pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler) {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(move || {
+        tracing::info!("type `help` to list available commands");
+
+        sched.spawn(KERNEL_ASPACE.get().unwrap().clone(), async move {
+            let (mut uart, irq_num) = init_uart(devtree);
+
+            let mut line = String::new();
+            loop {
+                let res = irq::next_event(irq_num).await;
+                assert!(res.is_ok());
+                let mut newline = false;
+
+                let ch = uart.recv() as char;
+                uart.write_char(ch).unwrap();
+                match ch {
+                    '\n' | '\r' => {
+                        newline = true;
+                        uart.write_str("\n\r").unwrap();
+                    }
+                    '\u{007F}' => {
+                        line.pop();
+                    }
+                    ch => line.push(ch),
+                }
+
+                if newline {
+                    eval(&line);
+                    line.clear();
+                }
+            }
+        });
+    });
+}
+
+fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, u32) {
+    let s = devtree.find_by_path("/soc/serial").unwrap();
+    assert!(s.is_compatible(["ns16550a"]));
+
+    let clock_freq = s.property("clock-frequency").unwrap().as_u32().unwrap();
+    let mut regs = s.regs().unwrap();
+    let reg = regs.next().unwrap().unwrap();
+    assert!(regs.next().unwrap().is_none());
+    let irq_num = s.property("interrupts").unwrap().as_u32().unwrap();
+
+    let mmap = with_kernel_aspace(|aspace| {
+        // FIXME: this is gross, we're using the PhysicalAddress as an alignment utility :/
+        let size = PhysicalAddress::new(reg.size.unwrap())
+            .checked_align_up(arch::PAGE_SIZE)
+            .unwrap()
+            .get();
+
+        let range_phys = {
+            let start = PhysicalAddress::new(reg.starting_address);
+            Range::from(start..start.checked_add(size).unwrap())
+        };
+
+        UserMmap::new_phys(
+            aspace,
+            range_phys,
+            size,
+            arch::PAGE_SIZE,
+            Some("UART-16550".to_string()),
+        )
+        .unwrap()
+    });
+
+    // Safety: info comes from device tree
+    let uart = unsafe { uart_16550::SerialPort::new(mmap.range().start.get(), clock_freq, 115200) };
+
+    (uart, irq_num)
+}
 
 pub fn eval(line: &str) {
     let _span = tracing::info_span!(target: "shell", "$", message = %line).entered();
@@ -68,6 +150,16 @@ const VERSION: Command = Command::new("version")
         tracing::info!(commit.date = %env!("VERGEN_GIT_COMMIT_TIMESTAMP"));
         tracing::info!(rustc.version = %env!("VERGEN_RUSTC_SEMVER"));
         tracing::info!(rustc.channel = %env!("VERGEN_RUSTC_CHANNEL"));
+
+        Ok(())
+    });
+
+const SHUTDOWN: Command = Command::new("shutdown")
+    .with_help("exit the kernel and shutdown the machine.")
+    .with_fn(|_| {
+        tracing::info!("Bye, Bye!");
+
+        scheduler().shutdown();
 
         Ok(())
     });

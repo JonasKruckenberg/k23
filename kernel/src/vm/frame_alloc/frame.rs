@@ -45,7 +45,7 @@ pub struct FrameInfo {
 }
 assert_impl_all!(FrameInfo: Send, Sync);
 
-// === Frame === 
+// === Frame ===
 
 // Safety: assert_impl_all! above ensures that `FrameInfo` is `Send`
 unsafe impl Send for Frame {}
