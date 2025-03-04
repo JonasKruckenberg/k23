@@ -13,7 +13,7 @@ use crate::irq::InterruptController;
 use crate::time::clock::Ticks;
 use crate::time::{Clock, NANOS_PER_SEC};
 use bitflags::bitflags;
-use core::cell::OnceCell;
+use core::cell::{OnceCell, RefCell};
 use core::fmt;
 use core::str::FromStr;
 use core::time::Duration;
@@ -29,7 +29,7 @@ pub struct Cpu {
     pub cbop_block_size: Option<usize>,
     pub cboz_block_size: Option<usize>,
     pub cbom_block_size: Option<usize>,
-    pub plic: device::plic::Plic,
+    pub plic: RefCell<device::plic::Plic>,
     pub clock: Clock,
 }
 
@@ -174,7 +174,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
             cbop_block_size,
             cboz_block_size,
             cbom_block_size,
-            plic,
+            plic: RefCell::new(plic),
         };
         tracing::debug!("\n{info_}");
 

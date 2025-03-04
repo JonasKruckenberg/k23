@@ -5,7 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch::device::cpu::with_cpu;
+use crate::sync;
+use crate::sync::WaitQueue;
+use alloc::sync::Arc;
 use core::num::NonZero;
+use hashbrown::HashMap;
+use spin::{LazyLock, RwLock};
 
 pub trait InterruptController {
     fn irq_claim(&mut self) -> Option<IrqClaim>;
@@ -24,4 +30,43 @@ impl IrqClaim {
     pub fn as_u32(self) -> u32 {
         self.0.get()
     }
+}
+
+// hashbrown doesn't have a good const constructor, therefore the `LazyLock`
+static QUEUES: LazyLock<RwLock<HashMap<u32, Arc<WaitQueue>>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
+    let Some(claim) = irq_ctl.irq_claim() else {
+        // Spurious interrupt
+        return;
+    };
+
+    let queues = QUEUES.read();
+    if let Some(queue) = queues.get(&claim.as_u32()) {
+        queue.wake_all();
+    }
+
+    irq_ctl.irq_complete(claim);
+}
+
+pub async fn next_event(irq_num: u32) -> Result<(), sync::Closed> {
+    with_cpu(|cpu| cpu.plic.borrow_mut().irq_unmask(irq_num));
+
+    let wait = {
+        let mut queues = QUEUES.write();
+        let wait = queues
+            .entry(irq_num)
+            .or_insert_with(|| Arc::new(WaitQueue::new()))
+            .wait_owned();
+        // don't hold the RwLock guard across the await point
+        drop(queues);
+        wait
+    };
+
+    let res = wait.await;
+
+    with_cpu(|cpu| cpu.plic.borrow_mut().irq_mask(irq_num));
+
+    res
 }
