@@ -7,12 +7,14 @@
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
+use crate::arch::device::cpu::with_cpu;
 use crate::backtrace::Backtrace;
 use crate::scheduler::scheduler;
 use crate::vm::VirtualAddress;
-use crate::{TRAP_STACK_SIZE_PAGES, panic};
+use crate::{TRAP_STACK_SIZE_PAGES, irq, panic};
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
+use core::ops::DerefMut;
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
@@ -297,7 +299,10 @@ extern "C-unwind" fn default_trap_handler(
                 sbi::time::set_timer(u64::MAX).unwrap();
             }
         }
-        Trap::Interrupt(Interrupt::SupervisorExternal) => todo!("run IO reactor"),
+        Trap::Interrupt(Interrupt::SupervisorExternal) => with_cpu(|cpu| {
+            let mut plic = cpu.plic.borrow_mut();
+            irq::trigger_irq(plic.deref_mut());
+        }),
         Trap::Exception(
             Exception::LoadPageFault | Exception::StorePageFault | Exception::InstructionPageFault,
         ) => {
