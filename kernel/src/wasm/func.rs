@@ -37,9 +37,11 @@ impl Func {
         params: &[Val],
         results: &mut [Val],
     ) -> wasm::Result<()> {
-        // Safety: TODO should check arg & ret types and count here
         store
-            .on_fiber(|store| unsafe { self.call_unchecked(store, params, results) })
+            .on_fiber(|store| {
+                // Safety: TODO should check arg & ret types and count here
+                unsafe { self.call_unchecked(store, params, results) }
+            })
             .await?
     }
 
