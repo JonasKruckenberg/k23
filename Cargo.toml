@@ -92,6 +92,7 @@ loader-api = { path = "loader/api" }
 fdt = { path = "libs/fdt" }
 ksharded-slab = { path = "libs/ksharded-slab" }
 ktest = { path = "libs/ktest" }
+uart-16550 = { path = "libs/uart-16550" }
 
 # third-party dependencies
 cfg-if = "1.0.0"

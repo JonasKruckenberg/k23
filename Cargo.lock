@@ -495,6 +495,7 @@ dependencies = [
  "target-lexicon",
  "tracing 0.2.0",
  "tracing-core 0.2.0",
+ "uart-16550",
  "unwind2",
  "wasmparser",
  "wasmtime-slab",
@@ -1135,6 +1136,14 @@ dependencies = [
  "tracing 0.1.41",
  "tracing-core 0.1.33",
  "tracing-log",
+]
+
+[[package]]
+name = "uart-16550"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+ "spin",
 ]
 
 [[package]]

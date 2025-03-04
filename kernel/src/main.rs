@@ -53,12 +53,16 @@ use crate::error::Error;
 use crate::time::Instant;
 use crate::time::clock::Ticks;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
+use crate::vm::{KERNEL_ASPACE, UserMmap, with_kernel_aspace};
+use alloc::string::{String, ToString};
 use arrayvec::ArrayVec;
 use cfg_if::cfg_if;
 use core::cell::Cell;
+use core::fmt::Write;
 use core::range::Range;
 use core::slice;
 use cpu_local::cpu_local;
+use fallible_iterator::FallibleIterator;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -177,6 +181,10 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
 
+    if cpuid == 0 {
+        _sched.spawn(KERNEL_ASPACE.get().unwrap().clone(), keyboard_demo());
+    }
+
     cfg_if! {
         if #[cfg(test)] {
             let mut output = riscv::hio::HostStream::new_stderr();
@@ -240,6 +248,74 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     // - [all][global] `topology::init()` initialize the system topology
     // - `kernel_shell_init()`
     // - `userboot_init()`
+}
+
+async fn keyboard_demo() {
+    // tracing::info!("type `help` to list available commands");
+    let devtree = device_tree();
+
+    let s = devtree.find_by_path("/soc/serial").unwrap();
+    assert!(s.is_compatible(["ns16550a"]));
+
+    let clock_freq = s.property("clock-frequency").unwrap().as_u32().unwrap();
+    let mut regs = s.regs().unwrap();
+    let reg = regs.next().unwrap().unwrap();
+    assert!(regs.next().unwrap().is_none());
+    let irq_num = s.property("interrupts").unwrap().as_u32().unwrap();
+
+    let mmap = with_kernel_aspace(|aspace| {
+        // FIXME: this is gross, we're using the PhysicalAddress as an alignment utility :/
+        let size = PhysicalAddress::new(reg.size.unwrap())
+            .checked_align_up(arch::PAGE_SIZE)
+            .unwrap()
+            .get();
+
+        let range_phys = {
+            let start = PhysicalAddress::new(reg.starting_address);
+            Range::from(start..start.checked_add(size).unwrap())
+        };
+
+        UserMmap::new_phys(
+            aspace,
+            range_phys,
+            size,
+            arch::PAGE_SIZE,
+            Some("UART-16550".to_string()),
+        )
+        .unwrap()
+    });
+
+    // Safety: info comes from device tree
+    let mut uart =
+        unsafe { uart_16550::SerialPort::new(mmap.range().start.get(), clock_freq, 115200) };
+
+    tracing::info!("type a character...");
+
+    let mut line = String::new();
+    loop {
+        let res = irq::next_event(irq_num).await;
+        assert!(res.is_ok());
+        let mut newline = false;
+
+        let ch = uart.recv() as char;
+        uart.write_char(ch).unwrap();
+        match ch {
+            '\n' | '\r' => {
+                newline = true;
+                uart.write_str("\n\r").unwrap();
+            }
+            '\u{007F}' => {
+                line.pop();
+            }
+            ch => line.push(ch),
+        }
+
+        if newline {
+            line.clear();
+        }
+
+        // uart.write_str(&line).unwrap();
+    }
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.

@@ -9,7 +9,7 @@ use crate::arch;
 use crate::vm::address::AddressRangeExt;
 use crate::vm::{
     AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Error,
-    Permissions, VirtualAddress,
+    Permissions, PhysicalAddress, VirtualAddress,
 };
 use alloc::string::String;
 use core::alloc::Layout;
@@ -74,6 +74,47 @@ impl UserMmap {
         )?;
 
         tracing::trace!("new_zeroed: {len} {:?}", region.range);
+
+        Ok(Self {
+            range: region.range,
+        })
+    }
+
+    pub fn new_phys(
+        aspace: &mut AddressSpace,
+        range_phys: Range<PhysicalAddress>,
+        len: usize,
+        align: usize,
+        name: Option<String>,
+    ) -> Result<Self, Error> {
+        // debug_assert!(
+        //     matches!(aspace.kind(), AddressSpaceKind::User),
+        //     "cannot create UserMmap in kernel address space"
+        // );
+        debug_assert!(
+            align >= arch::PAGE_SIZE,
+            "alignment must be at least a page"
+        );
+        debug_assert!(len >= arch::PAGE_SIZE, "len must be at least a page");
+        debug_assert_eq!(
+            len % arch::PAGE_SIZE,
+            0,
+            "len must be a multiple of page size"
+        );
+
+        let layout = Layout::from_size_align(len, align).unwrap();
+
+        let region = aspace.map(
+            layout,
+            Permissions::READ | Permissions::WRITE | Permissions::USER,
+            |range_virt, perms, _batch| {
+                Ok(AddressSpaceRegion::new_phys(
+                    range_virt, perms, range_phys, name,
+                ))
+            },
+        )?;
+
+        tracing::trace!("new_phys: {len} {:?} => {range_phys:?}", region.range);
 
         Ok(Self {
             range: region.range,

@@ -74,7 +74,8 @@ impl PhysVmo {
         ensure!(
             self.range.start <= start && self.range.end >= end,
             Error::InvalidVmoOffset,
-            "requested range is out of bounds"
+            "requested range {range:?} is out of bounds for {:?}",
+            self.range
         );
 
         Ok(Range::from(start..end))

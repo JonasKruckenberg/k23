@@ -188,6 +188,7 @@ _run_riscv64 binary *args: (_build_bootimg binary)
         -m 256M \
         -d guest_errors \
         -display none \
+        -serial mon:stdio \
         -semihosting-config \
         enable=on,target=native \
         -smp cpus=8 \
