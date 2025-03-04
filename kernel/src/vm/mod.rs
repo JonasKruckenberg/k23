@@ -21,6 +21,7 @@ use crate::arch;
 use crate::vm::frame_alloc::FrameAllocator;
 use alloc::format;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
@@ -43,7 +44,7 @@ pub const KIB: usize = 1024;
 pub const MIB: usize = KIB * 1024;
 pub const GIB: usize = MIB * 1024;
 
-pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
+pub static KERNEL_ASPACE: OnceLock<Arc<Mutex<AddressSpace>>> = OnceLock::new();
 
 pub fn with_kernel_aspace<F, R>(f: F) -> R
 where
@@ -78,7 +79,7 @@ pub fn init(
 
         log::trace!("Kernel AddressSpace {aspace:?}");
 
-        Ok(Mutex::new(aspace))
+        Ok(Arc::new(Mutex::new(aspace)))
     })?;
 
     Ok(())
