@@ -136,6 +136,11 @@ impl Plic {
 
         let regs: *mut PlicRegs = mmio_region.start.as_ptr().cast_mut().cast();
 
+        // set the threshold so interrupts can actually be delivered
+        // Safety: we do our best to check this is valid, but at the end of the day, this is writing to
+        // an MMIO region, so it's inherently unsafe.
+        unsafe { regs.as_mut().unwrap().set_priority_threshold(context, 0) };
+
         Ok(Plic {
             regs,
             context,
@@ -165,7 +170,7 @@ impl InterruptController for Plic {
         // an MMIO region, so it's inherently unsafe.
         let regs = unsafe { self.regs.as_mut().unwrap() };
         regs.set_priority(NonZero::new(irq_num as usize).unwrap(), 1);
-        regs.enable(self.context, NonZero::new(irq_num as usize).unwrap(), true);
+        regs.enable(self.context, NonZero::new(irq_num as usize).unwrap(), false);
     }
 
     fn irq_unmask(&mut self, irq_num: u32) {
@@ -174,7 +179,7 @@ impl InterruptController for Plic {
         // an MMIO region, so it's inherently unsafe.
         let regs = unsafe { self.regs.as_mut().unwrap() };
         regs.set_priority(NonZero::new(irq_num as usize).unwrap(), 1);
-        regs.enable(self.context, NonZero::new(irq_num as usize).unwrap(), false);
+        regs.enable(self.context, NonZero::new(irq_num as usize).unwrap(), true);
     }
 }
 
