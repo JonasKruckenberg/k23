@@ -8,8 +8,13 @@
 mod cache_padded;
 mod error;
 mod wait_cell;
+mod wait_queue;
+mod wake_batch;
 
 pub use cache_padded::CachePadded;
-#[expect(unused_imports, reason = "TODO")]
 pub use error::Closed;
 pub use wait_cell::WaitCell;
+#[expect(unused_imports, reason = "TODO")]
+pub use wait_queue::WaitQueue;
+#[expect(unused_imports, reason = "TODO")]
+pub use wake_batch::WakeBatch;

@@ -86,4 +86,5 @@
     )),
     repr(align(64))
 )]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CachePadded<T>(pub T);

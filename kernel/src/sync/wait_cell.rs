@@ -16,6 +16,28 @@ use core::task::{Context, Poll, Waker};
 use core::{fmt, task};
 use static_assertions::const_assert_eq;
 
+/// An atomically registered [`Waker`].
+///
+/// This cell stores the [`Waker`] of a single task. A [`Waker`] is stored in
+/// the cell either by calling [`poll_wait`], or by polling a [`wait`]
+/// future. Once a task's [`Waker`] is stored in a `WaitCell`, it can be woken
+/// by calling [`wake`] on the `WaitCell`.
+///
+/// # Implementation Notes
+///
+/// This type is copied from [`maitake-sync`](https://github.com/hawkw/mycelium/blob/dd0020892564c77ee4c20ffbc2f7f5b046ad54c8/maitake-sync/src/wait_cell.rs)
+/// which is in turn inspired by the [`AtomicWaker`] type used in Tokio's
+/// synchronization primitives, with the following modifications:
+///
+/// - An additional bit of state is added to allow [setting a "close"
+///   bit](Self::close).
+/// - A `WaitCell` is always woken by value (for now).
+///
+/// [`AtomicWaker`]: https://github.com/tokio-rs/tokio/blob/09b770c5db31a1f35631600e1d239679354da2dd/tokio/src/sync/task/atomic_waker.rs
+/// [`Waker`]: Waker
+/// [`poll_wait`]: Self::poll_wait
+/// [`wait`]: Self::wait
+/// [`wake`]: Self::wake
 pub struct WaitCell {
     state: CachePadded<AtomicUsize>,
     waker: UnsafeCell<Option<Waker>>,

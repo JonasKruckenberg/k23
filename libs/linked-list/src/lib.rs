@@ -958,6 +958,18 @@ where
         }
     }
 
+    pub fn remove_first(&mut self, mut predicate: impl FnMut(&T) -> bool) -> Option<T::Handle> {
+        while !predicate(unsafe { self.current?.as_ref() }) {
+            // if the current element does not match, advance to the next node
+            // in the list.
+            self.move_next();
+        }
+
+        // if we have broken out of the loop without returning a `None`, remove
+        // the current element.
+        self.remove()
+    }
+
     /// Removes the current element from the list returning it's owned handle, also moves the
     /// cursor to the next element in the list.
     pub fn remove(&mut self) -> Option<T::Handle> {
