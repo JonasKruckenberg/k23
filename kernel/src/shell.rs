@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 //! Basic kernel shell for debugging purposes, taken from
-//! https://github.com/hawkw/mycelium/blob/main/src/shell.rs (MIT)
+//! <https://github.com/hawkw/mycelium/blob/main/src/shell.rs> (MIT)
 
 use crate::device_tree::DeviceTree;
 use crate::scheduler::{Scheduler, scheduler};
@@ -126,6 +126,7 @@ const FAULT: Command = Command::new("fault")
     .with_help("cause a CPU fault (null pointer dereference). use with caution.")
     .with_fn(|_| {
         unsafe {
+            #[expect(clippy::zero_ptr, reason = "we actually want to cause a fault here")]
             (0x0 as *const u8).read_volatile();
         }
         Ok(())
