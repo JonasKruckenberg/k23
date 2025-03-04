@@ -1,9 +1,9 @@
 use crate::{
+    Pack,
     cfg::{self, CfgPrivate},
     clear::Clear,
     page,
     tid::Tid,
-    Pack,
 };
 use alloc::boxed::Box;
 use alloc::vec::Vec;

@@ -36,6 +36,7 @@
             wabt
             dtc
             cargo-fuzz
+            typos
 
             # for testing the kernel
             qemu

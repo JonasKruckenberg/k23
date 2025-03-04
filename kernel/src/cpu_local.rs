@@ -5,10 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::util::maybe_uninit::CheckedMaybeUninit;
 use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::iter::FusedIterator;
-use core::mem::MaybeUninit;
 use core::panic::UnwindSafe;
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::{fmt, mem, ptr, slice};
@@ -31,7 +31,7 @@ pub struct CpuLocal<T: Send> {
 
 struct Entry<T> {
     present: AtomicBool,
-    value: UnsafeCell<MaybeUninit<T>>,
+    value: UnsafeCell<CheckedMaybeUninit<T>>,
 }
 
 impl<T> Drop for Entry<T> {
@@ -120,11 +120,8 @@ impl<T: Send> CpuLocal<T> {
     where
         F: FnOnce() -> T,
     {
-        #[expect(tail_expr_drop_order, reason = "")]
         // Safety: value will be initialized by `create` if necessary
-        unsafe {
-            self.get_or_try(|| Ok::<T, ()>(create())).unwrap_unchecked()
-        }
+        unsafe { self.get_or_try(|| Ok::<T, ()>(create())).unwrap_unchecked() }
     }
 
     /// Returns the element for the current cpu, or creates it if it doesn't
@@ -141,7 +138,6 @@ impl<T: Send> CpuLocal<T> {
             return Ok(val);
         }
 
-        #[expect(tail_expr_drop_order, reason = "")]
         Ok(self.insert(cpuid, create()?))
     }
 
@@ -198,7 +194,7 @@ impl<T: Send> CpuLocal<T> {
         let entry = unsafe { &*bucket_ptr.add(cpu.index) };
         let value_ptr = entry.value.get();
         // Safety: we just initialized the bucket
-        unsafe { value_ptr.write(MaybeUninit::new(data)) };
+        unsafe { value_ptr.write(CheckedMaybeUninit::new(data)) };
         entry.present.store(true, Ordering::Release);
 
         self.values.fetch_add(1, Ordering::Release);
@@ -285,7 +281,7 @@ impl<T: Send> CpuLocal<T> {
         let entry = unsafe { &*bucket_ptr.add(cpu.index) };
         let value_ptr = entry.value.get();
         // Safety: we just initialized the bucket
-        unsafe { value_ptr.write(MaybeUninit::new(data)) };
+        unsafe { value_ptr.write(CheckedMaybeUninit::new(data)) };
         entry.present.store(true, Ordering::Release);
 
         self.values.fetch_add(1, Ordering::Release);
@@ -492,7 +488,9 @@ impl<T: Send> Iterator for IntoIter<T> {
         self.raw.next_mut(&mut self.cpu_local).map(|entry| {
             *entry.present.get_mut() = false;
             // Safety: constructor ensures all ptrs are valid
-            unsafe { mem::replace(&mut *entry.value.get(), MaybeUninit::uninit()).assume_init() }
+            unsafe {
+                mem::replace(&mut *entry.value.get(), CheckedMaybeUninit::uninit()).assume_init()
+            }
         })
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -536,7 +534,7 @@ fn allocate_bucket<T>(size: usize) -> *mut Entry<T> {
         (0..size)
             .map(|_| Entry::<T> {
                 present: AtomicBool::new(false),
-                value: UnsafeCell::new(MaybeUninit::uninit()),
+                value: UnsafeCell::new(CheckedMaybeUninit::uninit()),
             })
             .collect(),
     )

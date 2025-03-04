@@ -49,7 +49,6 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     /// # Errors
     ///
     /// TODO
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn translate(
         mut self,
         data: &'data [u8],

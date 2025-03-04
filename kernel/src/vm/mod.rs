@@ -18,31 +18,33 @@ mod user_mmap;
 mod vmo;
 
 use crate::arch;
-pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-pub use address_space::{AddressSpace, AddressSpaceKind, Batch};
-pub use address_space_region::AddressSpaceRegion;
+use crate::vm::frame_alloc::FrameAllocator;
 use alloc::format;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
-pub use error::Error;
-pub use flush::Flush;
-pub use frame_alloc::{Frame, FrameList};
 use loader_api::BootInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{Mutex, OnceLock};
-pub use trap_handler::trap_handler;
+use spin::{Mutex, OnceLock};
+use xmas_elf::program::Type;
+
+pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+pub use address_space::{AddressSpace, AddressSpaceKind, Batch};
+pub use address_space_region::AddressSpaceRegion;
+pub use error::Error;
+pub use flush::Flush;
+pub use trap_handler::handle_page_fault;
 pub use user_mmap::UserMmap;
 pub use vmo::Vmo;
-use xmas_elf::program::Type;
 
 pub const KIB: usize = 1024;
 pub const MIB: usize = KIB * 1024;
 pub const GIB: usize = MIB * 1024;
 
-pub static KERNEL_ASPACE: OnceLock<Mutex<AddressSpace>> = OnceLock::new();
+pub static KERNEL_ASPACE: OnceLock<Arc<Mutex<AddressSpace>>> = OnceLock::new();
 
 pub fn with_kernel_aspace<F, R>(f: F) -> R
 where
@@ -55,30 +57,29 @@ where
     f(&mut aspace)
 }
 
-pub fn init(boot_info: &BootInfo, rand: &mut impl rand::RngCore) -> crate::Result<()> {
-    #[expect(tail_expr_drop_order, reason = "")]
+pub fn init(
+    boot_info: &BootInfo,
+    rand: &mut impl rand::RngCore,
+    frame_alloc: &'static FrameAllocator,
+) -> crate::Result<()> {
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
         let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
         // Safety: `init` is called during startup where the kernel address space is the only address space available
         let mut aspace = unsafe {
-            AddressSpace::from_active_kernel(hw_aspace, Some(ChaCha20Rng::from_rng(rand)))
+            AddressSpace::from_active_kernel(
+                hw_aspace,
+                Some(ChaCha20Rng::from_rng(rand)),
+                frame_alloc,
+            )
         };
 
         reserve_wired_regions(&mut aspace, boot_info, &mut flush);
         flush.flush().unwrap();
 
-        for region in aspace.regions.iter() {
-            tracing::trace!(
-                "{:<40?} {}..{} {}",
-                region.name,
-                region.range.start,
-                region.range.end,
-                region.permissions
-            );
-        }
+        log::trace!("Kernel AddressSpace {aspace:?}");
 
-        Ok(Mutex::new(aspace))
+        Ok(Arc::new(Mutex::new(aspace)))
     })?;
 
     Ok(())
@@ -242,7 +243,7 @@ impl From<PageFaultFlags> for Permissions {
 pub trait ArchAddressSpace {
     type Flags: From<Permissions> + bitflags::Flags;
 
-    fn new(asid: u16) -> Result<(Self, Flush), Error>
+    fn new(asid: u16, frame_alloc: &FrameAllocator) -> Result<(Self, Flush), Error>
     where
         Self: Sized;
     fn from_active(asid: u16) -> (Self, Flush)
@@ -251,6 +252,7 @@ pub trait ArchAddressSpace {
 
     unsafe fn map_contiguous(
         &mut self,
+        frame_alloc: &FrameAllocator,
         virt: VirtualAddress,
         phys: PhysicalAddress,
         len: NonZeroUsize,

@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::{utils, WAVLTree};
 use crate::{Link, Linked};
+use crate::{WAVLTree, utils};
 use core::iter::FusedIterator;
 use core::pin::Pin;
 

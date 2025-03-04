@@ -1,23 +1,30 @@
+use crate::fiber::FiberStack;
 use crate::vm::AddressSpace;
+use crate::vm::frame_alloc::FrameAllocator;
+use crate::wasm::Engine;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::{InstanceAllocator, Memory, Table};
 use crate::wasm::runtime::{OwnedVMContext, VMOffsets};
 use crate::wasm::translate::{MemoryDesc, TableDesc, TranslatedModule};
-use core::fmt;
-use sync::Mutex;
+use alloc::sync::Arc;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
+use spin::Mutex;
 
 /// A placeholder allocator impl that just delegates to runtime types `new` methods.
-pub struct PlaceholderAllocatorDontUse(pub(super) Mutex<AddressSpace>);
+#[derive(Debug)]
+pub struct PlaceholderAllocatorDontUse(pub(super) Arc<Mutex<AddressSpace>>);
 
-impl fmt::Debug for PlaceholderAllocatorDontUse {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("PlaceholderAllocatorDontUse").finish()
-    }
-}
+impl PlaceholderAllocatorDontUse {
+    pub fn new(engine: &Engine, frame_alloc: &'static FrameAllocator) -> Self {
+        let aspace = AddressSpace::new_user(
+            engine.allocate_asid(),
+            engine.rng().map(|mut rng| ChaCha20Rng::from_rng(&mut rng)),
+            frame_alloc,
+        )
+        .unwrap();
 
-impl Default for PlaceholderAllocatorDontUse {
-    fn default() -> Self {
-        Self(Mutex::new(AddressSpace::new_user(2, None).unwrap()))
+        Self(Arc::new(Mutex::new(aspace)))
     }
 }
 
@@ -69,6 +76,13 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
     }
 
     unsafe fn deallocate_memory(&self, _memory_index: DefinedMemoryIndex, _memory: Memory) {}
+
+    fn allocate_fiber_stack(&self) -> crate::wasm::Result<FiberStack> {
+        let mut aspace = self.0.lock();
+        Ok(FiberStack::new(&mut aspace))
+    }
+
+    unsafe fn deallocate_fiber_stack(&self, _stack: FiberStack) {}
 
     unsafe fn allocate_table(
         &self,

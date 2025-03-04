@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use super::{once::ExclusiveState, Once};
+use super::{Once, once::ExclusiveState};
 use crate::loom::UnsafeCell;
 use core::{
     fmt,

@@ -25,8 +25,8 @@ use core::task::Context;
 pub use core::time::Duration;
 pub use error::Error;
 pub use instant::Instant;
-pub use sleep::{sleep, sleep_until, Sleep};
-pub use timeout::{timeout, Elapsed, Timeout};
+pub use sleep::{Sleep, sleep, sleep_until};
+pub use timeout::{Elapsed, Timeout, timeout};
 pub use timer::{Deadline, Timer};
 
 // #[cfg(test)]

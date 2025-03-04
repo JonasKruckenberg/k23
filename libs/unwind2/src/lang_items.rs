@@ -7,11 +7,17 @@
 
 use crate::exception::Exception;
 use crate::utils::with_context;
-use crate::{arch, raise_exception_phase2, Error};
+use crate::{Error, FrameIter, arch, raise_exception_phase2};
 
+/// In traditional unwinders the personality routine is responsible for determining the unwinders
+/// behaviour for each frame (stop unwinding because a handler has been found, continue etc.)
+/// Since `unwind2` only cares about Rust code, the personality routine here is just a stub to make
+/// the compiler happy and ensure we're not unwinding across language boundaries. The real unwinding
+/// happens in [`raise_exception_phase2`].
 #[lang = "eh_personality"]
 extern "C" fn personality_stub() {}
 
+/// Ensure the ptr points to the expected personality routine stub.
 pub fn ensure_personality_stub(ptr: u64) -> crate::Result<()> {
     if ptr == personality_stub as usize as u64 {
         Ok(())
@@ -20,16 +26,24 @@ pub fn ensure_personality_stub(ptr: u64) -> crate::Result<()> {
     }
 }
 
+/// Rust generated landing pads for `Drop` cleanups end with calls to `_Unwind_Resume`
+/// to continue unwinding the stack. This is what transfers control back to the unwinder.
 #[inline(never)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
-    with_context(|ctx| {
-        if let Err(err) = raise_exception_phase2(ctx.clone(), exception) {
-            log::error!("Failed to resume exception: {err:?}");
-            arch::abort()
+    with_context(|regs, pc| {
+        let frames = FrameIter::from_registers(regs.clone(), pc);
+
+        match raise_exception_phase2(frames, exception) {
+            Ok(_) => {}
+            Err(Error::EndOfStack) => arch::abort("Uncaught exception"),
+            Err(err) => {
+                log::error!("Failed to resume exception: {err:?}");
+                arch::abort("Failed to resume exception")
+            }
         }
 
         // Safety: this replaces the register state, very unsafe
-        unsafe { arch::restore_context(ctx) }
+        unsafe { arch::restore_context(regs) }
     })
 }

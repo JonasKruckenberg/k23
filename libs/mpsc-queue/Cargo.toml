@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 fallible-iterator.workspace = true
-sync.workspace = true
+spin.workspace = true
 
 [lints]
 workspace = true

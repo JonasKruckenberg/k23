@@ -153,7 +153,7 @@ impl<'a> Expander<'a> {
                     // multi-value proposal isn't enabled and/or used we won't
                     // encode it.
                     Some(inline) => {
-                        if inline.params.len() == 0 && inline.results.len() <= 1 {
+                        if inline.params.is_empty() && inline.results.len() <= 1 {
                             return;
                         }
                     }

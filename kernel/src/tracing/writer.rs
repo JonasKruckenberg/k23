@@ -9,7 +9,7 @@ use crate::tracing::color::{AnsiEscapes, Color, SetColor};
 use core::cell::UnsafeCell;
 use core::fmt::{Arguments, Write};
 use core::{cmp, fmt};
-use sync::{ReentrantMutex, ReentrantMutexGuard};
+use spin::{ReentrantMutex, ReentrantMutexGuard};
 use tracing_core::Metadata;
 
 pub trait MakeWriter<'a> {

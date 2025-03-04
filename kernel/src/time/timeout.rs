@@ -5,14 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::{sleep, Sleep};
+use crate::time::{Sleep, sleep};
 use core::future::{Future, IntoFuture};
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use core::time::Duration;
 use pin_project::pin_project;
 
-#[expect(tail_expr_drop_order, reason = "")]
 pub fn timeout<F>(duration: Duration, future: F) -> Timeout<'static, F::IntoFuture>
 where
     F: IntoFuture,

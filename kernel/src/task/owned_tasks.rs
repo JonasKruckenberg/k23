@@ -9,9 +9,11 @@ use super::{Schedule, TaskRef};
 use crate::task;
 use crate::task::id::Id;
 use crate::task::join_handle::JoinHandle;
+use crate::vm::AddressSpace;
+use alloc::sync::Arc;
 use core::future::Future;
 use core::sync::atomic::{AtomicBool, Ordering};
-use sync::Mutex;
+use spin::Mutex;
 
 #[derive(Debug)]
 pub struct OwnedTasks {
@@ -37,13 +39,15 @@ impl OwnedTasks {
         scheduler: S,
         id: Id,
         span: tracing::Span,
+        aspace: Arc<Mutex<AddressSpace>>,
     ) -> (JoinHandle<F::Output>, Option<TaskRef>)
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
         S: Schedule + 'static,
     {
-        let task = TaskRef::try_new_in(future, scheduler, id, span, alloc::alloc::Global).unwrap();
+        let task =
+            TaskRef::try_new_in(future, scheduler, id, span, aspace, alloc::alloc::Global).unwrap();
         let join = JoinHandle::new(task.clone());
 
         let task = self.bind_inner(task);
@@ -56,13 +60,15 @@ impl OwnedTasks {
         scheduler: S,
         id: Id,
         span: tracing::Span,
+        aspace: Arc<Mutex<AddressSpace>>,
     ) -> (JoinHandle<F::Output>, Option<TaskRef>)
     where
         F: Future + 'static,
         F::Output: 'static,
         S: Schedule + 'static,
     {
-        let task = TaskRef::try_new_in(future, scheduler, id, span, alloc::alloc::Global).unwrap();
+        let task =
+            TaskRef::try_new_in(future, scheduler, id, span, aspace, alloc::alloc::Global).unwrap();
         let join = JoinHandle::new(task.clone());
 
         let task = self.bind_inner(task);

@@ -6,20 +6,16 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::arch::with_user_memory_access;
-use crate::traps::TrapMask;
 use crate::vm::address::AddressRangeExt;
 use crate::vm::{
     AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Error,
-    Permissions, VirtualAddress,
+    Permissions, PhysicalAddress, VirtualAddress,
 };
+use alloc::string::String;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::slice;
-
-const TRAP_MASK: TrapMask =
-    TrapMask::from_bits_retain(TrapMask::StorePageFault.bits() | TrapMask::LoadPageFault.bits());
 
 /// A userspace memory mapping.
 ///
@@ -47,7 +43,12 @@ impl UserMmap {
     }
 
     /// Creates a new read-write (`RW`) memory mapping in the given address space.
-    pub fn new_zeroed(aspace: &mut AddressSpace, len: usize, align: usize) -> Result<Self, Error> {
+    pub fn new_zeroed(
+        aspace: &mut AddressSpace,
+        len: usize,
+        align: usize,
+        name: Option<String>,
+    ) -> Result<Self, Error> {
         debug_assert!(
             matches!(aspace.kind(), AddressSpaceKind::User),
             "cannot create UserMmap in kernel address space"
@@ -62,11 +63,58 @@ impl UserMmap {
         let region = aspace.map(
             layout,
             Permissions::READ | Permissions::WRITE | Permissions::USER,
-            #[expect(tail_expr_drop_order, reason = "")]
-            |range, perms, _batch| Ok(AddressSpaceRegion::new_zeroed(range, perms, None)),
+            |range, perms, batch| {
+                Ok(AddressSpaceRegion::new_zeroed(
+                    batch.frame_alloc,
+                    range,
+                    perms,
+                    name,
+                ))
+            },
         )?;
 
         tracing::trace!("new_zeroed: {len} {:?}", region.range);
+
+        Ok(Self {
+            range: region.range,
+        })
+    }
+
+    pub fn new_phys(
+        aspace: &mut AddressSpace,
+        range_phys: Range<PhysicalAddress>,
+        len: usize,
+        align: usize,
+        name: Option<String>,
+    ) -> Result<Self, Error> {
+        // debug_assert!(
+        //     matches!(aspace.kind(), AddressSpaceKind::User),
+        //     "cannot create UserMmap in kernel address space"
+        // );
+        debug_assert!(
+            align >= arch::PAGE_SIZE,
+            "alignment must be at least a page"
+        );
+        debug_assert!(len >= arch::PAGE_SIZE, "len must be at least a page");
+        debug_assert_eq!(
+            len % arch::PAGE_SIZE,
+            0,
+            "len must be a multiple of page size"
+        );
+
+        let layout = Layout::from_size_align(len, align).unwrap();
+
+        let region = aspace.map(
+            layout,
+            Permissions::READ | Permissions::WRITE | Permissions::USER,
+            |range_virt, perms, _batch| {
+                Ok(AddressSpaceRegion::new_phys(
+                    range_virt, perms, range_phys, name,
+                ))
+            },
+        )?;
+
+        tracing::trace!("new_phys: {len} {:?} => {range_phys:?}", region.range);
 
         Ok(Self {
             range: region.range,
@@ -108,19 +156,14 @@ impl UserMmap {
     {
         self.commit(aspace, range, false)?;
 
-        #[expect(tail_expr_drop_order, reason = "")]
-        crate::traps::catch_traps(TRAP_MASK, || {
-            // Safety: checked by caller and `catch_traps`
-            unsafe {
-                with_user_memory_access(|| {
-                    let slice =
-                        slice::from_raw_parts(self.range.start.as_ptr(), self.range().size());
+        // Safety: checked by caller
+        unsafe {
+            let slice = slice::from_raw_parts(self.range.start.as_ptr(), self.range().size());
 
-                    f(&slice[range]);
-                });
-            }
-        })
-        .map_err(Error::Trap)
+            f(&slice[range]);
+        }
+
+        Ok(())
     }
 
     pub fn with_user_slice_mut<F>(
@@ -138,20 +181,14 @@ impl UserMmap {
             aspace.arch.activate();
         }
 
-        #[expect(tail_expr_drop_order, reason = "")]
-        crate::traps::catch_traps(TRAP_MASK, || {
-            // Safety: checked by caller and `catch_traps`
-            unsafe {
-                with_user_memory_access(|| {
-                    let slice = slice::from_raw_parts_mut(
-                        self.range.start.as_mut_ptr(),
-                        self.range().size(),
-                    );
-                    f(&mut slice[range]);
-                });
-            }
-        })
-        .map_err(Error::Trap)
+        // Safety: checked by caller
+        unsafe {
+            let slice =
+                slice::from_raw_parts_mut(self.range.start.as_mut_ptr(), self.range().size());
+            f(&mut slice[range]);
+        }
+
+        Ok(())
     }
 
     /// Returns a pointer to the start of the memory mapped by this `Mmap`.
@@ -225,7 +262,7 @@ impl UserMmap {
         Ok(())
     }
 
-    fn commit(
+    pub fn commit(
         &self,
         aspace: &mut AddressSpace,
         range: Range<usize>,
@@ -239,7 +276,7 @@ impl UserMmap {
                 end: self.range.end.checked_add(range.start).unwrap(),
             };
 
-            let mut batch = Batch::new(&mut aspace.arch);
+            let mut batch = Batch::new(&mut aspace.arch, aspace.frame_alloc);
             cursor
                 .get_mut()
                 .unwrap()

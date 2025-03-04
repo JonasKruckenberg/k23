@@ -17,9 +17,9 @@ use crate::wasm::runtime::vmcontext::{
 };
 use crate::wasm::runtime::{
     ConstExprEvaluator, Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable,
-    Imports, InstanceAllocator, OwnedVMContext, VMContext, VMFuncRef, VMFunctionImport,
-    VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOffsets, VMOpaqueContext,
-    VMTableDefinition, VMTableImport, VMCONTEXT_MAGIC,
+    Imports, InstanceAllocator, OwnedVMContext, VMCONTEXT_MAGIC, VMContext, VMFuncRef,
+    VMFunctionImport, VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOffsets,
+    VMOpaqueContext, VMTableDefinition, VMTableImport,
 };
 use crate::wasm::translate::{TableInitialValue, TableSegmentElements};
 use crate::wasm::{Extern, Module, Store};
@@ -45,7 +45,6 @@ pub struct Instance {
 }
 
 impl Instance {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub unsafe fn new_unchecked(
         store: &mut Store,
         const_eval: &mut ConstExprEvaluator,
@@ -56,22 +55,20 @@ impl Instance {
 
         tracing::trace!("initializing instance");
         unsafe {
-            arch::with_user_memory_access(|| -> crate::wasm::Result<()> {
-                initialize_vmctx(
-                    const_eval,
-                    &mut vmctx,
-                    &mut tables,
-                    &mut memories,
-                    &module,
-                    imports,
-                )?;
-                initialize_tables(const_eval, &mut tables, &module)?;
+            let mut aspace = store.alloc.0.lock();
+            aspace.activate();
 
-                let mut aspace = store.alloc.0.lock();
-                initialize_memories(&mut aspace, const_eval, &mut memories, &module)?;
+            initialize_vmctx(
+                const_eval,
+                &mut vmctx,
+                &mut tables,
+                &mut memories,
+                &module,
+                imports,
+            )?;
+            initialize_tables(const_eval, &mut tables, &module)?;
 
-                Ok(())
-            })?;
+            initialize_memories(&mut aspace, const_eval, &mut memories, &module)?;
         }
         tracing::trace!("done initializing instance");
 
@@ -406,11 +403,7 @@ impl Instance {
     }
 }
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "imports should be a linear type"
-)]
-#[expect(clippy::unnecessary_wraps, reason = "TODO")]
+#[tracing::instrument(skip(module))]
 unsafe fn initialize_vmctx(
     const_eval: &mut ConstExprEvaluator,
     vmctx: &mut OwnedVMContext,
@@ -513,6 +506,7 @@ unsafe fn initialize_vmctx(
     }
 }
 
+#[tracing::instrument(skip(module))]
 fn initialize_vmfunc_refs(
     vmctx: &mut OwnedVMContext,
     module: &&Module,
@@ -574,6 +568,7 @@ fn initialize_vmfunc_refs(
     }
 }
 
+#[tracing::instrument(skip(module))]
 unsafe fn initialize_tables(
     const_eval: &mut ConstExprEvaluator,
     tables: &mut PrimaryMap<DefinedTableIndex, Table>,
@@ -623,7 +618,7 @@ unsafe fn initialize_tables(
     Ok(())
 }
 
-#[expect(clippy::unnecessary_wraps, reason = "TODO")]
+#[tracing::instrument(skip(module))]
 unsafe fn initialize_memories(
     aspace: &mut AddressSpace,
     const_eval: &mut ConstExprEvaluator,

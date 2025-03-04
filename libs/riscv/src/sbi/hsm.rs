@@ -7,7 +7,7 @@
 
 //! Hart State Management Extension
 
-use super::{sbi_call, EID_HSM};
+use super::{EID_HSM, sbi_call};
 
 /// # Errors
 ///

@@ -5,15 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::CPUID;
 use crate::arch::device;
 use crate::device_tree::DeviceTree;
 use crate::error::Error;
 use crate::irq::InterruptController;
 use crate::time::clock::Ticks;
 use crate::time::{Clock, NANOS_PER_SEC};
-use crate::CPUID;
 use bitflags::bitflags;
-use core::cell::OnceCell;
+use core::cell::{OnceCell, RefCell};
+use core::fmt;
 use core::str::FromStr;
 use core::time::Duration;
 use cpu_local::cpu_local;
@@ -28,7 +29,7 @@ pub struct Cpu {
     pub cbop_block_size: Option<usize>,
     pub cboz_block_size: Option<usize>,
     pub cbom_block_size: Option<usize>,
-    pub plic: device::plic::Plic,
+    pub plic: RefCell<device::plic::Plic>,
     pub clock: Clock,
 }
 
@@ -78,11 +79,23 @@ bitflags! {
     }
 }
 
+impl fmt::Display for Cpu {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{:<17} : {}", "RISCV EXTENSIONS", self.extensions)?;
+        writeln!(f, "{:<17} : {:?}", "CBOP BLOCK SIZE", self.cbop_block_size)?;
+        writeln!(f, "{:<17} : {:?}", "CBOZ BLOCK SIZE", self.cboz_block_size)?;
+        writeln!(f, "{:<17} : {:?}", "CBOM BLOCK SIZE", self.cbom_block_size)?;
+        writeln!(f, "{:<17} : {:?}", "PLIC", self.plic)?;
+        writeln!(f, "{:<17} : {}", "CLOCK", self.clock)?;
+
+        Ok(())
+    }
+}
+
 pub fn with_cpu<F, R>(f: F) -> R
 where
     F: FnOnce(&Cpu) -> R,
 {
-    #[expect(tail_expr_drop_order, reason = "")]
     CPU.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
 }
 
@@ -90,7 +103,6 @@ pub fn try_with_cpu<F, R>(f: F) -> Result<R, Error>
 where
     F: FnOnce(&Cpu) -> R,
 {
-    #[expect(tail_expr_drop_order, reason = "")]
     CPU.try_with(|cpu_info| Ok(f(cpu_info.get().ok_or(Error::Uninitialized)?)))?
 }
 
@@ -156,17 +168,17 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
     );
 
     CPU.with(|info| {
-        let _info = Cpu {
+        let info_ = Cpu {
             clock,
             extensions,
             cbop_block_size,
             cboz_block_size,
             cbom_block_size,
-            plic,
+            plic: RefCell::new(plic),
         };
-        tracing::debug!("{_info:?}");
+        tracing::debug!("\n{info_}");
 
-        info.set(_info).unwrap();
+        info.set(info_).unwrap();
     });
 
     Ok(())
@@ -225,4 +237,10 @@ pub fn parse_riscv_extensions(strs: fdt::StringList) -> crate::Result<RiscvExten
     }
 
     Ok(out)
+}
+
+impl fmt::Display for RiscvExtensions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        bitflags::parser::to_writer(self, f)
+    }
 }

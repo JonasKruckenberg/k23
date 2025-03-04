@@ -422,11 +422,7 @@ impl FallibleIterator for ReserveEntries<'_> {
 
             self.done = entry.is_err() || is_empty;
 
-            if is_empty {
-                Ok(None)
-            } else {
-                entry.map(Some)
-            }
+            if is_empty { Ok(None) } else { entry.map(Some) }
         }
     }
 }

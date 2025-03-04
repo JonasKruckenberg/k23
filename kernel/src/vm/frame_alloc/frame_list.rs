@@ -249,7 +249,6 @@ impl IntoIterator for FrameList {
     type Item = Frame;
     type IntoIter = IntoIter;
 
-    #[expect(tail_expr_drop_order, reason = "")]
     fn into_iter(mut self) -> Self::IntoIter {
         let inner: IntoIterInner = self
             .nodes

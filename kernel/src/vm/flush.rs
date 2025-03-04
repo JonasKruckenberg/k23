@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::address::VirtualAddress;
 use crate::vm::Error;
+use crate::vm::address::VirtualAddress;
 use core::range::Range;
 use core::{cmp, mem};
 

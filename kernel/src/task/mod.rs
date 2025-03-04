@@ -14,11 +14,12 @@ use crate::panic;
 use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use crate::util::non_null;
 use alloc::boxed::Box;
+use alloc::sync::Arc;
 use core::alloc::{AllocError, Allocator};
 use core::any::type_name;
 use core::cell::UnsafeCell;
 use core::future::Future;
-use core::mem::{offset_of, MaybeUninit};
+use core::mem::offset_of;
 use core::panic::AssertUnwindSafe;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -26,9 +27,13 @@ use core::sync::atomic::Ordering;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
 
+use crate::sync::CachePadded;
+use crate::util::maybe_uninit::CheckedMaybeUninit;
+use crate::vm::AddressSpace;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinErrorKind, JoinHandle};
 pub use owned_tasks::OwnedTasks;
+use spin::Mutex;
 
 pub trait Schedule {
     /// Schedule the task to run.
@@ -62,89 +67,11 @@ pub struct TaskRef(NonNull<Header>);
 ///
 /// [scheduler]: crate::scheduler::Scheduler
 /// [dynamic dispatch]: https://en.wikipedia.org/wiki/Dynamic_dispatch
-// # This struct should be cache padded to avoid false sharing. The cache padding rules are copied
-// from crossbeam-utils/src/cache_padded.rs
-//
-// Starting from Intel's Sandy Bridge, spatial prefetcher is now pulling pairs of 64-byte cache
-// lines at a time, so we have to align to 128 bytes rather than 64.
-//
-// Sources:
-// - https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-optimization-manual.pdf
-// - https://github.com/facebook/folly/blob/1b5288e6eea6df074758f877c849b6e73bbb9fbb/folly/lang/Align.h#L107
-//
-// ARM's big.LITTLE architecture has asymmetric cores and "big" cores have 128-byte cache line size.
-//
-// Sources:
-// - https://www.mono-project.com/news/2016/09/12/arm64-icache/
-//
-// powerpc64 has 128-byte cache line size.
-//
-// Sources:
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_ppc64x.go#L9
-#[cfg_attr(
-    any(
-        target_arch = "x86_64",
-        target_arch = "aarch64",
-        target_arch = "powerpc64",
-    ),
-    repr(align(128))
-)]
-// arm, mips, mips64, sparc, and hexagon have 32-byte cache line size.
-//
-// Sources:
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_arm.go#L7
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_mips.go#L7
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_mipsle.go#L7
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_mips64x.go#L9
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/sparc/include/asm/cache.h#L17
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/hexagon/include/asm/cache.h#L12
-#[cfg_attr(
-    any(
-        target_arch = "arm",
-        target_arch = "mips",
-        target_arch = "mips64",
-        target_arch = "sparc",
-        target_arch = "hexagon",
-    ),
-    repr(align(32))
-)]
-// m68k has 16-byte cache line size.
-//
-// Sources:
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/m68k/include/asm/cache.h#L9
-#[cfg_attr(target_arch = "m68k", repr(align(16)))]
-// s390x has 256-byte cache line size.
-//
-// Sources:
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_s390x.go#L7
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/s390/include/asm/cache.h#L13
-#[cfg_attr(target_arch = "s390x", repr(align(256)))]
-// x86, riscv, wasm, and sparc64 have 64-byte cache line size.
-//
-// Sources:
-// - https://github.com/golang/go/blob/dda2991c2ea0c5914714469c4defc2562a907230/src/internal/cpu/cpu_x86.go#L9
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_wasm.go#L7
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/sparc/include/asm/cache.h#L19
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/riscv/include/asm/cache.h#L10
-//
-// All others are assumed to have 64-byte cache line size.
-#[cfg_attr(
-    not(any(
-        target_arch = "x86_64",
-        target_arch = "aarch64",
-        target_arch = "powerpc64",
-        target_arch = "arm",
-        target_arch = "mips",
-        target_arch = "mips64",
-        target_arch = "sparc",
-        target_arch = "hexagon",
-        target_arch = "m68k",
-        target_arch = "s390x",
-    )),
-    repr(align(64))
-)]
 #[repr(C)]
-pub(crate) struct Task<F: Future, S> {
+pub struct Task<F: Future, S>(CachePadded<TaskInner<F, S>>);
+
+#[repr(C)]
+pub(crate) struct TaskInner<F: Future, S> {
     /// This must be the first field of the `Task` struct!
     pub(super) schedulable: Schedulable<S>,
     /// The future that the task is running.
@@ -207,19 +134,21 @@ pub(crate) struct Header {
     /// The task's state.
     ///
     /// This field is access with atomic instructions, so it's always safe to access it.
-    pub(crate) state: State,
+    pub state: State,
     /// The task vtable for this task.
-    pub(crate) vtable: &'static Vtable,
+    pub vtable: &'static Vtable,
     /// The task's ID.
-    pub(crate) id: Id,
+    pub id: Id,
     /// Links to other tasks in the intrusive global run queue.
     ///
     /// TODO ownership
-    pub(crate) run_queue_links: mpsc_queue::Links<Header>,
+    pub run_queue_links: mpsc_queue::Links<Header>,
     /// Links to other tasks in the global "owned tasks" list.
     ///
     /// The `OwnedTask` reference has exclusive access to this field.
-    pub(crate) owned_tasks_links: linked_list::Links<Header>,
+    pub owned_tasks_links: linked_list::Links<Header>,
+    /// The address space associated with this task
+    pub aspace: Option<Arc<Mutex<AddressSpace>>>,
     span: tracing::Span,
 }
 
@@ -297,12 +226,12 @@ pub(crate) enum Stage<F: Future> {
 }
 
 impl TaskRef {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub(crate) fn try_new_in<F, S, A>(
         future: F,
         scheduler: S,
         task_id: Id,
         span: tracing::Span,
+        aspace: Arc<Mutex<AddressSpace>>,
         alloc: A,
     ) -> Result<Self, AllocError>
     where
@@ -311,7 +240,7 @@ impl TaskRef {
         A: Allocator,
     {
         let ptr = Box::into_raw(Box::try_new_in(
-            Task::new(future, scheduler, task_id, span),
+            Task::new(future, scheduler, task_id, aspace, span),
             alloc,
         )?);
 
@@ -320,8 +249,11 @@ impl TaskRef {
     }
 
     pub(crate) unsafe fn from_raw(ptr: NonNull<Header>) -> Self {
-        Self(ptr)
+        let this = Self(ptr);
+        this.state().clone_ref();
+        this
     }
+
     pub(crate) fn header_ptr(&self) -> NonNull<Header> {
         self.0
     }
@@ -380,7 +312,7 @@ impl TaskRef {
         cx: &mut Context<'_>,
     ) -> Poll<Result<T, JoinError<T>>> {
         let poll_join_fn = self.header().vtable.poll_join;
-        let mut slot = MaybeUninit::<T>::uninit();
+        let mut slot = CheckedMaybeUninit::<Result<T, JoinError<T>>>::uninit();
 
         // Safety: This is called through the Vtable and as long as the caller makes sure that the `T` is the right
         // type, this call is safe
@@ -391,7 +323,7 @@ impl TaskRef {
                 let output = if e.is_completed() {
                     // Safety: if the task completed before being canceled, we can still
                     // take its output.
-                    Some(unsafe { slot.assume_init_read() })
+                    Some(unsafe { slot.assume_init_read() }?)
                 } else {
                     None
                 };
@@ -399,7 +331,7 @@ impl TaskRef {
             } else {
                 // Safety: if the poll function returned `Ok`, we get to take the
                 // output!
-                Ok(unsafe { slot.assume_init_read() })
+                unsafe { slot.assume_init_read() }
             }
         })
     }
@@ -478,6 +410,7 @@ impl Header {
             run_queue_links: mpsc_queue::Links::new_stub(),
             owned_tasks_links: linked_list::Links::new(),
             span: tracing::Span::none(),
+            aspace: None,
         }
     }
 
@@ -543,8 +476,7 @@ unsafe impl linked_list::Linked for Header {
         ptr
     }
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
-        // Safety: ensured by the caller
-        unsafe { TaskRef::from_raw(ptr) }
+        TaskRef(ptr)
     }
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<linked_list::Links<Self>> {
         // Safety: `TaskRef` is just a newtype wrapper around `NonNull<Header>`
@@ -572,7 +504,7 @@ unsafe impl mpsc_queue::Linked for Header {
     }
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
         // Safety: ensured by the caller
-        unsafe { TaskRef::from_raw(ptr) }
+        TaskRef(ptr)
     }
     unsafe fn links(ptr: NonNull<Self>) -> NonNull<mpsc_queue::Links<Self>>
     where
@@ -599,9 +531,14 @@ where
         wake_by_ref: Schedulable::<S>::wake_by_ref,
     };
 
-    #[expect(tail_expr_drop_order, reason = "")]
-    pub const fn new(future: F, scheduler: S, task_id: Id, span: tracing::Span) -> Self {
-        Self {
+    pub const fn new(
+        future: F,
+        scheduler: S,
+        task_id: Id,
+        aspace: Arc<Mutex<AddressSpace>>,
+        span: tracing::Span,
+    ) -> Self {
+        let inner = TaskInner {
             schedulable: Schedulable {
                 header: Header {
                     state: State::new(),
@@ -610,12 +547,14 @@ where
                     run_queue_links: mpsc_queue::Links::new(),
                     owned_tasks_links: linked_list::Links::new(),
                     span,
+                    aspace: Some(aspace),
                 },
                 scheduler,
             },
             stage: UnsafeCell::new(Stage::Pending(future)),
             join_waker: UnsafeCell::new(None),
-        }
+        };
+        Self(CachePadded(inner))
     }
 
     /// Poll the future, returning a [`PollResult`] that indicates what the
@@ -737,11 +676,11 @@ where
                     return Poll::Ready(Err(JoinError::cancelled(completed, *this.id())));
                 }
                 JoinAction::Register => {
-                    let waker = this.join_waker.get();
+                    let waker = this.0.0.join_waker.get();
                     waker.write(Some(cx.waker().clone()));
                 }
                 JoinAction::Reregister => {
-                    let waker = (*this.join_waker.get()).as_mut().unwrap();
+                    let waker = (*this.0.0.join_waker.get()).as_mut().unwrap();
                     let new_waker = cx.waker();
                     if !waker.will_wake(new_waker) {
                         *waker = new_waker.clone();
@@ -792,7 +731,7 @@ where
         let _span = self.span().enter();
 
         // Safety: ensured by caller
-        unsafe { &mut *self.stage.get() }.poll(&mut cx, *self.id())
+        unsafe { &mut *self.0.0.stage.get() }.poll(&mut cx, *self.id())
     }
 
     /// Wakes the task's [`JoinHandle`], if it has one.
@@ -804,7 +743,7 @@ where
     unsafe fn wake_join_waker(&self) {
         // Safety: ensured by caller
         unsafe {
-            if let Some(join_waker) = (*self.join_waker.get()).take() {
+            if let Some(join_waker) = (*self.0.0.join_waker.get()).take() {
                 tracing::trace!("waking {join_waker:?}");
                 join_waker.wake();
             } else {
@@ -816,13 +755,13 @@ where
     unsafe fn take_output(&self, dst: NonNull<()>) {
         // Safety: ensured by caller
         unsafe {
-            match mem::replace(&mut *self.stage.get(), Stage::Consumed) {
+            match mem::replace(&mut *self.0.0.stage.get(), Stage::Consumed) {
                 Stage::Ready(output) => {
                     // let output = self.stage.take_output();
                     // safety: the caller is responsible for ensuring that this
                     // points to a `MaybeUninit<F::Output>`.
                     let dst = dst
-                        .cast::<MaybeUninit<Result<F::Output, JoinError<F::Output>>>>()
+                        .cast::<CheckedMaybeUninit<Result<F::Output, JoinError<F::Output>>>>()
                         .as_mut();
 
                     // that's right, it goes in the `NonNull<()>` hole!
@@ -834,14 +773,14 @@ where
     }
 
     fn id(&self) -> &Id {
-        &self.schedulable.header.id
+        &self.0.0.schedulable.header.id
     }
     fn state(&self) -> &State {
-        &self.schedulable.header.state
+        &self.0.0.schedulable.header.state
     }
     #[inline]
     fn span(&self) -> &tracing::Span {
-        &self.schedulable.header.span
+        &self.0.0.schedulable.header.span
     }
 }
 
@@ -959,7 +898,7 @@ impl<S: Schedule> Schedulable<S> {
                     // transition does *not* decrement the reference count. this is
                     // in order to avoid dropping the task while it is being
                     // scheduled. one reference is consumed by enqueuing the task...
-                    Self::schedule(TaskRef::from_raw(this.cast::<Header>()));
+                    Self::schedule(TaskRef(this.cast::<Header>()));
                     // now that the task has been enqueued, decrement the reference
                     // count to drop the waker that performed the `wake_by_val`.
                     Self::drop_ref(this);
@@ -985,7 +924,7 @@ impl<S: Schedule> Schedulable<S> {
 
             let this = non_null(this.cast_mut()).cast::<Self>();
             if this.as_ref().state().wake_by_ref() == WakeByRefAction::Enqueue {
-                Self::schedule(TaskRef::from_raw(this.cast::<Header>()));
+                Self::schedule(TaskRef(this.cast::<Header>()));
             }
         }
     }

@@ -1,8 +1,8 @@
-use crate::vm::{AddressRangeExt, AddressSpace, UserMmap, VirtualAddress, KERNEL_ASPACE};
+use crate::vm::{AddressRangeExt, AddressSpace, UserMmap, VirtualAddress};
+use crate::wasm::Error;
 use crate::wasm::compile::FunctionLoc;
 use crate::wasm::runtime::MmapVec;
 use crate::wasm::trap::Trap;
-use crate::wasm::Error;
 use alloc::vec::Vec;
 use core::range::Range;
 

@@ -51,11 +51,7 @@ impl Conclusion {
     /// Returns an exit code that can be returned from `main` to signal
     /// success/failure to the calling process.
     pub fn exit_code(&self) -> i32 {
-        if self.has_failed() {
-            101
-        } else {
-            0
-        }
+        if self.has_failed() { 101 } else { 0 }
     }
 
     /// Returns whether there have been any failures.

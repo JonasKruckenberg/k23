@@ -13,7 +13,7 @@
 #![feature(new_range_api)]
 #![feature(debug_closure_helpers)]
 #![expect(internal_features, reason = "panic internals")]
-#![feature(std_internals, panic_can_unwind, fmt_internals)]
+#![feature(std_internals, panic_can_unwind, formatting_options)]
 #![feature(step_trait)]
 #![feature(box_into_inner)]
 #![feature(let_chains)]
@@ -23,26 +23,27 @@
 #![feature(if_let_guard)]
 #![feature(allocator_api)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
-#![expect(edition_2024_expr_fragment_specifier, reason = "vetted")]
 
 extern crate alloc;
 
 mod allocator;
 mod arch;
 mod bootargs;
+mod backtrace;
 mod cpu_local;
 mod device_tree;
 mod error;
+mod fiber;
 mod irq;
 mod metrics;
 mod panic;
 mod scheduler;
+mod sync;
 mod task;
 #[cfg(test)]
 mod tests;
 mod time;
 mod tracing;
-mod traps;
 mod util;
 mod vm;
 mod wasm;
@@ -50,21 +51,25 @@ mod shell;
 
 use crate::device_tree::device_tree;
 use crate::error::Error;
-use crate::time::clock::Ticks;
 use crate::time::Instant;
+use crate::time::clock::Ticks;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
+use crate::vm::{KERNEL_ASPACE, UserMmap, with_kernel_aspace};
+use alloc::string::{String, ToString};
 use arrayvec::ArrayVec;
 use cfg_if::cfg_if;
 use core::cell::Cell;
+use core::fmt::Write;
 use core::range::Range;
 use core::slice;
 use cpu_local::cpu_local;
+use fallible_iterator::FallibleIterator;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::Once;
-use vm::frame_alloc;
+use spin::Once;
 use vm::PhysicalAddress;
+use vm::frame_alloc;
 
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
@@ -93,6 +98,28 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    // Unwinding expects at least one landing pad in the callstack, but capturing all unwinds that
+    // bubble up to this point is also a good idea since we can perform some last cleanup and
+    // print an error message.
+    let res = panic::catch_unwind(|| {
+        backtrace::__rust_begin_short_backtrace(|| kmain(cpuid, boot_info, boot_ticks));
+    });
+
+    // Run thread-local destructors
+    // Safety: after this point thread-locals cannot be accessed anymore anyway
+    unsafe {
+        cpu_local::destructors::run();
+    }
+
+    match res {
+        Ok(_) => arch::exit(0),
+        // If the panic propagates up to this catch here there is nothing we can do, this is a terminal
+        // failure.
+        Err(_) => arch::abort("unrecoverable kernel panic"),
+    }
+}
+
+fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     CPUID.set(cpuid);
 
     // perform EARLY per-cpu, architecture-specific initialization
@@ -115,6 +142,10 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
+        // initialize the backtracing subsystem after the allocator has been set up
+        // since setting up the symbolization context requires allocation
+        backtrace::init(boot_info);
+
         let devtree = device_tree::init(fdt).unwrap();
         tracing::debug!("{devtree:?}");
 
@@ -123,20 +154,16 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         // fully initialize the tracing subsystem now that we can allocate
         tracing::init(cmdline.log);
 
-        // initialize the panic backtracing subsystem after the allocator has been set up
-        // since setting up the symbolization context requires allocation
-        panic::init(boot_info);
-
         // perform global, architecture-specific initialization
         arch::init_early();
 
         // initialize the global frame allocator
         // at this point we have parsed and processed the flattened device tree, so we pass it to the
         // frame allocator for reuse
-        frame_alloc::init(boot_alloc, fdt_region_phys);
+        let frame_alloc = frame_alloc::init(boot_alloc, fdt_region_phys);
 
         // initialize the virtual memory subsystem
-        vm::init(boot_info, &mut rng).unwrap();
+        vm::init(boot_info, &mut rng, frame_alloc).unwrap();
     });
 
     // perform LATE per-cpu, architecture-specific initialization
@@ -154,6 +181,10 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Instant::now().duration_since(Instant::ZERO),
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
+
+    if cpuid == 0 {
+        _sched.spawn(KERNEL_ASPACE.get().unwrap().clone(), keyboard_demo());
+    }
 
     cfg_if! {
         if #[cfg(test)] {
@@ -198,6 +229,17 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     //     //     scheduler::yield_now().await;
     //     //     tracing::debug!("Point B");
     //     // });
+    // let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
+    // let mut mmap = UserMmap::new_zeroed(&mut aspace, 2 * 4096, 4096).unwrap();
+    //
+    // sched.spawn(KERNEL_ASPACE.get().unwrap(), async move {
+    //     let ptr = mmap.as_mut_ptr();
+    //     unsafe {
+    //         ptr.write(17);
+    //         assert_eq!(mmap.as_ptr().read(), 17);
+    //     }
+    //     // unsafe { asm!("ld zero, 0(zero)") };
+    // });
     // }
 
     // wasm::test();
@@ -207,14 +249,72 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // - [all][global] `topology::init()` initialize the system topology
     // - `kernel_shell_init()`
     // - `userboot_init()`
+}
 
-    // Run thread-local destructors
-    // Safety: after this point thread-locals cannot be accessed anymore anyway
-    unsafe {
-        cpu_local::destructors::run();
+async fn keyboard_demo() {
+    // tracing::info!("type `help` to list available commands");
+    let devtree = device_tree();
+
+    let s = devtree.find_by_path("/soc/serial").unwrap();
+    assert!(s.is_compatible(["ns16550a"]));
+
+    let clock_freq = s.property("clock-frequency").unwrap().as_u32().unwrap();
+    let mut regs = s.regs().unwrap();
+    let reg = regs.next().unwrap().unwrap();
+    assert!(regs.next().unwrap().is_none());
+    let irq_num = s.property("interrupts").unwrap().as_u32().unwrap();
+
+    let mmap = with_kernel_aspace(|aspace| {
+        // FIXME: this is gross, we're using the PhysicalAddress as an alignment utility :/
+        let size = PhysicalAddress::new(reg.size.unwrap())
+            .checked_align_up(arch::PAGE_SIZE)
+            .unwrap()
+            .get();
+
+        let range_phys = {
+            let start = PhysicalAddress::new(reg.starting_address);
+            Range::from(start..start.checked_add(size).unwrap())
+        };
+
+        UserMmap::new_phys(
+            aspace,
+            range_phys,
+            size,
+            arch::PAGE_SIZE,
+            Some("UART-16550".to_string()),
+        )
+        .unwrap()
+    });
+
+    // Safety: info comes from device tree
+    let mut uart =
+        unsafe { uart_16550::SerialPort::new(mmap.range().start.get(), clock_freq, 115200) };
+
+    tracing::info!("type a character...");
+
+    let mut line = String::new();
+    loop {
+        let res = irq::next_event(irq_num).await;
+        assert!(res.is_ok());
+        let mut newline = false;
+
+        let ch = uart.recv() as char;
+        uart.write_char(ch).unwrap();
+        match ch {
+            '\n' | '\r' => {
+                newline = true;
+                uart.write_str("\n\r").unwrap();
+            }
+            '\u{007F}' => {
+                line.pop();
+            }
+            ch => line.push(ch),
+        }
+
+        if newline {
+            line.clear();
+        }
     }
-
-    arch::exit(0);
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.

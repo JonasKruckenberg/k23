@@ -1,6 +1,7 @@
 mod compile_key;
 mod compiled_function;
 
+use crate::wasm::Engine;
 use crate::wasm::builtins::BuiltinFunctionIndex;
 use crate::wasm::compile::compiled_function::{RelocationTarget, TrapInfo};
 use crate::wasm::indices::DefinedFuncIndex;
@@ -8,7 +9,6 @@ use crate::wasm::translate::{
     FunctionBodyData, ModuleTranslation, ModuleTypes, TranslatedModule, WasmFuncType,
 };
 use crate::wasm::trap::Trap;
-use crate::wasm::Engine;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -119,7 +119,6 @@ pub type CompileInput<'a> =
 pub struct CompileInputs<'a>(Vec<CompileInput<'a>>);
 
 impl<'a> CompileInputs<'a> {
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn from_module(
         translation: &'a ModuleTranslation,
         types: &'a ModuleTypes,
@@ -176,7 +175,6 @@ impl<'a> CompileInputs<'a> {
         Self(inputs)
     }
 
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn compile(self, compiler: &dyn Compiler) -> crate::wasm::Result<UnlinkedCompileOutputs> {
         let mut outputs = self
             .0
@@ -279,6 +277,12 @@ impl UnlinkedCompileOutputs {
             let body_len = body.len() as u64;
             let off = text_builder.append(true, body, alignment, &mut ctrl_plane);
 
+            tracing::debug!(
+                "Function {}: {off:#x}..{:#x}",
+                output.symbol,
+                off + body_len
+            );
+
             for r in output.function.relocations() {
                 let target = match r.target {
                     RelocationTarget::Wasm(callee_index) => {
@@ -294,12 +298,9 @@ impl UnlinkedCompileOutputs {
                 };
 
                 // Ensure that we actually resolved the relocation
-                debug_assert!(text_builder.resolve_reloc(
-                    off + u64::from(r.offset),
-                    r.kind,
-                    r.addend,
-                    target
-                ));
+                let resolved =
+                    text_builder.resolve_reloc(off + u64::from(r.offset), r.kind, r.addend, target);
+                debug_assert!(resolved);
             }
 
             let loc = FunctionLoc {

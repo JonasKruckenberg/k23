@@ -7,6 +7,7 @@
 
 use crate::arch;
 use crate::vm::address::VirtualAddress;
+use crate::vm::frame_alloc::FrameAllocator;
 use crate::vm::{AddressRangeExt, Batch, Error, PageFaultFlags, Permissions, PhysicalAddress, Vmo};
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -18,7 +19,7 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use core::range::Range;
 use pin_project::pin_project;
-use sync::LazyLock;
+use spin::LazyLock;
 
 /// A contiguous region of an address space
 #[pin_project]
@@ -43,6 +44,7 @@ pub struct AddressSpaceRegion {
 
 impl AddressSpaceRegion {
     pub fn new_zeroed(
+        frame_alloc: &'static FrameAllocator,
         range: Range<VirtualAddress>,
         permissions: Permissions,
         name: Option<String>,
@@ -51,7 +53,7 @@ impl AddressSpaceRegion {
             range,
             permissions,
             name,
-            vmo: Arc::new(Vmo::new_zeroed()),
+            vmo: Arc::new(Vmo::new_zeroed(frame_alloc)),
             vmo_offset: 0,
             max_gap: 0,
             max_range: range,
@@ -82,7 +84,6 @@ impl AddressSpaceRegion {
         permissions: Permissions,
         name: Option<String>,
     ) -> AddressSpaceRegion {
-        #[expect(tail_expr_drop_order, reason = "")]
         static WIRED_VMO: LazyLock<Arc<Vmo>> = LazyLock::new(|| Arc::new(Vmo::Wired));
 
         Self {

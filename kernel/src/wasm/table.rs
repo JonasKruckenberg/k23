@@ -1,6 +1,6 @@
 use crate::wasm::runtime::VMTableImport;
 use crate::wasm::store::Stored;
-use crate::wasm::{runtime, Store};
+use crate::wasm::{Store, runtime};
 
 /// A WebAssembly table instance.
 #[derive(Debug, Clone, Copy)]

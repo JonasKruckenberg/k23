@@ -130,8 +130,6 @@ use core::{fmt, mem, ptr};
 ///
 /// [intrusive collection]: crate#intrusive-data-structures
 /// [`Unpin`]: Unpin
-/// [doubly-linked list]: crate::list
-/// [MSPC queue]: crate::mpsc_queue
 /// [Stacked Borrows]: https://github.com/rust-lang/unsafe-code-guidelines/blob/master/wip/stacked-borrows.md
 pub unsafe trait Linked {
     /// The handle owning nodes in the tree.
@@ -958,6 +956,18 @@ where
             current: self.current,
             _list: self.list,
         }
+    }
+
+    pub fn remove_first(&mut self, mut predicate: impl FnMut(&T) -> bool) -> Option<T::Handle> {
+        while !predicate(unsafe { self.current?.as_ref() }) {
+            // if the current element does not match, advance to the next node
+            // in the list.
+            self.move_next();
+        }
+
+        // if we have broken out of the loop without returning a `None`, remove
+        // the current element.
+        self.remove()
     }
 
     /// Removes the current element from the list returning it's owned handle, also moves the

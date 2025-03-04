@@ -91,9 +91,9 @@ impl core::error::Error for Error {}
 
 #[macro_export]
 macro_rules! ensure {
-    ($cond:expr, $error:expr, $msg:expr) => {
+    ($cond:expr, $error:expr, $($msg:tt)*) => {
         if !$cond {
-            tracing::error!($msg);
+            tracing::error!($($msg)*);
             return Err($error);
         }
     };

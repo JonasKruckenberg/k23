@@ -1,10 +1,11 @@
+use crate::fiber::FiberStack;
 use crate::vm::AddressSpace;
+use crate::wasm::Module;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::memory::Memory;
 use crate::wasm::runtime::table::Table;
 use crate::wasm::runtime::{OwnedVMContext, VMOffsets};
 use crate::wasm::translate::{MemoryDesc, TableDesc, TranslatedModule};
-use crate::wasm::Module;
 use core::mem;
 use cranelift_entity::PrimaryMap;
 
@@ -57,6 +58,9 @@ pub trait InstanceAllocator {
     /// `Self::allocate_memory`, be at the given index, and must currently be
     /// allocated. It must never be used again.
     unsafe fn deallocate_memory(&self, memory_index: DefinedMemoryIndex, memory: Memory);
+
+    fn allocate_fiber_stack(&self) -> crate::wasm::Result<FiberStack>;
+    unsafe fn deallocate_fiber_stack(&self, stack: FiberStack);
 
     /// Allocate a table for an instance.
     ///

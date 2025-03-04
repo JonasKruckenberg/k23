@@ -15,8 +15,8 @@
 // An RAII mutex guard returned by the Arc locking operations on Mutex.
 
 use crate::backoff::Backoff;
-use crate::loom::{loom_const_fn, Ordering};
 use crate::loom::{AtomicBool, UnsafeCell};
+use crate::loom::{Ordering, loom_const_fn};
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::{fmt, mem};
@@ -53,7 +53,6 @@ unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
     loom_const_fn! {
-        #[expect(tail_expr_drop_order, reason = "")]
         pub fn new(val: T) -> Mutex<T> {
             Mutex {
                 lock: AtomicBool::new(false),
@@ -220,6 +219,27 @@ impl<'a, T: ?Sized + 'a> MutexGuard<'a, T> {
         let r = s.mutex.data.with_mut(|r| unsafe { &mut *r });
         mem::forget(s);
         r
+    }
+
+    pub fn unlocked<F, U>(s: &mut Self, f: F) -> U
+    where
+        F: FnOnce() -> U,
+    {
+        struct DropGuard<'a, T: ?Sized> {
+            mutex: &'a Mutex<T>,
+        }
+        impl<T: ?Sized> Drop for DropGuard<'_, T> {
+            fn drop(&mut self) {
+                mem::forget(self.mutex.lock());
+            }
+        }
+
+        // Safety: A MutexGuard always holds the lock.
+        unsafe {
+            s.mutex.force_unlock();
+        }
+        let _guard = DropGuard { mutex: s.mutex };
+        f()
     }
 }
 
@@ -399,7 +419,7 @@ mod tests {
 
     #[test]
     fn basic_multi_threaded() {
-        use crate::loom::{self, thread, Arc};
+        use crate::loom::{self, Arc, thread};
 
         #[allow(tail_expr_drop_order)]
         fn incr(lock: &Arc<Mutex<i32>>) -> thread::JoinHandle<()> {

@@ -10,6 +10,6 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-sync.workspace = true
+spin.workspace = true
 cfg-if.workspace = true
 bitflags.workspace = true

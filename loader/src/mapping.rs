@@ -10,16 +10,16 @@ use crate::frame_alloc::FrameAllocator;
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::page_alloc::PageAllocator;
-use crate::{arch, SelfRegions};
+use crate::{SelfRegions, arch};
 use bitflags::bitflags;
 use core::alloc::Layout;
 use core::num::{NonZero, NonZeroUsize};
 use core::range::Range;
 use core::{cmp, ptr, slice};
 use loader_api::TlsTemplate;
+use xmas_elf::P64;
 use xmas_elf::dynamic::Tag;
 use xmas_elf::program::{SegmentData, Type};
-use xmas_elf::P64;
 
 bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq)]
@@ -27,6 +27,7 @@ bitflags! {
         const READ = 1 << 0;
         const WRITE = 1 << 1;
         const EXECUTE = 1 << 2;
+        const USER = 1 << 3;
     }
 }
 
@@ -291,9 +292,9 @@ fn handle_load_segment(
 ///
 /// 1. We calculate the size of the segments zero initialized part.
 /// 2. We then figure out whether the boundary is page-aligned or if there are DATA bytes we need to account for.
-///     2.1. IF there are data bytes to account for, we allocate a zeroed frame,
-///     2.2. we then copy over the relevant data from the DATA section into the new frame
-///     2.3. and lastly replace last page previously mapped by `handle_load_segment` to stitch things up.
+///    2.1. IF there are data bytes to account for, we allocate a zeroed frame,
+///    2.2. we then copy over the relevant data from the DATA section into the new frame
+///    2.3. and lastly replace last page previously mapped by `handle_load_segment` to stitch things up.
 /// 3. If the BSS section is larger than that one page, we allocate additional zeroed frames and map them in.
 fn handle_bss_section(
     root_pgtable: usize,
@@ -610,7 +611,7 @@ pub fn map_kernel_stacks(
                 virt,
                 phys,
                 NonZero::new(layout.size()).unwrap(),
-                Flags::READ | Flags::WRITE,
+                Flags::READ | Flags::WRITE | Flags::USER,
                 phys_off,
             )?;
         }

@@ -1,14 +1,11 @@
-use crate::arch;
-use crate::traps::TrapMask;
-use crate::wasm::backtrace::RawWasmBacktrace;
 use crate::wasm::indices::VMSharedTypeIndex;
-use crate::wasm::runtime::{code_registry, StaticVMOffsets, VMContext, VMFunctionImport, VMVal};
+use crate::wasm::runtime::{StaticVMOffsets, VMContext, VMFunctionImport, VMVal};
 use crate::wasm::store::Stored;
 use crate::wasm::translate::WasmFuncType;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::values::Val;
-use crate::wasm::{runtime, Error, Store, MAX_WASM_STACK};
-use alloc::string::ToString;
+use crate::wasm::{Error, MAX_WASM_STACK, Store, Trap, runtime};
+use crate::{arch, wasm};
 use core::arch::asm;
 use core::ffi::c_void;
 use core::mem;
@@ -34,6 +31,20 @@ impl Func {
         FuncType(ty)
     }
 
+    pub async fn call(
+        &self,
+        store: &mut Store,
+        params: &[Val],
+        results: &mut [Val],
+    ) -> wasm::Result<()> {
+        store
+            .on_fiber(|store| {
+                // Safety: TODO should check arg & ret types and count here
+                unsafe { self.call_unchecked(store, params, results) }
+            })
+            .await?
+    }
+
     /// Calls the given function with the provided arguments and places the results in the provided
     /// results slice.
     ///
@@ -45,12 +56,12 @@ impl Func {
     ///
     /// It is up to the caller to ensure the provided arguments are of the correct types and that
     /// the `results` slice has enough space to hold the results of the function.
-    pub unsafe fn call_unchecked(
+    unsafe fn call_unchecked(
         &self,
         store: &mut Store,
         params: &[Val],
         results: &mut [Val],
-    ) -> crate::wasm::Result<()> {
+    ) -> wasm::Result<()> {
         let ty = self.ty(store);
         let ty = ty.as_wasm_func_type();
         let values_vec_size = params.len().max(ty.results.len());
@@ -68,9 +79,7 @@ impl Func {
         // do the actual call
         // Safety: caller has to ensure safety
         unsafe {
-            arch::with_user_memory_access(|| {
-                self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)
-            })?;
+            self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)?;
         }
 
         // copy the results out of the storage
@@ -87,6 +96,11 @@ impl Func {
         Ok(())
     }
 
+    #[allow(
+        unreachable_code,
+        clippy::unnecessary_wraps,
+        reason = "TODO rework in progress. see #298"
+    )]
     unsafe fn call_unchecked_raw(
         &self,
         store: &mut Store,
@@ -101,46 +115,32 @@ impl Func {
 
         let _guard = enter_wasm(vmctx, &module.offsets().static_);
 
-        if let Err(trap) = crate::traps::catch_traps(TrapMask::all(), || {
+        let res = wasm::trap_handler::catch_traps(vmctx, module.offsets().static_.clone(), || {
+            tracing::debug!("jumping to WASM");
             // Safety: caller has to ensure safety
             unsafe {
                 riscv::sstatus::set_spp(riscv::sstatus::SPP::User);
                 riscv::sepc::set(func_ref.array_call as usize);
                 asm! {
-                    "sret",
-                    in("a0") vmctx,
-                    in("a1") vmctx,
-                    in("a2") args_results_ptr,
-                    in("a3") args_results_len,
-                    options(noreturn)
+                "sret",
+                in("a0") vmctx,
+                in("a1") vmctx,
+                in("a2") args_results_ptr,
+                in("a3") args_results_len,
+                options(noreturn)
                 }
             }
-        }) {
-            // construct wasm trap
+        });
 
-            let (code, text_offset) = code_registry::lookup_code(trap.pc.get()).unwrap();
-            tracing::trace!(
-                "Trap at offset: pc={};text_offset={text_offset:#x}",
-                trap.pc
-            );
-            let trap_code = code.lookup_trap_code(text_offset).unwrap();
-
-            let backtrace = RawWasmBacktrace::new_with_vmctx(
-                vmctx,
-                &module.offsets().static_,
-                Some((trap.pc.get(), trap.fp.get())),
-            );
-
-            return Err(Error::Trap {
-                pc: trap.pc,
-                faulting_addr: trap.faulting_address,
-                trap: trap_code,
-                message: "JIT-compiled WASM produced a trap".to_string(),
-                backtrace,
-            });
-        }
-
-        Ok(())
+        tracing::trace!("returned from WASM {res:?}");
+        match res {
+                Ok(_)
+                // The userspace ABI uses the Trap::Exit code to signal a graceful exit
+                | Err(Error::Trap {
+                          trap: Trap::Exit, ..
+                      }) => Ok(()),
+                Err(err) => Err(err),
+            }
     }
 
     pub(crate) fn as_raw(&self, store: &mut Store) -> *mut c_void {

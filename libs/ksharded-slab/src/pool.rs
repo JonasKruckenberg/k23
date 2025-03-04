@@ -6,11 +6,11 @@
 //! [pool]: ../struct.Pool.html
 //! [`Slab`]: ../struct.Slab.html
 use crate::{
+    Pack, Shard,
     cfg::{self, CfgPrivate, DefaultConfig},
     clear::Clear,
     page, shard,
     tid::Tid,
-    Pack, Shard,
 };
 
 use alloc::sync::Arc;
@@ -493,7 +493,6 @@ where
     /// [`RefMut`]: crate::pool::RefMut
     /// [`OwnedRefMut`]: crate::pool::OwnedRefMut
     /// [downgraded]: crate::pool::OwnedRefMut::downgrade
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn create_owned(self: Arc<Self>) -> Option<OwnedRefMut<T, C>> {
         let (tid, shard) = self.shards.current();
         log::trace!("pool: create_owned {:?}", tid);
@@ -621,7 +620,6 @@ where
     /// [`get`]: Pool::get
     /// [`OwnedRef`]: crate::pool::OwnedRef
     /// [`Ref`]: crate::pool::Ref
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn get_owned(self: Arc<Self>, key: usize) -> Option<OwnedRef<T, C>> {
         let tid = C::unpack_tid(key);
 
@@ -1009,7 +1007,6 @@ where
 
     /// Downgrades the owned mutable guard to an owned immutable guard, allowing
     /// access to the pooled value from other threads.
-    #[expect(tail_expr_drop_order, reason = "")]
     pub fn downgrade(mut self) -> OwnedRef<T, C> {
         // Safety: this method consumes self
         let inner = unsafe { self.inner.downgrade() };

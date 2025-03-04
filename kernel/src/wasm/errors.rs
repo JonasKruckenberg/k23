@@ -1,7 +1,7 @@
 use crate::vm::VirtualAddress;
-use crate::wasm::backtrace::RawWasmBacktrace;
 use crate::wasm::translate::EntityType;
 use crate::wasm::trap::Trap;
+use crate::wasm::trap_handler::RawBacktrace;
 use alloc::format;
 use alloc::string::{String, ToString};
 use core::fmt;
@@ -47,15 +47,15 @@ pub enum Error {
     // Wat(wat::Error),
     /// A WebAssembly trap occurred.
     Trap {
-        /// The program counter where this trap originated.
-        pc: VirtualAddress,
-        /// The address of the inaccessible data or zero if trap wasn't caused by data access.
-        faulting_addr: VirtualAddress,
+        // /// The program counter where this trap originated.
+        // pc: VirtualAddress,
+        // /// The address of the inaccessible data or zero if trap wasn't caused by data access.
+        // faulting_addr: VirtualAddress,
         /// The trap that occurred.
         trap: Trap,
         /// A human-readable description of the trap.
         message: String,
-        backtrace: RawWasmBacktrace,
+        backtrace: Option<RawBacktrace>,
     },
     /// Memory mapping failed
     MmapFailed,
@@ -66,6 +66,7 @@ pub enum Error {
         /// The defined field name.
         field: String,
     },
+    FutureDropped,
 }
 
 impl fmt::Display for Error {
@@ -101,6 +102,7 @@ impl fmt::Display for Error {
             Self::AlreadyDefined { module, field } => {
                 writeln!(f, "Name {module}::{field} is already defined")
             }
+            Self::FutureDropped => f.write_str("Fiber future dropped"),
         }
     }
 }

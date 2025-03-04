@@ -6,16 +6,16 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::{mb, wmb};
-use crate::vm::flush::Flush;
-use crate::vm::frame_alloc::Frame;
 use crate::vm::Error;
-use crate::vm::{frame_alloc, PhysicalAddress, VirtualAddress};
+use crate::vm::flush::Flush;
+use crate::vm::frame_alloc::{Frame, FrameAllocator};
+use crate::vm::{PhysicalAddress, VirtualAddress};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::bitflags;
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
-use core::range::Range;
+use core::range::{Range, RangeInclusive};
 use core::{fmt, slice};
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
@@ -23,21 +23,28 @@ use static_assertions::const_assert_eq;
 
 pub const DEFAULT_ASID: u16 = 0;
 
-/// Virtual address where the kernel address space starts.
-///
-///
-pub const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000).unwrap();
-pub const KERNEL_ASPACE_SIZE: usize = 1 << VIRT_ADDR_BITS;
-const_assert_eq!(KERNEL_ASPACE_BASE.get(), CANONICAL_ADDRESS_MASK);
-const_assert_eq!(KERNEL_ASPACE_SIZE - 1, !CANONICAL_ADDRESS_MASK);
+pub const KERNEL_ASPACE_RANGE: RangeInclusive<VirtualAddress> = RangeInclusive {
+    start: VirtualAddress::new(0xffffffc000000000).unwrap(),
+    end: VirtualAddress::MAX,
+};
+const_assert_eq!(KERNEL_ASPACE_RANGE.start.get(), CANONICAL_ADDRESS_MASK);
+const_assert_eq!(
+    KERNEL_ASPACE_RANGE
+        .end
+        .checked_sub_addr(KERNEL_ASPACE_RANGE.start)
+        .unwrap(),
+    !CANONICAL_ADDRESS_MASK
+);
 
 /// Virtual address where the user address space starts.
 ///
 /// The first 2MiB are reserved for catching null pointer dereferences, but this might
 /// change in the future if we decide that the null-checking performed by the WASM runtime
 /// is sufficiently robust.
-pub const USER_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0x0000000000200000).unwrap();
-pub const USER_ASPACE_SIZE: usize = (1 << VIRT_ADDR_BITS) - USER_ASPACE_BASE.get();
+pub const USER_ASPACE_RANGE: RangeInclusive<VirtualAddress> = RangeInclusive {
+    start: VirtualAddress::new(0x0000000000200000).unwrap(),
+    end: VirtualAddress::new((1 << VIRT_ADDR_BITS) - 1).unwrap(),
+};
 
 pub const PAGE_SIZE: usize = 4096;
 pub const PAGE_SHIFT: usize = (PAGE_SIZE - 1).count_ones() as usize;
@@ -72,26 +79,12 @@ pub fn init() {
         .fill(0);
     }
 
-    // Determine the number of supported ASID bits. The ASID is a "WARL" (Write Any Values, Reads Legal Values)
-    // so we can write all 1s to and see which ones "stick".
-    // Safety: register access
-    unsafe {
-        let orig = satp::read();
-        satp::set(orig.mode(), 0xFFFF, orig.ppn());
-        let max_asid = satp::read().asid();
-        satp::set(orig.mode(), orig.asid(), orig.ppn());
-
-        // TODO use this to initialize an ASID allocator
-        tracing::trace!("supported ASID bits: {}", max_asid.count_ones());
-    }
-
     wmb();
 }
 
 /// Return whether the given virtual address is in the kernel address space.
 pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
-    virt.get() >= KERNEL_ASPACE_BASE.get()
-        && virt.checked_sub_addr(KERNEL_ASPACE_BASE).unwrap() < KERNEL_ASPACE_SIZE
+    KERNEL_ASPACE_RANGE.start.get() <= virt.get() && virt.get() < KERNEL_ASPACE_RANGE.end.get()
 }
 
 /// Invalidate address translation caches for the given `address_range` in the given `address_space`.
@@ -170,7 +163,7 @@ pub struct AddressSpace {
 impl crate::vm::ArchAddressSpace for AddressSpace {
     type Flags = PTEFlags;
 
-    fn new(asid: u16) -> Result<(Self, Flush), Error>
+    fn new(asid: u16, frame_alloc: &FrameAllocator) -> Result<(Self, Flush), Error>
     where
         Self: Sized,
     {
@@ -189,7 +182,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             slice::from_raw_parts(base, PAGE_SIZE / 2)
         };
 
-        let mut root_pgtable = frame_alloc::alloc_one_zeroed()?;
+        let mut root_pgtable = frame_alloc.alloc_one_zeroed()?;
 
         Frame::get_mut(&mut root_pgtable).unwrap().as_mut_slice()[PAGE_SIZE / 2..]
             .copy_from_slice(src);
@@ -202,7 +195,6 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             wired_frames: vec![root_pgtable],
         };
 
-        #[expect(tail_expr_drop_order, reason = "")]
         Ok((this, Flush::empty(asid)))
     }
 
@@ -218,12 +210,12 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
             wired_frames: vec![],
         };
 
-        #[expect(tail_expr_drop_order, reason = "")]
         (this, Flush::empty(asid))
     }
 
     unsafe fn map_contiguous(
         &mut self,
+        frame_alloc: &FrameAllocator,
         mut virt: VirtualAddress,
         mut phys: PhysicalAddress,
         len: NonZeroUsize,
@@ -303,7 +295,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
                     // we need to allocate a new sub-table and retry.
                     // allocate a new physical frame to hold the next level table and
                     // mark this PTE as a valid internal node pointing to that sub-table.
-                    let frame = frame_alloc::alloc_one_zeroed()?;
+                    let frame = frame_alloc.alloc_one_zeroed()?;
 
                     mb();
 
@@ -484,6 +476,8 @@ impl AddressSpace {
         let page_size = page_size_for_level(lvl);
 
         if pte.is_valid() && pte.is_leaf() {
+            self.wired_frames
+                .retain(|wired| wired.addr() != pte.get_address_and_flags().0);
             // The PTE is mapped, so go ahead and clear it unmapping the frame
             pte.clear();
 
@@ -520,7 +514,8 @@ impl AddressSpace {
 
     fn pgtable_ptr_from_phys(&self, phys: PhysicalAddress) -> NonNull<PageTableEntry> {
         NonNull::new(
-            KERNEL_ASPACE_BASE
+            KERNEL_ASPACE_RANGE
+                .start
                 .checked_add(phys.get())
                 .unwrap()
                 .as_mut_ptr()

@@ -1,8 +1,8 @@
 use crate::vm::AddressSpace;
-use crate::wasm::runtime::{MmapVec, VMFuncRef, VMTableDefinition};
+use crate::wasm::TABLE_MAX;
+use crate::wasm::runtime::{ExportedFunction, MmapVec, VMFuncRef, VMTableDefinition};
 use crate::wasm::translate::TableDesc;
 use crate::wasm::utils::round_usize_up_to_host_pages;
-use crate::wasm::TABLE_MAX;
 use core::ptr::NonNull;
 
 #[derive(Debug)]
@@ -13,6 +13,10 @@ pub struct Table {
     maximum: Option<usize>,
 }
 
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Send for Table {}
+#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+unsafe impl Sync for Table {}
 impl Table {
     pub fn try_new(
         aspace: &mut AddressSpace,

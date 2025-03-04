@@ -1,6 +1,7 @@
 use crate::{
+    Pack,
     cfg::{self, CfgPrivate},
-    page, Pack,
+    page,
 };
 use alloc::collections::VecDeque;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -10,7 +11,7 @@ use core::{
     marker::PhantomData,
 };
 use cpu_local::cpu_local;
-use sync::{LazyLock, Mutex};
+use spin::{LazyLock, Mutex};
 
 /// Uniquely identifies a thread.
 pub(crate) struct Tid<C> {

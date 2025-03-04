@@ -20,7 +20,7 @@ use core::{
     marker::PhantomPinned,
     ptr::{self, NonNull},
 };
-use sync::Backoff;
+use spin::Backoff;
 
 /// Trait implemented by types which can be members of an intrusive linked mpsc queue.
 ///
@@ -1304,7 +1304,6 @@ impl<T: Linked> MpscQueue<T> {
     ///
     /// If another thread is dequeueing, this returns `None` instead.
     pub fn try_consume_owned(self: Arc<Self>) -> Option<OwnedConsumer<T>> {
-        #[expect(tail_expr_drop_order, reason = "")]
         self.try_lock_consumer().map(|_| OwnedConsumer { q: self })
     }
 }

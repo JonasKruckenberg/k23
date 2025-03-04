@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 loader-api.workspace = true
-sync.workspace = true
+spin.workspace = true
 fdt.workspace = true
 
 log.workspace = true

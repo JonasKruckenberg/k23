@@ -104,7 +104,7 @@ fn init_boot_info_memory_regions(
 
     // Truncate the slice to include only initialized elements
     // Safety: closure above ensures the slice up to len is valid
-    let regions = unsafe { MaybeUninit::slice_assume_init_mut(&mut regions[0..len]) };
+    let regions = unsafe { regions[0..len].assume_init_mut() };
 
     // Sort the memory regions by start address, we do this now in the loader
     // because the BootInfo struct will be passed as a read-only static reference to the kernel.
