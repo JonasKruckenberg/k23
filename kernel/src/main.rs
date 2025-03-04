@@ -38,6 +38,7 @@ mod irq;
 mod metrics;
 mod panic;
 mod scheduler;
+mod sync;
 mod task;
 #[cfg(test)]
 mod tests;

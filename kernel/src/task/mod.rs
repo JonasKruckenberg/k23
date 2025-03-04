@@ -27,6 +27,7 @@ use core::sync::atomic::Ordering;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
 
+use crate::sync::CachePadded;
 use crate::util::maybe_uninit::CheckedMaybeUninit;
 use crate::vm::AddressSpace;
 pub use id::Id;
@@ -66,89 +67,11 @@ pub struct TaskRef(NonNull<Header>);
 ///
 /// [scheduler]: crate::scheduler::Scheduler
 /// [dynamic dispatch]: https://en.wikipedia.org/wiki/Dynamic_dispatch
-// # This struct should be cache padded to avoid false sharing. The cache padding rules are copied
-// from crossbeam-utils/src/cache_padded.rs
-//
-// Starting from Intel's Sandy Bridge, spatial prefetcher is now pulling pairs of 64-byte cache
-// lines at a time, so we have to align to 128 bytes rather than 64.
-//
-// Sources:
-// - https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-optimization-manual.pdf
-// - https://github.com/facebook/folly/blob/1b5288e6eea6df074758f877c849b6e73bbb9fbb/folly/lang/Align.h#L107
-//
-// ARM's big.LITTLE architecture has asymmetric cores and "big" cores have 128-byte cache line size.
-//
-// Sources:
-// - https://www.mono-project.com/news/2016/09/12/arm64-icache/
-//
-// powerpc64 has 128-byte cache line size.
-//
-// Sources:
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_ppc64x.go#L9
-#[cfg_attr(
-    any(
-        target_arch = "x86_64",
-        target_arch = "aarch64",
-        target_arch = "powerpc64",
-    ),
-    repr(align(128))
-)]
-// arm, mips, mips64, sparc, and hexagon have 32-byte cache line size.
-//
-// Sources:
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_arm.go#L7
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_mips.go#L7
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_mipsle.go#L7
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_mips64x.go#L9
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/sparc/include/asm/cache.h#L17
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/hexagon/include/asm/cache.h#L12
-#[cfg_attr(
-    any(
-        target_arch = "arm",
-        target_arch = "mips",
-        target_arch = "mips64",
-        target_arch = "sparc",
-        target_arch = "hexagon",
-    ),
-    repr(align(32))
-)]
-// m68k has 16-byte cache line size.
-//
-// Sources:
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/m68k/include/asm/cache.h#L9
-#[cfg_attr(target_arch = "m68k", repr(align(16)))]
-// s390x has 256-byte cache line size.
-//
-// Sources:
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_s390x.go#L7
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/s390/include/asm/cache.h#L13
-#[cfg_attr(target_arch = "s390x", repr(align(256)))]
-// x86, riscv, wasm, and sparc64 have 64-byte cache line size.
-//
-// Sources:
-// - https://github.com/golang/go/blob/dda2991c2ea0c5914714469c4defc2562a907230/src/internal/cpu/cpu_x86.go#L9
-// - https://github.com/golang/go/blob/3dd58676054223962cd915bb0934d1f9f489d4d2/src/internal/cpu/cpu_wasm.go#L7
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/sparc/include/asm/cache.h#L19
-// - https://github.com/torvalds/linux/blob/3516bd729358a2a9b090c1905bd2a3fa926e24c6/arch/riscv/include/asm/cache.h#L10
-//
-// All others are assumed to have 64-byte cache line size.
-#[cfg_attr(
-    not(any(
-        target_arch = "x86_64",
-        target_arch = "aarch64",
-        target_arch = "powerpc64",
-        target_arch = "arm",
-        target_arch = "mips",
-        target_arch = "mips64",
-        target_arch = "sparc",
-        target_arch = "hexagon",
-        target_arch = "m68k",
-        target_arch = "s390x",
-    )),
-    repr(align(64))
-)]
 #[repr(C)]
-pub(crate) struct Task<F: Future, S> {
+pub struct Task<F: Future, S>(CachePadded<TaskInner<F, S>>);
+
+#[repr(C)]
+pub(crate) struct TaskInner<F: Future, S> {
     /// This must be the first field of the `Task` struct!
     pub(super) schedulable: Schedulable<S>,
     /// The future that the task is running.
@@ -615,7 +538,7 @@ where
         aspace: Arc<Mutex<AddressSpace>>,
         span: tracing::Span,
     ) -> Self {
-        Self {
+        let inner = TaskInner {
             schedulable: Schedulable {
                 header: Header {
                     state: State::new(),
@@ -630,7 +553,8 @@ where
             },
             stage: UnsafeCell::new(Stage::Pending(future)),
             join_waker: UnsafeCell::new(None),
-        }
+        };
+        Self(CachePadded(inner))
     }
 
     /// Poll the future, returning a [`PollResult`] that indicates what the
@@ -752,11 +676,11 @@ where
                     return Poll::Ready(Err(JoinError::cancelled(completed, *this.id())));
                 }
                 JoinAction::Register => {
-                    let waker = this.join_waker.get();
+                    let waker = this.0.0.join_waker.get();
                     waker.write(Some(cx.waker().clone()));
                 }
                 JoinAction::Reregister => {
-                    let waker = (*this.join_waker.get()).as_mut().unwrap();
+                    let waker = (*this.0.0.join_waker.get()).as_mut().unwrap();
                     let new_waker = cx.waker();
                     if !waker.will_wake(new_waker) {
                         *waker = new_waker.clone();
@@ -807,7 +731,7 @@ where
         let _span = self.span().enter();
 
         // Safety: ensured by caller
-        unsafe { &mut *self.stage.get() }.poll(&mut cx, *self.id())
+        unsafe { &mut *self.0.0.stage.get() }.poll(&mut cx, *self.id())
     }
 
     /// Wakes the task's [`JoinHandle`], if it has one.
@@ -819,7 +743,7 @@ where
     unsafe fn wake_join_waker(&self) {
         // Safety: ensured by caller
         unsafe {
-            if let Some(join_waker) = (*self.join_waker.get()).take() {
+            if let Some(join_waker) = (*self.0.0.join_waker.get()).take() {
                 tracing::trace!("waking {join_waker:?}");
                 join_waker.wake();
             } else {
@@ -831,7 +755,7 @@ where
     unsafe fn take_output(&self, dst: NonNull<()>) {
         // Safety: ensured by caller
         unsafe {
-            match mem::replace(&mut *self.stage.get(), Stage::Consumed) {
+            match mem::replace(&mut *self.0.0.stage.get(), Stage::Consumed) {
                 Stage::Ready(output) => {
                     // let output = self.stage.take_output();
                     // safety: the caller is responsible for ensuring that this
@@ -849,14 +773,14 @@ where
     }
 
     fn id(&self) -> &Id {
-        &self.schedulable.header.id
+        &self.0.0.schedulable.header.id
     }
     fn state(&self) -> &State {
-        &self.schedulable.header.state
+        &self.0.0.schedulable.header.state
     }
     #[inline]
     fn span(&self) -> &tracing::Span {
-        &self.schedulable.header.span
+        &self.0.0.schedulable.header.span
     }
 }
 

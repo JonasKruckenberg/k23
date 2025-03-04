@@ -8,7 +8,6 @@
 use core::ptr::NonNull;
 
 pub mod atomic_cell;
-pub mod atomic_waker;
 pub mod fast_rand;
 pub mod maybe_uninit;
 
