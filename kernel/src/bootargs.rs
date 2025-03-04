@@ -10,21 +10,21 @@ use crate::error::Error;
 use crate::tracing::Filter;
 use core::str::FromStr;
 
-pub fn parse(devtree: &DeviceTree) -> Result<Cmdline, Error> {
+pub fn parse(devtree: &DeviceTree) -> Result<Bootargs, Error> {
     let chosen = devtree.find_by_path("/chosen").unwrap();
     let Some(prop) = chosen.property("bootargs") else {
-        return Ok(Cmdline::default());
+        return Ok(Bootargs::default());
     };
 
-    Cmdline::from_str(prop.as_str()?)
+    Bootargs::from_str(prop.as_str()?)
 }
 
 #[derive(Default)]
-pub struct Cmdline {
+pub struct Bootargs {
     pub log: Filter,
 }
 
-impl FromStr for Cmdline {
+impl FromStr for Bootargs {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
