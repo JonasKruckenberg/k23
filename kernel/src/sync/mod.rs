@@ -14,7 +14,6 @@ mod wake_batch;
 pub use cache_padded::CachePadded;
 pub use error::Closed;
 pub use wait_cell::WaitCell;
-#[expect(unused_imports, reason = "TODO")]
 pub use wait_queue::WaitQueue;
 #[expect(unused_imports, reason = "TODO")]
 pub use wake_batch::WakeBatch;
