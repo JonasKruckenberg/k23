@@ -88,8 +88,8 @@ unsafe extern "C" fn default_trap_entry() {
         naked_asm! {
             // FIXME this is a workaround for bug in rustc/llvm
             //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
-            ".align 4",
             ".attribute arch, \"rv64gc\"",
+            ".align 4",
             ".cfi_startproc",
 
             // Set the CFI rule for the return address to always return zero

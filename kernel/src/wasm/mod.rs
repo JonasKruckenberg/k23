@@ -171,11 +171,7 @@ pub fn test() {
         let func = instance.get_func(&mut store, "fib_test").unwrap();
 
         scheduler().spawn(store.alloc.0.clone(), async move {
-            // TODO replace with checked
-            // Safety: WIP
-            unsafe {
-                func.call_unchecked(&mut store, &[], &mut []).unwrap();
-            }
+            func.call(&mut store, &[], &mut []).await.unwrap();
             tracing::info!("done");
         });
     }
