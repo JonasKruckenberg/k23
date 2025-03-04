@@ -9,7 +9,7 @@ use crate::wasm::translate::{MemoryDesc, TableDesc, TranslatedModule};
 use alloc::sync::Arc;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::Mutex;
+use spin::Mutex;
 
 /// A placeholder allocator impl that just delegates to runtime types `new` methods.
 #[derive(Debug)]

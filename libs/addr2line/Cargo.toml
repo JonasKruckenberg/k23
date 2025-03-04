@@ -7,7 +7,7 @@ authors.workspace = true
 license = "Apache-2.0 OR MIT"
 
 [dependencies]
-sync.workspace = true
+spin.workspace = true
 gimli = { workspace = true, default-features = false, features = ["read"] }
 smallvec.workspace = true
 fallible-iterator.workspace = true

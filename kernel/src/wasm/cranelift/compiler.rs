@@ -22,7 +22,7 @@ use cranelift_codegen::ir::{GlobalValueData, MemFlags, Signature, UserExternalNa
 use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::{TextSectionBuilder, ir};
 use cranelift_frontend::FunctionBuilder;
-use sync::Mutex;
+use spin::Mutex;
 use target_lexicon::Triple;
 use wasmparser::{FuncValidatorAllocations, FunctionBody};
 

@@ -15,7 +15,7 @@ use core::sync::atomic::Ordering::Acquire;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use cranelift_entity::{PrimaryMap, SecondaryMap, iter_entity_range};
 use hashbrown::HashSet;
-use sync::RwLock;
+use spin::RwLock;
 use wasmtime_slab::Slab;
 
 pub trait TypeTrace {

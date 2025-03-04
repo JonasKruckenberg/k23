@@ -82,7 +82,7 @@ use core::mem;
 use core::ops::DerefMut;
 use core::sync::atomic::{AtomicBool, Ordering};
 use rand::RngCore;
-use sync::{Backoff, Barrier, Mutex, OnceLock};
+use spin::{Backoff, Barrier, Mutex, OnceLock};
 
 const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
 

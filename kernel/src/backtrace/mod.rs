@@ -13,8 +13,8 @@ use core::fmt::Formatter;
 use core::{fmt, slice};
 use fallible_iterator::FallibleIterator;
 use loader_api::BootInfo;
+use spin::OnceLock;
 use symbolize::SymbolizeContext;
-use sync::OnceLock;
 use unwind2::FrameIter;
 
 static BACKTRACE_INFO: OnceLock<BacktraceInfo> = OnceLock::new();

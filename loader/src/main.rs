@@ -29,7 +29,7 @@ use core::range::Range;
 use core::{ptr, slice};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use sync::{Barrier, OnceLock};
+use spin::{Barrier, OnceLock};
 
 mod arch;
 mod boot_info;

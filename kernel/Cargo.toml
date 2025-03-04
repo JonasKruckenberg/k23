@@ -15,7 +15,7 @@ workspace = true
 [dependencies]
 loader-api.workspace = true
 cpu-local.workspace = true
-sync = { workspace = true, features = ["thread-local", "lock_api"] }
+spin = { workspace = true, features = ["thread-local", "lock_api"] }
 linked-list.workspace = true
 unwind2.workspace = true
 wavltree = { workspace = true, features = ["dot"] }

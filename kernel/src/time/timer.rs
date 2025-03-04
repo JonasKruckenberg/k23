@@ -14,7 +14,7 @@ use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 use core::task::Poll;
 use core::time::Duration;
-use sync::Mutex;
+use spin::Mutex;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Deadline {

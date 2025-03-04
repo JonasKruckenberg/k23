@@ -19,7 +19,7 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use core::range::Range;
 use pin_project::pin_project;
-use sync::LazyLock;
+use spin::LazyLock;
 
 /// A contiguous region of an address space
 #[pin_project]

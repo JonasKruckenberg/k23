@@ -12,7 +12,7 @@ workspace = true
 log.workspace = true
 cfg-if.workspace = true
 gimli = { workspace = true, features = ["read-core"] }
-sync.workspace = true
+spin.workspace = true
 fallible-iterator.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]

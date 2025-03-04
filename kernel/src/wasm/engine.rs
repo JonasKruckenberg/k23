@@ -6,7 +6,7 @@ use alloc::sync::Arc;
 use cranelift_codegen::settings::{Configurable, Flags};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use sync::{Mutex, MutexGuard};
+use spin::{Mutex, MutexGuard};
 
 /// Global context for the runtime.
 ///

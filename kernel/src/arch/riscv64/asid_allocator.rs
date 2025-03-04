@@ -9,7 +9,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt;
 use riscv::satp;
-use sync::OnceLock;
+use spin::OnceLock;
 
 // FIXME: A OnceLock to store a u16? yikes
 static MAX_ASID: OnceLock<u16> = OnceLock::new();

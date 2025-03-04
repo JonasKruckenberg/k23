@@ -16,7 +16,7 @@ use core::alloc::Layout;
 use core::fmt::Debug;
 use core::iter;
 use core::num::NonZeroUsize;
-use sync::{LazyLock, OnceLock};
+use spin::{LazyLock, OnceLock};
 
 pub trait Provider: Debug {
     // TODO make async

@@ -8,7 +8,7 @@
 use crate::arch;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use sync::Mutex;
+use spin::Mutex;
 
 pub struct Idle {
     /// Number of searching workers

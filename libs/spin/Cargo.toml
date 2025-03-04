@@ -1,5 +1,5 @@
 [package]
-name = "sync"
+name = "spin"
 description = "Synchronization primitives for use in k23"
 version.workspace = true
 edition.workspace = true

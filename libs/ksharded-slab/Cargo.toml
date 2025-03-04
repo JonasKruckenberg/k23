@@ -15,7 +15,7 @@ A lock-free concurrent slab.
 
 [dependencies]
 log.workspace = true
-sync.workspace = true
+spin.workspace = true
 cpu-local.workspace = true
 
 [features]
