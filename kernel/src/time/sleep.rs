@@ -8,10 +8,10 @@
 use crate::arch::device::cpu::with_cpu;
 use crate::scheduler;
 use crate::scheduler::scheduler;
+use crate::sync::WaitCell;
 use crate::time::Instant;
 use crate::time::clock::Ticks;
 use crate::time::timer::Timer;
-use crate::util::atomic_waker::AtomicWaker;
 use core::fmt;
 use core::future::Future;
 use core::marker::PhantomPinned;
@@ -19,7 +19,7 @@ use core::mem::offset_of;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, Ordering};
-use core::task::{Context, Poll};
+use core::task::{Context, Poll, ready};
 use core::time::Duration;
 use pin_project::{pin_project, pinned_drop};
 
@@ -61,7 +61,7 @@ pub struct Entry {
     pub(super) deadline: Ticks,
     pub(super) is_registered: AtomicBool,
     /// The currently-registered waker
-    waker: AtomicWaker,
+    waker: WaitCell,
     pub(super) links: linked_list::Links<Self>,
     _pin: PhantomPinned,
 }
@@ -77,7 +77,7 @@ impl<'t> Sleep<'t> {
             ticks,
             entry: Entry {
                 deadline,
-                waker: AtomicWaker::new(),
+                waker: WaitCell::new(),
                 is_registered: AtomicBool::new(false),
                 links: linked_list::Links::new(),
                 _pin: PhantomPinned,
@@ -127,9 +127,12 @@ impl Future for Sleep<'_> {
             _ => return Poll::Ready(()),
         }
 
-        me.entry.waker.register_by_ref(cx.waker());
-
-        Poll::Pending
+        let _poll = ready!(me.entry.waker.poll_wait(cx));
+        debug_assert!(
+            _poll.is_err(),
+            "a Sleep's WaitCell should only be woken by closing"
+        );
+        Poll::Ready(())
     }
 }
 
