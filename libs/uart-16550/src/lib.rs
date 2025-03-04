@@ -72,7 +72,7 @@ impl SerialPort {
             fifo_ctrl.write_volatile(0xC7);
 
             // Mark data terminal ready, signal request to send
-            // and enable auxilliary output #2 (used as interrupt line for CPU)
+            // and enable auxiliary output #2 (used as interrupt line for CPU)
             modem_ctrl.write_volatile(0x0B);
 
             // Enable interrupts

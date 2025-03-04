@@ -313,8 +313,6 @@ async fn keyboard_demo() {
         if newline {
             line.clear();
         }
-
-        // uart.write_str(&line).unwrap();
     }
 }
 
@@ -376,12 +374,3 @@ fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAdd
         Range::from(PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end)),
     )
 }
-
-// struct System {
-//     rng: Mutex<ChaCha20Rng>,
-//     devtree: device_tree::DeviceTree,
-//     cmdline: cmdline::Cmdline,
-//     backtrace: (),
-//     frame_alloc: (),
-//
-// }
