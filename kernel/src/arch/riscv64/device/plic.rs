@@ -8,6 +8,7 @@
 use crate::arch::PAGE_SIZE;
 use crate::device_tree::{Device, DeviceTree, IrqSource};
 use crate::irq::{InterruptController, IrqClaim};
+use crate::util::either::Either;
 use crate::vm::{
     AddressRangeExt, AddressSpaceRegion, Permissions, PhysicalAddress, with_kernel_aspace,
 };
@@ -322,27 +323,5 @@ fn is_supervisor_source(addr: &IrqSource) -> bool {
         IrqSource::C1(u32::MAX) | IrqSource::C3(u32::MAX, _, _) => false,
         IrqSource::C1(11) => false,
         _ => true,
-    }
-}
-
-pub enum Either<L, R> {
-    /// A value of type `L`.
-    Left(L),
-    /// A value of type `R`.
-    Right(R),
-}
-
-impl<L, R, T> Iterator for Either<L, R>
-where
-    L: Iterator<Item = T>,
-    R: Iterator<Item = T>,
-{
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Either::Left(left) => left.next(),
-            Either::Right(right) => right.next(),
-        }
     }
 }

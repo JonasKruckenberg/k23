@@ -1,3 +1,4 @@
+use crate::util::zip_eq::IteratorExt;
 use crate::wasm::cranelift::CraneliftGlobal;
 use crate::wasm::cranelift::env::TranslationEnvironment;
 use crate::wasm::cranelift::state::{ControlStackFrame, ElseData, FuncTranslationState};
@@ -23,6 +24,7 @@ use cranelift_codegen::ir::{
 use cranelift_codegen::ir::{InstBuilder, Type, Value};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_frontend::{FunctionBuilder, Variable};
+use fallible_iterator::FallibleIterator;
 use hashbrown::{HashMap, hash_map};
 use smallvec::SmallVec;
 use wasmparser::{FuncValidator, MemArg, Operator, WasmModuleResources};
@@ -3296,13 +3298,12 @@ fn bitcast_arguments<'a>(
         .filter(|(i, _)| param_predicate(*i))
         .map(|(_, param)| param.value_type);
 
-    // like Iterator::zip but panics if one iterator ends before the other.
-    // The `param_predicate` is required to select exactly as many
-    // elements of `params` as there are elements in `arguments`.
-    let pairs = ZipEq {
-        a: filtered_param_types,
-        b: arguments.iter_mut(),
-    };
+    let pairs = filtered_param_types.zip_eq(arguments).unwrap();
+
+    // let pairs = ZipEq {
+    //     a: filtered_param_types,
+    //     b: arguments.iter_mut(),
+    // };
 
     // The arguments which need to be bitcasted are those which have some vector type but the type
     // expected by the parameter is not the same vector type as that of the provided argument.
@@ -3324,23 +3325,6 @@ fn bitcast_arguments<'a>(
             arg_type != *param_type
         })
         .collect()
-}
-
-struct ZipEq<A, IA: Iterator<Item = A>, B, IB: Iterator<Item = B>> {
-    a: IA,
-    b: IB,
-}
-
-impl<A, IA: Iterator<Item = A>, B, IB: Iterator<Item = B>> Iterator for ZipEq<A, IA, B, IB> {
-    type Item = (A, B);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match (self.a.next(), self.b.next()) {
-            (Some(a), Some(b)) => Some((a, b)),
-            (None, None) => None,
-            _ => panic!("iterators are different in length"),
-        }
-    }
 }
 
 /// A helper for bitcasting a sequence of return values for the function currently being built. If
