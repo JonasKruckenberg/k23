@@ -178,7 +178,11 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
 
-    shell::init(device_tree(), _sched);
+    shell::init(
+        device_tree(),
+        _sched,
+        boot_info.cpu_mask.count_ones() as usize,
+    );
 
     cfg_if! {
         if #[cfg(test)] {
