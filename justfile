@@ -90,6 +90,7 @@ check crate="" *cargo_args="":
 
 # run all tests and checks
 preflight crate="" *cargo_args="": (lint crate cargo_args)
+    typos
 
 # run lints (clippy, rustfmt, docs) for a crate or the entire for the workspace.
 lint crate="" *cargo_args="": (clippy crate cargo_args) (check-fmt crate cargo_args) (check-docs crate cargo_args)
