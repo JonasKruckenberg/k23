@@ -4,6 +4,7 @@
 )]
 
 use crate::wasm::indices::VMSharedTypeIndex;
+use core::arch::asm;
 use core::ffi::c_void;
 use core::fmt;
 use core::marker::PhantomPinned;
@@ -294,6 +295,30 @@ pub struct VMFuncRef {
     /// The VM state associated with this function.
     pub vmctx: *mut VMOpaqueContext,
     pub type_index: VMSharedTypeIndex,
+}
+
+impl VMFuncRef {
+    pub unsafe fn array_call(
+        &self,
+        callee: *mut VMContext,
+        caller: *mut VMContext,
+        args_results_ptr: *mut VMVal,
+        args_results_len: usize,
+    ) {
+        // Safety: caller has to ensure safety
+        unsafe {
+            riscv::sstatus::set_spp(riscv::sstatus::SPP::User);
+            riscv::sepc::set(self.array_call as usize);
+            asm! {
+                "sret",
+                in("a0") callee,
+                in("a1") caller,
+                in("a2") args_results_ptr,
+                in("a3") args_results_len,
+                options(noreturn)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]

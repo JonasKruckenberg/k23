@@ -1,5 +1,5 @@
 use crate::arch::PAGE_SIZE;
-use crate::wasm::translate::{WasmFuncType, WasmHeapTopTypeInner, WasmHeapType, WasmValType};
+use crate::wasm::translate::{WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmValType};
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
@@ -7,7 +7,7 @@ use cranelift_codegen::isa::{CallConv, TargetIsa};
 /// Helper macro to generate accessors for an enum.
 #[macro_export]
 macro_rules! enum_accessors {
-    ($bind:ident $(($variant:ident($ty:ty) $is:ident $get:ident $unwrap:ident $cvt:expr))*) => ($(
+    (@$bind:ident, $variant:ident, $ty:ty, $is:ident, $get:ident, $unwrap:ident, $cvt:expr) => {
         ///  Returns true when the enum is the correct variant.
         pub fn $is(&self) -> bool {
             matches!(self, Self::$variant(_))
@@ -32,7 +32,8 @@ macro_rules! enum_accessors {
         pub fn $unwrap(&self) -> $ty {
             self.$get().expect(concat!("expected ", stringify!($ty)))
         }
-    )*)
+    };
+    ($bind:ident $(($variant:ident($ty:ty) $is:ident $get:ident $unwrap:ident $cvt:expr))*) => ($(enum_accessors!{@$bind, $variant, $ty, $is, $get, $unwrap, $cvt})*)
 }
 
 /// Like `enum_accessors!`, but generated methods take ownership of `self`.
@@ -78,10 +79,11 @@ pub fn value_type(ty: &WasmValType, pointer_type: ir::Type) -> ir::Type {
 /// Returns the reference type to use for the provided wasm type.
 pub fn reference_type(wasm_ht: &WasmHeapType, pointer_type: ir::Type) -> ir::Type {
     match wasm_ht.top().inner {
-        WasmHeapTopTypeInner::Func => pointer_type,
-        WasmHeapTopTypeInner::Any | WasmHeapTopTypeInner::Extern => ir::types::I32,
-        WasmHeapTopTypeInner::Exn => todo!(),
-        WasmHeapTopTypeInner::Cont => todo!(),
+        WasmHeapTypeInner::Func => pointer_type,
+        WasmHeapTypeInner::Any | WasmHeapTypeInner::Extern => ir::types::I32,
+        WasmHeapTypeInner::Exn => todo!(),
+        WasmHeapTypeInner::Cont => todo!(),
+        _ => unreachable!(),
     }
 }
 

@@ -1,7 +1,8 @@
-use crate::wasm::enum_accessors;
 use crate::wasm::indices::CanonicalizedTypeIndex;
 use crate::wasm::translate::{GlobalDesc, MemoryDesc, TableDesc};
 use crate::wasm::type_registry::TypeTrace;
+use crate::wasm::{Error, enum_accessors};
+use crate::{bail, wasm};
 use alloc::boxed::Box;
 use core::fmt;
 
@@ -20,6 +21,51 @@ pub enum WasmValType {
     V128,
     /// The value type is a reference.
     Ref(WasmRefType),
+}
+
+impl WasmValType {
+    pub fn is_i32(&self) -> bool {
+        matches!(self, Self::I32)
+    }
+    pub fn is_i64(&self) -> bool {
+        matches!(self, Self::I64)
+    }
+    pub fn is_f32(&self) -> bool {
+        matches!(self, Self::F32)
+    }
+    pub fn is_f64(&self) -> bool {
+        matches!(self, Self::F64)
+    }
+    pub fn is_v128(&self) -> bool {
+        matches!(self, Self::V128)
+    }
+    enum_accessors!(
+        e
+        (Ref(&WasmRefType) is_ref get_ref unwrap_ref e)
+    );
+
+    pub fn matches(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::I32, Self::I32) => true,
+            (Self::I64, Self::I64) => true,
+            (Self::F32, Self::F32) => true,
+            (Self::F64, Self::F64) => true,
+            (Self::V128, Self::V128) => true,
+            (Self::Ref(a), Self::Ref(b)) => a.matches(b),
+            (Self::I32 | Self::I64 | Self::F32 | Self::F64 | Self::V128 | Self::Ref(_), _) => false,
+        }
+    }
+
+    pub fn ensure_matches(&self, other: &Self) -> wasm::Result<()> {
+        if self.matches(other) {
+            Ok(())
+        } else {
+            bail!(
+                Error::MismatchedTypes,
+                "type mismatch: expected {other}, found {self}"
+            );
+        }
+    }
 }
 
 impl fmt::Display for WasmValType {
@@ -90,6 +136,24 @@ impl WasmRefType {
     pub fn is_vmgcref_type_and_not_i31(&self) -> bool {
         self.heap_type.is_vmgcref_type_and_not_i31()
     }
+
+    pub fn matches(&self, other: &Self) -> bool {
+        if self.nullable && !other.nullable {
+            return false;
+        }
+        self.heap_type.matches(&other.heap_type)
+    }
+
+    pub(crate) fn ensure_matches(&self, other: &Self) -> wasm::Result<()> {
+        if self.matches(other) {
+            Ok(())
+        } else {
+            bail!(
+                Error::MismatchedTypes,
+                "type mismatch: expected {other}, found {self}"
+            );
+        }
+    }
 }
 
 impl fmt::Display for WasmRefType {
@@ -127,12 +191,12 @@ impl TypeTrace for WasmRefType {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct WasmHeapType {
     pub shared: bool,
-    pub ty: WasmHeapTypeInner,
+    pub inner: WasmHeapTypeInner,
 }
 
 impl WasmHeapType {
-    pub(crate) const fn new(shared: bool, ty: WasmHeapTypeInner) -> Self {
-        Self { shared, ty }
+    pub const fn new(shared: bool, ty: WasmHeapTypeInner) -> Self {
+        Self { shared, inner: ty }
     }
 
     /// Is this a type that is represented as a `VMGcRef`?
@@ -141,12 +205,9 @@ impl WasmHeapType {
         match self.top().inner {
             // All `t <: (ref null any)` and `t <: (ref null extern)` are
             // represented as `VMGcRef`s.
-            WasmHeapTopTypeInner::Any | WasmHeapTopTypeInner::Extern => true,
-
+            WasmHeapTypeInner::Any | WasmHeapTypeInner::Extern => true,
             // All others are not.
-            WasmHeapTopTypeInner::Func | WasmHeapTopTypeInner::Exn | WasmHeapTopTypeInner::Cont => {
-                false
-            }
+            _ => false,
         }
     }
 
@@ -157,16 +218,21 @@ impl WasmHeapType {
     /// a GC heap?
     #[inline]
     pub fn is_vmgcref_type_and_not_i31(&self) -> bool {
-        self.is_vmgcref_type() && self.ty != WasmHeapTypeInner::I31
+        self.is_vmgcref_type() && self.inner != WasmHeapTypeInner::I31
     }
 
-    /// Get this types top type
-    pub(crate) fn top(&self) -> WasmHeapTopType {
-        let inner = match self.ty {
+    /// Get the top type of this heap type's type hierarchy.
+    ///
+    /// The returned heap type is a supertype of all types in this heap type's
+    /// type hierarchy.
+    pub fn top(&self) -> Self {
+        let ty = match self.inner {
             WasmHeapTypeInner::Func
             | WasmHeapTypeInner::ConcreteFunc(_)
-            | WasmHeapTypeInner::NoFunc => WasmHeapTopTypeInner::Func,
-            WasmHeapTypeInner::Extern | WasmHeapTypeInner::NoExtern => WasmHeapTopTypeInner::Extern,
+            | WasmHeapTypeInner::NoFunc => WasmHeapTypeInner::Func,
+
+            WasmHeapTypeInner::Extern | WasmHeapTypeInner::NoExtern => WasmHeapTypeInner::Extern,
+
             WasmHeapTypeInner::Any
             | WasmHeapTypeInner::Eq
             | WasmHeapTypeInner::I31
@@ -174,13 +240,208 @@ impl WasmHeapType {
             | WasmHeapTypeInner::ConcreteArray(_)
             | WasmHeapTypeInner::Struct
             | WasmHeapTypeInner::ConcreteStruct(_)
-            | WasmHeapTypeInner::None => WasmHeapTopTypeInner::Any,
-            WasmHeapTypeInner::Exn | WasmHeapTypeInner::NoExn => WasmHeapTopTypeInner::Exn,
-            WasmHeapTypeInner::Cont | WasmHeapTypeInner::NoCont => WasmHeapTopTypeInner::Cont,
+            | WasmHeapTypeInner::None => WasmHeapTypeInner::Any,
+
+            WasmHeapTypeInner::Exn | WasmHeapTypeInner::NoExn => WasmHeapTypeInner::Exn,
+            WasmHeapTypeInner::Cont | WasmHeapTypeInner::NoCont => WasmHeapTypeInner::Cont,
         };
-        WasmHeapTopType {
+
+        Self {
             shared: self.shared,
-            inner,
+            inner: ty,
+        }
+    }
+
+    /// Is this the top type within its type hierarchy?
+    #[inline]
+    pub fn is_top(&self) -> bool {
+        matches!(
+            self.inner,
+            WasmHeapTypeInner::Any
+                | WasmHeapTypeInner::Extern
+                | WasmHeapTypeInner::Func
+                | WasmHeapTypeInner::Exn
+                | WasmHeapTypeInner::Cont
+        )
+    }
+
+    /// Get the bottom type of this heap type's type hierarchy.
+    ///
+    /// The returned heap type is a subtype of all types in this heap type's
+    /// type hierarchy.
+    #[inline]
+    pub fn bottom(&self) -> Self {
+        let ty = match self.inner {
+            WasmHeapTypeInner::Extern | WasmHeapTypeInner::NoExtern => WasmHeapTypeInner::NoExtern,
+
+            WasmHeapTypeInner::Func
+            | WasmHeapTypeInner::ConcreteFunc(_)
+            | WasmHeapTypeInner::NoFunc => WasmHeapTypeInner::NoFunc,
+
+            WasmHeapTypeInner::Any
+            | WasmHeapTypeInner::Eq
+            | WasmHeapTypeInner::I31
+            | WasmHeapTypeInner::Array
+            | WasmHeapTypeInner::ConcreteArray(_)
+            | WasmHeapTypeInner::Struct
+            | WasmHeapTypeInner::ConcreteStruct(_)
+            | WasmHeapTypeInner::None => WasmHeapTypeInner::None,
+
+            WasmHeapTypeInner::Exn | WasmHeapTypeInner::NoExn => WasmHeapTypeInner::NoExn,
+            WasmHeapTypeInner::Cont | WasmHeapTypeInner::NoCont => WasmHeapTypeInner::NoCont,
+        };
+
+        Self {
+            shared: self.shared,
+            inner: ty,
+        }
+    }
+
+    /// Is this the bottom type within its type hierarchy?
+    #[inline]
+    pub fn is_bottom(&self) -> bool {
+        matches!(
+            self.inner,
+            WasmHeapTypeInner::None
+                | WasmHeapTypeInner::NoExtern
+                | WasmHeapTypeInner::NoFunc
+                | WasmHeapTypeInner::NoExn
+                | WasmHeapTypeInner::NoCont
+        )
+    }
+
+    /// Is this a concrete, user-defined heap type?
+    ///
+    /// Types that are not concrete, user-defined types are abstract types.
+    #[inline]
+    pub fn is_concrete(&self) -> bool {
+        matches!(
+            self.inner,
+            WasmHeapTypeInner::ConcreteFunc(_)
+                | WasmHeapTypeInner::ConcreteArray(_)
+                | WasmHeapTypeInner::ConcreteStruct(_)
+        )
+    }
+
+    pub fn matches(&self, other: &WasmHeapType) -> bool {
+        match (&self.inner, &other.inner) {
+            (WasmHeapTypeInner::Extern, WasmHeapTypeInner::Extern) => true,
+            (WasmHeapTypeInner::Extern, _) => false,
+
+            (
+                WasmHeapTypeInner::NoExtern,
+                WasmHeapTypeInner::NoExtern | WasmHeapTypeInner::Extern,
+            ) => true,
+            (WasmHeapTypeInner::NoExtern, _) => false,
+
+            (
+                WasmHeapTypeInner::NoFunc,
+                WasmHeapTypeInner::NoFunc
+                | WasmHeapTypeInner::ConcreteFunc(_)
+                | WasmHeapTypeInner::Func,
+            ) => true,
+            (WasmHeapTypeInner::NoFunc, _) => false,
+
+            (WasmHeapTypeInner::ConcreteFunc(_), WasmHeapTypeInner::Func) => true,
+            (WasmHeapTypeInner::ConcreteFunc(_a), WasmHeapTypeInner::ConcreteFunc(_b)) => {
+                // assert!(a.comes_from_same_engine(b.engine()));
+                // a.engine()
+                //     .signatures()
+                //     .is_subtype(a.type_index(), b.type_index())
+
+                todo!()
+            }
+            (WasmHeapTypeInner::ConcreteFunc(_), _) => false,
+
+            (WasmHeapTypeInner::Func, WasmHeapTypeInner::Func) => true,
+            (WasmHeapTypeInner::Func, _) => false,
+
+            (
+                WasmHeapTypeInner::None,
+                WasmHeapTypeInner::None
+                | WasmHeapTypeInner::ConcreteArray(_)
+                | WasmHeapTypeInner::Array
+                | WasmHeapTypeInner::ConcreteStruct(_)
+                | WasmHeapTypeInner::Struct
+                | WasmHeapTypeInner::I31
+                | WasmHeapTypeInner::Eq
+                | WasmHeapTypeInner::Any,
+            ) => true,
+            (WasmHeapTypeInner::None, _) => false,
+
+            (
+                WasmHeapTypeInner::ConcreteArray(_),
+                WasmHeapTypeInner::Array | WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any,
+            ) => true,
+            (WasmHeapTypeInner::ConcreteArray(_a), WasmHeapTypeInner::ConcreteArray(_b)) => {
+                // assert!(a.comes_from_same_engine(b.engine()));
+                // a.engine()
+                //     .signatures()
+                //     .is_subtype(a.type_index(), b.type_index())
+
+                todo!()
+            }
+            (WasmHeapTypeInner::ConcreteArray(_), _) => false,
+
+            (
+                WasmHeapTypeInner::Array,
+                WasmHeapTypeInner::Array | WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any,
+            ) => true,
+            (WasmHeapTypeInner::Array, _) => false,
+
+            (
+                WasmHeapTypeInner::ConcreteStruct(_),
+                WasmHeapTypeInner::Struct | WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any,
+            ) => true,
+            (WasmHeapTypeInner::ConcreteStruct(_a), WasmHeapTypeInner::ConcreteStruct(_b)) => {
+                // assert!(a.comes_from_same_engine(b.engine()));
+                // a.engine()
+                //     .signatures()
+                //     .is_subtype(a.type_index(), b.type_index())
+                todo!()
+            }
+            (WasmHeapTypeInner::ConcreteStruct(_), _) => false,
+
+            (
+                WasmHeapTypeInner::Struct,
+                WasmHeapTypeInner::Struct | WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any,
+            ) => true,
+            (WasmHeapTypeInner::Struct, _) => false,
+
+            (
+                WasmHeapTypeInner::I31,
+                WasmHeapTypeInner::I31 | WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any,
+            ) => true,
+            (WasmHeapTypeInner::I31, _) => false,
+
+            (WasmHeapTypeInner::Eq, WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any) => true,
+            (WasmHeapTypeInner::Eq, _) => false,
+
+            (WasmHeapTypeInner::Any, WasmHeapTypeInner::Any) => true,
+            (WasmHeapTypeInner::Any, _) => false,
+
+            (WasmHeapTypeInner::Exn, WasmHeapTypeInner::Exn) => true,
+            (WasmHeapTypeInner::Exn, _) => false,
+            (WasmHeapTypeInner::NoExn, WasmHeapTypeInner::NoExn | WasmHeapTypeInner::Exn) => true,
+            (WasmHeapTypeInner::NoExn, _) => false,
+
+            (WasmHeapTypeInner::Cont, WasmHeapTypeInner::Cont) => true,
+            (WasmHeapTypeInner::Cont, _) => false,
+            (WasmHeapTypeInner::NoCont, WasmHeapTypeInner::NoCont | WasmHeapTypeInner::Cont) => {
+                true
+            }
+            (WasmHeapTypeInner::NoCont, _) => false,
+        }
+    }
+
+    pub fn ensure_matches(&self, other: &WasmHeapType) -> wasm::Result<()> {
+        if self.matches(other) {
+            Ok(())
+        } else {
+            bail!(
+                Error::MismatchedTypes,
+                "type mismatch: expected {other}, found {self}"
+            );
         }
     }
 }
@@ -218,7 +479,7 @@ impl fmt::Display for WasmHeapType {
         if self.shared {
             write!(f, "shared ")?;
         }
-        match &self.ty {
+        match &self.inner {
             WasmHeapTypeInner::Extern => write!(f, "extern"),
             WasmHeapTypeInner::NoExtern => write!(f, "noextern"),
             WasmHeapTypeInner::Func => write!(f, "func"),
@@ -245,7 +506,7 @@ impl TypeTrace for WasmHeapType {
     where
         F: FnMut(CanonicalizedTypeIndex) -> Result<(), E>,
     {
-        match self.ty {
+        match self.inner {
             WasmHeapTypeInner::ConcreteFunc(index)
             | WasmHeapTypeInner::ConcreteArray(index)
             | WasmHeapTypeInner::ConcreteStruct(index) => func(index),
@@ -257,7 +518,7 @@ impl TypeTrace for WasmHeapType {
     where
         F: FnMut(&mut CanonicalizedTypeIndex) -> Result<(), E>,
     {
-        match self.ty {
+        match self.inner {
             WasmHeapTypeInner::ConcreteFunc(ref mut index)
             | WasmHeapTypeInner::ConcreteArray(ref mut index)
             | WasmHeapTypeInner::ConcreteStruct(ref mut index) => func(index),
@@ -266,24 +527,13 @@ impl TypeTrace for WasmHeapType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct WasmHeapTopType {
-    pub shared: bool,
-    pub inner: WasmHeapTopTypeInner,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum WasmHeapTopTypeInner {
-    /// The common supertype of all external references.
-    Extern,
-    /// The common supertype of all internal references.
-    Any,
-    /// The common supertype of all function references.
-    Func,
-    /// The common supertype of all exception references.
-    Exn,
-    /// The common supertype of all continuation references.
-    Cont,
+impl WasmHeapTypeInner {
+    enum_accessors! {
+        e
+        (ConcreteFunc(CanonicalizedTypeIndex) is_concrete_func get_concrete_func unwrap_concrete_func *e)
+        (ConcreteArray(CanonicalizedTypeIndex) is_concrete_array get_concrete_array unwrap_concrete_array *e)
+        (ConcreteStruct(CanonicalizedTypeIndex) is_concrete_struct get_concrete_struct unwrap_concrete_struct *e)
+    }
 }
 
 /// A concrete, user-defined (or host-defined) Wasm type.

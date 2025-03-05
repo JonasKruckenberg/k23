@@ -22,8 +22,8 @@ pub use module_translator::ModuleTranslator;
 pub use module_types::ModuleTypes;
 pub use type_convert::WasmparserTypeConverter;
 pub use types::{
-    EntityType, WasmFuncType, WasmHeapTopTypeInner, WasmHeapType, WasmHeapTypeInner, WasmRecGroup,
-    WasmRefType, WasmSubType, WasmValType,
+    EntityType, WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmRecGroup, WasmRefType,
+    WasmSubType, WasmValType,
 };
 use wasmparser::WasmFeatures;
 use wasmparser::collections::IndexMap;

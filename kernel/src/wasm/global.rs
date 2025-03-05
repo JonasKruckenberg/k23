@@ -20,17 +20,24 @@ impl Global {
     // pub fn set(&self, store: &mut Store, val: Val) {
     //     todo!()
     // }
-    pub(crate) fn as_vmglobal_import(&self, store: &Store) -> VMGlobalImport {
+    pub(super) fn as_vmglobal_import(&self, store: &Store) -> VMGlobalImport {
         VMGlobalImport {
             from: store[self.0].definition,
             vmctx: store[self.0].vmctx,
         }
     }
-    pub(crate) fn from_vm_export(store: &mut Store, export: runtime::ExportedGlobal) -> Self {
+
+    /// # Safety
+    ///
+    /// The caller must ensure `export` is a valid exported global within `store`.
+    pub(super) unsafe fn from_vm_export(
+        store: &mut Store,
+        export: runtime::ExportedGlobal,
+    ) -> Self {
         Self(store.push_global(export))
     }
 
-    pub(crate) fn comes_from_same_store(self, store: &Store) -> bool {
+    pub fn comes_from_same_store(self, store: &Store) -> bool {
         store.has_global(self.0)
     }
 }

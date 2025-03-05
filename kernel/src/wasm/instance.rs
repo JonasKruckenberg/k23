@@ -120,7 +120,8 @@ impl Instance {
         }
 
         let instance = &mut store[self.0]; // Reborrow the &mut InstanceHandle
-        let item = Extern::from_export(instance.get_export_by_index(entity), store);
+        // Safety: we just took `instance` from the store, so all its exports must also belong to the store
+        let item = unsafe { Extern::from_export(instance.get_export_by_index(entity), store) };
         let data = &mut store[self.0];
         data.exports[export_name_index] = Some(item.clone());
         item

@@ -11,8 +11,8 @@ use crate::wasm::indices::{
 };
 use crate::wasm::runtime::{VMFuncRef, VMMemoryDefinition, VMOffsets, VMTableDefinition};
 use crate::wasm::translate::{
-    ModuleTypes, TranslatedModule, WasmFuncType, WasmHeapTopTypeInner, WasmHeapType,
-    WasmHeapTypeInner, WasmRefType, WasmparserTypeConverter,
+    ModuleTypes, TranslatedModule, WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmRefType,
+    WasmparserTypeConverter,
 };
 use crate::wasm::trap::{TRAP_BAD_SIGNATURE, TRAP_INDIRECT_CALL_TO_NULL, TRAP_NULL_REFERENCE};
 use crate::wasm::utils::{reference_type, value_type, wasm_call_signature};
@@ -455,8 +455,8 @@ impl TranslationEnvironment<'_> {
     pub fn reference_type(&self, hty: &WasmHeapType) -> (Type, bool) {
         let ty = reference_type(hty, self.pointer_type());
         let needs_stack_map = match hty.top().inner {
-            WasmHeapTopTypeInner::Extern | WasmHeapTopTypeInner::Any => true,
-            WasmHeapTopTypeInner::Func => false,
+            WasmHeapTypeInner::Extern | WasmHeapTypeInner::Any => true,
+            WasmHeapTypeInner::Func => false,
             _ => todo!(),
         };
         (ty, needs_stack_map)
@@ -1389,7 +1389,7 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
         // but essentially this all boils down to the "old" runtime signature check or a static
         // signature check for typed function references.
         let expected_type = &self.env.module.tables[table_index].element_type;
-        match expected_type.heap_type.ty {
+        match expected_type.heap_type.inner {
             // This is the old "funcref" (ref null func) type. This means inserting code
             // for a runtime signature check.
             WasmHeapTypeInner::Func => {

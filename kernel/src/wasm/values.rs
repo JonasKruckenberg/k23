@@ -1,6 +1,6 @@
 use crate::wasm::func::Func;
 use crate::wasm::runtime::VMVal;
-use crate::wasm::translate::{WasmHeapTopTypeInner, WasmHeapType, WasmValType};
+use crate::wasm::translate::{WasmHeapType, WasmHeapTypeInner, WasmRefType, WasmValType};
 use crate::wasm::{Store, enum_accessors};
 use core::ptr;
 
@@ -45,6 +45,17 @@ impl Val {
     #[inline]
     pub const fn null_func_ref() -> Self {
         Self::FuncRef(None)
+    }
+
+    pub const fn ty(&self) -> WasmValType {
+        match self {
+            Val::I32(_) => WasmValType::I32,
+            Val::I64(_) => WasmValType::I64,
+            Val::F32(_) => WasmValType::F32,
+            Val::F64(_) => WasmValType::F64,
+            Val::V128(_) => WasmValType::V128,
+            Val::FuncRef(_) => WasmValType::Ref(WasmRefType::FUNCREF),
+        }
     }
 
     /// Convenience method to convert this [`Val`] into a [`VMVal`].
@@ -142,7 +153,7 @@ impl Ref {
     #[inline]
     pub fn null(heap_type: &WasmHeapType) -> Self {
         match heap_type.top().inner {
-            WasmHeapTopTypeInner::Func => Ref::Func(None),
+            WasmHeapTypeInner::Func => Ref::Func(None),
             ty => todo!("heap type: {ty:?}"),
         }
     }

@@ -13,16 +13,21 @@ impl Table {
     // pub fn ty(&self, _store: &Store) -> &TableType {
     //     todo!()
     // }
-    pub(crate) fn as_vmtable_import(&self, store: &Store) -> VMTableImport {
+    pub(super) fn as_vmtable_import(&self, store: &Store) -> VMTableImport {
         VMTableImport {
             from: store[self.0].definition,
             vmctx: store[self.0].vmctx,
         }
     }
-    pub(crate) fn from_vm_export(store: &mut Store, export: runtime::ExportedTable) -> Self {
+
+    /// # Safety
+    ///
+    /// The caller must ensure `export` is a valid exported table within `store`.
+    pub(super) unsafe fn from_vm_export(store: &mut Store, export: runtime::ExportedTable) -> Self {
         Self(store.push_table(export))
     }
-    pub(crate) fn comes_from_same_store(self, store: &Store) -> bool {
+
+    pub fn comes_from_same_store(self, store: &Store) -> bool {
         store.has_table(self.0)
     }
 }
