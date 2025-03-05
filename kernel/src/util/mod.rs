@@ -8,8 +8,10 @@
 use core::ptr::NonNull;
 
 pub mod atomic_cell;
+pub mod either;
 pub mod fast_rand;
 pub mod maybe_uninit;
+pub mod zip_eq;
 
 /// Helper to construct a `NonNull<T>` from a raw pointer to `T`, with null
 /// checks elided in release mode.
