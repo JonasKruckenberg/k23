@@ -67,6 +67,8 @@ pub enum Error {
         field: String,
     },
     FutureDropped,
+    MismatchedTypes,
+    CrossStore,
 }
 
 impl fmt::Display for Error {
@@ -103,6 +105,8 @@ impl fmt::Display for Error {
                 writeln!(f, "Name {module}::{field} is already defined")
             }
             Self::FutureDropped => f.write_str("Fiber future dropped"),
+            Self::MismatchedTypes => f.write_str("Type mismatch"),
+            Self::CrossStore => f.write_str("Attempted to use values across stores"),
         }
     }
 }

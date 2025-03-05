@@ -32,6 +32,8 @@ use crate::{enum_accessors, owned_enum_accessors};
 use core::fmt::Write;
 use wasmparser::Validator;
 
+use crate::shell::Command;
+use crate::wasm::func::TypedFunc;
 pub use engine::Engine;
 pub use errors::Error;
 pub use func::Func;
@@ -96,13 +98,19 @@ pub enum Extern {
 }
 
 impl Extern {
-    pub(crate) fn from_export(export: runtime::Export, store: &mut Store) -> Self {
-        use runtime::Export;
-        match export {
-            Export::Function(e) => Extern::Func(Func::from_vm_export(store, e)),
-            Export::Table(e) => Extern::Table(Table::from_vm_export(store, e)),
-            Export::Memory(e) => Extern::Memory(Memory::from_vm_export(store, e)),
-            Export::Global(e) => Extern::Global(Global::from_vm_export(store, e)),
+    /// # Safety
+    ///
+    /// The caller must ensure `export` is a valid export within `store`.
+    pub(crate) unsafe fn from_export(export: runtime::Export, store: &mut Store) -> Self {
+        // Safety: ensured by caller
+        unsafe {
+            use runtime::Export;
+            match export {
+                Export::Function(e) => Extern::Func(Func::from_vm_export(store, e)),
+                Export::Table(e) => Extern::Table(Table::from_vm_export(store, e)),
+                Export::Memory(e) => Extern::Memory(Memory::from_vm_export(store, e)),
+                Export::Global(e) => Extern::Global(Global::from_vm_export(store, e)),
+            }
         }
     }
 
@@ -123,14 +131,19 @@ impl Extern {
     }
 }
 
-#[cold]
-pub fn test() {
+pub const TEST: Command = Command::new("wasm-test")
+    .with_help("run the WASM test payload")
+    .with_fn(|_| {
+        test();
+        Ok(())
+    });
+
+fn test() {
     let engine = Engine::default();
     let mut validator = Validator::new();
     let mut linker = Linker::new(&engine);
     let mut store = Store::new(&engine, FRAME_ALLOC.get().unwrap());
     let mut const_eval = ConstExprEvaluator::default();
-    // let mut aspace = AddressSpace::new_user(2, None).unwrap();
 
     // instantiate & define the fib_cpp module
     {
@@ -168,10 +181,14 @@ pub fn test() {
 
         instance.debug_vmctx(&store);
 
-        let func = instance.get_func(&mut store, "fib_test").unwrap();
+        let func: TypedFunc<(), ()> = instance
+            .get_func(&mut store, "fib_test")
+            .unwrap()
+            .typed(&store)
+            .unwrap();
 
         scheduler().spawn(store.alloc.0.clone(), async move {
-            func.call(&mut store, &[], &mut []).await.unwrap();
+            func.call(&mut store, ()).await.unwrap();
             tracing::info!("done");
         });
     }

@@ -20,7 +20,7 @@ use core::str::FromStr;
 use fallible_iterator::FallibleIterator;
 use spin::Once;
 
-static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
+static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN, crate::wasm::TEST];
 
 pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler) {
     static ONCE: Once = Once::new();

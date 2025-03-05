@@ -61,7 +61,7 @@ impl<'a> WasmparserTypeConverter<'a> {
                     AbstractHeapType::NoCont => NoCont,
                 };
 
-                WasmHeapType { shared, ty }
+                WasmHeapType { shared, inner: ty }
             }
         }
     }

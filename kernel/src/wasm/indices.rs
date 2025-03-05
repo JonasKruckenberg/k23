@@ -112,6 +112,13 @@ entity_impl!(ModuleInternedRecGroupIndex);
 pub struct VMSharedTypeIndex(u32);
 entity_impl!(VMSharedTypeIndex);
 
+impl Default for VMSharedTypeIndex {
+    #[inline]
+    fn default() -> Self {
+        Self(u32::MAX)
+    }
+}
+
 #[cfg(test)]
 mod test_vmshared_type_index {
     use super::VMSharedTypeIndex;

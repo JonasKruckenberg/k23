@@ -109,8 +109,8 @@ macro_rules! bail {
     ($error:expr) => {
         return Err($error);
     };
-    ($error:expr, $msg:expr) => {
-        tracing::error!($msg);
+    ($error:expr, $($msg:tt)*) => {
+        tracing::error!($($msg)*);
         return Err($error);
     };
 }

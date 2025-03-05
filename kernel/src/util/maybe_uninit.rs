@@ -445,3 +445,29 @@ impl<T: fmt::Debug> fmt::Debug for CheckedMaybeUninit<T> {
         s.finish()
     }
 }
+
+pub trait MaybeUninitExt<T> {
+    /// Maps `MaybeUninit<T>` to `MaybeUninit<U>` using the closure provided.
+    ///
+    /// Note that this is `unsafe` as there is no guarantee that `U` comes from
+    /// `T`.
+    ///
+    /// # Safety
+    ///
+    /// TODO
+    unsafe fn map<U>(&mut self, f: impl FnOnce(*mut T) -> *mut U) -> &mut MaybeUninit<U>;
+}
+
+impl<T> MaybeUninitExt<T> for MaybeUninit<T> {
+    unsafe fn map<U>(&mut self, f: impl FnOnce(*mut T) -> *mut U) -> &mut MaybeUninit<U> {
+        // Safety: ensured by caller
+        unsafe {
+            let new_ptr = f(self.as_mut_ptr());
+            #[expect(
+                clippy::transmute_ptr_to_ref,
+                reason = "`transmute` makes it clearer that we're actually converting types here"
+            )]
+            core::mem::transmute::<*mut U, &mut MaybeUninit<U>>(new_ptr)
+        }
+    }
+}
