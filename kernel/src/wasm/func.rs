@@ -1,33 +1,255 @@
 use crate::util::zip_eq::IteratorExt;
 use crate::wasm::indices::VMSharedTypeIndex;
-use crate::wasm::runtime::{StaticVMOffsets, VMContext, VMFuncRef, VMFunctionImport, VMVal};
+use crate::wasm::runtime::{StaticVMOffsets, VMFunctionImport};
 use crate::wasm::store::Stored;
 use crate::wasm::translate::{WasmFuncType, WasmHeapType, WasmRefType, WasmValType};
 use crate::wasm::type_registry::RegisteredType;
-use crate::wasm::values::Val;
-use crate::wasm::{Error, MAX_WASM_STACK, Store, Trap, runtime};
-use crate::{arch, ensure, wasm};
-use core::arch::asm;
+use crate::wasm::{Error, MAX_WASM_STACK, Store, Trap, VMContext, VMFuncRef, VMVal, Val, runtime};
+use crate::{arch, ensure};
 use core::ffi::c_void;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core::{mem, ptr};
 use fallible_iterator::FallibleIterator;
-use wasmparser::ValType;
 
-/// A WebAssembly function.
+pub struct TypedFunc<Params, Results> {
+    ty: FuncType,
+    func: Func,
+    _m: PhantomData<fn(Params) -> Results>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Func(Stored<runtime::ExportedFunction>);
 
+/// A WebAssembly function type.
+///
+/// This is essentially a reference counted index into the engine's type registry.
+pub struct FuncType(RegisteredType);
+
+#[derive(Copy, Clone)]
+pub enum TypeCheckPosition {
+    Param,
+    Result,
+}
+
+/// A type that can be used as an argument or return value for WASM functions.
+///
+/// # Safety
+///
+/// This trait should not be implemented manually.
+pub unsafe trait WasmTy: Send {
+    /// Return this values type.
+    fn valtype() -> WasmValType;
+    /// Store the values lowered representation into the given `slot`.
+    fn store(self, store: &mut Store, slot: &mut MaybeUninit<VMVal>) -> super::Result<()>;
+    /// Load the value from its lowered representation.
+    unsafe fn load(store: &mut Store, ptr: &VMVal) -> Self;
+    /// Is the value compatible with the given store?
+    ///
+    /// Numbers (`I32`, `I64`, `F32`, `F64`, and `V128`) are store agnostic and can be used
+    /// across stores, while all references are tied to their owning store (they are just pointers
+    /// into store-owned memory after all) and *cannot* be used outside their owning store.
+    fn compatible_with_store(&self, store: &Store) -> bool;
+
+    fn dynamic_concrete_type_check(
+        &self,
+        store: &Store,
+        nullable: bool,
+        actual: &WasmHeapType,
+    ) -> super::Result<()>;
+
+    /// Assert this value is of the `expected` type.
+    #[inline]
+    fn typecheck(actual: &WasmValType, position: TypeCheckPosition) -> super::Result<()> {
+        let expected = Self::valtype();
+
+        match position {
+            TypeCheckPosition::Result => expected.ensure_matches(actual),
+            TypeCheckPosition::Param => match (expected.get_ref(), actual.get_ref()) {
+                (Some(expected_ref), Some(actual_ref)) if actual_ref.heap_type.is_concrete() => {
+                    expected_ref
+                        .heap_type
+                        .top()
+                        .ensure_matches(&actual_ref.heap_type.top())
+                }
+                _ => expected.ensure_matches(actual),
+            },
+        }
+    }
+}
+
+/// A type that can be used as an argument for WASM functions.
+///
+/// This trait is implemented for bare types that may be passed to WASM and tuples of those types.
+///
+/// # Safety
+///
+/// This trait should not be implemented manually.
+pub unsafe trait WasmParams: Send {
+    /// The storage for holding the [`VMVal`] parameters and results
+    ///
+    /// The storage for holding the array-call parameters and results.
+    /// This should most likely be a `[VMVal; N]` array where `N` is the number of parameters.
+    type VMValStorage: Copy;
+
+    /// Assert that the provided types are compatible with this type.
+    ///
+    /// # Errors
+    ///
+    /// This should return an error IF
+    /// - The number of provided types does not *exactly* match the number of expected types.
+    /// - The type does not match its expected type.
+    fn typecheck<'a>(params: impl ExactSizeIterator<Item = &'a WasmValType>) -> super::Result<()>;
+
+    /// Stores this types lowered representation into the provided buffer.
+    fn store(
+        self,
+        store: &mut Store,
+        func_ty: &FuncType,
+        dst: &mut MaybeUninit<Self::VMValStorage>,
+    ) -> super::Result<()>;
+}
+
+/// A type that may be returned from WASM functions.
+///
+/// This trait is implemented for bare types that may be passed to WASM and tuples of those types.
+///
+/// Note: This type piggybacks off of the [`WasmParams`] trait as all types implement both
+/// [`WasmParams`] AND [`WasmResults`] we can just reuse [`WasmParams`] typecheck and storage
+/// implementations.
+///
+/// # Safety
+///
+/// This trait should not be implemented manually.
+pub unsafe trait WasmResults: WasmParams {
+    /// Loads type from its lowered representation.
+    unsafe fn load(store: &mut Store, abi: &Self::VMValStorage) -> Self;
+}
+
+// === impl TypedFunc ===
+
+impl<Params, Results> TypedFunc<Params, Results>
+where
+    Params: WasmParams,
+    Results: WasmResults,
+{
+    /// Invokes this functions with the `params`, returning the results asynchronously.
+    ///
+    /// Execution of WebAssembly will happen synchronously in the `poll` method of the
+    /// future returned from this function. Note that, the faster `poll` methods return the more
+    /// responsive the overall system is, so WebAssembly execution interruption should be configured
+    /// such that this futures `poll` method resolves *reasonably* quickly.
+    /// (Reasonably because at the end of the day a task will need to block if it wants to perform
+    /// any meaningful work, there is no way around it).
+    ///
+    /// This function will return `Ok(())` if execution completed without a trap
+    /// or error of any kind. In this situation the results will be written to
+    /// the provided `results` array.
+    ///
+    /// # Errors
+    ///
+    /// Any error which occurs throughout the execution of the function will be
+    /// returned as `Err(e)`.
+    /// Errors typically indicate that execution of WebAssembly was halted
+    /// mid-way and did not complete after the error condition happened.
+    pub async fn call(self, store: &mut Store, params: Params) -> super::Result<Results> {
+        store
+            .on_fiber(|store| {
+                #[cfg(debug_assertions)]
+                Self::debug_typecheck(self.ty.as_wasm_func_type());
+
+                self.call_inner(store, params)
+            })
+            .await?
+    }
+
+    fn call_inner(&self, store: &mut Store, params: Params) -> super::Result<Results> {
+        // Safety: The code below does the lowering and lifting of VM values. The correctness of which is enforced
+        // both through this type's generics AND the correct implementation of the array-call trampoline.
+        unsafe {
+            // Okay, so what is going on here?
+            //
+            // Because the `TypedFunc` generics we know exactly how much space we need for the
+            // array-call parameters and results *at compile time* (declared by the `WasmParams::VMValStorage` or
+            // `WasmResults::VMValStorage` associated types). Which neatly allows us to allocate that array on the stack.
+            //
+            // Remember that the array-call "calling convention" will store the parameters in a consecutive
+            // array and use *that same array* to store the results too. This means before jumping to
+            // WASM we essentially have a `Params::VMValStorage` on stack, while after returning we
+            // have a `Results::VMValStorage` on stack. Note also that (just like when calling through
+            // the untyped func) we need to make sure to reserve enough space to fit the larger of the two types.
+            //
+            // If that sounded suspiciously like a union, congrats! You are correct, a union is exactly
+            // what we use.
+            //
+            // Notice how `Func::call_inner` uses a very different approach: Instead of allocating on
+            // stack, it has to use a heap-allocated vec that it needs to resize appropriately.
+            union Storage<T: Copy, U: Copy> {
+                params: MaybeUninit<T>,
+                results: U,
+            }
+
+            // Allocate the space on stack
+            let mut storage = Storage::<Params::VMValStorage, Results::VMValStorage> {
+                params: MaybeUninit::uninit(),
+            };
+
+            // Aaand initialize it by lowering the params into it
+            params.store(store, &self.ty, &mut storage.params)?;
+
+            // Now, heres a tricky part: We allocated a `Storage::<Params::VMValStorage, Results::VMValStorage>`
+            // type on stack above. But what we need for the array call is a `*mut [VMVal]`. We therefore
+            // need to essentially "transmute" the union into a slice of `VMVal` which is exactly what
+            // we do below.
+            {
+                let storage_len = size_of_val::<Storage<_, _>>(&storage) / size_of::<VMVal>();
+                let storage: *mut Storage<_, _> = &mut storage;
+                let storage = storage.cast::<VMVal>();
+                let storage = core::slice::from_raw_parts_mut(storage, storage_len);
+
+                let func_ref = self.func.as_vm_func_ref(store).as_ref();
+
+                // now do the actual WASM calling and trap catching business
+                do_call(store, func_ref, storage)?;
+            }
+
+            // At this point we have successfully returned from WASM which means that now we have a
+            // `Results::VMValStorage` on stack instead of the `Params::VMValStorage` that we wrote into it.
+            // Go ahead and lift our Rust values from it and return.
+            Ok(Results::load(store, &storage.results))
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    fn debug_typecheck(ty: &WasmFuncType) {
+        Params::typecheck(ty.params.iter()).expect("params should match");
+        Results::typecheck(ty.results.iter()).expect("results should match");
+    }
+}
+
+// === impl Func ===
+
 impl Func {
-    /// Returns the type of this function.
-    ///
-    /// # Panics
-    ///
-    /// TODO
+    pub fn typed<Params, Results>(self, store: &Store) -> super::Result<TypedFunc<Params, Results>>
+    where
+        Params: WasmParams,
+        Results: WasmResults,
+    {
+        let ty = self.ty(store);
+        let wasm_ty = ty.as_wasm_func_type();
+        Params::typecheck(wasm_ty.params.iter())?;
+        Results::typecheck(wasm_ty.results.iter())?;
+
+        Ok(TypedFunc {
+            ty,
+            func: self,
+            _m: PhantomData,
+        })
+    }
+
     pub fn ty(self, store: &Store) -> FuncType {
-        // Safety: at this point `VMContext` is initialized, so accessing its fields is safe
+        // Safety: An FuncRef we get from the store is well initialized
         let func_ref = unsafe { store[self.0].func_ref.as_ref() };
         let ty = store
             .engine
@@ -37,37 +259,69 @@ impl Func {
         FuncType(ty)
     }
 
+    pub fn comes_from_same_store(self, store: &Store) -> bool {
+        store.has_function(self.0)
+    }
+
+    /// Invokes this function with the `params` given and writes returned values
+    /// to `results`.
+    ///
+    /// The `params` here must match the type signature of this `Func`, or an
+    /// error will occur. Additionally, `results` must have the same
+    /// length as the number of results for this function.
+    ///
+    /// Execution of WebAssembly will happen synchronously in the `poll` method of the
+    /// future returned from this function. Note that, the faster `poll` methods return the more
+    /// responsive the overall system is, so WebAssembly execution interruption should be configured
+    /// such that this futures `poll` method resolves *reasonably* quickly.
+    /// (Reasonably because at the end of the day a task will need to block if it wants to perform
+    /// any meaningful work, there is no way around it).
+    ///
+    /// This function will return `Ok(())` if execution completed without a trap
+    /// or error of any kind. In this situation the results will be written to
+    /// the provided `results` array.
+    ///
+    /// # Errors
+    ///
+    /// Any error which occurs throughout the execution of the function will be
+    /// returned as `Err(e)`.
+    /// Errors typically indicate that execution of WebAssembly was halted
+    /// mid-way and did not complete after the error condition happened.
     pub async fn call(
-        &self,
+        self,
         store: &mut Store,
         params: &[Val],
         results: &mut [Val],
-    ) -> wasm::Result<()> {
-        let ty = self.ty(store);
-        let ty = ty.as_wasm_func_type();
-
-        let mut params_ = ty.params.iter().zip_eq(params);
-        while let Some((expected, param)) = params_.next().map_err(|_| Error::MismatchedTypes)? {
-            let found = param.ty();
-            ensure!(
-                *expected == found,
-                Error::MismatchedTypes,
-                "Type mismatch. Expected `{expected:?}`, but found `{found:?}`"
-            );
-        }
-
-        ensure!(
-            results.len() >= ty.results.len(),
-            Error::MismatchedTypes,
-            "Results slice too small. Need space for at least {}, but got only {}",
-            ty.results.len(),
-            results.len()
-        );
-
+    ) -> super::Result<()> {
         store
             .on_fiber(|store| {
-                // Safety: we have checked the
-                unsafe { self.call_unchecked(store, params, results) }
+                // Do the typechecking. Notice how `TypedFunc::call` is essentially the same function
+                // minus this typechecking? Yeah. That's the benefit of the typed function.
+                let ty = self.ty(store);
+                let ty = ty.as_wasm_func_type();
+
+                let mut params_ = ty.params.iter().zip_eq(params);
+                while let Some((expected, param)) =
+                    params_.next().map_err(|_| Error::MismatchedTypes)?
+                {
+                    let found = param.ty();
+                    ensure!(
+                        *expected == found,
+                        Error::MismatchedTypes,
+                        "Type mismatch. Expected `{expected:?}`, but found `{found:?}`"
+                    );
+                }
+
+                ensure!(
+                    results.len() >= ty.results.len(),
+                    Error::MismatchedTypes,
+                    "Results slice too small. Need space for at least {}, but got only {}",
+                    ty.results.len(),
+                    results.len()
+                );
+
+                // Safety: we have checked the types above, we're safe to proceed
+                unsafe { self.call_inner(store, params, results) }
             })
             .await?
     }
@@ -83,28 +337,40 @@ impl Func {
     ///
     /// It is up to the caller to ensure the provided arguments are of the correct types and that
     /// the `results` slice has enough space to hold the results of the function.
-    unsafe fn call_unchecked(
-        &self,
+    unsafe fn call_inner(
+        self,
         store: &mut Store,
         params: &[Val],
         results: &mut [Val],
-    ) -> wasm::Result<()> {
-        let values_vec_size = params.len().max(results.len());
+    ) -> super::Result<()> {
+        // This function mainly performs the lowering and lifting of VMVal values from and to Rust.
+        // Because - unlike TypedFunc - we don't have compile-time knowledge about the function type,
+        // we use a heap allocated vec (obtained through `store.take_wasm_vmval_storage()`) to store
+        // our parameters into and read results from.
+        //
+        // This is obviously a little less efficient, but it's not that big of a deal.
 
         // take out the argument storage from the store
         let mut values_vec = store.take_wasm_vmval_storage();
         debug_assert!(values_vec.is_empty());
 
-        // copy the arguments into the storage
+        // resize the vec so we can be sure that params and results will fit.
+        let values_vec_size = params.len().max(results.len());
         values_vec.resize_with(values_vec_size, || VMVal::v128(0));
+
+        // copy the arguments into the storage vec
         for (arg, slot) in params.iter().copied().zip(&mut values_vec) {
             *slot = arg.as_vmval(store);
         }
 
+        // Safety: func refs obtained from our store are always usable by us.
+        let func_ref = unsafe { self.as_vm_func_ref(store).as_ref() };
+
         // do the actual call
-        // Safety: caller has to ensure safety
+        // Safety: at this point we have typechecked, we have allocated enough memory for the params
+        // and results, and obtained a valid func ref to call.
         unsafe {
-            self.call_unchecked_raw(store, values_vec.as_mut_ptr(), values_vec_size)?;
+            do_call(store, func_ref, &mut values_vec)?;
         }
 
         // copy the results out of the storage
@@ -124,64 +390,9 @@ impl Func {
         Ok(())
     }
 
-    #[allow(
-        unreachable_code,
-        clippy::unnecessary_wraps,
-        reason = "TODO rework in progress. see #298"
-    )]
-    unsafe fn call_unchecked_raw(
-        &self,
-        store: &mut Store,
-        args_results_ptr: *mut VMVal,
-        args_results_len: usize,
-    ) -> wasm::Result<()> {
-        // Safety: funcref is always initialized
-        let func_ref = unsafe { store[self.0].func_ref.as_ref() };
-        // Safety: funcref is always initialized
-        let vmctx = unsafe { VMContext::from_opaque(func_ref.vmctx) };
-        let module = store[store.get_instance_from_vmctx(vmctx)].module();
-
-        let _guard = enter_wasm(vmctx, &module.offsets().static_);
-
-        let res = wasm::trap_handler::catch_traps(vmctx, module.offsets().static_.clone(), || {
-            tracing::debug!("jumping to WASM");
-
-            // Safety: TODO
-            unsafe { arch::array_call(func_ref, vmctx, vmctx, args_results_ptr, args_results_len) }
-        });
-
-        tracing::trace!("returned from WASM {res:?}");
-        match res {
-            Ok(_)
-            // The userspace ABI uses the Trap::Exit code to signal a graceful exit
-            | Err(Error::Trap {
-                      trap: Trap::Exit, ..
-                  }) => Ok(()),
-            Err(err) => Err(err),
-        }
-    }
-
-    pub(super) fn as_raw(&self, store: &mut Store) -> *mut c_void {
-        store[self.0].func_ref.as_ptr().cast()
-    }
-
-    fn as_vm_func_ref(self, store: &Store) -> NonNull<VMFuncRef> {
-        store[self.0].func_ref
-    }
-
-    pub(super) fn as_vmfunction_import(&self, store: &Store) -> VMFunctionImport {
-        // Safety: at this point `VMContext` is initialized, so accessing its fields is safe
-        let func_ref = unsafe { store[self.0].func_ref.as_ref() };
-        VMFunctionImport {
-            wasm_call: func_ref.wasm_call,
-            array_call: func_ref.array_call,
-            vmctx: func_ref.vmctx,
-        }
-    }
-
     /// # Safety
     ///
-    /// The caller must ensure `export` is a valid exported function within `store`.
+    /// The caller must ensure `export` is a valid exported global within `store`.
     pub(super) unsafe fn from_vm_export(
         store: &mut Store,
         export: runtime::ExportedFunction,
@@ -201,28 +412,96 @@ impl Func {
         }
     }
 
-    pub fn typed<Params, Results>(self, store: &Store) -> wasm::Result<TypedFunc<Params, Results>>
-    where
-        Params: WasmParams,
-        Results: WasmResults,
-    {
-        let ty = self.ty(store);
-        let wasm_ty = ty.as_wasm_func_type();
-        Params::typecheck(wasm_ty.params.iter())?;
-        Results::typecheck(wasm_ty.results.iter())?;
+    pub(super) fn as_vmfunction_import(&self, store: &Store) -> VMFunctionImport {
+        // Safety: An FuncRef we get from the store is well initialized
+        let func_ref = unsafe { self.as_vm_func_ref(store).as_ref() };
+        VMFunctionImport {
+            wasm_call: func_ref.wasm_call,
+            array_call: func_ref.array_call,
+            vmctx: func_ref.vmctx,
+        }
+    }
 
-        Ok(TypedFunc {
-            ty,
-            func: self,
-            _m: PhantomData,
-        })
+    pub(super) fn as_raw(&self, store: &mut Store) -> *mut c_void {
+        store[self.0].func_ref.as_ptr().cast()
+    }
+
+    fn as_vm_func_ref(self, store: &Store) -> NonNull<VMFuncRef> {
+        store[self.0].func_ref
     }
 }
 
-/// A WebAssembly function type.
-///
-/// This is essentially a reference counted index into the engine's type registry.
-pub struct FuncType(RegisteredType);
+unsafe fn do_call(
+    store: &mut Store,
+    func_ref: &VMFuncRef,
+    params_and_results: &mut [VMVal],
+) -> super::Result<()> {
+    // Safety: TODO
+    unsafe {
+        let vmctx = VMContext::from_opaque(func_ref.vmctx);
+        let module = store[store.get_instance_from_vmctx(vmctx)].module();
+
+        let _guard = WasmExecutionGuard::enter_wasm(vmctx, &module.offsets().static_);
+
+        let span = tracing::trace_span!("WASM");
+
+        let res = span.in_scope(|| {
+            super::trap_handler::catch_traps(vmctx, module.offsets().static_.clone(), || {
+                arch::array_call(
+                    func_ref,
+                    vmctx,
+                    vmctx,
+                    params_and_results.as_mut_ptr(),
+                    params_and_results.len(),
+                );
+            })
+        });
+
+        match res {
+            Ok(_)
+            // The userspace ABI uses the Trap::Exit code to signal a graceful exit
+            | Err(Error::Trap {
+                      trap: Trap::Exit, ..
+                  }) => Ok(()),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+struct WasmExecutionGuard {
+    stack_limit_ptr: *mut usize,
+    prev_stack: usize,
+}
+
+impl WasmExecutionGuard {
+    fn enter_wasm(vmctx: *mut VMContext, offsets: &StaticVMOffsets) -> Self {
+        let stack_pointer = arch::get_stack_pointer();
+        let wasm_stack_limit = stack_pointer.checked_sub(MAX_WASM_STACK).unwrap();
+
+        // Safety: at this point the `VMContext` is initialized and accessing its fields is safe.
+        unsafe {
+            let stack_limit_ptr = vmctx
+                .byte_add(offsets.vmctx_stack_limit() as usize)
+                .cast::<usize>();
+            let prev_stack = mem::replace(&mut *stack_limit_ptr, wasm_stack_limit);
+            WasmExecutionGuard {
+                stack_limit_ptr,
+                prev_stack,
+            }
+        }
+    }
+}
+
+impl Drop for WasmExecutionGuard {
+    fn drop(&mut self) {
+        // Safety: this relies on `enter_wasm` correctly calculating the stack limit pointer.
+        unsafe {
+            *self.stack_limit_ptr = self.prev_stack;
+        }
+    }
+}
+
+// === impl FuncType ===
 
 impl FuncType {
     pub(crate) fn type_index(&self) -> VMSharedTypeIndex {
@@ -243,180 +522,9 @@ impl FuncType {
     }
 }
 
-/// A WebAssembly function.
-pub struct TypedFunc<Params, Results> {
-    func: Func,
-    ty: FuncType,
-    _m: PhantomData<fn(Params) -> Results>,
-}
+// === impl WasmTy ===
 
-impl<Params, Results> TypedFunc<Params, Results>
-where
-    Params: WasmParams,
-    Results: WasmResults,
-{
-    /// Invokes this WebAssembly function with the specified parameters.
-    ///
-    /// # Errors
-    ///
-    /// For more information on errors see the documentation on [`Func::call`].
-    pub async fn call(&self, store: &mut Store, params: Params) -> wasm::Result<Results> {
-        #[cfg(debug_assertions)]
-        Self::assert_typecheck(self.ty.as_wasm_func_type());
-
-        store
-            .on_fiber(|store| {
-                // Safety: The `Func::typed` constructor ensured that this types generics and the
-                // types required by the WASM function match
-                unsafe { Self::call_raw(store, &self.ty, store[self.func.0].func_ref, params) }
-            })
-            .await?
-    }
-
-    /// Do the raw call of a typed function.
-    ///
-    /// Calling typed functions is a bit more optimized than calling untyped ones, in particular type
-    /// checking has already been performed when constructing the typed function reference.
-    ///
-    /// # Implementation
-    ///
-    /// This function uses the type information encoded in the `Params` and `Results` generics to
-    /// allocate the `VMVal` storage array on the stack. It then lowers the Rust parameters into their
-    /// WASM `VMVal` representation and writes them to the stack allocated array.
-    ///
-    /// We then call into WASM through the array-call trampoline just like [`Func::call_unchecked_raw`].
-    ///
-    /// Once we return from WASM, we load the expected result values from the stack allocated array,
-    /// convert them into their Rust representations and return.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the provided [`VMFuncRef`] is of the correct type for this [`TypedFunc`].
-    unsafe fn call_raw(
-        store: &mut Store,
-        ty: &FuncType,
-        func_ref: NonNull<VMFuncRef>,
-        params: Params,
-    ) -> wasm::Result<Results> {
-        // Safety: ensured by caller
-        unsafe {
-            union Storage<T: Copy, U: Copy> {
-                params: MaybeUninit<T>,
-                results: U,
-            }
-
-            let mut storage = Storage::<Params::VMValStorage, Results::VMValStorage> {
-                params: MaybeUninit::uninit(),
-            };
-
-            // Lower the Rust types into their WASM VMVal representation and store them into the buffer
-            params.store(store, ty, &mut storage.params)?;
-
-            let vmctx = VMContext::from_opaque(func_ref.as_ref().vmctx);
-            let module = store[store.get_instance_from_vmctx(vmctx)].module();
-
-            let _guard = enter_wasm(vmctx, &module.offsets().static_);
-
-            let res =
-                wasm::trap_handler::catch_traps(vmctx, module.offsets().static_.clone(), || {
-                    let storage_len = size_of_val::<Storage<_, _>>(&storage) / size_of::<VMVal>();
-                    let storage: *mut Storage<_, _> = &mut storage;
-                    let storage = storage.cast::<VMVal>();
-
-                    tracing::debug!("jumping to WASM");
-                    arch::array_call(func_ref.as_ref(), vmctx, vmctx, storage, storage_len);
-                });
-
-            tracing::trace!("returned from WASM {res:?}");
-
-            match res {
-                Ok(_)
-                // The userspace ABI uses the Trap::Exit code to signal a graceful exit
-                | Err(Error::Trap {
-                          trap: Trap::Exit, ..
-                      }) => Ok(Results::load(store, &storage.results)),
-                Err(err) => Err(err),
-            }
-        }
-    }
-
-    fn assert_typecheck(ty: &WasmFuncType) {
-        Params::typecheck(ty.params.iter()).expect("params should match");
-        Results::typecheck(ty.results.iter()).expect("results should match");
-    }
-}
-
-#[derive(Copy, Clone)]
-pub enum TypeCheckPosition {
-    Param,
-    Result,
-}
-
-/// A type that can be used as an argument or return value for WASM functions.
-///
-/// # Safety
-///
-/// This trait should not be implemented manually.
-pub unsafe trait WasmTy: Send {
-    fn valtype() -> WasmValType;
-    fn store(self, store: &mut Store, ptr: &mut MaybeUninit<VMVal>) -> wasm::Result<()>;
-    unsafe fn load(store: &mut Store, ptr: &VMVal) -> Self;
-    #[inline]
-    fn typecheck(actual: &WasmValType, position: TypeCheckPosition) -> wasm::Result<()> {
-        let expected = Self::valtype();
-
-        match position {
-            TypeCheckPosition::Result => actual.ensure_matches(&expected),
-            TypeCheckPosition::Param => match (expected.get_ref(), actual.get_ref()) {
-                (Some(expected_ref), Some(actual_ref)) if actual_ref.heap_type.is_concrete() => {
-                    expected_ref
-                        .heap_type
-                        .top()
-                        .ensure_matches(&actual_ref.heap_type.top())
-                }
-                _ => actual.ensure_matches(&expected),
-            },
-        }
-    }
-    fn dynamic_concrete_type_check(
-        &self,
-        store: &Store,
-        nullable: bool,
-        actual: &WasmHeapType,
-    ) -> wasm::Result<()>;
-    fn compatible_with_store(&self, store: &Store) -> bool;
-}
-
-/// A type that can be used as an argument for WASM functions.
-///
-/// This trait is implemented for bare types that may be passed to WASM and tuples of those types.
-///
-/// # Safety
-///
-/// This trait should not be implemented manually.
-pub unsafe trait WasmParams: Send {
-    type VMValStorage: Copy;
-    fn typecheck<'a>(params: impl ExactSizeIterator<Item = &'a WasmValType>) -> wasm::Result<()>;
-    fn store(
-        self,
-        store: &mut Store,
-        func_ty: &FuncType,
-        dst: &mut MaybeUninit<Self::VMValStorage>,
-    ) -> wasm::Result<()>;
-}
-
-/// A type that may be returned from WASM functions.
-///
-/// This trait is implemented for bare types that may be passed to WASM and tuples of those types.
-///
-/// # Safety
-///
-/// This trait should not be implemented manually.
-pub unsafe trait WasmResults: WasmParams {
-    unsafe fn load(store: &mut Store, abi: &Self::VMValStorage) -> Self;
-}
-
-macro_rules! integers {
+macro_rules! impl_wasm_ty_for_ints {
     ($($integer:ident/$get_integer:ident => $ty:ident)*) => ($(
         // Safety: this macro correctly delegates to the integer methods
         unsafe impl WasmTy for $integer {
@@ -426,7 +534,7 @@ macro_rules! integers {
             }
 
             #[inline]
-            fn store(self, _store: &mut Store, ptr: &mut MaybeUninit<VMVal>) -> wasm::Result<()> {
+            fn store(self, _store: &mut Store, ptr: &mut MaybeUninit<VMVal>) -> super::Result<()> {
                 ptr.write(VMVal::$integer(self));
                 Ok(())
             }
@@ -442,7 +550,7 @@ macro_rules! integers {
                 _store: &Store,
                 _nullable: bool,
                 _actual: &WasmHeapType,
-            ) -> wasm::Result<()> {
+            ) -> super::Result<()> {
                 unreachable!("`dynamic_concrete_type_check` not implemented for integers");
             }
 
@@ -454,14 +562,14 @@ macro_rules! integers {
     )*)
 }
 
-integers! {
+impl_wasm_ty_for_ints! {
     i32/get_i32 => I32
     i64/get_i64 => I64
     u32/get_u32 => I32
     u64/get_u64 => I64
 }
 
-macro_rules! floats {
+macro_rules! impl_wasm_ty_for_floats {
     ($($float:ident/$get_float:ident => $ty:ident)*) => ($(
         // Safety: this macro correctly delegates to the float methods
         unsafe impl WasmTy for $float {
@@ -471,7 +579,7 @@ macro_rules! floats {
             }
 
             #[inline]
-            fn store(self, _store: &mut Store, ptr: &mut MaybeUninit<VMVal>) -> wasm::Result<()> {
+            fn store(self, _store: &mut Store, ptr: &mut MaybeUninit<VMVal>) -> super::Result<()> {
                 ptr.write(VMVal::$float(self.to_bits()));
                 Ok(())
             }
@@ -487,7 +595,7 @@ macro_rules! floats {
                 _store: &Store,
                 _nullable: bool,
                 _actual: &WasmHeapType,
-            ) -> wasm::Result<()> {
+            ) -> super::Result<()> {
                 unreachable!("`dynamic_concrete_type_check` not implemented for floats");
             }
 
@@ -499,7 +607,7 @@ macro_rules! floats {
     )*)
 }
 
-floats! {
+impl_wasm_ty_for_floats! {
     f32/get_f32 => F32
     f64/get_f64 => F64
 }
@@ -510,7 +618,7 @@ unsafe impl WasmTy for Func {
         WasmValType::Ref(WasmRefType::FUNCREF)
     }
 
-    fn store(self, store: &mut Store, ptr: &mut MaybeUninit<VMVal>) -> wasm::Result<()> {
+    fn store(self, store: &mut Store, ptr: &mut MaybeUninit<VMVal>) -> super::Result<()> {
         let raw = self.as_vm_func_ref(store).as_ptr();
         ptr.write(VMVal::funcref(raw.cast::<c_void>()));
         Ok(())
@@ -524,17 +632,17 @@ unsafe impl WasmTy for Func {
         }
     }
 
+    fn compatible_with_store(&self, store: &Store) -> bool {
+        store.has_function(self.0)
+    }
+
     fn dynamic_concrete_type_check(
         &self,
         _store: &Store,
         _nullable: bool,
         _actual: &WasmHeapType,
-    ) -> wasm::Result<()> {
+    ) -> crate::wasm::Result<()> {
         todo!()
-    }
-
-    fn compatible_with_store(&self, store: &Store) -> bool {
-        store.has_function(self.0)
     }
 }
 
@@ -544,7 +652,7 @@ unsafe impl WasmTy for Option<Func> {
         WasmValType::Ref(WasmRefType::FUNCREF)
     }
 
-    fn store(self, store: &mut Store, ptr: &mut MaybeUninit<VMVal>) -> wasm::Result<()> {
+    fn store(self, store: &mut Store, ptr: &mut MaybeUninit<VMVal>) -> super::Result<()> {
         let raw = if let Some(f) = self {
             f.as_vm_func_ref(store).as_ptr()
         } else {
@@ -562,15 +670,6 @@ unsafe impl WasmTy for Option<Func> {
         }
     }
 
-    fn dynamic_concrete_type_check(
-        &self,
-        _store: &Store,
-        _nullable: bool,
-        _actual: &WasmHeapType,
-    ) -> wasm::Result<()> {
-        todo!()
-    }
-
     fn compatible_with_store(&self, store: &Store) -> bool {
         if let Some(f) = self {
             store.has_function(f.0)
@@ -578,7 +677,18 @@ unsafe impl WasmTy for Option<Func> {
             true
         }
     }
+
+    fn dynamic_concrete_type_check(
+        &self,
+        _store: &Store,
+        _nullable: bool,
+        _actual: &WasmHeapType,
+    ) -> crate::wasm::Result<()> {
+        todo!()
+    }
 }
+
+// === impl WasmParams | WasmResults ===
 
 macro_rules! for_each_function_signature {
     ($mac:ident) => {
@@ -610,7 +720,7 @@ macro_rules! impl_wasm_params {
         unsafe impl<$($t: WasmTy,)*> WasmParams for ($($t,)*) {
             type VMValStorage = [VMVal; $n];
 
-            fn typecheck<'a>(mut params: impl ExactSizeIterator<Item = &'a WasmValType>) -> wasm::Result<()> {
+            fn typecheck<'a>(mut params: impl ExactSizeIterator<Item = &'a WasmValType>) -> super::Result<()> {
                 let mut _n = 0;
 
                 $(
@@ -634,7 +744,7 @@ macro_rules! impl_wasm_params {
                 }
             }
 
-            fn store(self, _store: &mut Store, _func_ty: &FuncType, _dst: &mut MaybeUninit<Self::VMValStorage>) -> wasm::Result<()> {
+            fn store(self, _store: &mut Store, _func_ty: &FuncType, _dst: &mut MaybeUninit<Self::VMValStorage>) -> super::Result<()> {
                 use $crate::util::maybe_uninit::MaybeUninitExt;
 
                 let ($($t,)*) = self;
@@ -688,7 +798,7 @@ for_each_function_signature!(impl_wasm_results);
 unsafe impl<T: WasmTy> WasmParams for T {
     type VMValStorage = <(T,) as WasmParams>::VMValStorage;
 
-    fn typecheck<'a>(params: impl ExactSizeIterator<Item = &'a WasmValType>) -> wasm::Result<()> {
+    fn typecheck<'a>(params: impl ExactSizeIterator<Item = &'a WasmValType>) -> super::Result<()> {
         <(T,) as WasmParams>::typecheck(params)
     }
 
@@ -697,7 +807,7 @@ unsafe impl<T: WasmTy> WasmParams for T {
         store: &mut Store,
         func_ty: &FuncType,
         dst: &mut MaybeUninit<Self::VMValStorage>,
-    ) -> wasm::Result<()> {
+    ) -> super::Result<()> {
         <(T,) as WasmParams>::store((self,), store, func_ty, dst)
     }
 }
@@ -708,36 +818,5 @@ unsafe impl<T: WasmTy> WasmResults for T {
     unsafe fn load(store: &mut Store, abi: &Self::VMValStorage) -> Self {
         // Safety: ensured by caller
         unsafe { <(T,) as WasmResults>::load(store, abi).0 }
-    }
-}
-
-fn enter_wasm(vmctx: *mut VMContext, offsets: &StaticVMOffsets) -> WasmExecutionGuard {
-    let stack_pointer = arch::get_stack_pointer();
-    let wasm_stack_limit = stack_pointer.checked_sub(MAX_WASM_STACK).unwrap();
-
-    // Safety: at this point the `VMContext` is initialized and accessing its fields is safe.
-    unsafe {
-        let stack_limit_ptr = vmctx
-            .byte_add(offsets.vmctx_stack_limit() as usize)
-            .cast::<usize>();
-        let prev_stack = mem::replace(&mut *stack_limit_ptr, wasm_stack_limit);
-        WasmExecutionGuard {
-            stack_limit_ptr,
-            prev_stack,
-        }
-    }
-}
-
-struct WasmExecutionGuard {
-    stack_limit_ptr: *mut usize,
-    prev_stack: usize,
-}
-
-impl Drop for WasmExecutionGuard {
-    fn drop(&mut self) {
-        // Safety: this relies on `enter_wasm` correctly calculating the stack limit pointer.
-        unsafe {
-            *self.stack_limit_ptr = self.prev_stack;
-        }
     }
 }

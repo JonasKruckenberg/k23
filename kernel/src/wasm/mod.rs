@@ -33,10 +33,9 @@ use core::fmt::Write;
 use wasmparser::Validator;
 
 use crate::shell::Command;
-use crate::wasm::func::TypedFunc;
 pub use engine::Engine;
 pub use errors::Error;
-pub use func::Func;
+pub use func::{Func, TypedFunc};
 pub use global::Global;
 pub use instance::Instance;
 pub use linker::Linker;
