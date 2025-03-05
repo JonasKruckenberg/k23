@@ -147,7 +147,7 @@ impl Func {
             tracing::debug!("jumping to WASM");
 
             // Safety: TODO
-            unsafe { func_ref.array_call(vmctx, vmctx, args_results_ptr, args_results_len) }
+            unsafe { arch::array_call(func_ref, vmctx, vmctx, args_results_ptr, args_results_len) }
         });
 
         tracing::trace!("returned from WASM {res:?}");
@@ -324,9 +324,7 @@ where
                     let storage = storage.cast::<VMVal>();
 
                     tracing::debug!("jumping to WASM");
-                    func_ref
-                        .as_ref()
-                        .array_call(vmctx, vmctx, storage, storage_len);
+                    arch::array_call(func_ref.as_ref(), vmctx, vmctx, storage, storage_len);
                 });
 
             tracing::trace!("returned from WASM {res:?}");

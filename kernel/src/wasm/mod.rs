@@ -43,6 +43,7 @@ pub use linker::Linker;
 pub use memory::Memory;
 pub use module::Module;
 pub use runtime::{ConstExprEvaluator, InstanceAllocator};
+pub use runtime::{VMContext, VMFuncRef, VMVal};
 pub use store::Store;
 pub use table::Table;
 pub use translate::ModuleTranslator;
