@@ -35,12 +35,12 @@ k23 is an active research project exploring a *more secure, modular, and easy to
 - **Phase 1 - Basic WASM Features**
    - [x] Guest memory management
    - [x] Guest ASLR (Address Space Layout Randomization)
-   - [ ] Executing WASM
+   - [x] Executing WASM
    - [x] Handling Guest Traps & Fault Recovery
-   - [ ] WASM module Imports & Exports
-   - [ ] Execute WASM in Userspace
-   - [ ] Support WASM Builtins
-   - [ ] Handle WASM Traps
+   - [x] WASM module Imports & Exports
+   - [x] Execute WASM in Userspace
+   - [x] Support WASM Builtins
+   - [x] Handle WASM Traps
    - [ ] Syscall context switching & Basic Host Functions 
    - [ ] WASM Proposal - Extended Constant Expressions
    - [ ] WASM Proposal - Multi-Value
@@ -50,8 +50,8 @@ k23 is an active research project exploring a *more secure, modular, and easy to
    - [ ] WASM Proposal - Relaxed SIMD
    - [ ] WASM Proposal - Multiple Memories
 - **Phase 2 - Concurrency**
-   - [ ] Kernel Concurrency
-   - [ ] Scheduler
+   - [x] Kernel Concurrency
+   - [x] Scheduler
    - [ ] WASM Proposal - Threads (Atomics)
    - [ ] WASM Proposal - Shared Everything Threads
 - **Phase 2.5 - Kotlin on k23**
