@@ -8,6 +8,13 @@
 //! Basic kernel shell for debugging purposes, taken from
 //! <https://github.com/hawkw/mycelium/blob/main/src/shell.rs> (MIT)
 
+const S: &str = r#"
+   __    ___  ____
+  / /__ |_  ||_  /
+ /  '_// __/_/_ <
+/_/\_\/____/____/
+"#;
+
 use crate::device_tree::DeviceTree;
 use crate::scheduler::{Scheduler, scheduler};
 use crate::vm::{KERNEL_ASPACE, PhysicalAddress, UserMmap, with_kernel_aspace};
@@ -18,13 +25,16 @@ use core::fmt::Write;
 use core::range::Range;
 use core::str::FromStr;
 use fallible_iterator::FallibleIterator;
-use spin::Once;
+use spin::{Barrier, OnceLock};
 
 static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN, crate::wasm::TEST];
 
-pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler) {
-    static ONCE: Once = Once::new();
-    ONCE.call_once(move || {
+pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: usize) {
+    static SYNC: OnceLock<Barrier> = OnceLock::new();
+    let barrier = SYNC.get_or_init(|| Barrier::new(num_cpus));
+
+    if barrier.wait().is_leader() {
+        tracing::info!("{S}");
         tracing::info!("type `help` to list available commands");
 
         sched.spawn(KERNEL_ASPACE.get().unwrap().clone(), async move {
@@ -55,7 +65,7 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler) {
                 }
             }
         });
-    });
+    }
 }
 
 fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, u32) {
@@ -97,9 +107,6 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, u32) {
 }
 
 pub fn eval(line: &str) {
-    let _span = tracing::info_span!(target: "shell", "$", message = %line).entered();
-    tracing::info!(target: "shell", "");
-
     if line == "help" {
         tracing::info!(target: "shell", "available commands:");
         print_help("", COMMANDS);
@@ -111,8 +118,6 @@ pub fn eval(line: &str) {
         Ok(_) => {}
         Err(error) => tracing::error!(target: "shell", "error: {error}"),
     }
-
-    tracing::info!(target: "shell", "");
 }
 
 const PANIC: Command = Command::new("panic")
