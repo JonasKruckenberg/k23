@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::backtrace::BacktraceStyle;
 use crate::device_tree::DeviceTree;
 use crate::error::Error;
 use crate::tracing::Filter;
@@ -22,6 +23,7 @@ pub fn parse(devtree: &DeviceTree) -> Result<Bootargs, Error> {
 #[derive(Default)]
 pub struct Bootargs {
     pub log: Filter,
+    pub backtrace: BacktraceStyle,
 }
 
 impl FromStr for Bootargs {
@@ -29,14 +31,22 @@ impl FromStr for Bootargs {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut log = None;
+        let mut backtrace = None;
 
-        let s = s.trim();
-        if let Some(current) = s.strip_prefix("log=") {
-            log = Some(Filter::from_str(current).unwrap());
+        let parts = s.trim().split(',');
+        for part in parts {
+            if let Some(current) = part.strip_prefix("log=") {
+                log = Some(Filter::from_str(current).unwrap());
+            }
+
+            if let Some(current) = part.strip_prefix("backtrace=") {
+                backtrace = Some(BacktraceStyle::from_str(current).unwrap());
+            }
         }
 
         Ok(Self {
             log: log.unwrap_or_default(),
+            backtrace: backtrace.unwrap_or_default(),
         })
     }
 }
