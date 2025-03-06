@@ -233,7 +233,7 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
             writeln!(
                 f,
                 "note: Some details are omitted, \
-             run with `RUST_BACKTRACE=full` for a verbose backtrace."
+             run with `backtrace=full` bootarg for a verbose backtrace."
             )?;
         }
         if self.symbolize_ctx.is_none() {
