@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 #![expect(
     clippy::undocumented_unsafe_blocks,
     reason = "too many trivial unsafe blocks"
@@ -292,10 +299,17 @@ pub struct VMFuncRef {
     /// Function pointer for this funcref if being called via the calling
     /// convention we use when compiling Wasm.
     pub wasm_call: NonNull<VMWasmCallFunction>,
+    /// Function signature's type id.
+    pub type_index: VMSharedTypeIndex,
     /// The VM state associated with this function.
     pub vmctx: *mut VMOpaqueContext,
-    pub type_index: VMSharedTypeIndex,
 }
+
+// Safety: TODO
+unsafe impl Send for VMFuncRef {}
+
+// Safety: see above
+unsafe impl Sync for VMFuncRef {}
 
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]

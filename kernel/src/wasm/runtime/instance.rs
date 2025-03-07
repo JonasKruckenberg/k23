@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 #![expect(
     clippy::undocumented_unsafe_blocks,
     reason = "too many trivial unsafe blocks"
@@ -30,6 +37,7 @@ use core::range::Range;
 use core::{fmt, mem, ptr, slice};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
+use crate::util::send_sync_ptr::SendSyncPtr;
 
 #[derive(Debug)]
 pub struct Instance {
@@ -581,7 +589,7 @@ unsafe fn initialize_tables(
             TableInitialValue::ConstExpr(expr) => {
                 let funcref = const_eval.eval(expr).get_funcref();
                 // TODO assert funcref ptr is valid
-                Some(NonNull::new(funcref.cast()).unwrap())
+                Some(SendSyncPtr::new(NonNull::new(funcref.cast()).unwrap()))
             }
         };
 
@@ -596,10 +604,10 @@ unsafe fn initialize_tables(
             }
             TableSegmentElements::Expressions(exprs) => exprs
                 .iter()
-                .map(|expr| -> crate::wasm::Result<Option<NonNull<VMFuncRef>>> {
+                .map(|expr| -> crate::wasm::Result<Option<SendSyncPtr<VMFuncRef>>> {
                     let funcref = const_eval.eval(expr).get_funcref();
                     // TODO assert funcref ptr is valid
-                    Ok(Some(NonNull::new(funcref.cast()).unwrap()))
+                    Ok(Some(SendSyncPtr::new(NonNull::new(funcref.cast()).unwrap())))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         };

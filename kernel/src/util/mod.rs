@@ -12,6 +12,8 @@ pub mod either;
 pub mod fast_rand;
 pub mod maybe_uninit;
 pub mod zip_eq;
+pub mod uninhabited;
+pub mod send_sync_ptr;
 
 /// Helper to construct a `NonNull<T>` from a raw pointer to `T`, with null
 /// checks elided in release mode.
