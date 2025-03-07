@@ -1,3 +1,10 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use crate::fiber::{Fiber, FiberStack, Suspend};
 use crate::vm::frame_alloc::FrameAllocator;
 use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
@@ -12,6 +19,7 @@ use core::pin::Pin;
 use core::range::Range;
 use core::task::{Context, Poll};
 use core::{fmt, mem, ptr};
+use core::hash::{Hash, Hasher};
 use hashbrown::HashMap;
 use static_assertions::assert_impl_all;
 
@@ -20,7 +28,7 @@ use static_assertions::assert_impl_all;
 pub struct Store {
     pub(crate) engine: Engine,
     instances: Vec<runtime::Instance>,
-    exported_funcs: Vec<runtime::ExportedFunction>,
+    funcs: Vec<super::func::FuncInner>,
     exported_tables: Vec<runtime::ExportedTable>,
     exported_memories: Vec<runtime::ExportedMemory>,
     exported_globals: Vec<runtime::ExportedGlobal>,
@@ -87,7 +95,7 @@ impl Store {
         Self {
             engine: engine.clone(),
             instances: Vec::new(),
-            exported_funcs: Vec::new(),
+            funcs: Vec::new(),
             exported_tables: Vec::new(),
             exported_memories: Vec::new(),
             exported_globals: Vec::new(),
@@ -136,10 +144,10 @@ impl Store {
     /// Inserts a new function into the store and returns a handle to it.
     pub(crate) fn push_function(
         &mut self,
-        func: runtime::ExportedFunction,
-    ) -> Stored<runtime::ExportedFunction> {
-        let index = self.exported_funcs.len();
-        self.exported_funcs.push(func);
+        func: super::func::FuncInner,
+    ) -> Stored<super::func::FuncInner> {
+        let index = self.funcs.len();
+        self.funcs.push(func);
         Stored::new(index)
     }
 
@@ -513,7 +521,7 @@ macro_rules! stored_impls {
 stored_impls! {
     s
     (runtime::Instance, has_instance, get_instance, get_instance_mut, s.instances)
-    (runtime::ExportedFunction, has_function, get_function, get_function_mut, s.exported_funcs)
+    (super::func::FuncInner, has_function, get_function, get_function_mut, s.funcs)
     (runtime::ExportedTable, has_table, get_table, get_table_mut, s.exported_tables)
     (runtime::ExportedMemory, has_memory, get_memory, get_memory_mut, s.exported_memories)
     (runtime::ExportedGlobal, has_global, get_global, get_global_mut, s.exported_globals)
@@ -532,17 +540,20 @@ impl<T> Stored<T> {
         }
     }
 }
-
 impl<T> Clone for Stored<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
-
 impl<T> Copy for Stored<T> {}
-
 impl<T> fmt::Debug for Stored<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Stored").field(&self.index).finish()
     }
 }
+impl<T> PartialEq for Stored<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
+    }
+}
+impl<T> Eq for Stored<T> {}
