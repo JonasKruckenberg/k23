@@ -54,60 +54,56 @@ pub fn begin_unwind_with(
 /// Entry point for panics from the `core` crate.
 #[panic_handler]
 fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
-    // disable interrupts as soon as we enter the panic subsystem
-    // no need to bother with those now as we're about to shut down anyway
-    arch::interrupt::disable();
-
     let loc = info.location().unwrap(); // Currently always returns Some
     let msg = info.message();
 
-    backtrace::__rust_end_short_backtrace(|| {
-        if let Some(must_abort) = panic_count::increase(true) {
-            match must_abort {
-                MustAbort::PanicInHook => {
-                    tracing::error!("panicked at {loc}:\n{msg}\n");
-                }
+    if let Some(must_abort) = panic_count::increase(true) {
+        match must_abort {
+            MustAbort::PanicInHook => {
+                tracing::error!("panicked at {loc}:\n{msg}\n");
             }
-
-            // Run thread-local destructors
-            // Safety: after this point we cannot access thread locals anyway
-            unsafe {
-                cpu_local::destructors::run();
-            }
-
-            arch::abort("cpu panicked while processing panic. aborting.");
         }
 
-        tracing::error!("cpu panicked at {loc}:\n{msg}");
-
-        // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
-        //  but (at least at the moment) is absolute overkill for optimized builds. Sadly there
-        //  is no good way to do conditional compilation based on the opt-level.
-        const MAX_BACKTRACE_FRAMES: usize = 32;
-
-        let backtrace = Backtrace::<MAX_BACKTRACE_FRAMES>::capture().unwrap();
-        tracing::error!("{backtrace}");
-
-        if backtrace.frames_omitted {
-            tracing::warn!("Stack trace was larger than backtrace buffer, omitted some frames.");
+        // Run thread-local destructors
+        // Safety: after this point we cannot access thread locals anyway
+        unsafe {
+            cpu_local::destructors::run();
         }
 
-        panic_count::finished_panic_hook();
+        arch::abort("cpu panicked while processing panic. aborting.");
+    }
 
-        if !info.can_unwind() {
-            // If a thread panics while running destructors or tries to unwind
-            // through a nounwind function (e.g. extern "C") then we cannot continue
-            // unwinding and have to abort immediately.
-            arch::abort("cpu caused non-unwinding panic. aborting.");
-        }
+    tracing::error!("cpu panicked at {loc}:\n{msg}");
 
-        unwind2::with_context(|regs, pc| {
-            rust_panic(
-                construct_panic_payload(info),
-                regs.clone(),
-                VirtualAddress::new(pc).unwrap(),
-            )
-        })
+    // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
+    //  but (at least at the moment) is absolute overkill for optimized builds. Sadly there
+    //  is no good way to do conditional compilation based on the opt-level.
+    const MAX_BACKTRACE_FRAMES: usize = 32;
+
+    let backtrace = backtrace::__rust_end_short_backtrace(|| {
+        Backtrace::<MAX_BACKTRACE_FRAMES>::capture().unwrap()
+    });
+    tracing::error!("{backtrace}");
+
+    if backtrace.frames_omitted {
+        tracing::warn!("Stack trace was larger than backtrace buffer, omitted some frames.");
+    }
+
+    panic_count::finished_panic_hook();
+
+    if !info.can_unwind() {
+        // If a thread panics while running destructors or tries to unwind
+        // through a nounwind function (e.g. extern "C") then we cannot continue
+        // unwinding and have to abort immediately.
+        arch::abort("cpu caused non-unwinding panic. aborting.");
+    }
+
+    unwind2::with_context(|regs, pc| {
+        rust_panic(
+            construct_panic_payload(info),
+            regs.clone(),
+            VirtualAddress::new(pc).unwrap(),
+        )
     })
 }
 

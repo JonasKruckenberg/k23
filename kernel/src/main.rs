@@ -138,17 +138,17 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
-        // initialize the backtracing subsystem after the allocator has been set up
-        // since setting up the symbolization context requires allocation
-        backtrace::init(boot_info);
-
         let devtree = device_tree::init(fdt).unwrap();
         tracing::debug!("{devtree:?}");
 
-        let cmdline = bootargs::parse(devtree).unwrap();
+        let bootargs = bootargs::parse(devtree).unwrap();
+
+        // initialize the backtracing subsystem after the allocator has been set up
+        // since setting up the symbolization context requires allocation
+        backtrace::init(boot_info, bootargs.backtrace);
 
         // fully initialize the tracing subsystem now that we can allocate
-        tracing::init(cmdline.log);
+        tracing::init(bootargs.log);
 
         // perform global, architecture-specific initialization
         arch::init_early();
