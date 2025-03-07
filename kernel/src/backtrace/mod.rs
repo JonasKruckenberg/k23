@@ -269,9 +269,7 @@ impl fmt::Display for UnknownBacktraceStyleError {
 
 impl core::error::Error for UnknownBacktraceStyleError {}
 
-/// Fixed frame used to clean the backtrace with `backtrace=short`. Note that
-/// this is only inline(never) when backtraces in std are enabled, otherwise
-/// it's fine to optimize away.
+/// Fixed frame used to clean the backtrace with `backtrace=short`.
 #[inline(never)]
 pub fn __rust_begin_short_backtrace<F, T>(f: F) -> T
 where
@@ -285,9 +283,7 @@ where
     result
 }
 
-/// Fixed frame used to clean the backtrace with `backtrace=short`. Note that
-/// this is only inline(never) when backtraces in std are enabled, otherwise
-/// it's fine to optimize away.
+/// Fixed frame used to clean the backtrace with `backtrace=short`.
 #[inline(never)]
 pub fn __rust_end_short_backtrace<F, T>(f: F) -> T
 where
