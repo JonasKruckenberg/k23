@@ -284,11 +284,11 @@ pub unsafe fn map_contiguous(
     );
     debug_assert!(
         virt % PAGE_SIZE == 0,
-        "virtual address must be aligned to at least 4KiB page size {virt:?}"
+        "virtual address must be aligned to at least 4KiB page size ({virt:#x})"
     );
     debug_assert!(
         phys % PAGE_SIZE == 0,
-        "physical address must be aligned to at least 4KiB page size {phys:?}"
+        "physical address must be aligned to at least 4KiB page size ({phys:#x})"
     );
 
     // To map out contiguous chunk of physical memory into the virtual address space efficiently
@@ -338,9 +338,7 @@ pub unsafe fn map_contiguous(
                     // we need to allocate a new sub-table and retry.
                     // allocate a new physical frame to hold the next level table and
                     // mark this PTE as a valid internal node pointing to that sub-table.
-                    let frame = frame_alloc
-                        .allocate_one_zeroed(phys_off)
-                        .ok_or(Error::NoMemory)?; // we should always be able to map a single page
+                    let frame = frame_alloc.allocate_one_zeroed(phys_off)?; // we should always be able to map a single page
 
                     // TODO memory barrier
 
@@ -353,7 +351,7 @@ pub unsafe fn map_contiguous(
                 pgtable = pgtable_ptr_from_phys(pte.get_address_and_flags().0, phys_off);
             } else {
                 unreachable!(
-                    "Invalid state: PTE can't be valid leaf (this means {virt:?} is already mapped) {pte:?} {pte:p}"
+                    "Invalid state: PTE can't be valid leaf (this means {virt:#x} is already mapped) {pte:?} {pte:p}"
                 );
             }
         }

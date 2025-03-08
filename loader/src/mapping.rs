@@ -13,9 +13,10 @@ use crate::page_alloc::PageAllocator;
 use crate::{SelfRegions, arch};
 use bitflags::bitflags;
 use core::alloc::Layout;
-use core::num::{NonZero, NonZeroUsize};
+use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{cmp, ptr, slice};
+use fallible_iterator::FallibleIterator;
 use loader_api::TlsTemplate;
 use xmas_elf::P64;
 use xmas_elf::dynamic::Tag;
@@ -328,12 +329,7 @@ fn handle_bss_section(
             ph.align,
         );
 
-        let new_frame = frame_alloc
-            .allocate_contiguous_zeroed(
-                Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
-                arch::KERNEL_ASPACE_BASE,
-            )
-            .ok_or(Error::NoMemory)?;
+        let new_frame = frame_alloc.allocate_one_zeroed(arch::KERNEL_ASPACE_BASE)?;
 
         // Safety: we just allocated the frame
         unsafe {
@@ -365,7 +361,7 @@ fn handle_bss_section(
     }
 
     log::trace!("zero_start {zero_start:#x} zero_end {zero_end:#x}");
-    let (additional_virt, additional_len) = {
+    let (mut virt, len) = {
         // zero_start either lies at a page boundary OR somewhere within the first page
         // by aligning up, we move it to the beginning of the *next* page.
         let start = checked_align_up(zero_start, ph.align).unwrap();
@@ -373,30 +369,33 @@ fn handle_bss_section(
         (start, end.checked_sub(start).unwrap())
     };
 
-    if additional_len > 0 {
-        let additional_phys = frame_alloc
-            .allocate_contiguous_zeroed(
-                Layout::from_size_align(additional_len, arch::PAGE_SIZE).unwrap(),
-                arch::KERNEL_ASPACE_BASE,
-            )
-            .unwrap();
-
-        log::trace!(
-            "mapping additional zeros {additional_virt:#x}..{:#x}",
-            additional_virt.checked_add(additional_len).unwrap()
+    if len > 0 {
+        let mut phys_iter = frame_alloc.allocate_zeroed(
+            Layout::from_size_align(len, arch::PAGE_SIZE).unwrap(),
+            arch::KERNEL_ASPACE_BASE,
         );
-        // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
-        // abort startup anyway
-        unsafe {
-            arch::map_contiguous(
-                root_pgtable,
-                frame_alloc,
-                additional_virt,
-                additional_phys,
-                NonZeroUsize::new(additional_len).unwrap(),
-                flags,
-                arch::KERNEL_ASPACE_BASE,
-            )?;
+
+        while let Some((phys, len)) = phys_iter.next()? {
+            log::trace!(
+                "mapping additional zeros {virt:#x}..{:#x}",
+                virt.checked_add(len.get()).unwrap()
+            );
+
+            // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+            // abort startup anyway
+            unsafe {
+                arch::map_contiguous(
+                    root_pgtable,
+                    phys_iter.alloc(),
+                    virt,
+                    phys,
+                    len,
+                    flags,
+                    arch::KERNEL_ASPACE_BASE,
+                )?;
+            }
+
+            virt += len.get();
         }
     }
 
@@ -483,25 +482,33 @@ fn handle_tls_segment(
         .unwrap()
         .0
         .pad_to_align();
+    log::trace!("allocating TLS segment {layout:?}...");
 
-    let phys = frame_alloc
-        .allocate_contiguous_zeroed(layout, phys_off)
-        .unwrap();
     let virt = page_alloc.allocate(layout);
+    let mut virt_start = virt.start;
 
-    log::trace!("Mapping TLS region {virt:#x?}...");
-    // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
-    // abort startup anyway
-    unsafe {
-        arch::map_contiguous(
-            root_pgtable,
-            frame_alloc,
-            virt.start,
-            phys,
-            NonZero::new(layout.size()).unwrap(),
-            Flags::READ | Flags::WRITE,
-            phys_off,
-        )?;
+    let mut phys_iter = frame_alloc.allocate_zeroed(layout, phys_off);
+    while let Some((phys, len)) = phys_iter.next()? {
+        log::trace!(
+            "Mapping TLS region {virt_start:#x}..{:#x} {len} ...",
+            virt_start.checked_add(len.get()).unwrap()
+        );
+
+        // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+        // abort startup anyway
+        unsafe {
+            arch::map_contiguous(
+                root_pgtable,
+                phys_iter.alloc(),
+                virt_start,
+                phys,
+                len,
+                Flags::READ | Flags::WRITE,
+                phys_off,
+            )?;
+        }
+
+        virt_start += len.get();
     }
 
     Ok(TlsAllocation {
@@ -578,42 +585,42 @@ pub fn map_kernel_stacks(
     let virt = page_alloc.allocate(layout_with_guard);
     log::trace!("Mapping stacks region {virt:#x?}...");
 
-    // Mapping stacks region 0xffffffc0c0000000..0xffffffc0c0101000...
-
     for hart in 0..minfo.hart_mask.count_ones() {
         let layout = Layout::from_size_align(per_cpu_size, arch::PAGE_SIZE).unwrap();
 
-        log::trace!("Allocating stack {layout:?}...");
-        // The stacks region doesn't need to be zeroed, since we will be filling it with
-        // the canary pattern anyway
-        let phys = frame_alloc
-            .allocate_contiguous(layout)
-            .ok_or(Error::NoMemory)?;
-
-        let virt = virt
+        let mut virt = virt
             .end
             .checked_sub(per_cpu_size_with_guard * hart as usize)
             .and_then(|a| a.checked_sub(per_cpu_size))
             .unwrap();
 
-        log::trace!(
-            "mapping stack for hart {hart} {virt:#x}..{:#x} => {phys:#x}..{:#x}",
-            virt.checked_add(per_cpu_size).unwrap(),
-            phys.checked_add(per_cpu_size).unwrap()
-        );
+        log::trace!("Allocating stack {layout:?}...");
+        // The stacks region doesn't need to be zeroed, since we will be filling it with
+        // the canary pattern anyway
+        let mut phys_iter = frame_alloc.allocate(layout);
 
-        // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
-        // abort startup anyway
-        unsafe {
-            arch::map_contiguous(
-                root_pgtable,
-                frame_alloc,
-                virt,
-                phys,
-                NonZero::new(layout.size()).unwrap(),
-                Flags::READ | Flags::WRITE | Flags::USER,
-                phys_off,
-            )?;
+        while let Some((phys, len)) = phys_iter.next()? {
+            log::trace!(
+                "mapping stack for hart {hart} {virt:#x}..{:#x} => {phys:#x}..{:#x}",
+                virt.checked_add(len.get()).unwrap(),
+                phys.checked_add(len.get()).unwrap()
+            );
+
+            // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
+            // abort startup anyway
+            unsafe {
+                arch::map_contiguous(
+                    root_pgtable,
+                    phys_iter.alloc(),
+                    virt,
+                    phys,
+                    len,
+                    Flags::READ | Flags::WRITE | Flags::USER,
+                    phys_off,
+                )?;
+            }
+
+            virt += len.get();
         }
     }
 
