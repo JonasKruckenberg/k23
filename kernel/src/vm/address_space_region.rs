@@ -217,7 +217,7 @@ impl AddressSpaceRegion {
         addr: VirtualAddress,
         flags: PageFaultFlags,
     ) -> Result<(), Error> {
-        tracing::trace!(addr=%addr, flags=%flags, "page fault");
+        tracing::trace!(addr=%addr,flags=%flags,name=?self.name, "page fault");
         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
         debug_assert!(self.range.contains(&addr));
 
