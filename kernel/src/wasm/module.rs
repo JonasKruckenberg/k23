@@ -1,13 +1,15 @@
 use crate::vm::AddressSpace;
 use crate::wasm::compile::{CompileInputs, CompiledFunctionInfo};
 use crate::wasm::indices::{DefinedFuncIndex, EntityIndex, VMSharedTypeIndex};
-use crate::wasm::runtime::{CodeMemory, code_registry};
+use crate::wasm::runtime::{code_registry, CodeMemory, VMWasmCallFunction};
 use crate::wasm::runtime::{MmapVec, VMOffsets};
 use crate::wasm::translate::{Import, TranslatedModule};
 use crate::wasm::type_registry::RuntimeTypeCollection;
 use crate::wasm::{Engine, ModuleTranslator, Store};
 use alloc::sync::Arc;
+use core::any::Any;
 use core::mem;
+use core::ptr::NonNull;
 use cranelift_entity::PrimaryMap;
 use wasmparser::Validator;
 
@@ -23,11 +25,11 @@ pub struct Module(Arc<ModuleInner>);
 
 #[derive(Debug)]
 struct ModuleInner {
+    engine: Engine,
     translated: TranslatedModule,
     offsets: VMOffsets,
     code: Arc<CodeMemory>,
     type_collection: RuntimeTypeCollection,
-    function_info: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
 }
 
 impl Module {
@@ -70,31 +72,32 @@ impl Module {
         let unlinked_outputs = inputs.compile(engine.compiler())?;
 
         tracing::debug!("Applying static relocations...");
-        let (code, function_info, (trap_offsets, traps)) =
-            unlinked_outputs.link_and_finish(engine, &translation.module);
-
-        let type_collection = engine.type_registry().register_module_types(engine, types);
-
-        tracing::debug!("Allocating new memory map...");
         let code = {
             let mut aspace = store.alloc.0.lock();
-            let vec = MmapVec::from_slice(&mut aspace, &code)?;
-            let mut code = CodeMemory::new(vec, trap_offsets, traps);
+            let mut code =
+                unlinked_outputs.link_and_finish(engine, &translation.module, |code| {
+                    tracing::debug!("Allocating new memory map...");
+
+                    MmapVec::from_slice(&mut aspace, &code)
+                })?;
             code.publish(&mut aspace)?;
+
             drop(aspace);
             Arc::new(code)
         };
+
+        let type_collection = engine.type_registry().register_module_types(engine, types);
 
         // register this code memory with the trap handler, so we can correctly unwind from traps
         code_registry::register_code(&code);
 
         Ok(Self(Arc::new(ModuleInner {
+            engine: engine.clone(),
             offsets: VMOffsets::for_module(
                 engine.compiler().triple().pointer_width().unwrap().bytes(),
                 &translation.module,
             ),
             translated: translation.module,
-            function_info,
             code,
             type_collection,
         })))
@@ -119,26 +122,56 @@ impl Module {
         self.0.translated.name.as_deref()
     }
 
-    pub(crate) fn get_export(&self, name: &str) -> Option<EntityIndex> {
+    pub(super) fn get_export(&self, name: &str) -> Option<EntityIndex> {
         self.0.translated.exports.get(name).copied()
     }
 
-    pub(crate) fn translated(&self) -> &TranslatedModule {
+    pub(super) fn translated(&self) -> &TranslatedModule {
         &self.0.translated
     }
-    pub(crate) fn offsets(&self) -> &VMOffsets {
+    pub(super) fn offsets(&self) -> &VMOffsets {
         &self.0.offsets
     }
-    pub(crate) fn code(&self) -> &CodeMemory {
+    pub(super) fn code(&self) -> &CodeMemory {
         &self.0.code
     }
-    pub(crate) fn type_collection(&self) -> &RuntimeTypeCollection {
+    pub(super) fn type_collection(&self) -> &RuntimeTypeCollection {
         &self.0.type_collection
     }
-    pub(crate) fn type_ids(&self) -> &[VMSharedTypeIndex] {
+    pub(super) fn type_ids(&self) -> &[VMSharedTypeIndex] {
         self.0.type_collection.type_map().values().as_slice()
     }
-    pub(crate) fn function_info(&self) -> &PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo> {
-        &self.0.function_info
+    pub(super) fn wasm_to_array_trampoline(
+        &self,
+        sig: VMSharedTypeIndex,
+    ) -> Option<NonNull<VMWasmCallFunction>> {
+        let trampoline_shared_ty = self.0.engine.type_registry().get_trampoline_type(sig);
+        let trampoline_module_ty = self
+            .0
+            .type_collection
+            .trampoline_type(trampoline_shared_ty)?;
+
+        debug_assert!(
+            self.0
+                .engine
+                .type_registry()
+                .get_type(
+                    &self.0.engine,
+                    self.0
+                        .type_collection
+                        .lookup_shared_type(trampoline_module_ty)
+                        .unwrap()
+                )
+                .unwrap()
+                .unwrap_func()
+                .is_trampoline_type()
+        );
+
+        let ptr = self
+            .code()
+            .wasm_to_host_trampoline(trampoline_module_ty)
+            .cast_mut();
+
+        Some(NonNull::new(ptr).unwrap())
     }
 }

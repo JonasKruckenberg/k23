@@ -2610,6 +2610,8 @@ pub fn translate_operator(
         | Operator::I64MulWideU => {
             return Err(wasm_unsupported!("Wide Arithmetic Proposal"));
         }
+
+        _ => { return Err(wasm_unsupported!("Unknown WASM operator")); }
     }
 
     Ok(())

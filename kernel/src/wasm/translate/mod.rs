@@ -23,7 +23,7 @@ pub use module_types::ModuleTypes;
 pub use type_convert::WasmparserTypeConverter;
 pub use types::{
     EntityType, WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmRecGroup, WasmRefType,
-    WasmSubType, WasmValType,
+    WasmSubType, WasmValType, Finality, WasmCompositeType, WasmCompositeTypeInner
 };
 use wasmparser::WasmFeatures;
 use wasmparser::collections::IndexMap;

@@ -17,9 +17,9 @@ use crate::wasm::runtime::vmcontext::{
 };
 use crate::wasm::runtime::{
     ConstExprEvaluator, Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable,
-    Imports, InstanceAllocator, OwnedVMContext, VMCONTEXT_MAGIC, VMContext, VMFuncRef,
-    VMFunctionImport, VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOffsets,
-    VMOpaqueContext, VMTableDefinition, VMTableImport,
+    Imports, InstanceAllocator, OwnedVMContext, VMContext, VMFuncRef, VMFunctionImport,
+    VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOffsets, VMOpaqueContext,
+    VMTableDefinition, VMTableImport, VMCONTEXT_MAGIC,
 };
 use crate::wasm::translate::{TableInitialValue, TableSegmentElements};
 use crate::wasm::{Extern, Module, Store};
@@ -520,7 +520,7 @@ fn initialize_vmfunc_refs(
         .filter(|(_, f)| f.is_escaping())
     {
         let func_ref = if let Some(def_index) = module.translated().defined_func_index(index) {
-            let info = &module.function_info()[def_index];
+            let info = &module.code().function_info()[def_index];
             let array_call = info
                 .host_to_wasm_trampoline
                 .expect("escaping function requires trampoline");
@@ -532,10 +532,12 @@ fn initialize_vmfunc_refs(
                         module.code().resolve_function_loc(array_call),
                     )
                 },
-                wasm_call: NonNull::new(
-                    module.code().resolve_function_loc(wasm_call) as *mut VMWasmCallFunction
-                )
-                .unwrap(),
+                wasm_call: Some(
+                    NonNull::new(
+                        module.code().resolve_function_loc(wasm_call) as *mut VMWasmCallFunction
+                    )
+                    .unwrap(),
+                ),
                 vmctx: VMOpaqueContext::from_vmcontext(vmctx.as_mut_ptr()),
                 type_index: {
                     let index = module.translated().types[func.signature];
@@ -550,8 +552,8 @@ fn initialize_vmfunc_refs(
                 .lookup_shared_type(type_index)
                 .unwrap();
             VMFuncRef {
+                wasm_call: Some(import.wasm_call),
                 array_call: import.array_call,
-                wasm_call: import.wasm_call,
                 vmctx: import.vmctx,
                 type_index,
             }

@@ -3,8 +3,8 @@
     reason = "too many trivial unsafe blocks"
 )]
 
+use crate::wasm::func::HostContext;
 use crate::wasm::indices::VMSharedTypeIndex;
-use core::arch::asm;
 use core::ffi::c_void;
 use core::fmt;
 use core::marker::PhantomPinned;
@@ -14,6 +14,7 @@ use cranelift_entity::Unsigned;
 use wasmparser::ValType;
 
 pub const VMCONTEXT_MAGIC: u32 = u32::from_le_bytes(*b"vmcx");
+pub const VM_HOST_CONTEXT_MAGIC: u32 = u32::from_le_bytes(*b"achx");
 
 /// The VM "context", which holds guest-side instance state such as
 /// globals, table pointers, memory pointers and other runtime information.
@@ -79,6 +80,12 @@ impl VMOpaqueContext {
     /// Helper function to clearly indicate that casts are desired.
     #[inline]
     pub fn from_vmcontext(ptr: *mut VMContext) -> *mut VMOpaqueContext {
+        ptr.cast()
+    }
+
+    /// Helper function to clearly indicate that casts are desired.
+    #[inline]
+    pub fn from_hostcontext(ptr: *mut HostContext) -> *mut VMOpaqueContext {
         ptr.cast()
     }
 }
@@ -259,7 +266,7 @@ impl fmt::Debug for VMVal {
 /// * The capacity of the `ValRaw` buffer. Must always be at least
 ///   `max(len(wasm_params), len(wasm_results))`.
 pub type VMArrayCallFunction =
-    unsafe extern "C" fn(*mut VMContext, *mut VMContext, *mut VMVal, usize);
+    unsafe extern "C" fn(*mut VMOpaqueContext, *mut VMOpaqueContext, *mut VMVal, usize);
 
 /// A function pointer that exposes the Wasm calling convention.
 ///
@@ -291,11 +298,14 @@ pub struct VMFuncRef {
     pub array_call: VMArrayCallFunction,
     /// Function pointer for this funcref if being called via the calling
     /// convention we use when compiling Wasm.
-    pub wasm_call: NonNull<VMWasmCallFunction>,
+    pub wasm_call: Option<NonNull<VMWasmCallFunction>>,
     /// The VM state associated with this function.
     pub vmctx: *mut VMOpaqueContext,
     pub type_index: VMSharedTypeIndex,
 }
+
+unsafe impl Send for VMFuncRef {}
+unsafe impl Sync for VMFuncRef {}
 
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]

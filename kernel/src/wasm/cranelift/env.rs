@@ -14,7 +14,7 @@ use crate::wasm::translate::{
     ModuleTypes, TranslatedModule, WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmRefType,
     WasmparserTypeConverter,
 };
-use crate::wasm::trap::{TRAP_BAD_SIGNATURE, TRAP_INDIRECT_CALL_TO_NULL, TRAP_NULL_REFERENCE};
+use crate::wasm::trap::{TRAP_BAD_SIGNATURE, TRAP_INDIRECT_CALL_TO_NULL, TRAP_INTERNAL_ASSERT, TRAP_NULL_REFERENCE};
 use crate::wasm::utils::{reference_type, value_type, wasm_call_signature};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -1305,6 +1305,9 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             // Then append the regular call arguments.
             real_call_args.extend_from_slice(call_args);
 
+            // insert a debug-mode assertion that the function address is non-null
+            self.debug_assert_func_non_null(func_addr);
+
             // Finally, make the indirect call!
             self.indirect_call_inst(sig_ref, func_addr, &real_call_args)
         }
@@ -1488,8 +1491,8 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
         let pointer_type = self.env.pointer_type();
         // Dereference callee pointer (pointer to a `VMFuncRef`) to get the function address.
         //
-        // Note that this trap if `callee` is null, and it is the callers responsibility to
-        // check whether `callee` is either already known to non-null or ay trap.
+        // Note that this traps if `callee` is null, and it is the callers responsibility to
+        // check whether `callee` is either already known to be non-null or trap.
         // Therefore the `Option<TrapCode>`.
         let mem_flags = MemFlags::trusted().with_readonly();
         let func_addr = self.builder.ins().load(
@@ -1528,6 +1531,9 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
 
         // Then append the regular call arguments.
         real_call_args.extend_from_slice(call_args);
+
+        // insert a debug-mode assertion that the function address is non-null
+        self.debug_assert_func_non_null(func_addr);
 
         self.indirect_call_inst(sig_ref, func_addr, &real_call_args)
     }
@@ -1580,4 +1586,14 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             inst
         }
     }
+
+    fn debug_assert_func_non_null(&mut self, func_addr: Value) {
+        #[cfg(debug_assertions)]
+        {
+            let is_null = self.builder.ins().icmp_imm(IntCC::Equal, func_addr, 0);
+            self.builder.ins().trapnz(is_null, TRAP_INTERNAL_ASSERT);
+        }
+    }
+
 }
+

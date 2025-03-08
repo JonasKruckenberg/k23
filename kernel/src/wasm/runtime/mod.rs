@@ -25,8 +25,8 @@ pub use mmap_vec::MmapVec;
 pub use owned_vmcontext::OwnedVMContext;
 pub use table::Table;
 pub use vmcontext::{
-    VMCONTEXT_MAGIC, VMContext, VMFuncRef, VMFunctionImport, VMGlobalImport, VMMemoryDefinition,
-    VMMemoryImport, VMOpaqueContext, VMTableDefinition, VMTableImport, VMVal,
+    VMCONTEXT_MAGIC, VM_HOST_CONTEXT_MAGIC, VMContext, VMFuncRef, VMFunctionImport, VMGlobalImport, VMMemoryDefinition,
+    VMMemoryImport, VMOpaqueContext, VMTableDefinition, VMTableImport, VMVal, VMWasmCallFunction
 };
 pub use vmoffsets::{StaticVMOffsets, VMOffsets};
 

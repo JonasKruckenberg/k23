@@ -1,8 +1,9 @@
 use crate::wasm::indices::CanonicalizedTypeIndex;
 use crate::wasm::translate::{GlobalDesc, MemoryDesc, TableDesc};
-use crate::wasm::type_registry::TypeTrace;
-use crate::wasm::{Error, enum_accessors};
+use crate::wasm::type_registry::{RegisteredType, TypeTrace};
+use crate::wasm::{enum_accessors, Error};
 use crate::{bail, wasm};
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use core::fmt;
 
@@ -64,6 +65,21 @@ impl WasmValType {
                 Error::MismatchedTypes,
                 "type mismatch: expected {other}, found {self}"
             );
+        }
+    }
+    
+    /// Returns the trampoline-compatible representation of this type.
+    fn trampoline_type(&self) -> Self {
+        match self {
+            WasmValType::Ref(r) => WasmValType::Ref(WasmRefType {
+                nullable: true,
+                heap_type: r.heap_type.top().into(),
+            }),
+            WasmValType::I32
+            | WasmValType::I64
+            | WasmValType::F32
+            | WasmValType::F64
+            | WasmValType::V128 => self.clone(),
         }
     }
 }
@@ -777,6 +793,24 @@ pub struct WasmFuncType {
     pub results: Box<[WasmValType]>,
 }
 
+impl WasmFuncType {
+    pub fn is_trampoline_type(&self) -> bool {
+        self.params.iter().all(|p| *p == p.trampoline_type())
+            && self.results.iter().all(|r| *r == r.trampoline_type())
+    }
+
+    pub fn trampoline_type(&self) -> Cow<'_, Self> {
+        if self.is_trampoline_type() {
+            return Cow::Borrowed(self);
+        }
+
+        Cow::Owned(Self {
+            params: self.params.iter().map(|p| p.trampoline_type()).collect(),
+            results: self.results.iter().map(|r| r.trampoline_type()).collect(),
+        })
+    }
+}
+
 impl fmt::Display for WasmFuncType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(func")?;
@@ -1000,5 +1034,30 @@ impl TypeTrace for WasmRecGroup {
             ty.trace_mut(func)?;
         }
         Ok(())
+    }
+}
+
+/// Indicator of whether a type is final or not.
+///
+/// Final types may not be the supertype of other types.
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub enum Finality {
+    /// The associated type is final.
+    Final,
+    /// The associated type is not final.
+    NonFinal,
+}
+
+impl Finality {
+    /// Is this final?
+    #[inline]
+    pub fn is_final(&self) -> bool {
+        *self == Self::Final
+    }
+
+    /// Is this non-final?
+    #[inline]
+    pub fn is_non_final(&self) -> bool {
+        *self == Self::NonFinal
     }
 }

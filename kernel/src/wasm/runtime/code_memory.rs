@@ -1,10 +1,13 @@
 use crate::vm::{AddressRangeExt, AddressSpace, UserMmap, VirtualAddress};
-use crate::wasm::Error;
-use crate::wasm::compile::FunctionLoc;
-use crate::wasm::runtime::MmapVec;
+use crate::wasm::compile::{CompiledFunctionInfo, FunctionLoc};
+use crate::wasm::indices::{DefinedFuncIndex, ModuleInternedTypeIndex};
+use crate::wasm::runtime::{MmapVec, VMWasmCallFunction};
 use crate::wasm::trap::Trap;
+use crate::wasm::Error;
 use alloc::vec::Vec;
+use core::ffi::c_void;
 use core::range::Range;
+use cranelift_entity::PrimaryMap;
 
 #[derive(Debug)]
 pub struct CodeMemory {
@@ -14,10 +17,18 @@ pub struct CodeMemory {
 
     trap_offsets: Vec<u32>,
     traps: Vec<Trap>,
+    wasm_to_host_trampolines: Vec<(ModuleInternedTypeIndex, FunctionLoc)>,
+    function_info: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
 }
 
 impl CodeMemory {
-    pub fn new(mmap_vec: MmapVec<u8>, trap_offsets: Vec<u32>, traps: Vec<Trap>) -> Self {
+    pub fn new(
+        mmap_vec: MmapVec<u8>,
+        trap_offsets: Vec<u32>,
+        traps: Vec<Trap>,
+        wasm_to_host_trampolines: Vec<(ModuleInternedTypeIndex, FunctionLoc)>,
+        function_info: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
+    ) -> Self {
         let (mmap, size) = mmap_vec.into_parts();
         Self {
             mmap,
@@ -25,6 +36,8 @@ impl CodeMemory {
             published: false,
             trap_offsets,
             traps,
+            wasm_to_host_trampolines,
+            function_info,
         }
     }
 
@@ -84,5 +97,23 @@ impl CodeMemory {
             .ok()?;
 
         Some(self.traps[index])
+    }
+
+    pub(crate) fn function_info(&self) -> &PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo> {
+        &self.function_info
+    }
+    
+    pub fn wasm_to_host_trampoline(&self, sig: ModuleInternedTypeIndex) -> *const VMWasmCallFunction {
+        let idx = match self
+            .wasm_to_host_trampolines
+            .binary_search_by_key(&sig, |entry| entry.0)
+        {
+            Ok(idx) => idx,
+            Err(_) => panic!("missing trampoline for {sig:?}"),
+        };
+
+        let (_, loc) = self.wasm_to_host_trampolines[idx];
+
+        self.resolve_function_loc(loc) as *const VMWasmCallFunction
     }
 }

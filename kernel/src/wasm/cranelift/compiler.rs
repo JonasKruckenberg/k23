@@ -4,6 +4,7 @@ use crate::wasm::compile::{CompiledFunction, Compiler, FilePos, NS_WASM_FUNC};
 use crate::wasm::cranelift::builtins::BuiltinFunctionSignatures;
 use crate::wasm::cranelift::env::TranslationEnvironment;
 use crate::wasm::cranelift::func_translator::FuncTranslator;
+use crate::wasm::func::HostContext;
 use crate::wasm::indices::DefinedFuncIndex;
 use crate::wasm::runtime::{StaticVMOffsets, VMCONTEXT_MAGIC};
 use crate::wasm::translate::{
@@ -11,16 +12,18 @@ use crate::wasm::translate::{
 };
 use crate::wasm::trap::{TRAP_EXIT, TRAP_INTERNAL_ASSERT};
 use crate::wasm::utils::{array_call_signature, value_type, wasm_call_signature};
+use crate::wasm::VMFuncRef;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::fmt::Formatter;
+use core::mem::offset_of;
 use core::{cmp, fmt, mem};
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::{Endianness, InstBuilder, Type, Value};
 use cranelift_codegen::ir::{GlobalValueData, MemFlags, Signature, UserExternalName, UserFuncName};
 use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
-use cranelift_codegen::{TextSectionBuilder, ir};
+use cranelift_codegen::{ir, TextSectionBuilder};
 use cranelift_frontend::FunctionBuilder;
 use spin::Mutex;
 use target_lexicon::Triple;
@@ -202,29 +205,66 @@ impl Compiler for CraneliftCompiler {
     ) -> crate::wasm::Result<CompiledFunction> {
         let pointer_type = self.isa.pointer_type();
         let wasm_call_sig = wasm_call_signature(self.target_isa(), wasm_func_ty);
-        let _array_call_sig = array_call_signature(self.target_isa());
+        let array_call_sig = array_call_signature(self.target_isa());
 
         let mut compiler = self.function_compiler();
         let func = ir::Function::with_name_signature(UserFuncName::default(), wasm_call_sig);
         let (mut builder, block0) = compiler.builder(func);
 
         let args = builder.func.dfg.block_params(block0).to_vec();
-        let _callee_vmctx = args[0];
-        let _caller_vmctx = args[1];
+        let callee_vmctx = args[0];
+        let caller_vmctx = args[1];
+
+        // Assert that we were really given a core Wasm vmctx, since that's
+        // what we are assuming with our offsets below.
+        debug_assert_vmctx_kind(
+            self.target_isa(),
+            &mut builder,
+            caller_vmctx,
+            VMCONTEXT_MAGIC,
+        );
+
+        // We are exiting Wasm, so save our PC and FP.
+        save_last_wasm_exit_fp_and_pc(&mut builder, pointer_type, &self.offsets, caller_vmctx);
 
         // Spill all wasm arguments to the stack in `ValRaw` slots.
-        let (_args_base, args_len) = allocate_stack_array_and_spill_args(
+        let (args_base, args_len) = allocate_stack_array_and_spill_args(
             wasm_func_ty,
             &mut builder,
             &args[2..],
             pointer_type,
         );
-        let _args_len = builder.ins().iconst(pointer_type, i64::from(args_len));
+        let args_len = builder.ins().iconst(pointer_type, i64::from(args_len));
 
-        // TODO figure out address of host func (from host func vmctx)
-        // TODO call indirect with [callee_vmctx, caller_vmctx, args_base, args_len]
+        // Load the array call address from the `HostContext`
+        let callee = builder.ins().load(
+            pointer_type,
+            MemFlags::trusted(),
+            callee_vmctx,
+            i32::try_from(offset_of!(HostContext, func_ref) + offset_of!(VMFuncRef, array_call)).unwrap(),
+        );
 
-        todo!()
+        // Do an indirect call to the callee.
+        let callee_signature = builder.func.import_signature(array_call_sig);
+        
+        builder.ins().call_indirect(
+            callee_signature,
+            callee,
+            &[callee_vmctx, caller_vmctx, args_base, args_len],
+        );
+
+        let results = load_values_from_array(
+            &wasm_func_ty.results,
+            &mut builder,
+            args_base,
+            args_len,
+            pointer_type,
+        );
+
+        builder.ins().return_(&results);
+        builder.finalize();
+
+        Ok(compiler.finish(None)?)
     }
 
     fn compile_wasm_to_builtin(

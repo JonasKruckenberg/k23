@@ -1,14 +1,14 @@
 mod compile_key;
 mod compiled_function;
 
-use crate::wasm::Engine;
 use crate::wasm::builtins::BuiltinFunctionIndex;
 use crate::wasm::compile::compiled_function::{RelocationTarget, TrapInfo};
-use crate::wasm::indices::DefinedFuncIndex;
+use crate::wasm::indices::{DefinedFuncIndex, ModuleInternedTypeIndex, VMSharedTypeIndex};
 use crate::wasm::translate::{
     FunctionBodyData, ModuleTranslation, ModuleTypes, TranslatedModule, WasmFuncType,
 };
 use crate::wasm::trap::Trap;
+use crate::wasm::Engine;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -18,6 +18,8 @@ use compile_key::CompileKey;
 pub use compiled_function::CompiledFunction;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_entity::{EntitySet, PrimaryMap};
+use hashbrown::HashSet;
+use crate::wasm::runtime::{CodeMemory, MmapVec};
 
 /// Namespace corresponding to wasm functions, the index is the index of the
 /// defined function that's being referenced.
@@ -170,7 +172,33 @@ impl<'a> CompileInputs<'a> {
             }
         }
 
-        // TODO collect wasm->native trampolines
+        let mut trampoline_types_seen = HashSet::new();
+        for (_func_type_index, trampoline_type_index) in types.trampoline_types() {
+            let is_new = trampoline_types_seen.insert(trampoline_type_index);
+            if !is_new {
+                continue;
+            }
+
+            let trampoline_func_ty = types
+                .get_wasm_type(trampoline_type_index)
+                .unwrap()
+                .unwrap_func();
+            inputs.push(Box::new(move |compiler| {
+                let symbol = format!(
+                    "signatures[{}]::wasm_to_array_trampoline",
+                    trampoline_type_index.as_u32()
+                );
+                tracing::debug!("compiling {symbol}...");
+
+                let function = compiler.compile_wasm_to_array_trampoline(trampoline_func_ty)?;
+
+                Ok(CompileOutput {
+                    key: CompileKey::wasm_to_array_trampoline(trampoline_type_index),
+                    function,
+                    symbol,
+                })
+            }));
+        }
 
         Self(inputs)
     }
@@ -253,6 +281,110 @@ pub struct UnlinkedCompileOutputs {
 }
 
 impl UnlinkedCompileOutputs {
+    // #[expect(
+    //     clippy::type_complexity,
+    //     reason = "TODO clean up the return type and remove this"
+    // )]
+    // pub fn link_and_finish(
+    //     mut self,
+    //     engine: &Engine,
+    //     module: &TranslatedModule,
+    // ) -> (
+    //     Vec<u8>,
+    //     PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
+    //     (Vec<u32>, Vec<Trap>),
+    //     Vec<(ModuleInternedTypeIndex, FunctionLoc)>,
+    // ) {
+    //     let mut text_builder = engine.compiler().text_section_builder(self.outputs.len());
+    //     let mut ctrl_plane = ControlPlane::default();
+    //     let mut locs = Vec::new(); // TODO get a capacity value for this
+    //     let mut traps = TrapsBuilder::default();
+    // 
+    //     for output in &self.outputs {
+    //         let body = output.function.buffer();
+    //         let alignment = output.function.alignment();
+    //         let body_len = body.len() as u64;
+    //         let off = text_builder.append(true, body, alignment, &mut ctrl_plane);
+    // 
+    //         tracing::debug!(
+    //             "Function {}: {off:#x}..{:#x}",
+    //             output.symbol,
+    //             off + body_len
+    //         );
+    // 
+    //         for r in output.function.relocations() {
+    //             let target = match r.target {
+    //                 RelocationTarget::Wasm(callee_index) => {
+    //                     let def_func_index = module.defined_func_index(callee_index).unwrap();
+    // 
+    //                     self.indices[&CompileKey::WASM_FUNCTION_KIND]
+    //                         [&CompileKey::wasm_function(def_func_index)]
+    //                 }
+    //                 RelocationTarget::Builtin(index) => {
+    //                     self.indices[&CompileKey::WASM_TO_BUILTIN_TRAMPOLINE_KIND]
+    //                         [&CompileKey::wasm_to_builtin_trampoline(index)]
+    //                 }
+    //             };
+    // 
+    //             // Ensure that we actually resolved the relocation
+    //             let resolved =
+    //                 text_builder.resolve_reloc(off + u64::from(r.offset), r.kind, r.addend, target);
+    //             debug_assert!(resolved);
+    //         }
+    // 
+    //         let loc = FunctionLoc {
+    //             start: u32::try_from(off).unwrap(),
+    //             length: u32::try_from(body_len).unwrap(),
+    //         };
+    // 
+    //         traps.push_traps(loc, output.function.traps());
+    //         locs.push(loc);
+    //     }
+    // 
+    //     let wasm_functions = self
+    //         .indices
+    //         .remove(&CompileKey::WASM_FUNCTION_KIND)
+    //         .unwrap_or_default()
+    //         .into_iter();
+    // 
+    //     let mut host_to_wasm_trampolines = self
+    //         .indices
+    //         .remove(&CompileKey::ARRAY_TO_WASM_TRAMPOLINE_KIND)
+    //         .unwrap_or_default();
+    // 
+    //     let funcs = wasm_functions
+    //         .map(|(key, index)| {
+    //             let host_to_wasm_trampoline_key =
+    //                 CompileKey::array_to_wasm_trampoline(DefinedFuncIndex::from_u32(key.index));
+    //             let host_to_wasm_trampoline = host_to_wasm_trampolines
+    //                 .remove(&host_to_wasm_trampoline_key)
+    //                 .map(|index| locs[index]);
+    // 
+    //             CompiledFunctionInfo {
+    //                 start_srcloc: self.outputs[index].function.metadata().start_srcloc,
+    //                 wasm_func_loc: locs[index],
+    //                 host_to_wasm_trampoline,
+    //             }
+    //         })
+    //         .collect();
+    // 
+    //     // collect up all the WASM->host trampolines we compiled
+    //     let wasm_to_host_trampolines: Vec<_> = self
+    //         .indices
+    //         .remove(&CompileKey::WASM_TO_ARRAY_TRAMPOLINE_KIND)
+    //         .unwrap_or_default()
+    //         .into_iter()
+    //         .map(|(key, index)| (ModuleInternedTypeIndex::from_u32(key.index), locs[index]))
+    //         .collect();
+    // 
+    //     (
+    //        
+    //         funcs,
+    //         traps.finish(),
+    //         wasm_to_host_trampolines,
+    //     )
+    // }
+
     #[expect(
         clippy::type_complexity,
         reason = "TODO clean up the return type and remove this"
@@ -261,11 +393,8 @@ impl UnlinkedCompileOutputs {
         mut self,
         engine: &Engine,
         module: &TranslatedModule,
-    ) -> (
-        Vec<u8>,
-        PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
-        (Vec<u32>, Vec<Trap>),
-    ) {
+        mmap: impl FnOnce(Vec<u8>) -> crate::wasm::Result<MmapVec<u8>>
+    ) -> crate::wasm::Result<CodeMemory> {
         let mut text_builder = engine.compiler().text_section_builder(self.outputs.len());
         let mut ctrl_plane = ControlPlane::default();
         let mut locs = Vec::new(); // TODO get a capacity value for this
@@ -339,7 +468,19 @@ impl UnlinkedCompileOutputs {
             })
             .collect();
 
-        (text_builder.finish(&mut ctrl_plane), funcs, traps.finish())
+        // collect up all the WASM->host trampolines we compiled
+        let wasm_to_host_trampolines: Vec<_> = self
+            .indices
+            .remove(&CompileKey::WASM_TO_ARRAY_TRAMPOLINE_KIND)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(key, index)| (ModuleInternedTypeIndex::from_u32(key.index), locs[index]))
+            .collect();
+
+        let (trap_offsets, traps) = traps.finish();
+        let mmap_vec = mmap(text_builder.finish(&mut ctrl_plane))?;
+
+        Ok(CodeMemory::new(mmap_vec, trap_offsets, traps, wasm_to_host_trampolines, funcs))
     }
 }
 

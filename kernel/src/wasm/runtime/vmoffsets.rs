@@ -119,7 +119,7 @@ impl StaticVMOffsets {
 }
 
 /// Offsets to fields in the `VMContext` structure.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VMOffsets {
     num_imported_funcs: u32,
     num_imported_tables: u32,
@@ -203,6 +203,39 @@ impl VMOffsets {
 
             size: offset,
         }
+    }
+
+    #[inline]
+    pub fn num_imported_funcs(&self) -> u32 {
+        self.num_imported_funcs
+    }
+    #[inline]
+    pub fn num_imported_tables(&self) -> u32 {
+        self.num_imported_tables
+    }
+    #[inline]
+    pub fn num_imported_memories(&self) -> u32 {
+        self.num_imported_memories
+    }
+    #[inline]
+    pub fn num_imported_globals(&self) -> u32 {
+        self.num_imported_globals
+    }
+    #[inline]
+    pub fn num_defined_tables(&self) -> u32 {
+        self.num_defined_tables
+    }
+    #[inline]
+    pub fn num_defined_memories(&self) -> u32 {
+        self.num_defined_memories
+    }
+    #[inline]
+    pub fn num_defined_globals(&self) -> u32 {
+        self.num_defined_globals
+    }
+    #[inline]
+    pub fn num_escaped_funcs(&self) -> u32 {
+        self.num_escaped_funcs
     }
 
     /// The offset of the `func_refs` array in `VMContext`.
