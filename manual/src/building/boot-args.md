@@ -4,7 +4,7 @@ Boot arguments configure various aspects of the kernels behaviour. They read fro
 [`/chosen/bootargs`](https://devicetree-specification.readthedocs.io/en/stable/devicenodes.html#chosen-node) property of the
 flattened device tree that is passed to the kernel by the previous stage bootloader.
 
-The format follows a simple `key=value,key=value,..` list of comma separated of key-value pairs.
+The format is a simple `key=value;key=value;..` list of semicolon separated of key-value pairs.
 
 ## `log`
 
