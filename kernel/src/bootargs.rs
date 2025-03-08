@@ -33,7 +33,7 @@ impl FromStr for Bootargs {
         let mut log = None;
         let mut backtrace = None;
 
-        let parts = s.trim().split(',');
+        let parts = s.trim().split(';');
         for part in parts {
             if let Some(current) = part.strip_prefix("log=") {
                 log = Some(Filter::from_str(current).unwrap());
