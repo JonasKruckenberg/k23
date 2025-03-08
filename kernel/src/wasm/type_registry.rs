@@ -1,19 +1,23 @@
-use crate::wasm::Engine;
 use crate::wasm::indices::{
     CanonicalizedTypeIndex, ModuleInternedTypeIndex, RecGroupRelativeTypeIndex, VMSharedTypeIndex,
 };
-use crate::wasm::translate::{ModuleTypes, WasmRecGroup, WasmSubType};
+use crate::wasm::translate::{
+    ModuleTypes, WasmCompositeType, WasmCompositeTypeInner, WasmRecGroup, WasmSubType,
+};
+use crate::wasm::Engine;
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::borrow::Borrow;
-use core::fmt;
 use core::fmt::Debug;
 use core::hash::{Hash, Hasher};
 use core::ops::Range;
 use core::sync::atomic::Ordering::Acquire;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use cranelift_entity::{PrimaryMap, SecondaryMap, iter_entity_range};
+use core::{fmt, iter};
+use cranelift_entity::packed_option::{PackedOption, ReservedValue};
+use cranelift_entity::{iter_entity_range, PrimaryMap, SecondaryMap};
 use hashbrown::HashSet;
 use spin::RwLock;
 use wasmtime_slab::Slab;
@@ -109,6 +113,7 @@ pub struct RuntimeTypeCollection {
     engine: Engine,
     rec_groups: Vec<RecGroupEntry>,
     types: PrimaryMap<ModuleInternedTypeIndex, VMSharedTypeIndex>,
+    trampolines: SecondaryMap<VMSharedTypeIndex, PackedOption<ModuleInternedTypeIndex>>,
 }
 
 impl RuntimeTypeCollection {
@@ -121,6 +126,13 @@ impl RuntimeTypeCollection {
     #[inline]
     pub fn lookup_shared_type(&self, index: ModuleInternedTypeIndex) -> Option<VMSharedTypeIndex> {
         self.types.get(index).copied()
+    }
+
+    #[inline]
+    pub fn trampoline_type(&self, ty: VMSharedTypeIndex) -> Option<ModuleInternedTypeIndex> {
+        let trampoline_ty = self.trampolines[ty].expand();
+        log::trace!("TypeCollection::trampoline_type({ty:?}) -> {trampoline_ty:?}");
+        trampoline_ty
     }
 }
 
@@ -234,15 +246,30 @@ impl TypeRegistry {
     pub fn register_module_types(
         &self,
         engine: &Engine,
-        types: ModuleTypes,
+        module_types: ModuleTypes,
     ) -> RuntimeTypeCollection {
-        let (rec_groups, types) = self.0.write().register_module_types(types);
+        let (rec_groups, types) = self.0.write().register_module_types(&module_types);
 
+        log::trace!("Begin building module's shared-to-module-trampoline-types map");
+        let mut trampolines = SecondaryMap::with_capacity(types.len());
+        for (module_ty, module_trampoline_ty) in module_types.trampoline_types() {
+            let shared_ty = types[module_ty];
+            let trampoline_shared_ty = self.get_trampoline_type(shared_ty);
+            trampolines[trampoline_shared_ty] = Some(module_trampoline_ty).into();
+            log::trace!("--> shared_to_module_trampolines[{trampoline_shared_ty:?}] = {module_trampoline_ty:?}");
+        }
+        log::trace!("Done building module's shared-to-module-trampoline-types map");
+        
         RuntimeTypeCollection {
             engine: engine.clone(),
             rec_groups,
             types,
+            trampolines
         }
+    }
+
+    pub fn register_type(&self, engine: &Engine, ty: WasmSubType) -> RegisteredType {
+        self.0.write().register_type(engine, ty)
     }
 
     pub fn get_type(&self, engine: &Engine, index: VMSharedTypeIndex) -> Option<RegisteredType> {
@@ -262,6 +289,27 @@ impl TypeRegistry {
             index,
         })
     }
+
+    pub fn get_trampoline_type(&self, index: VMSharedTypeIndex) -> VMSharedTypeIndex {
+        let id = shared_type_index_to_slab_id(index);
+        let inner = self.0.read();
+
+        let ty = &inner.types[id];
+        debug_assert!(
+            ty.is_func(),
+            "cannot get the trampoline type of a non-function type: {index:?} = {ty:?}"
+        );
+
+        let trampoline_ty = match inner.type_to_trampoline.get(index).and_then(|x| x.expand()) {
+            Some(ty) => ty,
+            None => {
+                // The function type is its own trampoline type.
+                index
+            }
+        };
+        tracing::trace!("TypeRegistry::trampoline_type({index:?}) -> {trampoline_ty:?}");
+        trampoline_ty
+    }
 }
 
 #[inline]
@@ -277,8 +325,9 @@ fn slab_id_to_shared_type_index(id: wasmtime_slab::Id) -> VMSharedTypeIndex {
 #[derive(Debug, Default)]
 struct TypeRegistryInner {
     hash_consing_map: HashSet<RecGroupEntry>,
-    type_to_rec_group: SecondaryMap<VMSharedTypeIndex, Option<RecGroupEntry>>,
     types: Slab<Arc<WasmSubType>>,
+    type_to_rec_group: SecondaryMap<VMSharedTypeIndex, Option<RecGroupEntry>>,
+    type_to_trampoline: SecondaryMap<VMSharedTypeIndex, PackedOption<VMSharedTypeIndex>>,
     // An explicit stack of entries that we are in the middle of dropping. Used
     // to avoid recursion when dropping a type that is holding the last
     // reference to another type, etc...
@@ -286,9 +335,23 @@ struct TypeRegistryInner {
 }
 
 impl TypeRegistryInner {
+    fn register_type(&mut self, engine: &Engine, ty: WasmSubType) -> RegisteredType {
+        let entry = self.register_singleton_rec_group(ty);
+
+        let index = entry.0.shared_type_indices[0];
+        let id = shared_type_index_to_slab_id(index);
+        let ty = self.types[id].clone();
+        RegisteredType {
+            engine: engine.clone(),
+            entry,
+            ty,
+            index,
+        }
+    }
+
     fn register_module_types(
         &mut self,
-        types: ModuleTypes,
+        types: &ModuleTypes,
     ) -> (
         Vec<RecGroupEntry>,
         PrimaryMap<ModuleInternedTypeIndex, VMSharedTypeIndex>,
@@ -316,6 +379,26 @@ impl TypeRegistryInner {
             entries.push(entry);
         }
         (entries, map)
+    }
+
+    fn register_singleton_rec_group(&mut self, ty: WasmSubType) -> RecGroupEntry {
+        assert!(
+            ty.is_canonicalized_for_runtime_usage(),
+            "type is not canonicalized for runtime usage: {ty:?}"
+        );
+
+        // This type doesn't have any module-level type references, since it is
+        // already canonicalized for runtime usage in this registry, so an empty
+        // map suffices.
+        let map = PrimaryMap::default();
+
+        // This must have `range.len() == 1`, even though we know this type
+        // doesn't have any intra-group type references, to satisfy
+        // `register_rec_group`'s preconditions.
+        let range = ModuleInternedTypeIndex::from_bits(u32::MAX - 1)
+            ..ModuleInternedTypeIndex::from_bits(u32::MAX);
+
+        self.register_rec_group(&map, range, iter::once(ty))
     }
 
     fn register_rec_group(
@@ -395,6 +478,57 @@ impl TypeRegistryInner {
         for ty in entry.0.shared_type_indices.iter().copied() {
             debug_assert!(self.type_to_rec_group[ty].is_none());
             self.type_to_rec_group[ty] = Some(entry.clone());
+        }
+
+        // Finally, make sure to register the trampoline type for each function
+        // type in the rec group.
+        for shared_type_index in entry.0.shared_type_indices.iter().copied() {
+            let slab_id = shared_type_index_to_slab_id(shared_type_index);
+            let sub_ty = &self.types[slab_id];
+            if let Some(f) = sub_ty.as_func() {
+                let trampoline = f.trampoline_type();
+                match &trampoline {
+                    Cow::Borrowed(_) if sub_ty.is_final && sub_ty.supertype.is_none() => {
+                        // The function type is its own trampoline type. Leave
+                        // its entry in `type_to_trampoline` empty to signal
+                        // this.
+                        log::trace!(
+                            "function type is its own trampoline type: \n\
+                             --> trampoline_type[{shared_type_index:?}] = {shared_type_index:?}\n\
+                             --> trampoline_type[{f}] = {f}"
+                        );
+                    }
+                    Cow::Borrowed(_) | Cow::Owned(_) => {
+                        // This will recursively call into rec group
+                        // registration, but at most once since trampoline
+                        // function types are their own trampoline type.
+                        let trampoline_entry = self.register_singleton_rec_group(WasmSubType {
+                            is_final: true,
+                            supertype: None,
+                            composite_type: WasmCompositeType {
+                                shared: sub_ty.composite_type.shared,
+                                inner: WasmCompositeTypeInner::Func(trampoline.into_owned()),
+                            },
+                        });
+                        let trampoline_index = trampoline_entry.0.shared_type_indices[0];
+                        log::trace!(
+                            "Registering trampoline type:\n\
+                             --> trampoline_type[{shared_type_index:?}] = {trampoline_index:?}\n\
+                             --> trampoline_type[{f}] = {g}",
+                            f = {
+                                let slab_id = shared_type_index_to_slab_id(shared_type_index);
+                                self.types[slab_id].unwrap_func()
+                            },
+                            g = {
+                                let slab_id = shared_type_index_to_slab_id(trampoline_index);
+                                self.types[slab_id].unwrap_func()
+                            }
+                        );
+                        debug_assert_ne!(shared_type_index, trampoline_index);
+                        self.type_to_trampoline[shared_type_index] = Some(trampoline_index).into();
+                    }
+                }
+            }
         }
 
         entry
@@ -493,11 +627,36 @@ impl TypeRegistryInner {
             // Similarly, remove the rec group's types from the registry, as
             // well as their entries from the reverse type-to-rec-group
             // map.
+            debug_assert_eq!(
+                entry.0.shared_type_indices.len(),
+                entry
+                    .0
+                    .shared_type_indices
+                    .iter()
+                    .copied()
+                    .inspect(|ty| assert!(!ty.is_reserved_value()))
+                    .collect::<HashSet<_>>()
+                    .len(),
+                "should not have any duplicate type indices",
+            );
             for index in entry.0.shared_type_indices.iter().copied() {
                 tracing::trace!("removing {index:?} from registry");
 
                 let removed_entry = self.type_to_rec_group[index].take();
                 debug_assert_eq!(removed_entry.unwrap(), entry);
+
+                // Remove the associated trampoline type, if any.
+                if let Some(trampoline_ty) =
+                    self.type_to_trampoline.get(index).and_then(|x| x.expand())
+                {
+                    self.type_to_trampoline[index] = None.into();
+                    let trampoline_entry = self.type_to_rec_group[trampoline_ty].as_ref().unwrap();
+                    if trampoline_entry
+                        .decr_ref_count("removing reference from a function type to its trampoline type")
+                    {
+                        self.drop_stack.push(trampoline_entry.clone());
+                    }
+                }
 
                 let id = shared_type_index_to_slab_id(index);
                 self.types.dealloc(id);
@@ -518,6 +677,7 @@ impl Drop for TypeRegistryInner {
             hash_consing_map,
             types,
             type_to_rec_group,
+            type_to_trampoline,
             drop_stack,
         } = self;
         assert!(
@@ -531,6 +691,10 @@ impl Drop for TypeRegistryInner {
         assert!(
             type_to_rec_group.is_empty() || type_to_rec_group.values().all(Option::is_none),
             "type registry not empty: type-to-rec-group map is not empty: {type_to_rec_group:#?}"
+        );
+        assert!(
+            type_to_trampoline.is_empty() || type_to_trampoline.values().all(|x| x.is_none()),
+            "type registry not empty: type-to-trampoline map is not empty: {type_to_trampoline:#?}"
         );
         assert!(
             drop_stack.is_empty(),

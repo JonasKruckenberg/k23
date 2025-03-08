@@ -7,7 +7,9 @@
 
 use crate::arch;
 use crate::vm::VirtualAddress;
-use crate::wasm::runtime::{StaticVMOffsets, VMContext, code_registry};
+use crate::wasm::runtime::{
+    code_registry, StaticVMOffsets, VMContext, VMFunctionImport, VMOffsets,
+};
 use crate::wasm::{Error, Trap};
 use alloc::string::ToString;
 use alloc::vec;
@@ -15,11 +17,12 @@ use alloc::vec::Vec;
 use core::cell::Cell;
 use core::mem::ManuallyDrop;
 use core::ops::ControlFlow;
-use core::ptr::{NonNull, addr_of_mut};
+use core::ptr::{addr_of_mut, NonNull};
 use core::range::Range;
 use core::slice::SliceIndex;
-use core::{mem, ptr};
+use core::{mem, ptr, slice};
 use cpu_local::cpu_local;
+use riscv::sstatus;
 
 cpu_local! {
     static ACTIVATION: Cell<*mut Activation> = Cell::new(ptr::null_mut())
@@ -62,7 +65,7 @@ pub struct Activation {
     async_guard_range: Range<*mut u8>,
 
     vmctx: *mut VMContext,
-    vmoffsets: StaticVMOffsets,
+    vmoffsets: VMOffsets,
 
     // The values of `VMRuntimeLimits::last_wasm_{exit_{pc,fp},entry_sp}`
     // for the *previous* `CallThreadState` for this same store/limits. Our
@@ -78,11 +81,7 @@ pub struct Activation {
 }
 
 impl Activation {
-    pub fn new(
-        vmctx: *mut VMContext,
-        vmoffsets: StaticVMOffsets,
-        jmp_buf: &arch::JmpBufStruct,
-    ) -> Self {
+    pub fn new(vmctx: *mut VMContext, vmoffsets: VMOffsets, jmp_buf: &arch::JmpBufStruct) -> Self {
         Self {
             unwind: Cell::new(None),
             jmp_buf: ptr::from_ref(jmp_buf),
@@ -92,19 +91,19 @@ impl Activation {
             #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
             old_last_wasm_exit_fp: Cell::new(unsafe {
                 *vmctx
-                    .byte_add(vmoffsets.vmctx_last_wasm_exit_fp() as usize)
+                    .byte_add(vmoffsets.static_.vmctx_last_wasm_exit_fp() as usize)
                     .cast::<VirtualAddress>()
             }),
             #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
             old_last_wasm_exit_pc: Cell::new(unsafe {
                 *vmctx
-                    .byte_add(vmoffsets.vmctx_last_wasm_exit_pc() as usize)
+                    .byte_add(vmoffsets.static_.vmctx_last_wasm_exit_pc() as usize)
                     .cast::<VirtualAddress>()
             }),
             #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
             old_last_wasm_entry_fp: Cell::new(unsafe {
                 *vmctx
-                    .byte_add(vmoffsets.vmctx_last_wasm_entry_fp() as usize)
+                    .byte_add(vmoffsets.static_.vmctx_last_wasm_entry_fp() as usize)
                     .cast::<VirtualAddress>()
             }),
 
@@ -146,15 +145,15 @@ impl Drop for Activation {
         unsafe {
             *self
                 .vmctx
-                .byte_add(self.vmoffsets.vmctx_last_wasm_exit_fp() as usize)
+                .byte_add(self.vmoffsets.static_.vmctx_last_wasm_exit_fp() as usize)
                 .cast::<VirtualAddress>() = self.old_last_wasm_exit_fp.get();
             *self
                 .vmctx
-                .byte_add(self.vmoffsets.vmctx_last_wasm_exit_pc() as usize)
+                .byte_add(self.vmoffsets.static_.vmctx_last_wasm_exit_pc() as usize)
                 .cast::<VirtualAddress>() = self.old_last_wasm_exit_pc.get();
             *self
                 .vmctx
-                .byte_add(self.vmoffsets.vmctx_last_wasm_entry_fp() as usize)
+                .byte_add(self.vmoffsets.static_.vmctx_last_wasm_entry_fp() as usize)
                 .cast::<VirtualAddress>() = self.old_last_wasm_entry_fp.get();
         }
     }
@@ -183,18 +182,37 @@ pub fn handle_wasm_exception(
     faulting_addr: VirtualAddress,
 ) -> ControlFlow<()> {
     if let Some(activation) = NonNull::new(ACTIVATION.get()) {
+        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+        let activation = unsafe { activation.as_ref() };
+
         let Some((code, text_offset)) = code_registry::lookup_code(pc.get()) else {
             tracing::debug!("no JIT code registered for pc {pc}");
-            return ControlFlow::Continue(());
+
+            let imports = unsafe {
+                slice::from_raw_parts(
+                    activation
+                        .vmctx
+                        .byte_add(activation.vmoffsets.vmctx_imported_functions_begin() as usize)
+                        .cast::<VMFunctionImport>(),
+                    activation.vmoffsets.num_imported_funcs() as usize,
+                )
+            };
+
+            let is_hostcall = imports.iter().any(|import| {
+                pc.get() == faulting_addr.get() && pc.get() == import.array_call as usize
+            });
+            if is_hostcall {
+                unsafe { sstatus::set_spp(sstatus::SPP::Supervisor); }
+                return ControlFlow::Break(());
+            } else {
+                return ControlFlow::Continue(());
+            }
         };
 
         let Some(trap) = code.lookup_trap_code(text_offset) else {
             tracing::debug!("no JIT trap registered for pc {pc}");
             return ControlFlow::Continue(());
         };
-
-        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-        let activation = unsafe { activation.as_ref() };
 
         // record the unwind details
         let backtrace = RawBacktrace::new(activation, Some((pc, fp)));
@@ -220,7 +238,7 @@ pub fn handle_wasm_exception(
     }
 }
 
-pub fn catch_traps<F>(caller: *mut VMContext, vmoffsets: StaticVMOffsets, f: F) -> Result<(), Error>
+pub fn catch_traps<F>(caller: *mut VMContext, vmoffsets: VMOffsets, f: F) -> Result<(), Error>
 where
     F: FnOnce(),
 {
@@ -301,11 +319,11 @@ impl RawBacktrace {
             // TODO this is horrible can we improve this?
             let pc = *activation
                 .vmctx
-                .byte_add(activation.vmoffsets.vmctx_last_wasm_exit_pc() as usize)
+                .byte_add(activation.vmoffsets.static_.vmctx_last_wasm_exit_pc() as usize)
                 .cast::<VirtualAddress>();
             let fp = *activation
                 .vmctx
-                .byte_add(activation.vmoffsets.vmctx_last_wasm_entry_fp() as usize)
+                .byte_add(activation.vmoffsets.static_.vmctx_last_wasm_entry_fp() as usize)
                 .cast::<VirtualAddress>();
 
             (pc, fp)
@@ -315,7 +333,7 @@ impl RawBacktrace {
         let last_wasm_entry_fp = unsafe {
             *activation
                 .vmctx
-                .byte_add(activation.vmoffsets.vmctx_last_wasm_entry_fp() as usize)
+                .byte_add(activation.vmoffsets.static_.vmctx_last_wasm_entry_fp() as usize)
                 .cast::<VirtualAddress>()
         };
 

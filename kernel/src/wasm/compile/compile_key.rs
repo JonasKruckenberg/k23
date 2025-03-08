@@ -1,5 +1,5 @@
 use crate::wasm::builtins::BuiltinFunctionIndex;
-use crate::wasm::indices::DefinedFuncIndex;
+use crate::wasm::indices::{DefinedFuncIndex, ModuleInternedTypeIndex};
 
 /// A sortable, comparable key for a compilation output.
 /// This is used to sort by compilation output kind and bucket results.
@@ -43,6 +43,14 @@ impl CompileKey {
         let module = 0; // TODO change this when we support multiple modules per compilation (components?)
         Self {
             namespace: Self::ARRAY_TO_WASM_TRAMPOLINE_KIND | module,
+            index: index.as_u32(),
+        }
+    }
+
+    pub fn wasm_to_array_trampoline(index: ModuleInternedTypeIndex) -> Self {
+        let module = 0; // TODO change this when we support multiple modules per compilation (components?)
+        Self {
+            namespace: Self::WASM_TO_ARRAY_TRAMPOLINE_KIND | module,
             index: index.as_u32(),
         }
     }

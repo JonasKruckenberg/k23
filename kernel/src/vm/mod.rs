@@ -16,6 +16,7 @@ mod provider;
 mod trap_handler;
 mod user_mmap;
 mod vmo;
+mod user_box;
 
 use crate::arch;
 use crate::vm::frame_alloc::FrameAllocator;
@@ -39,6 +40,7 @@ pub use flush::Flush;
 pub use trap_handler::handle_page_fault;
 pub use user_mmap::UserMmap;
 pub use vmo::Vmo;
+pub use user_box::UserBox;
 
 pub const KIB: usize = 1024;
 pub const MIB: usize = KIB * 1024;

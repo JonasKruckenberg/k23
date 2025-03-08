@@ -313,7 +313,7 @@ fn allocatable_memory_regions(
                 continue;
             }
 
-            assert!(!other.contains(&region.start) && !other.contains(&region.end));
+            assert!(!((region.start < other.end) & (other.start < region.end)), "region {region:#x?} should not overlap with {other:#x?}");
         }
     }
 

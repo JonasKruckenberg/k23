@@ -8,6 +8,7 @@
 use super::frame::FrameInfo;
 use crate::arch;
 use crate::vm::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
@@ -210,7 +211,15 @@ impl Arena {
 
 // === Arena selection ===
 
-pub fn select_arenas<I>(free_regions: I) -> ArenaSelections<I> {
+pub fn select_arenas<I>(free_regions: I) -> ArenaSelections<I>
+where
+    I: Iterator<Item = Range<PhysicalAddress>> + Clone,
+{
+    tracing::debug!(
+        "free regions for arena selection: {:?}",
+        free_regions.clone().collect::<Vec<_>>()
+    );
+
     ArenaSelections {
         inner: free_regions,
         wasted_bytes: 0,
@@ -266,8 +275,7 @@ where
                 break;
             } else {
                 self.wasted_bytes += waste_from_hole;
-                arena.end = region.end;
-
+                
                 if arena.end <= region.start {
                     arena.end = region.end;
                 } else {

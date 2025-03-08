@@ -3,7 +3,7 @@ use crate::vm::frame_alloc::FrameAllocator;
 use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 use crate::wasm::runtime::{VMContext, VMOpaqueContext, VMVal};
 use crate::wasm::trap_handler::{AsyncActivation, PreviousAsyncActivation};
-use crate::wasm::{Engine, Error, InstanceAllocator, runtime};
+use crate::wasm::{runtime, Engine, Error, InstanceAllocator};
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::future::Future;
@@ -20,7 +20,7 @@ use static_assertions::assert_impl_all;
 pub struct Store {
     pub(crate) engine: Engine,
     instances: Vec<runtime::Instance>,
-    exported_funcs: Vec<runtime::ExportedFunction>,
+    funcs: Vec<super::func::FuncData>,
     exported_tables: Vec<runtime::ExportedTable>,
     exported_memories: Vec<runtime::ExportedMemory>,
     exported_globals: Vec<runtime::ExportedGlobal>,
@@ -87,7 +87,7 @@ impl Store {
         Self {
             engine: engine.clone(),
             instances: Vec::new(),
-            exported_funcs: Vec::new(),
+            funcs: Vec::new(),
             exported_tables: Vec::new(),
             exported_memories: Vec::new(),
             exported_globals: Vec::new(),
@@ -136,10 +136,10 @@ impl Store {
     /// Inserts a new function into the store and returns a handle to it.
     pub(crate) fn push_function(
         &mut self,
-        func: runtime::ExportedFunction,
-    ) -> Stored<runtime::ExportedFunction> {
-        let index = self.exported_funcs.len();
-        self.exported_funcs.push(func);
+        func: super::func::FuncData,
+    ) -> Stored<super::func::FuncData> {
+        let index = self.funcs.len();
+        self.funcs.push(func);
         Stored::new(index)
     }
 
@@ -182,6 +182,8 @@ impl Store {
             let current_poll_cx = self.async_state.current_poll_cx.get();
             let current_suspend = self.async_state.current_suspend.get();
             let stack = self.alloc.allocate_fiber_stack()?;
+
+            tracing::trace!(fiber.stack = ?stack, "spawning async fiber...");
 
             let slot = &mut slot;
             let this = &mut *self;
@@ -512,8 +514,8 @@ macro_rules! stored_impls {
 
 stored_impls! {
     s
+    (super::func::FuncData, has_function, get_function, get_function_mut, s.funcs)
     (runtime::Instance, has_instance, get_instance, get_instance_mut, s.instances)
-    (runtime::ExportedFunction, has_function, get_function, get_function_mut, s.exported_funcs)
     (runtime::ExportedTable, has_table, get_table, get_table_mut, s.exported_tables)
     (runtime::ExportedMemory, has_memory, get_memory, get_memory_mut, s.exported_memories)
     (runtime::ExportedGlobal, has_global, get_global, get_global_mut, s.exported_globals)
@@ -532,17 +534,20 @@ impl<T> Stored<T> {
         }
     }
 }
-
 impl<T> Clone for Stored<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
-
 impl<T> Copy for Stored<T> {}
-
 impl<T> fmt::Debug for Stored<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Stored").field(&self.index).finish()
     }
 }
+impl<T> PartialEq for Stored<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
+    }
+}
+impl<T> Eq for Stored<T> {}

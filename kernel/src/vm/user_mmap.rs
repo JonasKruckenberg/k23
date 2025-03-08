@@ -26,11 +26,6 @@ pub struct UserMmap {
     range: Range<VirtualAddress>,
 }
 
-// Safety: All mutations of the `*mut AddressSpaceRegion` are happening through a `&mut AddressSpace`
-unsafe impl Send for UserMmap {}
-// Safety: All mutations of the `*mut AddressSpaceRegion` are happening through a `&mut AddressSpace`
-unsafe impl Sync for UserMmap {}
-
 impl UserMmap {
     /// Creates a new empty `Mmap`.
     ///

@@ -1,12 +1,13 @@
-use crate::vm::AddressSpace;
-use crate::wasm::runtime::{ConstExprEvaluator, Imports, InstanceAllocator};
+use crate::wasm;
+use crate::wasm::func::{HostFunc, IntoFunc};
+use crate::wasm::runtime::{ConstExprEvaluator, Imports};
 use crate::wasm::translate::EntityType;
 use crate::wasm::{Engine, Error, Extern, Instance, Module, Store};
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
+use hashbrown::HashMap;
 
 /// A dynamic linker for WebAssembly modules.
 #[derive(Debug)]
@@ -50,11 +51,7 @@ impl Linker {
     /// # Errors
     ///
     /// TODO
-    pub fn alias_module(
-        &mut self,
-        module: &str,
-        as_module: &str,
-    ) -> crate::wasm::Result<&mut Self> {
+    pub fn alias_module(&mut self, module: &str, as_module: &str) -> wasm::Result<&mut Self> {
         let module = self.intern_str(module);
         let as_module = self.intern_str(as_module);
         let items = self
@@ -85,7 +82,7 @@ impl Linker {
         store: &mut Store,
         module_name: &str,
         instance: Instance,
-    ) -> crate::wasm::Result<&mut Self> {
+    ) -> wasm::Result<&mut Self> {
         let exports = instance
             .exports(store)
             .map(|e| (self.import_key(module_name, Some(e.name)), e.value))
@@ -95,6 +92,20 @@ impl Linker {
             self.insert(key, ext)?;
         }
 
+        Ok(self)
+    }
+
+    pub fn func_wrap<Params, Args>(
+        &mut self,
+        store: &mut Store,
+        module: &str,
+        name: &str,
+        func: impl IntoFunc<Params, Args>,
+    ) -> wasm::Result<&mut Self> {
+        let (func, _ty) = HostFunc::wrap(store, func);
+        let func = func.into_func(store);
+        let key = self.import_key(module, Some(name));
+        self.insert(key, Extern::Func(func))?;
         Ok(self)
     }
 
@@ -117,7 +128,7 @@ impl Linker {
         store: &mut Store,
         const_eval: &mut ConstExprEvaluator,
         module: &Module,
-    ) -> crate::wasm::Result<Instance> {
+    ) -> wasm::Result<Instance> {
         let mut imports = Imports::with_capacity_for(module.translated());
         for import in module.imports() {
             let def =
@@ -130,7 +141,7 @@ impl Linker {
 
             match (def, &import.ty) {
                 (Extern::Func(func), EntityType::Function(_ty)) => {
-                    imports.functions.push(func.as_vmfunction_import(store));
+                    imports.functions.push(func.as_vmfunction_import(store, module));
                 }
                 (Extern::Table(table), EntityType::Table(_ty)) => {
                     imports.tables.push(table.as_vmtable_import(store));

@@ -73,8 +73,8 @@ impl FrameAllocator {
         let mut max_alignment = arch::PAGE_SIZE;
         let mut arenas = Vec::new();
 
-        let phys_regions = boot_alloc.free_regions().chain(iter::once(fdt_region));
-        for selection_result in select_arenas(phys_regions).iterator() {
+        let phys_regions: Vec<_> = boot_alloc.free_regions().chain(iter::once(fdt_region)).collect();
+        for selection_result in select_arenas(phys_regions.into_iter()).iterator() {
             match selection_result {
                 Ok(selection) => {
                     tracing::trace!("selection {selection:?}");
