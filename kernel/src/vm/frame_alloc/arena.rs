@@ -247,7 +247,19 @@ where
         };
 
         for region in self.inner.by_ref() {
-            let pages_in_hole = region.start.checked_sub_addr(arena.end).unwrap() / arch::PAGE_SIZE;
+            tracing::debug!(arena.end=?arena.end,region=?region, "Attempting to add free region");
+
+            debug_assert!(!arena.is_overlapping(&region));
+
+            let pages_in_hole = if arena.end <= region.start {
+                // the region is higher than the current arena
+                region.start.checked_sub_addr(arena.end).unwrap() / arch::PAGE_SIZE
+            } else {
+                debug_assert!(region.end <= arena.start);
+                // the region is lower than the current arena
+                arena.start.checked_sub_addr(region.end).unwrap() / arch::PAGE_SIZE
+            };
+
             let waste_from_hole = ARENA_PAGE_BOOKKEEPING_SIZE * pages_in_hole;
 
             if self.wasted_bytes + waste_from_hole > MAX_WASTED_ARENA_BYTES {
@@ -255,6 +267,12 @@ where
             } else {
                 self.wasted_bytes += waste_from_hole;
                 arena.end = region.end;
+
+                if arena.end <= region.start {
+                    arena.end = region.end;
+                } else {
+                    arena.start = region.start;
+                }
             }
         }
 

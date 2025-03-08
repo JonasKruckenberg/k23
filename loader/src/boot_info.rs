@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
@@ -27,15 +26,14 @@ pub fn prepare_boot_info(
     hart_mask: usize,
     rng_seed: [u8; 32],
 ) -> crate::Result<*mut BootInfo> {
-    let frame = frame_alloc
-        .allocate_contiguous_zeroed(
-            Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
-            arch::KERNEL_ASPACE_BASE,
-        )
-        .ok_or(Error::NoMemory)?;
+    let frame = frame_alloc.allocate_contiguous_zeroed(
+        Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
+        arch::KERNEL_ASPACE_BASE,
+    )?;
     let page = physical_address_offset.checked_add(frame).unwrap();
 
-    let memory_regions = init_boot_info_memory_regions(page, frame_alloc, fdt_phys, loader_phys);
+    let memory_regions =
+        init_boot_info_memory_regions(page, frame_alloc, fdt_phys, loader_phys, kernel_phys);
 
     let mut boot_info = BootInfo::new(memory_regions);
     boot_info.physical_address_offset = physical_address_offset;
@@ -58,6 +56,7 @@ fn init_boot_info_memory_regions(
     frame_alloc: FrameAllocator,
     fdt_phys: Range<usize>,
     loader_phys: Range<usize>,
+    kernel_phys: Range<usize>,
 ) -> MemoryRegions {
     // Safety: we just allocated a whole frame for the boot info
     let regions: &mut [MaybeUninit<MemoryRegion>] = unsafe {
@@ -69,6 +68,7 @@ fn init_boot_info_memory_regions(
 
     let mut len = 0;
     let mut push_region = |region: MemoryRegion| {
+        debug_assert!(!region.range.is_empty());
         regions[len].write(region);
         len += 1;
     };
@@ -89,10 +89,16 @@ fn init_boot_info_memory_regions(
         });
     }
 
-    // The memory occupied by the loader is not needed once the kernel is running.
-    // Mark it as usable.
+    // Most of the memory occupied by the loader is not needed once the kernel is running,
+    // but the kernel itself lies somewhere in the loader memory.
+    //
+    // We can still mark the range before and after the kernel as usable.
     push_region(MemoryRegion {
-        range: loader_phys,
+        range: Range::from(loader_phys.start..kernel_phys.start),
+        kind: MemoryRegionKind::Usable,
+    });
+    push_region(MemoryRegion {
+        range: Range::from(kernel_phys.end..loader_phys.end),
         kind: MemoryRegionKind::Usable,
     });
 

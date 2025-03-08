@@ -23,10 +23,9 @@ use crate::mapping::{
     map_physical_memory,
 };
 use arrayvec::ArrayVec;
-use core::alloc::Layout;
 use core::ffi::c_void;
 use core::range::Range;
-use core::{ptr, slice};
+use core::slice;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use spin::{Barrier, OnceLock};
@@ -97,8 +96,18 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     let self_regions = SelfRegions::collect(&minfo);
     log::debug!("{self_regions:#x?}");
 
+    let fdt_phys = {
+        let fdt = minfo.fdt.as_ptr_range();
+        Range::from(fdt.start as usize..fdt.end as usize)
+    };
+    let kernel_phys = {
+        let fdt = INLINED_KERNEL_BYTES.0.as_ptr_range();
+        Range::from(fdt.start as usize..fdt.end as usize)
+    };
+
     // Initialize the frame allocator
-    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions);
+    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys);
+    log::debug!("allocatable memory regions {allocatable_memories:#x?}");
     let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
 
     // initialize the random number generator
@@ -109,9 +118,6 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
 
     // Initialize the page allocator
     let mut page_alloc = page_alloc::init(rng);
-
-    let fdt_phys = allocate_and_copy(&mut frame_alloc, minfo.fdt).unwrap();
-    let kernel_phys = allocate_and_copy(&mut frame_alloc, &INLINED_KERNEL_BYTES.0).unwrap();
 
     let root_pgtable = frame_alloc
         .allocate_one_zeroed(
@@ -143,15 +149,13 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         arch::activate_aspace(root_pgtable);
         log::trace!("activated.");
     }
-    frame_alloc.set_phys_offset(phys_off);
 
     // Safety: The kernel elf file is inlined into the loader executable as part of the build setup
     // which means we just need to parse it here.
     let kernel = parse_kernel(unsafe {
         let base = phys_off.checked_add(kernel_phys.start).unwrap();
-        let len = kernel_phys.end.checked_sub(kernel_phys.start).unwrap();
 
-        slice::from_raw_parts(base as *mut u8, len)
+        slice::from_raw_parts(base as *mut u8, INLINED_KERNEL_BYTES.0.len())
     })
     .unwrap();
     // print the elf sections for debugging purposes
@@ -253,43 +257,65 @@ impl SelfRegions {
 fn allocatable_memory_regions(
     minfo: &MachineInfo,
     self_regions: &SelfRegions,
+    fdt: Range<usize>,
 ) -> ArrayVec<Range<usize>, 16> {
-    let mut out = ArrayVec::new();
-    let to_exclude = Range::from(self_regions.executable.start..self_regions.read_write.end);
+    let mut temp: ArrayVec<Range<usize>, 16> = minfo.memories.clone();
 
-    for mut region in minfo.memories.clone() {
-        if to_exclude.contains(&region.start) && to_exclude.contains(&region.end) {
-            // remove region
-            continue;
-        } else if region.contains(&to_exclude.start) && region.contains(&to_exclude.end) {
-            out.push(Range::from(region.start..to_exclude.start));
-            out.push(Range::from(to_exclude.end..region.end));
-        } else if to_exclude.contains(&region.start) {
-            region.start = to_exclude.end;
-            out.push(region);
-        } else if to_exclude.contains(&region.end) {
-            region.end = to_exclude.start;
-            out.push(region);
-        } else {
-            out.push(region);
+    let mut exclude = |to_exclude: Range<usize>| {
+        for mut region in temp.take() {
+            if to_exclude.contains(&region.start) && to_exclude.contains(&region.end) {
+                // remove region
+                continue;
+            } else if region.contains(&to_exclude.start) && region.contains(&to_exclude.end) {
+                temp.push(Range::from(region.start..to_exclude.start));
+                temp.push(Range::from(to_exclude.end..region.end));
+            } else if to_exclude.contains(&region.start) {
+                region.start = to_exclude.end;
+                temp.push(region);
+            } else if to_exclude.contains(&region.end) {
+                region.end = to_exclude.start;
+                temp.push(region);
+            } else {
+                temp.push(region);
+            }
+        }
+    };
+
+    exclude(Range::from(
+        self_regions.executable.start..self_regions.read_write.end,
+    ));
+
+    exclude(fdt);
+
+    // // merge adjacent regions
+    // let mut out: ArrayVec<Range<usize>, 16> = ArrayVec::new();
+    // 'outer: for region in temp {
+    //     for other in &mut out {
+    //         if region.start == other.end {
+    //             other.end = region.end;
+    //             continue 'outer;
+    //         }
+    //         if region.end == other.start {
+    //             other.start = region.start;
+    //             continue 'outer;
+    //         }
+    //     }
+    //
+    //     out.push(region);
+    // }
+
+    temp.sort_unstable_by_key(|region| region.start);
+
+    #[cfg(debug_assertions)]
+    for (i, region) in temp.iter().enumerate() {
+        for (j, other) in temp.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+
+            assert!(!other.contains(&region.start) && !other.contains(&region.end));
         }
     }
 
-    out
-}
-
-fn allocate_and_copy(frame_alloc: &mut FrameAllocator, src: &[u8]) -> Result<Range<usize>> {
-    let layout = Layout::from_size_align(src.len(), arch::PAGE_SIZE).unwrap();
-    let base = frame_alloc
-        .allocate_contiguous(layout)
-        .ok_or(Error::NoMemory)?;
-
-    // Safety: we just allocated the frame
-    unsafe {
-        let dst = slice::from_raw_parts_mut(base as *mut u8, src.len());
-
-        ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), dst.len());
-    }
-
-    Ok(Range::from(base..base.checked_add(layout.size()).unwrap()))
+    temp
 }
