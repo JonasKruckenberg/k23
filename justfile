@@ -14,7 +14,7 @@ _rustflags := env_var_or_default("RUSTFLAGS", "")
 _buildstd := "-Z build-std=core,alloc -Z build-std-features=compiler-builtins-mem"
 _rustdoc := _cargo + " doc --no-deps --all-features"
 
-_loader_artifact := "target/riscv64imac-k23-none-loader" / (if profile == "dev" { "debug" } else { profile }) / "loader"
+_loader_artifact := "target/riscv64gc-unknown-none-elf" / (if profile == "dev" { "debug" } else { profile }) / "loader"
 _kernel_artifact := "target/riscv64gc-k23-none-kernel" / (if profile == "dev" { "debug" } else { profile }) / "kernel"
 
 # If we're running in Github Actions and cargo-action-fmt is installed, then add
@@ -83,7 +83,7 @@ check crate="" *cargo_args="":
         {{ cargo_args }}
     KERNEL=Cargo.toml {{ _cargo }} check \
         -p loader \
-        --target loader/riscv64imac-k23-none-loader.json \
+        --target riscv64gc-unknown-none-elf \
         {{ _buildstd }} \
         {{ _fmt }} \
         {{ cargo_args }}
@@ -106,7 +106,7 @@ clippy crate="" *cargo_args="":
         {{ cargo_args }}
     KERNEL=Cargo.toml {{ _cargo }} clippy \
             -p loader \
-            --target loader/riscv64imac-k23-none-loader.json \
+            --target riscv64gc-unknown-none-elf \
             --locked \
             {{ _buildstd }} \
             {{ _fmt_clippy }} \
@@ -132,7 +132,7 @@ build-docs crate="" *cargo_args="":
         {{ cargo_args }}
     KERNEL=Cargo.toml {{ _rustdoc }} \
             -p loader \
-            --target loader/riscv64imac-k23-none-loader.json \
+            --target riscv64gc-unknown-none-elf \
             {{ _buildstd }} \
             {{ _fmt }} \
             {{ cargo_args }}
@@ -205,7 +205,7 @@ _build_bootimg $KERNEL:
     {{_cargo}} build \
         -p loader \
         --locked \
-        --target loader/riscv64imac-k23-none-loader.json \
+        --target riscv64gc-unknown-none-elf \
         --profile {{ profile }} \
         {{ _buildstd }} \
         {{ _fmt }}
