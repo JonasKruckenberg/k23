@@ -16,7 +16,6 @@
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
-use crate::kernel::{INLINED_KERNEL_BYTES, parse_kernel};
 use crate::machine_info::MachineInfo;
 use crate::mapping::{
     StacksAllocation, TlsAllocation, identity_map_self, map_kernel, map_kernel_stacks,
@@ -25,10 +24,10 @@ use crate::mapping::{
 use arrayvec::ArrayVec;
 use core::ffi::c_void;
 use core::range::Range;
-use core::slice;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use spin::{Barrier, OnceLock};
+use crate::kernel::Kernel;
 
 mod arch;
 mod boot_info;
@@ -100,10 +99,6 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         let fdt = minfo.fdt.as_ptr_range();
         Range::from(fdt.start as usize..fdt.end as usize)
     };
-    let kernel_phys = {
-        let fdt = INLINED_KERNEL_BYTES.0.as_ptr_range();
-        Range::from(fdt.start as usize..fdt.end as usize)
-    };
 
     // Initialize the frame allocator
     let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys);
@@ -150,14 +145,8 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         log::trace!("activated.");
     }
 
-    // Safety: The kernel elf file is inlined into the loader executable as part of the build setup
-    // which means we just need to parse it here.
-    let kernel = parse_kernel(unsafe {
-        let base = phys_off.checked_add(kernel_phys.start).unwrap();
-
-        slice::from_raw_parts(base as *mut u8, INLINED_KERNEL_BYTES.0.len())
-    })
-    .unwrap();
+    
+    let kernel = Kernel::from_static(phys_off).unwrap();
     // print the elf sections for debugging purposes
     log::debug!("\n{kernel}");
 
@@ -196,7 +185,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         kernel_virt,
         maybe_tls_alloc.as_ref().map(|alloc| alloc.template.clone()),
         Range::from(self_regions.executable.start..self_regions.read_write.end),
-        kernel_phys,
+        kernel.phys_range(),
         fdt_phys,
         minfo.hart_mask,
         rng_seed,
