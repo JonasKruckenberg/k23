@@ -6,39 +6,17 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::error::Error;
-use core::fmt;
 use core::fmt::Formatter;
+use core::range::Range;
+use core::{fmt, slice};
 use loader_api::LoaderConfig;
 use xmas_elf::program::{ProgramHeader, Type};
 
 /// The inlined kernel
-pub static INLINED_KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KERNEL")));
+static INLINED_KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KERNEL")));
 /// Wrapper type for the inlined bytes to ensure proper alignment
 #[repr(C, align(4096))]
-pub struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
-
-pub fn parse_kernel(bytes: &'static [u8]) -> crate::Result<Kernel<'static>> {
-    let elf_file = xmas_elf::ElfFile::new(bytes).map_err(Error::Elf)?;
-
-    let loader_config = {
-        let section = elf_file
-            .find_section_by_name(".loader_config")
-            .expect("missing .loader_config section");
-        let raw = section.raw_data(&elf_file);
-
-        let ptr: *const LoaderConfig = raw.as_ptr().cast();
-        // Safety: kernel is inlined into the loader, so ptr is always valid
-        let cfg = unsafe { &*ptr };
-
-        cfg.assert_valid();
-        cfg
-    };
-
-    Ok(Kernel {
-        elf_file,
-        _loader_config: loader_config,
-    })
-}
+struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
 
 /// The decompressed and parsed kernel ELF plus the embedded loader configuration data
 pub struct Kernel<'a> {
@@ -46,7 +24,46 @@ pub struct Kernel<'a> {
     pub _loader_config: &'a LoaderConfig,
 }
 
+impl Kernel<'static> {
+    pub fn from_static(phys_off: usize) -> crate::Result<Self> {
+        // Safety: The kernel elf file is inlined into the loader executable as part of the build setup
+        // which means we just need to parse it here.
+        let elf_file = xmas_elf::ElfFile::new(unsafe {
+            let base = phys_off
+                .checked_add(INLINED_KERNEL_BYTES.0.as_ptr().addr())
+                .unwrap();
+
+            slice::from_raw_parts(base as *mut u8, INLINED_KERNEL_BYTES.0.len())
+        })
+        .map_err(Error::Elf)?;
+
+        let loader_config = {
+            let section = elf_file
+                .find_section_by_name(".loader_config")
+                .expect("missing .loader_config section");
+            let raw = section.raw_data(&elf_file);
+
+            let ptr: *const LoaderConfig = raw.as_ptr().cast();
+            // Safety: kernel is inlined into the loader, so ptr is always valid
+            let cfg = unsafe { &*ptr };
+
+            cfg.assert_valid();
+            cfg
+        };
+
+        Ok(Kernel {
+            elf_file,
+            _loader_config: loader_config,
+        })
+    }
+}
+
 impl Kernel<'_> {
+    pub fn phys_range(&self) -> Range<usize> {
+        let fdt = INLINED_KERNEL_BYTES.0.as_ptr_range();
+        Range::from(fdt.start as usize..fdt.end as usize)
+    }
+
     /// Returns the size of the kernel in memory.
     pub fn mem_size(&self) -> u64 {
         let max_addr = self
