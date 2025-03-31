@@ -16,6 +16,7 @@
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
+use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::mapping::{
     StacksAllocation, TlsAllocation, identity_map_self, map_kernel, map_kernel_stacks,
@@ -27,7 +28,6 @@ use core::range::Range;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use spin::{Barrier, OnceLock};
-use crate::kernel::Kernel;
 
 mod arch;
 mod boot_info;
@@ -145,7 +145,6 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         log::trace!("activated.");
     }
 
-    
     let kernel = Kernel::from_static(phys_off).unwrap();
     // print the elf sections for debugging purposes
     log::debug!("\n{kernel}");
