@@ -1,9 +1,9 @@
 use crate::vm::{AddressRangeExt, AddressSpace, UserMmap, VirtualAddress};
-use crate::wasm::Error;
 use crate::wasm::compile::FunctionLoc;
 use crate::wasm::runtime::MmapVec;
 use crate::wasm::trap::Trap;
 use alloc::vec::Vec;
+use anyhow::Context;
 use core::range::Range;
 
 #[derive(Debug)]
@@ -28,7 +28,7 @@ impl CodeMemory {
         }
     }
 
-    pub fn publish(&mut self, aspace: &mut AddressSpace) -> crate::wasm::Result<()> {
+    pub fn publish(&mut self, aspace: &mut AddressSpace) -> crate::Result<()> {
         debug_assert!(!self.published);
         self.published = true;
 
@@ -40,7 +40,7 @@ impl CodeMemory {
         // Switch the executable portion from readonly to read/execute.
         self.mmap
             .make_executable(aspace, true)
-            .map_err(|_| Error::MmapFailed)?;
+            .context("Failed to mark mmap'ed region as executable")?;
 
         Ok(())
     }

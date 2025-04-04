@@ -38,7 +38,7 @@ impl Module {
     // /// # Errors
     // ///
     // /// Returns an error if the WebAssembly text file is malformed, or compilation fails.
-    // pub fn from_str(engine: &Engine, validator: &mut Validator, str: &str) -> crate::wasm::Result<Self> {
+    // pub fn from_str(engine: &Engine, validator: &mut Validator, str: &str) -> crate::Result<Self> {
     //     let bytes = wat::parse_str(str)?;
     //     Self::from_bytes(engine, validator, &bytes)
     // }
@@ -59,7 +59,7 @@ impl Module {
         store: &mut Store,
         validator: &mut Validator,
         bytes: &[u8],
-    ) -> crate::wasm::Result<Self> {
+    ) -> crate::Result<Self> {
         let (mut translation, types) = ModuleTranslator::new(validator).translate(bytes)?;
 
         tracing::debug!("Gathering compile inputs...");

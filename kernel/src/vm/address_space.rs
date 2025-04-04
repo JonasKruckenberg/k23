@@ -5,17 +5,18 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
 use crate::vm::address_space_region::AddressSpaceRegion;
 use crate::vm::frame_alloc::FrameAllocator;
 use crate::vm::{
-    AddressRangeExt, ArchAddressSpace, Error, Flush, PageFaultFlags, Permissions, PhysicalAddress,
+    AddressRangeExt, ArchAddressSpace, Flush, PageFaultFlags, Permissions, PhysicalAddress,
     VirtualAddress,
 };
-use crate::{arch, bail, ensure};
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use anyhow::{bail, ensure};
 use core::alloc::Layout;
 use core::fmt;
 use core::num::NonZeroUsize;
@@ -76,7 +77,7 @@ impl AddressSpace {
         asid: u16,
         rng: Option<ChaCha20Rng>,
         frame_alloc: &'static FrameAllocator,
-    ) -> Result<Self, Error> {
+    ) -> crate::Result<Self> {
         let (arch, _) = arch::AddressSpace::new(asid, frame_alloc)?;
 
         #[allow(tail_expr_drop_order, reason = "")]
@@ -123,12 +124,9 @@ impl AddressSpace {
             Range<VirtualAddress>,
             Permissions,
             &mut Batch,
-        ) -> Result<AddressSpaceRegion, Error>,
-    ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        ensure!(
-            layout.pad_to_align().size() % arch::PAGE_SIZE == 0,
-            Error::MisalignedEnd
-        );
+        ) -> crate::Result<AddressSpaceRegion>,
+    ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
+        ensure!(layout.pad_to_align().size() % arch::PAGE_SIZE == 0,);
         ensure!(
             layout.pad_to_align().size()
                 <= self
@@ -136,13 +134,9 @@ impl AddressSpace {
                     .end
                     .checked_sub_addr(self.max_range.start)
                     .unwrap_or_default(),
-            Error::SizeTooLarge
         );
-        ensure!(
-            layout.align() <= self.frame_alloc.max_alignment(),
-            Error::AlignmentTooLarge
-        );
-        ensure!(permissions.is_valid(), Error::InvalidPermissions);
+        ensure!(layout.align() <= self.frame_alloc.max_alignment(),);
+        ensure!(permissions.is_valid());
 
         // Actually do the mapping now
         // Safety: we checked all invariants above
@@ -157,8 +151,8 @@ impl AddressSpace {
             Range<VirtualAddress>,
             Permissions,
             &mut Batch,
-        ) -> Result<AddressSpaceRegion, Error>,
-    ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
+        ) -> crate::Result<AddressSpaceRegion>,
+    ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         let layout = layout.pad_to_align();
         let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY);
         let range = Range::from(base..base.checked_add(layout.size()).unwrap());
@@ -174,16 +168,10 @@ impl AddressSpace {
             Range<VirtualAddress>,
             Permissions,
             &mut Batch,
-        ) -> Result<AddressSpaceRegion, Error>,
-    ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        ensure!(
-            range.start.is_aligned_to(arch::PAGE_SIZE),
-            Error::MisalignedStart
-        );
-        ensure!(
-            range.end.is_aligned_to(arch::PAGE_SIZE),
-            Error::MisalignedEnd
-        );
+        ) -> crate::Result<AddressSpaceRegion>,
+    ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
             range.size()
                 <= self
@@ -191,12 +179,11 @@ impl AddressSpace {
                     .end
                     .checked_sub_addr(self.max_range.start)
                     .unwrap_or_default(),
-            Error::SizeTooLarge
         );
-        ensure!(permissions.is_valid(), Error::InvalidPermissions);
+        ensure!(permissions.is_valid());
         // ensure the entire address space range is free
         if let Some(prev) = self.regions.upper_bound(range.start_bound()).get() {
-            ensure!(prev.range.end <= range.start, Error::AlreadyMapped);
+            ensure!(prev.range.end <= range.start);
         }
 
         // Actually do the mapping now
@@ -212,20 +199,14 @@ impl AddressSpace {
             Range<VirtualAddress>,
             Permissions,
             &mut Batch,
-        ) -> Result<AddressSpaceRegion, Error>,
-    ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
+        ) -> crate::Result<AddressSpaceRegion>,
+    ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         self.map_internal(range, permissions, map)
     }
 
-    pub fn unmap(&mut self, range: Range<VirtualAddress>) -> Result<(), Error> {
-        ensure!(
-            range.start.is_aligned_to(arch::PAGE_SIZE),
-            Error::MisalignedStart
-        );
-        ensure!(
-            range.end.is_aligned_to(arch::PAGE_SIZE),
-            Error::MisalignedEnd
-        );
+    pub fn unmap(&mut self, range: Range<VirtualAddress>) -> crate::Result<()> {
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
             range.size()
                 <= self
@@ -233,7 +214,6 @@ impl AddressSpace {
                     .end
                     .checked_sub_addr(self.max_range.start)
                     .unwrap_or_default(),
-            Error::SizeTooLarge
         );
 
         // ensure the entire range is mapped and doesn't cover any holes
@@ -246,14 +226,14 @@ impl AddressSpace {
             bytes_seen += region.range.size();
             Ok(())
         })?;
-        ensure!(bytes_seen == range.size(), Error::NotMapped);
+        ensure!(bytes_seen == range.size());
 
         // Actually do the unmapping now
         // Safety: we checked all invariant above
         unsafe { self.unmap_unchecked(range) }
     }
 
-    pub unsafe fn unmap_unchecked(&mut self, range: Range<VirtualAddress>) -> Result<(), Error> {
+    pub unsafe fn unmap_unchecked(&mut self, range: Range<VirtualAddress>) -> crate::Result<()> {
         let mut bytes_remaining = range.size();
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
@@ -281,15 +261,9 @@ impl AddressSpace {
         &mut self,
         range: Range<VirtualAddress>,
         new_permissions: Permissions,
-    ) -> Result<(), Error> {
-        ensure!(
-            range.start.is_aligned_to(arch::PAGE_SIZE),
-            Error::MisalignedStart
-        );
-        ensure!(
-            range.end.is_aligned_to(arch::PAGE_SIZE),
-            Error::MisalignedEnd
-        );
+    ) -> crate::Result<()> {
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
             range.size()
                 <= self
@@ -297,9 +271,8 @@ impl AddressSpace {
                     .end
                     .checked_sub_addr(self.max_range.start)
                     .unwrap_or_default(),
-            Error::AlignmentTooLarge
         );
-        ensure!(new_permissions.is_valid(), Error::InvalidPermissions);
+        ensure!(new_permissions.is_valid());
 
         // ensure the entire range is mapped and doesn't cover any holes
         // `for_each_region_in_range` covers the last half so we just need to check that the regions
@@ -312,14 +285,11 @@ impl AddressSpace {
         self.for_each_region_in_range(range, |region| {
             bytes_seen += region.range.size();
 
-            ensure!(
-                region.permissions.contains(new_permissions),
-                Error::PermissionIncrease
-            );
+            ensure!(region.permissions.contains(new_permissions),);
 
             Ok(())
         })?;
-        ensure!(bytes_seen == range.size(), Error::NotMapped);
+        ensure!(bytes_seen == range.size());
 
         // Actually do the permission changes now
         // Safety: we checked all invariant above
@@ -330,7 +300,7 @@ impl AddressSpace {
         &mut self,
         range: Range<VirtualAddress>,
         new_permissions: Permissions,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         let mut bytes_remaining = range.size();
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
@@ -354,23 +324,22 @@ impl AddressSpace {
         Ok(())
     }
 
-    pub fn page_fault(&mut self, addr: VirtualAddress, flags: PageFaultFlags) -> Result<(), Error> {
+    pub fn page_fault(&mut self, addr: VirtualAddress, flags: PageFaultFlags) -> crate::Result<()> {
         assert!(flags.is_valid(), "invalid page fault flags {flags:?}");
 
         // make sure addr is even a valid address for this address space
         match self.kind {
             AddressSpaceKind::User => ensure!(
                 addr.is_user_accessible(),
-                Error::KernelFaultInUserSpace(addr)
+                "kernel fault in user space addr={addr}"
             ),
             AddressSpaceKind::Kernel => ensure!(
                 arch::is_kernel_address(addr),
-                Error::UserFaultInKernelSpace(addr)
+                "user fault in kernel space addr={addr}"
             ),
         }
         ensure!(
             self.max_range.contains(&addr),
-            Error::NotMapped,
             "page fault at address outside of address space range"
         );
 
@@ -388,7 +357,7 @@ impl AddressSpace {
             batch.flush()?;
             Ok(())
         } else {
-            bail!(Error::NotMapped, "page fault at unmapped address {addr}");
+            bail!("page fault at unmapped address {addr}");
         }
     }
 
@@ -398,15 +367,9 @@ impl AddressSpace {
         permissions: Permissions,
         name: Option<String>,
         flush: &mut Flush,
-    ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
-        ensure!(
-            range.start.is_aligned_to(arch::PAGE_SIZE),
-            Error::MisalignedStart
-        );
-        ensure!(
-            range.end.is_aligned_to(arch::PAGE_SIZE),
-            Error::MisalignedEnd
-        );
+    ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
             range.size()
                 <= self
@@ -414,13 +377,12 @@ impl AddressSpace {
                     .end
                     .checked_sub_addr(self.max_range.start)
                     .unwrap_or_default(),
-            Error::SizeTooLarge
         );
-        ensure!(permissions.is_valid(), Error::InvalidPermissions);
+        ensure!(permissions.is_valid());
 
         // ensure the entire address space range is free
         if let Some(prev) = self.regions.upper_bound(range.start_bound()).get() {
-            ensure!(prev.range.end <= range.start, Error::AlreadyMapped);
+            ensure!(prev.range.end <= range.start);
         }
 
         let region = AddressSpaceRegion::new_wired(range, permissions, name);
@@ -450,15 +412,9 @@ impl AddressSpace {
         Ok(region)
     }
 
-    pub fn commit(&mut self, range: Range<VirtualAddress>, will_write: bool) -> Result<(), Error> {
-        ensure!(
-            range.start.is_aligned_to(arch::PAGE_SIZE),
-            Error::MisalignedStart
-        );
-        ensure!(
-            range.end.is_aligned_to(arch::PAGE_SIZE),
-            Error::MisalignedEnd
-        );
+    pub fn commit(&mut self, range: Range<VirtualAddress>, will_write: bool) -> crate::Result<()> {
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
             range.size()
                 <= self
@@ -466,7 +422,6 @@ impl AddressSpace {
                     .end
                     .checked_sub_addr(self.max_range.start)
                     .unwrap_or_default(),
-            Error::SizeTooLarge
         );
 
         let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
@@ -492,8 +447,8 @@ impl AddressSpace {
             Range<VirtualAddress>,
             Permissions,
             &mut Batch,
-        ) -> Result<AddressSpaceRegion, Error>,
-    ) -> Result<Pin<&mut AddressSpaceRegion>, Error> {
+        ) -> crate::Result<AddressSpaceRegion>,
+    ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
         let region = map(range, permissions, &mut batch)?;
         let region = self.regions.insert(Box::pin(region));
@@ -511,16 +466,16 @@ impl AddressSpace {
         &self,
         range: Range<VirtualAddress>,
         mut f: F,
-    ) -> Result<(), Error>
+    ) -> crate::Result<()>
     where
-        F: FnMut(&AddressSpaceRegion) -> Result<(), Error>,
+        F: FnMut(&AddressSpaceRegion) -> crate::Result<()>,
     {
         let mut prev_end = None;
         for region in self.regions.range(range) {
             // ensure there is no gap between this region and the previous one
             if let Some(prev_end) = prev_end.replace(region.range.end) {
                 if prev_end != region.range.start {
-                    return Err(Error::NotMapped);
+                    bail!("not mapped");
                 }
             }
 
@@ -599,7 +554,7 @@ impl AddressSpace {
         &self,
         mut target_index: usize,
         layout: Layout,
-    ) -> Result<VirtualAddress, usize> {
+    ) -> core::result::Result<VirtualAddress, usize> {
         // tracing::trace!("attempting to find spot for {layout:?} at index {target_index}");
 
         let spots_in_range = |layout: Layout, range: Range<VirtualAddress>| -> usize {
@@ -778,7 +733,7 @@ impl<'a> Batch<'a> {
         phys: PhysicalAddress,
         len: NonZeroUsize,
         flags: <arch::AddressSpace as ArchAddressSpace>::Flags,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         debug_assert!(
             len.get() % arch::PAGE_SIZE == 0,
             "physical address range must be multiple of page size"
@@ -798,7 +753,7 @@ impl<'a> Batch<'a> {
         Ok(())
     }
 
-    pub fn flush(&mut self) -> Result<(), Error> {
+    pub fn flush(&mut self) -> crate::Result<()> {
         if self.actions.is_empty() {
             return Ok(());
         }

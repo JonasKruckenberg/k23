@@ -13,6 +13,7 @@ use crate::wasm::trap::{TRAP_EXIT, TRAP_INTERNAL_ASSERT};
 use crate::wasm::utils::{array_call_signature, value_type, wasm_call_signature};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use anyhow::anyhow;
 use core::fmt::Formatter;
 use core::{cmp, fmt, mem};
 use cranelift_codegen::control::ControlPlane;
@@ -80,7 +81,7 @@ impl Compiler for CraneliftCompiler {
         index: DefinedFuncIndex,
         data: FunctionBodyData<'_>,
         types: &ModuleTypes,
-    ) -> crate::wasm::Result<CompiledFunction> {
+    ) -> crate::Result<CompiledFunction> {
         let isa = self.target_isa();
         let mut compiler = self.function_compiler();
         let context = &mut compiler.ctx.codegen_context;
@@ -131,7 +132,7 @@ impl Compiler for CraneliftCompiler {
         translation: &ModuleTranslation<'_>,
         types: &ModuleTypes,
         index: DefinedFuncIndex,
-    ) -> crate::wasm::Result<CompiledFunction> {
+    ) -> crate::Result<CompiledFunction> {
         // This function has a special calling convention where all arguments and return values
         // are passed through an array in memory (so we can have dynamic function signatures in rust)
         let pointer_type = self.isa.pointer_type();
@@ -199,7 +200,7 @@ impl Compiler for CraneliftCompiler {
     fn compile_wasm_to_array_trampoline(
         &self,
         wasm_func_ty: &WasmFuncType,
-    ) -> crate::wasm::Result<CompiledFunction> {
+    ) -> crate::Result<CompiledFunction> {
         let pointer_type = self.isa.pointer_type();
         let wasm_call_sig = wasm_call_signature(self.target_isa(), wasm_func_ty);
         let _array_call_sig = array_call_signature(self.target_isa());
@@ -230,7 +231,7 @@ impl Compiler for CraneliftCompiler {
     fn compile_wasm_to_builtin(
         &self,
         index: BuiltinFunctionIndex,
-    ) -> crate::wasm::Result<CompiledFunction> {
+    ) -> crate::Result<CompiledFunction> {
         let isa = &*self.isa;
         let pointer_type = isa.pointer_type();
         let sig = BuiltinFunctionSignatures::new(isa).signature(index);
@@ -311,12 +312,13 @@ impl FunctionCompiler<'_> {
         (builder, block0)
     }
 
-    fn finish(mut self, body: Option<&FunctionBody<'_>>) -> crate::wasm::Result<CompiledFunction> {
+    fn finish(mut self, body: Option<&FunctionBody<'_>>) -> crate::Result<CompiledFunction> {
         let context = &mut self.ctx.codegen_context;
 
         context.set_disasm(true);
-        let compiled_code =
-            context.compile(self.compiler.target_isa(), &mut ControlPlane::default())?;
+        let compiled_code = context
+            .compile(self.compiler.target_isa(), &mut ControlPlane::default())
+            .map_err(|e| anyhow!("{e:?}"))?;
 
         let preferred_alignment = self.compiler.isa.function_alignment().preferred;
         let alignment = compiled_code.buffer.alignment.max(preferred_alignment);

@@ -32,7 +32,7 @@ impl FuncTranslator {
         body: &FunctionBody<'_>,
         func: &mut ir::Function,
         env: &mut TranslationEnvironment,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         let mut reader = body.get_binary_reader();
         tracing::trace!(
             "parsing {} bytes, {}{}",
@@ -107,7 +107,7 @@ fn translate_local_decls(
     num_params: usize,
     validator: &mut FuncValidator<impl WasmModuleResources>,
     env: &mut TranslationEnvironment,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     let mut next_local = num_params;
     let local_count = reader.read_var_u32()?;
 
@@ -199,7 +199,7 @@ fn translate_function_body(
     builder: &mut FunctionBuilder,
     state: &mut FuncTranslationState,
     env: &mut TranslationEnvironment,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     // The control stack is initialized with a single block representing the whole function.
     debug_assert_eq!(state.control_stack.len(), 1, "State not initialized");
 

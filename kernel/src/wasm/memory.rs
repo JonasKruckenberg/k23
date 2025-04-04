@@ -7,7 +7,7 @@ use crate::wasm::{Store, runtime};
 pub struct Memory(Stored<runtime::ExportedMemory>);
 
 impl Memory {
-    // pub fn new(store: &mut Store, ty: MemoryType) -> crate::wasm::Result<Self> {
+    // pub fn new(store: &mut Store, ty: MemoryType) -> crate::Result<Self> {
     //     todo!()
     // }
     // pub fn ty(&self, _store: &Store) -> &MemoryType {

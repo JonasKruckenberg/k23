@@ -33,7 +33,7 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         &self,
         _module: &TranslatedModule,
         plan: &VMOffsets,
-    ) -> crate::wasm::Result<OwnedVMContext> {
+    ) -> crate::Result<OwnedVMContext> {
         let mut aspace = self.0.lock();
         OwnedVMContext::try_new(&mut aspace, plan)
     }
@@ -45,7 +45,7 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         _module: &TranslatedModule,
         memory_desc: &MemoryDesc,
         _memory_index: DefinedMemoryIndex,
-    ) -> crate::wasm::Result<Memory> {
+    ) -> crate::Result<Memory> {
         // TODO we could call out to some resource management instance here to obtain
         // dynamic "minimum" and "maximum" values that reflect the state of the real systems
         // memory consumption
@@ -77,7 +77,7 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
 
     unsafe fn deallocate_memory(&self, _memory_index: DefinedMemoryIndex, _memory: Memory) {}
 
-    fn allocate_fiber_stack(&self) -> crate::wasm::Result<FiberStack> {
+    fn allocate_fiber_stack(&self) -> crate::Result<FiberStack> {
         let mut aspace = self.0.lock();
         Ok(FiberStack::new(&mut aspace))
     }
@@ -89,7 +89,7 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         _module: &TranslatedModule,
         table_desc: &TableDesc,
         _table_index: DefinedTableIndex,
-    ) -> crate::wasm::Result<Table> {
+    ) -> crate::Result<Table> {
         // TODO we could call out to some resource management instance here to obtain
         // dynamic "minimum" and "maximum" values that reflect the state of the real systems
         // memory consumption

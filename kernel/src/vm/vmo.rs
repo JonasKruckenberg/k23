@@ -5,17 +5,18 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch;
 use crate::vm::frame_alloc::FrameAllocator;
 use crate::vm::provider::{Provider, THE_ZERO_FRAME};
 use crate::vm::{
-    AddressRangeExt, Error, PhysicalAddress,
+    AddressRangeExt, PhysicalAddress,
     frame_alloc::{
         Frame,
         frame_list::{Entry, FrameList},
     },
 };
-use crate::{arch, ensure};
 use alloc::sync::Arc;
+use anyhow::ensure;
 use core::range::Range;
 use spin::RwLock;
 
@@ -62,10 +63,9 @@ impl PhysVmo {
         offset <= self.range.size()
     }
 
-    pub fn lookup_contiguous(&self, range: Range<usize>) -> Result<Range<PhysicalAddress>, Error> {
+    pub fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {
         ensure!(
             range.start % arch::PAGE_SIZE == 0,
-            Error::MisalignedStart,
             "range is not arch::PAGE_SIZE aligned"
         );
         let start = self.range.start.checked_add(range.start).unwrap();
@@ -73,7 +73,6 @@ impl PhysVmo {
 
         ensure!(
             self.range.start <= start && self.range.end >= end,
-            Error::InvalidVmoOffset,
             "requested range {range:?} is out of bounds for {:?}",
             self.range
         );
@@ -94,7 +93,7 @@ impl PagedVmo {
         offset <= self.frames.size()
     }
 
-    pub fn require_owned_frame(&mut self, at_offset: usize) -> Result<&mut Frame, Error> {
+    pub fn require_owned_frame(&mut self, at_offset: usize) -> crate::Result<&mut Frame> {
         if let Some(old_frame) = self.frames.get(at_offset) {
             // we already have a unique frame reference, a write page fault against it shouldn't happen
             assert!(!old_frame.is_unique());
@@ -130,7 +129,7 @@ impl PagedVmo {
         }
     }
 
-    pub fn require_read_frame(&mut self, at_offset: usize) -> Result<&Frame, Error> {
+    pub fn require_read_frame(&mut self, at_offset: usize) -> crate::Result<&Frame> {
         let frame = match self.frames.entry(at_offset) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {

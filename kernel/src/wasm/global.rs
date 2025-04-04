@@ -7,7 +7,7 @@ use crate::wasm::{Store, Val, runtime};
 pub struct Global(Stored<runtime::ExportedGlobal>);
 
 impl Global {
-    // pub fn new(store: &mut Store, ty: GlobalType) -> crate::wasm::Result<Self> {
+    // pub fn new(store: &mut Store, ty: GlobalType) -> crate::Result<Self> {
     //     todo!()
     // }
     // pub fn ty(&self, _store: &Store) -> &GlobalType {

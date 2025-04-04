@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::Error;
 use crate::vm::address::VirtualAddress;
+use anyhow::bail;
 use core::range::Range;
 use core::{cmp, mem};
 
@@ -46,7 +46,7 @@ impl Flush {
     /// # Errors
     ///
     /// Returns an error if the range could not be flushed due to an underlying hardware error.
-    pub fn flush(mut self) -> Result<(), Error> {
+    pub fn flush(mut self) -> crate::Result<()> {
         if let Some(range) = self.range.take() {
             tracing::trace!(?range, asid = self.asid, "flushing range");
             arch::invalidate_range(self.asid, range)?;
@@ -72,7 +72,7 @@ impl Flush {
     /// # Errors
     ///
     /// Returns an error if the given ASID does not match the ASID of this `Flush`.
-    pub fn extend_range(&mut self, asid: u16, other: Range<VirtualAddress>) -> Result<(), Error> {
+    pub fn extend_range(&mut self, asid: u16, other: Range<VirtualAddress>) -> crate::Result<()> {
         if self.asid == asid {
             if let Some(this) = self.range.take() {
                 self.range = Some(Range {
@@ -85,10 +85,10 @@ impl Flush {
 
             Ok(())
         } else {
-            Err(Error::AddressSpaceMismatch {
-                expected: self.asid,
-                found: asid,
-            })
+            bail!(
+                "Attempted to operate on mismatched address space. Expected {} but found {asid}.",
+                self.asid
+            );
         }
     }
 }

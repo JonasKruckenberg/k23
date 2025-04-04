@@ -4,7 +4,6 @@ mod module_types;
 mod type_convert;
 mod types;
 
-use crate::wasm::errors::SizeOverflow;
 use crate::wasm::indices::{
     DataIndex, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex,
     ElemIndex, EntityIndex, FieldIndex, FuncIndex, FuncRefIndex, GlobalIndex, LabelIndex,
@@ -14,6 +13,7 @@ use crate::wasm::{DEFAULT_OFFSET_GUARD_SIZE, WASM32_MAX_SIZE};
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
+use anyhow::Context;
 pub use const_expr::{ConstExpr, ConstOp};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntitySet, PrimaryMap};
@@ -349,10 +349,10 @@ impl MemoryDesc {
     /// Returns an error if the calculation of the minimum size overflows the
     /// `u64` return type. This means that the memory can't be allocated but
     /// it's deferred to the caller to how to deal with that.
-    pub fn minimum_byte_size(&self) -> Result<u64, SizeOverflow> {
+    pub fn minimum_byte_size(&self) -> crate::Result<u64> {
         self.minimum
             .checked_mul(self.page_size())
-            .ok_or(SizeOverflow)
+            .context("size overflow")
     }
 
     /// Returns the maximum size, in bytes, that this memory is allowed to be.
@@ -369,9 +369,9 @@ impl MemoryDesc {
     /// Returns an error if the calculation of the maximum size overflows the
     /// `u64` return type. This means that the memory can't be allocated but
     /// it's deferred to the caller to how to deal with that.
-    pub fn maximum_byte_size(&self) -> Result<u64, SizeOverflow> {
+    pub fn maximum_byte_size(&self) -> crate::Result<u64> {
         if let Some(max) = self.maximum {
-            max.checked_mul(self.page_size()).ok_or(SizeOverflow)
+            max.checked_mul(self.page_size()).context("size overflow")
         } else {
             let min = self.minimum_byte_size()?;
             Ok(min.max(self.max_size_based_on_index_type()))

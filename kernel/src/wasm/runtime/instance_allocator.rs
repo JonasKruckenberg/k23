@@ -24,7 +24,7 @@ pub trait InstanceAllocator {
         &self,
         module: &TranslatedModule,
         offsets: &VMOffsets,
-    ) -> crate::wasm::Result<OwnedVMContext>;
+    ) -> crate::Result<OwnedVMContext>;
 
     /// Deallocate a `VMContext` of an instance.
     ///
@@ -48,7 +48,7 @@ pub trait InstanceAllocator {
         module: &TranslatedModule,
         memory_desc: &MemoryDesc,
         memory_index: DefinedMemoryIndex,
-    ) -> crate::wasm::Result<Memory>;
+    ) -> crate::Result<Memory>;
 
     /// Deallocate an instance's previously allocated memory.
     ///
@@ -59,7 +59,7 @@ pub trait InstanceAllocator {
     /// allocated. It must never be used again.
     unsafe fn deallocate_memory(&self, memory_index: DefinedMemoryIndex, memory: Memory);
 
-    fn allocate_fiber_stack(&self) -> crate::wasm::Result<FiberStack>;
+    fn allocate_fiber_stack(&self) -> crate::Result<FiberStack>;
     unsafe fn deallocate_fiber_stack(&self, stack: FiberStack);
 
     /// Allocate a table for an instance.
@@ -76,7 +76,7 @@ pub trait InstanceAllocator {
         module: &TranslatedModule,
         table_desc: &TableDesc,
         table_index: DefinedTableIndex,
-    ) -> crate::wasm::Result<Table>;
+    ) -> crate::Result<Table>;
 
     /// Deallocate an instance's previously allocated table.
     ///
@@ -102,7 +102,7 @@ pub trait InstanceAllocator {
         &self,
         module: &TranslatedModule,
         memories: &mut PrimaryMap<DefinedMemoryIndex, Memory>,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         for (index, plan) in &module.memories {
             if let Some(def_index) = module.defined_memory_index(index) {
                 let new_def_index =
@@ -129,7 +129,7 @@ pub trait InstanceAllocator {
         &self,
         module: &TranslatedModule,
         tables: &mut PrimaryMap<DefinedTableIndex, Table>,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         for (index, plan) in &module.tables {
             if let Some(def_index) = module.defined_table_index(index) {
                 let new_def_index =
@@ -195,7 +195,7 @@ pub trait InstanceAllocator {
     fn allocate_module(
         &self,
         module: &Module,
-    ) -> crate::wasm::Result<(
+    ) -> crate::Result<(
         OwnedVMContext,
         PrimaryMap<DefinedTableIndex, Table>,
         PrimaryMap<DefinedMemoryIndex, Memory>,

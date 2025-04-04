@@ -9,7 +9,6 @@ mod address;
 mod address_space;
 mod address_space_region;
 pub mod bootstrap_alloc;
-mod error;
 pub mod flush;
 pub mod frame_alloc;
 mod provider;
@@ -34,7 +33,6 @@ use xmas_elf::program::Type;
 pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub use address_space::{AddressSpace, AddressSpaceKind, Batch};
 pub use address_space_region::AddressSpaceRegion;
-pub use error::Error;
 pub use flush::Flush;
 pub use trap_handler::handle_page_fault;
 pub use user_mmap::UserMmap;
@@ -243,7 +241,7 @@ impl From<PageFaultFlags> for Permissions {
 pub trait ArchAddressSpace {
     type Flags: From<Permissions> + bitflags::Flags;
 
-    fn new(asid: u16, frame_alloc: &FrameAllocator) -> Result<(Self, Flush), Error>
+    fn new(asid: u16, frame_alloc: &FrameAllocator) -> crate::Result<(Self, Flush)>
     where
         Self: Sized;
     fn from_active(asid: u16) -> (Self, Flush)
@@ -258,7 +256,7 @@ pub trait ArchAddressSpace {
         len: NonZeroUsize,
         flags: Self::Flags,
         flush: &mut Flush,
-    ) -> Result<(), Error>;
+    ) -> crate::Result<()>;
 
     unsafe fn update_flags(
         &mut self,
@@ -266,14 +264,14 @@ pub trait ArchAddressSpace {
         len: NonZeroUsize,
         new_flags: Self::Flags,
         flush: &mut Flush,
-    ) -> Result<(), Error>;
+    ) -> crate::Result<()>;
 
     unsafe fn unmap(
         &mut self,
         virt: VirtualAddress,
         len: NonZeroUsize,
         flush: &mut Flush,
-    ) -> Result<(), Error>;
+    ) -> crate::Result<()>;
 
     unsafe fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, Self::Flags)>;
 

@@ -7,8 +7,8 @@
 
 use crate::arch;
 use crate::vm::VirtualAddress;
+use crate::wasm::Trap;
 use crate::wasm::runtime::{StaticVMOffsets, VMContext, code_registry};
-use crate::wasm::{Error, Trap};
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -220,7 +220,11 @@ pub fn handle_wasm_exception(
     }
 }
 
-pub fn catch_traps<F>(caller: *mut VMContext, vmoffsets: StaticVMOffsets, f: F) -> Result<(), Error>
+pub fn catch_traps<F>(
+    caller: *mut VMContext,
+    vmoffsets: StaticVMOffsets,
+    f: F,
+) -> core::result::Result<(), (Trap, Option<RawBacktrace>)>
 where
     F: FnOnce(),
 {
@@ -248,16 +252,8 @@ where
         ACTIVATION.set(prev_state);
 
         match unwind_reason {
-            UnwindReason::Trap(TrapReason::Wasm(trap)) => Err(Error::Trap {
-                trap,
-                message: "WASM builtin trapped".to_string(),
-                backtrace,
-            }),
-            UnwindReason::Trap(TrapReason::Jit { trap, .. }) => Err(Error::Trap {
-                trap,
-                message: "WASM JIT code trapped".to_string(),
-                backtrace,
-            }),
+            UnwindReason::Trap(TrapReason::Wasm(trap)) => Err((trap, backtrace)),
+            UnwindReason::Trap(TrapReason::Jit { trap, .. }) => Err((trap, backtrace)),
         }
     }
 }

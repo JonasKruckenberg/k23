@@ -1,8 +1,9 @@
 use crate::vm::{AddressSpace, UserMmap};
+use crate::wasm::MEMORY_MAX;
 use crate::wasm::runtime::VMMemoryDefinition;
 use crate::wasm::translate::MemoryDesc;
 use crate::wasm::utils::round_usize_up_to_host_pages;
-use crate::wasm::{Error, MEMORY_MAX};
+use anyhow::Context;
 use core::range::Range;
 
 #[derive(Debug)]
@@ -29,7 +30,7 @@ impl Memory {
         desc: &MemoryDesc,
         actual_minimum_bytes: usize,
         actual_maximum_bytes: Option<usize>,
-    ) -> crate::wasm::Result<Self> {
+    ) -> crate::Result<Self> {
         let offset_guard_bytes = usize::try_from(desc.offset_guard_size).unwrap();
         // Ensure that our guard regions are multiples of the host page size.
         let offset_guard_bytes = round_usize_up_to_host_pages(offset_guard_bytes);
@@ -40,7 +41,7 @@ impl Memory {
 
         // TODO the align arg should be a named const not a weird number like this
         let mmap = UserMmap::new_zeroed(aspace, request_bytes, 2 * 1048576, None)
-            .map_err(|_| Error::MmapFailed)?;
+            .context("Failed to mmap zeroed memory for Memory")?;
 
         Ok(Self {
             mmap,

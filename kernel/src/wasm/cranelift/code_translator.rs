@@ -9,9 +9,9 @@ use crate::wasm::indices::{
     DataIndex, ElemIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TypeIndex,
 };
 use crate::wasm::trap::{TRAP_NULL_REFERENCE, TRAP_UNREACHABLE};
-use crate::wasm_unsupported;
 use alloc::vec;
 use alloc::vec::Vec;
+use anyhow::bail;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::Offset32;
@@ -71,7 +71,7 @@ pub fn translate_operator(
     builder: &mut FunctionBuilder,
     state: &mut FuncTranslationState,
     env: &mut TranslationEnvironment,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     if !state.reachable {
         translate_unreachable_operator(validator, op, builder, state, env);
         return Ok(());
@@ -2523,17 +2523,18 @@ pub fn translate_operator(
         | Operator::AnyConvertExtern
         | Operator::ExternConvertAny
         | Operator::RefEq => {
-            return Err(wasm_unsupported!("Garbage Collection Proposal"));
+            bail!(
+                "Feature used by the WebAssembly code is not yet supported: Garbage Collection Proposal"
+            );
         }
 
         /******************************* Active Proposals *****************************************/
         // memory control (experimental)
         // https://github.com/WebAssembly/memory-control
         Operator::MemoryDiscard { .. } => {
-            return Err(wasm_unsupported!(
-                "proposed memory-control operator {:?}",
-                op
-            ));
+            bail!(
+                "Feature used by the WebAssembly code is not yet supported: Memory Control Proposal"
+            );
         }
 
         // shared-everything threads
@@ -2574,13 +2575,17 @@ pub fn translate_operator(
         | Operator::ArrayAtomicRmwXchg { .. }
         | Operator::ArrayAtomicRmwCmpxchg { .. }
         | Operator::RefI31Shared => {
-            return Err(wasm_unsupported!("Shared-Everything Threads Proposal"));
+            bail!(
+                "Feature used by the WebAssembly code is not yet supported: Shared-Everything Threads Proposal"
+            );
         }
 
         // Exception handling
         // https://github.com/WebAssembly/exception-handling
         Operator::TryTable { .. } | Operator::Throw { .. } | Operator::ThrowRef => {
-            return Err(wasm_unsupported!("Exception Handling Proposal"));
+            bail!(
+                "Feature used by the WebAssembly code is not yet supported: Exception Handling Proposal"
+            );
         }
         // Deprecated old instructions from the exceptions proposal
         Operator::Try { .. }
@@ -2588,7 +2593,9 @@ pub fn translate_operator(
         | Operator::Rethrow { .. }
         | Operator::Delegate { .. }
         | Operator::CatchAll => {
-            return Err(wasm_unsupported!("Legacy Exception Handling Proposal"));
+            bail!(
+                "Feature used by the WebAssembly code is not yet supported: Legacy Exception Handling Proposal"
+            );
         }
 
         // Stack switching
@@ -2599,7 +2606,9 @@ pub fn translate_operator(
         | Operator::Resume { .. }
         | Operator::ResumeThrow { .. }
         | Operator::Switch { .. } => {
-            return Err(wasm_unsupported!("Stack Switching Proposal"));
+            bail!(
+                "Feature used by the WebAssembly code is not yet supported: Stack Switching Proposal"
+            );
         }
 
         // wide arithmetic
@@ -2608,8 +2617,12 @@ pub fn translate_operator(
         | Operator::I64Sub128
         | Operator::I64MulWideS
         | Operator::I64MulWideU => {
-            return Err(wasm_unsupported!("Wide Arithmetic Proposal"));
+            bail!(
+                "Feature used by the WebAssembly code is not yet supported: Wide Arithmetic Proposal"
+            );
         }
+
+        _ => unimplemented!(),
     }
 
     Ok(())
@@ -2789,7 +2802,7 @@ fn translate_store(
     builder: &mut FunctionBuilder,
     state: &mut FuncTranslationState,
     env: &mut TranslationEnvironment,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     let memory_index = MemoryIndex::from_u32(memarg.memory);
     let val = state.pop1();
     let index = state.pop1();
@@ -2816,7 +2829,7 @@ fn translate_atomic_rmw(
     _builder: &mut FunctionBuilder,
     _state: &mut FuncTranslationState,
     _env: &mut TranslationEnvironment,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     todo!()
 }
 
@@ -2827,7 +2840,7 @@ fn translate_atomic_cas(
     _builder: &mut FunctionBuilder,
     _state: &mut FuncTranslationState,
     _env: &mut TranslationEnvironment,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     todo!()
 }
 
@@ -2838,7 +2851,7 @@ fn translate_atomic_load(
     _builder: &mut FunctionBuilder,
     _state: &mut FuncTranslationState,
     _env: &mut TranslationEnvironment,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     todo!()
 }
 
@@ -2848,7 +2861,7 @@ fn translate_atomic_store(
     _builder: &mut FunctionBuilder,
     _state: &mut FuncTranslationState,
     _env: &mut TranslationEnvironment,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     todo!()
 }
 

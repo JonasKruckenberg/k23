@@ -8,10 +8,10 @@
 use crate::CPUID;
 use crate::arch::device;
 use crate::device_tree::DeviceTree;
-use crate::error::Error;
 use crate::irq::InterruptController;
 use crate::time::clock::Ticks;
 use crate::time::{Clock, NANOS_PER_SEC};
+use anyhow::{Context, bail};
 use bitflags::bitflags;
 use core::cell::{OnceCell, RefCell};
 use core::fmt;
@@ -99,11 +99,11 @@ where
     CPU.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
 }
 
-pub fn try_with_cpu<F, R>(f: F) -> Result<R, Error>
+pub fn try_with_cpu<F, R>(f: F) -> crate::Result<R>
 where
     F: FnOnce(&Cpu) -> R,
 {
-    CPU.try_with(|cpu_info| Ok(f(cpu_info.get().ok_or(Error::Uninitialized)?)))?
+    CPU.try_with(|cpu_info| Ok(f(cpu_info.get().context("CPU info not initialized")?)))?
 }
 
 #[cold]
@@ -230,8 +230,7 @@ pub fn parse_riscv_extensions(strs: fdt::StringList) -> crate::Result<RiscvExten
             "svadu" => RiscvExtensions::SVADU,
             "svvptc" => RiscvExtensions::SVVPTC,
             ext => {
-                tracing::error!("unknown RISCV extension {}", ext);
-                return Err(Error::UnknownRiscvExtension);
+                bail!("unknown RISCV extension {}", ext);
             }
         }
     }

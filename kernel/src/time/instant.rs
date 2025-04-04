@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::device::cpu::{try_with_cpu, with_cpu};
-use crate::error::Error;
 use crate::time::clock::Ticks;
 use crate::time::{NANOS_PER_SEC, clock};
 use core::fmt;
@@ -27,7 +26,7 @@ impl Instant {
         with_cpu(|cpu| cpu.clock.now())
     }
 
-    pub fn try_now() -> Result<Self, Error> {
+    pub fn try_now() -> crate::Result<Self> {
         try_with_cpu(|cpu| cpu.clock.now())
     }
 

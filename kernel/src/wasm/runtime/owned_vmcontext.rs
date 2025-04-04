@@ -12,7 +12,7 @@ impl OwnedVMContext {
     pub fn try_new(
         aspace: &mut AddressSpace,
         offsets: &VMOffsets,
-    ) -> crate::wasm::Result<OwnedVMContext> {
+    ) -> crate::Result<OwnedVMContext> {
         let mmap = UserMmap::new_zeroed(
             aspace,
             offsets.size() as usize,
