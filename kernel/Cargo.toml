@@ -46,6 +46,7 @@ ouroboros.workspace = true
 mycelium-bitfield.workspace = true
 tracing.workspace = true
 tracing-core.workspace = true
+anyhow.workspace = true
 
 wasmparser.workspace = true
 target-lexicon.workspace = true

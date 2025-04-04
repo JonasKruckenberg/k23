@@ -22,7 +22,7 @@ impl Table {
         aspace: &mut AddressSpace,
         desc: &TableDesc,
         actual_maximum: Option<usize>,
-    ) -> crate::wasm::Result<Self> {
+    ) -> crate::Result<Self> {
         let reserve_size = TABLE_MAX.min(actual_maximum.unwrap_or(usize::MAX));
 
         let elements = if reserve_size == 0 {

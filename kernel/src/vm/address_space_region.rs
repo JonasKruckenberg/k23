@@ -8,10 +8,11 @@
 use crate::arch;
 use crate::vm::address::VirtualAddress;
 use crate::vm::frame_alloc::FrameAllocator;
-use crate::vm::{AddressRangeExt, Batch, Error, PageFaultFlags, Permissions, PhysicalAddress, Vmo};
+use crate::vm::{AddressRangeExt, Batch, PageFaultFlags, Permissions, PhysicalAddress, Vmo};
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
+use anyhow::bail;
 use core::cmp;
 use core::mem::offset_of;
 use core::num::NonZeroUsize;
@@ -123,7 +124,7 @@ impl AddressSpaceRegion {
         batch: &mut Batch,
         range: Range<VirtualAddress>,
         will_write: bool,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         let vmo_relative_range = Range {
             start: range.start.checked_sub_addr(self.range.start).unwrap(),
             end: range.end.checked_sub_addr(self.range.start).unwrap(),
@@ -182,7 +183,7 @@ impl AddressSpaceRegion {
     // TODO this method should be changed to accept an `arch::AddressSpace` and flusher and perform
     //  the unmapping by itself instead of the `AddressSpace` doing it
     #[expect(clippy::unnecessary_wraps, reason = "TODO")]
-    pub fn unmap(&self, range: Range<VirtualAddress>) -> Result<(), Error> {
+    pub fn unmap(&self, range: Range<VirtualAddress>) -> crate::Result<()> {
         match self.vmo.as_ref() {
             Vmo::Wired => panic!("cannot unmap wired frames"),
             Vmo::Phys(_) => {
@@ -216,7 +217,7 @@ impl AddressSpaceRegion {
         batch: &mut Batch,
         addr: VirtualAddress,
         flags: PageFaultFlags,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         tracing::trace!(addr=%addr,flags=%flags,name=?self.name, "page fault");
         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
         debug_assert!(self.range.contains(&addr));
@@ -243,7 +244,7 @@ impl AddressSpaceRegion {
                 tracing::trace!("permission failure: execute fault on non-executable region");
             }
 
-            return Err(Error::InvalidPermissions);
+            bail!("requested permissions must be R^X");
         }
 
         // At this point we know that the access was legal, so either we faulted because the Frame

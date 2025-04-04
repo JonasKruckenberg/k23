@@ -596,7 +596,7 @@ impl WaitQueue {
         }
 
         match state.get(State::INNER) {
-            StateInner::Closed => Poll::Ready(Err(Closed(()))),
+            StateInner::Closed => Poll::Ready(Err(Closed)),
             _ if state.get(State::WAKE_ALLS) > initial_wake_alls => Poll::Ready(Ok(())),
             StateInner::Empty | StateInner::Waiting => Poll::Pending,
             StateInner::Woken => Poll::Ready(Ok(())),
@@ -847,7 +847,7 @@ impl Waiter {
                                 Err(actual) => queue_state = actual,
                             }
                         }
-                        StateInner::Closed => return Poll::Ready(Err(Closed(()))),
+                        StateInner::Closed => return Poll::Ready(Err(Closed)),
                     }
                 }
 
@@ -889,7 +889,7 @@ impl Waiter {
                         }
                         Wakeup::Closed => {
                             this.state.set(WaitState::INNER, WaitStateInner::Woken);
-                            Poll::Ready(Err(Closed(())))
+                            Poll::Ready(Err(Closed))
                         }
                         Wakeup::Empty => {
                             if let Some(waker) = waker {

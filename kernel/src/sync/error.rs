@@ -6,11 +6,11 @@
 // copied, modified, or distributed except according to those terms.
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct Closed(pub(super) ());
+pub struct Closed;
 
 impl Closed {
     pub(crate) const fn new() -> Self {
-        Self(())
+        Self
     }
 }
 

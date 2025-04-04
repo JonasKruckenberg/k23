@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::{mb, wmb};
-use crate::vm::Error;
 use crate::vm::flush::Flush;
 use crate::vm::frame_alloc::{Frame, FrameAllocator};
 use crate::vm::{PhysicalAddress, VirtualAddress};
@@ -92,7 +91,7 @@ pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
 /// # Errors
 ///
 /// Should return an error if the underlying operation failed and the caches could not be invalidated.
-pub fn invalidate_range(asid: u16, address_range: Range<VirtualAddress>) -> Result<(), Error> {
+pub fn invalidate_range(asid: u16, address_range: Range<VirtualAddress>) -> crate::Result<()> {
     mb();
 
     let base_addr = address_range.start.get();
@@ -163,7 +162,7 @@ pub struct AddressSpace {
 impl crate::vm::ArchAddressSpace for AddressSpace {
     type Flags = PTEFlags;
 
-    fn new(asid: u16, frame_alloc: &FrameAllocator) -> Result<(Self, Flush), Error>
+    fn new(asid: u16, frame_alloc: &FrameAllocator) -> crate::Result<(Self, Flush)>
     where
         Self: Sized,
     {
@@ -221,7 +220,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         len: NonZeroUsize,
         flags: Self::Flags,
         flush: &mut Flush,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         let mut remaining_bytes = len.get();
         if flags.contains(PTEFlags::WRITE) {
             debug_assert!(
@@ -317,7 +316,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         len: NonZeroUsize,
         new_flags: Self::Flags,
         flush: &mut Flush,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         let mut remaining_bytes = len.get();
         if new_flags.contains(PTEFlags::WRITE) {
             debug_assert!(
@@ -389,7 +388,7 @@ impl crate::vm::ArchAddressSpace for AddressSpace {
         mut virt: VirtualAddress,
         len: NonZeroUsize,
         flush: &mut Flush,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         let mut remaining_bytes = len.get();
         debug_assert!(
             remaining_bytes >= PAGE_SIZE,
@@ -469,7 +468,7 @@ impl AddressSpace {
         remaining_bytes: &mut usize,
         lvl: usize,
         flush: &mut Flush,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         let index = pte_index_for_level(*virt, lvl);
         // Safety: index is always within one page
         let pte = unsafe { pgtable.add(index).as_mut() };

@@ -11,10 +11,10 @@ use crate::wasm::translate::{
     ProducersTool, ProducersToolField, TableDesc, TableInitialValue, TableSegment,
     TableSegmentElements,
 };
-use crate::wasm_unsupported;
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use anyhow::bail;
 use cranelift_entity::packed_option::ReservedValue;
 use hashbrown::HashMap;
 use wasmparser::{
@@ -52,7 +52,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     pub fn translate(
         mut self,
         data: &'data [u8],
-    ) -> crate::wasm::Result<(ModuleTranslation<'data>, ModuleTypes)> {
+    ) -> crate::Result<(ModuleTranslation<'data>, ModuleTypes)> {
         let mut parser = Parser::default();
         parser.set_features(*self.validator.features());
 
@@ -72,7 +72,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     }
 
     /// Translates a single payload (essentially a section) of a WASM module.
-    fn translate_payload(&mut self, payload: Payload<'data>) -> crate::wasm::Result<()> {
+    fn translate_payload(&mut self, payload: Payload<'data>) -> crate::Result<()> {
         match payload {
             Payload::Version {
                 num,
@@ -244,7 +244,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     fn translate_import_section(
         &mut self,
         imports: ImportSectionReader<'data>,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         self.result
             .module
             .imports
@@ -314,7 +314,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     fn translate_function_section(
         &mut self,
         functions: FunctionSectionReader<'data>,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         self.result
             .module
             .functions
@@ -331,10 +331,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
         Ok(())
     }
 
-    fn translate_table_section(
-        &mut self,
-        tables: TableSectionReader<'data>,
-    ) -> crate::wasm::Result<()> {
+    fn translate_table_section(&mut self, tables: TableSectionReader<'data>) -> crate::Result<()> {
         self.result
             .module
             .tables
@@ -376,7 +373,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     fn translate_memory_section(
         &mut self,
         memories: MemorySectionReader<'data>,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         self.result
             .module
             .memories
@@ -393,14 +390,16 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     }
 
     #[expect(clippy::unused_self, reason = "TODO stub")]
-    fn parse_tag_section(&self, _tags: TagSectionReader<'data>) -> crate::wasm::Result<()> {
-        Err(wasm_unsupported!("exception handling"))
+    fn parse_tag_section(&self, _tags: TagSectionReader<'data>) -> crate::Result<()> {
+        bail!(
+            "Feature used by the WebAssembly code is not yet supported: Exception Handling Proposal"
+        )
     }
 
     fn translate_global_section(
         &mut self,
         globals: GlobalSectionReader<'data>,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         self.result
             .module
             .globals
@@ -434,7 +433,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     fn translate_export_section(
         &mut self,
         exports: ExportSectionReader<'data>,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         for export in exports {
             let export = export?;
             let index = match export.kind {
@@ -494,7 +493,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     fn translate_element_section(
         &mut self,
         elements: ElementSectionReader<'data>,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         for (elem_index, element) in elements.into_iter().enumerate() {
             let element = element?;
             let elem_index = ElemIndex::from_u32(u32::try_from(elem_index).unwrap());
@@ -557,10 +556,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
         Ok(())
     }
 
-    fn translate_data_section(
-        &mut self,
-        section: DataSectionReader<'data>,
-    ) -> crate::wasm::Result<()> {
+    fn translate_data_section(&mut self, section: DataSectionReader<'data>) -> crate::Result<()> {
         for (data_index, entry) in section.into_iter().enumerate() {
             let entry = entry?;
             let data_index = DataIndex::from_u32(u32::try_from(data_index).unwrap());
@@ -647,15 +643,12 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     }
 
     #[expect(clippy::too_many_lines, reason = "big match statement")]
-    fn translate_name_section(
-        &mut self,
-        reader: NameSectionReader<'data>,
-    ) -> crate::wasm::Result<()> {
+    fn translate_name_section(&mut self, reader: NameSectionReader<'data>) -> crate::Result<()> {
         for subsection in reader {
             fn for_each_direct_name<'data>(
                 names: NameMap<'data>,
                 mut f: impl FnMut(u32, &'data str),
-            ) -> crate::wasm::Result<()> {
+            ) -> crate::Result<()> {
                 for name in names {
                     let name = name?;
 
@@ -669,7 +662,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
                 names: IndirectNameMap<'data>,
                 mut f1: impl FnMut(&mut HashMap<I, &'data str>, u32, &'data str),
                 mut f2: impl FnMut(HashMap<I, &'data str>, u32),
-            ) -> crate::wasm::Result<()> {
+            ) -> crate::Result<()> {
                 for naming in names {
                     let name = naming?;
                     let mut result = HashMap::default();
@@ -833,7 +826,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
     fn translate_producers_section(
         &mut self,
         section: ProducersSectionReader<'data>,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         for field in section {
             let field = field?;
             match field.name {

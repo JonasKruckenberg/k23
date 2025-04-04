@@ -43,7 +43,7 @@ pub trait Compiler {
         index: DefinedFuncIndex,
         data: FunctionBodyData<'_>,
         types: &ModuleTypes,
-    ) -> crate::wasm::Result<CompiledFunction>;
+    ) -> crate::Result<CompiledFunction>;
 
     /// Compile a trampoline for calling the `index` WASM function through the
     /// array-calling convention used by host code to call into WASM.
@@ -52,20 +52,20 @@ pub trait Compiler {
         translation: &ModuleTranslation<'_>,
         types: &ModuleTypes,
         index: DefinedFuncIndex,
-    ) -> crate::wasm::Result<CompiledFunction>;
+    ) -> crate::Result<CompiledFunction>;
 
     // Compile a trampoline for calling the  a(host-defined) function through the array
     /// calling convention used to by WASM to call into host code.
     fn compile_wasm_to_array_trampoline(
         &self,
         wasm_func_ty: &WasmFuncType,
-    ) -> crate::wasm::Result<CompiledFunction>;
+    ) -> crate::Result<CompiledFunction>;
 
     /// Compile a trampoline for calling the `index` builtin function from WASM.
     fn compile_wasm_to_builtin(
         &self,
         index: BuiltinFunctionIndex,
-    ) -> crate::wasm::Result<CompiledFunction>;
+    ) -> crate::Result<CompiledFunction>;
 }
 
 /// A position within an original source file,
@@ -114,7 +114,7 @@ pub struct FunctionLoc {
 }
 
 pub type CompileInput<'a> =
-    Box<dyn FnOnce(&dyn Compiler) -> crate::wasm::Result<CompileOutput> + Send + 'a>;
+    Box<dyn FnOnce(&dyn Compiler) -> crate::Result<CompileOutput> + Send + 'a>;
 
 pub struct CompileInputs<'a>(Vec<CompileInput<'a>>);
 
@@ -175,7 +175,7 @@ impl<'a> CompileInputs<'a> {
         Self(inputs)
     }
 
-    pub fn compile(self, compiler: &dyn Compiler) -> crate::wasm::Result<UnlinkedCompileOutputs> {
+    pub fn compile(self, compiler: &dyn Compiler) -> crate::Result<UnlinkedCompileOutputs> {
         let mut outputs = self
             .0
             .into_iter()
@@ -199,7 +199,7 @@ impl<'a> CompileInputs<'a> {
 fn compile_required_builtin_trampolines(
     compiler: &dyn Compiler,
     outputs: &mut Vec<CompileOutput>,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     let mut builtins = EntitySet::new();
     let mut new_jobs: Vec<CompileInput<'_>> = Vec::new();
 

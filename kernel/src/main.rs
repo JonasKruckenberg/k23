@@ -32,7 +32,6 @@ mod backtrace;
 mod bootargs;
 mod cpu_local;
 mod device_tree;
-mod error;
 mod fiber;
 mod irq;
 mod metrics;
@@ -50,7 +49,6 @@ mod vm;
 mod wasm;
 
 use crate::device_tree::device_tree;
-use crate::error::Error;
 use crate::time::Instant;
 use crate::time::clock::Ticks;
 use crate::vm::bootstrap_alloc::BootstrapAllocator;
@@ -79,7 +77,7 @@ pub const TRAP_STACK_SIZE_PAGES: usize = 64; // TODO find a lower more appropria
 /// size and can dynamically grow the heap as needed.
 pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
 
-pub type Result<T> = core::result::Result<T, Error>;
+pub type Result<T> = anyhow::Result<T>;
 
 cpu_local!(
     pub static CPUID: Cell<usize> = Cell::new(usize::MAX);

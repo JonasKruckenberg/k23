@@ -6,7 +6,6 @@ mod builtins;
 mod compile;
 mod cranelift;
 mod engine;
-mod errors;
 mod func;
 mod global;
 mod indices;
@@ -34,7 +33,6 @@ use wasmparser::Validator;
 
 use crate::shell::Command;
 pub use engine::Engine;
-pub use errors::Error;
 pub use func::{Func, TypedFunc};
 pub use global::Global;
 pub use instance::Instance;
@@ -49,8 +47,6 @@ pub use translate::ModuleTranslator;
 pub use trap::Trap;
 pub use trap_handler::handle_wasm_exception;
 pub use values::Val;
-
-pub(crate) type Result<T> = core::result::Result<T, Error>;
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.

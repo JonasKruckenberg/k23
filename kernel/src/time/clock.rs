@@ -6,6 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::time::{Instant, NANOS_PER_SEC};
+use alloc::format;
+use anyhow::{Context, format_err};
 use core::fmt;
 use core::time::Duration;
 
@@ -106,12 +108,14 @@ impl Clock {
         Duration::new(secs, nanos)
     }
 
-    pub fn duration_to_ticks(&self, duration: Duration) -> Result<Ticks, super::Error> {
+    pub fn duration_to_ticks(&self, duration: Duration) -> crate::Result<Ticks> {
         let raw: u64 = (duration.as_nanos() / self.tick_duration.as_nanos())
             .try_into()
-            .map_err(|_| super::Error::DurationTooLong {
-                requested: duration,
-                max: max_duration(self.tick_duration),
+            .with_context(|| {
+                format_err!(
+                    "duration too long. max duration is {:?}",
+                    max_duration(self.tick_duration)
+                )
             })?;
 
         Ok(Ticks(raw))

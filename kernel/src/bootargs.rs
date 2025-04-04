@@ -7,11 +7,10 @@
 
 use crate::backtrace::BacktraceStyle;
 use crate::device_tree::DeviceTree;
-use crate::error::Error;
 use crate::tracing::Filter;
 use core::str::FromStr;
 
-pub fn parse(devtree: &DeviceTree) -> Result<Bootargs, Error> {
+pub fn parse(devtree: &DeviceTree) -> crate::Result<Bootargs> {
     let chosen = devtree.find_by_path("/chosen").unwrap();
     let Some(prop) = chosen.property("bootargs") else {
         return Ok(Bootargs::default());
@@ -27,7 +26,7 @@ pub struct Bootargs {
 }
 
 impl FromStr for Bootargs {
-    type Err = Error;
+    type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut log = None;
@@ -36,11 +35,11 @@ impl FromStr for Bootargs {
         let parts = s.trim().split(';');
         for part in parts {
             if let Some(current) = part.strip_prefix("log=") {
-                log = Some(Filter::from_str(current).unwrap());
+                log = Some(Filter::from_str(current)?);
             }
 
             if let Some(current) = part.strip_prefix("backtrace=") {
-                backtrace = Some(BacktraceStyle::from_str(current).unwrap());
+                backtrace = Some(BacktraceStyle::from_str(current)?);
             }
         }
 

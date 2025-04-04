@@ -3,8 +3,9 @@ use crate::vm::frame_alloc::FrameAllocator;
 use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 use crate::wasm::runtime::{VMContext, VMOpaqueContext, VMVal};
 use crate::wasm::trap_handler::{AsyncActivation, PreviousAsyncActivation};
-use crate::wasm::{Engine, Error, InstanceAllocator, runtime};
+use crate::wasm::{Engine, InstanceAllocator, runtime};
 use alloc::vec::Vec;
+use anyhow::anyhow;
 use core::cell::UnsafeCell;
 use core::future::Future;
 use core::marker::PhantomData;
@@ -43,7 +44,7 @@ unsafe impl Sync for Vmctx2Instance {}
 
 #[derive(Debug)]
 struct AsyncState {
-    current_suspend: UnsafeCell<*mut Suspend<super::Result<()>, (), super::Result<()>>>,
+    current_suspend: UnsafeCell<*mut Suspend<crate::Result<()>, (), crate::Result<()>>>,
     current_poll_cx: UnsafeCell<PollContext>,
     /// The last fiber stack that was in use by this store.
     last_fiber_stack: Option<FiberStack>,
@@ -176,7 +177,7 @@ impl Store {
     pub(super) async fn on_fiber<R>(
         &mut self,
         func: impl FnOnce(&mut Self) -> R + Send,
-    ) -> super::Result<R> {
+    ) -> crate::Result<R> {
         let mut slot = None;
         let mut future = {
             let current_poll_cx = self.async_state.current_poll_cx.get();
@@ -231,7 +232,7 @@ impl Store {
         return Ok(slot.unwrap());
 
         struct FiberFuture<'a> {
-            fiber: Option<Fiber<'a, super::Result<()>, (), super::Result<()>>>,
+            fiber: Option<Fiber<'a, crate::Result<()>, (), crate::Result<()>>>,
             current_poll_cx: *mut PollContext,
             // alloc: &'a dyn InstanceAllocator,
             // engine: Engine,
@@ -303,7 +304,7 @@ impl Store {
         unsafe impl Send for FiberFuture<'_> {}
 
         impl FiberFuture<'_> {
-            fn fiber(&self) -> &Fiber<'_, super::Result<()>, (), super::Result<()>> {
+            fn fiber(&self) -> &Fiber<'_, crate::Result<()>, (), crate::Result<()>> {
                 self.fiber.as_ref().unwrap()
             }
 
@@ -325,7 +326,7 @@ impl Store {
             /// resumes the linked list is prepended to the current thread's
             /// list. When the fiber is suspended then the fiber's list of
             /// activations are all removed en-masse and saved within the fiber.
-            fn resume(&mut self, val: super::Result<()>) -> Result<super::Result<()>, ()> {
+            fn resume(&mut self, val: crate::Result<()>) -> Result<crate::Result<()>, ()> {
                 // Safety: TODO
                 unsafe {
                     let prev = self.state.take().unwrap().push();
@@ -353,7 +354,7 @@ impl Store {
         }
 
         impl Future for FiberFuture<'_> {
-            type Output = super::Result<()>;
+            type Output = crate::Result<()>;
 
             fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
                 // We need to carry over this `cx` into our fiber's runtime
@@ -445,7 +446,7 @@ impl Store {
                 }
 
                 if !self.fiber().done() {
-                    let result = self.resume(Err(Error::FutureDropped));
+                    let result = self.resume(Err(anyhow!("Fiber future dropped")));
                     // This resumption with an error should always complete the
                     // fiber. While it's technically possible for host code to catch
                     // the trap and re-resume, we'd ideally like to signal that to

@@ -522,7 +522,7 @@ impl TranslationEnvironment<'_> {
         &mut self,
         builder: &mut FunctionBuilder,
         index: GlobalIndex,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -533,7 +533,7 @@ impl TranslationEnvironment<'_> {
         builder: &mut FunctionBuilder,
         index: GlobalIndex,
         value: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -606,7 +606,7 @@ impl TranslationEnvironment<'_> {
         callee: Value,
         args: &[Value],
         may_be_null: bool,
-    ) -> crate::wasm::Result<Inst> {
+    ) -> crate::Result<Inst> {
         todo!()
     }
 
@@ -625,7 +625,7 @@ impl TranslationEnvironment<'_> {
         callee_index: FuncIndex,
         callee: FuncRef,
         args: &[Value],
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -645,7 +645,7 @@ impl TranslationEnvironment<'_> {
         sig_ref: SigRef,
         callee: Value,
         args: &[Value],
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -664,7 +664,7 @@ impl TranslationEnvironment<'_> {
         sig_ref: SigRef,
         callee: Value,
         args: &[Value],
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -679,7 +679,7 @@ impl TranslationEnvironment<'_> {
         pos: FuncCursor,
         memory_index: MemoryIndex,
         delta: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -692,7 +692,7 @@ impl TranslationEnvironment<'_> {
         &mut self,
         pos: FuncCursor,
         memory_index: MemoryIndex,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -708,7 +708,7 @@ impl TranslationEnvironment<'_> {
         src_pos: Value,
         dst_pos: Value,
         len: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -723,7 +723,7 @@ impl TranslationEnvironment<'_> {
         dst: Value,
         value: Value,
         len: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -740,7 +740,7 @@ impl TranslationEnvironment<'_> {
         dst: Value,
         src: Value,
         len: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -749,7 +749,7 @@ impl TranslationEnvironment<'_> {
         &mut self,
         pos: FuncCursor,
         data_index: DataIndex,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -762,7 +762,7 @@ impl TranslationEnvironment<'_> {
         &mut self,
         pos: FuncCursor,
         table_index: TableIndex,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -778,7 +778,7 @@ impl TranslationEnvironment<'_> {
         table_index: TableIndex,
         delta: Value,
         initial_value: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -792,7 +792,7 @@ impl TranslationEnvironment<'_> {
         pos: FuncCursor,
         table_index: TableIndex,
         index: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -805,7 +805,7 @@ impl TranslationEnvironment<'_> {
         table_index: TableIndex,
         value: Value,
         index: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -821,7 +821,7 @@ impl TranslationEnvironment<'_> {
         dst: Value,
         src: Value,
         len: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -835,7 +835,7 @@ impl TranslationEnvironment<'_> {
         dst: Value,
         value: Value,
         len: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -851,7 +851,7 @@ impl TranslationEnvironment<'_> {
         dst: Value,
         src: Value,
         len: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -860,7 +860,7 @@ impl TranslationEnvironment<'_> {
         &mut self,
         pos: FuncCursor,
         elem_index: ElemIndex,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -882,7 +882,7 @@ impl TranslationEnvironment<'_> {
         address: Value,
         expected_value: Value,
         timeout: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -900,7 +900,7 @@ impl TranslationEnvironment<'_> {
         memory_index: MemoryIndex,
         address: Value,
         count: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -923,34 +923,22 @@ impl TranslationEnvironment<'_> {
         &mut self,
         pos: FuncCursor,
         index: FuncIndex,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
     /// Translate an `i32` value into an `i31ref`.
-    pub fn translate_ref_i31(
-        &mut self,
-        pos: FuncCursor,
-        value: Value,
-    ) -> crate::wasm::Result<Value> {
+    pub fn translate_ref_i31(&mut self, pos: FuncCursor, value: Value) -> crate::Result<Value> {
         todo!()
     }
 
     /// Sign-extend an `i31ref` into an `i32`.
-    pub fn translate_i31_get_s(
-        &mut self,
-        pos: FuncCursor,
-        value: Value,
-    ) -> crate::wasm::Result<Value> {
+    pub fn translate_i31_get_s(&mut self, pos: FuncCursor, value: Value) -> crate::Result<Value> {
         todo!()
     }
 
     /// Zero-extend an `i31ref` into an `i32`.
-    pub fn translate_i31_get_u(
-        &mut self,
-        pos: FuncCursor,
-        value: Value,
-    ) -> crate::wasm::Result<Value> {
+    pub fn translate_i31_get_u(&mut self, pos: FuncCursor, value: Value) -> crate::Result<Value> {
         todo!()
     }
     // Translate a `struct.new` instruction.
@@ -959,7 +947,7 @@ impl TranslationEnvironment<'_> {
         builder: &mut FunctionBuilder,
         struct_type_index: TypeIndex,
         fields: StructFieldsVec,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -968,7 +956,7 @@ impl TranslationEnvironment<'_> {
         &mut self,
         builder: &mut FunctionBuilder,
         struct_type_index: TypeIndex,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -980,7 +968,7 @@ impl TranslationEnvironment<'_> {
         field_index: u32,
         struct_ref: Value,
         value: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -991,7 +979,7 @@ impl TranslationEnvironment<'_> {
         struct_type_index: TypeIndex,
         field_index: u32,
         struct_ref: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1002,7 +990,7 @@ impl TranslationEnvironment<'_> {
         struct_type_index: TypeIndex,
         field_index: u32,
         struct_ref: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1013,7 +1001,7 @@ impl TranslationEnvironment<'_> {
         struct_type_index: TypeIndex,
         field_index: u32,
         struct_ref: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1024,7 +1012,7 @@ impl TranslationEnvironment<'_> {
         array_type_index: TypeIndex,
         elem: Value,
         len: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1034,7 +1022,7 @@ impl TranslationEnvironment<'_> {
         builder: &mut FunctionBuilder,
         array_type_index: TypeIndex,
         len: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1044,7 +1032,7 @@ impl TranslationEnvironment<'_> {
         builder: &mut FunctionBuilder,
         array_type_index: TypeIndex,
         elems: &[Value],
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1056,7 +1044,7 @@ impl TranslationEnvironment<'_> {
         data_index: DataIndex,
         data_offset: Value,
         len: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1068,7 +1056,7 @@ impl TranslationEnvironment<'_> {
         elem_index: ElemIndex,
         elem_offset: Value,
         len: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1084,7 +1072,7 @@ impl TranslationEnvironment<'_> {
         src_array: Value,
         src_index: Value,
         len: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -1097,7 +1085,7 @@ impl TranslationEnvironment<'_> {
         index: Value,
         value: Value,
         len: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -1112,7 +1100,7 @@ impl TranslationEnvironment<'_> {
         data_index: DataIndex,
         data_offset: Value,
         len: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -1127,7 +1115,7 @@ impl TranslationEnvironment<'_> {
         elem_index: ElemIndex,
         elem_offset: Value,
         len: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -1136,7 +1124,7 @@ impl TranslationEnvironment<'_> {
         &mut self,
         builder: &mut FunctionBuilder,
         array: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1147,7 +1135,7 @@ impl TranslationEnvironment<'_> {
         array_type_index: TypeIndex,
         array: Value,
         index: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1158,7 +1146,7 @@ impl TranslationEnvironment<'_> {
         array_type_index: TypeIndex,
         array: Value,
         index: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1169,7 +1157,7 @@ impl TranslationEnvironment<'_> {
         array_type_index: TypeIndex,
         array: Value,
         index: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 
@@ -1181,7 +1169,7 @@ impl TranslationEnvironment<'_> {
         array: Value,
         index: Value,
         value: Value,
-    ) -> crate::wasm::Result<()> {
+    ) -> crate::Result<()> {
         todo!()
     }
 
@@ -1191,7 +1179,7 @@ impl TranslationEnvironment<'_> {
         builder: &mut FunctionBuilder<'_>,
         ref_ty: WasmRefType,
         gc_ref: Value,
-    ) -> crate::wasm::Result<Value> {
+    ) -> crate::Result<Value> {
         todo!()
     }
 }

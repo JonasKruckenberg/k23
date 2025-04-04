@@ -32,7 +32,7 @@ impl Instance {
         const_eval: &mut ConstExprEvaluator,
         module: Module,
         imports: Imports,
-    ) -> crate::wasm::Result<Self> {
+    ) -> crate::Result<Self> {
         // Safety: caller has to ensure safety
         let instance =
             unsafe { runtime::Instance::new_unchecked(store, const_eval, module, imports)? };

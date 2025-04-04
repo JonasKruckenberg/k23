@@ -1,9 +1,9 @@
+use crate::wasm::enum_accessors;
 use crate::wasm::indices::CanonicalizedTypeIndex;
 use crate::wasm::translate::{GlobalDesc, MemoryDesc, TableDesc};
 use crate::wasm::type_registry::TypeTrace;
-use crate::wasm::{Error, enum_accessors};
-use crate::{bail, wasm};
 use alloc::boxed::Box;
+use anyhow::bail;
 use core::fmt;
 
 /// Represents the types of values in a WebAssembly module.
@@ -56,14 +56,11 @@ impl WasmValType {
         }
     }
 
-    pub fn ensure_matches(&self, other: &Self) -> wasm::Result<()> {
+    pub fn ensure_matches(&self, other: &Self) -> crate::Result<()> {
         if self.matches(other) {
             Ok(())
         } else {
-            bail!(
-                Error::MismatchedTypes,
-                "type mismatch: expected {other}, found {self}"
-            );
+            bail!("type mismatch: expected {other}, found {self}");
         }
     }
 }
@@ -144,14 +141,11 @@ impl WasmRefType {
         self.heap_type.matches(&other.heap_type)
     }
 
-    pub(crate) fn ensure_matches(&self, other: &Self) -> wasm::Result<()> {
+    pub(crate) fn ensure_matches(&self, other: &Self) -> crate::Result<()> {
         if self.matches(other) {
             Ok(())
         } else {
-            bail!(
-                Error::MismatchedTypes,
-                "type mismatch: expected {other}, found {self}"
-            );
+            bail!("type mismatch: expected {other}, found {self}");
         }
     }
 }
@@ -434,14 +428,11 @@ impl WasmHeapType {
         }
     }
 
-    pub fn ensure_matches(&self, other: &WasmHeapType) -> wasm::Result<()> {
+    pub fn ensure_matches(&self, other: &WasmHeapType) -> crate::Result<()> {
         if self.matches(other) {
             Ok(())
         } else {
-            bail!(
-                Error::MismatchedTypes,
-                "type mismatch: expected {other}, found {self}"
-            );
+            bail!("type mismatch: expected {other}, found {self}");
         }
     }
 }

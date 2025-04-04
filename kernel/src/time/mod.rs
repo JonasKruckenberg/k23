@@ -8,7 +8,6 @@
 #![allow(unused_imports, reason = "reexporting")]
 
 pub mod clock;
-mod error;
 mod instant;
 mod sleep;
 mod system_time;
@@ -23,7 +22,6 @@ use core::future::Future;
 use core::pin::pin;
 use core::task::Context;
 pub use core::time::Duration;
-pub use error::Error;
 pub use instant::Instant;
 pub use sleep::{Sleep, sleep, sleep_until};
 pub use timeout::{Elapsed, Timeout, timeout};

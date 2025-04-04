@@ -1,10 +1,9 @@
-use crate::vm::AddressSpace;
-use crate::wasm::runtime::{ConstExprEvaluator, Imports, InstanceAllocator};
+use crate::wasm::runtime::{ConstExprEvaluator, Imports};
 use crate::wasm::translate::EntityType;
-use crate::wasm::{Engine, Error, Extern, Instance, Module, Store};
-use alloc::string::ToString;
+use crate::wasm::{Engine, Extern, Instance, Module, Store};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use anyhow::{Context, bail, format_err};
 use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
 
@@ -50,11 +49,7 @@ impl Linker {
     /// # Errors
     ///
     /// TODO
-    pub fn alias_module(
-        &mut self,
-        module: &str,
-        as_module: &str,
-    ) -> crate::wasm::Result<&mut Self> {
+    pub fn alias_module(&mut self, module: &str, as_module: &str) -> crate::Result<&mut Self> {
         let module = self.intern_str(module);
         let as_module = self.intern_str(as_module);
         let items = self
@@ -85,7 +80,7 @@ impl Linker {
         store: &mut Store,
         module_name: &str,
         instance: Instance,
-    ) -> crate::wasm::Result<&mut Self> {
+    ) -> crate::Result<&mut Self> {
         let exports = instance
             .exports(store)
             .map(|e| (self.import_key(module_name, Some(e.name)), e.value))
@@ -117,16 +112,19 @@ impl Linker {
         store: &mut Store,
         const_eval: &mut ConstExprEvaluator,
         module: &Module,
-    ) -> crate::wasm::Result<Instance> {
+    ) -> crate::Result<Instance> {
         let mut imports = Imports::with_capacity_for(module.translated());
         for import in module.imports() {
-            let def =
-                self.get(&import.module, &import.name)
-                    .ok_or_else(|| Error::MissingImport {
-                        module: import.module.to_string(),
-                        field: import.name.to_string(),
-                        type_: import.ty.clone(),
-                    })?;
+            let def = self.get(&import.module, &import.name).with_context(|| {
+                let type_ = match import.ty {
+                    EntityType::Function(_) => "function",
+                    EntityType::Table(_) => "table",
+                    EntityType::Memory(_) => "memory",
+                    EntityType::Global(_) => "global",
+                };
+
+                format_err!("Missing {type_} import {}::{}", import.module, import.name)
+            })?;
 
             match (def, &import.ty) {
                 (Extern::Func(func), EntityType::Function(_ty)) => {
@@ -149,13 +147,14 @@ impl Linker {
         unsafe { Instance::new_unchecked(store, const_eval, module.clone(), imports) }
     }
 
-    fn insert(&mut self, key: ImportKey, item: Extern) -> crate::wasm::Result<()> {
+    fn insert(&mut self, key: ImportKey, item: Extern) -> crate::Result<()> {
         match self.map.entry(key) {
             Entry::Occupied(_) => {
-                return Err(Error::AlreadyDefined {
-                    module: self.strings[key.module].to_string(),
-                    field: self.strings[key.name].to_string(),
-                });
+                bail!(
+                    "Name {}::{} is already defined",
+                    self.strings[key.module],
+                    self.strings[key.name]
+                );
             }
             Entry::Vacant(v) => {
                 v.insert(item);

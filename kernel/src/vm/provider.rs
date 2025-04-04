@@ -7,10 +7,7 @@
 
 use crate::arch;
 use crate::vm::frame_alloc::{FRAME_ALLOC, FrameAllocator};
-use crate::vm::{
-    Error,
-    frame_alloc::{Frame, frame_list::FrameList},
-};
+use crate::vm::frame_alloc::{Frame, frame_list::FrameList};
 use alloc::sync::Arc;
 use core::alloc::Layout;
 use core::fmt::Debug;
@@ -20,14 +17,14 @@ use spin::{LazyLock, OnceLock};
 
 pub trait Provider: Debug {
     // TODO make async
-    fn get_frame(&self, at_offset: usize, will_write: bool) -> Result<Frame, Error>;
+    fn get_frame(&self, at_offset: usize, will_write: bool) -> crate::Result<Frame>;
     // TODO make async
     fn get_frames(
         &self,
         at_offset: usize,
         len: NonZeroUsize,
         will_write: bool,
-    ) -> Result<FrameList, Error>;
+    ) -> crate::Result<FrameList>;
     fn free_frame(&self, frame: Frame);
     fn free_frames(&self, frames: FrameList);
 }
@@ -60,7 +57,7 @@ impl TheZeroFrame {
 }
 
 impl Provider for TheZeroFrame {
-    fn get_frame(&self, _at_offset: usize, will_write: bool) -> Result<Frame, Error> {
+    fn get_frame(&self, _at_offset: usize, will_write: bool) -> crate::Result<Frame> {
         if will_write {
             self.frame_alloc.alloc_one_zeroed().map_err(Into::into)
         } else {
@@ -73,7 +70,7 @@ impl Provider for TheZeroFrame {
         _at_offset: usize,
         len: NonZeroUsize,
         will_write: bool,
-    ) -> Result<FrameList, Error> {
+    ) -> crate::Result<FrameList> {
         if will_write {
             self.frame_alloc
                 .alloc_contiguous_zeroed(

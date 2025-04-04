@@ -50,7 +50,7 @@ impl Instance {
         const_eval: &mut ConstExprEvaluator,
         module: Module,
         imports: Imports,
-    ) -> crate::wasm::Result<Self> {
+    ) -> crate::Result<Self> {
         let (mut vmctx, mut tables, mut memories) = store.alloc.allocate_module(&module)?;
 
         tracing::trace!("initializing instance");
@@ -411,7 +411,7 @@ unsafe fn initialize_vmctx(
     memories: &mut PrimaryMap<DefinedMemoryIndex, Memory>,
     module: &Module,
     imports: Imports,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     unsafe {
         let offsets = module.offsets();
 
@@ -573,7 +573,7 @@ unsafe fn initialize_tables(
     const_eval: &mut ConstExprEvaluator,
     tables: &mut PrimaryMap<DefinedTableIndex, Table>,
     module: &Module,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     // update initial values
     for (def_index, init) in &module.translated().table_initializers.initial_values {
         let val = match init {
@@ -596,7 +596,7 @@ unsafe fn initialize_tables(
             }
             TableSegmentElements::Expressions(exprs) => exprs
                 .iter()
-                .map(|expr| -> crate::wasm::Result<Option<NonNull<VMFuncRef>>> {
+                .map(|expr| -> crate::Result<Option<NonNull<VMFuncRef>>> {
                     let funcref = const_eval.eval(expr).get_funcref();
                     // TODO assert funcref ptr is valid
                     Ok(Some(NonNull::new(funcref.cast()).unwrap()))
@@ -624,7 +624,7 @@ unsafe fn initialize_memories(
     const_eval: &mut ConstExprEvaluator,
     memories: &mut PrimaryMap<DefinedMemoryIndex, Memory>,
     module: &Module,
-) -> crate::wasm::Result<()> {
+) -> crate::Result<()> {
     for init in &module.translated().memory_initializers {
         let offset = const_eval.eval(&init.offset);
         let offset = usize::try_from(offset.get_u64()).unwrap();

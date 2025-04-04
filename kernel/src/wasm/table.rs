@@ -7,7 +7,7 @@ use crate::wasm::{Store, runtime};
 pub struct Table(Stored<runtime::ExportedTable>);
 
 impl Table {
-    // pub fn new(_store: &mut Store, _ty: TableType, _init: ()) -> crate::wasm::Result<Self> {
+    // pub fn new(_store: &mut Store, _ty: TableType, _init: ()) -> crate::Result<Self> {
     //     todo!()
     // }
     // pub fn ty(&self, _store: &Store) -> &TableType {

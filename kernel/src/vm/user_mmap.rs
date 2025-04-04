@@ -8,8 +8,8 @@
 use crate::arch;
 use crate::vm::address::AddressRangeExt;
 use crate::vm::{
-    AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Error,
-    Permissions, PhysicalAddress, VirtualAddress,
+    AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions,
+    PhysicalAddress, VirtualAddress,
 };
 use alloc::string::String;
 use core::alloc::Layout;
@@ -48,7 +48,7 @@ impl UserMmap {
         len: usize,
         align: usize,
         name: Option<String>,
-    ) -> Result<Self, Error> {
+    ) -> crate::Result<Self> {
         debug_assert!(
             matches!(aspace.kind(), AddressSpaceKind::User),
             "cannot create UserMmap in kernel address space"
@@ -86,7 +86,7 @@ impl UserMmap {
         len: usize,
         align: usize,
         name: Option<String>,
-    ) -> Result<Self, Error> {
+    ) -> crate::Result<Self> {
         // debug_assert!(
         //     matches!(aspace.kind(), AddressSpaceKind::User),
         //     "cannot create UserMmap in kernel address space"
@@ -130,7 +130,7 @@ impl UserMmap {
         aspace: &mut AddressSpace,
         src_range: Range<usize>,
         dst: &mut [u8],
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         self.with_user_slice(aspace, src_range, |src| dst.clone_from_slice(src))
     }
 
@@ -139,7 +139,7 @@ impl UserMmap {
         aspace: &mut AddressSpace,
         src: &[u8],
         dst_range: Range<usize>,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         self.with_user_slice_mut(aspace, dst_range, |dst| {
             dst.copy_from_slice(src);
         })
@@ -150,7 +150,7 @@ impl UserMmap {
         aspace: &mut AddressSpace,
         range: Range<usize>,
         f: F,
-    ) -> Result<(), Error>
+    ) -> crate::Result<()>
     where
         F: FnOnce(&[u8]),
     {
@@ -171,7 +171,7 @@ impl UserMmap {
         aspace: &mut AddressSpace,
         range: Range<usize>,
         f: F,
-    ) -> Result<(), Error>
+    ) -> crate::Result<()>
     where
         F: FnOnce(&mut [u8]),
     {
@@ -221,7 +221,7 @@ impl UserMmap {
         &mut self,
         aspace: &mut AddressSpace,
         _branch_protection: bool,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_executable: {:?}", self.range);
         self.protect(
             aspace,
@@ -230,7 +230,7 @@ impl UserMmap {
     }
 
     /// Mark this memory mapping as read-only (`R`) essentially removing the write permission.
-    pub fn make_readonly(&mut self, aspace: &mut AddressSpace) -> Result<(), Error> {
+    pub fn make_readonly(&mut self, aspace: &mut AddressSpace) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_readonly: {:?}", self.range);
         self.protect(aspace, Permissions::READ | Permissions::USER)
     }
@@ -239,7 +239,7 @@ impl UserMmap {
         &mut self,
         aspace: &mut AddressSpace,
         new_permissions: Permissions,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         if !self.range.is_empty() {
             let mut cursor = aspace.regions.find_mut(&self.range.start);
             let mut region = cursor.get_mut().unwrap();
@@ -267,7 +267,7 @@ impl UserMmap {
         aspace: &mut AddressSpace,
         range: Range<usize>,
         will_write: bool,
-    ) -> Result<(), Error> {
+    ) -> crate::Result<()> {
         if !self.range.is_empty() {
             let mut cursor = aspace.regions.find_mut(&self.range.start);
 

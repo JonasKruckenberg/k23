@@ -1,6 +1,6 @@
 use crate::arch;
 use crate::vm::{AddressSpace, UserMmap};
-use crate::wasm::Error;
+use anyhow::Context;
 use core::cmp::max;
 use core::marker::PhantomData;
 use core::ops::Deref;
@@ -23,7 +23,7 @@ impl<T> MmapVec<T> {
         }
     }
 
-    pub fn new_zeroed(aspace: &mut AddressSpace, capacity: usize) -> crate::wasm::Result<Self> {
+    pub fn new_zeroed(aspace: &mut AddressSpace, capacity: usize) -> crate::Result<Self> {
         Ok(Self {
             mmap: UserMmap::new_zeroed(
                 aspace,
@@ -31,13 +31,13 @@ impl<T> MmapVec<T> {
                 max(align_of::<T>(), arch::PAGE_SIZE),
                 None,
             )
-            .map_err(|_| Error::MmapFailed)?,
+            .context("Failed to mmap zeroed memory for MmapVec")?,
             len: 0,
             _m: PhantomData,
         })
     }
 
-    pub fn from_slice(aspace: &mut AddressSpace, slice: &[T]) -> crate::wasm::Result<Self>
+    pub fn from_slice(aspace: &mut AddressSpace, slice: &[T]) -> crate::Result<Self>
     where
         T: Clone,
     {
