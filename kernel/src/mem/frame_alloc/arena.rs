@@ -7,7 +7,7 @@
 
 use super::frame::FrameInfo;
 use crate::arch;
-use crate::vm::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use crate::mem::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;

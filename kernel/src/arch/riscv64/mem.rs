@@ -6,9 +6,9 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::{mb, wmb};
-use crate::vm::flush::Flush;
-use crate::vm::frame_alloc::{Frame, FrameAllocator};
-use crate::vm::{PhysicalAddress, VirtualAddress};
+use crate::mem::flush::Flush;
+use crate::mem::frame_alloc::{Frame, FrameAllocator};
+use crate::mem::{PhysicalAddress, VirtualAddress};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::bitflags;
@@ -159,7 +159,7 @@ pub struct AddressSpace {
     asid: u16,
 }
 
-impl crate::vm::ArchAddressSpace for AddressSpace {
+impl crate::mem::ArchAddressSpace for AddressSpace {
     type Flags = PTEFlags;
 
     fn new(asid: u16, frame_alloc: &FrameAllocator) -> crate::Result<(Self, Flush)>
@@ -610,9 +610,9 @@ bitflags! {
     }
 }
 
-impl From<crate::vm::Permissions> for PTEFlags {
-    fn from(flags: crate::vm::Permissions) -> Self {
-        use crate::vm::Permissions;
+impl From<crate::mem::Permissions> for PTEFlags {
+    fn from(flags: crate::mem::Permissions) -> Self {
+        use crate::mem::Permissions;
 
         // we currently don't use the accessed & dirty bits and, it's recommended to set them if unused
         let mut out = Self::VALID | Self::ACCESSED | Self::DIRTY;

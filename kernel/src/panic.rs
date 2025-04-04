@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::backtrace::Backtrace;
+use crate::mem::VirtualAddress;
 use crate::panic::panic_count::MustAbort;
-use crate::vm::VirtualAddress;
 use crate::{arch, backtrace};
 use alloc::boxed::Box;
 use alloc::string::String;

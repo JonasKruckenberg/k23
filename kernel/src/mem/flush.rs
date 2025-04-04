@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::address::VirtualAddress;
+use crate::mem::address::VirtualAddress;
 use anyhow::bail;
 use core::range::Range;
 use core::{cmp, mem};

@@ -1,4 +1,4 @@
-use crate::vm::AddressSpace;
+use crate::mem::AddressSpace;
 use crate::wasm::compile::{CompileInputs, CompiledFunctionInfo};
 use crate::wasm::indices::{DefinedFuncIndex, EntityIndex, VMSharedTypeIndex};
 use crate::wasm::runtime::{CodeMemory, code_registry};

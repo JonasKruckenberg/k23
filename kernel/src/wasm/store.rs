@@ -1,5 +1,5 @@
 use crate::fiber::{Fiber, FiberStack, Suspend};
-use crate::vm::frame_alloc::FrameAllocator;
+use crate::mem::frame_alloc::FrameAllocator;
 use crate::wasm::instance_allocator::PlaceholderAllocatorDontUse;
 use crate::wasm::runtime::{VMContext, VMOpaqueContext, VMVal};
 use crate::wasm::trap_handler::{AsyncActivation, PreviousAsyncActivation};

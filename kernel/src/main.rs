@@ -34,6 +34,7 @@ mod cpu_local;
 mod device_tree;
 mod fiber;
 mod irq;
+mod mem;
 mod metrics;
 mod panic;
 mod scheduler;
@@ -45,13 +46,12 @@ mod tests;
 mod time;
 mod tracing;
 mod util;
-mod vm;
 mod wasm;
 
 use crate::device_tree::device_tree;
+use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::time::Instant;
 use crate::time::clock::Ticks;
-use crate::vm::bootstrap_alloc::BootstrapAllocator;
 use arrayvec::ArrayVec;
 use cfg_if::cfg_if;
 use core::cell::Cell;
@@ -59,11 +59,11 @@ use core::range::Range;
 use core::slice;
 use cpu_local::cpu_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
+use mem::PhysicalAddress;
+use mem::frame_alloc;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use spin::Once;
-use vm::PhysicalAddress;
-use vm::frame_alloc;
 
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
@@ -157,7 +157,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         let frame_alloc = frame_alloc::init(boot_alloc, fdt_region_phys);
 
         // initialize the virtual memory subsystem
-        vm::init(boot_info, &mut rng, frame_alloc).unwrap();
+        mem::init(boot_info, &mut rng, frame_alloc).unwrap();
     });
 
     // perform LATE per-cpu, architecture-specific initialization

@@ -11,8 +11,8 @@ pub mod frame_list;
 
 use crate::arch;
 use crate::cpu_local::CpuLocal;
-use crate::vm::bootstrap_alloc::BootstrapAllocator;
-use crate::vm::{PhysicalAddress, VirtualAddress};
+use crate::mem::bootstrap_alloc::BootstrapAllocator;
+use crate::mem::{PhysicalAddress, VirtualAddress};
 use alloc::vec::Vec;
 use arena::Arena;
 use arena::select_arenas;
@@ -25,7 +25,7 @@ use core::{cmp, fmt, iter, slice};
 use fallible_iterator::FallibleIterator;
 use spin::{Mutex, OnceLock};
 
-use crate::vm::frame_alloc::frame_list::FrameList;
+use crate::mem::frame_alloc::frame_list::FrameList;
 pub use frame::{Frame, FrameInfo};
 
 pub static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();

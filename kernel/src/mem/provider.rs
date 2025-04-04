@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::frame_alloc::{FRAME_ALLOC, FrameAllocator};
-use crate::vm::frame_alloc::{Frame, frame_list::FrameList};
+use crate::mem::frame_alloc::{FRAME_ALLOC, FrameAllocator};
+use crate::mem::frame_alloc::{Frame, frame_list::FrameList};
 use alloc::sync::Arc;
 use core::alloc::Layout;
 use core::fmt::Debug;

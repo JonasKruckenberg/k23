@@ -1,6 +1,6 @@
 use crate::fiber::FiberStack;
-use crate::vm::AddressSpace;
-use crate::vm::frame_alloc::FrameAllocator;
+use crate::mem::AddressSpace;
+use crate::mem::frame_alloc::FrameAllocator;
 use crate::wasm::Engine;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::{InstanceAllocator, Memory, Table};

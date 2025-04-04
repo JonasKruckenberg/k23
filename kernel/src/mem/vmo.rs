@@ -6,9 +6,9 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::frame_alloc::FrameAllocator;
-use crate::vm::provider::{Provider, THE_ZERO_FRAME};
-use crate::vm::{
+use crate::mem::frame_alloc::FrameAllocator;
+use crate::mem::provider::{Provider, THE_ZERO_FRAME};
+use crate::mem::{
     AddressRangeExt, PhysicalAddress,
     frame_alloc::{
         Frame,

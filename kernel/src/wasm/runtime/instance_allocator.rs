@@ -1,5 +1,4 @@
 use crate::fiber::FiberStack;
-use crate::vm::AddressSpace;
 use crate::wasm::Module;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::runtime::memory::Memory;

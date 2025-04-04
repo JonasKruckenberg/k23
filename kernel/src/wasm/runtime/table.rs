@@ -1,4 +1,4 @@
-use crate::vm::AddressSpace;
+use crate::mem::AddressSpace;
 use crate::wasm::TABLE_MAX;
 use crate::wasm::runtime::{ExportedFunction, MmapVec, VMFuncRef, VMTableDefinition};
 use crate::wasm::translate::TableDesc;

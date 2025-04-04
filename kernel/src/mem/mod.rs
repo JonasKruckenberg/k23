@@ -17,7 +17,7 @@ mod user_mmap;
 mod vmo;
 
 use crate::arch;
-use crate::vm::frame_alloc::FrameAllocator;
+use crate::mem::frame_alloc::FrameAllocator;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;

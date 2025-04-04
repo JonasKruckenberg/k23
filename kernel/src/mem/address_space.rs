@@ -6,9 +6,9 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::address_space_region::AddressSpaceRegion;
-use crate::vm::frame_alloc::FrameAllocator;
-use crate::vm::{
+use crate::mem::address_space_region::AddressSpaceRegion;
+use crate::mem::frame_alloc::FrameAllocator;
+use crate::mem::{
     AddressRangeExt, ArchAddressSpace, Flush, PageFaultFlags, Permissions, PhysicalAddress,
     VirtualAddress,
 };

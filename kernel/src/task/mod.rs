@@ -27,9 +27,9 @@ use core::sync::atomic::Ordering;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
 
+use crate::mem::AddressSpace;
 use crate::sync::CachePadded;
 use crate::util::maybe_uninit::CheckedMaybeUninit;
-use crate::vm::AddressSpace;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinErrorKind, JoinHandle};
 pub use owned_tasks::OwnedTasks;

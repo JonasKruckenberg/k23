@@ -7,23 +7,23 @@
 
 mod asid_allocator;
 pub mod device;
+mod mem;
 mod setjmp_longjmp;
 mod trap_handler;
 mod utils;
-mod vm;
 
 use crate::device_tree::DeviceTree;
-use crate::vm::VirtualAddress;
+use crate::mem::VirtualAddress;
 use crate::wasm;
 pub use asid_allocator::AsidAllocator;
 use core::arch::asm;
-use riscv::sstatus::FS;
-use riscv::{interrupt, scounteren, sie, sstatus};
-pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
-pub use vm::{
+pub use mem::{
     AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE,
     USER_ASPACE_RANGE, invalidate_range, is_kernel_address,
 };
+use riscv::sstatus::FS;
+use riscv::{interrupt, scounteren, sie, sstatus};
+pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
 
 /// Global RISC-V specific initialization.
 #[cold]
@@ -31,7 +31,7 @@ pub fn init_early() {
     let supported = riscv::sbi::supported_extensions().unwrap();
     tracing::trace!("Supported SBI extensions: {supported:?}");
 
-    vm::init();
+    mem::init();
     asid_allocator::init();
 }
 

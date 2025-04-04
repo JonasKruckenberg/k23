@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::frame_alloc::Frame;
+use crate::mem::frame_alloc::Frame;
 use alloc::boxed::Box;
 use core::fmt::Formatter;
 use core::iter::{FlatMap, Flatten, FusedIterator};

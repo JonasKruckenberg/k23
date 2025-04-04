@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::VirtualAddress;
+use crate::mem::VirtualAddress;
 use crate::wasm::Trap;
 use crate::wasm::runtime::{StaticVMOffsets, VMContext, code_registry};
 use alloc::string::ToString;

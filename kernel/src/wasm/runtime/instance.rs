@@ -4,7 +4,7 @@
 )]
 
 use crate::arch;
-use crate::vm::AddressSpace;
+use crate::mem::AddressSpace;
 use crate::wasm::indices::{
     DataIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, ElemIndex, EntityIndex,
     FuncIndex, GlobalIndex, MemoryIndex, TableIndex, VMSharedTypeIndex,

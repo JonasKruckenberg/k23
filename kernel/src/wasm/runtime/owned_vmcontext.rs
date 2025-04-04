@@ -1,5 +1,5 @@
 use crate::arch;
-use crate::vm::{AddressRangeExt, AddressSpace, UserMmap};
+use crate::mem::{AddressRangeExt, AddressSpace, UserMmap};
 use crate::wasm::runtime::{VMContext, VMOffsets};
 use alloc::string::ToString;
 use core::range::Range;
