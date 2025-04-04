@@ -8,10 +8,10 @@
 use crate::arch::PAGE_SIZE;
 use crate::device_tree::{Device, DeviceTree, IrqSource};
 use crate::irq::{InterruptController, IrqClaim};
-use crate::util::either::Either;
-use crate::vm::{
+use crate::mem::{
     AddressRangeExt, AddressSpaceRegion, Permissions, PhysicalAddress, with_kernel_aspace,
 };
+use crate::util::either::Either;
 use alloc::string::ToString;
 use core::alloc::Layout;
 use core::mem::{MaybeUninit, offset_of};

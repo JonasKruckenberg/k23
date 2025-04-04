@@ -9,8 +9,8 @@ use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
 use crate::arch::device::cpu::with_cpu;
 use crate::backtrace::Backtrace;
+use crate::mem::VirtualAddress;
 use crate::scheduler::scheduler;
-use crate::vm::VirtualAddress;
 use crate::{TRAP_STACK_SIZE_PAGES, irq, panic};
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
@@ -307,7 +307,7 @@ extern "C-unwind" fn default_trap_handler(
             Exception::LoadPageFault | Exception::StorePageFault | Exception::InstructionPageFault,
         ) => {
             // first attempt the page fault handler, can it recover us from this by fixing up mappings?
-            if crate::vm::handle_page_fault(cause, tval).is_break() {
+            if crate::mem::handle_page_fault(cause, tval).is_break() {
                 return;
             }
 

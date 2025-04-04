@@ -6,10 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::{Schedule, TaskRef};
+use crate::mem::AddressSpace;
 use crate::task;
 use crate::task::id::Id;
 use crate::task::join_handle::JoinHandle;
-use crate::vm::AddressSpace;
 use alloc::sync::Arc;
 use core::future::Future;
 use core::sync::atomic::{AtomicBool, Ordering};

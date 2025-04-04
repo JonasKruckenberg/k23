@@ -6,9 +6,9 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::address::VirtualAddress;
-use crate::vm::frame_alloc::FrameAllocator;
-use crate::vm::{AddressRangeExt, Batch, PageFaultFlags, Permissions, PhysicalAddress, Vmo};
+use crate::mem::address::VirtualAddress;
+use crate::mem::frame_alloc::FrameAllocator;
+use crate::mem::{AddressRangeExt, Batch, PageFaultFlags, Permissions, PhysicalAddress, Vmo};
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;

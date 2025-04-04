@@ -9,7 +9,7 @@ mod print;
 mod symbolize;
 
 use crate::backtrace::print::BacktraceFmt;
-use crate::vm::VirtualAddress;
+use crate::mem::VirtualAddress;
 use arrayvec::ArrayVec;
 use core::str::FromStr;
 use core::{fmt, slice};

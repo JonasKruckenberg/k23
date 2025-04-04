@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::address::{AddressRangeExt, PhysicalAddress};
+use crate::mem::address::{AddressRangeExt, PhysicalAddress};
 use core::alloc::Layout;
 use core::range::Range;
 use core::{iter, ptr, slice};

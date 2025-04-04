@@ -1,4 +1,4 @@
-use crate::vm::{AddressSpace, UserMmap};
+use crate::mem::{AddressSpace, UserMmap};
 use crate::wasm::MEMORY_MAX;
 use crate::wasm::runtime::VMMemoryDefinition;
 use crate::wasm::translate::MemoryDesc;

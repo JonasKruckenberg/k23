@@ -1,5 +1,5 @@
 use crate::arch;
-use crate::vm::{AddressSpace, UserMmap};
+use crate::mem::{AddressSpace, UserMmap};
 use anyhow::Context;
 use core::cmp::max;
 use core::marker::PhantomData;

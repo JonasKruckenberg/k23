@@ -1,5 +1,5 @@
 use crate::arch;
-use crate::vm::{AddressSpace, UserMmap, VirtualAddress};
+use crate::mem::{AddressSpace, UserMmap, VirtualAddress};
 use alloc::boxed::Box;
 use alloc::string::ToString;
 use core::arch::naked_asm;

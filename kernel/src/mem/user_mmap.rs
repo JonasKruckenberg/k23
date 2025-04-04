@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::address::AddressRangeExt;
-use crate::vm::{
+use crate::mem::address::AddressRangeExt;
+use crate::mem::{
     AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions,
     PhysicalAddress, VirtualAddress,
 };

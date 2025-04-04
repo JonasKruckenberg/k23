@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::vm::address::{PhysicalAddress, VirtualAddress};
-use crate::vm::frame_alloc::FRAME_ALLOC;
+use crate::mem::address::{PhysicalAddress, VirtualAddress};
+use crate::mem::frame_alloc::FRAME_ALLOC;
 use alloc::slice;
 use core::marker::PhantomData;
 use core::mem::offset_of;

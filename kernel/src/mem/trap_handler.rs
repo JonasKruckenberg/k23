@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::mem::{PageFaultFlags, VirtualAddress};
 use crate::scheduler::scheduler;
-use crate::vm::{PageFaultFlags, VirtualAddress};
 use core::ops::ControlFlow;
 use riscv::scause::{Exception, Trap};
 

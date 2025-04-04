@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::vm::bootstrap_alloc::BootstrapAllocator;
+use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::{INITIAL_HEAP_SIZE_PAGES, arch};
 use core::alloc::Layout;
 use core::range::Range;

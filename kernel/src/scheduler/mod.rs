@@ -67,12 +67,12 @@ mod queue;
 mod yield_now;
 
 use crate::cpu_local::CpuLocal;
+use crate::mem::AddressSpace;
 use crate::scheduler::idle::Idle;
 use crate::scheduler::queue::Overflow;
 use crate::task::{JoinHandle, OwnedTasks, PollResult, Schedule, TaskRef};
 use crate::time::Timer;
 use crate::util::fast_rand::FastRand;
-use crate::vm::AddressSpace;
 use crate::{arch, task};
 use alloc::sync::Arc;
 use core::any::type_name;

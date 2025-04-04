@@ -1,9 +1,8 @@
-use crate::vm::AddressSpace;
 use crate::wasm::func::Func;
 use crate::wasm::global::Global;
 use crate::wasm::indices::EntityIndex;
 use crate::wasm::memory::Memory;
-use crate::wasm::runtime::{ConstExprEvaluator, Imports, InstanceAllocator};
+use crate::wasm::runtime::{ConstExprEvaluator, Imports};
 use crate::wasm::store::Stored;
 use crate::wasm::table::Table;
 use crate::wasm::{Export, Extern, Module, Store, runtime};

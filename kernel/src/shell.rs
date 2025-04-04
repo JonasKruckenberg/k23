@@ -16,8 +16,8 @@ const S: &str = r#"
 "#;
 
 use crate::device_tree::DeviceTree;
+use crate::mem::{KERNEL_ASPACE, PhysicalAddress, UserMmap, with_kernel_aspace};
 use crate::scheduler::{Scheduler, scheduler};
-use crate::vm::{KERNEL_ASPACE, PhysicalAddress, UserMmap, with_kernel_aspace};
 use crate::{arch, irq};
 use alloc::string::{String, ToString};
 use core::fmt;
