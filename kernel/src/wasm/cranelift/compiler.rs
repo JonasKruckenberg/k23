@@ -1,27 +1,28 @@
 use crate::arch;
 use crate::wasm::builtins::BuiltinFunctionIndex;
 use crate::wasm::compile::{CompiledFunction, Compiler, FilePos, NS_WASM_FUNC};
-use crate::wasm::cranelift::builtins::BuiltinFunctionSignatures;
+use crate::wasm::cranelift::builtins::{BuiltinFunctionSignatures, TrapSentinel};
 use crate::wasm::cranelift::env::TranslationEnvironment;
 use crate::wasm::cranelift::func_translator::FuncTranslator;
 use crate::wasm::indices::DefinedFuncIndex;
-use crate::wasm::runtime::{StaticVMOffsets, VMCONTEXT_MAGIC};
 use crate::wasm::translate::{
     FunctionBodyData, ModuleTranslation, ModuleTypes, WasmFuncType, WasmValType,
 };
-use crate::wasm::trap::{TRAP_EXIT, TRAP_INTERNAL_ASSERT};
-use crate::wasm::utils::{array_call_signature, value_type, wasm_call_signature};
+use crate::wasm::trap::TRAP_INTERNAL_ASSERT;
+use crate::wasm::utils::{array_call_signature, u32_offset_of, value_type, wasm_call_signature};
+use crate::wasm::vm::{StaticVMShape, VMStoreContext, VMCONTEXT_MAGIC};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use anyhow::anyhow;
 use core::fmt::Formatter;
 use core::{cmp, fmt, mem};
 use cranelift_codegen::control::ControlPlane;
+use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::{Endianness, InstBuilder, Type, Value};
 use cranelift_codegen::ir::{GlobalValueData, MemFlags, Signature, UserExternalName, UserFuncName};
 use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
-use cranelift_codegen::{TextSectionBuilder, ir};
+use cranelift_codegen::{ir, TextSectionBuilder};
 use cranelift_frontend::FunctionBuilder;
 use spin::Mutex;
 use target_lexicon::Triple;
@@ -30,7 +31,6 @@ use wasmparser::{FuncValidatorAllocations, FunctionBody};
 pub struct CraneliftCompiler {
     isa: OwnedTargetIsa,
     contexts: Mutex<Vec<CompilationContext>>,
-    offsets: StaticVMOffsets,
 }
 
 impl fmt::Debug for CraneliftCompiler {
@@ -42,7 +42,6 @@ impl fmt::Debug for CraneliftCompiler {
 impl CraneliftCompiler {
     pub(crate) fn new(isa: OwnedTargetIsa) -> CraneliftCompiler {
         Self {
-            offsets: StaticVMOffsets::new(isa.pointer_bytes()),
             isa,
             contexts: Mutex::new(Vec::new()), // TODO capacity should be equal to the number of cpus
         }
@@ -63,6 +62,68 @@ impl CraneliftCompiler {
                 })
                 .unwrap_or_default(),
         }
+    }
+
+    /// Helper to load the core `builtin` from `vmctx` and invoke it with
+    /// `args`.
+    fn call_builtin(
+        &self,
+        builder: &mut FunctionBuilder<'_>,
+        vmctx: Value,
+        args: &[Value],
+        builtin: BuiltinFunctionIndex,
+        sig: Signature,
+    ) -> ir::Inst {
+        let isa = &*self.isa;
+        let pointer_type = isa.pointer_type();
+
+        // Builtins are stored in an array in all `VMContext`s. First load the
+        // base pointer of the array and then load the entry of the array that
+        // corresponds to this builtin.
+        let mem_flags = ir::MemFlags::trusted().with_readonly();
+        let array_addr = builder.ins().load(
+            pointer_type,
+            mem_flags,
+            vmctx,
+            i32::from(StaticVMShape.vmctx_builtin_functions()),
+        );
+        let body_offset = i32::try_from(builtin.as_u32() * pointer_type.bytes()).unwrap();
+        let func_addr = builder
+            .ins()
+            .load(pointer_type, mem_flags, array_addr, body_offset);
+
+        let sig = builder.func.import_signature(sig);
+        builder.ins().call_indirect(sig, func_addr, args)
+    }
+
+    /// Raise a trap if the native function returned `false`
+    ///
+    /// Host functions use a number of sentinel values to signal that generated code should
+    /// begin to unwind, but the most common is `false`. This is used by all host functions and most
+    /// builtins too.
+    pub fn raise_if_host_trapped(
+        &self,
+        builder: &mut FunctionBuilder<'_>,
+        vmctx: ir::Value,
+        succeeded: ir::Value,
+    ) {
+        let trapped_block = builder.create_block();
+        let continuation_block = builder.create_block();
+        builder.set_cold_block(trapped_block);
+        builder
+            .ins()
+            .brif(succeeded, continuation_block, &[], trapped_block, &[]);
+
+        builder.seal_block(trapped_block);
+        builder.seal_block(continuation_block);
+
+        builder.switch_to_block(trapped_block);
+        let sigs = BuiltinFunctionSignatures::new(self.target_isa());
+        let sig = sigs.host_signature(BuiltinFunctionIndex::raise());
+        self.call_builtin(builder, vmctx, &[vmctx], BuiltinFunctionIndex::raise(), sig);
+        builder.ins().trap(TRAP_INTERNAL_ASSERT);
+
+        builder.switch_to_block(continuation_block);
     }
 }
 
@@ -87,24 +148,26 @@ impl Compiler for CraneliftCompiler {
         let context = &mut compiler.ctx.codegen_context;
 
         // Setup function signature
-        let index = translation.module.func_index(index);
-        let sig_index = translation.module.functions[index].signature;
-        let func_ty = types
-            .get_wasm_type(translation.module.types[sig_index])
-            .unwrap()
-            .unwrap_func();
+        let func_index = translation.module.func_index(index);
+        let sig_index = translation.module.functions[func_index]
+            .signature
+            .unwrap_module_type_index();
+        let func_ty = types.get_wasm_type(sig_index).unwrap().unwrap_func();
 
         context.func.signature = wasm_call_signature(isa, func_ty);
         context.func.name = UserFuncName::User(UserExternalName {
             namespace: NS_WASM_FUNC,
-            index: index.as_u32(),
+            index: func_index.as_u32(),
         });
 
         // set up stack limit
         let vmctx = context.func.create_global_value(GlobalValueData::VMContext);
         let stack_limit = context.func.create_global_value(GlobalValueData::Load {
             base: vmctx,
-            offset: i32::from(self.offsets.vmctx_stack_limit()).into(),
+            offset: Offset32::new(
+                i32::from(StaticVMShape.vmctx_store_context())
+                    + u32_offset_of!(VMStoreContext, stack_limit) as i32,
+            ),
             global_type: isa.pointer_type(),
             flags: MemFlags::trusted(),
         });
@@ -137,9 +200,9 @@ impl Compiler for CraneliftCompiler {
         // are passed through an array in memory (so we can have dynamic function signatures in rust)
         let pointer_type = self.isa.pointer_type();
         let index = translation.module.func_index(index);
-        let sig_index = translation.module.functions[index].signature;
+        let sig_index = translation.module.functions[index].signature.unwrap_module_type_index();
         let func_ty = types
-            .get_wasm_type(translation.module.types[sig_index])
+            .get_wasm_type(sig_index)
             .unwrap()
             .unwrap_func();
 
@@ -175,7 +238,10 @@ impl Compiler for CraneliftCompiler {
             MemFlags::trusted(),
             fp,
             vmctx,
-            i32::from(self.offsets.vmctx_last_wasm_entry_fp()),
+            Offset32::new(
+                i32::from(StaticVMShape.vmctx_store_context())
+                    + u32_offset_of!(VMStoreContext, last_wasm_entry_fp) as i32,
+            ),
         );
 
         // Then call the Wasm function with those arguments.
@@ -190,8 +256,7 @@ impl Compiler for CraneliftCompiler {
             values_vec_len,
         );
 
-        builder.ins().trap(TRAP_EXIT);
-        // builder.ins().return_(&[]);
+        builder.ins().return_(&[]);
         builder.finalize();
 
         compiler.finish(None)
@@ -234,10 +299,13 @@ impl Compiler for CraneliftCompiler {
     ) -> crate::Result<CompiledFunction> {
         let isa = &*self.isa;
         let pointer_type = isa.pointer_type();
-        let sig = BuiltinFunctionSignatures::new(isa).signature(index);
+
+        let sigs = BuiltinFunctionSignatures::new(isa);
+        let wasm_sig = sigs.wasm_signature(index);
+        let host_sig = sigs.host_signature(index);
 
         let mut compiler = self.function_compiler();
-        let func = ir::Function::with_name_signature(UserFuncName::default(), sig.clone());
+        let func = ir::Function::with_name_signature(Default::default(), wasm_sig.clone());
         let (mut builder, block0) = compiler.builder(func);
         let vmctx = builder.block_params(block0)[0];
 
@@ -245,30 +313,45 @@ impl Compiler for CraneliftCompiler {
         // additionally perform the "routine of the exit trampoline" of saving
         // fp/pc/etc.
         debug_assert_vmctx_kind(isa, &mut builder, vmctx, VMCONTEXT_MAGIC);
-        save_last_wasm_exit_fp_and_pc(&mut builder, pointer_type, &self.offsets, vmctx);
-
-        // Now it's time to delegate to the actual builtin. Builtins are stored
-        // in an array in all `VMContext`s. First load the base pointer of the
-        // array and then load the entry of the array that corresponds to this
-        // builtin.
-        let mem_flags = MemFlags::trusted().with_readonly();
-        let array_addr = builder.ins().load(
+        let vm_store_context = builder.ins().load(
             pointer_type,
-            mem_flags,
+            MemFlags::trusted(),
             vmctx,
-            i32::from(self.offsets.vmctx_builtin_functions()),
+            StaticVMShape.vmctx_store_context(),
         );
-        let func_offset = i32::try_from(index.as_u32().wrapping_mul(pointer_type.bytes())).unwrap();
-        let func_addr = builder
-            .ins()
-            .load(pointer_type, mem_flags, array_addr, func_offset);
+        save_last_wasm_exit_fp_and_pc(&mut builder, pointer_type, vm_store_context);
 
-        // Forward all our own arguments to the libcall itself, and then return
-        // all the same results as the libcall.
-        let block_params = builder.block_params(block0).to_vec();
-        let sig = builder.func.import_signature(sig);
-        let call = builder.ins().call_indirect(sig, func_addr, &block_params);
+        // Now it's time to delegate to the actual builtin. Forward all our own
+        // arguments to the libcall itself.
+        let args = builder.block_params(block0).to_vec();
+        let call = self.call_builtin(&mut builder, vmctx, &args, index, host_sig);
         let results = builder.func.dfg.inst_results(call).to_vec();
+
+        match index.trap_sentinel() {
+            Some(TrapSentinel::Falsy) => {
+                debug_assert_eq!(results.len(), 1);
+                // `bool` is the first and only result
+                self.raise_if_host_trapped(&mut builder, vmctx, results[0])
+            }
+            Some(TrapSentinel::Negative) => {
+                let ty = builder.func.dfg.value_type(results[0]);
+                let zero = builder.ins().iconst(ty, 0);
+                let succeeded =
+                    builder
+                        .ins()
+                        .icmp(IntCC::SignedGreaterThanOrEqual, results[0], zero);
+                self.raise_if_host_trapped(&mut builder, vmctx, succeeded);
+            }
+            Some(TrapSentinel::NegativeTwo) => {
+                let ty = builder.func.dfg.value_type(results[0]);
+                let trapped = builder.ins().iconst(ty, -2);
+                let succeeded = builder.ins().icmp(IntCC::NotEqual, results[0], trapped);
+                self.raise_if_host_trapped(&mut builder, vmctx, succeeded);
+            }
+            None => {}
+        }
+
+        // And finally, return all the results of this libcall.
         builder.ins().return_(&results);
         builder.finalize();
 
@@ -388,8 +471,7 @@ fn declare_and_call(
 fn save_last_wasm_exit_fp_and_pc(
     builder: &mut FunctionBuilder,
     pointer_type: Type,
-    offsets: &StaticVMOffsets,
-    vmctx: Value,
+    vm_store: Value,
 ) {
     // Save the exit Wasm FP to the limits. We dereference the current FP to get
     // the previous FP because the current FP is the trampoline's FP, and we
@@ -404,16 +486,16 @@ fn save_last_wasm_exit_fp_and_pc(
     builder.ins().store(
         MemFlags::trusted(),
         wasm_fp,
-        vmctx,
-        Offset32::new(i32::from(offsets.vmctx_last_wasm_exit_fp())),
+        vm_store,
+        u32_offset_of!(VMStoreContext, last_wasm_exit_fp) as i32,
     );
     // Finally save the Wasm return address to the limits.
     let wasm_pc = builder.ins().get_return_address(pointer_type);
     builder.ins().store(
         MemFlags::trusted(),
         wasm_pc,
-        vmctx,
-        Offset32::new(i32::from(offsets.vmctx_last_wasm_exit_pc())),
+        vm_store,
+        u32_offset_of!(VMStoreContext, last_wasm_exit_pc) as i32,
     );
 }
 

@@ -1,10 +1,10 @@
 use crate::util::zip_eq::IteratorExt;
-use crate::wasm::cranelift::CraneliftGlobal;
 use crate::wasm::cranelift::env::TranslationEnvironment;
 use crate::wasm::cranelift::state::{ControlStackFrame, ElseData, FuncTranslationState};
 use crate::wasm::cranelift::utils::{
     block_with_params, blocktype_params_results, f32_translation, f64_translation,
 };
+use crate::wasm::cranelift::CraneliftGlobal;
 use crate::wasm::indices::{
     DataIndex, ElemIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TypeIndex,
 };
@@ -16,7 +16,7 @@ use cranelift_codegen::ir;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::types::{
-    F32, F32X4, F64, F64X2, I8, I8X16, I16, I16X8, I32, I32X4, I64, I64X2,
+    F32, F32X4, F64, F64X2, I16, I16X8, I32, I32X4, I64, I64X2, I8, I8X16,
 };
 use cranelift_codegen::ir::{
     AtomicRmwOp, ConstantData, JumpTableData, MemFlags, TrapCode, ValueLabel,
@@ -25,7 +25,7 @@ use cranelift_codegen::ir::{InstBuilder, Type, Value};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_frontend::{FunctionBuilder, Variable};
 use fallible_iterator::FallibleIterator;
-use hashbrown::{HashMap, hash_map};
+use hashbrown::{hash_map, HashMap};
 use smallvec::SmallVec;
 use wasmparser::{FuncValidator, MemArg, Operator, WasmModuleResources};
 
@@ -689,12 +689,13 @@ pub fn translate_operator(
             // argument to be a memory index.
             let mem_index = MemoryIndex::from_u32(*mem);
             let delta = state.pop1();
-            // env.before_memory_grow(builder, delta, mem_index)?;
-            state.push1(env.translate_memory_grow(builder.cursor(), mem_index, delta)?);
+            let ret = env.translate_memory_grow(builder.cursor(), mem_index, delta)?;
+            state.push1(ret);
         }
         Operator::MemorySize { mem } => {
             let mem_index = MemoryIndex::from_u32(*mem);
-            state.push1(env.translate_memory_size(builder.cursor(), mem_index)?);
+            let ret = env.translate_memory_size(builder.cursor(), mem_index)?;
+            state.push1(ret);
         }
 
         Operator::I32Const { value } => {

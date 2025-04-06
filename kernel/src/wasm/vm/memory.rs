@@ -5,14 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::store::{StoreOpaque, Stored};
-use crate::wasm::vm::{ExportedMemory, VMMemoryImport};
+use crate::wasm::vm::VMMemoryDefinition;
 
-#[derive(Clone, Copy, Debug)]
-pub struct Memory(Stored<ExportedMemory>);
+pub struct Memory {
+    // /// The underlying allocation backing this memory
+    // mem: Vec<u8, UserAllocator>,
+}
 
 impl Memory {
-    pub(super) fn as_vmmemory_import(&self, store: &mut StoreOpaque) -> VMMemoryImport {
+    pub(crate) fn vmmemory_definition(&self) -> VMMemoryDefinition {
         todo!()
     }
 }

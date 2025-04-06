@@ -98,7 +98,7 @@ pub struct CompiledFunctionInfo {
     /// section of the compilation artifact.
     pub wasm_func_loc: FunctionLoc,
     /// A trampoline for host callers (e.g. `Func::wrap`) calling into this function (if needed).
-    pub host_to_wasm_trampoline: Option<FunctionLoc>,
+    pub array_to_wasm_trampoline: Option<FunctionLoc>,
     pub start_srcloc: FilePos,
 }
 
@@ -334,7 +334,7 @@ impl UnlinkedCompileOutputs {
                 CompiledFunctionInfo {
                     start_srcloc: self.outputs[index].function.metadata().start_srcloc,
                     wasm_func_loc: locs[index],
-                    host_to_wasm_trampoline,
+                    array_to_wasm_trampoline: host_to_wasm_trampoline,
                 }
             })
             .collect();

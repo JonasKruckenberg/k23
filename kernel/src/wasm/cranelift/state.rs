@@ -244,7 +244,7 @@ impl FuncTranslationState {
         func: &mut Function,
         index: MemoryIndex,
         env: &mut TranslationEnvironment,
-    ) -> &'_ mut CraneliftMemory {
+    ) -> &CraneliftMemory {
         self.memories
             .entry(index)
             .or_insert_with(|| env.make_memory(func, index))

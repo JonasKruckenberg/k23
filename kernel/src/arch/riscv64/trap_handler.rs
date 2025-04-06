@@ -313,16 +313,16 @@ extern "C-unwind" fn default_trap_handler(
 
             // if not attempt the wasm fault handler, is the current trap caused by a user program?
             // if so can it kill the program?
-            if crate::wasm::handle_wasm_exception(epc, fp, tval).is_break() {
-                return;
-            }
+            // if crate::wasm::handle_wasm_exception(epc, fp, tval).is_break() {
+            //     return;
+            // }
 
             handle_kernel_exception(cause, frame, epc, tval)
         }
         Trap::Exception(Exception::IllegalInstruction) => {
-            if crate::wasm::handle_wasm_exception(epc, fp, tval).is_break() {
-                return;
-            }
+            // if crate::wasm::handle_wasm_exception(epc, fp, tval).is_break() {
+            //     return;
+            // }
 
             handle_kernel_exception(cause, frame, epc, tval)
         }

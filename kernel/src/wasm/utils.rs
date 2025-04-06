@@ -1,11 +1,12 @@
 use crate::arch::PAGE_SIZE;
-use crate::wasm::translate::{WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmValType};
+use crate::wasm::translate::{
+    WasmFuncType, WasmHeapTopType, WasmHeapType, WasmValType,
+};
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
 
 /// Helper macro to generate accessors for an enum.
-#[macro_export]
 macro_rules! enum_accessors {
     (@$bind:ident, $variant:ident, $ty:ty, $is:ident, $get:ident, $unwrap:ident, $cvt:expr) => {
         ///  Returns true when the enum is the correct variant.
@@ -37,7 +38,6 @@ macro_rules! enum_accessors {
 }
 
 /// Like `enum_accessors!`, but generated methods take ownership of `self`.
-#[macro_export]
 macro_rules! owned_enum_accessors {
     ($bind:ident $(($variant:ident($ty:ty) $get:ident $cvt:expr))*) => ($(
         /// Attempt to access the underlying value of this `Val`, returning
@@ -58,12 +58,13 @@ macro_rules! owned_enum_accessors {
 /// # Panics
 ///
 /// Panics if the offset is too large to fit in a `u32`.
-#[macro_export]
 macro_rules! u32_offset_of {
     ($ty:ident, $field:ident) => {
-        u32::try_from(offset_of!($ty, $field)).unwrap()
+        u32::try_from(core::mem::offset_of!($ty, $field)).unwrap()
     };
 }
+
+pub(crate) use {enum_accessors, owned_enum_accessors, u32_offset_of};
 
 pub fn value_type(ty: &WasmValType, pointer_type: ir::Type) -> ir::Type {
     match ty {
@@ -78,12 +79,11 @@ pub fn value_type(ty: &WasmValType, pointer_type: ir::Type) -> ir::Type {
 
 /// Returns the reference type to use for the provided wasm type.
 pub fn reference_type(wasm_ht: &WasmHeapType, pointer_type: ir::Type) -> ir::Type {
-    match wasm_ht.top().inner {
-        WasmHeapTypeInner::Func => pointer_type,
-        WasmHeapTypeInner::Any | WasmHeapTypeInner::Extern => ir::types::I32,
-        WasmHeapTypeInner::Exn => todo!(),
-        WasmHeapTypeInner::Cont => todo!(),
-        _ => unreachable!(),
+    match wasm_ht.top().0 {
+        WasmHeapTopType::Func => pointer_type,
+        WasmHeapTopType::Any | WasmHeapTopType::Extern => ir::types::I32,
+        WasmHeapTopType::Exn => todo!(),
+        WasmHeapTopType::Cont => todo!(),
     }
 }
 
@@ -154,4 +154,12 @@ pub fn round_usize_up_to_host_pages(bytes: usize) -> usize {
     let bytes = u64::try_from(bytes).unwrap();
     let rounded = round_u64_up_to_host_pages(bytes);
     usize::try_from(rounded).unwrap()
+}
+
+/// Like `mem::size_of` but returns `u8` instead of `usize`
+/// # Panics
+///
+/// Panics if the size of `T` is greater than `u8::MAX`.
+pub fn u8_size_of<T: Sized>() -> u8 {
+    u8::try_from(size_of::<T>()).expect("type size is too large to be represented as a u8")
 }

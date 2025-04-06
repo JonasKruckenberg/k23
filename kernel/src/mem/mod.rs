@@ -15,6 +15,7 @@ mod provider;
 mod trap_handler;
 mod user_mmap;
 mod vmo;
+mod user_alloc;
 
 use crate::arch;
 use crate::mem::frame_alloc::FrameAllocator;

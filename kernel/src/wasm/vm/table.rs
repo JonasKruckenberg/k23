@@ -1,0 +1,46 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
+use crate::wasm::vm::{VMFuncRef, VMTableDefinition};
+use core::ptr::NonNull;
+use crate::wasm::Trap;
+
+pub enum TableElement {
+    /// A `funcref`.
+    FuncRef(Option<NonNull<VMFuncRef>>),
+
+    // /// A GC reference.
+    // GcRef(Option<VMGcRef>),
+    /// An uninitialized funcref value. This should never be exposed
+    /// beyond the `wasmtime` crate boundary; the upper-level code
+    /// (which has access to the info needed for lazy initialization)
+    /// will replace it when fetched.
+    UninitFunc,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum TableElementType {
+    Func,
+    GcRef,
+}
+
+pub struct Table {
+    // /// The underlying allocation backing this memory
+    // mem: Vec<Option<NonNull<VMFuncRef>>, UserAllocator>,
+}
+
+impl Table {
+    pub fn init_func(&self, start: usize, elements: impl Iterator<Item = Option<NonNull<VMFuncRef>>>) -> Result<(), Trap> {
+        todo!()
+    }
+    pub fn size(&self) -> usize {
+        todo!()
+    }
+    pub fn as_vmtable_definition(&self) -> VMTableDefinition {
+        todo!()
+    }
+}

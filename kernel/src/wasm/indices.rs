@@ -1,5 +1,5 @@
-use crate::wasm::enum_accessors;
 use cranelift_entity::entity_impl;
+use crate::wasm::utils::enum_accessors;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeIndex(u32);
@@ -30,12 +30,20 @@ pub struct DefinedMemoryIndex(u32);
 entity_impl!(DefinedMemoryIndex);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct OwnedMemoryIndex(u32);
+entity_impl!(OwnedMemoryIndex);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GlobalIndex(u32);
 entity_impl!(GlobalIndex);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DefinedGlobalIndex(u32);
 entity_impl!(DefinedGlobalIndex);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct DefinedTagIndex(u32);
+entity_impl!(DefinedTagIndex);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ElemIndex(u32);
@@ -119,21 +127,6 @@ impl Default for VMSharedTypeIndex {
     }
 }
 
-#[cfg(test)]
-mod test_vmshared_type_index {
-    use super::VMSharedTypeIndex;
-    use crate::wasm::runtime::StaticVMOffsets;
-
-    #[test]
-    fn check_vmshared_type_index() {
-        let offsets = StaticVMOffsets::new(size_of::<*const u8>() as u8);
-        assert_eq!(
-            size_of::<VMSharedTypeIndex>(),
-            usize::from(offsets.size_of_vmshared_type_index())
-        );
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RecGroupRelativeTypeIndex(u32);
 entity_impl!(RecGroupRelativeTypeIndex);
@@ -145,7 +138,7 @@ entity_impl!(RecGroupRelativeTypeIndex);
 pub enum CanonicalizedTypeIndex {
     /// An index within an engine, therefore canonicalized among all modules
     /// that can share types with each other.
-    Shared(VMSharedTypeIndex),
+    Engine(VMSharedTypeIndex),
 
     /// An index within the current Wasm module, canonicalized within just this
     /// current module.
@@ -159,7 +152,7 @@ pub enum CanonicalizedTypeIndex {
 
 impl From<VMSharedTypeIndex> for CanonicalizedTypeIndex {
     fn from(index: VMSharedTypeIndex) -> Self {
-        Self::Shared(index)
+        Self::Engine(index)
     }
 }
 impl From<ModuleInternedTypeIndex> for CanonicalizedTypeIndex {
@@ -177,7 +170,7 @@ impl CanonicalizedTypeIndex {
     enum_accessors! {
         e
         (Module(ModuleInternedTypeIndex) is_module_type_index as_module_type_index unwrap_module_type_index *e)
-        (Shared(VMSharedTypeIndex) is_engine_type_index as_engine_type_index unwrap_engine_type_index *e)
+        (Engine(VMSharedTypeIndex) is_engine_type_index as_engine_type_index unwrap_engine_type_index *e)
         (RecGroup(RecGroupRelativeTypeIndex) is_rec_group_type_index as_rec_group_type_index unwrap_rec_group_type_index *e)
     }
 }

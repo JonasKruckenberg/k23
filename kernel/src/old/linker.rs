@@ -5,24 +5,22 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::vm::{ConstExprEvaluator, Imports};
+use crate::wasm::runtime::{ConstExprEvaluator, Imports};
 use crate::wasm::translate::EntityType;
 use crate::wasm::{Engine, Extern, Instance, Module, Store};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::marker::PhantomData;
 use anyhow::{Context, bail, format_err};
 use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
 
 /// A dynamic linker for WebAssembly modules.
 #[derive(Debug)]
-pub struct Linker<T> {
+pub struct Linker {
     engine: Engine,
     string2idx: HashMap<Arc<str>, usize>,
     strings: Vec<Arc<str>>,
     map: HashMap<ImportKey, Extern>,
-    _m: PhantomData<T>,
 }
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -31,7 +29,7 @@ struct ImportKey {
     module: usize,
 }
 
-impl<T> Linker<T> {
+impl Linker {
     /// Create a new `Linker`.
     ///
     /// This linker is scoped to the provided engine and cannot be used to link modules from other engines.
@@ -41,7 +39,6 @@ impl<T> Linker<T> {
             string2idx: HashMap::new(),
             strings: Vec::new(),
             map: HashMap::new(),
-            _m: PhantomData,
         }
     }
 
@@ -80,28 +77,28 @@ impl<T> Linker<T> {
         Ok(self)
     }
 
-    // /// Define all exports of the provided `instance` under the module name `module_name`.
-    // ///
-    // /// # Errors
-    // ///
-    // /// TODO
-    // pub fn define_instance(
-    //     &mut self,
-    //     store: &mut Store,
-    //     module_name: &str,
-    //     instance: Instance,
-    // ) -> crate::Result<&mut Self> {
-    //     let exports = instance
-    //         .exports(store)
-    //         .map(|e| (self.import_key(module_name, Some(e.name)), e.value))
-    //         .collect::<Vec<_>>(); // TODO can we somehow get rid of this?
-    //
-    //     for (key, ext) in exports {
-    //         self.insert(key, ext)?;
-    //     }
-    //
-    //     Ok(self)
-    // }
+    /// Define all exports of the provided `instance` under the module name `module_name`.
+    ///
+    /// # Errors
+    ///
+    /// TODO
+    pub fn define_instance(
+        &mut self,
+        store: &mut Store,
+        module_name: &str,
+        instance: Instance,
+    ) -> crate::Result<&mut Self> {
+        let exports = instance
+            .exports(store)
+            .map(|e| (self.import_key(module_name, Some(e.name)), e.value))
+            .collect::<Vec<_>>(); // TODO can we somehow get rid of this?
+
+        for (key, ext) in exports {
+            self.insert(key, ext)?;
+        }
+
+        Ok(self)
+    }
 
     /// Instantiate the provided `module`.
     ///
@@ -119,7 +116,7 @@ impl<T> Linker<T> {
     /// TODO
     pub fn instantiate(
         &self,
-        store: &mut Store<T>,
+        store: &mut Store,
         const_eval: &mut ConstExprEvaluator,
         module: &Module,
     ) -> crate::Result<Instance> {
@@ -131,7 +128,6 @@ impl<T> Linker<T> {
                     EntityType::Table(_) => "table",
                     EntityType::Memory(_) => "memory",
                     EntityType::Global(_) => "global",
-                    EntityType::Tag(_) => "tag",
                 };
 
                 format_err!("Missing {type_} import {}::{}", import.module, import.name)
@@ -149,9 +145,6 @@ impl<T> Linker<T> {
                 }
                 (Extern::Global(global), EntityType::Global(_ty)) => {
                     imports.globals.push(global.as_vmglobal_import(store));
-                }
-                (Extern::Tag(tag), EntityType::Tag(_ty)) => {
-                    imports.tags.push(tag.as_vmtag_import(store));
                 }
                 _ => panic!("mismatched import type"),
             }

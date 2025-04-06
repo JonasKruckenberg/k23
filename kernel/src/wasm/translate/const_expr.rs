@@ -1,4 +1,4 @@
-use crate::wasm::indices::{FuncIndex, GlobalIndex};
+use crate::wasm::indices::{FuncIndex, GlobalIndex, TypeIndex};
 use anyhow::bail;
 use smallvec::SmallVec;
 
@@ -69,6 +69,22 @@ pub enum ConstOp {
     I64Add,
     I64Sub,
     I64Mul,
+    StructNew {
+        struct_type_index: TypeIndex,
+    },
+    StructNewDefault {
+        struct_type_index: TypeIndex,
+    },
+    ArrayNew {
+        array_type_index: TypeIndex,
+    },
+    ArrayNewDefault {
+        array_type_index: TypeIndex,
+    },
+    ArrayNewFixed {
+        array_type_index: TypeIndex,
+        array_size: u32,
+    },
 }
 
 impl ConstOp {
@@ -91,6 +107,25 @@ impl ConstOp {
             O::I64Add => Self::I64Add,
             O::I64Sub => Self::I64Sub,
             O::I64Mul => Self::I64Mul,
+            O::StructNew { struct_type_index } => Self::StructNew {
+                struct_type_index: TypeIndex::from_u32(struct_type_index),
+            },
+            O::StructNewDefault { struct_type_index } => Self::StructNewDefault {
+                struct_type_index: TypeIndex::from_u32(struct_type_index),
+            },
+            O::ArrayNew { array_type_index } => Self::ArrayNew {
+                array_type_index: TypeIndex::from_u32(array_type_index),
+            },
+            O::ArrayNewDefault { array_type_index } => Self::ArrayNewDefault {
+                array_type_index: TypeIndex::from_u32(array_type_index),
+            },
+            O::ArrayNewFixed {
+                array_type_index,
+                array_size,
+            } => Self::ArrayNewFixed {
+                array_type_index: TypeIndex::from_u32(array_type_index),
+                array_size,
+            },
             op => {
                 bail!("unsupported opcode in const expression at offset {offset:#x}: {op:?}");
             }

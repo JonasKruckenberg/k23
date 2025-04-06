@@ -5,28 +5,30 @@ mod type_convert;
 mod types;
 
 use crate::wasm::indices::{
-    DataIndex, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex,
-    ElemIndex, EntityIndex, FieldIndex, FuncIndex, FuncRefIndex, GlobalIndex, LabelIndex,
-    LocalIndex, MemoryIndex, ModuleInternedTypeIndex, TableIndex, TagIndex, TypeIndex,
+    CanonicalizedTypeIndex, DataIndex, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex,
+    DefinedTableIndex, DefinedTagIndex, ElemIndex, EntityIndex, FieldIndex, FuncIndex,
+    FuncRefIndex, GlobalIndex, LabelIndex, LocalIndex, MemoryIndex, ModuleInternedTypeIndex,
+    OwnedMemoryIndex, TableIndex, TagIndex, TypeIndex,
 };
 use crate::wasm::{DEFAULT_OFFSET_GUARD_SIZE, WASM32_MAX_SIZE};
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use anyhow::Context;
-pub use const_expr::{ConstExpr, ConstOp};
 use cranelift_entity::packed_option::ReservedValue;
-use cranelift_entity::{EntitySet, PrimaryMap};
+use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
 use hashbrown::HashMap;
-pub use module_translator::ModuleTranslator;
+use wasmparser::collections::IndexMap;
+use wasmparser::WasmFeatures;
+
+pub use const_expr::{ConstExpr, ConstOp};
 pub use module_types::ModuleTypes;
 pub use type_convert::WasmparserTypeConverter;
 pub use types::{
-    EntityType, WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmRecGroup, WasmRefType,
-    WasmSubType, WasmValType,
+    EntityType, WasmCompositeType, WasmCompositeTypeInner, WasmFuncType, WasmHeapTopType,
+    WasmHeapType, WasmHeapTypeInner, WasmRecGroup, WasmRefType, WasmStorageType, WasmSubType,
+    WasmValType,
 };
-use wasmparser::WasmFeatures;
-use wasmparser::collections::IndexMap;
 
 #[derive(Debug)]
 pub struct ModuleTranslation<'data> {
@@ -63,13 +65,15 @@ pub struct TranslatedModule {
 
     /// The functions declared in this module. Note that this only contains the
     /// function's signature index, not the actual function body. For that, see `Translation.function_bodies`.
-    pub functions: PrimaryMap<FuncIndex, FunctionDesc>,
+    pub functions: PrimaryMap<FuncIndex, Function>,
     /// The tables declared in this module.
-    pub tables: PrimaryMap<TableIndex, TableDesc>,
+    pub tables: PrimaryMap<TableIndex, Table>,
     /// The memories declared in this module.
-    pub memories: PrimaryMap<MemoryIndex, MemoryDesc>,
+    pub memories: PrimaryMap<MemoryIndex, Memory>,
     /// The globals declared in this module.
-    pub globals: PrimaryMap<GlobalIndex, GlobalDesc>,
+    pub globals: PrimaryMap<GlobalIndex, Global>,
+    /// The tags declared in this module.
+    pub tags: PrimaryMap<TagIndex, Tag>,
 
     /// The index of the start function if defined.
     /// This function will be called during module initialization.
@@ -103,6 +107,8 @@ pub struct TranslatedModule {
     pub num_imported_memories: u32,
     /// The number of imported globals. The first `num_imported_globals` globals in the `globals` table are imported globals.
     pub num_imported_globals: u32,
+    /// The number of imported tags. The first `num_imported_tags` globals in the `tags` table are imported tags.
+    pub num_imported_tags: u32,
     /// The number of imported functions. This is used to compile host->wasm trampolines later.
     pub num_escaped_functions: u32,
 }
@@ -162,6 +168,26 @@ impl TranslatedModule {
     }
 
     #[inline]
+    pub fn owned_memory_index(&self, memory: DefinedMemoryIndex) -> OwnedMemoryIndex {
+        assert!(
+            memory.index() < self.memories.len(),
+            "non-shared memory must have an owned index"
+        );
+
+        // Once we know that the memory index is not greater than the number of
+        // plans, we can iterate through the plans up to the memory index and
+        // count how many are not shared (i.e., owned).
+        let owned_memory_index = self
+            .memories
+            .iter()
+            .skip(self.num_imported_memories as usize)
+            .take(memory.index())
+            .filter(|(_, mp)| !mp.shared)
+            .count();
+        OwnedMemoryIndex::new(owned_memory_index)
+    }
+
+    #[inline]
     pub fn is_imported_memory(&self, index: MemoryIndex) -> bool {
         index.as_u32() < self.num_imported_memories
     }
@@ -187,6 +213,27 @@ impl TranslatedModule {
         index.as_u32() < self.num_imported_globals
     }
 
+    #[inline]
+    pub fn tag_index(&self, index: DefinedTagIndex) -> TagIndex {
+        TagIndex::from_u32(self.num_imported_tags + index.as_u32())
+    }
+
+    #[inline]
+    pub fn defined_tag_index(&self, index: TagIndex) -> Option<DefinedTagIndex> {
+        if self.is_imported_tag(index) {
+            None
+        } else {
+            Some(DefinedTagIndex::from_u32(
+                index.as_u32() - self.num_imported_tags,
+            ))
+        }
+    }
+
+    #[inline]
+    pub fn is_imported_tag(&self, index: TagIndex) -> bool {
+        index.as_u32() < self.num_imported_tags
+    }
+
     pub fn num_imported_functions(&self) -> u32 {
         self.num_imported_functions
     }
@@ -208,6 +255,9 @@ impl TranslatedModule {
     pub fn num_defined_globals(&self) -> u32 {
         self.num_globals() - self.num_imported_globals
     }
+    pub fn num_defined_tags(&self) -> u32 {
+        self.num_tags() - self.num_imported_tags
+    }
     pub fn num_functions(&self) -> u32 {
         u32::try_from(self.functions.len()).unwrap()
     }
@@ -219,6 +269,9 @@ impl TranslatedModule {
     }
     pub fn num_globals(&self) -> u32 {
         u32::try_from(self.globals.len()).unwrap()
+    }
+    pub fn num_tags(&self) -> u32 {
+        u32::try_from(self.tags.len()).unwrap()
     }
 
     pub fn num_escaped_funcs(&self) -> u32 {
@@ -233,45 +286,49 @@ pub struct FunctionBodyData<'data> {
 }
 
 #[derive(Debug)]
-pub struct FunctionDesc {
+pub struct Function {
     /// The index of the function signature in the type section.
-    pub signature: TypeIndex,
+    pub signature: CanonicalizedTypeIndex,
     /// And index identifying this function "to the outside world"
     /// or the reserved value if the function isn't escaping from its module.
     pub func_ref: FuncRefIndex,
 }
 
-impl FunctionDesc {
+impl Function {
     pub fn is_escaping(&self) -> bool {
         !self.func_ref.is_reserved_value()
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct TableDesc {
+/// The type that can be used to index into [Memory] and [Table].
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[allow(missing_docs, reason = "self-describing variants")]
+pub enum IndexType {
+    I32,
+    I64,
+}
+
+/// The size range of resizeable storage associated with [Memory] types and [Table] types.
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+#[allow(missing_docs, reason = "self-describing fields")]
+pub struct Limits {
+    pub min: u64,
+    pub max: Option<u64>,
+}
+
+#[derive(Debug, Clone, Hash)]
+pub struct Table {
     /// The table's element type.
     pub element_type: WasmRefType,
-    /// Whether this is a 64-bit table.
-    ///
-    /// This is part of the memory64 proposal in WebAssembly.
-    pub table64: bool,
-    /// Minimum size of this table, in elements.
-    ///
-    /// For 32-bit tables (when `table64` is `false`) this is guaranteed to
-    /// be at most `u32::MAX`.
-    pub minimum: u64,
-    /// Optional maximum size of the table, in elements.
-    ///
-    /// For 32-bit tables (when `table64` is `false`) this is guaranteed to
-    /// be at most `u32::MAX`.
-    pub maximum: Option<u64>,
+    pub index_type: IndexType,
+    pub limits: Limits,
     /// Whether this table is shared indicating that it should be send-able across threads and the maximum field is always present for valid types.
     ///
     /// This is included the shared-everything-threads proposal.
     pub shared: bool,
 }
 
-impl TableDesc {
+impl Table {
     /// Creates a new `TablePlan` for the given `wasmparser::TableType`.
     pub fn from_wasmparser(
         ty: wasmparser::TableType,
@@ -279,25 +336,23 @@ impl TableDesc {
     ) -> Self {
         Self {
             element_type: type_convert.convert_ref_type(ty.element_type),
-            table64: ty.table64,
-            minimum: ty.initial,
-            maximum: ty.maximum,
+            index_type: match ty.table64 {
+                true => IndexType::I64,
+                false => IndexType::I32,
+            },
+            limits: Limits {
+                min: ty.initial,
+                max: ty.maximum,
+            },
             shared: ty.shared,
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct MemoryDesc {
-    /// The minimum size of this memory, in wasm pages.
-    ///
-    /// For 32-bit memories (when memory64 is false) this is guaranteed to be at most `u32::MAX`.
-    pub minimum: u64,
-    /// Optional maximum size of this memory, in wasm pages.
-    ///
-    /// For 32-bit memories (when memory64 is false) this is guaranteed to be at most `u32::MAX`.
-    /// This field is always present for valid wasm memories when shared is true.
-    pub maximum: Option<u64>,
+#[derive(Debug, Clone, Hash)]
+pub struct Memory {
+    pub limits: Limits,
+    pub index_type: IndexType,
     /// The size in bytes of the offset guard region.
     pub offset_guard_size: u64,
     /// The log2 of this memory's page size, in bytes.
@@ -305,17 +360,13 @@ pub struct MemoryDesc {
     /// By default, the page size is 64KiB (0x10000; 2**16; 1<<16; 65536) but the
     /// custom-page-sizes proposal allows opting into a page size of `1`.
     pub page_size_log2: u8,
-    /// Whether or not this is a 64-bit memory, using i64 as an index. If this is false it’s a 32-bit memory using i32 as an index.
-    ///
-    /// This is part of the memory64 proposal in WebAssembly.
-    pub memory64: bool,
     /// Whether or not this is a “shared” memory, indicating that it should be send-able across threads and the maximum field is always present for valid types.
     ///
     /// This is part of the threads proposal in WebAssembly.
     pub shared: bool,
 }
 
-impl MemoryDesc {
+impl Memory {
     /// WebAssembly page sizes are 64KiB by default.
     pub const DEFAULT_PAGE_SIZE: u32 = 0x10000;
 
@@ -329,10 +380,15 @@ impl MemoryDesc {
     /// Creates a new `MemoryPlan` for the given `wasmparser::MemoryType`.
     pub fn from_wasmparser(ty: wasmparser::MemoryType) -> Self {
         Self {
-            minimum: ty.initial,
-            maximum: ty.maximum,
+            index_type: match ty.memory64 {
+                true => IndexType::I64,
+                false => IndexType::I32,
+            },
+            limits: Limits {
+                min: ty.initial,
+                max: ty.maximum,
+            },
             shared: ty.shared,
-            memory64: ty.memory64,
             page_size_log2: ty
                 .page_size_log2
                 .map_or(Self::DEFAULT_PAGE_SIZE_LOG2, |log2| {
@@ -350,7 +406,8 @@ impl MemoryDesc {
     /// `u64` return type. This means that the memory can't be allocated but
     /// it's deferred to the caller to how to deal with that.
     pub fn minimum_byte_size(&self) -> crate::Result<u64> {
-        self.minimum
+        self.limits
+            .min
             .checked_mul(self.page_size())
             .context("size overflow")
     }
@@ -370,7 +427,7 @@ impl MemoryDesc {
     /// `u64` return type. This means that the memory can't be allocated but
     /// it's deferred to the caller to how to deal with that.
     pub fn maximum_byte_size(&self) -> crate::Result<u64> {
-        if let Some(max) = self.maximum {
+        if let Some(max) = self.limits.max {
             max.checked_mul(self.page_size()).context("size overflow")
         } else {
             let min = self.minimum_byte_size()?;
@@ -393,23 +450,24 @@ impl MemoryDesc {
     ///
     /// For example 32-bit linear memories return `1<<32` from this method.
     pub fn max_size_based_on_index_type(&self) -> u64 {
-        if self.memory64 {
-            // Note that the true maximum size of a 64-bit linear memory, in
-            // bytes, cannot be represented in a `u64`. That would require a u65
-            // to store `1<<64`. Despite that no system can actually allocate a
-            // full 64-bit linear memory so this is instead emulated as "what if
-            // the kernel fit in a single Wasm page of linear memory". Shouldn't
-            // ever actually be possible but it provides a number to serve as an
-            // effective maximum.
-            0_u64 - self.page_size()
-        } else {
-            WASM32_MAX_SIZE
+        match self.index_type {
+            IndexType::I32 => WASM32_MAX_SIZE,
+            IndexType::I64 => {
+                // Note that the true maximum size of a 64-bit linear memory, in
+                // bytes, cannot be represented in a `u64`. That would require a u65
+                // to store `1<<64`. Despite that no system can actually allocate a
+                // full 64-bit linear memory so this is instead emulated as "what if
+                // the kernel fit in a single Wasm page of linear memory". Shouldn't
+                // ever actually be possible but it provides a number to serve as an
+                // effective maximum.
+                0_u64 - self.page_size()
+            }
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct GlobalDesc {
+pub struct Global {
     /// The type of value stored in this global.
     pub content_type: WasmValType,
     /// Whether this global is mutable.
@@ -418,7 +476,7 @@ pub struct GlobalDesc {
     pub shared: bool,
 }
 
-impl GlobalDesc {
+impl Global {
     pub fn from_wasmparser(
         ty: wasmparser::GlobalType,
         type_convert: &WasmparserTypeConverter,
@@ -429,6 +487,13 @@ impl GlobalDesc {
             shared: ty.shared,
         }
     }
+}
+
+/// WebAssembly exception and control tag.
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
+pub struct Tag {
+    /// The tag signature type.
+    pub signature: CanonicalizedTypeIndex,
 }
 
 #[derive(Debug, Default)]
@@ -463,6 +528,15 @@ pub enum TableSegmentElements {
     Functions(Box<[FuncIndex]>),
     /// The elements are produced by a list of constant expressions.
     Expressions(Box<[ConstExpr]>),
+}
+
+impl TableSegmentElements {
+    pub fn len(&self) -> u64 {
+        match self {
+            TableSegmentElements::Functions(f) => f.len() as u64,
+            TableSegmentElements::Expressions(e) => e.len() as u64,
+        }
+    }
 }
 
 #[derive(Debug)]

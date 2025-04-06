@@ -1,0 +1,96 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
+use alloc::vec::Vec;
+use core::range::Range;
+use anyhow::Context;
+use crate::mem::{AddressSpace, UserMmap, VirtualAddress};
+use crate::wasm::compile::FunctionLoc;
+use crate::wasm::Trap;
+
+#[derive(Debug)]
+pub struct CodeMemory {
+    mmap: UserMmap,
+    len: usize,
+    published: bool,
+
+    trap_offsets: Vec<u32>,
+    traps: Vec<Trap>,
+}
+
+impl CodeMemory {
+    pub fn new(mmap_vec: Vec<u8>, trap_offsets: Vec<u32>, traps: Vec<Trap>) -> Self {
+        todo!()
+        
+        // // let (mmap, size) = mmap_vec.into_parts();
+        // Self {
+        //     mmap,
+        //     // len: mmap_vec.len(),
+        //     published: false,
+        //     trap_offsets,
+        //     traps,
+        // }
+    }
+
+    pub fn publish(&mut self, aspace: &mut AddressSpace) -> crate::Result<()> {
+        debug_assert!(!self.published);
+        self.published = true;
+
+        if self.mmap.is_empty() {
+            tracing::warn!("Compiled module has no code to publish");
+            return Ok(());
+        }
+
+        // Switch the executable portion from readonly to read/execute.
+        self.mmap
+            .make_executable(aspace, true)
+            .context("Failed to mark mmap'ed region as executable")?;
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn text_range(&self) -> Range<VirtualAddress> {
+        let start = self.mmap.range().start;
+
+        Range::from(start..start.checked_add(self.len).unwrap())
+    }
+
+    pub fn resolve_function_loc(&self, func_loc: FunctionLoc) -> usize {
+        let text_range = {
+            let r = self.text_range();
+            r.start.get()..r.end.get()
+        };
+
+        let addr = text_range.start + func_loc.start as usize;
+
+        tracing::trace!(
+            "resolve_function_loc {func_loc:?}, text {:?} => {:?}",
+            self.mmap.as_ptr(),
+            addr,
+        );
+
+        // Assert the function location actually lies in our text section
+        debug_assert!(
+            text_range.start <= addr
+                && text_range.end >= addr.saturating_add(usize::try_from(func_loc.length).unwrap())
+        );
+
+        addr
+    }
+
+    pub fn lookup_trap_code(&self, text_offset: usize) -> Option<Trap> {
+        let text_offset = u32::try_from(text_offset).unwrap();
+
+        let index = self
+            .trap_offsets
+            .binary_search_by_key(&text_offset, |val| *val)
+            .ok()?;
+
+        Some(self.traps[index])
+    }
+}
