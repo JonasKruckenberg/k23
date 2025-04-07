@@ -7,15 +7,16 @@
 
 use crate::wasm::compile::CompiledFunctionInfo;
 use crate::wasm::indices::{DefinedFuncIndex, EntityIndex, VMSharedTypeIndex};
+use crate::wasm::store::StoreOpaque;
 use crate::wasm::translate::{Import, TranslatedModule};
 use crate::wasm::type_registry::RuntimeTypeCollection;
-use crate::wasm::vm::{CodeMemory, VMArrayCallFunction, VMShape, VMWasmCallFunction};
+use crate::wasm::utils::u8_size_of;
+use crate::wasm::vm::{CodeObject, VMArrayCallFunction, VMShape, VMWasmCallFunction};
 use crate::wasm::Engine;
 use alloc::sync::Arc;
 use core::ptr::NonNull;
 use cranelift_entity::PrimaryMap;
-use wasmparser::Validator;
-use crate::wasm::store::StoreOpaque;
+use wasmparser::{Validator, WasmFeatures};
 
 /// A compiled WebAssembly module, ready to be instantiated.
 ///
@@ -31,8 +32,9 @@ pub struct Module(Arc<ModuleInner>);
 struct ModuleInner {
     engine: Engine,
     translated_module: TranslatedModule,
+    required_features: WasmFeatures,
     vmshape: VMShape,
-    code: Arc<CodeMemory>,
+    code: Arc<CodeObject>,
     type_collection: RuntimeTypeCollection,
     function_info: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
 }
@@ -65,6 +67,9 @@ impl Module {
             .map(|(name, index)| (name.as_str(), *index))
     }
 
+    pub(super) fn required_features(&self) -> WasmFeatures {
+        self.0.required_features
+    }
     pub(super) fn engine(&self) -> &Engine {
         &self.0.engine
     }
@@ -74,7 +79,7 @@ impl Module {
     pub(super) fn vmshape(&self) -> &VMShape {
         &self.0.vmshape
     }
-    pub(crate) fn code(&self) -> &CodeMemory {
+    pub(crate) fn code(&self) -> &Arc<CodeObject> {
         &self.0.code
     }
     pub(crate) fn type_collection(&self) -> &RuntimeTypeCollection {
@@ -83,9 +88,11 @@ impl Module {
     pub(crate) fn type_ids(&self) -> &[VMSharedTypeIndex] {
         self.0.type_collection.type_map().values().as_slice()
     }
-    // pub(crate) fn function_info(&self) -> &PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo> {
-    //     &self.0.function_info
-    // }
+    pub(crate) fn functions(
+        &self,
+    ) -> cranelift_entity::Iter<DefinedFuncIndex, CompiledFunctionInfo> {
+        self.0.function_info.iter()
+    }
     pub(super) fn array_to_wasm_trampoline(
         &self,
         index: DefinedFuncIndex,
@@ -99,5 +106,22 @@ impl Module {
     pub(super) fn function(&self, index: DefinedFuncIndex) -> NonNull<VMWasmCallFunction> {
         let loc = self.0.function_info[index].wasm_func_loc;
         NonNull::new(self.code().resolve_function_loc(loc) as *mut VMWasmCallFunction).unwrap()
+    }
+
+    pub(super) fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
+    pub(super) fn new_stub(engine: Engine) -> Self {
+        let translated_module = TranslatedModule::default();
+        Self(Arc::new(ModuleInner {
+            engine: engine.clone(),
+            vmshape: VMShape::for_module(u8_size_of::<usize>(), &translated_module),
+            translated_module,
+            required_features: WasmFeatures::default(),
+            code: Arc::new(CodeObject::empty()),
+            type_collection: RuntimeTypeCollection::empty(engine),
+            function_info: PrimaryMap::default(),
+        }))
     }
 }

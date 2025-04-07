@@ -6,13 +6,15 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::wasm::store::{StoreOpaque, Stored};
-use crate::wasm::vm;
-use crate::wasm::vm::VMTagImport;
+use crate::wasm::vm::{ExportedTag, VMTagImport};
 
 #[derive(Clone, Copy, Debug)]
-pub struct Tag(Stored<vm::ExportedTag>);
+pub struct Tag(Stored<ExportedTag>);
 
 impl Tag {
+    pub(super) fn from_exported_tag(store: &mut StoreOpaque, export: ExportedTag) -> Self {
+        todo!()
+    }
     pub(super) fn as_vmtag_import(&self, store: &mut StoreOpaque) -> VMTagImport {
         todo!()
     }

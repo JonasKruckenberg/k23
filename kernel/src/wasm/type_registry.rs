@@ -15,6 +15,7 @@ use crate::wasm::Engine;
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
+use alloc::vec;
 use alloc::vec::Vec;
 use core::borrow::Borrow;
 use core::fmt::Debug;
@@ -134,6 +135,14 @@ pub struct RuntimeTypeCollection {
 }
 
 impl RuntimeTypeCollection {
+    pub fn empty(engine: Engine) -> Self {
+        Self {
+            engine,
+            rec_groups: vec![],
+            types: PrimaryMap::default(),
+        }
+    }
+    
     /// Gets the map from `ModuleInternedTypeIndex` to `VMSharedTypeIndex`
     pub fn type_map(&self) -> &PrimaryMap<ModuleInternedTypeIndex, VMSharedTypeIndex> {
         &self.types

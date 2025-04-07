@@ -21,6 +21,7 @@ mod types;
 mod utils;
 mod values;
 mod vm;
+mod module_registry;
 
 pub use engine::Engine;
 pub use func::Func;
@@ -32,6 +33,8 @@ pub use tag::Tag;
 pub use trap::Trap;
 pub use instance::Instance;
 pub use module::Module;
+pub use linker::Linker;
+use crate::wasm::store::StoreOpaque;
 use crate::wasm::utils::{enum_accessors, owned_enum_accessors};
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
@@ -68,6 +71,22 @@ pub enum Extern {
 }
 
 impl Extern {
+    /// # Safety
+    ///
+    /// The caller must ensure `export` is a valid export within `store`.
+    pub(crate) unsafe fn from_export(export: vm::Export, store: &mut StoreOpaque) -> Self {
+        // Safety: ensured by caller
+        unsafe {
+            match export {
+                vm::Export::Function(e) => Extern::Func(Func::from_exported_function(store, e)),
+                vm::Export::Table(e) => Extern::Table(Table::from_exported_table(store, e)),
+                vm::Export::Memory(e) => Extern::Memory(Memory::from_exported_memory(store, e)),
+                vm::Export::Global(e) => Extern::Global(Global::from_exported_global(store, e)),
+                vm::Export::Tag(e) => Extern::Tag(Tag::from_exported_tag(store, e)),
+            }
+        }
+    }
+    
     enum_accessors! {
         e
         (Func(&Func) is_func get_func unwrap_func e)
@@ -83,4 +102,63 @@ impl Extern {
         (Memory(Memory) into_memory e)
         (Global(Global) into_global e)
     }
+}
+
+fn test() {
+    // use vm::ConstExprEvaluator;
+    // use wasmparser::Validator;
+    // 
+    // let engine = Engine::default();
+    // let mut validator = Validator::new();
+    // let mut linker = Linker::new(&engine);
+    // let mut store = Store::new(&engine, );
+    // let mut const_eval = ConstExprEvaluator::default();
+    // 
+    // // instantiate & define the fib_cpp module
+    // {
+    //     let module = Module::from_bytes(
+    //         &engine,
+    //         &mut store,
+    //         &mut validator,
+    //         include_bytes!("../../fib_cpp.wasm"),
+    //     )
+    //         .unwrap();
+    // 
+    //     let instance = linker
+    //         .instantiate(&mut store, &mut const_eval, &module)
+    //         .unwrap();
+    //     // instance.debug_vmctx(&store);
+    // 
+    //     linker
+    //         .define_instance(&mut store, "fib_cpp", instance)
+    //         .unwrap();
+    // }
+    // 
+    // // instantiate the test module
+    // {
+    //     let module = Module::from_bytes(
+    //         &engine,
+    //         &mut store,
+    //         &mut validator,
+    //         include_bytes!("../../fib_test.wasm"),
+    //     )
+    //         .unwrap();
+    // 
+    //     let instance = linker
+    //         .instantiate(&mut store, &mut const_eval, &module)
+    //         .unwrap();
+    // 
+    //     // instance.debug_vmctx(&store);
+    //     // 
+    //     // let func: TypedFunc<(), ()> = instance
+    //     //     .get_func(&mut store, "fib_test")
+    //     //     .unwrap()
+    //     //     .typed(&store)
+    //     //     .unwrap();
+    // 
+    //     // scheduler().spawn(store.alloc.0.clone(), async move {
+    //     //     func.call(&mut store, ()).await.unwrap();
+    //     //     tracing::info!("done");
+    //     // });
+    // }
 }

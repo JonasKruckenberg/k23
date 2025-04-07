@@ -27,7 +27,7 @@ pub use type_convert::WasmparserTypeConverter;
 pub use types::{
     EntityType, WasmCompositeType, WasmCompositeTypeInner, WasmFuncType, WasmHeapTopType,
     WasmHeapType, WasmHeapTypeInner, WasmRecGroup, WasmRefType, WasmStorageType, WasmSubType,
-    WasmValType,
+    WasmValType, WasmArrayType, WasmStructType
 };
 
 #[derive(Debug)]

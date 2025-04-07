@@ -6,10 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::wasm::indices::{CanonicalizedTypeIndex, VMSharedTypeIndex};
-use crate::wasm::translate::{
-    EntityType, Memory, ModuleTypes, Table, WasmHeapType, WasmHeapTypeInner, WasmRefType,
-    WasmValType,
-};
+use crate::wasm::translate::{EntityType, Memory, ModuleTypes, Table, WasmArrayType, WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmRefType, WasmStructType, WasmValType};
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::Engine;
 use anyhow::bail;
@@ -1019,10 +1016,7 @@ impl HeapType {
             //     todo!()
             // }
             // (HeapTypeInner::ConcreteCont(_), _) => false,
-
-            (HeapTypeInner::NoCont, HeapTypeInner::NoCont | HeapTypeInner::Cont) => {
-                true
-            }
+            (HeapTypeInner::NoCont, HeapTypeInner::NoCont | HeapTypeInner::Cont) => true,
             (HeapTypeInner::NoCont, _) => false,
         }
     }
@@ -1386,18 +1380,96 @@ impl Display for FuncType {
 }
 
 impl FuncType {
+    pub fn param(&self, i: usize) -> Option<ValType> {
+        let engine = self.engine();
+        self.registered_type
+            .unwrap_func()
+            .params
+            .get(i)
+            .map(|ty| ValType::from_wasm_type(engine, ty))
+    }
+
     pub fn params(&self) -> impl ExactSizeIterator<Item = ValType> + '_ {
-        core::iter::empty()
+        let engine = self.engine();
+
+        self.registered_type
+            .unwrap_func()
+            .params
+            .iter()
+            .map(|ty| ValType::from_wasm_type(engine, ty))
     }
+
+    pub fn result(&self, i: usize) -> Option<ValType> {
+        let engine = self.engine();
+        self.registered_type
+            .unwrap_func()
+            .results
+            .get(i)
+            .map(|ty| ValType::from_wasm_type(engine, ty))
+    }
+
     pub fn results(&self) -> impl ExactSizeIterator<Item = ValType> + '_ {
-        core::iter::empty()
+        let engine = self.engine();
+
+        self.registered_type
+            .unwrap_func()
+            .results
+            .iter()
+            .map(|ty| ValType::from_wasm_type(engine, ty))
     }
+
     pub(super) fn type_index(&self) -> VMSharedTypeIndex {
         self.registered_type.index()
     }
+
     pub(super) fn engine(&self) -> &Engine {
         self.registered_type.engine()
     }
+
+    /// Does this function type match the other function type?
+    ///
+    /// That is, is this function type a subtype of the other function type?
+    ///
+    /// # Panics
+    ///
+    /// Panics if either type is associated with a different engine from the
+    /// other.
+    pub fn matches(&self, other: &FuncType) -> bool {
+        assert!(self.comes_from_same_engine(other.engine()));
+
+        // Avoid matching on structure for subtyping checks when we have
+        // precisely the same type.
+        if self.type_index() == other.type_index() {
+            return true;
+        }
+
+        Self::matches_impl(
+            self.params(),
+            other.params(),
+            self.results(),
+            other.results(),
+        )
+    }
+
+    fn matches_impl(
+        a_params: impl ExactSizeIterator<Item = ValType>,
+        b_params: impl ExactSizeIterator<Item = ValType>,
+        a_results: impl ExactSizeIterator<Item = ValType>,
+        b_results: impl ExactSizeIterator<Item = ValType>,
+    ) -> bool {
+        a_params.len() == b_params.len()
+            && a_results.len() == b_results.len()
+            // Params are contravariant and results are covariant. For more
+            // details and a refresher on variance, read
+            // https://github.com/bytecodealliance/wasm-tools/blob/f1d89a4/crates/wasmparser/src/readers/core/types/matches.rs#L137-L174
+            && a_params
+            .zip(b_params)
+            .all(|(a, b)| b.matches(&a))
+            && a_results
+            .zip(b_results)
+            .all(|(a, b)| a.matches(&b))
+    }
+
     pub(super) fn comes_from_same_engine(&self, other: &Engine) -> bool {
         Engine::same(self.engine(), other)
     }

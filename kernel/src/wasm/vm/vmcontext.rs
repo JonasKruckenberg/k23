@@ -797,17 +797,17 @@ impl VMFuncRef {
     ///
     /// Note that the unsafety invariants to maintain here are not currently
     /// exhaustively documented.
-    unsafe fn array_call(
+    pub unsafe fn array_call(
         &self,
         caller: NonNull<VMOpaqueContext>,
-        args_and_results: NonNull<[VMVal]>,
+        params_and_results: NonNull<[VMVal]>,
     ) -> bool {
         unsafe {
             (*self.array_call.as_ptr())(
                 self.vmctx.as_non_null(),
                 caller,
-                args_and_results.cast(),
-                args_and_results.len(),
+                params_and_results.cast(),
+                params_and_results.len(),
             )
         }
     }
@@ -986,7 +986,7 @@ impl VMContext {
     #[inline]
     pub unsafe fn from_opaque(opaque: NonNull<VMOpaqueContext>) -> NonNull<VMContext> {
         unsafe {
-            debug_assert_eq!(opaque.as_ref().magic, VMCONTEXT_MAGIC); 
+            debug_assert_eq!(opaque.as_ref().magic, VMCONTEXT_MAGIC);
             opaque.cast()
         }
     }

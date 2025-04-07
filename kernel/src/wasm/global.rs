@@ -30,6 +30,9 @@ impl Global {
         todo!()
     }
 
+    pub(super) fn from_exported_global(store: &mut StoreOpaque, export: ExportedGlobal) -> Self {
+        todo!()
+    }
     pub(super) fn as_vmglobal_import(&self, store: &mut StoreOpaque) -> VMGlobalImport {
         todo!()
     }

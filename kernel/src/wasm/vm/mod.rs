@@ -5,32 +5,34 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-mod vmshape;
-mod vmcontext;
-mod provenance;
-pub mod instance;
-mod memory;
-mod table;
-mod const_eval;
 mod builtins;
-mod trap_handler;
+mod code_object;
+mod const_eval;
+pub mod instance;
 mod instance_alloc;
-mod code_memory;
+mod memory;
+mod provenance;
+mod table;
+mod trap_handler;
+mod vmcontext;
+mod vmshape;
 
-use crate::wasm::translate::TranslatedModule;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
+
 use crate::wasm::indices::DefinedMemoryIndex;
-pub use vmcontext::*;
-pub use vmshape::{StaticVMShape, VMShape};
+use crate::wasm::translate::TranslatedModule;
+pub use code_object::CodeObject;
+pub use const_eval::ConstExprEvaluator;
+pub use instance::InstanceHandle;
 pub use instance_alloc::InstanceAllocator;
-pub use code_memory::CodeMemory;
 pub use memory::Memory;
 pub use table::{Table, TableElement};
-pub use const_eval::ConstExprEvaluator;
-pub use instance::{Instance, InstanceHandle};
+pub use vmcontext::*;
+pub use vmshape::{StaticVMShape, VMShape};
 
 /// The value of an export passed from one instance to another.
+#[derive(Debug, Clone)]
 pub enum Export {
     /// A function export value.
     Function(ExportedFunction),
@@ -45,7 +47,7 @@ pub enum Export {
 }
 
 /// A function export value.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ExportedFunction {
     ///
     /// Note that exported functions cannot be a null funcref, so this is a
@@ -58,6 +60,7 @@ pub struct ExportedFunction {
 unsafe impl Send for ExportedFunction {}
 unsafe impl Sync for ExportedFunction {}
 
+#[derive(Debug, Clone)]
 pub struct ExportedTable {
     /// The address of the table descriptor.
     pub definition: NonNull<VMTableDefinition>,

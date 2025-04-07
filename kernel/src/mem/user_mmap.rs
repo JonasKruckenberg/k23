@@ -36,9 +36,12 @@ impl UserMmap {
     ///
     /// Note that the size of this cannot be changed after the fact, all accessors will return empty
     /// slices and permission changing methods will always fail.
-    pub fn new_empty() -> Self {
+    pub const fn new_empty() -> Self {
         Self {
-            range: Range::default(),
+            range: Range {
+                start: VirtualAddress::ZERO,
+                end: VirtualAddress::ZERO,
+            },
         }
     }
 

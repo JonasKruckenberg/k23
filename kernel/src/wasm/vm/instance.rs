@@ -7,36 +7,39 @@
 
 use crate::wasm::indices::{
     DataIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, DefinedTagIndex,
-    ElemIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TagIndex, VMSharedTypeIndex,
+    ElemIndex, EntityIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TagIndex,
+    VMSharedTypeIndex,
 };
 use crate::wasm::module::Module;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::translate::{
-    IndexType, TableInitialValue, TableSegmentElements, TranslatedModule, WasmHeapTopType,
+    IndexType, MemoryInitializer, TableInitialValue, TableSegmentElements, TranslatedModule,
+    WasmHeapTopType,
 };
 use crate::wasm::vm::const_eval::{ConstEvalContext, ConstExprEvaluator};
-use crate::wasm::vm::instance_alloc::InstanceAllocation;
 use crate::wasm::vm::memory::Memory;
 use crate::wasm::vm::provenance::{VmPtr, VmSafe};
 use crate::wasm::vm::table::{Table, TableElement, TableElementType};
 use crate::wasm::vm::{
-    CodeMemory, Imports, StaticVMShape, VMBuiltinFunctionsArray, VMContext, VMFuncRef,
+    CodeObject, Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable,
+    ExportedTag, Imports, StaticVMShape, VMBuiltinFunctionsArray, VMContext, VMFuncRef,
     VMFunctionBody, VMFunctionImport, VMGlobalDefinition, VMGlobalImport, VMMemoryDefinition,
     VMMemoryImport, VMOpaqueContext, VMShape, VMStoreContext, VMTableDefinition,
     VMTableImport, VMTagDefinition, VMTagImport, VMCONTEXT_MAGIC,
 };
-use crate::wasm::Trap;
-use anyhow::ensure;
+use crate::wasm::{vm, Trap};
+use alloc::string::String;
+use anyhow::{bail, ensure};
 use core::alloc::Layout;
 use core::marker::PhantomPinned;
+use core::ptr;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU64, Ordering};
-use core::{ptr};
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
 
 #[derive(Debug)]
 pub struct InstanceHandle {
-    instance: NonNull<Instance>,
+    instance: Option<NonNull<Instance>>,
 }
 unsafe impl Send for InstanceHandle {}
 unsafe impl Sync for InstanceHandle {}
@@ -44,8 +47,8 @@ unsafe impl Sync for InstanceHandle {}
 #[repr(C)] // ensure that the vmctx field is last.
 pub struct Instance {
     module: Module,
-    memories: PrimaryMap<DefinedMemoryIndex, Memory>,
-    tables: PrimaryMap<DefinedTableIndex, Table>,
+    pub(super) memories: PrimaryMap<DefinedMemoryIndex, Memory>,
+    pub(super) tables: PrimaryMap<DefinedTableIndex, Table>,
     dropped_elements: EntitySet<ElemIndex>,
     dropped_data: EntitySet<DataIndex>,
 
@@ -66,370 +69,138 @@ pub struct Instance {
     vmctx: VMContext,
 }
 
-impl Instance {
-    pub unsafe fn new_unchecked(
+impl InstanceHandle {
+    /// Creates an "empty" instance handle which internally has a null pointer
+    /// to an instance. Actually calling any methods on this `InstanceHandle` will always
+    /// panic.
+    pub fn null() -> InstanceHandle {
+        InstanceHandle { instance: None }
+    }
+
+    pub fn initialize(
+        &mut self,
         store: &mut StoreOpaque,
         const_eval: &mut ConstExprEvaluator,
-        module: Module,
+        module: &Module,
         imports: Imports,
-    ) -> crate::Result<InstanceHandle> {
-        let InstanceAllocation {
-            mut ptr,
-            tables,
-            memories,
-        } = store.alloc().allocate_module(&module)?;
+        is_bulk_memory: bool,
+    ) -> crate::Result<()> {
+        unsafe {
+            self.instance_mut()
+                .initialize_vmctx(store, imports, &module);
 
+            if !is_bulk_memory {
+                check_init_bounds(store, self.instance_mut(), module)?;
+            }
+
+            let mut ctx = ConstEvalContext::new(self.instance.unwrap().as_mut());
+            self.instance_mut()
+                .initialize_tables(store, &mut ctx, const_eval, &module)?;
+            self.instance_mut()
+                .initialize_memories(store, &mut ctx, const_eval, &module)?;
+            self.instance_mut()
+                .initialize_globals(store, &mut ctx, const_eval, &module)?;
+        }
+
+        Ok(())
+    }
+    
+    pub fn vmctx(&self) -> NonNull<VMContext> {
+        self.instance().vmctx()
+    }
+
+    /// Return a reference to a module.
+    pub fn module(&self) -> &Module {
+        self.instance().module()
+    }
+
+    /// Lookup a table by index.
+    pub fn get_exported_table(&mut self, export: TableIndex) -> ExportedTable {
+        self.instance_mut().get_exported_table(export)
+    }
+
+    /// Lookup a memory by index.
+    pub fn get_exported_memory(&mut self, export: MemoryIndex) -> ExportedMemory {
+        self.instance_mut().get_exported_memory(export)
+    }
+
+    /// Lookup a function by index.
+    pub fn get_exported_func(&mut self, export: FuncIndex) -> ExportedFunction {
+        self.instance_mut().get_exported_func(export)
+    }
+
+    /// Lookup a global by index.
+    pub fn get_exported_global(&mut self, export: GlobalIndex) -> ExportedGlobal {
+        self.instance_mut().get_exported_global(export)
+    }
+
+    /// Lookup a tag by index.
+    pub fn get_exported_tag(&mut self, export: TagIndex) -> ExportedTag {
+        self.instance_mut().get_exported_tag(export)
+    }
+
+    /// Lookup an item with the given index.
+    pub fn get_export_by_index(&mut self, export: EntityIndex) -> Export {
+        match export {
+            EntityIndex::Function(i) => Export::Function(self.get_exported_func(i)),
+            EntityIndex::Global(i) => Export::Global(self.get_exported_global(i)),
+            EntityIndex::Table(i) => Export::Table(self.get_exported_table(i)),
+            EntityIndex::Memory(i) => Export::Memory(self.get_exported_memory(i)),
+            EntityIndex::Tag(i) => Export::Tag(self.get_exported_tag(i)),
+        }
+    }
+
+    /// Return an iterator over the exports of this instance.
+    ///
+    /// Specifically, it provides access to the key-value pairs, where the keys
+    /// are export names, and the values are export declarations which can be
+    /// resolved `lookup_by_declaration`.
+    pub fn exports(&self) -> wasmparser::collections::index_map::Iter<String, EntityIndex> {
+        self.instance().translated_module().exports.iter()
+    }
+
+    pub fn as_non_null(&self) -> NonNull<Instance> {
+        self.instance.unwrap()
+    }
+
+    /// Return a reference to the contained `Instance`.
+    #[inline]
+    pub fn instance(&self) -> &Instance {
+        unsafe { self.instance.unwrap().as_ref() }
+    }
+
+    #[inline]
+    pub fn instance_mut(&mut self) -> &mut Instance {
+        unsafe { self.instance.unwrap().as_mut() }
+    }
+}
+
+impl Instance {
+    pub unsafe fn from_parts(
+        module: Module,
+        mut instance: NonNull<Instance>,
+        tables: PrimaryMap<DefinedTableIndex, Table>,
+        memories: PrimaryMap<DefinedMemoryIndex, Memory>,
+    ) -> crate::Result<InstanceHandle> {
         let dropped_elements = module.translated().active_table_initializers.clone();
         let dropped_data = module.translated().active_memory_initializers.clone();
 
         unsafe {
-            ptr.write(Instance {
+            instance.write(Instance {
                 module: module.clone(),
                 memories,
                 tables,
                 dropped_elements,
                 dropped_data,
-                vmctx_self_reference: ptr.add(1).cast(),
+                vmctx_self_reference: instance.add(1).cast(),
                 store: None,
                 vmctx: VMContext {
                     _marker: PhantomPinned,
                 },
             });
-
-            ptr.as_mut().initialize_vmctx(imports, &module);
-
-            let mut ctx = ConstEvalContext::new(ptr.as_mut());
-            ptr.as_mut()
-                .initialize_tables(store, &mut ctx, const_eval, &module)?;
-            ptr.as_mut()
-                .initialize_memories(store, &mut ctx, const_eval, &module)?;
-            ptr.as_mut()
-                .initialize_globals(store, &mut ctx, const_eval, &module)?;
         }
 
-        Ok(InstanceHandle { instance: ptr })
-    }
-
-    unsafe fn initialize_vmctx(&mut self, imports: Imports, module: &Module) {
-        let vmshape = module.vmshape();
-
-        unsafe {
-            // initialize vmctx magic
-            tracing::trace!("initializing vmctx magic");
-            self.vmctx_plus_offset_mut(vmshape.vmctx_magic())
-                .write(VMCONTEXT_MAGIC);
-
-            // self.set_store(store.as_raw());
-            //      vm_store_context: *const VMStoreContext,
-            //      epoch_ptr: *mut AtomicU64,
-
-            // Initialize the built-in functions
-            tracing::trace!("initializing built-in functions array ptr");
-            self.vmctx_plus_offset_mut(vmshape.vmctx_builtin_functions())
-                .write(VMBuiltinFunctionsArray::INIT);
-
-            // self.set_callee(None);
-
-            //      gc_heap_base: *mut u8,
-            //      gc_heap_bound: *mut u8,
-            //      gc_heap_data: *mut T, //! Collector-specific pointer
-
-            self.vmctx_plus_offset_mut::<VmPtr<VMSharedTypeIndex>>(vmshape.vmctx_type_ids_array())
-                .write(VmPtr::from(NonNull::from(self.module.type_ids()).cast()));
-
-            // initialize imports
-            tracing::trace!("initializing function imports");
-            debug_assert_eq!(
-                imports.functions.len(),
-                self.translated_module().num_imported_functions as usize
-            );
-            ptr::copy_nonoverlapping(
-                imports.functions.as_ptr(),
-                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_functions_begin())
-                    .as_ptr(),
-                imports.functions.len(),
-            );
-
-            tracing::trace!("initializing table imports");
-            debug_assert_eq!(
-                imports.tables.len(),
-                self.translated_module().num_imported_tables as usize
-            );
-            ptr::copy_nonoverlapping(
-                imports.tables.as_ptr(),
-                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_tables_begin())
-                    .as_ptr(),
-                imports.tables.len(),
-            );
-
-            tracing::trace!("initializing memory imports");
-            debug_assert_eq!(
-                imports.memories.len(),
-                self.translated_module().num_imported_memories as usize
-            );
-            ptr::copy_nonoverlapping(
-                imports.memories.as_ptr(),
-                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_memories_begin())
-                    .as_ptr(),
-                imports.memories.len(),
-            );
-
-            tracing::trace!("initializing global imports");
-            debug_assert_eq!(
-                imports.globals.len(),
-                self.translated_module().num_imported_globals as usize
-            );
-            ptr::copy_nonoverlapping(
-                imports.globals.as_ptr(),
-                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_globals_begin())
-                    .as_ptr(),
-                imports.globals.len(),
-            );
-
-            tracing::trace!("initializing tag imports");
-            debug_assert_eq!(
-                imports.tags.len(),
-                self.translated_module().num_imported_tags as usize
-            );
-            ptr::copy_nonoverlapping(
-                imports.tags.as_ptr(),
-                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_tags_begin())
-                    .as_ptr(),
-                imports.tags.len(),
-            );
-
-            // initialize defined tables
-            tracing::trace!("initializing defined tables");
-            for def_index in module
-                .translated()
-                .tables
-                .keys()
-                .filter_map(|index| module.translated().defined_table_index(index))
-            {
-                let def = self.tables[def_index].as_vmtable_definition();
-                self.table_ptr(def_index).write(def);
-            }
-
-            // Initialize the defined memories. This fills in both the
-            // `defined_memories` table and the `owned_memories` table at the same
-            // time. Entries in `defined_memories` hold a pointer to a definition
-            // (all memories) whereas the `owned_memories` hold the actual
-            // definitions of memories owned (not shared) in the module.
-            tracing::trace!("initializing defined memories");
-            for (def_index, desc) in
-                module
-                    .translated()
-                    .memories
-                    .iter()
-                    .filter_map(|(index, desc)| {
-                        Some((module.translated().defined_memory_index(index)?, desc))
-                    })
-            {
-                let ptr = self.vmctx_plus_offset_mut::<VmPtr<VMMemoryDefinition>>(
-                    vmshape.vmctx_vmmemory_pointer(def_index),
-                );
-
-                if desc.shared {
-                    // let def_ptr = self.memories[def_index]
-                    //     .as_shared_memory()
-                    //     .unwrap()
-                    //     .vmmemory_ptr();
-                    // ptr.write(VmPtr::from(def_ptr));
-
-                    todo!()
-                } else {
-                    let owned_index = self.translated_module().owned_memory_index(def_index);
-                    let owned_ptr = self.vmctx_plus_offset_mut::<VMMemoryDefinition>(
-                        vmshape.vmctx_vmmemory_definition(owned_index),
-                    );
-
-                    owned_ptr.write(self.memories[def_index].vmmemory_definition());
-                    ptr.write(VmPtr::from(owned_ptr));
-                }
-            }
-
-            // Zero-initialize the globals so that nothing is uninitialized memory
-            // after this function returns. The globals are actually initialized
-            // with their const expression initializers after the instance is fully
-            // allocated.
-            tracing::trace!("initializing defined globals");
-            for (index, _init) in &module.translated().global_initializers {
-                self.global_ptr(index).write(VMGlobalDefinition::new());
-            }
-
-            tracing::trace!("initializing defined tags");
-            for (def_index, tag) in
-                module.translated().tags.iter().filter_map(|(index, ty)| {
-                    Some((module.translated().defined_tag_index(index)?, ty))
-                })
-            {
-                self.tag_ptr(def_index).write(VMTagDefinition::new(
-                    tag.signature.unwrap_engine_type_index(),
-                ));
-            }
-
-            tracing::trace!("initializing func refs array");
-            self.initialize_vmfunc_refs(&imports, module);
-        }
-    }
-
-    #[tracing::instrument(skip(self))]
-    unsafe fn initialize_vmfunc_refs(&mut self, imports: &Imports, module: &Module) {
-        unsafe {
-            let vmshape = module.vmshape();
-
-            for (index, func) in module
-                .translated()
-                .functions
-                .iter()
-                .filter(|(_, f)| f.is_escaping())
-            {
-                let func_ref =
-                    if let Some(def_index) = module.translated().defined_func_index(index) {
-                        VMFuncRef {
-                            array_call: VmPtr::from(
-                                self.module().array_to_wasm_trampoline(def_index).unwrap(),
-                            ),
-                            wasm_call: Some(VmPtr::from(self.module.function(def_index))),
-                            type_index: Default::default(),
-                            vmctx: VmPtr::from(VMOpaqueContext::from_vmcontext(self.vmctx())),
-                        }
-                    } else {
-                        let import = &imports.functions[index.index()];
-                        VMFuncRef {
-                            array_call: import.array_call,
-                            wasm_call: import.wasm_call,
-                            vmctx: import.vmctx,
-                            type_index: func.signature.unwrap_engine_type_index(),
-                        }
-                    };
-
-                self.vmctx_plus_offset_mut(vmshape.vmctx_vmfunc_ref(func.func_ref))
-                    .write(func_ref);
-            }
-        }
-    }
-
-    #[tracing::instrument(skip(self, store, ctx, const_eval))]
-    unsafe fn initialize_globals(
-        &mut self,
-        store: &mut StoreOpaque,
-        ctx: &mut ConstEvalContext,
-        const_eval: &mut ConstExprEvaluator,
-        module: &Module,
-    ) -> crate::Result<()> {
-        for (def_index, init) in module.translated().global_initializers.iter() {
-            let vmval = const_eval
-                .eval(store, ctx, init)
-                .expect("const expression should be valid");
-            let index = self.translated_module().global_index(def_index);
-            let ty = self.translated_module().globals[index].content_type;
-
-            unsafe {
-                self.global_ptr(def_index)
-                    .write(VMGlobalDefinition::from_vmval(store, ty, vmval)?);
-            }
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(skip(self, store, ctx, const_eval))]
-    unsafe fn initialize_tables(
-        &mut self,
-        store: &mut StoreOpaque,
-        ctx: &mut ConstEvalContext,
-        const_eval: &mut ConstExprEvaluator,
-        module: &Module,
-    ) -> crate::Result<()> {
-        // update initial values
-        for (def_index, init) in &module.translated().table_initializers.initial_values {
-            match init {
-                TableInitialValue::RefNull => {}
-                TableInitialValue::ConstExpr(expr) => {
-                    let index = self.translated_module().table_index(def_index);
-                    let (heap_top_ty, shared) = self.translated_module().tables[index]
-                        .element_type
-                        .heap_type
-                        .top();
-                    assert_eq!(shared, false);
-
-                    let vmval = const_eval
-                        .eval(store, ctx, expr)
-                        .expect("const expression should be valid");
-
-                    let table = unsafe { self.get_defined_table(def_index).as_mut() };
-
-                    match heap_top_ty {
-                        WasmHeapTopType::Func => {
-                            let funcref = NonNull::new(vmval.get_funcref().cast::<VMFuncRef>());
-                            let items = (0..table.size()).map(|_| funcref);
-                            table.init_func(0, items)?;
-                        }
-                        WasmHeapTopType::Extern | WasmHeapTopType::Any => todo!("gc proposal"),
-                        WasmHeapTopType::Exn => todo!("exception-handling proposal"),
-                        WasmHeapTopType::Cont => todo!("continuation proposal"),
-                    }
-                }
-            }
-        }
-
-        // run active elements
-        for segment in &module.translated().table_initializers.segments {
-            let start = const_eval
-                .eval(store, ctx, &segment.offset)
-                .expect("const expression should be valid");
-
-            ctx.instance.table_init_segment(
-                store,
-                const_eval,
-                segment.table_index,
-                &segment.elements,
-                start.get_u64(),
-                0,
-                segment.elements.len(),
-            )?;
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(skip(self, store, ctx, const_eval))]
-    unsafe fn initialize_memories(
-        &mut self,
-        store: &mut StoreOpaque,
-        ctx: &mut ConstEvalContext,
-        const_eval: &mut ConstExprEvaluator,
-        module: &Module,
-    ) -> crate::Result<()> {
-        for initializer in &module.translated().memory_initializers {
-            let start: usize = {
-                let vmval = const_eval
-                    .eval(store, ctx, &initializer.offset)
-                    .expect("const expression should be valid");
-
-                match self.translated_module().memories[initializer.memory_index].index_type {
-                    IndexType::I32 => usize::try_from(vmval.get_u32()).unwrap(),
-                    IndexType::I64 => usize::try_from(vmval.get_u64()).unwrap(),
-                }
-            };
-
-            let memory = unsafe {
-                self.defined_or_imported_memory(initializer.memory_index)
-                    .as_mut()
-            };
-
-            let end = start.checked_add(initializer.data.len()).unwrap();
-            ensure!(end <= memory.current_length(Ordering::Relaxed));
-
-            unsafe {
-                let src = &initializer.data;
-                let dst = memory.base.as_ptr().add(start);
-                ptr::copy_nonoverlapping(src.as_ptr(), dst, src.len());
-            }
-        }
-
-        Ok(())
+        Ok(InstanceHandle { instance: Some(instance) })
     }
 
     fn alloc_layout(offsets: &VMShape) -> Layout {
@@ -443,9 +214,9 @@ impl Instance {
     pub fn module(&self) -> &Module {
         &self.module
     }
-    pub fn code(&self) -> &CodeMemory {
-        self.module.code()
-    }
+    // pub fn code(&self) -> &CodeObject {
+    //     self.module.code()
+    // }
     pub fn translated_module(&self) -> &TranslatedModule {
         self.module.translated()
     }
@@ -453,21 +224,21 @@ impl Instance {
         self.module.vmshape()
     }
 
-    // pub fn get_exported_func(&mut self, index: FuncIndex) -> ExportedFunction {
-    //     todo!()
-    // }
-    // pub fn get_exported_table(&mut self, index: TableIndex) -> ExportedTable {
-    //     todo!()
-    // }
-    // pub fn get_exported_memory(&mut self, index: MemoryIndex) -> ExportedMemory {
-    //     todo!()
-    // }
-    // pub fn get_exported_global(&mut self, index: GlobalIndex) -> ExportedGlobal {
-    //     todo!()
-    // }
-    // pub fn get_exported_tag(&mut self, index: TableIndex) -> ExportedTable {
-    //     todo!()
-    // }
+    pub fn get_exported_func(&mut self, index: FuncIndex) -> ExportedFunction {
+        todo!()
+    }
+    pub fn get_exported_table(&mut self, index: TableIndex) -> ExportedTable {
+        todo!()
+    }
+    pub fn get_exported_memory(&mut self, index: MemoryIndex) -> ExportedMemory {
+        todo!()
+    }
+    pub fn get_exported_global(&mut self, index: GlobalIndex) -> ExportedGlobal {
+        todo!()
+    }
+    pub fn get_exported_tag(&mut self, index: TagIndex) -> ExportedTag {
+        todo!()
+    }
 
     /// Get the given memory's page size, in bytes.
     pub fn memory_page_size(&self, index: MemoryIndex) -> usize {
@@ -862,6 +633,347 @@ impl Instance {
             index
         }
     }
+
+    pub unsafe fn memory_index(&mut self, table: &VMMemoryDefinition) -> DefinedMemoryIndex {
+        // Safety: ensured by caller
+        unsafe {
+            let index = DefinedMemoryIndex::new(
+                usize::try_from(
+                    (table as *const VMMemoryDefinition)
+                        .offset_from(self.memory_ptr(DefinedMemoryIndex::new(0)).as_ptr()),
+                )
+                .unwrap(),
+            );
+            assert!(index.index() < self.memories.len());
+            index
+        }
+    }
+
+    unsafe fn initialize_vmctx(
+        &mut self,
+        store: &mut StoreOpaque,
+        imports: Imports,
+        module: &Module,
+    ) {
+        let vmshape = module.vmshape();
+
+        unsafe {
+            // initialize vmctx magic
+            tracing::trace!("initializing vmctx magic");
+            self.vmctx_plus_offset_mut(vmshape.vmctx_magic())
+                .write(VMCONTEXT_MAGIC);
+
+            tracing::trace!("initializing store-related fields");
+            self.set_store(Some(NonNull::from(store)));
+
+            tracing::trace!("initializing built-in functions array ptr");
+            self.vmctx_plus_offset_mut(vmshape.vmctx_builtin_functions())
+                .write(VMBuiltinFunctionsArray::INIT);
+
+            tracing::trace!("initializing callee");
+            self.set_callee(None);
+
+            //      gc_heap_base: *mut u8,
+            //      gc_heap_bound: *mut u8,
+            //      gc_heap_data: *mut T, //! Collector-specific pointer
+
+            self.vmctx_plus_offset_mut::<VmPtr<VMSharedTypeIndex>>(vmshape.vmctx_type_ids_array())
+                .write(VmPtr::from(NonNull::from(self.module.type_ids()).cast()));
+
+            // initialize imports
+            tracing::trace!("initializing function imports");
+            debug_assert_eq!(
+                imports.functions.len(),
+                self.translated_module().num_imported_functions as usize
+            );
+            ptr::copy_nonoverlapping(
+                imports.functions.as_ptr(),
+                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_functions_begin())
+                    .as_ptr(),
+                imports.functions.len(),
+            );
+
+            tracing::trace!("initializing table imports");
+            debug_assert_eq!(
+                imports.tables.len(),
+                self.translated_module().num_imported_tables as usize
+            );
+            ptr::copy_nonoverlapping(
+                imports.tables.as_ptr(),
+                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_tables_begin())
+                    .as_ptr(),
+                imports.tables.len(),
+            );
+
+            tracing::trace!("initializing memory imports");
+            debug_assert_eq!(
+                imports.memories.len(),
+                self.translated_module().num_imported_memories as usize
+            );
+            ptr::copy_nonoverlapping(
+                imports.memories.as_ptr(),
+                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_memories_begin())
+                    .as_ptr(),
+                imports.memories.len(),
+            );
+
+            tracing::trace!("initializing global imports");
+            debug_assert_eq!(
+                imports.globals.len(),
+                self.translated_module().num_imported_globals as usize
+            );
+            ptr::copy_nonoverlapping(
+                imports.globals.as_ptr(),
+                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_globals_begin())
+                    .as_ptr(),
+                imports.globals.len(),
+            );
+
+            tracing::trace!("initializing tag imports");
+            debug_assert_eq!(
+                imports.tags.len(),
+                self.translated_module().num_imported_tags as usize
+            );
+            ptr::copy_nonoverlapping(
+                imports.tags.as_ptr(),
+                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_tags_begin())
+                    .as_ptr(),
+                imports.tags.len(),
+            );
+
+            // initialize defined tables
+            tracing::trace!("initializing defined tables");
+            for def_index in module
+                .translated()
+                .tables
+                .keys()
+                .filter_map(|index| module.translated().defined_table_index(index))
+            {
+                let def = self.tables[def_index].as_vmtable_definition();
+                self.table_ptr(def_index).write(def);
+            }
+
+            // Initialize the defined memories. This fills in both the
+            // `defined_memories` table and the `owned_memories` table at the same
+            // time. Entries in `defined_memories` hold a pointer to a definition
+            // (all memories) whereas the `owned_memories` hold the actual
+            // definitions of memories owned (not shared) in the module.
+            tracing::trace!("initializing defined memories");
+            for (def_index, desc) in
+                module
+                    .translated()
+                    .memories
+                    .iter()
+                    .filter_map(|(index, desc)| {
+                        Some((module.translated().defined_memory_index(index)?, desc))
+                    })
+            {
+                let ptr = self.vmctx_plus_offset_mut::<VmPtr<VMMemoryDefinition>>(
+                    vmshape.vmctx_vmmemory_pointer(def_index),
+                );
+
+                if desc.shared {
+                    // let def_ptr = self.memories[def_index]
+                    //     .as_shared_memory()
+                    //     .unwrap()
+                    //     .vmmemory_ptr();
+                    // ptr.write(VmPtr::from(def_ptr));
+
+                    todo!()
+                } else {
+                    let owned_index = self.translated_module().owned_memory_index(def_index);
+                    let owned_ptr = self.vmctx_plus_offset_mut::<VMMemoryDefinition>(
+                        vmshape.vmctx_vmmemory_definition(owned_index),
+                    );
+
+                    owned_ptr.write(self.memories[def_index].vmmemory_definition());
+                    ptr.write(VmPtr::from(owned_ptr));
+                }
+            }
+
+            // Zero-initialize the globals so that nothing is uninitialized memory
+            // after this function returns. The globals are actually initialized
+            // with their const expression initializers after the instance is fully
+            // allocated.
+            tracing::trace!("initializing defined globals");
+            for (index, _init) in &module.translated().global_initializers {
+                self.global_ptr(index).write(VMGlobalDefinition::new());
+            }
+
+            tracing::trace!("initializing defined tags");
+            for (def_index, tag) in
+                module.translated().tags.iter().filter_map(|(index, ty)| {
+                    Some((module.translated().defined_tag_index(index)?, ty))
+                })
+            {
+                self.tag_ptr(def_index).write(VMTagDefinition::new(
+                    tag.signature.unwrap_engine_type_index(),
+                ));
+            }
+
+            tracing::trace!("initializing func refs array");
+            self.initialize_vmfunc_refs(&imports, module);
+        }
+    }
+
+    #[tracing::instrument(skip(self))]
+    unsafe fn initialize_vmfunc_refs(&mut self, imports: &Imports, module: &Module) {
+        unsafe {
+            let vmshape = module.vmshape();
+
+            for (index, func) in module
+                .translated()
+                .functions
+                .iter()
+                .filter(|(_, f)| f.is_escaping())
+            {
+                let func_ref =
+                    if let Some(def_index) = module.translated().defined_func_index(index) {
+                        VMFuncRef {
+                            array_call: VmPtr::from(
+                                self.module().array_to_wasm_trampoline(def_index).unwrap(),
+                            ),
+                            wasm_call: Some(VmPtr::from(self.module.function(def_index))),
+                            type_index: Default::default(),
+                            vmctx: VmPtr::from(VMOpaqueContext::from_vmcontext(self.vmctx())),
+                        }
+                    } else {
+                        let import = &imports.functions[index.index()];
+                        VMFuncRef {
+                            array_call: import.array_call,
+                            wasm_call: import.wasm_call,
+                            vmctx: import.vmctx,
+                            type_index: func.signature.unwrap_engine_type_index(),
+                        }
+                    };
+
+                self.vmctx_plus_offset_mut(vmshape.vmctx_vmfunc_ref(func.func_ref))
+                    .write(func_ref);
+            }
+        }
+    }
+
+    #[tracing::instrument(skip(self, store, ctx, const_eval))]
+    unsafe fn initialize_globals(
+        &mut self,
+        store: &mut StoreOpaque,
+        ctx: &mut ConstEvalContext,
+        const_eval: &mut ConstExprEvaluator,
+        module: &Module,
+    ) -> crate::Result<()> {
+        for (def_index, init) in module.translated().global_initializers.iter() {
+            let vmval = const_eval
+                .eval(store, ctx, init)
+                .expect("const expression should be valid");
+            let index = self.translated_module().global_index(def_index);
+            let ty = self.translated_module().globals[index].content_type;
+
+            unsafe {
+                self.global_ptr(def_index)
+                    .write(VMGlobalDefinition::from_vmval(store, ty, vmval)?);
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, store, ctx, const_eval))]
+    unsafe fn initialize_tables(
+        &mut self,
+        store: &mut StoreOpaque,
+        ctx: &mut ConstEvalContext,
+        const_eval: &mut ConstExprEvaluator,
+        module: &Module,
+    ) -> crate::Result<()> {
+        // update initial values
+        for (def_index, init) in &module.translated().table_initializers.initial_values {
+            match init {
+                TableInitialValue::RefNull => {}
+                TableInitialValue::ConstExpr(expr) => {
+                    let index = self.translated_module().table_index(def_index);
+                    let (heap_top_ty, shared) = self.translated_module().tables[index]
+                        .element_type
+                        .heap_type
+                        .top();
+                    assert_eq!(shared, false);
+
+                    let vmval = const_eval
+                        .eval(store, ctx, expr)
+                        .expect("const expression should be valid");
+
+                    let table = unsafe { self.get_defined_table(def_index).as_mut() };
+
+                    match heap_top_ty {
+                        WasmHeapTopType::Func => {
+                            let funcref = NonNull::new(vmval.get_funcref().cast::<VMFuncRef>());
+                            let items = (0..table.size()).map(|_| funcref);
+                            table.init_func(0, items)?;
+                        }
+                        WasmHeapTopType::Extern | WasmHeapTopType::Any => todo!("gc proposal"),
+                        WasmHeapTopType::Exn => todo!("exception-handling proposal"),
+                        WasmHeapTopType::Cont => todo!("continuation proposal"),
+                    }
+                }
+            }
+        }
+
+        // run active elements
+        for segment in &module.translated().table_initializers.segments {
+            let start = const_eval
+                .eval(store, ctx, &segment.offset)
+                .expect("const expression should be valid");
+
+            ctx.instance.table_init_segment(
+                store,
+                const_eval,
+                segment.table_index,
+                &segment.elements,
+                start.get_u64(),
+                0,
+                segment.elements.len(),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, store, ctx, const_eval))]
+    unsafe fn initialize_memories(
+        &mut self,
+        store: &mut StoreOpaque,
+        ctx: &mut ConstEvalContext,
+        const_eval: &mut ConstExprEvaluator,
+        module: &Module,
+    ) -> crate::Result<()> {
+        for initializer in &module.translated().memory_initializers {
+            let start: usize = {
+                let vmval = const_eval
+                    .eval(store, ctx, &initializer.offset)
+                    .expect("const expression should be valid");
+
+                match self.translated_module().memories[initializer.memory_index].index_type {
+                    IndexType::I32 => usize::try_from(vmval.get_u32()).unwrap(),
+                    IndexType::I64 => usize::try_from(vmval.get_u64()).unwrap(),
+                }
+            };
+
+            let memory = unsafe {
+                self.defined_or_imported_memory(initializer.memory_index)
+                    .as_mut()
+            };
+
+            let end = start.checked_add(initializer.data.len()).unwrap();
+            ensure!(end <= memory.current_length(Ordering::Relaxed));
+
+            unsafe {
+                let src = &initializer.data;
+                let dst = memory.base.as_ptr().add(start);
+                ptr::copy_nonoverlapping(src.as_ptr(), dst, src.len());
+            }
+        }
+
+        Ok(())
+    }
 }
 
 pub unsafe fn with_instance_and_store<R>(
@@ -874,4 +986,94 @@ pub unsafe fn with_instance_and_store<R>(
             f(store, instance)
         })
     }
+}
+
+fn check_init_bounds(
+    store: &mut StoreOpaque,
+    instance: &mut Instance,
+    module: &Module,
+) -> crate::Result<()> {
+    check_table_init_bounds(store, instance, module)?;
+    check_memory_init_bounds(store, instance, &module.translated().memory_initializers)?;
+
+    Ok(())
+}
+
+fn check_table_init_bounds(
+    store: &mut StoreOpaque,
+    instance: &mut Instance,
+    module: &Module,
+) -> crate::Result<()> {
+    let mut const_evaluator = ConstExprEvaluator::default();
+
+    for segment in module.translated().table_initializers.segments.iter() {
+        let table = unsafe {
+            instance
+                .defined_or_imported_table(segment.table_index)
+                .as_ref()
+        };
+        let mut context = ConstEvalContext::new(instance);
+        let start = unsafe {
+            const_evaluator
+                .eval(store, &mut context, &segment.offset)
+                .expect("const expression should be valid")
+        };
+        let start = usize::try_from(start.get_u32()).unwrap();
+        let end = start.checked_add(usize::try_from(segment.elements.len()).unwrap());
+
+        match end {
+            Some(end) if end <= table.size() => {
+                // Initializer is in bounds
+            }
+            _ => {
+                bail!("table out of bounds: elements segment does not fit")
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn check_memory_init_bounds(
+    store: &mut StoreOpaque,
+    instance: &mut Instance,
+    initializers: &[MemoryInitializer],
+) -> crate::Result<()> {
+    for init in initializers {
+        let memory = unsafe {
+            instance
+                .defined_or_imported_memory(init.memory_index)
+                .as_ref()
+        };
+        let start = get_memory_init_start(store, init, instance)?;
+        let end = usize::try_from(start)
+            .ok()
+            .and_then(|start| start.checked_add(init.data.len()));
+
+        match end {
+            Some(end) if end <= memory.current_length(Ordering::Relaxed) => {
+                // Initializer is in bounds
+            }
+            _ => {
+                bail!("memory out of bounds: data segment does not fit")
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn get_memory_init_start(
+    store: &mut StoreOpaque,
+    init: &MemoryInitializer,
+    instance: &mut Instance,
+) -> crate::Result<u64> {
+    let mut context = ConstEvalContext::new(instance);
+    let mut const_evaluator = ConstExprEvaluator::default();
+    unsafe { const_evaluator.eval(store, &mut context, &init.offset) }.map(|v| {
+        match instance.translated_module().memories[init.memory_index].index_type {
+            IndexType::I32 => v.get_u32().into(),
+            IndexType::I64 => v.get_u64(),
+        }
+    })
 }

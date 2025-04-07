@@ -9,22 +9,19 @@ use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::module::Module;
 use crate::wasm::translate::TranslatedModule;
 use crate::wasm::vm::instance::Instance;
-use crate::wasm::vm::VMShape;
+use crate::wasm::vm::{InstanceHandle, VMShape};
 use crate::wasm::{translate, vm};
 use core::mem;
 use core::ptr::NonNull;
 use cranelift_entity::PrimaryMap;
 
-pub struct InstanceAllocation {
-    pub ptr: NonNull<Instance>,
-    pub tables: PrimaryMap<DefinedTableIndex, vm::Table>,
-    pub memories: PrimaryMap<DefinedMemoryIndex, vm::Memory>,
-}
-
 /// A type that knows how to allocate backing memory for instance resources.
 pub trait InstanceAllocator {
-    unsafe fn allocate_instance(&self, vmshape: &VMShape) -> crate::Result<NonNull<Instance>>;
-    unsafe fn deallocate_instance(&self, ptr: NonNull<Instance>);
+    unsafe fn allocate_instance_and_vmctx(
+        &self,
+        vmshape: &VMShape,
+    ) -> crate::Result<NonNull<Instance>>;
+    unsafe fn deallocate_instance_and_vmctx(&self, instance: NonNull<Instance>, vmshape: &VMShape);
 
     /// Allocate a memory for an instance.
     ///
@@ -187,23 +184,21 @@ pub trait InstanceAllocator {
         clippy::type_complexity,
         reason = "TODO clean up the return type and remove"
     )]
-    fn allocate_module(&self, module: &Module) -> crate::Result<InstanceAllocation> {
-        let mut tables =
-            PrimaryMap::with_capacity(usize::try_from(module.translated().num_defined_tables()).unwrap());
-        let mut memories =
-            PrimaryMap::with_capacity(usize::try_from(module.translated().num_defined_memories()).unwrap());
+    fn allocate_module(&self, module: Module) -> crate::Result<InstanceHandle> {
+        let mut tables = PrimaryMap::with_capacity(
+            usize::try_from(module.translated().num_defined_tables()).unwrap(),
+        );
+        let mut memories = PrimaryMap::with_capacity(
+            usize::try_from(module.translated().num_defined_memories()).unwrap(),
+        );
 
         // Safety: TODO
         match (|| unsafe {
             self.allocate_tables(module.translated(), &mut tables)?;
             self.allocate_memories(module.translated(), &mut memories)?;
-            self.allocate_instance(module.vmshape())
+            self.allocate_instance_and_vmctx(module.vmshape())
         })() {
-            Ok(ptr) => Ok(InstanceAllocation {
-                ptr,
-                tables,
-                memories,
-            }),
+            Ok(instance) => unsafe { Instance::from_parts(module, instance, tables, memories) },
             // Safety: memories and tables have just been allocated and will not be handed out
             Err(e) => unsafe {
                 self.deallocate_memories(&mut memories);
@@ -211,5 +206,11 @@ pub trait InstanceAllocator {
                 Err(e)
             },
         }
+    }
+
+    unsafe fn deallocate_module(&self, handle: &mut InstanceHandle) {
+        self.deallocate_memories(&mut handle.instance_mut().memories);
+        self.deallocate_tables(&mut handle.instance_mut().tables);
+        self.deallocate_instance_and_vmctx(handle.as_non_null(), handle.instance().vmshape());
     }
 }

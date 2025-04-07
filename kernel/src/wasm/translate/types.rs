@@ -4,7 +4,6 @@ use crate::wasm::type_registry::TypeTrace;
 use crate::wasm::utils::enum_accessors;
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
-use anyhow::bail;
 use core::fmt;
 
 /// Represents the types of values in a WebAssembly module.

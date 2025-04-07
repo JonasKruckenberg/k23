@@ -60,7 +60,10 @@ impl Table {
         todo!()
     }
 
-    fn vmtable(&self, store: &mut StoreOpaque) -> NonNull<vm::Table> {
+    pub(super) fn from_exported_table(store: &mut StoreOpaque, export: ExportedTable) -> Self {
+        todo!()
+    }
+    pub(super) fn vmtable(&self, store: &mut StoreOpaque) -> NonNull<vm::Table> {
         let ExportedTable { definition, vmctx } = store[self.0];
         unsafe {
             vm::instance::with_instance_and_store(vmctx, |store, instance| {
@@ -69,7 +72,6 @@ impl Table {
             })
         }
     }
-
     pub(super) fn as_vmtable_import(&self, store: &mut StoreOpaque) -> VMTableImport {
         todo!()
     }

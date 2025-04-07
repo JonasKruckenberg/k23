@@ -12,6 +12,9 @@ use crate::wasm::vm::{ExportedMemory, VMMemoryImport};
 pub struct Memory(Stored<ExportedMemory>);
 
 impl Memory {
+    pub(super) fn from_exported_memory(store: &mut StoreOpaque, export: ExportedMemory) -> Self {
+        todo!()
+    }
     pub(super) fn as_vmmemory_import(&self, store: &mut StoreOpaque) -> VMMemoryImport {
         todo!()
     }

@@ -5,15 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use alloc::vec::Vec;
-use core::range::Range;
-use anyhow::Context;
 use crate::mem::{AddressSpace, UserMmap, VirtualAddress};
 use crate::wasm::compile::FunctionLoc;
 use crate::wasm::Trap;
+use alloc::vec;
+use alloc::vec::Vec;
+use anyhow::Context;
+use core::range::Range;
+use core::slice;
 
 #[derive(Debug)]
-pub struct CodeMemory {
+pub struct CodeObject {
     mmap: UserMmap,
     len: usize,
     published: bool,
@@ -22,10 +24,20 @@ pub struct CodeMemory {
     traps: Vec<Trap>,
 }
 
-impl CodeMemory {
+impl CodeObject {
+    pub const fn empty() -> Self {
+        Self {
+            mmap: UserMmap::new_empty(),
+            len: 0,
+            published: false,
+            trap_offsets: vec![],
+            traps: vec![],
+        }
+    }
+
     pub fn new(mmap_vec: Vec<u8>, trap_offsets: Vec<u32>, traps: Vec<Trap>) -> Self {
         todo!()
-        
+
         // // let (mmap, size) = mmap_vec.into_parts();
         // Self {
         //     mmap,
@@ -51,6 +63,10 @@ impl CodeMemory {
             .context("Failed to mark mmap'ed region as executable")?;
 
         Ok(())
+    }
+
+    pub fn text(&self) -> &[u8] {
+        unsafe { slice::from_raw_parts(self.mmap.as_ptr(), self.len) }
     }
 
     #[inline]
