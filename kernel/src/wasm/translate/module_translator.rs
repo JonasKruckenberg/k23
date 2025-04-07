@@ -259,10 +259,10 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
 
                     let signature = TypeIndex::from_u32(index);
                     let interned_index = self.result.module.types[signature];
-                    // self.result.module.functions.push(Function {
-                    //     signature,
-                    //     func_ref: FuncRefIndex::reserved_value(),
-                    // });
+                    self.result.module.functions.push(Function {
+                        signature: CanonicalizedTypeIndex::Module(interned_index),
+                        func_ref: FuncRefIndex::reserved_value(),
+                    });
                     EntityType::Function(CanonicalizedTypeIndex::Module(interned_index))
                 }
                 TypeRef::Table(ty) => {

@@ -29,6 +29,7 @@ pub use types::{
     WasmHeapType, WasmHeapTypeInner, WasmRecGroup, WasmRefType, WasmStorageType, WasmSubType,
     WasmValType, WasmArrayType, WasmStructType
 };
+pub use module_translator::ModuleTranslator;
 
 #[derive(Debug)]
 pub struct ModuleTranslation<'data> {

@@ -316,6 +316,43 @@ impl TypeRegistry {
         })
     }
 
+    /// Create an owning handle to the given index's associated type.
+    ///
+    /// This will prevent the associated type from being unregistered as long as
+    /// the returned `RegisteredType` is kept alive.
+    ///
+    /// Returns `None` if `index` is not registered in the given engine's
+    /// registry.
+    pub fn root(&self, engine: &Engine, index: VMSharedTypeIndex) -> Option<RegisteredType> {
+        debug_assert!(!index.is_reserved_value());
+        let (entry, ty) = {
+            let id = shared_type_index_to_slab_id(index);
+            let inner = self.0.read();
+            
+            let ty = inner.types.get(id)?.clone().unwrap();
+            let entry = inner.type_to_rec_group[index].clone().unwrap();
+            // let layout = inner.type_to_gc_layout.get(index).and_then(|l| l.clone());
+
+            // NB: make sure to incref while the lock is held to prevent:
+            //
+            // * This thread: read locks registry, gets entry E, unlocks registry
+            // * Other thread: drops `RegisteredType` for entry E, decref
+            //   reaches zero, write locks registry, unregisters entry
+            // * This thread: increfs entry, but it isn't in the registry anymore
+            entry.incr_ref_count("TypeRegistry::root");
+
+            (entry, ty)
+        };
+
+        debug_assert!(entry.0.registrations.load(Acquire) != 0);
+        Some(RegisteredType {
+            engine: engine.clone(),
+            entry,
+            ty,
+            index,
+        })
+    }
+
     /// Is type `sub` a subtype of `sup`?
     #[inline]
     pub fn is_subtype(&self, sub: VMSharedTypeIndex, sup: VMSharedTypeIndex) -> bool {

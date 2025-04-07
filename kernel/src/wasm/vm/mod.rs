@@ -16,6 +16,7 @@ mod table;
 mod trap_handler;
 mod vmcontext;
 mod vmshape;
+mod mmap_vec;
 
 use alloc::vec::Vec;
 use core::ptr::NonNull;
@@ -25,11 +26,13 @@ use crate::wasm::translate::TranslatedModule;
 pub use code_object::CodeObject;
 pub use const_eval::ConstExprEvaluator;
 pub use instance::InstanceHandle;
-pub use instance_alloc::InstanceAllocator;
+pub use instance_alloc::{InstanceAllocator, PlaceholderAllocatorDontUse};
 pub use memory::Memory;
 pub use table::{Table, TableElement};
 pub use vmcontext::*;
 pub use vmshape::{StaticVMShape, VMShape};
+pub use mmap_vec::MmapVec;
+pub use provenance::VmPtr;
 
 /// The value of an export passed from one instance to another.
 #[derive(Debug, Clone)]

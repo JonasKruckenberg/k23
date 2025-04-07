@@ -130,7 +130,7 @@ pub unsafe trait WasmResults: WasmParams {
 }
 
 impl Func {
-    pub fn typed<Params, Results>(self, store: &mut StoreOpaque) -> crate::Result<TypedFunc<Params, Results>>
+    pub fn typed<Params, Results>(self, store: &StoreOpaque) -> crate::Result<TypedFunc<Params, Results>>
     where
         Params: WasmParams,
         Results: WasmResults,

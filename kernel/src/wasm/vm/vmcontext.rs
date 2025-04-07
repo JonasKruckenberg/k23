@@ -327,7 +327,7 @@ unsafe impl VmSafe for VMFunctionBody {}
 #[repr(C)]
 pub struct VMFunctionImport {
     /// Function pointer to use when calling this imported function from Wasm.
-    pub wasm_call: Option<VmPtr<VMWasmCallFunction>>,
+    pub wasm_call: VmPtr<VMWasmCallFunction>,
 
     /// Function pointer to use when calling this imported function with the
     /// "array" calling convention that `Func::new` et al use.

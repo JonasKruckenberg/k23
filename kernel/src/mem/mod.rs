@@ -13,9 +13,8 @@ pub mod flush;
 pub mod frame_alloc;
 mod provider;
 mod trap_handler;
-mod user_mmap;
+mod mmap;
 mod vmo;
-mod user_alloc;
 
 use crate::arch;
 use crate::mem::frame_alloc::FrameAllocator;
@@ -36,7 +35,7 @@ pub use address_space::{AddressSpace, AddressSpaceKind, Batch};
 pub use address_space_region::AddressSpaceRegion;
 pub use flush::Flush;
 pub use trap_handler::handle_page_fault;
-pub use user_mmap::UserMmap;
+pub use mmap::Mmap;
 pub use vmo::Vmo;
 
 pub const KIB: usize = 1024;

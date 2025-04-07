@@ -5,9 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::wasm::vm::mmap_vec::MmapVec;
 use crate::wasm::vm::{VMFuncRef, VMTableDefinition};
-use core::ptr::NonNull;
 use crate::wasm::Trap;
+use core::ptr::NonNull;
+use crate::wasm::vm::provenance::VmPtr;
 
 pub enum TableElement {
     /// A `funcref`.
@@ -29,18 +31,36 @@ pub enum TableElementType {
 }
 
 pub struct Table {
-    // /// The underlying allocation backing this memory
-    // mem: Vec<Option<NonNull<VMFuncRef>>, UserAllocator>,
+    /// The underlying allocation backing this memory
+    elements: MmapVec<Option<NonNull<TableElement>>>,
+    /// The optional maximum accessible size, in elements, for this table.
+    maximum: Option<usize>,
 }
 
 impl Table {
-    pub fn init_func(&self, start: usize, elements: impl Iterator<Item = Option<NonNull<VMFuncRef>>>) -> Result<(), Trap> {
+    pub(crate) unsafe fn from_parts(
+        elements: MmapVec<Option<NonNull<TableElement>>>,
+        maximum: Option<usize>,
+    ) -> Self {
+        Self { elements, maximum }
+    }
+
+    pub fn init_func(
+        &self,
+        start: usize,
+        elements: impl Iterator<Item = Option<NonNull<VMFuncRef>>>,
+    ) -> Result<(), Trap> {
         todo!()
     }
     pub fn size(&self) -> usize {
         todo!()
     }
-    pub fn as_vmtable_definition(&self) -> VMTableDefinition {
-        todo!()
+    pub fn as_vmtable_definition(&mut self) -> VMTableDefinition {
+        unsafe {
+            VMTableDefinition {
+                base: VmPtr::from(NonNull::new_unchecked(self.elements.as_mut_ptr().cast())),
+                current_elements: self.elements.len().into()
+            }
+        }
     }
 }

@@ -17,21 +17,21 @@ use core::num::NonZeroUsize;
 use core::range::Range;
 use core::slice;
 
-/// A userspace memory mapping.
+/// A memory mapping.
 ///
 /// This is essentially a handle to an [`AddressSpaceRegion`] with convenience methods for userspace
 /// specific needs such as copying from and to memory.
 #[derive(Debug)]
-pub struct UserMmap {
+pub struct Mmap {
     range: Range<VirtualAddress>,
 }
 
 // Safety: All mutations of the `*mut AddressSpaceRegion` are happening through a `&mut AddressSpace`
-unsafe impl Send for UserMmap {}
+unsafe impl Send for Mmap {}
 // Safety: All mutations of the `*mut AddressSpaceRegion` are happening through a `&mut AddressSpace`
-unsafe impl Sync for UserMmap {}
+unsafe impl Sync for Mmap {}
 
-impl UserMmap {
+impl Mmap {
     /// Creates a new empty `Mmap`.
     ///
     /// Note that the size of this cannot be changed after the fact, all accessors will return empty
@@ -52,10 +52,6 @@ impl UserMmap {
         align: usize,
         name: Option<String>,
     ) -> crate::Result<Self> {
-        debug_assert!(
-            matches!(aspace.kind(), AddressSpaceKind::User),
-            "cannot create UserMmap in kernel address space"
-        );
         debug_assert!(
             align >= arch::PAGE_SIZE,
             "alignment must be at least a page"
@@ -226,8 +222,7 @@ impl UserMmap {
         _branch_protection: bool,
     ) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_executable: {:?}", self.range);
-        self.protect(
-            aspace,
+        self.protect(aspace,
             Permissions::READ | Permissions::EXECUTE | Permissions::USER,
         )
     }

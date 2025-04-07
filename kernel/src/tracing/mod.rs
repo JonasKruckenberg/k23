@@ -128,7 +128,7 @@ impl Collect for Subscriber {
         let _ = write_level(&mut writer, *meta.level());
         let _ = write_cpu(&mut writer);
         let _ = write_timestamp(&mut writer);
-        let _ = writer.indent(IndentKind::NewSpan);
+        // let _ = writer.indent(IndentKind::NewSpan);
         let _ = writer.with_bold().write_str(meta.name());
         let _ = writer.with_fg_color(Color::BrightBlack).write_str(": ");
 
@@ -136,8 +136,10 @@ impl Collect for Subscriber {
         // "entering" and then "exiting"`````findent`
         // the span.
         self.output.enter();
-        attrs.record(&mut Visitor::new(writer.max_line_len, &mut writer));
+        attrs.record(&mut Visitor::new(180, &mut writer));
         self.output.exit();
+
+        let _ = writer.write_char('\n');
 
         id
     }
@@ -160,13 +162,14 @@ impl Collect for Subscriber {
         let _ = write_level(&mut writer, *meta.level());
         let _ = write_cpu(&mut writer);
         let _ = write_timestamp(&mut writer);
-        let _ = writer.indent(IndentKind::Event);
+        // let _ = writer.indent(IndentKind::Event);
         let _ = write!(
             writer.with_fg_color(Color::BrightBlack),
             "{}: ",
             meta.target()
         );
-        event.record(&mut Visitor::new(writer.max_line_len, &mut writer));
+        event.record(&mut Visitor::new(180, &mut writer));
+        let _ = writer.write_char('\n');
     }
 
     fn enter(&self, id: &Id) {
@@ -250,18 +253,18 @@ impl<W> Output<W> {
         debug_assert!(prev > 0);
     }
 
-    fn writer<'a>(&'a self, meta: &Metadata<'_>) -> Option<Writer<W::Writer>>
+    fn writer<'a>(&'a self, meta: &Metadata<'_>) -> Option<W::Writer>
     where
         W: MakeWriter<'a>,
     {
-        let writer = self.make_writer.make_writer_for(meta)?;
+        self.make_writer.make_writer_for(meta)
 
-        Some(Writer {
-            writer,
-            current_line: 0,
-            max_line_len: self.max_line_len,
-            indent: OUTPUT_INDENT.get(),
-        })
+        // Some(Writer {
+        //     writer,
+        //     current_line: 0,
+        //     max_line_len: self.max_line_len,
+        //     indent: OUTPUT_INDENT.get(),
+        // })
     }
 }
 

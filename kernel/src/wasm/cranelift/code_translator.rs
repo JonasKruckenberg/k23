@@ -3312,12 +3312,7 @@ fn bitcast_arguments<'a>(
         .filter(|(i, _)| param_predicate(*i))
         .map(|(_, param)| param.value_type);
 
-    let pairs = filtered_param_types.zip_eq(arguments).unwrap();
-
-    // let pairs = ZipEq {
-    //     a: filtered_param_types,
-    //     b: arguments.iter_mut(),
-    // };
+    let pairs = filtered_param_types.zip_eq(arguments);
 
     // The arguments which need to be bitcasted are those which have some vector type but the type
     // expected by the parameter is not the same vector type as that of the provided argument.

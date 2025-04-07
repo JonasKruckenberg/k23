@@ -15,6 +15,8 @@ use crate::wasm::vm::{ExportedFunction, VMFuncRef, VMFunctionImport, VMOpaqueCon
 use core::ffi::c_void;
 use core::ptr::NonNull;
 
+pub use typed::TypedFunc;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Func(Stored<FuncData>);
 #[derive(Debug)]
@@ -113,49 +115,8 @@ impl Func {
         actual_ty.matches(&ty)
     }
 
-    pub(crate) fn type_index(&self, store: &StoreOpaque) -> VMSharedTypeIndex {
+    pub(super) fn type_index(&self, store: &StoreOpaque) -> VMSharedTypeIndex {
         unsafe { self.vm_func_ref(store).as_ref().type_index }
-    }
-
-    pub(super) fn as_vmfunction_import(&self, store: &mut StoreOpaque) -> VMFunctionImport {
-        // unsafe {
-        let f = self.vm_func_ref(store);
-
-        todo!()
-        // unsafe {
-        //     VMFunctionImport {
-        //         wasm_call: f.as_ref().wasm_call,
-        //         array_call: {
-        //             // Assert that this is a array-call function, since those
-        //             //             // are the only ones that could be missing a `wasm_call`
-        //             //             // trampoline.
-        //             //             let _ = VMArrayCallHostFuncContext::from_opaque(f.as_ref().vmctx.as_non_null());
-        //         }
-        //         vmctx: f.as_ref().vmctx,
-        //     }
-        // }
-        //         wasm_call: if let Some(wasm_call) = f.as_ref().wasm_call {
-        //             wasm_call.into()
-        //         } else {
-        //             // Assert that this is a array-call function, since those
-        //             // are the only ones that could be missing a `wasm_call`
-        //             // trampoline.
-        //             let _ = VMArrayCallHostFuncContext::from_opaque(f.as_ref().vmctx.as_non_null());
-        //
-        //             let sig = self.type_index(store.store_data());
-        //             module.wasm_to_array_trampoline(sig).expect(
-        //                 "if the wasm is importing a function of a given type, it must have the \
-        //                  type's trampoline",
-        //             ).into()
-        //         },
-        //         array_call: f.as_ref().array_call,
-        //         vmctx: 
-        //     }
-        // }
-    }
-
-    pub(super) fn comes_from_same_store(&self, store: &StoreOpaque) -> bool {
-        store.has_function(self.0)
     }
 
     pub(super) unsafe fn from_exported_function(
@@ -166,6 +127,22 @@ impl Func {
             kind: FuncKind::StoreOwned { export },
         });
         Self(stored)
+    }
+
+    pub(super) fn as_vmfunction_import(&self, store: &mut StoreOpaque) -> VMFunctionImport {
+        let f = self.vm_func_ref(store);
+
+        unsafe {
+            VMFunctionImport {
+                wasm_call: f.as_ref().wasm_call.unwrap(),
+                array_call: f.as_ref().array_call,
+                vmctx: f.as_ref().vmctx,
+            }
+        }
+    }
+
+    pub(super) fn comes_from_same_store(&self, store: &StoreOpaque) -> bool {
+        store.has_function(self.0)
     }
 
     pub(super) unsafe fn from_vm_func_ref(

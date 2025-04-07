@@ -5,15 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::compile::CompiledFunctionInfo;
+use crate::wasm::compile::{CompileInputs, CompiledFunctionInfo};
 use crate::wasm::indices::{DefinedFuncIndex, EntityIndex, VMSharedTypeIndex};
 use crate::wasm::store::StoreOpaque;
-use crate::wasm::translate::{Import, TranslatedModule};
+use crate::wasm::translate::{Import, ModuleTranslator, TranslatedModule};
 use crate::wasm::type_registry::RuntimeTypeCollection;
 use crate::wasm::utils::u8_size_of;
-use crate::wasm::vm::{CodeObject, VMArrayCallFunction, VMShape, VMWasmCallFunction};
+use crate::wasm::vm::{CodeObject, MmapVec, VMArrayCallFunction, VMShape, VMWasmCallFunction};
 use crate::wasm::Engine;
 use alloc::sync::Arc;
+use core::mem;
 use core::ptr::NonNull;
 use cranelift_entity::PrimaryMap;
 use wasmparser::{Validator, WasmFeatures};
@@ -46,7 +47,41 @@ impl Module {
         validator: &mut Validator,
         bytes: &[u8],
     ) -> crate::Result<Self> {
-        todo!()
+        let (mut translation, types) = ModuleTranslator::new(validator).translate(bytes)?;
+
+        tracing::debug!("Gathering compile inputs...");
+        let function_body_data = mem::take(&mut translation.function_bodies);
+        let inputs = CompileInputs::from_module(&translation, &types, function_body_data);
+
+        tracing::debug!("Compiling inputs...");
+        let unlinked_outputs = inputs.compile(engine.compiler())?;
+
+        tracing::debug!("Applying static relocations...");
+        let (code, function_info, (trap_offsets, traps)) =
+            unlinked_outputs.link_and_finish(engine, &translation.module);
+
+        let type_collection = engine.type_registry().register_module_types(engine, types);
+
+        tracing::debug!("Allocating new memory map...");
+        let code = crate::mem::with_kernel_aspace(|aspace| -> crate::Result<_> {
+                let vec = MmapVec::from_slice(aspace, &code)?;
+                let mut code = CodeObject::new(vec, trap_offsets, traps);
+                code.publish(aspace)?;
+                Ok(Arc::new(code))
+            })?;
+        
+        // // register this code memory with the trap handler, so we can correctly unwind from traps
+        // code_registry::register_code(&code);
+
+        Ok(Self(Arc::new(ModuleInner {
+            engine: engine.clone(),
+            vmshape: VMShape::for_module(u8_size_of::<*mut u8>(), &translation.module),
+            translated_module: translation.module,
+            required_features: translation.required_features,
+            function_info,
+            code,
+            type_collection,
+        })))
     }
 
     /// Returns the modules name if present.
@@ -55,12 +90,12 @@ impl Module {
     }
 
     /// Returns the modules imports.
-    pub fn imports(&self) -> impl ExactSizeIterator<Item = &Import> {
+    pub fn imports(&self) -> impl ExactSizeIterator<Item=&Import> {
         self.translated().imports.iter()
     }
 
     /// Returns the modules exports.
-    pub fn exports(&self) -> impl ExactSizeIterator<Item = (&str, EntityIndex)> + '_ {
+    pub fn exports(&self) -> impl ExactSizeIterator<Item=(&str, EntityIndex)> + '_ {
         self.translated()
             .exports
             .iter()

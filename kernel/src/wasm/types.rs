@@ -1265,6 +1265,7 @@ impl fmt::Display for StructType {
 
 impl StructType {
     pub fn fields(&self) -> impl ExactSizeIterator<Item = FieldType> {
+        todo!();
         core::iter::empty()
     }
 
@@ -1275,9 +1276,11 @@ impl StructType {
         Engine::same(self.engine(), other)
     }
     pub(crate) fn from_shared_type_index(engine: &Engine, index: VMSharedTypeIndex) -> StructType {
-        todo!()
-        // let ty = RegisteredType::root(engine, index);
-        // Self::from_registered_type(ty)
+        let ty = engine.type_registry().root(engine, index).expect(
+            "VMSharedTypeIndex is not registered in the Engine! Wrong \
+             engine? Didn't root the index somewhere?",
+        );
+        Self::from_registered_type(ty)
     }
     pub(crate) fn from_registered_type(registered_type: RegisteredType) -> Self {
         debug_assert!(registered_type.is_struct());
@@ -1330,10 +1333,11 @@ impl ArrayType {
         Engine::same(self.engine(), other)
     }
     pub(crate) fn from_shared_type_index(engine: &Engine, index: VMSharedTypeIndex) -> ArrayType {
-        // let ty = RegisteredType::root(engine, index);
-        // Self::from_registered_type(ty)
-
-        todo!()
+        let ty = engine.type_registry().root(engine, index).expect(
+            "VMSharedTypeIndex is not registered in the Engine! Wrong \
+             engine? Didn't root the index somewhere?",
+        );
+        Self::from_registered_type(ty)
     }
     pub(crate) fn from_registered_type(registered_type: RegisteredType) -> Self {
         debug_assert!(registered_type.is_array());
@@ -1474,9 +1478,11 @@ impl FuncType {
         Engine::same(self.engine(), other)
     }
     pub(super) fn from_shared_type_index(engine: &Engine, index: VMSharedTypeIndex) -> FuncType {
-        // let ty = RegisteredType::root(engine, index);
-        // Self::from_registered_type(ty)
-        todo!()
+        let ty = engine.type_registry().root(engine, index).expect(
+            "VMSharedTypeIndex is not registered in the Engine! Wrong \
+             engine? Didn't root the index somewhere?",
+        );
+        Self::from_registered_type(ty)
     }
     pub(super) fn from_registered_type(registered_type: RegisteredType) -> Self {
         debug_assert!(registered_type.is_func());

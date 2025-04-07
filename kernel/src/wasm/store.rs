@@ -240,6 +240,7 @@ stored_impls! {
     (crate::wasm::vm::ExportedTable, add_table, has_table, get_table, get_table_mut, s.data.tables)
     (crate::wasm::vm::ExportedMemory, add_memory, has_memory, get_memory, get_memory_mut, s.data.memories)
     (crate::wasm::vm::ExportedGlobal, add_global, has_global, get_global, get_global_mut, s.data.globals)
+    (crate::wasm::vm::ExportedTag, add_tag, has_tag, get_tag, get_tag_mut, s.data.tags)
 }
 
 pub struct Stored<T> {

@@ -31,10 +31,12 @@ use crate::wasm::{vm, Trap};
 use alloc::string::String;
 use anyhow::{bail, ensure};
 use core::alloc::Layout;
+use core::ffi::c_void;
 use core::marker::PhantomPinned;
-use core::ptr;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU64, Ordering};
+use core::{fmt, ptr, slice};
+use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
 
 #[derive(Debug)]
@@ -104,7 +106,188 @@ impl InstanceHandle {
 
         Ok(())
     }
-    
+
+    pub fn debug_vmctx(&self) {
+        struct Dbg<'a> {
+            data: &'a Instance,
+        }
+        impl fmt::Debug for Dbg<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                // Safety: Reading from JIT-owned memory is inherently unsafe.
+                unsafe {
+                    f.debug_struct("VMContext")
+                        .field(
+                            "magic",
+                            &*self
+                                .data
+                                .vmctx_plus_offset::<u32>(StaticVMShape.vmctx_magic()),
+                        )
+                        .field(
+                            "vm_store_context",
+                            &*self
+                                .data
+                                .vmctx_plus_offset::<Option<VmPtr<VMStoreContext>>>(
+                                    StaticVMShape.vmctx_store_context(),
+                                ),
+                        )
+                        .field(
+                            "builtin_functions",
+                            &*self
+                                .data
+                                .vmctx_plus_offset::<VmPtr<VMBuiltinFunctionsArray>>(
+                                    StaticVMShape.vmctx_builtin_functions(),
+                                ),
+                        )
+                        .field(
+                            "callee",
+                            &*self
+                                .data
+                                .vmctx_plus_offset::<Option<VmPtr<VMFunctionBody>>>(
+                                    StaticVMShape.vmctx_callee(),
+                                ),
+                        )
+                        .field(
+                            "epoch_ptr",
+                            &*self.data.vmctx_plus_offset::<Option<VmPtr<AtomicU64>>>(
+                                StaticVMShape.vmctx_epoch_ptr(),
+                            ),
+                        )
+                        .field(
+                            "gc_heap_base",
+                            &*self.data.vmctx_plus_offset::<Option<VmPtr<u8>>>(
+                                StaticVMShape.vmctx_gc_heap_base(),
+                            ),
+                        )
+                        .field(
+                            "gc_heap_bound",
+                            &*self
+                                .data
+                                .vmctx_plus_offset::<usize>(StaticVMShape.vmctx_gc_heap_bound()),
+                        )
+                        .field(
+                            "gc_heap_data",
+                            &*self.data.vmctx_plus_offset::<Option<VmPtr<u8>>>(
+                                StaticVMShape.vmctx_gc_heap_data(),
+                            ),
+                        )
+                        .field(
+                            "type_ids",
+                            &*self.data.vmctx_plus_offset::<VmPtr<VMSharedTypeIndex>>(
+                                StaticVMShape.vmctx_type_ids_array(),
+                            ),
+                        )
+                        .field(
+                            "imported_memories",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VMMemoryImport>(
+                                    self.data.vmshape().vmctx_imported_memories_begin(),
+                                ),
+                                self.data.vmshape().num_imported_memories as usize,
+                            ),
+                        )
+                        .field(
+                            "memories",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VmPtr<VMMemoryDefinition>>(
+                                    self.data.vmshape().vmctx_memories_begin(),
+                                ),
+                                self.data.vmshape().num_defined_memories as usize,
+                            ),
+                        )
+                        .field(
+                            "owned_memories",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VMMemoryDefinition>(
+                                    self.data.vmshape().vmctx_owned_memories_begin(),
+                                ),
+                                self.data.vmshape().num_owned_memories as usize,
+                            ),
+                        )
+                        .field(
+                            "imported_functions",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VMFunctionImport>(
+                                    self.data.vmshape().vmctx_imported_functions_begin(),
+                                ),
+                                self.data.vmshape().num_imported_functions as usize,
+                            ),
+                        )
+                        .field(
+                            "imported_tables",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VMTableImport>(
+                                    self.data.vmshape().vmctx_imported_tables_begin(),
+                                ),
+                                self.data.vmshape().num_imported_tables as usize,
+                            ),
+                        )
+                        .field(
+                            "imported_globals",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VMGlobalImport>(
+                                    self.data.vmshape().vmctx_imported_globals_begin(),
+                                ),
+                                self.data.vmshape().num_imported_globals as usize,
+                            ),
+                        )
+                        .field(
+                            "imported_tags",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VMTagImport>(
+                                    self.data.vmshape().vmctx_imported_tags_begin(),
+                                ),
+                                self.data.vmshape().num_imported_tags as usize,
+                            ),
+                        )
+                        .field(
+                            "tables",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VMTableDefinition>(
+                                    self.data.vmshape().vmctx_tables_begin(),
+                                ),
+                                self.data.vmshape().num_defined_tables as usize,
+                            ),
+                        )
+                        .field(
+                            "globals",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VMGlobalDefinition>(
+                                    self.data.vmshape().vmctx_globals_begin(),
+                                ),
+                                self.data.vmshape().num_defined_globals as usize,
+                            ),
+                        )
+                        .field(
+                            "tags",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VMTagDefinition>(
+                                    self.data.vmshape().vmctx_tags_begin(),
+                                ),
+                                self.data.vmshape().num_defined_tags as usize,
+                            ),
+                        )
+                        .field(
+                            "func_refs",
+                            &slice::from_raw_parts(
+                                self.data.vmctx_plus_offset::<VMFuncRef>(
+                                    self.data.vmshape().vmctx_func_refs_begin(),
+                                ),
+                                self.data.vmshape().num_escaped_funcs as usize,
+                            ),
+                        )
+                        .finish()
+                }
+            }
+        }
+
+        tracing::debug!(
+            "{:#?}",
+            Dbg {
+                data: self.instance()
+            }
+        );
+    }
+
     pub fn vmctx(&self) -> NonNull<VMContext> {
         self.instance().vmctx()
     }
@@ -200,10 +383,12 @@ impl Instance {
             });
         }
 
-        Ok(InstanceHandle { instance: Some(instance) })
+        Ok(InstanceHandle {
+            instance: Some(instance),
+        })
     }
 
-    fn alloc_layout(offsets: &VMShape) -> Layout {
+    pub fn alloc_layout(offsets: &VMShape) -> Layout {
         let size = size_of::<Self>()
             .checked_add(usize::try_from(offsets.size_of_vmctx()).unwrap())
             .unwrap();
@@ -225,19 +410,60 @@ impl Instance {
     }
 
     pub fn get_exported_func(&mut self, index: FuncIndex) -> ExportedFunction {
-        todo!()
+        ExportedFunction {
+            func_ref: self.get_func_ref(index).unwrap(),
+        }
     }
     pub fn get_exported_table(&mut self, index: TableIndex) -> ExportedTable {
-        todo!()
+        let (definition, vmctx) =
+            if let Some(def_index) = self.translated_module().defined_table_index(index) {
+                (self.table_ptr(def_index), self.vmctx())
+            } else {
+                let import = self.imported_table(index);
+                (import.from.as_non_null(), import.vmctx.as_non_null())
+            };
+
+        ExportedTable { definition, vmctx }
     }
     pub fn get_exported_memory(&mut self, index: MemoryIndex) -> ExportedMemory {
-        todo!()
+        let (definition, vmctx, index) =
+            if let Some(def_index) = self.translated_module().defined_memory_index(index) {
+                (self.memory_ptr(def_index), self.vmctx(), def_index)
+            } else {
+                let import = self.imported_memory(index);
+                (
+                    import.from.as_non_null(),
+                    import.vmctx.as_non_null(),
+                    import.index,
+                )
+            };
+
+        ExportedMemory {
+            definition,
+            vmctx,
+            index,
+        }
     }
     pub fn get_exported_global(&mut self, index: GlobalIndex) -> ExportedGlobal {
-        todo!()
+        ExportedGlobal {
+            definition: if let Some(def_index) =
+                self.translated_module().defined_global_index(index)
+            {
+                self.global_ptr(def_index)
+            } else {
+                self.imported_global(index).from.as_non_null()
+            },
+            vmctx: Some(self.vmctx()),
+        }
     }
     pub fn get_exported_tag(&mut self, index: TagIndex) -> ExportedTag {
-        todo!()
+        ExportedTag {
+            definition: if let Some(def_index) = self.translated_module().defined_tag_index(index) {
+                self.tag_ptr(def_index)
+            } else {
+                self.imported_tag(index).from.as_non_null()
+            },
+        }
     }
 
     /// Get the given memory's page size, in bytes.
@@ -405,7 +631,19 @@ impl Instance {
     }
 
     pub fn get_func_ref(&mut self, index: FuncIndex) -> Option<NonNull<VMFuncRef>> {
-        todo!()
+        if index == FuncIndex::reserved_value() {
+            return None;
+        }
+
+        // Safety: we have a `&mut self`, so we have exclusive access
+        // to this Instance.
+        unsafe {
+            let func = &self.translated_module().functions[index];
+            let func_ref: *mut VMFuncRef = self
+                .vmctx_plus_offset_mut::<VMFuncRef>(self.vmshape().vmctx_vmfunc_ref(func.func_ref));
+
+            Some(NonNull::new(func_ref).unwrap())
+        }
     }
 
     pub(crate) unsafe fn set_store(&mut self, store: Option<NonNull<StoreOpaque>>) {
@@ -452,7 +690,7 @@ impl Instance {
 
     pub(crate) unsafe fn set_callee(&mut self, callee: Option<NonNull<VMFunctionBody>>) {
         let callee = callee.map(|p| VmPtr::from(p));
-        self.vmctx_plus_offset_mut(StaticVMShape.vmctx_callee())
+        self.vmctx_plus_offset_mut::<Option<VmPtr<VMFunctionBody>>>(StaticVMShape.vmctx_callee())
             .write(callee);
     }
 
@@ -495,10 +733,11 @@ impl Instance {
         }
     }
     /// Dual of `vmctx_plus_offset`, but for mutability.
-    unsafe fn vmctx_plus_offset_mut<T: VmSafe>(&mut self, offset: impl Into<u32>) -> NonNull<T> {
+    unsafe fn vmctx_plus_offset_mut<T: VmSafe>(&mut self, offset: impl Into<u32>) -> *mut T {
         // Safety: ensured by caller
         unsafe {
             self.vmctx()
+                .as_ptr()
                 .byte_add(usize::try_from(offset.into()).unwrap())
                 .cast()
         }
@@ -506,28 +745,38 @@ impl Instance {
 
     #[inline]
     pub fn vm_store_context(&mut self) -> NonNull<Option<VmPtr<VMStoreContext>>> {
-        unsafe { self.vmctx_plus_offset_mut(StaticVMShape.vmctx_store_context()) }
+        unsafe {
+            NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_store_context())).unwrap()
+        }
     }
 
     /// Return a pointer to the global epoch counter used by this instance.
     #[cfg(target_has_atomic = "64")]
     pub fn epoch_ptr(&mut self) -> NonNull<Option<VmPtr<AtomicU64>>> {
-        unsafe { self.vmctx_plus_offset_mut(StaticVMShape.vmctx_epoch_ptr()) }
+        unsafe {
+            NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_epoch_ptr())).unwrap()
+        }
     }
 
     /// Return a pointer to the GC heap base pointer.
     pub fn gc_heap_base(&mut self) -> NonNull<Option<VmPtr<u8>>> {
-        unsafe { self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_base()) }
+        unsafe {
+            NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_base())).unwrap()
+        }
     }
 
     /// Return a pointer to the GC heap bound.
     pub fn gc_heap_bound(&mut self) -> NonNull<usize> {
-        unsafe { self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_bound()) }
+        unsafe {
+            NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_bound())).unwrap()
+        }
     }
 
     /// Return a pointer to the collector-specific heap data.
     pub fn gc_heap_data(&mut self) -> NonNull<Option<VmPtr<u8>>> {
-        unsafe { self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_data()) }
+        unsafe {
+            NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_data())).unwrap()
+        }
     }
 
     /// Return the indexed `VMFunctionImport`.
@@ -552,7 +801,10 @@ impl Instance {
     }
 
     fn table_ptr(&mut self, index: DefinedTableIndex) -> NonNull<VMTableDefinition> {
-        unsafe { self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmtable_definition(index)) }
+        unsafe {
+            NonNull::new(self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmtable_definition(index)))
+                .unwrap()
+        }
     }
     fn memory_ptr(&mut self, index: DefinedMemoryIndex) -> NonNull<VMMemoryDefinition> {
         let ptr = unsafe {
@@ -561,10 +813,18 @@ impl Instance {
         ptr.as_non_null()
     }
     fn global_ptr(&mut self, index: DefinedGlobalIndex) -> NonNull<VMGlobalDefinition> {
-        unsafe { self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmglobal_definition(index)) }
+        unsafe {
+            NonNull::new(
+                self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmglobal_definition(index)),
+            )
+            .unwrap()
+        }
     }
     fn tag_ptr(&mut self, index: DefinedTagIndex) -> NonNull<VMTagDefinition> {
-        unsafe { self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmtag_definition(index)) }
+        unsafe {
+            NonNull::new(self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmtag_definition(index)))
+                .unwrap()
+        }
     }
 
     pub fn get_defined_table(&mut self, index: DefinedTableIndex) -> NonNull<Table> {
@@ -660,15 +920,19 @@ impl Instance {
         unsafe {
             // initialize vmctx magic
             tracing::trace!("initializing vmctx magic");
-            self.vmctx_plus_offset_mut(vmshape.vmctx_magic())
+            self.vmctx_plus_offset_mut::<u32>(vmshape.vmctx_magic())
                 .write(VMCONTEXT_MAGIC);
 
             tracing::trace!("initializing store-related fields");
             self.set_store(Some(NonNull::from(store)));
 
             tracing::trace!("initializing built-in functions array ptr");
-            self.vmctx_plus_offset_mut(vmshape.vmctx_builtin_functions())
-                .write(VMBuiltinFunctionsArray::INIT);
+            self.vmctx_plus_offset_mut::<VmPtr<VMBuiltinFunctionsArray>>(
+                vmshape.vmctx_builtin_functions(),
+            )
+            .write(VmPtr::from(NonNull::from(
+                &mut VMBuiltinFunctionsArray::INIT,
+            )));
 
             tracing::trace!("initializing callee");
             self.set_callee(None);
@@ -688,8 +952,9 @@ impl Instance {
             );
             ptr::copy_nonoverlapping(
                 imports.functions.as_ptr(),
-                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_functions_begin())
-                    .as_ptr(),
+                self.vmctx_plus_offset_mut::<VMFunctionImport>(
+                    vmshape.vmctx_imported_functions_begin(),
+                ),
                 imports.functions.len(),
             );
 
@@ -700,8 +965,7 @@ impl Instance {
             );
             ptr::copy_nonoverlapping(
                 imports.tables.as_ptr(),
-                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_tables_begin())
-                    .as_ptr(),
+                self.vmctx_plus_offset_mut::<VMTableImport>(vmshape.vmctx_imported_tables_begin()),
                 imports.tables.len(),
             );
 
@@ -712,8 +976,9 @@ impl Instance {
             );
             ptr::copy_nonoverlapping(
                 imports.memories.as_ptr(),
-                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_memories_begin())
-                    .as_ptr(),
+                self.vmctx_plus_offset_mut::<VMMemoryImport>(
+                    vmshape.vmctx_imported_memories_begin(),
+                ),
                 imports.memories.len(),
             );
 
@@ -724,8 +989,9 @@ impl Instance {
             );
             ptr::copy_nonoverlapping(
                 imports.globals.as_ptr(),
-                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_globals_begin())
-                    .as_ptr(),
+                self.vmctx_plus_offset_mut::<VMGlobalImport>(
+                    vmshape.vmctx_imported_globals_begin(),
+                ),
                 imports.globals.len(),
             );
 
@@ -736,8 +1002,7 @@ impl Instance {
             );
             ptr::copy_nonoverlapping(
                 imports.tags.as_ptr(),
-                self.vmctx_plus_offset_mut(vmshape.vmctx_imported_tags_begin())
-                    .as_ptr(),
+                self.vmctx_plus_offset_mut::<VMTagImport>(vmshape.vmctx_imported_tags_begin()),
                 imports.tags.len(),
             );
 
@@ -787,7 +1052,7 @@ impl Instance {
                     );
 
                     owned_ptr.write(self.memories[def_index].vmmemory_definition());
-                    ptr.write(VmPtr::from(owned_ptr));
+                    ptr.write(VmPtr::from(NonNull::new(owned_ptr).unwrap()));
                 }
             }
 
@@ -827,6 +1092,14 @@ impl Instance {
                 .iter()
                 .filter(|(_, f)| f.is_escaping())
             {
+                let type_index = unsafe {
+                    let base: *const VMSharedTypeIndex = (*self
+                        .vmctx_plus_offset_mut::<VmPtr<VMSharedTypeIndex>>(
+                            StaticVMShape.vmctx_type_ids_array(),
+                        )).as_ptr();
+                    *base.add(func.signature.unwrap_module_type_index().index())
+                };
+
                 let func_ref =
                     if let Some(def_index) = module.translated().defined_func_index(index) {
                         VMFuncRef {
@@ -834,20 +1107,20 @@ impl Instance {
                                 self.module().array_to_wasm_trampoline(def_index).unwrap(),
                             ),
                             wasm_call: Some(VmPtr::from(self.module.function(def_index))),
-                            type_index: Default::default(),
+                            type_index,
                             vmctx: VmPtr::from(VMOpaqueContext::from_vmcontext(self.vmctx())),
                         }
                     } else {
                         let import = &imports.functions[index.index()];
                         VMFuncRef {
                             array_call: import.array_call,
-                            wasm_call: import.wasm_call,
+                            wasm_call: Some(import.wasm_call),
                             vmctx: import.vmctx,
-                            type_index: func.signature.unwrap_engine_type_index(),
+                            type_index,
                         }
                     };
 
-                self.vmctx_plus_offset_mut(vmshape.vmctx_vmfunc_ref(func.func_ref))
+                self.vmctx_plus_offset_mut::<VMFuncRef>(vmshape.vmctx_vmfunc_ref(func.func_ref))
                     .write(func_ref);
             }
         }

@@ -5,12 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::mem::Mmap;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::module::Module;
 use crate::wasm::translate::TranslatedModule;
+use crate::wasm::utils::round_usize_up_to_host_pages;
 use crate::wasm::vm::instance::Instance;
+use crate::wasm::vm::mmap_vec::MmapVec;
 use crate::wasm::vm::{InstanceHandle, VMShape};
-use crate::wasm::{translate, vm};
+use crate::wasm::{translate, vm, MEMORY_MAX, TABLE_MAX};
+use anyhow::Context;
+use core::alloc::Allocator;
 use core::mem;
 use core::ptr::NonNull;
 use cranelift_entity::PrimaryMap;
@@ -213,4 +218,107 @@ pub trait InstanceAllocator {
         self.deallocate_tables(&mut handle.instance_mut().tables);
         self.deallocate_instance_and_vmctx(handle.as_non_null(), handle.instance().vmshape());
     }
+}
+
+pub struct PlaceholderAllocatorDontUse;
+impl InstanceAllocator for PlaceholderAllocatorDontUse {
+    unsafe fn allocate_instance_and_vmctx(
+        &self,
+        vmshape: &VMShape,
+    ) -> crate::Result<NonNull<Instance>> {
+        // FIXME this shouldn't allocate from the kernel heap
+        let ptr = alloc::alloc::Global.allocate(Instance::alloc_layout(vmshape))?;
+        Ok(ptr.cast())
+    }
+
+    unsafe fn deallocate_instance_and_vmctx(&self, instance: NonNull<Instance>, vmshape: &VMShape) {
+        // FIXME this shouldn't allocate from the kernel heap
+        let layout = Instance::alloc_layout(vmshape);
+        alloc::alloc::Global.deallocate(instance.cast(), layout);
+    }
+
+    unsafe fn allocate_memory(
+        &self,
+        _module: &TranslatedModule,
+        memory: &translate::Memory,
+        _memory_index: DefinedMemoryIndex,
+    ) -> crate::Result<vm::Memory> {
+        // TODO we could call out to some resource management instance here to obtain
+        //  dynamic "minimum" and "maximum" values that reflect the state of the real systems
+        //  memory consumption
+
+        // If the minimum memory size overflows the size of our own address
+        // space, then we can't satisfy this request, but defer the error to
+        // later so the `store` can be informed that an effective oom is
+        // happening.
+        let minimum = memory
+            .minimum_byte_size()
+            .ok()
+            .and_then(|m| usize::try_from(m).ok())
+            .expect("memory minimum size exceeds memory limits");
+
+        // The plan stores the maximum size in units of wasm pages, but we
+        // use units of bytes. Unlike for the `minimum` size we silently clamp
+        // the effective maximum size to the limits of what we can track. If the
+        // maximum size exceeds `usize` or `u64` then there's no need to further
+        // keep track of it as some sort of runtime limit will kick in long
+        // before we reach the statically declared maximum size.
+        let maximum = memory
+            .maximum_byte_size()
+            .ok()
+            .and_then(|m| usize::try_from(m).ok());
+
+        let offset_guard_bytes = usize::try_from(memory.offset_guard_size).unwrap();
+        // Ensure that our guard regions are multiples of the host page size.
+        let offset_guard_bytes = round_usize_up_to_host_pages(offset_guard_bytes);
+
+        let bound_bytes = round_usize_up_to_host_pages(MEMORY_MAX);
+        let allocation_bytes = bound_bytes.min(maximum.unwrap_or(usize::MAX));
+        let request_bytes = allocation_bytes + offset_guard_bytes;
+
+        let mmap = crate::mem::with_kernel_aspace(|aspace| {
+            // TODO the align arg should be a named const not a weird number like this
+            Mmap::new_zeroed(aspace, request_bytes, 2 * 1048576, None)
+                .context("Failed to mmap zeroed memory for Memory")
+        })?;
+
+        Ok(unsafe {
+            vm::Memory::from_parts(
+                mmap,
+                minimum,
+                maximum,
+                memory.page_size_log2,
+                offset_guard_bytes,
+            )
+        })
+    }
+
+    unsafe fn deallocate_memory(&self, _memory_index: DefinedMemoryIndex, _memory: vm::Memory) {}
+
+    unsafe fn allocate_table(
+        &self,
+        _module: &TranslatedModule,
+        table: &translate::Table,
+        _table_index: DefinedTableIndex,
+    ) -> crate::Result<vm::Table> {
+        // TODO we could call out to some resource management instance here to obtain
+        // dynamic "minimum" and "maximum" values that reflect the state of the real systems
+        // memory consumption
+        let maximum = table.limits.max.and_then(|m| usize::try_from(m).ok());
+        let reserve_size = TABLE_MAX.min(maximum.unwrap_or(usize::MAX));
+
+        let elements = if reserve_size == 0 {
+            MmapVec::new_empty()
+        } else {
+            crate::mem::with_kernel_aspace(|aspace| -> crate::Result<_> {
+                let mut elements = MmapVec::new_zeroed(aspace, reserve_size)?;
+                elements.extend_with(aspace, usize::try_from(table.limits.min).unwrap(), None);
+                Ok(elements)
+            })?
+        };
+
+        Ok(unsafe { vm::Table::from_parts(elements, maximum) })
+    }
+
+    unsafe fn deallocate_table(&self, _table_index: DefinedTableIndex, _table: vm::Table) {}
 }

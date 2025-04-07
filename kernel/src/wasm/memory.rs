@@ -6,16 +6,22 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::wasm::store::{StoreOpaque, Stored};
-use crate::wasm::vm::{ExportedMemory, VMMemoryImport};
+use crate::wasm::vm::{ExportedMemory, VMMemoryImport, VmPtr};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Memory(Stored<ExportedMemory>);
 
 impl Memory {
     pub(super) fn from_exported_memory(store: &mut StoreOpaque, export: ExportedMemory) -> Self {
-        todo!()
+        let stored = store.add_memory(export);
+        Self(stored)
     }
     pub(super) fn as_vmmemory_import(&self, store: &mut StoreOpaque) -> VMMemoryImport {
-        todo!()
+        let export = &store[self.0];
+        VMMemoryImport {
+            from: VmPtr::from(export.definition),
+            vmctx: VmPtr::from(export.vmctx),
+            index: export.index
+        }
     }
 }

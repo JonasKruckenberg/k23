@@ -14,6 +14,7 @@ use core::marker::PhantomData;
 use anyhow::{Context, bail, format_err};
 use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
+use crate::wasm::store::StoreOpaque;
 
 /// A dynamic linker for WebAssembly modules.
 #[derive(Debug)]
@@ -80,28 +81,28 @@ impl<T> Linker<T> {
         Ok(self)
     }
 
-    // /// Define all exports of the provided `instance` under the module name `module_name`.
-    // ///
-    // /// # Errors
-    // ///
-    // /// TODO
-    // pub fn define_instance(
-    //     &mut self,
-    //     store: &mut Store,
-    //     module_name: &str,
-    //     instance: Instance,
-    // ) -> crate::Result<&mut Self> {
-    //     let exports = instance
-    //         .exports(store)
-    //         .map(|e| (self.import_key(module_name, Some(e.name)), e.value))
-    //         .collect::<Vec<_>>(); // TODO can we somehow get rid of this?
-    //
-    //     for (key, ext) in exports {
-    //         self.insert(key, ext)?;
-    //     }
-    //
-    //     Ok(self)
-    // }
+    /// Define all exports of the provided `instance` under the module name `module_name`.
+    ///
+    /// # Errors
+    ///
+    /// TODO
+    pub fn define_instance(
+        &mut self,
+        store: &mut StoreOpaque,
+        module_name: &str,
+        instance: Instance,
+    ) -> crate::Result<&mut Self> {
+        let exports = instance
+            .exports(store)
+            .map(|e| (self.import_key(module_name, Some(e.name)), e.definition))
+            .collect::<Vec<_>>(); // TODO can we somehow get rid of this?
+        
+        for (key, ext) in exports {
+            self.insert(key, ext)?;
+        }
+    
+        Ok(self)
+    }
 
     /// Instantiate the provided `module`.
     ///

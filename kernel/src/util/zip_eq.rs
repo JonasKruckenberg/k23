@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::fmt;
-use core::fmt::Formatter;
+use core::any::type_name;
+use core::cmp;
 use fallible_iterator::FallibleIterator;
 
 pub trait IteratorExt {
@@ -32,7 +32,7 @@ where
     }
 }
 
-/// like Iterator::zip but returns an error if one iterator ends before
+/// like Iterator::zip but panics if one iterator ends before
 /// the other. The `param_predicate` is required to select exactly as many
 /// elements of `params` as there are elements in `arguments`.
 pub struct ZipEq<A, B> {
@@ -40,30 +40,41 @@ pub struct ZipEq<A, B> {
     b: B,
 }
 
-#[derive(Debug)]
-pub struct DifferentLengths;
-
-impl fmt::Display for DifferentLengths {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(f, "iterators had different lengths")
-    }
-}
-
-impl core::error::Error for DifferentLengths {}
-
-impl<A, B> FallibleIterator for ZipEq<A, B>
+impl<A, B> Iterator for ZipEq<A, B>
 where
     A: Iterator,
     B: Iterator,
 {
     type Item = (A::Item, B::Item);
-    type Error = DifferentLengths;
 
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+    fn next(&mut self) -> Option<Self::Item> {
         match (self.a.next(), self.b.next()) {
-            (Some(a), Some(b)) => Ok(Some((a, b))),
-            (None, None) => Ok(None),
-            _ => Err(DifferentLengths),
+            (Some(a), Some(b)) => Some((a, b)),
+            (None, None) => None,
+            (None, _) => panic!("iterators had different lengths. {} was shorter than {}", type_name::<A>(), type_name::<B>()),
+            (_, None) => panic!("iterators had different lengths. {} was shorter than {}", type_name::<B>(), type_name::<A>()),
         }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (a_min, a_max) = self.a.size_hint();
+        let (b_min, b_max) = self.a.size_hint();
+        (
+            cmp::min(a_min, b_min),
+            a_max
+                .and_then(|a| Some((a, b_max?)))
+                .map(|(a, b)| cmp::min(a, b)),
+        )
+    }
+}
+
+impl<A, B> ExactSizeIterator for ZipEq<A, B>
+where
+    A: ExactSizeIterator,
+    B: ExactSizeIterator,
+{
+    fn len(&self) -> usize {
+        debug_assert_eq!(self.a.len(), self.b.len());
+        self.a.len()
     }
 }

@@ -10,7 +10,7 @@ use crate::wasm::store::{StoreOpaque, Stored};
 use crate::wasm::types::TableType;
 use crate::wasm::values::Ref;
 use crate::wasm::vm;
-use crate::wasm::vm::{ExportedTable, VMTableImport};
+use crate::wasm::vm::{ExportedTable, VMTableImport, VmPtr};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Table(Stored<ExportedTable>);
@@ -53,7 +53,7 @@ impl Table {
 
     pub fn fill(&self, store: &mut StoreOpaque, dst: u64, val: Ref, len: u64) -> crate::Result<()> {
         let ty = self.ty(store);
-
+        
         // let val = val.into_table_element(store, ty.element())?;
         // let exported = &store[self.0];
 
@@ -61,7 +61,8 @@ impl Table {
     }
 
     pub(super) fn from_exported_table(store: &mut StoreOpaque, export: ExportedTable) -> Self {
-        todo!()
+        let stored = store.add_table(export);
+        Self(stored)
     }
     pub(super) fn vmtable(&self, store: &mut StoreOpaque) -> NonNull<vm::Table> {
         let ExportedTable { definition, vmctx } = store[self.0];
@@ -73,6 +74,7 @@ impl Table {
         }
     }
     pub(super) fn as_vmtable_import(&self, store: &mut StoreOpaque) -> VMTableImport {
-        todo!()
+        let export = &store[self.0];
+        VMTableImport { from: VmPtr::from(export.definition), vmctx: VmPtr::from(export.vmctx) }
     }
 }

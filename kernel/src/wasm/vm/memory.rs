@@ -5,14 +5,46 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::mem::Mmap;
+use crate::wasm::vm::provenance::VmPtr;
 use crate::wasm::vm::VMMemoryDefinition;
+use core::ptr::NonNull;
 
 pub struct Memory {
-    // /// The underlying allocation backing this memory
+    /// The underlying allocation backing this memory
+    mmap: Mmap,
     // mem: Vec<u8, UserAllocator>,
+    /// The current length of this Wasm memory, in bytes.
+    len: usize,
+    /// The optional maximum accessible size, in bytes, for this linear memory.
+    ///
+    /// This **does not** include guard pages and might be smaller than `self.accessible`
+    /// since the underlying allocation is always a multiple of the host page size.
+    maximum: Option<usize>,
+    /// The log2 of this Wasm memory's page size, in bytes.
+    page_size_log2: u8,
+    /// Size in bytes of extra guard pages after the end to
+    /// optimize loads and stores with constant offsets.
+    offset_guard_size: usize,
 }
 
 impl Memory {
+    pub(crate) unsafe fn from_parts(
+        mmap: Mmap,
+        len: usize,
+        maximum: Option<usize>,
+        page_size_log2: u8,
+        offset_guard_size: usize,
+    ) -> Self {
+        Self {
+            mmap,
+            len,
+            maximum,
+            page_size_log2,
+            offset_guard_size,
+        }
+    }
+
     // /// Implementation of `memory.atomic.notify` for all memories.
     // pub fn atomic_notify(&mut self, addr: u64, count: u32) -> Result<u32, Trap> {
     //     match self.as_shared_memory() {
@@ -23,7 +55,7 @@ impl Memory {
     //         }
     //     }
     // }
-    // 
+    //
     // /// Implementation of `memory.atomic.wait32` for all memories.
     // pub fn atomic_wait32(
     //     &mut self,
@@ -39,7 +71,7 @@ impl Memory {
     //         }
     //     }
     // }
-    // 
+    //
     // /// Implementation of `memory.atomic.wait64` for all memories.
     // pub fn atomic_wait64(
     //     &mut self,
@@ -55,8 +87,13 @@ impl Memory {
     //         }
     //     }
     // }
-    
-    pub(crate) fn vmmemory_definition(&self) -> VMMemoryDefinition {
-        todo!()
+
+    pub(crate) fn vmmemory_definition(&mut self) -> VMMemoryDefinition {
+        unsafe {
+            VMMemoryDefinition {
+                base: VmPtr::from(NonNull::new_unchecked(self.mmap.as_mut_ptr())),
+                current_length: self.len.into(),
+            }
+        }
     }
 }

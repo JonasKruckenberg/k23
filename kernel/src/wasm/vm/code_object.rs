@@ -5,8 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::mem::{AddressSpace, UserMmap, VirtualAddress};
+use crate::mem::{AddressSpace, Mmap, VirtualAddress};
 use crate::wasm::compile::FunctionLoc;
+use crate::wasm::vm::MmapVec;
 use crate::wasm::Trap;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -16,7 +17,7 @@ use core::slice;
 
 #[derive(Debug)]
 pub struct CodeObject {
-    mmap: UserMmap,
+    mmap: Mmap,
     len: usize,
     published: bool,
 
@@ -27,7 +28,7 @@ pub struct CodeObject {
 impl CodeObject {
     pub const fn empty() -> Self {
         Self {
-            mmap: UserMmap::new_empty(),
+            mmap: Mmap::new_empty(),
             len: 0,
             published: false,
             trap_offsets: vec![],
@@ -35,17 +36,15 @@ impl CodeObject {
         }
     }
 
-    pub fn new(mmap_vec: Vec<u8>, trap_offsets: Vec<u32>, traps: Vec<Trap>) -> Self {
-        todo!()
-
-        // // let (mmap, size) = mmap_vec.into_parts();
-        // Self {
-        //     mmap,
-        //     // len: mmap_vec.len(),
-        //     published: false,
-        //     trap_offsets,
-        //     traps,
-        // }
+    pub fn new(mmap_vec: MmapVec<u8>, trap_offsets: Vec<u32>, traps: Vec<Trap>) -> Self {
+        let (mmap, size) = mmap_vec.into_parts();
+        Self {
+            mmap,
+            len: size,
+            published: false,
+            trap_offsets,
+            traps,
+        }
     }
 
     pub fn publish(&mut self, aspace: &mut AddressSpace) -> crate::Result<()> {
