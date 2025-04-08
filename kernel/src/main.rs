@@ -131,6 +131,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
         // is available
         let allocatable_memories = allocatable_memory_regions(boot_info);
+        tracing::info!("allocatable memories: {:?}", allocatable_memories);
         let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
 
         // initializing the global allocator

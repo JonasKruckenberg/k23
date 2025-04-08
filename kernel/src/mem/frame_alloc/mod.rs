@@ -73,12 +73,16 @@ impl FrameAllocator {
         let mut max_alignment = arch::PAGE_SIZE;
         let mut arenas = Vec::new();
 
-        let phys_regions = boot_alloc.free_regions().chain(iter::once(fdt_region));
+        let phys_regions = boot_alloc
+            .free_regions()
+            .chain(iter::once(fdt_region))
+            .collect();
         for selection_result in select_arenas(phys_regions).iterator() {
             match selection_result {
                 Ok(selection) => {
                     tracing::trace!("selection {selection:?}");
                     let arena = Arena::from_selection(selection);
+                    tracing::trace!("max arena alignment {}", arena.max_alignment());
                     max_alignment = cmp::max(max_alignment, arena.max_alignment());
                     arenas.push(arena);
                 }

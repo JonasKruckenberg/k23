@@ -14,6 +14,7 @@ use core::ptr::NonNull;
 use core::range::Range;
 use core::{cmp, fmt, mem, slice};
 use fallible_iterator::FallibleIterator;
+use smallvec::SmallVec;
 
 const ARENA_PAGE_BOOKKEEPING_SIZE: usize = size_of::<FrameInfo>();
 const MAX_WASTED_ARENA_BYTES: usize = 0x8_4000; // 528 KiB
@@ -75,10 +76,11 @@ impl Arena {
         let mut free_lists = [const { linked_list::List::new() }; MAX_ORDER];
 
         while remaining_bytes > 0 {
-            let lowbit = addr.get() & (!addr.get() + 1);
+            let max_align = addr.get() & (!addr.get() + 1);
+            let max_size = prev_power_of_two(remaining_bytes);
 
             let size = cmp::min(
-                cmp::min(lowbit, prev_power_of_two(remaining_bytes)),
+                cmp::min(max_align, max_size),
                 arch::PAGE_SIZE << (MAX_ORDER - 1),
             );
 
@@ -210,9 +212,9 @@ impl Arena {
 
 // === Arena selection ===
 
-pub fn select_arenas<I>(free_regions: I) -> ArenaSelections<I> {
+pub fn select_arenas(free_regions: SmallVec<[Range<PhysicalAddress>; 4]>) -> ArenaSelections {
     ArenaSelections {
-        inner: free_regions,
+        free_regions,
         wasted_bytes: 0,
     }
 }
@@ -229,24 +231,21 @@ pub struct SelectionError {
     pub range: Range<PhysicalAddress>,
 }
 
-pub struct ArenaSelections<I> {
-    inner: I,
+pub struct ArenaSelections {
+    free_regions: SmallVec<[Range<PhysicalAddress>; 4]>,
     wasted_bytes: usize,
 }
 
-impl<I> FallibleIterator for ArenaSelections<I>
-where
-    I: Iterator<Item = Range<PhysicalAddress>>,
-{
+impl FallibleIterator for ArenaSelections {
     type Item = ArenaSelection;
     type Error = SelectionError;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let Some(mut arena) = self.inner.next() else {
+        let Some(mut arena) = self.free_regions.pop() else {
             return Ok(None);
         };
 
-        for region in self.inner.by_ref() {
+        while let Some(region) = self.free_regions.pop() {
             tracing::debug!(arena.end=?arena.end,region=?region, "Attempting to add free region");
 
             debug_assert!(!arena.is_overlapping(&region));
@@ -263,10 +262,11 @@ where
             let waste_from_hole = ARENA_PAGE_BOOKKEEPING_SIZE * pages_in_hole;
 
             if self.wasted_bytes + waste_from_hole > MAX_WASTED_ARENA_BYTES {
+                tracing::trace!("waste from hole exceeded limits");
+                self.free_regions.push(region);
                 break;
             } else {
                 self.wasted_bytes += waste_from_hole;
-                arena.end = region.end;
 
                 if arena.end <= region.start {
                     arena.end = region.end;
