@@ -100,7 +100,7 @@ impl<'a> FrameAllocator<'a> {
                 // memory is not available yet. So we rather waste some memory than outright crash.
                 if region_size - offset < requested_size {
                     log::warn!(
-                        "Skipped memory region {region:?} since it was fulfill request for {requested_size} bytes. Wasted {} bytes in the process...",
+                        "Skipped memory region {region:?} since it was too small to fulfill request for {requested_size} bytes. Wasted {} bytes in the process...",
                         region_size - offset
                     );
 
