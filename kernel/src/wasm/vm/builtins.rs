@@ -248,7 +248,8 @@ pub mod raw {
                 ) $(-> builtin!(@ty $result))? {
                     $crate::wasm::vm::trap_handler::catch_unwind_and_record_trap(|| {
                         unsafe {
-                            $crate::wasm::vm::instance::with_instance_and_store(vmctx, |store, instance| {
+                            $crate::wasm::vm::InstanceAndStore::from_vmctx(vmctx, |pair| {
+                                let (instance, store) = pair.unpack_mut();
                                 super::$name(store, instance, $($pname),*)
                             })
                         }

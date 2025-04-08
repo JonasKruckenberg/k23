@@ -16,7 +16,7 @@ use crate::wasm::vm::{InstanceHandle, VMShape};
 use crate::wasm::{translate, vm, MEMORY_MAX, TABLE_MAX};
 use anyhow::Context;
 use core::alloc::Allocator;
-use core::mem;
+use core::{cmp, mem};
 use core::ptr::NonNull;
 use cranelift_entity::PrimaryMap;
 
@@ -214,9 +214,11 @@ pub trait InstanceAllocator {
     }
 
     unsafe fn deallocate_module(&self, handle: &mut InstanceHandle) {
-        self.deallocate_memories(&mut handle.instance_mut().memories);
-        self.deallocate_tables(&mut handle.instance_mut().tables);
-        self.deallocate_instance_and_vmctx(handle.as_non_null(), handle.instance().vmshape());
+        unsafe{
+            self.deallocate_memories(&mut handle.instance_mut().memories);
+            self.deallocate_tables(&mut handle.instance_mut().tables);
+            self.deallocate_instance_and_vmctx(handle.as_non_null(), handle.instance().vmshape());
+        }
     }
 }
 
@@ -232,9 +234,10 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
     }
 
     unsafe fn deallocate_instance_and_vmctx(&self, instance: NonNull<Instance>, vmshape: &VMShape) {
-        // FIXME this shouldn't allocate from the kernel heap
-        let layout = Instance::alloc_layout(vmshape);
-        alloc::alloc::Global.deallocate(instance.cast(), layout);
+        unsafe { // FIXME this shouldn't allocate from the kernel heap
+            let layout = Instance::alloc_layout(vmshape);
+            alloc::alloc::Global.deallocate(instance.cast(), layout);
+        }
     }
 
     unsafe fn allocate_memory(
@@ -277,8 +280,11 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         let request_bytes = allocation_bytes + offset_guard_bytes;
 
         let mmap = crate::mem::with_kernel_aspace(|aspace| {
+            // attempt to use 2MiB alignment but if that's not available fallback to the largest
+            let align = cmp::min(2 * 1048576, aspace.frame_alloc.max_alignment());
+            
             // TODO the align arg should be a named const not a weird number like this
-            Mmap::new_zeroed(aspace, request_bytes, 2 * 1048576, None)
+            Mmap::new_zeroed(aspace, request_bytes,align, None)
                 .context("Failed to mmap zeroed memory for Memory")
         })?;
 

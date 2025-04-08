@@ -37,13 +37,11 @@ struct ModuleInner {
     vmshape: VMShape,
     code: Arc<CodeObject>,
     type_collection: RuntimeTypeCollection,
-    function_info: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
 }
 
 impl Module {
     pub fn from_bytes(
         engine: &Engine,
-        store: &mut StoreOpaque,
         validator: &mut Validator,
         bytes: &[u8],
     ) -> crate::Result<Self> {
@@ -56,20 +54,20 @@ impl Module {
         tracing::debug!("Compiling inputs...");
         let unlinked_outputs = inputs.compile(engine.compiler())?;
 
-        tracing::debug!("Applying static relocations...");
-        let (code, function_info, (trap_offsets, traps)) =
-            unlinked_outputs.link_and_finish(engine, &translation.module);
-
         let type_collection = engine.type_registry().register_module_types(engine, types);
 
-        tracing::debug!("Allocating new memory map...");
         let code = crate::mem::with_kernel_aspace(|aspace| -> crate::Result<_> {
-                let vec = MmapVec::from_slice(aspace, &code)?;
-                let mut code = CodeObject::new(vec, trap_offsets, traps);
-                code.publish(aspace)?;
-                Ok(Arc::new(code))
-            })?;
-        
+            tracing::debug!("Applying static relocations...");
+            let mut code =
+                unlinked_outputs.link_and_finish(engine, &translation.module, |code| {
+                    tracing::debug!("Allocating new memory map...");
+                    MmapVec::from_slice(aspace, &code)
+                })?;
+
+            code.publish(aspace)?;
+            Ok(Arc::new(code))
+        })?;
+
         // // register this code memory with the trap handler, so we can correctly unwind from traps
         // code_registry::register_code(&code);
 
@@ -78,7 +76,6 @@ impl Module {
             vmshape: VMShape::for_module(u8_size_of::<*mut u8>(), &translation.module),
             translated_module: translation.module,
             required_features: translation.required_features,
-            function_info,
             code,
             type_collection,
         })))
@@ -90,12 +87,12 @@ impl Module {
     }
 
     /// Returns the modules imports.
-    pub fn imports(&self) -> impl ExactSizeIterator<Item=&Import> {
+    pub fn imports(&self) -> impl ExactSizeIterator<Item = &Import> {
         self.translated().imports.iter()
     }
 
     /// Returns the modules exports.
-    pub fn exports(&self) -> impl ExactSizeIterator<Item=(&str, EntityIndex)> + '_ {
+    pub fn exports(&self) -> impl ExactSizeIterator<Item = (&str, EntityIndex)> + '_ {
         self.translated()
             .exports
             .iter()
@@ -126,20 +123,53 @@ impl Module {
     pub(crate) fn functions(
         &self,
     ) -> cranelift_entity::Iter<DefinedFuncIndex, CompiledFunctionInfo> {
-        self.0.function_info.iter()
+        self.0.code.function_info().iter()
     }
+    
     pub(super) fn array_to_wasm_trampoline(
         &self,
         index: DefinedFuncIndex,
     ) -> Option<NonNull<VMArrayCallFunction>> {
-        let loc = self.0.function_info[index].array_to_wasm_trampoline?;
+        let loc = self.0.code.function_info()[index].array_to_wasm_trampoline?;
         let ptr = NonNull::new(self.code().resolve_function_loc(loc) as *mut VMArrayCallFunction)
             .unwrap();
         Some(ptr)
     }
 
+    /// Return the address, in memory, of the trampoline that allows Wasm to
+    /// call a array function of the given signature.
+    pub(super) fn wasm_to_array_trampoline(
+        &self,
+        signature: VMSharedTypeIndex,
+    ) -> Option<NonNull<VMWasmCallFunction>> {
+        let trampoline_shared_ty = self.0.engine.type_registry().get_trampoline_type(signature);
+        let trampoline_module_ty = self
+            .0
+            .type_collection
+            .trampoline_type(trampoline_shared_ty)?;
+
+        debug_assert!(
+            self.0
+                .engine
+                .type_registry()
+                .borrow(
+                    self.0
+                        .type_collection
+                        .lookup_shared_type(trampoline_module_ty)
+                        .unwrap()
+                )
+                .unwrap()
+                .unwrap_func()
+                .is_trampoline_type()
+        );
+
+        let ptr = self.code().wasm_to_host_trampoline(trampoline_module_ty);
+
+        Some(ptr)
+    }
+
     pub(super) fn function(&self, index: DefinedFuncIndex) -> NonNull<VMWasmCallFunction> {
-        let loc = self.0.function_info[index].wasm_func_loc;
+        let loc = self.0.code.function_info()[index].wasm_func_loc;
         NonNull::new(self.code().resolve_function_loc(loc) as *mut VMWasmCallFunction).unwrap()
     }
 
@@ -156,7 +186,6 @@ impl Module {
             required_features: WasmFeatures::default(),
             code: Arc::new(CodeObject::empty()),
             type_collection: RuntimeTypeCollection::empty(engine),
-            function_info: PrimaryMap::default(),
         }))
     }
 }

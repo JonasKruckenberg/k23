@@ -19,7 +19,8 @@ impl Global {
     }
 
     pub fn ty(&self, store: &StoreOpaque) -> GlobalType {
-        todo!()
+        let export = &store[self.0];
+        GlobalType::from_wasm_global(store.engine(), &export.global)
     }
 
     pub fn get(&self, store: &StoreOpaque) -> Val {
@@ -36,6 +37,8 @@ impl Global {
     }
     pub(super) fn as_vmglobal_import(&self, store: &mut StoreOpaque) -> VMGlobalImport {
         let export = &store[self.0];
-        VMGlobalImport { from: VmPtr::from(export.definition) }
+        VMGlobalImport {
+            from: VmPtr::from(export.definition),
+        }
     }
 }

@@ -171,16 +171,19 @@ impl Val {
     /// This method is unsafe for the reasons that [`ExternRef::to_raw`] and
     /// [`Func::to_raw`] are unsafe.
     pub(super) unsafe fn to_vmval(&self, store: &mut StoreOpaque) -> crate::Result<VMVal> {
-        match self {
-            Val::I32(i) => Ok(VMVal::i32(*i)),
-            Val::I64(i) => Ok(VMVal::i64(*i)),
-            Val::F32(u) => Ok(VMVal::f32(*u)),
-            Val::F64(u) => Ok(VMVal::f64(*u)),
-            Val::V128(b) => Ok(VMVal::v128(*b)),
-            Val::FuncRef(f) => Ok(VMVal::funcref(match f {
-                None => ptr::null_mut(),
-                Some(e) => e.to_vmval(store),
-            })),
+        // Safety: ensured by caller
+        unsafe {
+            match self {
+                Val::I32(i) => Ok(VMVal::i32(*i)),
+                Val::I64(i) => Ok(VMVal::i64(*i)),
+                Val::F32(u) => Ok(VMVal::f32(*u)),
+                Val::F64(u) => Ok(VMVal::f64(*u)),
+                Val::V128(b) => Ok(VMVal::v128(*b)),
+                Val::FuncRef(f) => Ok(VMVal::funcref(match f {
+                    None => ptr::null_mut(),
+                    Some(e) => e.to_vmval(store),
+                })),
+            }
         }
     }
 
@@ -192,44 +195,46 @@ impl Val {
     /// [`Func::from_vmval`] are unsafe. Additionally there's no guarantee
     /// otherwise that `raw` should have the type `ty` specified.
     pub(super) unsafe fn from_vmval(store: &mut StoreOpaque, vmval: VMVal, ty: ValType) -> Val {
-        match ty {
-            ValType::I32 => Val::I32(vmval.get_i32()),
-            ValType::I64 => Val::I64(vmval.get_i64()),
-            ValType::F32 => Val::F32(vmval.get_f32()),
-            ValType::F64 => Val::F64(vmval.get_f64()),
-            ValType::V128 => Val::V128(vmval.get_v128().into()),
-            ValType::Ref(ref_ty) => {
-                let ref_ = match ref_ty.heap_type().inner {
-                    HeapTypeInner::Func | HeapTypeInner::ConcreteFunc(_) => {
-                        Func::from_vmval(store, vmval.get_funcref()).into()
-                    }
+        unsafe {
+            match ty {
+                ValType::I32 => Val::I32(vmval.get_i32()),
+                ValType::I64 => Val::I64(vmval.get_i64()),
+                ValType::F32 => Val::F32(vmval.get_f32()),
+                ValType::F64 => Val::F64(vmval.get_f64()),
+                ValType::V128 => Val::V128(vmval.get_v128().into()),
+                ValType::Ref(ref_ty) => {
+                    let ref_ = match ref_ty.heap_type().inner {
+                        HeapTypeInner::Func | HeapTypeInner::ConcreteFunc(_) => {
+                            Func::from_vmval(store, vmval.get_funcref()).into()
+                        }
 
-                    HeapTypeInner::NoFunc => Ref::Func(None),
+                        HeapTypeInner::NoFunc => Ref::Func(None),
 
-                    HeapTypeInner::Extern => todo!(),
+                        HeapTypeInner::Extern => todo!(),
 
-                    HeapTypeInner::NoExtern => todo!(),
+                        HeapTypeInner::NoExtern => todo!(),
 
-                    HeapTypeInner::Any
-                    | HeapTypeInner::Eq
-                    | HeapTypeInner::I31
-                    | HeapTypeInner::Array
-                    | HeapTypeInner::ConcreteArray(_)
-                    | HeapTypeInner::Struct
-                    | HeapTypeInner::ConcreteStruct(_) => {
-                        todo!()
-                    }
-                    HeapTypeInner::None => todo!(),
+                        HeapTypeInner::Any
+                        | HeapTypeInner::Eq
+                        | HeapTypeInner::I31
+                        | HeapTypeInner::Array
+                        | HeapTypeInner::ConcreteArray(_)
+                        | HeapTypeInner::Struct
+                        | HeapTypeInner::ConcreteStruct(_) => {
+                            todo!()
+                        }
+                        HeapTypeInner::None => todo!(),
 
-                    HeapTypeInner::Exn | HeapTypeInner::NoExn => todo!(),
-                    HeapTypeInner::Cont | HeapTypeInner::NoCont => todo!(),
-                };
-                assert!(
-                    ref_ty.is_nullable() || !ref_.is_null(),
-                    "if the type is not nullable, we shouldn't get null; got \
+                        HeapTypeInner::Exn | HeapTypeInner::NoExn => todo!(),
+                        HeapTypeInner::Cont | HeapTypeInner::NoCont => todo!(),
+                    };
+                    assert!(
+                        ref_ty.is_nullable() || !ref_.is_null(),
+                        "if the type is not nullable, we shouldn't get null; got \
                      type = {ref_ty}, ref = {ref_:?}"
-                );
-                ref_.into()
+                    );
+                    ref_.into()
+                }
             }
         }
     }
@@ -523,6 +528,10 @@ impl Ref {
         }
     }
 
+}
+
+#[expect(irrefutable_let_patterns, reason = "there is only one variant rn")]
+impl Ref {
     enum_accessors! {
         e
         (Func(Option<&Func>) func_ref get_func_ref unwrap_func_ref e.as_ref())

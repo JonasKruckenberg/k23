@@ -24,7 +24,6 @@ use cranelift_codegen::ir::{
 use cranelift_codegen::ir::{InstBuilder, Type, Value};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_frontend::{FunctionBuilder, Variable};
-use fallible_iterator::FallibleIterator;
 use hashbrown::{hash_map, HashMap};
 use smallvec::SmallVec;
 use wasmparser::{FuncValidator, MemArg, Operator, WasmModuleResources};

@@ -132,6 +132,7 @@ pub struct RuntimeTypeCollection {
     engine: Engine,
     rec_groups: Vec<RecGroupEntry>,
     types: PrimaryMap<ModuleInternedTypeIndex, VMSharedTypeIndex>,
+    trampolines: SecondaryMap<VMSharedTypeIndex, PackedOption<ModuleInternedTypeIndex>>,
 }
 
 impl RuntimeTypeCollection {
@@ -140,6 +141,7 @@ impl RuntimeTypeCollection {
             engine,
             rec_groups: vec![],
             types: PrimaryMap::default(),
+            trampolines: SecondaryMap::default(),
         }
     }
     
@@ -152,6 +154,13 @@ impl RuntimeTypeCollection {
     #[inline]
     pub fn lookup_shared_type(&self, index: ModuleInternedTypeIndex) -> Option<VMSharedTypeIndex> {
         self.types.get(index).copied()
+    }
+
+    #[inline]
+    pub fn trampoline_type(&self, ty: VMSharedTypeIndex) -> Option<ModuleInternedTypeIndex> {
+        let trampoline_ty = self.trampolines[ty].expand();
+        log::trace!("TypeCollection::trampoline_type({ty:?}) -> {trampoline_ty:?}");
+        trampoline_ty
     }
 }
 
@@ -287,33 +296,72 @@ impl TypeRegistry {
     pub fn register_module_types(
         &self,
         engine: &Engine,
-        types: ModuleTypes,
+        module_types: ModuleTypes,
     ) -> RuntimeTypeCollection {
-        let (rec_groups, types) = self.0.write().register_module_types(types);
+        let (rec_groups, types) = self.0.write().register_module_types(&module_types);
 
+        log::trace!("Begin building module's shared-to-module-trampoline-types map");
+        let mut trampolines = SecondaryMap::with_capacity(types.len());
+        for (module_ty, module_trampoline_ty) in module_types.trampoline_types() {
+            let shared_ty = types[module_ty];
+            let trampoline_shared_ty = self.get_trampoline_type(shared_ty);
+            trampolines[trampoline_shared_ty] = Some(module_trampoline_ty).into();
+            log::trace!("--> shared_to_module_trampolines[{trampoline_shared_ty:?}] = {module_trampoline_ty:?}");
+        }
+        log::trace!("Done building module's shared-to-module-trampoline-types map");
+        
         RuntimeTypeCollection {
             engine: engine.clone(),
             rec_groups,
             types,
+            trampolines
         }
     }
 
-    pub fn get_type(&self, engine: &Engine, index: VMSharedTypeIndex) -> Option<RegisteredType> {
+    pub fn register_type(&self, engine: &Engine, ty: WasmSubType) -> RegisteredType {
+        self.0.write().register_type(engine, ty)
+    }
+
+    // pub fn get_type(&self, engine: &Engine, index: VMSharedTypeIndex) -> Option<RegisteredType> {
+    //     let id = shared_type_index_to_slab_id(index);
+    //     let inner = self.0.read();
+    // 
+    //     let ty = inner.types.get(id)?.clone().unwrap();
+    //     let entry = inner.type_to_rec_group[index].clone().unwrap();
+    // 
+    //     entry.incr_ref_count("TypeRegistry::get_type");
+    // 
+    //     debug_assert!(entry.0.registrations.load(Acquire) != 0);
+    //     Some(RegisteredType {
+    //         engine: engine.clone(),
+    //         entry,
+    //         ty,
+    //         index,
+    //     })
+    // }
+
+    /// Get the trampoline type for the given function type index.
+    ///
+    /// Panics for non-function type indices.
+    pub fn get_trampoline_type(&self, index: VMSharedTypeIndex) -> VMSharedTypeIndex {
         let id = shared_type_index_to_slab_id(index);
         let inner = self.0.read();
 
-        let ty = inner.types.get(id)?.clone().unwrap();
-        let entry = inner.type_to_rec_group[index].clone().unwrap();
+        let ty = inner.types[id].as_ref().unwrap();
+        debug_assert!(
+            ty.is_func(),
+            "cannot get the trampoline type of a non-function type: {index:?} = {ty:?}"
+        );
 
-        entry.incr_ref_count("TypeRegistry::get_type");
-
-        debug_assert!(entry.0.registrations.load(Acquire) != 0);
-        Some(RegisteredType {
-            engine: engine.clone(),
-            entry,
-            ty,
-            index,
-        })
+        let trampoline_ty = match inner.type_to_trampoline.get(index).and_then(|x| x.expand()) {
+            Some(ty) => ty,
+            None => {
+                // The function type is its own trampoline type.
+                index
+            }
+        };
+        tracing::trace!("TypeRegistry::trampoline_type({index:?}) -> {trampoline_ty:?}");
+        trampoline_ty
     }
 
     /// Create an owning handle to the given index's associated type.
@@ -522,7 +570,7 @@ impl TypeRegistryInner {
     #[tracing::instrument(skip(self))]
     fn register_module_types(
         &mut self,
-        types: ModuleTypes,
+        types: &ModuleTypes,
     ) -> (
         Vec<RecGroupEntry>,
         PrimaryMap<ModuleInternedTypeIndex, VMSharedTypeIndex>,
@@ -557,6 +605,20 @@ impl TypeRegistryInner {
         }
 
         (entries, map)
+    }
+
+    fn register_type(&mut self, engine: &Engine, ty: WasmSubType) -> RegisteredType {
+        let entry = self.register_singleton_rec_group(ty);
+
+        let index = entry.0.shared_type_indices[0];
+        let id = shared_type_index_to_slab_id(index);
+        let ty = self.types[id].clone().unwrap();
+        RegisteredType {
+            engine: engine.clone(),
+            entry,
+            ty,
+            index,
+        }
     }
 
     fn register_rec_group(

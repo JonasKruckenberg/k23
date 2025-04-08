@@ -6,10 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::wasm::vm::mmap_vec::MmapVec;
+use crate::wasm::vm::provenance::VmPtr;
 use crate::wasm::vm::{VMFuncRef, VMTableDefinition};
 use crate::wasm::Trap;
 use core::ptr::NonNull;
-use crate::wasm::vm::provenance::VmPtr;
 
 pub enum TableElement {
     /// A `funcref`.
@@ -47,8 +47,8 @@ impl Table {
 
     pub fn init_func(
         &self,
-        start: usize,
-        elements: impl Iterator<Item = Option<NonNull<VMFuncRef>>>,
+        _start: usize,
+        _elements: impl Iterator<Item = Option<NonNull<VMFuncRef>>>,
     ) -> Result<(), Trap> {
         todo!()
     }
@@ -59,7 +59,7 @@ impl Table {
         unsafe {
             VMTableDefinition {
                 base: VmPtr::from(NonNull::new_unchecked(self.elements.as_mut_ptr().cast())),
-                current_elements: self.elements.len().into()
+                current_elements: self.elements.len().into(),
             }
         }
     }

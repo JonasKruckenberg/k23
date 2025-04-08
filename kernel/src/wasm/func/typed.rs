@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::wasm::func::do_call;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::types::{FuncType, HeapType, RefType, ValType};
 use crate::wasm::vm::VMVal;
@@ -14,12 +15,22 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ptr;
 use core::ptr::NonNull;
-use crate::wasm::func::do_call;
 
 pub struct TypedFunc<Params, Results> {
     ty: FuncType,
     func: Func,
     _m: PhantomData<fn(Params) -> Results>,
+}
+
+impl<Params, Results> TypedFunc<Params, Results> {
+    #[inline]
+    pub(super) unsafe fn new_unchecked(func: Func, ty: FuncType) -> Self {
+        Self {
+            ty,
+            func,
+            _m: PhantomData,
+        }
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -129,24 +140,6 @@ pub unsafe trait WasmResults: WasmParams {
     unsafe fn load(store: &mut StoreOpaque, abi: &Self::VMValStorage) -> Self;
 }
 
-impl Func {
-    pub fn typed<Params, Results>(self, store: &StoreOpaque) -> crate::Result<TypedFunc<Params, Results>>
-    where
-        Params: WasmParams,
-        Results: WasmResults,
-    {
-        let ty = self.ty(store);
-        Params::typecheck(store.engine(), ty.params())?;
-        Results::typecheck(store.engine(), ty.results())?;
-
-        Ok(TypedFunc {
-            ty,
-            func: self,
-            _m: PhantomData,
-        })
-    }
-}
-
 impl<Params, Results> TypedFunc<Params, Results>
 where
     Params: WasmParams,
@@ -173,14 +166,10 @@ where
     /// mid-way and did not complete after the error condition happened.
     pub async fn call(self, store: &mut StoreOpaque, params: Params) -> crate::Result<Results> {
         todo!()
-        // store
-        //     .on_fiber(|store| {
-        // #[cfg(debug_assertions)]
-        // Self::debug_typecheck(self.ty.as_wasm_func_type());
-        //
-        //     self.call_inner(store, params)
-        // })
-        // .await?
+    }
+
+    pub fn into_func(self) -> Func {
+        self.func
     }
 
     fn call_inner(&self, store: &mut StoreOpaque, params: Params) -> crate::Result<Results> {
@@ -445,14 +434,14 @@ macro_rules! impl_wasm_params {
         unsafe impl<$($t: WasmTy,)*> WasmParams for ($($t,)*) {
             type VMValStorage = [VMVal; $n];
 
-            fn typecheck(engine: &Engine, mut params: impl ExactSizeIterator<Item = ValType>) -> crate::Result<()> {
+            fn typecheck(_engine: &Engine, mut params: impl ExactSizeIterator<Item = ValType>) -> crate::Result<()> {
                 let mut _n = 0;
 
                 $(
                     match params.next() {
                         Some(t) => {
                             _n += 1;
-                            $t::typecheck(engine, t, TypeCheckPosition::Param)?
+                            $t::typecheck(_engine, t, TypeCheckPosition::Param)?
                         },
                         None => {
                             ::anyhow::bail!("expected {} types, found {}", $n as usize, params.len() + _n);
@@ -470,6 +459,7 @@ macro_rules! impl_wasm_params {
             }
 
             fn store(self, _store: &mut StoreOpaque, _func_ty: &FuncType, _dst: &mut MaybeUninit<Self::VMValStorage>) -> crate::Result<()> {
+                #[allow(unused_imports)]
                 use $crate::util::maybe_uninit::MaybeUninitExt;
 
                 let ($($t,)*) = self;

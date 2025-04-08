@@ -31,7 +31,7 @@ use spin::{Mutex, OnceLock};
 use xmas_elf::program::Type;
 
 pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-pub use address_space::{AddressSpace, AddressSpaceKind, Batch};
+pub use address_space::{AddressSpace, Batch};
 pub use address_space_region::AddressSpaceRegion;
 pub use flush::Flush;
 pub use trap_handler::handle_page_fault;

@@ -8,7 +8,7 @@
 use crate::arch;
 use crate::mem::address::AddressRangeExt;
 use crate::mem::{
-    AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions,
+    AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions,
     PhysicalAddress, VirtualAddress,
 };
 use alloc::string::String;

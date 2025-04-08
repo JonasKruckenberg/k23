@@ -14,10 +14,9 @@ mod log;
 mod registry;
 mod writer;
 
-use crate::CPUID;
 use crate::time::Instant;
-use crate::tracing::writer::{IndentKind, MakeWriter, Semihosting, Writer};
-pub use ::tracing::*;
+use crate::tracing::writer::{MakeWriter, Semihosting};
+use crate::CPUID;
 use color::{Color, SetColor};
 use core::fmt;
 use core::fmt::Write;
@@ -25,6 +24,7 @@ pub use filter::Filter;
 use registry::Registry;
 use spin::OnceLock;
 use tracing::field;
+pub use ::tracing::*;
 use tracing_core::span::{Attributes, Current, Id, Record};
 use tracing_core::{Collect, Dispatch, Event, Interest, Level, LevelFilter, Metadata};
 

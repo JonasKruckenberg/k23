@@ -6,14 +6,17 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::mem::{AddressSpace, Mmap, VirtualAddress};
-use crate::wasm::compile::FunctionLoc;
-use crate::wasm::vm::MmapVec;
+use crate::wasm::compile::{CompiledFunctionInfo, FunctionLoc};
+use crate::wasm::indices::{DefinedFuncIndex, ModuleInternedTypeIndex};
+use crate::wasm::vm::{MmapVec, VMWasmCallFunction};
 use crate::wasm::Trap;
 use alloc::vec;
 use alloc::vec::Vec;
 use anyhow::Context;
+use core::ptr::NonNull;
 use core::range::Range;
 use core::slice;
+use cranelift_entity::PrimaryMap;
 
 #[derive(Debug)]
 pub struct CodeObject {
@@ -23,20 +26,30 @@ pub struct CodeObject {
 
     trap_offsets: Vec<u32>,
     traps: Vec<Trap>,
+    wasm_to_host_trampolines: Vec<(ModuleInternedTypeIndex, FunctionLoc)>,
+    function_info: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
 }
 
 impl CodeObject {
-    pub const fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             mmap: Mmap::new_empty(),
             len: 0,
             published: false,
             trap_offsets: vec![],
             traps: vec![],
+            wasm_to_host_trampolines: vec![],
+            function_info: PrimaryMap::new(),
         }
     }
 
-    pub fn new(mmap_vec: MmapVec<u8>, trap_offsets: Vec<u32>, traps: Vec<Trap>) -> Self {
+    pub fn new(
+        mmap_vec: MmapVec<u8>,
+        trap_offsets: Vec<u32>,
+        traps: Vec<Trap>,
+        wasm_to_host_trampolines: Vec<(ModuleInternedTypeIndex, FunctionLoc)>,
+        function_info: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
+    ) -> Self {
         let (mmap, size) = mmap_vec.into_parts();
         Self {
             mmap,
@@ -44,6 +57,8 @@ impl CodeObject {
             published: false,
             trap_offsets,
             traps,
+            wasm_to_host_trampolines,
+            function_info,
         }
     }
 
@@ -107,5 +122,26 @@ impl CodeObject {
             .ok()?;
 
         Some(self.traps[index])
+    }
+
+    pub(crate) fn function_info(&self) -> &PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo> {
+        &self.function_info
+    }
+
+    pub fn wasm_to_host_trampoline(
+        &self,
+        sig: ModuleInternedTypeIndex,
+    ) -> NonNull<VMWasmCallFunction> {
+        let idx = match self
+            .wasm_to_host_trampolines
+            .binary_search_by_key(&sig, |entry| entry.0)
+        {
+            Ok(idx) => idx,
+            Err(_) => panic!("missing trampoline for {sig:?}"),
+        };
+
+        let (_, loc) = self.wasm_to_host_trampolines[idx];
+
+        NonNull::new(self.resolve_function_loc(loc) as *mut VMWasmCallFunction).unwrap()
     }
 }

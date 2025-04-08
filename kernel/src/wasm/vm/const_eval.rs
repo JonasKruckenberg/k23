@@ -51,7 +51,7 @@ impl<'a> ConstEvalContext<'a> {
         ))
     }
 
-    fn struct_fields_len(&self, store: &mut StoreOpaque, shared_ty: VMSharedTypeIndex) -> usize {
+    fn struct_fields_len(&self, _store: &mut StoreOpaque, _shared_ty: VMSharedTypeIndex) -> usize {
         // let struct_ty = StructType::from_shared_type_index(store.engine(), shared_ty);
         // let fields = struct_ty.fields();
         // fields.len()
@@ -61,9 +61,9 @@ impl<'a> ConstEvalContext<'a> {
     /// Safety: field values must be of the correct types.
     unsafe fn struct_new(
         &mut self,
-        store: &mut StoreOpaque,
-        shared_ty: VMSharedTypeIndex,
-        fields: &[VMVal],
+        _store: &mut StoreOpaque,
+        _shared_ty: VMSharedTypeIndex,
+        _fields: &[VMVal],
     ) -> crate::Result<VMVal> {
         // let struct_ty = StructType::from_shared_type_index(store.engine(), shared_ty);
         // let fields = fields
@@ -199,7 +199,7 @@ impl ConstExprEvaluator {
 
                     self.push(VMVal::i64(arg1.get_i64().wrapping_mul(arg2.get_i64())));
                 }
-                ConstOp::StructNew { struct_type_index } => {
+                ConstOp::StructNew { struct_type_index: _ } => {
                     // let interned_type_index = ctx.instance.env_module().types[*struct_type_index]
                     //     .unwrap_engine_type_index();
                     // let len = ctx.struct_fields_len(&mut store, interned_type_index);
@@ -220,14 +220,14 @@ impl ConstExprEvaluator {
 
                     todo!()
                 }
-                ConstOp::StructNewDefault { struct_type_index } => {
+                ConstOp::StructNewDefault { struct_type_index: _ } => {
                     // let ty = ctx.instance.env_module().types[*struct_type_index]
                     //     .unwrap_engine_type_index();
                     // self.stack.push(ctx.struct_new_default(&mut store, ty)?);
 
                     todo!()
                 }
-                ConstOp::ArrayNew { array_type_index } => {
+                ConstOp::ArrayNew { array_type_index: _ } => {
                     // let ty = ctx.instance.env_module().types[*array_type_index]
                     //     .unwrap_engine_type_index();
                     // let ty = ArrayType::from_shared_type_index(store.engine(), ty);
@@ -245,7 +245,7 @@ impl ConstExprEvaluator {
 
                     todo!()
                 }
-                ConstOp::ArrayNewDefault { array_type_index } => {
+                ConstOp::ArrayNewDefault { array_type_index: _ } => {
                     // let ty = ctx.instance.env_module().types[*array_type_index]
                     //     .unwrap_engine_type_index();
                     // let ty = ArrayType::from_shared_type_index(store.engine(), ty);

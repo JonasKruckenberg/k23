@@ -7,7 +7,6 @@
 
 use core::any::type_name;
 use core::cmp;
-use fallible_iterator::FallibleIterator;
 
 pub trait IteratorExt {
     fn zip_eq<U>(self, other: U) -> ZipEq<Self, <U as IntoIterator>::IntoIter>

@@ -5,12 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::ptr::NonNull;
 use crate::wasm::store::{StoreOpaque, Stored};
 use crate::wasm::types::TableType;
 use crate::wasm::values::Ref;
 use crate::wasm::vm;
-use crate::wasm::vm::{ExportedTable, VMTableImport, VmPtr};
+use crate::wasm::vm::{ExportedTable, InstanceAndStore, VMTableImport, VmPtr};
+use core::ptr::NonNull;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Table(Stored<ExportedTable>);
@@ -21,7 +21,8 @@ impl Table {
     }
 
     pub fn ty(&self, store: &StoreOpaque) -> TableType {
-        todo!()
+        let export = &store[self.0];
+        TableType::from_wasm_table(store.engine(), &export.table)
     }
 
     pub fn get(&self, store: &StoreOpaque, index: u64) -> Option<Ref> {
@@ -53,7 +54,7 @@ impl Table {
 
     pub fn fill(&self, store: &mut StoreOpaque, dst: u64, val: Ref, len: u64) -> crate::Result<()> {
         let ty = self.ty(store);
-        
+
         // let val = val.into_table_element(store, ty.element())?;
         // let exported = &store[self.0];
 
@@ -65,9 +66,10 @@ impl Table {
         Self(stored)
     }
     pub(super) fn vmtable(&self, store: &mut StoreOpaque) -> NonNull<vm::Table> {
-        let ExportedTable { definition, vmctx } = store[self.0];
+        let ExportedTable { definition, vmctx, .. } = store[self.0];
         unsafe {
-            vm::instance::with_instance_and_store(vmctx, |store, instance| {
+            InstanceAndStore::from_vmctx(vmctx, |pair| {
+                let (instance, _) = pair.unpack_mut();
                 let def_index = instance.table_index(definition.as_ref());
                 instance.get_defined_table(def_index)
             })
@@ -75,6 +77,9 @@ impl Table {
     }
     pub(super) fn as_vmtable_import(&self, store: &mut StoreOpaque) -> VMTableImport {
         let export = &store[self.0];
-        VMTableImport { from: VmPtr::from(export.definition), vmctx: VmPtr::from(export.vmctx) }
+        VMTableImport {
+            from: VmPtr::from(export.definition),
+            vmctx: VmPtr::from(export.vmctx),
+        }
     }
 }

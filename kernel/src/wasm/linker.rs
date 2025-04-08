@@ -5,16 +5,19 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::vm::{ConstExprEvaluator, Imports};
+use crate::wasm::func::{HostFunc, IntoFunc, WasmParams, WasmResults};
+use crate::wasm::indices::VMSharedTypeIndex;
+use crate::wasm::store::StoreOpaque;
 use crate::wasm::translate::EntityType;
-use crate::wasm::{Engine, Extern, Instance, Module, Store};
+use crate::wasm::types::{GlobalType, MemoryType, TableType, TagType};
+use crate::wasm::vm::{ConstExprEvaluator, Imports};
+use crate::wasm::{Engine, Extern, Func, Global, Instance, Memory, Module, Store, Table, Tag};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use anyhow::{bail, format_err, Context};
 use core::marker::PhantomData;
-use anyhow::{Context, bail, format_err};
-use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
-use crate::wasm::store::StoreOpaque;
+use hashbrown::HashMap;
 
 /// A dynamic linker for WebAssembly modules.
 #[derive(Debug)]
@@ -22,7 +25,7 @@ pub struct Linker<T> {
     engine: Engine,
     string2idx: HashMap<Arc<str>, usize>,
     strings: Vec<Arc<str>>,
-    map: HashMap<ImportKey, Extern>,
+    map: HashMap<ImportKey, Definition>,
     _m: PhantomData<T>,
 }
 
@@ -30,6 +33,20 @@ pub struct Linker<T> {
 struct ImportKey {
     name: usize,
     module: usize,
+}
+
+#[derive(Debug, Clone)]
+pub(super) enum Definition {
+    Func(Func, VMSharedTypeIndex),
+    HostFunc(Arc<HostFunc>, VMSharedTypeIndex),
+    Global(Global, GlobalType),
+    // Note that tables and memories store not only the original type
+    // information but additionally the current size of the table/memory, as
+    // this is used during linking since the min size specified in the type may
+    // no longer be the current size of the table/memory.
+    Table(Table, TableType),
+    Memory(Memory, MemoryType),
+    Tag(Tag, TagType),
 }
 
 impl<T> Linker<T> {
@@ -46,14 +63,35 @@ impl<T> Linker<T> {
         }
     }
 
+    pub fn engine(&self) -> &Engine {
+        &self.engine
+    }
+
+    pub fn define(
+        &mut self,
+        store: &mut StoreOpaque,
+        module: &str,
+        name: &str,
+        def: impl Into<Extern>,
+    ) -> crate::Result<&mut Self> {
+        let key = self.import_key(module, Some(name));
+        self.insert(key, Definition::new(store, def.into()))?;
+        Ok(self)
+    }
+
     /// Attempt to retrieve a definition from this linker.
-    pub fn get(&self, module: &str, name: &str) -> Option<&Extern> {
+    pub fn get(&self, store: &mut StoreOpaque, module: &str, name: &str) -> Option<Extern> {
+        Some(unsafe { self._get(module, name)?.to_extern(store) })
+    }
+
+    fn _get(&self, module: &str, name: &str) -> Option<&Definition> {
         let key = ImportKey {
             module: *self.string2idx.get(module)?,
             name: *self.string2idx.get(name)?,
         };
         self.map.get(&key)
     }
+
 
     /// Alias all exports of `module` under the name `as_module`.
     ///
@@ -96,11 +134,11 @@ impl<T> Linker<T> {
             .exports(store)
             .map(|e| (self.import_key(module_name, Some(e.name)), e.definition))
             .collect::<Vec<_>>(); // TODO can we somehow get rid of this?
-        
+
         for (key, ext) in exports {
-            self.insert(key, ext)?;
+            self.insert(key, Definition::new(store, ext))?;
         }
-    
+
         Ok(self)
     }
 
@@ -125,8 +163,9 @@ impl<T> Linker<T> {
         module: &Module,
     ) -> crate::Result<Instance> {
         let mut imports = Imports::with_capacity_for(module.translated());
+
         for import in module.imports() {
-            let def = self.get(&import.module, &import.name).with_context(|| {
+            let def = self._get(&import.module, &import.name).with_context(|| {
                 let type_ = match import.ty {
                     EntityType::Function(_) => "function",
                     EntityType::Table(_) => "table",
@@ -139,19 +178,23 @@ impl<T> Linker<T> {
             })?;
 
             match (def, &import.ty) {
-                (Extern::Func(func), EntityType::Function(_ty)) => {
-                    imports.functions.push(func.as_vmfunction_import(store));
+                (Definition::Func(func, _actual), EntityType::Function(_expected)) => {
+                    imports.functions.push(func.as_vmfunction_import(store, module));
                 }
-                (Extern::Table(table), EntityType::Table(_ty)) => {
+                (Definition::HostFunc(func, _actual), EntityType::Function(_expected)) => {
+                    let func = func.clone().to_func(store);
+                    imports.functions.push(func.as_vmfunction_import(store, module));
+                }
+                (Definition::Table(table, _actual), EntityType::Table(_expected)) => {
                     imports.tables.push(table.as_vmtable_import(store));
                 }
-                (Extern::Memory(memory), EntityType::Memory(_ty)) => {
+                (Definition::Memory(memory, _actual), EntityType::Memory(_expected)) => {
                     imports.memories.push(memory.as_vmmemory_import(store));
                 }
-                (Extern::Global(global), EntityType::Global(_ty)) => {
+                (Definition::Global(global, _actual), EntityType::Global(_expected)) => {
                     imports.globals.push(global.as_vmglobal_import(store));
                 }
-                (Extern::Tag(tag), EntityType::Tag(_ty)) => {
+                (Definition::Tag(tag, _actual), EntityType::Tag(_expected)) => {
                     imports.tags.push(tag.as_vmtag_import(store));
                 }
                 _ => panic!("mismatched import type"),
@@ -162,7 +205,25 @@ impl<T> Linker<T> {
         unsafe { Instance::new_unchecked(store, const_eval, module.clone(), imports) }
     }
 
-    fn insert(&mut self, key: ImportKey, item: Extern) -> crate::Result<()> {
+    pub fn func_wrap<Params, Results>(
+        &mut self,
+        module: &str,
+        name: &str,
+        func: impl IntoFunc<T, Params, Results>,
+    ) -> crate::Result<&mut Self>
+    where
+        Params: WasmParams,
+        Results: WasmResults,
+    {
+        let (func, ty) = HostFunc::wrap(self.engine(), func);
+
+        let key = self.import_key(module, Some(name));
+        self.insert(key, Definition::HostFunc(Arc::new(func), ty.type_index()))?;
+
+        Ok(self)
+    }
+
+    fn insert(&mut self, key: ImportKey, item: Definition) -> crate::Result<()> {
         match self.map.entry(key) {
             Entry::Occupied(_) => {
                 bail!(
@@ -196,4 +257,29 @@ impl<T> Linker<T> {
         self.string2idx.insert(string, idx);
         idx
     }
+}
+
+impl Definition {
+    fn new(store: &StoreOpaque, item: Extern) -> Definition {
+        match item {
+            Extern::Func(f) => Definition::Func(f, f.type_index(store)),
+            Extern::Table(t) => Definition::Table(t, t.ty(store)),
+            Extern::Memory(m) => Definition::Memory(m, m.ty(store)),
+            Extern::Global(g) => Definition::Global(g, g.ty(store)),
+            Extern::Tag(t) => Definition::Tag(t, t.ty(store)),
+        }
+    }
+
+    unsafe fn to_extern(&self, store: &mut StoreOpaque) -> Extern {
+        match self {
+            Definition::Func(f, _) => Extern::Func(*f),
+            Definition::HostFunc(f, _) => Extern::Func(f.clone().to_func(store)),
+            Definition::Global(g, _) => Extern::Global(*g),
+            Definition::Table(t, _) => Extern::Table(*t),
+            Definition::Memory(m, _) => Extern::Memory(*m),
+            Definition::Tag(t, _) => Extern::Tag(*t),
+        }
+    }
+    
+    
 }

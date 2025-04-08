@@ -22,14 +22,14 @@ use wasmparser::collections::IndexMap;
 use wasmparser::WasmFeatures;
 
 pub use const_expr::{ConstExpr, ConstOp};
+pub use module_translator::ModuleTranslator;
 pub use module_types::ModuleTypes;
 pub use type_convert::WasmparserTypeConverter;
 pub use types::{
     EntityType, WasmCompositeType, WasmCompositeTypeInner, WasmFuncType, WasmHeapTopType,
     WasmHeapType, WasmHeapTypeInner, WasmRecGroup, WasmRefType, WasmStorageType, WasmSubType,
-    WasmValType, WasmArrayType, WasmStructType
+    WasmValType, WasmFieldType
 };
-pub use module_translator::ModuleTranslator;
 
 #[derive(Debug)]
 pub struct ModuleTranslation<'data> {

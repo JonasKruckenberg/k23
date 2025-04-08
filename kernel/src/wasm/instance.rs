@@ -14,7 +14,6 @@ use crate::wasm::vm::{ConstExprEvaluator, Imports, InstanceHandle};
 use crate::wasm::{Extern, Func, Global, Memory, Table};
 use alloc::vec;
 use alloc::vec::Vec;
-use fallible_iterator::FallibleIterator;
 
 /// An instantiated WebAssembly module.
 ///
@@ -61,7 +60,7 @@ impl Instance {
     ) -> crate::Result<Self> {
         let module_id = store.modules_mut().register_module(&module);
 
-        let mut handle = store.alloc().allocate_module(module.clone())?;
+        let mut handle = store.alloc_mut().allocate_module(module.clone())?;
 
         let is_bulk_memory = module.required_features().bulk_memory();
 
@@ -89,7 +88,6 @@ impl Instance {
         let exports = &store[self.0].exports;
 
         if exports.iter().any(Option::is_none) {
-            tracing::debug!("populating exports");
             let module = store[self.0].handle.module().clone();
 
             for name in module.translated().exports.keys() {

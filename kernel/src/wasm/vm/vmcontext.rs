@@ -10,6 +10,8 @@ use crate::wasm::indices::{DefinedMemoryIndex, VMSharedTypeIndex};
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::translate::{WasmHeapTopType, WasmValType};
 use crate::wasm::vm::provenance::{VmPtr, VmSafe};
+use alloc::boxed::Box;
+use core::any::Any;
 use core::cell::UnsafeCell;
 use core::ffi::c_void;
 use core::marker::PhantomPinned;
@@ -19,8 +21,19 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
 use cranelift_entity::Unsigned;
 use static_assertions::const_assert_eq;
+use crate::wasm::type_registry::RegisteredType;
+use crate::wasm::types::FuncType;
 
+/// Magic value for core Wasm VM contexts.
+///
+/// This is stored at the start of all `VMContext` structures.
 pub const VMCONTEXT_MAGIC: u32 = u32::from_le_bytes(*b"core");
+
+/// Equivalent of `VMCONTEXT_MAGIC` except for array-call host functions.
+///
+/// This is stored at the start of all `VMArrayCallHostFuncContext` structures
+/// and double-checked on `VMArrayCallHostFuncContext::from_opaque`.
+pub const VM_ARRAY_CALL_HOST_FUNC_MAGIC: u32 = u32::from_le_bytes(*b"ACHF");
 
 /// A "raw" and unsafe representation of a WebAssembly value.
 ///
@@ -440,7 +453,6 @@ impl VMMemoryDefinition {
     }
 }
 
-
 /// The storage for a WebAssembly global defined within the instance.
 ///
 /// TODO: Pack the globals more densely, rather than using the same size
@@ -652,7 +664,9 @@ impl VMGlobalDefinition {
     // are stored in native-endian format.
     pub unsafe fn set_u128(&mut self, val: u128) {
         // Safety: ensured by caller
-        unsafe { *self.storage.as_mut().as_mut_ptr().cast::<u128>() = val.to_le(); }
+        unsafe {
+            *self.storage.as_mut().as_mut_ptr().cast::<u128>() = val.to_le();
+        }
     }
 
     /// Return a reference to the value as u128 bits.
@@ -1005,11 +1019,78 @@ impl VMOpaqueContext {
         ptr.cast()
     }
 
-    // /// Helper function to clearly indicate that casts are desired.
-    // #[inline]
-    // pub fn from_vm_array_call_host_func_context(
-    //     ptr: NonNull<VMArrayCallHostFuncContext>,
-    // ) -> NonNull<VMOpaqueContext> {
-    //     ptr.cast()
-    // }
+    /// Helper function to clearly indicate that casts are desired.
+    #[inline]
+    pub fn from_vm_array_call_host_func_context(
+        ptr: NonNull<VMArrayCallHostFuncContext>,
+    ) -> NonNull<VMOpaqueContext> {
+        ptr.cast()
+    }
+}
+
+/// The `VM*Context` for array-call host functions.
+///
+/// Its `magic` field must always be
+/// `VM_ARRAY_CALL_HOST_FUNC_MAGIC`, and this is how you can
+/// determine whether a `VM*Context` is a `VMArrayCallHostFuncContext` versus a
+/// different kind of context.
+#[repr(C)]
+#[derive(Debug)]
+pub struct VMArrayCallHostFuncContext {
+    magic: u32,
+    // _padding: u32, // (on 64-bit systems)
+    pub(crate) func_ref: VMFuncRef,
+    func: Box<dyn Any + Send + Sync>,
+    ty: RegisteredType,
+}
+
+impl VMArrayCallHostFuncContext {
+    /// Create the context for the given host function.
+    ///
+    /// # Safety
+    ///
+    /// The `host_func` must be a pointer to a host (not Wasm) function and it
+    /// must be `Send` and `Sync`.
+    pub unsafe fn new(
+        host_func: VMArrayCallFunction,
+        func_ty: FuncType,
+        func: Box<dyn Any + Send + Sync>,
+    ) -> Box<VMArrayCallHostFuncContext> {
+        let mut ctx = Box::new(VMArrayCallHostFuncContext {
+            magic: VM_ARRAY_CALL_HOST_FUNC_MAGIC,
+            func_ref: VMFuncRef {
+                array_call: NonNull::new(host_func as *mut u8).unwrap().cast().into(),
+                type_index: func_ty.type_index(),
+                wasm_call: None,
+                vmctx: NonNull::dangling().into(),
+            },
+            func,
+            ty: func_ty.into_registered_type()
+        });
+        
+        let vmctx =
+            VMOpaqueContext::from_vm_array_call_host_func_context(NonNull::from(ctx.as_mut()));
+
+        ctx.as_mut().func_ref.vmctx = VmPtr::from(vmctx);
+
+        ctx
+    }
+    
+    /// Helper function to cast between context types using a debug assertion to
+    /// protect against some mistakes.
+    #[inline]
+    pub unsafe fn from_opaque(
+        opaque: NonNull<VMOpaqueContext>,
+    ) -> NonNull<VMArrayCallHostFuncContext> {
+        unsafe { // See comments in `VMContext::from_opaque` for this debug assert
+            debug_assert_eq!(opaque.as_ref().magic, VM_ARRAY_CALL_HOST_FUNC_MAGIC);
+            opaque.cast()
+        }
+    }
+
+    /// Get the host state for this host function context.
+    #[inline]
+    pub fn func(&self) -> &(dyn Any + Send + Sync) {
+        &*self.func
+    }
 }

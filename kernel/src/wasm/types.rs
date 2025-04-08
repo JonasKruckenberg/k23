@@ -6,12 +6,19 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::wasm::indices::{CanonicalizedTypeIndex, VMSharedTypeIndex};
-use crate::wasm::translate::{EntityType, Memory, ModuleTypes, Table, WasmArrayType, WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmRefType, WasmStructType, WasmValType};
+use crate::wasm::translate::{
+    EntityType, Global, Memory, ModuleTypes, Table, Tag, WasmCompositeType, WasmCompositeTypeInner,
+    WasmFieldType, WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmRefType, WasmStorageType,
+    WasmSubType, WasmValType,
+};
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::Engine;
-use anyhow::bail;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use anyhow::{bail, ensure};
 use core::fmt;
 use core::fmt::Display;
+use core::fmt::Write;
 
 /// Indicator of whether a global value, struct's field, or array type's
 /// elements are mutable or not.
@@ -1067,6 +1074,29 @@ impl HeapType {
         }
     }
 
+    pub(crate) fn as_registered_type(&self) -> Option<&RegisteredType> {
+        match &self.inner {
+            HeapTypeInner::ConcreteFunc(f) => Some(&f.registered_type),
+            HeapTypeInner::ConcreteArray(a) => Some(&a.registered_type),
+            HeapTypeInner::ConcreteStruct(a) => Some(&a.registered_type),
+
+            HeapTypeInner::Extern
+            | HeapTypeInner::NoExtern
+            | HeapTypeInner::Func
+            | HeapTypeInner::NoFunc
+            | HeapTypeInner::Any
+            | HeapTypeInner::Eq
+            | HeapTypeInner::I31
+            | HeapTypeInner::Array
+            | HeapTypeInner::Struct
+            | HeapTypeInner::None
+            | HeapTypeInner::Exn
+            | HeapTypeInner::NoExn
+            | HeapTypeInner::Cont
+            | HeapTypeInner::NoCont => None,
+        }
+    }
+
     pub(crate) fn to_wasm_type(&self) -> WasmHeapType {
         let inner = match &self.inner {
             HeapTypeInner::Extern => WasmHeapTypeInner::Extern,
@@ -1188,6 +1218,16 @@ impl fmt::Display for StorageType {
     }
 }
 
+impl StorageType {
+    pub(super) fn from_wasm_type(engine: &Engine, ty: &WasmStorageType) -> Self {
+        match ty {
+            WasmStorageType::I8 => Self::I8,
+            WasmStorageType::I16 => Self::I16,
+            WasmStorageType::Val(ty) => Self::ValType(ValType::from_wasm_type(engine, ty)),
+        }
+    }
+}
+
 /// The type of a `struct` field or an `array`'s elements.
 ///
 /// This is a pair of both the field's storage type and its mutability
@@ -1228,6 +1268,17 @@ impl FieldType {
     pub fn element_type(&self) -> &StorageType {
         &self.element_type
     }
+
+    pub(super) fn from_wasm_type(engine: &Engine, ty: &WasmFieldType) -> Self {
+        Self {
+            mutability: if ty.mutable {
+                Mutability::Var
+            } else {
+                Mutability::Const
+            },
+            element_type: StorageType::from_wasm_type(engine, &ty.element_type),
+        }
+    }
 }
 
 /// The type of a WebAssembly struct.
@@ -1265,8 +1316,13 @@ impl fmt::Display for StructType {
 
 impl StructType {
     pub fn fields(&self) -> impl ExactSizeIterator<Item = FieldType> {
-        todo!();
-        core::iter::empty()
+        let engine = self.engine();
+
+        self.registered_type
+            .unwrap_struct()
+            .fields
+            .iter()
+            .map(|wasm_ty| FieldType::from_wasm_type(engine, wasm_ty))
     }
 
     pub(super) fn engine(&self) -> &Engine {
@@ -1384,8 +1440,140 @@ impl Display for FuncType {
 }
 
 impl FuncType {
+    /// Creates a new function type from the given parameters and results.
+    ///
+    /// The function type returned will represent a function which takes
+    /// `params` as arguments and returns `results` when it is finished.
+    ///
+    /// The resulting function type will be final and without a supertype.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any parameter or value type is not associated with the given
+    /// engine.
+    pub fn new(
+        engine: &Engine,
+        params: impl IntoIterator<Item = ValType>,
+        results: impl IntoIterator<Item = ValType>,
+    ) -> Self {
+        Self::with_finality_and_supertype(engine, Finality::Final, None, params, results)
+            .expect("cannot fail without a supertype")
+    }
+
+    /// Create a new function type with the given finality, supertype, parameter
+    /// types, and result types.
+    ///
+    /// Returns an error if the supertype is final, or if this function type
+    /// does not match the supertype.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any parameter or value type is not associated with the given
+    /// engine.
+    pub fn with_finality_and_supertype(
+        engine: &Engine,
+        finality: Finality,
+        supertype: Option<&Self>,
+        params: impl IntoIterator<Item = ValType>,
+        results: impl IntoIterator<Item = ValType>,
+    ) -> crate::Result<Self> {
+        let params = params.into_iter();
+        let results = results.into_iter();
+
+        let mut wasm_params = Vec::with_capacity({
+            let size_hint = params.size_hint();
+            let cap = size_hint.1.unwrap_or(size_hint.0);
+            // Only reserve space if we have a supertype, as that is the only time
+            // that this vec is used.
+            supertype.is_some() as usize * cap
+        });
+
+        let mut wasm_results = Vec::with_capacity({
+            let size_hint = results.size_hint();
+            let cap = size_hint.1.unwrap_or(size_hint.0);
+            // Same as above.
+            supertype.is_some() as usize * cap
+        });
+
+        // Keep any of our parameters' and results' `RegisteredType`s alive
+        // across `Self::from_wasm_func_type`. If one of our given `ValType`s is
+        // the only thing keeping a type in the registry, we don't want to
+        // unregister it when we convert the `ValType` into a `WasmValType` just
+        // before we register our new `WasmFuncType` that will reference it.
+        let mut registrations = smallvec::SmallVec::<[_; 4]>::new();
+
+        let mut to_wasm_type = |ty: ValType, vec: &mut Vec<_>| {
+            assert!(ty.comes_from_same_engine(engine));
+
+            if supertype.is_some() {
+                vec.push(ty.clone());
+            }
+
+            if let Some(r) = ty.as_ref() {
+                if let Some(r) = r.heap_type().as_registered_type() {
+                    registrations.push(r.clone());
+                }
+            }
+
+            ty.to_wasm_type()
+        };
+
+        let wasm_func_ty = WasmFuncType {
+            params: params.map(|p| to_wasm_type(p, &mut wasm_params)).collect(),
+            results: results
+                .map(|r| to_wasm_type(r, &mut wasm_results))
+                .collect(),
+        };
+
+        if let Some(supertype) = supertype {
+            assert!(supertype.comes_from_same_engine(engine));
+            ensure!(
+                supertype.finality().is_non_final(),
+                "cannot create a subtype of a final supertype"
+            );
+            ensure!(
+                Self::matches_impl(
+                    wasm_params.iter().cloned(),
+                    supertype.params(),
+                    wasm_results.iter().cloned(),
+                    supertype.results()
+                ),
+                "function type must match its supertype: found (func{params}{results}), expected \
+                 {supertype}",
+                params = if wasm_params.is_empty() {
+                    String::new()
+                } else {
+                    let mut s = " (params".to_string();
+                    for p in &wasm_params {
+                        write!(&mut s, " {p}").unwrap();
+                    }
+                    s.push(')');
+                    s
+                },
+                results = if wasm_results.is_empty() {
+                    String::new()
+                } else {
+                    let mut s = " (results".to_string();
+                    for r in &wasm_results {
+                        write!(&mut s, " {r}").unwrap();
+                    }
+                    s.push(')');
+                    s
+                },
+            );
+        }
+
+        Ok(Self::from_wasm_func_type(
+            engine,
+            finality.is_final(),
+            supertype.map(|ty| ty.type_index().into()),
+            wasm_func_ty,
+        ))
+    }
+
     pub fn param(&self, i: usize) -> Option<ValType> {
         let engine = self.engine();
+
         self.registered_type
             .unwrap_func()
             .params
@@ -1420,6 +1608,21 @@ impl FuncType {
             .results
             .iter()
             .map(|ty| ValType::from_wasm_type(engine, ty))
+    }
+
+    /// Get the finality of this function type.
+    pub fn finality(&self) -> Finality {
+        match self.registered_type.is_final {
+            true => Finality::Final,
+            false => Finality::NonFinal,
+        }
+    }
+
+    /// Get the supertype of this function type, if any.
+    pub fn supertype(&self) -> Option<Self> {
+        self.registered_type
+            .supertype
+            .map(|ty| Self::from_shared_type_index(self.engine(), ty.unwrap_engine_type_index()))
     }
 
     pub(super) fn type_index(&self) -> VMSharedTypeIndex {
@@ -1488,6 +1691,30 @@ impl FuncType {
         debug_assert!(registered_type.is_func());
         Self { registered_type }
     }
+    pub(super) fn into_registered_type(self) -> RegisteredType {
+        self.registered_type
+    }
+
+    pub(super) fn from_wasm_func_type(
+        engine: &Engine,
+        is_final: bool,
+        supertype: Option<CanonicalizedTypeIndex>,
+        ty: WasmFuncType,
+    ) -> Self {
+        let registered_type = engine.type_registry().register_type(
+            engine,
+            WasmSubType {
+                is_final,
+                supertype,
+                composite_type: WasmCompositeType {
+                    shared: false,
+                    inner: WasmCompositeTypeInner::Func(ty),
+                },
+            },
+        );
+
+        Self { registered_type }
+    }
 }
 
 /// A descriptor for a table in a WebAssembly module.
@@ -1503,6 +1730,17 @@ pub struct TableType {
     ty: Table,
 }
 
+impl TableType {
+    pub(super) fn from_wasm_table(engine: &Engine, table: &Table) -> Self {
+        let element = RefType::from_wasm_type(engine, &table.element_type);
+
+        Self {
+            element,
+            ty: table.clone(),
+        }
+    }
+}
+
 /// A descriptor for a WebAssembly memory type.
 ///
 /// Memories are described in units of pages (64KB) and represent contiguous
@@ -1510,6 +1748,12 @@ pub struct TableType {
 #[derive(Debug, Clone, Hash)]
 pub struct MemoryType {
     ty: Memory,
+}
+
+impl MemoryType {
+    pub(super) fn from_wasm_memory(memory: &Memory) -> Self {
+        Self { ty: memory.clone() }
+    }
 }
 
 /// A WebAssembly global descriptor.
@@ -1523,6 +1767,20 @@ pub struct GlobalType {
     mutability: Mutability,
 }
 
+impl GlobalType {
+    pub(super) fn from_wasm_global(engine: &Engine, ty: &Global) -> Self {
+        let content = ValType::from_wasm_type(engine, &ty.content_type);
+        Self {
+            content,
+            mutability: if ty.mutable {
+                Mutability::Var
+            } else {
+                Mutability::Const
+            },
+        }
+    }
+}
+
 /// A descriptor for a tag in a WebAssembly module.
 ///
 /// This type describes an instance of a tag in a WebAssembly
@@ -1530,6 +1788,14 @@ pub struct GlobalType {
 #[derive(Debug, Clone, Hash)]
 pub struct TagType {
     ty: FuncType,
+}
+
+impl TagType {
+    pub(super) fn from_wasm_tag(engine: &Engine, ty: &Tag) -> Self {
+        let ty = FuncType::from_shared_type_index(engine, ty.signature.unwrap_engine_type_index());
+
+        Self { ty }
+    }
 }
 
 /// A descriptor for an imported value into a wasm module.

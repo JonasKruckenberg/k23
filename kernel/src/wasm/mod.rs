@@ -27,7 +27,7 @@ use crate::scheduler::scheduler;
 use crate::shell::Command;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::utils::{enum_accessors, owned_enum_accessors};
-use crate::wasm::vm::PlaceholderAllocatorDontUse;
+use crate::wasm::vm::{ConstExprEvaluator, PlaceholderAllocatorDontUse};
 use alloc::boxed::Box;
 pub use engine::Engine;
 pub use func::{Func, TypedFunc};
@@ -40,6 +40,7 @@ pub use store::Store;
 pub use table::Table;
 pub use tag::Tag;
 pub use trap::Trap;
+use wasmparser::Validator;
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.
@@ -72,6 +73,36 @@ pub enum Extern {
     Memory(Memory),
     Global(Global),
     Tag(Tag),
+}
+
+impl From<Func> for Extern {
+    fn from(f: Func) -> Self {
+        Extern::Func(f)
+    }
+}
+
+impl From<Table> for Extern {
+    fn from(t: Table) -> Self {
+        Extern::Table(t)
+    }
+}
+
+impl From<Memory> for Extern {
+    fn from(m: Memory) -> Self {
+        Extern::Memory(m)
+    }
+}
+
+impl From<Global> for Extern {
+    fn from(g: Global) -> Self {
+        Extern::Global(g)
+    }
+}
+
+impl From<Tag> for Extern {
+    fn from(t: Tag) -> Self {
+        Extern::Tag(t)
+    }
 }
 
 impl Extern {
@@ -108,14 +139,21 @@ impl Extern {
     }
 }
 
-pub const TEST: Command = Command::new("wasm-test")
+pub const FIB_TEST: Command = Command::new("wasm-fib-test")
     .with_help("run the WASM test payload")
     .with_fn(|_| {
-        test();
+        fib_test();
         Ok(())
     });
 
-fn test() {
+pub const HOSTFUNC_TEST: Command = Command::new("wasm-hostfunc-test")
+    .with_help("run the WASM test payload")
+    .with_fn(|_| {
+        hostfunc_test();
+        Ok(())
+    });
+
+fn fib_test() {
     use vm::ConstExprEvaluator;
     use wasmparser::Validator;
 
@@ -129,7 +167,6 @@ fn test() {
     {
         let module = Module::from_bytes(
             &engine,
-            &mut store,
             &mut validator,
             include_bytes!("../../fib_cpp.wasm"),
         )
@@ -145,13 +182,21 @@ fn test() {
             .unwrap();
     }
 
-    assert!(linker.get("fib_cpp", "fib").is_some());
+    // assert that we correctly parsed the fib export
+    assert!(linker.get(&mut store, "fib_cpp", "fib").unwrap().is_func());
+
+    // the module also exports its memory, assert that we correctly parsed that too
+    assert!(
+        linker
+            .get(&mut store, "fib_cpp", "memory")
+            .unwrap()
+            .is_memory()
+    );
 
     // instantiate the test module
     {
         let module = Module::from_bytes(
             &engine,
-            &mut store,
             &mut validator,
             include_bytes!("../../fib_test.wasm"),
         )
@@ -162,7 +207,10 @@ fn test() {
             .unwrap();
         instance.debug_vmctx(&store);
 
-        let func: TypedFunc<(), ()> = instance
+        // `fib_test` should only have a single export
+        assert_eq!(instance.exports(&mut store).len(), 1);
+
+        let _func: TypedFunc<(), ()> = instance
             .get_func(&mut store, "fib_test")
             .unwrap()
             .typed(&store)
@@ -176,6 +224,51 @@ fn test() {
         //     },
         // );
 
-        tracing::debug!("success!")
+        tracing::info!("success!")
     }
+}
+
+fn hostfunc_test() {
+    let engine = Engine::default();
+    let mut validator = Validator::new();
+    let mut linker = Linker::new(&engine);
+    let mut store = Store::new(&engine, Box::new(PlaceholderAllocatorDontUse), ());
+    let mut const_eval = ConstExprEvaluator::default();
+
+    linker
+        .func_wrap("k23", "roundtrip_i64", |arg: u64| -> u64 {
+            tracing::debug!("Hello World from hostfunc!");
+            arg
+        })
+        .unwrap();
+
+    let module = Module::from_bytes(
+        &engine,
+        &mut validator,
+        include_bytes!("../../host_func.wasm"),
+    )
+    .unwrap();
+
+    let instance = linker
+        .instantiate(&mut store, &mut const_eval, &module)
+        .unwrap();
+
+    instance.debug_vmctx(&store);
+
+    let func: TypedFunc<u64, u64> = instance
+        .get_func(&mut store, "roundtrip_i64")
+        .unwrap()
+        .typed(&mut store)
+        .unwrap();
+
+    // scheduler().spawn(
+    //     crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
+    //     async move {
+    //         let arg = 42;
+    //         let ret = func.call(&mut store, arg).await.unwrap();
+    //         assert_eq!(ret, arg);
+    //     },
+    // );
+
+    tracing::info!("success!")
 }

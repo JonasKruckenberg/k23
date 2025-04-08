@@ -11,7 +11,7 @@ use crate::wasm::indices::{
     VMSharedTypeIndex,
 };
 use crate::wasm::module::Module;
-use crate::wasm::store::StoreOpaque;
+use crate::wasm::store::{StoreInner, StoreOpaque};
 use crate::wasm::translate::{
     IndexType, MemoryInitializer, TableInitialValue, TableSegmentElements, TranslatedModule,
     WasmHeapTopType,
@@ -21,23 +21,23 @@ use crate::wasm::vm::memory::Memory;
 use crate::wasm::vm::provenance::{VmPtr, VmSafe};
 use crate::wasm::vm::table::{Table, TableElement, TableElementType};
 use crate::wasm::vm::{
-    CodeObject, Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable,
-    ExportedTag, Imports, StaticVMShape, VMBuiltinFunctionsArray, VMContext, VMFuncRef,
-    VMFunctionBody, VMFunctionImport, VMGlobalDefinition, VMGlobalImport, VMMemoryDefinition,
-    VMMemoryImport, VMOpaqueContext, VMShape, VMStoreContext, VMTableDefinition,
-    VMTableImport, VMTagDefinition, VMTagImport, VMCONTEXT_MAGIC,
+    Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable, ExportedTag, Imports,
+    StaticVMShape, VMBuiltinFunctionsArray, VMContext, VMFuncRef, VMFunctionBody, VMFunctionImport,
+    VMGlobalDefinition, VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOpaqueContext,
+    VMShape, VMStoreContext, VMTableDefinition, VMTableImport, VMTagDefinition, VMTagImport,
+    VMCONTEXT_MAGIC,
 };
-use crate::wasm::{vm, Trap};
+use crate::wasm::Trap;
 use alloc::string::String;
 use anyhow::{bail, ensure};
 use core::alloc::Layout;
-use core::ffi::c_void;
 use core::marker::PhantomPinned;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU64, Ordering};
 use core::{fmt, ptr, slice};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
+use static_assertions::const_assert_eq;
 
 #[derive(Debug)]
 pub struct InstanceHandle {
@@ -423,10 +423,14 @@ impl Instance {
                 (import.from.as_non_null(), import.vmctx.as_non_null())
             };
 
-        ExportedTable { definition, vmctx }
+        ExportedTable {
+            definition,
+            vmctx,
+            table: self.translated_module().tables[index].clone(),
+        }
     }
     pub fn get_exported_memory(&mut self, index: MemoryIndex) -> ExportedMemory {
-        let (definition, vmctx, index) =
+        let (definition, vmctx, def_index) =
             if let Some(def_index) = self.translated_module().defined_memory_index(index) {
                 (self.memory_ptr(def_index), self.vmctx(), def_index)
             } else {
@@ -441,7 +445,8 @@ impl Instance {
         ExportedMemory {
             definition,
             vmctx,
-            index,
+            index: def_index,
+            memory: self.translated_module().memories[index].clone(),
         }
     }
     pub fn get_exported_global(&mut self, index: GlobalIndex) -> ExportedGlobal {
@@ -454,6 +459,7 @@ impl Instance {
                 self.imported_global(index).from.as_non_null()
             },
             vmctx: Some(self.vmctx()),
+            global: self.translated_module().globals[index].clone(),
         }
     }
     pub fn get_exported_tag(&mut self, index: TagIndex) -> ExportedTag {
@@ -463,6 +469,7 @@ impl Instance {
             } else {
                 self.imported_tag(index).from.as_non_null()
             },
+            tag: self.translated_module().tags[index].clone(),
         }
     }
 
@@ -647,29 +654,33 @@ impl Instance {
     }
 
     pub(crate) unsafe fn set_store(&mut self, store: Option<NonNull<StoreOpaque>>) {
-        self.store = store;
-        if let Some(mut store) = store {
-            let store = store.as_mut();
-            self.vm_store_context()
-                .write(Some(VmPtr::from(store.vm_store_context_ptr())));
-            #[cfg(target_has_atomic = "64")]
-            self.epoch_ptr().write(Some(VmPtr::from(NonNull::from(
-                store.engine().epoch_counter(),
-            ))));
+        unsafe {
+            self.store = store;
 
-            // if self.env_module().needs_gc_heap {
-            //     self.set_gc_heap(Some(store.gc_store_mut().expect(
-            //         "if we need a GC heap, then `Instance::new_raw` should have already \
-            //          allocated it for us",
-            //     )));
-            // } else {
-            //     self.set_gc_heap(None);
-            // }
-        } else {
-            self.vm_store_context().write(None);
-            #[cfg(target_has_atomic = "64")]
-            self.epoch_ptr().write(None);
-            // self.set_gc_heap(None);
+            if let Some(mut store) = store {
+                let store = store.as_mut();
+
+                self.vm_store_context()
+                    .write(Some(VmPtr::from(store.vm_store_context_ptr())));
+                #[cfg(target_has_atomic = "64")]
+                self.epoch_ptr().write(Some(VmPtr::from(NonNull::from(
+                    store.engine().epoch_counter(),
+                ))));
+
+                // if self.env_module().needs_gc_heap {
+                //     self.set_gc_heap(Some(store.gc_store_mut().expect(
+                //         "if we need a GC heap, then `Instance::new_raw` should have already \
+                //          allocated it for us",
+                //     )));
+                // } else {
+                //     self.set_gc_heap(None);
+                // }
+            } else {
+                self.vm_store_context().write(None);
+                #[cfg(target_has_atomic = "64")]
+                self.epoch_ptr().write(None);
+                // self.set_gc_heap(None);
+            }
         }
     }
 
@@ -689,9 +700,13 @@ impl Instance {
     // }
 
     pub(crate) unsafe fn set_callee(&mut self, callee: Option<NonNull<VMFunctionBody>>) {
-        let callee = callee.map(|p| VmPtr::from(p));
-        self.vmctx_plus_offset_mut::<Option<VmPtr<VMFunctionBody>>>(StaticVMShape.vmctx_callee())
+        unsafe {
+            let callee = callee.map(|p| VmPtr::from(p));
+            self.vmctx_plus_offset_mut::<Option<VmPtr<VMFunctionBody>>>(
+                StaticVMShape.vmctx_callee(),
+            )
             .write(callee);
+        }
     }
 
     // VMContext accessors
@@ -930,9 +945,7 @@ impl Instance {
             self.vmctx_plus_offset_mut::<VmPtr<VMBuiltinFunctionsArray>>(
                 vmshape.vmctx_builtin_functions(),
             )
-            .write(VmPtr::from(NonNull::from(
-                &mut VMBuiltinFunctionsArray::INIT,
-            )));
+            .write(VmPtr::from(NonNull::from(&VMBuiltinFunctionsArray::INIT)));
 
             tracing::trace!("initializing callee");
             self.set_callee(None);
@@ -1092,11 +1105,12 @@ impl Instance {
                 .iter()
                 .filter(|(_, f)| f.is_escaping())
             {
-                let type_index = unsafe {
+                let type_index = {
                     let base: *const VMSharedTypeIndex = (*self
                         .vmctx_plus_offset_mut::<VmPtr<VMSharedTypeIndex>>(
                             StaticVMShape.vmctx_type_ids_array(),
-                        )).as_ptr();
+                        ))
+                    .as_ptr();
                     *base.add(func.signature.unwrap_module_type_index().index())
                 };
 
@@ -1249,15 +1263,41 @@ impl Instance {
     }
 }
 
-pub unsafe fn with_instance_and_store<R>(
-    vmctx: NonNull<VMContext>,
-    f: impl FnOnce(&mut StoreOpaque, &mut Instance) -> R,
-) -> R {
-    unsafe {
-        Instance::from_vmctx(vmctx, |instance| {
-            let store = &mut *instance.store.unwrap().as_ptr();
-            f(store, instance)
-        })
+#[repr(transparent)]
+pub struct InstanceAndStore {
+    instance: Instance,
+}
+
+impl InstanceAndStore {
+    #[inline]
+    pub(crate) unsafe fn from_vmctx<R>(
+        vmctx: NonNull<VMContext>,
+        f: impl for<'a> FnOnce(&'a mut Self) -> R,
+    ) -> R {
+        const_assert_eq!(size_of::<InstanceAndStore>(), size_of::<Instance>());
+        unsafe {
+            let mut ptr = vmctx
+                .byte_sub(size_of::<Instance>())
+                .cast::<InstanceAndStore>();
+
+            f(ptr.as_mut())
+        }
+    }
+
+    #[inline]
+    pub(crate) fn unpack_mut(&mut self) -> (&mut Instance, &mut StoreOpaque) {
+        unsafe {
+            let store = self.instance.store.unwrap().as_mut();
+            (&mut self.instance, store)
+        }
+    }
+
+    #[inline]
+    pub(crate) unsafe fn unpack_with_state_mut<T>(
+        &mut self,
+    ) -> (&mut Instance, &'_ mut StoreInner<T>) {
+        let mut store_ptr = self.instance.store.unwrap().cast::<StoreInner<T>>();
+        (&mut self.instance, unsafe { store_ptr.as_mut() })
     }
 }
 
@@ -1286,11 +1326,9 @@ fn check_table_init_bounds(
                 .as_ref()
         };
         let mut context = ConstEvalContext::new(instance);
-        let start = unsafe {
-            const_evaluator
-                .eval(store, &mut context, &segment.offset)
-                .expect("const expression should be valid")
-        };
+        let start = const_evaluator
+            .eval(store, &mut context, &segment.offset)
+            .expect("const expression should be valid");
         let start = usize::try_from(start.get_u32()).unwrap();
         let end = start.checked_add(usize::try_from(segment.elements.len()).unwrap());
 
@@ -1343,10 +1381,12 @@ fn get_memory_init_start(
 ) -> crate::Result<u64> {
     let mut context = ConstEvalContext::new(instance);
     let mut const_evaluator = ConstExprEvaluator::default();
-    unsafe { const_evaluator.eval(store, &mut context, &init.offset) }.map(|v| {
-        match instance.translated_module().memories[init.memory_index].index_type {
-            IndexType::I32 => v.get_u32().into(),
-            IndexType::I64 => v.get_u64(),
-        }
-    })
+    const_evaluator
+        .eval(store, &mut context, &init.offset)
+        .map(
+            |v| match instance.translated_module().memories[init.memory_index].index_type {
+                IndexType::I32 => v.get_u32().into(),
+                IndexType::I64 => v.get_u64(),
+            },
+        )
 }

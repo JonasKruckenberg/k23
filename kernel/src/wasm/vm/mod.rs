@@ -8,12 +8,12 @@
 mod builtins;
 mod code_object;
 mod const_eval;
-pub mod instance;
+mod instance;
 mod instance_alloc;
 mod memory;
 mod provenance;
 mod table;
-mod trap_handler;
+pub mod trap_handler;
 mod vmcontext;
 mod vmshape;
 mod mmap_vec;
@@ -25,7 +25,7 @@ use crate::wasm::indices::DefinedMemoryIndex;
 use crate::wasm::translate::TranslatedModule;
 pub use code_object::CodeObject;
 pub use const_eval::ConstExprEvaluator;
-pub use instance::InstanceHandle;
+pub use instance::{InstanceHandle, Instance, InstanceAndStore};
 pub use instance_alloc::{InstanceAllocator, PlaceholderAllocatorDontUse};
 pub use memory::Memory;
 pub use table::{Table, TableElement};
@@ -33,6 +33,7 @@ pub use vmcontext::*;
 pub use vmshape::{StaticVMShape, VMShape};
 pub use mmap_vec::MmapVec;
 pub use provenance::VmPtr;
+use crate::wasm::translate;
 
 /// The value of an export passed from one instance to another.
 #[derive(Debug, Clone)]
@@ -69,6 +70,7 @@ pub struct ExportedTable {
     pub definition: NonNull<VMTableDefinition>,
     /// Pointer to the containing `VMContext`.
     pub vmctx: NonNull<VMContext>,
+    pub table: translate::Table,
 }
 // See docs on send/sync for `ExportFunction` above.
 unsafe impl Send for ExportedTable {}
@@ -83,6 +85,7 @@ pub struct ExportedMemory {
     pub vmctx: NonNull<VMContext>,
     /// The index at which the memory is defined within the `vmctx`.
     pub index: DefinedMemoryIndex,
+    pub memory: translate::Memory,
 }
 // See docs on send/sync for `ExportFunction` above.
 unsafe impl Send for ExportedMemory {}
@@ -96,6 +99,7 @@ pub struct ExportedGlobal {
     /// Pointer to the containing `VMContext`. May be null for host-created
     /// globals.
     pub vmctx: Option<NonNull<VMContext>>,
+    pub global: translate::Global,
 }
 // See docs on send/sync for `ExportFunction` above.
 unsafe impl Send for ExportedGlobal {}
@@ -106,6 +110,7 @@ unsafe impl Sync for ExportedGlobal {}
 pub struct ExportedTag {
     /// The address of the global storage.
     pub definition: NonNull<VMTagDefinition>,
+    pub tag: translate::Tag
 }
 // See docs on send/sync for `ExportFunction` above.
 unsafe impl Send for ExportedTag {}

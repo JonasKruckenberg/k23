@@ -5,20 +5,25 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+mod host;
 mod typed;
 
 use crate::wasm::indices::VMSharedTypeIndex;
 use crate::wasm::store::{StoreOpaque, Stored};
 use crate::wasm::types::FuncType;
 use crate::wasm::values::Val;
-use crate::wasm::vm::{ExportedFunction, VMFuncRef, VMFunctionImport, VMOpaqueContext, VMVal};
+use crate::wasm::vm::{ExportedFunction, VMArrayCallHostFuncContext, VMFuncRef, VMFunctionImport, VMOpaqueContext, VMVal, VmPtr};
+use alloc::boxed::Box;
+use alloc::sync::Arc;
 use core::ffi::c_void;
 use core::ptr::NonNull;
+use crate::wasm::{Module, Store};
 
-pub use typed::TypedFunc;
+pub use host::{HostFunc, IntoFunc, HostParams, HostResults};
+pub use typed::{TypedFunc, WasmResults, WasmParams, WasmTy};
 
 #[derive(Clone, Copy, Debug)]
-pub struct Func(Stored<FuncData>);
+pub struct Func(pub(super) Stored<FuncData>);
 #[derive(Debug)]
 pub struct FuncData {
     kind: FuncKind,
@@ -30,11 +35,43 @@ unsafe impl Sync for FuncData {}
 
 enum FuncKind {
     StoreOwned { export: ExportedFunction },
-    // SharedHost(Arc<HostFunc>),
-    // Host(Box<HostFunc>),
+    SharedHost(Arc<HostFunc>),
+    Host(Box<HostFunc>),
 }
 
 impl Func {
+    pub fn wrap<T, Params, Results>(
+        store: &mut Store<T>,
+        func: impl IntoFunc<T, Params, Results>,
+    ) -> TypedFunc<Params, Results>
+    where
+        Params: WasmParams,
+        Results: WasmResults,
+    {
+        let (func, ty) = HostFunc::wrap(store.engine(), func);
+
+        let stored = store.add_function(FuncData {
+            kind: FuncKind::Host(Box::new(func)),
+        });
+
+        unsafe { TypedFunc::new_unchecked(Self(stored), ty) }
+    }
+
+    pub fn typed<Params, Results>(
+        self,
+        store: &StoreOpaque,
+    ) -> crate::Result<TypedFunc<Params, Results>>
+    where
+        Params: WasmParams,
+        Results: WasmResults,
+    {
+        let ty = self.ty(store);
+        Params::typecheck(store.engine(), ty.params())?;
+        Results::typecheck(store.engine(), ty.results())?;
+
+        Ok(unsafe { TypedFunc::new_unchecked(self, ty) })
+    }
+
     pub async fn call(
         self,
         store: &mut StoreOpaque,
@@ -78,7 +115,9 @@ impl Func {
 
         // copy the arguments into the storage vec
         for (arg, slot) in params.iter().zip(&mut values_vec) {
-            *slot = arg.to_vmval(store)?;
+            unsafe {
+                *slot = arg.to_vmval(store)?;
+            }
         }
 
         // Safety: func refs obtained from our store are always usable by us.
@@ -129,12 +168,26 @@ impl Func {
         Self(stored)
     }
 
-    pub(super) fn as_vmfunction_import(&self, store: &mut StoreOpaque) -> VMFunctionImport {
+    pub(super) fn as_vmfunction_import(&self, store: &mut StoreOpaque, module: &Module) -> VMFunctionImport {
         let f = self.vm_func_ref(store);
 
         unsafe {
             VMFunctionImport {
-                wasm_call: f.as_ref().wasm_call.unwrap(),
+                wasm_call: f.as_ref().wasm_call.unwrap_or_else(|| {
+                    // Assert that this is a array-call function, since those
+                    // are the only ones that could be missing a `wasm_call`
+                    // trampoline.
+                    let _ = VMArrayCallHostFuncContext::from_opaque(f.as_ref().vmctx.as_non_null());
+
+                    let sig = self.type_index(store);
+                    
+                    let ptr = module.wasm_to_array_trampoline(sig).expect(
+                        "if the wasm is importing a function of a given type, it must have the \
+                         type's trampoline",
+                    );
+                    
+                    VmPtr::from(ptr)
+                }),
                 array_call: f.as_ref().array_call,
                 vmctx: f.as_ref().vmctx,
             }
@@ -149,20 +202,22 @@ impl Func {
         store: &mut StoreOpaque,
         func_ref: NonNull<VMFuncRef>,
     ) -> Self {
-        debug_assert!(func_ref.as_ref().type_index != VMSharedTypeIndex::default());
-        Func::from_exported_function(store, ExportedFunction { func_ref })
+        unsafe {
+            debug_assert!(func_ref.as_ref().type_index != VMSharedTypeIndex::default());
+            Func::from_exported_function(store, ExportedFunction { func_ref })
+        }
     }
 
     pub(super) fn vm_func_ref(&self, store: &StoreOpaque) -> NonNull<VMFuncRef> {
         match &store[self.0].kind {
             FuncKind::StoreOwned { export } => export.func_ref,
-            // FuncKind::SharedHost(ref func) => func.exported_func().func_ref,
-            // FuncKind::Host(ref func) => func.exported_func().func_ref,
+            FuncKind::SharedHost(func) => NonNull::from(func.func_ref()),
+            FuncKind::Host(func) => NonNull::from(func.func_ref()),
         }
     }
 
     pub(super) unsafe fn from_vmval(store: &mut StoreOpaque, raw: *mut c_void) -> Option<Self> {
-        Some(Func::from_vm_func_ref(store, NonNull::new(raw.cast())?))
+        unsafe { Some(Func::from_vm_func_ref(store, NonNull::new(raw.cast())?)) }
     }
 
     /// Extracts the raw value of this `Func`, which is owned by `store`.
@@ -170,7 +225,7 @@ impl Func {
     /// This function returns a value that's suitable for writing into the
     /// `funcref` field of the [`ValRaw`] structure.
     ///
-    /// # Unsafety
+    /// # Safety
     ///
     /// The returned value is only valid for as long as the store is alive and
     /// this function is properly rooted within it. Additionally this function

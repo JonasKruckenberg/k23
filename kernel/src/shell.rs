@@ -19,9 +19,7 @@ use crate::device_tree::DeviceTree;
 use crate::mem::{with_kernel_aspace, Mmap, PhysicalAddress, KERNEL_ASPACE};
 use crate::scheduler::{scheduler, Scheduler};
 use crate::{arch, irq};
-use alloc::boxed::Box;
 use alloc::string::{String, ToString};
-use core::any::Any;
 use core::fmt;
 use core::fmt::Write;
 use core::range::Range;
@@ -29,7 +27,7 @@ use core::str::FromStr;
 use fallible_iterator::FallibleIterator;
 use spin::{Barrier, OnceLock};
 
-static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN, crate::wasm::TEST];
+static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN, crate::wasm::FIB_TEST, crate::wasm::HOSTFUNC_TEST];
 
 pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: usize) {
     static SYNC: OnceLock<Barrier> = OnceLock::new();
@@ -223,9 +221,9 @@ fn handle_command<'cmd>(ctx: Context<'cmd>, commands: &'cmd [Command]) -> CmdRes
             let current = current.trim();
 
             return crate::panic::catch_unwind(|| cmd.run(Context { current, ..ctx })).unwrap_or_else(
-                |err| {
+                |_| {
                     Err(Error {
-                        line: current,
+                        line: cmd.name,
                         kind: ErrorKind::Other("command failed"),
                     })
                 },
