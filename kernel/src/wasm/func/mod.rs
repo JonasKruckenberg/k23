@@ -261,7 +261,7 @@ impl Func {
     /// Extracts the raw value of this `Func`, which is owned by `store`.
     ///
     /// This function returns a value that's suitable for writing into the
-    /// `funcref` field of the [`ValRaw`] structure.
+    /// `funcref` field of the [`VMVal`] structure.
     ///
     /// # Safety
     ///

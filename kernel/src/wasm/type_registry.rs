@@ -659,7 +659,7 @@ impl TypeRegistryInner {
             hash_consing_key
                 .trace_engine_indices::<_, ()>(&mut |index| {
                     self.debug_assert_registered(index);
-                    Ok(()) 
+                    Ok(())
                 })
                 .unwrap();
         }

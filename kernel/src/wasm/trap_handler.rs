@@ -267,8 +267,9 @@ impl Activation {
             //     {
             //         (None, None)
             //     }
-            UnwindReason::Trap(_) => Some(self.capture_backtrace(self.vm_store_context.as_ptr(), None)),
-            // self.capture_coredump(self.vm_store_context.as_ptr(), None),
+            UnwindReason::Trap(_) => {
+                Some(self.capture_backtrace(self.vm_store_context.as_ptr(), None))
+            } // self.capture_coredump(self.vm_store_context.as_ptr(), None),
         };
         self.unwind.set(Some((reason, backtrace)));
     }
@@ -395,9 +396,9 @@ where
 /// a "sentinel value" which indicates that an unwind happened. This means that
 /// no valid instance of `Self` should generate the `SENTINEL` via the
 /// `into_abi` function.
-/// 
+///
 /// # Safety
-/// 
+///
 /// TODO
 pub unsafe trait HostResultHasUnwindSentinel {
     /// The Cranelift-understood ABI of this value (should not be `Self`).

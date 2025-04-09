@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::mem::VirtualAddress;
+use crate::wasm::TrapKind;
 use crate::wasm::indices::{
     DataIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, DefinedTagIndex,
     ElemIndex, EntityIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TagIndex,
@@ -24,12 +25,11 @@ use crate::wasm::vm::provenance::{VmPtr, VmSafe};
 use crate::wasm::vm::table::{Table, TableElement, TableElementType};
 use crate::wasm::vm::{
     Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable, ExportedTag, Imports,
-    StaticVMShape, VMBuiltinFunctionsArray, VMContext, VMFuncRef, VMFunctionBody, VMFunctionImport,
-    VMGlobalDefinition, VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOpaqueContext,
-    VMShape, VMStoreContext, VMTableDefinition, VMTableImport, VMTagDefinition, VMTagImport,
-    VMCONTEXT_MAGIC,
+    StaticVMShape, VMBuiltinFunctionsArray, VMCONTEXT_MAGIC, VMContext, VMFuncRef, VMFunctionBody,
+    VMFunctionImport, VMGlobalDefinition, VMGlobalImport, VMMemoryDefinition, VMMemoryImport,
+    VMOpaqueContext, VMShape, VMStoreContext, VMTableDefinition, VMTableImport, VMTagDefinition,
+    VMTagImport,
 };
-use crate::wasm::TrapKind;
 use alloc::string::String;
 use anyhow::{bail, ensure};
 use core::alloc::Layout;

@@ -120,7 +120,10 @@ fn memory_copy(
     instance.memory_copy(dst_index, dst, src_index, src, len)
 }
 
-#[expect(clippy::cast_ptr_alignment, reason = "the cast from u8 to VMFuncRef is fine, *mut u8 is just type-erased")]
+#[expect(
+    clippy::cast_ptr_alignment,
+    reason = "the cast from u8 to VMFuncRef is fine, *mut u8 is just type-erased"
+)]
 unsafe fn table_grow_func_ref(
     _store: &mut StoreOpaque,
     instance: &mut Instance,
@@ -144,7 +147,10 @@ unsafe fn table_grow_func_ref(
     Ok(res)
 }
 
-#[expect(clippy::cast_ptr_alignment, reason = "the cast from u8 to VMFuncRef is fine, *mut u8 is just type-erased")]
+#[expect(
+    clippy::cast_ptr_alignment,
+    reason = "the cast from u8 to VMFuncRef is fine, *mut u8 is just type-erased"
+)]
 fn table_fill_func_ref(
     _store: &mut StoreOpaque,
     instance: &mut Instance,

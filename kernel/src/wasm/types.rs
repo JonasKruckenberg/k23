@@ -78,7 +78,7 @@ impl Finality {
 /// `ValType` does not implement `Eq`, because reference types have a subtyping
 /// relationship, and so 99.99% of the time you actually want to check whether
 /// one type matches (i.e. is a subtype of) another type. You can use the
-/// [`ValType::matches`] and [`Val::matches_ty`][crate::Val::matches_ty] methods
+/// [`ValType::matches`] and [`Val::matches_ty`][crate::wasm::Val::matches_ty] methods
 /// to perform these types of checks. If, however, you are in that 0.01%
 /// scenario where you need to check precise equality between types, you can use
 /// the [`ValType::eq`] method.
@@ -155,7 +155,10 @@ impl ValType {
     /// `I64`, `F32`, `F64`).
     #[inline]
     pub fn is_num(&self) -> bool {
-        matches!(self, ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64)
+        matches!(
+            self,
+            ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64
+        )
     }
 
     /// Is this the `i32` type?
@@ -1280,7 +1283,7 @@ impl FieldType {
 ///
 /// WebAssembly structs are a static, fixed-length, ordered sequence of
 /// fields. Fields are named by index, not an identifier. Each field is mutable
-/// or constant and stores unpacked [`Val`][crate::Val]s or packed 8-/16-bit
+/// or constant and stores unpacked [`Val`][crate::wasm::Val]s or packed 8-/16-bit
 /// integers.
 ///
 /// # Subtyping and Equality
@@ -1607,7 +1610,11 @@ impl FuncType {
 
     /// Get the finality of this function type.
     pub fn finality(&self) -> Finality {
-        if self.registered_type.is_final { Finality::Final } else { Finality::NonFinal }
+        if self.registered_type.is_final {
+            Finality::Final
+        } else {
+            Finality::NonFinal
+        }
     }
 
     /// Get the supertype of this function type, if any.
@@ -1773,7 +1780,7 @@ impl MemoryType {
 /// A WebAssembly global descriptor.
 ///
 /// This type describes an instance of a global in a WebAssembly module. Globals
-/// are local to an [`Instance`](crate::Instance) and are either immutable or
+/// are local to an [`Instance`](crate::wasm::Instance) and are either immutable or
 /// mutable.
 #[derive(Debug, Clone, Hash)]
 pub struct GlobalType {
@@ -1814,7 +1821,7 @@ impl GlobalType {
 /// A descriptor for a tag in a WebAssembly module.
 ///
 /// This type describes an instance of a tag in a WebAssembly
-/// module. Tags are local to an [`Instance`](crate::Instance).
+/// module. Tags are local to an [`Instance`](crate::wasm::Instance).
 #[derive(Debug, Clone, Hash)]
 pub struct TagType {
     ty: FuncType,
@@ -1831,7 +1838,7 @@ impl TagType {
 /// A descriptor for an imported value into a wasm module.
 ///
 /// This type is primarily accessed from the
-/// [`Module::imports`](crate::Module::imports) API. Each [`ImportType`]
+/// [`Module::imports`](crate::wasm::Module::imports) API. Each [`ImportType`]
 /// describes an import into the wasm module with the module/name that it's
 /// imported from as well as the type of item that's being imported.
 #[derive(Clone)]
@@ -1861,7 +1868,7 @@ impl fmt::Debug for ImportType<'_> {
 /// A descriptor for an exported WebAssembly value.
 ///
 /// This type is primarily accessed from the
-/// [`Module::exports`](crate::Module::exports) accessor and describes what
+/// [`Module::exports`](crate::wasm::Module::exports) accessor and describes what
 /// names are exported from a wasm module and the type of the item that is
 /// exported.
 #[derive(Clone)]

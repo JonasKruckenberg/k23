@@ -15,6 +15,7 @@ datas = "datas"
 rela = "rela" # the relocation format
 welp = "welp"
 alo = "alo" # for address-low
+canonicalizations = "canonicalizations"
 
 [default]
 extend-ignore-identifiers-re = [

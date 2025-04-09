@@ -20,7 +20,7 @@ pub struct Global(Stored<ExportedGlobal>);
 impl Global {
     pub fn new(store: &mut StoreOpaque, ty: GlobalType, val: Val) -> crate::Result<Self> {
         val.ensure_matches_ty(store, ty.content())?;
-        
+
         // Safety: we checked above that the types match
         let definition = unsafe {
             let vmval = val.to_vmval(store)?;

@@ -11,7 +11,7 @@ use crate::wasm::vm::{
     InstanceAllocator, InstanceHandle, VMContext, VMFuncRef, VMGlobalDefinition, VMStoreContext,
     VMTableDefinition, VMVal,
 };
-use crate::wasm::{vm, Engine, Module};
+use crate::wasm::{Engine, Module, vm};
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -87,7 +87,7 @@ impl<T> DerefMut for Store<T> {
 }
 
 pub struct StoreOpaque {
-    /// The engine this store belongs to, used mainly for compatability checking and to access the
+    /// The engine this store belongs to, used mainly for compatibility checking and to access the
     /// global type registry.
     engine: Engine,
     /// The instance allocator that manages all the runtime memory for Wasm instances.

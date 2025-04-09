@@ -24,8 +24,7 @@ pub enum Val {
     ///
     /// The host, or the Wasm guest, can invoke this function.
     ///
-    /// The host can create function references via [`Func::new`] or
-    /// [`Func::wrap`].
+    /// The host can create function references via [`Func::wrap`].
     ///
     /// The Wasm guest can create non-null function references via the
     /// `ref.func` instruction, or null references via the `ref.null func`
@@ -163,14 +162,14 @@ impl Val {
         }
     }
 
-    /// Convenience method to convert this [`Val`] into a [`ValRaw`].
+    /// Convenience method to convert this [`Val`] into a [`VMVal`].
     ///
     /// Returns an error if this value is a GC reference and the GC reference
     /// has been unrooted.
     ///
     /// # Unsafety
     ///
-    /// This method is unsafe for the reasons that [`ExternRef::to_raw`] and
+    /// This method is unsafe for the reasons that
     /// [`Func::to_vmval`] are unsafe.
     #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub(super) unsafe fn to_vmval(&self, store: &mut StoreOpaque) -> crate::Result<VMVal> {
@@ -190,11 +189,11 @@ impl Val {
         }
     }
 
-    /// Convenience method to convert a [`ValRaw`] into a [`Val`].
+    /// Convenience method to convert a [`VMVal`] into a [`Val`].
     ///
     /// # Unsafety
     ///
-    /// This method is unsafe for the reasons that [`ExternRef::from_vmval`] and
+    /// This method is unsafe for the reasons that
     /// [`Func::from_vmval`] are unsafe. Additionally there's no guarantee
     /// otherwise that `raw` should have the type `ty` specified.
     pub(super) unsafe fn from_vmval(store: &mut StoreOpaque, vmval: VMVal, ty: ValType) -> Val {
@@ -367,8 +366,7 @@ pub enum Ref {
     ///
     /// The host, or the Wasm guest, can invoke this function.
     ///
-    /// The host can create function references via [`Func::new`] or
-    /// [`Func::wrap`].
+    /// The host can create function references via [`Func::wrap`].
     ///
     /// The Wasm guest can create non-null function references via the
     /// `ref.func` instruction, or null references via the `ref.null func`
