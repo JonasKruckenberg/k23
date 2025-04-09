@@ -29,26 +29,27 @@ pub struct ConstEvalContext<'a> {
 
 impl<'a> ConstEvalContext<'a> {
     /// Create a new context.
-    pub fn new(instance: &'a mut Instance) -> Self {
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure `Instance` has its vmctx correctly initialized
+    pub unsafe fn new(instance: &'a mut Instance) -> Self {
         Self { instance }
     }
 
     fn global_get(&mut self, store: &mut StoreOpaque, index: GlobalIndex) -> crate::Result<VMVal> {
+        // Safety: the caller promised that the vmctx is correctly initialized
         unsafe {
             let global = self.instance.defined_or_imported_global(index).as_ref();
             global.to_vmval(
                 store,
-                self.instance.translated_module().globals[index]
-                    .content_type
-                    .clone(),
+                self.instance.translated_module().globals[index].content_type,
             )
         }
     }
 
-    fn ref_func(&mut self, index: FuncIndex) -> crate::Result<VMVal> {
-        Ok(VMVal::funcref(
-            self.instance.get_func_ref(index).unwrap().as_ptr().cast(),
-        ))
+    fn ref_func(&mut self, index: FuncIndex) -> VMVal {
+        VMVal::funcref(self.instance.get_func_ref(index).unwrap().as_ptr().cast())
     }
 
     fn struct_fields_len(&self, _store: &mut StoreOpaque, _shared_ty: VMSharedTypeIndex) -> usize {
@@ -126,6 +127,7 @@ impl<'a> ConstEvalContext<'a> {
             })
             .collect::<SmallVec<[_; 8]>>();
 
+        // Safety: TODO
         unsafe { self.struct_new(store, shared_ty, &fields) }
     }
 }
@@ -160,7 +162,7 @@ impl ConstExprEvaluator {
                 ConstOp::V128Const(value) => self.push(VMVal::v128(value)),
                 ConstOp::GlobalGet(g) => self.stack.push(ctx.global_get(store, g)?),
                 ConstOp::RefNull => self.stack.push(VMVal::null()),
-                ConstOp::RefFunc(f) => self.stack.push(ctx.ref_func(f)?),
+                ConstOp::RefFunc(f) => self.stack.push(ctx.ref_func(f)),
                 ConstOp::RefI31 => {
                     // let i = self.pop()?.get_i32();
                     // let i31 = I31::wrapping_i32(i);

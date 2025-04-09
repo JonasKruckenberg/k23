@@ -98,6 +98,10 @@ pub struct VMShape {
 }
 
 impl StaticVMShape {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "pointers larger than 255 bytes dont exist"
+    )]
     const fn ptr_size(&self) -> u8 {
         size_of::<usize>() as u8
     }
@@ -228,7 +232,7 @@ impl VMShape {
         /// Align an offset used in this module to a specific byte-width by rounding up
         #[inline]
         fn align(offset: u32, width: u32) -> u32 {
-            (offset + (width - 1)) / width * width
+            offset.div_ceil(width) * width
         }
 
         let mut next_field_offset = u32::from(StaticVMShape.vmctx_dynamic_data_start());

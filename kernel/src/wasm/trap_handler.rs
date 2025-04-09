@@ -203,12 +203,15 @@ impl Activation {
             prev: Cell::new(ACTIVATION.get()),
 
             vm_store_context: store.vm_store_context_ptr(),
+            // Safety: TODO
             old_last_wasm_exit_fp: Cell::new(unsafe {
                 *store.vm_store_context().last_wasm_exit_fp.get()
             }),
+            // Safety: TODO
             old_last_wasm_exit_pc: Cell::new(unsafe {
                 *store.vm_store_context().last_wasm_exit_pc.get()
             }),
+            // Safety: TODO
             old_last_wasm_entry_fp: Cell::new(unsafe {
                 *store.vm_store_context().last_wasm_entry_fp.get()
             }),
@@ -264,7 +267,7 @@ impl Activation {
             //     {
             //         (None, None)
             //     }
-            UnwindReason::Trap(_) => self.capture_backtrace(self.vm_store_context.as_ptr(), None),
+            UnwindReason::Trap(_) => Some(self.capture_backtrace(self.vm_store_context.as_ptr(), None)),
             // self.capture_coredump(self.vm_store_context.as_ptr(), None),
         };
         self.unwind.set(Some((reason, backtrace)));
@@ -282,9 +285,8 @@ impl Activation {
         &self,
         vm_store_context: *mut VMStoreContext,
         trap_pc_and_fp: Option<(VirtualAddress, VirtualAddress)>,
-    ) -> Option<RawBacktrace> {
-        let backtrace = RawBacktrace::new(vm_store_context, self, trap_pc_and_fp);
-        Some(backtrace)
+    ) -> RawBacktrace {
+        RawBacktrace::new(vm_store_context, self, trap_pc_and_fp)
     }
 }
 
@@ -294,6 +296,7 @@ impl Drop for Activation {
         // already been processed.
         debug_assert!(self.unwind.replace(None).is_none());
 
+        // Safety: TODO
         unsafe {
             let cx = self.vm_store_context.as_ref();
             *cx.last_wasm_exit_fp.get() = self.old_last_wasm_exit_fp.get();
@@ -309,6 +312,7 @@ where
 {
     let (ret, unwind) = R::maybe_catch_unwind(f);
     if let Some(unwind) = unwind {
+        // Safety: TODO
         let activation = unsafe { ACTIVATION.get().as_ref().unwrap() };
         activation.record_unwind(unwind);
     }
@@ -338,6 +342,7 @@ pub trait HostResult {
 macro_rules! host_result_no_catch {
     ($($t:ty,)*) => {
         $(
+            #[allow(clippy::unused_unit, reason = "the empty tuple case generates an empty tuple as return value, which makes clippy mad but thats fine")]
             impl HostResult for $t {
                 type Abi = $t;
                 fn maybe_catch_unwind(f: impl FnOnce() -> $t) -> ($t, Option<UnwindReason>) {
@@ -390,6 +395,10 @@ where
 /// a "sentinel value" which indicates that an unwind happened. This means that
 /// no valid instance of `Self` should generate the `SENTINEL` via the
 /// `into_abi` function.
+/// 
+/// # Safety
+/// 
+/// TODO
 pub unsafe trait HostResultHasUnwindSentinel {
     /// The Cranelift-understood ABI of this value (should not be `Self`).
     type Abi: Copy;
@@ -406,6 +415,7 @@ pub unsafe trait HostResultHasUnwindSentinel {
 /// No return value from the host is represented as a `bool` in the ABI. Here
 /// `true` means that execution succeeded while `false` is the sentinel used to
 /// indicate an unwind.
+// Safety: TODO
 unsafe impl HostResultHasUnwindSentinel for () {
     type Abi = bool;
     const SENTINEL: bool = false;
@@ -414,6 +424,7 @@ unsafe impl HostResultHasUnwindSentinel for () {
     }
 }
 
+// Safety: TODO
 unsafe impl HostResultHasUnwindSentinel for NonZeroU32 {
     type Abi = u32;
     const SENTINEL: Self::Abi = 0;
@@ -425,6 +436,7 @@ unsafe impl HostResultHasUnwindSentinel for NonZeroU32 {
 /// A 32-bit return value can be inflated to a 64-bit return value in the ABI.
 /// In this manner a successful result is a zero-extended 32-bit value and the
 /// failure sentinel is `u64::MAX` or -1 as a signed integer.
+// Safety: TODO
 unsafe impl HostResultHasUnwindSentinel for u32 {
     type Abi = u64;
     const SENTINEL: u64 = u64::MAX;
@@ -436,6 +448,7 @@ unsafe impl HostResultHasUnwindSentinel for u32 {
 /// If there is not actual successful result (e.g. an empty enum) then the ABI
 /// can be `()`, or nothing, because there's no successful result and it's
 /// always a failure.
+// Safety: TODO
 unsafe impl HostResultHasUnwindSentinel for core::convert::Infallible {
     type Abi = ();
     const SENTINEL: () = ();
@@ -475,6 +488,7 @@ impl RawBacktrace {
         trap_pc_and_fp: Option<(VirtualAddress, VirtualAddress)>,
         mut f: impl FnMut(Frame) -> ControlFlow<()>,
     ) {
+        // Safety: TODO
         unsafe {
             tracing::trace!("====== Capturing Backtrace ======");
 
@@ -483,7 +497,7 @@ impl RawBacktrace {
                 // trampoline did not get a chance to save the last Wasm PC and FP,
                 // and we need to use the plumbed-through values instead.
                 Some((pc, fp)) => {
-                    assert!(core::ptr::eq(
+                    assert!(ptr::eq(
                         vm_store_context,
                         activation.vm_store_context.as_ptr()
                     ));

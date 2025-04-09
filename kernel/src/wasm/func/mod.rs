@@ -36,8 +36,6 @@ pub struct Func(pub(super) Stored<FuncData>);
 pub struct FuncData {
     kind: FuncKind,
 }
-unsafe impl Send for FuncData {}
-unsafe impl Sync for FuncData {}
 
 #[derive(Debug)]
 
@@ -62,6 +60,7 @@ impl Func {
             kind: FuncKind::Host(Box::new(func)),
         });
 
+        // Safety: the Rust generics ensure this is safe
         unsafe { TypedFunc::new_unchecked(Self(stored), ty) }
     }
 
@@ -77,6 +76,7 @@ impl Func {
         Params::typecheck(store.engine(), ty.params())?;
         Results::typecheck(store.engine(), ty.results())?;
 
+        // Safety: the Rust generics ensure this is safe
         Ok(unsafe { TypedFunc::new_unchecked(self, ty) })
     }
 
@@ -90,8 +90,8 @@ impl Func {
         // minus this typechecking? Yeah. That's the benefit of the typed function.
         let ty = self.ty(store);
 
-        let mut params_ = ty.params().zip_eq(params);
-        while let Some((expected, param)) = params_.next() {
+        let params_ = ty.params().zip_eq(params);
+        for (expected, param) in params_ {
             let found = param.ty(store)?;
             ensure!(
                 expected.matches(&found),
@@ -144,6 +144,7 @@ impl Func {
 
         // copy the arguments into the storage vec
         for (arg, slot) in params.iter().zip(&mut values_vec) {
+            // Safety: the store stays alive for the duration of the call
             unsafe {
                 *slot = arg.to_vmval(store)?;
             }
@@ -174,16 +175,17 @@ impl Func {
         Ok(())
     }
 
-    pub fn ty(&self, store: &StoreOpaque) -> FuncType {
+    pub fn ty(self, store: &StoreOpaque) -> FuncType {
         FuncType::from_shared_type_index(store.engine(), self.type_index(store))
     }
 
-    pub fn matches_ty(&self, store: &StoreOpaque, ty: FuncType) -> bool {
+    pub fn matches_ty(self, store: &StoreOpaque, ty: FuncType) -> bool {
         let actual_ty = self.ty(store);
         actual_ty.matches(&ty)
     }
 
-    pub(super) fn type_index(&self, store: &StoreOpaque) -> VMSharedTypeIndex {
+    pub(super) fn type_index(self, store: &StoreOpaque) -> VMSharedTypeIndex {
+        // Safety: TODO
         unsafe { self.vm_func_ref(store).as_ref().type_index }
     }
 
@@ -198,12 +200,13 @@ impl Func {
     }
 
     pub(super) fn as_vmfunction_import(
-        &self,
+        self,
         store: &mut StoreOpaque,
         module: &Module,
     ) -> VMFunctionImport {
         let f = self.vm_func_ref(store);
 
+        // Safety: TODO
         unsafe {
             VMFunctionImport {
                 wasm_call: f.as_ref().wasm_call.unwrap_or_else(|| {
@@ -227,7 +230,7 @@ impl Func {
         }
     }
 
-    pub(super) fn comes_from_same_store(&self, store: &StoreOpaque) -> bool {
+    pub(super) fn comes_from_same_store(self, store: &StoreOpaque) -> bool {
         store.has_function(self.0)
     }
 
@@ -235,21 +238,23 @@ impl Func {
         store: &mut StoreOpaque,
         func_ref: NonNull<VMFuncRef>,
     ) -> Self {
+        // Safety: ensured by caller
         unsafe {
             debug_assert!(func_ref.as_ref().type_index != VMSharedTypeIndex::default());
             Func::from_exported_function(store, ExportedFunction { func_ref })
         }
     }
 
-    pub(super) fn vm_func_ref(&self, store: &StoreOpaque) -> NonNull<VMFuncRef> {
+    pub(super) fn vm_func_ref(self, store: &StoreOpaque) -> NonNull<VMFuncRef> {
         match &store[self.0].kind {
             FuncKind::StoreOwned { export } => export.func_ref,
-            FuncKind::SharedHost(func) => NonNull::from(func.func_ref()),
-            FuncKind::Host(func) => NonNull::from(func.func_ref()),
+            FuncKind::SharedHost(func) => func.func_ref(),
+            FuncKind::Host(func) => func.func_ref(),
         }
     }
 
     pub(super) unsafe fn from_vmval(store: &mut StoreOpaque, raw: *mut c_void) -> Option<Self> {
+        // Safety: ensured by caller
         unsafe { Some(Func::from_vm_func_ref(store, NonNull::new(raw.cast())?)) }
     }
 
@@ -263,7 +268,7 @@ impl Func {
     /// The returned value is only valid for as long as the store is alive and
     /// this function is properly rooted within it. Additionally this function
     /// should not be liberally used since it's a very low-level knob.
-    pub(super) unsafe fn to_vmval(&self, store: &mut StoreOpaque) -> *mut c_void {
+    pub(super) unsafe fn to_vmval(self, store: &mut StoreOpaque) -> *mut c_void {
         self.vm_func_ref(store).as_ptr().cast()
     }
 }
@@ -383,6 +388,8 @@ fn enter_wasm(store: &mut StoreOpaque) -> Option<VirtualAddress> {
     // After we've got the stack limit then we store it into the `stack_limit`
     // variable.
     let wasm_stack_limit = VirtualAddress::new(stack_pointer - MAX_WASM_STACK).unwrap();
+
+    // Safety: the VMStoreContext is always properly initialized
     let prev_stack = unsafe {
         mem::replace(
             &mut *store.vm_store_context().stack_limit.get(),
@@ -400,6 +407,7 @@ fn exit_wasm(store: &mut StoreOpaque, prev_stack: Option<VirtualAddress>) {
         return;
     };
 
+    // Safety: the VMStoreContext is always properly initialized
     unsafe {
         *store.vm_store_context().stack_limit.get() = prev_stack;
     }

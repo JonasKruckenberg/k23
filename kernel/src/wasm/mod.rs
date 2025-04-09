@@ -270,5 +270,5 @@ fn hostfunc_test() {
         },
     );
 
-    tracing::info!("success!")
+    tracing::info!("success!");
 }

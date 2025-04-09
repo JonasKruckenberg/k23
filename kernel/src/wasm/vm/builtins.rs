@@ -36,6 +36,7 @@ struct AllocationSize(usize);
 /// successful case returns the `val` itself. Note that -2 (`usize::MAX - 1`
 /// when unsigned) is unwind as a sentinel to indicate an unwind as no valid
 /// allocation can be that large.
+// Safety: TODO
 unsafe impl HostResultHasUnwindSentinel for Option<AllocationSize> {
     type Abi = *mut u8;
     const SENTINEL: *mut u8 = (usize::MAX - 1) as *mut u8;
@@ -81,7 +82,7 @@ fn memory_fill(
     len: u64,
 ) -> Result<(), TrapKind> {
     let memory_index = MemoryIndex::from_u32(memory_index);
-    instance.memory_fill(memory_index, dst, val as u8, len)
+    instance.memory_fill(memory_index, dst, u8::try_from(val).unwrap(), len)
 }
 
 // Implementation of `memory.init`
@@ -119,6 +120,7 @@ fn memory_copy(
     instance.memory_copy(dst_index, dst, src_index, src, len)
 }
 
+#[expect(clippy::cast_ptr_alignment, reason = "the cast from u8 to VMFuncRef is fine, *mut u8 is just type-erased")]
 unsafe fn table_grow_func_ref(
     _store: &mut StoreOpaque,
     instance: &mut Instance,
@@ -142,6 +144,7 @@ unsafe fn table_grow_func_ref(
     Ok(res)
 }
 
+#[expect(clippy::cast_ptr_alignment, reason = "the cast from u8 to VMFuncRef is fine, *mut u8 is just type-erased")]
 fn table_fill_func_ref(
     _store: &mut StoreOpaque,
     instance: &mut Instance,
@@ -264,6 +267,8 @@ pub mod raw {
                     $( $pname : builtin!(@ty $param), )*
                 ) $(-> builtin!(@ty $result))? {
                     $crate::wasm::trap_handler::catch_unwind_and_record_trap(|| {
+                        // Safety: there isn't much we can check here, we receive the vmctx
+                        // from generated code, so as long as the compiler is correct, this is safe.
                         unsafe {
                             $crate::wasm::vm::InstanceAndStore::from_vmctx(vmctx, |pair| {
                                 let (instance, store) = pair.unpack_mut();

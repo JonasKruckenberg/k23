@@ -46,7 +46,6 @@ pub const VM_ARRAY_CALL_HOST_FUNC_MAGIC: u32 = u32::from_le_bytes(*b"ACHF");
 /// instead use `Val` where possible. An important note about this union is that
 /// fields are all stored in little-endian format, regardless of the endianness
 /// of the host system.
-#[allow(missing_docs)]
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union VMVal {
@@ -132,9 +131,10 @@ pub union VMVal {
     anyref: u32,
 }
 
-// This type is just a bag-of-bits so it's up to the caller to figure out how
+// Safety: This type is just a bag-of-bits so it's up to the caller to figure out how
 // to safely deal with threading concerns and safely access interior bits.
 unsafe impl Send for VMVal {}
+// Safety: See above
 unsafe impl Sync for VMVal {}
 
 impl fmt::Debug for VMVal {
@@ -149,6 +149,7 @@ impl fmt::Debug for VMVal {
             }
         }
 
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
         unsafe {
             f.debug_struct("VMVal")
                 .field("i32", &Hex(self.i32))
@@ -168,6 +169,7 @@ impl VMVal {
     /// Create a null reference that is compatible with any of
     /// `{any,extern,func}ref`.
     pub fn null() -> VMVal {
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
         unsafe {
             let raw = MaybeUninit::<Self>::zeroed().assume_init();
             debug_assert_eq!(raw.get_anyref(), 0);
@@ -205,6 +207,7 @@ impl VMVal {
 
     /// Creates a WebAssembly `i64` value
     #[inline]
+    #[expect(clippy::cast_possible_wrap, reason = "wrapping is intentional")]
     pub fn u64(i: u64) -> VMVal {
         VMVal::i64(i as i64)
     }
@@ -256,12 +259,14 @@ impl VMVal {
     /// Gets the WebAssembly `i32` value
     #[inline]
     pub fn get_i32(&self) -> i32 {
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
         unsafe { i32::from_le(self.i32) }
     }
 
     /// Gets the WebAssembly `i64` value
     #[inline]
     pub fn get_i64(&self) -> i64 {
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
         unsafe { i64::from_le(self.i64) }
     }
 
@@ -280,39 +285,43 @@ impl VMVal {
     /// Gets the WebAssembly `f32` value
     #[inline]
     pub fn get_f32(&self) -> u32 {
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
         unsafe { u32::from_le(self.f32) }
     }
 
     /// Gets the WebAssembly `f64` value
     #[inline]
     pub fn get_f64(&self) -> u64 {
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
         unsafe { u64::from_le(self.f64) }
     }
 
     /// Gets the WebAssembly `v128` value
     #[inline]
     pub fn get_v128(&self) -> u128 {
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
         unsafe { u128::from_le_bytes(self.v128) }
     }
 
     /// Gets the WebAssembly `funcref` value
     #[inline]
     pub fn get_funcref(&self) -> *mut c_void {
-        unsafe { self.funcref.map_addr(|i| usize::from_le(i)) }
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        unsafe { self.funcref.map_addr(usize::from_le) }
     }
 
     /// Gets the WebAssembly `externref` value
     #[inline]
     pub fn get_externref(&self) -> u32 {
-        let externref = u32::from_le(unsafe { self.externref });
-        externref
+        // Safety: this is just a bag-of-bits, any bit pattern is valid (even if nonsensical)
+        u32::from_le(unsafe { self.externref })
     }
 
     /// Gets the WebAssembly `anyref` value
     #[inline]
     pub fn get_anyref(&self) -> u32 {
-        let anyref = u32::from_le(unsafe { self.anyref });
-        anyref
+        // Safety: this is just a bag-of-bits, any bit pattern is valid
+        u32::from_le(unsafe { self.anyref })
     }
 }
 
@@ -428,7 +437,9 @@ pub struct VMTableDefinition {
 }
 // SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
 unsafe impl VmSafe for VMTableDefinition {}
+// Safety: The store synchronization protocol ensures this type will only ever be access in a thread-safe way
 unsafe impl Send for VMTableDefinition {}
+// Safety: The store synchronization protocol ensures this type will only ever be access in a thread-safe way
 unsafe impl Sync for VMTableDefinition {}
 
 /// The fields compiled code needs to access to utilize a WebAssembly linear
@@ -468,6 +479,10 @@ pub struct VMGlobalDefinition {
 // SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
 unsafe impl VmSafe for VMGlobalDefinition {}
 
+#[expect(
+    clippy::cast_ptr_alignment,
+    reason = "false positive: the manual repr(C, align(16)) ensures proper alignment"
+)]
 impl VMGlobalDefinition {
     /// Construct a `VMGlobalDefinition`.
     pub fn new() -> Self {
@@ -479,6 +494,7 @@ impl VMGlobalDefinition {
     /// # Unsafety
     ///
     /// This raw value's type must match the given `WasmValType`.
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub unsafe fn from_vmval(
         _store: &mut StoreOpaque,
         wasm_ty: WasmValType,
@@ -518,6 +534,7 @@ impl VMGlobalDefinition {
     /// # Unsafety
     ///
     /// This global's value's type must match the given `WasmValType`.
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub unsafe fn to_vmval(
         &self,
         _store: &mut StoreOpaque,
@@ -819,6 +836,7 @@ impl VMFuncRef {
         caller: NonNull<VMOpaqueContext>,
         params_and_results: NonNull<[VMVal]>,
     ) -> bool {
+        // Safety: ensured by caller
         unsafe {
             (self.array_call)(
                 self.vmctx.as_non_null(),
@@ -903,11 +921,12 @@ pub struct VMStoreContext {
 // SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
 unsafe impl VmSafe for VMStoreContext {}
 
-// The `VMStoreContext` type is a pod-type with no destructor, and we don't
+// Safety: The `VMStoreContext` type is a pod-type with no destructor, and we don't
 // access any fields from other threads, so add in these trait impls which are
 // otherwise not available due to the `fuel_consumed` and `epoch_deadline`
 // variables in `VMStoreContext`.
 unsafe impl Send for VMStoreContext {}
+// Safety: see above
 unsafe impl Sync for VMStoreContext {}
 
 impl Default for VMStoreContext {
@@ -942,7 +961,7 @@ macro_rules! define_builtin_array {
         }
 
         impl VMBuiltinFunctionsArray {
-            #[allow(unused_doc_comments)]
+            // #[expect(unused_doc_comments, reason = "")]
             pub const INIT: VMBuiltinFunctionsArray = VMBuiltinFunctionsArray {
                 $(
                     $name: crate::wasm::vm::builtins::raw::$name,
@@ -1002,6 +1021,7 @@ impl VMContext {
     /// protect against some mistakes.
     #[inline]
     pub unsafe fn from_opaque(opaque: NonNull<VMOpaqueContext>) -> NonNull<VMContext> {
+        // Safety: ensured by caller
         unsafe {
             debug_assert_eq!(opaque.as_ref().magic, VMCONTEXT_MAGIC);
             opaque.cast()
@@ -1047,6 +1067,11 @@ pub struct VMArrayCallHostFuncContext {
     ty: RegisteredType,
 }
 
+// Safety: TODO
+unsafe impl Send for VMArrayCallHostFuncContext {}
+// Safety: TODO
+unsafe impl Sync for VMArrayCallHostFuncContext {}
+
 impl VMArrayCallHostFuncContext {
     /// Create the context for the given host function.
     ///
@@ -1085,6 +1110,7 @@ impl VMArrayCallHostFuncContext {
     pub unsafe fn from_opaque(
         opaque: NonNull<VMOpaqueContext>,
     ) -> NonNull<VMArrayCallHostFuncContext> {
+        // Safety: ensured by caller
         unsafe {
             // See comments in `VMContext::from_opaque` for this debug assert
             debug_assert_eq!(opaque.as_ref().magic, VM_ARRAY_CALL_HOST_FUNC_MAGIC);

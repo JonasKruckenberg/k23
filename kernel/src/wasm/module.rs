@@ -145,6 +145,7 @@ impl Module {
     ) -> Option<VMArrayCallFunction> {
         let loc = self.0.code.function_info()[index].array_to_wasm_trampoline?;
         let raw = self.code().resolve_function_loc(loc);
+        // Safety: TODO
         Some(unsafe { mem::transmute::<usize, VMArrayCallFunction>(raw) })
     }
 

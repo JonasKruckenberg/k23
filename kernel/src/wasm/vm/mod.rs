@@ -57,10 +57,11 @@ pub struct ExportedFunction {
     /// non-null pointer.
     pub func_ref: NonNull<VMFuncRef>,
 }
-// As part of the contract for using `ExportFunction`, synchronization
+// Safety: As part of the contract for using `ExportFunction`, synchronization
 // properties must be upheld. Therefore, despite containing raw pointers,
 // it is declared as Send/Sync.
 unsafe impl Send for ExportedFunction {}
+// Safety: see above
 unsafe impl Sync for ExportedFunction {}
 
 #[derive(Debug, Clone)]
@@ -71,8 +72,9 @@ pub struct ExportedTable {
     pub vmctx: NonNull<VMContext>,
     pub table: translate::Table,
 }
-// See docs on send/sync for `ExportFunction` above.
+// Safety: see docs on send/sync for `ExportedFunction` above.
 unsafe impl Send for ExportedTable {}
+// Safety: see docs on send/sync for `ExportedFunction` above.
 unsafe impl Sync for ExportedTable {}
 
 /// A memory export value.
@@ -86,8 +88,9 @@ pub struct ExportedMemory {
     pub index: DefinedMemoryIndex,
     pub memory: translate::Memory,
 }
-// See docs on send/sync for `ExportFunction` above.
+// Safety: see docs on send/sync for `ExportedFunction` above.
 unsafe impl Send for ExportedMemory {}
+// Safety: see docs on send/sync for `ExportedFunction` above.
 unsafe impl Sync for ExportedMemory {}
 
 /// A global export value.
@@ -100,8 +103,9 @@ pub struct ExportedGlobal {
     pub vmctx: Option<NonNull<VMContext>>,
     pub global: translate::Global,
 }
-// See docs on send/sync for `ExportFunction` above.
+// Safety: see docs on send/sync for `ExportedFunction` above.
 unsafe impl Send for ExportedGlobal {}
+// Safety: see docs on send/sync for `ExportedFunction` above.
 unsafe impl Sync for ExportedGlobal {}
 
 /// A tag export value.
@@ -111,8 +115,9 @@ pub struct ExportedTag {
     pub definition: NonNull<VMTagDefinition>,
     pub tag: translate::Tag,
 }
-// See docs on send/sync for `ExportFunction` above.
+// Safety: see docs on send/sync for `ExportedFunction` above.
 unsafe impl Send for ExportedTag {}
+// Safety: see docs on send/sync for `ExportedFunction` above.
 unsafe impl Sync for ExportedTag {}
 
 #[derive(Debug, Default)]

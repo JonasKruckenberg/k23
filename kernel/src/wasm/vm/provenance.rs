@@ -45,6 +45,7 @@ impl<T> VmPtr<T> {
     /// View this pointer as a [`NonNull<T>`].
     pub fn as_non_null(&self) -> NonNull<T> {
         let ptr = core::ptr::with_exposed_provenance_mut(self.ptr.get());
+        // Safety: we construct from a `NonZeroUsize` which is *well* never null
         unsafe { NonNull::new_unchecked(ptr) }
     }
 
@@ -80,6 +81,7 @@ impl<T> fmt::Pointer for VmPtr<T> {
 impl<T> From<NonNull<T>> for VmPtr<T> {
     fn from(ptr: NonNull<T>) -> VmPtr<T> {
         VmPtr {
+            // Safety: we construct from a `NonNull` which is *well* never null
             ptr: unsafe { NonZeroUsize::new_unchecked(ptr.as_ptr().expose_provenance()) },
             _marker: PhantomData,
         }
@@ -89,11 +91,13 @@ impl<T> From<NonNull<T>> for VmPtr<T> {
 /// A custom "marker trait" used to tag types that are safe to share with
 /// compiled wasm code.
 ///
-/// The intention of this trait is to be used as a bound in a few core locations
-/// in Wasmtime, such as `Instance::vmctx_plus_offset_mut`, and otherwise not
+/// The intention of this trait is to be used as a bound in a few core locations,
+/// such as `Instance::vmctx_plus_offset_mut`, and otherwise not
 /// present very often. The purpose of this trait is to ensure that all types
 /// stored to be shared with compiled code have a known layout and are
 /// guaranteed to be "safe" to share with compiled wasm code.
+///
+/// # Safety
 ///
 /// This is an `unsafe` trait as it's generally not safe to share anything with
 /// compiled code and it is used to invite extra scrutiny to manual `impl`s of
@@ -126,29 +130,44 @@ impl<T> From<NonNull<T>> for VmPtr<T> {
 /// with compiled code.
 pub unsafe trait VmSafe {}
 
-// Implementations for primitive types. Note that atomics are included here as
+// Safety: Implementations for primitive types. Note that atomics are included here as
 // some atomic values are shared with compiled code. Rust's atomics are
 // guaranteed to have the same memory representation as their primitive.
 unsafe impl VmSafe for u8 {}
+// Safety: see above
 unsafe impl VmSafe for u16 {}
+// Safety: see above
 unsafe impl VmSafe for u32 {}
+// Safety: see above
 unsafe impl VmSafe for u64 {}
+// Safety: see above
 unsafe impl VmSafe for u128 {}
+// Safety: see above
 unsafe impl VmSafe for usize {}
+// Safety: see above
 unsafe impl VmSafe for i8 {}
+// Safety: see above
 unsafe impl VmSafe for i16 {}
+// Safety: see above
 unsafe impl VmSafe for i32 {}
+// Safety: see above
 unsafe impl VmSafe for i64 {}
+// Safety: see above
 unsafe impl VmSafe for i128 {}
+// Safety: see above
 unsafe impl VmSafe for isize {}
+// Safety: see above
 unsafe impl VmSafe for AtomicUsize {}
 #[cfg(target_has_atomic = "64")]
+// Safety: see above
 unsafe impl VmSafe for core::sync::atomic::AtomicU64 {}
 
+// Safety: VMSharedTypeIndex is just a `u32` which is always VmSafe
 unsafe impl VmSafe for VMSharedTypeIndex {}
 
-// Core implementations for `VmPtr`. Notably `VMPtr<T>` requires that `T` also
+// Safety: Core implementations for `VmPtr`. Notably `VMPtr<T>` requires that `T` also
 // implements `VmSafe`. Additionally an `Option` wrapper is allowed as that's
 // just a nullable pointer.
 unsafe impl<T: VmSafe> VmSafe for VmPtr<T> {}
+// Safety: see above
 unsafe impl<T: VmSafe> VmSafe for Option<VmPtr<T>> {}

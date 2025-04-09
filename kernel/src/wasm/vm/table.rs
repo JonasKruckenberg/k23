@@ -35,14 +35,13 @@ pub struct Table {
     /// The optional maximum accessible size, in elements, for this table.
     maximum: Option<usize>,
 }
+// Safety: The store synchronization protocol ensures this type will only ever be access in a thread-safe way
 unsafe impl Send for Table {}
+// Safety: The store synchronization protocol ensures this type will only ever be access in a thread-safe way
 unsafe impl Sync for Table {}
 
 impl Table {
-    pub(crate) unsafe fn from_parts(
-        elements: MmapVec<TableElement>,
-        maximum: Option<usize>,
-    ) -> Self {
+    pub(super) fn from_parts(elements: MmapVec<TableElement>, maximum: Option<usize>) -> Self {
         Self {
             size: elements.len(),
             elements,
@@ -56,7 +55,7 @@ impl Table {
 
     pub fn init_func(
         &mut self,
-        dst: usize,
+        dst: u64,
         items: impl ExactSizeIterator<Item = Option<NonNull<VMFuncRef>>>,
     ) -> Result<(), TrapKind> {
         let dst = usize::try_from(dst).map_err(|_| TrapKind::TableOutOfBounds)?;
@@ -77,9 +76,7 @@ impl Table {
     pub fn fill(&mut self, dst: u64, val: TableElement, len: u64) -> Result<(), TrapKind> {
         let start = usize::try_from(dst).map_err(|_| TrapKind::TableOutOfBounds)?;
         let len = usize::try_from(len).map_err(|_| TrapKind::TableOutOfBounds)?;
-        let end = start
-            .checked_add(len)
-            .ok_or_else(|| TrapKind::TableOutOfBounds)?;
+        let end = start.checked_add(len).ok_or(TrapKind::TableOutOfBounds)?;
 
         if end > self.size() {
             return Err(TrapKind::TableOutOfBounds);
@@ -92,7 +89,7 @@ impl Table {
 
     pub fn get(&self, index: u64) -> Option<TableElement> {
         let index = usize::try_from(index).ok()?;
-        self.elements.get(index).cloned()
+        self.elements.get(index).copied()
     }
 
     pub fn set(&mut self, index: u64, elem: TableElement) -> crate::Result<()> {
@@ -151,6 +148,7 @@ impl Table {
         src_index: u64,
         len: u64,
     ) -> Result<(), TrapKind> {
+        // Safety: the table pointers are valid
         unsafe {
             let src_index = usize::try_from(src_index).map_err(|_| TrapKind::TableOutOfBounds)?;
             let dst_index = usize::try_from(dst_index).map_err(|_| TrapKind::TableOutOfBounds)?;
@@ -158,10 +156,10 @@ impl Table {
 
             if src_index
                 .checked_add(len)
-                .map_or(true, |n| n > (*src_table).size())
+                .is_none_or(|n| n > (*src_table).size())
                 || dst_index
                     .checked_add(len)
-                    .map_or(true, |m| m > (*dst_table).size())
+                    .is_none_or(|m| m > (*dst_table).size())
             {
                 return Err(TrapKind::TableOutOfBounds);
             }
@@ -199,13 +197,9 @@ impl Table {
     }
 
     pub fn as_vmtable_definition(&self) -> VMTableDefinition {
-        unsafe {
-            VMTableDefinition {
-                base: VmPtr::from(NonNull::new_unchecked(
-                    self.elements.as_ptr().cast_mut().cast(),
-                )),
-                current_elements: self.elements.len().into(),
-            }
+        VMTableDefinition {
+            base: VmPtr::from(NonNull::new(self.elements.as_ptr().cast_mut().cast()).unwrap()),
+            current_elements: self.elements.len().into(),
         }
     }
 }

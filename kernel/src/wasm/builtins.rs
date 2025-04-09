@@ -105,7 +105,6 @@ macro_rules! declare_indexes {
          )*
     ) => {
         $( #[$this_attr] )*
-        #[allow(missing_docs)]
         pub const fn $this_name() -> Self {
             Self($index)
         }

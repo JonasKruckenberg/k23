@@ -19,6 +19,9 @@ pub struct Global(Stored<ExportedGlobal>);
 
 impl Global {
     pub fn new(store: &mut StoreOpaque, ty: GlobalType, val: Val) -> crate::Result<Self> {
+        val.ensure_matches_ty(store, ty.content())?;
+        
+        // Safety: we checked above that the types match
         let definition = unsafe {
             let vmval = val.to_vmval(store)?;
 
@@ -34,12 +37,13 @@ impl Global {
         Ok(Self(stored))
     }
 
-    pub fn ty(&self, store: &StoreOpaque) -> GlobalType {
+    pub fn ty(self, store: &StoreOpaque) -> GlobalType {
         let export = &store[self.0];
         GlobalType::from_wasm_global(store.engine(), &export.global)
     }
 
     pub fn get(&self, store: &mut StoreOpaque) -> Val {
+        // Safety: TODO
         unsafe {
             let export = &store[self.0];
             let def = export.definition.as_ref();
@@ -66,13 +70,14 @@ impl Global {
     }
 
     pub fn set(&self, store: &mut StoreOpaque, val: Val) -> crate::Result<()> {
-        let global_ty = self.ty(&store);
+        let global_ty = self.ty(store);
         if global_ty.mutability() != Mutability::Var {
             bail!("immutable global cannot be set");
         }
-        val.ensure_matches_ty(&store, global_ty.content())
+        val.ensure_matches_ty(store, global_ty.content())
             .context("type mismatch: attempt to set global to value of wrong type")?;
 
+        // Safety: TODO
         unsafe {
             let def = store[self.0].definition.as_mut();
             match val {
@@ -80,7 +85,7 @@ impl Global {
                 Val::I64(i) => *def.as_i64_mut() = i,
                 Val::F32(f) => *def.as_u32_mut() = f,
                 Val::F64(f) => *def.as_u64_mut() = f,
-                Val::V128(i) => def.set_u128(i.into()),
+                Val::V128(i) => def.set_u128(i),
                 Val::FuncRef(f) => {
                     *def.as_func_ref_mut() =
                         f.map_or(ptr::null_mut(), |f| f.vm_func_ref(store).as_ptr());
@@ -95,7 +100,7 @@ impl Global {
         let stored = store.add_global(export);
         Self(stored)
     }
-    pub(super) fn as_vmglobal_import(&self, store: &mut StoreOpaque) -> VMGlobalImport {
+    pub(super) fn as_vmglobal_import(self, store: &mut StoreOpaque) -> VMGlobalImport {
         let export = &store[self.0];
         VMGlobalImport {
             from: VmPtr::from(export.definition),

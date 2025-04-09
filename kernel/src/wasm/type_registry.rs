@@ -21,7 +21,6 @@ use core::borrow::Borrow;
 use core::fmt::Debug;
 use core::hash::{Hash, Hasher};
 use core::range::Range;
-use core::sync::atomic::Ordering::Acquire;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::{fmt, iter};
 use cranelift_entity::packed_option::{PackedOption, ReservedValue};
@@ -394,7 +393,7 @@ impl TypeRegistry {
             (entry, ty)
         };
 
-        debug_assert!(entry.0.registrations.load(Acquire) != 0);
+        debug_assert!(entry.0.registrations.load(Ordering::Acquire) != 0);
         Some(RegisteredType {
             engine: engine.clone(),
             entry,
@@ -645,8 +644,8 @@ impl TypeRegistryInner {
                 .zip(iter_entity_range(range.into()))
                 .map(|(mut ty, module_index)| {
                     non_canon_types.push((module_index, ty.clone()));
-                    ty.canonicalize_for_hash_consing(range.clone(), &mut |idx| {
-                        debug_assert!(idx < range.clone().start);
+                    ty.canonicalize_for_hash_consing(range, &mut |idx| {
+                        debug_assert!(idx < range.start);
                         map[idx]
                     });
                     ty
@@ -658,14 +657,17 @@ impl TypeRegistryInner {
         // group may only be to fully-registered types.
         if cfg!(debug_assertions) {
             hash_consing_key
-                .trace_engine_indices::<_, ()>(&mut |index| Ok(self.debug_assert_registered(index)))
+                .trace_engine_indices::<_, ()>(&mut |index| {
+                    self.debug_assert_registered(index);
+                    Ok(()) 
+                })
                 .unwrap();
         }
 
         // If we've already registered this rec group before, reuse it.
         if let Some(entry) = self.hash_consing_map.get(&hash_consing_key) {
             log::trace!("hash-consing map hit: reusing {entry:?}");
-            assert_eq!(entry.0.unregistered.load(Acquire), false);
+            assert!(!entry.0.unregistered.load(Ordering::Acquire));
             self.debug_assert_all_registered(entry.0.shared_type_indices.iter().copied());
             entry.incr_ref_count("hash-consing map hit");
             return entry.clone();
@@ -680,7 +682,7 @@ impl TypeRegistryInner {
             .trace_engine_indices::<_, ()>(&mut |index| {
                 self.debug_assert_registered(index);
                 let other_entry = self.type_to_rec_group[index].as_ref().unwrap();
-                assert_eq!(other_entry.0.unregistered.load(Acquire), false);
+                assert!(!other_entry.0.unregistered.load(Ordering::Acquire));
                 other_entry.incr_ref_count("new rec group's type references");
                 Ok(())
             })
@@ -990,18 +992,18 @@ impl TypeRegistryInner {
         // now have an exclusive lock on `self`).
 
         // Handle scenario (1) from above.
-        let registrations = entry.0.registrations.load(Acquire);
+        let registrations = entry.0.registrations.load(Ordering::Acquire);
         if registrations != 0 {
             log::trace!(
                 "    {entry:?} was concurrently resurrected and no longer has \
                  zero registrations (registrations -> {registrations})",
             );
-            assert_eq!(entry.0.unregistered.load(Acquire), false);
+            assert!(!entry.0.unregistered.load(Ordering::Acquire));
             return;
         }
 
         // Handle scenario (2) from above.
-        if entry.0.unregistered.load(Acquire) {
+        if entry.0.unregistered.load(Ordering::Acquire) {
             log::trace!(
                 "    {entry:?} was concurrently resurrected, dropped again, \
                  and already unregistered"
@@ -1026,8 +1028,8 @@ impl TypeRegistryInner {
             // All entries on the drop stack should *really* be ready for
             // unregistration, since no one can resurrect entries once we've
             // locked the registry.
-            assert_eq!(entry.0.registrations.load(Acquire), 0);
-            assert_eq!(entry.0.unregistered.load(Acquire), false);
+            assert_eq!(entry.0.registrations.load(Ordering::Acquire), 0);
+            assert!(!entry.0.unregistered.load(Ordering::Acquire));
 
             // We are taking responsibility for unregistering this entry, so
             // prevent anyone else from attempting to do it again.

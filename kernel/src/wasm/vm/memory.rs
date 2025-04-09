@@ -31,7 +31,7 @@ pub struct Memory {
 }
 
 impl Memory {
-    pub(crate) unsafe fn from_parts(
+    pub(crate) fn from_parts(
         mmap: Mmap,
         len: usize,
         maximum: Option<usize>,
@@ -99,11 +99,9 @@ impl Memory {
     // }
 
     pub(crate) fn vmmemory_definition(&mut self) -> VMMemoryDefinition {
-        unsafe {
-            VMMemoryDefinition {
-                base: VmPtr::from(NonNull::new_unchecked(self.mmap.as_mut_ptr())),
-                current_length: self.len.into(),
-            }
+        VMMemoryDefinition {
+            base: VmPtr::from(NonNull::new(self.mmap.as_mut_ptr()).unwrap()),
+            current_length: self.len.into(),
         }
     }
 }

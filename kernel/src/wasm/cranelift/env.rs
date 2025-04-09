@@ -278,28 +278,25 @@ impl<'module_env> TranslationEnvironment<'module_env> {
             // but that is neither here nor there. We want to logically do an
             // unsigned extend *except* when we are given the `-1` sentinel,
             // which we must preserve as `-1` in the wider type.
-            match single_byte_pages {
-                false => {
-                    // In the case that we have default page sizes, we can
-                    // always sign extend, since valid memory lengths (in pages)
-                    // never have their sign bit set, and so if the sign bit is
-                    // set then this must be the `-1` sentinel, which we want to
-                    // preserve through the extension.
-                    //
-                    // When it comes to table, `single_byte_pages` should have always been set to false.
-                    // Then we simply do a signed extension.
-                    pos.ins().sextend(desired_type, val)
-                }
-                true => {
-                    // For single-byte pages, we have to explicitly check for
-                    // `-1` and choose whether to do an unsigned extension or
-                    // return a larger `-1` because there are valid memory
-                    // lengths (in pages) that have the sign bit set.
-                    let extended = pos.ins().uextend(desired_type, val);
-                    let neg_one = pos.ins().iconst(desired_type, -1);
-                    let is_failure = pos.ins().icmp_imm(IntCC::Equal, val, -1);
-                    pos.ins().select(is_failure, neg_one, extended)
-                }
+            if single_byte_pages {
+                // For single-byte pages, we have to explicitly check for
+                // `-1` and choose whether to do an unsigned extension or
+                // return a larger `-1` because there are valid memory
+                // lengths (in pages) that have the sign bit set.
+                let extended = pos.ins().uextend(desired_type, val);
+                let neg_one = pos.ins().iconst(desired_type, -1);
+                let is_failure = pos.ins().icmp_imm(IntCC::Equal, val, -1);
+                pos.ins().select(is_failure, neg_one, extended)
+            } else {
+                // In the case that we have default page sizes, we can
+                // always sign extend, since valid memory lengths (in pages)
+                // never have their sign bit set, and so if the sign bit is
+                // set then this must be the `-1` sentinel, which we want to
+                // preserve through the extension.
+                //
+                // When it comes to table, `single_byte_pages` should have always been set to false.
+                // Then we simply do a signed extension.
+                pos.ins().sextend(desired_type, val)
             }
         }
     }
@@ -337,6 +334,7 @@ impl TranslationEnvironment<'_> {
         func.import_signature(sig)
     }
 
+    #[expect(clippy::cast_possible_wrap, reason = "this is fiiinee")]
     pub fn make_table(&mut self, func: &mut Function, index: TableIndex) -> CraneliftTable {
         let table = &self.module.tables[index];
         let vmctx = self.vmctx(func);
@@ -388,6 +386,7 @@ impl TranslationEnvironment<'_> {
         }
     }
 
+    #[expect(clippy::cast_possible_wrap, reason = "this is fiiinee")]
     pub fn make_memory(&mut self, func: &mut Function, index: MemoryIndex) -> CraneliftMemory {
         let plan = &self.module.memories[index];
         let vmctx = self.vmctx(func);
@@ -435,7 +434,7 @@ impl TranslationEnvironment<'_> {
             // Create a field in the vmctx for the base pointer.
             match &mut func.memory_types[ptr_memtype] {
                 ir::MemoryTypeData::Struct { size, fields } => {
-                    let offset = u64::try_from(base_offset).unwrap();
+                    let offset = u64::from(base_offset);
                     fields.push(ir::MemoryTypeField {
                         offset,
                         ty: self.isa.pointer_type(),
@@ -770,8 +769,8 @@ impl TranslationEnvironment<'_> {
         mut pos: FuncCursor,
         memory_index: MemoryIndex,
         delta: Value,
-    ) -> crate::Result<Value> {
-        let memory_grow = self.builtin_functions.memory_grow(&mut pos.func);
+    ) -> Value {
+        let memory_grow = self.builtin_functions.memory_grow(pos.func);
 
         let vmctx = self.vmctx_val(&mut pos);
         let memory_index_arg = pos.ins().iconst(I32, i64::from(memory_index.as_u32()));
@@ -787,12 +786,12 @@ impl TranslationEnvironment<'_> {
             0 => true,
             _ => unreachable!("only page sizes 2**0 and 2**16 are currently valid"),
         };
-        Ok(self.convert_pointer_to_index_type(
+        self.convert_pointer_to_index_type(
             pos,
             result,
             self.memory(memory_index).index_type,
             single_byte_pages,
-        ))
+        )
     }
 
     /// Translate a WASM `memory.size` instruction at `pos`.
@@ -800,13 +799,14 @@ impl TranslationEnvironment<'_> {
     /// The `memory_index` identifies the linear memory.
     ///
     /// Returns the current size (in WASM pages) of the memory.
+    #[expect(clippy::cast_possible_wrap, reason = "this is fiiinee")]
     pub fn translate_memory_size(
         &mut self,
         mut pos: FuncCursor,
         memory_index: MemoryIndex,
     ) -> crate::Result<Value> {
         let pointer_type = self.pointer_type();
-        let vmctx = self.vmctx(&mut pos.func);
+        let vmctx = self.vmctx(pos.func);
         let is_shared = self.module.memories[memory_index].shared;
         let base = pos.ins().global_value(self.pointer_type(), vmctx);
         let current_length_in_bytes = match self.module.defined_memory_index(memory_index) {
@@ -898,7 +898,7 @@ impl TranslationEnvironment<'_> {
         src_pos: Value,
         dst_pos: Value,
         len: Value,
-    ) -> crate::Result<()> {
+    ) {
         let memory_copy = self.builtin_functions.memory_copy(pos.func);
 
         let vmctx = self.vmctx_val(&mut pos);
@@ -924,8 +924,6 @@ impl TranslationEnvironment<'_> {
 
         pos.ins()
             .call(memory_copy, &[vmctx, dst_index, dst, src_index, src, len]);
-
-        Ok(())
     }
 
     /// Translate a WASM `memory.fill` instruction.
@@ -939,7 +937,7 @@ impl TranslationEnvironment<'_> {
         dst: Value,
         value: Value,
         len: Value,
-    ) -> crate::Result<()> {
+    ) {
         let memory_copy = self.builtin_functions.memory_fill(pos.func);
 
         let vmctx = self.vmctx_val(&mut pos);
@@ -949,8 +947,6 @@ impl TranslationEnvironment<'_> {
 
         pos.ins()
             .call(memory_copy, &[vmctx, memory_index, dst, value, len]);
-
-        Ok(())
     }
 
     /// Translate a WASM `memory.init` instruction.
@@ -966,7 +962,7 @@ impl TranslationEnvironment<'_> {
         dst: Value,
         src: Value,
         len: Value,
-    ) -> crate::Result<()> {
+    ) {
         let memory_copy = self.builtin_functions.memory_init(pos.func);
 
         let vmctx = self.vmctx_val(&mut pos);
@@ -979,24 +975,16 @@ impl TranslationEnvironment<'_> {
             memory_copy,
             &[vmctx, memory_index, data_index, dst, src, len],
         );
-
-        Ok(())
     }
 
     /// Translate a WASM `data.drop` instruction.
-    pub fn translate_data_drop(
-        &mut self,
-        mut pos: FuncCursor,
-        data_index: DataIndex,
-    ) -> crate::Result<()> {
+    pub fn translate_data_drop(&mut self, mut pos: FuncCursor, data_index: DataIndex) {
         let data_drop = self.builtin_functions.data_drop(pos.func);
 
         let vmctx = self.vmctx_val(&mut pos);
         let data_index = pos.ins().iconst(I32, i64::from(data_index.as_u32()));
 
         pos.ins().call(data_drop, &[vmctx, data_index]);
-
-        Ok(())
     }
 
     /// Translate a WASM `table.size` instruction.

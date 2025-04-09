@@ -138,6 +138,7 @@ impl Compiler for CraneliftCompiler {
         self.isa.text_section_builder(capacity)
     }
 
+    #[expect(clippy::cast_possible_wrap, reason = "this is fiiinee")]
     fn compile_function(
         &self,
         translation: &ModuleTranslation<'_>,
@@ -197,6 +198,7 @@ impl Compiler for CraneliftCompiler {
         compiler.finish(Some(&data.body))
     }
 
+    #[expect(clippy::cast_possible_wrap, reason = "this is fiiinee")]
     fn compile_array_to_wasm_trampoline(
         &self,
         translation: &ModuleTranslation<'_>,
@@ -350,7 +352,7 @@ impl Compiler for CraneliftCompiler {
         builder.ins().return_(&results);
         builder.finalize();
 
-        Ok(compiler.finish(None)?)
+        compiler.finish(None)
     }
 
     fn compile_wasm_to_builtin(
@@ -365,7 +367,7 @@ impl Compiler for CraneliftCompiler {
         let host_sig = sigs.host_signature(index);
 
         let mut compiler = self.function_compiler();
-        let func = ir::Function::with_name_signature(Default::default(), wasm_sig.clone());
+        let func = ir::Function::with_name_signature(UserFuncName::default(), wasm_sig.clone());
         let (mut builder, block0) = compiler.builder(func);
         let vmctx = builder.block_params(block0)[0];
 
@@ -391,7 +393,7 @@ impl Compiler for CraneliftCompiler {
             Some(TrapSentinel::Falsy) => {
                 debug_assert_eq!(results.len(), 1);
                 // `bool` is the first and only result
-                self.raise_if_host_trapped(&mut builder, vmctx, results[0])
+                self.raise_if_host_trapped(&mut builder, vmctx, results[0]);
             }
             Some(TrapSentinel::Negative) => {
                 let ty = builder.func.dfg.value_type(results[0]);
@@ -528,6 +530,7 @@ fn declare_and_call(
     builder.ins().call(callee, args)
 }
 
+#[expect(clippy::cast_possible_wrap, reason = "this is fiiinee")]
 fn save_last_wasm_exit_fp_and_pc(
     builder: &mut FunctionBuilder,
     pointer_type: Type,

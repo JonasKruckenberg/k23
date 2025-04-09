@@ -337,10 +337,7 @@ impl Table {
     ) -> Self {
         Self {
             element_type: type_convert.convert_ref_type(ty.element_type),
-            index_type: match ty.table64 {
-                true => IndexType::I64,
-                false => IndexType::I32,
-            },
+            index_type: if ty.table64 { IndexType::I64 } else { IndexType::I32 },
             limits: Limits {
                 min: ty.initial,
                 max: ty.maximum,
@@ -381,10 +378,7 @@ impl Memory {
     /// Creates a new `MemoryPlan` for the given `wasmparser::MemoryType`.
     pub fn from_wasmparser(ty: wasmparser::MemoryType) -> Self {
         Self {
-            index_type: match ty.memory64 {
-                true => IndexType::I64,
-                false => IndexType::I32,
-            },
+            index_type: if ty.memory64 { IndexType::I64 } else { IndexType::I32 },
             limits: Limits {
                 min: ty.initial,
                 max: ty.maximum,

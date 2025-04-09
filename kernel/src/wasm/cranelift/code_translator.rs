@@ -688,7 +688,7 @@ pub fn translate_operator(
             // argument to be a memory index.
             let mem_index = MemoryIndex::from_u32(*mem);
             let delta = state.pop1();
-            let ret = env.translate_memory_grow(builder.cursor(), mem_index, delta)?;
+            let ret = env.translate_memory_grow(builder.cursor(), mem_index, delta);
             state.push1(ret);
         }
         Operator::MemorySize { mem } => {
@@ -1186,7 +1186,7 @@ pub fn translate_operator(
                 dest,
                 src,
                 len,
-            )?;
+            );
         }
         Operator::MemoryCopy { src_mem, dst_mem } => {
             let src_index = MemoryIndex::from_u32(*src_mem);
@@ -1201,17 +1201,17 @@ pub fn translate_operator(
                 src_pos,
                 dst_pos,
                 len,
-            )?;
+            );
         }
         Operator::MemoryFill { mem } => {
             let mem_index = MemoryIndex::from_u32(*mem);
             let len = state.pop1();
             let val = state.pop1();
             let dest = state.pop1();
-            env.translate_memory_fill(builder.cursor(), mem_index, dest, val, len)?;
+            env.translate_memory_fill(builder.cursor(), mem_index, dest, val, len);
         }
         Operator::DataDrop { data_index } => {
-            env.translate_data_drop(builder.cursor(), DataIndex::from_u32(*data_index))?;
+            env.translate_data_drop(builder.cursor(), DataIndex::from_u32(*data_index));
         }
         Operator::TableInit {
             elem_index,

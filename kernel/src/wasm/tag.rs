@@ -13,15 +13,15 @@ use crate::wasm::vm::{ExportedTag, VMTagImport, VmPtr};
 pub struct Tag(Stored<ExportedTag>);
 
 impl Tag {
-    pub fn ty(&self, store: &StoreOpaque) -> TagType {
+    pub fn ty(self, store: &StoreOpaque) -> TagType {
         let export = &store[self.0];
-        TagType::from_wasm_tag(store.engine(), &export.tag)
+        TagType::from_wasm_tag(store.engine(), export.tag)
     }
     pub(super) fn from_exported_tag(store: &mut StoreOpaque, export: ExportedTag) -> Self {
         let stored = store.add_tag(export);
         Self(stored)
     }
-    pub(super) fn as_vmtag_import(&self, store: &mut StoreOpaque) -> VMTagImport {
+    pub(super) fn as_vmtag_import(self, store: &mut StoreOpaque) -> VMTagImport {
         let export = &store[self.0];
         VMTagImport {
             from: VmPtr::from(export.definition),

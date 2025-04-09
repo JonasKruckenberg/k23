@@ -15,12 +15,14 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ptr;
 use core::ptr::NonNull;
+use static_assertions::assert_impl_all;
 
 pub struct TypedFunc<Params, Results> {
     ty: FuncType,
     func: Func,
     _m: PhantomData<fn(Params) -> Results>,
 }
+assert_impl_all!(TypedFunc<(), ()>: Send, Sync);
 
 impl<Params, Results> TypedFunc<Params, Results> {
     #[inline]
@@ -459,7 +461,7 @@ macro_rules! impl_wasm_params {
             }
 
             fn store(self, _store: &mut StoreOpaque, _func_ty: &FuncType, _dst: &mut MaybeUninit<Self::VMValStorage>) -> crate::Result<()> {
-                #[allow(unused_imports)]
+                #[allow(unused_imports, reason = "macro quirk")]
                 use $crate::util::maybe_uninit::MaybeUninitExt;
 
                 let ($($t,)*) = self;

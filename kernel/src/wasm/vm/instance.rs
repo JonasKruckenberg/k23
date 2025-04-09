@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::mem::VirtualAddress;
-use crate::wasm::TrapKind;
 use crate::wasm::indices::{
     DataIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, DefinedTagIndex,
     ElemIndex, EntityIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TagIndex,
@@ -25,11 +24,12 @@ use crate::wasm::vm::provenance::{VmPtr, VmSafe};
 use crate::wasm::vm::table::{Table, TableElement, TableElementType};
 use crate::wasm::vm::{
     Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable, ExportedTag, Imports,
-    StaticVMShape, VMBuiltinFunctionsArray, VMCONTEXT_MAGIC, VMContext, VMFuncRef, VMFunctionBody,
-    VMFunctionImport, VMGlobalDefinition, VMGlobalImport, VMMemoryDefinition, VMMemoryImport,
-    VMOpaqueContext, VMShape, VMStoreContext, VMTableDefinition, VMTableImport, VMTagDefinition,
-    VMTagImport,
+    StaticVMShape, VMBuiltinFunctionsArray, VMContext, VMFuncRef, VMFunctionBody, VMFunctionImport,
+    VMGlobalDefinition, VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOpaqueContext,
+    VMShape, VMStoreContext, VMTableDefinition, VMTableImport, VMTagDefinition, VMTagImport,
+    VMCONTEXT_MAGIC,
 };
+use crate::wasm::TrapKind;
 use alloc::string::String;
 use anyhow::{bail, ensure};
 use core::alloc::Layout;
@@ -45,7 +45,9 @@ use static_assertions::const_assert_eq;
 pub struct InstanceHandle {
     instance: Option<NonNull<Instance>>,
 }
+// Safety: TODO
 unsafe impl Send for InstanceHandle {}
+// Safety: TODO
 unsafe impl Sync for InstanceHandle {}
 
 #[repr(C)] // ensure that the vmctx field is last.
@@ -90,21 +92,22 @@ impl InstanceHandle {
         imports: Imports,
         is_bulk_memory: bool,
     ) -> crate::Result<()> {
+        // Safety: we call the functions in the right order (initialize_vmctx) first
         unsafe {
-            self.instance_mut()
-                .initialize_vmctx(store, imports, &module);
+            self.instance_mut().initialize_vmctx(store, imports, module);
 
             if !is_bulk_memory {
+                // Safety: see? we called `initialize_vmctx` before calling `check_init_bounds`!
                 check_init_bounds(store, self.instance_mut(), module)?;
             }
 
             let mut ctx = ConstEvalContext::new(self.instance.unwrap().as_mut());
             self.instance_mut()
-                .initialize_tables(store, &mut ctx, const_eval, &module)?;
+                .initialize_tables(store, &mut ctx, const_eval, module)?;
             self.instance_mut()
-                .initialize_memories(store, &mut ctx, const_eval, &module)?;
+                .initialize_memories(store, &mut ctx, const_eval, module)?;
             self.instance_mut()
-                .initialize_globals(store, &mut ctx, const_eval, &module)?;
+                .initialize_globals(store, &mut ctx, const_eval, module)?;
         }
 
         Ok(())
@@ -352,11 +355,13 @@ impl InstanceHandle {
     /// Return a reference to the contained `Instance`.
     #[inline]
     pub fn instance(&self) -> &Instance {
+        // Safety: the constructor ensures the instance is correctly initialized
         unsafe { self.instance.unwrap().as_ref() }
     }
 
     #[inline]
     pub fn instance_mut(&mut self) -> &mut Instance {
+        // Safety: the constructor ensures the instance is correctly initialized
         unsafe { self.instance.unwrap().as_mut() }
     }
 
@@ -373,15 +378,21 @@ impl InstanceHandle {
 }
 
 impl Instance {
+    /// # Safety
+    ///
+    /// The caller must ensure that `instance: NonNull<Instance>` got allocated using the
+    /// `Instance::alloc_layout` to ensure it is the right size for the VMContext
     pub unsafe fn from_parts(
         module: Module,
         instance: NonNull<Instance>,
         tables: PrimaryMap<DefinedTableIndex, Table>,
         memories: PrimaryMap<DefinedMemoryIndex, Memory>,
-    ) -> crate::Result<InstanceHandle> {
+    ) -> InstanceHandle {
         let dropped_elements = module.translated().active_table_initializers.clone();
         let dropped_data = module.translated().active_memory_initializers.clone();
 
+        // Safety: we have to trust the caller that `NonNull<Instance>` got allocated using the correct
+        // `Instance::alloc_layout` and therefore has the right-sized vmctx memory
         unsafe {
             instance.write(Instance {
                 module: module.clone(),
@@ -397,9 +408,9 @@ impl Instance {
             });
         }
 
-        Ok(InstanceHandle {
+        InstanceHandle {
             instance: Some(instance),
-        })
+        }
     }
 
     pub fn alloc_layout(offsets: &VMShape) -> Layout {
@@ -423,7 +434,7 @@ impl Instance {
     fn wasm_fault(&self, addr: VirtualAddress) -> Option<WasmFault> {
         let mut fault = None;
 
-        for (_, memory) in self.memories.iter() {
+        for (_, memory) in &self.memories {
             let accessible = memory.wasm_accessible();
             if accessible.start <= addr && addr < accessible.end {
                 // All linear memories should be disjoint so assert that no
@@ -500,7 +511,7 @@ impl Instance {
             } else {
                 self.imported_tag(index).from.as_non_null()
             },
-            tag: self.translated_module().tags[index].clone(),
+            tag: self.translated_module().tags[index],
         }
     }
 
@@ -639,9 +650,10 @@ impl Instance {
         src: u64,
         len: u64,
     ) -> Result<(), TrapKind> {
-        let dst = usize::try_from(dst).map_err(|_| TrapKind::TableOutOfBounds)?;
         let src = usize::try_from(src).map_err(|_| TrapKind::TableOutOfBounds)?;
         let len = usize::try_from(len).map_err(|_| TrapKind::TableOutOfBounds)?;
+
+        // Safety: the implementation promises that vmctx is correctly initialized
         let table = unsafe { self.defined_or_imported_table(table_index).as_mut() };
 
         match elements {
@@ -661,9 +673,10 @@ impl Instance {
                     .element_type
                     .heap_type
                     .top();
-                assert_eq!(shared, false);
+                assert!(!shared);
 
-                let mut context = ConstEvalContext::new(self);
+                // Safety: the implementation promises that vmctx is correctly initialized
+                let mut context = unsafe { ConstEvalContext::new(self) };
 
                 match heap_top_ty {
                     WasmHeapTopType::Func => table.init_func(
@@ -708,7 +721,8 @@ impl Instance {
         }
     }
 
-    pub(crate) unsafe fn set_store(&mut self, store: Option<NonNull<StoreOpaque>>) {
+    pub(crate) fn set_store(&mut self, store: Option<NonNull<StoreOpaque>>) {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe {
             self.store = store;
 
@@ -754,9 +768,10 @@ impl Instance {
     //     }
     // }
 
-    pub(crate) unsafe fn set_callee(&mut self, callee: Option<NonNull<VMFunctionBody>>) {
+    pub(crate) fn set_callee(&mut self, callee: Option<NonNull<VMFunctionBody>>) {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe {
-            let callee = callee.map(|p| VmPtr::from(p));
+            let callee = callee.map(VmPtr::from);
             self.vmctx_plus_offset_mut::<Option<VmPtr<VMFunctionBody>>>(
                 StaticVMShape.vmctx_callee(),
             )
@@ -815,6 +830,7 @@ impl Instance {
 
     #[inline]
     pub fn vm_store_context(&mut self) -> NonNull<Option<VmPtr<VMStoreContext>>> {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_store_context())).unwrap()
         }
@@ -823,6 +839,7 @@ impl Instance {
     /// Return a pointer to the global epoch counter used by this instance.
     #[cfg(target_has_atomic = "64")]
     pub fn epoch_ptr(&mut self) -> NonNull<Option<VmPtr<AtomicU64>>> {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_epoch_ptr())).unwrap()
         }
@@ -830,6 +847,7 @@ impl Instance {
 
     /// Return a pointer to the GC heap base pointer.
     pub fn gc_heap_base(&mut self) -> NonNull<Option<VmPtr<u8>>> {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_base())).unwrap()
         }
@@ -837,6 +855,7 @@ impl Instance {
 
     /// Return a pointer to the GC heap bound.
     pub fn gc_heap_bound(&mut self) -> NonNull<usize> {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_bound())).unwrap()
         }
@@ -844,6 +863,7 @@ impl Instance {
 
     /// Return a pointer to the collector-specific heap data.
     pub fn gc_heap_data(&mut self) -> NonNull<Option<VmPtr<u8>>> {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(StaticVMShape.vmctx_gc_heap_data())).unwrap()
         }
@@ -851,38 +871,46 @@ impl Instance {
 
     /// Return the indexed `VMFunctionImport`.
     fn imported_function(&self, index: FuncIndex) -> &VMFunctionImport {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe { &*self.vmctx_plus_offset(self.vmshape().vmctx_vmfunction_import(index)) }
     }
     /// Return the index `VMTable`.
     fn imported_table(&self, index: TableIndex) -> &VMTableImport {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe { &*self.vmctx_plus_offset(self.vmshape().vmctx_vmtable_import(index)) }
     }
     /// Return the indexed `VMMemoryImport`.
     fn imported_memory(&self, index: MemoryIndex) -> &VMMemoryImport {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe { &*self.vmctx_plus_offset(self.vmshape().vmctx_vmmemory_import(index)) }
     }
     /// Return the indexed `VMGlobalImport`.
     fn imported_global(&self, index: GlobalIndex) -> &VMGlobalImport {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe { &*self.vmctx_plus_offset(self.vmshape().vmctx_vmglobal_import(index)) }
     }
     /// Return the indexed `VMTagImport`.
     fn imported_tag(&self, index: TagIndex) -> &VMTagImport {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe { &*self.vmctx_plus_offset(self.vmshape().vmctx_vmtag_import(index)) }
     }
 
     fn table_ptr(&mut self, index: DefinedTableIndex) -> NonNull<VMTableDefinition> {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmtable_definition(index)))
                 .unwrap()
         }
     }
     fn memory_ptr(&mut self, index: DefinedMemoryIndex) -> NonNull<VMMemoryDefinition> {
+        // Safety: the implementation promises that vmctx is correctly initialized
         let ptr = unsafe {
             *self.vmctx_plus_offset::<VmPtr<_>>(self.vmshape().vmctx_vmmemory_pointer(index))
         };
         ptr.as_non_null()
     }
     fn global_ptr(&mut self, index: DefinedGlobalIndex) -> NonNull<VMGlobalDefinition> {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe {
             NonNull::new(
                 self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmglobal_definition(index)),
@@ -891,6 +919,7 @@ impl Instance {
         }
     }
     fn tag_ptr(&mut self, index: DefinedTagIndex) -> NonNull<VMTagDefinition> {
+        // Safety: the implementation promises that vmctx is correctly initialized
         unsafe {
             NonNull::new(self.vmctx_plus_offset_mut(self.vmshape().vmctx_vmtag_definition(index)))
                 .unwrap()
@@ -916,6 +945,7 @@ impl Instance {
             f(defined_table_index, self)
         } else {
             let import = self.imported_table(index);
+            // Safety: the VMTableImport needs should be correct. TODO test & verify
             unsafe {
                 Instance::from_vmctx(import.vmctx.as_non_null(), |foreign_instance| {
                     let foreign_table_def = import.from.as_ptr();
@@ -954,7 +984,7 @@ impl Instance {
         unsafe {
             let index = DefinedTableIndex::new(
                 usize::try_from(
-                    (table as *const VMTableDefinition)
+                    ptr::from_ref::<VMTableDefinition>(table)
                         .offset_from(self.table_ptr(DefinedTableIndex::new(0)).as_ptr()),
                 )
                 .unwrap(),
@@ -969,7 +999,7 @@ impl Instance {
         unsafe {
             let index = DefinedMemoryIndex::new(
                 usize::try_from(
-                    (table as *const VMMemoryDefinition)
+                    ptr::from_ref::<VMMemoryDefinition>(table)
                         .offset_from(self.memory_ptr(DefinedMemoryIndex::new(0)).as_ptr()),
                 )
                 .unwrap(),
@@ -988,6 +1018,8 @@ impl Instance {
     ) {
         let vmshape = module.vmshape();
 
+        // Safety: there is no safety, we just have to trust that the entire vmctx memory range
+        // we need was correctly allocated
         unsafe {
             // initialize vmctx magic
             tracing::trace!("initializing vmctx magic");
@@ -1150,8 +1182,13 @@ impl Instance {
         }
     }
 
+    /// # Safety
+    ///
+    /// among other things the caller has to ensure that this is only ever called **after**
+    /// calling `Instance::initialize_vmctx`
     #[tracing::instrument(skip(self, module))]
     unsafe fn initialize_vmfunc_refs(&mut self, imports: &Imports, module: &Module) {
+        // Safety: the caller pinky-promised that the vmctx is correctly initialized
         unsafe {
             let vmshape = module.vmshape();
 
@@ -1196,6 +1233,10 @@ impl Instance {
         }
     }
 
+    /// # Safety
+    ///
+    /// among other things the caller has to ensure that this is only ever called **after**
+    /// calling `Instance::initialize_vmctx`
     #[tracing::instrument(skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_globals(
         &mut self,
@@ -1204,13 +1245,14 @@ impl Instance {
         const_eval: &mut ConstExprEvaluator,
         module: &Module,
     ) -> crate::Result<()> {
-        for (def_index, init) in module.translated().global_initializers.iter() {
+        for (def_index, init) in &module.translated().global_initializers {
             let vmval = const_eval
                 .eval(store, ctx, init)
                 .expect("const expression should be valid");
             let index = self.translated_module().global_index(def_index);
             let ty = self.translated_module().globals[index].content_type;
 
+            // Safety: the caller pinky-promised that the vmctx is correctly initialized
             unsafe {
                 self.global_ptr(def_index)
                     .write(VMGlobalDefinition::from_vmval(store, ty, vmval)?);
@@ -1220,6 +1262,10 @@ impl Instance {
         Ok(())
     }
 
+    /// # Safety
+    ///
+    /// among other things the caller has to ensure that this is only ever called **after**
+    /// calling `Instance::initialize_vmctx`
     #[tracing::instrument(skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_tables(
         &mut self,
@@ -1238,12 +1284,13 @@ impl Instance {
                         .element_type
                         .heap_type
                         .top();
-                    assert_eq!(shared, false);
+                    assert!(!shared);
 
                     let vmval = const_eval
                         .eval(store, ctx, expr)
                         .expect("const expression should be valid");
 
+                    // Safety: the caller pinky-promised that the vmctx is correctly initialized
                     let table = unsafe { self.get_defined_table(def_index).as_mut() };
 
                     match heap_top_ty {
@@ -1280,6 +1327,10 @@ impl Instance {
         Ok(())
     }
 
+    /// # Safety
+    ///
+    /// among other things the caller has to ensure that this is only ever called **after**
+    /// calling `Instance::initialize_vmctx`
     #[tracing::instrument(skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_memories(
         &mut self,
@@ -1300,6 +1351,7 @@ impl Instance {
                 }
             };
 
+            // Safety: the caller pinky-promised that the vmctx is correctly initialized
             let memory = unsafe {
                 self.defined_or_imported_memory(initializer.memory_index)
                     .as_mut()
@@ -1308,6 +1360,7 @@ impl Instance {
             let end = start.checked_add(initializer.data.len()).unwrap();
             ensure!(end <= memory.current_length(Ordering::Relaxed));
 
+            // Safety: we did all the checking we could above
             unsafe {
                 let src = &initializer.data;
                 let dst = memory.base.as_ptr().add(start);
@@ -1331,6 +1384,7 @@ impl InstanceAndStore {
         f: impl for<'a> FnOnce(&'a mut Self) -> R,
     ) -> R {
         const_assert_eq!(size_of::<InstanceAndStore>(), size_of::<Instance>());
+        // Safety: the instance is always directly before the vmctx in memory
         unsafe {
             let mut ptr = vmctx
                 .byte_sub(size_of::<Instance>())
@@ -1342,6 +1396,7 @@ impl InstanceAndStore {
 
     #[inline]
     pub(crate) fn unpack_mut(&mut self) -> (&mut Instance, &mut StoreOpaque) {
+        // Safety: this is fine
         unsafe {
             let store = self.instance.store.unwrap().as_mut();
             (&mut self.instance, store)
@@ -1353,89 +1408,111 @@ impl InstanceAndStore {
         &mut self,
     ) -> (&mut Instance, &'_ mut StoreInner<T>) {
         let mut store_ptr = self.instance.store.unwrap().cast::<StoreInner<T>>();
-        (&mut self.instance, unsafe { store_ptr.as_mut() })
+        (
+            &mut self.instance,
+            // Safety: ensured by caller
+            unsafe { store_ptr.as_mut() },
+        )
     }
 }
 
-fn check_init_bounds(
+/// # Safety
+///
+/// The caller must ensure this function is only ever called **after** `Instance::initialize_vmctx`
+unsafe fn check_init_bounds(
     store: &mut StoreOpaque,
     instance: &mut Instance,
     module: &Module,
 ) -> crate::Result<()> {
-    check_table_init_bounds(store, instance, module)?;
-    check_memory_init_bounds(store, instance, &module.translated().memory_initializers)?;
-
+    // Safety: ensured by caller
+    unsafe {
+        check_table_init_bounds(store, instance, module)?;
+        check_memory_init_bounds(store, instance, &module.translated().memory_initializers)?;
+    }
     Ok(())
 }
 
-fn check_table_init_bounds(
+/// # Safety
+///
+/// The caller must ensure this function is only ever called **after** `Instance::initialize_vmctx`
+unsafe fn check_table_init_bounds(
     store: &mut StoreOpaque,
     instance: &mut Instance,
     module: &Module,
 ) -> crate::Result<()> {
-    let mut const_evaluator = ConstExprEvaluator::default();
+    // Safety: the caller pinky-promised to have called initialize_vmctx before calling this function
+    // so the VMTableDefinitions are all properly initialized
+    unsafe {
+        let mut const_evaluator = ConstExprEvaluator::default();
 
-    for segment in module.translated().table_initializers.segments.iter() {
-        let table = unsafe {
-            instance
+        for segment in &module.translated().table_initializers.segments {
+            let table = instance
                 .defined_or_imported_table(segment.table_index)
-                .as_ref()
-        };
-        let mut context = ConstEvalContext::new(instance);
-        let start = const_evaluator
-            .eval(store, &mut context, &segment.offset)
-            .expect("const expression should be valid");
-        let start = usize::try_from(start.get_u32()).unwrap();
-        let end = start.checked_add(usize::try_from(segment.elements.len()).unwrap());
+                .as_ref();
+            let mut context = ConstEvalContext::new(instance);
+            let start = const_evaluator
+                .eval(store, &mut context, &segment.offset)
+                .expect("const expression should be valid");
+            let start = usize::try_from(start.get_u32()).unwrap();
+            let end = start.checked_add(usize::try_from(segment.elements.len()).unwrap());
 
-        match end {
-            Some(end) if end <= table.size() => {
-                // Initializer is in bounds
-            }
-            _ => {
-                bail!("table out of bounds: elements segment does not fit")
+            match end {
+                Some(end) if end <= table.size() => {
+                    // Initializer is in bounds
+                }
+                _ => {
+                    bail!("table out of bounds: elements segment does not fit")
+                }
             }
         }
+        Ok(())
     }
-
-    Ok(())
 }
 
-fn check_memory_init_bounds(
+/// # Safety
+///
+/// The caller must ensure this function is only ever called **after** `Instance::initialize_vmctx`
+unsafe fn check_memory_init_bounds(
     store: &mut StoreOpaque,
     instance: &mut Instance,
     initializers: &[MemoryInitializer],
 ) -> crate::Result<()> {
-    for init in initializers {
-        let memory = unsafe {
-            instance
+    // Safety: the caller pinky-promised to have called initialize_vmctx before calling this function
+    // so the VMMemoryDefinitions are all properly initialized
+    unsafe {
+        for init in initializers {
+            let memory = instance
                 .defined_or_imported_memory(init.memory_index)
-                .as_ref()
-        };
-        let start = get_memory_init_start(store, init, instance)?;
-        let end = usize::try_from(start)
-            .ok()
-            .and_then(|start| start.checked_add(init.data.len()));
+                .as_ref();
+            let start = get_memory_init_start(store, init, instance)?;
+            let end = usize::try_from(start)
+                .ok()
+                .and_then(|start| start.checked_add(init.data.len()));
 
-        match end {
-            Some(end) if end <= memory.current_length(Ordering::Relaxed) => {
-                // Initializer is in bounds
-            }
-            _ => {
-                bail!("memory out of bounds: data segment does not fit")
+            match end {
+                Some(end) if end <= memory.current_length(Ordering::Relaxed) => {
+                    // Initializer is in bounds
+                }
+                _ => {
+                    bail!("memory out of bounds: data segment does not fit")
+                }
             }
         }
-    }
 
-    Ok(())
+        Ok(())
+    }
 }
 
-fn get_memory_init_start(
+/// # Safety
+///
+/// The caller must ensure this function is only ever called **after** `Instance::initialize_vmctx`
+unsafe fn get_memory_init_start(
     store: &mut StoreOpaque,
     init: &MemoryInitializer,
     instance: &mut Instance,
 ) -> crate::Result<u64> {
-    let mut context = ConstEvalContext::new(instance);
+    // Safety: the caller pinky-promised that the vmctx is correctly initialized
+    let mut context = unsafe { ConstEvalContext::new(instance) };
     let mut const_evaluator = ConstExprEvaluator::default();
     const_evaluator
         .eval(store, &mut context, &init.offset)

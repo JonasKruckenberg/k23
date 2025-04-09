@@ -166,7 +166,7 @@ impl BuiltinFunctionIndex {
     /// any. If `None` is returned from this function then this builtin cannot
     /// generate a trap.
     #[allow(unreachable_code, unused_macro_rules, reason = "macro-generated code")]
-    pub fn trap_sentinel(&self) -> Option<TrapSentinel> {
+    pub fn trap_sentinel(self) -> Option<TrapSentinel> {
         macro_rules! trap_sentinel {
             (
                 $(
@@ -176,7 +176,7 @@ impl BuiltinFunctionIndex {
             ) => {{
                 $(
                     $(#[$attr])*
-                    if *self == BuiltinFunctionIndex::$name() {
+                    if self == BuiltinFunctionIndex::$name() {
                         let mut _ret = None;
                         $(_ret = Some(trap_sentinel!(@get $name $result));)?
                         return _ret;

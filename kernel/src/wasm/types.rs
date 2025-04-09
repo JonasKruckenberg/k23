@@ -35,14 +35,14 @@ pub enum Mutability {
 impl Mutability {
     /// Is this constant?
     #[inline]
-    pub fn is_const(&self) -> bool {
-        *self == Self::Const
+    pub fn is_const(self) -> bool {
+        self == Self::Const
     }
 
     /// Is this variable?
     #[inline]
-    pub fn is_var(&self) -> bool {
-        *self == Self::Var
+    pub fn is_var(self) -> bool {
+        self == Self::Var
     }
 }
 
@@ -60,14 +60,14 @@ pub enum Finality {
 impl Finality {
     /// Is this final?
     #[inline]
-    pub fn is_final(&self) -> bool {
-        *self == Self::Final
+    pub fn is_final(self) -> bool {
+        self == Self::Final
     }
 
     /// Is this non-final?
     #[inline]
-    pub fn is_non_final(&self) -> bool {
-        *self == Self::NonFinal
+    pub fn is_non_final(self) -> bool {
+        self == Self::NonFinal
     }
 }
 
@@ -155,10 +155,7 @@ impl ValType {
     /// `I64`, `F32`, `F64`).
     #[inline]
     pub fn is_num(&self) -> bool {
-        match self {
-            ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 => true,
-            _ => false,
-        }
+        matches!(self, ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64)
     }
 
     /// Is this the `i32` type?
@@ -276,12 +273,7 @@ impl ValType {
             (Self::F64, Self::F64) => true,
             (Self::V128, Self::V128) => true,
             (Self::Ref(a), Self::Ref(b)) => a.matches(b),
-            (Self::I32, _)
-            | (Self::I64, _)
-            | (Self::F32, _)
-            | (Self::F64, _)
-            | (Self::V128, _)
-            | (Self::Ref(_), _) => false,
+            (Self::I32 | Self::I64 | Self::F32 | Self::F64 | Self::V128 | Self::Ref(_), _) => false,
         }
     }
 
@@ -1151,12 +1143,15 @@ impl HeapType {
                 HeapTypeInner::ConcreteStruct(StructType::from_shared_type_index(engine, idx))
             }
 
-            WasmHeapTypeInner::ConcreteFunc(CanonicalizedTypeIndex::Module(_))
-            | WasmHeapTypeInner::ConcreteFunc(CanonicalizedTypeIndex::RecGroup(_))
-            | WasmHeapTypeInner::ConcreteArray(CanonicalizedTypeIndex::Module(_))
-            | WasmHeapTypeInner::ConcreteArray(CanonicalizedTypeIndex::RecGroup(_))
-            | WasmHeapTypeInner::ConcreteStruct(CanonicalizedTypeIndex::Module(_))
-            | WasmHeapTypeInner::ConcreteStruct(CanonicalizedTypeIndex::RecGroup(_)) => {
+            WasmHeapTypeInner::ConcreteFunc(
+                CanonicalizedTypeIndex::Module(_) | CanonicalizedTypeIndex::RecGroup(_),
+            )
+            | WasmHeapTypeInner::ConcreteArray(
+                CanonicalizedTypeIndex::Module(_) | CanonicalizedTypeIndex::RecGroup(_),
+            )
+            | WasmHeapTypeInner::ConcreteStruct(
+                CanonicalizedTypeIndex::Module(_) | CanonicalizedTypeIndex::RecGroup(_),
+            ) => {
                 panic!(
                     "HeapTypeInner::from_wasm_type on non-canonicalized-for-runtime-usage heap type"
                 )
@@ -1485,14 +1480,14 @@ impl FuncType {
             let cap = size_hint.1.unwrap_or(size_hint.0);
             // Only reserve space if we have a supertype, as that is the only time
             // that this vec is used.
-            supertype.is_some() as usize * cap
+            usize::from(supertype.is_some()) * cap
         });
 
         let mut wasm_results = Vec::with_capacity({
             let size_hint = results.size_hint();
             let cap = size_hint.1.unwrap_or(size_hint.0);
             // Same as above.
-            supertype.is_some() as usize * cap
+            usize::from(supertype.is_some()) * cap
         });
 
         // Keep any of our parameters' and results' `RegisteredType`s alive
@@ -1612,10 +1607,7 @@ impl FuncType {
 
     /// Get the finality of this function type.
     pub fn finality(&self) -> Finality {
-        match self.registered_type.is_final {
-            true => Finality::Final,
-            false => Finality::NonFinal,
-        }
+        if self.registered_type.is_final { Finality::Final } else { Finality::NonFinal }
     }
 
     /// Get the supertype of this function type, if any.
@@ -1829,7 +1821,7 @@ pub struct TagType {
 }
 
 impl TagType {
-    pub(super) fn from_wasm_tag(engine: &Engine, ty: &Tag) -> Self {
+    pub(super) fn from_wasm_tag(engine: &Engine, ty: Tag) -> Self {
         let ty = FuncType::from_shared_type_index(engine, ty.signature.unwrap_engine_type_index());
 
         Self { ty }
@@ -1856,7 +1848,7 @@ pub struct ImportType<'module> {
     engine: &'module Engine,
 }
 
-impl<'module> fmt::Debug for ImportType<'module> {
+impl fmt::Debug for ImportType<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ImportType")
             .field("module", &self.module)
@@ -1883,7 +1875,7 @@ pub struct ExportType<'module> {
     engine: &'module Engine,
 }
 
-impl<'module> fmt::Debug for ExportType<'module> {
+impl fmt::Debug for ExportType<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ExportType")
             .field("name", &self.name)

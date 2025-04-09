@@ -37,7 +37,7 @@ impl Val {
     /// Returns the null reference for the given heap type.
     #[inline]
     pub fn null_ref(heap_type: &HeapType) -> Val {
-        Ref::null(&heap_type).into()
+        Ref::null(heap_type).into()
     }
 
     /// Returns the null function reference value.
@@ -99,6 +99,7 @@ impl Val {
     ///
     /// Panics if this value is associated with a different store.
     #[inline]
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub fn ty(&self, store: &StoreOpaque) -> crate::Result<ValType> {
         Ok(match self {
             Val::I32(_) => ValType::I32,
@@ -135,12 +136,15 @@ impl Val {
 
             (Val::FuncRef(f), ValType::Ref(ref_ty)) => Ref::from(*f).matches_ty(store, ref_ty)?,
 
-            (Val::I32(_), _)
-            | (Val::I64(_), _)
-            | (Val::F32(_), _)
-            | (Val::F64(_), _)
-            | (Val::V128(_), _)
-            | (Val::FuncRef(_), _) => false,
+            (
+                Val::I32(_)
+                | Val::I64(_)
+                | Val::F32(_)
+                | Val::F64(_)
+                | Val::V128(_)
+                | Val::FuncRef(_),
+                _,
+            ) => false,
         })
     }
 
@@ -167,7 +171,8 @@ impl Val {
     /// # Unsafety
     ///
     /// This method is unsafe for the reasons that [`ExternRef::to_raw`] and
-    /// [`Func::to_raw`] are unsafe.
+    /// [`Func::to_vmval`] are unsafe.
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub(super) unsafe fn to_vmval(&self, store: &mut StoreOpaque) -> crate::Result<VMVal> {
         // Safety: ensured by caller
         unsafe {
@@ -193,13 +198,14 @@ impl Val {
     /// [`Func::from_vmval`] are unsafe. Additionally there's no guarantee
     /// otherwise that `raw` should have the type `ty` specified.
     pub(super) unsafe fn from_vmval(store: &mut StoreOpaque, vmval: VMVal, ty: ValType) -> Val {
+        // Safety: ensured by caller
         unsafe {
             match ty {
                 ValType::I32 => Val::I32(vmval.get_i32()),
                 ValType::I64 => Val::I64(vmval.get_i64()),
                 ValType::F32 => Val::F32(vmval.get_f32()),
                 ValType::F64 => Val::F64(vmval.get_f64()),
-                ValType::V128 => Val::V128(vmval.get_v128().into()),
+                ValType::V128 => Val::V128(vmval.get_v128()),
                 ValType::Ref(ref_ty) => {
                     let ref_ = match ref_ty.heap_type().inner {
                         HeapTypeInner::Func | HeapTypeInner::ConcreteFunc(_) => {
@@ -325,7 +331,7 @@ impl From<Option<Func>> for Val {
 impl From<u128> for Val {
     #[inline]
     fn from(val: u128) -> Val {
-        Val::V128(val.into())
+        Val::V128(val)
     }
 }
 
@@ -409,6 +415,7 @@ impl Ref {
     /// # Panics
     ///
     /// Panics if this reference is associated with a different store.
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub fn ty(&self, store: &StoreOpaque) -> crate::Result<RefType> {
         assert!(self.comes_from_same_store(store));
         Ok(RefType::new(
@@ -433,6 +440,7 @@ impl Ref {
         ))
     }
 
+    #[expect(clippy::unnecessary_wraps, reason = "TODO")]
     pub fn matches_ty(&self, store: &StoreOpaque, ty: &RefType) -> crate::Result<bool> {
         assert!(self.comes_from_same_store(store));
         assert!(ty.comes_from_same_engine(store.engine()));
@@ -529,7 +537,7 @@ impl Ref {
                 },
             ) => {
                 debug_assert!(
-                    f.comes_from_same_store(&store),
+                    f.comes_from_same_store(store),
                     "checked in `ensure_matches_ty`"
                 );
                 Ok(TableElement::FuncRef(Some(f.vm_func_ref(store))))

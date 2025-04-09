@@ -16,9 +16,9 @@ use crate::wasm::{Engine, Func};
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use anyhow::bail;
-use core::iter;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
+use core::{iter, ptr};
 
 #[derive(Debug)]
 pub struct HostFunc {
@@ -68,13 +68,14 @@ impl<T> Caller<'_, T> {
         // And the return value must not borrow from the caller/store.
         R: 'static,
     {
+        // Safety: ensured by caller
         unsafe {
             InstanceAndStore::from_vmctx(caller, |pair| {
                 let (instance, store) = pair.unpack_with_state_mut::<T>();
 
                 f(Caller {
                     store,
-                    caller: &instance,
+                    caller: instance,
                 })
             })
         }
@@ -99,6 +100,8 @@ impl HostContext {
         Results: HostResults,
     {
         let ty = FuncType::new(engine, Params::valtypes(), Results::valtypes());
+
+        // Safety: the generics here ensure that the trampoline and `ty` match
         let this = Self(unsafe {
             VMArrayCallHostFuncContext::new(
                 Self::array_call_trampoline::<T, F, Params, Results>,
@@ -120,6 +123,7 @@ impl HostContext {
         Params: HostParams,
         Results: HostResults,
     {
+        // Safety: TODO
         unsafe {
             // Note that this function is intentionally scoped into a
             // separate closure. Handling traps and panics will involve
@@ -137,12 +141,12 @@ impl HostContext {
                 let func = vmctx.as_ref().func();
 
                 debug_assert!(func.is::<F>());
-                let func = &*(func as *const _ as *const F);
+                let func = &*ptr::from_ref(func).cast::<F>();
 
                 let params = Params::load(&mut caller.store.opaque, params_results.as_mut());
                 let ret = func(caller.sub_caller(), params);
 
-                if !ret.compatible_with_store(&mut caller.store.opaque) {
+                if !ret.compatible_with_store(&caller.store.opaque) {
                     bail!("host function attempted to return cross-`Store` value to Wasm")
                 } else {
                     ret.store(&mut caller.store.opaque, params_results.as_mut())?;
@@ -163,6 +167,9 @@ pub trait IntoFunc<T, Params, Results>: Send + Sync + 'static {
     fn into_func(self, engine: &Engine) -> (HostContext, FuncType);
 }
 
+/// # Safety
+///
+/// TODO
 pub unsafe trait HostParams {
     /// Get the value type that each Type in the list represents.
     fn valtypes() -> impl Iterator<Item = ValType>;
@@ -175,6 +182,9 @@ pub unsafe trait HostParams {
     unsafe fn load(store: &mut StoreOpaque, values: &mut [MaybeUninit<VMVal>]) -> Self;
 }
 
+/// # Safety
+///
+/// TODO
 pub unsafe trait HostResults {
     /// Get the value type that each Type in the list represents.
     fn valtypes() -> impl Iterator<Item = ValType>;
@@ -284,10 +294,13 @@ for_each_function_signature!(impl_into_func);
 macro_rules! impl_host_params {
       ($n:tt $($t:ident)*) => {
          #[allow(non_snake_case, reason = "argument names above are uppercase")]
+         #[allow(clippy::unused_unit, reason = "macro quirk")]
          // Safety: see `WasmTy` for details
          unsafe impl<$($t: WasmTy,)*> HostParams for ($($t,)*) {
              unsafe fn load(_store: &mut StoreOpaque, _values: &mut [MaybeUninit<VMVal>]) -> Self {
-                 let mut _i = 0;
+                 let mut _i: usize = 0;
+
+                 // Safety: ensured by caller
                  ($(unsafe {
                      debug_assert!(_i < _values.len());
                      let ptr = _values.get_unchecked(_i).assume_init_ref();
@@ -304,6 +317,7 @@ macro_rules! impl_host_params {
  }
 for_each_function_signature!(impl_host_params);
 
+// Safety: TODO
 unsafe impl<T> HostResults for T
 where
     T: WasmTy,
@@ -325,6 +339,7 @@ where
     }
 }
 
+// Safety: TODO
 unsafe impl<T> HostResults for crate::Result<T>
 where
     T: HostResults,

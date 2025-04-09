@@ -23,6 +23,7 @@ impl Table {
     pub fn new(store: &mut StoreOpaque, ty: TableType, init: Ref) -> crate::Result<Table> {
         let wasm_ty = ty.to_wasm_table();
 
+        // Safety: TODO
         let mut t = unsafe {
             store
                 .alloc_mut()
@@ -42,17 +43,19 @@ impl Table {
         Ok(Self(stored))
     }
 
-    pub fn ty(&self, store: &StoreOpaque) -> TableType {
+    pub fn ty(self, store: &StoreOpaque) -> TableType {
         let export = &store[self.0];
         TableType::from_wasm_table(store.engine(), &export.table)
     }
 
-    pub fn get(&self, store: &mut StoreOpaque, index: u64) -> Option<Ref> {
+    pub fn get(self, store: &mut StoreOpaque, index: u64) -> Option<Ref> {
+        // Safety: TODO
         let table = unsafe { self.vmtable(store).as_mut() };
         let element = table.get(index)?;
 
         match element {
             TableElement::FuncRef(Some(func_ref)) => {
+                // Safety: TODO
                 let f = unsafe { Func::from_vm_func_ref(store, func_ref) };
                 Some(Ref::Func(Some(f)))
             }
@@ -60,16 +63,18 @@ impl Table {
         }
     }
 
-    pub fn set(&self, store: &mut StoreOpaque, index: u64, val: Ref) -> crate::Result<()> {
+    pub fn set(self, store: &mut StoreOpaque, index: u64, val: Ref) -> crate::Result<()> {
         let ty = self.ty(store);
         let val = val.into_table_element(store, ty.element())?;
+        // Safety: TODO
         let table = unsafe { self.vmtable(store).as_mut() };
         table.set(index, val)?;
 
         Ok(())
     }
 
-    pub fn size(&self, store: &StoreOpaque) -> u64 {
+    pub fn size(self, store: &StoreOpaque) -> u64 {
+        // Safety: TODO
         unsafe {
             u64::try_from(
                 store[self.0]
@@ -82,9 +87,10 @@ impl Table {
         }
     }
 
-    pub fn grow(&self, store: &mut StoreOpaque, delta: u64, init: Ref) -> crate::Result<u64> {
+    pub fn grow(self, store: &mut StoreOpaque, delta: u64, init: Ref) -> crate::Result<u64> {
         let ty = self.ty(store);
         let init = init.into_table_element(store, ty.element())?;
+        // Safety: TODO
         let table = unsafe { self.vmtable(store).as_mut() };
         let old_size = table.grow(delta, init)?.context("failed to grow table")?;
         Ok(u64::try_from(old_size).unwrap())
@@ -98,8 +104,8 @@ impl Table {
         src_index: u64,
         len: u64,
     ) -> crate::Result<()> {
-        let dst_ty = dst_table.ty(&store);
-        let src_ty = src_table.ty(&store);
+        let dst_ty = dst_table.ty(store);
+        let src_ty = src_table.ty(store);
 
         src_ty
             .element()
@@ -123,9 +129,10 @@ impl Table {
         Ok(())
     }
 
-    pub fn fill(&self, store: &mut StoreOpaque, dst: u64, val: Ref, len: u64) -> crate::Result<()> {
+    pub fn fill(self, store: &mut StoreOpaque, dst: u64, val: Ref, len: u64) -> crate::Result<()> {
         let ty = self.ty(store);
         let val = val.into_table_element(store, ty.element())?;
+        // Safety: TODO
         let table = unsafe { self.vmtable(store).as_mut() };
         table.fill(dst, val, len)?;
 
@@ -136,10 +143,11 @@ impl Table {
         let stored = store.add_table(export);
         Self(stored)
     }
-    pub(super) fn vmtable(&self, store: &mut StoreOpaque) -> NonNull<vm::Table> {
+    pub(super) fn vmtable(self, store: &mut StoreOpaque) -> NonNull<vm::Table> {
         let ExportedTable {
             definition, vmctx, ..
         } = store[self.0];
+        // Safety: TODO
         unsafe {
             InstanceAndStore::from_vmctx(vmctx, |pair| {
                 let (instance, _) = pair.unpack_mut();
@@ -148,7 +156,7 @@ impl Table {
             })
         }
     }
-    pub(super) fn as_vmtable_import(&self, store: &mut StoreOpaque) -> VMTableImport {
+    pub(super) fn as_vmtable_import(self, store: &mut StoreOpaque) -> VMTableImport {
         let export = &store[self.0];
         VMTableImport {
             from: VmPtr::from(export.definition),

@@ -11,7 +11,7 @@ use crate::wasm::vm::{
     InstanceAllocator, InstanceHandle, VMContext, VMFuncRef, VMGlobalDefinition, VMStoreContext,
     VMTableDefinition, VMVal,
 };
-use crate::wasm::{Engine, Module, vm};
+use crate::wasm::{vm, Engine, Module};
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -61,11 +61,9 @@ impl<T> Store<T> {
                 .allocate_module(Module::new_stub(engine.clone()))
                 .expect("failed to allocate default callee");
 
-            unsafe {
-                instance
-                    .instance_mut()
-                    .set_store(Some(NonNull::from(&mut inner.opaque)));
-            }
+            instance
+                .instance_mut()
+                .set_store(Some(NonNull::from(&mut inner.opaque)));
 
             instance
         };
@@ -205,7 +203,7 @@ impl StoreOpaque {
         }
 
         let mut fault = None;
-        for instance in self.stored.instances.iter() {
+        for instance in &self.stored.instances {
             if let Some(f) = instance.handle.wasm_fault(faulting_addr) {
                 assert!(fault.is_none());
                 fault = Some(f);

@@ -54,7 +54,9 @@ pub struct AddressSpace {
     pub frame_alloc: &'static FrameAllocator,
     last_fault: Option<(NonNull<AddressSpaceRegion>, VirtualAddress)>,
 }
+// Safety: the last_fault field makes the not-Send, but its only ever accessed behind a &mut Self
 unsafe impl Send for AddressSpace {}
+// Safety: the last_fault field makes the not-Send, but its only ever accessed behind a &mut Self
 unsafe impl Sync for AddressSpace {}
 
 impl fmt::Debug for AddressSpace {
@@ -353,11 +355,10 @@ impl AddressSpace {
         let addr = addr.align_down(arch::PAGE_SIZE);
 
         let region = if let Some((mut last_region, last_addr)) = self.last_fault.take() {
+            // Safety: we pinky-promise this is fine
             let last_region = unsafe { Pin::new_unchecked(last_region.as_mut()) };
 
-            if addr == last_addr {
-                panic!("double fault");
-            }
+            assert_ne!(addr, last_addr, "double fault");
 
             if last_region.range.contains(&addr) {
                 Some(last_region)

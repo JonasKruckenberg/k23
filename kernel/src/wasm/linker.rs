@@ -81,6 +81,7 @@ impl<T> Linker<T> {
 
     /// Attempt to retrieve a definition from this linker.
     pub fn get(&self, store: &mut StoreOpaque, module: &str, name: &str) -> Option<Extern> {
+        // Safety: TODO
         Some(unsafe { self._get(module, name)?.to_extern(store) })
     }
 
