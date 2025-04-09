@@ -314,7 +314,7 @@ impl ConstExprEvaluator {
 
         if self.stack.len() == 1 {
             log::trace!("const expr evaluated to {:?}", self.stack[0]);
-            Ok(self.stack[0])
+            Ok(self.stack.pop().unwrap())
         } else {
             bail!(
                 "const expr evaluation error: expected 1 resulting value, found {}",
