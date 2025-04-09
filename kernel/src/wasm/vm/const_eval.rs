@@ -314,12 +314,12 @@ impl ConstExprEvaluator {
 
         if self.stack.len() == 1 {
             log::trace!("const expr evaluated to {:?}", self.stack[0]);
-            Ok(self.stack[0])
+            Ok(self.stack.pop().unwrap())
         } else {
-            bail!(
-                "const expr evaluation error: expected 1 resulting value, found {}",
-                self.stack.len()
-            )
+            let len = self.stack.len();
+            // we need to correctly clear the stack here for the next time we try to use the const eval
+            self.stack.clear();
+            bail!("const expr evaluation error: expected 1 resulting value, found {len}",)
         }
     }
 
