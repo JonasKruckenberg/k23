@@ -5,10 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::vm::Instance;
 use crate::wasm::store::{StoreOpaque, Stored};
 use crate::wasm::types::MemoryType;
-use crate::wasm::vm::{ExportedMemory, VMContext, VMMemoryImport, VmPtr};
+use crate::wasm::vm::{ExportedMemory, VMMemoryImport, VmPtr};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Memory(Stored<ExportedMemory>);

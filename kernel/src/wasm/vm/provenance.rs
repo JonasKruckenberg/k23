@@ -70,6 +70,12 @@ impl<T> fmt::Debug for VmPtr<T> {
     }
 }
 
+impl<T> fmt::Pointer for VmPtr<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Pointer::fmt(&self.as_non_null(), f)
+    }
+}
+
 // Constructor from `NonNull<T>`
 impl<T> From<NonNull<T>> for VmPtr<T> {
     fn from(ptr: NonNull<T>) -> VmPtr<T> {

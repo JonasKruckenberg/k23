@@ -15,7 +15,7 @@ use alloc::string::String;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
-use core::slice;
+use core::{ptr, slice};
 
 /// A memory mapping.
 ///
@@ -105,7 +105,7 @@ impl Mmap {
 
         let region = aspace.map(
             layout,
-            Permissions::READ | Permissions::WRITE | Permissions::USER,
+            Permissions::READ | Permissions::WRITE,
             |range_virt, perms, _batch| {
                 Ok(AddressSpaceRegion::new_phys(
                     range_virt, perms, range_phys, name,
@@ -193,13 +193,25 @@ impl Mmap {
     /// Returns a pointer to the start of the memory mapped by this `Mmap`.
     #[inline]
     pub fn as_ptr(&self) -> *const u8 {
-        self.range.start.as_ptr()
+        if self.range.is_empty() {
+            return ptr::null();
+        }
+        
+        let ptr = self.range.start.as_ptr();
+        debug_assert!(!ptr.is_null());
+        ptr
     }
 
     /// Returns a mutable pointer to the start of the memory mapped by this `Mmap`.
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.range.start.as_mut_ptr()
+        if self.range.is_empty() {
+            return ptr::null_mut();
+        }
+
+        let ptr = self.range.start.as_mut_ptr();
+        debug_assert!(!ptr.is_null());
+        ptr
     }
 
     /// Returns the size in bytes of this memory mapping.
@@ -223,14 +235,14 @@ impl Mmap {
     ) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_executable: {:?}", self.range);
         self.protect(aspace,
-            Permissions::READ | Permissions::EXECUTE | Permissions::USER,
+            Permissions::READ | Permissions::EXECUTE,
         )
     }
 
     /// Mark this memory mapping as read-only (`R`) essentially removing the write permission.
     pub fn make_readonly(&mut self, aspace: &mut AddressSpace) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_readonly: {:?}", self.range);
-        self.protect(aspace, Permissions::READ | Permissions::USER)
+        self.protect(aspace, Permissions::READ)
     }
 
     fn protect(

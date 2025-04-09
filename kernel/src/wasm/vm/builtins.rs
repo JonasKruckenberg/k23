@@ -9,9 +9,9 @@ use crate::wasm::indices::{DataIndex, ElemIndex, MemoryIndex, TableIndex};
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::vm::instance::Instance;
 use crate::wasm::vm::table::{TableElement, TableElementType};
-use crate::wasm::vm::trap_handler::HostResultHasUnwindSentinel;
+use crate::wasm::trap_handler::HostResultHasUnwindSentinel;
 use crate::wasm::vm::VMFuncRef;
-use crate::wasm::Trap;
+use crate::wasm::TrapKind;
 use core::ptr::NonNull;
 
 /// A helper structure to represent the return value of a memory or table growth
@@ -77,7 +77,7 @@ fn memory_fill(
     dst: u64,
     val: u32,
     len: u64,
-) -> Result<(), Trap> {
+) -> Result<(), TrapKind> {
     let memory_index = MemoryIndex::from_u32(memory_index);
     instance.memory_fill(memory_index, dst, val as u8, len)
 }
@@ -91,7 +91,7 @@ fn memory_init(
     dst: u64,
     src: u32,
     len: u32,
-) -> Result<(), Trap> {
+) -> Result<(), TrapKind> {
     let memory_index = MemoryIndex::from_u32(memory_index);
     let data_index = DataIndex::from_u32(data_index);
     instance.memory_init(memory_index, data_index, dst, src, len)
@@ -111,7 +111,7 @@ fn memory_copy(
     src_index: u32,
     src: u64,
     len: u64,
-) -> Result<(), Trap> {
+) -> Result<(), TrapKind> {
     let dst_index = MemoryIndex::from_u32(dst_index);
     let src_index = MemoryIndex::from_u32(src_index);
     instance.memory_copy(dst_index, dst, src_index, src, len)
@@ -147,7 +147,7 @@ fn table_fill_func_ref(
     dst: u64,
     val: *mut u8,
     len: u64,
-) -> Result<(), Trap> {
+) -> Result<(), TrapKind> {
     let table_index = TableIndex::from_u32(table_index);
 
     let element = match instance.table_element_type(table_index) {
@@ -167,7 +167,7 @@ fn table_copy(
     dst: u64,
     src: u64,
     len: u64,
-) -> Result<(), Trap> {
+) -> Result<(), TrapKind> {
     let dst_index = TableIndex::from_u32(dst_index);
     let src_index = TableIndex::from_u32(src_index);
     instance.table_copy(dst_index, src, src_index, src, len)
@@ -182,7 +182,7 @@ fn table_init(
     dst: u64,
     src: u64,
     len: u64,
-) -> Result<(), Trap> {
+) -> Result<(), TrapKind> {
     let table_index = TableIndex::from_u32(table_index);
     let elem_index = ElemIndex::from_u32(elem_index);
     instance.table_init(store, table_index, elem_index, dst, src, len)
@@ -199,7 +199,7 @@ fn memory_atomic_notify(
     memory_index: u32,
     addr_index: u64,
     count: u32,
-) -> Result<u32, Trap> {
+) -> Result<u32, TrapKind> {
     todo!()
 }
 
@@ -210,7 +210,7 @@ fn memory_atomic_wait32(
     addr_index: u64,
     expected: u32,
     timeout: u64,
-) -> Result<u32, Trap> {
+) -> Result<u32, TrapKind> {
     todo!()
 }
 
@@ -221,11 +221,15 @@ fn memory_atomic_wait64(
     addr_index: u64,
     expected: u64,
     timeout: u64,
-) -> Result<u32, Trap> {
+) -> Result<u32, TrapKind> {
     todo!()
 }
 
 fn raise(_store: &mut StoreOpaque, _instance: &mut Instance) {
+    tracing::debug!("{_store:?} {_instance:?}");
+    
+    todo!()
+    
     // unsafe {
     //     crate::wasm::vm::trap_handler::raise_preexisting_trap()
     // }
@@ -246,7 +250,7 @@ pub mod raw {
                     vmctx: ::core::ptr::NonNull<$crate::wasm::vm::VMContext>,
                     $( $pname : builtin!(@ty $param), )*
                 ) $(-> builtin!(@ty $result))? {
-                    $crate::wasm::vm::trap_handler::catch_unwind_and_record_trap(|| {
+                    $crate::wasm::trap_handler::catch_unwind_and_record_trap(|| {
                         unsafe {
                             $crate::wasm::vm::InstanceAndStore::from_vmctx(vmctx, |pair| {
                                 let (instance, store) = pair.unpack_mut();

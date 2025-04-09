@@ -35,7 +35,7 @@ where
     })
 }
 
-pub fn begin_unwind(payload: Box<dyn Any + Send>) -> ! {
+pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
     debug_assert!(panic_count::increase(false).is_none());
     unwind2::with_context(|regs, pc| {
         rust_panic(payload, regs.clone(), VirtualAddress::new(pc).unwrap())

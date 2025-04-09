@@ -1,7 +1,7 @@
 use crate::wasm::builtins::BuiltinFunctionIndex;
 use crate::wasm::compile::{FilePos, NS_BUILTIN, NS_WASM_FUNC};
 use crate::wasm::indices::FuncIndex;
-use crate::wasm::trap::Trap;
+use crate::wasm::trap::TrapKind;
 use cranelift_codegen::ir::{ExternalName, StackSlots, UserExternalName, UserExternalNameRef};
 use cranelift_codegen::{
     Final, FinalizedMachReloc, FinalizedRelocTarget, MachBufferFinalized, ValueLabelsRanges,
@@ -53,7 +53,7 @@ impl CompiledFunction {
     /// Returns an iterator to the function's traps.
     pub fn traps(&self) -> impl ExactSizeIterator<Item = TrapInfo> + use<'_> {
         self.buffer.traps().iter().map(|trap| TrapInfo {
-            trap: Trap::from_trap_code(trap.code).expect("unexpected trap code"),
+            trap: TrapKind::from_trap_code(trap.code).expect("unexpected trap code"),
             offset: trap.offset,
         })
     }
@@ -147,5 +147,5 @@ pub struct TrapInfo {
     /// The offset relative to the function start of the trapping address.
     pub offset: u32,
     /// The trap code corresponding to the trapping instruction.
-    pub trap: Trap,
+    pub trap: TrapKind,
 }

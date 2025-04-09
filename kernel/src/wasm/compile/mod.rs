@@ -8,7 +8,7 @@ use crate::wasm::indices::{DefinedFuncIndex, ModuleInternedTypeIndex};
 use crate::wasm::translate::{
     FunctionBodyData, ModuleTranslation, ModuleTypes, TranslatedModule, WasmFuncType,
 };
-use crate::wasm::trap::Trap;
+use crate::wasm::trap::TrapKind;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -299,7 +299,7 @@ impl UnlinkedCompileOutputs {
             let off = text_builder.append(true, body, alignment, &mut ctrl_plane);
 
             tracing::debug!(
-                "Function {}: {off:#x}..{:#x}",
+                "Function {}: {off:#x}..{:#x} align: {alignment}",
                 output.symbol,
                 off + body_len
             );
@@ -379,7 +379,7 @@ impl UnlinkedCompileOutputs {
 #[derive(Default)]
 struct TrapsBuilder {
     offsets: Vec<u32>,
-    traps: Vec<Trap>,
+    traps: Vec<TrapKind>,
     last_offset: u32,
 }
 
@@ -405,7 +405,7 @@ impl TrapsBuilder {
         self.last_offset = func.start + func.length;
     }
 
-    pub fn finish(self) -> (Vec<u32>, Vec<Trap>) {
+    pub fn finish(self) -> (Vec<u32>, Vec<TrapKind>) {
         (self.offsets, self.traps)
     }
 }

@@ -8,7 +8,6 @@
 use crate::util::zip_eq::IteratorExt;
 use crate::wasm::indices::EntityIndex;
 use crate::wasm::module::Module;
-use crate::wasm::module_registry::RegisteredModuleId;
 use crate::wasm::store::{StoreOpaque, Stored};
 use crate::wasm::vm::{ConstExprEvaluator, Imports, InstanceHandle};
 use crate::wasm::{Extern, Func, Global, Memory, Table};
@@ -30,7 +29,6 @@ pub struct Instance(Stored<InstanceData>);
 #[derive(Debug)]
 pub(super) struct InstanceData {
     pub handle: InstanceHandle,
-    pub module_id: RegisteredModuleId,
     /// A lazily-populated list of exports of this instance. The order of
     /// exports here matches the order of the exports in the original
     /// module.
@@ -58,8 +56,6 @@ impl Instance {
         module: Module,
         imports: Imports,
     ) -> crate::Result<Self> {
-        let module_id = store.modules_mut().register_module(&module);
-
         let mut handle = store.alloc_mut().allocate_module(module.clone())?;
 
         let is_bulk_memory = module.required_features().bulk_memory();
@@ -67,7 +63,6 @@ impl Instance {
         handle.initialize(store, const_eval, &module, imports, is_bulk_memory)?;
 
         let stored = store.add_instance(InstanceData {
-            module_id,
             handle,
             exports: vec![None; module.exports().len()],
         });

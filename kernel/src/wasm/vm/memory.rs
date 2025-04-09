@@ -5,11 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::mem::Mmap;
+use crate::mem::{Mmap, VirtualAddress};
 use crate::wasm::vm::provenance::VmPtr;
 use crate::wasm::vm::VMMemoryDefinition;
 use core::ptr::NonNull;
+use core::range::Range;
 
+#[derive(Debug)]
 pub struct Memory {
     /// The underlying allocation backing this memory
     mmap: Mmap,
@@ -43,6 +45,14 @@ impl Memory {
             page_size_log2,
             offset_guard_size,
         }
+    }
+    
+    pub fn byte_size(&self) -> usize {
+        self.len
+    }
+    
+    pub fn wasm_accessible(&self) -> Range<VirtualAddress> {
+        self.mmap.range()
     }
 
     // /// Implementation of `memory.atomic.notify` for all memories.

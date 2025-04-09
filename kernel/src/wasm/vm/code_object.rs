@@ -9,7 +9,7 @@ use crate::mem::{AddressSpace, Mmap, VirtualAddress};
 use crate::wasm::compile::{CompiledFunctionInfo, FunctionLoc};
 use crate::wasm::indices::{DefinedFuncIndex, ModuleInternedTypeIndex};
 use crate::wasm::vm::{MmapVec, VMWasmCallFunction};
-use crate::wasm::Trap;
+use crate::wasm::TrapKind;
 use alloc::vec;
 use alloc::vec::Vec;
 use anyhow::Context;
@@ -25,7 +25,7 @@ pub struct CodeObject {
     published: bool,
 
     trap_offsets: Vec<u32>,
-    traps: Vec<Trap>,
+    traps: Vec<TrapKind>,
     wasm_to_host_trampolines: Vec<(ModuleInternedTypeIndex, FunctionLoc)>,
     function_info: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
 }
@@ -46,7 +46,7 @@ impl CodeObject {
     pub fn new(
         mmap_vec: MmapVec<u8>,
         trap_offsets: Vec<u32>,
-        traps: Vec<Trap>,
+        traps: Vec<TrapKind>,
         wasm_to_host_trampolines: Vec<(ModuleInternedTypeIndex, FunctionLoc)>,
         function_info: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
     ) -> Self {
@@ -80,7 +80,12 @@ impl CodeObject {
     }
 
     pub fn text(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts(self.mmap.as_ptr(), self.len) }
+        let base = self.mmap.as_ptr();
+        if base.is_null() {
+            &[]
+        } else {
+            unsafe { slice::from_raw_parts(self.mmap.as_ptr(), self.len) }
+        }
     }
 
     #[inline]
@@ -91,12 +96,8 @@ impl CodeObject {
     }
 
     pub fn resolve_function_loc(&self, func_loc: FunctionLoc) -> usize {
-        let text_range = {
-            let r = self.text_range();
-            r.start.get()..r.end.get()
-        };
-
-        let addr = text_range.start + func_loc.start as usize;
+        let text_range = self.text_range();
+        let addr = text_range.start.get() + func_loc.start as usize;
 
         tracing::trace!(
             "resolve_function_loc {func_loc:?}, text {:?} => {:?}",
@@ -106,14 +107,15 @@ impl CodeObject {
 
         // Assert the function location actually lies in our text section
         debug_assert!(
-            text_range.start <= addr
-                && text_range.end >= addr.saturating_add(usize::try_from(func_loc.length).unwrap())
+            text_range.start.get() <= addr
+                && text_range.end.get()
+                    >= addr.saturating_add(usize::try_from(func_loc.length).unwrap())
         );
 
         addr
     }
 
-    pub fn lookup_trap_code(&self, text_offset: usize) -> Option<Trap> {
+    pub fn lookup_trap_code(&self, text_offset: usize) -> Option<TrapKind> {
         let text_offset = u32::try_from(text_offset).unwrap();
 
         let index = self

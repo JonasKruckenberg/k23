@@ -20,10 +20,12 @@ use anyhow::{bail, ensure};
 use core::alloc::Layout;
 use core::fmt;
 use core::num::NonZeroUsize;
+use core::ops::DerefMut;
 use core::pin::Pin;
+use core::ptr::NonNull;
 use core::range::{Bound, Range, RangeBounds, RangeInclusive};
-use rand::Rng;
 use rand::distr::Uniform;
+use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 
 // const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();
@@ -50,7 +52,10 @@ pub struct AddressSpace {
     /// materialized into in order to take effect.
     pub arch: arch::AddressSpace,
     pub frame_alloc: &'static FrameAllocator,
+    last_fault: Option<(NonNull<AddressSpaceRegion>, VirtualAddress)>,
 }
+unsafe impl Send for AddressSpace {}
+unsafe impl Sync for AddressSpace {}
 
 impl fmt::Debug for AddressSpace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -88,6 +93,7 @@ impl AddressSpace {
             rng,
             kind: AddressSpaceKind::User,
             frame_alloc,
+            last_fault: None,
         })
     }
 
@@ -104,6 +110,7 @@ impl AddressSpace {
             rng,
             kind: AddressSpaceKind::Kernel,
             frame_alloc,
+            last_fault: None,
         }
     }
 
@@ -342,19 +349,42 @@ impl AddressSpace {
             self.max_range.contains(&addr),
             "page fault at address outside of address space range"
         );
-
+        
         let addr = addr.align_down(arch::PAGE_SIZE);
 
-        let region = self
-            .regions
-            .upper_bound_mut(Bound::Included(&addr))
-            .get_mut()
-            .and_then(|region| region.range.contains(&addr).then_some(region));
+        let region = if let Some((mut last_region, last_addr)) = self.last_fault.take() {
+            let last_region = unsafe { Pin::new_unchecked(last_region.as_mut()) };
 
-        if let Some(region) = region {
+            if addr == last_addr {
+                panic!("double fault");
+            }
+
+            if last_region.range.contains(&addr) {
+                Some(last_region)
+            } else {
+                self
+                    .regions
+                    .upper_bound_mut(Bound::Included(&addr))
+                    .get_mut()
+                    .and_then(|region| region.range.contains(&addr).then_some(region))
+            }
+        } else {
+            self
+                .regions
+                .upper_bound_mut(Bound::Included(&addr))
+                .get_mut()
+                .and_then(|region| region.range.contains(&addr).then_some(region))
+        };
+
+        if let Some(mut region) = region {
+            let region_ptr = NonNull::from(region.deref_mut());
+            
             let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
             region.page_fault(&mut batch, addr, flags)?;
             batch.flush()?;
+            
+            self.last_fault = Some((region_ptr, addr));
+            
             Ok(())
         } else {
             bail!("page fault at unmapped address {addr}");
@@ -485,16 +515,7 @@ impl AddressSpace {
 
         Ok(())
     }
-
-    /// Find the `AddressSpaceRegion` containing the provided address.
-    fn find_region(&mut self, addr: VirtualAddress) -> Option<Pin<&mut AddressSpaceRegion>> {
-        let region = self
-            .regions
-            .upper_bound_mut(Bound::Included(&addr))
-            .get_mut()?;
-        region.range.contains(&addr).then_some(region)
-    }
-
+    
     /// Find a spot in the address space that satisfies the given `layout` requirements.
     ///
     /// This function will walk the ordered set of `Mappings` from left to right, looking for a gap

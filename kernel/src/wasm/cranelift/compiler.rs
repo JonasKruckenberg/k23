@@ -10,7 +10,9 @@ use crate::wasm::translate::{
 };
 use crate::wasm::trap::TRAP_INTERNAL_ASSERT;
 use crate::wasm::utils::{array_call_signature, u32_offset_of, value_type, wasm_call_signature};
-use crate::wasm::vm::{StaticVMShape, VMArrayCallHostFuncContext, VMFuncRef, VMStoreContext, VMCONTEXT_MAGIC};
+use crate::wasm::vm::{
+    StaticVMShape, VMArrayCallHostFuncContext, VMFuncRef, VMStoreContext, VMCONTEXT_MAGIC,
+};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use anyhow::anyhow;
@@ -104,8 +106,8 @@ impl CraneliftCompiler {
     pub fn raise_if_host_trapped(
         &self,
         builder: &mut FunctionBuilder<'_>,
-        vmctx: ir::Value,
-        succeeded: ir::Value,
+        vmctx: Value,
+        succeeded: Value,
     ) {
         let trapped_block = builder.create_block();
         let continuation_block = builder.create_block();
@@ -144,8 +146,6 @@ impl Compiler for CraneliftCompiler {
         types: &ModuleTypes,
     ) -> crate::Result<CompiledFunction> {
         let isa = self.target_isa();
-        let mut compiler = self.function_compiler();
-        let context = &mut compiler.ctx.codegen_context;
 
         // Setup function signature
         let func_index = translation.module.func_index(index);
@@ -154,29 +154,36 @@ impl Compiler for CraneliftCompiler {
             .unwrap_module_type_index();
         let func_ty = types.get_wasm_type(sig_index).unwrap().unwrap_func();
 
+        let mut compiler = self.function_compiler();
+        let context = &mut compiler.ctx.codegen_context;
+
         context.func.signature = wasm_call_signature(isa, func_ty);
         context.func.name = UserFuncName::User(UserExternalName {
             namespace: NS_WASM_FUNC,
             index: func_index.as_u32(),
         });
 
+        // collect debug info
+        context.func.collect_debug_info();
+
+        let mut env = TranslationEnvironment::new(isa, &translation.module, types);
+
         // set up stack limit
         let vmctx = context.func.create_global_value(GlobalValueData::VMContext);
-        let stack_limit = context.func.create_global_value(GlobalValueData::Load {
+        let store_context = context.func.create_global_value(ir::GlobalValueData::Load {
             base: vmctx,
-            offset: Offset32::new(
-                i32::from(StaticVMShape.vmctx_store_context())
-                    + u32_offset_of!(VMStoreContext, stack_limit) as i32,
-            ),
+            offset: Offset32::new(i32::from(StaticVMShape.vmctx_store_context())),
+            global_type: isa.pointer_type(),
+            flags: MemFlags::trusted().with_readonly(),
+        });
+        let stack_limit = context.func.create_global_value(ir::GlobalValueData::Load {
+            base: store_context,
+            offset: Offset32::new(u32_offset_of!(VMStoreContext, stack_limit) as i32),
             global_type: isa.pointer_type(),
             flags: MemFlags::trusted(),
         });
         context.func.stack_limit = Some(stack_limit);
 
-        // collect debug info
-        context.func.collect_debug_info();
-
-        let mut env = TranslationEnvironment::new(isa, &translation.module, types);
         let mut validator = data
             .validator
             .into_validator(mem::take(&mut compiler.ctx.validator_allocations));
@@ -200,11 +207,10 @@ impl Compiler for CraneliftCompiler {
         // are passed through an array in memory (so we can have dynamic function signatures in rust)
         let pointer_type = self.isa.pointer_type();
         let index = translation.module.func_index(index);
-        let sig_index = translation.module.functions[index].signature.unwrap_module_type_index();
-        let func_ty = types
-            .get_wasm_type(sig_index)
-            .unwrap()
-            .unwrap_func();
+        let sig_index = translation.module.functions[index]
+            .signature
+            .unwrap_module_type_index();
+        let func_ty = types.get_wasm_type(sig_index).unwrap().unwrap_func();
 
         let wasm_call_sig = wasm_call_signature(self.target_isa(), func_ty);
         let array_call_sig = array_call_signature(self.target_isa());
@@ -256,7 +262,10 @@ impl Compiler for CraneliftCompiler {
             values_vec_len,
         );
 
-        builder.ins().return_(&[]);
+        // Array-call functions signal traps through a boolean return value. If we reached
+        // this point Wasm executed without issue, so we need to return a "true" value.
+        let true_return = builder.ins().iconst(ir::types::I8, 1);
+        builder.ins().return_(&[true_return]);
         builder.finalize();
 
         compiler.finish(None)
@@ -310,17 +319,25 @@ impl Compiler for CraneliftCompiler {
             pointer_type,
             MemFlags::trusted(),
             callee_vmctx,
-            i32::try_from(u32_offset_of!(VMArrayCallHostFuncContext, func_ref) + u32_offset_of!(VMFuncRef, array_call)).unwrap(),
+            i32::try_from(
+                u32_offset_of!(VMArrayCallHostFuncContext, func_ref)
+                    + u32_offset_of!(VMFuncRef, array_call),
+            )
+            .unwrap(),
         );
 
         // Do an indirect call to the callee.
         let callee_signature = builder.func.import_signature(array_call_sig);
 
-        builder.ins().call_indirect(
+        let call = builder.ins().call_indirect(
             callee_signature,
             callee,
             &[callee_vmctx, caller_vmctx, args_base, args_len],
         );
+        let results = builder.func.dfg.inst_results(call).to_vec();
+        debug_assert_eq!(results.len(), 1);
+        // `bool` is the first and only result
+        self.raise_if_host_trapped(&mut builder, callee_vmctx, results[0]);
 
         let results = load_values_from_array(
             &wasm_func_ty.results,

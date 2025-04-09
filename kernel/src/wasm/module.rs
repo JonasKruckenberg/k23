@@ -5,9 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::string::{String, ToString};
 use crate::wasm::compile::{CompileInputs, CompiledFunctionInfo};
 use crate::wasm::indices::{DefinedFuncIndex, EntityIndex, VMSharedTypeIndex};
-use crate::wasm::store::StoreOpaque;
 use crate::wasm::translate::{Import, ModuleTranslator, TranslatedModule};
 use crate::wasm::type_registry::RuntimeTypeCollection;
 use crate::wasm::utils::u8_size_of;
@@ -16,8 +16,8 @@ use crate::wasm::Engine;
 use alloc::sync::Arc;
 use core::mem;
 use core::ptr::NonNull;
-use cranelift_entity::PrimaryMap;
 use wasmparser::{Validator, WasmFeatures};
+use crate::wasm::code_registry::{register_code, unregister_code};
 
 /// A compiled WebAssembly module, ready to be instantiated.
 ///
@@ -31,12 +31,20 @@ pub struct Module(Arc<ModuleInner>);
 
 #[derive(Debug)]
 struct ModuleInner {
+    name: String,
     engine: Engine,
     translated_module: TranslatedModule,
     required_features: WasmFeatures,
     vmshape: VMShape,
     code: Arc<CodeObject>,
     type_collection: RuntimeTypeCollection,
+}
+
+impl Drop for ModuleInner {
+    fn drop(&mut self) {
+        tracing::warn!("Dropping wasm module {}", self.name);
+        unregister_code(&self.code);
+    }
 }
 
 impl Module {
@@ -68,10 +76,11 @@ impl Module {
             Ok(Arc::new(code))
         })?;
 
-        // // register this code memory with the trap handler, so we can correctly unwind from traps
-        // code_registry::register_code(&code);
+        // register this code memory with the trap handler, so we can correctly unwind from traps
+        register_code(&code);
 
         Ok(Self(Arc::new(ModuleInner {
+            name: translation.module.name.clone().unwrap_or("<unnamed mystery module>".to_string()),
             engine: engine.clone(),
             vmshape: VMShape::for_module(u8_size_of::<*mut u8>(), &translation.module),
             translated_module: translation.module,
@@ -125,15 +134,14 @@ impl Module {
     ) -> cranelift_entity::Iter<DefinedFuncIndex, CompiledFunctionInfo> {
         self.0.code.function_info().iter()
     }
-    
+
     pub(super) fn array_to_wasm_trampoline(
         &self,
         index: DefinedFuncIndex,
-    ) -> Option<NonNull<VMArrayCallFunction>> {
+    ) -> Option<VMArrayCallFunction> {
         let loc = self.0.code.function_info()[index].array_to_wasm_trampoline?;
-        let ptr = NonNull::new(self.code().resolve_function_loc(loc) as *mut VMArrayCallFunction)
-            .unwrap();
-        Some(ptr)
+        let raw = self.code().resolve_function_loc(loc);
+        Some(unsafe { mem::transmute::<usize, VMArrayCallFunction>(raw) })
     }
 
     /// Return the address, in memory, of the trampoline that allows Wasm to
@@ -176,10 +184,11 @@ impl Module {
     pub(super) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
-
+    
     pub(super) fn new_stub(engine: Engine) -> Self {
         let translated_module = TranslatedModule::default();
         Self(Arc::new(ModuleInner {
+            name: "<Stub>".to_string(),
             engine: engine.clone(),
             vmshape: VMShape::for_module(u8_size_of::<usize>(), &translated_module),
             translated_module,

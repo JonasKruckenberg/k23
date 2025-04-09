@@ -27,7 +27,7 @@ use crate::wasm::vm::{
     VMShape, VMStoreContext, VMTableDefinition, VMTableImport, VMTagDefinition, VMTagImport,
     VMCONTEXT_MAGIC,
 };
-use crate::wasm::Trap;
+use crate::wasm::TrapKind;
 use alloc::string::String;
 use anyhow::{bail, ensure};
 use core::alloc::Layout;
@@ -38,6 +38,8 @@ use core::{fmt, ptr, slice};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
 use static_assertions::const_assert_eq;
+use crate::mem::VirtualAddress;
+use crate::wasm::trap_handler::WasmFault;
 
 #[derive(Debug)]
 pub struct InstanceHandle {
@@ -47,6 +49,7 @@ unsafe impl Send for InstanceHandle {}
 unsafe impl Sync for InstanceHandle {}
 
 #[repr(C)] // ensure that the vmctx field is last.
+#[derive(Debug)]
 pub struct Instance {
     module: Module,
     pub(super) memories: PrimaryMap<DefinedMemoryIndex, Memory>,
@@ -356,6 +359,17 @@ impl InstanceHandle {
     pub fn instance_mut(&mut self) -> &mut Instance {
         unsafe { self.instance.unwrap().as_mut() }
     }
+
+    /// Attempts to convert from the host `addr` specified to a WebAssembly
+    /// based address recorded in `WasmFault`.
+    ///
+    /// This method will check all linear memories that this instance contains
+    /// to see if any of them contain `addr`. If one does then `Some` is
+    /// returned with metadata about the wasm fault. Otherwise `None` is
+    /// returned and `addr` doesn't belong to this instance.
+    pub fn wasm_fault(&self, faulting_addr: VirtualAddress) -> Option<WasmFault> {
+        self.instance().wasm_fault(faulting_addr)
+    }
 }
 
 impl Instance {
@@ -399,14 +413,31 @@ impl Instance {
     pub fn module(&self) -> &Module {
         &self.module
     }
-    // pub fn code(&self) -> &CodeObject {
-    //     self.module.code()
-    // }
     pub fn translated_module(&self) -> &TranslatedModule {
         self.module.translated()
     }
     pub fn vmshape(&self) -> &VMShape {
         self.module.vmshape()
+    }
+
+    fn wasm_fault(&self, addr: VirtualAddress) -> Option<WasmFault> {
+        let mut fault = None;
+        
+        for (_, memory) in self.memories.iter() {
+            let accessible = memory.wasm_accessible();
+            if accessible.start <= addr && addr < accessible.end {
+                // All linear memories should be disjoint so assert that no
+                // prior fault has been found.
+                assert!(fault.is_none());
+                fault = Some(WasmFault {
+                    memory_size: memory.byte_size(),
+                    wasm_address: u64::try_from(addr.checked_sub_addr(accessible.start).unwrap()).unwrap(),
+                });
+            }
+            
+        }
+        
+        fault
     }
 
     pub fn get_exported_func(&mut self, index: FuncIndex) -> ExportedFunction {
@@ -494,7 +525,7 @@ impl Instance {
         src_index: MemoryIndex,
         src: u64,
         len: u64,
-    ) -> Result<(), Trap> {
+    ) -> Result<(), TrapKind> {
         todo!()
     }
 
@@ -504,7 +535,7 @@ impl Instance {
         dst: u64,
         val: u8,
         len: u64,
-    ) -> Result<(), Trap> {
+    ) -> Result<(), TrapKind> {
         todo!()
     }
 
@@ -515,7 +546,7 @@ impl Instance {
         dst: u64,
         src: u32,
         len: u32,
-    ) -> Result<(), Trap> {
+    ) -> Result<(), TrapKind> {
         todo!()
     }
 
@@ -543,7 +574,7 @@ impl Instance {
         dst: u64,
         val: TableElement,
         len: u64,
-    ) -> Result<(), Trap> {
+    ) -> Result<(), TrapKind> {
         todo!()
     }
 
@@ -554,7 +585,7 @@ impl Instance {
         src_index: TableIndex,
         src: u64,
         len: u64,
-    ) -> Result<(), Trap> {
+    ) -> Result<(), TrapKind> {
         todo!()
     }
 
@@ -566,7 +597,7 @@ impl Instance {
         dst: u64,
         src: u64,
         len: u64,
-    ) -> Result<(), Trap> {
+    ) -> Result<(), TrapKind> {
         let module = self.module().clone(); // FIXME this clone is here to workaround lifetime issues. remove
         let elements = &module.translated().passive_table_initializers[&elem_index];
         // TODO reuse this const_eval across calls
@@ -583,10 +614,10 @@ impl Instance {
         dst: u64,
         src: u64,
         len: u64,
-    ) -> Result<(), Trap> {
-        let dst = usize::try_from(dst).map_err(|_| Trap::TableOutOfBounds)?;
-        let src = usize::try_from(src).map_err(|_| Trap::TableOutOfBounds)?;
-        let len = usize::try_from(len).map_err(|_| Trap::TableOutOfBounds)?;
+    ) -> Result<(), TrapKind> {
+        let dst = usize::try_from(dst).map_err(|_| TrapKind::TableOutOfBounds)?;
+        let src = usize::try_from(src).map_err(|_| TrapKind::TableOutOfBounds)?;
+        let len = usize::try_from(len).map_err(|_| TrapKind::TableOutOfBounds)?;
         let table = unsafe { self.defined_or_imported_table(table_index).as_mut() };
 
         match elements {
@@ -594,14 +625,14 @@ impl Instance {
                 let elements = funcs
                     .get(src..)
                     .and_then(|s| s.get(..len))
-                    .ok_or(Trap::TableOutOfBounds)?;
+                    .ok_or(TrapKind::TableOutOfBounds)?;
                 table.init_func(dst, elements.iter().map(|idx| self.get_func_ref(*idx)))?;
             }
             TableSegmentElements::Expressions(exprs) => {
                 let exprs = exprs
                     .get(src..)
                     .and_then(|s| s.get(..len))
-                    .ok_or(Trap::TableOutOfBounds)?;
+                    .ok_or(TrapKind::TableOutOfBounds)?;
                 let (heap_top_ty, shared) = self.translated_module().tables[table_index]
                     .element_type
                     .heap_type
@@ -924,6 +955,7 @@ impl Instance {
         }
     }
 
+    #[tracing::instrument(skip(self, store, module))]
     unsafe fn initialize_vmctx(
         &mut self,
         store: &mut StoreOpaque,
@@ -1094,7 +1126,7 @@ impl Instance {
         }
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, module))]
     unsafe fn initialize_vmfunc_refs(&mut self, imports: &Imports, module: &Module) {
         unsafe {
             let vmshape = module.vmshape();
@@ -1117,8 +1149,8 @@ impl Instance {
                 let func_ref =
                     if let Some(def_index) = module.translated().defined_func_index(index) {
                         VMFuncRef {
-                            array_call: VmPtr::from(
-                                self.module().array_to_wasm_trampoline(def_index).unwrap(),
+                            array_call: self.module().array_to_wasm_trampoline(def_index).expect(
+                                "should have array-to-Wasm trampoline for escaping function",
                             ),
                             wasm_call: Some(VmPtr::from(self.module.function(def_index))),
                             type_index,
@@ -1140,7 +1172,7 @@ impl Instance {
         }
     }
 
-    #[tracing::instrument(skip(self, store, ctx, const_eval))]
+    #[tracing::instrument(skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_globals(
         &mut self,
         store: &mut StoreOpaque,
@@ -1164,7 +1196,7 @@ impl Instance {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, store, ctx, const_eval))]
+    #[tracing::instrument(skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_tables(
         &mut self,
         store: &mut StoreOpaque,
@@ -1224,7 +1256,7 @@ impl Instance {
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, store, ctx, const_eval))]
+    #[tracing::instrument(skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_memories(
         &mut self,
         store: &mut StoreOpaque,

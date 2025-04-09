@@ -21,6 +21,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
 use cranelift_entity::Unsigned;
 use static_assertions::const_assert_eq;
+use crate::mem::VirtualAddress;
 use crate::wasm::type_registry::RegisteredType;
 use crate::wasm::types::FuncType;
 
@@ -344,7 +345,7 @@ pub struct VMFunctionImport {
 
     /// Function pointer to use when calling this imported function with the
     /// "array" calling convention that `Func::new` et al use.
-    pub array_call: VmPtr<VMArrayCallFunction>,
+    pub array_call: VMArrayCallFunction,
 
     /// The VM state associated with this function.
     ///
@@ -751,7 +752,7 @@ impl VMTagDefinition {
 pub struct VMFuncRef {
     /// Function pointer for this funcref if being called via the "array"
     /// calling convention that `Func::new` et al use.
-    pub array_call: VmPtr<VMArrayCallFunction>,
+    pub array_call: VMArrayCallFunction,
 
     /// Function pointer for this funcref if being called via the calling
     /// convention we use when compiling Wasm.
@@ -817,7 +818,7 @@ impl VMFuncRef {
         params_and_results: NonNull<[VMVal]>,
     ) -> bool {
         unsafe {
-            (*self.array_call.as_ptr())(
+            (self.array_call)(
                 self.vmctx.as_non_null(),
                 caller,
                 params_and_results.cast(),
@@ -852,7 +853,7 @@ pub struct VMStoreContext {
     /// Current stack limit of the wasm module.
     ///
     /// For more information see `crates/cranelift/src/lib.rs`.
-    pub stack_limit: UnsafeCell<usize>,
+    pub stack_limit: UnsafeCell<VirtualAddress>,
 
     /// The value of the frame pointer register when we last called from Wasm to
     /// the host.
@@ -865,7 +866,7 @@ pub struct VMStoreContext {
     ///
     /// Used to find the start of a a contiguous sequence of Wasm frames when
     /// walking the stack.
-    pub last_wasm_exit_fp: UnsafeCell<usize>,
+    pub last_wasm_exit_fp: UnsafeCell<VirtualAddress>,
 
     /// The last Wasm program counter before we called from Wasm to the host.
     ///
@@ -876,7 +877,7 @@ pub struct VMStoreContext {
     /// to the host.
     ///
     /// Used when walking a contiguous sequence of Wasm frames.
-    pub last_wasm_exit_pc: UnsafeCell<usize>,
+    pub last_wasm_exit_pc: UnsafeCell<VirtualAddress>,
 
     /// The last host stack pointer before we called into Wasm from the host.
     ///
@@ -894,7 +895,7 @@ pub struct VMStoreContext {
     ///
     /// Used to find the end of a contiguous sequence of Wasm frames when
     /// walking the stack.
-    pub last_wasm_entry_fp: UnsafeCell<usize>,
+    pub last_wasm_entry_fp: UnsafeCell<VirtualAddress>,
 }
 
 // SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
@@ -910,12 +911,12 @@ unsafe impl Sync for VMStoreContext {}
 impl Default for VMStoreContext {
     fn default() -> VMStoreContext {
         VMStoreContext {
-            stack_limit: UnsafeCell::new(usize::MAX),
+            stack_limit: UnsafeCell::new(VirtualAddress::MAX),
             fuel_consumed: UnsafeCell::new(0),
             epoch_deadline: UnsafeCell::new(0),
-            last_wasm_exit_fp: UnsafeCell::new(0),
-            last_wasm_exit_pc: UnsafeCell::new(0),
-            last_wasm_entry_fp: UnsafeCell::new(0),
+            last_wasm_exit_fp: UnsafeCell::new(VirtualAddress::ZERO),
+            last_wasm_exit_pc: UnsafeCell::new(VirtualAddress::ZERO),
+            last_wasm_entry_fp: UnsafeCell::new(VirtualAddress::ZERO),
         }
     }
 }
@@ -1052,14 +1053,14 @@ impl VMArrayCallHostFuncContext {
     /// The `host_func` must be a pointer to a host (not Wasm) function and it
     /// must be `Send` and `Sync`.
     pub unsafe fn new(
-        host_func: VMArrayCallFunction,
+        array_call: VMArrayCallFunction,
         func_ty: FuncType,
         func: Box<dyn Any + Send + Sync>,
     ) -> Box<VMArrayCallHostFuncContext> {
         let mut ctx = Box::new(VMArrayCallHostFuncContext {
             magic: VM_ARRAY_CALL_HOST_FUNC_MAGIC,
             func_ref: VMFuncRef {
-                array_call: NonNull::new(host_func as *mut u8).unwrap().cast().into(),
+                array_call,
                 type_index: func_ty.type_index(),
                 wasm_call: None,
                 vmctx: NonNull::dangling().into(),
@@ -1067,7 +1068,7 @@ impl VMArrayCallHostFuncContext {
             func,
             ty: func_ty.into_registered_type()
         });
-        
+
         let vmctx =
             VMOpaqueContext::from_vm_array_call_host_func_context(NonNull::from(ctx.as_mut()));
 
@@ -1075,7 +1076,7 @@ impl VMArrayCallHostFuncContext {
 
         ctx
     }
-    
+
     /// Helper function to cast between context types using a debug assertion to
     /// protect against some mistakes.
     #[inline]

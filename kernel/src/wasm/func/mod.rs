@@ -8,19 +8,27 @@
 mod host;
 mod typed;
 
+use crate::arch;
+use crate::mem::VirtualAddress;
+use crate::util::zip_eq::IteratorExt;
 use crate::wasm::indices::VMSharedTypeIndex;
 use crate::wasm::store::{StoreOpaque, Stored};
+use crate::wasm::trap_handler::{Trap, TrapReason};
 use crate::wasm::types::FuncType;
 use crate::wasm::values::Val;
-use crate::wasm::vm::{ExportedFunction, VMArrayCallHostFuncContext, VMFuncRef, VMFunctionImport, VMOpaqueContext, VMVal, VmPtr};
+use crate::wasm::vm::{
+    ExportedFunction, VMArrayCallHostFuncContext, VMFuncRef, VMFunctionImport, VMOpaqueContext,
+    VMVal, VmPtr,
+};
+use crate::wasm::{Module, Store, MAX_WASM_STACK};
 use alloc::boxed::Box;
 use alloc::sync::Arc;
+use anyhow::ensure;
 use core::ffi::c_void;
+use core::mem;
 use core::ptr::NonNull;
-use crate::wasm::{Module, Store};
-
-pub use host::{HostFunc, IntoFunc, HostParams, HostResults};
-pub use typed::{TypedFunc, WasmResults, WasmParams, WasmTy};
+pub use host::{HostFunc, IntoFunc};
+pub use typed::{TypedFunc, WasmParams, WasmResults, WasmTy};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Func(pub(super) Stored<FuncData>);
@@ -72,13 +80,34 @@ impl Func {
         Ok(unsafe { TypedFunc::new_unchecked(self, ty) })
     }
 
-    pub async fn call(
+    pub fn call(
         self,
         store: &mut StoreOpaque,
         params: &[Val],
         results: &mut [Val],
     ) -> crate::Result<()> {
-        todo!()
+        // Do the typechecking. Notice how `TypedFunc::call` is essentially the same function
+        // minus this typechecking? Yeah. That's the benefit of the typed function.
+        let ty = self.ty(store);
+
+        let mut params_ = ty.params().zip_eq(params);
+        while let Some((expected, param)) = params_.next() {
+            let found = param.ty(store)?;
+            ensure!(
+                expected.matches(&found),
+                "Type mismatch. Expected `{expected:?}`, but found `{found:?}`"
+            );
+        }
+
+        ensure!(
+            results.len() >= ty.results().len(),
+            "Results slice too small. Need space for at least {}, but got only {}",
+            ty.results().len(),
+            results.len()
+        );
+
+        // Safety: we have checked the types above, we're safe to proceed
+        unsafe { self.call_unchecked(store, params, results) }
     }
 
     /// Calls the given function with the provided arguments and places the results in the provided
@@ -168,7 +197,11 @@ impl Func {
         Self(stored)
     }
 
-    pub(super) fn as_vmfunction_import(&self, store: &mut StoreOpaque, module: &Module) -> VMFunctionImport {
+    pub(super) fn as_vmfunction_import(
+        &self,
+        store: &mut StoreOpaque,
+        module: &Module,
+    ) -> VMFunctionImport {
         let f = self.vm_func_ref(store);
 
         unsafe {
@@ -180,12 +213,12 @@ impl Func {
                     let _ = VMArrayCallHostFuncContext::from_opaque(f.as_ref().vmctx.as_non_null());
 
                     let sig = self.type_index(store);
-                    
+
                     let ptr = module.wasm_to_array_trampoline(sig).expect(
                         "if the wasm is importing a function of a given type, it must have the \
                          type's trampoline",
                     );
-                    
+
                     VmPtr::from(ptr)
                 }),
                 array_call: f.as_ref().array_call,
@@ -242,34 +275,130 @@ pub(super) unsafe fn do_call(
 ) -> crate::Result<()> {
     // Safety: TODO
     unsafe {
-        let vmctx = VMOpaqueContext::from_vmcontext(store.default_caller());
+        let span = tracing::trace_span!("WASM");
 
-        // TODO catch traps
-        func_ref.array_call(vmctx, NonNull::from(params_and_results));
+        span.in_scope(|| {
+            let exit = enter_wasm(store);
+            let res = crate::wasm::trap_handler::catch_traps(store, |caller| {
+                tracing::trace!("calling VMFuncRef array call");
+                let success = func_ref.array_call(VMOpaqueContext::from_vmcontext(caller), NonNull::from(params_and_results));
+                tracing::trace!(success, "returned from VMFuncRef array call");
+            });
+            exit_wasm(store, exit);
 
-        todo!()
+            match res {
+                Ok(()) => Ok(()),
+                Err(Trap { reason, backtrace }) => {
+                    let error = match reason {
+                        TrapReason::User(err) => err,
+                        TrapReason::Jit {
+                            pc,
+                            faulting_addr,
+                            trap,
+                        } => {
+                            let mut err: anyhow::Error = trap.into();
+                            if let Some(fault) =
+                                faulting_addr.and_then(|addr| store.wasm_fault(pc, addr))
+                            {
+                                err = err.context(fault);
+                            }
+                            err
+                        }
+                        TrapReason::Wasm(trap_code) => trap_code.into(),
+                    };
 
-        // let _guard = WasmExecutionGuard::enter_wasm(vmctx, &module.offsets().static_);
-        //
-        // let span = tracing::trace_span!("WASM");
-        //
-        // let res = span.in_scope(|| {
-        //     super::trap_handler::catch_traps(vmctx, module.offsets().static_.clone(), || {
-        //         arch::array_call(
-        //             func_ref,
-        //             vmctx,
-        //             vmctx,
-        //             params_and_results.as_mut_ptr(),
-        //             params_and_results.len(),
-        //         );
-        //     })
-        // });
-        //
-        // match res {
-        //     Ok(_)
-        //     // The userspace ABI uses the Trap::Exit code to signal a graceful exit
-        //     | Err((Trap::Exit, _)) => Ok(()),
-        //     Err((trap, backtrace)) => bail!("WebAssembly call failed with error:\n{:?}\n{:?}", trap, backtrace),
-        // }
+                    if let Some(bt) = backtrace {
+                        tracing::debug!("TODO properly format wasm backtrace {bt:?}");
+
+                        // let bt = WasmBacktrace::from_captured(store, bt, pc);
+                        // if !bt.wasm_trace.is_empty() {
+                        //     error = error.context(bt);
+                        // }
+                    }
+
+                    Err(error)
+                }
+            }
+        })
+    }
+}
+
+/// This function is called to register state within `Store` whenever
+/// WebAssembly is entered within the `Store`.
+///
+/// This function sets up various limits such as:
+///
+/// * The stack limit. This is what ensures that we limit the stack space
+///   allocated by WebAssembly code and it's relative to the initial stack
+///   pointer that called into wasm.
+///
+/// This function may fail if the stack limit can't be set because an
+/// interrupt already happened.
+fn enter_wasm(store: &mut StoreOpaque) -> Option<VirtualAddress> {
+    // If this is a recursive call, e.g. our stack limit is already set, then
+    // we may be able to skip this function.
+    //
+    // // For synchronous stores there's nothing else to do because all wasm calls
+    // // happen synchronously and on the same stack. This means that the previous
+    // // stack limit will suffice for the next recursive call.
+    // //
+    // // For asynchronous stores then each call happens on a separate native
+    // // stack. This means that the previous stack limit is no longer relevant
+    // // because we're on a separate stack.
+    // if unsafe { *store.vm_store_context().stack_limit.get() } != VirtualAddress::MAX
+    //     && !store.async_support()
+    // {
+    //     return None;
+    // }
+
+    // Ignore this stack pointer business on miri since we can't execute wasm
+    // anyway and the concept of a stack pointer on miri is a bit nebulous
+    // regardless.
+    if cfg!(miri) {
+        return None;
+    }
+
+    // When Cranelift has support for the host then we might be running native
+    // compiled code meaning we need to read the actual stack pointer. If
+    // Cranelift can't be used though then we're guaranteed to be running pulley
+    // in which case this stack pointer isn't actually used as Pulley has custom
+    // mechanisms for stack overflow.
+    let stack_pointer = arch::get_stack_pointer();
+
+    // Determine the stack pointer where, after which, any wasm code will
+    // immediately trap. This is checked on the entry to all wasm functions.
+    //
+    // Note that this isn't 100% precise. We are requested to give wasm
+    // `max_wasm_stack` bytes, but what we're actually doing is giving wasm
+    // probably a little less than `max_wasm_stack` because we're
+    // calculating the limit relative to this function's approximate stack
+    // pointer. Wasm will be executed on a frame beneath this one (or next
+    // to it). In any case it's expected to be at most a few hundred bytes
+    // of slop one way or another. When wasm is typically given a MB or so
+    // (a million bytes) the slop shouldn't matter too much.
+    //
+    // After we've got the stack limit then we store it into the `stack_limit`
+    // variable.
+    let wasm_stack_limit = VirtualAddress::new(stack_pointer - MAX_WASM_STACK).unwrap();
+    let prev_stack = unsafe {
+        mem::replace(
+            &mut *store.vm_store_context().stack_limit.get(),
+            wasm_stack_limit,
+        )
+    };
+
+    Some(prev_stack)
+}
+
+fn exit_wasm(store: &mut StoreOpaque, prev_stack: Option<VirtualAddress>) {
+    // If we don't have a previous stack pointer to restore, then there's no
+    // cleanup we need to perform here.
+    let prev_stack = match prev_stack {
+        Some(stack) => stack,
+        None => return,
+    };
+
+    unsafe {
+        *store.vm_store_context().stack_limit.get() = prev_stack;
     }
 }

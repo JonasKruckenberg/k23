@@ -151,7 +151,7 @@ impl HostContext {
                 }
             };
 
-            crate::wasm::vm::trap_handler::catch_unwind_and_record_trap(|| {
+            crate::wasm::trap_handler::catch_unwind_and_record_trap(|| {
                 let vmctx = VMContext::from_opaque(caller_vmctx);
                 Caller::with(vmctx, run)
             })
@@ -321,7 +321,7 @@ where
     }
 
     fn compatible_with_store(&self, store: &StoreOpaque) -> bool {
-        todo!()
+        self.compatible_with_store(store)
     }
 }
 
@@ -338,12 +338,15 @@ where
         store: &mut StoreOpaque,
         ptr: &mut [MaybeUninit<VMVal>],
     ) -> crate::Result<()> {
-        // T::store(self, store, ptr)
-        todo!()
+        // Safety: ensured by caller
+        unsafe { self.and_then(|val| val.store(store, ptr)) }
     }
 
     fn compatible_with_store(&self, store: &StoreOpaque) -> bool {
-        todo!()
+        match self {
+            Ok(x) => <T as HostResults>::compatible_with_store(x, store),
+            Err(_) => true,
+        }
     }
 }
 
@@ -369,8 +372,13 @@ macro_rules! impl_host_results {
                  Ok(())
              }
 
-             fn compatible_with_store(&self, store: &StoreOpaque) -> bool {
-                todo!()
+             fn compatible_with_store(&self, _store: &StoreOpaque) -> bool {
+                 let ($($t,)*) = self;
+                 let compatible = true;
+                 $(
+                     let compatible = compatible && WasmTy::compatible_with_store($t, _store);
+                 )*
+                 compatible
             }
          }
       }

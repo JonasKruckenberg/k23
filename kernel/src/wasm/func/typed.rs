@@ -145,34 +145,34 @@ where
     Params: WasmParams,
     Results: WasmResults,
 {
-    /// Invokes this functions with the `params`, returning the results asynchronously.
-    ///
-    /// Execution of WebAssembly will happen synchronously in the `poll` method of the
-    /// future returned from this function. Note that, the faster `poll` methods return the more
-    /// responsive the overall system is, so WebAssembly execution interruption should be configured
-    /// such that this futures `poll` method resolves *reasonably* quickly.
-    /// (Reasonably because at the end of the day a task will need to block if it wants to perform
-    /// any meaningful work, there is no way around it).
-    ///
-    /// This function will return `Ok(())` if execution completed without a trap
-    /// or error of any kind. In this situation the results will be written to
-    /// the provided `results` array.
-    ///
-    /// # Errors
-    ///
-    /// Any error which occurs throughout the execution of the function will be
-    /// returned as `Err(e)`.
-    /// Errors typically indicate that execution of WebAssembly was halted
-    /// mid-way and did not complete after the error condition happened.
-    pub async fn call(self, store: &mut StoreOpaque, params: Params) -> crate::Result<Results> {
-        todo!()
-    }
+    // /// Invokes this functions with the `params`, returning the results asynchronously.
+    // ///
+    // /// Execution of WebAssembly will happen synchronously in the `poll` method of the
+    // /// future returned from this function. Note that, the faster `poll` methods return the more
+    // /// responsive the overall system is, so WebAssembly execution interruption should be configured
+    // /// such that this futures `poll` method resolves *reasonably* quickly.
+    // /// (Reasonably because at the end of the day a task will need to block if it wants to perform
+    // /// any meaningful work, there is no way around it).
+    // ///
+    // /// This function will return `Ok(())` if execution completed without a trap
+    // /// or error of any kind. In this situation the results will be written to
+    // /// the provided `results` array.
+    // ///
+    // /// # Errors
+    // ///
+    // /// Any error which occurs throughout the execution of the function will be
+    // /// returned as `Err(e)`.
+    // /// Errors typically indicate that execution of WebAssembly was halted
+    // /// mid-way and did not complete after the error condition happened.
+    // pub fn call(self, store: &mut StoreOpaque, params: Params) -> crate::Result<Results> {
+    //     todo!()
+    // }
 
     pub fn into_func(self) -> Func {
         self.func
     }
 
-    fn call_inner(&self, store: &mut StoreOpaque, params: Params) -> crate::Result<Results> {
+    pub fn call(&self, store: &mut StoreOpaque, params: Params) -> crate::Result<Results> {
         // Safety: The code below does the lowering and lifting of VM values. The correctness of which is enforced
         // both through this type's generics AND the correct implementation of the array-call trampoline.
         unsafe {

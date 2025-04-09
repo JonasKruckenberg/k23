@@ -8,7 +8,7 @@
 use crate::wasm::vm::mmap_vec::MmapVec;
 use crate::wasm::vm::provenance::VmPtr;
 use crate::wasm::vm::{VMFuncRef, VMTableDefinition};
-use crate::wasm::Trap;
+use crate::wasm::TrapKind;
 use core::ptr::NonNull;
 
 pub enum TableElement {
@@ -30,6 +30,7 @@ pub enum TableElementType {
     GcRef,
 }
 
+#[derive(Debug)]
 pub struct Table {
     /// The underlying allocation backing this memory
     elements: MmapVec<Option<NonNull<TableElement>>>,
@@ -49,7 +50,7 @@ impl Table {
         &self,
         _start: usize,
         _elements: impl Iterator<Item = Option<NonNull<VMFuncRef>>>,
-    ) -> Result<(), Trap> {
+    ) -> Result<(), TrapKind> {
         todo!()
     }
     pub fn size(&self) -> usize {

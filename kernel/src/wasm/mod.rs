@@ -11,7 +11,7 @@ mod instance;
 mod linker;
 mod memory;
 mod module;
-mod module_registry;
+mod code_registry;
 mod store;
 mod table;
 mod tag;
@@ -22,6 +22,7 @@ mod types;
 mod utils;
 mod values;
 mod vm;
+pub mod trap_handler;
 
 use crate::scheduler::scheduler;
 use crate::shell::Command;
@@ -39,7 +40,7 @@ pub use module::Module;
 pub use store::Store;
 pub use table::Table;
 pub use tag::Tag;
-pub use trap::Trap;
+pub use trap::TrapKind;
 use wasmparser::Validator;
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
@@ -210,21 +211,19 @@ fn fib_test() {
         // `fib_test` should only have a single export
         assert_eq!(instance.exports(&mut store).len(), 1);
 
-        let _func: TypedFunc<(), ()> = instance
+        let func: TypedFunc<(), ()> = instance
             .get_func(&mut store, "fib_test")
             .unwrap()
             .typed(&store)
             .unwrap();
 
-        // scheduler().spawn(
-        //     crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
-        //     async move {
-        //         func.call(&mut store, ()).await.unwrap();
-        //         tracing::info!("done");
-        //     },
-        // );
-
-        tracing::info!("success!")
+        scheduler().spawn(
+            crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
+            async move {
+                func.call(&mut store, ()).unwrap();
+                tracing::info!("done");
+            },
+        );
     }
 }
 
@@ -261,14 +260,15 @@ fn hostfunc_test() {
         .typed(&mut store)
         .unwrap();
 
-    // scheduler().spawn(
-    //     crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
-    //     async move {
-    //         let arg = 42;
-    //         let ret = func.call(&mut store, arg).await.unwrap();
-    //         assert_eq!(ret, arg);
-    //     },
-    // );
+    scheduler().spawn(
+        crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
+        async move {
+            let arg = 42;
+            let ret = func.call(&mut store, arg).unwrap();
+            assert_eq!(ret, arg);
+            tracing::info!("done");
+        },
+    );
 
     tracing::info!("success!")
 }

@@ -1768,6 +1768,22 @@ pub struct GlobalType {
 }
 
 impl GlobalType {
+    pub fn content(&self) -> &ValType {
+        &self.content
+    }
+
+    pub fn mutability(&self) -> Mutability {
+        self.mutability
+    }
+    
+    pub(super) fn to_wasm_global(&self) -> Global {
+        Global {
+            content_type: self.content.to_wasm_type(),
+            mutable: self.mutability == Mutability::Const,
+            shared: false,
+        }
+    }
+
     pub(super) fn from_wasm_global(engine: &Engine, ty: &Global) -> Self {
         let content = ValType::from_wasm_type(engine, &ty.content_type);
         Self {
