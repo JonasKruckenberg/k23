@@ -244,7 +244,7 @@ fn hostfunc_test() {
     let module = Module::from_bytes(
         &engine,
         &mut validator,
-        include_bytes!("../../host_func.wasm"),
+        include_bytes!("../../hostfunc_rs.wasm"),
     )
     .unwrap();
 
