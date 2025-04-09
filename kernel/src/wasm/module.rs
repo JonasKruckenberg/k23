@@ -1,15 +1,23 @@
-use crate::mem::AddressSpace;
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
+use crate::wasm::Engine;
+use crate::wasm::code_registry::{register_code, unregister_code};
 use crate::wasm::compile::{CompileInputs, CompiledFunctionInfo};
 use crate::wasm::indices::{DefinedFuncIndex, EntityIndex, VMSharedTypeIndex};
-use crate::wasm::runtime::{CodeMemory, code_registry};
-use crate::wasm::runtime::{MmapVec, VMOffsets};
-use crate::wasm::translate::{Import, TranslatedModule};
+use crate::wasm::translate::{Import, ModuleTranslator, TranslatedModule};
 use crate::wasm::type_registry::RuntimeTypeCollection;
-use crate::wasm::{Engine, ModuleTranslator, Store};
+use crate::wasm::utils::u8_size_of;
+use crate::wasm::vm::{CodeObject, MmapVec, VMArrayCallFunction, VMShape, VMWasmCallFunction};
+use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use core::mem;
-use cranelift_entity::PrimaryMap;
-use wasmparser::Validator;
+use core::ptr::NonNull;
+use wasmparser::{Validator, WasmFeatures};
 
 /// A compiled WebAssembly module, ready to be instantiated.
 ///
@@ -23,40 +31,25 @@ pub struct Module(Arc<ModuleInner>);
 
 #[derive(Debug)]
 struct ModuleInner {
-    translated: TranslatedModule,
-    offsets: VMOffsets,
-    code: Arc<CodeMemory>,
+    name: String,
+    engine: Engine,
+    translated_module: TranslatedModule,
+    required_features: WasmFeatures,
+    vmshape: VMShape,
+    code: Arc<CodeObject>,
     type_collection: RuntimeTypeCollection,
-    function_info: PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo>,
+}
+
+impl Drop for ModuleInner {
+    fn drop(&mut self) {
+        tracing::warn!("Dropping wasm module {}", self.name);
+        unregister_code(&self.code);
+    }
 }
 
 impl Module {
-    // /// Creates a new module from the given WebAssembly text format.
-    // ///
-    // /// This will parse, translate and compile the module and is the first step in Wasm execution.
-    // ///
-    // /// # Errors
-    // ///
-    // /// Returns an error if the WebAssembly text file is malformed, or compilation fails.
-    // pub fn from_str(engine: &Engine, validator: &mut Validator, str: &str) -> crate::Result<Self> {
-    //     let bytes = wat::parse_str(str)?;
-    //     Self::from_bytes(engine, validator, &bytes)
-    // }
-
-    /// Creates a new module from the given WebAssembly bytes.
-    ///
-    /// This will parse, translate and compile the module and is the first step in Wasm execution.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the WebAssembly module is malformed, or compilation fails.
-    ///
-    /// # Panics
-    ///
-    /// TODO
     pub fn from_bytes(
         engine: &Engine,
-        store: &mut Store,
         validator: &mut Validator,
         bytes: &[u8],
     ) -> crate::Result<Self> {
@@ -69,67 +62,69 @@ impl Module {
         tracing::debug!("Compiling inputs...");
         let unlinked_outputs = inputs.compile(engine.compiler())?;
 
-        tracing::debug!("Applying static relocations...");
-        let (code, function_info, (trap_offsets, traps)) =
-            unlinked_outputs.link_and_finish(engine, &translation.module);
-
         let type_collection = engine.type_registry().register_module_types(engine, types);
 
-        tracing::debug!("Allocating new memory map...");
-        let code = {
-            let mut aspace = store.alloc.0.lock();
-            let vec = MmapVec::from_slice(&mut aspace, &code)?;
-            let mut code = CodeMemory::new(vec, trap_offsets, traps);
-            code.publish(&mut aspace)?;
-            drop(aspace);
-            Arc::new(code)
-        };
+        let code = crate::mem::with_kernel_aspace(|aspace| -> crate::Result<_> {
+            tracing::debug!("Applying static relocations...");
+            let mut code =
+                unlinked_outputs.link_and_finish(engine, &translation.module, |code| {
+                    tracing::debug!("Allocating new memory map...");
+                    MmapVec::from_slice(aspace, &code)
+                })?;
+
+            code.publish(aspace)?;
+            Ok(Arc::new(code))
+        })?;
 
         // register this code memory with the trap handler, so we can correctly unwind from traps
-        code_registry::register_code(&code);
+        register_code(&code);
 
         Ok(Self(Arc::new(ModuleInner {
-            offsets: VMOffsets::for_module(
-                engine.compiler().triple().pointer_width().unwrap().bytes(),
-                &translation.module,
-            ),
-            translated: translation.module,
-            function_info,
+            name: translation
+                .module
+                .name
+                .clone()
+                .unwrap_or("<unnamed mystery module>".to_string()),
+            engine: engine.clone(),
+            vmshape: VMShape::for_module(u8_size_of::<*mut u8>(), &translation.module),
+            translated_module: translation.module,
+            required_features: translation.required_features,
             code,
             type_collection,
         })))
     }
 
+    /// Returns the modules name if present.
+    pub fn name(&self) -> Option<&str> {
+        self.translated().name.as_deref()
+    }
+
     /// Returns the modules imports.
     pub fn imports(&self) -> impl ExactSizeIterator<Item = &Import> {
-        self.0.translated.imports.iter()
+        self.translated().imports.iter()
     }
 
     /// Returns the modules exports.
     pub fn exports(&self) -> impl ExactSizeIterator<Item = (&str, EntityIndex)> + '_ {
-        self.0
-            .translated
+        self.translated()
             .exports
             .iter()
             .map(|(name, index)| (name.as_str(), *index))
     }
 
-    /// Returns the modules name if present.
-    pub fn name(&self) -> Option<&str> {
-        self.0.translated.name.as_deref()
+    pub(super) fn required_features(&self) -> WasmFeatures {
+        self.0.required_features
     }
-
-    pub(crate) fn get_export(&self, name: &str) -> Option<EntityIndex> {
-        self.0.translated.exports.get(name).copied()
+    pub(super) fn engine(&self) -> &Engine {
+        &self.0.engine
     }
-
-    pub(crate) fn translated(&self) -> &TranslatedModule {
-        &self.0.translated
+    pub(super) fn translated(&self) -> &TranslatedModule {
+        &self.0.translated_module
     }
-    pub(crate) fn offsets(&self) -> &VMOffsets {
-        &self.0.offsets
+    pub(super) fn vmshape(&self) -> &VMShape {
+        &self.0.vmshape
     }
-    pub(crate) fn code(&self) -> &CodeMemory {
+    pub(crate) fn code(&self) -> &Arc<CodeObject> {
         &self.0.code
     }
     pub(crate) fn type_collection(&self) -> &RuntimeTypeCollection {
@@ -138,7 +133,73 @@ impl Module {
     pub(crate) fn type_ids(&self) -> &[VMSharedTypeIndex] {
         self.0.type_collection.type_map().values().as_slice()
     }
-    pub(crate) fn function_info(&self) -> &PrimaryMap<DefinedFuncIndex, CompiledFunctionInfo> {
-        &self.0.function_info
+    pub(crate) fn functions(
+        &self,
+    ) -> cranelift_entity::Iter<DefinedFuncIndex, CompiledFunctionInfo> {
+        self.0.code.function_info().iter()
+    }
+
+    pub(super) fn array_to_wasm_trampoline(
+        &self,
+        index: DefinedFuncIndex,
+    ) -> Option<VMArrayCallFunction> {
+        let loc = self.0.code.function_info()[index].array_to_wasm_trampoline?;
+        let raw = self.code().resolve_function_loc(loc);
+        // Safety: TODO
+        Some(unsafe { mem::transmute::<usize, VMArrayCallFunction>(raw) })
+    }
+
+    /// Return the address, in memory, of the trampoline that allows Wasm to
+    /// call a array function of the given signature.
+    pub(super) fn wasm_to_array_trampoline(
+        &self,
+        signature: VMSharedTypeIndex,
+    ) -> Option<NonNull<VMWasmCallFunction>> {
+        let trampoline_shared_ty = self.0.engine.type_registry().get_trampoline_type(signature);
+        let trampoline_module_ty = self
+            .0
+            .type_collection
+            .trampoline_type(trampoline_shared_ty)?;
+
+        debug_assert!(
+            self.0
+                .engine
+                .type_registry()
+                .borrow(
+                    self.0
+                        .type_collection
+                        .lookup_shared_type(trampoline_module_ty)
+                        .unwrap()
+                )
+                .unwrap()
+                .unwrap_func()
+                .is_trampoline_type()
+        );
+
+        let ptr = self.code().wasm_to_host_trampoline(trampoline_module_ty);
+
+        Some(ptr)
+    }
+
+    pub(super) fn function(&self, index: DefinedFuncIndex) -> NonNull<VMWasmCallFunction> {
+        let loc = self.0.code.function_info()[index].wasm_func_loc;
+        NonNull::new(self.code().resolve_function_loc(loc) as *mut VMWasmCallFunction).unwrap()
+    }
+
+    pub(super) fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
+    pub(super) fn new_stub(engine: Engine) -> Self {
+        let translated_module = TranslatedModule::default();
+        Self(Arc::new(ModuleInner {
+            name: "<Stub>".to_string(),
+            engine: engine.clone(),
+            vmshape: VMShape::for_module(u8_size_of::<usize>(), &translated_module),
+            translated_module,
+            required_features: WasmFeatures::default(),
+            code: Arc::new(CodeObject::empty()),
+            type_collection: RuntimeTypeCollection::empty(engine),
+        }))
     }
 }

@@ -1,5 +1,12 @@
+// Copyright 2025 Jonas Kruckenberg
+//
+// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
+// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
+// http://opensource.org/licenses/MIT>, at your option. This file may not be
+// copied, modified, or distributed except according to those terms.
+
 use crate::arch;
-use crate::mem::{AddressSpace, UserMmap};
+use crate::mem::{AddressSpace, Mmap};
 use anyhow::Context;
 use core::cmp::max;
 use core::marker::PhantomData;
@@ -9,7 +16,7 @@ use core::slice;
 
 #[derive(Debug)]
 pub struct MmapVec<T> {
-    mmap: UserMmap,
+    mmap: Mmap,
     len: usize,
     _m: PhantomData<T>,
 }
@@ -17,7 +24,7 @@ pub struct MmapVec<T> {
 impl<T> MmapVec<T> {
     pub fn new_empty() -> Self {
         Self {
-            mmap: UserMmap::new_empty(),
+            mmap: Mmap::new_empty(),
             len: 0,
             _m: PhantomData,
         }
@@ -25,7 +32,7 @@ impl<T> MmapVec<T> {
 
     pub fn new_zeroed(aspace: &mut AddressSpace, capacity: usize) -> crate::Result<Self> {
         Ok(Self {
-            mmap: UserMmap::new_zeroed(
+            mmap: Mmap::new_zeroed(
                 aspace,
                 capacity,
                 max(align_of::<T>(), arch::PAGE_SIZE),
@@ -129,7 +136,7 @@ impl<T> MmapVec<T> {
         self.len += count;
     }
 
-    pub(crate) fn into_parts(self) -> (UserMmap, usize) {
+    pub(crate) fn into_parts(self) -> (Mmap, usize) {
         (self.mmap, self.len)
     }
 }

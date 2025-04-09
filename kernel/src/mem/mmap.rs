@@ -8,37 +8,40 @@
 use crate::arch;
 use crate::mem::address::AddressRangeExt;
 use crate::mem::{
-    AddressSpace, AddressSpaceKind, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions,
-    PhysicalAddress, VirtualAddress,
+    AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions, PhysicalAddress,
+    VirtualAddress,
 };
 use alloc::string::String;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
-use core::slice;
+use core::{ptr, slice};
 
-/// A userspace memory mapping.
+/// A memory mapping.
 ///
 /// This is essentially a handle to an [`AddressSpaceRegion`] with convenience methods for userspace
 /// specific needs such as copying from and to memory.
 #[derive(Debug)]
-pub struct UserMmap {
+pub struct Mmap {
     range: Range<VirtualAddress>,
 }
 
 // Safety: All mutations of the `*mut AddressSpaceRegion` are happening through a `&mut AddressSpace`
-unsafe impl Send for UserMmap {}
+unsafe impl Send for Mmap {}
 // Safety: All mutations of the `*mut AddressSpaceRegion` are happening through a `&mut AddressSpace`
-unsafe impl Sync for UserMmap {}
+unsafe impl Sync for Mmap {}
 
-impl UserMmap {
+impl Mmap {
     /// Creates a new empty `Mmap`.
     ///
     /// Note that the size of this cannot be changed after the fact, all accessors will return empty
     /// slices and permission changing methods will always fail.
-    pub fn new_empty() -> Self {
+    pub const fn new_empty() -> Self {
         Self {
-            range: Range::default(),
+            range: Range {
+                start: VirtualAddress::ZERO,
+                end: VirtualAddress::ZERO,
+            },
         }
     }
 
@@ -49,10 +52,6 @@ impl UserMmap {
         align: usize,
         name: Option<String>,
     ) -> crate::Result<Self> {
-        debug_assert!(
-            matches!(aspace.kind(), AddressSpaceKind::User),
-            "cannot create UserMmap in kernel address space"
-        );
         debug_assert!(
             align >= arch::PAGE_SIZE,
             "alignment must be at least a page"
@@ -106,7 +105,7 @@ impl UserMmap {
 
         let region = aspace.map(
             layout,
-            Permissions::READ | Permissions::WRITE | Permissions::USER,
+            Permissions::READ | Permissions::WRITE,
             |range_virt, perms, _batch| {
                 Ok(AddressSpaceRegion::new_phys(
                     range_virt, perms, range_phys, name,
@@ -194,13 +193,25 @@ impl UserMmap {
     /// Returns a pointer to the start of the memory mapped by this `Mmap`.
     #[inline]
     pub fn as_ptr(&self) -> *const u8 {
-        self.range.start.as_ptr()
+        if self.range.is_empty() {
+            return ptr::null();
+        }
+
+        let ptr = self.range.start.as_ptr();
+        debug_assert!(!ptr.is_null());
+        ptr
     }
 
     /// Returns a mutable pointer to the start of the memory mapped by this `Mmap`.
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.range.start.as_mut_ptr()
+        if self.range.is_empty() {
+            return ptr::null_mut();
+        }
+
+        let ptr = self.range.start.as_mut_ptr();
+        debug_assert!(!ptr.is_null());
+        ptr
     }
 
     /// Returns the size in bytes of this memory mapping.
@@ -223,16 +234,13 @@ impl UserMmap {
         _branch_protection: bool,
     ) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_executable: {:?}", self.range);
-        self.protect(
-            aspace,
-            Permissions::READ | Permissions::EXECUTE | Permissions::USER,
-        )
+        self.protect(aspace, Permissions::READ | Permissions::EXECUTE)
     }
 
     /// Mark this memory mapping as read-only (`R`) essentially removing the write permission.
     pub fn make_readonly(&mut self, aspace: &mut AddressSpace) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_readonly: {:?}", self.range);
-        self.protect(aspace, Permissions::READ | Permissions::USER)
+        self.protect(aspace, Permissions::READ)
     }
 
     fn protect(

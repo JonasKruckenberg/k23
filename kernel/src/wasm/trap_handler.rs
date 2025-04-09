@@ -7,28 +7,55 @@
 
 use crate::arch;
 use crate::mem::VirtualAddress;
-use crate::wasm::Trap;
-use crate::wasm::runtime::{StaticVMOffsets, VMContext, code_registry};
-use alloc::string::ToString;
+use crate::wasm::TrapKind;
+use crate::wasm::code_registry::lookup_code;
+use crate::wasm::store::StoreOpaque;
+use crate::wasm::vm::{VMContext, VMStoreContext};
+use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::Cell;
-use core::mem::ManuallyDrop;
+use core::num::NonZeroU32;
 use core::ops::ControlFlow;
-use core::ptr::{NonNull, addr_of_mut};
-use core::range::Range;
-use core::slice::SliceIndex;
-use core::{mem, ptr};
+use core::panic::AssertUnwindSafe;
+use core::ptr::NonNull;
+use core::{fmt, ptr};
 use cpu_local::cpu_local;
 
-cpu_local! {
-    static ACTIVATION: Cell<*mut Activation> = Cell::new(ptr::null_mut())
+/// Description about a fault that occurred in WebAssembly.
+#[derive(Debug)]
+pub struct WasmFault {
+    /// The size of memory, in bytes, at the time of the fault.
+    pub memory_size: usize,
+    /// The WebAssembly address at which the fault occurred.
+    pub wasm_address: u64,
+}
+
+impl fmt::Display for WasmFault {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "memory fault at wasm address 0x{:x} in linear memory of size 0x{:x}",
+            self.wasm_address, self.memory_size,
+        )
+    }
+}
+
+#[derive(Debug)]
+pub struct Trap {
+    /// Original reason from where this trap originated.
+    pub reason: TrapReason,
+    /// Wasm backtrace of the trap, if any.
+    pub backtrace: Option<RawBacktrace>,
+    // The Wasm Coredump, if any.
+    // pub coredumpstack: Option<CoreDumpStack>,
 }
 
 #[derive(Debug)]
 pub enum TrapReason {
-    /// A trap raised from a wasm builtin
-    Wasm(Trap),
+    /// A user-raised trap through `raise_user_trap`.
+    User(anyhow::Error),
+
     /// A trap raised from Cranelift-generated code.
     Jit {
         /// The program counter where this trap originated.
@@ -36,33 +63,124 @@ pub enum TrapReason {
         /// This is later used with side tables from compilation to translate
         /// the trapping address to a trap code.
         pc: VirtualAddress,
+
         /// If the trap was a memory-related trap such as SIGSEGV then this
         /// field will contain the address of the inaccessible data.
         ///
         /// Note that wasm loads/stores are not guaranteed to fill in this
         /// information. Dynamically-bounds-checked memories, for example, will
         /// not access an invalid address but may instead load from NULL or may
-        /// explicitly jump to a `ud2` instruction.
-        faulting_addr: VirtualAddress,
+        /// explicitly jump to a `ud2` instruction. This is only available for
+        /// fault-based traps which are one of the main ways, but not the only
+        /// way, to run wasm.
+        faulting_addr: Option<VirtualAddress>,
+
         /// The trap code associated with this trap.
-        trap: Trap,
+        trap: TrapKind,
     },
+
+    /// A trap raised from a wasm builtin
+    Wasm(TrapKind),
 }
 
-enum UnwindReason {
-    // TODO reenable for host functions
-    // Panic(Box<dyn std::any::Any + Send>),
+impl From<anyhow::Error> for TrapReason {
+    fn from(err: anyhow::Error) -> Self {
+        TrapReason::User(err)
+    }
+}
+
+impl From<TrapKind> for TrapReason {
+    fn from(code: TrapKind) -> Self {
+        TrapReason::Wasm(code)
+    }
+}
+
+pub enum UnwindReason {
+    Panic(Box<dyn core::any::Any + Send>),
     Trap(TrapReason),
 }
 
+pub(in crate::wasm) unsafe fn raise_preexisting_trap() -> ! {
+    // Safety: ensured by caller
+    unsafe {
+        let activation = ACTIVATION.get().as_ref().unwrap();
+        activation.unwind()
+    }
+}
+
+pub fn catch_traps<F>(store: &mut StoreOpaque, f: F) -> Result<(), Trap>
+where
+    F: FnOnce(NonNull<VMContext>),
+{
+    let caller = store.default_caller();
+    let mut prev_state = ptr::null_mut();
+    let ret_code = arch::call_with_setjmp(|jmp_buf| {
+        let mut activation = Activation::new(store, jmp_buf);
+
+        prev_state = ACTIVATION.replace(ptr::from_mut(&mut activation).cast());
+        f(caller);
+
+        0_i32
+    });
+
+    if ret_code == 0 {
+        ACTIVATION.set(prev_state);
+
+        Ok(())
+    } else {
+        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+        let (unwind_reason, backtrace) = unsafe { ACTIVATION.get().as_ref() }
+            .unwrap()
+            .unwind
+            .take()
+            .unwrap();
+        ACTIVATION.set(prev_state);
+
+        match unwind_reason {
+            UnwindReason::Trap(reason) => Err(Trap { reason, backtrace }),
+            UnwindReason::Panic(payload) => crate::panic::resume_unwind(payload),
+        }
+    }
+}
+
+cpu_local! {
+    static ACTIVATION: Cell<*mut Activation> = Cell::new(ptr::null_mut())
+}
+
+/// ```text
+/// ┌─────────────────────┐◄───── highest, or oldest, stack address
+/// │ native stack frames │
+/// │         ...         │
+/// │  ┌───────────────┐◄─┼──┐
+/// │  │   Activation  │  │  │
+/// │  └───────────────┘  │  p
+/// ├─────────────────────┤  r
+/// │  wasm stack frames  │  e
+/// │         ...         │  v
+/// ├─────────────────────┤  │
+/// │ native stack frames │  │
+/// │         ...         │  │
+/// │  ┌───────────────┐◄─┼──┼── TLS pointer
+/// │  │   Activation  ├──┼──┘
+/// │  └───────────────┘  │
+/// ├─────────────────────┤
+/// │  wasm stack frames  │
+/// │         ...         │
+/// ├─────────────────────┤
+/// │ native stack frames │
+/// │         ...         │
+/// └─────────────────────┘◄───── smallest, or youngest, stack address
+/// ```
 pub struct Activation {
     unwind: Cell<Option<(UnwindReason, Option<RawBacktrace>)>>,
     jmp_buf: arch::JmpBuf,
     prev: Cell<*mut Activation>,
-    async_guard_range: Range<*mut u8>,
+    vm_store_context: NonNull<VMStoreContext>,
 
-    vmctx: *mut VMContext,
-    vmoffsets: StaticVMOffsets,
+    // async_guard_range: Range<*mut u8>,
+
+    // vmctx: *mut VMContext,
+    // vmoffsets: VMOffsets,
 
     // The values of `VMRuntimeLimits::last_wasm_{exit_{pc,fp},entry_sp}`
     // for the *previous* `CallThreadState` for this same store/limits. Our
@@ -78,38 +196,25 @@ pub struct Activation {
 }
 
 impl Activation {
-    pub fn new(
-        vmctx: *mut VMContext,
-        vmoffsets: StaticVMOffsets,
-        jmp_buf: &arch::JmpBufStruct,
-    ) -> Self {
+    pub fn new(store: &mut StoreOpaque, jmp_buf: &arch::JmpBufStruct) -> Self {
         Self {
             unwind: Cell::new(None),
             jmp_buf: ptr::from_ref(jmp_buf),
             prev: Cell::new(ACTIVATION.get()),
-            async_guard_range: Range::from(ptr::null_mut()..ptr::null_mut()), // TODO
 
-            #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+            vm_store_context: store.vm_store_context_ptr(),
+            // Safety: TODO
             old_last_wasm_exit_fp: Cell::new(unsafe {
-                *vmctx
-                    .byte_add(vmoffsets.vmctx_last_wasm_exit_fp() as usize)
-                    .cast::<VirtualAddress>()
+                *store.vm_store_context().last_wasm_exit_fp.get()
             }),
-            #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+            // Safety: TODO
             old_last_wasm_exit_pc: Cell::new(unsafe {
-                *vmctx
-                    .byte_add(vmoffsets.vmctx_last_wasm_exit_pc() as usize)
-                    .cast::<VirtualAddress>()
+                *store.vm_store_context().last_wasm_exit_pc.get()
             }),
-            #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+            // Safety: TODO
             old_last_wasm_entry_fp: Cell::new(unsafe {
-                *vmctx
-                    .byte_add(vmoffsets.vmctx_last_wasm_entry_fp() as usize)
-                    .cast::<VirtualAddress>()
+                *store.vm_store_context().last_wasm_entry_fp.get()
             }),
-
-            vmctx,
-            vmoffsets,
         }
     }
 
@@ -137,124 +242,219 @@ impl Activation {
         let head = ACTIVATION.replace(prev);
         assert!(ptr::eq(head, self));
     }
+
+    #[cold]
+    fn read_unwind(&self) -> (UnwindReason, Option<RawBacktrace>) {
+        self.unwind.replace(None).unwrap()
+    }
+
+    fn record_unwind(&self, reason: UnwindReason) {
+        if cfg!(debug_assertions) {
+            let prev = self.unwind.replace(None);
+            assert!(prev.is_none());
+        }
+        let backtrace = match &reason {
+            // Panics don't need backtraces. There is nowhere to attach the
+            // hypothetical backtrace to and it doesn't really make sense to try
+            // in the first place since this is a Rust problem rather than a
+            // Wasm problem.
+            UnwindReason::Panic(_) => None,
+            // // And if we are just propagating an existing trap that already has
+            // // a backtrace attached to it, then there is no need to capture a
+            // // new backtrace either.
+            // UnwindReason::Trap(TrapReason::User(err))
+            // if err.downcast_ref::<RawBacktrace>().is_some() =>
+            //     {
+            //         (None, None)
+            //     }
+            UnwindReason::Trap(_) => {
+                Some(self.capture_backtrace(self.vm_store_context.as_ptr(), None))
+            } // self.capture_coredump(self.vm_store_context.as_ptr(), None),
+        };
+        self.unwind.set(Some((reason, backtrace)));
+    }
+
+    unsafe fn unwind(&self) -> ! {
+        // Safety: ensured by caller
+        unsafe {
+            debug_assert!(!self.jmp_buf.is_null());
+            arch::longjmp(self.jmp_buf, 1);
+        }
+    }
+
+    fn capture_backtrace(
+        &self,
+        vm_store_context: *mut VMStoreContext,
+        trap_pc_and_fp: Option<(VirtualAddress, VirtualAddress)>,
+    ) -> RawBacktrace {
+        RawBacktrace::new(vm_store_context, self, trap_pc_and_fp)
+    }
 }
 
 impl Drop for Activation {
     fn drop(&mut self) {
-        // FIXME this is horrific
-        // Safety: offsets are small so the code below *shouldn't* overflow
+        // Unwind information should not be present as it should have
+        // already been processed.
+        debug_assert!(self.unwind.replace(None).is_none());
+
+        // Safety: TODO
         unsafe {
-            *self
-                .vmctx
-                .byte_add(self.vmoffsets.vmctx_last_wasm_exit_fp() as usize)
-                .cast::<VirtualAddress>() = self.old_last_wasm_exit_fp.get();
-            *self
-                .vmctx
-                .byte_add(self.vmoffsets.vmctx_last_wasm_exit_pc() as usize)
-                .cast::<VirtualAddress>() = self.old_last_wasm_exit_pc.get();
-            *self
-                .vmctx
-                .byte_add(self.vmoffsets.vmctx_last_wasm_entry_fp() as usize)
-                .cast::<VirtualAddress>() = self.old_last_wasm_entry_fp.get();
+            let cx = self.vm_store_context.as_ref();
+            *cx.last_wasm_exit_fp.get() = self.old_last_wasm_exit_fp.get();
+            *cx.last_wasm_exit_pc.get() = self.old_last_wasm_exit_pc.get();
+            *cx.last_wasm_entry_fp.get() = self.old_last_wasm_entry_fp.get();
         }
     }
 }
 
-pub fn raise_trap(reason: TrapReason) {
-    #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-    let activation = unsafe { ACTIVATION.get().as_ref().unwrap() };
-
-    // record the unwind details
-    let backtrace = RawBacktrace::new(activation, None);
-    activation
-        .unwind
-        .set(Some((UnwindReason::Trap(reason), Some(backtrace))));
-
-    // longjmp back to Rust
-    #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-    unsafe {
-        arch::longjmp(activation.jmp_buf, 1);
-    }
-}
-
-pub fn handle_wasm_exception(
-    pc: VirtualAddress,
-    fp: VirtualAddress,
-    faulting_addr: VirtualAddress,
-) -> ControlFlow<()> {
-    if let Some(activation) = NonNull::new(ACTIVATION.get()) {
-        let Some((code, text_offset)) = code_registry::lookup_code(pc.get()) else {
-            tracing::debug!("no JIT code registered for pc {pc}");
-            return ControlFlow::Continue(());
-        };
-
-        let Some(trap) = code.lookup_trap_code(text_offset) else {
-            tracing::debug!("no JIT trap registered for pc {pc}");
-            return ControlFlow::Continue(());
-        };
-
-        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-        let activation = unsafe { activation.as_ref() };
-
-        // record the unwind details
-        let backtrace = RawBacktrace::new(activation, Some((pc, fp)));
-        activation.unwind.set(Some((
-            UnwindReason::Trap(TrapReason::Jit {
-                pc,
-                faulting_addr,
-                trap,
-            }),
-            Some(backtrace),
-        )));
-
-        // longjmp back to Rust
-        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-        unsafe {
-            arch::longjmp(activation.jmp_buf, 1);
-        }
-    } else {
-        // ACTIVATION is a nullptr
-        //  => means no activations on stack
-        //  => means exception cannot be a WASM trap
-        ControlFlow::Continue(())
-    }
-}
-
-pub fn catch_traps<F>(
-    caller: *mut VMContext,
-    vmoffsets: StaticVMOffsets,
-    f: F,
-) -> core::result::Result<(), (Trap, Option<RawBacktrace>)>
+pub fn catch_unwind_and_record_trap<R>(f: impl FnOnce() -> R) -> R::Abi
 where
-    F: FnOnce(),
+    R: HostResult,
 {
-    let mut prev_state = ptr::null_mut();
-    let ret_code = arch::call_with_setjmp(|jmp_buf| {
-        let mut activation = Activation::new(caller, vmoffsets, jmp_buf);
+    let (ret, unwind) = R::maybe_catch_unwind(f);
+    if let Some(unwind) = unwind {
+        // Safety: TODO
+        let activation = unsafe { ACTIVATION.get().as_ref().unwrap() };
+        activation.record_unwind(unwind);
+    }
 
-        prev_state = ACTIVATION.replace(ptr::from_mut(&mut activation).cast());
-        f();
+    ret
+}
 
-        0_i32
-    });
+/// A trait used in conjunction with `catch_unwind_and_record_trap` to convert a
+/// Rust-based type to a specific ABI while handling traps/unwinds.
+pub trait HostResult {
+    /// The type of the value that's returned to Cranelift-compiled code. Needs
+    /// to be ABI-safe to pass through an `extern "C"` return value.
+    type Abi: Copy;
+    /// This type is implemented for return values from host function calls and
+    /// builtins. The `Abi` value of this trait represents either a successful
+    /// execution with some payload state or that a failed execution happened.
+    /// Cranelift-compiled code is expected to test for this failure sentinel
+    /// and process it accordingly.
+    fn maybe_catch_unwind(f: impl FnOnce() -> Self) -> (Self::Abi, Option<UnwindReason>);
+}
 
-    if ret_code == 0 {
-        ACTIVATION.set(prev_state);
+// Base case implementations that do not catch unwinds. These are for libcalls
+// that neither trap nor execute user code. The raw value is the ABI itself.
+//
+// Panics in these libcalls will result in a process abort as unwinding is not
+// allowed via Rust through `extern "C"` function boundaries.
+macro_rules! host_result_no_catch {
+    ($($t:ty,)*) => {
+        $(
+            #[allow(clippy::unused_unit, reason = "the empty tuple case generates an empty tuple as return value, which makes clippy mad but thats fine")]
+            impl HostResult for $t {
+                type Abi = $t;
+                fn maybe_catch_unwind(f: impl FnOnce() -> $t) -> ($t, Option<UnwindReason>) {
+                    (f(), None)
+                }
+            }
+        )*
+    }
+}
 
-        Ok(())
-    } else {
-        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-        let (unwind_reason, backtrace) = unsafe { ACTIVATION.get().as_ref() }
-            .unwrap()
-            .unwind
-            .take()
-            .unwrap();
-        ACTIVATION.set(prev_state);
+host_result_no_catch! {
+    (),
+    bool,
+    u32,
+    *mut u8,
+    u64,
+}
 
-        match unwind_reason {
-            UnwindReason::Trap(TrapReason::Wasm(trap)) => Err((trap, backtrace)),
-            UnwindReason::Trap(TrapReason::Jit { trap, .. }) => Err((trap, backtrace)),
-        }
+impl HostResult for NonNull<u8> {
+    type Abi = *mut u8;
+    fn maybe_catch_unwind(f: impl FnOnce() -> Self) -> (*mut u8, Option<UnwindReason>) {
+        (f().as_ptr(), None)
+    }
+}
+
+impl<T, E> HostResult for Result<T, E>
+where
+    T: HostResultHasUnwindSentinel,
+    E: Into<TrapReason>,
+{
+    type Abi = T::Abi;
+
+    fn maybe_catch_unwind(f: impl FnOnce() -> Self) -> (Self::Abi, Option<UnwindReason>) {
+        let f = move || match f() {
+            Ok(ret) => (ret.into_abi(), None),
+            Err(reason) => (T::SENTINEL, Some(UnwindReason::Trap(reason.into()))),
+        };
+
+        crate::panic::catch_unwind(AssertUnwindSafe(f))
+            .unwrap_or_else(|payload| (T::SENTINEL, Some(UnwindReason::Panic(payload))))
+    }
+}
+
+/// Trait used in conjunction with `HostResult for Result<T, E>` where this is
+/// the trait bound on `T`.
+///
+/// This is for values in the "ok" position of a `Result` return value. Each
+/// value can have a separate ABI from itself (e.g. `type Abi`) and must be
+/// convertible to the ABI. Additionally all implementations of this trait have
+/// a "sentinel value" which indicates that an unwind happened. This means that
+/// no valid instance of `Self` should generate the `SENTINEL` via the
+/// `into_abi` function.
+///
+/// # Safety
+///
+/// TODO
+pub unsafe trait HostResultHasUnwindSentinel {
+    /// The Cranelift-understood ABI of this value (should not be `Self`).
+    type Abi: Copy;
+
+    /// A value that indicates that an unwind should happen and is tested for in
+    /// Cranelift-generated code.
+    const SENTINEL: Self::Abi;
+
+    /// Converts this value into the ABI representation. Should never returned
+    /// the `SENTINEL` value.
+    fn into_abi(self) -> Self::Abi;
+}
+
+/// No return value from the host is represented as a `bool` in the ABI. Here
+/// `true` means that execution succeeded while `false` is the sentinel used to
+/// indicate an unwind.
+// Safety: TODO
+unsafe impl HostResultHasUnwindSentinel for () {
+    type Abi = bool;
+    const SENTINEL: bool = false;
+    fn into_abi(self) -> bool {
+        true
+    }
+}
+
+// Safety: TODO
+unsafe impl HostResultHasUnwindSentinel for NonZeroU32 {
+    type Abi = u32;
+    const SENTINEL: Self::Abi = 0;
+    fn into_abi(self) -> Self::Abi {
+        self.get()
+    }
+}
+
+/// A 32-bit return value can be inflated to a 64-bit return value in the ABI.
+/// In this manner a successful result is a zero-extended 32-bit value and the
+/// failure sentinel is `u64::MAX` or -1 as a signed integer.
+// Safety: TODO
+unsafe impl HostResultHasUnwindSentinel for u32 {
+    type Abi = u64;
+    const SENTINEL: u64 = u64::MAX;
+    fn into_abi(self) -> u64 {
+        self.into()
+    }
+}
+
+/// If there is not actual successful result (e.g. an empty enum) then the ABI
+/// can be `()`, or nothing, because there's no successful result and it's
+/// always a failure.
+// Safety: TODO
+unsafe impl HostResultHasUnwindSentinel for core::convert::Infallible {
+    type Abi = ();
+    const SENTINEL: () = ();
+    fn into_abi(self) {
+        match self {}
     }
 }
 
@@ -270,11 +470,12 @@ pub struct Frame {
 
 impl RawBacktrace {
     fn new(
+        vm_store_context: *const VMStoreContext,
         activation: &Activation,
         trap_pc_and_fp: Option<(VirtualAddress, VirtualAddress)>,
     ) -> Self {
         let mut frames = vec![];
-        Self::trace_with_trap_state(activation, trap_pc_and_fp, |frame| {
+        Self::trace_with_trap_state(vm_store_context, activation, trap_pc_and_fp, |frame| {
             frames.push(frame);
             ControlFlow::Continue(())
         });
@@ -283,63 +484,64 @@ impl RawBacktrace {
 
     /// Walk the current Wasm stack, calling `f` for each frame we walk.
     pub(crate) fn trace_with_trap_state(
+        vm_store_context: *const VMStoreContext,
         activation: &Activation,
         trap_pc_and_fp: Option<(VirtualAddress, VirtualAddress)>,
         mut f: impl FnMut(Frame) -> ControlFlow<()>,
     ) {
-        tracing::trace!("====== Capturing Backtrace ======");
+        // Safety: TODO
+        unsafe {
+            tracing::trace!("====== Capturing Backtrace ======");
 
-        // If we exited Wasm by catching a trap, then the Wasm-to-host
-        // trampoline did not get a chance to save the last Wasm PC and FP,
-        // and we need to use the plumbed-through values instead.
-        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-        let (last_wasm_exit_pc, last_wasm_exit_fp) = trap_pc_and_fp.unwrap_or_else(|| unsafe {
-            // TODO this is horrible can we improve this?
-            let pc = *activation
-                .vmctx
-                .byte_add(activation.vmoffsets.vmctx_last_wasm_exit_pc() as usize)
-                .cast::<VirtualAddress>();
-            let fp = *activation
-                .vmctx
-                .byte_add(activation.vmoffsets.vmctx_last_wasm_entry_fp() as usize)
-                .cast::<VirtualAddress>();
+            let (last_wasm_exit_pc, last_wasm_exit_fp) = match trap_pc_and_fp {
+                // If we exited Wasm by catching a trap, then the Wasm-to-host
+                // trampoline did not get a chance to save the last Wasm PC and FP,
+                // and we need to use the plumbed-through values instead.
+                Some((pc, fp)) => {
+                    assert!(ptr::eq(
+                        vm_store_context,
+                        activation.vm_store_context.as_ptr()
+                    ));
+                    (pc, fp)
+                }
+                // Either there is no Wasm currently on the stack, or we exited Wasm
+                // through the Wasm-to-host trampoline.
+                None => {
+                    let pc = *(*vm_store_context).last_wasm_exit_pc.get();
+                    let fp = *(*vm_store_context).last_wasm_exit_fp.get();
+                    (pc, fp)
+                }
+            };
 
-            (pc, fp)
-        });
+            let activations = core::iter::once((
+                last_wasm_exit_pc,
+                last_wasm_exit_fp,
+                *(*vm_store_context).last_wasm_entry_fp.get(),
+            ))
+            .chain(activation.iter().map(|state| {
+                (
+                    state.old_last_wasm_exit_pc.get(),
+                    state.old_last_wasm_exit_fp.get(),
+                    state.old_last_wasm_entry_fp.get(),
+                )
+            }))
+            .take_while(|&(pc, fp, sp)| {
+                if pc.get() == 0 {
+                    debug_assert_eq!(fp.get(), 0);
+                    debug_assert_eq!(sp.get(), 0);
+                }
+                pc.get() != 0
+            });
 
-        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-        let last_wasm_entry_fp = unsafe {
-            *activation
-                .vmctx
-                .byte_add(activation.vmoffsets.vmctx_last_wasm_entry_fp() as usize)
-                .cast::<VirtualAddress>()
-        };
-
-        let activations =
-            core::iter::once((last_wasm_exit_pc, last_wasm_exit_fp, last_wasm_entry_fp))
-                .chain(activation.iter().map(|state| {
-                    (
-                        state.old_last_wasm_exit_pc.get(),
-                        state.old_last_wasm_exit_fp.get(),
-                        state.old_last_wasm_entry_fp.get(),
-                    )
-                }))
-                .take_while(|&(pc, fp, sp)| {
-                    if pc.get() == 0 {
-                        debug_assert_eq!(fp.get(), 0);
-                        debug_assert_eq!(sp.get(), 0);
-                    }
-                    pc.get() != 0
-                });
-
-        for (pc, fp, sp) in activations {
-            if let ControlFlow::Break(()) = Self::trace_through_wasm(pc, fp, sp, &mut f) {
-                tracing::trace!("====== Done Capturing Backtrace (closure break) ======");
-                return;
+            for (pc, fp, sp) in activations {
+                if let ControlFlow::Break(()) = Self::trace_through_wasm(pc, fp, sp, &mut f) {
+                    tracing::trace!("====== Done Capturing Backtrace (closure break) ======");
+                    return;
+                }
             }
-        }
 
-        tracing::trace!("====== Done Capturing Backtrace (reached end of activations) ======");
+            tracing::trace!("====== Done Capturing Backtrace (reached end of activations) ======");
+        }
     }
 
     /// Walk through a contiguous sequence of Wasm frames starting with the
@@ -463,66 +665,49 @@ impl RawBacktrace {
     }
 }
 
-pub struct AsyncActivation(*mut Activation);
-impl AsyncActivation {
-    pub const fn new() -> AsyncActivation {
-        AsyncActivation(ptr::null_mut())
-    }
-    pub unsafe fn push(self) -> PreviousAsyncActivation {
-        // Safety: TODO
+pub fn handle_wasm_exception(
+    pc: VirtualAddress,
+    fp: VirtualAddress,
+    faulting_addr: VirtualAddress,
+) -> ControlFlow<()> {
+    if let Some(activation) = NonNull::new(ACTIVATION.get()) {
+        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
+        let activation = unsafe { activation.as_ref() };
+
+        let Some((code, text_offset)) = lookup_code(pc.get()) else {
+            tracing::debug!("no JIT code registered for pc {pc}");
+            return ControlFlow::Continue(());
+        };
+
+        let Some(trap) = code.lookup_trap_code(text_offset) else {
+            tracing::debug!("no JIT trap registered for pc {pc}");
+            return ControlFlow::Continue(());
+        };
+
+        // record the unwind details
+        let backtrace = RawBacktrace::new(
+            activation.vm_store_context.as_ptr(),
+            activation,
+            Some((pc, fp)),
+        );
+        activation.unwind.set(Some((
+            UnwindReason::Trap(TrapReason::Jit {
+                pc,
+                faulting_addr: Some(faulting_addr),
+                trap,
+            }),
+            Some(backtrace),
+        )));
+
+        // longjmp back to Rust
+        #[expect(clippy::undocumented_unsafe_blocks, reason = "")]
         unsafe {
-            let ret = PreviousAsyncActivation(ACTIVATION.get());
-            let mut ptr = self.0;
-            while let Some(state) = ptr.as_mut() {
-                ptr = state.prev.replace(ptr::null_mut());
-                state.push();
-            }
-            ret
+            arch::longjmp(activation.jmp_buf, 1);
         }
-    }
-    pub fn assert_null(&self) {
-        assert!(self.0.is_null());
-    }
-    pub fn assert_current_state_not_in_range(range: Range<VirtualAddress>) {
-        let p = VirtualAddress::new(ACTIVATION.get() as usize).unwrap();
-        assert!(p < range.start || range.end < p);
-    }
-}
-
-pub struct PreviousAsyncActivation(*mut Activation);
-
-impl PreviousAsyncActivation {
-    pub unsafe fn restore(self) -> AsyncActivation {
-        let thread_head = self.0;
-        mem::forget(self);
-        let mut ret = AsyncActivation::new();
-        loop {
-            // If the current TLS state is as we originally found it, then
-            // this loop is finished.
-            let ptr = ACTIVATION.get();
-            if ptr == thread_head {
-                break ret;
-            }
-
-            // Pop this activation from the current thread's TLS state, and
-            // then afterwards push it onto our own linked list within this
-            // `AsyncWasmCallState`. Note that the linked list in `AsyncWasmCallState` is stored
-            // in reverse order so a subsequent `push` later on pushes
-            // everything in the right order.
-            // Safety: TODO
-            unsafe {
-                (*ptr).pop();
-                if let Some(state) = ret.0.as_mut() {
-                    (*ptr).prev.set(state);
-                }
-            }
-            ret.0 = ptr;
-        }
-    }
-}
-
-impl Drop for PreviousAsyncActivation {
-    fn drop(&mut self) {
-        panic!("must be consumed with `restore`");
+    } else {
+        // ACTIVATION is a nullptr
+        //  => means no activations on stack
+        //  => means exception cannot be a WASM trap
+        ControlFlow::Continue(())
     }
 }

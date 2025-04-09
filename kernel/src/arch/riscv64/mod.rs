@@ -14,7 +14,6 @@ mod utils;
 
 use crate::device_tree::DeviceTree;
 use crate::mem::VirtualAddress;
-use crate::wasm;
 pub use asid_allocator::AsidAllocator;
 use core::arch::asm;
 pub use mem::{
@@ -116,29 +115,6 @@ pub const NEXT_OLDER_FP_FROM_FP_OFFSET: usize = 0;
 /// Asserts that the frame pointer is sufficiently aligned for the platform.
 pub fn assert_fp_is_aligned(fp: VirtualAddress) {
     assert_eq!(fp.get() % 16, 0, "stack should always be aligned to 16");
-}
-
-/// Call the WASM array-call trampoline of the provided `func_ref`.
-pub unsafe fn array_call(
-    func_ref: &wasm::VMFuncRef,
-    callee: *mut wasm::VMContext,
-    caller: *mut wasm::VMContext,
-    args_results_ptr: *mut wasm::VMVal,
-    args_results_len: usize,
-) {
-    // Safety: caller has to ensure safety
-    unsafe {
-        sstatus::set_spp(sstatus::SPP::User);
-        riscv::sepc::set(func_ref.array_call as usize);
-        asm! {
-            "sret",
-            in("a0") callee,
-            in("a1") caller,
-            in("a2") args_results_ptr,
-            in("a3") args_results_len,
-            options(noreturn)
-        }
-    }
 }
 
 pub fn mb() {

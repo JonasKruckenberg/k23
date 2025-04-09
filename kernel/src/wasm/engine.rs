@@ -10,6 +10,7 @@ use crate::wasm::compile::Compiler;
 use crate::wasm::cranelift::CraneliftCompiler;
 use crate::wasm::type_registry::TypeRegistry;
 use alloc::sync::Arc;
+use core::sync::atomic::AtomicU64;
 use cranelift_codegen::settings::{Configurable, Flags};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
@@ -29,6 +30,7 @@ pub struct EngineInner {
     type_registry: TypeRegistry,
     rng: Option<Mutex<ChaCha20Rng>>,
     asid_alloc: Mutex<arch::AsidAllocator>,
+    epoch_counter: AtomicU64,
 }
 
 impl Default for Engine {
@@ -47,6 +49,7 @@ impl Default for Engine {
             type_registry: TypeRegistry::default(),
             rng: None,
             asid_alloc: Mutex::new(arch::AsidAllocator::new()),
+            epoch_counter: AtomicU64::new(0),
         }))
     }
 }
@@ -67,6 +70,7 @@ impl Engine {
             type_registry: TypeRegistry::default(),
             rng: Some(Mutex::new(ChaCha20Rng::from_rng(rng))),
             asid_alloc: Mutex::new(arch::AsidAllocator::new()),
+            epoch_counter: AtomicU64::new(0),
         }))
     }
 
@@ -89,5 +93,8 @@ impl Engine {
     }
     pub fn rng(&self) -> Option<MutexGuard<'_, ChaCha20Rng>> {
         Some(self.0.rng.as_ref()?.lock())
+    }
+    pub fn epoch_counter(&self) -> &AtomicU64 {
+        &self.0.epoch_counter
     }
 }

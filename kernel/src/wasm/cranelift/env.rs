@@ -4,18 +4,24 @@ use crate::wasm::compile::NS_WASM_FUNC;
 use crate::wasm::cranelift::builtins::BuiltinFunctions;
 use crate::wasm::cranelift::code_translator::Reachability;
 use crate::wasm::cranelift::memory::CraneliftMemory;
+use crate::wasm::cranelift::utils::index_type_to_ir_type;
 use crate::wasm::cranelift::{CraneliftGlobal, CraneliftTable};
 use crate::wasm::indices::{
     CanonicalizedTypeIndex, DataIndex, ElemIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex,
-    TypeIndex,
+    TypeIndex, VMSharedTypeIndex,
 };
-use crate::wasm::runtime::{VMFuncRef, VMMemoryDefinition, VMOffsets, VMTableDefinition};
 use crate::wasm::translate::{
-    ModuleTypes, TranslatedModule, WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmRefType,
-    WasmparserTypeConverter,
+    IndexType, Memory, ModuleTypes, Table, TranslatedModule, WasmHeapTopType, WasmHeapType,
+    WasmHeapTypeInner, WasmRefType, WasmparserTypeConverter,
 };
-use crate::wasm::trap::{TRAP_BAD_SIGNATURE, TRAP_INDIRECT_CALL_TO_NULL, TRAP_NULL_REFERENCE};
-use crate::wasm::utils::{reference_type, value_type, wasm_call_signature};
+use crate::wasm::trap::{TRAP_BAD_SIGNATURE, TRAP_INDIRECT_CALL_TO_NULL};
+use crate::wasm::utils::{
+    reference_type, u8_size_of, u32_offset_of, value_type, wasm_call_signature,
+};
+use crate::wasm::vm::{
+    StaticVMShape, VMFuncRef, VMFunctionImport, VMGlobalImport, VMMemoryDefinition, VMMemoryImport,
+    VMShape, VMTableDefinition, VMTableImport,
+};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::cmp;
@@ -31,7 +37,6 @@ use cranelift_codegen::ir::{
 };
 use cranelift_codegen::ir::{Function, InstBuilder};
 use cranelift_codegen::isa::TargetIsa;
-use cranelift_entity::SecondaryMap;
 use cranelift_frontend::FunctionBuilder;
 use smallvec::SmallVec;
 
@@ -43,7 +48,7 @@ pub struct TranslationEnvironment<'module_env> {
     isa: &'module_env dyn TargetIsa,
     module: &'module_env TranslatedModule,
     types: &'module_env ModuleTypes,
-    offsets: VMOffsets,
+    vmshape: VMShape,
 
     /// Caches of signatures for builtin functions.
     builtin_functions: BuiltinFunctions,
@@ -69,13 +74,13 @@ impl<'module_env> TranslationEnvironment<'module_env> {
         module: &'module_env TranslatedModule,
         types: &'module_env ModuleTypes,
     ) -> Self {
-        let vmoffsets = VMOffsets::for_module(isa.pointer_bytes(), module);
+        let vmoffsets = VMShape::for_module(isa.pointer_bytes(), module);
         let builtin_functions = BuiltinFunctions::new(isa);
         Self {
             isa,
             module,
             types,
-            offsets: vmoffsets,
+            vmshape: vmoffsets,
             builtin_functions,
 
             vmctx: None,
@@ -128,10 +133,11 @@ impl<'module_env> TranslationEnvironment<'module_env> {
     ) -> (GlobalValue, i32) {
         let vmctx = self.vmctx(func);
         if let Some(def_index) = self.module.defined_global_index(index) {
-            let offset = i32::try_from(self.offsets.vmctx_vmglobal_definition(def_index)).unwrap();
+            let offset = i32::try_from(self.vmshape.vmctx_vmglobal_definition(def_index)).unwrap();
             (vmctx, offset)
         } else {
-            let from_offset = self.offsets.vmctx_vmglobal_import_from(index);
+            let from_offset =
+                self.vmshape.vmctx_vmglobal_import(index) + u32_offset_of!(VMGlobalImport, from);
             let global = func.create_global_value(GlobalValueData::Load {
                 base: vmctx,
                 offset: Offset32::new(i32::try_from(from_offset).unwrap()),
@@ -213,16 +219,95 @@ impl<'module_env> TranslationEnvironment<'module_env> {
         });
         (pointee, mt)
     }
+
+    fn memory(&self, memory_index: MemoryIndex) -> &Memory {
+        &self.module.memories[memory_index]
+    }
+
+    fn table(&self, table_index: TableIndex) -> &Table {
+        &self.module.tables[table_index]
+    }
+
+    /// Cast the value to I64 and sign extend if necessary.
+    ///
+    /// Returns the value casted to I64.
+    fn cast_index_to_i64(
+        &self,
+        pos: &mut FuncCursor<'_>,
+        val: Value,
+        index_type: IndexType,
+    ) -> Value {
+        match index_type {
+            IndexType::I32 => pos.ins().uextend(I64, val),
+            IndexType::I64 => val,
+        }
+    }
+
+    /// Convert the target pointer-sized integer `val` into the memory/table's index type.
+    ///
+    /// For memory, `val` is holding a memory length (or the `-1` `memory.grow`-failed sentinel).
+    /// For table, `val` is holding a table length.
+    ///
+    /// This might involve extending or truncating it depending on the memory/table's
+    /// index type and the target's pointer type.
+    fn convert_pointer_to_index_type(
+        &self,
+        mut pos: FuncCursor<'_>,
+        val: Value,
+        index_type: IndexType,
+        // When it is a memory and the memory is using single-byte pages,
+        // we need to handle the tuncation differently. See comments below.
+        //
+        // When it is a table, this should be set to false.
+        single_byte_pages: bool,
+    ) -> Value {
+        let desired_type = index_type_to_ir_type(index_type);
+        let pointer_type = self.pointer_type();
+        assert_eq!(pos.func.dfg.value_type(val), pointer_type);
+
+        // The current length is of type `pointer_type` but we need to fit it
+        // into `desired_type`. We are guaranteed that the result will always
+        // fit, so we just need to do the right ireduce/sextend here.
+        if pointer_type == desired_type {
+            val
+        } else if pointer_type.bits() > desired_type.bits() {
+            pos.ins().ireduce(desired_type, val)
+        } else {
+            // We have a 64-bit memory/table on a 32-bit host -- this combo doesn't
+            // really make a whole lot of sense to do from a user perspective
+            // but that is neither here nor there. We want to logically do an
+            // unsigned extend *except* when we are given the `-1` sentinel,
+            // which we must preserve as `-1` in the wider type.
+            if single_byte_pages {
+                // For single-byte pages, we have to explicitly check for
+                // `-1` and choose whether to do an unsigned extension or
+                // return a larger `-1` because there are valid memory
+                // lengths (in pages) that have the sign bit set.
+                let extended = pos.ins().uextend(desired_type, val);
+                let neg_one = pos.ins().iconst(desired_type, -1);
+                let is_failure = pos.ins().icmp_imm(IntCC::Equal, val, -1);
+                pos.ins().select(is_failure, neg_one, extended)
+            } else {
+                // In the case that we have default page sizes, we can
+                // always sign extend, since valid memory lengths (in pages)
+                // never have their sign bit set, and so if the sign bit is
+                // set then this must be the `-1` sentinel, which we want to
+                // preserve through the extension.
+                //
+                // When it comes to table, `single_byte_pages` should have always been set to false.
+                // Then we simply do a signed extension.
+                pos.ins().sextend(desired_type, val)
+            }
+        }
+    }
 }
 
 impl TranslationEnvironment<'_> {
     pub fn make_direct_func(&self, func: &mut Function, index: FuncIndex) -> FuncRef {
-        let sig_index = self.module.functions[index].signature;
-        let sig = self
-            .types
-            .get_wasm_type(self.module.types[sig_index])
-            .unwrap()
-            .unwrap_func();
+        let sig_index = self.module.functions[index]
+            .signature
+            .unwrap_module_type_index();
+        let sig = self.types.get_wasm_type(sig_index).unwrap().unwrap_func();
 
         let signature = func.import_signature(wasm_call_signature(self.isa, sig));
         let name =
@@ -249,32 +334,34 @@ impl TranslationEnvironment<'_> {
         func.import_signature(sig)
     }
 
+    #[expect(clippy::cast_possible_wrap, reason = "this is fiiinee")]
     pub fn make_table(&mut self, func: &mut Function, index: TableIndex) -> CraneliftTable {
         let table = &self.module.tables[index];
         let vmctx = self.vmctx(func);
         let pointer_type = self.pointer_type();
 
         let (base, base_offset) = if let Some(def_index) = self.module.defined_table_index(index) {
-            let base_offset = self.offsets.vmctx_vmtable_definition_base(def_index);
-            let base_offset = i32::try_from(base_offset).unwrap();
+            let base_offset = self.vmshape.vmctx_vmtable_definition(def_index)
+                + u32_offset_of!(VMTableDefinition, base);
 
             (vmctx, base_offset)
         } else {
-            let from_offset = self.offsets.vmctx_vmtable_import_from(index);
+            let from_offset =
+                self.vmshape.vmctx_vmtable_import(index) + u32_offset_of!(VMTableImport, from);
             let table = func.create_global_value(ir::GlobalValueData::Load {
                 base: vmctx,
                 offset: Offset32::new(i32::try_from(from_offset).unwrap()),
                 global_type: pointer_type,
                 flags: MemFlags::trusted().with_readonly(),
             });
-            let base_offset = i32::try_from(offset_of!(VMTableDefinition, base)).unwrap();
+            let base_offset = u32_offset_of!(VMTableDefinition, base);
 
             (table, base_offset)
         };
 
         let table_base = func.create_global_value(GlobalValueData::Load {
             base,
-            offset: Offset32::from(base_offset),
+            offset: Offset32::from(base_offset as i32),
             global_type: pointer_type,
             flags: MemFlags::trusted().with_checked().with_readonly(),
         });
@@ -286,8 +373,8 @@ impl TranslationEnvironment<'_> {
             self.reference_type(&table.element_type.heap_type).0.bytes()
         };
 
-        let bound = if Some(table.minimum) == table.maximum {
-            table.minimum
+        let bound = if Some(table.limits.min) == table.limits.max {
+            table.limits.min
         } else {
             todo!("resizable tables")
         };
@@ -299,6 +386,7 @@ impl TranslationEnvironment<'_> {
         }
     }
 
+    #[expect(clippy::cast_possible_wrap, reason = "this is fiiinee")]
     pub fn make_memory(&mut self, func: &mut Function, index: MemoryIndex) -> CraneliftMemory {
         let plan = &self.module.memories[index];
         let vmctx = self.vmctx(func);
@@ -306,13 +394,15 @@ impl TranslationEnvironment<'_> {
         let (base, base_offset, ptr_memtype) = match self.module.defined_memory_index(index) {
             Some(_) if plan.shared => todo!("shared memory"),
             Some(def_index) => {
-                let base_offset = self.offsets.vmctx_vmmemory_definition_base(def_index);
-                let base_offset = i32::try_from(base_offset).unwrap();
+                let owned_index = self.module.owned_memory_index(def_index);
+                let base_offset = self.vmshape.vmctx_vmmemory_definition(owned_index)
+                    + u32_offset_of!(VMMemoryDefinition, base);
 
                 (vmctx, base_offset, self.pcc_vmctx_memtype)
             }
             None => {
-                let from_offset = self.offsets.vmctx_vmmemory_import_from(index);
+                let from_offset = self.vmshape.vmctx_vmmemory_import(index)
+                    + u32_offset_of!(VMMemoryImport, from);
 
                 // load the pointer to the memory from our VMMemoryImport
                 let (memory, def_mt) = self.load_pointer_with_memtypes(
@@ -322,7 +412,7 @@ impl TranslationEnvironment<'_> {
                     true,
                     self.pcc_vmctx_memtype,
                 );
-                let base_offset = i32::try_from(offset_of!(VMMemoryDefinition, base)).unwrap();
+                let base_offset = u32_offset_of!(VMMemoryDefinition, base);
                 (memory, base_offset, def_mt)
             }
         };
@@ -344,7 +434,7 @@ impl TranslationEnvironment<'_> {
             // Create a field in the vmctx for the base pointer.
             match &mut func.memory_types[ptr_memtype] {
                 ir::MemoryTypeData::Struct { size, fields } => {
-                    let offset = u64::try_from(base_offset).unwrap();
+                    let offset = u64::from(base_offset);
                     fields.push(ir::MemoryTypeField {
                         offset,
                         ty: self.isa.pointer_type(),
@@ -373,7 +463,7 @@ impl TranslationEnvironment<'_> {
 
         let heap_base = func.create_global_value(GlobalValueData::Load {
             base,
-            offset: Offset32::new(base_offset),
+            offset: Offset32::new(base_offset as i32),
             global_type: self.pointer_type(),
             flags: MemFlags::trusted().with_checked().with_readonly(),
         });
@@ -384,7 +474,7 @@ impl TranslationEnvironment<'_> {
             // integer is the maximum memory64 size (2^64) which is one
             // larger than `u64::MAX` (2^64 - 1). In this case, just say the
             // minimum heap size is `u64::MAX`.
-            debug_assert_eq!(plan.minimum, 1 << 48i32);
+            debug_assert_eq!(plan.limits.min, 1 << 48i32);
             debug_assert_eq!(plan.page_size(), 1 << 16i32);
             u64::MAX
         });
@@ -396,7 +486,7 @@ impl TranslationEnvironment<'_> {
             min_size,
             max_size,
             bound: plan.max_size_based_on_index_type(),
-            index_type: if plan.memory64 { I64 } else { I32 },
+            index_type: plan.index_type,
             offset_guard_size: plan.offset_guard_size,
             page_size_log2: plan.page_size_log2,
         }
@@ -454,9 +544,9 @@ impl TranslationEnvironment<'_> {
     /// describes whether the value should be included in GC stack maps or not.
     pub fn reference_type(&self, hty: &WasmHeapType) -> (Type, bool) {
         let ty = reference_type(hty, self.pointer_type());
-        let needs_stack_map = match hty.top().inner {
-            WasmHeapTypeInner::Extern | WasmHeapTypeInner::Any => true,
-            WasmHeapTypeInner::Func => false,
+        let needs_stack_map = match hty.top().0 {
+            WasmHeapTopType::Extern | WasmHeapTopType::Any => true,
+            WasmHeapTopType::Func => false,
             _ => todo!(),
         };
         (ty, needs_stack_map)
@@ -676,11 +766,32 @@ impl TranslationEnvironment<'_> {
     /// Returns the old size (in WASM pages) of the memory or `-1` to indicate failure.
     pub fn translate_memory_grow(
         &mut self,
-        pos: FuncCursor,
+        mut pos: FuncCursor,
         memory_index: MemoryIndex,
         delta: Value,
-    ) -> crate::Result<Value> {
-        todo!()
+    ) -> Value {
+        let memory_grow = self.builtin_functions.memory_grow(pos.func);
+
+        let vmctx = self.vmctx_val(&mut pos);
+        let memory_index_arg = pos.ins().iconst(I32, i64::from(memory_index.as_u32()));
+        let delta = self.cast_index_to_i64(&mut pos, delta, self.memory(memory_index).index_type);
+
+        let call_inst = pos
+            .ins()
+            .call(memory_grow, &[vmctx, memory_index_arg, delta]);
+        let result = *pos.func.dfg.inst_results(call_inst).first().unwrap();
+
+        let single_byte_pages = match self.memory(memory_index).page_size_log2 {
+            16 => false,
+            0 => true,
+            _ => unreachable!("only page sizes 2**0 and 2**16 are currently valid"),
+        };
+        self.convert_pointer_to_index_type(
+            pos,
+            result,
+            self.memory(memory_index).index_type,
+            single_byte_pages,
+        )
     }
 
     /// Translate a WASM `memory.size` instruction at `pos`.
@@ -688,12 +799,91 @@ impl TranslationEnvironment<'_> {
     /// The `memory_index` identifies the linear memory.
     ///
     /// Returns the current size (in WASM pages) of the memory.
+    #[expect(clippy::cast_possible_wrap, reason = "this is fiiinee")]
     pub fn translate_memory_size(
         &mut self,
-        pos: FuncCursor,
+        mut pos: FuncCursor,
         memory_index: MemoryIndex,
     ) -> crate::Result<Value> {
-        todo!()
+        let pointer_type = self.pointer_type();
+        let vmctx = self.vmctx(pos.func);
+        let is_shared = self.module.memories[memory_index].shared;
+        let base = pos.ins().global_value(self.pointer_type(), vmctx);
+        let current_length_in_bytes = match self.module.defined_memory_index(memory_index) {
+            Some(def_index) => {
+                if is_shared {
+                    let offset = i32::try_from(self.vmshape.vmctx_vmmemory_pointer(def_index))?;
+                    let vmmemory_ptr =
+                        pos.ins()
+                            .load(pointer_type, MemFlags::trusted(), base, offset);
+                    let vmmemory_definition_offset =
+                        i64::from(u32_offset_of!(VMMemoryDefinition, current_length));
+                    let vmmemory_definition_ptr =
+                        pos.ins().iadd_imm(vmmemory_ptr, vmmemory_definition_offset);
+                    // This atomic access of the
+                    // `VMMemoryDefinition::current_length` is direct; no bounds
+                    // check is needed. This is possible because shared memory
+                    // has a static size (the maximum is always known). Shared
+                    // memory is thus built with a static memory plan and no
+                    // bounds-checked version of this is implemented.
+                    pos.ins().atomic_load(
+                        pointer_type,
+                        ir::MemFlags::trusted(),
+                        vmmemory_definition_ptr,
+                    )
+                } else {
+                    let owned_index = self.module.owned_memory_index(def_index);
+                    let offset = i32::try_from(
+                        self.vmshape.vmctx_vmmemory_definition(owned_index)
+                            + u32_offset_of!(VMMemoryDefinition, current_length),
+                    )?;
+                    pos.ins()
+                        .load(pointer_type, ir::MemFlags::trusted(), base, offset)
+                }
+            }
+            None => {
+                let offset = i32::try_from(
+                    self.vmshape.vmctx_vmmemory_import(memory_index)
+                        + u32_offset_of!(VMMemoryImport, from),
+                )?;
+                let vmmemory_ptr = pos
+                    .ins()
+                    .load(pointer_type, MemFlags::trusted(), base, offset);
+
+                if is_shared {
+                    let vmmemory_definition_offset =
+                        i64::from(u32_offset_of!(VMMemoryDefinition, current_length));
+                    let vmmemory_definition_ptr =
+                        pos.ins().iadd_imm(vmmemory_ptr, vmmemory_definition_offset);
+                    pos.ins().atomic_load(
+                        pointer_type,
+                        MemFlags::trusted(),
+                        vmmemory_definition_ptr,
+                    )
+                } else {
+                    pos.ins().load(
+                        pointer_type,
+                        MemFlags::trusted(),
+                        vmmemory_ptr,
+                        u32_offset_of!(VMMemoryDefinition, current_length) as i32,
+                    )
+                }
+            }
+        };
+        let page_size_log2 = i64::from(self.module.memories[memory_index].page_size_log2);
+        let current_length_in_pages = pos.ins().ushr_imm(current_length_in_bytes, page_size_log2);
+
+        let single_byte_pages = match self.memory(memory_index).page_size_log2 {
+            16 => false,
+            0 => true,
+            _ => unreachable!("only page sizes 2**0 and 2**16 are currently valid"),
+        };
+        Ok(self.convert_pointer_to_index_type(
+            pos,
+            current_length_in_pages,
+            self.memory(memory_index).index_type,
+            single_byte_pages,
+        ))
     }
 
     /// Translate a WASM `memory.copy` instruction.
@@ -702,14 +892,38 @@ impl TranslationEnvironment<'_> {
     /// `src_pos` and `dst_pos` are the source and destination offsets in bytes, and `len` is the number of bytes to copy.
     pub fn translate_memory_copy(
         &mut self,
-        pos: FuncCursor,
+        mut pos: FuncCursor,
         src_index: MemoryIndex,
         dst_index: MemoryIndex,
         src_pos: Value,
         dst_pos: Value,
         len: Value,
-    ) -> crate::Result<()> {
-        todo!()
+    ) {
+        let memory_copy = self.builtin_functions.memory_copy(pos.func);
+
+        let vmctx = self.vmctx_val(&mut pos);
+
+        let dst = self.cast_index_to_i64(&mut pos, dst_pos, self.memory(dst_index).index_type);
+        let src = self.cast_index_to_i64(&mut pos, src_pos, self.memory(src_index).index_type);
+
+        // The length is 32-bit if either memory is 32-bit, but if they're both
+        // 64-bit then it's 64-bit. Our intrinsic takes a 64-bit length for
+        // compatibility across all memories, so make sure that it's cast
+        // correctly here (this is a bit special so no generic helper unlike for
+        // `dst`/`src` above)
+        let len = if index_type_to_ir_type(self.memory(dst_index).index_type) == I64
+            && index_type_to_ir_type(self.memory(src_index).index_type) == I64
+        {
+            len
+        } else {
+            pos.ins().uextend(I64, len)
+        };
+
+        let src_index = pos.ins().iconst(I32, i64::from(src_index.as_u32()));
+        let dst_index = pos.ins().iconst(I32, i64::from(dst_index.as_u32()));
+
+        pos.ins()
+            .call(memory_copy, &[vmctx, dst_index, dst, src_index, src, len]);
     }
 
     /// Translate a WASM `memory.fill` instruction.
@@ -718,13 +932,21 @@ impl TranslationEnvironment<'_> {
     /// value to fill the memory with and `len` is the number of bytes to fill.
     pub fn translate_memory_fill(
         &mut self,
-        pos: FuncCursor,
+        mut pos: FuncCursor,
         memory_index: MemoryIndex,
         dst: Value,
         value: Value,
         len: Value,
-    ) -> crate::Result<()> {
-        todo!()
+    ) {
+        let memory_copy = self.builtin_functions.memory_fill(pos.func);
+
+        let vmctx = self.vmctx_val(&mut pos);
+        let dst = self.cast_index_to_i64(&mut pos, dst, self.memory(memory_index).index_type);
+        let len = self.cast_index_to_i64(&mut pos, len, self.memory(memory_index).index_type);
+        let memory_index = pos.ins().iconst(I32, i64::from(memory_index.as_u32()));
+
+        pos.ins()
+            .call(memory_copy, &[vmctx, memory_index, dst, value, len]);
     }
 
     /// Translate a WASM `memory.init` instruction.
@@ -734,23 +956,35 @@ impl TranslationEnvironment<'_> {
     /// data segment and `len` is the number of bytes to copy.
     pub fn translate_memory_init(
         &mut self,
-        pos: FuncCursor,
+        mut pos: FuncCursor,
         memory_index: MemoryIndex,
         data_index: DataIndex,
         dst: Value,
         src: Value,
         len: Value,
-    ) -> crate::Result<()> {
-        todo!()
+    ) {
+        let memory_copy = self.builtin_functions.memory_init(pos.func);
+
+        let vmctx = self.vmctx_val(&mut pos);
+        let dst = self.cast_index_to_i64(&mut pos, dst, self.memory(memory_index).index_type);
+        let len = self.cast_index_to_i64(&mut pos, len, self.memory(memory_index).index_type);
+        let memory_index = pos.ins().iconst(I32, i64::from(memory_index.as_u32()));
+        let data_index = pos.ins().iconst(I32, i64::from(data_index.as_u32()));
+
+        pos.ins().call(
+            memory_copy,
+            &[vmctx, memory_index, data_index, dst, src, len],
+        );
     }
 
     /// Translate a WASM `data.drop` instruction.
-    pub fn translate_data_drop(
-        &mut self,
-        pos: FuncCursor,
-        data_index: DataIndex,
-    ) -> crate::Result<()> {
-        todo!()
+    pub fn translate_data_drop(&mut self, mut pos: FuncCursor, data_index: DataIndex) {
+        let data_drop = self.builtin_functions.data_drop(pos.func);
+
+        let vmctx = self.vmctx_val(&mut pos);
+        let data_index = pos.ins().iconst(I32, i64::from(data_index.as_u32()));
+
+        pos.ins().call(data_drop, &[vmctx, data_index]);
     }
 
     /// Translate a WASM `table.size` instruction.
@@ -1269,9 +1503,8 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
 
             // Load the callee address.
             let body_offset = i32::try_from(
-                self.env
-                    .offsets
-                    .vmctx_vmfunction_import_wasm_call(callee_index),
+                self.env.vmshape.vmctx_vmfunction_import(callee_index)
+                    + u32_offset_of!(VMFunctionImport, wasm_call),
             )
             .unwrap();
             let func_addr = self
@@ -1280,9 +1513,11 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
                 .load(pointer_type, mem_flags, base, body_offset);
 
             // First append the callee vmctx address.
-            let vmctx_offset =
-                i32::try_from(self.env.offsets.vmctx_vmfunction_import_vmctx(callee_index))
-                    .unwrap();
+            let vmctx_offset = i32::try_from(
+                self.env.vmshape.vmctx_vmfunction_import(callee_index)
+                    + u32_offset_of!(VMFunctionImport, vmctx),
+            )
+            .unwrap();
             let vmctx = self
                 .builder
                 .ins()
@@ -1365,7 +1600,7 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
         funcref_ptr: Value,
     ) -> CheckIndirectCallTypeSignature {
         let table = &self.env.module.tables[table_index];
-        let sig_id_size = self.env.offsets.static_.size_of_vmshared_type_index();
+        let sig_id_size = u8_size_of::<VMSharedTypeIndex>();
         let sig_id_type = Type::int(u16::from(sig_id_size).wrapping_mul(8)).unwrap();
 
         assert!(
@@ -1390,7 +1625,7 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
                         self.env.pointer_type(),
                         mem_flags,
                         vmctx,
-                        i32::from(self.env.offsets.static_.vmctx_type_ids()),
+                        i32::from(StaticVMShape.vmctx_type_ids_array()),
                     );
                     let offset =
                         i32::try_from(ty_index.as_u32().checked_mul(sig_id_type.bytes()).unwrap())
@@ -1454,7 +1689,7 @@ impl<'a, 'func, 'module_env> CallBuilder<'a, 'func, 'module_env> {
             // We're dealing with un-canonicalized types at compilation stage, so finding `Shared`
             // or `RecGroup` indices here is a bug
             WasmHeapTypeInner::ConcreteFunc(
-                CanonicalizedTypeIndex::Shared(_) | CanonicalizedTypeIndex::RecGroup(_),
+                CanonicalizedTypeIndex::Engine(_) | CanonicalizedTypeIndex::RecGroup(_),
             ) => {
                 unreachable!(
                     "encountered shared or rec group indices during compilation. this is a bug"

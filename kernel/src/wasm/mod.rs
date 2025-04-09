@@ -1,8 +1,7 @@
 //! #k23VM - k23 WebAssembly Virtual Machine
 
-#![expect(unused_imports, reason = "TODO")]
-
 mod builtins;
+mod code_registry;
 mod compile;
 mod cranelift;
 mod engine;
@@ -10,28 +9,27 @@ mod func;
 mod global;
 mod indices;
 mod instance;
-mod instance_allocator;
 mod linker;
 mod memory;
 mod module;
-mod runtime;
 mod store;
 mod table;
+mod tag;
 mod translate;
 mod trap;
-mod trap_handler;
+pub mod trap_handler;
 mod type_registry;
+mod types;
 mod utils;
 mod values;
+mod vm;
 
-use crate::mem::ArchAddressSpace;
-use crate::mem::frame_alloc::FRAME_ALLOC;
 use crate::scheduler::scheduler;
-use crate::{enum_accessors, owned_enum_accessors};
-use core::fmt::Write;
-use wasmparser::Validator;
-
 use crate::shell::Command;
+use crate::wasm::store::StoreOpaque;
+use crate::wasm::utils::{enum_accessors, owned_enum_accessors};
+use crate::wasm::vm::{ConstExprEvaluator, PlaceholderAllocatorDontUse};
+use alloc::boxed::Box;
 pub use engine::Engine;
 pub use func::{Func, TypedFunc};
 pub use global::Global;
@@ -39,14 +37,11 @@ pub use instance::Instance;
 pub use linker::Linker;
 pub use memory::Memory;
 pub use module::Module;
-pub use runtime::{ConstExprEvaluator, InstanceAllocator};
-pub use runtime::{VMContext, VMFuncRef, VMVal};
 pub use store::Store;
 pub use table::Table;
-pub use translate::ModuleTranslator;
-pub use trap::Trap;
-pub use trap_handler::handle_wasm_exception;
-pub use values::Val;
+pub use tag::Tag;
+pub use trap::TrapKind;
+use wasmparser::Validator;
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.
@@ -71,41 +66,59 @@ pub const MEMORY_MAX: usize = 1 << 32;
 /// The absolute maximum size of a table in elements
 pub const TABLE_MAX: usize = 1 << 10;
 
-/// An export from a WebAssembly instance.
-pub struct Export<'instance> {
-    /// The name of the export.
-    pub name: &'instance str,
-    /// The exported value.
-    pub value: Extern,
-}
-
 /// A WebAssembly external value which is just any type that can be imported or exported between modules.
 #[derive(Clone, Debug)]
 pub enum Extern {
-    /// A WebAssembly `func` which can be called.
     Func(Func),
-    /// A WebAssembly `table` which is an array of `Val` reference types.
     Table(Table),
-    /// A WebAssembly linear memory.
     Memory(Memory),
-    /// A WebAssembly `global` which acts like a `Cell<T>` of sorts, supporting
-    /// `get` and `set` operations.
     Global(Global),
+    Tag(Tag),
+}
+
+impl From<Func> for Extern {
+    fn from(f: Func) -> Self {
+        Extern::Func(f)
+    }
+}
+
+impl From<Table> for Extern {
+    fn from(t: Table) -> Self {
+        Extern::Table(t)
+    }
+}
+
+impl From<Memory> for Extern {
+    fn from(m: Memory) -> Self {
+        Extern::Memory(m)
+    }
+}
+
+impl From<Global> for Extern {
+    fn from(g: Global) -> Self {
+        Extern::Global(g)
+    }
+}
+
+impl From<Tag> for Extern {
+    fn from(t: Tag) -> Self {
+        Extern::Tag(t)
+    }
 }
 
 impl Extern {
     /// # Safety
     ///
     /// The caller must ensure `export` is a valid export within `store`.
-    pub(crate) unsafe fn from_export(export: runtime::Export, store: &mut Store) -> Self {
+    pub(crate) unsafe fn from_export(export: vm::Export, store: &mut StoreOpaque) -> Self {
         // Safety: ensured by caller
         unsafe {
-            use runtime::Export;
             match export {
-                Export::Function(e) => Extern::Func(Func::from_vm_export(store, e)),
-                Export::Table(e) => Extern::Table(Table::from_vm_export(store, e)),
-                Export::Memory(e) => Extern::Memory(Memory::from_vm_export(store, e)),
-                Export::Global(e) => Extern::Global(Global::from_vm_export(store, e)),
+                vm::Export::Function(e) => Extern::Func(Func::from_exported_function(store, e)),
+                vm::Export::Table(e) => Extern::Table(Table::from_exported_table(store, e)),
+                vm::Export::Memory(e) => Extern::Memory(Memory::from_exported_memory(store, e)),
+                vm::Export::Global(e) => Extern::Global(Global::from_exported_global(store, e)),
+                vm::Export::Tag(e) => Extern::Tag(Tag::from_exported_tag(store, e)),
             }
         }
     }
@@ -127,25 +140,34 @@ impl Extern {
     }
 }
 
-pub const TEST: Command = Command::new("wasm-test")
+pub const FIB_TEST: Command = Command::new("wasm-fib-test")
     .with_help("run the WASM test payload")
     .with_fn(|_| {
-        test();
+        fib_test();
         Ok(())
     });
 
-fn test() {
+pub const HOSTFUNC_TEST: Command = Command::new("wasm-hostfunc-test")
+    .with_help("run the WASM test payload")
+    .with_fn(|_| {
+        hostfunc_test();
+        Ok(())
+    });
+
+fn fib_test() {
+    use vm::ConstExprEvaluator;
+    use wasmparser::Validator;
+
     let engine = Engine::default();
     let mut validator = Validator::new();
     let mut linker = Linker::new(&engine);
-    let mut store = Store::new(&engine, FRAME_ALLOC.get().unwrap());
+    let mut store = Store::new(&engine, Box::new(PlaceholderAllocatorDontUse), ());
     let mut const_eval = ConstExprEvaluator::default();
 
     // instantiate & define the fib_cpp module
     {
         let module = Module::from_bytes(
             &engine,
-            &mut store,
             &mut validator,
             include_bytes!("../../fib_cpp.wasm"),
         )
@@ -161,11 +183,21 @@ fn test() {
             .unwrap();
     }
 
+    // assert that we correctly parsed the fib export
+    assert!(linker.get(&mut store, "fib_cpp", "fib").unwrap().is_func());
+
+    // the module also exports its memory, assert that we correctly parsed that too
+    assert!(
+        linker
+            .get(&mut store, "fib_cpp", "memory")
+            .unwrap()
+            .is_memory()
+    );
+
     // instantiate the test module
     {
         let module = Module::from_bytes(
             &engine,
-            &mut store,
             &mut validator,
             include_bytes!("../../fib_test.wasm"),
         )
@@ -174,8 +206,10 @@ fn test() {
         let instance = linker
             .instantiate(&mut store, &mut const_eval, &module)
             .unwrap();
-
         instance.debug_vmctx(&store);
+
+        // `fib_test` should only have a single export
+        assert_eq!(instance.exports(&mut store).len(), 1);
 
         let func: TypedFunc<(), ()> = instance
             .get_func(&mut store, "fib_test")
@@ -183,9 +217,58 @@ fn test() {
             .typed(&store)
             .unwrap();
 
-        scheduler().spawn(store.alloc.0.clone(), async move {
-            func.call(&mut store, ()).await.unwrap();
-            tracing::info!("done");
-        });
+        scheduler().spawn(
+            crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
+            async move {
+                func.call(&mut store, ()).unwrap();
+                tracing::info!("done");
+            },
+        );
     }
+}
+
+fn hostfunc_test() {
+    let engine = Engine::default();
+    let mut validator = Validator::new();
+    let mut linker = Linker::new(&engine);
+    let mut store = Store::new(&engine, Box::new(PlaceholderAllocatorDontUse), ());
+    let mut const_eval = ConstExprEvaluator::default();
+
+    linker
+        .func_wrap("k23", "roundtrip_i64", |arg: u64| -> u64 {
+            tracing::debug!("Hello World from hostfunc!");
+            arg
+        })
+        .unwrap();
+
+    let module = Module::from_bytes(
+        &engine,
+        &mut validator,
+        include_bytes!("../../host_func.wasm"),
+    )
+    .unwrap();
+
+    let instance = linker
+        .instantiate(&mut store, &mut const_eval, &module)
+        .unwrap();
+
+    instance.debug_vmctx(&store);
+
+    let func: TypedFunc<u64, u64> = instance
+        .get_func(&mut store, "roundtrip_i64")
+        .unwrap()
+        .typed(&store)
+        .unwrap();
+
+    scheduler().spawn(
+        crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
+        async move {
+            let arg = 42;
+            let ret = func.call(&mut store, arg).unwrap();
+            assert_eq!(ret, arg);
+            tracing::info!("done");
+        },
+    );
+
+    tracing::info!("success!");
 }

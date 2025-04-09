@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::runtime::CodeMemory;
+use crate::wasm::vm::CodeObject;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use spin::{OnceLock, RwLock};
@@ -15,13 +15,12 @@ fn global_code() -> &'static RwLock<GlobalRegistry> {
     GLOBAL_CODE.get_or_init(Default::default)
 }
 
-type GlobalRegistry = BTreeMap<usize, (usize, Arc<CodeMemory>)>;
+type GlobalRegistry = BTreeMap<usize, (usize, Arc<CodeObject>)>;
 
 /// Find which registered region of code contains the given program counter, and
 /// what offset that PC is within that module's code.
-pub fn lookup_code(pc: usize) -> Option<(Arc<CodeMemory>, usize)> {
+pub fn lookup_code(pc: usize) -> Option<(Arc<CodeObject>, usize)> {
     let all_modules = global_code().read();
-
     let (_end, (start, module)) = all_modules.range(pc..).next()?;
     let text_offset = pc.checked_sub(*start)?;
     Some((module.clone(), text_offset))
@@ -32,15 +31,29 @@ pub fn lookup_code(pc: usize) -> Option<(Arc<CodeMemory>, usize)> {
 /// Must not have been previously registered and must be `unregister`'d to
 /// prevent leaking memory.
 ///
-/// This is used by trap handling to determine which region of code a faulting
-/// address.
-pub fn register_code(code: &Arc<CodeMemory>) {
-    let text = code.text_range();
+/// This is required to enable traps to work correctly since the signal handler
+/// will lookup in the `GLOBAL_CODE` list to determine which a particular pc
+/// is a trap or not.
+pub fn register_code(code: &Arc<CodeObject>) {
+    let text = code.text();
     if text.is_empty() {
         return;
     }
-    let prev = global_code()
-        .write()
-        .insert(text.end.get(), (text.start.get(), code.clone()));
+    let start = text.as_ptr() as usize;
+    let end = start + text.len() - 1;
+    let prev = global_code().write().insert(end, (start, code.clone()));
     assert!(prev.is_none());
+}
+
+/// Unregisters a code mmap from the global map.
+///
+/// Must have been previously registered with `register`.
+pub fn unregister_code(code: &Arc<CodeObject>) {
+    let text = code.text();
+    if text.is_empty() {
+        return;
+    }
+    let end = (text.as_ptr() as usize) + text.len() - 1;
+    let code = global_code().write().remove(&end);
+    assert!(code.is_some());
 }

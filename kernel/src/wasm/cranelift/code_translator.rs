@@ -24,7 +24,6 @@ use cranelift_codegen::ir::{
 use cranelift_codegen::ir::{InstBuilder, Type, Value};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_frontend::{FunctionBuilder, Variable};
-use fallible_iterator::FallibleIterator;
 use hashbrown::{HashMap, hash_map};
 use smallvec::SmallVec;
 use wasmparser::{FuncValidator, MemArg, Operator, WasmModuleResources};
@@ -689,12 +688,13 @@ pub fn translate_operator(
             // argument to be a memory index.
             let mem_index = MemoryIndex::from_u32(*mem);
             let delta = state.pop1();
-            // env.before_memory_grow(builder, delta, mem_index)?;
-            state.push1(env.translate_memory_grow(builder.cursor(), mem_index, delta)?);
+            let ret = env.translate_memory_grow(builder.cursor(), mem_index, delta);
+            state.push1(ret);
         }
         Operator::MemorySize { mem } => {
             let mem_index = MemoryIndex::from_u32(*mem);
-            state.push1(env.translate_memory_size(builder.cursor(), mem_index)?);
+            let ret = env.translate_memory_size(builder.cursor(), mem_index)?;
+            state.push1(ret);
         }
 
         Operator::I32Const { value } => {
@@ -1186,7 +1186,7 @@ pub fn translate_operator(
                 dest,
                 src,
                 len,
-            )?;
+            );
         }
         Operator::MemoryCopy { src_mem, dst_mem } => {
             let src_index = MemoryIndex::from_u32(*src_mem);
@@ -1201,17 +1201,17 @@ pub fn translate_operator(
                 src_pos,
                 dst_pos,
                 len,
-            )?;
+            );
         }
         Operator::MemoryFill { mem } => {
             let mem_index = MemoryIndex::from_u32(*mem);
             let len = state.pop1();
             let val = state.pop1();
             let dest = state.pop1();
-            env.translate_memory_fill(builder.cursor(), mem_index, dest, val, len)?;
+            env.translate_memory_fill(builder.cursor(), mem_index, dest, val, len);
         }
         Operator::DataDrop { data_index } => {
-            env.translate_data_drop(builder.cursor(), DataIndex::from_u32(*data_index))?;
+            env.translate_data_drop(builder.cursor(), DataIndex::from_u32(*data_index));
         }
         Operator::TableInit {
             elem_index,
@@ -3311,12 +3311,7 @@ fn bitcast_arguments<'a>(
         .filter(|(i, _)| param_predicate(*i))
         .map(|(_, param)| param.value_type);
 
-    let pairs = filtered_param_types.zip_eq(arguments).unwrap();
-
-    // let pairs = ZipEq {
-    //     a: filtered_param_types,
-    //     b: arguments.iter_mut(),
-    // };
+    let pairs = filtered_param_types.zip_eq(arguments);
 
     // The arguments which need to be bitcasted are those which have some vector type but the type
     // expected by the parameter is not the same vector type as that of the provided argument.

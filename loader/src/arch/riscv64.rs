@@ -545,7 +545,6 @@ impl From<Flags> for PTEFlags {
                 Flags::READ => out.insert(Self::READ),
                 Flags::WRITE => out.insert(Self::WRITE),
                 Flags::EXECUTE => out.insert(Self::EXECUTE),
-                Flags::USER => out.insert(Self::USER),
                 _ => unreachable!(),
             }
         }

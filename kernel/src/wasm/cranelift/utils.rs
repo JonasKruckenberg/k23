@@ -1,5 +1,7 @@
 use crate::wasm::cranelift::env::TranslationEnvironment;
+use crate::wasm::translate::IndexType;
 use cranelift_codegen::ir;
+use cranelift_codegen::ir::types;
 use cranelift_frontend::FunctionBuilder;
 use wasmparser::{FuncValidator, WasmModuleResources};
 
@@ -127,4 +129,11 @@ pub fn f64_translation(x: wasmparser::Ieee64) -> ir::immediates::Ieee64 {
 pub fn get_vmctx_value_label() -> ir::ValueLabel {
     const VMCTX_LABEL: u32 = 0xffff_fffe;
     ir::ValueLabel::from_u32(VMCTX_LABEL)
+}
+
+pub fn index_type_to_ir_type(index_type: IndexType) -> ir::Type {
+    match index_type {
+        IndexType::I32 => types::I32,
+        IndexType::I64 => types::I64,
+    }
 }

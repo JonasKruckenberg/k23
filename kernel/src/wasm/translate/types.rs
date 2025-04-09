@@ -1,13 +1,13 @@
-use crate::wasm::enum_accessors;
 use crate::wasm::indices::CanonicalizedTypeIndex;
-use crate::wasm::translate::{GlobalDesc, MemoryDesc, TableDesc};
+use crate::wasm::translate::{Global, Memory, Table};
 use crate::wasm::type_registry::TypeTrace;
+use crate::wasm::utils::enum_accessors;
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
-use anyhow::bail;
 use core::fmt;
 
 /// Represents the types of values in a WebAssembly module.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum WasmValType {
     /// The value type is i32.
     I32,
@@ -44,23 +44,30 @@ impl WasmValType {
         (Ref(&WasmRefType) is_ref get_ref unwrap_ref e)
     );
 
-    pub fn matches(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::I32, Self::I32) => true,
-            (Self::I64, Self::I64) => true,
-            (Self::F32, Self::F32) => true,
-            (Self::F64, Self::F64) => true,
-            (Self::V128, Self::V128) => true,
-            (Self::Ref(a), Self::Ref(b)) => a.matches(b),
-            (Self::I32 | Self::I64 | Self::F32 | Self::F64 | Self::V128 | Self::Ref(_), _) => false,
-        }
-    }
+    fn trampoline_type(&self) -> Self {
+        match self {
+            WasmValType::Ref(r) => {
+                let inner = match r.heap_type.top().0 {
+                    WasmHeapTopType::Func => WasmHeapTypeInner::Func,
+                    WasmHeapTopType::Extern => WasmHeapTypeInner::Extern,
+                    WasmHeapTopType::Any => WasmHeapTypeInner::Any,
+                    WasmHeapTopType::Exn => WasmHeapTypeInner::Exn,
+                    WasmHeapTopType::Cont => WasmHeapTypeInner::Cont,
+                };
 
-    pub fn ensure_matches(&self, other: &Self) -> crate::Result<()> {
-        if self.matches(other) {
-            Ok(())
-        } else {
-            bail!("type mismatch: expected {other}, found {self}");
+                WasmValType::Ref(WasmRefType {
+                    nullable: true,
+                    heap_type: WasmHeapType {
+                        shared: r.heap_type.top().1,
+                        inner,
+                    },
+                })
+            }
+            WasmValType::I32
+            | WasmValType::I64
+            | WasmValType::F32
+            | WasmValType::F64
+            | WasmValType::V128 => *self,
         }
     }
 }
@@ -102,7 +109,7 @@ impl TypeTrace for WasmValType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct WasmRefType {
     pub nullable: bool,
     pub heap_type: WasmHeapType,
@@ -122,31 +129,6 @@ impl WasmRefType {
     #[inline]
     pub fn is_vmgcref_type(&self) -> bool {
         self.heap_type.is_vmgcref_type()
-    }
-
-    /// Is this a type that is represented as a `VMGcRef` and is additionally
-    /// not an `i31`?
-    ///
-    /// That is, is this a a type that actually refers to an object allocated in
-    /// a GC heap?
-    #[inline]
-    pub fn is_vmgcref_type_and_not_i31(&self) -> bool {
-        self.heap_type.is_vmgcref_type_and_not_i31()
-    }
-
-    pub fn matches(&self, other: &Self) -> bool {
-        if self.nullable && !other.nullable {
-            return false;
-        }
-        self.heap_type.matches(&other.heap_type)
-    }
-
-    pub(crate) fn ensure_matches(&self, other: &Self) -> crate::Result<()> {
-        if self.matches(other) {
-            Ok(())
-        } else {
-            bail!("type mismatch: expected {other}, found {self}");
-        }
     }
 }
 
@@ -182,7 +164,23 @@ impl TypeTrace for WasmRefType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum WasmHeapTopType {
+    Func,
+    Extern,
+    Any,
+    Exn,
+    Cont,
+}
+
+pub enum WasmHeapBottomType {
+    NoFunc,
+    NoExtern,
+    None,
+    NoExn,
+    NoCont,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct WasmHeapType {
     pub shared: bool,
     pub inner: WasmHeapTypeInner,
@@ -196,36 +194,26 @@ impl WasmHeapType {
     /// Is this a type that is represented as a `VMGcRef`?
     #[inline]
     pub fn is_vmgcref_type(&self) -> bool {
-        match self.top().inner {
+        match self.top().0 {
             // All `t <: (ref null any)` and `t <: (ref null extern)` are
             // represented as `VMGcRef`s.
-            WasmHeapTypeInner::Any | WasmHeapTypeInner::Extern => true,
+            WasmHeapTopType::Any | WasmHeapTopType::Extern => true,
             // All others are not.
             _ => false,
         }
-    }
-
-    /// Is this a type that is represented as a `VMGcRef` and is additionally
-    /// not an `i31`?
-    ///
-    /// That is, is this a a type that actually refers to an object allocated in
-    /// a GC heap?
-    #[inline]
-    pub fn is_vmgcref_type_and_not_i31(&self) -> bool {
-        self.is_vmgcref_type() && self.inner != WasmHeapTypeInner::I31
     }
 
     /// Get the top type of this heap type's type hierarchy.
     ///
     /// The returned heap type is a supertype of all types in this heap type's
     /// type hierarchy.
-    pub fn top(&self) -> Self {
+    pub fn top(&self) -> (WasmHeapTopType, bool) {
         let ty = match self.inner {
             WasmHeapTypeInner::Func
             | WasmHeapTypeInner::ConcreteFunc(_)
-            | WasmHeapTypeInner::NoFunc => WasmHeapTypeInner::Func,
+            | WasmHeapTypeInner::NoFunc => WasmHeapTopType::Func,
 
-            WasmHeapTypeInner::Extern | WasmHeapTypeInner::NoExtern => WasmHeapTypeInner::Extern,
+            WasmHeapTypeInner::Extern | WasmHeapTypeInner::NoExtern => WasmHeapTopType::Extern,
 
             WasmHeapTypeInner::Any
             | WasmHeapTypeInner::Eq
@@ -234,16 +222,15 @@ impl WasmHeapType {
             | WasmHeapTypeInner::ConcreteArray(_)
             | WasmHeapTypeInner::Struct
             | WasmHeapTypeInner::ConcreteStruct(_)
-            | WasmHeapTypeInner::None => WasmHeapTypeInner::Any,
+            | WasmHeapTypeInner::None => WasmHeapTopType::Any,
 
-            WasmHeapTypeInner::Exn | WasmHeapTypeInner::NoExn => WasmHeapTypeInner::Exn,
-            WasmHeapTypeInner::Cont | WasmHeapTypeInner::NoCont => WasmHeapTypeInner::Cont,
+            WasmHeapTypeInner::Exn | WasmHeapTypeInner::NoExn => WasmHeapTopType::Exn,
+            WasmHeapTypeInner::Cont
+            | WasmHeapTypeInner::ConcreteCont(_)
+            | WasmHeapTypeInner::NoCont => WasmHeapTopType::Cont,
         };
 
-        Self {
-            shared: self.shared,
-            inner: ty,
-        }
+        (ty, self.shared)
     }
 
     /// Is this the top type within its type hierarchy?
@@ -264,13 +251,13 @@ impl WasmHeapType {
     /// The returned heap type is a subtype of all types in this heap type's
     /// type hierarchy.
     #[inline]
-    pub fn bottom(&self) -> Self {
+    pub fn bottom(&self) -> (WasmHeapBottomType, bool) {
         let ty = match self.inner {
-            WasmHeapTypeInner::Extern | WasmHeapTypeInner::NoExtern => WasmHeapTypeInner::NoExtern,
+            WasmHeapTypeInner::Extern | WasmHeapTypeInner::NoExtern => WasmHeapBottomType::NoExtern,
 
             WasmHeapTypeInner::Func
             | WasmHeapTypeInner::ConcreteFunc(_)
-            | WasmHeapTypeInner::NoFunc => WasmHeapTypeInner::NoFunc,
+            | WasmHeapTypeInner::NoFunc => WasmHeapBottomType::NoFunc,
 
             WasmHeapTypeInner::Any
             | WasmHeapTypeInner::Eq
@@ -279,16 +266,15 @@ impl WasmHeapType {
             | WasmHeapTypeInner::ConcreteArray(_)
             | WasmHeapTypeInner::Struct
             | WasmHeapTypeInner::ConcreteStruct(_)
-            | WasmHeapTypeInner::None => WasmHeapTypeInner::None,
+            | WasmHeapTypeInner::None => WasmHeapBottomType::None,
 
-            WasmHeapTypeInner::Exn | WasmHeapTypeInner::NoExn => WasmHeapTypeInner::NoExn,
-            WasmHeapTypeInner::Cont | WasmHeapTypeInner::NoCont => WasmHeapTypeInner::NoCont,
+            WasmHeapTypeInner::Exn | WasmHeapTypeInner::NoExn => WasmHeapBottomType::NoExn,
+            WasmHeapTypeInner::Cont
+            | WasmHeapTypeInner::ConcreteCont(_)
+            | WasmHeapTypeInner::NoCont => WasmHeapBottomType::NoCont,
         };
 
-        Self {
-            shared: self.shared,
-            inner: ty,
-        }
+        (ty, self.shared)
     }
 
     /// Is this the bottom type within its type hierarchy?
@@ -316,128 +302,9 @@ impl WasmHeapType {
                 | WasmHeapTypeInner::ConcreteStruct(_)
         )
     }
-
-    pub fn matches(&self, other: &WasmHeapType) -> bool {
-        match (&self.inner, &other.inner) {
-            (WasmHeapTypeInner::Extern, WasmHeapTypeInner::Extern) => true,
-            (WasmHeapTypeInner::Extern, _) => false,
-
-            (
-                WasmHeapTypeInner::NoExtern,
-                WasmHeapTypeInner::NoExtern | WasmHeapTypeInner::Extern,
-            ) => true,
-            (WasmHeapTypeInner::NoExtern, _) => false,
-
-            (
-                WasmHeapTypeInner::NoFunc,
-                WasmHeapTypeInner::NoFunc
-                | WasmHeapTypeInner::ConcreteFunc(_)
-                | WasmHeapTypeInner::Func,
-            ) => true,
-            (WasmHeapTypeInner::NoFunc, _) => false,
-
-            (WasmHeapTypeInner::ConcreteFunc(_), WasmHeapTypeInner::Func) => true,
-            (WasmHeapTypeInner::ConcreteFunc(_a), WasmHeapTypeInner::ConcreteFunc(_b)) => {
-                // assert!(a.comes_from_same_engine(b.engine()));
-                // a.engine()
-                //     .signatures()
-                //     .is_subtype(a.type_index(), b.type_index())
-
-                todo!()
-            }
-            (WasmHeapTypeInner::ConcreteFunc(_), _) => false,
-
-            (WasmHeapTypeInner::Func, WasmHeapTypeInner::Func) => true,
-            (WasmHeapTypeInner::Func, _) => false,
-
-            (
-                WasmHeapTypeInner::None,
-                WasmHeapTypeInner::None
-                | WasmHeapTypeInner::ConcreteArray(_)
-                | WasmHeapTypeInner::Array
-                | WasmHeapTypeInner::ConcreteStruct(_)
-                | WasmHeapTypeInner::Struct
-                | WasmHeapTypeInner::I31
-                | WasmHeapTypeInner::Eq
-                | WasmHeapTypeInner::Any,
-            ) => true,
-            (WasmHeapTypeInner::None, _) => false,
-
-            (
-                WasmHeapTypeInner::ConcreteArray(_),
-                WasmHeapTypeInner::Array | WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any,
-            ) => true,
-            (WasmHeapTypeInner::ConcreteArray(_a), WasmHeapTypeInner::ConcreteArray(_b)) => {
-                // assert!(a.comes_from_same_engine(b.engine()));
-                // a.engine()
-                //     .signatures()
-                //     .is_subtype(a.type_index(), b.type_index())
-
-                todo!()
-            }
-            (WasmHeapTypeInner::ConcreteArray(_), _) => false,
-
-            (
-                WasmHeapTypeInner::Array,
-                WasmHeapTypeInner::Array | WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any,
-            ) => true,
-            (WasmHeapTypeInner::Array, _) => false,
-
-            (
-                WasmHeapTypeInner::ConcreteStruct(_),
-                WasmHeapTypeInner::Struct | WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any,
-            ) => true,
-            (WasmHeapTypeInner::ConcreteStruct(_a), WasmHeapTypeInner::ConcreteStruct(_b)) => {
-                // assert!(a.comes_from_same_engine(b.engine()));
-                // a.engine()
-                //     .signatures()
-                //     .is_subtype(a.type_index(), b.type_index())
-                todo!()
-            }
-            (WasmHeapTypeInner::ConcreteStruct(_), _) => false,
-
-            (
-                WasmHeapTypeInner::Struct,
-                WasmHeapTypeInner::Struct | WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any,
-            ) => true,
-            (WasmHeapTypeInner::Struct, _) => false,
-
-            (
-                WasmHeapTypeInner::I31,
-                WasmHeapTypeInner::I31 | WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any,
-            ) => true,
-            (WasmHeapTypeInner::I31, _) => false,
-
-            (WasmHeapTypeInner::Eq, WasmHeapTypeInner::Eq | WasmHeapTypeInner::Any) => true,
-            (WasmHeapTypeInner::Eq, _) => false,
-
-            (WasmHeapTypeInner::Any, WasmHeapTypeInner::Any) => true,
-            (WasmHeapTypeInner::Any, _) => false,
-
-            (WasmHeapTypeInner::Exn, WasmHeapTypeInner::Exn) => true,
-            (WasmHeapTypeInner::Exn, _) => false,
-            (WasmHeapTypeInner::NoExn, WasmHeapTypeInner::NoExn | WasmHeapTypeInner::Exn) => true,
-            (WasmHeapTypeInner::NoExn, _) => false,
-
-            (WasmHeapTypeInner::Cont, WasmHeapTypeInner::Cont) => true,
-            (WasmHeapTypeInner::Cont, _) => false,
-            (WasmHeapTypeInner::NoCont, WasmHeapTypeInner::NoCont | WasmHeapTypeInner::Cont) => {
-                true
-            }
-            (WasmHeapTypeInner::NoCont, _) => false,
-        }
-    }
-
-    pub fn ensure_matches(&self, other: &WasmHeapType) -> crate::Result<()> {
-        if self.matches(other) {
-            Ok(())
-        } else {
-            bail!("type mismatch: expected {other}, found {self}");
-        }
-    }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum WasmHeapTypeInner {
     // External types.
     Extern,
@@ -462,6 +329,7 @@ pub enum WasmHeapTypeInner {
     NoExn,
 
     Cont,
+    ConcreteCont(CanonicalizedTypeIndex),
     NoCont,
 }
 
@@ -487,6 +355,7 @@ impl fmt::Display for WasmHeapType {
             WasmHeapTypeInner::Exn => write!(f, "exn"),
             WasmHeapTypeInner::NoExn => write!(f, "noexn"),
             WasmHeapTypeInner::Cont => write!(f, "cont"),
+            WasmHeapTypeInner::ConcreteCont(i) => write!(f, "cont {i:?}"),
             WasmHeapTypeInner::NoCont => write!(f, "nocont"),
         }
     }
@@ -817,6 +686,50 @@ impl TypeTrace for WasmFuncType {
     }
 }
 
+impl WasmFuncType {
+    /// Is this function type compatible with trampoline usage?
+    pub fn is_trampoline_type(&self) -> bool {
+        self.params.iter().all(|p| *p == p.trampoline_type())
+            && self.results.iter().all(|r| *r == r.trampoline_type())
+    }
+
+    /// Get the version of this function type that is suitable for usage as a
+    /// trampoline.
+    ///
+    /// If this function is suitable for trampoline usage as-is, then a borrowed
+    /// `Cow` is returned. If it must be tweaked for trampoline usage, then an
+    /// owned `Cow` is returned.
+    ///
+    /// ## What is a trampoline type?
+    ///
+    /// All reference types in parameters and results are mapped to their
+    /// nullable top type, e.g. `(ref $my_struct_type)` becomes `(ref null
+    /// any)`.
+    ///
+    /// This allows us to share trampolines between functions whose signatures
+    /// both map to the same trampoline type. It also allows the host to satisfy
+    /// a Wasm module's function import of type `S` with a function of type `T`
+    /// where `T <: S`, even when the Wasm module never defines the type `T`
+    /// (and might never even be able to!)
+    ///
+    /// The flip side is that this adds a constraint to our trampolines: they
+    /// can only pass references around (e.g. move a reference from one calling
+    /// convention's location to another's) and may not actually inspect the
+    /// references themselves (unless the trampolines start doing explicit,
+    /// fallible downcasts, but if we ever need that, then we might want to
+    /// redesign this stuff).
+    pub fn trampoline_type(&self) -> Cow<'_, Self> {
+        if self.is_trampoline_type() {
+            return Cow::Borrowed(self);
+        }
+
+        Cow::Owned(Self {
+            params: self.params.iter().map(|p| p.trampoline_type()).collect(),
+            results: self.results.iter().map(|r| r.trampoline_type()).collect(),
+        })
+    }
+}
+
 /// A WebAssembly GC-proposal Array type.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct WasmArrayType(pub WasmFieldType);
@@ -964,9 +877,10 @@ impl TypeTrace for WasmStorageType {
 #[derive(Debug, Clone)]
 pub enum EntityType {
     Function(CanonicalizedTypeIndex),
-    Table(TableDesc),
-    Memory(MemoryDesc),
-    Global(GlobalDesc),
+    Table(Table),
+    Memory(Memory),
+    Global(Global),
+    Tag(CanonicalizedTypeIndex),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

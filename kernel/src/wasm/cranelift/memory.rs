@@ -1,5 +1,7 @@
 use crate::wasm::cranelift::code_translator::Reachability;
 use crate::wasm::cranelift::env::TranslationEnvironment;
+use crate::wasm::cranelift::utils::index_type_to_ir_type;
+use crate::wasm::translate::IndexType;
 use crate::wasm::trap::TRAP_HEAP_MISALIGNED;
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::ir;
@@ -14,7 +16,7 @@ pub struct CraneliftMemory {
     /// The address of the start of the heap's storage.
     pub base_gv: ir::GlobalValue,
     /// The index type for the heap.
-    pub index_type: ir::Type,
+    pub index_type: IndexType,
     /// The memory type for the pointed-to memory, if using proof-carrying code.
     pub memory_type: Option<ir::MemoryType>,
     /// Heap bound in bytes. The offset-guard pages are allocated after the
@@ -52,9 +54,10 @@ impl CraneliftMemory {
         } else {
             // If the offset doesn't fit within a u32, then we can't pass it
             // directly into `heap_addr`.
-            let offset = builder
-                .ins()
-                .iconst(self.index_type, i64::try_from(memarg.offset).unwrap());
+            let offset = builder.ins().iconst(
+                index_type_to_ir_type(self.index_type),
+                i64::try_from(memarg.offset).unwrap(),
+            );
             let adjusted_index =
                 builder
                     .ins()
@@ -144,7 +147,7 @@ impl CraneliftMemory {
         let orig_index = index;
         let index = cast_index_to_pointer_ty(
             index,
-            self.index_type,
+            index_type_to_ir_type(self.index_type),
             env.pointer_type(),
             self.memory_type.is_some(),
             &mut builder.cursor(),
@@ -215,7 +218,7 @@ impl CraneliftMemory {
             //    given `index`.
             builder.ins().trap(TrapCode::HEAP_OUT_OF_BOUNDS);
             Reachability::Unreachable
-        } else if self.index_type == ir::types::I32
+        } else if index_type_to_ir_type(self.index_type) == ir::types::I32
             && u64::from(u32::MAX)
                 <= self
                     .bound

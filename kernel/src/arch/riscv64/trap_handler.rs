@@ -14,12 +14,14 @@ use crate::scheduler::scheduler;
 use crate::{TRAP_STACK_SIZE_PAGES, irq, panic};
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
+use core::cell::Cell;
 use core::ops::DerefMut;
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
 cpu_local! {
+    static IN_TRAP: Cell<bool> = Cell::new(false);
     static TRAP_STACK: [u8; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] = const { [0; TRAP_STACK_SIZE_PAGES * PAGE_SIZE] };
 }
 
@@ -280,54 +282,64 @@ extern "C-unwind" fn default_trap_handler(
     let tval = VirtualAddress::new(tval).unwrap();
     let fp = VirtualAddress::new(frame.gp[8]).unwrap(); // fp is x8
 
-    match cause {
-        Trap::Interrupt(Interrupt::SupervisorSoft) => {
-            // Just a nop, software interrupts are only used as wakeup calls
-            // TODO this should be an specialized routine in the trap vector
-
-            // Safety: register access
-            unsafe {
-                sip::clear_ssoft();
-            }
-        }
-        Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            if let (_, Some(next_deadline)) = scheduler().cpu_local_timer().turn() {
-                // Timer interrupts are always IPIs used for sleeping
-                sbi::time::set_timer(next_deadline.ticks.0).unwrap();
-            } else {
-                // Timer interrupts are always IPIs used for sleeping
-                sbi::time::set_timer(u64::MAX).unwrap();
-            }
-        }
-        Trap::Interrupt(Interrupt::SupervisorExternal) => with_cpu(|cpu| {
-            let mut plic = cpu.plic.borrow_mut();
-            irq::trigger_irq(plic.deref_mut());
-        }),
-        Trap::Exception(
-            Exception::LoadPageFault | Exception::StorePageFault | Exception::InstructionPageFault,
-        ) => {
-            // first attempt the page fault handler, can it recover us from this by fixing up mappings?
-            if crate::mem::handle_page_fault(cause, tval).is_break() {
-                return;
-            }
-
-            // if not attempt the wasm fault handler, is the current trap caused by a user program?
-            // if so can it kill the program?
-            if crate::wasm::handle_wasm_exception(epc, fp, tval).is_break() {
-                return;
-            }
-
-            handle_kernel_exception(cause, frame, epc, tval)
-        }
-        Trap::Exception(Exception::IllegalInstruction) => {
-            if crate::wasm::handle_wasm_exception(epc, fp, tval).is_break() {
-                return;
-            }
-
-            handle_kernel_exception(cause, frame, epc, tval)
-        }
-        _ => handle_kernel_exception(cause, frame, epc, tval),
+    if IN_TRAP.replace(true) {
+        handle_recursive_fault(frame, epc);
     }
+
+    'handler: {
+        match cause {
+            Trap::Interrupt(Interrupt::SupervisorSoft) => {
+                // Just a nop, software interrupts are only used as wakeup calls
+                // TODO this should be an specialized routine in the trap vector
+
+                // Safety: register access
+                unsafe {
+                    sip::clear_ssoft();
+                }
+            }
+            Trap::Interrupt(Interrupt::SupervisorTimer) => {
+                if let (_, Some(next_deadline)) = scheduler().cpu_local_timer().turn() {
+                    // Timer interrupts are always IPIs used for sleeping
+                    sbi::time::set_timer(next_deadline.ticks.0).unwrap();
+                } else {
+                    // Timer interrupts are always IPIs used for sleeping
+                    sbi::time::set_timer(u64::MAX).unwrap();
+                }
+            }
+            Trap::Interrupt(Interrupt::SupervisorExternal) => with_cpu(|cpu| {
+                let mut plic = cpu.plic.borrow_mut();
+                irq::trigger_irq(plic.deref_mut());
+            }),
+            Trap::Exception(
+                Exception::LoadPageFault
+                | Exception::StorePageFault
+                | Exception::InstructionPageFault,
+            ) => {
+                // first attempt the page fault handler, can it recover us from this by fixing up mappings?
+                if crate::mem::handle_page_fault(cause, tval).is_break() {
+                    break 'handler;
+                }
+
+                // if not attempt the wasm fault handler, is the current trap caused by a user program?
+                // if so can it kill the program?
+                if crate::wasm::trap_handler::handle_wasm_exception(epc, fp, tval).is_break() {
+                    break 'handler;
+                }
+
+                handle_kernel_exception(cause, frame, epc, tval)
+            }
+            Trap::Exception(Exception::IllegalInstruction) => {
+                if crate::wasm::trap_handler::handle_wasm_exception(epc, fp, tval).is_break() {
+                    break 'handler;
+                }
+
+                handle_kernel_exception(cause, frame, epc, tval)
+            }
+            _ => handle_kernel_exception(cause, frame, epc, tval),
+        }
+    }
+
+    IN_TRAP.set(false);
 }
 
 fn handle_kernel_exception(
@@ -355,6 +367,26 @@ fn handle_kernel_exception(
 
     // FIXME it would be great to get rid of the allocation here :/
     let payload = Box::new(cause);
+
+    IN_TRAP.set(false);
+
+    // begin a panic on the original stack
+    panic::begin_unwind_with(payload, regs, epc.checked_add(1).unwrap());
+}
+
+fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
+    let mut regs = unwind2::Registers {
+        gp: frame.gp,
+        fp: frame.fp,
+    };
+    regs.gp[2] = sscratch::read();
+
+    let backtrace =
+        Backtrace::<32>::from_registers(regs.clone(), epc.checked_add(1).unwrap()).unwrap();
+    tracing::error!("{backtrace}");
+
+    // FIXME it would be great to get rid of the allocation here :/
+    let payload = Box::new("recursive fault in trap handler");
 
     // begin a panic on the original stack
     panic::begin_unwind_with(payload, regs, epc.checked_add(1).unwrap());

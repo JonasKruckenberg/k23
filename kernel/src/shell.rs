@@ -16,7 +16,7 @@ const S: &str = r#"
 "#;
 
 use crate::device_tree::DeviceTree;
-use crate::mem::{KERNEL_ASPACE, PhysicalAddress, UserMmap, with_kernel_aspace};
+use crate::mem::{KERNEL_ASPACE, Mmap, PhysicalAddress, with_kernel_aspace};
 use crate::scheduler::{Scheduler, scheduler};
 use crate::{arch, irq};
 use alloc::string::{String, ToString};
@@ -27,7 +27,14 @@ use core::str::FromStr;
 use fallible_iterator::FallibleIterator;
 use spin::{Barrier, OnceLock};
 
-static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN, crate::wasm::TEST];
+static COMMANDS: &[Command] = &[
+    PANIC,
+    FAULT,
+    VERSION,
+    SHUTDOWN,
+    crate::wasm::FIB_TEST,
+    crate::wasm::HOSTFUNC_TEST,
+];
 
 pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: usize) {
     static SYNC: OnceLock<Barrier> = OnceLock::new();
@@ -90,7 +97,7 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, u32) {
             Range::from(start..start.checked_add(size).unwrap())
         };
 
-        UserMmap::new_phys(
+        Mmap::new_phys(
             aspace,
             range_phys,
             size,
@@ -219,7 +226,13 @@ fn handle_command<'cmd>(ctx: Context<'cmd>, commands: &'cmd [Command]) -> CmdRes
     for cmd in commands {
         if let Some(current) = chunk.strip_prefix(cmd.name) {
             let current = current.trim();
-            return cmd.run(Context { current, ..ctx });
+
+            return crate::panic::catch_unwind(|| cmd.run(Context { current, ..ctx })).unwrap_or({
+                Err(Error {
+                    line: cmd.name,
+                    kind: ErrorKind::Other("command failed"),
+                })
+            });
         }
     }
 

@@ -6,15 +6,14 @@ use crate::wasm::translate::module_types::{ModuleTypes, ModuleTypesBuilder};
 use crate::wasm::translate::type_convert::WasmparserTypeConverter;
 use crate::wasm::translate::types::EntityType;
 use crate::wasm::translate::{
-    ConstExpr, FunctionBodyData, FunctionDesc, GlobalDesc, Import, MemoryDesc, MemoryInitializer,
+    ConstExpr, Function, FunctionBodyData, Global, Import, Memory, MemoryInitializer,
     ModuleTranslation, ProducersLanguage, ProducersLanguageField, ProducersSdk, ProducersSdkField,
-    ProducersTool, ProducersToolField, TableDesc, TableInitialValue, TableSegment,
-    TableSegmentElements,
+    ProducersTool, ProducersToolField, Table, TableInitialValue, TableSegment,
+    TableSegmentElements, Tag,
 };
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use anyhow::bail;
 use cranelift_entity::packed_option::ReservedValue;
 use hashbrown::HashMap;
 use wasmparser::{
@@ -22,7 +21,8 @@ use wasmparser::{
     ElementSectionReader, ExportSectionReader, ExternalKind, FunctionSectionReader,
     GlobalSectionReader, ImportSectionReader, IndirectNameMap, MemorySectionReader, Name, NameMap,
     NameSectionReader, Parser, Payload, ProducersFieldValue, ProducersSectionReader, TableInit,
-    TableSectionReader, TagSectionReader, TypeRef, TypeSectionReader, Validator, WasmFeatures,
+    TableSectionReader, TagKind, TagSectionReader, TypeRef, TypeSectionReader, Validator,
+    WasmFeatures,
 };
 
 /// A translator for converting the output of `wasmparser` into types used by this crate.
@@ -259,8 +259,8 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
 
                     let signature = TypeIndex::from_u32(index);
                     let interned_index = self.result.module.types[signature];
-                    self.result.module.functions.push(FunctionDesc {
-                        signature,
+                    self.result.module.functions.push(Function {
+                        signature: CanonicalizedTypeIndex::Module(interned_index),
                         func_ref: FuncRefIndex::reserved_value(),
                     });
                     EntityType::Function(CanonicalizedTypeIndex::Module(interned_index))
@@ -271,14 +271,14 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
                     let ty_convert =
                         WasmparserTypeConverter::new(&self.types.types, &self.result.module);
 
-                    let table = TableDesc::from_wasmparser(ty, &ty_convert);
+                    let table = Table::from_wasmparser(ty, &ty_convert);
                     self.result.module.tables.push(table.clone());
                     EntityType::Table(table)
                 }
                 TypeRef::Memory(ty) => {
                     self.result.module.num_imported_memories += 1;
 
-                    let memory = MemoryDesc::from_wasmparser(ty);
+                    let memory = Memory::from_wasmparser(ty);
                     self.result.module.memories.push(memory.clone());
                     EntityType::Memory(memory)
                 }
@@ -288,7 +288,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
                     let ty_convert =
                         WasmparserTypeConverter::new(&self.types.types, &self.result.module);
 
-                    let global = GlobalDesc {
+                    let global = Global {
                         content_type: ty_convert.convert_val_type(ty.content_type),
                         mutable: ty.mutable,
                         shared: ty.shared,
@@ -296,9 +296,13 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
                     self.result.module.globals.push(global.clone());
                     EntityType::Global(global)
                 }
+                TypeRef::Tag(ty) => {
+                    self.result.module.num_imported_tags += 1;
 
-                // doesn't get past validation
-                TypeRef::Tag(_) => unreachable!(),
+                    let signature = TypeIndex::from_u32(ty.func_type_idx);
+                    let interned_index = self.result.module.types[signature];
+                    EntityType::Tag(CanonicalizedTypeIndex::Module(interned_index))
+                }
             };
 
             self.result.module.imports.push(Import {
@@ -322,8 +326,9 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
 
         for index in functions {
             let signature = TypeIndex::from_u32(index?);
-            self.result.module.functions.push(FunctionDesc {
-                signature,
+            let signature = self.result.module.types[signature];
+            self.result.module.functions.push(Function {
+                signature: CanonicalizedTypeIndex::Module(signature),
                 func_ref: FuncRefIndex::reserved_value(),
             });
         }
@@ -347,7 +352,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
 
             let ty_convert = WasmparserTypeConverter::new(&self.types.types, &self.result.module);
 
-            let plan = TableDesc::from_wasmparser(table.ty, &ty_convert);
+            let plan = Table::from_wasmparser(table.ty, &ty_convert);
             self.result.module.tables.push(plan);
 
             let init = match table.init {
@@ -383,17 +388,28 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
             self.result
                 .module
                 .memories
-                .push(MemoryDesc::from_wasmparser(ty?));
+                .push(Memory::from_wasmparser(ty?));
         }
 
         Ok(())
     }
 
-    #[expect(clippy::unused_self, reason = "TODO stub")]
-    fn parse_tag_section(&self, _tags: TagSectionReader<'data>) -> crate::Result<()> {
-        bail!(
-            "Feature used by the WebAssembly code is not yet supported: Exception Handling Proposal"
-        )
+    fn parse_tag_section(&mut self, tags: TagSectionReader<'data>) -> crate::Result<()> {
+        self.result.module.tags.reserve_exact(tags.count() as usize);
+
+        for tag in tags {
+            let tag = tag?;
+            assert_eq!(tag.kind, TagKind::Exception);
+
+            let signature = TypeIndex::from_u32(tag.func_type_idx);
+            let signature = self.result.module.types[signature];
+
+            self.result.module.tags.push(Tag {
+                signature: CanonicalizedTypeIndex::Module(signature),
+            });
+        }
+
+        Ok(())
     }
 
     fn translate_global_section(
@@ -414,7 +430,7 @@ impl<'a, 'data> ModuleTranslator<'a, 'data> {
 
             let ty_convert = WasmparserTypeConverter::new(&self.types.types, &self.result.module);
 
-            self.result.module.globals.push(GlobalDesc {
+            self.result.module.globals.push(Global {
                 content_type: ty_convert.convert_val_type(global.ty.content_type),
                 mutable: global.ty.mutable,
                 shared: global.ty.shared,
