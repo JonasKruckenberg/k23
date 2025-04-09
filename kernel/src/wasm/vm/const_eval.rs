@@ -199,7 +199,9 @@ impl ConstExprEvaluator {
 
                     self.push(VMVal::i64(arg1.get_i64().wrapping_mul(arg2.get_i64())));
                 }
-                ConstOp::StructNew { struct_type_index: _ } => {
+                ConstOp::StructNew {
+                    struct_type_index: _,
+                } => {
                     // let interned_type_index = ctx.instance.env_module().types[*struct_type_index]
                     //     .unwrap_engine_type_index();
                     // let len = ctx.struct_fields_len(&mut store, interned_type_index);
@@ -220,14 +222,18 @@ impl ConstExprEvaluator {
 
                     todo!()
                 }
-                ConstOp::StructNewDefault { struct_type_index: _ } => {
+                ConstOp::StructNewDefault {
+                    struct_type_index: _,
+                } => {
                     // let ty = ctx.instance.env_module().types[*struct_type_index]
                     //     .unwrap_engine_type_index();
                     // self.stack.push(ctx.struct_new_default(&mut store, ty)?);
 
                     todo!()
                 }
-                ConstOp::ArrayNew { array_type_index: _ } => {
+                ConstOp::ArrayNew {
+                    array_type_index: _,
+                } => {
                     // let ty = ctx.instance.env_module().types[*array_type_index]
                     //     .unwrap_engine_type_index();
                     // let ty = ArrayType::from_shared_type_index(store.engine(), ty);
@@ -245,7 +251,9 @@ impl ConstExprEvaluator {
 
                     todo!()
                 }
-                ConstOp::ArrayNewDefault { array_type_index: _ } => {
+                ConstOp::ArrayNewDefault {
+                    array_type_index: _,
+                } => {
                     // let ty = ctx.instance.env_module().types[*array_type_index]
                     //     .unwrap_engine_type_index();
                     // let ty = ArrayType::from_shared_type_index(store.engine(), ty);
@@ -265,8 +273,8 @@ impl ConstExprEvaluator {
                     todo!()
                 }
                 ConstOp::ArrayNewFixed {
-                    array_type_index,
-                    array_size,
+                    array_type_index: _,
+                    array_size: _,
                 } => {
                     // let ty = ctx.instance.env_module().types[*array_type_index]
                     //     .unwrap_engine_type_index();

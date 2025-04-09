@@ -1,6 +1,7 @@
 //! #k23VM - k23 WebAssembly Virtual Machine
 
 mod builtins;
+mod code_registry;
 mod compile;
 mod cranelift;
 mod engine;
@@ -11,18 +12,17 @@ mod instance;
 mod linker;
 mod memory;
 mod module;
-mod code_registry;
 mod store;
 mod table;
 mod tag;
 mod translate;
 mod trap;
+pub mod trap_handler;
 mod type_registry;
 mod types;
 mod utils;
 mod values;
 mod vm;
-pub mod trap_handler;
 
 use crate::scheduler::scheduler;
 use crate::shell::Command;
@@ -257,7 +257,7 @@ fn hostfunc_test() {
     let func: TypedFunc<u64, u64> = instance
         .get_func(&mut store, "roundtrip_i64")
         .unwrap()
-        .typed(&mut store)
+        .typed(&store)
         .unwrap();
 
     scheduler().spawn(

@@ -414,25 +414,29 @@ impl VMShape {
     #[inline]
     pub fn vmctx_vmfunction_import(&self, index: FuncIndex) -> u32 {
         assert!(index.as_u32() < self.num_imported_functions);
-        self.vmctx_imported_functions_begin() + index.as_u32() * u32::from(u8_size_of::<VMFunctionImport>())
+        self.vmctx_imported_functions_begin()
+            + index.as_u32() * u32::from(u8_size_of::<VMFunctionImport>())
     }
 
     #[inline]
     pub fn vmctx_vmtable_import(&self, index: TableIndex) -> u32 {
         assert!(index.as_u32() < self.num_imported_tables);
-        self.vmctx_imported_tables_begin() + index.as_u32() * u32::from(u8_size_of::<VMTableImport>())
+        self.vmctx_imported_tables_begin()
+            + index.as_u32() * u32::from(u8_size_of::<VMTableImport>())
     }
 
     #[inline]
     pub fn vmctx_vmmemory_import(&self, index: MemoryIndex) -> u32 {
         assert!(index.as_u32() < self.num_imported_memories);
-        self.vmctx_imported_memories_begin() + index.as_u32() * u32::from(u8_size_of::<VMMemoryImport>())
+        self.vmctx_imported_memories_begin()
+            + index.as_u32() * u32::from(u8_size_of::<VMMemoryImport>())
     }
 
     #[inline]
     pub fn vmctx_vmglobal_import(&self, index: GlobalIndex) -> u32 {
         assert!(index.as_u32() < self.num_defined_globals);
-        self.vmctx_imported_globals_begin() + index.as_u32() * u32::from(u8_size_of::<VMGlobalImport>())
+        self.vmctx_imported_globals_begin()
+            + index.as_u32() * u32::from(u8_size_of::<VMGlobalImport>())
     }
 
     #[inline]
@@ -450,13 +454,15 @@ impl VMShape {
     #[inline]
     pub fn vmctx_vmmemory_pointer(&self, index: DefinedMemoryIndex) -> u32 {
         assert!(index.as_u32() < self.num_defined_memories);
-        self.vmctx_memories_begin() + index.as_u32() * u32::from(u8_size_of::<VmPtr<VMMemoryDefinition>>())
+        self.vmctx_memories_begin()
+            + index.as_u32() * u32::from(u8_size_of::<VmPtr<VMMemoryDefinition>>())
     }
 
     #[inline]
     pub fn vmctx_vmmemory_definition(&self, index: OwnedMemoryIndex) -> u32 {
         assert!(index.as_u32() < self.owned_memories);
-        self.vmctx_owned_memories_begin() + index.as_u32() * u32::from(u8_size_of::<VMMemoryDefinition>())
+        self.vmctx_owned_memories_begin()
+            + index.as_u32() * u32::from(u8_size_of::<VMMemoryDefinition>())
     }
 
     #[inline]

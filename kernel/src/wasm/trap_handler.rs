@@ -7,9 +7,10 @@
 
 use crate::arch;
 use crate::mem::VirtualAddress;
+use crate::wasm::TrapKind;
+use crate::wasm::code_registry::lookup_code;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::vm::{VMContext, VMStoreContext};
-use crate::wasm::TrapKind;
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -20,7 +21,6 @@ use core::panic::AssertUnwindSafe;
 use core::ptr::NonNull;
 use core::{fmt, ptr};
 use cpu_local::cpu_local;
-use crate::wasm::code_registry::lookup_code;
 
 /// Description about a fault that occurred in WebAssembly.
 #[derive(Debug)]

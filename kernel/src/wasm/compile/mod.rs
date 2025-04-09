@@ -9,6 +9,7 @@ use crate::wasm::translate::{
     FunctionBodyData, ModuleTranslation, ModuleTypes, TranslatedModule, WasmFuncType,
 };
 use crate::wasm::trap::TrapKind;
+use crate::wasm::vm::{CodeObject, MmapVec};
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::format;
@@ -19,7 +20,6 @@ pub use compiled_function::CompiledFunction;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_entity::{EntitySet, PrimaryMap};
 use hashbrown::HashSet;
-use crate::wasm::vm::{CodeObject, MmapVec};
 
 /// Namespace corresponding to wasm functions, the index is the index of the
 /// defined function that's being referenced.
@@ -285,7 +285,7 @@ impl UnlinkedCompileOutputs {
         mut self,
         engine: &Engine,
         module: &TranslatedModule,
-        do_mmap: impl FnOnce(Vec<u8>) -> crate::Result<MmapVec<u8>>
+        do_mmap: impl FnOnce(Vec<u8>) -> crate::Result<MmapVec<u8>>,
     ) -> crate::Result<CodeObject> {
         let mut text_builder = engine.compiler().text_section_builder(self.outputs.len());
         let mut ctrl_plane = ControlPlane::default();
@@ -372,7 +372,13 @@ impl UnlinkedCompileOutputs {
         let (trap_offsets, traps) = traps.finish();
         let mmap_vec = do_mmap(text_builder.finish(&mut ctrl_plane))?;
 
-        Ok(CodeObject::new(mmap_vec, trap_offsets, traps, wasm_to_host_trampolines, funcs))
+        Ok(CodeObject::new(
+            mmap_vec,
+            trap_offsets,
+            traps,
+            wasm_to_host_trampolines,
+            funcs,
+        ))
     }
 }
 

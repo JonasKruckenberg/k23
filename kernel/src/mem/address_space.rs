@@ -24,8 +24,8 @@ use core::ops::DerefMut;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::range::{Bound, Range, RangeBounds, RangeInclusive};
-use rand::distr::Uniform;
 use rand::Rng;
+use rand::distr::Uniform;
 use rand_chacha::ChaCha20Rng;
 
 // const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();
@@ -349,7 +349,7 @@ impl AddressSpace {
             self.max_range.contains(&addr),
             "page fault at address outside of address space range"
         );
-        
+
         let addr = addr.align_down(arch::PAGE_SIZE);
 
         let region = if let Some((mut last_region, last_addr)) = self.last_fault.take() {
@@ -362,15 +362,13 @@ impl AddressSpace {
             if last_region.range.contains(&addr) {
                 Some(last_region)
             } else {
-                self
-                    .regions
+                self.regions
                     .upper_bound_mut(Bound::Included(&addr))
                     .get_mut()
                     .and_then(|region| region.range.contains(&addr).then_some(region))
             }
         } else {
-            self
-                .regions
+            self.regions
                 .upper_bound_mut(Bound::Included(&addr))
                 .get_mut()
                 .and_then(|region| region.range.contains(&addr).then_some(region))
@@ -378,13 +376,13 @@ impl AddressSpace {
 
         if let Some(mut region) = region {
             let region_ptr = NonNull::from(region.deref_mut());
-            
+
             let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
             region.page_fault(&mut batch, addr, flags)?;
             batch.flush()?;
-            
+
             self.last_fault = Some((region_ptr, addr));
-            
+
             Ok(())
         } else {
             bail!("page fault at unmapped address {addr}");
@@ -515,7 +513,7 @@ impl AddressSpace {
 
         Ok(())
     }
-    
+
     /// Find a spot in the address space that satisfies the given `layout` requirements.
     ///
     /// This function will walk the ordered set of `Mappings` from left to right, looking for a gap

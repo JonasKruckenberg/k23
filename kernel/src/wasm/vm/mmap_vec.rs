@@ -38,7 +38,7 @@ impl<T> MmapVec<T> {
                 max(align_of::<T>(), arch::PAGE_SIZE),
                 None,
             )
-                .context("Failed to mmap zeroed memory for MmapVec")?,
+            .context("Failed to mmap zeroed memory for MmapVec")?,
             len: 0,
             _m: PhantomData,
         })

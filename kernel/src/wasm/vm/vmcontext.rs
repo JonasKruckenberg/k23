@@ -5,10 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::builtins::{foreach_builtin_function, BuiltinFunctionIndex};
+use crate::mem::VirtualAddress;
+use crate::wasm::builtins::{BuiltinFunctionIndex, foreach_builtin_function};
 use crate::wasm::indices::{DefinedMemoryIndex, VMSharedTypeIndex};
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::translate::{WasmHeapTopType, WasmValType};
+use crate::wasm::type_registry::RegisteredType;
+use crate::wasm::types::FuncType;
 use crate::wasm::vm::provenance::{VmPtr, VmSafe};
 use alloc::boxed::Box;
 use core::any::Any;
@@ -21,9 +24,6 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
 use cranelift_entity::Unsigned;
 use static_assertions::const_assert_eq;
-use crate::mem::VirtualAddress;
-use crate::wasm::type_registry::RegisteredType;
-use crate::wasm::types::FuncType;
 
 /// Magic value for core Wasm VM contexts.
 ///
@@ -428,6 +428,8 @@ pub struct VMTableDefinition {
 }
 // SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
 unsafe impl VmSafe for VMTableDefinition {}
+unsafe impl Send for VMTableDefinition {}
+unsafe impl Sync for VMTableDefinition {}
 
 /// The fields compiled code needs to access to utilize a WebAssembly linear
 /// memory defined within the instance, namely the start address and the
@@ -1066,7 +1068,7 @@ impl VMArrayCallHostFuncContext {
                 vmctx: NonNull::dangling().into(),
             },
             func,
-            ty: func_ty.into_registered_type()
+            ty: func_ty.into_registered_type(),
         });
 
         let vmctx =
@@ -1083,7 +1085,8 @@ impl VMArrayCallHostFuncContext {
     pub unsafe fn from_opaque(
         opaque: NonNull<VMOpaqueContext>,
     ) -> NonNull<VMArrayCallHostFuncContext> {
-        unsafe { // See comments in `VMContext::from_opaque` for this debug assert
+        unsafe {
+            // See comments in `VMContext::from_opaque` for this debug assert
             debug_assert_eq!(opaque.as_ref().magic, VM_ARRAY_CALL_HOST_FUNC_MAGIC);
             opaque.cast()
         }

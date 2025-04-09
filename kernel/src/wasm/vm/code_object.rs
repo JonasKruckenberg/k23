@@ -6,10 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::mem::{AddressSpace, Mmap, VirtualAddress};
+use crate::wasm::TrapKind;
 use crate::wasm::compile::{CompiledFunctionInfo, FunctionLoc};
 use crate::wasm::indices::{DefinedFuncIndex, ModuleInternedTypeIndex};
 use crate::wasm::vm::{MmapVec, VMWasmCallFunction};
-use crate::wasm::TrapKind;
 use alloc::vec;
 use alloc::vec::Vec;
 use anyhow::Context;

@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::wasm::Engine;
 use crate::wasm::indices::{CanonicalizedTypeIndex, VMSharedTypeIndex};
 use crate::wasm::translate::{
     EntityType, Global, Memory, ModuleTypes, Table, Tag, WasmCompositeType, WasmCompositeTypeInner,
@@ -12,7 +13,6 @@ use crate::wasm::translate::{
     WasmSubType, WasmValType,
 };
 use crate::wasm::type_registry::RegisteredType;
-use crate::wasm::Engine;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use anyhow::{bail, ensure};
@@ -1731,6 +1731,28 @@ pub struct TableType {
 }
 
 impl TableType {
+    /// Returns the element value type of this table.
+    pub fn element(&self) -> &RefType {
+        &self.element
+    }
+
+    /// Returns minimum number of elements this table must have
+    pub fn minimum(&self) -> u64 {
+        self.ty.limits.min
+    }
+
+    /// Returns the optionally-specified maximum number of elements this table
+    /// can have.
+    ///
+    /// If this returns `None` then the table is not limited in size.
+    pub fn maximum(&self) -> Option<u64> {
+        self.ty.limits.max
+    }
+
+    pub(super) fn to_wasm_table(&self) -> &Table {
+        &self.ty
+    }
+
     pub(super) fn from_wasm_table(engine: &Engine, table: &Table) -> Self {
         let element = RefType::from_wasm_type(engine, &table.element_type);
 
@@ -1775,7 +1797,7 @@ impl GlobalType {
     pub fn mutability(&self) -> Mutability {
         self.mutability
     }
-    
+
     pub(super) fn to_wasm_global(&self) -> Global {
         Global {
             content_type: self.content.to_wasm_type(),

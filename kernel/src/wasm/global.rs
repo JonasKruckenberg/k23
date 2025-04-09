@@ -5,12 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::wasm::Func;
 use crate::wasm::store::{StoreOpaque, Stored};
 use crate::wasm::types::{GlobalType, HeapTypeInner, Mutability, ValType};
 use crate::wasm::values::{Ref, Val};
 use crate::wasm::vm::{ExportedGlobal, VMGlobalDefinition, VMGlobalImport, VmPtr};
-use crate::wasm::Func;
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use core::ptr;
 use core::ptr::NonNull;
 
@@ -87,7 +87,7 @@ impl Global {
                 }
             }
         }
-        
+
         Ok(())
     }
 

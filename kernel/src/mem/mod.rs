@@ -11,9 +11,9 @@ mod address_space_region;
 pub mod bootstrap_alloc;
 pub mod flush;
 pub mod frame_alloc;
+mod mmap;
 mod provider;
 mod trap_handler;
-mod mmap;
 mod vmo;
 
 use crate::arch;
@@ -34,8 +34,8 @@ pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub use address_space::{AddressSpace, Batch};
 pub use address_space_region::AddressSpaceRegion;
 pub use flush::Flush;
-pub use trap_handler::handle_page_fault;
 pub use mmap::Mmap;
+pub use trap_handler::handle_page_fault;
 pub use vmo::Vmo;
 
 pub const KIB: usize = 1024;

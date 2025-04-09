@@ -57,7 +57,7 @@ pub enum TrapKind {
     IntegerDivisionByZero,
     /// Failed float-to-int conversion.
     BadConversionToInteger,
-    
+
     /// Used to indicate that a trap was raised by atomic wait operations on non shared memory.
     AtomicWaitNonSharedMemory,
 }
@@ -79,7 +79,7 @@ impl fmt::Display for TrapKind {
             TrapKind::IntegerOverflow => f.write_str("integer overflow"),
             TrapKind::IntegerDivisionByZero => f.write_str("integer divide by zero"),
             TrapKind::BadConversionToInteger => f.write_str("invalid conversion to integer"),
-            
+
             TrapKind::AtomicWaitNonSharedMemory => f.write_str("atomic wait on non-shared memory"),
         }
     }
@@ -104,9 +104,9 @@ impl TrapKind {
             TRAP_UNREACHABLE => Some(TrapKind::UnreachableCodeReached),
             TRAP_NULL_REFERENCE => Some(TrapKind::NullReference),
             TRAP_I31_NULL_REFERENCE => Some(TrapKind::NullI31Ref),
-            
+
             TRAP_ATOMIC_WAIT_NON_SHARED_MEMORY => Some(TrapKind::AtomicWaitNonSharedMemory),
-            
+
             c => {
                 tracing::warn!("unknown trap code {c}");
                 None
@@ -132,7 +132,7 @@ impl From<TrapKind> for u8 {
             TrapKind::IntegerOverflow => 10,
             TrapKind::IntegerDivisionByZero => 11,
             TrapKind::BadConversionToInteger => 12,
-            
+
             TrapKind::AtomicWaitNonSharedMemory => 13,
         }
     }
@@ -157,9 +157,9 @@ impl TryFrom<u8> for TrapKind {
             10 => Ok(Self::IntegerOverflow),
             11 => Ok(Self::IntegerDivisionByZero),
             12 => Ok(Self::BadConversionToInteger),
-            
+
             13 => Ok(Self::AtomicWaitNonSharedMemory),
-            
+
             _ => Err(()),
         }
     }

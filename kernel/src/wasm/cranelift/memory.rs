@@ -1,5 +1,7 @@
 use crate::wasm::cranelift::code_translator::Reachability;
 use crate::wasm::cranelift::env::TranslationEnvironment;
+use crate::wasm::cranelift::utils::index_type_to_ir_type;
+use crate::wasm::translate::IndexType;
 use crate::wasm::trap::TRAP_HEAP_MISALIGNED;
 use cranelift_codegen::cursor::{Cursor, FuncCursor};
 use cranelift_codegen::ir;
@@ -8,8 +10,6 @@ use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{Expr, Fact, MemFlags, RelSourceLoc, TrapCode, Type, Value};
 use cranelift_frontend::FunctionBuilder;
 use wasmparser::MemArg;
-use crate::wasm::cranelift::utils::index_type_to_ir_type;
-use crate::wasm::translate::IndexType;
 
 #[derive(Debug, Clone)]
 pub struct CraneliftMemory {
@@ -54,9 +54,10 @@ impl CraneliftMemory {
         } else {
             // If the offset doesn't fit within a u32, then we can't pass it
             // directly into `heap_addr`.
-            let offset = builder
-                .ins()
-                .iconst(index_type_to_ir_type(self.index_type), i64::try_from(memarg.offset).unwrap());
+            let offset = builder.ins().iconst(
+                index_type_to_ir_type(self.index_type),
+                i64::try_from(memarg.offset).unwrap(),
+            );
             let adjusted_index =
                 builder
                     .ins()

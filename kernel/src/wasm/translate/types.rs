@@ -225,7 +225,9 @@ impl WasmHeapType {
             | WasmHeapTypeInner::None => WasmHeapTopType::Any,
 
             WasmHeapTypeInner::Exn | WasmHeapTypeInner::NoExn => WasmHeapTopType::Exn,
-            WasmHeapTypeInner::Cont | WasmHeapTypeInner::ConcreteCont(_) | WasmHeapTypeInner::NoCont => WasmHeapTopType::Cont,
+            WasmHeapTypeInner::Cont
+            | WasmHeapTypeInner::ConcreteCont(_)
+            | WasmHeapTypeInner::NoCont => WasmHeapTopType::Cont,
         };
 
         (ty, self.shared)
@@ -267,7 +269,9 @@ impl WasmHeapType {
             | WasmHeapTypeInner::None => WasmHeapBottomType::None,
 
             WasmHeapTypeInner::Exn | WasmHeapTypeInner::NoExn => WasmHeapBottomType::NoExn,
-            WasmHeapTypeInner::Cont | WasmHeapTypeInner::ConcreteCont(_) | WasmHeapTypeInner::NoCont => WasmHeapBottomType::NoCont,
+            WasmHeapTypeInner::Cont
+            | WasmHeapTypeInner::ConcreteCont(_)
+            | WasmHeapTypeInner::NoCont => WasmHeapBottomType::NoCont,
         };
 
         (ty, self.shared)

@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::mem::{Mmap, VirtualAddress};
-use crate::wasm::vm::provenance::VmPtr;
 use crate::wasm::vm::VMMemoryDefinition;
+use crate::wasm::vm::provenance::VmPtr;
 use core::ptr::NonNull;
 use core::range::Range;
 
@@ -46,11 +46,11 @@ impl Memory {
             offset_guard_size,
         }
     }
-    
+
     pub fn byte_size(&self) -> usize {
         self.len
     }
-    
+
     pub fn wasm_accessible(&self) -> Range<VirtualAddress> {
         self.mmap.range()
     }

@@ -1,7 +1,5 @@
 use crate::arch::PAGE_SIZE;
-use crate::wasm::translate::{
-    WasmFuncType, WasmHeapTopType, WasmHeapType, WasmValType,
-};
+use crate::wasm::translate::{WasmFuncType, WasmHeapTopType, WasmHeapType, WasmValType};
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};
 use cranelift_codegen::isa::{CallConv, TargetIsa};

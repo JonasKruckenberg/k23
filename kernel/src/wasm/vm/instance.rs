@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::mem::VirtualAddress;
+use crate::wasm::TrapKind;
 use crate::wasm::indices::{
     DataIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, DefinedTagIndex,
     ElemIndex, EntityIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TagIndex,
@@ -14,20 +16,20 @@ use crate::wasm::module::Module;
 use crate::wasm::store::{StoreInner, StoreOpaque};
 use crate::wasm::translate::{
     IndexType, MemoryInitializer, TableInitialValue, TableSegmentElements, TranslatedModule,
-    WasmHeapTopType,
+    WasmHeapTopType, WasmHeapTypeInner,
 };
+use crate::wasm::trap_handler::WasmFault;
 use crate::wasm::vm::const_eval::{ConstEvalContext, ConstExprEvaluator};
 use crate::wasm::vm::memory::Memory;
 use crate::wasm::vm::provenance::{VmPtr, VmSafe};
 use crate::wasm::vm::table::{Table, TableElement, TableElementType};
 use crate::wasm::vm::{
     Export, ExportedFunction, ExportedGlobal, ExportedMemory, ExportedTable, ExportedTag, Imports,
-    StaticVMShape, VMBuiltinFunctionsArray, VMContext, VMFuncRef, VMFunctionBody, VMFunctionImport,
-    VMGlobalDefinition, VMGlobalImport, VMMemoryDefinition, VMMemoryImport, VMOpaqueContext,
-    VMShape, VMStoreContext, VMTableDefinition, VMTableImport, VMTagDefinition, VMTagImport,
-    VMCONTEXT_MAGIC,
+    StaticVMShape, VMBuiltinFunctionsArray, VMCONTEXT_MAGIC, VMContext, VMFuncRef, VMFunctionBody,
+    VMFunctionImport, VMGlobalDefinition, VMGlobalImport, VMMemoryDefinition, VMMemoryImport,
+    VMOpaqueContext, VMShape, VMStoreContext, VMTableDefinition, VMTableImport, VMTagDefinition,
+    VMTagImport,
 };
-use crate::wasm::TrapKind;
 use alloc::string::String;
 use anyhow::{bail, ensure};
 use core::alloc::Layout;
@@ -38,8 +40,6 @@ use core::{fmt, ptr, slice};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
 use static_assertions::const_assert_eq;
-use crate::mem::VirtualAddress;
-use crate::wasm::trap_handler::WasmFault;
 
 #[derive(Debug)]
 pub struct InstanceHandle {
@@ -52,8 +52,8 @@ unsafe impl Sync for InstanceHandle {}
 #[derive(Debug)]
 pub struct Instance {
     module: Module,
-    pub(super) memories: PrimaryMap<DefinedMemoryIndex, Memory>,
-    pub(super) tables: PrimaryMap<DefinedTableIndex, Table>,
+    pub(in crate::wasm) memories: PrimaryMap<DefinedMemoryIndex, Memory>,
+    pub(in crate::wasm) tables: PrimaryMap<DefinedTableIndex, Table>,
     dropped_elements: EntitySet<ElemIndex>,
     dropped_data: EntitySet<DataIndex>,
 
@@ -375,7 +375,7 @@ impl InstanceHandle {
 impl Instance {
     pub unsafe fn from_parts(
         module: Module,
-        mut instance: NonNull<Instance>,
+        instance: NonNull<Instance>,
         tables: PrimaryMap<DefinedTableIndex, Table>,
         memories: PrimaryMap<DefinedMemoryIndex, Memory>,
     ) -> crate::Result<InstanceHandle> {
@@ -422,7 +422,7 @@ impl Instance {
 
     fn wasm_fault(&self, addr: VirtualAddress) -> Option<WasmFault> {
         let mut fault = None;
-        
+
         for (_, memory) in self.memories.iter() {
             let accessible = memory.wasm_accessible();
             if accessible.start <= addr && addr < accessible.end {
@@ -431,12 +431,12 @@ impl Instance {
                 assert!(fault.is_none());
                 fault = Some(WasmFault {
                     memory_size: memory.byte_size(),
-                    wasm_address: u64::try_from(addr.checked_sub_addr(accessible.start).unwrap()).unwrap(),
+                    wasm_address: u64::try_from(addr.checked_sub_addr(accessible.start).unwrap())
+                        .unwrap(),
                 });
             }
-            
         }
-        
+
         fault
     }
 
@@ -505,19 +505,21 @@ impl Instance {
     }
 
     /// Get the given memory's page size, in bytes.
-    pub fn memory_page_size(&self, index: MemoryIndex) -> usize {
-        todo!()
+    pub fn memory_page_size(&self, index: MemoryIndex) -> u64 {
+        self.translated_module().memories[index].page_size()
     }
 
+    #[expect(unused, reason = "TODO")]
     pub fn memory_grow(
         &mut self,
         store: &mut StoreOpaque,
         index: MemoryIndex,
         delta: u64,
-    ) -> crate::Result<Option<usize>> {
+    ) -> crate::Result<Option<u64>> {
         todo!()
     }
 
+    #[expect(unused, reason = "TODO")]
     pub fn memory_copy(
         &mut self,
         dst_index: MemoryIndex,
@@ -529,6 +531,7 @@ impl Instance {
         todo!()
     }
 
+    #[expect(unused, reason = "TODO")]
     pub fn memory_fill(
         &mut self,
         memory_index: MemoryIndex,
@@ -539,6 +542,7 @@ impl Instance {
         todo!()
     }
 
+    #[expect(unused, reason = "TODO")]
     pub fn memory_init(
         &mut self,
         memory_index: MemoryIndex,
@@ -551,21 +555,50 @@ impl Instance {
     }
 
     pub fn data_drop(&mut self, data_index: DataIndex) {
-        todo!()
+        self.dropped_data.insert(data_index);
     }
 
     pub fn table_element_type(&self, table_index: TableIndex) -> TableElementType {
-        todo!()
+        match self.translated_module().tables[table_index]
+            .element_type
+            .heap_type
+            .inner
+        {
+            WasmHeapTypeInner::Func
+            | WasmHeapTypeInner::ConcreteFunc(_)
+            | WasmHeapTypeInner::NoFunc => TableElementType::Func,
+            WasmHeapTypeInner::Extern
+            | WasmHeapTypeInner::NoExtern
+            | WasmHeapTypeInner::Any
+            | WasmHeapTypeInner::Eq
+            | WasmHeapTypeInner::I31
+            | WasmHeapTypeInner::Array
+            | WasmHeapTypeInner::ConcreteArray(_)
+            | WasmHeapTypeInner::Struct
+            | WasmHeapTypeInner::ConcreteStruct(_)
+            | WasmHeapTypeInner::None => TableElementType::GcRef,
+
+            WasmHeapTypeInner::Exn | WasmHeapTypeInner::NoExn => {
+                todo!("exception-handling proposal")
+            }
+            WasmHeapTypeInner::Cont
+            | WasmHeapTypeInner::ConcreteCont(_)
+            | WasmHeapTypeInner::NoCont => todo!("stack switching proposal"),
+        }
     }
 
     pub fn table_grow(
         &mut self,
-        store: &mut StoreOpaque,
         table_index: TableIndex,
         delta: u64,
         init_value: TableElement,
     ) -> crate::Result<Option<usize>> {
-        todo!()
+        let res = self
+            .with_defined_table_index_and_instance(table_index, |def_index, instance| {
+                instance.tables[def_index].grow(delta, init_value)
+            })?;
+
+        Ok(res)
     }
 
     pub fn table_fill(
@@ -575,18 +608,9 @@ impl Instance {
         val: TableElement,
         len: u64,
     ) -> Result<(), TrapKind> {
-        todo!()
-    }
-
-    pub fn table_copy(
-        &mut self,
-        dst_index: TableIndex,
-        dst: u64,
-        src_index: TableIndex,
-        src: u64,
-        len: u64,
-    ) -> Result<(), TrapKind> {
-        todo!()
+        self.with_defined_table_index_and_instance(table_index, |def_index, instance| {
+            instance.tables[def_index].fill(dst, val, len)
+        })
     }
 
     pub fn table_init(

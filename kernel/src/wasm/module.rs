@@ -5,19 +5,19 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use alloc::string::{String, ToString};
+use crate::wasm::Engine;
+use crate::wasm::code_registry::{register_code, unregister_code};
 use crate::wasm::compile::{CompileInputs, CompiledFunctionInfo};
 use crate::wasm::indices::{DefinedFuncIndex, EntityIndex, VMSharedTypeIndex};
 use crate::wasm::translate::{Import, ModuleTranslator, TranslatedModule};
 use crate::wasm::type_registry::RuntimeTypeCollection;
 use crate::wasm::utils::u8_size_of;
 use crate::wasm::vm::{CodeObject, MmapVec, VMArrayCallFunction, VMShape, VMWasmCallFunction};
-use crate::wasm::Engine;
+use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use core::mem;
 use core::ptr::NonNull;
 use wasmparser::{Validator, WasmFeatures};
-use crate::wasm::code_registry::{register_code, unregister_code};
 
 /// A compiled WebAssembly module, ready to be instantiated.
 ///
@@ -80,7 +80,11 @@ impl Module {
         register_code(&code);
 
         Ok(Self(Arc::new(ModuleInner {
-            name: translation.module.name.clone().unwrap_or("<unnamed mystery module>".to_string()),
+            name: translation
+                .module
+                .name
+                .clone()
+                .unwrap_or("<unnamed mystery module>".to_string()),
             engine: engine.clone(),
             vmshape: VMShape::for_module(u8_size_of::<*mut u8>(), &translation.module),
             translated_module: translation.module,
@@ -184,7 +188,7 @@ impl Module {
     pub(super) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
-    
+
     pub(super) fn new_stub(engine: Engine) -> Self {
         let translated_module = TranslatedModule::default();
         Self(Arc::new(ModuleInner {

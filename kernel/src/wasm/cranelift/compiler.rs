@@ -11,7 +11,7 @@ use crate::wasm::translate::{
 use crate::wasm::trap::TRAP_INTERNAL_ASSERT;
 use crate::wasm::utils::{array_call_signature, u32_offset_of, value_type, wasm_call_signature};
 use crate::wasm::vm::{
-    StaticVMShape, VMArrayCallHostFuncContext, VMFuncRef, VMStoreContext, VMCONTEXT_MAGIC,
+    StaticVMShape, VMArrayCallHostFuncContext, VMCONTEXT_MAGIC, VMFuncRef, VMStoreContext,
 };
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -24,7 +24,7 @@ use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::{Endianness, InstBuilder, Type, Value};
 use cranelift_codegen::ir::{GlobalValueData, MemFlags, Signature, UserExternalName, UserFuncName};
 use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
-use cranelift_codegen::{ir, TextSectionBuilder};
+use cranelift_codegen::{TextSectionBuilder, ir};
 use cranelift_frontend::FunctionBuilder;
 use spin::Mutex;
 use target_lexicon::Triple;

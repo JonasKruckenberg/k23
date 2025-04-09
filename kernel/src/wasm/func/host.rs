@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::wasm::func::typed::WasmTy;
+use crate::wasm::func::{FuncData, FuncKind};
 use crate::wasm::store::{StoreInner, StoreOpaque};
 use crate::wasm::types::{FuncType, ValType};
 use crate::wasm::vm::{
@@ -18,7 +19,6 @@ use anyhow::bail;
 use core::iter;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
-use crate::wasm::func::{FuncData, FuncKind};
 
 #[derive(Debug)]
 pub struct HostFunc {

@@ -20,7 +20,7 @@ use crate::wasm::vm::{
     ExportedFunction, VMArrayCallHostFuncContext, VMFuncRef, VMFunctionImport, VMOpaqueContext,
     VMVal, VmPtr,
 };
-use crate::wasm::{Module, Store, MAX_WASM_STACK};
+use crate::wasm::{MAX_WASM_STACK, Module, Store};
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use anyhow::ensure;
@@ -281,7 +281,10 @@ pub(super) unsafe fn do_call(
             let exit = enter_wasm(store);
             let res = crate::wasm::trap_handler::catch_traps(store, |caller| {
                 tracing::trace!("calling VMFuncRef array call");
-                let success = func_ref.array_call(VMOpaqueContext::from_vmcontext(caller), NonNull::from(params_and_results));
+                let success = func_ref.array_call(
+                    VMOpaqueContext::from_vmcontext(caller),
+                    NonNull::from(params_and_results),
+                );
                 tracing::trace!(success, "returned from VMFuncRef array call");
             });
             exit_wasm(store, exit);
@@ -393,9 +396,8 @@ fn enter_wasm(store: &mut StoreOpaque) -> Option<VirtualAddress> {
 fn exit_wasm(store: &mut StoreOpaque, prev_stack: Option<VirtualAddress>) {
     // If we don't have a previous stack pointer to restore, then there's no
     // cleanup we need to perform here.
-    let prev_stack = match prev_stack {
-        Some(stack) => stack,
-        None => return,
+    let Some(prev_stack) = prev_stack else {
+        return;
     };
 
     unsafe {

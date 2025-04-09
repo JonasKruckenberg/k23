@@ -14,10 +14,10 @@ use crate::wasm::vm::{ConstExprEvaluator, Imports};
 use crate::wasm::{Engine, Extern, Func, Global, Instance, Memory, Module, Store, Table, Tag};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use anyhow::{bail, format_err, Context};
+use anyhow::{Context, bail, format_err};
 use core::marker::PhantomData;
-use hashbrown::hash_map::Entry;
 use hashbrown::HashMap;
+use hashbrown::hash_map::Entry;
 
 /// A dynamic linker for WebAssembly modules.
 #[derive(Debug)]
@@ -91,7 +91,6 @@ impl<T> Linker<T> {
         };
         self.map.get(&key)
     }
-
 
     /// Alias all exports of `module` under the name `as_module`.
     ///
@@ -179,11 +178,15 @@ impl<T> Linker<T> {
 
             match (def, &import.ty) {
                 (Definition::Func(func, _actual), EntityType::Function(_expected)) => {
-                    imports.functions.push(func.as_vmfunction_import(store, module));
+                    imports
+                        .functions
+                        .push(func.as_vmfunction_import(store, module));
                 }
                 (Definition::HostFunc(func, _actual), EntityType::Function(_expected)) => {
                     let func = func.clone().to_func(store);
-                    imports.functions.push(func.as_vmfunction_import(store, module));
+                    imports
+                        .functions
+                        .push(func.as_vmfunction_import(store, module));
                 }
                 (Definition::Table(table, _actual), EntityType::Table(_expected)) => {
                     imports.tables.push(table.as_vmtable_import(store));
@@ -280,6 +283,4 @@ impl Definition {
             Definition::Tag(t, _) => Extern::Tag(*t),
         }
     }
-    
-    
 }

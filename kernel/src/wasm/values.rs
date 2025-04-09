@@ -5,11 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::wasm::Func;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::types::{HeapType, HeapTypeInner, RefType, ValType};
 use crate::wasm::utils::enum_accessors;
 use crate::wasm::vm::{TableElement, VMVal};
-use crate::wasm::Func;
 use anyhow::bail;
 use core::ptr;
 
@@ -107,14 +107,12 @@ impl Val {
             Val::F64(_) => ValType::F64,
             Val::V128(_) => ValType::V128,
             Val::FuncRef(None) => ValType::NULLFUNCREF,
-            Val::FuncRef(Some(f)) => ValType::Ref(RefType::new(
-                false,
-                HeapType::concrete_func(f.ty(store)),
-            )),
-            // Val::ExternRef(Some(_)) => ValType::EXTERNREF,
-            // Val::ExternRef(None) => ValType::NULLFUNCREF,
-            // Val::AnyRef(None) => ValType::NULLREF,
-            // Val::AnyRef(Some(a)) => ValType::Ref(RefType::new(false, a._ty(store)?)),
+            Val::FuncRef(Some(f)) => {
+                ValType::Ref(RefType::new(false, HeapType::concrete_func(f.ty(store))))
+            } // Val::ExternRef(Some(_)) => ValType::EXTERNREF,
+              // Val::ExternRef(None) => ValType::NULLFUNCREF,
+              // Val::AnyRef(None) => ValType::NULLREF,
+              // Val::AnyRef(Some(a)) => ValType::Ref(RefType::new(false, a._ty(store)?)),
         })
     }
 
@@ -513,21 +511,32 @@ impl Ref {
     ) -> crate::Result<TableElement> {
         let heap_top_ty = ty.heap_type().top();
         match (self, heap_top_ty) {
-            (Ref::Func(None), HeapType { inner: HeapTypeInner::NoFunc, shared: _ }) => {
+            (
+                Ref::Func(None),
+                HeapType {
+                    inner: HeapTypeInner::NoFunc,
+                    shared: _,
+                },
+            ) => {
                 assert!(ty.is_nullable());
                 Ok(TableElement::FuncRef(None))
             }
-            (Ref::Func(Some(f)), HeapType { inner: HeapTypeInner::Func, shared: _ }) => {
+            (
+                Ref::Func(Some(f)),
+                HeapType {
+                    inner: HeapTypeInner::Func,
+                    shared: _,
+                },
+            ) => {
                 debug_assert!(
                     f.comes_from_same_store(&store),
                     "checked in `ensure_matches_ty`"
                 );
                 Ok(TableElement::FuncRef(Some(f.vm_func_ref(store))))
             }
-            _ => unimplemented!()
+            _ => unimplemented!(),
         }
     }
-
 }
 
 #[expect(irrefutable_let_patterns, reason = "there is only one variant rn")]

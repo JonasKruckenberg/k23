@@ -7,8 +7,11 @@
 
 mod stored;
 
-use crate::wasm::vm::{InstanceAllocator, InstanceHandle, VMContext, VMFuncRef, VMGlobalDefinition, VMStoreContext, VMVal};
-use crate::wasm::{Engine, Module};
+use crate::wasm::vm::{
+    InstanceAllocator, InstanceHandle, VMContext, VMFuncRef, VMGlobalDefinition, VMStoreContext,
+    VMTableDefinition, VMVal,
+};
+use crate::wasm::{Engine, Module, vm};
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -22,8 +25,8 @@ use static_assertions::{assert_impl_all, const_assert};
 
 use crate::arch;
 use crate::mem::VirtualAddress;
-pub use stored::{Stored, StoredData};
 use crate::wasm::trap_handler::WasmFault;
+pub use stored::{Stored, StoredData};
 
 pub struct Store<T>(Pin<Box<StoreInner<T>>>);
 
@@ -45,6 +48,7 @@ impl<T> Store<T> {
                 default_caller: InstanceHandle::null(),
                 wasm_vmval_storage: vec![],
                 host_globals: vec![],
+                host_tables: vec![],
                 _m: PhantomPinned,
             },
             data,
@@ -111,8 +115,9 @@ pub struct StoreOpaque {
     /// Used to optimized host->wasm calls when calling a function dynamically (through `Func::call`)
     /// to avoid allocating a new vector each time a function is called.
     wasm_vmval_storage: Vec<VMVal>,
-    
+
     host_globals: Vec<VMGlobalDefinition>,
+    host_tables: Vec<(VMTableDefinition, vm::Table)>,
 
     _m: PhantomPinned,
 }
@@ -158,9 +163,19 @@ impl StoreOpaque {
     }
 
     #[inline]
-    pub(super) fn add_host_global(&mut self, def: VMGlobalDefinition) -> NonNull<VMGlobalDefinition> {
+    pub(super) fn add_host_global(
+        &mut self,
+        def: VMGlobalDefinition,
+    ) -> NonNull<VMGlobalDefinition> {
         self.host_globals.push(def);
         NonNull::from(self.host_globals.last_mut().unwrap())
+    }
+
+    #[inline]
+    pub(super) fn add_host_table(&mut self, table: vm::Table) -> NonNull<VMTableDefinition> {
+        self.host_tables
+            .push((table.as_vmtable_definition(), table));
+        NonNull::from(self.host_tables.last_mut().map(|(def, _)| def).unwrap())
     }
 
     pub(super) fn wasm_fault(

@@ -8,8 +8,8 @@
 use crate::arch;
 use crate::mem::address::AddressRangeExt;
 use crate::mem::{
-    AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions,
-    PhysicalAddress, VirtualAddress,
+    AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions, PhysicalAddress,
+    VirtualAddress,
 };
 use alloc::string::String;
 use core::alloc::Layout;
@@ -196,7 +196,7 @@ impl Mmap {
         if self.range.is_empty() {
             return ptr::null();
         }
-        
+
         let ptr = self.range.start.as_ptr();
         debug_assert!(!ptr.is_null());
         ptr
@@ -234,9 +234,7 @@ impl Mmap {
         _branch_protection: bool,
     ) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_executable: {:?}", self.range);
-        self.protect(aspace,
-            Permissions::READ | Permissions::EXECUTE,
-        )
+        self.protect(aspace, Permissions::READ | Permissions::EXECUTE)
     }
 
     /// Mark this memory mapping as read-only (`R`) essentially removing the write permission.

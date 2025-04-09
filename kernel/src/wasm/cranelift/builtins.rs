@@ -1,9 +1,9 @@
 #![expect(unused, reason = "TODO")]
 
-use crate::wasm::builtins::{foreach_builtin_function, BuiltinFunctionIndex};
+use crate::wasm::builtins::{BuiltinFunctionIndex, foreach_builtin_function};
 use crate::wasm::compile::NS_BUILTIN;
 use alloc::vec;
-use cranelift_codegen::ir::{self, types, AbiParam, ArgumentPurpose, Function, Signature, Type};
+use cranelift_codegen::ir::{self, AbiParam, ArgumentPurpose, Function, Signature, Type, types};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
 use cranelift_entity::EntityRef;
 

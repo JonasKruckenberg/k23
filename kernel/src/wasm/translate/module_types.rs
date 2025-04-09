@@ -1,13 +1,15 @@
-use alloc::borrow::Cow;
-use alloc::vec::Vec;
 use crate::wasm::indices::{ModuleInternedRecGroupIndex, ModuleInternedTypeIndex};
-use crate::wasm::translate::{TranslatedModule, WasmCompositeType, WasmCompositeTypeInner, WasmFuncType};
 use crate::wasm::translate::type_convert::WasmparserTypeConverter;
 use crate::wasm::translate::types::WasmSubType;
+use crate::wasm::translate::{
+    TranslatedModule, WasmCompositeType, WasmCompositeTypeInner, WasmFuncType,
+};
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
 use core::fmt;
 use core::range::Range;
-use cranelift_entity::{EntityRef, PrimaryMap, SecondaryMap};
 use cranelift_entity::packed_option::PackedOption;
+use cranelift_entity::{EntityRef, PrimaryMap, SecondaryMap};
 use hashbrown::HashMap;
 use wasmparser::{Validator, ValidatorId};
 
@@ -306,7 +308,7 @@ impl ModuleTypesBuilder {
     fn next_rec_group_index(&self) -> ModuleInternedRecGroupIndex {
         self.types.rec_groups.next_key()
     }
-    
+
     /// Returns the next return value of `push`.
     pub fn next_ty(&self) -> ModuleInternedTypeIndex {
         self.types.wasm_types.next_key()

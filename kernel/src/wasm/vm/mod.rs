@@ -11,28 +11,28 @@ mod const_eval;
 mod instance;
 mod instance_alloc;
 mod memory;
+mod mmap_vec;
 mod provenance;
 mod table;
 mod vmcontext;
 mod vmshape;
-mod mmap_vec;
 
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
 use crate::wasm::indices::DefinedMemoryIndex;
+use crate::wasm::translate;
 use crate::wasm::translate::TranslatedModule;
 pub use code_object::CodeObject;
 pub use const_eval::ConstExprEvaluator;
 pub use instance::{Instance, InstanceAndStore, InstanceHandle};
 pub use instance_alloc::{InstanceAllocator, PlaceholderAllocatorDontUse};
 pub use memory::Memory;
+pub use mmap_vec::MmapVec;
+pub use provenance::VmPtr;
 pub use table::{Table, TableElement};
 pub use vmcontext::*;
 pub use vmshape::{StaticVMShape, VMShape};
-pub use mmap_vec::MmapVec;
-pub use provenance::VmPtr;
-use crate::wasm::translate;
 
 /// The value of an export passed from one instance to another.
 #[derive(Debug, Clone)]
@@ -109,7 +109,7 @@ unsafe impl Sync for ExportedGlobal {}
 pub struct ExportedTag {
     /// The address of the global storage.
     pub definition: NonNull<VMTagDefinition>,
-    pub tag: translate::Tag
+    pub tag: translate::Tag,
 }
 // See docs on send/sync for `ExportFunction` above.
 unsafe impl Send for ExportedTag {}

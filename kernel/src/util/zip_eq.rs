@@ -50,8 +50,16 @@ where
         match (self.a.next(), self.b.next()) {
             (Some(a), Some(b)) => Some((a, b)),
             (None, None) => None,
-            (None, _) => panic!("iterators had different lengths. {} was shorter than {}", type_name::<A>(), type_name::<B>()),
-            (_, None) => panic!("iterators had different lengths. {} was shorter than {}", type_name::<B>(), type_name::<A>()),
+            (None, _) => panic!(
+                "iterators had different lengths. {} was shorter than {}",
+                type_name::<A>(),
+                type_name::<B>()
+            ),
+            (_, None) => panic!(
+                "iterators had different lengths. {} was shorter than {}",
+                type_name::<B>(),
+                type_name::<A>()
+            ),
         }
     }
 

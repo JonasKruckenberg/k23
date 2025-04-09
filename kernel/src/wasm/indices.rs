@@ -1,5 +1,5 @@
-use cranelift_entity::entity_impl;
 use crate::wasm::utils::enum_accessors;
+use cranelift_entity::entity_impl;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeIndex(u32);

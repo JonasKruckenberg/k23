@@ -16,7 +16,7 @@ use crate::wasm::translate::{
 };
 use crate::wasm::trap::{TRAP_BAD_SIGNATURE, TRAP_INDIRECT_CALL_TO_NULL};
 use crate::wasm::utils::{
-    reference_type, u32_offset_of, u8_size_of, value_type, wasm_call_signature,
+    reference_type, u8_size_of, u32_offset_of, value_type, wasm_call_signature,
 };
 use crate::wasm::vm::{
     StaticVMShape, VMFuncRef, VMFunctionImport, VMGlobalImport, VMMemoryDefinition, VMMemoryImport,
@@ -310,11 +310,7 @@ impl TranslationEnvironment<'_> {
         let sig_index = self.module.functions[index]
             .signature
             .unwrap_module_type_index();
-        let sig = self
-            .types
-            .get_wasm_type(sig_index)
-            .unwrap()
-            .unwrap_func();
+        let sig = self.types.get_wasm_type(sig_index).unwrap().unwrap_func();
 
         let signature = func.import_signature(wasm_call_signature(self.isa, sig));
         let name =

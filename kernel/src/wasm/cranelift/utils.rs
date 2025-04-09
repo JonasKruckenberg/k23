@@ -1,9 +1,9 @@
 use crate::wasm::cranelift::env::TranslationEnvironment;
+use crate::wasm::translate::IndexType;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::types;
 use cranelift_frontend::FunctionBuilder;
 use wasmparser::{FuncValidator, WasmModuleResources};
-use crate::wasm::translate::IndexType;
 
 /// Get the parameter and result types for the given Wasm blocktype.
 pub fn blocktype_params_results<T>(

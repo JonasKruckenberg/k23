@@ -18,17 +18,17 @@ use anyhow::Context;
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
 use hashbrown::HashMap;
-use wasmparser::collections::IndexMap;
 use wasmparser::WasmFeatures;
+use wasmparser::collections::IndexMap;
 
 pub use const_expr::{ConstExpr, ConstOp};
 pub use module_translator::ModuleTranslator;
 pub use module_types::ModuleTypes;
 pub use type_convert::WasmparserTypeConverter;
 pub use types::{
-    EntityType, WasmCompositeType, WasmCompositeTypeInner, WasmFuncType, WasmHeapTopType,
-    WasmHeapType, WasmHeapTypeInner, WasmRecGroup, WasmRefType, WasmStorageType, WasmSubType,
-    WasmValType, WasmFieldType
+    EntityType, WasmCompositeType, WasmCompositeTypeInner, WasmFieldType, WasmFuncType,
+    WasmHeapTopType, WasmHeapType, WasmHeapTypeInner, WasmRecGroup, WasmRefType, WasmStorageType,
+    WasmSubType, WasmValType,
 };
 
 #[derive(Debug)]

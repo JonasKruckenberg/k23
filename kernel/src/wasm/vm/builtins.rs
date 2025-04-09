@@ -5,13 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::wasm::TrapKind;
 use crate::wasm::indices::{DataIndex, ElemIndex, MemoryIndex, TableIndex};
 use crate::wasm::store::StoreOpaque;
+use crate::wasm::trap_handler::HostResultHasUnwindSentinel;
 use crate::wasm::vm::instance::Instance;
 use crate::wasm::vm::table::{TableElement, TableElementType};
-use crate::wasm::trap_handler::HostResultHasUnwindSentinel;
-use crate::wasm::vm::VMFuncRef;
-use crate::wasm::TrapKind;
+use crate::wasm::vm::{Table, VMFuncRef};
 use core::ptr::NonNull;
 
 /// A helper structure to represent the return value of a memory or table growth
@@ -63,7 +63,9 @@ fn memory_grow(
     let result = instance
         .memory_grow(store, memory_index, delta)?
         .map(|size_in_bytes| {
-            AllocationSize(size_in_bytes / instance.memory_page_size(memory_index))
+            AllocationSize(
+                usize::try_from(size_in_bytes / instance.memory_page_size(memory_index)).unwrap(),
+            )
         });
 
     Ok(result)
@@ -118,7 +120,7 @@ fn memory_copy(
 }
 
 unsafe fn table_grow_func_ref(
-    store: &mut StoreOpaque,
+    _store: &mut StoreOpaque,
     instance: &mut Instance,
     table_index: u32,
     delta: u64,
@@ -133,15 +135,15 @@ unsafe fn table_grow_func_ref(
         TableElementType::GcRef => unreachable!(),
     };
 
-    let result = instance
-        .table_grow(store, table_index, delta, element)?
+    let res = instance
+        .table_grow(table_index, delta, element)?
         .map(AllocationSize);
 
-    Ok(result)
+    Ok(res)
 }
 
 fn table_fill_func_ref(
-    store: &mut StoreOpaque,
+    _store: &mut StoreOpaque,
     instance: &mut Instance,
     table_index: u32,
     dst: u64,
@@ -162,15 +164,23 @@ fn table_fill_func_ref(
 fn table_copy(
     _store: &mut StoreOpaque,
     instance: &mut Instance,
-    dst_index: u32,
-    src_index: u32,
+    dst_table_index: u32,
+    src_table_index: u32,
     dst: u64,
     src: u64,
     len: u64,
 ) -> Result<(), TrapKind> {
-    let dst_index = TableIndex::from_u32(dst_index);
-    let src_index = TableIndex::from_u32(src_index);
-    instance.table_copy(dst_index, src, src_index, src, len)
+    let dst_table_index = TableIndex::from_u32(dst_table_index);
+    let src_table_index = TableIndex::from_u32(src_table_index);
+
+    let dst_table = instance.defined_or_imported_table(dst_table_index);
+    let src_table = instance.defined_or_imported_table(src_table_index);
+
+    // Notice that this actually *doesn't* go through instance like the other table_* builtins
+    // This is because copy needs to borrow two tables mutably at the same time (they might be the same table too)
+    // which of course is horrifically incompatible with Rusts borrow rules. This (plus passing *mut Table instead of &mut Table)
+    // is our way of working around this
+    Table::copy(dst_table.as_ptr(), src_table.as_ptr(), dst, src, len)
 }
 
 // Implementation of `table.init`.
@@ -193,6 +203,7 @@ fn elem_drop(_store: &mut StoreOpaque, instance: &mut Instance, elem_index: u32)
     instance.elem_drop(ElemIndex::from_u32(elem_index));
 }
 
+#[expect(unused, reason = "TODO")]
 fn memory_atomic_notify(
     _store: &mut StoreOpaque,
     instance: &mut Instance,
@@ -203,6 +214,7 @@ fn memory_atomic_notify(
     todo!()
 }
 
+#[expect(unused, reason = "TODO")]
 fn memory_atomic_wait32(
     _store: &mut StoreOpaque,
     instance: &mut Instance,
@@ -214,6 +226,7 @@ fn memory_atomic_wait32(
     todo!()
 }
 
+#[expect(unused, reason = "TODO")]
 fn memory_atomic_wait64(
     _store: &mut StoreOpaque,
     instance: &mut Instance,
@@ -227,9 +240,9 @@ fn memory_atomic_wait64(
 
 fn raise(_store: &mut StoreOpaque, _instance: &mut Instance) {
     tracing::debug!("{_store:?} {_instance:?}");
-    
+
     todo!()
-    
+
     // unsafe {
     //     crate::wasm::vm::trap_handler::raise_preexisting_trap()
     // }

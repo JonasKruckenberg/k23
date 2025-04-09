@@ -6,12 +6,12 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
-use crate::arch::device::cpu::with_cpu;
 use crate::arch::PAGE_SIZE;
+use crate::arch::device::cpu::with_cpu;
 use crate::backtrace::Backtrace;
 use crate::mem::VirtualAddress;
 use crate::scheduler::scheduler;
-use crate::{irq, panic, TRAP_STACK_SIZE_PAGES};
+use crate::{TRAP_STACK_SIZE_PAGES, irq, panic};
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::cell::Cell;

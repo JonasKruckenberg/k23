@@ -5,13 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::wasm::Engine;
 use crate::wasm::indices::{
     CanonicalizedTypeIndex, ModuleInternedTypeIndex, RecGroupRelativeTypeIndex, VMSharedTypeIndex,
 };
 use crate::wasm::translate::{
     ModuleTypes, WasmCompositeType, WasmCompositeTypeInner, WasmRecGroup, WasmSubType,
 };
-use crate::wasm::Engine;
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -25,7 +25,7 @@ use core::sync::atomic::Ordering::Acquire;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::{fmt, iter};
 use cranelift_entity::packed_option::{PackedOption, ReservedValue};
-use cranelift_entity::{iter_entity_range, PrimaryMap, SecondaryMap};
+use cranelift_entity::{PrimaryMap, SecondaryMap, iter_entity_range};
 use hashbrown::HashSet;
 use spin::RwLock;
 use wasmtime_slab::Slab;
@@ -144,7 +144,7 @@ impl RuntimeTypeCollection {
             trampolines: SecondaryMap::default(),
         }
     }
-    
+
     /// Gets the map from `ModuleInternedTypeIndex` to `VMSharedTypeIndex`
     pub fn type_map(&self) -> &PrimaryMap<ModuleInternedTypeIndex, VMSharedTypeIndex> {
         &self.types
@@ -306,15 +306,17 @@ impl TypeRegistry {
             let shared_ty = types[module_ty];
             let trampoline_shared_ty = self.get_trampoline_type(shared_ty);
             trampolines[trampoline_shared_ty] = Some(module_trampoline_ty).into();
-            log::trace!("--> shared_to_module_trampolines[{trampoline_shared_ty:?}] = {module_trampoline_ty:?}");
+            log::trace!(
+                "--> shared_to_module_trampolines[{trampoline_shared_ty:?}] = {module_trampoline_ty:?}"
+            );
         }
         log::trace!("Done building module's shared-to-module-trampoline-types map");
-        
+
         RuntimeTypeCollection {
             engine: engine.clone(),
             rec_groups,
             types,
-            trampolines
+            trampolines,
         }
     }
 
@@ -325,12 +327,12 @@ impl TypeRegistry {
     // pub fn get_type(&self, engine: &Engine, index: VMSharedTypeIndex) -> Option<RegisteredType> {
     //     let id = shared_type_index_to_slab_id(index);
     //     let inner = self.0.read();
-    // 
+    //
     //     let ty = inner.types.get(id)?.clone().unwrap();
     //     let entry = inner.type_to_rec_group[index].clone().unwrap();
-    // 
+    //
     //     entry.incr_ref_count("TypeRegistry::get_type");
-    // 
+    //
     //     debug_assert!(entry.0.registrations.load(Acquire) != 0);
     //     Some(RegisteredType {
     //         engine: engine.clone(),
@@ -376,7 +378,7 @@ impl TypeRegistry {
         let (entry, ty) = {
             let id = shared_type_index_to_slab_id(index);
             let inner = self.0.read();
-            
+
             let ty = inner.types.get(id)?.clone().unwrap();
             let entry = inner.type_to_rec_group[index].clone().unwrap();
             // let layout = inner.type_to_gc_layout.get(index).and_then(|l| l.clone());

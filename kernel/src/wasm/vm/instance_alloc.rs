@@ -12,12 +12,12 @@ use crate::wasm::translate::TranslatedModule;
 use crate::wasm::utils::round_usize_up_to_host_pages;
 use crate::wasm::vm::instance::Instance;
 use crate::wasm::vm::mmap_vec::MmapVec;
-use crate::wasm::vm::{InstanceHandle, VMShape};
-use crate::wasm::{translate, vm, MEMORY_MAX, TABLE_MAX};
+use crate::wasm::vm::{InstanceHandle, TableElement, VMShape};
+use crate::wasm::{MEMORY_MAX, TABLE_MAX, translate, vm};
 use anyhow::Context;
 use core::alloc::Allocator;
-use core::{cmp, mem};
 use core::ptr::NonNull;
+use core::{cmp, mem};
 use cranelift_entity::PrimaryMap;
 
 /// A type that knows how to allocate backing memory for instance resources.
@@ -39,7 +39,6 @@ pub trait InstanceAllocator {
     /// The safety of the entire VM depends on the correct implementation of this method.
     unsafe fn allocate_memory(
         &self,
-        module: &TranslatedModule,
         memory: &translate::Memory,
         memory_index: DefinedMemoryIndex,
     ) -> crate::Result<vm::Memory>;
@@ -67,7 +66,6 @@ pub trait InstanceAllocator {
     /// The safety of the entire VM depends on the correct implementation of this method.
     unsafe fn allocate_table(
         &self,
-        module: &TranslatedModule,
         table_desc: &translate::Table,
         table_index: DefinedTableIndex,
     ) -> crate::Result<vm::Table>;
@@ -101,7 +99,7 @@ pub trait InstanceAllocator {
             if let Some(def_index) = module.defined_memory_index(index) {
                 let new_def_index =
                     // Safety: caller has to ensure safety
-                    memories.push(unsafe { self.allocate_memory(module, plan, def_index)? });
+                    memories.push(unsafe { self.allocate_memory(plan, def_index)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
         }
@@ -128,7 +126,7 @@ pub trait InstanceAllocator {
             if let Some(def_index) = module.defined_table_index(index) {
                 let new_def_index =
                     // Safety: caller has to ensure safety
-                    tables.push(unsafe { self.allocate_table(module, plan, def_index)? });
+                    tables.push(unsafe { self.allocate_table(plan, def_index)? });
                 debug_assert_eq!(def_index, new_def_index);
             }
         }
@@ -185,10 +183,6 @@ pub trait InstanceAllocator {
     ///
     /// Returns an error if any of the allocations fail. In this case, the resources are cleaned up
     /// automatically.
-    #[expect(
-        clippy::type_complexity,
-        reason = "TODO clean up the return type and remove"
-    )]
     fn allocate_module(&self, module: Module) -> crate::Result<InstanceHandle> {
         let mut tables = PrimaryMap::with_capacity(
             usize::try_from(module.translated().num_defined_tables()).unwrap(),
@@ -214,7 +208,7 @@ pub trait InstanceAllocator {
     }
 
     unsafe fn deallocate_module(&self, handle: &mut InstanceHandle) {
-        unsafe{
+        unsafe {
             self.deallocate_memories(&mut handle.instance_mut().memories);
             self.deallocate_tables(&mut handle.instance_mut().tables);
             self.deallocate_instance_and_vmctx(handle.as_non_null(), handle.instance().vmshape());
@@ -234,7 +228,8 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
     }
 
     unsafe fn deallocate_instance_and_vmctx(&self, instance: NonNull<Instance>, vmshape: &VMShape) {
-        unsafe { // FIXME this shouldn't allocate from the kernel heap
+        unsafe {
+            // FIXME this shouldn't allocate from the kernel heap
             let layout = Instance::alloc_layout(vmshape);
             alloc::alloc::Global.deallocate(instance.cast(), layout);
         }
@@ -242,7 +237,6 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
 
     unsafe fn allocate_memory(
         &self,
-        _module: &TranslatedModule,
         memory: &translate::Memory,
         _memory_index: DefinedMemoryIndex,
     ) -> crate::Result<vm::Memory> {
@@ -282,9 +276,9 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         let mmap = crate::mem::with_kernel_aspace(|aspace| {
             // attempt to use 2MiB alignment but if that's not available fallback to the largest
             let align = cmp::min(2 * 1048576, aspace.frame_alloc.max_alignment());
-            
+
             // TODO the align arg should be a named const not a weird number like this
-            Mmap::new_zeroed(aspace, request_bytes,align, None)
+            Mmap::new_zeroed(aspace, request_bytes, align, None)
                 .context("Failed to mmap zeroed memory for Memory")
         })?;
 
@@ -303,7 +297,6 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
 
     unsafe fn allocate_table(
         &self,
-        _module: &TranslatedModule,
         table: &translate::Table,
         _table_index: DefinedTableIndex,
     ) -> crate::Result<vm::Table> {
@@ -318,7 +311,11 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
         } else {
             crate::mem::with_kernel_aspace(|aspace| -> crate::Result<_> {
                 let mut elements = MmapVec::new_zeroed(aspace, reserve_size)?;
-                elements.extend_with(aspace, usize::try_from(table.limits.min).unwrap(), None);
+                elements.extend_with(
+                    aspace,
+                    usize::try_from(table.limits.min).unwrap(),
+                    TableElement::FuncRef(None),
+                );
                 Ok(elements)
             })?
         };

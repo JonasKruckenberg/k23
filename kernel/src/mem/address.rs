@@ -336,7 +336,7 @@ address_impl!(VirtualAddress);
 
 impl VirtualAddress {
     pub const ZERO: Self = Self(0);
-    
+
     #[must_use]
     pub const fn new(n: usize) -> Option<Self> {
         let this = Self(n);
