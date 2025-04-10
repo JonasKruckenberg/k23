@@ -143,12 +143,7 @@ impl fmt::Display for Error {
                 return write!(f, "{} at byte offset {}", err, self.inner.span.offset);
             }
         };
-        let file = self
-            .inner
-            .file
-            .as_ref()
-            .map(|p| p.as_str())
-            .unwrap_or("<anon>");
+        let file = self.inner.file.as_deref().unwrap_or("<anon>");
         write!(
             f,
             "\

@@ -151,7 +151,7 @@ impl<'a> Parse<'a> for Data<'a> {
         // as having an initialization offset.
         } else {
             let memory = if parser.peek::<u32>()? {
-                // FIXME: this is only here to accomodate
+                // FIXME: this is only here to accommodate
                 // proposals/threads/imports.wast at this current moment in
                 // time, this probably should get removed when the threads
                 // proposal is rebased on the current spec.
@@ -212,7 +212,7 @@ impl<'a> Parse<'a> for Data<'a> {
     }
 }
 
-/// Differnet ways the value of a data segment can be defined.
+/// Different ways the value of a data segment can be defined.
 #[derive(Debug)]
 #[allow(missing_docs)]
 pub enum DataVal<'a> {
@@ -228,6 +228,11 @@ impl DataVal<'_> {
             DataVal::String(s) => s.len(),
             DataVal::Integral(s) => s.len(),
         }
+    }
+
+    /// Returns `true` when this data segment is empty
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Pushes the value of this data value onto the provided list of bytes.

@@ -50,18 +50,14 @@ impl<'a> Expander<'a> {
     }
 
     fn expand_header(&mut self, item: &mut ModuleField<'a>) {
-        match item {
-            ModuleField::Type(ty) => {
-                let id = gensym::fill(ty.span, &mut ty.id);
-                match &mut ty.def.kind {
-                    InnerTypeKind::Func(f) => {
-                        f.key().insert(self, Index::Id(id));
-                    }
-                    InnerTypeKind::Array(_) | InnerTypeKind::Struct(_) | InnerTypeKind::Cont(_) => {
-                    }
+        if let ModuleField::Type(ty) = item {
+            let id = gensym::fill(ty.span, &mut ty.id);
+            match &mut ty.def.kind {
+                InnerTypeKind::Func(f) => {
+                    f.key().insert(self, Index::Id(id));
                 }
+                InnerTypeKind::Array(_) | InnerTypeKind::Struct(_) | InnerTypeKind::Cont(_) => {}
             }
-            _ => {}
         }
     }
 
@@ -157,7 +153,7 @@ impl<'a> Expander<'a> {
                     // multi-value proposal isn't enabled and/or used we won't
                     // encode it.
                     Some(inline) => {
-                        if inline.params.len() == 0 && inline.results.len() <= 1 {
+                        if inline.params.is_empty() && inline.results.len() <= 1 {
                             return;
                         }
                     }

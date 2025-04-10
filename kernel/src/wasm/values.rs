@@ -172,15 +172,15 @@ impl Val {
     /// This method is unsafe for the reasons that
     /// [`Func::to_vmval`] are unsafe.
     #[expect(clippy::unnecessary_wraps, reason = "TODO")]
-    pub(super) unsafe fn to_vmval(&self, store: &mut StoreOpaque) -> crate::Result<VMVal> {
+    pub(super) unsafe fn to_vmval(self, store: &mut StoreOpaque) -> crate::Result<VMVal> {
         // Safety: ensured by caller
         unsafe {
             match self {
-                Val::I32(i) => Ok(VMVal::i32(*i)),
-                Val::I64(i) => Ok(VMVal::i64(*i)),
-                Val::F32(u) => Ok(VMVal::f32(*u)),
-                Val::F64(u) => Ok(VMVal::f64(*u)),
-                Val::V128(b) => Ok(VMVal::v128(*b)),
+                Val::I32(i) => Ok(VMVal::i32(i)),
+                Val::I64(i) => Ok(VMVal::i64(i)),
+                Val::F32(u) => Ok(VMVal::f32(u)),
+                Val::F64(u) => Ok(VMVal::f64(u)),
+                Val::V128(b) => Ok(VMVal::v128(b)),
                 Val::FuncRef(f) => Ok(VMVal::funcref(match f {
                     None => ptr::null_mut(),
                     Some(e) => e.to_vmval(store),

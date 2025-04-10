@@ -14,7 +14,7 @@ use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::{format, vec};
-use anyhow::{anyhow, bail, Context};
+use anyhow::{Context, anyhow, bail};
 use core::fmt::{Display, LowerHex};
 use spin::Mutex;
 use wasmparser::Validator;
@@ -22,7 +22,7 @@ use wast::core::{EncodeOptions, NanPattern, V128Pattern, WastArgCore, WastRetCor
 use wast::parser::ParseBuffer;
 use wast::token::{F32, F64};
 use wast::{
-    parser, Error, QuoteWat, Wast, WastArg, WastDirective, WastExecute, WastInvoke, WastRet, Wat,
+    Error, QuoteWat, Wast, WastArg, WastDirective, WastExecute, WastInvoke, WastRet, Wat, parser,
 };
 
 macro_rules! spectests {

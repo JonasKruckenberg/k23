@@ -161,7 +161,7 @@ pub(crate) fn encode(
     e.typed_section(&globals);
     e.typed_section(&exports);
     e.custom_sections(Before(Start));
-    if let Some(start) = start.get(0) {
+    if let Some(start) = start.first() {
         e.wasm.section(&wasm_encoder::StartSection {
             function_index: start.unwrap_u32(),
         });
@@ -500,7 +500,7 @@ impl ItemKind<'_> {
 }
 
 impl TableType<'_> {
-    fn to_table_type(&self) -> wasm_encoder::TableType {
+    fn to_table_type(self) -> wasm_encoder::TableType {
         wasm_encoder::TableType {
             element_type: self.elem.into(),
             minimum: self.limits.min,
@@ -512,7 +512,7 @@ impl TableType<'_> {
 }
 
 impl MemoryType {
-    fn to_memory_type(&self) -> wasm_encoder::MemoryType {
+    fn to_memory_type(self) -> wasm_encoder::MemoryType {
         wasm_encoder::MemoryType {
             minimum: self.limits.min,
             maximum: self.limits.max,
@@ -524,7 +524,7 @@ impl MemoryType {
 }
 
 impl GlobalType<'_> {
-    fn to_global_type(&self) -> wasm_encoder::GlobalType {
+    fn to_global_type(self) -> wasm_encoder::GlobalType {
         wasm_encoder::GlobalType {
             val_type: self.ty.into(),
             mutable: self.mutable,
@@ -995,8 +995,7 @@ fn find_names<'a>(
         Data,
     }
 
-    let mut ret = Names::default();
-    ret.module = get_name(module_id, module_name);
+    let mut ret = Names { module: get_name(module_id, module_name), ..Default::default() };
     let mut names = Vec::new();
     for field in fields {
         // Extract the kind/id/name from whatever kind of field this is...
@@ -1093,10 +1092,10 @@ fn find_names<'a>(
                     }
                 }
             }
-            if local_names.len() > 0 {
+            if !local_names.is_empty() {
                 ret.locals.push((*idx, local_names));
             }
-            if label_names.len() > 0 {
+            if !label_names.is_empty() {
                 ret.labels.push((*idx, label_names));
             }
         }
@@ -1114,7 +1113,7 @@ fn find_names<'a>(
                     }
                 }
             }
-            if field_names.len() > 0 {
+            if !field_names.is_empty() {
                 ret.fields.push((*idx, field_names))
             }
         }
@@ -1122,7 +1121,7 @@ fn find_names<'a>(
         *idx += 1;
     }
 
-    return ret;
+    ret
 }
 
 impl Names<'_> {
@@ -1155,7 +1154,7 @@ impl Names<'_> {
             }
             let mut map = wasm_encoder::NameMap::default();
             for (idx, name) in indices {
-                map.append(*idx, *name);
+                map.append(*idx, name);
             }
             Some(map)
         };

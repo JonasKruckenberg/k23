@@ -63,7 +63,7 @@ impl<'a> Resolver<'a> {
                     if let Some(id) = field.id {
                         self.fields
                             .entry(type_index)
-                            .or_insert(Namespace::default())
+                            .or_default()
                             .register_specific(id, i as u32, "field")?;
                     }
                 }
@@ -449,7 +449,7 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
             }
 
             LocalSet(i) | LocalGet(i) | LocalTee(i) => {
-                assert!(self.scopes.len() > 0);
+                assert!(!self.scopes.is_empty());
                 // Resolve a local by iterating over scopes from most recent
                 // to less recent. This allows locals added by `let` blocks to
                 // shadow less recent locals.
@@ -764,8 +764,8 @@ impl<'a> TypeReference<'a> for FunctionType<'a> {
         let types_not_equal = |a: &ValType, b: &ValType| {
             let mut a = *a;
             let mut b = *b;
-            drop((&cx).resolve_valtype(&mut a));
-            drop((&cx).resolve_valtype(&mut b));
+            drop(cx.resolve_valtype(&mut a));
+            drop(cx.resolve_valtype(&mut b));
             a != b
         };
 
@@ -782,7 +782,7 @@ impl<'a> TypeReference<'a> for FunctionType<'a> {
         if not_equal {
             return Err(Error::new(
                 idx.span(),
-                format!("inline function type doesn't match type reference"),
+                "inline function type doesn't match type reference".to_string(),
             ));
         }
 

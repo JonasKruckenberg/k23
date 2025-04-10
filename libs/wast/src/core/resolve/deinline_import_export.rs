@@ -59,7 +59,7 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                             Some(page_size_log2) => 2_u64.pow(page_size_log2),
                             None => default_page_size(),
                         };
-                        let pages = (len + page_size - 1) / page_size;
+                        let pages = len.div_ceil(page_size);
                         let kind = MemoryKind::Normal(MemoryType {
                             limits: Limits {
                                 is64,

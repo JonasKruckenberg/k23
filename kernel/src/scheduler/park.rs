@@ -22,7 +22,7 @@ struct Inner {
 impl Inner {
     fn park(&self) {
         assert!(crate::BOOT_INFO.get().unwrap().cpu_mask.count_ones() > 1);
-        
+
         // If we were previously notified then we consume this notification and
         // return quickly.
         if self
@@ -83,15 +83,14 @@ impl Inner {
     }
 
     fn shutdown(&self) {
+        // Safety: TODO
         unsafe { arch::cpu_unpark(self.cpuid) }
     }
 
-    #[allow(clippy::wrong_self_convention)]
     fn into_raw(this: Arc<Self>) -> *const () {
-        Arc::into_raw(this) as *const ()
+        Arc::into_raw(this).cast::<()>()
     }
 
-    #[allow(clippy::wrong_self_convention)]
     fn into_raw_waker(this: Arc<Self>) -> RawWaker {
         RawWaker::new(
             Inner::into_raw(this),
@@ -101,7 +100,7 @@ impl Inner {
 
     unsafe fn from_raw(ptr: *const ()) -> Arc<Self> {
         // Safety: ensured by caller
-        unsafe { Arc::from_raw(ptr as *const Self) }
+        unsafe { Arc::from_raw(ptr.cast::<Self>()) }
     }
 }
 
@@ -139,6 +138,7 @@ impl UnparkToken {
     }
 
     pub fn into_waker(self) -> Waker {
+        // Safety: the vtable functions are fine, see below
         unsafe {
             let raw = Inner::into_raw_waker(self.0);
             Waker::from_raw(raw)
@@ -149,7 +149,7 @@ impl UnparkToken {
 unsafe fn clone(raw: *const ()) -> RawWaker {
     // Safety: ensured by VTable
     unsafe {
-        Arc::increment_strong_count(raw as *const Inner);
+        Arc::increment_strong_count(raw.cast::<Inner>());
         Inner::into_raw_waker(Inner::from_raw(raw))
     }
 }
@@ -168,7 +168,7 @@ unsafe fn wake(raw: *const ()) {
 }
 
 unsafe fn wake_by_ref(raw: *const ()) {
-    let raw = raw as *const Inner;
+    let raw = raw.cast::<Inner>();
     // Safety: ensured by VTable
     unsafe {
         (*raw).unpark();

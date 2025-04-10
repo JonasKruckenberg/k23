@@ -350,14 +350,11 @@ impl<'a> Lexer<'a> {
     /// Returns an error if the input is malformed.
     pub fn parse(&self, pos: &mut usize) -> Result<Option<Token>, Error> {
         let offset = *pos;
-        Ok(match self.parse_kind(pos)? {
-            Some(kind) => Some(Token {
-                kind,
-                offset,
-                len: (*pos - offset).try_into().unwrap(),
-            }),
-            None => None,
-        })
+        Ok(self.parse_kind(pos)?.map(|kind| Token {
+            kind,
+            offset,
+            len: (*pos - offset).try_into().unwrap(),
+        }))
     }
 
     fn parse_kind(&self, pos: &mut usize) -> Result<Option<TokenKind>, Error> {
@@ -905,7 +902,7 @@ impl<'a> Lexer<'a> {
         Ok(n)
     }
 
-    /// Reads a hexidecimal digit from the input stream, returning where it's
+    /// Reads a hexadecimal digit from the input stream, returning where it's
     /// defined and the hex value. Returns an error on EOF or an invalid hex
     /// digit.
     fn hexdigit(it: &mut str::Chars<'_>) -> Result<u8, LexError> {
@@ -1239,7 +1236,7 @@ fn escape_char(c: char) -> String {
     }
 }
 
-/// This is an attempt to protect agains the "trojan source" [1] problem where
+/// This is an attempt to protect against the "trojan source" [1] problem where
 /// unicode characters can cause editors to render source code differently
 /// for humans than the compiler itself sees.
 ///

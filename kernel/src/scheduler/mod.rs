@@ -235,7 +235,7 @@ impl Scheduler {
 
             // If there is only one CPU in the system we cannot go to sleep
             if self.cores.len() > 1 {
-                 PARK.with(|park| park.park());
+                PARK.with(|park| park.park());
             }
         }
     }

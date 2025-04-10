@@ -19,6 +19,7 @@ pub enum WastArgCore<'a> {
     RefHost(u32),
 }
 
+#[expect(clippy::type_complexity, reason = "")]
 static ARGS: &[(&str, fn(Parser<'_>) -> Result<WastArgCore<'_>>)] = {
     use WastArgCore::*;
     &[
@@ -53,7 +54,7 @@ impl Peek for WastArgCore<'_> {
             Some((kw, _)) => kw,
             None => return Ok(false),
         };
-        Ok(ARGS.iter().find(|(name, _)| *name == kw).is_some())
+        Ok(ARGS.iter().any(|(name, _)| *name == kw))
     }
 
     fn display() -> &'static str {
@@ -97,6 +98,7 @@ pub enum WastRetCore<'a> {
     Either(Vec<WastRetCore<'a>>),
 }
 
+#[expect(clippy::type_complexity, reason = "")]
 static RETS: &[(&str, fn(Parser<'_>) -> Result<WastRetCore<'_>>)] = {
     use WastRetCore::*;
     &[
@@ -146,7 +148,7 @@ impl Peek for WastRetCore<'_> {
             Some((kw, _)) => kw,
             None => return Ok(false),
         };
-        Ok(RETS.iter().find(|(name, _)| *name == kw).is_some())
+        Ok(RETS.iter().any(|(name, _)| *name == kw))
     }
 
     fn display() -> &'static str {

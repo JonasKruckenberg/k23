@@ -299,7 +299,7 @@ impl<'a> ExpressionParser<'a> {
                     }
                 }
                 Paren::None => {
-                    return Err(parser.error("expected to continue a folded instruction"))
+                    return Err(parser.error("expected to continue a folded instruction"));
                 }
             }
         }
@@ -450,6 +450,7 @@ macro_rules! instructions {
                 match self {
                     $(
                         Instruction::$name $((instructions!(@first x $($arg)*)))? => {
+                            #[allow(clippy::extra_unused_lifetimes, reason = "macro")]
                             fn encode<'a>($(arg: &instructions!(@ty $($arg)*),)? v: &mut Vec<u8>) {
                                 instructions!(@encode v $($binary)*);
                                 $(<instructions!(@ty $($arg)*) as Encode>::encode(arg, v);)?
@@ -1221,13 +1222,13 @@ fn assert_instruction_not_too_large() {
 
 impl<'a> Instruction<'a> {
     pub(crate) fn needs_data_count(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Instruction::MemoryInit(_)
-            | Instruction::DataDrop(_)
-            | Instruction::ArrayNewData(_)
-            | Instruction::ArrayInitData(_) => true,
-            _ => false,
-        }
+                | Instruction::DataDrop(_)
+                | Instruction::ArrayNewData(_)
+                | Instruction::ArrayInitData(_)
+        )
     }
 }
 
@@ -1466,7 +1467,7 @@ impl<'a> Parse<'a> for LaneArg {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let lane = parser.step(|c| {
             if let Some((i, rest)) = c.integer()? {
-                if i.sign() == None {
+                if i.sign().is_none() {
                     let (src, radix) = i.val();
                     let val = u8::from_str_radix(src, radix)
                         .map_err(|_| c.error("malformed lane index"))?;
@@ -1540,7 +1541,7 @@ impl<'a> MemArg<'a> {
         let offset = parse_field("offset", parser)?.unwrap_or(0);
         let align = match parse_field("align", parser)? {
             Some(n) if !n.is_power_of_two() => {
-                return Err(parser.error("alignment must be a power of two"))
+                return Err(parser.error("alignment must be a power of two"));
             }
             n => n.unwrap_or(default_align),
         };

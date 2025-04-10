@@ -170,7 +170,7 @@ impl Local {
 
         // Safety: this is the **only** thread that updates this cell, and the index has
         // been calculated above to be within the valid elements
-        Some(unsafe { (&mut *self.inner.buffer[idx].get()).assume_init_read() })
+        Some(unsafe { (*self.inner.buffer[idx].get()).assume_init_read() })
     }
 
     /// Pushes a batch of tasks to the back of the queue. All tasks must fit in
@@ -192,7 +192,7 @@ impl Local {
             // condition ensures we don't touch a cell if there is a
             // value, thus no consumer.
             unsafe {
-                (&mut *self.inner.buffer[idx].get()).write(task);
+                (*self.inner.buffer[idx].get()).write(task);
             }
 
             tail = tail.wrapping_add(1);
@@ -259,7 +259,7 @@ impl Local {
         // condition ensures we don't touch a cell if there is a
         // value, thus no consumer.
         unsafe {
-            (&mut *self.inner.buffer[idx].get()).write(task);
+            (*self.inner.buffer[idx].get()).write(task);
         }
 
         // Make the task available. Synchronizes with a load in
@@ -526,7 +526,7 @@ impl Steal {
             // safety: `dst` queue is empty, and we are the only producer to
             // this queue.
             unsafe {
-                (&mut *dst.inner.buffer[dst_idx].get()).write(task);
+                (*dst.inner.buffer[dst_idx].get()).write(task);
             }
         }
 
