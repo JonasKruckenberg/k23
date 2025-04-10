@@ -26,7 +26,7 @@ use wast::{
 };
 
 macro_rules! spectests {
-    ($($names:ident $paths:literal),*) => {
+    ($($names:ident $paths:literal,)*) => {
         $(
             #[ktest::test]
             async fn $names() {
@@ -46,7 +46,7 @@ spectests!(
     block "../../../tests/testsuite/block.wast",
     br_base "../../../tests/testsuite/br.wast",
     br_if "../../../tests/testsuite/br_if.wast",
-    // br_table "../../../tests/testsuite/br_table.wast",
+    br_table "../../../tests/testsuite/br_table.wast",
     bulk "../../../tests/testsuite/bulk.wast",
     call "../../../tests/testsuite/call.wast",
     call_indirect "../../../tests/testsuite/call_indirect.wast",
@@ -185,7 +185,7 @@ spectests!(
     utf8_custom_section_id "../../../tests/testsuite/utf8-custom-section-id.wast",
     utf8_import_field "../../../tests/testsuite/utf8-import-field.wast",
     utf8_import_module "../../../tests/testsuite/utf8-import-module.wast",
-    utf8_invalid_encoding "../../../tests/testsuite/utf8-invalid-encoding.wast"
+    utf8_invalid_encoding "../../../tests/testsuite/utf8-invalid-encoding.wast",
 );
 
 enum Outcome<T = Vec<Val>> {
