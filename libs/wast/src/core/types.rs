@@ -47,7 +47,7 @@ impl<'a> Parse<'a> for ValType<'a> {
     }
 }
 
-impl Peek for ValType<'_> {
+impl<'a> Peek for ValType<'a> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         Ok(kw::i32::peek(cursor)?
             || kw::i64::peek(cursor)?
@@ -97,7 +97,7 @@ impl<'a> Parse<'a> for HeapType<'a> {
     }
 }
 
-impl Peek for HeapType<'_> {
+impl<'a> Peek for HeapType<'a> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         Ok(AbstractHeapType::peek(cursor)?
             || (LParen::peek(cursor)? && kw::shared::peek2(cursor)?)
@@ -119,6 +119,8 @@ pub enum AbstractHeapType {
     Extern,
     /// A reference to a wasm exception. This is part of the exceptions proposal.
     Exn,
+    /// A reference to a wasm continuation. This is part of the stack switching proposal.
+    Cont,
     /// A reference to any reference value: anyref. This is part of the GC
     /// proposal.
     Any,
@@ -139,6 +141,8 @@ pub enum AbstractHeapType {
     None,
     /// The bottom type of the exnref hierarchy. Part of the exceptions proposal.
     NoExn,
+    /// The bottom type of the contref hierarchy. Part of the stack switching proposal.
+    NoCont,
 }
 
 impl<'a> Parse<'a> for AbstractHeapType {
@@ -153,6 +157,9 @@ impl<'a> Parse<'a> for AbstractHeapType {
         } else if l.peek::<kw::exn>()? {
             parser.parse::<kw::exn>()?;
             Ok(AbstractHeapType::Exn)
+        } else if l.peek::<kw::cont>()? {
+            parser.parse::<kw::cont>()?;
+            Ok(AbstractHeapType::Cont)
         } else if l.peek::<kw::r#any>()? {
             parser.parse::<kw::r#any>()?;
             Ok(AbstractHeapType::Any)
@@ -177,6 +184,9 @@ impl<'a> Parse<'a> for AbstractHeapType {
         } else if l.peek::<kw::noexn>()? {
             parser.parse::<kw::noexn>()?;
             Ok(AbstractHeapType::NoExn)
+        } else if l.peek::<kw::nocont>()? {
+            parser.parse::<kw::nocont>()?;
+            Ok(AbstractHeapType::NoCont)
         } else if l.peek::<kw::none>()? {
             parser.parse::<kw::none>()?;
             Ok(AbstractHeapType::None)
@@ -191,6 +201,7 @@ impl Peek for AbstractHeapType {
         Ok(kw::func::peek(cursor)?
             || kw::r#extern::peek(cursor)?
             || kw::exn::peek(cursor)?
+            || kw::cont::peek(cursor)?
             || kw::any::peek(cursor)?
             || kw::eq::peek(cursor)?
             || kw::r#struct::peek(cursor)?
@@ -199,6 +210,7 @@ impl Peek for AbstractHeapType {
             || kw::nofunc::peek(cursor)?
             || kw::noextern::peek(cursor)?
             || kw::noexn::peek(cursor)?
+            || kw::nocont::peek(cursor)?
             || kw::none::peek(cursor)?)
     }
     fn display() -> &'static str {
@@ -237,13 +249,24 @@ impl<'a> RefType<'a> {
         }
     }
 
-    /// An `exnrefr` as an abbreviation for `(ref null exn)`.
+    /// An `exnref` as an abbreviation for `(ref null exn)`.
     pub fn exn() -> Self {
         RefType {
             nullable: true,
             heap: HeapType::Abstract {
                 shared: false,
                 ty: AbstractHeapType::Exn,
+            },
+        }
+    }
+
+    /// An `cont` as an abbreviation for `(ref null cont)`.
+    pub fn cont() -> Self {
+        RefType {
+            nullable: true,
+            heap: HeapType::Abstract {
+                shared: false,
+                ty: AbstractHeapType::Cont,
             },
         }
     }
@@ -347,6 +370,17 @@ impl<'a> RefType<'a> {
         }
     }
 
+    /// A `nullcontref` as an abbreviation for `(ref null nocont)`.
+    pub fn nullcontref() -> Self {
+        RefType {
+            nullable: true,
+            heap: HeapType::Abstract {
+                shared: false,
+                ty: AbstractHeapType::NoCont,
+            },
+        }
+    }
+
     /// Make the reference type a `shared` one.
     ///
     /// Note that this is not possible for concrete references (e.g., `(ref
@@ -372,10 +406,12 @@ impl<'a> RefType<'a> {
             || l.peek::<kw::structref>()?
             || l.peek::<kw::arrayref>()?
             || l.peek::<kw::i31ref>()?
+            || l.peek::<kw::contref>()?
             || l.peek::<kw::nullfuncref>()?
             || l.peek::<kw::nullexternref>()?
             || l.peek::<kw::nullexnref>()?
-            || l.peek::<kw::nullref>()?)
+            || l.peek::<kw::nullref>()?
+            || l.peek::<kw::nullcontref>()?)
     }
 
     /// Helper for parsing shorthand forms of reference types; e.g., `funcref`.
@@ -389,6 +425,9 @@ impl<'a> RefType<'a> {
         } else if l.peek::<kw::exnref>()? {
             parser.parse::<kw::exnref>()?;
             Ok(RefType::exn())
+        } else if l.peek::<kw::contref>()? {
+            parser.parse::<kw::contref>()?;
+            Ok(RefType::cont())
         } else if l.peek::<kw::anyref>()? {
             parser.parse::<kw::anyref>()?;
             Ok(RefType::any())
@@ -413,6 +452,9 @@ impl<'a> RefType<'a> {
         } else if l.peek::<kw::nullexnref>()? {
             parser.parse::<kw::nullexnref>()?;
             Ok(RefType::nullexnref())
+        } else if l.peek::<kw::nullcontref>()? {
+            parser.parse::<kw::nullcontref>()?;
+            Ok(RefType::nullcontref())
         } else if l.peek::<kw::nullref>()? {
             parser.parse::<kw::nullref>()?;
             Ok(RefType::nullref())
@@ -460,7 +502,7 @@ impl<'a> Parse<'a> for RefType<'a> {
     }
 }
 
-impl Peek for RefType<'_> {
+impl<'a> Peek for RefType<'a> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         Ok(kw::funcref::peek(cursor)?
             || kw::externref::peek(cursor)?
@@ -470,10 +512,12 @@ impl Peek for RefType<'_> {
             || kw::structref::peek(cursor)?
             || kw::arrayref::peek(cursor)?
             || kw::i31ref::peek(cursor)?
+            || kw::contref::peek(cursor)?
             || kw::nullfuncref::peek(cursor)?
             || kw::nullexternref::peek(cursor)?
             || kw::nullexnref::peek(cursor)?
             || kw::nullref::peek(cursor)?
+            || kw::nullcontref::peek(cursor)?
             || (LParen::peek(cursor)? && kw::shared::peek2(cursor)?)
             || (LParen::peek(cursor)? && kw::r#ref::peek2(cursor)?))
     }
@@ -572,17 +616,9 @@ impl<'a> Parse<'a> for Limits {
             false
         };
 
-        let parse = || {
-            if is64 {
-                parser.parse::<u64>()
-            } else {
-                parser.parse::<u32>().map(|x| x.into())
-            }
-        };
-
-        let min = parse()?;
+        let min = parser.parse()?;
         let max = if parser.peek::<u64>()? {
-            Some(parse()?)
+            Some(parser.parse()?)
         } else {
             None
         };
@@ -622,8 +658,9 @@ pub struct MemoryType {
     pub page_size_log2: Option<u32>,
 }
 
-fn page_size(parser: Parser<'_>) -> Result<Option<u32>> {
-    if parser.peek::<LParen>()? {
+/// Parse `(pagesize N)` or nothing.
+pub fn page_size(parser: Parser<'_>) -> Result<Option<u32>> {
+    if parser.peek::<LParen>()? && parser.peek2::<kw::pagesize>()? {
         Ok(Some(parser.parens(|parser| {
             parser.parse::<kw::pagesize>()?;
             let span = parser.cur_span();
@@ -656,11 +693,11 @@ impl<'a> Parse<'a> for MemoryType {
 }
 
 /// A function type with parameters and results.
-#[expect(clippy::type_complexity)]
 #[derive(Clone, Debug, Default)]
 pub struct FunctionType<'a> {
     /// The parameters of a function, optionally each having an identifier for
     /// name resolution and a name for the custom `name` section.
+    #[expect(clippy::type_complexity, reason = "")]
     pub params: Box<[(Option<Id<'a>>, Option<NameAnnotation<'a>>, ValType<'a>)]>,
     /// The results types of a function.
     pub results: Box<[ValType<'a>]>,
@@ -723,7 +760,7 @@ impl<'a> Parse<'a> for FunctionType<'a> {
     }
 }
 
-impl Peek for FunctionType<'_> {
+impl<'a> Peek for FunctionType<'a> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         if let Some(next) = cursor.lparen()? {
             match next.keyword()? {
@@ -755,7 +792,7 @@ impl<'a> Parse<'a> for FunctionTypeNoNames<'a> {
     }
 }
 
-impl Peek for FunctionTypeNoNames<'_> {
+impl<'a> Peek for FunctionTypeNoNames<'a> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         FunctionType::peek(cursor)
     }
@@ -851,6 +888,16 @@ impl<'a> Parse<'a> for ArrayType<'a> {
     }
 }
 
+/// A continuation type.
+#[derive(Clone, Debug)]
+pub struct ContType<'a>(pub Index<'a>);
+
+impl<'a> Parse<'a> for ContType<'a> {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        Ok(ContType(parser.parse()?))
+    }
+}
+
 /// The type of an exported item from a module or instance.
 #[derive(Debug, Clone)]
 pub struct ExportType<'a> {
@@ -880,6 +927,8 @@ pub enum InnerTypeKind<'a> {
     Struct(StructType<'a>),
     /// An array type definition.
     Array(ArrayType<'a>),
+    /// A continuation type definition.
+    Cont(ContType<'a>),
 }
 
 impl<'a> Parse<'a> for InnerTypeKind<'a> {
@@ -894,6 +943,9 @@ impl<'a> Parse<'a> for InnerTypeKind<'a> {
         } else if l.peek::<kw::array>()? {
             parser.parse::<kw::array>()?;
             Ok(InnerTypeKind::Array(parser.parse()?))
+        } else if l.peek::<kw::cont>()? {
+            parser.parse::<kw::cont>()?;
+            Ok(InnerTypeKind::Cont(parser.parse()?))
         } else {
             Err(l.error())
         }
@@ -907,24 +959,53 @@ pub struct TypeDef<'a> {
     pub kind: InnerTypeKind<'a>,
     /// Whether the type is shared or not.
     pub shared: bool,
+    /// The declared parent type of this definition.
+    pub parent: Option<Index<'a>>,
+    /// Whether this type is final or not. By default types are final.
+    pub final_type: Option<bool>,
 }
 
 impl<'a> Parse<'a> for TypeDef<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
-        let mut l = parser.lookahead1();
-        if l.peek::<kw::shared>()? {
-            parser.parse::<kw::shared>()?;
-            parser.parens(|parser| {
+        let parse_shared_and_kind = |parser: Parser<'a>| {
+            if parser.peek::<kw::shared>()? {
+                parser.parse::<kw::shared>()?;
+                parser.parens(|parser| {
+                    let kind = parser.parse()?;
+                    Ok((true, kind))
+                })
+            } else {
                 let kind = parser.parse()?;
-                Ok(TypeDef { shared: true, kind })
-            })
+                Ok((false, kind))
+            }
+        };
+        let (parent, (shared, kind), final_type) = if parser.peek::<kw::sub>()? {
+            parser.parse::<kw::sub>()?;
+
+            let final_type: Option<bool> = if parser.peek::<kw::r#final>()? {
+                parser.parse::<kw::r#final>()?;
+                Some(true)
+            } else {
+                Some(false)
+            };
+
+            let parent = if parser.peek::<Index<'a>>()? {
+                parser.parse()?
+            } else {
+                None
+            };
+            let pair = parser.parens(parse_shared_and_kind)?;
+            (parent, pair, final_type)
         } else {
-            let kind = parser.parse()?;
-            Ok(TypeDef {
-                shared: false,
-                kind,
-            })
-        }
+            (None, parse_shared_and_kind(parser)?, None)
+        };
+
+        Ok(TypeDef {
+            kind,
+            shared,
+            parent,
+            final_type,
+        })
     }
 }
 
@@ -938,15 +1019,11 @@ pub struct Type<'a> {
     pub id: Option<Id<'a>>,
     /// An optional name for this function stored in the custom `name` section.
     pub name: Option<NameAnnotation<'a>>,
-    /// The type that we're declaring.
+    /// The inner definition.
     pub def: TypeDef<'a>,
-    /// The declared parent type of this definition.
-    pub parent: Option<Index<'a>>,
-    /// Whether this type is final or not. By default types are final.
-    pub final_type: Option<bool>,
 }
 
-impl Peek for Type<'_> {
+impl<'a> Peek for Type<'a> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         kw::r#type::peek(cursor)
     }
@@ -960,37 +1037,13 @@ impl<'a> Parse<'a> for Type<'a> {
         let span = parser.parse::<kw::r#type>()?.0;
         let id = parser.parse()?;
         let name = parser.parse()?;
-
-        let (parent, def, final_type) = if parser.peek2::<kw::sub>()? {
-            parser.parens(|parser| {
-                parser.parse::<kw::sub>()?;
-
-                let final_type: Option<bool> = if parser.peek::<kw::r#final>()? {
-                    parser.parse::<kw::r#final>()?;
-                    Some(true)
-                } else {
-                    Some(false)
-                };
-
-                let parent = if parser.peek::<Index<'a>>()? {
-                    parser.parse()?
-                } else {
-                    None
-                };
-                let def = parser.parens(|parser| parser.parse())?;
-                Ok((parent, def, final_type))
-            })?
-        } else {
-            (None, parser.parens(|parser| parser.parse())?, None)
-        };
+        let def = parser.parens(|p| p.parse())?;
 
         Ok(Type {
             span,
             id,
             name,
             def,
-            parent,
-            final_type,
         })
     }
 }

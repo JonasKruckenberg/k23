@@ -42,17 +42,16 @@ pub const KIB: usize = 1024;
 pub const MIB: usize = KIB * 1024;
 pub const GIB: usize = MIB * 1024;
 
-pub static KERNEL_ASPACE: OnceLock<Arc<Mutex<AddressSpace>>> = OnceLock::new();
+static KERNEL_ASPACE: OnceLock<Arc<Mutex<AddressSpace>>> = OnceLock::new();
 
 pub fn with_kernel_aspace<F, R>(f: F) -> R
 where
-    F: FnOnce(&mut AddressSpace) -> R,
+    F: FnOnce(&Arc<Mutex<AddressSpace>>) -> R,
 {
-    let mut aspace = KERNEL_ASPACE
+    let aspace = KERNEL_ASPACE
         .get()
-        .expect("kernel address space not initialized")
-        .lock();
-    f(&mut aspace)
+        .expect("kernel address space not initialized");
+    f(aspace)
 }
 
 pub fn init(
@@ -75,7 +74,7 @@ pub fn init(
         reserve_wired_regions(&mut aspace, boot_info, &mut flush);
         flush.flush().unwrap();
 
-        log::trace!("Kernel AddressSpace {aspace:?}");
+        tracing::trace!("Kernel AddressSpace {aspace:?}");
 
         Ok(Arc::new(Mutex::new(aspace)))
     })?;

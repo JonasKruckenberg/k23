@@ -38,7 +38,11 @@ pub(super) struct StoreInner<T> {
 }
 
 impl<T> Store<T> {
-    pub fn new(engine: &Engine, alloc: Box<dyn InstanceAllocator + Send + Sync>, data: T) -> Self {
+    pub fn new(
+        engine: &Engine,
+        alloc: &'static (dyn InstanceAllocator + Send + Sync),
+        data: T,
+    ) -> Self {
         let mut inner = Box::new(StoreInner {
             opaque: StoreOpaque {
                 engine: engine.clone(),
@@ -91,7 +95,7 @@ pub struct StoreOpaque {
     /// global type registry.
     engine: Engine,
     /// The instance allocator that manages all the runtime memory for Wasm instances.
-    alloc: Box<dyn InstanceAllocator + Send + Sync>,
+    alloc: &'static (dyn InstanceAllocator + Send + Sync),
     /// Data that is shared across all instances in this store such as stack limits, epoch pointer etc.
     /// This field is accessed by guest code
     vm_store_context: VMStoreContext,
@@ -133,8 +137,8 @@ impl StoreOpaque {
         &self.engine
     }
     #[inline]
-    pub(super) fn alloc_mut(&mut self) -> &mut (dyn InstanceAllocator + Send + Sync) {
-        self.alloc.as_mut()
+    pub(super) fn alloc_mut(&self) -> &(dyn InstanceAllocator + Send + Sync) {
+        self.alloc
     }
     #[inline]
     pub(super) fn vm_store_context(&self) -> &VMStoreContext {

@@ -16,6 +16,7 @@ use crate::wasm::vm::{CodeObject, MmapVec, VMArrayCallFunction, VMShape, VMWasmC
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use core::mem;
+use core::ops::DerefMut;
 use core::ptr::NonNull;
 use wasmparser::{Validator, WasmFeatures};
 
@@ -69,10 +70,10 @@ impl Module {
             let mut code =
                 unlinked_outputs.link_and_finish(engine, &translation.module, |code| {
                     tracing::debug!("Allocating new memory map...");
-                    MmapVec::from_slice(aspace, &code)
+                    MmapVec::from_slice(aspace.clone(), &code)
                 })?;
 
-            code.publish(aspace)?;
+            code.publish(aspace.lock().deref_mut())?;
             Ok(Arc::new(code))
         })?;
 

@@ -1009,7 +1009,7 @@ impl Instance {
         }
     }
 
-    #[tracing::instrument(skip(self, store, module))]
+    #[tracing::instrument(level = "debug", skip(self, store, module))]
     unsafe fn initialize_vmctx(
         &mut self,
         store: &mut StoreOpaque,
@@ -1186,7 +1186,7 @@ impl Instance {
     ///
     /// among other things the caller has to ensure that this is only ever called **after**
     /// calling `Instance::initialize_vmctx`
-    #[tracing::instrument(skip(self, module))]
+    #[tracing::instrument(level = "debug", skip(self, module))]
     unsafe fn initialize_vmfunc_refs(&mut self, imports: &Imports, module: &Module) {
         // Safety: the caller pinky-promised that the vmctx is correctly initialized
         unsafe {
@@ -1237,7 +1237,7 @@ impl Instance {
     ///
     /// among other things the caller has to ensure that this is only ever called **after**
     /// calling `Instance::initialize_vmctx`
-    #[tracing::instrument(skip(self, store, ctx, const_eval, module))]
+    #[tracing::instrument(level = "debug", skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_globals(
         &mut self,
         store: &mut StoreOpaque,
@@ -1266,7 +1266,7 @@ impl Instance {
     ///
     /// among other things the caller has to ensure that this is only ever called **after**
     /// calling `Instance::initialize_vmctx`
-    #[tracing::instrument(skip(self, store, ctx, const_eval, module))]
+    #[tracing::instrument(level = "debug", skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_tables(
         &mut self,
         store: &mut StoreOpaque,
@@ -1331,7 +1331,7 @@ impl Instance {
     ///
     /// among other things the caller has to ensure that this is only ever called **after**
     /// calling `Instance::initialize_vmctx`
-    #[tracing::instrument(skip(self, store, ctx, const_eval, module))]
+    #[tracing::instrument(level = "debug", skip(self, store, ctx, const_eval, module))]
     unsafe fn initialize_memories(
         &mut self,
         store: &mut StoreOpaque,

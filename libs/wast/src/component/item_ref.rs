@@ -65,7 +65,7 @@ impl<'a, K: Parse<'a>> Parse<'a> for CoreItemRef<'a, K> {
     }
 }
 
-impl<K: Peek> Peek for CoreItemRef<'_, K> {
+impl<'a, K: Peek> Peek for CoreItemRef<'a, K> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         peek::<K>(cursor)
     }
@@ -102,7 +102,7 @@ impl<'a, K: Parse<'a>> Parse<'a> for ItemRef<'a, K> {
     }
 }
 
-impl<K: Peek> Peek for ItemRef<'_, K> {
+impl<'a, K: Peek> Peek for ItemRef<'a, K> {
     fn peek(cursor: Cursor<'_>) -> Result<bool> {
         peek::<K>(cursor)
     }

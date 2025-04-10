@@ -404,6 +404,10 @@ id! {
     pub mod core;
 
     // Support for component model parsing
+    #[cfg(feature = "component-model")]
+    pub mod component;
+    #[cfg(not(feature = "component-model"))]
+    #[path = "component_disabled.rs"]
     pub mod component;
 }
 
@@ -423,6 +427,7 @@ pub mod kw {
     custom_keyword!(assert_return);
     custom_keyword!(assert_trap);
     custom_keyword!(assert_unlinkable);
+    custom_keyword!(assert_suspension);
     custom_keyword!(before);
     custom_keyword!(binary);
     custom_keyword!(block);
@@ -432,6 +437,8 @@ pub mod kw {
     custom_keyword!(catch_all);
     custom_keyword!(catch_all_ref);
     custom_keyword!(code);
+    custom_keyword!(cont);
+    custom_keyword!(contref);
     custom_keyword!(component);
     custom_keyword!(data);
     custom_keyword!(declare);
@@ -481,16 +488,19 @@ pub mod kw {
     custom_keyword!(modulecode);
     custom_keyword!(nan_arithmetic = "nan:arithmetic");
     custom_keyword!(nan_canonical = "nan:canonical");
+    custom_keyword!(nocont);
     custom_keyword!(nofunc);
     custom_keyword!(noextern);
     custom_keyword!(noexn);
     custom_keyword!(none);
     custom_keyword!(null);
+    custom_keyword!(nullcontref);
     custom_keyword!(nullfuncref);
     custom_keyword!(nullexternref);
     custom_keyword!(nullexnref);
     custom_keyword!(nullref);
     custom_keyword!(offset);
+    custom_keyword!(on);
     custom_keyword!(outer);
     custom_keyword!(own);
     custom_keyword!(pagesize);
@@ -519,6 +529,7 @@ pub mod kw {
     custom_keyword!(shared);
     custom_keyword!(start);
     custom_keyword!(sub);
+    custom_keyword!(switch);
     custom_keyword!(r#final = "final");
     custom_keyword!(table);
     custom_keyword!(then);
@@ -570,7 +581,44 @@ pub mod kw {
     custom_keyword!(export_info = "export-info");
     custom_keyword!(import_info = "import-info");
     custom_keyword!(thread);
+    custom_keyword!(thread_spawn_ref = "thread.spawn_ref");
+    custom_keyword!(thread_spawn_indirect = "thread.spawn_indirect");
+    custom_keyword!(thread_available_parallelism = "thread.available_parallelism");
+    custom_keyword!(backpressure_set = "backpressure.set");
+    custom_keyword!(task_return = "task.return");
+    custom_keyword!(yield_ = "yield");
+    custom_keyword!(subtask_drop = "subtask.drop");
+    custom_keyword!(stream_new = "stream.new");
+    custom_keyword!(stream_read = "stream.read");
+    custom_keyword!(stream_write = "stream.write");
+    custom_keyword!(stream_cancel_read = "stream.cancel-read");
+    custom_keyword!(stream_cancel_write = "stream.cancel-write");
+    custom_keyword!(stream_close_readable = "stream.close-readable");
+    custom_keyword!(stream_close_writable = "stream.close-writable");
+    custom_keyword!(future_new = "future.new");
+    custom_keyword!(future_read = "future.read");
+    custom_keyword!(future_write = "future.write");
+    custom_keyword!(future_cancel_read = "future.cancel-read");
+    custom_keyword!(future_cancel_write = "future.cancel-write");
+    custom_keyword!(future_close_readable = "future.close-readable");
+    custom_keyword!(future_close_writable = "future.close-writable");
+    custom_keyword!(error_context_new = "error-context.new");
+    custom_keyword!(error_context_debug_message = "error-context.debug-message");
+    custom_keyword!(error_context_drop = "error-context.drop");
     custom_keyword!(wait);
+    custom_keyword!(definition);
+    custom_keyword!(r#async = "async");
+    custom_keyword!(callback);
+    custom_keyword!(stream);
+    custom_keyword!(future);
+    custom_keyword!(error_context = "error-context");
+    custom_keyword!(waitable_set_new = "waitable-set.new");
+    custom_keyword!(waitable_set_wait = "waitable-set.wait");
+    custom_keyword!(waitable_set_poll = "waitable-set.poll");
+    custom_keyword!(waitable_set_drop = "waitable-set.drop");
+    custom_keyword!(waitable_join = "waitable.join");
+    custom_keyword!(context_get = "context.get");
+    custom_keyword!(context_set = "context.set");
 }
 
 /// Common annotations used to parse WebAssembly text files.

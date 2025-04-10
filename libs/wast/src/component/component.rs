@@ -9,6 +9,7 @@ use alloc::vec::Vec;
 
 /// A parsed WebAssembly component module.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct Component<'a> {
     /// Where this `component` was defined
     pub span: Span,
@@ -30,7 +31,7 @@ pub enum ComponentKind<'a> {
     Binary(Vec<&'a [u8]>),
 }
 
-impl Component<'_> {
+impl<'a> Component<'a> {
     /// Performs a name resolution pass on this [`Component`], resolving all
     /// symbolic names to indices.
     ///
@@ -52,7 +53,7 @@ impl Component<'_> {
     ///
     /// If an error happens during resolution, such a name resolution error or
     /// items are found in the wrong order, then an error is returned.
-    pub fn resolve(&mut self) -> core::result::Result<(), crate::Error> {
+    pub fn resolve(&mut self) -> ::core::result::Result<(), crate::Error> {
         match &mut self.kind {
             ComponentKind::Text(fields) => {
                 crate::component::expand::expand(fields);
@@ -104,16 +105,11 @@ impl Component<'_> {
         }
         Ok(())
     }
-}
 
-impl<'a> Parse<'a> for Component<'a> {
-    fn parse(parser: Parser<'a>) -> Result<Self> {
-        let _r = parser.register_annotation("custom");
-        let _r = parser.register_annotation("producers");
-        let _r = parser.register_annotation("name");
-        let _r = parser.register_annotation("metadata.code.branch_hint");
-
-        let span = parser.parse::<kw::component>()?.0;
+    pub(crate) fn parse_without_component_keyword(
+        component_keyword_span: Span,
+        parser: Parser<'a>,
+    ) -> Result<Self> {
         let id = parser.parse()?;
         let name = parser.parse()?;
 
@@ -128,10 +124,19 @@ impl<'a> Parse<'a> for Component<'a> {
             ComponentKind::Text(ComponentField::parse_remaining(parser)?)
         };
         Ok(Component {
-            span,
+            span: component_keyword_span,
             id,
             name,
             kind,
+        })
+    }
+}
+
+impl<'a> Parse<'a> for Component<'a> {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        parser.with_standard_annotations_registered(|parser| {
+            let span = parser.parse::<kw::component>()?.0;
+            Component::parse_without_component_keyword(span, parser)
         })
     }
 }
@@ -143,6 +148,7 @@ pub enum ComponentField<'a> {
     CoreModule(CoreModule<'a>),
     CoreInstance(CoreInstance<'a>),
     CoreType(CoreType<'a>),
+    CoreRec(crate::core::Rec<'a>),
     Component(NestedComponent<'a>),
     Instance(Instance<'a>),
     Alias(Alias<'a>),
@@ -182,6 +188,10 @@ impl<'a> Parse<'a> for ComponentField<'a> {
             if parser.peek2::<kw::func>()? {
                 return Ok(Self::CoreFunc(parser.parse()?));
             }
+            if parser.peek2::<kw::rec>()? {
+                parser.parse::<kw::core>()?;
+                return Ok(Self::CoreRec(parser.parse()?));
+            }
         } else {
             if parser.peek::<kw::component>()? {
                 return Ok(Self::Component(parser.parse()?));
@@ -206,6 +216,9 @@ impl<'a> Parse<'a> for ComponentField<'a> {
             }
             if parser.peek::<kw::start>()? {
                 return Ok(Self::Start(parser.parse()?));
+            }
+            if parser.peek::<kw::canon>()? {
+                return Ok(Self::CanonicalFunc(parser.parse()?));
             }
             if parser.peek::<annotation::custom>()? {
                 return Ok(Self::Custom(parser.parse()?));

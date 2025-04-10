@@ -62,7 +62,7 @@ use mem::PhysicalAddress;
 use mem::frame_alloc;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use spin::Once;
+use spin::{Once, OnceLock};
 
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
@@ -81,6 +81,8 @@ pub type Result<T> = anyhow::Result<T>;
 cpu_local!(
     pub static CPUID: Cell<usize> = Cell::new(usize::MAX);
 );
+pub static BOOT_INFO: OnceLock<&'static BootInfo> = OnceLock::new();
+
 #[used(linker)]
 #[unsafe(link_section = ".loader_config")]
 static LOADER_CONFIG: LoaderConfig = {
@@ -91,6 +93,8 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    BOOT_INFO.get_or_init(|| boot_info);
+
     // Unwinding expects at least one landing pad in the callstack, but capturing all unwinds that
     // bubble up to this point is also a good idea since we can perform some last cleanup and
     // print an error message.
@@ -176,20 +180,40 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         Instant::from_ticks(Ticks(boot_ticks)).elapsed()
     );
 
-    shell::init(
-        device_tree(),
-        _sched,
-        boot_info.cpu_mask.count_ones() as usize,
-    );
-
     cfg_if! {
         if #[cfg(test)] {
-            let mut output = riscv::hio::HostStream::new_stderr();
-            tests::run_tests(&mut output, boot_info);
+            if cpuid == 0 {
+                _sched.block_on(tests::run_tests()).exit_if_failed();
+                _sched.shutdown();
+            } else {
+                scheduler::Worker::new(_sched, cpuid, &mut rng).run();
+            }
         } else {
             scheduler::Worker::new(_sched, cpuid, &mut rng).run();
         }
     }
+
+    //         // FIXME we want orderly execution of tests, so below we pick a random thread for execution
+    //         //  and force all others to spinwait, which... isn't great but it works. Ideally this
+    //         //  should be replaced with something that uses the async runtime to spawn and distribute tests
+    //
+    //         let t = if cpuid == 0 {
+    //             futures::future::Either::Left(async { let _ = tests::run_tests(); })
+    //         } else {
+    //             futures::future::Either::Right(core::future::pending())
+    //         };
+    //
+    //         scheduler::Worker::new(_sched, cpuid, &mut rng, t).run().unwrap();
+    //     } else {
+    //         shell::init(
+    //             device_tree(),
+    //             _sched,
+    //             boot_info.cpu_mask.count_ones() as usize,
+    //         );
+    //
+    //         scheduler::Worker::new(_sched, cpuid, &mut rng, core::future::pending()).run().unwrap();
+    //     }
+    // }
 
     // if cpuid == 0 {
     //     sched.spawn(async move {

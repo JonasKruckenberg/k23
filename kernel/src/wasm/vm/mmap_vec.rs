@@ -7,12 +7,14 @@
 
 use crate::arch;
 use crate::mem::{AddressSpace, Mmap};
+use alloc::sync::Arc;
 use anyhow::Context;
 use core::cmp::max;
 use core::marker::PhantomData;
 use core::ops::Deref;
 use core::range::Range;
 use core::slice;
+use spin::Mutex;
 
 #[derive(Debug)]
 pub struct MmapVec<T> {
@@ -30,7 +32,7 @@ impl<T> MmapVec<T> {
         }
     }
 
-    pub fn new_zeroed(aspace: &mut AddressSpace, capacity: usize) -> crate::Result<Self> {
+    pub fn new_zeroed(aspace: Arc<Mutex<AddressSpace>>, capacity: usize) -> crate::Result<Self> {
         Ok(Self {
             mmap: Mmap::new_zeroed(
                 aspace,
@@ -44,15 +46,15 @@ impl<T> MmapVec<T> {
         })
     }
 
-    pub fn from_slice(aspace: &mut AddressSpace, slice: &[T]) -> crate::Result<Self>
+    pub fn from_slice(aspace: Arc<Mutex<AddressSpace>>, slice: &[T]) -> crate::Result<Self>
     where
         T: Clone,
     {
         if slice.is_empty() {
             Ok(Self::new_empty())
         } else {
-            let mut this = Self::new_zeroed(aspace, slice.len())?;
-            this.extend_from_slice(aspace, slice);
+            let mut this = Self::new_zeroed(aspace.clone(), slice.len())?;
+            this.extend_from_slice(&mut aspace.lock(), slice);
 
             Ok(this)
         }

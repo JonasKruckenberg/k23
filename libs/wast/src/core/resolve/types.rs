@@ -5,7 +5,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use hashbrown::HashMap;
 
-pub fn expand(fields: &mut Vec<ModuleField>) {
+pub fn expand<'a>(fields: &mut Vec<ModuleField<'a>>) {
     let mut expander = Expander::default();
     expander.process(fields);
 }
@@ -56,7 +56,7 @@ impl<'a> Expander<'a> {
                 InnerTypeKind::Func(f) => {
                     f.key().insert(self, Index::Id(id));
                 }
-                InnerTypeKind::Array(_) | InnerTypeKind::Struct(_) => {}
+                InnerTypeKind::Array(_) | InnerTypeKind::Struct(_) | InnerTypeKind::Cont(_) => {}
             }
         }
     }
@@ -207,14 +207,15 @@ impl<'a> Expander<'a> {
         }
 
         // ... and failing that we insert a new type definition.
-        let id = gensym::generation(span);
+        let id = gensym::generate(span);
         self.to_prepend.push(ModuleField::Type(Type {
             span,
             id: Some(id),
             name: None,
-            def: key.to_def(span),
-            parent: None,
-            final_type: None,
+            // Currently, there is no way in the WebAssembly text format to mark
+            //  a function `shared` inline; a `shared` function must use an
+            // explicit type index, e.g., `(func (type $ft))`.
+            def: key.to_def(span, /* shared = */ false),
         }));
         let idx = Index::Id(id);
         key.insert(self, idx);
@@ -230,7 +231,7 @@ pub(crate) trait TypeReference<'a>: Default {
 
 pub(crate) trait TypeKey<'a> {
     fn lookup(&self, cx: &Expander<'a>) -> Option<Index<'a>>;
-    fn to_def(&self, span: Span) -> TypeDef<'a>;
+    fn to_def(&self, span: Span, shared: bool) -> TypeDef<'a>;
     fn insert(&self, cx: &mut Expander<'a>, id: Index<'a>);
 }
 
@@ -253,13 +254,15 @@ impl<'a> TypeKey<'a> for FuncKey<'a> {
         cx.func_type_to_idx.get(self).cloned()
     }
 
-    fn to_def(&self, _span: Span) -> TypeDef<'a> {
+    fn to_def(&self, _span: Span, shared: bool) -> TypeDef<'a> {
         TypeDef {
             kind: InnerTypeKind::Func(FunctionType {
                 params: self.0.iter().map(|t| (None, None, *t)).collect(),
                 results: self.1.clone(),
             }),
-            shared: false, // TODO: handle shared
+            shared,
+            parent: None,
+            final_type: None,
         }
     }
 

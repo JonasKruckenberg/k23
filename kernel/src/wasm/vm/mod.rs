@@ -26,7 +26,9 @@ use crate::wasm::translate::TranslatedModule;
 pub use code_object::CodeObject;
 pub use const_eval::ConstExprEvaluator;
 pub use instance::{Instance, InstanceAndStore, InstanceHandle};
-pub use instance_alloc::{InstanceAllocator, PlaceholderAllocatorDontUse};
+pub use instance_alloc::InstanceAllocator;
+#[cfg(test)]
+pub use instance_alloc::PlaceholderAllocatorDontUse;
 pub use memory::Memory;
 pub use mmap_vec::MmapVec;
 pub use provenance::VmPtr;

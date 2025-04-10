@@ -9,25 +9,15 @@ pub fn test(_args: TokenStream, item: TokenStream) -> TokenStream {
 
     let ident = &func.sig.ident;
     let ident_str = ident.to_string();
-    let static_ident = format_ident!("{}", ident_str.to_uppercase());
+    let static_ident = format_ident!("__K23_TEST_{}", ident_str.to_uppercase());
     let crate_path = crate_path(&mut func.attrs).unwrap();
-
-    let run_func = if func.sig.inputs.len() == 1 {
-        quote! {
-            |boot_info| #ident(boot_info)
-        }
-    } else {
-        quote! {
-            |_| #ident()
-        }
-    };
 
     quote!(
         #[used(linker)]
-        #[link_section = "k23_tests"]
+        #[unsafe(link_section = "k23_tests")]
         static #static_ident: #crate_path::Test = {
             #crate_path::Test {
-                run: #run_func,
+                run: || ::alloc::boxed::Box::pin(#ident()),
                 info: #crate_path::TestInfo {
                     module: module_path!(),
                     name: stringify!(#ident),

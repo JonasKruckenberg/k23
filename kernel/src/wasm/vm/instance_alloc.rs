@@ -16,6 +16,7 @@ use crate::wasm::vm::{InstanceHandle, TableElement, VMShape};
 use crate::wasm::{MEMORY_MAX, TABLE_MAX, translate, vm};
 use anyhow::Context;
 use core::alloc::Allocator;
+use core::ops::DerefMut;
 use core::ptr::NonNull;
 use core::{cmp, mem};
 use cranelift_entity::PrimaryMap;
@@ -278,10 +279,10 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
 
         let mmap = crate::mem::with_kernel_aspace(|aspace| {
             // attempt to use 2MiB alignment but if that's not available fallback to the largest
-            let align = cmp::min(2 * 1048576, aspace.frame_alloc.max_alignment());
+            let align = cmp::min(2 * 1048576, aspace.lock().frame_alloc.max_alignment());
 
             // TODO the align arg should be a named const not a weird number like this
-            Mmap::new_zeroed(aspace, request_bytes, align, None)
+            Mmap::new_zeroed(aspace.clone(), request_bytes, align, None)
                 .context("Failed to mmap zeroed memory for Memory")
         })?;
 
@@ -311,9 +312,9 @@ impl InstanceAllocator for PlaceholderAllocatorDontUse {
             MmapVec::new_empty()
         } else {
             crate::mem::with_kernel_aspace(|aspace| -> crate::Result<_> {
-                let mut elements = MmapVec::new_zeroed(aspace, reserve_size)?;
+                let mut elements = MmapVec::new_zeroed(aspace.clone(), reserve_size)?;
                 elements.extend_with(
-                    aspace,
+                    aspace.lock().deref_mut(),
                     usize::try_from(table.limits.min).unwrap(),
                     TableElement::FuncRef(None),
                 );

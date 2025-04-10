@@ -106,6 +106,7 @@ impl<'a> Expander<'a> {
                 self.expand_core_type(t);
                 None
             }
+            ComponentField::CoreRec(_) => None,
             ComponentField::Component(c) => self.expand_nested_component(c),
             ComponentField::Instance(i) => self.expand_instance(i),
             ComponentField::Type(t) => {
@@ -116,7 +117,10 @@ impl<'a> Expander<'a> {
                 self.expand_canonical_func(f);
                 None
             }
-            ComponentField::CoreFunc(f) => self.expand_core_func(f),
+            ComponentField::CoreFunc(f) => Some(self.expand_core_func(CoreFunc {
+                kind: mem::replace(&mut f.kind, CoreFuncKind::ErrorContextDrop),
+                ..*f
+            })),
             ComponentField::Func(f) => self.expand_func(f),
             ComponentField::Import(i) => {
                 self.expand_item_sig(&mut i.item);
@@ -261,16 +265,13 @@ impl<'a> Expander<'a> {
             CanonicalFuncKind::Lift { ty, .. } => {
                 self.expand_component_type_use(ty);
             }
-            CanonicalFuncKind::Lower(_)
-            | CanonicalFuncKind::ResourceNew(_)
-            | CanonicalFuncKind::ResourceRep(_)
-            | CanonicalFuncKind::ResourceDrop(_) => {}
+            CanonicalFuncKind::Core(_) => {}
         }
     }
 
-    fn expand_core_func(&mut self, func: &mut CoreFunc<'a>) -> Option<ComponentField<'a>> {
-        match &mut func.kind {
-            CoreFuncKind::Alias(a) => Some(ComponentField::Alias(Alias {
+    fn expand_core_func(&mut self, func: CoreFunc<'a>) -> ComponentField<'a> {
+        match func.kind {
+            CoreFuncKind::Alias(a) => ComponentField::Alias(Alias {
                 span: func.span,
                 id: func.id,
                 name: func.name,
@@ -279,33 +280,13 @@ impl<'a> Expander<'a> {
                     name: a.name,
                     kind: core::ExportKind::Func,
                 },
-            })),
-            CoreFuncKind::Lower(info) => Some(ComponentField::CanonicalFunc(CanonicalFunc {
+            }),
+            other => ComponentField::CanonicalFunc(CanonicalFunc {
                 span: func.span,
                 id: func.id,
                 name: func.name,
-                kind: CanonicalFuncKind::Lower(mem::take(info)),
-            })),
-            CoreFuncKind::ResourceNew(info) => Some(ComponentField::CanonicalFunc(CanonicalFunc {
-                span: func.span,
-                id: func.id,
-                name: func.name,
-                kind: CanonicalFuncKind::ResourceNew(mem::take(info)),
-            })),
-            CoreFuncKind::ResourceDrop(info) => {
-                Some(ComponentField::CanonicalFunc(CanonicalFunc {
-                    span: func.span,
-                    id: func.id,
-                    name: func.name,
-                    kind: CanonicalFuncKind::ResourceDrop(mem::take(info)),
-                }))
-            }
-            CoreFuncKind::ResourceRep(info) => Some(ComponentField::CanonicalFunc(CanonicalFunc {
-                span: func.span,
-                id: func.id,
-                name: func.name,
-                kind: CanonicalFuncKind::ResourceRep(mem::take(info)),
-            })),
+                kind: CanonicalFuncKind::Core(other),
+            }),
         }
     }
 
@@ -411,8 +392,8 @@ impl<'a> Expander<'a> {
             self.expand_component_val_ty(&mut param.ty);
         }
 
-        for result in ty.results.iter_mut() {
-            self.expand_component_val_ty(&mut result.ty);
+        if let Some(result) = &mut ty.result {
+            self.expand_component_val_ty(result);
         }
     }
 
@@ -436,7 +417,9 @@ impl<'a> Expander<'a> {
                     }
                     core::InnerTypeKind::Struct(_) => {}
                     core::InnerTypeKind::Array(_) => {}
+                    core::InnerTypeKind::Cont(_) => {}
                 },
+                ModuleTypeDecl::Rec(_) => {}
                 ModuleTypeDecl::Alias(_) => {}
                 ModuleTypeDecl::Import(ty) => {
                     expand_sig(&mut ty.item, &mut to_prepend, &mut func_type_to_idx);
@@ -456,7 +439,7 @@ impl<'a> Expander<'a> {
         ) {
             match &mut item.kind {
                 core::ItemKind::Func(t) | core::ItemKind::Tag(core::TagType::Exception(t)) => {
-                    // If the index is already filled in then this is skipped
+                    // If the index is already filled in then this is skipped.
                     if t.index.is_some() {
                         return;
                     }
@@ -472,14 +455,16 @@ impl<'a> Expander<'a> {
                         t.index = Some(*idx);
                         return;
                     }
-                    let id = gensym::generation(item.span);
+                    let id = gensym::generate(item.span);
                     to_prepend.push(ModuleTypeDecl::Type(core::Type {
                         span: item.span,
                         id: Some(id),
                         name: None,
-                        def: key.to_def(item.span),
-                        parent: None,
-                        final_type: None,
+                        // Currently, there is no way in the WebAssembly text
+                        //  format to mark a function `shared` inline; a
+                        // `shared` function must use an explicit type index,
+                        // e.g., `(func (type $ft))`.
+                        def: key.to_def(item.span, /* shared = */ false),
                     }));
                     let idx = Index::Id(id);
                     t.index = Some(idx);
@@ -569,6 +554,16 @@ impl<'a> Expander<'a> {
                 }
             }
             ComponentDefinedType::Own(_) | ComponentDefinedType::Borrow(_) => {}
+            ComponentDefinedType::Stream(t) => {
+                if let Some(ty) = &mut t.element {
+                    self.expand_component_val_ty(ty);
+                }
+            }
+            ComponentDefinedType::Future(t) => {
+                if let Some(ty) = &mut t.element {
+                    self.expand_component_val_ty(ty);
+                }
+            }
         }
     }
 
@@ -592,7 +587,7 @@ impl<'a> Expander<'a> {
         // And if this type isn't already defined we append it to the index
         // space with a fresh and unique name.
         let span = Span::from_offset(0); // FIXME(#613): don't manufacture
-        let id = gensym::generation(span);
+        let id = gensym::generate(span);
 
         self.types_to_prepend.push(inline.into_any_type(span, id));
 
@@ -638,7 +633,7 @@ impl<'a> Expander<'a> {
 
         // And if this type isn't already defined we append it to the index
         // space with a fresh and unique name.
-        let id = gensym::generation(span);
+        let id = gensym::generate(span);
 
         self.types_to_prepend.push(inline.into_any_type(span, id));
 
@@ -691,7 +686,7 @@ impl<'a> Expander<'a> {
 
         // And if this type isn't already defined we append it to the index
         // space with a fresh and unique name.
-        let id = gensym::generation(span);
+        let id = gensym::generate(span);
 
         self.types_to_prepend.push(inline.into_any_type(span, id));
 
@@ -711,7 +706,7 @@ impl<'a> Expander<'a> {
             CoreInstantiationArgKind::Instance(_) => return,
             CoreInstantiationArgKind::BundleOfExports(span, exports) => (*span, mem::take(exports)),
         };
-        let id = gensym::generation(span);
+        let id = gensym::generate(span);
         self.component_fields_to_prepend
             .push(ComponentField::CoreInstance(CoreInstance {
                 span,
@@ -731,7 +726,7 @@ impl<'a> Expander<'a> {
             InstantiationArgKind::Item(_) => return,
             InstantiationArgKind::BundleOfExports(span, exports) => (*span, mem::take(exports)),
         };
-        let id = gensym::generation(span);
+        let id = gensym::generate(span);
         self.component_fields_to_prepend
             .push(ComponentField::Instance(Instance {
                 span,

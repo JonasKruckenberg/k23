@@ -19,7 +19,7 @@ pub enum WastArgCore<'a> {
     RefHost(u32),
 }
 
-#[expect(clippy::type_complexity)]
+#[expect(clippy::type_complexity, reason = "")]
 static ARGS: &[(&str, fn(Parser<'_>) -> Result<WastArgCore<'_>>)] = {
     use WastArgCore::*;
     &[
@@ -92,11 +92,13 @@ pub enum WastRetCore<'a> {
     RefStruct,
     /// A non-null i31ref is expected.
     RefI31,
+    /// A non-null, shared i31ref is expected.
+    RefI31Shared,
 
     Either(Vec<WastRetCore<'a>>),
 }
 
-#[expect(clippy::type_complexity)]
+#[expect(clippy::type_complexity, reason = "")]
 static RETS: &[(&str, fn(Parser<'_>) -> Result<WastRetCore<'_>>)] = {
     use WastRetCore::*;
     &[
@@ -114,6 +116,7 @@ static RETS: &[(&str, fn(Parser<'_>) -> Result<WastRetCore<'_>>)] = {
         ("ref.array", |_| Ok(RefArray)),
         ("ref.struct", |_| Ok(RefStruct)),
         ("ref.i31", |_| Ok(RefI31)),
+        ("ref.i31_shared", |_| Ok(RefI31Shared)),
         ("either", |p| {
             p.depth_check()?;
             let mut cases = Vec::new();

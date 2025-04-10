@@ -74,7 +74,6 @@ use alloc::vec::Vec;
 use bumpalo::Bump;
 use core::cell::{Cell, RefCell};
 use core::fmt;
-use core::ops::Deref;
 use hashbrown::HashMap;
 
 /// The maximum recursive depth of parens to parse.
@@ -976,7 +975,7 @@ impl<'a> Parser<'a> {
         'a: 'b,
     {
         let mut annotations = self.buf.known_annotations.borrow_mut();
-        if !annotations.deref().contains_key(annotation) {
+        if !annotations.contains_key(annotation) {
             annotations.insert(annotation.to_string(), 0);
         }
         *annotations.get_mut(annotation).unwrap() += 1;
@@ -997,6 +996,19 @@ impl<'a> Parser<'a> {
     #[cfg(feature = "wasm-module")]
     pub(crate) fn track_instr_spans(&self) -> bool {
         self.buf.track_instr_spans
+    }
+
+    #[cfg(feature = "wasm-module")]
+    pub(crate) fn with_standard_annotations_registered<R>(
+        self,
+        f: impl FnOnce(Self) -> Result<R>,
+    ) -> Result<R> {
+        let _r = self.register_annotation("custom");
+        let _r = self.register_annotation("producers");
+        let _r = self.register_annotation("name");
+        let _r = self.register_annotation("dylink.0");
+        let _r = self.register_annotation("metadata.code.branch_hint");
+        f(self)
     }
 }
 
@@ -1384,7 +1396,7 @@ impl<'a> Cursor<'a> {
     }
 }
 
-impl Lookahead1<'_> {
+impl<'a> Lookahead1<'a> {
     /// Attempts to see if `T` is the next token in the [`Parser`] this
     /// [`Lookahead1`] references.
     ///
@@ -1396,6 +1408,11 @@ impl Lookahead1<'_> {
             self.attempts.push(T::display());
             false
         })
+    }
+
+    /// Returns the underlying parser that this lookahead is looking at.
+    pub fn parser(&self) -> Parser<'a> {
+        self.parser
     }
 
     /// Generates an error message saying that one of the tokens passed to

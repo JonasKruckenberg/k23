@@ -78,14 +78,12 @@ missing_errors_doc = "deny"
 
 [workspace.dependencies]
 addr2line = { path = "libs/addr2line" }
-leb128 = { path = "libs/leb128" }
 linked-list = { path = "libs/linked-list" }
 mpsc-queue = { path = "libs/mpsc-queue" }
 riscv = { path = "libs/riscv" }
 spin = { path = "libs/spin" }
 cpu-local = { path = "libs/cpu-local" }
 unwind2 = { path = "libs/unwind2" }
-wasm-encoder = { path = "libs/wasm-encoder" }
 wast = { path = "libs/wast" }
 wavltree = { path = "libs/wavltree" }
 loader-api = { path = "loader/api" }
@@ -119,6 +117,8 @@ anyhow = { version = "1.0.97", default-features = false }
 # wast dependencies
 unicode-width = { version = "0.2.0" }
 memchr = { version = "2.7.4", default-features = false }
+leb128fmt = { version = "0.1.0", default-features = false }
+wasm-encoder = { version = "0.228.0", default-features = false }
 #wat = "1.219.1"
 
 # cranelift dependencies

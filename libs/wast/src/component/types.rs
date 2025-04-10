@@ -85,6 +85,8 @@ impl<'a> Parse<'a> for ModuleType<'a> {
 pub enum ModuleTypeDecl<'a> {
     /// A core type.
     Type(core::Type<'a>),
+    /// A core recursion group.
+    Rec(core::Rec<'a>),
     /// An alias local to the component type.
     Alias(Alias<'a>),
     /// An import.
@@ -98,6 +100,8 @@ impl<'a> Parse<'a> for ModuleTypeDecl<'a> {
         let mut l = parser.lookahead1();
         if l.peek::<kw::r#type>()? {
             Ok(Self::Type(parser.parse()?))
+        } else if l.peek::<kw::rec>()? {
+            Ok(Self::Rec(parser.parse()?))
         } else if l.peek::<kw::alias>()? {
             Ok(Self::Alias(Alias::parse_outer_core_type_alias(parser)?))
         } else if l.peek::<kw::import>()? {
@@ -236,6 +240,7 @@ pub enum PrimitiveValType {
     F64,
     Char,
     String,
+    ErrorContext,
 }
 
 impl<'a> Parse<'a> for PrimitiveValType {
@@ -286,6 +291,9 @@ impl<'a> Parse<'a> for PrimitiveValType {
         } else if l.peek::<kw::string>()? {
             parser.parse::<kw::string>()?;
             Ok(Self::String)
+        } else if l.peek::<kw::error_context>()? {
+            parser.parse::<kw::error_context>()?;
+            Ok(Self::ErrorContext)
         } else {
             Err(l.error())
         }
@@ -311,6 +319,7 @@ impl Peek for PrimitiveValType {
                 | Some(("float64", _))
                 | Some(("char", _))
                 | Some(("string", _))
+                | Some(("error-context", _))
         ))
     }
 
@@ -386,6 +395,8 @@ pub enum ComponentDefinedType<'a> {
     Result(ResultType<'a>),
     Own(Index<'a>),
     Borrow(Index<'a>),
+    Stream(Stream<'a>),
+    Future(Future<'a>),
 }
 
 impl<'a> ComponentDefinedType<'a> {
@@ -413,6 +424,10 @@ impl<'a> ComponentDefinedType<'a> {
         } else if l.peek::<kw::borrow>()? {
             parser.parse::<kw::borrow>()?;
             Ok(Self::Borrow(parser.parse()?))
+        } else if l.peek::<kw::stream>()? {
+            Ok(Self::Stream(parser.parse()?))
+        } else if l.peek::<kw::future>()? {
+            Ok(Self::Future(parser.parse()?))
         } else {
             Err(l.error())
         }
@@ -682,15 +697,46 @@ impl<'a> Parse<'a> for ResultType<'a> {
     }
 }
 
+/// A stream type.
+#[derive(Debug)]
+pub struct Stream<'a> {
+    /// The element type of the stream.
+    pub element: Option<Box<ComponentValType<'a>>>,
+}
+
+impl<'a> Parse<'a> for Stream<'a> {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        parser.parse::<kw::stream>()?;
+        Ok(Self {
+            element: parser.parse::<Option<ComponentValType>>()?.map(Box::new),
+        })
+    }
+}
+
+/// A future type.
+#[derive(Debug)]
+pub struct Future<'a> {
+    /// The element type of the future, if any.
+    pub element: Option<Box<ComponentValType<'a>>>,
+}
+
+impl<'a> Parse<'a> for Future<'a> {
+    fn parse(parser: Parser<'a>) -> Result<Self> {
+        parser.parse::<kw::future>()?;
+        Ok(Self {
+            element: parser.parse::<Option<ComponentValType>>()?.map(Box::new),
+        })
+    }
+}
+
 /// A component function type with parameters and result.
 #[derive(Debug)]
 pub struct ComponentFunctionType<'a> {
     /// The parameters of a function, optionally each having an identifier for
     /// name resolution and a name for the custom `name` section.
     pub params: Box<[ComponentFunctionParam<'a>]>,
-    /// The result of a function, optionally each having an identifier for
-    /// name resolution and a name for the custom `name` section.
-    pub results: Box<[ComponentFunctionResult<'a>]>,
+    /// The result of a function.
+    pub result: Option<ComponentValType<'a>>,
 }
 
 impl<'a> Parse<'a> for ComponentFunctionType<'a> {
@@ -700,14 +746,18 @@ impl<'a> Parse<'a> for ComponentFunctionType<'a> {
             params.push(parser.parens(|p| p.parse())?);
         }
 
-        let mut results: Vec<ComponentFunctionResult> = Vec::new();
-        while parser.peek2::<kw::result>()? {
-            results.push(parser.parens(|p| p.parse())?);
-        }
+        let result = if parser.peek2::<kw::result>()? {
+            Some(parser.parens(|p| {
+                p.parse::<kw::result>()?;
+                p.parse()
+            })?)
+        } else {
+            None
+        };
 
         Ok(Self {
             params: params.into(),
-            results: results.into(),
+            result,
         })
     }
 }

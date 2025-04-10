@@ -24,16 +24,14 @@ mod utils;
 mod values;
 mod vm;
 
-use crate::scheduler::scheduler;
-use crate::shell::Command;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::utils::{enum_accessors, owned_enum_accessors};
-use crate::wasm::vm::{ConstExprEvaluator, PlaceholderAllocatorDontUse};
-use alloc::boxed::Box;
+
 pub use engine::Engine;
-pub use func::{Func, TypedFunc};
+pub use func::Func;
 pub use global::Global;
 pub use instance::Instance;
+#[cfg(test)]
 pub use linker::Linker;
 pub use memory::Memory;
 pub use module::Module;
@@ -41,7 +39,10 @@ pub use store::Store;
 pub use table::Table;
 pub use tag::Tag;
 pub use trap::TrapKind;
-use wasmparser::Validator;
+#[cfg(test)]
+pub use values::Val;
+#[cfg(test)]
+pub use vm::{ConstExprEvaluator, PlaceholderAllocatorDontUse};
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.
@@ -138,137 +139,4 @@ impl Extern {
         (Memory(Memory) into_memory e)
         (Global(Global) into_global e)
     }
-}
-
-pub const FIB_TEST: Command = Command::new("wasm-fib-test")
-    .with_help("run the WASM test payload")
-    .with_fn(|_| {
-        fib_test();
-        Ok(())
-    });
-
-pub const HOSTFUNC_TEST: Command = Command::new("wasm-hostfunc-test")
-    .with_help("run the WASM test payload")
-    .with_fn(|_| {
-        hostfunc_test();
-        Ok(())
-    });
-
-fn fib_test() {
-    use vm::ConstExprEvaluator;
-    use wasmparser::Validator;
-
-    let engine = Engine::default();
-    let mut validator = Validator::new();
-    let mut linker = Linker::new(&engine);
-    let mut store = Store::new(&engine, Box::new(PlaceholderAllocatorDontUse), ());
-    let mut const_eval = ConstExprEvaluator::default();
-
-    // instantiate & define the fib_cpp module
-    {
-        let module = Module::from_bytes(
-            &engine,
-            &mut validator,
-            include_bytes!("../../fib_cpp.wasm"),
-        )
-        .unwrap();
-
-        let instance = linker
-            .instantiate(&mut store, &mut const_eval, &module)
-            .unwrap();
-        instance.debug_vmctx(&store);
-
-        linker
-            .define_instance(&mut store, "fib_cpp", instance)
-            .unwrap();
-    }
-
-    // assert that we correctly parsed the fib export
-    assert!(linker.get(&mut store, "fib_cpp", "fib").unwrap().is_func());
-
-    // the module also exports its memory, assert that we correctly parsed that too
-    assert!(
-        linker
-            .get(&mut store, "fib_cpp", "memory")
-            .unwrap()
-            .is_memory()
-    );
-
-    // instantiate the test module
-    {
-        let module = Module::from_bytes(
-            &engine,
-            &mut validator,
-            include_bytes!("../../fib_test.wasm"),
-        )
-        .unwrap();
-
-        let instance = linker
-            .instantiate(&mut store, &mut const_eval, &module)
-            .unwrap();
-        instance.debug_vmctx(&store);
-
-        // `fib_test` should only have a single export
-        assert_eq!(instance.exports(&mut store).len(), 1);
-
-        let func: TypedFunc<(), ()> = instance
-            .get_func(&mut store, "fib_test")
-            .unwrap()
-            .typed(&store)
-            .unwrap();
-
-        scheduler().spawn(
-            crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
-            async move {
-                func.call(&mut store, ()).unwrap();
-                tracing::info!("done");
-            },
-        );
-    }
-}
-
-fn hostfunc_test() {
-    let engine = Engine::default();
-    let mut validator = Validator::new();
-    let mut linker = Linker::new(&engine);
-    let mut store = Store::new(&engine, Box::new(PlaceholderAllocatorDontUse), ());
-    let mut const_eval = ConstExprEvaluator::default();
-
-    linker
-        .func_wrap("k23", "roundtrip_i64", |arg: u64| -> u64 {
-            tracing::debug!("Hello World from hostfunc!");
-            arg
-        })
-        .unwrap();
-
-    let module = Module::from_bytes(
-        &engine,
-        &mut validator,
-        include_bytes!("../../hostfunc_rs.wasm"),
-    )
-    .unwrap();
-
-    let instance = linker
-        .instantiate(&mut store, &mut const_eval, &module)
-        .unwrap();
-
-    instance.debug_vmctx(&store);
-
-    let func: TypedFunc<u64, u64> = instance
-        .get_func(&mut store, "roundtrip_i64")
-        .unwrap()
-        .typed(&store)
-        .unwrap();
-
-    scheduler().spawn(
-        crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
-        async move {
-            let arg = 42;
-            let ret = func.call(&mut store, arg).unwrap();
-            assert_eq!(ret, arg);
-            tracing::info!("done");
-        },
-    );
-
-    tracing::info!("success!");
 }

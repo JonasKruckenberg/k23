@@ -148,11 +148,11 @@ test-docs crate="" *cargo_args="":
         {{ cargo_args }}
 
 # run all tests
-test $K23_PROFILE=(profile) cargo_args="" *args="": && (test-docs cargo_args)
+test cargo_args="" *args="":
     {{ _cargo }} test \
         -p kernel \
-        --locked \
         --target kernel/riscv64gc-k23-none-kernel.json \
+        --locked \
         --profile {{ profile }} \
         {{ _buildstd }} \
         {{ _fmt }} \

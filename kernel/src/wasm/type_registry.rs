@@ -158,7 +158,7 @@ impl RuntimeTypeCollection {
     #[inline]
     pub fn trampoline_type(&self, ty: VMSharedTypeIndex) -> Option<ModuleInternedTypeIndex> {
         let trampoline_ty = self.trampolines[ty].expand();
-        log::trace!("TypeCollection::trampoline_type({ty:?}) -> {trampoline_ty:?}");
+        tracing::trace!("TypeCollection::trampoline_type({ty:?}) -> {trampoline_ty:?}");
         trampoline_ty
     }
 }
@@ -299,17 +299,17 @@ impl TypeRegistry {
     ) -> RuntimeTypeCollection {
         let (rec_groups, types) = self.0.write().register_module_types(&module_types);
 
-        log::trace!("Begin building module's shared-to-module-trampoline-types map");
+        tracing::trace!("Begin building module's shared-to-module-trampoline-types map");
         let mut trampolines = SecondaryMap::with_capacity(types.len());
         for (module_ty, module_trampoline_ty) in module_types.trampoline_types() {
             let shared_ty = types[module_ty];
             let trampoline_shared_ty = self.get_trampoline_type(shared_ty);
             trampolines[trampoline_shared_ty] = Some(module_trampoline_ty).into();
-            log::trace!(
+            tracing::trace!(
                 "--> shared_to_module_trampolines[{trampoline_shared_ty:?}] = {module_trampoline_ty:?}"
             );
         }
-        log::trace!("Done building module's shared-to-module-trampoline-types map");
+        tracing::trace!("Done building module's shared-to-module-trampoline-types map");
 
         RuntimeTypeCollection {
             engine: engine.clone(),
@@ -666,14 +666,14 @@ impl TypeRegistryInner {
 
         // If we've already registered this rec group before, reuse it.
         if let Some(entry) = self.hash_consing_map.get(&hash_consing_key) {
-            log::trace!("hash-consing map hit: reusing {entry:?}");
+            tracing::trace!("hash-consing map hit: reusing {entry:?}");
             assert!(!entry.0.unregistered.load(Ordering::Acquire));
             self.debug_assert_all_registered(entry.0.shared_type_indices.iter().copied());
             entry.incr_ref_count("hash-consing map hit");
             return entry.clone();
         }
 
-        log::trace!("hash-consing map miss: making new registration");
+        tracing::trace!("hash-consing map miss: making new registration");
 
         // Inter-group edges: increment the referenced group's ref
         // count, because these other rec groups shouldn't be dropped
@@ -698,7 +698,7 @@ impl TypeRegistryInner {
             .iter()
             .map(|(module_index, ty)| {
                 let engine_index = slab_id_to_shared_type_index(self.types.alloc(None));
-                log::trace!(
+                tracing::trace!(
                     "reserved {engine_index:?} for {module_index:?} = non-canonical {ty:?}"
                 );
                 engine_index
@@ -707,11 +707,11 @@ impl TypeRegistryInner {
         for (engine_index, (module_index, mut ty)) in
             shared_type_indices.iter().copied().zip(non_canon_types)
         {
-            log::trace!("canonicalizing {engine_index:?} for runtime usage");
+            tracing::trace!("canonicalizing {engine_index:?} for runtime usage");
             ty.canonicalize_for_runtime_usage(&mut |module_index| {
                 if module_index < module_rec_group_start {
                     let engine_index = map[module_index];
-                    log::trace!("    cross-group {module_index:?} becomes {engine_index:?}");
+                    tracing::trace!("    cross-group {module_index:?} becomes {engine_index:?}");
                     self.debug_assert_registered(engine_index);
                     engine_index
                 } else {
@@ -719,7 +719,7 @@ impl TypeRegistryInner {
                     let rec_group_offset = module_index.as_u32() - module_rec_group_start.as_u32();
                     let rec_group_offset = usize::try_from(rec_group_offset).unwrap();
                     let engine_index = shared_type_indices[rec_group_offset];
-                    log::trace!("    intra-group {module_index:?} becomes {engine_index:?}");
+                    tracing::trace!("    intra-group {module_index:?} becomes {engine_index:?}");
                     assert!(!engine_index.is_reserved_value());
                     assert!(
                         self.types
@@ -756,7 +756,7 @@ impl TypeRegistryInner {
             registrations: AtomicUsize::new(1),
             unregistered: AtomicBool::new(false),
         }));
-        log::trace!("new {entry:?} -> count 1");
+        tracing::trace!("new {entry:?} -> count 1");
 
         let is_new_entry = self.hash_consing_map.insert(entry.clone());
         debug_assert!(is_new_entry);
@@ -781,7 +781,7 @@ impl TypeRegistryInner {
                         // The function type is its own trampoline type. Leave
                         // its entry in `type_to_trampoline` empty to signal
                         // this.
-                        log::trace!(
+                        tracing::trace!(
                             "trampoline_type({shared_type_index:?}) = {shared_type_index:?}",
                         );
                     }
@@ -799,7 +799,7 @@ impl TypeRegistryInner {
                         });
                         assert_eq!(trampoline_entry.0.shared_type_indices.len(), 1);
                         let trampoline_index = trampoline_entry.0.shared_type_indices[0];
-                        log::trace!(
+                        tracing::trace!(
                             "trampoline_type({shared_type_index:?}) = {trampoline_index:?}",
                         );
                         self.debug_assert_registered(trampoline_index);
@@ -904,7 +904,7 @@ impl TypeRegistryInner {
     }
 
     fn unregister_entry(&mut self, entry: RecGroupEntry) {
-        log::trace!("Attempting to unregister {entry:?}");
+        tracing::trace!("Attempting to unregister {entry:?}");
         debug_assert!(self.drop_stack.is_empty());
 
         // There are two races to guard against before we can unregister the
@@ -994,7 +994,7 @@ impl TypeRegistryInner {
         // Handle scenario (1) from above.
         let registrations = entry.0.registrations.load(Ordering::Acquire);
         if registrations != 0 {
-            log::trace!(
+            tracing::trace!(
                 "    {entry:?} was concurrently resurrected and no longer has \
                  zero registrations (registrations -> {registrations})",
             );
@@ -1004,7 +1004,7 @@ impl TypeRegistryInner {
 
         // Handle scenario (2) from above.
         if entry.0.unregistered.load(Ordering::Acquire) {
-            log::trace!(
+            tracing::trace!(
                 "    {entry:?} was concurrently resurrected, dropped again, \
                  and already unregistered"
             );
@@ -1022,7 +1022,7 @@ impl TypeRegistryInner {
         // drop stack to avoid recursion and the potential stack overflows that
         // recursion implies.
         while let Some(entry) = self.drop_stack.pop() {
-            log::trace!("Begin unregistering {entry:?}");
+            tracing::trace!("Begin unregistering {entry:?}");
             self.debug_assert_all_registered(entry.0.shared_type_indices.iter().copied());
 
             // All entries on the drop stack should *really* be ready for
@@ -1078,7 +1078,7 @@ impl TypeRegistryInner {
                 "should not have any duplicate type indices",
             );
             for ty in entry.0.shared_type_indices.iter().copied() {
-                log::trace!("removing {ty:?} from registry");
+                tracing::trace!("removing {ty:?} from registry");
 
                 let removed_entry = self.type_to_rec_group[ty].take();
                 debug_assert_eq!(removed_entry.unwrap(), entry);
@@ -1110,7 +1110,7 @@ impl TypeRegistryInner {
                 assert!(deallocated_ty.is_some());
             }
 
-            log::trace!("End unregistering {entry:?}");
+            tracing::trace!("End unregistering {entry:?}");
         }
     }
 }

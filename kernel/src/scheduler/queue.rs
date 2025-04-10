@@ -170,7 +170,7 @@ impl Local {
 
         // Safety: this is the **only** thread that updates this cell, and the index has
         // been calculated above to be within the valid elements
-        Some(unsafe { ptr::read(self.inner.buffer[idx].get()).assume_init() })
+        Some(unsafe { (*self.inner.buffer[idx].get()).assume_init_read() })
     }
 
     /// Pushes a batch of tasks to the back of the queue. All tasks must fit in
@@ -192,7 +192,7 @@ impl Local {
             // condition ensures we don't touch a cell if there is a
             // value, thus no consumer.
             unsafe {
-                ptr::write((*self.inner.buffer[idx].get()).as_mut_ptr(), task);
+                (*self.inner.buffer[idx].get()).write(task);
             }
 
             tail = tail.wrapping_add(1);
@@ -259,7 +259,7 @@ impl Local {
         // condition ensures we don't touch a cell if there is a
         // value, thus no consumer.
         unsafe {
-            ptr::write((*self.inner.buffer[idx].get()).as_mut_ptr(), task);
+            (*self.inner.buffer[idx].get()).write(task);
         }
 
         // Make the task available. Synchronizes with a load in
@@ -355,7 +355,7 @@ impl Local {
 
                     // safety: Our CAS from before has assumed exclusive ownership
                     // of the task pointers in this range.
-                    let task = unsafe { ptr::read((*slot.get()).as_ptr()) };
+                    let task = unsafe { (*slot.get()).assume_init_read() };
 
                     self.i += 1;
                     Some(task)
@@ -437,7 +437,7 @@ impl Steal {
 
         // safety: the value was written as part of `steal_into2` and not
         // exposed to stealers, so no other thread can access it.
-        let ret = unsafe { ptr::read((*dst.inner.buffer[ret_idx].get()).as_ptr()) };
+        let ret = unsafe { (*dst.inner.buffer[ret_idx].get()).assume_init_read() };
 
         if n == 0 {
             // The `dst` queue is empty, but a single task was stolen
@@ -519,13 +519,15 @@ impl Steal {
             // Read the task
             //
             // safety: We acquired the task with the atomic exchange above.
-            let task = unsafe { ptr::read((*self.0.buffer[src_idx].get()).as_ptr()) };
+            let task = unsafe { (*self.0.buffer[src_idx].get()).assume_init_read() };
 
             // Write the task to the new slot
             //
             // safety: `dst` queue is empty, and we are the only producer to
             // this queue.
-            unsafe { ptr::write((*dst.inner.buffer[dst_idx].get()).as_mut_ptr(), task) };
+            unsafe {
+                (*dst.inner.buffer[dst_idx].get()).write(task);
+            }
         }
 
         let mut prev_packed = next_packed;
