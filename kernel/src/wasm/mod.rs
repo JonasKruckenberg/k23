@@ -24,16 +24,14 @@ mod utils;
 mod values;
 mod vm;
 
-use crate::scheduler::scheduler;
-use crate::shell::Command;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::utils::{enum_accessors, owned_enum_accessors};
-use wasmparser::Validator;
 
 pub use engine::Engine;
-pub use func::{Func, TypedFunc};
+pub use func::Func;
 pub use global::Global;
 pub use instance::Instance;
+#[cfg(test)]
 pub use linker::Linker;
 pub use memory::Memory;
 pub use module::Module;
@@ -43,6 +41,7 @@ pub use tag::Tag;
 pub use trap::TrapKind;
 #[cfg(test)]
 pub use values::Val;
+#[cfg(test)]
 pub use vm::{ConstExprEvaluator, PlaceholderAllocatorDontUse};
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
@@ -140,144 +139,4 @@ impl Extern {
         (Memory(Memory) into_memory e)
         (Global(Global) into_global e)
     }
-}
-
-pub const FIB_TEST: Command = Command::new("wasm-fib-test")
-    .with_help("run the WASM test payload")
-    .with_fn(|_| {
-        scheduler().spawn(fib_test());
-        Ok(())
-    });
-
-pub const HOSTFUNC_TEST: Command = Command::new("wasm-hostfunc-test")
-    .with_help("run the WASM test payload")
-    .with_fn(|_| {
-        scheduler().spawn(hostfunc_test());
-        Ok(())
-    });
-
-// #[ktest::test]
-async fn fib_test() {
-    let engine = Engine::default();
-    let mut validator = Validator::new();
-    let mut linker: Linker<()> = Linker::new(&engine);
-    let mut store = Store::new(&engine, &PlaceholderAllocatorDontUse, ());
-    let mut const_eval = ConstExprEvaluator::default();
-
-    // instantiate & define the fib_cpp module
-    {
-        let module = Module::from_bytes(
-            &engine,
-            &mut validator,
-            include_bytes!("../../fib_cpp.wasm"),
-        )
-        .unwrap();
-
-        let instance = linker
-            .instantiate(&mut store, &mut const_eval, &module)
-            .unwrap();
-        instance.debug_vmctx(&store);
-
-        linker
-            .define_instance(&mut store, "fib_cpp", instance)
-            .unwrap();
-    }
-
-    // assert that we correctly parsed the fib export
-    assert!(linker.get(&mut store, "fib_cpp", "fib").unwrap().is_func());
-
-    // the module also exports its memory, assert that we correctly parsed that too
-    assert!(
-        linker
-            .get(&mut store, "fib_cpp", "memory")
-            .unwrap()
-            .is_memory()
-    );
-
-    // instantiate the test module
-    {
-        let module = Module::from_bytes(
-            &engine,
-            &mut validator,
-            include_bytes!("../../fib_test.wasm"),
-        )
-        .unwrap();
-
-        let instance = linker
-            .instantiate(&mut store, &mut const_eval, &module)
-            .unwrap();
-        instance.debug_vmctx(&store);
-
-        // `fib_test` should only have a single export
-        assert_eq!(instance.exports(&mut store).len(), 1);
-
-        let func: TypedFunc<(), ()> = instance
-            .get_func(&mut store, "fib_test")
-            .unwrap()
-            .typed(&store)
-            .unwrap();
-
-        // FIXME the virtual memory subsystem trap handling code will look for a current task
-        //  in order to find the current address space to resole page faults against. This is why
-        //  we need to wrap this call in a `spawn` that we immediately await (so the scheduling
-        //  subsystem tracks it as a task). Ideally we would get rid of this and have some other
-        //  mechanism of tracking the current address space...
-        scheduler()
-            .spawn(async move {
-                func.call(&mut store, ()).unwrap();
-                tracing::info!("done");
-            })
-            .await
-            .unwrap();
-    }
-}
-
-// #[ktest::test]
-async fn hostfunc_test() {
-    let engine = Engine::default();
-    let mut validator = Validator::new();
-    let mut linker = Linker::new(&engine);
-    let mut store = Store::new(&engine, &PlaceholderAllocatorDontUse, ());
-    let mut const_eval = ConstExprEvaluator::default();
-
-    linker
-        .func_wrap("k23", "roundtrip_i64", |arg: u64| -> u64 {
-            tracing::debug!("Hello World from hostfunc!");
-            arg
-        })
-        .unwrap();
-
-    let module = Module::from_bytes(
-        &engine,
-        &mut validator,
-        include_bytes!("../../hostfunc_rs.wasm"),
-    )
-    .unwrap();
-
-    let instance = linker
-        .instantiate(&mut store, &mut const_eval, &module)
-        .unwrap();
-
-    instance.debug_vmctx(&store);
-
-    let func: TypedFunc<u64, u64> = instance
-        .get_func(&mut store, "roundtrip_i64")
-        .unwrap()
-        .typed(&store)
-        .unwrap();
-
-    // FIXME the virtual memory subsystem trap handling code will look for a current task
-    //  in order to find the current address space to resole page faults against. This is why
-    //  we need to wrap this call in a `spawn` that we immediately await (so the scheduling
-    //  subsystem tracks it as a task). Ideally we would get rid of this and have some other
-    //  mechanism of tracking the current address space...
-    scheduler()
-        .spawn(async move {
-            let arg = 42;
-            let ret = func.call(&mut store, arg).unwrap();
-            assert_eq!(ret, arg);
-            tracing::info!("done");
-        })
-        .await
-        .unwrap();
 }

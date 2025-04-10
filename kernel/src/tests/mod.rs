@@ -7,7 +7,9 @@
 
 mod args;
 mod printer;
-mod wasm_spec;
+mod smoke;
+mod spectest;
+mod wast;
 
 use crate::scheduler::scheduler;
 use crate::tests::args::Arguments;

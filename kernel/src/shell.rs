@@ -27,12 +27,7 @@ use core::str::FromStr;
 use fallible_iterator::FallibleIterator;
 use spin::{Barrier, OnceLock};
 
-static COMMANDS: &[Command] = &[
-    PANIC, FAULT, VERSION,
-    SHUTDOWN,
-    // crate::wasm::FIB_TEST,
-    // crate::wasm::HOSTFUNC_TEST,
-];
+static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
 
 pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: usize) {
     static SYNC: OnceLock<Barrier> = OnceLock::new();
