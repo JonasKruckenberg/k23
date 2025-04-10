@@ -163,8 +163,12 @@ impl AddressSpace {
         ) -> crate::Result<AddressSpaceRegion>,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         let layout = layout.pad_to_align();
-        let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY);
-        let range = Range::from(base..base.checked_add(layout.size()).unwrap());
+        let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY)?;
+        let range = Range::from(
+            base..base
+                .checked_add(layout.size())
+                .expect("chosen memory range end overflows"),
+        );
 
         self.map_internal(range, permissions, map)
     }
@@ -531,7 +535,7 @@ impl AddressSpace {
     /// If the algorithm fails to find a suitable spot in the first attempt, it will have collected the
     /// total number of candidate spots and retry with a new `target_index` in the range [0, candidate_spot_count)
     /// which guarantees that a spot will be found as long as `candidate_spot_count > 0`.
-    fn find_spot(&mut self, layout: Layout, entropy: u8) -> VirtualAddress {
+    fn find_spot(&mut self, layout: Layout, entropy: u8) -> crate::Result<VirtualAddress> {
         // behaviour:
         // - find the leftmost gap that satisfies the size and alignment requirements
         //      - starting at the root,
@@ -548,7 +552,7 @@ impl AddressSpace {
 
         let spot = match self.find_spot_at_index(selected_index, layout) {
             Ok(spot) => spot,
-            Err(0) => panic!("out of virtual memory"),
+            Err(0) => bail!("out of virtual memory"),
             Err(candidate_spot_count) => {
                 // tracing::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
                 let selected_index: usize = self
@@ -560,13 +564,10 @@ impl AddressSpace {
                 self.find_spot_at_index(selected_index, layout).unwrap()
             }
         };
-        tracing::trace!(
-            "picked spot {spot}..{}",
-            spot.checked_add(layout.size()).unwrap()
-        );
+        tracing::trace!("picked spot {spot}..{:?}", spot.checked_add(layout.size()));
 
         debug_assert!(spot.is_canonical());
-        spot
+        Ok(spot)
     }
 
     #[expect(clippy::undocumented_unsafe_blocks, reason = "intrusive tree access")]
@@ -574,17 +575,28 @@ impl AddressSpace {
         &self,
         mut target_index: usize,
         layout: Layout,
-    ) -> core::result::Result<VirtualAddress, usize> {
-        // tracing::trace!("attempting to find spot for {layout:?} at index {target_index}");
+    ) -> Result<VirtualAddress, usize> {
+        tracing::trace!("attempting to find spot for {layout:?} at index {target_index}");
 
-        let spots_in_range = |layout: Layout, range: Range<VirtualAddress>| -> usize {
+        let spots_in_range = |layout: Layout, aligned: Range<VirtualAddress>| -> usize {
+            debug_assert!(
+                aligned.start.is_aligned_to(layout.size())
+                    && aligned.end.is_aligned_to(layout.align())
+            );
+
             // ranges passed in here can become empty for a number of reasons (aligning might produce ranges
             // where end > start, or the range might be empty to begin with) in either case an empty
             // range means no spots are available
-            if range.is_empty() {
+            if aligned.is_empty() {
                 return 0;
             }
-            ((range.size().saturating_sub(layout.size())) >> layout.align().ilog2()) + 1
+
+            let range_size = aligned.size();
+            if range_size >= layout.size() {
+                ((range_size - layout.size()) >> layout.align().ilog2()) + 1
+            } else {
+                0
+            }
         };
 
         let mut candidate_spot_count = 0;
@@ -608,6 +620,7 @@ impl AddressSpace {
             let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
+                tracing::trace!("tree is empty, chose gap {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
                     .checked_add(target_index << layout.align().ilog2())
@@ -624,7 +637,7 @@ impl AddressSpace {
             let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
-                // tracing::trace!("found gap left of tree in {aligned_gap:?}");
+                tracing::trace!("found gap left of tree in {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
                     .checked_add(target_index << layout.align().ilog2())
@@ -654,7 +667,7 @@ impl AddressSpace {
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
-                        // tracing::trace!("found gap in left subtree in {aligned_gap:?}");
+                        tracing::trace!("found gap in left subtree in {aligned_gap:?}");
                         return Ok(aligned_gap
                             .start
                             .checked_add(target_index << layout.align().ilog2())
@@ -674,7 +687,7 @@ impl AddressSpace {
 
                     candidate_spot_count += spot_count;
                     if target_index < spot_count {
-                        // tracing::trace!("found gap in right subtree in {aligned_gap:?}");
+                        tracing::trace!("found gap in right subtree in {aligned_gap:?}");
                         return Ok(aligned_gap
                             .start
                             .checked_add(target_index << layout.align().ilog2())
@@ -700,7 +713,7 @@ impl AddressSpace {
             let spot_count = spots_in_range(layout, aligned_gap);
             candidate_spot_count += spot_count;
             if target_index < spot_count {
-                // tracing::trace!("found gap right of tree in {aligned_gap:?}");
+                tracing::trace!("found gap right of tree in {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
                     .checked_add(target_index << layout.align().ilog2())
