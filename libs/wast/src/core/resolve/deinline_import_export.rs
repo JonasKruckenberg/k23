@@ -49,9 +49,17 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                     }
                     // If data is defined inline insert an explicit `data` module
                     // field here instead, switching this to a `Normal` memory.
-                    MemoryKind::Inline { is64, ref data } => {
+                    MemoryKind::Inline {
+                        is64,
+                        ref data,
+                        page_size_log2,
+                    } => {
                         let len = data.iter().map(|l| l.len()).sum::<usize>() as u64;
-                        let pages = len.div_ceil(default_page_size());
+                        let page_size = match page_size_log2 {
+                            Some(page_size_log2) => 2_u64.pow(page_size_log2),
+                            None => default_page_size(),
+                        };
+                        let pages = (len + page_size - 1) / page_size;
                         let kind = MemoryKind::Normal(MemoryType {
                             limits: Limits {
                                 is64,
@@ -59,7 +67,7 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                                 max: Some(pages),
                             },
                             shared: false,
-                            page_size_log2: None,
+                            page_size_log2,
                         });
                         let data = match mem::replace(&mut m.kind, kind) {
                             MemoryKind::Inline { data, .. } => data,
@@ -140,7 +148,7 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                             id: None,
                             name: None,
                             kind: ElemKind::Active {
-                                table: Index::Id(id),
+                                table: Some(Index::Id(id)),
                                 offset: Expression::one(if is64 {
                                     Instruction::I64Const(0)
                                 } else {

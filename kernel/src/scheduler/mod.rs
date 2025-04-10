@@ -63,26 +63,30 @@
 //! [`MultiThreadAlt`]: https://docs.rs/tokio/latest/tokio/runtime/struct.Builder.html#method.new_multi_thread_alt
 
 mod idle;
+mod park;
 mod queue;
 mod yield_now;
 
 use crate::cpu_local::CpuLocal;
-use crate::mem::AddressSpace;
+use crate::mem::with_kernel_aspace;
 use crate::scheduler::idle::Idle;
+use crate::scheduler::park::ParkToken;
 use crate::scheduler::queue::Overflow;
+use crate::task;
 use crate::task::{JoinHandle, OwnedTasks, PollResult, Schedule, TaskRef};
 use crate::time::Timer;
 use crate::util::fast_rand::FastRand;
-use crate::{arch, task};
-use alloc::sync::Arc;
 use core::any::type_name;
 use core::cell::{Ref, RefCell};
 use core::future::Future;
 use core::mem;
 use core::ops::DerefMut;
+use core::pin::pin;
 use core::sync::atomic::{AtomicBool, Ordering};
+use core::task::{Context, Poll};
+use cpu_local::cpu_local;
 use rand::RngCore;
-use spin::{Backoff, Barrier, Mutex, OnceLock};
+use spin::{Backoff, Barrier, OnceLock};
 
 const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
 
@@ -182,11 +186,7 @@ pub struct Worker {
 
 impl Scheduler {
     #[track_caller]
-    pub fn spawn<F>(
-        &'static self,
-        aspace: Arc<Mutex<AddressSpace>>,
-        future: F,
-    ) -> JoinHandle<F::Output>
+    pub fn spawn<F>(&'static self, future: F) -> JoinHandle<F::Output>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
@@ -203,13 +203,41 @@ impl Scheduler {
             loc.col = loc.column(),
         );
 
-        let (handle, maybe_task) = self.owned.bind(future, self, id, span, aspace);
+        let (handle, maybe_task) =
+            with_kernel_aspace(|aspace| self.owned.bind(future, self, id, span, aspace.clone()));
 
         if let Some(task) = maybe_task {
             self.schedule(task);
         }
 
         handle
+    }
+
+    #[track_caller]
+    pub fn block_on<F>(&'static self, future: F) -> F::Output
+    where
+        F: Future + 'static,
+        F::Output: 'static,
+    {
+        cpu_local! {
+            static PARK: ParkToken = ParkToken::new(crate::CPUID.get());
+        }
+
+        let waker = PARK.with(|park| park.clone().into_unpark().into_waker());
+        let mut cx = Context::from_waker(&waker);
+
+        let mut future = pin!(future);
+
+        loop {
+            if let Poll::Ready(v) = future.as_mut().poll(&mut cx) {
+                return v;
+            }
+
+            // If there is only one CPU in the system we cannot go to sleep
+            if self.cores.len() > 1 {
+                 PARK.with(|park| park.park());
+            }
+        }
     }
 
     pub fn shutdown(&self) {
@@ -320,11 +348,9 @@ impl Worker {
 
             // if we have no tasks to run, we can sleep until an interrupt
             // occurs.
-            self.scheduler.idle.transition_worker_to_waiting(self);
-            // Safety: we park the
-            unsafe {
-                arch::cpu_park();
-            }
+            let park = self.scheduler.idle.transition_worker_to_waiting(self);
+            park.park();
+
             self.scheduler.idle.transition_worker_from_waiting(self);
         }
 

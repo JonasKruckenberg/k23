@@ -13,7 +13,7 @@ use crate::wasm::vm::{TableElement, VMVal};
 use anyhow::bail;
 use core::ptr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Val {
     I32(i32),
     I64(i64),

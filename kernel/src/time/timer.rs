@@ -287,7 +287,7 @@ impl Core {
 
     fn insert_at(&mut self, deadline: Ticks, entry: NonNull<Entry>) {
         let wheel = self.wheel_index(deadline);
-        log::trace!("inserting entry={entry:?};deadline={deadline:?}");
+        tracing::trace!("inserting entry={entry:?};deadline={deadline:?}");
         self.wheels[wheel].insert(deadline, entry);
     }
 

@@ -7,16 +7,21 @@
 
 mod args;
 mod printer;
+mod wasm_spec;
 
+use crate::scheduler::scheduler;
 use crate::tests::args::Arguments;
 use crate::tests::printer::Printer;
 use crate::{arch, device_tree};
 use alloc::boxed::Box;
+use alloc::sync::Arc;
 use core::any::Any;
-use core::fmt::Write;
 use core::ptr::addr_of;
+use core::sync::atomic::{AtomicU64, Ordering};
 use core::{hint, slice};
-use ktest::{Test, TestInfo};
+use futures::FutureExt;
+use futures::future::try_join_all;
+use ktest::Test;
 
 /// The outcome of performing a single test.
 pub enum Outcome {
@@ -32,40 +37,22 @@ pub enum Outcome {
 pub struct Conclusion {
     /// Number of tests and benchmarks that were filtered out (either by the
     /// filter-in pattern or by `--skip` arguments).
-    pub num_filtered_out: u64,
+    pub num_filtered_out: AtomicU64,
 
     /// Number of passed tests.
-    pub num_passed: u64,
+    pub num_passed: AtomicU64,
 
     /// Number of failed tests and benchmarks.
-    pub num_failed: u64,
+    pub num_failed: AtomicU64,
 
     /// Number of ignored tests and benchmarks.
-    pub num_ignored: u64,
+    pub num_ignored: AtomicU64,
 
     /// Number of benchmarks that successfully ran.
-    pub num_measured: u64,
+    pub num_measured: AtomicU64,
 }
 
 impl Conclusion {
-    /// Returns an exit code that can be returned from `main` to signal
-    /// success/failure to the calling process.
-    pub fn exit_code(&self) -> i32 {
-        if self.has_failed() { 101 } else { 0 }
-    }
-
-    /// Returns whether there have been any failures.
-    pub fn has_failed(&self) -> bool {
-        self.num_failed > 0
-    }
-
-    /// Exits the application with an appropriate error code (0 if all tests
-    /// have passed, 101 if there have been failures). **This will not run any destructors.**
-    /// Consider using [`Self::exit_code`] instead for a proper program cleanup.
-    pub fn exit(&self) -> ! {
-        arch::exit(0);
-    }
-
     /// Exits the application with error code 101 if there were any failures.
     /// Otherwise, returns normally. **This will not run any destructors.**
     /// Consider using [`Self::exit_code`] instead for a proper program cleanup.
@@ -75,18 +62,23 @@ impl Conclusion {
         }
     }
 
+    /// Returns whether there have been any failures.
+    pub fn has_failed(&self) -> bool {
+        self.num_failed.load(Ordering::Acquire) > 0
+    }
+
     fn empty() -> Self {
         Self {
-            num_filtered_out: 0,
-            num_passed: 0,
-            num_failed: 0,
-            num_ignored: 0,
-            num_measured: 0,
+            num_filtered_out: AtomicU64::new(0),
+            num_passed: AtomicU64::new(0),
+            num_failed: AtomicU64::new(0),
+            num_ignored: AtomicU64::new(0),
+            num_measured: AtomicU64::new(0),
         }
     }
 }
 
-pub fn run_tests(write: &mut dyn Write, boot_info: &'static loader_api::BootInfo) -> Conclusion {
+pub async fn run_tests() -> Conclusion {
     let chosen = device_tree::device_tree().find_by_path("/chosen").unwrap();
     let args = if let Some(prop) = chosen.property("bootargs") {
         let str = prop.as_str().unwrap();
@@ -97,10 +89,8 @@ pub fn run_tests(write: &mut dyn Write, boot_info: &'static loader_api::BootInfo
 
     let tests = all_tests();
 
-    let mut conclusion = Conclusion::empty();
-
     // Create printer which is used for all output.
-    let mut printer = Printer::new(write, args.format);
+    let printer = Printer::new(args.format);
 
     // If `--list` is specified, just print the list and return.
     if args.list {
@@ -111,37 +101,44 @@ pub fn run_tests(write: &mut dyn Write, boot_info: &'static loader_api::BootInfo
     // Print number of tests
     printer.print_title(tests.len() as u64);
 
-    let mut handle_outcome = |outcome: Outcome, test: &TestInfo, printer: &mut Printer| {
-        printer.print_single_outcome(test, &outcome);
+    let printer = Arc::new(printer);
+    let conclusion = Arc::new(Conclusion::empty());
 
-        // Handle outcome
-        match outcome {
-            Outcome::Passed => conclusion.num_passed += 1,
-            Outcome::Failed(_reason) => {
-                conclusion.num_failed += 1;
-            }
-            Outcome::Ignored => conclusion.num_ignored += 1,
-        }
-    };
-
-    for test in tests {
-        // Print `test foo    ...`, run the test, then print the outcome in
-        // the same line.
-        printer.print_test(&test.info);
-        let outcome = if args.is_ignored(test) {
-            Outcome::Ignored
+    let tests = tests.iter().map(|test| {
+        if args.is_ignored(test) {
+            printer.print_test(&test.info);
+            conclusion.num_ignored.fetch_add(1, Ordering::Release);
+            futures::future::Either::Left(core::future::ready(Ok(())))
         } else {
-            match crate::panic::catch_unwind(|| (test.run)(boot_info)) {
-                Ok(_) => Outcome::Passed,
-                Err(err) => Outcome::Failed(err),
-            }
-        };
-        handle_outcome(outcome, &test.info, &mut printer);
-    }
+            let printer = printer.clone();
+            let conclusion = conclusion.clone();
+
+            let h = scheduler()
+                .spawn(async move {
+                    // Print `test foo    ...`, run the test, then print the outcome in
+                    // the same line.
+                    printer.print_test(&test.info);
+                    (test.run)().await;
+                })
+                .inspect(move |res| match res {
+                    Ok(_) => {
+                        conclusion.num_passed.fetch_add(1, Ordering::Release);
+                    }
+                    Err(_) => {
+                        conclusion.num_failed.fetch_add(1, Ordering::Release);
+                    }
+                });
+
+            futures::future::Either::Right(h)
+        }
+    });
+
+    // we handle test failures through `Conclusion` so it is safe to ignore the result here
+    let _ = try_join_all(tests).await;
 
     printer.print_summary(&conclusion);
 
-    conclusion
+    Arc::into_inner(conclusion).unwrap()
 }
 
 pub fn all_tests() -> &'static [Test] {

@@ -28,8 +28,8 @@ use crate::scheduler::scheduler;
 use crate::shell::Command;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::utils::{enum_accessors, owned_enum_accessors};
-use crate::wasm::vm::{ConstExprEvaluator, PlaceholderAllocatorDontUse};
-use alloc::boxed::Box;
+use wasmparser::Validator;
+
 pub use engine::Engine;
 pub use func::{Func, TypedFunc};
 pub use global::Global;
@@ -41,7 +41,9 @@ pub use store::Store;
 pub use table::Table;
 pub use tag::Tag;
 pub use trap::TrapKind;
-use wasmparser::Validator;
+#[cfg(test)]
+pub use values::Val;
+pub use vm::{ConstExprEvaluator, PlaceholderAllocatorDontUse};
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.
@@ -143,25 +145,23 @@ impl Extern {
 pub const FIB_TEST: Command = Command::new("wasm-fib-test")
     .with_help("run the WASM test payload")
     .with_fn(|_| {
-        fib_test();
+        scheduler().spawn(fib_test());
         Ok(())
     });
 
 pub const HOSTFUNC_TEST: Command = Command::new("wasm-hostfunc-test")
     .with_help("run the WASM test payload")
     .with_fn(|_| {
-        hostfunc_test();
+        scheduler().spawn(hostfunc_test());
         Ok(())
     });
 
-fn fib_test() {
-    use vm::ConstExprEvaluator;
-    use wasmparser::Validator;
-
+// #[ktest::test]
+async fn fib_test() {
     let engine = Engine::default();
     let mut validator = Validator::new();
-    let mut linker = Linker::new(&engine);
-    let mut store = Store::new(&engine, Box::new(PlaceholderAllocatorDontUse), ());
+    let mut linker: Linker<()> = Linker::new(&engine);
+    let mut store = Store::new(&engine, &PlaceholderAllocatorDontUse, ());
     let mut const_eval = ConstExprEvaluator::default();
 
     // instantiate & define the fib_cpp module
@@ -217,21 +217,27 @@ fn fib_test() {
             .typed(&store)
             .unwrap();
 
-        scheduler().spawn(
-            crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
-            async move {
+        // FIXME the virtual memory subsystem trap handling code will look for a current task
+        //  in order to find the current address space to resole page faults against. This is why
+        //  we need to wrap this call in a `spawn` that we immediately await (so the scheduling
+        //  subsystem tracks it as a task). Ideally we would get rid of this and have some other
+        //  mechanism of tracking the current address space...
+        scheduler()
+            .spawn(async move {
                 func.call(&mut store, ()).unwrap();
                 tracing::info!("done");
-            },
-        );
+            })
+            .await
+            .unwrap();
     }
 }
 
-fn hostfunc_test() {
+// #[ktest::test]
+async fn hostfunc_test() {
     let engine = Engine::default();
     let mut validator = Validator::new();
     let mut linker = Linker::new(&engine);
-    let mut store = Store::new(&engine, Box::new(PlaceholderAllocatorDontUse), ());
+    let mut store = Store::new(&engine, &PlaceholderAllocatorDontUse, ());
     let mut const_eval = ConstExprEvaluator::default();
 
     linker
@@ -260,15 +266,18 @@ fn hostfunc_test() {
         .typed(&store)
         .unwrap();
 
-    scheduler().spawn(
-        crate::mem::KERNEL_ASPACE.get().unwrap().clone(),
-        async move {
+    // FIXME the virtual memory subsystem trap handling code will look for a current task
+    //  in order to find the current address space to resole page faults against. This is why
+    //  we need to wrap this call in a `spawn` that we immediately await (so the scheduling
+    //  subsystem tracks it as a task). Ideally we would get rid of this and have some other
+    //  mechanism of tracking the current address space...
+    scheduler()
+        .spawn(async move {
             let arg = 42;
             let ret = func.call(&mut store, arg).unwrap();
             assert_eq!(ret, arg);
             tracing::info!("done");
-        },
-    );
-
-    tracing::info!("success!");
+        })
+        .await
+        .unwrap();
 }

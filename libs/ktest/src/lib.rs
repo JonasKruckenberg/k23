@@ -1,11 +1,14 @@
 #![no_std]
 
+extern crate alloc;
+
+use alloc::boxed::Box;
+use core::pin::Pin;
 pub use ktest_macros::*;
-use loader_api::BootInfo;
 
 /// A single test case
 pub struct Test {
-    pub run: fn(&'static BootInfo),
+    pub run: fn() -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
     pub info: TestInfo<'static>,
 }
 

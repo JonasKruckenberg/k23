@@ -39,6 +39,8 @@ pub enum MemoryKind<'a> {
         is64: bool,
         /// The inline data specified for this memory
         data: Vec<DataVal<'a>>,
+        /// Optional page size for this inline memory.
+        page_size_log2: Option<u32>,
     },
 }
 
@@ -69,6 +71,7 @@ impl<'a> Parse<'a> for Memory<'a> {
             } else {
                 parser.parse::<Option<kw::i64>>()?.is_some()
             };
+            let page_size_log2 = page_size(parser)?;
             let data = parser.parens(|parser| {
                 parser.parse::<kw::data>()?;
                 let mut data = Vec::new();
@@ -77,7 +80,11 @@ impl<'a> Parse<'a> for Memory<'a> {
                 }
                 Ok(data)
             })?;
-            MemoryKind::Inline { data, is64 }
+            MemoryKind::Inline {
+                data,
+                is64,
+                page_size_log2,
+            }
         } else if l.peek::<u32>()? || l.peek::<kw::i32>()? || l.peek::<kw::i64>()? {
             MemoryKind::Normal(parser.parse()?)
         } else {
@@ -144,7 +151,7 @@ impl<'a> Parse<'a> for Data<'a> {
         // as having an initialization offset.
         } else {
             let memory = if parser.peek::<u32>()? {
-                // FIXME: this is only here to accommodate
+                // FIXME: this is only here to accomodate
                 // proposals/threads/imports.wast at this current moment in
                 // time, this probably should get removed when the threads
                 // proposal is rebased on the current spec.
@@ -205,7 +212,7 @@ impl<'a> Parse<'a> for Data<'a> {
     }
 }
 
-/// Different ways the value of a data segment can be defined.
+/// Differnet ways the value of a data segment can be defined.
 #[derive(Debug)]
 #[allow(missing_docs)]
 pub enum DataVal<'a> {
@@ -213,7 +220,6 @@ pub enum DataVal<'a> {
     Integral(Vec<u8>),
 }
 
-#[expect(clippy::len_without_is_empty)]
 impl DataVal<'_> {
     /// Returns the length, in bytes, of the memory used to represent this data
     /// value.

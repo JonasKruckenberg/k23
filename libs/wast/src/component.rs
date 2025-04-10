@@ -2,7 +2,6 @@
 
 mod alias;
 pub(crate) mod binary;
-#[expect(clippy::module_inception)]
 mod component;
 mod custom;
 mod expand;

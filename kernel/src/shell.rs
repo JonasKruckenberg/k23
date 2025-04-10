@@ -16,7 +16,7 @@ const S: &str = r#"
 "#;
 
 use crate::device_tree::DeviceTree;
-use crate::mem::{KERNEL_ASPACE, Mmap, PhysicalAddress, with_kernel_aspace};
+use crate::mem::{Mmap, PhysicalAddress, with_kernel_aspace};
 use crate::scheduler::{Scheduler, scheduler};
 use crate::{arch, irq};
 use alloc::string::{String, ToString};
@@ -28,12 +28,10 @@ use fallible_iterator::FallibleIterator;
 use spin::{Barrier, OnceLock};
 
 static COMMANDS: &[Command] = &[
-    PANIC,
-    FAULT,
-    VERSION,
+    PANIC, FAULT, VERSION,
     SHUTDOWN,
-    crate::wasm::FIB_TEST,
-    crate::wasm::HOSTFUNC_TEST,
+    // crate::wasm::FIB_TEST,
+    // crate::wasm::HOSTFUNC_TEST,
 ];
 
 pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: usize) {
@@ -44,7 +42,7 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: u
         tracing::info!("{S}");
         tracing::info!("type `help` to list available commands");
 
-        sched.spawn(KERNEL_ASPACE.get().unwrap().clone(), async move {
+        sched.spawn(async move {
             let (mut uart, irq_num) = init_uart(devtree);
 
             let mut line = String::new();
@@ -98,7 +96,7 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, u32) {
         };
 
         Mmap::new_phys(
-            aspace,
+            aspace.clone(),
             range_phys,
             size,
             arch::PAGE_SIZE,

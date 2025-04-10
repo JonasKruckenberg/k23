@@ -1,15 +1,14 @@
 use crate::component::*;
 use crate::core;
 use crate::core::EncodeOptions;
-use crate::token::{Id, Index, NameAnnotation, Span};
-use alloc::{vec, vec::Vec};
-use leb128::Leb128Write;
+use crate::token::{Id, NameAnnotation};
+use alloc::vec::Vec;
 use wasm_encoder::{
-    CanonicalFunctionSection, ComponentAliasSection, ComponentDefinedTypeEncoder,
-    ComponentExportSection, ComponentImportSection, ComponentInstanceSection, ComponentNameSection,
-    ComponentSection, ComponentSectionId, ComponentStartSection, ComponentTypeEncoder,
-    ComponentTypeSection, CoreTypeEncoder, CoreTypeSection, InstanceSection, NameMap,
-    NestedComponentSection, RawSection, SectionId,
+    CanonicalFunctionSection, ComponentAliasSection, ComponentCoreTypeEncoder,
+    ComponentDefinedTypeEncoder, ComponentExportSection, ComponentImportSection,
+    ComponentInstanceSection, ComponentNameSection, ComponentSection, ComponentSectionId,
+    ComponentStartSection, ComponentTypeEncoder, ComponentTypeSection, CoreTypeSection,
+    InstanceSection, NameMap, NestedComponentSection, RawSection,
 };
 
 pub fn encode(component: &Component<'_>, options: &EncodeOptions) -> Vec<u8> {
@@ -35,6 +34,7 @@ fn encode_fields(
             ComponentField::CoreModule(m) => e.encode_core_module(m, options),
             ComponentField::CoreInstance(i) => e.encode_core_instance(i),
             ComponentField::CoreType(t) => e.encode_core_type(t),
+            ComponentField::CoreRec(t) => e.encode_core_rec(t),
             ComponentField::Component(c) => e.encode_component(c, options),
             ComponentField::Instance(i) => e.encode_instance(i),
             ComponentField::Alias(a) => e.encode_alias(a),
@@ -57,23 +57,10 @@ fn encode_fields(
     e.component
 }
 
-fn encode_core_type(encoder: CoreTypeEncoder, ty: &CoreTypeDef) {
+fn encode_core_type(encoder: ComponentCoreTypeEncoder, ty: &CoreTypeDef) {
     match ty {
         CoreTypeDef::Def(def) => {
-            if def.shared {
-                todo!("encoding of shared types not yet implemented")
-            }
-            match &def.kind {
-                core::InnerTypeKind::Func(f) => {
-                    encoder.function(
-                        f.params.iter().map(|(_, _, ty)| (*ty).into()),
-                        f.results.iter().copied().map(Into::into),
-                    );
-                }
-                core::InnerTypeKind::Struct(_) | core::InnerTypeKind::Array(_) => {
-                    todo!("encoding of GC proposal types not yet implemented")
-                }
-            }
+            encoder.core().subtype(&def.to_subtype());
         }
         CoreTypeDef::Module(t) => {
             encoder.module(&t.into());
@@ -90,11 +77,7 @@ fn encode_type(encoder: ComponentTypeEncoder, ty: &TypeDef) {
             let mut encoder = encoder.function();
             encoder.params(f.params.iter().map(|p| (p.name, &p.ty)));
 
-            if f.results.len() == 1 && f.results[0].name.is_none() {
-                encoder.result(&f.results[0].ty);
-            } else {
-                encoder.results(f.results.iter().map(|r| (r.name.unwrap_or(""), &r.ty)));
-            }
+            encoder.result(f.result.as_ref().map(|ty| ty.into()));
         }
         TypeDef::Component(c) => {
             encoder.component(&c.into());
@@ -147,6 +130,8 @@ fn encode_defined_type(encoder: ComponentDefinedTypeEncoder, ty: &ComponentDefin
         }
         ComponentDefinedType::Own(i) => encoder.own((*i).into()),
         ComponentDefinedType::Borrow(i) => encoder.borrow((*i).into()),
+        ComponentDefinedType::Stream(s) => encoder.stream(s.element.as_deref().map(Into::into)),
+        ComponentDefinedType::Future(f) => encoder.future(f.element.as_deref().map(Into::into)),
     }
 }
 
@@ -176,6 +161,7 @@ struct Encoder<'a> {
     core_type_names: Vec<Option<&'a str>>,
     core_module_names: Vec<Option<&'a str>>,
     core_instance_names: Vec<Option<&'a str>>,
+    core_tag_names: Vec<Option<&'a str>>,
     func_names: Vec<Option<&'a str>>,
     value_names: Vec<Option<&'a str>>,
     type_names: Vec<Option<&'a str>>,
@@ -187,19 +173,12 @@ impl<'a> Encoder<'a> {
     fn encode_custom(&mut self, custom: &Custom) {
         // Flush any in-progress section before encoding the customs section
         self.flush(None);
-        self.component.section(custom);
+        self.component.section(&custom.to_section());
     }
 
     fn encode_producers(&mut self, custom: &core::Producers) {
-        use crate::encode::Encode;
-
-        let mut data = Vec::new();
-        custom.encode(&mut data);
-        self.encode_custom(&Custom {
-            name: "producers",
-            span: Span::from_offset(0),
-            data: vec![&data],
-        })
+        self.flush(None);
+        self.component.section(&custom.to_section());
     }
 
     fn encode_core_module(&mut self, module: &CoreModule<'a>, options: &EncodeOptions) {
@@ -246,6 +225,17 @@ impl<'a> Encoder<'a> {
     fn encode_core_type(&mut self, ty: &CoreType<'a>) {
         self.core_type_names.push(get_name(&ty.id, &ty.name));
         encode_core_type(self.core_types.ty(), &ty.def);
+        self.flush(Some(self.core_types.id()));
+    }
+
+    fn encode_core_rec(&mut self, ty: &core::Rec<'a>) {
+        for ty in ty.types.iter() {
+            self.core_type_names.push(get_name(&ty.id, &ty.name));
+        }
+        self.core_types
+            .ty()
+            .core()
+            .rec(ty.types.iter().map(|t| t.to_subtype()));
         self.flush(Some(self.core_types.id()));
     }
 
@@ -340,23 +330,170 @@ impl<'a> Encoder<'a> {
                     info.opts.iter().map(Into::into),
                 );
             }
-            CanonicalFuncKind::Lower(info) => {
-                self.core_func_names.push(name);
-                self.funcs
-                    .lower(info.func.idx.into(), info.opts.iter().map(Into::into));
-            }
-            CanonicalFuncKind::ResourceNew(info) => {
-                self.core_func_names.push(name);
-                self.funcs.resource_new(info.ty.into());
-            }
-            CanonicalFuncKind::ResourceDrop(info) => {
-                self.core_func_names.push(name);
-                self.funcs.resource_drop(info.ty.into());
-            }
-            CanonicalFuncKind::ResourceRep(info) => {
-                self.core_func_names.push(name);
-                self.funcs.resource_rep(info.ty.into());
-            }
+            CanonicalFuncKind::Core(core) => match core {
+                CoreFuncKind::Alias(_) => {
+                    panic!("should have been removed during expansion")
+                }
+                CoreFuncKind::Lower(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs
+                        .lower(info.func.idx.into(), info.opts.iter().map(Into::into));
+                }
+                CoreFuncKind::ResourceNew(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.resource_new(info.ty.into());
+                }
+                CoreFuncKind::ResourceDrop(info) => {
+                    self.core_func_names.push(name);
+                    if info.async_ {
+                        self.funcs.resource_drop_async(info.ty.into());
+                    } else {
+                        self.funcs.resource_drop(info.ty.into());
+                    }
+                }
+                CoreFuncKind::ResourceRep(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.resource_rep(info.ty.into());
+                }
+                CoreFuncKind::ThreadSpawnRef(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.thread_spawn_ref(info.ty.into());
+                }
+                CoreFuncKind::ThreadSpawnIndirect(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs
+                        .thread_spawn_indirect(info.ty.into(), info.table.idx.into());
+                }
+                CoreFuncKind::ThreadAvailableParallelism(_info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.thread_available_parallelism();
+                }
+                CoreFuncKind::BackpressureSet => {
+                    self.core_func_names.push(name);
+                    self.funcs.backpressure_set();
+                }
+                CoreFuncKind::TaskReturn(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.task_return(
+                        info.result
+                            .as_ref()
+                            .map(|ty| wasm_encoder::ComponentValType::from(ty)),
+                        info.opts.iter().map(Into::into),
+                    );
+                }
+                CoreFuncKind::ContextGet(i) => {
+                    self.core_func_names.push(name);
+                    self.funcs.context_get(*i);
+                }
+                CoreFuncKind::ContextSet(i) => {
+                    self.core_func_names.push(name);
+                    self.funcs.context_set(*i);
+                }
+                CoreFuncKind::Yield(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.yield_(info.async_);
+                }
+                CoreFuncKind::SubtaskDrop => {
+                    self.core_func_names.push(name);
+                    self.funcs.subtask_drop();
+                }
+                CoreFuncKind::StreamNew(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.stream_new(info.ty.into());
+                }
+                CoreFuncKind::StreamRead(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs
+                        .stream_read(info.ty.into(), info.opts.iter().map(Into::into));
+                }
+                CoreFuncKind::StreamWrite(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs
+                        .stream_write(info.ty.into(), info.opts.iter().map(Into::into));
+                }
+                CoreFuncKind::StreamCancelRead(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.stream_cancel_read(info.ty.into(), info.async_);
+                }
+                CoreFuncKind::StreamCancelWrite(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.stream_cancel_write(info.ty.into(), info.async_);
+                }
+                CoreFuncKind::StreamCloseReadable(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.stream_close_readable(info.ty.into());
+                }
+                CoreFuncKind::StreamCloseWritable(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.stream_close_writable(info.ty.into());
+                }
+                CoreFuncKind::FutureNew(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.future_new(info.ty.into());
+                }
+                CoreFuncKind::FutureRead(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs
+                        .future_read(info.ty.into(), info.opts.iter().map(Into::into));
+                }
+                CoreFuncKind::FutureWrite(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs
+                        .future_write(info.ty.into(), info.opts.iter().map(Into::into));
+                }
+                CoreFuncKind::FutureCancelRead(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.future_cancel_read(info.ty.into(), info.async_);
+                }
+                CoreFuncKind::FutureCancelWrite(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.future_cancel_write(info.ty.into(), info.async_);
+                }
+                CoreFuncKind::FutureCloseReadable(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.future_close_readable(info.ty.into());
+                }
+                CoreFuncKind::FutureCloseWritable(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs.future_close_writable(info.ty.into());
+                }
+                CoreFuncKind::ErrorContextNew(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs
+                        .error_context_new(info.opts.iter().map(Into::into));
+                }
+                CoreFuncKind::ErrorContextDebugMessage(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs
+                        .error_context_debug_message(info.opts.iter().map(Into::into));
+                }
+                CoreFuncKind::ErrorContextDrop => {
+                    self.core_func_names.push(name);
+                    self.funcs.error_context_drop();
+                }
+                CoreFuncKind::WaitableSetNew => {
+                    self.core_func_names.push(name);
+                    self.funcs.waitable_set_new();
+                }
+                CoreFuncKind::WaitableSetWait(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs
+                        .waitable_set_wait(info.async_, info.memory.idx.into());
+                }
+                CoreFuncKind::WaitableSetPoll(info) => {
+                    self.core_func_names.push(name);
+                    self.funcs
+                        .waitable_set_poll(info.async_, info.memory.idx.into());
+                }
+                CoreFuncKind::WaitableSetDrop => {
+                    self.core_func_names.push(name);
+                    self.funcs.waitable_set_drop();
+                }
+                CoreFuncKind::WaitableJoin => {
+                    self.core_func_names.push(name);
+                    self.funcs.waitable_join();
+                }
+            },
         }
 
         self.flush(Some(self.funcs.id()));
@@ -474,6 +611,7 @@ impl<'a> Encoder<'a> {
         funcs(&self.core_table_names, ComponentNameSection::core_tables);
         funcs(&self.core_memory_names, ComponentNameSection::core_memories);
         funcs(&self.core_global_names, ComponentNameSection::core_globals);
+        funcs(&self.core_tag_names, ComponentNameSection::core_tags);
         funcs(&self.core_type_names, ComponentNameSection::core_types);
         funcs(&self.core_module_names, ComponentNameSection::core_modules);
         funcs(
@@ -523,7 +661,7 @@ impl<'a> Encoder<'a> {
             core::ExportKind::Global => &mut self.core_global_names,
             core::ExportKind::Table => &mut self.core_table_names,
             core::ExportKind::Memory => &mut self.core_memory_names,
-            core::ExportKind::Tag => unimplemented!(),
+            core::ExportKind::Tag => &mut self.core_tag_names,
         }
     }
 
@@ -551,146 +689,15 @@ fn get_name<'a>(id: &Option<Id<'a>>, name: &Option<NameAnnotation<'a>>) -> Optio
     })
 }
 
-// This implementation is much like `wasm_encoder::CustomSection`, except
-// that it extends via a list of slices instead of a single slice.
-impl wasm_encoder::Encode for Custom<'_> {
-    fn encode(&self, sink: &mut Vec<u8>) {
-        let mut buf = [0u8; 5];
-        let encoded_name_len = buf.as_mut_slice().write_uleb128(u64::try_from(self.name.len()).unwrap()).unwrap();
-        let data_len = self.data.iter().fold(0, |acc, s| acc + s.len());
-
-        // name length
-        (encoded_name_len + self.name.len() + data_len).encode(sink);
-
-        // name
-        self.name.encode(sink);
-
-        // data
-        for s in &self.data {
-            sink.extend(*s);
+impl Custom<'_> {
+    fn to_section(&self) -> wasm_encoder::CustomSection<'_> {
+        let mut ret = Vec::new();
+        for list in self.data.iter() {
+            ret.extend_from_slice(list);
         }
-    }
-}
-
-impl wasm_encoder::ComponentSection for Custom<'_> {
-    fn id(&self) -> u8 {
-        SectionId::Custom.into()
-    }
-}
-
-// TODO: move these core conversion functions to the core module
-// once we update core encoding to use wasm-encoder.
-impl From<core::ValType<'_>> for wasm_encoder::ValType {
-    fn from(ty: core::ValType) -> Self {
-        match ty {
-            core::ValType::I32 => Self::I32,
-            core::ValType::I64 => Self::I64,
-            core::ValType::F32 => Self::F32,
-            core::ValType::F64 => Self::F64,
-            core::ValType::V128 => Self::V128,
-            core::ValType::Ref(r) => Self::Ref(r.into()),
-        }
-    }
-}
-
-impl From<core::RefType<'_>> for wasm_encoder::RefType {
-    fn from(r: core::RefType<'_>) -> Self {
-        wasm_encoder::RefType {
-            nullable: r.nullable,
-            heap_type: r.heap.into(),
-        }
-    }
-}
-
-impl From<core::HeapType<'_>> for wasm_encoder::HeapType {
-    fn from(r: core::HeapType<'_>) -> Self {
-        use wasm_encoder::AbstractHeapType::*;
-        match r {
-            core::HeapType::Abstract { shared, ty } => match ty {
-                core::AbstractHeapType::Func => Self::Abstract { shared, ty: Func },
-                core::AbstractHeapType::Extern => Self::Abstract { shared, ty: Extern },
-                core::AbstractHeapType::Exn | core::AbstractHeapType::NoExn => {
-                    todo!("encoding of exceptions proposal types not yet implemented")
-                }
-                core::AbstractHeapType::Any
-                | core::AbstractHeapType::Eq
-                | core::AbstractHeapType::Struct
-                | core::AbstractHeapType::Array
-                | core::AbstractHeapType::NoFunc
-                | core::AbstractHeapType::NoExtern
-                | core::AbstractHeapType::None
-                | core::AbstractHeapType::I31 => {
-                    todo!("encoding of GC proposal types not yet implemented")
-                }
-            },
-            core::HeapType::Concrete(Index::Num(i, _)) => Self::Concrete(i),
-            core::HeapType::Concrete(_) => panic!("unresolved index"),
-        }
-    }
-}
-
-impl From<&core::ItemKind<'_>> for wasm_encoder::EntityType {
-    fn from(kind: &core::ItemKind) -> Self {
-        match kind {
-            core::ItemKind::Func(t) => Self::Function(t.into()),
-            core::ItemKind::Table(t) => Self::Table((*t).into()),
-            core::ItemKind::Memory(t) => Self::Memory((*t).into()),
-            core::ItemKind::Global(t) => Self::Global((*t).into()),
-            core::ItemKind::Tag(t) => Self::Tag(t.into()),
-        }
-    }
-}
-
-impl From<core::TableType<'_>> for wasm_encoder::TableType {
-    fn from(ty: core::TableType) -> Self {
-        Self {
-            element_type: ty.elem.into(),
-            minimum: ty.limits.min,
-            maximum: ty.limits.max,
-            table64: ty.limits.is64,
-            shared: ty.shared,
-        }
-    }
-}
-
-impl From<core::MemoryType> for wasm_encoder::MemoryType {
-    fn from(ty: core::MemoryType) -> Self {
-        Self {
-            minimum: ty.limits.min,
-            maximum: ty.limits.max,
-            memory64: ty.limits.is64,
-            shared: ty.shared,
-            page_size_log2: ty.page_size_log2,
-        }
-    }
-}
-
-impl From<core::GlobalType<'_>> for wasm_encoder::GlobalType {
-    fn from(ty: core::GlobalType) -> Self {
-        Self {
-            val_type: ty.ty.into(),
-            mutable: ty.mutable,
-            shared: ty.shared,
-        }
-    }
-}
-
-impl From<&core::TagType<'_>> for wasm_encoder::TagType {
-    fn from(ty: &core::TagType) -> Self {
-        match ty {
-            core::TagType::Exception(r) => Self {
-                kind: wasm_encoder::TagKind::Exception,
-                func_type_idx: r.into(),
-            },
-        }
-    }
-}
-
-impl<T: ::core::fmt::Debug> From<&core::TypeUse<'_, T>> for u32 {
-    fn from(u: &core::TypeUse<'_, T>) -> Self {
-        match &u.index {
-            Some(i) => (*i).into(),
-            None => unreachable!("unresolved type use in encoding: {:?}", u),
+        wasm_encoder::CustomSection {
+            name: self.name.into(),
+            data: ret.into(),
         }
     }
 }
@@ -716,27 +723,6 @@ impl From<&CoreItemRef<'_, core::ExportKind>> for (wasm_encoder::ExportKind, u32
             core::ExportKind::Memory => (wasm_encoder::ExportKind::Memory, item.idx.into()),
             core::ExportKind::Global => (wasm_encoder::ExportKind::Global, item.idx.into()),
             core::ExportKind::Tag => (wasm_encoder::ExportKind::Tag, item.idx.into()),
-        }
-    }
-}
-
-impl From<core::ExportKind> for wasm_encoder::ExportKind {
-    fn from(kind: core::ExportKind) -> Self {
-        match kind {
-            core::ExportKind::Func => Self::Func,
-            core::ExportKind::Table => Self::Table,
-            core::ExportKind::Memory => Self::Memory,
-            core::ExportKind::Global => Self::Global,
-            core::ExportKind::Tag => Self::Tag,
-        }
-    }
-}
-
-impl From<Index<'_>> for u32 {
-    fn from(i: Index<'_>) -> Self {
-        match i {
-            Index::Num(i, _) => i,
-            Index::Id(_) => unreachable!("unresolved index in encoding: {:?}", i),
         }
     }
 }
@@ -794,6 +780,7 @@ impl From<PrimitiveValType> for wasm_encoder::PrimitiveValType {
             PrimitiveValType::F64 => Self::F64,
             PrimitiveValType::Char => Self::Char,
             PrimitiveValType::String => Self::String,
+            PrimitiveValType::ErrorContext => Self::ErrorContext,
         }
     }
 }
@@ -884,15 +871,12 @@ impl From<&ModuleType<'_>> for wasm_encoder::ModuleType {
 
         for decl in &ty.decls {
             match decl {
-                ModuleTypeDecl::Type(t) => match &t.def.kind {
-                    core::InnerTypeKind::Func(f) => encoded.ty().function(
-                        f.params.iter().map(|(_, _, ty)| (*ty).into()),
-                        f.results.iter().copied().map(Into::into),
-                    ),
-                    core::InnerTypeKind::Struct(_) | core::InnerTypeKind::Array(_) => {
-                        todo!("encoding of GC proposal types not yet implemented")
-                    }
-                },
+                ModuleTypeDecl::Type(t) => {
+                    encoded.ty().subtype(&t.to_subtype());
+                }
+                ModuleTypeDecl::Rec(rec) => {
+                    encoded.ty().rec(rec.types.iter().map(|t| t.to_subtype()));
+                }
                 ModuleTypeDecl::Alias(a) => match &a.target {
                     AliasTarget::Outer {
                         outer,
@@ -904,10 +888,10 @@ impl From<&ModuleType<'_>> for wasm_encoder::ModuleType {
                     _ => unreachable!("only outer type aliases are supported"),
                 },
                 ModuleTypeDecl::Import(i) => {
-                    encoded.import(i.module, i.field, (&i.item.kind).into());
+                    encoded.import(i.module, i.field, i.item.to_entity_type());
                 }
                 ModuleTypeDecl::Export(name, item) => {
-                    encoded.export(name, (&item.kind).into());
+                    encoded.export(name, item.to_entity_type());
                 }
             }
         }
@@ -979,6 +963,8 @@ impl From<&CanonOpt<'_>> for wasm_encoder::CanonicalOption {
             CanonOpt::Memory(m) => Self::Memory(m.idx.into()),
             CanonOpt::Realloc(f) => Self::Realloc(f.idx.into()),
             CanonOpt::PostReturn(f) => Self::PostReturn(f.idx.into()),
+            CanonOpt::Async => Self::Async,
+            CanonOpt::Callback(f) => Self::Callback(f.idx.into()),
         }
     }
 }

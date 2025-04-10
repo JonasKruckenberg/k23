@@ -727,7 +727,7 @@ where
     ///
     /// The caller has to ensure this cpu has exclusive mutable access to the tasks `stage` field (ie the
     /// future or output).
-    unsafe fn poll_inner(&self, mut cx: Context<'_>) -> Poll<()> {
+    pub unsafe fn poll_inner(&self, mut cx: Context<'_>) -> Poll<()> {
         let _span = self.span().enter();
 
         // Safety: ensured by caller

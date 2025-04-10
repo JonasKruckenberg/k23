@@ -313,7 +313,7 @@ impl ConstExprEvaluator {
         }
 
         if self.stack.len() == 1 {
-            log::trace!("const expr evaluated to {:?}", self.stack[0]);
+            tracing::trace!("const expr evaluated to {:?}", self.stack[0]);
             Ok(self.stack.pop().unwrap())
         } else {
             let len = self.stack.len();

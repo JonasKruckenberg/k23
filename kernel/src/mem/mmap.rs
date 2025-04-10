@@ -12,10 +12,12 @@ use crate::mem::{
     VirtualAddress,
 };
 use alloc::string::String;
+use alloc::sync::Arc;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{ptr, slice};
+use spin::Mutex;
 
 /// A memory mapping.
 ///
@@ -23,6 +25,7 @@ use core::{ptr, slice};
 /// specific needs such as copying from and to memory.
 #[derive(Debug)]
 pub struct Mmap {
+    aspace: Option<Arc<Mutex<AddressSpace>>>,
     range: Range<VirtualAddress>,
 }
 
@@ -38,6 +41,7 @@ impl Mmap {
     /// slices and permission changing methods will always fail.
     pub const fn new_empty() -> Self {
         Self {
+            aspace: None,
             range: Range {
                 start: VirtualAddress::ZERO,
                 end: VirtualAddress::ZERO,
@@ -47,7 +51,7 @@ impl Mmap {
 
     /// Creates a new read-write (`RW`) memory mapping in the given address space.
     pub fn new_zeroed(
-        aspace: &mut AddressSpace,
+        aspace: Arc<Mutex<AddressSpace>>,
         len: usize,
         align: usize,
         name: Option<String>,
@@ -59,28 +63,33 @@ impl Mmap {
 
         let layout = Layout::from_size_align(len, align).unwrap();
 
-        let region = aspace.map(
-            layout,
-            Permissions::READ | Permissions::WRITE | Permissions::USER,
-            |range, perms, batch| {
-                Ok(AddressSpaceRegion::new_zeroed(
-                    batch.frame_alloc,
-                    range,
-                    perms,
-                    name,
-                ))
-            },
-        )?;
+        let mut aspace_ = aspace.lock();
+        let range = aspace_
+            .map(
+                layout,
+                Permissions::READ | Permissions::WRITE | Permissions::USER,
+                |range, perms, batch| {
+                    Ok(AddressSpaceRegion::new_zeroed(
+                        batch.frame_alloc,
+                        range,
+                        perms,
+                        name,
+                    ))
+                },
+            )?
+            .range;
+        drop(aspace_);
 
-        tracing::trace!("new_zeroed: {len} {:?}", region.range);
+        tracing::trace!("new_zeroed: {len} {range:?}");
 
         Ok(Self {
-            range: region.range,
+            aspace: Some(aspace),
+            range,
         })
     }
 
     pub fn new_phys(
-        aspace: &mut AddressSpace,
+        aspace: Arc<Mutex<AddressSpace>>,
         range_phys: Range<PhysicalAddress>,
         len: usize,
         align: usize,
@@ -103,20 +112,25 @@ impl Mmap {
 
         let layout = Layout::from_size_align(len, align).unwrap();
 
-        let region = aspace.map(
-            layout,
-            Permissions::READ | Permissions::WRITE,
-            |range_virt, perms, _batch| {
-                Ok(AddressSpaceRegion::new_phys(
-                    range_virt, perms, range_phys, name,
-                ))
-            },
-        )?;
+        let mut aspace_ = aspace.lock();
+        let range = aspace_
+            .map(
+                layout,
+                Permissions::READ | Permissions::WRITE,
+                |range_virt, perms, _batch| {
+                    Ok(AddressSpaceRegion::new_phys(
+                        range_virt, perms, range_phys, name,
+                    ))
+                },
+            )?
+            .range;
+        drop(aspace_);
 
-        tracing::trace!("new_phys: {len} {:?} => {range_phys:?}", region.range);
+        tracing::trace!("new_phys: {len} {range:?} => {range_phys:?}");
 
         Ok(Self {
-            range: region.range,
+            aspace: Some(aspace),
+            range,
         })
     }
 
@@ -293,5 +307,15 @@ impl Mmap {
         }
 
         Ok(())
+    }
+}
+
+impl Drop for Mmap {
+    fn drop(&mut self) {
+        // A `None` means the Mmap got created through `Mmap::new_empty` so there is nothing to unmap
+        if let Some(aspace) = &self.aspace {
+            let mut aspace = aspace.lock();
+            aspace.unmap(self.range).unwrap();
+        }
     }
 }

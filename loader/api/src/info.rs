@@ -41,6 +41,8 @@ pub struct BootInfo {
 
     pub rng_seed: [u8; 32],
 }
+unsafe impl Send for BootInfo {}
+unsafe impl Sync for BootInfo {}
 
 impl BootInfo {
     /// Create a new boot info structure with the given memory map.

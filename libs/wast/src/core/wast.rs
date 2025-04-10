@@ -19,7 +19,6 @@ pub enum WastArgCore<'a> {
     RefHost(u32),
 }
 
-#[expect(clippy::type_complexity)]
 static ARGS: &[(&str, fn(Parser<'_>) -> Result<WastArgCore<'_>>)] = {
     use WastArgCore::*;
     &[
@@ -54,7 +53,7 @@ impl Peek for WastArgCore<'_> {
             Some((kw, _)) => kw,
             None => return Ok(false),
         };
-        Ok(ARGS.iter().any(|(name, _)| *name == kw))
+        Ok(ARGS.iter().find(|(name, _)| *name == kw).is_some())
     }
 
     fn display() -> &'static str {
@@ -92,11 +91,12 @@ pub enum WastRetCore<'a> {
     RefStruct,
     /// A non-null i31ref is expected.
     RefI31,
+    /// A non-null, shared i31ref is expected.
+    RefI31Shared,
 
     Either(Vec<WastRetCore<'a>>),
 }
 
-#[expect(clippy::type_complexity)]
 static RETS: &[(&str, fn(Parser<'_>) -> Result<WastRetCore<'_>>)] = {
     use WastRetCore::*;
     &[
@@ -114,6 +114,7 @@ static RETS: &[(&str, fn(Parser<'_>) -> Result<WastRetCore<'_>>)] = {
         ("ref.array", |_| Ok(RefArray)),
         ("ref.struct", |_| Ok(RefStruct)),
         ("ref.i31", |_| Ok(RefI31)),
+        ("ref.i31_shared", |_| Ok(RefI31Shared)),
         ("either", |p| {
             p.depth_check()?;
             let mut cases = Vec::new();
@@ -145,7 +146,7 @@ impl Peek for WastRetCore<'_> {
             Some((kw, _)) => kw,
             None => return Ok(false),
         };
-        Ok(RETS.iter().any(|(name, _)| *name == kw))
+        Ok(RETS.iter().find(|(name, _)| *name == kw).is_some())
     }
 
     fn display() -> &'static str {

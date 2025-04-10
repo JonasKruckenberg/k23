@@ -25,6 +25,7 @@ ksharded-slab.workspace = true
 ktest.workspace = true
 addr2line.workspace = true
 uart-16550.workspace = true
+wast.workspace = true
 
 rustc-demangle.workspace = true
 log.workspace = true
@@ -47,6 +48,7 @@ mycelium-bitfield.workspace = true
 tracing.workspace = true
 tracing-core.workspace = true
 anyhow.workspace = true
+futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
 
 wasmparser.workspace = true
 target-lexicon.workspace = true

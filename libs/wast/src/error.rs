@@ -23,6 +23,7 @@ pub struct Error {
 #[derive(Debug)]
 struct ErrorInner {
     text: Option<Text>,
+    file: Option<String>,
     span: Span,
     kind: ErrorKind,
 }
@@ -45,6 +46,7 @@ impl Error {
         let mut ret = Error {
             inner: Box::new(ErrorInner {
                 text: None,
+                file: None,
                 span,
                 kind: ErrorKind::Lex(kind),
             }),
@@ -57,6 +59,7 @@ impl Error {
         let mut ret = Error {
             inner: Box::new(ErrorInner {
                 text: None,
+                file: None,
                 span,
                 kind: ErrorKind::Custom(message),
             }),
@@ -74,6 +77,7 @@ impl Error {
         Error {
             inner: Box::new(ErrorInner {
                 text: None,
+                file: None,
                 span,
                 kind: ErrorKind::Custom(message),
             }),
@@ -96,6 +100,18 @@ impl Error {
             return;
         }
         self.inner.text = Some(Text::new(contents, self.inner.span));
+    }
+
+    /// To provide a more useful error this function can be used to set
+    /// the file name that this error is associated with.
+    ///
+    /// The `path` here will be stored in this error and later rendered in the
+    /// `Display` implementation.
+    pub fn set_path(&mut self, path: &str) {
+        if self.inner.file.is_some() {
+            return;
+        }
+        self.inner.file = Some(path.to_string());
     }
 
     /// Returns the underlying `LexError`, if any, that describes this error.
@@ -127,15 +143,22 @@ impl fmt::Display for Error {
                 return write!(f, "{} at byte offset {}", err, self.inner.span.offset);
             }
         };
+        let file = self
+            .inner
+            .file
+            .as_ref()
+            .map(|p| p.as_str())
+            .unwrap_or("<anon>");
         write!(
             f,
             "\
 {err}
-     --> <anon>:{line}:{col}
+     --> {file}:{line}:{col}
       |
  {line:4} | {text}
       | {marker:>0$}",
             text.col + 1,
+            file = file,
             line = text.line + 1,
             col = text.col + 1,
             err = err,

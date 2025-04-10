@@ -14,7 +14,6 @@ use crate::core::binary::{EncodeOptions, Encoder, GenerateDwarf, Names, RecOrTyp
 use crate::core::{InnerTypeKind, Local, ValType};
 use crate::token::Span;
 use core::cmp::Ordering;
-use core::path::Path;
 use gimli::write::{
     self, Address, AttributeValue, DwarfUnit, Expression, FileId, LineProgram, LineString,
     Sections, UnitEntryId, Writer,
@@ -223,7 +222,7 @@ impl<'a> Dwarf<'a> {
             .types
             .iter()
             .flat_map(|t| match t {
-                RecOrType::Type(t) => core::slice::from_ref(*t),
+                RecOrType::Type(t) => std::slice::from_ref(*t),
                 RecOrType::Rec(r) => &r.types,
             })
             .nth(ty as usize);
@@ -432,9 +431,12 @@ impl<'a> Dwarf<'a> {
         sections
             .for_each(|id, writer| {
                 if !writer.bytes.is_empty() {
-                    dst.custom_section(id.name(), &writer.bytes);
+                    dst.wasm.section(&wasm_encoder::CustomSection {
+                        name: id.name().into(),
+                        data: (&writer.bytes).into(),
+                    });
                 }
-                Ok::<_, core::convert::Infallible>(())
+                Ok::<_, std::convert::Infallible>(())
             })
             .unwrap();
     }

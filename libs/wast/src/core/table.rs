@@ -150,7 +150,7 @@ pub enum ElemKind<'a> {
     /// An active segment associated with a table.
     Active {
         /// The table this `elem` is initializing.
-        table: Index<'a>,
+        table: Option<Index<'a>>,
         /// The offset within `table` that we'll initialize at.
         offset: Expression<'a>,
     },
@@ -193,20 +193,20 @@ impl<'a> Parse<'a> for Elem<'a> {
             || (parser.peek::<LParen>()? && !parser.peek::<RefType>()?)
         {
             let table = if parser.peek::<u32>()? {
-                // FIXME: this is only here to accommodate
+                // FIXME: this is only here to accomodate
                 // proposals/threads/imports.wast at this current moment in
                 // time, this probably should get removed when the threads
                 // proposal is rebased on the current spec.
                 table_omitted = true;
-                Index::Num(parser.parse()?, span)
+                Some(Index::Num(parser.parse()?, span))
             } else if parser.peek2::<kw::table>()? {
-                parser.parens(|p| {
+                Some(parser.parens(|p| {
                     p.parse::<kw::table>()?;
                     p.parse()
-                })?
+                })?)
             } else {
                 table_omitted = true;
-                Index::Num(0, span)
+                None
             };
 
             let offset = parse_expr_or_single_instr::<kw::offset>(parser)?;
@@ -258,11 +258,11 @@ impl<'a> ElemPayload<'a> {
 
             // If the requested type is a `funcref` type then a list of indices
             // can be parsed. This is because the list-of-indices encoding in
-            // the binary format can only accommodate the `funcref` type.
+            // the binary format can only accomodate the `funcref` type.
             Some(ty) if ty == RefType::func() => ElemPayload::Indices(Vec::new()),
 
             // Otherwise silently translate this list-of-indices into a
-            // list-of-expressions because that's the only way to accommodate a
+            // list-of-expressions because that's the only way to accomodate a
             // non-funcref type.
             Some(ty) => ElemPayload::Exprs {
                 ty,
