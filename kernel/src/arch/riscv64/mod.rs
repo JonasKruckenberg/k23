@@ -7,6 +7,7 @@
 
 mod asid_allocator;
 pub mod device;
+pub mod fiber;
 mod mem;
 mod setjmp_longjmp;
 mod trap_handler;
@@ -23,6 +24,8 @@ pub use mem::{
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
 pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
+
+pub const STACK_ALIGNMENT: usize = 16;
 
 /// Global RISC-V specific initialization.
 #[cold]

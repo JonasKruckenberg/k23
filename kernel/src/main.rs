@@ -23,6 +23,7 @@
 #![feature(if_let_guard)]
 #![feature(allocator_api)]
 #![expect(dead_code, reason = "TODO")] // TODO remove
+#![feature(asm_unwind)]
 
 extern crate alloc;
 
@@ -32,6 +33,7 @@ mod backtrace;
 mod bootargs;
 mod cpu_local;
 mod device_tree;
+mod fiber;
 mod irq;
 mod mem;
 mod metrics;
