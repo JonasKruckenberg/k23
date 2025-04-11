@@ -86,10 +86,6 @@ impl Provider for TheZeroFrame {
     }
 
     fn free_frame(&self, frame: Frame) {
-        debug_assert!(
-            Frame::ptr_eq(&frame, self.frame()),
-            "attempted to free unrelated frame with the zero frame provider"
-        );
         drop(frame);
     }
 
