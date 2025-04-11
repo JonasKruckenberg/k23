@@ -80,6 +80,7 @@ pub unsafe fn init_stack<T>(
     func: unsafe extern "C-unwind" fn(arg: EncodedValue, sp: &mut StackPointer, obj: *mut T) -> !,
     obj: T,
 ) -> StackPointer {
+    // Safety: ensured by caller
     unsafe {
         let mut sp = stack.top().get();
 
@@ -201,7 +202,7 @@ pub unsafe fn switch_and_link(
 ) -> (EncodedValue, Option<StackPointer>) {
     let (ret_val, ret_sp);
 
-    // Safetyy: inline assembly
+    // Safety: inline assembly
     unsafe {
         asm! {
             // DW_CFA_GNU_args_size 0

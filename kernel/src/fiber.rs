@@ -38,7 +38,7 @@ pub enum FiberResult<Yield, Return> {
 
 impl<Yield, Return> FiberResult<Yield, Return> {
     /// Returns the `Yield` value as an `Option<Yield>`.
-    pub fn as_yield(self) -> Option<Yield> {
+    pub fn into_yield(self) -> Option<Yield> {
         match self {
             FiberResult::Yield(val) => Some(val),
             FiberResult::Return(_) => None,
@@ -46,7 +46,7 @@ impl<Yield, Return> FiberResult<Yield, Return> {
     }
 
     /// Returns the `Return` value as an `Option<Return>`.
-    pub fn as_return(self) -> Option<Return> {
+    pub fn into_return(self) -> Option<Return> {
         match self {
             FiberResult::Yield(_) => None,
             FiberResult::Return(val) => Some(val),
@@ -126,10 +126,11 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
         where
             F: FnOnce(Input, &Suspend<Input, Yield>) -> Return,
         {
+            // Safety: TODO
             unsafe {
                 // The suspend is a #[repr(transparent)] wrapper around the
                 // parent link on the stack.
-                let suspend = &*(parent_link as *mut StackPointer as *const Suspend<Input, Yield>);
+                let suspend = &*(ptr::from_mut(parent_link).cast::<Suspend<Input, Yield>>());
 
                 // Read the function from the stack.
                 debug_assert_eq!(func as usize % align_of::<F>(), 0);
@@ -148,11 +149,13 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
 
         // Drop function to free the initial state of the coroutine.
         unsafe fn drop_fn<T>(ptr: *mut u8) {
+            // Safety: TODO
             unsafe {
-                ptr::drop_in_place(ptr as *mut T);
+                ptr::drop_in_place(ptr.cast::<T>());
             }
         }
 
+        // Safety: TODO
         unsafe {
             // Set up the stack so that the coroutine starts executing
             // coroutine_func. Write the given function object to the stack so
@@ -176,6 +179,7 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
 
         let stack_ptr = self.stack_ptr.take().unwrap();
 
+        // Safety: TODO
         unsafe {
             let (result, stack_ptr) =
                 arch::fiber::switch_and_link(encode_val(&mut input), stack_ptr, self.stack.top());
@@ -235,6 +239,7 @@ pub struct Suspend<Input, Yield> {
 
 impl<Input, Yield> Suspend<Input, Yield> {
     pub fn suspend(&self, val: Yield) -> Input {
+        // Safety: TODO
         unsafe {
             let mut val = ManuallyDrop::new(val);
             let result = arch::fiber::switch_yield(encode_val(&mut val), self.stack_ptr.as_ptr());
@@ -253,16 +258,14 @@ pub type EncodedValue = usize;
 /// argument. This function logically takes ownership of the value, so it should
 /// not be dropped afterwards.
 pub unsafe fn encode_val<T>(val: &mut ManuallyDrop<T>) -> EncodedValue {
+    // Safety: ensured by caller
     unsafe {
         if size_of::<T>() <= size_of::<EncodedValue>() {
             let mut out = 0;
-            ptr::write_unaligned(
-                &mut out as *mut EncodedValue as *mut T,
-                ManuallyDrop::take(val),
-            );
+            ptr::write_unaligned(ptr::from_mut(&mut out).cast::<T>(), ManuallyDrop::take(val));
             out
         } else {
-            val as *const ManuallyDrop<T> as EncodedValue
+            ptr::from_ref(val) as EncodedValue
         }
     }
 }
@@ -270,9 +273,10 @@ pub unsafe fn encode_val<T>(val: &mut ManuallyDrop<T>) -> EncodedValue {
 // Decodes a value produced by `encode_usize` either by converting it directly
 // or by treating the `usize` as a pointer and dereferencing it.
 pub unsafe fn decode_val<T>(val: EncodedValue) -> T {
+    // Safety: ensured by caller
     unsafe {
         if size_of::<T>() <= size_of::<EncodedValue>() {
-            ptr::read_unaligned(&val as *const EncodedValue as *const T)
+            ptr::read_unaligned(ptr::from_ref(&val).cast::<T>())
         } else {
             ptr::read(val as *const T)
         }
@@ -282,6 +286,7 @@ pub unsafe fn decode_val<T>(val: EncodedValue) -> T {
 /// Helper function to push a value onto a stack.
 #[inline]
 pub unsafe fn push(sp: &mut usize, val: Option<usize>) {
+    // Safety: ensured by caller
     unsafe {
         *sp -= size_of::<usize>();
         if let Some(val) = val {
@@ -297,6 +302,7 @@ pub unsafe fn push(sp: &mut usize, val: Option<usize>) {
 /// `STACK_ALIGNMENT`.
 #[inline]
 pub unsafe fn allocate_obj_on_stack<T>(sp: &mut usize, sp_offset: usize, obj: T) {
+    // Safety: ensured by caller
     unsafe {
         // Sanity check to avoid stack overflows.
         assert!(size_of::<T>() <= 1024, "type is too big to transfer");
