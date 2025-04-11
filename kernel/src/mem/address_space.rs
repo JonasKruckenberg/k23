@@ -580,7 +580,7 @@ impl AddressSpace {
 
         let spots_in_range = |layout: Layout, aligned: Range<VirtualAddress>| -> usize {
             debug_assert!(
-                aligned.start.is_aligned_to(layout.size())
+                aligned.start.is_aligned_to(layout.align())
                     && aligned.end.is_aligned_to(layout.align())
             );
 
