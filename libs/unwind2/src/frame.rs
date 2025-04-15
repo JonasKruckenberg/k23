@@ -10,8 +10,8 @@ use crate::eh_info::obtain_eh_info;
 use crate::utils::{StoreOnStack, deref_pointer, get_unlimited_slice, with_context};
 use fallible_iterator::FallibleIterator;
 use gimli::{
-    CfaRule, EhFrame, EndianSlice, FrameDescriptionEntry, NativeEndian, Register, RegisterRule,
-    UnwindSection, UnwindTableRow,
+    CfaRule, EhFrame, EndianSlice, EvaluationResult, FrameDescriptionEntry, NativeEndian, Register,
+    RegisterRule, UnwindExpression, UnwindSection, UnwindTableRow, Value,
 };
 
 /// A frame in a stack.
@@ -20,6 +20,7 @@ use gimli::{
 #[derive(Debug)]
 pub struct Frame<'a> {
     regs: arch::Registers,
+    eh_frame: &'a EhFrame<EndianSlice<'a, NativeEndian>>,
     fde: FrameDescriptionEntry<EndianSlice<'a, NativeEndian>, usize>,
     row: UnwindTableRow<usize, StoreOnStack>,
     return_address_register: Register,
@@ -157,6 +158,7 @@ impl<'a> Frame<'a> {
 
         Ok(Self {
             return_address_register: fde.cie().return_address_register(),
+            eh_frame: &eh_info.eh_frame,
             fde,
             row,
             regs: regs.clone(),
@@ -172,12 +174,14 @@ impl<'a> Frame<'a> {
         let row = &self.row;
         let mut new_regs = self.regs.clone();
 
-        #[expect(clippy::match_wildcard_for_single_variants, reason = "style choice")]
         let cfa = match *row.cfa() {
             CfaRule::RegisterAndOffset { register, offset } => {
                 self.regs[register].wrapping_add(offset as usize)
             }
-            _ => return Err(gimli::Error::UnsupportedEvaluation),
+            CfaRule::Expression(expr) => {
+                let result = self.eval_expression(expr)?;
+                result.unwrap().to_u64(u64::MAX)? as usize
+            }
         };
 
         new_regs[arch::SP] = cfa;
@@ -210,8 +214,15 @@ impl<'a> Frame<'a> {
                     new_regs[reg] = cfa.wrapping_add(offset as usize);
                 }
                 RegisterRule::Register(reg) => new_regs[reg] = self.regs[reg],
-                RegisterRule::Expression(_) | RegisterRule::ValExpression(_) => {
-                    return Err(gimli::Error::UnsupportedEvaluation);
+                RegisterRule::Expression(expr) => {
+                    let result = self.eval_expression(expr)?;
+                    let addr = result.unwrap().to_u64(u64::MAX)? as usize;
+                    // Safety: we have to trust the DWARF info here
+                    new_regs[reg] = unsafe { *(addr as *const usize) };
+                }
+                RegisterRule::ValExpression(expr) => {
+                    let result = self.eval_expression(expr)?;
+                    new_regs[reg] = result.unwrap().to_u64(u64::MAX)? as usize;
                 }
                 RegisterRule::Architectural => unreachable!(),
                 RegisterRule::Constant(value) => new_regs[reg] = usize::try_from(value).unwrap(),
@@ -220,6 +231,49 @@ impl<'a> Frame<'a> {
         }
 
         Ok(new_regs)
+    }
+
+    fn eval_expression(&self, expr: UnwindExpression<usize>) -> gimli::Result<Option<Value>> {
+        let expr = expr.get(self.eh_frame)?;
+
+        let mut eval = expr.evaluation(self.fde.cie().encoding());
+        let mut result = eval.evaluate()?;
+
+        loop {
+            result = match result {
+                EvaluationResult::Complete => return Ok(eval.value_result()),
+                EvaluationResult::RequiresRegister {
+                    register,
+                    base_type,
+                } => {
+                    assert_eq!(base_type.0, 0);
+                    eval.resume_with_register(Value::Generic(self.regs[register] as u64))?
+                }
+                EvaluationResult::RequiresMemory {
+                    address,
+                    size,
+                    space,
+                    base_type,
+                } => {
+                    assert_eq!(size, 8);
+                    assert!(space.is_none());
+                    assert_eq!(base_type.0, 0);
+
+                    // Safety: we have to trust the DWARF info here
+                    let val = unsafe { (address as *mut u64).read() };
+                    eval.resume_with_memory(Value::Generic(val))?
+                }
+                EvaluationResult::RequiresFrameBase => todo!(),
+                EvaluationResult::RequiresTls(_) => todo!(),
+                EvaluationResult::RequiresCallFrameCfa => todo!(),
+                EvaluationResult::RequiresAtLocation(_) => todo!(),
+                EvaluationResult::RequiresEntryValue(_) => todo!(),
+                EvaluationResult::RequiresParameterRef(_) => todo!(),
+                EvaluationResult::RequiresRelocatedAddress(_) => todo!(),
+                EvaluationResult::RequiresIndexedAddress { .. } => todo!(),
+                EvaluationResult::RequiresBaseType(_) => todo!(),
+            }
+        }
     }
 }
 
