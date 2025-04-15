@@ -8,7 +8,7 @@
 //! # Scheduler Subsystem
 //!
 //! The scheduler subsystem is responsible for managing the execution of tasks on the system. Contrary
-//! to traditional operating systems, tasks in k23 are lightweight stackless coroutines that are scheduled
+//! to traditional operating systems, tasks in k23 are lightweight stackless fibers that are scheduled
 //! cooperatively (i.e. Rust futures). The scheduler is responsible for managing the lifecycle of these
 //! as well as scheduling them across multiple cores.
 //!

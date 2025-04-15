@@ -27,13 +27,13 @@ use core::range::Range;
 use core::{fmt, ptr};
 use spin::Mutex;
 
-/// Value returned from resuming a coroutine.
+/// Value returned from resuming a fiber.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FiberResult<Yield, Return> {
-    /// Value returned by a coroutine suspending itself with a `Yielder`.
+    /// Value returned by a fiber suspending itself with a `Yielder`.
     Yield(Yield),
 
-    /// Value returned by a coroutine returning from its main function.
+    /// Value returned by a fiber returning from its main function.
     Return(Return),
 }
 
@@ -86,19 +86,19 @@ impl FiberStack {
 }
 
 pub struct Fiber<Input, Yield, Return> {
-    // Stack that the coroutine is executing on.
+    // Stack that the fiber is executing on.
     stack: FiberStack,
-    // Current stack pointer at which the coroutine state is held. This is
-    // None when the coroutine has completed execution.
+    // Current stack pointer at which the fiber state is held. This is
+    // None when the fiber has completed execution.
     stack_ptr: Option<StackPointer>,
-    // Initial stack pointer value. This is used to detect whether a coroutine
+    // Initial stack pointer value. This is used to detect whether a fiber
     // has ever been resumed since it was created.
     //
-    // This works because it is impossible for a coroutine to revert back to its
-    // initial stack pointer: suspending a coroutine requires pushing several
+    // This works because it is impossible for a fiber to revert back to its
+    // initial stack pointer: suspending a fiber requires pushing several
     // values to the stack.
     initial_stack_ptr: StackPointer,
-    // Function to call to drop the initial state of a coroutine if it has
+    // Function to call to drop the initial state of a fiber if it has
     // never been resumed.
     drop_fn: unsafe fn(ptr: *mut u8),
     // We want to be covariant over Yield and Return, and contravariant
@@ -155,7 +155,7 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
             }
         }
 
-        // Drop function to free the initial state of the coroutine.
+        // Drop function to free the initial state of the fiber.
         unsafe fn drop_fn<T>(ptr: *mut u8) {
             // Safety: TODO
             unsafe {
@@ -165,9 +165,9 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
 
         // Safety: TODO
         unsafe {
-            // Set up the stack so that the coroutine starts executing
-            // coroutine_func. Write the given function object to the stack so
-            // its address is passed to coroutine_func on the first resume.
+            // Set up the stack so that the fiber starts executing
+            // fiber_func. Write the given function object to the stack so
+            // its address is passed to fiber_func on the first resume.
             let stack_ptr =
                 arch::fiber::init_stack(&stack, fiber_func::<Input, Yield, Return, F>, f);
 
@@ -197,7 +197,7 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
 
             self.stack_ptr = stack_ptr;
 
-            // Decode the returned value depending on whether the coroutine
+            // Decode the returned value depending on whether the fiber
             // terminated.
             if stack_ptr.is_some() {
                 FiberResult::Yield(decode_val(result))
@@ -207,65 +207,65 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
         }
     }
 
-    /// Returns whether this coroutine has been resumed at least once.
+    /// Returns whether this fiber has been resumed at least once.
     pub fn started(&self) -> bool {
         self.stack_ptr != Some(self.initial_stack_ptr)
     }
 
-    /// Returns whether this coroutine has finished executing.
+    /// Returns whether this fiber has finished executing.
     ///
-    /// A coroutine that has returned from its initial function can no longer
+    /// A fiber that has returned from its initial function can no longer
     /// be resumed.
     pub fn done(&self) -> bool {
         self.stack_ptr.is_none()
     }
 
-    /// Forcibly marks the coroutine as having completed, even if it is
+    /// Forcibly marks the fiber as having completed, even if it is
     /// currently suspended in the middle of a function.
     ///
     /// # Safety
     ///
     /// This is equivalent to a `longjmp` all the way back to the initial
-    /// function of the coroutine, so the same rules apply.
+    /// function of the fiber, so the same rules apply.
     ///
     /// This can only be done safely if there are no objects currently on the
-    /// coroutine's stack that need to execute `Drop` code.
+    /// fiber's stack that need to execute `Drop` code.
     pub unsafe fn force_reset(&mut self) {
         self.stack_ptr = None;
     }
 
-    /// Unwinds the coroutine stack, dropping any live objects that are
-    /// currently on the stack. This is automatically called when the coroutine
+    /// Unwinds the fiber stack, dropping any live objects that are
+    /// currently on the stack. This is automatically called when the fiber
     /// is dropped.
     ///
-    /// If the coroutine has already completed then this function is a no-op.
+    /// If the fiber has already completed then this function is a no-op.
     ///
-    /// If the coroutine is currently suspended on a `Yielder::suspend` call
+    /// If the fiber is currently suspended on a `Yielder::suspend` call
     /// then unwinding it requires the `unwind` feature to be enabled and
     /// for the crate to be compiled with `-C panic=unwind`.
     ///
     /// # Panics
     ///
-    /// This function panics if the coroutine could not be fully unwound. This
+    /// This function panics if the fiber could not be fully unwound. This
     /// can happen for one of two reasons:
     /// - The `ForcedUnwind` panic that is used internally was caught and not
     ///   rethrown.
     /// - This crate was compiled without the `unwind` feature and the
-    ///   coroutine is currently suspended in the yielder (`started && !done`).
+    ///   fiber is currently suspended in the yielder (`started && !done`).
     pub unsafe fn force_unwind(&mut self) {
-        // If the coroutine has already terminated then there is nothing to do.
+        // If the fiber has already terminated then there is nothing to do.
         if let Some(stack_ptr) = self.stack_ptr.take() {
             self.force_unwind_slow(stack_ptr);
         }
     }
 
-    /// Slow path of `force_unwind` when the coroutine is known to not have
+    /// Slow path of `force_unwind` when the fiber is known to not have
     /// terminated yet.
     #[cold]
     fn force_unwind_slow(&mut self, stack_ptr: StackPointer) {
         // Safety: TODO
         unsafe {
-            // If the coroutine has not started yet then we just need to drop the
+            // If the fiber has not started yet then we just need to drop the
             // initial object.
             if !self.started() {
                 arch::fiber::drop_initial_obj(self.stack.top(), stack_ptr, self.drop_fn);
@@ -388,25 +388,25 @@ pub unsafe fn allocate_obj_on_stack<T>(sp: &mut usize, sp_offset: usize, obj: T)
 }
 
 // fn test() {
-//     log::debug!("[main] creating coroutine");
+//     log::debug!("[main] creating fiber");
 //
 //     let stack = with_kernel_aspace(|aspace| FiberStack::new(aspace.clone()));
 //
-//     let mut coroutine = Fiber::new(stack, |input, suspend| {
-//         log::debug!("[coroutine] coroutine started with input {}", input);
+//     let mut fiber = Fiber::new(stack, |input, suspend| {
+//         log::debug!("[fiber] fiber started with input {}", input);
 //         for i in 0..5 {
-//             log::debug!("[coroutine] yielding {}", i);
+//             log::debug!("[fiber] yielding {}", i);
 //             let input = suspend.suspend(i);
-//             log::debug!("[coroutine] got {} from parent", input)
+//             log::debug!("[fiber] got {} from parent", input)
 //         }
-//         log::debug!("[coroutine] exiting coroutine");
+//         log::debug!("[fiber] exiting fiber");
 //     });
 //
 //     let mut counter = 100;
 //     loop {
-//         log::debug!("[main] resuming coroutine with argument {}", counter);
-//         match coroutine.resume(counter) {
-//             FiberResult::Yield(i) => log::debug!("[main] got {:?} from coroutine", i),
+//         log::debug!("[main] resuming fiber with argument {}", counter);
+//         match fiber.resume(counter) {
+//             FiberResult::Yield(i) => log::debug!("[main] got {:?} from fiber", i),
 //             FiberResult::Return(()) => break,
 //         }
 //

@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 //! ## Stack layout
 //!
-//! Here is what the layout of the stack looks like when a coroutine is
+//! Here is what the layout of the stack looks like when a fiber is
 //! suspended.
 //!
 //! ```text
@@ -29,7 +29,7 @@
 //! +--------------+
 //! ```
 //!
-//! And this is the layout of the parent stack when a coroutine is running:
+//! And this is the layout of the parent stack when a fiber is running:
 //!
 //! ```text
 //! |           |
@@ -46,7 +46,7 @@
 //! +-----------+
 //! ```
 //!
-//! And finally, this is the stack layout of a coroutine that has just been
+//! And finally, this is the stack layout of a fiber that has just been
 //! initialized:
 //!
 //! ```text
@@ -145,11 +145,11 @@ pub unsafe extern "C" fn stack_init_trampoline() {
             "mv s0, a1",
             // Adjust A1 to point to the parent link.
             "addi a1, a1, -2 * 8",
-            // Pop the padding and initial PC from the coroutine stack. This also sets
+            // Pop the padding and initial PC from the fiber stack. This also sets
             // up the 3rd argument to the initial function to point to the object that
             // init_stack() set up on the stack.
             "addi a2, a2, 4 * 8",
-            // Switch to the coroutine stack.
+            // Switch to the fiber stack.
             "mv sp, a2",
 
             ".cfi_escape 0x0f,  /* DW_CFA_def_cfa_expression */\
@@ -201,22 +201,22 @@ pub unsafe fn switch_and_link(
             // DW_CFA_GNU_args_size that may have been set in the current function.
             ".cfi_escape 0x2e, 0x00",
 
-            // Read the saved PC from the coroutine stack and call it.
+            // Read the saved PC from the fiber stack and call it.
             load_gp!(a2[2] => t0),
             "jalr t0",
 
             // Upon returning, our register state contains the following:
             // - A2: Our stack pointer + 2 words.
-            // - A1: The top of the coroutine stack, or 0 if coming from
+            // - A1: The top of the fiber stack, or 0 if coming from
             //       switch_and_reset.
-            // - A0: The argument passed from the coroutine.
+            // - A0: The argument passed from the fiber.
 
              // Switch back to our stack and free the saved registers.
             "addi sp, a2, 2 * 8", // XLEN
 
             // Pass the argument in A0.
             inlateout("a0") arg0 => ret_val,
-            // We get the coroutine stack pointer back in A1.
+            // We get the fiber stack pointer back in A1.
             lateout("a1") ret_sp,
             // We pass the stack top in A1.
             in("a1") top_of_stack.get(),
@@ -302,11 +302,11 @@ pub unsafe fn switch_yield(arg: EncodedValue, parent_link: *mut StackPointer) ->
             // then save the parent stack pointer to the parent link "field" of our own stack
             save_gp!(t0 => a1[-2]),
 
-            // Load our S0 and S1 values from the coroutine stack.
+            // Load our S0 and S1 values from the fiber stack.
             load_gp!(a2[1] => s1),
             load_gp!(a2[0] => s0),
 
-            // Switch to the coroutine stack while popping the saved registers and
+            // Switch to the fiber stack while popping the saved registers and
             // padding.
             "addi sp, a2, 4 * 8", // XLEN
 
@@ -347,7 +347,7 @@ pub unsafe fn switch_and_reset(arg: EncodedValue, parent_link: *mut StackPointer
 
             in("a0") arg,
             // Hard-code the returned stack pointer value to 0 to indicate that this
-            // coroutine is done.
+            // fiber is done.
             in("a1") 0,
             parent_link = in(reg) parent_link,
             options(noreturn),
@@ -385,12 +385,12 @@ pub unsafe fn switch_and_throw(
             // then save the parent stack pointer to the parent link "field" of our own stack
             save_gp!(t1 => a1[-2]),
 
-            // Load the coroutine registers, with the saved PC into RA.
+            // Load the fiber registers, with the saved PC into RA.
             load_gp!(t0[2] => ra),
             load_gp!(t0[1] => s1),
             load_gp!(t0[0] => s0),
 
-            // Switch to the coroutine stack while popping the saved registers and
+            // Switch to the fiber stack while popping the saved registers and
             // padding.
             "addi sp, t0, 4 * 8",
 
