@@ -5,11 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::CPUID;
 use crate::scheduler::park::{ParkToken, UnparkToken};
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Mutex;
-use crate::CPUID;
 
 pub struct Idle {
     /// Number of searching workers
@@ -125,7 +125,10 @@ impl Idle {
     pub fn notify_self(&self) {
         let cpuid = CPUID.get();
         let mut sleepers = self.sleepers.lock();
-        let index = sleepers.iter().position(|worker| worker.cpuid() == cpuid).unwrap();
+        let index = sleepers
+            .iter()
+            .position(|worker| worker.cpuid() == cpuid)
+            .unwrap();
         let worker = sleepers.remove(index);
         worker.unpark();
     }
