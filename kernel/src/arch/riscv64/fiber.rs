@@ -71,7 +71,7 @@
 
 use super::utils::{define_op, load_gp, save_gp};
 use crate::arch::STACK_ALIGNMENT;
-use crate::fiber::{allocate_obj_on_stack, push, EncodedValue, FiberStack, StackPointer};
+use crate::fiber::{EncodedValue, FiberStack, StackPointer, allocate_obj_on_stack, push};
 use core::arch::{asm, naked_asm};
 
 #[inline]
@@ -164,13 +164,13 @@ pub unsafe extern "C" fn stack_init_trampoline() {
             ".cfi_offset s1, -2 * 8",
             ".cfi_offset ra, -3 * 8",
             ".cfi_offset s0, -4 * 8",
-            
+
             // As in the original x86_64 code, hand-write the call operation so that it
             // doesn't push an entry into the CPU's return prediction stack.
             "lla ra, 0f",
             load_gp!(a1[1] => t0),
             "jr t0",
-            
+
             "0:",
             // "unimp", // This UNIMP is necessary because of our use of .cfi_signal_frame earlier.
             ".cfi_endproc",

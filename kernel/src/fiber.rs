@@ -23,8 +23,8 @@ use core::mem::ManuallyDrop;
 use core::num::NonZeroUsize;
 use core::ops::DerefMut;
 use core::panic::AssertUnwindSafe;
-use core::{fmt, ptr};
 use core::range::Range;
+use core::{fmt, ptr};
 use spin::Mutex;
 
 /// Value returned from resuming a coroutine.
@@ -184,7 +184,7 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
 
     pub fn resume(&mut self, input: Input) -> FiberResult<Yield, Return> {
         let mut input = ManuallyDrop::new(input);
-        
+
         let stack_ptr = self
             .stack_ptr
             .take()
