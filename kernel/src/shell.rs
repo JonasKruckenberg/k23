@@ -100,7 +100,6 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
         .unwrap()
     });
 
-    
     // Safety: info comes from device tree
     let uart = unsafe { uart_16550::SerialPort::new(mmap.range().start.get(), clock_freq, 115200) };
 
