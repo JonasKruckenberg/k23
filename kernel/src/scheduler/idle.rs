@@ -5,8 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::CPUID;
-use crate::scheduler::park::{ParkToken, UnparkToken};
+use crate::arch;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Mutex;
@@ -21,7 +20,7 @@ pub struct Idle {
     /// Total number of cores
     num_cores: usize,
     /// Worker IDs that are currently sleeping
-    sleepers: Mutex<Vec<UnparkToken>>,
+    sleepers: Mutex<Vec<usize>>,
 }
 
 pub(crate) struct IdleMap {
@@ -43,7 +42,7 @@ impl Idle {
         self.num_searching.load(Ordering::Acquire)
     }
 
-    pub fn transition_worker_to_waiting(&self, worker: &super::Worker) -> ParkToken {
+    pub fn transition_worker_to_waiting(&self, worker: &super::Worker) {
         // tracing::trace!("Idle::transition_worker_to_waiting");
 
         // The worker should not be stealing at this point
@@ -57,10 +56,7 @@ impl Idle {
         let prev = self.num_idle.fetch_add(1, Ordering::Release);
         debug_assert!(prev < self.num_cores);
 
-        let park = ParkToken::new(worker.cpuid);
-        self.sleepers.lock().push(park.clone().into_unpark());
-
-        park
+        self.sleepers.lock().push(worker.cpuid);
     }
 
     pub fn transition_worker_from_waiting(&self, worker: &super::Worker) {
@@ -74,7 +70,7 @@ impl Idle {
 
         self.sleepers
             .lock()
-            .retain(|sleeper| sleeper.cpuid() != worker.cpuid);
+            .retain(|sleeper| *sleeper != worker.cpuid);
     }
 
     pub fn try_transition_worker_to_searching(&self, worker: &mut super::Worker) {
@@ -109,28 +105,21 @@ impl Idle {
     pub fn notify_one(&self) {
         // tracing::trace!("Idle::notify_one");
         if let Some(worker) = self.sleepers.lock().pop() {
-            worker.unpark();
+            // Safety: the worker placed itself into the sleepers list, so sending a wakeup is safe
+            unsafe {
+                arch::cpu_unpark(worker);
+            }
         }
     }
 
     pub fn notify_all(&self) {
         // tracing::trace!("Idle::notify_all");
         while let Some(worker) = self.sleepers.lock().pop() {
-            worker.unpark();
+            // Safety: the worker placed itself into the sleepers list, so sending a wakeup is safe
+            unsafe {
+                arch::cpu_unpark(worker);
+            }
         }
-    }
-
-    // FIXME this implementation is baaaad, especially because its run from a trap handler
-    //  it would be much better to use cpu_local storage for this
-    pub fn notify_self(&self) {
-        let cpuid = CPUID.get();
-        let mut sleepers = self.sleepers.lock();
-        let index = sleepers
-            .iter()
-            .position(|worker| worker.cpuid() == cpuid)
-            .unwrap();
-        let worker = sleepers.remove(index);
-        worker.unpark();
     }
 }
 
