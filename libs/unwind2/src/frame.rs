@@ -7,7 +7,7 @@
 
 use crate::arch;
 use crate::eh_info::obtain_eh_info;
-use crate::utils::{deref_pointer, get_unlimited_slice, with_context, StoreOnStack};
+use crate::utils::{StoreOnStack, deref_pointer, get_unlimited_slice, with_context};
 use fallible_iterator::FallibleIterator;
 use gimli::{
     CfaRule, EhFrame, EndianSlice, EvaluationResult, FrameDescriptionEntry, NativeEndian, Register,
