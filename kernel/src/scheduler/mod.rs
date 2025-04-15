@@ -72,10 +72,10 @@ use crate::mem::with_kernel_aspace;
 use crate::scheduler::idle::Idle;
 use crate::scheduler::park::ParkToken;
 use crate::scheduler::queue::Overflow;
-use crate::task;
 use crate::task::{JoinHandle, OwnedTasks, PollResult, Schedule, TaskRef};
 use crate::time::Timer;
 use crate::util::fast_rand::FastRand;
+use crate::{arch, task};
 use core::any::type_name;
 use core::cell::{Ref, RefCell};
 use core::future::Future;
@@ -122,7 +122,7 @@ pub struct Scheduler {
     /// All tasks currently scheduled on this runtime
     owned: OwnedTasks,
     /// Coordinates idle workers
-    pub idle: Idle,
+    idle: Idle,
     /// Signal to workers that they should be shutting down.
     shutdown: AtomicBool,
     /// Spin barrier used to synchronize shutdown between workers,
@@ -348,8 +348,11 @@ impl Worker {
 
             // if we have no tasks to run, we can sleep until an interrupt
             // occurs.
-            let park = self.scheduler.idle.transition_worker_to_waiting(self);
-            park.park();
+            self.scheduler.idle.transition_worker_to_waiting(self);
+            // Safety: TODO
+            unsafe {
+                arch::cpu_park();
+            }
 
             self.scheduler.idle.transition_worker_from_waiting(self);
         }
@@ -358,6 +361,8 @@ impl Worker {
     }
 
     fn run_task(&mut self, task: TaskRef) {
+        tracing::trace!("Running task {:?}", task);
+
         // Make sure the worker is not in the **searching** state. This enables
         // another idle worker to try to steal work.
         if self.transition_from_searching() {
