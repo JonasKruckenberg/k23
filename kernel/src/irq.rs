@@ -42,12 +42,13 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
         return;
     };
 
+    // acknowledge the interrupt as fast as possible
+    irq_ctl.irq_complete(claim);
+
     let queues = QUEUES.read();
     if let Some(queue) = queues.get(&claim.as_u32()) {
         queue.wake_all();
     }
-
-    irq_ctl.irq_complete(claim);
 }
 
 pub async fn next_event(irq_num: u32) -> Result<(), sync::Closed> {
