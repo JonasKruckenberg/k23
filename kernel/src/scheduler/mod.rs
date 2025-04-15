@@ -72,10 +72,10 @@ use crate::mem::with_kernel_aspace;
 use crate::scheduler::idle::Idle;
 use crate::scheduler::park::ParkToken;
 use crate::scheduler::queue::Overflow;
-use crate::{arch, task};
 use crate::task::{JoinHandle, OwnedTasks, PollResult, Schedule, TaskRef};
 use crate::time::Timer;
 use crate::util::fast_rand::FastRand;
+use crate::{arch, task};
 use core::any::type_name;
 use core::cell::{Ref, RefCell};
 use core::future::Future;
@@ -362,7 +362,7 @@ impl Worker {
 
     fn run_task(&mut self, task: TaskRef) {
         tracing::trace!("Running task {:?}", task);
-        
+
         // Make sure the worker is not in the **searching** state. This enables
         // another idle worker to try to steal work.
         if self.transition_from_searching() {
