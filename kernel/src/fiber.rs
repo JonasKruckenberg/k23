@@ -263,17 +263,17 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
     /// terminated yet.
     #[cold]
     fn force_unwind_slow(&mut self, stack_ptr: StackPointer) {
-        // If the coroutine has not started yet then we just need to drop the
-        // initial object.
-        if !self.started() {
-            unsafe {
-                arch::fiber::drop_initial_obj(self.stack.top(), stack_ptr, self.drop_fn);
-            }
-            self.stack_ptr = None;
-            return;
-        }
-
+        // Safety: TODO
         unsafe {
+            // If the coroutine has not started yet then we just need to drop the
+            // initial object.
+            if !self.started() {
+                arch::fiber::drop_initial_obj(self.stack.top(), stack_ptr, self.drop_fn);
+
+                self.stack_ptr = None;
+                return;
+            }
+
             let res = crate::panic::catch_unwind(AssertUnwindSafe(|| {
                 arch::fiber::switch_and_throw(stack_ptr, self.stack.top())
             }));
