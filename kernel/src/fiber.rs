@@ -397,6 +397,44 @@ pub struct FiberFuture<T> {
 // Safety: TODO
 unsafe impl<T> Send for FiberFuture<T> {}
 
+impl<T> FiberFuture<T> {
+    pub fn new<F>(stack: FiberStack, f: F) -> Self
+    where
+        F: FnOnce(FiberFutureSuspend) -> T + 'static + Send,
+        T: 'static,
+    {
+        let fiber = Fiber::new(stack, move |cx: *mut Context<'static>, suspend| {
+            let suspend = FiberFutureSuspend {
+                stack_ptr: suspend.stack_ptr.clone(),
+                cx,
+                _m: PhantomData,
+            };
+
+            f(suspend)
+        });
+
+        Self { fiber }
+    }
+
+    pub fn into_fiber(self) -> Fiber<*mut Context<'static>, (), T> {
+        self.fiber
+    }
+}
+
+impl<T> Future for FiberFuture<T> {
+    type Output = T;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Safety: TODO
+        let cx = unsafe { core::mem::transmute::<&mut Context<'_>, *mut Context<'static>>(cx) };
+
+        match self.fiber.resume(cx) {
+            FiberResult::Yield(_) => Poll::Pending,
+            FiberResult::Return(ret) => Poll::Ready(ret),
+        }
+    }
+}
+
 pub struct FiberFutureSuspend {
     // Internally the Yielder is just the parent link on the stack which is
     // updated every time resume() is called.
@@ -433,40 +471,6 @@ impl FiberFutureSuspend {
         unsafe {
             // `0` is the stand-in for `encode_val(())`
             arch::fiber::switch_yield(0, self.stack_ptr.as_ptr());
-        }
-    }
-}
-
-impl<T> FiberFuture<T> {
-    pub fn new<F>(stack: FiberStack, f: F) -> Self
-    where
-        F: FnOnce(FiberFutureSuspend) -> T + 'static + Send,
-        T: 'static,
-    {
-        let fiber = Fiber::new(stack, move |cx: *mut Context<'static>, suspend| {
-            let suspend = FiberFutureSuspend {
-                stack_ptr: suspend.stack_ptr.clone(),
-                cx,
-                _m: PhantomData,
-            };
-
-            f(suspend)
-        });
-
-        Self { fiber }
-    }
-}
-
-impl<T> Future for FiberFuture<T> {
-    type Output = T;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // Safety: TODO
-        let cx = unsafe { core::mem::transmute::<&mut Context<'_>, *mut Context<'static>>(cx) };
-
-        match self.fiber.resume(cx) {
-            FiberResult::Yield(_) => Poll::Pending,
-            FiberResult::Return(ret) => Poll::Ready(ret),
         }
     }
 }
