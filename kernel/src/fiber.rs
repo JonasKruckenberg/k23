@@ -23,7 +23,7 @@ use core::mem::ManuallyDrop;
 use core::num::NonZeroUsize;
 use core::ops::DerefMut;
 use core::panic::AssertUnwindSafe;
-use core::pin::{pin, Pin};
+use core::pin::{Pin, pin};
 use core::range::Range;
 use core::task::{Context, Poll};
 use core::{fmt, ptr};
@@ -394,6 +394,7 @@ pub struct FiberFuture<T> {
     fiber: Fiber<*mut Context<'static>, (), T>,
 }
 
+// Safety: TODO
 unsafe impl<T> Send for FiberFuture<T> {}
 
 pub struct FiberFutureSuspend {
@@ -412,12 +413,13 @@ impl FiberFutureSuspend {
         let mut future = pin!(future);
 
         loop {
+            // Safety: TODO
             match future.as_mut().poll(unsafe { &mut *self.cx }) {
                 // When poll returns Ready we ran the future to completion and can return
                 Poll::Ready(ret) => return ret,
                 // If it returns Pending, we still need to wait for it, suspend the fiber which
                 // will manifest as a pending in `FiberFuture::poll`
-                Poll::Pending => self.suspend()
+                Poll::Pending => self.suspend(),
             }
         }
     }
@@ -434,7 +436,7 @@ impl FiberFutureSuspend {
         }
     }
 }
-    
+
 impl<T> FiberFuture<T> {
     pub fn new<F>(stack: FiberStack, f: F) -> Self
     where
@@ -447,18 +449,19 @@ impl<T> FiberFuture<T> {
                 cx,
                 _m: PhantomData,
             };
-            
+
             f(suspend)
         });
 
         Self { fiber }
     }
 }
-    
+
 impl<T> Future for FiberFuture<T> {
     type Output = T;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Safety: TODO
         let cx = unsafe { core::mem::transmute::<&mut Context<'_>, *mut Context<'static>>(cx) };
 
         match self.fiber.resume(cx) {
