@@ -191,6 +191,11 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
                 scheduler::Worker::new(_sched, cpuid, &mut rng).run();
             }
         } else {
+            shell::init(
+                device_tree(),
+                _sched,
+                boot_info.cpu_mask.count_ones() as usize,
+            );
             scheduler::Worker::new(_sched, cpuid, &mut rng).run();
         }
     }
@@ -207,12 +212,6 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     //
     //         scheduler::Worker::new(_sched, cpuid, &mut rng, t).run().unwrap();
     //     } else {
-    //         shell::init(
-    //             device_tree(),
-    //             _sched,
-    //             boot_info.cpu_mask.count_ones() as usize,
-    //         );
-    //
     //         scheduler::Worker::new(_sched, cpuid, &mut rng, core::future::pending()).run().unwrap();
     //     }
     // }
