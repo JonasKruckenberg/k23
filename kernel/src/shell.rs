@@ -38,7 +38,7 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: u
         tracing::info!("type `help` to list available commands");
 
         sched.spawn(async move {
-            let (mut uart, irq_num) = init_uart(devtree);
+            let (mut uart, _mmap, irq_num) = init_uart(devtree);
 
             let mut line = String::new();
             loop {
@@ -68,7 +68,7 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: u
     }
 }
 
-fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, u32) {
+fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
     let s = devtree.find_by_path("/soc/serial").unwrap();
     assert!(s.is_compatible(["ns16550a"]));
 
@@ -100,10 +100,11 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, u32) {
         .unwrap()
     });
 
+    
     // Safety: info comes from device tree
     let uart = unsafe { uart_16550::SerialPort::new(mmap.range().start.get(), clock_freq, 115200) };
 
-    (uart, irq_num)
+    (uart, mmap, irq_num)
 }
 
 pub fn eval(line: &str) {
