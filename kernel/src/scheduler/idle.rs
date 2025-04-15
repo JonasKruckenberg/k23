@@ -9,6 +9,7 @@ use crate::scheduler::park::{ParkToken, UnparkToken};
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Mutex;
+use crate::CPUID;
 
 pub struct Idle {
     /// Number of searching workers
@@ -117,6 +118,16 @@ impl Idle {
         while let Some(worker) = self.sleepers.lock().pop() {
             worker.unpark();
         }
+    }
+
+    // FIXME this implementation is baaaad, especially because its run from a trap handler
+    //  it would be much better to use cpu_local storage for this
+    pub fn notify_self(&self) {
+        let cpuid = CPUID.get();
+        let mut sleepers = self.sleepers.lock();
+        let index = sleepers.iter().position(|worker| worker.cpuid() == cpuid).unwrap();
+        let worker = sleepers.remove(index);
+        worker.unpark();
     }
 }
 

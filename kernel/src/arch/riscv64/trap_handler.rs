@@ -309,6 +309,7 @@ extern "C-unwind" fn default_trap_handler(
             Trap::Interrupt(Interrupt::SupervisorExternal) => with_cpu(|cpu| {
                 let mut plic = cpu.plic.borrow_mut();
                 irq::trigger_irq(plic.deref_mut());
+                scheduler().idle.notify_self();
             }),
             Trap::Exception(
                 Exception::LoadPageFault

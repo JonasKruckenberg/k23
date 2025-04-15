@@ -122,7 +122,7 @@ pub struct Scheduler {
     /// All tasks currently scheduled on this runtime
     owned: OwnedTasks,
     /// Coordinates idle workers
-    idle: Idle,
+    pub idle: Idle,
     /// Signal to workers that they should be shutting down.
     shutdown: AtomicBool,
     /// Spin barrier used to synchronize shutdown between workers,
