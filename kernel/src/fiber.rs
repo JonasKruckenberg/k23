@@ -23,7 +23,9 @@ use core::mem::ManuallyDrop;
 use core::num::NonZeroUsize;
 use core::ops::DerefMut;
 use core::panic::AssertUnwindSafe;
+use core::pin::{pin, Pin};
 use core::range::Range;
+use core::task::{Context, Poll};
 use core::{fmt, ptr};
 use spin::Mutex;
 
@@ -289,6 +291,7 @@ impl<Input, Yield, Return> Drop for Fiber<Input, Yield, Return> {
     }
 }
 
+#[repr(transparent)]
 pub struct Suspend<Input, Yield> {
     // Internally the Yielder is just the parent link on the stack which is
     // updated every time resume() is called.
@@ -384,6 +387,84 @@ pub unsafe fn allocate_obj_on_stack<T>(sp: &mut usize, sp_offset: usize, obj: T)
 
         // The stack is aligned to STACK_ALIGNMENT at this point.
         debug_assert_eq!(*sp % arch::STACK_ALIGNMENT, 0);
+    }
+}
+
+pub struct FiberFuture<T> {
+    fiber: Fiber<*mut Context<'static>, (), T>,
+}
+
+unsafe impl<T> Send for FiberFuture<T> {}
+
+pub struct FiberFutureSuspend {
+    // Internally the Yielder is just the parent link on the stack which is
+    // updated every time resume() is called.
+    stack_ptr: Cell<StackPointer>,
+    cx: *mut Context<'static>,
+    _m: PhantomData<fn(()) -> ()>,
+}
+
+impl FiberFutureSuspend {
+    pub fn block_on<F>(&self, mut future: F) -> F::Output
+    where
+        F: Future,
+    {
+        let mut future = pin!(future);
+
+        loop {
+            match future.as_mut().poll(unsafe { &mut *self.cx }) {
+                // When poll returns Ready we ran the future to completion and can return
+                Poll::Ready(ret) => return ret,
+                // If it returns Pending, we still need to wait for it, suspend the fiber which
+                // will manifest as a pending in `FiberFuture::poll`
+                Poll::Pending => self.suspend()
+            }
+        }
+    }
+
+    pub fn yield_now(&self) {
+        self.block_on(crate::scheduler::yield_now());
+    }
+
+    fn suspend(&self) {
+        // Safety: TODO
+        unsafe {
+            // `0` is the stand-in for `encode_val(())`
+            arch::fiber::switch_yield(0, self.stack_ptr.as_ptr());
+        }
+    }
+}
+    
+impl<T> FiberFuture<T> {
+    pub fn new<F>(stack: FiberStack, f: F) -> Self
+    where
+        F: FnOnce(FiberFutureSuspend) -> T + 'static + Send,
+        T: 'static,
+    {
+        let fiber = Fiber::new(stack, move |cx: *mut Context<'static>, suspend| {
+            let suspend = FiberFutureSuspend {
+                stack_ptr: suspend.stack_ptr.clone(),
+                cx,
+                _m: PhantomData,
+            };
+            
+            f(suspend)
+        });
+
+        Self { fiber }
+    }
+}
+    
+impl<T> Future for FiberFuture<T> {
+    type Output = T;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let cx = unsafe { core::mem::transmute::<&mut Context<'_>, *mut Context<'static>>(cx) };
+
+        match self.fiber.resume(cx) {
+            FiberResult::Yield(_) => Poll::Pending,
+            FiberResult::Return(ret) => Poll::Ready(ret),
+        }
     }
 }
 

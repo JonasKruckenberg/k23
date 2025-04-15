@@ -88,6 +88,7 @@ use cpu_local::cpu_local;
 use rand::RngCore;
 use spin::{Backoff, Barrier, OnceLock};
 
+pub use yield_now::yield_now;
 const DEFAULT_GLOBAL_QUEUE_INTERVAL: u32 = 61;
 
 static SCHEDULER: OnceLock<Scheduler> = OnceLock::new();
