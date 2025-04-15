@@ -71,7 +71,7 @@
 
 use super::utils::{define_op, load_gp, save_gp};
 use crate::arch::STACK_ALIGNMENT;
-use crate::fiber::{EncodedValue, FiberStack, StackPointer, allocate_obj_on_stack, push};
+use crate::fiber::{allocate_obj_on_stack, push, EncodedValue, FiberStack, StackPointer};
 use core::arch::{asm, naked_asm};
 
 #[inline]
@@ -120,71 +120,59 @@ pub unsafe extern "C" fn stack_init_trampoline() {
             // FIXME this is a workaround for bug in rustc/llvm
             //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
             ".attribute arch, \"rv64gc\"",
-            ".align 4",
+            ".balign 4",
             ".cfi_startproc",
-            // This gets called by switch_and_link() the first time a coroutine is
-            // resumed, due to the initial state set up by init_stack().
-            //
             // At this point our register state contains the following:
-            // - sp points to the top of the parent stack.
-            // - ra contains the return address in the parent context.
-            // - s0 and s1 contain their value from the parent context.
-            // - a1 points to the top of our stack.
-            // - a2 points to the initial stack pointer
-            // - a0 contains the argument passed from switch_and_link.
-
-            // save s0, s1 and ra to the parent stack.
-            "addi sp, sp, -4 * 8", // XLEN
+            // - SP points to the top of the parent stack.
+            // - RA contains the return address in the parent context.
+            // - S0 and S1 contain their value from the parent context.
+            // - A2 points to the top of our stack.
+            // - A1 points to the base of our stack.
+            // - A0 contains the argument passed from switch_and_link.
+            //
+            // Push the S0, S1 and PC values of the parent context onto the parent
+            // stack.
+            "addi sp, sp, -4 * 8",
             save_gp!(s1 => sp[2]),
             save_gp!(ra => sp[1]),
             save_gp!(s0 => sp[0]),
-
-            // now calculate the parent stack pointer, this points just above the saved ra
-            // matching the GCC/LLVM ABI.
-            "addi t0, sp, 2 * 8", // XLEN
-
-            // then save the parent stack pointer to the parent link "field" of our own stack
+            // Write the parent stack pointer to the parent link. This is adjusted to
+            // point just above the saved PC/RA to match the GCC/LLVM ABI.
+            "addi t0, sp, 2 * 8",
             save_gp!(t0 => a1[-2]),
-
-            // Now that we have saved the stack pointer we need to tell unwinders how to recover it
-            // this is done using the scary looking CFI instruction below. In essence we instruct unwinders
-            // to load the stack pointer from `-16(a1)` which is the reverse of the previous save_gp! call.
-            // Then we tell it to add 16 to the loaded value which recovers the `sp` we had at the start of this function.
-            ".cfi_escape 0x0f, /* DW_CFA_def_cfa_expression */\
-             5,                /* the byte length of this expression */\
-             0x7b, 0x70,       /* DW_OP_breg11 (a1 - 16) */\
-             0x06,             /* DW_OP_deref */\
-             0x23, 16          /* DW_OP_plus_uconst 16 */",
-
-            // Now we can tell the unwinder how to restore the 3 registers that were
-            // pushed on the parent stack. These are described as offsets from the CFA
-            // that we just calculated.
-            ".cfi_offset s1, -2 * 8", // XLEN
-            ".cfi_offset ra, -3 * 8", // XLEN
-            ".cfi_offset s0, -4 * 8", // XLEN
-
+            // Set up the frame pointer to point at the stack base. This is needed for
+            // the unwinding code below.
+            "mv s0, a1",
             // Adjust A1 to point to the parent link.
             "addi a1, a1, -2 * 8",
-
             // Pop the padding and initial PC from the coroutine stack. This also sets
             // up the 3rd argument to the initial function to point to the object that
             // init_stack() set up on the stack.
             "addi a2, a2, 4 * 8",
-
             // Switch to the coroutine stack.
             "mv sp, a2",
 
-            // Rather than call the initial function with a CALL instruction, we
-            // manually set up a return address and use JMP instead. This avoids a
-            // misalignment of the CPU's return address predictor when a RET instruction
-            // is later executed by a switch_yield() or switch_and_reset() in the
-            // initial function. This is the reason why those functions are marked as
-            // #[inline(always)].
-            "lla ra, 0",
+            ".cfi_escape 0x0f,  /* DW_CFA_def_cfa_expression */\
+             5, /* the byte length of this expression */\
+             0x78, 0x70, /* DW_OP_breg8 (s0 - 8/16) */\
+             0x06, /* DW_OP_deref */\
+             0x23, 2 * 8 /* DW_OP_plus_uconst 16 */",
+
+            // Now we can tell the unwinder how to restore the 3 registers that were
+            // pushed on the parent stack. These are described as offsets from the CFA
+            // that we just calculated.
+            ".cfi_offset s1, -2 * 8",
+            ".cfi_offset ra, -3 * 8",
+            ".cfi_offset s0, -4 * 8",
+            
+            // As in the original x86_64 code, hand-write the call operation so that it
+            // doesn't push an entry into the CPU's return prediction stack.
+            "lla ra, 0f",
             load_gp!(a1[1] => t0),
             "jr t0",
+            
             "0:",
-
+            // "unimp", // This UNIMP is necessary because of our use of .cfi_signal_frame earlier.
             ".cfi_endproc",
         }
     }
@@ -364,5 +352,92 @@ pub unsafe fn switch_and_reset(arg: EncodedValue, parent_link: *mut StackPointer
             parent_link = in(reg) parent_link,
             options(noreturn),
         }
+    }
+}
+
+#[inline]
+pub unsafe fn switch_and_throw(
+    sp: StackPointer,
+    stack_base: StackPointer,
+) -> (EncodedValue, Option<StackPointer>) {
+    extern "C-unwind" fn throw() -> ! {
+        use alloc::boxed::Box;
+        crate::panic::resume_unwind(Box::new(()));
+    }
+
+    let (ret_val, ret_sp);
+    // Safety: inline assembly
+    unsafe {
+        asm! {
+            // Set up a return address.
+            "lla ra, 0f",
+
+            // save s0, s1 and ra to the parent stack.
+            "addi sp, sp, -4 * 8", // XLEN
+            save_gp!(s1 => sp[2]),
+            save_gp!(ra => sp[1]),
+            save_gp!(s0 => sp[0]),
+
+            // now calculate the parent stack pointer, this points just above the saved ra
+            // matching the GCC/LLVM ABI.
+            "addi t1, sp, 2 * 8", // XLEN
+
+            // then save the parent stack pointer to the parent link "field" of our own stack
+            save_gp!(t1 => a1[-2]),
+
+            // Load the coroutine registers, with the saved PC into RA.
+            load_gp!(t0[2] => ra),
+            load_gp!(t0[1] => s1),
+            load_gp!(t0[0] => s0),
+
+            // Switch to the coroutine stack while popping the saved registers and
+            // padding.
+            "addi sp, t0, 4 * 8",
+
+            // Simulate a call with an artificial return address so that the throw
+            // function will unwind straight into the switch_and_yield() call with
+            // the register state expected outside the asm! block.
+            "tail {throw}",
+
+            // Upon returning, our register state is just like a normal return into
+            // switch_and_link().
+            "0:",
+
+            // Switch back to our stack and free the saved registers.
+            "addi sp, a2, 2 * 8",
+
+            // Helper function to trigger stack unwinding.
+            throw = sym throw,
+            // Same output registers as switch_and_link().
+            lateout("a0") ret_val,
+            lateout("a1") ret_sp,
+            // Stack pointer and stack base inputs for stack switching.
+            in("a1") stack_base.get(),
+            in("t0") sp.get(),
+            // See switch_and_link() for an explanation of the clobbers.
+            lateout("s2") _, lateout("s3") _, lateout("s4") _, lateout("s5") _,
+            lateout("s6") _, lateout("s7") _, lateout("s8") _, lateout("s9") _,
+            lateout("s10") _, lateout("s11") _,
+            lateout("fs0") _, lateout("fs1") _, lateout("fs2") _, lateout("fs3") _,
+            lateout("fs4") _, lateout("fs5") _, lateout("fs6") _, lateout("fs7") _,
+            lateout("fs8") _, lateout("fs9") _, lateout("fs10") _, lateout("fs11") _,
+            clobber_abi("C"),
+            options(may_unwind)
+        }
+    }
+
+    (ret_val, StackPointer::new(ret_sp))
+}
+
+#[inline]
+pub unsafe fn drop_initial_obj(
+    _stack_base: StackPointer,
+    stack_ptr: StackPointer,
+    drop_fn: unsafe fn(ptr: *mut u8),
+) {
+    // Safety: ensured by caller
+    unsafe {
+        let ptr = (stack_ptr.get() as *mut u8).add(32);
+        drop_fn(ptr);
     }
 }

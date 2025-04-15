@@ -22,7 +22,8 @@ use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::num::NonZeroUsize;
 use core::ops::DerefMut;
-use core::ptr;
+use core::panic::AssertUnwindSafe;
+use core::{fmt, ptr};
 use core::range::Range;
 use spin::Mutex;
 
@@ -54,12 +55,19 @@ impl<Yield, Return> FiberResult<Yield, Return> {
     }
 }
 
-#[derive(Debug)]
 pub struct FiberStack(Mmap);
+
+impl fmt::Debug for FiberStack {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FiberStack")
+            .field("range", &self.0.range())
+            .finish()
+    }
+}
 
 impl FiberStack {
     pub fn new(aspace: Arc<Mutex<AddressSpace>>) -> Self {
-        let stack_size = 16 * arch::PAGE_SIZE;
+        let stack_size = 64 * arch::PAGE_SIZE;
         let mmap = Mmap::new_zeroed(
             aspace.clone(),
             stack_size,
@@ -176,8 +184,11 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
 
     pub fn resume(&mut self, input: Input) -> FiberResult<Yield, Return> {
         let mut input = ManuallyDrop::new(input);
-
-        let stack_ptr = self.stack_ptr.take().unwrap();
+        
+        let stack_ptr = self
+            .stack_ptr
+            .take()
+            .expect("attempt to resume a completed fiber");
 
         // Safety: TODO
         unsafe {
@@ -221,6 +232,54 @@ impl<Input, Yield, Return> Fiber<Input, Yield, Return> {
     /// coroutine's stack that need to execute `Drop` code.
     pub unsafe fn force_reset(&mut self) {
         self.stack_ptr = None;
+    }
+
+    /// Unwinds the coroutine stack, dropping any live objects that are
+    /// currently on the stack. This is automatically called when the coroutine
+    /// is dropped.
+    ///
+    /// If the coroutine has already completed then this function is a no-op.
+    ///
+    /// If the coroutine is currently suspended on a `Yielder::suspend` call
+    /// then unwinding it requires the `unwind` feature to be enabled and
+    /// for the crate to be compiled with `-C panic=unwind`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the coroutine could not be fully unwound. This
+    /// can happen for one of two reasons:
+    /// - The `ForcedUnwind` panic that is used internally was caught and not
+    ///   rethrown.
+    /// - This crate was compiled without the `unwind` feature and the
+    ///   coroutine is currently suspended in the yielder (`started && !done`).
+    pub unsafe fn force_unwind(&mut self) {
+        // If the coroutine has already terminated then there is nothing to do.
+        if let Some(stack_ptr) = self.stack_ptr.take() {
+            self.force_unwind_slow(stack_ptr);
+        }
+    }
+
+    /// Slow path of `force_unwind` when the coroutine is known to not have
+    /// terminated yet.
+    #[cold]
+    fn force_unwind_slow(&mut self, stack_ptr: StackPointer) {
+        // If the coroutine has not started yet then we just need to drop the
+        // initial object.
+        if !self.started() {
+            unsafe {
+                arch::fiber::drop_initial_obj(self.stack.top(), stack_ptr, self.drop_fn);
+            }
+            self.stack_ptr = None;
+            return;
+        }
+
+        unsafe {
+            let res = crate::panic::catch_unwind(AssertUnwindSafe(|| {
+                arch::fiber::switch_and_throw(stack_ptr, self.stack.top())
+            }));
+            // we expect the forced unwinding to bubble up to this catch_unwind
+            assert!(res.is_err());
+        }
     }
 }
 
