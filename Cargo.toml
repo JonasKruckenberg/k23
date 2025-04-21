@@ -132,7 +132,7 @@ target-lexicon = { version = "0.13.1", default-features = false }
 cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["host-arch", "core"] }
 cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["core"] }
 cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false }
-wasmtime-slab = "31.0.0"
+wasmtime-slab = "32.0.0"
 
 # build dependencies
 proc-macro2 = "1"
