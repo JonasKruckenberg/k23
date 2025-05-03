@@ -1,0 +1,22 @@
+[package]
+name = "panic-unwind"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+abort.workspace = true
+unwind2.workspace = true
+spin.workspace = true
+cpu-local.workspace = true
+
+# 3rd-party dependencies
+cfg-if.workspace = true
+tracing.workspace = true
+
+[target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
+riscv.workspace = true
+
+[lints]
+workspace = true

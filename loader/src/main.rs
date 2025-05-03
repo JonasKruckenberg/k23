@@ -19,8 +19,8 @@ use crate::frame_alloc::FrameAllocator;
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::mapping::{
-    StacksAllocation, TlsAllocation, identity_map_self, map_kernel, map_kernel_stacks,
-    map_physical_memory,
+    StacksAllocation, TlsAllocation, align_down, checked_align_up, identity_map_self, map_kernel,
+    map_kernel_stacks, map_physical_memory,
 };
 use arrayvec::ArrayVec;
 use core::ffi::c_void;
@@ -31,6 +31,7 @@ use spin::{Barrier, OnceLock};
 
 mod arch;
 mod boot_info;
+mod constants;
 mod error;
 mod frame_alloc;
 mod kernel;
@@ -41,7 +42,6 @@ mod page_alloc;
 mod panic;
 
 pub const ENABLE_KASLR: bool = false;
-pub const LOG_LEVEL: log::Level = log::Level::Trace;
 pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -85,7 +85,8 @@ unsafe impl Send for GlobalInitResult {}
 unsafe impl Sync for GlobalInitResult {}
 
 fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
-    logger::init(LOG_LEVEL.to_level_filter());
+    logger::init(constants::MAX_LOG_LEVEL.to_level_filter());
+
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");
@@ -307,6 +308,14 @@ fn allocatable_memory_regions(
             );
         }
     }
+
+    // make sure all our allocatable regions are page size aligned
+    // we cannot make use of smaller blocks anyway (because we cant map them)
+    // and not having aligned boundaries gets us in trouble down the way
+    temp.iter_mut().for_each(|range| {
+        range.start = checked_align_up(range.start, arch::PAGE_SIZE).unwrap();
+        range.end = align_down(range.end, arch::PAGE_SIZE);
+    });
 
     temp
 }

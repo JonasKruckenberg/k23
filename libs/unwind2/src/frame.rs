@@ -6,27 +6,26 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch;
-use crate::eh_info::obtain_eh_info;
+use crate::registry::{FDESearchResult, find_fde};
 use crate::utils::{StoreOnStack, deref_pointer, get_unlimited_slice, with_context};
 use fallible_iterator::FallibleIterator;
 use gimli::{
-    CfaRule, EhFrame, EndianSlice, EvaluationResult, FrameDescriptionEntry, NativeEndian, Register,
-    RegisterRule, UnwindExpression, UnwindSection, UnwindTableRow, Value,
+    CfaRule, EndianSlice, EvaluationResult, NativeEndian, Register, RegisterRule, UnwindExpression,
+    UnwindTableRow, Value,
 };
 
 /// A frame in a stack.
 ///
 /// This holds all the information about a call frame.
 #[derive(Debug)]
-pub struct Frame<'a> {
+pub struct Frame {
     regs: arch::Registers,
-    eh_frame: &'a EhFrame<EndianSlice<'a, NativeEndian>>,
-    fde: FrameDescriptionEntry<EndianSlice<'a, NativeEndian>, usize>,
+    fde_result: FDESearchResult,
     row: UnwindTableRow<usize, StoreOnStack>,
     return_address_register: Register,
 }
 
-impl<'a> Frame<'a> {
+impl Frame {
     /// Returns the current instruction pointer of this frame.
     pub fn ip(&self) -> usize {
         self.regs[self.return_address_register]
@@ -46,7 +45,7 @@ impl<'a> Frame<'a> {
 
     /// Returns the starting symbol address of the frame of this function.
     pub fn symbol_address(&self) -> u64 {
-        self.fde.initial_address()
+        self.fde_result.fde.initial_address()
     }
 
     /// Returns the address of the function's personality routine handler if any.
@@ -56,7 +55,10 @@ impl<'a> Frame<'a> {
     /// and frames that need to perform `Drop` cleanup do.
     pub fn personality(&self) -> Option<u64> {
         // Safety: we have to trust the DWARF info here
-        self.fde.personality().map(|x| unsafe { deref_pointer(x) })
+        self.fde_result
+            .fde
+            .personality()
+            .map(|x| unsafe { deref_pointer(x) })
     }
 
     /// Returns `true` if this Frame belongs to a signal trampoline handler.
@@ -73,16 +75,20 @@ impl<'a> Frame<'a> {
     /// if you have separate stacks then you can disregard this information (and it is likely you
     /// don't have any frames marked as signal trampolines anyway).
     pub fn is_signal_trampoline(&self) -> bool {
-        self.fde.is_signal_trampoline()
+        self.fde_result.fde.is_signal_trampoline()
     }
 
     /// Return a pointer to the language specific data area LSDA.
     ///
     /// The format of this region is language dependent, but in Rusts case it holds information
     /// about whether the landing pad is a `catch_unwind` or a `Drop` cleanup impl.
-    pub fn language_specific_data(&self) -> Option<EndianSlice<'a, NativeEndian>> {
+    pub fn language_specific_data(&self) -> Option<EndianSlice<'_, NativeEndian>> {
         // Safety: we have to trust the DWARF info here
-        let addr = self.fde.lsda().map(|x| unsafe { deref_pointer(x) })?;
+        let addr = self
+            .fde_result
+            .fde
+            .lsda()
+            .map(|x| unsafe { deref_pointer(x) })?;
 
         Some(EndianSlice::new(
             // Safety: we have to trust the DWARF info here
@@ -128,11 +134,11 @@ impl<'a> Frame<'a> {
     }
 
     pub(crate) fn text_rel_base(&self) -> Option<u64> {
-        obtain_eh_info().bases.eh_frame.text
+        self.fde_result.bases.eh_frame.text
     }
 
     pub(crate) fn data_rel_base(&self) -> Option<u64> {
-        obtain_eh_info().bases.eh_frame.data
+        self.fde_result.bases.eh_frame.data
     }
 
     pub(crate) fn adjust_stack_for_args(&mut self) {
@@ -141,25 +147,23 @@ impl<'a> Frame<'a> {
     }
 
     fn from_context(regs: &arch::Registers, pc: usize) -> Result<Self, gimli::Error> {
-        let eh_info = obtain_eh_info();
-
-        let fde = eh_info.hdr.table().unwrap().fde_for_address(
-            &eh_info.eh_frame,
-            &eh_info.bases,
-            pc as u64,
-            EhFrame::cie_from_offset,
-        )?;
+        let fde_result = find_fde(pc).ok_or(gimli::Error::NoUnwindInfoForAddress)?;
 
         let mut unwinder = gimli::UnwindContext::new_in();
 
-        let row = fde
-            .unwind_info_for_address(&eh_info.eh_frame, &eh_info.bases, &mut unwinder, pc as u64)?
+        let row = fde_result
+            .fde
+            .unwind_info_for_address(
+                &fde_result.eh_frame,
+                &fde_result.bases,
+                &mut unwinder,
+                pc as u64,
+            )?
             .clone();
 
         Ok(Self {
-            return_address_register: fde.cie().return_address_register(),
-            eh_frame: &eh_info.eh_frame,
-            fde,
+            return_address_register: fde_result.fde.cie().return_address_register(),
+            fde_result,
             row,
             regs: regs.clone(),
         })
@@ -234,9 +238,9 @@ impl<'a> Frame<'a> {
     }
 
     fn eval_expression(&self, expr: UnwindExpression<usize>) -> gimli::Result<Option<Value>> {
-        let expr = expr.get(self.eh_frame)?;
+        let expr = expr.get(&self.fde_result.eh_frame)?;
 
-        let mut eval = expr.evaluation(self.fde.cie().encoding());
+        let mut eval = expr.evaluation(self.fde_result.fde.cie().encoding());
         let mut result = eval.evaluate()?;
 
         loop {
@@ -344,7 +348,7 @@ impl FrameIter {
 }
 
 impl FallibleIterator for FrameIter {
-    type Item = Frame<'static>;
+    type Item = Frame;
     type Error = crate::Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {

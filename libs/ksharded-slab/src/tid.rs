@@ -10,8 +10,8 @@ use core::{
     fmt,
     marker::PhantomData,
 };
-use cpu_local::cpu_local;
 use spin::{LazyLock, Mutex};
+use thread_local::thread_local;
 
 /// Uniquely identifies a thread.
 pub(crate) struct Tid<C> {
@@ -33,7 +33,7 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| Registry {
     free: Mutex::new(VecDeque::new()),
 });
 
-cpu_local! {
+thread_local! {
     static REGISTRATION: Registration = Registration::new();
 }
 

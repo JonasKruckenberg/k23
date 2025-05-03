@@ -37,6 +37,7 @@
             dtc
             cargo-fuzz
             typos
+            wasm-tools
 
             # for testing the kernel
             qemu

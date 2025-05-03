@@ -26,5 +26,5 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 #[inline(never)]
 #[unsafe(no_mangle)]
 fn rust_panic() -> ! {
-    arch::abort("panic")
+    arch::abort()
 }

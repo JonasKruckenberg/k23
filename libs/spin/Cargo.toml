@@ -6,16 +6,17 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
+# 3rd-party dependencies
 cfg-if.workspace = true
 lock_api = { workspace = true, optional = true }
 
 [target.'cfg(loom)'.dependencies]
-loom = "0.7"
+loom.workspace = true
 
 [features]
 thread-local = []
 lock_api = ["dep:lock_api"]
+
+[lints]
+workspace = true

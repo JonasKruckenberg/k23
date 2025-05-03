@@ -17,8 +17,8 @@ pub enum EHAction {
 }
 
 pub fn find_eh_action(
-    reader: &mut EndianSlice<'static, NativeEndian>,
-    frame: &Frame<'_>,
+    reader: &mut EndianSlice<'_, NativeEndian>,
+    frame: &Frame,
 ) -> crate::Result<EHAction> {
     let func_start = frame.symbol_address();
     let ip = if frame.is_signal_trampoline() {
@@ -74,7 +74,7 @@ pub fn find_eh_action(
 }
 
 fn parse_pointer_encoding(
-    input: &mut EndianSlice<'static, NativeEndian>,
+    input: &mut EndianSlice<'_, NativeEndian>,
 ) -> gimli::Result<constants::DwEhPe> {
     let eh_pe = input.read_u8()?;
     let eh_pe = constants::DwEhPe(eh_pe);
@@ -93,7 +93,7 @@ fn parse_pointer_encoding(
 fn parse_encoded_pointer(
     encoding: constants::DwEhPe,
     frame: &Frame,
-    input: &mut EndianSlice<'static, NativeEndian>,
+    input: &mut EndianSlice<'_, NativeEndian>,
 ) -> gimli::Result<Pointer> {
     if encoding == constants::DW_EH_PE_omit {
         return Err(gimli::Error::CannotParseOmitPointerEncoding);

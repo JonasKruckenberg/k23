@@ -6,6 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use std::env;
+use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 fn main() {
@@ -18,17 +20,26 @@ fn main() {
         println!("cargo::rustc-env=KERNEL={}", kernel.display());
     }
 
-    copy_linker_script();
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+
+    copy_linker_script(&out_dir);
+    copy_constants(&out_dir);
 }
 
-fn copy_linker_script() {
+fn copy_linker_script(out_dir: &Path) {
     use std::{fs::File, io::Write};
 
-    let out_dir = env::var("OUT_DIR").unwrap();
-    let dest_path = Path::new(&out_dir);
-    let mut f = File::create(dest_path.join("link.ld")).unwrap();
+    let mut f = File::create(out_dir.join("link.ld")).unwrap();
     f.write_all(include_bytes!("./riscv64-qemu.ld")).unwrap();
 
-    println!("cargo:rustc-link-search={}", dest_path.display());
+    println!("cargo:rustc-link-search={}", out_dir.display());
     println!("cargo:rustc-link-arg=-Tlink.ld");
+}
+
+fn copy_constants(out_dir: &Path) {
+    println!("cargo::rerun-if-env-changed=K23_CONSTANTS");
+    let code = env::var("K23_CONSTANTS").unwrap_or_default();
+
+    let mut f = File::create(out_dir.join("constants.rs")).unwrap();
+    f.write_all(code.as_bytes()).unwrap();
 }

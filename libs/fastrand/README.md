@@ -1,0 +1,3 @@
+# `fastrand`
+
+Small, very fast, 

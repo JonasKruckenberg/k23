@@ -14,7 +14,7 @@ extern crate alloc;
 use alloc::sync::Arc;
 use core::cell::UnsafeCell;
 use core::ops::{Deref, DerefMut};
-use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use core::{
     fmt,
     marker::PhantomPinned,
@@ -409,8 +409,6 @@ pub struct MpscQueue<T: Linked> {
     /// queue is dropped.
     stub_is_static: bool,
 
-    len: AtomicUsize,
-
     stub: NonNull<T>,
 }
 
@@ -513,7 +511,6 @@ impl<T: Linked> MpscQueue<T> {
             tail: CachePadded(UnsafeCell::new(ptr)),
             has_consumer: CachePadded(AtomicBool::new(false)),
             stub_is_static: false,
-            len: AtomicUsize::new(0),
             stub,
         }
     }
@@ -605,18 +602,9 @@ impl<T: Linked> MpscQueue<T> {
             tail: CachePadded(UnsafeCell::new(ptr)),
             has_consumer: CachePadded(AtomicBool::new(false)),
             stub_is_static: true,
-            len: AtomicUsize::new(0),
             // Safety: `stub` has been created from a reference, so it is always valid.
             stub: unsafe { NonNull::new_unchecked(ptr) },
         }
-    }
-
-    pub fn len(&self) -> usize {
-        self.len.load(Ordering::Acquire)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     /// Enqueue a new element at the end of the queue.
@@ -650,10 +638,6 @@ impl<T: Linked> MpscQueue<T> {
     fn enqueue_inner(&self, ptr: NonNull<T>) {
         // Safety: caller must ensure the `Links` trait is implemented correctly.
         unsafe { links(ptr).next.store(ptr::null_mut(), Ordering::Relaxed) };
-
-        if ptr != self.stub {
-            self.len.fetch_add(1, Ordering::Release);
-        }
 
         let ptr = ptr.as_ptr();
         let prev = self.head.swap(ptr, Ordering::AcqRel);
@@ -818,9 +802,6 @@ impl<T: Linked> MpscQueue<T> {
             if !next.is_null() {
                 *tail = next;
 
-                let prev = self.len.fetch_sub(1, Ordering::Release);
-                debug_assert!(prev > 0);
-
                 return Ok(T::from_ptr(tail_node));
             }
 
@@ -841,9 +822,6 @@ impl<T: Linked> MpscQueue<T> {
 
             #[cfg(debug_assertions)]
             debug_assert!(!links(tail_node).is_stub());
-
-            let prev = self.len.fetch_sub(1, Ordering::Release);
-            debug_assert!(prev > 0);
 
             Ok(T::from_ptr(tail_node))
         }
@@ -960,7 +938,6 @@ where
             has_consumer,
             stub,
             stub_is_static,
-            len,
         } = self;
         f.debug_struct("MpscQueue")
             .field("head", &format_args!("{:p}", head.load(Ordering::Acquire)))
@@ -973,7 +950,6 @@ where
             .field("has_consumer", &has_consumer.load(Ordering::Acquire))
             .field("stub", stub)
             .field("stub_is_static", stub_is_static)
-            .field("len", &len.load(Ordering::Acquire))
             .finish()
     }
 }

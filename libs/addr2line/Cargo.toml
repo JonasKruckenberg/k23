@@ -8,6 +8,11 @@ license = "Apache-2.0 OR MIT"
 
 [dependencies]
 spin.workspace = true
+
+# 3rd-party dependencies
 gimli = { workspace = true, default-features = false, features = ["read"] }
 smallvec.workspace = true
 fallible-iterator.workspace = true
+
+[lints]
+workspace = true

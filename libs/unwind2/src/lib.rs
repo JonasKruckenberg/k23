@@ -5,7 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-#![no_std]
+#![no_std] // this is crate is fully incompatible with `std` due to clashing lang item definitions
+#![cfg(target_os = "none")]
 #![expect(internal_features, reason = "lang items")]
 #![feature(
     core_intrinsics,
@@ -20,13 +21,14 @@ extern crate alloc;
 
 mod arch;
 mod eh_action;
-mod eh_info;
 mod error;
 mod exception;
 mod frame;
 mod lang_items;
+mod registry;
 mod utils;
 
+use abort::abort;
 use alloc::boxed::Box;
 use core::any::Any;
 use core::intrinsics;
@@ -34,7 +36,6 @@ use core::mem::ManuallyDrop;
 use core::panic::UnwindSafe;
 use core::ptr::addr_of_mut;
 use eh_action::{EHAction, find_eh_action};
-pub use eh_info::EhInfo;
 pub use error::Error;
 use exception::Exception;
 use fallible_iterator::FallibleIterator;
@@ -210,8 +211,8 @@ where
         match unsafe { Exception::unwrap(exception.cast()) } {
             Ok(p) => data.p = ManuallyDrop::new(p),
             Err(err) => {
-                log::error!("Failed to catch exception: {err:?}");
-                arch::abort("Failed to catch exception");
+                tracing::error!("Failed to catch exception: {:?}", err);
+                abort();
             }
         }
     }

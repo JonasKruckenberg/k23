@@ -5,9 +5,6 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
 unwind2.workspace = true
 gimli.workspace = true
@@ -16,3 +13,6 @@ xmas-elf.workspace = true
 rustc-demangle.workspace = true
 fallible-iterator.workspace = true
 arrayvec.workspace = true
+
+[lints]
+workspace = true

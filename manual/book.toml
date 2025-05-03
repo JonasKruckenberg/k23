@@ -1,6 +1,0 @@
-[book]
-authors = ["Jonas Kruckenberg"]
-language = "en"
-multilingual = false
-src = "src"
-title = "k23 Manual"

@@ -5,13 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::device::cpu::with_cpu;
-use crate::sync;
-use crate::sync::WaitQueue;
 use alloc::sync::Arc;
 use core::num::NonZero;
 use hashbrown::HashMap;
 use spin::{LazyLock, RwLock};
+use sync;
+use sync::WaitQueue;
 
 pub trait InterruptController {
     fn irq_claim(&mut self) -> Option<IrqClaim>;
@@ -51,23 +50,25 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     }
 }
 
-pub async fn next_event(irq_num: u32) -> Result<(), sync::Closed> {
-    with_cpu(|cpu| cpu.plic.borrow_mut().irq_unmask(irq_num));
+pub async fn next_event(_irq_num: u32) -> Result<(), sync::Closed> {
+    todo!()
 
-    let wait = {
-        let mut queues = QUEUES.write();
-        let wait = queues
-            .entry(irq_num)
-            .or_insert_with(|| Arc::new(WaitQueue::new()))
-            .wait_owned();
-        // don't hold the RwLock guard across the await point
-        drop(queues);
-        wait
-    };
-
-    let res = wait.await;
-
-    with_cpu(|cpu| cpu.plic.borrow_mut().irq_mask(irq_num));
-
-    res
+    // with_cpu(|cpu| cpu.plic.borrow_mut().irq_unmask(irq_num));
+    //
+    // let wait = {
+    //     let mut queues = QUEUES.write();
+    //     let wait = queues
+    //         .entry(irq_num)
+    //         .or_insert_with(|| Arc::new(WaitQueue::new()))
+    //         .wait_owned();
+    //     // don't hold the RwLock guard across the await point
+    //     drop(queues);
+    //     wait
+    // };
+    //
+    // let res = wait.await;
+    //
+    // with_cpu(|cpu| cpu.plic.borrow_mut().irq_mask(irq_num));
+    //
+    // res
 }

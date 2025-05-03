@@ -5,7 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::{Error, arch};
+use crate::Error;
+use abort::abort;
 use alloc::boxed::Box;
 use core::any::Any;
 use core::ffi::c_int;
@@ -56,7 +57,8 @@ impl Exception {
             // Safety: Caller ensures `exception` is a valid exception
             unsafe {
                 drop(Box::from_raw(exception.cast::<Exception>()));
-                arch::abort("Rust panics must be rethrown");
+                tracing::error!("Rust panics must be rethrown");
+                abort();
             }
         }
 

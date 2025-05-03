@@ -14,9 +14,11 @@ A lock-free concurrent slab.
 """
 
 [dependencies]
-log.workspace = true
 spin.workspace = true
 cpu-local.workspace = true
+
+# 3rd-party dependencies
+log.workspace = true
 
 [features]
 loom = []

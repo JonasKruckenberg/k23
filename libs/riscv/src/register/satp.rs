@@ -9,10 +9,13 @@
 
 use super::{read_csr_as, write_csr};
 use crate::Error;
-use core::fmt;
 
 /// satp register
 #[derive(Clone, Copy)]
+#[cfg_attr(
+    not(any(target_arch = "riscv64", target_arch = "riscv32")),
+    allow(unused)
+)]
 pub struct Satp {
     bits: usize,
 }
@@ -148,8 +151,8 @@ pub enum Mode {
 }
 
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
-impl fmt::Debug for Satp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl core::fmt::Debug for Satp {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Satp")
             .field("ppn", &self.ppn())
             .field("asid", &self.asid())

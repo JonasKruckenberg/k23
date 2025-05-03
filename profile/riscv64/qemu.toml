@@ -1,0 +1,10 @@
+name = "riscv64-qemu"
+arch = "riscv64"
+inherit = "../base.toml"
+max-log-level = "trace"
+
+[kernel]
+target = "./riscv64gc-k23-none-kernel.json"
+
+[loader]
+target = "riscv64gc-unknown-none-elf"

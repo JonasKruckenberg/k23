@@ -11,5 +11,7 @@ workspace = true
 
 [dependencies]
 spin.workspace = true
+
+# 3rd-party dependencies
 cfg-if.workspace = true
 bitflags.workspace = true

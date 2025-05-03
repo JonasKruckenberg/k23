@@ -1,0 +1,32 @@
+[package]
+name = "async-rt"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+spin.workspace = true
+linked-list.workspace = true
+mpsc-queue.workspace = true
+util.workspace = true
+fastrand.workspace = true
+sync.workspace = true
+cpu-local.workspace = true
+
+# 3rd-party dependencies
+cfg-if.workspace = true
+static_assertions.workspace = true
+mycelium-bitfield.workspace = true
+rand.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "none")'.dependencies]
+panic-unwind.workspace = true
+
+[dev-dependencies]
+test-log = "0.2.17"
+
+[lints]
+workspace = true

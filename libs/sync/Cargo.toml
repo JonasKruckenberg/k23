@@ -1,0 +1,22 @@
+[package]
+name = "sync"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+util.workspace = true
+spin.workspace = true
+linked-list.workspace = true
+
+# 3rd-party dependencies
+bitflags.workspace = true
+static_assertions.workspace = true
+tracing.workspace = true
+mycelium-bitfield.workspace = true
+pin-project.workspace = true
+arrayvec.workspace = true
+
+[lints]
+workspace = true

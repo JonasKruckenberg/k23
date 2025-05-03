@@ -1,0 +1,16 @@
+[package]
+name = "toml-patch"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+eyre.workspace = true
+toml_edit.workspace = true
+
+[dev-dependencies]
+indoc.workspace = true
+
+[lints]
+workspace = true
