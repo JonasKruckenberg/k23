@@ -1,9 +1,9 @@
 cfg_if::cfg_if! {
-    if #[cfg(all(unix, feature = "default-stack"))] {
+    if #[cfg(all(unix))] {
         mod valgrind;
         mod unix;
         pub use unix::DefaultFiberStack;
-    } else if #[cfg(all(windows, feature = "default-stack"))] {
+    } else if #[cfg(all(windows))] {
         mod valgrind;
         mod windows;
         pub use windows::DefaultFiberStack;

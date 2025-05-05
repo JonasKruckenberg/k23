@@ -1,7 +1,7 @@
 use crate::{
-    Pack,
     cfg::{self, CfgPrivate},
     page,
+    Pack,
 };
 use alloc::collections::VecDeque;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -10,8 +10,8 @@ use core::{
     fmt,
     marker::PhantomData,
 };
+use cpu_local::cpu_local;
 use spin::{LazyLock, Mutex};
-use thread_local::thread_local;
 
 /// Uniquely identifies a thread.
 pub(crate) struct Tid<C> {
@@ -33,7 +33,7 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| Registry {
     free: Mutex::new(VecDeque::new()),
 });
 
-thread_local! {
+cpu_local! {
     static REGISTRATION: Registration = Registration::new();
 }
 
@@ -62,15 +62,11 @@ impl<C: cfg::Config> Pack<C> for Tid<C> {
 impl<C: cfg::Config> Tid<C> {
     #[inline]
     pub(crate) fn current() -> Self {
-        REGISTRATION
-            .try_with(Registration::current)
-            .unwrap_or_else(|_| Self::poisoned())
+        REGISTRATION.with(Registration::current)
     }
 
     pub(crate) fn is_current(self) -> bool {
-        REGISTRATION
-            .try_with(|r| self == r.current::<C>())
-            .unwrap_or(false)
+        REGISTRATION.with(|r| self == r.current::<C>())
     }
 
     #[inline(always)]
@@ -79,33 +75,11 @@ impl<C: cfg::Config> Tid<C> {
     }
 }
 
-impl<C> Tid<C> {
-    #[cold]
-    fn poisoned() -> Self {
-        Self {
-            id: usize::MAX,
-            _not_send: PhantomData,
-            _cfg: PhantomData,
-        }
-    }
-
-    /// Returns true if the local thread ID was accessed while unwinding.
-    pub(crate) fn is_poisoned(&self) -> bool {
-        self.id == usize::MAX
-    }
-}
-
 impl<C> fmt::Debug for Tid<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_poisoned() {
-            f.debug_tuple("Tid")
-                .field(&format_args!("<poisoned>"))
-                .finish()
-        } else {
-            f.debug_tuple("Tid")
-                .field(&format_args!("{}", self.id))
-                .finish()
-        }
+        f.debug_tuple("Tid")
+            .field(&format_args!("{}", self.id))
+            .finish()
     }
 }
 

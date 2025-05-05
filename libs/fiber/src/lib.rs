@@ -1,4 +1,4 @@
-#![cfg_attr(not(test), no_std)]
+#![cfg_attr(all(not(test), target_os = "none"), no_std)]
 #![feature(naked_functions)]
 #![feature(asm_unwind)]
 
