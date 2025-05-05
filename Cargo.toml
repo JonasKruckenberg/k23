@@ -124,6 +124,12 @@ mycelium-bitfield = "0.1.5"
 pin-project = "1.1.10"
 loom = "0.7"
 
+# wast dependencies
+unicode-width = { version = "0.2.0" }
+memchr = { version = "2.7.4", default-features = false }
+leb128fmt = { version = "0.1.0", default-features = false }
+wasm-encoder = { version = "0.228.0", default-features = false }
+
 # build dependencies
 color-eyre = "0.6.3"
 eyre = "0.6.12"

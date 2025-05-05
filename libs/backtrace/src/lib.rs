@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 #![no_std]
+#![cfg(target_os = "none")]
 
 mod symbolize;
 

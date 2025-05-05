@@ -7,8 +7,16 @@
 
 use crate::task::{Builder, Header, JoinHandle, Schedule, TaskPool, TaskRef, TaskStub};
 use core::alloc::{AllocError, Allocator};
-use static_assertions::assert_impl_all;
+use cpu_local::cpu_local;
 use mpsc_queue::MpscQueue;
+use static_assertions::assert_impl_all;
+
+cpu_local! {
+    static CORE: Core = const {
+        static STUB_TASK: TaskStub = TaskStub::new();
+        unsafe { Core::new_with_static_stub(&STUB_TASK) }
+    };
+}
 
 /// A work-stealing, multithreaded scheduler.
 ///
@@ -78,23 +86,39 @@ impl MultiThread {
 
 }
 
-// pub struct Worker {
-//     scheduler: &'static MultiThread,
-// }
-//
-// impl Worker {
-//     pub const fn new(scheduler: &'static MultiThread) -> Self {
-//         Self { scheduler }
-//     }
-//
-//     pub fn tick(&self) -> Tick {
-//         self.tick_n(MultiThread::DEFAULT_TICK_SIZE)
-//     }
-//
-//     pub fn tick_n(&self, n: usize) -> Tick {
-//         todo!()
-//     }
-// }
+pub struct Worker {
+    scheduler: &'static MultiThread,
+}
+
+impl Worker {
+    pub const fn new(scheduler: &'static MultiThread) -> Self {
+        Self { scheduler }
+    }
+
+    pub fn tick(&self) -> Tick {
+        self.tick_n(MultiThread::DEFAULT_TICK_SIZE)
+    }
+
+    pub fn tick_n(&self, n: usize) -> Tick {
+        CORE.with(|core| {
+            let tick = core.tick_n(n);
+            
+            if tick.has_remaining {
+                return tick;
+            }
+            
+            
+            
+            todo!()
+        });
+        
+        todo!()
+    }
+
+    fn try_steal(&mut self) -> usize {
+        
+    }
+}
 
 #[macro_export]
 macro_rules! new_multi_thread_scheduler {
@@ -112,4 +136,4 @@ macro_rules! new_multi_thread_scheduler {
     }};
 }
 pub use new_multi_thread_scheduler as new_multi_thread;
-use crate::scheduler::Core;
+use crate::scheduler::{Core, Tick};

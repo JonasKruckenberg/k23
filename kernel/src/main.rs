@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![cfg(target_os = "none")]
 #![feature(used_with_arg)]
 #![feature(new_range_api)]
 #![feature(debug_closure_helpers)]
@@ -9,6 +10,7 @@
 #![feature(step_trait)]
 
 extern crate alloc;
+extern crate panic_unwind;
 
 mod allocator;
 mod arch;

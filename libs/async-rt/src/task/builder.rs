@@ -77,70 +77,70 @@ impl<'a, S> Builder<'a, S> {
     }
 }
 
-impl<'a> Builder<'a, &'static crate::scheduler::MultiThread> {
-    #[inline]
-    #[track_caller]
-    pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, AllocError>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        self.try_spawn_in(future, alloc::alloc::Global)
-    }
+// impl<'a> Builder<'a, &'static crate::scheduler::Scheduler> {
+//     #[inline]
+//     #[track_caller]
+//     pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, AllocError>
+//     where
+//         F: Future + Send + 'static,
+//         F::Output: Send + 'static,
+//     {
+//         self.try_spawn_in(future, alloc::alloc::Global)
+//     }
+// 
+//     #[inline]
+//     #[track_caller]
+//     pub fn try_spawn_in<F, A>(
+//         &self,
+//         future: F,
+//         alloc: A,
+//     ) -> Result<JoinHandle<F::Output>, AllocError>
+//     where
+//         F: Future + Send + 'static,
+//         F::Output: Send + 'static,
+//         A: Allocator,
+//     {
+//         let task = self.build(future, alloc)?;
+//         let join = JoinHandle::new(task.clone());
+//         
+//         if let Some(task) = self.scheduler.bind(task) {
+//             self.scheduler.schedule(task);
+//         }
+// 
+//         Ok(join)
+//     }
+// }
 
-    #[inline]
-    #[track_caller]
-    pub fn try_spawn_in<F, A>(
-        &self,
-        future: F,
-        alloc: A,
-    ) -> Result<JoinHandle<F::Output>, AllocError>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-        A: Allocator,
-    {
-        let task = self.build(future, alloc)?;
-        let join = JoinHandle::new(task.clone());
-
-        if let Some(task) = self.scheduler.bind(task) {
-            self.scheduler.schedule(task);
-        }
-
-        Ok(join)
-    }
-}
-
-impl<'a> Builder<'a, &'static crate::scheduler::CurrentThread> {
-    #[inline]
-    #[track_caller]
-    pub fn try_spawn_local<F>(&self, future: F) -> Result<JoinHandle<F::Output>, AllocError>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-    {
-        self.try_spawn_local_in(future, alloc::alloc::Global)
-    }
-
-    #[inline]
-    #[track_caller]
-    pub fn try_spawn_local_in<F, A>(
-        &self,
-        future: F,
-        alloc: A,
-    ) -> Result<JoinHandle<F::Output>, AllocError>
-    where
-        F: Future + 'static,
-        F::Output: 'static,
-        A: Allocator,
-    {
-        let task = self.build(future, alloc)?;
-        let join = JoinHandle::new(task.clone());
-
-        if let Some(task) = self.scheduler.bind(task) {
-            self.scheduler.schedule(task);
-        }
-
-        Ok(join)
-    }
-}
+// impl<'a> Builder<'a, &'static crate::scheduler::CurrentThread> {
+//     #[inline]
+//     #[track_caller]
+//     pub fn try_spawn_local<F>(&self, future: F) -> Result<JoinHandle<F::Output>, AllocError>
+//     where
+//         F: Future + 'static,
+//         F::Output: 'static,
+//     {
+//         self.try_spawn_local_in(future, alloc::alloc::Global)
+//     }
+// 
+//     #[inline]
+//     #[track_caller]
+//     pub fn try_spawn_local_in<F, A>(
+//         &self,
+//         future: F,
+//         alloc: A,
+//     ) -> Result<JoinHandle<F::Output>, AllocError>
+//     where
+//         F: Future + 'static,
+//         F::Output: 'static,
+//         A: Allocator,
+//     {
+//         let task = self.build(future, alloc)?;
+//         let join = JoinHandle::new(task.clone());
+// 
+//         if let Some(task) = self.scheduler.bind(task) {
+//             self.scheduler.schedule(task);
+//         }
+// 
+//         Ok(join)
+//     }
+// }

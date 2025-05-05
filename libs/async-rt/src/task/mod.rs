@@ -68,16 +68,15 @@
 //!
 //! [cancelled error]: JoinError::is_cancelled
 
+mod builder;
 mod id;
 mod join_handle;
 mod pool;
 mod state;
 mod yield_now;
-mod builder;
 
 use alloc::boxed::Box;
 use cfg_if::cfg_if;
-use core::alloc::{AllocError, Allocator};
 use core::any::type_name;
 use core::cell::UnsafeCell;
 use core::mem::offset_of;
@@ -90,11 +89,11 @@ use core::{fmt, mem};
 use state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use util::{non_null, CachePadded, CheckedMaybeUninit};
 
+pub use builder::Builder;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinHandle};
 pub(crate) use pool::TaskPool;
 pub use yield_now::yield_now;
-pub use builder::Builder;
 
 /// A scheduler that can execute tasks.
 ///
@@ -103,7 +102,6 @@ pub use builder::Builder;
 /// is not intended to be publicly implemented.
 pub trait Schedule: Sized + 'static {
     fn schedule(&self, task_ref: TaskRef);
-    fn bind(&self, task: TaskRef) -> Option<TaskRef>;
 }
 
 /// Outcome of calling [`Task::poll`].

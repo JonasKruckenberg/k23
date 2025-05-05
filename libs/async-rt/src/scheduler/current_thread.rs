@@ -85,7 +85,7 @@ impl CurrentThread {
     }
 
     pub fn tick_n(&self, n: usize) -> Tick {
-        todo!()
+        self.core.tick_n(n)
     }
 }
 
