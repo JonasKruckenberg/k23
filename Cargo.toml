@@ -118,7 +118,7 @@ anyhow = { version = "1.0.97", default-features = false }
 unicode-width = { version = "0.2.0" }
 memchr = { version = "2.7.4", default-features = false }
 leb128fmt = { version = "0.1.0", default-features = false }
-wasm-encoder = { version = "0.228.0", default-features = false }
+wasm-encoder = { version = "0.229.0", default-features = false }
 #wat = "1.219.1"
 
 # cranelift dependencies
