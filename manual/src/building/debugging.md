@@ -32,13 +32,13 @@ by passing the `log` boot argument.
 For example, to enable all levels you can pass this directive in the `log` boot argument:
 
 ```sh
-just run "" --append "log=trace"
+cargo xtask qemu profile/riscv64/qemu.toml -- --append "log=trace"
 ```
 
 A more reasonable configuration that omits the quite verbose output from cranelift but otherwise keeps the trace logging:
 
 ```sh
-just run "" --append "log=trace,cranelift_codegen=off"
+cargo xtask qemu profile/riscv64/qemu.toml -- --append "log=trace,cranelift_codegen=off"
 ```
 
 ### Attaching to the Kernel

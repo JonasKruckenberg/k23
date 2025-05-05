@@ -1,5 +1,5 @@
 [workspace]
-members = ["kernel", "libs/*", "loader", "loader/api", "libs/ktest/macros"]
+members = ["kernel", "libs/*", "build/*", "loader", "loader/api", "libs/ktest/macros"]
 resolver = "2"
 
 [workspace.package]
@@ -138,6 +138,14 @@ wasmtime-slab = "31.0.0"
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
+color-eyre = "0.6.3"
+eyre = "0.6.12"
+clap = { version = "4.2.7", features = ["derive", "env"] }
+serde = { version = "1.0.219", features = ["derive"] }
+toml = "0.8.20"
+indexmap = { version = "2.9.0", features = ["serde"] }
+toml_edit = "0.22.24"
+indoc = "2.0.6"
 
 [profile.release]
 debug = "limited" # The kernel should be able to print stack traces of itself even in release mode
