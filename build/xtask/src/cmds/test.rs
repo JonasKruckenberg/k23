@@ -74,7 +74,7 @@ impl Cmd {
                 .note("maybe the kernel hung or boot looped?"),
             Some(status) => {
                 if let Some(code) = status.code() {
-                    if code == 33 {
+                    if code == 0 {
                         Ok(())
                     } else {
                         Err(format_err!("QEMU exited with status code {}", code))
