@@ -17,6 +17,11 @@ pub const MIN_STACK_SIZE: usize = 4096;
 
 pub use crate::arch::STACK_ALIGNMENT;
 
+/// # Safety
+///
+/// The memory safety of code running on and running *the* fiber depend on the correct implementation
+/// of this stack. Notably, the pointers returned by [`Self::top`] and [`Self::bottom`] methods
+/// *must* be properly accessible, correctly aligned, and `bottom < top`.
 pub unsafe trait FiberStack {
     /// Returns the highest address (start address) of the stack.
     /// This must be aligned to [`STACK_ALIGNMENT`]
@@ -55,7 +60,8 @@ pub struct StackTebFields {
 
 /// A mutable reference to a stack can be used as a stack. The lifetime of the
 /// resulting fiber will be bound to that of the reference.
-unsafe impl<'a, S: FiberStack> FiberStack for &'a mut S {
+// Safety: This impl just forwards calls
+unsafe impl<S: FiberStack> FiberStack for &mut S {
     #[inline]
     fn top(&self) -> StackPointer {
         (**self).top()

@@ -7,11 +7,9 @@
 
 mod asid_allocator;
 pub mod device;
-pub mod fiber;
 mod mem;
 mod setjmp_longjmp;
 mod trap_handler;
-mod utils;
 
 use crate::device_tree::DeviceTree;
 use crate::mem::VirtualAddress;

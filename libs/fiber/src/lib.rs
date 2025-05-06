@@ -1,3 +1,15 @@
+//! Support for safe & efficient stack switching in k23.
+//!
+//! This crate provides the [`Fiber`] which implements stackful [`coroutines`]. These are used as
+//! the basis for Wasm guest multitasking in k23 which requires a stack (as opposed to the k23 kernel
+//! multitasking which uses stack*less* Rust futures).
+//!
+//! This crate is heavily based off of [`corosensei`] by Amanieu d'Antras which a few k23 specific
+//! changes (notably the addition of associated fiber-local data, see [`Fiber::fiber_local`]).
+//!
+//! [`coroutines`]: https://en.wikipedia.org/wiki/Coroutine
+//! [`corosensei`]: https://github.com/Amanieu/corosensei
+
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 #![feature(naked_functions)]
 #![feature(asm_unwind)]
@@ -55,9 +67,9 @@ pub struct Fiber<Input, Yield, Return, L, S: FiberStack> {
     /// initial stack pointer: suspending a fiber requires pushing several
     /// values to the stack.
     initial_stack_ptr: StackPointer,
-    /// Function to call to drop the initial state of a fiber if it has
-    /// never been resumed.
-    drop_fn: unsafe fn(ptr: *mut u8),
+    // /// Function to call to drop the initial state of a fiber if it has
+    // /// never been resumed.
+    // drop_fn: unsafe fn(ptr: *mut u8),
     fiber_local: *const L,
     /// We want to be covariant over Yield and Return, and contravariant
     /// over Input.
@@ -89,6 +101,10 @@ impl<Input, Yield, Return, L: Default, S: FiberStack> Fiber<Input, Yield, Return
 }
 
 impl<Input, Yield, Return, L, S: FiberStack> Fiber<Input, Yield, Return, L, S> {
+    /// Crates a new fiber from the provided [`FiberStack`] and fiber-local value.
+    ///
+    /// The fiber local will be stored at the top of the stack, and will be accessible for the lifetime
+    /// of the fiber.
     pub fn with_stack_and_local<F>(stack: S, fiber_local: L, func: F) -> Self
     where
         F: FnOnce(Input, &Suspend<Input, Yield>, &L) -> Return,
@@ -132,16 +148,16 @@ impl<Input, Yield, Return, L, S: FiberStack> Fiber<Input, Yield, Return, L, S> {
             }
         }
 
-        // Drop function to free the initial state of the fiber.
-        unsafe fn drop_fn<T, L>(ptr: *mut u8) {
-            // Safety: TODO
-            unsafe {
-                // drop the initial object
-                ptr::drop_in_place(ptr.cast::<T>());
-                // drop the fiber-local state
-                ptr::drop_in_place(ptr.cast::<L>());
-            }
-        }
+        // // Drop function to free the initial state of the fiber.
+        // unsafe fn drop_fn<T, L>(ptr: *mut u8) {
+        //     // Safety: TODO
+        //     unsafe {
+        //         // drop the initial object
+        //         ptr::drop_in_place(ptr.cast::<T>());
+        //         // drop the fiber-local state
+        //         ptr::drop_in_place(ptr.cast::<L>());
+        //     }
+        // }
 
         // Safety: TODO
         unsafe {
@@ -166,7 +182,7 @@ impl<Input, Yield, Return, L, S: FiberStack> Fiber<Input, Yield, Return, L, S> {
                 stack,
                 stack_ptr: Some(stack_ptr),
                 initial_stack_ptr: stack_ptr,
-                drop_fn: drop_fn::<F, L>,
+                // drop_fn: drop_fn::<F, L>,
                 fiber_local,
                 _m1: PhantomData,
                 _m2: PhantomData,
@@ -174,6 +190,11 @@ impl<Input, Yield, Return, L, S: FiberStack> Fiber<Input, Yield, Return, L, S> {
         }
     }
 
+    /// Resume a suspended fiber, the `Input` value will be passed to the fiber and returned by [`Suspend::suspend`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the fiber is already completed.
     pub fn resume(&mut self, input: Input) -> FiberResult<Yield, Return> {
         let mut input = ManuallyDrop::new(input);
 
@@ -226,8 +247,15 @@ impl<Input, Yield, Return, L, S: FiberStack> Fiber<Input, Yield, Return, L, S> {
         self.stack_ptr = None;
     }
 
+    /// Return a reference to the fiber-local state associated with this fiber.
+    #[expect(clippy::missing_panics_doc, reason = "not a user-facing panic")]
     pub fn fiber_local(&self) -> &L {
-        unsafe { &*(self.fiber_local) }
+        // Safety: the fiber-local value is always initialized by construction
+        unsafe {
+            self.fiber_local
+                .as_ref()
+                .expect("fiber-local pointer was null, this is a bug!")
+        }
     }
 
     // /// Unwinds the fiber stack, dropping any live objects that are
@@ -294,6 +322,10 @@ pub struct Suspend<Input, Yield> {
 }
 
 impl<Input, Yield> Suspend<Input, Yield> {
+    /// Suspends the execution of the calling fiber.
+    ///
+    /// This will yield back control to the original caller of [`Fiber::resume`] transferring the provided
+    /// `Yield` argument to it as the return of `resume`.
     pub fn suspend(&self, val: Yield) -> Input {
         // Safety: TODO
         unsafe {

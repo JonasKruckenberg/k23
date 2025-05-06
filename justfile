@@ -125,7 +125,7 @@ build-docs crate="" *cargo_args="":
 # test documentation for a crate or the entire workspace.
 test-docs crate="" *cargo_args="":
     {{ _cargo }} test --doc \
-        {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch" } else { "--package" } }} {{ crate }} \
+        {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch --exclude fiber" } else { "--package" } }} {{ crate }} \
         --target profile/riscv64/riscv64gc-k23-none-kernel.json \
         --locked \
         {{ _buildstd }} \

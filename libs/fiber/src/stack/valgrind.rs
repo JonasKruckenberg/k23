@@ -2,7 +2,7 @@
 //!
 //! When running under Valgrind, we need to notify it when we allocate/free a
 //! stack otherwise it gets confused when the stack pointer starts to randomly
-//! move to a different addess.
+//! move to a different address.
 //!
 //! This is done through special instruction sequences which are recognized by
 //! Valgrind but otherwise executes as a NOP on real hardware.

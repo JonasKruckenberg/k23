@@ -33,7 +33,6 @@ mod backtrace;
 mod bootargs;
 mod cpu_local;
 mod device_tree;
-mod fiber;
 mod irq;
 mod mem;
 mod metrics;
