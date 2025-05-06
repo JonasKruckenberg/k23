@@ -1,19 +1,18 @@
-// Copyright 2025 Jonas Kruckenberg
-//
-// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
-// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
-// http://opensource.org/licenses/MIT>, at your option. This file may not be
-// copied, modified, or distributed except according to those terms.
 //! ## Stack layout
 //!
-//! Here is what the layout of the stack looks like when a fiber is
+//! Here is what the layout of the stack looks like when a coroutine is
 //! suspended.
 //!
 //! ```text
-//! +--------------+  <- Stack top
+//! +--------------+  <- Stack base
 //! | Initial func |
 //! +--------------+
 //! | Parent link  |
+//! +--------------+
+//! +--------------+
+//! |              |
+//! ~ Fiber-local  ~
+//! |    data      |
 //! +--------------+
 //! |              |
 //! ~     ...      ~
@@ -29,7 +28,7 @@
 //! +--------------+
 //! ```
 //!
-//! And this is the layout of the parent stack when a fiber is running:
+//! And this is the layout of the parent stack when a coroutine is running:
 //!
 //! ```text
 //! |           |
@@ -46,14 +45,19 @@
 //! +-----------+
 //! ```
 //!
-//! And finally, this is the stack layout of a fiber that has just been
+//! And finally, this is the stack layout of a coroutine that has just been
 //! initialized:
 //!
 //! ```text
-//! +--------------+  <- Stack top
+//! +--------------+  <- Stack base
 //! | Initial func |
 //! +--------------+
 //! | Parent link  |
+//! +--------------+
+//! +--------------+
+//! |              |
+//! ~ Fiber-local  ~
+//! |    data      |
 //! +--------------+
 //! |              |
 //! ~ Initial obj  ~
@@ -69,17 +73,25 @@
 //! +--------------+  <- Initial stack pointer
 //! ```
 
-use super::utils::{define_op, load_gp, save_gp};
-use crate::arch::STACK_ALIGNMENT;
-use crate::fiber::{EncodedValue, FiberStack, StackPointer, allocate_obj_on_stack, push};
+use crate::utils::{EncodedValue, allocate_obj_on_stack, push};
+use crate::{FiberStack, StackPointer};
 use core::arch::{asm, naked_asm};
+use riscv::{load_gp, save_gp, xlen_bytes};
+
+pub const STACK_ALIGNMENT: usize = 16;
+
+macro_rules! addi {
+    ($dest:expr, $src:expr, $word_offset:expr) => {
+        concat!("addi ", $dest, ", ", $src, ", ", xlen_bytes!($word_offset),)
+    };
+}
 
 #[inline]
 pub unsafe fn init_stack<T>(
-    stack: &FiberStack,
+    stack: &dyn FiberStack,
     func: unsafe extern "C-unwind" fn(arg: EncodedValue, sp: &mut StackPointer, obj: *mut T) -> !,
     obj: T,
-) -> StackPointer {
+) -> (StackPointer, StackPointer) {
     // Safety: ensured by caller
     unsafe {
         let mut sp = stack.top().get();
@@ -93,6 +105,7 @@ pub unsafe fn init_stack<T>(
         // Allocate space on the stack for the initial object, rounding to
         // STACK_ALIGNMENT.
         allocate_obj_on_stack(&mut sp, 16, obj);
+        let init_obj = sp;
 
         // The stack is aligned to STACK_ALIGNMENT at this point.
         debug_assert_eq!(sp % STACK_ALIGNMENT, 0);
@@ -108,7 +121,10 @@ pub unsafe fn init_stack<T>(
         push(&mut sp, None);
         push(&mut sp, None);
 
-        StackPointer::new_unchecked(sp)
+        (
+            StackPointer::new_unchecked(sp),
+            StackPointer::new_unchecked(init_obj),
+        )
     }
 }
 
@@ -132,7 +148,9 @@ pub unsafe extern "C" fn stack_init_trampoline() {
             //
             // Push the S0, S1 and PC values of the parent context onto the parent
             // stack.
-            "addi sp, sp, -4 * 8",
+            // "addi sp, sp, -4 * 8",
+            addi!("sp", "sp", -4),
+
             save_gp!(s1 => sp[2]),
             save_gp!(ra => sp[1]),
             save_gp!(s0 => sp[0]),
@@ -149,14 +167,22 @@ pub unsafe extern "C" fn stack_init_trampoline() {
             // up the 3rd argument to the initial function to point to the object that
             // init_stack() set up on the stack.
             "addi a2, a2, 4 * 8",
+
             // Switch to the fiber stack.
             "mv sp, a2",
 
+            // Tell the unwinder where to find the Canonical Frame Address (CFA) of the
+            // parent context.
+            //
+            // The CFA is normally defined as the stack pointer value in the caller just
+            // before executing the call instruction. In our case, this is the stack
+            // pointer value that should be restored upon exiting the inline assembly
+            // block inside switch_and_link().
             ".cfi_escape 0x0f,  /* DW_CFA_def_cfa_expression */\
-             5, /* the byte length of this expression */\
-             0x78, 0x70, /* DW_OP_breg8 (s0 - 8/16) */\
-             0x06, /* DW_OP_deref */\
-             0x23, 2 * 8 /* DW_OP_plus_uconst 16 */",
+             5,                 /* the byte length of this expression */\
+             0x78, 0x70,        /* DW_OP_breg8 (s0 - 8/16) */\
+             0x06,              /* DW_OP_deref */\
+             0x23, 2 * 8        /* DW_OP_plus_uconst 16 */",
 
             // Now we can tell the unwinder how to restore the 3 registers that were
             // pushed on the parent stack. These are described as offsets from the CFA
@@ -212,7 +238,7 @@ pub unsafe fn switch_and_link(
             // - A0: The argument passed from the fiber.
 
              // Switch back to our stack and free the saved registers.
-            "addi sp, a2, 2 * 8", // XLEN
+            addi!("sp", "a2", 2),
 
             // Pass the argument in A0.
             inlateout("a0") arg0 => ret_val,
@@ -237,8 +263,6 @@ pub unsafe fn switch_and_link(
     (ret_val, StackPointer::new(ret_sp))
 }
 
-// 0xffffffc000327b24
-
 #[inline(always)]
 pub unsafe fn switch_yield(arg: EncodedValue, parent_link: *mut StackPointer) -> EncodedValue {
     let ret_val;
@@ -247,7 +271,7 @@ pub unsafe fn switch_yield(arg: EncodedValue, parent_link: *mut StackPointer) ->
         asm! {
             // Save s0 and s1 while also reserving space on the stack for our
             // saved PC.
-            "addi sp, sp, -4 * 8", // XLEN
+            addi!("sp", "sp", -4),
             save_gp!(s0 => sp[0]),
             save_gp!(s1 => sp[1]),
             // Write our return address to its expected position on the stack.
@@ -290,14 +314,14 @@ pub unsafe fn switch_yield(arg: EncodedValue, parent_link: *mut StackPointer) ->
             "0:",
 
             // save s0, s1 and ra to the parent stack.
-            "addi sp, sp, -4 * 8", // XLEN
+            addi!("sp", "sp", -4),
             save_gp!(s1 => sp[2]),
             save_gp!(ra => sp[1]),
             save_gp!(s0 => sp[0]),
 
             // now calculate the parent stack pointer, this points just above the saved ra
             // matching the GCC/LLVM ABI.
-            "addi t0, sp, 2 * 8", // XLEN
+            addi!("t0", "sp", 2),
 
             // then save the parent stack pointer to the parent link "field" of our own stack
             save_gp!(t0 => a1[-2]),
@@ -308,7 +332,7 @@ pub unsafe fn switch_yield(arg: EncodedValue, parent_link: *mut StackPointer) ->
 
             // Switch to the fiber stack while popping the saved registers and
             // padding.
-            "addi sp, a2, 4 * 8", // XLEN
+            addi!("sp", "a2", 4),
 
             // Pass the argument in A0.
             inlateout("a0") arg => ret_val,
@@ -352,92 +376,5 @@ pub unsafe fn switch_and_reset(arg: EncodedValue, parent_link: *mut StackPointer
             parent_link = in(reg) parent_link,
             options(noreturn),
         }
-    }
-}
-
-#[inline]
-pub unsafe fn switch_and_throw(
-    sp: StackPointer,
-    stack_base: StackPointer,
-) -> (EncodedValue, Option<StackPointer>) {
-    extern "C-unwind" fn throw() -> ! {
-        use alloc::boxed::Box;
-        crate::panic::resume_unwind(Box::new(()));
-    }
-
-    let (ret_val, ret_sp);
-    // Safety: inline assembly
-    unsafe {
-        asm! {
-            // Set up a return address.
-            "lla ra, 0f",
-
-            // save s0, s1 and ra to the parent stack.
-            "addi sp, sp, -4 * 8", // XLEN
-            save_gp!(s1 => sp[2]),
-            save_gp!(ra => sp[1]),
-            save_gp!(s0 => sp[0]),
-
-            // now calculate the parent stack pointer, this points just above the saved ra
-            // matching the GCC/LLVM ABI.
-            "addi t1, sp, 2 * 8", // XLEN
-
-            // then save the parent stack pointer to the parent link "field" of our own stack
-            save_gp!(t1 => a1[-2]),
-
-            // Load the fiber registers, with the saved PC into RA.
-            load_gp!(t0[2] => ra),
-            load_gp!(t0[1] => s1),
-            load_gp!(t0[0] => s0),
-
-            // Switch to the fiber stack while popping the saved registers and
-            // padding.
-            "addi sp, t0, 4 * 8",
-
-            // Simulate a call with an artificial return address so that the throw
-            // function will unwind straight into the switch_and_yield() call with
-            // the register state expected outside the asm! block.
-            "tail {throw}",
-
-            // Upon returning, our register state is just like a normal return into
-            // switch_and_link().
-            "0:",
-
-            // Switch back to our stack and free the saved registers.
-            "addi sp, a2, 2 * 8",
-
-            // Helper function to trigger stack unwinding.
-            throw = sym throw,
-            // Same output registers as switch_and_link().
-            lateout("a0") ret_val,
-            lateout("a1") ret_sp,
-            // Stack pointer and stack base inputs for stack switching.
-            in("a1") stack_base.get(),
-            in("t0") sp.get(),
-            // See switch_and_link() for an explanation of the clobbers.
-            lateout("s2") _, lateout("s3") _, lateout("s4") _, lateout("s5") _,
-            lateout("s6") _, lateout("s7") _, lateout("s8") _, lateout("s9") _,
-            lateout("s10") _, lateout("s11") _,
-            lateout("fs0") _, lateout("fs1") _, lateout("fs2") _, lateout("fs3") _,
-            lateout("fs4") _, lateout("fs5") _, lateout("fs6") _, lateout("fs7") _,
-            lateout("fs8") _, lateout("fs9") _, lateout("fs10") _, lateout("fs11") _,
-            clobber_abi("C"),
-            options(may_unwind)
-        }
-    }
-
-    (ret_val, StackPointer::new(ret_sp))
-}
-
-#[inline]
-pub unsafe fn drop_initial_obj(
-    _stack_base: StackPointer,
-    stack_ptr: StackPointer,
-    drop_fn: unsafe fn(ptr: *mut u8),
-) {
-    // Safety: ensured by caller
-    unsafe {
-        let ptr = (stack_ptr.get() as *mut u8).add(32);
-        drop_fn(ptr);
     }
 }

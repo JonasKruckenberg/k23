@@ -12,6 +12,7 @@
 mod error;
 pub mod hio;
 pub mod interrupt;
+mod macros;
 pub mod register;
 pub mod sbi;
 pub mod semihosting;

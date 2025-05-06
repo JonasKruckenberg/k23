@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use crate::arch::PAGE_SIZE;
 use crate::arch::device::cpu::with_cpu;
 use crate::backtrace::Backtrace;
@@ -18,6 +17,7 @@ use core::cell::Cell;
 use core::ops::DerefMut;
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
+use riscv::{load_fp, load_gp, save_fp, save_gp};
 use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
 cpu_local! {

@@ -43,11 +43,11 @@
 //! result. In a nested calls scenario (e.g. host->wasm->host->wasm) it is therefore up to each host function
 //! to propagate the trap and each host function therefore gets to clean up all its resources.
 
-use super::utils::{define_op, load_fp, load_gp, save_fp, save_gp};
 use core::arch::{asm, naked_asm};
 use core::marker::{PhantomData, PhantomPinned};
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ptr::addr_of_mut;
+use riscv::{load_fp, load_gp, save_fp, save_gp};
 
 /// A store for the register state used by `setjmp` and `longjmp`.
 ///

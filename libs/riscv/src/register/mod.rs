@@ -104,11 +104,11 @@ macro_rules! write_csr {
     ($csr_number: literal) => {
         /// Writes the CSR
         #[inline]
-        unsafe fn _write(bits: usize) {
+        unsafe fn _write(_bits: usize) {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
                     unsafe {
-                        ::core::arch::asm!(concat!("csrrw x0, ", stringify!($csr_number), ", {0}"), in(reg) bits);
+                        ::core::arch::asm!(concat!("csrrw x0, ", stringify!($csr_number), ", {0}"), in(reg) _bits);
                     }
                 } else {
                     unimplemented!()
@@ -136,11 +136,11 @@ macro_rules! set_csr {
     ($csr_number: literal) => {
         /// Sets the CSR
         #[inline]
-        unsafe fn _set(bits: usize) {
+        unsafe fn _set(_bits: usize) {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
                     unsafe {
-                        ::core::arch::asm!(concat!("csrrs x0, ", stringify!($csr_number), ", {0}"), in(reg) bits);
+                        ::core::arch::asm!(concat!("csrrs x0, ", stringify!($csr_number), ", {0}"), in(reg) _bits);
                     }
                 } else {
                     unimplemented!()
@@ -154,11 +154,11 @@ macro_rules! clear_csr {
     ($csr_number: literal) => {
         /// Writes the CSR
         #[inline]
-        unsafe fn _clear(bits: usize) {
+        unsafe fn _clear(_bits: usize) {
             cfg_if::cfg_if! {
                 if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
                     unsafe {
-                        ::core::arch::asm!(concat!("csrrc x0, ", stringify!($csr_number), ", {0}"), in(reg) bits)
+                        ::core::arch::asm!(concat!("csrrc x0, ", stringify!($csr_number), ", {0}"), in(reg) _bits)
                     }
                 } else {
                     unimplemented!()
