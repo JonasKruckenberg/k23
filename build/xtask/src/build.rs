@@ -1,17 +1,31 @@
 use crate::Options;
 use crate::profile::{LogLevel, Profile, RustTarget};
-use atty::Stream;
+use crate::tracing::{ColorMode, OutputOptions};
 use color_eyre::eyre::{Context, bail};
+use std::io::{IsTerminal, stderr};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use tracing_core::LevelFilter;
 
 const DEFAULT_KERNEL_STACK_SIZE_PAGES: u32 = 256;
 
-pub fn build_kernel(opts: &Options, profile: &Profile) -> crate::Result<PathBuf> {
-    let mut build = BuildOptions::new(opts, &profile, BuildTarget::Kernel)
+pub fn build_kernel(
+    opts: &Options,
+    output: &OutputOptions,
+    profile: &Profile,
+    include_tests: bool,
+) -> crate::Result<PathBuf> {
+    let cargo_verbosity = output.log.default_level().map_or(0, |lvl| match lvl {
+        LevelFilter::TRACE => 2,
+        LevelFilter::DEBUG => 1,
+        _ => 0,
+    });
+
+    let mut build = BuildOptions::new(opts, output, &profile, BuildTarget::Kernel)
         .build_std(true)
-        .verbose(opts.verbose)
+        .verbose(cargo_verbosity)
         .release(opts.release)
+        .include_tests(include_tests)
         .finish();
 
     let stacksize_pages = profile
@@ -45,11 +59,24 @@ pub fn build_kernel(opts: &Options, profile: &Profile) -> crate::Result<PathBuf>
     Ok(build.output)
 }
 
-pub fn build_loader(opts: &Options, profile: &Profile, kernel: &Path) -> crate::Result<PathBuf> {
-    let mut build = BuildOptions::new(opts, &profile, BuildTarget::Loader)
+pub fn build_loader(
+    opts: &Options,
+    output: &OutputOptions,
+    profile: &Profile,
+    kernel: &Path,
+    include_tests: bool,
+) -> crate::Result<PathBuf> {
+    let cargo_verbosity = output.log.default_level().map_or(0, |lvl| match lvl {
+        LevelFilter::TRACE => 2,
+        LevelFilter::DEBUG => 1,
+        _ => 0,
+    });
+
+    let mut build = BuildOptions::new(opts, output, &profile, BuildTarget::Loader)
         .build_std(true)
-        .verbose(opts.verbose)
+        .verbose(cargo_verbosity)
         .release(opts.release)
+        .include_tests(include_tests)
         .finish();
 
     let max_log_level = match profile
@@ -82,24 +109,30 @@ pub enum BuildTarget {
     Kernel,
     Loader,
 }
-
 pub struct BuildOptions<'a> {
     profile: &'a Profile,
     cargo_path: &'a Path,
     target_dir: Option<&'a Path>,
+    verbosity: u8,
     release: bool,
-    verbose: bool,
     build_std: bool,
+    include_tests: bool,
     no_default_features: bool,
     features: Vec<String>,
     chosen_target: RustTarget,
     kernel_target: RustTarget,
     loader_target: RustTarget,
     crate_name: &'static str,
+    color_mode: ColorMode,
 }
 
 impl<'a> BuildOptions<'a> {
-    pub fn new(opts: &'a Options, profile: &'a Profile, target: BuildTarget) -> Self {
+    pub fn new(
+        opts: &'a Options,
+        output: &OutputOptions,
+        profile: &'a Profile,
+        target: BuildTarget,
+    ) -> Self {
         let kernel_target = profile.kernel.target.resolve(&profile);
         let loader_target = profile.loader.target.resolve(&profile);
 
@@ -122,15 +155,17 @@ impl<'a> BuildOptions<'a> {
             profile,
             cargo_path: &opts.cargo_path,
             target_dir: opts.target_dir.as_deref(),
+            verbosity: 0,
             release: false,
-            verbose: false,
             build_std: false,
+            include_tests: false,
             no_default_features,
             features,
             crate_name,
             chosen_target,
             kernel_target,
             loader_target,
+            color_mode: output.color,
         }
     }
 
@@ -139,13 +174,18 @@ impl<'a> BuildOptions<'a> {
         self
     }
 
-    pub fn verbose(mut self, verbose: bool) -> Self {
-        self.verbose = verbose;
+    pub fn verbose(mut self, verbose: u8) -> Self {
+        self.verbosity = verbose;
         self
     }
 
     pub fn build_std(mut self, build_std: bool) -> Self {
         self.build_std = build_std;
+        self
+    }
+
+    pub fn include_tests(mut self, include_tests: bool) -> Self {
+        self.include_tests = include_tests;
         self
     }
 
@@ -159,15 +199,23 @@ impl<'a> BuildOptions<'a> {
             &self.chosen_target.to_string(),
         ]);
 
+        cmd.env("CARGO_TERM_COLOR", self.color_mode.as_str());
+
         if self.release {
             cmd.arg("--release");
+        }
+
+        if self.include_tests {
+            cmd.arg("--tests");
         }
 
         if self.no_default_features {
             cmd.arg("--no-default-features");
         }
-        if self.verbose {
-            cmd.arg("-v");
+
+        // pass on the number of `--verbose` flags we received
+        if self.verbosity > 0 {
+            cmd.arg(format!("-{}", str::repeat("v", self.verbosity as usize)));
         }
 
         if !self.features.is_empty() {
@@ -188,7 +236,7 @@ impl<'a> BuildOptions<'a> {
 
         // We're capturing stderr (for diagnosis), so `cargo` won't automatically
         // turn on color.  If *we* are a TTY, then force it on.
-        if atty::is(Stream::Stderr) {
+        if stderr().is_terminal() {
             cmd.arg("--color");
             cmd.arg("always");
         }
@@ -268,6 +316,8 @@ impl Build<'_> {
 
     fn run(&mut self) -> crate::Result<()> {
         self.check_rebuild()?;
+
+        tracing::debug!("{:?}", self.cmd);
 
         let out = self
             .cmd

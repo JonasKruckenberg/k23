@@ -117,17 +117,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
-name = "atty"
-version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b39be18770d11421cdb1b9947a45dd3f37e93092cbf377614828a319d5fee8"
-dependencies = [
- "hermit-abi 0.1.19",
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -310,7 +299,7 @@ dependencies = [
  "indenter",
  "once_cell",
  "owo-colors",
- "tracing-error",
+ "tracing-error 0.2.1",
 ]
 
 [[package]]
@@ -322,7 +311,7 @@ dependencies = [
  "once_cell",
  "owo-colors",
  "tracing-core 0.1.33",
- "tracing-error",
+ "tracing-error 0.2.1",
 ]
 
 [[package]]
@@ -522,9 +511,9 @@ dependencies = [
 
 [[package]]
 name = "deranged"
-version = "0.4.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28cfac68e08048ae1883171632c2aef3ebc555621ae56fbccce1cbf22dd7f058"
+checksum = "9c9e6a11ca8224451684bc0d7d5a7adbf8f2fd6887261a1cfc3c0432f9d4068e"
 dependencies = [
  "powerfmt",
 ]
@@ -766,15 +755,6 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermit-abi"
-version = "0.1.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "hermit-abi"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbd780fe5cc30f81464441920d82ac8740e2e46b29a6fad543ddd075229ce37e"
@@ -938,7 +918,6 @@ checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
 dependencies = [
  "equivalent",
  "hashbrown",
- "serde",
 ]
 
 [[package]]
@@ -953,7 +932,7 @@ version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e04d7f318608d35d4b61ddd75cbdaee86b023ebe2bd5a66ee0915f0bf93095a9"
 dependencies = [
- "hermit-abi 0.5.0",
+ "hermit-abi",
  "libc",
  "windows-sys",
 ]
@@ -1180,7 +1159,7 @@ dependencies = [
  "generator",
  "scoped-tls",
  "tracing 0.1.41",
- "tracing-subscriber",
+ "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -1382,6 +1361,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670"
 dependencies = [
  "plotters-backend",
+]
+
+[[package]]
+name = "portable-atomic"
+version = "1.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "350e9b48cbc6b0e028b0473b114454c6316e57336ee184ceab6e53f72c178b3e"
+
+[[package]]
+name = "portable-atomic-util"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8a2f0d8d040d7848a709caf78912debcc3f33ee4b3cac47d73d1e1069e83507"
+dependencies = [
+ "portable-atomic",
 ]
 
 [[package]]
@@ -1914,6 +1908,19 @@ dependencies = [
 name = "tracing-core"
 version = "0.2.0"
 source = "git+https://github.com/tokio-rs/tracing?branch=master#7a3ddfb02ac9b6e6f9c6bbe75feac2f2f3af91df"
+dependencies = [
+ "once_cell",
+ "portable-atomic-util",
+]
+
+[[package]]
+name = "tracing-error"
+version = "0.2.0"
+source = "git+https://github.com/tokio-rs/tracing?branch=master#c54aa4e0f1682fd86dc8436fd5bca6c5bd976e8c"
+dependencies = [
+ "tracing 0.2.0",
+ "tracing-subscriber 0.3.0",
+]
 
 [[package]]
 name = "tracing-error"
@@ -1922,7 +1929,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b1581020d7a273442f5b45074a6a57d5757ad0a47dac0e9f0bd57b81936f3db"
 dependencies = [
  "tracing 0.1.41",
- "tracing-subscriber",
+ "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -1934,6 +1941,30 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core 0.1.33",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.2.0"
+source = "git+https://github.com/tokio-rs/tracing?branch=master#c54aa4e0f1682fd86dc8436fd5bca6c5bd976e8c"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core 0.2.0",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.0"
+source = "git+https://github.com/tokio-rs/tracing?branch=master#c54aa4e0f1682fd86dc8436fd5bca6c5bd976e8c"
+dependencies = [
+ "nu-ansi-term",
+ "portable-atomic-util",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing-core 0.2.0",
+ "tracing-log 0.2.0 (git+https://github.com/tokio-rs/tracing?branch=master)",
 ]
 
 [[package]]
@@ -1951,7 +1982,7 @@ dependencies = [
  "thread_local",
  "tracing 0.1.41",
  "tracing-core 0.1.33",
- "tracing-log",
+ "tracing-log 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2421,14 +2452,17 @@ dependencies = [
 name = "xtask"
 version = "0.1.0"
 dependencies = [
- "atty",
  "clap",
  "color-eyre",
- "indexmap",
+ "heck 0.5.0",
  "serde",
  "toml",
  "toml-patch",
  "toml_edit",
+ "tracing 0.2.0",
+ "tracing-core 0.2.0",
+ "tracing-error 0.2.0",
+ "tracing-subscriber 0.3.0",
 ]
 
 [[package]]

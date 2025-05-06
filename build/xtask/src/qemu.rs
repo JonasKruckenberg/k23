@@ -16,13 +16,13 @@ pub struct QemuOptions {
     pub qemu_args: Vec<String>,
 }
 
-pub fn run(
+pub fn spawn(
     qemu: &QemuOptions,
     profile: Profile,
     image: &Path,
     inherit_stdio: bool,
-    separate_thread: bool,
-) -> crate::Result<()> {
+    additional_args: &[String],
+) -> crate::Result<KillOnDrop> {
     let mut cmd = match profile.arch {
         Architecture::Riscv64 => {
             let mut cmd = Command::new("qemu-system-riscv64");
@@ -60,10 +60,12 @@ pub fn run(
                 "-kernel",
                 image.to_str().unwrap(),
             ]);
-            cmd.args(&qemu.qemu_args);
             cmd
         }
     };
+
+    cmd.args(&qemu.qemu_args);
+    cmd.args(additional_args);
 
     if qemu.wait_for_debugger {
         cmd.arg("-S")
@@ -81,21 +83,12 @@ pub fn run(
         cmd.stdin(Stdio::null());
     }
 
-    let mut run = move || {
-        let mut qemu = KillOnDrop(cmd.spawn().expect("Failed to spawn qemu. Is it installed?"));
-        qemu.0.wait().unwrap();
-    };
-
-    if separate_thread {
-        std::thread::spawn(run);
-    } else {
-        run();
-    }
-
-    Ok(())
+    Ok(KillOnDrop(
+        cmd.spawn().expect("Failed to spawn qemu. Is it installed?"),
+    ))
 }
 
-struct KillOnDrop(Child);
+pub struct KillOnDrop(pub Child);
 
 impl Drop for KillOnDrop {
     fn drop(&mut self) {
