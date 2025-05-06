@@ -36,6 +36,7 @@
             wabt
             dtc
             cargo-fuzz
+            cargo-deny
             typos
 
             # for testing the kernel

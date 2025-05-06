@@ -9,9 +9,6 @@ license.workspace = true
 name = "kernel"
 harness = false
 
-[lints]
-workspace = true
-
 [dependencies]
 loader-api.workspace = true
 cpu-local.workspace = true
@@ -62,3 +59,6 @@ riscv.workspace = true
 
 [build-dependencies]
 vergen-git2 = { version = "1.0.0", features = ["build", "cargo", "rustc"] }
+
+[lints]
+workspace = true

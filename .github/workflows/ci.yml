@@ -95,4 +95,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo test
         # Run tests in release mode because otherwise they take *foreeever*
-        run: nix develop --command just profile=release test
+        run: nix develop --command cargo xtask test profile/riscv64/qemu.toml --release
