@@ -46,6 +46,9 @@ impl Cmd {
         let (var, val) = cargo_qemu_runner_env(&profile)?;
         cmd.env(var, val);
 
+        cmd.args(["--", "--"]);
+        cmd.args(&self.qemu_opts.qemu_args);
+
         let mut child = KillOnDrop(cmd.spawn()?);
 
         match child
