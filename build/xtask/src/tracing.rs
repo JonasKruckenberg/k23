@@ -43,7 +43,7 @@ pub struct OutputOptions {
     /// Whether to emit colors in output.
     #[clap(
         long,
-        env = "CARGO_TERM_COLORS",
+        env = "CARGO_TERM_COLOR",
         default_value_t = ColorMode::Auto,
         global = true,
         group = ARG_GROUP,
