@@ -38,6 +38,7 @@
             cargo-fuzz
             cargo-deny
             typos
+            wasm-tools
 
             # for testing the kernel
             qemu
