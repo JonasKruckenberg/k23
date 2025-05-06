@@ -1,8 +1,8 @@
 use crate::profile::{Architecture, Profile};
+use crate::util::KillOnDrop;
 use clap::Parser;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use crate::util::KillOnDrop;
 
 #[derive(Debug, Parser)]
 pub struct QemuOptions {

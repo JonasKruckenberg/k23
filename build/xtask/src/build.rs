@@ -1,8 +1,8 @@
+use crate::Options;
 use crate::profile::{LogLevel, Profile, RustTarget};
 use crate::tracing::{ColorMode, OutputOptions};
 use crate::util::KillOnDrop;
-use crate::Options;
-use color_eyre::eyre::{bail, Context};
+use color_eyre::eyre::{Context, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing_core::LevelFilter;

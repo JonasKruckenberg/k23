@@ -8,6 +8,6 @@
 pub mod build;
 pub mod dist;
 pub mod lldb;
+pub mod qemu;
 pub mod run;
 pub mod test;
-pub mod qemu;
