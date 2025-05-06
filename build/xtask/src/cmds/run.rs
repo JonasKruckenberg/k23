@@ -7,7 +7,7 @@
 
 use crate::profile::Profile;
 use crate::tracing::OutputOptions;
-use crate::{Options, qemu};
+use crate::{qemu, Options};
 use clap::{Parser, ValueHint};
 use std::path::PathBuf;
 
@@ -24,11 +24,11 @@ impl Cmd {
     pub fn run(&self, opts: &Options, output: &OutputOptions) -> crate::Result<()> {
         let profile = Profile::from_file(&self.profile)?;
 
-        let kernel = crate::build::build_kernel(&opts, output, &profile, false)?;
-        let image = crate::build::build_loader(&opts, output, &profile, &kernel, false)?;
-
+        let kernel = crate::build::build_kernel(&opts, output, &profile)?;
+        let image = crate::build::build_loader(&opts, output, &profile, &kernel)?;
+        
         let mut child = qemu::spawn(&self.qemu_opts, profile, &image, true, &[])?;
-
+        
         child.0.wait()?;
 
         Ok(())

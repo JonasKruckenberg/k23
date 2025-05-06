@@ -1,3 +1,17 @@
+//! Build tooling for k23
+//!
+//! # Prior art
+//!
+//! - [Inoculate] - Build tooling for the mycelium OS project
+//! - [Hubris xtask] - Build tooling for the oxide computer hubris kernel
+//! - [Redox OS configs] - RedoxOS uses toml-based build configurations as well
+//!
+//! [Inoculate]: https://github.com/hawkw/mycelium/tree/main/inoculate
+//! [Hubris xtask]: https://github.com/oxidecomputer/hubris/tree/master/build/xtask
+//! [Redox OS configs]: https://gitlab.redox-os.org/redox-os/redox/-/tree/master/config?ref_type=heads
+
+#![feature(exit_status_error)]
+
 mod build;
 mod cmds;
 mod profile;
@@ -5,10 +19,9 @@ mod qemu;
 mod tracing;
 mod util;
 
-use clap::{Parser, ValueHint};
+use clap::{Parser, Subcommand, ValueHint};
 use color_eyre::eyre::Result;
 use std::path::PathBuf;
-
 #[derive(Debug, Parser)]
 struct Xtask {
     #[clap(subcommand)]
@@ -48,7 +61,7 @@ struct Options {
     pub cargo_path: PathBuf,
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Subcommand)]
 enum SubCommand {
     Build(cmds::build::Cmd),
     Dist(cmds::dist::Cmd),
@@ -61,6 +74,8 @@ enum SubCommand {
     /// Note that for now, the only supported target is QEMU.
     Test(cmds::test::Cmd),
     Lldb(cmds::lldb::Cmd),
+    #[clap(name = "__qemu", hide = true)]
+    Qemu(cmds::qemu::Cmd),
 }
 
 fn main() -> Result<()> {
@@ -74,5 +89,6 @@ fn main() -> Result<()> {
         SubCommand::Run(cmd) => cmd.run(&xtask.options, &xtask.output),
         SubCommand::Test(cmd) => cmd.run(&xtask.options, &xtask.output),
         SubCommand::Lldb(cmd) => cmd.run(&xtask.options),
+        SubCommand::Qemu(cmd) => cmd.run(&xtask.options, &xtask.output),
     }
 }

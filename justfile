@@ -51,7 +51,7 @@ _default:
 
 # Alias for `cargo xtask qemu`
 run profile args="" *qemu_args="":
-    {{ _cargo }} xtask qemu {{ profile }} {{ args }} -- {{ qemu_args }}
+    {{ _cargo }} xtask run {{ profile }} {{ args }} -- {{ qemu_args }}
 
 # Alias for `cargo xtask build`
 build profile args="" *qemu_args="":

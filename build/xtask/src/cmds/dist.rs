@@ -20,18 +20,14 @@ pub struct Cmd {
     /// Overrides the directory in which to build the output image.
     #[clap(short, long, env = "OUT_DIR", value_hint = ValueHint::DirPath, global = true)]
     out_dir: Option<PathBuf>,
-
-    /// Include kernel tests when compiling
-    #[clap(long)]
-    tests: bool,
 }
 
 impl Cmd {
     pub fn run(&self, opts: &Options, output: &OutputOptions) -> crate::Result<()> {
         let profile = Profile::from_file(&self.profile)?;
 
-        let kernel = crate::build::build_kernel(&opts, output, &profile, self.tests)?;
-        let _image = crate::build::build_loader(&opts, output, &profile, &kernel, self.tests)?;
+        let kernel = crate::build::build_kernel(&opts, output, &profile)?;
+        let _image = crate::build::build_loader(&opts, output, &profile, &kernel)?;
 
         Ok(())
     }

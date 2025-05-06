@@ -10,3 +10,4 @@ pub mod dist;
 pub mod lldb;
 pub mod run;
 pub mod test;
+pub mod qemu;

@@ -1,10 +1,10 @@
-use crate::Options;
 use crate::profile::{LogLevel, Profile, RustTarget};
 use crate::tracing::{ColorMode, OutputOptions};
-use color_eyre::eyre::{Context, bail};
-use std::io::{IsTerminal, stderr};
+use crate::util::KillOnDrop;
+use crate::Options;
+use color_eyre::eyre::{bail, Context};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use tracing_core::LevelFilter;
 
 const DEFAULT_KERNEL_STACK_SIZE_PAGES: u32 = 256;
@@ -13,20 +13,10 @@ pub fn build_kernel(
     opts: &Options,
     output: &OutputOptions,
     profile: &Profile,
-    include_tests: bool,
 ) -> crate::Result<PathBuf> {
-    let cargo_verbosity = output.log.default_level().map_or(0, |lvl| match lvl {
-        LevelFilter::TRACE => 2,
-        LevelFilter::DEBUG => 1,
-        _ => 0,
-    });
-
-    let mut build = BuildOptions::new(opts, output, &profile, BuildTarget::Kernel)
-        .build_std(true)
-        .verbose(cargo_verbosity)
-        .release(opts.release)
-        .include_tests(include_tests)
-        .finish();
+    let (mut cargo, output) = Cargo::build(CrateToBuild::Kernel, profile, opts, output)?;
+    cargo.build_std(true);
+    let mut cmd = cargo.into_cmd();
 
     let stacksize_pages = profile
         .kernel
@@ -45,7 +35,7 @@ pub fn build_kernel(
         LogLevel::Error => "::tracing::Level::ERROR",
     };
 
-    build.cmd.env(
+    cmd.env(
         "K23_CONSTANTS",
         format!(
             r#"
@@ -55,8 +45,12 @@ pub fn build_kernel(
         ),
     );
 
-    build.run()?;
-    Ok(build.output)
+    tracing::debug!("{cmd:?}");
+
+    let mut child = KillOnDrop(cmd.spawn()?);
+    child.0.wait()?.exit_ok()?;
+
+    Ok(output)
 }
 
 pub fn build_loader(
@@ -64,20 +58,10 @@ pub fn build_loader(
     output: &OutputOptions,
     profile: &Profile,
     kernel: &Path,
-    include_tests: bool,
 ) -> crate::Result<PathBuf> {
-    let cargo_verbosity = output.log.default_level().map_or(0, |lvl| match lvl {
-        LevelFilter::TRACE => 2,
-        LevelFilter::DEBUG => 1,
-        _ => 0,
-    });
-
-    let mut build = BuildOptions::new(opts, output, &profile, BuildTarget::Loader)
-        .build_std(true)
-        .verbose(cargo_verbosity)
-        .release(opts.release)
-        .include_tests(include_tests)
-        .finish();
+    let (mut cargo, output) = Cargo::build(CrateToBuild::Loader, profile, opts, output)?;
+    cargo.build_std(true);
+    let mut cmd = cargo.into_cmd();
 
     let max_log_level = match profile
         .kernel
@@ -91,7 +75,7 @@ pub fn build_loader(
         LogLevel::Error => "::log::Level::Error",
     };
 
-    build.cmd.env(
+    cmd.env(
         "K23_CONSTANTS",
         format!(
             r#"
@@ -99,114 +83,178 @@ pub fn build_loader(
     "#
         ),
     );
-    build.cmd.env("KERNEL", kernel);
+    cmd.env("KERNEL", kernel);
 
-    build.run()?;
-    Ok(build.output)
+    tracing::debug!("{cmd:?}");
+    let mut child = KillOnDrop(cmd.spawn()?);
+    child.0.wait()?.exit_ok()?;
+
+    Ok(output)
 }
 
-pub enum BuildTarget {
+#[derive(Debug, Copy, Clone)]
+pub enum CrateToBuild {
     Kernel,
     Loader,
 }
-pub struct BuildOptions<'a> {
-    profile: &'a Profile,
+
+impl CrateToBuild {
+    fn as_str(&self) -> &'static str {
+        match self {
+            CrateToBuild::Kernel => "kernel",
+            CrateToBuild::Loader => "loader",
+        }
+    }
+}
+
+pub struct Cargo<'a> {
+    cmd: &'a str,
     cargo_path: &'a Path,
-    target_dir: Option<&'a Path>,
+    target_dir: PathBuf,
     verbosity: u8,
     release: bool,
     build_std: bool,
-    include_tests: bool,
+    color_mode: ColorMode,
+    profile: &'a Profile,
     no_default_features: bool,
     features: Vec<String>,
-    chosen_target: RustTarget,
-    kernel_target: RustTarget,
-    loader_target: RustTarget,
-    crate_name: &'static str,
-    color_mode: ColorMode,
+    rust_target: RustTarget,
+    krate: CrateToBuild,
 }
 
-impl<'a> BuildOptions<'a> {
-    pub fn new(
+impl<'a> Cargo<'a> {
+    fn new(
+        cmd: &'a str,
+        krate: CrateToBuild,
         opts: &'a Options,
         output: &OutputOptions,
         profile: &'a Profile,
-        target: BuildTarget,
     ) -> Self {
+        let verbosity = output.log.default_level().map_or(0, |lvl| match lvl {
+            LevelFilter::TRACE => 2,
+            LevelFilter::DEBUG => 1,
+            _ => 0,
+        });
+
         let kernel_target = profile.kernel.target.resolve(&profile);
         let loader_target = profile.loader.target.resolve(&profile);
 
-        let (no_default_features, features, chosen_target, crate_name) = match target {
-            BuildTarget::Kernel => (
+        let (no_default_features, features, rust_target) = match krate {
+            CrateToBuild::Kernel => (
                 profile.kernel.no_default_features,
                 profile.kernel.features.clone(),
                 kernel_target.clone(),
-                "kernel",
             ),
-            BuildTarget::Loader => (
+            CrateToBuild::Loader => (
                 profile.loader.no_default_features,
                 profile.loader.features.clone(),
                 loader_target.clone(),
-                "loader",
             ),
         };
 
+        let target_dir = opts
+            .target_dir
+            .clone()
+            .unwrap_or(PathBuf::from("target"))
+            .canonicalize()
+            .unwrap();
+
         Self {
-            profile,
+            cmd,
             cargo_path: &opts.cargo_path,
-            target_dir: opts.target_dir.as_deref(),
-            verbosity: 0,
-            release: false,
+            target_dir,
+            verbosity,
+            release: opts.release,
             build_std: false,
-            include_tests: false,
+            color_mode: output.color,
+            profile,
             no_default_features,
             features,
-            crate_name,
-            chosen_target,
-            kernel_target,
-            loader_target,
-            color_mode: output.color,
+            rust_target,
+            krate,
         }
     }
 
-    pub fn release(mut self, release: bool) -> Self {
-        self.release = release;
-        self
+    // pub fn check(
+    //     krate: CrateToBuild,
+    //     profile: &'a Profile,
+    //     opts: &'a Options,
+    //     output: &OutputOptions,
+    // ) -> crate::Result<Self> {
+    //     let this = Self::new("check", krate, opts, output, profile);
+    //
+    //     this.maybe_clean()?;
+    //
+    //     Ok(this)
+    // }
+    //
+    // pub fn clippy(
+    //     krate: CrateToBuild,
+    //     profile: &'a Profile,
+    //     opts: &'a Options,
+    //     output: &OutputOptions,
+    // ) -> crate::Result<Self> {
+    //     let this = Self::new("clippy", krate, opts, output, profile);
+    //
+    //     this.maybe_clean()?;
+    //
+    //     Ok(this)
+    // }
+
+    pub fn build(
+        krate: CrateToBuild,
+        profile: &'a Profile,
+        opts: &'a Options,
+        output: &OutputOptions,
+    ) -> crate::Result<(Self, PathBuf)> {
+        let this = Self::new("build", krate, opts, output, profile);
+
+        this.maybe_clean()?;
+
+        let output = this
+            .target_dir
+            .join(this.rust_target.name())
+            .join("debug")
+            .join(krate.as_str());
+
+        Ok((this, output))
     }
 
-    pub fn verbose(mut self, verbose: u8) -> Self {
-        self.verbosity = verbose;
-        self
+    pub fn test(
+        krate: CrateToBuild,
+        profile: &'a Profile,
+        opts: &'a Options,
+        output: &OutputOptions,
+    ) -> crate::Result<Self> {
+        let this = Self::new("test", krate, opts, output, profile);
+
+        this.maybe_clean()?;
+
+        Ok(this)
     }
 
-    pub fn build_std(mut self, build_std: bool) -> Self {
+    pub fn build_std(&mut self, build_std: bool) -> &mut Self {
         self.build_std = build_std;
         self
     }
 
-    pub fn include_tests(mut self, include_tests: bool) -> Self {
-        self.include_tests = include_tests;
-        self
-    }
-
-    pub fn finish(self) -> Build<'a> {
+    pub fn into_cmd(self) -> Command {
         let mut cmd = Command::new(&self.cargo_path);
         cmd.args([
-            "build",
+            self.cmd,
             "-p",
-            self.crate_name,
+            self.krate.as_str(),
             "--target",
-            &self.chosen_target.to_string(),
+            &self.rust_target.to_string(),
         ]);
 
+        cmd.env("CARGO_TARGET_DIR", self.target_dir);
         cmd.env("CARGO_TERM_COLOR", self.color_mode.as_str());
+
+        cmd.env("K23_CONFIG_PATH", &self.profile.file_path);
 
         if self.release {
             cmd.arg("--release");
-        }
-
-        if self.include_tests {
-            cmd.arg("--tests");
         }
 
         if self.no_default_features {
@@ -232,53 +280,10 @@ impl<'a> BuildOptions<'a> {
             ]);
         }
 
-        cmd.env("K23_CONFIG_PATH", &self.profile.file_path);
-
-        // We're capturing stderr (for diagnosis), so `cargo` won't automatically
-        // turn on color.  If *we* are a TTY, then force it on.
-        if stderr().is_terminal() {
-            cmd.arg("--color");
-            cmd.arg("always");
-        }
-
-        let target_dir = self
-            .target_dir
-            .clone()
-            .unwrap_or(Path::new("target"))
-            .canonicalize()
-            .unwrap();
-
-        let output = target_dir
-            .join(self.chosen_target.name())
-            .join("debug")
-            .join(self.crate_name);
-
-        if let Some(target_dir) = self.target_dir {
-            cmd.env("CARGO_TARGET_DIR", target_dir);
-        }
-
-        Build {
-            profile: self.profile,
-            cmd,
-            output,
-            target_dir,
-            kernel_target: self.kernel_target,
-            loader_target: self.loader_target,
-        }
+        cmd
     }
-}
 
-pub struct Build<'a> {
-    profile: &'a Profile,
-    cmd: Command,
-    output: PathBuf,
-    target_dir: PathBuf,
-    kernel_target: RustTarget,
-    loader_target: RustTarget,
-}
-
-impl Build<'_> {
-    fn check_rebuild(&self) -> crate::Result<()> {
+    fn maybe_clean(&self) -> crate::Result<()> {
         let buildstamp_file = self.target_dir.join("buildstamp");
 
         let rebuild = match std::fs::read(&buildstamp_file) {
@@ -287,48 +292,33 @@ impl Build<'_> {
                     if let Ok(cmp) = u64::from_str_radix(contents, 16) {
                         self.profile.buildhash != cmp
                     } else {
-                        println!("buildstamp file contents unknown; re-building.");
+                        tracing::warn!("buildstamp file contents unknown; re-building.");
                         true
                     }
                 } else {
-                    println!("buildstamp file contents corrupt; re-building.");
+                    tracing::warn!("buildstamp file contents corrupt; re-building.");
                     true
                 }
             }
             Err(_) => {
-                println!("no buildstamp file found; re-building.");
+                tracing::debug!("no buildstamp file found; re-building.");
                 true
             }
         };
         // if we need to rebuild, we should clean everything before we start building
         if rebuild {
-            println!("profile.toml has changed; rebuilding...");
-            cargo_clean(&["kernel"], &self.kernel_target.to_string())?;
-            cargo_clean(&["loader"], &self.loader_target.to_string())?;
+            tracing::debug!("profile.toml has changed; rebuilding...");
+
+            let kernel_target = self.profile.kernel.target.resolve(&self.profile);
+            cargo_clean(&["kernel"], &kernel_target.to_string())?;
+
+            let loader_target = self.profile.loader.target.resolve(&self.profile);
+            cargo_clean(&["loader"], &loader_target.to_string())?;
         }
 
         // now that we're clean, update our buildstamp file; any failure to build
         // from here on need not trigger a clean
         std::fs::write(&buildstamp_file, format!("{:x}", self.profile.buildhash))?;
-
-        Ok(())
-    }
-
-    fn run(&mut self) -> crate::Result<()> {
-        self.check_rebuild()?;
-
-        tracing::debug!("{:?}", self.cmd);
-
-        let out = self
-            .cmd
-            .stderr(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .spawn()?
-            .wait()?;
-
-        if !out.success() {
-            bail!("build failed");
-        }
 
         Ok(())
     }

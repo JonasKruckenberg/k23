@@ -1,7 +1,8 @@
 use crate::profile::{Architecture, Profile};
 use clap::Parser;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
+use crate::util::KillOnDrop;
 
 #[derive(Debug, Parser)]
 pub struct QemuOptions {
@@ -86,12 +87,4 @@ pub fn spawn(
     Ok(KillOnDrop(
         cmd.spawn().expect("Failed to spawn qemu. Is it installed?"),
     ))
-}
-
-pub struct KillOnDrop(pub Child);
-
-impl Drop for KillOnDrop {
-    fn drop(&mut self) {
-        self.0.kill().ok();
-    }
 }
