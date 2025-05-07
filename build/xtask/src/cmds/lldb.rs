@@ -7,7 +7,7 @@
 
 use crate::profile::Profile;
 use crate::tracing::OutputOptions;
-use crate::{build, qemu, Options};
+use crate::{Options, build, qemu};
 use clap::{Parser, ValueHint};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
