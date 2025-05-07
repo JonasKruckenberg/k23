@@ -74,7 +74,6 @@ use crate::scheduler::park::ParkToken;
 use crate::scheduler::queue::Overflow;
 use crate::task::{JoinHandle, OwnedTasks, PollResult, Schedule, TaskRef};
 use crate::time::Timer;
-use crate::util::fast_rand::FastRand;
 use crate::{arch, task};
 use core::any::type_name;
 use core::cell::{Ref, RefCell};
@@ -85,6 +84,7 @@ use core::pin::pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll};
 use cpu_local::cpu_local;
+use fastrand::FastRand;
 use rand::RngCore;
 use spin::{Backoff, Barrier, OnceLock};
 
@@ -324,7 +324,7 @@ impl Worker {
             scheduler,
             cpuid,
             is_searching: false,
-            rng: FastRand::new(rng.next_u64()),
+            rng: FastRand::from_seed(rng.next_u64()),
             num_seq_local_queue_polls: 0,
             global_queue_interval: DEFAULT_GLOBAL_QUEUE_INTERVAL,
         }
