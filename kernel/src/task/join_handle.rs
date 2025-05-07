@@ -5,10 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::panic;
 use crate::task::Id;
 use crate::task::TaskRef;
 use alloc::boxed::Box;
+use alloc::string::String;
 use core::any::Any;
 use core::fmt;
 use core::future::Future;
@@ -370,7 +370,7 @@ impl<T> fmt::Display for JoinError<T> {
                     fmt,
                     "task {} panicked with message {:?}",
                     self.id,
-                    panic::payload_as_str(p)
+                    panic_payload_as_str(p)
                 )
             }
         }
@@ -390,7 +390,7 @@ impl<T> fmt::Debug for JoinError<T> {
                     fmt,
                     "JoinError::Panic({:?}, {:?}, ...)",
                     self.id,
-                    panic::payload_as_str(p)
+                    panic_payload_as_str(p)
                 )
             }
         }
@@ -398,3 +398,13 @@ impl<T> fmt::Debug for JoinError<T> {
 }
 
 impl<T> core::error::Error for JoinError<T> {}
+
+fn panic_payload_as_str(payload: &dyn Any) -> &str {
+    if let Some(&s) = payload.downcast_ref::<&'static str>() {
+        s
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.as_str()
+    } else {
+        "Box<dyn Any>"
+    }
+}

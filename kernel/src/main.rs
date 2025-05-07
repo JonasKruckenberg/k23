@@ -26,6 +26,7 @@
 #![feature(asm_unwind)]
 
 extern crate alloc;
+extern crate panic_unwind;
 
 mod allocator;
 mod arch;
@@ -36,7 +37,6 @@ mod device_tree;
 mod irq;
 mod mem;
 mod metrics;
-mod panic;
 mod scheduler;
 mod shell;
 mod sync;
@@ -48,6 +48,7 @@ mod tracing;
 mod util;
 mod wasm;
 
+use crate::backtrace::Backtrace;
 use crate::device_tree::device_tree;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::time::Instant;
@@ -97,10 +98,28 @@ static LOADER_CONFIG: LoaderConfig = {
 fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     BOOT_INFO.get_or_init(|| boot_info);
 
+    panic_unwind::set_hook(|info| {
+        tracing::error!("CPU {info}");
+
+        // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
+        //  but (at least at the moment) is absolute overkill for optimized builds. Sadly there
+        //  is no good way to do conditional compilation based on the opt-level.
+        const MAX_BACKTRACE_FRAMES: usize = 32;
+
+        let backtrace = backtrace::__rust_end_short_backtrace(|| {
+            Backtrace::<MAX_BACKTRACE_FRAMES>::capture().unwrap()
+        });
+        tracing::error!("{backtrace}");
+
+        if backtrace.frames_omitted {
+            tracing::warn!("Stack trace was larger than backtrace buffer, omitted some frames.");
+        }
+    });
+
     // Unwinding expects at least one landing pad in the callstack, but capturing all unwinds that
     // bubble up to this point is also a good idea since we can perform some last cleanup and
     // print an error message.
-    let res = panic::catch_unwind(|| {
+    let res = panic_unwind::catch_unwind(|| {
         backtrace::__rust_begin_short_backtrace(|| kmain(cpuid, boot_info, boot_ticks));
     });
 

@@ -25,7 +25,9 @@ uart-16550.workspace = true
 wast.workspace = true
 fastrand.workspace = true
 abort.workspace = true
+panic-unwind.workspace = true
 
+# 3rd-party dependencies
 rustc-demangle.workspace = true
 log.workspace = true
 cfg-if.workspace = true

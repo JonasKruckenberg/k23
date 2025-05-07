@@ -94,8 +94,9 @@ uart-16550 = { path = "libs/uart-16550" }
 fastrand = { path = "libs/fastrand" }
 fiber = { path = "libs/fiber" }
 abort = { path = "libs/abort" }
+panic-unwind = { path = "libs/panic-unwind" }
 
-# third-party dependencies
+# 3rd-party dependencies
 cfg-if = "1.0.0"
 log = "0.4.25"
 bitflags = "2.8.0"
