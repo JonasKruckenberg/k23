@@ -52,6 +52,7 @@ use crate::device_tree::device_tree;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::time::Instant;
 use crate::time::clock::Ticks;
+use abort::abort;
 use arrayvec::ArrayVec;
 use cfg_if::cfg_if;
 use core::cell::Cell;
@@ -107,7 +108,10 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         Ok(_) => arch::exit(0),
         // If the panic propagates up to this catch here there is nothing we can do, this is a terminal
         // failure.
-        Err(_) => arch::abort("unrecoverable kernel panic"),
+        Err(_) => {
+            tracing::error!("unrecoverable kernel panic");
+            abort()
+        }
     }
 }
 

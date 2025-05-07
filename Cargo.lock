@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "abort"
+version = "0.1.0"
+dependencies = [
+ "cfg-if",
+ "riscv",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.24.2"
 dependencies = [
@@ -323,6 +331,10 @@ checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 [[package]]
 name = "cpu-local"
 version = "0.1.0"
+dependencies = [
+ "abort",
+ "tracing 0.2.0",
+]
 
 [[package]]
 name = "cranelift-bforest"
@@ -998,6 +1010,7 @@ dependencies = [
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "abort",
  "addr2line 0.24.2",
  "anyhow",
  "arrayvec",
@@ -1131,6 +1144,7 @@ checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 name = "loader"
 version = "0.1.0"
 dependencies = [
+ "abort",
  "arrayvec",
  "bitflags",
  "cfg-if",
@@ -2026,12 +2040,12 @@ checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 name = "unwind2"
 version = "0.1.0"
 dependencies = [
+ "abort",
  "cfg-if",
  "fallible-iterator",
  "gimli",
- "log",
- "riscv",
  "spin",
+ "tracing 0.2.0",
 ]
 
 [[package]]

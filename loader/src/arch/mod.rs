@@ -14,13 +14,3 @@ cfg_if::cfg_if! {
         compile_error!("Unsupported target architecture");
     }
 }
-
-pub fn abort(err: &str) -> ! {
-    cfg_if::cfg_if! {
-        if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-            riscv::abort(err);
-        } else {
-            loop {}
-        }
-    }
-}
