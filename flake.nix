@@ -39,6 +39,7 @@
             cargo-deny
             typos
             wasm-tools
+            jujutsu
 
             # for testing the kernel
             qemu
