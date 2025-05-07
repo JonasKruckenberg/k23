@@ -104,12 +104,6 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
         backtrace::__rust_begin_short_backtrace(|| kmain(cpuid, boot_info, boot_ticks));
     });
 
-    // Run thread-local destructors
-    // Safety: after this point thread-locals cannot be accessed anymore anyway
-    unsafe {
-        cpu_local::destructors::run();
-    }
-
     match res {
         Ok(_) => arch::exit(0),
         // If the panic propagates up to this catch here there is nothing we can do, this is a terminal

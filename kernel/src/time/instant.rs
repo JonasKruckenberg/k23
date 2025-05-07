@@ -11,7 +11,6 @@ use crate::time::{NANOS_PER_SEC, clock};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
-use cpu_local::AccessError;
 
 /// A measurement of a monotonically nondecreasing clock.
 /// Opaque and useful only with [`Duration`].

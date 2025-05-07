@@ -65,12 +65,6 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             }
         }
 
-        // Run thread-local destructors
-        // Safety: after this point we cannot access thread locals anyway
-        unsafe {
-            cpu_local::destructors::run();
-        }
-
         tracing::error!("cpu panicked while processing panic. aborting.");
         abort();
     }

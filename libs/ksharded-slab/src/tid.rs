@@ -62,15 +62,11 @@ impl<C: cfg::Config> Pack<C> for Tid<C> {
 impl<C: cfg::Config> Tid<C> {
     #[inline]
     pub(crate) fn current() -> Self {
-        REGISTRATION
-            .try_with(Registration::current)
-            .unwrap_or_else(|_| Self::poisoned())
+        REGISTRATION.with(Registration::current)
     }
 
     pub(crate) fn is_current(self) -> bool {
-        REGISTRATION
-            .try_with(|r| self == r.current::<C>())
-            .unwrap_or(false)
+        REGISTRATION.with(|r| self == r.current::<C>())
     }
 
     #[inline(always)]
@@ -79,33 +75,11 @@ impl<C: cfg::Config> Tid<C> {
     }
 }
 
-impl<C> Tid<C> {
-    #[cold]
-    fn poisoned() -> Self {
-        Self {
-            id: usize::MAX,
-            _not_send: PhantomData,
-            _cfg: PhantomData,
-        }
-    }
-
-    /// Returns true if the local thread ID was accessed while unwinding.
-    pub(crate) fn is_poisoned(&self) -> bool {
-        self.id == usize::MAX
-    }
-}
-
 impl<C> fmt::Debug for Tid<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_poisoned() {
-            f.debug_tuple("Tid")
-                .field(&format_args!("<poisoned>"))
-                .finish()
-        } else {
-            f.debug_tuple("Tid")
-                .field(&format_args!("{}", self.id))
-                .finish()
-        }
+        f.debug_tuple("Tid")
+            .field(&format_args!("{}", self.id))
+            .finish()
     }
 }
 
