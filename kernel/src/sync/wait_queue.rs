@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::sync::Closed;
 use crate::sync::wake_batch::WakeBatch;
-use crate::sync::{CachePadded, Closed};
 use alloc::sync::Arc;
 use core::cell::UnsafeCell;
 use core::marker::PhantomPinned;
@@ -18,6 +18,7 @@ use core::{fmt, mem, ptr};
 use mycelium_bitfield::{FromBits, bitfield, enum_from_bits};
 use pin_project::{pin_project, pinned_drop};
 use spin::{Mutex, MutexGuard};
+use util::CachePadded;
 
 /// A queue of waiting tasks which can be [woken in first-in, first-out
 /// order][wake], or [all at once][wake_all].

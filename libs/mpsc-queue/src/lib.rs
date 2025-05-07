@@ -21,7 +21,6 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use core::cell::UnsafeCell;
-use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::{
     fmt,
@@ -29,6 +28,7 @@ use core::{
     ptr::{self, NonNull},
 };
 use spin::Backoff;
+use util::CachePadded;
 
 /// Trait implemented by types which can be members of an intrusive linked mpsc queue.
 ///
@@ -670,7 +670,9 @@ impl<T: Linked> MpscQueue<T> {
             // Safety: in release mode, we don't null check `prev`. This is
             // because no pointer in the list should ever be a null pointer, due
             // to the presence of the stub node.
-            links(non_null(prev)).next.store(ptr, Ordering::Release);
+            links(NonNull::new_unchecked(prev))
+                .next
+                .store(ptr, Ordering::Release);
         }
     }
 
@@ -1323,194 +1325,138 @@ unsafe fn links<'a, T: Linked>(ptr: NonNull<T>) -> &'a Links<T> {
     unsafe { T::links(ptr).as_ref() }
 }
 
-/// Helper to construct a `NonNull<T>` from a raw pointer to `T`, with null
-/// checks elided in release mode.
-#[cfg(debug_assertions)]
-#[track_caller]
-#[inline(always)]
-unsafe fn non_null<T>(ptr: *mut T) -> NonNull<T> {
-    NonNull::new(ptr).expect(
-        "/!\\ constructed a `NonNull` from a null pointer! /!\\ \n\
-        in release mode, this would have called `NonNull::new_unchecked`, \
-        violating the `NonNull` invariant! this is a bug in `cordyceps!`.",
-    )
-}
+#[cfg(all(loom, test))]
+mod loom {
+    use super::*;
+    use crate::loom::{self, sync::Arc, thread};
+    use test_util::*;
 
-/// Helper to construct a `NonNull<T>` from a raw pointer to `T`, with null
-/// checks elided in release mode.
-///
-/// This is the release mode version.
-#[cfg(not(debug_assertions))]
-#[inline(always)]
-unsafe fn non_null<T>(ptr: *mut T) -> NonNull<T> {
-    // Safety: caller has to ensure that the pointer is valid.
-    unsafe { NonNull::new_unchecked(ptr) }
-}
+    #[test]
+    fn basically_works_loom() {
+        const THREADS: i32 = 2;
+        const MSGS: i32 = THREADS;
+        const TOTAL_MSGS: i32 = THREADS * MSGS;
+        basically_works_test(THREADS, MSGS, TOTAL_MSGS);
+    }
 
-/// Determine cache alignment based on target architecture.
-/// Align to 128 bytes on 64-bit x86/ARM targets, otherwise align to 64 bytes.
-#[cfg_attr(any(target_arch = "x86_64", target_arch = "aarch64"), repr(align(128)))]
-#[cfg_attr(
-    not(any(target_arch = "x86_64", target_arch = "aarch64")),
-    repr(align(64))
-)]
-#[derive(Clone, Copy, Default, Hash, PartialEq, Eq)]
-pub(crate) struct CachePadded<T>(pub(crate) T);
+    #[test]
+    fn doesnt_leak() {
+        // Test that dropping the queue drops any messages that haven't been
+        // consumed by the consumer.
+        const THREADS: i32 = 2;
+        const MSGS: i32 = THREADS;
+        // Only consume half as many messages as are sent, to ensure dropping
+        // the queue does not leak.
+        const TOTAL_MSGS: i32 = (THREADS * MSGS) / 2;
+        basically_works_test(THREADS, MSGS, TOTAL_MSGS);
+    }
 
-impl<T> Deref for CachePadded<T> {
-    type Target = T;
+    fn basically_works_test(threads: i32, msgs: i32, total_msgs: i32) {
+        loom::model(move || {
+            let stub = entry(666);
+            let q = Arc::new(MpscQueue::<Entry>::new_with_stub(stub));
 
-    #[inline]
-    fn deref(&self) -> &T {
-        &self.0
+            let threads: Vec<_> = (0..threads)
+                .map(|thread| thread::spawn(do_tx(thread, msgs, &q)))
+                .collect();
+
+            let mut i = 0;
+            while i < total_msgs {
+                match q.try_dequeue() {
+                    Ok(val) => {
+                        i += 1;
+                        tracing::info!(?val, "dequeue {}/{}", i, total_msgs);
+                    }
+                    Err(TryDequeueError::Busy) => panic!(
+                        "the queue should never be busy, as there is only a single consumer!"
+                    ),
+                    Err(err) => {
+                        tracing::info!(?err, "dequeue error");
+                        thread::yield_now();
+                    }
+                }
+            }
+
+            for thread in threads {
+                thread.join().unwrap();
+            }
+        })
+    }
+
+    fn do_tx(thread: i32, msgs: i32, q: &Arc<MpscQueue<Entry>>) -> impl FnOnce() + Send + Sync {
+        let q = q.clone();
+        move || {
+            for i in 0..msgs {
+                q.enqueue(entry(i + (thread * 10)));
+                tracing::info!(thread, "enqueue msg {}/{}", i, msgs);
+            }
+        }
+    }
+
+    #[test]
+    fn mpmc() {
+        // Tests multiple consumers competing for access to the consume side of
+        // the queue.
+        const THREADS: i32 = 2;
+        const MSGS: i32 = THREADS;
+
+        fn do_rx(thread: i32, q: Arc<MpscQueue<Entry>>) {
+            let mut i = 0;
+            while let Some(val) = q.dequeue() {
+                tracing::info!(?val, ?thread, "dequeue {}/{}", i, THREADS * MSGS);
+                i += 1;
+            }
+        }
+
+        loom::model(|| {
+            let stub = entry(666);
+            let q = Arc::new(MpscQueue::<Entry>::new_with_stub(stub));
+
+            let mut threads: Vec<_> = (0..THREADS)
+                .map(|thread| thread::spawn(do_tx(thread, MSGS, &q)))
+                .collect();
+
+            threads.push(thread::spawn({
+                let q = q.clone();
+                move || do_rx(THREADS + 1, q)
+            }));
+            do_rx(THREADS + 2, q);
+
+            for thread in threads {
+                thread.join().unwrap();
+            }
+        })
+    }
+
+    #[test]
+    fn crosses_queues() {
+        loom::model(|| {
+            let stub1 = entry(666);
+            let q1 = Arc::new(MpscQueue::<Entry>::new_with_stub(stub1));
+
+            let thread = thread::spawn({
+                let q1 = q1.clone();
+                move || {
+                    let stub2 = entry(420);
+                    let q2 = Arc::new(MpscQueue::<Entry>::new_with_stub(stub2));
+                    // let mut dequeued = false;
+                    for entry in q1.consume() {
+                        tracing::info!("dequeued");
+                        q2.enqueue(entry);
+                        q2.try_dequeue().unwrap();
+                    }
+                    tracing::info!("consumer done\nq1={q1:#?}\nq2={q2:#?}");
+                }
+            });
+
+            q1.enqueue(entry(1));
+            drop(q1);
+
+            thread.join().unwrap();
+        })
     }
 }
 
-impl<T> DerefMut for CachePadded<T> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
-}
-
-impl<T: fmt::Debug> fmt::Debug for CachePadded<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-// #[cfg(all(loom, test))]
-// mod loom {
-//     use super::*;
-//     use crate::loom::{self, sync::Arc, thread};
-//     use test_util::*;
-//
-//     #[test]
-//     fn basically_works_loom() {
-//         const THREADS: i32 = 2;
-//         const MSGS: i32 = THREADS;
-//         const TOTAL_MSGS: i32 = THREADS * MSGS;
-//         basically_works_test(THREADS, MSGS, TOTAL_MSGS);
-//     }
-//
-//     #[test]
-//     fn doesnt_leak() {
-//         // Test that dropping the queue drops any messages that haven't been
-//         // consumed by the consumer.
-//         const THREADS: i32 = 2;
-//         const MSGS: i32 = THREADS;
-//         // Only consume half as many messages as are sent, to ensure dropping
-//         // the queue does not leak.
-//         const TOTAL_MSGS: i32 = (THREADS * MSGS) / 2;
-//         basically_works_test(THREADS, MSGS, TOTAL_MSGS);
-//     }
-//
-//     fn basically_works_test(threads: i32, msgs: i32, total_msgs: i32) {
-//         loom::model(move || {
-//             let stub = entry(666);
-//             let q = Arc::new(MpscQueue::<Entry>::new_with_stub(stub));
-//
-//             let threads: Vec<_> = (0..threads)
-//                 .map(|thread| thread::spawn(do_tx(thread, msgs, &q)))
-//                 .collect();
-//
-//             let mut i = 0;
-//             while i < total_msgs {
-//                 match q.try_dequeue() {
-//                     Ok(val) => {
-//                         i += 1;
-//                         tracing::info!(?val, "dequeue {}/{}", i, total_msgs);
-//                     }
-//                     Err(TryDequeueError::Busy) => panic!(
-//                         "the queue should never be busy, as there is only a single consumer!"
-//                     ),
-//                     Err(err) => {
-//                         tracing::info!(?err, "dequeue error");
-//                         thread::yield_now();
-//                     }
-//                 }
-//             }
-//
-//             for thread in threads {
-//                 thread.join().unwrap();
-//             }
-//         })
-//     }
-//
-//     fn do_tx(thread: i32, msgs: i32, q: &Arc<MpscQueue<Entry>>) -> impl FnOnce() + Send + Sync {
-//         let q = q.clone();
-//         move || {
-//             for i in 0..msgs {
-//                 q.enqueue(entry(i + (thread * 10)));
-//                 tracing::info!(thread, "enqueue msg {}/{}", i, msgs);
-//             }
-//         }
-//     }
-//
-//     #[test]
-//     fn mpmc() {
-//         // Tests multiple consumers competing for access to the consume side of
-//         // the queue.
-//         const THREADS: i32 = 2;
-//         const MSGS: i32 = THREADS;
-//
-//         fn do_rx(thread: i32, q: Arc<MpscQueue<Entry>>) {
-//             let mut i = 0;
-//             while let Some(val) = q.dequeue() {
-//                 tracing::info!(?val, ?thread, "dequeue {}/{}", i, THREADS * MSGS);
-//                 i += 1;
-//             }
-//         }
-//
-//         loom::model(|| {
-//             let stub = entry(666);
-//             let q = Arc::new(MpscQueue::<Entry>::new_with_stub(stub));
-//
-//             let mut threads: Vec<_> = (0..THREADS)
-//                 .map(|thread| thread::spawn(do_tx(thread, MSGS, &q)))
-//                 .collect();
-//
-//             threads.push(thread::spawn({
-//                 let q = q.clone();
-//                 move || do_rx(THREADS + 1, q)
-//             }));
-//             do_rx(THREADS + 2, q);
-//
-//             for thread in threads {
-//                 thread.join().unwrap();
-//             }
-//         })
-//     }
-//
-//     #[test]
-//     fn crosses_queues() {
-//         loom::model(|| {
-//             let stub1 = entry(666);
-//             let q1 = Arc::new(MpscQueue::<Entry>::new_with_stub(stub1));
-//
-//             let thread = thread::spawn({
-//                 let q1 = q1.clone();
-//                 move || {
-//                     let stub2 = entry(420);
-//                     let q2 = Arc::new(MpscQueue::<Entry>::new_with_stub(stub2));
-//                     // let mut dequeued = false;
-//                     for entry in q1.consume() {
-//                         tracing::info!("dequeued");
-//                         q2.enqueue(entry);
-//                         q2.try_dequeue().unwrap();
-//                     }
-//                     tracing::info!("consumer done\nq1={q1:#?}\nq2={q2:#?}");
-//                 }
-//             });
-//
-//             q1.enqueue(entry(1));
-//             drop(q1);
-//
-//             thread.join().unwrap();
-//         })
-//     }
-// }
-//
 // #[cfg(all(test, not(loom)))]
 // mod tests {
 //     use super::*;
@@ -1642,7 +1588,7 @@ impl<T: fmt::Debug> fmt::Debug for CachePadded<T> {
 //         }
 //     }
 // }
-//
+
 // #[cfg(test)]
 // mod test_util {
 //     use super::*;

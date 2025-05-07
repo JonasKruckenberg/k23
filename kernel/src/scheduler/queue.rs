@@ -26,13 +26,13 @@
 //! the [`Steal`] handle which other workers can use for work stealing purposes as the name implies.
 
 use crate::task::TaskRef;
-use crate::util::maybe_uninit::CheckedMaybeUninit;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use core::{iter, ptr};
+use util::CheckedMaybeUninit;
 
 pub(super) const LOCAL_QUEUE_CAPACITY: usize = 256;
 const MASK: usize = LOCAL_QUEUE_CAPACITY - 1;

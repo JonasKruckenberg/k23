@@ -11,7 +11,6 @@ mod owned_tasks;
 mod state;
 
 use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
-use crate::util::non_null;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use core::alloc::{AllocError, Allocator};
@@ -27,12 +26,11 @@ use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
 
 use crate::mem::AddressSpace;
-use crate::sync::CachePadded;
-use crate::util::maybe_uninit::CheckedMaybeUninit;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinErrorKind, JoinHandle};
 pub use owned_tasks::OwnedTasks;
 use spin::Mutex;
+use util::{CachePadded, CheckedMaybeUninit};
 
 pub trait Schedule {
     /// Schedule the task to run.
@@ -888,7 +886,7 @@ impl<S: Schedule> Schedulable<S> {
                 "Task::wake_by_val"
             );
 
-            let this = non_null(ptr.cast_mut());
+            let this = NonNull::new_unchecked(ptr.cast_mut());
             match this.as_ref().header.state.wake_by_val() {
                 WakeByValAction::Enqueue => {
                     // the task should be enqueued.
@@ -921,7 +919,7 @@ impl<S: Schedule> Schedulable<S> {
                 "Task::wake_by_ref"
             );
 
-            let this = non_null(this.cast_mut()).cast::<Self>();
+            let this = NonNull::new_unchecked(this.cast_mut()).cast::<Self>();
             if this.as_ref().state().wake_by_ref() == WakeByRefAction::Enqueue {
                 Self::schedule(TaskRef(this.cast::<Header>()));
             }
@@ -960,7 +958,7 @@ impl<S: Schedule> Schedulable<S> {
             );
 
             let this = ptr.cast_mut();
-            Self::drop_ref(non_null(this));
+            Self::drop_ref(NonNull::new_unchecked(this));
         }
     }
 }

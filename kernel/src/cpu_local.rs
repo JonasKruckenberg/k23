@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::util::maybe_uninit::CheckedMaybeUninit;
 use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::iter::FusedIterator;
@@ -13,6 +12,7 @@ use core::panic::UnwindSafe;
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::{fmt, mem, ptr, slice};
 pub use cpu_local::*;
+use util::CheckedMaybeUninit;
 
 /// The total number of buckets stored in each cpu-local storage.
 /// All buckets combined can hold up to `usize::MAX - 1` entries.

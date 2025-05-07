@@ -462,7 +462,7 @@ macro_rules! impl_wasm_params {
 
             fn store(self, _store: &mut StoreOpaque, _func_ty: &FuncType, _dst: &mut MaybeUninit<Self::VMValStorage>) -> crate::Result<()> {
                 #[allow(unused_imports, reason = "macro quirk")]
-                use $crate::util::maybe_uninit::MaybeUninitExt;
+                use ::util::MaybeUninitExt;
 
                 let ($($t,)*) = self;
                 let mut _i: usize = 0;
