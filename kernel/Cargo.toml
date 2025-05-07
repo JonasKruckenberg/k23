@@ -26,6 +26,7 @@ wast.workspace = true
 fastrand.workspace = true
 abort.workspace = true
 panic-unwind.workspace = true
+util.workspace = true
 
 # 3rd-party dependencies
 rustc-demangle.workspace = true

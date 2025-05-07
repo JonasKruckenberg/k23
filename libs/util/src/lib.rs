@@ -5,11 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-mod error;
-mod wait_cell;
-mod wait_queue;
-mod wake_batch;
+//! Shared utility types & function for k23
 
-pub use error::Closed;
-pub use wait_cell::WaitCell;
-pub use wait_queue::WaitQueue;
+#![cfg_attr(not(test), no_std)]
+
+mod cache_padded;
+mod checked_maybe_uninit;
+mod loom_const_fn;
+
+pub use cache_padded::CachePadded;
+pub use checked_maybe_uninit::{CheckedMaybeUninit, MaybeUninitExt};
