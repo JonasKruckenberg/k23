@@ -23,6 +23,7 @@ ktest.workspace = true
 addr2line.workspace = true
 uart-16550.workspace = true
 wast.workspace = true
+fastrand.workspace = true
 abort.workspace = true
 
 rustc-demangle.workspace = true

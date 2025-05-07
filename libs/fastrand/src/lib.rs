@@ -5,17 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-/// A seed for random number generation.
-///
-/// In order to make certain functions within a runtime deterministic, a seed
-/// can be specified at the time of creation.
-#[derive(Clone, Debug)]
-pub struct RngSeed {
-    s: u32,
-    r: u32,
-}
+//! Very small, fast, non-cryptographic random number generator.
+//!
+//! This random number generator implements the `xorshift64+` algorithm, generating random numbers
+//! adding two 32-bit `xorshift` sequences together.
 
-/// Fast random number generate.
+#![cfg_attr(not(test), no_std)]
+
+/// Fast, non-cryptographic random number generator.
 ///
 /// Implement `xorshift64+`: 2 32-bit `xorshift` sequences added together.
 /// Shift triplet `[17,7,16]` was calculated as indicated in Marsaglia's
@@ -23,19 +20,19 @@ pub struct RngSeed {
 /// This generator passes the SmallCrush suite, part of TestU01 framework:
 /// <http://simul.iro.umontreal.ca/testu01/tu01.html>
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct FastRand {
+pub struct FastRand {
     one: u32,
     two: u32,
 }
 
-impl RngSeed {
-    /// Creates a random seed using loom internally.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "we're truncating on purpose"
-    )]
-    pub(crate) fn new(seed: u64) -> Self {
-        let one = (seed >> 32_u32) as u32;
+impl FastRand {
+    /// Initializes a new, thread-local, fast random number generator from the provided seed.
+    pub fn from_seed(seed: u64) -> FastRand {
+        let one = (seed >> 32_u64) as u32;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "we actually want to truncate here"
+        )]
         let mut two = seed as u32;
 
         if two == 0 {
@@ -43,36 +40,19 @@ impl RngSeed {
             two = 1;
         }
 
-        Self::from_pair(one, two)
+        FastRand { one, two }
     }
 
-    fn from_pair(s: u32, r: u32) -> Self {
-        Self { s, r }
-    }
-}
-
-impl FastRand {
-    /// Initialize a new fast random number generator using the default source of entropy.
-    pub(crate) fn new(seed: u64) -> FastRand {
-        FastRand::from_seed(RngSeed::new(seed))
-    }
-
-    /// Initializes a new, thread-local, fast random number generator.
-    pub(crate) fn from_seed(seed: RngSeed) -> FastRand {
-        FastRand {
-            one: seed.s,
-            two: seed.r,
-        }
-    }
-
-    pub(crate) fn fastrand_n(&mut self, n: u32) -> u32 {
+    /// Generate a random `u32` between `0` and `n`.
+    pub fn fastrand_n(&mut self, n: u32) -> u32 {
         // This is similar to fastrand() % n, but faster.
         // See https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
         let mul = u64::from(self.fastrand()).wrapping_mul(u64::from(n));
         (mul >> 32) as u32
     }
 
-    fn fastrand(&mut self) -> u32 {
+    /// Generate a random `u32` number.
+    pub fn fastrand(&mut self) -> u32 {
         let mut s1 = self.one;
         let s0 = self.two;
 

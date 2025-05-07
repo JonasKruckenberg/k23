@@ -1,0 +1,18 @@
+[package]
+name = "fastrand"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "bench"
+harness = false
+
+[lints]
+workspace = true
