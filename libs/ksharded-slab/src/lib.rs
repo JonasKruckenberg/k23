@@ -199,9 +199,9 @@
 //!
 //! See [this page](crate::implementation) for details on this crate's design
 //! and implementation.
-//!
+
+#![cfg_attr(not(test), no_std)]
 #![warn(missing_debug_implementations, missing_docs)]
-#![no_std]
 #![feature(thread_local)]
 #![feature(used_with_arg)]
 #![feature(never_type)]

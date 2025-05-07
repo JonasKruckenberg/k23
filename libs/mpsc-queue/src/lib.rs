@@ -8,7 +8,8 @@
 //! [vyukov]: http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue
 //! [intrusive]: crate#intrusive-data-structures
 
-#![no_std]
+#![cfg_attr(not(test), no_std)]
+
 extern crate alloc;
 
 use alloc::sync::Arc;
