@@ -623,6 +623,7 @@ dependencies = [
  "criterion",
  "criterion-cycles-per-byte",
  "libc",
+ "panic-unwind",
  "riscv",
  "windows-sys",
 ]

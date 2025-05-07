@@ -1,5 +1,6 @@
 use crate::utils::{EncodedValue, allocate_obj_on_stack, push};
 use crate::{FiberStack, StackPointer};
+use cfg_if::cfg_if;
 use core::arch::{asm, naked_asm};
 
 pub const STACK_ALIGNMENT: usize = 16;
@@ -319,5 +320,115 @@ pub unsafe fn switch_and_reset(arg: EncodedValue, parent_link: *mut StackPointer
             in("rsi") 0,
             options(noreturn),
         }
+    }
+}
+
+/// Variant of `switch_and_link` which runs a function on the coroutine stack
+/// instead of resuming the coroutine. This function will throw an exception
+/// which will unwind the coroutine stack to its root.
+#[inline]
+pub unsafe fn switch_and_throw(
+    sp: StackPointer,
+    top_of_stack: StackPointer,
+) -> (EncodedValue, Option<StackPointer>) {
+    extern "sysv64-unwind" fn throw() -> ! {
+        extern crate alloc;
+        use alloc::boxed::Box;
+
+        // choose the right `panic_unwind` impl depending on whether the target supports `std`
+        // or not
+        cfg_if! {
+            if #[cfg(target_os = "none")] {
+                use panic_unwind::resume_unwind;
+            } else {
+                use std::panic::resume_unwind;
+            }
+        }
+
+        resume_unwind(Box::new(()));
+    }
+
+    let (ret_val, ret_sp);
+
+    // Safety: inline assembly
+    unsafe {
+        asm! {
+            // Save RBX just like the first half of switch_and_link().
+            "push rbx",
+
+            // Push a return address to the stack.
+            "lea rax, [rip + 2f]",
+            "push rax",
+
+            // Save RBP of the parent context.
+            "push rbp",
+
+            // Update the parent link near the base of the coroutine stack.
+            "mov [rsi - 16], rsp",
+
+            // Switch to the coroutine stack.
+            "mov rsp, rdx",
+
+            // Pop the return address of the target context.
+            "pop rax",
+
+            // Restore RBP and RBX from the target context.
+            "pop rbx",
+            "pop rbp",
+
+            // DW_CFA_GNU_args_size 0
+            //
+            // Indicate to the unwinder that this "call" does not take any arguments
+            // and no stack space needs to be popped before executing a landing pad.
+            // This is mainly here to undo the effect of any previous
+            // DW_CFA_GNU_args_size that may have been set in the current function.
+            ".cfi_escape 0x2e, 0x00",
+
+            // Simulate a call with an artificial return address so that the throw
+            // function will unwind straight into the switch_and_yield() call with
+            // the register state expected outside the asm! block.
+            "push rax",
+            "jmp {throw}",
+
+            // Upon returning, our register state is just like a normal return into
+            // switch_and_link().
+            "2:",
+
+            // Restore registers just like the second half of switch_and_link.
+            "pop rbx",
+
+            // Helper function to trigger stack unwinding.
+            throw = sym throw,
+
+            // Same output registers as switch_and_link().
+            lateout("rdi") ret_val,
+            lateout("rsi") ret_sp,
+
+            // We pass the top of stack in rsi.
+            in("rsi") top_of_stack.get() as u64,
+            // We pass the target stack pointer in rdx.
+            in("rdx") sp.get() as u64,
+
+            // See switch_and_link() for an explanation of the clobbers.
+            lateout("r12") _, lateout("r13") _, lateout("r14") _, lateout("r15") _,
+            clobber_abi("sysv64"),
+            options(may_unwind)
+        }
+    }
+
+    (ret_val, StackPointer::new(ret_sp))
+}
+
+/// Drops the initial object on a coroutine that has not started yet.
+#[inline]
+pub unsafe fn drop_initial_obj(
+    _stack_base: StackPointer,
+    stack_ptr: StackPointer,
+    drop_fn: unsafe fn(ptr: *mut u8),
+) {
+    // Safety: we stored the correct initial obj ptr here during stack initialization
+    unsafe {
+        let ptr = (stack_ptr.get() as *mut u8).add(8);
+        drop_fn(ptr);
     }
 }

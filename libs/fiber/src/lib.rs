@@ -20,10 +20,12 @@ mod utils;
 
 use crate::stack::{FiberStack, StackPointer};
 use crate::utils::EncodedValue;
+use cfg_if::cfg_if;
 use core::cell::Cell;
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::mem::{MaybeUninit, offset_of};
+use core::panic::AssertUnwindSafe;
 use core::ptr;
 
 /// Value returned from resuming a fiber.
@@ -67,9 +69,9 @@ pub struct Fiber<Input, Yield, Return, L, S: FiberStack> {
     /// initial stack pointer: suspending a fiber requires pushing several
     /// values to the stack.
     initial_stack_ptr: StackPointer,
-    // /// Function to call to drop the initial state of a fiber if it has
-    // /// never been resumed.
-    // drop_fn: unsafe fn(ptr: *mut u8),
+    /// Function to call to drop the initial state of a fiber if it has
+    /// never been resumed.
+    drop_fn: unsafe fn(ptr: *mut u8),
     fiber_local: *const L,
     /// We want to be covariant over Yield and Return, and contravariant
     /// over Input.
@@ -148,16 +150,16 @@ impl<Input, Yield, Return, L, S: FiberStack> Fiber<Input, Yield, Return, L, S> {
             }
         }
 
-        // // Drop function to free the initial state of the fiber.
-        // unsafe fn drop_fn<T, L>(ptr: *mut u8) {
-        //     // Safety: TODO
-        //     unsafe {
-        //         // drop the initial object
-        //         ptr::drop_in_place(ptr.cast::<T>());
-        //         // drop the fiber-local state
-        //         ptr::drop_in_place(ptr.cast::<L>());
-        //     }
-        // }
+        // Drop function to free the initial state of the fiber.
+        unsafe fn drop_fn<T, L>(ptr: *mut u8) {
+            // Safety: TODO
+            unsafe {
+                // drop the initial object
+                ptr::drop_in_place(ptr.cast::<T>());
+                // drop the fiber-local state
+                ptr::drop_in_place(ptr.cast::<L>());
+            }
+        }
 
         // Safety: TODO
         unsafe {
@@ -182,7 +184,7 @@ impl<Input, Yield, Return, L, S: FiberStack> Fiber<Input, Yield, Return, L, S> {
                 stack,
                 stack_ptr: Some(stack_ptr),
                 initial_stack_ptr: stack_ptr,
-                // drop_fn: drop_fn::<F, L>,
+                drop_fn: drop_fn::<F, L>,
                 fiber_local,
                 _m1: PhantomData,
                 _m2: PhantomData,
@@ -258,58 +260,73 @@ impl<Input, Yield, Return, L, S: FiberStack> Fiber<Input, Yield, Return, L, S> {
         }
     }
 
-    // /// Unwinds the fiber stack, dropping any live objects that are
-    // /// currently on the stack. This is automatically called when the fiber
-    // /// is dropped.
-    // ///
-    // /// If the fiber has already completed then this function is a no-op.
-    // ///
-    // /// If the fiber is currently suspended on a `Yielder::suspend` call
-    // /// then unwinding it requires the `unwind` feature to be enabled and
-    // /// for the crate to be compiled with `-C panic=unwind`.
-    // ///
-    // /// # Panics
-    // ///
-    // /// This function panics if the fiber could not be fully unwound. This
-    // /// can happen for one of two reasons:
-    // /// - The `ForcedUnwind` panic that is used internally was caught and not
-    // ///   rethrown.
-    // /// - This crate was compiled without the `unwind` feature and the
-    // ///   fiber is currently suspended in the yielder (`started && !done`).
-    // pub unsafe fn force_unwind(&mut self) {
-    //     // If the fiber has already terminated then there is nothing to do.
-    //     if let Some(stack_ptr) = self.stack_ptr.take() {
-    //         self.force_unwind_slow(stack_ptr);
-    //     }
-    // }
-    //
-    // /// Slow path of `force_unwind` when the fiber is known to not have
-    // /// terminated yet.
-    // #[cold]
-    // fn force_unwind_slow(&mut self, stack_ptr: StackPointer) {
-    //     // Safety: TODO
-    //     unsafe {
-    //         // If the fiber has not started yet then we just need to drop the
-    //         // initial object.
-    //         if !self.started() {
-    //             arch::drop_initial_obj(self.stack.top(), stack_ptr, self.drop_fn);
-    //
-    //             self.stack_ptr = None;
-    //             return;
-    //         }
-    //
-    //         let res = crate::panic::catch_unwind(AssertUnwindSafe(|| {
-    //             arch::switch_and_throw(stack_ptr, self.stack.top())
-    //         }));
-    //         // we expect the forced unwinding to bubble up to this catch_unwind
-    //         assert!(res.is_err());
-    //     }
-    // }
+    /// Unwinds the fiber stack, dropping any live objects that are
+    /// currently on the stack. This is automatically called when the fiber
+    /// is dropped.
+    ///
+    /// If the fiber has already completed then this function is a no-op.
+    ///
+    /// If the fiber is currently suspended on a `Yielder::suspend` call
+    /// then unwinding it requires the `unwind` feature to be enabled and
+    /// for the crate to be compiled with `-C panic=unwind`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the fiber could not be fully unwound. This
+    /// can happen for one of two reasons:
+    /// - The `ForcedUnwind` panic that is used internally was caught and not
+    ///   rethrown.
+    /// - This crate was compiled without the `unwind` feature and the
+    ///   fiber is currently suspended in the yielder (`started && !done`).
+    pub fn force_unwind(&mut self) {
+        // If the fiber has already terminated then there is nothing to do.
+        if let Some(stack_ptr) = self.stack_ptr.take() {
+            self.force_unwind_slow(stack_ptr);
+        }
+    }
+
+    /// Slow path of `force_unwind` when the fiber is known to not have
+    /// terminated yet.
+    #[cold]
+    fn force_unwind_slow(&mut self, stack_ptr: StackPointer) {
+        // Safety: TODO
+        unsafe {
+            // If the fiber has not started yet, then we just need to drop the
+            // initial object.
+            if !self.started() {
+                arch::drop_initial_obj(self.stack.top(), stack_ptr, self.drop_fn);
+
+                self.stack_ptr = None;
+                return;
+            }
+
+            // choose the right `panic_unwind` impl depending on whether the target supports `std`
+            // or not
+            cfg_if! {
+                if #[cfg(target_os = "none")] {
+                    use panic_unwind::catch_unwind;
+                } else {
+                    use std::panic::catch_unwind;
+                }
+            }
+
+            let res = catch_unwind(AssertUnwindSafe(|| {
+                arch::switch_and_throw(stack_ptr, self.stack.top())
+            }));
+            // we expect the forced unwinding to bubble up to this catch_unwind
+            assert!(res.is_err());
+        }
+    }
 }
 
 impl<Input, Yield, Return, L, S: FiberStack> Drop for Fiber<Input, Yield, Return, L, S> {
     fn drop(&mut self) {
-        assert!(self.done());
+        self.force_unwind();
+
+        #[cfg(windows)]
+        unsafe {
+            arch::update_stack_teb_fields(&mut self.stack);
+        }
     }
 }
 
@@ -341,6 +358,8 @@ impl<Input, Yield> Suspend<Input, Yield> {
 mod tests {
     use crate::Fiber;
     use crate::stack::DefaultFiberStack;
+    use core::panic::AssertUnwindSafe;
+    use core::sync::atomic::{AtomicBool, Ordering};
     use std::cell::Cell;
 
     #[test]
@@ -366,6 +385,7 @@ mod tests {
         assert!(fiber.resume(105).into_return().is_some())
     }
 
+    /// Ensure that fiber-local data works as expected
     #[test]
     fn fiber_local() {
         let stack = DefaultFiberStack::default();
@@ -389,5 +409,50 @@ mod tests {
         assert_eq!(fiber.fiber_local().get(), 2);
 
         assert!(fiber.resume(42).into_return().is_some())
+    }
+
+    /// Ensure that we correctly propagate panics in fibers to the caller of `.resume`
+    #[test]
+    fn panic_on_fiber() {
+        let stack = DefaultFiberStack::default();
+
+        let mut fiber: Fiber<(), (), (), _, _> =
+            Fiber::with_stack(stack, |_, _, _local: &()| panic!());
+
+        let res = std::panic::catch_unwind(AssertUnwindSafe(|| fiber.resume(())));
+        assert!(res.is_err());
+    }
+
+    /// Ensure that calling `.force_unwind` works and that it performs the correct `Drop` impl calls
+    /// on the fiber
+    #[test]
+    fn force_unwind() {
+        let stack = DefaultFiberStack::default();
+
+        static CALLED_DROP: AtomicBool = AtomicBool::new(false);
+
+        let mut fiber = Fiber::with_stack(stack, |input, suspend, _local: &()| {
+            // here we essentially just put a type with a Drop impl on the fiber stack
+            // that sets `CALLED_DROP` to true so we have a way to determine from the outside that
+            // drop cleanup actually get performed when we call force_unwind
+            struct Guard;
+            impl Drop for Guard {
+                fn drop(&mut self) {
+                    CALLED_DROP.store(true, Ordering::SeqCst);
+                }
+            }
+            let _guard = Guard;
+
+            let input = suspend.suspend(1);
+
+            // we should never reach this line, because we force unwind after the first suspend
+            unreachable!()
+        });
+
+        let ret = fiber.resume(0);
+        assert_eq!(ret.into_yield().unwrap(), 1);
+
+        fiber.force_unwind();
+        assert!(CALLED_DROP.load(Ordering::SeqCst));
     }
 }
