@@ -381,7 +381,7 @@ impl Local {
 
 impl Drop for Local {
     fn drop(&mut self) {
-        if !crate::panic::panicking() {
+        if !panic_unwind::panicking() {
             assert!(self.pop().is_none(), "queue not empty");
         }
     }

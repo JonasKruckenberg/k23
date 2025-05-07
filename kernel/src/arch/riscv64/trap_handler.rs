@@ -10,7 +10,7 @@ use crate::arch::device::cpu::with_cpu;
 use crate::backtrace::Backtrace;
 use crate::mem::VirtualAddress;
 use crate::scheduler::scheduler;
-use crate::{TRAP_STACK_SIZE_PAGES, irq, panic};
+use crate::{TRAP_STACK_SIZE_PAGES, irq};
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::cell::Cell;
@@ -371,7 +371,8 @@ fn handle_kernel_exception(
     IN_TRAP.set(false);
 
     // begin a panic on the original stack
-    panic::begin_unwind_with(payload, regs, epc.checked_add(1).unwrap());
+    // Safety: we saved the register state at the beginning of the trap handler
+    unsafe { panic_unwind::begin_unwind(payload, regs, epc.checked_add(1).unwrap().get()) };
 }
 
 fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
@@ -389,5 +390,8 @@ fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
     let payload = Box::new("recursive fault in trap handler");
 
     // begin a panic on the original stack
-    panic::begin_unwind_with(payload, regs, epc.checked_add(1).unwrap());
+    // Safety: we saved the register state at the beginning of the trap handler
+    unsafe {
+        panic_unwind::begin_unwind(payload, regs, epc.checked_add(1).unwrap().get());
+    }
 }

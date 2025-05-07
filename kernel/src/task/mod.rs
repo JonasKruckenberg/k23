@@ -10,7 +10,6 @@ mod join_handle;
 mod owned_tasks;
 mod state;
 
-use crate::panic;
 use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use crate::util::non_null;
 use alloc::boxed::Box;
@@ -802,7 +801,7 @@ where
         }
 
         // Poll the future.
-        let result = panic::catch_unwind(AssertUnwindSafe(|| -> Poll<F::Output> {
+        let result = panic_unwind::catch_unwind(AssertUnwindSafe(|| -> Poll<F::Output> {
             let guard = Guard { stage: self };
 
             // Safety: caller has to ensure mutual exclusion
