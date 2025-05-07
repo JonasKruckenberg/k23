@@ -35,7 +35,7 @@ pub fn spawn(
                 "-m",
                 "256M",
                 "-d",
-                "guest_errors",
+                "guest_errors,int",
                 "-display",
                 "none",
                 "-serial",

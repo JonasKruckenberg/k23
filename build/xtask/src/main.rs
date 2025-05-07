@@ -88,7 +88,7 @@ fn main() -> Result<()> {
         SubCommand::Dist(cmd) => cmd.run(&xtask.options, &xtask.output),
         SubCommand::Run(cmd) => cmd.run(&xtask.options, &xtask.output),
         SubCommand::Test(cmd) => cmd.run(&xtask.options, &xtask.output),
-        SubCommand::Lldb(cmd) => cmd.run(&xtask.options),
+        SubCommand::Lldb(cmd) => cmd.run(&xtask.options, &xtask.output),
         SubCommand::Qemu(cmd) => cmd.run(&xtask.options, &xtask.output),
     }
 }

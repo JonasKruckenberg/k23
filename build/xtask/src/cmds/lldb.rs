@@ -5,9 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::Options;
+use crate::profile::Profile;
+use crate::tracing::OutputOptions;
+use crate::{Options, build, qemu};
 use clap::{Parser, ValueHint};
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::{fs, thread};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
@@ -26,61 +30,65 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn run(&self, _opts: &Options) -> crate::Result<()> {
-        // let target_dir = opts
-        //                 .target_dir
-        //                 .clone()
-        //                 .unwrap_or(PathBuf::from("target"))
-        //                 .canonicalize()?;
-        //
-        //             let (kernel, loader) = if !norun {
-        //                 let qemu_opts = qemu::QemuOptions {
-        //                     wait_for_debugger: true,
-        //                     gdb_port,
-        //                     qemu_args: qemu_args.clone(),
-        //                 };
-        //
-        //                 let kernel = build::build_kernel(&opts, &profile)?;
-        //                 let loader = build::build_loader(&opts, &profile, &kernel)?;
-        //
-        //                 qemu::run(&qemu_opts, profile, &loader, false, true)?;
-        //
-        //                 (kernel, loader)
-        //             } else {
-        //                 let kernel = target_dir
-        //                     .join(profile.kernel.target.resolve(&profile).name())
-        //                     .join("debug")
-        //                     .join("kernel");
-        //
-        //                 let loader = target_dir
-        //                     .join(profile.loader.target.resolve(&profile).name())
-        //                     .join("debug")
-        //                     .join("loader");
-        //
-        //                 (kernel, loader)
-        //             };
-        //
-        //             let lldb_script = target_dir.join("lldb_script.txt");
-        //             fs::write(
-        //                 &lldb_script,
-        //                 format!(
-        //                     r#"
-        // target create {loader}
-        // target modules add {kernel}
-        // target modules load --file {kernel} -s 0xffffffc000000000
-        // gdb-remote localhost:{gdb_port}
-        //             "#,
-        //                     loader = loader.display(),
-        //                     kernel = kernel.display()
-        //                 ),
-        //             )?;
-        //
-        //             Command::new("rust-lldb")
-        //                 .args(["-s", lldb_script.to_str().unwrap()])
-        //                 .stdin(Stdio::inherit())
-        //                 .stdout(Stdio::inherit())
-        //                 .stderr(Stdio::inherit())
-        //                 .output()?;
+    pub fn run(&self, opts: &Options, output: &OutputOptions) -> crate::Result<()> {
+        let profile = Profile::from_file(&self.profile)?;
+
+        let target_dir = opts
+            .target_dir
+            .clone()
+            .unwrap_or(PathBuf::from("target"))
+            .canonicalize()?;
+
+        let (kernel, loader) = if !self.norun {
+            let qemu_opts = qemu::QemuOptions {
+                wait_for_debugger: true,
+                gdb_port: self.gdb_port,
+                qemu_args: self.qemu_args.clone(),
+            };
+
+            let kernel = build::build_kernel(opts, output, &profile)?;
+            let loader = build::build_loader(opts, output, &profile, &kernel)?;
+
+            let mut qemu = qemu::spawn(&qemu_opts, profile, &loader, false, &[])?;
+            thread::spawn(move || qemu.0.wait().unwrap().exit_ok().unwrap());
+
+            (kernel, loader)
+        } else {
+            let kernel = target_dir
+                .join(profile.kernel.target.resolve(&profile).name())
+                .join("debug")
+                .join("kernel");
+
+            let loader = target_dir
+                .join(profile.loader.target.resolve(&profile).name())
+                .join("debug")
+                .join("loader");
+
+            (kernel, loader)
+        };
+
+        let lldb_script = target_dir.join("lldb_script.txt");
+        fs::write(
+            &lldb_script,
+            format!(
+                r#"
+        target create {loader}
+        target modules add {kernel}
+        target modules load --file {kernel} -s 0xffffffc000000000
+        gdb-remote localhost:{gdb_port}
+                    "#,
+                loader = loader.display(),
+                kernel = kernel.display(),
+                gdb_port = self.gdb_port,
+            ),
+        )?;
+
+        Command::new("rust-lldb")
+            .args(["-s", lldb_script.to_str().unwrap()])
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()?;
 
         Ok(())
     }
