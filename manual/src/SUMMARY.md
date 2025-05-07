@@ -13,7 +13,7 @@
 # High-Level Architecture
 
 - [Overview of k23's Architecture](overview.md)
-- [Boot Flow](boot_flow.md)
+- [System Startup](startup.md)
 - [Address Space Layout Randomization (ASLR)](aslr.md)
 
 # CPU Architectures
