@@ -64,7 +64,7 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
                 tracing::error!("panicked at {loc}:\n{msg}\n");
             }
         }
-        
+
         tracing::error!("cpu panicked while processing panic. aborting.");
         abort();
     }
