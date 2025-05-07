@@ -7,11 +7,14 @@
 
 mod stored;
 
+use crate::mem::VirtualAddress;
+use crate::wasm::trap_handler::WasmFault;
 use crate::wasm::vm::{
     InstanceAllocator, InstanceHandle, VMContext, VMFuncRef, VMGlobalDefinition, VMStoreContext,
     VMTableDefinition, VMVal,
 };
 use crate::wasm::{Engine, Module, vm};
+use abort::abort;
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -22,10 +25,6 @@ use core::ptr::NonNull;
 use core::{fmt, mem};
 use pin_project::pin_project;
 use static_assertions::{assert_impl_all, const_assert};
-
-use crate::arch;
-use crate::mem::VirtualAddress;
-use crate::wasm::trap_handler::WasmFault;
 pub use stored::{Stored, StoredData};
 
 pub struct Store<T>(Pin<Box<StoreInner<T>>>);
@@ -234,6 +233,6 @@ shouldn't have been able to. Other accesses may have succeeded and this one just
 happened to be caught.
 "
         );
-        arch::abort("");
+        abort();
     }
 }

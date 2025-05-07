@@ -27,6 +27,7 @@ mod frame;
 mod lang_items;
 mod utils;
 
+use abort::abort;
 use alloc::boxed::Box;
 use core::any::Any;
 use core::intrinsics;
@@ -210,8 +211,8 @@ where
         match unsafe { Exception::unwrap(exception.cast()) } {
             Ok(p) => data.p = ManuallyDrop::new(p),
             Err(err) => {
-                log::error!("Failed to catch exception: {err:?}");
-                arch::abort("Failed to catch exception");
+                tracing::error!("Failed to catch exception: {err:?}");
+                abort();
             }
         }
     }
