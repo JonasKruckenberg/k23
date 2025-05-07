@@ -19,9 +19,9 @@
 //! [`Context::find_location_range`]. Function information is obtained with
 //! [`Context::find_frames`], which returns a frame for each inline function. Each frame
 //! contains both name and location.
-#![deny(missing_docs)]
-#![no_std]
 
+#![cfg_attr(not(test), no_std)]
+#![deny(missing_docs)]
 #[allow(unused_imports)]
 #[macro_use]
 extern crate alloc;

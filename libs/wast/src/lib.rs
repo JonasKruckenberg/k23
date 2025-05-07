@@ -50,7 +50,7 @@
 //! [`Parse`]: parser::Parse
 //! [`LexError`]: lexer::LexError
 
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 #![deny(missing_docs, rustdoc::broken_intra_doc_links)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![feature(thread_local, never_type)]

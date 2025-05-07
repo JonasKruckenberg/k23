@@ -6,7 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 //! RISC-V architecture support crate.
-#![no_std]
+
+#![cfg_attr(not(test), no_std)]
 #![allow(edition_2024_expr_fragment_specifier, reason = "vetted usage")]
 
 mod error;
