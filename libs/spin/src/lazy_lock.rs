@@ -14,6 +14,7 @@ use core::{
     panic::{RefUnwindSafe, UnwindSafe},
     ptr,
 };
+use util::loom_const_fn;
 
 union Data<T, F> {
     value: ManuallyDrop<T>,
@@ -29,12 +30,14 @@ pub struct LazyLock<T, F = fn() -> T> {
 }
 
 impl<T, F: FnOnce() -> T> LazyLock<T, F> {
-    pub const fn new(f: F) -> Self {
-        Self {
-            once: Once::new(),
-            data: UnsafeCell::new(Data {
-                f: ManuallyDrop::new(f),
-            }),
+    loom_const_fn! {
+        pub const fn new(f: F) -> Self {
+            Self {
+                once: Once::new(),
+                data: UnsafeCell::new(Data {
+                    f: ManuallyDrop::new(f),
+                }),
+            }
         }
     }
 

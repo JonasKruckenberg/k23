@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::Mutex;
-use crate::loom::loom_const_fn;
 use core::hint;
+use util::loom_const_fn;
 
 pub struct Barrier {
     lock: Mutex<BarrierState>,
@@ -24,7 +24,7 @@ pub struct BarrierWaitResult(bool);
 
 impl Barrier {
     loom_const_fn! {
-        pub fn new(n: usize) -> Self {
+        pub const fn new(n: usize) -> Self {
             Self {
                 lock: Mutex::new(BarrierState {
                     count: 0,

@@ -71,7 +71,7 @@ impl Backoff {
         for _ in 0..spins {
             // In tests, especially in loom tests, we need to yield the thread back to the runtime
             // so it can make progress. See https://github.com/tokio-rs/loom/issues/162#issuecomment-665128979
-            #[cfg(test)]
+            #[cfg(any(test, loom))]
             crate::loom::thread::yield_now();
 
             hint::spin_loop();

@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::loom::AtomicUsize;
-use crate::loom::loom_const_fn;
 use crate::loom::{Ordering, UnsafeCell};
 use crate::{Backoff, GuardNoSend};
 use core::cell::Cell;
@@ -16,6 +15,7 @@ use core::num::NonZeroUsize;
 use core::ops::Deref;
 use core::ptr::addr_of;
 use core::sync::atomic::AtomicBool;
+use util::loom_const_fn;
 
 /// A mutex which can be recursively locked by a single thread.
 ///
@@ -56,7 +56,7 @@ impl<T> ReentrantMutex<T> {
     loom_const_fn! {
         /// Creates a new reentrant mutex in an unlocked state ready for use.
         #[inline]
-        pub fn new(val: T) -> ReentrantMutex<T> {
+        pub const fn new(val: T) -> ReentrantMutex<T> {
             ReentrantMutex {
                 owner: AtomicUsize::new(0),
                 lock_count: Cell::new(0),
