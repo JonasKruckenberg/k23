@@ -12,8 +12,9 @@ workspace = true
 [dependencies]
 cfg-if.workspace = true
 lock_api = { workspace = true, optional = true }
+util.workspace = true
 
-[target.'cfg(loom)'.dependencies]
+[target.'cfg(loom)'.dev-dependencies]
 loom = "0.7"
 
 [features]
