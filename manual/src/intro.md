@@ -5,9 +5,19 @@ experimental WASM microkernel operating system. [GitHub repo](https://github.com
 
 <br />
 
-**Watch my talk at RustNL 2024 about k23**
+Presentations
 
-<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/GjDwj7RWOgs?si=bKBI4WKpm1HQ8YtP" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+###### k23 @ RustNL 2024
+
+<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/GjDwj7RWOgs?si=iqj0oH-UWaWB2j2F" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+###### k23 & Wasm in Operating Systems @ WasmIO 2025
+
+<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/LraPUAV-fOo?si=a7YB7cq7YaHzG5IS" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+
+###### k23 & Rust Operating Systems Development @ Rust Dortmund Meetup
+
+<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/v4HofvYXTo0?si=LR3DjLvUxV515WBg" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
 ## What is k23?
 
