@@ -12,8 +12,6 @@ use core::fmt;
 use core::ops;
 use gimli::{Register, RiscV};
 
-pub use riscv::abort;
-
 // Match DWARF_FRAME_REGISTERS in libgcc
 pub const MAX_REG_RULES: usize = 65;
 

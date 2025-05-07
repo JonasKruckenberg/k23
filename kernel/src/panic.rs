@@ -5,10 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::backtrace;
 use crate::backtrace::Backtrace;
 use crate::mem::VirtualAddress;
 use crate::panic::panic_count::MustAbort;
-use crate::{arch, backtrace};
+use abort::abort;
 use alloc::boxed::Box;
 use alloc::string::String;
 use core::any::Any;
@@ -70,7 +71,8 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
             cpu_local::destructors::run();
         }
 
-        arch::abort("cpu panicked while processing panic. aborting.");
+        tracing::error!("cpu panicked while processing panic. aborting.");
+        abort();
     }
 
     tracing::error!("cpu panicked at {loc}:\n{msg}");
@@ -95,7 +97,8 @@ fn begin_panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
         // If a thread panics while running destructors or tries to unwind
         // through a nounwind function (e.g. extern "C") then we cannot continue
         // unwinding and have to abort immediately.
-        arch::abort("cpu caused non-unwinding panic. aborting.");
+        tracing::error!("cpu caused non-unwinding panic. aborting.");
+        abort();
     }
 
     unwind2::with_context(|regs, pc| {
@@ -118,11 +121,11 @@ fn rust_panic(payload: Box<dyn Any + Send>, regs: unwind2::Registers, pc: Virtua
             tracing::error!(
                 "unwinding completed without finding a `catch_unwind` make sure there is at least a root level catch unwind wrapping the main function"
             );
-            arch::abort("uncaught kernel exception");
+            abort();
         }
         err => {
             tracing::error!("unwinding failed with error {err}");
-            arch::abort("unwinding failed. aborting.")
+            abort()
         }
     }
 }
