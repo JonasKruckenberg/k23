@@ -6,11 +6,6 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-cfg-if.workspace = true
-log.workspace = true
-
-[target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
-riscv.workspace = true
 
 [lints]
 workspace = true

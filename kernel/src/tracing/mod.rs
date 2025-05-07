@@ -302,9 +302,7 @@ fn write_timestamp<W>(w: &mut W) -> fmt::Result
 where
     W: Write + SetColor,
 {
-    let time_base = TIME_BASE
-        .try_with_borrow(|time_base| *time_base)
-        .unwrap_or_default();
+    let time_base = TIME_BASE.with_borrow(|time_base| *time_base);
 
     w.write_char('[')?;
     if let Some(time_base) = time_base {

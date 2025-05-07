@@ -103,7 +103,7 @@ pub fn try_with_cpu<F, R>(f: F) -> crate::Result<R>
 where
     F: FnOnce(&Cpu) -> R,
 {
-    CPU.try_with(|cpu_info| Ok(f(cpu_info.get().context("CPU info not initialized")?)))?
+    CPU.with(|cpu_info| cpu_info.get().context("CPU info not initialized").map(f))
 }
 
 #[cold]
