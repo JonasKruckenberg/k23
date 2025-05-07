@@ -75,8 +75,9 @@
 
 use crate::utils::{EncodedValue, allocate_obj_on_stack, push};
 use crate::{FiberStack, StackPointer};
+use cfg_if::cfg_if;
 use core::arch::{asm, naked_asm};
-use riscv::{load_gp, save_gp, xlen_bytes};
+use riscv::{load_gp, save_gp, x, xlen_bytes};
 
 pub const STACK_ALIGNMENT: usize = 16;
 
@@ -377,4 +378,106 @@ pub unsafe fn switch_and_reset(arg: EncodedValue, parent_link: *mut StackPointer
             options(noreturn),
         }
     }
+}
+
+#[inline]
+pub unsafe fn switch_and_throw(
+    sp: StackPointer,
+    top_of_stack: StackPointer,
+) -> (EncodedValue, Option<StackPointer>) {
+    extern "C-unwind" fn throw() -> ! {
+        extern crate alloc;
+        use alloc::boxed::Box;
+
+        // choose the right `panic_unwind` impl depending on whether the target supports `std`
+        // or not
+        cfg_if! {
+            if #[cfg(target_os = "none")] {
+                use panic_unwind::resume_unwind;
+            } else {
+                use std::panic::resume_unwind;
+            }
+        }
+
+        resume_unwind(Box::new(()));
+    }
+
+    let (ret_val, ret_sp);
+
+    // Safety: inline assembly
+    unsafe {
+        asm! {
+            // Set up a return address.
+            "lla ra, 0f",
+
+            // Save the registers of the parent context.
+            addi!("sp", "sp", -4),
+            save_gp!(s1 => sp[2]),
+            save_gp!(ra => sp[1]),
+            save_gp!(s0 => sp[0]),
+
+            // Write the parent stack pointer to the parent link. This is adjusted
+            // to point just above the saved PC/RA to match the GCC/LLVM ABI.
+            addi!("t1", "sp", 2),
+            save_gp!(t1 => a1[-2]),
+
+            // Load the coroutine registers, with the saved PC into RA.
+            load_gp!(t0[2] => ra),
+            load_gp!(t0[1] => s1),
+            load_gp!(t0[0] => s0),
+
+            // Switch to the coroutine stack while popping the saved registers and
+            // padding.
+            addi!("sp", "t0", 4),
+
+            // Simulate a call with an artificial return address so that the throw
+            // function will unwind straight into the switch_and_yield() call with
+            // the register state expected outside the asm! block.
+            "tail {throw}",
+
+            // Upon returning, our register state is just like a normal return into
+            // switch_and_link().
+            "0:",
+
+            // Switch back to our stack and free the saved registers.
+            addi!("sp", "a2", 2),
+
+            // Helper function to trigger stack unwinding.
+            throw = sym throw,
+
+            // Same output registers as switch_and_link().
+            lateout("a0") ret_val,
+            lateout("a1") ret_sp,
+
+            // We pass the top of stack in a1.
+            in("a1") top_of_stack.get() as u64,
+            // We pass the target stack pointer in t0.
+            in("t0") sp.get() as u64,
+
+            // See switch_and_link() for an explanation of the clobbers.
+            lateout("s2") _, lateout("s3") _, lateout("s4") _, lateout("s5") _,
+            lateout("s6") _, lateout("s7") _, lateout("s8") _, lateout("s9") _,
+            lateout("s10") _, lateout("s11") _,
+            lateout("fs0") _, lateout("fs1") _, lateout("fs2") _, lateout("fs3") _,
+            lateout("fs4") _, lateout("fs5") _, lateout("fs6") _, lateout("fs7") _,
+            lateout("fs8") _, lateout("fs9") _, lateout("fs10") _, lateout("fs11") _,
+            clobber_abi("C"),
+            options(may_unwind)
+        }
+    }
+
+    (ret_val, StackPointer::new(ret_sp))
+}
+
+#[inline]
+pub unsafe fn drop_initial_obj(
+    _stack_base: StackPointer,
+    stack_ptr: StackPointer,
+    drop_fn: unsafe fn(ptr: *mut u8),
+) {
+    // Safety: we stored the correct initial obj ptr here during stack initialization
+    unsafe {
+        let ptr = (stack_ptr.get() as *mut u8).add(x!(16, 32));
+        drop_fn(ptr);
+    };
 }

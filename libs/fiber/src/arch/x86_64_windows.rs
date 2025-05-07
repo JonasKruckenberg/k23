@@ -1,5 +1,6 @@
 use crate::utils::{EncodedValue, allocate_obj_on_stack, push};
 use crate::{FiberStack, StackPointer};
+use cfg_if::cfg_if;
 use core::arch::{asm, naked_asm};
 
 pub const STACK_ALIGNMENT: usize = 16;
@@ -324,4 +325,143 @@ pub unsafe fn switch_and_reset(arg: EncodedValue, parent_link: *mut StackPointer
             options(noreturn),
         }
     }
+}
+
+#[inline]
+pub unsafe fn switch_and_throw(
+    sp: StackPointer,
+    stack_base: StackPointer,
+) -> (EncodedValue, Option<StackPointer>) {
+    extern "sysv64-unwind" fn throw() -> ! {
+        extern crate alloc;
+        use alloc::boxed::Box;
+
+        // choose the right `panic_unwind` impl depending on whether the target supports `std`
+        // or not
+        cfg_if! {
+            if #[cfg(target_os = "none")] {
+                use panic_unwind::resume_unwind;
+            } else {
+                use std::panic::resume_unwind;
+            }
+        }
+
+        resume_unwind(Box::new(()));
+    }
+
+    let (ret_val, ret_sp);
+
+    // Safety: inline assembly
+    unsafe {
+        asm! {
+            // Save state just like the first half of switch_and_link().
+            "lea rax, [rip + 2f]",
+            "push rax",
+            "push qword ptr gs:[0x1748]", // GuaranteedStackBytes
+            "push qword ptr gs:[0x1478]", // DeallocationStack
+            "push qword ptr gs:[0x10]", // StackLimit
+            "push qword ptr gs:[0x8]", // StackBase
+            "push qword ptr gs:[0x0]", // ExceptionList
+            "push rbx",
+
+            // Push a second copy of the return address to the stack.
+            "push rax",
+
+            // Save RBP of the parent context.
+            "push rbp",
+
+            // Update the parent link near the base of the coroutine stack.
+            "mov [rsi - 32], rsp",
+
+            // Switch to the coroutine stack.
+            "mov rsp, rdx",
+
+            // Pop the return address of the target context.
+            "pop rax",
+
+            // Restore RBP and RBX from the target context.
+            "pop rbx",
+            "pop rbp",
+
+            // Restore the TEB fields of the target context.
+            "pop qword ptr gs:[0x0]", // ExceptionList
+            "pop qword ptr gs:[0x8]", // StackBase
+            "pop qword ptr gs:[0x10]", // StackLimit
+            "pop qword ptr gs:[0x1478]", // DeallocationStack
+            "pop qword ptr gs:[0x1748]", // GuaranteedStackBytes
+
+            // Simulate a call with an artificial return address so that the throw
+            // function will unwind straight into the switch_and_yield() call with
+            // the register state expected outside the asm! block.
+            "push rax",
+            "jmp {throw}",
+
+            // Upon returning, our register state is just like a normal return into
+            // switch_and_link().
+            "2",
+
+            // This is copied from the second half of switch_and_link().
+            "pop rbx",
+            "pop qword ptr gs:[0x0]", // ExceptionList
+            "pop qword ptr gs:[0x8]", // StackBase
+            "pop qword ptr gs:[0x10]", // StackLimit
+            "pop qword ptr gs:[0x1478]", // DeallocationStack
+            "pop qword ptr gs:[0x1748]", // GuaranteedStackBytes
+            "add rsp, 8",
+
+            // Helper function to trigger stack unwinding.
+            throw = sym throw,
+
+            // Argument to pass to the throw function.
+            in("rdi") forced_unwind.0.get(),
+
+            // Same output registers as switch_and_link().
+            lateout("rdi") ret_val,
+            lateout("rsi") ret_sp,
+
+            // We pass the top of stack in rsi.
+            in("rsi") top_of_stack.get() as u64,
+            // We pass the target stack pointer in rdx.
+            in("rdx") sp.get() as u64,
+
+            // See switch_and_link() for an explanation of the clobbers.
+            lateout("r12") _, lateout("r13") _, lateout("r14") _, lateout("r15") _,
+            clobber_abi("sysv64"),
+            options(may_unwind)
+        }
+    }
+
+    (ret_val, StackPointer::new(ret_sp))
+}
+
+#[inline]
+pub unsafe fn drop_initial_obj(
+    stack_base: StackPointer,
+    stack_ptr: StackPointer,
+    drop_fn: unsafe fn(ptr: *mut u8),
+) {
+    // Safety: we stored the correct values here during stack initialization
+    unsafe {
+        let ptr = (stack_ptr.get() as *mut u8).add(40);
+        drop_fn(ptr);
+
+        // Also copy the TEB fields to the base of the stack so that they can be
+        // retrieved by update_stack_teb_fields().
+        let base = stack_base.get() as *mut StackWord;
+        let stack = stack_ptr.get() as *const StackWord;
+        *base.sub(1) = *stack.add(2); // StackLimit
+        *base.sub(2) = *stack.add(4); // GuaranteedStackBytes
+    }
+}
+
+/// This function must be called after a stack has finished running a coroutine
+/// so that the `StackLimit` and `GuaranteedStackBytes` fields from the TEB can
+/// be updated in the stack. This is necessary if the stack is reused for
+/// another coroutine.
+#[inline]
+pub unsafe fn update_stack_teb_fields(stack: &mut impl Stack) {
+    let base = stack.base().get() as *const StackWord;
+    let stack_limit = *base.sub(1) as usize;
+    let guaranteed_stack_bytes = *base.sub(2) as usize;
+    stack.update_teb_fields(stack_limit, guaranteed_stack_bytes);
 }
