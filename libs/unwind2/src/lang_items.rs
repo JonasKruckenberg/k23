@@ -8,6 +8,7 @@
 use crate::exception::Exception;
 use crate::utils::with_context;
 use crate::{Error, FrameIter, arch, raise_exception_phase2};
+use abort::abort;
 
 /// In traditional unwinders the personality routine is responsible for determining the unwinders
 /// behaviour for each frame (stop unwinding because a handler has been found, continue etc.)
@@ -36,10 +37,13 @@ pub unsafe extern "C-unwind" fn _Unwind_Resume(exception: *mut Exception) -> ! {
 
         match raise_exception_phase2(frames, exception) {
             Ok(_) => {}
-            Err(Error::EndOfStack) => arch::abort("Uncaught exception"),
+            Err(Error::EndOfStack) => {
+                tracing::error!("Uncaught exception");
+                abort();
+            }
             Err(err) => {
-                log::error!("Failed to resume exception: {err:?}");
-                arch::abort("Failed to resume exception")
+                tracing::error!("Failed to resume exception: {err:?}");
+                abort()
             }
         }
 

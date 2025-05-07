@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::abort;
+use abort::abort;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
@@ -16,7 +16,8 @@ pub(crate) unsafe fn register(t: *mut u8, dtor: unsafe extern "C" fn(*mut u8)) {
     let Ok(mut dtors) = DTORS.try_borrow_mut() else {
         // This point can only be reached if the global allocator calls this
         // function again.
-        abort("the global allocator may not use TLS with destructors")
+        tracing::error!("the global allocator may not use TLS with destructors");
+        abort();
     };
 
     dtors.push((t, dtor));
