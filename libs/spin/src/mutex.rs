@@ -15,8 +15,8 @@
 // An RAII mutex guard returned by the Arc locking operations on Mutex.
 
 use crate::backoff::Backoff;
+use crate::loom::Ordering;
 use crate::loom::{AtomicBool, UnsafeCell};
-use crate::loom::{Ordering};
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::{fmt, mem};

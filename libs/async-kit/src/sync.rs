@@ -5,13 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::task::{Schedule, TaskRef};
+pub mod wait_cell;
+pub mod wait_queue;
+pub mod wake_batch;
 
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct NopScheduler;
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct Closed;
 
-impl Schedule for NopScheduler {
-    fn schedule(&self, task: TaskRef) {
-        unimplemented!("nop scheduler tried to schedule task {:?}", task);
+impl core::fmt::Display for Closed {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.pad("closed")
     }
 }
+
+impl core::error::Error for Closed {}

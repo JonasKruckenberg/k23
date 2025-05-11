@@ -7,10 +7,12 @@
 
 #![cfg_attr(all(not(test), target_os = "none"), no_std)]
 #![feature(allocator_api)]
-
+#![feature(const_type_id)]
+#![feature(debug_closure_helpers)]
 extern crate alloc;
 
-pub mod task;
 mod loom;
-#[cfg(test)]
-mod tests;
+pub mod scheduler;
+pub mod sync;
+pub mod task;
+pub mod time;

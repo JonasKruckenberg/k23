@@ -17,7 +17,8 @@ cfg_if! {
     if #[cfg(loom)] {
         pub(crate) use loom::sync;
         pub(crate) use loom::cell;
-        
+        pub(crate) use loom::model;
+
         pub(crate) mod alloc {
             use super::sync::Arc;
             use core::{
@@ -25,9 +26,9 @@ cfg_if! {
                 pin::Pin,
                 task::{Context, Poll},
             };
-            
+
             pub(crate) use loom::alloc::*;
-    
+
             #[derive(Debug)]
             #[pin_project::pin_project]
             pub(crate) struct TrackFuture<F> {
@@ -35,7 +36,7 @@ cfg_if! {
                 inner: F,
                 track: Arc<()>,
             }
-    
+
             impl<F: Future> Future for TrackFuture<F> {
                 type Output = TrackFuture<F::Output>;
                 fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -46,7 +47,7 @@ cfg_if! {
                     })
                 }
             }
-    
+
             impl<F> TrackFuture<F> {
                 /// Wrap a `Future` in a `TrackFuture` that participates in Loom's
                 /// leak checking.
@@ -57,18 +58,18 @@ cfg_if! {
                         track: Arc::new(()),
                     }
                 }
-    
+
                 /// Stop tracking this future, and return the inner value.
                 pub(crate) fn into_inner(self) -> F {
                     self.inner
                 }
             }
-    
+
             #[track_caller]
             pub(crate) fn track_future<F: Future>(inner: F) -> TrackFuture<F> {
                 TrackFuture::new(inner)
             }
-    
+
             // PartialEq impl so that `assert_eq!(..., Ok(...))` works
             impl<F: PartialEq> PartialEq for TrackFuture<F> {
                 fn eq(&self, other: &Self) -> bool {
@@ -78,21 +79,27 @@ cfg_if! {
         }
     } else {
         pub(crate) use core::sync;
-        
+
+        #[cfg(test)]
+        #[inline(always)]
+        pub(crate) fn model<R>(f: impl FnOnce() -> R) -> R {
+            f()
+        }
+
         pub(crate) mod cell {
             #[derive(Debug)]
             pub(crate) struct UnsafeCell<T>(core::cell::UnsafeCell<T>);
-    
+
             impl<T> UnsafeCell<T> {
                 pub(crate) const fn new(data: T) -> UnsafeCell<T> {
                     UnsafeCell(core::cell::UnsafeCell::new(data))
                 }
-    
+
                 #[inline(always)]
                 pub(crate) fn with<R>(&self, f: impl FnOnce(*const T) -> R) -> R {
                     f(self.0.get())
                 }
-    
+
                 #[inline(always)]
                 pub(crate) fn with_mut<R>(&self, f: impl FnOnce(*mut T) -> R) -> R {
                     f(self.0.get())

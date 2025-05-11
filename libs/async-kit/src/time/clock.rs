@@ -5,9 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::{Instant, NANOS_PER_SEC};
-use alloc::format;
-use anyhow::{Context, format_err};
+use crate::time::{Instant, TimeError, NANOS_PER_SEC};
 use core::fmt;
 use core::time::Duration;
 
@@ -108,14 +106,12 @@ impl Clock {
         Duration::new(secs, nanos)
     }
 
-    pub fn duration_to_ticks(&self, duration: Duration) -> crate::Result<Ticks> {
+    pub fn duration_to_ticks(&self, duration: Duration) -> Result<Ticks, TimeError> {
         let raw: u64 = (duration.as_nanos() / self.tick_duration.as_nanos())
             .try_into()
-            .with_context(|| {
-                format_err!(
-                    "duration too long. max duration is {:?}",
-                    max_duration(self.tick_duration)
-                )
+            .map_err(|_| TimeError::DurationTooLong {
+                requested: self.tick_duration,
+                max: max_duration(self.tick_duration),
             })?;
 
         Ok(Ticks(raw))
