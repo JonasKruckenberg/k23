@@ -5,9 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::device::cpu::{try_with_cpu, with_cpu};
-use crate::time::clock::Ticks;
-use crate::time::{NANOS_PER_SEC, clock};
+use crate::time::{Ticks, TimeError, NANOS_PER_SEC};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
@@ -21,24 +19,28 @@ impl Instant {
     pub const ZERO: Self = Self(Duration::ZERO);
 
     /// Returns an instant corresponding to "now".
-    pub fn now() -> Self {
-        with_cpu(|cpu| cpu.clock.now())
+    pub fn now() -> Result<Self, TimeError> {
+        let now = crate::time::timer::global::global_timer()
+            .map_err(|_| TimeError::NoGlobalTimer)?
+            .clock
+            .now();
+
+        Ok(now)
     }
 
-    pub fn try_now() -> crate::Result<Self> {
-        try_with_cpu(|cpu| cpu.clock.now())
+    pub fn from_ticks(ticks: Ticks) -> Result<Self, TimeError> {
+        let duration = crate::time::timer::global::global_timer()
+            .map_err(|_| TimeError::NoGlobalTimer)?
+            .clock
+            .ticks_to_duration(ticks);
+        Ok(Instant(duration))
     }
 
-    pub fn from_ticks(ticks: Ticks) -> Self {
-        let duration = with_cpu(|cpu| cpu.clock.ticks_to_duration(ticks));
-        Instant(duration)
-    }
-
-    pub fn far_future() -> Instant {
+    pub fn far_future() -> Result<Instant, TimeError> {
         // Returns an instant roughly 30 years from now.
         // This is used instead of `Duration::MAX` because conversion to ticks might cause an overflow
         // but doing checked or saturating conversions in those functions is too expensive.
-        Self::now() + Duration::from_secs(86400 * 365 * 30)
+        Ok(Self::now()? + Duration::from_secs(86400 * 365 * 30))
     }
 
     /// Returns the amount of time elapsed from another instant to this one,
@@ -82,8 +84,8 @@ impl Instant {
     }
 
     /// Returns the amount of time elapsed since this instant.
-    pub fn elapsed(&self) -> Duration {
-        Self::now() - *self
+    pub fn elapsed(&self) -> Result<Duration, TimeError> {
+        Ok(Self::now()? - *self)
     }
 
     /// Returns `Some(t)` where `t` is the time `self + duration` if `t` can be represented as

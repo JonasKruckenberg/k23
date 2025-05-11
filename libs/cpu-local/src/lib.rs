@@ -78,6 +78,10 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(thread_local)]
 
+extern crate alloc;
+
+pub mod collection;
+
 use core::cell::{Cell, RefCell};
 use core::ptr::NonNull;
 

@@ -11,7 +11,7 @@
 
 mod cache_padded;
 mod checked_maybe_uninit;
-mod loom_const_fn;
+mod loom;
 
 pub use cache_padded::CachePadded;
 pub use checked_maybe_uninit::{CheckedMaybeUninit, MaybeUninitExt};

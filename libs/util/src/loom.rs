@@ -32,7 +32,7 @@
 macro_rules! loom_const_fn {
     (
         $(#[$meta:meta])*
-        $vis:vis unsafe const fn $name:ident($($arg:ident: $T:ty),*) -> $Ret:ty $body:block
+        $vis:vis const unsafe fn $name:ident($($arg:ident: $T:ty),*) -> $Ret:ty $body:block
     ) => {
         $(#[$meta])*
         #[cfg(not(loom))]

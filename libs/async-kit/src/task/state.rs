@@ -126,14 +126,6 @@ pub(super) enum WakeByValAction {
     Drop,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(super) enum ShutdownAction {
-    /// The task does not need to be enqueued.
-    None,
-    /// The task should be deallocated.
-    Drop,
-}
-
 const REF_ONE: usize = Snapshot::REFS.first_bit();
 const REF_MAX: usize = Snapshot::REFS.raw_mask();
 
@@ -341,6 +333,11 @@ impl State {
             *state = state.with(Snapshot::WOKEN, true).clone_ref();
             WakeByRefAction::Enqueue
         })
+    }
+
+    pub(super) fn refcount(&self) -> usize {
+        let raw = self.val.load(Ordering::Acquire);
+        Snapshot::REFS.unpack(raw)
     }
 
     pub(super) fn clone_ref(&self) {

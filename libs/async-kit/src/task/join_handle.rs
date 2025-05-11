@@ -28,7 +28,6 @@ static_assertions::assert_impl_all!(JoinHandle<()>: Send);
 enum JoinHandleState {
     Task(TaskRef),
     Empty,
-    Error(JoinErrorKind),
 }
 
 pub struct JoinError<T> {
@@ -97,13 +96,6 @@ impl<T> Future for JoinHandle<T> {
             JoinHandleState::Task(task) => task,
             JoinHandleState::Empty => {
                 panic!("`TaskRef` only taken while polling a `JoinHandle`; this is a bug")
-            }
-            JoinHandleState::Error(kind) => {
-                return Poll::Ready(Err(JoinError {
-                    kind,
-                    id: this.id,
-                    output: None,
-                }));
             }
         };
 
@@ -324,22 +316,24 @@ impl<T> JoinError<T> {
     /// panicked if the task terminated due to a panic. Otherwise, `self` is
     /// returned.
     ///
-    /// # Examples
+    // # Examples
+    //
+    // ```should_panic
+    // use std::panic;
+    //
+    // let err = tokio::spawn(async {
+    //     panic!("boom");
+    // }).await.unwrap_err();
+    //
+    // if let Ok(reason) = err.try_into_panic() {
+    //     /// Resume the panic on the main task
+    //     panic::begin_unwind(reason);
+    // }
+    // ```
     ///
-    //     ```should_panic
-    //     use std::panic;
-    //
-    //     fn main() {
-    //         let err = tokio::spawn(async {
-    //             panic!("boom");
-    //         }).await.unwrap_err();
-    //
-    //         if let Ok(reason) = err.try_into_panic() {
-    //             // Resume the panic on the main task
-    //             panic::begin_unwind(reason);
-    //         }
-    //     }
-    //     ```
+    /// # Errors
+    ///
+    /// Returns an `Err(Self)` when the error was **not** a panic.
     pub fn try_into_panic(self) -> Result<Box<dyn Any + Send + 'static>, Self> {
         match self.kind {
             JoinErrorKind::Panic(p) => Ok(p),

@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-// #![allow(unused_imports,)]
+// #![allow(unused_imports)]
 
 cfg_if::cfg_if! {
     if #[cfg(loom)] {
@@ -15,6 +15,12 @@ cfg_if::cfg_if! {
         pub(crate) use loom::model;
     } else {
         pub(crate) use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+        #[cfg(test)]
+        #[inline(always)]
+        pub fn model<R>(f: impl FnOnce() -> R) -> R {
+            f()
+        }
 
         #[derive(Debug)]
         #[repr(transparent)]

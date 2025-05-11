@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::{AtomicUsize, Ordering, UnsafeCell};
 use crate::Backoff;
+use crate::loom::{AtomicUsize, Ordering, UnsafeCell};
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::{fmt, mem};
@@ -618,8 +618,8 @@ fn compare_exchange(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loom::thread;
     use crate::loom::Arc;
+    use crate::loom::thread;
     use core::fmt::Debug;
     use core::mem;
     use std::hint;
