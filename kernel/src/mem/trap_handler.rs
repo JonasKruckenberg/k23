@@ -5,21 +5,23 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::mem::{PageFaultFlags, VirtualAddress};
-use crate::scheduler::scheduler;
+use crate::mem::{with_kernel_aspace, PageFaultFlags, VirtualAddress};
+use crate::runtime::runtime;
 use core::ops::ControlFlow;
 use riscv::scause::{Exception, Trap};
 
 pub fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
-    let current_task = scheduler().current_task();
-    let Some(current_task) = current_task.as_ref() else {
+    let Some(scheduler) = runtime().local_scheduler() else {
+        tracing::warn!("no currently active worker on this CPU");
+        return ControlFlow::Continue(());
+    };
+
+    let Some(_current_task) = scheduler.current_task() else {
         // if we're not inside a task we're inside some critical kernel code
         // none of that should use ever trap
         tracing::warn!("no currently active task");
         return ControlFlow::Continue(());
     };
-
-    let mut aspace = current_task.header().aspace.as_ref().unwrap().lock();
 
     let flags = match trap {
         Trap::Exception(Exception::LoadPageFault) => PageFaultFlags::LOAD,
@@ -29,13 +31,18 @@ pub fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
         _ => return ControlFlow::Continue(()),
     };
 
-    if let Err(err) = aspace.page_fault(tval, flags) {
-        // the address space knew about the faulting address, but the requested access was invalid
-        tracing::warn!("page fault handler couldn't correct fault {err}");
-        ControlFlow::Continue(())
-    } else {
-        // the address space knew about the faulting address and could correct the fault
-        tracing::trace!("page fault handler successfully corrected fault");
-        ControlFlow::Break(())
-    }
+    // FIXME: bring back per-task address space pointers
+    with_kernel_aspace(|aspace| {
+        let mut aspace = aspace.lock();
+
+        if let Err(err) = aspace.page_fault(tval, flags) {
+            // the address space knew about the faulting address, but the requested access was invalid
+            tracing::warn!("page fault handler couldn't correct fault {err}");
+            ControlFlow::Continue(())
+        } else {
+            // the address space knew about the faulting address and could correct the fault
+            tracing::trace!("page fault handler successfully corrected fault");
+            ControlFlow::Break(())
+        }
+    })
 }

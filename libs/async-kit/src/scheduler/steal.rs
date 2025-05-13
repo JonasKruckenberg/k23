@@ -8,7 +8,7 @@
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 use crate::scheduler::{Scheduler, StaticScheduler};
 use crate::task;
-use crate::task::{Header, Schedule, Task, TaskRef};
+use crate::task::{Header, Schedule, Task, TaskBuilder, TaskRef, TaskStub};
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 use core::num::{NonZero, NonZeroUsize};
@@ -25,6 +25,7 @@ pub enum TryStealError {
     Empty,
 }
 
+#[derive(Debug)]
 pub struct Injector<S> {
     run_queue: MpscQueue<Header>,
     queued: AtomicUsize,
@@ -54,10 +55,10 @@ impl<S> Injector<S> {
     }
 
     loom_const_fn! {
-        pub const unsafe fn new_with_static_stub(stub: &'static Header) -> Self {
+        pub const unsafe fn new_with_static_stub(stub: &'static TaskStub) -> Self {
             Self {
                 // Safety: ensured by caller
-                run_queue: unsafe { MpscQueue::new_with_static_stub(stub) },
+                run_queue: unsafe { MpscQueue::new_with_static_stub(&stub.header) },
                 queued: AtomicUsize::new(0),
                 _scheduler: PhantomData,
             }
@@ -71,11 +72,17 @@ impl<S> Injector<S> {
     ///
     /// When stealing from the target is not possible, either because its queue is *empty*
     /// or because there is *already an active stealer*, an error is returned.
-    pub fn try_steal(&'static self) -> Result<Stealer<'static, S>, TryStealError> {
+    pub fn try_steal(&self) -> Result<Stealer<S>, TryStealError> {
         Stealer::new(&self.run_queue, &self.queued)
     }
 
-    pub fn spawn(&self, task: TaskRef) {
+    #[must_use]
+    #[inline]
+    pub fn build_task(&self) -> TaskBuilder<S> {
+        TaskBuilder::new_for_injector(self)
+    }
+
+    pub fn push_task(&self, task: TaskRef) {
         self.queued.fetch_add(1, Ordering::Relaxed);
         self.run_queue.enqueue(task);
     }

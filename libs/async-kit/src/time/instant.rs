@@ -19,7 +19,20 @@ impl Instant {
     pub const ZERO: Self = Self(Duration::ZERO);
 
     /// Returns an instant corresponding to "now".
-    pub fn now() -> Result<Self, TimeError> {
+    pub fn now() -> Self {
+        Self::try_now().unwrap()
+    }
+
+    pub fn from_ticks(ticks: Ticks) -> Self {
+        Self::try_from_ticks(ticks).unwrap()
+    }
+
+    pub fn far_future() -> Instant {
+        Self::try_far_future().unwrap()
+    }
+
+    /// Returns an instant corresponding to "now".
+    pub fn try_now() -> Result<Self, TimeError> {
         let now = crate::time::timer::global::global_timer()
             .map_err(|_| TimeError::NoGlobalTimer)?
             .clock
@@ -28,7 +41,7 @@ impl Instant {
         Ok(now)
     }
 
-    pub fn from_ticks(ticks: Ticks) -> Result<Self, TimeError> {
+    pub fn try_from_ticks(ticks: Ticks) -> Result<Self, TimeError> {
         let duration = crate::time::timer::global::global_timer()
             .map_err(|_| TimeError::NoGlobalTimer)?
             .clock
@@ -36,11 +49,11 @@ impl Instant {
         Ok(Instant(duration))
     }
 
-    pub fn far_future() -> Result<Instant, TimeError> {
+    pub fn try_far_future() -> Result<Instant, TimeError> {
         // Returns an instant roughly 30 years from now.
         // This is used instead of `Duration::MAX` because conversion to ticks might cause an overflow
         // but doing checked or saturating conversions in those functions is too expensive.
-        Ok(Self::now()? + Duration::from_secs(86400 * 365 * 30))
+        Ok(Self::try_now()? + Duration::from_secs(86400 * 365 * 30))
     }
 
     /// Returns the amount of time elapsed from another instant to this one,
@@ -84,8 +97,13 @@ impl Instant {
     }
 
     /// Returns the amount of time elapsed since this instant.
-    pub fn elapsed(&self) -> Result<Duration, TimeError> {
-        Ok(Self::now()? - *self)
+    pub fn elapsed(&self) -> Duration {
+        self.try_elapsed().unwrap()
+    }
+
+    /// Returns the amount of time elapsed since this instant.
+    pub fn try_elapsed(&self) -> Result<Duration, TimeError> {
+        Ok(Self::try_now()? - *self)
     }
 
     /// Returns `Some(t)` where `t` is the time `self + duration` if `t` can be represented as

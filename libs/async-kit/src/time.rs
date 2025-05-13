@@ -11,11 +11,13 @@ mod sleep;
 mod timeout;
 mod timer;
 
-pub(crate) const NANOS_PER_SEC: u64 = 1_000_000_000;
+pub const NANOS_PER_SEC: u64 = 1_000_000_000;
 
-pub use clock::{Clock, Ticks};
+use core::fmt;
+use core::fmt::Formatter;
 use core::time::Duration;
 
+pub use clock::{Clock, Ticks};
 pub use instant::Instant;
 pub use sleep::{sleep, sleep_until, Sleep};
 pub use timeout::{timeout, Elapsed, Timeout};
@@ -37,3 +39,14 @@ pub enum TimeError {
         max: Duration,
     },
 }
+
+impl fmt::Display for TimeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            TimeError::NoGlobalTimer => f.write_str("no global timer available. Tip: You can configure the global timer with `async_kit::time::set_global_timer`"),
+            TimeError::DurationTooLong { requested, max } => write!(f, "duration too long: {requested:?}. Maximum duration {max:?}"),
+        }
+    }
+}
+
+impl core::error::Error for TimeError {}

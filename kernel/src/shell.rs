@@ -16,8 +16,8 @@ const S: &str = r#"
 "#;
 
 use crate::device_tree::DeviceTree;
-use crate::mem::{Mmap, PhysicalAddress, with_kernel_aspace};
-use crate::scheduler::{Scheduler, scheduler};
+use crate::mem::{with_kernel_aspace, Mmap, PhysicalAddress};
+use crate::runtime::Runtime;
 use crate::{arch, irq};
 use alloc::string::{String, ToString};
 use core::fmt;
@@ -29,7 +29,11 @@ use spin::{Barrier, OnceLock};
 
 static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
 
-pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: usize) {
+pub fn init(
+    devtree: &'static DeviceTree,
+    rt: &'static Runtime,
+    num_cpus: usize,
+) -> crate::Result<()> {
     static SYNC: OnceLock<Barrier> = OnceLock::new();
     let barrier = SYNC.get_or_init(|| Barrier::new(num_cpus));
 
@@ -37,7 +41,7 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: u
         tracing::info!("{S}");
         tracing::info!("type `help` to list available commands");
 
-        sched.spawn(async move {
+        rt.try_spawn(async move {
             let (mut uart, _mmap, irq_num) = init_uart(devtree);
 
             let mut line = String::new();
@@ -64,8 +68,10 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: u
                     line.clear();
                 }
             }
-        });
+        })?;
     }
+
+    Ok(())
 }
 
 fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
@@ -165,7 +171,8 @@ const SHUTDOWN: Command = Command::new("shutdown")
     .with_fn(|_| {
         tracing::info!("Bye, Bye!");
 
-        scheduler().shutdown();
+        todo!("scheduler().shutdown()");
+        // scheduler().shutdown();
 
         Ok(())
     });

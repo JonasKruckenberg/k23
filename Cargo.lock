@@ -1041,6 +1041,7 @@ dependencies = [
  "addr2line 0.24.2",
  "anyhow",
  "arrayvec",
+ "async-kit",
  "bitflags",
  "bumpalo",
  "cfg-if",

@@ -5,28 +5,48 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::scheduler::Injector;
 use crate::task::{Id, JoinHandle, Schedule, Task, TaskRef};
 use alloc::boxed::Box;
 use core::alloc::{AllocError, Allocator};
 use core::any::type_name;
+use core::marker::PhantomData;
 use core::panic::Location;
 
 /// Allows configuring certain aspects of tasks before spawning them onto a scheduler.
 #[derive(Debug, Clone)]
 pub struct TaskBuilder<'a, S> {
-    scheduler: S,
+    scheduler: SchedulerOrInjector<'a, S>,
     location: Option<Location<'a>>,
     name: Option<&'a str>,
     kind: &'a str,
+    _scheduler: PhantomData<S>,
+}
+
+#[derive(Debug, Clone)]
+enum SchedulerOrInjector<'a, S> {
+    Scheduler(S),
+    Injector(&'a Injector<S>),
 }
 
 impl<'a, S> TaskBuilder<'a, S> {
-    pub(crate) const fn new(scheduler: S) -> Self {
+    pub(crate) const fn new_for_scheduler(scheduler: S) -> Self {
         Self {
-            scheduler,
+            scheduler: SchedulerOrInjector::Scheduler(scheduler),
             location: None,
             name: None,
             kind: "task",
+            _scheduler: PhantomData,
+        }
+    }
+
+    pub(crate) const fn new_for_injector(injector: &'a Injector<S>) -> Self {
+        Self {
+            scheduler: SchedulerOrInjector::Injector(injector),
+            location: None,
+            name: None,
+            kind: "task",
+            _scheduler: PhantomData,
         }
     }
 
@@ -118,11 +138,21 @@ impl<'a, S> TaskBuilder<'a, S> {
             loc.col = loc.column(),
         );
 
-        let task = Task::new(self.scheduler.clone(), future, id, span);
+        let task = Task::<F, S>::new(future, id, span);
         let task = Box::try_new_in(task, alloc)?;
         let (task, join) = TaskRef::new_allocated(task);
 
-        self.scheduler.spawn(task);
+        match &self.scheduler {
+            SchedulerOrInjector::Scheduler(scheduler) => {
+                // Safety: ensured by generics
+                unsafe {
+                    task.bind_scheduler(scheduler.clone());
+                }
+
+                scheduler.spawn(task);
+            }
+            SchedulerOrInjector::Injector(injector) => injector.push_task(task),
+        }
 
         Ok(join)
     }

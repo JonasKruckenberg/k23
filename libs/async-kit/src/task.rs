@@ -162,7 +162,7 @@ struct TaskInner<F: Future, S: Schedule> {
 struct Schedulable<S: Schedule> {
     /// This must be the first field of the `Schedulable` struct!
     header: Header,
-    scheduler: UnsafeCell<S>,
+    scheduler: UnsafeCell<Option<S>>,
 }
 
 /// The current lifecycle stage of the future. Either the future itself or its output.
@@ -372,7 +372,7 @@ impl TaskRef {
                 .cast::<Schedulable<S>>()
                 .as_ref()
                 .scheduler
-                .with_mut(|current| *current = scheduler);
+                .with_mut(|current| *current = Some(scheduler));
         }
     }
 }
@@ -447,7 +447,7 @@ impl<F: Future, S: Schedule> Task<F, S> {
         wake_by_ref: Schedulable::<S>::wake_by_ref,
     };
 
-    pub const fn new(scheduler: S, future: F, task_id: Id, span: tracing::Span) -> Self {
+    pub const fn new(future: F, task_id: Id, span: tracing::Span) -> Self {
         let inner = TaskInner {
             schedulable: Schedulable {
                 header: Header {
@@ -458,7 +458,7 @@ impl<F: Future, S: Schedule> Task<F, S> {
                     span,
                     scheduler_type: Some(TypeId::of::<S>()),
                 },
-                scheduler: UnsafeCell::new(scheduler),
+                scheduler: UnsafeCell::new(None),
             },
             stage: UnsafeCell::new(Stage::Pending(future)),
             join_waker: UnsafeCell::new(None),
@@ -728,7 +728,7 @@ impl Task<Stub, Stub> {
                         span: tracing::Span::none(),
                         scheduler_type: None,
                     },
-                    scheduler: UnsafeCell::new(Stub),
+                    scheduler: UnsafeCell::new(None),
                 },
                 stage: UnsafeCell::new(Stage::Pending(Stub)),
                 join_waker: UnsafeCell::new(None),
@@ -822,7 +822,12 @@ impl<S: Schedule> Schedulable<S> {
                 .cast::<Self>()
                 .as_ref()
                 .scheduler
-                .with(|scheduler| (*scheduler).wake(this));
+                .with(|scheduler| {
+                    (*scheduler)
+                        .as_ref()
+                        .expect("task doesn't have an associated scheduler, this is a bug!")
+                        .wake(this)
+                });
         }
     }
 

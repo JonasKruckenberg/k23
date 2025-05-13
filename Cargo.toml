@@ -96,6 +96,7 @@ fiber = { path = "libs/fiber" }
 abort = { path = "libs/abort" }
 panic-unwind = { path = "libs/panic-unwind" }
 util = { path = "libs/util" }
+async-kit = { path = "libs/async-kit" }
 
 # 3rd-party dependencies
 cfg-if = "1.0.0"

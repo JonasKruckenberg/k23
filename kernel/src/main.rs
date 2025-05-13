@@ -37,10 +37,8 @@ mod device_tree;
 mod irq;
 mod mem;
 mod metrics;
-mod scheduler;
+mod runtime;
 mod shell;
-mod sync;
-mod task;
 #[cfg(test)]
 mod tests;
 mod time;
@@ -51,18 +49,17 @@ mod wasm;
 use crate::backtrace::Backtrace;
 use crate::device_tree::device_tree;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
-use crate::time::Instant;
-use crate::time::clock::Ticks;
 use abort::abort;
 use arrayvec::ArrayVec;
+use async_kit::time::{Instant, Ticks};
 use cfg_if::cfg_if;
 use core::cell::Cell;
 use core::range::Range;
 use core::slice;
 use cpu_local::cpu_local;
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
-use mem::PhysicalAddress;
 use mem::frame_alloc;
+use mem::PhysicalAddress;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use spin::{Once, OnceLock};
@@ -190,7 +187,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     tracing::per_cpu_init_late(Instant::from_ticks(Ticks(boot_ticks)));
 
     // initialize the executor
-    let _sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
+    let _rt = runtime::init(boot_info.cpu_mask.count_ones() as usize);
 
     tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
@@ -201,18 +198,18 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     cfg_if! {
         if #[cfg(test)] {
             if cpuid == 0 {
-                _sched.block_on(tests::run_tests()).exit_if_failed();
-                _sched.shutdown();
+                _rt.block_on(tests::run_tests()).exit_if_failed();
+                // _rt.shutdown();
             } else {
-                scheduler::Worker::new(_sched, cpuid, &mut rng).run();
+                runtime::Worker::new(_rt, cpuid, &mut rng).run();
             }
         } else {
             shell::init(
                 device_tree(),
-                _sched,
+                _rt,
                 boot_info.cpu_mask.count_ones() as usize,
-            );
-            scheduler::Worker::new(_sched, cpuid, &mut rng).run();
+            ).unwrap();
+            runtime::Worker::new(_rt, cpuid, &mut rng).run();
         }
     }
 
