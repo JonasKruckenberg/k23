@@ -262,7 +262,7 @@ impl StaticScheduler {
     #[must_use]
     #[inline]
     pub fn build_task<'a>(&'static self) -> TaskBuilder<'a, &'static Self> {
-        TaskBuilder::new(self)
+        TaskBuilder::new_for_scheduler(self)
     }
 
     /// Attempt to spawn a given [`Future`] onto this scheduler.
@@ -393,7 +393,7 @@ impl Scheduler {
     /// onto this scheduler.
     #[must_use]
     pub fn build_task<'a>(&self) -> TaskBuilder<'a, Self> {
-        TaskBuilder::new(self.clone())
+        TaskBuilder::new_for_scheduler(self.clone())
     }
 
     /// Attempt to spawn a given [`Future`] onto this scheduler.
@@ -501,7 +501,6 @@ mod tests {
         static CALLED: AtomicBool = AtomicBool::new(false);
 
         let _join = SCHED
-            .build_task()
             .try_spawn(async {
                 CALLED.store(true, Ordering::Relaxed);
             })
@@ -530,7 +529,6 @@ mod tests {
         let sched = Scheduler::new();
 
         let _join = sched
-            .build_task()
             .try_spawn(async {
                 CALLED.store(true, Ordering::Relaxed);
             })
@@ -579,7 +577,6 @@ mod tests {
         tracing::debug!("spawn");
 
         let _join = sched
-            .build_task()
             .try_spawn(async {
                 Yield::default().await;
             })

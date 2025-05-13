@@ -5,12 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::PAGE_SIZE;
 use crate::arch::device::cpu::with_cpu;
+use crate::arch::PAGE_SIZE;
 use crate::backtrace::Backtrace;
 use crate::mem::VirtualAddress;
-use crate::scheduler::scheduler;
-use crate::{TRAP_STACK_SIZE_PAGES, irq};
+use crate::time::global_timer;
+use crate::{irq, TRAP_STACK_SIZE_PAGES};
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::cell::Cell;
@@ -298,7 +298,7 @@ extern "C-unwind" fn default_trap_handler(
                 }
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                if let (_, Some(next_deadline)) = scheduler().cpu_local_timer().turn() {
+                if let (_, Some(next_deadline)) = global_timer().turn() {
                     // Timer interrupts are always IPIs used for sleeping
                     sbi::time::set_timer(next_deadline.ticks.0).unwrap();
                 } else {

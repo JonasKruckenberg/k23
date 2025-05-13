@@ -5,11 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-mod error;
-mod wait_cell;
-mod wait_queue;
-mod wake_batch;
+use async_kit::time::{Clock, Timer};
+use spin::OnceLock;
 
-pub use error::Closed;
-pub use wait_cell::WaitCell;
-pub use wait_queue::WaitQueue;
+static TIMER: OnceLock<Timer> = OnceLock::new();
+
+pub fn init(clock: Clock) {
+    let t = TIMER.get_or_init(|| Timer::new(clock));
+    async_kit::time::set_global_timer(t).unwrap();
+}
+
+pub fn global_timer() -> &'static Timer {
+    TIMER.get().unwrap()
+}

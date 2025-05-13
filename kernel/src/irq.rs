@@ -6,9 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::device::cpu::with_cpu;
-use crate::sync;
-use crate::sync::WaitQueue;
 use alloc::sync::Arc;
+use async_kit::sync::wait_queue::WaitQueue;
 use core::num::NonZero;
 use hashbrown::HashMap;
 use spin::{LazyLock, RwLock};
@@ -51,7 +50,7 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     }
 }
 
-pub async fn next_event(irq_num: u32) -> Result<(), sync::Closed> {
+pub async fn next_event(irq_num: u32) -> Result<(), async_kit::sync::Closed> {
     with_cpu(|cpu| cpu.plic.borrow_mut().irq_unmask(irq_num));
 
     let wait = {
