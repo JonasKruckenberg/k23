@@ -8,7 +8,7 @@ license.workspace = true
 
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
 rand.workspace = true
-criterion = "0.5.1"
+criterion = "0.6.0"
 
 [features]
 dot = []
