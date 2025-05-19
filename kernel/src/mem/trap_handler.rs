@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::mem::{with_kernel_aspace, PageFaultFlags, VirtualAddress};
+use crate::mem::{PageFaultFlags, VirtualAddress, with_kernel_aspace};
 use crate::runtime::runtime;
 use core::ops::ControlFlow;
 use riscv::scause::{Exception, Trap};

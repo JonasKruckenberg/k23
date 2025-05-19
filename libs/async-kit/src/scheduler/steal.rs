@@ -8,7 +8,8 @@
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 use crate::scheduler::{Scheduler, StaticScheduler};
 use crate::task;
-use crate::task::{Header, Schedule, Task, TaskBuilder, TaskRef, TaskStub};
+use crate::task::TaskStub;
+use crate::task::{Header, Schedule, Task, TaskBuilder, TaskRef};
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 use core::num::{NonZero, NonZeroUsize};

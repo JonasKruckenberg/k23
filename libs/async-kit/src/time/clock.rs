@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::{Instant, TimeError, NANOS_PER_SEC};
+use crate::time::{Instant, NANOS_PER_SEC, TimeError};
 use core::fmt;
 use core::time::Duration;
 
@@ -84,6 +84,12 @@ impl Clock {
         self.name
     }
 
+    /// Convert the given raw [`Ticks`] into a [`Duration`] using this clocks
+    /// internal tick duration.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the conversion would overflow.
     pub fn ticks_to_duration(&self, ticks: Ticks) -> Duration {
         // Multiply nanoseconds as u64, because it cannot overflow that way.
         let total_nanos = u64::from(self.tick_duration.subsec_nanos()) * ticks.0;
@@ -106,6 +112,12 @@ impl Clock {
         Duration::new(secs, nanos)
     }
 
+    /// Convert the given [`Duration`] into a raw [`Ticks`] using this clocks
+    /// internal tick duration.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`TimeError`] if the duration doesn't fit into the ticks u64 representation.
     pub fn duration_to_ticks(&self, duration: Duration) -> Result<Ticks, TimeError> {
         let raw: u64 = (duration.as_nanos() / self.tick_duration.as_nanos())
             .try_into()

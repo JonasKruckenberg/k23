@@ -19,9 +19,9 @@ use core::time::Duration;
 
 pub use clock::{Clock, Ticks};
 pub use instant::Instant;
-pub use sleep::{sleep, sleep_until, Sleep};
-pub use timeout::{timeout, Elapsed, Timeout};
-pub use timer::{global::set_global_timer, global::AlreadyInitialized, Deadline, Timer};
+pub use sleep::{Sleep, sleep, sleep_until};
+pub use timeout::{Elapsed, Timeout, timeout, timeout_at};
+pub use timer::{Deadline, Timer, global::AlreadyInitialized, global::set_global_timer};
 
 #[derive(Debug, Eq, PartialEq)]
 #[non_exhaustive]

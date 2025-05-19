@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::loom::sync::{
-    atomic::{AtomicUsize, Ordering},
     Arc,
+    atomic::{AtomicUsize, Ordering},
 };
 use crate::park::Park;
 use core::fmt;
@@ -329,7 +329,7 @@ mod tests {
     };
     use crate::loom::thread;
     use crate::park::StdPark;
-    use core::pin::{pin, Pin};
+    use core::pin::{Pin, pin};
     use core::task::{Context, Poll, Waker};
 
     #[test]

@@ -131,6 +131,7 @@ dependencies = [
  "arrayvec",
  "bitflags",
  "cfg-if",
+ "lazy_static",
  "linked-list",
  "loom",
  "mpsc-queue",

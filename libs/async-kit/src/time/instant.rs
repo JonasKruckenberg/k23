@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::{Ticks, TimeError, NANOS_PER_SEC};
+use crate::time::{NANOS_PER_SEC, Ticks, TimeError};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
@@ -18,20 +18,41 @@ pub struct Instant(pub(super) Duration);
 impl Instant {
     pub const ZERO: Self = Self(Duration::ZERO);
 
-    /// Returns an instant corresponding to "now".
+    /// Returns an instant corresponding to "now" in the global timer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`crate::time::set_global_timer`] has not been called yet.
     pub fn now() -> Self {
         Self::try_now().unwrap()
     }
 
+    /// Create a new `Instant` from the given raw [`Ticks`] using the global timer and clock.
+    /// Panics if no global timer is configured.
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`crate::time::set_global_timer`] has not been called yet.
     pub fn from_ticks(ticks: Ticks) -> Self {
         Self::try_from_ticks(ticks).unwrap()
     }
 
+    /// Create a timestamp in the "very-far-future", panicking if no global timer is configured.
+    ///
+    /// TODO elaborate
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`crate::time::set_global_timer`] has not been called yet.
     pub fn far_future() -> Instant {
         Self::try_far_future().unwrap()
     }
 
     /// Returns an instant corresponding to "now".
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`TimeError`] if [`crate::time::set_global_timer`] has not been called yet.
     pub fn try_now() -> Result<Self, TimeError> {
         let now = crate::time::timer::global::global_timer()
             .map_err(|_| TimeError::NoGlobalTimer)?
@@ -41,6 +62,12 @@ impl Instant {
         Ok(now)
     }
 
+    /// Attempts top create a new `Instant` from the given raw [`Ticks`] using the global timer
+    /// and clock. Returning an error if no global timer is configured.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`TimeError`] if [`crate::time::set_global_timer`] has not been called yet.
     pub fn try_from_ticks(ticks: Ticks) -> Result<Self, TimeError> {
         let duration = crate::time::timer::global::global_timer()
             .map_err(|_| TimeError::NoGlobalTimer)?
@@ -49,6 +76,14 @@ impl Instant {
         Ok(Instant(duration))
     }
 
+    /// Attempts to create a timestamp in the "very-far-future", returning an error if no global
+    /// timer is configured.
+    ///
+    /// TODO elaborate
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`TimeError`] if [`crate::time::set_global_timer`] has not been called yet.
     pub fn try_far_future() -> Result<Instant, TimeError> {
         // Returns an instant roughly 30 years from now.
         // This is used instead of `Duration::MAX` because conversion to ticks might cause an overflow
@@ -96,12 +131,22 @@ impl Instant {
         }
     }
 
-    /// Returns the amount of time elapsed since this instant.
+    /// Returns the amount of time elapsed since this instant using the global timer,
+    /// panicking if no global timer is configured.
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`crate::time::set_global_timer`] has not been called yet.
     pub fn elapsed(&self) -> Duration {
         self.try_elapsed().unwrap()
     }
 
-    /// Returns the amount of time elapsed since this instant.
+    /// Attempts to return the amount of time elapsed since this instant using the global timer,
+    /// returning an error if not global timer is configured.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`TimeError`] if [`crate::time::set_global_timer`] has not been called yet.
     pub fn try_elapsed(&self) -> Result<Duration, TimeError> {
         Ok(Self::try_now()? - *self)
     }

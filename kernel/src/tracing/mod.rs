@@ -15,9 +15,9 @@ mod registry;
 mod writer;
 
 use crate::CPUID;
-use async_kit::time::Instant;
 use crate::tracing::writer::{MakeWriter, Semihosting};
 pub use ::tracing::*;
+use async_kit::time::Instant;
 use color::{Color, SetColor};
 use core::fmt;
 use core::fmt::Write;

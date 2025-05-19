@@ -188,7 +188,7 @@ unsafe impl<P> mpsc_queue::Linked for Entry<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loom::sync::{atomic::AtomicUsize, Arc};
+    use crate::loom::sync::{Arc, atomic::AtomicUsize};
     use crate::loom::thread;
     use crate::park::StdPark;
     use alloc::vec::Vec;

@@ -12,7 +12,7 @@ use cfg_if::cfg_if;
 pub use parker::{Parker, UnparkToken};
 pub use parking_lot::ParkingLot;
 
-pub unsafe trait Park {
+pub trait Park {
     fn park(&self);
     fn unpark(&self);
 }
@@ -21,7 +21,7 @@ cfg_if! {
     if #[cfg(test)] {
         struct StdPark(crate::loom::thread::Thread);
 
-        unsafe impl Park for StdPark {
+        impl Park for StdPark {
             fn park(&self) {
                 crate::loom::thread::park();
             }

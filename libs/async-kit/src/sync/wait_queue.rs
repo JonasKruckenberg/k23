@@ -5,20 +5,22 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::sync::wake_batch::WakeBatch;
+use crate::loom::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use crate::sync::Closed;
-use alloc::sync::Arc;
+use crate::sync::wake_batch::WakeBatch;
 use core::cell::UnsafeCell;
 use core::marker::PhantomPinned;
 use core::pin::Pin;
 use core::ptr::NonNull;
-use core::sync::atomic::{AtomicUsize, Ordering};
 use core::task::{Context, Poll, Waker};
 use core::{fmt, mem, ptr};
-use mycelium_bitfield::{bitfield, enum_from_bits, FromBits};
+use mycelium_bitfield::{FromBits, bitfield, enum_from_bits};
 use pin_project::{pin_project, pinned_drop};
 use spin::{Mutex, MutexGuard};
-use util::CachePadded;
+use util::{CachePadded, loom_const_fn};
 
 /// A queue of waiting tasks which can be [woken in first-in, first-out
 /// order][wake], or [all at once][wake_all].
@@ -244,16 +246,18 @@ enum Wakeup {
     Waiting(Waker),
     One,
     All,
-    Closed,
+    // Closed,
 }
 
 // === impl WaitQueue ===
 
 impl WaitQueue {
-    pub const fn new() -> Self {
-        Self {
-            state: CachePadded(AtomicUsize::new(StateInner::Empty.into_usize())),
-            queue: Mutex::new(linked_list::List::new()),
+    loom_const_fn! {
+        pub const fn new() -> Self {
+            Self {
+                state: CachePadded(AtomicUsize::new(StateInner::Empty.into_usize())),
+                queue: Mutex::new(linked_list::List::new()),
+            }
         }
     }
 
@@ -322,6 +326,7 @@ impl WaitQueue {
     ///
     /// [`wake()`]: Self::wake
     /// [`wait()`]: Self::wait
+    #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
     pub fn wake_all(&self) {
         let mut batch = WakeBatch::new();
         let mut waiters_remaining = true;
@@ -471,10 +476,9 @@ impl WaitQueue {
     /// Consider using [`WaitCell::wait_for()`](super::wait_cell::WaitCell::wait_for)
     /// if you do not need multiple waiters.
     ///
-    /// # Returns
+    /// # Errors
     ///
-    /// * [`Ok`]`(())` if the closure returns `true`.
-    /// * [`Err`]`(`[`Closed`]`)` if the [`WaitQueue`] is closed.
+    /// The [`Closed`] error indicates [`WaitQueue`] is closed.
     pub async fn wait_for<F: FnMut() -> bool>(&self, mut f: F) -> Result<(), Closed> {
         loop {
             let wait = self.wait();
@@ -513,8 +517,9 @@ impl WaitQueue {
     /// Consider using [`WaitCell::wait_for_value()`](super::wait_cell::WaitCell::wait_for_value)
     /// if you do not need multiple waiters.
     ///
-    /// * [`Ok`]`(T)` if the closure returns [`Some`]`(T)`.
-    /// * [`Err`]`(`[`Closed`]`)` if the [`WaitQueue`] is closed.
+    /// # Errors
+    ///
+    /// The [`Closed`] error indicates [`WaitQueue`] is closed.
     pub async fn wait_for_value<T, F: FnMut() -> Option<T>>(&self, mut f: F) -> Result<T, Closed> {
         loop {
             let wait = self.wait();
@@ -888,10 +893,10 @@ impl Waiter {
                             this.state.set(WaitState::INNER, WaitStateInner::Woken);
                             Poll::Ready(Ok(()))
                         }
-                        Wakeup::Closed => {
-                            this.state.set(WaitState::INNER, WaitStateInner::Woken);
-                            Poll::Ready(Err(Closed))
-                        }
+                        // Wakeup::Closed => {
+                        //     this.state.set(WaitState::INNER, WaitStateInner::Woken);
+                        //     Poll::Ready(Err(Closed))
+                        // }
                         Wakeup::Empty => {
                             if let Some(waker) = waker {
                                 node.waker = Wakeup::Waiting(waker.clone());

@@ -22,6 +22,7 @@ arrayvec.workspace = true
 
 [dev-dependencies]
 tracing-subscriber.workspace = true
+lazy_static = "1.5.0"
 
 [target.'cfg(target_os = "none")'.dependencies]
 panic-unwind.workspace = true

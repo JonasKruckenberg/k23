@@ -11,10 +11,17 @@ use core::fmt;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
-use core::task::{ready, Context, Poll};
+use core::task::{Context, Poll, ready};
 use core::time::Duration;
 use pin_project::{pin_project, pinned_drop};
 
+/// Wait until duration has elapsed.
+///
+/// # Errors
+///
+/// This function fails for two reasons:
+/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
+/// 2. [`TimeError::DurationTooLong`] The requested duration is too big
 pub fn sleep(duration: Duration) -> Result<Sleep<'static>, TimeError> {
     let timer = crate::time::timer::global::global_timer()?;
     let ticks = timer.clock.duration_to_ticks(duration)?;
@@ -22,10 +29,17 @@ pub fn sleep(duration: Duration) -> Result<Sleep<'static>, TimeError> {
     Ok(Sleep::new(timer, ticks))
 }
 
-pub fn sleep_until(instant: Instant) -> Result<Sleep<'static>, TimeError> {
+/// Wait until the deadline has been reached.
+///
+/// # Errors
+///
+/// This function fails for two reasons:
+/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
+/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
+pub fn sleep_until(deadline: Instant) -> Result<Sleep<'static>, TimeError> {
     let timer = crate::time::timer::global::global_timer()?;
     let now = timer.clock.now();
-    let duration = instant.duration_since(now);
+    let duration = deadline.duration_since(now);
     let ticks = timer.clock.duration_to_ticks(duration)?;
 
     Ok(Sleep::new(timer, ticks))

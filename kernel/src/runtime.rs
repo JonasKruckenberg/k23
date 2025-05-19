@@ -5,17 +5,19 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
 use crate::cpu_local::CpuLocal;
 use crate::time::global_timer;
+use crate::{CPUID, arch};
 use async_kit::new_static_scheduler;
+use async_kit::park::{Park, Parker, ParkingLot};
 use async_kit::scheduler::{Injector, StaticScheduler};
-use async_kit::task::{JoinHandle, TaskBuilder, TaskStub};
+use async_kit::task::TaskStub;
+use async_kit::task::{JoinHandle, TaskBuilder};
 use core::alloc::{AllocError, Allocator};
 use core::num::NonZeroUsize;
 use core::pin::pin;
 use core::sync::atomic::{AtomicBool, Ordering};
-use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+use core::task::{Context, Poll};
 use cpu_local::cpu_local;
 use fastrand::FastRand;
 use rand::Rng;
@@ -32,6 +34,7 @@ pub fn init(num_cores: usize) -> &'static Runtime {
         injector: unsafe { Injector::new_with_static_stub(&TASK_STUB) },
         shutdown: AtomicBool::new(false),
         shutdown_barrier: Barrier::new(num_cores),
+        parking_lot: ParkingLot::new(num_cores),
     })
 }
 
@@ -56,8 +59,9 @@ pub struct Runtime {
     injector: Injector<&'static StaticScheduler>,
     shutdown: AtomicBool,
     /// Spin barrier used to synchronize shutdown between workers,
-    /// see comments in [`Worker::shutdown`] for details.
+    /// see comments in [`Worker::stop`] for details.
     shutdown_barrier: Barrier,
+    parking_lot: ParkingLot<InterruptPark>,
 }
 
 pub struct Worker {
@@ -91,9 +95,6 @@ impl Runtime {
     /// This method returns a [`JoinHandle`] which can be used to await the futures output
     /// as well as control some aspects of its runtime behaviour (such as cancelling it).
     ///
-    /// Spawning tasks on its own does nothing, the [`StaticScheduler`] must be run with [`Self::tick`] or [`Self::tick_n`]
-    /// in order to actually make progress.
-    ///
     /// If you want to configure the task before spawning it, such as overriding its name, kind, or location
     /// see [`Self::build_task`].
     ///
@@ -117,9 +118,6 @@ impl Runtime {
     ///
     /// This method returns a [`JoinHandle`] which can be used to await the futures output
     /// as well as control some aspects of its runtime behaviour (such as cancelling it).
-    ///
-    /// Spawning tasks on its own does nothing, the [`StaticScheduler`] must be run with [`Self::tick`] or [`Self::tick_n`]
-    /// in order to actually make progress.
     ///
     /// If you want to configure the task before spawning it, such as overriding its name, kind, or location
     /// see [`Self::build_task`].
@@ -148,59 +146,10 @@ impl Runtime {
         F: Future + 'static,
         F::Output: 'static,
     {
-        #[derive(Clone)]
-        struct InterruptWaker {
-            cpuid: usize,
-        }
-
-        impl InterruptWaker {
-            const WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(
-                Self::clone_waker,
-                Self::wake_by_val,
-                Self::wake_by_ref,
-                Self::drop_waker,
-            );
-
-            fn new(cpuid: usize) -> Self {
-                Self { cpuid }
-            }
-
-            fn raw_waker(this: *const Self) -> RawWaker {
-                RawWaker::new(this.cast::<()>(), &Self::WAKER_VTABLE)
-            }
-
-            unsafe fn wake_by_val(ptr: *const ()) {
-                // Safety: called through RawWakerVtable
-                unsafe {
-                    let ptr = ptr.cast::<Self>();
-
-                    arch::cpu_unpark((*ptr).cpuid)
-                }
-            }
-
-            unsafe fn wake_by_ref(ptr: *const ()) {
-                // Safety: called through RawWakerVtable
-                unsafe {
-                    let ptr = ptr.cast::<Self>();
-
-                    arch::cpu_unpark((*ptr).cpuid)
-                }
-            }
-
-            unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
-                Self::raw_waker(ptr.cast::<Self>())
-            }
-
-            unsafe fn drop_waker(_ptr: *const ()) {}
-        }
-
         cpu_local! {
-            static WAKER: InterruptWaker = InterruptWaker::new(crate::CPUID.get());
+            static PARKER: Parker<InterruptPark> = Parker::new(InterruptPark { cpuid: CPUID.get() });
         }
-        let waker = unsafe {
-            let raw = InterruptWaker::raw_waker(WAKER.as_ptr());
-            Waker::from_raw(raw)
-        };
+        let waker = PARKER.with(|parker| parker.clone().into_waker());
 
         let mut cx = Context::from_waker(&waker);
         let mut future = pin!(future);
@@ -210,9 +159,7 @@ impl Runtime {
                 return v;
             }
 
-            unsafe {
-                arch::cpu_park();
-            }
+            PARKER.with(|parker| parker.park());
         }
     }
 }
@@ -226,7 +173,7 @@ impl Worker {
             scheduler,
             id,
             rng: FastRand::from_seed(rng.next_u64()),
-            is_running: Default::default(),
+            is_running: AtomicBool::new(false),
         }
     }
 
@@ -264,7 +211,8 @@ impl Worker {
                 break;
             }
 
-            todo!("wait for interrupt")
+            let parker = Parker::new(InterruptPark { cpuid: self.id });
+            self.runtime.parking_lot.park(parker);
         }
 
         assert!(
@@ -370,5 +318,22 @@ impl Worker {
 
     fn is_running(&self) -> bool {
         self.is_running.load(Ordering::Acquire)
+    }
+}
+
+struct InterruptPark {
+    cpuid: usize,
+}
+
+// Safety: TODO
+impl Park for InterruptPark {
+    fn park(&self) {
+        // Safety: TODO
+        unsafe { arch::cpu_park() }
+    }
+
+    fn unpark(&self) {
+        // Safety: TODO
+        unsafe { arch::cpu_unpark(self.cpuid) }
     }
 }

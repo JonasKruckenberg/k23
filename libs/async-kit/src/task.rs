@@ -9,23 +9,27 @@ mod builder;
 mod id;
 mod join_handle;
 mod state;
+mod stub;
 
 use crate::loom::{cell::UnsafeCell, sync::atomic::Ordering};
 use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use alloc::boxed::Box;
 use core::alloc::Allocator;
-use core::any::{type_name, TypeId};
+#[cfg(debug_assertions)]
+use core::any::TypeId;
+use core::any::type_name;
 use core::mem::offset_of;
 use core::panic::AssertUnwindSafe;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
-use util::{loom_const_fn, CachePadded, CheckedMaybeUninit};
+use util::{CachePadded, CheckedMaybeUninit, loom_const_fn};
 
 pub use builder::TaskBuilder;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinHandle};
+pub use stub::TaskStub;
 
 /// A scheduler that can execute tasks.
 ///
@@ -447,23 +451,26 @@ impl<F: Future, S: Schedule> Task<F, S> {
         wake_by_ref: Schedulable::<S>::wake_by_ref,
     };
 
-    pub const fn new(future: F, task_id: Id, span: tracing::Span) -> Self {
-        let inner = TaskInner {
-            schedulable: Schedulable {
-                header: Header {
-                    state: State::new(),
-                    vtable: &Self::TASK_VTABLE,
-                    id: task_id,
-                    run_queue_links: mpsc_queue::Links::new(),
-                    span,
-                    scheduler_type: Some(TypeId::of::<S>()),
+    loom_const_fn! {
+        pub const fn new(future: F, task_id: Id, span: tracing::Span) -> Self {
+            let inner = TaskInner {
+                schedulable: Schedulable {
+                    header: Header {
+                        state: State::new(),
+                        vtable: &Self::TASK_VTABLE,
+                        id: task_id,
+                        run_queue_links: mpsc_queue::Links::new(),
+                        span,
+                        #[cfg(debug_assertions)]
+                        scheduler_type: Some(TypeId::of::<S>()),
+                    },
+                    scheduler: UnsafeCell::new(None),
                 },
-                scheduler: UnsafeCell::new(None),
-            },
-            stage: UnsafeCell::new(Stage::Pending(future)),
-            join_waker: UnsafeCell::new(None),
-        };
-        Self(CachePadded(inner))
+                stage: UnsafeCell::new(Stage::Pending(future)),
+                join_waker: UnsafeCell::new(None),
+            };
+            Self(CachePadded(inner))
+        }
     }
 
     /// Poll the future, returning a [`PollResult`] that indicates what the
@@ -707,12 +714,12 @@ impl<F: Future, S: Schedule> Task<F, S> {
 
 impl Task<Stub, Stub> {
     const HEAP_STUB_VTABLE: VTable = VTable {
-        poll: stub_poll,
-        poll_join: stub_poll_join,
+        poll: stub::stub_poll,
+        poll_join: stub::stub_poll_join,
         // Heap allocated stub tasks *will* need to be deallocated, since the
         // scheduler will deallocate its stub task if it's dropped.
         deallocate: Self::deallocate,
-        wake_by_ref: stub_wake_by_ref,
+        wake_by_ref: stub::stub_wake_by_ref,
     };
 
     loom_const_fn! {
@@ -726,6 +733,7 @@ impl Task<Stub, Stub> {
                         id: Id::stub(),
                         run_queue_links: mpsc_queue::Links::new_stub(),
                         span: tracing::Span::none(),
+                        #[cfg(debug_assertions)]
                         scheduler_type: None,
                     },
                     scheduler: UnsafeCell::new(None),
@@ -826,7 +834,7 @@ impl<S: Schedule> Schedulable<S> {
                     (*scheduler)
                         .as_ref()
                         .expect("task doesn't have an associated scheduler, this is a bug!")
-                        .wake(this)
+                        .wake(this);
                 });
         }
     }
@@ -971,8 +979,12 @@ unsafe impl mpsc_queue::Linked for Header {
     }
 }
 
+/// DO NOT confuse this with [`TaskSTub`]. This type is just a zero-size placeholder so we
+/// can plug *something* into the generics when creating the *heap allocated* stub task.
+/// This type is *not* publicly exported, contrary to [`TaskSTub`] which users will have to statically
+/// allocate themselves.
 #[derive(Copy, Clone, Debug)]
-pub struct Stub;
+pub(crate) struct Stub;
 
 impl Future for Stub {
     type Output = ();
@@ -988,76 +1000,5 @@ impl Schedule for Stub {
 
     fn spawn(&self, _: TaskRef) {
         unimplemented!("stub task should never be spawned!")
-    }
-}
-
-#[unsafe(no_mangle)]
-unsafe fn stub_poll(ptr: NonNull<Header>) -> PollResult {
-    // Safety: this method should never be called
-    unsafe {
-        debug_assert!(ptr.as_ref().id.is_stub());
-        unreachable!("stub task ({ptr:?}) should never be polled!");
-    }
-}
-
-#[unsafe(no_mangle)]
-unsafe fn stub_poll_join(
-    ptr: NonNull<Header>,
-    _outptr: NonNull<()>,
-    _cx: &mut Context<'_>,
-) -> Poll<Result<(), JoinError<()>>> {
-    // Safety: this method should never be called
-    unsafe {
-        debug_assert!(ptr.as_ref().id.is_stub());
-        unreachable!("stub task ({ptr:?}) should never be polled!");
-    }
-}
-
-#[unsafe(no_mangle)]
-unsafe fn stub_deallocate(ptr: NonNull<Header>) {
-    // Safety: this method should never be called
-    unsafe {
-        debug_assert!(ptr.as_ref().id.is_stub());
-        unreachable!("stub task ({ptr:p}) should never be deallocated!");
-    }
-}
-
-#[unsafe(no_mangle)]
-unsafe fn stub_wake_by_ref(ptr: *const ()) {
-    unreachable!("stub task ({ptr:p}) has no waker and should never be woken!");
-}
-
-#[derive(Debug)]
-pub struct TaskStub {
-    pub(crate) header: Header,
-}
-
-impl Default for TaskStub {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TaskStub {
-    const STATIC_STUB_VTABLE: VTable = VTable {
-        poll: stub_poll,
-        poll_join: stub_poll_join,
-        deallocate: stub_deallocate,
-        wake_by_ref: stub_wake_by_ref,
-    };
-
-    loom_const_fn! {
-        pub const fn new() -> Self {
-            Self {
-                header: Header {
-                    state: State::new(),
-                    vtable: &Self::STATIC_STUB_VTABLE,
-                    id: Id::stub(),
-                    run_queue_links: mpsc_queue::Links::new_stub(),
-                    span: tracing::Span::none(),
-                    scheduler_type: None
-                }
-            }
-        }
     }
 }

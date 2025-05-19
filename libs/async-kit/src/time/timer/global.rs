@@ -9,7 +9,13 @@ use crate::loom::sync::atomic::{AtomicPtr, Ordering};
 use crate::time::{TimeError, Timer};
 use core::ptr;
 
+#[cfg(not(loom))]
 static GLOBAL_TIMER: AtomicPtr<Timer> = AtomicPtr::new(ptr::null_mut());
+#[cfg(loom)]
+loom::lazy_static! {
+    static ref GLOBAL_TIMER: AtomicPtr<Timer> = AtomicPtr::new(ptr::null_mut());
+
+}
 
 /// Errors returned by [`set_global_timer`].
 #[derive(Debug)]
@@ -23,6 +29,10 @@ pub struct AlreadyInitialized(());
 /// The global timer can only be set a single time. Once the global timer is
 /// initialized, subsequent calls to this function will return an
 /// [`AlreadyInitialized`] error.
+///
+/// # Errors
+///
+/// Returns [`AlreadyInitialized`] if a global timer has already been configured.
 ///
 /// [`sleep`]: crate::time::sleep()
 /// [`timeout`]: crate::time::timeout()
@@ -44,11 +54,11 @@ pub(in crate::time) fn global_timer() -> Result<&'static Timer, TimeError> {
     let ptr = GLOBAL_TIMER.load(Ordering::Acquire);
     ptr::NonNull::new(ptr)
         .ok_or(TimeError::NoGlobalTimer)
-        .map(|ptr| unsafe {
+        .map(|ptr| {
             // safety: we have just null-checked this pointer, so we know it's not
             // null. and it's safe to convert it to an `&'static Timer`, because we
             // know that the pointer stored in the atomic *came* from an `&'static
             // Timer` (as it's only set in `set_global_timer`).
-            ptr.as_ref()
+            unsafe { ptr.as_ref() }
         })
 }

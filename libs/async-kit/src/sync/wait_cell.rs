@@ -304,10 +304,9 @@ impl WaitCell {
     // Consider using [`WaitQueue::wait_for()`](super::wait_queue::WaitQueue::wait_for)
     // if you need multiple waiters.
     ///
-    /// # Returns
+    /// # Errors
     ///
-    /// * [`Ok`]`(())` if the closure returns `true`.
-    /// * [`Err`]`(`[`Closed`]`)` if the [`WaitCell`] is closed.
+    /// The [`Closed`] error indicates [`WaitCell`] is closed.
     pub async fn wait_for<F: FnMut() -> bool>(&self, mut f: F) -> Result<(), Closed> {
         loop {
             let wait = self.subscribe().await;
@@ -343,8 +342,9 @@ impl WaitCell {
     ///
     // Consider using [`WaitQueue::wait_for_value()`](super::wait_queue::WaitQueue::wait_for_value) if you need multiple waiters.
     ///
-    /// * [`Ok`]`(T)` if the closure returns [`Some`]`(T)`.
-    /// * [`Err`]`(`[`Closed`]`)` if the [`WaitCell`] is closed.
+    /// # Errors
+    ///
+    /// The [`Closed`] error indicates [`WaitCell`] is closed.
     pub async fn wait_for_value<T, F: FnMut() -> Option<T>>(&self, mut f: F) -> Result<T, Closed> {
         loop {
             let wait = self.subscribe().await;

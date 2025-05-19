@@ -11,7 +11,7 @@ mod smoke;
 mod spectest;
 mod wast;
 
-use crate::scheduler::scheduler;
+use crate::runtime::runtime;
 use crate::tests::args::Arguments;
 use crate::tests::printer::Printer;
 use crate::{arch, device_tree};
@@ -115,13 +115,14 @@ pub async fn run_tests() -> Conclusion {
             let printer = printer.clone();
             let conclusion = conclusion.clone();
 
-            let h = scheduler()
-                .spawn(async move {
+            let h = runtime()
+                .try_spawn(async move {
                     // Print `test foo    ...`, run the test, then print the outcome in
                     // the same line.
                     printer.print_test(&test.info);
                     (test.run)().await;
                 })
+                .unwrap()
                 .inspect(move |res| match res {
                     Ok(_) => {
                         conclusion.num_passed.fetch_add(1, Ordering::Release);

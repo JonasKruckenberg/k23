@@ -5,12 +5,19 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::{sleep, Sleep, TimeError};
+use crate::time::{Instant, Sleep, TimeError, sleep, sleep_until};
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use core::time::Duration;
 use pin_project::pin_project;
 
+/// Requires a `Future` to complete before the specified duration has elapsed.
+///
+/// # Errors
+///
+/// This function fails for two reasons:
+/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
+/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
 pub fn timeout<F>(
     duration: Duration,
     future: F,
@@ -24,7 +31,28 @@ where
     })
 }
 
+/// Requires a `Future` to complete before the specified deadline has been reached.
+///
+/// # Errors
+///
+/// This function fails for two reasons:
+/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
+/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
+pub fn timeout_at<F>(
+    deadline: Instant,
+    future: F,
+) -> Result<Timeout<'static, F::IntoFuture>, TimeError>
+where
+    F: IntoFuture,
+{
+    Ok(Timeout {
+        future: future.into_future(),
+        sleep: sleep_until(deadline)?,
+    })
+}
+
 #[pin_project]
+#[must_use = "futures do nothing unless `.await`ed or `poll`ed"]
 pub struct Timeout<'timer, F> {
     #[pin]
     future: F,

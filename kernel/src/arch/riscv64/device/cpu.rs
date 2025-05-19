@@ -9,8 +9,8 @@ use crate::CPUID;
 use crate::arch::device;
 use crate::device_tree::DeviceTree;
 use crate::irq::InterruptController;
-use async_kit::time::{Ticks, Clock, NANOS_PER_SEC};
 use anyhow::{Context, bail};
+use async_kit::time::{Clock, NANOS_PER_SEC, Ticks, Timer};
 use bitflags::bitflags;
 use core::cell::{OnceCell, RefCell};
 use core::fmt;
@@ -29,7 +29,6 @@ pub struct Cpu {
     pub cboz_block_size: Option<usize>,
     pub cbom_block_size: Option<usize>,
     pub plic: RefCell<device::plic::Plic>,
-    pub clock: Clock,
 }
 
 bitflags! {
@@ -85,7 +84,6 @@ impl fmt::Display for Cpu {
         writeln!(f, "{:<17} : {:?}", "CBOZ BLOCK SIZE", self.cboz_block_size)?;
         writeln!(f, "{:<17} : {:?}", "CBOM BLOCK SIZE", self.cbom_block_size)?;
         writeln!(f, "{:<17} : {:?}", "PLIC", self.plic)?;
-        writeln!(f, "{:<17} : {}", "CLOCK", self.clock)?;
 
         Ok(())
     }
@@ -123,11 +121,30 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
         })
         .expect("CPU node not found in device tree");
 
-    let timebase_frequency = cpu
-        .property("timebase-frequency")
-        .or_else(|| cpu.parent().unwrap().property("timebase-frequency"))
-        .unwrap()
-        .as_u64()?;
+    // with the CPU node in hand we can go and initialize the global timer
+    // all CPUs will race to init the timer, but only on one CPU will be closure actually be called
+    // this CPU won the race and its clock becomes the "global" clock
+    crate::time::init(|| {
+        let timebase_frequency = cpu
+            .property("timebase-frequency")
+            .or_else(|| cpu.parent().unwrap().property("timebase-frequency"))
+            .unwrap()
+            .as_u64()?;
+
+        let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
+        let clock = Clock::new(tick_duration, || Ticks(riscv::register::time::read64()));
+
+        debug_assert_eq!(
+            clock.ticks_to_duration(Ticks(timebase_frequency)),
+            Duration::from_secs(1)
+        );
+        debug_assert_eq!(
+            clock.duration_to_ticks(Duration::from_secs(1)).unwrap(),
+            Ticks(timebase_frequency)
+        );
+
+        Ok(Timer::new(clock))
+    })?;
 
     let cbop_block_size = cpu
         .property("riscv,cbop-block-size")
@@ -154,21 +171,8 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
     let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
     plic.irq_unmask(10);
 
-    let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
-    let clock = Clock::new(tick_duration, || Ticks(riscv::register::time::read64()));
-
-    debug_assert_eq!(
-        clock.ticks_to_duration(Ticks(timebase_frequency)),
-        Duration::from_secs(1)
-    );
-    debug_assert_eq!(
-        clock.duration_to_ticks(Duration::from_secs(1)).unwrap(),
-        Ticks(timebase_frequency)
-    );
-
     CPU.with(|info| {
         let info_ = Cpu {
-            clock,
             extensions,
             cbop_block_size,
             cboz_block_size,
@@ -182,6 +186,17 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
 
     Ok(())
 }
+
+// fn init_global_timer(cpu: &crate::device_tree::Device) -> crate::Result<()> {
+//     // every CPU will attempt to initialize the global timer, but only one will succeed.
+//     // It's clock now has become the "global" clock
+//     static TIMER: OnceLock<Timer> = OnceLock::new();
+//     let timer = TIMER.get_or_try_init(|| -> crate::Result<Timer> {
+//
+//     })?;
+//     let _ = async_kit::time::set_global_timer(timer);
+//     Ok(())
+// }
 
 pub fn parse_riscv_extensions(strs: fdt::StringList) -> crate::Result<RiscvExtensions> {
     let mut out = RiscvExtensions::empty();

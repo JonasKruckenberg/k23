@@ -7,11 +7,14 @@
 
 mod steal;
 
-use crate::loom::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use crate::loom::sync::{
+    Arc,
+    atomic::{AtomicPtr, AtomicUsize, Ordering},
+};
 use crate::task;
-use crate::task::{Header, JoinHandle, PollResult, Schedule, Task, TaskBuilder, TaskRef, TaskStub};
+use crate::task::TaskStub;
+use crate::task::{Header, JoinHandle, PollResult, Schedule, Task, TaskBuilder, TaskRef};
 use alloc::boxed::Box;
-use alloc::sync::Arc;
 use core::alloc::{AllocError, Allocator};
 use core::ptr;
 use core::ptr::NonNull;
@@ -20,6 +23,7 @@ use util::loom_const_fn;
 
 pub use steal::{Injector, Stealer, TryStealError};
 
+/// Information about the scheduler state produced after ticking.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Tick {
@@ -51,6 +55,7 @@ impl Tick {
     }
 }
 
+/// The core data shared by all scheduler implementations.
 #[derive(Debug)]
 struct Core {
     run_queue: MpscQueue<Header>,
@@ -84,6 +89,11 @@ pub struct Scheduler {
 impl Core {
     const DEFAULT_TICK_SIZE: usize = 256;
 
+    /// Construct a new `Core` with *heap allocated* lock-free mpsc queue stub node.
+    ///
+    /// By heap allocating the stub node the constructor can be used more flexibly at the cost of,
+    /// well, a heap allocation. If you need a `const` constructor and are able to uphold the
+    /// guarantees required by it, look at [`Self::new_with_static_stub`].
     fn new() -> Self {
         let stub_task = Box::new(Task::new_stub());
         let (stub_task, _) =
@@ -99,6 +109,7 @@ impl Core {
     }
 
     loom_const_fn! {
+        /// See `StaticScheduler::new_with_static_stub` for docs
         const unsafe fn new_with_static_stub(stub: &'static TaskStub) -> Self {
             Self {
                 // Safety: ensured by caller
@@ -133,6 +144,20 @@ impl Core {
         self.run_queue.enqueue(task);
     }
 
+    /// Execute a single tick of the scheduling loop, potentially polling up to `n` tasks.
+    ///
+    /// This is the main logic for single-thread scheduling. It will dequeue a task, call its `poll`
+    /// method, and depending on the returned [`PollResult`] mark the task as completed, or reschedule it.
+    /// Much of this function is actually concerned with bookkeeping around this
+    /// polling (updating the current task ptr, counting polls etc.).
+    ///
+    /// # Returns
+    ///
+    /// The returned [`Tick`] struct provides information about the executed tick, and callers should
+    /// continue to tick the scheduler as long as `Tick::has_remaining` is `true`. When `Tick::has_remaining`
+    /// is `false` that means the scheduler is out of tasks to actively poll and the caller should either
+    /// attempt to find more tasks (e.g. by stealing from other CPU cores) or suspend the calling CPU until
+    /// tasks are unblocked.
     fn tick_n(&self, n: usize) -> Tick {
         tracing::trace!("tick_n({n})");
 
@@ -146,7 +171,6 @@ impl Core {
         };
 
         while tick.polled < n {
-            tracing::debug!("{:?}", self.run_queue);
             let task = match self.run_queue.try_dequeue() {
                 Ok(task) => task,
                 // If inconsistent, just try again.
@@ -234,13 +258,16 @@ impl StaticScheduler {
     pub const DEFAULT_TICK_SIZE: usize = Core::DEFAULT_TICK_SIZE;
 
     loom_const_fn! {
-        /// Returns a new scheduler, suitable for being put into a `static`.
+        /// Construct a new `Core` with *statically allocated* lock-free mpsc queue stub node.
+        ///
+        /// This constructor is `const` and doesn't require a heap allocation, but imposes a few
+        /// awkward and nuanced restrictions on callers (therefore the `unsafe`). See
+        /// [`new_static_scheduler`] for a safe way to construct this type.
         ///
         /// # Safety
         ///
-        /// You must ensure that the `&'static TaskStub` is only ever used to construct *one*
-        /// scheduler, never multiple. See `new_static_scheduler` for a way to construct a
-        /// `StaticScheduler` in a safe way.
+        /// The `&'static TaskStub` reference MUST only be used for *this* constructor and **never**
+        /// reused for the entire time that `Core` exists.
         pub const unsafe fn new_with_static_stub(stub: &'static TaskStub) -> Self {
             Self {
                 // Safety: ensured by caller
@@ -348,12 +375,19 @@ impl StaticScheduler {
     }
 }
 
+/// Constructs a new [`StaticScheduler`] in a safe way.
 #[macro_export]
 macro_rules! new_static_scheduler {
     () => {{
         static STUB: $crate::task::TaskStub = $crate::task::TaskStub::new();
 
-        // Safety: TODO
+        // Safety: The intrusive MPSC queue that holds tasks uses a stub node as the initial element of the
+        // queue. Being intrusive, the stub can only ever be part of one collection, never multiple.
+        // As such, if we were to reuse the stub node it would in effect be unlinked from the previous
+        // queue. Which, unlocks a new world of fancy undefined behaviour, but unless you're into that
+        // not great.
+        // By defining the static above inside this block we guarantee the stub cannot escape
+        // and be used elsewhere thereby solving this problem.
         unsafe { $crate::scheduler::StaticScheduler::new_with_static_stub(&STUB) }
     }};
 }
@@ -496,6 +530,7 @@ mod tests {
     use tracing::Level;
 
     #[test]
+    #[cfg(not(loom))]
     fn static_scheduler_works() {
         static SCHED: StaticScheduler = new_static_scheduler!();
         static CALLED: AtomicBool = AtomicBool::new(false);
@@ -547,6 +582,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(loom))]
     fn wake() {
         tracing_subscriber::fmt()
             .with_max_level(Level::TRACE)

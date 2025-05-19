@@ -16,7 +16,7 @@ const S: &str = r#"
 "#;
 
 use crate::device_tree::DeviceTree;
-use crate::mem::{with_kernel_aspace, Mmap, PhysicalAddress};
+use crate::mem::{Mmap, PhysicalAddress, with_kernel_aspace};
 use crate::runtime::Runtime;
 use crate::{arch, irq};
 use alloc::string::{String, ToString};
@@ -174,7 +174,7 @@ const SHUTDOWN: Command = Command::new("shutdown")
         todo!("scheduler().shutdown()");
         // scheduler().shutdown();
 
-        Ok(())
+        // Ok(())
     });
 
 #[derive(Debug)]

@@ -110,7 +110,7 @@ check-docs crate="" *cargo_args="": (build-docs crate cargo_args) (test-docs cra
 # build documentation for a crate or the entire workspace.
 build-docs crate="" *cargo_args="":
     {{ _rustdoc }} \
-        {{ if crate == '' { '--workspace --exclude loader --exclude wast --exclude xtask --exclude toml-patch' } else { '--package' } }} {{ crate }} \
+        {{ if crate == '' { '--workspace --exclude loader --exclude wast --exclude xtask --exclude toml-patch --exclude async-kit' } else { '--package' } }} {{ crate }} \
         --target profile/riscv64/riscv64gc-k23-none-kernel.json \
         {{ _buildstd }} \
         {{ _fmt }} \
@@ -125,7 +125,7 @@ build-docs crate="" *cargo_args="":
 # test documentation for a crate or the entire workspace.
 test-docs crate="" *cargo_args="":
     {{ _cargo }} test --doc \
-        {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch --exclude fiber --exclude fastrand" } else { "--package" } }} {{ crate }} \
+        {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch --exclude fiber --exclude fastrand --exclude async-kit" } else { "--package" } }} {{ crate }} \
         --target profile/riscv64/riscv64gc-k23-none-kernel.json \
         --locked \
         {{ _buildstd }} \

@@ -5,14 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use async_kit::time::{Clock, Timer};
+use async_kit::time::Timer;
 use spin::OnceLock;
 
 static TIMER: OnceLock<Timer> = OnceLock::new();
 
-pub fn init(clock: Clock) {
-    let t = TIMER.get_or_init(|| Timer::new(clock));
-    async_kit::time::set_global_timer(t).unwrap();
+pub fn init(make_timer: impl FnOnce() -> crate::Result<Timer>) -> crate::Result<()> {
+    let t = TIMER.get_or_try_init(make_timer)?;
+    let _ = async_kit::time::set_global_timer(t);
+    Ok(())
 }
 
 pub fn global_timer() -> &'static Timer {
