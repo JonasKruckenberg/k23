@@ -9,9 +9,12 @@
 #![feature(allocator_api)]
 #![feature(const_type_id)]
 #![feature(debug_closure_helpers)]
+#![cfg_attr(loom, feature(arbitrary_self_types))]
+
 extern crate alloc;
 
 mod loom;
+pub mod park;
 pub mod scheduler;
 pub mod sync;
 pub mod task;

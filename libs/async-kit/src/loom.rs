@@ -7,17 +7,14 @@
 
 use cfg_if::cfg_if;
 
-// loom::{cell::UnsafeCell, sync::atomic::Ordering},
-// loom::sync::atomic::{
-// self, AtomicUsize,
-// Ordering::{self, *},
-// },
-
 cfg_if! {
     if #[cfg(loom)] {
         pub(crate) use loom::sync;
         pub(crate) use loom::cell;
         pub(crate) use loom::model;
+        #[cfg(test)]
+        pub(crate) use loom::thread;
+        pub(crate) use loom::lazy_static;
 
         pub(crate) mod alloc {
             use super::sync::Arc;
@@ -78,12 +75,22 @@ cfg_if! {
             }
         }
     } else {
-        pub(crate) use core::sync;
+        #[cfg(test)]
+        pub(crate) use std::thread;
+        #[cfg(test)]
+        pub(crate) use lazy_static::lazy_static;
 
         #[cfg(test)]
         #[inline(always)]
         pub(crate) fn model<R>(f: impl FnOnce() -> R) -> R {
             f()
+        }
+
+        pub(crate) mod sync {
+            pub use core::sync::*;
+            pub use alloc::sync::*;
+            #[cfg(test)]
+            pub(crate) use std::sync::*;
         }
 
         pub(crate) mod cell {
