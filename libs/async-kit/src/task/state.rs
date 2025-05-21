@@ -150,6 +150,7 @@ impl State {
     ///
     /// This method should always be followed by a call to [`Self::end_poll`] after the actual poll
     /// is completed.
+    #[tracing::instrument(level = "debug")]
     pub(super) fn start_poll(&self) -> StartPollAction {
         let mut should_wait_for_join_waker = false;
         let action = self.transition(|s| {
@@ -186,9 +187,8 @@ impl State {
     /// Transition the task from `POLLING` to `IDLE`, the returned enum indicates what to do with task.
     /// The `completed` argument should be set to true if the polled future returned a `Poll::Ready`
     /// indicating the task is completed and should not be rescheduled.
+    #[tracing::instrument(level = "debug")]
     pub(super) fn end_poll(&self, completed: bool) -> PollResult {
-        // tracing::trace!(completed, "State::end_poll");
-
         let mut should_wait_for_join_waker = false;
         let action = self.transition(|s| {
             // Cannot end a poll if a task is not being polled!
@@ -234,9 +234,8 @@ impl State {
         action
     }
 
+    #[tracing::instrument(level = "debug")]
     pub(super) fn try_join(&self) -> JoinAction {
-        // tracing::trace!("State::try_join");
-
         fn should_register(s: &mut Snapshot) -> JoinAction {
             let action = match s.get(Snapshot::JOIN_WAKER) {
                 JoinWakerState::Empty => JoinAction::Register,
@@ -274,9 +273,8 @@ impl State {
         })
     }
 
+    #[tracing::instrument(level = "debug")]
     pub(super) fn join_waker_registered(&self) {
-        // tracing::trace!("State::join_waker_registered");
-
         self.transition(|s| {
             debug_assert_eq!(s.get(Snapshot::JOIN_WAKER), JoinWakerState::Registering);
             s.set(Snapshot::HAS_JOIN_HANDLE, true)
@@ -284,9 +282,8 @@ impl State {
         });
     }
 
+    #[tracing::instrument(level = "debug")]
     pub(super) fn wake_by_val(&self) -> WakeByValAction {
-        // tracing::trace!("State::wake_by_val");
-
         self.transition(|s| {
             // If the task was woken *during* a poll, it will be re-queued by the
             // scheduler at the end of the poll if needed, so don't enqueue it now.
@@ -316,9 +313,8 @@ impl State {
         })
     }
 
+    #[tracing::instrument(level = "debug")]
     pub(super) fn wake_by_ref(&self) -> WakeByRefAction {
-        // tracing::trace!("State::wake_by_ref");
-
         self.transition(|state| {
             if state.get(Snapshot::COMPLETE) || state.get(Snapshot::WOKEN) {
                 return WakeByRefAction::None;
@@ -340,9 +336,8 @@ impl State {
         Snapshot::REFS.unpack(raw)
     }
 
+    #[tracing::instrument(level = "debug")]
     pub(super) fn clone_ref(&self) {
-        // tracing::trace!("State::clone_ref");
-
         // Using a relaxed ordering is alright here, as knowledge of the
         // original reference prevents other threads from erroneously deleting
         // the object.
@@ -369,9 +364,8 @@ impl State {
         assert!(old_refs < REF_MAX, "task reference count overflow");
     }
 
+    #[tracing::instrument(level = "debug")]
     pub(super) fn drop_ref(&self) -> bool {
-        // tracing::trace!("State::drop_ref");
-
         // We do not need to synchronize with other cores unless we are going to
         // delete the task.
         let old_refs = self.val.fetch_sub(REF_ONE, Ordering::Release);

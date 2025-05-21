@@ -10,6 +10,8 @@ mpsc-queue.workspace = true
 linked-list.workspace = true
 spin.workspace = true
 util.workspace = true
+fastrand.workspace = true
+cpu-local.workspace = true
 
 # 3rd-party dependencies
 cfg-if.workspace = true
@@ -21,7 +23,7 @@ bitflags.workspace = true
 arrayvec.workspace = true
 
 [dev-dependencies]
-tracing-subscriber.workspace = true
+tracing-subscriber = { workspace = true, default-features = true, features = ["ansi", "env-filter"] }
 lazy_static = "1.5.0"
 
 [target.'cfg(target_os = "none")'.dependencies]

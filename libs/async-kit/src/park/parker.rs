@@ -6,8 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::loom::sync::{
-    Arc,
     atomic::{AtomicUsize, Ordering},
+    Arc,
 };
 use crate::park::Park;
 use core::fmt;
@@ -43,18 +43,8 @@ pub enum UnparkError {
 
 impl<P> fmt::Debug for Parker<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let state = self.0.state.load(Ordering::Acquire);
-
         f.debug_struct("Parker")
-            .field(
-                "state",
-                match state {
-                    STATE_EMPTY => &"<empty>",
-                    STATE_PARKED => &"<parked>",
-                    STATE_NOTIFIED => &"<notified>",
-                    _ => &"<unknown>",
-                },
-            )
+            .field("state", &self.0.describe_state())
             .finish_non_exhaustive()
     }
 }
@@ -159,8 +149,24 @@ impl<P: Park> UnparkToken<P> {
 
 // === impl Inner ===
 
+impl<P> Inner<P> {
+    fn describe_state(&self) -> &'static str {
+        match self.state.load(Ordering::Acquire) {
+            STATE_EMPTY => &"<empty>",
+            STATE_PARKED => &"<parked>",
+            STATE_NOTIFIED => &"<notified>",
+            _ => &"<unknown>",
+        }
+    }
+}
+
 impl<P: Park> Inner<P> {
     fn park(&self) {
+        tracing::trace!(
+            state = self.describe_state(),
+            "parking execution context..."
+        );
+
         // If we were previously notified then we consume this notification and
         // return quickly.
         if self
@@ -215,7 +221,7 @@ impl<P: Park> Inner<P> {
                 return;
             }
 
-            // spurious wakeup, go back to sleep
+            tracing::trace!("spurious wakeup, going back to sleep...");
         }
     }
 
@@ -329,7 +335,7 @@ mod tests {
     };
     use crate::loom::thread;
     use crate::park::StdPark;
-    use core::pin::{Pin, pin};
+    use core::pin::{pin, Pin};
     use core::task::{Context, Poll, Waker};
 
     #[test]

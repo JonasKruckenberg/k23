@@ -131,6 +131,8 @@ dependencies = [
  "arrayvec",
  "bitflags",
  "cfg-if",
+ "cpu-local",
+ "fastrand",
  "lazy_static",
  "linked-list",
  "loom",
@@ -2035,11 +2037,15 @@ name = "tracing-subscriber"
 version = "0.3.0"
 source = "git+https://github.com/tokio-rs/tracing?branch=master#c54aa4e0f1682fd86dc8436fd5bca6c5bd976e8c"
 dependencies = [
+ "matchers",
  "nu-ansi-term",
+ "once_cell",
  "portable-atomic-util",
+ "regex",
  "sharded-slab",
  "smallvec",
  "thread_local",
+ "tracing 0.2.0",
  "tracing-core 0.2.0",
  "tracing-log 0.2.0 (git+https://github.com/tokio-rs/tracing?branch=master)",
 ]

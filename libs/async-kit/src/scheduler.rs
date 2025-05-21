@@ -527,7 +527,7 @@ mod tests {
     use core::sync::atomic::{AtomicBool, Ordering};
     use core::task::{Context, Poll, Waker};
     use spin::Mutex;
-    use tracing::Level;
+    use tracing_subscriber::EnvFilter;
 
     #[test]
     #[cfg(not(loom))]
@@ -555,9 +555,9 @@ mod tests {
 
     #[test]
     fn alloc_scheduler_works() {
-        tracing_subscriber::fmt()
-            .with_max_level(Level::TRACE)
-            .init();
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .try_init();
 
         static CALLED: AtomicBool = AtomicBool::new(false);
 
@@ -584,9 +584,9 @@ mod tests {
     #[test]
     #[cfg(not(loom))]
     fn wake() {
-        tracing_subscriber::fmt()
-            .with_max_level(Level::TRACE)
-            .init();
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .try_init();
 
         static WAKER: Mutex<Option<Waker>> = Mutex::new(None);
 

@@ -19,14 +19,16 @@ pub trait Park {
 
 cfg_if! {
     if #[cfg(test)] {
-        struct StdPark(crate::loom::thread::Thread);
+        pub(crate) struct StdPark(crate::loom::thread::Thread);
 
         impl Park for StdPark {
             fn park(&self) {
+                tracing::trace!("parking current thread ({:?})...", self.0);
                 crate::loom::thread::park();
             }
 
             fn unpark(&self) {
+                tracing::trace!("unparking thread {:?}...", self.0);
                 self.0.unpark();
             }
         }

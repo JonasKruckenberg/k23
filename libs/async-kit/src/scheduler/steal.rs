@@ -122,7 +122,7 @@ impl<'a, S> Stealer<'a, S> {
     /// Steal a task from the queue and spawn it on the provided
     /// `scheduler`. Returns `true` when a task got successfully stolen
     /// and `false` if queue was empty.
-    fn try_spawn_one(&self, scheduler: &S) -> bool
+    pub fn spawn_one(&self, scheduler: &S) -> bool
     where
         S: Schedule,
     {
@@ -147,21 +147,6 @@ impl<'a, S> Stealer<'a, S> {
         true
     }
 
-    /// Steal a task from the queue and spawn it on the provided
-    /// `scheduler`.
-    ///
-    /// Note this will always steal at least one task.
-    #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
-    pub fn spawn_one(&self, scheduler: &S)
-    where
-        S: Schedule,
-    {
-        assert!(
-            self.try_spawn_one(scheduler),
-            "Stealer target should always hold at least one task"
-        );
-    }
-
     /// Steal up to `max` task from the queue and spawn them on the provided
     /// `scheduler`.
     ///
@@ -172,8 +157,7 @@ impl<'a, S> Stealer<'a, S> {
         S: Schedule,
     {
         let mut stolen = 0;
-        while stolen <= max.get() && self.try_spawn_one(scheduler) {
-            self.spawn_one(scheduler);
+        while stolen <= max.get() && self.spawn_one(scheduler) {
             stolen += 1;
         }
 
