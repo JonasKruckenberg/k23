@@ -62,7 +62,7 @@ wasmtime-slab.workspace = true
 riscv.workspace = true
 
 [build-dependencies]
-vergen-git2 = { version = "1.0.0", features = ["build", "cargo", "rustc"] }
+vergen-git2 = { version = "1.0.7", features = ["build", "cargo", "rustc"] }
 
 [lints]
 workspace = true
