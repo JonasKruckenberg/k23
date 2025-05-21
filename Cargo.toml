@@ -98,12 +98,12 @@ panic-unwind = { path = "libs/panic-unwind" }
 
 # 3rd-party dependencies
 cfg-if = "1.0.0"
-log = "0.4.25"
-bitflags = "2.8.0"
+log = "0.4.27"
+bitflags = "2.9.1"
 lock_api = "0.4.12"
 xmas-elf = "0.10.0"
 static_assertions = "1.1.0"
-rand = { version = "0.9.0", default-features = false }
+rand = { version = "0.9.1", default-features = false }
 rand_chacha = { version = "0.9.0", default-features = false }
 arrayvec = { version = "0.7.6", default-features = false }
 gimli = { version = "0.31.1", default-features = false, features = ["read"] }
@@ -116,7 +116,7 @@ ouroboros = "0.18.5"
 mycelium-bitfield = "0.1.5"
 tracing = { version = "0.2", git = "https://github.com/tokio-rs/tracing", branch = "master", default-features = false, features = ["attributes"] }
 tracing-core = { version = "0.2", git = "https://github.com/tokio-rs/tracing", branch = "master", default-features = false }
-anyhow = { version = "1.0.97", default-features = false }
+anyhow = { version = "1.0.98", default-features = false }
 
 # wast dependencies
 unicode-width = { version = "0.2.0" }
@@ -132,7 +132,7 @@ hashbrown = { version = "0.15", default-features = false, features = [
     "default-hasher",
 ] }
 wasmparser = { version = "0.228", default-features = false, features = ["features", "validate", "simd"] }
-target-lexicon = { version = "0.13.1", default-features = false }
+target-lexicon = { version = "0.13.2", default-features = false }
 cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["host-arch", "core"] }
 cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["core"] }
 cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false }
@@ -142,12 +142,12 @@ wasmtime-slab = "33.0.0"
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
-color-eyre = "0.6.3"
+color-eyre = "0.6.4"
 eyre = "0.6.12"
-clap = { version = "4.2.7", features = ["derive", "env"] }
+clap = { version = "4.5.38", features = ["derive", "env"] }
 serde = { version = "1.0.219", features = ["derive"] }
-toml = "0.8.20"
-toml_edit = "0.22.24"
+toml = "0.8.22"
+toml_edit = "0.22.26"
 indoc = "2.0.6"
 tracing-subscriber = { version = "0.3", git = "https://github.com/tokio-rs/tracing", branch = "master" }
 tracing-error = { version = "0.2", git = "https://github.com/tokio-rs/tracing", branch = "master" }
