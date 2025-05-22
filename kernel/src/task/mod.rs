@@ -27,12 +27,11 @@ use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
 
 use crate::mem::AddressSpace;
-use crate::sync::CachePadded;
-use crate::util::maybe_uninit::CheckedMaybeUninit;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinErrorKind, JoinHandle};
 pub use owned_tasks::OwnedTasks;
 use spin::Mutex;
+use util::{CachePadded, CheckedMaybeUninit};
 
 pub trait Schedule {
     /// Schedule the task to run.

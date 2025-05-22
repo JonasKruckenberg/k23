@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::sync::CachePadded;
 use crate::sync::error::Closed;
 use bitflags::bitflags;
 use core::cell::UnsafeCell;
@@ -15,6 +14,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use core::task::{Context, Poll, Waker};
 use core::{fmt, task};
 use static_assertions::const_assert_eq;
+use util::CachePadded;
 
 /// An atomically registered [`Waker`].
 ///

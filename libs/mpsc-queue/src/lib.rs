@@ -21,7 +21,6 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use core::cell::UnsafeCell;
-use core::ops::{Deref, DerefMut};
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::{
     fmt,
@@ -29,6 +28,7 @@ use core::{
     ptr::{self, NonNull},
 };
 use spin::Backoff;
+use util::CachePadded;
 
 /// Trait implemented by types which can be members of an intrusive linked mpsc queue.
 ///
@@ -1345,38 +1345,6 @@ unsafe fn non_null<T>(ptr: *mut T) -> NonNull<T> {
 unsafe fn non_null<T>(ptr: *mut T) -> NonNull<T> {
     // Safety: caller has to ensure that the pointer is valid.
     unsafe { NonNull::new_unchecked(ptr) }
-}
-
-/// Determine cache alignment based on target architecture.
-/// Align to 128 bytes on 64-bit x86/ARM targets, otherwise align to 64 bytes.
-#[cfg_attr(any(target_arch = "x86_64", target_arch = "aarch64"), repr(align(128)))]
-#[cfg_attr(
-    not(any(target_arch = "x86_64", target_arch = "aarch64")),
-    repr(align(64))
-)]
-#[derive(Clone, Copy, Default, Hash, PartialEq, Eq)]
-pub(crate) struct CachePadded<T>(pub(crate) T);
-
-impl<T> Deref for CachePadded<T> {
-    type Target = T;
-
-    #[inline]
-    fn deref(&self) -> &T {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for CachePadded<T> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
-}
-
-impl<T: fmt::Debug> fmt::Debug for CachePadded<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
 }
 
 // #[cfg(all(loom, test))]

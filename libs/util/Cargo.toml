@@ -1,14 +1,11 @@
 [package]
-name = "mpsc-queue"
+name = "util"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [dependencies]
-fallible-iterator.workspace = true
-spin.workspace = true
-util.workspace = true
 
 [lints]
 workspace = true

@@ -6,10 +6,11 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::Backoff;
-use crate::loom::{AtomicUsize, Ordering, UnsafeCell, loom_const_fn};
+use crate::loom::{AtomicUsize, Ordering, UnsafeCell};
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::{fmt, mem};
+use util::loom_const_fn;
 
 const READER: usize = 1 << 2;
 const UPGRADED: usize = 1 << 1;
@@ -63,7 +64,7 @@ impl<T> RwLock<T> {
     loom_const_fn! {
         /// Creates a new instance of an `RwLock<T>` which is unlocked.
         #[inline]
-        pub fn new(val: T) -> RwLock<T> {
+        pub const fn new(val: T) -> RwLock<T> {
             RwLock {
                 data: UnsafeCell::new(val),
                 lock: AtomicUsize::new(0),
