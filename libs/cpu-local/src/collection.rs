@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::cpu_local;
 use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::iter::FusedIterator;
@@ -555,10 +556,14 @@ unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
     let _ = unsafe { Box::from_raw(slice::from_raw_parts_mut(bucket, size)) };
 }
 
-static CPUID: AtomicUsize = const { AtomicUsize::new(0) };
+static NEXT_CPUID: AtomicUsize = const { AtomicUsize::new(0) };
+
+cpu_local! {
+    static CPUID: usize = NEXT_CPUID.fetch_add(1, Ordering::SeqCst)
+}
 
 fn cpuid() -> usize {
-    CPUID.fetch_add(1, Ordering::SeqCst)
+    CPUID.with(|id| *id)
 }
 
 #[cfg(test)]
