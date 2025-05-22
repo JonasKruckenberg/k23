@@ -32,7 +32,6 @@ mod allocator;
 mod arch;
 mod backtrace;
 mod bootargs;
-mod cpu_local;
 mod device_tree;
 mod irq;
 mod mem;

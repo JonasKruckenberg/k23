@@ -10,7 +10,6 @@ mod frame;
 pub mod frame_list;
 
 use crate::arch;
-use crate::cpu_local::CpuLocal;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::mem::{PhysicalAddress, VirtualAddress};
 use alloc::vec::Vec;
@@ -22,6 +21,7 @@ use core::ptr::NonNull;
 use core::range::Range;
 use core::sync::atomic::AtomicUsize;
 use core::{cmp, fmt, iter, slice};
+use cpu_local::collection::CpuLocal;
 use fallible_iterator::FallibleIterator;
 use spin::{Mutex, OnceLock};
 
