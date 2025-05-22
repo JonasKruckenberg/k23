@@ -5,11 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::cpu_local::CpuLocal;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::sync::atomic;
 use core::sync::atomic::{AtomicUsize, Ordering};
+use cpu_local::collection::CpuLocal;
 use ksharded_slab::Pool;
 use ksharded_slab::pool::Ref;
 use tracing_core::field::FieldSet;

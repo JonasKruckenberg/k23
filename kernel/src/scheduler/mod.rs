@@ -67,7 +67,6 @@ mod park;
 mod queue;
 mod yield_now;
 
-use crate::cpu_local::CpuLocal;
 use crate::mem::with_kernel_aspace;
 use crate::scheduler::idle::Idle;
 use crate::scheduler::park::ParkToken;
@@ -83,6 +82,7 @@ use core::ops::DerefMut;
 use core::pin::pin;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll};
+use cpu_local::collection::CpuLocal;
 use cpu_local::cpu_local;
 use fastrand::FastRand;
 use rand::RngCore;

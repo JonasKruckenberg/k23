@@ -1,4 +1,4 @@
-// Copyright 2017 Amanieu d'Antras
+// Copyright 2025 Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -11,7 +11,6 @@ use core::iter::FusedIterator;
 use core::panic::UnwindSafe;
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::{fmt, mem, ptr, slice};
-pub use cpu_local::*;
 use util::CheckedMaybeUninit;
 
 /// The total number of buckets stored in each cpu-local storage.
@@ -89,6 +88,10 @@ impl<T: Send> CpuLocal<T> {
     /// Creates a new `CpuLocal` with an initial capacity. If less than the capacity cpus
     /// access the cpu-local storage it will never reallocate. The capacity may be rounded up to the
     /// nearest power of two.
+    ///
+    /// # Panics
+    ///
+    /// TODO
     pub fn with_capacity(capacity: usize) -> CpuLocal<T> {
         let allocated_buckets =
             usize::try_from(usize::BITS).unwrap() - (capacity.leading_zeros() as usize);
@@ -110,8 +113,7 @@ impl<T: Send> CpuLocal<T> {
 
     /// Returns the element for the current cpu, if it exists.
     pub fn get(&self) -> Option<&T> {
-        let cpuid = crate::CPUID.get();
-        self.get_inner(Cpu::new(cpuid))
+        self.get_inner(Cpu::new(cpuid()))
     }
 
     /// Returns the element for the current cpu, or creates it if it doesn't
@@ -127,12 +129,15 @@ impl<T: Send> CpuLocal<T> {
     /// Returns the element for the current cpu, or creates it if it doesn't
     /// exist. If `create` fails, that error is returned and no element is
     /// added.
+    ///
+    /// # Errors
+    ///
+    /// TODO
     pub fn get_or_try<F, E>(&self, create: F) -> Result<&T, E>
     where
         F: FnOnce() -> Result<T, E>,
     {
-        let cpuid = crate::CPUID.get();
-        let cpuid = Cpu::new(cpuid);
+        let cpuid = Cpu::new(cpuid());
 
         if let Some(val) = self.get_inner(cpuid) {
             return Ok(val);
@@ -289,6 +294,10 @@ impl<T: Send> CpuLocal<T> {
 
     pub fn len(&self) -> usize {
         self.values.load(Ordering::Acquire)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -504,7 +513,7 @@ impl<T: Send> FusedIterator for IntoIter<T> {}
 /// Data which is unique to the current cpu.
 #[derive(Clone, Copy)]
 struct Cpu {
-    #[expect(unused, reason = "")]
+    #[allow(unused, reason = "")]
     id: usize,
     /// The bucket this cpu's local storage will be in.
     bucket: usize,
@@ -546,196 +555,203 @@ unsafe fn deallocate_bucket<T>(bucket: *mut Entry<T>, size: usize) {
     let _ = unsafe { Box::from_raw(slice::from_raw_parts_mut(bucket, size)) };
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use alloc::string::String;
-//     use super::*;
-//
-//     use core::cell::RefCell;
-//     use core::sync::atomic::AtomicUsize;
-//     use core::sync::atomic::Ordering::Relaxed;
-//     use alloc::sync::Arc;
-//
-//     // fn make_create() -> Arc<dyn Fn() -> usize + Send + Sync> {
-//     //     let count = AtomicUsize::new(0);
-//     //     Arc::new(move || count.fetch_add(1, Relaxed))
-//     // }
-//
-//     // #[ktest::test]
-//     // fn same_cpu() {
-//     //     let create = make_create();
-//     //     let mut tls = CpuLocal::new();
-//     //     assert_eq!(None, tls.get());
-//     //     assert_eq!("CpuLocal { local_data: None }", format!("{:?}", &tls));
-//     //     assert_eq!(0, *tls.get_or(|| create()));
-//     //     assert_eq!(Some(&0), tls.get());
-//     //     assert_eq!(0, *tls.get_or(|| create()));
-//     //     assert_eq!(Some(&0), tls.get());
-//     //     assert_eq!(0, *tls.get_or(|| create()));
-//     //     assert_eq!(Some(&0), tls.get());
-//     //     assert_eq!("CpuLocal { local_data: Some(0) }", format!("{:?}", &tls));
-//     //     tls.clear();
-//     //     assert_eq!(None, tls.get());
-//     // }
-//
-//     // #[test]
-//     // fn different_cpu() {
-//     //     let create = make_create();
-//     //     let tls = Arc::new(CpuLocal::new());
-//     //     assert_eq!(None, tls.get());
-//     //     assert_eq!(0, *tls.get_or(|| create()));
-//     //     assert_eq!(Some(&0), tls.get());
-//     //
-//     //     let tls2 = tls.clone();
-//     //     let create2 = create.clone();
-//     //     cpu::spawn(move || {
-//     //         assert_eq!(None, tls2.get());
-//     //         assert_eq!(1, *tls2.get_or(|| create2()));
-//     //         assert_eq!(Some(&1), tls2.get());
-//     //     })
-//     //     .join()
-//     //     .unwrap();
-//     //
-//     //     assert_eq!(Some(&0), tls.get());
-//     //     assert_eq!(0, *tls.get_or(|| create()));
-//     // }
-//
-//     // #[test]
-//     // fn iter() {
-//     //     let tls = Arc::new(CpuLocal::new());
-//     //     tls.get_or(|| Box::new(1));
-//     //
-//     //     let tls2 = tls.clone();
-//     //     cpu::spawn(move || {
-//     //         tls2.get_or(|| Box::new(2));
-//     //         let tls3 = tls2.clone();
-//     //         cpu::spawn(move || {
-//     //             tls3.get_or(|| Box::new(3));
-//     //         })
-//     //         .join()
-//     //         .unwrap();
-//     //         drop(tls2);
-//     //     })
-//     //     .join()
-//     //     .unwrap();
-//     //
-//     //     let mut tls = Arc::try_unwrap(tls).unwrap();
-//     //
-//     //     let mut v = tls.iter().map(|x| **x).collect::<Vec<i32>>();
-//     //     v.sort_unstable();
-//     //     assert_eq!(vec![1, 2, 3], v);
-//     //
-//     //     let mut v = tls.iter_mut().map(|x| **x).collect::<Vec<i32>>();
-//     //     v.sort_unstable();
-//     //     assert_eq!(vec![1, 2, 3], v);
-//     //
-//     //     let mut v = tls.into_iter().map(|x| *x).collect::<Vec<i32>>();
-//     //     v.sort_unstable();
-//     //     assert_eq!(vec![1, 2, 3], v);
-//     // }
-//
-//     // #[test]
-//     // fn miri_iter_soundness_check() {
-//     //     let tls = Arc::new(CpuLocal::new());
-//     //     let _local = tls.get_or(|| Box::new(1));
-//     //
-//     //     let tls2 = tls.clone();
-//     //     let join_1 = cpu::spawn(move || {
-//     //         let _tls = tls2.get_or(|| Box::new(2));
-//     //         let iter = tls2.iter();
-//     //         for item in iter {
-//     //             println!("{:?}", item);
-//     //         }
-//     //     });
-//     //
-//     //     let iter = tls.iter();
-//     //     for item in iter {
-//     //         println!("{:?}", item);
-//     //     }
-//     //
-//     //     join_1.join().ok();
-//     // }
-//
-//     #[ktest::test]
-//     fn test_drop() {
-//         let local = CpuLocal::new();
-//         struct Dropped(Arc<AtomicUsize>);
-//         impl Drop for Dropped {
-//             fn drop(&mut self) {
-//                 self.0.fetch_add(1, Relaxed);
-//             }
-//         }
-//
-//         let dropped = Arc::new(AtomicUsize::new(0));
-//         local.get_or(|| Dropped(dropped.clone()));
-//         assert_eq!(dropped.load(Relaxed), 0);
-//         drop(local);
-//         assert_eq!(dropped.load(Relaxed), 1);
-//     }
-//
-//     #[ktest::test]
-//     fn test_earlyreturn_buckets() {
-//         struct Dropped(Arc<AtomicUsize>);
-//         impl Drop for Dropped {
-//             fn drop(&mut self) {
-//                 self.0.fetch_add(1, Relaxed);
-//             }
-//         }
-//         let dropped = Arc::new(AtomicUsize::new(0));
-//
-//         // We use a high `id` here to guarantee that a lazily allocated bucket somewhere in the middle is used.
-//         // Neither iteration nor `Drop` must early-return on `null` buckets that are used for lower `buckets`.
-//         let cpu = Cpu::new(1234);
-//         assert!(cpu.bucket > 1);
-//
-//         let mut local = CpuLocal::new();
-//         local.insert(cpu, Dropped(dropped.clone()));
-//
-//         let item = local.iter().next().unwrap();
-//         assert_eq!(item.0.load(Relaxed), 0);
-//         let item = local.iter_mut().next().unwrap();
-//         assert_eq!(item.0.load(Relaxed), 0);
-//         drop(local);
-//         assert_eq!(dropped.load(Relaxed), 1);
-//     }
-//
-//     #[ktest::test]
-//     fn is_sync() {
-//         fn foo<T: Sync>() {}
-//         foo::<CpuLocal<String>>();
-//         foo::<CpuLocal<RefCell<String>>>();
-//     }
-//
-//     #[ktest::test]
-//     fn test_cpu() {
-//         let cpu = Cpu::new(0);
-//         assert_eq!(cpu.id, 0);
-//         assert_eq!(cpu.bucket, 0);
-//         assert_eq!(cpu.bucket_size, 1);
-//         assert_eq!(cpu.index, 0);
-//
-//         let cpu = Cpu::new(1);
-//         assert_eq!(cpu.id, 1);
-//         assert_eq!(cpu.bucket, 1);
-//         assert_eq!(cpu.bucket_size, 2);
-//         assert_eq!(cpu.index, 0);
-//
-//         let cpu = Cpu::new(2);
-//         assert_eq!(cpu.id, 2);
-//         assert_eq!(cpu.bucket, 1);
-//         assert_eq!(cpu.bucket_size, 2);
-//         assert_eq!(cpu.index, 1);
-//
-//         let cpu = Cpu::new(3);
-//         assert_eq!(cpu.id, 3);
-//         assert_eq!(cpu.bucket, 2);
-//         assert_eq!(cpu.bucket_size, 4);
-//         assert_eq!(cpu.index, 0);
-//
-//         let cpu = Cpu::new(19);
-//         assert_eq!(cpu.id, 19);
-//         assert_eq!(cpu.bucket, 4);
-//         assert_eq!(cpu.bucket_size, 16);
-//         assert_eq!(cpu.index, 4);
-//     }
-// }
+static CPUID: AtomicUsize = const { AtomicUsize::new(0) };
+
+fn cpuid() -> usize {
+    CPUID.fetch_add(1, Ordering::SeqCst)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::String;
+
+    use alloc::sync::Arc;
+    use core::cell::RefCell;
+    use core::sync::atomic::AtomicUsize;
+    use core::sync::atomic::Ordering::Relaxed;
+    use std::thread;
+
+    fn make_create() -> Arc<dyn Fn() -> usize + Send + Sync> {
+        let count = AtomicUsize::new(0);
+        Arc::new(move || count.fetch_add(1, Relaxed))
+    }
+
+    #[test]
+    fn same_cpu() {
+        let create = make_create();
+        let mut tls = CpuLocal::new();
+        assert_eq!(None, tls.get());
+        assert_eq!("CpuLocal { local_data: None }", format!("{:?}", &tls));
+        assert_eq!(0, *tls.get_or(|| create()));
+        assert_eq!(Some(&0), tls.get());
+        assert_eq!(0, *tls.get_or(|| create()));
+        assert_eq!(Some(&0), tls.get());
+        assert_eq!(0, *tls.get_or(|| create()));
+        assert_eq!(Some(&0), tls.get());
+        assert_eq!("CpuLocal { local_data: Some(0) }", format!("{:?}", &tls));
+        tls.clear();
+        assert_eq!(None, tls.get());
+    }
+
+    #[test]
+    fn different_cpu() {
+        let create = make_create();
+        let tls = Arc::new(CpuLocal::new());
+        assert_eq!(None, tls.get());
+        assert_eq!(0, *tls.get_or(|| create()));
+        assert_eq!(Some(&0), tls.get());
+
+        let tls2 = tls.clone();
+        let create2 = create.clone();
+        thread::spawn(move || {
+            assert_eq!(None, tls2.get());
+            assert_eq!(1, *tls2.get_or(|| create2()));
+            assert_eq!(Some(&1), tls2.get());
+        })
+        .join()
+        .unwrap();
+
+        assert_eq!(Some(&0), tls.get());
+        assert_eq!(0, *tls.get_or(|| create()));
+    }
+
+    #[test]
+    fn iter() {
+        let tls = Arc::new(CpuLocal::new());
+        tls.get_or(|| Box::new(1));
+
+        let tls2 = tls.clone();
+        thread::spawn(move || {
+            tls2.get_or(|| Box::new(2));
+            let tls3 = tls2.clone();
+            thread::spawn(move || {
+                tls3.get_or(|| Box::new(3));
+            })
+            .join()
+            .unwrap();
+            drop(tls2);
+        })
+        .join()
+        .unwrap();
+
+        let mut tls = Arc::try_unwrap(tls).unwrap();
+
+        let mut v = tls.iter().map(|x| **x).collect::<Vec<i32>>();
+        v.sort_unstable();
+        assert_eq!(vec![1, 2, 3], v);
+
+        let mut v = tls.iter_mut().map(|x| **x).collect::<Vec<i32>>();
+        v.sort_unstable();
+        assert_eq!(vec![1, 2, 3], v);
+
+        let mut v = tls.into_iter().map(|x| *x).collect::<Vec<i32>>();
+        v.sort_unstable();
+        assert_eq!(vec![1, 2, 3], v);
+    }
+
+    #[test]
+    fn miri_iter_soundness_check() {
+        let tls = Arc::new(CpuLocal::new());
+        let _local = tls.get_or(|| Box::new(1));
+
+        let tls2 = tls.clone();
+        let join_1 = thread::spawn(move || {
+            let _tls = tls2.get_or(|| Box::new(2));
+            let iter = tls2.iter();
+            for item in iter {
+                println!("{:?}", item);
+            }
+        });
+
+        let iter = tls.iter();
+        for item in iter {
+            println!("{:?}", item);
+        }
+
+        join_1.join().ok();
+    }
+
+    #[test]
+    fn test_drop() {
+        let local = CpuLocal::new();
+        struct Dropped(Arc<AtomicUsize>);
+        impl Drop for Dropped {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Relaxed);
+            }
+        }
+
+        let dropped = Arc::new(AtomicUsize::new(0));
+        local.get_or(|| Dropped(dropped.clone()));
+        assert_eq!(dropped.load(Relaxed), 0);
+        drop(local);
+        assert_eq!(dropped.load(Relaxed), 1);
+    }
+
+    #[test]
+    fn test_earlyreturn_buckets() {
+        struct Dropped(Arc<AtomicUsize>);
+        impl Drop for Dropped {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Relaxed);
+            }
+        }
+        let dropped = Arc::new(AtomicUsize::new(0));
+
+        // We use a high `id` here to guarantee that a lazily allocated bucket somewhere in the middle is used.
+        // Neither iteration nor `Drop` must early-return on `null` buckets that are used for lower `buckets`.
+        let cpu = Cpu::new(1234);
+        assert!(cpu.bucket > 1);
+
+        let mut local = CpuLocal::new();
+        local.insert(cpu, Dropped(dropped.clone()));
+
+        let item = local.iter().next().unwrap();
+        assert_eq!(item.0.load(Relaxed), 0);
+        let item = local.iter_mut().next().unwrap();
+        assert_eq!(item.0.load(Relaxed), 0);
+        drop(local);
+        assert_eq!(dropped.load(Relaxed), 1);
+    }
+
+    #[test]
+    fn is_sync() {
+        fn foo<T: Sync>() {}
+        foo::<CpuLocal<String>>();
+        foo::<CpuLocal<RefCell<String>>>();
+    }
+
+    #[test]
+    fn test_cpu() {
+        let cpu = Cpu::new(0);
+        assert_eq!(cpu.id, 0);
+        assert_eq!(cpu.bucket, 0);
+        assert_eq!(cpu.bucket_size, 1);
+        assert_eq!(cpu.index, 0);
+
+        let cpu = Cpu::new(1);
+        assert_eq!(cpu.id, 1);
+        assert_eq!(cpu.bucket, 1);
+        assert_eq!(cpu.bucket_size, 2);
+        assert_eq!(cpu.index, 0);
+
+        let cpu = Cpu::new(2);
+        assert_eq!(cpu.id, 2);
+        assert_eq!(cpu.bucket, 1);
+        assert_eq!(cpu.bucket_size, 2);
+        assert_eq!(cpu.index, 1);
+
+        let cpu = Cpu::new(3);
+        assert_eq!(cpu.id, 3);
+        assert_eq!(cpu.bucket, 2);
+        assert_eq!(cpu.bucket_size, 4);
+        assert_eq!(cpu.index, 0);
+
+        let cpu = Cpu::new(19);
+        assert_eq!(cpu.id, 19);
+        assert_eq!(cpu.bucket, 4);
+        assert_eq!(cpu.bucket_size, 16);
+        assert_eq!(cpu.index, 4);
+    }
+}

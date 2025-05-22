@@ -25,8 +25,8 @@
 //! on `Counter` can be used to sum events across cpus or even get the maximum or minimum value across
 //! cpus.
 
-use crate::cpu_local::CpuLocal;
 use core::sync::atomic::{AtomicU64, Ordering};
+use cpu_local::collection::CpuLocal;
 
 /// Declares a new counter.
 #[macro_export]
