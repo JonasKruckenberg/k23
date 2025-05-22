@@ -217,6 +217,8 @@ impl<T: ?Sized> RwLock<T> {
 
     fn lock_shared(&self) {
         while !self.try_lock_shared() {
+            #[cfg(loom)]
+            crate::loom::thread::yield_now();
             core::hint::spin_loop();
         }
     }
@@ -293,6 +295,8 @@ impl<T: ?Sized> RwLock<T> {
 
     unsafe fn upgrade(&self) {
         while !self.try_upgrade_internal(false) {
+            #[cfg(loom)]
+            crate::loom::thread::yield_now();
             core::hint::spin_loop();
         }
     }

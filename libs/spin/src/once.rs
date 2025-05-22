@@ -123,6 +123,8 @@ impl Once {
 
     pub fn wait(&self) {
         while !self.poll() {
+            #[cfg(loom)]
+            crate::loom::thread::yield_now();
             core::hint::spin_loop();
         }
     }
