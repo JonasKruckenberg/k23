@@ -221,7 +221,7 @@ impl<'a> Cargo<'a> {
         let output = this
             .target_dir
             .join(this.rust_target.name())
-            .join("debug")
+            .join(if opts.release { "release" } else { "debug" })
             .join(krate.as_str());
 
         Ok((this, output))
