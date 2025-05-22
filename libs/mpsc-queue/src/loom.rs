@@ -12,6 +12,7 @@ cfg_if! {
         pub(crate) use loom::sync;
         pub(crate) use loom::cell;
         pub(crate) use loom::model;
+        pub(crate) use loom::thread;
 
         pub(crate) mod alloc {
             #![allow(dead_code)]
