@@ -5,8 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::{AtomicU8, Ordering, loom_const_fn};
+use crate::loom::{AtomicU8, Ordering};
 use core::mem;
+use util::loom_const_fn;
 
 /// No initialization has run yet, and no thread is currently using the Once.
 const STATUS_INCOMPLETE: u8 = 0;
@@ -35,7 +36,7 @@ impl Once {
     loom_const_fn! {
         #[inline]
         #[must_use]
-        pub fn new() -> Once {
+        pub const fn new() -> Once {
             Once {
                 status: AtomicU8::new(STATUS_INCOMPLETE),
             }

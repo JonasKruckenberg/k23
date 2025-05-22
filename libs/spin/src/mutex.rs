@@ -15,11 +15,12 @@
 // An RAII mutex guard returned by the Arc locking operations on Mutex.
 
 use crate::backoff::Backoff;
+use crate::loom::Ordering;
 use crate::loom::{AtomicBool, UnsafeCell};
-use crate::loom::{Ordering, loom_const_fn};
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::{fmt, mem};
+use util::loom_const_fn;
 
 /// A mutual exclusion primitive useful for protecting shared data
 ///
@@ -53,7 +54,7 @@ unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
     loom_const_fn! {
-        pub fn new(val: T) -> Mutex<T> {
+        pub const fn new(val: T) -> Mutex<T> {
             Mutex {
                 lock: AtomicBool::new(false),
                 data: UnsafeCell::new(val),
