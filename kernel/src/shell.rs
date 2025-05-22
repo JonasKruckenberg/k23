@@ -220,12 +220,14 @@ fn handle_command<'cmd>(ctx: Context<'cmd>, commands: &'cmd [Command]) -> CmdRes
         if let Some(current) = chunk.strip_prefix(cmd.name) {
             let current = current.trim();
 
-            return panic_unwind::catch_unwind(|| cmd.run(Context { current, ..ctx })).unwrap_or({
-                Err(Error {
-                    line: cmd.name,
-                    kind: ErrorKind::Other("command failed"),
-                })
-            });
+            return panic_unwind2::catch_unwind(|| cmd.run(Context { current, ..ctx })).unwrap_or(
+                {
+                    Err(Error {
+                        line: cmd.name,
+                        kind: ErrorKind::Other("command failed"),
+                    })
+                },
+            );
         }
     }
 

@@ -800,7 +800,7 @@ where
         }
 
         // Poll the future.
-        let result = panic_unwind::catch_unwind(AssertUnwindSafe(|| -> Poll<F::Output> {
+        let result = panic_unwind2::catch_unwind(AssertUnwindSafe(|| -> Poll<F::Output> {
             let guard = Guard { stage: self };
 
             // Safety: caller has to ensure mutual exclusion

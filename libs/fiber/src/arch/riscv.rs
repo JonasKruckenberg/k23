@@ -400,7 +400,7 @@ pub unsafe fn switch_and_throw(
         // or not
         cfg_if! {
             if #[cfg(target_os = "none")] {
-                use panic_unwind::resume_unwind;
+                use panic_unwind2::resume_unwind;
             } else {
                 use std::panic::resume_unwind;
             }

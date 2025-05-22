@@ -311,7 +311,7 @@ impl<Input, Yield, Return, L, S: FiberStack> Fiber<Input, Yield, Return, L, S> {
             // or not
             cfg_if! {
                 if #[cfg(target_os = "none")] {
-                    use panic_unwind::catch_unwind;
+                    use panic_unwind2::catch_unwind;
                 } else {
                     use std::panic::catch_unwind;
                 }
