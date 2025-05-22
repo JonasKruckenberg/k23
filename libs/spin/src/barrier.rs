@@ -45,6 +45,8 @@ impl Barrier {
 
             while local_gen == lock.generation_id && lock.count < self.num_threads {
                 drop(lock);
+                #[cfg(loom)]
+                crate::loom::thread::yield_now();
                 hint::spin_loop();
                 lock = self.lock.lock();
             }

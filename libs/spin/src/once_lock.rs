@@ -12,6 +12,7 @@ use core::{
     mem::MaybeUninit,
     panic::{RefUnwindSafe, UnwindSafe},
 };
+use util::loom_const_fn;
 
 /// A synchronization primitive which can be written to only once.
 ///
@@ -22,11 +23,13 @@ pub struct OnceLock<T> {
 }
 
 impl<T> OnceLock<T> {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            once: Once::new(),
-            data: UnsafeCell::new(MaybeUninit::uninit()),
+    loom_const_fn! {
+        #[must_use]
+        pub const fn new() -> Self {
+            Self {
+                once: Once::new(),
+                data: UnsafeCell::new(MaybeUninit::uninit()),
+            }
         }
     }
 
