@@ -1,10 +1,3 @@
-// Copyright 2025 Jonas Kruckenberg
-//
-// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
-// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
-// http://opensource.org/licenses/MIT>, at your option. This file may not be
-// copied, modified, or distributed except according to those terms.
-
 //! A multi-producer, single-consumer (MPSC) queue, implemented using a
 //! lock-free [intrusive] singly-linked list.
 //!
@@ -17,11 +10,12 @@
 
 #![cfg_attr(not(test), no_std)]
 
-extern crate alloc;
+mod loom;
 
-use alloc::sync::Arc;
-use core::cell::UnsafeCell;
-use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
+use crate::loom::{
+    cell::UnsafeCell,
+    sync::atomic::{AtomicBool, AtomicPtr, Ordering::*},
+};
 use core::{
     fmt,
     marker::PhantomPinned,
@@ -90,14 +84,14 @@ pub unsafe trait Linked {
 /// In order to be part of a `MpscQueue`, a type `T` must implement [`Linked`] for
 /// [`mpsc_queue::Links<T>`].
 ///
-/// [`mpsc_queue::Links<T>`]: crate::Links
+/// [`mpsc_queue::Links<T>`]: Links
 ///
 /// # Examples
 ///
 /// ```
 /// use mpsc_queue::{
 ///     Linked,
-///     MpscQueue,
+///     self, MpscQueue,
 /// };
 ///
 /// // This example uses the Rust standard library for convenience, but
@@ -221,7 +215,7 @@ pub unsafe trait Linked {
 /// ```
 /// # use mpsc_queue::{
 /// #     Linked,
-/// #     MpscQueue
+/// #     self, MpscQueue,
 /// # };
 /// # use std::{pin::Pin, ptr::{self, NonNull}, thread, sync::Arc};
 /// #
@@ -294,7 +288,7 @@ pub unsafe trait Linked {
 /// ```
 /// # use mpsc_queue::{
 /// #     Linked,
-/// #     MpscQueue
+/// #     self, MpscQueue
 /// # };
 /// # use std::{pin::Pin, ptr::{self, NonNull}, thread, sync::Arc};
 /// #
@@ -417,8 +411,6 @@ pub struct MpscQueue<T: Linked> {
     /// queue is dropped.
     stub_is_static: bool,
 
-    len: AtomicUsize,
-
     stub: NonNull<T>,
 }
 
@@ -431,12 +423,6 @@ pub struct MpscQueue<T: Linked> {
 /// This type is returned by the [`MpscQueue::consume`] and [`MpscQueue::try_consume`]
 /// methods.
 ///
-/// If the right to dequeue elements needs to be reserved for longer than a
-/// single scope, an owned variant ([`OwnedConsumer`]) is also available, when
-/// the [`MpscQueue`] is stored in an [`Arc`]. Since the [`MpscQueue`] must be stored
-/// in an [`Arc`], the [`OwnedConsumer`] type requires the "alloc" feature flag.
-///
-/// [`Arc`]: alloc::sync::Arc
 /// [`dequeue`]: Consumer::dequeue
 /// [`try_dequeue`]: Consumer::try_dequeue
 pub struct Consumer<'q, T: Linked> {
@@ -478,7 +464,7 @@ pub enum TryDequeueError {
     Inconsistent,
 
     /// Another thread is currently calling [`MpscQueue::try_dequeue`]  or
-    /// [`MpscQueue::dequeue`], or owns a [`Consumer`] or [`OwnedConsumer`] handle.
+    /// [`MpscQueue::dequeue`], or owns a [`Consumer`] handle.
     ///
     /// This is a multi-producer, *single-consumer* queue, so only a single
     /// thread may dequeue elements at any given time.
@@ -512,7 +498,7 @@ impl<T: Linked> MpscQueue<T> {
         // Safety: caller must ensure the `Links` trait is implemented correctly.
         #[cfg(debug_assertions)]
         unsafe {
-            links(stub).is_stub.store(true, Ordering::Release);
+            links(stub).is_stub.store(true, Release);
         }
         let ptr = stub.as_ptr();
 
@@ -521,7 +507,6 @@ impl<T: Linked> MpscQueue<T> {
             tail: CachePadded(UnsafeCell::new(ptr)),
             has_consumer: CachePadded(AtomicBool::new(false)),
             stub_is_static: false,
-            len: AtomicUsize::new(0),
             stub,
         }
     }
@@ -548,10 +533,10 @@ impl<T: Linked> MpscQueue<T> {
     ///
     /// ```rust
     /// # use mpsc_queue::{
-    /// #     Linked,
-    /// #     MpscQueue
+    /// #         /// # self,
+    ///     Linked, MpscQueue
     /// # };
-    /// # use std::{pin::Pin, ptr::{self, NonNull}, thread, sync::Arc};
+    /// # use std::{pin::Pin, ptr::{self, NonNull}  };
     /// #
     /// #
     ///
@@ -605,6 +590,7 @@ impl<T: Linked> MpscQueue<T> {
     /// };
     /// ```
     ///
+    #[cfg(not(loom))]
     #[must_use]
     pub const unsafe fn new_with_static_stub(stub: &'static T) -> Self {
         let ptr = ptr::from_ref(stub).cast_mut();
@@ -613,18 +599,9 @@ impl<T: Linked> MpscQueue<T> {
             tail: CachePadded(UnsafeCell::new(ptr)),
             has_consumer: CachePadded(AtomicBool::new(false)),
             stub_is_static: true,
-            len: AtomicUsize::new(0),
             // Safety: `stub` has been created from a reference, so it is always valid.
             stub: unsafe { NonNull::new_unchecked(ptr) },
         }
-    }
-
-    pub fn len(&self) -> usize {
-        self.len.load(Ordering::Acquire)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     /// Enqueue a new element at the end of the queue.
@@ -647,30 +624,17 @@ impl<T: Linked> MpscQueue<T> {
     }
 
     #[inline]
-    pub fn enqueue_many<I>(&self, iter: I)
-    where
-        I: Iterator<Item = T::Handle>,
-    {
-        iter.for_each(|elem| self.enqueue(elem));
-    }
-
-    #[inline]
     fn enqueue_inner(&self, ptr: NonNull<T>) {
         // Safety: caller must ensure the `Links` trait is implemented correctly.
-        unsafe { links(ptr).next.store(ptr::null_mut(), Ordering::Relaxed) };
-
-        if ptr != self.stub {
-            self.len.fetch_add(1, Ordering::Release);
-        }
+        unsafe { links(ptr).next.store(ptr::null_mut(), Relaxed) };
 
         let ptr = ptr.as_ptr();
-        let prev = self.head.swap(ptr, Ordering::AcqRel);
-        // Safety: caller must ensure the `Links` trait is implemented correctly.
+        let prev = self.head.swap(ptr, AcqRel);
+        // Safety: in release mode, we don't null check `prev`. This is
+        // because no pointer in the list should ever be a null pointer, due
+        // to the presence of the stub node.
         unsafe {
-            // Safety: in release mode, we don't null check `prev`. This is
-            // because no pointer in the list should ever be a null pointer, due
-            // to the presence of the stub node.
-            links(non_null(prev)).next.store(ptr, Ordering::Release);
+            links(non_null(prev)).next.store(ptr, Release);
         }
     }
 
@@ -708,7 +672,7 @@ impl<T: Linked> MpscQueue<T> {
     pub fn try_dequeue(&self) -> Result<T::Handle, TryDequeueError> {
         if self
             .has_consumer
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .compare_exchange(false, true, AcqRel, Acquire)
             .is_err()
         {
             return Err(TryDequeueError::Busy);
@@ -718,7 +682,7 @@ impl<T: Linked> MpscQueue<T> {
         // consumers.
         let res = unsafe { self.try_dequeue_unchecked() };
 
-        self.has_consumer.store(false, Ordering::Release);
+        self.has_consumer.store(false, Release);
         res
     }
 
@@ -809,51 +773,45 @@ impl<T: Linked> MpscQueue<T> {
     pub unsafe fn try_dequeue_unchecked(&self) -> Result<T::Handle, TryDequeueError> {
         // Safety: caller must ensure the `Links` trait is implemented correctly.
         unsafe {
-            let tail = self.tail.get();
-            let mut tail_node = NonNull::new(*tail).ok_or(TryDequeueError::Empty)?;
-            let mut next = links(tail_node).next.load(Ordering::Acquire);
+            self.tail.with_mut(|tail| {
+                let mut tail_node = NonNull::new(*tail).ok_or(TryDequeueError::Empty)?;
+                let mut next = links(tail_node).next.load(Acquire);
 
-            if tail_node == self.stub {
+                if tail_node == self.stub {
+                    #[cfg(debug_assertions)]
+                    debug_assert!(links(tail_node).is_stub());
+                    let next_node = NonNull::new(next).ok_or(TryDequeueError::Empty)?;
+
+                    *tail = next;
+                    tail_node = next_node;
+                    next = links(next_node).next.load(Acquire);
+                }
+
+                if !next.is_null() {
+                    *tail = next;
+                    return Ok(T::from_ptr(tail_node));
+                }
+
+                let head = self.head.load(Acquire);
+
+                if tail_node.as_ptr() != head {
+                    return Err(TryDequeueError::Inconsistent);
+                }
+
+                self.enqueue_inner(self.stub);
+
+                next = links(tail_node).next.load(Acquire);
+                if next.is_null() {
+                    return Err(TryDequeueError::Empty);
+                }
+
+                *tail = next;
+
                 #[cfg(debug_assertions)]
-                debug_assert!(links(tail_node).is_stub());
-                let next_node = NonNull::new(next).ok_or(TryDequeueError::Empty)?;
+                debug_assert!(!links(tail_node).is_stub());
 
-                *tail = next;
-                tail_node = next_node;
-                next = links(next_node).next.load(Ordering::Acquire);
-            }
-
-            if !next.is_null() {
-                *tail = next;
-
-                let prev = self.len.fetch_sub(1, Ordering::Release);
-                debug_assert!(prev > 0);
-
-                return Ok(T::from_ptr(tail_node));
-            }
-
-            let head = self.head.load(Ordering::Acquire);
-
-            if tail_node.as_ptr() != head {
-                return Err(TryDequeueError::Inconsistent);
-            }
-
-            self.enqueue_inner(self.stub);
-
-            next = links(tail_node).next.load(Ordering::Acquire);
-            if next.is_null() {
-                return Err(TryDequeueError::Empty);
-            }
-
-            *tail = next;
-
-            #[cfg(debug_assertions)]
-            debug_assert!(!links(tail_node).is_stub());
-
-            let prev = self.len.fetch_sub(1, Ordering::Release);
-            debug_assert!(prev > 0);
-
-            Ok(T::from_ptr(tail_node))
+                Ok(T::from_ptr(tail_node))
+            })
         }
     }
 
@@ -898,10 +856,10 @@ impl<T: Linked> MpscQueue<T> {
         let mut boff = Backoff::new();
         while self
             .has_consumer
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .compare_exchange(false, true, AcqRel, Acquire)
             .is_err()
         {
-            while self.has_consumer.load(Ordering::Relaxed) {
+            while self.has_consumer.load(Relaxed) {
                 boff.spin();
             }
         }
@@ -910,7 +868,7 @@ impl<T: Linked> MpscQueue<T> {
     #[inline]
     fn try_lock_consumer(&self) -> Option<()> {
         self.has_consumer
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .compare_exchange(false, true, AcqRel, Acquire)
             .map(|_| ())
             .ok()
     }
@@ -921,13 +879,12 @@ impl<T: Linked> Drop for MpscQueue<T> {
         // Safety: because `Drop` is called with `&mut self`, we have
         // exclusive ownership over the queue, so it's always okay to touch
         // the tail cell.
-        let mut current = unsafe { *self.tail.get() };
-
+        let mut current = self.tail.with_mut(|tail| unsafe { *tail });
         while let Some(node) = NonNull::new(current) {
             // Safety: caller must ensure the `Links` trait is implemented correctly.
             unsafe {
                 let links = links(node);
-                let next = links.next.load(Ordering::Relaxed);
+                let next = links.next.load(Relaxed);
 
                 // Skip dropping the stub node; it is owned by the queue and
                 // will be dropped when the queue is dropped. If we dropped it
@@ -968,20 +925,18 @@ where
             has_consumer,
             stub,
             stub_is_static,
-            len,
         } = self;
         f.debug_struct("MpscQueue")
-            .field("head", &format_args!("{:p}", head.load(Ordering::Acquire)))
+            .field("head", &format_args!("{:p}", head.load(Acquire)))
             // only the consumer can load the tail; trying to print it here
             // could be racy.
             // XXX(eliza): we could replace the `UnsafeCell` with an atomic,
             // and then it would be okay to print the tail...but then we would
             // lose loom checking for tail accesses...
             .field("tail", &format_args!("..."))
-            .field("has_consumer", &has_consumer.load(Ordering::Acquire))
+            .field("has_consumer", &has_consumer.load(Acquire))
             .field("stub", stub)
             .field("stub_is_static", stub_is_static)
-            .field("len", &len.load(Ordering::Acquire))
             .finish()
     }
 }
@@ -1026,7 +981,7 @@ impl<T: Send + Linked> Consumer<'_, T> {
     /// [`T::Handle`]: crate::Linked::Handle
     #[inline]
     pub fn dequeue(&self) -> Option<T::Handle> {
-        debug_assert!(self.q.has_consumer.load(Ordering::Acquire));
+        debug_assert!(self.q.has_consumer.load(Acquire));
         // Safety: we have reserved exclusive access to the queue.
         unsafe { self.q.dequeue_unchecked() }
     }
@@ -1056,7 +1011,7 @@ impl<T: Send + Linked> Consumer<'_, T> {
     /// [vyukov]: http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue
     #[inline]
     pub fn try_dequeue(&self) -> Result<T::Handle, TryDequeueError> {
-        debug_assert!(self.q.has_consumer.load(Ordering::Acquire));
+        debug_assert!(self.q.has_consumer.load(Acquire));
         // Safety: we have reserved exclusive access to the queue.
         unsafe { self.q.try_dequeue_unchecked() }
     }
@@ -1064,7 +1019,7 @@ impl<T: Send + Linked> Consumer<'_, T> {
 
 impl<T: Linked> Drop for Consumer<'_, T> {
     fn drop(&mut self) {
-        self.q.has_consumer.store(false, Ordering::Release);
+        self.q.has_consumer.store(false, Release);
     }
 }
 
@@ -1076,7 +1031,7 @@ where
         let Self { q } = self;
         // Safety: it's okay for the consumer to access the tail cell, since
         // we have exclusive access to it.
-        let tail = unsafe { *q.tail.get() };
+        let tail = q.tail.with(|tail| unsafe { *tail });
         f.debug_struct("Consumer")
             .field("q", &q)
             .field("tail", &tail)
@@ -1095,27 +1050,11 @@ where
     }
 }
 
-impl<T> fallible_iterator::FallibleIterator for Consumer<'_, T>
-where
-    T: Send + Linked,
-{
-    type Item = T::Handle;
-    type Error = TryDequeueError;
-
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let res = self.try_dequeue();
-        match res {
-            Ok(res) => Ok(Some(res)),
-            Err(TryDequeueError::Empty) => Ok(None),
-            Err(err) => Err(err),
-        }
-    }
-}
-
 // === impl Links ===
 
 impl<T> Links<T> {
     /// Returns a new set of `Links` for a [`MpscQueue`].
+    #[cfg(not(loom))]
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -1127,6 +1066,7 @@ impl<T> Links<T> {
     }
 
     /// Returns a new set of `Links` for the stub node in an [`MpscQueue`].
+    #[cfg(not(loom))]
     #[must_use]
     pub const fn new_stub() -> Self {
         Self {
@@ -1137,9 +1077,33 @@ impl<T> Links<T> {
         }
     }
 
+    /// Returns a new set of `Links` for a [`MpscQueue`].
+    #[cfg(loom)]
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            next: AtomicPtr::new(ptr::null_mut()),
+            _unpin: PhantomPinned,
+            #[cfg(debug_assertions)]
+            is_stub: AtomicBool::new(false),
+        }
+    }
+
+    /// Returns a new set of `Links` for the stub node in an [`MpscQueue`].
+    #[cfg(loom)]
+    #[must_use]
+    pub fn new_stub() -> Self {
+        Self {
+            next: AtomicPtr::new(ptr::null_mut()),
+            _unpin: PhantomPinned,
+            #[cfg(debug_assertions)]
+            is_stub: AtomicBool::new(true),
+        }
+    }
+
     #[cfg(debug_assertions)]
     fn is_stub(&self) -> bool {
-        self.is_stub.load(Ordering::Acquire)
+        self.is_stub.load(Acquire)
     }
 }
 
@@ -1149,170 +1113,13 @@ impl<T> Default for Links<T> {
     }
 }
 
-#[expect(clippy::missing_fields_in_debug, reason = "don't print PhantomPinned")]
 impl<T> fmt::Debug for Links<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = f.debug_struct("Links");
-        s.field("next", &self.next.load(Ordering::Acquire));
+        s.field("next", &self.next.load(Acquire));
         #[cfg(debug_assertions)]
-        s.field("is_stub", &self.is_stub.load(Ordering::Acquire));
-        s.finish()
-    }
-}
-
-/// An owned handle that holds the right to dequeue elements from the queue.
-///
-/// This can be used when one thread wishes to dequeue many elements at a time,
-/// to avoid the overhead of ensuring mutual exclusion on every [`dequeue`] or
-/// [`try_dequeue`] call.
-///
-/// This type is returned by the [`MpscQueue::consume_owned`] and
-/// [`MpscQueue::try_consume_owned`] methods.
-///
-/// This is similar to the [`Consumer`] type, but the queue is stored in an
-/// [`Arc`] rather than borrowed. This allows a single `OwnedConsumer`
-/// instance to be stored in a struct and used indefinitely.
-///
-/// Since the queue is stored in an [`Arc`], this requires the `alloc`
-/// feature flag to be enabled.
-///
-/// [`dequeue`]: OwnedConsumer::dequeue
-/// [`try_dequeue`]: OwnedConsumer::try_dequeue
-/// [`Arc`]: alloc::sync::Arc
-pub struct OwnedConsumer<T: Linked> {
-    q: Arc<MpscQueue<T>>,
-}
-
-// === impl Consumer ===
-
-impl<T: Linked> OwnedConsumer<T> {
-    /// Dequeue an element from the queue.
-    ///
-    /// As discussed in the [algorithm description on 1024cores.net][vyukov], it
-    /// is possible for this queue design to enter an inconsistent state if the
-    /// consumer tries to dequeue an element while a producer is in the middle
-    /// of enqueueing a new element. If this occurs, the consumer must briefly
-    /// wait before dequeueing an element. This method will wait by spinning
-    /// with an exponential backoff if the queue is in an inconsistent state.
-    ///
-    /// The [`Consumer::try_dequeue`] will return an error rather than waiting when
-    /// the queue is in an inconsistent state.
-    ///
-    /// # Returns
-    ///
-    /// - `Some(T::Handle)` if an element was successfully dequeued
-    /// - `None` if the queue is empty
-    ///
-    /// [vyukov]: http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue
-    #[inline]
-    pub fn dequeue(&self) -> Option<T::Handle> {
-        debug_assert!(self.q.has_consumer.load(Ordering::Acquire));
-        // Safety: we have reserved exclusive access to the queue.
-        unsafe { self.q.dequeue_unchecked() }
-    }
-
-    /// Try to dequeue an element from the queue, without waiting if the queue
-    /// is in an inconsistent state.
-    ///
-    /// As discussed in the [algorithm description on 1024cores.net][vyukov], it
-    /// is possible for this queue design to enter an inconsistent state if the
-    /// consumer tries to dequeue an element while a producer is in the middle
-    /// of enqueueing a new element. If this occurs, the consumer must briefly
-    /// wait before dequeueing an element. This method returns
-    /// [`TryDequeueError::Inconsistent`] when the queue is in an inconsistent
-    /// state.
-    ///
-    /// The [`Consumer::dequeue`] method will instead wait (by spinning with an
-    /// exponential backoff) when the queue is in an inconsistent state.
-    ///
-    /// # Errors
-    ///
-    /// This method returns
-    ///
-    /// - [`TryDequeueError::Empty`] if there are no elements in the queue
-    /// - [`TryDequeueError::Inconsistent`] if the queue is currently in an
-    ///   inconsistent state
-    ///
-    /// [vyukov]: http://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue
-    #[inline]
-    pub fn try_dequeue(&self) -> Result<T::Handle, TryDequeueError> {
-        debug_assert!(self.q.has_consumer.load(Ordering::Acquire));
-        // Safety: we have reserved exclusive access to the queue.
-        unsafe { self.q.try_dequeue_unchecked() }
-    }
-
-    /// Returns `true` if any producers exist for this queue.
-    pub fn has_producers(&self) -> bool {
-        Arc::strong_count(&self.q) > 1
-    }
-}
-
-impl<T: Linked> Drop for OwnedConsumer<T> {
-    fn drop(&mut self) {
-        self.q.has_consumer.store(false, Ordering::Release);
-    }
-}
-
-impl<T: Linked> fmt::Debug for OwnedConsumer<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { q } = self;
-        // Safety: it's okay for the consumer to access the tail cell, since
-        // we have exclusive access to it.
-        let tail = unsafe { *q.tail.get() };
-        f.debug_struct("OwnedConsumer")
-            .field("q", &q)
-            .field("tail", &tail)
-            .finish()
-    }
-}
-
-impl<T> Iterator for OwnedConsumer<T>
-where
-    T: Linked,
-{
-    type Item = T::Handle;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.dequeue()
-    }
-}
-
-impl<T> fallible_iterator::FallibleIterator for OwnedConsumer<T>
-where
-    T: Linked,
-{
-    type Item = T::Handle;
-    type Error = TryDequeueError;
-
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let res = self.try_dequeue();
-        match res {
-            Ok(res) => Ok(Some(res)),
-            Err(TryDequeueError::Empty) => Ok(None),
-            Err(err) => Err(err),
-        }
-    }
-}
-
-// === impl Queue ===
-
-impl<T: Linked> MpscQueue<T> {
-    /// Returns a [`OwnedConsumer`] handle that reserves the exclusive right to dequeue
-    /// elements from the queue until it is dropped.
-    ///
-    /// If another thread is dequeueing, this method spins until there is no
-    /// other thread dequeueing.
-    pub fn consume_owned(self: Arc<Self>) -> OwnedConsumer<T> {
-        self.lock_consumer();
-        OwnedConsumer { q: self }
-    }
-
-    /// Attempts to reserve an [`OwnedConsumer`] handle that holds the exclusive right
-    /// to dequeue  elements from the queue until it is dropped.
-    ///
-    /// If another thread is dequeueing, this returns `None` instead.
-    pub fn try_consume_owned(self: Arc<Self>) -> Option<OwnedConsumer<T>> {
-        self.try_lock_consumer().map(|_| OwnedConsumer { q: self })
+        s.field("is_stub", &self.is_stub.load(Acquire));
+        s.finish_non_exhaustive()
     }
 }
 
@@ -1347,340 +1154,336 @@ unsafe fn non_null<T>(ptr: *mut T) -> NonNull<T> {
     unsafe { NonNull::new_unchecked(ptr) }
 }
 
-// #[cfg(all(loom, test))]
-// mod loom {
-//     use super::*;
-//     use crate::loom::{self, sync::Arc, thread};
-//     use test_util::*;
-//
-//     #[test]
-//     fn basically_works_loom() {
-//         const THREADS: i32 = 2;
-//         const MSGS: i32 = THREADS;
-//         const TOTAL_MSGS: i32 = THREADS * MSGS;
-//         basically_works_test(THREADS, MSGS, TOTAL_MSGS);
-//     }
-//
-//     #[test]
-//     fn doesnt_leak() {
-//         // Test that dropping the queue drops any messages that haven't been
-//         // consumed by the consumer.
-//         const THREADS: i32 = 2;
-//         const MSGS: i32 = THREADS;
-//         // Only consume half as many messages as are sent, to ensure dropping
-//         // the queue does not leak.
-//         const TOTAL_MSGS: i32 = (THREADS * MSGS) / 2;
-//         basically_works_test(THREADS, MSGS, TOTAL_MSGS);
-//     }
-//
-//     fn basically_works_test(threads: i32, msgs: i32, total_msgs: i32) {
-//         loom::model(move || {
-//             let stub = entry(666);
-//             let q = Arc::new(MpscQueue::<Entry>::new_with_stub(stub));
-//
-//             let threads: Vec<_> = (0..threads)
-//                 .map(|thread| thread::spawn(do_tx(thread, msgs, &q)))
-//                 .collect();
-//
-//             let mut i = 0;
-//             while i < total_msgs {
-//                 match q.try_dequeue() {
-//                     Ok(val) => {
-//                         i += 1;
-//                         tracing::info!(?val, "dequeue {}/{}", i, total_msgs);
-//                     }
-//                     Err(TryDequeueError::Busy) => panic!(
-//                         "the queue should never be busy, as there is only a single consumer!"
-//                     ),
-//                     Err(err) => {
-//                         tracing::info!(?err, "dequeue error");
-//                         thread::yield_now();
-//                     }
-//                 }
-//             }
-//
-//             for thread in threads {
-//                 thread.join().unwrap();
-//             }
-//         })
-//     }
-//
-//     fn do_tx(thread: i32, msgs: i32, q: &Arc<MpscQueue<Entry>>) -> impl FnOnce() + Send + Sync {
-//         let q = q.clone();
-//         move || {
-//             for i in 0..msgs {
-//                 q.enqueue(entry(i + (thread * 10)));
-//                 tracing::info!(thread, "enqueue msg {}/{}", i, msgs);
-//             }
-//         }
-//     }
-//
-//     #[test]
-//     fn mpmc() {
-//         // Tests multiple consumers competing for access to the consume side of
-//         // the queue.
-//         const THREADS: i32 = 2;
-//         const MSGS: i32 = THREADS;
-//
-//         fn do_rx(thread: i32, q: Arc<MpscQueue<Entry>>) {
-//             let mut i = 0;
-//             while let Some(val) = q.dequeue() {
-//                 tracing::info!(?val, ?thread, "dequeue {}/{}", i, THREADS * MSGS);
-//                 i += 1;
-//             }
-//         }
-//
-//         loom::model(|| {
-//             let stub = entry(666);
-//             let q = Arc::new(MpscQueue::<Entry>::new_with_stub(stub));
-//
-//             let mut threads: Vec<_> = (0..THREADS)
-//                 .map(|thread| thread::spawn(do_tx(thread, MSGS, &q)))
-//                 .collect();
-//
-//             threads.push(thread::spawn({
-//                 let q = q.clone();
-//                 move || do_rx(THREADS + 1, q)
-//             }));
-//             do_rx(THREADS + 2, q);
-//
-//             for thread in threads {
-//                 thread.join().unwrap();
-//             }
-//         })
-//     }
-//
-//     #[test]
-//     fn crosses_queues() {
-//         loom::model(|| {
-//             let stub1 = entry(666);
-//             let q1 = Arc::new(MpscQueue::<Entry>::new_with_stub(stub1));
-//
-//             let thread = thread::spawn({
-//                 let q1 = q1.clone();
-//                 move || {
-//                     let stub2 = entry(420);
-//                     let q2 = Arc::new(MpscQueue::<Entry>::new_with_stub(stub2));
-//                     // let mut dequeued = false;
-//                     for entry in q1.consume() {
-//                         tracing::info!("dequeued");
-//                         q2.enqueue(entry);
-//                         q2.try_dequeue().unwrap();
-//                     }
-//                     tracing::info!("consumer done\nq1={q1:#?}\nq2={q2:#?}");
-//                 }
-//             });
-//
-//             q1.enqueue(entry(1));
-//             drop(q1);
-//
-//             thread.join().unwrap();
-//         })
-//     }
-// }
-//
-// #[cfg(all(test, not(loom)))]
-// mod tests {
-//     use super::*;
-//     use test_util::*;
-//
-//     use std::{ops::Deref, println, sync::Arc, thread};
-//
-//     #[test]
-//     fn dequeue_empty() {
-//         let stub = entry(666);
-//         let q = MpscQueue::<Entry>::new_with_stub(stub);
-//         assert_eq!(q.dequeue(), None)
-//     }
-//
-//     #[test]
-//     fn try_dequeue_empty() {
-//         let stub = entry(666);
-//         let q = MpscQueue::<Entry>::new_with_stub(stub);
-//         assert_eq!(q.try_dequeue(), Err(TryDequeueError::Empty))
-//     }
-//
-//     #[test]
-//     fn try_dequeue_busy() {
-//         let stub = entry(666);
-//         let q = MpscQueue::<Entry>::new_with_stub(stub);
-//
-//         let consumer = q.try_consume().expect("must acquire consumer");
-//         assert_eq!(consumer.try_dequeue(), Err(TryDequeueError::Empty));
-//
-//         q.enqueue(entry(1));
-//
-//         assert_eq!(q.try_dequeue(), Err(TryDequeueError::Busy));
-//
-//         assert_eq!(consumer.try_dequeue(), Ok(entry(1)),);
-//
-//         assert_eq!(q.try_dequeue(), Err(TryDequeueError::Busy));
-//
-//         assert_eq!(consumer.try_dequeue(), Err(TryDequeueError::Empty));
-//
-//         drop(consumer);
-//         assert_eq!(q.try_dequeue(), Err(TryDequeueError::Empty));
-//     }
-//
-//     #[test]
-//     fn enqueue_dequeue() {
-//         let stub = entry(666);
-//         let e = entry(1);
-//         let q = MpscQueue::<Entry>::new_with_stub(stub);
-//         q.enqueue(e);
-//         assert_eq!(q.dequeue(), Some(entry(1)));
-//         assert_eq!(q.dequeue(), None)
-//     }
-//
-//     #[test]
-//     fn basically_works() {
-//         let stub = entry(666);
-//         let q = MpscQueue::<Entry>::new_with_stub(stub);
-//
-//         let q = Arc::new(q);
-//         test_basically_works(q);
-//     }
-//
-//     #[test]
-//     fn basically_works_all_const() {
-//         static STUB_ENTRY: Entry = const_stub_entry(666);
-//         static MPSC: MpscQueue<Entry> =
-//             unsafe { MpscQueue::<Entry>::new_with_static_stub(&STUB_ENTRY) };
-//         test_basically_works(&MPSC);
-//     }
-//
-//     #[test]
-//     fn basically_works_mixed_const() {
-//         static STUB_ENTRY: Entry = const_stub_entry(666);
-//         let q = unsafe { MpscQueue::<Entry>::new_with_static_stub(&STUB_ENTRY) };
-//
-//         let q = Arc::new(q);
-//         test_basically_works(q)
-//     }
-//
-//     fn test_basically_works<Q>(q: Q)
-//     where
-//         Q: Deref<Target = MpscQueue<Entry>> + Clone,
-//         Q: Send + 'static,
-//     {
-//         const THREADS: i32 = if_miri(3, 8);
-//         const MSGS: i32 = if_miri(10, 1000);
-//
-//         assert_eq!(q.dequeue(), None);
-//
-//         let threads: Vec<_> = (0..THREADS)
-//             .map(|thread| {
-//                 let q = q.clone();
-//                 thread::spawn(move || {
-//                     for i in 0..MSGS {
-//                         q.enqueue(entry(i));
-//                         println!("thread {thread}; msg {i}/{MSGS}");
-//                     }
-//                 })
-//             })
-//             .collect();
-//
-//         let mut i = 0;
-//         while i < THREADS * MSGS {
-//             match q.try_dequeue() {
-//                 Ok(msg) => {
-//                     i += 1;
-//                     println!("recv {msg:?} ({i}/{})", THREADS * MSGS);
-//                 }
-//                 Err(TryDequeueError::Busy) => {
-//                     panic!("the queue should never be busy, as there is only one consumer")
-//                 }
-//                 Err(e) => {
-//                     println!("recv error {e:?}");
-//                     thread::yield_now();
-//                 }
-//             }
-//         }
-//
-//         for thread in threads {
-//             thread.join().unwrap();
-//         }
-//     }
-//
-//     const fn if_miri(miri: i32, not_miri: i32) -> i32 {
-//         if cfg!(miri) {
-//             miri
-//         } else {
-//             not_miri
-//         }
-//     }
-// }
-//
-// #[cfg(test)]
-// mod test_util {
-//     use super::*;
-//     use crate::loom::alloc;
-//     pub use std::{boxed::Box, pin::Pin, ptr, vec::Vec};
-//
-//     pub(super) struct Entry {
-//         links: Links<Entry>,
-//         pub(super) val: i32,
-//         // participate in loom leak checking
-//         _track: alloc::Track<()>,
-//     }
-//
-//     impl std::cmp::PartialEq for Entry {
-//         fn eq(&self, other: &Self) -> bool {
-//             self.val == other.val
-//         }
-//     }
-//
-//     unsafe impl Linked<Links<Self>> for Entry {
-//         type Handle = Pin<Box<Entry>>;
-//
-//         fn into_ptr(handle: Pin<Box<Entry>>) -> NonNull<Entry> {
-//             unsafe { NonNull::from(Box::leak(Pin::into_inner_unchecked(handle))) }
-//         }
-//
-//         unsafe fn from_ptr(ptr: NonNull<Entry>) -> Pin<Box<Entry>> {
-//             // Safety: if this function is only called by the linked list
-//             // implementation (and it is not intended for external use), we can
-//             // expect that the `NonNull` was constructed from a reference which
-//             // was pinned.
-//             //
-//             // If other callers besides `List`'s internals were to call this on
-//             // some random `NonNull<Entry>`, this would not be the case, and
-//             // this could be constructing an erroneous `Pin` from a referent
-//             // that may not be pinned!
-//             Pin::new_unchecked(Box::from_raw(ptr.as_ptr()))
-//         }
-//
-//         unsafe fn links(target: NonNull<Entry>) -> NonNull<Links<Entry>> {
-//             let links = ptr::addr_of_mut!((*target.as_ptr()).links);
-//             NonNull::new_unchecked(links)
-//         }
-//     }
-//
-//     impl fmt::Debug for Entry {
-//         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//             let Self { links, val, _track } = self;
-//             f.debug_struct("Entry")
-//                 .field("links", links)
-//                 .field("val", val)
-//                 .field("_track", _track)
-//                 .finish()
-//         }
-//     }
-//
-//     #[cfg(not(loom))]
-//     pub(super) const fn const_stub_entry(val: i32) -> Entry {
-//         Entry {
-//             links: Links::new_stub(),
-//             val,
-//             _track: alloc::Track::new_const(()),
-//         }
-//     }
-//
-//     pub(super) fn entry(val: i32) -> Pin<Box<Entry>> {
-//         Box::pin(Entry {
-//             links: Links::new(),
-//             val,
-//             _track: alloc::Track::new(()),
-//         })
-//     }
-// }
+#[cfg(all(loom, test))]
+mod loom {
+    use super::*;
+    use crate::loom::{self, sync::Arc, thread};
+    use test_util::*;
+
+    #[test]
+    fn basically_works_loom() {
+        const THREADS: i32 = 2;
+        const MSGS: i32 = THREADS;
+        const TOTAL_MSGS: i32 = THREADS * MSGS;
+        basically_works_test(THREADS, MSGS, TOTAL_MSGS);
+    }
+
+    #[test]
+    fn doesnt_leak() {
+        // Test that dropping the queue drops any messages that haven't been
+        // consumed by the consumer.
+        const THREADS: i32 = 2;
+        const MSGS: i32 = THREADS;
+        // Only consume half as many messages as are sent, to ensure dropping
+        // the queue does not leak.
+        const TOTAL_MSGS: i32 = (THREADS * MSGS) / 2;
+        basically_works_test(THREADS, MSGS, TOTAL_MSGS);
+    }
+
+    fn basically_works_test(threads: i32, msgs: i32, total_msgs: i32) {
+        loom::model(move || {
+            let stub = entry(666);
+            let q = Arc::new(MpscQueue::<Entry>::new_with_stub(stub));
+
+            let threads: Vec<_> = (0..threads)
+                .map(|thread| thread::spawn(do_tx(thread, msgs, &q)))
+                .collect();
+
+            let mut i = 0;
+            while i < total_msgs {
+                match q.try_dequeue() {
+                    Ok(val) => {
+                        i += 1;
+                        tracing::info!(?val, "dequeue {}/{}", i, total_msgs);
+                    }
+                    Err(TryDequeueError::Busy) => panic!(
+                        "the queue should never be busy, as there is only a single consumer!"
+                    ),
+                    Err(err) => {
+                        tracing::info!(?err, "dequeue error");
+                        thread::yield_now();
+                    }
+                }
+            }
+
+            for thread in threads {
+                thread.join().unwrap();
+            }
+        })
+    }
+
+    fn do_tx(thread: i32, msgs: i32, q: &Arc<MpscQueue<Entry>>) -> impl FnOnce() + Send + Sync {
+        let q = q.clone();
+        move || {
+            for i in 0..msgs {
+                q.enqueue(entry(i + (thread * 10)));
+                tracing::info!(thread, "enqueue msg {}/{}", i, msgs);
+            }
+        }
+    }
+
+    #[test]
+    fn mpmc() {
+        // Tests multiple consumers competing for access to the consume side of
+        // the queue.
+        const THREADS: i32 = 2;
+        const MSGS: i32 = THREADS;
+
+        fn do_rx(thread: i32, q: Arc<MpscQueue<Entry>>) {
+            let mut i = 0;
+            while let Some(val) = q.dequeue() {
+                tracing::info!(?val, ?thread, "dequeue {}/{}", i, THREADS * MSGS);
+                i += 1;
+            }
+        }
+
+        loom::model(|| {
+            let stub = entry(666);
+            let q = Arc::new(MpscQueue::<Entry>::new_with_stub(stub));
+
+            let mut threads: Vec<_> = (0..THREADS)
+                .map(|thread| thread::spawn(do_tx(thread, MSGS, &q)))
+                .collect();
+
+            threads.push(thread::spawn({
+                let q = q.clone();
+                move || do_rx(THREADS + 1, q)
+            }));
+            do_rx(THREADS + 2, q);
+
+            for thread in threads {
+                thread.join().unwrap();
+            }
+        })
+    }
+
+    #[test]
+    fn crosses_queues() {
+        loom::model(|| {
+            let stub1 = entry(666);
+            let q1 = Arc::new(MpscQueue::<Entry>::new_with_stub(stub1));
+
+            let thread = thread::spawn({
+                let q1 = q1.clone();
+                move || {
+                    let stub2 = entry(420);
+                    let q2 = Arc::new(MpscQueue::<Entry>::new_with_stub(stub2));
+                    // let mut dequeued = false;
+                    for entry in q1.consume() {
+                        tracing::info!("dequeued");
+                        q2.enqueue(entry);
+                        q2.try_dequeue().unwrap();
+                    }
+                    tracing::info!("consumer done\nq1={q1:#?}\nq2={q2:#?}");
+                }
+            });
+
+            q1.enqueue(entry(1));
+            drop(q1);
+
+            thread.join().unwrap();
+        })
+    }
+}
+
+#[cfg(all(test, not(loom)))]
+mod tests {
+    use super::*;
+    use test_util::*;
+
+    use std::{ops::Deref, println, sync::Arc, thread};
+
+    #[test]
+    fn dequeue_empty() {
+        let stub = entry(666);
+        let q = MpscQueue::<Entry>::new_with_stub(stub);
+        assert_eq!(q.dequeue(), None)
+    }
+
+    #[test]
+    fn try_dequeue_empty() {
+        let stub = entry(666);
+        let q = MpscQueue::<Entry>::new_with_stub(stub);
+        assert_eq!(q.try_dequeue(), Err(TryDequeueError::Empty))
+    }
+
+    #[test]
+    fn try_dequeue_busy() {
+        let stub = entry(666);
+        let q = MpscQueue::<Entry>::new_with_stub(stub);
+
+        let consumer = q.try_consume().expect("must acquire consumer");
+        assert_eq!(consumer.try_dequeue(), Err(TryDequeueError::Empty));
+
+        q.enqueue(entry(1));
+
+        assert_eq!(q.try_dequeue(), Err(TryDequeueError::Busy));
+
+        assert_eq!(consumer.try_dequeue(), Ok(entry(1)),);
+
+        assert_eq!(q.try_dequeue(), Err(TryDequeueError::Busy));
+
+        assert_eq!(consumer.try_dequeue(), Err(TryDequeueError::Empty));
+
+        drop(consumer);
+        assert_eq!(q.try_dequeue(), Err(TryDequeueError::Empty));
+    }
+
+    #[test]
+    fn enqueue_dequeue() {
+        let stub = entry(666);
+        let e = entry(1);
+        let q = MpscQueue::<Entry>::new_with_stub(stub);
+        q.enqueue(e);
+        assert_eq!(q.dequeue(), Some(entry(1)));
+        assert_eq!(q.dequeue(), None)
+    }
+
+    #[test]
+    fn basically_works() {
+        let stub = entry(666);
+        let q = MpscQueue::<Entry>::new_with_stub(stub);
+
+        let q = Arc::new(q);
+        test_basically_works(q);
+    }
+
+    #[test]
+    fn basically_works_all_const() {
+        static STUB_ENTRY: Entry = const_stub_entry(666);
+        static MPSC: MpscQueue<Entry> =
+            unsafe { MpscQueue::<Entry>::new_with_static_stub(&STUB_ENTRY) };
+        test_basically_works(&MPSC);
+    }
+
+    #[test]
+    fn basically_works_mixed_const() {
+        static STUB_ENTRY: Entry = const_stub_entry(666);
+        let q = unsafe { MpscQueue::<Entry>::new_with_static_stub(&STUB_ENTRY) };
+
+        let q = Arc::new(q);
+        test_basically_works(q)
+    }
+
+    fn test_basically_works<Q>(q: Q)
+    where
+        Q: Deref<Target = MpscQueue<Entry>> + Clone,
+        Q: Send + 'static,
+    {
+        const THREADS: i32 = if_miri(3, 8);
+        const MSGS: i32 = if_miri(10, 1000);
+
+        assert_eq!(q.dequeue(), None);
+
+        let threads: Vec<_> = (0..THREADS)
+            .map(|thread| {
+                let q = q.clone();
+                thread::spawn(move || {
+                    for i in 0..MSGS {
+                        q.enqueue(entry(i));
+                        println!("thread {thread}; msg {i}/{MSGS}");
+                    }
+                })
+            })
+            .collect();
+
+        let mut i = 0;
+        while i < THREADS * MSGS {
+            match q.try_dequeue() {
+                Ok(msg) => {
+                    i += 1;
+                    println!("recv {msg:?} ({i}/{})", THREADS * MSGS);
+                }
+                Err(TryDequeueError::Busy) => {
+                    panic!("the queue should never be busy, as there is only one consumer")
+                }
+                Err(e) => {
+                    println!("recv error {e:?}");
+                    thread::yield_now();
+                }
+            }
+        }
+
+        for thread in threads {
+            thread.join().unwrap();
+        }
+    }
+
+    const fn if_miri(miri: i32, not_miri: i32) -> i32 {
+        if cfg!(miri) { miri } else { not_miri }
+    }
+}
+
+#[cfg(test)]
+mod test_util {
+    use super::*;
+    use crate::loom::alloc;
+    pub use std::{boxed::Box, pin::Pin, ptr, vec::Vec};
+
+    pub(super) struct Entry {
+        links: Links<Entry>,
+        pub(super) val: i32,
+        // participate in loom leak checking
+        _track: alloc::Track<()>,
+    }
+
+    impl std::cmp::PartialEq for Entry {
+        fn eq(&self, other: &Self) -> bool {
+            self.val == other.val
+        }
+    }
+
+    unsafe impl Linked for Entry {
+        type Handle = Pin<Box<Entry>>;
+
+        fn into_ptr(handle: Pin<Box<Entry>>) -> NonNull<Entry> {
+            unsafe { NonNull::from(Box::leak(Pin::into_inner_unchecked(handle))) }
+        }
+
+        unsafe fn from_ptr(ptr: NonNull<Entry>) -> Pin<Box<Entry>> {
+            // Safety: if this function is only called by the linked list
+            // implementation (and it is not intended for external use), we can
+            // expect that the `NonNull` was constructed from a reference which
+            // was pinned.
+            //
+            // If other callers besides `List`'s internals were to call this on
+            // some random `NonNull<Entry>`, this would not be the case, and
+            // this could be constructing an erroneous `Pin` from a referent
+            // that may not be pinned!
+            Pin::new_unchecked(Box::from_raw(ptr.as_ptr()))
+        }
+
+        unsafe fn links(target: NonNull<Entry>) -> NonNull<Links<Entry>> {
+            let links = ptr::addr_of_mut!((*target.as_ptr()).links);
+            NonNull::new_unchecked(links)
+        }
+    }
+
+    impl fmt::Debug for Entry {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let Self { links, val, _track } = self;
+            f.debug_struct("Entry")
+                .field("links", links)
+                .field("val", val)
+                .field("_track", _track)
+                .finish()
+        }
+    }
+
+    #[cfg(not(loom))]
+    pub(super) const fn const_stub_entry(val: i32) -> Entry {
+        Entry {
+            links: Links::new_stub(),
+            val,
+            _track: alloc::Track::new_const(()),
+        }
+    }
+
+    pub(super) fn entry(val: i32) -> Pin<Box<Entry>> {
+        Box::pin(Entry {
+            links: Links::new(),
+            val,
+            _track: alloc::Track::new(()),
+        })
+    }
+}
