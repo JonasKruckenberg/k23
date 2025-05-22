@@ -23,7 +23,7 @@ windows-sys = { version = "0.59.0", features = [
 ] }
 
 [target.'cfg(target_os = "none")'.dependencies]
-panic-unwind.workspace = true
+panic-unwind2.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true

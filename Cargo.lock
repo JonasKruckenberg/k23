@@ -623,7 +623,7 @@ dependencies = [
  "criterion",
  "criterion-cycles-per-byte",
  "libc",
- "panic-unwind",
+ "panic-unwind2",
  "riscv",
  "windows-sys",
 ]
@@ -1008,7 +1008,7 @@ dependencies = [
  "mpsc-queue",
  "mycelium-bitfield",
  "ouroboros",
- "panic-unwind",
+ "panic-unwind2",
  "pin-project",
  "rand",
  "rand_chacha",
@@ -1300,6 +1300,18 @@ checksum = "26995317201fa17f3656c36716aed4a7c81743a9634ac4c99c0eeda495db0cec"
 
 [[package]]
 name = "panic-unwind"
+version = "0.1.0"
+dependencies = [
+ "abort",
+ "cpu-local",
+ "riscv",
+ "spin",
+ "tracing 0.2.0",
+ "unwind2",
+]
+
+[[package]]
+name = "panic-unwind2"
 version = "0.1.0"
 dependencies = [
  "abort",

@@ -372,7 +372,7 @@ fn handle_kernel_exception(
 
     // begin a panic on the original stack
     // Safety: we saved the register state at the beginning of the trap handler
-    unsafe { panic_unwind::begin_unwind(payload, regs, epc.checked_add(1).unwrap().get()) };
+    unsafe { panic_unwind2::begin_unwind(payload, regs, epc.checked_add(1).unwrap().get()) };
 }
 
 fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
@@ -392,6 +392,6 @@ fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
     // begin a panic on the original stack
     // Safety: we saved the register state at the beginning of the trap handler
     unsafe {
-        panic_unwind::begin_unwind(payload, regs, epc.checked_add(1).unwrap().get());
+        panic_unwind2::begin_unwind(payload, regs, epc.checked_add(1).unwrap().get());
     }
 }

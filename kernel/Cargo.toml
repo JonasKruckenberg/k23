@@ -25,7 +25,7 @@ uart-16550.workspace = true
 wast.workspace = true
 fastrand.workspace = true
 abort.workspace = true
-panic-unwind.workspace = true
+panic-unwind2.workspace = true
 util.workspace = true
 
 # 3rd-party dependencies
