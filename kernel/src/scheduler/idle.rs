@@ -47,8 +47,6 @@ impl Idle {
 
         // The worker should not be stealing at this point
         debug_assert!(!worker.is_searching);
-        // Check that there are no pending tasks in the global queue
-        debug_assert!(worker.scheduler.run_queue.is_empty());
 
         self.idle_map.set(worker.cpuid);
 

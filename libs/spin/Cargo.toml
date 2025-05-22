@@ -15,7 +15,7 @@ lock_api = { workspace = true, optional = true }
 util.workspace = true
 
 [target.'cfg(loom)'.dependencies]
-loom = "0.7"
+loom.workspace = true
 
 [features]
 thread-local = []

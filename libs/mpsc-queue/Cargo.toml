@@ -6,9 +6,16 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-fallible-iterator.workspace = true
 spin.workspace = true
 util.workspace = true
+
+# 3rd-party dependencies
+cfg-if.workspace = true
+fallible-iterator.workspace = true
+tracing.workspace = true
+
+[target.'cfg(loom)'.dependencies]
+loom.workspace = true
 
 [lints]
 workspace = true

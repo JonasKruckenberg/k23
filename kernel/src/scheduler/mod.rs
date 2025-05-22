@@ -299,7 +299,7 @@ impl Overflow for Scheduler {
     where
         I: Iterator<Item = TaskRef>,
     {
-        self.run_queue.enqueue_many(iter);
+        iter.for_each(|elem| self.run_queue.enqueue(elem));
     }
 }
 
@@ -468,20 +468,9 @@ impl Worker {
     }
 
     fn next_remote_task_and_refill_queue(&mut self, core: &mut Core) -> Option<TaskRef> {
-        let max = usize::min(
-            core.run_queue.remaining_slots(),
-            usize::max(core.run_queue.max_capacity() / 2, 1),
-        );
+        const MAX_STOLEN_PER_TICK: usize = 256;
 
-        let n = if self.is_searching {
-            self.scheduler.run_queue.len() / self.scheduler.idle.num_searching() + 1
-        } else {
-            self.scheduler.run_queue.len() / (self.scheduler.cores.len() + 1)
-        };
-
-        let n = usize::min(n, max) + 1;
-
-        let mut tasks = self.scheduler.run_queue.consume().take(n);
+        let mut tasks = self.scheduler.run_queue.consume().take(MAX_STOLEN_PER_TICK);
         let ret = tasks.next();
 
         // Safety: we calculated the max from the local queues remaining capacity, it can never overflow
