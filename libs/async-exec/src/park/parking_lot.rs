@@ -109,7 +109,9 @@ mod tests {
     use alloc::vec::Vec;
     use spin::Backoff;
 
-    #[cfg_attr(not(loom), test)] // the test currently doesnt pass under loom :/
+    // FIXME this test deadlocks under loom :/ figure out why and fix
+    #[cfg(not(loom))]
+    #[test]
     fn parking_lot_basically_works() {
         crate::loom::model(|| {
             crate::loom::lazy_static! {
