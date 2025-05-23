@@ -9,6 +9,10 @@ license.workspace = true
 name = "spawn"
 harness = false
 
+[[bench]]
+name = "ping_pong"
+harness = false
+
 [dependencies]
 util.workspace = true
 spin.workspace = true
@@ -23,12 +27,15 @@ cfg-if.workspace = true
 static_assertions.workspace = true
 mycelium-bitfield.workspace = true
 tracing.workspace = true
+bitflags.workspace = true
 
 [dev-dependencies]
 async-exec = { path = ".", features = ["std"] }
 tracing-subscriber = { workspace = true, default-features = true, features = ["env-filter"] }
 lazy_static.workspace = true
 criterion.workspace = true
+tokio-test = "0.4.4"
+futures = "0.3.31"
 
 [target.'cfg(loom)'.dependencies]
 loom.workspace = true
