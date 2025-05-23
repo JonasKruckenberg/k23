@@ -82,12 +82,13 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     let loc = info.location().unwrap(); // Currently always returns Some
     let payload = construct_panic_payload(info);
 
+    let info = &PanicHookInfo::new(loc, payload.as_ref(), info.can_unwind());
     match *HOOK.read() {
         Hook::Default => {
-            default_hook(&PanicHookInfo::new(loc, &payload, info.can_unwind()));
+            default_hook(info);
         }
         Hook::Custom(hook) => {
-            hook(&PanicHookInfo::new(loc, &payload, info.can_unwind()));
+            hook(info);
         }
     }
 
