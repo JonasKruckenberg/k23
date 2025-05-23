@@ -119,6 +119,8 @@ tracing = { version = "0.2", git = "https://github.com/tokio-rs/tracing", branch
 tracing-core = { version = "0.2", git = "https://github.com/tokio-rs/tracing", branch = "master", default-features = false }
 anyhow = { version = "1.0.98", default-features = false }
 loom = "0.7"
+criterion = "0.6.0"
+lazy_static = "1.5.0"
 
 # wast dependencies
 unicode-width = { version = "0.2.0" }

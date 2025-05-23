@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[[bench]]
+name = "spawn"
+harness = false
+
 [dependencies]
 util.workspace = true
 spin.workspace = true
@@ -16,15 +20,15 @@ panic-unwind2 = { workspace = true, optional = true }
 
 # 3rd-party dependencies
 cfg-if.workspace = true
-tracing.workspace = true
 static_assertions.workspace = true
 mycelium-bitfield.workspace = true
-anyhow.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 async-exec = { path = ".", features = ["std"] }
 tracing-subscriber = { workspace = true, default-features = true, features = ["env-filter"] }
-lazy_static = "1.5.0"
+lazy_static.workspace = true
+criterion.workspace = true
 
 [target.'cfg(loom)'.dependencies]
 loom.workspace = true
@@ -32,6 +36,8 @@ loom.workspace = true
 [features]
 std = []
 unwind2 = ["dep:unwind2"]
+counters = []
+__bench = ["tracing/max_level_off"]
 
 [lints]
 workspace = true

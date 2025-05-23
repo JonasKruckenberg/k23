@@ -6,6 +6,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[[bench]]
+name = "insertions_deletions"
+harness = false
+
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
 rand.workspace = true
 criterion = "0.5.1"
@@ -16,6 +20,3 @@ dot = []
 [lints]
 workspace = true
 
-[[bench]]
-name = "insertions_deletions"
-harness = false

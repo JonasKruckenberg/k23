@@ -2,6 +2,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(loom, feature(arbitrary_self_types))]
 #![feature(const_type_id)]
+#![feature(thread_local)]
 
 extern crate alloc;
 

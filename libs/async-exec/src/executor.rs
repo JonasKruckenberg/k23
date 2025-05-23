@@ -11,6 +11,8 @@ use crate::scheduler::steal::Injector;
 use crate::scheduler::{Schedule, Scheduler};
 use crate::task::{TaskBuilder, TaskRef, TaskStub};
 use core::num::NonZeroUsize;
+use core::pin::pin;
+use core::task::{Context, Poll};
 use cpu_local::collection::CpuLocal;
 use fastrand::FastRand;
 use spin::Backoff;
@@ -196,6 +198,33 @@ where
         }
     }
 
+    #[track_caller]
+    pub fn block_on<F>(&mut self, future: F) -> F::Output
+    where
+        F: Future,
+    {
+        let waker = self.parker.clone().into_unpark().into_waker();
+        let mut cx = Context::from_waker(&waker);
+
+        let mut future = pin!(future);
+
+        loop {
+            if let Poll::Ready(v) = future.as_mut().poll(&mut cx) {
+                return v;
+            }
+
+            // drive the scheduling loop until we're out of work
+            if self.tick() {
+                continue;
+            }
+
+            tracing::debug!("going to sleep");
+            // at this point we're fully out of work. We so we should suspend the
+            self.exec.parking_lot.park(self.parker.clone());
+            tracing::debug!("woke up");
+        }
+    }
+
     fn tick(&mut self) -> bool {
         let tick = self.scheduler.tick_n(256);
         tracing::trace!(worker = self.id, ?tick, "worker tick");
@@ -303,6 +332,7 @@ mod tests {
     use super::*;
     use crate::loom;
     use crate::park::StdPark;
+    use core::hint::black_box;
     use tracing_subscriber::EnvFilter;
 
     #[test]
@@ -375,6 +405,40 @@ mod tests {
             for join in joins {
                 join.join().unwrap();
             }
+        })
+    }
+
+    #[test]
+    fn block_on() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .try_init();
+
+        async fn work(num_polls: &AtomicUsize) -> usize {
+            num_polls.fetch_add(1, Ordering::Relaxed);
+
+            let val = 1 + 1;
+            crate::task::yield_now().await;
+            num_polls.fetch_add(1, Ordering::Relaxed);
+
+            black_box(val)
+        }
+
+        loom::model(|| {
+            loom::lazy_static! {
+                static ref NUM_POLLS: AtomicUsize = AtomicUsize::new(0);
+                static ref EXEC: Executor<StdPark> = Executor::new(1);
+            }
+
+            let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+
+            worker.block_on(async {
+                let (task, h) = EXEC.task_builder().try_build(work(&NUM_POLLS)).unwrap();
+                EXEC.spawn_allocated(task);
+                assert_eq!(h.await.unwrap(), 2);
+            });
+
+            assert_eq!(NUM_POLLS.load(Ordering::Relaxed), 2);
         })
     }
 }

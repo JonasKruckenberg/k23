@@ -128,10 +128,10 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 name = "async-exec"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-exec",
  "cfg-if",
  "cpu-local",
+ "criterion 0.6.0",
  "fastrand",
  "lazy_static",
  "loom",
@@ -447,7 +447,7 @@ dependencies = [
  "clap",
  "criterion-plot",
  "is-terminal",
- "itertools",
+ "itertools 0.10.5",
  "num-traits",
  "once_cell",
  "oorandom",
@@ -462,13 +462,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "criterion"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bf7af66b0989381bd0be551bd7cc91912a655a58c6918420c9527b1fd8b4679"
+dependencies = [
+ "anes",
+ "cast",
+ "ciborium",
+ "clap",
+ "criterion-plot",
+ "itertools 0.13.0",
+ "num-traits",
+ "oorandom",
+ "plotters",
+ "rayon",
+ "regex",
+ "serde",
+ "serde_json",
+ "tinytemplate",
+ "walkdir",
+]
+
+[[package]]
 name = "criterion-cycles-per-byte"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1029452fa751c93f8834962dd74807d69f0a6c7624d5b06625b393aeb6a14fc2"
 dependencies = [
  "cfg-if",
- "criterion",
+ "criterion 0.5.1",
 ]
 
 [[package]]
@@ -478,7 +501,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
- "itertools",
+ "itertools 0.10.5",
 ]
 
 [[package]]
@@ -630,7 +653,7 @@ checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
 name = "fastrand"
 version = "0.1.0"
 dependencies = [
- "criterion",
+ "criterion 0.5.1",
 ]
 
 [[package]]
@@ -645,7 +668,7 @@ name = "fiber"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
- "criterion",
+ "criterion 0.5.1",
  "criterion-cycles-per-byte",
  "libc",
  "panic-unwind2",
@@ -974,6 +997,15 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
 dependencies = [
  "either",
 ]
@@ -2310,7 +2342,7 @@ dependencies = [
 name = "wavltree"
 version = "0.0.7"
 dependencies = [
- "criterion",
+ "criterion 0.5.1",
  "rand",
 ]
 

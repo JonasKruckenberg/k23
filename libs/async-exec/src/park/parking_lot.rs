@@ -92,7 +92,7 @@ impl<P: Park + Send + Sync> ParkingLot<P> {
         let mut unparked = 0;
 
         while let Some(token) = tokens.pop() {
-            token.unpark();
+            let _ = token.try_unpark();
             unparked += 1;
         }
 

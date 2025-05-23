@@ -11,7 +11,6 @@ use crate::task;
 use crate::task::TaskStub;
 use crate::task::{Header, Task, TaskRef};
 use alloc::boxed::Box;
-use anyhow::{Context, format_err};
 use core::fmt::Debug;
 use core::marker::PhantomData;
 use core::num::{NonZero, NonZeroUsize};
@@ -171,12 +170,7 @@ impl<'a, S> Stealer<'a, S> {
             stolen += 1;
         }
 
-        NonZeroUsize::new(stolen)
-            .context(format_err!(
-                "initial_task_count {}",
-                self.initial_task_count()
-            ))
-            .expect("spawn_n stole 0 tasks, this is a bug")
+        NonZeroUsize::new(stolen).expect("spawn_n stole 0 tasks, this is a bug")
     }
 
     /// Steal half the tasks in the current queue and spawn them on the provided
