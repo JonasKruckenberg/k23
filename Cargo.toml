@@ -121,6 +121,7 @@ anyhow = { version = "1.0.98", default-features = false }
 loom = "0.7"
 criterion = "0.6.0"
 lazy_static = "1.5.0"
+pin-project = "1"
 
 # wast dependencies
 unicode-width = { version = "0.2.0" }

@@ -462,7 +462,7 @@ impl Future for Wait<'_> {
         // Okay, actually poll the cell, then.
         match task::ready!(self.cell.poll_wait(cx)) {
             Ok(()) => Poll::Ready(Ok(())),
-            Err(PollWaitError::Closed) => Poll::Ready(Err(Closed::new())),
+            Err(PollWaitError::Closed) => Poll::Ready(Err(Closed(()))),
             Err(PollWaitError::Busy) => {
                 // If some other task was registering, yield and try to re-register
                 // our waker when that task is done.
@@ -487,7 +487,7 @@ impl<'cell> Future for Subscribe<'cell> {
                 cx.waker().wake_by_ref();
                 return Poll::Pending;
             }
-            Poll::Ready(Err(PollWaitError::Closed)) => Poll::Ready(Err(Closed::new())),
+            Poll::Ready(Err(PollWaitError::Closed)) => Poll::Ready(Err(Closed(()))),
             Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
             Poll::Pending => Poll::Pending,
         };
