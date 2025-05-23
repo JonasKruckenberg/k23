@@ -35,7 +35,9 @@ struct Inner<T> {
     rx_waker: WaitCell,
 }
 
+// Safety: TODO
 unsafe impl<T: Send> Send for Inner<T> {}
+// Safety: TODO
 unsafe impl<T: Send> Sync for Inner<T> {}
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -44,6 +46,7 @@ pub struct RecvError(pub(super) ());
 // === impl Sender ===
 
 impl<T: fmt::Debug> Sender<T> {
+    #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
     pub fn is_closed(&self) -> bool {
         let inner = self.inner.as_ref().unwrap();
         inner.rx_waker.is_closed()
@@ -57,8 +60,12 @@ impl<T: fmt::Debug> Sender<T> {
             return Err(value);
         }
 
-        inner.value.with_mut(|ptr| unsafe {
-            *ptr = Some(value);
+        inner.value.with_mut(|ptr| {
+            // Safety: The receiver will not access the `UnsafeCell` until
+            // we call .wake() on the wake cell below.
+            unsafe {
+                *ptr = Some(value);
+            }
         });
 
         inner.rx_waker.wake();
@@ -78,21 +85,17 @@ impl<T: fmt::Debug> Receiver<T> {
     pub fn poll_recv(&self, cx: &mut Context<'_>) -> Poll<Result<T, RecvError>> {
         let inner = &self.inner;
 
-        if let Some(value) = self.take_value() {
-            return Poll::Ready(Ok(value));
-        }
-
         let res = inner.rx_waker.poll_wait(cx).map_err(|_| RecvError(()));
         tracing::trace!(?res);
         ready!(res)?;
 
-        let value = self.take_value().unwrap();
+        let value = self.inner.value.with_mut(|ptr| {
+            // Safety: the WakeCell::poll_wait call returning Poll::Ready means that the Sender
+            // wrote to the value field and signalled us to wake up
+            unsafe { (*ptr).take().unwrap() }
+        });
 
         Poll::Ready(Ok(value))
-    }
-
-    fn take_value(&self) -> Option<T> {
-        self.inner.value.with_mut(|ptr| unsafe { (*ptr).take() })
     }
 }
 

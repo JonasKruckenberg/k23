@@ -153,6 +153,8 @@ impl WaitCell {
             // Safety: No one else is touching the waker right now, so it is safe to access it
             // mutably
             tracing::trace!(state = ?actual, "was notified");
+            // Safety: No one else is touching the waker right now, so it is safe to access it
+            // mutably
             let waker = self.waker.with_mut(|waker| unsafe { (*waker).take() });
 
             // Reset to the WAITING state by clearing everything *except*
@@ -312,10 +314,9 @@ impl WaitCell {
     // Consider using [`WaitQueue::wait_for()`](super::wait_queue::WaitQueue::wait_for)
     // if you need multiple waiters.
     ///
-    /// # Returns
+    /// # Errors
     ///
-    /// * [`Ok`]`(())` if the closure returns `true`.
-    /// * [`Err`]`(`[`Closed`]`)` if the [`WaitCell`] is closed.
+    /// Returns [`Err`]`(`[`Closed`]`)` if the [`WaitCell`] is closed.
     pub async fn wait_for<F: FnMut() -> bool>(&self, mut f: F) -> Result<(), Closed> {
         loop {
             let wait = self.subscribe().await;
@@ -326,7 +327,7 @@ impl WaitCell {
         }
     }
 
-    // Asynchronously poll the given function `f` until a condition occurs,
+    /// Asynchronously poll the given function `f` until a condition occurs,
     /// using the [`WaitCell`] to only re-poll when notified.
     ///
     /// This can be used to implement a "wait loop", turning a "try" function
@@ -351,8 +352,9 @@ impl WaitCell {
     ///
     // Consider using [`WaitQueue::wait_for_value()`](super::wait_queue::WaitQueue::wait_for_value) if you need multiple waiters.
     ///
-    /// * [`Ok`]`(T)` if the closure returns [`Some`]`(T)`.
-    /// * [`Err`]`(`[`Closed`]`)` if the [`WaitCell`] is closed.
+    /// # Errors
+    ///
+    /// Returns [`Err`]`(`[`Closed`]`)` if the [`WaitCell`] is closed.
     pub async fn wait_for_value<T, F: FnMut() -> Option<T>>(&self, mut f: F) -> Result<T, Closed> {
         loop {
             let wait = self.subscribe().await;

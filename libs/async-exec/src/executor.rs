@@ -84,6 +84,14 @@ where
         TaskBuilder::new()
     }
 
+    /// Attempt to spawn this [`Future`] onto the executor.
+    ///
+    /// This method returns a [`JoinHandle`] which can be used to await the futures output as
+    /// well as control some aspects of its runtime behaviour (such as cancelling it).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AllocError`] when allocation of the task fails.
     #[inline]
     #[track_caller]
     pub fn try_spawn<F>(&'static self, future: F) -> Result<JoinHandle<F::Output>, AllocError>
@@ -96,6 +104,14 @@ where
         Ok(join)
     }
 
+    /// Attempt to spawn this [`Future`] onto the executor using a custom [`Allocator`].
+    ///
+    /// This method returns a [`JoinHandle`] which can be used to await the futures output as
+    /// well as control some aspects of its runtime behaviour (such as cancelling it).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AllocError`] when allocation of the task fails.
     #[inline]
     #[track_caller]
     pub fn try_spawn_in<F, A>(

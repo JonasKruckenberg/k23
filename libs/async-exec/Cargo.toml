@@ -9,6 +9,10 @@ license.workspace = true
 name = "spawn"
 harness = false
 
+[[bench]]
+name = "ping_pong"
+harness = false
+
 [dependencies]
 util.workspace = true
 spin.workspace = true
