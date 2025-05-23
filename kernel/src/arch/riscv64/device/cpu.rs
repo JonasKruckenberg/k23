@@ -11,7 +11,7 @@ use crate::device_tree::DeviceTree;
 use crate::irq::InterruptController;
 use crate::time::clock::Ticks;
 use crate::time::{Clock, NANOS_PER_SEC};
-use anyhow::{Context, bail};
+use anyhow::Context;
 use bitflags::bitflags;
 use core::cell::{OnceCell, RefCell};
 use core::fmt;
@@ -143,7 +143,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
         .map(|prop| prop.as_usize().unwrap());
 
     let extensions = cpu.property("riscv,isa-extensions").unwrap().as_strlist()?;
-    let extensions = parse_riscv_extensions(extensions)?;
+    let extensions = parse_riscv_extensions(extensions);
 
     // TODO find CLINT associated with this core
     let hlic_node = cpu
@@ -184,7 +184,7 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
     Ok(())
 }
 
-pub fn parse_riscv_extensions(strs: fdt::StringList) -> crate::Result<RiscvExtensions> {
+pub fn parse_riscv_extensions(strs: fdt::StringList) -> RiscvExtensions {
     let mut out = RiscvExtensions::empty();
 
     for str in strs {
@@ -230,12 +230,13 @@ pub fn parse_riscv_extensions(strs: fdt::StringList) -> crate::Result<RiscvExten
             "svadu" => RiscvExtensions::SVADU,
             "svvptc" => RiscvExtensions::SVVPTC,
             ext => {
-                bail!("unknown RISCV extension {}", ext);
+                tracing::debug!("unknown RISCV extension {ext}");
+                continue;
             }
         }
     }
 
-    Ok(out)
+    out
 }
 
 impl fmt::Display for RiscvExtensions {
