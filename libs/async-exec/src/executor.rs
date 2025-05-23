@@ -9,7 +9,8 @@ use crate::loom::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crate::park::{Park, Parker, ParkingLot};
 use crate::scheduler::steal::Injector;
 use crate::scheduler::{Schedule, Scheduler};
-use crate::task::{TaskBuilder, TaskRef, TaskStub};
+use crate::task::{JoinHandle, TaskBuilder, TaskRef, TaskStub};
+use core::alloc::{AllocError, Allocator};
 use core::num::NonZeroUsize;
 use core::pin::pin;
 use core::task::{Context, Poll};
@@ -81,6 +82,35 @@ where
     #[inline]
     pub fn task_builder<'a>(&self) -> TaskBuilder<'a, &'static Scheduler> {
         TaskBuilder::new()
+    }
+
+    #[inline]
+    #[track_caller]
+    pub fn try_spawn<F>(&'static self, future: F) -> Result<JoinHandle<F::Output>, AllocError>
+    where
+        F: Future + Send,
+        F::Output: Send,
+    {
+        let (task, join) = self.task_builder().try_build(future)?;
+        self.spawn_allocated(task);
+        Ok(join)
+    }
+
+    #[inline]
+    #[track_caller]
+    pub fn try_spawn_in<F, A>(
+        &'static self,
+        future: F,
+        alloc: A,
+    ) -> Result<JoinHandle<F::Output>, AllocError>
+    where
+        F: Future + Send,
+        F::Output: Send,
+        A: Allocator,
+    {
+        let (task, join) = self.task_builder().try_build_in(future, alloc)?;
+        self.spawn_allocated(task);
+        Ok(join)
     }
 
     pub fn spawn_allocated(&'static self, task: TaskRef) {
@@ -334,12 +364,14 @@ mod tests {
     use crate::park::StdPark;
     use core::hint::black_box;
     use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::util::SubscriberInitExt;
 
     #[test]
     fn single_threaded_executor() {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
-            .try_init();
+            .with_thread_names(true)
+            .set_default();
 
         loom::model(|| {
             loom::lazy_static! {
@@ -366,7 +398,7 @@ mod tests {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .with_thread_names(true)
-            .try_init();
+            .set_default();
 
         loom::model(|| {
             const NUM_THREADS: usize = 3;

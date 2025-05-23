@@ -378,9 +378,8 @@ impl State {
     /// Cancel the task.
     ///
     /// Returns `true` if the task was successfully canceled.
+    #[tracing::instrument(level = "debug")]
     pub(super) fn cancel(&self) -> bool {
-        tracing::trace!("State::cancel");
-
         self.transition(|s| {
             // you can't cancel a task that has already been canceled, that doesn't make sense.
             if s.get(Snapshot::CANCELLED) {
@@ -393,9 +392,8 @@ impl State {
         })
     }
 
+    #[tracing::instrument(level = "debug")]
     pub(super) fn create_join_handle(&self) {
-        tracing::trace!("State::create_join_handle");
-
         self.transition(|s| {
             debug_assert!(
                 !s.get(Snapshot::HAS_JOIN_HANDLE),
@@ -406,9 +404,8 @@ impl State {
         });
     }
 
+    #[tracing::instrument(level = "debug")]
     pub(super) fn drop_join_handle(&self) {
-        tracing::trace!("State::drop_join_handle");
-
         const MASK: usize = !Snapshot::HAS_JOIN_HANDLE.raw_mask();
         let _prev = self.val.fetch_and(MASK, Ordering::Release);
         tracing::trace!(
