@@ -9,8 +9,11 @@ mod builder;
 mod id;
 mod join_handle;
 mod state;
+mod yield_now;
 
 use crate::loom::{cell::UnsafeCell, sync::atomic::Ordering};
+use crate::scheduler::steal::{Stealer, TryStealError};
+use crate::scheduler::{Schedule, Tick};
 use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use alloc::boxed::Box;
 use core::alloc::Allocator;
@@ -25,11 +28,10 @@ use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
 use util::{CachePadded, CheckedMaybeUninit, loom_const_fn};
 
-use crate::scheduler::steal::{Stealer, TryStealError};
-use crate::scheduler::{Schedule, Tick};
 pub use builder::TaskBuilder;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinHandle};
+pub use yield_now::yield_now;
 
 /// Outcome of calling [`Task::poll`].
 ///

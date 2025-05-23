@@ -281,14 +281,14 @@ impl<P: Park> Inner<P> {
     unsafe fn waker_wake(raw: *const ()) {
         // Safety: ensured by VTable
         let unparker = unsafe { Self::from_raw(raw) };
-        unparker.unpark();
+        let _ = unparker.try_unpark();
     }
 
     unsafe fn waker_wake_by_ref(raw: *const ()) {
         let raw = raw.cast::<Self>();
         // Safety: ensured by VTable
         unsafe {
-            (*raw).unpark();
+            let _ = (*raw).try_unpark();
         }
     }
 

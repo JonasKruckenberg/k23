@@ -29,15 +29,19 @@ pub struct Tick {
     /// The number of polled tasks that *completed* on this scheduler tick.
     ///
     /// This should always be <= `self.polled`.
+    #[cfg(feature = "counters")]
     pub completed: usize,
 
     /// The number of tasks that were spawned since the last tick.
+    #[cfg(feature = "counters")]
     pub spawned: usize,
 
     /// The number of tasks that were woken from outside their own `poll` calls since the last tick.
+    #[cfg(feature = "counters")]
     pub woken_external: usize,
 
     /// The number of tasks that were woken from within their own `poll` calls during this tick.
+    #[cfg(feature = "counters")]
     pub woken_internal: usize,
 }
 
@@ -87,13 +91,6 @@ pub trait Schedule: Sized + Clone + 'static {
     fn wake(&self, task: TaskRef);
 }
 
-impl Tick {
-    /// Returns the total number of tasks woken since the last poll.
-    pub fn woken(&self) -> usize {
-        self.woken_external + self.woken_internal
-    }
-}
-
 /// A statically-initialized scheduler implementation.
 ///
 /// This implementation is very lightweight as it doesn't need reference counting or heap allocation,
@@ -104,7 +101,9 @@ pub struct Scheduler {
     run_queue: MpscQueue<Header>,
     queued: AtomicUsize,
     current_task: AtomicPtr<Header>,
+    #[cfg(feature = "counters")]
     spawned: AtomicUsize,
+    #[cfg(feature = "counters")]
     woken: AtomicUsize,
 }
 
@@ -117,14 +116,17 @@ impl Schedule for &'static Scheduler {
         let mut tick = Tick {
             has_remaining: false,
             polled: 0,
+            #[cfg(feature = "counters")]
             completed: 0,
+            #[cfg(feature = "counters")]
             spawned: 0,
+            #[cfg(feature = "counters")]
             woken_external: 0,
+            #[cfg(feature = "counters")]
             woken_internal: 0,
         };
 
         while tick.polled < n {
-            tracing::trace!("scheduler queue {:?}", self.run_queue);
             let task = match self.run_queue.try_dequeue() {
                 Ok(task) => task,
                 // If inconsistent, just try again.
@@ -141,12 +143,14 @@ impl Schedule for &'static Scheduler {
             };
 
             self.queued.fetch_sub(1, Ordering::SeqCst);
+
             let _span = tracing::trace_span!(
                 "poll",
                 task.addr = ?task.header_ptr(),
                 task.tid = task.id().as_u64(),
             )
             .entered();
+
             // store the currently polled task in the `current_task` pointer.
             // using `TaskRef::as_ptr` is safe here, since we will clear the
             // `current_task` pointer before dropping the `TaskRef`.
@@ -162,19 +166,33 @@ impl Schedule for &'static Scheduler {
 
             tick.polled += 1;
             match poll_result {
-                PollResult::Ready | PollResult::ReadyJoined => tick.completed += 1,
+                PollResult::Ready | PollResult::ReadyJoined => {
+                    #[cfg(feature = "counters")]
+                    {
+                        tick.completed += 1;
+                    }
+                }
                 PollResult::PendingSchedule => {
                     self.schedule(task);
-                    tick.woken_internal += 1;
+                    #[cfg(feature = "counters")]
+                    {
+                        tick.woken_internal += 1;
+                    }
                 }
                 PollResult::Pending => {}
             }
 
+            #[cfg(not(feature = "counters"))]
+            tracing::trace!(poll = ?poll_result, tick.polled);
+            #[cfg(feature = "counters")]
             tracing::trace!(poll = ?poll_result, tick.polled, tick.completed);
         }
 
-        tick.spawned = self.spawned.swap(0, Ordering::Relaxed);
-        tick.woken_external = self.woken.swap(0, Ordering::Relaxed);
+        #[cfg(feature = "counters")]
+        {
+            tick.spawned = self.spawned.swap(0, Ordering::Relaxed);
+            tick.woken_external = self.woken.swap(0, Ordering::Relaxed);
+        }
 
         // are there still tasks in the queue? if so, we have more tasks to poll.
         if self.queued.load(Ordering::SeqCst) > 0 {
@@ -183,14 +201,22 @@ impl Schedule for &'static Scheduler {
 
         if tick.polled > 0 {
             // log scheduler metrics.
+            #[cfg(not(feature = "counters"))]
+            tracing::debug!(tick.polled, tick.has_remaining,);
+
+            #[cfg(feature = "counters")]
             tracing::debug!(
                 tick.polled,
+                tick.has_remaining,
                 tick.completed,
-                // tick.spawned,
-                tick.woken = tick.woken(),
+                #[cfg(feature = "counters")]
+                tick.spawned,
+                #[cfg(feature = "counters")]
+                tick.woken = tick.woken_external + tick.woken_internal,
+                #[cfg(feature = "counters")]
                 tick.woken.external = tick.woken_external,
+                #[cfg(feature = "counters")]
                 tick.woken.internal = tick.woken_internal,
-                tick.has_remaining
             );
         }
 
@@ -207,12 +233,14 @@ impl Schedule for &'static Scheduler {
     }
 
     fn spawn(&self, task: TaskRef) {
-        self.spawned.fetch_add(1, Ordering::Release);
+        #[cfg(feature = "counters")]
+        self.spawned.fetch_add(1, Ordering::Relaxed);
         self.schedule(task);
     }
 
     fn wake(&self, task: TaskRef) {
-        self.woken.fetch_add(1, Ordering::Release);
+        #[cfg(feature = "counters")]
+        self.woken.fetch_add(1, Ordering::Relaxed);
         self.schedule(task);
     }
 }
@@ -234,7 +262,9 @@ impl Scheduler {
             run_queue: MpscQueue::new_with_stub(stub_task),
             queued: AtomicUsize::new(0),
             current_task: AtomicPtr::new(ptr::null_mut()),
+            #[cfg(feature = "counters")]
             spawned: AtomicUsize::new(0),
+            #[cfg(feature = "counters")]
             woken: AtomicUsize::new(0),
         }
     }
@@ -257,7 +287,9 @@ impl Scheduler {
             run_queue: unsafe { MpscQueue::new_with_static_stub(&stub.header) },
             queued: AtomicUsize::new(0),
             current_task: AtomicPtr::new(ptr::null_mut()),
+            #[cfg(feature = "counters")]
             spawned: AtomicUsize::new(0),
+            #[cfg(feature = "counters")]
             woken: AtomicUsize::new(0),
         }
     }
