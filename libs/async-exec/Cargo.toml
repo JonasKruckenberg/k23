@@ -21,6 +21,7 @@ cpu-local.workspace = true
 fastrand.workspace = true
 unwind2 = { workspace = true, optional = true }
 panic-unwind2 = { workspace = true, optional = true }
+linked-list.workspace = true
 
 # 3rd-party dependencies
 cfg-if.workspace = true
@@ -28,6 +29,7 @@ static_assertions.workspace = true
 mycelium-bitfield.workspace = true
 tracing.workspace = true
 bitflags.workspace = true
+pin-project.workspace = true
 
 [dev-dependencies]
 async-exec = { path = ".", features = ["std"] }

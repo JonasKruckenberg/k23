@@ -13,12 +13,6 @@ pub use wait_cell::WaitCell;
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Closed(());
 
-impl Closed {
-    pub(crate) const fn new() -> Self {
-        Self(())
-    }
-}
-
 impl core::fmt::Display for Closed {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.pad("closed")
