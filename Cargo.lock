@@ -1143,7 +1143,7 @@ dependencies = [
  "unwind2",
  "util",
  "vergen-git2",
- "wasmparser 0.228.0",
+ "wasmparser",
  "wasmtime-slab",
  "wast",
  "wavltree",
@@ -2400,16 +2400,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e62baf58bc14f219d1d12d082ea99860acb479b582e8f3d292d8a7c8f756091c"
 dependencies = [
  "leb128fmt",
- "wasmparser 0.231.0",
-]
-
-[[package]]
-name = "wasmparser"
-version = "0.228.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4abf1132c1fdf747d56bbc1bb52152400c70f336870f968b85e89ea422198ae3"
-dependencies = [
- "bitflags",
+ "wasmparser",
 ]
 
 [[package]]
