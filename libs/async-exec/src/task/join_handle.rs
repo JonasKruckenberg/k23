@@ -13,6 +13,7 @@ use core::any::Any;
 use core::fmt;
 use core::future::Future;
 use core::marker::PhantomData;
+use core::ops::Deref;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::pin::Pin;
 use core::task::{Context, Poll};
@@ -372,7 +373,7 @@ impl<T> fmt::Display for JoinError<T> {
                     fmt,
                     "task {} panicked with message {:?}",
                     self.id,
-                    panic_payload_as_str(p)
+                    panic_payload_as_str(p.deref())
                 )
             }
         }
@@ -392,7 +393,7 @@ impl<T> fmt::Debug for JoinError<T> {
                     fmt,
                     "JoinError::Panic({:?}, {:?}, ...)",
                     self.id,
-                    panic_payload_as_str(p)
+                    panic_payload_as_str(p.deref())
                 )
             }
         }

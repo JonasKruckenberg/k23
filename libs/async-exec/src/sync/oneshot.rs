@@ -113,17 +113,10 @@ mod tests {
     use crate::executor::{Executor, Worker};
     use crate::loom;
     use crate::loom::sync::atomic::{AtomicUsize, Ordering};
-    use crate::park::StdPark;
+    use crate::test_util::{StdPark, std_clock};
     use fastrand::FastRand;
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::util::SubscriberInitExt;
-    // use tracing_subscriber::fmt::format::FmtSpan;
-    // use tracing_subscriber::util::SubscriberInitExt;
-    // use tracing_subscriber::EnvFilter;
-
-    loom::lazy_static! {
-        static ref EXEC: Executor<StdPark> = Executor::new(1);
-    }
 
     #[test]
     fn oneshot_ping_pong() {
@@ -138,6 +131,10 @@ mod tests {
             .set_default();
 
         loom::model(|| {
+            loom::lazy_static! {
+                static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
+            }
+
             let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
             let rem = Arc::new(AtomicUsize::new(NUM_PINGS));
 

@@ -8,7 +8,7 @@
 mod entry;
 mod wheel;
 
-use crate::time::{Clock, Ticks};
+use crate::time::{Clock, Instant, Ticks};
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
@@ -17,6 +17,7 @@ use spin::Mutex;
 use wheel::Wheel;
 
 pub(in crate::time) use entry::Entry;
+use util::loom_const_fn;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Deadline {
@@ -80,16 +81,42 @@ pub(super) struct Core {
     wheels: [Wheel; Core::WHEELS],
 }
 
+// === impl Deadline ===
+
+impl Deadline {
+    pub fn as_ticks(&self) -> Ticks {
+        self.ticks
+    }
+
+    pub fn as_instant(&self, clock: &Clock) -> Instant {
+        Instant::from_ticks(clock, self.ticks)
+    }
+}
+
 // === impl Timer ===
 
 impl Timer {
-    pub fn new(clock: Clock) -> Self {
-        Self {
-            clock,
-            core: Mutex::new(Core::new()),
+    loom_const_fn! {
+        pub const fn new(clock: Clock) -> Self {
+            Self {
+                clock,
+                core: Mutex::new(Core::new()),
+            }
         }
     }
 
+    #[inline]
+    pub fn clock(&self) -> &Clock {
+        &self.clock
+    }
+
+    #[inline]
+    pub fn try_turn(&self) -> Option<(usize, Option<Deadline>)> {
+        let mut lock = self.core.try_lock()?;
+        Some(self.turn_locked(&mut lock))
+    }
+
+    #[inline]
     pub fn turn(&self) -> (usize, Option<Deadline>) {
         let mut lock = self.core.lock();
         self.turn_locked(&mut lock)
@@ -127,20 +154,21 @@ impl Core {
     const WHEELS: usize = Wheel::BITS;
     const MAX_SLEEP_TICKS: u64 = (1 << (Wheel::BITS * Self::WHEELS)) - 1;
 
-    fn new() -> Self {
-        Self {
-            now: Ticks(0),
-            wheels: [
-                Wheel::new(0),
-                Wheel::new(1),
-                Wheel::new(2),
-                Wheel::new(3),
-                Wheel::new(4),
-                Wheel::new(5),
-            ],
+    loom_const_fn! {
+        const fn new() -> Self {
+            Self {
+                now: Ticks(0),
+                wheels: [
+                    Wheel::new(0),
+                    Wheel::new(1),
+                    Wheel::new(2),
+                    Wheel::new(3),
+                    Wheel::new(4),
+                    Wheel::new(5),
+                ],
+            }
         }
     }
-
     fn poll(&mut self, now: Ticks) -> (usize, Option<Deadline>) {
         // sleeps that need to be rescheduled on lower-level wheels need to be
         // processed after we have finished turning the wheel, to avoid looping

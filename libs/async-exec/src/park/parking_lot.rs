@@ -8,6 +8,7 @@
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 use crate::park::parker::Parker;
 use crate::park::{Park, UnparkToken};
+use crate::time::{Clock, Deadline};
 use alloc::vec::Vec;
 use spin::Mutex;
 use util::loom_const_fn;
@@ -48,23 +49,21 @@ impl<P: Park + Send + Sync> ParkingLot<P> {
     /// Once parked, the execution context will not make progress until unparked through either
     /// `Self::unpark_one` or `Self::unpark_all`.
     pub fn park(&self, parker: Parker<P>) {
-        // Increment `num_idle` before we park ourselves
-        let prev = self.num_parked.fetch_add(1, Ordering::Release);
-        debug_assert!(
-            prev < self.num_workers,
-            "ParkingLot({max}) configuration supports {max} simultaneously parked threads, but caller attempted to park {prev}",
-            max = self.num_workers
-        );
+        self.transition_to_parked();
 
         self.unpark_tokens.lock().push(parker.clone().into_unpark());
         parker.park();
 
-        let prev = self.num_parked.fetch_sub(1, Ordering::Release);
-        debug_assert!(
-            prev <= self.num_workers,
-            "ParkingLot({max}) configuration supports {max} simultaneously parked threads, but caller attempted to park {prev}",
-            max = self.num_workers
-        );
+        self.transition_from_parked();
+    }
+
+    pub fn park_until(&self, parker: Parker<P>, deadline: Deadline, clock: &Clock) {
+        self.transition_to_parked();
+
+        self.unpark_tokens.lock().push(parker.clone().into_unpark());
+        parker.park_until(deadline, clock);
+
+        self.transition_from_parked();
     }
 
     /// Unpark a single execution context, blocking if the queue of parked targets is busy.
@@ -98,6 +97,25 @@ impl<P: Park + Send + Sync> ParkingLot<P> {
 
         unparked
     }
+
+    fn transition_to_parked(&self) {
+        // Increment `num_idle` before we park ourselves
+        let prev = self.num_parked.fetch_add(1, Ordering::Release);
+        debug_assert!(
+            prev < self.num_workers,
+            "ParkingLot({max}) configuration supports {max} simultaneously parked threads, but caller attempted to park {prev}",
+            max = self.num_workers
+        );
+    }
+
+    fn transition_from_parked(&self) {
+        let prev = self.num_parked.fetch_sub(1, Ordering::Release);
+        debug_assert!(
+            prev <= self.num_workers,
+            "ParkingLot({max}) configuration supports {max} simultaneously parked threads, but caller attempted to park {prev}",
+            max = self.num_workers
+        );
+    }
 }
 
 #[cfg(test)]
@@ -105,7 +123,7 @@ mod tests {
     use super::*;
     use crate::loom::sync::{Arc, atomic::AtomicUsize};
     use crate::loom::thread;
-    use crate::park::StdPark;
+    use crate::test_util::StdPark;
     use alloc::vec::Vec;
     use spin::Backoff;
 

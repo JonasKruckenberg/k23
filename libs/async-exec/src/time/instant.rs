@@ -40,6 +40,10 @@ impl Instant {
         clock.now() + Duration::from_secs(86400 * 365 * 30)
     }
 
+    pub fn elapsed(&self, clock: &Clock) -> Duration {
+        Self::now(clock).duration_since(*self)
+    }
+
     /// Returns the amount of time elapsed from another instant to this one,
     /// or zero duration if that instant is later than this one.
     pub fn duration_since(&self, earlier: Self) -> Duration {

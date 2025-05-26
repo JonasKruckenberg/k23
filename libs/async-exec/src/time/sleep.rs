@@ -152,3 +152,136 @@ impl fmt::Debug for Sleep<'_> {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::executor::Executor;
+    use crate::executor::Worker;
+    use crate::loom;
+    use crate::test_util::{StdPark, StopOnPanic, std_clock};
+    use alloc::vec::Vec;
+    use core::time::Duration;
+    use fastrand::FastRand;
+    use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    #[test]
+    fn sleep_run() {
+        let _trace = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_thread_ids(true)
+            .set_default();
+
+        loom::model(|| {
+            loom::lazy_static! {
+                static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
+            }
+
+            let _guard = StopOnPanic::new(&EXEC);
+
+            let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+
+            EXEC.try_spawn(async {
+                let begin = ::std::time::Instant::now();
+
+                sleep(EXEC.timer(), Duration::from_millis(500))
+                    .unwrap()
+                    .await;
+
+                let elapsed = begin.elapsed();
+                assert!(elapsed.as_millis() >= 500 && elapsed.as_millis() <= 600);
+
+                EXEC.stop();
+            })
+            .unwrap();
+
+            worker.run();
+        })
+    }
+
+    #[test]
+    fn sleep_block_on() {
+        let _trace = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_thread_ids(true)
+            .set_default();
+
+        loom::model(|| {
+            loom::lazy_static! {
+                static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
+            }
+
+            let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+
+            worker.block_on(async {
+                let begin = ::std::time::Instant::now();
+
+                sleep(EXEC.timer(), Duration::from_millis(500))
+                    .unwrap()
+                    .await;
+
+                let elapsed = begin.elapsed();
+                assert!(
+                    elapsed.as_millis() >= 500 && elapsed.as_millis() <= 600,
+                    "expected to sleep between 500ms and 600ms, but got {}",
+                    elapsed.as_millis()
+                );
+            });
+        })
+    }
+
+    #[test]
+    fn sleep_multi_threaded() {
+        let _trace = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_thread_ids(true)
+            .set_default();
+
+        const WORKERS: usize = 3;
+        const TASKS: usize = 500;
+
+        loom::model(|| {
+            loom::lazy_static! {
+                static ref EXEC: Executor<StdPark> = Executor::new(WORKERS, std_clock!());
+            }
+
+            let _guard = StopOnPanic::new(&EXEC);
+
+            let workers: Vec<_> = (0..WORKERS)
+                .map(|id| {
+                    loom::thread::spawn(move || {
+                        let mut worker =
+                            Worker::new(&EXEC, id, StdPark::for_current(), FastRand::from_seed(0));
+
+                        let tasks = (0..TASKS).map(|_| {
+                            EXEC.try_spawn(async move {
+                                let begin = ::std::time::Instant::now();
+
+                                sleep(EXEC.timer(), Duration::from_millis(500))
+                                    .unwrap()
+                                    .await;
+
+                                let elapsed = begin.elapsed();
+                                assert!(
+                                    elapsed.as_millis() >= 500 && elapsed.as_millis() <= 600,
+                                    "expected to sleep between 500ms and 600ms, but got {}",
+                                    elapsed.as_millis()
+                                );
+                            })
+                            .unwrap()
+                        });
+
+                        worker
+                            .block_on(futures::future::try_join_all(tasks))
+                            .unwrap();
+                    })
+                })
+                .collect();
+
+            for h in workers {
+                h.join().unwrap();
+            }
+        });
+    }
+}

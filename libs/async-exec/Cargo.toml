@@ -32,7 +32,6 @@ bitflags.workspace = true
 pin-project.workspace = true
 
 [dev-dependencies]
-async-exec = { path = ".", features = ["std"] }
 tracing-subscriber = { workspace = true, default-features = true, features = ["env-filter"] }
 lazy_static.workspace = true
 criterion.workspace = true
@@ -43,7 +42,6 @@ futures = "0.3.31"
 loom.workspace = true
 
 [features]
-std = []
 unwind2 = ["dep:unwind2"]
 counters = []
 __bench = ["tracing/max_level_off"]

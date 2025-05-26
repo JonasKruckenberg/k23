@@ -11,6 +11,7 @@ use crate::time::timer::{Core, Deadline};
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
+use util::loom_const_fn;
 
 pub(crate) struct Wheel {
     /// A bitmap of the slots that are occupied.
@@ -39,31 +40,33 @@ impl Wheel {
     const SLOTS: usize = 64;
     pub(crate) const BITS: usize = Self::SLOTS.trailing_zeros() as usize;
 
-    #[allow(
-        clippy::cast_possible_truncation,
-        reason = "slot index can be at most 64"
-    )]
-    pub(crate) fn new(level: usize) -> Self {
-        // how many ticks does a single slot represent in a wheel of this level?
-        let ticks_per_slot = Ticks(Self::SLOTS.pow(level as u32) as u64);
-        let ticks_per_wheel = Ticks(ticks_per_slot.0 * Self::SLOTS as u64);
+    loom_const_fn! {
+        #[allow(
+            clippy::cast_possible_truncation,
+            reason = "slot index can be at most 64"
+        )]
+        pub(crate) const fn new(level: usize) -> Self {
+            // how many ticks does a single slot represent in a wheel of this level?
+            let ticks_per_slot = Ticks(Self::SLOTS.pow(level as u32) as u64);
+            let ticks_per_wheel = Ticks(ticks_per_slot.0 * Self::SLOTS as u64);
 
-        debug_assert!(ticks_per_slot.0.is_power_of_two());
-        debug_assert!(ticks_per_wheel.0.is_power_of_two());
+            debug_assert!(ticks_per_slot.0.is_power_of_two());
+            debug_assert!(ticks_per_wheel.0.is_power_of_two());
 
-        // because `ticks_per_wheel` is a power of two, we can calculate a
-        // bitmask for masking out the indices in all lower wheels from a `now`
-        // timestamp.
-        let wheel_mask = !(ticks_per_wheel.0 - 1);
-        let slots = [const { linked_list::List::new() }; Self::SLOTS];
+            // because `ticks_per_wheel` is a power of two, we can calculate a
+            // bitmask for masking out the indices in all lower wheels from a `now`
+            // timestamp.
+            let wheel_mask = !(ticks_per_wheel.0 - 1);
+            let slots = [const { linked_list::List::new() }; Self::SLOTS];
 
-        Self {
-            level,
-            ticks_per_slot,
-            ticks_per_wheel,
-            wheel_mask,
-            occupied_slots: 0,
-            slots,
+            Self {
+                level,
+                ticks_per_slot,
+                ticks_per_wheel,
+                wheel_mask,
+                occupied_slots: 0,
+                slots,
+            }
         }
     }
 
