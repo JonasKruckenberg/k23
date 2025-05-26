@@ -796,6 +796,13 @@ impl<S: Schedule> Schedulable<S> {
         Self::drop_waker,
     );
 
+    // `Waker::will_wake` is used all over the place to optimize waker code (e.g. only update wakers if they
+    // have a different wake target). Problem is `will_wake` only checks for pointer equality and since
+    // the `into_raw_waker` would usually be inlined in release mode (and with it `WAKER_VTABLE`) the
+    // Waker identity would be different before and after calling `.clone()`. This isn't a correctness
+    // problem since it's still the same waker in the end, it just causes a lot of unnecessary wake ups.
+    // the `inline(never)` below is therefore quite load-bearing
+    #[inline(never)]
     fn raw_waker(this: *const Self) -> RawWaker {
         RawWaker::new(this.cast::<()>(), &Self::WAKER_VTABLE)
     }
