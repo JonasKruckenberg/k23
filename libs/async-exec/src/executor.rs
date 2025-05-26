@@ -54,7 +54,7 @@ where
         Self {
             schedulers: CpuLocal::with_capacity(num_workers),
             stop: AtomicBool::new(false),
-            parking_lot: ParkingLot::new(num_workers),
+            parking_lot: ParkingLot::with_capacity(num_workers),
             injector: Injector::new(),
             num_stealing: AtomicUsize::new(0),
             timer: Timer::new(clock),
@@ -73,15 +73,11 @@ where
     /// reused for the entire time that `Executor` exists.
     #[cfg(not(loom))]
     #[must_use]
-    pub const unsafe fn new_with_static_stub(
-        num_threads: usize,
-        clock: Clock,
-        stub: &'static TaskStub,
-    ) -> Self {
+    pub const unsafe fn new_with_static_stub(clock: Clock, stub: &'static TaskStub) -> Self {
         Self {
             schedulers: CpuLocal::new(),
             stop: AtomicBool::new(false),
-            parking_lot: ParkingLot::new(num_threads),
+            parking_lot: ParkingLot::new(),
             // Safety: ensured by caller
             injector: unsafe { Injector::new_with_static_stub(stub) },
             num_stealing: AtomicUsize::new(0),
@@ -194,10 +190,6 @@ where
 
     fn active_workers(&self) -> usize {
         self.schedulers.len()
-    }
-
-    fn total_workers(&self) -> usize {
-        self.parking_lot.capacity()
     }
 }
 
@@ -360,7 +352,7 @@ where
         }
 
         // If that fails, attempt to steal from other workers
-        let num_workers = self.exec.total_workers();
+        let num_workers = self.exec.active_workers();
 
         // if there is only one worker, there is no one to steal from anyway
         if num_workers <= 1 {

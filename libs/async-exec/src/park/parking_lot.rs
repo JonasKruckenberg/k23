@@ -14,11 +14,8 @@ use spin::Mutex;
 use util::loom_const_fn;
 
 pub struct ParkingLot<P> {
-    /// Total number of cores
-    num_workers: usize,
     /// Number of parked cores
     num_parked: AtomicUsize,
-    // num_stealing: AtomicUsize,
     unpark_tokens: Mutex<Vec<UnparkToken<P>>>,
 }
 
@@ -26,22 +23,23 @@ pub struct ParkingLot<P> {
 
 impl<P: Park + Send + Sync> ParkingLot<P> {
     loom_const_fn! {
-        pub const fn new(num_workers: usize) -> Self {
+        pub const fn new() -> Self {
             Self {
-                num_workers,
                 num_parked: AtomicUsize::new(0),
-                // num_stealing: AtomicUsize::new(0),
                 unpark_tokens: Mutex::new(Vec::new()),
             }
         }
     }
 
-    pub fn num_parked(&self) -> usize {
-        self.num_parked.load(Ordering::Acquire)
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            num_parked: AtomicUsize::new(0),
+            unpark_tokens: Mutex::new(Vec::with_capacity(capacity)),
+        }
     }
 
-    pub fn capacity(&self) -> usize {
-        self.num_workers
+    pub fn num_parked(&self) -> usize {
+        self.num_parked.load(Ordering::Acquire)
     }
 
     /// Park the calling execution context using the provided `Parker`.
@@ -101,20 +99,12 @@ impl<P: Park + Send + Sync> ParkingLot<P> {
     fn transition_to_parked(&self) {
         // Increment `num_idle` before we park ourselves
         let prev = self.num_parked.fetch_add(1, Ordering::Release);
-        debug_assert!(
-            prev < self.num_workers,
-            "ParkingLot({max}) configuration supports {max} simultaneously parked threads, but caller attempted to park {prev}",
-            max = self.num_workers
-        );
+        assert_ne!(prev, usize::MAX);
     }
 
     fn transition_from_parked(&self) {
         let prev = self.num_parked.fetch_sub(1, Ordering::Release);
-        debug_assert!(
-            prev <= self.num_workers,
-            "ParkingLot({max}) configuration supports {max} simultaneously parked threads, but caller attempted to park {prev}",
-            max = self.num_workers
-        );
+        assert_ne!(prev, 0);
     }
 }
 
@@ -136,7 +126,7 @@ mod tests {
                 static ref UNPARKED: AtomicUsize = AtomicUsize::new(0);
             }
 
-            let lot: Arc<ParkingLot<StdPark>> = Arc::new(ParkingLot::new(4));
+            let lot: Arc<ParkingLot<StdPark>> = Arc::new(ParkingLot::with_capacity(4));
 
             let joins: Vec<_> = (0..4)
                 .map(|_| {
