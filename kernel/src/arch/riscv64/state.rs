@@ -5,19 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct Closed;
+use crate::arch::device::cpu::Cpu;
 
-impl Closed {
-    pub(crate) const fn new() -> Self {
-        Self
-    }
+#[derive(Debug)]
+pub struct Global {}
+
+#[derive(Debug)]
+pub struct CpuLocal {
+    pub cpu: Cpu,
 }
-
-impl core::fmt::Display for Closed {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.pad("closed")
-    }
-}
-
-impl core::error::Error for Closed {}

@@ -19,6 +19,7 @@ use cpu_local::collection::CpuLocal;
 use fastrand::FastRand;
 use spin::Backoff;
 
+#[derive(Debug)]
 pub struct Executor<P> {
     schedulers: CpuLocal<Scheduler>,
     stop: AtomicBool,
@@ -28,6 +29,7 @@ pub struct Executor<P> {
     timer: Timer,
 }
 
+#[derive(Debug)]
 pub struct Worker<P: 'static> {
     id: usize,
     exec: &'static Executor<P>,
@@ -88,6 +90,15 @@ where
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Release);
         self.parking_lot.unpark_all();
+    }
+
+    /// Returns the CPU local scheduler
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no active scheduler on this CPU (the worker hasn't started yet)
+    pub fn cpu_local_scheduler(&self) -> &Scheduler {
+        self.schedulers.get().expect("no active scheduler")
     }
 
     #[inline]
@@ -230,7 +241,7 @@ where
     }
 
     pub fn run(&mut self) {
-        let _span = tracing::info_span!("starting worker main loop", worker = self.id).entered();
+        let _span = tracing::debug_span!("worker main loop", worker = self.id).entered();
 
         loop {
             // drive the scheduling loop until we're out of work
@@ -240,7 +251,7 @@ where
 
             // check the executors signalled us to stop
             if self.exec.stop.load(Ordering::Acquire) {
-                tracing::info!(worker = self.id, "stop signal received, shutting down");
+                tracing::debug!(worker = self.id, "stop signal received, shutting down");
                 break;
             }
 
@@ -253,7 +264,7 @@ where
                 continue;
             }
 
-            tracing::info!("going to sleep maybe_next_deadline = {maybe_next_deadline:?}");
+            tracing::trace!("going to sleep maybe_next_deadline = {maybe_next_deadline:?}");
             if let Some(next_deadline) = maybe_next_deadline {
                 self.exec.parking_lot.park_until(
                     self.parker.clone(),
@@ -264,7 +275,7 @@ where
                 // at this point we're fully out of work. We so we should suspend the
                 self.exec.parking_lot.park(self.parker.clone());
             }
-            tracing::info!("woke up");
+            tracing::trace!("woke up");
         }
     }
 
@@ -273,6 +284,8 @@ where
     where
         F: Future,
     {
+        let _span = tracing::debug_span!("worker block_on", worker = self.id).entered();
+
         let waker = self.parker.clone().into_unpark().into_waker();
         let mut cx = Context::from_waker(&waker);
 
@@ -297,7 +310,7 @@ where
                 continue;
             }
 
-            tracing::info!("going to sleep maybe_next_deadline = {maybe_next_deadline:?}");
+            tracing::trace!("going to sleep maybe_next_deadline = {maybe_next_deadline:?}");
             if let Some(next_deadline) = maybe_next_deadline {
                 self.exec.parking_lot.park_until(
                     self.parker.clone(),
@@ -308,7 +321,7 @@ where
                 // at this point we're fully out of work. We so we should suspend the
                 self.exec.parking_lot.park(self.parker.clone());
             }
-            tracing::info!("woke up");
+            tracing::trace!("woke up");
         }
     }
 

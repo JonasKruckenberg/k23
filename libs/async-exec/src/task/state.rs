@@ -145,7 +145,7 @@ impl State {
     ///
     /// This method should always be followed by a call to [`Self::end_poll`] after the actual poll
     /// is completed.
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn start_poll(&self) -> StartPollAction {
         let mut should_wait_for_join_waker = false;
         let action = self.transition(|s| {
@@ -182,7 +182,7 @@ impl State {
     /// Transition the task from `POLLING` to `IDLE`, the returned enum indicates what to do with task.
     /// The `completed` argument should be set to true if the polled future returned a `Poll::Ready`
     /// indicating the task is completed and should not be rescheduled.
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn end_poll(&self, completed: bool) -> PollResult {
         let mut should_wait_for_join_waker = false;
         let action = self.transition(|s| {
@@ -229,7 +229,7 @@ impl State {
         action
     }
 
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn try_join(&self) -> JoinAction {
         fn should_register(s: &mut Snapshot) -> JoinAction {
             let action = match s.get(Snapshot::JOIN_WAKER) {
@@ -268,7 +268,7 @@ impl State {
         })
     }
 
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn join_waker_registered(&self) {
         self.transition(|s| {
             debug_assert_eq!(s.get(Snapshot::JOIN_WAKER), JoinWakerState::Registering);
@@ -277,7 +277,7 @@ impl State {
         });
     }
 
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn wake_by_val(&self) -> WakeByValAction {
         self.transition(|s| {
             // If the task was woken *during* a poll, it will be re-queued by the
@@ -308,7 +308,7 @@ impl State {
         })
     }
 
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn wake_by_ref(&self) -> WakeByRefAction {
         self.transition(|state| {
             if state.get(Snapshot::COMPLETE) || state.get(Snapshot::WOKEN) {
@@ -331,7 +331,7 @@ impl State {
         Snapshot::REFS.unpack(raw)
     }
 
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn clone_ref(&self) {
         // Using a relaxed ordering is alright here, as knowledge of the
         // original reference prevents other threads from erroneously deleting
@@ -359,7 +359,7 @@ impl State {
         assert!(old_refs < REF_MAX, "task reference count overflow");
     }
 
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn drop_ref(&self) -> bool {
         // We do not need to synchronize with other cores unless we are going to
         // delete the task.
@@ -378,7 +378,7 @@ impl State {
     /// Cancel the task.
     ///
     /// Returns `true` if the task was successfully canceled.
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn cancel(&self) -> bool {
         self.transition(|s| {
             // you can't cancel a task that has already been canceled, that doesn't make sense.
@@ -392,7 +392,7 @@ impl State {
         })
     }
 
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn create_join_handle(&self) {
         self.transition(|s| {
             debug_assert!(
@@ -404,7 +404,7 @@ impl State {
         });
     }
 
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     pub(super) fn drop_join_handle(&self) {
         const MASK: usize = !Snapshot::HAS_JOIN_HANDLE.raw_mask();
         let _prev = self.val.fetch_and(MASK, Ordering::Release);

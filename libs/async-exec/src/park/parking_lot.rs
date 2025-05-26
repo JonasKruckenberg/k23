@@ -13,6 +13,7 @@ use alloc::vec::Vec;
 use spin::Mutex;
 use util::loom_const_fn;
 
+#[derive(Debug)]
 pub struct ParkingLot<P> {
     /// Number of parked cores
     num_parked: AtomicUsize,

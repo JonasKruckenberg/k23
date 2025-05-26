@@ -14,6 +14,12 @@ pub struct WakeBatch {
     inner: ArrayVec<Waker, NUM_WAKERS>,
 }
 
+impl Default for WakeBatch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WakeBatch {
     pub const fn new() -> Self {
         Self {

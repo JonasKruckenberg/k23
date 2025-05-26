@@ -7,6 +7,8 @@
 
 pub mod oneshot;
 pub mod wait_cell;
+pub mod wait_queue;
+pub mod wake_batch;
 
 pub use wait_cell::WaitCell;
 

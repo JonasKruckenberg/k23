@@ -5,23 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::CPUID;
 use crate::arch::device;
 use crate::device_tree::DeviceTree;
 use crate::irq::InterruptController;
-use crate::time::clock::Ticks;
-use crate::time::{Clock, NANOS_PER_SEC};
-use anyhow::Context;
+use async_exec::time::Ticks;
+use async_exec::time::{Clock, NANOS_PER_SEC};
 use bitflags::bitflags;
-use core::cell::{OnceCell, RefCell};
+use core::cell::RefCell;
 use core::fmt;
 use core::str::FromStr;
 use core::time::Duration;
-use cpu_local::cpu_local;
-
-cpu_local! {
-    static CPU: OnceCell<Cpu> = OnceCell::new();
-}
 
 #[derive(Debug)]
 pub struct Cpu {
@@ -92,96 +85,76 @@ impl fmt::Display for Cpu {
     }
 }
 
-pub fn with_cpu<F, R>(f: F) -> R
-where
-    F: FnOnce(&Cpu) -> R,
-{
-    f(CPU.get().expect("CPU info not initialized"))
-}
+impl Cpu {
+    pub fn new(devtree: &DeviceTree, cpuid: usize) -> crate::Result<Self> {
+        let cpus = devtree
+            .find_by_path("/cpus")
+            .expect("required /cpus node not in device tree");
 
-pub fn try_with_cpu<F, R>(f: F) -> crate::Result<R>
-where
-    F: FnOnce(&Cpu) -> R,
-{
-    CPU.get().context("CPU info not initialized").map(f)
-}
+        let cpu = cpus
+            .children()
+            .find(|dev| {
+                let name = dev.name.name;
+                let unit_addr =
+                    usize::from_str(dev.name.unit_address.expect("CPU is missing unit address"))
+                        .expect("CPU unit address is not an integer");
 
-#[cold]
-pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
-    let cpus = devtree
-        .find_by_path("/cpus")
-        .expect("required /cpus node not in device tree");
+                name == "cpu" && unit_addr == cpuid
+            })
+            .expect("CPU node not found in device tree");
 
-    let cpu = cpus
-        .children()
-        .find(|dev| {
-            let name = dev.name.name;
-            let unit_addr =
-                usize::from_str(dev.name.unit_address.expect("CPU is missing unit address"))
-                    .expect("CPU unit address is not an integer");
+        let timebase_frequency = cpu
+            .property("timebase-frequency")
+            .or_else(|| cpu.parent().unwrap().property("timebase-frequency"))
+            .unwrap()
+            .as_u64()?;
 
-            name == "cpu" && unit_addr == CPUID.get()
-        })
-        .expect("CPU node not found in device tree");
+        let cbop_block_size = cpu
+            .property("riscv,cbop-block-size")
+            .map(|prop| prop.as_usize().unwrap());
 
-    let timebase_frequency = cpu
-        .property("timebase-frequency")
-        .or_else(|| cpu.parent().unwrap().property("timebase-frequency"))
-        .unwrap()
-        .as_u64()?;
+        let cboz_block_size = cpu
+            .property("riscv,cboz-block-size")
+            .map(|prop| prop.as_usize().unwrap());
 
-    let cbop_block_size = cpu
-        .property("riscv,cbop-block-size")
-        .map(|prop| prop.as_usize().unwrap());
+        let cbom_block_size = cpu
+            .property("riscv,cbom-block-size")
+            .map(|prop| prop.as_usize().unwrap());
 
-    let cboz_block_size = cpu
-        .property("riscv,cboz-block-size")
-        .map(|prop| prop.as_usize().unwrap());
+        let extensions = cpu.property("riscv,isa-extensions").unwrap().as_strlist()?;
+        let extensions = parse_riscv_extensions(extensions);
 
-    let cbom_block_size = cpu
-        .property("riscv,cbom-block-size")
-        .map(|prop| prop.as_usize().unwrap());
+        // TODO find CLINT associated with this core
+        let hlic_node = cpu
+            .children()
+            .find(|c| c.name.name == "interrupt-controller")
+            .unwrap();
+        tracing::trace!("CPU interrupt controller: {:?}", hlic_node);
 
-    let extensions = cpu.property("riscv,isa-extensions").unwrap().as_strlist()?;
-    let extensions = parse_riscv_extensions(extensions);
+        let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
+        plic.irq_unmask(10);
 
-    // TODO find CLINT associated with this core
-    let hlic_node = cpu
-        .children()
-        .find(|c| c.name.name == "interrupt-controller")
-        .unwrap();
-    tracing::trace!("CPU interrupt controller: {:?}", hlic_node);
+        let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
+        let clock = Clock::new(tick_duration, || Ticks(riscv::register::time::read64()));
 
-    let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
-    plic.irq_unmask(10);
+        debug_assert_eq!(
+            clock.ticks_to_duration(Ticks(timebase_frequency)),
+            Duration::from_secs(1)
+        );
+        debug_assert_eq!(
+            clock.duration_to_ticks(Duration::from_secs(1)).unwrap(),
+            Ticks(timebase_frequency)
+        );
 
-    let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
-    let clock = Clock::new(tick_duration, || Ticks(riscv::register::time::read64()));
-
-    debug_assert_eq!(
-        clock.ticks_to_duration(Ticks(timebase_frequency)),
-        Duration::from_secs(1)
-    );
-    debug_assert_eq!(
-        clock.duration_to_ticks(Duration::from_secs(1)).unwrap(),
-        Ticks(timebase_frequency)
-    );
-
-    CPU.set({
-        let info = Cpu {
+        Ok(Self {
             clock,
             extensions,
             cbop_block_size,
             cboz_block_size,
             cbom_block_size,
             plic: RefCell::new(plic),
-        };
-        tracing::debug!("\n{info}");
-        info
-    })
-    .unwrap();
-
-    Ok(())
+        })
+    }
 }
 
 pub fn parse_riscv_extensions(strs: fdt::StringList) -> RiscvExtensions {

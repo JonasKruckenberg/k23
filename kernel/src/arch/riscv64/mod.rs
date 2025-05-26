@@ -9,30 +9,35 @@ mod asid_allocator;
 pub mod device;
 mod mem;
 mod setjmp_longjmp;
+pub mod state;
 mod trap_handler;
 
+use crate::arch::device::cpu::Cpu;
 use crate::device_tree::DeviceTree;
 use crate::mem::VirtualAddress;
 pub use asid_allocator::AsidAllocator;
+use async_exec::time::{Clock, Deadline};
 use core::arch::asm;
 pub use mem::{
     AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE,
     USER_ASPACE_RANGE, invalidate_range, is_kernel_address,
 };
 use riscv::sstatus::FS;
-use riscv::{interrupt, scounteren, sie, sstatus};
+use riscv::{interrupt, sbi, scounteren, sie, sstatus};
 pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
 
 pub const STACK_ALIGNMENT: usize = 16;
 
 /// Global RISC-V specific initialization.
 #[cold]
-pub fn init_early() {
+pub fn init() -> state::Global {
     let supported = riscv::sbi::supported_extensions().unwrap();
     tracing::trace!("Supported SBI extensions: {supported:?}");
 
     mem::init();
     asid_allocator::init();
+
+    state::Global {}
 }
 
 /// Early per-cpu and RISC-V specific initialization.
@@ -58,9 +63,7 @@ pub fn per_cpu_init_early() {
 ///
 /// This function will be called after all global initialization is done.
 #[cold]
-pub fn per_cpu_init_late(devtree: &DeviceTree) -> crate::Result<()> {
-    device::cpu::init(devtree)?;
-
+pub fn per_cpu_init_late(devtree: &DeviceTree, cpuid: usize) -> crate::Result<state::CpuLocal> {
     // Safety: register access
     unsafe {
         // Initialize the trap handler
@@ -75,7 +78,9 @@ pub fn per_cpu_init_late(devtree: &DeviceTree) -> crate::Result<()> {
         sie::set_seie();
     }
 
-    Ok(())
+    Ok(state::CpuLocal {
+        cpu: Cpu::new(devtree, cpuid)?,
+    })
 }
 
 /// Set the thread pointer on the calling cpu to the given address.
@@ -137,23 +142,31 @@ pub fn rmb() {
     }
 }
 
-/// Suspend the calling cpu indefinitely.
-///
-/// # Safety
-///
-/// The caller must ensure it is safe to suspend the cpu.
-pub unsafe fn cpu_park() {
-    // Safety: inline assembly
-    unsafe { asm!("wfi") }
+#[derive(Debug)]
+pub struct Park {
+    cpuid: usize,
 }
 
-/// Send an interrupt to a parked cpu waking it up.
-///
-/// # Safety
-///
-/// The caller must ensure it is safe to send an interrupt to the target cpu, which it generally should
-/// be as the trap handler for software interrupts should be non-disruptive to already running cpus,
-/// but the caller should still exercise caution.
-pub unsafe fn cpu_unpark(cpuid: usize) {
-    riscv::sbi::ipi::send_ipi(1 << cpuid, 0).unwrap();
+impl Park {
+    pub fn new(cpuid: usize) -> Self {
+        Self { cpuid }
+    }
+}
+
+impl async_exec::park::Park for Park {
+    fn park(&self) {
+        // Safety: inline assembly
+        unsafe { asm!("wfi") }
+    }
+
+    fn park_until(&self, deadline: Deadline, _clock: &Clock) {
+        sbi::time::set_timer(deadline.ticks.0).unwrap();
+
+        // Safety: inline assembly
+        unsafe { asm!("wfi") }
+    }
+
+    fn unpark(&self) {
+        sbi::ipi::send_ipi(1 << self.cpuid, 0).unwrap();
+    }
 }

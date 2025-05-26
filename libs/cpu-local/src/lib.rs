@@ -74,6 +74,8 @@
 //!
 //! [thread_local_attr]: <https://github.com/rust-lang/rust/issues/29594>
 //! [custom target specification]: <https://doc.rust-lang.org/beta/rustc/targets/custom.html>
+//! [`Cell`]: core::cell::Cell
+//! [`RefCell`]: core::cell::RefCell
 
 #![cfg_attr(not(test), no_std)]
 #![feature(thread_local)]
@@ -110,6 +112,8 @@ use core::ptr::NonNull;
 /// the CPU-local you will need an interior-mutability container such as [`Cell`] or [`RefCell`]
 ///
 /// [cpu local]: crate#what-do-i-use-this-for
+/// [`Cell`]: core::cell::Cell
+/// [`RefCell`]: core::cell::RefCell
 #[macro_export]
 macro_rules! cpu_local {
     // empty (base case for the recursion)
@@ -183,14 +187,6 @@ macro_rules! cpu_local_inner {
 }
 
 /// A CPU local storage key which owns its contents.
-///
-/// It is instantiated with the [`cpu_local`] macro and in addition to the
-/// primary [`with`] method provides a number of convenience methods
-/// for working CPU-local [`Cell`]s and [`RefCell`]s.
-///
-/// The [`with`] method yields a reference to the contained value which cannot outlive the current thread or escape the given closure.
-///
-/// [`with`]: LocalKey::with
 pub struct LocalKey<T> {
     // This outer `LocalKey<T>` type is what's going to be stored in statics,
     // but actual data inside will sometimes be tagged with #[thread_local].

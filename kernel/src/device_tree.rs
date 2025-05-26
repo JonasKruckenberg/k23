@@ -13,18 +13,8 @@ use fallible_iterator::FallibleIterator;
 use fdt::{CellSizes, Error, Fdt, NodeName, StringList};
 use hashbrown::HashMap;
 use smallvec::{SmallVec, smallvec};
-use spin::OnceLock;
 
 type Link<T> = Option<NonNull<T>>;
-
-static DEVICE_TREE: OnceLock<DeviceTree> = OnceLock::new();
-#[cold]
-pub fn init(fdt: &[u8]) -> crate::Result<&'static DeviceTree> {
-    DEVICE_TREE.get_or_try_init(|| DeviceTree::parse(fdt))
-}
-pub fn device_tree() -> &'static DeviceTree {
-    DEVICE_TREE.get().expect("device tree not initialized")
-}
 
 /// A device tree describing the hardware configuration of the system.
 #[ouroboros::self_referencing] // `root` and all other nodes & data borrows from `alloc`
