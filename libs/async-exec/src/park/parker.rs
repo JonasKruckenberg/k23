@@ -10,6 +10,7 @@ use crate::loom::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use crate::park::Park;
+use crate::time::{Clock, Deadline};
 use core::fmt;
 use core::task::{RawWaker, RawWakerVTable, Waker};
 use static_assertions::assert_impl_all;
@@ -65,7 +66,12 @@ impl<P: Park> Parker<P> {
 
     #[inline]
     pub fn park(&self) {
-        self.0.park();
+        self.0.park(None);
+    }
+
+    #[inline]
+    pub fn park_until(&self, deadline: Deadline, clock: &Clock) {
+        self.0.park(Some((deadline, clock)));
     }
 
     /// Attempts to unpark itself, returning an error if that fails.
@@ -161,7 +167,7 @@ impl<P> Inner<P> {
 }
 
 impl<P: Park> Inner<P> {
-    fn park(&self) {
+    fn park(&self, maybe_deadline_and_clock: Option<(Deadline, &Clock)>) {
         tracing::trace!(
             state = self.describe_state(),
             "parking execution context..."
@@ -205,7 +211,22 @@ impl<P: Park> Inner<P> {
         }
 
         loop {
-            self.park_impl.park();
+            if let Some((deadline, clock)) = maybe_deadline_and_clock {
+                self.park_impl.park_until(deadline, clock);
+
+                let now = clock.now_ticks();
+                tracing::trace!(
+                    "after park_until. now = {now:?}, deadline = {:?}",
+                    deadline.ticks
+                );
+                if now >= deadline.ticks {
+                    // we reached the deadline
+                    self.state.store(STATE_EMPTY, Ordering::SeqCst);
+                    return;
+                }
+            } else {
+                self.park_impl.park();
+            }
 
             if self
                 .state
@@ -340,7 +361,7 @@ mod tests {
         mpsc,
     };
     use crate::loom::thread;
-    use crate::park::StdPark;
+    use crate::test_util::StdPark;
     use core::pin::{Pin, pin};
     use core::task::{Context, Poll, Waker};
 

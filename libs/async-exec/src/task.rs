@@ -763,7 +763,7 @@ where
         });
 
         cfg_if::cfg_if! {
-            if #[cfg(feature = "std")] {
+            if #[cfg(test)] {
                 let result = ::std::panic::catch_unwind(poll);
             } else if #[cfg(feature = "unwind2")] {
                 let result = panic_unwind2::catch_unwind(poll);

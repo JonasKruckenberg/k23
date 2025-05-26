@@ -11,6 +11,7 @@ use core::marker::PhantomPinned;
 use core::mem::offset_of;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, Ordering};
+use util::loom_const_fn;
 
 /// An entry in a timing [`Wheel`][crate::time::timer::Wheel].
 #[derive(Debug)]
@@ -24,13 +25,15 @@ pub(in crate::time) struct Entry {
 }
 
 impl Entry {
-    pub(in crate::time) const fn new(deadline: Ticks) -> Entry {
-        Self {
-            deadline,
-            waker: WaitCell::new(),
-            is_registered: AtomicBool::new(false),
-            links: linked_list::Links::new(),
-            _pin: PhantomPinned,
+    loom_const_fn! {
+        pub(in crate::time) const fn new(deadline: Ticks) -> Entry {
+            Self {
+                deadline,
+                waker: WaitCell::new(),
+                is_registered: AtomicBool::new(false),
+                links: linked_list::Links::new(),
+                _pin: PhantomPinned,
+            }
         }
     }
 

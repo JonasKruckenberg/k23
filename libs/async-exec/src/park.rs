@@ -8,36 +8,12 @@
 mod parker;
 mod parking_lot;
 
-use cfg_if::cfg_if;
-
+use crate::time::{Clock, Deadline};
 pub use parker::{Parker, UnparkToken};
 pub use parking_lot::ParkingLot;
 
 pub trait Park {
     fn park(&self);
+    fn park_until(&self, deadline: Deadline, clock: &Clock);
     fn unpark(&self);
-}
-
-cfg_if! {
-    if #[cfg(feature = "std")] {
-        pub struct StdPark(crate::loom::thread::Thread);
-
-        impl Park for StdPark {
-            fn park(&self) {
-                tracing::trace!("parking current thread ({:?})...", self.0);
-                crate::loom::thread::park();
-            }
-
-            fn unpark(&self) {
-                tracing::trace!("unparking thread {:?}...", self.0);
-                self.0.unpark();
-            }
-        }
-
-        impl StdPark {
-            pub fn for_current() -> Self {
-                Self(crate::loom::thread::current())
-            }
-        }
-    }
 }

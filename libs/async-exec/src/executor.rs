@@ -10,6 +10,7 @@ use crate::park::{Park, Parker, ParkingLot};
 use crate::scheduler::steal::Injector;
 use crate::scheduler::{Schedule, Scheduler};
 use crate::task::{JoinHandle, TaskBuilder, TaskRef, TaskStub};
+use crate::time::{Clock, Timer};
 use core::alloc::{AllocError, Allocator};
 use core::num::NonZeroUsize;
 use core::pin::pin;
@@ -24,6 +25,7 @@ pub struct Executor<P> {
     parking_lot: ParkingLot<P>,
     injector: Injector<&'static Scheduler>,
     num_stealing: AtomicUsize,
+    timer: Timer,
 }
 
 pub struct Worker<P: 'static> {
@@ -35,19 +37,27 @@ pub struct Worker<P: 'static> {
     is_stealing: bool,
 }
 
+impl<P> Executor<P> {
+    #[inline]
+    pub fn timer(&self) -> &Timer {
+        &self.timer
+    }
+}
+
 // === impl Executor ===
 
 impl<P> Executor<P>
 where
     P: Park + Send + Sync,
 {
-    pub fn new(num_workers: usize) -> Self {
+    pub fn new(num_workers: usize, clock: Clock) -> Self {
         Self {
             schedulers: CpuLocal::with_capacity(num_workers),
             stop: AtomicBool::new(false),
             parking_lot: ParkingLot::new(num_workers),
             injector: Injector::new(),
             num_stealing: AtomicUsize::new(0),
+            timer: Timer::new(clock),
         }
     }
 
@@ -63,7 +73,11 @@ where
     /// reused for the entire time that `Executor` exists.
     #[cfg(not(loom))]
     #[must_use]
-    pub const unsafe fn new_with_static_stub(num_threads: usize, stub: &'static TaskStub) -> Self {
+    pub const unsafe fn new_with_static_stub(
+        num_threads: usize,
+        clock: Clock,
+        stub: &'static TaskStub,
+    ) -> Self {
         Self {
             schedulers: CpuLocal::new(),
             stop: AtomicBool::new(false),
@@ -71,6 +85,7 @@ where
             // Safety: ensured by caller
             injector: unsafe { Injector::new_with_static_stub(stub) },
             num_stealing: AtomicUsize::new(0),
+            timer: Timer::new(clock),
         }
     }
 
@@ -237,10 +252,27 @@ where
                 break;
             }
 
-            tracing::debug!("going to sleep");
-            // at this point we're fully out of work. We so we should suspend the
-            self.exec.parking_lot.park(self.parker.clone());
-            tracing::debug!("woke up");
+            tracing::trace!("turning timer...");
+            let (expired, maybe_next_deadline) = self.exec.timer.try_turn().unwrap_or((0, None));
+
+            // if turning the timer expired some `Sleep`s that means we potentially unblocked
+            // some tasks. let's try polling again!
+            if expired > 0 {
+                continue;
+            }
+
+            tracing::info!("going to sleep maybe_next_deadline = {maybe_next_deadline:?}");
+            if let Some(next_deadline) = maybe_next_deadline {
+                self.exec.parking_lot.park_until(
+                    self.parker.clone(),
+                    next_deadline,
+                    self.exec.timer.clock(),
+                );
+            } else {
+                // at this point we're fully out of work. We so we should suspend the
+                self.exec.parking_lot.park(self.parker.clone());
+            }
+            tracing::info!("woke up");
         }
     }
 
@@ -264,10 +296,27 @@ where
                 continue;
             }
 
-            tracing::debug!("going to sleep");
-            // at this point we're fully out of work. We so we should suspend the
-            self.exec.parking_lot.park(self.parker.clone());
-            tracing::debug!("woke up");
+            tracing::trace!("turning timer...");
+            let (expired, maybe_next_deadline) = self.exec.timer.try_turn().unwrap_or((0, None));
+
+            // if turning the timer expired some `Sleep`s that means we potentially unblocked
+            // some tasks. let's try polling again!
+            if expired > 0 {
+                continue;
+            }
+
+            tracing::info!("going to sleep maybe_next_deadline = {maybe_next_deadline:?}");
+            if let Some(next_deadline) = maybe_next_deadline {
+                self.exec.parking_lot.park_until(
+                    self.parker.clone(),
+                    next_deadline,
+                    self.exec.timer.clock(),
+                );
+            } else {
+                // at this point we're fully out of work. We so we should suspend the
+                self.exec.parking_lot.park(self.parker.clone());
+            }
+            tracing::info!("woke up");
         }
     }
 
@@ -374,21 +423,23 @@ where
 mod tests {
     use super::*;
     use crate::loom;
-    use crate::park::StdPark;
+    use crate::test_util::StopOnPanic;
+    use crate::test_util::{StdPark, std_clock};
     use core::hint::black_box;
+    use core::time::Duration;
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::util::SubscriberInitExt;
 
     #[test]
     fn single_threaded_executor() {
-        let _ = tracing_subscriber::fmt()
+        let _trace = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .with_thread_names(true)
             .set_default();
 
         loom::model(|| {
             loom::lazy_static! {
-                static ref EXEC: Executor<StdPark> = Executor::new(1);
+                static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
             }
 
             let (task, _) = EXEC
@@ -411,7 +462,7 @@ mod tests {
     #[cfg(not(loom))]
     #[test]
     fn multi_threaded_executor() {
-        let _ = tracing_subscriber::fmt()
+        let _trace = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .with_thread_names(true)
             .set_default();
@@ -420,17 +471,14 @@ mod tests {
             const NUM_THREADS: usize = 3;
 
             loom::lazy_static! {
-                static ref EXEC: Executor<StdPark> = Executor::new(NUM_THREADS);
+                static ref EXEC: Executor<StdPark> = Executor::new(NUM_THREADS, std_clock!());
             }
 
-            let (task, _) = EXEC
-                .task_builder()
-                .try_build(async move {
-                    tracing::info!("Hello World!");
-                    EXEC.stop();
-                })
-                .unwrap();
-            EXEC.spawn_allocated(task);
+            EXEC.try_spawn(async {
+                tracing::info!("Hello World!");
+                EXEC.stop();
+            })
+            .unwrap();
 
             let joins: Vec<_> = (0..NUM_THREADS)
                 .map(|id| {
@@ -458,9 +506,10 @@ mod tests {
 
     #[test]
     fn block_on() {
-        let _ = tracing_subscriber::fmt()
+        let _trace = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
-            .try_init();
+            .with_thread_ids(true)
+            .set_default();
 
         async fn work(num_polls: &AtomicUsize) -> usize {
             num_polls.fetch_add(1, Ordering::Relaxed);
@@ -475,7 +524,7 @@ mod tests {
         loom::model(|| {
             loom::lazy_static! {
                 static ref NUM_POLLS: AtomicUsize = AtomicUsize::new(0);
-                static ref EXEC: Executor<StdPark> = Executor::new(1);
+                static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
             }
 
             let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
@@ -488,5 +537,73 @@ mod tests {
 
             assert_eq!(NUM_POLLS.load(Ordering::Relaxed), 2);
         })
+    }
+
+    #[test]
+    fn join_handle_cross_thread() {
+        loom::model(|| {
+            loom::lazy_static! {
+                static ref EXEC: Executor<StdPark> = Executor::new(2, std_clock!());
+            }
+
+            let _guard = StopOnPanic::new(&EXEC);
+
+            let (tx, rx) = loom::sync::mpsc::channel::<JoinHandle<u32>>();
+
+            let h0 = loom::thread::spawn(move || {
+                let tid = loom::thread::current().id();
+
+                let mut worker =
+                    Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+
+                let h = EXEC
+                    .try_spawn(async move {
+                        // make sure the task is actually polled on thread 0
+                        assert_eq!(loom::thread::current().id(), tid);
+
+                        crate::task::yield_now().await;
+
+                        // make sure the task is actually polled on thread 0
+                        assert_eq!(loom::thread::current().id(), tid);
+
+                        42
+                    })
+                    .unwrap();
+
+                tx.send(h).unwrap();
+
+                worker.run();
+            });
+            let h1 = loom::thread::spawn(move || {
+                let mut worker =
+                    Worker::new(&EXEC, 1, StdPark::for_current(), FastRand::from_seed(0));
+
+                let h = rx.recv().unwrap();
+
+                let ret_code = worker.block_on(h).unwrap();
+
+                assert_eq!(ret_code, 42);
+
+                EXEC.stop();
+            });
+
+            h0.join().unwrap();
+            h1.join().unwrap();
+        });
+    }
+
+    #[test]
+    fn miri_check() {
+        let (tx, rx) = loom::sync::mpsc::channel::<u32>();
+
+        let h0 = loom::thread::spawn(move || {
+            tx.send(42).unwrap();
+        });
+        let h1 = loom::thread::spawn(move || {
+            assert_eq!(rx.recv().unwrap(), 42);
+        });
+
+        h0.join().unwrap();
+        h1.join().unwrap();
     }
 }

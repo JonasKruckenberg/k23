@@ -12,11 +12,11 @@ cfg_if! {
         pub(crate) use loom::sync;
         pub(crate) use loom::cell;
         pub(crate) use loom::model;
-        #[cfg(feature = "std")]
+        #[cfg(test)]
         pub(crate) use loom::thread;
         pub(crate) use loom::lazy_static;
     } else {
-        #[cfg(feature = "std")]
+        #[cfg(test)]
         pub(crate) use std::thread;
         #[cfg(test)]
         pub(crate) use lazy_static::lazy_static;
@@ -30,7 +30,7 @@ cfg_if! {
         pub(crate) mod sync {
             pub use core::sync::*;
             pub use alloc::sync::*;
-            #[cfg(feature = "std")]
+            #[cfg(test)]
             pub(crate) use std::sync::*;
         }
 
