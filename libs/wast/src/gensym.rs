@@ -5,15 +5,13 @@ use cpu_local::cpu_local;
 cpu_local!(static NEXT: Cell<u32> = Cell::new(0));
 
 pub fn reset() {
-    NEXT.with(|c| c.set(0));
+    NEXT.set(0);
 }
 
 pub fn generate(span: Span) -> Id<'static> {
-    NEXT.with(|next| {
-        let generation = next.get() + 1;
-        next.set(generation);
-        Id::gensym(span, generation)
-    })
+    let generation = NEXT.get() + 1;
+    NEXT.set(generation);
+    Id::gensym(span, generation)
 }
 
 pub fn fill<'a>(span: Span, slot: &mut Option<Id<'a>>) -> Id<'a> {

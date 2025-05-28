@@ -82,7 +82,7 @@ extern crate alloc;
 
 pub mod collection;
 
-use core::cell::{Cell, RefCell};
+use core::ops::Deref;
 use core::ptr::NonNull;
 
 /// Declare a new [cpu local] storage key.
@@ -103,7 +103,7 @@ use core::ptr::NonNull;
 ///  }
 ///
 ///  assert_eq!(FOO.get(), 1);
-///  BAR.with_borrow(|v| assert_eq!(v[1], 2.0));
+///  assert_eq!(BAR[1], 2.0);
 /// ```
 ///
 /// Just like the stdlib's version this you can only obtain shared references (`&T`), so to modify
@@ -217,173 +217,14 @@ impl<T> LocalKey<T> {
     pub const unsafe fn new(inner: fn(Option<&mut Option<T>>) -> NonNull<T>) -> Self {
         Self { inner }
     }
-
-    /// Acquires a reference to the contained value.
-    ///
-    /// This will lazily initialize the value if necessary.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # #![feature(thread_local)]
-    /// # use cpu_local::cpu_local;
-    ///
-    /// cpu_local! {
-    ///     pub static STATIC: String = String::from("I am");
-    /// }
-    ///
-    /// assert_eq!(
-    ///     STATIC.with(|original_value| format!("{} initialized", original_value.as_str())),
-    ///     "I am initialized",
-    /// );
-    /// ```
-    pub fn with<R>(&self, f: impl FnOnce(&T) -> R) -> R {
-        // Safety: pointer is always valid
-        let local = unsafe { (self.inner)(None).as_ref() };
-        f(local)
-    }
-
-    /// Returns a raw pointer to the underlying thread-local data.
-    ///
-    /// # Panics
-    ///
-    /// This method panics if the thread local storage value is accessed during or after destruction.
-    ///
-    /// # Safety
-    ///
-    /// This attempts to retrieve a raw pointer to the underlying data. You should prefer to use the getter methods.
-    pub unsafe fn as_ptr(&self) -> *const T {
-        // Safety: pointer is always valid
-        let value = unsafe { (self.inner)(None).as_ref() };
-        core::ptr::from_ref::<T>(value)
-    }
-
-    fn initialize_with<F, R>(&'static self, init: T, f: F) -> R
-    where
-        F: FnOnce(Option<T>, &T) -> R,
-    {
-        let mut init = Some(init);
-
-        // Safety: pointer is always valid
-        let reference = unsafe { (self.inner)(Some(&mut init)).as_ref() };
-
-        f(init, reference)
-    }
 }
 
-impl<T: 'static> LocalKey<Cell<T>> {
-    /// Sets or initializes the contained value.
-    ///
-    /// Unlike the other methods, this will not run the lazy initializer of the thread local. Instead, it will be directly initialized with the given value if it wasn’t initialized yet.
-    pub fn set(&'static self, value: T) {
-        self.initialize_with(Cell::new(value), |value, cell| {
-            if let Some(value) = value {
-                // The cell was already initialized, so `value` wasn't used to
-                // initialize it. So we overwrite the current value with the
-                // new one instead.
-                cell.set(value.into_inner());
-            }
-        });
-    }
+impl<T> Deref for LocalKey<T> {
+    type Target = T;
 
-    /// Returns a copy of the contained value.
-    ///
-    /// This will lazily initialize the value if necessary.
-    pub fn get(&'static self) -> T
-    where
-        T: Copy,
-    {
-        self.with(Cell::get)
-    }
-
-    /// Takes the contained value, leaving [`Default::default`] in its place.
-    ///
-    /// This will lazily initialize the value if necessary.
-    pub fn take(&'static self) -> T
-    where
-        T: Default,
-    {
-        self.with(Cell::take)
-    }
-
-    /// Replaces the contained value, returning the old value.
-    ///
-    /// This will lazily initialize the value if necessary.
-    pub fn replace(&'static self, value: T) -> T {
-        self.with(|cell| cell.replace(value))
-    }
-}
-
-impl<T: 'static> LocalKey<RefCell<T>> {
-    /// Acquires a reference to the contained value.
-    ///
-    /// This will lazily initialize the value if necessary.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the value is currently mutably borrowed.
-    pub fn with_borrow<F, R>(&'static self, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
-        self.with(|cell| f(&cell.borrow()))
-    }
-
-    /// Acquires a mutable reference to the contained value.
-    ///
-    /// This will lazily initialize the value if necessary.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the value is currently borrowed.
-    pub fn with_borrow_mut<F, R>(&'static self, f: F) -> R
-    where
-        F: FnOnce(&mut T) -> R,
-    {
-        self.with(|cell| f(&mut cell.borrow_mut()))
-    }
-
-    /// Sets or initializes the contained value.
-    ///
-    /// Unlike the other methods, this will not run the lazy initializer of the thread local. Instead, it will be directly initialized with the given value if it wasn’t initialized yet.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the value is currently borrowed.
-    pub fn set(&'static self, value: T) {
-        self.initialize_with(RefCell::new(value), |value, cell| {
-            if let Some(value) = value {
-                // The cell was already initialized, so `value` wasn't used to
-                // initialize it. So we overwrite the current value with the
-                // new one instead.
-                *cell.borrow_mut() = value.into_inner();
-            }
-        });
-    }
-
-    /// Takes the contained value, leaving [`Default::default`] in its place.
-    ///
-    /// This will lazily initialize the value if necessary.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the value is currently borrowed.
-    pub fn take(&'static self) -> T
-    where
-        T: Default,
-    {
-        self.with(RefCell::take)
-    }
-
-    /// Replaces the contained value, returning the old value.
-    ///
-    /// This will lazily initialize the value if necessary.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the value is currently borrowed.
-    pub fn replace(&'static self, value: T) -> T {
-        self.with(|cell| cell.replace(value))
+    fn deref(&self) -> &Self::Target {
+        // Safety: pointer is always valid
+        unsafe { (self.inner)(None).as_ref() }
     }
 }
 

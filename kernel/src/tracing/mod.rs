@@ -78,7 +78,7 @@ pub fn init(filter: Filter) {
 /// Perform late, per-CPU initialization. This will enable the proper printing of timestamps and
 /// should be called *after* per-CPU clocks have been brought online.
 pub fn per_cpu_init_late(time_base: Instant) {
-    TIME_BASE.set(Some(time_base));
+    TIME_BASE.replace(Some(time_base));
 }
 
 struct Subscriber {
@@ -302,7 +302,7 @@ fn write_timestamp<W>(w: &mut W) -> fmt::Result
 where
     W: Write + SetColor,
 {
-    let time_base = TIME_BASE.with_borrow(|time_base| *time_base);
+    let time_base = *TIME_BASE.borrow();
 
     w.write_char('[')?;
     if let Some(time_base) = time_base {

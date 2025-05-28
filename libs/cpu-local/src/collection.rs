@@ -563,7 +563,7 @@ cpu_local! {
 }
 
 fn cpuid() -> usize {
-    CPUID.with(|id| *id)
+    *CPUID
 }
 
 #[cfg(test)]

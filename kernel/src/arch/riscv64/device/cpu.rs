@@ -96,14 +96,14 @@ pub fn with_cpu<F, R>(f: F) -> R
 where
     F: FnOnce(&Cpu) -> R,
 {
-    CPU.with(|cpu_info| f(cpu_info.get().expect("CPU info not initialized")))
+    f(CPU.get().expect("CPU info not initialized"))
 }
 
 pub fn try_with_cpu<F, R>(f: F) -> crate::Result<R>
 where
     F: FnOnce(&Cpu) -> R,
 {
-    CPU.with(|cpu_info| cpu_info.get().context("CPU info not initialized").map(f))
+    CPU.get().context("CPU info not initialized").map(f)
 }
 
 #[cold]
@@ -167,8 +167,8 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
         Ticks(timebase_frequency)
     );
 
-    CPU.with(|info| {
-        let info_ = Cpu {
+    CPU.set({
+        let info = Cpu {
             clock,
             extensions,
             cbop_block_size,
@@ -176,10 +176,10 @@ pub fn init(devtree: &DeviceTree) -> crate::Result<()> {
             cbom_block_size,
             plic: RefCell::new(plic),
         };
-        tracing::debug!("\n{info_}");
-
-        info.set(info_).unwrap();
-    });
+        tracing::debug!("\n{info}");
+        info
+    })
+    .unwrap();
 
     Ok(())
 }

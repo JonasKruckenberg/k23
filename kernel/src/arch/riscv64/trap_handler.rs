@@ -30,7 +30,8 @@ pub fn init() {
     let trap_stack_top = unsafe {
         TRAP_STACK
             .as_ptr()
-            .byte_add(TRAP_STACK_SIZE_PAGES * PAGE_SIZE) as *mut u8
+            .byte_add(TRAP_STACK_SIZE_PAGES * PAGE_SIZE)
+            .cast_mut()
     };
 
     tracing::trace!("setting sscratch to {:p}", trap_stack_top);
