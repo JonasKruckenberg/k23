@@ -359,13 +359,13 @@ where
 
     fn try_steal(&mut self) -> Option<NonZeroUsize> {
         const ROUNDS: usize = 4;
-        const MAX_STOLEN_PER_TICK: NonZeroUsize = NonZeroUsize::new(256).unwrap();
+        const MAX_STOLEN_PER_TICK: usize = 256;
 
         // attempt to steal from the global injector queue first
         if let Ok(stealer) = self.exec.injector.try_steal() {
             let stolen = stealer.spawn_n(&self.scheduler, MAX_STOLEN_PER_TICK);
             tracing::trace!("stole {stolen} tasks from injector (in first attempt)");
-            return Some(stolen);
+            return NonZeroUsize::new(stolen);
         }
 
         // If that fails, attempt to steal from other workers
@@ -393,7 +393,7 @@ where
         if let Ok(stealer) = self.exec.injector.try_steal() {
             let stolen = stealer.spawn_n(&self.scheduler, MAX_STOLEN_PER_TICK);
             tracing::trace!("stole {stolen} tasks from injector (in second attempt)");
-            return Some(stolen);
+            return NonZeroUsize::new(stolen);
         }
 
         None
@@ -421,7 +421,7 @@ where
 
             let stolen = stealer.spawn_half(&self.scheduler);
             tracing::trace!("stole {stolen} tasks from worker {i} {victim:?}");
-            return Some(stolen);
+            return NonZeroUsize::new(stolen);
         }
 
         None

@@ -13,7 +13,7 @@ use crate::task::{Header, Task, TaskRef};
 use alloc::boxed::Box;
 use core::fmt::Debug;
 use core::marker::PhantomData;
-use core::num::{NonZero, NonZeroUsize};
+use core::num::NonZeroUsize;
 use mpsc_queue::MpscQueue;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -139,7 +139,7 @@ impl<'a, S> Stealer<'a, S> {
             return false;
         };
 
-        tracing::trace!(?task, "stole",);
+        tracing::trace!(?task, "stole");
 
         // decrement the target queue's task count
         self.tasks.fetch_sub(1, Ordering::SeqCst);
@@ -161,16 +161,15 @@ impl<'a, S> Stealer<'a, S> {
     ///
     /// Note this will always steal at least one task.
     #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
-    pub fn spawn_n(&self, scheduler: &S, max: NonZeroUsize) -> NonZeroUsize
+    pub fn spawn_n(&self, scheduler: &S, max: usize) -> usize
     where
         S: Schedule,
     {
         let mut stolen = 0;
-        while stolen <= max.get() && self.spawn_one(scheduler) {
+        while stolen <= max && self.spawn_one(scheduler) {
             stolen += 1;
         }
-
-        NonZeroUsize::new(stolen).expect("spawn_n stole 0 tasks, this is a bug")
+        stolen
     }
 
     /// Steal half the tasks in the current queue and spawn them on the provided
@@ -178,12 +177,11 @@ impl<'a, S> Stealer<'a, S> {
     ///
     /// Note this will always steal at least one task.
     #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
-    pub fn spawn_half(&self, scheduler: &S) -> NonZeroUsize
+    pub fn spawn_half(&self, scheduler: &S) -> usize
     where
         S: Schedule,
     {
-        // Safety: div_ceil can never return 0
-        let max = NonZero::new(self.task_snapshot.get().div_ceil(2)).unwrap();
+        let max = self.task_snapshot.get().div_ceil(2);
         self.spawn_n(scheduler, max)
     }
 }
