@@ -11,7 +11,7 @@ which is responsible for running WebAssembly programs. The last two components a
 ### Bootloader
 
 The bootloader is responsible for loading the kernel, verifying its integrity, decompressing it and setting up the
-necessary environment. That means collecting earyl information about the system, setting up the stack for each hart,
+necessary environment. That means collecting early information about the system, setting up the stack for each hart,
 setting up the page tables, and finally jumping to the kernel's entry point.
 
 The bootloader has to be generic over the payloads it accepts, since the kernel is not the only thing that can be
