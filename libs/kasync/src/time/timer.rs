@@ -26,11 +26,13 @@ pub struct Deadline {
     wheel: usize,
 }
 
+#[derive(Debug)]
 pub struct Timer {
     pub(in crate::time) clock: Clock,
     pub(in crate::time) core: Mutex<Core>,
 }
 
+#[derive(Debug)]
 pub(super) struct Core {
     /// The ticks that have elapsed since the wheel started.
     now: Ticks,

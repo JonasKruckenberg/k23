@@ -13,6 +13,7 @@ use alloc::vec::Vec;
 use spin::Mutex;
 use util::loom_const_fn;
 
+#[derive(Debug)]
 pub struct ParkingLot<P> {
     /// Number of parked cores
     num_parked: AtomicUsize,
@@ -89,7 +90,7 @@ impl<P: Park + Send + Sync> ParkingLot<P> {
         let mut unparked = 0;
 
         while let Some(token) = tokens.pop() {
-            let _ = token.try_unpark();
+            token.unpark();
             unparked += 1;
         }
 

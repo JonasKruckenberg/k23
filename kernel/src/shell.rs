@@ -17,19 +17,24 @@ const S: &str = r#"
 
 use crate::device_tree::DeviceTree;
 use crate::mem::{Mmap, PhysicalAddress, with_kernel_aspace};
-use crate::scheduler::{Scheduler, scheduler};
+use crate::state::global;
 use crate::{arch, irq};
 use alloc::string::{String, ToString};
 use core::fmt;
 use core::fmt::Write;
+use core::ops::DerefMut;
 use core::range::Range;
 use core::str::FromStr;
 use fallible_iterator::FallibleIterator;
+use kasync::executor::Executor;
 use spin::{Barrier, OnceLock};
 
 static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
 
-pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: usize) {
+pub fn init(devtree: &'static DeviceTree, sched: &'static Executor<arch::Park>, num_cpus: usize) {
+    // The `Barrier` below is here so that the maybe verbose startup logging is
+    // out of the way before dropping the user into the kernel shell. If we don't
+    // wait for the last CPU to have finished initializing it will mess up the shell output.
     static SYNC: OnceLock<Barrier> = OnceLock::new();
     let barrier = SYNC.get_or_init(|| Barrier::new(num_cpus));
 
@@ -37,34 +42,36 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Scheduler, num_cpus: u
         tracing::info!("{S}");
         tracing::info!("type `help` to list available commands");
 
-        sched.spawn(async move {
-            let (mut uart, _mmap, irq_num) = init_uart(devtree);
+        sched
+            .try_spawn(async move {
+                let (mut uart, _mmap, irq_num) = init_uart(devtree);
 
-            let mut line = String::new();
-            loop {
-                let res = irq::next_event(irq_num).await;
-                assert!(res.is_ok());
-                let mut newline = false;
+                let mut line = String::new();
+                loop {
+                    let res = irq::next_event(irq_num).await;
+                    assert!(res.is_ok());
+                    let mut newline = false;
 
-                let ch = uart.recv() as char;
-                uart.write_char(ch).unwrap();
-                match ch {
-                    '\n' | '\r' => {
-                        newline = true;
-                        uart.write_str("\n\r").unwrap();
+                    let ch = uart.recv() as char;
+                    uart.write_char(ch).unwrap();
+                    match ch {
+                        '\n' | '\r' => {
+                            newline = true;
+                            uart.write_str("\n\r").unwrap();
+                        }
+                        '\u{007F}' => {
+                            line.pop();
+                        }
+                        ch => line.push(ch),
                     }
-                    '\u{007F}' => {
-                        line.pop();
-                    }
-                    ch => line.push(ch),
-                }
 
-                if newline {
-                    eval(&line);
-                    line.clear();
+                    if newline {
+                        eval(&line);
+                        line.clear();
+                    }
                 }
-            }
-        });
+            })
+            .unwrap();
     }
 }
 
@@ -90,14 +97,19 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
             Range::from(start..start.checked_add(size).unwrap())
         };
 
-        Mmap::new_phys(
+        let mmap = Mmap::new_phys(
             aspace.clone(),
             range_phys,
             size,
             arch::PAGE_SIZE,
             Some("UART-16550".to_string()),
         )
-        .unwrap()
+        .unwrap();
+
+        mmap.commit(aspace.lock().deref_mut(), Range::from(0..size), true)
+            .unwrap();
+
+        mmap
     });
 
     // Safety: info comes from device tree
@@ -165,7 +177,7 @@ const SHUTDOWN: Command = Command::new("shutdown")
     .with_fn(|_| {
         tracing::info!("Bye, Bye!");
 
-        scheduler().shutdown();
+        global().executor.stop();
 
         Ok(())
     });

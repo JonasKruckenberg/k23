@@ -36,35 +36,31 @@ mod device_tree;
 mod irq;
 mod mem;
 mod metrics;
-mod scheduler;
 mod shell;
-mod sync;
-mod task;
+mod state;
 #[cfg(test)]
 mod tests;
-mod time;
 mod tracing;
 mod util;
 mod wasm;
 
 use crate::backtrace::Backtrace;
-use crate::device_tree::device_tree;
+use crate::device_tree::DeviceTree;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
-use crate::time::Instant;
-use crate::time::clock::Ticks;
+use crate::state::{CpuLocal, Global};
 use abort::abort;
 use arrayvec::ArrayVec;
 use cfg_if::cfg_if;
-use core::cell::Cell;
 use core::range::Range;
 use core::slice;
-use cpu_local::cpu_local;
+use fastrand::FastRand;
+use kasync::executor::{Executor, Worker};
+use kasync::time::{Instant, Ticks};
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use mem::PhysicalAddress;
 use mem::frame_alloc;
-use rand::SeedableRng;
+use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use spin::{Once, OnceLock};
 
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value
@@ -80,11 +76,6 @@ pub const INITIAL_HEAP_SIZE_PAGES: usize = 4096 * 2; // 32 MiB
 
 pub type Result<T> = anyhow::Result<T>;
 
-cpu_local!(
-    pub static CPUID: Cell<usize> = Cell::new(usize::MAX);
-);
-pub static BOOT_INFO: OnceLock<&'static BootInfo> = OnceLock::new();
-
 #[used(linker)]
 #[unsafe(link_section = ".loader_config")]
 static LOADER_CONFIG: LoaderConfig = {
@@ -95,8 +86,6 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
-    BOOT_INFO.get_or_init(|| boot_info);
-
     panic_unwind2::set_hook(|info| {
         tracing::error!("CPU {info}");
 
@@ -134,17 +123,15 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 }
 
 fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
-    CPUID.set(cpuid);
-
     // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
     arch::per_cpu_init_early();
+    tracing::per_cpu_init_early(cpuid);
 
     let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
-    static SYNC: Once = Once::new();
-    SYNC.call_once(|| {
+    let global = state::try_init_global(|| {
         // set up the basic functionality of the tracing subsystem as early as possible
         tracing::init_early();
 
@@ -157,10 +144,10 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
 
-        let devtree = device_tree::init(fdt).unwrap();
-        tracing::debug!("{devtree:?}");
+        let device_tree = DeviceTree::parse(fdt)?;
+        tracing::debug!("{device_tree:?}");
 
-        let bootargs = bootargs::parse(devtree).unwrap();
+        let bootargs = bootargs::parse(&device_tree)?;
 
         // initialize the backtracing subsystem after the allocator has been set up
         // since setting up the symbolization context requires allocation
@@ -170,7 +157,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         tracing::init(bootargs.log);
 
         // perform global, architecture-specific initialization
-        arch::init_early();
+        let arch = arch::init();
 
         // initialize the global frame allocator
         // at this point we have parsed and processed the flattened device tree, so we pass it to the
@@ -179,112 +166,60 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
         // initialize the virtual memory subsystem
         mem::init(boot_info, &mut rng, frame_alloc).unwrap();
-    });
+
+        // perform LATE per-cpu, architecture-specific initialization
+        // (e.g. setting the trap vector and enabling interrupts)
+        let cpu = arch::device::cpu::Cpu::new(&device_tree, cpuid)?;
+
+        let executor = Executor::new(boot_info.cpu_mask.count_ones() as usize, cpu.clock.clone());
+
+        Ok(Global {
+            time_origin: Instant::from_ticks(&cpu.clock, Ticks(boot_ticks)),
+            clock: cpu.clock,
+            executor,
+            device_tree,
+            boot_info,
+            arch,
+        })
+    })
+    .unwrap();
 
     // perform LATE per-cpu, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
-    arch::per_cpu_init_late(device_tree()).unwrap();
+    let arch = arch::per_cpu_init_late(&global.device_tree, cpuid).unwrap();
 
-    // now that clocks are online we can make the tracing subsystem print out timestamps
-    tracing::per_cpu_init_late(Instant::from_ticks(Ticks(boot_ticks)));
-
-    // initialize the executor
-    let _sched = scheduler::init(boot_info.cpu_mask.count_ones() as usize);
+    state::init_cpu_local(CpuLocal { id: cpuid, arch });
 
     tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
-        Instant::now().duration_since(Instant::ZERO),
-        Instant::from_ticks(Ticks(boot_ticks)).elapsed()
+        Instant::now(&global.clock).duration_since(Instant::ZERO),
+        Instant::from_ticks(&global.clock, Ticks(boot_ticks)).elapsed(&global.clock)
+    );
+
+    let mut worker = Worker::new(
+        &global.executor,
+        cpuid,
+        arch::Park::new(cpuid),
+        FastRand::from_seed(rng.next_u64()),
     );
 
     cfg_if! {
         if #[cfg(test)] {
             if cpuid == 0 {
-                _sched.block_on(tests::run_tests()).exit_if_failed();
-                _sched.shutdown();
+                worker.block_on(tests::run_tests(global)).exit_if_failed();
+                global.executor.stop();
             } else {
-                scheduler::Worker::new(_sched, cpuid, &mut rng).run();
+                worker.run();
             }
         } else {
             shell::init(
-                device_tree(),
-                _sched,
+                &global.device_tree,
+                &global.executor,
                 boot_info.cpu_mask.count_ones() as usize,
             );
-            scheduler::Worker::new(_sched, cpuid, &mut rng).run();
+            worker.run();
         }
     }
-
-    //         // FIXME we want orderly execution of tests, so below we pick a random thread for execution
-    //         //  and force all others to spinwait, which... isn't great but it works. Ideally this
-    //         //  should be replaced with something that uses the async runtime to spawn and distribute tests
-    //
-    //         let t = if cpuid == 0 {
-    //             futures::future::Either::Left(async { let _ = tests::run_tests(); })
-    //         } else {
-    //             futures::future::Either::Right(core::future::pending())
-    //         };
-    //
-    //         scheduler::Worker::new(_sched, cpuid, &mut rng, t).run().unwrap();
-    //     } else {
-    //         scheduler::Worker::new(_sched, cpuid, &mut rng, core::future::pending()).run().unwrap();
-    //     }
-    // }
-
-    // if cpuid == 0 {
-    //     sched.spawn(async move {
-    //         tracing::debug!("before timeout");
-    //         let start = Instant::now();
-    //         let res =
-    //             time::timeout(Duration::from_secs(1), time::sleep(Duration::from_secs(5))).await;
-    //         tracing::debug!("after timeout {res:?}");
-    //         assert!(res.is_err());
-    //         assert_eq!(start.elapsed().as_secs(), 1);
-    //
-    //         tracing::debug!("before timeout");
-    //         let start = Instant::now();
-    //         let res =
-    //             time::timeout(Duration::from_secs(5), time::sleep(Duration::from_secs(1))).await;
-    //         tracing::debug!("after timeout {res:?}");
-    //         assert!(res.is_ok());
-    //         assert_eq!(start.elapsed().as_secs(), 1);
-    //
-    //         tracing::debug!("sleeping for 1 sec...");
-    //         let start = Instant::now();
-    //         time::sleep(Duration::from_secs(1)).await;
-    //         assert_eq!(start.elapsed().as_secs(), 1);
-    //         tracing::debug!("slept 1 sec! {:?}", start.elapsed());
-    //
-    //
-    //         #[cfg(test)]
-    //         scheduler::scheduler().shutdown();
-    //     });
-    //
-    //     // scheduler::scheduler().spawn(async move {
-    //     //     tracing::debug!("Point A");
-    //     //     scheduler::yield_now().await;
-    //     //     tracing::debug!("Point B");
-    //     // });
-    // let mut aspace = KERNEL_ASPACE.get().unwrap().lock();
-    // let mut mmap = UserMmap::new_zeroed(&mut aspace, 2 * 4096, 4096).unwrap();
-    //
-    // sched.spawn(KERNEL_ASPACE.get().unwrap(), async move {
-    //     let ptr = mmap.as_mut_ptr();
-    //     unsafe {
-    //         ptr.write(17);
-    //         assert_eq!(mmap.as_ptr().read(), 17);
-    //     }
-    //     // unsafe { asm!("ld zero, 0(zero)") };
-    // });
-    // }
-
-    // wasm::test();
-
-    // - [all][global] parse cmdline
-    // - [all][global] `lockup::init()` initialize lockup detector
-    // - [all][global] `topology::init()` initialize the system topology
-    // - `kernel_shell_init()`
-    // - `userboot_init()`
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.

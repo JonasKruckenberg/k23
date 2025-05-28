@@ -244,10 +244,16 @@ enum Wakeup {
     Waiting(Waker),
     One,
     All,
-    Closed,
+    // Closed,
 }
 
 // === impl WaitQueue ===
+
+impl Default for WaitQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl WaitQueue {
     pub const fn new() -> Self {
@@ -322,6 +328,7 @@ impl WaitQueue {
     ///
     /// [`wake()`]: Self::wake
     /// [`wait()`]: Self::wait
+    #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
     pub fn wake_all(&self) {
         let mut batch = WakeBatch::new();
         let mut waiters_remaining = true;
@@ -471,10 +478,10 @@ impl WaitQueue {
     /// Consider using [`WaitCell::wait_for()`](super::wait_cell::WaitCell::wait_for)
     /// if you do not need multiple waiters.
     ///
-    /// # Returns
+    /// # Errors
     ///
-    /// * [`Ok`]`(())` if the closure returns `true`.
-    /// * [`Err`]`(`[`Closed`]`)` if the [`WaitQueue`] is closed.
+    /// Returns [`Err`]`(`[`Closed`]`)` if the [`WaitQueue`] is closed.
+    ///
     pub async fn wait_for<F: FnMut() -> bool>(&self, mut f: F) -> Result<(), Closed> {
         loop {
             let wait = self.wait();
@@ -513,8 +520,10 @@ impl WaitQueue {
     /// Consider using [`WaitCell::wait_for_value()`](super::wait_cell::WaitCell::wait_for_value)
     /// if you do not need multiple waiters.
     ///
-    /// * [`Ok`]`(T)` if the closure returns [`Some`]`(T)`.
-    /// * [`Err`]`(`[`Closed`]`)` if the [`WaitQueue`] is closed.
+    /// # Errors
+    ///
+    /// Returns [`Err`]`(`[`Closed`]`)` if the [`WaitQueue`] is closed.
+    ///
     pub async fn wait_for_value<T, F: FnMut() -> Option<T>>(&self, mut f: F) -> Result<T, Closed> {
         loop {
             let wait = self.wait();
@@ -586,23 +595,23 @@ impl WaitQueue {
         }
     }
 
-    fn try_wait(&self) -> Poll<Result<(), Closed>> {
-        let mut state = self.load();
-        let initial_wake_alls = state.get(State::WAKE_ALLS);
-        while state.get(State::INNER) == StateInner::Woken {
-            match self.compare_exchange(state, state.with_inner(StateInner::Empty)) {
-                Ok(_) => return Poll::Ready(Ok(())),
-                Err(actual) => state = actual,
-            }
-        }
-
-        match state.get(State::INNER) {
-            StateInner::Closed => Poll::Ready(Err(Closed)),
-            _ if state.get(State::WAKE_ALLS) > initial_wake_alls => Poll::Ready(Ok(())),
-            StateInner::Empty | StateInner::Waiting => Poll::Pending,
-            StateInner::Woken => Poll::Ready(Ok(())),
-        }
-    }
+    // fn try_wait(&self) -> Poll<Result<(), Closed>> {
+    //     let mut state = self.load();
+    //     let initial_wake_alls = state.get(State::WAKE_ALLS);
+    //     while state.get(State::INNER) == StateInner::Woken {
+    //         match self.compare_exchange(state, state.with_inner(StateInner::Empty)) {
+    //             Ok(_) => return Poll::Ready(Ok(())),
+    //             Err(actual) => state = actual,
+    //         }
+    //     }
+    //
+    //     match state.get(State::INNER) {
+    //         StateInner::Closed => Poll::Ready(Err(Closed(()))),
+    //         _ if state.get(State::WAKE_ALLS) > initial_wake_alls => Poll::Ready(Ok(())),
+    //         StateInner::Empty | StateInner::Waiting => Poll::Pending,
+    //         StateInner::Woken => Poll::Ready(Ok(())),
+    //     }
+    // }
 
     #[cold]
     #[inline(never)]
@@ -848,7 +857,7 @@ impl Waiter {
                                 Err(actual) => queue_state = actual,
                             }
                         }
-                        StateInner::Closed => return Poll::Ready(Err(Closed)),
+                        StateInner::Closed => return Poll::Ready(Err(Closed(()))),
                     }
                 }
 
@@ -888,10 +897,10 @@ impl Waiter {
                             this.state.set(WaitState::INNER, WaitStateInner::Woken);
                             Poll::Ready(Ok(()))
                         }
-                        Wakeup::Closed => {
-                            this.state.set(WaitState::INNER, WaitStateInner::Woken);
-                            Poll::Ready(Err(Closed))
-                        }
+                        // Wakeup::Closed => {
+                        //     this.state.set(WaitState::INNER, WaitStateInner::Woken);
+                        //     Poll::Ready(Err(Closed(())))
+                        // }
                         Wakeup::Empty => {
                             if let Some(waker) = waker {
                                 node.waker = Wakeup::Waiting(waker.clone());

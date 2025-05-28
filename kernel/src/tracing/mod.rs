@@ -5,22 +5,20 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::cell::{Cell, RefCell};
-use cpu_local::cpu_local;
-
 mod color;
 mod filter;
 mod log;
 mod registry;
 mod writer;
 
-use crate::CPUID;
-use crate::time::Instant;
+use crate::state::try_global;
 use crate::tracing::writer::{MakeWriter, Semihosting};
 pub use ::tracing::*;
 use color::{Color, SetColor};
+use core::cell::{Cell, OnceCell};
 use core::fmt;
 use core::fmt::Write;
+use cpu_local::cpu_local;
 pub use filter::Filter;
 use registry::Registry;
 use spin::OnceLock;
@@ -33,9 +31,11 @@ static SUBSCRIBER: OnceLock<Subscriber> = OnceLock::new();
 cpu_local! {
     /// Per-cpu indentation representing the span depth we're currently in
     static OUTPUT_INDENT: Cell<usize> = Cell::new(0);
-    /// Per-cpu time base for printing the timestamp in log messages, this will be set by
-    /// `per_cpu_init_late`
-    static TIME_BASE: RefCell<Option<Instant>> = RefCell::new(None);
+    static CPUID: OnceCell<usize> = OnceCell::new();
+}
+
+pub fn per_cpu_init_early(cpuid: usize) {
+    CPUID.get_or_init(|| cpuid);
 }
 
 /// Perform early initialization of the tracing subsystem. This will enable printing of `log` and `span`
@@ -73,12 +73,6 @@ pub fn init(filter: Filter) {
     subscriber
         .lateinit
         .get_or_init(|| (Registry::default(), filter));
-}
-
-/// Perform late, per-CPU initialization. This will enable the proper printing of timestamps and
-/// should be called *after* per-CPU clocks have been brought online.
-pub fn per_cpu_init_late(time_base: Instant) {
-    TIME_BASE.replace(Some(time_base));
 }
 
 struct Subscriber {
@@ -128,7 +122,13 @@ impl Collect for Subscriber {
         let _ = write_level(&mut writer, *meta.level());
         let _ = write_cpu(&mut writer);
         let _ = write_timestamp(&mut writer);
+
         // let _ = writer.indent(IndentKind::NewSpan);
+        let _ = write!(
+            writer.with_fg_color(Color::BrightBlack),
+            "{}: ",
+            meta.target()
+        );
         let _ = writer.with_bold().write_str(meta.name());
         let _ = writer.with_fg_color(Color::BrightBlack).write_str(": ");
 
@@ -294,7 +294,11 @@ fn write_cpu<W>(w: &mut W) -> fmt::Result
 where
     W: Write,
 {
-    w.write_fmt(format_args!("[CPU {}]", CPUID.get()))
+    if let Some(cpuid) = CPUID.get() {
+        w.write_fmt(format_args!("[CPU {cpuid}]"))
+    } else {
+        w.write_fmt(format_args!("[CPU ??]"))
+    }
 }
 
 #[inline]
@@ -302,11 +306,10 @@ fn write_timestamp<W>(w: &mut W) -> fmt::Result
 where
     W: Write + SetColor,
 {
-    let time_base = *TIME_BASE.borrow();
-
     w.write_char('[')?;
-    if let Some(time_base) = time_base {
-        let elapsed = time_base.elapsed();
+
+    if let Some(global) = try_global() {
+        let elapsed = global.time_origin.elapsed(&global.clock);
         write!(
             w.with_fg_color(Color::BrightBlack),
             "{:>6}.{:06}",
@@ -316,6 +319,7 @@ where
     } else {
         write!(w.with_fg_color(Color::BrightBlack), "     ?.??????")?;
     }
+
     w.write_char(']')?;
     Ok(())
 }

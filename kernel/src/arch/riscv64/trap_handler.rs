@@ -6,10 +6,9 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::PAGE_SIZE;
-use crate::arch::device::cpu::with_cpu;
 use crate::backtrace::Backtrace;
 use crate::mem::VirtualAddress;
-use crate::scheduler::scheduler;
+use crate::state::{cpu_local, global};
 use crate::{TRAP_STACK_SIZE_PAGES, irq};
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
@@ -299,7 +298,7 @@ extern "C-unwind" fn default_trap_handler(
                 }
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                if let (_, Some(next_deadline)) = scheduler().cpu_local_timer().turn() {
+                if let Some((_, Some(next_deadline))) = global().executor.timer().try_turn() {
                     // Timer interrupts are always IPIs used for sleeping
                     sbi::time::set_timer(next_deadline.ticks.0).unwrap();
                 } else {
@@ -307,10 +306,10 @@ extern "C-unwind" fn default_trap_handler(
                     sbi::time::set_timer(u64::MAX).unwrap();
                 }
             }
-            Trap::Interrupt(Interrupt::SupervisorExternal) => with_cpu(|cpu| {
-                let mut plic = cpu.plic.borrow_mut();
+            Trap::Interrupt(Interrupt::SupervisorExternal) => {
+                let mut plic = cpu_local().arch.cpu.plic.borrow_mut();
                 irq::trigger_irq(plic.deref_mut());
-            }),
+            }
             Trap::Exception(
                 Exception::LoadPageFault
                 | Exception::StorePageFault

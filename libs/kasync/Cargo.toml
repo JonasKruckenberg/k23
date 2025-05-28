@@ -1,5 +1,5 @@
 [package]
-name = "async-exec"
+name = "kasync"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -30,6 +30,7 @@ mycelium-bitfield.workspace = true
 tracing.workspace = true
 bitflags.workspace = true
 pin-project.workspace = true
+arrayvec.workspace = true
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true, default-features = true, features = ["env-filter"] }

@@ -13,6 +13,7 @@ use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 use util::loom_const_fn;
 
+#[derive(Debug)]
 pub(crate) struct Wheel {
     /// A bitmap of the slots that are occupied.
     ///

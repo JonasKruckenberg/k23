@@ -19,6 +19,7 @@ use cpu_local::collection::CpuLocal;
 use fastrand::FastRand;
 use spin::Backoff;
 
+#[derive(Debug)]
 pub struct Executor<P> {
     schedulers: CpuLocal<Scheduler>,
     stop: AtomicBool,
@@ -28,6 +29,7 @@ pub struct Executor<P> {
     timer: Timer,
 }
 
+#[derive(Debug)]
 pub struct Worker<P: 'static> {
     id: usize,
     exec: &'static Executor<P>,
@@ -88,6 +90,15 @@ where
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Release);
         self.parking_lot.unpark_all();
+    }
+
+    /// Returns the CPU local scheduler
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no active scheduler on this CPU (the worker hasn't started yet)
+    pub fn cpu_local_scheduler(&self) -> &Scheduler {
+        self.schedulers.get().expect("no active scheduler")
     }
 
     #[inline]
@@ -230,7 +241,7 @@ where
     }
 
     pub fn run(&mut self) {
-        let _span = tracing::info_span!("starting worker main loop", worker = self.id).entered();
+        let _span = tracing::debug_span!("worker main loop", worker = self.id).entered();
 
         loop {
             // drive the scheduling loop until we're out of work
@@ -240,7 +251,7 @@ where
 
             // check the executors signalled us to stop
             if self.exec.stop.load(Ordering::Acquire) {
-                tracing::info!(worker = self.id, "stop signal received, shutting down");
+                tracing::debug!(worker = self.id, "stop signal received, shutting down");
                 break;
             }
 
@@ -253,18 +264,23 @@ where
                 continue;
             }
 
-            tracing::info!("going to sleep maybe_next_deadline = {maybe_next_deadline:?}");
+            tracing::trace!(maybe_next_deadline = ?maybe_next_deadline, "going to sleep");
             if let Some(next_deadline) = maybe_next_deadline {
-                self.exec.parking_lot.park_until(
-                    self.parker.clone(),
-                    next_deadline,
-                    self.exec.timer.clock(),
-                );
+                self.parker
+                    .park_until(next_deadline, self.exec.timer.clock());
+
+                // self.exec.parking_lot.park_until(
+                //     self.parker.clone(),
+                //     next_deadline,
+                //     self.exec.timer.clock(),
+                // );
             } else {
-                // at this point we're fully out of work. We so we should suspend the
-                self.exec.parking_lot.park(self.parker.clone());
+                self.parker.park();
+
+                // // at this point we're fully out of work. We so we should suspend the
+                // self.exec.parking_lot.park(self.parker.clone());
             }
-            tracing::info!("woke up");
+            tracing::trace!("woke up");
         }
     }
 
@@ -273,6 +289,8 @@ where
     where
         F: Future,
     {
+        let _span = tracing::debug_span!("worker block_on", worker = self.id).entered();
+
         let waker = self.parker.clone().into_unpark().into_waker();
         let mut cx = Context::from_waker(&waker);
 
@@ -297,18 +315,21 @@ where
                 continue;
             }
 
-            tracing::info!("going to sleep maybe_next_deadline = {maybe_next_deadline:?}");
+            tracing::trace!(maybe_next_deadline = ?maybe_next_deadline, "going to sleep");
             if let Some(next_deadline) = maybe_next_deadline {
-                self.exec.parking_lot.park_until(
-                    self.parker.clone(),
-                    next_deadline,
-                    self.exec.timer.clock(),
-                );
+                self.parker
+                    .park_until(next_deadline, self.exec.timer.clock());
+
+                // self.exec.parking_lot.park_until(
+                //     self.parker.clone(),
+                //     next_deadline,
+                //     self.exec.timer.clock(),
+                // );
             } else {
-                // at this point we're fully out of work. We so we should suspend the
-                self.exec.parking_lot.park(self.parker.clone());
+                // // at this point we're fully out of work. We so we should suspend the
+                // self.exec.parking_lot.park(self.parker.clone());
             }
-            tracing::info!("woke up");
+            tracing::trace!("woke up");
         }
     }
 
@@ -324,7 +345,7 @@ where
             // if there are no tasks remaining in this core's run queue, try to
             // steal new tasks from the distributor queue.
             if let Some(stolen) = self.try_steal() {
-                tracing::debug!(tick.stolen = stolen);
+                tracing::trace!(tick.stolen = stolen);
 
                 self.exec.transition_worker_from_stealing(self);
 
@@ -342,13 +363,13 @@ where
 
     fn try_steal(&mut self) -> Option<NonZeroUsize> {
         const ROUNDS: usize = 4;
-        const MAX_STOLEN_PER_TICK: NonZeroUsize = NonZeroUsize::new(256).unwrap();
+        const MAX_STOLEN_PER_TICK: usize = 256;
 
         // attempt to steal from the global injector queue first
         if let Ok(stealer) = self.exec.injector.try_steal() {
             let stolen = stealer.spawn_n(&self.scheduler, MAX_STOLEN_PER_TICK);
             tracing::trace!("stole {stolen} tasks from injector (in first attempt)");
-            return Some(stolen);
+            return NonZeroUsize::new(stolen);
         }
 
         // If that fails, attempt to steal from other workers
@@ -376,7 +397,7 @@ where
         if let Ok(stealer) = self.exec.injector.try_steal() {
             let stolen = stealer.spawn_n(&self.scheduler, MAX_STOLEN_PER_TICK);
             tracing::trace!("stole {stolen} tasks from injector (in second attempt)");
-            return Some(stolen);
+            return NonZeroUsize::new(stolen);
         }
 
         None
@@ -404,7 +425,7 @@ where
 
             let stolen = stealer.spawn_half(&self.scheduler);
             tracing::trace!("stole {stolen} tasks from worker {i} {victim:?}");
-            return Some(stolen);
+            return NonZeroUsize::new(stolen);
         }
 
         None

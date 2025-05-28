@@ -5,12 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::device::cpu::with_cpu;
-use crate::sync;
-use crate::sync::WaitQueue;
+use crate::state::cpu_local;
 use alloc::sync::Arc;
 use core::num::NonZero;
 use hashbrown::HashMap;
+use kasync::sync::wait_queue::WaitQueue;
 use spin::{LazyLock, RwLock};
 
 pub trait InterruptController {
@@ -45,14 +44,15 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     // acknowledge the interrupt as fast as possible
     irq_ctl.irq_complete(claim);
 
+    tracing::trace!("waking irq {} wakers", claim.as_u32());
     let queues = QUEUES.read();
     if let Some(queue) = queues.get(&claim.as_u32()) {
         queue.wake_all();
     }
 }
 
-pub async fn next_event(irq_num: u32) -> Result<(), sync::Closed> {
-    with_cpu(|cpu| cpu.plic.borrow_mut().irq_unmask(irq_num));
+pub async fn next_event(irq_num: u32) -> Result<(), kasync::sync::Closed> {
+    cpu_local().arch.cpu.plic.borrow_mut().irq_unmask(irq_num);
 
     let wait = {
         let mut queues = QUEUES.write();
@@ -67,7 +67,7 @@ pub async fn next_event(irq_num: u32) -> Result<(), sync::Closed> {
 
     let res = wait.await;
 
-    with_cpu(|cpu| cpu.plic.borrow_mut().irq_mask(irq_num));
+    cpu_local().arch.cpu.plic.borrow_mut().irq_mask(irq_num);
 
     res
 }

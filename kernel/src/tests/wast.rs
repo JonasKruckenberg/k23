@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::scheduler::scheduler;
 use crate::wasm::{
     ConstExprEvaluator, Engine, Extern, Instance, Linker, Module, PlaceholderAllocatorDontUse,
     Store, Val,
@@ -363,17 +362,17 @@ impl WastContext {
         //  we need to wrap this call in a `spawn` that we immediately await (so the scheduling
         //  subsystem tracks it as a task). Ideally we would get rid of this and have some other
         //  mechanism of tracking the current address space...
-        scheduler()
-            .spawn(async move {
-                let mut results = vec![Val::I32(0); ty.results().len()];
+        // scheduler()
+        //     .spawn(async move {
+        let mut results = vec![Val::I32(0); ty.results().len()];
 
-                match func.call(&mut this.lock().store, &values, &mut results) {
-                    Ok(()) => Ok(Outcome::Ok(results)),
-                    Err(e) => Ok(Outcome::Trap(e.into())),
-                }
-            })
-            .await
-            .unwrap()
+        match func.call(&mut this.lock().store, &values, &mut results) {
+            Ok(()) => Ok(Outcome::Ok(results)),
+            Err(e) => Ok(Outcome::Trap(e.into())),
+        }
+        // })
+        // .await
+        // .unwrap()
     }
 
     async fn perform_execute(&mut self, exec: WastExecute<'_>) -> anyhow::Result<Outcome> {
