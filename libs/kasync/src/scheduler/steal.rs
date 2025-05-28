@@ -160,7 +160,6 @@ impl<'a, S> Stealer<'a, S> {
     /// `scheduler`.
     ///
     /// Note this will always steal at least one task.
-    #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
     pub fn spawn_n(&self, scheduler: &S, max: usize) -> usize
     where
         S: Schedule,
@@ -176,7 +175,6 @@ impl<'a, S> Stealer<'a, S> {
     /// `scheduler`.
     ///
     /// Note this will always steal at least one task.
-    #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
     pub fn spawn_half(&self, scheduler: &S) -> usize
     where
         S: Schedule,

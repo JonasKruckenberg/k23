@@ -125,33 +125,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
-name = "async-exec"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "bitflags",
- "cfg-if",
- "cpu-local",
- "criterion 0.6.0",
- "fastrand",
- "futures",
- "lazy_static",
- "linked-list",
- "loom",
- "mpsc-queue",
- "mycelium-bitfield",
- "panic-unwind2",
- "pin-project",
- "spin",
- "static_assertions",
- "tokio-test",
- "tracing 0.2.0",
- "tracing-subscriber 0.3.0",
- "unwind2",
- "util",
-]
-
-[[package]]
 name = "async-stream"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1098,6 +1071,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "kasync"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "bitflags",
+ "cfg-if",
+ "cpu-local",
+ "criterion 0.6.0",
+ "fastrand",
+ "futures",
+ "lazy_static",
+ "linked-list",
+ "loom",
+ "mpsc-queue",
+ "mycelium-bitfield",
+ "panic-unwind2",
+ "pin-project",
+ "spin",
+ "static_assertions",
+ "tokio-test",
+ "tracing 0.2.0",
+ "tracing-subscriber 0.3.0",
+ "unwind2",
+ "util",
+]
+
+[[package]]
 name = "kernel"
 version = "0.1.0"
 dependencies = [
@@ -1105,7 +1105,6 @@ dependencies = [
  "addr2line 0.24.2",
  "anyhow",
  "arrayvec",
- "async-exec",
  "bitflags",
  "bumpalo",
  "cfg-if",
@@ -1119,6 +1118,7 @@ dependencies = [
  "futures",
  "gimli",
  "hashbrown",
+ "kasync",
  "ksharded-slab",
  "ktest",
  "linked-list",

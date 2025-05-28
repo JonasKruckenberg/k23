@@ -7,9 +7,9 @@
 
 use crate::state::cpu_local;
 use alloc::sync::Arc;
-use async_exec::sync::wait_queue::WaitQueue;
 use core::num::NonZero;
 use hashbrown::HashMap;
+use kasync::sync::wait_queue::WaitQueue;
 use spin::{LazyLock, RwLock};
 
 pub trait InterruptController {
@@ -51,7 +51,7 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     }
 }
 
-pub async fn next_event(irq_num: u32) -> Result<(), async_exec::sync::Closed> {
+pub async fn next_event(irq_num: u32) -> Result<(), kasync::sync::Closed> {
     cpu_local().arch.cpu.plic.borrow_mut().irq_unmask(irq_num);
 
     let wait = {

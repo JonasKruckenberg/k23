@@ -1,5 +1,5 @@
 [package]
-name = "async-exec"
+name = "kasync"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -7,8 +7,8 @@
 
 use crate::mem::VirtualAddress;
 use crate::state::global;
-use async_exec::scheduler::Schedule;
 use core::ops::ControlFlow;
+use kasync::scheduler::Schedule;
 use riscv::scause::Trap;
 
 pub fn handle_page_fault(_trap: Trap, _tval: VirtualAddress) -> ControlFlow<()> {

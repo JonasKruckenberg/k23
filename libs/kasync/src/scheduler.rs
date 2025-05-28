@@ -209,13 +209,9 @@ impl Schedule for &'static Scheduler {
                 tick.polled,
                 tick.has_remaining,
                 tick.completed,
-                #[cfg(feature = "counters")]
                 tick.spawned,
-                #[cfg(feature = "counters")]
                 tick.woken = tick.woken_external + tick.woken_internal,
-                #[cfg(feature = "counters")]
                 tick.woken.external = tick.woken_external,
-                #[cfg(feature = "counters")]
                 tick.woken.internal = tick.woken_internal,
             );
         }

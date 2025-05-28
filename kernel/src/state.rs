@@ -7,10 +7,10 @@
 
 use crate::arch;
 use crate::device_tree::DeviceTree;
-use async_exec::executor::Executor;
-use async_exec::time::{Clock, Instant};
 use core::cell::OnceCell;
 use cpu_local::cpu_local;
+use kasync::executor::Executor;
+use kasync::time::{Clock, Instant};
 use loader_api::BootInfo;
 use spin::OnceLock;
 

@@ -8,13 +8,13 @@
 use crate::arch::device;
 use crate::device_tree::DeviceTree;
 use crate::irq::InterruptController;
-use async_exec::time::Ticks;
-use async_exec::time::{Clock, NANOS_PER_SEC};
 use bitflags::bitflags;
 use core::cell::RefCell;
 use core::fmt;
 use core::str::FromStr;
 use core::time::Duration;
+use kasync::time::Ticks;
+use kasync::time::{Clock, NANOS_PER_SEC};
 
 #[derive(Debug)]
 pub struct Cpu {

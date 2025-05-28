@@ -16,8 +16,8 @@ use crate::arch::device::cpu::Cpu;
 use crate::device_tree::DeviceTree;
 use crate::mem::VirtualAddress;
 pub use asid_allocator::AsidAllocator;
-use async_exec::time::{Clock, Deadline};
 use core::arch::asm;
+use kasync::time::{Clock, Deadline};
 pub use mem::{
     AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE,
     USER_ASPACE_RANGE, invalidate_range, is_kernel_address,
@@ -153,7 +153,7 @@ impl Park {
     }
 }
 
-impl async_exec::park::Park for Park {
+impl kasync::park::Park for Park {
     fn park(&self) {
         // Safety: inline assembly
         unsafe { asm!("wfi") }

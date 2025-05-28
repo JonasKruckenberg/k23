@@ -101,10 +101,6 @@ where
         self.schedulers.get().expect("no active scheduler")
     }
 
-    pub fn unpark_one(&self) -> bool {
-        self.parking_lot.unpark_one()
-    }
-
     #[inline]
     pub fn task_builder<'a>(&self) -> TaskBuilder<'a, &'static Scheduler> {
         TaskBuilder::new()
@@ -268,16 +264,21 @@ where
                 continue;
             }
 
-            tracing::trace!("going to sleep maybe_next_deadline = {maybe_next_deadline:?}");
+            tracing::trace!(maybe_next_deadline = ?maybe_next_deadline, "going to sleep");
             if let Some(next_deadline) = maybe_next_deadline {
-                self.exec.parking_lot.park_until(
-                    self.parker.clone(),
-                    next_deadline,
-                    self.exec.timer.clock(),
-                );
+                self.parker
+                    .park_until(next_deadline, self.exec.timer.clock());
+
+                // self.exec.parking_lot.park_until(
+                //     self.parker.clone(),
+                //     next_deadline,
+                //     self.exec.timer.clock(),
+                // );
             } else {
-                // at this point we're fully out of work. We so we should suspend the
-                self.exec.parking_lot.park(self.parker.clone());
+                self.parker.park();
+
+                // // at this point we're fully out of work. We so we should suspend the
+                // self.exec.parking_lot.park(self.parker.clone());
             }
             tracing::trace!("woke up");
         }
@@ -314,16 +315,19 @@ where
                 continue;
             }
 
-            tracing::trace!("going to sleep maybe_next_deadline = {maybe_next_deadline:?}");
+            tracing::trace!(maybe_next_deadline = ?maybe_next_deadline, "going to sleep");
             if let Some(next_deadline) = maybe_next_deadline {
-                self.exec.parking_lot.park_until(
-                    self.parker.clone(),
-                    next_deadline,
-                    self.exec.timer.clock(),
-                );
+                self.parker
+                    .park_until(next_deadline, self.exec.timer.clock());
+
+                // self.exec.parking_lot.park_until(
+                //     self.parker.clone(),
+                //     next_deadline,
+                //     self.exec.timer.clock(),
+                // );
             } else {
-                // at this point we're fully out of work. We so we should suspend the
-                self.exec.parking_lot.park(self.parker.clone());
+                // // at this point we're fully out of work. We so we should suspend the
+                // self.exec.parking_lot.park(self.parker.clone());
             }
             tracing::trace!("woke up");
         }

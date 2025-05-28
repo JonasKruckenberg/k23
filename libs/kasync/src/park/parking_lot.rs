@@ -73,7 +73,8 @@ impl<P: Park + Send + Sync> ParkingLot<P> {
     /// at any point.
     pub fn unpark_one(&self) -> bool {
         if let Some(token) = self.unpark_tokens.lock().pop() {
-            token.try_unpark().is_ok()
+            token.unpark();
+            true
         } else {
             false
         }
@@ -89,7 +90,7 @@ impl<P: Park + Send + Sync> ParkingLot<P> {
         let mut unparked = 0;
 
         while let Some(token) = tokens.pop() {
-            let _ = token.try_unpark();
+            token.unpark();
             unparked += 1;
         }
 
