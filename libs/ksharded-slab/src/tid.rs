@@ -62,11 +62,11 @@ impl<C: cfg::Config> Pack<C> for Tid<C> {
 impl<C: cfg::Config> Tid<C> {
     #[inline]
     pub(crate) fn current() -> Self {
-        REGISTRATION.with(Registration::current)
+        REGISTRATION.current()
     }
 
     pub(crate) fn is_current(self) -> bool {
-        REGISTRATION.with(|r| self == r.current::<C>())
+        self == REGISTRATION.current::<C>()
     }
 
     #[inline(always)]

@@ -223,7 +223,7 @@ impl Scheduler {
             static PARK: ParkToken = ParkToken::new(crate::CPUID.get());
         }
 
-        let waker = PARK.with(|park| park.clone().into_unpark().into_waker());
+        let waker = PARK.clone().into_unpark().into_waker();
         let mut cx = Context::from_waker(&waker);
 
         let mut future = pin!(future);
@@ -235,7 +235,7 @@ impl Scheduler {
 
             // If there is only one CPU in the system we cannot go to sleep
             if self.cores.len() > 1 {
-                PARK.with(|park| park.park());
+                PARK.park();
             }
         }
     }
