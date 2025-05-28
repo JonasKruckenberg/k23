@@ -11,10 +11,9 @@ mod smoke;
 mod spectest;
 mod wast;
 
-use crate::scheduler::scheduler;
 use crate::tests::args::Arguments;
 use crate::tests::printer::Printer;
-use crate::{arch, device_tree};
+use crate::{arch, state};
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use core::any::Any;
@@ -80,8 +79,8 @@ impl Conclusion {
     }
 }
 
-pub async fn run_tests() -> Conclusion {
-    let chosen = device_tree::device_tree().find_by_path("/chosen").unwrap();
+pub async fn run_tests(global: &'static state::Global) -> Conclusion {
+    let chosen = global.device_tree.find_by_path("/chosen").unwrap();
     let args = if let Some(prop) = chosen.property("bootargs") {
         let str = prop.as_str().unwrap();
         Arguments::from_str(str)
@@ -115,13 +114,15 @@ pub async fn run_tests() -> Conclusion {
             let printer = printer.clone();
             let conclusion = conclusion.clone();
 
-            let h = scheduler()
-                .spawn(async move {
+            let h = global
+                .executor
+                .try_spawn(async move {
                     // Print `test foo    ...`, run the test, then print the outcome in
                     // the same line.
                     printer.print_test(&test.info);
                     (test.run)().await;
                 })
+                .unwrap()
                 .inspect(move |res| match res {
                     Ok(_) => {
                         conclusion.num_passed.fetch_add(1, Ordering::Release);

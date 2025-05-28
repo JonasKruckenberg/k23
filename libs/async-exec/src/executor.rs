@@ -101,6 +101,10 @@ where
         self.schedulers.get().expect("no active scheduler")
     }
 
+    pub fn unpark_one(&self) -> bool {
+        self.parking_lot.unpark_one()
+    }
+
     #[inline]
     pub fn task_builder<'a>(&self) -> TaskBuilder<'a, &'static Scheduler> {
         TaskBuilder::new()
@@ -337,7 +341,7 @@ where
             // if there are no tasks remaining in this core's run queue, try to
             // steal new tasks from the distributor queue.
             if let Some(stolen) = self.try_steal() {
-                tracing::debug!(tick.stolen = stolen);
+                tracing::trace!(tick.stolen = stolen);
 
                 self.exec.transition_worker_from_stealing(self);
 

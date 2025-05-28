@@ -21,7 +21,8 @@ pub fn handle_page_fault(_trap: Trap, _tval: VirtualAddress) -> ControlFlow<()> 
         return ControlFlow::Continue(());
     };
 
-    todo!()
+    // FIXME we have no page fault handling right now
+    ControlFlow::Continue(())
 
     // let mut aspace = current_task.header().aspace.as_ref().unwrap().lock();
 

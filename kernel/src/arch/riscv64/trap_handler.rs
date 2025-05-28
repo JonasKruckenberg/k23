@@ -296,11 +296,17 @@ extern "C-unwind" fn default_trap_handler(
                 unsafe {
                     sip::clear_ssoft();
                 }
+
+                global().executor.unpark_one();
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                if let Some((_, Some(next_deadline))) = global().executor.timer().try_turn() {
+                if let Some((expired, Some(next_deadline))) = global().executor.timer().try_turn() {
                     // Timer interrupts are always IPIs used for sleeping
                     sbi::time::set_timer(next_deadline.ticks.0).unwrap();
+
+                    if expired > 0 {
+                        global().executor.unpark_one();
+                    }
                 } else {
                     // Timer interrupts are always IPIs used for sleeping
                     sbi::time::set_timer(u64::MAX).unwrap();
@@ -309,6 +315,7 @@ extern "C-unwind" fn default_trap_handler(
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
                 let mut plic = cpu_local().arch.cpu.plic.borrow_mut();
                 irq::trigger_irq(plic.deref_mut());
+                global().executor.unpark_one();
             }
             Trap::Exception(
                 Exception::LoadPageFault

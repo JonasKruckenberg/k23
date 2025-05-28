@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::state::cpu_local;
 use alloc::sync::Arc;
 use async_exec::sync::wait_queue::WaitQueue;
 use core::num::NonZero;
@@ -43,30 +44,30 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     // acknowledge the interrupt as fast as possible
     irq_ctl.irq_complete(claim);
 
+    tracing::trace!("waking irq {} wakers", claim.as_u32());
     let queues = QUEUES.read();
     if let Some(queue) = queues.get(&claim.as_u32()) {
         queue.wake_all();
     }
 }
 
-// pub async fn next_event(irq_num: u32) -> Result<(), async_exec::sync::Closed> {
-//     let cpu_local = cpu_local();
-//     // with_cpu(|cpu| cpu.plic.borrow_mut().irq_unmask(irq_num));
-//
-//     let wait = {
-//         let mut queues = QUEUES.write();
-//         let wait = queues
-//             .entry(irq_num)
-//             .or_insert_with(|| Arc::new(WaitQueue::new()))
-//             .wait_owned();
-//         // don't hold the RwLock guard across the await point
-//         drop(queues);
-//         wait
-//     };
-//
-//     let res = wait.await;
-//
-//     with_cpu(|cpu| cpu.plic.borrow_mut().irq_mask(irq_num));
-//
-//     res
-// }
+pub async fn next_event(irq_num: u32) -> Result<(), async_exec::sync::Closed> {
+    cpu_local().arch.cpu.plic.borrow_mut().irq_unmask(irq_num);
+
+    let wait = {
+        let mut queues = QUEUES.write();
+        let wait = queues
+            .entry(irq_num)
+            .or_insert_with(|| Arc::new(WaitQueue::new()))
+            .wait_owned();
+        // don't hold the RwLock guard across the await point
+        drop(queues);
+        wait
+    };
+
+    let res = wait.await;
+
+    cpu_local().arch.cpu.plic.borrow_mut().irq_mask(irq_num);
+
+    res
+}

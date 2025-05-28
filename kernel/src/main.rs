@@ -52,6 +52,7 @@ use abort::abort;
 use arrayvec::ArrayVec;
 use async_exec::executor::{Executor, Worker};
 use async_exec::time::{Instant, Ticks};
+use cfg_if::cfg_if;
 use core::range::Range;
 use core::slice;
 use fastrand::FastRand;
@@ -202,7 +203,23 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         FastRand::from_seed(rng.next_u64()),
     );
 
-    worker.run();
+    cfg_if! {
+        if #[cfg(test)] {
+            if cpuid == 0 {
+                worker.block_on(tests::run_tests(global)).exit_if_failed();
+                global.executor.stop();
+            } else {
+                worker.run();
+            }
+        } else {
+            shell::init(
+                &global.device_tree,
+                &global.executor,
+                boot_info.cpu_mask.count_ones() as usize,
+            );
+            worker.run();
+        }
+    }
 }
 
 /// Builds a list of memory regions from the boot info that are usable for allocation.

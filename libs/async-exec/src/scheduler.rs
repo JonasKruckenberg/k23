@@ -202,10 +202,10 @@ impl Schedule for &'static Scheduler {
         if tick.polled > 0 {
             // log scheduler metrics.
             #[cfg(not(feature = "counters"))]
-            tracing::debug!(tick.polled, tick.has_remaining,);
+            tracing::trace!(tick.polled, tick.has_remaining,);
 
             #[cfg(feature = "counters")]
-            tracing::debug!(
+            tracing::trace!(
                 tick.polled,
                 tick.has_remaining,
                 tick.completed,
