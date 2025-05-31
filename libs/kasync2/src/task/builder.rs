@@ -1,43 +1,38 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::scheduler::Schedule;
-use crate::task::{Id, JoinHandle, Task, TaskRef};
+use crate::task::id::Id;
+use crate::task::join_handle::JoinHandle;
+use crate::task::{Task, TaskRef};
 use alloc::boxed::Box;
 use core::alloc::{AllocError, Allocator};
 use core::any::type_name;
-use core::marker::PhantomData;
 use core::panic::Location;
 
 pub struct TaskBuilder<'a, S> {
     location: Option<Location<'a>>,
     name: Option<&'a str>,
     kind: &'a str,
-    scheduler: S,
+    schedule: S,
 }
 
 impl<'a, S> TaskBuilder<'a, S>
 where
-    S: Schedule,
+    S: Fn(TaskRef),
 {
-    pub(crate) fn new(scheduler: S) -> TaskBuilder<'a, S> {
+    pub fn new(schedule: S) -> Self {
         Self {
             location: None,
             name: None,
             kind: "task",
-            scheduler,
+            schedule,
         }
     }
-}
 
-impl<'a, S> TaskBuilder<'a, S>
-where
-    S: Schedule,
-{
     /// Override the name of tasks spawned by this builder.
     ///
     /// By default, tasks are unnamed.
@@ -63,45 +58,12 @@ where
         self
     }
 
-    /// Attempt convert this [`Future`] into a heap allocated task.
-    ///
-    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
-    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
-    /// of its runtime behaviour (such as cancelling it).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AllocError`] when allocation of the task fails.
     #[inline]
     #[track_caller]
-    pub fn try_build<F>(&self, future: F) -> Result<(TaskRef, JoinHandle<F::Output>), AllocError>
+    fn build<F>(&self, future: F) -> Task<F>
     where
         F: Future + Send,
         F::Output: Send,
-    {
-        self.try_build_in(future, alloc::alloc::Global)
-    }
-
-    /// Attempt convert this [`Future`] into a heap allocated task using a custom [`Allocator`].
-    ///
-    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
-    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
-    /// of its runtime behaviour (such as cancelling it).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AllocError`] when allocation of the task fails.
-    #[inline]
-    #[track_caller]
-    pub fn try_build_in<F, A>(
-        &self,
-        future: F,
-        alloc: A,
-    ) -> Result<(TaskRef, JoinHandle<F::Output>), AllocError>
-    where
-        F: Future + Send,
-        F::Output: Send,
-        A: Allocator,
     {
         let id = Id::next();
 
@@ -117,9 +79,43 @@ where
             loc.col = loc.column(),
         );
 
-        let task = Task::<F, S>::new(future, id, self.ext.clone(), span);
-        let task = Box::try_new_in(task, alloc)?;
+        Task::new(future, id, span)
+    }
 
-        Ok(TaskRef::new_allocated(task))
+    #[inline]
+    #[track_caller]
+    pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, AllocError>
+    where
+        F: Future + Send,
+        F::Output: Send,
+    {
+        let task = self.build(future);
+        let task = Box::try_new(task)?;
+        let (task, join) = TaskRef::new_allocated(task);
+
+        (self.schedule)(task);
+
+        Ok(join)
+    }
+
+    #[inline]
+    #[track_caller]
+    pub fn try_spawn_in<F, A>(
+        &self,
+        future: F,
+        alloc: A,
+    ) -> Result<JoinHandle<F::Output>, AllocError>
+    where
+        F: Future + Send,
+        F::Output: Send,
+        A: Allocator,
+    {
+        let task = self.build(future);
+        let task = Box::try_new_in(task, alloc)?;
+        let (task, join) = TaskRef::new_allocated(task);
+
+        (self.schedule)(task);
+
+        Ok(join)
     }
 }

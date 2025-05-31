@@ -9,6 +9,8 @@
 #![feature(const_type_id)]
 #![feature(thread_local)]
 #![feature(debug_closure_helpers)]
+#![feature(context_ext)]
+#![feature(local_waker)]
 extern crate alloc;
 
 pub mod executor;

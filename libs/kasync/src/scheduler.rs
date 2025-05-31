@@ -9,7 +9,6 @@ pub mod steal;
 
 use crate::loom::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use crate::scheduler::steal::{Stealer, TryStealError};
-use crate::task;
 use crate::task::{Header, PollResult, Task, TaskRef, TaskStub};
 use alloc::boxed::Box;
 use core::ptr;
@@ -50,30 +49,30 @@ pub struct Tick {
 /// This trait defines the API required for a scheduler to handle tasks from this crate. Tasks are
 /// generic over this trait so we can have multiple schedulers with different strategies. This trait
 /// is not intended to be publicly implemented.
-pub trait Schedule: Sized + Clone + 'static {
-    /// Execute a single tick of the scheduling loop, potentially polling up to `n` tasks.
-    ///
-    /// This is the main logic for single-thread scheduling. It will dequeue a task, call its `poll`
-    /// method, and depending on the returned [`PollResult`] mark the task as completed, or reschedule it.
-    /// Much of this function is actually concerned with bookkeeping around this
-    /// polling (updating the current task ptr, counting polls etc.).
-    ///
-    /// # Returns
-    ///
-    /// The returned [`Tick`] struct provides information about the executed tick, and callers should
-    /// continue to tick the scheduler as long as `Tick::has_remaining` is `true`. When `Tick::has_remaining`
-    /// is `false` that means the scheduler is out of tasks to actively poll and the caller should either
-    /// attempt to find more tasks (e.g. by stealing from other CPU cores) or suspend the calling CPU until
-    /// tasks are unblocked.
-    fn tick_n(&self, n: usize) -> Tick;
-    /// Attempt to steal from this `Scheduler`, the returned [`Stealer`] will grant exclusive access to
-    /// steal from the `Scheduler` until it is dropped.
-    ///
-    /// # Errors
-    ///
-    /// When stealing from the `Scheduler` is not possible, either because its queue is *empty*
-    /// or because there is *already an active stealer*, an error is returned.
-    fn try_steal(&self) -> Result<Stealer<Self>, TryStealError>;
+pub trait Schedule {
+    // /// Execute a single tick of the scheduling loop, potentially polling up to `n` tasks.
+    // ///
+    // /// This is the main logic for single-thread scheduling. It will dequeue a task, call its `poll`
+    // /// method, and depending on the returned [`PollResult`] mark the task as completed, or reschedule it.
+    // /// Much of this function is actually concerned with bookkeeping around this
+    // /// polling (updating the current task ptr, counting polls etc.).
+    // ///
+    // /// # Returns
+    // ///
+    // /// The returned [`Tick`] struct provides information about the executed tick, and callers should
+    // /// continue to tick the scheduler as long as `Tick::has_remaining` is `true`. When `Tick::has_remaining`
+    // /// is `false` that means the scheduler is out of tasks to actively poll and the caller should either
+    // /// attempt to find more tasks (e.g. by stealing from other CPU cores) or suspend the calling CPU until
+    // /// tasks are unblocked.
+    // fn tick_n(&self, n: usize) -> Tick;
+    // /// Attempt to steal from this `Scheduler`, the returned [`Stealer`] will grant exclusive access to
+    // /// steal from the `Scheduler` until it is dropped.
+    // ///
+    // /// # Errors
+    // ///
+    // /// When stealing from the `Scheduler` is not possible, either because its queue is *empty*
+    // /// or because there is *already an active stealer*, an error is returned.
+    // fn try_steal(&self) -> Result<Stealer<Self>, TryStealError>;
     /// Returns a [`TaskRef`] to the task currently being polled, or `None` if there is no active
     /// task.
     #[must_use]
@@ -110,7 +109,73 @@ pub struct Scheduler {
 // === impl Scheduler ===
 
 impl Schedule for &'static Scheduler {
-    fn tick_n(&self, n: usize) -> Tick {
+    fn current_task(&self) -> Option<TaskRef> {
+        let ptr = self.current_task.load(Ordering::Acquire);
+        Some(TaskRef::clone_from_raw(NonNull::new(ptr)?))
+    }
+
+    fn spawn(&self, task: TaskRef) {
+        #[cfg(feature = "counters")]
+        self.spawned.fetch_add(1, Ordering::Relaxed);
+        self.schedule(task);
+    }
+
+    fn wake(&self, task: TaskRef) {
+        #[cfg(feature = "counters")]
+        self.woken.fetch_add(1, Ordering::Relaxed);
+        self.schedule(task);
+    }
+}
+
+impl Default for Scheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Scheduler {
+    pub fn new() -> Self {
+        let stub_task = Box::new(Task::new_stub());
+        let (stub_task, _) = TaskRef::new_allocated(stub_task);
+
+        Self {
+            // Safety: ensured by caller
+            run_queue: MpscQueue::new_with_stub(stub_task),
+            queued: AtomicUsize::new(0),
+            current_task: AtomicPtr::new(ptr::null_mut()),
+            #[cfg(feature = "counters")]
+            spawned: AtomicUsize::new(0),
+            #[cfg(feature = "counters")]
+            woken: AtomicUsize::new(0),
+        }
+    }
+
+    /// Construct a new `Scheduler` with *statically allocated* lock-free mpsc queue stub node.
+    ///
+    /// This constructor is `const` and doesn't require a heap allocation, but imposes a few
+    /// awkward and nuanced restrictions on callers (therefore the `unsafe`). See
+    /// [`new_scheduler`] for a safe way to construct this type.
+    ///
+    /// # Safety
+    ///
+    /// The `&'static TaskStub` reference MUST only be used for *this* constructor and **never**
+    /// reused for the entire time that `Scheduler` exists.
+    #[cfg(not(loom))]
+    #[must_use]
+    pub const unsafe fn new_with_static_stub(stub: &'static TaskStub) -> Self {
+        Self {
+            // Safety: ensured by caller
+            run_queue: unsafe { MpscQueue::new_with_static_stub(&stub.header) },
+            queued: AtomicUsize::new(0),
+            current_task: AtomicPtr::new(ptr::null_mut()),
+            #[cfg(feature = "counters")]
+            spawned: AtomicUsize::new(0),
+            #[cfg(feature = "counters")]
+            woken: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn tick_n(&self, n: usize) -> Tick {
         tracing::trace!("tick_n({self:p}, {n})");
 
         let mut tick = Tick {
@@ -219,75 +284,8 @@ impl Schedule for &'static Scheduler {
         tick
     }
 
-    fn try_steal(&self) -> Result<Stealer<Self>, TryStealError> {
+    pub fn try_steal(&'static self) -> Result<Stealer<&'static Self>, TryStealError> {
         Stealer::new(&self.run_queue, &self.queued)
-    }
-
-    fn current_task(&self) -> Option<TaskRef> {
-        let ptr = self.current_task.load(Ordering::Acquire);
-        Some(TaskRef::clone_from_raw(NonNull::new(ptr)?))
-    }
-
-    fn spawn(&self, task: TaskRef) {
-        #[cfg(feature = "counters")]
-        self.spawned.fetch_add(1, Ordering::Relaxed);
-        self.schedule(task);
-    }
-
-    fn wake(&self, task: TaskRef) {
-        #[cfg(feature = "counters")]
-        self.woken.fetch_add(1, Ordering::Relaxed);
-        self.schedule(task);
-    }
-}
-
-impl Default for Scheduler {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Scheduler {
-    pub fn new() -> Self {
-        let stub_task = Box::new(Task::new_stub());
-        let (stub_task, _) =
-            TaskRef::new_allocated::<task::Stub, task::Stub, alloc::alloc::Global>(stub_task);
-
-        Self {
-            // Safety: ensured by caller
-            run_queue: MpscQueue::new_with_stub(stub_task),
-            queued: AtomicUsize::new(0),
-            current_task: AtomicPtr::new(ptr::null_mut()),
-            #[cfg(feature = "counters")]
-            spawned: AtomicUsize::new(0),
-            #[cfg(feature = "counters")]
-            woken: AtomicUsize::new(0),
-        }
-    }
-
-    /// Construct a new `Scheduler` with *statically allocated* lock-free mpsc queue stub node.
-    ///
-    /// This constructor is `const` and doesn't require a heap allocation, but imposes a few
-    /// awkward and nuanced restrictions on callers (therefore the `unsafe`). See
-    /// [`new_scheduler`] for a safe way to construct this type.
-    ///
-    /// # Safety
-    ///
-    /// The `&'static TaskStub` reference MUST only be used for *this* constructor and **never**
-    /// reused for the entire time that `Scheduler` exists.
-    #[cfg(not(loom))]
-    #[must_use]
-    pub const unsafe fn new_with_static_stub(stub: &'static TaskStub) -> Self {
-        Self {
-            // Safety: ensured by caller
-            run_queue: unsafe { MpscQueue::new_with_static_stub(&stub.header) },
-            queued: AtomicUsize::new(0),
-            current_task: AtomicPtr::new(ptr::null_mut()),
-            #[cfg(feature = "counters")]
-            spawned: AtomicUsize::new(0),
-            #[cfg(feature = "counters")]
-            woken: AtomicUsize::new(0),
-        }
     }
 
     fn schedule(&self, task: TaskRef) {

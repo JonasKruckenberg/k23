@@ -7,8 +7,8 @@
 
 use crate::loom::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use crate::park::{Park, Parker, ParkingLot};
-use crate::scheduler::steal::Injector;
-use crate::scheduler::{Schedule, Scheduler};
+use crate::scheduler::steal::{Injector, Stealer, TryStealError};
+use crate::scheduler::{Schedule, Scheduler, Tick};
 use crate::task::{JoinHandle, TaskBuilder, TaskRef, TaskStub};
 use crate::time::{Clock, Timer};
 use core::alloc::{AllocError, Allocator};
@@ -47,6 +47,28 @@ impl<P> Executor<P> {
 }
 
 // === impl Executor ===
+
+impl<P> Schedule for &'static Executor<P> {
+    fn current_task(&self) -> Option<TaskRef> {
+        self.schedulers.get()?.current_task()
+    }
+
+    fn spawn(&self, task: TaskRef) {
+        if let Some(scheduler) = self.schedulers.get() {
+            scheduler.spawn(task);
+        } else {
+            self.injector.push_task(task);
+        }
+    }
+
+    fn wake(&self, task: TaskRef) {
+        if let Some(scheduler) = self.schedulers.get() {
+            scheduler.wake(task);
+        } else {
+            self.injector.push_task(task);
+        }
+    }
+}
 
 impl<P> Executor<P>
 where
@@ -102,7 +124,7 @@ where
     }
 
     #[inline]
-    pub fn task_builder<'a>(&self) -> TaskBuilder<'a, &'static Scheduler> {
+    pub fn task_builder<'a>(&self) -> TaskBuilder<'a, &'static Scheduler, ()> {
         TaskBuilder::new()
     }
 
@@ -268,17 +290,8 @@ where
             if let Some(next_deadline) = maybe_next_deadline {
                 self.parker
                     .park_until(next_deadline, self.exec.timer.clock());
-
-                // self.exec.parking_lot.park_until(
-                //     self.parker.clone(),
-                //     next_deadline,
-                //     self.exec.timer.clock(),
-                // );
             } else {
                 self.parker.park();
-
-                // // at this point we're fully out of work. We so we should suspend the
-                // self.exec.parking_lot.park(self.parker.clone());
             }
             tracing::trace!("woke up");
         }
@@ -319,15 +332,8 @@ where
             if let Some(next_deadline) = maybe_next_deadline {
                 self.parker
                     .park_until(next_deadline, self.exec.timer.clock());
-
-                // self.exec.parking_lot.park_until(
-                //     self.parker.clone(),
-                //     next_deadline,
-                //     self.exec.timer.clock(),
-                // );
             } else {
-                // // at this point we're fully out of work. We so we should suspend the
-                // self.exec.parking_lot.park(self.parker.clone());
+                self.parker.park();
             }
             tracing::trace!("woke up");
         }
@@ -367,7 +373,7 @@ where
 
         // attempt to steal from the global injector queue first
         if let Ok(stealer) = self.exec.injector.try_steal() {
-            let stolen = stealer.spawn_n(&self.scheduler, MAX_STOLEN_PER_TICK);
+            let stolen = stealer.spawn_n(self.scheduler, MAX_STOLEN_PER_TICK);
             tracing::trace!("stole {stolen} tasks from injector (in first attempt)");
             return NonZeroUsize::new(stolen);
         }
@@ -436,10 +442,17 @@ where
 mod tests {
     use super::*;
     use crate::loom;
+    use crate::task::{Id, Task};
     use crate::test_util::StopOnPanic;
     use crate::test_util::{StdPark, std_clock};
+    use alloc::boxed::Box;
+    use alloc::sync::Arc;
+    use core::any::type_name;
     use core::hint::black_box;
-    use core::time::Duration;
+    use core::marker::PhantomData;
+    use core::panic::Location;
+    use core::pin::Pin;
+    use spin::RwLock;
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::util::SubscriberInitExt;
 
@@ -455,14 +468,11 @@ mod tests {
                 static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
             }
 
-            let (task, _) = EXEC
-                .task_builder()
-                .try_build(async move {
-                    tracing::info!("Hello World!");
-                    EXEC.stop();
-                })
-                .unwrap();
-            EXEC.spawn_allocated(task);
+            EXEC.try_spawn(async move {
+                tracing::info!("Hello World!");
+                EXEC.stop();
+            })
+            .unwrap();
 
             let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
 
@@ -619,4 +629,178 @@ mod tests {
         h0.join().unwrap();
         h1.join().unwrap();
     }
+
+    #[test]
+    fn builder() {
+        loom::lazy_static! {
+            static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
+        }
+
+        impl<P> Executor<P> {
+            pub fn __task_builder<'a>(&'static self) -> TaskBuilder<'a, &'static Self, ()> {
+                TaskBuilder::new(self)
+            }
+        }
+
+        struct TaskBuilder<'a, S, E> {
+            location: Option<Location<'a>>,
+            name: Option<&'a str>,
+            kind: &'a str,
+            ext: E,
+            scheduler: S,
+        }
+
+        impl<'a, S> TaskBuilder<'a, S, ()> {
+            pub const fn new(scheduler: S) -> Self {
+                Self {
+                    location: None,
+                    name: None,
+                    kind: "",
+                    ext: (),
+                    scheduler,
+                }
+            }
+        }
+
+        impl<'a, S, E> TaskBuilder<'a, S, E> {
+            /// Override the name of tasks spawned by this builder.
+            ///
+            /// By default, tasks are unnamed.
+            pub fn name(mut self, name: &'a str) -> Self {
+                self.name = Some(name);
+                self
+            }
+
+            /// Override the kind string of tasks spawned by this builder, this will only show up
+            /// in debug messages and spans.
+            ///
+            /// By default, tasks are of kind `"kind"`.
+            pub fn kind(mut self, kind: &'a str) -> Self {
+                self.kind = kind;
+                self
+            }
+
+            /// Override the source code location that will be associated with tasks spawned by this builder.
+            ///
+            /// By default, tasks will inherit the source code location of where they have been first spawned.
+            pub fn location(mut self, location: Location<'a>) -> Self {
+                self.location = Some(location);
+                self
+            }
+
+            pub fn ext<N>(mut self, ext: N) -> TaskBuilder<'a, S, N> {
+                TaskBuilder {
+                    location: self.location,
+                    name: self.name,
+                    kind: self.kind,
+                    ext,
+                    scheduler: self.scheduler,
+                }
+            }
+
+            #[inline]
+            #[track_caller]
+            pub fn try_spawn<F>(
+                self,
+                future: F,
+            ) -> Result<(TaskRef, JoinHandle<F::Output>), AllocError>
+            where
+                F: Future + Send,
+                F::Output: Send,
+                S: Schedule,
+            {
+                self.try_spawn_in(future, alloc::alloc::Global)
+            }
+
+            #[inline]
+            #[track_caller]
+            pub fn try_spawn_in<F, A>(
+                self,
+                future: F,
+                alloc: A,
+            ) -> Result<(TaskRef, JoinHandle<F::Output>), AllocError>
+            where
+                F: Future + Send,
+                F::Output: Send,
+                S: Schedule,
+                A: Allocator,
+            {
+                let id = Id::next();
+
+                let loc = self.location.as_ref().unwrap_or(Location::caller());
+                let span = tracing::trace_span!(
+                    "task",
+                    task.tid = id.as_u64(),
+                    task.name = ?self.name,
+                    task.kind = self.kind,
+                    task.output = %type_name::<F::Output>(),
+                    loc.file = loc.file(),
+                    loc.line = loc.line(),
+                    loc.col = loc.column(),
+                );
+
+                let task = Task::<F, S, E>::new(future, id, self.ext, span);
+                let task = Box::try_new_in(task, alloc)?;
+
+                Ok(TaskRef::new_allocated(task))
+            }
+        }
+
+        EXEC.__task_builder()
+            .name("wasm task")
+            .kind("wasm task")
+            .ext("foo")
+            .try_spawn(async {});
+    }
+
+    // #[test]
+    // fn context_test() {
+    //     // === addr space ===
+    //
+    //     struct AddressSpace;
+    //     impl AddressSpace {
+    //         pub fn page_fault(&mut self) {
+    //             println!("page fault");
+    //         }
+    //     }
+    //
+    //     // === fut ===
+    //
+    //     struct Fut {}
+    //     impl Future for Fut {
+    //         type Output = ();
+    //
+    //         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    //             let aspace = cx
+    //                 .ext()
+    //                 .downcast_mut::<Arc<RwLock<AddressSpace>>>()
+    //                 .unwrap();
+    //             if let Some(mut aspace) = aspace.try_write() {
+    //                 aspace.page_fault();
+    //                 Poll::Ready(())
+    //             } else {
+    //                 todo!("should return pending here")
+    //             }
+    //         }
+    //     }
+    //
+    //     // === exec ===
+    //
+    //     loom::lazy_static! {
+    //         static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
+    //     }
+    //
+    //     let aspace = Arc::new(RwLock::new(AddressSpace {}));
+    //
+    //     let (task, h) = EXEC
+    //         .task_builder()
+    //         .ext(aspace.clone())
+    //         .try_build(Fut {})
+    //         .unwrap();
+    //     EXEC.spawn_allocated(task);
+    //
+    //     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+    //
+    //     worker.block_on(h).unwrap();
+    // }
 }
