@@ -40,6 +40,7 @@ macro_rules! loom_const_fn {
 
         $(#[$meta])*
         #[cfg(loom)]
+        #[inline]
         $vis unsafe fn $name($($arg: $T),*) -> $Ret $body
     };
     (
@@ -52,6 +53,7 @@ macro_rules! loom_const_fn {
 
         $(#[$meta])*
         #[cfg(loom)]
+        #[inline]
         $vis fn $name($($arg: $T),*) -> $Ret $body
     }
 }

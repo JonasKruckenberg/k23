@@ -53,9 +53,10 @@ use arrayvec::ArrayVec;
 use cfg_if::cfg_if;
 use core::range::Range;
 use core::slice;
+use core::time::Duration;
 use fastrand::FastRand;
 use kasync::executor::{Executor, Worker};
-use kasync::time::{Instant, Ticks};
+use kasync::time::{Instant, Timer, VirtTicks};
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use mem::PhysicalAddress;
 use mem::frame_alloc;
@@ -171,11 +172,12 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // (e.g. setting the trap vector and enabling interrupts)
         let cpu = arch::device::cpu::Cpu::new(&device_tree, cpuid)?;
 
-        let executor = Executor::new(boot_info.cpu_mask.count_ones() as usize, cpu.clock.clone());
+        let executor = Executor::with_capacity(boot_info.cpu_mask.count_ones() as usize);
+        let timer = Timer::new(Duration::from_millis(1), cpu.clock);
 
         Ok(Global {
-            time_origin: Instant::from_ticks(&cpu.clock, Ticks(boot_ticks)),
-            clock: cpu.clock,
+            time_origin: Instant::from_ticks(&timer, VirtTicks(boot_ticks)),
+            timer,
             executor,
             device_tree,
             boot_info,
@@ -192,24 +194,18 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
     tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
-        Instant::now(&global.clock).duration_since(Instant::ZERO),
-        Instant::from_ticks(&global.clock, Ticks(boot_ticks)).elapsed(&global.clock)
+        Instant::now(&global.timer).duration_since(Instant::ZERO),
+        Instant::from_ticks(&global.timer, VirtTicks(boot_ticks)).elapsed(&global.timer)
     );
 
-    let mut worker = Worker::new(
-        &global.executor,
-        cpuid,
-        arch::Park::new(cpuid),
-        FastRand::from_seed(rng.next_u64()),
-    );
+    let mut worker2 = Worker::new(&global.executor, FastRand::from_seed(rng.next_u64()));
 
     cfg_if! {
         if #[cfg(test)] {
             if cpuid == 0 {
-                worker.block_on(tests::run_tests(global)).exit_if_failed();
-                global.executor.stop();
+                arch::block_on(worker2.run(tests::run_tests(global))).unwrap().exit_if_failed();
             } else {
-                worker.run();
+                arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap_err(); // the only way `run` can return is when the executor is closed
             }
         } else {
             shell::init(
@@ -217,7 +213,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
                 &global.executor,
                 boot_info.cpu_mask.count_ones() as usize,
             );
-            worker.run();
+            arch::block_on(worker2.run(futures::future::pending::<()>())).unwrap_err(); // the only way `run` can return is when the executor is closed
         }
     }
 }

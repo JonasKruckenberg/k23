@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::sync::Closed;
+use crate::error::Closed;
 use crate::sync::wake_batch::WakeBatch;
 use alloc::sync::Arc;
 use cordyceps::{Linked, List, list};
@@ -72,7 +72,7 @@ use util::{CachePadded, loom_const_fn};
 /// [wake]: WaitQueue::wake
 /// [wake_all]: WaitQueue::wake_all
 /// [`UnsafeCell`]: UnsafeCell
-/// [ilist]: cordyceps::List
+/// [ilist]: linked_list::List
 #[derive(Debug)]
 pub struct WaitQueue {
     /// The wait maps's state variable.
@@ -131,13 +131,13 @@ enum StateInner {
     Closed = 0b11,
 }
 
-#[derive(Debug)]
 #[pin_project(PinnedDrop)]
+#[derive(Debug)]
 #[must_use = "futures do nothing unless `.await`ed or `poll`ed"]
 pub struct Wait<'a> {
-    /// The [`WaitQueue`] being waited on.
+    // The [`WaitQueue`] being waited on.
     queue: &'a WaitQueue,
-    /// Entry in the wait queue linked list.
+    // Entry in the wait queue linked list.
     #[pin]
     waiter: Waiter,
 }
@@ -165,27 +165,27 @@ pub struct Wait<'a> {
 ///
 /// assert_unpin::<WaitOwned<'_>>();
 /// ```
-#[derive(Debug)]
 #[pin_project(PinnedDrop)]
+#[derive(Debug)]
 pub struct WaitOwned {
-    /// The `WaitQueue` being waited on.
+    // The `WaitQueue` being waited on.
     queue: Arc<WaitQueue>,
-    /// Entry in the wait queue.
+    // Entry in the wait queue.
     #[pin]
     waiter: Waiter,
 }
 
 /// A waiter node which may be linked into a wait queue.
-#[repr(C)]
 #[pin_project]
+#[repr(C)]
 struct Waiter {
-    /// The intrusive linked list node.
-    ///
-    /// This *must* be the first field in the struct in order for the `Linked`
-    /// implementation to be sound.
+    // The intrusive linked list node.
+    //
+    // This *must* be the first field in the struct in order for the `Linked`
+    // implementation to be sound.
     #[pin]
     node: UnsafeCell<WaiterInner>,
-    /// The future's state.
+    // The future's state.
     state: WaitState,
 }
 
@@ -960,7 +960,7 @@ impl Waiter {
 }
 
 // Safety: TODO
-unsafe impl Linked<list::Links<Waiter>> for Waiter {
+unsafe impl Linked<list::Links<Self>> for Waiter {
     type Handle = NonNull<Waiter>;
 
     fn into_ptr(r: Self::Handle) -> NonNull<Self> {

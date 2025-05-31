@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 mod asid_allocator;
+mod block_on;
 pub mod device;
 mod mem;
 mod setjmp_longjmp;
@@ -15,15 +16,16 @@ mod trap_handler;
 use crate::arch::device::cpu::Cpu;
 use crate::device_tree::DeviceTree;
 use crate::mem::VirtualAddress;
-pub use asid_allocator::AsidAllocator;
 use core::arch::asm;
-use kasync::time::{Clock, Deadline};
+use riscv::sstatus::FS;
+use riscv::{interrupt, scounteren, sie, sstatus};
+
+pub use asid_allocator::AsidAllocator;
+pub use block_on::block_on;
 pub use mem::{
     AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE,
     USER_ASPACE_RANGE, invalidate_range, is_kernel_address,
 };
-use riscv::sstatus::FS;
-use riscv::{interrupt, sbi, scounteren, sie, sstatus};
 pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
 
 pub const STACK_ALIGNMENT: usize = 16;
@@ -139,34 +141,5 @@ pub fn rmb() {
     // Safety: inline assembly
     unsafe {
         asm!("fence ir,ir");
-    }
-}
-
-#[derive(Debug)]
-pub struct Park {
-    cpuid: usize,
-}
-
-impl Park {
-    pub fn new(cpuid: usize) -> Self {
-        Self { cpuid }
-    }
-}
-
-impl kasync::park::Park for Park {
-    fn park(&self) {
-        // Safety: inline assembly
-        unsafe { asm!("wfi") }
-    }
-
-    fn park_until(&self, deadline: Deadline, _clock: &Clock) {
-        sbi::time::set_timer(deadline.ticks.0).unwrap();
-
-        // Safety: inline assembly
-        unsafe { asm!("wfi") }
-    }
-
-    fn unpark(&self) {
-        sbi::ipi::send_ipi(1 << self.cpuid, 0).unwrap();
     }
 }

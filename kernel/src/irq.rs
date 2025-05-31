@@ -51,7 +51,7 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     }
 }
 
-pub async fn next_event(irq_num: u32) -> Result<(), kasync::sync::Closed> {
+pub async fn next_event(irq_num: u32) -> Result<(), kasync::Closed> {
     cpu_local()
         .arch
         .cpu

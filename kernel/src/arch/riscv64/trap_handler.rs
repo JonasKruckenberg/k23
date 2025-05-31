@@ -297,7 +297,7 @@ extern "C-unwind" fn default_trap_handler(
                 }
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                if let Some((_, Some(next_deadline))) = global().executor.timer().try_turn() {
+                if let Some((_, Some(next_deadline))) = global().timer.try_turn() {
                     // Timer interrupts are always IPIs used for sleeping
                     sbi::time::set_timer(next_deadline.ticks.0).unwrap();
                 } else {

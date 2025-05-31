@@ -1,42 +1,41 @@
-// Copyright 2025 Jonas Kruckenberg
-//
-// Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
-// http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
-// http://opensource.org/licenses/MIT>, at your option. This file may not be
-// copied, modified, or distributed except according to those terms.
-
 mod entry;
 mod wheel;
 
-use crate::time::{Clock, Instant, Ticks};
+use crate::time::clock::PhysTicks;
+use crate::time::{Clock, Instant, TimeError};
 use cordyceps::List;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 use core::task::Poll;
+use core::time::Duration;
 use spin::Mutex;
+use util::loom_const_fn;
 use wheel::Wheel;
 
 pub(in crate::time) use entry::Entry;
-use util::loom_const_fn;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct VirtTicks(pub u64);
 
 #[derive(Copy, Clone, Debug)]
 pub struct Deadline {
-    pub ticks: Ticks,
+    pub ticks: VirtTicks,
     slot: usize,
     wheel: usize,
 }
 
 #[derive(Debug)]
 pub struct Timer {
-    pub(in crate::time) clock: Clock,
+    clock: Clock,
+    tick_scale: u64,
     pub(in crate::time) core: Mutex<Core>,
 }
 
 #[derive(Debug)]
 pub(super) struct Core {
     /// The ticks that have elapsed since the wheel started.
-    now: Ticks,
+    now: VirtTicks,
     /// Timer wheels
     ///
     /// Each timer has 6 wheels with 64 slots, giving each wheel a precision multiplier
@@ -87,12 +86,12 @@ pub(super) struct Core {
 // === impl Deadline ===
 
 impl Deadline {
-    pub fn as_ticks(&self) -> Ticks {
+    pub fn as_ticks(&self) -> VirtTicks {
         self.ticks
     }
 
-    pub fn as_instant(&self, clock: &Clock) -> Instant {
-        Instant::from_ticks(clock, self.ticks)
+    pub fn as_instant(&self, timer: &Timer) -> Instant {
+        Instant::from_ticks(timer, self.ticks)
     }
 }
 
@@ -100,17 +99,55 @@ impl Deadline {
 
 impl Timer {
     loom_const_fn! {
-        pub const fn new(clock: Clock) -> Self {
+        pub const fn new(tick_duration: Duration, clock: Clock) -> Self {
+            debug_assert!(tick_duration.as_nanos() >= clock.tick_duration().as_nanos());
+
+            let tick_scale = tick_duration.as_nanos() / clock.tick_duration().as_nanos();
+            debug_assert!(tick_scale <= u64::MAX as u128);
+
             Self {
                 clock,
-                core: Mutex::new(Core::new()),
+                #[expect(clippy::cast_possible_truncation, reason = "the assertion above checked that this is fine")]
+                tick_scale: tick_scale as u64,
+                core: Mutex::new(Core::new())
             }
         }
     }
 
-    #[inline]
     pub fn clock(&self) -> &Clock {
         &self.clock
+    }
+
+    pub fn now_ticks(&self) -> VirtTicks {
+        self.phys_to_virt(self.clock.now_ticks())
+    }
+
+    /// Convert the given raw [`VirtTicks`] into a [`Duration`] using this timers
+    /// internal tick duration.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the conversion would overflow.
+    pub fn ticks_to_duration(&self, ticks: VirtTicks) -> Duration {
+        self.clock.ticks_to_duration(self.virt_to_phys(ticks))
+    }
+
+    /// Convert the given [`Duration`] into a raw [`VirtTicks`] using this timers
+    /// internal tick duration.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`TimeError`] if the duration doesn't fit into the ticks u64 representation.
+    pub fn duration_to_ticks(&self, duration: Duration) -> Result<VirtTicks, TimeError> {
+        Ok(self.phys_to_virt(self.clock.duration_to_ticks(duration)?))
+    }
+
+    fn virt_to_phys(&self, virt_ticks: VirtTicks) -> PhysTicks {
+        PhysTicks(virt_ticks.0 * self.tick_scale)
+    }
+
+    fn phys_to_virt(&self, phys_ticks: PhysTicks) -> VirtTicks {
+        VirtTicks(phys_ticks.0 / self.tick_scale)
     }
 
     #[inline]
@@ -126,7 +163,7 @@ impl Timer {
     }
 
     pub(super) fn turn_locked(&self, core: &mut Core) -> (usize, Option<Deadline>) {
-        let mut now = self.clock.now_ticks();
+        let mut now = self.now_ticks();
 
         if now < core.now {
             tracing::warn!("time went backwards!");
@@ -138,7 +175,7 @@ impl Timer {
             let (_expired, next_deadline) = core.poll(now);
             expired += _expired;
             if let Some(next) = next_deadline {
-                now = self.clock.now_ticks();
+                now = self.now_ticks();
                 if now >= next.ticks {
                     // we've advanced past the next deadline, so we need to
                     // advance again.
@@ -146,6 +183,7 @@ impl Timer {
                 }
             }
 
+            tracing::trace!(expired, ?next_deadline, "turn_locked");
             return (expired, next_deadline);
         }
     }
@@ -157,22 +195,25 @@ impl Core {
     const WHEELS: usize = Wheel::BITS;
     const MAX_SLEEP_TICKS: u64 = (1 << (Wheel::BITS * Self::WHEELS)) - 1;
 
-    loom_const_fn! {
-        const fn new() -> Self {
-            Self {
-                now: Ticks(0),
-                wheels: [
-                    Wheel::new(0),
-                    Wheel::new(1),
-                    Wheel::new(2),
-                    Wheel::new(3),
-                    Wheel::new(4),
-                    Wheel::new(5),
-                ],
-            }
+    #[inline]
+    const fn new() -> Self {
+        Self {
+            now: VirtTicks(0),
+            #[cfg(not(loom))]
+            wheels: [
+                Wheel::new(0),
+                Wheel::new(1),
+                Wheel::new(2),
+                Wheel::new(3),
+                Wheel::new(4),
+                Wheel::new(5),
+            ],
+            #[cfg(loom)]
+            wheels: [Wheel::new(0), Wheel::new(1)],
         }
     }
-    fn poll(&mut self, now: Ticks) -> (usize, Option<Deadline>) {
+
+    fn poll(&mut self, now: VirtTicks) -> (usize, Option<Deadline>) {
         // sleeps that need to be rescheduled on lower-level wheels need to be
         // processed after we have finished turning the wheel, to avoid looping
         // infinitely.
@@ -239,7 +280,7 @@ impl Core {
             let entry_deadline = unsafe { entry.as_ref().deadline };
 
             debug_assert!(entry_deadline > self.now);
-            debug_assert_ne!(entry_deadline, Ticks(0));
+            debug_assert_ne!(entry_deadline, VirtTicks(0));
             self.insert_at(entry_deadline, entry);
         }
 
@@ -295,19 +336,19 @@ impl Core {
         Poll::Pending
     }
 
-    fn insert_at(&mut self, deadline: Ticks, entry: NonNull<Entry>) {
+    fn insert_at(&mut self, deadline: VirtTicks, entry: NonNull<Entry>) {
         let wheel = self.wheel_index(deadline);
         tracing::trace!("inserting entry={entry:?};deadline={deadline:?}");
         self.wheels[wheel].insert(deadline, entry);
     }
 
     #[inline]
-    fn wheel_index(&self, ticks: Ticks) -> usize {
+    fn wheel_index(&self, ticks: VirtTicks) -> usize {
         wheel_index(self.now, ticks)
     }
 }
 
-fn wheel_index(now: Ticks, ticks: Ticks) -> usize {
+fn wheel_index(now: VirtTicks, ticks: VirtTicks) -> usize {
     const WHEEL_MASK: u64 = (1 << Wheel::BITS) - 1;
 
     // mask out the bits representing the index in the wheel
@@ -322,4 +363,70 @@ fn wheel_index(now: Ticks, ticks: Ticks) -> usize {
     let rest = u64::BITS - 1 - zeros;
 
     rest as usize / Core::WHEELS
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::loom;
+    use crate::test_util::clock_100ns;
+    use crate::time::Timer;
+    use core::time::Duration;
+
+    #[test]
+    fn map_ticks_roundtrip() {
+        loom::model(move || {
+            let timer = Timer::new(Duration::from_millis(1), clock_100ns());
+
+            let dur = Duration::from_secs(42);
+
+            let virt_ticks = timer.duration_to_ticks(dur).unwrap();
+            let phys_ticks = timer.virt_to_phys(virt_ticks);
+
+            let virt_ticks = timer.phys_to_virt(phys_ticks);
+            let dur2 = timer.ticks_to_duration(virt_ticks);
+
+            assert_eq!(dur, dur2);
+        });
+    }
+
+    #[test]
+    fn tick_precision() {
+        loom::model(move || {
+            let timer = Timer::new(Duration::from_millis(500), clock_100ns());
+
+            let start_timer = timer.now_ticks();
+            let start_clock = timer.clock.now_ticks();
+
+            std::thread::sleep(Duration::from_millis(250));
+            let halfway_timer = timer.now_ticks();
+            let halfway_clock = timer.clock.now_ticks();
+
+            std::thread::sleep(Duration::from_millis(250));
+            let end_timer = timer.now_ticks();
+            let end_clock = timer.clock.now_ticks();
+
+            // we expect both the start and halfway timestamp to be 0
+            // since 250ms < 500ms they fall into the same "bucket"
+            assert_eq!(start_timer.0, 0);
+            assert_eq!(halfway_timer.0, 0);
+
+            // but we expect the end timestamp to be 1
+            // since 500ms is the timer precision
+            assert_eq!(end_timer.0, 1);
+
+            // But we do expect the clock to tick up all the time
+            const NANOS_PER_MS: u64 = 1_000_000;
+            const TICKS_PER_MS: u64 = NANOS_PER_MS / 100;
+
+            // the start timestamp should definitely smaller than the next timestamp
+            assert!(start_clock.0 < halfway_clock.0);
+
+            // the halfway timestamp should be 250ms or more, but definitely smaller than the next timestamp
+            assert!(halfway_clock.0 / TICKS_PER_MS >= 250);
+            assert!(halfway_clock.0 < end_clock.0);
+
+            // the end timestamp should be 500ms or more
+            assert!(end_clock.0 / TICKS_PER_MS >= 500);
+        });
+    }
 }

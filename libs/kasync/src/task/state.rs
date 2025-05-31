@@ -8,6 +8,7 @@
 use crate::loom::sync::atomic::{self, AtomicUsize, Ordering};
 use crate::task::PollResult;
 use core::fmt;
+use spin::Backoff;
 use util::loom_const_fn;
 
 /// Task state. The task stores its state in an atomic `usize` with various bitfields for the
@@ -172,8 +173,7 @@ impl State {
 
         if should_wait_for_join_waker {
             debug_assert!(matches!(action, StartPollAction::Cancelled { .. }));
-            todo!("wait for join waker")
-            // self.wait_for_join_waker(self.load(Ordering::Acquire));
+            self.wait_for_join_waker(self.load(Ordering::Acquire));
         }
 
         action
@@ -222,11 +222,29 @@ impl State {
 
         if should_wait_for_join_waker {
             debug_assert_eq!(action, PollResult::ReadyJoined);
-            todo!("wait for join waker")
-            // self.wait_for_join_waker(self.load(Ordering::Acquire));
+            self.wait_for_join_waker(self.load(Ordering::Acquire));
         }
 
         action
+    }
+
+    #[tracing::instrument(level = "trace")]
+    fn wait_for_join_waker(&self, mut state: Snapshot) {
+        let mut boff = Backoff::new();
+        loop {
+            state.set(Snapshot::JOIN_WAKER, JoinWakerState::Waiting);
+            let next = state.with(Snapshot::JOIN_WAKER, JoinWakerState::Woken);
+            match self.val.compare_exchange_weak(
+                state.0,
+                next.0,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return,
+                Err(actual) => state = Snapshot(actual),
+            }
+            boff.spin();
+        }
     }
 
     #[tracing::instrument(level = "trace")]

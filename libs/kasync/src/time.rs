@@ -1,4 +1,4 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -11,17 +11,17 @@ mod sleep;
 mod timeout;
 mod timer;
 
-pub const NANOS_PER_SEC: u64 = 1_000_000_000;
-
 use core::fmt;
 use core::fmt::Formatter;
 use core::time::Duration;
 
-pub use clock::{Clock, Ticks};
+pub const NANOS_PER_SEC: u64 = 1_000_000_000;
+
+pub use clock::{Clock, PhysTicks};
 pub use instant::Instant;
 pub use sleep::{Sleep, sleep, sleep_until};
-pub use timeout::{Elapsed, Timeout, timeout, timeout_at};
-pub use timer::{Deadline, Timer};
+pub use timeout::{Timeout, timeout, timeout_at};
+pub use timer::{Deadline, Timer, VirtTicks};
 
 #[derive(Debug, Eq, PartialEq)]
 #[non_exhaustive]

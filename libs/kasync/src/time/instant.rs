@@ -1,47 +1,47 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::{Clock, NANOS_PER_SEC, Ticks};
+use crate::time::{NANOS_PER_SEC, Timer, VirtTicks};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
 
 /// A measurement of a monotonically nondecreasing clock.
-/// Opaque and useful only with [`Duration`].
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Instant(pub(super) Duration);
+pub struct Instant(Duration);
 
 impl Instant {
     pub const ZERO: Self = Self(Duration::ZERO);
 
     /// Returns an instant corresponding to "now" in the global timer.
-    pub fn now(clock: &Clock) -> Self {
-        clock.now()
+    pub fn now(timer: &Timer) -> Self {
+        let now = timer.now_ticks();
+        Self(timer.ticks_to_duration(now))
     }
 
     /// Create a new `Instant` from the given raw [`Ticks`] using the global timer and clock.
     /// Panics if no global timer is configured.
-    pub fn from_ticks(clock: &Clock, ticks: Ticks) -> Self {
-        let duration = clock.ticks_to_duration(ticks);
+    pub fn from_ticks(timer: &Timer, ticks: VirtTicks) -> Self {
+        let duration = timer.ticks_to_duration(ticks);
         Self(duration)
     }
 
     /// Create a timestamp in the "very-far-future", panicking if no global timer is configured.
     ///
     /// TODO elaborate
-    pub fn far_future(clock: &Clock) -> Self {
+    pub fn far_future(timer: &Timer) -> Self {
         // Returns an instant roughly 30 years from now.
         // This is used instead of `Duration::MAX` because conversion to ticks might cause an overflow
         // but doing checked or saturating conversions in those functions is too expensive.
-        clock.now() + Duration::from_secs(86400 * 365 * 30)
+        Self::now(timer) + Duration::from_secs(86400 * 365 * 30)
     }
 
-    pub fn elapsed(&self, clock: &Clock) -> Duration {
-        Self::now(clock).duration_since(*self)
+    pub fn elapsed(&self, timer: &Timer) -> Duration {
+        Self::now(timer).duration_since(*self)
     }
 
     /// Returns the amount of time elapsed from another instant to this one,
