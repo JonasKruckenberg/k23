@@ -14,7 +14,7 @@ use core::mem::offset_of;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{array, fmt, mem};
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use wavltree::WAVLTree;
 
 const FRAME_LIST_NODE_FANOUT: usize = 16;
@@ -24,12 +24,13 @@ pub struct FrameList {
     size: usize,
 }
 
-#[pin_project]
-#[derive(Debug)]
-pub struct FrameListNode {
-    links: wavltree::Links<FrameListNode>,
-    offset: usize,
-    frames: [Option<Frame>; FRAME_LIST_NODE_FANOUT],
+pin_project! {
+    #[derive(Debug)]
+    pub struct FrameListNode {
+        links: wavltree::Links<FrameListNode>,
+        offset: usize,
+        frames: [Option<Frame>; FRAME_LIST_NODE_FANOUT],
+    }
 }
 
 pub struct Cursor<'a> {

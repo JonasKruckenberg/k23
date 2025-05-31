@@ -13,7 +13,7 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use core::task::{Context, Poll, ready};
 use core::time::Duration;
-use pin_project::{pin_project, pinned_drop};
+use pin_project_lite::pin_project;
 
 /// Wait until duration has elapsed.
 ///
@@ -50,15 +50,31 @@ enum State {
     Completed,
 }
 
-/// Future returned by [`sleep`] and [`sleep_until`].
-#[pin_project(PinnedDrop)]
-#[must_use = "futures do nothing unless `.await`ed or `poll`ed"]
-pub struct Sleep<'timer> {
-    state: State,
-    timer: &'timer Timer,
-    ticks: Ticks,
-    #[pin]
-    entry: Entry,
+pin_project! {
+    /// Future returned by [`sleep`] and [`sleep_until`].
+    #[must_use = "futures do nothing unless `.await`ed or `poll`ed"]
+    pub struct Sleep<'timer> {
+        state: State,
+        timer: &'timer Timer,
+        ticks: Ticks,
+        #[pin]
+        entry: Entry,
+    }
+
+    impl PinnedDrop for  Sleep<'_> {
+        fn drop(mut this: Pin<&mut Self>) {
+            tracing::trace!("Sleep::drop");
+            let this = this.project();
+            // we only need to remove the sleep from the timer wheel if it's
+            // currently part of a linked list --- if the future hasn't been polled
+            // yet, or it has already completed, we don't need to lock the timer to
+            // remove it.
+            if this.entry.is_registered.load(Ordering::Acquire) {
+                let mut lock = this.timer.core.lock();
+                lock.cancel(this.entry);
+            }
+        }
+    }
 }
 
 impl<'timer> Sleep<'timer> {
@@ -117,22 +133,6 @@ impl Future for Sleep<'_> {
             "a Sleep's WaitCell should only be woken by closing"
         );
         Poll::Ready(())
-    }
-}
-
-#[pinned_drop]
-impl PinnedDrop for Sleep<'_> {
-    fn drop(mut self: Pin<&mut Self>) {
-        tracing::trace!("Sleep::drop");
-        let this = self.project();
-        // we only need to remove the sleep from the timer wheel if it's
-        // currently part of a linked list --- if the future hasn't been polled
-        // yet, or it has already completed, we don't need to lock the timer to
-        // remove it.
-        if this.entry.is_registered.load(Ordering::Acquire) {
-            let mut lock = this.timer.core.lock();
-            lock.cancel(this.entry);
-        }
     }
 }
 

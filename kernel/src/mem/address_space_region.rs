@@ -19,28 +19,29 @@ use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::range::Range;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use spin::LazyLock;
 
-/// A contiguous region of an address space
-#[pin_project]
-#[derive(Debug)]
-pub struct AddressSpaceRegion {
-    /// The address range covered by this region
-    pub range: Range<VirtualAddress>,
-    /// The permissions of this region
-    pub permissions: Permissions,
-    /// The name of this region, for debugging
-    pub name: Option<String>,
-    /// The Virtual Memory Object backing this region
-    pub vmo: Arc<Vmo>,
-    pub vmo_offset: usize,
-    /// The address range covered by this region and its WAVL tree subtree, used when allocating new regions
-    pub(super) max_range: Range<VirtualAddress>,
-    /// The largest gap in this subtree, used when allocating new regions
-    pub(super) max_gap: usize,
-    /// Links to other regions in the WAVL tree
-    pub(super) links: wavltree::Links<AddressSpaceRegion>,
+pin_project! {
+    /// A contiguous region of an address space
+    #[derive(Debug)]
+    pub struct AddressSpaceRegion {
+        // The address range covered by this region
+        pub range: Range<VirtualAddress>,
+        // The permissions of this region
+        pub permissions: Permissions,
+        // The name of this region, for debugging
+        pub name: Option<String>,
+        // The Virtual Memory Object backing this region
+        pub vmo: Arc<Vmo>,
+        pub vmo_offset: usize,
+        // The address range covered by this region and its WAVL tree subtree, used when allocating new regions
+        pub(super) max_range: Range<VirtualAddress>,
+        // The largest gap in this subtree, used when allocating new regions
+        pub(super) max_gap: usize,
+        // Links to other regions in the WAVL tree
+        pub(super) links: wavltree::Links<AddressSpaceRegion>,
+    }
 }
 
 impl AddressSpaceRegion {

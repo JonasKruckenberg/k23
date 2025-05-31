@@ -9,7 +9,7 @@ use crate::time::{Instant, Sleep, TimeError, Timer, sleep, sleep_until};
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use core::time::Duration;
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 
 /// Requires a `Future` to complete before the specified duration has elapsed.
 ///
@@ -56,14 +56,15 @@ where
 #[derive(Debug)]
 pub struct Elapsed(());
 
-/// Future returned by [`timeout`] and [`timeout_at`].
-#[pin_project]
-#[must_use = "futures do nothing unless `.await`ed or `poll`ed"]
-pub struct Timeout<'timer, F> {
-    #[pin]
-    future: F,
-    #[pin]
-    sleep: Sleep<'timer>,
+pin_project! {
+    /// Future returned by [`timeout`] and [`timeout_at`].
+    #[must_use = "futures do nothing unless `.await`ed or `poll`ed"]
+    pub struct Timeout<'timer, F> {
+        #[pin]
+        future: F,
+        #[pin]
+        sleep: Sleep<'timer>,
+    }
 }
 
 impl<F> Timeout<'_, F> {

@@ -5,10 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::sync::Closed;
 use crate::sync::wake_batch::WakeBatch;
+use crate::sync::Closed;
 use alloc::sync::Arc;
-use cordyceps::{Linked, List, list};
 use core::cell::UnsafeCell;
 use core::marker::PhantomPinned;
 use core::pin::Pin;
@@ -16,10 +15,11 @@ use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::task::{Context, Poll, Waker};
 use core::{fmt, mem, ptr};
-use mycelium_bitfield::{FromBits, bitfield, enum_from_bits};
+use cordyceps::{list, Linked, List};
+use mycelium_bitfield::{bitfield, enum_from_bits, FromBits};
 use pin_project_lite::pin_project;
 use spin::{Mutex, MutexGuard};
-use util::{CachePadded, loom_const_fn};
+use util::{loom_const_fn, CachePadded};
 
 /// A queue of waiting tasks which can be [woken in first-in, first-out
 /// order][wake], or [all at once][wake_all].
@@ -72,7 +72,7 @@ use util::{CachePadded, loom_const_fn};
 /// [wake]: WaitQueue::wake
 /// [wake_all]: WaitQueue::wake_all
 /// [`UnsafeCell`]: UnsafeCell
-/// [ilist]: cordyceps::List
+/// [ilist]: linked_list::List
 #[derive(Debug)]
 pub struct WaitQueue {
     /// The wait maps's state variable.
@@ -142,7 +142,7 @@ pin_project! {
         waiter: Waiter,
     }
 
-    impl PinnedDrop for  Wait<'_> {
+    impl PinnedDrop for Wait<'_> {
         fn drop(mut this: Pin<&mut Self>) {
             let this = this.project();
             this.waiter.release(this.queue);
@@ -772,7 +772,11 @@ impl Waiter {
     /// Of course, that must be the *same* list that this waiter is a member of,
     /// and currently, there is no way to ensure that...
     #[inline(always)]
-    fn wake(this: NonNull<Self>, list: &mut List<Self>, wakeup: Wakeup) -> Option<Waker> {
+    fn wake(
+        this: NonNull<Self>,
+        list: &mut List<Self>,
+        wakeup: Wakeup,
+    ) -> Option<Waker> {
         Waiter::with_inner(this, list, |node| {
             let waker = mem::replace(&mut node.waker, wakeup);
             match waker {
@@ -977,7 +981,7 @@ impl Waiter {
 }
 
 // Safety: TODO
-unsafe impl Linked<list::Links<Waiter>> for Waiter {
+unsafe impl Linked<list::Links<Self>> for Waiter {
     type Handle = NonNull<Waiter>;
 
     fn into_ptr(r: Self::Handle) -> NonNull<Self> {
@@ -1083,6 +1087,7 @@ impl Future for Wait<'_> {
         this.waiter.poll_wait(this.queue, Some(cx.waker()))
     }
 }
+
 
 // === impl WaitOwned ===
 

@@ -23,17 +23,18 @@ use core::ops::{Deref, DerefMut};
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{fmt, mem};
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 use static_assertions::{assert_impl_all, const_assert};
 pub use stored::{Stored, StoredData};
 
 pub struct Store<T>(Pin<Box<StoreInner<T>>>);
 
-#[repr(C)]
-#[pin_project]
-pub(super) struct StoreInner<T> {
-    pub(super) opaque: StoreOpaque,
-    pub(super) data: T,
+pin_project! {
+    #[repr(C)]
+    pub(super) struct StoreInner<T> {
+        pub(super) opaque: StoreOpaque,
+        pub(super) data: T,
+    }
 }
 
 impl<T> Store<T> {
