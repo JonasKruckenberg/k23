@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.8](https://github.com/JonasKruckenberg/k23/compare/v0.0.7...v0.0.8) - 2025-06-13
+
+### Other
+
+- async executor benchmarks ([#442](https://github.com/JonasKruckenberg/k23/pull/442))
+
 ## [0.0.7](https://github.com/JonasKruckenberg/k23/compare/v0.0.6...v0.0.7) - 2025-02-21
 
 ### Added
