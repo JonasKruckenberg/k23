@@ -9,6 +9,7 @@ mod entry;
 mod wheel;
 
 use crate::time::{Clock, Instant, Ticks};
+use cordyceps::List;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
@@ -175,7 +176,8 @@ impl Core {
         // sleeps that need to be rescheduled on lower-level wheels need to be
         // processed after we have finished turning the wheel, to avoid looping
         // infinitely.
-        let mut pending_reschedule = linked_list::List::<Entry>::new();
+        let mut pending_reschedule = List::<Entry>::new();
+
         let mut expired = 0;
 
         // we will stop looping if the next deadline is after `now`, but we

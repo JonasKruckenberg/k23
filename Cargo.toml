@@ -78,7 +78,6 @@ missing_errors_doc = "deny"
 
 [workspace.dependencies]
 addr2line = { path = "libs/addr2line" }
-linked-list = { path = "libs/linked-list" }
 mpsc-queue = { path = "libs/mpsc-queue" }
 riscv = { path = "libs/riscv" }
 spin = { path = "libs/spin" }
@@ -123,6 +122,7 @@ loom = "0.7"
 criterion = "0.6.0"
 lazy_static = "1.5.0"
 pin-project = "1"
+cordyceps = "0.3.4"
 
 # wast dependencies
 unicode-width = { version = "0.2.0" }

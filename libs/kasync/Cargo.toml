@@ -21,7 +21,6 @@ cpu-local.workspace = true
 fastrand.workspace = true
 unwind2 = { workspace = true, optional = true }
 panic-unwind2 = { workspace = true, optional = true }
-linked-list.workspace = true
 
 # 3rd-party dependencies
 cfg-if.workspace = true
@@ -31,6 +30,7 @@ tracing.workspace = true
 bitflags.workspace = true
 pin-project.workspace = true
 arrayvec.workspace = true
+cordyceps.workspace = true
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true, default-features = true, features = ["env-filter"] }

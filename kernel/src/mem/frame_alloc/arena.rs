@@ -8,6 +8,7 @@
 use super::frame::FrameInfo;
 use crate::arch;
 use crate::mem::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use cordyceps::List;
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
@@ -21,7 +22,7 @@ const MAX_WASTED_ARENA_BYTES: usize = 0x8_4000; // 528 KiB
 const MAX_ORDER: usize = 11;
 
 pub struct Arena {
-    free_lists: [linked_list::List<FrameInfo>; MAX_ORDER],
+    free_lists: [List<FrameInfo>; MAX_ORDER],
     range: Range<PhysicalAddress>,
     slots: &'static mut [MaybeUninit<FrameInfo>],
     max_order: usize,
@@ -73,7 +74,7 @@ impl Arena {
         let mut addr = selection.arena.start;
         let mut total_frames = 0;
         let mut max_order = 0;
-        let mut free_lists = [const { linked_list::List::new() }; MAX_ORDER];
+        let mut free_lists = [const { List::new() }; MAX_ORDER];
 
         while remaining_bytes > 0 {
             let max_align = addr.get() & (!addr.get() + 1);
@@ -146,7 +147,7 @@ impl Arena {
         Some(frame)
     }
 
-    pub fn allocate_contiguous(&mut self, layout: Layout) -> Option<linked_list::List<FrameInfo>> {
+    pub fn allocate_contiguous(&mut self, layout: Layout) -> Option<List<FrameInfo>> {
         assert!(layout.align() >= arch::PAGE_SIZE);
         assert!(layout.size() >= arch::PAGE_SIZE);
 
@@ -200,7 +201,7 @@ impl Arena {
         };
 
         self.used_frames += size_frames;
-        Some(linked_list::List::from_iter(frames))
+        Some(List::from_iter(frames))
     }
 
     #[inline]

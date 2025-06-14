@@ -8,6 +8,7 @@
 use crate::time::Ticks;
 use crate::time::timer::entry::Entry;
 use crate::time::timer::{Core, Deadline};
+use cordyceps::List;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
@@ -22,7 +23,7 @@ pub(crate) struct Wheel {
     /// See <https://lwn.net/Articles/646056/> for details on
     /// this strategy.
     occupied_slots: u64,
-    slots: [linked_list::List<Entry>; Wheel::SLOTS],
+    slots: [List<Entry>; Wheel::SLOTS],
     /// This wheel's level.
     level: usize,
     /// The number of ticks represented by a single slot in this wheel.
@@ -58,7 +59,7 @@ impl Wheel {
             // bitmask for masking out the indices in all lower wheels from a `now`
             // timestamp.
             let wheel_mask = !(ticks_per_wheel.0 - 1);
-            let slots = [const { linked_list::List::new() }; Self::SLOTS];
+            let slots = [const { List::new() }; Self::SLOTS];
 
             Self {
                 level,
@@ -87,8 +88,8 @@ impl Wheel {
         // we know it's in this list (provided the rest of the timer wheel
         // is like...working...)
         unsafe {
-            let ptr = NonNull::from(Pin::into_inner_unchecked(entry));
-            if let Some(entry) = self.slots[slot].cursor_from_ptr_mut(ptr).remove() {
+            let wheel = NonNull::from(Pin::into_inner_unchecked(entry));
+            if let Some(entry) = self.slots[slot].remove(wheel) {
                 let _did_unlink = entry.as_ref().is_registered.compare_exchange(
                     true,
                     false,
@@ -147,12 +148,12 @@ impl Wheel {
         Some(deadline)
     }
 
-    pub(crate) fn take_slot(&mut self, slot: usize) -> linked_list::List<Entry> {
+    pub(crate) fn take_slot(&mut self, slot: usize) -> List<Entry> {
         debug_assert!(
             self.occupied_slots & (1 << slot) != 0,
             "taking an unoccupied slot!"
         );
-        let list = self.slots[slot].take();
+        let list = self.slots[slot].split_off(0);
         debug_assert!(
             !list.is_empty(),
             "if a slot is occupied, its list must not be empty"
