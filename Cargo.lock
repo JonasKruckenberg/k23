@@ -357,6 +357,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 
 [[package]]
+name = "cordyceps"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "688d7fbb8092b8de775ef2536f36c8c31f2bc4006ece2e8d8ad2d17d00ce0a2a"
+dependencies = [
+ "loom",
+ "tracing 0.1.41",
+]
+
+[[package]]
 name = "cpu-local"
 version = "0.1.0"
 dependencies = [
@@ -1077,12 +1087,12 @@ dependencies = [
  "arrayvec",
  "bitflags",
  "cfg-if",
+ "cordyceps",
  "cpu-local",
  "criterion 0.6.0",
  "fastrand",
  "futures",
  "lazy_static",
- "linked-list",
  "loom",
  "mpsc-queue",
  "mycelium-bitfield",
@@ -1108,6 +1118,7 @@ dependencies = [
  "bitflags",
  "bumpalo",
  "cfg-if",
+ "cordyceps",
  "cpu-local",
  "cranelift-codegen",
  "cranelift-entity",
@@ -1121,7 +1132,6 @@ dependencies = [
  "kasync",
  "ksharded-slab",
  "ktest",
- "linked-list",
  "loader-api",
  "log",
  "mpsc-queue",
@@ -1224,10 +1234,6 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
-
-[[package]]
-name = "linked-list"
-version = "0.1.0"
 
 [[package]]
 name = "litemap"
@@ -2070,6 +2076,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "784e0ac535deb450455cbfa28a6f0df145ea1bb7ae51b821cf5e7927fdcfbdd0"
 dependencies = [
  "pin-project-lite",
+ "tracing-attributes 0.1.29",
  "tracing-core 0.1.33",
 ]
 
@@ -2080,8 +2087,19 @@ source = "git+https://github.com/tokio-rs/tracing?branch=master#906f00ce4ca50a54
 dependencies = [
  "pin-project-lite",
  "portable-atomic",
- "tracing-attributes",
+ "tracing-attributes 0.2.0",
  "tracing-core 0.2.0",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b1ffbcf9c6f6b99d386e7444eb608ba646ae452a36b39737deb9663b610f662"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
