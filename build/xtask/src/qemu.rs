@@ -68,6 +68,40 @@ pub fn spawn(
             ]);
             cmd
         }
+        Architecture::X86_64 => {
+            let mut cmd = Command::new("qemu-system-x86_64");
+            cmd.args([
+                "-machine",
+                "q35",
+                "-cpu",
+                "qemu64",
+                "-m",
+                "256M",
+                "-d",
+                "guest_errors",
+                "-display",
+                "none",
+                "-serial",
+                "mon:stdio",
+                "-smp",
+                "cpus=8",
+                "-object",
+                "memory-backend-ram,size=128M,id=m0",
+                "-object",
+                "memory-backend-ram,size=128M,id=m1",
+                "-numa",
+                "node,cpus=0-3,nodeid=0,memdev=m0",
+                "-numa",
+                "node,cpus=4-7,nodeid=1,memdev=m1",
+                "-numa",
+                "dist,src=0,dst=1,val=20",
+                "-monitor",
+                "unix:qemu-monitor-socket,server,nowait",
+                "-kernel",
+                image.to_str().unwrap(),
+            ]);
+            cmd
+        }
     };
 
     cmd.args(&qemu.qemu_args);

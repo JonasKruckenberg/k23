@@ -98,6 +98,7 @@ pub fn cargo_qemu_runner_env(profile: &Profile) -> crate::Result<(&'static str, 
     // runner to the
     let runner_env_var = match profile.arch {
         Architecture::Riscv64 => "CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER",
+        Architecture::X86_64 => "CARGO_TARGET_X86_64_K23_NONE_KERNEL_RUNNER",
     };
 
     Ok((
