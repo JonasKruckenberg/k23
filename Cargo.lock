@@ -491,16 +491,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "criterion-cycles-per-byte"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1029452fa751c93f8834962dd74807d69f0a6c7624d5b06625b393aeb6a14fc2"
-dependencies = [
- "cfg-if",
- "criterion 0.5.1",
-]
-
-[[package]]
 name = "criterion-plot"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -667,19 +657,6 @@ name = "fdt"
 version = "0.1.0"
 dependencies = [
  "fallible-iterator",
-]
-
-[[package]]
-name = "fiber"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "criterion 0.5.1",
- "criterion-cycles-per-byte",
- "libc",
- "panic-unwind2",
- "riscv",
- "windows-sys",
 ]
 
 [[package]]
