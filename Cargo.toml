@@ -82,6 +82,7 @@ linked-list = { path = "libs/linked-list" }
 mpsc-queue = { path = "libs/mpsc-queue" }
 riscv = { path = "libs/riscv" }
 spin = { path = "libs/spin" }
+trap = { path = "libs/trap" }
 cpu-local = { path = "libs/cpu-local" }
 unwind2 = { path = "libs/unwind2" }
 wast = { path = "libs/wast" }

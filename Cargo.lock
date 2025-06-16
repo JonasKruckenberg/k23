@@ -1140,6 +1140,7 @@ dependencies = [
  "target-lexicon",
  "tracing 0.2.0",
  "tracing-core 0.2.0",
+ "trap",
  "uart-16550",
  "unwind2",
  "util",
@@ -1695,6 +1696,7 @@ dependencies = [
  "bitflags",
  "cfg-if",
  "spin",
+ "trap",
 ]
 
 [[package]]
@@ -2188,6 +2190,10 @@ dependencies = [
  "tracing-core 0.1.33",
  "tracing-log 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "trap"
+version = "0.1.0"
 
 [[package]]
 name = "uart-16550"
