@@ -51,7 +51,7 @@ pub fn per_cpu_init_early() {
 #[cold]
 pub fn per_cpu_init_late(devtree: &DeviceTree, cpuid: usize) -> crate::Result<state::CpuLocal> {
     // TODO: Initialize trap handler and interrupts for x86_64
-    
+
     Ok(state::CpuLocal {
         cpu: Cpu::new(devtree, cpuid)?,
     })
@@ -81,9 +81,7 @@ pub fn get_stack_pointer() -> usize {
 pub unsafe fn get_next_older_pc_from_fp(fp: VirtualAddress) -> VirtualAddress {
     // The calling convention always pushes the return pointer (aka the PC of
     // the next older frame) just before this frame.
-    unsafe {
-        *(fp.as_ptr() as *mut VirtualAddress).offset(1)
-    }
+    unsafe { *(fp.as_ptr() as *mut VirtualAddress).offset(1) }
 }
 
 /// The current frame pointer points to the next older frame pointer.

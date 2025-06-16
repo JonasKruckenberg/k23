@@ -142,7 +142,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
         // TODO: Create new page table for x86_64
         // For now, create a minimal implementation
         let root_frame = frame_alloc.alloc_one_zeroed()?;
-        
+
         let this = Self {
             asid,
             root_pgtable: root_frame.addr(),
