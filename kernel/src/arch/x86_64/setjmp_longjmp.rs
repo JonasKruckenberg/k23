@@ -21,7 +21,7 @@ pub struct JmpBufStruct {
     rip: u64,
 }
 
-pub type JmpBuf = MaybeUninit<JmpBufStruct>;
+pub type JmpBuf = *const JmpBufStruct;
 
 pub fn call_with_setjmp<F>(f: F) -> i32
 where
@@ -31,7 +31,7 @@ where
     todo!("setjmp/longjmp not implemented for x86_64 yet")
 }
 
-pub fn longjmp(_buf: &JmpBuf, _val: i32) -> ! {
+pub fn longjmp(_buf: JmpBuf, _val: i32) -> ! {
     // TODO: Implement longjmp for x86_64
     todo!("longjmp not implemented for x86_64 yet")
 }
