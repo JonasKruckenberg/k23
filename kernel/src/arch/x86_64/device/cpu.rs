@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::device_tree::DeviceTree;
-use kasync::time::{Clock, core::time::Duration, Ticks, NANOS_PER_SEC};
+use kasync::time::{Clock, NANOS_PER_SEC, Ticks, core::time::Duration};
 
 #[derive(Debug)]
 pub struct Cpu {
@@ -19,9 +19,9 @@ impl Cpu {
         // TODO: Initialize x86_64 APIC (Advanced Programmable Interrupt Controller)
         // TODO: Get timebase frequency from CPUID or TSC
         let timebase_frequency = 1_000_000_000; // 1 GHz placeholder
-        
+
         let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
-        
+
         // TODO: Implement x86_64 timer reading (TSC, HPET, etc.)
         let clock = Clock::new(tick_duration, || {
             // Placeholder: read TSC (Time Stamp Counter)

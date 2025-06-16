@@ -26,7 +26,8 @@ pub type JmpBuf = *const JmpBufStruct;
 pub fn call_with_setjmp<F>(f: F) -> i32
 where
     F: for<'a> FnOnce(&'a JmpBufStruct) -> i32,
-{   // TODO: Implement setjmp/longjmp for x86_64
+{
+    // TODO: Implement setjmp/longjmp for x86_64
     // This is a complex assembly operation that needs careful implementation
     todo!("setjmp/longjmp not implemented for x86_64 yet")
 }
