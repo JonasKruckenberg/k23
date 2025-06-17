@@ -53,9 +53,6 @@ pub trait InstanceAllocator {
     /// allocated. It must never be used again.
     unsafe fn deallocate_memory(&self, memory_index: DefinedMemoryIndex, memory: vm::Memory);
 
-    // fn allocate_fiber_stack(&self) -> crate::Result<FiberStack>;
-    // unsafe fn deallocate_fiber_stack(&self, stack: FiberStack);
-
     /// Allocate a table for an instance.
     ///
     /// # Errors
