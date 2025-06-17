@@ -314,7 +314,7 @@ extern "C-unwind" fn default_trap_handler(
                 | Exception::InstructionPageFault,
             ) => {
                 // first attempt the page fault handler, can it recover us from this by fixing up mappings?
-                if crate::mem::handle_page_fault(cause, tval).is_break() {
+                if crate::mem::handle_page_fault(tval).is_break() {
                     break 'handler;
                 }
 
