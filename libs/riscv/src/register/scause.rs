@@ -8,9 +8,9 @@
 //! Supervisor Cause Register
 
 use super::{read_csr_as, write_csr};
+pub use crate::trap::{Exception, Interrupt, Trap};
 use core::fmt;
 use core::fmt::Formatter;
-pub use trap::{Exception, Interrupt, Trap};
 
 /// scause register
 #[derive(Clone, Copy)]
