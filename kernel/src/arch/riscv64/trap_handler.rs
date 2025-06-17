@@ -13,7 +13,6 @@ use crate::{TRAP_STACK_SIZE_PAGES, irq};
 use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::cell::Cell;
-use core::ops::DerefMut;
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{load_fp, load_gp, save_fp, save_gp};
@@ -307,8 +306,7 @@ extern "C-unwind" fn default_trap_handler(
                 }
             }
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
-                let mut plic = cpu_local().arch.cpu.plic.borrow_mut();
-                irq::trigger_irq(plic.deref_mut());
+                irq::trigger_irq(&mut *cpu_local().arch.cpu.interrupt_controller());
             }
             Trap::Exception(
                 Exception::LoadPageFault
