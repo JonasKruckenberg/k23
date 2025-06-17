@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::device_tree::DeviceTree;
+use crate::irq::InterruptController;
 use kasync::time::{Clock, NANOS_PER_SEC, Ticks, core::time::Duration};
 
 #[derive(Debug)]
@@ -38,5 +39,9 @@ impl Cpu {
             id: cpuid,
             clock: clock,
         })
+    }
+
+    pub fn interrupt_controller(&self) -> core::cell::RefMut<'_, dyn InterruptController> {
+        todo!();
     }
 }
