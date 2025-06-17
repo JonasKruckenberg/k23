@@ -165,19 +165,19 @@ impl<W: Write> Drop for Writer<W> {
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
         type DebugStream = riscv::hio::HostStream;
-        
+
         fn new_debug_stream() -> DebugStream {
             riscv::hio::HostStream::new_stdout()
         }
-    } 
+    }
     // else if #[cfg(target_arch = "x86_64")] {
     //     // TODO: Implement x86_64 debug stream (e.g., serial port)
     //     type DebugStream = DummyStream;
-        
+
     //     fn new_debug_stream() -> DebugStream {
     //         DummyStream
     //     }
-        
+
     //     // Temporary dummy implementation for x86_64
     //     struct DummyStream;
     //     impl Write for DummyStream {
@@ -196,9 +196,7 @@ pub struct SemihostingWriter<'a>(ReentrantMutexGuard<'a, UnsafeCell<DebugStream>
 
 impl Semihosting {
     pub fn new() -> Self {
-        Self(ReentrantMutex::new(UnsafeCell::new(
-            new_debug_stream(),
-        )))
+        Self(ReentrantMutex::new(UnsafeCell::new(new_debug_stream())))
     }
 }
 
