@@ -86,6 +86,12 @@ impl fmt::Display for Cpu {
 }
 
 impl Cpu {
+    pub fn interrupt_controller(&self) -> core::cell::RefMut<'_, dyn InterruptController> {
+        core::cell::RefMut::map(self.plic.borrow_mut(), |plic| {
+            plic as &mut dyn InterruptController
+        })
+    }
+
     pub fn new(devtree: &DeviceTree, cpuid: usize) -> crate::Result<Self> {
         let cpus = devtree
             .find_by_path("/cpus")

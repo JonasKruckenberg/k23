@@ -52,7 +52,11 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
 }
 
 pub async fn next_event(irq_num: u32) -> Result<(), kasync::sync::Closed> {
-    cpu_local().arch.cpu.plic.borrow_mut().irq_unmask(irq_num);
+    cpu_local()
+        .arch
+        .cpu
+        .interrupt_controller()
+        .irq_unmask(irq_num);
 
     let wait = {
         let mut queues = QUEUES.write();
@@ -67,7 +71,11 @@ pub async fn next_event(irq_num: u32) -> Result<(), kasync::sync::Closed> {
 
     let res = wait.await;
 
-    cpu_local().arch.cpu.plic.borrow_mut().irq_mask(irq_num);
+    cpu_local()
+        .arch
+        .cpu
+        .interrupt_controller()
+        .irq_mask(irq_num);
 
     res
 }
