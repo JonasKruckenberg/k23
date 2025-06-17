@@ -10,4 +10,3 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-# No external dependencies needed for basic trap types
