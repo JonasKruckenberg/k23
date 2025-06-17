@@ -93,7 +93,6 @@ ksharded-slab = { path = "libs/ksharded-slab" }
 ktest = { path = "libs/ktest" }
 uart-16550 = { path = "libs/uart-16550" }
 fastrand = { path = "libs/fastrand" }
-fiber = { path = "libs/fiber" }
 abort = { path = "libs/abort" }
 panic-unwind2 = { path = "libs/panic-unwind2" }
 util = { path = "libs/util"}
