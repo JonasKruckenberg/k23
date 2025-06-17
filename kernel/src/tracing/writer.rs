@@ -161,13 +161,43 @@ impl<W: Write> Drop for Writer<W> {
     }
 }
 
-pub struct Semihosting(ReentrantMutex<UnsafeCell<riscv::hio::HostStream>>);
-pub struct SemihostingWriter<'a>(ReentrantMutexGuard<'a, UnsafeCell<riscv::hio::HostStream>>);
+// Architecture-specific debug output implementation
+cfg_if::cfg_if! {
+    if #[cfg(target_arch = "riscv64")] {
+        type DebugStream = riscv::hio::HostStream;
+        
+        fn new_debug_stream() -> DebugStream {
+            riscv::hio::HostStream::new_stdout()
+        }
+    } 
+    // else if #[cfg(target_arch = "x86_64")] {
+    //     // TODO: Implement x86_64 debug stream (e.g., serial port)
+    //     type DebugStream = DummyStream;
+        
+    //     fn new_debug_stream() -> DebugStream {
+    //         DummyStream
+    //     }
+        
+    //     // Temporary dummy implementation for x86_64
+    //     struct DummyStream;
+    //     impl Write for DummyStream {
+    //         fn write_str(&mut self, _s: &str) -> fmt::Result {
+    //             Ok(())
+    //         }
+    //     }
+    // }
+    else {
+        compile_error!("Unsupported architecture for debug output");
+    }
+}
+
+pub struct Semihosting(ReentrantMutex<UnsafeCell<DebugStream>>);
+pub struct SemihostingWriter<'a>(ReentrantMutexGuard<'a, UnsafeCell<DebugStream>>);
 
 impl Semihosting {
     pub fn new() -> Self {
         Self(ReentrantMutex::new(UnsafeCell::new(
-            riscv::hio::HostStream::new_stdout(),
+            new_debug_stream(),
         )))
     }
 }
