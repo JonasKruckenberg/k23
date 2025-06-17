@@ -10,7 +10,7 @@
 use super::{read_csr_as, write_csr};
 use core::fmt;
 use core::fmt::Formatter;
-pub use trap::{Trap, Interrupt, Exception};
+pub use trap::{Exception, Interrupt, Trap};
 
 /// scause register
 #[derive(Clone, Copy)]
@@ -67,7 +67,6 @@ impl Scause {
         }
     }
 }
-
 
 impl fmt::Debug for Scause {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
