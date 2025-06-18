@@ -89,7 +89,7 @@ impl Wheel {
         // is like...working...)
         unsafe {
             let entry = NonNull::from(Pin::into_inner_unchecked(entry));
-            if let Some(entry) = self.slots[slot].remove(wheel) {
+            if let Some(entry) = self.slots[slot].remove(entry) {
                 let _did_unlink = entry.as_ref().is_registered.compare_exchange(
                     true,
                     false,
