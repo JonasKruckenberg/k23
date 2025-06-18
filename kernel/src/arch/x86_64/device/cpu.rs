@@ -7,7 +7,8 @@
 
 use crate::device_tree::DeviceTree;
 use crate::irq::InterruptController;
-use kasync::time::{Clock, NANOS_PER_SEC, Ticks, core::time::Duration};
+use core::time::Duration;
+use kasync::time::{Clock, NANOS_PER_SEC, Ticks};
 
 #[derive(Debug)]
 pub struct Cpu {
