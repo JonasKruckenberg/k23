@@ -169,7 +169,24 @@ cfg_if::cfg_if! {
         fn new_debug_stream() -> DebugStream {
             riscv::hio::HostStream::new_stdout()
         }
-    } else {
+    }
+    else if #[cfg(target_arch = "x86_64")] {
+        // TODO: Implement x86_64 debug stream (e.g., serial port)
+        type DebugStream = DummyStream;
+
+        fn new_debug_stream() -> DebugStream {
+            DummyStream
+        }
+
+        // Temporary dummy implementation for x86_64
+        struct DummyStream;
+        impl Write for DummyStream {
+            fn write_str(&mut self, _s: &str) -> fmt::Result {
+                Ok(())
+            }
+        }
+    }
+    else {
         compile_error!("Unsupported architecture for debug output");
     }
 }
