@@ -934,8 +934,7 @@ impl Waiter {
         // remove the node
         // safety: we have the lock on the queue, so this is safe.
         unsafe {
-            let waiter = Waiter::from_ptr(ptr);
-            waiters.remove(waiter);
+            waiters.remove(ptr);
         };
 
         // if we removed the last waiter from the queue, transition the state to
