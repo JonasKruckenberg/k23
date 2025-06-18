@@ -1,0 +1,10 @@
+name = "x86_64-qemu"
+arch = "x86_64"
+inherit = "../base.toml"
+max-log-level = "trace"
+
+[kernel]
+target = "./x86_64-k23-none-kernel.json"
+
+[loader]
+target = "x86_64-unknown-none"

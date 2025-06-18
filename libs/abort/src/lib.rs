@@ -29,6 +29,8 @@ pub fn abort() -> ! {
             std::process::abort();
         } else if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
             riscv::exit(1);
+        } else if #[cfg(target_arch = "x86_64")] {
+            todo!("implement abort for x86_64");
         } else {
             compile_error!("unsupported target architecture")
         }
