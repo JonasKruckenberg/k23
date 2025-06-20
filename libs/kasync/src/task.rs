@@ -16,6 +16,7 @@ use crate::scheduler::steal::{Stealer, TryStealError};
 use crate::scheduler::{Schedule, Tick};
 use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use alloc::boxed::Box;
+use cordyceps::{Linked, mpsc_queue};
 use core::alloc::Allocator;
 #[cfg(debug_assertions)]
 use core::any::TypeId;
@@ -26,7 +27,6 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
-use cordyceps::{mpsc_queue, Linked};
 use util::{CachePadded, CheckedMaybeUninit, loom_const_fn};
 
 pub use builder::TaskBuilder;

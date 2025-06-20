@@ -8,7 +8,7 @@
 use crate::sync::Closed;
 use crate::sync::wake_batch::WakeBatch;
 use alloc::sync::Arc;
-use cordyceps::{list, Linked, List};
+use cordyceps::{Linked, List, list};
 use core::cell::UnsafeCell;
 use core::marker::PhantomPinned;
 use core::pin::Pin;

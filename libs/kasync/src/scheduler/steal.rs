@@ -11,10 +11,10 @@ use crate::task;
 use crate::task::TaskStub;
 use crate::task::{Header, Task, TaskRef};
 use alloc::boxed::Box;
+use cordyceps::{MpscQueue, mpsc_queue};
 use core::fmt::Debug;
 use core::marker::PhantomData;
 use core::num::NonZeroUsize;
-use cordyceps::{mpsc_queue, MpscQueue};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[non_exhaustive]

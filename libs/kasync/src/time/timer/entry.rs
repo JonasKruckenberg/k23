@@ -7,7 +7,7 @@
 
 use crate::sync::wait_cell::WaitCell;
 use crate::time::Ticks;
-use cordyceps::{list, Linked};
+use cordyceps::{Linked, list};
 use core::marker::PhantomPinned;
 use core::mem::offset_of;
 use core::ptr::NonNull;
