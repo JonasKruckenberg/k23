@@ -113,7 +113,7 @@ mod tests {
     use crate::executor::{Executor, Worker};
     use crate::loom;
     use crate::loom::sync::atomic::{AtomicUsize, Ordering};
-    use crate::test_util::{StdPark, std_clock};
+    use crate::{StdPark, std_clock};
     use fastrand::FastRand;
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::util::SubscriberInitExt;

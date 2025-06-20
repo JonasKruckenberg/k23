@@ -8,10 +8,12 @@ license.workspace = true
 [[bench]]
 name = "spawn"
 harness = false
+required-features = ["__bench"]
 
 [[bench]]
 name = "ping_pong"
 harness = false
+required-features = ["__bench"]
 
 [dependencies]
 util.workspace = true
@@ -31,9 +33,12 @@ bitflags.workspace = true
 pin-project.workspace = true
 arrayvec.workspace = true
 cordyceps.workspace = true
+lazy_static = { workspace = true, optional = true }
 
 [dev-dependencies]
-tracing-subscriber = { workspace = true, default-features = true, features = ["env-filter"] }
+tracing-subscriber = { workspace = true, default-features = true, features = [
+    "env-filter",
+] }
 lazy_static.workspace = true
 criterion.workspace = true
 tokio-test = "0.4.4"
@@ -45,7 +50,7 @@ loom.workspace = true
 [features]
 unwind2 = ["dep:unwind2"]
 counters = []
-__bench = ["tracing/max_level_off"]
+__bench = ["tracing/max_level_off", "dep:lazy_static"]
 
 [lints]
 workspace = true

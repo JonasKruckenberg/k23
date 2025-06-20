@@ -1,18 +1,18 @@
-use async_exec::executor::{Executor, Worker};
-use async_exec::new_executor;
-use async_exec::park::StdPark;
 use criterion::{Criterion, criterion_group, criterion_main};
 use fastrand::FastRand;
+use kasync::executor::{Executor, Worker};
+use kasync::new_executor;
+use kasync::{StdPark, std_clock};
 use std::hint::black_box;
 
 async fn work() -> usize {
     let val = 1 + 1;
-    async_exec::task::yield_now().await;
+    kasync::task::yield_now().await;
     black_box(val)
 }
 
 fn single_threaded_spawn(c: &mut Criterion) {
-    static EXEC: Executor<StdPark> = new_executor!(1);
+    static EXEC: Executor<StdPark> = new_executor!(std_clock!());
     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
 
     c.bench_function("single_threaded_spawn", |b| {
@@ -27,7 +27,7 @@ fn single_threaded_spawn(c: &mut Criterion) {
 }
 
 fn single_threaded_spawn10(c: &mut Criterion) {
-    static EXEC: Executor<StdPark> = new_executor!(1);
+    static EXEC: Executor<StdPark> = new_executor!(std_clock!());
     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
 
     c.bench_function("single_threaded_spawn10", |b| {
@@ -49,7 +49,7 @@ fn single_threaded_spawn10(c: &mut Criterion) {
 }
 
 fn multi_threaded_spawn(c: &mut Criterion) {
-    static EXEC: Executor<StdPark> = new_executor!(1);
+    static EXEC: Executor<StdPark> = new_executor!(std_clock!());
 
     let h = std::thread::spawn(|| {
         let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
@@ -72,7 +72,7 @@ fn multi_threaded_spawn(c: &mut Criterion) {
 }
 
 fn multi_threaded_spawn10(c: &mut Criterion) {
-    static EXEC: Executor<StdPark> = new_executor!(1);
+    static EXEC: Executor<StdPark> = new_executor!(std_clock!());
     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
 
     let h = std::thread::spawn(|| {
