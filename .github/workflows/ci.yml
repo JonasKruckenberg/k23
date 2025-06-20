@@ -144,5 +144,5 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
-      - name: just test-loom
+      - name: just test-riscv64
         run: nix develop --command just test-riscv64
