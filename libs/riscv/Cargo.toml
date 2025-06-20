@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 spin.workspace = true
+trap.workspace = true
 
 # 3rd-party dependencies
 cfg-if.workspace = true
