@@ -8,7 +8,6 @@ permissions:
   contents: read
 
 env:
-  RUSTFLAGS: -Dwarnings
   CARGO_TERM_COLOR: always
   CLICOLOR: 1
 
@@ -35,6 +34,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo check
         run: nix develop --command just check
+        env:
+          RUSTFLAGS: -Dwarnings
 
   rustfmt:
     name: Rustfmt
@@ -51,6 +52,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo fmt
         run: nix develop --command just check-fmt
+        env:
+          RUSTFLAGS: -Dwarnings
 
   clippy:
     name: Clippy
@@ -67,6 +70,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo clippy
         run: nix develop --command just clippy
+        env:
+          RUSTFLAGS: -Dwarnings
 
   cargo-deny:
     name: Cargo deny
