@@ -8,8 +8,7 @@
 use crate::sync::Closed;
 use crate::sync::wake_batch::WakeBatch;
 use alloc::sync::Arc;
-use cordyceps::list::Links;
-use cordyceps::{Linked, List};
+use cordyceps::{Linked, List, list};
 use core::cell::UnsafeCell;
 use core::marker::PhantomPinned;
 use core::pin::Pin;
@@ -192,7 +191,7 @@ struct Waiter {
 
 struct WaiterInner {
     /// Intrusive linked list pointers.
-    links: Links<Waiter>,
+    links: list::Links<Waiter>,
     /// The node's waker
     waker: Wakeup,
     // This type is !Unpin due to the heuristic from:
@@ -592,7 +591,7 @@ impl WaitQueue {
         Waiter {
             state,
             node: UnsafeCell::new(WaiterInner {
-                links: Links::new(),
+                links: list::Links::new(),
                 waker: Wakeup::Empty,
                 _pin: PhantomPinned,
             }),
@@ -961,7 +960,7 @@ impl Waiter {
 }
 
 // Safety: TODO
-unsafe impl Linked<Links<Waiter>> for Waiter {
+unsafe impl Linked<list::Links<Waiter>> for Waiter {
     type Handle = NonNull<Waiter>;
 
     fn into_ptr(r: Self::Handle) -> NonNull<Self> {
@@ -972,7 +971,7 @@ unsafe impl Linked<Links<Waiter>> for Waiter {
         ptr
     }
 
-    unsafe fn links(target: NonNull<Self>) -> NonNull<Links<Waiter>> {
+    unsafe fn links(target: NonNull<Self>) -> NonNull<list::Links<Waiter>> {
         // Safety: ensured by caller
         unsafe {
             // Safety: using `ptr::addr_of!` avoids creating a temporary

@@ -10,7 +10,7 @@ use crate::mem::address::{PhysicalAddress, VirtualAddress};
 use crate::mem::frame_alloc::FRAME_ALLOC;
 use alloc::slice;
 use cordyceps::Linked;
-use cordyceps::list::Links;
+use cordyceps::list;
 use core::marker::PhantomData;
 use core::mem::offset_of;
 use core::ops::Deref;
@@ -39,7 +39,7 @@ pub struct Frame {
 
 pub struct FrameInfo {
     /// Links to other frames in a freelist either a global `Arena` or cpu-local page cache.
-    links: Links<FrameInfo>,
+    links: list::Links<FrameInfo>,
     /// Number of references to this frame, zero indicates a free frame.
     refcount: AtomicUsize,
     /// The physical address of the frame.
@@ -231,7 +231,7 @@ impl FrameInfo {
     /// Private constructor for use in `frame_alloc/arena.rs`
     pub(crate) fn new(addr: PhysicalAddress) -> Self {
         Self {
-            links: Links::default(),
+            links: list::Links::default(),
             addr,
             refcount: AtomicUsize::new(0),
         }
@@ -274,7 +274,7 @@ impl FrameInfo {
 /// Implement the cordyceps [Linked] trait so that [FrameInfo] can be used
 /// with coryceps linked [List].
 // Safety: unsafe trait
-unsafe impl Linked<Links<FrameInfo>> for FrameInfo {
+unsafe impl Linked<list::Links<FrameInfo>> for FrameInfo {
     type Handle = NonNull<FrameInfo>;
 
     fn into_ptr(r: Self::Handle) -> NonNull<Self> {
@@ -285,7 +285,7 @@ unsafe impl Linked<Links<FrameInfo>> for FrameInfo {
         ptr
     }
 
-    unsafe fn links(ptr: NonNull<Self>) -> NonNull<Links<Self>> {
+    unsafe fn links(ptr: NonNull<Self>) -> NonNull<list::Links<Self>> {
         ptr.map_addr(|addr| {
             let offset = offset_of!(Self, links);
             addr.checked_add(offset).unwrap()

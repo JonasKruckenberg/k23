@@ -7,8 +7,7 @@
 
 use crate::sync::wait_cell::WaitCell;
 use crate::time::Ticks;
-use cordyceps::Linked;
-use cordyceps::list::Links;
+use cordyceps::{Linked, list};
 use core::marker::PhantomPinned;
 use core::mem::offset_of;
 use core::ptr::NonNull;
@@ -22,7 +21,7 @@ pub(in crate::time) struct Entry {
     pub(in crate::time) is_registered: AtomicBool,
     /// The currently-registered waker
     pub(in crate::time) waker: WaitCell,
-    pub(in crate::time) links: Links<Self>,
+    pub(in crate::time) links: list::Links<Self>,
     _pin: PhantomPinned,
 }
 
@@ -33,7 +32,7 @@ impl Entry {
                 deadline,
                 waker: WaitCell::new(),
                 is_registered: AtomicBool::new(false),
-                links: Links::new(),
+                links: list::Links::new(),
                 _pin: PhantomPinned,
             }
         }
@@ -49,7 +48,7 @@ impl Entry {
 }
 
 // Safety: TODO
-unsafe impl Linked<Links<Entry>> for Entry {
+unsafe impl Linked<list::Links<Entry>> for Entry {
     type Handle = NonNull<Self>;
 
     fn into_ptr(r: Self::Handle) -> NonNull<Self> {
@@ -58,7 +57,7 @@ unsafe impl Linked<Links<Entry>> for Entry {
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
         ptr
     }
-    unsafe fn links(ptr: NonNull<Self>) -> NonNull<Links<Self>> {
+    unsafe fn links(ptr: NonNull<Self>) -> NonNull<list::Links<Self>> {
         ptr.map_addr(|addr| {
             let offset = offset_of!(Self, links);
             addr.checked_add(offset).unwrap()
