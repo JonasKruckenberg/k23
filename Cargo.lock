@@ -1071,7 +1071,6 @@ dependencies = [
  "futures",
  "lazy_static",
  "loom",
- "mpsc-queue",
  "mycelium-bitfield",
  "panic-unwind2",
  "pin-project",
@@ -1111,7 +1110,6 @@ dependencies = [
  "ktest",
  "loader-api",
  "log",
- "mpsc-queue",
  "mycelium-bitfield",
  "ouroboros",
  "panic-unwind2",
@@ -1292,18 +1290,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3be647b768db090acb35d5ec5db2b0e1f1de11133ca123b9eacf5137868f892a"
 dependencies = [
  "adler2",
-]
-
-[[package]]
-name = "mpsc-queue"
-version = "0.1.0"
-dependencies = [
- "cfg-if",
- "fallible-iterator",
- "loom",
- "spin",
- "tracing 0.2.0",
- "util",
 ]
 
 [[package]]

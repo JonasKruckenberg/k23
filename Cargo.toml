@@ -78,7 +78,6 @@ missing_errors_doc = "deny"
 
 [workspace.dependencies]
 addr2line = { path = "libs/addr2line" }
-mpsc-queue = { path = "libs/mpsc-queue" }
 riscv = { path = "libs/riscv" }
 spin = { path = "libs/spin" }
 cpu-local = { path = "libs/cpu-local" }

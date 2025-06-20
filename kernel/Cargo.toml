@@ -15,7 +15,6 @@ cpu-local.workspace = true
 spin = { workspace = true, features = ["thread-local", "lock_api"] }
 unwind2.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
-mpsc-queue.workspace = true
 fdt.workspace = true
 ksharded-slab.workspace = true
 ktest.workspace = true

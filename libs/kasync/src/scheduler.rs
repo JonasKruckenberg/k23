@@ -14,7 +14,7 @@ use crate::task::{Header, PollResult, Task, TaskRef, TaskStub};
 use alloc::boxed::Box;
 use core::ptr;
 use core::ptr::NonNull;
-use mpsc_queue::{MpscQueue, TryDequeueError};
+use cordyceps::{MpscQueue,  mpsc_queue::TryDequeueError};
 
 /// Information about the scheduler state produced after ticking.
 #[derive(Debug)]

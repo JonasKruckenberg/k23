@@ -16,7 +16,6 @@ harness = false
 [dependencies]
 util.workspace = true
 spin.workspace = true
-mpsc-queue.workspace = true
 cpu-local.workspace = true
 fastrand.workspace = true
 unwind2 = { workspace = true, optional = true }

@@ -26,6 +26,7 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
+use cordyceps::{mpsc_queue, Linked};
 use util::{CachePadded, CheckedMaybeUninit, loom_const_fn};
 
 pub use builder::TaskBuilder;
@@ -939,7 +940,7 @@ impl<S: Schedule> Schedulable<S> {
 // Safety: tasks are always treated as pinned in memory (a requirement for polling them)
 // and care has been taken below to ensure the underlying memory isn't freed as long as the
 // `TaskRef` is part of the owned tasks list.
-unsafe impl mpsc_queue::Linked for Header {
+unsafe impl Linked<mpsc_queue::Links<Self>> for Header {
     type Handle = TaskRef;
 
     fn into_ptr(task: Self::Handle) -> NonNull<Self> {

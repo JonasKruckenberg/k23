@@ -14,7 +14,7 @@ use alloc::boxed::Box;
 use core::fmt::Debug;
 use core::marker::PhantomData;
 use core::num::NonZeroUsize;
-use mpsc_queue::MpscQueue;
+use cordyceps::{mpsc_queue, MpscQueue};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[non_exhaustive]
