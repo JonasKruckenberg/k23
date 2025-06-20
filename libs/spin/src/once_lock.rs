@@ -321,7 +321,6 @@ mod tests {
     use crate::loom::{AtomicUsize, Ordering};
     use std::sync::mpsc::channel;
 
-    #[expect(tail_expr_drop_order, reason = "")]
     fn spawn_and_wait<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
         thread::spawn(f).join().unwrap()
     }

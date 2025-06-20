@@ -77,7 +77,8 @@ missing_panics_doc = "deny"
 missing_errors_doc = "deny"
 
 [workspace.dependencies]
-addr2line = { path = "libs/addr2line" }
+kaddr2line = { path = "libs/kaddr2line" }
+kbacktrace = { path = "libs/kbacktrace" }
 riscv = { path = "libs/riscv" }
 spin = { path = "libs/spin" }
 cpu-local = { path = "libs/cpu-local" }
@@ -127,7 +128,7 @@ unicode-width = { version = "0.2.0" }
 memchr = { version = "2.7.4", default-features = false }
 leb128fmt = { version = "0.1.0", default-features = false }
 wasm-encoder = { version = "0.232.0", default-features = false }
-#wat = "1.219.1"
+wat = "1.219.1"
 
 # cranelift dependencies
 hashbrown = { version = "0.15", default-features = false, features = [
@@ -160,6 +161,13 @@ wait-timeout = "0.2.1"
 
 [profile.release]
 debug = "limited" # The kernel should be able to print stack traces of itself even in release mode
+
+# Custom profile for Loom tests: enable release optimizations so that the loom
+# tests are less slow, but don't disable debug assertions.
+[profile.loom]
+inherits = "test"
+lto = true
+opt-level = 3
 
 [patch.crates-io]
 regalloc2 = { git = "https://github.com/JonasKruckenberg/regalloc2", branch = "jonas/refactor/static-machine-env" }

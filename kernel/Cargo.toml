@@ -18,7 +18,7 @@ wavltree = { workspace = true, features = ["dot"] }
 fdt.workspace = true
 ksharded-slab.workspace = true
 ktest.workspace = true
-addr2line.workspace = true
+kaddr2line.workspace = true
 uart-16550.workspace = true
 wast.workspace = true
 fastrand.workspace = true

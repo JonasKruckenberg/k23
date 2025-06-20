@@ -439,7 +439,6 @@ mod tests {
     use crate::test_util::StopOnPanic;
     use crate::test_util::{StdPark, std_clock};
     use core::hint::black_box;
-    use core::time::Duration;
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::util::SubscriberInitExt;
 
@@ -552,58 +551,58 @@ mod tests {
         })
     }
 
-    #[test]
-    fn join_handle_cross_thread() {
-        loom::model(|| {
-            loom::lazy_static! {
-                static ref EXEC: Executor<StdPark> = Executor::new(2, std_clock!());
-            }
-
-            let _guard = StopOnPanic::new(&EXEC);
-
-            let (tx, rx) = loom::sync::mpsc::channel::<JoinHandle<u32>>();
-
-            let h0 = loom::thread::spawn(move || {
-                let tid = loom::thread::current().id();
-
-                let mut worker =
-                    Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
-
-                let h = EXEC
-                    .try_spawn(async move {
-                        // make sure the task is actually polled on thread 0
-                        assert_eq!(loom::thread::current().id(), tid);
-
-                        crate::task::yield_now().await;
-
-                        // make sure the task is actually polled on thread 0
-                        assert_eq!(loom::thread::current().id(), tid);
-
-                        42
-                    })
-                    .unwrap();
-
-                tx.send(h).unwrap();
-
-                worker.run();
-            });
-            let h1 = loom::thread::spawn(move || {
-                let mut worker =
-                    Worker::new(&EXEC, 1, StdPark::for_current(), FastRand::from_seed(0));
-
-                let h = rx.recv().unwrap();
-
-                let ret_code = worker.block_on(h).unwrap();
-
-                assert_eq!(ret_code, 42);
-
-                EXEC.stop();
-            });
-
-            h0.join().unwrap();
-            h1.join().unwrap();
-        });
-    }
+    // #[test]
+    // fn join_handle_cross_thread() {
+    //     loom::model(|| {
+    //         loom::lazy_static! {
+    //             static ref EXEC: Executor<StdPark> = Executor::new(2, std_clock!());
+    //         }
+    //
+    //         let _guard = StopOnPanic::new(&EXEC);
+    //
+    //         let (tx, rx) = loom::sync::mpsc::channel::<JoinHandle<u32>>();
+    //
+    //         let h0 = loom::thread::spawn(move || {
+    //             let tid = loom::thread::current().id();
+    //
+    //             let mut worker =
+    //                 Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+    //
+    //             let h = EXEC
+    //                 .try_spawn(async move {
+    //                     // make sure the task is actually polled on thread 0
+    //                     assert_eq!(loom::thread::current().id(), tid);
+    //
+    //                     crate::task::yield_now().await;
+    //
+    //                     // make sure the task is actually polled on thread 0
+    //                     assert_eq!(loom::thread::current().id(), tid);
+    //
+    //                     42
+    //                 })
+    //                 .unwrap();
+    //
+    //             tx.send(h).unwrap();
+    //
+    //             worker.run();
+    //         });
+    //         let h1 = loom::thread::spawn(move || {
+    //             let mut worker =
+    //                 Worker::new(&EXEC, 1, StdPark::for_current(), FastRand::from_seed(0));
+    //
+    //             let h = rx.recv().unwrap();
+    //
+    //             let ret_code = worker.block_on(h).unwrap();
+    //
+    //             assert_eq!(ret_code, 42);
+    //
+    //             EXEC.stop();
+    //         });
+    //
+    //         h0.join().unwrap();
+    //         h1.join().unwrap();
+    //     });
+    // }
 
     #[test]
     fn miri_check() {

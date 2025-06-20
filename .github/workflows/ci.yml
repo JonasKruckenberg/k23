@@ -8,7 +8,6 @@ permissions:
   contents: read
 
 env:
-  RUSTFLAGS: -Dwarnings
   CARGO_TERM_COLOR: always
   CLICOLOR: 1
 
@@ -25,7 +24,7 @@ jobs:
     needs: pre_ci
     if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -35,13 +34,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo check
         run: nix develop --command just check
+        env:
+          RUSTFLAGS: -Dwarnings
 
   rustfmt:
     name: Rustfmt
     needs: pre_ci
     if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -51,13 +52,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo fmt
         run: nix develop --command just check-fmt
+        env:
+          RUSTFLAGS: -Dwarnings
 
   clippy:
     name: Clippy
     needs: pre_ci
     if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Install Nix
@@ -67,6 +70,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: cargo clippy
         run: nix develop --command just clippy
+        env:
+          RUSTFLAGS: -Dwarnings
 
   cargo-deny:
     name: Cargo deny
@@ -78,21 +83,66 @@ jobs:
       - name: Check Rust Code
         uses: EmbarkStudios/cargo-deny-action@v2
 
-  test:
-    name: Test
+  test-hosted:
+    name: Hosted Tests
     needs: pre_ci
     if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - name: Install Nix
         uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
-      - name: cargo test
-        # Run tests in release mode because otherwise they take *foreeever*
-        run: nix develop --command cargo xtask test profile/riscv64/qemu.toml --release
+      - name: just test-hosted
+        run: nix develop --command just test-hosted
+
+  test-miri:
+    name: Miri Tests
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+      - name: just test-miri
+        run: nix develop --command just test-miri
+
+  test-loom:
+    name: Loom Tests
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+      - name: just test-loom
+        run: nix develop --command just test-loom
+
+  test-riscv64:
+    name: "On-Target Tests: RISCV 64-bit"
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+      - name: just test-riscv64
+        run: nix develop --command just test-riscv64

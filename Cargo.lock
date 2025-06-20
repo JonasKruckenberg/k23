@@ -13,16 +13,6 @@ dependencies = [
 [[package]]
 name = "addr2line"
 version = "0.24.2"
-dependencies = [
- "fallible-iterator",
- "gimli",
- "smallvec",
- "spin",
-]
-
-[[package]]
-name = "addr2line"
-version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfbe277e56a376000877090da837660b4427aad530e3028d44e0bffe4f89a1c1"
 dependencies = [
@@ -154,24 +144,11 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
 name = "backtrace"
-version = "0.1.0"
-dependencies = [
- "addr2line 0.24.2",
- "arrayvec",
- "fallible-iterator",
- "gimli",
- "rustc-demangle",
- "unwind2",
- "xmas-elf",
-]
-
-[[package]]
-name = "backtrace"
 version = "0.3.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6806a6321ec58106fea15becdad98371e28d92ccbc7c8f1b3b6dd724fe8f1002"
 dependencies = [
- "addr2line 0.24.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "addr2line",
  "cfg-if",
  "libc",
  "miniz_oxide",
@@ -329,7 +306,7 @@ version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e1761c0e16f8883bbbb8ce5990867f4f06bf11a0253da6495a04ce4b6ef0ec"
 dependencies = [
- "backtrace 0.3.75",
+ "backtrace",
  "color-spantrace",
  "eyre",
  "indenter",
@@ -638,6 +615,12 @@ name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+
+[[package]]
+name = "escape8259"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5692dd7b5a1978a5aeb0ce83b7655c58ca8efdcb79d21036ea249da95afec2c6"
 
 [[package]]
 name = "eyre"
@@ -1058,6 +1041,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaddr2line"
+version = "0.24.2"
+dependencies = [
+ "fallible-iterator",
+ "gimli",
+ "smallvec",
+ "spin",
+]
+
+[[package]]
 name = "kasync"
 version = "0.1.0"
 dependencies = [
@@ -1084,11 +1077,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "kbacktrace"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "fallible-iterator",
+ "gimli",
+ "kaddr2line",
+ "rustc-demangle",
+ "unwind2",
+ "xmas-elf",
+]
+
+[[package]]
 name = "kernel"
 version = "0.1.0"
 dependencies = [
  "abort",
- "addr2line 0.24.2",
  "anyhow",
  "arrayvec",
  "bitflags",
@@ -1105,6 +1110,7 @@ dependencies = [
  "futures",
  "gimli",
  "hashbrown",
+ "kaddr2line",
  "kasync",
  "ksharded-slab",
  "ktest",
@@ -1131,7 +1137,7 @@ dependencies = [
  "vergen-git2",
  "wasmparser 0.228.0",
  "wasmtime-slab",
- "wast",
+ "wast 228.0.0",
  "wavltree",
  "xmas-elf",
 ]
@@ -1197,6 +1203,18 @@ name = "libm"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
+
+[[package]]
+name = "libtest-mimic"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5297962ef19edda4ce33aaa484386e0a5b3d7f2f4e037cbeee00503ef6b29d33"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "clap",
+ "escape8259",
+]
 
 [[package]]
 name = "libz-sys"
@@ -1561,6 +1579,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fbfd9d094a40bf3ae768db9361049ace4c0e04a4fd6b359518bd7b73a73dd97"
 dependencies = [
+ "rand_chacha",
  "rand_core",
 ]
 
@@ -1579,6 +1598,9 @@ name = "rand_core"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99d9a13982dcf210057a8a78572b2217b667c3beacbf3a0d8b454f6f82837d38"
+dependencies = [
+ "getrandom",
+]
 
 [[package]]
 name = "rayon"
@@ -1954,7 +1976,7 @@ version = "1.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2513ca694ef9ede0fb23fe71a4ee4107cb102b9dc1930f6d0fd77aae068ae165"
 dependencies = [
- "backtrace 0.3.75",
+ "backtrace",
  "pin-project-lite",
 ]
 
@@ -2386,6 +2408,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm-encoder"
+version = "0.235.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3bc393c395cb621367ff02d854179882b9a351b4e0c93d1397e6090b53a5c2a"
+dependencies = [
+ "leb128fmt",
+ "wasmparser 0.235.0",
+]
+
+[[package]]
 name = "wasmparser"
 version = "0.228.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2405,6 +2437,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasmparser"
+version = "0.235.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "161296c618fa2d63f6ed5fffd1112937e803cb9ec71b32b01a76321555660917"
+dependencies = [
+ "bitflags",
+ "indexmap",
+ "semver",
+]
+
+[[package]]
 name = "wasmtime-slab"
 version = "33.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2414,14 +2457,40 @@ checksum = "b50f7c227d6a925d9dfd0fbfdbf06877cb2fe387bb3248049706b19b5f86e560"
 name = "wast"
 version = "228.0.0"
 dependencies = [
+ "anyhow",
  "bumpalo",
  "cpu-local",
  "gimli",
  "hashbrown",
  "leb128fmt",
+ "libtest-mimic",
  "memchr",
  "unicode-width",
- "wasm-encoder",
+ "wasm-encoder 0.232.0",
+ "wasmparser 0.228.0",
+ "wat",
+]
+
+[[package]]
+name = "wast"
+version = "235.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1eda4293f626c99021bb3a6fbe4fbbe90c0e31a5ace89b5f620af8925de72e13"
+dependencies = [
+ "bumpalo",
+ "leb128fmt",
+ "memchr",
+ "unicode-width",
+ "wasm-encoder 0.235.0",
+]
+
+[[package]]
+name = "wat"
+version = "1.235.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e777e0327115793cb96ab220b98f85327ec3d11f34ec9e8d723264522ef206aa"
+dependencies = [
+ "wast 235.0.0",
 ]
 
 [[package]]
