@@ -8,6 +8,8 @@
 use crate::sync::Closed;
 use crate::sync::wake_batch::WakeBatch;
 use alloc::sync::Arc;
+use cordyceps::list::Links;
+use cordyceps::{Linked, List};
 use core::cell::UnsafeCell;
 use core::marker::PhantomPinned;
 use core::pin::Pin;
@@ -18,7 +20,7 @@ use core::{fmt, mem, ptr};
 use mycelium_bitfield::{FromBits, bitfield, enum_from_bits};
 use pin_project::{pin_project, pinned_drop};
 use spin::{Mutex, MutexGuard};
-use util::CachePadded;
+use util::{CachePadded, loom_const_fn};
 
 /// A queue of waiting tasks which can be [woken in first-in, first-out
 /// order][wake], or [all at once][wake_all].
@@ -71,7 +73,7 @@ use util::CachePadded;
 /// [wake]: WaitQueue::wake
 /// [wake_all]: WaitQueue::wake_all
 /// [`UnsafeCell`]: UnsafeCell
-/// [ilist]: linked_list::List
+/// [ilist]: cordyceps::List
 #[derive(Debug)]
 pub struct WaitQueue {
     /// The wait maps's state variable.
@@ -87,7 +89,7 @@ pub struct WaitQueue {
     /// holding the lock; otherwise, it may be modified through the list, so the
     /// lock must be held when modifying the
     /// node.
-    queue: Mutex<linked_list::List<Waiter>>,
+    queue: Mutex<List<Waiter>>,
 }
 
 bitfield! {
@@ -190,7 +192,7 @@ struct Waiter {
 
 struct WaiterInner {
     /// Intrusive linked list pointers.
-    links: linked_list::Links<Waiter>,
+    links: Links<Waiter>,
     /// The node's waker
     waker: Wakeup,
     // This type is !Unpin due to the heuristic from:
@@ -256,10 +258,12 @@ impl Default for WaitQueue {
 }
 
 impl WaitQueue {
-    pub const fn new() -> Self {
-        Self {
-            state: CachePadded(AtomicUsize::new(StateInner::Empty.into_usize())),
-            queue: Mutex::new(linked_list::List::new()),
+    loom_const_fn! {
+        pub const fn new() -> Self {
+            Self {
+                state: CachePadded(AtomicUsize::new(StateInner::Empty.into_usize())),
+                queue: Mutex::new(List::new()),
+            }
         }
     }
 
@@ -588,7 +592,7 @@ impl WaitQueue {
         Waiter {
             state,
             node: UnsafeCell::new(WaiterInner {
-                links: linked_list::Links::new(),
+                links: Links::new(),
                 waker: Wakeup::Empty,
                 _pin: PhantomPinned,
             }),
@@ -615,7 +619,7 @@ impl WaitQueue {
 
     #[cold]
     #[inline(never)]
-    fn wake_locked(&self, queue: &mut linked_list::List<Waiter>, curr: State) -> Option<Waker> {
+    fn wake_locked(&self, queue: &mut List<Waiter>, curr: State) -> Option<Waker> {
         let inner = curr.get(State::INNER);
 
         // is the queue still in the `Waiting` state? it is possible that we
@@ -651,7 +655,7 @@ impl WaitQueue {
     /// that this function must be called again to wake all waiters.
     fn drain_to_wake_batch(
         batch: &mut WakeBatch,
-        queue: &mut linked_list::List<Waiter>,
+        queue: &mut List<Waiter>,
         wakeup: Wakeup,
     ) -> bool {
         while let Some(node) = queue.pop_back() {
@@ -752,11 +756,7 @@ impl Waiter {
     /// Of course, that must be the *same* list that this waiter is a member of,
     /// and currently, there is no way to ensure that...
     #[inline(always)]
-    fn wake(
-        this: NonNull<Self>,
-        list: &mut linked_list::List<Self>,
-        wakeup: Wakeup,
-    ) -> Option<Waker> {
+    fn wake(this: NonNull<Self>, list: &mut List<Self>, wakeup: Wakeup) -> Option<Waker> {
         Waiter::with_inner(this, list, |node| {
             let waker = mem::replace(&mut node.waker, wakeup);
             match waker {
@@ -784,7 +784,7 @@ impl Waiter {
     #[inline(always)]
     fn with_inner<T>(
         mut this: NonNull<Self>,
-        _list: &mut linked_list::List<Self>,
+        _list: &mut List<Self>,
         f: impl FnOnce(&mut WaiterInner) -> T,
     ) -> T {
         // safety: this is only called while holding the lock on the queue,
@@ -934,7 +934,7 @@ impl Waiter {
         // remove the node
         // safety: we have the lock on the queue, so this is safe.
         unsafe {
-            waiters.cursor_from_ptr_mut(ptr).remove();
+            waiters.remove(ptr);
         };
 
         // if we removed the last waiter from the queue, transition the state to
@@ -961,7 +961,7 @@ impl Waiter {
 }
 
 // Safety: TODO
-unsafe impl linked_list::Linked for Waiter {
+unsafe impl Linked<Links<Waiter>> for Waiter {
     type Handle = NonNull<Waiter>;
 
     fn into_ptr(r: Self::Handle) -> NonNull<Self> {
@@ -972,7 +972,7 @@ unsafe impl linked_list::Linked for Waiter {
         ptr
     }
 
-    unsafe fn links(target: NonNull<Self>) -> NonNull<linked_list::Links<Waiter>> {
+    unsafe fn links(target: NonNull<Self>) -> NonNull<Links<Waiter>> {
         // Safety: ensured by caller
         unsafe {
             // Safety: using `ptr::addr_of!` avoids creating a temporary

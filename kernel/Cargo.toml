@@ -13,7 +13,6 @@ harness = false
 loader-api.workspace = true
 cpu-local.workspace = true
 spin = { workspace = true, features = ["thread-local", "lock_api"] }
-linked-list.workspace = true
 unwind2.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
 mpsc-queue.workspace = true
@@ -52,6 +51,7 @@ tracing.workspace = true
 tracing-core.workspace = true
 anyhow.workspace = true
 futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
+cordyceps.workspace = true
 
 wasmparser.workspace = true
 target-lexicon.workspace = true
