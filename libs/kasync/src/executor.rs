@@ -208,7 +208,7 @@ where
 #[cfg(not(loom))]
 #[macro_export]
 macro_rules! new_executor {
-    ($num_threads:expr) => {{
+    ($clock:expr) => {{
         static STUB: $crate::task::TaskStub = $crate::task::TaskStub::new();
 
         // Safety: The intrusive MPSC queue that holds tasks uses a stub node as the initial element of the
@@ -218,7 +218,7 @@ macro_rules! new_executor {
         // not great.
         // By defining the static above inside this block we guarantee the stub cannot escape
         // and be used elsewhere thereby solving this problem.
-        unsafe { $crate::executor::Executor::new_with_static_stub($num_threads, &STUB) }
+        unsafe { $crate::executor::Executor::new_with_static_stub($clock, &STUB) }
     }};
 }
 
@@ -437,7 +437,7 @@ mod tests {
     use super::*;
     use crate::loom;
     use crate::test_util::StopOnPanic;
-    use crate::test_util::{StdPark, std_clock};
+    use crate::{StdPark, std_clock};
     use core::hint::black_box;
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::util::SubscriberInitExt;

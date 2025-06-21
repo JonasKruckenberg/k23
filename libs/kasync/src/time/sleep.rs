@@ -159,7 +159,8 @@ mod tests {
     use crate::executor::Executor;
     use crate::executor::Worker;
     use crate::loom;
-    use crate::test_util::{StdPark, StopOnPanic, std_clock};
+    use crate::test_util::StopOnPanic;
+    use crate::{StdPark, std_clock};
     use alloc::vec::Vec;
     use core::time::Duration;
     use fastrand::FastRand;
