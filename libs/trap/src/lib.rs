@@ -16,4 +16,3 @@ pub enum Trap<I, E> {
     Interrupt(I),
     Exception(E),
 }
-
