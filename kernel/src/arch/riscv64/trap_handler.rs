@@ -15,9 +15,10 @@ use core::arch::{asm, naked_asm};
 use core::cell::Cell;
 use core::ops::DerefMut;
 use cpu_local::cpu_local;
-use riscv::scause::{Exception, Interrupt, Trap};
+use riscv::scause::{Exception, Interrupt};
 use riscv::{load_fp, load_gp, save_fp, save_gp};
 use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
+use crate::arch::trap::Trap;
 
 cpu_local! {
     static IN_TRAP: Cell<bool> = Cell::new(false);
@@ -316,7 +317,7 @@ extern "C-unwind" fn default_trap_handler(
                 | Exception::InstructionPageFault,
             ) => {
                 // first attempt the page fault handler, can it recover us from this by fixing up mappings?
-                if crate::mem::handle_page_fault(tval).is_break() {
+                if crate::mem::handle_page_fault(cause, tval).is_break() {
                     break 'handler;
                 }
 
