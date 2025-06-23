@@ -20,7 +20,7 @@ pub struct VirtTicks(pub u64);
 
 #[derive(Copy, Clone, Debug)]
 pub struct Deadline {
-    pub ticks: VirtTicks,
+    ticks: VirtTicks,
     slot: usize,
     wheel: usize,
 }
@@ -142,11 +142,11 @@ impl Timer {
         Ok(self.phys_to_virt(self.clock.duration_to_ticks(duration)?))
     }
 
-    fn virt_to_phys(&self, virt_ticks: VirtTicks) -> PhysTicks {
+    pub fn virt_to_phys(&self, virt_ticks: VirtTicks) -> PhysTicks {
         PhysTicks(virt_ticks.0 * self.tick_scale)
     }
 
-    fn phys_to_virt(&self, phys_ticks: PhysTicks) -> VirtTicks {
+    pub fn phys_to_virt(&self, phys_ticks: PhysTicks) -> VirtTicks {
         VirtTicks(phys_ticks.0 / self.tick_scale)
     }
 
