@@ -14,6 +14,7 @@ use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::cell::Cell;
 use cpu_local::cpu_local;
+use kasync::time::Instant;
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{load_fp, load_gp, save_fp, save_gp};
 use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
@@ -297,16 +298,23 @@ extern "C-unwind" fn default_trap_handler(
                 }
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                if let Some((_, Some(next_deadline))) = global().timer.try_turn() {
-                    // Timer interrupts are always IPIs used for sleeping
-                    sbi::time::set_timer(next_deadline.ticks.0).unwrap();
+                let (expired, maybe_next_deadline) = global().timer.try_turn().unwrap_or((0, None));
+
+                if expired > 0 {
+                    global().executor.wake_one();
+                }
+
+                if let Some(next_deadline) = maybe_next_deadline {
+                    let ticks = global().timer.virt_to_phys(next_deadline.as_ticks());
+
+                    sbi::time::set_timer(ticks.0).unwrap();
                 } else {
-                    // Timer interrupts are always IPIs used for sleeping
                     sbi::time::set_timer(u64::MAX).unwrap();
                 }
             }
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
                 irq::trigger_irq(&mut *cpu_local().arch.cpu.interrupt_controller());
+                global().executor.wake_one();
             }
             Trap::Exception(
                 Exception::LoadPageFault
