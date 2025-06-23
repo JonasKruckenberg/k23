@@ -173,7 +173,6 @@ mod tests {
     use crate::{Mutex, OnceLock};
     use std::cell::LazyCell;
 
-    #[expect(tail_expr_drop_order, reason = "")]
     fn spawn_and_wait<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
         thread::spawn(f).join().unwrap()
     }

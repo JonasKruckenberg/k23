@@ -5,14 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use async_exec::executor::{Executor, Worker};
-use async_exec::new_executor;
-use async_exec::park::StdPark;
 use criterion::{Criterion, criterion_group, criterion_main};
 use fastrand::FastRand;
+use kasync::executor::{Executor, Worker};
+use kasync::{StdPark, new_executor, std_clock};
 
 fn ping_ping_10k_single_threaded(c: &mut Criterion) {
-    static EXEC: Executor<StdPark> = new_executor!(1);
+    static EXEC: Executor<StdPark> = new_executor!(std_clock!());
     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
 
     const PINGS: usize = 10_000;
@@ -22,7 +21,7 @@ fn ping_ping_10k_single_threaded(c: &mut Criterion) {
             let h = EXEC
                 .try_spawn(async {
                     for _ in 0..PINGS {
-                        async_exec::task::yield_now().await;
+                        kasync::task::yield_now().await;
                     }
                 })
                 .unwrap();
@@ -32,7 +31,7 @@ fn ping_ping_10k_single_threaded(c: &mut Criterion) {
 }
 
 fn ping_pong_10k_single_threaded(c: &mut Criterion) {
-    static EXEC: Executor<StdPark> = new_executor!(1);
+    static EXEC: Executor<StdPark> = new_executor!(std_clock!());
     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
 
     const PINGS: usize = 10_000;
@@ -42,7 +41,7 @@ fn ping_pong_10k_single_threaded(c: &mut Criterion) {
             let h1 = EXEC
                 .try_spawn(async {
                     for _ in 0..PINGS {
-                        async_exec::task::yield_now().await;
+                        kasync::task::yield_now().await;
                     }
                 })
                 .unwrap();
@@ -50,7 +49,7 @@ fn ping_pong_10k_single_threaded(c: &mut Criterion) {
             let h2 = EXEC
                 .try_spawn(async {
                     for _ in 0..PINGS {
-                        async_exec::task::yield_now().await;
+                        kasync::task::yield_now().await;
                     }
                 })
                 .unwrap();
@@ -61,7 +60,7 @@ fn ping_pong_10k_single_threaded(c: &mut Criterion) {
 }
 
 fn ping_ping_10k_multi_threaded(c: &mut Criterion) {
-    static EXEC: Executor<StdPark> = new_executor!(1);
+    static EXEC: Executor<StdPark> = new_executor!(std_clock!());
     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
 
     let h = std::thread::spawn(|| {
@@ -76,7 +75,7 @@ fn ping_ping_10k_multi_threaded(c: &mut Criterion) {
             let h = EXEC
                 .try_spawn(async {
                     for _ in 0..PINGS {
-                        async_exec::task::yield_now().await;
+                        kasync::task::yield_now().await;
                     }
                 })
                 .unwrap();
@@ -89,7 +88,7 @@ fn ping_ping_10k_multi_threaded(c: &mut Criterion) {
 }
 
 fn ping_pong_10k_multi_threaded(c: &mut Criterion) {
-    static EXEC: Executor<StdPark> = new_executor!(1);
+    static EXEC: Executor<StdPark> = new_executor!(std_clock!());
     let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
 
     let h = std::thread::spawn(|| {
@@ -104,7 +103,7 @@ fn ping_pong_10k_multi_threaded(c: &mut Criterion) {
             let h1 = EXEC
                 .try_spawn(async {
                     for _ in 0..PINGS {
-                        async_exec::task::yield_now().await;
+                        kasync::task::yield_now().await;
                     }
                 })
                 .unwrap();
@@ -112,7 +111,7 @@ fn ping_pong_10k_multi_threaded(c: &mut Criterion) {
             let h2 = EXEC
                 .try_spawn(async {
                     for _ in 0..PINGS {
-                        async_exec::task::yield_now().await;
+                        kasync::task::yield_now().await;
                     }
                 })
                 .unwrap();

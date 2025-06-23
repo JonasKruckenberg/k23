@@ -14,14 +14,12 @@ loader-api.workspace = true
 cpu-local.workspace = true
 trap.workspace = true
 spin = { workspace = true, features = ["thread-local", "lock_api"] }
-linked-list.workspace = true
 unwind2.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
-mpsc-queue.workspace = true
 fdt.workspace = true
 ksharded-slab.workspace = true
 ktest.workspace = true
-addr2line.workspace = true
+kaddr2line.workspace = true
 uart-16550.workspace = true
 wast.workspace = true
 fastrand.workspace = true
@@ -53,6 +51,7 @@ tracing.workspace = true
 tracing-core.workspace = true
 anyhow.workspace = true
 futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
+cordyceps.workspace = true
 
 wasmparser.workspace = true
 target-lexicon.workspace = true

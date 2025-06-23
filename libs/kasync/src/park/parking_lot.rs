@@ -112,9 +112,9 @@ impl<P: Park + Send + Sync> ParkingLot<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::StdPark;
     use crate::loom::sync::{Arc, atomic::AtomicUsize};
     use crate::loom::thread;
-    use crate::test_util::StdPark;
     use alloc::vec::Vec;
     use spin::Backoff;
 

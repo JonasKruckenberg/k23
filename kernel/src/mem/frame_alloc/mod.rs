@@ -15,6 +15,7 @@ use crate::mem::{PhysicalAddress, VirtualAddress};
 use alloc::vec::Vec;
 use arena::Arena;
 use arena::select_arenas;
+use cordyceps::list::List;
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::ptr::NonNull;
@@ -56,7 +57,7 @@ struct GlobalFrameAllocator {
 
 #[derive(Debug, Default)]
 struct CpuLocalFrameCache {
-    free_list: linked_list::List<FrameInfo>,
+    free_list: List<FrameInfo>,
 }
 
 /// Allocation failure that may be due to resource exhaustion or invalid combination of arguments
@@ -203,7 +204,7 @@ impl GlobalFrameAllocator {
         None
     }
 
-    fn allocate_contiguous(&mut self, layout: Layout) -> Option<linked_list::List<FrameInfo>> {
+    fn allocate_contiguous(&mut self, layout: Layout) -> Option<List<FrameInfo>> {
         for arena in &mut self.arenas {
             if let Some(frames) = arena.allocate_contiguous(layout) {
                 return Some(frames);
@@ -221,7 +222,7 @@ impl CpuLocalFrameCache {
         self.free_list.pop_front()
     }
 
-    fn allocate_contiguous(&mut self, layout: Layout) -> Option<linked_list::List<FrameInfo>> {
+    fn allocate_contiguous(&mut self, layout: Layout) -> Option<List<FrameInfo>> {
         let frames = layout.size() / arch::PAGE_SIZE;
 
         // short-circuit if the cache doesn't even have enough pages
@@ -230,14 +231,13 @@ impl CpuLocalFrameCache {
         }
 
         let mut index = 0;
-        let mut base = self.free_list.cursor_front();
-        'outer: while let Some(base_frame) = base.get() {
+        let mut base = self.free_list.iter();
+        'outer: while let Some(base_frame) = base.next() {
             if base_frame.addr().alignment() >= layout.align() {
-                let cursor = base.clone();
                 let mut prev_addr = base_frame.addr();
 
                 let mut c = 0;
-                while let Some(frame) = cursor.get() {
+                for frame in base.by_ref() {
                     // we found a contiguous block
                     if c == frames {
                         break 'outer;
@@ -257,17 +257,16 @@ impl CpuLocalFrameCache {
             tracing::trace!("base frame not aligned, trying next");
             // the base wasn't aligned, try the next one
             index += 1;
-            base.move_next();
         }
 
         tracing::trace!("found contiguous block at index {index}");
 
         // split the cache first at the start of the contiguous block. This will return the contiguous block
         // plus everything after it
-        let mut split = self.free_list.split_off(index)?;
+        let mut split = self.free_list.split_off(index);
         // the split the contiguous block after the number of frames we need
         // and return the rest back to the cache
-        let mut rest = split.split_off(frames).unwrap();
+        let mut rest = split.split_off(frames);
         self.free_list.append(&mut rest);
 
         Some(split)

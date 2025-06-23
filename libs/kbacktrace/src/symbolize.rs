@@ -18,7 +18,7 @@ pub enum Symbol<'a> {
     /// `addr2line`'s frame internally has all the nitty gritty details.
     Frame {
         addr: *mut c_void,
-        location: Option<addr2line::Location<'a>>,
+        location: Option<kaddr2line::Location<'a>>,
         name: Option<&'a str>,
     },
     /// Couldn't find debug information, but we found it in the symbol table of
@@ -125,7 +125,7 @@ pub struct SymbolsIter<'a, 'ctx> {
     addr: u64,
     elf: &'ctx xmas_elf::ElfFile<'a>,
     symtab: &'ctx [xmas_elf::symbol_table::Entry64],
-    iter: addr2line::FrameIter<'ctx, EndianSlice<'a, NativeEndian>>,
+    iter: kaddr2line::FrameIter<'ctx, EndianSlice<'a, NativeEndian>>,
     anything: bool,
 }
 
@@ -173,7 +173,7 @@ impl<'ctx> FallibleIterator for SymbolsIter<'_, 'ctx> {
 
 /// Context necessary to resolve an address to its symbol name and source location.
 pub struct SymbolizeContext<'a> {
-    addr2line: addr2line::Context<EndianSlice<'a, NativeEndian>>,
+    addr2line: kaddr2line::Context<EndianSlice<'a, NativeEndian>>,
     elf: xmas_elf::ElfFile<'a>,
     adjust_vma: u64,
 }
@@ -190,7 +190,7 @@ impl<'a> SymbolizeContext<'a> {
             };
             Ok(EndianSlice::new(data, NativeEndian))
         })?;
-        let addr2line = addr2line::Context::from_dwarf(dwarf)?;
+        let addr2line = kaddr2line::Context::from_dwarf(dwarf)?;
 
         Ok(Self {
             addr2line,
