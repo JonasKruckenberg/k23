@@ -332,7 +332,7 @@ impl WaitQueue {
     /// [`wake()`]: Self::wake
     /// [`wait()`]: Self::wait
     #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
-    pub fn wake_all(&self) {
+    pub fn wake_all(&self) -> usize {
         let mut batch = WakeBatch::new();
         let mut waiters_remaining = true;
 
@@ -344,9 +344,9 @@ impl WaitQueue {
                 self.state
                     .0
                     .fetch_add(State::ONE_WAKE_ALL, Ordering::SeqCst);
-                return;
+                return 0;
             }
-            StateInner::Closed => return,
+            StateInner::Closed => return 0,
             StateInner::Waiting => {
                 let next_state = State::new()
                     .with_inner(StateInner::Empty)
@@ -358,10 +358,14 @@ impl WaitQueue {
 
         // As long as there are waiters remaining to wake, lock the queue, drain
         // another batch, release the lock, and wake them.
+        let mut woken = 0;
         while waiters_remaining {
             waiters_remaining = Self::drain_to_wake_batch(&mut batch, &mut queue, Wakeup::All);
+            woken += batch.len();
             MutexGuard::unlocked(&mut queue, || batch.wake_all());
         }
+
+        woken
     }
 
     /// Wait to be woken up by this queue.
