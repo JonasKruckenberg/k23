@@ -246,7 +246,9 @@ impl Worker {
                 continue;
             }
 
+            tracing::trace!("worker {} going to sleep...", self.id);
             self.executor.sleepers.wait().await?;
+            tracing::trace!("worker woke up");
         }
     }
 

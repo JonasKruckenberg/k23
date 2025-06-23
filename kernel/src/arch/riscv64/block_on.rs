@@ -16,6 +16,8 @@ struct HartNotify {
 
 impl HartNotify {
     fn wake_by_ref(me: &Arc<Self>) {
+        tracing::trace!("waking up hart {}...", me.hartid);
+
         // Make sure the wakeup is remembered until the next `park()`.
         let unparked = me.unparked.swap(true, Ordering::Release);
         if !unparked {
@@ -109,7 +111,9 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
             // but in that case the token made available by `unpark()`
             // is guaranteed to still be available and `park()` is a no-op.
             // Safety: inline assembly
-            unsafe { asm!("wfi") }
+            tracing::trace!("parking hart {}", state::cpu_local().id);
+            unsafe { asm!("wfi") };
+            tracing::trace!("hart {} woke up", state::cpu_local().id);
         }
     }
 }
