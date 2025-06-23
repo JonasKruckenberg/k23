@@ -14,7 +14,6 @@ use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::cell::Cell;
 use cpu_local::cpu_local;
-use kasync::time::Instant;
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{load_fp, load_gp, save_fp, save_gp};
 use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};

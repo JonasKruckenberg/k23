@@ -110,8 +110,8 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
             // No wakeup occurred. It may occur now, right before parking,
             // but in that case the token made available by `unpark()`
             // is guaranteed to still be available and `park()` is a no-op.
-            // Safety: inline assembly
             tracing::trace!("parking hart {}", state::cpu_local().id);
+            // Safety: inline assembly
             unsafe { asm!("wfi") };
             tracing::trace!("hart {} woke up", state::cpu_local().id);
         }

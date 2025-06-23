@@ -177,7 +177,7 @@ mod tests {
 
     // loom thinks this deadlocks
     // FIXME: check if this is an error with this test or with loom and reenable
-    #[cfg(not(loom))]
+    #[cfg_attr(loom, ignore)]
     #[test]
     fn sleep_run() {
         let _ = tracing_subscriber::fmt()
