@@ -1,5 +1,5 @@
 [package]
-name = "addr2line"
+name = "kaddr2line"
 version = "0.24.2"
 description = "A cross-platform symbolication library written in Rust, using `gimli`"
 edition.workspace = true

@@ -12,9 +12,9 @@ use crate::scheduler::steal::{Stealer, TryStealError};
 use crate::task;
 use crate::task::{Header, PollResult, Task, TaskRef, TaskStub};
 use alloc::boxed::Box;
+use cordyceps::{MpscQueue, mpsc_queue::TryDequeueError};
 use core::ptr;
 use core::ptr::NonNull;
-use mpsc_queue::{MpscQueue, TryDequeueError};
 
 /// Information about the scheduler state produced after ticking.
 #[derive(Debug)]

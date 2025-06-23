@@ -112,15 +112,34 @@ impl<T: ?Sized> Mutex<T> {
         unsafe { self.make_guard_unchecked() }
     }
 
-    /// Attempts to acquire this lock.
+    /// Try to lock this mutex, returning a lock guard if successful.
     ///
-    /// If the lock could not be acquired at this time, then `None` is returned.
-    /// Otherwise, an RAII guard is returned. The lock will be unlocked when the
-    /// guard is dropped.
-    ///
-    /// This function does not block.
+    /// Like [`Self::lock`] the lock will be unlocked when the guard is dropped, but *unlike*
+    /// [`Self::lock`] this method never blocks.
     #[inline]
     pub fn try_lock(&self) -> Option<MutexGuard<'_, T>> {
+        if self
+            .lock
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+        {
+            // SAFETY: The lock is held, as required.
+            Some(unsafe { self.make_guard_unchecked() })
+        } else {
+            None
+        }
+    }
+
+    /// Try to lock this mutex, returning a lock guard if successful.
+    ///
+    /// Like [`Self::lock`] the lock will be unlocked when the guard is dropped, but *unlike*
+    /// [`Self::lock`] this method never blocks.
+    ///
+    /// Unlike [`Self::try_lock`] this method can spuriously fail even if the mutex is unlocked,
+    /// this makes this method only suitable to be called in loops or similar scenarios, but might
+    /// result in more efficient code on some platforms.
+    #[inline]
+    pub fn try_lock_weak(&self) -> Option<MutexGuard<'_, T>> {
         if self
             .lock
             .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)

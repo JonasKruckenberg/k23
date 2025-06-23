@@ -1690,7 +1690,7 @@ mod tests {
     use core::mem::offset_of;
     use core::pin::Pin;
     use rand::prelude::SliceRandom;
-    use rand::thread_rng;
+    use rand::rng;
 
     #[derive(Default)]
     struct TestEntry {
@@ -1750,7 +1750,7 @@ mod tests {
     fn random_inserts_and_removals() {
         let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
 
-        let mut rng = thread_rng();
+        let mut rng = rng();
 
         let mut nums = (0..30).collect::<Vec<_>>();
         nums.shuffle(&mut rng);
@@ -1778,7 +1778,7 @@ mod tests {
     fn random_inserts_and_searches() {
         let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
 
-        let mut rng = thread_rng();
+        let mut rng = rng();
 
         let mut nums = (0..50).collect::<Vec<_>>();
         nums.shuffle(&mut rng);

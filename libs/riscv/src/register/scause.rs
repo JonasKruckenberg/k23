@@ -8,7 +8,7 @@
 //! Supervisor Cause Register
 
 use super::{read_csr_as, write_csr};
-pub use crate::trap::{Exception, Interrupt, Trap};
+use crate::trap::Trap;
 use core::fmt;
 use core::fmt::Formatter;
 
@@ -64,6 +64,123 @@ impl Scause {
             Trap::Interrupt(Interrupt::try_from(self.code()).expect("unknown interrupt"))
         } else {
             Trap::Exception(Exception::try_from(self.code()).expect("unknown exception"))
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Interrupt {
+    SupervisorSoft = 1,
+    VirtualSupervisorSoft = 2,
+    SupervisorTimer = 5,
+    VirtualSupervisorTimer = 6,
+    SupervisorExternal = 9,
+    VirtualSupervisorExternal = 10,
+    SupervisorGuestExternal = 12,
+}
+
+impl TryFrom<usize> for Interrupt {
+    type Error = ();
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::SupervisorSoft),
+            2 => Ok(Self::VirtualSupervisorSoft),
+            5 => Ok(Self::SupervisorTimer),
+            6 => Ok(Self::VirtualSupervisorTimer),
+            9 => Ok(Self::SupervisorExternal),
+            10 => Ok(Self::VirtualSupervisorExternal),
+            12 => Ok(Self::SupervisorGuestExternal),
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<Interrupt> for usize {
+    fn from(value: Interrupt) -> Self {
+        match value {
+            Interrupt::SupervisorSoft => 1,
+            Interrupt::VirtualSupervisorSoft => 2,
+            Interrupt::SupervisorTimer => 5,
+            Interrupt::VirtualSupervisorTimer => 6,
+            Interrupt::SupervisorExternal => 9,
+            Interrupt::VirtualSupervisorExternal => 10,
+            Interrupt::SupervisorGuestExternal => 12,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Exception {
+    /// Instruction address misaligned
+    InstructionMisaligned = 0,
+    /// Instruction access fault
+    InstructionFault = 1,
+    /// Illegal instruction
+    IllegalInstruction = 2,
+    /// Breakpoint
+    Breakpoint = 3,
+    /// Load address misaligned
+    LoadMisaligned = 4,
+    /// Load access fault
+    LoadFault = 5,
+    /// Store/AMO address misaligned
+    StoreMisaligned = 6,
+    /// Store/AMO access fault
+    StoreFault = 7,
+    /// Environment call from U-mode or VU-mode
+    UserEnvCall = 8,
+    /// Environment call from HS-mode
+    SupervisorEnvCall = 9,
+    /// Environment call from VS-mode
+    VirtualSupervisorEnvCall = 10,
+    /// Environment call from M-mode
+    MachineEnvCall = 11,
+    /// Instruction page fault
+    InstructionPageFault = 12,
+    /// Load page fault
+    LoadPageFault = 13,
+    /// Store/AMO page fault
+    StorePageFault = 15,
+    /// Software check
+    SoftwareCheck = 18,
+    /// Hardware error
+    HardwareError = 19,
+    /// Instruction guest-page fault
+    InstructionGuestPageFault = 20,
+    /// Load guest-page fault
+    LoadGuestPageFault = 21,
+    /// Virtual instruction
+    VirtualInstruction = 22,
+    /// Store/AMO guest-page fault
+    StoreGuestPageFault = 23,
+}
+
+impl TryFrom<usize> for Exception {
+    type Error = ();
+
+    #[inline]
+    fn try_from(nr: usize) -> Result<Self, Self::Error> {
+        match nr {
+            0 => Ok(Self::InstructionMisaligned),
+            1 => Ok(Self::InstructionFault),
+            2 => Ok(Self::IllegalInstruction),
+            3 => Ok(Self::Breakpoint),
+            4 => Ok(Self::LoadMisaligned),
+            5 => Ok(Self::LoadFault),
+            6 => Ok(Self::StoreMisaligned),
+            7 => Ok(Self::StoreFault),
+            8 => Ok(Self::UserEnvCall),
+            9 => Ok(Self::SupervisorEnvCall),
+            10 => Ok(Self::VirtualSupervisorEnvCall),
+            12 => Ok(Self::InstructionPageFault),
+            13 => Ok(Self::LoadPageFault),
+            15 => Ok(Self::StorePageFault),
+            20 => Ok(Self::InstructionGuestPageFault),
+            21 => Ok(Self::LoadGuestPageFault),
+            22 => Ok(Self::VirtualInstruction),
+            23 => Ok(Self::StoreGuestPageFault),
+            _ => Err(()),
         }
     }
 }

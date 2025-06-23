@@ -16,6 +16,7 @@ use crate::scheduler::steal::{Stealer, TryStealError};
 use crate::scheduler::{Schedule, Tick};
 use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use alloc::boxed::Box;
+use cordyceps::{Linked, mpsc_queue};
 use core::alloc::Allocator;
 #[cfg(debug_assertions)]
 use core::any::TypeId;
@@ -939,7 +940,7 @@ impl<S: Schedule> Schedulable<S> {
 // Safety: tasks are always treated as pinned in memory (a requirement for polling them)
 // and care has been taken below to ensure the underlying memory isn't freed as long as the
 // `TaskRef` is part of the owned tasks list.
-unsafe impl mpsc_queue::Linked for Header {
+unsafe impl Linked<mpsc_queue::Links<Self>> for Header {
     type Handle = TaskRef;
 
     fn into_ptr(task: Self::Handle) -> NonNull<Self> {

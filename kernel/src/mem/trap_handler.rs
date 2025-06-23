@@ -5,12 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::arch::trap::Trap;
 use crate::mem::VirtualAddress;
 use crate::state::global;
 use core::ops::ControlFlow;
 use kasync::scheduler::Schedule;
 
-pub fn handle_page_fault(_tval: VirtualAddress) -> ControlFlow<()> {
+pub fn handle_page_fault(_trap: Trap, _tval: VirtualAddress) -> ControlFlow<()> {
     let current_task = global().executor.cpu_local_scheduler().current_task();
 
     let Some(_current_task) = current_task.as_ref() else {

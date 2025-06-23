@@ -16,15 +16,3 @@ pub enum Trap<I, E> {
     Interrupt(I),
     Exception(E),
 }
-
-/// Generic trait for interrupt controllers
-pub trait InterruptController {
-    /// Mask (disable) an interrupt
-    fn irq_mask(&mut self, irq: u32);
-
-    /// Unmask (enable) an interrupt
-    fn irq_unmask(&mut self, irq: u32);
-
-    /// Complete interrupt handling and get next pending interrupt
-    fn irq_complete(&mut self) -> Option<u32>;
-}

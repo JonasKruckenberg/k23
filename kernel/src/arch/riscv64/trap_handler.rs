@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::PAGE_SIZE;
+use crate::arch::trap::Trap;
 use crate::backtrace::Backtrace;
 use crate::mem::VirtualAddress;
 use crate::state::{cpu_local, global};
@@ -14,7 +15,7 @@ use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::cell::Cell;
 use cpu_local::cpu_local;
-use riscv::scause::{Exception, Interrupt, Trap};
+use riscv::scause::{Exception, Interrupt};
 use riscv::{load_fp, load_gp, save_fp, save_gp};
 use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
@@ -314,7 +315,7 @@ extern "C-unwind" fn default_trap_handler(
                 | Exception::InstructionPageFault,
             ) => {
                 // first attempt the page fault handler, can it recover us from this by fixing up mappings?
-                if crate::mem::handle_page_fault(tval).is_break() {
+                if crate::mem::handle_page_fault(cause, tval).is_break() {
                     break 'handler;
                 }
 

@@ -152,12 +152,12 @@ impl<P: Park> UnparkToken<P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::StdPark;
     use crate::loom::sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc,
     };
     use crate::loom::thread;
-    use crate::test_util::StdPark;
     use core::pin::{Pin, pin};
     use core::task::{Context, Poll, Waker};
 
