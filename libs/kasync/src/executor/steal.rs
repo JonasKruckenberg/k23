@@ -5,15 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::executor::Scheduler;
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
-use crate::scheduler::Schedule;
-use crate::task;
-use crate::task::TaskStub;
 use crate::task::{Header, Task, TaskRef};
 use alloc::boxed::Box;
 use cordyceps::{MpscQueue, mpsc_queue};
 use core::fmt::Debug;
-use core::marker::PhantomData;
 use core::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -27,52 +24,25 @@ pub enum TryStealError {
 }
 
 #[derive(Debug)]
-pub struct Injector<S> {
+pub struct Injector {
     run_queue: MpscQueue<Header>,
     queued: AtomicUsize,
-    // the correct implementation of the stealing - in particular the scheduler binding part - depends
-    // on the shape of the source and destination scheduler being the same. We propagate the type through
-    // the hierarchy to make it harder to fuck this up.
-    _scheduler: PhantomData<S>,
 }
 
-impl<S> Default for Injector<S> {
+impl Default for Injector {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<S> Injector<S> {
+impl Injector {
     pub fn new() -> Self {
         let stub_task = Box::new(Task::new_stub());
-        let (stub_task, _) =
-            TaskRef::new_allocated::<task::Stub, task::Stub, alloc::alloc::Global>(stub_task);
+        let (stub_task, _) = TaskRef::new_allocated(stub_task);
 
         Self {
             run_queue: MpscQueue::new_with_stub(stub_task),
             queued: AtomicUsize::new(0),
-            _scheduler: PhantomData,
-        }
-    }
-
-    /// Construct a new `Injector` with a *statically allocated* stub node.
-    ///
-    /// This constructor is `const` and doesn't require a heap allocation, restrictions on
-    /// callers (therefore the `unsafe`). For a safe (but allocating and non-`const`) constructor,
-    /// see `[Self::new`].
-    ///
-    /// # Safety
-    ///
-    /// The `&'static TaskStub` reference MUST only be used for *this* constructor and **never**
-    /// reused for the entire time that `Injector` exists.
-    #[cfg(not(loom))]
-    #[must_use]
-    pub const unsafe fn new_with_static_stub(stub: &'static TaskStub) -> Self {
-        Self {
-            // Safety: ensured by caller
-            run_queue: unsafe { MpscQueue::new_with_static_stub(&stub.header) },
-            queued: AtomicUsize::new(0),
-            _scheduler: PhantomData,
         }
     }
 
@@ -83,7 +53,7 @@ impl<S> Injector<S> {
     ///
     /// When stealing from the target is not possible, either because its queue is *empty*
     /// or because there is *already an active stealer*, an error is returned.
-    pub fn try_steal(&self) -> Result<Stealer<S>, TryStealError> {
+    pub fn try_steal(&self) -> Result<Stealer, TryStealError> {
         Stealer::new(&self.run_queue, &self.queued)
     }
 
@@ -93,21 +63,17 @@ impl<S> Injector<S> {
     }
 }
 
-pub struct Stealer<'queue, S> {
+pub struct Stealer<'queue> {
     queue: mpsc_queue::Consumer<'queue, Header>,
     tasks: &'queue AtomicUsize,
     /// The initial task count in the target queue when this `Stealer` was created.
     task_snapshot: NonZeroUsize,
-    // the correct implementation of the stealing - in particular the scheduler binding part - depends
-    // on the shape of the source and destination scheduler being the same. We propagate the type through
-    // the hierarchy to make it harder to fuck this up.
-    _scheduler: PhantomData<S>,
 }
 
-impl<'a, S> Stealer<'a, S> {
+impl<'queue> Stealer<'queue> {
     pub(crate) fn new(
-        queue: &'a MpscQueue<Header>,
-        tasks: &'a AtomicUsize,
+        queue: &'queue MpscQueue<Header>,
+        tasks: &'queue AtomicUsize,
     ) -> Result<Self, TryStealError> {
         let queue = queue.try_consume().ok_or(TryStealError::Busy)?;
 
@@ -120,21 +86,13 @@ impl<'a, S> Stealer<'a, S> {
             queue,
             tasks,
             task_snapshot,
-            _scheduler: PhantomData,
         })
-    }
-
-    pub fn initial_task_count(&self) -> NonZeroUsize {
-        self.task_snapshot
     }
 
     /// Steal a task from the queue and spawn it on the provided
     /// `scheduler`. Returns `true` when a task got successfully stolen
     /// and `false` if queue was empty.
-    pub fn spawn_one(&self, scheduler: &S) -> bool
-    where
-        S: Schedule,
-    {
+    pub fn spawn_one(&self, scheduler: &'static Scheduler) -> bool {
         let Some(task) = self.queue.dequeue() else {
             return false;
         };
@@ -146,12 +104,9 @@ impl<'a, S> Stealer<'a, S> {
 
         // we're moving the task to a different scheduler so we need to
         // bind to it
-        // Safety: the generics ensure this is always the right type
-        unsafe {
-            task.bind_scheduler(scheduler.clone());
-        }
+        task.bind_scheduler(scheduler);
 
-        scheduler.wake(task);
+        scheduler.schedule(task);
 
         true
     }
@@ -160,12 +115,9 @@ impl<'a, S> Stealer<'a, S> {
     /// `scheduler`.
     ///
     /// Note this will always steal at least one task.
-    pub fn spawn_n(&self, scheduler: &S, max: usize) -> usize
-    where
-        S: Schedule,
-    {
+    pub fn spawn_n(&self, core: &'static Scheduler, max: usize) -> usize {
         let mut stolen = 0;
-        while stolen <= max && self.spawn_one(scheduler) {
+        while stolen <= max && self.spawn_one(core) {
             stolen += 1;
         }
         stolen
@@ -175,11 +127,8 @@ impl<'a, S> Stealer<'a, S> {
     /// `scheduler`.
     ///
     /// Note this will always steal at least one task.
-    pub fn spawn_half(&self, scheduler: &S) -> usize
-    where
-        S: Schedule,
-    {
+    pub fn spawn_half(&self, core: &'static Scheduler) -> usize {
         let max = self.task_snapshot.get().div_ceil(2);
-        self.spawn_n(scheduler, max)
+        self.spawn_n(core, max)
     }
 }

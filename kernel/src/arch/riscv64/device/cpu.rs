@@ -13,7 +13,7 @@ use core::cell::RefCell;
 use core::fmt;
 use core::str::FromStr;
 use core::time::Duration;
-use kasync::time::Ticks;
+use kasync::time::PhysTicks;
 use kasync::time::{Clock, NANOS_PER_SEC};
 
 #[derive(Debug)]
@@ -141,15 +141,15 @@ impl Cpu {
         plic.irq_unmask(10);
 
         let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
-        let clock = Clock::new(tick_duration, || Ticks(riscv::register::time::read64()));
+        let clock = Clock::new(tick_duration, || PhysTicks(riscv::register::time::read64()));
 
         debug_assert_eq!(
-            clock.ticks_to_duration(Ticks(timebase_frequency)),
+            clock.ticks_to_duration(PhysTicks(timebase_frequency)),
             Duration::from_secs(1)
         );
         debug_assert_eq!(
             clock.duration_to_ticks(Duration::from_secs(1)).unwrap(),
-            Ticks(timebase_frequency)
+            PhysTicks(timebase_frequency)
         );
 
         Ok(Self {

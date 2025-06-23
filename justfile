@@ -53,7 +53,7 @@ check crate="" *cargo_args="":
         {{ cargo_args }}
 
 # run all tests and checks
-preflight crate="" *cargo_args="": (lint crate cargo_args)
+preflight crate="" *cargo_args="": (lint crate cargo_args) (test crate cargo_args) (miri crate cargo_args) (loom crate cargo_args)
     typos
 
 # run lints (clippy, rustfmt, docs) for a crate or the entire for the workspace.
@@ -83,53 +83,43 @@ check-fmt crate="" *cargo_args="":
         {{ _fmt }} \
         {{ cargo_args }}
 
-# run all tests
-test crate="" *args="": \
-    (test-hosted crate args) \
-    (test-loom crate args) \
-    (test-miri crate args) \
-    (test-riscv64 crate args)
-
 # ==============================================================================
 # Hosted Testing
 # ==============================================================================
 
-# run WebAssembly spec tests
-test-spec:
-    {{ error("TODO") }}
-
 # crates that have hosted tests
 _hosted_crates := "-p kaddr2line -p cpu-local -p fastrand -p fdt -p kasync -p ksharded-slab -p spin -p wast@228.0.0 -p wavltree"
 # run hosted tests
-test-hosted crate="" *args="": _get-nextest
+test crate="" *cargo_args="": _get-nextest
     {{ _cargo }} {{ _testcmd }} \
             {{ if crate == "" { _hosted_crates } else { "-p" + crate } }} \
             --lib \
             --no-fail-fast \
-            {{ args }}
+            {{ cargo_args }}
 
 # crates that have miri tests
 _miri_crates := "-p kasync -p ksharded-slab -p spin -p wavltree"
 # run hosted tests under miri
-test-miri crate="" *args="": _get-nextest
-    MIRIFLAGS="{{ env_var_or_default("MIRIFLAGS", "-Zmiri-strict-provenance -Zmiri-disable-isolation") }} -Zmiri-env-forward=RUST_BACKTRACE" \
+miri crate="" *cargo_args="": _get-nextest
+    MIRIFLAGS="{{ env_var_or_default("MIRIFLAGS", "-Zmiri-strict-provenance -Zmiri-disable-isolation") }} -Zmiri-env-forward=RUST_BACKTRACE -Zmiri-env-forward=RUST_LOG" \
         RUSTFLAGS="{{ env_var_or_default("RUSTFLAGS", "-Zrandomize-layout") }}" \
         {{ _cargo }} miri {{ _testcmd }} \
             {{ if crate == "" { _miri_crates } else { "-p" + crate } }} \
             --lib \
             --no-fail-fast \
-            {{ args }}
+            {{ cargo_args }}
 
 # crates that have loom tests
 _loom_crates := "-p kasync"
 # run hosted tests under loom
-test-loom crate="" *args='': _get-nextest
+loom crate="" *cargo_args='': _get-nextest
     #!/usr/bin/env bash
     set -euo pipefail
     source "./util/shell.sh"
 
     export RUSTFLAGS="--cfg loom ${RUSTFLAGS:-}"
     export LOOM_LOG="${LOOM_LOG:-kasync=trace,cordyceps=trace,debug}"
+    export LOOM_MAX_PREEMPTIONS=2
 
     # if logging is enabled, also enable location tracking.
     if [[ "${LOOM_LOG}" != "off" ]]; then
@@ -155,7 +145,7 @@ test-loom crate="" *args='': _get-nextest
         {{ if crate == "" { _loom_crates } else { "-p" + crate } }} \
         --lib \
         --no-fail-fast \
-        {{ args }}
+        {{ cargo_args }}
     status="$?"
 
     if [[ "${LOOM_CHECKPOINT_FILE:-}" ]]; then

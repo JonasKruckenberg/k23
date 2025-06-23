@@ -6,50 +6,41 @@ authors.workspace = true
 license.workspace = true
 
 [[bench]]
+required-features = ["__bench"]
 name = "spawn"
 harness = false
-required-features = ["__bench"]
-
-[[bench]]
-name = "ping_pong"
-harness = false
-required-features = ["__bench"]
 
 [dependencies]
 util.workspace = true
-spin.workspace = true
 cpu-local.workspace = true
+spin.workspace = true
 fastrand.workspace = true
-unwind2 = { workspace = true, optional = true }
 panic-unwind2 = { workspace = true, optional = true }
+cordyceps.workspace = true
 
 # 3rd-party dependencies
-cfg-if.workspace = true
 static_assertions.workspace = true
+cfg-if.workspace = true
 mycelium-bitfield.workspace = true
 tracing.workspace = true
 bitflags.workspace = true
-pin-project.workspace = true
 arrayvec.workspace = true
-cordyceps.workspace = true
-lazy_static = { workspace = true, optional = true }
+pin-project.workspace = true
+futures = { workspace = true, default-features = false }
 
 [dev-dependencies]
-tracing-subscriber = { workspace = true, default-features = true, features = [
-    "env-filter",
-] }
+tracing-subscriber = { workspace = true, default-features = true, features = ["env-filter"] }
 lazy_static.workspace = true
 criterion.workspace = true
-tokio-test = "0.4.4"
-futures = "0.3.31"
+futures = { workspace = true, features = ["alloc"] }
 
 [target.'cfg(loom)'.dependencies]
 loom.workspace = true
 
 [features]
-unwind2 = ["dep:unwind2"]
+unwind2 = ["dep:panic-unwind2"]
 counters = []
-__bench = ["tracing/max_level_off", "dep:lazy_static"]
+__bench = ["tracing/max_level_off"]
 
 [lints]
 workspace = true

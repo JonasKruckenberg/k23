@@ -15,11 +15,14 @@ cfg_if! {
         #[cfg(test)]
         pub(crate) use loom::thread;
         pub(crate) use loom::lazy_static;
+        pub(crate) use loom::thread_local;
     } else {
         #[cfg(any(test, feature = "__bench"))]
         pub(crate) use std::thread;
         #[cfg(any(test, feature = "__bench"))]
-        pub use lazy_static::lazy_static;
+        pub(crate) use std::thread_local;
+        #[cfg(test)]
+        pub(crate) use lazy_static::lazy_static;
 
         #[cfg(test)]
         #[inline(always)]
@@ -29,7 +32,6 @@ cfg_if! {
 
         pub(crate) mod sync {
             pub use core::sync::*;
-            pub use alloc::sync::*;
             #[cfg(any(test, feature = "__bench"))]
             pub(crate) use std::sync::*;
         }

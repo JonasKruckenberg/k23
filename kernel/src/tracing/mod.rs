@@ -309,7 +309,7 @@ where
     w.write_char('[')?;
 
     if let Some(global) = try_global() {
-        let elapsed = global.time_origin.elapsed(&global.clock);
+        let elapsed = global.time_origin.elapsed(&global.timer);
         write!(
             w.with_fg_color(Color::BrightBlack),
             "{:>6}.{:06}",

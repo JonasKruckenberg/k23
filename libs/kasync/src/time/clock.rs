@@ -5,13 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::{Instant, NANOS_PER_SEC, TimeError};
+use crate::time::{NANOS_PER_SEC, TimeError};
 use core::fmt;
 use core::time::Duration;
 
-/// [`Clock`] ticks are always counted by a 64-bit unsigned integer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Ticks(pub u64);
+pub struct PhysTicks(pub u64);
 
 /// A hardware clock definition.
 ///
@@ -20,7 +19,7 @@ pub struct Ticks(pub u64);
 /// of time represented by a single tick of the clock.
 #[derive(Debug, Clone)]
 pub struct Clock {
-    now: fn() -> Ticks,
+    now: fn() -> PhysTicks,
     tick_duration: Duration,
     name: &'static str,
 }
@@ -33,7 +32,7 @@ impl fmt::Display for Clock {
 
 impl Clock {
     #[must_use]
-    pub const fn new(tick_duration: Duration, now: fn() -> Ticks) -> Self {
+    pub const fn new(tick_duration: Duration, now: fn() -> PhysTicks) -> Self {
         Self {
             now,
             tick_duration,
@@ -53,22 +52,14 @@ impl Clock {
     /// Returns the current `now` timestamp, in [`Ticks`] of this clock's base
     /// tick duration.
     #[must_use]
-    pub(crate) fn now_ticks(&self) -> Ticks {
+    pub(crate) fn now_ticks(&self) -> PhysTicks {
         (self.now)()
     }
 
     /// Returns the [`Duration`] of one tick of this clock.
     #[must_use]
-    pub fn tick_duration(&self) -> Duration {
+    pub const fn tick_duration(&self) -> Duration {
         self.tick_duration
-    }
-
-    /// Returns an [`Instant`] representing the current timestamp according to
-    /// this [`Clock`].
-    #[must_use]
-    pub fn now(&self) -> Instant {
-        let now = self.now_ticks();
-        Instant(self.ticks_to_duration(now))
     }
 
     /// Returns the maximum duration of this clock.
@@ -84,13 +75,13 @@ impl Clock {
         self.name
     }
 
-    /// Convert the given raw [`Ticks`] into a [`Duration`] using this clocks
+    /// Convert the given raw [`PhysTicks`] into a [`Duration`] using this clocks
     /// internal tick duration.
     ///
     /// # Panics
     ///
     /// This method panics if the conversion would overflow.
-    pub fn ticks_to_duration(&self, ticks: Ticks) -> Duration {
+    pub fn ticks_to_duration(&self, ticks: PhysTicks) -> Duration {
         // Multiply nanoseconds as u64, because it cannot overflow that way.
         let total_nanos = u64::from(self.tick_duration.subsec_nanos()) * ticks.0;
         let extra_secs = total_nanos / (NANOS_PER_SEC);
@@ -112,13 +103,13 @@ impl Clock {
         Duration::new(secs, nanos)
     }
 
-    /// Convert the given [`Duration`] into a raw [`Ticks`] using this clocks
+    /// Convert the given [`Duration`] into a raw [`PhysTicks`] using this clocks
     /// internal tick duration.
     ///
     /// # Errors
     ///
     /// Returns a [`TimeError`] if the duration doesn't fit into the ticks u64 representation.
-    pub fn duration_to_ticks(&self, duration: Duration) -> Result<Ticks, TimeError> {
+    pub fn duration_to_ticks(&self, duration: Duration) -> Result<PhysTicks, TimeError> {
         let raw: u64 = (duration.as_nanos() / self.tick_duration.as_nanos())
             .try_into()
             .map_err(|_| TimeError::DurationTooLong {
@@ -126,7 +117,7 @@ impl Clock {
                 max: max_duration(self.tick_duration),
             })?;
 
-        Ok(Ticks(raw))
+        Ok(PhysTicks(raw))
     }
 }
 
