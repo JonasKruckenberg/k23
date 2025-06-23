@@ -8,6 +8,7 @@
 //! Supervisor Cause Register
 
 use super::{read_csr_as, write_csr};
+use crate::trap::Trap;
 use core::fmt;
 use core::fmt::Formatter;
 
@@ -65,12 +66,6 @@ impl Scause {
             Trap::Exception(Exception::try_from(self.code()).expect("unknown exception"))
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Trap {
-    Interrupt(Interrupt),
-    Exception(Exception),
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
