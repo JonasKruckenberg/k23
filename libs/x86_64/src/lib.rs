@@ -6,7 +6,7 @@
 pub mod error;
 pub mod interrupt;
 pub mod io;
-pub mod register;
+// pub mod register;
 pub mod trap;
 
 pub use error::Error;

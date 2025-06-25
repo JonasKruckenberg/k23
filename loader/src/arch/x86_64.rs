@@ -133,12 +133,12 @@ unsafe extern "C" fn fill_stack() {
             // Fill with 0xACE0BACE pattern
             // rdi = bottom of stack (like RISC-V's t0)
             // rsp = top of stack
-            "mov rax, 0xACE0BACE",
-            "1:",
-            "mov [rdi], rax",
-            "add rdi, 8",
-            "cmp rdi, rsp",
-            "jb 1b",
+            // "mov rax, 0xACE0BACE",
+            // "1:",
+            // "mov [rdi], rax",
+            // "add rdi, 8",
+            // "cmp rdi, rsp",
+            // "jb 1b",
             "ret"
         }
     }
@@ -153,61 +153,63 @@ unsafe extern "C" fn fill_stack() {
 // - No SUM bit equivalent (user memory access handled differently)
 // - Different register usage for arguments
 pub unsafe fn handoff_to_kernel(cpuid: usize, boot_ticks: u64, init: &GlobalInitResult) -> ! {
-    let stack = init.stacks_alloc.region_for_cpu(cpuid);
-    let tls = init
-        .maybe_tls_alloc
-        .as_ref()
-        .map(|tls| tls.region_for_hart(cpuid))
-        .unwrap_or_default();
+    // let stack = init.stacks_alloc.region_for_cpu(cpuid);
+    // let tls = init
+    //     .maybe_tls_alloc
+    //     .as_ref()
+    //     .map(|tls| tls.region_for_hart(cpuid))
+    //     .unwrap_or_default();
 
-    log::debug!("CPU {cpuid} Jumping to kernel...");
-    log::trace!(
-        "CPU {cpuid} entry: {:#x}, arguments: rdi={cpuid} rsi={:?} stack={stack:#x?} tls={tls:#x?}",
-        init.kernel_entry,
-        init.boot_info
-    );
+    // log::debug!("CPU {cpuid} Jumping to kernel...");
+    // log::trace!(
+    //     "CPU {cpuid} entry: {:#x}, arguments: rdi={cpuid} rsi={:?} stack={stack:#x?} tls={tls:#x?}",
+    //     init.kernel_entry,
+    //     init.boot_info
+    // );
 
-    init.barrier.wait();
+    // init.barrier.wait();
 
-    unsafe {
-        // x86_64 doesn't have an equivalent to RISC-V's sstatus.SUM bit
-        // User memory access is controlled via page table permissions
+    // unsafe {
+    //     // x86_64 doesn't have an equivalent to RISC-V's sstatus.SUM bit
+    //     // User memory access is controlled via page table permissions
 
-        asm! {
-            // Set up stack (RSP instead of RISC-V's SP)
-            "mov rsp, {stack_top}",
+    //     asm! {
+    //         // Set up stack (RSP instead of RISC-V's SP)
+    //         "mov rsp, {stack_top}",
 
-            // TODO: Set up TLS (FS segment base instead of RISC-V's TP)
-            // This requires MSR writes which need to be implemented
+    //         // TODO: Set up TLS (FS segment base instead of RISC-V's TP)
+    //         // This requires MSR writes which need to be implemented
 
-            // Fill stack with canary
-            "mov rdi, {stack_bottom}",
-            "call {fill_stack}",
+    //         // Fill stack with canary
+    //         "mov rdi, {stack_bottom}",
+    //         "call {fill_stack}",
 
-            // Clear return address (same concept as RISC-V)
-            "xor rax, rax",
-            "push rax", // Push 0 as return address
+    //         // Clear return address (same concept as RISC-V)
+    //         "xor rax, rax",
+    //         "push rax", // Push 0 as return address
 
-            // Jump to kernel
-            // x86_64 System V ABI: rdi, rsi, rdx for first 3 args
-            // (vs RISC-V's a0, a1, a2)
-            "jmp {kernel_entry}",
+    //         // Jump to kernel
+    //         // x86_64 System V ABI: rdi, rsi, rdx for first 3 args
+    //         // (vs RISC-V's a0, a1, a2)
+    //         "jmp {kernel_entry}",
 
-            // Should never reach here
-            "1:",
-            "hlt",
-            "jmp 1b",
+    //         // Should never reach here
+    //         "1:",
+    //         "hlt",
+    //         "jmp 1b",
 
-            in("rdi") cpuid,
-            in("rsi") init.boot_info,
-            in("rdx") boot_ticks,
-            stack_bottom = in(reg) stack.start,
-            stack_top = in(reg) stack.end,
-            kernel_entry = in(reg) init.kernel_entry,
-            fill_stack = sym fill_stack,
-            options(noreturn)
-        }
-    }
+    //         in("rdi") cpuid,
+    //         in("rsi") init.boot_info,
+    //         in("rdx") boot_ticks,
+    //         stack_bottom = in(reg) stack.start,
+    //         stack_top = in(reg) stack.end,
+    //         kernel_entry = in(reg) init.kernelexo_entry,
+    //         fill_stack = sym fill_stack,
+    //         options(noreturn)
+    //     }
+    // }
+    todo!("handoff_to_kernel not implemented for x86_64");
+    panic!("handoff_to_kernel not implemented for x86_64");
 }
 
 // ============================================================================
@@ -491,49 +493,55 @@ bitflags! {
 /// Key difference: x86_64 uses NO_EXECUTE bit vs RISC-V's EXECUTE bit
 impl From<Flags> for PageTableFlags {
     fn from(flags: Flags) -> Self {
-        let mut result = PageTableFlags::PRESENT | PageTableFlags::ACCESSED | PageTableFlags::DIRTY;
+        // let mut result = PageTableFlags::PRESENT | PageTableFlags::ACCESSED | PageTableFlags::DIRTY;
 
-        if flags.contains(Flags::WRITE) {
-            result |= PageTableFlags::WRITABLE;
-        }
+        // if flags.contains(Flags::WRITE) {
+        //     result |= PageTableFlags::WRITABLE;
+        // }
 
-        if flags.contains(Flags::USER) {
-            result |= PageTableFlags::USER;
-        }
+        // if flags.contains(Flags::USER) {
+        //     result |= PageTableFlags::USER;
+        // }
 
-        // Note the inversion: RISC-V has EXECUTE, x86_64 has NO_EXECUTE
-        if !flags.contains(Flags::EXECUTE) {
-            result |= PageTableFlags::NO_EXECUTE;
-        }
+        // // Note the inversion: RISC-V has EXECUTE, x86_64 has NO_EXECUTE
+        // if !flags.contains(Flags::EXECUTE) {
+        //     result |= PageTableFlags::NO_EXECUTE;
+        // }
 
-        // TODO: Handle DEVICE flag for MMIO (set NO_CACHE)
+        // // TODO: Handle DEVICE flag for MMIO (set NO_CACHE)
 
-        result
+        // result
+        
+        todo!("From<Flags> for PageTableFlags not implemented for x86_64");
+        panic!("From<Flags> for PageTableFlags not implemented for x86_64");
     }
 }
 
 impl From<PageTableFlags> for Flags {
     fn from(arch_flags: PageTableFlags) -> Self {
-        let mut out = Flags::empty();
+        // let mut out = Flags::empty();
 
-        // Always readable on x86_64 if present
-        if arch_flags.contains(PageTableFlags::PRESENT) {
-            out.insert(Flags::READ);
-        }
+        // // Always readable on x86_64 if present
+        // if arch_flags.contains(PageTableFlags::PRESENT) {
+        //     out.insert(Flags::READ);
+        // }
 
-        if arch_flags.contains(PageTableFlags::WRITABLE) {
-            out.insert(Flags::WRITE);
-        }
+        // if arch_flags.contains(PageTableFlags::WRITABLE) {
+        //     out.insert(Flags::WRITE);
+        // }
 
-        // Note the inversion again
-        if !arch_flags.contains(PageTableFlags::NO_EXECUTE) {
-            out.insert(Flags::EXECUTE);
-        }
+        // // Note the inversion again
+        // if !arch_flags.contains(PageTableFlags::NO_EXECUTE) {
+        //     out.insert(Flags::EXECUTE);
+        // }
 
-        if arch_flags.contains(PageTableFlags::USER) {
-            out.insert(Flags::USER);
-        }
+        // if arch_flags.contains(PageTableFlags::USER) {
+        //     out.insert(Flags::USER);
+        // }
 
-        out
+        // out
+
+        todo!("From<PageTableFlags> for Flags not implemented for x86_64");
+        panic!("From<PageTableFlags> for Flags not implemented for x86_64");
     }
 }

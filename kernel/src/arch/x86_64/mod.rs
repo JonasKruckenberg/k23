@@ -23,6 +23,7 @@ pub use mem::{
     USER_ASPACE_RANGE, invalidate_range, is_kernel_address,
 };
 pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
+pub use x86_64::*;
 
 pub const STACK_ALIGNMENT: usize = 16;
 

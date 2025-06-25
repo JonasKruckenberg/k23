@@ -44,6 +44,7 @@ pub enum Exception {
 /// x86_64 interrupt types
 /// source: http://wiki.osdev.org/Interrupts
 /// source: http://wiki.osdev.org/8259_PIC
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Interrupt {
     Timer = 0x20,
     Keyboard = 0x21,
