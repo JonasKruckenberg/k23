@@ -7,6 +7,7 @@ pub mod error;
 pub mod interrupt;
 pub mod io;
 // pub mod register;
+pub mod serial;
 pub mod trap;
 
 pub use error::Error;
