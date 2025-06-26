@@ -63,8 +63,15 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
         }
     }
     
-    static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
-    let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
+    // For x86_64, skip OnceLock for now to debug
+    #[cfg(target_arch = "x86_64")]
+    let res = &do_global_init(hartid, opaque);
+    
+    #[cfg(not(target_arch = "x86_64"))]
+    let res = {
+        static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
+        GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque))
+    };
 
     // Enable the MMU on all harts. Note that this technically reenables it on the initializing hart
     // but there is no harm in that.
@@ -108,9 +115,11 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         );
     }
     
+    // For x86_64, skip logger to avoid string literal access issues with PVH
+    #[cfg(not(target_arch = "x86_64"))]
     logger::init(LOG_LEVEL.to_level_filter());
     
-    // Debug marker after logger init
+    // Debug marker after logger init skip
     #[cfg(target_arch = "x86_64")]
     unsafe {
         core::arch::asm!(
@@ -121,8 +130,84 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     }
     
     // Safety: TODO
-    let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
+    // let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
+
+    // Debug marker before MachineInfo creation
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        core::arch::asm!(
+            "out dx, al",
+            in("dx") 0x3F8u16,
+            in("al") b'1',
+        );
+    }
+
+    let minfo = unsafe {
+        // Debug marker right before match
+        #[cfg(target_arch = "x86_64")]
+        {
+            core::arch::asm!(
+                "out dx, al",
+                in("dx") 0x3F8u16,
+                in("al") b'a',
+            );
+        }
+        
+        match MachineInfo::from_dtb(opaque) {
+            Ok(info) => {
+                // Debug marker for successful creation
+                #[cfg(target_arch = "x86_64")]
+                {
+                    core::arch::asm!(
+                        "out dx, al",
+                        in("dx") 0x3F8u16,
+                        in("al") b'2',
+                    );
+                }
+                info
+            },
+            Err(_) => {
+                // On x86_64, avoid string literals in error path
+                #[cfg(target_arch = "x86_64")]
+                {
+                    // Output 'F' to indicate failure parsing machine info
+                    core::arch::asm!(
+                        "out dx, al",
+                        in("dx") 0x3F8u16,
+                        in("al") b'F',
+                    );
+                    // Halt
+                    loop {
+                        core::arch::asm!("hlt");
+                    }
+                }
+                #[cfg(not(target_arch = "x86_64"))]
+                panic!("failed to parse machine info");
+            }
+        }
+    };
+    
+    // Debug marker after machine info creation
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        core::arch::asm!(
+            "out dx, al",
+            in("dx") 0x3F8u16,
+            in("al") b'N',
+        );
+    }
+    
     log::debug!("\n{minfo}");
+
+    // Debug marker before start_secondary_harts
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        core::arch::asm!(
+            "out dx, al",
+            in("dx") 0x3F8u16,
+            in("al") b'O',
+        );
+    }
 
     arch::start_secondary_harts(hartid, &minfo).unwrap();
 

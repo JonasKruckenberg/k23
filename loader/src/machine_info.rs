@@ -37,14 +37,32 @@ pub struct MachineInfo<'dt> {
 impl MachineInfo<'_> {
     #[cfg(target_arch = "x86_64")]
     fn minimal_x86_64() -> Self {
+        // Debug output at start of minimal_x86_64
+        unsafe {
+            core::arch::asm!(
+                "out dx, al",
+                in("dx") 0x3F8u16,
+                in("al") b'/',
+            );
+        }
+        
         // Create a minimal machine info for x86_64
-        // Assume we have 256MB of RAM starting at 4MB (above our loader at 1MB)
-        let mut memories = ArrayVec::new();
-        memories.push(Range::from(0x400000..0x10000000)); // 4MB to 256MB
+        // EXTREMELY SIMPLE: Just create an empty ArrayVec to avoid any string literal access
+        let memories = ArrayVec::new();
+        
+        unsafe {
+            core::arch::asm!(
+                "out dx, al",
+                in("dx") 0x3F8u16,
+                in("al") b'O',
+            );
+        }
         
         // Create a dummy FDT slice (won't be used)
         static DUMMY_FDT: [u8; 4] = [0; 4];
         
+        
+
         MachineInfo {
             fdt: &DUMMY_FDT,
             memories,
@@ -56,8 +74,8 @@ impl MachineInfo<'_> {
     pub unsafe fn from_dtb(fdt_ptr: *const c_void) -> crate::Result<Self> {
         // On x86_64, we don't have FDT - create a minimal machine info
         #[cfg(target_arch = "x86_64")]
-        if fdt_ptr.is_null() {
-            return Ok(Self::minimal_x86_64());
+        {
+            return Ok(Self::minimal_x86_64());    
         }
         
         assert!(!fdt_ptr.is_null());
