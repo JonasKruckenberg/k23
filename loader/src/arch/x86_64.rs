@@ -1,4 +1,4 @@
-// Claude generated
+// Copyright 2025 Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -6,242 +6,197 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::GlobalInitResult;
-use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
 use crate::machine_info::MachineInfo;
 use crate::mapping::Flags;
 use bitflags::bitflags;
-use core::arch::{asm, naked_asm};
+use core::arch::{asm, global_asm, naked_asm};
 use core::fmt;
 use core::num::NonZero;
 use core::ptr::NonNull;
 
-// ============================================================================
-// ARCHITECTURE CONSTANTS
-// ============================================================================
-// These mirror the RISC-V constants but adapted for x86_64:
-// - x86_64 uses 4-level paging (PML4, PDPT, PD, PT) vs RISC-V's 3-level
-// - Virtual addresses are 48-bit (sign extended to 64) vs RISC-V's 38-bit
-// - Kernel space traditionally starts at 0xffff800000000000 on x86_64
+// PVH ELF Note to enable direct kernel loading like RISC-V
+// This allows QEMU to boot our kernel directly without a traditional bootloader
+global_asm!(
+    r#"
+    .pushsection .note.Xen, "a", @note
+    .align 4
+    .long 4                    /* name size */
+    .long 4                    /* desc size */
+    .long 0x12                 /* type = XEN_ELFNOTE_PHYS32_ENTRY */
+    .asciz "Xen"              /* name */
+    .long 0x100000             /* desc = entry point at 1MB physical */
+    .popsection
+    "#
+);
 
-pub const DEFAULT_ASID: u16 = 0; // x86_64 uses PCID instead of ASID, but same concept
-pub const KERNEL_ASPACE_BASE: usize = 0xffff800000000000; // Canonical higher half
+pub const DEFAULT_ASID: u16 = 0;
+pub const KERNEL_ASPACE_BASE: usize = 0xffffffc000000000;
 pub const PAGE_SIZE: usize = 4096;
-pub const PAGE_TABLE_ENTRIES: usize = 512; // Same as RISC-V
-pub const PAGE_TABLE_LEVELS: usize = 4; // PML4, PDPT, PD, PT (vs RISC-V's 3)
-pub const VIRT_ADDR_BITS: u32 = 48; // 48-bit virtual addresses (vs RISC-V's 38)
+pub const PAGE_TABLE_ENTRIES: usize = 512;
+pub const PAGE_TABLE_LEVELS: usize = 4; // PML4, PDPT, PD, PT
+pub const VIRT_ADDR_BITS: u32 = 48;
 
 pub const PAGE_SHIFT: usize = (PAGE_SIZE - 1).count_ones() as usize;
 pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usize;
 
-// x86_64 doesn't shift physical address bits in PTEs like RISC-V does
-// RISC-V shifts by 2, x86_64 uses full alignment
-const PTE_ADDR_MASK: u64 = 0x000ffffffffff000; // Bits 12-51 for physical address
 
-// ============================================================================
-// INTERRUPT MODULE
-// ============================================================================
-// Provides interrupt control similar to RISC-V's CSR operations
-pub mod interrupt {
-    pub fn disable() {
-        unsafe {
-            core::arch::asm!("cli"); // Clear Interrupt Flag (vs RISC-V's csrc sstatus)
-        }
-    }
-
-    pub fn enable() {
-        unsafe {
-            core::arch::asm!("sti"); // Set Interrupt Flag (vs RISC-V's csrs sstatus)
-        }
-    }
-}
-
-// ============================================================================
-// BOOT ENTRY POINT
-// ============================================================================
-// This is the x86_64 equivalent of RISC-V's _start function
-// Key differences:
-// - x86_64 bootloaders (UEFI/multiboot) provide different boot info
-// - No hart ID (CPU ID obtained differently on x86)
-// - Different register conventions and stack setup
-
+/// Entry point for the boot CPU
+/// PVH boot protocol provides:
+/// - rbx = boot params address (we ignore for simplicity)
+/// - All other registers undefined
 #[unsafe(link_section = ".text.start")]
 #[unsafe(no_mangle)]
 #[naked]
 unsafe extern "C" fn _start() -> ! {
-    // TODO: This is a minimal stub. Full implementation needs:
-    // - Multiboot/UEFI header parsing
-    // - GDT/IDT setup
-    // - Stack setup per CPU
-    // - BSS clearing
-    // - Jump to Rust main
     unsafe {
         naked_asm! {
-            // Disable interrupts (equivalent to RISC-V's csrc sstatus)
+            // Read boot timestamp early (using TSC)
+            "rdtsc",
+            "shl rdx, 32",
+            "or rdx, rax",  // rdx = boot timestamp
+            
+            // Clear frame pointer
+            "xor rbp, rbp",
+            
+            // Disable interrupts
             "cli",
-
-            // TODO: Get CPU ID (equivalent to RISC-V's hart ID in a0)
-            // On x86_64, this requires CPUID instruction or APIC ID
-            "xor rdi, rdi", // For now, assume CPU 0
-
-            // TODO: Set up stack (equivalent to RISC-V's stack calculation)
-            // "mov rsp, offset __stack_start",
-            // "add rsp, STACK_SIZE",
-
-            // TODO: Clear BSS (similar to RISC-V's BSS clearing loop)
-
-            // TODO: Call Rust entry point
-            // "call main",
-
-            // Halt if we somehow return
+            
+            // Disable paging (should already be off in PVH)
+            "mov rax, cr0",
+            "and eax, 0x7fffffff",  // Clear PG bit
+            "mov cr0, rax",
+            
+            // Setup stack (assume CPU 0 for now)
+            "xor rdi, rdi",  // CPU ID = 0
+            "lea rax, [rip + __stack_start]",
+            "mov rcx, {stack_size}",
+            "lea rsp, [rax + rcx]",  // rsp = stack_start + stack_size
+            
+            // Fill stack with canary
+            "mov rsi, rsp",  // save stack top
+            "push rdi",      // save CPU ID
+            "push rdx",      // save boot timestamp
+            "mov rdi, rax",  // rdi = stack bottom
+            // rsi already = stack top
+            "call {fill_stack}",
+            "pop rdx",       // restore boot timestamp
+            "pop rdi",       // restore CPU ID
+            
+            // Clear BSS
+            "lea rdi, [rip + __bss_zero_start]",
+            "lea rcx, [rip + __bss_end]",
+            "sub rcx, rdi",
+            "xor rax, rax",
+            "rep stosb",
+            
+            // Call Rust main(cpuid: rdi, fdt: rsi, boot_ticks: rdx)
+            "xor rsi, rsi",  // No FDT on x86
+            "call {main}",
+            
+            // Should never return
             "2:",
             "hlt",
             "jmp 2b",
+            
+            stack_size = const crate::STACK_SIZE,
+            main = sym crate::main,
+            fill_stack = sym fill_stack
         }
     }
 }
 
-// ============================================================================
-// SECONDARY CPU ENTRY
-// ============================================================================
-// x86_64 equivalent of _start_secondary for Application Processors (APs)
-// On x86_64, APs are started via INIT-SIPI-SIPI sequence, not SBI like RISC-V
+/// Entry point for secondary CPUs (not implemented yet)
 #[naked]
 unsafe extern "C" fn _start_secondary() -> ! {
-    // TODO: Implement AP startup
-    // This is more complex on x86_64 as it requires:
-    // - Real mode to protected mode to long mode transition
-    // - Per-CPU GDT/IDT setup
-    // - Local APIC initialization
     unsafe {
         naked_asm! {
+            // For now, just halt secondary CPUs
             "cli",
+            "2:",
             "hlt",
+            "jmp 2b"
         }
     }
 }
 
-// ============================================================================
-// STACK CANARY FILL
-// ============================================================================
-// Direct port of RISC-V's fill_stack function
-// Uses different registers but same logic
+/// Fill stack with canary pattern
+/// rdi = bottom of stack, rsi = top of stack
 #[naked]
 unsafe extern "C" fn fill_stack() {
     unsafe {
         naked_asm! {
-            // Fill with 0xACE0BACE pattern
-            // rdi = bottom of stack (like RISC-V's t0)
-            // rsp = top of stack
-            // "mov rax, 0xACE0BACE",
-            // "1:",
-            // "mov [rdi], rax",
-            // "add rdi, 8",
-            // "cmp rdi, rsp",
-            // "jb 1b",
+            "mov rax, 0xACE0BACE",
+            "2:",
+            "mov [rdi], rax",
+            "add rdi, 8",
+            "cmp rdi, rsi",
+            "jb 2b",
             "ret"
         }
     }
 }
 
-// ============================================================================
-// KERNEL HANDOFF
-// ============================================================================
-// x86_64 equivalent of handoff_to_kernel
-// Key differences:
-// - Different calling convention (System V ABI vs RISC-V ABI)
-// - No SUM bit equivalent (user memory access handled differently)
-// - Different register usage for arguments
+/// Hand off control to the kernel
 pub unsafe fn handoff_to_kernel(cpuid: usize, boot_ticks: u64, init: &GlobalInitResult) -> ! {
-    // let stack = init.stacks_alloc.region_for_cpu(cpuid);
-    // let tls = init
-    //     .maybe_tls_alloc
-    //     .as_ref()
-    //     .map(|tls| tls.region_for_hart(cpuid))
-    //     .unwrap_or_default();
+    let stack = init.stacks_alloc.region_for_cpu(cpuid);
+    let tls = init
+        .maybe_tls_alloc
+        .as_ref()
+        .map(|tls| tls.region_for_hart(cpuid))
+        .unwrap_or_default();
 
-    // log::debug!("CPU {cpuid} Jumping to kernel...");
-    // log::trace!(
-    //     "CPU {cpuid} entry: {:#x}, arguments: rdi={cpuid} rsi={:?} stack={stack:#x?} tls={tls:#x?}",
-    //     init.kernel_entry,
-    //     init.boot_info
-    // );
+    log::debug!("CPU {cpuid} Jumping to kernel...");
+    log::trace!(
+        "CPU {cpuid} entry: {:#x}, arguments: rdi={cpuid} rsi={:?} stack={stack:#x?} tls={tls:#x?}",
+        init.kernel_entry,
+        init.boot_info
+    );
 
-    // init.barrier.wait();
+    init.barrier.wait();
 
-    // unsafe {
-    //     // x86_64 doesn't have an equivalent to RISC-V's sstatus.SUM bit
-    //     // User memory access is controlled via page table permissions
-
-    //     asm! {
-    //         // Set up stack (RSP instead of RISC-V's SP)
-    //         "mov rsp, {stack_top}",
-
-    //         // TODO: Set up TLS (FS segment base instead of RISC-V's TP)
-    //         // This requires MSR writes which need to be implemented
-
-    //         // Fill stack with canary
-    //         "mov rdi, {stack_bottom}",
-    //         "call {fill_stack}",
-
-    //         // Clear return address (same concept as RISC-V)
-    //         "xor rax, rax",
-    //         "push rax", // Push 0 as return address
-
-    //         // Jump to kernel
-    //         // x86_64 System V ABI: rdi, rsi, rdx for first 3 args
-    //         // (vs RISC-V's a0, a1, a2)
-    //         "jmp {kernel_entry}",
-
-    //         // Should never reach here
-    //         "1:",
-    //         "hlt",
-    //         "jmp 1b",
-
-    //         in("rdi") cpuid,
-    //         in("rsi") init.boot_info,
-    //         in("rdx") boot_ticks,
-    //         stack_bottom = in(reg) stack.start,
-    //         stack_top = in(reg) stack.end,
-    //         kernel_entry = in(reg) init.kernelexo_entry,
-    //         fill_stack = sym fill_stack,
-    //         options(noreturn)
-    //     }
-    // }
-    todo!("handoff_to_kernel not implemented for x86_64");
-    panic!("handoff_to_kernel not implemented for x86_64");
+    unsafe {
+        asm! {
+            // Set up stack
+            "mov rsp, {stack_top}",
+            
+            // Set up TLS (FS base)
+            "mov rcx, 0xc0000100",  // FS_BASE MSR
+            "mov rax, {tls_start}",
+            "mov rdx, {tls_start}",
+            "shr rdx, 32",
+            "wrmsr",
+            
+            // Fill stack with canary
+            "mov rdi, {stack_bottom}",
+            "mov rsi, {stack_top}",
+            "call {fill_stack}",
+            
+            // Clear return address
+            "xor rax, rax",
+            
+            // Jump to kernel (System V ABI)
+            "jmp {kernel_entry}",
+            
+            in("rdi") cpuid,
+            in("rsi") init.boot_info,
+            in("rdx") boot_ticks,
+            stack_bottom = in(reg) stack.start,
+            stack_top = in(reg) stack.end,
+            tls_start = in(reg) tls.start,
+            kernel_entry = in(reg) init.kernel_entry,
+            fill_stack = sym fill_stack,
+            options(noreturn)
+        }
+    }
 }
 
-// ============================================================================
-// SECONDARY CPU STARTUP
-// ============================================================================
-// x86_64 equivalent of start_secondary_harts
-// Major differences:
-// - Uses APIC and INIT-SIPI-SIPI instead of SBI HSM
-// - More complex due to x86 legacy (real mode startup)
-pub fn start_secondary_harts(boot_cpu: usize, minfo: &MachineInfo) -> crate::Result<()> {
-    // TODO: Implement x86_64 MP startup
-    // This requires:
-    // 1. Setting up AP trampoline code in low memory
-    // 2. Using Local APIC to send INIT-SIPI-SIPI sequence
-    // 3. Synchronization via shared memory flags
-
-    // For now, just return Ok as single CPU
+/// Start secondary CPUs (not implemented yet)
+pub fn start_secondary_harts(boot_cpu: usize, _minfo: &MachineInfo) -> crate::Result<()> {
     log::warn!("x86_64 SMP not yet implemented, running on single CPU");
     Ok(())
 }
 
-// ============================================================================
-// PAGE TABLE MANAGEMENT
-// ============================================================================
-// This section implements x86_64 page table operations
-// Key differences from RISC-V:
-// - 4-level instead of 3-level
-// - Different PTE format and flags
-// - No address bit shifting in PTEs
-
-/// Map a contiguous range of physical memory into virtual address space
-/// This is a direct port of RISC-V's map_contiguous with x86_64 adaptations
 pub unsafe fn map_contiguous(
     root_pgtable: usize,
     frame_alloc: &mut FrameAllocator,
@@ -252,20 +207,10 @@ pub unsafe fn map_contiguous(
     phys_off: usize,
 ) -> crate::Result<()> {
     let mut remaining_bytes = len.get();
-    debug_assert!(
-        remaining_bytes >= PAGE_SIZE,
-        "address range span be at least one page"
-    );
-    debug_assert!(
-        virt % PAGE_SIZE == 0,
-        "virtual address must be aligned to at least 4KiB page size ({virt:#x})"
-    );
-    debug_assert!(
-        phys % PAGE_SIZE == 0,
-        "physical address must be aligned to at least 4KiB page size ({phys:#x})"
-    );
+    debug_assert!(remaining_bytes >= PAGE_SIZE);
+    debug_assert!(virt % PAGE_SIZE == 0);
+    debug_assert!(phys % PAGE_SIZE == 0);
 
-    // Same algorithm as RISC-V but with 4 levels instead of 3
     'outer: while remaining_bytes > 0 {
         let mut pgtable: NonNull<PageTableEntry> = pgtable_ptr_from_phys(root_pgtable, phys_off);
 
@@ -273,33 +218,24 @@ pub unsafe fn map_contiguous(
             let index = pte_index_for_level(virt, lvl);
             let pte = unsafe { pgtable.add(index).as_mut() };
 
-            if !pte.is_present() {
+            if !pte.is_valid() {
                 if can_map_at_level(virt, phys, remaining_bytes, lvl) {
                     let page_size = page_size_for_level(lvl);
-
-                    // Create leaf PTE
-                    pte.set_leaf(phys, PageTableFlags::from(flags), lvl);
-
+                    pte.replace_address_and_flags(phys, PTEFlags::VALID | PTEFlags::from(flags));
+                    
                     virt = virt.checked_add(page_size).unwrap();
                     phys = phys.checked_add(page_size).unwrap();
                     remaining_bytes -= page_size;
                     continue 'outer;
                 } else {
-                    // Allocate new page table
                     let frame = frame_alloc.allocate_one_zeroed(phys_off)?;
-
-                    // TODO: Memory barrier (MFENCE on x86_64)
-
-                    pte.set_table(frame);
+                    pte.replace_address_and_flags(frame, PTEFlags::VALID);
                     pgtable = pgtable_ptr_from_phys(frame, phys_off);
                 }
             } else if !pte.is_leaf() {
-                // Follow to next level
-                pgtable = pgtable_ptr_from_phys(pte.address(), phys_off);
+                pgtable = pgtable_ptr_from_phys(pte.get_address_and_flags().0, phys_off);
             } else {
-                unreachable!(
-                    "Invalid state: PTE can't be valid leaf (this means {virt:#x} is already mapped)"
-                );
+                unreachable!("Invalid state: {virt:#x} is already mapped");
             }
         }
     }
@@ -307,8 +243,6 @@ pub unsafe fn map_contiguous(
     Ok(())
 }
 
-/// Remap an already-mapped range to new physical addresses
-/// Direct port of RISC-V's remap_contiguous
 pub unsafe fn remap_contiguous(
     root_pgtable: usize,
     mut virt: usize,
@@ -316,9 +250,10 @@ pub unsafe fn remap_contiguous(
     len: NonZero<usize>,
     phys_off: usize,
 ) {
-    // Implementation follows same logic as RISC-V version
-    // but uses x86_64 PTE format
     let mut remaining_bytes = len.get();
+    debug_assert!(remaining_bytes >= PAGE_SIZE);
+    debug_assert!(virt % PAGE_SIZE == 0);
+    debug_assert!(phys % PAGE_SIZE == 0);
 
     'outer: while remaining_bytes > 0 {
         let mut pgtable = pgtable_ptr_from_phys(root_pgtable, phys_off);
@@ -327,66 +262,57 @@ pub unsafe fn remap_contiguous(
             let index = pte_index_for_level(virt, lvl);
             let pte = unsafe { pgtable.add(index).as_mut() };
 
-            if pte.is_present() && pte.is_leaf() {
+            if pte.is_valid() && pte.is_leaf() {
                 let page_size = page_size_for_level(lvl);
-
-                debug_assert!(
-                    can_map_at_level(virt, phys, remaining_bytes, lvl),
-                    "remapping requires the same alignment"
-                );
-
-                let flags = pte.flags();
-                pte.set_address(phys, flags);
+                debug_assert!(can_map_at_level(virt, phys, remaining_bytes, lvl));
+                
+                let (_old_phys, flags) = pte.get_address_and_flags();
+                pte.replace_address_and_flags(phys, flags);
 
                 virt = virt.checked_add(page_size).unwrap();
                 phys = phys.checked_add(page_size).unwrap();
                 remaining_bytes -= page_size;
                 continue 'outer;
-            } else if pte.is_present() {
-                pgtable = pgtable_ptr_from_phys(pte.address(), phys_off);
+            } else if pte.is_valid() {
+                pgtable = pgtable_ptr_from_phys(pte.get_address_and_flags().0, phys_off);
             } else {
-                unreachable!("Invalid state: PTE cant be absent");
+                unreachable!("Invalid state");
             }
         }
     }
 }
 
-/// Activate an address space by loading CR3
-/// Equivalent to RISC-V's satp register write
 pub unsafe fn activate_aspace(pgtable: usize) {
     unsafe {
-        // x86_64: Load CR3 with page table base
-        // Equivalent to RISC-V: satp::set(Mode::Sv39, ASID, ppn)
         asm!("mov cr3, {}", in(reg) pgtable);
     }
 }
 
-/// Get page size for a given level
-/// x86_64 levels: 0=1GB (PDPT), 1=2MB (PD), 2=4KB (PT), 3=4KB (PML4 doesn't have pages)
 pub fn page_size_for_level(level: usize) -> usize {
     assert!(level < PAGE_TABLE_LEVELS);
+    // x86_64 uses 4-level paging, but we map it to match RISC-V's expectations
+    // Level 3 (PML4) and 2 (PDPT) can't have leaf pages in our usage
     match level {
-        0 => 1 << 30, // 1GB pages
-        1 => 1 << 21, // 2MB pages
-        2 => 1 << 12, // 4KB pages
-        3 => 1 << 12, // PML4 level (no direct pages)
+        0 => 1 << 12, // 4KB pages (PT level)
+        1 => 1 << 21, // 2MB pages (PD level)
+        2 => 1 << 30, // 1GB pages (PDPT level)
+        3 => 1 << 30, // PML4 doesn't have pages, return 1GB
         _ => unreachable!(),
     }
 }
 
-/// Extract page table index from virtual address for given level
-/// Same concept as RISC-V but adapted for 4-level paging
 pub fn pte_index_for_level(virt: usize, lvl: usize) -> usize {
     assert!(lvl < PAGE_TABLE_LEVELS);
-    // Each level uses 9 bits of the virtual address
     let index = (virt >> (PAGE_SHIFT + lvl * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
     debug_assert!(index < PAGE_TABLE_ENTRIES);
     index
 }
 
-/// Check if we can map at this level given alignment and size
-/// Same logic as RISC-V
 pub fn can_map_at_level(virt: usize, phys: usize, remaining_bytes: usize, lvl: usize) -> bool {
+    // Don't allow leaf pages at PML4 level
+    if lvl >= 3 {
+        return false;
+    }
     let page_size = page_size_for_level(lvl);
     virt % page_size == 0 && phys % page_size == 0 && remaining_bytes >= page_size
 }
@@ -395,153 +321,97 @@ fn pgtable_ptr_from_phys(phys: usize, phys_off: usize) -> NonNull<PageTableEntry
     NonNull::new(phys_off.checked_add(phys).unwrap() as *mut PageTableEntry).unwrap()
 }
 
-// ============================================================================
-// PAGE TABLE ENTRY
-// ============================================================================
-// x86_64 PTE format is different from RISC-V:
-// - Bits 0-11: Flags
-// - Bits 12-51: Physical address (no shifting like RISC-V)
-// - Bits 52-62: Available/ignored
-// - Bit 63: NX (No Execute)
-
 #[repr(transparent)]
-#[derive(Clone, Copy)]
 pub struct PageTableEntry {
-    bits: u64,
+    bits: usize,
 }
 
 impl PageTableEntry {
-    pub fn is_present(&self) -> bool {
-        self.bits & PageTableFlags::PRESENT.bits() != 0
+    pub fn is_valid(&self) -> bool {
+        PTEFlags::from_bits_retain(self.bits).contains(PTEFlags::VALID)
     }
 
     pub fn is_leaf(&self) -> bool {
-        // In x86_64, leaf is determined by:
-        // - HUGE bit for large pages (2MB, 1GB)
-        // - Or being at the lowest level (PT)
-        // This is different from RISC-V which uses R/W/X bits
-        self.is_present() && (self.bits & PageTableFlags::HUGE.bits() != 0)
+        // For x86_64, a page is a leaf if it has R/W/X-like permissions
+        // or the PS (page size) bit for large pages
+        PTEFlags::from_bits_retain(self.bits)
+            .intersects(PTEFlags::WRITABLE | PTEFlags::USER | PTEFlags::HUGE)
     }
 
-    pub fn address(&self) -> usize {
-        (self.bits & PTE_ADDR_MASK) as usize
+    pub fn replace_address_and_flags(&mut self, address: usize, flags: PTEFlags) {
+        self.bits = 0;
+        self.bits |= (address & !0xFFF) | flags.bits();
     }
 
-    pub fn flags(&self) -> PageTableFlags {
-        PageTableFlags::from_bits_truncate(self.bits)
-    }
-
-    pub fn set_leaf(&mut self, phys: usize, flags: PageTableFlags, level: usize) {
-        self.bits = (phys as u64 & PTE_ADDR_MASK) | flags.bits();
-        // Set HUGE bit for large pages (levels 0 and 1)
-        if level < 2 {
-            self.bits |= PageTableFlags::HUGE.bits();
-        }
-    }
-
-    pub fn set_table(&mut self, table_addr: usize) {
-        // For table entries, set minimal permissions
-        self.bits = (table_addr as u64 & PTE_ADDR_MASK)
-            | PageTableFlags::PRESENT.bits()
-            | PageTableFlags::WRITABLE.bits()
-            | PageTableFlags::USER.bits();
-    }
-
-    pub fn set_address(&mut self, phys: usize, flags: PageTableFlags) {
-        self.bits = (phys as u64 & PTE_ADDR_MASK) | flags.bits();
+    pub fn get_address_and_flags(&self) -> (usize, PTEFlags) {
+        let addr = self.bits & !0xFFF;
+        let flags = PTEFlags::from_bits_truncate(self.bits);
+        (addr, flags)
     }
 }
 
 impl fmt::Debug for PageTableEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if !self.is_present() {
-            write!(f, "PageTableEntry::NotPresent")
-        } else if self.is_leaf() {
-            write!(
-                f,
-                "PageTableEntry::Leaf(0x{:x}, {:?})",
-                self.address(),
-                self.flags()
-            )
-        } else {
-            write!(f, "PageTableEntry::Table(0x{:x})", self.address())
-        }
+        let (addr, flags) = self.get_address_and_flags();
+        f.debug_struct("PageTableEntry")
+            .field("addr", &format_args!("{addr:#x}"))
+            .field("flags", &flags)
+            .finish()
     }
 }
 
-// ============================================================================
-// PAGE TABLE FLAGS
-// ============================================================================
-// x86_64 page table flags - very different from RISC-V
 bitflags! {
-    #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-    pub struct PageTableFlags: u64 {
-        const PRESENT = 1 << 0;       // Valid bit (like RISC-V VALID)
-        const WRITABLE = 1 << 1;      // Write permission (like RISC-V WRITE)
-        const USER = 1 << 2;          // User accessible (like RISC-V USER)
-        const WRITE_THROUGH = 1 << 3; // Cache policy
-        const NO_CACHE = 1 << 4;      // Cache disable
-        const ACCESSED = 1 << 5;      // Like RISC-V ACCESSED
-        const DIRTY = 1 << 6;         // Like RISC-V DIRTY
-        const HUGE = 1 << 7;          // Large page (2MB/1GB)
-        const GLOBAL = 1 << 8;        // Like RISC-V GLOBAL
-        const NO_EXECUTE = 1 << 63;   // NX bit (inverse of RISC-V EXECUTE)
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
+    pub struct PTEFlags: usize {
+        const VALID = 1 << 0;      // Present bit
+        const WRITABLE = 1 << 1;   // Write permission
+        const USER = 1 << 2;       // User accessible
+        const PWT = 1 << 3;        // Write through
+        const PCD = 1 << 4;        // Cache disable
+        const ACCESSED = 1 << 5;   // Accessed bit
+        const DIRTY = 1 << 6;      // Dirty bit
+        const HUGE = 1 << 7;       // Page size bit
+        const GLOBAL = 1 << 8;     // Global page
+        const NX = 1 << 63;        // No execute
     }
 }
 
-/// Convert generic flags to x86_64 specific flags
-/// Key difference: x86_64 uses NO_EXECUTE bit vs RISC-V's EXECUTE bit
-impl From<Flags> for PageTableFlags {
+impl From<Flags> for PTEFlags {
     fn from(flags: Flags) -> Self {
-        // let mut result = PageTableFlags::PRESENT | PageTableFlags::ACCESSED | PageTableFlags::DIRTY;
+        let mut out = Self::VALID | Self::DIRTY | Self::ACCESSED;
 
-        // if flags.contains(Flags::WRITE) {
-        //     result |= PageTableFlags::WRITABLE;
-        // }
-
-        // if flags.contains(Flags::USER) {
-        //     result |= PageTableFlags::USER;
-        // }
-
-        // // Note the inversion: RISC-V has EXECUTE, x86_64 has NO_EXECUTE
-        // if !flags.contains(Flags::EXECUTE) {
-        //     result |= PageTableFlags::NO_EXECUTE;
-        // }
-
-        // // TODO: Handle DEVICE flag for MMIO (set NO_CACHE)
-
-        // result
+        // x86_64 is always readable if present
+        if flags.contains(Flags::WRITE) {
+            out.insert(Self::WRITABLE);
+        }
         
-        todo!("From<Flags> for PageTableFlags not implemented for x86_64");
-        panic!("From<Flags> for PageTableFlags not implemented for x86_64");
+        // Note: x86_64 uses NX bit (inverse of execute)
+        if !flags.contains(Flags::EXECUTE) {
+            out.insert(Self::NX);
+        }
+
+        out
     }
 }
 
-impl From<PageTableFlags> for Flags {
-    fn from(arch_flags: PageTableFlags) -> Self {
-        // let mut out = Flags::empty();
+impl From<PTEFlags> for Flags {
+    fn from(arch_flags: PTEFlags) -> Self {
+        let mut out = Flags::empty();
 
-        // // Always readable on x86_64 if present
-        // if arch_flags.contains(PageTableFlags::PRESENT) {
-        //     out.insert(Flags::READ);
-        // }
+        // x86_64 pages are always readable if valid
+        if arch_flags.contains(PTEFlags::VALID) {
+            out.insert(Self::READ);
+        }
 
-        // if arch_flags.contains(PageTableFlags::WRITABLE) {
-        //     out.insert(Flags::WRITE);
-        // }
+        if arch_flags.contains(PTEFlags::WRITABLE) {
+            out.insert(Self::WRITE);
+        }
 
-        // // Note the inversion again
-        // if !arch_flags.contains(PageTableFlags::NO_EXECUTE) {
-        //     out.insert(Flags::EXECUTE);
-        // }
+        // Note the inversion
+        if !arch_flags.contains(PTEFlags::NX) {
+            out.insert(Self::EXECUTE);
+        }
 
-        // if arch_flags.contains(PageTableFlags::USER) {
-        //     out.insert(Flags::USER);
-        // }
-
-        // out
-
-        todo!("From<PageTableFlags> for Flags not implemented for x86_64");
-        panic!("From<PageTableFlags> for Flags not implemented for x86_64");
+        out
     }
 }

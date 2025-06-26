@@ -70,8 +70,7 @@ pub fn spawn(
         }
         Architecture::X86_64 => {
             let mut cmd = Command::new("qemu-system-x86_64");
-            println!("{}", image.to_str().unwrap());
-
+            // println!("{}", image.to_str().unwrap());
             cmd.args([
                 "-machine",
                 "q35",

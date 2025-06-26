@@ -28,5 +28,8 @@ bitflags.workspace = true
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
 
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+x86.workspace = true
+
 [lints]
 workspace = true
