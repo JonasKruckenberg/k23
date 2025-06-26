@@ -64,12 +64,14 @@ pub fn spawn(
                 "-monitor",
                 "unix:qemu-monitor-socket,server,nowait",
                 "-kernel",
-                image.to_str().unwrap(),
+                image.to_str().unwrap(), // target/riscv64gc-unknown-none-elf/debug/loader
             ]);
             cmd
         }
         Architecture::X86_64 => {
             let mut cmd = Command::new("qemu-system-x86_64");
+            println!("{}", image.to_str().unwrap());
+
             cmd.args([
                 "-machine",
                 "q35",
@@ -98,7 +100,7 @@ pub fn spawn(
                 "-monitor",
                 "unix:qemu-monitor-socket,server,nowait",
                 "-kernel",
-                image.to_str().unwrap(),
+                image.to_str().unwrap(), // target/x86_64-unknown-none/debug/loader
             ]);
             cmd
         }

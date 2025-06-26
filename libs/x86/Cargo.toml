@@ -1,6 +1,6 @@
 [package]
-name = "x86_64"
-description = "x86_64 architecture support crate"
+name = "x86"
+description = "x86/x86_64 architecture support crate"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
