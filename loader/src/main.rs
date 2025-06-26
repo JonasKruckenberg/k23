@@ -50,6 +50,19 @@ pub type Result<T> = core::result::Result<T, Error>;
 ///
 /// The passed `opaque` ptr must point to a valid memory region.
 unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
+    // Early serial output for x86_64 debugging
+    #[cfg(target_arch = "x86_64")]
+    {
+        unsafe {
+            // Output 'X' to serial port to indicate we reached main
+            core::arch::asm!(
+                "out dx, al",
+                in("dx") 0x3F8u16,
+                in("al") b'X',
+            );
+        }
+    }
+    
     static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
     let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
 
@@ -85,7 +98,28 @@ unsafe impl Send for GlobalInitResult {}
 unsafe impl Sync for GlobalInitResult {}
 
 fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
+    // Debug marker before logger init
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        core::arch::asm!(
+            "out dx, al",
+            in("dx") 0x3F8u16,
+            in("al") b'L',
+        );
+    }
+    
     logger::init(LOG_LEVEL.to_level_filter());
+    
+    // Debug marker after logger init
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        core::arch::asm!(
+            "out dx, al",
+            in("dx") 0x3F8u16,
+            in("al") b'M',
+        );
+    }
+    
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");

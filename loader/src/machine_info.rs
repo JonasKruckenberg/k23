@@ -35,9 +35,33 @@ pub struct MachineInfo<'dt> {
 }
 
 impl MachineInfo<'_> {
+    #[cfg(target_arch = "x86_64")]
+    fn minimal_x86_64() -> Self {
+        // Create a minimal machine info for x86_64
+        // Assume we have 256MB of RAM starting at 4MB (above our loader at 1MB)
+        let mut memories = ArrayVec::new();
+        memories.push(Range::from(0x400000..0x10000000)); // 4MB to 256MB
+        
+        // Create a dummy FDT slice (won't be used)
+        static DUMMY_FDT: [u8; 4] = [0; 4];
+        
+        MachineInfo {
+            fdt: &DUMMY_FDT,
+            memories,
+            rng_seed: None,
+            hart_mask: 0b1, // Only CPU 0 is online
+        }
+    }
+
     pub unsafe fn from_dtb(fdt_ptr: *const c_void) -> crate::Result<Self> {
+        // On x86_64, we don't have FDT - create a minimal machine info
+        #[cfg(target_arch = "x86_64")]
+        if fdt_ptr.is_null() {
+            return Ok(Self::minimal_x86_64());
+        }
+        
         assert!(!fdt_ptr.is_null());
-        assert_eq!(fdt_ptr.align_offset(align_of::<u32>()), 0); // make sure the pointer is aligned correctly
+        assert_eq!(fdt_ptr.align_offset(core::mem::align_of::<u32>()), 0); // make sure the pointer is aligned correctly
 
         // Safety: we made a reasonable effort to ensure the pointer is valid
         let fdt = unsafe { Fdt::from_ptr(fdt_ptr.cast())? };

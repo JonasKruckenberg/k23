@@ -1,4 +1,4 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025 bubblepipe
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -51,47 +51,46 @@ pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usi
 unsafe extern "C" fn _start() -> ! {
     unsafe {
         naked_asm! {
-            // Read boot timestamp early (using TSC)
-            "rdtsc",
-            "shl rdx, 32",
-            "or rdx, rax",  // rdx = boot timestamp
+            // Minimal setup to get running
             
-            // Clear frame pointer
-            "xor rbp, rbp",
+            // Output 'S' to serial to indicate we're in _start
+            "mov al, 0x53",      // 'S'
+            "mov dx, 0x3F8",     // COM1 port
+            "out dx, al",
             
             // Disable interrupts
             "cli",
             
-            // Disable paging (should already be off in PVH)
-            "mov rax, cr0",
-            "and eax, 0x7fffffff",  // Clear PG bit
-            "mov cr0, rax",
+            // Set up basic segments for x86_64 flat memory model
+            "xor ax, ax",
+            "mov ds, ax",
+            "mov es, ax",
+            "mov fs, ax",
+            "mov gs, ax",
+            "mov ss, ax",
             
-            // Setup stack (assume CPU 0 for now)
-            "xor rdi, rdi",  // CPU ID = 0
-            "lea rax, [rip + __stack_start]",
-            "mov rcx, {stack_size}",
-            "lea rsp, [rax + rcx]",  // rsp = stack_start + stack_size
+            // Set up a temporary stack at a known good location
+            // Use 2MB as temporary stack location (well above our code at 1MB)
+            "mov rsp, 0x200000",
             
-            // Fill stack with canary
-            "mov rsi, rsp",  // save stack top
-            "push rdi",      // save CPU ID
-            "push rdx",      // save boot timestamp
-            "mov rdi, rax",  // rdi = stack bottom
-            // rsi already = stack top
-            "call {fill_stack}",
-            "pop rdx",       // restore boot timestamp
-            "pop rdi",       // restore CPU ID
+            // Clear direction flag for string operations
+            "cld",
             
-            // Clear BSS
+            // Clear BSS section (uninitialized globals)
             "lea rdi, [rip + __bss_zero_start]",
             "lea rcx, [rip + __bss_end]",
-            "sub rcx, rdi",
-            "xor rax, rax",
-            "rep stosb",
+            "sub rcx, rdi",      // rcx = size of BSS
+            "jz 3f",             // Skip if BSS is empty
+            "xor eax, eax",      // Zero to write
+            "rep stosb",         // Clear BSS byte by byte
+            "3:",
             
-            // Call Rust main(cpuid: rdi, fdt: rsi, boot_ticks: rdx)
-            "xor rsi, rsi",  // No FDT on x86
+            // Set up arguments for main()
+            "xor rdi, rdi",      // CPU ID = 0
+            "xor rsi, rsi",      // No FDT on x86
+            "xor rdx, rdx",      // boot_ticks = 0
+            
+            // Call Rust main
             "call {main}",
             
             // Should never return
@@ -99,9 +98,9 @@ unsafe extern "C" fn _start() -> ! {
             "hlt",
             "jmp 2b",
             
-            stack_size = const crate::STACK_SIZE,
+            // stack_size = const crate::STACK_SIZE,
             main = sym crate::main,
-            fill_stack = sym fill_stack
+            // fill_stack = sym fill_stack
         }
     }
 }

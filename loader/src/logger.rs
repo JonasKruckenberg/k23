@@ -49,9 +49,7 @@ fn print(args: core::fmt::Arguments) {
             riscv::hio::_print(args);
         }
         else if #[cfg(target_arch = "x86_64")] {
-            // TODO: Implement x86_64 print function
-            // For now, just drop the output
-            let _ = args;
+            x86::serial::_print(args);
         }
         else {
             compile_error!("unsupported target architecture");
