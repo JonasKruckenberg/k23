@@ -42,40 +42,103 @@ pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usi
 
 
 /// Entry point for the boot CPU
-/// PVH boot protocol provides:
-/// - rbx = boot params address (we ignore for simplicity)
+/// PVH boot protocol starts us in 32-bit protected mode with:
+/// - ebx = boot params address (we ignore for simplicity)
 /// - All other registers undefined
+/// We need to transition to 64-bit long mode before running 64-bit code
 #[unsafe(link_section = ".text.start")]
 #[unsafe(no_mangle)]
 #[naked]
 unsafe extern "C" fn _start() -> ! {
     unsafe {
         naked_asm! {
-            // Minimal setup to get running
-            
-            // Output 'S' to serial to indicate we're in _start
-            "mov al, 0x53",      // 'S'
-            "mov dx, 0x3F8",     // COM1 port
-            "out dx, al",
+            // We start in 32-bit protected mode, need to transition to 64-bit
+            ".code32",
             
             // Disable interrupts
             "cli",
             
-            // Output '1' after cli
-            "mov al, 0x31",      // '1'
-            "out dx, al",
+            // Enable PAE (required for long mode)
+            "mov eax, cr4",
+            "or eax, 0x20",      // Set PAE bit
+            "mov cr4, eax",
             
-            // Set up basic segments for x86_64 flat memory model
-            "xor ax, ax",
+            // Set up initial page tables for identity mapping
+            // We'll create a minimal identity map for the first 4GB
+            // PML4 at 0x1000, PDPT at 0x2000, PD at 0x3000
+            
+            // Clear page table area
+            "mov edi, 0x1000",
+            "xor eax, eax",
+            "mov ecx, 0x3000",   // Clear 12KB (3 pages)
+            "rep stosd",
+            
+            // Set up PML4[0] -> PDPT
+            "mov dword ptr [0x1000], 0x2003",  // PDPT address | Present | Writable
+            
+            // Set up PDPT[0] -> PD
+            "mov dword ptr [0x2000], 0x3003",  // PD address | Present | Writable
+            
+            // Set up PD entries for first 1GB (512 * 2MB pages)
+            // Using 2MB pages (bit 7 = PS)
+            "mov edi, 0x3000",
+            "mov eax, 0x83",     // Present | Writable | PS (2MB pages)
+            "mov ecx, 512",      // 512 entries
+            "2:",
+            "mov [edi], eax",
+            "add eax, 0x200000", // Next 2MB
+            "add edi, 8",
+            "loop 2b",
+            
+            // Load PML4 into CR3
+            "mov eax, 0x1000",
+            "mov cr3, eax",
+            
+            // Enable long mode in EFER MSR
+            // WRMSR uses: ECX = MSR number, EDX:EAX = value
+            "mov ecx, 0xC0000080",  // EFER MSR number
+            "mov eax, 0x900",       // LME + NXE           
+            "xor edx, edx",         // Upper 32 bits = 0
+            "wrmsr",
+            
+            // Enable paging and protected mode
+            "mov eax, cr0",
+            "or eax, 0x80000001",   // Set PG and PE bits
+            "mov cr0, eax",
+            
+            // Load a temporary GDT with 64-bit code segment
+            "lgdt [5f]",         // Load GDT descriptor at label 5
+            
+            // Far jump to 64-bit code
+            // Use manual encoding for far jump
+            ".byte 0xEA",        // Far jump opcode
+            ".long 6f",          // Offset to label 6
+            ".word 0x08",        // Code segment selector
+            
+            // GDT descriptor (label 5)
+            ".align 4",
+            "5:",
+            ".word 23",          // GDT limit (3 entries * 8 - 1)
+            ".long 4f",          // GDT base address (label 4)
+            
+            // Temporary GDT (label 4)
+            ".align 16",
+            "4:",
+            ".quad 0",                          // Null descriptor
+            ".quad 0x00af9a000000ffff",        // 64-bit code segment
+            ".quad 0x00cf92000000ffff",        // Data segment
+            
+            // Now in 64-bit mode (label 6)
+            ".code64",
+            "6:",
+            
+            // Set up data segments for 64-bit mode
+            "mov ax, 0x10",      // Data segment selector
             "mov ds, ax",
             "mov es, ax",
             "mov fs, ax",
             "mov gs, ax",
             "mov ss, ax",
-            
-            // Output '2' after segments
-            "mov al, 0x32",      // '2'
-            "out dx, al",
             
             // Set up a temporary stack at a known good location
             // Use 2MB as temporary stack location (well above our code at 1MB)
@@ -92,6 +155,11 @@ unsafe extern "C" fn _start() -> ! {
             "xor eax, eax",      // Zero to write
             "rep stosb",         // Clear BSS byte by byte
             "3:",
+            
+            // Output '!' before calling main
+            "mov al, 0x21",      // '!'
+            "mov dx, 0x3F8",     // COM1 port
+            "out dx, al",
             
             // Set up arguments for main()
             "xor rdi, rdi",      // CPU ID = 0

@@ -46,32 +46,25 @@ pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// # Safety
-///
-/// The passed `opaque` ptr must point to a valid memory region.
-unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
-    // Early serial output for x86_64 debugging
-    #[cfg(target_arch = "x86_64")]
-    {
-        unsafe {
-            // Output 'X' to serial port to indicate we reached main
-            core::arch::asm!(
-                "out dx, al",
-                in("dx") 0x3F8u16,
-                in("al") b'X',
-            );
-        }
+#[cfg(target_arch = "x86_64")]
+fn debug_print(ch: u8) {
+    unsafe {
+        core::arch::asm!(
+            "out dx, al",
+            in("dx") 0x3F8u16,
+            in("al") ch,
+        );
     }
-    
-    // For x86_64, skip OnceLock for now to debug
+}
+
+unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
+
+    // Output 'X' to serial port to indicate we reached main
     #[cfg(target_arch = "x86_64")]
-    let res = &do_global_init(hartid, opaque);
-    
-    #[cfg(not(target_arch = "x86_64"))]
-    let res = {
-        static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
-        GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque))
-    };
+    debug_print(b'X');
+
+    static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
+    let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
 
     // Enable the MMU on all harts. Note that this technically reenables it on the initializing hart
     // but there is no harm in that.
@@ -107,13 +100,7 @@ unsafe impl Sync for GlobalInitResult {}
 fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     // Debug marker before logger init
     #[cfg(target_arch = "x86_64")]
-    unsafe {
-        core::arch::asm!(
-            "out dx, al",
-            in("dx") 0x3F8u16,
-            in("al") b'L',
-        );
-    }
+    debug_print(b'*');
     
     // For x86_64, skip logger to avoid string literal access issues with PVH
     #[cfg(not(target_arch = "x86_64"))]
@@ -121,49 +108,25 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     
     // Debug marker after logger init skip
     #[cfg(target_arch = "x86_64")]
-    unsafe {
-        core::arch::asm!(
-            "out dx, al",
-            in("dx") 0x3F8u16,
-            in("al") b'M',
-        );
-    }
+    debug_print(b'M');
     
     // Safety: TODO
     // let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
 
     // Debug marker before MachineInfo creation
     #[cfg(target_arch = "x86_64")]
-    unsafe {
-        core::arch::asm!(
-            "out dx, al",
-            in("dx") 0x3F8u16,
-            in("al") b'1',
-        );
-    }
+    debug_print(b'1');
 
     let minfo = unsafe {
         // Debug marker right before match
         #[cfg(target_arch = "x86_64")]
-        {
-            core::arch::asm!(
-                "out dx, al",
-                in("dx") 0x3F8u16,
-                in("al") b'a',
-            );
-        }
+        debug_print(b'a');
         
         match MachineInfo::from_dtb(opaque) {
             Ok(info) => {
                 // Debug marker for successful creation
                 #[cfg(target_arch = "x86_64")]
-                {
-                    core::arch::asm!(
-                        "out dx, al",
-                        in("dx") 0x3F8u16,
-                        in("al") b'2',
-                    );
-                }
+                debug_print(b'2');
                 info
             },
             Err(_) => {
@@ -189,25 +152,13 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     
     // Debug marker after machine info creation
     #[cfg(target_arch = "x86_64")]
-    unsafe {
-        core::arch::asm!(
-            "out dx, al",
-            in("dx") 0x3F8u16,
-            in("al") b'N',
-        );
-    }
+    debug_print(b'N');
     
     log::debug!("\n{minfo}");
 
     // Debug marker before start_secondary_harts
     #[cfg(target_arch = "x86_64")]
-    unsafe {
-        core::arch::asm!(
-            "out dx, al",
-            in("dx") 0x3F8u16,
-            in("al") b'O',
-        );
-    }
+    debug_print(b'O');
 
     arch::start_secondary_harts(hartid, &minfo).unwrap();
 
