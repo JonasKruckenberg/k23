@@ -37,31 +37,13 @@ pub struct MachineInfo<'dt> {
 impl MachineInfo<'_> {
     #[cfg(target_arch = "x86_64")]
     fn minimal_x86_64() -> Self {
-        // Debug output at start of minimal_x86_64
-        unsafe {
-            core::arch::asm!(
-                "out dx, al",
-                in("dx") 0x3F8u16,
-                in("al") b'/',
-            );
-        }
-        
+  
         // Create a minimal machine info for x86_64
         // EXTREMELY SIMPLE: Just create an empty ArrayVec to avoid any string literal access
         let memories = ArrayVec::new();
         
-        unsafe {
-            core::arch::asm!(
-                "out dx, al",
-                in("dx") 0x3F8u16,
-                in("al") b'O',
-            );
-        }
-        
         // Create a dummy FDT slice (won't be used)
         static DUMMY_FDT: [u8; 4] = [0; 4];
-        
-        
 
         MachineInfo {
             fdt: &DUMMY_FDT,

@@ -102,63 +102,10 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     #[cfg(target_arch = "x86_64")]
     debug_print(b'*');
     
-    // For x86_64, skip logger to avoid string literal access issues with PVH
-    #[cfg(not(target_arch = "x86_64"))]
     logger::init(LOG_LEVEL.to_level_filter());
-    
-    // Debug marker after logger init skip
-    #[cfg(target_arch = "x86_64")]
-    debug_print(b'M');
-    
     // Safety: TODO
-    // let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
-
-    // Debug marker before MachineInfo creation
-    #[cfg(target_arch = "x86_64")]
-    debug_print(b'1');
-
-    let minfo = unsafe {
-        // Debug marker right before match
-        #[cfg(target_arch = "x86_64")]
-        debug_print(b'a');
-        
-        match MachineInfo::from_dtb(opaque) {
-            Ok(info) => {
-                // Debug marker for successful creation
-                #[cfg(target_arch = "x86_64")]
-                debug_print(b'2');
-                info
-            },
-            Err(_) => {
-                // On x86_64, avoid string literals in error path
-                #[cfg(target_arch = "x86_64")]
-                {
-                    // Output 'F' to indicate failure parsing machine info
-                    core::arch::asm!(
-                        "out dx, al",
-                        in("dx") 0x3F8u16,
-                        in("al") b'F',
-                    );
-                    // Halt
-                    loop {
-                        core::arch::asm!("hlt");
-                    }
-                }
-                #[cfg(not(target_arch = "x86_64"))]
-                panic!("failed to parse machine info");
-            }
-        }
-    };
-    
-    // Debug marker after machine info creation
-    #[cfg(target_arch = "x86_64")]
-    debug_print(b'N');
-    
+    let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");
-
-    // Debug marker before start_secondary_harts
-    #[cfg(target_arch = "x86_64")]
-    debug_print(b'O');
 
     arch::start_secondary_harts(hartid, &minfo).unwrap();
 
@@ -179,6 +126,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     let rng = ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
         minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
     ));
+
     let rng_seed = rng.as_ref().map(|rng| rng.get_seed()).unwrap_or_default();
 
     // Initialize the page allocator
@@ -189,6 +137,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
             0, // called before translation into higher half
         )
         .unwrap();
+
 
     // Identity map the loader itself (this binary).
     //
