@@ -3,35 +3,35 @@ ENTRY(_start)
 
 KERNEL_OFFSET = 0x100000;
 
-/* Single segment for testing */
 PHDRS {
-    load PT_LOAD FLAGS(5); /* r-x */
-    note PT_NOTE FLAGS(4); /* r-- */
+    load PT_LOAD;
+    note PT_NOTE;
 }
 
 SECTIONS {
     . = KERNEL_OFFSET;
-    
-    /* Put note first so QEMU can find it */
+
+    .text : {
+        . = ALIGN(16);
+        __text_start = .;
+        *(.text.start)
+        *(.text .text.*)
+        . = ALIGN(4096);
+        __text_end = .;
+    } :load
+
     .note : {
         *(.note.Xen)
         *(.note*)
     } :note
-    
-    . = ALIGN(4096);
-
-    /* Everything in one segment */
-    .text : {
-        __text_start = .;
-        *(.text.start)
-        *(.text .text.*)
-        . = ALIGN(16);
-        __text_end = .;
-    } :load
 
     .rodata : {
         . = ALIGN(16);
         __rodata_start = .;
+        *(.got.plt)
+        *(.plt .plt.*)
+        . = ALIGN(0x1000);
+        *(.rodata.kernel)
         *(.got .got.*)
         *(.rodata .rodata.*)
         . = ALIGN(16);
@@ -57,5 +57,13 @@ SECTIONS {
         __bss_end = .;
     } :load
 
+    . = ALIGN(4096);
     __stack_start = .;
+
+    __kernel_end = .;
+
+    /DISCARD/ : {
+        *(.eh_frame*)
+        *(.comment)
+    }
 }

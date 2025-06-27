@@ -7,4 +7,4 @@ max-log-level = "trace"
 target = "./x86_64-k23-none-kernel.json"
 
 [loader]
-target = "x86_64-unknown-none"
+target = "./x86_64-k23-none-loader.json"

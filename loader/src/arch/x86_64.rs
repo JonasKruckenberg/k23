@@ -1,4 +1,4 @@
-// Copyright 2025 bubblepipe
+// Copyright 2025 Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -15,8 +15,8 @@ use core::fmt;
 use core::num::NonZero;
 use core::ptr::NonNull;
 
-// PVH ELF Note to enable direct kernel loading
-// This tells QEMU to use PVH boot protocol
+// PVH ELF Note to enable direct kernel loading like RISC-V
+// This allows QEMU to boot our kernel directly without a traditional bootloader
 global_asm!(
     r#"
     .pushsection .note.Xen, "a", @note
@@ -24,7 +24,7 @@ global_asm!(
     .long 4                    /* name size */
     .long 4                    /* desc size */
     .long 0x12                 /* type = XEN_ELFNOTE_PHYS32_ENTRY */
-    .asciz "Xen"               /* name */
+    .asciz "Xen"              /* name */
     .long 0x100000             /* desc = entry point at 1MB physical */
     .popsection
     "#
@@ -43,8 +43,7 @@ pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usi
 
 /// Entry point for the boot CPU
 /// PVH boot protocol provides:
-/// - rbx = pvh_start_info address
-/// - rsi = start_info address (for compatibility)
+/// - rbx = boot params address (we ignore for simplicity)
 /// - All other registers undefined
 #[unsafe(link_section = ".text.start")]
 #[unsafe(no_mangle)]
@@ -54,36 +53,36 @@ unsafe extern "C" fn _start() -> ! {
         naked_asm! {
             // Minimal setup to get running
             
-            // Disable interrupts immediately
-            "cli",
-            
             // Output 'S' to serial to indicate we're in _start
             "mov al, 0x53",      // 'S'
             "mov dx, 0x3F8",     // COM1 port
             "out dx, al",
             
-            // Output 'T' to show we got past the first output
-            "mov al, 0x54",      // 'T'
+            // Disable interrupts
+            "cli",
+            
+            // Output '1' after cli
+            "mov al, 0x31",      // '1'
             "out dx, al",
             
-            // Don't touch segment registers in x86_64
-            // PVH should have already set them up correctly
+            // Set up basic segments for x86_64 flat memory model
+            "xor ax, ax",
+            "mov ds, ax",
+            "mov es, ax",
+            "mov fs, ax",
+            "mov gs, ax",
+            "mov ss, ax",
+            
+            // Output '2' after segments
+            "mov al, 0x32",      // '2'
+            "out dx, al",
             
             // Set up a temporary stack at a known good location
             // Use 2MB as temporary stack location (well above our code at 1MB)
             "mov rsp, 0x200000",
             
-            // Output 'A' to show we set up the stack
-            "mov al, 0x41",      // 'A'
-            "out dx, al",
-                     
-
             // Clear direction flag for string operations
             "cld",
-            
-            // Output 'B' before BSS clearing
-            "mov al, 0x42",      // 'B'
-            "out dx, al",
             
             // Clear BSS section (uninitialized globals)
             "lea rdi, [rip + __bss_zero_start]",
@@ -94,30 +93,20 @@ unsafe extern "C" fn _start() -> ! {
             "rep stosb",         // Clear BSS byte by byte
             "3:",
             
-            // Output 'C' after BSS clearing
-            "mov al, 0x43",      // 'C'
-            "out dx, al",
-                        
             // Set up arguments for main()
             "xor rdi, rdi",      // CPU ID = 0
-            "xor rsi, rsi",      // opaque = NULL (no FDT on x86)
+            "xor rsi, rsi",      // No FDT on x86
             "xor rdx, rdx",      // boot_ticks = 0
             
             // Call Rust main
             "call {main}",
-
-            // Output 'E' after call main
-            "mov al, 0x45",      // 'E'
-            "out dx, al",
             
             // Should never return
             "2:",
             "hlt",
             "jmp 2b",
             
-            // stack_size = const crate::STACK_SIZE,
             main = sym crate::main,
-            // fill_stack = sym fill_stack
         }
     }
 }
