@@ -26,7 +26,7 @@ SECTIONS {
     } :note
 
     .rodata : {
-        . = ALIGN(16);
+        . = ALIGN(4096);
         __rodata_start = .;
         *(.got.plt)
         *(.plt .plt.*)
@@ -34,7 +34,7 @@ SECTIONS {
         *(.rodata.kernel)
         *(.got .got.*)
         *(.rodata .rodata.*)
-        . = ALIGN(16);
+        . = ALIGN(4096);
         __rodata_end = .;
     } :load
 

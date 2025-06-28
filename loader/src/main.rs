@@ -123,9 +123,13 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
 
     // initialize the random number generator
-    let rng = ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
-        minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
-    ));
+    let rng = if ENABLE_KASLR && minfo.rng_seed.is_some() {
+        Some(ChaCha20Rng::from_seed(
+            minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
+        ))
+    } else {
+        None
+    };
 
     let rng_seed = rng.as_ref().map(|rng| rng.get_seed()).unwrap_or_default();
 
@@ -153,6 +157,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     // more in the future.
     let (phys_off, phys_map) =
         map_physical_memory(root_pgtable, &mut frame_alloc, &mut page_alloc, &minfo).unwrap();
+
 
     // Activate the MMU with the address space we have built so far.
     // the rest of the address space setup will happen in virtual memory (mostly so that we

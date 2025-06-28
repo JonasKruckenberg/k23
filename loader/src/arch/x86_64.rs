@@ -280,10 +280,15 @@ pub unsafe fn map_contiguous(
     phys_off: usize,
 ) -> crate::Result<()> {
     let mut remaining_bytes = len.get();
-    debug_assert!(remaining_bytes >= PAGE_SIZE);
-    debug_assert!(virt % PAGE_SIZE == 0);
-    debug_assert!(phys % PAGE_SIZE == 0);
-
+    
+    // Round up to page size if less than a page
+    if remaining_bytes < PAGE_SIZE {
+        remaining_bytes = PAGE_SIZE;
+    }
+    
+    debug_assert!(virt % PAGE_SIZE == 0, "virtual address must be page-aligned: {:#x}", virt);
+    debug_assert!(phys % PAGE_SIZE == 0, "physical address must be page-aligned: {:#x}", phys);
+    
     'outer: while remaining_bytes > 0 {
         let mut pgtable: NonNull<PageTableEntry> = pgtable_ptr_from_phys(root_pgtable, phys_off);
 
@@ -292,13 +297,20 @@ pub unsafe fn map_contiguous(
             let pte = unsafe { pgtable.add(index).as_mut() };
 
             if !pte.is_valid() {
-                if can_map_at_level(virt, phys, remaining_bytes, lvl) {
+                // For partial pages at the end, we still need to map a full page
+                let effective_remaining = if remaining_bytes < PAGE_SIZE && lvl == 0 {
+                    PAGE_SIZE
+                } else {
+                    remaining_bytes
+                };
+                
+                if can_map_at_level(virt, phys, effective_remaining, lvl) {
                     let page_size = page_size_for_level(lvl);
                     pte.replace_address_and_flags(phys, PTEFlags::VALID | PTEFlags::from(flags));
                     
                     virt = virt.checked_add(page_size).unwrap();
                     phys = phys.checked_add(page_size).unwrap();
-                    remaining_bytes -= page_size;
+                    remaining_bytes = remaining_bytes.saturating_sub(page_size);
                     continue 'outer;
                 } else {
                     let frame = frame_alloc.allocate_one_zeroed(phys_off)?;
