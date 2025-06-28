@@ -111,20 +111,17 @@ pub fn map_physical_memory(
     let phys = Range::from(
         align_down(phys.start, alignment)..checked_align_up(phys.end, alignment).unwrap(),
     );
-
-    let aligned_start = align_down(phys.start, arch::PAGE_SIZE);
-    let aligned_end = checked_align_up(phys.end, arch::PAGE_SIZE).unwrap();
-
+    
     let virt = Range::from(
-        arch::KERNEL_ASPACE_BASE.checked_add(aligned_start).unwrap()
-            ..arch::KERNEL_ASPACE_BASE.checked_add(aligned_start).unwrap(),
+        arch::KERNEL_ASPACE_BASE.checked_add(phys.start).unwrap()
+            ..arch::KERNEL_ASPACE_BASE.checked_add(phys.end).unwrap(),
     );
-    let size = NonZeroUsize::new(aligned_end.checked_sub(aligned_start).unwrap()).unwrap();
+    let size = NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap();
 
-    debug_assert!(aligned_start % alignment == 0 && aligned_end % alignment == 0);
+    debug_assert!(phys.start % alignment == 0 && phys.end % alignment == 0);
     debug_assert!(virt.start % alignment == 0 && virt.end % alignment == 0);
 
-    log::trace!("Mapping physical memory {aligned_start:#x?} => {virt:#x?}...");
+    log::trace!("Mapping physical memory {phys:#x?} => {virt:#x?}...");
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
     unsafe {
@@ -132,7 +129,7 @@ pub fn map_physical_memory(
             root_pgtable,
             frame_alloc,
             virt.start,
-            aligned_start,
+            phys.start,
             size,
             Flags::READ | Flags::WRITE,
             0, // called before translation into higher half
