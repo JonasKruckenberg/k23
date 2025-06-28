@@ -111,7 +111,7 @@ pub fn map_physical_memory(
     let phys = Range::from(
         align_down(phys.start, alignment)..checked_align_up(phys.end, alignment).unwrap(),
     );
-    
+
     let virt = Range::from(
         arch::KERNEL_ASPACE_BASE.checked_add(phys.start).unwrap()
             ..arch::KERNEL_ASPACE_BASE.checked_add(phys.end).unwrap(),

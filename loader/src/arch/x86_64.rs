@@ -40,7 +40,6 @@ pub const VIRT_ADDR_BITS: u32 = 48;
 pub const PAGE_SHIFT: usize = (PAGE_SIZE - 1).count_ones() as usize;
 pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usize;
 
-
 /// Entry point for the boot CPU
 /// PVH boot protocol starts us in 32-bit protected mode with:
 /// - ebx = boot params address (we ignore for simplicity)
@@ -54,31 +53,31 @@ unsafe extern "C" fn _start() -> ! {
         naked_asm! {
             // We start in 32-bit protected mode, need to transition to 64-bit
             ".code32",
-            
+
             // Disable interrupts
             "cli",
-            
+
             // Enable PAE (required for long mode)
             "mov eax, cr4",
             "or eax, 0x20",      // Set PAE bit
             "mov cr4, eax",
-            
+
             // Set up initial page tables for identity mapping
             // We'll create a minimal identity map for the first 4GB
             // PML4 at 0x1000, PDPT at 0x2000, PD at 0x3000
-            
+
             // Clear page table area
             "mov edi, 0x1000",
             "xor eax, eax",
             "mov ecx, 0x3000",   // Clear 12KB (3 pages)
             "rep stosd",
-            
+
             // Set up PML4[0] -> PDPT
             "mov dword ptr [0x1000], 0x2003",  // PDPT address | Present | Writable
-            
+
             // Set up PDPT[0] -> PD
             "mov dword ptr [0x2000], 0x3003",  // PD address | Present | Writable
-            
+
             // Set up PD entries for first 1GB (512 * 2MB pages)
             // Using 2MB pages (bit 7 = PS)
             "mov edi, 0x3000",
@@ -89,49 +88,49 @@ unsafe extern "C" fn _start() -> ! {
             "add eax, 0x200000", // Next 2MB
             "add edi, 8",
             "loop 2b",
-            
+
             // Load PML4 into CR3
             "mov eax, 0x1000",
             "mov cr3, eax",
-            
+
             // Enable long mode in EFER MSR
             // WRMSR uses: ECX = MSR number, EDX:EAX = value
             "mov ecx, 0xC0000080",  // EFER MSR number
-            "mov eax, 0x900",       // LME + NXE           
+            "mov eax, 0x900",       // LME + NXE
             "xor edx, edx",         // Upper 32 bits = 0
             "wrmsr",
-            
+
             // Enable paging and protected mode
             "mov eax, cr0",
             "or eax, 0x80000001",   // Set PG and PE bits
             "mov cr0, eax",
-            
+
             // Load a temporary GDT with 64-bit code segment
             "lgdt [5f]",         // Load GDT descriptor at label 5
-            
+
             // Far jump to 64-bit code
             // Use manual encoding for far jump
             ".byte 0xEA",        // Far jump opcode
             ".long 6f",          // Offset to label 6
             ".word 0x08",        // Code segment selector
-            
+
             // GDT descriptor (label 5)
             ".align 4",
             "5:",
             ".word 23",          // GDT limit (3 entries * 8 - 1)
             ".long 4f",          // GDT base address (label 4)
-            
+
             // Temporary GDT (label 4)
             ".align 16",
             "4:",
             ".quad 0",                          // Null descriptor
             ".quad 0x00af9a000000ffff",        // 64-bit code segment
             ".quad 0x00cf92000000ffff",        // Data segment
-            
+
             // Now in 64-bit mode (label 6)
             ".code64",
             "6:",
-            
+
             // Set up data segments for 64-bit mode
             "mov ax, 0x10",      // Data segment selector
             "mov ds, ax",
@@ -139,14 +138,14 @@ unsafe extern "C" fn _start() -> ! {
             "mov fs, ax",
             "mov gs, ax",
             "mov ss, ax",
-            
+
             // Set up a temporary stack at a known good location
             // Use 2MB as temporary stack location (well above our code at 1MB)
             "mov rsp, 0x200000",
-            
+
             // Clear direction flag for string operations
             "cld",
-            
+
             // Clear BSS section (uninitialized globals)
             "lea rdi, [rip + __bss_zero_start]",
             "lea rcx, [rip + __bss_end]",
@@ -155,25 +154,25 @@ unsafe extern "C" fn _start() -> ! {
             "xor eax, eax",      // Zero to write
             "rep stosb",         // Clear BSS byte by byte
             "3:",
-            
+
             // Output '!' before calling main
             "mov al, 0x21",      // '!'
             "mov dx, 0x3F8",     // COM1 port
             "out dx, al",
-            
+
             // Set up arguments for main()
             "xor rdi, rdi",      // CPU ID = 0
             "xor rsi, rsi",      // No FDT on x86
             "xor rdx, rdx",      // boot_ticks = 0
-            
+
             // Call Rust main
             "call {main}",
-            
+
             // Should never return
             "2:",
             "hlt",
             "jmp 2b",
-            
+
             main = sym crate::main,
         }
     }
@@ -232,25 +231,25 @@ pub unsafe fn handoff_to_kernel(cpuid: usize, boot_ticks: u64, init: &GlobalInit
         asm! {
             // Set up stack
             "mov rsp, {stack_top}",
-            
+
             // Set up TLS (FS base)
             "mov rcx, 0xc0000100",  // FS_BASE MSR
             "mov rax, {tls_start}",
             "mov rdx, {tls_start}",
             "shr rdx, 32",
             "wrmsr",
-            
+
             // Fill stack with canary
             "mov rdi, {stack_bottom}",
             "mov rsi, {stack_top}",
             "call {fill_stack}",
-            
+
             // Clear return address
             "xor rax, rax",
-            
+
             // Jump to kernel (System V ABI)
             "jmp {kernel_entry}",
-            
+
             in("rdi") cpuid,
             in("rsi") init.boot_info,
             in("rdx") boot_ticks,
@@ -280,15 +279,23 @@ pub unsafe fn map_contiguous(
     phys_off: usize,
 ) -> crate::Result<()> {
     let mut remaining_bytes = len.get();
-    
+
     // Round up to page size if less than a page
     if remaining_bytes < PAGE_SIZE {
         remaining_bytes = PAGE_SIZE;
     }
-    
-    debug_assert!(virt % PAGE_SIZE == 0, "virtual address must be page-aligned: {:#x}", virt);
-    debug_assert!(phys % PAGE_SIZE == 0, "physical address must be page-aligned: {:#x}", phys);
-    
+
+    debug_assert!(
+        virt % PAGE_SIZE == 0,
+        "virtual address must be page-aligned: {:#x}",
+        virt
+    );
+    debug_assert!(
+        phys % PAGE_SIZE == 0,
+        "physical address must be page-aligned: {:#x}",
+        phys
+    );
+
     'outer: while remaining_bytes > 0 {
         let mut pgtable: NonNull<PageTableEntry> = pgtable_ptr_from_phys(root_pgtable, phys_off);
 
@@ -303,11 +310,11 @@ pub unsafe fn map_contiguous(
                 } else {
                     remaining_bytes
                 };
-                
+
                 if can_map_at_level(virt, phys, effective_remaining, lvl) {
                     let page_size = page_size_for_level(lvl);
                     pte.replace_address_and_flags(phys, PTEFlags::VALID | PTEFlags::from(flags));
-                    
+
                     virt = virt.checked_add(page_size).unwrap();
                     phys = phys.checked_add(page_size).unwrap();
                     remaining_bytes = remaining_bytes.saturating_sub(page_size);
@@ -350,7 +357,7 @@ pub unsafe fn remap_contiguous(
             if pte.is_valid() && pte.is_leaf() {
                 let page_size = page_size_for_level(lvl);
                 debug_assert!(can_map_at_level(virt, phys, remaining_bytes, lvl));
-                
+
                 let (_old_phys, flags) = pte.get_address_and_flags();
                 pte.replace_address_and_flags(phys, flags);
 
@@ -469,7 +476,7 @@ impl From<Flags> for PTEFlags {
         if flags.contains(Flags::WRITE) {
             out.insert(Self::WRITABLE);
         }
-        
+
         // Note: x86_64 uses NX bit (inverse of execute)
         if !flags.contains(Flags::EXECUTE) {
             out.insert(Self::NX);

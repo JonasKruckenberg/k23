@@ -48,7 +48,9 @@ impl fmt::Write for SerialPort {
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    
+
     let mut serial = SerialPort::new(COM1_BASE);
-    serial.write_fmt(args).expect("failed to write to serial port");
+    serial
+        .write_fmt(args)
+        .expect("failed to write to serial port");
 }

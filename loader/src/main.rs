@@ -58,7 +58,6 @@ fn debug_print(ch: u8) {
 }
 
 unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
-
     // Output 'X' to serial port to indicate we reached main
     #[cfg(target_arch = "x86_64")]
     debug_print(b'X');
@@ -101,7 +100,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     // Debug marker before logger init
     #[cfg(target_arch = "x86_64")]
     debug_print(b'*');
-    
+
     logger::init(LOG_LEVEL.to_level_filter());
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
@@ -142,7 +141,6 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         )
         .unwrap();
 
-
     // Identity map the loader itself (this binary).
     //
     // we're already running in s-mode which means that once we switch on the MMU it takes effect *immediately*
@@ -157,7 +155,6 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     // more in the future.
     let (phys_off, phys_map) =
         map_physical_memory(root_pgtable, &mut frame_alloc, &mut page_alloc, &minfo).unwrap();
-
 
     // Activate the MMU with the address space we have built so far.
     // the rest of the address space setup will happen in virtual memory (mostly so that we

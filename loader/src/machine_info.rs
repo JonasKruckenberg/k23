@@ -37,13 +37,12 @@ pub struct MachineInfo<'dt> {
 impl MachineInfo<'_> {
     #[cfg(target_arch = "x86_64")]
     fn minimal_x86_64() -> Self {
-  
         // Create a minimal machine info for x86_64
         // Add a basic memory region - let's use 4MB to 256MB as available memory
         let mut memories = ArrayVec::new();
         // Avoid the first 4MB where our loader lives, use memory from 4MB to 256MB
         memories.push(Range::from(0x400000..0x10000000));
-        
+
         // Create a dummy FDT slice (won't be used)
         static DUMMY_FDT: [u8; 4] = [0; 4];
 
@@ -59,9 +58,9 @@ impl MachineInfo<'_> {
         // On x86_64, we don't have FDT - create a minimal machine info
         #[cfg(target_arch = "x86_64")]
         {
-            return Ok(Self::minimal_x86_64());    
+            return Ok(Self::minimal_x86_64());
         }
-        
+
         assert!(!fdt_ptr.is_null());
         assert_eq!(fdt_ptr.align_offset(core::mem::align_of::<u32>()), 0); // make sure the pointer is aligned correctly
 

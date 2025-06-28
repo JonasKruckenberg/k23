@@ -27,7 +27,7 @@ fn copy_linker_script() {
     let out_dir = env::var("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir);
     let mut f = File::create(dest_path.join("link.ld")).unwrap();
-    
+
     // Select linker script based on target architecture
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     match target_arch.as_str() {
