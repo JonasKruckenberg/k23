@@ -72,34 +72,10 @@ impl PageAllocator {
         let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
         debug_assert!(virt_base % top_level_page_size == 0);
 
-        log::debug!(
-            "reserve: virt_base={:#x}, remaining_bytes={:#x}, top_level_page_size={:#x}",
-            virt_base,
-            remaining_bytes,
-            top_level_page_size
-        );
-        log::debug!(
-            "reserve: VIRT_ADDR_BITS={}, page_state.len()={}",
-            arch::VIRT_ADDR_BITS,
-            self.page_state.len()
-        );
-
         while remaining_bytes > 0 {
             let page_idx = (virt_base - arch::KERNEL_ASPACE_BASE) / top_level_page_size;
 
-            log::debug!(
-                "reserve: virt_base={:#x}, KERNEL_ASPACE_BASE={:#x}, page_idx={}",
-                virt_base,
-                arch::KERNEL_ASPACE_BASE,
-                page_idx
-            );
-
             if page_idx >= self.page_state.len() {
-                log::error!(
-                    "reserve: page_idx {} out of bounds (len={})",
-                    page_idx,
-                    self.page_state.len()
-                );
                 panic!(
                     "index out of bounds: the len is {} but the index is {}",
                     self.page_state.len(),
