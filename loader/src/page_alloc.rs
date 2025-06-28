@@ -75,14 +75,6 @@ impl PageAllocator {
         while remaining_bytes > 0 {
             let page_idx = (virt_base - arch::KERNEL_ASPACE_BASE) / top_level_page_size;
 
-            if page_idx >= self.page_state.len() {
-                panic!(
-                    "index out of bounds: the len is {} but the index is {}",
-                    self.page_state.len(),
-                    page_idx
-                );
-            }
-
             self.page_state[page_idx] = true;
 
             virt_base = virt_base.checked_add(top_level_page_size).unwrap();
