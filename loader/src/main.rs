@@ -58,9 +58,6 @@ fn debug_print(ch: u8) {
 }
 
 unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
-    // Output 'X' to serial port to indicate we reached main
-    #[cfg(target_arch = "x86_64")]
-    debug_print(b'X');
 
     static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
     let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
@@ -97,10 +94,6 @@ unsafe impl Send for GlobalInitResult {}
 unsafe impl Sync for GlobalInitResult {}
 
 fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
-    // Debug marker before logger init
-    #[cfg(target_arch = "x86_64")]
-    debug_print(b'*');
-
     logger::init(LOG_LEVEL.to_level_filter());
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };

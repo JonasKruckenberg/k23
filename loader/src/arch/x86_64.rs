@@ -155,10 +155,6 @@ unsafe extern "C" fn _start() -> ! {
             "rep stosb",         // Clear BSS byte by byte
             "3:",
 
-            // Output '!' before calling main
-            "mov al, 0x21",      // '!'
-            "mov dx, 0x3F8",     // COM1 port
-            "out dx, al",
 
             // Set up arguments for main()
             "xor rdi, rdi",      // CPU ID = 0
