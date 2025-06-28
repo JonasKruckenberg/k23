@@ -73,7 +73,15 @@ impl PageAllocator {
         debug_assert!(virt_base % top_level_page_size == 0);
 
         while remaining_bytes > 0 {
-            let page_idx = (virt_base - (usize::MAX << arch::VIRT_ADDR_BITS)) / top_level_page_size;
+            let page_idx = (virt_base - arch::KERNEL_ASPACE_BASE) / top_level_page_size;
+
+            if page_idx >= self.page_state.len() {
+                panic!(
+                    "index out of bounds: the len is {} but the index is {}",
+                    self.page_state.len(),
+                    page_idx
+                );
+            }
 
             self.page_state[page_idx] = true;
 
@@ -96,9 +104,8 @@ impl PageAllocator {
         // we know that entry_idx is between 0 and PAGE_TABLE_ENTRIES / 2
         // and represents a top-level page in the *higher half* of the address space.
         //
-        // we can then take the lowest possible address of the higher half (`usize::MAX << VA_BITS`)
-        // and add the `idx` multiple of the size of a top-level entry to it
-        let base = (usize::MAX << arch::VIRT_ADDR_BITS) + page_idx * top_level_page_size;
+        // we start from KERNEL_ASPACE_BASE and add the idx multiple of the size of a top-level entry to it
+        let base = arch::KERNEL_ASPACE_BASE + page_idx * top_level_page_size;
 
         let offset = if let Some(rng) = self.prng.as_mut() {
             // Choose a random offset.
