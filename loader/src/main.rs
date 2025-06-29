@@ -95,6 +95,19 @@ unsafe impl Sync for GlobalInitResult {}
 
 fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     logger::init(LOG_LEVEL.to_level_filter());
+    
+    // Print welcome message for x86_64 only
+    #[cfg(target_arch = "x86_64")]
+    {
+        log::info!("\n\n\n\n");
+        log::info!("##################################################");
+        log::info!("#                                                #");
+        log::info!("#        k23 x86_64 loader starting...           #");
+        log::info!("#        Initializing on CPU {}                   #", hartid);
+        log::info!("#                                                #");
+        log::info!("##################################################");
+    }
+    
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");
