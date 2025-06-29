@@ -12,6 +12,7 @@ harness = false
 [dependencies]
 loader-api.workspace = true
 cpu-local.workspace = true
+trap.workspace = true
 spin = { workspace = true, features = ["thread-local", "lock_api"] }
 unwind2.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
@@ -61,6 +62,9 @@ wasmtime-slab.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+x86.workspace = true
 
 [build-dependencies]
 vergen-git2 = { version = "1.0.7", features = ["build", "cargo", "rustc"] }

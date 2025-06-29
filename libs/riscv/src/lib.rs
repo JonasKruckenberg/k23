@@ -17,6 +17,7 @@ mod macros;
 pub mod register;
 pub mod sbi;
 pub mod semihosting;
+pub mod trap;
 
 use core::arch::asm;
 pub use error::Error;

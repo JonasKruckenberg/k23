@@ -79,7 +79,10 @@ fn identity_map_range(
     phys: Range<usize>,
     flags: Flags,
 ) -> crate::Result<()> {
-    let len = NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap();
+    // Align to page boundaries
+    let aligned_start = align_down(phys.start, arch::PAGE_SIZE);
+    let aligned_end = checked_align_up(phys.end, arch::PAGE_SIZE).unwrap();
+    let len = NonZeroUsize::new(aligned_end.checked_sub(aligned_start).unwrap()).unwrap();
 
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
@@ -87,8 +90,8 @@ fn identity_map_range(
         arch::map_contiguous(
             root_pgtable,
             frame_alloc,
-            phys.start,
-            phys.start,
+            aligned_start,
+            aligned_start,
             len,
             flags,
             0, // called before translation into higher half
@@ -108,6 +111,7 @@ pub fn map_physical_memory(
     let phys = Range::from(
         align_down(phys.start, alignment)..checked_align_up(phys.end, alignment).unwrap(),
     );
+
     let virt = Range::from(
         arch::KERNEL_ASPACE_BASE.checked_add(phys.start).unwrap()
             ..arch::KERNEL_ASPACE_BASE.checked_add(phys.end).unwrap(),
@@ -153,8 +157,20 @@ pub fn map_kernel(
         )
         .unwrap(),
     );
+    log::trace!("map_kernel: Allocated virtual range {:#x?}", kernel_virt);
 
-    let phys_base = kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE;
+    log::trace!("map_kernel: Getting phys_base");
+    let phys_base = if cfg!(target_arch = "x86_64") {
+        // On x86_64, the kernel ELF is accessed through identity mapping
+        kernel.elf_file.input.as_ptr() as usize
+    } else if cfg!(target_arch = "riscv64") {
+        // On RISC-V, the kernel ELF is accessed through physical memory mapping
+        kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE
+    } else {
+        panic!("Unsupported architecture");
+    };
+        
+    log::trace!("map_kernel: phys_base={:#x}", phys_base);
     assert!(
         phys_base % arch::PAGE_SIZE == 0,
         "Loaded ELF file is not sufficiently aligned"
@@ -332,8 +348,17 @@ fn handle_bss_section(
 
         // Safety: we just allocated the frame
         unsafe {
+            // On x86_64, the kernel data is identity-mapped, not at KERNEL_ASPACE_BASE
+            let src_addr = if cfg!(target_arch = "x86_64") {
+                last_frame
+            } else if cfg!(target_arch = "riscv64") {
+                arch::KERNEL_ASPACE_BASE.checked_add(last_frame).unwrap()
+            } else {
+                panic!("Unsupported architecture");
+            };
+            
             let src = slice::from_raw_parts(
-                arch::KERNEL_ASPACE_BASE.checked_add(last_frame).unwrap() as *mut u8,
+                src_addr as *mut u8,
                 data_bytes_before_zero,
             );
 

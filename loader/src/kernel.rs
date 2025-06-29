@@ -28,15 +28,27 @@ impl Kernel<'static> {
     pub fn from_static(phys_off: usize) -> crate::Result<Self> {
         // Safety: The kernel elf file is inlined into the loader executable as part of the build setup
         // which means we just need to parse it here.
-        let elf_file = xmas_elf::ElfFile::new(unsafe {
-            let base = phys_off
-                .checked_add(INLINED_KERNEL_BYTES.0.as_ptr().addr())
-                .unwrap();
+        let kernel_ptr = INLINED_KERNEL_BYTES.0.as_ptr();
+        let kernel_addr = kernel_ptr.addr();
+        
+        log::debug!("Kernel ELF at address: {:#x}, phys_off: {:#x}", kernel_addr, phys_off);
+        
+        // For x86_64: The kernel is embedded in the loader which is identity-mapped.
+        // For RISC-V: The kernel needs to be accessed through phys_off after MMU is on.
+        let base = if cfg!(target_arch = "x86_64") && phys_off != 0 {
+            kernel_addr
+        } else if cfg!(target_arch = "riscv64") {
+            phys_off.checked_add(kernel_addr).unwrap()
+        } else {
+            panic!("Unsupported architecture");
+        };
 
+        let elf_bytes = unsafe {
             slice::from_raw_parts(base as *mut u8, INLINED_KERNEL_BYTES.0.len())
-        })
-        .map_err(Error::Elf)?;
-
+        };
+                
+        let elf_file = xmas_elf::ElfFile::new(elf_bytes).map_err(Error::Elf)?;
+        
         let loader_config = {
             let section = elf_file
                 .find_section_by_name(".loader_config")

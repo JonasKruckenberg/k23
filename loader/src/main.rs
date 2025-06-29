@@ -46,10 +46,19 @@ pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// # Safety
-///
-/// The passed `opaque` ptr must point to a valid memory region.
+#[cfg(target_arch = "x86_64")]
+fn debug_print(ch: u8) {
+    unsafe {
+        core::arch::asm!(
+            "out dx, al",
+            in("dx") 0x3F8u16,
+            in("al") ch,
+        );
+    }
+}
+
 unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
+
     static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
     let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
 
@@ -86,6 +95,19 @@ unsafe impl Sync for GlobalInitResult {}
 
 fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     logger::init(LOG_LEVEL.to_level_filter());
+    
+    // Print welcome message for x86_64 only
+    #[cfg(target_arch = "x86_64")]
+    {
+        log::info!("\n\n\n\n");
+        log::info!("##################################################");
+        log::info!("#                                                #");
+        log::info!("#        k23 x86_64 loader starting...           #");
+        log::info!("#        Initializing on CPU {}                   #", hartid);
+        log::info!("#                                                #");
+        log::info!("##################################################");
+    }
+    
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");
@@ -106,9 +128,14 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
 
     // initialize the random number generator
-    let rng = ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
-        minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
-    ));
+    let rng = if ENABLE_KASLR && minfo.rng_seed.is_some() {
+        Some(ChaCha20Rng::from_seed(
+            minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
+        ))
+    } else {
+        None
+    };
+
     let rng_seed = rng.as_ref().map(|rng| rng.get_seed()).unwrap_or_default();
 
     // Initialize the page allocator
