@@ -38,10 +38,11 @@ impl MachineInfo<'_> {
     #[cfg(target_arch = "x86_64")]
     fn minimal_x86_64() -> Self {
         // Create a minimal machine info for x86_64
-        // Add a basic memory region - let's use 4MB to 256MB as available memory
+        // The boot assembly identity maps 1GB, but we'll only report what's actually available
         let mut memories = ArrayVec::new();
-        // Avoid the first 4MB where our loader lives, use memory from 4MB to 256MB
-        memories.push(Range::from(0x400000..0x10000000));
+        // TODO: This should be dynamic based on actual memory, not hardcoded
+        // For now, report memory from 4MB to 256MB (matching QEMU's -m 256M setting)
+        memories.push(Range::from(0x400000..0x10000000));  // 4MB to 256MB
 
         // Create a dummy FDT slice (won't be used)
         static DUMMY_FDT: [u8; 4] = [0; 4];

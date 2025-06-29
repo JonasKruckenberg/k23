@@ -63,26 +63,26 @@ unsafe extern "C" fn _start() -> ! {
             "mov cr4, eax",
 
             // Set up initial page tables for identity mapping
-            // We'll create a minimal identity map for the first 4GB
+            // We'll create a minimal identity map for the first 256MB
             // PML4 at 0x1000, PDPT at 0x2000, PD at 0x3000
 
             // Clear page table area
             "mov edi, 0x1000",
             "xor eax, eax",
-            "mov ecx, 0x3000",   // Clear 12KB (3 pages)
+            "mov ecx, 0x1000",   // Clear 16KB (4096 dwords = 16KB)
             "rep stosd",
 
-            // Set up PML4[0] -> PDPT
-            "mov dword ptr [0x1000], 0x2003",  // PDPT address | Present | Writable
+            // Set up PML4[0] -> PDPT (for identity mapping low addresses)
+            "mov dword ptr [0x1000], 0x2003",  // PDPT address | Present | Writable            
 
-            // Set up PDPT[0] -> PD
+            // Set up PDPT[0] -> PD (for identity mapping)
             "mov dword ptr [0x2000], 0x3003",  // PD address | Present | Writable
 
-            // Set up PD entries for first 1GB (512 * 2MB pages)
+            // Set up PD entries for first 256MB (128 * 2MB pages)
             // Using 2MB pages (bit 7 = PS)
             "mov edi, 0x3000",
             "mov eax, 0x83",     // Present | Writable | PS (2MB pages)
-            "mov ecx, 512",      // 512 entries
+            "mov ecx, 128",      // 128 entries for 256MB
             "2:",
             "mov [edi], eax",
             "add eax, 0x200000", // Next 2MB
