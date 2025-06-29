@@ -96,7 +96,7 @@ unsafe extern "C" fn _start() -> ! {
             // Enable long mode in EFER MSR
             // WRMSR uses: ECX = MSR number, EDX:EAX = value
             "mov ecx, 0xC0000080",  // EFER MSR number
-            "mov eax, 0x900",       // LME + NXE
+            "mov eax, 0x900",       // LME (bit 8) + NXE (bit 11)
             "xor edx, edx",         // Upper 32 bits = 0
             "wrmsr",
 
@@ -309,7 +309,14 @@ pub unsafe fn map_contiguous(
 
                 if can_map_at_level(virt, phys, effective_remaining, lvl) {
                     let page_size = page_size_for_level(lvl);
-                    pte.replace_address_and_flags(phys, PTEFlags::VALID | PTEFlags::from(flags));
+                    let mut pte_flags = PTEFlags::VALID | PTEFlags::from(flags);
+                    
+                    // For large pages (2MB at level 1, 1GB at level 2), set the PS bit
+                    if lvl > 0 {
+                        pte_flags |= PTEFlags::HUGE;
+                    }
+                    
+                    pte.replace_address_and_flags(phys, pte_flags);
 
                     virt = virt.checked_add(page_size).unwrap();
                     phys = phys.checked_add(page_size).unwrap();
@@ -320,10 +327,12 @@ pub unsafe fn map_contiguous(
                     pte.replace_address_and_flags(frame, PTEFlags::VALID);
                     pgtable = pgtable_ptr_from_phys(frame, phys_off);
                 }
-            } else if !pte.is_leaf() {
-                pgtable = pgtable_ptr_from_phys(pte.get_address_and_flags().0, phys_off);
-            } else {
+            } else if pte.is_leaf(lvl) {
                 unreachable!("Invalid state: {virt:#x} is already mapped");
+            } else {
+                // PTE is valid but not a leaf, follow to next level
+                let next_table_phys = pte.get_address_and_flags().0;
+                pgtable = pgtable_ptr_from_phys(next_table_phys, phys_off);
             }
         }
     }
@@ -350,7 +359,7 @@ pub unsafe fn remap_contiguous(
             let index = pte_index_for_level(virt, lvl);
             let pte = unsafe { pgtable.add(index).as_mut() };
 
-            if pte.is_valid() && pte.is_leaf() {
+            if pte.is_valid() && pte.is_leaf(lvl) {
                 let page_size = page_size_for_level(lvl);
                 debug_assert!(can_map_at_level(virt, phys, remaining_bytes, lvl));
 
@@ -378,13 +387,11 @@ pub unsafe fn activate_aspace(pgtable: usize) {
 
 pub fn page_size_for_level(level: usize) -> usize {
     assert!(level < PAGE_TABLE_LEVELS);
-    // x86_64 uses 4-level paging, but we map it to match RISC-V's expectations
-    // Level 3 (PML4) and 2 (PDPT) can't have leaf pages in our usage
     match level {
         0 => 1 << 12, // 4KB pages (PT level)
         1 => 1 << 21, // 2MB pages (PD level)
         2 => 1 << 30, // 1GB pages (PDPT level)
-        3 => 1 << 30, // PML4 doesn't have pages, return 1GB
+        3 => 1 << 39, // 512GB PML4 level
         _ => unreachable!(),
     }
 }
@@ -419,11 +426,15 @@ impl PageTableEntry {
         PTEFlags::from_bits_retain(self.bits).contains(PTEFlags::VALID)
     }
 
-    pub fn is_leaf(&self) -> bool {
-        // For x86_64, a page is a leaf if it has R/W/X-like permissions
-        // or the PS (page size) bit for large pages
-        PTEFlags::from_bits_retain(self.bits)
-            .intersects(PTEFlags::WRITABLE | PTEFlags::USER | PTEFlags::HUGE)
+    pub fn is_leaf(&self, level: usize) -> bool {
+        // At level 0 (PT), all valid entries are leaves (4KB pages)
+        // At levels 1-2 (PD, PDPT), entries are leaves if PS bit is set
+        // At level 3 (PML4), entries are never leaves
+        match level {
+            0 => self.is_valid(), // PT entries are always leaves if valid
+            1 | 2 => self.is_valid() && PTEFlags::from_bits_retain(self.bits).contains(PTEFlags::HUGE),
+            _ => false, // PML4 entries are never leaves
+        }
     }
 
     pub fn replace_address_and_flags(&mut self, address: usize, flags: PTEFlags) {
