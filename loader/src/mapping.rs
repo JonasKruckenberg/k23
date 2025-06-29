@@ -348,8 +348,17 @@ fn handle_bss_section(
 
         // Safety: we just allocated the frame
         unsafe {
+            // On x86_64, the kernel data is identity-mapped, not at KERNEL_ASPACE_BASE
+            let src_addr = if cfg!(target_arch = "x86_64") {
+                last_frame
+            } else if cfg!(target_arch = "riscv64") {
+                arch::KERNEL_ASPACE_BASE.checked_add(last_frame).unwrap()
+            } else {
+                panic!("Unsupported architecture");
+            };
+            
             let src = slice::from_raw_parts(
-                arch::KERNEL_ASPACE_BASE.checked_add(last_frame).unwrap() as *mut u8,
+                src_addr as *mut u8,
                 data_bytes_before_zero,
             );
 
