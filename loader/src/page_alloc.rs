@@ -78,7 +78,7 @@ impl PageAllocator {
             virt_base.checked_add(remaining_bytes).unwrap()
         );
 
-        let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
+        let top_level_page_size = arch::page_size_for_level(2);
         debug_assert!(virt_base % top_level_page_size == 0);
 
         while remaining_bytes > 0 {
@@ -87,14 +87,14 @@ impl PageAllocator {
             self.page_state[page_idx] = true;
 
             virt_base = virt_base.checked_add(top_level_page_size).unwrap();
-            remaining_bytes -= top_level_page_size;
+            remaining_bytes = remaining_bytes.saturating_sub(top_level_page_size);
         }
     }
 
     pub fn allocate(&mut self, layout: Layout) -> Range<usize> {
         assert!(layout.align().is_power_of_two());
 
-        let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
+        let top_level_page_size = arch::page_size_for_level(2);
 
         // how many top-level pages are needed to map `size` bytes
         // and attempt to allocate them
