@@ -36,7 +36,7 @@ impl PageAllocator {
         // find a consecutive range of `num` entries that are not used
         let mut free_pages = self
             .page_state
-            .windows(num_pages.div_ceil(8))
+            .windows(num_pages.div_ceil(8)) // TODO: consider dont div by 8?
             .enumerate()
             .filter_map(|(idx, entries)| {
                 if entries.iter().all(|used| !used) {
