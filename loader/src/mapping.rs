@@ -157,8 +157,20 @@ pub fn map_kernel(
         )
         .unwrap(),
     );
+    log::trace!("map_kernel: Allocated virtual range {:#x?}", kernel_virt);
 
-    let phys_base = kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE;
+    log::trace!("map_kernel: Getting phys_base");
+    let phys_base = if cfg!(target_arch = "x86_64") {
+        // On x86_64, the kernel ELF is accessed through identity mapping
+        kernel.elf_file.input.as_ptr() as usize
+    } else if cfg!(target_arch = "riscv64") {
+        // On RISC-V, the kernel ELF is accessed through physical memory mapping
+        kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE
+    } else {
+        panic!("Unsupported architecture");
+    };
+        
+    log::trace!("map_kernel: phys_base={:#x}", phys_base);
     assert!(
         phys_base % arch::PAGE_SIZE == 0,
         "Loaded ELF file is not sufficiently aligned"
