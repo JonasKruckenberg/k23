@@ -49,7 +49,16 @@ impl PageAllocator {
         let maybe_idx = if let Some(rng) = self.prng.as_mut() {
             free_pages.choose(rng)
         } else {
-            free_pages.next()
+            // Simple linear search for first available slot
+            let mut found_idx = None;
+            for idx in 0..=self.page_state.len().saturating_sub(num_pages) {
+                let all_free = (0..num_pages).all(|i| idx + i < self.page_state.len() && !self.page_state[idx + i]);
+                if all_free {
+                    found_idx = Some(idx);
+                    break;
+                }
+            }
+            found_idx
         };
 
         if let Some(idx) = maybe_idx {
