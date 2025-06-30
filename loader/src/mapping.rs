@@ -210,6 +210,8 @@ pub fn map_kernel(
     // Apply relocations in virtual memory.
     for ph in kernel.elf_file.program_iter() {
         if ph.get_type().unwrap() == Type::Dynamic {
+            log::trace!("Found Dynamic segment: offset={:#x}, vaddr={:#x}, paddr={:#x}, filesz={:#x}, memsz={:#x}",
+                      ph.offset(), ph.virtual_addr(), ph.physical_addr(), ph.file_size(), ph.mem_size());
             handle_dynamic_segment(
                 &ProgramHeader::try_from(ph).unwrap(),
                 &kernel.elf_file,
@@ -434,13 +436,35 @@ fn handle_dynamic_segment(
     log::trace!("parsing RELA info...");
 
     if let Some(rela_info) = ph.parse_rela(elf_file)? {
+        // Convert RELA virtual address to file offset
+        let file_offset = {
+            let vaddr = rela_info.offset;
+            let mut found_offset = None;
+            
+            for prog_header in elf_file.program_iter() {
+                if prog_header.get_type().unwrap() == xmas_elf::program::Type::Load {
+                    let seg_vaddr = prog_header.virtual_addr();
+                    let seg_size = prog_header.file_size();
+                    
+                    if vaddr >= seg_vaddr && vaddr < seg_vaddr + seg_size {
+                        // Found the segment containing our RELA data
+                        let offset_in_segment = vaddr - seg_vaddr;
+                        found_offset = Some(prog_header.offset() + offset_in_segment);
+                        break;
+                    }
+                }
+            }
+            
+            found_offset.expect("RELA data not found in any LOAD segment")
+        };
+        
         // Safety: we have to trust the ELF data
         let relas = unsafe {
             #[expect(clippy::cast_ptr_alignment, reason = "this is fine")]
             let ptr = elf_file
                 .input
                 .as_ptr()
-                .byte_add(usize::try_from(rela_info.offset)?)
+                .byte_add(usize::try_from(file_offset)?)
                 .cast::<xmas_elf::sections::Rela<P64>>();
 
             slice::from_raw_parts(ptr, usize::try_from(rela_info.count)?)
@@ -465,9 +489,10 @@ fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: usize) {
     );
 
     const R_RISCV_RELATIVE: u32 = 3;
+    const R_X86_64_RELATIVE: u32 = 8;
 
     match rela.get_type() {
-        R_RISCV_RELATIVE => {
+        R_RISCV_RELATIVE | R_X86_64_RELATIVE => {
             // Calculate address at which to apply the relocation.
             // dynamic relocations offsets are relative to the virtual layout of the elf,
             // not the physical file
