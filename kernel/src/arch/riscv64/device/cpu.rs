@@ -12,9 +12,6 @@ use bitflags::bitflags;
 use core::cell::RefCell;
 use core::fmt;
 use core::str::FromStr;
-use core::time::Duration;
-use kasync::time::PhysTicks;
-use kasync::time::{Clock, NANOS_PER_SEC};
 
 #[derive(Debug)]
 pub struct Cpu {
@@ -23,7 +20,7 @@ pub struct Cpu {
     pub cboz_block_size: Option<usize>,
     pub cbom_block_size: Option<usize>,
     pub plic: RefCell<device::plic::Plic>,
-    pub clock: Clock,
+    pub clock: kasync::time::Clock,
 }
 
 bitflags! {
@@ -109,12 +106,6 @@ impl Cpu {
             })
             .expect("CPU node not found in device tree");
 
-        let timebase_frequency = cpu
-            .property("timebase-frequency")
-            .or_else(|| cpu.parent().unwrap().property("timebase-frequency"))
-            .unwrap()
-            .as_u64()?;
-
         let cbop_block_size = cpu
             .property("riscv,cbop-block-size")
             .map(|prop| prop.as_usize().unwrap());
@@ -140,17 +131,7 @@ impl Cpu {
         let mut plic = device::plic::Plic::new(devtree, hlic_node)?;
         plic.irq_unmask(10);
 
-        let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
-        let clock = Clock::new(tick_duration, || PhysTicks(riscv::register::time::read64()));
-
-        debug_assert_eq!(
-            clock.ticks_to_duration(PhysTicks(timebase_frequency)),
-            Duration::from_secs(1)
-        );
-        debug_assert_eq!(
-            clock.duration_to_ticks(Duration::from_secs(1)).unwrap(),
-            PhysTicks(timebase_frequency)
-        );
+        let clock = device::clock::new(cpu)?;
 
         Ok(Self {
             clock,

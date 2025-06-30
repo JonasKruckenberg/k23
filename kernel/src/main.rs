@@ -56,7 +56,7 @@ use core::slice;
 use core::time::Duration;
 use fastrand::FastRand;
 use kasync::executor::{Executor, Worker};
-use kasync::time::{Instant, Timer, VirtTicks};
+use kasync::time::{Instant, Ticks, Timer};
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use mem::PhysicalAddress;
 use mem::frame_alloc;
@@ -176,7 +176,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         let timer = Timer::new(Duration::from_millis(1), cpu.clock);
 
         Ok(Global {
-            time_origin: Instant::from_ticks(&timer, VirtTicks(boot_ticks)),
+            time_origin: Instant::from_ticks(&timer, Ticks(boot_ticks)),
             timer,
             executor,
             device_tree,
@@ -188,14 +188,17 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
     // perform LATE per-cpu, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
-    let arch = arch::per_cpu_init_late(&global.device_tree, cpuid).unwrap();
+    let arch_state = arch::per_cpu_init_late(&global.device_tree, cpuid).unwrap();
 
-    state::init_cpu_local(CpuLocal { id: cpuid, arch });
+    state::init_cpu_local(CpuLocal {
+        id: cpuid,
+        arch: arch_state,
+    });
 
     tracing::info!(
         "Booted in ~{:?} ({:?} in k23)",
         Instant::now(&global.timer).duration_since(Instant::ZERO),
-        Instant::from_ticks(&global.timer, VirtTicks(boot_ticks)).elapsed(&global.timer)
+        Instant::from_ticks(&global.timer, Ticks(boot_ticks)).elapsed(&global.timer)
     );
 
     let mut worker2 = Worker::new(&global.executor, FastRand::from_seed(rng.next_u64()));

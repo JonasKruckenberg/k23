@@ -1,23 +1,23 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::{Instant, Sleep, TimeError, Timer, sleep, sleep_until};
-use core::pin::Pin;
-use core::task::{Context, Poll};
-use core::time::Duration;
 use pin_project::pin_project;
 
-/// Requires a `Future` to complete before the specified duration has elapsed.
-///
-/// # Errors
-///
-/// This function fails for two reasons:
-/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
-/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
+use crate::time::{
+    TimeError, Timer,
+    instant::Instant,
+    sleep::{Sleep, sleep, sleep_until},
+};
+use core::{
+    pin::Pin,
+    task::{Context, Poll},
+    time::Duration,
+};
+
 pub fn timeout<F>(
     timer: &Timer,
     duration: Duration,
@@ -27,18 +27,11 @@ where
     F: IntoFuture,
 {
     Ok(Timeout {
-        future: future.into_future(),
         sleep: sleep(timer, duration)?,
+        future: future.into_future(),
     })
 }
 
-/// Requires a `Future` to complete before the specified deadline has been reached.
-///
-/// # Errors
-///
-/// This function fails for two reasons:
-/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
-/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
 pub fn timeout_at<F>(
     timer: &Timer,
     deadline: Instant,
@@ -48,23 +41,23 @@ where
     F: IntoFuture,
 {
     Ok(Timeout {
-        future: future.into_future(),
         sleep: sleep_until(timer, deadline)?,
+        future: future.into_future(),
     })
 }
-
-#[derive(Debug)]
-pub struct Elapsed(());
 
 /// Future returned by [`timeout`] and [`timeout_at`].
 #[pin_project]
 #[must_use = "futures do nothing unless `.await`ed or `poll`ed"]
 pub struct Timeout<'timer, F> {
     #[pin]
-    future: F,
-    #[pin]
     sleep: Sleep<'timer>,
+    #[pin]
+    future: F,
 }
+
+#[derive(Debug)]
+pub struct Elapsed(());
 
 impl<F> Timeout<'_, F> {
     /// Gets a reference to the underlying future in this timeout.

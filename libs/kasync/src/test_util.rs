@@ -5,13 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::executor::Executor;
-use crate::loom;
-use crate::loom::sync::atomic::{AtomicBool, Ordering};
-use crate::loom::sync::{Arc, Condvar};
-use crate::loom::thread;
-use crate::loom::thread::{JoinHandle, Thread};
-use crate::time::{Clock, Instant, PhysTicks, Timer};
+use crate::loom::sync::Arc;
+use crate::loom::sync::{Condvar, Mutex as StdMutex};
 use core::mem::ManuallyDrop;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use futures::pin_mut;
@@ -20,31 +15,33 @@ use util::loom_const_fn;
 
 #[derive(Debug)]
 pub struct ThreadNotify {
-    thread: Thread,
-    unparked: AtomicBool,
+    mutex: StdMutex<bool>,
+    condvar: Condvar,
 }
 
 impl ThreadNotify {
     loom_const_fn! {
-        const fn new(thread: Thread) -> Self {
+        const fn new() -> Self {
             Self {
-                thread,
-                unparked: AtomicBool::new(false),
+                mutex: StdMutex::new(false),
+                condvar: Condvar::new()
             }
         }
     }
 
-    fn wake_by_ref(arc_self: &Arc<Self>) {
-        // Make sure the wakeup is remembered until the next `park()`.
-        let unparked = arc_self.unparked.swap(true, Ordering::Release);
-        if !unparked {
-            // If the thread has not been unparked yet, it must be done
-            // now. If it was actually parked, it will run again,
-            // otherwise the token made available by `unpark`
-            // may be consumed before reaching `park()`, but `unparked`
-            // ensures it is not forgotten.
-            arc_self.thread.unpark();
+    #[tracing::instrument(level = "trace", skip(self))]
+    fn wait(&self) {
+        let mut notified = self.mutex.lock().unwrap();
+        while !*notified {
+            notified = self.condvar.wait(notified).unwrap();
         }
+        *notified = false;
+    }
+
+    fn notify(&self) {
+        let mut signaled = self.mutex.lock().unwrap();
+        *signaled = true;
+        self.condvar.notify_one();
     }
 }
 
@@ -63,14 +60,14 @@ fn waker_ref(wake: &Arc<ThreadNotify>) -> WakerRef<'_> {
 
     unsafe fn wake_arc_raw(data: *const ()) {
         let arc = unsafe { Arc::from_raw(data.cast::<ThreadNotify>()) };
-        ThreadNotify::wake_by_ref(&arc);
+        ThreadNotify::notify(&arc);
     }
 
     // used by `waker_ref`
     unsafe fn wake_by_ref_arc_raw(data: *const ()) {
         // Retain Arc, but don't touch refcount by wrapping in ManuallyDrop
         let arc = ManuallyDrop::new(unsafe { Arc::from_raw(data.cast::<ThreadNotify>()) });
-        ThreadNotify::wake_by_ref(&arc);
+        ThreadNotify::notify(&arc);
     }
 
     unsafe fn drop_arc_raw(data: *const ()) {
@@ -89,7 +86,7 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
     pin_mut!(f);
 
     crate::loom::thread_local! {
-        static CURRENT_THREAD_NOTIFY: Arc<ThreadNotify> = Arc::new(ThreadNotify::new(thread::current()));
+        static CURRENT_THREAD_NOTIFY: Arc<ThreadNotify> = Arc::new(ThreadNotify::new());
     }
 
     CURRENT_THREAD_NOTIFY.with(|thread_notify| {
@@ -100,95 +97,7 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
                 return t;
             }
 
-            // Wait for a wakeup.
-            while !thread_notify.unparked.swap(false, Ordering::Acquire) {
-                // No wakeup occurred. It may occur now, right before parking,
-                // but in that case the token made available by `unpark()`
-                // is guaranteed to still be available and `park()` is a no-op.
-                thread::park();
-            }
+            thread_notify.wait();
         }
     })
-}
-
-/// Constructs a new [`Clock`] that produces arbitrary, monotonically nondecreasing timestamps
-/// with a 100ns precision.
-pub fn clock_100ns() -> Clock {
-    loom::lazy_static! {
-        static ref TIME_ANCHOR: std::time::Instant = std::time::Instant::now();
-    }
-
-    Clock::new(std::time::Duration::from_nanos(100), move || {
-        let elapsed = TIME_ANCHOR.elapsed();
-        PhysTicks(elapsed.as_nanos() as u64 / 100)
-    })
-}
-
-/// Constructs a new [`Clock`] that produces arbitrary, monotonically nondecreasing timestamps
-/// with a 1ms precision.
-pub fn clock_1ms() -> Clock {
-    loom::lazy_static! {
-        static ref TIME_ANCHOR: std::time::Instant = std::time::Instant::now();
-    }
-
-    Clock::new(std::time::Duration::from_millis(1), move || {
-        let elapsed = TIME_ANCHOR.elapsed();
-        PhysTicks(elapsed.as_millis() as u64)
-    })
-}
-
-#[derive(Debug, Clone)]
-pub struct TimeDriverHandle(Arc<(loom::sync::Mutex<bool>, Condvar)>);
-
-impl TimeDriverHandle {
-    pub fn wake(&self) {
-        let (running, cvar) = &*self.0;
-        debug_assert!(*running.lock().unwrap());
-        cvar.notify_one();
-    }
-
-    pub fn close(self) {
-        let (running, cvar) = &*self.0;
-        let mut running = running.lock().unwrap();
-        *running = false;
-        cvar.notify_all();
-    }
-}
-
-pub fn spawn_time_driver(
-    timer: &'static Timer,
-    exec: &'static Executor,
-) -> (TimeDriverHandle, JoinHandle<()>) {
-    let pair = Arc::new((loom::sync::Mutex::new(true), Condvar::new()));
-
-    let pair2 = pair.clone();
-    let h = thread::spawn(move || {
-        let (running, cvar) = &*pair2;
-        let mut running = running.lock().unwrap();
-
-        while *running {
-            tracing::trace!("turning timer...");
-
-            let (expired, maybe_next_deadline) = timer.turn();
-
-            let now = Instant::now(timer);
-
-            if expired > 0 {
-                exec.wake_one();
-            }
-
-            if let Some(next_deadline) = maybe_next_deadline {
-                let instant = next_deadline.as_instant(timer);
-                let timeout = instant.duration_since(now);
-
-                tracing::trace!("parking time loop for {timeout:?}...");
-                running = cvar.wait_timeout(running, timeout).unwrap().0;
-            } else {
-                tracing::trace!("parking time loop...");
-                running = cvar.wait(running).unwrap();
-            }
-        }
-    });
-
-    (TimeDriverHandle(pair), h)
 }

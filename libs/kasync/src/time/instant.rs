@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::{NANOS_PER_SEC, Timer, VirtTicks};
+use crate::time::{NANOS_PER_SEC, Ticks, TimeError, Timer};
 use core::fmt;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
@@ -19,15 +19,19 @@ impl Instant {
 
     /// Returns an instant corresponding to "now" in the global timer.
     pub fn now(timer: &Timer) -> Self {
-        let now = timer.now_ticks();
+        let now = timer.now();
         Self(timer.ticks_to_duration(now))
     }
 
     /// Create a new `Instant` from the given raw [`Ticks`] using the global timer and clock.
     /// Panics if no global timer is configured.
-    pub fn from_ticks(timer: &Timer, ticks: VirtTicks) -> Self {
+    pub fn from_ticks(timer: &Timer, ticks: Ticks) -> Self {
         let duration = timer.ticks_to_duration(ticks);
         Self(duration)
+    }
+
+    pub fn as_ticks(&self, timer: &Timer) -> Result<Ticks, TimeError> {
+        timer.duration_to_ticks(self.0)
     }
 
     /// Create a timestamp in the "very-far-future", panicking if no global timer is configured.

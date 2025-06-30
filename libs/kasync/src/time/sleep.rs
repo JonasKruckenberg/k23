@@ -1,4 +1,4 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -6,41 +6,28 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::loom::sync::atomic::Ordering;
-use crate::time::timer::Entry;
-use crate::time::{Instant, TimeError, Timer, VirtTicks};
-use core::fmt;
-use core::pin::Pin;
-use core::ptr::NonNull;
-use core::task::{Context, Poll, ready};
-use core::time::Duration;
+use crate::time::Ticks;
+use crate::time::{TimeError, Timer, instant::Instant, timer::Entry};
+use core::{
+    fmt,
+    pin::Pin,
+    task::{Context, Poll, ready},
+    time::Duration,
+};
 use pin_project::{pin_project, pinned_drop};
 
-/// Wait until duration has elapsed.
-///
-/// # Errors
-///
-/// This function fails for two reasons:
-/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
-/// 2. [`TimeError::DurationTooLong`] The requested duration is too big
 pub fn sleep(timer: &Timer, duration: Duration) -> Result<Sleep, TimeError> {
     let ticks = timer.duration_to_ticks(duration)?;
+    let now = timer.now();
+    let deadline = Ticks(ticks.0 + now.0);
 
-    Ok(Sleep::new(timer, ticks))
+    Sleep::new(timer, deadline)
 }
 
-/// Wait until the deadline has been reached.
-///
-/// # Errors
-///
-/// This function fails for two reasons:
-/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
-/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
 pub fn sleep_until(timer: &Timer, deadline: Instant) -> Result<Sleep, TimeError> {
-    let now = Instant::now(timer);
-    let duration = deadline.duration_since(now);
-    let ticks = timer.duration_to_ticks(duration)?;
+    let deadline = deadline.as_ticks(timer)?;
 
-    Ok(Sleep::new(timer, ticks))
+    Sleep::new(timer, deadline)
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -56,79 +43,17 @@ enum State {
 pub struct Sleep<'timer> {
     state: State,
     timer: &'timer Timer,
-    ticks: VirtTicks,
     #[pin]
     entry: Entry,
-    #[cfg(test)]
-    time_driver: Option<crate::test_util::TimeDriverHandle>,
 }
 
 impl<'timer> Sleep<'timer> {
-    fn new(timer: &'timer Timer, ticks: VirtTicks) -> Self {
-        let now = timer.now_ticks();
-        let deadline = VirtTicks(now.0 + ticks.0);
-
-        Self {
+    pub fn new(timer: &'timer Timer, deadline: Ticks) -> Result<Self, TimeError> {
+        Ok(Self {
             state: State::Unregistered,
             timer,
-            ticks,
             entry: Entry::new(deadline),
-            #[cfg(test)]
-            time_driver: None,
-        }
-    }
-
-    #[cfg(test)]
-    pub fn attach_time_driver(&mut self, time_driver: crate::test_util::TimeDriverHandle) {
-        self.time_driver = Some(time_driver);
-    }
-}
-
-impl Future for Sleep<'_> {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        tracing::trace!(self=?self, "Sleep::poll");
-        let mut me = self.as_mut().project();
-
-        match me.state {
-            State::Unregistered => {
-                let mut lock = me.timer.core.lock();
-
-                // While we are holding the wheel lock, go ahead and advance the
-                // timer, too. This way, the timer wheel gets advanced more
-                // frequently than just when a scheduler tick completes or a
-                // timer IRQ fires, helping to increase timer accuracy.
-                me.timer.turn_locked(&mut lock);
-
-                // Safety: the timer impl promises to treat the pointer as pinned
-                let ptr = unsafe { NonNull::from(Pin::into_inner_unchecked(me.entry.as_mut())) };
-
-                // Safety: we just created the pointer from a mutable reference
-                match unsafe { lock.register(ptr) } {
-                    Poll::Ready(()) => {
-                        *me.state = State::Completed;
-                        return Poll::Ready(());
-                    }
-                    Poll::Pending => {
-                        *me.state = State::Registered;
-                        drop(lock);
-                    }
-                }
-            }
-            State::Registered if me.entry.is_registered.load(Ordering::Acquire) => {}
-            _ => return Poll::Ready(()),
-        }
-
-        #[cfg(test)]
-        me.time_driver.as_ref().unwrap().wake();
-
-        let _poll = ready!(me.entry.waker.poll_wait(cx));
-        debug_assert!(
-            _poll.is_err(),
-            "a Sleep's WaitCell should only be woken by closing"
-        );
-        Poll::Ready(())
+        })
     }
 }
 
@@ -141,7 +66,6 @@ impl fmt::Debug for Sleep<'_> {
             ..
         } = self;
         f.debug_struct("Sleep")
-            .field("duration", &self.timer.ticks_to_duration(self.ticks))
             .field("state", &state)
             .field_with("addr", |f| fmt::Pointer::fmt(&entry, f))
             .field_with("timer", |f| fmt::Pointer::fmt(timer, f))
@@ -149,71 +73,156 @@ impl fmt::Debug for Sleep<'_> {
     }
 }
 
+impl Future for Sleep<'_> {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        tracing::trace!(self=?self, "Sleep::poll");
+
+        let mut me = self.as_mut().project();
+
+        match me.state {
+            State::Unregistered => {
+                let poll = me.timer.register(me.entry.as_mut());
+
+                match poll {
+                    Poll::Ready(()) => {
+                        *me.state = State::Completed;
+                        return Poll::Ready(());
+                    }
+                    Poll::Pending => {
+                        *me.state = State::Registered;
+                    }
+                }
+            }
+            State::Registered if me.entry.is_registered.load(Ordering::Acquire) => {}
+            _ => return Poll::Ready(()),
+        }
+
+        let _poll = ready!(me.entry.waker.poll_wait(cx));
+        debug_assert!(
+            _poll.is_err(),
+            "a Sleep's WaitCell should only be woken by closing"
+        );
+        Poll::Ready(())
+    }
+}
+
 #[pinned_drop]
 impl PinnedDrop for Sleep<'_> {
     fn drop(mut self: Pin<&mut Self>) {
         tracing::trace!("Sleep::drop");
-        let this = self.project();
+        let me = self.project();
         // we only need to remove the sleep from the timer wheel if it's
         // currently part of a linked list --- if the future hasn't been polled
         // yet, or it has already completed, we don't need to lock the timer to
         // remove it.
-        if this.entry.is_registered.load(Ordering::Acquire) {
-            let mut lock = this.timer.core.lock();
-            lock.cancel(this.entry);
+        if me.entry.is_registered.load(Ordering::Acquire) {
+            me.timer.cancel(me.entry);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::executor::{Executor, Worker};
-    use crate::test_util::{clock_1ms, spawn_time_driver};
-    use crate::time::{Timer, sleep};
-    use crate::{loom, test_util};
-    use core::time::Duration;
+    use super::*;
+    use crate::loom::sync::atomic::{AtomicBool, Ordering};
+    use crate::time::test_util::MockClock;
+    use crate::{
+        executor::{Executor, Worker},
+        loom,
+    };
     use fastrand::FastRand;
     use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::fmt::format::FmtSpan;
 
-    // loom thinks this deadlocks
-    // FIXME: check if this is an error with this test or with loom and reenable
-    #[cfg_attr(loom, ignore)]
+    // loom is not happy about this test. For whatever reason it triggers the "too many branches"
+    // error. But both the regular test AND miri are fine with it
     #[test]
-    fn sleep_run() {
+    #[cfg(not(loom))]
+    fn sleep_basically_works() {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
+            .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+            .with_thread_ids(true)
             .try_init();
 
         loom::model(move || {
             loom::lazy_static! {
                 static ref EXEC: Executor = Executor::new();
-                static ref TIMER: Timer = Timer::new(Duration::from_millis(1), clock_1ms());
+                static ref TIMER: Timer = Timer::new(Duration::from_millis(1), MockClock::new_1us());
+                static ref CALLED: AtomicBool = AtomicBool::new(false);
             }
-
-            let (td, h) = spawn_time_driver(&TIMER, &EXEC);
 
             let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
 
-            let td_ = td.clone();
             let th = EXEC
                 .try_spawn(async move {
-                    let begin = std::time::Instant::now();
-
                     tracing::trace!("going to sleep");
-                    let mut s = sleep(&TIMER, Duration::from_millis(500)).unwrap();
-                    s.attach_time_driver(td_);
-                    s.await;
+                    sleep(&TIMER, Duration::from_millis(500)).unwrap().await;
                     tracing::trace!("sleep done");
 
-                    let elapsed = begin.elapsed();
-                    assert!(elapsed.as_millis() >= 500);
+                    CALLED.store(true, Ordering::Release);
+
+                    tracing::info!("sleep done");
                 })
                 .unwrap();
 
-            test_util::block_on(worker.run(th)).unwrap().unwrap();
+            let clock = unsafe { TIMER.clock().data().cast::<MockClock>().as_ref().unwrap() };
 
-            td.close();
-            h.join().unwrap();
+            // Tick 1:
+            //  During this tick the task should register itself with the timer
+            //  and return Poll::Pending.
+            let tick = worker.tick();
+            assert_eq!(tick.polled, 1); // we polled one task
+            assert_eq!(tick.completed, 0); // that task signaled it is not ready yet
+
+            let (expired, next_deadline) = TIMER.turn();
+            assert_eq!(expired, 0); // no tasks should be expired yet, clock is still at 0ms
+            assert!(next_deadline.is_some()); // we should get a deadline to wait until
+            assert!(!th.is_complete()); // and the task shouldn't be complete yet, since 500ms haven't elapsed yet
+
+            // move the clock along by 250 milliseconds
+            clock.advance(Duration::from_millis(250));
+
+            // Tick 2:
+            //  We expect nothing to happen during this tick, since the task is still not ready yet
+            //  (we're only at 250ms not 500ms).
+            let tick = worker.tick();
+            assert_eq!(tick.polled, 0); // the task isn't in the workers queue, so no tasks should be polled
+            assert_eq!(tick.completed, 0); // and also no tasks completed of course
+
+            // turning the timer here should produce the same result: nothing should happen
+            let (expired, next_deadline) = TIMER.turn();
+            assert_eq!(expired, 0);
+            assert!(next_deadline.is_some());
+            assert!(!th.is_complete());
+
+            // advance the clock another 250 milliseconds (the task should be ready now!)
+            clock.advance(Duration::from_millis(250));
+
+            // Tick 3:
+            //  Polling right now should still technically do nothing, since the timer hasn't been
+            //  turned yet, and therefore the task hasn't been woken.
+            let tick = worker.tick();
+            assert_eq!(tick.polled, 0);
+            assert_eq!(tick.completed, 0);
+
+            // turning the timer now should wake the task!
+            let (expired, next_deadline) = TIMER.turn();
+            assert_eq!(expired, 1); // the timer entry should have expired and the task should be woken
+            assert!(next_deadline.is_none()); // consequently no deadline to wait for anymore
+
+            // Tick 4:
+            //  Polling now should complete the task since we're at 500ms AND we turned the timer
+            //  to wake the task!
+            let tick = worker.tick();
+            assert_eq!(tick.polled, 1); // we expect the task to have been in the work queue
+            assert_eq!(tick.completed, 1); // and it should be ready now
+            assert!(th.is_complete()); // the JoinHandle ought to agree
+
+            // and finally to double-check, the static should also agree
+            assert!(CALLED.load(Ordering::Acquire));
         });
     }
 
@@ -223,21 +232,21 @@ mod tests {
     //         .with_env_filter(EnvFilter::from_default_env())
     //         .with_thread_ids(true)
     //         .set_default();
-    //
+
     //     loom::model(|| {
     //         loom::lazy_static! {
     //             static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
     //         }
-    //
+
     //         let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
-    //
+
     //         worker.block_on(async {
     //             let begin = ::std::time::Instant::now();
-    //
+
     //             sleep(EXEC.timer(), Duration::from_millis(500))
     //                 .unwrap()
     //                 .await;
-    //
+
     //             let elapsed = begin.elapsed();
     //             assert!(
     //                 elapsed.as_millis() >= 500 && elapsed.as_millis() <= 600,

@@ -16,7 +16,7 @@ use core::cell::Cell;
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt, Trap};
 use riscv::{load_fp, load_gp, save_fp, save_gp};
-use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
+use riscv::{scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
 cpu_local! {
     static IN_TRAP: Cell<bool> = Cell::new(false);
@@ -303,13 +303,7 @@ extern "C-unwind" fn default_trap_handler(
                     global().executor.wake_one();
                 }
 
-                if let Some(next_deadline) = maybe_next_deadline {
-                    let ticks = global().timer.virt_to_phys(next_deadline.as_ticks());
-
-                    sbi::time::set_timer(ticks.0).unwrap();
-                } else {
-                    sbi::time::set_timer(u64::MAX).unwrap();
-                }
+                global().timer.schedule_wakeup(maybe_next_deadline);
             }
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
                 irq::trigger_irq(&mut *cpu_local().arch.cpu.interrupt_controller());

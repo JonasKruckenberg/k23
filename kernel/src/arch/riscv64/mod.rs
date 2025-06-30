@@ -61,6 +61,13 @@ pub fn per_cpu_init_early() {
     }
 }
 
+#[cold]
+pub fn per_cpu_init(devtree: &DeviceTree, cpuid: usize) -> crate::Result<state::CpuLocal> {
+    Ok(state::CpuLocal {
+        cpu: Cpu::new(devtree, cpuid)?,
+    })
+}
+
 /// Late per-cpu and RISC-V specific initialization.
 ///
 /// This function will be called after all global initialization is done.
@@ -80,9 +87,9 @@ pub fn per_cpu_init_late(devtree: &DeviceTree, cpuid: usize) -> crate::Result<st
         sie::set_seie();
     }
 
-    Ok(state::CpuLocal {
-        cpu: Cpu::new(devtree, cpuid)?,
-    })
+    let cpu = Cpu::new(devtree, cpuid)?;
+
+    Ok(state::CpuLocal { cpu })
 }
 
 /// Set the thread pointer on the calling cpu to the given address.

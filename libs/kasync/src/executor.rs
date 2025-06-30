@@ -242,7 +242,7 @@ impl Worker {
 
     async fn main_loop(&mut self) -> Result<!, Closed> {
         loop {
-            if self.tick() {
+            if self.tick().has_remaining {
                 continue;
             }
 
@@ -252,12 +252,12 @@ impl Worker {
         }
     }
 
-    fn tick(&mut self) -> bool {
-        let tick = self.scheduler.tick_n(256);
+    pub fn tick(&mut self) -> Tick {
+        let mut tick = self.scheduler.tick_n(256);
         tracing::trace!(worker = self.id, ?tick, "worker tick");
 
         if tick.has_remaining {
-            return true;
+            return tick;
         }
 
         // if there are no tasks remaining in this core's run queue, try to
@@ -266,12 +266,13 @@ impl Worker {
             tracing::trace!(tick.stolen = stolen);
 
             // if we stole tasks, we need to keep ticking
-            return true;
+            tick.has_remaining = true;
+            return tick;
         }
 
         // if we have no remaining woken tasks, and we didn't steal any new
         // tasks, this core can sleep until an interrupt occurs.
-        false
+        tick
     }
 
     fn try_steal(&mut self) -> Option<NonZeroUsize> {
@@ -530,7 +531,6 @@ mod tests {
         })
     }
 
-    #[cfg(not(loom))]
     #[test]
     fn multi_threaded() {
         let _trace = tracing_subscriber::fmt()

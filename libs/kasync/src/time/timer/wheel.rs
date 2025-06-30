@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::VirtTicks;
+use crate::time::Ticks;
 use crate::time::timer::entry::Entry;
 use crate::time::timer::{Core, Deadline};
 use cordyceps::List;
@@ -26,9 +26,9 @@ pub(crate) struct Wheel {
     /// This wheel's level.
     level: usize,
     /// The number of ticks represented by a single slot in this wheel.
-    ticks_per_slot: VirtTicks,
+    ticks_per_slot: Ticks,
     /// The number of ticks represented by this entire wheel.
-    ticks_per_wheel: VirtTicks,
+    ticks_per_wheel: Ticks,
     /// A bitmask for masking out all lower wheels' indices from a `now` timestamp.
     wheel_mask: u64,
 }
@@ -55,8 +55,8 @@ impl Wheel {
     #[inline]
     pub(crate) const fn new(level: usize) -> Self {
         // how many ticks does a single slot represent in a wheel of this level?
-        let ticks_per_slot = VirtTicks(Self::SLOTS.pow(level as u32) as u64);
-        let ticks_per_wheel = VirtTicks(ticks_per_slot.0 * Self::SLOTS as u64);
+        let ticks_per_slot = Ticks(Self::SLOTS.pow(level as u32) as u64);
+        let ticks_per_wheel = Ticks(ticks_per_slot.0 * Self::SLOTS as u64);
 
         debug_assert!(ticks_per_slot.0.is_power_of_two());
         debug_assert!(ticks_per_wheel.0.is_power_of_two());
@@ -77,15 +77,15 @@ impl Wheel {
         }
     }
 
-    pub(crate) fn insert(&mut self, deadline: VirtTicks, entry: NonNull<Entry>) {
+    pub(crate) fn insert(&mut self, deadline: Ticks, ptr: NonNull<Entry>) {
         let slot = self.slot_index(deadline);
         // insert the sleep entry into the appropriate linked list.
-        self.slots[slot].push_front(entry);
+        self.slots[slot].push_front(ptr);
         // toggle the occupied bit for that slot.
         self.fill_slot(slot);
     }
 
-    pub(crate) fn remove(&mut self, deadline: VirtTicks, entry: Pin<&mut Entry>) {
+    pub(crate) fn remove(&mut self, deadline: Ticks, entry: Pin<&mut Entry>) {
         let slot = self.slot_index(deadline);
         // safety: we will not use the `NonNull` to violate pinning
         // invariants; it's used only to insert the sleep into the intrusive
@@ -115,7 +115,7 @@ impl Wheel {
         }
     }
 
-    pub(crate) fn next_deadline(&self, now: VirtTicks) -> Option<Deadline> {
+    pub(crate) fn next_deadline(&self, now: Ticks) -> Option<Deadline> {
         let distance = self.next_slot_distance(now)?;
 
         let slot = distance % Self::SLOTS;
@@ -145,7 +145,7 @@ impl Wheel {
         // slot's value.
         let ticks = {
             let skipped_ticks = skipped as u64 * self.ticks_per_wheel.0;
-            VirtTicks(rotation_start + (slot as u64 * self.ticks_per_slot.0) + skipped_ticks)
+            Ticks(rotation_start + (slot as u64 * self.ticks_per_slot.0) + skipped_ticks)
         };
 
         let deadline = Deadline {
@@ -176,7 +176,7 @@ impl Wheel {
         clippy::cast_possible_truncation,
         reason = "slot index can be at most 64"
     )]
-    fn next_slot_distance(&self, now: VirtTicks) -> Option<usize> {
+    fn next_slot_distance(&self, now: Ticks) -> Option<usize> {
         if self.occupied_slots == 0 {
             return None;
         }
@@ -215,7 +215,7 @@ impl Wheel {
         clippy::cast_possible_truncation,
         reason = "slot index can be at most 64"
     )]
-    const fn slot_index(&self, ticks: VirtTicks) -> usize {
+    const fn slot_index(&self, ticks: Ticks) -> usize {
         let shift = self.level * Self::BITS;
         ((ticks.0 >> shift) % Self::SLOTS as u64) as usize
     }

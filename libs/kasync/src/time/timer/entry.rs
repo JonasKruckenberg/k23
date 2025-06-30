@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::sync::wait_cell::WaitCell;
-use crate::time::VirtTicks;
+use crate::time::Ticks;
 use cordyceps::{Linked, list};
 use core::marker::PhantomPinned;
 use core::mem::offset_of;
@@ -19,12 +19,12 @@ use util::loom_const_fn;
 #[pin_project]
 #[derive(Debug)]
 pub(in crate::time) struct Entry {
-    pub(in crate::time) deadline: VirtTicks,
+    pub(in crate::time) deadline: Ticks,
     pub(in crate::time) is_registered: AtomicBool,
     /// The currently-registered waker
     pub(in crate::time) waker: WaitCell,
     #[pin]
-    pub(in crate::time) links: list::Links<Self>,
+    links: list::Links<Self>,
     // This type is !Unpin due to the heuristic from:
     // <https://github.com/rust-lang/rust/pull/82834>
     _pin: PhantomPinned,
@@ -32,7 +32,7 @@ pub(in crate::time) struct Entry {
 
 impl Entry {
     loom_const_fn! {
-        pub(in crate::time) const fn new(deadline: VirtTicks) -> Entry {
+        pub(in crate::time) const fn new(deadline: Ticks) -> Entry {
             Self {
                 deadline,
                 waker: WaitCell::new(),
