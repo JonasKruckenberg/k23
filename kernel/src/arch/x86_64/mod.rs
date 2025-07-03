@@ -44,6 +44,22 @@ pub fn init() -> state::Global {
 #[cold]
 pub fn per_cpu_init_early() {
     // TODO: Initialize x86_64 specific CPU features
+    
+    // FS segment base register is mysteriously gets cleared when jumping from 
+    // the loader to the kernel entry. 
+    // this assembly below sets the FS_BASE MSR to the correct value
+    // TODO: figure out why this happens
+    unsafe {
+        core::arch::asm!(
+            "mov rcx, 0xc0000100",  // FS_BASE MSR
+            "mov rax, 0xffffffc080000000",
+            "mov rdx, 0xffffffc0",
+            "wrmsr",
+            out("rcx") _,
+            out("rax") _,
+            out("rdx") _,
+        );
+    }
 }
 
 /// Late per-cpu and x86_64 specific initialization.
