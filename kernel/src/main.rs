@@ -139,14 +139,13 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 }
 
 fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
-
     #[cfg(target_arch = "x86_64")]
     debug_print!("kmain\n");
 
     // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
     arch::per_cpu_init_early();
-    
+
     #[cfg(target_arch = "x86_64")]
     debug_print!("after arch::per_cpu_init_early\n");
 
@@ -158,20 +157,19 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     debug_print!("before locate_device_tree\n");
 
     let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
-    
+
     #[cfg(target_arch = "x86_64")]
     debug_print!("after locate_device_tree\n");
 
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
-    
+
     let global = state::try_init_global(|| {
         // set up the basic functionality of the tracing subsystem as early as possible
-        
+
         // TODO: Skip tracing init for x86_64 for now
         #[cfg(not(target_arch = "x86_64"))]
         tracing::init_early();
 
-        
         // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
         // is available
         let allocatable_memories = allocatable_memory_regions(boot_info);
@@ -179,7 +177,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // TODO: Skip tracing for x86_64 for now
         #[cfg(not(target_arch = "x86_64"))]
         tracing::info!("allocatable memories: {:?}", allocatable_memories);
-        
+
         let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
 
         // initializing the global allocator

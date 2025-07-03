@@ -73,7 +73,7 @@ unsafe extern "C" fn _start() -> ! {
             "rep stosd",
 
             // Set up PML4[0] -> PDPT (for identity mapping low addresses)
-            "mov dword ptr [0x1000], 0x2003",  // PDPT address | Present | Writable            
+            "mov dword ptr [0x1000], 0x2003",  // PDPT address | Present | Writable
 
             // Set up PDPT[0] -> PD (for identity mapping)
             "mov dword ptr [0x2000], 0x3003",  // PD address | Present | Writable
@@ -310,12 +310,12 @@ pub unsafe fn map_contiguous(
                 if can_map_at_level(virt, phys, effective_remaining, lvl) {
                     let page_size = page_size_for_level(lvl);
                     let mut pte_flags = PTEFlags::VALID | PTEFlags::from(flags);
-                    
+
                     // For large pages (2MB at level 1, 1GB at level 2), set the PS bit
                     if lvl > 0 {
                         pte_flags |= PTEFlags::HUGE;
                     }
-                    
+
                     pte.replace_address_and_flags(phys, pte_flags);
 
                     virt = virt.checked_add(page_size).unwrap();
@@ -432,7 +432,9 @@ impl PageTableEntry {
         // At level 3 (PML4), entries are never leaves
         match level {
             0 => self.is_valid(), // PT entries are always leaves if valid
-            1 | 2 => self.is_valid() && PTEFlags::from_bits_retain(self.bits).contains(PTEFlags::HUGE),
+            1 | 2 => {
+                self.is_valid() && PTEFlags::from_bits_retain(self.bits).contains(PTEFlags::HUGE)
+            }
             _ => false, // PML4 entries are never leaves
         }
     }

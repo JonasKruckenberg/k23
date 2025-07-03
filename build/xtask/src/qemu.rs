@@ -84,7 +84,7 @@ pub fn spawn(
                 "none",
                 "-serial",
                 "mon:stdio",
-                "-no-reboot", 
+                "-no-reboot",
                 "-smp",
                 "cpus=1",
                 // "cpus=8",

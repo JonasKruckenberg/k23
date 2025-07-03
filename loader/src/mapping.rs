@@ -169,7 +169,7 @@ pub fn map_kernel(
     } else {
         panic!("Unsupported architecture");
     };
-        
+
     log::trace!("map_kernel: phys_base={:#x}", phys_base);
     assert!(
         phys_base % arch::PAGE_SIZE == 0,
@@ -210,8 +210,14 @@ pub fn map_kernel(
     // Apply relocations in virtual memory.
     for ph in kernel.elf_file.program_iter() {
         if ph.get_type().unwrap() == Type::Dynamic {
-            log::trace!("Found Dynamic segment: offset={:#x}, vaddr={:#x}, paddr={:#x}, filesz={:#x}, memsz={:#x}",
-                      ph.offset(), ph.virtual_addr(), ph.physical_addr(), ph.file_size(), ph.mem_size());
+            log::trace!(
+                "Found Dynamic segment: offset={:#x}, vaddr={:#x}, paddr={:#x}, filesz={:#x}, memsz={:#x}",
+                ph.offset(),
+                ph.virtual_addr(),
+                ph.physical_addr(),
+                ph.file_size(),
+                ph.mem_size()
+            );
             handle_dynamic_segment(
                 &ProgramHeader::try_from(ph).unwrap(),
                 &kernel.elf_file,
@@ -358,11 +364,8 @@ fn handle_bss_section(
             } else {
                 panic!("Unsupported architecture");
             };
-            
-            let src = slice::from_raw_parts(
-                src_addr as *mut u8,
-                data_bytes_before_zero,
-            );
+
+            let src = slice::from_raw_parts(src_addr as *mut u8, data_bytes_before_zero);
 
             let dst = slice::from_raw_parts_mut(
                 arch::KERNEL_ASPACE_BASE.checked_add(new_frame).unwrap() as *mut u8,
@@ -440,12 +443,12 @@ fn handle_dynamic_segment(
         let file_offset = {
             let vaddr = rela_info.offset;
             let mut found_offset = None;
-            
+
             for prog_header in elf_file.program_iter() {
                 if prog_header.get_type().unwrap() == xmas_elf::program::Type::Load {
                     let seg_vaddr = prog_header.virtual_addr();
                     let seg_size = prog_header.file_size();
-                    
+
                     if vaddr >= seg_vaddr && vaddr < seg_vaddr + seg_size {
                         // Found the segment containing our RELA data
                         let offset_in_segment = vaddr - seg_vaddr;
@@ -454,10 +457,10 @@ fn handle_dynamic_segment(
                     }
                 }
             }
-            
+
             found_offset.expect("RELA data not found in any LOAD segment")
         };
-        
+
         // Safety: we have to trust the ELF data
         let relas = unsafe {
             #[expect(clippy::cast_ptr_alignment, reason = "this is fine")]

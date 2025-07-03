@@ -44,8 +44,8 @@ pub fn init() -> state::Global {
 #[cold]
 pub fn per_cpu_init_early() {
     unsafe {
-        // FS segment base register is mysteriously gets cleared when jumping from 
-        // the loader to the kernel entry. 
+        // FS segment base register is mysteriously gets cleared when jumping from
+        // the loader to the kernel entry.
         // this assembly below sets the FS_BASE MSR to the correct value
         // TODO: figure out why this happens
         core::arch::asm!(
@@ -57,10 +57,10 @@ pub fn per_cpu_init_early() {
             out("rax") _,
             out("rdx") _,
         );
-        
+
         // Initialize x87 FPU
         core::arch::asm!("fninit");
-        
+
         // Initialize SSE/SSE2 state
         // Set CR4.OSFXSR to enable SSE instructions
         core::arch::asm!(
@@ -69,7 +69,7 @@ pub fn per_cpu_init_early() {
             "mov cr4, rax",
             out("rax") _,
         );
-        
+
         // Set CR4.OSXMMEXCPT to enable unmasked SSE exceptions
         core::arch::asm!(
             "mov rax, cr4",
@@ -77,7 +77,7 @@ pub fn per_cpu_init_early() {
             "mov cr4, rax",
             out("rax") _,
         );
-        
+
         // Enable RDTSC instruction for user mode by clearing CR4.TSD
         // (TSD = Time Stamp Disable for user mode)
         core::arch::asm!(

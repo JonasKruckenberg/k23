@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::PAGE_SIZE;
 use crate::TRAP_STACK_SIZE_PAGES;
+use crate::arch::PAGE_SIZE;
 use core::cell::Cell;
 use cpu_local::cpu_local;
 
@@ -24,7 +24,7 @@ pub fn init() {
             .byte_add(TRAP_STACK_SIZE_PAGES * PAGE_SIZE)
             .cast_mut()
     };
-    
+
     panic!("trap handler initialization not implemented yet");
     // TODO: Initialize x86_64 interrupt descriptor table (IDT)
     // TODO: Set up exception handlers for page faults, general protection faults, etc.
