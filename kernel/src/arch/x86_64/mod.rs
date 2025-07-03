@@ -51,7 +51,10 @@ pub fn per_cpu_init_early() {
 /// This function will be called after all global initialization is done.
 #[cold]
 pub fn per_cpu_init_late(devtree: &DeviceTree, cpuid: usize) -> crate::Result<state::CpuLocal> {
-    // TODO: Initialize trap handler and interrupts for x86_64
+    // Initialize the trap handler
+    trap_handler::init();
+
+    panic!("x86_64: per_cpu_init_late partially implemented");
 
     Ok(state::CpuLocal {
         cpu: Cpu::new(devtree, cpuid)?,
@@ -60,6 +63,7 @@ pub fn per_cpu_init_late(devtree: &DeviceTree, cpuid: usize) -> crate::Result<st
 
 /// Set the thread pointer on the calling cpu to the given address.
 pub fn set_thread_ptr(addr: VirtualAddress) {
+    panic!("x86_64: set_thread_ptr not implemented");
     // TODO: Implement thread pointer setting for x86_64
     // On x86_64, this might use the FS or GS segment base
 }
