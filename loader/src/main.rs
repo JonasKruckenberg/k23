@@ -46,17 +46,6 @@ pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-#[cfg(target_arch = "x86_64")]
-fn debug_print(ch: u8) {
-    unsafe {
-        core::arch::asm!(
-            "out dx, al",
-            in("dx") 0x3F8u16,
-            in("al") ch,
-        );
-    }
-}
-
 unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
 
     static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
