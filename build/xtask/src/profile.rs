@@ -31,6 +31,8 @@ struct RawProfile {
 pub enum Architecture {
     #[serde(rename = "riscv64")]
     Riscv64,
+    #[serde(rename = "x86_64")]
+    X86_64,
 }
 
 #[repr(u8)]

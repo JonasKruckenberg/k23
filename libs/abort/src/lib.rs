@@ -29,6 +29,17 @@ pub fn abort() -> ! {
             std::process::abort();
         } else if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
             riscv::exit(1);
+        } else if #[cfg(target_arch = "x86_64")] {
+            // For x86_64, we'll disable interrupts and halt forever
+            unsafe {
+                core::arch::asm!(
+                    "cli",      // Clear interrupt flag
+                    "2:",
+                    "hlt",      // Halt the CPU
+                    "jmp 2b",   // Loop just in case
+                    options(noreturn)
+                );
+            }
         } else {
             compile_error!("unsupported target architecture")
         }

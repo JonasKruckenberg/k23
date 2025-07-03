@@ -47,7 +47,11 @@ fn print(args: core::fmt::Arguments) {
     cfg_if::cfg_if! {
         if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
             riscv::hio::_print(args);
-        } else {
+        }
+        else if #[cfg(target_arch = "x86_64")] {
+            x86::serial::_print(args);
+        }
+        else {
             compile_error!("unsupported target architecture");
         }
     }

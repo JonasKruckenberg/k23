@@ -1131,6 +1131,7 @@ dependencies = [
  "target-lexicon",
  "tracing 0.2.0",
  "tracing-core 0.2.0",
+ "trap",
  "uart-16550",
  "unwind2",
  "util",
@@ -1139,6 +1140,7 @@ dependencies = [
  "wasmtime-slab",
  "wast 228.0.0",
  "wavltree",
+ "x86",
  "xmas-elf",
 ]
 
@@ -1250,6 +1252,7 @@ dependencies = [
  "rand_chacha",
  "riscv",
  "spin",
+ "x86",
  "xmas-elf",
 ]
 
@@ -1686,6 +1689,7 @@ dependencies = [
  "bitflags",
  "cfg-if",
  "spin",
+ "trap",
 ]
 
 [[package]]
@@ -2191,6 +2195,10 @@ dependencies = [
  "tracing-core 0.1.33",
  "tracing-log 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "trap"
+version = "0.1.0"
 
 [[package]]
 name = "uart-16550"
@@ -2749,6 +2757,16 @@ name = "writeable"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea2f10b9bb0928dfb1b42b65e1f9e36f7f54dbdf08457afefb38afcdec4fa2bb"
+
+[[package]]
+name = "x86"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "spin",
+ "trap",
+]
 
 [[package]]
 name = "xmas-elf"

@@ -79,7 +79,10 @@ fn identity_map_range(
     phys: Range<usize>,
     flags: Flags,
 ) -> crate::Result<()> {
-    let len = NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap();
+    // Align to page boundaries
+    let aligned_start = align_down(phys.start, arch::PAGE_SIZE);
+    let aligned_end = checked_align_up(phys.end, arch::PAGE_SIZE).unwrap();
+    let len = NonZeroUsize::new(aligned_end.checked_sub(aligned_start).unwrap()).unwrap();
 
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
@@ -87,8 +90,8 @@ fn identity_map_range(
         arch::map_contiguous(
             root_pgtable,
             frame_alloc,
-            phys.start,
-            phys.start,
+            aligned_start,
+            aligned_start,
             len,
             flags,
             0, // called before translation into higher half
@@ -108,6 +111,7 @@ pub fn map_physical_memory(
     let phys = Range::from(
         align_down(phys.start, alignment)..checked_align_up(phys.end, alignment).unwrap(),
     );
+
     let virt = Range::from(
         arch::KERNEL_ASPACE_BASE.checked_add(phys.start).unwrap()
             ..arch::KERNEL_ASPACE_BASE.checked_add(phys.end).unwrap(),
@@ -153,8 +157,20 @@ pub fn map_kernel(
         )
         .unwrap(),
     );
+    log::trace!("map_kernel: Allocated virtual range {:#x?}", kernel_virt);
 
-    let phys_base = kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE;
+    log::trace!("map_kernel: Getting phys_base");
+    let phys_base = if cfg!(target_arch = "x86_64") {
+        // On x86_64, the kernel ELF is accessed through identity mapping
+        kernel.elf_file.input.as_ptr() as usize
+    } else if cfg!(target_arch = "riscv64") {
+        // On RISC-V, the kernel ELF is accessed through physical memory mapping
+        kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE
+    } else {
+        panic!("Unsupported architecture");
+    };
+
+    log::trace!("map_kernel: phys_base={:#x}", phys_base);
     assert!(
         phys_base % arch::PAGE_SIZE == 0,
         "Loaded ELF file is not sufficiently aligned"
@@ -194,6 +210,14 @@ pub fn map_kernel(
     // Apply relocations in virtual memory.
     for ph in kernel.elf_file.program_iter() {
         if ph.get_type().unwrap() == Type::Dynamic {
+            log::trace!(
+                "Found Dynamic segment: offset={:#x}, vaddr={:#x}, paddr={:#x}, filesz={:#x}, memsz={:#x}",
+                ph.offset(),
+                ph.virtual_addr(),
+                ph.physical_addr(),
+                ph.file_size(),
+                ph.mem_size()
+            );
             handle_dynamic_segment(
                 &ProgramHeader::try_from(ph).unwrap(),
                 &kernel.elf_file,
@@ -332,10 +356,16 @@ fn handle_bss_section(
 
         // Safety: we just allocated the frame
         unsafe {
-            let src = slice::from_raw_parts(
-                arch::KERNEL_ASPACE_BASE.checked_add(last_frame).unwrap() as *mut u8,
-                data_bytes_before_zero,
-            );
+            // On x86_64, the kernel data is identity-mapped, not at KERNEL_ASPACE_BASE
+            let src_addr = if cfg!(target_arch = "x86_64") {
+                last_frame
+            } else if cfg!(target_arch = "riscv64") {
+                arch::KERNEL_ASPACE_BASE.checked_add(last_frame).unwrap()
+            } else {
+                panic!("Unsupported architecture");
+            };
+
+            let src = slice::from_raw_parts(src_addr as *mut u8, data_bytes_before_zero);
 
             let dst = slice::from_raw_parts_mut(
                 arch::KERNEL_ASPACE_BASE.checked_add(new_frame).unwrap() as *mut u8,
@@ -409,13 +439,35 @@ fn handle_dynamic_segment(
     log::trace!("parsing RELA info...");
 
     if let Some(rela_info) = ph.parse_rela(elf_file)? {
+        // Convert RELA virtual address to file offset
+        let file_offset = {
+            let vaddr = rela_info.offset;
+            let mut found_offset = None;
+
+            for prog_header in elf_file.program_iter() {
+                if prog_header.get_type().unwrap() == xmas_elf::program::Type::Load {
+                    let seg_vaddr = prog_header.virtual_addr();
+                    let seg_size = prog_header.file_size();
+
+                    if vaddr >= seg_vaddr && vaddr < seg_vaddr + seg_size {
+                        // Found the segment containing our RELA data
+                        let offset_in_segment = vaddr - seg_vaddr;
+                        found_offset = Some(prog_header.offset() + offset_in_segment);
+                        break;
+                    }
+                }
+            }
+
+            found_offset.expect("RELA data not found in any LOAD segment")
+        };
+
         // Safety: we have to trust the ELF data
         let relas = unsafe {
             #[expect(clippy::cast_ptr_alignment, reason = "this is fine")]
             let ptr = elf_file
                 .input
                 .as_ptr()
-                .byte_add(usize::try_from(rela_info.offset)?)
+                .byte_add(usize::try_from(file_offset)?)
                 .cast::<xmas_elf::sections::Rela<P64>>();
 
             slice::from_raw_parts(ptr, usize::try_from(rela_info.count)?)
@@ -440,9 +492,10 @@ fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: usize) {
     );
 
     const R_RISCV_RELATIVE: u32 = 3;
+    const R_X86_64_RELATIVE: u32 = 8;
 
     match rela.get_type() {
-        R_RISCV_RELATIVE => {
+        R_RISCV_RELATIVE | R_X86_64_RELATIVE => {
             // Calculate address at which to apply the relocation.
             // dynamic relocations offsets are relative to the virtual layout of the elf,
             // not the physical file
