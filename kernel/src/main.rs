@@ -28,6 +28,22 @@
 extern crate alloc;
 extern crate panic_unwind2;
 
+#[cfg(target_arch = "x86_64")]
+macro_rules! debug_print {
+    ($msg:expr) => {
+        for &byte in $msg.as_bytes() {
+            unsafe {
+                core::arch::asm!(
+                    "out dx, al",
+                    in("al") byte,
+                    in("dx") 0x3f8u16,
+                    options(nomem, preserves_flags)
+                );
+            }
+        }
+    };
+}
+
 mod allocator;
 mod arch;
 mod backtrace;
