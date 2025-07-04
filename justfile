@@ -88,7 +88,7 @@ check-fmt crate="" *cargo_args="":
 # ==============================================================================
 
 # crates that have hosted tests
-_hosted_crates := "-p kaddr2line -p cpu-local -p fastrand -p fdt -p kasync -p ksharded-slab -p spin -p wast@228.0.0 -p wavltree"
+_hosted_crates := "-p kaddr2line -p cpu-local -p fastrand -p fdt -p kasync --features counters -p ksharded-slab -p spin -p wast@228.0.0 -p wavltree"
 # run hosted tests
 test crate="" *cargo_args="": _get-nextest
     {{ _cargo }} {{ _testcmd }} \
@@ -98,7 +98,7 @@ test crate="" *cargo_args="": _get-nextest
             {{ cargo_args }}
 
 # crates that have miri tests
-_miri_crates := "-p kasync -p ksharded-slab -p spin -p wavltree"
+_miri_crates := "-p kasync --features counters -p ksharded-slab -p spin -p wavltree"
 # run hosted tests under miri
 miri crate="" *cargo_args="": _get-nextest
     MIRIFLAGS="{{ env_var_or_default("MIRIFLAGS", "-Zmiri-strict-provenance -Zmiri-disable-isolation") }} -Zmiri-env-forward=RUST_BACKTRACE -Zmiri-env-forward=RUST_LOG" \
@@ -110,7 +110,7 @@ miri crate="" *cargo_args="": _get-nextest
             {{ cargo_args }}
 
 # crates that have loom tests
-_loom_crates := "-p kasync"
+_loom_crates := "-p kasync --features counters"
 # run hosted tests under loom
 loom crate="" *cargo_args='': _get-nextest
     #!/usr/bin/env bash
