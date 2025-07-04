@@ -1,4 +1,4 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -8,33 +8,37 @@
 mod entry;
 mod wheel;
 
-use crate::time::{Clock, Instant, Ticks};
+use crate::time::{Clock, NANOS_PER_SEC, TimeError, max_duration};
+use crate::{loom::sync::atomic::Ordering, time::Instant};
 use cordyceps::List;
-use core::pin::Pin;
-use core::ptr::NonNull;
-use core::sync::atomic::Ordering;
-use core::task::Poll;
+use core::{pin::Pin, ptr::NonNull, task::Poll, time::Duration};
 use spin::Mutex;
+use util::loom_const_fn;
 use wheel::Wheel;
 
 pub(in crate::time) use entry::Entry;
-use util::loom_const_fn;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Ticks(pub u64);
 
 #[derive(Copy, Clone, Debug)]
 pub struct Deadline {
-    pub ticks: Ticks,
+    ticks: Ticks,
     slot: usize,
     wheel: usize,
 }
 
 #[derive(Debug)]
 pub struct Timer {
-    pub(in crate::time) clock: Clock,
-    pub(in crate::time) core: Mutex<Core>,
+    clock: Clock,
+    tick_duration: Duration,
+    tick_duration_nanos: u64,
+    tick_ratio: u64,
+    core: Mutex<Core>,
 }
 
 #[derive(Debug)]
-pub(super) struct Core {
+struct Core {
     /// The ticks that have elapsed since the wheel started.
     now: Ticks,
     /// Timer wheels
@@ -91,8 +95,8 @@ impl Deadline {
         self.ticks
     }
 
-    pub fn as_instant(&self, clock: &Clock) -> Instant {
-        Instant::from_ticks(clock, self.ticks)
+    pub fn as_instant(&self, timer: &Timer) -> Instant {
+        Instant::from_ticks(timer, self.ticks)
     }
 }
 
@@ -100,33 +104,99 @@ impl Deadline {
 
 impl Timer {
     loom_const_fn! {
-        pub const fn new(clock: Clock) -> Self {
+        pub const fn new(tick_duration: Duration, clock: Clock) -> Self {
+            let tick_duration_nanos = duration_to_nanos(tick_duration);
+
+            let tick_ratio = tick_duration_nanos / duration_to_nanos(clock.tick_duration());
+
             Self {
                 clock,
+                tick_duration,
+                tick_duration_nanos,
+                tick_ratio,
                 core: Mutex::new(Core::new()),
             }
         }
     }
 
-    #[inline]
+    /// Returns the current `now` timestamp, in [`Ticks`] of this timer's base
+    /// tick duration.
+    pub fn now(&self) -> Ticks {
+        Ticks(self.clock.now() / self.tick_ratio)
+    }
+
+    /// Returns the hardware clock backing this timer.
     pub fn clock(&self) -> &Clock {
         &self.clock
     }
 
-    #[inline]
-    pub fn try_turn(&self) -> Option<(usize, Option<Deadline>)> {
-        let mut lock = self.core.try_lock()?;
-        Some(self.turn_locked(&mut lock))
+    /// Returns the [`Duration`] of one tick of this Timer.
+    #[must_use]
+    pub const fn tick_duration(&self) -> Duration {
+        self.tick_duration
     }
 
-    #[inline]
+    /// Returns the maximum duration of this Timer.
+    #[must_use]
+    pub fn max_duration(&self) -> Duration {
+        max_duration(self.tick_duration())
+    }
+
+    /// Convert the given raw [`Ticks`] into a [`Duration`] using this timers
+    /// internal tick duration.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the conversion from the given [`Ticks`] would overflow.
+    pub fn ticks_to_duration(&self, ticks: Ticks) -> Duration {
+        Duration::from_nanos(ticks.0 * self.tick_duration_nanos)
+    }
+
+    /// Convert the given [`Duration`] into a raw [`Ticks`] using this timers
+    /// internal tick duration.
+    ///
+    /// # Errors
+    ///
+    /// This method returns a `[TimeError::DurationTooLong`] if the conversion from the given [`Duration`]
+    /// into the 64-bits [`Ticks`] would overflow.
+    pub fn duration_to_ticks(&self, duration: Duration) -> Result<Ticks, TimeError> {
+        let duration_nanos =
+            checked_duration_to_nanos(duration).ok_or(TimeError::DurationTooLong {
+                requested: duration,
+                max: self.max_duration(),
+            })?;
+
+        Ok(Ticks(duration_nanos / self.tick_duration_nanos))
+    }
+
+    /// Advance the timer to the current time, waking any ready tasks.
+    ///
+    /// The return value indicates the number of tasks woken during this turn
+    /// as well as the next deadline (if any) at which new tasks will become ready.
+    ///
+    /// It is a good idea for the caller to wait until that deadline is reached.
     pub fn turn(&self) -> (usize, Option<Deadline>) {
-        let mut lock = self.core.lock();
-        self.turn_locked(&mut lock)
+        let mut core = self.core.lock();
+        self.turn_locked(&mut core)
     }
 
-    pub(super) fn turn_locked(&self, core: &mut Core) -> (usize, Option<Deadline>) {
-        let mut now = self.clock.now_ticks();
+    /// Try to advance the timer to the current time, waking any ready tasks.
+    ///
+    /// This method *does not* block when the inner timer mutex lock cannot be acquired,
+    /// making it suitable to call in interrupt handlers.
+    ///
+    /// The return value indicates the number of tasks woken during this turn
+    /// as well as the next deadline (if any) at which new tasks will become ready.
+    ///
+    /// It is a good idea for the caller to wait until that deadline is reached.
+    pub fn try_turn(&self) -> Option<(usize, Option<Deadline>)> {
+        let mut core = self.core.try_lock()?;
+        Some(self.turn_locked(&mut core))
+    }
+
+    fn turn_locked(&self, core: &mut Core) -> (usize, Option<Deadline>) {
+        let mut now = self.now();
+        tracing::info!(now = ?now, "turn_locked");
 
         if now < core.now {
             tracing::warn!("time went backwards!");
@@ -138,8 +208,8 @@ impl Timer {
             let (_expired, next_deadline) = core.poll(now);
             expired += _expired;
             if let Some(next) = next_deadline {
-                now = self.clock.now_ticks();
-                if now >= next.ticks {
+                now = self.now();
+                if now >= next.as_ticks() {
                     // we've advanced past the next deadline, so we need to
                     // advance again.
                     continue;
@@ -149,6 +219,36 @@ impl Timer {
             return (expired, next_deadline);
         }
     }
+
+    /// Schedule a wakeup using this timers hardware [`Clock`].
+    ///
+    /// If the provided argument is `Some()` the clock is instructed to schedule a wakeup
+    /// at that deadline, if `None` is provided, a deadline *maximally far in the future* is chosen.
+    pub fn schedule_wakeup(&self, maybe_next_deadline: Option<Deadline>) {
+        if let Some(next_deadline) = maybe_next_deadline {
+            let virt = next_deadline.as_ticks();
+            let phys = virt.0 * self.tick_ratio;
+            self.clock.schedule_wakeup(phys);
+        } else {
+            self.clock.schedule_wakeup(u64::MAX);
+        }
+    }
+
+    pub(super) fn cancel(&self, entry: Pin<&mut Entry>) {
+        let mut core = self.core.lock();
+        core.cancel(entry);
+
+        self.schedule_wakeup(core.next_deadline());
+    }
+
+    pub(super) fn register(&self, entry: Pin<&mut Entry>) -> Poll<()> {
+        let mut core = self.core.lock();
+        let poll = core.register(entry);
+
+        self.schedule_wakeup(core.next_deadline());
+
+        poll
+    }
 }
 
 // === impl Core ===
@@ -157,21 +257,24 @@ impl Core {
     const WHEELS: usize = Wheel::BITS;
     const MAX_SLEEP_TICKS: u64 = (1 << (Wheel::BITS * Self::WHEELS)) - 1;
 
-    loom_const_fn! {
-        const fn new() -> Self {
-            Self {
-                now: Ticks(0),
-                wheels: [
-                    Wheel::new(0),
-                    Wheel::new(1),
-                    Wheel::new(2),
-                    Wheel::new(3),
-                    Wheel::new(4),
-                    Wheel::new(5),
-                ],
-            }
+    #[inline]
+    const fn new() -> Self {
+        Self {
+            now: Ticks(0),
+            #[cfg(not(loom))]
+            wheels: [
+                Wheel::new(0),
+                Wheel::new(1),
+                Wheel::new(2),
+                Wheel::new(3),
+                Wheel::new(4),
+                Wheel::new(5),
+            ],
+            #[cfg(loom)]
+            wheels: [Wheel::new(0), Wheel::new(1)],
         }
     }
+
     fn poll(&mut self, now: Ticks) -> (usize, Option<Deadline>) {
         // sleeps that need to be rescheduled on lower-level wheels need to be
         // processed after we have finished turning the wheel, to avoid looping
@@ -257,18 +360,15 @@ impl Core {
         })
     }
 
-    pub(super) fn cancel(&mut self, entry: Pin<&mut Entry>) {
+    fn cancel(&mut self, entry: Pin<&mut Entry>) {
         let deadline = entry.deadline;
         tracing::trace!("canceling entry={entry:?};now={:?}", self.now);
         let wheel = self.wheel_index(deadline);
         self.wheels[wheel].remove(deadline, entry);
     }
 
-    pub(super) unsafe fn register(&mut self, ptr: NonNull<Entry>) -> Poll<()> {
+    fn register(&mut self, entry: Pin<&mut Entry>) -> Poll<()> {
         let deadline = {
-            // Safety: callers responsibility
-            let entry = unsafe { ptr.as_ref() };
-
             tracing::trace!("registering entry={entry:?};now={:?}", self.now);
 
             if entry.deadline <= self.now {
@@ -291,14 +391,17 @@ impl Core {
             entry.deadline
         };
 
+        // Safety: TODO
+        let ptr = unsafe { NonNull::from(Pin::into_inner_unchecked(entry)) };
+
         self.insert_at(deadline, ptr);
         Poll::Pending
     }
 
-    fn insert_at(&mut self, deadline: Ticks, entry: NonNull<Entry>) {
+    fn insert_at(&mut self, deadline: Ticks, ptr: NonNull<Entry>) {
         let wheel = self.wheel_index(deadline);
-        tracing::trace!("inserting entry={entry:?};deadline={deadline:?}");
-        self.wheels[wheel].insert(deadline, entry);
+        tracing::trace!("inserting entry={ptr:?};deadline={deadline:?}");
+        self.wheels[wheel].insert(deadline, ptr);
     }
 
     #[inline]
@@ -322,4 +425,17 @@ fn wheel_index(now: Ticks, ticks: Ticks) -> usize {
     let rest = u64::BITS - 1 - zeros;
 
     rest as usize / Core::WHEELS
+}
+
+#[inline]
+const fn duration_to_nanos(duration: Duration) -> u64 {
+    duration.as_secs() * NANOS_PER_SEC + duration.subsec_nanos() as u64
+}
+
+#[inline]
+fn checked_duration_to_nanos(duration: Duration) -> Option<u64> {
+    duration
+        .as_secs()
+        .checked_mul(NANOS_PER_SEC)?
+        .checked_add(u64::from(duration.subsec_nanos()))
 }

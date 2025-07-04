@@ -1,364 +1,278 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use crate::park::{Park, Parker, ParkingLot};
-use crate::scheduler::steal::Injector;
-use crate::scheduler::{Schedule, Scheduler};
-use crate::task::{JoinHandle, TaskBuilder, TaskRef, TaskStub};
-use crate::time::{Clock, Timer};
-use core::alloc::{AllocError, Allocator};
+mod steal;
+
+use crate::error::Closed;
+use crate::error::SpawnError;
+use crate::executor::steal::{Injector, Stealer, TryStealError};
+use crate::future::Either;
+use crate::loom::sync::atomic::{AtomicPtr, AtomicUsize};
+use crate::sync::wait_queue::WaitQueue;
+use crate::task::{Header, JoinHandle, PollResult, Task, TaskBuilder, TaskRef};
+use alloc::boxed::Box;
+use cordyceps::mpsc_queue::{MpscQueue, TryDequeueError};
+use core::alloc::Allocator;
 use core::num::NonZeroUsize;
-use core::pin::pin;
-use core::task::{Context, Poll};
+use core::ptr;
+use core::ptr::NonNull;
+use core::sync::atomic::Ordering;
 use cpu_local::collection::CpuLocal;
 use fastrand::FastRand;
+use futures::pin_mut;
 use spin::Backoff;
 
 #[derive(Debug)]
-pub struct Executor<P> {
+pub struct Executor {
     schedulers: CpuLocal<Scheduler>,
-    stop: AtomicBool,
-    parking_lot: ParkingLot<P>,
-    injector: Injector<&'static Scheduler>,
-    num_stealing: AtomicUsize,
-    timer: Timer,
+    injector: Injector,
+    sleepers: WaitQueue,
 }
 
 #[derive(Debug)]
-pub struct Worker<P: 'static> {
+pub struct Worker {
     id: usize,
-    exec: &'static Executor<P>,
+    executor: &'static Executor,
     scheduler: &'static Scheduler,
-    parker: Parker<P>,
     rng: FastRand,
-    is_stealing: bool,
 }
 
-impl<P> Executor<P> {
-    #[inline]
-    pub fn timer(&self) -> &Timer {
-        &self.timer
-    }
+/// Information about the scheduler state produced after ticking.
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct Tick {
+    /// `true` if the tick completed with any tasks remaining in the run queue.
+    pub has_remaining: bool,
+
+    /// The total number of tasks polled on this scheduler tick.
+    pub polled: usize,
+
+    /// The number of polled tasks that *completed* on this scheduler tick.
+    ///
+    /// This should always be <= `self.polled`.
+    #[cfg(feature = "counters")]
+    pub completed: usize,
+
+    /// The number of tasks that were spawned since the last tick.
+    #[cfg(feature = "counters")]
+    pub spawned: usize,
+
+    /// The number of tasks that were woken from outside their own `poll` calls since the last tick.
+    #[cfg(feature = "counters")]
+    pub woken_external: usize,
+
+    /// The number of tasks that were woken from within their own `poll` calls during this tick.
+    #[cfg(feature = "counters")]
+    pub woken_internal: usize,
+}
+
+#[derive(Debug)]
+pub struct Scheduler {
+    run_queue: MpscQueue<Header>,
+    current_task: AtomicPtr<Header>,
+    queued: AtomicUsize,
+    #[cfg(feature = "counters")]
+    spawned: AtomicUsize,
+    #[cfg(feature = "counters")]
+    woken: AtomicUsize,
 }
 
 // === impl Executor ===
 
-impl<P> Executor<P>
-where
-    P: Park + Send + Sync,
-{
-    pub fn new(num_workers: usize, clock: Clock) -> Self {
-        Self {
-            schedulers: CpuLocal::with_capacity(num_workers),
-            stop: AtomicBool::new(false),
-            parking_lot: ParkingLot::with_capacity(num_workers),
-            injector: Injector::new(),
-            num_stealing: AtomicUsize::new(0),
-            timer: Timer::new(clock),
-        }
+impl Default for Executor {
+    fn default() -> Self {
+        Self::new()
     }
+}
 
-    /// Construct a new `Executor` with a *statically allocated* stub node.
-    ///
-    /// This constructor is `const` and doesn't require a heap allocation, restrictions on
-    /// callers (therefore the `unsafe`). For a safe (but allocating and non-`const`) constructor,
-    /// see `[Self::new`].
-    ///
-    /// # Safety
-    ///
-    /// The `&'static TaskStub` reference MUST only be used for *this* constructor and **never**
-    /// reused for the entire time that `Executor` exists.
-    #[cfg(not(loom))]
-    #[must_use]
-    pub const unsafe fn new_with_static_stub(clock: Clock, stub: &'static TaskStub) -> Self {
+impl Executor {
+    pub fn new() -> Self {
         Self {
             schedulers: CpuLocal::new(),
-            stop: AtomicBool::new(false),
-            parking_lot: ParkingLot::new(),
-            // Safety: ensured by caller
-            injector: unsafe { Injector::new_with_static_stub(stub) },
-            num_stealing: AtomicUsize::new(0),
-            timer: Timer::new(clock),
+            injector: Injector::new(),
+            sleepers: WaitQueue::new(),
         }
     }
 
-    pub fn stop(&self) {
-        self.stop.store(true, Ordering::Release);
-        self.parking_lot.unpark_all();
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            schedulers: CpuLocal::with_capacity(capacity),
+            injector: Injector::new(),
+            sleepers: WaitQueue::new(),
+        }
     }
 
-    /// Returns the CPU local scheduler
+    /// Closes the executor.
     ///
-    /// # Panics
-    ///
-    /// Panics if there is no active scheduler on this CPU (the worker hasn't started yet)
-    pub fn cpu_local_scheduler(&self) -> &Scheduler {
-        self.schedulers.get().expect("no active scheduler")
+    /// After calling close all ongoing and future calls to [`Worker::run`] will return `Err(Closed)`.
+    pub fn close(&self) {
+        self.sleepers.close();
     }
 
-    #[inline]
-    pub fn task_builder<'a>(&self) -> TaskBuilder<'a, &'static Scheduler> {
-        TaskBuilder::new()
+    /// Returns `true` if the executor has been closed.
+    ///
+    /// The executor is closed by calling [`close`][Self::close].
+    ///
+    /// If true is returned, a call to send will always result in an error.
+    pub fn is_closed(&self) -> bool {
+        self.sleepers.is_closed()
     }
 
-    /// Attempt to spawn this [`Future`] onto the executor.
+    pub fn wake_one(&self) {
+        self.sleepers.wake();
+    }
+
+    pub fn current_scheduler(&self) -> Option<&Scheduler> {
+        self.schedulers.get()
+    }
+
+    pub fn build_task<'a>(
+        &'static self,
+    ) -> TaskBuilder<'a, impl Fn(TaskRef) -> Result<(), Closed>> {
+        TaskBuilder::new(|task| {
+            if self.is_closed() {
+                return Err(Closed(()));
+            }
+
+            if let Some(scheduler) = self.schedulers.get() {
+                // we need to bind the scheduler here
+                task.bind_scheduler(scheduler);
+
+                scheduler.schedule(task);
+
+                Ok(())
+            } else {
+                self.injector.push_task(task);
+
+                Ok(())
+            }
+        })
+    }
+
+    /// Attempt spawn this [`Future`] onto this executor.
     ///
-    /// This method returns a [`JoinHandle`] which can be used to await the futures output as
-    /// well as control some aspects of its runtime behaviour (such as cancelling it).
+    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
+    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
+    /// of its runtime behaviour (such as cancelling it).
     ///
     /// # Errors
     ///
     /// Returns [`AllocError`] when allocation of the task fails.
-    #[inline]
-    #[track_caller]
-    pub fn try_spawn<F>(&'static self, future: F) -> Result<JoinHandle<F::Output>, AllocError>
+    pub fn try_spawn<F>(&'static self, future: F) -> Result<JoinHandle<F::Output>, SpawnError>
     where
-        F: Future + Send,
-        F::Output: Send,
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
     {
-        let (task, join) = self.task_builder().try_build(future)?;
-        self.spawn_allocated(task);
-        Ok(join)
+        self.build_task().try_spawn(future)
     }
 
-    /// Attempt to spawn this [`Future`] onto the executor using a custom [`Allocator`].
+    /// Attempt spawn this [`Future`] onto this executor using a custom [`Allocator`].
     ///
-    /// This method returns a [`JoinHandle`] which can be used to await the futures output as
-    /// well as control some aspects of its runtime behaviour (such as cancelling it).
+    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
+    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
+    /// of its runtime behaviour (such as cancelling it).
     ///
     /// # Errors
     ///
     /// Returns [`AllocError`] when allocation of the task fails.
-    #[inline]
-    #[track_caller]
     pub fn try_spawn_in<F, A>(
         &'static self,
         future: F,
         alloc: A,
-    ) -> Result<JoinHandle<F::Output>, AllocError>
+    ) -> Result<JoinHandle<F::Output>, SpawnError>
     where
-        F: Future + Send,
-        F::Output: Send,
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
         A: Allocator,
     {
-        let (task, join) = self.task_builder().try_build_in(future, alloc)?;
-        self.spawn_allocated(task);
-        Ok(join)
+        self.build_task().try_spawn_in(future, alloc)
     }
-
-    pub fn spawn_allocated(&'static self, task: TaskRef) {
-        if let Some(scheduler) = self.schedulers.get() {
-            tracing::trace!("spawning locally {task:?}");
-            // we're moving the task to a different scheduler so we need to
-            // bind to it
-            // Safety: the generics ensure this is always the right type
-            unsafe {
-                task.bind_scheduler(scheduler);
-            }
-
-            scheduler.spawn(task);
-        } else {
-            tracing::trace!("spawning remote {task:?}");
-            self.injector.push_task(task);
-            self.parking_lot.unpark_one();
-        }
-    }
-
-    fn try_transition_worker_to_stealing(&self, worker: &mut Worker<P>) -> bool {
-        debug_assert!(!worker.is_stealing);
-
-        let num_stealing = self.num_stealing.load(Ordering::Acquire);
-        let num_parked = self.parking_lot.num_parked();
-
-        if 2 * num_stealing >= self.active_workers() - num_parked {
-            return false;
-        }
-
-        worker.is_stealing = true;
-        self.num_stealing.fetch_add(1, Ordering::AcqRel);
-
-        true
-    }
-
-    /// A lightweight transition from stealing -> running.
-    ///
-    /// Returns `true` if this is the final stealing worker. The caller
-    /// **must** notify a new worker.
-    fn transition_worker_from_stealing(&self, worker: &mut Worker<P>) -> bool {
-        debug_assert!(worker.is_stealing);
-        worker.is_stealing = false;
-
-        let prev = self.num_stealing.fetch_sub(1, Ordering::AcqRel);
-        debug_assert!(prev > 0);
-
-        prev == 1
-    }
-
-    fn active_workers(&self) -> usize {
-        self.schedulers.len()
-    }
-}
-
-/// Constructs a new [`Executor`] in a safe way.
-#[cfg(not(loom))]
-#[macro_export]
-macro_rules! new_executor {
-    ($clock:expr) => {{
-        static STUB: $crate::task::TaskStub = $crate::task::TaskStub::new();
-
-        // Safety: The intrusive MPSC queue that holds tasks uses a stub node as the initial element of the
-        // queue. Being intrusive, the stub can only ever be part of one collection, never multiple.
-        // As such, if we were to reuse the stub node it would in effect be unlinked from the previous
-        // queue. Which, unlocks a new world of fancy undefined behaviour, but unless you're into that
-        // not great.
-        // By defining the static above inside this block we guarantee the stub cannot escape
-        // and be used elsewhere thereby solving this problem.
-        unsafe { $crate::executor::Executor::new_with_static_stub($clock, &STUB) }
-    }};
 }
 
 // === impl Worker ===
-impl<P> Worker<P>
-where
-    P: Park + Send + Sync,
-{
-    pub fn new(exec: &'static Executor<P>, id: usize, park: P, rng: FastRand) -> Self {
-        let scheduler = exec.schedulers.get_or(Scheduler::new);
+
+impl Worker {
+    pub fn new(executor: &'static Executor, rng: FastRand) -> Self {
+        let id = executor.schedulers.len();
+        let core = executor.schedulers.get_or(Scheduler::new);
 
         Self {
             id,
-            exec,
-            scheduler,
-            parker: Parker::new(park),
+            executor,
+            scheduler: core,
             rng,
-            is_stealing: false,
         }
     }
 
-    pub fn run(&mut self) {
-        let _span = tracing::debug_span!("worker main loop", worker = self.id).entered();
-
-        loop {
-            // drive the scheduling loop until we're out of work
-            if self.tick() {
-                continue;
-            }
-
-            // check the executors signalled us to stop
-            if self.exec.stop.load(Ordering::Acquire) {
-                tracing::debug!(worker = self.id, "stop signal received, shutting down");
-                break;
-            }
-
-            tracing::trace!("turning timer...");
-            let (expired, maybe_next_deadline) = self.exec.timer.try_turn().unwrap_or((0, None));
-
-            // if turning the timer expired some `Sleep`s that means we potentially unblocked
-            // some tasks. let's try polling again!
-            if expired > 0 {
-                continue;
-            }
-
-            tracing::trace!(maybe_next_deadline = ?maybe_next_deadline, "going to sleep");
-            if let Some(next_deadline) = maybe_next_deadline {
-                self.parker
-                    .park_until(next_deadline, self.exec.timer.clock());
-
-                // self.exec.parking_lot.park_until(
-                //     self.parker.clone(),
-                //     next_deadline,
-                //     self.exec.timer.clock(),
-                // );
-            } else {
-                self.parker.park();
-
-                // // at this point we're fully out of work. We so we should suspend the
-                // self.exec.parking_lot.park(self.parker.clone());
-            }
-            tracing::trace!("woke up");
-        }
+    /// Returns a reference to the task that's current being polled or `None`.
+    #[must_use]
+    pub fn current_task(&self) -> Option<TaskRef> {
+        self.scheduler.current_task()
     }
 
-    #[track_caller]
-    pub fn block_on<F>(&mut self, future: F) -> F::Output
+    /// Run the worker main loop until the given future completes.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(Closed)` if the executor has been closed before the future completes.
+    pub async fn run<F>(&mut self, future: F) -> Result<F::Output, Closed>
     where
-        F: Future,
+        F: Future + Send,
+        F::Output: Send,
     {
-        let _span = tracing::debug_span!("worker block_on", worker = self.id).entered();
+        if self.executor.is_closed() {
+            return Err(Closed(()));
+        }
 
-        let waker = self.parker.clone().into_unpark().into_waker();
-        let mut cx = Context::from_waker(&waker);
+        let main_loop = self.main_loop();
+        pin_mut!(future);
+        pin_mut!(main_loop);
 
-        let mut future = pin!(future);
-
-        loop {
-            if let Poll::Ready(v) = future.as_mut().poll(&mut cx) {
-                return v;
-            }
-
-            // drive the scheduling loop until we're out of work
-            if self.tick() {
-                continue;
-            }
-
-            tracing::trace!("turning timer...");
-            let (expired, maybe_next_deadline) = self.exec.timer.try_turn().unwrap_or((0, None));
-
-            // if turning the timer expired some `Sleep`s that means we potentially unblocked
-            // some tasks. let's try polling again!
-            if expired > 0 {
-                continue;
-            }
-
-            tracing::trace!(maybe_next_deadline = ?maybe_next_deadline, "going to sleep");
-            if let Some(next_deadline) = maybe_next_deadline {
-                self.parker
-                    .park_until(next_deadline, self.exec.timer.clock());
-
-                // self.exec.parking_lot.park_until(
-                //     self.parker.clone(),
-                //     next_deadline,
-                //     self.exec.timer.clock(),
-                // );
-            } else {
-                // // at this point we're fully out of work. We so we should suspend the
-                // self.exec.parking_lot.park(self.parker.clone());
-            }
-            tracing::trace!("woke up");
+        let res = crate::future::select(future, main_loop).await;
+        match res {
+            Either::Left((val, _)) => Ok(val),
+            // The `main_loop` future either never returns or always returns Err(Closed)
+            Either::Right((Err(err), _)) => Err(err),
         }
     }
 
-    fn tick(&mut self) -> bool {
-        let tick = self.scheduler.tick_n(256);
+    async fn main_loop(&mut self) -> Result<!, Closed> {
+        loop {
+            if self.tick().has_remaining {
+                continue;
+            }
+
+            tracing::trace!("worker {} going to sleep...", self.id);
+            self.executor.sleepers.wait().await?;
+            tracing::trace!("worker woke up");
+        }
+    }
+
+    pub fn tick(&mut self) -> Tick {
+        let mut tick = self.scheduler.tick_n(256);
         tracing::trace!(worker = self.id, ?tick, "worker tick");
 
         if tick.has_remaining {
-            return true;
+            return tick;
         }
 
-        if self.exec.try_transition_worker_to_stealing(self) {
-            // if there are no tasks remaining in this core's run queue, try to
-            // steal new tasks from the distributor queue.
-            if let Some(stolen) = self.try_steal() {
-                tracing::trace!(tick.stolen = stolen);
+        // if there are no tasks remaining in this core's run queue, try to
+        // steal new tasks from the distributor queue.
+        if let Some(stolen) = self.try_steal() {
+            tracing::trace!(tick.stolen = stolen);
 
-                self.exec.transition_worker_from_stealing(self);
-
-                // if we stole tasks, we need to keep ticking
-                return true;
-            }
-
-            self.exec.transition_worker_from_stealing(self);
+            // if we stole tasks, we need to keep ticking
+            tick.has_remaining = true;
+            return tick;
         }
 
         // if we have no remaining woken tasks, and we didn't steal any new
         // tasks, this core can sleep until an interrupt occurs.
-        false
+        tick
     }
 
     fn try_steal(&mut self) -> Option<NonZeroUsize> {
@@ -366,14 +280,14 @@ where
         const MAX_STOLEN_PER_TICK: usize = 256;
 
         // attempt to steal from the global injector queue first
-        if let Ok(stealer) = self.exec.injector.try_steal() {
-            let stolen = stealer.spawn_n(&self.scheduler, MAX_STOLEN_PER_TICK);
+        if let Ok(stealer) = self.executor.injector.try_steal() {
+            let stolen = stealer.spawn_n(self.scheduler, MAX_STOLEN_PER_TICK);
             tracing::trace!("stole {stolen} tasks from injector (in first attempt)");
             return NonZeroUsize::new(stolen);
         }
 
         // If that fails, attempt to steal from other workers
-        let num_workers = self.exec.active_workers();
+        let num_workers = self.executor.schedulers.len();
 
         // if there is only one worker, there is no one to steal from anyway
         if num_workers <= 1 {
@@ -386,7 +300,7 @@ where
             // Start from a random worker
             let start = self.rng.fastrand_n(u32::try_from(num_workers).unwrap()) as usize;
 
-            if let Some(stolen) = self.steal_one_round(num_workers, start) {
+            if let Some(stolen) = self.try_steal_one_round(num_workers, start) {
                 return Some(stolen);
             }
 
@@ -394,8 +308,8 @@ where
         }
 
         // as a last resort try to steal from the global injector queue again
-        if let Ok(stealer) = self.exec.injector.try_steal() {
-            let stolen = stealer.spawn_n(&self.scheduler, MAX_STOLEN_PER_TICK);
+        if let Ok(stealer) = self.executor.injector.try_steal() {
+            let stolen = stealer.spawn_n(self.scheduler, MAX_STOLEN_PER_TICK);
             tracing::trace!("stole {stolen} tasks from injector (in second attempt)");
             return NonZeroUsize::new(stolen);
         }
@@ -403,7 +317,7 @@ where
         None
     }
 
-    fn steal_one_round(&mut self, num_workers: usize, start: usize) -> Option<NonZeroUsize> {
+    fn try_steal_one_round(&mut self, num_workers: usize, start: usize) -> Option<NonZeroUsize> {
         for i in 0..num_workers {
             let i = (start + i) % num_workers;
 
@@ -412,7 +326,7 @@ where
                 continue;
             }
 
-            let Some(victim) = self.exec.schedulers.iter().nth(i) else {
+            let Some(victim) = self.executor.schedulers.iter().nth(i) else {
                 // The worker might not be online yet, just advance past
                 continue;
             };
@@ -423,7 +337,7 @@ where
                 continue;
             };
 
-            let stolen = stealer.spawn_half(&self.scheduler);
+            let stolen = stealer.spawn_half(self.scheduler);
             tracing::trace!("stole {stolen} tasks from worker {i} {victim:?}");
             return NonZeroUsize::new(stolen);
         }
@@ -432,190 +346,281 @@ where
     }
 }
 
+// === impl Scheduler ===
+
+impl Scheduler {
+    fn new() -> Self {
+        let stub_task = Box::new(Task::new_stub());
+        let (stub_task, _) = TaskRef::new_allocated(stub_task);
+
+        Self {
+            run_queue: MpscQueue::new_with_stub(stub_task),
+            queued: AtomicUsize::new(0),
+            current_task: AtomicPtr::new(ptr::null_mut()),
+            #[cfg(feature = "counters")]
+            spawned: AtomicUsize::new(0),
+            #[cfg(feature = "counters")]
+            woken: AtomicUsize::new(0),
+        }
+    }
+
+    /// Returns a reference to the task that's current being polled or `None`.
+    #[must_use]
+    pub fn current_task(&self) -> Option<TaskRef> {
+        let ptr = NonNull::new(self.current_task.load(Ordering::Acquire))?;
+        Some(TaskRef::clone_from_raw(ptr))
+    }
+
+    pub fn schedule(&self, task: TaskRef) {
+        self.queued.fetch_add(1, Ordering::AcqRel);
+        self.run_queue.enqueue(task);
+    }
+
+    fn tick_n(&'static self, n: usize) -> Tick {
+        tracing::trace!("tick_n({self:p}, {n})");
+
+        let mut tick = Tick {
+            has_remaining: false,
+            polled: 0,
+            #[cfg(feature = "counters")]
+            completed: 0,
+            #[cfg(feature = "counters")]
+            spawned: 0,
+            #[cfg(feature = "counters")]
+            woken_external: 0,
+            #[cfg(feature = "counters")]
+            woken_internal: 0,
+        };
+
+        while tick.polled < n {
+            let task = match self.run_queue.try_dequeue() {
+                Ok(task) => task,
+                // If inconsistent, just try again.
+                Err(TryDequeueError::Inconsistent) => {
+                    tracing::trace!("scheduler queue {:?} inconsistent", self.run_queue);
+                    core::hint::spin_loop();
+                    continue;
+                }
+                // Queue is empty or busy (in use by something else), bail out.
+                Err(TryDequeueError::Busy | TryDequeueError::Empty) => {
+                    tracing::trace!("scheduler queue {:?} busy or empty", self.run_queue);
+                    break;
+                }
+            };
+
+            self.queued.fetch_sub(1, Ordering::SeqCst);
+
+            let _span = tracing::trace_span!(
+                "poll",
+                task.addr = ?task.header_ptr(),
+                task.tid = task.id().as_u64(),
+            )
+            .entered();
+
+            // store the currently polled task in the `current_task` pointer.
+            // using `TaskRef::as_ptr` is safe here, since we will clear the
+            // `current_task` pointer before dropping the `TaskRef`.
+            self.current_task
+                .store(task.header_ptr().as_ptr(), Ordering::Release);
+
+            // poll the task
+            let poll_result = task.poll();
+
+            // clear the current task cell before potentially dropping the
+            // `TaskRef`.
+            self.current_task.store(ptr::null_mut(), Ordering::Release);
+
+            tick.polled += 1;
+            match poll_result {
+                PollResult::Ready | PollResult::ReadyJoined => {
+                    #[cfg(feature = "counters")]
+                    {
+                        tick.completed += 1;
+                    }
+                }
+                PollResult::PendingSchedule => {
+                    self.schedule(task);
+                    #[cfg(feature = "counters")]
+                    {
+                        tick.woken_internal += 1;
+                    }
+                }
+                PollResult::Pending => {}
+            }
+
+            #[cfg(not(feature = "counters"))]
+            tracing::trace!(poll = ?poll_result, tick.polled);
+            #[cfg(feature = "counters")]
+            tracing::trace!(poll = ?poll_result, tick.polled, tick.completed);
+        }
+
+        #[cfg(feature = "counters")]
+        {
+            tick.spawned = self.spawned.swap(0, Ordering::Relaxed);
+            tick.woken_external = self.woken.swap(0, Ordering::Relaxed);
+        }
+
+        // are there still tasks in the queue? if so, we have more tasks to poll.
+        if self.queued.load(Ordering::SeqCst) > 0 {
+            tick.has_remaining = true;
+        }
+
+        if tick.polled > 0 {
+            // log scheduler metrics.
+            #[cfg(not(feature = "counters"))]
+            tracing::trace!(tick.polled, tick.has_remaining);
+            #[cfg(feature = "counters")]
+            tracing::trace!(
+                tick.polled,
+                tick.has_remaining,
+                tick.completed,
+                tick.spawned,
+                tick.woken = tick.woken_external + tick.woken_internal,
+                tick.woken.external = tick.woken_external,
+                tick.woken.internal = tick.woken_internal
+            );
+        }
+
+        tick
+    }
+
+    fn try_steal(&self) -> Result<Stealer, TryStealError> {
+        Stealer::new(&self.run_queue, &self.queued)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loom;
-    use crate::test_util::StopOnPanic;
-    use crate::{StdPark, std_clock};
+    use crate::{loom, test_util};
     use core::hint::black_box;
+    use core::sync::atomic::AtomicBool;
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::util::SubscriberInitExt;
 
+    async fn work() -> usize {
+        let val = 1 + 1;
+        crate::task::yield_now().await;
+        black_box(val)
+    }
+
     #[test]
-    fn single_threaded_executor() {
+    fn single_threaded() {
         let _trace = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
-            .with_thread_names(true)
             .set_default();
 
         loom::model(|| {
             loom::lazy_static! {
-                static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
+                static ref EXEC: Executor = Executor::new();
+                static ref CALLED: AtomicBool = AtomicBool::new(false);
             }
 
-            let (task, _) = EXEC
-                .task_builder()
-                .try_build(async move {
-                    tracing::info!("Hello World!");
-                    EXEC.stop();
-                })
-                .unwrap();
-            EXEC.spawn_allocated(task);
+            EXEC.try_spawn(async move {
+                work().await;
+                CALLED.store(true, Ordering::SeqCst);
+                EXEC.close();
+            })
+            .unwrap();
 
-            let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
-
-            worker.run();
+            let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
+            test_util::block_on(worker.run(crate::future::pending::<()>())).expect_err(
+                "stopping the executor should always result in a Closed(()) error here",
+            );
+            assert!(CALLED.load(Ordering::SeqCst));
         })
     }
 
-    // FIXME loom doesn't like this test... It would be great to figure out exactly why
-    //  and fix that, you know for like, correctness.
-    #[cfg(not(loom))]
     #[test]
-    fn multi_threaded_executor() {
+    fn multi_threaded() {
         let _trace = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
-            .with_thread_names(true)
             .set_default();
 
         loom::model(|| {
             const NUM_THREADS: usize = 3;
 
             loom::lazy_static! {
-                static ref EXEC: Executor<StdPark> = Executor::new(NUM_THREADS, std_clock!());
+                static ref EXEC: Executor = Executor::new();
+                static ref CALLED: AtomicBool = AtomicBool::new(false);
             }
 
-            EXEC.try_spawn(async {
-                tracing::info!("Hello World!");
-                EXEC.stop();
+            EXEC.try_spawn(async move {
+                work().await;
+                CALLED.store(true, Ordering::SeqCst);
+                EXEC.close();
             })
             .unwrap();
 
             let joins: Vec<_> = (0..NUM_THREADS)
-                .map(|id| {
-                    loom::thread::Builder::new()
-                        .name(format!("Worker(0{id})"))
-                        .spawn(move || {
-                            let mut worker = Worker::new(
-                                &EXEC,
-                                id,
-                                StdPark::for_current(),
-                                FastRand::from_seed(0),
-                            );
+                .map(|_| {
+                    loom::thread::spawn(move || {
+                        let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
 
-                            worker.run();
-                        })
-                        .unwrap()
+                        test_util::block_on(worker.run(crate::future::pending::<()>())).expect_err(
+                            "stopping the executor should always result in a Closed(()) error here",
+                        );
+                    })
                 })
                 .collect();
 
             for join in joins {
                 join.join().unwrap();
             }
-        })
+            assert!(CALLED.load(Ordering::SeqCst));
+        });
     }
 
     #[test]
-    fn block_on() {
+    fn join_handle_cross_thread() {
         let _trace = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
-            .with_thread_ids(true)
             .set_default();
-
-        async fn work(num_polls: &AtomicUsize) -> usize {
-            num_polls.fetch_add(1, Ordering::Relaxed);
-
-            let val = 1 + 1;
-            crate::task::yield_now().await;
-            num_polls.fetch_add(1, Ordering::Relaxed);
-
-            black_box(val)
-        }
 
         loom::model(|| {
             loom::lazy_static! {
-                static ref NUM_POLLS: AtomicUsize = AtomicUsize::new(0);
-                static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
+                static ref EXEC: Executor = Executor::new();
             }
 
-            let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+            let (tx, rx) = loom::sync::mpsc::channel::<JoinHandle<u32>>();
 
-            worker.block_on(async {
-                let (task, h) = EXEC.task_builder().try_build(work(&NUM_POLLS)).unwrap();
-                EXEC.spawn_allocated(task);
-                assert_eq!(h.await.unwrap(), 2);
+            let h0 = loom::thread::spawn(move || {
+                let tid = loom::thread::current().id();
+                let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
+
+                let h = EXEC
+                    .try_spawn(async move {
+                        // make sure the task is actually polled on thread 0
+                        assert_eq!(loom::thread::current().id(), tid);
+
+                        crate::task::yield_now().await;
+
+                        // make sure the task is actually polled on thread 0
+                        assert_eq!(loom::thread::current().id(), tid);
+
+                        42
+                    })
+                    .unwrap();
+
+                tx.send(h).unwrap();
+
+                test_util::block_on(worker.run(crate::future::pending::<()>())).expect_err(
+                    "stopping the executor should always result in a Closed(()) error here",
+                );
             });
 
-            assert_eq!(NUM_POLLS.load(Ordering::Relaxed), 2);
-        })
-    }
+            let h1 = loom::thread::spawn(move || {
+                let h = rx.recv().unwrap();
 
-    // #[test]
-    // fn join_handle_cross_thread() {
-    //     loom::model(|| {
-    //         loom::lazy_static! {
-    //             static ref EXEC: Executor<StdPark> = Executor::new(2, std_clock!());
-    //         }
-    //
-    //         let _guard = StopOnPanic::new(&EXEC);
-    //
-    //         let (tx, rx) = loom::sync::mpsc::channel::<JoinHandle<u32>>();
-    //
-    //         let h0 = loom::thread::spawn(move || {
-    //             let tid = loom::thread::current().id();
-    //
-    //             let mut worker =
-    //                 Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
-    //
-    //             let h = EXEC
-    //                 .try_spawn(async move {
-    //                     // make sure the task is actually polled on thread 0
-    //                     assert_eq!(loom::thread::current().id(), tid);
-    //
-    //                     crate::task::yield_now().await;
-    //
-    //                     // make sure the task is actually polled on thread 0
-    //                     assert_eq!(loom::thread::current().id(), tid);
-    //
-    //                     42
-    //                 })
-    //                 .unwrap();
-    //
-    //             tx.send(h).unwrap();
-    //
-    //             worker.run();
-    //         });
-    //         let h1 = loom::thread::spawn(move || {
-    //             let mut worker =
-    //                 Worker::new(&EXEC, 1, StdPark::for_current(), FastRand::from_seed(0));
-    //
-    //             let h = rx.recv().unwrap();
-    //
-    //             let ret_code = worker.block_on(h).unwrap();
-    //
-    //             assert_eq!(ret_code, 42);
-    //
-    //             EXEC.stop();
-    //         });
-    //
-    //         h0.join().unwrap();
-    //         h1.join().unwrap();
-    //     });
-    // }
+                let ret_code = test_util::block_on(h).unwrap();
 
-    #[test]
-    fn miri_check() {
-        let (tx, rx) = loom::sync::mpsc::channel::<u32>();
+                assert_eq!(ret_code, 42);
 
-        let h0 = loom::thread::spawn(move || {
-            tx.send(42).unwrap();
+                EXEC.close();
+            });
+
+            h0.join().unwrap();
+            h1.join().unwrap();
         });
-        let h1 = loom::thread::spawn(move || {
-            assert_eq!(rx.recv().unwrap(), 42);
-        });
-
-        h0.join().unwrap();
-        h1.join().unwrap();
     }
 }

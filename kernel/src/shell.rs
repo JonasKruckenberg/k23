@@ -31,7 +31,7 @@ use spin::{Barrier, OnceLock};
 
 static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
 
-pub fn init(devtree: &'static DeviceTree, sched: &'static Executor<arch::Park>, num_cpus: usize) {
+pub fn init(devtree: &'static DeviceTree, sched: &'static Executor, num_cpus: usize) {
     // The `Barrier` below is here so that the maybe verbose startup logging is
     // out of the way before dropping the user into the kernel shell. If we don't
     // wait for the last CPU to have finished initializing it will mess up the shell output.
@@ -177,7 +177,7 @@ const SHUTDOWN: Command = Command::new("shutdown")
     .with_fn(|_| {
         tracing::info!("Bye, Bye!");
 
-        global().executor.stop();
+        global().executor.close();
 
         Ok(())
     });
