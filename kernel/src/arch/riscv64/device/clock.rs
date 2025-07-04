@@ -60,6 +60,13 @@ pub fn new(cpu_node: &Device) -> crate::Result<Clock> {
 
     let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
 
+    // Safety: HAHA, actually this ISN'T SAFE! Technically both `now_raw` and `now_schedule_wakeup`
+    // access HART-local registers for the time & timeout, so in the scenario that different HARTs in
+    // the system disagree about what time it is, we're in real big trouble. Unfortunately, I can't
+    // think of a great way to solve this that doesn't involve incrementing a global on a timer or
+    // choosing one hart that maintains & drives timers.
+    // *Fortunately* this situation is probably quite rare, so we're going to ignore this for now.
+    // FIXME: <https://github.com/JonasKruckenberg/k23/issues/490>
     let clock = unsafe { Clock::new(tick_duration, ptr::null(), &CLOCK_VTABLE) };
 
     Ok(clock.named("RISCV CLOCK"))

@@ -18,6 +18,13 @@ use core::{
     time::Duration,
 };
 
+/// Requires a `Future` to complete before the specified duration has elapsed.
+///
+/// # Errors
+///
+/// This function fails for two reasons:
+/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
+/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
 pub fn timeout<F>(
     timer: &Timer,
     duration: Duration,
@@ -32,6 +39,13 @@ where
     })
 }
 
+/// Requires a `Future` to complete before the specified deadline has been reached.
+///
+/// # Errors
+///
+/// This function fails for two reasons:
+/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
+/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
 pub fn timeout_at<F>(
     timer: &Timer,
     deadline: Instant,

@@ -16,18 +16,32 @@ use core::{
 };
 use pin_project::{pin_project, pinned_drop};
 
+/// Wait until duration has elapsed.
+///
+/// # Errors
+///
+/// This function fails for two reasons:
+/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
+/// 2. [`TimeError::DurationTooLong`] The requested duration is too big
 pub fn sleep(timer: &Timer, duration: Duration) -> Result<Sleep, TimeError> {
     let ticks = timer.duration_to_ticks(duration)?;
     let now = timer.now();
     let deadline = Ticks(ticks.0 + now.0);
 
-    Sleep::new(timer, deadline)
+    Ok(Sleep::new(timer, deadline))
 }
 
+/// Wait until the deadline has been reached.
+///
+/// # Errors
+///
+/// This function fails for two reasons:
+/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
+/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
 pub fn sleep_until(timer: &Timer, deadline: Instant) -> Result<Sleep, TimeError> {
     let deadline = deadline.as_ticks(timer)?;
 
-    Sleep::new(timer, deadline)
+    Ok(Sleep::new(timer, deadline))
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -48,12 +62,12 @@ pub struct Sleep<'timer> {
 }
 
 impl<'timer> Sleep<'timer> {
-    pub fn new(timer: &'timer Timer, deadline: Ticks) -> Result<Self, TimeError> {
-        Ok(Self {
+    fn new(timer: &'timer Timer, deadline: Ticks) -> Self {
+        Self {
             state: State::Unregistered,
             timer,
             entry: Entry::new(deadline),
-        })
+        }
     }
 }
 

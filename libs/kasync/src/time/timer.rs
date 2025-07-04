@@ -119,10 +119,13 @@ impl Timer {
         }
     }
 
+    /// Returns the current `now` timestamp, in [`Ticks`] of this timer's base
+    /// tick duration.
     pub fn now(&self) -> Ticks {
         Ticks(self.clock.now() / self.tick_ratio)
     }
 
+    /// Returns the hardware clock backing this timer.
     pub fn clock(&self) -> &Clock {
         &self.clock
     }
@@ -139,21 +142,53 @@ impl Timer {
         max_duration(self.tick_duration())
     }
 
+    /// Convert the given raw [`Ticks`] into a [`Duration`] using this timers
+    /// internal tick duration.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the conversion from the given [`Ticks`] would overflow.
     pub fn ticks_to_duration(&self, ticks: Ticks) -> Duration {
         Duration::from_nanos(ticks.0 * self.tick_duration_nanos)
     }
 
+    /// Convert the given [`Duration`] into a raw [`Ticks`] using this timers
+    /// internal tick duration.
+    ///
+    /// # Errors
+    ///
+    /// This method returns a `[TimeError::DurationTooLong`] if the conversion from the given [`Duration`]
+    /// into the 64-bits [`Ticks`] would overflow.
     pub fn duration_to_ticks(&self, duration: Duration) -> Result<Ticks, TimeError> {
-        let duration_nanos = duration_to_nanos(duration);
+        let duration_nanos =
+            checked_duration_to_nanos(duration).ok_or(TimeError::DurationTooLong {
+                requested: duration,
+                max: self.max_duration(),
+            })?;
 
         Ok(Ticks(duration_nanos / self.tick_duration_nanos))
     }
 
+    /// Advance the timer to the current time, waking any ready tasks.
+    ///
+    /// The return value indicates the number of tasks woken during this turn
+    /// as well as the next deadline (if any) at which new tasks will become ready.
+    ///
+    /// It is a good idea for the caller to wait until that deadline is reached.
     pub fn turn(&self) -> (usize, Option<Deadline>) {
         let mut core = self.core.lock();
         self.turn_locked(&mut core)
     }
 
+    /// Try to advance the timer to the current time, waking any ready tasks.
+    ///
+    /// This method *does not* block when the inner timer mutex lock cannot be acquired,
+    /// making it suitable to call in interrupt handlers.
+    ///
+    /// The return value indicates the number of tasks woken during this turn
+    /// as well as the next deadline (if any) at which new tasks will become ready.
+    ///
+    /// It is a good idea for the caller to wait until that deadline is reached.
     pub fn try_turn(&self) -> Option<(usize, Option<Deadline>)> {
         let mut core = self.core.try_lock()?;
         Some(self.turn_locked(&mut core))
@@ -185,6 +220,10 @@ impl Timer {
         }
     }
 
+    /// Schedule a wakeup using this timers hardware [`Clock`].
+    ///
+    /// If the provided argument is `Some()` the clock is instructed to schedule a wakeup
+    /// at that deadline, if `None` is provided, a deadline *maximally far in the future* is chosen.
     pub fn schedule_wakeup(&self, maybe_next_deadline: Option<Deadline>) {
         if let Some(next_deadline) = maybe_next_deadline {
             let virt = next_deadline.as_ticks();
@@ -391,4 +430,12 @@ fn wheel_index(now: Ticks, ticks: Ticks) -> usize {
 #[inline]
 const fn duration_to_nanos(duration: Duration) -> u64 {
     duration.as_secs() * NANOS_PER_SEC + duration.subsec_nanos() as u64
+}
+
+#[inline]
+fn checked_duration_to_nanos(duration: Duration) -> Option<u64> {
+    duration
+        .as_secs()
+        .checked_mul(NANOS_PER_SEC)?
+        .checked_add(u64::from(duration.subsec_nanos()))
 }

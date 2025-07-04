@@ -15,12 +15,25 @@ pub struct Clock {
     clock: RawClock,
 }
 
-/// A virtual
+/// A virtual function pointer table (vtable) that specifies the behavior
+/// of a [`RawClock`].
 ///
-/// # Safety
+/// The pointer passed to all functions inside the vtable is the `data` pointer
+/// from the enclosing [`RawClock`] object.
 ///
+/// The functions inside this struct are only intended to be called on the `data`
+/// pointer of a properly constructed [`RawClock`] object from inside the
+/// [`RawClock`] implementation. Calling one of the contained functions using
+/// any other `data` pointer will cause undefined behavior.
 ///
-/// These functions must all be thread-safe
+/// # Thread safety
+///
+/// All vtable functions must be thread-safe (even though [`RawClock`] is
+/// <code>\![Send] + \![Sync]</code>). This is because [`Clock`] is <code>[Send] + [Sync]</code>,
+/// and it *will* be moved to arbitrary threads or invoked by `&` reference. For example,
+/// this means that if the `clone` and `drop` functions manage a reference count,
+/// they must do so atomically.
+#[derive(Copy, Clone, Debug)]
 pub struct RawClockVTable {
     clone: unsafe fn(*const ()) -> RawClock,
     now: unsafe fn(*const ()) -> u64,
@@ -28,8 +41,11 @@ pub struct RawClockVTable {
     drop: unsafe fn(*const ()),
 }
 
+#[derive(Debug)]
 pub struct RawClock {
+    /// The `data` pointer can be used to store arbitrary data as required by the clock implementation.
     data: *const (),
+    /// Virtual function pointer table that customizes the behavior of this clock.
     vtable: &'static RawClockVTable,
 }
 
@@ -45,16 +61,27 @@ unsafe impl Send for Clock {}
 unsafe impl Sync for Clock {}
 
 impl Clock {
-    #[inline]
-    #[must_use]
-    pub const unsafe fn from_raw(tick_duration: Duration, clock: RawClock) -> Clock {
-        Self {
-            clock,
-            tick_duration,
-            name: "<unnamed mystery clock>",
-        }
-    }
-
+    /// Creates a new `Clock` from the provided `tick_duration`, `data` pointer and `vtable`.
+    ///
+    /// The `tick_duration` is the `Duration` of time represented by a single `u64` tick in this clock.
+    /// This is in effect the precision of the clock and should be set to the precision of the underlying
+    /// hardware timer.
+    ///
+    /// The `data` pointer can be used to store arbitrary data as required by the clock implementation.
+    /// This could be e.g. a type-erased pointer to an `Arc` that holds private implementation-specific state.
+    /// The value of this pointer will get passed to all functions that are part
+    /// of the `vtable` as the first parameter.
+    ///
+    /// It is important to consider that the `data` pointer must point to a
+    /// thread safe type such as an `Arc`.
+    ///
+    /// The `vtable` customizes the behavior of a `Clock`. For each operation
+    /// on the `Clock`, the associated function in the `vtable` will be called.
+    ///
+    /// # Safety
+    ///
+    /// The behavior of the returned `Clock` is undefined if the contract defined
+    /// in [`RawClockVTable`]'s documentation is not upheld.
     #[inline]
     #[must_use]
     pub const unsafe fn new(
@@ -66,6 +93,26 @@ impl Clock {
         unsafe { Self::from_raw(tick_duration, RawClock { data, vtable }) }
     }
 
+    /// Creates a new `Clock` from a [`RawClock`].
+    ///
+    /// # Safety
+    ///
+    /// The behavior of the returned `Waker` is undefined if the contract defined
+    /// in [`RawClock`]'s and [`RawClockVTable`]'s documentation is not upheld.
+    #[inline]
+    #[must_use]
+    pub const unsafe fn from_raw(tick_duration: Duration, clock: RawClock) -> Clock {
+        Self {
+            clock,
+            tick_duration,
+            name: "<unnamed mystery clock>",
+        }
+    }
+
+    /// Add an arbitrary user-defined name to this `Clock`.
+    ///
+    /// This is generally used to describe the hardware time source used by the
+    /// `now()` function for this `Clock`.
     #[must_use]
     pub const fn named(mut self, name: &'static str) -> Self {
         self.name = name;
@@ -107,11 +154,15 @@ impl Clock {
 
     #[inline]
     pub fn now(&self) -> u64 {
+        // Safety: This is safe because `Clock::from_raw` is the only way
+        // to initialize `vtable` and `data` requiring the user to acknowledge
+        // that the contract of `RawClock` is upheld.
         unsafe { (self.clock.vtable.now)(self.clock.data) }
     }
 
     #[inline]
     pub fn schedule_wakeup(&self, at: u64) {
+        // Safety: see Clock::now
         unsafe { (self.clock.vtable.schedule_wakeup)(self.clock.data, at) };
     }
 }
@@ -120,9 +171,7 @@ impl Clone for Clock {
     #[inline]
     fn clone(&self) -> Self {
         Clock {
-            // SAFETY: This is safe because `Waker::from_raw` is the only way
-            // to initialize `clone` and `data` requiring the user to acknowledge
-            // that the contract of [`RawWaker`] is upheld.
+            // SAFETY: see Clock::now
             clock: unsafe { (self.clock.vtable.clone)(self.clock.data) },
             tick_duration: self.tick_duration,
             name: self.name,
@@ -133,9 +182,7 @@ impl Clone for Clock {
 impl Drop for Clock {
     #[inline]
     fn drop(&mut self) {
-        // SAFETY: This is safe because `Waker::from_raw` is the only way
-        // to initialize `drop` and `data` requiring the user to acknowledge
-        // that the contract of `RawWaker` is upheld.
+        // SAFETY: see Clock::now
         unsafe { (self.clock.vtable.drop)(self.clock.data) }
     }
 }
@@ -161,6 +208,18 @@ impl fmt::Display for Clock {
 // === impl RawClock ===
 
 impl RawClock {
+    /// Creates a new `Clock` from the provided `data` pointer and `vtable`.
+    ///
+    /// The `data` pointer can be used to store arbitrary data as required by the clock implementation.
+    /// his could be e.g. a type-erased pointer to an `Arc` that holds private implementation-specific state.
+    /// The value of this pointer will get passed to all functions that are part
+    /// of the `vtable` as the first parameter.
+    ///
+    /// It is important to consider that the `data` pointer must point to a
+    /// thread safe type such as an `Arc`.
+    ///
+    /// The `vtable` customizes the behavior of a `Clock`. For each operation
+    /// on the `Clock`, the associated function in the `vtable` will be called.
     #[inline]
     #[must_use]
     pub const fn new(data: *const (), vtable: &'static RawClockVTable) -> RawClock {

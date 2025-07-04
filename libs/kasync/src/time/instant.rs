@@ -30,6 +30,11 @@ impl Instant {
         Self(duration)
     }
 
+    /// Returns the raw [`Ticks`] that this `Instant` represents.
+    ///
+    /// # Errors
+    ///
+    ///This method returns a `[TimeError::DurationTooLong`] if this instant cannot be represented by the 64-bit `Ticks` type.
     pub fn as_ticks(&self, timer: &Timer) -> Result<Ticks, TimeError> {
         timer.duration_to_ticks(self.0)
     }
