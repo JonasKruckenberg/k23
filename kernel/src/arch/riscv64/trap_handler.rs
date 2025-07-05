@@ -17,7 +17,7 @@ use core::cell::Cell;
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt};
 use riscv::{load_fp, load_gp, save_fp, save_gp};
-use riscv::{sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec};
+use riscv::{scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
 cpu_local! {
     static IN_TRAP: Cell<bool> = Cell::new(false);
@@ -298,16 +298,17 @@ extern "C-unwind" fn default_trap_handler(
                 }
             }
             Trap::Interrupt(Interrupt::SupervisorTimer) => {
-                if let Some((_, Some(next_deadline))) = global().executor.timer().try_turn() {
-                    // Timer interrupts are always IPIs used for sleeping
-                    sbi::time::set_timer(next_deadline.ticks.0).unwrap();
-                } else {
-                    // Timer interrupts are always IPIs used for sleeping
-                    sbi::time::set_timer(u64::MAX).unwrap();
+                let (expired, maybe_next_deadline) = global().timer.try_turn().unwrap_or((0, None));
+
+                if expired > 0 {
+                    global().executor.wake_one();
                 }
+
+                global().timer.schedule_wakeup(maybe_next_deadline);
             }
             Trap::Interrupt(Interrupt::SupervisorExternal) => {
                 irq::trigger_irq(&mut *cpu_local().arch.cpu.interrupt_controller());
+                global().executor.wake_one();
             }
             Trap::Exception(
                 Exception::LoadPageFault

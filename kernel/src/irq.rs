@@ -44,14 +44,15 @@ pub fn trigger_irq(irq_ctl: &mut dyn InterruptController) {
     // acknowledge the interrupt as fast as possible
     irq_ctl.irq_complete(claim);
 
-    tracing::trace!("waking irq {} wakers", claim.as_u32());
     let queues = QUEUES.read();
     if let Some(queue) = queues.get(&claim.as_u32()) {
-        queue.wake_all();
+        tracing::trace!("waking wakers for irq-{}", claim.as_u32());
+        let woken = queue.wake_all();
+        tracing::trace!("woke {woken} wakers for irq-{}", claim.as_u32());
     }
 }
 
-pub async fn next_event(irq_num: u32) -> Result<(), kasync::sync::Closed> {
+pub async fn next_event(irq_num: u32) -> Result<(), kasync::Closed> {
     cpu_local()
         .arch
         .cpu

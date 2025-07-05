@@ -12,7 +12,6 @@ use cordyceps::List;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
-use util::loom_const_fn;
 
 #[derive(Debug)]
 pub(crate) struct Wheel {
@@ -39,43 +38,49 @@ impl Wheel {
     ///
     /// This is because we can use a 64-bit bitmap for each wheel to store which
     /// slots are occupied.
+    #[cfg(not(loom))]
     const SLOTS: usize = 64;
+    // loom is very "stack overflow happy" reducing the number of
+    // slots I found helps this a lot.
+    // Besides, for testing we won't have many timer entries anyway
+    #[cfg(loom)]
+    const SLOTS: usize = 4;
+
     pub(crate) const BITS: usize = Self::SLOTS.trailing_zeros() as usize;
 
-    loom_const_fn! {
-        #[allow(
-            clippy::cast_possible_truncation,
-            reason = "slot index can be at most 64"
-        )]
-        pub(crate) const fn new(level: usize) -> Self {
-            // how many ticks does a single slot represent in a wheel of this level?
-            let ticks_per_slot = Ticks(Self::SLOTS.pow(level as u32) as u64);
-            let ticks_per_wheel = Ticks(ticks_per_slot.0 * Self::SLOTS as u64);
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "slot index can be at most 64"
+    )]
+    #[inline]
+    pub(crate) const fn new(level: usize) -> Self {
+        // how many ticks does a single slot represent in a wheel of this level?
+        let ticks_per_slot = Ticks(Self::SLOTS.pow(level as u32) as u64);
+        let ticks_per_wheel = Ticks(ticks_per_slot.0 * Self::SLOTS as u64);
 
-            debug_assert!(ticks_per_slot.0.is_power_of_two());
-            debug_assert!(ticks_per_wheel.0.is_power_of_two());
+        debug_assert!(ticks_per_slot.0.is_power_of_two());
+        debug_assert!(ticks_per_wheel.0.is_power_of_two());
 
-            // because `ticks_per_wheel` is a power of two, we can calculate a
-            // bitmask for masking out the indices in all lower wheels from a `now`
-            // timestamp.
-            let wheel_mask = !(ticks_per_wheel.0 - 1);
-            let slots = [const { List::new() }; Self::SLOTS];
+        // because `ticks_per_wheel` is a power of two, we can calculate a
+        // bitmask for masking out the indices in all lower wheels from a `now`
+        // timestamp.
+        let wheel_mask = !(ticks_per_wheel.0 - 1);
+        let slots = [const { List::new() }; Self::SLOTS];
 
-            Self {
-                level,
-                ticks_per_slot,
-                ticks_per_wheel,
-                wheel_mask,
-                occupied_slots: 0,
-                slots,
-            }
+        Self {
+            level,
+            ticks_per_slot,
+            ticks_per_wheel,
+            wheel_mask,
+            occupied_slots: 0,
+            slots,
         }
     }
 
-    pub(crate) fn insert(&mut self, deadline: Ticks, entry: NonNull<Entry>) {
+    pub(crate) fn insert(&mut self, deadline: Ticks, ptr: NonNull<Entry>) {
         let slot = self.slot_index(deadline);
         // insert the sleep entry into the appropriate linked list.
-        self.slots[slot].push_front(entry);
+        self.slots[slot].push_front(ptr);
         // toggle the occupied bit for that slot.
         self.fill_slot(slot);
     }
@@ -117,7 +122,11 @@ impl Wheel {
         // does the next slot wrap this wheel around from the now slot?
         let skipped = distance.saturating_sub(Self::SLOTS);
 
-        debug_assert!(distance < Self::SLOTS * 2);
+        debug_assert!(
+            distance < Self::SLOTS * 2,
+            "distance must be less than 2*{}, but found {distance}",
+            Self::SLOTS
+        );
         debug_assert!(
             skipped == 0 || self.level == Core::WHEELS - 1,
             "if the next expiring slot wraps around, we must be on the top level wheel\
@@ -174,22 +183,33 @@ impl Wheel {
 
         // which slot is indexed by the `now` timestamp?
         let now_slot = (now.0 / self.ticks_per_slot.0) as u32 % Self::SLOTS as u32;
-        let next_dist = next_set_bit(self.occupied_slots, now_slot)?;
+        let next_dist = next_set_bit(self.occupied_slots, now_slot)? % Self::SLOTS;
+        tracing::trace!(now_slot, next_dist);
 
         Some(next_dist)
     }
 
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "slot index can be at most 64"
+    )]
     fn clear_slot(&mut self, slot_index: usize) {
         debug_assert!(slot_index < Self::SLOTS);
         self.occupied_slots &= !(1 << slot_index);
+        debug_assert!(self.occupied_slots.count_ones() <= Self::SLOTS as u32);
     }
 
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "slot index can be at most 64"
+    )]
     fn fill_slot(&mut self, slot_index: usize) {
         debug_assert!(slot_index < Self::SLOTS);
         self.occupied_slots |= 1 << slot_index;
+        debug_assert!(self.occupied_slots.count_ones() <= Self::SLOTS as u32);
     }
 
-    /// Given a duration, returns the slot into which an entry for that duratio
+    /// Given a duration, returns the slot into which an entry for that duration
     /// would be inserted.
     #[allow(
         clippy::cast_possible_truncation,

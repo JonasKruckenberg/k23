@@ -26,7 +26,7 @@ fastrand.workspace = true
 abort.workspace = true
 panic-unwind2.workspace = true
 util.workspace = true
-kasync = { workspace = true, features = ["panic-unwind2", "counters"] }
+kasync = { workspace = true, features = ["unwind2", "counters"] }
 
 # 3rd-party dependencies
 rustc-demangle.workspace = true
