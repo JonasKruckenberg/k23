@@ -81,6 +81,7 @@ kaddr2line = { path = "libs/kaddr2line" }
 kbacktrace = { path = "libs/kbacktrace" }
 riscv = { path = "libs/riscv" }
 spin = { path = "libs/spin" }
+trap = { path = "libs/trap" }
 cpu-local = { path = "libs/cpu-local" }
 unwind2 = { path = "libs/unwind2" }
 wast = { path = "libs/wast" }

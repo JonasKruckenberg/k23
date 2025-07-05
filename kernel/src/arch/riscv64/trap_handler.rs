@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::arch::PAGE_SIZE;
+use crate::arch::trap::Trap;
 use crate::backtrace::Backtrace;
 use crate::mem::VirtualAddress;
 use crate::state::{cpu_local, global};
@@ -14,7 +15,7 @@ use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::cell::Cell;
 use cpu_local::cpu_local;
-use riscv::scause::{Exception, Interrupt, Trap};
+use riscv::scause::{Exception, Interrupt};
 use riscv::{load_fp, load_gp, save_fp, save_gp};
 use riscv::{scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
