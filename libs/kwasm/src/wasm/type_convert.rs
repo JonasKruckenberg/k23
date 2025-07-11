@@ -1,12 +1,14 @@
-use crate::indices::{CanonicalizedTypeIndex, ModuleInternedTypeIndex, TypeIndex};
-use crate::wasm::{
-    WasmArrayType, WasmCompositeType, WasmCompositeTypeInner, WasmFieldType, WasmFuncType, WasmHeapType, WasmHeapTypeInner,
-    WasmRefType, WasmStorageType, WasmStructType, WasmSubType, WasmValType,
-};
-use crate::wasm::{TranslatedModule, ModuleTypes};
 use alloc::vec::Vec;
+
 use cranelift_entity::EntityRef;
 use wasmparser::UnpackedIndex;
+
+use crate::indices::{CanonicalizedTypeIndex, ModuleInternedTypeIndex, TypeIndex};
+use crate::wasm::{
+    ModuleTypes, TranslatedModule, WasmArrayType, WasmCompositeType, WasmCompositeTypeInner,
+    WasmFieldType, WasmFuncType, WasmHeapType, WasmHeapTypeInner, WasmRefType, WasmStorageType,
+    WasmStructType, WasmSubType, WasmValType,
+};
 
 /// A type that knows how to convert from `wasmparser` types to types in this crate.
 pub struct WasmparserTypeConverter<'a> {
@@ -60,9 +62,9 @@ impl<'a> WasmparserTypeConverter<'a> {
         match ty {
             wasmparser::HeapType::Concrete(index) => self.lookup_heap_type(index),
             wasmparser::HeapType::Abstract { shared, ty } => {
-                use crate::wasm::types::WasmHeapTypeInner::*;
-
                 use wasmparser::AbstractHeapType;
+
+                use crate::wasm::types::WasmHeapTypeInner::*;
                 let ty = match ty {
                     AbstractHeapType::Func => Func,
                     AbstractHeapType::Extern => Extern,
@@ -186,7 +188,9 @@ impl<'a> WasmparserTypeConverter<'a> {
                     let inner = match &ty.composite_type.inner {
                         WasmCompositeTypeInner::Array(_) => WasmHeapTypeInner::ConcreteArray(index),
                         WasmCompositeTypeInner::Func(_) => WasmHeapTypeInner::ConcreteFunc(index),
-                        WasmCompositeTypeInner::Struct(_) => WasmHeapTypeInner::ConcreteStruct(index),
+                        WasmCompositeTypeInner::Struct(_) => {
+                            WasmHeapTypeInner::ConcreteStruct(index)
+                        }
                     };
 
                     WasmHeapType::new(ty.composite_type.shared, inner)
@@ -227,7 +231,9 @@ impl<'a> WasmparserTypeConverter<'a> {
                     let inner = match &ty.composite_type.inner {
                         WasmCompositeTypeInner::Array(_) => WasmHeapTypeInner::ConcreteArray(index),
                         WasmCompositeTypeInner::Func(_) => WasmHeapTypeInner::ConcreteFunc(index),
-                        WasmCompositeTypeInner::Struct(_) => WasmHeapTypeInner::ConcreteStruct(index),
+                        WasmCompositeTypeInner::Struct(_) => {
+                            WasmHeapTypeInner::ConcreteStruct(index)
+                        }
                     };
 
                     WasmHeapType::new(ty.composite_type.shared, inner)

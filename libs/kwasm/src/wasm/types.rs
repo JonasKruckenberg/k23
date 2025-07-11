@@ -7,14 +7,17 @@
 
 //! "raw" types of WebAssembly constructs
 
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use core::fmt;
+
+use anyhow::Context;
+
+use crate::WASM32_MAX_SIZE;
 use crate::indices::CanonicalizedTypeIndex;
 use crate::type_registry::TypeTrace;
 use crate::utils::enum_accessors;
 use crate::wasm::type_convert::WasmparserTypeConverter;
-use crate::DEFAULT_OFFSET_GUARD_SIZE;
-use alloc::borrow::Cow;
-use alloc::boxed::Box;
-use core::fmt;
 
 /// Represents the types of values in a WebAssembly module.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -183,8 +186,8 @@ pub struct WasmTableType {
 pub struct WasmMemoryType {
     pub limits: WasmLimits,
     pub index_type: WasmIndexType,
-    /// The size in bytes of the offset guard region.
-    pub offset_guard_size: u64,
+    // /// The size in bytes of the offset guard region.
+    // pub offset_guard_size: u64,
     /// The log2 of this memory's page size, in bytes.
     ///
     /// By default, the page size is 64KiB (0x10000; 2**16; 1<<16; 65536) but the
@@ -308,6 +311,12 @@ impl WasmRefType {
         nullable: true,
         heap_type: WasmHeapType::new(false, WasmHeapTypeInner::Func),
     };
+
+    /// Is this a type that is represented as a `VMGcRef`?
+    #[inline]
+    pub fn is_vmgcref_type(&self) -> bool {
+        self.heap_type.is_vmgcref_type()
+    }
 }
 
 impl fmt::Display for WasmRefType {
@@ -434,6 +443,18 @@ impl WasmHeapType {
                 | WasmHeapTypeInner::NoExn
                 | WasmHeapTypeInner::NoCont
         )
+    }
+
+    /// Is this a type that is represented as a `VMGcRef`?
+    #[inline]
+    pub fn is_vmgcref_type(&self) -> bool {
+        match self.top().inner {
+            // All `t <: (ref null any)` and `t <: (ref null extern)` are
+            // represented as `VMGcRef`s.
+            WasmHeapTypeInner::Any | WasmHeapTypeInner::Extern => true,
+            // All others are not.
+            _ => false,
+        }
     }
 }
 
@@ -988,11 +1009,73 @@ impl WasmMemoryType {
                 .map_or(Self::DEFAULT_PAGE_SIZE_LOG2, |log2| {
                     u8::try_from(log2).unwrap()
                 }),
-            offset_guard_size: DEFAULT_OFFSET_GUARD_SIZE,
         }
     }
 
+    /// Returns the minimum size, in bytes, that this memory must be.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the calculation of the minimum size overflows the
+    /// `u64` return type. This means that the memory can't be allocated but
+    /// it's deferred to the caller to how to deal with that.
+    pub fn minimum_byte_size(&self) -> crate::Result<u64> {
+        self.limits
+            .min
+            .checked_mul(self.page_size())
+            .context("size overflow")
+    }
+
+    /// Returns the maximum size, in bytes, that this memory is allowed to be.
+    ///
+    /// Note that the return value here is not an `Option` despite the maximum
+    /// size of a linear memory being optional in wasm. If a maximum size
+    /// is not present in the memory's type then a maximum size is selected for
+    /// it. For example the maximum size of a 32-bit memory is `1<<32`. The
+    /// maximum size of a 64-bit linear memory is chosen to be a value that
+    /// won't ever be allowed at runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the calculation of the maximum size overflows the
+    /// `u64` return type. This means that the memory can't be allocated but
+    /// it's deferred to the caller to how to deal with that.
+    pub fn maximum_byte_size(&self) -> crate::Result<u64> {
+        if let Some(max) = self.limits.max {
+            max.checked_mul(self.page_size()).context("size overflow")
+        } else {
+            let min = self.minimum_byte_size()?;
+            Ok(min.max(self.max_size_based_on_index_type()))
+        }
+    }
+
+    /// Get the size of this memory's pages, in bytes.
     pub fn page_size(&self) -> u64 {
-        todo!()
+        debug_assert!(
+            self.page_size_log2 == 16 || self.page_size_log2 == 0,
+            "invalid page_size_log2: {}; must be 16 or 0",
+            self.page_size_log2
+        );
+        1 << self.page_size_log2
+    }
+
+    /// Returns the maximum size memory is allowed to be only based on the
+    /// index type used by this memory.
+    ///
+    /// For example 32-bit linear memories return `1<<32` from this method.
+    pub fn max_size_based_on_index_type(&self) -> u64 {
+        match self.index_type {
+            WasmIndexType::I32 => WASM32_MAX_SIZE,
+            WasmIndexType::I64 => {
+                // Note that the true maximum size of a 64-bit linear memory, in
+                // bytes, cannot be represented in a `u64`. That would require a u65
+                // to store `1<<64`. Despite that no system can actually allocate a
+                // full 64-bit linear memory so this is instead emulated as "what if
+                // the kernel fit in a single Wasm page of linear memory". Shouldn't
+                // ever actually be possible but it provides a number to serve as an
+                // effective maximum.
+                0_u64 - self.page_size()
+            }
+        }
     }
 }
