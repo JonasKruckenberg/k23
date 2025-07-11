@@ -5,11 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-#![cfg_attr(not(test), no_std)]
+use crate::loom::sync::Arc;
 
-extern crate alloc;
+#[derive(Debug, Clone)]
+pub struct Engine(Arc<EngineInner>);
 
-mod loom;
-mod engine;
-
-pub use engine::Engine;
+#[derive(Debug)]
+struct EngineInner {}
