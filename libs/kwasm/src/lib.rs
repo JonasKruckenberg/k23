@@ -11,5 +11,7 @@ extern crate alloc;
 
 mod loom;
 mod engine;
+mod store;
 
 pub use engine::Engine;
+pub use store::Store;
