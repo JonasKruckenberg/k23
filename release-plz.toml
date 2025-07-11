@@ -6,3 +6,4 @@ name = "wavltree"
 publish_all_features = true
 release = true
 git_release_name = "{{ package }}-v{{ version }}"
+git_tag_name = "{{ package }}-v{{ version }}"
