@@ -8,6 +8,16 @@ license.workspace = true
 [dependencies]
 cfg-if.workspace = true
 pin-project.workspace = true
+anyhow.workspace = true
+gimli.workspace = true
+hashbrown.workspace = true
+smallvec.workspace = true
+tracing.workspace = true
+spin.workspace = true
+
+wasmparser.workspace = true
+cranelift-entity.workspace = true
+wasmtime-slab.workspace = true
 
 [target.'cfg(loom)'.dependencies]
 loom.workspace = true
