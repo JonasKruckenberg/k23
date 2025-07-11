@@ -119,41 +119,41 @@ impl DeviceTree {
 
     /// Returns an iterator over all top-level devices in the tree.
     #[inline]
-    pub fn children(&self) -> Children {
+    pub fn children(&self) -> Children<'_> {
         self.root().children()
     }
 
     /// Returns an iterator over all nodes in the tree in depth-first order.
     #[inline]
-    pub fn descendants(&self) -> Descendants {
+    pub fn descendants(&self) -> Descendants<'_> {
         self.root().descendants()
     }
 
     /// Returns an iterator over all top-level properties in the tree.
     #[inline]
-    pub fn properties(&self) -> Properties {
+    pub fn properties(&self) -> Properties<'_> {
         self.root().properties()
     }
 
     /// Returns the top-level property with the given name.
     #[inline]
-    pub fn property(&self, name: &str) -> Option<&Property> {
+    pub fn property(&self, name: &str) -> Option<&Property<'_>> {
         self.root().property(name)
     }
 
     /// Returns the device with the given path.
     #[inline]
-    pub fn find_by_path(&self, path: &str) -> Option<&Device> {
+    pub fn find_by_path(&self, path: &str) -> Option<&Device<'_>> {
         self.root().find_by_path(path)
     }
 
-    pub fn find_by_phandle(&self, phandle: u32) -> Option<&Device> {
+    pub fn find_by_phandle(&self, phandle: u32) -> Option<&Device<'_>> {
         // Safety: we only inserted valid pointers into the map, so we should only get valid pointers out...
         self.with_inner(|inner| unsafe { Some(inner.phandle2ptr.get(&phandle)?.as_ref()) })
     }
 
     #[inline]
-    fn root(&self) -> &Device {
+    fn root(&self) -> &Device<'_> {
         // Safety: `init` guarantees the root node always exists and is correctly initialized
         unsafe { self.borrow_inner().root.as_ref() }
     }
@@ -209,14 +209,14 @@ impl<'a> Device<'a> {
     }
 
     /// Returns an iterator over all immediate children of this device.
-    pub fn children(&self) -> Children {
+    pub fn children(&self) -> Children<'_> {
         Children {
             current: self.first_child,
         }
     }
 
     /// Returns an iterator over all descendants of this device in depth-first order.
-    pub fn descendants(&self) -> Descendants {
+    pub fn descendants(&self) -> Descendants<'_> {
         Descendants {
             stack: smallvec![],
             current: self.children(),
@@ -224,19 +224,19 @@ impl<'a> Device<'a> {
     }
 
     /// Returns an iterator over all properties of this device.
-    pub fn properties(&self) -> Properties {
+    pub fn properties(&self) -> Properties<'_> {
         Properties {
             current: self.properties,
         }
     }
 
     /// Returns the property with the given name.
-    pub fn property(&self, name: &str) -> Option<&Property> {
+    pub fn property(&self, name: &str) -> Option<&Property<'_>> {
         self.properties().find(|prop| prop.inner.name == name)
     }
 
     /// Returns the device with the given path starting from this device.
-    pub fn find_by_path(&self, path: &str) -> Option<&Device> {
+    pub fn find_by_path(&self, path: &str) -> Option<&Device<'_>> {
         let mut node = self;
         for component in path.trim_start_matches('/').split('/') {
             node = node.children().find(|child| child.name.name == component)?;
@@ -265,7 +265,7 @@ impl<'a> Device<'a> {
         }
     }
 
-    pub fn regs(&self) -> Option<fdt::Regs> {
+    pub fn regs(&self) -> Option<fdt::Regs<'_>> {
         self.properties()
             .find(|p| p.name() == "reg")
             .map(|prop| prop.inner.as_regs(self.cell_sizes()))

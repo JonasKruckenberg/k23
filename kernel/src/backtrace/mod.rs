@@ -185,19 +185,19 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, MAX_FRAMES> {
                     any = true;
                     // `__rust_end_short_backtrace` means we are done hiding symbols
                     // for now. Print until we see `__rust_begin_short_backtrace`.
-                    if style == BacktraceStyle::Short {
-                        if let Some(sym) = sym.name().map(|s| s.as_raw_str()) {
-                            if sym.contains("__rust_end_short_backtrace") {
-                                print = true;
-                                break;
-                            }
-                            if print && sym.contains("__rust_begin_short_backtrace") {
-                                print = false;
-                                break;
-                            }
-                            if !print {
-                                omitted_count += 1;
-                            }
+                    if style == BacktraceStyle::Short
+                        && let Some(sym) = sym.name().map(|s| s.as_raw_str())
+                    {
+                        if sym.contains("__rust_end_short_backtrace") {
+                            print = true;
+                            break;
+                        }
+                        if print && sym.contains("__rust_begin_short_backtrace") {
+                            print = false;
+                            break;
+                        }
+                        if !print {
+                            omitted_count += 1;
                         }
                     }
 

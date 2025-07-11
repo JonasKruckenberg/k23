@@ -127,7 +127,6 @@
 //! [graphviz format]: https://graphviz.org
 
 #![cfg_attr(not(test), no_std)]
-#![feature(let_chains)]
 #![allow(
     clippy::undocumented_unsafe_blocks,
     reason = "too many trivial unsafe blocks"

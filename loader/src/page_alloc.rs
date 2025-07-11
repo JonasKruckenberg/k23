@@ -70,7 +70,7 @@ impl PageAllocator {
         );
 
         let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
-        debug_assert!(virt_base % top_level_page_size == 0);
+        debug_assert!(virt_base.is_multiple_of(top_level_page_size));
 
         while remaining_bytes > 0 {
             let page_idx = (virt_base - (usize::MAX << arch::VIRT_ADDR_BITS)) / top_level_page_size;

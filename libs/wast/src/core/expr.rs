@@ -192,10 +192,11 @@ impl<'a> ExpressionParser<'a> {
             // As a small ease-of-life adjustment here, if we're parsing inside
             // of an `if block then we require that all sub-components are
             // s-expressions surrounded by `(` and `)`, so verify that here.
-            if let Some(Level::If(_)) = self.stack.last() {
-                if !parser.is_empty() && !parser.peek::<LParen>()? {
-                    return Err(parser.error("expected `(`"));
-                }
+            if let Some(Level::If(_)) = self.stack.last()
+                && !parser.is_empty()
+                && !parser.peek::<LParen>()?
+            {
+                return Err(parser.error("expected `(`"));
             }
 
             match self.paren(parser)? {
@@ -1578,10 +1579,10 @@ impl<'a> LoadOrStoreLane<'a> {
 
                 // If the first integer is trailed by `offset=...` or
                 // `align=...` then this is definitely a memarg.
-                if let Some((kw, _)) = after_int.keyword()? {
-                    if kw.starts_with("offset=") || kw.starts_with("align=") {
-                        return Ok((true, c));
-                    }
+                if let Some((kw, _)) = after_int.keyword()?
+                    && (kw.starts_with("offset=") || kw.starts_with("align="))
+                {
+                    return Ok((true, c));
                 }
 
                 // Otherwise the first integer was trailed by something that

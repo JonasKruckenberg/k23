@@ -142,6 +142,8 @@ const PANIC: Command = Command::new("panic")
 const FAULT: Command = Command::new("fault")
     .with_help("cause a CPU fault (null pointer dereference). use with caution.")
     .with_fn(|_| {
+        // Safety: This actually *is* unsafe and *is* causing problematic behaviour, but that is exactly what
+        // we want here!
         unsafe {
             #[expect(clippy::zero_ptr, reason = "we actually want to cause a fault here")]
             (0x0 as *const u8).read_volatile();
@@ -252,7 +254,7 @@ impl<'cmd> Command<'cmd> {
     #[must_use]
     pub const fn new(name: &'cmd str) -> Self {
         #[cold]
-        fn invalid_command(_ctx: Context<'_>) -> CmdResult {
+        fn invalid_command(_ctx: Context<'_>) -> CmdResult<'_> {
             panic!("command is missing run function, this is a bug");
         }
 

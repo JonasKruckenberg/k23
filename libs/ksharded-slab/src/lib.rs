@@ -205,6 +205,7 @@
 #![feature(thread_local)]
 #![feature(used_with_arg)]
 #![feature(never_type)]
+#![expect(clippy::uninlined_format_args, reason = "not worth the effort")]
 
 extern crate alloc;
 
@@ -616,7 +617,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// ```
     ///
     /// # Panics
-    ///  
+    ///
     /// TODO
     pub fn get(&self, key: usize) -> Option<Entry<'_, T, C>> {
         let tid = C::unpack_tid(key);
@@ -699,7 +700,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// ```
     ///
     /// # Panics
-    ///  
+    ///
     /// TODO
     ///
     /// [`get`]: Slab::get

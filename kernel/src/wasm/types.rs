@@ -1507,10 +1507,10 @@ impl FuncType {
                 vec.push(ty.clone());
             }
 
-            if let Some(r) = ty.as_ref() {
-                if let Some(r) = r.heap_type().as_registered_type() {
-                    registrations.push(r.clone());
-                }
+            if let Some(r) = ty.as_ref()
+                && let Some(r) = r.heap_type().as_registered_type()
+            {
+                registrations.push(r.clone());
             }
 
             ty.to_wasm_type()

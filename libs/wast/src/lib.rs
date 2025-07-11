@@ -68,7 +68,6 @@
     clippy::cast_sign_loss,
     clippy::cloned_instead_of_copied,
     clippy::cast_lossless,
-    clippy::needless_lifetimes,
     clippy::cast_possible_wrap,
     clippy::unnested_or_patterns,
     clippy::allow_attributes_without_reason,

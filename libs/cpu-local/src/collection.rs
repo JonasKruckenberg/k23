@@ -229,7 +229,7 @@ impl<T: Send> CpuLocal<T> {
     /// Since this call borrows the `CpuLocal` mutably, this operation can
     /// be done safely---the mutable borrow statically guarantees no other
     /// cpus are currently accessing their associated values.
-    pub fn iter_mut(&mut self) -> IterMut<T> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         IterMut {
             cpu_local: self,
             raw: RawIter::new(),

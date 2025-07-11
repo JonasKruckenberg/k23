@@ -1,10 +1,10 @@
-use alloc::borrow::Cow;
+use crate::Wat;
 #[cfg(feature = "component-model")]
 use crate::component::Component;
 use crate::core::*;
 use crate::encode::Encode;
 use crate::token::*;
-use crate::Wat;
+use alloc::borrow::Cow;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::marker;
@@ -785,10 +785,10 @@ impl Expression<'_> {
 
             // If DWARF is enabled then track this instruction's binary offset
             // and source location.
-            if let Some(dwarf) = &mut dwarf {
-                if let Some(span) = self.instr_spans.as_ref().map(|s| s[i]) {
-                    dwarf.instr(func.byte_len() + tmp.len(), span);
-                }
+            if let Some(dwarf) = &mut dwarf
+                && let Some(span) = self.instr_spans.as_ref().map(|s| s[i])
+            {
+                dwarf.instr(func.byte_len() + tmp.len(), span);
             }
 
             // Finally emit the instruction and move to the next.
@@ -995,7 +995,10 @@ fn find_names<'a>(
         Data,
     }
 
-    let mut ret = Names { module: get_name(module_id, module_name), ..Default::default() };
+    let mut ret = Names {
+        module: get_name(module_id, module_name),
+        ..Default::default()
+    };
     let mut names = Vec::new();
     for field in fields {
         // Extract the kind/id/name from whatever kind of field this is...

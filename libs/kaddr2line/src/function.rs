@@ -417,10 +417,10 @@ impl<R: gimli::Reader> InlinedFunction<R> {
                         //
                         // Thus, if we see a version of 5 or later, treat a file index of 0 as such.
                         // [1]: http://wiki.dwarfstd.org/index.php?title=DWARF5_Line_Table_File_Numbers
-                        if let gimli::AttributeValue::FileIndex(fi) = attr.value() {
-                            if fi > 0 || unit.header.version() >= 5 {
-                                call_file = Some(fi);
-                            }
+                        if let gimli::AttributeValue::FileIndex(fi) = attr.value()
+                            && (fi > 0 || unit.header.version() >= 5)
+                        {
+                            call_file = Some(fi);
                         }
                     }
                     gimli::DW_AT_call_line => {

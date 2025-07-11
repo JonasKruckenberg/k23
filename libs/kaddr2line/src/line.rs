@@ -85,13 +85,13 @@ impl Lines {
                 gimli::ColumnType::Column(x) => x.get() as u32,
             };
 
-            if let Some(last_row) = sequence_rows.last_mut() {
-                if last_row.address == address {
-                    last_row.file_index = file_index;
-                    last_row.line = line;
-                    last_row.column = column;
-                    continue;
-                }
+            if let Some(last_row) = sequence_rows.last_mut()
+                && last_row.address == address
+            {
+                last_row.file_index = file_index;
+                last_row.line = line;
+                last_row.column = column;
+                continue;
             }
 
             sequence_rows.push(LineRow {
@@ -272,13 +272,13 @@ fn render_file<R: gimli::Reader>(
     };
 
     // The directory index 0 is defined to correspond to the compilation unit directory.
-    if file.directory_index() != 0 {
-        if let Some(directory) = file.directory(header) {
-            path_push(
-                &mut path,
-                dw_unit.attr_string(directory)?.to_string_lossy()?.as_ref(),
-            );
-        }
+    if file.directory_index() != 0
+        && let Some(directory) = file.directory(header)
+    {
+        path_push(
+            &mut path,
+            dw_unit.attr_string(directory)?.to_string_lossy()?.as_ref(),
+        );
     }
 
     path_push(

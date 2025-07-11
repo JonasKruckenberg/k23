@@ -121,10 +121,10 @@ impl Table {
         // The WebAssembly spec requires failing a `table.grow` request if
         // it exceeds the declared limits of the table. We may have set lower
         // limits in the instance allocator as well.
-        if let Some(max) = self.maximum {
-            if new_size > max {
-                return Ok(None);
-            }
+        if let Some(max) = self.maximum
+            && new_size > max
+        {
+            return Ok(None);
         }
 
         // we only support static tables that have all their memory reserved (not allocated) upfront

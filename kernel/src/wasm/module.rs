@@ -136,7 +136,7 @@ impl Module {
     }
     pub(crate) fn functions(
         &self,
-    ) -> cranelift_entity::Iter<DefinedFuncIndex, CompiledFunctionInfo> {
+    ) -> cranelift_entity::Iter<'_, DefinedFuncIndex, CompiledFunctionInfo> {
         self.0.code.function_info().iter()
     }
 

@@ -1,8 +1,8 @@
+use crate::Error;
 use crate::core::resolve::Ns;
 use crate::core::*;
-use crate::names::{resolve_error, Namespace};
+use crate::names::{Namespace, resolve_error};
 use crate::token::{Id, Index};
-use crate::Error;
 use alloc::boxed::Box;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -116,7 +116,7 @@ impl<'a> Resolver<'a> {
 
             // These fields don't define any items in any index space.
             ModuleField::Export(_) | ModuleField::Start(_) | ModuleField::Custom(_) => {
-                return Ok(())
+                return Ok(());
             }
         };
 
@@ -517,10 +517,10 @@ impl<'a, 'b> ExprResolver<'a, 'b> {
                 };
 
                 // Reset the local scopes to before this block was entered
-                if matching_block.pushed_scope {
-                    if let End(_) = instr {
-                        self.scopes.pop();
-                    }
+                if matching_block.pushed_scope
+                    && let End(_) = instr
+                {
+                    self.scopes.pop();
                 }
 
                 let label = match label {

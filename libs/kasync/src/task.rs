@@ -219,7 +219,7 @@ impl TaskRef {
         A: Allocator,
     {
         assert_eq!(task.state().refcount(), 1);
-        let ptr = Box::into_raw(task);
+        let (ptr, _) = Box::into_raw_with_allocator(task);
 
         // Safety: we just allocated the ptr so it is never null
         let task = Self(unsafe { NonNull::new_unchecked(ptr).cast() });
