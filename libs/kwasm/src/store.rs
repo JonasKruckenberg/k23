@@ -8,7 +8,6 @@
 mod stored;
 
 use alloc::boxed::Box;
-use core::marker::PhantomPinned;
 use core::ops::{Deref, DerefMut};
 use core::pin::Pin;
 use pin_project::pin_project;
