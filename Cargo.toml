@@ -86,6 +86,7 @@ cpu-local = { path = "libs/cpu-local" }
 unwind2 = { path = "libs/unwind2" }
 wast = { path = "libs/wast" }
 wavltree = { path = "libs/wavltree" }
+wavltree2 = { path = "libs/wavltree2" }
 loader-api = { path = "loader/api" }
 fdt = { path = "libs/fdt" }
 ksharded-slab = { path = "libs/ksharded-slab" }
