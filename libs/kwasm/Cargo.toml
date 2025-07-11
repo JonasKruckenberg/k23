@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 cfg-if.workspace = true
+pin-project.workspace = true
 
 [target.'cfg(loom)'.dependencies]
 loom.workspace = true
