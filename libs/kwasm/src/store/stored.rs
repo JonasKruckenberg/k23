@@ -9,14 +9,16 @@ use alloc::vec::Vec;
 use core::fmt;
 use core::marker::PhantomData;
 
+use crate::vm;
+
 #[derive(Debug, Default)]
 pub struct StoredData {
-    // pub(super) instances: Vec<()>,
-    // pub(super) functions: Vec<()>,
-    // pub(super) tables: Vec<()>,
-    // pub(super) memories: Vec<()>,
-    // pub(super) globals: Vec<()>,
-    // pub(super) tags: Vec<()>,
+    pub(super) instances: Vec<crate::instance::InstanceData>,
+    pub(super) functions: Vec<crate::func::FuncData>,
+    pub(super) tables: Vec<vm::ExportedTable>,
+    pub(super) memories: Vec<vm::ExportedMemory>,
+    pub(super) globals: Vec<vm::ExportedGlobal>,
+    pub(super) tags: Vec<vm::ExportedTag>,
 }
 
 pub struct Stored<T> {
@@ -50,11 +52,11 @@ impl<T> fmt::Debug for Stored<T> {
 }
 
 macro_rules! stored_impls {
-    ($bind:ident $(($ty:tt, $add:ident, $has:ident, $get:ident, $get_mut:ident, $field:expr))*) => {
+    ($bind:ident $(($ty:path, $add:ident, $has:ident, $get:ident, $get_mut:ident, $field:expr))*) => {
         $(
             impl super::StoreOpaque {
-                pub(crate) fn $add(&mut self, val: $ty) -> Stored<$ty> {
-                    let $bind = self;
+                pub(crate) fn $add(self: ::core::pin::Pin<&mut Self>, val: $ty) -> Stored<$ty> {
+                    let $bind = self.project();
                     let index = $field.len();
                     $field.push(val);
                     Stored::new(index)
@@ -70,23 +72,9 @@ macro_rules! stored_impls {
                     $field.get(index.index)
                 }
 
-                pub(crate) fn $get_mut(&mut self, index: Stored<$ty>) -> Option<&mut $ty> {
-                    let $bind = self;
+                pub(crate) fn $get_mut(self: ::core::pin::Pin<&mut Self>, index: Stored<$ty>) -> Option<&mut $ty> {
+                    let $bind = self.project();
                     $field.get_mut(index.index)
-                }
-            }
-
-            impl ::core::ops::Index<Stored<$ty>> for super::StoreOpaque {
-                type Output = $ty;
-
-                fn index(&self, index: Stored<$ty>) -> &Self::Output {
-                    self.$get(index).unwrap()
-                }
-            }
-
-            impl ::core::ops::IndexMut<Stored<$ty>> for super::StoreOpaque {
-                fn index_mut(&mut self, index: Stored<$ty>) -> &mut Self::Output {
-                    self.$get_mut(index).unwrap()
                 }
             }
         )*
@@ -95,11 +83,10 @@ macro_rules! stored_impls {
 
 stored_impls! {
     s
-    // ((), add_function, has_function, get_function, get_function_mut, s.stored.functions)
-    // ((), add_instance, has_instance, get_instance, get_instance_mut, s.stored.instances)
-    // ((), add_table, has_table, get_table, get_table_mut, s.stored.tables)
-    // ((), add_memory, has_memory, get_memory, get_memory_mut, s.stored.memories)
-    // ((), add_global, has_global, get_global, get_global_mut, s.stored.globals)
-    // ((), add_tag, has_tag, get_tag, get_tag_mut, s.stored.tags)
+    (crate::instance::InstanceData, add_instance, has_instance, get_instance, get_instance_mut, s.stored.instances)
+    (crate::func::FuncData, add_function, has_function, get_function, get_function_mut, s.stored.functions)
+    (vm::ExportedTable, add_table, has_table, get_table, get_table_mut, s.stored.tables)
+    (vm::ExportedMemory, add_memory, has_memory, get_memory, get_memory_mut, s.stored.memories)
+    (vm::ExportedGlobal, add_global, has_global, get_global, get_global_mut, s.stored.globals)
+    (vm::ExportedTag, add_tag, has_tag, get_tag, get_tag_mut, s.stored.tags)
 }
-

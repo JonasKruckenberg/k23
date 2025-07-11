@@ -14,13 +14,28 @@ hashbrown.workspace = true
 smallvec.workspace = true
 tracing.workspace = true
 spin.workspace = true
+util.workspace = true
+bitflags.workspace = true
+static_assertions.workspace = true
 
 wasmparser.workspace = true
-cranelift-entity.workspace = true
 wasmtime-slab.workspace = true
+target-lexicon.workspace = true
+cranelift-codegen.workspace = true
+cranelift-frontend.workspace = true
+cranelift-entity.workspace = true
+
+
+[dev-dependencies]
+wast.workspace = true
+tokio = { version = "1.46.1", features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(loom)'.dependencies]
 loom.workspace = true
+
+[features]
+std = []
+simd = []
 
 [lints]
 workspace = true

@@ -499,7 +499,7 @@ mod tests {
     use tracing_subscriber::util::SubscriberInitExt;
 
     use super::*;
-    use crate::{loom, test_util};
+    use crate::{loom, test_utils};
 
     async fn work() -> usize {
         let val = 1 + 1;
@@ -527,7 +527,7 @@ mod tests {
             .unwrap();
 
             let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
-            test_util::block_on(worker.run(crate::future::pending::<()>())).expect_err(
+            test_utils::block_on(worker.run(crate::future::pending::<()>())).expect_err(
                 "stopping the executor should always result in a Closed(()) error here",
             );
             assert!(CALLED.load(Ordering::SeqCst));
@@ -560,7 +560,7 @@ mod tests {
                     loom::thread::spawn(move || {
                         let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
 
-                        test_util::block_on(worker.run(crate::future::pending::<()>())).expect_err(
+                        test_utils::block_on(worker.run(crate::future::pending::<()>())).expect_err(
                             "stopping the executor should always result in a Closed(()) error here",
                         );
                     })
@@ -607,7 +607,7 @@ mod tests {
 
                 tx.send(h).unwrap();
 
-                test_util::block_on(worker.run(crate::future::pending::<()>())).expect_err(
+                test_utils::block_on(worker.run(crate::future::pending::<()>())).expect_err(
                     "stopping the executor should always result in a Closed(()) error here",
                 );
             });
@@ -615,7 +615,7 @@ mod tests {
             let h1 = loom::thread::spawn(move || {
                 let h = rx.recv().unwrap();
 
-                let ret_code = test_util::block_on(h).unwrap();
+                let ret_code = test_utils::block_on(h).unwrap();
 
                 assert_eq!(ret_code, 42);
 

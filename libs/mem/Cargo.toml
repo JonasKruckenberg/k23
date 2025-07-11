@@ -1,0 +1,28 @@
+[package]
+name = "mem"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+wavltree.workspace = true
+cpu-local.workspace = true
+
+# 3rd-party dependencies
+anyhow.workspace = true
+pin-project.workspace = true
+mycelium-bitfield.workspace = true
+#tracing.workspace = true
+rand_chacha.workspace = true
+rand.workspace = true
+cordyceps.workspace = true
+#brie-tree = "0.1.2"
+#lock_api = "0.4.13"
+
+[dev-dependencies]
+rand = { workspace = true, features = ["os_rng"] }
+proptest = "1.7.0"
+
+[lints]
+workspace = true
