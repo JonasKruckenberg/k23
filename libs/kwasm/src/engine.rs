@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::sync::atomic::AtomicU64;
 use crate::loom::sync::Arc;
+use crate::loom::sync::atomic::AtomicU64;
 use crate::type_registry::TypeRegistry;
 
 #[derive(Debug, Clone)]

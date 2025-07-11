@@ -1,9 +1,10 @@
 use crate::indices::{CanonicalizedTypeIndex, ModuleInternedTypeIndex, TypeIndex};
+use crate::wasm::{ModuleTypes, TranslatedModule};
 use crate::wasm::{
-    WasmArrayType, WasmCompositeType, WasmCompositeTypeInner, WasmFieldType, WasmFuncType, WasmHeapType, WasmHeapTypeInner,
-    WasmRefType, WasmStorageType, WasmStructType, WasmSubType, WasmValType,
+    WasmArrayType, WasmCompositeType, WasmCompositeTypeInner, WasmFieldType, WasmFuncType,
+    WasmHeapType, WasmHeapTypeInner, WasmRefType, WasmStorageType, WasmStructType, WasmSubType,
+    WasmValType,
 };
-use crate::wasm::{TranslatedModule, ModuleTypes};
 use alloc::vec::Vec;
 use cranelift_entity::EntityRef;
 use wasmparser::UnpackedIndex;
@@ -186,7 +187,9 @@ impl<'a> WasmparserTypeConverter<'a> {
                     let inner = match &ty.composite_type.inner {
                         WasmCompositeTypeInner::Array(_) => WasmHeapTypeInner::ConcreteArray(index),
                         WasmCompositeTypeInner::Func(_) => WasmHeapTypeInner::ConcreteFunc(index),
-                        WasmCompositeTypeInner::Struct(_) => WasmHeapTypeInner::ConcreteStruct(index),
+                        WasmCompositeTypeInner::Struct(_) => {
+                            WasmHeapTypeInner::ConcreteStruct(index)
+                        }
                     };
 
                     WasmHeapType::new(ty.composite_type.shared, inner)
@@ -227,7 +230,9 @@ impl<'a> WasmparserTypeConverter<'a> {
                     let inner = match &ty.composite_type.inner {
                         WasmCompositeTypeInner::Array(_) => WasmHeapTypeInner::ConcreteArray(index),
                         WasmCompositeTypeInner::Func(_) => WasmHeapTypeInner::ConcreteFunc(index),
-                        WasmCompositeTypeInner::Struct(_) => WasmHeapTypeInner::ConcreteStruct(index),
+                        WasmCompositeTypeInner::Struct(_) => {
+                            WasmHeapTypeInner::ConcreteStruct(index)
+                        }
                     };
 
                     WasmHeapType::new(ty.composite_type.shared, inner)

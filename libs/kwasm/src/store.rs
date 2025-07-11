@@ -8,20 +8,21 @@
 mod stored;
 
 use alloc::boxed::Box;
-use core::ops::{Deref, DerefMut};
 use core::pin::Pin;
+use core::ptr::NonNull;
 use pin_project::pin_project;
 use stored::StoredData;
 
-pub use stored::Stored;
 use crate::Engine;
+use crate::vm::VMStoreContext;
+pub use stored::Stored;
 
 #[derive(Debug)]
 pub struct Store<T>(Pin<Box<StoreInner<T>>>);
 
 #[derive(Debug)]
 #[pin_project]
-struct StoreInner<T> {
+pub(crate) struct StoreInner<T> {
     #[pin]
     opaque: StoreOpaque,
     data: T,
@@ -29,9 +30,20 @@ struct StoreInner<T> {
 
 #[pin_project(!Unpin)]
 #[derive(Debug)]
-struct StoreOpaque {
+pub(crate) struct StoreOpaque {
+    /// The engine this store belongs to, used mainly for compatibility checking and to access the
+    /// global type registry.
     engine: Engine,
+    /// Indexed data within this `Store`, used to store information about
+    /// globals, functions, memories, etc.
+    ///
+    /// Note that this is `ManuallyDrop` because it needs to be dropped before
+    /// `rooted_host_funcs` below. This structure contains pointers which are
+    /// otherwise kept alive by the `Arc` references in `rooted_host_funcs`.
     stored: StoredData,
+    /// Data that is shared across all instances in this store such as stack limits, epoch pointer etc.
+    /// This field is accessed by guest code
+    vm_store_context: VMStoreContext,
 }
 
 // ===== impl Store =====
@@ -41,9 +53,9 @@ impl<T> Store<T> {
         let mut inner = Box::new(StoreInner {
             opaque: StoreOpaque {
                 engine,
-                // alloc,
-                // vm_store_context: VMStoreContext::default(),
+                vm_store_context: VMStoreContext::default(),
                 stored: StoredData::default(),
+                // alloc,
                 // default_caller: InstanceHandle::null(),
                 // wasm_vmval_storage: vec![],
                 // host_globals: vec![],
@@ -78,5 +90,9 @@ impl StoreOpaque {
     #[inline]
     pub(super) fn engine(&self) -> &Engine {
         &self.engine
+    }
+    #[inline]
+    pub(super) fn vm_store_context_ptr(&mut self) -> NonNull<VMStoreContext> {
+        NonNull::from(&mut self.vm_store_context)
     }
 }

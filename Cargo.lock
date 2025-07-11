@@ -1081,6 +1081,7 @@ dependencies = [
  "pin-project",
  "smallvec",
  "spin",
+ "static_assertions",
  "tracing 0.2.0",
  "wasmparser 0.235.0",
  "wasmtime-slab",

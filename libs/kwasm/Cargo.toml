@@ -18,9 +18,14 @@ spin.workspace = true
 wasmparser.workspace = true
 cranelift-entity.workspace = true
 wasmtime-slab.workspace = true
+static_assertions = "1.1.0"
 
 [target.'cfg(loom)'.dependencies]
 loom.workspace = true
+
+[features]
+std = []
+simd = []
 
 [lints]
 workspace = true

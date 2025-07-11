@@ -5,12 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::Engine;
 use crate::indices::{EntityIndex, VMSharedTypeIndex};
 use crate::loom::sync::Arc;
 use crate::type_registry::RuntimeTypeCollection;
+use crate::utils::u8_size_of;
+use crate::vm::VMContextShape;
 use crate::wasm::{Import, ModuleParser, TranslatedModule};
-use crate::Engine;
-use core::ops::Deref;
 use wasmparser::{Validator, WasmFeatures};
 
 #[derive(Debug, Clone)]
@@ -22,11 +23,15 @@ struct ModuleInner {
     translated: TranslatedModule,
     required_features: WasmFeatures,
     type_collection: RuntimeTypeCollection,
+    vmctx_shape: VMContextShape,
 }
 
 // ===== impl Module =====
 
 impl Module {
+    /// # Errors
+    ///
+    /// TODO
     pub fn from_bytes(
         engine: Engine,
         validator: &mut Validator,
@@ -35,7 +40,7 @@ impl Module {
         let (translation, types) = ModuleParser::new(validator).translate(bytes)?;
 
         let inner = ModuleInner {
-            // vmshape: VMShape::for_module(u8_size_of::<usize>(), &translation.module),
+            vmctx_shape: VMContextShape::for_module(u8_size_of::<usize>(), &translation.module),
             type_collection: engine.type_registry().register_module_types(&engine, types),
             translated: translation.module,
             required_features: translation.required_features,
@@ -72,6 +77,14 @@ impl Module {
     /// The [`Engine`] that this [`Module`] has been instantiated within.
     pub(crate) fn engine(&self) -> &Engine {
         &self.0.engine
+    }
+
+    pub(crate) fn translated(&self) -> &TranslatedModule {
+        &self.0.translated
+    }
+
+    pub(crate) fn vmctx_shape(&self) -> &VMContextShape {
+        &self.0.vmctx_shape
     }
 
     pub(crate) fn type_ids(&self) -> &[VMSharedTypeIndex] {

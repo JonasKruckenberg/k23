@@ -6,23 +6,44 @@
 // copied, modified, or distributed except according to those terms.
 
 #![no_std]
-// #![cfg_attr(not(test), no_std)]
+#![feature(new_range_api)]
 
 extern crate alloc;
 
-mod loom;
+mod builtins;
 mod engine;
-mod store;
-mod module;
-mod wasm;
+mod func;
+mod global;
 mod indices;
-mod utils;
+mod loom;
+mod memory;
+mod module;
+mod store;
+mod table;
+mod tag;
+mod trap;
 mod type_registry;
+mod types;
+mod utils;
+mod values;
+mod vm;
+mod wasm;
 
 pub type Result<T> = anyhow::Result<T>;
 pub use engine::Engine;
-pub use store::Store;
+pub use func::Func;
+pub use global::Global;
+pub use memory::Memory;
 pub use module::Module;
+pub use store::Store;
+pub use table::Table;
+pub use tag::Tag;
+pub use trap::TrapKind;
+pub use types::{
+    ArrayType, FieldType, Finality, FuncType, GlobalType, HeapType, MemoryType, Mutability,
+    RefType, StorageType, StructType, TableType, TagType, ValType,
+};
+pub use values::{Ref, Val};
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.

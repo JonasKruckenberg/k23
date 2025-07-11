@@ -14,8 +14,8 @@ mod types;
 use crate::indices::{
     CanonicalizedTypeIndex, DataIndex, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex,
     DefinedTableIndex, DefinedTagIndex, ElemIndex, EntityIndex, FieldIndex, FuncIndex,
-    FuncRefIndex, GlobalIndex, LabelIndex, LocalIndex, MemoryIndex, ModuleInternedTypeIndex
-    , TableIndex, TagIndex, TypeIndex,
+    FuncRefIndex, GlobalIndex, LabelIndex, LocalIndex, MemoryIndex, ModuleInternedTypeIndex,
+    TableIndex, TagIndex, TypeIndex,
 };
 use alloc::boxed::Box;
 use alloc::string::String;
@@ -321,26 +321,6 @@ impl TranslatedModule {
             ))
         }
     }
-
-    // #[inline]
-    // pub fn owned_memory_index(&self, memory: DefinedMemoryIndex) -> OwnedMemoryIndex {
-    //     assert!(
-    //         memory.index() < self.memories.len(),
-    //         "non-shared memory must have an owned index"
-    //     );
-    //
-    //     // Once we know that the memory index is not greater than the number of
-    //     // plans, we can iterate through the plans up to the memory index and
-    //     // count how many are not shared (i.e., owned).
-    //     let owned_memory_index = self
-    //         .memories
-    //         .iter()
-    //         .skip(self.num_imported_memories as usize)
-    //         .take(memory.index())
-    //         .filter(|(_, mp)| !mp.shared)
-    //         .count();
-    //     OwnedMemoryIndex::new(owned_memory_index)
-    // }
 
     #[inline]
     pub fn is_imported_memory(&self, index: MemoryIndex) -> bool {

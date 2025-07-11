@@ -7,11 +7,11 @@
 
 //! "raw" types of WebAssembly constructs
 
+use crate::DEFAULT_OFFSET_GUARD_SIZE;
 use crate::indices::CanonicalizedTypeIndex;
 use crate::type_registry::TypeTrace;
 use crate::utils::enum_accessors;
 use crate::wasm::type_convert::WasmparserTypeConverter;
-use crate::DEFAULT_OFFSET_GUARD_SIZE;
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use core::fmt;

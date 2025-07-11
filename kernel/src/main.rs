@@ -40,7 +40,7 @@ mod state;
 mod tests;
 mod tracing;
 mod util;
-mod wasm;
+// mod wasm;
 
 use crate::backtrace::Backtrace;
 use crate::device_tree::DeviceTree;

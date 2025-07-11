@@ -13,10 +13,10 @@ use crate::loom::sync::Arc;
 use crate::wasm::module_types::ModuleTypesBuilder;
 use crate::wasm::type_convert::WasmparserTypeConverter;
 use crate::wasm::{
-    ConstExpr, WasmEntityType, Function, FunctionBodyData, WasmGlobalType, Import, WasmMemoryType, MemoryInitializer,
-    ModuleTranslation, ModuleTypes, ProducersLanguage, ProducersLanguageField, ProducersSdk,
-    ProducersSdkField, ProducersTool, ProducersToolField, WasmTableType, TableInitialValue, TableSegment,
-    TableSegmentElements, WasmTagType,
+    ConstExpr, Function, FunctionBodyData, Import, MemoryInitializer, ModuleTranslation,
+    ModuleTypes, ProducersLanguage, ProducersLanguageField, ProducersSdk, ProducersSdkField,
+    ProducersTool, ProducersToolField, TableInitialValue, TableSegment, TableSegmentElements,
+    WasmEntityType, WasmGlobalType, WasmMemoryType, WasmTableType, WasmTagType,
 };
 use alloc::string::ToString;
 use alloc::vec::Vec;

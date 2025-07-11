@@ -5,18 +5,19 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use crate::vm;
 use alloc::vec::Vec;
 use core::fmt;
 use core::marker::PhantomData;
 
 #[derive(Debug, Default)]
 pub struct StoredData {
-    // pub(super) instances: Vec<()>,
-    // pub(super) functions: Vec<()>,
-    // pub(super) tables: Vec<()>,
-    // pub(super) memories: Vec<()>,
-    // pub(super) globals: Vec<()>,
-    // pub(super) tags: Vec<()>,
+    pub(super) instances: Vec<vm::InstanceHandle>,
+    pub(super) functions: Vec<vm::ExportedFunction>,
+    pub(super) tables: Vec<vm::ExportedTable>,
+    pub(super) memories: Vec<vm::ExportedMemory>,
+    pub(super) globals: Vec<vm::ExportedGlobal>,
+    pub(super) tags: Vec<vm::ExportedTag>,
 }
 
 pub struct Stored<T> {
@@ -102,4 +103,3 @@ stored_impls! {
     // ((), add_global, has_global, get_global, get_global_mut, s.stored.globals)
     // ((), add_tag, has_tag, get_tag, get_tag_mut, s.stored.tags)
 }
-
