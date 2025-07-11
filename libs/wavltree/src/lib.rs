@@ -1,141 +1,13 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! # An intrusive Weak AVL Tree.
-//!
-//! A Rust implementation of Weak AVL Trees, primarily for use in the [k23 operating system][k23].
-//!
-//! Weak AVL trees are *self-balancing binary search trees* introduced by [Haeupler, Sen & Tarjan (2015)][paper] that are
-//! similar to red-black trees but better in several ways.
-//! In particular, their worst-case height is that of AVL trees (~1.44log2(n) as opposed to 2log2(n) for red-black trees),
-//! while tree restructuring operations after deletions are even more efficient than red-black trees.
-//! Additionally, this implementation is *intrusive* meaning node data (pointers to other nodes etc.) are stored _within_
-//! participating values, rather than being allocated and owned by the tree itself.
-//!
-//! **This crate is self-contained, (somewhat) fuzzed, and fully `no_std`.**
-//!
-//! ## Example
-//!
-//! The following example shows an implementation of a simple intrusive WAVL tree node (`MyNode`) and
-//! how it can be used with `WAVLTree`, notice how - due to the intrusive nature of the data structure -
-//! there is quite a lot more setup required, compared to e.g. a `BTreeMap` or `HashMap`.
-//!
-//! ```rust
-//! # extern crate alloc;
-//! # use alloc::boxed::Box;
-//! # use core::mem::offset_of;
-//! # use core::pin::Pin;
-//! # use core::ptr::NonNull;
-//! #[derive(Default)]
-//! struct MyNode {
-//!     links: wavltree::Links<Self>,
-//!     value: usize,
-//! }
-//!
-//! impl MyNode {
-//!     pub fn new(value: usize) -> Self {
-//!         let mut this = Self::default();
-//!         this.value = value;
-//!         this
-//!     }
-//! }
-//!
-//! // Participation in an intrusive collection requires a bit more effort
-//! // on the values's part.
-//! unsafe impl wavltree::Linked for MyNode {
-//!     /// The owning handle type, must ensure participating values are pinned in memory.
-//!     type Handle = Pin<Box<Self>>;
-//!     /// The key type by which entries are identified.
-//!     type Key = usize;
-//!
-//!     /// Convert a `Handle` into a raw pointer to `Self`,
-//!     /// taking ownership of it in the process.
-//!     fn into_ptr(handle: Self::Handle) -> NonNull<Self> {
-//!         unsafe { NonNull::from(Box::leak(Pin::into_inner_unchecked(handle))) }
-//!     }
-//!
-//!     /// Convert a raw pointer back into an owned `Handle`.
-//!     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
-//!         Pin::new_unchecked(Box::from_raw(ptr.as_ptr()))
-//!     }
-//!
-//!     /// Return the links of the node pointed to by ptr.
-//!     unsafe fn links(ptr: NonNull<Self>) -> NonNull<wavltree::Links<Self>> {
-//!         ptr.map_addr(|addr| {
-//!             let offset = offset_of!(Self, links);
-//!             addr.checked_add(offset).unwrap()
-//!         })
-//!         .cast()
-//!     }
-//!
-//!     /// Retrieve the key identifying this node within the collection.
-//!     fn get_key(&self) -> &Self::Key {
-//!         &self.value
-//!    }
-//! }
-//!
-//! fn main() {
-//!     let mut tree = wavltree::WAVLTree::new();
-//!     tree.insert(Box::pin(MyNode::new(42)));
-//!     tree.insert(Box::pin(MyNode::new(17)));
-//!     tree.insert(Box::pin(MyNode::new(9)));
-//!
-//!     tree.remove(&9);
-//!
-//!     let _entry = tree.entry(&42);
-//! }
-//! ```
-//!
-//! ## When To Use This
-//!
-//! - **want binary search** - WAVL trees are *sorted* collections that are efficient to search.
-//! - **search more than you edit** - WAVL trees offer better search complexity than red-black trees at the cost of being
-//!   slightly more complex.
-//! - **want to avoid hidden allocations** - Because node data is stored _inside_ participating values, an element can be
-//!   added without requiring additional heap allocations.
-//! - **have to allocator at all** - When elements have fixed memory locations (such as pages in a page allocator, `static`s),
-//!   they can be added without *any allocations at all*.
-//! - **want flexibility** - Intrusive data structures allow elements to participate in many different collections at the
-//!   same time, e.g. a node might both be linked to a `WAVLTree` and an intrusive doubly-linked list at the same time.
-//!
-//! In short, `WAVLTree`s are a good choice for `no_std` binary search trees such as inside page allocators.
-//!
-//! ## When Not To Use This
-//!
-//! - **need to store primitives** - Intrusive collections require elements to store the node data, which excludes
-//!   primitives such as strings or numbers, since they can't hold this metadata.
-//! - **can't use unsafe** - Both this implementation and code consuming it require `unsafe`, the `Linked` trait is unsafe
-//!   to implement since it requires implementors uphold special invariants.
-//! - **you are unsure if you need this** - Search trees and especially intrusive ones like this are niche data structures,
-//!   only use them if you are sure you need them. Very likely doing binary search on a sorted `Vec` or using a `HashMap`
-//!   works better for your use case.
-//!
-//! ## Cargo Features
-//!
-//! The following features are available:
-//!
-//! | Feature | Default | Explanation                                                                               |
-//! |:--------|:--------|:------------------------------------------------------------------------------------------|
-//! | `dot`   | `false` | Enables the `WAVLTree::dot` method, which allows display of the tree in [graphviz format] |
-//!
-//! [paper]: https://sidsen.azurewebsites.net/papers/rb-trees-talg.pdf
-//! [k23]: https://github.com/JonasKruckenberg/k23
-//! [graphviz format]: https://graphviz.org
-
 #![cfg_attr(not(test), no_std)]
-#![allow(
-    clippy::undocumented_unsafe_blocks,
-    reason = "too many trivial unsafe blocks"
-)]
 
 mod cursor;
-#[cfg(feature = "dot")]
-mod dot;
-mod entry;
 mod iter;
 mod utils;
 
@@ -148,13 +20,10 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{fmt, mem, ptr};
 
-#[cfg(feature = "dot")]
-pub use dot::Dot;
+pub use cursor::{Cursor, CursorMut};
 pub use iter::{IntoIter, Iter, IterMut};
 pub use utils::Side;
 
-pub use crate::cursor::{Cursor, CursorMut};
-pub use crate::entry::{Entry, OccupiedEntry, VacantEntry};
 use crate::utils::get_sibling;
 
 /// Trait implemented by types which can be members of an [intrusive WAVL tree][WAVLTree].
@@ -415,8 +284,35 @@ where
     T: Linked + ?Sized,
 {
     pub(crate) root: Link<T>,
-    size: usize,
 }
+
+/// Links to other nodes in a [`WAVLTree`].
+///
+/// In order to be part of a [`WAVLTree`], a type must contain an instance of this type, and must implement the [`Linked`] trait.
+///
+/// # Debug assertions
+///
+/// With debug assertions enabled, `Links` also keeps track of the nodes rank, this is so
+/// `WAVLTree::assert_valid` can assert the WAVL rank balancing rules. This increases the size of
+/// `Links` by an additional `usize`
+pub struct Links<T: ?Sized> {
+    inner: UnsafeCell<LinksInner<T>>,
+}
+
+struct LinksInner<T: ?Sized> {
+    rank_parity: bool,
+    up: Link<T>,
+    left: Link<T>,
+    right: Link<T>,
+    #[cfg(debug_assertions)]
+    rank: usize,
+    /// Linked list links must always be `!Unpin`, in order to ensure that they
+    /// never receive LLVM `noalias` annotations; see also
+    /// <https://github.com/rust-lang/rust/issues/63818>.
+    _unpin: PhantomPinned,
+}
+
+// ===== impl WAVLTree =====
 
 unsafe impl<T> Send for WAVLTree<T> where T: Linked + ?Sized {}
 unsafe impl<T> Sync for WAVLTree<T> where T: Linked + ?Sized {}
@@ -439,32 +335,6 @@ where
     }
 }
 
-impl<T> IntoIterator for WAVLTree<T>
-where
-    T: Linked + ?Sized,
-{
-    type Item = T::Handle;
-    type IntoIter = IntoIter<T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        #[allow(if_let_rescope, reason = "")]
-        if let Some(root) = self.root {
-            IntoIter {
-                // TODO this could be optimized by caching the head and tail nodes in the WAVLTree
-                head: Some(utils::find_minimum(root)),
-                tail: Some(utils::find_maximum(root)),
-                _tree: self,
-            }
-        } else {
-            IntoIter {
-                head: None,
-                tail: None,
-                _tree: self,
-            }
-        }
-    }
-}
-
 impl<T> WAVLTree<T>
 where
     T: Linked + ?Sized,
@@ -472,121 +342,24 @@ where
     /// Creates a new, empty tree.
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            root: None,
-            size: 0,
-        }
-    }
-
-    /// Returns the number of entries in the tree.
-    pub fn size(&self) -> usize {
-        self.size
+        Self { root: None }
     }
 
     /// Returns `true` if the tree contains no entries.
     pub fn is_empty(&self) -> bool {
-        debug_assert_eq!(self.root.is_none(), self.size() == 0);
-        self.size() == 0
+        self.root.is_none()
     }
 
-    /// Returns a double-ended iterator over a sub-range of entries in the tree. The simplest way is
-    /// to use the range syntax `min..max`, thus `range(min..max)` will yield elements from min (inclusive)
-    /// to max (exclusive). The range may also be entered as `(Bound<T>, Bound<T>)`, so for example
-    /// `range((Excluded(4), Included(10)))` will yield a left-exclusive, right-inclusive
-    /// range from 4 to 10.
-    pub fn range<Q, R>(&self, range: R) -> Iter<'_, T>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-        R: RangeBounds<Q>,
-    {
-        if self.is_empty() {
-            return Iter {
-                head: None,
-                tail: None,
-                _tree: self,
-            };
-        }
+    pub fn get(&self, key: &T::Key) -> Option<&T> {
+        let (node, _) = self.get_internal(key);
 
-        let start = self.find_lower_bound(range.start_bound());
-        let end = self.find_upper_bound(range.end_bound());
-
-        Iter {
-            head: start,
-            tail: end,
-            _tree: self,
-        }
+        Some(unsafe { node?.as_ref() })
     }
 
-    /// Returns a mutable double-ended iterator over a sub-range of entries in the tree. The simplest way is
-    /// to use the range syntax `min..max`, thus `range(min..max)` will yield elements from min (inclusive)
-    /// to max (exclusive). The range may also be entered as `(Bound<T>, Bound<T>)`, so for example
-    /// `range((Excluded(4), Included(10)))` will yield a left-exclusive, right-inclusive
-    /// range from 4 to 10.
-    pub fn range_mut<Q, R>(&mut self, range: R) -> IterMut<'_, T>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-        R: RangeBounds<Q>,
-    {
-        if self.is_empty() {
-            return IterMut {
-                head: None,
-                tail: None,
-                _tree: self,
-            };
-        }
+    pub fn get_mut(&self, key: &T::Key) -> Option<Pin<&mut T>> {
+        let (node, _) = self.get_internal(key);
 
-        let head = self.find_lower_bound(range.start_bound());
-        let tail = self.find_upper_bound(range.end_bound());
-
-        IterMut {
-            head: head.or(tail),
-            tail,
-            _tree: self,
-        }
-    }
-
-    /// Returns the given key's corresponding entry in the tree for in-place manipulation.
-    pub fn entry<Q>(&mut self, key: &Q) -> Entry<'_, T>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
-        let (node, parent_and_side) = self.find_internal(key);
-
-        if let Some(node) = node {
-            Entry::Occupied(OccupiedEntry { node, _tree: self })
-        } else {
-            Entry::Vacant(VacantEntry {
-                parent_and_side,
-                _tree: self,
-            })
-        }
-    }
-
-    pub fn find<Q>(&self, key: &Q) -> Cursor<'_, T>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
-        let (current, _) = self.find_internal(key);
-        Cursor {
-            current,
-            _tree: self,
-        }
-    }
-
-    pub fn find_mut<Q>(&mut self, key: &Q) -> CursorMut<'_, T>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
-        let (current, _) = self.find_internal(key);
-        CursorMut {
-            current,
-            _tree: self,
-        }
+        Some(unsafe { Pin::new_unchecked(node?.as_mut()) })
     }
 
     /// Returns a cursor to the root of the tree.
@@ -603,73 +376,6 @@ where
     pub fn root_mut(&mut self) -> CursorMut<'_, T> {
         CursorMut {
             current: self.root,
-            _tree: self,
-        }
-    }
-
-    /// Returns a cursor to the first element of the tree.
-    #[inline]
-    pub fn front(&self) -> Cursor<'_, T> {
-        Cursor {
-            current: self.root.map(|root| utils::find_minimum(root)),
-            _tree: self,
-        }
-    }
-
-    /// Returns a mutable cursor to the first element of the tree.
-    #[inline]
-    pub fn front_mut(&mut self) -> CursorMut<'_, T> {
-        CursorMut {
-            current: self.root.map(|root| utils::find_minimum(root)),
-            _tree: self,
-        }
-    }
-
-    /// Returns a cursor to the last element of the tree.
-    #[inline]
-    pub fn back(&self) -> Cursor<'_, T> {
-        Cursor {
-            current: self.root.map(|root| utils::find_maximum(root)),
-            _tree: self,
-        }
-    }
-
-    /// Returns a mutable cursor to the last element of the tree.
-    #[inline]
-    pub fn back_mut(&mut self) -> CursorMut<'_, T> {
-        CursorMut {
-            current: self.root.map(|root| utils::find_maximum(root)),
-            _tree: self,
-        }
-    }
-
-    /// Constructs a cursor from a raw pointer to a node.
-    ///
-    /// # Safety
-    ///
-    /// Caller has to ensure the pointer points to a valid node in the tree.
-    #[inline]
-    pub unsafe fn cursor_from_ptr(&self, ptr: NonNull<T>) -> Cursor<'_, T> {
-        debug_assert!(unsafe { T::links(ptr).as_ref() }.is_linked());
-        Cursor {
-            current: Some(ptr),
-            _tree: self,
-        }
-    }
-
-    /// Constructs a mutable cursor from a raw pointer to a node.
-    ///
-    /// # Safety
-    ///
-    /// Caller has to ensure the pointer points to a valid node in the tree.
-    #[inline]
-    pub unsafe fn cursor_mut_from_ptr(&mut self, ptr: NonNull<T>) -> CursorMut<'_, T> {
-        debug_assert!(
-            unsafe { T::links(ptr).as_ref() }.is_linked(),
-            "ptr {ptr:?} is not a linked element"
-        );
-        CursorMut {
-            current: Some(ptr),
             _tree: self,
         }
     }
@@ -714,7 +420,6 @@ where
             };
 
             T::after_insert(Pin::new_unchecked(ptr.as_mut()));
-            self.size += 1;
 
             if was_leaf {
                 self.balance_after_insert(ptr);
@@ -724,89 +429,10 @@ where
         }
     }
 
-    /// Removes an entry - identified by the given key - from the tree, returning the owned handle
-    /// if the associated entry was part of the tree.
-    ///
-    /// The key may be any borrowed form of the entry’s key type, but the ordering on the borrowed
-    /// form *must* match the ordering on the key type.
-    pub fn remove<Q>(&mut self, key: &Q) -> Option<T::Handle>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
-        let ptr = self.find_internal(key).0?;
-        self.size -= 1;
-        Some(self.remove_internal(ptr))
-    }
+    pub fn remove(&mut self, key: &T::Key) -> Option<T::Handle> {
+        let (node, _) = self.get_internal(key);
 
-    /// Returns a [`Cursor`] pointing at the gap before the smallest key greater than the given bound.
-    #[inline]
-    pub fn lower_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, T>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
-        Cursor {
-            current: self.find_lower_bound(bound),
-            _tree: self,
-        }
-    }
-
-    /// Returns a [`CursorMut`] pointing at the gap before the smallest key greater than the given bound.
-    #[inline]
-    pub fn lower_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, T>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
-        CursorMut {
-            current: self.find_lower_bound(bound),
-            _tree: self,
-        }
-    }
-
-    /// Returns a [`Cursor`] pointing at the gap after the greatest key smaller than the given bound.
-    #[inline]
-    pub fn upper_bound<Q>(&self, bound: Bound<&Q>) -> Cursor<'_, T>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
-        Cursor {
-            current: self.find_upper_bound(bound),
-            _tree: self,
-        }
-    }
-
-    /// Returns a [`CursorMut`] pointing at the gap after the greatest key smaller than the given bound.
-    #[inline]
-    pub fn upper_bound_mut<Q>(&mut self, bound: Bound<&Q>) -> CursorMut<'_, T>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
-        CursorMut {
-            current: self.find_upper_bound(bound),
-            _tree: self,
-        }
-    }
-
-    /// Gets an iterator over the entries in the tree, sorted by their key.
-    pub fn iter(&self) -> Iter<'_, T> {
-        Iter {
-            head: self.root.map(|root| utils::find_minimum(root)),
-            tail: self.root.map(|root| utils::find_maximum(root)),
-            _tree: self,
-        }
-    }
-
-    /// Gets a mutable iterator over the entries in the tree, sorted by their key.
-    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
-        IterMut {
-            head: self.root.map(|root| utils::find_minimum(root)),
-            tail: self.root.map(|root| utils::find_maximum(root)),
-            _tree: self,
-        }
+        Some(self.remove_internal(node?))
     }
 
     /// Removes all elements from the tree.
@@ -837,16 +463,194 @@ where
         }
     }
 
-    /// Takes all the elements out of the `WAVLTree`, leaving it empty. The taken elements are returned as a new `WAVLTree`.
-    #[inline]
-    pub fn take(&mut self) -> Self {
-        let tree = Self {
-            root: self.root,
-            size: self.size,
-        };
-        self.root = None;
-        tree
+    // ===== iteration methods =====
+
+    /// Gets an iterator over the entries in the tree, sorted by their key.
+    pub fn iter(&self) -> Iter<'_, T> {
+        Iter {
+            head: self.root.map(|root| utils::find_minimum(root)),
+            tail: self.root.map(|root| utils::find_maximum(root)),
+            _tree: self,
+        }
     }
+
+    /// Gets a mutable iterator over the entries in the tree, sorted by their key.
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+        IterMut {
+            head: self.root.map(|root| utils::find_minimum(root)),
+            tail: self.root.map(|root| utils::find_maximum(root)),
+            _tree: self,
+        }
+    }
+
+    /// Returns a double-ended iterator over a sub-range of entries in the tree.
+    ///
+    /// The simplest way is to use the range syntax `min..max`, thus `range(min..max)` will yield
+    /// elements from min (inclusive) to max (exclusive). The range may also be entered as
+    /// `(Bound<T>, Bound<T>)`, so for example `range((Excluded(4), Included(10)))` will yield
+    /// a left-exclusive, right-inclusive range from 4 to 10.
+    pub fn range<R>(&self, range: R) -> Iter<'_, T>
+    where
+        R: RangeBounds<T::Key>,
+    {
+        if self.is_empty() {
+            return Iter {
+                head: None,
+                tail: None,
+                _tree: self,
+            };
+        }
+
+        let start = self.find_lower_bound(range.start_bound());
+        let end = self.find_upper_bound(range.end_bound());
+
+        Iter {
+            head: start,
+            tail: end,
+            _tree: self,
+        }
+    }
+
+    /// Returns a mutable double-ended iterator over a sub-range of entries in the tree.
+    ///
+    /// The simplest way is to use the range syntax `min..max`, thus `range(min..max)` will yield
+    /// elements from min (inclusive) to max (exclusive). The range may also be entered as
+    /// `(Bound<T>, Bound<T>)`, so for example `range((Excluded(4), Included(10)))` will yield
+    /// a left-exclusive, right-inclusive range from 4 to 10.
+    pub fn range_mut<R>(&mut self, range: R) -> IterMut<'_, T>
+    where
+        R: RangeBounds<T::Key>,
+    {
+        if self.is_empty() {
+            return IterMut {
+                head: None,
+                tail: None,
+                _tree: self,
+            };
+        }
+
+        let head = self.find_lower_bound(range.start_bound());
+        let tail = self.find_upper_bound(range.end_bound());
+
+        IterMut {
+            head: head.or(tail),
+            tail,
+            _tree: self,
+        }
+    }
+
+    // ===== cursor methods =====
+
+    /// Returns a [`Cursor`] to the first element of the tree.
+    pub fn cursor_front(&self) -> Cursor<'_, T> {
+        Cursor {
+            current: self.root.map(|root| utils::find_minimum(root)),
+            _tree: self,
+        }
+    }
+
+    /// Returns a [`CursorMut`] to the first element of the tree.
+    pub fn cursor_front_mut(&mut self) -> CursorMut<'_, T> {
+        CursorMut {
+            current: self.root.map(|root| utils::find_minimum(root)),
+            _tree: self,
+        }
+    }
+
+    /// Returns a [`Cursor`] to the last element of the tree.
+    pub fn cursor_back(&self) -> Cursor<'_, T> {
+        Cursor {
+            current: self.root.map(|root| utils::find_maximum(root)),
+            _tree: self,
+        }
+    }
+
+    /// Returns a [`CursorMut`] to the last element of the tree.
+    #[inline]
+    pub fn cursor_back_mut(&mut self) -> CursorMut<'_, T> {
+        CursorMut {
+            current: self.root.map(|root| utils::find_maximum(root)),
+            _tree: self,
+        }
+    }
+
+    /// Returns a [`Cursor`] pointing at the first element with a key greater
+    /// than `bound`.
+    ///
+    /// Passing `Bound::Included(x)` will return a cursor pointing at the
+    /// first element with a key greater than or equal to `x`.
+    ///
+    /// Passing `Bound::Excluded(x)` will return a cursor pointing at the
+    /// first element with a key greater than `x`.
+    ///
+    /// Passing `Bound::Unbounded` will return a cursor pointing at the
+    /// first element in the tree.
+    #[inline]
+    pub fn lower_bound(&self, bound: Bound<&T::Key>) -> Cursor<'_, T> {
+        Cursor {
+            current: self.find_lower_bound(bound),
+            _tree: self,
+        }
+    }
+
+    /// Returns a [`CursorMut`] pointing at the first element with a key greater
+    /// than `bound`.
+    ///
+    /// Passing `Bound::Included(x)` will return a cursor pointing at the
+    /// first element with a key greater than or equal to `x`.
+    ///
+    /// Passing `Bound::Excluded(x)` will return a cursor pointing at the
+    /// first element with a key greater than `x`.
+    ///
+    /// Passing `Bound::Unbounded` will return a cursor pointing at the
+    /// first element in the tree.
+    #[inline]
+    pub fn lower_bound_mut(&mut self, bound: Bound<&T::Key>) -> CursorMut<'_, T> {
+        CursorMut {
+            current: self.find_lower_bound(bound),
+            _tree: self,
+        }
+    }
+
+    /// Returns a [`Cursor`] pointing at the last element with a key less
+    /// than `bound`.
+    ///
+    /// Passing `Bound::Included(x)` will return a cursor pointing at the
+    /// last element with a key lesser than or equal to `x`.
+    ///
+    /// Passing `Bound::Excluded(x)` will return a cursor pointing at the
+    /// last element with a key lesser than `x`.
+    ///
+    /// Passing `Bound::Unbounded` will return a cursor pointing at the
+    /// last element in the tree.
+    #[inline]
+    pub fn upper_bound(&self, bound: Bound<&T::Key>) -> Cursor<'_, T> {
+        Cursor {
+            current: self.find_upper_bound(bound),
+            _tree: self,
+        }
+    }
+
+    /// Returns a [`CursorMut`] pointing at the last element with a key less
+    /// than `bound`.
+    ///
+    /// Passing `Bound::Included(x)` will return a cursor pointing at the
+    /// last element with a key lesser than or equal to `x`.
+    ///
+    /// Passing `Bound::Excluded(x)` will return a cursor pointing at the
+    /// last element with a key lesser than `x`.
+    ///
+    /// Passing `Bound::Unbounded` will return a cursor pointing at the
+    /// last element in the tree.
+    #[inline]
+    pub fn upper_bound_mut(&mut self, bound: Bound<&T::Key>) -> CursorMut<'_, T> {
+        CursorMut {
+            current: self.find_upper_bound(bound),
+            _tree: self,
+        }
+    }
+
+    // ===== utility methods =====
 
     /// Asserts as many of the tree's invariants as possible.
     ///
@@ -920,16 +724,9 @@ where
         }
     }
 
-    #[cfg(feature = "dot")]
-    pub fn dot(&self) -> Dot<'_, T> {
-        Dot { tree: self }
-    }
+    // ===== internal methods =====
 
-    fn find_lower_bound<Q>(&self, bound: Bound<&Q>) -> Option<NonNull<T>>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
+    fn find_lower_bound(&self, bound: Bound<&T::Key>) -> Option<NonNull<T>> {
         let mut result = None;
         let mut tree = self.root;
         while let Some(curr) = tree {
@@ -952,11 +749,7 @@ where
         result
     }
 
-    fn find_upper_bound<Q>(&self, bound: Bound<&Q>) -> Option<NonNull<T>>
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
+    fn find_upper_bound(&self, bound: Bound<&T::Key>) -> Option<NonNull<T>> {
         let mut result = None;
         let mut tree = self.root;
         while let Some(curr) = tree {
@@ -980,11 +773,7 @@ where
     }
 
     #[expect(clippy::type_complexity, reason = "internal")]
-    fn find_internal<Q>(&self, key: &Q) -> (Option<NonNull<T>>, Option<(NonNull<T>, Side)>)
-    where
-        <T as Linked>::Key: Borrow<Q>,
-        Q: Ord,
-    {
+    fn get_internal(&self, key: &T::Key) -> (Option<NonNull<T>>, Option<(NonNull<T>, Side)>) {
         let mut parent = None;
         let mut tree = self.root;
         while let Some(curr) = tree {
@@ -1443,31 +1232,51 @@ where
     }
 }
 
-/// Links to other nodes in a [`WAVLTree`].
-///
-/// In order to be part of a [`WAVLTree`], a type must contain an instance of this type, and must implement the [`Linked`] trait.
-///
-/// # Debug assertions
-///
-/// With debug assertions enabled, `Links` also keeps track of the nodes rank, this is so
-/// `WAVLTree::assert_valid` can assert the WAVL rank balancing rules. This increases the size of
-/// `Links` by an additional `usize`
-pub struct Links<T: ?Sized> {
-    inner: UnsafeCell<LinksInner<T>>,
+impl<T> IntoIterator for WAVLTree<T>
+where
+    T: Linked + ?Sized,
+{
+    type Item = T::Handle;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        #[allow(if_let_rescope, reason = "")]
+        if let Some(root) = self.root {
+            IntoIter {
+                // TODO this could be optimized by caching the head and tail nodes in the WAVLTree
+                head: Some(utils::find_minimum(root)),
+                tail: Some(utils::find_maximum(root)),
+                _tree: self,
+            }
+        } else {
+            IntoIter {
+                head: None,
+                tail: None,
+                _tree: self,
+            }
+        }
+    }
 }
 
-struct LinksInner<T: ?Sized> {
-    rank_parity: bool,
-    up: Link<T>,
-    left: Link<T>,
-    right: Link<T>,
-    #[cfg(debug_assertions)]
-    rank: usize,
-    /// Linked list links must always be `!Unpin`, in order to ensure that they
-    /// never receive LLVM `noalias` annotations; see also
-    /// <https://github.com/rust-lang/rust/issues/63818>.
-    _unpin: PhantomPinned,
+impl<'a, T: Linked + ?Sized> IntoIterator for &'a WAVLTree<T> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
 }
+
+impl<'a, T: Linked + ?Sized> IntoIterator for &'a mut WAVLTree<T> {
+    type Item = Pin<&'a mut T>;
+    type IntoIter = IterMut<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+// ===== impl Links =====
 
 impl<T: ?Sized> Default for Links<T> {
     fn default() -> Self {
@@ -1510,7 +1319,7 @@ impl<T: ?Sized> Links<T> {
     }
 
     /// Returns `true` if this node is currently linked to a [WAVLTree].
-    pub fn is_linked(&self) -> bool {
+    pub const fn is_linked(&self) -> bool {
         let inner = unsafe { &*self.inner.get() };
         inner.up.is_some() || inner.left.is_some() || inner.right.is_some()
     }
@@ -1521,7 +1330,7 @@ impl<T: ?Sized> Links<T> {
     ///
     /// Calling this method on a node that is linked to a tree, **will corrupt the tree** leaving
     /// pointers to arbitrary memory around.
-    unsafe fn unlink(&mut self) {
+    const unsafe fn unlink(&mut self) {
         self.inner.get_mut().up = None;
         self.inner.get_mut().left = None;
         self.inner.get_mut().right = None;
@@ -1529,43 +1338,43 @@ impl<T: ?Sized> Links<T> {
     }
 
     #[inline]
-    pub fn parent(&self) -> Link<T> {
+    pub const fn parent(&self) -> Link<T> {
         unsafe { (*self.inner.get()).up }
     }
     #[inline]
-    pub fn left(&self) -> Link<T> {
+    pub const fn left(&self) -> Link<T> {
         unsafe { (*self.inner.get()).left }
     }
     #[inline]
-    pub fn right(&self) -> Link<T> {
+    pub const fn right(&self) -> Link<T> {
         unsafe { (*self.inner.get()).right }
     }
 
     #[inline]
-    pub fn replace_parent(&mut self, lk: Link<T>) -> Link<T> {
+    pub const fn replace_parent(&mut self, lk: Link<T>) -> Link<T> {
         mem::replace(&mut self.inner.get_mut().up, lk)
     }
     #[inline]
-    pub fn replace_left(&mut self, lk: Link<T>) -> Link<T> {
+    pub const fn replace_left(&mut self, lk: Link<T>) -> Link<T> {
         mem::replace(&mut self.inner.get_mut().left, lk)
     }
     #[inline]
-    pub fn replace_right(&mut self, lk: Link<T>) -> Link<T> {
+    pub const fn replace_right(&mut self, lk: Link<T>) -> Link<T> {
         mem::replace(&mut self.inner.get_mut().right, lk)
     }
 
     #[inline]
     #[cfg(debug_assertions)]
-    fn rank(&self) -> usize {
+    const fn rank(&self) -> usize {
         unsafe { (*self.inner.get()).rank }
     }
     #[inline]
-    fn rank_parity(&self) -> bool {
+    const fn rank_parity(&self) -> bool {
         unsafe { (*self.inner.get()).rank_parity }
     }
     // TODO test
     #[inline]
-    fn promote(&mut self) {
+    const fn promote(&mut self) {
         self.inner.get_mut().rank_parity = !self.rank_parity();
         #[cfg(debug_assertions)]
         {
@@ -1574,7 +1383,7 @@ impl<T: ?Sized> Links<T> {
     }
     // TODO test
     #[inline]
-    fn demote(&mut self) {
+    const fn demote(&mut self) {
         self.inner.get_mut().rank_parity = !self.rank_parity();
         #[cfg(debug_assertions)]
         {
@@ -1582,20 +1391,20 @@ impl<T: ?Sized> Links<T> {
         }
     }
     #[inline]
-    fn double_promote(&mut self) {
+    const fn double_promote(&mut self) {
         #[cfg(debug_assertions)]
         {
             self.inner.get_mut().rank += 2;
         }
     }
     #[inline]
-    fn double_demote(&mut self) {
+    const fn double_demote(&mut self) {
         #[cfg(debug_assertions)]
         {
             self.inner.get_mut().rank -= 2;
         }
     }
-    fn set_rank(&mut self, other: &Self) {
+    const fn set_rank(&mut self, other: &Self) {
         self.inner.get_mut().rank_parity = other.rank_parity();
         #[cfg(debug_assertions)]
         {
@@ -1603,19 +1412,19 @@ impl<T: ?Sized> Links<T> {
         }
     }
 
-    pub fn is_leaf(&self) -> bool {
+    pub const fn is_leaf(&self) -> bool {
         self.left().is_none() && self.right().is_none()
     }
 
     #[inline]
-    fn child(&self, side: Side) -> Link<T> {
+    const fn child(&self, side: Side) -> Link<T> {
         match side {
             Side::Left => unsafe { (*self.inner.get()).left },
             Side::Right => unsafe { (*self.inner.get()).right },
         }
     }
     #[inline]
-    fn replace_child(&mut self, side: Side, child: Link<T>) -> Link<T> {
+    const fn replace_child(&mut self, side: Side, child: Link<T>) -> Link<T> {
         match side {
             Side::Left => mem::replace(&mut self.inner.get_mut().left, child),
             Side::Right => mem::replace(&mut self.inner.get_mut().right, child),
@@ -1676,194 +1485,5 @@ impl<T: ?Sized> Links<T> {
                 "{ctx}node's left and right children cannot be the same; node={self:#?}"
             );
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    extern crate alloc;
-
-    use alloc::boxed::Box;
-    use alloc::vec::Vec;
-    use core::mem::offset_of;
-    use core::pin::Pin;
-
-    use rand::prelude::SliceRandom;
-    use rand::rng;
-
-    use super::*;
-
-    #[derive(Default)]
-    struct TestEntry {
-        value: usize,
-        links: Links<Self>,
-    }
-    impl TestEntry {
-        pub fn new(value: usize) -> Self {
-            let mut this = Self::default();
-            this.value = value;
-            this
-        }
-    }
-    impl fmt::Debug for TestEntry {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.debug_struct("PlaceHolderEntry")
-                .field("value", &self.value)
-                .finish()
-        }
-    }
-    unsafe impl Linked for TestEntry {
-        /// Any heap-allocated type that owns an element may be used.
-        ///
-        /// An element *must not* move while part of an intrusive data
-        /// structure. In many cases, `Pin` may be used to enforce this.
-        type Handle = Pin<Box<Self>>;
-
-        type Key = usize;
-
-        /// Convert an owned `Handle` into a raw pointer
-        fn into_ptr(handle: Self::Handle) -> NonNull<Self> {
-            unsafe { NonNull::from(Box::leak(Pin::into_inner_unchecked(handle))) }
-        }
-
-        /// Convert a raw pointer back into an owned `Handle`.
-        unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
-            // Safety: `NonNull` *must* be constructed from a pinned reference
-            // which the tree implementation upholds.
-            unsafe { Pin::new_unchecked(Box::from_raw(ptr.as_ptr())) }
-        }
-
-        unsafe fn links(ptr: NonNull<Self>) -> NonNull<Links<Self>> {
-            ptr.map_addr(|addr| {
-                let offset = offset_of!(Self, links);
-                addr.checked_add(offset).unwrap()
-            })
-            .cast()
-        }
-
-        fn get_key(&self) -> &Self::Key {
-            &self.value
-        }
-    }
-
-    #[cfg(not(target_os = "none"))]
-    #[test]
-    fn random_inserts_and_removals() {
-        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
-
-        let mut rng = rng();
-
-        let mut nums = (0..30).collect::<Vec<_>>();
-        nums.shuffle(&mut rng);
-
-        println!("inserts {nums:?}");
-        for i in nums.clone() {
-            println!("=== inserting {i}");
-            tree.insert(Box::pin(TestEntry::new(i)));
-            println!("=== inserted {i}");
-        }
-
-        nums.shuffle(&mut rng);
-
-        println!("deletions {nums:?}");
-        for i in nums {
-            println!("=== removing {i}");
-            tree.remove(&i);
-            // println!("{}", tree.dot());
-            println!("=== removed {i}");
-        }
-    }
-
-    #[cfg(not(target_os = "none"))]
-    #[test]
-    fn random_inserts_and_searches() {
-        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
-
-        let mut rng = rng();
-
-        let mut nums = (0..50).collect::<Vec<_>>();
-        nums.shuffle(&mut rng);
-
-        println!("inserts {nums:?}");
-        for i in nums.clone() {
-            println!("=== inserting {i}");
-            tree.insert(Box::pin(TestEntry::new(i)));
-            println!("=== inserted {i}");
-        }
-
-        nums.shuffle(&mut rng);
-
-        println!("searches {nums:?}");
-        for i in nums {
-            println!("=== searching {i}");
-
-            match tree.entry(&i) {
-                Entry::Occupied(e) => assert_eq!(i, e.get().value),
-                Entry::Vacant(_) => panic!(),
-            }
-            // println!("{}", tree.dot());
-            println!("=== found {i}");
-        }
-    }
-
-    #[cfg(not(target_os = "none"))]
-    #[test]
-    fn range() {
-        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
-
-        for i in 0..16 {
-            let i = i * 2;
-            println!("=== inserting {i}");
-            tree.insert(Box::pin(TestEntry::new(i)));
-            println!("=== inserted {i}");
-        }
-
-        for i in tree.range(4..=6) {
-            println!("range iter {i:?}");
-        }
-    }
-
-    #[cfg(not(target_os = "none"))]
-    #[test]
-    fn entry_next() {
-        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
-
-        tree.insert(Box::pin(TestEntry::new(1000)));
-        tree.insert(Box::pin(TestEntry::new(3000)));
-
-        let entry = tree.entry(&2000);
-        assert!(matches!(entry, Entry::Vacant(_)));
-
-        assert_eq!(entry.peek_next().unwrap().value, 3000);
-    }
-
-    #[cfg(not(target_os = "none"))]
-    #[test]
-    fn into_iter() {
-        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
-
-        tree.insert(Box::pin(TestEntry::new(1000)));
-        tree.insert(Box::pin(TestEntry::new(3000)));
-        tree.insert(Box::pin(TestEntry::new(500)));
-
-        let mut iter = tree.into_iter();
-        assert_eq!(iter.next().unwrap().value, 500);
-        assert_eq!(iter.next().unwrap().value, 1000);
-        assert_eq!(iter.next().unwrap().value, 3000);
-    }
-
-    #[cfg(not(target_os = "none"))]
-    #[test]
-    fn into_iter_back() {
-        let mut tree: WAVLTree<TestEntry> = WAVLTree::new();
-
-        tree.insert(Box::pin(TestEntry::new(1000)));
-        tree.insert(Box::pin(TestEntry::new(3000)));
-        tree.insert(Box::pin(TestEntry::new(500)));
-
-        let mut iter = tree.into_iter();
-        assert_eq!(iter.next_back().unwrap().value, 3000);
-        assert_eq!(iter.next_back().unwrap().value, 1000);
-        assert_eq!(iter.next_back().unwrap().value, 500);
     }
 }

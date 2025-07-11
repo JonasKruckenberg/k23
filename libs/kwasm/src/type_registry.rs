@@ -1,26 +1,28 @@
-use crate::indices::{
-    CanonicalizedTypeIndex, ModuleInternedTypeIndex, RecGroupRelativeTypeIndex, VMSharedTypeIndex,
-};
-use crate::loom::sync::atomic::Ordering;
-use crate::loom::sync::Arc;
-use crate::wasm::{
-    ModuleTypes, WasmCompositeType, WasmCompositeTypeInner, WasmRecGroup, WasmSubType,
-};
-use crate::Engine;
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::borrow::Borrow;
 use core::hash::{Hash, Hasher};
-use core::ops::Range;
+use core::range::Range;
 use core::sync::atomic::{AtomicBool, AtomicUsize};
 use core::{fmt, iter};
+
 use cranelift_entity::packed_option::{PackedOption, ReservedValue};
-use cranelift_entity::{iter_entity_range, PrimaryMap, SecondaryMap};
+use cranelift_entity::{PrimaryMap, SecondaryMap, iter_entity_range};
 use hashbrown::HashSet;
-use wasmtime_slab::Slab;
 use spin::RwLock;
+use wasmtime_slab::Slab;
+
+use crate::Engine;
+use crate::indices::{
+    CanonicalizedTypeIndex, ModuleInternedTypeIndex, RecGroupRelativeTypeIndex, VMSharedTypeIndex,
+};
+use crate::loom::sync::Arc;
+use crate::loom::sync::atomic::Ordering;
+use crate::wasm::{
+    ModuleTypes, WasmCompositeType, WasmCompositeTypeInner, WasmRecGroup, WasmSubType,
+};
 
 pub trait TypeTrace {
     /// Visit each edge.
@@ -146,7 +148,7 @@ struct RecGroupEntryInner {
 }
 
 #[derive(Debug, Default)]
-pub struct TypeRegistry( RwLock<TypeRegistryInner>);
+pub struct TypeRegistry(RwLock<TypeRegistryInner>);
 
 #[derive(Debug, Default)]
 struct TypeRegistryInner {
@@ -627,11 +629,11 @@ impl TypeRegistryInner {
             types.wasm_types().len(),
         );
 
-        for module_group in types.rec_groups().cloned() {
+        for module_group in types.rec_groups().copied() {
             let entry = self.register_rec_group(
                 &map,
-                module_group.clone(),
-                iter_entity_range(module_group.clone())
+                module_group,
+                iter_entity_range(module_group.into())
                     .map(|ty| types.get_wasm_type(ty).unwrap().clone()),
             );
 
@@ -670,7 +672,7 @@ impl TypeRegistryInner {
         range: Range<ModuleInternedTypeIndex>,
         types: impl ExactSizeIterator<Item = WasmSubType>,
     ) -> RecGroupEntry {
-        debug_assert_eq!(iter_entity_range(range.clone()).len(), types.len());
+        debug_assert_eq!(iter_entity_range(range.into()).len(), types.len());
 
         // We need two different canonicalizations of this rec group: one for
         // hash-consing and another for runtime usage within this
@@ -683,10 +685,10 @@ impl TypeRegistryInner {
         let mut non_canon_types = Vec::with_capacity(types.len());
         let hash_consing_key = WasmRecGroup(
             types
-                .zip(iter_entity_range(range.clone()))
+                .zip(iter_entity_range(range.into()))
                 .map(|(mut ty, module_index)| {
                     non_canon_types.push((module_index, ty.clone()));
-                    ty.canonicalize_for_hash_consing(range.clone(), &mut |idx| {
+                    ty.canonicalize_for_hash_consing(range, &mut |idx| {
                         debug_assert!(idx < range.start);
                         map[idx]
                     });

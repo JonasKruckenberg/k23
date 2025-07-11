@@ -1,12 +1,18 @@
-use crate::indices::{ModuleInternedRecGroupIndex, ModuleInternedTypeIndex};
-use crate::wasm::type_convert::WasmparserTypeConverter;
-use crate::wasm::{WasmCompositeTypeInner, WasmFuncType, TranslatedModule, WasmSubType};
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
 use core::fmt;
-use core::ops::Range;
+use core::range::Range;
+
 use cranelift_entity::packed_option::PackedOption;
 use cranelift_entity::{EntityRef, PrimaryMap, SecondaryMap};
 use hashbrown::HashMap;
 use wasmparser::{Validator, ValidatorId};
+
+use crate::indices::{ModuleInternedRecGroupIndex, ModuleInternedTypeIndex};
+use crate::wasm::type_convert::WasmparserTypeConverter;
+use crate::wasm::{
+    TranslatedModule, WasmCompositeType, WasmCompositeTypeInner, WasmFuncType, WasmSubType,
+};
 
 /// Types defined within a single WebAssembly module.
 #[derive(Debug, Default)]
@@ -32,7 +38,9 @@ impl fmt::Display for ModuleTypes {
 
 impl ModuleTypes {
     /// Returns an iterator over all the WASM types (functions, arrays, and structs) defined in this module.
-    pub fn wasm_types(&self) -> impl ExactSizeIterator<Item = (ModuleInternedTypeIndex, &WasmSubType)> {
+    pub fn wasm_types(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (ModuleInternedTypeIndex, &WasmSubType)> {
         self.wasm_types.iter()
     }
 
@@ -97,6 +105,7 @@ pub struct ModuleTypesBuilder {
     seen_rec_groups: HashMap<wasmparser::types::RecGroupId, ModuleInternedRecGroupIndex>,
     /// The recursion group currently being defined.
     rec_group_in_progress: Option<RecGroupInProgress>,
+    trampoline_types: HashMap<WasmFuncType, ModuleInternedTypeIndex>,
 }
 
 impl ModuleTypesBuilder {
@@ -106,6 +115,7 @@ impl ModuleTypesBuilder {
             types: ModuleTypes::default(),
             seen_rec_groups: HashMap::default(),
             rec_group_in_progress: None,
+            trampoline_types: HashMap::default(),
         }
     }
 
@@ -135,6 +145,20 @@ impl ModuleTypesBuilder {
         }
 
         let rec_group_index = self.end_rec_group(rec_group_id);
+
+        // Iterate over all the types we just defined and make sure that every
+        // function type has an associated trampoline type. This needs to happen
+        // *after* we finish defining the rec group because we may need to
+        // intern new function types, which would conflict with the contiguous
+        // range of type indices we pre-reserved for the rec group elements.
+        // FIXME this collect here is annoying, but it circumvents the lifetime issuec
+        let elements: Vec<_> = self.types.rec_group_elements(rec_group_index).collect();
+        for ty in elements {
+            if self.types.wasm_types[ty].is_func() {
+                let trampoline = self.intern_trampoline_type(ty);
+                self.set_trampoline_type(ty, trampoline);
+            }
+        }
 
         rec_group_index
     }
@@ -233,6 +257,54 @@ impl ModuleTypesBuilder {
         self.define_new_rec_group(module, validator_types, rec_group_id)
     }
 
+    /// Get or create the trampoline function type for the given function
+    /// type. Returns the interned type index of the trampoline function type.
+    fn intern_trampoline_type(
+        &mut self,
+        for_func_ty: ModuleInternedTypeIndex,
+    ) -> ModuleInternedTypeIndex {
+        let sub_ty = &self.types.wasm_types[for_func_ty];
+        let trampoline = sub_ty.unwrap_func().trampoline_type();
+
+        if let Some(idx) = self.trampoline_types.get(trampoline.as_ref()) {
+            // We've already interned this trampoline type; reuse it.
+            *idx
+        } else {
+            // We have not already interned this trampoline type.
+            match trampoline {
+                // The trampoline type is the same as the original function
+                // type. We can reuse the definition and its index, but still
+                // need to intern the type into our `trampoline_types` map so we
+                // can reuse it in the future.
+                Cow::Borrowed(f) => {
+                    self.trampoline_types.insert(f.clone(), for_func_ty);
+                    for_func_ty
+                }
+                // The trampoline type is different from the original function
+                // type. Define the trampoline type and then intern it in
+                // `trampoline_types` so we can reuse it in the future.
+                Cow::Owned(f) => {
+                    let idx = self.types.wasm_types.push(WasmSubType {
+                        is_final: true,
+                        supertype: None,
+                        composite_type: WasmCompositeType {
+                            inner: WasmCompositeTypeInner::Func(f.clone()),
+                            shared: sub_ty.composite_type.shared,
+                        },
+                    });
+
+                    // The trampoline type is its own trampoline type.
+                    self.set_trampoline_type(idx, idx);
+
+                    let next = self.next_ty();
+                    self.push_rec_group(Range::from(idx..next));
+                    self.trampoline_types.insert(f, idx);
+                    idx
+                }
+            }
+        }
+    }
+
     /// Returns the next return value of `push_rec_group`.
     fn next_rec_group_index(&self) -> ModuleInternedRecGroupIndex {
         self.types.rec_groups.next_key()
@@ -259,5 +331,26 @@ impl ModuleTypesBuilder {
     /// Adds a new type to this interned list of types.
     fn push_type(&mut self, wasm_sub_type: WasmSubType) -> ModuleInternedTypeIndex {
         self.types.wasm_types.push(wasm_sub_type)
+    }
+
+    /// Associate `trampoline_ty` as the trampoline type for `for_ty`.
+    pub fn set_trampoline_type(
+        &mut self,
+        for_ty: ModuleInternedTypeIndex,
+        trampoline_ty: ModuleInternedTypeIndex,
+    ) {
+        use cranelift_entity::packed_option::ReservedValue;
+
+        debug_assert!(!for_ty.is_reserved_value());
+        debug_assert!(!trampoline_ty.is_reserved_value());
+        debug_assert!(self.types.wasm_types[for_ty].is_func());
+        debug_assert!(self.types.trampoline_types[for_ty].is_none());
+        debug_assert!(
+            self.types.wasm_types[trampoline_ty]
+                .unwrap_func()
+                .is_trampoline_type()
+        );
+
+        self.types.trampoline_types[for_ty] = Some(trampoline_ty).into();
     }
 }

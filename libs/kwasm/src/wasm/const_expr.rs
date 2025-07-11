@@ -5,9 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::indices::{FuncIndex, GlobalIndex, TypeIndex};
 use anyhow::bail;
 use smallvec::SmallVec;
+
+use crate::indices::{FuncIndex, GlobalIndex, TypeIndex};
 
 /// A constant expression.
 ///

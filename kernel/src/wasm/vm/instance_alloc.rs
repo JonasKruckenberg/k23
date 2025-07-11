@@ -23,12 +23,17 @@ use crate::wasm::vm::mmap_vec::MmapVec;
 use crate::wasm::vm::{InstanceHandle, TableElement, VMShape};
 use crate::wasm::{MEMORY_MAX, TABLE_MAX, translate, vm};
 
+pub struct InstanceAllocator<A> {
+    allocator: A,
+}
+
+
 /// A type that knows how to allocate backing memory for instance resources.
-pub trait InstanceAllocator {
+impl<A> InstanceAllocator<A> {
     unsafe fn allocate_instance_and_vmctx(
         &self,
         vmshape: &VMShape,
-    ) -> crate::Result<NonNull<Instance>>;
+    ) -> crate::Result<NonNull<Instance>> {}
     unsafe fn deallocate_instance_and_vmctx(&self, instance: NonNull<Instance>, vmshape: &VMShape);
 
     /// Allocate a memory for an instance.

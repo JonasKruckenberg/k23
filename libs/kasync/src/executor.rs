@@ -528,7 +528,7 @@ mod tests {
                 EXEC.close();
             })
             .unwrap();
-
+            
             let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
             test_util::block_on(worker.run(crate::future::pending::<()>())).expect_err(
                 "stopping the executor should always result in a Closed(()) error here",

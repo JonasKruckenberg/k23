@@ -10,6 +10,7 @@ use core::pin::Pin;
 use crate::{Link, Linked, WAVLTree, utils};
 
 /// A cursor which provides read-only access to a [`WAVLTree`].
+#[must_use]
 pub struct Cursor<'a, T>
 where
     T: Linked + ?Sized,
@@ -28,12 +29,18 @@ where
     ///
     /// Caller has to ensure the ptr is *never* used to move out of the current location, as the tree
     /// requires pinned memory locations.
-    pub unsafe fn get_ptr(&self) -> Link<T> {
+    pub const unsafe fn get_ptr(&self) -> Link<T> {
         self.current
     }
-    pub fn get(&self) -> Option<&'a T> {
-        unsafe { self.current.map(|ptr| ptr.as_ref()) }
+
+    pub const fn get(&self) -> Option<&'a T> {
+        if let Some(ptr) = self.current {
+            Some(unsafe { ptr.as_ref() })
+        } else {
+            None
+        }
     }
+
     pub fn move_next(&mut self) {
         if let Some(current) = self.current {
             self.current = utils::next(current);
@@ -67,6 +74,7 @@ where
 }
 
 /// A cursor which provides mutable access to a [`WAVLTree`].
+#[must_use]
 pub struct CursorMut<'a, T>
 where
     T: Linked + ?Sized,
@@ -85,17 +93,20 @@ where
     ///
     /// Caller has to ensure the ptr is *never* used to move out of the current location, as the tree
     /// requires pinned memory locations.
-    pub unsafe fn get_ptr(&self) -> Link<T> {
+    pub const unsafe fn get_ptr(&self) -> Link<T> {
         self.current
     }
-    pub const fn has_current(&self) -> bool {
-        self.current.is_some()
-    }
+
     pub fn get(&self) -> Option<&'a T> {
         unsafe { self.current.map(|ptr| ptr.as_ref()) }
     }
-    pub fn get_mut(&mut self) -> Option<Pin<&'a mut T>> {
-        unsafe { self.current.map(|mut ptr| Pin::new_unchecked(ptr.as_mut())) }
+
+    pub const fn get_mut(&mut self) -> Option<Pin<&'a mut T>> {
+        if let Some(mut ptr) = self.current {
+            Some(unsafe { Pin::new_unchecked(ptr.as_mut()) })
+        } else {
+            None
+        }
     }
     pub fn move_next(&mut self) {
         if let Some(current) = self.current {

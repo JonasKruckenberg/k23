@@ -39,7 +39,7 @@ mod state;
 mod tests;
 mod tracing;
 mod util;
-mod wasm;
+// mod wasm;
 
 use core::ops::Range;
 use core::slice;

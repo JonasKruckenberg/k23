@@ -5,21 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::indices::{
-    CanonicalizedTypeIndex, DataIndex, ElemIndex, EntityIndex, FieldIndex, FuncIndex, FuncRefIndex,
-    GlobalIndex, LabelIndex, LocalIndex, MemoryIndex, TableIndex, TagIndex, TypeIndex,
-};
-use crate::loom::sync::Arc;
-use crate::wasm::module_types::ModuleTypesBuilder;
-use crate::wasm::type_convert::WasmparserTypeConverter;
-use crate::wasm::{
-    ConstExpr, WasmEntityType, Function, FunctionBodyData, WasmGlobalType, Import, WasmMemoryType, MemoryInitializer,
-    ModuleTranslation, ModuleTypes, ProducersLanguage, ProducersLanguageField, ProducersSdk,
-    ProducersSdkField, ProducersTool, ProducersToolField, WasmTableType, TableInitialValue, TableSegment,
-    TableSegmentElements, WasmTagType,
-};
 use alloc::string::ToString;
 use alloc::vec::Vec;
+
 use cranelift_entity::packed_option::ReservedValue;
 use hashbrown::HashMap;
 use wasmparser::{
@@ -29,6 +17,20 @@ use wasmparser::{
     NameSectionReader, Parser, Payload, ProducersFieldValue, ProducersSectionReader, TableInit,
     TableSectionReader, TagKind, TagSectionReader, TypeRef, TypeSectionReader, Validator,
     WasmFeatures,
+};
+
+use crate::indices::{
+    CanonicalizedTypeIndex, DataIndex, ElemIndex, EntityIndex, FieldIndex, FuncIndex, FuncRefIndex,
+    GlobalIndex, LabelIndex, LocalIndex, MemoryIndex, TableIndex, TagIndex, TypeIndex,
+};
+use crate::loom::sync::Arc;
+use crate::wasm::module_types::ModuleTypesBuilder;
+use crate::wasm::type_convert::WasmparserTypeConverter;
+use crate::wasm::{
+    ConstExpr, Function, FunctionBodyData, Import, MemoryInitializer, ModuleTranslation,
+    ModuleTypes, ProducersLanguage, ProducersLanguageField, ProducersSdk, ProducersSdkField,
+    ProducersTool, ProducersToolField, TableInitialValue, TableSegment, TableSegmentElements,
+    WasmEntityType, WasmGlobalType, WasmMemoryType, WasmTableType, WasmTagType,
 };
 
 /// A translator for converting the output of `wasmparser` into types used by this crate.
