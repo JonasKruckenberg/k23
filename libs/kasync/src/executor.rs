@@ -484,7 +484,7 @@ impl Scheduler {
         tick
     }
 
-    fn try_steal(&self) -> Result<Stealer, TryStealError> {
+    fn try_steal(&self) -> Result<Stealer<'_>, TryStealError> {
         Stealer::new(&self.run_queue, &self.queued)
     }
 }

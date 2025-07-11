@@ -139,10 +139,10 @@ where
                 None
             },
         };
-        if let Some(call_file) = func.call_file {
-            if let Some(lines) = frames.unit.parse_lines(frames.sections)? {
-                next.file = lines.file(call_file);
-            }
+        if let Some(call_file) = func.call_file
+            && let Some(lines) = frames.unit.parse_lines(frames.sections)?
+        {
+            next.file = lines.file(call_file);
         }
         frames.next = Some(next);
 

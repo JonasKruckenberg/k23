@@ -53,7 +53,7 @@ impl Injector {
     ///
     /// When stealing from the target is not possible, either because its queue is *empty*
     /// or because there is *already an active stealer*, an error is returned.
-    pub fn try_steal(&self) -> Result<Stealer, TryStealError> {
+    pub fn try_steal(&self) -> Result<Stealer<'_>, TryStealError> {
         Stealer::new(&self.run_queue, &self.queued)
     }
 

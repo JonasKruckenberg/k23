@@ -29,7 +29,7 @@ pub fn timeout<F>(
     timer: &Timer,
     duration: Duration,
     future: F,
-) -> Result<Timeout<F::IntoFuture>, TimeError>
+) -> Result<Timeout<'_, F::IntoFuture>, TimeError>
 where
     F: IntoFuture,
 {
@@ -50,7 +50,7 @@ pub fn timeout_at<F>(
     timer: &Timer,
     deadline: Instant,
     future: F,
-) -> Result<Timeout<F::IntoFuture>, TimeError>
+) -> Result<Timeout<'_, F::IntoFuture>, TimeError>
 where
     F: IntoFuture,
 {

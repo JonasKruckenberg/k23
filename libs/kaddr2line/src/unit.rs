@@ -314,15 +314,15 @@ impl<R: gimli::Reader> ResUnits<R> {
             if need_unit_range {
                 // The unit did not declare any ranges.
                 // Try to get some ranges from the line program sequences.
-                if let Some(ref ilnp) = dw_unit_ref.line_program {
-                    if let Ok(lines) = lines.borrow(dw_unit_ref, ilnp) {
-                        for range in lines.ranges() {
-                            unit_ranges.push(UnitRange {
-                                range,
-                                unit_id,
-                                min_begin: 0,
-                            })
-                        }
+                if let Some(ref ilnp) = dw_unit_ref.line_program
+                    && let Ok(lines) = lines.borrow(dw_unit_ref, ilnp)
+                {
+                    for range in lines.ranges() {
+                        unit_ranges.push(UnitRange {
+                            range,
+                            unit_id,
+                            min_begin: 0,
+                        })
                     }
                 }
             }
@@ -450,7 +450,7 @@ struct DwoUnit<R: gimli::Reader> {
 }
 
 impl<R: gimli::Reader> DwoUnit<R> {
-    fn unit_ref(&self) -> gimli::UnitRef<R> {
+    fn unit_ref(&self) -> gimli::UnitRef<'_, R> {
         gimli::UnitRef::new(&self.sections, &self.dw_unit)
     }
 }

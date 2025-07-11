@@ -8,14 +8,7 @@
 #![no_std] // this is crate is fully incompatible with `std` due to clashing lang item definitions
 #![cfg(target_os = "none")]
 #![expect(internal_features, reason = "lang items")]
-#![feature(
-    core_intrinsics,
-    rustc_attrs,
-    used_with_arg,
-    lang_items,
-    naked_functions,
-    never_type
-)]
+#![feature(core_intrinsics, rustc_attrs, used_with_arg, lang_items, never_type)]
 
 extern crate alloc;
 

@@ -89,7 +89,7 @@ impl Kernel<'_> {
         load_program_headers.map(|ph| ph.align()).max().unwrap_or(1)
     }
 
-    fn loadable_program_headers(&self) -> impl Iterator<Item = ProgramHeader> + '_ {
+    fn loadable_program_headers(&self) -> impl Iterator<Item = ProgramHeader<'_>> + '_ {
         self.elf_file
             .program_iter()
             .filter(|ph| ph.get_type().unwrap() == Type::Load)

@@ -506,10 +506,10 @@ impl AddressSpace {
         let mut prev_end = None;
         for region in self.regions.range(range) {
             // ensure there is no gap between this region and the previous one
-            if let Some(prev_end) = prev_end.replace(region.range.end) {
-                if prev_end != region.range.start {
-                    bail!("not mapped");
-                }
+            if let Some(prev_end) = prev_end.replace(region.range.end)
+                && prev_end != region.range.start
+            {
+                bail!("not mapped");
             }
 
             // call the callback
@@ -768,7 +768,7 @@ impl<'a> Batch<'a> {
         flags: <arch::AddressSpace as ArchAddressSpace>::Flags,
     ) -> crate::Result<()> {
         debug_assert!(
-            len.get() % arch::PAGE_SIZE == 0,
+            len.get().is_multiple_of(arch::PAGE_SIZE),
             "physical address range must be multiple of page size"
         );
 

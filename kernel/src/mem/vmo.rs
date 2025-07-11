@@ -65,7 +65,7 @@ impl PhysVmo {
 
     pub fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {
         ensure!(
-            range.start % arch::PAGE_SIZE == 0,
+            range.start.is_multiple_of(arch::PAGE_SIZE),
             "range is not arch::PAGE_SIZE aligned"
         );
         let start = self.range.start.checked_add(range.start).unwrap();

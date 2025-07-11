@@ -142,8 +142,9 @@ pub fn array_call_signature(isa: &dyn TargetIsa) -> ir::Signature {
 }
 
 /// Is `bytes` a multiple of the host page size?
+#[inline]
 pub fn usize_is_multiple_of_host_page_size(bytes: usize) -> bool {
-    bytes % PAGE_SIZE == 0
+    bytes.is_multiple_of(PAGE_SIZE)
 }
 
 pub fn round_u64_up_to_host_pages(bytes: u64) -> u64 {

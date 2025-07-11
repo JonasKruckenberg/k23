@@ -344,7 +344,7 @@ impl InstanceHandle {
     /// Specifically, it provides access to the key-value pairs, where the keys
     /// are export names, and the values are export declarations which can be
     /// resolved `lookup_by_declaration`.
-    pub fn exports(&self) -> wasmparser::collections::index_map::Iter<String, EntityIndex> {
+    pub fn exports(&self) -> wasmparser::collections::index_map::Iter<'_, String, EntityIndex> {
         self.instance().translated_module().exports.iter()
     }
 

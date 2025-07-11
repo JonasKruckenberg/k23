@@ -1,7 +1,7 @@
 use crate::core::{HeapType, V128Const};
 use crate::kw;
 use crate::parser::{Cursor, Parse, Parser, Peek, Result};
-use crate::token::{Index, F32, F64};
+use crate::token::{F32, F64, Index};
 use alloc::vec::Vec;
 
 /// Expression that can be used inside of `invoke` expressions for core wasm
@@ -37,10 +37,10 @@ static ARGS: &[(&str, fn(Parser<'_>) -> Result<WastArgCore<'_>>)] = {
 impl<'a> Parse<'a> for WastArgCore<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let parse = parser.step(|c| {
-            if let Some((kw, rest)) = c.keyword()? {
-                if let Some(i) = ARGS.iter().position(|(name, _)| *name == kw) {
-                    return Ok((ARGS[i].1, rest));
-                }
+            if let Some((kw, rest)) = c.keyword()?
+                && let Some(i) = ARGS.iter().position(|(name, _)| *name == kw)
+            {
+                return Ok((ARGS[i].1, rest));
             }
             Err(c.error("expected a [type].const expression"))
         })?;
@@ -131,10 +131,10 @@ static RETS: &[(&str, fn(Parser<'_>) -> Result<WastRetCore<'_>>)] = {
 impl<'a> Parse<'a> for WastRetCore<'a> {
     fn parse(parser: Parser<'a>) -> Result<Self> {
         let parse = parser.step(|c| {
-            if let Some((kw, rest)) = c.keyword()? {
-                if let Some(i) = RETS.iter().position(|(name, _)| *name == kw) {
-                    return Ok((RETS[i].1, rest));
-                }
+            if let Some((kw, rest)) = c.keyword()?
+                && let Some(i) = RETS.iter().position(|(name, _)| *name == kw)
+            {
+                return Ok((RETS[i].1, rest));
             }
             Err(c.error("expected a [type].const expression"))
         })?;
