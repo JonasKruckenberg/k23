@@ -60,6 +60,20 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     }
 
     if let Some(alloc) = &res.maybe_tls_alloc {
+        // Check if TLS memory is actually zeroed before initialization
+        let region = alloc.region_for_hart(hartid);
+        unsafe {
+            let tls_mem = core::slice::from_raw_parts(region.start as *const u64, 16);
+            for (i, &val) in tls_mem.iter().enumerate() {
+                if val != 0 {
+                    log::error!("TLS memory not zeroed at offset {}: {:#x}", i * 8, val);
+                    if val == 0xACE0BACE {
+                        panic!("Found stack canary pattern in TLS!");
+                    }
+                }
+            }
+        }
+        
         alloc.initialize_for_hart(hartid);
     }
 

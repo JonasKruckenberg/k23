@@ -542,9 +542,22 @@ fn handle_tls_segment(
     let mut phys_iter = frame_alloc.allocate_zeroed(layout, phys_off);
     while let Some((phys, len)) = phys_iter.next()? {
         log::trace!(
-            "Mapping TLS region {virt_start:#x}..{:#x} {len} ...",
+            "Mapping TLS region {virt_start:#x}..{:#x} {len}, phys={phys:#x}...",
             virt_start.checked_add(len.get()).unwrap()
         );
+        
+        // Debug: Check if the physical memory is properly zeroed
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            let phys_ptr = phys as *const u64;
+            let first_val = *phys_ptr;
+            if first_val != 0 {
+                log::error!("TLS physical memory at {phys:#x} not zeroed! Contains: {first_val:#x}");
+                if first_val == 0xACE0BACE {
+                    log::error!("Found stack canary pattern in freshly allocated TLS memory!");
+                }
+            }
+        }
 
         // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
         // abort startup anyway
@@ -595,15 +608,28 @@ impl TlsAllocation {
     }
 
     pub fn initialize_for_hart(&self, hartid: usize) {
-        if self.template.file_size != 0 {
-            // Safety: We have to trust the loaders BootInfo here
-            unsafe {
+        let region = self.region_for_hart(hartid);
+        
+        // Safety: We have to trust the loaders BootInfo here
+        unsafe {
+            // For x86_64, we need to set up the TLS self-pointer at offset 0
+            // This is required by the System V ABI for TLS
+            #[cfg(target_arch = "x86_64")]
+            {
+                // Write the TLS base address at offset 0 (self-pointer)
+                let tls_base_ptr = region.start as *mut usize;
+                *tls_base_ptr = region.start;
+                log::trace!("Set TLS self-pointer at {:#x} to {:#x}", region.start, region.start);
+            }
+            
+            // First, copy the initialized data if any
+            if self.template.file_size != 0 {
                 let src: &[u8] = slice::from_raw_parts(
                     self.template.start_addr as *const u8,
                     self.template.file_size,
                 );
                 let dst: &mut [u8] = slice::from_raw_parts_mut(
-                    self.region_for_hart(hartid).start as *mut u8,
+                    region.start as *mut u8,
                     self.template.file_size,
                 );
 
@@ -611,7 +637,38 @@ impl TlsAllocation {
                 // if it's not, that likely means we're about to override something important
                 debug_assert!(dst.iter().all(|&x| x == 0));
 
+                // Check if source contains the canary pattern
+                if src.len() >= 8 {
+                    let first_qword = u64::from_ne_bytes(src[0..8].try_into().unwrap());
+                    if first_qword == 0xACE0BACE {
+                        log::error!("TLS template source contains stack canary pattern!");
+                        log::error!("Template start_addr: {:#x}", self.template.start_addr);
+                        log::error!("First 64 bytes of source: {:x?}", &src[..64.min(src.len())]);
+                    }
+                }
+
                 dst.copy_from_slice(src);
+            }
+            
+            // Then zero the BSS section (from file_size to mem_size)
+            if self.template.mem_size > self.template.file_size {
+                let bss_start = region.start + self.template.file_size;
+                let bss_size = self.template.mem_size - self.template.file_size;
+                let bss: &mut [u8] = slice::from_raw_parts_mut(
+                    bss_start as *mut u8,
+                    bss_size,
+                );
+                bss.fill(0);
+            }
+            
+            // For x86_64, ensure the self-pointer wasn't overwritten
+            #[cfg(target_arch = "x86_64")]
+            {
+                let tls_base_ptr = region.start as *mut usize;
+                if *tls_base_ptr != region.start {
+                    log::warn!("TLS self-pointer was overwritten, restoring it");
+                    *tls_base_ptr = region.start;
+                }
             }
         }
     }

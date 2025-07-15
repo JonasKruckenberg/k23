@@ -240,15 +240,21 @@ pub unsafe fn handoff_to_kernel(cpuid: usize, boot_ticks: u64, init: &GlobalInit
             "mov rsi, {stack_top}",
             "call {fill_stack}",
 
+            // Set up kernel arguments (System V ABI)
+            // These must be set AFTER fill_stack since it clobbers rdi/rsi
+            "mov rdi, {cpuid}",
+            "mov rsi, {boot_info}",
+            "mov rdx, {boot_ticks}",
+
             // Clear return address
             "xor rax, rax",
 
-            // Jump to kernel (System V ABI)
+            // Jump to kernel
             "jmp {kernel_entry}",
 
-            in("rdi") cpuid,
-            in("rsi") init.boot_info,
-            in("rdx") boot_ticks,
+            cpuid = in(reg) cpuid,
+            boot_info = in(reg) init.boot_info,
+            boot_ticks = in(reg) boot_ticks,
             stack_bottom = in(reg) stack.start,
             stack_top = in(reg) stack.end,
             tls_start = in(reg) tls.start,
