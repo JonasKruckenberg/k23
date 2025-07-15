@@ -30,11 +30,11 @@ _default:
 
 # Alias for `cargo xtask qemu`
 run profile args="" *qemu_args="":
-    {{ _cargo }} xtask run {{ profile }} {{ args }} -- {{ qemu_args }}
+    {{ _cargo }} xtask run {{ profile }} {{ args }} {{ qemu_args }}
 
 # Alias for `cargo xtask build`
 build profile args="" *qemu_args="":
-    {{ _cargo }} xtask build {{ profile }} {{ args }} -- {{ qemu_args }}
+    {{ _cargo }} xtask build {{ profile }} {{ args }} {{ qemu_args }}
 
 # quick check for development
 check crate="" *cargo_args="":
