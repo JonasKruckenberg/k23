@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::fmt;
+
 use cranelift_codegen::ir::TrapCode;
 
 const TRAP_OFFSET: u8 = 1;

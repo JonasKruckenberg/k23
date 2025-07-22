@@ -5,16 +5,18 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::error::Closed;
-use crate::loom::cell::UnsafeCell;
-use crate::loom::sync::atomic::{AtomicUsize, Ordering};
-use bitflags::bitflags;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 use core::{fmt, task};
+
+use bitflags::bitflags;
 use static_assertions::const_assert_eq;
 use util::{CachePadded, loom_const_fn};
+
+use crate::error::Closed;
+use crate::loom::cell::UnsafeCell;
+use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 
 /// An atomically registered [`Waker`].
 ///

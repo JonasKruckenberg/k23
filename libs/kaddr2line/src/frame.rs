@@ -5,9 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::{Error, Function, InlinedFunction, ResUnit, maybe_small};
 use core::iter;
+
 use fallible_iterator::FallibleIterator;
+
+use crate::{Error, Function, InlinedFunction, ResUnit, maybe_small};
 
 /// A source location.
 pub struct Location<'a> {

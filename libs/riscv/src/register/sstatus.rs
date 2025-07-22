@@ -7,10 +7,11 @@
 
 //! Supervisor Status Register
 
-use super::{clear_csr, read_csr_as, set_clear_csr_field, set_csr};
-use crate::set_csr_field;
 use core::fmt;
 use core::fmt::Formatter;
+
+use super::{clear_csr, read_csr_as, set_clear_csr_field, set_csr};
+use crate::set_csr_field;
 
 /// Supervisor Status Register
 #[derive(Clone, Copy)]

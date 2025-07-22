@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::frame_alloc::FrameAllocator;
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
 use core::range::Range;
 use core::slice;
+
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
+
+use crate::arch;
+use crate::frame_alloc::FrameAllocator;
 
 #[expect(clippy::too_many_arguments, reason = "")]
 pub fn prepare_boot_info(

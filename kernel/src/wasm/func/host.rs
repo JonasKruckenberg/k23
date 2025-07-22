@@ -5,6 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use core::mem::MaybeUninit;
+use core::ptr::NonNull;
+use core::{iter, ptr};
+
+use anyhow::bail;
+
 use crate::wasm::func::typed::WasmTy;
 use crate::wasm::func::{FuncData, FuncKind};
 use crate::wasm::store::{StoreInner, StoreOpaque};
@@ -13,12 +21,6 @@ use crate::wasm::vm::{
     InstanceAndStore, VMArrayCallHostFuncContext, VMContext, VMFuncRef, VMOpaqueContext, VMVal,
 };
 use crate::wasm::{Engine, Func};
-use alloc::boxed::Box;
-use alloc::sync::Arc;
-use anyhow::bail;
-use core::mem::MaybeUninit;
-use core::ptr::NonNull;
-use core::{iter, ptr};
 
 #[derive(Debug)]
 pub struct HostFunc {

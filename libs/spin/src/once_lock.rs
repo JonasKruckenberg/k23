@@ -5,14 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::fmt;
+use core::mem::MaybeUninit;
+use core::panic::{RefUnwindSafe, UnwindSafe};
+
+use util::loom_const_fn;
+
 use super::Once;
 use crate::loom::UnsafeCell;
-use core::{
-    fmt,
-    mem::MaybeUninit,
-    panic::{RefUnwindSafe, UnwindSafe},
-};
-use util::loom_const_fn;
 
 /// A synchronization primitive which can be written to only once.
 ///
@@ -316,10 +316,10 @@ unsafe impl<#[may_dangle] T> Drop for OnceLock<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::loom::thread;
-    use crate::loom::{AtomicUsize, Ordering};
     use std::sync::mpsc::channel;
+
+    use super::*;
+    use crate::loom::{AtomicUsize, Ordering, thread};
 
     fn spawn_and_wait<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
         thread::spawn(f).join().unwrap()

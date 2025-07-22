@@ -14,13 +14,14 @@
 // ArcMutexGuardarc_lock
 // An RAII mutex guard returned by the Arc locking operations on Mutex.
 
-use crate::backoff::Backoff;
-use crate::loom::Ordering;
-use crate::loom::{AtomicBool, UnsafeCell};
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::{fmt, mem};
+
 use util::loom_const_fn;
+
+use crate::backoff::Backoff;
+use crate::loom::{AtomicBool, Ordering, UnsafeCell};
 
 /// A mutual exclusion primitive useful for protecting shared data
 ///
@@ -335,11 +336,11 @@ unsafe impl lock_api::RawMutex for Mutex<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::loom::Arc;
-    use crate::loom::AtomicUsize;
     use core::fmt::Debug;
     use std::{hint, mem};
+
+    use super::*;
+    use crate::loom::{Arc, AtomicUsize};
 
     #[derive(Eq, PartialEq, Debug)]
     struct NonCopy(i32);

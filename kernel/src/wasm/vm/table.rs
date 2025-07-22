@@ -5,14 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::ptr;
+use core::ptr::NonNull;
+use core::range::Range;
+
+use anyhow::anyhow;
+
 use crate::wasm::TrapKind;
 use crate::wasm::vm::mmap_vec::MmapVec;
 use crate::wasm::vm::provenance::VmPtr;
 use crate::wasm::vm::{VMFuncRef, VMTableDefinition};
-use anyhow::anyhow;
-use core::ptr;
-use core::ptr::NonNull;
-use core::range::Range;
 
 #[derive(Debug, Clone, Copy)]
 pub enum TableElement {

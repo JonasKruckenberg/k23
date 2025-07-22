@@ -5,11 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::sync::atomic::{self, AtomicUsize, Ordering};
-use crate::task::PollResult;
 use core::fmt;
+
 use spin::Backoff;
 use util::loom_const_fn;
+
+use crate::loom::sync::atomic::{self, AtomicUsize, Ordering};
+use crate::task::PollResult;
 
 /// Task state. The task stores its state in an atomic `usize` with various bitfields for the
 /// necessary information. The state has the following layout:

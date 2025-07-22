@@ -1,9 +1,13 @@
-use super::FreeList;
-use crate::{Pack, Tid, cfg, clear::Clear};
 use core::cell::UnsafeCell;
+use core::marker::PhantomData;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use core::{fmt, marker::PhantomData, mem, ptr};
+use core::{fmt, mem, ptr};
+
 use spin::Backoff;
+
+use super::FreeList;
+use crate::clear::Clear;
+use crate::{Pack, Tid, cfg};
 
 pub(crate) struct Slot<T, C> {
     lifecycle: AtomicUsize,

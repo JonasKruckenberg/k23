@@ -5,9 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::{Link, Linked};
 use core::ptr::NonNull;
 use core::{fmt, ptr};
+
+use crate::{Link, Linked};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Side {

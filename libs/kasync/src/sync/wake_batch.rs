@@ -5,8 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use arrayvec::ArrayVec;
 use core::task::Waker;
+
+use arrayvec::ArrayVec;
 
 const NUM_WAKERS: usize = 32;
 

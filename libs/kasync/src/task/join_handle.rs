@@ -5,8 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::task::Id;
-use crate::task::TaskRef;
 use alloc::boxed::Box;
 use alloc::string::String;
 use core::any::Any;
@@ -17,6 +15,8 @@ use core::ops::Deref;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::pin::Pin;
 use core::task::{Context, Poll};
+
+use crate::task::{Id, TaskRef};
 
 pub struct JoinHandle<T> {
     state: JoinHandleState,

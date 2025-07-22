@@ -12,6 +12,7 @@ use core::cmp::Ordering;
 use core::fmt;
 use core::fmt::Formatter;
 use core::str::FromStr;
+
 use fallible_iterator::{FallibleIterator, IteratorExt};
 use smallvec::SmallVec;
 use tracing::level_filters::STATIC_MAX_LEVEL;

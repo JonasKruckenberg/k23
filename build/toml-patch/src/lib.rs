@@ -19,9 +19,11 @@
 //! This crate exposes a single function [`merge_toml_documents`] which does
 //! this for you!
 
-use eyre::{Result, bail, eyre};
 use std::collections::BTreeMap;
-use toml_edit::{visit::Visit, visit_mut::VisitMut};
+
+use eyre::{Result, bail, eyre};
+use toml_edit::visit::Visit;
+use toml_edit::visit_mut::VisitMut;
 
 pub fn merge_toml_documents(
     original: &mut toml_edit::DocumentMut,
@@ -270,8 +272,9 @@ fn merge_toml_tables(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use indoc::indoc;
+
+    use super::*;
 
     fn patch_and_compare(a: &str, b: &str, out: &str) {
         let mut a: toml_edit::DocumentMut = a.parse().unwrap();

@@ -8,16 +8,18 @@
 mod print;
 mod symbolize;
 
-use crate::backtrace::print::BacktraceFmt;
-use crate::mem::VirtualAddress;
-use arrayvec::ArrayVec;
 use core::str::FromStr;
 use core::{fmt, slice};
+
+use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
 use loader_api::BootInfo;
 use spin::OnceLock;
 use symbolize::SymbolizeContext;
 use unwind2::FrameIter;
+
+use crate::backtrace::print::BacktraceFmt;
+use crate::mem::VirtualAddress;
 
 static BACKTRACE_INFO: OnceLock<BacktraceInfo> = OnceLock::new();
 

@@ -5,18 +5,20 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use cranelift_codegen::cursor::{Cursor, FuncCursor};
+use cranelift_codegen::ir;
+use cranelift_codegen::ir::condcodes::IntCC;
+use cranelift_codegen::ir::{
+    Expr, Fact, InstBuilder, MemFlags, RelSourceLoc, TrapCode, Type, Value,
+};
+use cranelift_frontend::FunctionBuilder;
+use wasmparser::MemArg;
+
 use crate::wasm::cranelift::code_translator::Reachability;
 use crate::wasm::cranelift::env::TranslationEnvironment;
 use crate::wasm::cranelift::utils::index_type_to_ir_type;
 use crate::wasm::translate::IndexType;
 use crate::wasm::trap::TRAP_HEAP_MISALIGNED;
-use cranelift_codegen::cursor::{Cursor, FuncCursor};
-use cranelift_codegen::ir;
-use cranelift_codegen::ir::InstBuilder;
-use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::{Expr, Fact, MemFlags, RelSourceLoc, TrapCode, Type, Value};
-use cranelift_frontend::FunctionBuilder;
-use wasmparser::MemArg;
 
 #[derive(Debug, Clone)]
 pub struct CraneliftMemory {

@@ -5,12 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::cranelift::env::TranslationEnvironment;
-use crate::wasm::translate::IndexType;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::types;
 use cranelift_frontend::FunctionBuilder;
 use wasmparser::{FuncValidator, WasmModuleResources};
+
+use crate::wasm::cranelift::env::TranslationEnvironment;
+use crate::wasm::translate::IndexType;
 
 /// Get the parameter and result types for the given Wasm blocktype.
 pub fn blocktype_params_results<T>(

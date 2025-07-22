@@ -5,10 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::utils::Side;
-use crate::{Link, Linked, WAVLTree, utils};
 use core::pin::Pin;
 use core::ptr::NonNull;
+
+use crate::utils::Side;
+use crate::{Link, Linked, WAVLTree, utils};
 
 pub enum Entry<'a, T>
 where

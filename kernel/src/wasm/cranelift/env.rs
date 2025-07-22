@@ -7,6 +7,25 @@
 
 #![expect(unused, reason = "this module has a number of method stubs")]
 
+use alloc::vec;
+use alloc::vec::Vec;
+use core::cmp;
+use core::mem::offset_of;
+
+use cranelift_codegen::cursor::FuncCursor;
+use cranelift_codegen::ir;
+use cranelift_codegen::ir::condcodes::IntCC;
+use cranelift_codegen::ir::immediates::Offset32;
+use cranelift_codegen::ir::types::{I32, I64};
+use cranelift_codegen::ir::{
+    ArgumentPurpose, ExtFuncData, ExternalName, FuncRef, Function, GlobalValue, GlobalValueData,
+    Inst, InstBuilder, MemFlags, MemoryType, SigRef, Signature, TrapCode, Type, UserExternalName,
+    Value,
+};
+use cranelift_codegen::isa::TargetIsa;
+use cranelift_frontend::FunctionBuilder;
+use smallvec::SmallVec;
+
 use crate::wasm::compile::NS_WASM_FUNC;
 use crate::wasm::cranelift::builtins::BuiltinFunctions;
 use crate::wasm::cranelift::code_translator::Reachability;
@@ -29,23 +48,6 @@ use crate::wasm::vm::{
     StaticVMShape, VMFuncRef, VMFunctionImport, VMGlobalImport, VMMemoryDefinition, VMMemoryImport,
     VMShape, VMTableDefinition, VMTableImport,
 };
-use alloc::vec;
-use alloc::vec::Vec;
-use core::cmp;
-use core::mem::offset_of;
-use cranelift_codegen::cursor::FuncCursor;
-use cranelift_codegen::ir;
-use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::immediates::Offset32;
-use cranelift_codegen::ir::types::{I32, I64};
-use cranelift_codegen::ir::{
-    ArgumentPurpose, ExtFuncData, ExternalName, FuncRef, GlobalValue, GlobalValueData, Inst,
-    MemFlags, MemoryType, SigRef, Signature, TrapCode, Type, UserExternalName, Value,
-};
-use cranelift_codegen::ir::{Function, InstBuilder};
-use cranelift_codegen::isa::TargetIsa;
-use cranelift_frontend::FunctionBuilder;
-use smallvec::SmallVec;
 
 /// A smallvec that holds the IR values for a struct's fields.
 pub type StructFieldsVec = SmallVec<[Value; 4]>;

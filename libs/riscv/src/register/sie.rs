@@ -7,9 +7,10 @@
 
 //! Supervisor Interrupt Enable Register
 
-use super::{clear_csr, read_csr_as, set_csr};
 use core::fmt;
 use core::fmt::Formatter;
+
+use super::{clear_csr, read_csr_as, set_csr};
 
 /// sie register
 #[derive(Clone, Copy)]

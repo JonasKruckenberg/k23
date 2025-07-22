@@ -5,18 +5,20 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::PAGE_SIZE;
-use crate::error::Error;
-use crate::mapping::{align_down, checked_align_up};
-use arrayvec::ArrayVec;
 use core::cmp::Ordering;
 use core::ffi::{CStr, c_void};
 use core::fmt;
 use core::fmt::Formatter;
 use core::range::Range;
 use core::str::FromStr;
+
+use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
 use fdt::{CellSizes, Fdt, PropertiesIter};
+
+use crate::arch::PAGE_SIZE;
+use crate::error::Error;
+use crate::mapping::{align_down, checked_align_up};
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.

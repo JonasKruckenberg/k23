@@ -22,7 +22,8 @@ fn main() {
 }
 
 fn copy_linker_script() {
-    use std::{fs::File, io::Write};
+    use std::fs::File;
+    use std::io::Write;
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir);

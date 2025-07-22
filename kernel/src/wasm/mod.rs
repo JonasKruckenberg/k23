@@ -31,9 +31,6 @@ mod utils;
 mod values;
 mod vm;
 
-use crate::wasm::store::StoreOpaque;
-use crate::wasm::utils::{enum_accessors, owned_enum_accessors};
-
 pub use engine::Engine;
 pub use func::Func;
 pub use global::Global;
@@ -50,6 +47,9 @@ pub use trap::TrapKind;
 pub use values::Val;
 #[cfg(test)]
 pub use vm::{ConstExprEvaluator, PlaceholderAllocatorDontUse};
+
+use crate::wasm::store::StoreOpaque;
+use crate::wasm::utils::{enum_accessors, owned_enum_accessors};
 
 /// The number of pages (for 32-bit modules) we can have before we run out of
 /// byte index space.

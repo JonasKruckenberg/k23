@@ -5,13 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::sync::Arc;
-use crate::loom::sync::{Condvar, Mutex as StdMutex};
 use core::mem::ManuallyDrop;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
 use futures::pin_mut;
 use futures::task::WakerRef;
 use util::loom_const_fn;
+
+use crate::loom::sync::{Arc, Condvar, Mutex as StdMutex};
 
 #[derive(Debug)]
 pub struct ThreadNotify {

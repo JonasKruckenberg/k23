@@ -24,17 +24,14 @@
 //!
 //! [`Lexer`]: crate::lexer::Lexer
 
+use alloc::borrow::Cow;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::str::Utf8Error;
+use core::{char, fmt, slice, str};
+
 use crate::Error;
 use crate::token::Span;
-use alloc::borrow::Cow;
-use alloc::string::String;
-use alloc::string::ToString;
-use alloc::vec::Vec;
-use core::char;
-use core::fmt;
-use core::slice;
-use core::str;
-use core::str::Utf8Error;
 
 /// A structure used to lex the s-expression syntax of WAT files.
 ///

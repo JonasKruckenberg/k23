@@ -1,10 +1,11 @@
+use alloc::boxed::Box;
+use alloc::string::{String, ToString};
+use core::fmt;
+
+use unicode_width::UnicodeWidthStr;
+
 use crate::lexer::LexError;
 use crate::token::Span;
-use alloc::boxed::Box;
-use alloc::string::String;
-use alloc::string::ToString;
-use core::fmt;
-use unicode_width::UnicodeWidthStr;
 
 /// A convenience error type to tie together all the detailed errors produced by
 /// this crate.

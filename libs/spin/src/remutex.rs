@@ -5,9 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::AtomicUsize;
-use crate::loom::{Ordering, UnsafeCell};
-use crate::{Backoff, GuardNoSend};
 use core::cell::Cell;
 use core::fmt;
 use core::marker::PhantomData;
@@ -15,7 +12,11 @@ use core::num::NonZeroUsize;
 use core::ops::Deref;
 use core::ptr::addr_of;
 use core::sync::atomic::AtomicBool;
+
 use util::loom_const_fn;
+
+use crate::loom::{AtomicUsize, Ordering, UnsafeCell};
+use crate::{Backoff, GuardNoSend};
 
 /// A mutex which can be recursively locked by a single thread.
 ///

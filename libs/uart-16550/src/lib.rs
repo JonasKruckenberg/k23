@@ -7,9 +7,10 @@
 
 #![cfg_attr(not(test), no_std)]
 
-use bitflags::bitflags;
 use core::fmt;
 use core::sync::atomic::{AtomicPtr, Ordering};
+
+use bitflags::bitflags;
 use spin::Backoff;
 
 macro_rules! wait_for {

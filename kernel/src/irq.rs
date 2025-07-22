@@ -5,12 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::state::cpu_local;
 use alloc::sync::Arc;
 use core::num::NonZero;
+
 use hashbrown::HashMap;
 use kasync::sync::wait_queue::WaitQueue;
 use spin::{LazyLock, RwLock};
+
+use crate::state::cpu_local;
 
 pub trait InterruptController {
     fn irq_claim(&mut self) -> Option<IrqClaim>;

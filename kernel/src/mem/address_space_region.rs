@@ -5,22 +5,24 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::address::VirtualAddress;
-use crate::mem::frame_alloc::FrameAllocator;
-use crate::mem::{AddressRangeExt, Batch, PageFaultFlags, Permissions, PhysicalAddress, Vmo};
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
-use anyhow::bail;
 use core::cmp;
 use core::mem::offset_of;
 use core::num::NonZeroUsize;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::range::Range;
+
+use anyhow::bail;
 use pin_project::pin_project;
 use spin::LazyLock;
+
+use crate::arch;
+use crate::mem::address::VirtualAddress;
+use crate::mem::frame_alloc::FrameAllocator;
+use crate::mem::{AddressRangeExt, Batch, PageFaultFlags, Permissions, PhysicalAddress, Vmo};
 
 /// A contiguous region of an address space
 #[pin_project]

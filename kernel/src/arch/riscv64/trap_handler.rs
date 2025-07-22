@@ -5,19 +5,22 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::boxed::Box;
+use core::arch::{asm, naked_asm};
+use core::cell::Cell;
+
+use cpu_local::cpu_local;
+use riscv::scause::{Exception, Interrupt};
+use riscv::{
+    load_fp, load_gp, save_fp, save_gp, scause, sepc, sip, sscratch, sstatus, stval, stvec,
+};
+
 use crate::arch::PAGE_SIZE;
 use crate::arch::trap::Trap;
 use crate::backtrace::Backtrace;
 use crate::mem::VirtualAddress;
 use crate::state::{cpu_local, global};
 use crate::{TRAP_STACK_SIZE_PAGES, irq};
-use alloc::boxed::Box;
-use core::arch::{asm, naked_asm};
-use core::cell::Cell;
-use cpu_local::cpu_local;
-use riscv::scause::{Exception, Interrupt};
-use riscv::{load_fp, load_gp, save_fp, save_gp};
-use riscv::{scause, sepc, sip, sscratch, sstatus, stval, stvec};
 
 cpu_local! {
     static IN_TRAP: Cell<bool> = Cell::new(false);

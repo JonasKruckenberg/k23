@@ -26,6 +26,7 @@
 //! cpus.
 
 use core::sync::atomic::{AtomicU64, Ordering};
+
 use cpu_local::collection::CpuLocal;
 
 /// Declares a new counter.

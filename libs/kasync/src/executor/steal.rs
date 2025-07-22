@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::boxed::Box;
+use core::fmt::Debug;
+use core::num::NonZeroUsize;
+
+use cordyceps::{MpscQueue, mpsc_queue};
+
 use crate::executor::Scheduler;
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 use crate::task::{Header, Task, TaskRef};
-use alloc::boxed::Box;
-use cordyceps::{MpscQueue, mpsc_queue};
-use core::fmt::Debug;
-use core::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[non_exhaustive]

@@ -5,13 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use core::fmt;
+
 use crate::wasm::indices::CanonicalizedTypeIndex;
 use crate::wasm::translate::{Global, Memory, Table};
 use crate::wasm::type_registry::TypeTrace;
 use crate::wasm::utils::enum_accessors;
-use alloc::borrow::Cow;
-use alloc::boxed::Box;
-use core::fmt;
 
 /// Represents the types of values in a WebAssembly module.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

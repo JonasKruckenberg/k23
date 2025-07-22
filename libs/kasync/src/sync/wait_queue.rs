@@ -5,10 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::error::Closed;
-use crate::sync::wake_batch::WakeBatch;
 use alloc::sync::Arc;
-use cordyceps::{Linked, List, list};
 use core::cell::UnsafeCell;
 use core::marker::PhantomPinned;
 use core::pin::Pin;
@@ -16,10 +13,15 @@ use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::task::{Context, Poll, Waker};
 use core::{fmt, mem, ptr};
+
+use cordyceps::{Linked, List, list};
 use mycelium_bitfield::{FromBits, bitfield, enum_from_bits};
 use pin_project::{pin_project, pinned_drop};
 use spin::{Mutex, MutexGuard};
 use util::{CachePadded, loom_const_fn};
+
+use crate::error::Closed;
+use crate::sync::wake_batch::WakeBatch;
 
 /// A queue of waiting tasks which can be [woken in first-in, first-out
 /// order][wake], or [all at once][wake_all].

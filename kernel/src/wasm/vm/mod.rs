@@ -20,9 +20,6 @@ mod vmshape;
 use alloc::vec::Vec;
 use core::ptr::NonNull;
 
-use crate::wasm::indices::DefinedMemoryIndex;
-use crate::wasm::translate;
-use crate::wasm::translate::TranslatedModule;
 pub use code_object::CodeObject;
 pub use const_eval::ConstExprEvaluator;
 pub use instance::{Instance, InstanceAndStore, InstanceHandle};
@@ -35,6 +32,10 @@ pub use provenance::VmPtr;
 pub use table::{Table, TableElement};
 pub use vmcontext::*;
 pub use vmshape::{StaticVMShape, VMShape};
+
+use crate::wasm::indices::DefinedMemoryIndex;
+use crate::wasm::translate;
+use crate::wasm::translate::TranslatedModule;
 
 /// The value of an export passed from one instance to another.
 #[derive(Debug, Clone)]

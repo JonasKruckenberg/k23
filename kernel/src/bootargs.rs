@@ -5,10 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::str::FromStr;
+
 use crate::backtrace::BacktraceStyle;
 use crate::device_tree::DeviceTree;
 use crate::tracing::Filter;
-use core::str::FromStr;
 
 pub fn parse(devtree: &DeviceTree) -> crate::Result<Bootargs> {
     let chosen = devtree.find_by_path("/chosen").unwrap();

@@ -5,6 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::string::{String, ToString};
+use alloc::sync::Arc;
+use core::mem;
+use core::ops::DerefMut;
+use core::ptr::NonNull;
+
+use wasmparser::{Validator, WasmFeatures};
+
 use crate::wasm::Engine;
 use crate::wasm::code_registry::{register_code, unregister_code};
 use crate::wasm::compile::{CompileInputs, CompiledFunctionInfo};
@@ -13,12 +21,6 @@ use crate::wasm::translate::{Import, ModuleTranslator, TranslatedModule};
 use crate::wasm::type_registry::RuntimeTypeCollection;
 use crate::wasm::utils::u8_size_of;
 use crate::wasm::vm::{CodeObject, MmapVec, VMArrayCallFunction, VMShape, VMWasmCallFunction};
-use alloc::string::{String, ToString};
-use alloc::sync::Arc;
-use core::mem;
-use core::ops::DerefMut;
-use core::ptr::NonNull;
-use wasmparser::{Validator, WasmFeatures};
 
 /// A compiled WebAssembly module, ready to be instantiated.
 ///

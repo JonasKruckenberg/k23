@@ -5,10 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
 use core::alloc::{Layout, LayoutError};
 use core::fmt;
 use core::range::Range;
+
+use crate::arch;
 
 macro_rules! address_impl {
     ($addr:ident) => {

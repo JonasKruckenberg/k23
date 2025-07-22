@@ -5,13 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::PAGE_SIZE;
-use crate::device_tree::{Device, DeviceTree, IrqSource};
-use crate::irq::{InterruptController, IrqClaim};
-use crate::mem::{
-    AddressRangeExt, AddressSpaceRegion, Permissions, PhysicalAddress, with_kernel_aspace,
-};
-use crate::util::either::Either;
 use alloc::string::ToString;
 use core::alloc::Layout;
 use core::mem::{MaybeUninit, offset_of};
@@ -19,8 +12,17 @@ use core::num::NonZero;
 use core::ops::{BitAnd, BitOr, Not};
 use core::ptr;
 use core::range::Range;
+
 use fallible_iterator::FallibleIterator;
 use static_assertions::const_assert_eq;
+
+use crate::arch::PAGE_SIZE;
+use crate::device_tree::{Device, DeviceTree, IrqSource};
+use crate::irq::{InterruptController, IrqClaim};
+use crate::mem::{
+    AddressRangeExt, AddressSpaceRegion, Permissions, PhysicalAddress, with_kernel_aspace,
+};
+use crate::util::either::Either;
 
 const MAX_CONTEXTS: usize = 64;
 

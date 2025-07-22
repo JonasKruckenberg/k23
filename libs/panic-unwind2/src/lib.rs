@@ -19,15 +19,17 @@ extern crate alloc;
 mod hook;
 mod panic_count;
 
-use crate::hook::{HOOK, Hook, PanicHookInfo, default_hook};
-use crate::panic_count::MustAbort;
-use abort::abort;
 use alloc::boxed::Box;
 use alloc::string::String;
 use core::any::Any;
 use core::panic::{PanicPayload, UnwindSafe};
 use core::{fmt, mem};
+
+use abort::abort;
 pub use hook::{set_hook, take_hook};
+
+use crate::hook::{HOOK, Hook, PanicHookInfo, default_hook};
+use crate::panic_count::MustAbort;
 
 /// Determines whether the current thread is unwinding because of panic.
 #[inline]

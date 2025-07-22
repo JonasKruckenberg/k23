@@ -62,19 +62,20 @@
 //! This module is heavily inspired by [`syn`](https://docs.rs/syn) so you can
 //! likely also draw inspiration from the excellent examples in the `syn` crate.
 
-use crate::Error;
-use crate::lexer::{Float, Integer, Lexer, Token, TokenKind};
-use crate::token::Span;
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::format;
-use alloc::string::String;
-use alloc::string::ToString;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use bumpalo::Bump;
 use core::cell::{Cell, RefCell};
 use core::fmt;
+
+use bumpalo::Bump;
 use hashbrown::HashMap;
+
+use crate::Error;
+use crate::lexer::{Float, Integer, Lexer, Token, TokenKind};
+use crate::token::Span;
 
 /// The maximum recursive depth of parens to parse.
 ///

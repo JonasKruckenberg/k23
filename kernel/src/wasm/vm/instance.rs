@@ -5,6 +5,18 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::string::String;
+use core::alloc::Layout;
+use core::marker::PhantomPinned;
+use core::ptr::NonNull;
+use core::sync::atomic::{AtomicU64, Ordering};
+use core::{fmt, ptr, slice};
+
+use anyhow::{bail, ensure};
+use cranelift_entity::packed_option::ReservedValue;
+use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
+use static_assertions::const_assert_eq;
+
 use crate::mem::VirtualAddress;
 use crate::wasm::TrapKind;
 use crate::wasm::indices::{
@@ -30,16 +42,6 @@ use crate::wasm::vm::{
     VMOpaqueContext, VMShape, VMStoreContext, VMTableDefinition, VMTableImport, VMTagDefinition,
     VMTagImport,
 };
-use alloc::string::String;
-use anyhow::{bail, ensure};
-use core::alloc::Layout;
-use core::marker::PhantomPinned;
-use core::ptr::NonNull;
-use core::sync::atomic::{AtomicU64, Ordering};
-use core::{fmt, ptr, slice};
-use cranelift_entity::packed_option::ReservedValue;
-use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
-use static_assertions::const_assert_eq;
 
 #[derive(Debug)]
 pub struct InstanceHandle {

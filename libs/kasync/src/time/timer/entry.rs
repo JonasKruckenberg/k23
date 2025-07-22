@@ -5,15 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::sync::wait_cell::WaitCell;
-use crate::time::Ticks;
-use cordyceps::{Linked, list};
 use core::marker::PhantomPinned;
 use core::mem::offset_of;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, Ordering};
+
+use cordyceps::{Linked, list};
 use pin_project::pin_project;
 use util::loom_const_fn;
+
+use crate::sync::wait_cell::WaitCell;
+use crate::time::Ticks;
 
 /// An entry in a timing [`Wheel`][crate::time::timer::Wheel].
 #[pin_project]

@@ -220,20 +220,19 @@ mod page;
 mod shard;
 mod tid;
 
-pub use self::{
-    cfg::{Config, DefaultConfig},
-    clear::Clear,
-    iter::UniqueIter,
-};
+use alloc::sync::Arc;
+use core::marker::PhantomData;
+use core::{fmt, ptr};
+
+use cfg::CfgPrivate;
 #[doc(inline)]
 pub use pool::Pool;
-
+use shard::Shard;
 pub(crate) use tid::Tid;
 
-use alloc::sync::Arc;
-use cfg::CfgPrivate;
-use core::{fmt, marker::PhantomData, ptr};
-use shard::Shard;
+pub use self::cfg::{Config, DefaultConfig};
+pub use self::clear::Clear;
+pub use self::iter::UniqueIter;
 
 /// A sharded slab.
 ///

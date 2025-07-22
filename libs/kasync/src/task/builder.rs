@@ -5,15 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::error::Closed;
-use crate::error::SpawnError;
-use crate::task::id::Id;
-use crate::task::join_handle::JoinHandle;
-use crate::task::{Task, TaskRef};
 use alloc::boxed::Box;
 use core::alloc::Allocator;
 use core::any::type_name;
 use core::panic::Location;
+
+use crate::error::{Closed, SpawnError};
+use crate::task::id::Id;
+use crate::task::join_handle::JoinHandle;
+use crate::task::{Task, TaskRef};
 
 pub struct TaskBuilder<'a, S> {
     location: Option<Location<'a>>,

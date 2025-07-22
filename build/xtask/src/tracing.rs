@@ -5,12 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use std::fmt;
+use std::io::IsTerminal;
+
 use clap::{ArgGroup, Args};
 use color_eyre::owo_colors;
 use color_eyre::owo_colors::{OwoColorize, Style, style};
 use heck::ToTitleCase;
-use std::fmt;
-use std::io::IsTerminal;
 use tracing_core::field::Visit;
 use tracing_core::{Collect, Event, Field, Level};
 use tracing_subscriber::fmt::format::Writer;

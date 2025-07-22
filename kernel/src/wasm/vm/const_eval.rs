@@ -5,6 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use anyhow::bail;
+use smallvec::SmallVec;
+
 use crate::wasm::indices::{FuncIndex, GlobalIndex, VMSharedTypeIndex};
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::translate::{
@@ -13,8 +16,6 @@ use crate::wasm::translate::{
 };
 use crate::wasm::vm::instance::Instance;
 use crate::wasm::vm::vmcontext::VMVal;
-use anyhow::bail;
-use smallvec::SmallVec;
 
 /// Simple interpreter for constant expressions.
 #[derive(Debug, Default)]

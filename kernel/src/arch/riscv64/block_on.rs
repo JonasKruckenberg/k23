@@ -5,16 +5,18 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::state;
 use alloc::sync::Arc;
 use core::arch::asm;
 use core::mem::ManuallyDrop;
 use core::sync::atomic::{AtomicBool, Ordering};
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
 use cpu_local::cpu_local;
 use futures::pin_mut;
 use futures::task::WakerRef;
 use riscv::sbi;
+
+use crate::state;
 
 struct HartNotify {
     hartid: usize,

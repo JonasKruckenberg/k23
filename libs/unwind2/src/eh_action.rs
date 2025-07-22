@@ -5,9 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use gimli::{EndianSlice, NativeEndian, Pointer, Reader, constants};
+
 use crate::frame::Frame;
 use crate::utils::deref_pointer;
-use gimli::{EndianSlice, NativeEndian, Pointer, Reader, constants};
 
 #[derive(Debug)]
 pub enum EHAction {

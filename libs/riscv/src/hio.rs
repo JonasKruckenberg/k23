@@ -7,10 +7,12 @@
 
 //! Host I/O
 
-use super::semihosting::syscall;
 use core::fmt::{Error, Write};
 use core::{fmt, slice};
+
 use spin::Mutex;
+
+use super::semihosting::syscall;
 
 const OPEN: usize = 0x01;
 const WRITE: usize = 0x05;

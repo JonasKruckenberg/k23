@@ -11,10 +11,7 @@ mod join_handle;
 mod state;
 mod yield_now;
 
-use crate::loom::cell::UnsafeCell;
-use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use alloc::boxed::Box;
-use cordyceps::mpsc_queue;
 use core::alloc::Allocator;
 use core::any::type_name;
 use core::mem::offset_of;
@@ -24,13 +21,17 @@ use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
-use util::{CachePadded, CheckedMaybeUninit, loom_const_fn};
 
-use crate::executor::Scheduler;
 pub use builder::TaskBuilder;
+use cordyceps::mpsc_queue;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinHandle};
+use util::{CachePadded, CheckedMaybeUninit, loom_const_fn};
 pub use yield_now::yield_now;
+
+use crate::executor::Scheduler;
+use crate::loom::cell::UnsafeCell;
+use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 
 /// Outcome of calling [`Task::poll`].
 ///

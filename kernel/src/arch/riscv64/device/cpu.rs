@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::device;
-use crate::device_tree::DeviceTree;
-use crate::irq::InterruptController;
-use bitflags::bitflags;
 use core::cell::RefCell;
 use core::fmt;
 use core::str::FromStr;
+
+use bitflags::bitflags;
+
+use crate::arch::device;
+use crate::device_tree::DeviceTree;
+use crate::irq::InterruptController;
 
 #[derive(Debug)]
 pub struct Cpu {

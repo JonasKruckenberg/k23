@@ -7,9 +7,10 @@
 
 //! Printing of backtraces. This is adapted from the standard library.
 
+use core::fmt;
+
 use crate::backtrace::BacktraceStyle;
 use crate::backtrace::symbolize::{Symbol, SymbolName};
-use core::fmt;
 
 const HEX_WIDTH: usize = 2 + 2 * size_of::<usize>();
 

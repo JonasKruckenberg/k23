@@ -7,24 +7,25 @@
 
 mod steal;
 
-use crate::error::Closed;
-use crate::error::SpawnError;
-use crate::executor::steal::{Injector, Stealer, TryStealError};
-use crate::future::Either;
-use crate::loom::sync::atomic::{AtomicPtr, AtomicUsize};
-use crate::sync::wait_queue::WaitQueue;
-use crate::task::{Header, JoinHandle, PollResult, Task, TaskBuilder, TaskRef};
 use alloc::boxed::Box;
-use cordyceps::mpsc_queue::{MpscQueue, TryDequeueError};
 use core::alloc::Allocator;
 use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
+
+use cordyceps::mpsc_queue::{MpscQueue, TryDequeueError};
 use cpu_local::collection::CpuLocal;
 use fastrand::FastRand;
 use futures::pin_mut;
 use spin::Backoff;
+
+use crate::error::{Closed, SpawnError};
+use crate::executor::steal::{Injector, Stealer, TryStealError};
+use crate::future::Either;
+use crate::loom::sync::atomic::{AtomicPtr, AtomicUsize};
+use crate::sync::wait_queue::WaitQueue;
+use crate::task::{Header, JoinHandle, PollResult, Task, TaskBuilder, TaskRef};
 
 #[derive(Debug)]
 pub struct Executor {
@@ -491,12 +492,14 @@ impl Scheduler {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{loom, test_util};
     use core::hint::black_box;
     use core::sync::atomic::AtomicBool;
+
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::util::SubscriberInitExt;
+
+    use super::*;
+    use crate::{loom, test_util};
 
     async fn work() -> usize {
         let val = 1 + 1;

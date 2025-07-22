@@ -5,16 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::sync::atomic::Ordering;
-use crate::time::Ticks;
-use crate::time::{TimeError, Timer, instant::Instant, timer::Entry};
-use core::{
-    fmt,
-    pin::Pin,
-    task::{Context, Poll, ready},
-    time::Duration,
-};
+use core::fmt;
+use core::pin::Pin;
+use core::task::{Context, Poll, ready};
+use core::time::Duration;
+
 use pin_project::{pin_project, pinned_drop};
+
+use crate::loom::sync::atomic::Ordering;
+use crate::time::instant::Instant;
+use crate::time::timer::Entry;
+use crate::time::{Ticks, TimeError, Timer};
 
 /// Wait until duration has elapsed.
 ///
@@ -139,16 +140,15 @@ impl PinnedDrop for Sleep<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::loom::sync::atomic::{AtomicBool, Ordering};
-    use crate::time::test_util::MockClock;
-    use crate::{
-        executor::{Executor, Worker},
-        loom,
-    };
     use fastrand::FastRand;
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::fmt::format::FmtSpan;
+
+    use super::*;
+    use crate::executor::{Executor, Worker};
+    use crate::loom;
+    use crate::loom::sync::atomic::{AtomicBool, Ordering};
+    use crate::time::test_util::MockClock;
 
     // loom is not happy about this test. For whatever reason it triggers the "too many branches"
     // error. But both the regular test AND miri are fine with it

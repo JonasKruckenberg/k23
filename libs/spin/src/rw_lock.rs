@@ -5,12 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::Backoff;
-use crate::loom::{AtomicUsize, Ordering, UnsafeCell};
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::{fmt, mem};
+
 use util::loom_const_fn;
+
+use crate::Backoff;
+use crate::loom::{AtomicUsize, Ordering, UnsafeCell};
 
 const READER: usize = 1 << 2;
 const UPGRADED: usize = 1 << 1;
@@ -621,13 +623,13 @@ fn compare_exchange(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::loom::Arc;
-    use crate::loom::thread;
     use core::fmt::Debug;
     use core::mem;
     use std::hint;
     use std::sync::mpsc::channel;
+
+    use super::*;
+    use crate::loom::{Arc, thread};
 
     #[derive(Eq, PartialEq, Debug)]
     struct NonCopy(i32);
