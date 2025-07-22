@@ -86,6 +86,7 @@ cpu-local = { path = "libs/cpu-local" }
 unwind2 = { path = "libs/unwind2" }
 wast = { path = "libs/wast" }
 wavltree = { path = "libs/wavltree" }
+wavltree2 = { path = "libs/wavltree2" }
 loader-api = { path = "loader/api" }
 fdt = { path = "libs/fdt" }
 ksharded-slab = { path = "libs/ksharded-slab" }
@@ -138,7 +139,7 @@ hashbrown = { version = "0.15", default-features = false, features = [
     "nightly",
     "default-hasher",
 ] }
-wasmparser = { version = "0.228", default-features = false, features = ["features", "validate", "simd"] }
+wasmparser = { version = "0.235", default-features = false, features = ["features", "validate", "simd"] }
 target-lexicon = { version = "0.13.2", default-features = false }
 cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["host-arch", "core"] }
 cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["core"] }

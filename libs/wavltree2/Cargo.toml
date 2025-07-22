@@ -1,5 +1,5 @@
 [package]
-name = "wavltree"
+name = "wavltree2"
 description = "An intrusive Weak AVL Tree."
 version = "0.0.8"
 edition.workspace = true
@@ -11,7 +11,7 @@ name = "insertions_deletions"
 harness = false
 
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
-rand = { workspace = true, features = ["thread_rng"] }
+rand= { workspace = true, features = ["thread_rng"] }
 criterion = "0.6.0"
 
 [features]
