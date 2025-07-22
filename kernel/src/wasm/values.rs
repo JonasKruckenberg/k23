@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::ptr;
+
+use anyhow::bail;
+
 use crate::wasm::Func;
 use crate::wasm::store::StoreOpaque;
 use crate::wasm::types::{HeapType, HeapTypeInner, RefType, ValType};
 use crate::wasm::utils::enum_accessors;
 use crate::wasm::vm::{TableElement, VMVal};
-use anyhow::bail;
-use core::ptr;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Val {

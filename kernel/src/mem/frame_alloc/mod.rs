@@ -9,25 +9,25 @@ mod arena;
 mod frame;
 pub mod frame_list;
 
-use crate::arch;
-use crate::mem::bootstrap_alloc::BootstrapAllocator;
-use crate::mem::{PhysicalAddress, VirtualAddress};
 use alloc::vec::Vec;
-use arena::Arena;
-use arena::select_arenas;
-use cordyceps::list::List;
 use core::alloc::Layout;
 use core::cell::RefCell;
 use core::ptr::NonNull;
 use core::range::Range;
 use core::sync::atomic::AtomicUsize;
 use core::{cmp, fmt, iter, slice};
+
+use arena::{Arena, select_arenas};
+use cordyceps::list::List;
 use cpu_local::collection::CpuLocal;
 use fallible_iterator::FallibleIterator;
+pub use frame::{Frame, FrameInfo};
 use spin::{Mutex, OnceLock};
 
+use crate::arch;
+use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::mem::frame_alloc::frame_list::FrameList;
-pub use frame::{Frame, FrameInfo};
+use crate::mem::{PhysicalAddress, VirtualAddress};
 
 pub static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 pub fn init(

@@ -5,11 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::address::{AddressRangeExt, PhysicalAddress};
 use core::alloc::Layout;
 use core::range::Range;
 use core::{iter, ptr, slice};
+
+use crate::arch;
+use crate::mem::address::{AddressRangeExt, PhysicalAddress};
 
 pub struct BootstrapAllocator<'a> {
     regions: &'a [Range<PhysicalAddress>],

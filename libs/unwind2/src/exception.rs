@@ -5,12 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::Error;
-use abort::abort;
 use alloc::boxed::Box;
 use core::any::Any;
 use core::ffi::c_int;
 use core::ptr;
+
+use abort::abort;
+
+use crate::Error;
 
 /// The C ABI UnwindReasonCode passed to the exception cleanup function when a foreign
 /// (i.e. not originating from this crate) exception is caught. Since that exception might have

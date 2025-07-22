@@ -11,6 +11,14 @@
 #![feature(maybe_uninit_slice)]
 #![feature(alloc_layout_extra)]
 
+use core::ffi::c_void;
+use core::range::Range;
+
+use arrayvec::ArrayVec;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
+use spin::{Barrier, OnceLock};
+
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
@@ -20,12 +28,6 @@ use crate::mapping::{
     StacksAllocation, TlsAllocation, identity_map_self, map_kernel, map_kernel_stacks,
     map_physical_memory,
 };
-use arrayvec::ArrayVec;
-use core::ffi::c_void;
-use core::range::Range;
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
-use spin::{Barrier, OnceLock};
 
 mod arch;
 mod boot_info;

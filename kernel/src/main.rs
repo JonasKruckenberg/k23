@@ -42,24 +42,25 @@ mod tracing;
 mod util;
 mod wasm;
 
-use crate::backtrace::Backtrace;
-use crate::device_tree::DeviceTree;
-use crate::mem::bootstrap_alloc::BootstrapAllocator;
-use crate::state::{CpuLocal, Global};
-use abort::abort;
-use arrayvec::ArrayVec;
-use cfg_if::cfg_if;
 use core::range::Range;
 use core::slice;
 use core::time::Duration;
+
+use abort::abort;
+use arrayvec::ArrayVec;
+use cfg_if::cfg_if;
 use fastrand::FastRand;
 use kasync::executor::{Executor, Worker};
 use kasync::time::{Instant, Ticks, Timer};
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
-use mem::PhysicalAddress;
-use mem::frame_alloc;
+use mem::{PhysicalAddress, frame_alloc};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+
+use crate::backtrace::Backtrace;
+use crate::device_tree::DeviceTree;
+use crate::mem::bootstrap_alloc::BootstrapAllocator;
+use crate::state::{CpuLocal, Global};
 
 /// The size of the stack in pages
 pub const STACK_SIZE_PAGES: u32 = 256; // TODO find a lower more appropriate value

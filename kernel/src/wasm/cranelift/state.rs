@@ -5,14 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::vec::Vec;
+
+use cranelift_codegen::ir;
+use cranelift_codegen::ir::{Block, FuncRef, Function, Inst, SigRef, Value};
+use hashbrown::HashMap;
+
 use crate::wasm::cranelift::env::TranslationEnvironment;
 use crate::wasm::cranelift::memory::CraneliftMemory;
 use crate::wasm::cranelift::{CraneliftGlobal, CraneliftTable};
 use crate::wasm::indices::{FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TypeIndex};
-use alloc::vec::Vec;
-use cranelift_codegen::ir;
-use cranelift_codegen::ir::{Block, FuncRef, Function, Inst, SigRef, Value};
-use hashbrown::HashMap;
 
 pub struct FuncTranslationState {
     /// A stack of values corresponding to the active values in the input wasm function at this

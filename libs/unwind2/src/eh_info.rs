@@ -5,9 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use super::utils::{deref_pointer, get_unlimited_slice};
 use gimli::{BaseAddresses, EhFrame, EhFrameHdr, EndianSlice, NativeEndian, ParsedEhFrameHdr};
 use spin::LazyLock;
+
+use super::utils::{deref_pointer, get_unlimited_slice};
 
 // Below is a fun hack: We need a reference to the `.eh_frame` and `.eh_frame_hdr` sections and
 // must therefore force the linker to retain those even in release builds. By abusing mutable statics

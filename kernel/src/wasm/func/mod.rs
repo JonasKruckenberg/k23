@@ -8,6 +8,16 @@
 mod host;
 mod typed;
 
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use core::ffi::c_void;
+use core::mem;
+use core::ptr::NonNull;
+
+use anyhow::ensure;
+pub use host::{HostFunc, IntoFunc};
+pub use typed::{TypedFunc, WasmParams, WasmResults, WasmTy};
+
 use crate::arch;
 use crate::mem::VirtualAddress;
 use crate::util::zip_eq::IteratorExt;
@@ -21,14 +31,6 @@ use crate::wasm::vm::{
     VMVal, VmPtr,
 };
 use crate::wasm::{MAX_WASM_STACK, Module, Store};
-use alloc::boxed::Box;
-use alloc::sync::Arc;
-use anyhow::ensure;
-use core::ffi::c_void;
-use core::mem;
-use core::ptr::NonNull;
-pub use host::{HostFunc, IntoFunc};
-pub use typed::{TypedFunc, WasmParams, WasmResults, WasmTy};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Func(pub(super) Stored<FuncData>);

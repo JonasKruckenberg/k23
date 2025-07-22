@@ -6,10 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 //! RISC-V specific unwinding code, mostly saving and restoring registers.
-use cfg_if::cfg_if;
 use core::arch::{asm, naked_asm};
-use core::fmt;
-use core::ops;
+use core::{fmt, ops};
+
+use cfg_if::cfg_if;
 use gimli::{Register, RiscV};
 
 // Match DWARF_FRAME_REGISTERS in libgcc

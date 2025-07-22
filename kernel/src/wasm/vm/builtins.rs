@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::ptr::NonNull;
+
 use crate::wasm::TrapKind;
 use crate::wasm::indices::{DataIndex, ElemIndex, MemoryIndex, TableIndex};
 use crate::wasm::store::StoreOpaque;
@@ -12,7 +14,6 @@ use crate::wasm::trap_handler::HostResultHasUnwindSentinel;
 use crate::wasm::vm::instance::Instance;
 use crate::wasm::vm::table::{TableElement, TableElementType};
 use crate::wasm::vm::{Table, VMFuncRef};
-use core::ptr::NonNull;
 
 /// A helper structure to represent the return value of a memory or table growth
 /// call.

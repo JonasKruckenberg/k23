@@ -5,12 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::cell::UnsafeCell;
-use crate::sync::WaitCell;
 use alloc::sync::Arc;
 use core::fmt;
 use core::pin::Pin;
 use core::task::{Context, Poll, ready};
+
+use crate::loom::cell::UnsafeCell;
+use crate::sync::WaitCell;
 
 pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     let inner = Arc::new(Inner {

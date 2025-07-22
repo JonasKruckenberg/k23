@@ -5,8 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::frame_alloc::Frame;
 use alloc::boxed::Box;
 use core::fmt::Formatter;
 use core::iter::{FlatMap, Flatten, FusedIterator};
@@ -14,8 +12,12 @@ use core::mem::offset_of;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{array, fmt};
+
 use pin_project::pin_project;
 use wavltree::WAVLTree;
+
+use crate::arch;
+use crate::mem::frame_alloc::Frame;
 
 const FRAME_LIST_NODE_FANOUT: usize = 16;
 

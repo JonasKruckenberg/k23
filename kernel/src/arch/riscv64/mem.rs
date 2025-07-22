@@ -5,20 +5,22 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::{mb, wmb};
-use crate::mem::flush::Flush;
-use crate::mem::frame_alloc::{Frame, FrameAllocator};
-use crate::mem::{PhysicalAddress, VirtualAddress};
 use alloc::vec;
 use alloc::vec::Vec;
-use bitflags::bitflags;
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 use core::range::{Range, RangeInclusive};
 use core::{fmt, slice};
+
+use bitflags::bitflags;
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
+
+use crate::arch::{mb, wmb};
+use crate::mem::flush::Flush;
+use crate::mem::frame_alloc::{Frame, FrameAllocator};
+use crate::mem::{PhysicalAddress, VirtualAddress};
 
 pub const DEFAULT_ASID: u16 = 0;
 

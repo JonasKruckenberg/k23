@@ -8,15 +8,19 @@
 mod entry;
 mod wheel;
 
-use crate::time::{Clock, NANOS_PER_SEC, TimeError, max_duration};
-use crate::{loom::sync::atomic::Ordering, time::Instant};
+use core::pin::Pin;
+use core::ptr::NonNull;
+use core::task::Poll;
+use core::time::Duration;
+
 use cordyceps::List;
-use core::{pin::Pin, ptr::NonNull, task::Poll, time::Duration};
+pub(in crate::time) use entry::Entry;
 use spin::Mutex;
 use util::loom_const_fn;
 use wheel::Wheel;
 
-pub(in crate::time) use entry::Entry;
+use crate::loom::sync::atomic::Ordering;
+use crate::time::{Clock, Instant, NANOS_PER_SEC, TimeError, max_duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ticks(pub u64);

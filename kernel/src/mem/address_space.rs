@@ -5,18 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::address_space_region::AddressSpaceRegion;
-use crate::mem::frame_alloc::FrameAllocator;
-use crate::mem::{
-    AddressRangeExt, ArchAddressSpace, Flush, PageFaultFlags, Permissions, PhysicalAddress,
-    VirtualAddress,
-};
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
-use anyhow::{bail, ensure};
 use core::alloc::Layout;
 use core::fmt;
 use core::num::NonZeroUsize;
@@ -24,9 +16,19 @@ use core::ops::DerefMut;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::range::{Bound, Range, RangeBounds, RangeInclusive};
+
+use anyhow::{bail, ensure};
 use rand::Rng;
 use rand::distr::Uniform;
 use rand_chacha::ChaCha20Rng;
+
+use crate::arch;
+use crate::mem::address_space_region::AddressSpaceRegion;
+use crate::mem::frame_alloc::FrameAllocator;
+use crate::mem::{
+    AddressRangeExt, ArchAddressSpace, Flush, PageFaultFlags, Permissions, PhysicalAddress,
+    VirtualAddress,
+};
 
 // const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();
 const VIRT_ALLOC_ENTROPY: u8 = 27;

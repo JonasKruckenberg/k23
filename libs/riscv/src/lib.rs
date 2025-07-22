@@ -20,6 +20,7 @@ pub mod semihosting;
 pub mod trap;
 
 use core::arch::asm;
+
 pub use error::Error;
 pub use register::*;
 pub type Result<T> = core::result::Result<T, Error>;

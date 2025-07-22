@@ -1,15 +1,13 @@
-use crate::{
-    Pack,
-    cfg::{self, CfgPrivate},
-    clear::Clear,
-    page,
-    tid::Tid,
-};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::sync::atomic;
 use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use core::{fmt, ptr, slice};
+
+use crate::cfg::{self, CfgPrivate};
+use crate::clear::Clear;
+use crate::tid::Tid;
+use crate::{Pack, page};
 
 // ┌─────────────┐      ┌────────┐
 // │ page 1      │      │        │

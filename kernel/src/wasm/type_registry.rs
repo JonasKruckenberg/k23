@@ -5,13 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::Engine;
-use crate::wasm::indices::{
-    CanonicalizedTypeIndex, ModuleInternedTypeIndex, RecGroupRelativeTypeIndex, VMSharedTypeIndex,
-};
-use crate::wasm::translate::{
-    ModuleTypes, WasmCompositeType, WasmCompositeTypeInner, WasmRecGroup, WasmSubType,
-};
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
@@ -23,11 +16,20 @@ use core::hash::{Hash, Hasher};
 use core::range::Range;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::{fmt, iter};
+
 use cranelift_entity::packed_option::{PackedOption, ReservedValue};
 use cranelift_entity::{PrimaryMap, SecondaryMap, iter_entity_range};
 use hashbrown::HashSet;
 use spin::RwLock;
 use wasmtime_slab::Slab;
+
+use crate::wasm::Engine;
+use crate::wasm::indices::{
+    CanonicalizedTypeIndex, ModuleInternedTypeIndex, RecGroupRelativeTypeIndex, VMSharedTypeIndex,
+};
+use crate::wasm::translate::{
+    ModuleTypes, WasmCompositeType, WasmCompositeTypeInner, WasmRecGroup, WasmSubType,
+};
 
 pub trait TypeTrace {
     /// Visit each edge.

@@ -1,7 +1,8 @@
+use std::hint::black_box;
+
 use criterion::{Criterion, criterion_group, criterion_main};
 use fastrand::FastRand;
 use kasync2::executor::{Executor, Worker};
-use std::hint::black_box;
 
 async fn work() -> usize {
     let val = 1 + 1;

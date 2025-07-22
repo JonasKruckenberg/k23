@@ -4,9 +4,10 @@
 //! Use `BLESS=1` in the environment to auto-update `*.err` files. Be sure to
 //! look at the diff!
 
-use libtest_mimic::{Arguments, Trial};
 use std::env;
 use std::path::{Path, PathBuf};
+
+use libtest_mimic::{Arguments, Trial};
 
 fn main() {
     let mut tests = Vec::new();

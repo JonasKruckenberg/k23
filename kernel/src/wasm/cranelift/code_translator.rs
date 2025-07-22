@@ -5,6 +5,26 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::vec;
+use alloc::vec::Vec;
+
+use anyhow::bail;
+use cranelift_codegen::ir;
+use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
+use cranelift_codegen::ir::immediates::Offset32;
+use cranelift_codegen::ir::types::{
+    F32, F32X4, F64, F64X2, I8, I8X16, I16, I16X8, I32, I32X4, I64, I64X2,
+};
+use cranelift_codegen::ir::{
+    AtomicRmwOp, ConstantData, InstBuilder, JumpTableData, MemFlags, TrapCode, Type, Value,
+    ValueLabel,
+};
+use cranelift_entity::packed_option::ReservedValue;
+use cranelift_frontend::{FunctionBuilder, Variable};
+use hashbrown::{HashMap, hash_map};
+use smallvec::SmallVec;
+use wasmparser::{FuncValidator, MemArg, Operator, WasmModuleResources};
+
 use crate::util::zip_eq::IteratorExt;
 use crate::wasm::cranelift::CraneliftGlobal;
 use crate::wasm::cranelift::env::TranslationEnvironment;
@@ -16,24 +36,6 @@ use crate::wasm::indices::{
     DataIndex, ElemIndex, FuncIndex, GlobalIndex, MemoryIndex, TableIndex, TypeIndex,
 };
 use crate::wasm::trap::{TRAP_NULL_REFERENCE, TRAP_UNREACHABLE};
-use alloc::vec;
-use alloc::vec::Vec;
-use anyhow::bail;
-use cranelift_codegen::ir;
-use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
-use cranelift_codegen::ir::immediates::Offset32;
-use cranelift_codegen::ir::types::{
-    F32, F32X4, F64, F64X2, I8, I8X16, I16, I16X8, I32, I32X4, I64, I64X2,
-};
-use cranelift_codegen::ir::{
-    AtomicRmwOp, ConstantData, JumpTableData, MemFlags, TrapCode, ValueLabel,
-};
-use cranelift_codegen::ir::{InstBuilder, Type, Value};
-use cranelift_entity::packed_option::ReservedValue;
-use cranelift_frontend::{FunctionBuilder, Variable};
-use hashbrown::{HashMap, hash_map};
-use smallvec::SmallVec;
-use wasmparser::{FuncValidator, MemArg, Operator, WasmModuleResources};
 
 /// Like `Option<T>` but specifically for passing information about transitions
 /// from reachable to unreachable state and the like from callees to callers.

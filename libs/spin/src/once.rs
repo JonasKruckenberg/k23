@@ -5,9 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::{AtomicU8, Ordering};
 use core::mem;
+
 use util::loom_const_fn;
+
+use crate::loom::{AtomicU8, Ordering};
 
 /// No initialization has run yet, and no thread is currently using the Once.
 const STATUS_INCOMPLETE: u8 = 0;
@@ -148,9 +150,10 @@ impl Drop for PanicGuard<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc::channel;
+
     use super::*;
     use crate::loom::thread;
-    use std::sync::mpsc::channel;
 
     #[test]
     fn smoke_once() {

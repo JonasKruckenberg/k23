@@ -5,8 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::utils::enum_accessors;
 use cranelift_entity::entity_impl;
+
+use crate::wasm::utils::enum_accessors;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeIndex(u32);

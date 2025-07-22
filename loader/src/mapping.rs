@@ -5,22 +5,24 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::alloc::Layout;
+use core::num::NonZeroUsize;
+use core::range::Range;
+use core::{cmp, ptr, slice};
+
+use bitflags::bitflags;
+use fallible_iterator::FallibleIterator;
+use loader_api::TlsTemplate;
+use xmas_elf::P64;
+use xmas_elf::dynamic::Tag;
+use xmas_elf::program::{SegmentData, Type};
+
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::page_alloc::PageAllocator;
 use crate::{SelfRegions, arch};
-use bitflags::bitflags;
-use core::alloc::Layout;
-use core::num::NonZeroUsize;
-use core::range::Range;
-use core::{cmp, ptr, slice};
-use fallible_iterator::FallibleIterator;
-use loader_api::TlsTemplate;
-use xmas_elf::P64;
-use xmas_elf::dynamic::Tag;
-use xmas_elf::program::{SegmentData, Type};
 
 bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq)]

@@ -5,12 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::mem::bootstrap_alloc::BootstrapAllocator;
-use crate::{INITIAL_HEAP_SIZE_PAGES, arch};
 use core::alloc::Layout;
 use core::range::Range;
+
 use loader_api::BootInfo;
 use talc::{ErrOnOom, Span, Talc, Talck};
+
+use crate::mem::bootstrap_alloc::BootstrapAllocator;
+use crate::{INITIAL_HEAP_SIZE_PAGES, arch};
 
 #[global_allocator]
 static KERNEL_ALLOCATOR: Talck<spin::Mutex<()>, ErrOnOom> = Talc::new(ErrOnOom).lock();

@@ -5,10 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use bumpalo::Bump;
 use core::ffi::CStr;
 use core::ptr::NonNull;
 use core::{fmt, iter, mem, slice};
+
+use bumpalo::Bump;
 use fallible_iterator::FallibleIterator;
 use fdt::{CellSizes, Error, Fdt, NodeName, StringList};
 use hashbrown::HashMap;

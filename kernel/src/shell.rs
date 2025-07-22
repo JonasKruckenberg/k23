@@ -15,19 +15,21 @@ const S: &str = r#"
 /_/\_\/____/____/
 "#;
 
-use crate::device_tree::DeviceTree;
-use crate::mem::{Mmap, PhysicalAddress, with_kernel_aspace};
-use crate::state::global;
-use crate::{arch, irq};
 use alloc::string::{String, ToString};
 use core::fmt;
 use core::fmt::Write;
 use core::ops::DerefMut;
 use core::range::Range;
 use core::str::FromStr;
+
 use fallible_iterator::FallibleIterator;
 use kasync::executor::Executor;
 use spin::{Barrier, OnceLock};
+
+use crate::device_tree::DeviceTree;
+use crate::mem::{Mmap, PhysicalAddress, with_kernel_aspace};
+use crate::state::global;
+use crate::{arch, irq};
 
 static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
 

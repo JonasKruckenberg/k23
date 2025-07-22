@@ -11,18 +11,20 @@ mod smoke;
 mod spectest;
 mod wast;
 
-use crate::tests::args::Arguments;
-use crate::tests::printer::Printer;
-use crate::{arch, state};
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use core::any::Any;
 use core::ptr::addr_of;
 use core::sync::atomic::{AtomicU64, Ordering};
 use core::{hint, slice};
+
 use futures::FutureExt;
 use futures::future::try_join_all;
 use ktest::Test;
+
+use crate::tests::args::Arguments;
+use crate::tests::printer::Printer;
+use crate::{arch, state};
 
 /// The outcome of performing a single test.
 pub enum Outcome {

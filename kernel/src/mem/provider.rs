@@ -5,15 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::frame_alloc::{FRAME_ALLOC, FrameAllocator};
-use crate::mem::frame_alloc::{Frame, frame_list::FrameList};
 use alloc::sync::Arc;
 use core::alloc::Layout;
 use core::fmt::Debug;
 use core::iter;
 use core::num::NonZeroUsize;
+
 use spin::{LazyLock, OnceLock};
+
+use crate::arch;
+use crate::mem::frame_alloc::frame_list::FrameList;
+use crate::mem::frame_alloc::{FRAME_ALLOC, Frame, FrameAllocator};
 
 pub trait Provider: Debug {
     // TODO make async

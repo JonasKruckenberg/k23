@@ -5,20 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::frame_alloc::FrameAllocator;
-use crate::mem::provider::{Provider, THE_ZERO_FRAME};
-use crate::mem::{
-    AddressRangeExt, PhysicalAddress,
-    frame_alloc::{
-        Frame,
-        frame_list::{Entry, FrameList},
-    },
-};
 use alloc::sync::Arc;
-use anyhow::ensure;
 use core::range::Range;
+
+use anyhow::ensure;
 use spin::RwLock;
+
+use crate::arch;
+use crate::mem::frame_alloc::frame_list::{Entry, FrameList};
+use crate::mem::frame_alloc::{Frame, FrameAllocator};
+use crate::mem::provider::{Provider, THE_ZERO_FRAME};
+use crate::mem::{AddressRangeExt, PhysicalAddress};
 
 #[derive(Debug)]
 pub enum Vmo {

@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::Ticks;
-use crate::time::timer::entry::Entry;
-use crate::time::timer::{Core, Deadline};
-use cordyceps::List;
 use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
+
+use cordyceps::List;
+
+use crate::time::Ticks;
+use crate::time::timer::entry::Entry;
+use crate::time::timer::{Core, Deadline};
 
 #[derive(Debug)]
 pub(crate) struct Wheel {

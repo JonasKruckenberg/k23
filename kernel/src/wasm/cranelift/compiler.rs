@@ -5,6 +5,26 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::fmt::Formatter;
+use core::{cmp, fmt, mem};
+
+use anyhow::anyhow;
+use cranelift_codegen::control::ControlPlane;
+use cranelift_codegen::ir::condcodes::IntCC;
+use cranelift_codegen::ir::immediates::Offset32;
+use cranelift_codegen::ir::{
+    Endianness, GlobalValueData, InstBuilder, MemFlags, Signature, Type, UserExternalName,
+    UserFuncName, Value,
+};
+use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
+use cranelift_codegen::{TextSectionBuilder, ir};
+use cranelift_frontend::FunctionBuilder;
+use spin::Mutex;
+use target_lexicon::Triple;
+use wasmparser::{FuncValidatorAllocations, FunctionBody};
+
 use crate::arch;
 use crate::wasm::builtins::BuiltinFunctionIndex;
 use crate::wasm::compile::{CompiledFunction, Compiler, FilePos, NS_WASM_FUNC};
@@ -20,22 +40,6 @@ use crate::wasm::utils::{array_call_signature, u32_offset_of, value_type, wasm_c
 use crate::wasm::vm::{
     StaticVMShape, VMArrayCallHostFuncContext, VMCONTEXT_MAGIC, VMFuncRef, VMStoreContext,
 };
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-use anyhow::anyhow;
-use core::fmt::Formatter;
-use core::{cmp, fmt, mem};
-use cranelift_codegen::control::ControlPlane;
-use cranelift_codegen::ir::condcodes::IntCC;
-use cranelift_codegen::ir::immediates::Offset32;
-use cranelift_codegen::ir::{Endianness, InstBuilder, Type, Value};
-use cranelift_codegen::ir::{GlobalValueData, MemFlags, Signature, UserExternalName, UserFuncName};
-use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
-use cranelift_codegen::{TextSectionBuilder, ir};
-use cranelift_frontend::FunctionBuilder;
-use spin::Mutex;
-use target_lexicon::Triple;
-use wasmparser::{FuncValidatorAllocations, FunctionBody};
 
 pub struct CraneliftCompiler {
     isa: OwnedTargetIsa,

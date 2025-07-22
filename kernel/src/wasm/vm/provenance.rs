@@ -5,12 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::indices::VMSharedTypeIndex;
 use core::fmt;
 use core::marker::PhantomData;
 use core::num::NonZeroUsize;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;
+
+use crate::wasm::indices::VMSharedTypeIndex;
 
 /// A pointer that is used by compiled code, or in other words is accessed
 /// outside of Rust.

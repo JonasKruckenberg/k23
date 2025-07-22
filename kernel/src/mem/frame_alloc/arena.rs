@@ -5,17 +5,19 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use super::frame::FrameInfo;
-use crate::arch;
-use crate::mem::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-use cordyceps::List;
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core::range::Range;
 use core::{cmp, fmt, mem, slice};
+
+use cordyceps::List;
 use fallible_iterator::FallibleIterator;
 use smallvec::SmallVec;
+
+use super::frame::FrameInfo;
+use crate::arch;
+use crate::mem::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 const ARENA_PAGE_BOOKKEEPING_SIZE: usize = size_of::<FrameInfo>();
 const MAX_WASTED_ARENA_BYTES: usize = 0x8_4000; // 528 KiB

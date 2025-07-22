@@ -5,10 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::{Link, Linked};
-use crate::{WAVLTree, utils};
 use core::iter::FusedIterator;
 use core::pin::Pin;
+
+use crate::{Link, Linked, WAVLTree, utils};
 
 /// An iterator over references to the entries of a [`WAVLTree`].
 pub struct Iter<'a, T: Linked + ?Sized> {

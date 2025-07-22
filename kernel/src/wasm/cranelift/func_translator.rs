@@ -5,15 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::cranelift::code_translator::{bitcast_wasm_returns, translate_operator};
-use crate::wasm::cranelift::env::TranslationEnvironment;
-use crate::wasm::cranelift::state::FuncTranslationState;
-use crate::wasm::cranelift::utils::get_vmctx_value_label;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{InstBuilder, ValueLabel};
 use cranelift_entity::EntityRef;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use wasmparser::{BinaryReader, FuncValidator, FunctionBody, WasmModuleResources};
+
+use crate::wasm::cranelift::code_translator::{bitcast_wasm_returns, translate_operator};
+use crate::wasm::cranelift::env::TranslationEnvironment;
+use crate::wasm::cranelift::state::FuncTranslationState;
+use crate::wasm::cranelift::utils::get_vmctx_value_label;
 
 pub struct FuncTranslator {
     func_ctx: FunctionBuilderContext,

@@ -5,12 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::error::Error;
 use core::fmt::Formatter;
 use core::range::Range;
 use core::{fmt, slice};
+
 use loader_api::LoaderConfig;
 use xmas_elf::program::{ProgramHeader, Type};
+
+use crate::error::Error;
 
 /// The inlined kernel
 static INLINED_KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KERNEL")));

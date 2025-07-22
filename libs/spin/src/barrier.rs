@@ -5,9 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::Mutex;
 use core::hint;
+
 use util::loom_const_fn;
+
+use crate::Mutex;
 
 pub struct Barrier {
     lock: Mutex<BarrierState>,
@@ -69,10 +71,10 @@ impl BarrierWaitResult {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::loom::Arc;
-    use crate::loom::thread;
     use std::sync::mpsc::{TryRecvError, channel};
+
+    use super::*;
+    use crate::loom::{Arc, thread};
 
     #[test]
     fn test_barrier() {

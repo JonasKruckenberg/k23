@@ -1,7 +1,9 @@
+use alloc::format;
+
+use hashbrown::HashMap;
+
 use crate::Error;
 use crate::token::{Id, Index};
-use alloc::format;
-use hashbrown::HashMap;
 
 #[derive(Default)]
 pub struct Namespace<'a> {

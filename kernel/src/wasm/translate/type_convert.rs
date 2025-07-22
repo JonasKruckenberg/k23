@@ -5,14 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::vec::Vec;
+
+use wasmparser::UnpackedIndex;
+
 use crate::wasm::indices::{CanonicalizedTypeIndex, ModuleInternedTypeIndex, TypeIndex};
 use crate::wasm::translate::types::{
     WasmArrayType, WasmCompositeType, WasmCompositeTypeInner, WasmFieldType, WasmHeapType,
     WasmHeapTypeInner, WasmRefType, WasmStorageType, WasmStructType, WasmValType,
 };
 use crate::wasm::translate::{ModuleTypes, TranslatedModule, WasmFuncType, WasmSubType};
-use alloc::vec::Vec;
-use wasmparser::UnpackedIndex;
 
 /// A type that knows how to convert from `wasmparser` types to types in this crate.
 pub struct WasmparserTypeConverter<'a> {
@@ -48,9 +50,9 @@ impl<'a> WasmparserTypeConverter<'a> {
         match ty {
             wasmparser::HeapType::Concrete(index) => self.lookup_heap_type(index),
             wasmparser::HeapType::Abstract { shared, ty } => {
-                use crate::wasm::translate::types::WasmHeapTypeInner::*;
-
                 use wasmparser::AbstractHeapType;
+
+                use crate::wasm::translate::types::WasmHeapTypeInner::*;
                 let ty = match ty {
                     AbstractHeapType::Func => Func,
                     AbstractHeapType::Extern => Extern,

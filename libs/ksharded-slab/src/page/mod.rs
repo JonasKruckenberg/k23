@@ -1,15 +1,18 @@
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
 use crate::Pack;
 use crate::cfg::{self, CfgPrivate};
 use crate::clear::Clear;
-use alloc::boxed::Box;
-use alloc::vec::Vec;
 
 pub(crate) mod slot;
 mod stack;
 
-pub(crate) use self::slot::Slot;
 use core::cell::UnsafeCell;
-use core::{fmt, marker::PhantomData};
+use core::fmt;
+use core::marker::PhantomData;
+
+pub(crate) use self::slot::Slot;
 
 /// A page address encodes the location of a slot within a shard (the page
 /// number and offset within that page) as a single linear value.

@@ -7,9 +7,10 @@
 
 //! Supervisor Trap Vector Base Address Register
 
-use super::{read_csr_as, set_csr};
 use core::fmt;
 use core::fmt::Formatter;
+
+use super::{read_csr_as, set_csr};
 
 #[derive(Clone, Copy)]
 pub struct Stvec {

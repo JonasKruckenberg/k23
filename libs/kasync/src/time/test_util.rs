@@ -5,12 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::sync::Arc;
-use crate::loom::sync::Mutex as StdMutex;
-use crate::time::{Clock, RawClock, RawClockVTable};
 use core::ptr::NonNull;
 use core::time::Duration;
 use std::time::Instant as StdInstant;
+
+use crate::loom::sync::{Arc, Mutex as StdMutex};
+use crate::time::{Clock, RawClock, RawClockVTable};
 
 pub struct MockClock {
     time_anchor: StdInstant,

@@ -5,8 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::{Link, Linked, WAVLTree, utils};
 use core::pin::Pin;
+
+use crate::{Link, Linked, WAVLTree, utils};
 
 /// A cursor which provides read-only access to a [`WAVLTree`].
 pub struct Cursor<'a, T>

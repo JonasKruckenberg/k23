@@ -5,10 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::vm::CodeObject;
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
+
 use spin::{OnceLock, RwLock};
+
+use crate::wasm::vm::CodeObject;
 
 fn global_code() -> &'static RwLock<GlobalRegistry> {
     static GLOBAL_CODE: OnceLock<RwLock<GlobalRegistry>> = OnceLock::new();

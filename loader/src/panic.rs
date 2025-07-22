@@ -5,8 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
 use abort::abort;
+
+use crate::arch;
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {

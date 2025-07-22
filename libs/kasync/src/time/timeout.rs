@@ -5,18 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::pin::Pin;
+use core::task::{Context, Poll};
+use core::time::Duration;
+
 use pin_project::pin_project;
 
-use crate::time::{
-    TimeError, Timer,
-    instant::Instant,
-    sleep::{Sleep, sleep, sleep_until},
-};
-use core::{
-    pin::Pin,
-    task::{Context, Poll},
-    time::Duration,
-};
+use crate::time::instant::Instant;
+use crate::time::sleep::{Sleep, sleep, sleep_until};
+use crate::time::{TimeError, Timer};
 
 /// Requires a `Future` to complete before the specified duration has elapsed.
 ///

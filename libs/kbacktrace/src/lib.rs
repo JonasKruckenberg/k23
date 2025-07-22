@@ -10,9 +10,10 @@
 
 mod symbolize;
 
-use arrayvec::ArrayVec;
 use core::fmt;
 use core::fmt::Formatter;
+
+use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
 use unwind2::FrameIter;
 

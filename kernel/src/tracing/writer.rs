@@ -5,12 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::tracing::color::{AnsiEscapes, Color, SetColor};
 use core::cell::UnsafeCell;
 use core::fmt::{Arguments, Write};
 use core::{cmp, fmt};
+
 use spin::{ReentrantMutex, ReentrantMutexGuard};
 use tracing_core::Metadata;
+
+use crate::tracing::color::{AnsiEscapes, Color, SetColor};
 
 pub trait MakeWriter<'a> {
     type Writer: fmt::Write;

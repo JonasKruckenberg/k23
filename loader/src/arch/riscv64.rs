@@ -5,17 +5,19 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::arch::{asm, naked_asm};
+use core::fmt;
+use core::num::NonZero;
+use core::ptr::NonNull;
+
+use bitflags::bitflags;
+use riscv::satp;
+
 use crate::GlobalInitResult;
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
 use crate::machine_info::MachineInfo;
 use crate::mapping::Flags;
-use bitflags::bitflags;
-use core::arch::{asm, naked_asm};
-use core::fmt;
-use core::num::NonZero;
-use core::ptr::NonNull;
-use riscv::satp;
 
 pub const DEFAULT_ASID: u16 = 0;
 pub const KERNEL_ASPACE_BASE: usize = 0xffffffc000000000;

@@ -5,16 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::{
-    ConstExprEvaluator, Engine, Extern, Instance, Linker, Module, PlaceholderAllocatorDontUse,
-    Store, Val,
-};
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::{format, vec};
-use anyhow::{Context, anyhow, bail};
 use core::fmt::{Display, LowerHex};
+
+use anyhow::{Context, anyhow, bail};
 use spin::Mutex;
 use wasmparser::Validator;
 use wast::core::{EncodeOptions, NanPattern, V128Pattern, WastArgCore, WastRetCore};
@@ -22,6 +19,11 @@ use wast::parser::ParseBuffer;
 use wast::token::{F32, F64};
 use wast::{
     Error, QuoteWat, Wast, WastArg, WastDirective, WastExecute, WastInvoke, WastRet, Wat, parser,
+};
+
+use crate::wasm::{
+    ConstExprEvaluator, Engine, Extern, Instance, Linker, Module, PlaceholderAllocatorDontUse,
+    Store, Val,
 };
 
 macro_rules! wast_tests {

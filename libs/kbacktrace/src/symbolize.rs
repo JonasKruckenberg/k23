@@ -7,6 +7,7 @@
 
 use core::ffi::c_void;
 use core::{fmt, str};
+
 use fallible_iterator::FallibleIterator;
 use gimli::{EndianSlice, NativeEndian};
 use rustc_demangle::{Demangle, try_demangle};

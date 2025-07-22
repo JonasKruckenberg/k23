@@ -5,20 +5,22 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::borrow::Cow;
+use alloc::vec::Vec;
+use core::fmt;
+use core::range::Range;
+
+use cranelift_entity::packed_option::PackedOption;
+use cranelift_entity::{EntityRef, PrimaryMap, SecondaryMap};
+use hashbrown::HashMap;
+use wasmparser::{Validator, ValidatorId};
+
 use crate::wasm::indices::{ModuleInternedRecGroupIndex, ModuleInternedTypeIndex};
 use crate::wasm::translate::type_convert::WasmparserTypeConverter;
 use crate::wasm::translate::types::WasmSubType;
 use crate::wasm::translate::{
     TranslatedModule, WasmCompositeType, WasmCompositeTypeInner, WasmFuncType,
 };
-use alloc::borrow::Cow;
-use alloc::vec::Vec;
-use core::fmt;
-use core::range::Range;
-use cranelift_entity::packed_option::PackedOption;
-use cranelift_entity::{EntityRef, PrimaryMap, SecondaryMap};
-use hashbrown::HashMap;
-use wasmparser::{Validator, ValidatorId};
 
 /// Types defined within a single WebAssembly module.
 #[derive(Debug, Default)]

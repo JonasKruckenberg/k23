@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::profile::Profile;
-use crate::tracing::OutputOptions;
-use crate::{Options, build, qemu};
-use clap::{Parser, ValueHint};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::{fs, thread};
+
+use clap::{Parser, ValueHint};
+
+use crate::profile::Profile;
+use crate::tracing::OutputOptions;
+use crate::{Options, build, qemu};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {

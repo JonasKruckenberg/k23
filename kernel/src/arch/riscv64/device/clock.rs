@@ -5,11 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::device_tree::Device;
 use core::ptr;
 use core::time::Duration;
+
 use kasync::time::{Clock, NANOS_PER_SEC, RawClock, RawClockVTable};
 use riscv::sbi;
+
+use crate::device_tree::Device;
 
 static CLOCK_VTABLE: RawClockVTable =
     RawClockVTable::new(clone_raw, now_raw, schedule_wakeup_raw, drop_raw);

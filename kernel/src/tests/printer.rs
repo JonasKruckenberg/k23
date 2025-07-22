@@ -5,11 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use super::args::FormatSetting;
-use super::{Conclusion, Outcome};
 use alloc::boxed::Box;
 use core::sync::atomic::Ordering;
+
 use ktest::{Test, TestInfo};
+
+use super::args::FormatSetting;
+use super::{Conclusion, Outcome};
 
 pub struct Printer {
     format: FormatSetting,

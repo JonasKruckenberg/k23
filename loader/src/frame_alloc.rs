@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::error::Error;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{cmp, iter, ptr, slice};
+
 use fallible_iterator::FallibleIterator;
+
+use crate::arch;
+use crate::error::Error;
 
 pub struct FrameAllocator<'a> {
     regions: &'a [Range<usize>],

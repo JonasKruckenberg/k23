@@ -5,14 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::mem::VirtualAddress;
-use crate::wasm::builtins::{BuiltinFunctionIndex, foreach_builtin_function};
-use crate::wasm::indices::{DefinedMemoryIndex, VMSharedTypeIndex};
-use crate::wasm::store::StoreOpaque;
-use crate::wasm::translate::{WasmHeapTopType, WasmValType};
-use crate::wasm::type_registry::RegisteredType;
-use crate::wasm::types::FuncType;
-use crate::wasm::vm::provenance::{VmPtr, VmSafe};
 use alloc::boxed::Box;
 use core::any::Any;
 use core::cell::UnsafeCell;
@@ -22,8 +14,18 @@ use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
+
 use cranelift_entity::Unsigned;
 use static_assertions::const_assert_eq;
+
+use crate::mem::VirtualAddress;
+use crate::wasm::builtins::{BuiltinFunctionIndex, foreach_builtin_function};
+use crate::wasm::indices::{DefinedMemoryIndex, VMSharedTypeIndex};
+use crate::wasm::store::StoreOpaque;
+use crate::wasm::translate::{WasmHeapTopType, WasmValType};
+use crate::wasm::type_registry::RegisteredType;
+use crate::wasm::types::FuncType;
+use crate::wasm::vm::provenance::{VmPtr, VmSafe};
 
 /// Magic value for core Wasm VM contexts.
 ///

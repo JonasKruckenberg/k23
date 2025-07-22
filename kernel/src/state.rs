@@ -5,14 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::device_tree::DeviceTree;
 use core::cell::OnceCell;
+
 use cpu_local::cpu_local;
 use kasync::executor::Executor;
 use kasync::time::{Instant, Timer};
 use loader_api::BootInfo;
 use spin::OnceLock;
+
+use crate::arch;
+use crate::device_tree::DeviceTree;
 
 static GLOBAL: OnceLock<Global> = OnceLock::new();
 

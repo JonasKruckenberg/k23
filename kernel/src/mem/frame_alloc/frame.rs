@@ -5,12 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::address::{PhysicalAddress, VirtualAddress};
-use crate::mem::frame_alloc::FRAME_ALLOC;
 use alloc::slice;
-use cordyceps::Linked;
-use cordyceps::list;
 use core::marker::PhantomData;
 use core::mem::offset_of;
 use core::ops::Deref;
@@ -18,7 +13,13 @@ use core::ptr::NonNull;
 use core::sync::atomic;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
+
+use cordyceps::{Linked, list};
 use static_assertions::assert_impl_all;
+
+use crate::arch;
+use crate::mem::address::{PhysicalAddress, VirtualAddress};
+use crate::mem::frame_alloc::FRAME_ALLOC;
 
 /// Soft limit on the amount of references that may be made to a `Frame`.
 const MAX_REFCOUNT: usize = isize::MAX as usize;

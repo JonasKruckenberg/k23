@@ -5,16 +5,18 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::cmp;
+
+use fallible_iterator::FallibleIterator;
+
 use crate::{
     Context, DebugFile, Error, Function, LazyFunctions, LazyLines, LazyResult,
     LineLocationRangeIter, Lines, Location, LookupContinuation, LookupResult, RangeAttributes,
     SimpleLookup, SplitDwarfLoad,
 };
-use alloc::boxed::Box;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
-use core::cmp;
-use fallible_iterator::FallibleIterator;
 
 pub(crate) struct UnitRange {
     unit_id: usize,

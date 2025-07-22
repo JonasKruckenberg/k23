@@ -5,16 +5,18 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::wasm::compile::Compiler;
-use crate::wasm::cranelift::CraneliftCompiler;
-use crate::wasm::type_registry::TypeRegistry;
 use alloc::sync::Arc;
 use core::sync::atomic::AtomicU64;
+
 use cranelift_codegen::settings::{Configurable, Flags};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use spin::{Mutex, MutexGuard};
+
+use crate::arch;
+use crate::wasm::compile::Compiler;
+use crate::wasm::cranelift::CraneliftCompiler;
+use crate::wasm::type_registry::TypeRegistry;
 
 /// Global context for the runtime.
 ///

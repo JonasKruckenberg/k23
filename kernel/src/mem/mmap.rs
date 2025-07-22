@@ -5,19 +5,21 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::address::AddressRangeExt;
-use crate::mem::{
-    AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions, PhysicalAddress,
-    VirtualAddress,
-};
 use alloc::string::String;
 use alloc::sync::Arc;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{ptr, slice};
+
 use spin::Mutex;
+
+use crate::arch;
+use crate::mem::address::AddressRangeExt;
+use crate::mem::{
+    AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions, PhysicalAddress,
+    VirtualAddress,
+};
 
 /// A memory mapping.
 ///

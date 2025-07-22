@@ -13,7 +13,8 @@ mod test_util;
 mod timeout;
 mod timer;
 
-use core::{fmt, time::Duration};
+use core::fmt;
+use core::time::Duration;
 
 pub use clock::{Clock, RawClock, RawClockVTable};
 pub use instant::Instant;

@@ -7,10 +7,11 @@
 
 //! Supervisor Cause Register
 
-use super::{read_csr_as, write_csr};
-use crate::trap::Trap;
 use core::fmt;
 use core::fmt::Formatter;
+
+use super::{read_csr_as, write_csr};
+use crate::trap::Trap;
 
 /// scause register
 #[derive(Clone, Copy)]

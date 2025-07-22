@@ -5,16 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use super::{Once, once::ExclusiveState};
-use crate::loom::UnsafeCell;
-use core::{
-    fmt,
-    mem::ManuallyDrop,
-    ops::Deref,
-    panic::{RefUnwindSafe, UnwindSafe},
-    ptr,
-};
+use core::mem::ManuallyDrop;
+use core::ops::Deref;
+use core::panic::{RefUnwindSafe, UnwindSafe};
+use core::{fmt, ptr};
+
 use util::loom_const_fn;
+
+use super::Once;
+use super::once::ExclusiveState;
+use crate::loom::UnsafeCell;
 
 union Data<T, F> {
     value: ManuallyDrop<T>,
@@ -167,11 +167,11 @@ impl<T: UnwindSafe, F: UnwindSafe> UnwindSafe for LazyLock<T, F> {}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::loom::thread;
-    use crate::loom::{AtomicUsize, Ordering};
-    use crate::{Mutex, OnceLock};
     use std::cell::LazyCell;
+
+    use super::*;
+    use crate::loom::{AtomicUsize, Ordering, thread};
+    use crate::{Mutex, OnceLock};
 
     fn spawn_and_wait<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
         thread::spawn(f).join().unwrap()
