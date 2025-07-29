@@ -12,7 +12,7 @@ harness = false
 
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
 rand= { workspace = true, features = ["thread_rng"] }
-criterion = "0.6.0"
+criterion = "0.7.0"
 
 [features]
 dot = []
