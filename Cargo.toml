@@ -154,7 +154,7 @@ eyre = "0.6.12"
 clap = { version = "4.5.38", features = ["derive", "env"] }
 serde = { version = "1.0.219", features = ["derive"] }
 toml = "0.9.0"
-toml_edit = "0.22.26"
+toml_edit = "0.23.0"
 indoc = "2.0.6"
 tracing-subscriber = { version = "0.3", git = "https://github.com/tokio-rs/tracing", branch = "master" }
 tracing-error = { version = "0.2", git = "https://github.com/tokio-rs/tracing", branch = "master" }
