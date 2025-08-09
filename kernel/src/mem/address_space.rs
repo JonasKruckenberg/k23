@@ -164,8 +164,7 @@ impl AddressSpace {
             &mut Batch,
         ) -> crate::Result<AddressSpaceRegion>,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
-        let layout = layout.pad_to_align();
-        let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY)?;
+        let base = self.find_spot(layout.pad_to_align(), VIRT_ALLOC_ENTROPY)?;
         let range = Range::from(
             base..base
                 .checked_add(layout.size())
