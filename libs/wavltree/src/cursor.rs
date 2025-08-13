@@ -88,8 +88,12 @@ where
     pub unsafe fn get_ptr(&self) -> Link<T> {
         self.current
     }
-    pub fn get(&self) -> Option<&'a T> {
-        unsafe { self.current.map(|ptr| ptr.as_ref()) }
+    pub const fn get(&self) -> Option<&'a T> {
+        if let Some(ptr) = self.current {
+            Some(unsafe { ptr.as_ref() })
+        } else {
+            None
+        }
     }
     pub fn get_mut(&mut self) -> Option<Pin<&'a mut T>> {
         unsafe { self.current.map(|mut ptr| Pin::new_unchecked(ptr.as_mut())) }
