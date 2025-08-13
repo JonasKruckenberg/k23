@@ -17,6 +17,7 @@ extern crate alloc;
 
 mod error;
 pub mod executor;
+pub mod io;
 pub mod loom;
 pub mod sync;
 pub mod task;
