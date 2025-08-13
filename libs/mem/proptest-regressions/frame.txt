@@ -1,0 +1,13 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4cf994999dd04e4312e6dd0f9601044b488e1eda3d9c18cdfd57ac4a3e1b00fc # shrinks to num_frames = 0, area_start = 0, alloc_frames = 1
+cc 3a702a85b8b8ece9062ec02861bb17665fa95817c7b65a2897b2a7db347db322 # shrinks to num_frames = 292, area_start = 0, alloc_frames = 257
+cc 3065cda233769bdf9b16f3f134e65dcfe170c9a9462cfb013139b9203a43c6c7 # shrinks to num_frames = 512, area_start = 4096, alloc_frames = 257
+cc d333ce22c6888222b53fa6d21bd2c29aece2aaf1266c7251b2deb86f679221c5 # shrinks to num_frames = 2357, area_start = 3814267094354915328, alloc_frames = 354
+cc 14f06bd08feb57c49cd25113a630c65e48383d6666178b7b3c157099b40d6286 # shrinks to num_frames = 1421, area_start = 12923327278880337920, alloc_frames = 257
+cc 007d0fba2f9391c80693c16b411362c67d3be3995856f30e7352aa40e70bb7cc # shrinks to num_frames = 82, area_start = 5938167848445603840, alloc_frames = 20
+cc 88599b677f8f36a1f4cc363c75d296624989cbefa59b120d7195e209a1a8e897 # shrinks to num_frames = 741, area_start = 9374927382302433280, alloc_frames = 231
