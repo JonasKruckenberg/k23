@@ -7,7 +7,7 @@
 
 use core::pin::Pin;
 
-use crate::{Link, Linked, WAVLTree, utils};
+use crate::{utils, Link, Linked, WAVLTree};
 
 /// A cursor which provides read-only access to a [`WAVLTree`].
 pub struct Cursor<'a, T>
@@ -88,15 +88,19 @@ where
     pub unsafe fn get_ptr(&self) -> Link<T> {
         self.current
     }
+
     pub const fn has_current(&self) -> bool {
         self.current.is_some()
     }
+
     pub fn get(&self) -> Option<&'a T> {
         unsafe { self.current.map(|ptr| ptr.as_ref()) }
     }
+
     pub fn get_mut(&mut self) -> Option<Pin<&'a mut T>> {
         unsafe { self.current.map(|mut ptr| Pin::new_unchecked(ptr.as_mut())) }
     }
+
     pub fn move_next(&mut self) {
         if let Some(current) = self.current {
             self.current = utils::next(current);
@@ -104,6 +108,7 @@ where
             self.current = None;
         }
     }
+
     pub fn move_prev(&mut self) {
         if let Some(current) = self.current {
             self.current = unsafe { utils::prev(current) };
@@ -111,11 +116,13 @@ where
             self.current = None;
         }
     }
+
     pub fn remove(&mut self) -> Option<T::Handle> {
         let handle = self._tree.remove_internal(self.current?);
         self.current = None;
         Some(handle)
     }
+
     pub fn peek_prev(&self) -> Option<&'a T> {
         if let Some(current) = self.current {
             let prev = unsafe { utils::prev(current)? };
@@ -124,6 +131,7 @@ where
             None
         }
     }
+
     pub fn peek_next(&self) -> Option<&'a T> {
         if let Some(current) = self.current {
             let next = utils::next(current)?;
@@ -132,6 +140,7 @@ where
             None
         }
     }
+
     pub fn peek_prev_mut(&self) -> Option<Pin<&'a mut T>> {
         if let Some(current) = self.current {
             let mut prev = unsafe { utils::prev(current)? };
@@ -140,6 +149,7 @@ where
             None
         }
     }
+
     pub fn peek_next_mut(&self) -> Option<Pin<&'a mut T>> {
         if let Some(current) = self.current {
             let mut next = utils::next(current)?;
@@ -148,6 +158,7 @@ where
             None
         }
     }
+
     pub fn as_cursor(&self) -> Cursor<'_, T> {
         Cursor {
             current: self.current,

@@ -1,0 +1,29 @@
+[package]
+name = "mem"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+cpu-local.workspace = true
+kasync.workspace = true
+
+# 3rd-party dependencies
+mycelium-bitfield.workspace = true
+anyhow.workspace = true
+cordyceps.workspace = true
+pin-project.workspace = true
+lock_api.workspace = true
+fallible-iterator.workspace = true
+smallvec.workspace = true
+wavltree.workspace = true
+rand_chacha.workspace = true
+rand.workspace = true
+brie-tree = "0.1.2"
+
+[dev-dependencies]
+proptest = "1.7.0"
+
+[lints]
+workspace = true
