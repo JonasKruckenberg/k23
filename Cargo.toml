@@ -138,7 +138,7 @@ hashbrown = { version = "0.15", default-features = false, features = [
     "nightly",
     "default-hasher",
 ] }
-wasmparser = { version = "0.228", default-features = false, features = ["features", "validate", "simd"] }
+wasmparser = { version = "0.236", default-features = false, features = ["features", "validate", "simd"] }
 target-lexicon = { version = "0.13.2", default-features = false }
 cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["host-arch", "core"] }
 cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["core"] }
