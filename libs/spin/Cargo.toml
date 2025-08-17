@@ -11,7 +11,7 @@ workspace = true
 
 [dependencies]
 cfg-if.workspace = true
-lock_api = { workspace = true, optional = true }
+lock_api.workspace = true
 util.workspace = true
 
 [target.'cfg(loom)'.dependencies]
@@ -19,4 +19,3 @@ loom.workspace = true
 
 [features]
 thread-local = []
-lock_api = ["dep:lock_api"]

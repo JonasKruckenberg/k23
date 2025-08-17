@@ -101,8 +101,8 @@ kasync = { path = "libs/kasync" }
 cfg-if = "1.0.0"
 log = "0.4.27"
 bitflags = "2.9.1"
-lock_api = "0.4.12"
 xmas-elf = "0.10.0"
+lock_api = "0.4.13"
 static_assertions = "1.1.0"
 rand = { version = "0.9.1", default-features = false }
 rand_chacha = { version = "0.9.0", default-features = false }

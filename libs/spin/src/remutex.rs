@@ -15,7 +15,8 @@ use core::sync::atomic::AtomicBool;
 
 use util::loom_const_fn;
 
-use crate::loom::{AtomicUsize, Ordering, UnsafeCell};
+use crate::loom::cell::UnsafeCell;
+use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 use crate::{Backoff, GuardNoSend};
 
 /// A mutex which can be recursively locked by a single thread.

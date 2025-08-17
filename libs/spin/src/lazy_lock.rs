@@ -14,7 +14,7 @@ use util::loom_const_fn;
 
 use super::Once;
 use super::once::ExclusiveState;
-use crate::loom::UnsafeCell;
+use crate::loom::cell::UnsafeCell;
 
 union Data<T, F> {
     value: ManuallyDrop<T>,
@@ -170,7 +170,8 @@ mod tests {
     use std::cell::LazyCell;
 
     use super::*;
-    use crate::loom::{AtomicUsize, Ordering, thread};
+    use crate::loom::sync::atomic::{AtomicUsize, Ordering};
+    use crate::loom::thread;
     use crate::{Mutex, OnceLock};
 
     fn spawn_and_wait<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {

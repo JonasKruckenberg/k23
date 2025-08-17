@@ -13,7 +13,7 @@ harness = false
 loader-api.workspace = true
 cpu-local.workspace = true
 trap.workspace = true
-spin = { workspace = true, features = ["thread-local", "lock_api"] }
+spin = { workspace = true, features = ["thread-local"] }
 unwind2.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
 fdt.workspace = true

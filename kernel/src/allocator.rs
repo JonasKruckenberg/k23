@@ -15,7 +15,7 @@ use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::{INITIAL_HEAP_SIZE_PAGES, arch};
 
 #[global_allocator]
-static KERNEL_ALLOCATOR: Talck<spin::Mutex<()>, ErrOnOom> = Talc::new(ErrOnOom).lock();
+static KERNEL_ALLOCATOR: Talck<spin::RawMutex, ErrOnOom> = Talc::new(ErrOnOom).lock();
 
 pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     let layout =

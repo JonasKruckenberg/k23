@@ -5,217 +5,31 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::ops::{Deref, DerefMut};
-use core::ptr::NonNull;
-use core::{fmt, mem};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
-use util::loom_const_fn;
+use lock_api::GuardSend;
 
 use crate::Backoff;
-use crate::loom::{AtomicUsize, Ordering, UnsafeCell};
 
 const READER: usize = 1 << 2;
 const UPGRADED: usize = 1 << 1;
 const WRITER: usize = 1;
 
-pub struct RwLock<T: ?Sized> {
+pub type RwLock<T> = lock_api::RwLock<RawRwLock, T>;
+pub type RwLockReadGuard<'a, T> = lock_api::RwLockReadGuard<'a, RawRwLock, T>;
+pub type RwLockWriteGuard<'a, T> = lock_api::RwLockWriteGuard<'a, RawRwLock, T>;
+pub type RwLockUpgradableReadGuard<'a, T> = lock_api::RwLockUpgradableReadGuard<'a, RawRwLock, T>;
+
+pub struct RawRwLock {
     lock: AtomicUsize,
-    data: UnsafeCell<T>,
 }
 
-/// RAII structure used to release the shared read access of a lock when
-/// dropped.
-#[clippy::has_significant_drop]
-#[must_use = "if unused the RwLock will immediately unlock"]
-pub struct RwLockReadGuard<'a, T: ?Sized + 'a> {
-    // NB: we use a pointer instead of `&'a T` to avoid `noalias` violations, because a
-    // `RwLockReadGuard` argument doesn't hold immutability for its whole scope, only until it drops.
-    // `NonNull` is also covariant over `T`, just like we would have with `&T`. `NonNull`
-    // is preferable over `const* T` to allow for niche optimization.
-    _data: NonNull<T>,
-    rwlock: &'a RwLock<T>,
-}
-
-/// RAII structure used to release the exclusive write access of a lock when
-/// dropped.
-#[clippy::has_significant_drop]
-#[must_use = "if unused the RwLock will immediately unlock"]
-pub struct RwLockWriteGuard<'a, T: ?Sized> {
-    rwlock: &'a RwLock<T>,
-}
-
-/// RAII structure used to release the upgradable read access of a lock when
-/// dropped.
-#[clippy::has_significant_drop]
-#[must_use = "if unused the RwLock will immediately unlock"]
-pub struct RwLockUpgradableReadGuard<'a, T: ?Sized + 'a> {
-    // NB: we use a pointer instead of `&'a T` to avoid `noalias` violations, because a
-    // `RwLockReadGuard` argument doesn't hold immutability for its whole scope, only until it drops.
-    // `NonNull` is also covariant over `T`, just like we would have with `&T`. `NonNull`
-    // is preferable over `const* T` to allow for niche optimization.
-    data: NonNull<T>,
-    rwlock: &'a RwLock<T>,
-}
-
-#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-unsafe impl<T: ?Sized + Send> Send for RwLock<T> {}
-#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-unsafe impl<T: ?Sized + Send + Sync> Sync for RwLock<T> {}
-
-impl<T> RwLock<T> {
-    loom_const_fn! {
-        /// Creates a new instance of an `RwLock<T>` which is unlocked.
-        #[inline]
-        pub const fn new(val: T) -> RwLock<T> {
-            RwLock {
-                data: UnsafeCell::new(val),
-                lock: AtomicUsize::new(0),
-            }
-        }
-    }
-
-    /// Consumes this `RwLock`, returning the underlying data.
-    #[inline]
-    pub fn into_inner(self) -> T {
-        self.data.into_inner()
-    }
-}
-
-impl<T: ?Sized> RwLock<T> {
-    /// Creates a new `RwLockReadGuard` without checking if the lock is held.
-    ///
-    /// # Safety
-    ///
-    /// This method must only be called if the thread logically holds a read lock.
-    ///
-    /// This function does not increment the read count of the lock. Calling this function when a
-    /// guard has already been produced is undefined behaviour unless the guard was forgotten
-    /// with `mem::forget`.
-    #[inline]
-    pub unsafe fn make_read_guard_unchecked(&self) -> RwLockReadGuard<'_, T> {
-        RwLockReadGuard {
-            _data: self.data.with_mut(|data| {
-                // Safety: ensured by caller
-                unsafe { NonNull::new_unchecked(data) }
-            }),
-            rwlock: self,
-        }
-    }
-
-    /// Creates a new `RwLockReadGuard` without checking if the lock is held.
-    ///
-    /// # Safety
-    ///
-    /// This method must only be called if the thread logically holds a write lock.
-    ///
-    /// Calling this function when a guard has already been produced is undefined behaviour unless
-    /// the guard was forgotten with `mem::forget`.
-    #[inline]
-    pub unsafe fn make_write_guard_unchecked(&self) -> RwLockWriteGuard<'_, T> {
-        RwLockWriteGuard { rwlock: self }
-    }
-
-    /// Locks this `RwLock` with shared read access, blocking the current thread
-    /// until it can be acquired.
-    ///
-    /// The calling thread will be blocked until there are no more writers which
-    /// hold the lock. There may be other readers currently inside the lock when
-    /// this method returns.
-    ///
-    /// Note that attempts to recursively acquire a read lock on a `RwLock` when
-    /// the current thread already holds one may result in a deadlock.
-    ///
-    /// Returns an RAII guard which will release this thread's shared access
-    /// once it is dropped.
-    #[inline]
-    pub fn read(&self) -> RwLockReadGuard<'_, T> {
-        self.lock_shared();
-
-        // SAFETY: The lock is held, as required.
-        unsafe { self.make_read_guard_unchecked() }
-    }
-
-    /// Attempts to acquire this `RwLock` with shared read access.
-    ///
-    /// If the access could not be granted at this time, then `None` is returned.
-    /// Otherwise, an RAII guard is returned which will release the shared access
-    /// when it is dropped.
-    ///
-    /// This function does not block.
-    #[inline]
-    pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
-        if self.try_lock_shared() {
-            // SAFETY: The lock is held, as required.
-            Some(unsafe { self.make_read_guard_unchecked() })
-        } else {
-            None
-        }
-    }
-
-    fn acquire_reader(&self) -> usize {
-        // An arbitrary cap that allows us to catch overflows long before they happen
-        const MAX_READERS: usize = usize::MAX / READER / 2;
-
-        let value = self.lock.fetch_add(READER, Ordering::Acquire);
-
-        if value > MAX_READERS * READER {
-            self.lock.fetch_sub(READER, Ordering::Relaxed);
-            panic!("Too many lock readers, cannot safely proceed");
-        } else {
-            value
-        }
-    }
-
-    /// Locks this `RwLock` with exclusive write access, blocking the current
-    /// thread until it can be acquired.
-    ///
-    /// This function will not return while other writers or other readers
-    /// currently have access to the lock.
-    ///
-    /// Returns an RAII guard which will drop the write access of this `RwLock`
-    /// when dropped.
-    #[inline]
-    pub fn write(&self) -> RwLockWriteGuard<'_, T> {
-        self.lock_exclusive();
-        // SAFETY: The lock is held, as required.
-        unsafe { self.make_write_guard_unchecked() }
-    }
-
-    /// Attempts to lock this `RwLock` with exclusive write access.
-    ///
-    /// If the lock could not be acquired at this time, then `None` is returned.
-    /// Otherwise, an RAII guard is returned which will release the lock when
-    /// it is dropped.
-    ///
-    /// This function does not block.
-    #[inline]
-    pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T>> {
-        if self.try_lock_exclusive() {
-            // SAFETY: The lock is held, as required.
-            Some(unsafe { self.make_write_guard_unchecked() })
-        } else {
-            None
-        }
-    }
-
-    /// Returns a mutable reference to the underlying data.
-    ///
-    /// Since this call borrows the `RwLock` mutably, no actual locking needs to
-    /// take place---the mutable borrow statically guarantees no locks exist.
-    #[inline]
-    pub fn get_mut(&mut self) -> &mut T {
-        self.data.with_mut(|data| {
-            // Safety: We hold a mutable reference to the RwLock so getting a mutable reference to the
-            // data is safe
-            unsafe { &mut *data }
-        })
-    }
-
-    /// Checks whether this `RwLock` is currently locked in any way.
-    #[inline]
-    pub fn is_locked(&self) -> bool {
-        self.lock.load(Ordering::Relaxed) != 0
-    }
+#[allow(clippy::undocumented_unsafe_blocks, reason = "TODO")]
+unsafe impl lock_api::RawRwLock for RawRwLock {
+    const INIT: Self = Self {
+        lock: AtomicUsize::new(0),
+    };
+    type GuardMarker = GuardSend;
 
     fn lock_shared(&self) {
         while !self.try_lock_shared() {
@@ -239,6 +53,15 @@ impl<T: ?Sized> RwLock<T> {
         }
     }
 
+    // fn try_lock_shared_weak(&self) -> bool {
+    //     self.try_lock_shared()
+    // }
+
+    unsafe fn unlock_shared(&self) {
+        debug_assert!(self.lock.load(Ordering::Relaxed) & !(WRITER | UPGRADED) > 0);
+        self.lock.fetch_sub(READER, Ordering::Release);
+    }
+
     fn lock_exclusive(&self) {
         let mut boff = Backoff::default();
         while !self.try_lock_exclusive_internal(false) {
@@ -248,6 +71,116 @@ impl<T: ?Sized> RwLock<T> {
 
     fn try_lock_exclusive(&self) -> bool {
         self.try_lock_exclusive_internal(true)
+    }
+
+    // fn try_lock_exclusive_weak(&self) -> bool {
+    //     self.try_lock_exclusive_internal(false)
+    // }
+
+    unsafe fn unlock_exclusive(&self) {
+        debug_assert_eq!(self.lock.load(Ordering::Relaxed) & WRITER, WRITER);
+
+        // Writer is responsible for clearing both WRITER and UPGRADED bits.
+        // The UPGRADED bit may be set if an upgradeable lock attempts an upgrade while this lock is held.
+        self.lock.fetch_and(!(WRITER | UPGRADED), Ordering::Release);
+    }
+}
+
+#[allow(clippy::undocumented_unsafe_blocks, reason = "TODO")]
+unsafe impl lock_api::RawRwLockUpgrade for RawRwLock {
+    fn lock_upgradable(&self) {
+        todo!()
+    }
+
+    fn try_lock_upgradable(&self) -> bool {
+        todo!()
+    }
+
+    // fn try_lock_upgradable_weak(&self) -> bool {
+    //     todo!()
+    // }
+
+    unsafe fn unlock_upgradable(&self) {
+        debug_assert_eq!(
+            self.lock.load(Ordering::Relaxed) & (WRITER | UPGRADED),
+            UPGRADED
+        );
+        self.lock.fetch_sub(UPGRADED, Ordering::AcqRel);
+    }
+
+    unsafe fn upgrade(&self) {
+        while self.try_upgrade_internal(false) {
+            #[cfg(loom)]
+            crate::loom::thread::yield_now();
+            core::hint::spin_loop();
+        }
+    }
+
+    unsafe fn try_upgrade(&self) -> bool {
+        self.try_upgrade_internal(true)
+    }
+
+    // unsafe fn try_upgrade_weak(&self) -> bool {
+    //     self.try_upgrade_internal(false)
+    // }
+}
+
+#[allow(clippy::undocumented_unsafe_blocks, reason = "TODO")]
+unsafe impl lock_api::RawRwLockDowngrade for RawRwLock {
+    unsafe fn downgrade(&self) {
+        // Reserve the read guard for ourselves
+        self.acquire_reader();
+
+        debug_assert_eq!(self.lock.load(Ordering::Relaxed) & WRITER, WRITER);
+
+        // Writer is responsible for clearing both WRITER and UPGRADED bits.
+        // The UPGRADED bit may be set if an upgradeable lock attempts an upgrade while this lock is held.
+        self.lock.fetch_and(!(WRITER | UPGRADED), Ordering::Release);
+    }
+}
+
+#[allow(clippy::undocumented_unsafe_blocks, reason = "TODO")]
+unsafe impl lock_api::RawRwLockUpgradeDowngrade for RawRwLock {
+    unsafe fn downgrade_upgradable(&self) {
+        // Reserve the read guard for ourselves
+        self.acquire_reader();
+
+        // Safety: we just acquired the lock
+        unsafe {
+            <Self as lock_api::RawRwLockUpgrade>::unlock_upgradable(self);
+        }
+    }
+
+    unsafe fn downgrade_to_upgradable(&self) {
+        debug_assert_eq!(
+            self.lock.load(Ordering::Acquire) & (WRITER | UPGRADED),
+            WRITER
+        );
+
+        // Reserve the read guard for ourselves
+        self.lock.store(UPGRADED, Ordering::Release);
+
+        debug_assert_eq!(self.lock.load(Ordering::Relaxed) & WRITER, WRITER);
+
+        // Writer is responsible for clearing both WRITER and UPGRADED bits.
+        // The UPGRADED bit may be set if an upgradeable lock attempts an upgrade while this lock is held.
+        self.lock.fetch_and(!(WRITER | UPGRADED), Ordering::Release);
+    }
+}
+
+impl RawRwLock {
+    fn acquire_reader(&self) -> usize {
+        // An arbitrary cap that allows us to catch overflows long before they happen
+        const MAX_READERS: usize = usize::MAX / READER / 2;
+
+        let value = self.lock.fetch_add(READER, Ordering::Acquire);
+
+        if value > MAX_READERS * READER {
+            self.lock.fetch_sub(READER, Ordering::Relaxed);
+            panic!("Too many lock readers, cannot safely proceed");
+        } else {
+            value
+        }
     }
 
     fn try_lock_exclusive_internal(&self, strong: bool) -> bool {
@@ -262,19 +195,6 @@ impl<T: ?Sized> RwLock<T> {
         .is_ok()
     }
 
-    unsafe fn unlock_shared(&self) {
-        debug_assert!(self.lock.load(Ordering::Relaxed) & !(WRITER | UPGRADED) > 0);
-        self.lock.fetch_sub(READER, Ordering::Release);
-    }
-
-    unsafe fn unlock_exclusive(&self) {
-        debug_assert_eq!(self.lock.load(Ordering::Relaxed) & WRITER, WRITER);
-
-        // Writer is responsible for clearing both WRITER and UPGRADED bits.
-        // The UPGRADED bit may be set if an upgradeable lock attempts an upgrade while this lock is held.
-        self.lock.fetch_and(!(WRITER | UPGRADED), Ordering::Release);
-    }
-
     fn try_upgrade_internal(&self, strong: bool) -> bool {
         compare_exchange(
             &self.lock,
@@ -285,324 +205,6 @@ impl<T: ?Sized> RwLock<T> {
             strong,
         )
         .is_ok()
-    }
-
-    unsafe fn unlock_upgradable(&self) {
-        debug_assert_eq!(
-            self.lock.load(Ordering::Relaxed) & (WRITER | UPGRADED),
-            UPGRADED
-        );
-        self.lock.fetch_sub(UPGRADED, Ordering::AcqRel);
-    }
-
-    unsafe fn upgrade(&self) {
-        while !self.try_upgrade_internal(false) {
-            #[cfg(loom)]
-            crate::loom::thread::yield_now();
-            core::hint::spin_loop();
-        }
-    }
-
-    unsafe fn try_upgrade(&self) -> bool {
-        self.try_upgrade_internal(true)
-    }
-
-    unsafe fn downgrade_upgradable(&self) {
-        // Reserve the read guard for ourselves
-        self.acquire_reader();
-
-        // Safety: we just acquired the lock
-        unsafe {
-            self.unlock_upgradable();
-        }
-    }
-}
-
-impl<T: Default> Default for RwLock<T> {
-    #[inline]
-    fn default() -> RwLock<T> {
-        RwLock::new(Default::default())
-    }
-}
-
-impl<T> From<T> for RwLock<T> {
-    #[inline]
-    fn from(t: T) -> RwLock<T> {
-        RwLock::new(t)
-    }
-}
-
-impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLock<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut d = f.debug_struct("RwLock");
-        match self.try_read() {
-            Some(guard) => d.field("data", &&*guard),
-            None => {
-                // Additional format_args! here is to remove quotes around <locked> in debug output.
-                d.field("data", &format_args!("<locked>"))
-            }
-        };
-        d.finish()
-    }
-}
-
-impl<T: ?Sized> !Send for RwLockReadGuard<'_, T> {}
-#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-unsafe impl<T: Sync + ?Sized> Sync for RwLockReadGuard<'_, T> {}
-
-impl<'a, T: ?Sized + 'a> RwLockReadGuard<'a, T> {
-    /// Returns a reference to the original reader-writer lock object.
-    pub fn rwlock(s: &Self) -> &'a RwLock<T> {
-        s.rwlock
-    }
-}
-
-impl<'a, T: ?Sized + 'a> Deref for RwLockReadGuard<'a, T> {
-    type Target = T;
-    #[inline]
-    fn deref(&self) -> &T {
-        self.rwlock.data.with(|data| {
-            // Safety: RwLockReadGuard always holds a read lock, so obtaining an immutable reference
-            // is safe
-            unsafe { &*data }
-        })
-    }
-}
-
-impl<'a, T: ?Sized + 'a> Drop for RwLockReadGuard<'a, T> {
-    #[inline]
-    fn drop(&mut self) {
-        // Safety: An RwLockReadGuard always holds a shared lock.
-        unsafe {
-            self.rwlock.unlock_shared();
-        }
-    }
-}
-
-impl<'a, T: fmt::Debug + ?Sized + 'a> fmt::Debug for RwLockReadGuard<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&**self, f)
-    }
-}
-
-impl<'a, T: fmt::Display + ?Sized + 'a> fmt::Display for RwLockReadGuard<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (**self).fmt(f)
-    }
-}
-
-impl<T: ?Sized> !Send for RwLockWriteGuard<'_, T> {}
-#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-unsafe impl<T: Sync + ?Sized> Sync for RwLockWriteGuard<'_, T> {}
-
-impl<'a, T: ?Sized + 'a> RwLockWriteGuard<'a, T> {
-    /// Returns a reference to the original reader-writer lock object.
-    pub fn rwlock(s: &Self) -> &'a RwLock<T> {
-        s.rwlock
-    }
-
-    /// Atomically downgrades a write lock into a read lock without allowing any
-    /// writers to take exclusive access of the lock in the meantime.
-    ///
-    /// Note that if there are any writers currently waiting to take the lock
-    /// then other readers may not be able to acquire the lock even if it was
-    /// downgraded.
-    pub fn downgrade(s: Self) -> RwLockReadGuard<'a, T> {
-        let rwlock = s.rwlock;
-
-        // Reserve the read guard for ourselves
-        rwlock.acquire_reader();
-
-        debug_assert_eq!(rwlock.lock.load(Ordering::Relaxed) & WRITER, WRITER);
-
-        // Writer is responsible for clearing both WRITER and UPGRADED bits.
-        // The UPGRADED bit may be set if an upgradeable lock attempts an upgrade while this lock is held.
-        rwlock
-            .lock
-            .fetch_and(!(WRITER | UPGRADED), Ordering::Release);
-
-        mem::forget(s);
-        RwLockReadGuard {
-            _data: rwlock.data.with_mut(|data| {
-                // Safety: RwLockWriteGuard holds mutable access to the data
-                unsafe { NonNull::new_unchecked(data) }
-            }),
-            rwlock,
-        }
-    }
-
-    /// Atomically downgrades a write lock into an upgradable read lock without allowing any
-    /// writers to take exclusive access of the lock in the meantime.
-    ///
-    /// Note that if there are any writers currently waiting to take the lock
-    /// then other readers may not be able to acquire the lock even if it was
-    /// downgraded.
-    pub fn downgrade_to_upgradable(s: Self) -> RwLockUpgradableReadGuard<'a, T> {
-        let rwlock = s.rwlock;
-
-        debug_assert_eq!(
-            rwlock.lock.load(Ordering::Acquire) & (WRITER | UPGRADED),
-            WRITER
-        );
-
-        // Reserve the read guard for ourselves
-        rwlock.lock.store(UPGRADED, Ordering::Release);
-
-        debug_assert_eq!(rwlock.lock.load(Ordering::Relaxed) & WRITER, WRITER);
-
-        // Writer is responsible for clearing both WRITER and UPGRADED bits.
-        // The UPGRADED bit may be set if an upgradeable lock attempts an upgrade while this lock is held.
-        rwlock
-            .lock
-            .fetch_and(!(WRITER | UPGRADED), Ordering::Release);
-
-        mem::forget(s);
-        RwLockUpgradableReadGuard {
-            data: rwlock.data.with_mut(|data| {
-                // Safety: RwLockWriteGuard holds mutable access to the data
-                unsafe { NonNull::new_unchecked(data) }
-            }),
-            rwlock,
-        }
-    }
-}
-
-impl<'a, T: ?Sized + 'a> Deref for RwLockWriteGuard<'a, T> {
-    type Target = T;
-    #[inline]
-    fn deref(&self) -> &T {
-        self.rwlock.data.with(|data| {
-            // Safety: RwLockWriteGuard always holds a read lock, so obtaining an immutable reference
-            // is safe
-            unsafe { &*data }
-        })
-    }
-}
-
-impl<'a, T: ?Sized + 'a> DerefMut for RwLockWriteGuard<'a, T> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut T {
-        self.rwlock.data.with_mut(|data| {
-            // Safety: RwLockWriteGuard always holds a write lock, so obtaining a mutable reference
-            // is safe
-            unsafe { &mut *data }
-        })
-    }
-}
-
-impl<'a, T: ?Sized + 'a> Drop for RwLockWriteGuard<'a, T> {
-    #[inline]
-    fn drop(&mut self) {
-        // Safety: An RwLockWriteGuard always holds an exclusive lock.
-        unsafe {
-            self.rwlock.unlock_exclusive();
-        }
-    }
-}
-
-impl<'a, T: fmt::Debug + ?Sized + 'a> fmt::Debug for RwLockWriteGuard<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&**self, f)
-    }
-}
-
-impl<'a, T: fmt::Display + ?Sized + 'a> fmt::Display for RwLockWriteGuard<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (**self).fmt(f)
-    }
-}
-
-impl<T: ?Sized> !Send for RwLockUpgradableReadGuard<'_, T> {}
-#[expect(clippy::undocumented_unsafe_blocks, reason = "")]
-unsafe impl<'a, T: ?Sized + Sync + 'a> Sync for RwLockUpgradableReadGuard<'a, T> {}
-
-impl<'a, T: ?Sized + 'a> RwLockUpgradableReadGuard<'a, T> {
-    /// Returns a reference to the original reader-writer lock object.
-    pub fn rwlock(s: &Self) -> &'a RwLock<T> {
-        s.rwlock
-    }
-
-    /// Atomically upgrades an upgradable read lock lock into an exclusive write lock,
-    /// blocking the current thread until it can be acquired.
-    pub fn upgrade(s: Self) -> RwLockWriteGuard<'a, T> {
-        // Safety: An RwLockUpgradableReadGuard always holds an upgradable lock.
-        unsafe {
-            s.rwlock.upgrade();
-        }
-        let rwlock = s.rwlock;
-        mem::forget(s);
-        RwLockWriteGuard { rwlock }
-    }
-
-    /// Tries to atomically upgrade an upgradable read lock into an exclusive write lock.
-    ///
-    /// # Errors
-    ///
-    /// If the access could not be granted at this time, then the current guard is returned.
-    pub fn try_upgrade(s: Self) -> Result<RwLockWriteGuard<'a, T>, Self> {
-        // Safety: An RwLockUpgradableReadGuard always holds an upgradable lock.
-        if unsafe { s.rwlock.try_upgrade() } {
-            let rwlock = s.rwlock;
-            mem::forget(s);
-            Ok(RwLockWriteGuard { rwlock })
-        } else {
-            Err(s)
-        }
-    }
-
-    /// Atomically downgrades an upgradable read lock lock into a shared read lock
-    /// without allowing any writers to take exclusive access of the lock in the
-    /// meantime.
-    ///
-    /// Note that if there are any writers currently waiting to take the lock
-    /// then other readers may not be able to acquire the lock even if it was
-    /// downgraded.
-    pub fn downgrade(s: Self) -> RwLockReadGuard<'a, T> {
-        let data = s.data;
-        // Safety: An RwLockUpgradableReadGuard always holds an upgradable lock.
-        unsafe {
-            s.rwlock.downgrade_upgradable();
-        }
-        let rwlock = s.rwlock;
-        mem::forget(s);
-        RwLockReadGuard {
-            _data: data,
-            rwlock,
-        }
-    }
-}
-
-impl<'a, T: ?Sized + 'a> Deref for RwLockUpgradableReadGuard<'a, T> {
-    type Target = T;
-    #[inline]
-    fn deref(&self) -> &T {
-        self.rwlock.data.with(|data| {
-            // Safety: RwLockUpgradableReadGuard always holds a read lock, so obtaining an immutable reference
-            // is safe
-            unsafe { &*data }
-        })
-    }
-}
-
-impl<'a, T: ?Sized + 'a> Drop for RwLockUpgradableReadGuard<'a, T> {
-    #[inline]
-    fn drop(&mut self) {
-        // Safety: An RwLockUpgradableReadGuard always holds an upgradable lock.
-        unsafe {
-            self.rwlock.unlock_upgradable();
-        }
-    }
-}
-
-impl<'a, T: fmt::Debug + ?Sized + 'a> fmt::Debug for RwLockUpgradableReadGuard<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&**self, f)
-    }
-}
-
-impl<'a, T: fmt::Display + ?Sized + 'a> fmt::Display for RwLockUpgradableReadGuard<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (**self).fmt(f)
     }
 }
 
@@ -629,7 +231,8 @@ mod tests {
     use std::sync::mpsc::channel;
 
     use super::*;
-    use crate::loom::{Arc, thread};
+    use crate::loom::sync::Arc;
+    use crate::loom::thread;
 
     #[derive(Eq, PartialEq, Debug)]
     struct NonCopy(i32);

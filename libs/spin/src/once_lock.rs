@@ -12,7 +12,7 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
 use util::loom_const_fn;
 
 use super::Once;
-use crate::loom::UnsafeCell;
+use crate::loom::cell::UnsafeCell;
 
 /// A synchronization primitive which can be written to only once.
 ///
@@ -319,7 +319,8 @@ mod tests {
     use std::sync::mpsc::channel;
 
     use super::*;
-    use crate::loom::{AtomicUsize, Ordering, thread};
+    use crate::loom::sync::atomic::{AtomicUsize, Ordering};
+    use crate::loom::thread;
 
     fn spawn_and_wait<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
         thread::spawn(f).join().unwrap()
