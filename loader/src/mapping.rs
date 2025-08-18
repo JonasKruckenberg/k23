@@ -549,7 +549,9 @@ fn handle_tls_segment(
         // Debug: Check if the physical memory is properly zeroed
         #[cfg(target_arch = "x86_64")]
         unsafe {
-            let phys_ptr = phys as *const u64;
+            // On x86_64, physical memory is accessed through the virtual mapping
+            let virt_addr = phys_off.checked_add(phys).unwrap();
+            let phys_ptr = virt_addr as *const u64;
             let first_val = *phys_ptr;
             if first_val != 0 {
                 log::error!("TLS physical memory at {phys:#x} not zeroed! Contains: {first_val:#x}");
