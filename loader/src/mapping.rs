@@ -637,7 +637,16 @@ impl TlsAllocation {
 
                 // sanity check to ensure our destination allocated memory is actually zeroed.
                 // if it's not, that likely means we're about to override something important
-                debug_assert!(dst.iter().all(|&x| x == 0));
+                #[cfg(target_arch = "x86_64")]
+                {
+                    // On x86_64, we already wrote the TLS self-pointer at offset 0
+                    // Check that everything except the first 8 bytes is zero
+                    debug_assert!(dst[8..].iter().all(|&x| x == 0));
+                }
+                #[cfg(not(target_arch = "x86_64"))]
+                {
+                    debug_assert!(dst.iter().all(|&x| x == 0));
+                }
 
                 // Check if source contains the canary pattern
                 if src.len() >= 8 {
