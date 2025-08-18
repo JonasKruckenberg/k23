@@ -74,7 +74,8 @@ mod tests {
     use std::sync::mpsc::{TryRecvError, channel};
 
     use super::*;
-    use crate::loom::{Arc, thread};
+    use crate::loom::sync::Arc;
+    use crate::loom::thread;
 
     #[test]
     fn test_barrier() {
