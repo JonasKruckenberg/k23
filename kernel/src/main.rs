@@ -150,7 +150,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     debug_print!("after arch::per_cpu_init_early\n");
 
     // HACK: Skip tracing init for x86_64 for now
-    // #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(not(target_arch = "x86_64"))]
     tracing::per_cpu_init_early(cpuid);
 
     #[cfg(target_arch = "x86_64")]

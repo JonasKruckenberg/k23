@@ -528,7 +528,14 @@ fn handle_tls_segment(
     minfo: &MachineInfo,
     phys_off: usize,
 ) -> crate::Result<TlsAllocation> {
-    let layout = Layout::from_size_align(ph.mem_size, cmp::max(ph.align, arch::PAGE_SIZE))
+    // For x86_64 TLS variant II, we need extra space before the TLS data for negative offsets
+    #[cfg(target_arch = "x86_64")]
+    let pre_offset = arch::PAGE_SIZE; // Allocate one page before TLS data for negative offsets
+    #[cfg(not(target_arch = "x86_64"))]
+    let pre_offset = 0;
+    
+    let per_cpu_size = ph.mem_size + pre_offset;
+    let layout = Layout::from_size_align(per_cpu_size, cmp::max(ph.align, arch::PAGE_SIZE))
         .unwrap()
         .repeat(minfo.hart_mask.count_ones() as usize)
         .unwrap()
@@ -586,6 +593,8 @@ fn handle_tls_segment(
             file_size: ph.file_size,
             align: ph.align,
         },
+        #[cfg(target_arch = "x86_64")]
+        pre_offset,
     })
 }
 
@@ -595,18 +604,32 @@ pub struct TlsAllocation {
     virt: Range<usize>,
     /// The template we allocated for
     pub template: TlsTemplate,
+    /// Extra space allocated before TLS data for x86_64 negative offsets
+    #[cfg(target_arch = "x86_64")]
+    pre_offset: usize,
 }
 
 impl TlsAllocation {
     pub fn region_for_hart(&self, hartid: usize) -> Range<usize> {
+        #[cfg(target_arch = "x86_64")]
+        let per_cpu_size = self.template.mem_size + self.pre_offset;
+        #[cfg(not(target_arch = "x86_64"))]
+        let per_cpu_size = self.template.mem_size;
+        
         let aligned_size = checked_align_up(
-            self.template.mem_size,
+            per_cpu_size,
             cmp::max(self.template.align, arch::PAGE_SIZE),
         )
         .unwrap();
-        let start = self.virt.start + (aligned_size * hartid);
+        let allocation_start = self.virt.start + (aligned_size * hartid);
+        
+        // For x86_64, the TLS base should point to after the pre_offset area
+        #[cfg(target_arch = "x86_64")]
+        let tls_start = allocation_start + self.pre_offset;
+        #[cfg(not(target_arch = "x86_64"))]
+        let tls_start = allocation_start;
 
-        Range::from(start..start + self.template.mem_size)
+        Range::from(tls_start..tls_start + self.template.mem_size)
     }
 
     pub fn initialize_for_hart(&self, hartid: usize) {
