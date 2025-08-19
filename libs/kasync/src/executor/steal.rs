@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use alloc::boxed::Box;
+use core::alloc::AllocError;
 use core::fmt::Debug;
 use core::num::NonZeroUsize;
 
@@ -31,21 +32,15 @@ pub struct Injector {
     queued: AtomicUsize,
 }
 
-impl Default for Injector {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Injector {
-    pub fn new() -> Self {
-        let stub_task = Box::new(Task::new_stub());
+    pub fn new() -> Result<Self, AllocError> {
+        let stub_task = Box::try_new(Task::new_stub())?;
         let (stub_task, _) = TaskRef::new_allocated(stub_task);
 
-        Self {
+        Ok(Self {
             run_queue: MpscQueue::new_with_stub(stub_task),
             queued: AtomicUsize::new(0),
-        }
+        })
     }
 
     /// Attempt to steal from this `Injector`, the returned [`Stealer`] will grant exclusive access to

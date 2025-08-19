@@ -171,7 +171,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // (e.g. setting the trap vector and enabling interrupts)
         let cpu = arch::device::cpu::Cpu::new(&device_tree, cpuid)?;
 
-        let executor = Executor::with_capacity(boot_info.cpu_mask.count_ones() as usize);
+        let executor = Executor::with_capacity(boot_info.cpu_mask.count_ones() as usize).unwrap();
         let timer = Timer::new(Duration::from_millis(1), cpu.clock);
 
         Ok(Global {
@@ -200,7 +200,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         Instant::from_ticks(&global.timer, Ticks(boot_ticks)).elapsed(&global.timer)
     );
 
-    let mut worker2 = Worker::new(&global.executor, FastRand::from_seed(rng.next_u64()));
+    let mut worker2 = Worker::new(&global.executor, FastRand::from_seed(rng.next_u64())).unwrap();
 
     cfg_if! {
         if #[cfg(test)] {

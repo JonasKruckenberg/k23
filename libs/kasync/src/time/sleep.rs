@@ -163,12 +163,12 @@ mod tests {
 
         loom::model(move || {
             loom::lazy_static! {
-                static ref EXEC: Executor = Executor::new();
+                static ref EXEC: Executor = Executor::new().unwrap();
                 static ref TIMER: Timer = Timer::new(Duration::from_millis(1), MockClock::new_1us());
                 static ref CALLED: AtomicBool = AtomicBool::new(false);
             }
 
-            let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
+            let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
 
             let th = EXEC
                 .try_spawn(async move {

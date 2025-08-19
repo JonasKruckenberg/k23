@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use alloc::boxed::Box;
-use core::alloc::Allocator;
 use core::any::type_name;
 use core::panic::Location;
 
@@ -102,36 +101,6 @@ where
     {
         let task = self.build(future);
         let task = Box::try_new(task)?;
-        let (task, join) = TaskRef::new_allocated(task);
-
-        (self.schedule)(task)?;
-
-        Ok(join)
-    }
-
-    /// Attempt spawn this [`Future`] onto the executor using a custom [`Allocator`].
-    ///
-    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
-    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
-    /// of its runtime behaviour (such as cancelling it).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AllocError`] when allocation of the task fails.
-    #[inline]
-    #[track_caller]
-    pub fn try_spawn_in<F, A>(
-        &self,
-        future: F,
-        alloc: A,
-    ) -> Result<JoinHandle<F::Output>, SpawnError>
-    where
-        F: Future + Send,
-        F::Output: Send,
-        A: Allocator,
-    {
-        let task = self.build(future);
-        let task = Box::try_new_in(task, alloc)?;
         let (task, join) = TaskRef::new_allocated(task);
 
         (self.schedule)(task)?;
