@@ -12,7 +12,6 @@ mod state;
 mod yield_now;
 
 use alloc::boxed::Box;
-use core::alloc::Allocator;
 use core::any::type_name;
 use core::mem::offset_of;
 use core::panic::AssertUnwindSafe;
@@ -214,13 +213,12 @@ struct VTable {
 
 impl TaskRef {
     #[track_caller]
-    pub(crate) fn new_allocated<F, A>(task: Box<Task<F>, A>) -> (Self, JoinHandle<F::Output>)
+    pub(crate) fn new_allocated<F>(task: Box<Task<F>>) -> (Self, JoinHandle<F::Output>)
     where
         F: Future,
-        A: Allocator,
     {
         assert_eq!(task.state().refcount(), 1);
-        let (ptr, _) = Box::into_raw_with_allocator(task);
+        let ptr = Box::into_raw(task);
 
         // Safety: we just allocated the ptr so it is never null
         let task = Self(unsafe { NonNull::new_unchecked(ptr).cast() });

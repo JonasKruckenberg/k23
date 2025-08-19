@@ -9,11 +9,10 @@
 //!
 //! This crate was heavily inspired by tokio and the (much better) maitake crates, to a small extend smol also influenced the design.
 
-#![feature(allocator_api)]
 #![cfg_attr(not(any(test, feature = "__bench")), no_std)]
 #![feature(debug_closure_helpers)]
 #![feature(never_type)]
-
+#![feature(allocator_api)]
 extern crate alloc;
 
 mod error;

@@ -8,7 +8,7 @@
 mod steal;
 
 use alloc::boxed::Box;
-use core::alloc::Allocator;
+use core::alloc::AllocError;
 use core::num::NonZeroUsize;
 use core::ptr;
 use core::ptr::NonNull;
@@ -84,27 +84,27 @@ pub struct Scheduler {
 
 // === impl Executor ===
 
-impl Default for Executor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Executor {
-    pub fn new() -> Self {
-        Self {
+    /// # Errors
+    ///
+    /// Returns `AllocError` when allocating the underlying resources fails.
+    pub fn new() -> Result<Self, AllocError> {
+        Ok(Self {
             schedulers: CpuLocal::new(),
-            injector: Injector::new(),
+            injector: Injector::new()?,
             sleepers: WaitQueue::new(),
-        }
+        })
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
+    /// # Errors
+    ///
+    /// Returns `AllocError` when allocating the underlying resources fails.
+    pub fn with_capacity(capacity: usize) -> Result<Self, AllocError> {
+        Ok(Self {
             schedulers: CpuLocal::with_capacity(capacity),
-            injector: Injector::new(),
+            injector: Injector::new()?,
             sleepers: WaitQueue::new(),
-        }
+        })
     }
 
     /// Closes the executor.
@@ -170,43 +170,24 @@ impl Executor {
     {
         self.build_task().try_spawn(future)
     }
-
-    /// Attempt spawn this [`Future`] onto this executor using a custom [`Allocator`].
-    ///
-    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
-    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
-    /// of its runtime behaviour (such as cancelling it).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AllocError`] when allocation of the task fails.
-    pub fn try_spawn_in<F, A>(
-        &'static self,
-        future: F,
-        alloc: A,
-    ) -> Result<JoinHandle<F::Output>, SpawnError>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-        A: Allocator,
-    {
-        self.build_task().try_spawn_in(future, alloc)
-    }
 }
 
 // === impl Worker ===
 
 impl Worker {
-    pub fn new(executor: &'static Executor, rng: FastRand) -> Self {
+    /// # Errors
+    ///
+    /// Returns `AllocError` when allocating the underlying resources fails.
+    pub fn new(executor: &'static Executor, rng: FastRand) -> Result<Self, AllocError> {
         let id = executor.schedulers.len();
-        let core = executor.schedulers.get_or(Scheduler::new);
+        let core = executor.schedulers.get_or_try(Scheduler::new)?;
 
-        Self {
+        Ok(Self {
             id,
             executor,
             scheduler: core,
             rng,
-        }
+        })
     }
 
     /// Returns a reference to the task that's current being polled or `None`.
@@ -350,11 +331,11 @@ impl Worker {
 // === impl Scheduler ===
 
 impl Scheduler {
-    fn new() -> Self {
-        let stub_task = Box::new(Task::new_stub());
+    fn new() -> Result<Self, AllocError> {
+        let stub_task = Box::try_new(Task::new_stub())?;
         let (stub_task, _) = TaskRef::new_allocated(stub_task);
 
-        Self {
+        Ok(Self {
             run_queue: MpscQueue::new_with_stub(stub_task),
             queued: AtomicUsize::new(0),
             current_task: AtomicPtr::new(ptr::null_mut()),
@@ -362,7 +343,7 @@ impl Scheduler {
             spawned: AtomicUsize::new(0),
             #[cfg(feature = "counters")]
             woken: AtomicUsize::new(0),
-        }
+        })
     }
 
     /// Returns a reference to the task that's current being polled or `None`.
@@ -515,7 +496,7 @@ mod tests {
 
         loom::model(|| {
             loom::lazy_static! {
-                static ref EXEC: Executor = Executor::new();
+                static ref EXEC: Executor = Executor::new().unwrap();
                 static ref CALLED: AtomicBool = AtomicBool::new(false);
             }
 
@@ -526,7 +507,7 @@ mod tests {
             })
             .unwrap();
 
-            let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
+            let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
             test_util::block_on(worker.run(crate::future::pending::<()>())).expect_err(
                 "stopping the executor should always result in a Closed(()) error here",
             );
@@ -544,7 +525,7 @@ mod tests {
             const NUM_THREADS: usize = 3;
 
             loom::lazy_static! {
-                static ref EXEC: Executor = Executor::new();
+                static ref EXEC: Executor = Executor::new().unwrap();
                 static ref CALLED: AtomicBool = AtomicBool::new(false);
             }
 
@@ -558,7 +539,7 @@ mod tests {
             let joins: Vec<_> = (0..NUM_THREADS)
                 .map(|_| {
                     loom::thread::spawn(move || {
-                        let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
+                        let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
 
                         test_util::block_on(worker.run(crate::future::pending::<()>())).expect_err(
                             "stopping the executor should always result in a Closed(()) error here",
@@ -582,14 +563,14 @@ mod tests {
 
         loom::model(|| {
             loom::lazy_static! {
-                static ref EXEC: Executor = Executor::new();
+                static ref EXEC: Executor = Executor::new().unwrap();
             }
 
             let (tx, rx) = loom::sync::mpsc::channel::<JoinHandle<u32>>();
 
             let h0 = loom::thread::spawn(move || {
                 let tid = loom::thread::current().id();
-                let mut worker = Worker::new(&EXEC, FastRand::from_seed(0));
+                let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
 
                 let h = EXEC
                     .try_spawn(async move {
