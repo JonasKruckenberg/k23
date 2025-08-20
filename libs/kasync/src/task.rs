@@ -13,7 +13,7 @@ mod yield_now;
 
 use alloc::boxed::Box;
 use core::any::type_name;
-use core::mem::offset_of;
+use core::mem::{ManuallyDrop, offset_of};
 use core::panic::AssertUnwindSafe;
 use core::pin::Pin;
 use core::ptr::NonNull;
@@ -85,7 +85,7 @@ pub struct Task<F: Future>(CachePadded<TaskInner<F>>);
 #[repr(C)]
 struct TaskInner<F: Future> {
     /// This must be the first field of the `Task` struct!
-    schedulable: Schedulable,
+    header: Header,
 
     /// The future that the task is running.
     ///
@@ -142,13 +142,6 @@ struct TaskInner<F: Future> {
     join_waker: UnsafeCell<Option<Waker>>,
 }
 
-#[repr(C)]
-struct Schedulable {
-    /// This must be the first field of the `Schedulable` struct!
-    header: Header,
-    scheduler: UnsafeCell<Option<&'static Scheduler>>,
-}
-
 /// The current lifecycle stage of the future. Either the future itself or its output.
 #[repr(C)] // https://github.com/rust-lang/miri/issues/3780
 enum Stage<F: Future> {
@@ -177,6 +170,7 @@ pub(crate) struct Header {
     run_queue_links: mpsc_queue::Links<Self>,
     /// The tracing span associated with this task, for debugging purposes.
     span: tracing::Span,
+    scheduler: UnsafeCell<Option<&'static Scheduler>>,
 }
 
 #[derive(Debug)]
@@ -201,12 +195,6 @@ struct VTable {
 
     /// Drops the task and deallocates its memory.
     deallocate: unsafe fn(NonNull<Header>),
-
-    /// The `wake_by_ref` function from the task's [`RawWakerVTable`].
-    ///
-    /// This is duplicated here as it's used to wake canceled tasks when a task
-    /// is canceled by a [`TaskRef`] or [`JoinHandle`].
-    wake_by_ref: unsafe fn(*const ()),
 }
 
 // === impl TaskRef ===
@@ -249,8 +237,8 @@ impl TaskRef {
         // if the task was successfully canceled, wake it so that it can clean
         // up after itself.
         if canceled {
-            tracing::trace!("woke canceled task");
-            self.wake_by_ref();
+            tracing::trace!("waking canceled task...");
+            todo!()
         }
 
         canceled
@@ -274,13 +262,6 @@ impl TaskRef {
     /// Returns a reference to the task's state.
     pub(crate) fn state(&self) -> &State {
         &self.header().state
-    }
-
-    pub(crate) fn wake_by_ref(&self) {
-        tracing::trace!("TaskRef::wake_by_ref {self:?}");
-        let wake_by_ref_fn = self.header().vtable.wake_by_ref;
-        // Safety: Called through our Vtable so this access should be fine
-        unsafe { wake_by_ref_fn(self.0.as_ptr().cast::<()>()) }
     }
 
     pub(crate) fn poll(&self) -> PollResult {
@@ -333,11 +314,121 @@ impl TaskRef {
         // Safety: the repr(C) on Schedulable ensures the layout matches and this cast is safe
         unsafe {
             self.0
-                .cast::<Schedulable>()
                 .as_ref()
                 .scheduler
                 .with_mut(|current| *current = Some(scheduler));
         }
+    }
+
+    pub(crate) unsafe fn from_raw(ptr: *const Header) -> Self {
+        // Safety: ensured by caller
+        Self(unsafe { NonNull::new_unchecked(ptr.cast_mut()) })
+    }
+
+    pub(crate) fn into_raw(self) -> *const Header {
+        let this = ManuallyDrop::new(self);
+        this.0.as_ptr()
+    }
+
+    fn schedule(self) {
+        let scheduler = self.header().scheduler.with(|scheduler| {
+            // Safety: ensured by caller
+            unsafe {
+                (*scheduler).expect("task doesn't have an associated scheduler, this is a bug!")
+            }
+        });
+
+        scheduler.schedule(self);
+    }
+
+    fn wake(self) {
+        match self.state().wake_by_val() {
+            // `Enqueue` means we should put the task back into the queue. In this case we want to assign
+            // ownership of the TaskRef to the scheduler.
+            WakeByValAction::Enqueue => {
+                self.schedule();
+            }
+            // `Drop` means (unsurprisingly) the opposite: The task does not need to be enqueued, and
+            // we should therefore drop this handle.
+            WakeByValAction::Drop => {
+                drop(self);
+            }
+        }
+    }
+
+    /// # Safety
+    ///
+    /// The caller must ensure this task is currently bound to a scheduler.
+    unsafe fn wake_by_val(&self) {
+        if self.state().wake_by_ref() == WakeByRefAction::Enqueue {
+            self.clone().schedule();
+        }
+    }
+
+    fn into_raw_waker(self) -> RawWaker {
+        // Increment the reference count of the arc to clone it.
+        //
+        // The #[inline(always)] is to ensure that raw_waker and clone_waker are
+        // always generated in the same code generation unit as one another, and
+        // therefore that the structurally identical const-promoted RawWakerVTable
+        // within both functions is deduplicated at LLVM IR code generation time.
+        // This allows optimizing Waker::will_wake to a single pointer comparison of
+        // the vtable pointers, rather than comparing all four function pointers
+        // within the vtables.
+        #[inline(always)]
+        unsafe fn clone_waker(waker: *const ()) -> RawWaker {
+            // Safety: ensured by VTable
+            unsafe {
+                waker.cast::<Header>().as_ref().unwrap().state.clone_ref();
+            }
+
+            RawWaker::new(
+                waker,
+                &RawWakerVTable::new(clone_waker, wake, wake_by_ref, drop_waker),
+            )
+        }
+
+        // Wake by value, moving the Arc into the Wake::wake function
+        unsafe fn wake(waker: *const ()) {
+            // Safety: ensured by VTable
+            let task = unsafe { TaskRef::from_raw(waker.cast::<Header>()) };
+
+            tracing::trace!(
+                task.addr = ?task.header_ptr(),
+                task.tid = task.id().as_u64(),
+                "Task::wake_by_val"
+            );
+
+            task.wake();
+        }
+
+        // Wake by reference, wrap the waker in ManuallyDrop to avoid dropping it
+        unsafe fn wake_by_ref(waker: *const ()) {
+            // Safety: ensured by VTable
+            let task = unsafe { ManuallyDrop::new(TaskRef::from_raw(waker.cast::<Header>())) };
+
+            tracing::trace!(
+                task.addr = ?task.header_ptr(),
+                task.tid = task.id().as_u64(),
+                "Task::wake_by_ref"
+            );
+
+            // Safety: ensured by the caller
+            unsafe {
+                task.wake_by_val();
+            }
+        }
+
+        // Decrement the reference count of the Arc on drop
+        unsafe fn drop_waker(waker: *const ()) {
+            // Safety: ensured by VTable
+            drop(unsafe { TaskRef::from_raw(waker.cast()) });
+        }
+
+        RawWaker::new(
+            self.into_raw().cast(),
+            &RawWakerVTable::new(clone_waker, wake, wake_by_ref, drop_waker),
+        )
     }
 }
 
@@ -408,20 +499,17 @@ impl<F: Future> Task<F> {
         poll: Self::poll,
         poll_join: Self::poll_join,
         deallocate: Self::deallocate,
-        wake_by_ref: Schedulable::wake_by_ref,
     };
 
     loom_const_fn! {
         pub const fn new(future: F, task_id: Id, span: tracing::Span) -> Self {
             let inner = TaskInner {
-                schedulable: Schedulable {
-                    header: Header {
-                        state: State::new(),
-                        vtable: &Self::TASK_VTABLE,
-                        id: task_id,
-                        run_queue_links: mpsc_queue::Links::new(),
-                        span,
-                    },
+                header: Header {
+                    state: State::new(),
+                    vtable: &Self::TASK_VTABLE,
+                    id: task_id,
+                    run_queue_links: mpsc_queue::Links::new(),
+                    span,
                     scheduler: UnsafeCell::new(None)
                 },
                 stage: UnsafeCell::new(Stage::Pending(future)),
@@ -441,6 +529,7 @@ impl<F: Future> Task<F> {
     /// - `ptr` must point to the [`Header`] of a task of type `Self` (i.e. the
     ///   pointed header must have the same `S`, `F`, and `STO` type parameters
     ///   as `Self`).
+    /// - the task must currently be bound to a scheduler
     unsafe fn poll(ptr: NonNull<Header>) -> PollResult {
         // Safety: ensured by caller
         unsafe {
@@ -477,8 +566,8 @@ impl<F: Future> Task<F> {
             // this waker is consumed during the poll, we don't want to decrement
             // its ref count when the poll ends.
             let waker = {
-                let raw = Schedulable::raw_waker(ptr.as_ptr().cast());
-                mem::ManuallyDrop::new(Waker::from_raw(raw))
+                let raw = TaskRef(ptr).into_raw_waker();
+                ManuallyDrop::new(Waker::from_raw(raw))
             };
 
             // actually poll the task
@@ -660,14 +749,14 @@ impl<F: Future> Task<F> {
     }
 
     fn id(&self) -> &Id {
-        &self.0.0.schedulable.header.id
+        &self.0.0.header.id
     }
     fn state(&self) -> &State {
-        &self.0.0.schedulable.header.state
+        &self.0.0.header.state
     }
     #[inline]
     fn span(&self) -> &tracing::Span {
-        &self.0.0.schedulable.header.span
+        &self.0.0.header.span
     }
 }
 
@@ -678,21 +767,18 @@ impl Task<Stub> {
         // Heap allocated stub tasks *will* need to be deallocated, since the
         // scheduler will deallocate its stub task if it's dropped.
         deallocate: Self::deallocate,
-        wake_by_ref: stub_wake_by_ref,
     };
 
     loom_const_fn! {
         /// Create a new stub task.
         pub(crate) const fn new_stub() -> Self {
             let inner = TaskInner {
-                schedulable: Schedulable {
-                    header: Header {
-                        state: State::new(),
-                        vtable: &Self::HEAP_STUB_VTABLE,
-                        id: Id::stub(),
-                        run_queue_links: mpsc_queue::Links::new_stub(),
-                        span: tracing::Span::none(),
-                    },
+                header: Header {
+                    state: State::new(),
+                    vtable: &Self::HEAP_STUB_VTABLE,
+                    id: Id::stub(),
+                    run_queue_links: mpsc_queue::Links::new_stub(),
+                    span: tracing::Span::none(),
                     scheduler: UnsafeCell::new(None)
                 },
                 stage: UnsafeCell::new(Stage::Pending(Stub)),
@@ -763,154 +849,6 @@ where
     }
 }
 
-// === impl Schedulable ===
-
-impl Schedulable {
-    const WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(
-        Self::clone_waker,
-        Self::wake_by_val,
-        Self::wake_by_ref,
-        Self::drop_waker,
-    );
-
-    // `Waker::will_wake` is used all over the place to optimize waker code (e.g. only update wakers if they
-    // have a different wake target). Problem is `will_wake` only checks for pointer equality and since
-    // the `into_raw_waker` would usually be inlined in release mode (and with it `WAKER_VTABLE`) the
-    // Waker identity would be different before and after calling `.clone()`. This isn't a correctness
-    // problem since it's still the same waker in the end, it just causes a lot of unnecessary wake ups.
-    // the `inline(never)` below is therefore quite load-bearing
-    #[inline(never)]
-    fn raw_waker(this: *const Self) -> RawWaker {
-        RawWaker::new(this.cast::<()>(), &Self::WAKER_VTABLE)
-    }
-
-    #[inline(always)]
-    fn state(&self) -> &State {
-        &self.header.state
-    }
-
-    unsafe fn schedule(this: TaskRef) {
-        // Safety: ensured by caller
-        unsafe {
-            this.header_ptr()
-                .cast::<Self>()
-                .as_ref()
-                .scheduler
-                .with(|scheduler| {
-                    (*scheduler)
-                        .as_ref()
-                        .expect("task doesn't have an associated scheduler, this is a bug!")
-                        .schedule(this);
-                });
-        }
-    }
-
-    #[inline]
-    unsafe fn drop_ref(this: NonNull<Self>) {
-        // Safety: ensured by caller
-        unsafe {
-            tracing::trace!(task.addr=?this, task.id=?this.as_ref().header.id, "Task::drop_ref");
-            if !this.as_ref().state().drop_ref() {
-                return;
-            }
-
-            let deallocate = this.as_ref().header.vtable.deallocate;
-            deallocate(this.cast::<Header>());
-        }
-    }
-
-    // === Waker vtable methods ===
-
-    unsafe fn wake_by_val(ptr: *const ()) {
-        // Safety: called through RawWakerVtable
-        unsafe {
-            let ptr = ptr.cast::<Self>();
-            tracing::trace!(
-                target: "scheduler:waker",
-                {
-                    task.addr = ?ptr,
-                    task.tid = (*ptr).header.id.as_u64()
-                },
-                "Task::wake_by_val"
-            );
-
-            let this = NonNull::new_unchecked(ptr.cast_mut());
-            match this.as_ref().header.state.wake_by_val() {
-                WakeByValAction::Enqueue => {
-                    // the task should be enqueued.
-                    //
-                    // in the case that the task is enqueued, the state
-                    // transition does *not* decrement the reference count. this is
-                    // in order to avoid dropping the task while it is being
-                    // scheduled. one reference is consumed by enqueuing the task...
-                    Self::schedule(TaskRef(this.cast::<Header>()));
-                    // now that the task has been enqueued, decrement the reference
-                    // count to drop the waker that performed the `wake_by_val`.
-                    Self::drop_ref(this);
-                }
-                WakeByValAction::Drop => Self::drop_ref(this),
-                WakeByValAction::None => {}
-            }
-        }
-    }
-
-    unsafe fn wake_by_ref(ptr: *const ()) {
-        // Safety: called through RawWakerVtable
-        unsafe {
-            let this = ptr.cast::<Self>();
-            tracing::trace!(
-                target: "scheduler:waker",
-                {
-                    task.addr = ?this,
-                    task.tid = (*this).header.id.as_u64()
-                },
-                "Task::wake_by_ref"
-            );
-
-            let this = NonNull::new_unchecked(this.cast_mut()).cast::<Self>();
-            if this.as_ref().state().wake_by_ref() == WakeByRefAction::Enqueue {
-                Self::schedule(TaskRef(this.cast::<Header>()));
-            }
-        }
-    }
-
-    unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
-        // Safety: called through RawWakerVtable
-        unsafe {
-            let ptr = ptr.cast::<Self>();
-            tracing::trace!(
-                target: "scheduler:waker",
-                {
-                    task.addr = ?ptr,
-                    task.tid = (*ptr).header.id.as_u64()
-                },
-                "Task::clone_waker"
-            );
-
-            (*ptr).header.state.clone_ref();
-            Self::raw_waker(ptr)
-        }
-    }
-
-    unsafe fn drop_waker(ptr: *const ()) {
-        // Safety: called through RawWakerVtable
-        unsafe {
-            let ptr = ptr.cast::<Self>();
-            tracing::trace!(
-                target: "scheduler:waker",
-                {
-                    task.addr = ?ptr,
-                    task.tid = (*ptr).header.id.as_u64()
-                },
-                "Task::drop_waker"
-            );
-
-            let this = ptr.cast_mut();
-            Self::drop_ref(NonNull::new_unchecked(this));
-        }
-    }
-}
-
 // === impl Header ===
 
 // Safety: tasks are always treated as pinned in memory (a requirement for polling them)
@@ -977,8 +915,4 @@ unsafe fn stub_poll_join(
         debug_assert!(ptr.as_ref().id.is_stub());
         unreachable!("stub task ({ptr:?}) should never be polled!");
     }
-}
-
-unsafe fn stub_wake_by_ref(ptr: *const ()) {
-    unreachable!("stub task ({ptr:p}) has no waker and should never be woken!");
 }
