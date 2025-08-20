@@ -12,6 +12,7 @@ mod state;
 mod yield_now;
 
 use alloc::boxed::Box;
+use core::alloc::AllocError;
 use core::any::type_name;
 use core::mem::{ManuallyDrop, offset_of};
 use core::panic::AssertUnwindSafe;
@@ -80,7 +81,7 @@ pub(crate) enum PollResult {
 pub struct TaskRef(NonNull<Header>);
 
 #[repr(C)]
-pub struct Task<F: Future>(CachePadded<TaskInner<F>>);
+struct Task<F: Future>(CachePadded<TaskInner<F>>);
 
 #[repr(C)]
 struct TaskInner<F: Future> {
@@ -200,21 +201,6 @@ struct VTable {
 // === impl TaskRef ===
 
 impl TaskRef {
-    #[track_caller]
-    pub(crate) fn new_allocated<F>(task: Box<Task<F>>) -> (Self, JoinHandle<F::Output>)
-    where
-        F: Future,
-    {
-        assert_eq!(task.state().refcount(), 1);
-        let ptr = Box::into_raw(task);
-
-        // Safety: we just allocated the ptr so it is never null
-        let task = Self(unsafe { NonNull::new_unchecked(ptr).cast() });
-        let join = JoinHandle::new(task.clone());
-
-        (task, join)
-    }
-
     /// Returns the tasks unique[^1] identifier.
     ///
     /// [^1]: Unique to all *currently running* tasks, *not* unique across spacetime. See [`Id`] for details.
@@ -242,26 +228,6 @@ impl TaskRef {
         }
 
         canceled
-    }
-
-    pub(crate) fn clone_from_raw(ptr: NonNull<Header>) -> TaskRef {
-        let this = Self(ptr);
-        this.state().clone_ref();
-        this
-    }
-
-    pub(crate) fn header_ptr(&self) -> NonNull<Header> {
-        self.0
-    }
-
-    pub(crate) fn header(&self) -> &Header {
-        // Safety: constructor ensures the pointer is always valid
-        unsafe { self.0.as_ref() }
-    }
-
-    /// Returns a reference to the task's state.
-    pub(crate) fn state(&self) -> &State {
-        &self.header().state
     }
 
     pub(crate) fn poll(&self) -> PollResult {
@@ -320,14 +286,79 @@ impl TaskRef {
         }
     }
 
-    pub(crate) unsafe fn from_raw(ptr: *const Header) -> Self {
-        // Safety: ensured by caller
-        Self(unsafe { NonNull::new_unchecked(ptr.cast_mut()) })
+    pub(crate) fn new_stub() -> Result<Self, AllocError> {
+        const HEAP_STUB_VTABLE: VTable = VTable {
+            poll: stub_poll,
+            poll_join: stub_poll_join,
+            deallocate: stub_deallocate,
+        };
+
+        unsafe fn stub_poll(ptr: NonNull<Header>) -> PollResult {
+            // Safety: this method should never be called
+            unsafe {
+                debug_assert!(ptr.as_ref().id.is_stub());
+                unreachable!("stub task ({ptr:?}) should never be polled!");
+            }
+        }
+
+        unsafe fn stub_poll_join(
+            ptr: NonNull<Header>,
+            _outptr: NonNull<()>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), JoinError<()>>> {
+            // Safety: this method should never be called
+            unsafe {
+                debug_assert!(ptr.as_ref().id.is_stub());
+                unreachable!("stub task ({ptr:?}) should never be polled!");
+            }
+        }
+
+        unsafe fn stub_deallocate(ptr: NonNull<Header>) {
+            // Safety: this method should never be called
+            unsafe {
+                debug_assert!(ptr.as_ref().id.is_stub());
+                drop(Box::from_raw(ptr.as_ptr()));
+            }
+        }
+
+        let inner = Box::into_raw(Box::try_new(Header {
+            state: State::new(),
+            vtable: &HEAP_STUB_VTABLE,
+            id: Id::stub(),
+            run_queue_links: mpsc_queue::Links::new_stub(),
+            span: tracing::Span::none(),
+            scheduler: UnsafeCell::new(None),
+        })?);
+
+        // Safety: we just allocated the ptr so it is never null
+        Ok(Self(unsafe { NonNull::new_unchecked(inner) }))
     }
 
-    pub(crate) fn into_raw(self) -> *const Header {
-        let this = ManuallyDrop::new(self);
-        this.0.as_ptr()
+    pub(crate) fn clone_from_raw(ptr: NonNull<Header>) -> TaskRef {
+        let this = Self(ptr);
+        this.state().clone_ref();
+        this
+    }
+
+    pub(crate) fn header_ptr(&self) -> NonNull<Header> {
+        self.0
+    }
+
+    // ===== private methods =====
+
+    #[track_caller]
+    fn new_allocated<F>(task: Box<Task<F>>) -> (Self, JoinHandle<F::Output>)
+    where
+        F: Future,
+    {
+        assert_eq!(task.state().refcount(), 1);
+        let ptr = Box::into_raw(task);
+
+        // Safety: we just allocated the ptr so it is never null
+        let task = Self(unsafe { NonNull::new_unchecked(ptr).cast() });
+        let join = JoinHandle::new(task.clone());
+
+        (task, join)
     }
 
     fn schedule(self) {
@@ -340,6 +371,28 @@ impl TaskRef {
 
         scheduler.schedule(self);
     }
+
+    fn header(&self) -> &Header {
+        // Safety: constructor ensures the pointer is always valid
+        unsafe { self.0.as_ref() }
+    }
+
+    /// Returns a reference to the task's state.
+    fn state(&self) -> &State {
+        &self.header().state
+    }
+
+    unsafe fn from_raw(ptr: *const Header) -> Self {
+        // Safety: ensured by caller
+        Self(unsafe { NonNull::new_unchecked(ptr.cast_mut()) })
+    }
+
+    fn into_raw(self) -> *const Header {
+        let this = ManuallyDrop::new(self);
+        this.0.as_ptr()
+    }
+
+    // ===== private waker-related methods =====
 
     fn wake(self) {
         match self.state().wake_by_val() {
@@ -760,36 +813,6 @@ impl<F: Future> Task<F> {
     }
 }
 
-impl Task<Stub> {
-    const HEAP_STUB_VTABLE: VTable = VTable {
-        poll: stub_poll,
-        poll_join: stub_poll_join,
-        // Heap allocated stub tasks *will* need to be deallocated, since the
-        // scheduler will deallocate its stub task if it's dropped.
-        deallocate: Self::deallocate,
-    };
-
-    loom_const_fn! {
-        /// Create a new stub task.
-        pub(crate) const fn new_stub() -> Self {
-            let inner = TaskInner {
-                header: Header {
-                    state: State::new(),
-                    vtable: &Self::HEAP_STUB_VTABLE,
-                    id: Id::stub(),
-                    run_queue_links: mpsc_queue::Links::new_stub(),
-                    span: tracing::Span::none(),
-                    scheduler: UnsafeCell::new(None)
-                },
-                stage: UnsafeCell::new(Stage::Pending(Stub)),
-                join_waker: UnsafeCell::new(None),
-            };
-
-            Self(CachePadded(inner))
-        }
-    }
-}
-
 // === impl Stage ===
 
 impl<F> Stage<F>
@@ -880,39 +903,5 @@ unsafe impl cordyceps::Linked<mpsc_queue::Links<Self>> for Header {
             addr.checked_add(offset).unwrap()
         })
         .cast()
-    }
-}
-
-/// DO NOT confuse this with [`TaskSTub`]. This type is just a zero-size placeholder so we
-/// can plug *something* into the generics when creating the *heap allocated* stub task.
-/// This type is *not* publicly exported, contrary to [`TaskSTub`] which users will have to statically
-/// allocate themselves.
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct Stub;
-
-impl Future for Stub {
-    type Output = ();
-    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-        unreachable!("the stub task should never be polled!")
-    }
-}
-
-unsafe fn stub_poll(ptr: NonNull<Header>) -> PollResult {
-    // Safety: this method should never be called
-    unsafe {
-        debug_assert!(ptr.as_ref().id.is_stub());
-        unreachable!("stub task ({ptr:?}) should never be polled!");
-    }
-}
-
-unsafe fn stub_poll_join(
-    ptr: NonNull<Header>,
-    _outptr: NonNull<()>,
-    _cx: &mut Context<'_>,
-) -> Poll<Result<(), JoinError<()>>> {
-    // Safety: this method should never be called
-    unsafe {
-        debug_assert!(ptr.as_ref().id.is_stub());
-        unreachable!("stub task ({ptr:?}) should never be polled!");
     }
 }
