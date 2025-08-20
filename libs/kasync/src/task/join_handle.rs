@@ -18,12 +18,12 @@ use core::task::{Context, Poll};
 
 use crate::task::{Id, TaskRef};
 
-pub struct JoinHandle<T> {
+pub struct JoinHandle<T, M> {
     state: JoinHandleState,
     id: Id,
-    _p: PhantomData<T>,
+    _p: PhantomData<(T, M)>,
 }
-static_assertions::assert_impl_all!(JoinHandle<()>: Send);
+static_assertions::assert_impl_all!(JoinHandle<(), ()>: Send);
 
 #[derive(Debug)]
 enum JoinHandleState {
@@ -46,13 +46,13 @@ pub enum JoinErrorKind {
 
 // === impl JoinHandle ===
 
-impl<T> UnwindSafe for JoinHandle<T> {}
+impl<T, M> UnwindSafe for JoinHandle<T, M> {}
 
-impl<T> RefUnwindSafe for JoinHandle<T> {}
+impl<T, M> RefUnwindSafe for JoinHandle<T, M> {}
 
-impl<T> Unpin for JoinHandle<T> {}
+impl<T, M> Unpin for JoinHandle<T, M> {}
 
-impl<T> Drop for JoinHandle<T> {
+impl<T, M> Drop for JoinHandle<T, M> {
     fn drop(&mut self) {
         // if the JoinHandle has not already been consumed, clear the join
         // handle flag on the task.
@@ -75,7 +75,7 @@ impl<T> Drop for JoinHandle<T> {
     }
 }
 
-impl<T> fmt::Debug for JoinHandle<T>
+impl<T, M> fmt::Debug for JoinHandle<T, M>
 where
     T: fmt::Debug,
 {
@@ -88,7 +88,7 @@ where
     }
 }
 
-impl<T> Future for JoinHandle<T> {
+impl<T, M> Future for JoinHandle<T, M> {
     type Output = Result<T, JoinError<T>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -121,7 +121,7 @@ impl<T> Future for JoinHandle<T> {
 
 // ==== PartialEq impls for JoinHandle/TaskRef ====
 
-impl<T> PartialEq<TaskRef> for JoinHandle<T> {
+impl<T, M> PartialEq<TaskRef> for JoinHandle<T, M> {
     fn eq(&self, other: &TaskRef) -> bool {
         match self.state {
             JoinHandleState::Task(ref task) => task == other,
@@ -130,7 +130,7 @@ impl<T> PartialEq<TaskRef> for JoinHandle<T> {
     }
 }
 
-impl<T> PartialEq<&'_ TaskRef> for JoinHandle<T> {
+impl<T, M> PartialEq<&'_ TaskRef> for JoinHandle<T, M> {
     fn eq(&self, other: &&TaskRef) -> bool {
         match self.state {
             JoinHandleState::Task(ref task) => task == *other,
@@ -139,8 +139,8 @@ impl<T> PartialEq<&'_ TaskRef> for JoinHandle<T> {
     }
 }
 
-impl<T> PartialEq<JoinHandle<T>> for TaskRef {
-    fn eq(&self, other: &JoinHandle<T>) -> bool {
+impl<T, M> PartialEq<JoinHandle<T, M>> for TaskRef {
+    fn eq(&self, other: &JoinHandle<T, M>) -> bool {
         match other.state {
             JoinHandleState::Task(ref task) => self == task,
             _ => false,
@@ -148,8 +148,8 @@ impl<T> PartialEq<JoinHandle<T>> for TaskRef {
     }
 }
 
-impl<T> PartialEq<&'_ JoinHandle<T>> for TaskRef {
-    fn eq(&self, other: &&JoinHandle<T>) -> bool {
+impl<T, M> PartialEq<&'_ JoinHandle<T, M>> for TaskRef {
+    fn eq(&self, other: &&JoinHandle<T, M>) -> bool {
         match other.state {
             JoinHandleState::Task(ref task) => self == task,
             _ => false,
@@ -159,38 +159,28 @@ impl<T> PartialEq<&'_ JoinHandle<T>> for TaskRef {
 
 // ==== PartialEq impls for JoinHandle/Id ====
 
-impl<T> PartialEq<Id> for JoinHandle<T> {
+impl<T, M> PartialEq<Id> for JoinHandle<T, M> {
     #[inline]
     fn eq(&self, other: &Id) -> bool {
         self.id == *other
     }
 }
 
-impl<T> PartialEq<JoinHandle<T>> for Id {
+impl<T, M> PartialEq<JoinHandle<T, M>> for Id {
     #[inline]
-    fn eq(&self, other: &JoinHandle<T>) -> bool {
+    fn eq(&self, other: &JoinHandle<T, M>) -> bool {
         *self == other.id
     }
 }
 
-impl<T> PartialEq<&'_ JoinHandle<T>> for Id {
+impl<T, M> PartialEq<&'_ JoinHandle<T, M>> for Id {
     #[inline]
-    fn eq(&self, other: &&JoinHandle<T>) -> bool {
+    fn eq(&self, other: &&JoinHandle<T, M>) -> bool {
         *self == other.id
     }
 }
 
-impl<T> JoinHandle<T> {
-    pub(crate) fn new(task: TaskRef) -> Self {
-        task.state().create_join_handle();
-
-        Self {
-            id: task.id(),
-            state: JoinHandleState::Task(task),
-            _p: PhantomData,
-        }
-    }
-
+impl<T, M> JoinHandle<T, M> {
     /// Cancels the task associated with the handle.
     ///
     /// Awaiting a cancelled task might complete as usual if the task was already completed at
@@ -216,6 +206,25 @@ impl<T> JoinHandle<T> {
             // `Future` impl for `JoinHandle` completed, and the task has
             // _definitely_ completed.
             _ => true,
+        }
+    }
+
+    pub fn metadata(&self) -> Option<&M> {
+        if let JoinHandleState::Task(ref task) = self.state {
+            // Safety: we know this generic is correct through construction
+            Some(unsafe { task.metadata::<M>() })
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn new(task: TaskRef) -> Self {
+        task.state().create_join_handle();
+
+        Self {
+            id: task.id(),
+            state: JoinHandleState::Task(task),
+            _p: PhantomData,
         }
     }
 }
