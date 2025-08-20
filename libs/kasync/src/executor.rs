@@ -162,12 +162,36 @@ impl Executor {
     /// # Errors
     ///
     /// Returns [`AllocError`] when allocation of the task fails.
-    pub fn try_spawn<F>(&'static self, future: F) -> Result<JoinHandle<F::Output>, SpawnError>
+    #[track_caller]
+    pub fn try_spawn<F>(&'static self, future: F) -> Result<JoinHandle<F::Output, ()>, SpawnError>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
         self.build_task().try_spawn(future)
+    }
+
+    /// Attempt spawn this [`Future`] with the provided metadata onto this executor.
+    ///
+    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
+    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
+    /// of its runtime behaviour (such as cancelling it).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AllocError`] when allocation of the task fails.
+    #[track_caller]
+    pub fn try_spawn_with_metadata<F, M>(
+        &'static self,
+        future: F,
+        metadata: M,
+    ) -> Result<JoinHandle<F::Output, M>, SpawnError>
+    where
+        F: Future + Send,
+        F::Output: Send,
+        M: Send,
+    {
+        self.build_task().try_spawn_with_metadata(future, metadata)
     }
 }
 
@@ -564,7 +588,7 @@ mod tests {
                 static ref EXEC: Executor = Executor::new().unwrap();
             }
 
-            let (tx, rx) = loom::sync::mpsc::channel::<JoinHandle<u32>>();
+            let (tx, rx) = loom::sync::mpsc::channel::<JoinHandle<u32, ()>>();
 
             let h0 = loom::thread::spawn(move || {
                 let tid = loom::thread::current().id();

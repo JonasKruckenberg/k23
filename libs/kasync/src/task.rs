@@ -81,12 +81,12 @@ pub(crate) enum PollResult {
 pub struct TaskRef(NonNull<Header>);
 
 #[repr(C)]
-struct Task<F: Future>(CachePadded<TaskInner<F>>);
+struct Task<F: Future, M>(CachePadded<TaskInner<F, M>>);
 
 #[repr(C)]
-struct TaskInner<F: Future> {
+struct TaskInner<F: Future, M> {
     /// This must be the first field of the `Task` struct!
-    header: Header,
+    header_and_metadata: HeaderAndMetadata<M>,
 
     /// The future that the task is running.
     ///
@@ -141,6 +141,13 @@ struct TaskInner<F: Future> {
     /// during task completion, it unsets the `JOIN_WAKER` bit to give the `JoinHandle` exclusive
     /// access again so that it is able to drop the waker at a later point.
     join_waker: UnsafeCell<Option<Waker>>,
+}
+
+#[repr(C)]
+struct HeaderAndMetadata<M> {
+    /// This must be the first field of the `HeaderAndMetadata` struct!
+    header: Header,
+    metadata: M,
 }
 
 /// The current lifecycle stage of the future. Either the future itself or its output.
@@ -206,6 +213,14 @@ impl TaskRef {
     /// [^1]: Unique to all *currently running* tasks, *not* unique across spacetime. See [`Id`] for details.
     pub fn id(&self) -> Id {
         self.header().id
+    }
+
+    /// # Safety
+    ///
+    /// The caller must ensure the generic argument matches the metadata type this task got created with.
+    pub unsafe fn metadata<M>(&self) -> &M {
+        // Safety: ensured by caller
+        unsafe { &self.0.cast::<HeaderAndMetadata<M>>().as_ref().metadata }
     }
 
     /// Returns `true` when this task has run to completion.
@@ -347,7 +362,7 @@ impl TaskRef {
     // ===== private methods =====
 
     #[track_caller]
-    fn new_allocated<F>(task: Box<Task<F>>) -> (Self, JoinHandle<F::Output>)
+    fn new_allocated<F, M>(task: Box<Task<F, M>>) -> (Self, JoinHandle<F::Output, M>)
     where
         F: Future,
     {
@@ -547,7 +562,7 @@ unsafe impl Sync for TaskRef {}
 
 // === impl Task ===
 
-impl<F: Future> Task<F> {
+impl<F: Future, M> Task<F, M> {
     const TASK_VTABLE: VTable = VTable {
         poll: Self::poll,
         poll_join: Self::poll_join,
@@ -555,15 +570,18 @@ impl<F: Future> Task<F> {
     };
 
     loom_const_fn! {
-        pub const fn new(future: F, task_id: Id, span: tracing::Span) -> Self {
+        pub const fn new(future: F, task_id: Id, span: tracing::Span, metadata: M) -> Self {
             let inner = TaskInner {
-                header: Header {
-                    state: State::new(),
-                    vtable: &Self::TASK_VTABLE,
-                    id: task_id,
-                    run_queue_links: mpsc_queue::Links::new(),
-                    span,
-                    scheduler: UnsafeCell::new(None)
+                header_and_metadata: HeaderAndMetadata {
+                    header: Header {
+                        state: State::new(),
+                        vtable: &Self::TASK_VTABLE,
+                        id: task_id,
+                        run_queue_links: mpsc_queue::Links::new(),
+                        span,
+                        scheduler: UnsafeCell::new(None)
+                    },
+                    metadata
                 },
                 stage: UnsafeCell::new(Stage::Pending(future)),
                 join_waker: UnsafeCell::new(None),
@@ -802,14 +820,14 @@ impl<F: Future> Task<F> {
     }
 
     fn id(&self) -> &Id {
-        &self.0.0.header.id
+        &self.0.0.header_and_metadata.header.id
     }
     fn state(&self) -> &State {
-        &self.0.0.header.state
+        &self.0.0.header_and_metadata.header.state
     }
     #[inline]
     fn span(&self) -> &tracing::Span {
-        &self.0.0.header.span
+        &self.0.0.header_and_metadata.header.span
     }
 }
 
@@ -903,5 +921,27 @@ unsafe impl cordyceps::Linked<mpsc_queue::Links<Self>> for Header {
             addr.checked_add(offset).unwrap()
         })
         .cast()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::boxed::Box;
+
+    use crate::loom;
+    use crate::task::{Id, Task, TaskRef};
+
+    #[test]
+    fn metadata() {
+        loom::model(|| {
+            let (t1, _) = TaskRef::new_allocated(Box::new(Task::new(
+                async {},
+                Id::next(),
+                tracing::Span::none(),
+                42usize,
+            )));
+
+            assert_eq!(unsafe { *t1.metadata::<usize>() }, 42);
+        });
     }
 }
