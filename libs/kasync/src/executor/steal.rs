@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use alloc::boxed::Box;
 use core::alloc::AllocError;
 use core::fmt::Debug;
 use core::num::NonZeroUsize;
@@ -14,7 +13,7 @@ use cordyceps::{MpscQueue, mpsc_queue};
 
 use crate::executor::Scheduler;
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
-use crate::task::{Header, Task, TaskRef};
+use crate::task::{Header, TaskRef};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[non_exhaustive]
@@ -34,8 +33,7 @@ pub struct Injector {
 
 impl Injector {
     pub fn new() -> Result<Self, AllocError> {
-        let stub_task = Box::try_new(Task::new_stub())?;
-        let (stub_task, _) = TaskRef::new_allocated(stub_task);
+        let stub_task = TaskRef::new_stub()?;
 
         Ok(Self {
             run_queue: MpscQueue::new_with_stub(stub_task),

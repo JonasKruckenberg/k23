@@ -7,7 +7,6 @@
 
 mod steal;
 
-use alloc::boxed::Box;
 use core::alloc::AllocError;
 use core::num::NonZeroUsize;
 use core::ptr;
@@ -25,7 +24,7 @@ use crate::executor::steal::{Injector, Stealer, TryStealError};
 use crate::future::Either;
 use crate::loom::sync::atomic::{AtomicPtr, AtomicUsize};
 use crate::sync::wait_queue::WaitQueue;
-use crate::task::{Header, JoinHandle, PollResult, Task, TaskBuilder, TaskRef};
+use crate::task::{Header, JoinHandle, PollResult, TaskBuilder, TaskRef};
 
 #[derive(Debug)]
 pub struct Executor {
@@ -332,8 +331,7 @@ impl Worker {
 
 impl Scheduler {
     fn new() -> Result<Self, AllocError> {
-        let stub_task = Box::try_new(Task::new_stub())?;
-        let (stub_task, _) = TaskRef::new_allocated(stub_task);
+        let stub_task = TaskRef::new_stub()?;
 
         Ok(Self {
             run_queue: MpscQueue::new_with_stub(stub_task),
