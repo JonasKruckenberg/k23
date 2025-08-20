@@ -7,12 +7,11 @@
 
 mod steal;
 
-use alloc::boxed::Box;
 use core::alloc::AllocError;
 use core::num::NonZeroUsize;
-use core::ptr;
 use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
+use core::{fmt, ptr};
 
 use cordyceps::mpsc_queue::{MpscQueue, TryDequeueError};
 use cpu_local::collection::CpuLocal;
@@ -25,20 +24,20 @@ use crate::executor::steal::{Injector, Stealer, TryStealError};
 use crate::future::Either;
 use crate::loom::sync::atomic::{AtomicPtr, AtomicUsize};
 use crate::sync::wait_queue::WaitQueue;
-use crate::task::{Header, JoinHandle, PollResult, Task, TaskBuilder, TaskRef};
+use crate::task::{Header, JoinHandle, PollResult, TaskBuilder, TaskRef};
 
 #[derive(Debug)]
-pub struct Executor {
-    schedulers: CpuLocal<Scheduler>,
-    injector: Injector,
+pub struct Executor<M: Send> {
+    schedulers: CpuLocal<Scheduler<M>>,
+    injector: Injector<M>,
     sleepers: WaitQueue,
 }
 
 #[derive(Debug)]
-pub struct Worker {
+pub struct Worker<M: Send + 'static> {
     id: usize,
-    executor: &'static Executor,
-    scheduler: &'static Scheduler,
+    executor: &'static Executor<M>,
+    scheduler: &'static Scheduler<M>,
     rng: FastRand,
 }
 
@@ -71,10 +70,9 @@ pub struct Tick {
     pub woken_internal: usize,
 }
 
-#[derive(Debug)]
-pub struct Scheduler {
-    run_queue: MpscQueue<Header>,
-    current_task: AtomicPtr<Header>,
+pub struct Scheduler<M: Send> {
+    run_queue: MpscQueue<Header<M>>,
+    current_task: AtomicPtr<Header<M>>,
     queued: AtomicUsize,
     #[cfg(feature = "counters")]
     spawned: AtomicUsize,
@@ -84,7 +82,7 @@ pub struct Scheduler {
 
 // === impl Executor ===
 
-impl Executor {
+impl<M: Send> Executor<M> {
     /// # Errors
     ///
     /// Returns `AllocError` when allocating the underlying resources fails.
@@ -127,13 +125,13 @@ impl Executor {
         self.sleepers.wake();
     }
 
-    pub fn current_scheduler(&self) -> Option<&Scheduler> {
+    pub fn current_scheduler(&self) -> Option<&Scheduler<M>> {
         self.schedulers.get()
     }
 
     pub fn build_task<'a>(
         &'static self,
-    ) -> TaskBuilder<'a, impl Fn(TaskRef) -> Result<(), Closed>> {
+    ) -> TaskBuilder<'a, impl Fn(TaskRef<M>) -> Result<(), Closed>, M> {
         TaskBuilder::new(|task| {
             if self.is_closed() {
                 return Err(Closed(()));
@@ -163,22 +161,26 @@ impl Executor {
     /// # Errors
     ///
     /// Returns [`AllocError`] when allocation of the task fails.
-    pub fn try_spawn<F>(&'static self, future: F) -> Result<JoinHandle<F::Output>, SpawnError>
+    pub fn try_spawn<F>(
+        &'static self,
+        future: F,
+        metadata: M,
+    ) -> Result<JoinHandle<F::Output, M>, SpawnError>
     where
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        self.build_task().try_spawn(future)
+        self.build_task().try_spawn(future, metadata)
     }
 }
 
 // === impl Worker ===
 
-impl Worker {
+impl<M: Send + 'static> Worker<M> {
     /// # Errors
     ///
     /// Returns `AllocError` when allocating the underlying resources fails.
-    pub fn new(executor: &'static Executor, rng: FastRand) -> Result<Self, AllocError> {
+    pub fn new(executor: &'static Executor<M>, rng: FastRand) -> Result<Self, AllocError> {
         let id = executor.schedulers.len();
         let core = executor.schedulers.get_or_try(Scheduler::new)?;
 
@@ -192,7 +194,7 @@ impl Worker {
 
     /// Returns a reference to the task that's current being polled or `None`.
     #[must_use]
-    pub fn current_task(&self) -> Option<TaskRef> {
+    pub fn current_task(&self) -> Option<TaskRef<M>> {
         self.scheduler.current_task()
     }
 
@@ -330,10 +332,27 @@ impl Worker {
 
 // === impl Scheduler ===
 
-impl Scheduler {
+impl<M: Send> fmt::Debug for Scheduler<M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut f = f.debug_struct("Scheduler");
+
+        f.field("run_queue", &self.run_queue)
+            .field("current_task", &self.current_task)
+            .field("queued", &self.queued);
+
+        #[cfg(feature = "counters")]
+        {
+            f.field("spawned", &self.spawned);
+            f.field("woken", &self.woken);
+        }
+
+        f.finish()
+    }
+}
+
+impl<M: Send> Scheduler<M> {
     fn new() -> Result<Self, AllocError> {
-        let stub_task = Box::try_new(Task::new_stub())?;
-        let (stub_task, _) = TaskRef::new_allocated(stub_task);
+        let stub_task = TaskRef::new_stub()?;
 
         Ok(Self {
             run_queue: MpscQueue::new_with_stub(stub_task),
@@ -347,13 +366,15 @@ impl Scheduler {
     }
 
     /// Returns a reference to the task that's current being polled or `None`.
+    #[inline]
     #[must_use]
-    pub fn current_task(&self) -> Option<TaskRef> {
+    pub fn current_task(&self) -> Option<TaskRef<M>> {
         let ptr = NonNull::new(self.current_task.load(Ordering::Acquire))?;
         Some(TaskRef::clone_from_raw(ptr))
     }
 
-    pub fn schedule(&self, task: TaskRef) {
+    #[inline]
+    pub fn schedule(&self, task: TaskRef<M>) {
         self.queued.fetch_add(1, Ordering::AcqRel);
         self.run_queue.enqueue(task);
     }
@@ -466,7 +487,7 @@ impl Scheduler {
         tick
     }
 
-    fn try_steal(&self) -> Result<Stealer<'_>, TryStealError> {
+    fn try_steal(&self) -> Result<Stealer<'_, M>, TryStealError> {
         Stealer::new(&self.run_queue, &self.queued)
     }
 }
@@ -496,15 +517,18 @@ mod tests {
 
         loom::model(|| {
             loom::lazy_static! {
-                static ref EXEC: Executor = Executor::new().unwrap();
+                static ref EXEC: Executor<()> = Executor::new().unwrap();
                 static ref CALLED: AtomicBool = AtomicBool::new(false);
             }
 
-            EXEC.try_spawn(async move {
-                work().await;
-                CALLED.store(true, Ordering::SeqCst);
-                EXEC.close();
-            })
+            EXEC.try_spawn(
+                async move {
+                    work().await;
+                    CALLED.store(true, Ordering::SeqCst);
+                    EXEC.close();
+                },
+                (),
+            )
             .unwrap();
 
             let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
@@ -525,15 +549,18 @@ mod tests {
             const NUM_THREADS: usize = 3;
 
             loom::lazy_static! {
-                static ref EXEC: Executor = Executor::new().unwrap();
+                static ref EXEC: Executor<()> = Executor::new().unwrap();
                 static ref CALLED: AtomicBool = AtomicBool::new(false);
             }
 
-            EXEC.try_spawn(async move {
-                work().await;
-                CALLED.store(true, Ordering::SeqCst);
-                EXEC.close();
-            })
+            EXEC.try_spawn(
+                async move {
+                    work().await;
+                    CALLED.store(true, Ordering::SeqCst);
+                    EXEC.close();
+                },
+                (),
+            )
             .unwrap();
 
             let joins: Vec<_> = (0..NUM_THREADS)
@@ -563,27 +590,30 @@ mod tests {
 
         loom::model(|| {
             loom::lazy_static! {
-                static ref EXEC: Executor = Executor::new().unwrap();
+                static ref EXEC: Executor<()> = Executor::new().unwrap();
             }
 
-            let (tx, rx) = loom::sync::mpsc::channel::<JoinHandle<u32>>();
+            let (tx, rx) = loom::sync::mpsc::channel::<JoinHandle<u32, ()>>();
 
             let h0 = loom::thread::spawn(move || {
                 let tid = loom::thread::current().id();
                 let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
 
                 let h = EXEC
-                    .try_spawn(async move {
-                        // make sure the task is actually polled on thread 0
-                        assert_eq!(loom::thread::current().id(), tid);
+                    .try_spawn(
+                        async move {
+                            // make sure the task is actually polled on thread 0
+                            assert_eq!(loom::thread::current().id(), tid);
 
-                        crate::task::yield_now().await;
+                            crate::task::yield_now().await;
 
-                        // make sure the task is actually polled on thread 0
-                        assert_eq!(loom::thread::current().id(), tid);
+                            // make sure the task is actually polled on thread 0
+                            assert_eq!(loom::thread::current().id(), tid);
 
-                        42
-                    })
+                            42
+                        },
+                        (),
+                    )
                     .unwrap();
 
                 tx.send(h).unwrap();

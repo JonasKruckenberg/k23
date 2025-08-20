@@ -13,8 +13,8 @@
 #![feature(debug_closure_helpers)]
 #![feature(never_type)]
 #![feature(allocator_api)]
-extern crate alloc;
 
+extern crate alloc;
 mod error;
 pub mod executor;
 pub mod loom;

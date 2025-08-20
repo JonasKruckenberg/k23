@@ -163,7 +163,7 @@ mod tests {
 
         loom::model(move || {
             loom::lazy_static! {
-                static ref EXEC: Executor = Executor::new().unwrap();
+                static ref EXEC: Executor<()> = Executor::new().unwrap();
                 static ref TIMER: Timer = Timer::new(Duration::from_millis(1), MockClock::new_1us());
                 static ref CALLED: AtomicBool = AtomicBool::new(false);
             }
@@ -171,15 +171,18 @@ mod tests {
             let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
 
             let th = EXEC
-                .try_spawn(async move {
-                    tracing::trace!("going to sleep");
-                    sleep(&TIMER, Duration::from_millis(500)).unwrap().await;
-                    tracing::trace!("sleep done");
+                .try_spawn(
+                    async move {
+                        tracing::trace!("going to sleep");
+                        sleep(&TIMER, Duration::from_millis(500)).unwrap().await;
+                        tracing::trace!("sleep done");
 
-                    CALLED.store(true, Ordering::Release);
+                        CALLED.store(true, Ordering::Release);
 
-                    tracing::info!("sleep done");
-                })
+                        tracing::info!("sleep done");
+                    },
+                    (),
+                )
                 .unwrap();
 
             let clock = unsafe { TIMER.clock().data().cast::<MockClock>().as_ref().unwrap() };

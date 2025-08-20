@@ -7,6 +7,7 @@
 
 use alloc::boxed::Box;
 use core::any::type_name;
+use core::marker::PhantomData;
 use core::panic::Location;
 
 use crate::error::{Closed, SpawnError};
@@ -14,16 +15,17 @@ use crate::task::id::Id;
 use crate::task::join_handle::JoinHandle;
 use crate::task::{Task, TaskRef};
 
-pub struct TaskBuilder<'a, S> {
+pub struct TaskBuilder<'a, S, M: Send> {
     location: Option<Location<'a>>,
     name: Option<&'a str>,
     kind: &'a str,
     schedule: S,
+    _m: PhantomData<M>,
 }
 
-impl<'a, S> TaskBuilder<'a, S>
+impl<'a, S, M: Send + 'static> TaskBuilder<'a, S, M>
 where
-    S: Fn(TaskRef) -> Result<(), Closed>,
+    S: Fn(TaskRef<M>) -> Result<(), Closed>,
 {
     pub fn new(schedule: S) -> Self {
         Self {
@@ -31,6 +33,7 @@ where
             name: None,
             kind: "task",
             schedule,
+            _m: PhantomData,
         }
     }
 
@@ -61,7 +64,7 @@ where
 
     #[inline]
     #[track_caller]
-    fn build<F>(&self, future: F) -> Task<F>
+    fn build<F>(&self, future: F, metadata: M) -> Task<F, M>
     where
         F: Future + Send,
         F::Output: Send,
@@ -75,12 +78,13 @@ where
             task.name = ?self.name,
             task.kind = self.kind,
             task.output = %type_name::<F::Output>(),
+            task.metadata = %type_name::<M>(),
             loc.file = loc.file(),
             loc.line = loc.line(),
             loc.col = loc.column(),
         );
 
-        Task::new(future, id, span)
+        Task::new(future, id, span, metadata)
     }
 
     /// Attempt spawn this [`Future`] onto the executor.
@@ -94,12 +98,16 @@ where
     /// Returns [`AllocError`] when allocation of the task fails.
     #[inline]
     #[track_caller]
-    pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output>, SpawnError>
+    pub fn try_spawn<F>(
+        &self,
+        future: F,
+        metadata: M,
+    ) -> Result<JoinHandle<F::Output, M>, SpawnError>
     where
         F: Future + Send,
         F::Output: Send,
     {
-        let task = self.build(future);
+        let task = self.build(future, metadata);
         let task = Box::try_new(task)?;
         let (task, join) = TaskRef::new_allocated(task);
 

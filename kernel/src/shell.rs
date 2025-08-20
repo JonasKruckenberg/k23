@@ -33,7 +33,7 @@ use crate::{arch, irq};
 
 static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
 
-pub fn init(devtree: &'static DeviceTree, sched: &'static Executor, num_cpus: usize) {
+pub fn init(devtree: &'static DeviceTree, sched: &'static Executor<()>, num_cpus: usize) {
     // The `Barrier` below is here so that the maybe verbose startup logging is
     // out of the way before dropping the user into the kernel shell. If we don't
     // wait for the last CPU to have finished initializing it will mess up the shell output.
@@ -44,36 +44,36 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Executor, num_cpus: us
         tracing::info!("{S}");
         tracing::info!("type `help` to list available commands");
 
-        sched
-            .try_spawn(async move {
-                let (mut uart, _mmap, irq_num) = init_uart(devtree);
+        let fut = async move {
+            let (mut uart, _mmap, irq_num) = init_uart(devtree);
 
-                let mut line = String::new();
-                loop {
-                    let res = irq::next_event(irq_num).await;
-                    assert!(res.is_ok());
-                    let mut newline = false;
+            let mut line = String::new();
+            loop {
+                let res = irq::next_event(irq_num).await;
+                assert!(res.is_ok());
+                let mut newline = false;
 
-                    let ch = uart.recv() as char;
-                    uart.write_char(ch).unwrap();
-                    match ch {
-                        '\n' | '\r' => {
-                            newline = true;
-                            uart.write_str("\n\r").unwrap();
-                        }
-                        '\u{007F}' => {
-                            line.pop();
-                        }
-                        ch => line.push(ch),
+                let ch = uart.recv() as char;
+                uart.write_char(ch).unwrap();
+                match ch {
+                    '\n' | '\r' => {
+                        newline = true;
+                        uart.write_str("\n\r").unwrap();
                     }
-
-                    if newline {
-                        eval(&line);
-                        line.clear();
+                    '\u{007F}' => {
+                        line.pop();
                     }
+                    ch => line.push(ch),
                 }
-            })
-            .unwrap();
+
+                if newline {
+                    eval(&line);
+                    line.clear();
+                }
+            }
+        };
+
+        sched.try_spawn(fut, ()).unwrap();
     }
 }
 

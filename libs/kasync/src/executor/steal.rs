@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use alloc::boxed::Box;
 use core::alloc::AllocError;
 use core::fmt::Debug;
 use core::num::NonZeroUsize;
@@ -14,7 +13,7 @@ use cordyceps::{MpscQueue, mpsc_queue};
 
 use crate::executor::Scheduler;
 use crate::loom::sync::atomic::{AtomicUsize, Ordering};
-use crate::task::{Header, Task, TaskRef};
+use crate::task::{Header, TaskRef};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[non_exhaustive]
@@ -27,15 +26,14 @@ pub enum TryStealError {
 }
 
 #[derive(Debug)]
-pub struct Injector {
-    run_queue: MpscQueue<Header>,
+pub struct Injector<M: Send> {
+    run_queue: MpscQueue<Header<M>>,
     queued: AtomicUsize,
 }
 
-impl Injector {
+impl<M: Send> Injector<M> {
     pub fn new() -> Result<Self, AllocError> {
-        let stub_task = Box::try_new(Task::new_stub())?;
-        let (stub_task, _) = TaskRef::new_allocated(stub_task);
+        let stub_task = TaskRef::new_stub()?;
 
         Ok(Self {
             run_queue: MpscQueue::new_with_stub(stub_task),
@@ -50,26 +48,26 @@ impl Injector {
     ///
     /// When stealing from the target is not possible, either because its queue is *empty*
     /// or because there is *already an active stealer*, an error is returned.
-    pub fn try_steal(&self) -> Result<Stealer<'_>, TryStealError> {
+    pub fn try_steal(&self) -> Result<Stealer<'_, M>, TryStealError> {
         Stealer::new(&self.run_queue, &self.queued)
     }
 
-    pub fn push_task(&self, task: TaskRef) {
+    pub fn push_task(&self, task: TaskRef<M>) {
         self.queued.fetch_add(1, Ordering::SeqCst);
         self.run_queue.enqueue(task);
     }
 }
 
-pub struct Stealer<'queue> {
-    queue: mpsc_queue::Consumer<'queue, Header>,
+pub struct Stealer<'queue, M: Send> {
+    queue: mpsc_queue::Consumer<'queue, Header<M>>,
     tasks: &'queue AtomicUsize,
     /// The initial task count in the target queue when this `Stealer` was created.
     task_snapshot: NonZeroUsize,
 }
 
-impl<'queue> Stealer<'queue> {
+impl<'queue, M: Send> Stealer<'queue, M> {
     pub(crate) fn new(
-        queue: &'queue MpscQueue<Header>,
+        queue: &'queue MpscQueue<Header<M>>,
         tasks: &'queue AtomicUsize,
     ) -> Result<Self, TryStealError> {
         let queue = queue.try_consume().ok_or(TryStealError::Busy)?;
@@ -89,7 +87,7 @@ impl<'queue> Stealer<'queue> {
     /// Steal a task from the queue and spawn it on the provided
     /// `scheduler`. Returns `true` when a task got successfully stolen
     /// and `false` if queue was empty.
-    pub fn spawn_one(&self, scheduler: &'static Scheduler) -> bool {
+    pub fn spawn_one(&self, scheduler: &'static Scheduler<M>) -> bool {
         let Some(task) = self.queue.dequeue() else {
             return false;
         };
@@ -112,7 +110,7 @@ impl<'queue> Stealer<'queue> {
     /// `scheduler`.
     ///
     /// Note this will always steal at least one task.
-    pub fn spawn_n(&self, core: &'static Scheduler, max: usize) -> usize {
+    pub fn spawn_n(&self, core: &'static Scheduler<M>, max: usize) -> usize {
         let mut stolen = 0;
         while stolen <= max && self.spawn_one(core) {
             stolen += 1;
@@ -124,7 +122,7 @@ impl<'queue> Stealer<'queue> {
     /// `scheduler`.
     ///
     /// Note this will always steal at least one task.
-    pub fn spawn_half(&self, core: &'static Scheduler) -> usize {
+    pub fn spawn_half(&self, core: &'static Scheduler<M>) -> usize {
         let max = self.task_snapshot.get().div_ceil(2);
         self.spawn_n(core, max)
     }

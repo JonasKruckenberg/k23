@@ -24,7 +24,7 @@ cpu_local! {
 
 #[derive(Debug)]
 pub struct Global {
-    pub executor: Executor,
+    pub executor: Executor<()>,
     pub timer: Timer,
     pub device_tree: DeviceTree,
     pub boot_info: &'static BootInfo,

@@ -12,6 +12,7 @@ mod state;
 mod yield_now;
 
 use alloc::boxed::Box;
+use core::alloc::AllocError;
 use core::any::type_name;
 use core::mem::offset_of;
 use core::panic::AssertUnwindSafe;
@@ -76,16 +77,15 @@ pub(crate) enum PollResult {
 ///
 /// `TaskRef`s are reference-counted, and the task will be deallocated when the
 /// last `TaskRef` pointing to it is dropped.
-#[derive(Eq, PartialEq)]
-pub struct TaskRef(NonNull<Header>);
+pub struct TaskRef<M: Send>(NonNull<Header<M>>);
 
 #[repr(C)]
-pub struct Task<F: Future>(CachePadded<TaskInner<F>>);
+pub struct Task<F: Future, M: Send + 'static>(CachePadded<TaskInner<F, M>>);
 
 #[repr(C)]
-struct TaskInner<F: Future> {
+struct TaskInner<F: Future, M: Send + 'static> {
     /// This must be the first field of the `Task` struct!
-    schedulable: Schedulable,
+    schedulable: Schedulable<M>,
 
     /// The future that the task is running.
     ///
@@ -143,10 +143,10 @@ struct TaskInner<F: Future> {
 }
 
 #[repr(C)]
-struct Schedulable {
+struct Schedulable<M: Send + 'static> {
     /// This must be the first field of the `Schedulable` struct!
-    header: Header,
-    scheduler: UnsafeCell<Option<&'static Scheduler>>,
+    header: Header<M>,
+    scheduler: UnsafeCell<Option<&'static Scheduler<M>>>,
 }
 
 /// The current lifecycle stage of the future. Either the future itself or its output.
@@ -165,7 +165,7 @@ enum Stage<F: Future> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Header {
+pub(crate) struct Header<M> {
     /// The task's state.
     ///
     /// This field is access with atomic instructions, so it's always safe to access it.
@@ -177,13 +177,14 @@ pub(crate) struct Header {
     run_queue_links: mpsc_queue::Links<Self>,
     /// The tracing span associated with this task, for debugging purposes.
     span: tracing::Span,
+    metadata: M,
 }
 
 #[derive(Debug)]
 struct VTable {
     /// Poll the future, returning a [`PollResult`] that indicates what the
     /// scheduler should do with the polled task.
-    poll: unsafe fn(NonNull<Header>) -> PollResult,
+    poll: unsafe fn(*const ()) -> PollResult,
 
     /// Poll the task's `JoinHandle` for completion, storing the output at the
     /// provided [`NonNull`] pointer if the task has completed.
@@ -194,13 +195,13 @@ struct VTable {
     // IMO...
     #[expect(clippy::type_complexity, reason = "")]
     poll_join: unsafe fn(
-        ptr: NonNull<Header>,
+        ptr: *const (),
         outptr: NonNull<()>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), JoinError<()>>>,
 
     /// Drops the task and deallocates its memory.
-    deallocate: unsafe fn(NonNull<Header>),
+    deallocate: unsafe fn(*const ()),
 
     /// The `wake_by_ref` function from the task's [`RawWakerVTable`].
     ///
@@ -211,9 +212,17 @@ struct VTable {
 
 // === impl TaskRef ===
 
-impl TaskRef {
+impl<M: Send> PartialEq for TaskRef<M> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<M: Send> Eq for TaskRef<M> {}
+
+impl<M: Send> TaskRef<M> {
     #[track_caller]
-    pub(crate) fn new_allocated<F>(task: Box<Task<F>>) -> (Self, JoinHandle<F::Output>)
+    pub(crate) fn new_allocated<F>(task: Box<Task<F, M>>) -> (Self, JoinHandle<F::Output, M>)
     where
         F: Future,
     {
@@ -227,11 +236,40 @@ impl TaskRef {
         (task, join)
     }
 
+    pub(crate) fn new_stub() -> Result<TaskRef<M>, AllocError> {
+        const HEAP_STUB_VTABLE: VTable = VTable {
+            poll: stub_poll,
+            poll_join: stub_poll_join,
+            // Heap allocated stub tasks *will* need to be deallocated, since the
+            // scheduler will deallocate its stub task if it's dropped.
+            deallocate: stub_deallocate,
+            wake_by_ref: stub_wake_by_ref,
+        };
+
+        let ptr = Box::into_raw(Box::try_new(Header {
+            state: State::new(),
+            vtable: &HEAP_STUB_VTABLE,
+            id: Id::stub(),
+            run_queue_links: mpsc_queue::Links::new_stub(),
+            span: tracing::Span::none(),
+            metadata: (),
+        })?);
+
+        // Safety: we just allocated the ptr so it is never null
+        Ok(Self(unsafe { NonNull::new_unchecked(ptr.cast()) }))
+    }
+
     /// Returns the tasks unique[^1] identifier.
     ///
     /// [^1]: Unique to all *currently running* tasks, *not* unique across spacetime. See [`Id`] for details.
     pub fn id(&self) -> Id {
         self.header().id
+    }
+
+    pub fn metadata(&self) -> &M {
+        debug_assert!(!self.id().is_stub());
+
+        &self.header().metadata
     }
 
     /// Returns `true` when this task has run to completion.
@@ -256,17 +294,17 @@ impl TaskRef {
         canceled
     }
 
-    pub(crate) fn clone_from_raw(ptr: NonNull<Header>) -> TaskRef {
+    pub(crate) fn clone_from_raw(ptr: NonNull<Header<M>>) -> Self {
         let this = Self(ptr);
         this.state().clone_ref();
         this
     }
 
-    pub(crate) fn header_ptr(&self) -> NonNull<Header> {
+    pub(crate) fn header_ptr(&self) -> NonNull<Header<M>> {
         self.0
     }
 
-    pub(crate) fn header(&self) -> &Header {
+    pub(crate) fn header(&self) -> &Header<M> {
         // Safety: constructor ensures the pointer is always valid
         unsafe { self.0.as_ref() }
     }
@@ -286,7 +324,7 @@ impl TaskRef {
     pub(crate) fn poll(&self) -> PollResult {
         let poll_fn = self.header().vtable.poll;
         // Safety: Called through our Vtable so this access should be fine
-        unsafe { poll_fn(self.0) }
+        unsafe { poll_fn(self.0.as_ptr().cast::<()>()) }
     }
 
     /// # Safety
@@ -302,7 +340,13 @@ impl TaskRef {
 
         // Safety: This is called through the Vtable and as long as the caller makes sure that the `T` is the right
         // type, this call is safe
-        let result = unsafe { poll_join_fn(self.0, NonNull::from(&mut slot).cast::<()>(), cx) };
+        let result = unsafe {
+            poll_join_fn(
+                self.0.as_ptr().cast::<()>(),
+                NonNull::from(&mut slot).cast::<()>(),
+                cx,
+            )
+        };
 
         result.map(|result| {
             if let Err(e) = result {
@@ -329,11 +373,11 @@ impl TaskRef {
     /// The new scheduler `S` must be of the **same** type as the scheduler that this task got created
     /// with. The shape of the allocated tasks depend on the type of the scheduler, binding a task
     /// to a differently typed scheduler will therefore cause invalid memory accesses.
-    pub(crate) fn bind_scheduler(&self, scheduler: &'static Scheduler) {
+    pub(crate) fn bind_scheduler(&self, scheduler: &'static Scheduler<M>) {
         // Safety: the repr(C) on Schedulable ensures the layout matches and this cast is safe
         unsafe {
             self.0
-                .cast::<Schedulable>()
+                .cast::<Schedulable<M>>()
                 .as_ref()
                 .scheduler
                 .with_mut(|current| *current = Some(scheduler));
@@ -341,7 +385,7 @@ impl TaskRef {
     }
 }
 
-impl fmt::Debug for TaskRef {
+impl<M: Send> fmt::Debug for TaskRef<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TaskRef")
             .field("id", &self.id())
@@ -350,14 +394,14 @@ impl fmt::Debug for TaskRef {
     }
 }
 
-impl fmt::Pointer for TaskRef {
+impl<M: Send> fmt::Pointer for TaskRef<M> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Pointer::fmt(&self.0, f)
     }
 }
 
-impl Clone for TaskRef {
+impl<M: Send> Clone for TaskRef<M> {
     #[inline]
     #[track_caller]
     fn clone(&self) -> Self {
@@ -375,7 +419,7 @@ impl Clone for TaskRef {
     }
 }
 
-impl Drop for TaskRef {
+impl<M: Send> Drop for TaskRef<M> {
     #[inline]
     #[track_caller]
     fn drop(&mut self) {
@@ -391,28 +435,28 @@ impl Drop for TaskRef {
         let deallocate = self.header().vtable.deallocate;
         // Safety: as long as we're constructed from a NonNull<Header> this is safe
         unsafe {
-            deallocate(self.0);
+            deallocate(self.0.as_ptr().cast::<()>());
         }
     }
 }
 
 // Safety: The state protocol ensured synchronized access to the inner task
-unsafe impl Send for TaskRef {}
+unsafe impl<M: Send> Send for TaskRef<M> {}
 // Safety: The state protocol ensured synchronized access to the inner task
-unsafe impl Sync for TaskRef {}
+unsafe impl<M: Send + Sync> Sync for TaskRef<M> {}
 
 // === impl Task ===
 
-impl<F: Future> Task<F> {
+impl<F: Future, M: Send> Task<F, M> {
     const TASK_VTABLE: VTable = VTable {
         poll: Self::poll,
         poll_join: Self::poll_join,
         deallocate: Self::deallocate,
-        wake_by_ref: Schedulable::wake_by_ref,
+        wake_by_ref: Schedulable::<M>::wake_by_ref,
     };
 
     loom_const_fn! {
-        pub const fn new(future: F, task_id: Id, span: tracing::Span) -> Self {
+        pub const fn new(future: F, task_id: Id, span: tracing::Span, metadata: M) -> Self {
             let inner = TaskInner {
                 schedulable: Schedulable {
                     header: Header {
@@ -421,6 +465,7 @@ impl<F: Future> Task<F> {
                         id: task_id,
                         run_queue_links: mpsc_queue::Links::new(),
                         span,
+                        metadata
                     },
                     scheduler: UnsafeCell::new(None)
                 },
@@ -441,19 +486,19 @@ impl<F: Future> Task<F> {
     /// - `ptr` must point to the [`Header`] of a task of type `Self` (i.e. the
     ///   pointed header must have the same `S`, `F`, and `STO` type parameters
     ///   as `Self`).
-    unsafe fn poll(ptr: NonNull<Header>) -> PollResult {
+    unsafe fn poll(ptr: *const ()) -> PollResult {
         // Safety: ensured by caller
         unsafe {
-            let this = ptr.cast::<Self>().as_ref();
+            let me = ptr.cast::<Self>().as_ref().unwrap();
 
             tracing::trace!(
                 task.addr=?ptr,
                 task.output=type_name::<F::Output>(),
-                task.id=?this.id(),
+                task.id=?me.id(),
                 "Task::poll",
             );
 
-            match this.state().start_poll() {
+            match me.state().start_poll() {
                 // Successfully to transitioned to `POLLING` all is good!
                 StartPollAction::Poll => {}
                 // Something isn't right, we shouldn't poll the task right now...
@@ -464,7 +509,7 @@ impl<F: Future> Task<F> {
                 StartPollAction::Cancelled { wake_join_waker } => {
                     tracing::trace!(task.addr=?ptr, "task cancelled");
                     if wake_join_waker {
-                        this.wake_join_waker();
+                        me.wake_join_waker();
                         return PollResult::ReadyJoined;
                     } else {
                         return PollResult::Ready;
@@ -477,7 +522,7 @@ impl<F: Future> Task<F> {
             // this waker is consumed during the poll, we don't want to decrement
             // its ref count when the poll ends.
             let waker = {
-                let raw = Schedulable::raw_waker(ptr.as_ptr().cast());
+                let raw = Schedulable::raw_waker(ptr.cast::<Schedulable<M>>());
                 mem::ManuallyDrop::new(Waker::from_raw(raw))
             };
 
@@ -485,15 +530,15 @@ impl<F: Future> Task<F> {
             let poll = {
                 let cx = Context::from_waker(&waker);
 
-                this.poll_inner(cx)
+                me.poll_inner(cx)
             };
 
-            let result = this.state().end_poll(poll.is_ready());
+            let result = me.state().end_poll(poll.is_ready());
 
             // if the task is ready and has a `JoinHandle` to wake, wake the join
             // waker now.
             if result == PollResult::ReadyJoined {
-                this.wake_join_waker();
+                me.wake_join_waker();
             }
 
             result
@@ -517,26 +562,26 @@ impl<F: Future> Task<F> {
     ///   as `Self`).
     /// - `outptr` must point to a valid `MaybeUninit<F::Output>`.
     unsafe fn poll_join(
-        ptr: NonNull<Header>,
+        ptr: *const (),
         outptr: NonNull<()>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), JoinError<()>>> {
         // Safety: ensured by caller
         unsafe {
-            let this = ptr.cast::<Self>().as_ref();
+            let me = ptr.cast::<Self>().as_ref().unwrap();
             tracing::trace!(
                 task.addr=?ptr,
                 task.output=type_name::<F::Output>(),
-                task.id=?this.id(),
+                task.id=?me.id(),
                 "Task::poll_join"
             );
 
-            match this.state().try_join() {
+            match me.state().try_join() {
                 JoinAction::TakeOutput => {
                     // safety: if the state transition returns
                     // `JoinAction::TakeOutput`, this indicates that we have
                     // exclusive permission to read the task output.
-                    this.take_output(outptr);
+                    me.take_output(outptr);
                     return Poll::Ready(Ok(()));
                 }
                 JoinAction::Canceled { completed } => {
@@ -546,17 +591,17 @@ impl<F: Future> Task<F> {
                         // safety: if the state transition returned `Canceled`
                         // with `completed` set, this indicates that we have
                         // exclusive permission to take the output.
-                        this.take_output(outptr);
+                        me.take_output(outptr);
                     }
-                    return Poll::Ready(Err(JoinError::cancelled(completed, *this.id())));
+                    return Poll::Ready(Err(JoinError::cancelled(completed, *me.id())));
                 }
                 JoinAction::Register => {
-                    this.0.0.join_waker.with_mut(|waker| {
+                    me.0.0.join_waker.with_mut(|waker| {
                         waker.write(Some(cx.waker().clone()));
                     });
                 }
                 JoinAction::Reregister => {
-                    this.0.0.join_waker.with_mut(|waker| {
+                    me.0.0.join_waker.with_mut(|waker| {
                         let waker = (*waker).as_mut().unwrap();
 
                         let new_waker = cx.waker();
@@ -566,7 +611,7 @@ impl<F: Future> Task<F> {
                     });
                 }
             }
-            this.state().join_waker_registered();
+            me.state().join_waker_registered();
             Poll::Pending
         }
     }
@@ -580,23 +625,24 @@ impl<F: Future> Task<F> {
     /// - `ptr` must point to the [`Header`] of a task of type `Self` (i.e. the
     ///   pointed header must have the same `S`, `F`, and `STO` type parameters
     ///   as `Self`).
-    unsafe fn deallocate(ptr: NonNull<Header>) {
+    unsafe fn deallocate(ptr: *const ()) {
         // Safety: ensured by caller
         unsafe {
-            let this = ptr.cast::<Self>();
+            let ptr = ptr.cast::<Self>();
+            let me = ptr.as_ref().unwrap();
             tracing::trace!(
                 task.addr=?ptr,
                 task.output=type_name::<F::Output>(),
-                task.id=?this.as_ref().id(),
-                task.is_stub=?this.as_ref().id().is_stub(),
+                task.id=?me.id(),
+                task.is_stub=?me.id().is_stub(),
                 "Task::deallocate",
             );
             debug_assert_eq!(
-                ptr.as_ref().state.load(Ordering::Acquire).ref_count(),
+                me.state().load(Ordering::Acquire).ref_count(),
                 0,
                 "a task may not be deallocated if its ref count is greater than zero!"
             );
-            drop(Box::from_raw(this.as_ptr()));
+            drop(Box::from_raw(ptr.cast_mut()));
         }
     }
 
@@ -671,39 +717,6 @@ impl<F: Future> Task<F> {
     }
 }
 
-impl Task<Stub> {
-    const HEAP_STUB_VTABLE: VTable = VTable {
-        poll: stub_poll,
-        poll_join: stub_poll_join,
-        // Heap allocated stub tasks *will* need to be deallocated, since the
-        // scheduler will deallocate its stub task if it's dropped.
-        deallocate: Self::deallocate,
-        wake_by_ref: stub_wake_by_ref,
-    };
-
-    loom_const_fn! {
-        /// Create a new stub task.
-        pub(crate) const fn new_stub() -> Self {
-            let inner = TaskInner {
-                schedulable: Schedulable {
-                    header: Header {
-                        state: State::new(),
-                        vtable: &Self::HEAP_STUB_VTABLE,
-                        id: Id::stub(),
-                        run_queue_links: mpsc_queue::Links::new_stub(),
-                        span: tracing::Span::none(),
-                    },
-                    scheduler: UnsafeCell::new(None)
-                },
-                stage: UnsafeCell::new(Stage::Pending(Stub)),
-                join_waker: UnsafeCell::new(None),
-            };
-
-            Self(CachePadded(inner))
-        }
-    }
-}
-
 // === impl Stage ===
 
 impl<F> Stage<F>
@@ -765,7 +778,7 @@ where
 
 // === impl Schedulable ===
 
-impl Schedulable {
+impl<M: Send> Schedulable<M> {
     const WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(
         Self::clone_waker,
         Self::wake_by_val,
@@ -789,7 +802,7 @@ impl Schedulable {
         &self.header.state
     }
 
-    unsafe fn schedule(this: TaskRef) {
+    unsafe fn schedule(this: TaskRef<M>) {
         // Safety: ensured by caller
         unsafe {
             this.header_ptr()
@@ -815,7 +828,7 @@ impl Schedulable {
             }
 
             let deallocate = this.as_ref().header.vtable.deallocate;
-            deallocate(this.cast::<Header>());
+            deallocate(this.as_ptr().cast());
         }
     }
 
@@ -843,7 +856,7 @@ impl Schedulable {
                     // transition does *not* decrement the reference count. this is
                     // in order to avoid dropping the task while it is being
                     // scheduled. one reference is consumed by enqueuing the task...
-                    Self::schedule(TaskRef(this.cast::<Header>()));
+                    Self::schedule(TaskRef(this.cast::<Header<M>>()));
                     // now that the task has been enqueued, decrement the reference
                     // count to drop the waker that performed the `wake_by_val`.
                     Self::drop_ref(this);
@@ -869,7 +882,7 @@ impl Schedulable {
 
             let this = NonNull::new_unchecked(this.cast_mut()).cast::<Self>();
             if this.as_ref().state().wake_by_ref() == WakeByRefAction::Enqueue {
-                Self::schedule(TaskRef(this.cast::<Header>()));
+                Self::schedule(TaskRef(this.cast::<Header<M>>()));
             }
         }
     }
@@ -916,8 +929,8 @@ impl Schedulable {
 // Safety: tasks are always treated as pinned in memory (a requirement for polling them)
 // and care has been taken below to ensure the underlying memory isn't freed as long as the
 // `TaskRef` is part of the owned tasks list.
-unsafe impl cordyceps::Linked<mpsc_queue::Links<Self>> for Header {
-    type Handle = TaskRef;
+unsafe impl<M: Send> cordyceps::Linked<mpsc_queue::Links<Self>> for Header<M> {
+    type Handle = TaskRef<M>;
 
     fn into_ptr(task: Self::Handle) -> NonNull<Self> {
         let ptr = task.0;
@@ -945,40 +958,38 @@ unsafe impl cordyceps::Linked<mpsc_queue::Links<Self>> for Header {
     }
 }
 
-/// DO NOT confuse this with [`TaskSTub`]. This type is just a zero-size placeholder so we
-/// can plug *something* into the generics when creating the *heap allocated* stub task.
-/// This type is *not* publicly exported, contrary to [`TaskSTub`] which users will have to statically
-/// allocate themselves.
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct Stub;
-
-impl Future for Stub {
-    type Output = ();
-    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-        unreachable!("the stub task should never be polled!")
-    }
-}
-
-unsafe fn stub_poll(ptr: NonNull<Header>) -> PollResult {
-    // Safety: this method should never be called
-    unsafe {
-        debug_assert!(ptr.as_ref().id.is_stub());
-        unreachable!("stub task ({ptr:?}) should never be polled!");
-    }
+unsafe fn stub_poll(ptr: *const ()) -> PollResult {
+    // Safety: ensured through vtable
+    let me = unsafe { ptr.cast::<Header<()>>().as_ref().unwrap() };
+    debug_assert!(me.id.is_stub());
+    unreachable!("stub task ({ptr:?}) should never be polled!");
 }
 
 unsafe fn stub_poll_join(
-    ptr: NonNull<Header>,
+    ptr: *const (),
     _outptr: NonNull<()>,
     _cx: &mut Context<'_>,
 ) -> Poll<Result<(), JoinError<()>>> {
-    // Safety: this method should never be called
+    // Safety: ensured through vtable
+    let me = unsafe { ptr.cast::<Header<()>>().as_ref().unwrap() };
+    debug_assert!(me.id.is_stub());
+    unreachable!("stub task ({ptr:?}) should never be polled!");
+}
+
+unsafe fn stub_deallocate(ptr: *const ()) {
+    // Safety: ensured through vtable
     unsafe {
-        debug_assert!(ptr.as_ref().id.is_stub());
-        unreachable!("stub task ({ptr:?}) should never be polled!");
+        let ptr = ptr.cast::<Header<()>>();
+        let me = ptr.as_ref().unwrap();
+        debug_assert!(me.id.is_stub());
+
+        drop(Box::from_raw(ptr.cast_mut()));
     }
 }
 
 unsafe fn stub_wake_by_ref(ptr: *const ()) {
+    // Safety: ensured through vtable
+    let me = unsafe { ptr.cast::<Header<()>>().as_ref().unwrap() };
+    debug_assert!(me.id.is_stub());
     unreachable!("stub task ({ptr:p}) has no waker and should never be woken!");
 }
