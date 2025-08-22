@@ -42,6 +42,18 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Executor<arch::Park>, 
         tracing::info!("{S}");
         tracing::info!("type `help` to list available commands");
 
+        #[cfg(target_arch = "x86_64")]
+        {
+            // For x86_64, spawn a simple polling-based serial console
+            sched
+                .try_spawn(async move {
+                    x86_serial_console().await;
+                })
+                .unwrap();
+        }
+
+        // For RISC-V, use the UART from device tree
+        #[cfg(not(target_arch = "x86_64"))]
         sched
             .try_spawn(async move {
                 let (mut uart, _mmap, irq_num) = init_uart(devtree);
@@ -116,6 +128,121 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
     let uart = unsafe { uart_16550::SerialPort::new(mmap.range().start.get(), clock_freq, 115200) };
 
     (uart, mmap, irq_num)
+}
+
+#[cfg(target_arch = "x86_64")]
+async fn x86_serial_console() {
+    use alloc::string::String;
+    use kasync::task::yield_now;
+    
+    const COM1_BASE: u16 = 0x3F8;
+    const DATA_REG: u16 = COM1_BASE + 0;
+    const LINE_STATUS_REG: u16 = COM1_BASE + 5;
+    
+    // Helper to check if data is available
+    fn has_data() -> bool {
+        unsafe {
+            let status: u8;
+            core::arch::asm!(
+                "in al, dx",
+                out("al") status,
+                in("dx") LINE_STATUS_REG,
+                options(nomem, preserves_flags)
+            );
+            status & 0x01 != 0
+        }
+    }
+    
+    // Helper to read a byte from serial port
+    fn read_byte() -> u8 {
+        unsafe {
+            let data: u8;
+            core::arch::asm!(
+                "in al, dx",
+                out("al") data,
+                in("dx") DATA_REG,
+                options(nomem, preserves_flags)
+            );
+            data
+        }
+    }
+    
+    // Helper to write a byte to serial port
+    fn write_byte(byte: u8) {
+        unsafe {
+            // Wait for transmit buffer to be empty
+            loop {
+                let status: u8;
+                core::arch::asm!(
+                    "in al, dx",
+                    out("al") status,
+                    in("dx") LINE_STATUS_REG,
+                    options(nomem, preserves_flags)
+                );
+                if status & 0x20 != 0 {
+                    break;
+                }
+            }
+            
+            // Write the byte
+            core::arch::asm!(
+                "out dx, al",
+                in("al") byte,
+                in("dx") DATA_REG,
+                options(nomem, preserves_flags)
+            );
+        }
+    }
+    
+    let mut line = String::new();
+    
+    loop {
+        // Poll for input
+        if has_data() {
+            let ch = read_byte() as char;
+            
+            match ch {
+                '\r' | '\n' => {
+                    // Echo newline
+                    write_byte(b'\r');
+                    write_byte(b'\n');
+                    
+                    // Process the command
+                    if !line.is_empty() {
+                        eval(&line);
+                        line.clear();
+                    }
+                }
+                '\x7F' | '\x08' => {  // Backspace or Delete
+                    if !line.is_empty() {
+                        line.pop();
+                        // Echo backspace sequence: backspace, space, backspace
+                        write_byte(b'\x08');
+                        write_byte(b' ');
+                        write_byte(b'\x08');
+                    }
+                }
+                '\x03' => {  // Ctrl+C
+                    write_byte(b'^');
+                    write_byte(b'C');
+                    write_byte(b'\r');
+                    write_byte(b'\n');
+                    line.clear();
+                }
+                ch if ch.is_ascii() && !ch.is_control() => {
+                    line.push(ch);
+                    // Echo the character
+                    write_byte(ch as u8);
+                }
+                _ => {
+                    // Ignore non-printable characters
+                }
+            }
+        } else {
+            // Yield to other tasks when no input is available
+            yield_now().await;
+        }
+    }
 }
 
 pub fn eval(line: &str) {
