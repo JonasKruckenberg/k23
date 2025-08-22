@@ -73,7 +73,7 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
                 }
             }
         }
-        
+
         alloc.initialize_for_hart(hartid);
     }
 
@@ -187,23 +187,25 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         {
             let fdt_src = minfo.fdt;
             let fdt_size = fdt_src.len();
-            
+
             // Allocate a frame for the FDT
-            let fdt_frame = frame_alloc.allocate_contiguous(
-                core::alloc::Layout::from_size_align(fdt_size, arch::PAGE_SIZE).unwrap()
-            ).unwrap();
-            
+            let fdt_frame = frame_alloc
+                .allocate_contiguous(
+                    core::alloc::Layout::from_size_align(fdt_size, arch::PAGE_SIZE).unwrap(),
+                )
+                .unwrap();
+
             // Now we can use the virtual address since MMU is active
             unsafe {
                 let dst = (phys_off + fdt_frame) as *mut u8;
                 core::ptr::copy_nonoverlapping(fdt_src.as_ptr(), dst, fdt_size);
             }
-            
+
             log::debug!("x86_64: Copied FDT to allocated frame at {:#x}", fdt_frame);
-            
+
             Range::from(fdt_frame..fdt_frame + fdt_size)
         }
-        
+
         #[cfg(not(target_arch = "x86_64"))]
         {
             fdt_phys // Use the original value for non-x86_64

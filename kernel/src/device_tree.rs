@@ -102,7 +102,7 @@ impl DeviceTree {
                 })
             });
         }
-        
+
         // Safety: u32 has no invalid bit patterns
         let (left, aligned, _) = unsafe { fdt.align_to::<u32>() };
         assert!(left.is_empty()); // TODO decide what to do with unaligned slices

@@ -30,14 +30,18 @@ pub fn prepare_boot_info(
         Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
         arch::KERNEL_ASPACE_BASE,
     )?;
-    
+
     #[cfg(target_arch = "x86_64")]
     log::debug!("Boot info frame allocated at physical: {:#x}", frame);
-    
+
     let page = physical_address_offset.checked_add(frame).unwrap();
-    
+
     #[cfg(target_arch = "x86_64")]
-    log::debug!("Boot info virtual address: {:#x} (offset: {:#x})", page, physical_address_offset);
+    log::debug!(
+        "Boot info virtual address: {:#x} (offset: {:#x})",
+        page,
+        physical_address_offset
+    );
 
     let memory_regions =
         init_boot_info_memory_regions(page, frame_alloc, fdt_phys, loader_phys, kernel_phys);
@@ -71,7 +75,11 @@ fn init_boot_info_memory_regions(
         let len = (arch::PAGE_SIZE - size_of::<BootInfo>()) / size_of::<MemoryRegion>();
 
         #[cfg(target_arch = "x86_64")]
-        log::debug!("Memory regions array at virtual address: {:#x}, len: {}", base, len);
+        log::debug!(
+            "Memory regions array at virtual address: {:#x}, len: {}",
+            base,
+            len
+        );
 
         slice::from_raw_parts_mut(base as *mut MaybeUninit<MemoryRegion>, len)
     };

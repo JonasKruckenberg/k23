@@ -16,7 +16,7 @@ pub fn parse(devtree: &DeviceTree) -> crate::Result<Bootargs> {
     {
         return Ok(Bootargs::default());
     }
-    
+
     #[cfg(not(target_arch = "x86_64"))]
     {
         let chosen = devtree.find_by_path("/chosen").unwrap();

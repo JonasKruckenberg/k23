@@ -161,7 +161,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
         unsafe {
             core::arch::asm!("mov {}, cr3", out(reg) cr3_val);
         }
-        
+
         // CR3 contains the physical address of the PML4 table
         // The lower 12 bits are flags, so mask them off
         let root_pgtable = PhysicalAddress::new((cr3_val & !0xFFF) as usize);

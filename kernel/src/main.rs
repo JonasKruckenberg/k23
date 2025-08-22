@@ -100,7 +100,6 @@ extern "C" fn _rust_start(cpuid: usize, boot_info_ptr: usize, boot_ticks: u64) -
 }
 
 fn _rust_start_impl(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
-    
     panic_unwind2::set_hook(|info| {
         tracing::error!("CPU {info}");
 
@@ -175,13 +174,11 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         tracing::init(bootargs.log);
         // perform global, architecture-specific initialization
         let arch = arch::init();
-        
 
         // initialize the global frame allocator
         // at this point we have parsed and processed the flattened device tree, so we pass it to the
         // frame allocator for reuse
         let frame_alloc = frame_alloc::init(boot_alloc, fdt_region_phys);
-
 
         // initialize the virtual memory subsystem
         mem::init(boot_info, &mut rng, frame_alloc).unwrap();

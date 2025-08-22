@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .file("src/arch/x86_64/entry.s")
             .compile("entry");
     }
-    
+
     let build = BuildBuilder::default().build_timestamp(true).build()?;
     let cargo = CargoBuilder::default()
         .target_triple(true)

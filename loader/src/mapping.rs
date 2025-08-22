@@ -533,7 +533,7 @@ fn handle_tls_segment(
     let pre_offset = arch::PAGE_SIZE; // Allocate one page before TLS data for negative offsets
     #[cfg(not(target_arch = "x86_64"))]
     let pre_offset = 0;
-    
+
     let per_cpu_size = ph.mem_size + pre_offset;
     let layout = Layout::from_size_align(per_cpu_size, cmp::max(ph.align, arch::PAGE_SIZE))
         .unwrap()
@@ -552,7 +552,7 @@ fn handle_tls_segment(
             "Mapping TLS region {virt_start:#x}..{:#x} {len}, phys={phys:#x}...",
             virt_start.checked_add(len.get()).unwrap()
         );
-        
+
         // Debug: Check if the physical memory is properly zeroed
         #[cfg(target_arch = "x86_64")]
         unsafe {
@@ -561,7 +561,9 @@ fn handle_tls_segment(
             let phys_ptr = virt_addr as *const u64;
             let first_val = *phys_ptr;
             if first_val != 0 {
-                log::error!("TLS physical memory at {phys:#x} not zeroed! Contains: {first_val:#x}");
+                log::error!(
+                    "TLS physical memory at {phys:#x} not zeroed! Contains: {first_val:#x}"
+                );
                 if first_val == 0xACE0BACE {
                     log::error!("Found stack canary pattern in freshly allocated TLS memory!");
                 }
@@ -615,14 +617,11 @@ impl TlsAllocation {
         let per_cpu_size = self.template.mem_size + self.pre_offset;
         #[cfg(not(target_arch = "x86_64"))]
         let per_cpu_size = self.template.mem_size;
-        
-        let aligned_size = checked_align_up(
-            per_cpu_size,
-            cmp::max(self.template.align, arch::PAGE_SIZE),
-        )
-        .unwrap();
+
+        let aligned_size =
+            checked_align_up(per_cpu_size, cmp::max(self.template.align, arch::PAGE_SIZE)).unwrap();
         let allocation_start = self.virt.start + (aligned_size * hartid);
-        
+
         // For x86_64, the TLS base should point to after the pre_offset area
         #[cfg(target_arch = "x86_64")]
         let tls_start = allocation_start + self.pre_offset;
@@ -634,7 +633,7 @@ impl TlsAllocation {
 
     pub fn initialize_for_hart(&self, hartid: usize) {
         let region = self.region_for_hart(hartid);
-        
+
         // Safety: We have to trust the loaders BootInfo here
         unsafe {
             // For x86_64, we need to set up the TLS self-pointer at offset 0
@@ -644,19 +643,21 @@ impl TlsAllocation {
                 // Write the TLS base address at offset 0 (self-pointer)
                 let tls_base_ptr = region.start as *mut usize;
                 *tls_base_ptr = region.start;
-                log::trace!("Set TLS self-pointer at {:#x} to {:#x}", region.start, region.start);
+                log::trace!(
+                    "Set TLS self-pointer at {:#x} to {:#x}",
+                    region.start,
+                    region.start
+                );
             }
-            
+
             // First, copy the initialized data if any
             if self.template.file_size != 0 {
                 let src: &[u8] = slice::from_raw_parts(
                     self.template.start_addr as *const u8,
                     self.template.file_size,
                 );
-                let dst: &mut [u8] = slice::from_raw_parts_mut(
-                    region.start as *mut u8,
-                    self.template.file_size,
-                );
+                let dst: &mut [u8] =
+                    slice::from_raw_parts_mut(region.start as *mut u8, self.template.file_size);
 
                 // sanity check to ensure our destination allocated memory is actually zeroed.
                 // if it's not, that likely means we're about to override something important
@@ -683,18 +684,15 @@ impl TlsAllocation {
 
                 dst.copy_from_slice(src);
             }
-            
+
             // Then zero the BSS section (from file_size to mem_size)
             if self.template.mem_size > self.template.file_size {
                 let bss_start = region.start + self.template.file_size;
                 let bss_size = self.template.mem_size - self.template.file_size;
-                let bss: &mut [u8] = slice::from_raw_parts_mut(
-                    bss_start as *mut u8,
-                    bss_size,
-                );
+                let bss: &mut [u8] = slice::from_raw_parts_mut(bss_start as *mut u8, bss_size);
                 bss.fill(0);
             }
-            
+
             // For x86_64, ensure the self-pointer wasn't overwritten
             #[cfg(target_arch = "x86_64")]
             {

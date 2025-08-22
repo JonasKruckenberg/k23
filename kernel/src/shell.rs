@@ -134,11 +134,11 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
 async fn x86_serial_console() {
     use alloc::string::String;
     use kasync::task::yield_now;
-    
+
     const COM1_BASE: u16 = 0x3F8;
     const DATA_REG: u16 = COM1_BASE + 0;
     const LINE_STATUS_REG: u16 = COM1_BASE + 5;
-    
+
     // Helper to check if data is available
     fn has_data() -> bool {
         unsafe {
@@ -152,7 +152,7 @@ async fn x86_serial_console() {
             status & 0x01 != 0
         }
     }
-    
+
     // Helper to read a byte from serial port
     fn read_byte() -> u8 {
         unsafe {
@@ -166,7 +166,7 @@ async fn x86_serial_console() {
             data
         }
     }
-    
+
     // Helper to write a byte to serial port
     fn write_byte(byte: u8) {
         unsafe {
@@ -183,7 +183,7 @@ async fn x86_serial_console() {
                     break;
                 }
             }
-            
+
             // Write the byte
             core::arch::asm!(
                 "out dx, al",
@@ -193,27 +193,28 @@ async fn x86_serial_console() {
             );
         }
     }
-    
+
     let mut line = String::new();
-    
+
     loop {
         // Poll for input
         if has_data() {
             let ch = read_byte() as char;
-            
+
             match ch {
                 '\r' | '\n' => {
                     // Echo newline
                     write_byte(b'\r');
                     write_byte(b'\n');
-                    
+
                     // Process the command
                     if !line.is_empty() {
                         eval(&line);
                         line.clear();
                     }
                 }
-                '\x7F' | '\x08' => {  // Backspace or Delete
+                '\x7F' | '\x08' => {
+                    // Backspace or Delete
                     if !line.is_empty() {
                         line.pop();
                         // Echo backspace sequence: backspace, space, backspace
@@ -222,7 +223,8 @@ async fn x86_serial_console() {
                         write_byte(b'\x08');
                     }
                 }
-                '\x03' => {  // Ctrl+C
+                '\x03' => {
+                    // Ctrl+C
                     write_byte(b'^');
                     write_byte(b'C');
                     write_byte(b'\r');
