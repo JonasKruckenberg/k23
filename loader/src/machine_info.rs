@@ -44,8 +44,30 @@ impl MachineInfo<'_> {
         // For now, report memory from 4MB to 256MB (matching QEMU's -m 256M setting)
         memories.push(Range::from(0x400000..0x10000000)); // 4MB to 256MB
 
-        // Create a dummy FDT slice (won't be used)
-        static DUMMY_FDT: [u8; 4] = [0; 4];
+        // Create a minimal valid FDT structure for x86_64
+        // This contains just a root node and proper FDT headers
+        static DUMMY_FDT: [u8; 80] = [
+            0xd0, 0x0d, 0xfe, 0xed,  // magic (0xd00dfeed)
+            0x00, 0x00, 0x00, 0x50,  // totalsize (80 bytes)
+            0x00, 0x00, 0x00, 0x38,  // off_dt_struct (56)
+            0x00, 0x00, 0x00, 0x48,  // off_dt_strings (72)
+            0x00, 0x00, 0x00, 0x28,  // off_mem_rsvmap (40)
+            0x00, 0x00, 0x00, 0x11,  // version (17)
+            0x00, 0x00, 0x00, 0x10,  // last_comp_version (16)
+            0x00, 0x00, 0x00, 0x00,  // boot_cpuid_phys (0)
+            0x00, 0x00, 0x00, 0x08,  // size_dt_strings (8)
+            0x00, 0x00, 0x00, 0x10,  // size_dt_struct (16)
+            // Memory reservation block (empty)
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // address = 0
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // size = 0 (terminator)
+            // Structure block (16 bytes)
+            0x00, 0x00, 0x00, 0x01,  // FDT_BEGIN_NODE
+            0x00, 0x00, 0x00, 0x00,  // name (empty string for root)
+            0x00, 0x00, 0x00, 0x02,  // FDT_END_NODE
+            0x00, 0x00, 0x00, 0x09,  // FDT_END
+            // Strings block (8 bytes, empty)
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
 
         MachineInfo {
             fdt: &DUMMY_FDT,

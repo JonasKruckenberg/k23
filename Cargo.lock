@@ -1098,6 +1098,7 @@ dependencies = [
  "arrayvec",
  "bitflags",
  "bumpalo",
+ "cc",
  "cfg-if",
  "cordyceps",
  "cpu-local",

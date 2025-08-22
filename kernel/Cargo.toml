@@ -68,6 +68,7 @@ x86.workspace = true
 
 [build-dependencies]
 vergen-git2 = { version = "1.0.7", features = ["build", "cargo", "rustc"] }
+cc = "1.0"
 
 [lints]
 workspace = true

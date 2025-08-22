@@ -48,10 +48,11 @@ pub fn per_cpu_init_early() {
         // the loader to the kernel entry.
         // this assembly below sets the FS_BASE MSR to the correct value
         // TODO: figure out why this happens
+        // The TLS region starts at 0xffffffc080001000 as shown in loader output
         core::arch::asm!(
             "mov rcx, 0xc0000100",  // FS_BASE MSR
-            "mov rax, 0xffffffc080000000",
-            "mov rdx, 0xffffffc0",
+            "mov rax, 0xffffffc080001000",  // Low 32 bits of TLS base
+            "mov rdx, 0xffffffc0",           // High 32 bits of TLS base
             "wrmsr",
             out("rcx") _,
             out("rax") _,
@@ -97,8 +98,6 @@ pub fn per_cpu_init_early() {
 pub fn per_cpu_init_late(devtree: &DeviceTree, cpuid: usize) -> crate::Result<state::CpuLocal> {
     // Initialize the trap handler
     trap_handler::init();
-
-    panic!("x86_64: per_cpu_init_late partially implemented");
 
     Ok(state::CpuLocal {
         cpu: Cpu::new(devtree, cpuid)?,

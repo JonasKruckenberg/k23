@@ -11,12 +11,21 @@ use crate::tracing::Filter;
 use core::str::FromStr;
 
 pub fn parse(devtree: &DeviceTree) -> crate::Result<Bootargs> {
-    let chosen = devtree.find_by_path("/chosen").unwrap();
-    let Some(prop) = chosen.property("bootargs") else {
+    // For x86_64, we don't have a device tree, so just return defaults
+    #[cfg(target_arch = "x86_64")]
+    {
         return Ok(Bootargs::default());
-    };
+    }
+    
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        let chosen = devtree.find_by_path("/chosen").unwrap();
+        let Some(prop) = chosen.property("bootargs") else {
+            return Ok(Bootargs::default());
+        };
 
-    Bootargs::from_str(prop.as_str()?)
+        Bootargs::from_str(prop.as_str()?)
+    }
 }
 
 #[derive(Default)]

@@ -25,7 +25,7 @@ pub fn init() {
             .cast_mut()
     };
 
-    panic!("trap handler initialization not implemented yet");
     // TODO: Initialize x86_64 interrupt descriptor table (IDT)
     // TODO: Set up exception handlers for page faults, general protection faults, etc.
+    // For now, we'll continue without trap handling - this means any exception will triple fault
 }

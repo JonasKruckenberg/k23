@@ -100,8 +100,23 @@ static LOADER_CONFIG: LoaderConfig = {
     cfg
 };
 
+// This is the real kernel entry from the loader
+// On x86_64, we need an assembly trampoline to preserve register values
+#[cfg(not(target_arch = "x86_64"))]
 #[unsafe(no_mangle)]
-fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+extern "C" fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    _rust_start_impl(cpuid, boot_info, boot_ticks)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[unsafe(no_mangle)]
+extern "C" fn _rust_start(cpuid: usize, boot_info_ptr: usize, boot_ticks: u64) -> ! {
+    let boot_info = unsafe { &*(boot_info_ptr as *const BootInfo) };
+    _rust_start_impl(cpuid, boot_info, boot_ticks)
+}
+
+fn _rust_start_impl(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    
     panic_unwind2::set_hook(|info| {
         tracing::error!("CPU {info}");
 
@@ -139,22 +154,13 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
 }
 
 fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
-    #[cfg(target_arch = "x86_64")]
-    debug_print!("kmain\n");
-
     // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
     arch::per_cpu_init_early();
 
-    #[cfg(target_arch = "x86_64")]
-    debug_print!("after arch::per_cpu_init_early\n");
-
     // HACK: Skip tracing init for x86_64 for now
     #[cfg(not(target_arch = "x86_64"))]
     tracing::per_cpu_init_early(cpuid);
-
-    #[cfg(target_arch = "x86_64")]
-    debug_print!("before locate_device_tree\n");
 
     let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
 
@@ -163,7 +169,12 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
+    #[cfg(target_arch = "x86_64")]
+    debug_print!("created RNG\n");
+
     let global = state::try_init_global(|| {
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("in try_init_global\n");
         // set up the basic functionality of the tracing subsystem as early as possible
 
         // TODO: Skip tracing init for x86_64 for now
@@ -172,7 +183,13 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
         // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
         // is available
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("getting allocatable memories\n");
+        
         let allocatable_memories = allocatable_memory_regions(boot_info);
+
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("got allocatable memories\n");
 
         // TODO: Skip tracing for x86_64 for now
         #[cfg(not(target_arch = "x86_64"))]
@@ -180,40 +197,76 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 
         let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
 
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("created boot allocator\n");
+
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
+        
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("initialized global allocator\n");
 
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("parsing device tree\n");
+        
         let device_tree = DeviceTree::parse(fdt)?;
+        
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("parsed device tree\n");
+        
         #[cfg(not(target_arch = "x86_64"))]
         tracing::debug!("{device_tree:?}");
 
         let bootargs = bootargs::parse(&device_tree)?;
+        
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("parsed bootargs\n");
+
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("initializing backtrace\n");
 
         // initialize the backtracing subsystem after the allocator has been set up
         // since setting up the symbolization context requires allocation
         backtrace::init(boot_info, bootargs.backtrace);
+        
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("initialized backtrace\n");
 
         // fully initialize the tracing subsystem now that we can allocate
         // HACK: Skip for x86_64 for now
         #[cfg(not(target_arch = "x86_64"))]
         tracing::init(bootargs.log);
 
+        #[cfg(target_arch = "x86_64")]
+        debug_print!("calling arch::init\n");
+
         // perform global, architecture-specific initialization
         let arch = arch::init();
+        
 
         // initialize the global frame allocator
         // at this point we have parsed and processed the flattened device tree, so we pass it to the
         // frame allocator for reuse
+
+        debug_print!("calling frame_alloc::init\n");
+
         let frame_alloc = frame_alloc::init(boot_alloc, fdt_region_phys);
 
+
         // initialize the virtual memory subsystem
+        debug_print!("calling mem::init\n");
+
         mem::init(boot_info, &mut rng, frame_alloc).unwrap();
 
         // perform LATE per-cpu, architecture-specific initialization
         // (e.g. setting the trap vector and enabling interrupts)
         let cpu = arch::device::cpu::Cpu::new(&device_tree, cpuid)?;
 
+        debug_print!("calling Cpu::new\n");
+
         let executor = Executor::new(boot_info.cpu_mask.count_ones() as usize, cpu.clock.clone());
+
+        debug_print!("calling Executor::new\n");
 
         Ok(Global {
             time_origin: Instant::from_ticks(&cpu.clock, Ticks(boot_ticks)),
@@ -225,6 +278,9 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         })
     })
     .unwrap();
+
+    debug_print!("calling init_cpu_local\n");
+
 
     // perform LATE per-cpu, architecture-specific initialization
     // (e.g. setting the trap vector and enabling interrupts)
@@ -255,11 +311,18 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
                 worker.run();
             }
         } else {
+            #[cfg(target_arch = "x86_64")]
+            debug_print!("calling shell::init\n");
+            
             shell::init(
                 &global.device_tree,
                 &global.executor,
                 boot_info.cpu_mask.count_ones() as usize,
             );
+            
+            #[cfg(target_arch = "x86_64")]
+            debug_print!("calling worker.run\n");
+            
             worker.run();
         }
     }
@@ -318,6 +381,59 @@ fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAdd
     // Safety: we need to trust the bootinfo data is correct
     let slice =
         unsafe { slice::from_raw_parts(base, fdt.range.end.checked_sub(fdt.range.start).unwrap()) };
+    
+    #[cfg(target_arch = "x86_64")]
+    {
+        debug_print!("FDT slice length: ");
+        let len = slice.len();
+        if len > 0 {
+            let mut n = len;
+            let mut digits = [0u8; 20];
+            let mut i = 0;
+            while n > 0 {
+                digits[i] = b'0' + (n % 10) as u8;
+                n /= 10;
+                i += 1;
+            }
+            while i > 0 {
+                i -= 1;
+                unsafe {
+                    core::arch::asm!(
+                        "out dx, al",
+                        in("al") digits[i],
+                        in("dx") 0x3f8u16,
+                        options(nomem, preserves_flags)
+                    );
+                }
+            }
+        }
+        debug_print!(" bytes\n");
+        
+        // Check FDT magic number
+        if slice.len() >= 4 {
+            debug_print!("FDT magic: ");
+            for i in 0..4 {
+                let byte = slice[i];
+                for j in (0..2).rev() {
+                    let nibble = (byte >> (j * 4)) & 0xF;
+                    let ch = if nibble < 10 {
+                        b'0' + nibble as u8
+                    } else {
+                        b'a' + (nibble - 10) as u8
+                    };
+                    unsafe {
+                        core::arch::asm!(
+                            "out dx, al",
+                            in("al") ch,
+                            in("dx") 0x3f8u16,
+                            options(nomem, preserves_flags)
+                        );
+                    }
+                }
+            }
+            debug_print!("\n");
+        }
+    }
     (
         slice,
         Range::from(PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end)),

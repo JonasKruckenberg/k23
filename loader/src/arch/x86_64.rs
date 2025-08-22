@@ -225,8 +225,13 @@ pub unsafe fn handoff_to_kernel(cpuid: usize, boot_ticks: u64, init: &GlobalInit
 
     unsafe {
         asm! {
-            // Set up stack
+            // Set up stack first
             "mov rsp, {stack_top}",
+
+            // Save kernel arguments on the new stack (they might be in registers we'll clobber)
+            "push {cpuid}",
+            "push {boot_info}",
+            "push {boot_ticks}",
 
             // Set up TLS (FS base)
             "mov rcx, 0xc0000100",  // FS_BASE MSR
@@ -238,13 +243,13 @@ pub unsafe fn handoff_to_kernel(cpuid: usize, boot_ticks: u64, init: &GlobalInit
             // Fill stack with canary
             "mov rdi, {stack_bottom}",
             "mov rsi, {stack_top}",
+            "sub rsi, 24",  // Account for the 3 values we pushed
             "call {fill_stack}",
 
-            // Set up kernel arguments (System V ABI)
-            // These must be set AFTER fill_stack since it clobbers rdi/rsi
-            "mov rdi, {cpuid}",
-            "mov rsi, {boot_info}",
-            "mov rdx, {boot_ticks}",
+            // Restore and set up kernel arguments (System V ABI)
+            "pop rdx",  // boot_ticks
+            "pop rsi",  // boot_info
+            "pop rdi",  // cpuid
 
             // Clear return address
             "xor rax, rax",
@@ -253,7 +258,7 @@ pub unsafe fn handoff_to_kernel(cpuid: usize, boot_ticks: u64, init: &GlobalInit
             "jmp {kernel_entry}",
 
             cpuid = in(reg) cpuid,
-            boot_info = in(reg) init.boot_info,
+            boot_info = in(reg) init.boot_info as usize,
             boot_ticks = in(reg) boot_ticks,
             stack_bottom = in(reg) stack.start,
             stack_top = in(reg) stack.end,

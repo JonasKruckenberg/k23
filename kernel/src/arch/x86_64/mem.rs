@@ -16,7 +16,7 @@ pub const VIRT_ADDR_BITS: u32 = 48;
 pub const CANONICAL_ADDRESS_MASK: usize = !((1 << VIRT_ADDR_BITS) - 1);
 
 pub const KERNEL_ASPACE_RANGE: RangeInclusive<VirtualAddress> = RangeInclusive {
-    start: VirtualAddress::new(0xffff800000000000).unwrap(), // -128TB in canonical form
+    start: VirtualAddress::new(0xffffffc000000000).unwrap(), // Higher half of canonical addresses
     end: VirtualAddress::MAX,
 };
 
@@ -156,8 +156,15 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
     where
         Self: Sized,
     {
-        // TODO: Get current CR3 value
-        let root_pgtable = PhysicalAddress::new(0); // Placeholder
+        // Get current CR3 value (page table base physical address)
+        let cr3_val: u64;
+        unsafe {
+            core::arch::asm!("mov {}, cr3", out(reg) cr3_val);
+        }
+        
+        // CR3 contains the physical address of the PML4 table
+        // The lower 12 bits are flags, so mask them off
+        let root_pgtable = PhysicalAddress::new((cr3_val & !0xFFF) as usize);
 
         let this = Self {
             asid,

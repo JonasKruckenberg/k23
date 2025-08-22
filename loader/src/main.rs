@@ -122,15 +122,19 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     let self_regions = SelfRegions::collect(&minfo);
     log::debug!("{self_regions:#x?}");
 
-    let fdt_phys = {
+    // Get the initial FDT physical range
+    let initial_fdt_phys = {
         let fdt = minfo.fdt.as_ptr_range();
         Range::from(fdt.start as usize..fdt.end as usize)
     };
 
     // Initialize the frame allocator
-    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys);
+    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, initial_fdt_phys);
     log::debug!("allocatable memory regions {allocatable_memories:#x?}");
     let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
+
+    // Initially use the static FDT location for all architectures
+    let fdt_phys = initial_fdt_phys;
 
     // initialize the random number generator
     let rng = if ENABLE_KASLR && minfo.rng_seed.is_some() {
@@ -176,6 +180,35 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         arch::activate_aspace(root_pgtable);
         log::trace!("activated.");
     }
+
+    // For x86_64, now allocate persistent memory for the FDT after MMU is active
+    let fdt_phys = {
+        #[cfg(target_arch = "x86_64")]
+        {
+            let fdt_src = minfo.fdt;
+            let fdt_size = fdt_src.len();
+            
+            // Allocate a frame for the FDT
+            let fdt_frame = frame_alloc.allocate_contiguous(
+                core::alloc::Layout::from_size_align(fdt_size, arch::PAGE_SIZE).unwrap()
+            ).unwrap();
+            
+            // Now we can use the virtual address since MMU is active
+            unsafe {
+                let dst = (phys_off + fdt_frame) as *mut u8;
+                core::ptr::copy_nonoverlapping(fdt_src.as_ptr(), dst, fdt_size);
+            }
+            
+            log::debug!("x86_64: Copied FDT to allocated frame at {:#x}", fdt_frame);
+            
+            Range::from(fdt_frame..fdt_frame + fdt_size)
+        }
+        
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            fdt_phys // Use the original value for non-x86_64
+        }
+    };
 
     let kernel = Kernel::from_static(phys_off).unwrap();
     // print the elf sections for debugging purposes
