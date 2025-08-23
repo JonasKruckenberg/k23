@@ -13,18 +13,20 @@ mod setjmp_longjmp;
 pub mod state;
 mod trap_handler;
 
-use crate::arch::device::cpu::Cpu;
-use crate::device_tree::DeviceTree;
-use crate::mem::VirtualAddress;
+use core::arch::asm;
+
 pub use asid_allocator::AsidAllocator;
 pub use block_on::block_on;
-use core::arch::asm;
 pub use mem::{
     AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE,
     USER_ASPACE_RANGE, invalidate_range, is_kernel_address,
 };
 pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
 pub use x86::*;
+
+use crate::arch::device::cpu::Cpu;
+use crate::device_tree::DeviceTree;
+use crate::mem::VirtualAddress;
 
 pub const STACK_ALIGNMENT: usize = 16;
 

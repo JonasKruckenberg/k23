@@ -5,10 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::cell::Cell;
+
+use cpu_local::cpu_local;
+
 use crate::TRAP_STACK_SIZE_PAGES;
 use crate::arch::PAGE_SIZE;
-use core::cell::Cell;
-use cpu_local::cpu_local;
 
 cpu_local! {
     static IN_TRAP: Cell<bool> = Cell::new(false);

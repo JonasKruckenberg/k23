@@ -35,7 +35,7 @@ impl HartNotify {
             // otherwise the token made available by `unpark`
             // may be consumed before reaching `park()`, but `unparked`
             // ensures it is not forgotten.
-            
+
             // TODO: Implement IPI for x86_64
             // For now, we'll just set the flag and rely on periodic interrupts
             // or busy-waiting to check it
@@ -123,12 +123,12 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
             // but in that case the token made available by `unpark()`
             // is guaranteed to still be available and `park()` is a no-op.
             tracing::trace!("parking hart {}", state::cpu_local().id);
-            
+
             // Use pause instruction instead of hlt to avoid indefinite stall
             // The pause instruction is a hint to the processor that the code is in a spin-wait loop
             // It improves performance and reduces power consumption
             // Safety: inline assembly
-            unsafe { 
+            unsafe {
                 // Check periodically instead of halting indefinitely
                 for _ in 0..1000 {
                     asm!("pause");

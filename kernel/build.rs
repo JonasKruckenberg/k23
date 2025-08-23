@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use std::env;
+
 use vergen_git2::{BuildBuilder, CargoBuilder, Emitter, Git2Builder, RustcBuilder};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -5,15 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::GlobalInitResult;
-use crate::frame_alloc::FrameAllocator;
-use crate::machine_info::MachineInfo;
-use crate::mapping::Flags;
-use bitflags::bitflags;
 use core::arch::{asm, global_asm, naked_asm};
 use core::fmt;
 use core::num::NonZero;
 use core::ptr::NonNull;
+
+use bitflags::bitflags;
+
+use crate::GlobalInitResult;
+use crate::frame_alloc::FrameAllocator;
+use crate::machine_info::MachineInfo;
+use crate::mapping::Flags;
 
 // PVH ELF Note to enable direct kernel loading like RISC-V
 // This allows QEMU to boot our kernel directly without a traditional bootloader

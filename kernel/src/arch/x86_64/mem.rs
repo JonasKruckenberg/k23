@@ -5,8 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::mem::VirtualAddress;
 use core::range::{Range, RangeInclusive};
+
+use crate::mem::VirtualAddress;
 
 pub const DEFAULT_ASID: u16 = 0;
 
@@ -63,11 +64,13 @@ pub fn invalidate_range(_asid: u16, address_range: Range<VirtualAddress>) -> cra
     Ok(())
 }
 
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
+
+use bitflags::bitflags;
+
 use crate::mem::frame_alloc::{Frame, FrameAllocator};
 use crate::mem::{Flush, PhysicalAddress};
-use alloc::vec::Vec;
-use bitflags::bitflags;
-use core::num::NonZeroUsize;
 
 #[derive(Debug)]
 pub struct AddressSpace {

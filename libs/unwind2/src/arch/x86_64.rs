@@ -7,8 +7,8 @@
 
 //! x86_64 specific unwinding code, mostly saving and restoring registers.
 use core::arch::asm;
-use core::fmt;
-use core::ops;
+use core::{fmt, ops};
+
 use gimli::{Register, X86_64};
 
 // Match DWARF_FRAME_REGISTERS in libgcc

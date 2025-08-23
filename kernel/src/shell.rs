@@ -135,6 +135,7 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
 #[cfg(target_arch = "x86_64")]
 async fn x86_serial_console() {
     use alloc::string::String;
+
     use kasync::task::yield_now;
 
     const COM1_BASE: u16 = 0x3F8;
