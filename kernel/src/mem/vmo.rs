@@ -5,20 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::frame_alloc::FrameAllocator;
-use crate::mem::provider::{Provider, THE_ZERO_FRAME};
-use crate::mem::{
-    AddressRangeExt, PhysicalAddress,
-    frame_alloc::{
-        Frame,
-        frame_list::{Entry, FrameList},
-    },
-};
 use alloc::sync::Arc;
-use anyhow::ensure;
 use core::range::Range;
+
+use anyhow::ensure;
 use spin::RwLock;
+
+use crate::arch;
+use crate::mem::frame_alloc::frame_list::{Entry, FrameList};
+use crate::mem::frame_alloc::{Frame, FrameAllocator};
+use crate::mem::provider::{Provider, THE_ZERO_FRAME};
+use crate::mem::{AddressRangeExt, PhysicalAddress};
 
 #[derive(Debug)]
 pub enum Vmo {
@@ -65,7 +62,7 @@ impl PhysVmo {
 
     pub fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {
         ensure!(
-            range.start % arch::PAGE_SIZE == 0,
+            range.start.is_multiple_of(arch::PAGE_SIZE),
             "range is not arch::PAGE_SIZE aligned"
         );
         let start = self.range.start.checked_add(range.start).unwrap();

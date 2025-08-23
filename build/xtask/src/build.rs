@@ -5,14 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use color_eyre::eyre::{Context, bail};
+use tracing_core::LevelFilter;
+
 use crate::Options;
 use crate::profile::{LogLevel, Profile, RustTarget};
 use crate::tracing::{ColorMode, OutputOptions};
 use crate::util::KillOnDrop;
-use color_eyre::eyre::{Context, bail};
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use tracing_core::LevelFilter;
 
 const DEFAULT_KERNEL_STACK_SIZE_PAGES: u32 = 256;
 

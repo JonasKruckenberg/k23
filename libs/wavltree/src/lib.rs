@@ -127,7 +127,6 @@
 //! [graphviz format]: https://graphviz.org
 
 #![cfg_attr(not(test), no_std)]
-#![feature(let_chains)]
 #![allow(
     clippy::undocumented_unsafe_blocks,
     reason = "too many trivial unsafe blocks"
@@ -149,14 +148,14 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{fmt, mem, ptr};
 
+#[cfg(feature = "dot")]
+pub use dot::Dot;
+pub use iter::{IntoIter, Iter, IterMut};
+pub use utils::Side;
+
 pub use crate::cursor::{Cursor, CursorMut};
 pub use crate::entry::{Entry, OccupiedEntry, VacantEntry};
 use crate::utils::get_sibling;
-#[cfg(feature = "dot")]
-pub use dot::Dot;
-pub use iter::IntoIter;
-pub use iter::{Iter, IterMut};
-pub use utils::Side;
 
 /// Trait implemented by types which can be members of an [intrusive WAVL tree][WAVLTree].
 ///
@@ -1684,13 +1683,15 @@ impl<T: ?Sized> Links<T> {
 mod tests {
     extern crate alloc;
 
-    use super::*;
     use alloc::boxed::Box;
     use alloc::vec::Vec;
     use core::mem::offset_of;
     use core::pin::Pin;
+
     use rand::prelude::SliceRandom;
     use rand::rng;
+
+    use super::*;
 
     #[derive(Default)]
     struct TestEntry {

@@ -5,14 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::vec;
+use alloc::vec::Vec;
+
 use crate::util::zip_eq::IteratorExt;
 use crate::wasm::indices::EntityIndex;
 use crate::wasm::module::Module;
 use crate::wasm::store::{StoreOpaque, Stored};
 use crate::wasm::vm::{ConstExprEvaluator, Imports, InstanceHandle};
 use crate::wasm::{Extern, Func, Global, Memory, Table};
-use alloc::vec;
-use alloc::vec::Vec;
 
 /// An instantiated WebAssembly module.
 ///

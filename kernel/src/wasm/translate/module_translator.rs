@@ -5,6 +5,21 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::string::ToString;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+
+use cranelift_entity::packed_option::ReservedValue;
+use hashbrown::HashMap;
+use wasmparser::{
+    BinaryReader, CustomSectionReader, DataKind, DataSectionReader, ElementItems, ElementKind,
+    ElementSectionReader, ExportSectionReader, ExternalKind, FunctionSectionReader,
+    GlobalSectionReader, ImportSectionReader, IndirectNameMap, MemorySectionReader, Name, NameMap,
+    NameSectionReader, Parser, Payload, ProducersFieldValue, ProducersSectionReader, TableInit,
+    TableSectionReader, TagKind, TagSectionReader, TypeRef, TypeSectionReader, Validator,
+    WasmFeatures,
+};
+
 use crate::wasm::indices::{
     CanonicalizedTypeIndex, DataIndex, ElemIndex, EntityIndex, FieldIndex, FuncIndex, FuncRefIndex,
     GlobalIndex, LabelIndex, LocalIndex, MemoryIndex, TableIndex, TagIndex, TypeIndex,
@@ -17,19 +32,6 @@ use crate::wasm::translate::{
     ModuleTranslation, ProducersLanguage, ProducersLanguageField, ProducersSdk, ProducersSdkField,
     ProducersTool, ProducersToolField, Table, TableInitialValue, TableSegment,
     TableSegmentElements, Tag,
-};
-use alloc::string::ToString;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
-use cranelift_entity::packed_option::ReservedValue;
-use hashbrown::HashMap;
-use wasmparser::{
-    BinaryReader, CustomSectionReader, DataKind, DataSectionReader, ElementItems, ElementKind,
-    ElementSectionReader, ExportSectionReader, ExternalKind, FunctionSectionReader,
-    GlobalSectionReader, ImportSectionReader, IndirectNameMap, MemorySectionReader, Name, NameMap,
-    NameSectionReader, Parser, Payload, ProducersFieldValue, ProducersSectionReader, TableInit,
-    TableSectionReader, TagKind, TagSectionReader, TypeRef, TypeSectionReader, Validator,
-    WasmFeatures,
 };
 
 /// A translator for converting the output of `wasmparser` into types used by this crate.

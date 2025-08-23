@@ -15,23 +15,25 @@ const S: &str = r#"
 /_/\_\/____/____/
 "#;
 
-use crate::device_tree::DeviceTree;
-use crate::mem::{Mmap, PhysicalAddress, with_kernel_aspace};
-use crate::state::global;
-use crate::{arch, irq};
 use alloc::string::{String, ToString};
 use core::fmt;
 use core::fmt::Write;
 use core::ops::DerefMut;
 use core::range::Range;
 use core::str::FromStr;
+
 use fallible_iterator::FallibleIterator;
 use kasync::executor::Executor;
 use spin::{Barrier, OnceLock};
 
+use crate::device_tree::DeviceTree;
+use crate::mem::{Mmap, PhysicalAddress, with_kernel_aspace};
+use crate::state::global;
+use crate::{arch, irq};
+
 static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
 
-pub fn init(devtree: &'static DeviceTree, sched: &'static Executor<arch::Park>, num_cpus: usize) {
+pub fn init(devtree: &'static DeviceTree, sched: &'static Executor, num_cpus: usize) {
     // The `Barrier` below is here so that the maybe verbose startup logging is
     // out of the way before dropping the user into the kernel shell. If we don't
     // wait for the last CPU to have finished initializing it will mess up the shell output.
@@ -271,6 +273,8 @@ const PANIC: Command = Command::new("panic")
 const FAULT: Command = Command::new("fault")
     .with_help("cause a CPU fault (null pointer dereference). use with caution.")
     .with_fn(|_| {
+        // Safety: This actually *is* unsafe and *is* causing problematic behaviour, but that is exactly what
+        // we want here!
         unsafe {
             #[expect(clippy::zero_ptr, reason = "we actually want to cause a fault here")]
             (0x0 as *const u8).read_volatile();
@@ -306,7 +310,7 @@ const SHUTDOWN: Command = Command::new("shutdown")
     .with_fn(|_| {
         tracing::info!("Bye, Bye!");
 
-        global().executor.stop();
+        global().executor.close();
 
         Ok(())
     });
@@ -381,7 +385,7 @@ impl<'cmd> Command<'cmd> {
     #[must_use]
     pub const fn new(name: &'cmd str) -> Self {
         #[cold]
-        fn invalid_command(_ctx: Context<'_>) -> CmdResult {
+        fn invalid_command(_ctx: Context<'_>) -> CmdResult<'_> {
             panic!("command is missing run function, this is a bug");
         }
 

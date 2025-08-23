@@ -5,6 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::alloc::Allocator;
+use core::ops::DerefMut;
+use core::ptr::NonNull;
+use core::{cmp, mem};
+
+use anyhow::Context;
+use cranelift_entity::PrimaryMap;
+
 use crate::mem::Mmap;
 use crate::wasm::indices::{DefinedMemoryIndex, DefinedTableIndex};
 use crate::wasm::module::Module;
@@ -14,12 +22,6 @@ use crate::wasm::vm::instance::Instance;
 use crate::wasm::vm::mmap_vec::MmapVec;
 use crate::wasm::vm::{InstanceHandle, TableElement, VMShape};
 use crate::wasm::{MEMORY_MAX, TABLE_MAX, translate, vm};
-use anyhow::Context;
-use core::alloc::Allocator;
-use core::ops::DerefMut;
-use core::ptr::NonNull;
-use core::{cmp, mem};
-use cranelift_entity::PrimaryMap;
 
 /// A type that knows how to allocate backing memory for instance resources.
 pub trait InstanceAllocator {

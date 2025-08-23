@@ -1,10 +1,11 @@
-use criterion::{Criterion, criterion_group, criterion_main};
-use rand::prelude::SliceRandom;
-use rand::thread_rng;
 use std::fmt;
 use std::mem::offset_of;
 use std::pin::Pin;
 use std::ptr::NonNull;
+
+use criterion::{Criterion, criterion_group, criterion_main};
+use rand::prelude::SliceRandom;
+use rand::thread_rng;
 use wavltree::{Linked, Links, WAVLTree};
 
 #[derive(Default)]

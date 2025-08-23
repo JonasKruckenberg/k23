@@ -47,7 +47,7 @@ pub const PAGE_ENTRY_SHIFT: usize = (PAGE_TABLE_ENTRIES - 1).count_ones() as usi
 /// We need to transition to 64-bit long mode before running 64-bit code
 #[unsafe(link_section = ".text.start")]
 #[unsafe(no_mangle)]
-#[naked]
+#[unsafe(naked)]
 unsafe extern "C" fn _start() -> ! {
     unsafe {
         naked_asm! {
@@ -175,7 +175,7 @@ unsafe extern "C" fn _start() -> ! {
 }
 
 /// Entry point for secondary CPUs (not implemented yet)
-#[naked]
+#[unsafe(naked)]
 unsafe extern "C" fn _start_secondary() -> ! {
     unsafe {
         naked_asm! {
@@ -190,7 +190,7 @@ unsafe extern "C" fn _start_secondary() -> ! {
 
 /// Fill stack with canary pattern
 /// rdi = bottom of stack, rsi = top of stack
-#[naked]
+#[unsafe(naked)]
 unsafe extern "C" fn fill_stack() {
     unsafe {
         naked_asm! {

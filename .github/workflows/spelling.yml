@@ -23,6 +23,6 @@ jobs:
     if: needs.pre_ci.outputs.continue
     steps:
       - name: Checkout Actions Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Spell Check Repo
         uses: crate-ci/typos@master

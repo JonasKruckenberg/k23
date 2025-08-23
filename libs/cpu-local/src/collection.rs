@@ -5,14 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::cpu_local;
 use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 use core::iter::FusedIterator;
 use core::panic::UnwindSafe;
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::{fmt, mem, ptr, slice};
+
 use util::CheckedMaybeUninit;
+
+use crate::cpu_local;
 
 /// The total number of buckets stored in each cpu-local storage.
 /// All buckets combined can hold up to `usize::MAX - 1` entries.
@@ -229,7 +231,7 @@ impl<T: Send> CpuLocal<T> {
     /// Since this call borrows the `CpuLocal` mutably, this operation can
     /// be done safely---the mutable borrow statically guarantees no other
     /// cpus are currently accessing their associated values.
-    pub fn iter_mut(&mut self) -> IterMut<T> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         IterMut {
             cpu_local: self,
             raw: RawIter::new(),
@@ -568,14 +570,14 @@ fn cpuid() -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloc::string::String;
-
     use alloc::sync::Arc;
     use core::cell::RefCell;
     use core::sync::atomic::AtomicUsize;
     use core::sync::atomic::Ordering::Relaxed;
     use std::thread;
+
+    use super::*;
 
     fn make_create() -> Arc<dyn Fn() -> usize + Send + Sync> {
         let count = AtomicUsize::new(0);

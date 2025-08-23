@@ -5,11 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::profile::{Architecture, Profile};
-use crate::util::KillOnDrop;
-use clap::Parser;
 use std::path::Path;
 use std::process::{Command, Stdio};
+
+use clap::Parser;
+
+use crate::profile::{Architecture, Profile};
+use crate::util::KillOnDrop;
 
 #[derive(Debug, Parser)]
 pub struct QemuOptions {

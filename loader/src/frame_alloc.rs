@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::error::Error;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{cmp, iter, ptr, slice};
+
 use fallible_iterator::FallibleIterator;
+
+use crate::arch;
+use crate::error::Error;
 
 pub struct FrameAllocator<'a> {
     regions: &'a [Range<usize>],
@@ -63,7 +65,7 @@ impl<'a> FrameAllocator<'a> {
 
         let remaining = layout.pad_to_align().size();
 
-        debug_assert!(remaining % arch::PAGE_SIZE == 0);
+        debug_assert!(remaining.is_multiple_of(arch::PAGE_SIZE));
         FrameIter {
             alloc: self,
             remaining,
@@ -167,7 +169,7 @@ impl FallibleIterator for FrameIter<'_, '_> {
                 {
                     let allocation_size = cmp::min(self.remaining, allocatable_size)
                         & 0usize.wrapping_sub(arch::PAGE_SIZE);
-                    debug_assert!(allocation_size % arch::PAGE_SIZE == 0);
+                    debug_assert!(allocation_size.is_multiple_of(arch::PAGE_SIZE));
 
                     let frame = region.end.checked_sub(offset + allocation_size).unwrap();
                     self.alloc.offset += allocation_size;

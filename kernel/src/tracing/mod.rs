@@ -11,13 +11,12 @@ mod log;
 mod registry;
 mod writer;
 
-use crate::state::try_global;
-use crate::tracing::writer::{MakeWriter, Semihosting};
-pub use ::tracing::*;
-use color::{Color, SetColor};
 use core::cell::{Cell, OnceCell};
 use core::fmt;
 use core::fmt::Write;
+
+pub use ::tracing::*;
+use color::{Color, SetColor};
 use cpu_local::cpu_local;
 pub use filter::Filter;
 use registry::Registry;
@@ -25,6 +24,9 @@ use spin::OnceLock;
 use tracing::field;
 use tracing_core::span::{Attributes, Current, Id, Record};
 use tracing_core::{Collect, Dispatch, Event, Interest, Level, LevelFilter, Metadata};
+
+use crate::state::try_global;
+use crate::tracing::writer::{MakeWriter, Semihosting};
 
 static SUBSCRIBER: OnceLock<Subscriber> = OnceLock::new();
 
@@ -309,7 +311,7 @@ where
     w.write_char('[')?;
 
     if let Some(global) = try_global() {
-        let elapsed = global.time_origin.elapsed(&global.clock);
+        let elapsed = global.time_origin.elapsed(&global.timer);
         write!(
             w.with_fg_color(Color::BrightBlack),
             "{:>6}.{:06}",

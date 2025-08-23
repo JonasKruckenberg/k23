@@ -7,12 +7,13 @@
 
 #![allow(unused)]
 
-use color_eyre::eyre::{Context, bail, eyre};
-use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 use std::hash::{DefaultHasher, Hasher};
 use std::path::{Path, PathBuf};
+
+use color_eyre::eyre::{Context, bail, eyre};
+use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]

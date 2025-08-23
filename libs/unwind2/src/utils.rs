@@ -5,9 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
 use core::ptr;
+
 use gimli::{Pointer, Register, RegisterRule, UnwindTableRow};
+
+use crate::arch;
 
 pub struct StoreOnStack;
 
@@ -29,19 +31,26 @@ impl<R: gimli::ReaderOffset> gimli::UnwindContextStorage<R> for StoreOnStack {
     type Stack = [UnwindTableRow<R, Self>; 2];
 }
 
+/// # Safety
+///
+/// The caller has to ensure the start is valid and to never read more values from the slice
+/// than can actually be read
 pub unsafe fn get_unlimited_slice<'a>(start: *const u8) -> &'a [u8] {
     // Create the largest possible slice for this address.
     let start = start as usize;
     let end = start.saturating_add(isize::MAX as usize);
     let len = end - start;
-    // Safety: caller has to ensure start is valid
+    // Safety: caller ensures start is valid
     unsafe { core::slice::from_raw_parts(start as *const u8, len) }
 }
 
+/// # Safety
+///
+/// The caller has to ensure the `ptr` (if `Pointer::Indirect`) is valid.
 pub unsafe fn deref_pointer(ptr: Pointer) -> u64 {
     match ptr {
         Pointer::Direct(x) => x,
-        // Safety: caller has to ensure `ptr` is valid
+        // Safety: caller ensures `ptr` is valid
         Pointer::Indirect(x) => unsafe { *(x as *const u64) },
     }
 }

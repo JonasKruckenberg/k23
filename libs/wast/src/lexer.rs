@@ -24,17 +24,14 @@
 //!
 //! [`Lexer`]: crate::lexer::Lexer
 
+use alloc::borrow::Cow;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::str::Utf8Error;
+use core::{char, fmt, slice, str};
+
 use crate::Error;
 use crate::token::Span;
-use alloc::borrow::Cow;
-use alloc::string::String;
-use alloc::string::ToString;
-use alloc::vec::Vec;
-use core::char;
-use core::fmt;
-use core::slice;
-use core::str;
-use core::str::Utf8Error;
 
 /// A structure used to lex the s-expression syntax of WAT files.
 ///
@@ -764,15 +761,15 @@ impl<'a> Lexer<'a> {
         // characters show up they're guaranteed to start with 0xe2 bytes.
         let bytes = comment.as_bytes();
         for pos in memchr::Memchr::new(0xe2, bytes) {
-            if let Some(c) = comment[pos..].chars().next() {
-                if is_confusing_unicode(c) {
-                    // Note that `self.cur()` accounts for already having
-                    // parsed `comment`, so we move backwards to where
-                    // `comment` started and then add the index within
-                    // `comment`.
-                    let pos = end - comment.len() + pos;
-                    return Err(self.error(pos, LexError::ConfusingUnicode(c)));
-                }
+            if let Some(c) = comment[pos..].chars().next()
+                && is_confusing_unicode(c)
+            {
+                // Note that `self.cur()` accounts for already having
+                // parsed `comment`, so we move backwards to where
+                // `comment` started and then add the index within
+                // `comment`.
+                let pos = end - comment.len() + pos;
+                return Err(self.error(pos, LexError::ConfusingUnicode(c)));
             }
         }
 
@@ -1212,9 +1209,9 @@ impl fmt::Display for LexError {
             )?,
             UnexpectedEof => write!(f, "unexpected end-of-file")?,
             NumberTooBig => f.write_str("number is too big to parse")?,
-            InvalidUnicodeValue(c) => write!(f, "invalid unicode scalar value 0x{:x}", c)?,
+            InvalidUnicodeValue(c) => write!(f, "invalid unicode scalar value 0x{c:x}")?,
             LoneUnderscore => write!(f, "bare underscore in numeric literal")?,
-            ConfusingUnicode(c) => write!(f, "likely-confusing unicode character found {:?}", c)?,
+            ConfusingUnicode(c) => write!(f, "likely-confusing unicode character found {c:?}")?,
             InvalidUtf8Id(_) => write!(f, "malformed UTF-8 encoding of string-based id")?,
             EmptyId => write!(f, "empty identifier")?,
             EmptyAnnotation => write!(f, "empty annotation id")?,

@@ -5,17 +5,19 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::frame_alloc::Frame;
 use alloc::boxed::Box;
 use core::fmt::Formatter;
 use core::iter::{FlatMap, Flatten, FusedIterator};
 use core::mem::offset_of;
 use core::pin::Pin;
 use core::ptr::NonNull;
-use core::{array, fmt, mem};
+use core::{array, fmt};
+
 use pin_project::pin_project;
 use wavltree::WAVLTree;
+
+use crate::arch;
+use crate::mem::frame_alloc::Frame;
 
 const FRAME_LIST_NODE_FANOUT: usize = 16;
 
@@ -162,7 +164,7 @@ impl FrameList {
         node.frames.iter().rfind(|f| f.is_some())?.as_ref()
     }
 
-    pub fn cursor(&self, offset: usize) -> Cursor {
+    pub fn cursor(&self, offset: usize) -> Cursor<'_> {
         let node_offset = offset_to_node_offset(offset);
         let cursor = self.nodes.find(&node_offset);
 
@@ -173,7 +175,7 @@ impl FrameList {
         }
     }
 
-    pub fn cursor_mut(&mut self, offset: usize) -> CursorMut {
+    pub fn cursor_mut(&mut self, offset: usize) -> CursorMut<'_> {
         let node_offset = offset_to_node_offset(offset);
         let cursor = self.nodes.find_mut(&node_offset);
 
@@ -184,7 +186,7 @@ impl FrameList {
         }
     }
 
-    pub(crate) fn entry(&mut self, offset: usize) -> Entry {
+    pub(crate) fn entry(&mut self, offset: usize) -> Entry<'_> {
         let node_offset = offset_to_node_offset(offset);
         let index_in_node = offset_to_node_index(offset);
         let entry = self.nodes.entry(&node_offset);
@@ -513,7 +515,7 @@ impl<'a> VacantEntry<'a> {
                 frames: [const { None }; FRAME_LIST_NODE_FANOUT],
             })
         });
-        let old = mem::replace(&mut node.frames[self.index_in_node], Some(value));
+        let old = node.frames[self.index_in_node].replace(value);
         debug_assert!(old.is_none());
 
         // Safety: guaranteed by `FrameList::entry`

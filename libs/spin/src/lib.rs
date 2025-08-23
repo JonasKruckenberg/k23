@@ -27,7 +27,7 @@ mod remutex;
 pub use backoff::Backoff;
 pub use barrier::{Barrier, BarrierWaitResult};
 pub use lazy_lock::LazyLock;
-pub use mutex::{Mutex, MutexGuard};
+pub use mutex::{Mutex, MutexGuard, RawMutex};
 pub use once::{ExclusiveState, Once};
 pub use once_lock::OnceLock;
 #[cfg(feature = "thread-local")]

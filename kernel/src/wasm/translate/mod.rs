@@ -11,24 +11,15 @@ mod module_types;
 mod type_convert;
 mod types;
 
-use crate::wasm::indices::{
-    CanonicalizedTypeIndex, DataIndex, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex,
-    DefinedTableIndex, DefinedTagIndex, ElemIndex, EntityIndex, FieldIndex, FuncIndex,
-    FuncRefIndex, GlobalIndex, LabelIndex, LocalIndex, MemoryIndex, ModuleInternedTypeIndex,
-    OwnedMemoryIndex, TableIndex, TagIndex, TypeIndex,
-};
-use crate::wasm::{DEFAULT_OFFSET_GUARD_SIZE, WASM32_MAX_SIZE};
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
+
 use anyhow::Context;
+pub use const_expr::{ConstExpr, ConstOp};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
 use hashbrown::HashMap;
-use wasmparser::WasmFeatures;
-use wasmparser::collections::IndexMap;
-
-pub use const_expr::{ConstExpr, ConstOp};
 pub use module_translator::ModuleTranslator;
 pub use module_types::ModuleTypes;
 pub use type_convert::WasmparserTypeConverter;
@@ -37,6 +28,16 @@ pub use types::{
     WasmHeapTopType, WasmHeapType, WasmHeapTypeInner, WasmRecGroup, WasmRefType, WasmStorageType,
     WasmSubType, WasmValType,
 };
+use wasmparser::WasmFeatures;
+use wasmparser::collections::IndexMap;
+
+use crate::wasm::indices::{
+    CanonicalizedTypeIndex, DataIndex, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex,
+    DefinedTableIndex, DefinedTagIndex, ElemIndex, EntityIndex, FieldIndex, FuncIndex,
+    FuncRefIndex, GlobalIndex, LabelIndex, LocalIndex, MemoryIndex, ModuleInternedTypeIndex,
+    OwnedMemoryIndex, TableIndex, TagIndex, TypeIndex,
+};
+use crate::wasm::{DEFAULT_OFFSET_GUARD_SIZE, WASM32_MAX_SIZE};
 
 #[derive(Debug)]
 pub struct ModuleTranslation<'data> {

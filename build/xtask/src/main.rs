@@ -26,9 +26,10 @@ mod qemu;
 mod tracing;
 mod util;
 
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand, ValueHint};
 use color_eyre::eyre::Result;
-use std::path::PathBuf;
 #[derive(Debug, Parser)]
 struct Xtask {
     #[clap(subcommand)]

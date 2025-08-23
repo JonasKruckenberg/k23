@@ -5,11 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch::PAGE_SIZE;
-use crate::wasm::translate::{WasmFuncType, WasmHeapTopType, WasmHeapType, WasmValType};
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::{AbiParam, ArgumentPurpose, Signature};
 use cranelift_codegen::isa::{CallConv, TargetIsa};
+
+use crate::arch::PAGE_SIZE;
+use crate::wasm::translate::{WasmFuncType, WasmHeapTopType, WasmHeapType, WasmValType};
 
 /// Helper macro to generate accessors for an enum.
 macro_rules! enum_accessors {
@@ -142,8 +143,9 @@ pub fn array_call_signature(isa: &dyn TargetIsa) -> ir::Signature {
 }
 
 /// Is `bytes` a multiple of the host page size?
+#[inline]
 pub fn usize_is_multiple_of_host_page_size(bytes: usize) -> bool {
-    bytes % PAGE_SIZE == 0
+    bytes.is_multiple_of(PAGE_SIZE)
 }
 
 pub fn round_u64_up_to_host_pages(bytes: u64) -> u64 {

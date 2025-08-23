@@ -5,12 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
 use core::alloc::Layout;
 use core::range::Range;
+
 use rand::distr::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
+
+use crate::arch;
 
 pub fn init(prng: Option<ChaCha20Rng>) -> PageAllocator {
     PageAllocator {
@@ -77,7 +79,13 @@ impl PageAllocator {
 
             self.page_state[page_idx] = true;
 
-            virt_base = virt_base.checked_add(top_level_page_size).unwrap();
+            // Check if we can add without overflow, if not we've reached the end
+            if let Some(next_virt) = virt_base.checked_add(top_level_page_size) {
+                virt_base = next_virt;
+            } else {
+                // We've reached the end of the address space
+                break;
+            }
             remaining_bytes = remaining_bytes.saturating_sub(top_level_page_size);
         }
     }

@@ -5,10 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::{
-    cell::Cell,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use core::cell::Cell;
+use core::sync::atomic::{AtomicUsize, Ordering};
+
 use cpu_local::cpu_local;
 
 /// A reason for forcing an immediate abort on panic.

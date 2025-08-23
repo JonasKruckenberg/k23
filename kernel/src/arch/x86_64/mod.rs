@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 mod asid_allocator;
+mod block_on;
 pub mod device;
 mod mem;
 mod setjmp_longjmp;
@@ -16,8 +17,8 @@ use crate::arch::device::cpu::Cpu;
 use crate::device_tree::DeviceTree;
 use crate::mem::VirtualAddress;
 pub use asid_allocator::AsidAllocator;
+pub use block_on::block_on;
 use core::arch::asm;
-use kasync::time::{Clock, Deadline};
 pub use mem::{
     AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE,
     USER_ASPACE_RANGE, invalidate_range, is_kernel_address,
@@ -155,32 +156,6 @@ pub fn wmb() {
 pub fn rmb() {
     unsafe {
         asm!("lfence");
-    }
-}
-
-#[derive(Debug)]
-pub struct Park {
-    cpuid: usize,
-}
-
-impl Park {
-    pub fn new(cpuid: usize) -> Self {
-        Self { cpuid }
-    }
-}
-
-impl kasync::park::Park for Park {
-    fn park(&self) {
-        unsafe { asm!("hlt") }
-    }
-
-    fn park_until(&self, _deadline: Deadline, _clock: &Clock) {
-        // TODO: Implement timer-based parking for x86_64
-        unsafe { asm!("hlt") }
-    }
-
-    fn unpark(&self) {
-        // TODO: Implement IPI for x86_64
     }
 }
 

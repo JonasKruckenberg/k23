@@ -5,12 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::error::Error;
 use core::fmt::Formatter;
 use core::range::Range;
 use core::{fmt, slice};
+
 use loader_api::LoaderConfig;
 use xmas_elf::program::{ProgramHeader, Type};
+
+use crate::error::Error;
 
 /// The inlined kernel
 static INLINED_KERNEL_BYTES: KernelBytes = KernelBytes(*include_bytes!(env!("KERNEL")));
@@ -104,7 +106,7 @@ impl Kernel<'_> {
         load_program_headers.map(|ph| ph.align()).max().unwrap_or(1)
     }
 
-    fn loadable_program_headers(&self) -> impl Iterator<Item = ProgramHeader> + '_ {
+    fn loadable_program_headers(&self) -> impl Iterator<Item = ProgramHeader<'_>> + '_ {
         self.elf_file
             .program_iter()
             .filter(|ph| ph.get_type().unwrap() == Type::Load)

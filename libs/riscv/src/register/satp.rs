@@ -7,9 +7,10 @@
 
 //! Supervisor Address Translation and Protection Register
 
+use core::fmt;
+
 use super::{read_csr_as, write_csr};
 use crate::Error;
-use core::fmt;
 
 /// satp register
 #[derive(Clone, Copy)]

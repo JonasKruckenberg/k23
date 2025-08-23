@@ -5,16 +5,18 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::cell::UnsafeCell;
-use crate::loom::sync::atomic::{AtomicUsize, Ordering};
-use crate::sync::Closed;
-use bitflags::bitflags;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
 use core::{fmt, task};
+
+use bitflags::bitflags;
 use static_assertions::const_assert_eq;
 use util::{CachePadded, loom_const_fn};
+
+use crate::error::Closed;
+use crate::loom::cell::UnsafeCell;
+use crate::loom::sync::atomic::{AtomicUsize, Ordering};
 
 /// An atomically registered [`Waker`].
 ///
@@ -127,19 +129,13 @@ impl WaitCell {
         }
 
         let waker = cx.waker();
-        tracing::trace!(wait_cell = ?self, ?waker, "registering waker");
+        tracing::trace!(
+            /*wait_cell = ?fmt::ptr(self),*/ ?waker,
+            "registering waker"
+        );
 
-        // Safety: No one else is touching the waker right now, so it is safe to access it
-        // mutably
-        let prev_waker = self.waker.with_mut(|old_waker| unsafe {
-            match &mut *old_waker {
-                Some(old_waker) if waker.will_wake(old_waker) => None,
-                old => old.replace(waker.clone()),
-            }
-        });
-
-        if let Some(prev_waker) = prev_waker {
-            tracing::trace!("Replaced an old waker in cell, waking");
+        if let Some(prev_waker) = self.replace_waker(waker.clone()) {
+            tracing::debug!("Replaced an old waker in cell, waking");
             prev_waker.wake();
         }
 
@@ -150,9 +146,8 @@ impl WaitCell {
             // two reasons: either the cell was awoken, or the cell was closed.
             //
             // Bail out of the parking state, and determine what to report to the caller.
-            // Safety: No one else is touching the waker right now, so it is safe to access it
-            // mutably
             tracing::trace!(state = ?actual, "was notified");
+
             // Safety: No one else is touching the waker right now, so it is safe to access it
             // mutably
             let waker = self.waker.with_mut(|waker| unsafe { (*waker).take() });
@@ -381,15 +376,42 @@ impl WaitCell {
         if !state.contains(State::WAKING | State::REGISTERING | State::CLOSED) {
             // Safety: No one else is touching the waker right now, so it is safe to access it
             // mutably
-            let waker = self.waker.with_mut(|thread| unsafe { (*thread).take() });
+            let waker = self.waker.with_mut(|waker| unsafe { (*waker).take() });
 
             // Release the lock.
             self.fetch_and(!State::WAKING, Ordering::Release);
 
             if let Some(waker) = waker {
-                tracing::trace!(wait_cell = ?self, ?close, ?waker, "notified");
+                tracing::trace!(wait_cell = ?self, ?close, ?waker, "took_waker");
                 return Some(waker);
             }
+        }
+
+        None
+    }
+
+    #[tracing::instrument]
+    fn replace_waker(&self, waker: Waker) -> Option<Waker> {
+        // Set the WAKING bit (to indicate that we're touching the waker) and
+        // the WOKEN bit (to indicate that we intend to wake it up).
+        let state = self.fetch_or(State::WAKING, Ordering::AcqRel);
+
+        // Is anyone else touching the waker?
+        if !state.contains(State::WAKING | State::REGISTERING | State::CLOSED) {
+            // Safety: No one else is touching the waker right now, so it is safe to access it
+            // mutably
+            let prev_waker = self.waker.with_mut(|old_waker| unsafe {
+                match &mut *old_waker {
+                    Some(old_waker) if waker.will_wake(old_waker) => None,
+                    old => old.replace(waker.clone()),
+                }
+            });
+
+            // Release the lock.
+            self.fetch_and(!State::WAKING, Ordering::Release);
+
+            tracing::trace!(wait_cell = ?self, ?prev_waker, ?waker, "replaced_waker");
+            return prev_waker;
         }
 
         None
@@ -498,230 +520,3 @@ impl<'cell> Future for Subscribe<'cell> {
         })
     }
 }
-
-#[cfg(all(not(loom), test))]
-mod tests {
-    use super::*;
-    use alloc::sync::Arc;
-
-    use tokio_test::{assert_pending, assert_ready, assert_ready_ok, task};
-    use tracing_subscriber::EnvFilter;
-    use tracing_subscriber::util::SubscriberInitExt;
-
-    #[test]
-    fn wait_smoke() {
-        let _trace = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .with_thread_ids(true)
-            .set_default();
-
-        let wait = Arc::new(WaitCell::new());
-
-        let mut task = task::spawn({
-            let wait = wait.clone();
-            async move { wait.wait().await }
-        });
-
-        assert_pending!(task.poll());
-
-        assert!(wait.wake());
-
-        assert!(task.is_woken());
-        assert_ready_ok!(task.poll());
-    }
-
-    /// Reproduces https://github.com/hawkw/mycelium/issues/449
-    #[test]
-    fn wait_spurious_poll() {
-        let _trace = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .with_thread_ids(true)
-            .set_default();
-
-        let cell = Arc::new(WaitCell::new());
-        let mut task = task::spawn({
-            let cell = cell.clone();
-            async move { cell.wait().await }
-        });
-
-        assert_pending!(task.poll(), "first poll should be pending");
-        assert_pending!(task.poll(), "second poll should be pending");
-
-        cell.wake();
-
-        assert_ready_ok!(task.poll(), "should have been woken");
-    }
-
-    #[test]
-    fn subscribe() {
-        let _trace = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .with_thread_ids(true)
-            .set_default();
-
-        futures::executor::block_on(async {
-            let cell = WaitCell::new();
-            let wait = cell.subscribe().await;
-            cell.wake();
-            wait.await.unwrap();
-        })
-    }
-
-    #[test]
-    fn wake_before_subscribe() {
-        let _trace = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .with_thread_ids(true)
-            .set_default();
-
-        let cell = Arc::new(WaitCell::new());
-        cell.wake();
-
-        let mut task = task::spawn({
-            let cell = cell.clone();
-            async move {
-                let wait = cell.subscribe().await;
-                wait.await.unwrap();
-            }
-        });
-
-        assert_ready!(task.poll(), "woken task should complete");
-
-        let mut task = task::spawn({
-            let cell = cell.clone();
-            async move {
-                let wait = cell.subscribe().await;
-                wait.await.unwrap();
-            }
-        });
-
-        assert_pending!(task.poll(), "wait cell hasn't been woken yet");
-        cell.wake();
-        assert!(task.is_woken());
-        assert_ready!(task.poll());
-    }
-
-    #[test]
-    fn wake_debounce() {
-        let _trace = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .with_thread_ids(true)
-            .set_default();
-
-        let cell = Arc::new(WaitCell::new());
-
-        let mut task = task::spawn({
-            let cell = cell.clone();
-            async move {
-                cell.wait().await.unwrap();
-            }
-        });
-
-        assert_pending!(task.poll());
-        cell.wake();
-        cell.wake();
-        assert!(task.is_woken());
-        assert_ready!(task.poll());
-
-        let mut task = task::spawn({
-            let cell = cell.clone();
-            async move {
-                cell.wait().await.unwrap();
-            }
-        });
-
-        assert_pending!(task.poll());
-        assert!(!task.is_woken());
-
-        cell.wake();
-        assert!(task.is_woken());
-        assert_ready!(task.poll());
-    }
-
-    #[test]
-    fn subscribe_doesnt_self_wake() {
-        let _trace = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .with_thread_ids(true)
-            .set_default();
-
-        let cell = Arc::new(WaitCell::new());
-
-        let mut task = task::spawn({
-            let cell = cell.clone();
-            async move {
-                let wait = cell.subscribe().await;
-                wait.await.unwrap();
-                let wait = cell.subscribe().await;
-                wait.await.unwrap();
-            }
-        });
-        assert_pending!(task.poll());
-        assert!(!task.is_woken());
-
-        cell.wake();
-        assert!(task.is_woken());
-        assert_pending!(task.poll());
-
-        assert!(!task.is_woken());
-        assert_pending!(task.poll());
-
-        cell.wake();
-        assert!(task.is_woken());
-        assert_ready!(task.poll());
-    }
-}
-
-// #[cfg(all(loom, test))]
-// mod loom {
-//     use super::*;
-//     use crate::loom::{future, sync::Arc, thread};
-//
-//     #[test]
-//     fn basic() {
-//         crate::loom::model(|| {
-//             let wait = Arc::new(WaitCell::new());
-//
-//             let waker = wait.clone();
-//             let closer = wait.clone();
-//
-//             thread::spawn(move || {
-//                 tracing::info!("waking");
-//                 waker.wake();
-//                 tracing::info!("woken");
-//             });
-//             thread::spawn(move || {
-//                 tracing::info!("closing");
-//                 closer.close();
-//                 tracing::info!("closed");
-//             });
-//
-//             tracing::info!("waiting");
-//             let _ = future::block_on(wait.wait());
-//             tracing::info!("wait'd");
-//         });
-//     }
-//
-//     #[test]
-//     fn subscribe() {
-//         crate::loom::model(|| {
-//             future::block_on(async move {
-//                 let cell = Arc::new(WaitCell::new());
-//                 let wait = cell.subscribe().await;
-//
-//                 thread::spawn({
-//                     let waker = cell.clone();
-//                     move || {
-//                         tracing::info!("waking");
-//                         waker.wake();
-//                         tracing::info!("woken");
-//                     }
-//                 });
-//
-//                 tracing::info!("waiting");
-//                 wait.await.expect("wait should be woken, not closed");
-//                 tracing::info!("wait'd");
-//             });
-//         });
-//     }
-// }

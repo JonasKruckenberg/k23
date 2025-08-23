@@ -12,6 +12,7 @@ use core::cmp::Ordering;
 use core::fmt;
 use core::fmt::Formatter;
 use core::str::FromStr;
+
 use fallible_iterator::{FallibleIterator, IteratorExt};
 use smallvec::SmallVec;
 use tracing::level_filters::STATIC_MAX_LEVEL;
@@ -114,7 +115,7 @@ impl Filter {
             );
             for directive in disabled {
                 let target = if let Some(target) = &directive.target {
-                    format!("the `{}` target", target)
+                    format!("the `{target}` target")
                 } else {
                     "all targets".into()
                 };
@@ -139,7 +140,7 @@ impl Filter {
                     Some(Level::ERROR) => ("max_level_error", Level::WARN),
                     None => return ("max_level_off", String::new()),
                 };
-                (feature, format!("{} ", filter))
+                (feature, format!("{filter} "))
             };
             let (feature, earlier_level) = help_msg();
             tracing::warn!(
@@ -189,10 +190,10 @@ impl Directive {
     fn cares_about(&self, meta: &Metadata<'_>) -> bool {
         // Does this directive have a target filter, and does it match the
         // metadata's target?
-        if let Some(ref target) = self.target {
-            if !meta.target().starts_with(&target[..]) {
-                return false;
-            }
+        if let Some(ref target) = self.target
+            && !meta.target().starts_with(&target[..])
+        {
+            return false;
         }
 
         true

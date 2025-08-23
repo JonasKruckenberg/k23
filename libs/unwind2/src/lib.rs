@@ -8,14 +8,7 @@
 #![no_std] // this is crate is fully incompatible with `std` due to clashing lang item definitions
 #![cfg(target_os = "none")]
 #![expect(internal_features, reason = "lang items")]
-#![feature(
-    core_intrinsics,
-    rustc_attrs,
-    used_with_arg,
-    lang_items,
-    naked_functions,
-    never_type
-)]
+#![feature(core_intrinsics, rustc_attrs, used_with_arg, lang_items, never_type)]
 
 extern crate alloc;
 
@@ -28,13 +21,15 @@ mod frame;
 mod lang_items;
 mod utils;
 
-use abort::abort;
 use alloc::boxed::Box;
 use core::any::Any;
 use core::intrinsics;
 use core::mem::ManuallyDrop;
 use core::panic::UnwindSafe;
 use core::ptr::addr_of_mut;
+
+use abort::abort;
+pub use arch::Registers;
 use eh_action::{EHAction, find_eh_action};
 pub use eh_info::EhInfo;
 pub use error::Error;
@@ -43,8 +38,6 @@ use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameIter};
 use lang_items::ensure_personality_stub;
 pub use utils::with_context;
-
-pub use arch::Registers;
 
 pub(crate) type Result<T> = core::result::Result<T, Error>;
 
@@ -235,8 +228,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloc::boxed::Box;
+
+    use super::*;
 
     #[test]
     fn begin_and_catch_roundtrip() {

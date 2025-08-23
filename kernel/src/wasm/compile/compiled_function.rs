@@ -5,16 +5,17 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::builtins::BuiltinFunctionIndex;
-use crate::wasm::compile::{FilePos, NS_BUILTIN, NS_WASM_FUNC};
-use crate::wasm::indices::FuncIndex;
-use crate::wasm::trap::TrapKind;
 use cranelift_codegen::ir::{ExternalName, StackSlots, UserExternalName, UserExternalNameRef};
 use cranelift_codegen::{
     Final, FinalizedMachReloc, FinalizedRelocTarget, MachBufferFinalized, ValueLabelsRanges,
     binemit,
 };
 use cranelift_entity::PrimaryMap;
+
+use crate::wasm::builtins::BuiltinFunctionIndex;
+use crate::wasm::compile::{FilePos, NS_BUILTIN, NS_WASM_FUNC};
+use crate::wasm::indices::FuncIndex;
+use crate::wasm::trap::TrapKind;
 
 #[derive(Debug)]
 pub struct CompiledFunction {

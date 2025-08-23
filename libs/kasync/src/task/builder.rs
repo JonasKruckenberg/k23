@@ -1,35 +1,36 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::scheduler::Schedule;
-use crate::task::{Id, JoinHandle, Task, TaskRef};
 use alloc::boxed::Box;
-use core::alloc::{AllocError, Allocator};
 use core::any::type_name;
-use core::marker::PhantomData;
 use core::panic::Location;
+
+use crate::error::{Closed, SpawnError};
+use crate::task::id::Id;
+use crate::task::join_handle::JoinHandle;
+use crate::task::{Task, TaskRef};
 
 pub struct TaskBuilder<'a, S> {
     location: Option<Location<'a>>,
     name: Option<&'a str>,
     kind: &'a str,
-    _scheduler: PhantomData<S>,
+    schedule: S,
 }
 
 impl<'a, S> TaskBuilder<'a, S>
 where
-    S: Schedule,
+    S: Fn(TaskRef) -> Result<(), Closed>,
 {
-    pub(crate) fn new() -> TaskBuilder<'a, S> {
+    pub fn new(schedule: S) -> Self {
         Self {
             location: None,
             name: None,
             kind: "task",
-            _scheduler: PhantomData,
+            schedule,
         }
     }
 
@@ -58,45 +59,13 @@ where
         self
     }
 
-    /// Attempt convert this [`Future`] into a heap allocated task.
-    ///
-    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
-    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
-    /// of its runtime behaviour (such as cancelling it).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AllocError`] when allocation of the task fails.
     #[inline]
     #[track_caller]
-    pub fn try_build<F>(&self, future: F) -> Result<(TaskRef, JoinHandle<F::Output>), AllocError>
+    fn build<F, M>(&self, future: F, metadata: M) -> Task<F, M>
     where
         F: Future + Send,
         F::Output: Send,
-    {
-        self.try_build_in(future, alloc::alloc::Global)
-    }
-
-    /// Attempt convert this [`Future`] into a heap allocated task using a custom [`Allocator`].
-    ///
-    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
-    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
-    /// of its runtime behaviour (such as cancelling it).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AllocError`] when allocation of the task fails.
-    #[inline]
-    #[track_caller]
-    pub fn try_build_in<F, A>(
-        &self,
-        future: F,
-        alloc: A,
-    ) -> Result<(TaskRef, JoinHandle<F::Output>), AllocError>
-    where
-        F: Future + Send,
-        F::Output: Send,
-        A: Allocator,
+        M: Send,
     {
         let id = Id::next();
 
@@ -112,9 +81,61 @@ where
             loc.col = loc.column(),
         );
 
-        let task = Task::<F, S>::new(future, id, span);
-        let task = Box::try_new_in(task, alloc)?;
+        Task::new(future, id, span, metadata)
+    }
 
-        Ok(TaskRef::new_allocated(task))
+    /// Attempt spawn this [`Future`] onto the executor.
+    ///
+    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
+    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
+    /// of its runtime behaviour (such as cancelling it).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AllocError`] when allocation of the task fails.
+    #[inline]
+    #[track_caller]
+    pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output, ()>, SpawnError>
+    where
+        F: Future + Send,
+        F::Output: Send,
+    {
+        let task = self.build(future, ());
+        let task = Box::try_new(task)?;
+        let (task, join) = TaskRef::new_allocated(task);
+
+        (self.schedule)(task)?;
+
+        Ok(join)
+    }
+
+    /// Attempt spawn this [`Future`] with the provided metadata onto the executor.
+    ///
+    /// This method returns a [`TaskRef`] which can be used to spawn it onto an [`crate::executor::Executor`]
+    /// and a [`JoinHandle`] which can be used to await the futures output as well as control some aspects
+    /// of its runtime behaviour (such as cancelling it).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AllocError`] when allocation of the task fails.
+    #[inline]
+    #[track_caller]
+    pub fn try_spawn_with_metadata<F, M>(
+        &self,
+        future: F,
+        metadata: M,
+    ) -> Result<JoinHandle<F::Output, M>, SpawnError>
+    where
+        F: Future + Send,
+        F::Output: Send,
+        M: Send,
+    {
+        let task = self.build(future, metadata);
+        let task = Box::try_new(task)?;
+        let (task, join) = TaskRef::new_allocated(task);
+
+        (self.schedule)(task)?;
+
+        Ok(join)
     }
 }

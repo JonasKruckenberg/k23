@@ -10,9 +10,10 @@
 
 mod symbolize;
 
-use arrayvec::ArrayVec;
 use core::fmt;
 use core::fmt::Formatter;
+
+use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
 use unwind2::FrameIter;
 
@@ -96,7 +97,7 @@ impl<const MAX_FRAMES: usize> fmt::Display for Backtrace<'_, '_, MAX_FRAMES> {
                 .unwrap();
 
             while let Some(sym) = syms.next().unwrap() {
-                write!(f, "{frame_idx}: {address:#x}    -", address = ip)?;
+                write!(f, "{frame_idx}: {ip:#x}    -")?;
                 if let Some(name) = sym.name() {
                     writeln!(f, "      {name}")?;
                 } else {

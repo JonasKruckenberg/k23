@@ -9,6 +9,7 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::sync::atomic;
 use core::sync::atomic::{AtomicUsize, Ordering};
+
 use cpu_local::collection::CpuLocal;
 use ksharded_slab::Pool;
 use ksharded_slab::pool::Ref;
@@ -144,12 +145,12 @@ impl Registry {
         self.spans.get(id_to_idx(id))
     }
 
-    fn span_data(&self, id: &Id) -> Option<Data> {
+    fn span_data(&self, id: &Id) -> Option<Data<'_>> {
         let inner = self.get(id)?;
         Some(Data { inner })
     }
 
-    fn span(&self, id: &Id) -> Option<SpanRef>
+    fn span(&self, id: &Id) -> Option<SpanRef<'_>>
     where
         Self: Sized,
     {
@@ -215,10 +216,10 @@ impl Collect for Registry {
     }
 
     fn exit(&self, id: &Id) {
-        if let Some(spans) = self.current_spans.get() {
-            if spans.borrow_mut().pop(id) {
-                dispatch::get_default(|dispatch| dispatch.try_close(id.clone()));
-            }
+        if let Some(spans) = self.current_spans.get()
+            && spans.borrow_mut().pop(id)
+        {
+            dispatch::get_default(|dispatch| dispatch.try_close(id.clone()));
         }
     }
 
@@ -234,8 +235,7 @@ impl Collect for Registry {
         let refs = span.ref_count.fetch_add(1, Ordering::Relaxed);
         assert_ne!(
             refs, 0,
-            "tried to clone a span ({:?}) that already closed",
-            id
+            "tried to clone a span ({id:?}) that already closed",
         );
         id.clone()
     }

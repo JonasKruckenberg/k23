@@ -1,6 +1,8 @@
-use crate::cfg;
+use core::fmt;
+use core::marker::PhantomData;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use core::{fmt, marker::PhantomData};
+
+use crate::cfg;
 
 pub(super) struct TransferStack<C = cfg::DefaultConfig> {
     head: AtomicUsize,

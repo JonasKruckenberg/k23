@@ -5,14 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::eh_info::obtain_eh_info;
-use crate::utils::{StoreOnStack, deref_pointer, get_unlimited_slice, with_context};
 use fallible_iterator::FallibleIterator;
 use gimli::{
     CfaRule, EhFrame, EndianSlice, EvaluationResult, FrameDescriptionEntry, NativeEndian, Register,
     RegisterRule, UnwindExpression, UnwindSection, UnwindTableRow, Value,
 };
+
+use crate::arch;
+use crate::eh_info::obtain_eh_info;
+use crate::utils::{StoreOnStack, deref_pointer, get_unlimited_slice, with_context};
 
 /// A frame in a stack.
 ///

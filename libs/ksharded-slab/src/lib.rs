@@ -205,6 +205,7 @@
 #![feature(thread_local)]
 #![feature(used_with_arg)]
 #![feature(never_type)]
+#![expect(clippy::uninlined_format_args, reason = "not worth the effort")]
 
 extern crate alloc;
 
@@ -219,20 +220,19 @@ mod page;
 mod shard;
 mod tid;
 
-pub use self::{
-    cfg::{Config, DefaultConfig},
-    clear::Clear,
-    iter::UniqueIter,
-};
+use alloc::sync::Arc;
+use core::marker::PhantomData;
+use core::{fmt, ptr};
+
+use cfg::CfgPrivate;
 #[doc(inline)]
 pub use pool::Pool;
-
+use shard::Shard;
 pub(crate) use tid::Tid;
 
-use alloc::sync::Arc;
-use cfg::CfgPrivate;
-use core::{fmt, marker::PhantomData, ptr};
-use shard::Shard;
+pub use self::cfg::{Config, DefaultConfig};
+pub use self::clear::Clear;
+pub use self::iter::UniqueIter;
 
 /// A sharded slab.
 ///
@@ -616,7 +616,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// ```
     ///
     /// # Panics
-    ///  
+    ///
     /// TODO
     pub fn get(&self, key: usize) -> Option<Entry<'_, T, C>> {
         let tid = C::unpack_tid(key);
@@ -699,7 +699,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// ```
     ///
     /// # Panics
-    ///  
+    ///
     /// TODO
     ///
     /// [`get`]: Slab::get

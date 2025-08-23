@@ -5,16 +5,18 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::mem::{AddressSpace, Mmap};
 use alloc::sync::Arc;
-use anyhow::Context;
 use core::cmp::max;
 use core::marker::PhantomData;
 use core::ops::Deref;
 use core::range::Range;
 use core::slice;
+
+use anyhow::Context;
 use spin::Mutex;
+
+use crate::arch;
+use crate::mem::{AddressSpace, Mmap};
 
 #[derive(Debug)]
 pub struct MmapVec<T> {

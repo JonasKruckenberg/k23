@@ -5,23 +5,30 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::sync::wait_cell::WaitCell;
-use crate::time::Ticks;
-use cordyceps::{Linked, list};
 use core::marker::PhantomPinned;
 use core::mem::offset_of;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, Ordering};
+
+use cordyceps::{Linked, list};
+use pin_project::pin_project;
 use util::loom_const_fn;
 
+use crate::sync::wait_cell::WaitCell;
+use crate::time::Ticks;
+
 /// An entry in a timing [`Wheel`][crate::time::timer::Wheel].
+#[pin_project]
 #[derive(Debug)]
 pub(in crate::time) struct Entry {
     pub(in crate::time) deadline: Ticks,
     pub(in crate::time) is_registered: AtomicBool,
     /// The currently-registered waker
     pub(in crate::time) waker: WaitCell,
-    pub(in crate::time) links: list::Links<Self>,
+    #[pin]
+    links: list::Links<Self>,
+    // This type is !Unpin due to the heuristic from:
+    // <https://github.com/rust-lang/rust/pull/82834>
     _pin: PhantomPinned,
 }
 
@@ -43,7 +50,7 @@ impl Entry {
             self.is_registered
                 .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire);
         tracing::trace!(was_registered = was_registered.is_ok(), "firing sleep!");
-        self.waker.wake();
+        self.waker.close();
     }
 }
 

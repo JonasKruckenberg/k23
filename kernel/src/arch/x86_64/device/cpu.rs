@@ -7,8 +7,7 @@
 
 use crate::device_tree::DeviceTree;
 use crate::irq::InterruptController;
-use core::time::Duration;
-use kasync::time::{Clock, NANOS_PER_SEC, Ticks};
+use kasync::time::Clock;
 
 #[derive(Debug)]
 pub struct Cpu {
@@ -19,26 +18,12 @@ pub struct Cpu {
 impl Cpu {
     pub fn new(_devtree: &DeviceTree, cpuid: usize) -> crate::Result<Self> {
         // TODO: Initialize x86_64 APIC (Advanced Programmable Interrupt Controller)
-        // TODO: Get timebase frequency from CPUID or TSC
-        let timebase_frequency = 1_000_000_000; // 1 GHz placeholder
-
-        let tick_duration = Duration::from_nanos(NANOS_PER_SEC / timebase_frequency);
-
-        // TODO: Implement x86_64 timer reading (TSC, HPET, etc.)
-        let clock = Clock::new(tick_duration, || {
-            // Placeholder: read TSC (Time Stamp Counter)
-            unsafe {
-                let low: u32;
-                let high: u32;
-                core::arch::asm!("rdtsc", out("eax") low, out("edx") high);
-                Ticks(((high as u64) << 32) | (low as u64))
-            }
-        });
+        let clock = super::clock::new()?;
 
         // TODO: Initialize x86_64 CPU from device tree or ACPI tables
         Ok(Self {
             id: cpuid,
-            clock: clock,
+            clock,
         })
     }
 

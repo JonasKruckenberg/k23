@@ -5,9 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::{AtomicU8, Ordering};
 use core::mem;
+
 use util::loom_const_fn;
+
+use crate::loom::sync::atomic::{AtomicU8, Ordering};
 
 /// No initialization has run yet, and no thread is currently using the Once.
 const STATUS_INCOMPLETE: u8 = 0;
@@ -49,12 +51,23 @@ impl Once {
     }
 
     pub fn state(&mut self) -> ExclusiveState {
-        self.status.with_mut(|status| match *status {
-            STATUS_INCOMPLETE => ExclusiveState::Incomplete,
-            STATUS_POISONED => ExclusiveState::Poisoned,
-            STATUS_COMPLETE => ExclusiveState::Complete,
-            _ => unreachable!("invalid Once state"),
-        })
+        cfg_if::cfg_if! {
+            if #[cfg(loom)] {
+                self.status.with_mut(|status| match *status {
+                    STATUS_INCOMPLETE => ExclusiveState::Incomplete,
+                    STATUS_POISONED => ExclusiveState::Poisoned,
+                    STATUS_COMPLETE => ExclusiveState::Complete,
+                    _ => unreachable!("invalid Once state"),
+                })
+            } else {
+                match *self.status.get_mut() {
+                    STATUS_INCOMPLETE => ExclusiveState::Incomplete,
+                    STATUS_POISONED => ExclusiveState::Poisoned,
+                    STATUS_COMPLETE => ExclusiveState::Complete,
+                    _ => unreachable!("invalid Once state"),
+                }
+            }
+        }
     }
 
     /// # Panics
@@ -148,9 +161,10 @@ impl Drop for PanicGuard<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc::channel;
+
     use super::*;
     use crate::loom::thread;
-    use std::sync::mpsc::channel;
 
     #[test]
     fn smoke_once() {
@@ -205,7 +219,7 @@ mod tests {
     #[cfg(not(loom))]
     #[test]
     fn wait() {
-        use crate::loom::{AtomicBool, Ordering};
+        use crate::loom::sync::atomic::{AtomicBool, Ordering};
 
         for _ in 0..50 {
             let val = AtomicBool::new(false);

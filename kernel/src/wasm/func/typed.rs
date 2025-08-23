@@ -5,17 +5,19 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::wasm::func::do_call;
-use crate::wasm::store::StoreOpaque;
-use crate::wasm::types::{FuncType, HeapType, RefType, ValType};
-use crate::wasm::vm::VMVal;
-use crate::wasm::{Engine, Func};
 use core::ffi::c_void;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ptr;
 use core::ptr::NonNull;
+
 use static_assertions::assert_impl_all;
+
+use crate::wasm::func::do_call;
+use crate::wasm::store::StoreOpaque;
+use crate::wasm::types::{FuncType, HeapType, RefType, ValType};
+use crate::wasm::vm::VMVal;
+use crate::wasm::{Engine, Func};
 
 pub struct TypedFunc<Params, Results> {
     ty: FuncType,

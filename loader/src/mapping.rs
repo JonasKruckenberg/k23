@@ -5,22 +5,24 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::alloc::Layout;
+use core::num::NonZeroUsize;
+use core::range::Range;
+use core::{cmp, ptr, slice};
+
+use bitflags::bitflags;
+use fallible_iterator::FallibleIterator;
+use loader_api::TlsTemplate;
+use xmas_elf::P64;
+use xmas_elf::dynamic::Tag;
+use xmas_elf::program::{SegmentData, Type};
+
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::page_alloc::PageAllocator;
 use crate::{SelfRegions, arch};
-use bitflags::bitflags;
-use core::alloc::Layout;
-use core::num::NonZeroUsize;
-use core::range::Range;
-use core::{cmp, ptr, slice};
-use fallible_iterator::FallibleIterator;
-use loader_api::TlsTemplate;
-use xmas_elf::P64;
-use xmas_elf::dynamic::Tag;
-use xmas_elf::program::{SegmentData, Type};
 
 bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq)]
@@ -118,8 +120,8 @@ pub fn map_physical_memory(
     );
     let size = NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap();
 
-    debug_assert!(phys.start % alignment == 0 && phys.end % alignment == 0);
-    debug_assert!(virt.start % alignment == 0 && virt.end % alignment == 0);
+    debug_assert!(phys.start.is_multiple_of(alignment) && phys.end.is_multiple_of(alignment));
+    debug_assert!(virt.start.is_multiple_of(alignment) && virt.end.is_multiple_of(alignment));
 
     log::trace!("Mapping physical memory {phys:#x?} => {virt:#x?}...");
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
@@ -172,7 +174,7 @@ pub fn map_kernel(
 
     log::trace!("map_kernel: phys_base={:#x}", phys_base);
     assert!(
-        phys_base % arch::PAGE_SIZE == 0,
+        phys_base.is_multiple_of(arch::PAGE_SIZE),
         "Loaded ELF file is not sufficiently aligned"
     );
 
@@ -927,7 +929,7 @@ pub const fn checked_align_up(this: usize, align: usize) -> Option<usize> {
     // addr.wrapping_add(align_minus_one) & 0usize.wrapping_sub(align)
     if let Some(addr_plus_align) = this.checked_add(align_minus_one) {
         let aligned = addr_plus_align & 0usize.wrapping_sub(align);
-        debug_assert!(aligned % align == 0);
+        debug_assert!(aligned.is_multiple_of(align));
         debug_assert!(aligned >= this);
         Some(aligned)
     } else {
@@ -944,7 +946,7 @@ pub const fn align_down(this: usize, align: usize) -> usize {
     );
 
     let aligned = this & 0usize.wrapping_sub(align);
-    debug_assert!(aligned % align == 0);
+    debug_assert!(aligned.is_multiple_of(align));
     debug_assert!(aligned <= this);
     aligned
 }

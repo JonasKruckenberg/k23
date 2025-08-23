@@ -5,6 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::fmt;
+use core::fmt::{Display, Write};
+
+use anyhow::{bail, ensure};
+
 use crate::wasm::Engine;
 use crate::wasm::indices::{CanonicalizedTypeIndex, VMSharedTypeIndex};
 use crate::wasm::translate::{
@@ -13,12 +20,6 @@ use crate::wasm::translate::{
     WasmSubType, WasmValType,
 };
 use crate::wasm::type_registry::RegisteredType;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use anyhow::{bail, ensure};
-use core::fmt;
-use core::fmt::Display;
-use core::fmt::Write;
 
 /// Indicator of whether a global value, struct's field, or array type's
 /// elements are mutable or not.
@@ -1507,10 +1508,10 @@ impl FuncType {
                 vec.push(ty.clone());
             }
 
-            if let Some(r) = ty.as_ref() {
-                if let Some(r) = r.heap_type().as_registered_type() {
-                    registrations.push(r.clone());
-                }
+            if let Some(r) = ty.as_ref()
+                && let Some(r) = r.heap_type().as_registered_type()
+            {
+                registrations.push(r.clone());
             }
 
             ty.to_wasm_type()

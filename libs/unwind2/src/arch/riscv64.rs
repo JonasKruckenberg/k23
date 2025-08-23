@@ -6,10 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 //! RISC-V specific unwinding code, mostly saving and restoring registers.
-use cfg_if::cfg_if;
 use core::arch::{asm, naked_asm};
-use core::fmt;
-use core::ops;
+use core::{fmt, ops};
+
+use cfg_if::cfg_if;
 use gimli::{Register, RiscV};
 
 // Match DWARF_FRAME_REGISTERS in libgcc
@@ -201,18 +201,16 @@ macro_rules! code {
     };
 }
 
-#[naked]
+#[unsafe(naked)]
 pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()), ptr: *mut ()) {
-    // Safety: inline assembly
-    unsafe {
-        cfg_if! {
-            if #[cfg(target_feature = "d")] {
-                // No need to save caller-saved registers here.
-                naked_asm! {
-                    // FIXME this is a workaround for bug in rustc/llvm
-                    //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
-                    ".attribute arch, \"rv64gc\"",
-                    "
+    cfg_if! {
+        if #[cfg(target_feature = "d")] {
+            // No need to save caller-saved registers here.
+            naked_asm! {
+                // FIXME this is a workaround for bug in rustc/llvm
+                //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
+                ".attribute arch, \"rv64gc\"",
+                "
                     .cfi_startproc
                     mv t0, sp
                     add sp, sp, -0x210
@@ -220,9 +218,9 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()),
                     sd ra, 0x200(sp)
                     .cfi_offset ra, -16
                     ",
-                    code!(save_gp),
-                    code!(save_fp),
-                    "
+                code!(save_gp),
+                code!(save_fp),
+                "
                     mv t0, a0
                     mv a0, sp
                     jalr t0
@@ -233,19 +231,19 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()),
                     ret
                     .cfi_endproc
                     "
-                };
-            } else {
-                // No need to save caller-saved registers here.
-                naked_asm! {
-                    "
+            };
+        } else {
+            // No need to save caller-saved registers here.
+            naked_asm! {
+                "
                     mv t0, sp
                     add sp, sp, -0x110
                     .cfi_def_cfa_offset 0x110
                     sd ra, 0x100(sp)
                     .cfi_offset ra, -16
                     ",
-                    code!(save_gp),
-                    "
+                code!(save_gp),
+                "
                     mv t0, a0
                     mv a0, sp
                     jalr t0
@@ -255,8 +253,7 @@ pub extern "C-unwind" fn save_context(f: extern "C" fn(&mut Registers, *mut ()),
                     .cfi_restore ra
                     ret
                     ",
-                };
-            }
+            };
         }
     }
 }

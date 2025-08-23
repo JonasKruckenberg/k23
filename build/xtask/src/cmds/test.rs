@@ -5,18 +5,20 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use std::path::PathBuf;
+use std::process::ExitStatus;
+use std::time::Duration;
+
+use clap::{Parser, ValueHint};
+use color_eyre::Help;
+use color_eyre::eyre::{Context, format_err};
+use wait_timeout::ChildExt;
+
 use crate::build::{Cargo, CrateToBuild};
 use crate::profile::{Architecture, Profile};
 use crate::tracing::OutputOptions;
 use crate::util::KillOnDrop;
 use crate::{Options, qemu};
-use clap::{Parser, ValueHint};
-use color_eyre::Help;
-use color_eyre::eyre::{Context, format_err};
-use std::path::PathBuf;
-use std::process::ExitStatus;
-use std::time::Duration;
-use wait_timeout::ChildExt;
 
 #[derive(Debug, Parser)]
 pub struct Cmd {

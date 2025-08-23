@@ -5,10 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::sync::Closed;
-use crate::sync::wake_batch::WakeBatch;
 use alloc::sync::Arc;
-use cordyceps::{Linked, List, list};
 use core::cell::UnsafeCell;
 use core::marker::PhantomPinned;
 use core::pin::Pin;
@@ -16,10 +13,15 @@ use core::ptr::NonNull;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::task::{Context, Poll, Waker};
 use core::{fmt, mem, ptr};
+
+use cordyceps::{Linked, List, list};
 use mycelium_bitfield::{FromBits, bitfield, enum_from_bits};
 use pin_project::{pin_project, pinned_drop};
 use spin::{Mutex, MutexGuard};
 use util::{CachePadded, loom_const_fn};
+
+use crate::error::Closed;
+use crate::sync::wake_batch::WakeBatch;
 
 /// A queue of waiting tasks which can be [woken in first-in, first-out
 /// order][wake], or [all at once][wake_all].
@@ -72,7 +74,7 @@ use util::{CachePadded, loom_const_fn};
 /// [wake]: WaitQueue::wake
 /// [wake_all]: WaitQueue::wake_all
 /// [`UnsafeCell`]: UnsafeCell
-/// [ilist]: cordyceps::List
+/// [ilist]: linked_list::List
 #[derive(Debug)]
 pub struct WaitQueue {
     /// The wait maps's state variable.
@@ -131,13 +133,13 @@ enum StateInner {
     Closed = 0b11,
 }
 
-#[derive(Debug)]
 #[pin_project(PinnedDrop)]
+#[derive(Debug)]
 #[must_use = "futures do nothing unless `.await`ed or `poll`ed"]
 pub struct Wait<'a> {
-    /// The [`WaitQueue`] being waited on.
+    // The [`WaitQueue`] being waited on.
     queue: &'a WaitQueue,
-    /// Entry in the wait queue linked list.
+    // Entry in the wait queue linked list.
     #[pin]
     waiter: Waiter,
 }
@@ -165,27 +167,27 @@ pub struct Wait<'a> {
 ///
 /// assert_unpin::<WaitOwned<'_>>();
 /// ```
-#[derive(Debug)]
 #[pin_project(PinnedDrop)]
+#[derive(Debug)]
 pub struct WaitOwned {
-    /// The `WaitQueue` being waited on.
+    // The `WaitQueue` being waited on.
     queue: Arc<WaitQueue>,
-    /// Entry in the wait queue.
+    // Entry in the wait queue.
     #[pin]
     waiter: Waiter,
 }
 
 /// A waiter node which may be linked into a wait queue.
-#[repr(C)]
 #[pin_project]
+#[repr(C)]
 struct Waiter {
-    /// The intrusive linked list node.
-    ///
-    /// This *must* be the first field in the struct in order for the `Linked`
-    /// implementation to be sound.
+    // The intrusive linked list node.
+    //
+    // This *must* be the first field in the struct in order for the `Linked`
+    // implementation to be sound.
     #[pin]
     node: UnsafeCell<WaiterInner>,
-    /// The future's state.
+    // The future's state.
     state: WaitState,
 }
 
@@ -332,7 +334,7 @@ impl WaitQueue {
     /// [`wake()`]: Self::wake
     /// [`wait()`]: Self::wait
     #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
-    pub fn wake_all(&self) {
+    pub fn wake_all(&self) -> usize {
         let mut batch = WakeBatch::new();
         let mut waiters_remaining = true;
 
@@ -344,9 +346,9 @@ impl WaitQueue {
                 self.state
                     .0
                     .fetch_add(State::ONE_WAKE_ALL, Ordering::SeqCst);
-                return;
+                return 0;
             }
-            StateInner::Closed => return,
+            StateInner::Closed => return 0,
             StateInner::Waiting => {
                 let next_state = State::new()
                     .with_inner(StateInner::Empty)
@@ -358,10 +360,14 @@ impl WaitQueue {
 
         // As long as there are waiters remaining to wake, lock the queue, drain
         // another batch, release the lock, and wake them.
+        let mut woken = 0;
         while waiters_remaining {
             waiters_remaining = Self::drain_to_wake_batch(&mut batch, &mut queue, Wakeup::All);
+            woken += batch.len();
             MutexGuard::unlocked(&mut queue, || batch.wake_all());
         }
+
+        woken
     }
 
     /// Wait to be woken up by this queue.
@@ -960,7 +966,7 @@ impl Waiter {
 }
 
 // Safety: TODO
-unsafe impl Linked<list::Links<Waiter>> for Waiter {
+unsafe impl Linked<list::Links<Self>> for Waiter {
     type Handle = NonNull<Waiter>;
 
     fn into_ptr(r: Self::Handle) -> NonNull<Self> {

@@ -14,13 +14,14 @@ mod memory;
 mod state;
 mod utils;
 
-use crate::wasm::trap::TRAP_TABLE_OUT_OF_BOUNDS;
 pub use compiler::CraneliftCompiler;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::immediates::Imm64;
 use cranelift_codegen::ir::{InstBuilder, MemFlags};
 use cranelift_frontend::FunctionBuilder;
+
+use crate::wasm::trap::TRAP_TABLE_OUT_OF_BOUNDS;
 
 /// The value of a WebAssembly global variable.
 #[derive(Clone, Copy)]

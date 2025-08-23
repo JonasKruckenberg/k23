@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.8](https://github.com/JonasKruckenberg/k23/compare/v0.0.7...v0.0.8) - 2025-07-11
+
+### Fixed
+
+- *(deps)* update rust crate libfuzzer-sys to v0.4.10 ([#492](https://github.com/JonasKruckenberg/k23/pull/492))
+
+### Other
+
+- update Rust to 1.90.0-nightly ([#499](https://github.com/JonasKruckenberg/k23/pull/499))
+- *(deps)* update rust crate criterion to 0.6.0 ([#421](https://github.com/JonasKruckenberg/k23/pull/421))
+- overhaul testing ([#482](https://github.com/JonasKruckenberg/k23/pull/482))
+- async executor benchmarks ([#442](https://github.com/JonasKruckenberg/k23/pull/442))
+
 ## [0.0.7](https://github.com/JonasKruckenberg/k23/compare/v0.0.6...v0.0.7) - 2025-02-21
 
 ### Added

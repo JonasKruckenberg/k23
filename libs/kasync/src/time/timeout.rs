@@ -1,15 +1,19 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::time::{Instant, Sleep, TimeError, Timer, sleep, sleep_until};
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use core::time::Duration;
+
 use pin_project::pin_project;
+
+use crate::time::instant::Instant;
+use crate::time::sleep::{Sleep, sleep, sleep_until};
+use crate::time::{TimeError, Timer};
 
 /// Requires a `Future` to complete before the specified duration has elapsed.
 ///
@@ -22,13 +26,13 @@ pub fn timeout<F>(
     timer: &Timer,
     duration: Duration,
     future: F,
-) -> Result<Timeout<F::IntoFuture>, TimeError>
+) -> Result<Timeout<'_, F::IntoFuture>, TimeError>
 where
     F: IntoFuture,
 {
     Ok(Timeout {
-        future: future.into_future(),
         sleep: sleep(timer, duration)?,
+        future: future.into_future(),
     })
 }
 
@@ -43,28 +47,28 @@ pub fn timeout_at<F>(
     timer: &Timer,
     deadline: Instant,
     future: F,
-) -> Result<Timeout<F::IntoFuture>, TimeError>
+) -> Result<Timeout<'_, F::IntoFuture>, TimeError>
 where
     F: IntoFuture,
 {
     Ok(Timeout {
-        future: future.into_future(),
         sleep: sleep_until(timer, deadline)?,
+        future: future.into_future(),
     })
 }
-
-#[derive(Debug)]
-pub struct Elapsed(());
 
 /// Future returned by [`timeout`] and [`timeout_at`].
 #[pin_project]
 #[must_use = "futures do nothing unless `.await`ed or `poll`ed"]
 pub struct Timeout<'timer, F> {
     #[pin]
-    future: F,
-    #[pin]
     sleep: Sleep<'timer>,
+    #[pin]
+    future: F,
 }
+
+#[derive(Debug)]
+pub struct Elapsed(());
 
 impl<F> Timeout<'_, F> {
     /// Gets a reference to the underlying future in this timeout.

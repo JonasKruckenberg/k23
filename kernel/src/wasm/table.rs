@@ -5,16 +5,18 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::ptr::NonNull;
+use core::sync::atomic::Ordering;
+
+use anyhow::Context;
+use cranelift_entity::packed_option::ReservedValue;
+
 use crate::wasm::indices::DefinedTableIndex;
 use crate::wasm::store::{StoreOpaque, Stored};
 use crate::wasm::types::TableType;
 use crate::wasm::values::Ref;
 use crate::wasm::vm::{ExportedTable, InstanceAndStore, TableElement, VMTableImport, VmPtr};
 use crate::wasm::{Func, vm};
-use anyhow::Context;
-use core::ptr::NonNull;
-use core::sync::atomic::Ordering;
-use cranelift_entity::packed_option::ReservedValue;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Table(Stored<ExportedTable>);

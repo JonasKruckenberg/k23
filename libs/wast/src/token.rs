@@ -2,14 +2,13 @@
 //! associated specifically with the wasm text format per se (useful in other
 //! contexts too perhaps).
 
+use alloc::string::{String, ToString};
+use core::hash::{Hash, Hasher};
+use core::{fmt, str};
+
 use crate::annotation;
 use crate::lexer::Float;
 use crate::parser::{Cursor, Parse, Parser, Peek, Result};
-use alloc::string::String;
-use alloc::string::ToString;
-use core::fmt;
-use core::hash::{Hash, Hasher};
-use core::str;
 
 /// A position in the original source stream, used to render errors.
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]

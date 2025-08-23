@@ -1,4 +1,4 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -11,28 +11,27 @@ mod join_handle;
 mod state;
 mod yield_now;
 
-use crate::loom::{cell::UnsafeCell, sync::atomic::Ordering};
-use crate::scheduler::steal::{Stealer, TryStealError};
-use crate::scheduler::{Schedule, Tick};
-use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 use alloc::boxed::Box;
-use cordyceps::{Linked, mpsc_queue};
-use core::alloc::Allocator;
-#[cfg(debug_assertions)]
-use core::any::TypeId;
+use core::alloc::AllocError;
 use core::any::type_name;
-use core::mem::offset_of;
+use core::mem::{ManuallyDrop, offset_of};
 use core::panic::AssertUnwindSafe;
 use core::pin::Pin;
 use core::ptr::NonNull;
+use core::sync::atomic::Ordering;
 use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use core::{fmt, mem};
-use util::{CachePadded, CheckedMaybeUninit, loom_const_fn};
 
 pub use builder::TaskBuilder;
+use cordyceps::mpsc_queue;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinHandle};
+use util::{CachePadded, CheckedMaybeUninit, loom_const_fn};
 pub use yield_now::yield_now;
+
+use crate::executor::Scheduler;
+use crate::loom::cell::UnsafeCell;
+use crate::task::state::{JoinAction, StartPollAction, State, WakeByRefAction, WakeByValAction};
 
 /// Outcome of calling [`Task::poll`].
 ///
@@ -82,12 +81,12 @@ pub(crate) enum PollResult {
 pub struct TaskRef(NonNull<Header>);
 
 #[repr(C)]
-pub struct Task<F: Future, S: Schedule>(CachePadded<TaskInner<F, S>>);
+struct Task<F: Future, M>(CachePadded<TaskInner<F, M>>);
 
 #[repr(C)]
-struct TaskInner<F: Future, S: Schedule> {
+struct TaskInner<F: Future, M> {
     /// This must be the first field of the `Task` struct!
-    schedulable: Schedulable<S>,
+    header_and_metadata: HeaderAndMetadata<M>,
 
     /// The future that the task is running.
     ///
@@ -145,10 +144,10 @@ struct TaskInner<F: Future, S: Schedule> {
 }
 
 #[repr(C)]
-struct Schedulable<S: Schedule> {
-    /// This must be the first field of the `Schedulable` struct!
+struct HeaderAndMetadata<M> {
+    /// This must be the first field of the `HeaderAndMetadata` struct!
     header: Header,
-    scheduler: UnsafeCell<Option<S>>,
+    metadata: M,
 }
 
 /// The current lifecycle stage of the future. Either the future itself or its output.
@@ -179,11 +178,7 @@ pub(crate) struct Header {
     run_queue_links: mpsc_queue::Links<Self>,
     /// The tracing span associated with this task, for debugging purposes.
     span: tracing::Span,
-    /// The TypeId of the scheduler that this task is associated with. Because the shape of a task
-    /// depends on the scheduler type, a task MUST NOT be cross-shared between schedulers of different
-    /// types (sharing between schedulers of the same type is fine and expected)
-    #[cfg(debug_assertions)]
-    scheduler_type: Option<TypeId>,
+    scheduler: UnsafeCell<Option<&'static Scheduler>>,
 }
 
 #[derive(Debug)]
@@ -208,39 +203,24 @@ struct VTable {
 
     /// Drops the task and deallocates its memory.
     deallocate: unsafe fn(NonNull<Header>),
-
-    /// The `wake_by_ref` function from the task's [`RawWakerVTable`].
-    ///
-    /// This is duplicated here as it's used to wake canceled tasks when a task
-    /// is canceled by a [`TaskRef`] or [`JoinHandle`].
-    wake_by_ref: unsafe fn(*const ()),
 }
 
 // === impl TaskRef ===
 
 impl TaskRef {
-    #[track_caller]
-    pub(crate) fn new_allocated<S, F, A>(task: Box<Task<F, S>, A>) -> (Self, JoinHandle<F::Output>)
-    where
-        S: Schedule,
-        F: Future,
-        A: Allocator,
-    {
-        assert_eq!(task.state().refcount(), 1);
-        let ptr = Box::into_raw(task);
-
-        // Safety: we just allocated the ptr so it is never null
-        let task = Self(unsafe { NonNull::new_unchecked(ptr).cast() });
-        let join = JoinHandle::new(task.clone());
-
-        (task, join)
-    }
-
     /// Returns the tasks unique[^1] identifier.
     ///
     /// [^1]: Unique to all *currently running* tasks, *not* unique across spacetime. See [`Id`] for details.
     pub fn id(&self) -> Id {
         self.header().id
+    }
+
+    /// # Safety
+    ///
+    /// The caller must ensure the generic argument matches the metadata type this task got created with.
+    pub unsafe fn metadata<M>(&self) -> &M {
+        // Safety: ensured by caller
+        unsafe { &self.0.cast::<HeaderAndMetadata<M>>().as_ref().metadata }
     }
 
     /// Returns `true` when this task has run to completion.
@@ -258,38 +238,11 @@ impl TaskRef {
         // if the task was successfully canceled, wake it so that it can clean
         // up after itself.
         if canceled {
-            tracing::trace!("woke canceled task");
-            self.wake_by_ref();
+            tracing::trace!("waking canceled task...");
+            todo!()
         }
 
         canceled
-    }
-
-    pub(crate) fn clone_from_raw(ptr: NonNull<Header>) -> TaskRef {
-        let this = Self(ptr);
-        this.state().clone_ref();
-        this
-    }
-
-    pub(crate) fn header_ptr(&self) -> NonNull<Header> {
-        self.0
-    }
-
-    pub(crate) fn header(&self) -> &Header {
-        // Safety: constructor ensures the pointer is always valid
-        unsafe { self.0.as_ref() }
-    }
-
-    /// Returns a reference to the task's state.
-    pub(crate) fn state(&self) -> &State {
-        &self.header().state
-    }
-
-    pub(crate) fn wake_by_ref(&self) {
-        tracing::trace!("TaskRef::wake_by_ref {self:?}");
-        let wake_by_ref_fn = self.header().vtable.wake_by_ref;
-        // Safety: Called through our Vtable so this access should be fine
-        unsafe { wake_by_ref_fn(self.0.as_ptr().cast::<()>()) }
     }
 
     pub(crate) fn poll(&self) -> PollResult {
@@ -338,27 +291,212 @@ impl TaskRef {
     /// The new scheduler `S` must be of the **same** type as the scheduler that this task got created
     /// with. The shape of the allocated tasks depend on the type of the scheduler, binding a task
     /// to a differently typed scheduler will therefore cause invalid memory accesses.
-    pub(crate) unsafe fn bind_scheduler<S: Schedule + 'static>(&self, scheduler: S) {
-        // Safety: ensured by caller
+    pub(crate) fn bind_scheduler(&self, scheduler: &'static Scheduler) {
+        // Safety: the repr(C) on Schedulable ensures the layout matches and this cast is safe
         unsafe {
-            #[cfg(debug_assertions)]
-            {
-                if let Some(scheduler_type) = self.header().scheduler_type {
-                    assert_eq!(
-                        scheduler_type,
-                        TypeId::of::<S>(),
-                        "cannot bind {self:?} to a scheduler of type {}",
-                        type_name::<S>(),
-                    );
-                }
-            }
-
             self.0
-                .cast::<Schedulable<S>>()
                 .as_ref()
                 .scheduler
                 .with_mut(|current| *current = Some(scheduler));
         }
+    }
+
+    pub(crate) fn new_stub() -> Result<Self, AllocError> {
+        const HEAP_STUB_VTABLE: VTable = VTable {
+            poll: stub_poll,
+            poll_join: stub_poll_join,
+            deallocate: stub_deallocate,
+        };
+
+        unsafe fn stub_poll(ptr: NonNull<Header>) -> PollResult {
+            // Safety: this method should never be called
+            unsafe {
+                debug_assert!(ptr.as_ref().id.is_stub());
+                unreachable!("stub task ({ptr:?}) should never be polled!");
+            }
+        }
+
+        unsafe fn stub_poll_join(
+            ptr: NonNull<Header>,
+            _outptr: NonNull<()>,
+            _cx: &mut Context<'_>,
+        ) -> Poll<Result<(), JoinError<()>>> {
+            // Safety: this method should never be called
+            unsafe {
+                debug_assert!(ptr.as_ref().id.is_stub());
+                unreachable!("stub task ({ptr:?}) should never be polled!");
+            }
+        }
+
+        unsafe fn stub_deallocate(ptr: NonNull<Header>) {
+            // Safety: this method should never be called
+            unsafe {
+                debug_assert!(ptr.as_ref().id.is_stub());
+                drop(Box::from_raw(ptr.as_ptr()));
+            }
+        }
+
+        let inner = Box::into_raw(Box::try_new(Header {
+            state: State::new(),
+            vtable: &HEAP_STUB_VTABLE,
+            id: Id::stub(),
+            run_queue_links: mpsc_queue::Links::new_stub(),
+            span: tracing::Span::none(),
+            scheduler: UnsafeCell::new(None),
+        })?);
+
+        // Safety: we just allocated the ptr so it is never null
+        Ok(Self(unsafe { NonNull::new_unchecked(inner) }))
+    }
+
+    pub(crate) fn clone_from_raw(ptr: NonNull<Header>) -> TaskRef {
+        let this = Self(ptr);
+        this.state().clone_ref();
+        this
+    }
+
+    pub(crate) fn header_ptr(&self) -> NonNull<Header> {
+        self.0
+    }
+
+    // ===== private methods =====
+
+    #[track_caller]
+    fn new_allocated<F, M>(task: Box<Task<F, M>>) -> (Self, JoinHandle<F::Output, M>)
+    where
+        F: Future,
+    {
+        assert_eq!(task.state().refcount(), 1);
+        let ptr = Box::into_raw(task);
+
+        // Safety: we just allocated the ptr so it is never null
+        let task = Self(unsafe { NonNull::new_unchecked(ptr).cast() });
+        let join = JoinHandle::new(task.clone());
+
+        (task, join)
+    }
+
+    fn schedule(self) {
+        let scheduler = self.header().scheduler.with(|scheduler| {
+            // Safety: ensured by caller
+            unsafe {
+                (*scheduler).expect("task doesn't have an associated scheduler, this is a bug!")
+            }
+        });
+
+        scheduler.schedule(self);
+    }
+
+    fn header(&self) -> &Header {
+        // Safety: constructor ensures the pointer is always valid
+        unsafe { self.0.as_ref() }
+    }
+
+    /// Returns a reference to the task's state.
+    fn state(&self) -> &State {
+        &self.header().state
+    }
+
+    unsafe fn from_raw(ptr: *const Header) -> Self {
+        // Safety: ensured by caller
+        Self(unsafe { NonNull::new_unchecked(ptr.cast_mut()) })
+    }
+
+    fn into_raw(self) -> *const Header {
+        let this = ManuallyDrop::new(self);
+        this.0.as_ptr()
+    }
+
+    // ===== private waker-related methods =====
+
+    fn wake(self) {
+        match self.state().wake_by_val() {
+            // `Enqueue` means we should put the task back into the queue. In this case we want to assign
+            // ownership of the TaskRef to the scheduler.
+            WakeByValAction::Enqueue => {
+                self.schedule();
+            }
+            // `Drop` means (unsurprisingly) the opposite: The task does not need to be enqueued, and
+            // we should therefore drop this handle.
+            WakeByValAction::Drop => {
+                drop(self);
+            }
+        }
+    }
+
+    /// # Safety
+    ///
+    /// The caller must ensure this task is currently bound to a scheduler.
+    unsafe fn wake_by_val(&self) {
+        if self.state().wake_by_ref() == WakeByRefAction::Enqueue {
+            self.clone().schedule();
+        }
+    }
+
+    fn into_raw_waker(self) -> RawWaker {
+        // Increment the reference count of the arc to clone it.
+        //
+        // The #[inline(always)] is to ensure that raw_waker and clone_waker are
+        // always generated in the same code generation unit as one another, and
+        // therefore that the structurally identical const-promoted RawWakerVTable
+        // within both functions is deduplicated at LLVM IR code generation time.
+        // This allows optimizing Waker::will_wake to a single pointer comparison of
+        // the vtable pointers, rather than comparing all four function pointers
+        // within the vtables.
+        #[inline(always)]
+        unsafe fn clone_waker(waker: *const ()) -> RawWaker {
+            // Safety: ensured by VTable
+            unsafe {
+                waker.cast::<Header>().as_ref().unwrap().state.clone_ref();
+            }
+
+            RawWaker::new(
+                waker,
+                &RawWakerVTable::new(clone_waker, wake, wake_by_ref, drop_waker),
+            )
+        }
+
+        // Wake by value, moving the Arc into the Wake::wake function
+        unsafe fn wake(waker: *const ()) {
+            // Safety: ensured by VTable
+            let task = unsafe { TaskRef::from_raw(waker.cast::<Header>()) };
+
+            tracing::trace!(
+                task.addr = ?task.header_ptr(),
+                task.tid = task.id().as_u64(),
+                "Task::wake_by_val"
+            );
+
+            task.wake();
+        }
+
+        // Wake by reference, wrap the waker in ManuallyDrop to avoid dropping it
+        unsafe fn wake_by_ref(waker: *const ()) {
+            // Safety: ensured by VTable
+            let task = unsafe { ManuallyDrop::new(TaskRef::from_raw(waker.cast::<Header>())) };
+
+            tracing::trace!(
+                task.addr = ?task.header_ptr(),
+                task.tid = task.id().as_u64(),
+                "Task::wake_by_ref"
+            );
+
+            // Safety: ensured by the caller
+            unsafe {
+                task.wake_by_val();
+            }
+        }
+
+        // Decrement the reference count of the Arc on drop
+        unsafe fn drop_waker(waker: *const ()) {
+            // Safety: ensured by VTable
+            drop(unsafe { TaskRef::from_raw(waker.cast()) });
+        }
+
+        RawWaker::new(
+            self.into_raw().cast(),
+            &RawWakerVTable::new(clone_waker, wake, wake_by_ref, drop_waker),
+        )
     }
 }
 
@@ -424,28 +562,26 @@ unsafe impl Sync for TaskRef {}
 
 // === impl Task ===
 
-impl<F: Future, S: Schedule> Task<F, S> {
+impl<F: Future, M> Task<F, M> {
     const TASK_VTABLE: VTable = VTable {
         poll: Self::poll,
         poll_join: Self::poll_join,
         deallocate: Self::deallocate,
-        wake_by_ref: Schedulable::<S>::wake_by_ref,
     };
 
     loom_const_fn! {
-        pub const fn new(future: F, task_id: Id, span: tracing::Span) -> Self {
+        pub const fn new(future: F, task_id: Id, span: tracing::Span, metadata: M) -> Self {
             let inner = TaskInner {
-                schedulable: Schedulable {
+                header_and_metadata: HeaderAndMetadata {
                     header: Header {
                         state: State::new(),
                         vtable: &Self::TASK_VTABLE,
                         id: task_id,
                         run_queue_links: mpsc_queue::Links::new(),
                         span,
-                        #[cfg(debug_assertions)]
-                        scheduler_type: Some(TypeId::of::<S>()),
+                        scheduler: UnsafeCell::new(None)
                     },
-                    scheduler: UnsafeCell::new(None),
+                    metadata
                 },
                 stage: UnsafeCell::new(Stage::Pending(future)),
                 join_waker: UnsafeCell::new(None),
@@ -464,6 +600,7 @@ impl<F: Future, S: Schedule> Task<F, S> {
     /// - `ptr` must point to the [`Header`] of a task of type `Self` (i.e. the
     ///   pointed header must have the same `S`, `F`, and `STO` type parameters
     ///   as `Self`).
+    /// - the task must currently be bound to a scheduler
     unsafe fn poll(ptr: NonNull<Header>) -> PollResult {
         // Safety: ensured by caller
         unsafe {
@@ -500,13 +637,14 @@ impl<F: Future, S: Schedule> Task<F, S> {
             // this waker is consumed during the poll, we don't want to decrement
             // its ref count when the poll ends.
             let waker = {
-                let raw = Schedulable::<S>::raw_waker(ptr.as_ptr().cast());
-                mem::ManuallyDrop::new(Waker::from_raw(raw))
+                let raw = TaskRef(ptr).into_raw_waker();
+                ManuallyDrop::new(Waker::from_raw(raw))
             };
 
             // actually poll the task
             let poll = {
                 let cx = Context::from_waker(&waker);
+
                 this.poll_inner(cx)
             };
 
@@ -629,7 +767,7 @@ impl<F: Future, S: Schedule> Task<F, S> {
     ///
     /// The caller has to ensure this cpu has exclusive mutable access to the tasks `stage` field (ie the
     /// future or output).
-    pub unsafe fn poll_inner(&self, mut cx: Context<'_>) -> Poll<()> {
+    pub unsafe fn poll_inner(&self, mut cx: Context) -> Poll<()> {
         let _span = self.span().enter();
 
         self.0.0.stage.with_mut(|stage| {
@@ -682,49 +820,14 @@ impl<F: Future, S: Schedule> Task<F, S> {
     }
 
     fn id(&self) -> &Id {
-        &self.0.0.schedulable.header.id
+        &self.0.0.header_and_metadata.header.id
     }
     fn state(&self) -> &State {
-        &self.0.0.schedulable.header.state
+        &self.0.0.header_and_metadata.header.state
     }
     #[inline]
     fn span(&self) -> &tracing::Span {
-        &self.0.0.schedulable.header.span
-    }
-}
-
-impl Task<Stub, Stub> {
-    const HEAP_STUB_VTABLE: VTable = VTable {
-        poll: stub_poll,
-        poll_join: stub_poll_join,
-        // Heap allocated stub tasks *will* need to be deallocated, since the
-        // scheduler will deallocate its stub task if it's dropped.
-        deallocate: Self::deallocate,
-        wake_by_ref: stub_wake_by_ref,
-    };
-
-    loom_const_fn! {
-        /// Create a new stub task.
-        pub(crate) const fn new_stub() -> Self {
-            let inner = TaskInner {
-                schedulable: Schedulable {
-                    header: Header {
-                        state: State::new(),
-                        vtable: &Self::HEAP_STUB_VTABLE,
-                        id: Id::stub(),
-                        run_queue_links: mpsc_queue::Links::new_stub(),
-                        span: tracing::Span::none(),
-                        #[cfg(debug_assertions)]
-                        scheduler_type: None,
-                    },
-                    scheduler: UnsafeCell::new(None),
-                },
-                stage: UnsafeCell::new(Stage::Pending(Stub)),
-                join_waker: UnsafeCell::new(None),
-            };
-
-            Self(CachePadded(inner))
-        }
+        &self.0.0.header_and_metadata.header.span
     }
 }
 
@@ -767,7 +870,7 @@ where
             if #[cfg(test)] {
                 let result = ::std::panic::catch_unwind(poll);
             } else if #[cfg(feature = "unwind2")] {
-                let result = panic_unwind2::catch_unwind(poll);
+                let result = ::panic_unwind2::catch_unwind(poll);
             } else {
                 let result = Ok(poll());
             }
@@ -787,160 +890,12 @@ where
     }
 }
 
-// === impl Schedulable ===
-
-impl<S: Schedule> Schedulable<S> {
-    const WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(
-        Self::clone_waker,
-        Self::wake_by_val,
-        Self::wake_by_ref,
-        Self::drop_waker,
-    );
-
-    // `Waker::will_wake` is used all over the place to optimize waker code (e.g. only update wakers if they
-    // have a different wake target). Problem is `will_wake` only checks for pointer equality and since
-    // the `into_raw_waker` would usually be inlined in release mode (and with it `WAKER_VTABLE`) the
-    // Waker identity would be different before and after calling `.clone()`. This isn't a correctness
-    // problem since it's still the same waker in the end, it just causes a lot of unnecessary wake ups.
-    // the `inline(never)` below is therefore quite load-bearing
-    #[inline(never)]
-    fn raw_waker(this: *const Self) -> RawWaker {
-        RawWaker::new(this.cast::<()>(), &Self::WAKER_VTABLE)
-    }
-
-    #[inline(always)]
-    fn state(&self) -> &State {
-        &self.header.state
-    }
-
-    unsafe fn schedule(this: TaskRef) {
-        // Safety: ensured by caller
-        unsafe {
-            this.header_ptr()
-                .cast::<Self>()
-                .as_ref()
-                .scheduler
-                .with(|scheduler| {
-                    (*scheduler)
-                        .as_ref()
-                        .expect("task doesn't have an associated scheduler, this is a bug!")
-                        .wake(this);
-                });
-        }
-    }
-
-    #[inline]
-    unsafe fn drop_ref(this: NonNull<Self>) {
-        // Safety: ensured by caller
-        unsafe {
-            tracing::trace!(task.addr=?this, task.id=?this.as_ref().header.id, "Task::drop_ref");
-            if !this.as_ref().state().drop_ref() {
-                return;
-            }
-
-            let deallocate = this.as_ref().header.vtable.deallocate;
-            deallocate(this.cast::<Header>());
-        }
-    }
-
-    // === Waker vtable methods ===
-
-    unsafe fn wake_by_val(ptr: *const ()) {
-        // Safety: called through RawWakerVtable
-        unsafe {
-            let ptr = ptr.cast::<Self>();
-            tracing::trace!(
-                target: "scheduler:waker",
-                {
-                    task.addr = ?ptr,
-                    task.tid = (*ptr).header.id.as_u64()
-                },
-                "Task::wake_by_val"
-            );
-
-            let this = NonNull::new_unchecked(ptr.cast_mut());
-            match this.as_ref().header.state.wake_by_val() {
-                WakeByValAction::Enqueue => {
-                    // the task should be enqueued.
-                    //
-                    // in the case that the task is enqueued, the state
-                    // transition does *not* decrement the reference count. this is
-                    // in order to avoid dropping the task while it is being
-                    // scheduled. one reference is consumed by enqueuing the task...
-                    Self::schedule(TaskRef(this.cast::<Header>()));
-                    // now that the task has been enqueued, decrement the reference
-                    // count to drop the waker that performed the `wake_by_val`.
-                    Self::drop_ref(this);
-                }
-                WakeByValAction::Drop => Self::drop_ref(this),
-                WakeByValAction::None => {}
-            }
-        }
-    }
-
-    unsafe fn wake_by_ref(ptr: *const ()) {
-        // Safety: called through RawWakerVtable
-        unsafe {
-            let this = ptr.cast::<Self>();
-            tracing::trace!(
-                target: "scheduler:waker",
-                {
-                    task.addr = ?this,
-                    task.tid = (*this).header.id.as_u64()
-                },
-                "Task::wake_by_ref"
-            );
-
-            let this = NonNull::new_unchecked(this.cast_mut()).cast::<Self>();
-            if this.as_ref().state().wake_by_ref() == WakeByRefAction::Enqueue {
-                Self::schedule(TaskRef(this.cast::<Header>()));
-            }
-        }
-    }
-
-    unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
-        // Safety: called through RawWakerVtable
-        unsafe {
-            let ptr = ptr.cast::<Self>();
-            tracing::trace!(
-                target: "scheduler:waker",
-                {
-                    task.addr = ?ptr,
-                    task.tid = (*ptr).header.id.as_u64()
-                },
-                "Task::clone_waker"
-            );
-
-            (*ptr).header.state.clone_ref();
-            Self::raw_waker(ptr)
-        }
-    }
-
-    unsafe fn drop_waker(ptr: *const ()) {
-        // Safety: called through RawWakerVtable
-        unsafe {
-            let ptr = ptr.cast::<Self>();
-            tracing::trace!(
-                target: "scheduler:waker",
-                {
-                    task.addr = ?ptr,
-                    task.tid = (*ptr).header.id.as_u64()
-                },
-                "Task::drop_waker"
-            );
-
-            let this = ptr.cast_mut();
-            Self::drop_ref(NonNull::new_unchecked(this));
-        }
-    }
-}
-
 // === impl Header ===
 
 // Safety: tasks are always treated as pinned in memory (a requirement for polling them)
 // and care has been taken below to ensure the underlying memory isn't freed as long as the
 // `TaskRef` is part of the owned tasks list.
-unsafe impl Linked<mpsc_queue::Links<Self>> for Header {
+unsafe impl cordyceps::Linked<mpsc_queue::Links<Self>> for Header {
     type Handle = TaskRef;
 
     fn into_ptr(task: Self::Handle) -> NonNull<Self> {
@@ -969,108 +924,24 @@ unsafe impl Linked<mpsc_queue::Links<Self>> for Header {
     }
 }
 
-/// DO NOT confuse this with [`TaskSTub`]. This type is just a zero-size placeholder so we
-/// can plug *something* into the generics when creating the *heap allocated* stub task.
-/// This type is *not* publicly exported, contrary to [`TaskSTub`] which users will have to statically
-/// allocate themselves.
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct Stub;
+#[cfg(test)]
+mod tests {
+    use alloc::boxed::Box;
 
-impl Future for Stub {
-    type Output = ();
-    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-        unreachable!("the stub task should never be polled!")
-    }
-}
+    use crate::loom;
+    use crate::task::{Id, Task, TaskRef};
 
-impl Schedule for Stub {
-    fn tick_n(&self, _n: usize) -> Tick {
-        unimplemented!("stub scheduler should never be called!");
-    }
-    fn try_steal(&self) -> Result<Stealer<Self>, TryStealError> {
-        unimplemented!("stub scheduler should never be called!");
-    }
-    fn current_task(&self) -> Option<TaskRef> {
-        unimplemented!("stub scheduler should never be called!");
-    }
-    fn wake(&self, _: TaskRef) {
-        unimplemented!("stub scheduler should never be called!");
-    }
-    fn spawn(&self, _: TaskRef) {
-        unimplemented!("stub scheduler should never be called!");
-    }
-}
+    #[test]
+    fn metadata() {
+        loom::model(|| {
+            let (t1, _) = TaskRef::new_allocated(Box::new(Task::new(
+                async {},
+                Id::next(),
+                tracing::Span::none(),
+                42usize,
+            )));
 
-/// A stub task required by many `const` constructors in this crate. You should rarely need to use
-/// this directly, instead look for the safe construction macros provided.
-#[derive(Debug)]
-pub struct TaskStub {
-    pub(crate) header: Header,
-}
-
-impl Default for TaskStub {
-    fn default() -> Self {
-        Self::new()
+            assert_eq!(unsafe { *t1.metadata::<usize>() }, 42);
+        });
     }
-}
-
-impl TaskStub {
-    const STATIC_STUB_VTABLE: VTable = VTable {
-        poll: stub_poll,
-        poll_join: stub_poll_join,
-        deallocate: stub_deallocate,
-        wake_by_ref: stub_wake_by_ref,
-    };
-
-    loom_const_fn! {
-        pub const fn new() -> Self {
-            Self {
-                header: Header {
-                    state: State::new(),
-                    vtable: &Self::STATIC_STUB_VTABLE,
-                    id: Id::stub(),
-                    run_queue_links: mpsc_queue::Links::new_stub(),
-                    span: tracing::Span::none(),
-                    #[cfg(debug_assertions)]
-                    scheduler_type: None
-                }
-            }
-        }
-    }
-}
-
-#[unsafe(no_mangle)]
-unsafe fn stub_poll(ptr: NonNull<Header>) -> PollResult {
-    // Safety: this method should never be called
-    unsafe {
-        debug_assert!(ptr.as_ref().id.is_stub());
-        unreachable!("stub task ({ptr:?}) should never be polled!");
-    }
-}
-
-#[unsafe(no_mangle)]
-unsafe fn stub_poll_join(
-    ptr: NonNull<Header>,
-    _outptr: NonNull<()>,
-    _cx: &mut Context<'_>,
-) -> Poll<Result<(), JoinError<()>>> {
-    // Safety: this method should never be called
-    unsafe {
-        debug_assert!(ptr.as_ref().id.is_stub());
-        unreachable!("stub task ({ptr:?}) should never be polled!");
-    }
-}
-
-#[unsafe(no_mangle)]
-unsafe fn stub_deallocate(ptr: NonNull<Header>) {
-    // Safety: this method should never be called
-    unsafe {
-        debug_assert!(ptr.as_ref().id.is_stub());
-        unreachable!("stub task ({ptr:p}) should never be deallocated!");
-    }
-}
-
-#[unsafe(no_mangle)]
-unsafe fn stub_wake_by_ref(ptr: *const ()) {
-    unreachable!("stub task ({ptr:p}) has no waker and should never be woken!");
 }

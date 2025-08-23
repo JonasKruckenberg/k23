@@ -8,6 +8,18 @@
 mod compile_key;
 mod compiled_function;
 
+use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
+use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
+
+use compile_key::CompileKey;
+pub use compiled_function::CompiledFunction;
+use cranelift_codegen::control::ControlPlane;
+use cranelift_entity::{EntitySet, PrimaryMap};
+use hashbrown::HashSet;
+
 use crate::wasm::Engine;
 use crate::wasm::builtins::BuiltinFunctionIndex;
 use crate::wasm::compile::compiled_function::{RelocationTarget, TrapInfo};
@@ -17,16 +29,6 @@ use crate::wasm::translate::{
 };
 use crate::wasm::trap::TrapKind;
 use crate::wasm::vm::{CodeObject, MmapVec};
-use alloc::boxed::Box;
-use alloc::collections::BTreeMap;
-use alloc::format;
-use alloc::string::String;
-use alloc::vec::Vec;
-use compile_key::CompileKey;
-pub use compiled_function::CompiledFunction;
-use cranelift_codegen::control::ControlPlane;
-use cranelift_entity::{EntitySet, PrimaryMap};
-use hashbrown::HashSet;
 
 /// Namespace corresponding to wasm functions, the index is the index of the
 /// defined function that's being referenced.

@@ -1,6 +1,8 @@
-use crate::token::{Id, Span};
 use core::cell::Cell;
+
 use cpu_local::cpu_local;
+
+use crate::token::{Id, Span};
 
 cpu_local!(static NEXT: Cell<u32> = Cell::new(0));
 

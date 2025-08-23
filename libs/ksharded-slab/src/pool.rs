@@ -5,16 +5,14 @@
 //!
 //! [pool]: ../struct.Pool.html
 //! [`Slab`]: ../struct.Slab.html
-use crate::{
-    Pack, Shard,
-    cfg::{self, CfgPrivate, DefaultConfig},
-    clear::Clear,
-    page, shard,
-    tid::Tid,
-};
-
 use alloc::sync::Arc;
-use core::{fmt, marker::PhantomData};
+use core::fmt;
+use core::marker::PhantomData;
+
+use crate::cfg::{self, CfgPrivate, DefaultConfig};
+use crate::clear::Clear;
+use crate::tid::Tid;
+use crate::{Pack, Shard, page, shard};
 
 /// A lock-free concurrent object pool.
 ///

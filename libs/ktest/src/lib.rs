@@ -11,6 +11,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use core::pin::Pin;
+
 pub use ktest_macros::*;
 
 /// A single test case

@@ -16,27 +16,28 @@ mod provider;
 mod trap_handler;
 mod vmo;
 
-use crate::arch;
-use crate::mem::frame_alloc::FrameAllocator;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use core::num::NonZeroUsize;
 use core::range::Range;
 use core::{fmt, slice};
-use loader_api::BootInfo;
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
-use spin::{Mutex, OnceLock};
-use xmas_elf::program::Type;
 
 pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub use address_space::{AddressSpace, Batch};
 pub use address_space_region::AddressSpaceRegion;
 pub use flush::Flush;
+use loader_api::BootInfo;
 pub use mmap::Mmap;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
+use spin::{Mutex, OnceLock};
 pub use trap_handler::handle_page_fault;
 pub use vmo::Vmo;
+use xmas_elf::program::Type;
+
+use crate::arch;
+use crate::mem::frame_alloc::FrameAllocator;
 
 pub const KIB: usize = 1024;
 pub const MIB: usize = KIB * 1024;

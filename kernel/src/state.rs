@@ -5,14 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::arch;
-use crate::device_tree::DeviceTree;
 use core::cell::OnceCell;
+
 use cpu_local::cpu_local;
 use kasync::executor::Executor;
-use kasync::time::{Clock, Instant};
+use kasync::time::{Instant, Timer};
 use loader_api::BootInfo;
 use spin::OnceLock;
+
+use crate::arch;
+use crate::device_tree::DeviceTree;
 
 static GLOBAL: OnceLock<Global> = OnceLock::new();
 
@@ -22,8 +24,8 @@ cpu_local! {
 
 #[derive(Debug)]
 pub struct Global {
-    pub clock: Clock,
-    pub executor: Executor<arch::Park>,
+    pub executor: Executor,
+    pub timer: Timer,
     pub device_tree: DeviceTree,
     pub boot_info: &'static BootInfo,
     pub time_origin: Instant,

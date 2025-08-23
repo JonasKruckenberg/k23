@@ -1,9 +1,9 @@
+use core::fmt;
+use core::marker::PhantomData;
+
 use crate::Pack;
-use crate::page::{
-    Addr,
-    slot::{Generation, RefCount},
-};
-use core::{fmt, marker::PhantomData};
+use crate::page::Addr;
+use crate::page::slot::{Generation, RefCount};
 
 /// Configuration parameters which can be overridden to tune the behavior of a slab.
 pub trait Config: Sized {

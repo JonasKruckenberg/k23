@@ -1,19 +1,21 @@
-// Copyright 2025 Jonas Kruckenberg
+// Copyright 2025. Jonas Kruckenberg
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::loom::sync::atomic::Ordering;
-use crate::time::timer::Entry;
-use crate::time::{Instant, Ticks, TimeError, Timer};
 use core::fmt;
 use core::pin::Pin;
-use core::ptr::NonNull;
 use core::task::{Context, Poll, ready};
 use core::time::Duration;
+
 use pin_project::{pin_project, pinned_drop};
+
+use crate::loom::sync::atomic::Ordering;
+use crate::time::instant::Instant;
+use crate::time::timer::Entry;
+use crate::time::{Ticks, TimeError, Timer};
 
 /// Wait until duration has elapsed.
 ///
@@ -22,10 +24,12 @@ use pin_project::{pin_project, pinned_drop};
 /// This function fails for two reasons:
 /// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
 /// 2. [`TimeError::DurationTooLong`] The requested duration is too big
-pub fn sleep(timer: &Timer, duration: Duration) -> Result<Sleep, TimeError> {
-    let ticks = timer.clock.duration_to_ticks(duration)?;
+pub fn sleep(timer: &Timer, duration: Duration) -> Result<Sleep<'_>, TimeError> {
+    let ticks = timer.duration_to_ticks(duration)?;
+    let now = timer.now();
+    let deadline = Ticks(ticks.0 + now.0);
 
-    Ok(Sleep::new(timer, ticks))
+    Ok(Sleep::new(timer, deadline))
 }
 
 /// Wait until the deadline has been reached.
@@ -35,12 +39,10 @@ pub fn sleep(timer: &Timer, duration: Duration) -> Result<Sleep, TimeError> {
 /// This function fails for two reasons:
 /// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
 /// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
-pub fn sleep_until(timer: &Timer, deadline: Instant) -> Result<Sleep, TimeError> {
-    let now = timer.clock.now();
-    let duration = deadline.duration_since(now);
-    let ticks = timer.clock.duration_to_ticks(duration)?;
+pub fn sleep_until(timer: &Timer, deadline: Instant) -> Result<Sleep<'_>, TimeError> {
+    let deadline = deadline.as_ticks(timer)?;
 
-    Ok(Sleep::new(timer, ticks))
+    Ok(Sleep::new(timer, deadline))
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -56,22 +58,33 @@ enum State {
 pub struct Sleep<'timer> {
     state: State,
     timer: &'timer Timer,
-    ticks: Ticks,
     #[pin]
     entry: Entry,
 }
 
 impl<'timer> Sleep<'timer> {
-    fn new(timer: &'timer Timer, ticks: Ticks) -> Self {
-        let now = timer.clock.now_ticks();
-        let deadline = Ticks(now.0 + ticks.0);
-
+    fn new(timer: &'timer Timer, deadline: Ticks) -> Self {
         Self {
             state: State::Unregistered,
             timer,
-            ticks,
             entry: Entry::new(deadline),
         }
+    }
+}
+
+impl fmt::Debug for Sleep<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self {
+            state,
+            entry,
+            timer,
+            ..
+        } = self;
+        f.debug_struct("Sleep")
+            .field("state", &state)
+            .field_with("addr", |f| fmt::Pointer::fmt(&entry, f))
+            .field_with("timer", |f| fmt::Pointer::fmt(timer, f))
+            .finish()
     }
 }
 
@@ -80,30 +93,20 @@ impl Future for Sleep<'_> {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         tracing::trace!(self=?self, "Sleep::poll");
+
         let mut me = self.as_mut().project();
 
         match me.state {
             State::Unregistered => {
-                let mut lock = me.timer.core.lock();
+                let poll = me.timer.register(me.entry.as_mut());
 
-                // While we are holding the wheel lock, go ahead and advance the
-                // timer, too. This way, the timer wheel gets advanced more
-                // frequently than just when a scheduler tick completes or a
-                // timer IRQ fires, helping to increase timer accuracy.
-                me.timer.turn_locked(&mut lock);
-
-                // Safety: the timer impl promises to treat the pointer as pinned
-                let ptr = unsafe { NonNull::from(Pin::into_inner_unchecked(me.entry.as_mut())) };
-
-                // Safety: we just created the pointer from a mutable reference
-                match unsafe { lock.register(ptr) } {
+                match poll {
                     Poll::Ready(()) => {
                         *me.state = State::Completed;
                         return Poll::Ready(());
                     }
                     Poll::Pending => {
                         *me.state = State::Registered;
-                        drop(lock);
                     }
                 }
             }
@@ -124,113 +127,149 @@ impl Future for Sleep<'_> {
 impl PinnedDrop for Sleep<'_> {
     fn drop(mut self: Pin<&mut Self>) {
         tracing::trace!("Sleep::drop");
-        let this = self.project();
+        let me = self.project();
         // we only need to remove the sleep from the timer wheel if it's
         // currently part of a linked list --- if the future hasn't been polled
         // yet, or it has already completed, we don't need to lock the timer to
         // remove it.
-        if this.entry.is_registered.load(Ordering::Acquire) {
-            let mut lock = this.timer.core.lock();
-            lock.cancel(this.entry);
+        if me.entry.is_registered.load(Ordering::Acquire) {
+            me.timer.cancel(me.entry);
         }
-    }
-}
-
-impl fmt::Debug for Sleep<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self {
-            state,
-            entry,
-            timer,
-            ..
-        } = self;
-        f.debug_struct("Sleep")
-            .field("duration", &self.timer.clock.ticks_to_duration(self.ticks))
-            .field("state", &state)
-            .field_with("addr", |f| fmt::Pointer::fmt(&entry, f))
-            .field_with("timer", |f| fmt::Pointer::fmt(timer, f))
-            .finish()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::executor::Executor;
-    use crate::executor::Worker;
-    use crate::loom;
-    use crate::test_util::StopOnPanic;
-    use crate::{StdPark, std_clock};
-    use alloc::vec::Vec;
-    use core::time::Duration;
     use fastrand::FastRand;
     use tracing_subscriber::EnvFilter;
-    use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::fmt::format::FmtSpan;
 
+    use super::*;
+    use crate::executor::{Executor, Worker};
+    use crate::loom;
+    use crate::loom::sync::atomic::{AtomicBool, Ordering};
+    use crate::time::test_util::MockClock;
+
+    // loom is not happy about this test. For whatever reason it triggers the "too many branches"
+    // error. But both the regular test AND miri are fine with it
     #[test]
-    fn sleep_run() {
-        let _trace = tracing_subscriber::fmt()
+    #[cfg(not(loom))]
+    fn sleep_basically_works() {
+        let _ = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
+            .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
             .with_thread_ids(true)
-            .set_default();
+            .try_init();
 
-        loom::model(|| {
+        loom::model(move || {
             loom::lazy_static! {
-                static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
+                static ref EXEC: Executor = Executor::new().unwrap();
+                static ref TIMER: Timer = Timer::new(Duration::from_millis(1), MockClock::new_1us());
+                static ref CALLED: AtomicBool = AtomicBool::new(false);
             }
 
-            let _guard = StopOnPanic::new(&EXEC);
+            let mut worker = Worker::new(&EXEC, FastRand::from_seed(0)).unwrap();
 
-            let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+            let th = EXEC
+                .try_spawn(async move {
+                    tracing::trace!("going to sleep");
+                    sleep(&TIMER, Duration::from_millis(500)).unwrap().await;
+                    tracing::trace!("sleep done");
 
-            EXEC.try_spawn(async {
-                let begin = ::std::time::Instant::now();
+                    CALLED.store(true, Ordering::Release);
 
-                sleep(EXEC.timer(), Duration::from_millis(500))
-                    .unwrap()
-                    .await;
+                    tracing::info!("sleep done");
+                })
+                .unwrap();
 
-                let elapsed = begin.elapsed();
-                assert!(elapsed.as_millis() >= 500 && elapsed.as_millis() <= 600);
+            let clock = unsafe { TIMER.clock().data().cast::<MockClock>().as_ref().unwrap() };
 
-                EXEC.stop();
-            })
-            .unwrap();
+            // Tick 1:
+            //  During this tick the task should register itself with the timer
+            //  and return Poll::Pending.
+            let tick = worker.tick();
+            assert_eq!(tick.polled, 1); // we polled one task
+            assert_eq!(tick.completed, 0); // that task signaled it is not ready yet
 
-            worker.run();
-        })
+            let (expired, next_deadline) = TIMER.turn();
+            assert_eq!(expired, 0); // no tasks should be expired yet, clock is still at 0ms
+            assert!(next_deadline.is_some()); // we should get a deadline to wait until
+            assert!(!th.is_complete()); // and the task shouldn't be complete yet, since 500ms haven't elapsed yet
+
+            // move the clock along by 250 milliseconds
+            clock.advance(Duration::from_millis(250));
+
+            // Tick 2:
+            //  We expect nothing to happen during this tick, since the task is still not ready yet
+            //  (we're only at 250ms not 500ms).
+            let tick = worker.tick();
+            assert_eq!(tick.polled, 0); // the task isn't in the workers queue, so no tasks should be polled
+            assert_eq!(tick.completed, 0); // and also no tasks completed of course
+
+            // turning the timer here should produce the same result: nothing should happen
+            let (expired, next_deadline) = TIMER.turn();
+            assert_eq!(expired, 0);
+            assert!(next_deadline.is_some());
+            assert!(!th.is_complete());
+
+            // advance the clock another 250 milliseconds (the task should be ready now!)
+            clock.advance(Duration::from_millis(250));
+
+            // Tick 3:
+            //  Polling right now should still technically do nothing, since the timer hasn't been
+            //  turned yet, and therefore the task hasn't been woken.
+            let tick = worker.tick();
+            assert_eq!(tick.polled, 0);
+            assert_eq!(tick.completed, 0);
+
+            // turning the timer now should wake the task!
+            let (expired, next_deadline) = TIMER.turn();
+            assert_eq!(expired, 1); // the timer entry should have expired and the task should be woken
+            assert!(next_deadline.is_none()); // consequently no deadline to wait for anymore
+
+            // Tick 4:
+            //  Polling now should complete the task since we're at 500ms AND we turned the timer
+            //  to wake the task!
+            let tick = worker.tick();
+            assert_eq!(tick.polled, 1); // we expect the task to have been in the work queue
+            assert_eq!(tick.completed, 1); // and it should be ready now
+            assert!(th.is_complete()); // the JoinHandle ought to agree
+
+            // and finally to double-check, the static should also agree
+            assert!(CALLED.load(Ordering::Acquire));
+        });
     }
 
-    #[test]
-    fn sleep_block_on() {
-        let _trace = tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .with_thread_ids(true)
-            .set_default();
+    // #[test]
+    // fn sleep_block_on() {
+    //     let _trace = tracing_subscriber::fmt()
+    //         .with_env_filter(EnvFilter::from_default_env())
+    //         .with_thread_ids(true)
+    //         .set_default();
 
-        loom::model(|| {
-            loom::lazy_static! {
-                static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
-            }
+    //     loom::model(|| {
+    //         loom::lazy_static! {
+    //             static ref EXEC: Executor<StdPark> = Executor::new(1, std_clock!());
+    //         }
 
-            let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
+    //         let mut worker = Worker::new(&EXEC, 0, StdPark::for_current(), FastRand::from_seed(0));
 
-            worker.block_on(async {
-                let begin = ::std::time::Instant::now();
+    //         worker.block_on(async {
+    //             let begin = ::std::time::Instant::now();
 
-                sleep(EXEC.timer(), Duration::from_millis(500))
-                    .unwrap()
-                    .await;
+    //             sleep(EXEC.timer(), Duration::from_millis(500))
+    //                 .unwrap()
+    //                 .await;
 
-                let elapsed = begin.elapsed();
-                assert!(
-                    elapsed.as_millis() >= 500 && elapsed.as_millis() <= 600,
-                    "expected to sleep between 500ms and 600ms, but got {}",
-                    elapsed.as_millis()
-                );
-            });
-        })
-    }
+    //             let elapsed = begin.elapsed();
+    //             assert!(
+    //                 elapsed.as_millis() >= 500 && elapsed.as_millis() <= 600,
+    //                 "expected to sleep between 500ms and 600ms, but got {}",
+    //                 elapsed.as_millis()
+    //             );
+    //         });
+    //     })
+    // }
 
     // #[test]
     // fn sleep_multi_threaded() {

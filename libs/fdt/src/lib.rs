@@ -10,11 +10,13 @@
 mod error;
 mod parser;
 
-pub use crate::error::Error;
-use crate::parser::{BigEndianToken, Parser, StringsBlock, StructsBlock};
 use core::ffi::CStr;
 use core::{fmt, slice};
+
 use fallible_iterator::FallibleIterator;
+
+pub use crate::error::Error;
+use crate::parser::{BigEndianToken, Parser, StringsBlock, StructsBlock};
 
 const DTB_MAGIC: u32 = 0xD00D_FEED;
 

@@ -7,9 +7,10 @@
 
 //! Printing of backtraces. This is adapted from the standard library.
 
+use core::fmt;
+
 use crate::backtrace::BacktraceStyle;
 use crate::backtrace::symbolize::{Symbol, SymbolName};
-use core::fmt;
 
 const HEX_WIDTH: usize = 2 + 2 * size_of::<usize>();
 
@@ -111,10 +112,10 @@ impl BacktraceFrameFmt<'_, '_, '_> {
     ) -> fmt::Result {
         // No need to print "null" frames, it basically just means that the
         // system backtrace was a bit eager to trace back super far.
-        if let BacktraceStyle::Short = self.fmt.format {
-            if frame_ip == 0 {
-                return Ok(());
-            }
+        if let BacktraceStyle::Short = self.fmt.format
+            && frame_ip == 0
+        {
+            return Ok(());
         }
 
         // Print the index of the frame as well as the optional instruction

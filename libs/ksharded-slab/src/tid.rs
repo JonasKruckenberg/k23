@@ -1,17 +1,14 @@
-use crate::{
-    Pack,
-    cfg::{self, CfgPrivate},
-    page,
-};
 use alloc::collections::VecDeque;
+use core::cell::{Cell, UnsafeCell};
+use core::fmt;
+use core::marker::PhantomData;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use core::{
-    cell::{Cell, UnsafeCell},
-    fmt,
-    marker::PhantomData,
-};
+
 use cpu_local::cpu_local;
 use spin::{LazyLock, Mutex};
+
+use crate::cfg::{self, CfgPrivate};
+use crate::{Pack, page};
 
 /// Uniquely identifies a thread.
 pub(crate) struct Tid<C> {

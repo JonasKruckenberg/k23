@@ -13,7 +13,7 @@ harness = false
 loader-api.workspace = true
 cpu-local.workspace = true
 trap.workspace = true
-spin = { workspace = true, features = ["thread-local", "lock_api"] }
+spin = { workspace = true, features = ["thread-local"] }
 unwind2.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
 fdt.workspace = true
@@ -26,7 +26,7 @@ fastrand.workspace = true
 abort.workspace = true
 panic-unwind2.workspace = true
 util.workspace = true
-kasync = { workspace = true, features = ["panic-unwind2", "counters"] }
+kasync = { workspace = true, features = ["unwind2", "counters"] }
 
 # 3rd-party dependencies
 rustc-demangle.workspace = true

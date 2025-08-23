@@ -1,4 +1,5 @@
-use core::{iter::FusedIterator, slice};
+use core::iter::FusedIterator;
+use core::slice;
 
 use crate::{cfg, page, shard};
 

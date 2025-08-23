@@ -5,10 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::fmt;
+
+use spin::Backoff;
+use util::loom_const_fn;
+
 use crate::loom::sync::atomic::{self, AtomicUsize, Ordering};
 use crate::task::PollResult;
-use core::fmt;
-use util::loom_const_fn;
 
 /// Task state. The task stores its state in an atomic `usize` with various bitfields for the
 /// necessary information. The state has the following layout:
@@ -113,11 +116,9 @@ pub(super) enum WakeByRefAction {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(super) enum WakeByValAction {
-    /// The task should be enqueued.
+    /// The task should be enqueued and its handle retained.
     Enqueue,
-    /// The task does not need to be enqueued.
-    None,
-    /// The task should be deallocated.
+    /// The task does not need to be enqueued and its handle should be dropped.
     Drop,
 }
 
@@ -172,8 +173,7 @@ impl State {
 
         if should_wait_for_join_waker {
             debug_assert!(matches!(action, StartPollAction::Cancelled { .. }));
-            todo!("wait for join waker")
-            // self.wait_for_join_waker(self.load(Ordering::Acquire));
+            self.wait_for_join_waker(self.load(Ordering::Acquire));
         }
 
         action
@@ -222,11 +222,29 @@ impl State {
 
         if should_wait_for_join_waker {
             debug_assert_eq!(action, PollResult::ReadyJoined);
-            todo!("wait for join waker")
-            // self.wait_for_join_waker(self.load(Ordering::Acquire));
+            self.wait_for_join_waker(self.load(Ordering::Acquire));
         }
 
         action
+    }
+
+    #[tracing::instrument(level = "trace")]
+    fn wait_for_join_waker(&self, mut state: Snapshot) {
+        let mut boff = Backoff::new();
+        loop {
+            state.set(Snapshot::JOIN_WAKER, JoinWakerState::Waiting);
+            let next = state.with(Snapshot::JOIN_WAKER, JoinWakerState::Woken);
+            match self.val.compare_exchange_weak(
+                state.0,
+                next.0,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return,
+                Err(actual) => state = Snapshot(actual),
+            }
+            boff.spin();
+        }
     }
 
     #[tracing::instrument(level = "trace")]
@@ -283,27 +301,18 @@ impl State {
             // If the task was woken *during* a poll, it will be re-queued by the
             // scheduler at the end of the poll if needed, so don't enqueue it now.
             if s.get(Snapshot::POLLING) {
-                *s = s.with(Snapshot::WOKEN, true).drop_ref();
-                assert!(s.ref_count() > 0);
-
-                return WakeByValAction::None;
+                return WakeByValAction::Drop;
             }
 
             // If the task is already completed or woken, we don't need to
             // requeue it, but decrement the ref count for the waker that was
             // used for this wakeup.
             if s.get(Snapshot::COMPLETE) || s.get(Snapshot::WOKEN) {
-                let new_state = s.drop_ref();
-                *s = new_state;
-                return if new_state.ref_count() == 0 {
-                    WakeByValAction::Drop
-                } else {
-                    WakeByValAction::None
-                };
+                return WakeByValAction::Drop;
             }
 
             // Otherwise, transition to the woken state and enqueue the task.
-            *s = s.with(Snapshot::WOKEN, true).clone_ref();
+            *s = s.with(Snapshot::WOKEN, true);
             WakeByValAction::Enqueue
         })
     }
@@ -321,7 +330,7 @@ impl State {
             }
 
             // Otherwise, transition to the woken state and enqueue the task.
-            *state = state.with(Snapshot::WOKEN, true).clone_ref();
+            *state = state.with(Snapshot::WOKEN, true);
             WakeByRefAction::Enqueue
         })
     }
@@ -345,7 +354,9 @@ impl State {
         //
         // [1]: (www.boost.org/doc/libs/1_55_0/doc/html/atomic/usage_examples.html)
         let old_refs = self.val.fetch_add(REF_ONE, Ordering::Relaxed);
-        Snapshot::REFS.unpack(old_refs);
+        debug_assert!(old_refs < usize::MAX);
+
+        let old_refs = Snapshot::REFS.unpack(old_refs);
 
         // However we need to guard against massive refcounts in case someone
         // is `mem::forget`ing tasks. If we don't do this the count can overflow
@@ -365,6 +376,8 @@ impl State {
         // delete the task.
         let old_refs = self.val.fetch_sub(REF_ONE, Ordering::Release);
         let old_refs = Snapshot::REFS.unpack(old_refs);
+
+        debug_assert_ne!(old_refs, 0, "task reference count underflow");
 
         // Did we drop the last ref?
         if old_refs > 1 {
@@ -455,14 +468,6 @@ impl fmt::Debug for State {
 impl Snapshot {
     pub fn ref_count(self) -> usize {
         Snapshot::REFS.unpack(self.0)
-    }
-
-    fn drop_ref(self) -> Self {
-        Self(self.0 - REF_ONE)
-    }
-
-    fn clone_ref(self) -> Self {
-        Self(self.0 + REF_ONE)
     }
 
     fn has_join_waker(&mut self, should_wait: &mut bool) -> bool {

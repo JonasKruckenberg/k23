@@ -47,6 +47,7 @@ use core::arch::{asm, naked_asm};
 use core::marker::{PhantomData, PhantomPinned};
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ptr::addr_of_mut;
+
 use riscv::{load_fp, load_gp, save_fp, save_gp};
 
 /// A store for the register state used by `setjmp` and `longjmp`.
@@ -80,67 +81,64 @@ pub type JmpBuf = *const JmpBufStruct;
 ///
 /// Due to the weird multi-return nature of `setjmp` it is very easy to make mistakes, this
 /// function be used with extreme care.
-#[naked]
+#[unsafe(naked)]
 pub unsafe extern "C" fn setjmp(env: JmpBuf) -> i32 {
-    // Safety: inline assembly
-    unsafe {
-        cfg_if::cfg_if! {
-            if #[cfg(target_feature = "d")] {
-                naked_asm! {
-                    // FIXME this is a workaround for bug in rustc/llvm
-                    //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
-                    ".attribute arch, \"rv64gc\"",
+    cfg_if::cfg_if! {
+        if #[cfg(target_feature = "d")] {
+            naked_asm! {
+                // FIXME this is a workaround for bug in rustc/llvm
+                //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
+                ".attribute arch, \"rv64gc\"",
 
-                    save_gp!(ra => a0[0]),
-                    save_gp!(s0 => a0[1]),
-                    save_gp!(s1 => a0[2]),
-                    save_gp!(s2 => a0[3]),
-                    save_gp!(s3 => a0[4]),
-                    save_gp!(s4 => a0[5]),
-                    save_gp!(s5 => a0[6]),
-                    save_gp!(s6 => a0[7]),
-                    save_gp!(s7 => a0[8]),
-                    save_gp!(s8 => a0[9]),
-                    save_gp!(s9 => a0[10]),
-                    save_gp!(s10 => a0[11]),
-                    save_gp!(s11 => a0[12]),
-                    save_gp!(sp => a0[13]),
+                save_gp!(ra => a0[0]),
+                save_gp!(s0 => a0[1]),
+                save_gp!(s1 => a0[2]),
+                save_gp!(s2 => a0[3]),
+                save_gp!(s3 => a0[4]),
+                save_gp!(s4 => a0[5]),
+                save_gp!(s5 => a0[6]),
+                save_gp!(s6 => a0[7]),
+                save_gp!(s7 => a0[8]),
+                save_gp!(s8 => a0[9]),
+                save_gp!(s9 => a0[10]),
+                save_gp!(s10 => a0[11]),
+                save_gp!(s11 => a0[12]),
+                save_gp!(sp => a0[13]),
 
-                    save_fp!(fs0 => a0[14]),
-                    save_fp!(fs1 => a0[15]),
-                    save_fp!(fs2 => a0[16]),
-                    save_fp!(fs3 => a0[17]),
-                    save_fp!(fs4 => a0[18]),
-                    save_fp!(fs5 => a0[19]),
-                    save_fp!(fs6 => a0[20]),
-                    save_fp!(fs7 => a0[21]),
-                    save_fp!(fs8 => a0[22]),
-                    save_fp!(fs9 => a0[23]),
-                    save_fp!(fs10 => a0[24]),
-                    save_fp!(fs11 => a0[25]),
+                save_fp!(fs0 => a0[14]),
+                save_fp!(fs1 => a0[15]),
+                save_fp!(fs2 => a0[16]),
+                save_fp!(fs3 => a0[17]),
+                save_fp!(fs4 => a0[18]),
+                save_fp!(fs5 => a0[19]),
+                save_fp!(fs6 => a0[20]),
+                save_fp!(fs7 => a0[21]),
+                save_fp!(fs8 => a0[22]),
+                save_fp!(fs9 => a0[23]),
+                save_fp!(fs10 => a0[24]),
+                save_fp!(fs11 => a0[25]),
 
-                    "mv a0, zero",
-                    "ret",
-                }
-            } else {
-                naked_asm! {
-                    save_gp!(ra => a0[0]),
-                    save_gp!(s0 => a0[1]),
-                    save_gp!(s1 => a0[2]),
-                    save_gp!(s2 => a0[3]),
-                    save_gp!(s3 => a0[4]),
-                    save_gp!(s4 => a0[5]),
-                    save_gp!(s5 => a0[6]),
-                    save_gp!(s6 => a0[7]),
-                    save_gp!(s7 => a0[8]),
-                    save_gp!(s8 => a0[9]),
-                    save_gp!(s9 => a0[10]),
-                    save_gp!(s10 => a0[11]),
-                    save_gp!(s11 => a0[12]),
-                    save_gp!(sp => a0[13]),
-                    "mv a0, zero",
-                    "ret",
-                }
+                "mv a0, zero",
+                "ret",
+            }
+        } else {
+            naked_asm! {
+                save_gp!(ra => a0[0]),
+                save_gp!(s0 => a0[1]),
+                save_gp!(s1 => a0[2]),
+                save_gp!(s2 => a0[3]),
+                save_gp!(s3 => a0[4]),
+                save_gp!(s4 => a0[5]),
+                save_gp!(s5 => a0[6]),
+                save_gp!(s6 => a0[7]),
+                save_gp!(s7 => a0[8]),
+                save_gp!(s8 => a0[9]),
+                save_gp!(s9 => a0[10]),
+                save_gp!(s10 => a0[11]),
+                save_gp!(s11 => a0[12]),
+                save_gp!(sp => a0[13]),
+                "mv a0, zero",
+                "ret",
             }
         }
     }
@@ -156,68 +154,65 @@ pub unsafe extern "C" fn setjmp(env: JmpBuf) -> i32 {
 /// so extreme care must be taken to ensure that the `JumpBuf` is valid and has been initialized.
 /// Additionally, the whole point of this function is to continue execution at a wildly different
 /// address, so this might cause confusing and hard-to-debug behavior.
-#[naked]
+#[unsafe(naked)]
 pub unsafe extern "C" fn longjmp(env: JmpBuf, val: i32) -> ! {
-    // Safety: inline assembly
-    unsafe {
-        cfg_if::cfg_if! {
-            if #[cfg(target_feature = "d")] {
-                naked_asm! {
-                    // FIXME this is a workaround for bug in rustc/llvm
-                    //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
-                    ".attribute arch, \"rv64gc\"",
+    cfg_if::cfg_if! {
+        if #[cfg(target_feature = "d")] {
+            naked_asm! {
+                // FIXME this is a workaround for bug in rustc/llvm
+                //  https://github.com/rust-lang/rust/issues/80608#issuecomment-1094267279
+                ".attribute arch, \"rv64gc\"",
 
-                    load_gp!(a0[0] => ra),
-                    load_gp!(a0[1] => s0),
-                    load_gp!(a0[2] => s1),
-                    load_gp!(a0[3] => s2),
-                    load_gp!(a0[4] => s3),
-                    load_gp!(a0[5] => s4),
-                    load_gp!(a0[6] => s5),
-                    load_gp!(a0[7] => s6),
-                    load_gp!(a0[8] => s7),
-                    load_gp!(a0[9] => s8),
-                    load_gp!(a0[10] => s9),
-                    load_gp!(a0[11] => s10),
-                    load_gp!(a0[12] => s11),
-                    load_gp!(a0[13] => sp),
+                load_gp!(a0[0] => ra),
+                load_gp!(a0[1] => s0),
+                load_gp!(a0[2] => s1),
+                load_gp!(a0[3] => s2),
+                load_gp!(a0[4] => s3),
+                load_gp!(a0[5] => s4),
+                load_gp!(a0[6] => s5),
+                load_gp!(a0[7] => s6),
+                load_gp!(a0[8] => s7),
+                load_gp!(a0[9] => s8),
+                load_gp!(a0[10] => s9),
+                load_gp!(a0[11] => s10),
+                load_gp!(a0[12] => s11),
+                load_gp!(a0[13] => sp),
 
-                    load_fp!(a0[14] => fs0),
-                    load_fp!(a0[15] => fs1),
-                    load_fp!(a0[16] => fs2),
-                    load_fp!(a0[17] => fs3),
-                    load_fp!(a0[18] => fs4),
-                    load_fp!(a0[19] => fs5),
-                    load_fp!(a0[20] => fs6),
-                    load_fp!(a0[21] => fs7),
-                    load_fp!(a0[22] => fs8),
-                    load_fp!(a0[23] => fs9),
-                    load_fp!(a0[24] => fs10),
-                    load_fp!(a0[25] => fs11),
+                load_fp!(a0[14] => fs0),
+                load_fp!(a0[15] => fs1),
+                load_fp!(a0[16] => fs2),
+                load_fp!(a0[17] => fs3),
+                load_fp!(a0[18] => fs4),
+                load_fp!(a0[19] => fs5),
+                load_fp!(a0[20] => fs6),
+                load_fp!(a0[21] => fs7),
+                load_fp!(a0[22] => fs8),
+                load_fp!(a0[23] => fs9),
+                load_fp!(a0[24] => fs10),
+                load_fp!(a0[25] => fs11),
 
-                    "add a0, a1, zero",
-                    "ret",
-                }
-            } else {
-                naked_asm! {
-                    load_gp!(a0[0] => ra),
-                    load_gp!(a0[1] => s0),
-                    load_gp!(a0[2] => s1),
-                    load_gp!(a0[3] => s2),
-                    load_gp!(a0[4] => s3),
-                    load_gp!(a0[5] => s4),
-                    load_gp!(a0[6] => s5),
-                    load_gp!(a0[7] => s6),
-                    load_gp!(a0[8] => s7),
-                    load_gp!(a0[9] => s8),
-                    load_gp!(a0[10] => s9),
-                    load_gp!(a0[11] => s10),
-                    load_gp!(a0[12] => s11),
-                    load_gp!(a0[13] => sp),
+                "add a0, a1, zero",
+                "ret",
+            }
+        } else {
+            naked_asm! {
+                load_gp!(a0[0] => ra),
+                load_gp!(a0[1] => s0),
+                load_gp!(a0[2] => s1),
+                load_gp!(a0[3] => s2),
+                load_gp!(a0[4] => s3),
+                load_gp!(a0[5] => s4),
+                load_gp!(a0[6] => s5),
+                load_gp!(a0[7] => s6),
+                load_gp!(a0[8] => s7),
+                load_gp!(a0[9] => s8),
+                load_gp!(a0[10] => s9),
+                load_gp!(a0[11] => s10),
+                load_gp!(a0[12] => s11),
+                load_gp!(a0[13] => sp),
 
-                    "add a0, a1, zero",
-                    "ret",
-                }
+                "add a0, a1, zero",
+                "ret",
             }
         }
     }

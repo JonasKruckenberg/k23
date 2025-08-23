@@ -5,6 +5,14 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+
+use anyhow::{Context, bail, format_err};
+use hashbrown::HashMap;
+use hashbrown::hash_map::Entry;
+
 use crate::wasm::func::{HostFunc, IntoFunc, WasmParams, WasmResults};
 use crate::wasm::indices::VMSharedTypeIndex;
 use crate::wasm::store::StoreOpaque;
@@ -12,12 +20,6 @@ use crate::wasm::translate::EntityType;
 use crate::wasm::types::{GlobalType, MemoryType, TableType, TagType};
 use crate::wasm::vm::{ConstExprEvaluator, Imports};
 use crate::wasm::{Engine, Extern, Func, Global, Instance, Memory, Module, Store, Table, Tag};
-use alloc::sync::Arc;
-use alloc::vec::Vec;
-use anyhow::{Context, bail, format_err};
-use core::marker::PhantomData;
-use hashbrown::HashMap;
-use hashbrown::hash_map::Entry;
 
 /// A dynamic linker for WebAssembly modules.
 #[derive(Debug)]

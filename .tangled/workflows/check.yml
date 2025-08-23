@@ -1,0 +1,12 @@
+when:
+  - event: [ "push", "pull_request" ]
+    branch: [ "main" ]
+
+environment:
+  CARGO_TERM_COLOR: always
+  CLICOLOR: 1
+  RUSTFLAGS: -Dwarnings
+
+steps:
+  - name: cargo check
+    command: nix develop --command just check

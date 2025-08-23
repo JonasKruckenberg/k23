@@ -5,10 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use abort::abort;
+
 use crate::exception::Exception;
 use crate::utils::with_context;
 use crate::{Error, FrameIter, arch, raise_exception_phase2};
-use abort::abort;
 
 /// In traditional unwinders the personality routine is responsible for determining the unwinders
 /// behaviour for each frame (stop unwinding because a handler has been found, continue etc.)

@@ -5,18 +5,20 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use alloc::vec;
+use alloc::vec::Vec;
+use core::ptr::NonNull;
+use core::range::Range;
+use core::slice;
+
+use anyhow::Context;
+use cranelift_entity::PrimaryMap;
+
 use crate::mem::{AddressSpace, Mmap, VirtualAddress};
 use crate::wasm::TrapKind;
 use crate::wasm::compile::{CompiledFunctionInfo, FunctionLoc};
 use crate::wasm::indices::{DefinedFuncIndex, ModuleInternedTypeIndex};
 use crate::wasm::vm::{MmapVec, VMWasmCallFunction};
-use alloc::vec;
-use alloc::vec::Vec;
-use anyhow::Context;
-use core::ptr::NonNull;
-use core::range::Range;
-use core::slice;
-use cranelift_entity::PrimaryMap;
 
 #[derive(Debug)]
 pub struct CodeObject {
