@@ -26,48 +26,57 @@ pub struct Cpu {
 }
 
 bitflags! {
+    /// Known RISC-V extensions.
+    ///
+    /// Note that this is *not* the complete set of all standardized RISC-V extensions, merely the
+    /// subset of extensions we care about. If we add features conditional on extensions, we should
+    /// add them here.
     #[derive(Debug, Default, Copy, Clone, Hash, PartialEq, Eq)]
-    pub struct RiscvExtensions: u64 {
+    pub struct RiscvExtensions: u16 {
+        /// Base ISA
         const I = 1 << 0;
+        /// Integer Multiplication and Division
         const M = 1 << 1;
+        /// Atomic Instructions
         const A = 1 << 2;
+        /// Single-Precision Floating-Point
         const F = 1 << 3;
+        /// Double-Precision Floating-Point
         const D = 1 << 4;
+        /// Compressed Instructions
         const C = 1 << 5;
-        const H = 1 << 6;
-        const ZIC64B = 1 << 7;
-        const ZICBOM = 1 << 8;
-        const ZICBOP = 1 << 9;
-        const ZICBOZ = 1 << 10;
-        const ZICCAMOA = 1 << 11;
-        const ZICCIF = 1 << 12;
-        const ZICCLSM = 1 << 13;
-        const ZICCRSE = 1 << 14;
-        const ZICNTR = 1 << 15;
-        const ZICSR = 1 << 16;
-        const ZIFENCEI = 1 << 17;
-        const ZIHINTNTL = 1 << 18;
-        const ZIHINTPAUSE = 1 << 19;
-        const ZIHPM = 1 << 20;
-        const ZMMUL = 1 << 21;
-        const ZA64RS = 1 << 22;
-        const ZAAMO = 1 << 23;
-        const ZALRSC = 1 << 24;
-        const ZAWRS = 1 << 25;
-        const ZFA = 1 << 26;
-        const ZCA = 1 << 27;
-        const ZCD = 1 << 28;
-        const ZBA = 1 << 29;
-        const ZBB = 1 << 30;
-        const ZBC = 1 << 31;
-        const ZBS = 1 << 32;
-        const SSCCPTR = 1 << 33;
-        const SSCOUNTERENW = 1 << 34;
-        const SSTC = 1 << 35;
-        const SSTVALA = 1 << 36;
-        const SSTVECD = 1 << 37;
-        const SVADU = 1 << 38;
-        const SVVPTC = 1 << 39;
+        /// Control and Status Register Access
+        const ZICSR = 1 << 6;
+        /// Basic Performance Counters
+        const ZICNTR = 1 << 7;
+        /// Main memory supports instruction fetch with atomicity requirement
+        ///
+        /// Main memory regions with both the cacheability and coherence PMAs must support
+        /// instruction fetch, and any instruction fetches of naturally aligned power-of-2 sizes up to
+        /// min(ILEN,XLEN) (i.e., 32 bits for RVA20) are atomic.
+        const ZICCIF = 1 << 8;
+        /// Main memory supports forward progress on LR/SC sequences.
+        ///
+        /// Main memory regions with both the cacheability and coherence PMAs must support
+        /// RsrvEventual.
+        const ZICCRSE = 1 << 9;
+        /// Main memory supports all atomics in A.
+        ///
+        /// Main memory regions with both the cacheability and coherence PMAs must support
+        /// AMOArithmetic.
+        const ZICCAMOA = 1 << 10;
+        /// Reservation set size of at most 128 bytes.
+        ///
+        /// Reservation sets must be contiguous, naturally aligned, and at most 128 bytes in size.
+        const ZA128RS = 1 << 11;
+        /// Main memory supports misaligned loads/stores.
+        ///
+        /// Misaligned loads and stores to main memory regions with both the cacheability and
+        /// coherence PMAs must be supported.
+        const ZICCLSM = 1 << 12;
+
+        /// Hardware Performance Counters
+        const ZIHPM = 1 << 13;
     }
 }
 
@@ -144,9 +153,29 @@ impl Cpu {
             plic: RefCell::new(plic),
         })
     }
+
+    pub const fn supports_rva20u64(&self) -> bool {
+        const RVA20U64: RiscvExtensions = RiscvExtensions::from_bits_retain(
+            RiscvExtensions::I.bits()
+                | RiscvExtensions::M.bits()
+                | RiscvExtensions::A.bits()
+                | RiscvExtensions::F.bits()
+                | RiscvExtensions::D.bits()
+                | RiscvExtensions::C.bits()
+                | RiscvExtensions::ZICSR.bits()
+                | RiscvExtensions::ZICNTR.bits()
+                | RiscvExtensions::ZICCIF.bits()
+                | RiscvExtensions::ZICCRSE.bits()
+                | RiscvExtensions::ZICCAMOA.bits()
+                | RiscvExtensions::ZA128RS.bits()
+                | RiscvExtensions::ZICCLSM.bits(),
+        );
+
+        self.extensions.contains(RVA20U64)
+    }
 }
 
-pub fn parse_riscv_extensions(strs: fdt::StringList) -> RiscvExtensions {
+fn parse_riscv_extensions(strs: fdt::StringList) -> RiscvExtensions {
     let mut out = RiscvExtensions::empty();
 
     for str in strs {
@@ -157,42 +186,16 @@ pub fn parse_riscv_extensions(strs: fdt::StringList) -> RiscvExtensions {
             "f" => RiscvExtensions::F,
             "d" => RiscvExtensions::D,
             "c" => RiscvExtensions::C,
-            "h" => RiscvExtensions::H,
-            "zic64b" => RiscvExtensions::ZIC64B,
-            "zicbom" => RiscvExtensions::ZICBOM,
-            "zicbop" => RiscvExtensions::ZICBOP,
-            "zicboz" => RiscvExtensions::ZICBOZ,
-            "ziccamoa" => RiscvExtensions::ZICCAMOA,
-            "ziccif" => RiscvExtensions::ZICCIF,
-            "zicclsm" => RiscvExtensions::ZICCLSM,
-            "ziccrse" => RiscvExtensions::ZICCRSE,
-            "zicntr" => RiscvExtensions::ZICNTR,
             "zicsr" => RiscvExtensions::ZICSR,
-            "zifencei" => RiscvExtensions::ZIFENCEI,
-            "zihintntl" => RiscvExtensions::ZIHINTNTL,
-            "zihintpause" => RiscvExtensions::ZIHINTPAUSE,
+            "zicntr" => RiscvExtensions::ZICNTR,
+            "ziccif" => RiscvExtensions::ZICCIF,
+            "ziccrse" => RiscvExtensions::ZICCRSE,
+            "ziccamoa" => RiscvExtensions::ZICCAMOA,
+            "za128rs" => RiscvExtensions::ZA128RS,
+            "zicclsm" => RiscvExtensions::ZICCLSM,
             "zihpm" => RiscvExtensions::ZIHPM,
-            "zmmul" => RiscvExtensions::ZMMUL,
-            "za64rs" => RiscvExtensions::ZA64RS,
-            "zaamo" => RiscvExtensions::ZAAMO,
-            "zalrsc" => RiscvExtensions::ZALRSC,
-            "zawrs" => RiscvExtensions::ZAWRS,
-            "zfa" => RiscvExtensions::ZFA,
-            "zca" => RiscvExtensions::ZCA,
-            "zcd" => RiscvExtensions::ZCD,
-            "zba" => RiscvExtensions::ZBA,
-            "zbb" => RiscvExtensions::ZBB,
-            "zbc" => RiscvExtensions::ZBC,
-            "zbs" => RiscvExtensions::ZBS,
-            "ssccptr" => RiscvExtensions::SSCCPTR,
-            "sscounterenw" => RiscvExtensions::SSCOUNTERENW,
-            "sstc" => RiscvExtensions::SSTC,
-            "sstvala" => RiscvExtensions::SSTVALA,
-            "sstvecd" => RiscvExtensions::SSTVECD,
-            "svadu" => RiscvExtensions::SVADU,
-            "svvptc" => RiscvExtensions::SVVPTC,
             ext => {
-                tracing::debug!("unknown RISCV extension {ext}");
+                tracing::trace!("unknown RISCV extension {ext}");
                 continue;
             }
         }

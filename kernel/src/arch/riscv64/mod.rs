@@ -15,6 +15,7 @@ mod trap_handler;
 
 use core::arch::asm;
 
+use anyhow::ensure;
 pub use asid_allocator::AsidAllocator;
 pub use block_on::block_on;
 pub use mem::{
@@ -64,9 +65,14 @@ pub fn per_cpu_init_early() {
 
 #[cold]
 pub fn per_cpu_init(devtree: &DeviceTree, cpuid: usize) -> crate::Result<state::CpuLocal> {
-    Ok(state::CpuLocal {
-        cpu: Cpu::new(devtree, cpuid)?,
-    })
+    let cpu = Cpu::new(devtree, cpuid)?;
+
+    ensure!(
+        cpu.supports_rva20u64(),
+        "CPU {cpuid} does not support the RVA20U64 profile"
+    );
+
+    Ok(state::CpuLocal { cpu })
 }
 
 /// Late per-cpu and RISC-V specific initialization.
