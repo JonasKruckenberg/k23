@@ -132,10 +132,10 @@ fn raise_exception_phase2(mut frames: FrameIter, exception: *mut Exception) -> R
             EHAction::None => continue,
             // Safety: As long as the Rust compiler works correctly lpad is the correct instruction
             // pointer.
-            EHAction::Cleanup(lpad) | EHAction::Catch(lpad) => {
+            EHAction::Cleanup(lpad) | EHAction::Catch(lpad) | EHAction::Filter(lpad) => {
                 frame.set_reg(arch::UNWIND_DATA_REG.0, exception as usize);
                 frame.set_reg(arch::UNWIND_DATA_REG.1, 0);
-                frame.set_reg(arch::RA, usize::try_from(lpad).unwrap());
+                frame.set_reg(arch::RA, lpad as usize);
                 frame.adjust_stack_for_args();
 
                 // Safety: this will set up the frame context necessary to transfer control to the
@@ -143,6 +143,7 @@ fn raise_exception_phase2(mut frames: FrameIter, exception: *mut Exception) -> R
                 // much we can do except hope and pray that the instruction pointer is correct.
                 unsafe { frame.restore() }
             }
+            EHAction::Terminate => {}
         }
     }
 
