@@ -5,14 +5,5 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! Generic trap/exception handling types
-
-#![no_std]
-
-/// Generic trap type that can represent either an interrupt or an exception
-/// The specific Interrupt and Exception types are defined by each architecture
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Trap<I, E> {
-    Interrupt(I),
-    Exception(E),
-}
+pub mod clock;
+pub mod cpu;

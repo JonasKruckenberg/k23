@@ -46,9 +46,6 @@ pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-/// # Safety
-///
-/// The passed `opaque` ptr must point to a valid memory region.
 unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
     let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
@@ -63,6 +60,20 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     }
 
     if let Some(alloc) = &res.maybe_tls_alloc {
+        // Check if TLS memory is actually zeroed before initialization
+        let region = alloc.region_for_hart(hartid);
+        unsafe {
+            let tls_mem = core::slice::from_raw_parts(region.start as *const u64, 16);
+            for (i, &val) in tls_mem.iter().enumerate() {
+                if val != 0 {
+                    log::error!("TLS memory not zeroed at offset {}: {:#x}", i * 8, val);
+                    if val == 0xACE0BACE {
+                        panic!("Found stack canary pattern in TLS!");
+                    }
+                }
+            }
+        }
+
         alloc.initialize_for_hart(hartid);
     }
 
@@ -86,6 +97,22 @@ unsafe impl Sync for GlobalInitResult {}
 
 fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     logger::init(LOG_LEVEL.to_level_filter());
+
+    // Print welcome message for x86_64 only
+    #[cfg(target_arch = "x86_64")]
+    {
+        log::info!("\n\n\n\n");
+        log::info!("##################################################");
+        log::info!("#                                                #");
+        log::info!("#        k23 x86_64 loader starting...           #");
+        log::info!(
+            "#        Initializing on CPU {}                   #",
+            hartid
+        );
+        log::info!("#                                                #");
+        log::info!("##################################################");
+    }
+
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
     log::debug!("\n{minfo}");
@@ -95,20 +122,29 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     let self_regions = SelfRegions::collect(&minfo);
     log::debug!("{self_regions:#x?}");
 
-    let fdt_phys = {
+    // Get the initial FDT physical range
+    let initial_fdt_phys = {
         let fdt = minfo.fdt.as_ptr_range();
         Range::from(fdt.start as usize..fdt.end as usize)
     };
 
     // Initialize the frame allocator
-    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys);
+    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, initial_fdt_phys);
     log::debug!("allocatable memory regions {allocatable_memories:#x?}");
     let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
 
+    // Initially use the static FDT location for all architectures
+    let fdt_phys = initial_fdt_phys;
+
     // initialize the random number generator
-    let rng = ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
-        minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
-    ));
+    let rng = if ENABLE_KASLR && minfo.rng_seed.is_some() {
+        Some(ChaCha20Rng::from_seed(
+            minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
+        ))
+    } else {
+        None
+    };
+
     let rng_seed = rng.as_ref().map(|rng| rng.get_seed()).unwrap_or_default();
 
     // Initialize the page allocator
@@ -144,6 +180,37 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         arch::activate_aspace(root_pgtable);
         log::trace!("activated.");
     }
+
+    // For x86_64, now allocate persistent memory for the FDT after MMU is active
+    let fdt_phys = {
+        #[cfg(target_arch = "x86_64")]
+        {
+            let fdt_src = minfo.fdt;
+            let fdt_size = fdt_src.len();
+
+            // Allocate a frame for the FDT
+            let fdt_frame = frame_alloc
+                .allocate_contiguous(
+                    core::alloc::Layout::from_size_align(fdt_size, arch::PAGE_SIZE).unwrap(),
+                )
+                .unwrap();
+
+            // Now we can use the virtual address since MMU is active
+            unsafe {
+                let dst = (phys_off + fdt_frame) as *mut u8;
+                core::ptr::copy_nonoverlapping(fdt_src.as_ptr(), dst, fdt_size);
+            }
+
+            log::debug!("x86_64: Copied FDT to allocated frame at {:#x}", fdt_frame);
+
+            Range::from(fdt_frame..fdt_frame + fdt_size)
+        }
+
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            fdt_phys // Use the original value for non-x86_64
+        }
+    };
 
     let kernel = Kernel::from_static(phys_off).unwrap();
     // print the elf sections for debugging purposes

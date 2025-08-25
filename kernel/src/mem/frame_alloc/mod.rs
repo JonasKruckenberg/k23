@@ -78,6 +78,7 @@ impl FrameAllocator {
             .free_regions()
             .chain(iter::once(fdt_region))
             .collect();
+
         for selection_result in select_arenas(phys_regions).iterator() {
             match selection_result {
                 Ok(selection) => {

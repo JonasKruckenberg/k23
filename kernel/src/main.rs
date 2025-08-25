@@ -84,8 +84,22 @@ static LOADER_CONFIG: LoaderConfig = {
     cfg
 };
 
+// This is the real kernel entry from the loader
+// On x86_64, we need an assembly trampoline to preserve register values
+#[cfg(not(target_arch = "x86_64"))]
 #[unsafe(no_mangle)]
-fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+extern "C" fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+    _rust_start_impl(cpuid, boot_info, boot_ticks)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[unsafe(no_mangle)]
+extern "C" fn _rust_start(cpuid: usize, boot_info_ptr: usize, boot_ticks: u64) -> ! {
+    let boot_info = unsafe { &*(boot_info_ptr as *const BootInfo) };
+    _rust_start_impl(cpuid, boot_info, boot_ticks)
+}
+
+fn _rust_start_impl(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     panic_unwind2::set_hook(|info| {
         tracing::error!("CPU {info}");
 
@@ -126,36 +140,38 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
     // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
     arch::per_cpu_init_early();
+
     tracing::per_cpu_init_early(cpuid);
 
     let (fdt, fdt_region_phys) = locate_device_tree(boot_info);
+
     let mut rng = ChaCha20Rng::from_seed(boot_info.rng_seed);
 
     let global = state::try_init_global(|| {
         // set up the basic functionality of the tracing subsystem as early as possible
+
         tracing::init_early();
 
         // initialize a simple bump allocator for allocating memory before our virtual memory subsystem
         // is available
         let allocatable_memories = allocatable_memory_regions(boot_info);
+
         tracing::info!("allocatable memories: {:?}", allocatable_memories);
+
         let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
 
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
-
         let device_tree = DeviceTree::parse(fdt)?;
         tracing::debug!("{device_tree:?}");
 
         let bootargs = bootargs::parse(&device_tree)?;
-
         // initialize the backtracing subsystem after the allocator has been set up
         // since setting up the symbolization context requires allocation
         backtrace::init(boot_info, bootargs.backtrace);
 
         // fully initialize the tracing subsystem now that we can allocate
         tracing::init(bootargs.log);
-
         // perform global, architecture-specific initialization
         let arch = arch::init();
 

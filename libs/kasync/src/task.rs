@@ -870,7 +870,7 @@ where
             if #[cfg(test)] {
                 let result = ::std::panic::catch_unwind(poll);
             } else if #[cfg(feature = "unwind2")] {
-                let result = panic_unwind2::catch_unwind(poll);
+                let result = ::panic_unwind2::catch_unwind(poll);
             } else {
                 let result = Ok(poll());
             }

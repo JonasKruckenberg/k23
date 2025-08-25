@@ -99,7 +99,7 @@ impl<C: cfg::Config> Copy for Tid<C> {}
 // === impl Registration ===
 
 impl Registration {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self(Cell::new(None))
     }
 

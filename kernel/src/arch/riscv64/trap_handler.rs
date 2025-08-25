@@ -12,7 +12,7 @@ use core::cell::Cell;
 use cpu_local::cpu_local;
 use riscv::scause::{Exception, Interrupt};
 use riscv::{
-    load_fp, load_gp, save_fp, save_gp, scause, sepc, sip, sscratch, sstatus, stval, stvec,
+    load_fp, load_gp, save_fp, save_gp, sbi, scause, sepc, sip, sscratch, sstatus, stval, stvec,
 };
 
 use crate::arch::PAGE_SIZE;

@@ -5,14 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! Generic trap/exception handling types
-
 #![no_std]
+#![cfg_attr(feature = "nightly", feature(naked_functions))]
 
-/// Generic trap type that can represent either an interrupt or an exception
-/// The specific Interrupt and Exception types are defined by each architecture
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Trap<I, E> {
-    Interrupt(I),
-    Exception(E),
-}
+pub mod error;
+pub mod interrupt;
+pub mod io;
+// pub mod register;
+pub mod serial;
+pub mod trap;
+
+pub use error::Error;
+pub use interrupt::{disable as interrupt_disable, enable as interrupt_enable};
+pub use trap::{Exception, Interrupt, Trap};

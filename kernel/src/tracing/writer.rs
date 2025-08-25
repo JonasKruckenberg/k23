@@ -171,7 +171,64 @@ cfg_if::cfg_if! {
         fn new_debug_stream() -> DebugStream {
             riscv::hio::HostStream::new_stdout()
         }
-    } else {
+    }
+    else if #[cfg(target_arch = "x86_64")] {
+        type DebugStream = SerialStream;
+
+        fn new_debug_stream() -> DebugStream {
+            SerialStream::new()
+        }
+
+        // Serial port implementation for x86_64
+        struct SerialStream {
+            // COM1 port address
+            port: u16,
+        }
+
+        impl SerialStream {
+            const COM1: u16 = 0x3F8;
+
+            fn new() -> Self {
+                Self { port: Self::COM1 }
+            }
+
+            #[inline]
+            fn write_byte(&mut self, byte: u8) {
+                unsafe {
+                    core::arch::asm!(
+                        "out dx, al",
+                        in("al") byte,
+                        in("dx") self.port,
+                        options(nomem, preserves_flags)
+                    );
+                }
+            }
+        }
+
+        impl Write for SerialStream {
+            fn write_str(&mut self, s: &str) -> fmt::Result {
+                for byte in s.bytes() {
+                    self.write_byte(byte);
+                }
+                Ok(())
+            }
+
+            fn write_char(&mut self, c: char) -> fmt::Result {
+                if c.is_ascii() {
+                    self.write_byte(c as u8);
+                } else {
+                    // For non-ASCII, encode as UTF-8
+                    let mut buf = [0u8; 4];
+                    let s = c.encode_utf8(&mut buf);
+                    for byte in s.bytes() {
+                        self.write_byte(byte);
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+    else {
         compile_error!("Unsupported architecture for debug output");
     }
 }

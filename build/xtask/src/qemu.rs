@@ -66,7 +66,44 @@ pub fn spawn(
                 "-monitor",
                 "unix:qemu-monitor-socket,server,nowait",
                 "-kernel",
-                image.to_str().unwrap(),
+                image.to_str().unwrap(), // target/riscv64gc-unknown-none-elf/debug/loader
+            ]);
+            cmd
+        }
+        Architecture::X86_64 => {
+            let mut cmd = Command::new("qemu-system-x86_64");
+            // println!("{}", image.to_str().unwrap());
+            cmd.args([
+                "-machine",
+                "q35",
+                "-cpu",
+                "qemu64",
+                "-m",
+                "256M",
+                "-d",
+                "guest_errors",
+                "-display",
+                "none",
+                "-serial",
+                "mon:stdio",
+                "-no-reboot",
+                "-smp",
+                "cpus=1",
+                // "cpus=8",
+                // "-object",
+                // "memory-backend-ram,size=128M,id=m0",
+                // "-object",
+                // "memory-backend-ram,size=128M,id=m1",
+                // "-numa",
+                // "node,cpus=0-3,nodeid=0,memdev=m0",
+                // "-numa",
+                // "node,cpus=4-7,nodeid=1,memdev=m1",
+                // "-numa",
+                // "dist,src=0,dst=1,val=20",
+                "-monitor",
+                "unix:qemu-monitor-socket,server,nowait",
+                "-kernel",
+                image.to_str().unwrap(), // target/x86_64-unknown-none/debug/loader
             ]);
             cmd
         }

@@ -63,8 +63,12 @@ wasmtime-slab.workspace = true
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 riscv.workspace = true
 
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+x86.workspace = true
+
 [build-dependencies]
 vergen-git2 = { version = "1.0.7", features = ["build", "cargo", "rustc"] }
+cc = "1.0"
 
 [lints]
 workspace = true

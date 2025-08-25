@@ -5,14 +5,12 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! Generic trap/exception handling types
+use crate::arch::device::cpu::Cpu;
 
-#![no_std]
+#[derive(Debug)]
+pub struct Global {}
 
-/// Generic trap type that can represent either an interrupt or an exception
-/// The specific Interrupt and Exception types are defined by each architecture
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Trap<I, E> {
-    Interrupt(I),
-    Exception(E),
+#[derive(Debug)]
+pub struct CpuLocal {
+    pub cpu: Cpu,
 }

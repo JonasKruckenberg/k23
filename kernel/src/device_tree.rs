@@ -79,6 +79,31 @@ impl fmt::Debug for DeviceTree {
 
 impl DeviceTree {
     pub fn parse(fdt: &[u8]) -> crate::Result<Self> {
+        // For x86_64, create a minimal device tree since the platform doesn't use FDT
+        #[cfg(target_arch = "x86_64")]
+        {
+            let alloc = Bump::new();
+            return DeviceTree::try_new(alloc, |alloc| {
+                // Create a minimal root node
+                let root = alloc.alloc(Device {
+                    name: NodeName {
+                        name: "",
+                        unit_address: None,
+                    },
+                    compatible: "",
+                    phandle: None,
+                    properties: None,
+                    parent: None,
+                    first_child: None,
+                    next_sibling: None,
+                });
+                Ok(DeviceTreeInner {
+                    phandle2ptr: HashMap::new(),
+                    root: NonNull::from(root),
+                })
+            });
+        }
+
         // Safety: u32 has no invalid bit patterns
         let (left, aligned, _) = unsafe { fdt.align_to::<u32>() };
         assert!(left.is_empty()); // TODO decide what to do with unaligned slices

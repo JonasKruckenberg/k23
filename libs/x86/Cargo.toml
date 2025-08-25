@@ -1,0 +1,18 @@
+[package]
+name = "x86"
+description = "x86/x86_64 architecture support crate"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+spin.workspace = true
+trap.workspace = true
+
+# 3rd-party dependencies
+cfg-if.workspace = true
+bitflags.workspace = true

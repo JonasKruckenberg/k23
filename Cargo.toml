@@ -80,6 +80,7 @@ missing_errors_doc = "deny"
 kaddr2line = { path = "libs/kaddr2line" }
 kbacktrace = { path = "libs/kbacktrace" }
 riscv = { path = "libs/riscv" }
+x86 = { path = "libs/x86" }
 spin = { path = "libs/spin" }
 trap = { path = "libs/trap" }
 cpu-local = { path = "libs/cpu-local" }

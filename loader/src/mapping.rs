@@ -81,7 +81,10 @@ fn identity_map_range(
     phys: Range<usize>,
     flags: Flags,
 ) -> crate::Result<()> {
-    let len = NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap();
+    // Align to page boundaries
+    let aligned_start = align_down(phys.start, arch::PAGE_SIZE);
+    let aligned_end = checked_align_up(phys.end, arch::PAGE_SIZE).unwrap();
+    let len = NonZeroUsize::new(aligned_end.checked_sub(aligned_start).unwrap()).unwrap();
 
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
@@ -89,8 +92,8 @@ fn identity_map_range(
         arch::map_contiguous(
             root_pgtable,
             frame_alloc,
-            phys.start,
-            phys.start,
+            aligned_start,
+            aligned_start,
             len,
             flags,
             0, // called before translation into higher half
@@ -110,6 +113,7 @@ pub fn map_physical_memory(
     let phys = Range::from(
         align_down(phys.start, alignment)..checked_align_up(phys.end, alignment).unwrap(),
     );
+
     let virt = Range::from(
         arch::KERNEL_ASPACE_BASE.checked_add(phys.start).unwrap()
             ..arch::KERNEL_ASPACE_BASE.checked_add(phys.end).unwrap(),
@@ -155,8 +159,20 @@ pub fn map_kernel(
         )
         .unwrap(),
     );
+    log::trace!("map_kernel: Allocated virtual range {:#x?}", kernel_virt);
 
-    let phys_base = kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE;
+    log::trace!("map_kernel: Getting phys_base");
+    let phys_base = if cfg!(target_arch = "x86_64") {
+        // On x86_64, the kernel ELF is accessed through identity mapping
+        kernel.elf_file.input.as_ptr() as usize
+    } else if cfg!(target_arch = "riscv64") {
+        // On RISC-V, the kernel ELF is accessed through physical memory mapping
+        kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE
+    } else {
+        panic!("Unsupported architecture");
+    };
+
+    log::trace!("map_kernel: phys_base={:#x}", phys_base);
     assert!(
         phys_base.is_multiple_of(arch::PAGE_SIZE),
         "Loaded ELF file is not sufficiently aligned"
@@ -196,6 +212,14 @@ pub fn map_kernel(
     // Apply relocations in virtual memory.
     for ph in kernel.elf_file.program_iter() {
         if ph.get_type().unwrap() == Type::Dynamic {
+            log::trace!(
+                "Found Dynamic segment: offset={:#x}, vaddr={:#x}, paddr={:#x}, filesz={:#x}, memsz={:#x}",
+                ph.offset(),
+                ph.virtual_addr(),
+                ph.physical_addr(),
+                ph.file_size(),
+                ph.mem_size()
+            );
             handle_dynamic_segment(
                 &ProgramHeader::try_from(ph).unwrap(),
                 &kernel.elf_file,
@@ -334,10 +358,16 @@ fn handle_bss_section(
 
         // Safety: we just allocated the frame
         unsafe {
-            let src = slice::from_raw_parts(
-                arch::KERNEL_ASPACE_BASE.checked_add(last_frame).unwrap() as *mut u8,
-                data_bytes_before_zero,
-            );
+            // On x86_64, the kernel data is identity-mapped, not at KERNEL_ASPACE_BASE
+            let src_addr = if cfg!(target_arch = "x86_64") {
+                last_frame
+            } else if cfg!(target_arch = "riscv64") {
+                arch::KERNEL_ASPACE_BASE.checked_add(last_frame).unwrap()
+            } else {
+                panic!("Unsupported architecture");
+            };
+
+            let src = slice::from_raw_parts(src_addr as *mut u8, data_bytes_before_zero);
 
             let dst = slice::from_raw_parts_mut(
                 arch::KERNEL_ASPACE_BASE.checked_add(new_frame).unwrap() as *mut u8,
@@ -411,13 +441,35 @@ fn handle_dynamic_segment(
     log::trace!("parsing RELA info...");
 
     if let Some(rela_info) = ph.parse_rela(elf_file)? {
+        // Convert RELA virtual address to file offset
+        let file_offset = {
+            let vaddr = rela_info.offset;
+            let mut found_offset = None;
+
+            for prog_header in elf_file.program_iter() {
+                if prog_header.get_type().unwrap() == xmas_elf::program::Type::Load {
+                    let seg_vaddr = prog_header.virtual_addr();
+                    let seg_size = prog_header.file_size();
+
+                    if vaddr >= seg_vaddr && vaddr < seg_vaddr + seg_size {
+                        // Found the segment containing our RELA data
+                        let offset_in_segment = vaddr - seg_vaddr;
+                        found_offset = Some(prog_header.offset() + offset_in_segment);
+                        break;
+                    }
+                }
+            }
+
+            found_offset.expect("RELA data not found in any LOAD segment")
+        };
+
         // Safety: we have to trust the ELF data
         let relas = unsafe {
             #[expect(clippy::cast_ptr_alignment, reason = "this is fine")]
             let ptr = elf_file
                 .input
                 .as_ptr()
-                .byte_add(usize::try_from(rela_info.offset)?)
+                .byte_add(usize::try_from(file_offset)?)
                 .cast::<xmas_elf::sections::Rela<P64>>();
 
             slice::from_raw_parts(ptr, usize::try_from(rela_info.count)?)
@@ -442,9 +494,10 @@ fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: usize) {
     );
 
     const R_RISCV_RELATIVE: u32 = 3;
+    const R_X86_64_RELATIVE: u32 = 8;
 
     match rela.get_type() {
-        R_RISCV_RELATIVE => {
+        R_RISCV_RELATIVE | R_X86_64_RELATIVE => {
             // Calculate address at which to apply the relocation.
             // dynamic relocations offsets are relative to the virtual layout of the elf,
             // not the physical file
@@ -477,7 +530,14 @@ fn handle_tls_segment(
     minfo: &MachineInfo,
     phys_off: usize,
 ) -> crate::Result<TlsAllocation> {
-    let layout = Layout::from_size_align(ph.mem_size, cmp::max(ph.align, arch::PAGE_SIZE))
+    // For x86_64 TLS variant II, we need extra space before the TLS data for negative offsets
+    #[cfg(target_arch = "x86_64")]
+    let pre_offset = arch::PAGE_SIZE; // Allocate one page before TLS data for negative offsets
+    #[cfg(not(target_arch = "x86_64"))]
+    let pre_offset = 0;
+
+    let per_cpu_size = ph.mem_size + pre_offset;
+    let layout = Layout::from_size_align(per_cpu_size, cmp::max(ph.align, arch::PAGE_SIZE))
         .unwrap()
         .repeat(minfo.hart_mask.count_ones() as usize)
         .unwrap()
@@ -491,9 +551,26 @@ fn handle_tls_segment(
     let mut phys_iter = frame_alloc.allocate_zeroed(layout, phys_off);
     while let Some((phys, len)) = phys_iter.next()? {
         log::trace!(
-            "Mapping TLS region {virt_start:#x}..{:#x} {len} ...",
+            "Mapping TLS region {virt_start:#x}..{:#x} {len}, phys={phys:#x}...",
             virt_start.checked_add(len.get()).unwrap()
         );
+
+        // Debug: Check if the physical memory is properly zeroed
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            // On x86_64, physical memory is accessed through the virtual mapping
+            let virt_addr = phys_off.checked_add(phys).unwrap();
+            let phys_ptr = virt_addr as *const u64;
+            let first_val = *phys_ptr;
+            if first_val != 0 {
+                log::error!(
+                    "TLS physical memory at {phys:#x} not zeroed! Contains: {first_val:#x}"
+                );
+                if first_val == 0xACE0BACE {
+                    log::error!("Found stack canary pattern in freshly allocated TLS memory!");
+                }
+            }
+        }
 
         // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
         // abort startup anyway
@@ -520,6 +597,8 @@ fn handle_tls_segment(
             file_size: ph.file_size,
             align: ph.align,
         },
+        #[cfg(target_arch = "x86_64")]
+        pre_offset,
     })
 }
 
@@ -529,38 +608,101 @@ pub struct TlsAllocation {
     virt: Range<usize>,
     /// The template we allocated for
     pub template: TlsTemplate,
+    /// Extra space allocated before TLS data for x86_64 negative offsets
+    #[cfg(target_arch = "x86_64")]
+    pre_offset: usize,
 }
 
 impl TlsAllocation {
     pub fn region_for_hart(&self, hartid: usize) -> Range<usize> {
-        let aligned_size = checked_align_up(
-            self.template.mem_size,
-            cmp::max(self.template.align, arch::PAGE_SIZE),
-        )
-        .unwrap();
-        let start = self.virt.start + (aligned_size * hartid);
+        #[cfg(target_arch = "x86_64")]
+        let per_cpu_size = self.template.mem_size + self.pre_offset;
+        #[cfg(not(target_arch = "x86_64"))]
+        let per_cpu_size = self.template.mem_size;
 
-        Range::from(start..start + self.template.mem_size)
+        let aligned_size =
+            checked_align_up(per_cpu_size, cmp::max(self.template.align, arch::PAGE_SIZE)).unwrap();
+        let allocation_start = self.virt.start + (aligned_size * hartid);
+
+        // For x86_64, the TLS base should point to after the pre_offset area
+        #[cfg(target_arch = "x86_64")]
+        let tls_start = allocation_start + self.pre_offset;
+        #[cfg(not(target_arch = "x86_64"))]
+        let tls_start = allocation_start;
+
+        Range::from(tls_start..tls_start + self.template.mem_size)
     }
 
     pub fn initialize_for_hart(&self, hartid: usize) {
-        if self.template.file_size != 0 {
-            // Safety: We have to trust the loaders BootInfo here
-            unsafe {
+        let region = self.region_for_hart(hartid);
+
+        // Safety: We have to trust the loaders BootInfo here
+        unsafe {
+            // For x86_64, we need to set up the TLS self-pointer at offset 0
+            // This is required by the System V ABI for TLS
+            #[cfg(target_arch = "x86_64")]
+            {
+                // Write the TLS base address at offset 0 (self-pointer)
+                let tls_base_ptr = region.start as *mut usize;
+                *tls_base_ptr = region.start;
+                log::trace!(
+                    "Set TLS self-pointer at {:#x} to {:#x}",
+                    region.start,
+                    region.start
+                );
+            }
+
+            // First, copy the initialized data if any
+            if self.template.file_size != 0 {
                 let src: &[u8] = slice::from_raw_parts(
                     self.template.start_addr as *const u8,
                     self.template.file_size,
                 );
-                let dst: &mut [u8] = slice::from_raw_parts_mut(
-                    self.region_for_hart(hartid).start as *mut u8,
-                    self.template.file_size,
-                );
+                let dst: &mut [u8] =
+                    slice::from_raw_parts_mut(region.start as *mut u8, self.template.file_size);
 
                 // sanity check to ensure our destination allocated memory is actually zeroed.
                 // if it's not, that likely means we're about to override something important
-                debug_assert!(dst.iter().all(|&x| x == 0));
+                #[cfg(target_arch = "x86_64")]
+                {
+                    // On x86_64, we already wrote the TLS self-pointer at offset 0
+                    // Check that everything except the first 8 bytes is zero
+                    debug_assert!(dst[8..].iter().all(|&x| x == 0));
+                }
+                #[cfg(not(target_arch = "x86_64"))]
+                {
+                    debug_assert!(dst.iter().all(|&x| x == 0));
+                }
+
+                // Check if source contains the canary pattern
+                if src.len() >= 8 {
+                    let first_qword = u64::from_ne_bytes(src[0..8].try_into().unwrap());
+                    if first_qword == 0xACE0BACE {
+                        log::error!("TLS template source contains stack canary pattern!");
+                        log::error!("Template start_addr: {:#x}", self.template.start_addr);
+                        log::error!("First 64 bytes of source: {:x?}", &src[..64.min(src.len())]);
+                    }
+                }
 
                 dst.copy_from_slice(src);
+            }
+
+            // Then zero the BSS section (from file_size to mem_size)
+            if self.template.mem_size > self.template.file_size {
+                let bss_start = region.start + self.template.file_size;
+                let bss_size = self.template.mem_size - self.template.file_size;
+                let bss: &mut [u8] = slice::from_raw_parts_mut(bss_start as *mut u8, bss_size);
+                bss.fill(0);
+            }
+
+            // For x86_64, ensure the self-pointer wasn't overwritten
+            #[cfg(target_arch = "x86_64")]
+            {
+                let tls_base_ptr = region.start as *mut usize;
+                if *tls_base_ptr != region.start {
+                    log::warn!("TLS self-pointer was overwritten, restoring it");
+                    *tls_base_ptr = region.start;
+                }
             }
         }
     }
