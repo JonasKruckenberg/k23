@@ -19,6 +19,8 @@ pub enum Error {
     DifferentPersonality,
     /// Missing section
     MissingSection(&'static str),
+    /// Attempted to unwind through a `nounwind` function
+    NoUnwind,
 }
 
 impl From<gimli::Error> for Error {
@@ -38,6 +40,7 @@ impl Display for Error {
                 "The personality function is not a Rust personality function"
             ),
             Error::MissingSection(err) => write!(f, "Missing section: {err}"),
+            Error::NoUnwind => write!(f, "Attempted to unwind through a `nounwind` function"),
         }
     }
 }
