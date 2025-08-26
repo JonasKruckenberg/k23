@@ -23,7 +23,7 @@ use wast::{
 
 use crate::wasm::{
     ConstExprEvaluator, Engine, Extern, Instance, Linker, Module, PlaceholderAllocatorDontUse,
-    Store, Val,
+    Store, Val, host_funcs,
 };
 
 macro_rules! wast_tests {
@@ -104,6 +104,9 @@ impl WastContext {
             tracing::debug!("Hello World from hostfunc!");
             arg
         })?;
+        
+        // Register WASI host functions for testing
+        host_funcs::register_host_functions(&mut linker)?;
 
         // let ty = GlobalType {
         //     content_type: ValType::I32,
