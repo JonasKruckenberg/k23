@@ -8,7 +8,7 @@
 use fallible_iterator::FallibleIterator;
 use gimli::{
     CfaRule, EhFrame, EndianSlice, EvaluationResult, FrameDescriptionEntry, NativeEndian, Register,
-    RegisterRule, UnwindExpression, UnwindSection, UnwindTableRow, Value,
+    RegisterRule, UnwindExpression, UnwindTableRow, Value,
 };
 
 use crate::arch;
@@ -144,12 +144,7 @@ impl<'a> Frame<'a> {
     fn from_context(regs: &arch::Registers, pc: usize) -> Result<Self, gimli::Error> {
         let eh_info = obtain_eh_info();
 
-        let fde = eh_info.hdr.table().unwrap().fde_for_address(
-            &eh_info.eh_frame,
-            &eh_info.bases,
-            pc as u64,
-            EhFrame::cie_from_offset,
-        )?;
+        let fde = eh_info.fde_for_address(pc as u64)?;
 
         let mut unwinder = gimli::UnwindContext::new_in();
 

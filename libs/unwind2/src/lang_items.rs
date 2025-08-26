@@ -20,7 +20,7 @@ use crate::{Error, FrameIter, arch, raise_exception_phase2};
 extern "C" fn personality_stub() {}
 
 /// Ensure the ptr points to the expected personality routine stub.
-pub fn ensure_personality_stub(ptr: u64) -> crate::Result<()> {
+pub fn ensure_rust_personality_routine(ptr: u64) -> crate::Result<()> {
     if ptr == personality_stub as usize as u64 {
         Ok(())
     } else {
