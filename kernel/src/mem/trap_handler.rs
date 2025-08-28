@@ -7,44 +7,30 @@
 
 use core::ops::ControlFlow;
 
+use riscv::scause::Exception;
+
 use crate::arch::trap::Trap;
-use crate::mem::VirtualAddress;
-use crate::state::global;
+use crate::mem::{PageFaultFlags, VirtualAddress, with_kernel_aspace};
 
-pub fn handle_page_fault(_trap: Trap, _tval: VirtualAddress) -> ControlFlow<()> {
-    let current_task = global()
-        .executor
-        .current_scheduler()
-        .unwrap()
-        .current_task();
-
-    let Some(_current_task) = current_task.as_ref() else {
-        // if we're not inside a task we're inside some critical kernel code
-        // none of that should use ever trap
-        tracing::warn!("no currently active task");
-        return ControlFlow::Continue(());
+pub fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
+    let flags = match trap {
+        Trap::Exception(Exception::LoadPageFault) => PageFaultFlags::LOAD,
+        Trap::Exception(Exception::StorePageFault) => PageFaultFlags::STORE,
+        Trap::Exception(Exception::InstructionPageFault) => PageFaultFlags::INSTRUCTION,
+        _ => return ControlFlow::Continue(()),
     };
 
-    // FIXME we have no page fault handling right now
-    ControlFlow::Continue(())
-
-    // let mut aspace = current_task.header().aspace.as_ref().unwrap().lock();
-
-    // let flags = match trap {
-    //     Trap::Exception(Exception::LoadPageFault) => PageFaultFlags::LOAD,
-    //     Trap::Exception(Exception::StorePageFault) => PageFaultFlags::STORE,
-    //     Trap::Exception(Exception::InstructionPageFault) => PageFaultFlags::INSTRUCTION,
-    //     // not a page fault exception, continue with the next fault handler
-    //     _ => return ControlFlow::Continue(()),
-    // };
-    //
-    // if let Err(err) = aspace.page_fault(tval, flags) {
-    //     // the address space knew about the faulting address, but the requested access was invalid
-    //     tracing::warn!("page fault handler couldn't correct fault {err}");
-    //     ControlFlow::Continue(())
-    // } else {
-    //     // the address space knew about the faulting address and could correct the fault
-    //     tracing::trace!("page fault handler successfully corrected fault");
-    //     ControlFlow::Break(())
-    // }
+    // For now, use kernel address space for page faults
+    // WASM tests run in kernel context, so this should work for our current needs
+    // TODO: In the future, tasks should carry their own address space as metadata
+    with_kernel_aspace(|aspace| {
+        let mut aspace = aspace.lock();
+        if let Err(err) = aspace.page_fault(tval, flags) {
+            tracing::warn!("page fault handler couldn't correct fault {err}");
+            ControlFlow::Continue(())
+        } else {
+            tracing::trace!("page fault handler successfully corrected fault");
+            ControlFlow::Break(())
+        }
+    })
 }
