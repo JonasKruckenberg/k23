@@ -41,7 +41,7 @@ k23 is an active research project exploring a *more secure, modular, and easy to
    - [x] Execute WASM in Userspace
    - [x] Support WASM Builtins
    - [x] Handle WASM Traps
-   - [ ] Syscall context switching & Basic Host Functions 
+   - [x] Syscall context switching & Basic Host Functions (partial WASI support) 
    - [ ] WASM Proposal - Extended Constant Expressions
    - [ ] WASM Proposal - Multi-Value
    - [ ] WASM Proposal - Tail Call

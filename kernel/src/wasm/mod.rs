@@ -14,6 +14,7 @@ mod cranelift;
 mod engine;
 mod func;
 mod global;
+pub mod host_funcs;
 mod indices;
 mod instance;
 mod linker;
@@ -32,10 +33,9 @@ mod values;
 mod vm;
 
 pub use engine::Engine;
-pub use func::Func;
+pub use func::{Func, Caller};
 pub use global::Global;
 pub use instance::Instance;
-#[cfg(test)]
 pub use linker::Linker;
 pub use memory::Memory;
 pub use module::Module;
