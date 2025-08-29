@@ -104,7 +104,7 @@ impl WastContext {
             tracing::debug!("Hello World from hostfunc!");
             arg
         })?;
-        
+
         // Register WASI host functions for testing
         host_funcs::register_host_functions(&mut linker)?;
 

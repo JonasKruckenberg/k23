@@ -9,8 +9,11 @@ use crate::tests::wast::wast_tests;
 
 wast_tests!(
     fib "../../../tests/fib.wast",
-    // fib_imported "../../../tests/fib_imported.wast",
-    // hostfunc_rs "../../../tests/hostfunc_rs.wast",
-    // hostfunc_wat "../../../tests/hostfunc_wat.wast",
-    // wasi_hello "../../../tests/wasi_hello.wast",
+    fib_imported "../../../tests/fib_imported.wast",
+    hostfunc_rs "../../../tests/hostfunc_rs.wast",
+    hostfunc_wat "../../../tests/hostfunc_wat.wast",
+    test_io_functions "../../../tests/test_io_functions.wast",
+    test_process_functions "../../../tests/test_process_functions.wast",
+    test_memory_functions "../../../tests/test_memory_functions.wast",
+    test_time_functions "../../../tests/test_time_functions.wast",
 );

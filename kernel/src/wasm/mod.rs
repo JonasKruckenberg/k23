@@ -33,7 +33,7 @@ mod values;
 mod vm;
 
 pub use engine::Engine;
-pub use func::{Func, Caller};
+pub use func::{Caller, Func};
 pub use global::Global;
 pub use instance::Instance;
 pub use linker::Linker;
