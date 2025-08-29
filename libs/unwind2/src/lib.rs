@@ -36,7 +36,7 @@ pub use error::Error;
 use exception::Exception;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameIter};
-use lang_items::ensure_personality_stub;
+use lang_items::ensure_rust_personality_routine;
 pub use utils::with_context;
 
 pub(crate) type Result<T> = core::result::Result<T, Error>;
@@ -115,7 +115,7 @@ fn raise_exception_phase2(mut frames: FrameIter, exception: *mut Exception) -> R
     while let Some(mut frame) = frames.next()? {
         if frame
             .personality()
-            .map(ensure_personality_stub)
+            .map(ensure_rust_personality_routine)
             .transpose()?
             .is_none()
         {
@@ -147,6 +147,7 @@ fn raise_exception_phase2(mut frames: FrameIter, exception: *mut Exception) -> R
         }
     }
 
+    tracing::trace!("reached end of stack without handler");
     Err(Error::EndOfStack)
 }
 
@@ -231,14 +232,32 @@ where
 mod tests {
     use alloc::boxed::Box;
 
+    use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::util::SubscriberInitExt;
+
     use super::*;
+
+    extern crate std;
 
     #[test]
     fn begin_and_catch_roundtrip() {
+        let _trace = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .set_default();
+
+        std::panic::set_hook(Box::new(|info| {
+            tracing::trace!("PANIC while unwinding {info}. Aborting...");
+            std::process::exit(1);
+        }));
+
         let res = catch_unwind(|| {
             begin_unwind(Box::new(42)).unwrap();
         })
         .map_err(|err| *err.downcast_ref::<i32>().unwrap());
         assert_eq!(res, Err(42));
+    }
+
+    pub fn square(num: u32) -> u32 {
+        num * num
     }
 }
