@@ -83,7 +83,7 @@
 ;; Note: Current stubs return success (0) but don't write actual values
 (assert_return (invoke "test_clock_res_realtime") (i32.const 0))   ;; Should succeed
 (assert_return (invoke "test_clock_res_monotonic") (i32.const 0))  ;; Should succeed
-(assert_return (invoke "test_clock_res_invalid") (i32.const 0))    ;; Stub returns success (should fail)
+(assert_return (invoke "test_clock_res_invalid") (i32.const 28))   ;; Should return ERRNO_INVAL for invalid clock ID
 
 (assert_return (invoke "test_clock_time_realtime") (i32.const 0))   ;; Should succeed
 (assert_return (invoke "test_clock_time_monotonic") (i32.const 0))  ;; Should succeed
@@ -100,6 +100,7 @@
     
     ;; Function to get two timestamps and compare
     (func (export "test_time_monotonic_increasing") (result i32)
+        (local i32)
         ;; Get first timestamp
         i32.const 1      ;; CLOCK_MONOTONIC
         i64.const 0      ;; precision
@@ -131,8 +132,6 @@
         ;; For now, just return success
         i32.const 1
     )
-    
-    (local i32)
 )
 
 ;; Test assertion for time value checks
