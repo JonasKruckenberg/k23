@@ -17,4 +17,5 @@ wast_tests!(
     test_memory_functions "../../../tests/test_memory_functions.wast",
     test_time_functions "../../../tests/test_time_functions.wast",
     test_filesystem_stubs "../../../tests/test_filesystem_stubs.wast",
+    test_wasi_io "../../../tests/test_wasi_io.wast",
 );

@@ -149,8 +149,8 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
     linker.func_wrap(
         "wasi_snapshot_preview1",
         "fd_prestat_get",
-        |fd: i32, _prestat_ptr: i32| -> i32 {
-            tracing::debug!("[WASM FS] fd_prestat_get(fd={}, ptr={})", fd, _prestat_ptr);
+        |fd: i32, prestat_ptr: i32| -> i32 {
+            tracing::debug!("[WASM FS] fd_prestat_get(fd={}, ptr={})", fd, prestat_ptr);
             
             // Only fd=3 is preopened (root directory)
             if fd != 3 {
@@ -158,7 +158,10 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
             }
             
             // TODO: Write prestat structure to memory
-            // For stub, just return success
+            // Structure should be:
+            // - tag: u8 = 0 (PREOPENTYPE_DIR)
+            // - padding: 3 bytes
+            // - name_len: u32 = 1 (for "/")
             
             ERRNO_SUCCESS
         },
@@ -168,9 +171,9 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
     linker.func_wrap(
         "wasi_snapshot_preview1",
         "fd_prestat_dir_name",
-        |fd: i32, _path_ptr: i32, path_len: i32| -> i32 {
+        |fd: i32, path_ptr: i32, path_len: i32| -> i32 {
             tracing::debug!("[WASM FS] fd_prestat_dir_name(fd={}, ptr={}, len={})", 
-                fd, _path_ptr, path_len);
+                fd, path_ptr, path_len);
             
             // Only fd=3 is preopened
             if fd != 3 {
@@ -181,8 +184,7 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
                 return ERRNO_INVAL;
             }
             
-            // TODO: Write "/" to the buffer
-            // For stub, just return success
+            // TODO: Write "/" to the buffer at path_ptr
             
             ERRNO_SUCCESS
         },
@@ -208,7 +210,6 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
             let new_fd = NEXT_FD.fetch_add(1, Ordering::SeqCst);
             
             // TODO: Write the new fd to memory at fd_ptr
-            // For stub, just increment fd counter
             
             tracing::debug!("[WASM FS] path_open: returned fd={}", new_fd);
             ERRNO_SUCCESS

@@ -35,9 +35,9 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
     linker.func_wrap(
         "wasi_snapshot_preview1",
         "fd_write",
-        |fd: i32, _iovs_ptr: i32, iovs_len: i32, _nwritten_ptr: i32| -> i32 {
+        |fd: i32, iovs_ptr: i32, iovs_len: i32, nwritten_ptr: i32| -> i32 {
             // Validate parameters first
-            if _iovs_ptr < 0 || iovs_len < 0 || _nwritten_ptr < 0 {
+            if iovs_ptr < 0 || iovs_len < 0 || nwritten_ptr < 0 {
                 return ERRNO_INVAL;
             }
 
@@ -48,15 +48,22 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
                 if fd == FD_STDOUT || fd == FD_STDERR {
                     let prefix = if fd == FD_STDOUT { "stdout" } else { "stderr" };
                     tracing::debug!("[WASM {}] fd_write called with {} iovecs", prefix, iovs_len);
+                    
+                    // For demonstration, log that we would output data
+                    // In a real implementation with memory access, we would read the IoVecs
+                    // and output the actual data
+                    tracing::info!("[WASM {}] Writing {} iovecs", prefix, iovs_len);
                 } else {
                     tracing::debug!("[WASM] fd_write called for fd={} with {} iovecs", fd, iovs_len);
                 }
 
-                // TODO: Read IoVec array from WASM memory
-                // TODO: Read actual data from WASM memory
-                // TODO: Write bytes written count to nwritten_ptr
-
-                // Return success for valid fds
+                // TODO: When we have proper memory access:
+                // 1. Read IoVec array from WASM memory at iovs_ptr
+                // 2. For each IoVec, read the actual data buffer
+                // 3. Output the data to console or file
+                // 4. Write total bytes written to nwritten_ptr
+                
+                // For now, return success
                 ERRNO_SUCCESS
             } else {
                 // Invalid fd (includes stdin and any other invalid values)
@@ -69,7 +76,7 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
     linker.func_wrap(
         "wasi_snapshot_preview1",
         "fd_read",
-        |fd: i32, _iovs_ptr: i32, _iovs_len: i32, _nread_ptr: i32| -> i32 {
+        |fd: i32, iovs_ptr: i32, iovs_len: i32, nread_ptr: i32| -> i32 {
             // Can't read from stdout/stderr
             if fd == FD_STDOUT || fd == FD_STDERR {
                 return ERRNO_BADF;
@@ -81,7 +88,7 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
             }
 
             // Validate parameters
-            if _iovs_ptr < 0 || _iovs_len < 0 || _nread_ptr < 0 {
+            if iovs_ptr < 0 || iovs_len < 0 || nread_ptr < 0 {
                 return ERRNO_INVAL;
             }
 
@@ -92,7 +99,9 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
             } else {
                 tracing::debug!("[WASM] fd_read called for fd={}", fd);
             }
+            
             // TODO: Write 0 to nread_ptr to indicate EOF
+            // For now, just return success
             ERRNO_SUCCESS
         },
     )?;
