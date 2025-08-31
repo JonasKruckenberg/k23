@@ -11,7 +11,9 @@
 //! to interact with the kernel. These functions provide basic I/O, memory, time,
 //! and process management capabilities.
 
+pub mod filesystem;
 pub mod io;
+pub mod mem_access;
 pub mod memory;
 pub mod process;
 pub mod time;
@@ -23,6 +25,9 @@ use crate::wasm::{Linker, Store};
 /// This registers functions under the "wasi_snapshot_preview1" module name
 /// to provide basic WASI compatibility.
 pub fn register_host_functions<T>(linker: &mut Linker<T>) -> crate::Result<()> {
+    // Register filesystem functions (includes preopened directories)
+    filesystem::register(linker)?;
+    
     // Register I/O functions
     io::register(linker)?;
 

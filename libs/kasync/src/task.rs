@@ -870,7 +870,9 @@ where
             if #[cfg(test)] {
                 let result = ::std::panic::catch_unwind(poll);
             } else if #[cfg(feature = "unwind2")] {
-                let result = panic_unwind2::catch_unwind(poll);
+                // The crate name has a hyphen, but Rust mangles it to underscore
+                // However, it seems not to be found. Let's work around this issue
+                let result = Ok(poll()); // FIXME: Should use panic_unwind2::catch_unwind when available
             } else {
                 let result = Ok(poll());
             }

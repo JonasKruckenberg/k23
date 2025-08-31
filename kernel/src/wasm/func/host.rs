@@ -57,8 +57,8 @@ impl HostFunc {
 }
 
 pub struct Caller<'a, T> {
-    store: &'a mut StoreInner<T>,
-    caller: &'a crate::wasm::vm::Instance,
+    pub(crate) store: &'a mut StoreInner<T>,
+    pub(crate) caller: &'a crate::wasm::vm::Instance,
 }
 
 impl<T> Caller<'_, T> {

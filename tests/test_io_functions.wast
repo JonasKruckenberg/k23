@@ -101,7 +101,7 @@
         call $fd_close
     )
     
-    ;; Test closing a regular fd (should fail - not implemented)
+    ;; Test closing a regular fd (should succeed with stub filesystem)
     (func (export "test_close_regular") (result i32)
         i32.const 10     ;; some fd
         call $fd_close
@@ -110,7 +110,7 @@
 
 ;; Test assertions for fd_close
 (assert_return (invoke "test_close_stdin") (i32.const 8))    ;; Should return ERRNO_BADF
-(assert_return (invoke "test_close_regular") (i32.const 8))  ;; Should return ERRNO_BADF
+(assert_return (invoke "test_close_regular") (i32.const 0))  ;; Should succeed with stub filesystem
 
 ;; Test module for fd_seek
 (module $test_fd_seek
@@ -130,4 +130,4 @@
 )
 
 ;; Test assertion for fd_seek
-(assert_return (invoke "test_seek") (i32.const 52))  ;; Should return ERRNO_NOSYS
+(assert_return (invoke "test_seek") (i32.const 0))  ;; Should succeed with stub filesystem

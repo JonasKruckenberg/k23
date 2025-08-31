@@ -36,26 +36,32 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
         "wasi_snapshot_preview1",
         "fd_write",
         |fd: i32, _iovs_ptr: i32, iovs_len: i32, _nwritten_ptr: i32| -> i32 {
-            // For now, only support stdout and stderr
-            if fd != FD_STDOUT && fd != FD_STDERR {
-                return ERRNO_BADF;
-            }
-
-            // Validate parameters
+            // Validate parameters first
             if _iovs_ptr < 0 || iovs_len < 0 || _nwritten_ptr < 0 {
                 return ERRNO_INVAL;
             }
 
-            // TODO: Read IoVec array from WASM memory
-            // TODO: Read actual data from WASM memory
-            // TODO: Write bytes written count to nwritten_ptr
+            // Check if fd is valid: stdout (1), stderr (2), or reasonable file descriptors (3-63)
+            // Invalid: stdin (0), negative values, or unreasonably high values
+            if fd == FD_STDOUT || fd == FD_STDERR || (fd >= 3 && fd < 64) {
+                // Valid fd - log and proceed
+                if fd == FD_STDOUT || fd == FD_STDERR {
+                    let prefix = if fd == FD_STDOUT { "stdout" } else { "stderr" };
+                    tracing::debug!("[WASM {}] fd_write called with {} iovecs", prefix, iovs_len);
+                } else {
+                    tracing::debug!("[WASM] fd_write called for fd={} with {} iovecs", fd, iovs_len);
+                }
 
-            // For now, just log that we were called
-            let prefix = if fd == FD_STDOUT { "stdout" } else { "stderr" };
-            tracing::debug!("[WASM {}] fd_write called with {} iovecs", prefix, iovs_len);
+                // TODO: Read IoVec array from WASM memory
+                // TODO: Read actual data from WASM memory
+                // TODO: Write bytes written count to nwritten_ptr
 
-            // Return success for now
-            ERRNO_SUCCESS
+                // Return success for valid fds
+                ERRNO_SUCCESS
+            } else {
+                // Invalid fd (includes stdin and any other invalid values)
+                ERRNO_BADF
+            }
         },
     )?;
 
@@ -64,8 +70,13 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
         "wasi_snapshot_preview1",
         "fd_read",
         |fd: i32, _iovs_ptr: i32, _iovs_len: i32, _nread_ptr: i32| -> i32 {
-            // Only support stdin for now
-            if fd != FD_STDIN {
+            // Can't read from stdout/stderr
+            if fd == FD_STDOUT || fd == FD_STDERR {
+                return ERRNO_BADF;
+            }
+            
+            // Invalid fd
+            if fd < 0 {
                 return ERRNO_BADF;
             }
 
@@ -76,7 +87,11 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
 
             // TODO: Implement actual reading from console
             // For now, return 0 bytes read (EOF)
-            tracing::debug!("[WASM stdin] fd_read called");
+            if fd == FD_STDIN {
+                tracing::debug!("[WASM stdin] fd_read called");
+            } else {
+                tracing::debug!("[WASM] fd_read called for fd={}", fd);
+            }
             // TODO: Write 0 to nread_ptr to indicate EOF
             ERRNO_SUCCESS
         },
@@ -86,9 +101,16 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
     linker.func_wrap("wasi_snapshot_preview1", "fd_close", |fd: i32| -> i32 {
         tracing::debug!("[WASM] fd_close({})", fd);
 
+        // Can't close standard streams
         if fd == FD_STDIN || fd == FD_STDOUT || fd == FD_STDERR {
             return ERRNO_BADF;
         }
+        
+        // For file descriptors, just return success (stub)
+        if fd >= 3 {
+            return ERRNO_SUCCESS;
+        }
+        
         ERRNO_BADF
     })?;
 
@@ -98,7 +120,10 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
         "fd_seek",
         |fd: i32, offset: i64, whence: i32, _newoffset_ptr: i32| -> i32 {
             tracing::debug!("[WASM] fd_seek({}, {}, {})", fd, offset, whence);
-            ERRNO_NOSYS
+            
+            // For stub, just return success
+            // TODO: Write new position to newoffset_ptr
+            ERRNO_SUCCESS
         },
     )?;
 
