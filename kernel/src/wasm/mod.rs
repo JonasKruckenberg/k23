@@ -14,6 +14,7 @@ mod cranelift;
 mod engine;
 mod func;
 mod global;
+pub mod hello_world;
 pub mod host_funcs;
 mod indices;
 mod instance;
@@ -30,7 +31,7 @@ mod type_registry;
 mod types;
 mod utils;
 mod values;
-mod vm;
+pub(crate) mod vm;
 
 pub use engine::Engine;
 pub use func::{Caller, Func};

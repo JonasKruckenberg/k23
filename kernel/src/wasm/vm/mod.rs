@@ -9,7 +9,7 @@ mod builtins;
 mod code_object;
 mod const_eval;
 mod instance;
-mod instance_alloc;
+pub(crate) mod instance_alloc;
 mod memory;
 mod mmap_vec;
 mod provenance;

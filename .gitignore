@@ -1,3 +1,4 @@
+*.wasm
 /target
 .idea
 .DS_Store
