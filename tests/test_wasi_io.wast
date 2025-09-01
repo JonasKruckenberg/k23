@@ -106,18 +106,14 @@
 
 ;; Test assertions
 (assert_return (invoke "test_stdout_write") (i32.const 0))      ;; Should succeed
-;; Note: Without memory access, nwritten won't be set correctly
-;; (assert_return (invoke "check_nwritten") (i32.const 12))     ;; Would write 12 bytes if memory access worked
+(assert_return (invoke "check_nwritten") (i32.const 12))        ;; Should write 12 bytes
 
 (assert_return (invoke "test_prestat_get") (i32.const 0))       ;; Should succeed
-;; Note: Without memory access, prestat won't be written
-;; (assert_return (invoke "check_prestat_tag") (i32.const 0))   ;; Would be 0 (DIR) if memory access worked
-;; (assert_return (invoke "check_prestat_namelen") (i32.const 1)) ;; Would be 1 if memory access worked
+(assert_return (invoke "check_prestat_tag") (i32.const 0))      ;; Tag should be 0 (DIR)
+(assert_return (invoke "check_prestat_namelen") (i32.const 1))  ;; Name length should be 1
 
 (assert_return (invoke "test_prestat_dir_name") (i32.const 0))  ;; Should succeed
-;; Note: Without memory access, dir name won't be written
-;; (assert_return (invoke "check_dirname_byte") (i32.const 47)) ;; Would be '/' if memory access worked
+(assert_return (invoke "check_dirname_byte") (i32.const 47))    ;; Should be '/' (ASCII 47)
 
 (assert_return (invoke "test_path_open") (i32.const 0))         ;; Should succeed
-;; Note: Without memory access, fd won't be written
-;; Can't assert exact fd value, but it would be >= 4 if memory access worked
+;; Can't assert exact fd value, but it should be >= 4

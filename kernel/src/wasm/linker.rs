@@ -229,6 +229,25 @@ impl<T> Linker<T> {
         Ok(self)
     }
 
+    /// Register a host function that needs access to memory.
+    /// This is specifically for functions that take `Caller` as their first parameter.
+    /// The function signature should be: `Fn(Caller<'_, T>, args...) -> result`
+    pub fn func_wrap_with_memory<Params, Results>(
+        &mut self,
+        module: &str,
+        name: &str,
+        func: impl IntoFunc<T, Params, Results>,
+    ) -> crate::Result<&mut Self>
+    {
+        let (func, ty) = HostFunc::wrap(self.engine(), func);
+
+        let key = self.import_key(module, Some(name));
+        self.insert(key, Definition::HostFunc(Arc::new(func), ty.type_index()))?;
+
+        Ok(self)
+    }
+
+
     fn insert(&mut self, key: ImportKey, item: Definition) -> crate::Result<()> {
         match self.map.entry(key) {
             Entry::Occupied(_) => {

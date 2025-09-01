@@ -12,6 +12,8 @@
 
 use core::sync::atomic::{AtomicI32, Ordering};
 use crate::wasm::Linker;
+use crate::wasm::func::Caller;
+use super::mem_access::MemoryAccessor;
 
 /// Error codes
 pub const ERRNO_SUCCESS: i32 = 0;
@@ -146,10 +148,10 @@ pub struct Dirent {
 /// Register filesystem host functions
 pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
     // fd_prestat_get - Get preopened directory info
-    linker.func_wrap(
+    linker.func_wrap_with_memory(
         "wasi_snapshot_preview1",
         "fd_prestat_get",
-        |fd: i32, prestat_ptr: i32| -> i32 {
+        |mut caller: Caller<'_, T>, fd: i32, prestat_ptr: i32| -> i32 {
             tracing::debug!("[WASM FS] fd_prestat_get(fd={}, ptr={})", fd, prestat_ptr);
             
             // Only fd=3 is preopened (root directory)
@@ -157,21 +159,42 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
                 return ERRNO_BADF;
             }
             
-            // TODO: Write prestat structure to memory
-            // Structure should be:
-            // - tag: u8 = 0 (PREOPENTYPE_DIR)
-            // - padding: 3 bytes
-            // - name_len: u32 = 1 (for "/")
+            if prestat_ptr < 0 {
+                return ERRNO_INVAL;
+            }
+            
+            // Get memory accessor
+            let mem = match MemoryAccessor::new(&mut caller) {
+                Some(m) => m,
+                None => return ERRNO_INVAL,
+            };
+            
+            // Write prestat structure (8 bytes total)
+            // tag: u8 = 0 (PREOPENTYPE_DIR)
+            // padding: 3 bytes
+            // name_len: u32 = 1 (for "/")
+            let tag = PREOPENTYPE_DIR;
+            let name_len = 1u32; // Length of "/"
+            
+            // Write tag (1 byte)
+            if !unsafe { mem.write::<u8>(prestat_ptr as u32, &tag) } {
+                return ERRNO_INVAL;
+            }
+            
+            // Write name_len at offset 4 (after tag + 3 bytes padding)
+            if !unsafe { mem.write::<u32>((prestat_ptr + 4) as u32, &name_len) } {
+                return ERRNO_INVAL;
+            }
             
             ERRNO_SUCCESS
         },
     )?;
     
     // fd_prestat_dir_name - Get preopened directory path
-    linker.func_wrap(
+    linker.func_wrap_with_memory(
         "wasi_snapshot_preview1",
         "fd_prestat_dir_name",
-        |fd: i32, path_ptr: i32, path_len: i32| -> i32 {
+        |mut caller: Caller<'_, T>, fd: i32, path_ptr: i32, path_len: i32| -> i32 {
             tracing::debug!("[WASM FS] fd_prestat_dir_name(fd={}, ptr={}, len={})", 
                 fd, path_ptr, path_len);
             
@@ -180,21 +203,32 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
                 return ERRNO_BADF;
             }
             
-            if path_len < 1 {
+            if path_len < 1 || path_ptr < 0 {
                 return ERRNO_INVAL;
             }
             
-            // TODO: Write "/" to the buffer at path_ptr
+            // Get memory accessor
+            let mem = match MemoryAccessor::new(&mut caller) {
+                Some(m) => m,
+                None => return ERRNO_INVAL,
+            };
+            
+            // Write "/" to the buffer
+            let path = b"/";
+            if !mem.write_bytes(path_ptr as u32, path) {
+                return ERRNO_INVAL;
+            }
             
             ERRNO_SUCCESS
         },
     )?;
     
     // path_open - Open a file or directory
-    linker.func_wrap(
+    linker.func_wrap_with_memory(
         "wasi_snapshot_preview1",
         "path_open",
-        |dirfd: i32, 
+        |mut caller: Caller<'_, T>, 
+         dirfd: i32, 
          _dirflags: i32, 
          _path_ptr: i32, 
          _path_len: i32,
@@ -202,14 +236,27 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
          _fs_rights_base: i64,
          _fs_rights_inheriting: i64,
          _fdflags: i32,
-         _fd_ptr: i32| -> i32 {
+         fd_ptr: i32| -> i32 {
             tracing::debug!("[WASM FS] path_open(dirfd={}, path_ptr={}, path_len={}, oflags={})", 
                 dirfd, _path_ptr, _path_len, oflags);
+            
+            if fd_ptr < 0 {
+                return ERRNO_INVAL;
+            }
+            
+            // Get memory accessor
+            let mem = match MemoryAccessor::new(&mut caller) {
+                Some(m) => m,
+                None => return ERRNO_INVAL,
+            };
             
             // Generate a new file descriptor
             let new_fd = NEXT_FD.fetch_add(1, Ordering::SeqCst);
             
-            // TODO: Write the new fd to memory at fd_ptr
+            // Write the new fd to memory at fd_ptr
+            if !unsafe { mem.write::<i32>(fd_ptr as u32, &new_fd) } {
+                return ERRNO_INVAL;
+            }
             
             tracing::debug!("[WASM FS] path_open: returned fd={}", new_fd);
             ERRNO_SUCCESS

@@ -18,7 +18,7 @@ pub mod memory;
 pub mod process;
 pub mod time;
 
-use crate::wasm::{Linker, Store};
+use crate::wasm::Linker;
 
 /// Register all standard host functions with the provided linker.
 ///

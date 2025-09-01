@@ -8,6 +8,9 @@
 //! I/O host functions for WebAssembly modules
 
 use crate::wasm::Linker;
+use crate::wasm::func::Caller;
+use super::mem_access::MemoryAccessor;
+use alloc::string::String;
 
 /// IoVec structure for scatter-gather I/O
 #[repr(C)]
@@ -32,10 +35,10 @@ pub const ERRNO_NOSYS: i32 = 52; // Function not implemented
 
 pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
     // fd_write - Write to a file descriptor
-    linker.func_wrap(
+    linker.func_wrap_with_memory(
         "wasi_snapshot_preview1",
         "fd_write",
-        |fd: i32, iovs_ptr: i32, iovs_len: i32, nwritten_ptr: i32| -> i32 {
+        |mut caller: Caller<'_, T>, fd: i32, iovs_ptr: i32, iovs_len: i32, nwritten_ptr: i32| -> i32 {
             // Validate parameters first
             if iovs_ptr < 0 || iovs_len < 0 || nwritten_ptr < 0 {
                 return ERRNO_INVAL;
@@ -44,27 +47,60 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
             // Check if fd is valid: stdout (1), stderr (2), or reasonable file descriptors (3-63)
             // Invalid: stdin (0), negative values, or unreasonably high values
             if fd == FD_STDOUT || fd == FD_STDERR || (fd >= 3 && fd < 64) {
-                // Valid fd - log and proceed
-                if fd == FD_STDOUT || fd == FD_STDERR {
-                    let prefix = if fd == FD_STDOUT { "stdout" } else { "stderr" };
-                    tracing::debug!("[WASM {}] fd_write called with {} iovecs", prefix, iovs_len);
+                // Get memory accessor
+                let mem = match MemoryAccessor::new(&mut caller) {
+                    Some(m) => m,
+                    None => return ERRNO_INVAL,
+                };
+
+                let mut total_written = 0u32;
+
+                // Read IoVec array from WASM memory
+                for i in 0..iovs_len {
+                    let iov_offset = iovs_ptr as u32 + (i as u32 * 8); // Each IoVec is 8 bytes
                     
-                    // For demonstration, log that we would output data
-                    // In a real implementation with memory access, we would read the IoVecs
-                    // and output the actual data
-                    tracing::info!("[WASM {}] Writing {} iovecs", prefix, iovs_len);
-                } else {
-                    tracing::debug!("[WASM] fd_write called for fd={} with {} iovecs", fd, iovs_len);
+                    // Read IoVec structure
+                    let buf_ptr = match unsafe { mem.read::<u32>(iov_offset) } {
+                        Some(ptr) => ptr,
+                        None => return ERRNO_INVAL,
+                    };
+                    
+                    let buf_len = match unsafe { mem.read::<u32>(iov_offset + 4) } {
+                        Some(len) => len,
+                        None => return ERRNO_INVAL,
+                    };
+
+                    // Read actual data from WASM memory
+                    if buf_len > 0 {
+                        let data = match mem.read_bytes(buf_ptr, buf_len) {
+                            Some(d) => d,
+                            None => return ERRNO_INVAL,
+                        };
+
+                        // Output to console based on fd
+                        if fd == FD_STDOUT || fd == FD_STDERR {
+                            let output = String::from_utf8_lossy(&data);
+                            // Use distinct targets and levels to differentiate streams
+                            if fd == FD_STDOUT {
+                                tracing::info!(target: "wasi::stdout", "{}", output);
+                            } else {
+                                tracing::error!(target: "wasi::stderr", "{}", output);
+                            }
+                        } else {
+                            // For file descriptors, just count bytes (stub)
+                            tracing::debug!("[WASM] fd_write to fd={}: {} bytes", fd, buf_len);
+                        }
+
+                        total_written += buf_len;
+                    }
                 }
 
-                // TODO: When we have proper memory access:
-                // 1. Read IoVec array from WASM memory at iovs_ptr
-                // 2. For each IoVec, read the actual data buffer
-                // 3. Output the data to console or file
-                // 4. Write total bytes written to nwritten_ptr
-                
-                // For now, return success
-                ERRNO_SUCCESS
+                // Write bytes written count to nwritten_ptr
+                if unsafe { mem.write::<u32>(nwritten_ptr as u32, &total_written) } {
+                    ERRNO_SUCCESS
+                } else {
+                    ERRNO_INVAL
+                }
             } else {
                 // Invalid fd (includes stdin and any other invalid values)
                 ERRNO_BADF
@@ -73,10 +109,10 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
     )?;
 
     // fd_read - Read from a file descriptor
-    linker.func_wrap(
+    linker.func_wrap_with_memory(
         "wasi_snapshot_preview1",
         "fd_read",
-        |fd: i32, iovs_ptr: i32, iovs_len: i32, nread_ptr: i32| -> i32 {
+        |mut caller: Caller<'_, T>, fd: i32, iovs_ptr: i32, iovs_len: i32, nread_ptr: i32| -> i32 {
             // Can't read from stdout/stderr
             if fd == FD_STDOUT || fd == FD_STDERR {
                 return ERRNO_BADF;
@@ -92,17 +128,27 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
                 return ERRNO_INVAL;
             }
 
-            // TODO: Implement actual reading from console
-            // For now, return 0 bytes read (EOF)
+            // Get memory accessor
+            let mem = match MemoryAccessor::new(&mut caller) {
+                Some(m) => m,
+                None => return ERRNO_INVAL,
+            };
+
+            // For stub implementation, always return EOF (0 bytes read)
+            let total_read = 0u32;
+
             if fd == FD_STDIN {
-                tracing::debug!("[WASM stdin] fd_read called");
+                tracing::debug!("[WASM stdin] fd_read called, returning EOF");
             } else {
-                tracing::debug!("[WASM] fd_read called for fd={}", fd);
+                tracing::debug!("[WASM] fd_read called for fd={}, returning EOF", fd);
             }
-            
-            // TODO: Write 0 to nread_ptr to indicate EOF
-            // For now, just return success
-            ERRNO_SUCCESS
+
+            // Write 0 to nread_ptr to indicate EOF
+            if unsafe { mem.write::<u32>(nread_ptr as u32, &total_read) } {
+                ERRNO_SUCCESS
+            } else {
+                ERRNO_INVAL
+            }
         },
     )?;
 
@@ -124,15 +170,31 @@ pub fn register<T>(linker: &mut Linker<T>) -> crate::Result<()> {
     })?;
 
     // fd_seek - Seek in a file
-    linker.func_wrap(
+    linker.func_wrap_with_memory(
         "wasi_snapshot_preview1",
         "fd_seek",
-        |fd: i32, offset: i64, whence: i32, _newoffset_ptr: i32| -> i32 {
+        |mut caller: Caller<'_, T>, fd: i32, offset: i64, whence: i32, newoffset_ptr: i32| -> i32 {
             tracing::debug!("[WASM] fd_seek({}, {}, {})", fd, offset, whence);
             
-            // For stub, just return success
-            // TODO: Write new position to newoffset_ptr
-            ERRNO_SUCCESS
+            if newoffset_ptr < 0 {
+                return ERRNO_INVAL;
+            }
+
+            // Get memory accessor
+            let mem = match MemoryAccessor::new(&mut caller) {
+                Some(m) => m,
+                None => return ERRNO_INVAL,
+            };
+            
+            // For stub, just return the requested offset as new position
+            let new_offset = offset as u64;
+            
+            // Write new position to newoffset_ptr
+            if unsafe { mem.write::<u64>(newoffset_ptr as u32, &new_offset) } {
+                ERRNO_SUCCESS
+            } else {
+                ERRNO_INVAL
+            }
         },
     )?;
 
