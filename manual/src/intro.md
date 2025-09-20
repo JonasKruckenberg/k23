@@ -56,7 +56,7 @@ privileged mode. Everything else is implemented as a WebAssembly module, running
 
 The core thesis of k23 is that **by directly integrating the compiler into the kernel, they enter into a symbiotic
 relationship** where e.g. the kernels knowledge of the physical machine can inform specific optimization in the compiler
-and the total knowledge of all programs running on the system by the compiler can inform various sppedups in the kernel.
+and the total knowledge of all programs running on the system by the compiler can inform various speedups in the kernel.
 Cool stuff that only becomes possible because os this is:
 
 - **Zero-cost IPC calls.** By leveraging the total knowledge of all programs the kernel can reduce the cost of IPC calls
