@@ -1,0 +1,16 @@
+[package]
+name = "kmem"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+lock_api.workspace = true
+anyhow.workspace = true
+mycelium-bitfield.workspace = true
+wavltree.workspace = true
+pin-project.workspace = true
+
+[lints]
+workspace = true

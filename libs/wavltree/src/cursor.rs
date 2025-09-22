@@ -88,6 +88,9 @@ where
     pub unsafe fn get_ptr(&self) -> Link<T> {
         self.current
     }
+    pub const fn has_current(&self) -> bool {
+        self.current.is_some()
+    }
     pub fn get(&self) -> Option<&'a T> {
         unsafe { self.current.map(|ptr| ptr.as_ref()) }
     }

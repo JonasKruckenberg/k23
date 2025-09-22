@@ -1034,6 +1034,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kmem"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lock_api",
+ "mycelium-bitfield",
+ "pin-project",
+ "wavltree",
+]
+
+[[package]]
 name = "ksharded-slab"
 version = "0.1.7"
 dependencies = [
