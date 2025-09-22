@@ -24,10 +24,11 @@ pub use stored::{Stored, StoredData};
 use crate::mem::VirtualAddress;
 use crate::wasm::trap_handler::WasmFault;
 use crate::wasm::vm::{
-    InstanceAllocator, InstanceHandle, VMContext, VMFuncRef, VMGlobalDefinition, VMStoreContext,
-    VMTableDefinition, VMVal,
+    InstanceAllocator, InstanceAllocator, InstanceHandle, InstanceHandle, VMContext, VMContext,
+    VMFuncRef, VMFuncRef, VMGlobalDefinition, VMGlobalDefinition, VMStoreContext, VMStoreContext,
+    VMTableDefinition, VMTableDefinition, VMVal, VMVal,
 };
-use crate::wasm::{Engine, Module, vm};
+use crate::wasm::{vm, vm, Engine, Engine, Module, Module};
 
 pub struct Store<T>(Pin<Box<StoreInner<T>>>);
 
