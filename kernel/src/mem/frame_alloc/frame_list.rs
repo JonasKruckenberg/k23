@@ -217,9 +217,9 @@ impl FrameList {
     }
 
     /// Asserts the frame list is in a valid state.
-    pub fn assert_valid(&self) {
-        self.nodes.assert_valid();
-        self.iter().for_each(|frame| frame.assert_valid());
+    pub fn assert_valid(&self, ctx: &str) {
+        self.nodes.assert_valid(ctx);
+        self.iter().for_each(|frame| frame.assert_valid(ctx));
     }
 }
 

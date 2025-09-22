@@ -853,18 +853,18 @@ where
     /// Note that with debug assertions enabled, this includes validating the WAVL rank-balancing
     /// rules **which is disabled otherwise**.
     #[track_caller]
-    pub fn assert_valid(&self) {
+    pub fn assert_valid(&self, ctx: &str) {
         unsafe {
             if let Some(root) = self.root {
                 let root_links = T::links(root).as_ref();
-                root_links.assert_valid();
+                root_links.assert_valid(ctx);
 
                 if let Some(left) = root_links.left() {
-                    Self::assert_valid_inner(left, root);
+                    Self::assert_valid_inner(left, root, ctx);
                 }
 
                 if let Some(right) = root_links.right() {
-                    Self::assert_valid_inner(right, root);
+                    Self::assert_valid_inner(right, root, ctx);
                 }
             }
         }
@@ -872,12 +872,12 @@ where
 
     #[track_caller]
     #[cfg_attr(not(debug_assertions), allow(unused))]
-    fn assert_valid_inner(node: NonNull<T>, parent: NonNull<T>) {
+    fn assert_valid_inner(node: NonNull<T>, parent: NonNull<T>, ctx: &str) {
         unsafe {
             let node_links = T::links(node).as_ref();
 
             // assert that all links are set up correctly (no loops, self references, etc.)
-            node_links.assert_valid();
+            node_links.assert_valid(ctx);
 
             // We can only check the WAVL rule if we track the rank, which we only do in debug builds
             #[cfg(debug_assertions)]
@@ -888,13 +888,13 @@ where
                 let rank_diff = parent_links.rank() - node_links.rank();
                 assert!(
                     rank_diff <= 2 && rank_diff > 0,
-                    "WAVL rank rule violation: rank difference must be 1 or 2, but was {rank_diff}; node = {node:#?}, parent = {parent:#?}",
+                    "{ctx}WAVL rank rule violation: rank difference must be 1 or 2, but was {rank_diff}; node = {node:#?}, parent = {parent:#?}",
                 );
                 if node_links.is_leaf() {
                     assert_eq!(
                         node_links.rank(),
                         0,
-                        "WAVL rank rule violation: leaf must be rank 0, but was {}",
+                        "{ctx}WAVL rank rule violation: leaf must be rank 0, but was {}",
                         node_links.rank(),
                     );
                 }
@@ -904,18 +904,18 @@ where
                 // Assert that values in the right subtree are indeed less
                 assert!(
                     left.as_ref().get_key() < node.as_ref().get_key(),
-                    "Ordering violation: left subtree is not less than node"
+                    "{ctx}Ordering violation: left subtree is not less than node"
                 );
-                Self::assert_valid_inner(left, node);
+                Self::assert_valid_inner(left, node, ctx);
             }
 
             if let Some(right) = node_links.right() {
                 // Assert that values in the right subtree are indeed greater
                 assert!(
                     right.as_ref().get_key() > node.as_ref().get_key(),
-                    "Ordering violation: right subtree is not greater than node"
+                    "{ctx}Ordering violation: right subtree is not greater than node"
                 );
-                Self::assert_valid_inner(right, node);
+                Self::assert_valid_inner(right, node, ctx);
             }
         }
     }
@@ -1628,7 +1628,7 @@ impl<T: ?Sized> Links<T> {
     ///
     /// Panics when an assertion does not hold.
     #[track_caller]
-    pub fn assert_valid(&self)
+    pub fn assert_valid(&self, ctx: &str)
     where
         T: Linked,
     {
@@ -1636,7 +1636,7 @@ impl<T: ?Sized> Links<T> {
             assert_ne!(
                 unsafe { T::links(parent) },
                 NonNull::from(self),
-                "node's parent cannot be itself; node={self:#?}"
+                "{ctx}node's parent cannot be itself; node={self:#?}"
             );
         }
 
@@ -1644,7 +1644,7 @@ impl<T: ?Sized> Links<T> {
             assert_ne!(
                 unsafe { T::links(left) },
                 NonNull::from(self),
-                "node's left child cannot be itself; node={self:#?}"
+                "{ctx}node's left child cannot be itself; node={self:#?}"
             );
         }
 
@@ -1652,28 +1652,28 @@ impl<T: ?Sized> Links<T> {
             assert_ne!(
                 unsafe { T::links(right) },
                 NonNull::from(self),
-                "node's right child cannot be itself; node={self:#?}"
+                "{ctx}node's right child cannot be itself; node={self:#?}"
             );
         }
         if let (Some(parent), Some(left)) = (self.parent(), self.left()) {
             assert_ne!(
                 unsafe { T::links(parent) },
                 unsafe { T::links(left) },
-                "node's parent and left child cannot be the same; node={self:#?}"
+                "{ctx}node's parent and left child cannot be the same; node={self:#?}"
             );
         }
         if let (Some(parent), Some(right)) = (self.parent(), self.right()) {
             assert_ne!(
                 unsafe { T::links(parent) },
                 unsafe { T::links(right) },
-                "node's parent and right child cannot be the same; node={self:#?}"
+                "{ctx}node's parent and right child cannot be the same; node={self:#?}"
             );
         }
         if let (Some(left), Some(right)) = (self.left(), self.right()) {
             assert_ne!(
                 unsafe { T::links(left) },
                 unsafe { T::links(right) },
-                "node's left and right children cannot be the same; node={self:#?}"
+                "{ctx}node's left and right children cannot be the same; node={self:#?}"
             );
         }
     }
