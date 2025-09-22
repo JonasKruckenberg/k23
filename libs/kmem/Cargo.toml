@@ -6,11 +6,19 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+wavltree = { workspace = true, features = ["dot"] }
+
+# 3rd-party dependencies
 lock_api.workspace = true
 anyhow.workspace = true
 mycelium-bitfield.workspace = true
-wavltree.workspace = true
 pin-project.workspace = true
+rand_chacha.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+rand = { workspace = true, features = ["os_rng"] }
+libm = "0.2.15"
 
 [lints]
 workspace = true
