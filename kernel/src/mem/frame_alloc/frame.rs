@@ -133,11 +133,13 @@ impl Frame {
     }
 
     /// Asserts the `Frame` is in a valid state.
-    pub fn assert_valid(&self) {
+    pub fn assert_valid(&self, ctx: &str) {
         let refcount = self.info().refcount.load(Ordering::Acquire);
-        assert!(refcount > 0);
-        assert!(refcount < MAX_REFCOUNT);
-        self.info().assert_valid();
+        assert!(
+            refcount < MAX_REFCOUNT,
+            "{ctx}refcount overflowed (must only be within 0..{MAX_REFCOUNT})"
+        );
+        self.info().assert_valid(ctx);
     }
 
     #[inline]
@@ -267,7 +269,7 @@ impl FrameInfo {
     }
 
     #[inline]
-    pub fn assert_valid(&self) {
+    pub fn assert_valid(&self, _ctx: &str) {
         // TODO add asserts here as we add more fields
     }
 }

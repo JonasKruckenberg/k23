@@ -117,7 +117,8 @@ impl FrameAllocator {
         let frame = unsafe { Frame::from_free_info(frame) };
 
         #[cfg(debug_assertions)]
-        frame.assert_valid();
+        frame.assert_valid("FrameAllocator::alloc_one after allocation");
+
         Ok(frame)
     }
 
@@ -164,8 +165,10 @@ impl FrameAllocator {
             // Safety: we just allocated the frame
             unsafe { Frame::from_free_info(info) }
         }));
+
         #[cfg(debug_assertions)]
-        frames.assert_valid();
+        frames.assert_valid("FrameAllocator::allocate_contiguous after allocation");
+
         Ok(frames)
     }
 
