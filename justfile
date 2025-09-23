@@ -38,14 +38,14 @@ build profile args="" *qemu_args="":
 
 # quick check for development
 check crate="" *cargo_args="":
-    {{ _cargo }} check \
+    RUSTFLAGS=-Dwarnings {{ _cargo }} check \
         {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch" } else { "-p" } }} {{ crate }} \
         --target profile/riscv64/riscv64gc-k23-none-kernel.json \
         --locked \
         {{ _buildstd }} \
         {{ _fmt }} \
         {{ cargo_args }}
-    KERNEL=Cargo.toml {{ _cargo }} check \
+    RUSTFLAGS=-Dwarnings KERNEL=Cargo.toml {{ _cargo }} check \
         -p loader \
         --target riscv64gc-unknown-none-elf \
         {{ _buildstd }} \
@@ -61,14 +61,14 @@ lint crate="" *cargo_args="": (clippy crate cargo_args) (check-fmt crate cargo_a
 
 # run clippy on a crate or the entire workspace.
 clippy crate="" *cargo_args="":
-    {{ _cargo }} clippy \
+    RUSTFLAGS=-Dwarnings {{ _cargo }} clippy \
         {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch" } else { "-p" } }} {{ crate }} \
         --target profile/riscv64/riscv64gc-k23-none-kernel.json \
         --locked \
         {{ _buildstd }} \
         {{ _fmt_clippy }} \
         {{ cargo_args }}
-    KERNEL=Cargo.toml {{ _cargo }} clippy \
+    RUSTFLAGS=-Dwarnings KERNEL=Cargo.toml {{ _cargo }} clippy \
             -p loader \
             --target riscv64gc-unknown-none-elf \
             --locked \
@@ -91,7 +91,7 @@ check-fmt crate="" *cargo_args="":
 _hosted_crates := "-p kaddr2line -p kmem -p cpu-local -p fastrand -p fdt -p kasync --features counters -p ksharded-slab -p spin -p wast@228.0.0 -p wavltree"
 # run hosted tests
 test crate="" *cargo_args="": _get-nextest
-    {{ _cargo }} {{ _testcmd }} \
+    RUSTFLAGS=-Dwarnings {{ _cargo }} {{ _testcmd }} \
             {{ if crate == "" { _hosted_crates } else { "-p" + crate } }} \
             --lib \
             --no-fail-fast \
@@ -102,7 +102,7 @@ _miri_crates := "-p kasync --features counters -p ksharded-slab -p spin -p wavlt
 # run hosted tests under miri
 miri crate="" *cargo_args="": _get-nextest
     MIRIFLAGS="{{ env_var_or_default("MIRIFLAGS", "-Zmiri-strict-provenance -Zmiri-disable-isolation") }} -Zmiri-env-forward=RUST_BACKTRACE -Zmiri-env-forward=RUST_LOG" \
-        RUSTFLAGS="{{ env_var_or_default("RUSTFLAGS", "-Zrandomize-layout") }}" \
+        RUSTFLAGS="{{ env_var_or_default("RUSTFLAGS", "-Dwarnings -Zrandomize-layout") }}" \
         {{ _cargo }} miri {{ _testcmd }} \
             {{ if crate == "" { _miri_crates } else { "-p" + crate } }} \
             --lib \
