@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 wavltree = { workspace = true, features = ["dot"] }
+cpu-local.workspace = true
 
 # 3rd-party dependencies
 lock_api.workspace = true
@@ -15,10 +16,13 @@ mycelium-bitfield.workspace = true
 pin-project.workspace = true
 rand_chacha.workspace = true
 rand.workspace = true
+smallvec.workspace = true
+cordyceps.workspace = true
+fallible-iterator.workspace = true
 
 [dev-dependencies]
-rand = { workspace = true, features = ["os_rng"] }
-libm = "0.2.15"
+proptest.workspace = true
+libm.workspace = true
 
 [lints]
 workspace = true

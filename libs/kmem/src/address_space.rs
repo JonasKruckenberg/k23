@@ -21,7 +21,29 @@ use wavltree::WAVLTree;
 use crate::address_space::region::AddressSpaceRegion;
 use crate::{AccessRules, AddressRangeExt, VirtualAddress};
 
-pub struct AddressSpace {
+/// # Safety
+///
+/// The correct and safe functioning of the entire crate depends on the correct implementation of this
+/// trait. In particular implementors must ensure:
+///
+/// - the declared PAGE_SIZE matches the actual smallest page size of the target.
+pub unsafe trait RawAddressSpace {
+    /// The smallest addressable chunk of memory of this address space. All address argument provided
+    /// to methods of this type (both virtual and physical) must be aligned to this.
+    const PAGE_SIZE: usize;
+    const VIRT_ADDR_BITS: u32;
+
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "cannot use try_from in const expr"
+    )]
+    const PAGE_SIZE_LOG_2: u8 = (Self::PAGE_SIZE - 1).count_ones() as u8;
+    const CANONICAL_ADDRESS_MASK: usize = !((1 << (Self::VIRT_ADDR_BITS)) - 1);
+}
+
+pub struct AddressSpace<R> {
+    #[expect(unused, reason = "used by later changes")]
+    raw: R,
     regions: WAVLTree<AddressSpaceRegion>,
     max_range: Range<VirtualAddress>,
     rng: Option<ChaCha20Rng>,
@@ -29,9 +51,19 @@ pub struct AddressSpace {
 
 // ===== impl AddressSpace =====
 
-impl AddressSpace {
-    pub const fn new(max_range: Range<VirtualAddress>, rng: Option<ChaCha20Rng>) -> Self {
+impl<R: RawAddressSpace> AddressSpace<R> {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "cannot use try_from in const expr"
+    )]
+    const __RAW_ASPACE_ASSERT: () = {
+        assert!(R::PAGE_SIZE.ilog2() as u8 == R::PAGE_SIZE_LOG_2,);
+        assert!(R::CANONICAL_ADDRESS_MASK == !((1 << (R::VIRT_ADDR_BITS)) - 1),);
+    };
+
+    pub const fn new(raw: R, max_range: Range<VirtualAddress>, rng: Option<ChaCha20Rng>) -> Self {
         Self {
+            raw,
             regions: WAVLTree::new(),
             max_range,
             rng,
@@ -545,74 +577,96 @@ mod tests {
     use rand::SeedableRng;
 
     use super::*;
+    use crate::test_utils::TestAddressSpace;
+
+    const PAGE_SIZE: usize = 4096;
+    /// Hardcoded seed for the ASLR CPRNG to remove the reliance on high-quality entropy for tests
+    /// (because that can be an issue in CI runners).
+    /// THIS MUST ONLY EVER BE USED FOR TESTS AND NEVER NEVER NEVER FOR PRODUCTION CODE
+    const ASLR_SEED: [u8; 32] = [
+        232, 66, 52, 206, 40, 195, 141, 166, 130, 237, 114, 177, 190, 54, 88, 88, 30, 196, 41, 165,
+        54, 85, 157, 181, 124, 91, 106, 9, 179, 48, 75, 245,
+    ];
 
     #[test]
     fn find_spot_for_no_aslr() {
         // ===== find a spot *after* the regions =====
-        let mut aspace = AddressSpace::new(VirtualAddress::MIN..VirtualAddress::MAX, None);
+        let mut aspace = AddressSpace::new(
+            TestAddressSpace::<PAGE_SIZE, 38>::new(),
+            VirtualAddress::MIN..VirtualAddress::MAX,
+            None,
+        );
 
         aspace.regions.insert(Box::pin(AddressSpaceRegion::new(
             VirtualAddress::new(0),
             AccessRules::new().with(AccessRules::READ, true),
-            Layout::from_size_align(4 * 4096, 4096).unwrap(),
+            Layout::from_size_align(4 * PAGE_SIZE, PAGE_SIZE).unwrap(),
         )));
 
         aspace.regions.insert(Box::pin(AddressSpaceRegion::new(
-            VirtualAddress::new(4 * 4096),
+            VirtualAddress::new(4 * PAGE_SIZE),
             AccessRules::new().with(AccessRules::READ, true),
-            Layout::from_size_align(4 * 4096, 4096).unwrap(),
+            Layout::from_size_align(4 * PAGE_SIZE, PAGE_SIZE).unwrap(),
         )));
 
         // we know the following: NO gap to the left, NO gap between the regions and A BIG gap after
         // we therefore expect even the smallest layout to be placed AFTER 9 * 4096
         let spot = aspace
-            .find_spot_for(Layout::from_size_align(4096, 4096).unwrap())
+            .find_spot_for(Layout::from_size_align(PAGE_SIZE, PAGE_SIZE).unwrap())
             .unwrap();
 
-        assert_eq!(spot, VirtualAddress::new(8 * 4096));
+        assert_eq!(spot, VirtualAddress::new(8 * PAGE_SIZE));
 
         // ===== find a spot *between* the regions =====
 
-        let mut aspace = AddressSpace::new(VirtualAddress::MIN..VirtualAddress::MAX, None);
+        let mut aspace = AddressSpace::new(
+            TestAddressSpace::<PAGE_SIZE, 38>::new(),
+            VirtualAddress::MIN..VirtualAddress::MAX,
+            None,
+        );
 
         aspace.regions.insert(Box::pin(AddressSpaceRegion::new(
             VirtualAddress::new(0),
             AccessRules::new().with(AccessRules::READ, true),
-            Layout::from_size_align(4 * 4096, 4096).unwrap(),
+            Layout::from_size_align(4 * PAGE_SIZE, PAGE_SIZE).unwrap(),
         )));
 
         aspace.regions.insert(Box::pin(AddressSpaceRegion::new(
-            VirtualAddress::new(5 * 4096),
+            VirtualAddress::new(5 * PAGE_SIZE),
             AccessRules::new().with(AccessRules::READ, true),
-            Layout::from_size_align(4 * 4096, 4096).unwrap(),
+            Layout::from_size_align(4 * PAGE_SIZE, PAGE_SIZE).unwrap(),
         )));
 
         // we know the following: NO gap to the left, ONE page gap between the regions and A BIG gap after
         let spot = aspace
-            .find_spot_for(Layout::from_size_align(4096, 4096).unwrap())
+            .find_spot_for(Layout::from_size_align(PAGE_SIZE, PAGE_SIZE).unwrap())
             .unwrap();
 
-        assert_eq!(spot, VirtualAddress::new(4 * 4096));
+        assert_eq!(spot, VirtualAddress::new(4 * PAGE_SIZE));
 
         // ===== find a spot *before* the regions =====
 
-        let mut aspace = AddressSpace::new(VirtualAddress::MIN..VirtualAddress::MAX, None);
+        let mut aspace = AddressSpace::new(
+            TestAddressSpace::<PAGE_SIZE, 38>::new(),
+            VirtualAddress::MIN..VirtualAddress::MAX,
+            None,
+        );
 
         aspace.regions.insert(Box::pin(AddressSpaceRegion::new(
-            VirtualAddress::new(4 * 4096),
+            VirtualAddress::new(4 * PAGE_SIZE),
             AccessRules::new().with(AccessRules::READ, true),
-            Layout::from_size_align(4 * 4096, 4096).unwrap(),
+            Layout::from_size_align(4 * PAGE_SIZE, PAGE_SIZE).unwrap(),
         )));
 
         aspace.regions.insert(Box::pin(AddressSpaceRegion::new(
-            VirtualAddress::new(8 * 4096),
+            VirtualAddress::new(8 * PAGE_SIZE),
             AccessRules::new().with(AccessRules::READ, true),
-            Layout::from_size_align(4 * 4096, 4096).unwrap(),
+            Layout::from_size_align(4 * PAGE_SIZE, PAGE_SIZE).unwrap(),
         )));
 
         // we know the following: NO gap to the left, ONE page gap between the regions and A BIG gap after
         let spot = aspace
-            .find_spot_for(Layout::from_size_align(4096, 4096).unwrap())
+            .find_spot_for(Layout::from_size_align(PAGE_SIZE, PAGE_SIZE).unwrap())
             .unwrap();
 
         assert_eq!(spot, VirtualAddress::new(0));
@@ -623,8 +677,9 @@ mod tests {
         let layout = Layout::from_size_align(4096, 4096).unwrap();
 
         let mut aspace = AddressSpace::new(
+            TestAddressSpace::<PAGE_SIZE, 38>::new(),
             VirtualAddress::MIN..VirtualAddress::MAX,
-            Some(ChaCha20Rng::from_os_rng()),
+            Some(ChaCha20Rng::from_seed(ASLR_SEED)),
         );
 
         // first we fill up the address space with 100 randomly placed regions just so

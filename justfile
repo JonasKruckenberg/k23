@@ -88,7 +88,7 @@ check-fmt crate="" *cargo_args="":
 # ==============================================================================
 
 # crates that have hosted tests
-_hosted_crates := "-p kaddr2line -p kmem -p cpu-local -p fastrand -p fdt -p kasync --features counters -p ksharded-slab -p spin -p wast@228.0.0 -p wavltree"
+_hosted_crates := "-p kaddr2line -p kmem -p cpu-local -p kfastrand -p fdt -p kasync --features counters -p ksharded-slab -p spin -p wast@228.0.0 -p wavltree"
 # run hosted tests
 test crate="" *cargo_args="": _get-nextest
     RUSTFLAGS=-Dwarnings {{ _cargo }} {{ _testcmd }} \
