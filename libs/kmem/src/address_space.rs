@@ -7,10 +7,12 @@
 
 mod region;
 
+use alloc::boxed::Box;
 use core::alloc::Layout;
 use core::ops::{ControlFlow, Range};
 use core::ptr::NonNull;
 
+use anyhow::{Context, format_err};
 use rand::Rng;
 use rand::distr::Uniform;
 use rand_chacha::ChaCha20Rng;
@@ -53,15 +55,29 @@ impl AddressSpace {
     ///
     /// Returning `Err` indicates the layout does not meet the address space's size or alignment
     /// constraints, virtual memory is exhausted, or mapping otherwise fails.
-    #[expect(unused, reason = "used by later change")]
-    pub fn map<R: lock_api::RawRwLock>(
+    pub fn map(
         &mut self,
         layout: Layout,
         access_rules: AccessRules,
     ) -> crate::Result<NonNull<[u8]>> {
-        // self.regions.insert(AddressSpaceRegion::new());
+        #[cfg(debug_assertions)]
+        self.assert_valid("[AddressSpace::map]");
 
-        todo!()
+        let spot = self
+            .find_spot_for(layout)
+            .with_context(|| format_err!("cannot find free spot for layout {layout:?}"))?;
+
+        let region = AddressSpaceRegion::new(
+            spot,
+            access_rules,
+            #[cfg(debug_assertions)]
+            layout,
+        );
+        let region = self.regions.insert(Box::pin(region));
+
+        // TODO OPTIONAL eagerly commit a few pages
+
+        Ok(region.as_non_null())
     }
 
     /// Attempts to extend the virtual memory reservation.
@@ -304,7 +320,6 @@ impl AddressSpace {
     /// the address space just that the *combination* of `layout.size()` and `layout.align()` cannot
     /// be satisfied *at the moment*. Calls to this method will a different size, alignment, or at a
     /// different time might still succeed.
-    #[cfg_attr(not(test), expect(unused, reason = "used by tests and later changes"))]
     fn find_spot_for(&mut self, layout: Layout) -> Option<VirtualAddress> {
         // The algorithm we use here - loosely based on Zircon's (Fuchsia's) implementation - is
         // guaranteed to find a spot (if any even exist) with max 2 attempts. Additionally, it works
