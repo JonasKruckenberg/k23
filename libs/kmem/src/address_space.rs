@@ -646,11 +646,13 @@ mod tests {
         assert!(passed, "test returned P-value of {pval} (expected >= 0.01)");
     }
 
-    /// Implements the Frequency (Monobit) Test from NIST
-    /// "STATISTICAL TEST SUITE FOR RANDOM AND PSEUDORANDOM NUMBER GENERATORS FOR CRYPTOGRAPHIC APPLICATIONS"
+    /// Implements the Frequency (Monobit) Test
+    ///
+    /// This function calculates the proportion of zero-bits and one-bits in `spots` expecting
+    /// it to be approximately the same as for a truly random sequence.
+    ///
+    /// from NIST "STATISTICAL TEST SUITE FOR RANDOM AND PSEUDORANDOM NUMBER GENERATORS FOR CRYPTOGRAPHIC APPLICATIONS"
     /// (<https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-22r1a.pdf>)
-    ///
-    ///
     pub fn frequency_test(spots: &[VirtualAddress]) -> (bool, f64) {
         const TEST_THRESHOLD: f64 = 0.01;
 
