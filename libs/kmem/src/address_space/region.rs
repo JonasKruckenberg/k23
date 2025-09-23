@@ -15,7 +15,7 @@ use core::{cmp, mem};
 
 use pin_project::pin_project;
 
-use crate::{AccessRules, VirtualAddress};
+use crate::{AccessRules, AddressRangeExt, VirtualAddress};
 
 #[pin_project(!Unpin)]
 #[derive(Debug)]
@@ -54,10 +54,19 @@ impl AddressSpaceRegion {
         }
     }
 
+    /// Returns this regions address range.
     pub const fn range(&self) -> &Range<VirtualAddress> {
         &self.range
     }
 
+    /// Returns a `NonNull` to this regions address range as a byte slice.
+    pub fn as_non_null(&self) -> NonNull<[u8]> {
+        let ptr = self.range.start.as_non_null().unwrap();
+        NonNull::slice_from_raw_parts(ptr, self.range.size())
+    }
+
+    /// Returns the largest range covered by this region and all it's binary-search-tree children,
+    /// used during gap-searching.
     pub const fn subtree_range(&self) -> &Range<VirtualAddress> {
         &self.subtree_range
     }
