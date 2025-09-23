@@ -332,8 +332,6 @@ impl AddressSpace {
         // Note that in practice, we use a binary tree to keep track of regions, and we use binary search
         // to optimize the search for a suitable gap instead of linear iteration.
 
-        let layout = layout.pad_to_align();
-
         // First attempt: guess a random target index
         let max_candidate_spots = self.max_range.size();
 
