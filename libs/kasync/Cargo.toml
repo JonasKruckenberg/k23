@@ -14,7 +14,7 @@ harness = false
 util.workspace = true
 cpu-local.workspace = true
 spin.workspace = true
-fastrand.workspace = true
+kfastrand.workspace = true
 panic-unwind2 = { workspace = true, optional = true }
 cordyceps.workspace = true
 

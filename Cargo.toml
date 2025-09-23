@@ -91,7 +91,7 @@ fdt = { path = "libs/fdt" }
 ksharded-slab = { path = "libs/ksharded-slab" }
 ktest = { path = "libs/ktest" }
 uart-16550 = { path = "libs/uart-16550" }
-fastrand = { path = "libs/fastrand" }
+kfastrand = { path = "libs/kfastrand" }
 abort = { path = "libs/abort" }
 panic-unwind2 = { path = "libs/panic-unwind2" }
 util = { path = "libs/util"}
@@ -144,6 +144,10 @@ cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime.git", 
 cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["core"] }
 cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false }
 wasmtime-slab = "34.0.0"
+
+# dev dependencies
+proptest = "1.8.0"
+libm = "0.2.15"
 
 # build dependencies
 proc-macro2 = "1"

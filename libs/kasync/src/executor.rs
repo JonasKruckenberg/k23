@@ -15,8 +15,8 @@ use core::sync::atomic::Ordering;
 
 use cordyceps::mpsc_queue::{MpscQueue, TryDequeueError};
 use cpu_local::collection::CpuLocal;
-use fastrand::FastRand;
 use futures::pin_mut;
+use kfastrand::FastRand;
 use spin::Backoff;
 
 use crate::error::{Closed, SpawnError};

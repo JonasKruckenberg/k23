@@ -12,9 +12,15 @@ extern crate alloc;
 mod access_rules;
 mod address_space;
 mod addresses;
+mod frame;
+mod frame_allocator;
+#[cfg(test)]
+mod test_utils;
 
 pub type Result<T> = anyhow::Result<T>;
 
 pub use access_rules::{AccessRules, WriteOrExecute};
-pub use address_space::AddressSpace;
+pub use address_space::{AddressSpace, RawAddressSpace};
 pub use addresses::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+pub use frame::Frame;
+pub use frame_allocator::{AreaSelection, FrameAllocator, SelectionError, select_areas};
