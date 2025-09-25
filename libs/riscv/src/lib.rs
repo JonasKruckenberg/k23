@@ -11,6 +11,7 @@
 #![allow(edition_2024_expr_fragment_specifier, reason = "vetted usage")]
 
 mod error;
+pub mod extensions;
 pub mod hio;
 pub mod interrupt;
 mod macros;
