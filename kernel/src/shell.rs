@@ -31,7 +31,7 @@ use crate::mem::{Mmap, PhysicalAddress, with_kernel_aspace};
 use crate::state::global;
 use crate::{arch, irq};
 
-static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
+static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN, HELLOWORLD];
 
 pub fn init(devtree: &'static DeviceTree, sched: &'static Executor, num_cpus: usize) {
     // The `Barrier` below is here so that the maybe verbose startup logging is
@@ -184,6 +184,23 @@ const SHUTDOWN: Command = Command::new("shutdown")
         global().executor.close();
 
         Ok(())
+    });
+
+const HELLOWORLD: Command = Command::new("helloworld")
+    .with_help("run a Hello World WASM module to test WASI integration.")
+    .with_fn(|ctx| {
+        tracing::info!(target: "shell", "Running Hello World WASM module...");
+        
+        match crate::wasm::hello_world::run() {
+            Ok(()) => {
+                tracing::info!(target: "shell", "Hello World completed successfully!");
+                Ok(())
+            }
+            Err(e) => {
+                tracing::error!(target: "shell", "Failed to run Hello World: {}", e);
+                Err(ctx.other_error("WASM execution failed"))
+            }
+        }
     });
 
 #[derive(Debug)]

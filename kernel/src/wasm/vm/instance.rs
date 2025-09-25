@@ -958,7 +958,7 @@ impl Instance {
         }
     }
 
-    pub(super) fn defined_or_imported_memory(
+    pub fn defined_or_imported_memory(
         &mut self,
         index: MemoryIndex,
     ) -> NonNull<VMMemoryDefinition> {
