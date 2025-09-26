@@ -10,26 +10,20 @@ cfg_if::cfg_if! {
         pub(crate) use loom::sync;
         pub(crate) use loom::cell;
         pub(crate) use loom::thread;
+        pub(crate) use loom::model;
+        pub(crate) use loom::lazy_static;
+        pub(crate) use loom::MAX_THREADS;
     } else {
+        #[cfg(not(test))]
+        pub(crate) use core::sync;
+        #[cfg(test)]
+        pub(crate) use std::sync;
         #[cfg(test)]
         pub(crate) use std::thread;
-
         #[cfg(test)]
-        #[inline(always)]
-        pub(crate) fn model<F>(f: F)
-        where
-            F: Fn() + Sync + Send + 'static,
-        {
-            f()
-        }
-
-        pub(crate) mod sync {
-            pub(crate) use core::sync::*;
-
-
-            #[cfg(test)]
-            pub(crate) use std::sync::*;
-        }
+        pub(crate) use lazy_static::lazy_static;
+        #[cfg(test)]
+        pub const MAX_THREADS: usize = 8;
 
         pub(crate) mod cell {
             #[derive(Debug)]
@@ -65,6 +59,15 @@ cfg_if::cfg_if! {
                     self.0.into_inner()
                 }
             }
+        }
+
+        #[cfg(test)]
+        #[inline(always)]
+        pub(crate) fn model<F>(f: F)
+        where
+            F: Fn() + Sync + Send + 'static,
+        {
+            f()
         }
     }
 }

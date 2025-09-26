@@ -5,11 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::hint;
-
 use util::loom_const_fn;
 
-use crate::Mutex;
+use crate::{Backoff, Mutex};
 
 pub struct Barrier {
     lock: Mutex<BarrierState>,
@@ -44,12 +42,13 @@ impl Barrier {
         if lock.count < self.num_threads {
             // not the leader
             let local_gen = lock.generation_id;
+            let mut boff = Backoff::new();
 
             while local_gen == lock.generation_id && lock.count < self.num_threads {
                 drop(lock);
-                #[cfg(loom)]
-                crate::loom::thread::yield_now();
-                hint::spin_loop();
+
+                boff.spin();
+
                 lock = self.lock.lock();
             }
             BarrierWaitResult(false)
@@ -71,40 +70,47 @@ impl BarrierWaitResult {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::mpsc::{TryRecvError, channel};
+    use std::sync::mpsc::TryRecvError;
 
     use super::*;
+    use crate::loom;
     use crate::loom::sync::Arc;
+    use crate::loom::sync::mpsc::channel;
     use crate::loom::thread;
 
     #[test]
     fn test_barrier() {
-        const N: usize = 10;
+        loom::model(|| {
+            const N: usize = loom::MAX_THREADS;
 
-        let barrier = Arc::new(Barrier::new(N));
-        let (tx, rx) = channel();
+            let barrier = Arc::new(Barrier::new(N));
+            let (tx, rx) = channel();
 
-        for _ in 0..N - 1 {
-            let c = barrier.clone();
-            let tx = tx.clone();
-            thread::spawn(move || {
-                tx.send(c.wait().is_leader()).unwrap();
-            });
-        }
-
-        // At this point, all spawned threads should be blocked,
-        // so we shouldn't get anything from the port
-        assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
-
-        let mut leader_found = barrier.wait().is_leader();
-
-        // Now, the barrier is cleared and we should get data.
-        for _ in 0..N - 1 {
-            if rx.recv().unwrap() {
-                assert!(!leader_found);
-                leader_found = true;
+            for _ in 0..N - 1 {
+                let c = barrier.clone();
+                let tx = tx.clone();
+                thread::spawn(move || {
+                    tx.send(c.wait().is_leader()).unwrap();
+                });
             }
-        }
-        assert!(leader_found);
+
+            // At this point, all spawned threads should be blocked,
+            // so we shouldn't get anything from the port
+            assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
+
+            #[cfg(loom)]
+            crate::loom::thread::yield_now();
+
+            let mut leader_found = barrier.wait().is_leader();
+
+            // Now, the barrier is cleared and we should get data.
+            for _ in 0..N - 1 {
+                if rx.recv().unwrap() {
+                    assert!(!leader_found);
+                    leader_found = true;
+                }
+            }
+            assert!(leader_found);
+        })
     }
 }

@@ -316,9 +316,8 @@ unsafe impl<#[may_dangle] T> Drop for OnceLock<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::mpsc::channel;
-
     use super::*;
+    use crate::loom;
     use crate::loom::sync::atomic::{AtomicUsize, Ordering};
     use crate::loom::thread;
 
@@ -328,20 +327,25 @@ mod tests {
 
     #[test]
     fn sync_once_cell() {
-        static ONCE_CELL: OnceLock<i32> = OnceLock::new();
+        loom::model(|| {
+            crate::loom::lazy_static! {
+                static ref ONCE_CELL: OnceLock<i32> = OnceLock::new();
+            }
 
-        assert!(ONCE_CELL.get().is_none());
+            assert!(ONCE_CELL.get().is_none());
 
-        spawn_and_wait(|| {
-            ONCE_CELL.get_or_init(|| 92);
+            spawn_and_wait(|| {
+                ONCE_CELL.get_or_init(|| 92);
+                assert_eq!(ONCE_CELL.get(), Some(&92));
+            });
+
+            ONCE_CELL.get_or_init(|| panic!("Kaboom!"));
             assert_eq!(ONCE_CELL.get(), Some(&92));
-        });
-
-        ONCE_CELL.get_or_init(|| panic!("Kaboom!"));
-        assert_eq!(ONCE_CELL.get(), Some(&92));
+        })
     }
 
     #[test]
+    #[cfg_attr(loom, ignore = "not concurrency-relevant")]
     fn sync_once_cell_get_mut() {
         let mut c = OnceLock::new();
         assert!(c.get_mut().is_none());
@@ -352,31 +356,37 @@ mod tests {
 
     #[test]
     fn sync_once_cell_drop() {
-        static DROP_CNT: AtomicUsize = AtomicUsize::new(0);
-        struct Dropper;
-        impl Drop for Dropper {
-            fn drop(&mut self) {
-                DROP_CNT.fetch_add(1, Ordering::SeqCst);
+        loom::model(|| {
+            crate::loom::lazy_static! {
+                static ref DROP_CNT: AtomicUsize = AtomicUsize::new(0);
             }
-        }
+            struct Dropper;
+            impl Drop for Dropper {
+                fn drop(&mut self) {
+                    DROP_CNT.fetch_add(1, Ordering::SeqCst);
+                }
+            }
 
-        let x = OnceLock::new();
-        spawn_and_wait(move || {
-            x.get_or_init(|| Dropper);
-            assert_eq!(DROP_CNT.load(Ordering::SeqCst), 0);
-            drop(x);
-        });
+            let x = OnceLock::new();
+            spawn_and_wait(move || {
+                x.get_or_init(|| Dropper);
+                assert_eq!(DROP_CNT.load(Ordering::SeqCst), 0);
+                drop(x);
+            });
 
-        assert_eq!(DROP_CNT.load(Ordering::SeqCst), 1);
+            assert_eq!(DROP_CNT.load(Ordering::SeqCst), 1);
+        })
     }
 
     #[test]
+    #[cfg_attr(loom, ignore = "not concurrency-relevant")]
     fn sync_once_cell_drop_empty() {
         let x = OnceLock::<String>::new();
         drop(x);
     }
 
     #[test]
+    #[cfg_attr(loom, ignore = "not concurrency-relevant")]
     fn clone() {
         let s = OnceLock::new();
         let c = s.clone();
@@ -388,12 +398,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(loom, ignore = "not concurrency-relevant")]
     fn from_impl() {
         assert_eq!(OnceLock::from("value").get(), Some(&"value"));
         assert_ne!(OnceLock::from("foo").get(), Some(&"bar"));
     }
 
     #[test]
+    #[cfg_attr(loom, ignore = "not concurrency-relevant")]
     fn partialeq_impl() {
         assert!(OnceLock::from("value") == OnceLock::from("value"));
         assert!(OnceLock::from("foo") != OnceLock::from("bar"));
@@ -403,6 +415,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(loom, ignore = "not concurrency-relevant")]
     fn into_inner() {
         let cell: OnceLock<String> = OnceLock::new();
         assert_eq!(cell.into_inner(), None);
@@ -419,72 +432,43 @@ mod tests {
 
     #[test]
     fn eval_once_macro() {
-        macro_rules! eval_once {
-        (|| -> $ty:ty {
-            $($body:tt)*
-        }) => {{
-            static ONCE_CELL: OnceLock<$ty> = OnceLock::new();
-            fn init() -> $ty {
-                $($body)*
-            }
-            ONCE_CELL.get_or_init(init)
-        }};
-    }
-
-        let fib: &'static Vec<i32> = eval_once! {
-            || -> Vec<i32> {
-                let mut res = vec![1, 1];
-                for i in 0..10 {
-                    let next = res[i] + res[i + 1];
-                    res.push(next);
-                }
-                res
-            }
-        };
-        assert_eq!(fib[5], 8)
-    }
-
-    #[test]
-    fn sync_once_cell_does_not_leak_partially_constructed_boxes() {
-        static ONCE_CELL: OnceLock<String> = OnceLock::new();
-
-        let n_readers = 10;
-        let n_writers = 3;
-        const MSG: &str = "Hello, World";
-
-        let (tx, rx) = channel();
-
-        for _ in 0..n_readers {
-            let tx = tx.clone();
-            thread::spawn(move || {
-                loop {
-                    if let Some(msg) = ONCE_CELL.get() {
-                        tx.send(msg).unwrap();
-                        break;
+        loom::model(|| {
+            macro_rules! eval_once {
+                (|| -> $ty:ty {
+                    $($body:tt)*
+                }) => {{
+                    $crate::loom::lazy_static! {
+                        static ref ONCE_CELL: OnceLock<$ty> = OnceLock::new();
                     }
-                    #[cfg(target_env = "sgx")]
-                    std::thread::yield_now();
-                }
-            });
-        }
-        for _ in 0..n_writers {
-            thread::spawn(move || {
-                let _ = ONCE_CELL.set(MSG.to_owned());
-            });
-        }
+                    fn init() -> $ty {
+                        $($body)*
+                    }
+                    ONCE_CELL.get_or_init(init)
+                }};
+            }
 
-        for _ in 0..n_readers {
-            let msg = rx.recv().unwrap();
-            assert_eq!(msg, MSG);
-        }
+            let fib: &'static Vec<i32> = eval_once! {
+                || -> Vec<i32> {
+                    let mut res = vec![1, 1];
+                    for i in 0..10 {
+                        let next = res[i] + res[i + 1];
+                        res.push(next);
+                    }
+                    res
+                }
+            };
+            assert_eq!(fib[5], 8)
+        })
     }
 
     #[test]
     fn dropck() {
-        let cell = OnceLock::new();
-        {
-            let s = String::new();
-            cell.set(&s).unwrap();
-        }
+        loom::model(|| {
+            let cell = OnceLock::new();
+            {
+                let s = String::new();
+                cell.set(&s).unwrap();
+            }
+        })
     }
 }

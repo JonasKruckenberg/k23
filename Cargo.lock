@@ -1814,8 +1814,10 @@ name = "spin"
 version = "0.1.0"
 dependencies = [
  "cfg-if",
+ "lazy_static",
  "lock_api",
  "loom",
+ "rand",
  "util",
 ]
 
