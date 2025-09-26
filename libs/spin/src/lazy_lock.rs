@@ -172,7 +172,7 @@ mod tests {
     use super::*;
     use crate::loom::sync::atomic::{AtomicUsize, Ordering};
     use crate::loom::thread;
-    use crate::{Mutex, OnceLock};
+    use crate::{Mutex, loom};
 
     fn spawn_and_wait<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
         thread::spawn(f).join().unwrap()
@@ -180,104 +180,106 @@ mod tests {
 
     #[test]
     fn lazy_default() {
-        static CALLED: AtomicUsize = AtomicUsize::new(0);
-
-        struct Foo(u8);
-        impl Default for Foo {
-            fn default() -> Self {
-                CALLED.fetch_add(1, Ordering::SeqCst);
-                Foo(42)
+        loom::model(|| {
+            crate::loom::lazy_static! {
+                static ref CALLED: AtomicUsize = AtomicUsize::new(0);
             }
-        }
 
-        let lazy: LazyCell<Mutex<Foo>> = <_>::default();
+            struct Foo(u8);
+            impl Default for Foo {
+                fn default() -> Self {
+                    CALLED.fetch_add(1, Ordering::SeqCst);
+                    Foo(42)
+                }
+            }
 
-        assert_eq!(CALLED.load(Ordering::SeqCst), 0);
+            let lazy: LazyCell<Mutex<Foo>> = <_>::default();
 
-        assert_eq!(lazy.lock().0, 42);
-        assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+            assert_eq!(CALLED.load(Ordering::SeqCst), 0);
 
-        lazy.lock().0 = 21;
+            assert_eq!(lazy.lock().0, 42);
+            assert_eq!(CALLED.load(Ordering::SeqCst), 1);
 
-        assert_eq!(lazy.lock().0, 21);
-        assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+            lazy.lock().0 = 21;
+
+            assert_eq!(lazy.lock().0, 21);
+            assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+        })
     }
 
     #[test]
     fn sync_lazy_new() {
-        static CALLED: AtomicUsize = AtomicUsize::new(0);
-        static SYNC_LAZY: LazyLock<i32> = LazyLock::new(|| {
-            CALLED.fetch_add(1, Ordering::SeqCst);
-            92
-        });
+        loom::model(|| {
+            loom::lazy_static! {
+                static ref CALLED: AtomicUsize = AtomicUsize::new(0);
 
-        assert_eq!(CALLED.load(Ordering::SeqCst), 0);
+                static ref SYNC_LAZY: LazyLock<i32> = LazyLock::new(|| {
+                    CALLED.fetch_add(1, Ordering::SeqCst);
+                    92
+                });
+            }
 
-        spawn_and_wait(|| {
-            let y = *SYNC_LAZY - 30;
+            assert_eq!(CALLED.load(Ordering::SeqCst), 0);
+
+            spawn_and_wait(|| {
+                let y = **SYNC_LAZY - 30;
+                assert_eq!(y, 62);
+                assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+            });
+
+            let y = **SYNC_LAZY - 30;
             assert_eq!(y, 62);
             assert_eq!(CALLED.load(Ordering::SeqCst), 1);
-        });
-
-        let y = *SYNC_LAZY - 30;
-        assert_eq!(y, 62);
-        assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+        })
     }
 
     #[test]
     fn sync_lazy_default() {
-        static CALLED: AtomicUsize = AtomicUsize::new(0);
-
-        struct Foo(u8);
-        impl Default for Foo {
-            fn default() -> Self {
-                CALLED.fetch_add(1, Ordering::SeqCst);
-                Foo(42)
+        loom::model(|| {
+            loom::lazy_static! {
+                static ref CALLED: AtomicUsize = AtomicUsize::new(0);
             }
-        }
 
-        let lazy: LazyLock<Mutex<Foo>> = <_>::default();
+            struct Foo(u8);
+            impl Default for Foo {
+                fn default() -> Self {
+                    CALLED.fetch_add(1, Ordering::SeqCst);
+                    Foo(42)
+                }
+            }
 
-        assert_eq!(CALLED.load(Ordering::SeqCst), 0);
+            let lazy: LazyLock<Mutex<Foo>> = <_>::default();
 
-        assert_eq!(lazy.lock().0, 42);
-        assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+            assert_eq!(CALLED.load(Ordering::SeqCst), 0);
 
-        lazy.lock().0 = 21;
+            assert_eq!(lazy.lock().0, 42);
+            assert_eq!(CALLED.load(Ordering::SeqCst), 1);
 
-        assert_eq!(lazy.lock().0, 21);
-        assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+            lazy.lock().0 = 21;
+
+            assert_eq!(lazy.lock().0, 21);
+            assert_eq!(CALLED.load(Ordering::SeqCst), 1);
+        })
     }
 
     #[test]
     fn static_sync_lazy() {
-        static XS: LazyLock<Vec<i32>> = LazyLock::new(|| {
-            let mut xs = Vec::new();
-            xs.push(1);
-            xs.push(2);
-            xs.push(3);
-            xs
-        });
+        loom::model(|| {
+            crate::loom::lazy_static! {
+                static ref XS: LazyLock<Vec<i32>> = LazyLock::new(|| {
+                    let mut xs = Vec::new();
+                    xs.push(1);
+                    xs.push(2);
+                    xs.push(3);
+                    xs
+                });
+            }
 
-        spawn_and_wait(|| {
-            assert_eq!(&*XS, &vec![1, 2, 3]);
-        });
+            spawn_and_wait(|| {
+                assert_eq!(&**XS, &vec![1, 2, 3]);
+            });
 
-        assert_eq!(&*XS, &vec![1, 2, 3]);
-    }
-
-    #[test]
-    fn static_sync_lazy_via_fn() {
-        fn xs() -> &'static Vec<i32> {
-            static XS: OnceLock<Vec<i32>> = OnceLock::new();
-            XS.get_or_init(|| {
-                let mut xs = Vec::new();
-                xs.push(1);
-                xs.push(2);
-                xs.push(3);
-                xs
-            })
-        }
-        assert_eq!(xs(), &vec![1, 2, 3]);
+            assert_eq!(&**XS, &vec![1, 2, 3]);
+        })
     }
 }

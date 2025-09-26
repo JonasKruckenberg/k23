@@ -110,7 +110,7 @@ miri crate="" *cargo_args="": _get-nextest
             {{ cargo_args }}
 
 # crates that have loom tests
-_loom_crates := "-p kasync --features counters"
+_loom_crates := "-p kasync --features counters -p spin"
 # run hosted tests under loom
 loom crate="" *cargo_args='': _get-nextest
     #!/usr/bin/env bash
