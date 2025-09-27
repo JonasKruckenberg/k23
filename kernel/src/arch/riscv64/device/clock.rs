@@ -17,39 +17,23 @@ static CLOCK_VTABLE: RawClockVTable =
     RawClockVTable::new(clone_raw, now_raw, schedule_wakeup_raw, drop_raw);
 
 unsafe fn clone_raw(ptr: *const ()) -> RawClock {
-    tracing::trace!(
-        clock.addr = ?ptr,
-        "RISCV CLOCK::clone_raw"
-    );
     debug_assert!(ptr.is_null());
     RawClock::new(ptr, &CLOCK_VTABLE)
 }
 
 unsafe fn now_raw(_ptr: *const ()) -> u64 {
-    tracing::trace!(
-        clock.addr = ?_ptr,
-        "RISCV CLOCK::now_raw"
-    );
     debug_assert!(_ptr.is_null());
 
     riscv::register::time::read64()
 }
 
 unsafe fn schedule_wakeup_raw(_ptr: *const (), at: u64) {
-    tracing::trace!(
-        clock.addr = ?_ptr,
-        "RISCV CLOCK::schedule_wakeup_raw"
-    );
     debug_assert!(_ptr.is_null());
 
     sbi::time::set_timer(at).unwrap();
 }
 
 unsafe fn drop_raw(_ptr: *const ()) {
-    tracing::trace!(
-        clock.addr = ?_ptr,
-        "RISCV CLOCK::drop_raw"
-    );
     debug_assert!(_ptr.is_null());
 }
 
