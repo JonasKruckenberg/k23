@@ -10,6 +10,7 @@ use core::arch::{asm, naked_asm};
 use core::cell::Cell;
 
 use cpu_local::cpu_local;
+use kmem::VirtualAddress;
 use riscv::scause::{Exception, Interrupt};
 use riscv::{
     load_fp, load_gp, save_fp, save_gp, scause, sepc, sip, sscratch, sstatus, stval, stvec,
@@ -18,7 +19,6 @@ use riscv::{
 use crate::arch::PAGE_SIZE;
 use crate::arch::trap::Trap;
 use crate::backtrace::Backtrace;
-use crate::mem::VirtualAddress;
 use crate::state::{cpu_local, global};
 use crate::{TRAP_STACK_SIZE_PAGES, irq};
 
@@ -278,9 +278,9 @@ extern "C-unwind" fn default_trap_handler(
         "{cause:?} {:?};epc={epc:#x};tval={tval:#x}",
         sstatus::read()
     );
-    let epc = VirtualAddress::new(epc).unwrap();
-    let tval = VirtualAddress::new(tval).unwrap();
-    let fp = VirtualAddress::new(frame.gp[8]).unwrap(); // fp is x8
+    let epc = VirtualAddress::new(epc);
+    let tval = VirtualAddress::new(tval);
+    let fp = VirtualAddress::new(frame.gp[8]); // fp is x8
 
     if IN_TRAP.replace(true) {
         handle_recursive_fault(frame, epc);

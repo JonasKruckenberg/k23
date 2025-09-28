@@ -8,6 +8,8 @@
 use core::ops::{Deref, DerefMut, Range};
 use core::{fmt, slice};
 
+use kmem::{PhysicalAddress, VirtualAddress};
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct BootInfo {
@@ -27,16 +29,16 @@ pub struct BootInfo {
     /// frames that are also mapped at other virtual addresses can easily break memory safety and
     /// cause undefined behavior. Only frames reported as `USABLE` by the memory map in the `BootInfo`
     /// can be safely accessed.
-    pub physical_address_offset: usize, // VirtualAddress
-    pub physical_memory_map: Range<usize>, // VirtualAddress
+    pub physical_address_offset: VirtualAddress,
+    pub physical_memory_map: Range<VirtualAddress>,
     /// The thread local storage (TLS) template of the kernel executable, if present.
     pub tls_template: Option<TlsTemplate>,
     /// Virtual address of the loaded kernel image.
-    pub kernel_virt: Range<usize>, // VirtualAddress
+    pub kernel_virt: Range<VirtualAddress>,
     /// Physical memory region where the kernel ELF file resides.
     ///
     /// This field can be used by the kernel to perform introspection of its own ELF file.
-    pub kernel_phys: Range<usize>, // PhysicalAddress
+    pub kernel_phys: Range<PhysicalAddress>,
 
     pub rng_seed: [u8; 32],
 }
@@ -108,7 +110,7 @@ impl From<MemoryRegions> for &'static mut [MemoryRegion] {
 #[repr(C)]
 pub struct MemoryRegion {
     /// The physical start address region.
-    pub range: Range<usize>, // PhysicalAddress
+    pub range: Range<PhysicalAddress>,
     /// The memory type of the memory region.
     ///
     /// Only [`Usable`][MemoryRegionKind::Usable] regions can be freely used.
@@ -140,28 +142,28 @@ impl fmt::Display for BootInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{:<23} : {:#x}",
+            "{:<23} : {}",
             "PHYSICAL ADDRESS OFFSET", self.physical_address_offset
         )?;
         writeln!(
             f,
-            "{:<23} : {:#x}..{:#x}",
+            "{:<23} : {}..{}",
             "PHYSICAL MEMORY MAP", self.physical_memory_map.start, self.physical_memory_map.end
         )?;
         writeln!(
             f,
-            "{:<23} : {:#x}..{:#x}",
+            "{:<23} : {}..{}",
             "KERNEL VIRT", self.kernel_virt.start, self.kernel_virt.end
         )?;
         writeln!(
             f,
-            "{:<23} : {:#x}..{:#x}",
+            "{:<23} : {}..{}",
             "KERNEL PHYS", self.kernel_phys.start, self.kernel_phys.end
         )?;
         if let Some(tls) = self.tls_template.as_ref() {
             writeln!(
                 f,
-                "{:<23} : .tdata: {:#x}..{:#x}, .tbss: {:#x}..{:#x}",
+                "{:<23} : .tdata: {:?}..{:?}, .tbss: {:?}..{:?}",
                 "TLS TEMPLATE",
                 tls.start_addr,
                 tls.start_addr.checked_add(tls.file_size).unwrap(),
@@ -175,7 +177,7 @@ impl fmt::Display for BootInfo {
             for (idx, region) in self.memory_regions.iter().enumerate() {
                 writeln!(
                     f,
-                    "MEMORY REGION {:<10}: {:#x}..{:#x} {:?}",
+                    "MEMORY REGION {:<10}: {}..{} {:?}",
                     idx, region.range.start, region.range.end, region.kind,
                 )?;
             }
@@ -189,7 +191,7 @@ impl fmt::Display for BootInfo {
 #[derive(Debug, Clone)]
 pub struct TlsTemplate {
     /// The address of TLS template
-    pub start_addr: usize, // VirtualAddress
+    pub start_addr: VirtualAddress,
     /// The size of the TLS segment in memory
     pub mem_size: usize,
     /// The size of the TLS segment in the elf file.

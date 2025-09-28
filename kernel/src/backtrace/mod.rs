@@ -13,13 +13,13 @@ use core::{fmt, slice};
 
 use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
+use kmem::{AddressRangeExt, VirtualAddress};
 use loader_api::BootInfo;
 use spin::OnceLock;
 use symbolize::SymbolizeContext;
 use unwind2::FrameIter;
 
 use crate::backtrace::print::BacktraceFmt;
-use crate::mem::VirtualAddress;
 
 static BACKTRACE_INFO: OnceLock<BacktraceInfo> = OnceLock::new();
 
@@ -65,22 +65,16 @@ pub struct Backtrace<'a, const MAX_FRAMES: usize> {
 impl BacktraceInfo {
     fn new(boot_info: &'static BootInfo, backtrace_style: BacktraceStyle) -> Self {
         BacktraceInfo {
-            kernel_virt_base: boot_info.kernel_virt.start as u64,
+            kernel_virt_base: boot_info.kernel_virt.start.get() as u64,
             // Safety: we have to trust the loaders BootInfo here
             elf: unsafe {
                 let base = boot_info
                     .physical_address_offset
-                    .checked_add(boot_info.kernel_phys.start)
-                    .unwrap() as *const u8;
+                    .checked_add(boot_info.kernel_phys.start.get())
+                    .unwrap()
+                    .as_ptr();
 
-                slice::from_raw_parts(
-                    base,
-                    boot_info
-                        .kernel_phys
-                        .end
-                        .checked_sub(boot_info.kernel_phys.start)
-                        .unwrap(),
-                )
+                slice::from_raw_parts(base, boot_info.kernel_phys.size())
             },
             symbolize_context: OnceLock::new(),
             backtrace_style,

@@ -7,6 +7,7 @@
 
 use core::alloc::Layout;
 
+use kmem::AddressRangeExt;
 use loader_api::BootInfo;
 use talc::{ErrOnOom, Span, Talc, Talck};
 
@@ -34,10 +35,7 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     tracing::debug!("Kernel Heap: {virt:#x?}");
 
     let mut alloc = KERNEL_ALLOCATOR.lock();
-    let span = Span::from_base_size(
-        virt.start as *mut u8,
-        virt.end.checked_sub(virt.start).unwrap(),
-    );
+    let span = Span::from_base_size(virt.start.as_mut_ptr(), virt.size());
 
     // Safety: just allocated the memory region
     unsafe {

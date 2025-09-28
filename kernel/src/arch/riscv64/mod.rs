@@ -18,9 +18,10 @@ use core::arch::asm;
 use anyhow::ensure;
 pub use asid_allocator::AsidAllocator;
 pub use block_on::block_on;
+use kmem::VirtualAddress;
 pub use mem::{
-    AddressSpace, CANONICAL_ADDRESS_MASK, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE,
-    USER_ASPACE_RANGE, invalidate_range, is_kernel_address,
+    AddressSpace, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_RANGE,
+    invalidate_range, is_canonical, is_kernel_address, is_user_address, phys_to_virt,
 };
 use riscv::sstatus::FS;
 use riscv::{interrupt, scounteren, sie, sstatus};
@@ -28,7 +29,6 @@ pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
 
 use crate::arch::device::cpu::Cpu;
 use crate::device_tree::DeviceTree;
-use crate::mem::VirtualAddress;
 
 pub const STACK_ALIGNMENT: usize = 16;
 

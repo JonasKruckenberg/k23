@@ -11,12 +11,13 @@ use core::ops::Range;
 use core::{cmp, iter, ptr, slice};
 
 use fallible_iterator::FallibleIterator;
+use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 use crate::arch;
 use crate::error::Error;
 
 pub struct FrameAllocator<'a> {
-    regions: &'a [Range<usize>],
+    regions: &'a [Range<PhysicalAddress>],
     // offset from the top of memory regions
     offset: usize,
 }
@@ -24,7 +25,7 @@ pub struct FrameAllocator<'a> {
 impl<'a> FrameAllocator<'a> {
     /// Create a new frame allocator over a given set of physical memory regions.
     #[must_use]
-    pub fn new(regions: &'a [Range<usize>]) -> Self {
+    pub fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
         Self { regions, offset: 0 }
     }
 
@@ -48,7 +49,10 @@ impl<'a> FrameAllocator<'a> {
         self.offset >> arch::PAGE_SHIFT
     }
 
-    pub fn allocate_one_zeroed(&mut self, phys_offset: usize) -> Result<usize, Error> {
+    pub fn allocate_one_zeroed(
+        &mut self,
+        phys_offset: VirtualAddress,
+    ) -> Result<PhysicalAddress, Error> {
         self.allocate_contiguous_zeroed(
             // Safety: the layout is always valid
             unsafe { Layout::from_size_align_unchecked(arch::PAGE_SIZE, arch::PAGE_SIZE) },
@@ -75,7 +79,7 @@ impl<'a> FrameAllocator<'a> {
     pub fn allocate_zeroed(
         &mut self,
         layout: Layout,
-        phys_offset: usize,
+        phys_offset: VirtualAddress,
     ) -> FrameIterZeroed<'a, '_> {
         FrameIterZeroed {
             inner: self.allocate(layout),
@@ -83,7 +87,7 @@ impl<'a> FrameAllocator<'a> {
         }
     }
 
-    pub fn allocate_contiguous(&mut self, layout: Layout) -> Result<usize, Error> {
+    pub fn allocate_contiguous(&mut self, layout: Layout) -> Result<PhysicalAddress, Error> {
         let requested_size = layout.pad_to_align().size();
         assert_eq!(
             layout.align(),
@@ -93,7 +97,7 @@ impl<'a> FrameAllocator<'a> {
         let mut offset = self.offset;
 
         for region in self.regions.iter().rev() {
-            let region_size = region.end.checked_sub(region.start).unwrap();
+            let region_size = region.size();
 
             // only consider regions that we haven't already exhausted
             if offset < region_size {
@@ -125,14 +129,14 @@ impl<'a> FrameAllocator<'a> {
     pub fn allocate_contiguous_zeroed(
         &mut self,
         layout: Layout,
-        phys_offset: usize,
-    ) -> Result<usize, Error> {
+        phys_offset: VirtualAddress,
+    ) -> Result<PhysicalAddress, Error> {
         let requested_size = layout.pad_to_align().size();
         let addr = self.allocate_contiguous(layout)?;
         // Safety: we just allocated the frame
         unsafe {
             ptr::write_bytes::<u8>(
-                phys_offset.checked_add(addr).unwrap() as *mut u8,
+                addr.checked_add(phys_offset.get()).unwrap().as_mut_ptr(),
                 0,
                 requested_size,
             );
@@ -153,7 +157,7 @@ impl<'a> FrameIter<'a, '_> {
 }
 
 impl FallibleIterator for FrameIter<'_, '_> {
-    type Item = (usize, NonZeroUsize);
+    type Item = (PhysicalAddress, NonZeroUsize);
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
@@ -161,10 +165,8 @@ impl FallibleIterator for FrameIter<'_, '_> {
             let mut offset = self.alloc.offset;
 
             for region in self.alloc.regions.iter().rev() {
-                let region_size = region.end.checked_sub(region.start).unwrap();
-
                 // only consider regions that we haven't already exhausted
-                if let Some(allocatable_size) = region_size.checked_sub(offset)
+                if let Some(allocatable_size) = region.size().checked_sub(offset)
                     && allocatable_size >= arch::PAGE_SIZE
                 {
                     let allocation_size = cmp::min(self.remaining, allocatable_size)
@@ -178,7 +180,7 @@ impl FallibleIterator for FrameIter<'_, '_> {
                     return Ok(Some((frame, NonZeroUsize::new(allocation_size).unwrap())));
                 }
 
-                offset -= region_size;
+                offset -= region.size();
             }
 
             Err(Error::NoMemory)
@@ -190,7 +192,7 @@ impl FallibleIterator for FrameIter<'_, '_> {
 
 pub struct FrameIterZeroed<'a, 'b> {
     inner: FrameIter<'a, 'b>,
-    phys_offset: usize,
+    phys_offset: VirtualAddress,
 }
 
 impl<'a> FrameIterZeroed<'a, '_> {
@@ -200,7 +202,7 @@ impl<'a> FrameIterZeroed<'a, '_> {
 }
 
 impl FallibleIterator for FrameIterZeroed<'_, '_> {
-    type Item = (usize, NonZeroUsize);
+    type Item = (PhysicalAddress, NonZeroUsize);
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
@@ -211,7 +213,10 @@ impl FallibleIterator for FrameIterZeroed<'_, '_> {
         // Safety: we just allocated the frame
         unsafe {
             ptr::write_bytes::<u8>(
-                self.phys_offset.checked_add(base).unwrap() as *mut u8,
+                self.phys_offset
+                    .checked_add(base.get())
+                    .unwrap()
+                    .as_mut_ptr(),
                 0,
                 len.get(),
             );
@@ -223,17 +228,18 @@ impl FallibleIterator for FrameIterZeroed<'_, '_> {
 
 pub struct FreeRegions<'a> {
     offset: usize,
-    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<usize>>>>,
+    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
 }
 
 impl Iterator for FreeRegions<'_> {
-    type Item = Range<usize>;
+    type Item = Range<PhysicalAddress>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let mut region = self.inner.next()?;
             // keep advancing past already fully used memory regions
-            let region_size = region.end.checked_sub(region.start).unwrap();
+            let region_size = region.size();
+
             if self.offset >= region_size {
                 self.offset -= region_size;
                 continue;
@@ -249,16 +255,16 @@ impl Iterator for FreeRegions<'_> {
 
 pub struct UsedRegions<'a> {
     offset: usize,
-    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<usize>>>>,
+    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<PhysicalAddress>>>>,
 }
 
 impl Iterator for UsedRegions<'_> {
-    type Item = Range<usize>;
+    type Item = Range<PhysicalAddress>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut region = self.inner.next()?;
 
-        if self.offset >= region.end.checked_sub(region.start).unwrap() {
+        if self.offset >= region.size() {
             Some(region)
         } else if self.offset > 0 {
             region.start = region.end.checked_sub(self.offset).unwrap();

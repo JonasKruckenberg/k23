@@ -17,6 +17,7 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 
 use anyhow::{bail, ensure};
+use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use rand::Rng;
 use rand::distr::Uniform;
 use rand_chacha::ChaCha20Rng;
@@ -24,10 +25,7 @@ use rand_chacha::ChaCha20Rng;
 use crate::arch;
 use crate::mem::address_space_region::AddressSpaceRegion;
 use crate::mem::frame_alloc::FrameAllocator;
-use crate::mem::{
-    AddressRangeExt, ArchAddressSpace, Flush, PageFaultFlags, Permissions, PhysicalAddress,
-    VirtualAddress,
-};
+use crate::mem::{ArchAddressSpace, Flush, PageFaultFlags, Permissions};
 
 // const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();
 const VIRT_ALLOC_ENTROPY: u8 = 27;
@@ -342,7 +340,7 @@ impl AddressSpace {
         // make sure addr is even a valid address for this address space
         match self.kind {
             AddressSpaceKind::User => ensure!(
-                addr.is_user_accessible(),
+                arch::is_user_address(addr),
                 "kernel fault in user space addr={addr}"
             ),
             AddressSpaceKind::Kernel => ensure!(
@@ -565,7 +563,7 @@ impl AddressSpace {
         };
         tracing::trace!("picked spot {spot}..{:?}", spot.checked_add(layout.size()));
 
-        debug_assert!(spot.is_canonical());
+        debug_assert!(arch::is_canonical(spot));
         Ok(spot)
     }
 

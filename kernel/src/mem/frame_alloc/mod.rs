@@ -22,12 +22,12 @@ use cordyceps::list::List;
 use cpu_local::collection::CpuLocal;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
+use kmem::PhysicalAddress;
 use spin::{Mutex, OnceLock};
 
 use crate::arch;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::mem::frame_alloc::frame_list::FrameList;
-use crate::mem::{PhysicalAddress, VirtualAddress};
 
 pub static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
 pub fn init(
@@ -127,7 +127,7 @@ impl FrameAllocator {
         let frame = self.alloc_one()?;
 
         // Translate the physical address into a virtual one through the physmap
-        let virt = VirtualAddress::from_phys(frame.addr()).unwrap();
+        let virt = arch::phys_to_virt(frame.addr()).unwrap();
 
         // memset'ing the slice to zero
         // Safety: the slice has just been allocated
@@ -178,7 +178,7 @@ impl FrameAllocator {
         let frames = self.alloc_contiguous(layout)?;
 
         // Translate the physical address into a virtual one through the physmap
-        let virt = VirtualAddress::from_phys(frames.first().unwrap().addr()).unwrap();
+        let virt = arch::phys_to_virt(frames.first().unwrap().addr()).unwrap();
 
         // memset'ing the slice to zero
         // Safety: the slice has just been allocated

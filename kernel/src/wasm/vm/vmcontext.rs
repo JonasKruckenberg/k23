@@ -16,9 +16,9 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
 
 use cranelift_entity::Unsigned;
+use kmem::VirtualAddress;
 use static_assertions::const_assert_eq;
 
-use crate::mem::VirtualAddress;
 use crate::wasm::builtins::{BuiltinFunctionIndex, foreach_builtin_function};
 use crate::wasm::indices::{DefinedMemoryIndex, VMSharedTypeIndex};
 use crate::wasm::store::StoreOpaque;

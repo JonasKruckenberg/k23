@@ -13,11 +13,11 @@ use core::{cmp, fmt, mem, slice};
 
 use cordyceps::List;
 use fallible_iterator::FallibleIterator;
+use kmem::{AddressRangeExt, PhysicalAddress};
 use smallvec::SmallVec;
 
 use super::frame::FrameInfo;
 use crate::arch;
-use crate::mem::address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 const ARENA_PAGE_BOOKKEEPING_SIZE: usize = size_of::<FrameInfo>();
 const MAX_WASTED_ARENA_BYTES: usize = 0x8_4000; // 528 KiB
@@ -61,7 +61,7 @@ impl Arena {
 
         // Safety: arena selection has ensured the region is valid
         let slots: &mut [MaybeUninit<FrameInfo>] = unsafe {
-            let ptr = VirtualAddress::from_phys(selection.bookkeeping.start)
+            let ptr = arch::phys_to_virt(selection.bookkeeping.start)
                 .unwrap()
                 .as_mut_ptr()
                 .cast();

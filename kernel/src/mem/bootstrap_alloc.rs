@@ -9,8 +9,9 @@ use core::alloc::Layout;
 use core::ops::Range;
 use core::{iter, ptr, slice};
 
+use kmem::{AddressRangeExt, PhysicalAddress};
+
 use crate::arch;
-use crate::mem::address::{AddressRangeExt, PhysicalAddress};
 
 pub struct BootstrapAllocator<'a> {
     regions: &'a [Range<PhysicalAddress>],
