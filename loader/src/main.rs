@@ -7,12 +7,11 @@
 
 #![no_std]
 #![no_main]
-#![feature(new_range_api)]
 #![feature(maybe_uninit_slice)]
 #![feature(alloc_layout_extra)]
 
 use core::ffi::c_void;
-use core::range::Range;
+use core::ops::Range;
 
 use arrayvec::ArrayVec;
 use rand::SeedableRng;
@@ -97,11 +96,11 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
 
     let fdt_phys = {
         let fdt = minfo.fdt.as_ptr_range();
-        Range::from(fdt.start as usize..fdt.end as usize)
+        fdt.start as usize..fdt.end as usize
     };
 
     // Initialize the frame allocator
-    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys);
+    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys.clone());
     log::debug!("allocatable memory regions {allocatable_memories:#x?}");
     let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
 
@@ -181,9 +180,9 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         frame_alloc,
         phys_off,
         phys_map,
-        kernel_virt,
+        kernel_virt.clone(),
         maybe_tls_alloc.as_ref().map(|alloc| alloc.template.clone()),
-        Range::from(self_regions.executable.start..self_regions.read_write.end),
+        self_regions.executable.start..self_regions.read_write.end,
         kernel.phys_range(),
         fdt_phys,
         minfo.hart_mask,
@@ -255,8 +254,8 @@ fn allocatable_memory_regions(
                 // remove region
                 continue;
             } else if region.contains(&to_exclude.start) && region.contains(&to_exclude.end) {
-                temp.push(Range::from(region.start..to_exclude.start));
-                temp.push(Range::from(to_exclude.end..region.end));
+                temp.push(region.start..to_exclude.start);
+                temp.push(to_exclude.end..region.end);
             } else if to_exclude.contains(&region.start) {
                 region.start = to_exclude.end;
                 temp.push(region);
@@ -269,9 +268,7 @@ fn allocatable_memory_regions(
         }
     };
 
-    exclude(Range::from(
-        self_regions.executable.start..self_regions.read_write.end,
-    ));
+    exclude(self_regions.executable.start..self_regions.read_write.end);
 
     exclude(fdt);
 

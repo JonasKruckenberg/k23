@@ -11,9 +11,9 @@ use alloc::sync::Arc;
 use core::cmp;
 use core::mem::offset_of;
 use core::num::NonZeroUsize;
+use core::ops::Range;
 use core::pin::Pin;
 use core::ptr::NonNull;
-use core::range::Range;
 
 use anyhow::bail;
 use pin_project::pin_project;
@@ -53,7 +53,7 @@ impl AddressSpaceRegion {
         name: Option<String>,
     ) -> Self {
         Self {
-            range,
+            range: range.clone(),
             permissions,
             name,
             vmo: Arc::new(Vmo::new_zeroed(frame_alloc)),
@@ -71,7 +71,7 @@ impl AddressSpaceRegion {
         name: Option<String>,
     ) -> AddressSpaceRegion {
         Self {
-            range: virt,
+            range: virt.clone(),
             permissions,
             name,
             vmo: Arc::new(Vmo::new_phys(phys)),
@@ -90,7 +90,7 @@ impl AddressSpaceRegion {
         static WIRED_VMO: LazyLock<Arc<Vmo>> = LazyLock::new(|| Arc::new(Vmo::Wired));
 
         Self {
-            range,
+            range: range.clone(),
             permissions,
             name,
             vmo: WIRED_VMO.clone(),
@@ -150,7 +150,7 @@ impl AddressSpaceRegion {
                 if will_write {
                     let mut vmo = vmo.write();
 
-                    for addr in range.iter().step_by(arch::PAGE_SIZE) {
+                    for addr in range.into_iter().step_by(arch::PAGE_SIZE) {
                         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
                         let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
                         let frame = vmo.require_owned_frame(vmo_relative_offset)?;
@@ -164,7 +164,7 @@ impl AddressSpaceRegion {
                 } else {
                     let mut vmo = vmo.write();
 
-                    for addr in range.iter().step_by(arch::PAGE_SIZE) {
+                    for addr in range.into_iter().step_by(arch::PAGE_SIZE) {
                         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
                         let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
                         let frame = vmo.require_read_frame(vmo_relative_offset)?;
@@ -266,10 +266,10 @@ impl AddressSpaceRegion {
             Vmo::Wired => unreachable!("Wired VMO can never page fault"),
             Vmo::Phys(vmo) => {
                 let range_phys = vmo
-                    .lookup_contiguous(Range::from(
+                    .lookup_contiguous(
                         vmo_relative_offset
                             ..vmo_relative_offset.checked_add(arch::PAGE_SIZE).unwrap(),
-                    ))
+                    )
                     .expect("contiguous lookup for wired VMOs should never fail");
 
                 batch.queue_map(

@@ -7,7 +7,7 @@
 
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
-use core::range::Range;
+use core::ops::Range;
 use core::slice;
 
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
@@ -34,8 +34,13 @@ pub fn prepare_boot_info(
     )?;
     let page = physical_address_offset.checked_add(frame).unwrap();
 
-    let memory_regions =
-        init_boot_info_memory_regions(page, frame_alloc, fdt_phys, loader_phys, kernel_phys);
+    let memory_regions = init_boot_info_memory_regions(
+        page,
+        frame_alloc,
+        fdt_phys,
+        loader_phys,
+        kernel_phys.clone(),
+    );
 
     let mut boot_info = BootInfo::new(memory_regions);
     boot_info.physical_address_offset = physical_address_offset;
@@ -96,11 +101,11 @@ fn init_boot_info_memory_regions(
     //
     // We can still mark the range before and after the kernel as usable.
     push_region(MemoryRegion {
-        range: Range::from(loader_phys.start..kernel_phys.start),
+        range: loader_phys.start..kernel_phys.start,
         kind: MemoryRegionKind::Usable,
     });
     push_region(MemoryRegion {
-        range: Range::from(kernel_phys.end..loader_phys.end),
+        range: kernel_phys.end..loader_phys.end,
         kind: MemoryRegionKind::Usable,
     });
 

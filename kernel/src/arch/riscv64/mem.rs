@@ -8,8 +8,8 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
+use core::ops::{Range, RangeInclusive};
 use core::ptr::NonNull;
-use core::range::{Range, RangeInclusive};
 use core::{fmt, slice};
 
 use bitflags::bitflags;
@@ -24,15 +24,14 @@ use crate::mem::{PhysicalAddress, VirtualAddress};
 
 pub const DEFAULT_ASID: u16 = 0;
 
-pub const KERNEL_ASPACE_RANGE: RangeInclusive<VirtualAddress> = RangeInclusive {
-    start: VirtualAddress::new(0xffffffc000000000).unwrap(),
-    end: VirtualAddress::MAX,
-};
-const_assert_eq!(KERNEL_ASPACE_RANGE.start.get(), CANONICAL_ADDRESS_MASK);
+pub const KERNEL_ASPACE_RANGE: RangeInclusive<VirtualAddress> =
+    VirtualAddress::new(0xffffffc000000000).unwrap()..=VirtualAddress::MAX;
+
+const_assert_eq!(KERNEL_ASPACE_RANGE.start().get(), CANONICAL_ADDRESS_MASK);
 const_assert_eq!(
     KERNEL_ASPACE_RANGE
-        .end
-        .checked_sub_addr(KERNEL_ASPACE_RANGE.start)
+        .end()
+        .checked_sub_addr(*KERNEL_ASPACE_RANGE.start())
         .unwrap(),
     !CANONICAL_ADDRESS_MASK
 );
@@ -42,10 +41,9 @@ const_assert_eq!(
 /// The first 2MiB are reserved for catching null pointer dereferences, but this might
 /// change in the future if we decide that the null-checking performed by the WASM runtime
 /// is sufficiently robust.
-pub const USER_ASPACE_RANGE: RangeInclusive<VirtualAddress> = RangeInclusive {
-    start: VirtualAddress::new(0x0000000000200000).unwrap(),
-    end: VirtualAddress::new((1 << VIRT_ADDR_BITS) - 1).unwrap(),
-};
+pub const USER_ASPACE_RANGE: RangeInclusive<VirtualAddress> =
+    VirtualAddress::new(0x0000000000200000).unwrap()
+        ..=VirtualAddress::new((1 << VIRT_ADDR_BITS) - 1).unwrap();
 
 pub const PAGE_SIZE: usize = 4096;
 pub const PAGE_SHIFT: usize = (PAGE_SIZE - 1).count_ones() as usize;
@@ -85,7 +83,7 @@ pub fn init() {
 
 /// Return whether the given virtual address is in the kernel address space.
 pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
-    KERNEL_ASPACE_RANGE.start.get() <= virt.get() && virt.get() < KERNEL_ASPACE_RANGE.end.get()
+    KERNEL_ASPACE_RANGE.start().get() <= virt.get() && virt.get() < KERNEL_ASPACE_RANGE.end().get()
 }
 
 /// Invalidate address translation caches for the given `address_range` in the given `address_space`.
@@ -278,10 +276,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                     // mark this PTE as a valid leaf node pointing to the physical frame
                     pte.replace_address_and_flags(phys, PTEFlags::VALID | flags);
 
-                    flush.extend_range(
-                        self.asid,
-                        Range::from(virt..virt.checked_add(page_size).unwrap()),
-                    )?;
+                    flush.extend_range(self.asid, virt..virt.checked_add(page_size).unwrap())?;
                     virt = virt.checked_add(page_size).unwrap();
                     phys = phys.checked_add(page_size).unwrap();
                     remaining_bytes -= page_size;
@@ -364,10 +359,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                         old_flags.difference(rwx_mask).union(new_flags),
                     );
 
-                    flush.extend_range(
-                        self.asid,
-                        Range::from(virt..virt.checked_add(page_size).unwrap()),
-                    )?;
+                    flush.extend_range(self.asid, virt..virt.checked_add(page_size).unwrap())?;
                     virt = virt.checked_add(page_size).unwrap();
                     remaining_bytes -= page_size;
                     continue 'outer;
@@ -482,10 +474,7 @@ impl AddressSpace {
             // The PTE is mapped, so go ahead and clear it unmapping the frame
             pte.clear();
 
-            flush.extend_range(
-                self.asid,
-                Range::from(*virt..virt.checked_add(page_size).unwrap()),
-            )?;
+            flush.extend_range(self.asid, *virt..virt.checked_add(page_size).unwrap())?;
             *virt = virt.checked_add(page_size).unwrap();
             *remaining_bytes -= page_size;
         } else if pte.is_valid() {
@@ -516,7 +505,7 @@ impl AddressSpace {
     fn pgtable_ptr_from_phys(&self, phys: PhysicalAddress) -> NonNull<PageTableEntry> {
         NonNull::new(
             KERNEL_ASPACE_RANGE
-                .start
+                .start()
                 .checked_add(phys.get())
                 .unwrap()
                 .as_mut_ptr()

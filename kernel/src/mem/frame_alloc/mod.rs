@@ -12,8 +12,8 @@ pub mod frame_list;
 use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::cell::RefCell;
+use core::ops::Range;
 use core::ptr::NonNull;
-use core::range::Range;
 use core::sync::atomic::AtomicUsize;
 use core::{cmp, fmt, iter, slice};
 

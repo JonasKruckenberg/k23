@@ -7,8 +7,8 @@
 
 use core::alloc::Layout;
 use core::mem::MaybeUninit;
+use core::ops::Range;
 use core::ptr::NonNull;
-use core::range::Range;
 use core::{cmp, fmt, mem, slice};
 
 use cordyceps::List;
@@ -300,7 +300,7 @@ impl FallibleIterator for ArenaSelections {
             return Err(SelectionError { range: aligned });
         }
 
-        let bookkeeping = Range::from(bookkeeping_start..aligned.end);
+        let bookkeeping = bookkeeping_start..aligned.end;
         aligned.end = bookkeeping.start;
 
         Ok(Some(ArenaSelection {

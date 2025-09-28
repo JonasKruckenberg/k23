@@ -11,7 +11,6 @@ use core::mem::{MaybeUninit, offset_of};
 use core::num::NonZero;
 use core::ops::{BitAnd, BitOr, Not};
 use core::ptr;
-use core::range::Range;
 
 use fallible_iterator::FallibleIterator;
 use static_assertions::const_assert_eq;
@@ -110,7 +109,7 @@ impl Plic {
             let reg = dev.regs().unwrap().next()?.unwrap();
 
             let start = PhysicalAddress::new(reg.starting_address);
-            Range::from(start..start.checked_add(reg.size.unwrap()).unwrap())
+            start..start.checked_add(reg.size.unwrap()).unwrap()
         };
 
         let mmio_region = with_kernel_aspace(|aspace| {
@@ -122,7 +121,7 @@ impl Plic {
                     Permissions::READ | Permissions::WRITE,
                     |range, perms, batch| {
                         let region = AddressSpaceRegion::new_phys(
-                            range,
+                            range.clone(),
                             perms,
                             mmio_range,
                             Some("PLIC".to_string()),
@@ -133,6 +132,7 @@ impl Plic {
                 )
                 .unwrap()
                 .range
+                .clone()
         });
 
         // Specifies how many external interrupts are supported by this controller.

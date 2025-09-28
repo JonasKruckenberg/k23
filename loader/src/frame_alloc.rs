@@ -7,7 +7,7 @@
 
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
-use core::range::Range;
+use core::ops::Range;
 use core::{cmp, iter, ptr, slice};
 
 use fallible_iterator::FallibleIterator;
@@ -32,7 +32,7 @@ impl<'a> FrameAllocator<'a> {
     pub fn free_regions(&self) -> FreeRegions<'_> {
         FreeRegions {
             offset: self.offset,
-            inner: self.regions.iter().rev().copied(),
+            inner: self.regions.iter().rev().cloned(),
         }
     }
 
@@ -40,7 +40,7 @@ impl<'a> FrameAllocator<'a> {
     pub fn used_regions(&self) -> UsedRegions<'_> {
         UsedRegions {
             offset: self.offset,
-            inner: self.regions.iter().rev().copied(),
+            inner: self.regions.iter().rev().cloned(),
         }
     }
 
@@ -223,7 +223,7 @@ impl FallibleIterator for FrameIterZeroed<'_, '_> {
 
 pub struct FreeRegions<'a> {
     offset: usize,
-    inner: iter::Copied<iter::Rev<slice::Iter<'a, Range<usize>>>>,
+    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<usize>>>>,
 }
 
 impl Iterator for FreeRegions<'_> {
@@ -249,7 +249,7 @@ impl Iterator for FreeRegions<'_> {
 
 pub struct UsedRegions<'a> {
     offset: usize,
-    inner: iter::Copied<iter::Rev<slice::Iter<'a, Range<usize>>>>,
+    inner: iter::Cloned<iter::Rev<slice::Iter<'a, Range<usize>>>>,
 }
 
 impl Iterator for UsedRegions<'_> {

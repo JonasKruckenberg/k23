@@ -9,7 +9,7 @@ use core::cmp::Ordering;
 use core::ffi::{CStr, c_void};
 use core::fmt;
 use core::fmt::Formatter;
-use core::range::Range;
+use core::ops::Range;
 use core::str::FromStr;
 
 use arrayvec::ArrayVec;
@@ -83,9 +83,8 @@ impl MachineInfo<'_> {
                     .as_regs(stack[depth - 1].unwrap().1);
 
                 while let Some(reg) = iter.next()? {
-                    memories.push(Range::from(
-                        reg.starting_address..reg.starting_address + reg.size.unwrap_or(0),
-                    ));
+                    memories
+                        .push(reg.starting_address..reg.starting_address + reg.size.unwrap_or(0));
                 }
             } else if stack[depth - 1].is_some_and(|(s, _)| s == "reserved-memory") {
                 // if the node is a reserved-memory node, add it to the list of reserved memory regions
@@ -94,9 +93,8 @@ impl MachineInfo<'_> {
                     .unwrap()
                     .as_regs(stack[depth - 1].unwrap().1);
                 while let Some(reg) = iter.next()? {
-                    reserved_memory.push(Range::from(
-                        reg.starting_address..reg.starting_address + reg.size.unwrap_or(0),
-                    ));
+                    reserved_memory
+                        .push(reg.starting_address..reg.starting_address + reg.size.unwrap_or(0));
                 }
             } else if name.name == "chosen" {
                 // and finally if the node is the chosen node, extract the RNG seed
@@ -119,8 +117,8 @@ impl MachineInfo<'_> {
                     // remove region
                     continue;
                 } else if region.contains(&entry.start) && region.contains(&entry.end) {
-                    memories.push(Range::from(region.start..entry.start));
-                    memories.push(Range::from(entry.end..region.end));
+                    memories.push(region.start..entry.start);
+                    memories.push(entry.end..region.end);
                 } else if entry.contains(&region.start) {
                     region.start = entry.end;
                     memories.push(region);
@@ -138,7 +136,7 @@ impl MachineInfo<'_> {
             let region = {
                 let start = usize::try_from(entry.address)?;
 
-                Range::from(start..start.checked_add(usize::try_from(entry.size)?).unwrap())
+                start..start.checked_add(usize::try_from(entry.size)?).unwrap()
             };
             log::trace!("applying reservation {region:#x?}");
 
@@ -196,7 +194,7 @@ impl MachineInfo<'_> {
         let min_addr = self.memories.first().map(|r| r.start).unwrap_or_default();
         let max_addr = self.memories.last().map(|r| r.end).unwrap_or_default();
 
-        Range::from(min_addr..max_addr)
+        min_addr..max_addr
     }
 }
 

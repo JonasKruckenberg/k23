@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
-use core::range::Range;
+use core::ops::Range;
 
 use rand::distr::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
@@ -117,8 +117,6 @@ impl PageAllocator {
             0
         };
 
-        Range::from(
-            base.checked_add(offset).unwrap()..base.checked_add(offset + layout.size()).unwrap(),
-        )
+        base.checked_add(offset).unwrap()..base.checked_add(offset + layout.size()).unwrap()
     }
 }
