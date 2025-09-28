@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::ops::Range;
 use core::ptr::NonNull;
-use core::range::Range;
 
 use crate::mem::{Mmap, VirtualAddress};
 use crate::wasm::vm::VMMemoryDefinition;

@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use alloc::sync::Arc;
-use core::range::Range;
+use core::ops::Range;
 
 use anyhow::ensure;
 use spin::RwLock;
@@ -74,7 +74,7 @@ impl PhysVmo {
             self.range
         );
 
-        Ok(Range::from(start..end))
+        Ok(start..end)
     }
 }
 

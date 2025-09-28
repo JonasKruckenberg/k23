@@ -7,7 +7,7 @@
 
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
-use core::range::Range;
+use core::ops::Range;
 use core::{cmp, ptr, slice};
 
 use bitflags::bitflags;
@@ -45,7 +45,7 @@ pub fn identity_map_self(
     identity_map_range(
         root_pgtable,
         frame_alloc,
-        self_regions.executable,
+        self_regions.executable.clone(),
         Flags::READ | Flags::EXECUTE,
     )?;
 
@@ -56,7 +56,7 @@ pub fn identity_map_self(
     identity_map_range(
         root_pgtable,
         frame_alloc,
-        self_regions.read_only,
+        self_regions.read_only.clone(),
         Flags::READ,
     )?;
 
@@ -67,7 +67,7 @@ pub fn identity_map_self(
     identity_map_range(
         root_pgtable,
         frame_alloc,
-        self_regions.read_write,
+        self_regions.read_write.clone(),
         Flags::READ | Flags::WRITE,
     )?;
 
@@ -107,13 +107,9 @@ pub fn map_physical_memory(
     let alignment = arch::page_size_for_level(2);
 
     let phys = minfo.memory_hull();
-    let phys = Range::from(
-        align_down(phys.start, alignment)..checked_align_up(phys.end, alignment).unwrap(),
-    );
-    let virt = Range::from(
-        arch::KERNEL_ASPACE_BASE.checked_add(phys.start).unwrap()
-            ..arch::KERNEL_ASPACE_BASE.checked_add(phys.end).unwrap(),
-    );
+    let phys = align_down(phys.start, alignment)..checked_align_up(phys.end, alignment).unwrap();
+    let virt = arch::KERNEL_ASPACE_BASE.checked_add(phys.start).unwrap()
+        ..arch::KERNEL_ASPACE_BASE.checked_add(phys.end).unwrap();
     let size = NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap();
 
     debug_assert!(phys.start.is_multiple_of(alignment) && phys.end.is_multiple_of(alignment));
@@ -244,14 +240,14 @@ fn handle_load_segment(
         let start = phys_base.checked_add(ph.offset).unwrap();
         let end = start.checked_add(ph.file_size).unwrap();
 
-        Range::from(align_down(start, ph.align)..checked_align_up(end, ph.align).unwrap())
+        align_down(start, ph.align)..checked_align_up(end, ph.align).unwrap()
     };
 
     let virt = {
         let start = virt_base.checked_add(ph.virtual_address).unwrap();
         let end = start.checked_add(ph.file_size).unwrap();
 
-        Range::from(align_down(start, ph.align)..checked_align_up(end, ph.align).unwrap())
+        align_down(start, ph.align)..checked_align_up(end, ph.align).unwrap()
     };
 
     log::trace!("mapping {virt:#x?} => {phys:#x?}");
@@ -540,7 +536,7 @@ impl TlsAllocation {
         .unwrap();
         let start = self.virt.start + (aligned_size * hartid);
 
-        Range::from(start..start + self.template.mem_size)
+        start..start + self.template.mem_size
     }
 
     pub fn initialize_for_hart(&self, hartid: usize) {
@@ -643,7 +639,7 @@ impl StacksAllocation {
     pub fn region_for_cpu(&self, cpuid: usize) -> Range<usize> {
         let end = self.virt.end - (self.per_cpu_size_with_guard * cpuid);
 
-        Range::from((end - self.per_cpu_size)..end)
+        (end - self.per_cpu_size)..end
     }
 }
 

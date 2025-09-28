@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::fmt::Formatter;
-use core::range::Range;
+use core::ops::Range;
 use core::{fmt, slice};
 
 use loader_api::LoaderConfig;
@@ -63,7 +63,7 @@ impl Kernel<'static> {
 impl Kernel<'_> {
     pub fn phys_range(&self) -> Range<usize> {
         let fdt = INLINED_KERNEL_BYTES.0.as_ptr_range();
-        Range::from(fdt.start as usize..fdt.end as usize)
+        fdt.start as usize..fdt.end as usize
     }
 
     /// Returns the size of the kernel in memory.

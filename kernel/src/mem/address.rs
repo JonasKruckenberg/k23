@@ -7,7 +7,7 @@
 
 use core::alloc::{Layout, LayoutError};
 use core::fmt;
-use core::range::Range;
+use core::ops::Range;
 
 use crate::arch;
 
@@ -275,28 +275,26 @@ macro_rules! address_range_impl {
             is
         }
         fn checked_add(self, offset: usize) -> Option<Self> {
-            Some(Range::from(
-                self.start.checked_add(offset)?..self.end.checked_add(offset)?,
-            ))
+            Some(self.start.checked_add(offset)?..self.end.checked_add(offset)?)
         }
         fn as_ptr_range(&self) -> Range<*const u8> {
-            Range::from(self.start.as_ptr()..self.end.as_ptr())
+            self.start.as_ptr()..self.end.as_ptr()
         }
         fn as_mut_ptr_range(&self) -> Range<*mut u8> {
-            Range::from(self.start.as_mut_ptr()..self.end.as_mut_ptr())
+            self.start.as_mut_ptr()..self.end.as_mut_ptr()
         }
         fn checked_align_in(self, align: usize) -> Option<Self>
         where
             Self: Sized,
         {
-            let res = Range::from(self.start.checked_align_up(align)?..self.end.align_down(align));
+            let res = self.start.checked_align_up(align)?..self.end.align_down(align);
             Some(res)
         }
         fn checked_align_out(self, align: usize) -> Option<Self>
         where
             Self: Sized,
         {
-            let res = Range::from(self.start.align_down(align)..self.end.checked_align_up(align)?);
+            let res = self.start.align_down(align)..self.end.checked_align_up(align)?;
             // aligning outwards can only increase the size
             debug_assert!(res.start.0 <= res.end.0);
             Some(res)
@@ -320,12 +318,12 @@ macro_rules! address_range_impl {
         }
         fn difference(&self, other: Self) -> (Option<Self>, Option<Self>) {
             debug_assert!(self.is_overlapping(&other));
-            let a = Range::from(self.start..other.start);
-            let b = Range::from(other.end..self.end);
+            let a = self.start..other.start;
+            let b = other.end..self.end;
             ((!a.is_empty()).then_some(a), (!b.is_empty()).then_some(b))
         }
         fn clamp(&self, range: Self) -> Self {
-            Range::from(self.start.max(range.start)..self.end.min(range.end))
+            self.start.max(range.start)..self.end.min(range.end)
         }
     };
 }
@@ -354,7 +352,7 @@ impl VirtualAddress {
 
     #[must_use]
     pub fn from_phys(phys: PhysicalAddress) -> Option<VirtualAddress> {
-        arch::KERNEL_ASPACE_RANGE.start.checked_add(phys.0)
+        arch::KERNEL_ASPACE_RANGE.start().checked_add(phys.0)
     }
 
     #[inline]

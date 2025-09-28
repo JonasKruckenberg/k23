@@ -20,7 +20,7 @@ use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use core::num::NonZeroUsize;
-use core::range::Range;
+use core::ops::Range;
 use core::{fmt, slice};
 
 pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
@@ -87,10 +87,8 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
     // reserve the physical memory map
     aspace
         .reserve(
-            Range::from(
-                VirtualAddress::new(boot_info.physical_memory_map.start).unwrap()
-                    ..VirtualAddress::new(boot_info.physical_memory_map.end).unwrap(),
-            ),
+            VirtualAddress::new(boot_info.physical_memory_map.start).unwrap()
+                ..VirtualAddress::new(boot_info.physical_memory_map.end).unwrap(),
             Permissions::READ | Permissions::WRITE,
             Some("Physical Memory Map".to_string()),
             flush,

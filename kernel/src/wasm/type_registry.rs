@@ -13,7 +13,7 @@ use alloc::vec::Vec;
 use core::borrow::Borrow;
 use core::fmt::Debug;
 use core::hash::{Hash, Hasher};
-use core::range::Range;
+use core::ops::Range;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use core::{fmt, iter};
 
@@ -587,18 +587,18 @@ impl TypeRegistryInner {
             types.wasm_types().len(),
         );
 
-        for module_group in types.rec_groups().copied() {
+        for module_group in types.rec_groups() {
             let entry = self.register_rec_group(
                 &map,
-                module_group,
-                iter_entity_range(module_group.into())
+                module_group.clone(),
+                iter_entity_range(module_group.clone())
                     .map(|ty| types.get_wasm_type(ty).unwrap().clone()),
             );
 
             // Update the module-to-engine map with this rec group's
             // newly-registered types.
             for (module_ty, engine_ty) in
-                iter_entity_range(module_group.into()).zip(entry.0.shared_type_indices.iter())
+                iter_entity_range(module_group.clone()).zip(entry.0.shared_type_indices.iter())
             {
                 let module_ty2 = map.push(*engine_ty);
                 assert_eq!(module_ty, module_ty2);
@@ -630,7 +630,7 @@ impl TypeRegistryInner {
         range: Range<ModuleInternedTypeIndex>,
         types: impl ExactSizeIterator<Item = WasmSubType>,
     ) -> RecGroupEntry {
-        debug_assert_eq!(iter_entity_range(range.into()).len(), types.len());
+        debug_assert_eq!(iter_entity_range(range.clone()).len(), types.len());
 
         // We need two different canonicalizations of this rec group: one for
         // hash-consing and another for runtime usage within this
@@ -643,10 +643,10 @@ impl TypeRegistryInner {
         let mut non_canon_types = Vec::with_capacity(types.len());
         let hash_consing_key = WasmRecGroup(
             types
-                .zip(iter_entity_range(range.into()))
+                .zip(iter_entity_range(range.clone()))
                 .map(|(mut ty, module_index)| {
                     non_canon_types.push((module_index, ty.clone()));
-                    ty.canonicalize_for_hash_consing(range, &mut |idx| {
+                    ty.canonicalize_for_hash_consing(range.clone(), &mut |idx| {
                         debug_assert!(idx < range.start);
                         map[idx]
                     });
@@ -887,10 +887,8 @@ impl TypeRegistryInner {
         // This must have `range.len() == 1`, even though we know this type
         // doesn't have any intra-group type references, to satisfy
         // `register_rec_group`'s preconditions.
-        let range = Range::from(
-            ModuleInternedTypeIndex::from_bits(u32::MAX - 1)
-                ..ModuleInternedTypeIndex::from_bits(u32::MAX),
-        );
+        let range = ModuleInternedTypeIndex::from_bits(u32::MAX - 1)
+            ..ModuleInternedTypeIndex::from_bits(u32::MAX);
 
         self.register_rec_group(&map, range, iter::once(ty))
     }

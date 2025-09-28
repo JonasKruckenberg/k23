@@ -5,8 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::ops::{Deref, DerefMut};
-use core::range::Range;
+use core::ops::{Deref, DerefMut, Range};
 use core::{fmt, slice};
 
 #[derive(Debug)]
@@ -105,7 +104,7 @@ impl From<MemoryRegions> for &'static mut [MemoryRegion] {
 }
 
 /// Represent a physical memory region.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 #[repr(C)]
 pub struct MemoryRegion {
     /// The physical start address region.

@@ -19,7 +19,6 @@ use alloc::string::{String, ToString};
 use core::fmt;
 use core::fmt::Write;
 use core::ops::DerefMut;
-use core::range::Range;
 use core::str::FromStr;
 
 use fallible_iterator::FallibleIterator;
@@ -96,7 +95,7 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
 
         let range_phys = {
             let start = PhysicalAddress::new(reg.starting_address);
-            Range::from(start..start.checked_add(size).unwrap())
+            start..start.checked_add(size).unwrap()
         };
 
         let mmap = Mmap::new_phys(
@@ -108,7 +107,7 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
         )
         .unwrap();
 
-        mmap.commit(aspace.lock().deref_mut(), Range::from(0..size), true)
+        mmap.commit(aspace.lock().deref_mut(), 0..size, true)
             .unwrap();
 
         mmap

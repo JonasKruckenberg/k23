@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
-use core::range::Range;
 
 use loader_api::BootInfo;
 use talc::{ErrOnOom, Span, Talc, Talck};
@@ -30,7 +29,7 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
             .checked_add(phys.get())
             .unwrap();
 
-        Range::from(start..start.checked_add(layout.size()).unwrap())
+        start..start.checked_add(layout.size()).unwrap()
     };
     tracing::debug!("Kernel Heap: {virt:#x?}");
 

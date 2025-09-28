@@ -9,7 +9,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use core::alloc::Layout;
 use core::num::NonZeroUsize;
-use core::range::Range;
+use core::ops::Range;
 use core::{ptr, slice};
 
 use spin::Mutex;
@@ -79,7 +79,8 @@ impl Mmap {
                     ))
                 },
             )?
-            .range;
+            .range
+            .clone();
         drop(aspace_);
 
         tracing::trace!("new_zeroed: {len} {range:?}");
@@ -121,11 +122,15 @@ impl Mmap {
                 Permissions::READ | Permissions::WRITE,
                 |range_virt, perms, _batch| {
                     Ok(AddressSpaceRegion::new_phys(
-                        range_virt, perms, range_phys, name,
+                        range_virt.clone(),
+                        perms,
+                        range_phys.clone(),
+                        name,
                     ))
                 },
             )?
-            .range;
+            .range
+            .clone();
         drop(aspace_);
 
         tracing::trace!("new_phys: {len} {range:?} => {range_phys:?}");
@@ -137,7 +142,7 @@ impl Mmap {
     }
 
     pub fn range(&self) -> Range<VirtualAddress> {
-        self.range
+        self.range.clone()
     }
 
     pub fn copy_from_userspace(
@@ -169,7 +174,7 @@ impl Mmap {
     where
         F: FnOnce(&[u8]),
     {
-        self.commit(aspace, range, false)?;
+        self.commit(aspace, range.clone(), false)?;
 
         // Safety: checked by caller
         unsafe {
@@ -190,7 +195,7 @@ impl Mmap {
     where
         F: FnOnce(&mut [u8]),
     {
-        self.commit(aspace, range, true)?;
+        self.commit(aspace, range.clone(), true)?;
         // Safety: user aspace also includes kernel mappings in higher half
         unsafe {
             aspace.arch.activate();
@@ -317,7 +322,7 @@ impl Drop for Mmap {
         // A `None` means the Mmap got created through `Mmap::new_empty` so there is nothing to unmap
         if let Some(aspace) = &self.aspace {
             let mut aspace = aspace.lock();
-            aspace.unmap(self.range).unwrap();
+            aspace.unmap(self.range.clone()).unwrap();
         }
     }
 }

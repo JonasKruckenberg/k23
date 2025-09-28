@@ -5,9 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::ops::Range;
 use core::ptr;
 use core::ptr::NonNull;
-use core::range::Range;
 
 use anyhow::anyhow;
 
@@ -166,8 +166,8 @@ impl Table {
                 return Err(TrapKind::TableOutOfBounds);
             }
 
-            let src_range = Range::from(src_index..src_index + len);
-            let dst_range = Range::from(dst_index..dst_index + len);
+            let src_range = src_index..src_index + len;
+            let dst_range = dst_index..dst_index + len;
 
             if ptr::eq(dst_table, src_table) {
                 (*dst_table).copy_elements_within(dst_range, src_range);

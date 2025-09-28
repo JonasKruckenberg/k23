@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-#![feature(new_range_api)]
 #![no_std]
 #![allow(clippy::doc_markdown, clippy::module_name_repetitions)]
 

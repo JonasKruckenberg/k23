@@ -9,7 +9,6 @@
 #![no_main]
 #![feature(used_with_arg)]
 #![feature(thread_local, never_type)]
-#![feature(new_range_api)]
 #![feature(debug_closure_helpers)]
 #![expect(internal_features, reason = "panic internals")]
 #![feature(std_internals, panic_can_unwind, formatting_options)]
@@ -42,7 +41,7 @@ mod tracing;
 mod util;
 mod wasm;
 
-use core::range::Range;
+use core::ops::Range;
 use core::slice;
 use core::time::Duration;
 
@@ -230,9 +229,8 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
         .memory_regions
         .iter()
         .filter_map(|region| {
-            let range = Range::from(
-                PhysicalAddress::new(region.range.start)..PhysicalAddress::new(region.range.end),
-            );
+            let range =
+                PhysicalAddress::new(region.range.start)..PhysicalAddress::new(region.range.end);
 
             region.kind.is_usable().then_some(range)
         })
@@ -275,6 +273,6 @@ fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAdd
         unsafe { slice::from_raw_parts(base, fdt.range.end.checked_sub(fdt.range.start).unwrap()) };
     (
         slice,
-        Range::from(PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end)),
+        PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end),
     )
 }

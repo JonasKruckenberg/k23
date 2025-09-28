@@ -8,7 +8,7 @@
 use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use core::fmt;
-use core::range::Range;
+use core::ops::Range;
 
 use cranelift_entity::packed_option::PackedOption;
 use cranelift_entity::{EntityRef, PrimaryMap, SecondaryMap};
@@ -227,7 +227,7 @@ impl ModuleTypesBuilder {
             "should have defined the number of types declared in `start_rec_group`"
         );
 
-        let idx = self.push_rec_group(Range::from(start..end));
+        let idx = self.push_rec_group(start..end);
         debug_assert_eq!(idx, rec_group_index);
 
         self.seen_rec_groups.insert(rec_group_id, rec_group_index);
@@ -305,7 +305,7 @@ impl ModuleTypesBuilder {
                     self.set_trampoline_type(idx, idx);
 
                     let next = self.next_ty();
-                    self.push_rec_group(Range::from(idx..next));
+                    self.push_rec_group(idx..next);
                     self.trampoline_types.insert(f, idx);
                     idx
                 }
