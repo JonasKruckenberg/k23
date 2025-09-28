@@ -9,9 +9,9 @@ use core::ops::Range;
 use core::{cmp, mem};
 
 use anyhow::bail;
+use kmem::VirtualAddress;
 
 use crate::arch;
-use crate::mem::address::VirtualAddress;
 
 #[must_use]
 pub struct Flush {

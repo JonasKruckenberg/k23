@@ -14,6 +14,7 @@ use core::ffi::c_void;
 use core::ops::Range;
 
 use arrayvec::ArrayVec;
+use kmem::{PhysicalAddress, VirtualAddress};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use spin::{Barrier, OnceLock};
@@ -71,8 +72,8 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
 
 pub struct GlobalInitResult {
     boot_info: *mut loader_api::BootInfo,
-    kernel_entry: usize,
-    root_pgtable: usize,
+    kernel_entry: VirtualAddress,
+    root_pgtable: PhysicalAddress,
     stacks_alloc: StacksAllocation,
     maybe_tls_alloc: Option<TlsAllocation>,
     barrier: Barrier,
@@ -96,7 +97,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
 
     let fdt_phys = {
         let fdt = minfo.fdt.as_ptr_range();
-        fdt.start as usize..fdt.end as usize
+        PhysicalAddress::from_ptr(fdt.start)..PhysicalAddress::from_ptr(fdt.end)
     };
 
     // Initialize the frame allocator
@@ -115,7 +116,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
 
     let root_pgtable = frame_alloc
         .allocate_one_zeroed(
-            0, // called before translation into higher half
+            VirtualAddress::ZERO, // called before translation into higher half
         )
         .unwrap();
 
@@ -158,7 +159,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     )
     .unwrap();
 
-    log::trace!("KASLR: Kernel image at {:#x}", kernel_virt.start);
+    log::trace!("KASLR: Kernel image at {:?}", kernel_virt.start);
 
     let stacks_alloc = map_kernel_stacks(
         root_pgtable,
@@ -207,9 +208,9 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
 
 #[derive(Debug)]
 struct SelfRegions {
-    pub executable: Range<usize>,
-    pub read_only: Range<usize>,
-    pub read_write: Range<usize>,
+    pub executable: Range<PhysicalAddress>,
+    pub read_only: Range<PhysicalAddress>,
+    pub read_write: Range<PhysicalAddress>,
 }
 
 impl SelfRegions {
@@ -225,17 +226,18 @@ impl SelfRegions {
 
         SelfRegions {
             executable: Range {
-                start: &raw const __text_start as usize,
-                end: &raw const __text_end as usize,
+                start: PhysicalAddress::from_ptr(&raw const __text_start),
+                end: PhysicalAddress::from_ptr(&raw const __text_end),
             },
             read_only: Range {
-                start: &raw const __rodata_start as usize,
-                end: &raw const __rodata_end as usize,
+                start: PhysicalAddress::from_ptr(&raw const __rodata_start),
+                end: PhysicalAddress::from_ptr(&raw const __rodata_end),
             },
             read_write: Range {
-                start: &raw const __bss_start as usize,
-                end: (&raw const __stack_start as usize)
-                    + (minfo.hart_mask.count_ones() as usize * STACK_SIZE),
+                start: PhysicalAddress::from_ptr(&raw const __bss_start),
+                end: PhysicalAddress::from_ptr(&raw const __stack_start)
+                    .checked_add(minfo.hart_mask.count_ones() as usize * STACK_SIZE)
+                    .unwrap(),
             },
         }
     }
@@ -244,11 +246,11 @@ impl SelfRegions {
 fn allocatable_memory_regions(
     minfo: &MachineInfo,
     self_regions: &SelfRegions,
-    fdt: Range<usize>,
-) -> ArrayVec<Range<usize>, 16> {
-    let mut temp: ArrayVec<Range<usize>, 16> = minfo.memories.clone();
+    fdt: Range<PhysicalAddress>,
+) -> ArrayVec<Range<PhysicalAddress>, 16> {
+    let mut temp: ArrayVec<Range<PhysicalAddress>, 16> = minfo.memories.clone();
 
-    let mut exclude = |to_exclude: Range<usize>| {
+    let mut exclude = |to_exclude: Range<PhysicalAddress>| {
         for mut region in temp.take() {
             if to_exclude.contains(&region.start) && to_exclude.contains(&region.end) {
                 // remove region
@@ -299,7 +301,8 @@ fn allocatable_memory_regions(
             }
 
             assert!(
-                !other.contains(&region.start) && !other.contains(&(region.end - 1)),
+                !other.contains(&region.start)
+                    && !other.contains(&(region.end.checked_sub(1).unwrap())),
                 "regions {region:#x?} and {other:#x?} overlap"
             );
         }

@@ -12,6 +12,7 @@ use core::{cmp, ptr, slice};
 
 use bitflags::bitflags;
 use fallible_iterator::FallibleIterator;
+use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use loader_api::TlsTemplate;
 use xmas_elf::P64;
 use xmas_elf::dynamic::Tag;
@@ -34,7 +35,7 @@ bitflags! {
 }
 
 pub fn identity_map_self(
-    root_pgtable: usize,
+    root_pgtable: PhysicalAddress,
     frame_alloc: &mut FrameAllocator,
     self_regions: &SelfRegions,
 ) -> crate::Result<()> {
@@ -76,12 +77,13 @@ pub fn identity_map_self(
 
 #[inline]
 fn identity_map_range(
-    root_pgtable: usize,
+    root_pgtable: PhysicalAddress,
     frame_alloc: &mut FrameAllocator,
-    phys: Range<usize>,
+    phys: Range<PhysicalAddress>,
     flags: Flags,
 ) -> crate::Result<()> {
-    let len = NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap();
+    let len = NonZeroUsize::new(phys.size()).unwrap();
+    let virt_start = VirtualAddress::new(phys.start.get());
 
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
@@ -89,33 +91,36 @@ fn identity_map_range(
         arch::map_contiguous(
             root_pgtable,
             frame_alloc,
-            phys.start,
+            virt_start,
             phys.start,
             len,
             flags,
-            0, // called before translation into higher half
+            VirtualAddress::ZERO, // called before translation into higher half
         )
     }
 }
 
 pub fn map_physical_memory(
-    root_pgtable: usize,
+    root_pgtable: PhysicalAddress,
     frame_alloc: &mut FrameAllocator,
     page_alloc: &mut PageAllocator,
     minfo: &MachineInfo,
-) -> crate::Result<(usize, Range<usize>)> {
+) -> crate::Result<(VirtualAddress, Range<VirtualAddress>)> {
     let alignment = arch::page_size_for_level(2);
 
-    let phys = minfo.memory_hull();
-    let phys = align_down(phys.start, alignment)..checked_align_up(phys.end, alignment).unwrap();
-    let virt = arch::KERNEL_ASPACE_BASE.checked_add(phys.start).unwrap()
-        ..arch::KERNEL_ASPACE_BASE.checked_add(phys.end).unwrap();
-    let size = NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap();
+    let phys = minfo.memory_hull().checked_align_out(alignment).unwrap();
+    let virt = arch::KERNEL_ASPACE_BASE
+        .checked_add(phys.start.get())
+        .unwrap()
+        ..arch::KERNEL_ASPACE_BASE
+            .checked_add(phys.end.get())
+            .unwrap();
+    let size = NonZeroUsize::new(phys.size()).unwrap();
 
-    debug_assert!(phys.start.is_multiple_of(alignment) && phys.end.is_multiple_of(alignment));
-    debug_assert!(virt.start.is_multiple_of(alignment) && virt.end.is_multiple_of(alignment));
+    debug_assert!(phys.start.is_aligned_to(alignment) && phys.end.is_aligned_to(alignment));
+    debug_assert!(virt.start.is_aligned_to(alignment) && virt.end.is_aligned_to(alignment));
 
-    log::trace!("Mapping physical memory {phys:#x?} => {virt:#x?}...");
+    log::trace!("Mapping physical memory {phys:?} => {virt:?}...");
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
     unsafe {
@@ -126,7 +131,7 @@ pub fn map_physical_memory(
             phys.start,
             size,
             Flags::READ | Flags::WRITE,
-            0, // called before translation into higher half
+            VirtualAddress::ZERO, // called before translation into higher half
         )?;
     }
 
@@ -137,13 +142,13 @@ pub fn map_physical_memory(
 }
 
 pub fn map_kernel(
-    root_pgtable: usize,
+    root_pgtable: PhysicalAddress,
     frame_alloc: &mut FrameAllocator,
     page_alloc: &mut PageAllocator,
     kernel: &Kernel,
     minfo: &MachineInfo,
-    phys_off: usize,
-) -> crate::Result<(Range<usize>, Option<TlsAllocation>)> {
+    phys_off: VirtualAddress,
+) -> crate::Result<(Range<VirtualAddress>, Option<TlsAllocation>)> {
     let kernel_virt = page_alloc.allocate(
         Layout::from_size_align(
             usize::try_from(kernel.mem_size())?,
@@ -152,9 +157,11 @@ pub fn map_kernel(
         .unwrap(),
     );
 
-    let phys_base = kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE;
+    let phys_base = PhysicalAddress::new(
+        kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE.get(),
+    );
     assert!(
-        phys_base.is_multiple_of(arch::PAGE_SIZE),
+        phys_base.is_aligned_to(arch::PAGE_SIZE),
         "Loaded ELF file is not sufficiently aligned"
     );
 
@@ -218,12 +225,12 @@ pub fn map_kernel(
 
 /// Map an ELF LOAD segment.
 fn handle_load_segment(
-    root_pgtable: usize,
+    root_pgtable: PhysicalAddress,
     frame_alloc: &mut FrameAllocator,
     ph: &ProgramHeader,
-    phys_base: usize,
-    virt_base: usize,
-    phys_off: usize,
+    phys_base: PhysicalAddress,
+    virt_base: VirtualAddress,
+    phys_off: VirtualAddress,
 ) -> crate::Result<()> {
     let flags = flags_for_segment(ph);
 
@@ -240,14 +247,14 @@ fn handle_load_segment(
         let start = phys_base.checked_add(ph.offset).unwrap();
         let end = start.checked_add(ph.file_size).unwrap();
 
-        align_down(start, ph.align)..checked_align_up(end, ph.align).unwrap()
+        (start..end).checked_align_out(ph.align).unwrap()
     };
 
     let virt = {
         let start = virt_base.checked_add(ph.virtual_address).unwrap();
         let end = start.checked_add(ph.file_size).unwrap();
 
-        align_down(start, ph.align)..checked_align_up(end, ph.align).unwrap()
+        (start..end).checked_align_out(ph.align).unwrap()
     };
 
     log::trace!("mapping {virt:#x?} => {phys:#x?}");
@@ -259,7 +266,7 @@ fn handle_load_segment(
             frame_alloc,
             virt.start,
             phys.start,
-            NonZeroUsize::new(phys.end.checked_sub(phys.start).unwrap()).unwrap(),
+            NonZeroUsize::new(phys.size()).unwrap(),
             flags,
             arch::KERNEL_ASPACE_BASE,
         )?;
@@ -295,19 +302,19 @@ fn handle_load_segment(
 ///    2.3. and lastly replace last page previously mapped by `handle_load_segment` to stitch things up.
 /// 3. If the BSS section is larger than that one page, we allocate additional zeroed frames and map them in.
 fn handle_bss_section(
-    root_pgtable: usize,
+    root_pgtable: PhysicalAddress,
     frame_alloc: &mut FrameAllocator,
     ph: &ProgramHeader,
     flags: Flags,
-    phys_base: usize,
-    virt_base: usize,
-    phys_off: usize,
+    phys_base: PhysicalAddress,
+    virt_base: VirtualAddress,
+    phys_off: VirtualAddress,
 ) -> crate::Result<()> {
     let virt_start = virt_base.checked_add(ph.virtual_address).unwrap();
     let zero_start = virt_start.checked_add(ph.file_size).unwrap();
     let zero_end = virt_start.checked_add(ph.mem_size).unwrap();
 
-    let data_bytes_before_zero = zero_start & 0xfff;
+    let data_bytes_before_zero = zero_start.get() & 0xfff;
 
     log::trace!(
         "handling BSS {:#x?}, data bytes before {data_bytes_before_zero}",
@@ -315,28 +322,32 @@ fn handle_bss_section(
     );
 
     if data_bytes_before_zero != 0 {
-        let last_page = align_down(
-            virt_start
-                .checked_add(ph.file_size.saturating_sub(1))
-                .unwrap(),
-            ph.align,
-        );
-        let last_frame = align_down(
-            phys_base.checked_add(ph.offset + ph.file_size - 1).unwrap(),
-            ph.align,
-        );
+        let last_page = virt_start
+            .checked_add(ph.file_size.saturating_sub(1))
+            .unwrap()
+            .align_down(ph.align);
+        let last_frame = phys_base
+            .checked_add(ph.offset + ph.file_size - 1)
+            .unwrap()
+            .align_down(ph.align);
 
         let new_frame = frame_alloc.allocate_one_zeroed(arch::KERNEL_ASPACE_BASE)?;
 
         // Safety: we just allocated the frame
         unsafe {
             let src = slice::from_raw_parts(
-                arch::KERNEL_ASPACE_BASE.checked_add(last_frame).unwrap() as *mut u8,
+                arch::KERNEL_ASPACE_BASE
+                    .checked_add(last_frame.get())
+                    .unwrap()
+                    .as_mut_ptr(),
                 data_bytes_before_zero,
             );
 
             let dst = slice::from_raw_parts_mut(
-                arch::KERNEL_ASPACE_BASE.checked_add(new_frame).unwrap() as *mut u8,
+                arch::KERNEL_ASPACE_BASE
+                    .checked_add(new_frame.get())
+                    .unwrap()
+                    .as_mut_ptr(),
                 data_bytes_before_zero,
             );
 
@@ -357,13 +368,13 @@ fn handle_bss_section(
         }
     }
 
-    log::trace!("zero_start {zero_start:#x} zero_end {zero_end:#x}");
+    log::trace!("zero_start {zero_start:?} zero_end {zero_end:?}");
     let (mut virt, len) = {
         // zero_start either lies at a page boundary OR somewhere within the first page
         // by aligning up, we move it to the beginning of the *next* page.
-        let start = checked_align_up(zero_start, ph.align).unwrap();
-        let end = checked_align_up(zero_end, ph.align).unwrap();
-        (start, end.checked_sub(start).unwrap())
+        let start = zero_start.checked_align_up(ph.align).unwrap();
+        let end = zero_end.checked_align_up(ph.align).unwrap();
+        (start, end.checked_sub_addr(start).unwrap())
     };
 
     if len > 0 {
@@ -374,7 +385,7 @@ fn handle_bss_section(
 
         while let Some((phys, len)) = phys_iter.next()? {
             log::trace!(
-                "mapping additional zeros {virt:#x}..{:#x}",
+                "mapping additional zeros {virt:?}..{:?}",
                 virt.checked_add(len.get()).unwrap()
             );
 
@@ -392,7 +403,7 @@ fn handle_bss_section(
                 )?;
             }
 
-            virt += len.get();
+            virt = virt.checked_add(len.get()).unwrap();
         }
     }
 
@@ -402,7 +413,7 @@ fn handle_bss_section(
 fn handle_dynamic_segment(
     ph: &ProgramHeader,
     elf_file: &xmas_elf::ElfFile,
-    virt_base: usize,
+    virt_base: VirtualAddress,
 ) -> crate::Result<()> {
     log::trace!("parsing RELA info...");
 
@@ -430,7 +441,7 @@ fn handle_dynamic_segment(
     Ok(())
 }
 
-fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: usize) {
+fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: VirtualAddress) {
     assert_eq!(
         rela.get_symbol_table_index(),
         0,
@@ -456,7 +467,10 @@ fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: usize) {
             // log::trace!("reloc R_RISCV_RELATIVE offset: {:#x}; addend: {:#x} => target {target:?} value {value:?}", rela.get_offset(), rela.get_addend());
             // Safety: we have to trust the ELF data here
             unsafe {
-                (target as *mut usize).write_unaligned(value);
+                target
+                    .as_mut_ptr()
+                    .cast::<usize>()
+                    .write_unaligned(value.get());
             }
         }
         _ => unimplemented!("unsupported relocation type {}", rela.get_type()),
@@ -465,13 +479,13 @@ fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: usize) {
 
 /// Map the kernel thread-local storage (TLS) memory regions.
 fn handle_tls_segment(
-    root_pgtable: usize,
+    root_pgtable: PhysicalAddress,
     frame_alloc: &mut FrameAllocator,
     page_alloc: &mut PageAllocator,
     ph: &ProgramHeader,
-    virt_base: usize,
+    virt_base: VirtualAddress,
     minfo: &MachineInfo,
-    phys_off: usize,
+    phys_off: VirtualAddress,
 ) -> crate::Result<TlsAllocation> {
     let layout = Layout::from_size_align(ph.mem_size, cmp::max(ph.align, arch::PAGE_SIZE))
         .unwrap()
@@ -487,7 +501,7 @@ fn handle_tls_segment(
     let mut phys_iter = frame_alloc.allocate_zeroed(layout, phys_off);
     while let Some((phys, len)) = phys_iter.next()? {
         log::trace!(
-            "Mapping TLS region {virt_start:#x}..{:#x} {len} ...",
+            "Mapping TLS region {virt_start:?}..{:?} {len} ...",
             virt_start.checked_add(len.get()).unwrap()
         );
 
@@ -505,13 +519,13 @@ fn handle_tls_segment(
             )?;
         }
 
-        virt_start += len.get();
+        virt_start = virt_start.checked_add(len.get()).unwrap();
     }
 
     Ok(TlsAllocation {
         virt,
         template: TlsTemplate {
-            start_addr: virt_base + ph.virtual_address,
+            start_addr: virt_base.checked_add(ph.virtual_address).unwrap(),
             mem_size: ph.mem_size,
             file_size: ph.file_size,
             align: ph.align,
@@ -522,21 +536,21 @@ fn handle_tls_segment(
 #[derive(Debug)]
 pub struct TlsAllocation {
     /// The TLS region in virtual memory
-    virt: Range<usize>,
+    virt: Range<VirtualAddress>,
     /// The template we allocated for
     pub template: TlsTemplate,
 }
 
 impl TlsAllocation {
-    pub fn region_for_hart(&self, hartid: usize) -> Range<usize> {
+    pub fn region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
         let aligned_size = checked_align_up(
             self.template.mem_size,
             cmp::max(self.template.align, arch::PAGE_SIZE),
         )
         .unwrap();
-        let start = self.virt.start + (aligned_size * hartid);
+        let start = self.virt.start.checked_add(aligned_size * hartid).unwrap();
 
-        start..start + self.template.mem_size
+        start..start.checked_add(self.template.mem_size).unwrap()
     }
 
     pub fn initialize_for_hart(&self, hartid: usize) {
@@ -544,11 +558,11 @@ impl TlsAllocation {
             // Safety: We have to trust the loaders BootInfo here
             unsafe {
                 let src: &[u8] = slice::from_raw_parts(
-                    self.template.start_addr as *const u8,
+                    self.template.start_addr.as_mut_ptr(),
                     self.template.file_size,
                 );
                 let dst: &mut [u8] = slice::from_raw_parts_mut(
-                    self.region_for_hart(hartid).start as *mut u8,
+                    self.region_for_hart(hartid).start.as_mut_ptr(),
                     self.template.file_size,
                 );
 
@@ -563,12 +577,12 @@ impl TlsAllocation {
 }
 
 pub fn map_kernel_stacks(
-    root_pgtable: usize,
+    root_pgtable: PhysicalAddress,
     frame_alloc: &mut FrameAllocator,
     page_alloc: &mut PageAllocator,
     minfo: &MachineInfo,
     per_cpu_size_pages: usize,
-    phys_off: usize,
+    phys_off: VirtualAddress,
 ) -> crate::Result<StacksAllocation> {
     let per_cpu_size = per_cpu_size_pages * arch::PAGE_SIZE;
     let per_cpu_size_with_guard = per_cpu_size + arch::PAGE_SIZE;
@@ -598,7 +612,7 @@ pub fn map_kernel_stacks(
 
         while let Some((phys, len)) = phys_iter.next()? {
             log::trace!(
-                "mapping stack for hart {hart} {virt:#x}..{:#x} => {phys:#x}..{:#x}",
+                "mapping stack for hart {hart} {virt:?}..{:?} => {phys:?}..{:?}",
                 virt.checked_add(len.get()).unwrap(),
                 phys.checked_add(len.get()).unwrap()
             );
@@ -617,7 +631,7 @@ pub fn map_kernel_stacks(
                 )?;
             }
 
-            virt += len.get();
+            virt = virt.checked_add(len.get()).unwrap();
         }
     }
 
@@ -630,16 +644,20 @@ pub fn map_kernel_stacks(
 
 pub struct StacksAllocation {
     /// The TLS region in virtual memory
-    virt: Range<usize>,
+    virt: Range<VirtualAddress>,
     per_cpu_size: usize,
     per_cpu_size_with_guard: usize,
 }
 
 impl StacksAllocation {
-    pub fn region_for_cpu(&self, cpuid: usize) -> Range<usize> {
-        let end = self.virt.end - (self.per_cpu_size_with_guard * cpuid);
+    pub fn region_for_cpu(&self, cpuid: usize) -> Range<VirtualAddress> {
+        let end = self
+            .virt
+            .end
+            .checked_sub(self.per_cpu_size_with_guard * cpuid)
+            .unwrap();
 
-        (end - self.per_cpu_size)..end
+        end.checked_sub(self.per_cpu_size).unwrap()..end
     }
 }
 
@@ -789,18 +807,4 @@ pub const fn checked_align_up(this: usize, align: usize) -> Option<usize> {
     } else {
         None
     }
-}
-
-#[must_use]
-#[inline]
-pub const fn align_down(this: usize, align: usize) -> usize {
-    assert!(
-        align.is_power_of_two(),
-        "align_down: align is not a power-of-two"
-    );
-
-    let aligned = this & 0usize.wrapping_sub(align);
-    debug_assert!(aligned.is_multiple_of(align));
-    debug_assert!(aligned <= this);
-    aligned
 }

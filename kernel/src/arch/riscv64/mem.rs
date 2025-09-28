@@ -13,6 +13,7 @@ use core::ptr::NonNull;
 use core::{fmt, slice};
 
 use bitflags::bitflags;
+use kmem::{PhysicalAddress, VirtualAddress};
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
@@ -20,12 +21,11 @@ use static_assertions::const_assert_eq;
 use crate::arch::{mb, wmb};
 use crate::mem::flush::Flush;
 use crate::mem::frame_alloc::{Frame, FrameAllocator};
-use crate::mem::{PhysicalAddress, VirtualAddress};
 
 pub const DEFAULT_ASID: u16 = 0;
 
 pub const KERNEL_ASPACE_RANGE: RangeInclusive<VirtualAddress> =
-    VirtualAddress::new(0xffffffc000000000).unwrap()..=VirtualAddress::MAX;
+    VirtualAddress::new(0xffffffc000000000)..=VirtualAddress::MAX;
 
 const_assert_eq!(KERNEL_ASPACE_RANGE.start().get(), CANONICAL_ADDRESS_MASK);
 const_assert_eq!(
@@ -42,8 +42,7 @@ const_assert_eq!(
 /// change in the future if we decide that the null-checking performed by the WASM runtime
 /// is sufficiently robust.
 pub const USER_ASPACE_RANGE: RangeInclusive<VirtualAddress> =
-    VirtualAddress::new(0x0000000000200000).unwrap()
-        ..=VirtualAddress::new((1 << VIRT_ADDR_BITS) - 1).unwrap();
+    VirtualAddress::new(0x0000000000200000)..=VirtualAddress::new((1 << VIRT_ADDR_BITS) - 1);
 
 pub const PAGE_SIZE: usize = 4096;
 pub const PAGE_SHIFT: usize = (PAGE_SIZE - 1).count_ones() as usize;
@@ -70,9 +69,7 @@ pub fn init() {
     // but otherwise we have to trust the address is valid for the entire page.
     unsafe {
         slice::from_raw_parts_mut(
-            VirtualAddress::from_phys(root_pgtable)
-                .unwrap()
-                .as_mut_ptr(),
+            phys_to_virt(root_pgtable).unwrap().as_mut_ptr(),
             PAGE_SIZE / 2,
         )
         .fill(0);
@@ -81,7 +78,26 @@ pub fn init() {
     wmb();
 }
 
-/// Return whether the given virtual address is in the kernel address space.
+#[must_use]
+pub fn phys_to_virt(phys: PhysicalAddress) -> Option<VirtualAddress> {
+    KERNEL_ASPACE_RANGE.start().checked_add(phys.get())
+}
+
+pub const fn is_canonical(virt: VirtualAddress) -> bool {
+    (virt.get() & CANONICAL_ADDRESS_MASK).wrapping_sub(1) >= CANONICAL_ADDRESS_MASK - 1
+}
+
+/// Return whether the given virtual address is in the user address space half.
+#[inline]
+pub const fn is_user_address(virt: VirtualAddress) -> bool {
+    // This address refers to userspace if it is in the lower half of the
+    // canonical addresses.  IOW - if all of the bits in the canonical address
+    // mask are zero.
+    (virt.get() & CANONICAL_ADDRESS_MASK) == 0
+}
+
+/// Return whether the given virtual address is in the kernel address space half.
+#[inline]
 pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
     KERNEL_ASPACE_RANGE.start().get() <= virt.get() && virt.get() < KERNEL_ASPACE_RANGE.end().get()
 }
@@ -172,7 +188,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
             let root_pgtable = PhysicalAddress::new(satp.ppn() << 12);
             debug_assert!(root_pgtable.get() != 0);
 
-            let base = VirtualAddress::from_phys(root_pgtable)
+            let base = phys_to_virt(root_pgtable)
                 .unwrap()
                 .checked_add(PAGE_SIZE / 2)
                 .unwrap()

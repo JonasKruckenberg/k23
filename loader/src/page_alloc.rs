@@ -8,6 +8,7 @@
 use core::alloc::Layout;
 use core::ops::Range;
 
+use kmem::VirtualAddress;
 use rand::distr::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
@@ -34,7 +35,7 @@ pub struct PageAllocator {
 }
 
 impl PageAllocator {
-    fn allocate_pages(&mut self, num_pages: usize) -> usize {
+    fn allocate_pages(&mut self, num_pages: usize) -> VirtualAddress {
         // find a consecutive range of `num` entries that are not used
         let mut free_pages = self
             .page_state
@@ -59,23 +60,28 @@ impl PageAllocator {
                 self.page_state[idx + i] = true;
             }
 
-            idx
+            VirtualAddress::new(idx)
         } else {
             panic!("no usable top-level pages found ({num_pages} pages requested)");
         }
     }
 
-    pub fn reserve(&mut self, mut virt_base: usize, mut remaining_bytes: usize) {
+    pub fn reserve(&mut self, mut virt_base: VirtualAddress, mut remaining_bytes: usize) {
         log::trace!(
-            "marking {virt_base:#x}..{:#x} as used",
+            "marking {virt_base}..{} as used",
             virt_base.checked_add(remaining_bytes).unwrap()
         );
 
         let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
-        debug_assert!(virt_base.is_multiple_of(top_level_page_size));
+        debug_assert!(virt_base.is_aligned_to(top_level_page_size));
 
         while remaining_bytes > 0 {
-            let page_idx = (virt_base - (usize::MAX << arch::VIRT_ADDR_BITS)) / top_level_page_size;
+            let page_idx = virt_base
+                .get()
+                .checked_sub(usize::MAX << arch::VIRT_ADDR_BITS)
+                .unwrap()
+                .checked_div(top_level_page_size)
+                .unwrap();
 
             self.page_state[page_idx] = true;
 
@@ -84,7 +90,7 @@ impl PageAllocator {
         }
     }
 
-    pub fn allocate(&mut self, layout: Layout) -> Range<usize> {
+    pub fn allocate(&mut self, layout: Layout) -> Range<VirtualAddress> {
         assert!(layout.align().is_power_of_two());
 
         let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
@@ -100,7 +106,11 @@ impl PageAllocator {
         //
         // we can then take the lowest possible address of the higher half (`usize::MAX << VA_BITS`)
         // and add the `idx` multiple of the size of a top-level entry to it
-        let base = (usize::MAX << arch::VIRT_ADDR_BITS) + page_idx * top_level_page_size;
+        let base = page_idx
+            .checked_mul(top_level_page_size)
+            .unwrap()
+            .checked_add(usize::MAX << arch::VIRT_ADDR_BITS)
+            .unwrap();
 
         let offset = if let Some(rng) = self.prng.as_mut() {
             // Choose a random offset.

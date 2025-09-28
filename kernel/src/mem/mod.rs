@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-mod address;
 mod address_space;
 mod address_space_region;
 pub mod bootstrap_alloc;
@@ -23,10 +22,10 @@ use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::{fmt, slice};
 
-pub use address::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 pub use address_space::{AddressSpace, Batch};
 pub use address_space_region::AddressSpaceRegion;
 pub use flush::Flush;
+use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use loader_api::BootInfo;
 pub use mmap::Mmap;
 use rand::SeedableRng;
@@ -87,8 +86,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
     // reserve the physical memory map
     aspace
         .reserve(
-            VirtualAddress::new(boot_info.physical_memory_map.start).unwrap()
-                ..VirtualAddress::new(boot_info.physical_memory_map.end).unwrap(),
+            boot_info.physical_memory_map.start..boot_info.physical_memory_map.end,
             Permissions::READ | Permissions::WRITE,
             Some("Physical Memory Map".to_string()),
             flush,
@@ -99,17 +97,11 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
     let own_elf = unsafe {
         let base = boot_info
             .physical_address_offset
-            .checked_add(boot_info.kernel_phys.start)
-            .unwrap() as *const u8;
+            .checked_add(boot_info.kernel_phys.start.get())
+            .unwrap()
+            .as_ptr();
 
-        slice::from_raw_parts(
-            base,
-            boot_info
-                .kernel_phys
-                .end
-                .checked_sub(boot_info.kernel_phys.start)
-                .unwrap(),
-        )
+        slice::from_raw_parts(base, boot_info.kernel_phys.size())
     };
     let own_elf = xmas_elf::ElfFile::new(own_elf).unwrap();
 
@@ -118,8 +110,9 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
             continue;
         }
 
-        let virt = VirtualAddress::new(boot_info.kernel_virt.start)
-            .unwrap()
+        let virt = boot_info
+            .kernel_virt
+            .start
             .checked_add(usize::try_from(ph.virtual_addr()).unwrap())
             .unwrap();
 

@@ -13,14 +13,13 @@ use core::ops::{BitAnd, BitOr, Not};
 use core::ptr;
 
 use fallible_iterator::FallibleIterator;
+use kmem::{AddressRangeExt, PhysicalAddress};
 use static_assertions::const_assert_eq;
 
 use crate::arch::PAGE_SIZE;
 use crate::device_tree::{Device, DeviceTree, IrqSource};
 use crate::irq::{InterruptController, IrqClaim};
-use crate::mem::{
-    AddressRangeExt, AddressSpaceRegion, Permissions, PhysicalAddress, with_kernel_aspace,
-};
+use crate::mem::{AddressSpaceRegion, Permissions, with_kernel_aspace};
 use crate::util::either::Either;
 
 const MAX_CONTEXTS: usize = 64;

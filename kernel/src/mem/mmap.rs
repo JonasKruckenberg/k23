@@ -12,14 +12,11 @@ use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::{ptr, slice};
 
+use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use spin::Mutex;
 
 use crate::arch;
-use crate::mem::address::AddressRangeExt;
-use crate::mem::{
-    AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions, PhysicalAddress,
-    VirtualAddress,
-};
+use crate::mem::{AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions};
 
 /// A memory mapping.
 ///

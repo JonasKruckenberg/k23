@@ -13,8 +13,9 @@ use core::slice;
 
 use anyhow::Context;
 use cranelift_entity::PrimaryMap;
+use kmem::VirtualAddress;
 
-use crate::mem::{AddressSpace, Mmap, VirtualAddress};
+use crate::mem::{AddressSpace, Mmap};
 use crate::wasm::TrapKind;
 use crate::wasm::compile::{CompiledFunctionInfo, FunctionLoc};
 use crate::wasm::indices::{DefinedFuncIndex, ModuleInternedTypeIndex};

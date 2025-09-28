@@ -16,13 +16,13 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 
 use anyhow::bail;
+use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use pin_project::pin_project;
 use spin::LazyLock;
 
 use crate::arch;
-use crate::mem::address::VirtualAddress;
 use crate::mem::frame_alloc::FrameAllocator;
-use crate::mem::{AddressRangeExt, Batch, PageFaultFlags, Permissions, PhysicalAddress, Vmo};
+use crate::mem::{Batch, PageFaultFlags, Permissions, Vmo};
 
 /// A contiguous region of an address space
 #[pin_project]
@@ -150,7 +150,7 @@ impl AddressSpaceRegion {
                 if will_write {
                     let mut vmo = vmo.write();
 
-                    for addr in range.into_iter().step_by(arch::PAGE_SIZE) {
+                    for addr in range.step_by(arch::PAGE_SIZE) {
                         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
                         let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
                         let frame = vmo.require_owned_frame(vmo_relative_offset)?;

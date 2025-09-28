@@ -9,6 +9,7 @@ use core::fmt::Formatter;
 use core::ops::Range;
 use core::{fmt, slice};
 
+use kmem::{PhysicalAddress, VirtualAddress};
 use loader_api::LoaderConfig;
 use xmas_elf::program::{ProgramHeader, Type};
 
@@ -27,7 +28,7 @@ pub struct Kernel<'a> {
 }
 
 impl Kernel<'static> {
-    pub fn from_static(phys_off: usize) -> crate::Result<Self> {
+    pub fn from_static(phys_off: VirtualAddress) -> crate::Result<Self> {
         // Safety: The kernel elf file is inlined into the loader executable as part of the build setup
         // which means we just need to parse it here.
         let elf_file = xmas_elf::ElfFile::new(unsafe {
@@ -35,7 +36,7 @@ impl Kernel<'static> {
                 .checked_add(INLINED_KERNEL_BYTES.0.as_ptr().addr())
                 .unwrap();
 
-            slice::from_raw_parts(base as *mut u8, INLINED_KERNEL_BYTES.0.len())
+            slice::from_raw_parts(base.as_mut_ptr(), INLINED_KERNEL_BYTES.0.len())
         })
         .map_err(Error::Elf)?;
 
@@ -61,9 +62,9 @@ impl Kernel<'static> {
 }
 
 impl Kernel<'_> {
-    pub fn phys_range(&self) -> Range<usize> {
+    pub fn phys_range(&self) -> Range<PhysicalAddress> {
         let fdt = INLINED_KERNEL_BYTES.0.as_ptr_range();
-        fdt.start as usize..fdt.end as usize
+        PhysicalAddress::from_ptr(fdt.start)..PhysicalAddress::from_ptr(fdt.end)
     }
 
     /// Returns the size of the kernel in memory.

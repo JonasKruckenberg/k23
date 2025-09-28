@@ -23,10 +23,11 @@ use core::str::FromStr;
 
 use fallible_iterator::FallibleIterator;
 use kasync::executor::Executor;
+use kmem::PhysicalAddress;
 use spin::{Barrier, OnceLock};
 
 use crate::device_tree::DeviceTree;
-use crate::mem::{Mmap, PhysicalAddress, with_kernel_aspace};
+use crate::mem::{Mmap, with_kernel_aspace};
 use crate::state::global;
 use crate::{arch, irq};
 

@@ -16,9 +16,9 @@ use core::ptr::NonNull;
 use core::{fmt, ptr};
 
 use cpu_local::cpu_local;
+use kmem::VirtualAddress;
 
 use crate::arch;
-use crate::mem::VirtualAddress;
 use crate::wasm::TrapKind;
 use crate::wasm::code_registry::lookup_code;
 use crate::wasm::store::StoreOpaque;
@@ -564,11 +564,11 @@ impl RawBacktrace {
         // We already checked for this case in the `trace_with_trap_state`
         // caller.
         assert_ne!(pc.get(), 0);
-        assert!(pc.is_canonical());
+        assert!(arch::is_canonical(pc));
         assert_ne!(fp.get(), 0);
-        assert!(fp.is_canonical());
+        assert!(arch::is_canonical(fp));
         assert_ne!(trampoline_fp.get(), 0);
-        assert!(trampoline_fp.is_canonical());
+        assert!(arch::is_canonical(trampoline_fp));
 
         // This loop will walk the linked list of frame pointers starting at
         // `fp` and going up until `trampoline_fp`. We know that both `fp` and

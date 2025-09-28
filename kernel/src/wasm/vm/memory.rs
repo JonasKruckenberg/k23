@@ -8,7 +8,9 @@
 use core::ops::Range;
 use core::ptr::NonNull;
 
-use crate::mem::{Mmap, VirtualAddress};
+use kmem::VirtualAddress;
+
+use crate::mem::Mmap;
 use crate::wasm::vm::VMMemoryDefinition;
 use crate::wasm::vm::provenance::VmPtr;
 

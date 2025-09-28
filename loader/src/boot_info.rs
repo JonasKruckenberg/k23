@@ -10,6 +10,7 @@ use core::mem::MaybeUninit;
 use core::ops::Range;
 use core::slice;
 
+use kmem::{PhysicalAddress, VirtualAddress};
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
 
 use crate::arch;
@@ -18,13 +19,13 @@ use crate::frame_alloc::FrameAllocator;
 #[expect(clippy::too_many_arguments, reason = "")]
 pub fn prepare_boot_info(
     mut frame_alloc: FrameAllocator,
-    physical_address_offset: usize,
-    physical_memory_map: Range<usize>,
-    kernel_virt: Range<usize>,
+    physical_address_offset: VirtualAddress,
+    physical_memory_map: Range<VirtualAddress>,
+    kernel_virt: Range<VirtualAddress>,
     maybe_tls_template: Option<TlsTemplate>,
-    loader_phys: Range<usize>,
-    kernel_phys: Range<usize>,
-    fdt_phys: Range<usize>,
+    loader_phys: Range<PhysicalAddress>,
+    kernel_phys: Range<PhysicalAddress>,
+    fdt_phys: Range<PhysicalAddress>,
     hart_mask: usize,
     rng_seed: [u8; 32],
 ) -> crate::Result<*mut BootInfo> {
@@ -32,7 +33,7 @@ pub fn prepare_boot_info(
         Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
         arch::KERNEL_ASPACE_BASE,
     )?;
-    let page = physical_address_offset.checked_add(frame).unwrap();
+    let page = physical_address_offset.checked_add(frame.get()).unwrap();
 
     let memory_regions = init_boot_info_memory_regions(
         page,
@@ -51,7 +52,11 @@ pub fn prepare_boot_info(
     boot_info.cpu_mask = hart_mask;
     boot_info.rng_seed = rng_seed;
 
-    let boot_info_ptr = page as *mut BootInfo;
+    #[expect(
+        clippy::cast_ptr_alignment,
+        reason = "`page` is actually page aligned, so this is perfectly fine"
+    )]
+    let boot_info_ptr = page.as_mut_ptr().cast::<BootInfo>();
     // Safety: we just allocated the boot info frame
     unsafe { boot_info_ptr.write(boot_info) }
 
@@ -59,18 +64,22 @@ pub fn prepare_boot_info(
 }
 
 fn init_boot_info_memory_regions(
-    page: usize,
+    page: VirtualAddress,
     frame_alloc: FrameAllocator,
-    fdt_phys: Range<usize>,
-    loader_phys: Range<usize>,
-    kernel_phys: Range<usize>,
+    fdt_phys: Range<PhysicalAddress>,
+    loader_phys: Range<PhysicalAddress>,
+    kernel_phys: Range<PhysicalAddress>,
 ) -> MemoryRegions {
     // Safety: we just allocated a whole frame for the boot info
     let regions: &mut [MaybeUninit<MemoryRegion>] = unsafe {
         let base = page.checked_add(size_of::<BootInfo>()).unwrap();
         let len = (arch::PAGE_SIZE - size_of::<BootInfo>()) / size_of::<MemoryRegion>();
 
-        slice::from_raw_parts_mut(base as *mut MaybeUninit<MemoryRegion>, len)
+        #[expect(
+            clippy::cast_ptr_alignment,
+            reason = "`page` is actually page aligned, so this is perfectly fine"
+        )]
+        slice::from_raw_parts_mut(base.as_mut_ptr().cast::<MaybeUninit<MemoryRegion>>(), len)
     };
 
     let mut len = 0;

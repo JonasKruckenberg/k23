@@ -15,10 +15,10 @@ use core::str::FromStr;
 use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
 use fdt::{CellSizes, Fdt, PropertiesIter};
+use kmem::{AddressRangeExt, PhysicalAddress};
 
 use crate::arch::PAGE_SIZE;
 use crate::error::Error;
-use crate::mapping::{align_down, checked_align_up};
 
 /// Information about the machine we're running on.
 /// This is collected from the FDT (flatting device tree) passed to us by the previous stage loader.
@@ -26,7 +26,7 @@ pub struct MachineInfo<'dt> {
     /// The FDT blob passed to us by the previous stage loader
     pub fdt: &'dt [u8],
     /// Address ranges we may use for allocation
-    pub memories: ArrayVec<Range<usize>, 16>,
+    pub memories: ArrayVec<Range<PhysicalAddress>, 16>,
     /// The RNG seed passed to us by the previous stage loader.
     pub rng_seed: Option<&'dt [u8]>,
     /// A bitfield where each bit corresponds to a CPU in the system.
@@ -46,8 +46,8 @@ impl MachineInfo<'_> {
         let mut reservations = fdt.reserved_entries();
         let fdt_slice = fdt.as_slice();
 
-        let mut memories: ArrayVec<Range<usize>, 16> = ArrayVec::new();
-        let mut reserved_memory: ArrayVec<Range<usize>, 16> = ArrayVec::new();
+        let mut memories: ArrayVec<Range<PhysicalAddress>, 16> = ArrayVec::new();
+        let mut reserved_memory: ArrayVec<Range<PhysicalAddress>, 16> = ArrayVec::new();
         let mut hart_mask = 0;
         let mut rng_seed = None;
 
@@ -83,8 +83,11 @@ impl MachineInfo<'_> {
                     .as_regs(stack[depth - 1].unwrap().1);
 
                 while let Some(reg) = iter.next()? {
-                    memories
-                        .push(reg.starting_address..reg.starting_address + reg.size.unwrap_or(0));
+                    memories.push({
+                        let start = PhysicalAddress::new(reg.starting_address);
+
+                        start..start.checked_add(reg.size.unwrap_or(0)).unwrap()
+                    });
                 }
             } else if stack[depth - 1].is_some_and(|(s, _)| s == "reserved-memory") {
                 // if the node is a reserved-memory node, add it to the list of reserved memory regions
@@ -93,8 +96,11 @@ impl MachineInfo<'_> {
                     .unwrap()
                     .as_regs(stack[depth - 1].unwrap().1);
                 while let Some(reg) = iter.next()? {
-                    reserved_memory
-                        .push(reg.starting_address..reg.starting_address + reg.size.unwrap_or(0));
+                    reserved_memory.push({
+                        let start = PhysicalAddress::new(reg.starting_address);
+
+                        start..start.checked_add(reg.size.unwrap_or(0)).unwrap()
+                    });
                 }
             } else if name.name == "chosen" {
                 // and finally if the node is the chosen node, extract the RNG seed
@@ -109,7 +115,7 @@ impl MachineInfo<'_> {
             ));
         }
 
-        let mut exclude_region = |entry: Range<usize>| {
+        let mut exclude_region = |entry: Range<PhysicalAddress>| {
             let _memories = memories.take();
 
             for mut region in _memories {
@@ -134,7 +140,7 @@ impl MachineInfo<'_> {
         // Apply reserved_entries
         while let Some(entry) = reservations.next()? {
             let region = {
-                let start = usize::try_from(entry.address)?;
+                let start = PhysicalAddress::new(usize::try_from(entry.address)?);
 
                 start..start.checked_add(usize::try_from(entry.size)?).unwrap()
             };
@@ -151,13 +157,12 @@ impl MachineInfo<'_> {
         }
 
         // remove memory regions that are left as zero-sized from the previous step
-        memories.retain(|region| region.end.checked_sub(region.start).unwrap() > 0);
+        memories.retain(|region| region.size() > 0);
 
         // page-align all memory regions, this will waste some physical memory in the process,
         // but we can't make use of it either way
         memories.iter_mut().for_each(|region| {
-            region.start = checked_align_up(region.start, PAGE_SIZE).unwrap();
-            region.end = align_down(region.end, PAGE_SIZE);
+            *region = region.clone().checked_align_in(PAGE_SIZE).unwrap();
         });
 
         // ensure the memory regions are sorted.
@@ -187,7 +192,7 @@ impl MachineInfo<'_> {
     /// Since we *could* have multiple memory regions, and those regions need not be contiguous,
     /// this function should be used to determine the range of addresses that we should map in the
     /// [`map_physical_memory`][crate::mapping::map_physical_memory] step.
-    pub fn memory_hull(&self) -> Range<usize> {
+    pub fn memory_hull(&self) -> Range<PhysicalAddress> {
         // This relies on the memory regions being sorted by the constructor
         debug_assert!(self.memories.is_sorted_by(|a, b| { a.end <= b.start }));
 
@@ -214,7 +219,7 @@ impl fmt::Display for MachineInfo<'_> {
         writeln!(f, "{:<17} : {:b}", "HART MASK", self.hart_mask)?;
 
         for (idx, r) in self.memories.iter().enumerate() {
-            writeln!(f, "MEMORY REGION {:<4}: {:#x}..{:#x}", idx, r.start, r.end)?;
+            writeln!(f, "MEMORY REGION {:<4}: {}..{}", idx, r.start, r.end)?;
         }
 
         Ok(())

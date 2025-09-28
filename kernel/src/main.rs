@@ -51,8 +51,9 @@ use cfg_if::cfg_if;
 use kasync::executor::{Executor, Worker};
 use kasync::time::{Instant, Ticks, Timer};
 use kfastrand::FastRand;
+use kmem::{AddressRangeExt, PhysicalAddress};
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
-use mem::{PhysicalAddress, frame_alloc};
+use mem::frame_alloc;
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -229,8 +230,7 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
         .memory_regions
         .iter()
         .filter_map(|region| {
-            let range =
-                PhysicalAddress::new(region.range.start)..PhysicalAddress::new(region.range.end);
+            let range = region.range.start..region.range.end;
 
             region.kind.is_usable().then_some(range)
         })
@@ -265,14 +265,11 @@ fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAdd
 
     let base = boot_info
         .physical_address_offset
-        .checked_add(fdt.range.start)
-        .unwrap() as *const u8;
+        .checked_add(fdt.range.start.get())
+        .unwrap()
+        .as_mut_ptr();
 
     // Safety: we need to trust the bootinfo data is correct
-    let slice =
-        unsafe { slice::from_raw_parts(base, fdt.range.end.checked_sub(fdt.range.start).unwrap()) };
-    (
-        slice,
-        PhysicalAddress::new(fdt.range.start)..PhysicalAddress::new(fdt.range.end),
-    )
+    let slice = unsafe { slice::from_raw_parts(base, fdt.range.size()) };
+    (slice, fdt.range.start..fdt.range.end)
 }

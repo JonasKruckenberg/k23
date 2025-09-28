@@ -11,6 +11,7 @@ use core::num::NonZero;
 use core::ptr::NonNull;
 
 use bitflags::bitflags;
+use kmem::{PhysicalAddress, VirtualAddress};
 use riscv::satp;
 
 use crate::GlobalInitResult;
@@ -20,7 +21,7 @@ use crate::machine_info::MachineInfo;
 use crate::mapping::Flags;
 
 pub const DEFAULT_ASID: u16 = 0;
-pub const KERNEL_ASPACE_BASE: usize = 0xffffffc000000000;
+pub const KERNEL_ASPACE_BASE: VirtualAddress = VirtualAddress::new(0xffffffc000000000);
 pub const PAGE_SIZE: usize = 4096;
 /// The number of page table entries in one table
 pub const PAGE_TABLE_ENTRIES: usize = 512;
@@ -192,7 +193,7 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalIni
 
     log::debug!("Hart {hartid} Jumping to kernel...");
     log::trace!(
-        "Hart {hartid} entry: {:#x}, arguments: a0={hartid} a1={:?} stack={stack:#x?} tls={tls:#x?}",
+        "Hart {hartid} entry: {}, arguments: a0={hartid} a1={:?} stack={stack:#x?} tls={tls:#x?}",
         init.kernel_entry,
         init.boot_info
     );
@@ -227,10 +228,10 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalIni
             in("a0") hartid,
             in("a1") init.boot_info,
             in("a2") boot_ticks,
-            in("t0") stack.start,
-            stack_top = in(reg) stack.end,
-            tls_start = in(reg) tls.start,
-            kernel_entry = in(reg) init.kernel_entry,
+            in("t0") stack.start.get(),
+            stack_top = in(reg) stack.end.get(),
+            tls_start = in(reg) tls.start.get(),
+            kernel_entry = in(reg) init.kernel_entry.get(),
             fill_stack = sym fill_stack,
             options(noreturn)
         }
@@ -262,13 +263,13 @@ pub fn start_secondary_harts(boot_hart: usize, minfo: &MachineInfo) -> crate::Re
 }
 
 pub unsafe fn map_contiguous(
-    root_pgtable: usize,
+    root_pgtable: PhysicalAddress,
     frame_alloc: &mut FrameAllocator,
-    mut virt: usize,
-    mut phys: usize,
+    mut virt: VirtualAddress,
+    mut phys: PhysicalAddress,
     len: NonZero<usize>,
     flags: Flags,
-    phys_off: usize,
+    phys_off: VirtualAddress,
 ) -> crate::Result<()> {
     let mut remaining_bytes = len.get();
     debug_assert!(
@@ -276,12 +277,12 @@ pub unsafe fn map_contiguous(
         "address range span be at least one page"
     );
     debug_assert!(
-        virt.is_multiple_of(PAGE_SIZE),
-        "virtual address must be aligned to at least 4KiB page size ({virt:#x})"
+        virt.is_aligned_to(PAGE_SIZE),
+        "virtual address must be aligned to at least 4KiB page size ({virt})"
     );
     debug_assert!(
-        phys.is_multiple_of(PAGE_SIZE),
-        "physical address must be aligned to at least 4KiB page size ({phys:#x})"
+        phys.is_aligned_to(PAGE_SIZE),
+        "physical address must be aligned to at least 4KiB page size ({phys})"
     );
 
     // To map out contiguous chunk of physical memory into the virtual address space efficiently
@@ -344,7 +345,7 @@ pub unsafe fn map_contiguous(
                 pgtable = pgtable_ptr_from_phys(pte.get_address_and_flags().0, phys_off);
             } else {
                 unreachable!(
-                    "Invalid state: PTE can't be valid leaf (this means {virt:#x} is already mapped) {pte:?} {pte:p}"
+                    "Invalid state: PTE can't be valid leaf (this means {virt} is already mapped) {pte:?} {pte:p}"
                 );
             }
         }
@@ -354,11 +355,11 @@ pub unsafe fn map_contiguous(
 }
 
 pub unsafe fn remap_contiguous(
-    root_pgtable: usize,
-    mut virt: usize,
-    mut phys: usize,
+    root_pgtable: PhysicalAddress,
+    mut virt: VirtualAddress,
+    mut phys: PhysicalAddress,
     len: NonZero<usize>,
-    phys_off: usize,
+    phys_off: VirtualAddress,
 ) {
     let mut remaining_bytes = len.get();
     debug_assert!(
@@ -366,11 +367,11 @@ pub unsafe fn remap_contiguous(
         "virtual address range must span be at least one page"
     );
     debug_assert!(
-        virt.is_multiple_of(PAGE_SIZE),
+        virt.is_aligned_to(PAGE_SIZE),
         "virtual address must be aligned to at least 4KiB page size"
     );
     debug_assert!(
-        phys.is_multiple_of(PAGE_SIZE),
+        phys.is_aligned_to(PAGE_SIZE),
         "physical address must be aligned to at least 4KiB page size"
     );
 
@@ -418,10 +419,10 @@ pub unsafe fn remap_contiguous(
     }
 }
 
-pub unsafe fn activate_aspace(pgtable: usize) {
+pub unsafe fn activate_aspace(pgtable: PhysicalAddress) {
     // Safety: register access
     unsafe {
-        let ppn = pgtable >> 12_i32;
+        let ppn = pgtable.get() >> 12_i32;
         satp::set(satp::Mode::Sv39, DEFAULT_ASID, ppn);
     }
 }
@@ -443,9 +444,9 @@ pub fn page_size_for_level(level: usize) -> usize {
 /// # Panics
 ///
 /// Panics if the provided level is `>= PAGE_TABLE_LEVELS`.
-pub fn pte_index_for_level(virt: usize, lvl: usize) -> usize {
+pub fn pte_index_for_level(virt: VirtualAddress, lvl: usize) -> usize {
     assert!(lvl < PAGE_TABLE_LEVELS);
-    let index = (virt >> (PAGE_SHIFT + lvl * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
+    let index = (virt.get() >> (PAGE_SHIFT + lvl * PAGE_ENTRY_SHIFT)) & (PAGE_TABLE_ENTRIES - 1);
     debug_assert!(index < PAGE_TABLE_ENTRIES);
 
     index
@@ -455,13 +456,25 @@ pub fn pte_index_for_level(virt: usize, lvl: usize) -> usize {
 ///
 /// This is the case when both the virtual and physical address are aligned to the page size at this level
 /// AND the remaining size is at least the page size.
-pub fn can_map_at_level(virt: usize, phys: usize, remaining_bytes: usize, lvl: usize) -> bool {
+pub fn can_map_at_level(
+    virt: VirtualAddress,
+    phys: PhysicalAddress,
+    remaining_bytes: usize,
+    lvl: usize,
+) -> bool {
     let page_size = page_size_for_level(lvl);
-    virt.is_multiple_of(page_size) && phys.is_multiple_of(page_size) && remaining_bytes >= page_size
+    virt.is_aligned_to(page_size) && phys.is_aligned_to(page_size) && remaining_bytes >= page_size
 }
 
-fn pgtable_ptr_from_phys(phys: usize, phys_off: usize) -> NonNull<PageTableEntry> {
-    NonNull::new(phys_off.checked_add(phys).unwrap() as *mut PageTableEntry).unwrap()
+fn pgtable_ptr_from_phys(
+    phys: PhysicalAddress,
+    phys_off: VirtualAddress,
+) -> NonNull<PageTableEntry> {
+    phys.checked_add(phys_off.get())
+        .unwrap()
+        .as_non_null()
+        .unwrap()
+        .cast()
 }
 
 #[repr(transparent)]
@@ -502,16 +515,16 @@ impl PageTableEntry {
             .intersects(PTEFlags::READ | PTEFlags::WRITE | PTEFlags::EXECUTE)
     }
 
-    pub fn replace_address_and_flags(&mut self, address: usize, flags: PTEFlags) {
+    pub fn replace_address_and_flags(&mut self, address: PhysicalAddress, flags: PTEFlags) {
         self.bits &= PTEFlags::all().bits(); // clear all previous flags
-        self.bits |= (address >> PTE_PPN_SHIFT) | flags.bits();
+        self.bits |= (address.get() >> PTE_PPN_SHIFT) | flags.bits();
     }
 
-    pub fn get_address_and_flags(&self) -> (usize, PTEFlags) {
+    pub fn get_address_and_flags(&self) -> (PhysicalAddress, PTEFlags) {
         // TODO correctly mask out address
         let addr = (self.bits & !PTEFlags::all().bits()) << PTE_PPN_SHIFT;
         let flags = PTEFlags::from_bits_truncate(self.bits);
-        (addr, flags)
+        (PhysicalAddress::new(addr), flags)
     }
 }
 

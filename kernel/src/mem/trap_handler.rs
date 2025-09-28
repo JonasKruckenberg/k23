@@ -7,10 +7,11 @@
 
 use core::ops::ControlFlow;
 
+use kmem::VirtualAddress;
 use riscv::scause::Exception;
 
 use crate::arch::trap::Trap;
-use crate::mem::{PageFaultFlags, VirtualAddress, with_kernel_aspace};
+use crate::mem::{PageFaultFlags, with_kernel_aspace};
 
 pub fn handle_page_fault(trap: Trap, tval: VirtualAddress) -> ControlFlow<()> {
     let flags = match trap {

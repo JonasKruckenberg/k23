@@ -15,9 +15,9 @@ use core::{fmt, ptr, slice};
 use anyhow::{bail, ensure};
 use cranelift_entity::packed_option::ReservedValue;
 use cranelift_entity::{EntityRef, EntitySet, PrimaryMap};
+use kmem::VirtualAddress;
 use static_assertions::const_assert_eq;
 
-use crate::mem::VirtualAddress;
 use crate::wasm::TrapKind;
 use crate::wasm::indices::{
     DataIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, DefinedTagIndex,

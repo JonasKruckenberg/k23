@@ -9,13 +9,13 @@ use alloc::sync::Arc;
 use core::ops::Range;
 
 use anyhow::ensure;
+use kmem::{AddressRangeExt, PhysicalAddress};
 use spin::RwLock;
 
 use crate::arch;
 use crate::mem::frame_alloc::frame_list::{Entry, FrameList};
 use crate::mem::frame_alloc::{Frame, FrameAllocator};
 use crate::mem::provider::{Provider, THE_ZERO_FRAME};
-use crate::mem::{AddressRangeExt, PhysicalAddress};
 
 #[derive(Debug)]
 pub enum Vmo {

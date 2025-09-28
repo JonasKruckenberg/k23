@@ -16,10 +16,10 @@ use core::ptr::NonNull;
 
 use anyhow::ensure;
 pub use host::{HostFunc, IntoFunc};
+use kmem::VirtualAddress;
 pub use typed::{TypedFunc, WasmParams, WasmResults, WasmTy};
 
 use crate::arch;
-use crate::mem::VirtualAddress;
 use crate::util::zip_eq::IteratorExt;
 use crate::wasm::indices::VMSharedTypeIndex;
 use crate::wasm::store::{StoreOpaque, Stored};
@@ -389,7 +389,7 @@ fn enter_wasm(store: &mut StoreOpaque) -> Option<VirtualAddress> {
     //
     // After we've got the stack limit then we store it into the `stack_limit`
     // variable.
-    let wasm_stack_limit = VirtualAddress::new(stack_pointer - MAX_WASM_STACK).unwrap();
+    let wasm_stack_limit = VirtualAddress::new(stack_pointer - MAX_WASM_STACK);
 
     // Safety: the VMStoreContext is always properly initialized
     let prev_stack = unsafe {

@@ -14,6 +14,7 @@ loader-api.workspace = true
 spin.workspace = true
 fdt.workspace = true
 abort.workspace = true
+kmem.workspace = true
 
 # third-party dependencies
 log.workspace = true
