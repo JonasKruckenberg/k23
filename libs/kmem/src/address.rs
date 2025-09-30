@@ -260,3 +260,9 @@ impl_address!(VirtualAddress);
 #[derive(Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct PhysicalAddress(usize);
 impl_address!(PhysicalAddress);
+
+impl PhysicalAddress {
+    pub fn to_virt(self, physmap: VirtualAddress) -> VirtualAddress {
+        physmap.add(self.0)
+    }
+}

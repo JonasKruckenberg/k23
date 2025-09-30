@@ -16,7 +16,7 @@ pub enum Error {
     /// Failed to parse kernel elf
     Elf(&'static str),
     /// The system was not able to allocate memory needed for the operation.
-    NoMemory,
+    Alloc,
     /// Failed to start secondary hart
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     FailedToStartSecondaryHart(riscv::sbi::Error),
@@ -35,6 +35,11 @@ impl From<fdt::Error> for Error {
 impl From<core::array::TryFromSliceError> for Error {
     fn from(err: core::array::TryFromSliceError) -> Self {
         Error::TryFromSlice(err)
+    }
+}
+impl From<kmem::AllocError> for Error {
+    fn from(_: kmem::AllocError) -> Self {
+        Error::Alloc
     }
 }
 

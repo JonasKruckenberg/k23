@@ -11,18 +11,23 @@ use core::{cmp, ptr, slice};
 
 use bitflags::bitflags;
 use fallible_iterator::FallibleIterator;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem::arch::bare::Bare;
+use kmem::arch::Arch;
+use kmem::{
+    AddressRangeExt, AllocError, HardwareAddressSpace, MemoryAttributes, PhysicalAddress,
+    VirtualAddress, WriteOrExecute,
+};
 use loader_api::TlsTemplate;
-use xmas_elf::P64;
 use xmas_elf::dynamic::Tag;
 use xmas_elf::program::{SegmentData, Type};
+use xmas_elf::P64;
 
 use crate::error::Error;
 use crate::frame_alloc::FrameAllocator;
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::page_alloc::PageAllocator;
-use crate::{SelfRegions, arch};
+use crate::{arch, SelfRegions};
 
 bitflags! {
     #[derive(Debug, Copy, Clone, PartialEq)]
@@ -33,20 +38,20 @@ bitflags! {
     }
 }
 
-pub fn identity_map_self(
-    root_pgtable: PhysicalAddress,
-    frame_alloc: &mut FrameAllocator,
+pub fn identity_map_self<A: Arch>(
+    aspace: &mut HardwareAddressSpace<Bare<A>>,
     self_regions: &SelfRegions,
-) -> crate::Result<()> {
+) -> Result<(), AllocError> {
     log::trace!(
         "Identity mapping loader executable region {:#x?}...",
         self_regions.executable
     );
     identity_map_range(
-        root_pgtable,
-        frame_alloc,
+        aspace,
         self_regions.executable.clone(),
-        Flags::READ | Flags::EXECUTE,
+        MemoryAttributes::new()
+            .with(MemoryAttributes::READ, true)
+            .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Execute),
     )?;
 
     log::trace!(
@@ -54,10 +59,9 @@ pub fn identity_map_self(
         self_regions.read_only
     );
     identity_map_range(
-        root_pgtable,
-        frame_alloc,
+        aspace,
         self_regions.read_only.clone(),
-        Flags::READ,
+        MemoryAttributes::new().with(MemoryAttributes::READ, true),
     )?;
 
     log::trace!(
@@ -65,68 +69,61 @@ pub fn identity_map_self(
         self_regions.read_write
     );
     identity_map_range(
-        root_pgtable,
-        frame_alloc,
+        aspace,
         self_regions.read_write.clone(),
-        Flags::READ | Flags::WRITE,
+        MemoryAttributes::new()
+            .with(MemoryAttributes::READ, true)
+            .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write),
     )?;
 
     Ok(())
 }
 
 #[inline]
-fn identity_map_range(
-    root_pgtable: PhysicalAddress,
-    frame_alloc: &mut FrameAllocator,
-    phys: Range<PhysicalAddress>,
-    flags: Flags,
-) -> crate::Result<()> {
-    let virt_start = VirtualAddress::new(phys.start.get());
-
+fn identity_map_range<A: Arch>(
+    aspace: &mut HardwareAddressSpace<A>,
+    range: Range<PhysicalAddress>,
+    attrs: MemoryAttributes,
+) -> Result<(), AllocError> {
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
     unsafe {
-        arch::map_contiguous(
-            root_pgtable,
-            frame_alloc,
-            virt_start,
-            phys.start,
-            phys.len(),
-            flags,
-            VirtualAddress::MIN, // called before translation into higher half
+        aspace.map(
+            Bare::<A>::phys_to_virt(range.start),
+            range.start,
+            range.len(),
+            attrs,
         )
     }
 }
 
-pub fn map_physical_memory(
-    root_pgtable: PhysicalAddress,
-    frame_alloc: &mut FrameAllocator,
+pub fn map_physical_memory<A: Arch>(
+    aspace: &mut HardwareAddressSpace<Bare<A>>,
     page_alloc: &mut PageAllocator,
     minfo: &MachineInfo,
-) -> crate::Result<(VirtualAddress, Range<VirtualAddress>)> {
-    let alignment = arch::page_size_for_level(2);
+) -> Result<(VirtualAddress, Range<VirtualAddress>), AllocError> {
+    let block_size = Bare::<A>::PAGE_TABLE_LEVELS.last().unwrap().block_size();
 
-    let phys = minfo.memory_hull().align_out(alignment);
+    let phys = minfo.memory_hull().align_out(block_size);
     let virt = Range {
         start: arch::KERNEL_ASPACE_BASE.add(phys.start.get()),
         end: arch::KERNEL_ASPACE_BASE.add(phys.end.get()),
     };
 
-    debug_assert!(phys.start.is_aligned_to(alignment) && phys.end.is_aligned_to(alignment));
-    debug_assert!(virt.start.is_aligned_to(alignment) && virt.end.is_aligned_to(alignment));
+    debug_assert!(phys.start.is_aligned_to(block_size) && phys.end.is_aligned_to(block_size));
+    debug_assert!(virt.start.is_aligned_to(block_size) && virt.end.is_aligned_to(block_size));
 
     log::trace!("Mapping physical memory {phys:?} => {virt:?}...");
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
     unsafe {
-        arch::map_contiguous(
-            root_pgtable,
-            frame_alloc,
+        aspace.map(
             virt.start,
             phys.start,
             phys.len(),
-            Flags::READ | Flags::WRITE,
-            VirtualAddress::MIN, // called before translation into higher half
+            MemoryAttributes::new()
+                .with(MemoryAttributes::READ, true)
+                .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write),
         )?;
     }
 
@@ -136,13 +133,11 @@ pub fn map_physical_memory(
     Ok((arch::KERNEL_ASPACE_BASE, virt))
 }
 
-pub fn map_kernel(
-    root_pgtable: PhysicalAddress,
-    frame_alloc: &mut FrameAllocator,
+pub fn map_kernel<A: Arch>(
+    aspace: &mut HardwareAddressSpace<A>,
     page_alloc: &mut PageAllocator,
     kernel: &Kernel,
     minfo: &MachineInfo,
-    phys_off: VirtualAddress,
 ) -> crate::Result<(Range<VirtualAddress>, Option<TlsAllocation>)> {
     let kernel_virt = page_alloc.allocate(
         Layout::from_size_align(
@@ -156,7 +151,7 @@ pub fn map_kernel(
         kernel.elf_file.input.as_ptr() as usize - arch::KERNEL_ASPACE_BASE.get(),
     );
     assert!(
-        phys_base.is_aligned_to(arch::PAGE_SIZE),
+        phys_base.is_aligned_to(A::PAGE_SIZE),
         "Loaded ELF file is not sufficiently aligned"
     );
 
@@ -166,23 +161,19 @@ pub fn map_kernel(
     for ph in kernel.elf_file.program_iter() {
         match ph.get_type().unwrap() {
             Type::Load => handle_load_segment(
-                root_pgtable,
-                frame_alloc,
+                aspace,
                 &ProgramHeader::try_from(ph)?,
                 phys_base,
                 kernel_virt.start,
-                phys_off,
             )?,
             Type::Tls => {
                 let ph = ProgramHeader::try_from(ph)?;
                 let old = maybe_tls_allocation.replace(handle_tls_segment(
-                    root_pgtable,
-                    frame_alloc,
+                    aspace,
                     page_alloc,
                     &ph,
                     kernel_virt.start,
                     minfo,
-                    phys_off,
                 )?);
                 log::trace!("{maybe_tls_allocation:?}");
                 assert!(old.is_none(), "multiple TLS segments not supported");
@@ -219,18 +210,16 @@ pub fn map_kernel(
 }
 
 /// Map an ELF LOAD segment.
-fn handle_load_segment(
-    root_pgtable: PhysicalAddress,
-    frame_alloc: &mut FrameAllocator,
+fn handle_load_segment<A: Arch>(
+    aspace: &mut HardwareAddressSpace<Bare<A>>,
     ph: &ProgramHeader,
     phys_base: PhysicalAddress,
     virt_base: VirtualAddress,
-    phys_off: VirtualAddress,
 ) -> crate::Result<()> {
-    let flags = flags_for_segment(ph);
+    let attrs = attributes_for_segment(ph);
 
     log::trace!(
-        "Handling Segment: LOAD off {offset:#016x} vaddr {vaddr:#016x} align {align} filesz {filesz:#016x} memsz {memsz:#016x} flags {flags:?}",
+        "Handling Segment: LOAD off {offset:#016x} vaddr {vaddr:#016x} align {align} filesz {filesz:#016x} memsz {memsz:#016x} flags {attrs:?}",
         offset = ph.offset,
         vaddr = ph.virtual_address,
         align = ph.align,
@@ -247,27 +236,11 @@ fn handle_load_segment(
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
     // abort startup anyway
     unsafe {
-        arch::map_contiguous(
-            root_pgtable,
-            frame_alloc,
-            virt.start,
-            phys.start,
-            phys.len(),
-            flags,
-            arch::KERNEL_ASPACE_BASE,
-        )?;
+        aspace.map(virt.start, phys.start, phys.len(), attrs)?;
     }
 
     if ph.file_size < ph.mem_size {
-        handle_bss_section(
-            root_pgtable,
-            frame_alloc,
-            ph,
-            flags,
-            phys_base,
-            virt_base,
-            phys_off,
-        )?;
+        handle_bss_section(aspace, ph, attrs, phys_base, virt_base)?;
     }
 
     Ok(())
@@ -287,14 +260,12 @@ fn handle_load_segment(
 ///    2.2. we then copy over the relevant data from the DATA section into the new frame
 ///    2.3. and lastly replace last page previously mapped by `handle_load_segment` to stitch things up.
 /// 3. If the BSS section is larger than that one page, we allocate additional zeroed frames and map them in.
-fn handle_bss_section(
-    root_pgtable: PhysicalAddress,
-    frame_alloc: &mut FrameAllocator,
+fn handle_bss_section<A: Arch>(
+    aspace: &mut HardwareAddressSpace<Bare<A>>,
     ph: &ProgramHeader,
-    flags: Flags,
+    attrs: MemoryAttributes,
     phys_base: PhysicalAddress,
     virt_base: VirtualAddress,
-    phys_off: VirtualAddress,
 ) -> crate::Result<()> {
     let virt_start = virt_base.add(ph.virtual_address);
     let zero_start = virt_start.add(ph.file_size);
@@ -315,7 +286,9 @@ fn handle_bss_section(
             .add(ph.offset + ph.file_size - 1)
             .align_down(ph.align);
 
-        let new_frame = frame_alloc.allocate_one_zeroed(arch::KERNEL_ASPACE_BASE)?;
+        let new_frame = aspace
+            .frame_allocator()
+            .allocate_one_zeroed(arch::KERNEL_ASPACE_BASE)?;
 
         // Safety: we just allocated the frame
         unsafe {
@@ -336,13 +309,7 @@ fn handle_bss_section(
         // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
         // abort startup anyway
         unsafe {
-            arch::remap_contiguous(
-                root_pgtable,
-                last_page,
-                new_frame,
-                arch::PAGE_SIZE,
-                phys_off,
-            );
+            aspace.remap(last_page, new_frame, A::PAGE_SIZE)?;
         }
     }
 
@@ -355,10 +322,9 @@ fn handle_bss_section(
     };
 
     if !virt.is_empty() {
-        let mut frame_iter = frame_alloc.allocate_zeroed(
-            Layout::from_size_align(virt.len(), arch::PAGE_SIZE).unwrap(),
-            arch::KERNEL_ASPACE_BASE,
-        );
+        let mut frame_iter = aspace
+            .frame_allocator()
+            .allocate_zeroed(Layout::from_size_align(virt.len(), A::PAGE_SIZE).unwrap());
 
         while let Some(chunk) = frame_iter.next()? {
             log::trace!("mapping additional zeros {virt:?}",);
@@ -366,15 +332,7 @@ fn handle_bss_section(
             // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
             // abort startup anyway
             unsafe {
-                arch::map_contiguous(
-                    root_pgtable,
-                    frame_iter.alloc(),
-                    virt.start,
-                    chunk.start,
-                    chunk.len(),
-                    flags,
-                    arch::KERNEL_ASPACE_BASE,
-                )?;
+                aspace.map(virt.start, chunk.start, chunk.len(), attrs)?;
             }
 
             virt.start = virt.start.add(chunk.len());
@@ -448,16 +406,14 @@ fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: VirtualAddr
 }
 
 /// Map the kernel thread-local storage (TLS) memory regions.
-fn handle_tls_segment(
-    root_pgtable: PhysicalAddress,
-    frame_alloc: &mut FrameAllocator,
+fn handle_tls_segment<A: Arch>(
+    aspace: &mut HardwareAddressSpace<Bare<A>>,
     page_alloc: &mut PageAllocator,
     ph: &ProgramHeader,
     virt_base: VirtualAddress,
     minfo: &MachineInfo,
-    phys_off: VirtualAddress,
-) -> crate::Result<TlsAllocation> {
-    let layout = Layout::from_size_align(ph.mem_size, cmp::max(ph.align, arch::PAGE_SIZE))
+) -> Result<TlsAllocation, AllocError> {
+    let layout = Layout::from_size_align(ph.mem_size, cmp::max(ph.align, A::PAGE_SIZE))
         .unwrap()
         .repeat(minfo.hart_mask.count_ones() as usize)
         .unwrap()
@@ -466,9 +422,10 @@ fn handle_tls_segment(
     log::trace!("allocating TLS segment {layout:?}...");
 
     let virt = page_alloc.allocate(layout);
-    let mut virt_start = virt.start;
 
-    let mut frame_iter = frame_alloc.allocate_zeroed(layout, phys_off);
+    let mut frame_iter = aspace.frame_allocator().allocate_zeroed(layout);
+
+    let mut virt_start = virt.start;
     while let Some(chunk) = frame_iter.next()? {
         log::trace!(
             "Mapping TLS region {virt_start:?}..{:?} => {chunk:?} ...",
@@ -478,14 +435,13 @@ fn handle_tls_segment(
         // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
         // abort startup anyway
         unsafe {
-            arch::map_contiguous(
-                root_pgtable,
-                frame_iter.alloc(),
+            aspace.map(
                 virt_start,
                 chunk.start,
                 chunk.len(),
-                Flags::READ | Flags::WRITE,
-                phys_off,
+                MemoryAttributes::new()
+                    .with(MemoryAttributes::READ, true)
+                    .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write),
             )?;
         }
 
@@ -512,10 +468,10 @@ pub struct TlsAllocation {
 }
 
 impl TlsAllocation {
-    pub fn region_for_hart(&self, hartid: usize) -> Range<VirtualAddress> {
+    pub fn region_for_hart<A: Arch>(&self, hartid: usize) -> Range<VirtualAddress> {
         let aligned_size = checked_align_up(
             self.template.mem_size,
-            cmp::max(self.template.align, arch::PAGE_SIZE),
+            cmp::max(self.template.align, A::PAGE_SIZE),
         )
         .unwrap();
         let start = self.virt.start.add(aligned_size * hartid);
@@ -546,18 +502,16 @@ impl TlsAllocation {
     }
 }
 
-pub fn map_kernel_stacks(
-    root_pgtable: PhysicalAddress,
-    frame_alloc: &mut FrameAllocator,
+pub fn map_kernel_stacks<A: Arch>(
+    aspace: &mut HardwareAddressSpace<A>,
     page_alloc: &mut PageAllocator,
     minfo: &MachineInfo,
     per_cpu_size_pages: usize,
-    phys_off: VirtualAddress,
-) -> crate::Result<StacksAllocation> {
-    let per_cpu_size = per_cpu_size_pages * arch::PAGE_SIZE;
-    let per_cpu_size_with_guard = per_cpu_size + arch::PAGE_SIZE;
+) -> Result<StacksAllocation, AllocError> {
+    let per_cpu_size = per_cpu_size_pages * A::PAGE_SIZE;
+    let per_cpu_size_with_guard = per_cpu_size + A::PAGE_SIZE;
 
-    let layout_with_guard = Layout::from_size_align(per_cpu_size_with_guard, arch::PAGE_SIZE)
+    let layout_with_guard = Layout::from_size_align(per_cpu_size_with_guard, A::PAGE_SIZE)
         .unwrap()
         .repeat(minfo.hart_mask.count_ones() as usize)
         .unwrap()
@@ -567,7 +521,7 @@ pub fn map_kernel_stacks(
     log::trace!("Mapping stacks region {virt:#x?}...");
 
     for hart in 0..minfo.hart_mask.count_ones() {
-        let layout = Layout::from_size_align(per_cpu_size, arch::PAGE_SIZE).unwrap();
+        let layout = Layout::from_size_align(per_cpu_size, A::PAGE_SIZE).unwrap();
 
         let mut virt = virt
             .end
@@ -577,7 +531,7 @@ pub fn map_kernel_stacks(
         log::trace!("Allocating stack {layout:?}...");
         // The stacks region doesn't need to be zeroed, since we will be filling it with
         // the canary pattern anyway
-        let mut frame_iter = frame_alloc.allocate(layout);
+        let mut frame_iter = aspace.frame_allocator().allocate(layout);
 
         while let Some(chunk) = frame_iter.next()? {
             log::trace!(
@@ -588,14 +542,13 @@ pub fn map_kernel_stacks(
             // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
             // abort startup anyway
             unsafe {
-                arch::map_contiguous(
-                    root_pgtable,
-                    frame_iter.alloc(),
+                aspace.map(
                     virt,
                     chunk.start,
                     chunk.len(),
-                    Flags::READ | Flags::WRITE,
-                    phys_off,
+                    MemoryAttributes::new()
+                        .with(MemoryAttributes::READ, true)
+                        .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write),
                 )?;
             }
 
@@ -726,27 +679,23 @@ impl<'a> TryFrom<xmas_elf::program::ProgramHeader<'a>> for ProgramHeader<'a> {
     }
 }
 
-fn flags_for_segment(ph: &ProgramHeader) -> Flags {
-    let mut out = Flags::empty();
+fn attributes_for_segment(ph: &ProgramHeader) -> MemoryAttributes {
+    let mut out = MemoryAttributes::new();
 
     if ph.p_flags.is_read() {
-        out |= Flags::READ;
+        out.set(MemoryAttributes::READ, true);
     }
 
-    if ph.p_flags.is_write() {
-        out |= Flags::WRITE;
+    match (ph.p_flags.is_write(), ph.p_flags.is_execute()) {
+        (true, false) => out.set(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write),
+        (false, true) => out.set(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Execute),
+        (false, false) => out.set(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Neither),
+        (true, true) => panic!(
+            "elf segment (virtual range {:#x}..{:#x}) is marked as write-execute",
+            ph.virtual_address,
+            ph.virtual_address + ph.mem_size
+        ),
     }
-
-    if ph.p_flags.is_execute() {
-        out |= Flags::EXECUTE;
-    }
-
-    assert!(
-        !out.contains(Flags::WRITE | Flags::EXECUTE),
-        "elf segment (virtual range {:#x}..{:#x}) is marked as write-execute",
-        ph.virtual_address,
-        ph.virtual_address + ph.mem_size
-    );
 
     out
 }

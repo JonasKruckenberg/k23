@@ -9,6 +9,18 @@ license.workspace = true
 
 # 3rd-party dependencies
 mycelium-bitfield.workspace = true
+fallible-iterator.workspace = true
+cfg-if.workspace = true
+bitflags.workspace = true
+arrayvec.workspace = true
+log.workspace = true
+
+[target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
+riscv.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+test-log = "0.2.18"
 
 [lints]
 workspace = true

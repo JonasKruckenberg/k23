@@ -17,7 +17,6 @@ use fallible_iterator::FallibleIterator;
 use fdt::{CellSizes, Fdt, PropertiesIter};
 use kmem::{AddressRangeExt, PhysicalAddress};
 
-use crate::arch::PAGE_SIZE;
 use crate::error::Error;
 
 /// Information about the machine we're running on.

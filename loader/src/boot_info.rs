@@ -18,7 +18,7 @@ use crate::frame_alloc::FrameAllocator;
 
 #[expect(clippy::too_many_arguments, reason = "")]
 pub fn prepare_boot_info(
-    mut frame_alloc: FrameAllocator,
+    mut  : FrameAllocator,
     physical_address_offset: VirtualAddress,
     physical_memory_map: Range<VirtualAddress>,
     kernel_virt: Range<VirtualAddress>,

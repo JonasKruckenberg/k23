@@ -6,16 +6,17 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
+use core::num::NonZeroUsize;
 use core::ops::Range;
-use core::{cmp, iter, ptr, slice};
+use core::{iter, slice};
 
-use fallible_iterator::FallibleIterator;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem::arch::Arch;
+use kmem::{AddressRangeExt, AllocError, PhysicalAddress};
+use spin::Mutex;
 
-use crate::arch;
-use crate::error::Error;
+pub struct FrameAllocator<'a>(Mutex<FrameAllocatorInner<'a>>);
 
-pub struct FrameAllocator<'a> {
+struct FrameAllocatorInner<'a> {
     regions: &'a [Range<PhysicalAddress>],
     // offset from the top of memory regions
     offset: usize,
@@ -25,74 +26,38 @@ impl<'a> FrameAllocator<'a> {
     /// Create a new frame allocator over a given set of physical memory regions.
     #[must_use]
     pub fn new(regions: &'a [Range<PhysicalAddress>]) -> Self {
-        Self { regions, offset: 0 }
+        Self(Mutex::new(FrameAllocatorInner { regions, offset: 0 }))
     }
 
     #[must_use]
     pub fn free_regions(&self) -> FreeRegions<'_> {
+        let inner = self.0.lock();
+
         FreeRegions {
-            offset: self.offset,
-            inner: self.regions.iter().rev().cloned(),
+            offset: inner.offset,
+            inner: inner.regions.iter().rev().cloned(),
         }
     }
 
     #[must_use]
     pub fn used_regions(&self) -> UsedRegions<'_> {
+        let inner = self.0.lock();
+
         UsedRegions {
-            offset: self.offset,
-            inner: self.regions.iter().rev().cloned(),
+            offset: inner.offset,
+            inner: inner.regions.iter().rev().cloned(),
         }
     }
 
-    pub fn frame_usage(&self) -> usize {
-        self.offset >> arch::PAGE_SHIFT
+    pub fn usage(&self) -> usize {
+        let inner = self.0.lock();
+        inner.offset
     }
+}
 
-    pub fn allocate_one_zeroed(
-        &mut self,
-        phys_offset: VirtualAddress,
-    ) -> Result<PhysicalAddress, Error> {
-        self.allocate_contiguous_zeroed(
-            // Safety: the layout is always valid
-            unsafe { Layout::from_size_align_unchecked(arch::PAGE_SIZE, arch::PAGE_SIZE) },
-            phys_offset,
-        )
-    }
-
-    pub fn allocate(&mut self, layout: Layout) -> FrameIter<'a, '_> {
-        assert_eq!(
-            layout.align(),
-            arch::PAGE_SIZE,
-            "BootstrapAllocator only supports page-aligned allocations"
-        );
-
-        let remaining = layout.pad_to_align().size();
-
-        debug_assert!(remaining.is_multiple_of(arch::PAGE_SIZE));
-        FrameIter {
-            alloc: self,
-            remaining,
-        }
-    }
-
-    pub fn allocate_zeroed(
-        &mut self,
-        layout: Layout,
-        phys_offset: VirtualAddress,
-    ) -> FrameIterZeroed<'a, '_> {
-        FrameIterZeroed {
-            inner: self.allocate(layout),
-            phys_offset,
-        }
-    }
-
-    pub fn allocate_contiguous(&mut self, layout: Layout) -> Result<PhysicalAddress, Error> {
+impl<'a> FrameAllocatorInner<'a> {
+    fn allocate_contiguous(&mut self, layout: Layout) -> Result<PhysicalAddress, AllocError> {
         let requested_size = layout.pad_to_align().size();
-        assert_eq!(
-            layout.align(),
-            arch::PAGE_SIZE,
-            "BootstrapAllocator only supports page-aligned allocations"
-        );
         let mut offset = self.offset;
 
         for region in self.regions.iter().rev() {
@@ -122,99 +87,28 @@ impl<'a> FrameAllocator<'a> {
             offset -= region_size;
         }
 
-        Err(Error::NoMemory)
-    }
-
-    pub fn allocate_contiguous_zeroed(
-        &mut self,
-        layout: Layout,
-        phys_offset: VirtualAddress,
-    ) -> Result<PhysicalAddress, Error> {
-        let requested_size = layout.pad_to_align().size();
-        let addr = self.allocate_contiguous(layout)?;
-        // Safety: we just allocated the frame
-        unsafe {
-            ptr::write_bytes::<u8>(addr.add(phys_offset.get()).as_mut_ptr(), 0, requested_size);
-        }
-        Ok(addr)
+        Err(AllocError)
     }
 }
 
-pub struct FrameIter<'a, 'b> {
-    alloc: &'b mut FrameAllocator<'a>,
-    remaining: usize,
-}
-
-impl<'a> FrameIter<'a, '_> {
-    pub fn alloc(&mut self) -> &mut FrameAllocator<'a> {
-        self.alloc
+unsafe impl<A: Arch> kmem::FrameAllocator<A> for FrameAllocator<'_> {
+    fn size_hint(&self) -> (NonZeroUsize, Option<NonZeroUsize>) {
+        let frame_size = unsafe { NonZeroUsize::new_unchecked(A::PAGE_SIZE) };
+        (frame_size, Some(frame_size))
     }
-}
 
-impl FallibleIterator for FrameIter<'_, '_> {
-    type Item = Range<PhysicalAddress>;
-    type Error = Error;
+    fn allocate_contiguous(&self, layout: Layout) -> Result<PhysicalAddress, AllocError> {
+        debug_assert_eq!(
+            layout.align(),
+            A::PAGE_SIZE,
+            "FrameAllocator only supports page-aligned allocations"
+        );
 
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        if self.remaining > 0 {
-            let mut offset = self.alloc.offset;
-
-            for region in self.alloc.regions.iter().rev() {
-                // only consider regions that we haven't already exhausted
-                if let Some(allocatable_size) = region.len().checked_sub(offset)
-                    && allocatable_size >= arch::PAGE_SIZE
-                {
-                    let allocation_size = cmp::min(self.remaining, allocatable_size)
-                        & 0usize.wrapping_sub(arch::PAGE_SIZE);
-                    debug_assert!(allocation_size.is_multiple_of(arch::PAGE_SIZE));
-
-                    let frame = region.end.sub(offset + allocation_size);
-                    self.alloc.offset += allocation_size;
-                    self.remaining -= allocation_size;
-
-                    return Ok(Some(Range::from_start_len(frame, allocation_size)));
-                }
-
-                offset -= region.len();
-            }
-
-            Err(Error::NoMemory)
-        } else {
-            Ok(None)
-        }
+        self.0.lock().allocate_contiguous(layout)
     }
-}
 
-pub struct FrameIterZeroed<'a, 'b> {
-    inner: FrameIter<'a, 'b>,
-    phys_offset: VirtualAddress,
-}
-
-impl<'a> FrameIterZeroed<'a, '_> {
-    pub fn alloc(&mut self) -> &mut FrameAllocator<'a> {
-        self.inner.alloc
-    }
-}
-
-impl FallibleIterator for FrameIterZeroed<'_, '_> {
-    type Item = Range<PhysicalAddress>;
-    type Error = Error;
-
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let Some(range) = self.inner.next()? else {
-            return Ok(None);
-        };
-
-        // Safety: we just allocated the frame
-        unsafe {
-            ptr::write_bytes::<u8>(
-                self.phys_offset.add(range.start.get()).as_mut_ptr(),
-                0,
-                range.len(),
-            );
-        }
-
-        Ok(Some(range))
+    unsafe fn deallocate(&self, _block: PhysicalAddress, _layout: Layout) {
+        unreachable!("FrameAllocator does not support deallocation");
     }
 }
 
