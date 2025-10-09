@@ -290,7 +290,7 @@ where
                         log::trace!("-> ok to remove!");
                         // safety: we've modified the generation of this slot and any other thread
                         // calling this method will exit out at the generation check above in the
-                        // next iteraton of the loop.
+                        // next iteration of the loop.
                         let value = mutator(Some(unsafe { &mut *self.item.get() }));
                         free.push(offset, self);
                         return value;
