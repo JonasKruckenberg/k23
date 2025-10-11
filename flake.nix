@@ -35,7 +35,7 @@
             socat
             wabt
             dtc
-	    cargo-nextest
+            cargo-nextest
             cargo-fuzz
             cargo-deny
             typos
