@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
-use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::{cmp, iter, ptr, slice};
 
@@ -97,7 +96,7 @@ impl<'a> FrameAllocator<'a> {
         let mut offset = self.offset;
 
         for region in self.regions.iter().rev() {
-            let region_size = region.size();
+            let region_size = region.len();
 
             // only consider regions that we haven't already exhausted
             if offset < region_size {
@@ -157,7 +156,7 @@ impl<'a> FrameIter<'a, '_> {
 }
 
 impl FallibleIterator for FrameIter<'_, '_> {
-    type Item = (PhysicalAddress, NonZeroUsize);
+    type Item = Range<PhysicalAddress>;
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
@@ -166,7 +165,7 @@ impl FallibleIterator for FrameIter<'_, '_> {
 
             for region in self.alloc.regions.iter().rev() {
                 // only consider regions that we haven't already exhausted
-                if let Some(allocatable_size) = region.size().checked_sub(offset)
+                if let Some(allocatable_size) = region.len().checked_sub(offset)
                     && allocatable_size >= arch::PAGE_SIZE
                 {
                     let allocation_size = cmp::min(self.remaining, allocatable_size)
@@ -177,10 +176,10 @@ impl FallibleIterator for FrameIter<'_, '_> {
                     self.alloc.offset += allocation_size;
                     self.remaining -= allocation_size;
 
-                    return Ok(Some((frame, NonZeroUsize::new(allocation_size).unwrap())));
+                    return Ok(Some(Range::from_start_len(frame, allocation_size)));
                 }
 
-                offset -= region.size();
+                offset -= region.len();
             }
 
             Err(Error::NoMemory)
@@ -202,11 +201,11 @@ impl<'a> FrameIterZeroed<'a, '_> {
 }
 
 impl FallibleIterator for FrameIterZeroed<'_, '_> {
-    type Item = (PhysicalAddress, NonZeroUsize);
+    type Item = Range<PhysicalAddress>;
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let Some((base, len)) = self.inner.next()? else {
+        let Some(range) = self.inner.next()? else {
             return Ok(None);
         };
 
@@ -214,15 +213,15 @@ impl FallibleIterator for FrameIterZeroed<'_, '_> {
         unsafe {
             ptr::write_bytes::<u8>(
                 self.phys_offset
-                    .checked_add(base.get())
+                    .checked_add(range.start.get())
                     .unwrap()
                     .as_mut_ptr(),
                 0,
-                len.get(),
+                range.len(),
             );
         }
 
-        Ok(Some((base, len)))
+        Ok(Some(range))
     }
 }
 
@@ -238,7 +237,7 @@ impl Iterator for FreeRegions<'_> {
         loop {
             let mut region = self.inner.next()?;
             // keep advancing past already fully used memory regions
-            let region_size = region.size();
+            let region_size = region.len();
 
             if self.offset >= region_size {
                 self.offset -= region_size;
@@ -264,7 +263,7 @@ impl Iterator for UsedRegions<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut region = self.inner.next()?;
 
-        if self.offset >= region.size() {
+        if self.offset >= region.len() {
             Some(region)
         } else if self.offset > 0 {
             region.start = region.end.checked_sub(self.offset).unwrap();

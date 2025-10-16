@@ -6,8 +6,9 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
+use core::ops::Range;
 
-use kmem::AddressRangeExt;
+use kmem::{AddressRangeExt, VirtualAddress};
 use loader_api::BootInfo;
 use talc::{ErrOnOom, Span, Talc, Talck};
 
@@ -24,18 +25,18 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
 
     let phys = boot_alloc.allocate_contiguous(layout).unwrap();
 
-    let virt = {
+    let virt: Range<VirtualAddress> = {
         let start = boot_info
             .physical_address_offset
             .checked_add(phys.get())
             .unwrap();
 
-        start..start.checked_add(layout.size()).unwrap()
+        Range::from_start_len(start, layout.size())
     };
     tracing::debug!("Kernel Heap: {virt:#x?}");
 
     let mut alloc = KERNEL_ALLOCATOR.lock();
-    let span = Span::from_base_size(virt.start.as_mut_ptr(), virt.size());
+    let span = Span::from_base_size(virt.start.as_mut_ptr(), virt.len());
 
     // Safety: just allocated the memory region
     unsafe {

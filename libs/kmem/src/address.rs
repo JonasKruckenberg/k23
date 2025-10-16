@@ -5,8 +5,27 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::alloc::{Layout, LayoutError};
-use core::ops::Range;
+macro_rules! impl_address_from {
+    ($address_ty:ident, $int_ty:ident) => {
+        impl From<$int_ty> for $address_ty {
+            fn from(value: $int_ty) -> Self {
+                $address_ty(usize::from(value))
+            }
+        }
+    };
+}
+
+macro_rules! impl_address_try_from {
+    ($address_ty:ident, $int_ty:ident) => {
+        impl TryFrom<$int_ty> for $address_ty {
+            type Error = <usize as TryFrom<$int_ty>>::Error;
+
+            fn try_from(value: $int_ty) -> Result<Self, Self::Error> {
+                usize::try_from(value).map($address_ty)
+            }
+        }
+    };
+}
 
 macro_rules! impl_address {
     ($address_ty:ident) => {
@@ -15,6 +34,11 @@ macro_rules! impl_address {
             pub const MIN: Self = Self(0);
             pub const ZERO: Self = Self(0);
             pub const BITS: u32 = usize::BITS;
+
+            #[must_use]
+            pub const fn new(n: usize) -> Self {
+                Self(n)
+            }
 
             #[inline]
             pub const fn get(&self) -> usize {
@@ -237,6 +261,18 @@ macro_rules! impl_address {
             }
         }
 
+        impl_address_from!($address_ty, usize);
+        impl_address_from!($address_ty, u8);
+        impl_address_from!($address_ty, u16);
+        impl_address_try_from!($address_ty, i8);
+        impl_address_try_from!($address_ty, i16);
+        impl_address_try_from!($address_ty, i32);
+        impl_address_try_from!($address_ty, i64);
+        impl_address_try_from!($address_ty, i128);
+        impl_address_try_from!($address_ty, u32);
+        impl_address_try_from!($address_ty, u64);
+        impl_address_try_from!($address_ty, u128);
+
         impl ::core::fmt::Display for $address_ty {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 f.write_fmt(format_args!("{:#018x}", self.0)) // 18 digits to account for the leading 0x
@@ -290,160 +326,7 @@ macro_rules! impl_address {
 pub struct VirtualAddress(usize);
 impl_address!(VirtualAddress);
 
-impl VirtualAddress {
-    #[must_use]
-    pub const fn new(n: usize) -> Self {
-        Self(n)
-    }
-
-    // pub const fn is_canonical<A: RawAddressSpace>(self) -> bool {
-    //     (self.0 & A::CANONICAL_ADDRESS_MASK).wrapping_sub(1) >= A::CANONICAL_ADDRESS_MASK - 1
-    // }
-    //
-    // #[inline]
-    // pub const fn is_user_accessible<A: RawAddressSpace>(self) -> bool {
-    //     // This address refers to userspace if it is in the lower half of the
-    //     // canonical addresses.  IOW - if all of the bits in the canonical address
-    //     // mask are zero.
-    //     (self.0 & A::CANONICAL_ADDRESS_MASK) == 0
-    // }
-}
-
 #[repr(transparent)]
 #[derive(Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct PhysicalAddress(usize);
 impl_address!(PhysicalAddress);
-
-impl PhysicalAddress {
-    pub const fn new(n: usize) -> Self {
-        Self(n)
-    }
-}
-
-macro_rules! address_range_impl {
-    () => {
-        fn size(&self) -> usize {
-            debug_assert!(self.start <= self.end);
-            let is = self.end.checked_sub_addr(self.start).unwrap_or_default();
-            let should = if self.is_empty() {
-                0
-            } else {
-                self.end.get() - self.start.get()
-            };
-            debug_assert_eq!(is, should);
-            is
-        }
-        fn checked_add(self, offset: usize) -> Option<Self> {
-            Some(Range::from(
-                self.start.checked_add(offset)?..self.end.checked_add(offset)?,
-            ))
-        }
-        fn as_ptr_range(&self) -> Range<*const u8> {
-            Range::from(self.start.as_ptr()..self.end.as_ptr())
-        }
-        fn as_mut_ptr_range(&self) -> Range<*mut u8> {
-            Range::from(self.start.as_mut_ptr()..self.end.as_mut_ptr())
-        }
-        fn checked_align_in(self, align: usize) -> Option<Self>
-        where
-            Self: Sized,
-        {
-            let res = Range::from(self.start.checked_align_up(align)?..self.end.align_down(align));
-            Some(res)
-        }
-        fn checked_align_out(self, align: usize) -> Option<Self>
-        where
-            Self: Sized,
-        {
-            let res = Range::from(self.start.align_down(align)..self.end.checked_align_up(align)?);
-            // aligning outwards can only increase the size
-            debug_assert!(res.start.0 <= res.end.0);
-            Some(res)
-        }
-        // fn saturating_align_in(self, align: usize) -> Self {
-        //     self.start.saturating_align_up(align)..self.end.saturating_align_down(align)
-        // }
-        // fn saturating_align_out(self, align: usize) -> Self {
-        //     self.start.saturating_align_down(align)..self.end.saturating_align_up(align)
-        // }
-
-        // TODO test
-        fn alignment(&self) -> usize {
-            self.start.alignment()
-        }
-        fn into_layout(self) -> core::result::Result<Layout, core::alloc::LayoutError> {
-            Layout::from_size_align(self.size(), self.alignment())
-        }
-        fn is_overlapping(&self, other: &Self) -> bool {
-            (self.start < other.end) & (other.start < self.end)
-        }
-        fn difference(&self, other: Self) -> (Option<Self>, Option<Self>) {
-            debug_assert!(self.is_overlapping(&other));
-            let a = Range::from(self.start..other.start);
-            let b = Range::from(other.end..self.end);
-            ((!a.is_empty()).then_some(a), (!b.is_empty()).then_some(b))
-        }
-        fn clamp(&self, range: Self) -> Self {
-            Range::from(self.start.max(range.start)..self.end.min(range.end))
-        }
-    };
-}
-
-pub trait AddressRangeExt {
-    fn size(&self) -> usize;
-    #[must_use]
-    fn checked_add(self, offset: usize) -> Option<Self>
-    where
-        Self: Sized;
-    #[must_use]
-    fn as_ptr_range(&self) -> Range<*const u8>;
-    #[must_use]
-    fn as_mut_ptr_range(&self) -> Range<*mut u8>;
-    #[must_use]
-    fn checked_align_in(self, align: usize) -> Option<Self>
-    where
-        Self: Sized;
-    #[must_use]
-    fn checked_align_out(self, align: usize) -> Option<Self>
-    where
-        Self: Sized;
-    // #[must_use]
-    // fn saturating_align_in(self, align: usize) -> Self;
-    // #[must_use]
-    // fn saturating_align_out(self, align: usize) -> Self;
-    fn alignment(&self) -> usize;
-    /// Return the largest [`Layout`] fitting this range.
-    ///
-    /// # Errors
-    ///
-    /// Return [`LayoutError`] if this range does not represent a valid layout.
-    fn into_layout(self) -> Result<Layout, LayoutError>;
-    fn is_overlapping(&self, other: &Self) -> bool;
-    fn difference(&self, other: Self) -> (Option<Self>, Option<Self>)
-    where
-        Self: Sized;
-    fn clamp(&self, range: Self) -> Self;
-    // fn is_user_accessible<A: RawAddressSpace>(&self) -> bool;
-}
-
-impl AddressRangeExt for Range<PhysicalAddress> {
-    address_range_impl!();
-    // fn is_user_accessible<A: RawAddressSpace>(&self) -> bool {
-    //     unimplemented!("PhysicalAddress is never user accessible")
-    // }
-}
-
-impl AddressRangeExt for Range<VirtualAddress> {
-    address_range_impl!();
-
-    // fn is_user_accessible<A: RawAddressSpace>(&self) -> bool {
-    //     if self.is_empty() {
-    //         return false;
-    //     }
-    //     let Some(end_minus_one) = self.end.checked_sub(1) else {
-    //         return false;
-    //     };
-    //
-    //     self.start.is_user_accessible::<A>() && end_minus_one.is_user_accessible::<A>()
-    // }
-}
