@@ -147,8 +147,7 @@ const FAULT: Command = Command::new("fault")
         // Safety: This actually *is* unsafe and *is* causing problematic behaviour, but that is exactly what
         // we want here!
         unsafe {
-            #[expect(clippy::zero_ptr, reason = "we actually want to cause a fault here")]
-            (0x0 as *const u8).read_volatile();
+            core::ptr::dangling::<u8>().read_volatile();
         }
         Ok(())
     });
