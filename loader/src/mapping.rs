@@ -93,7 +93,7 @@ fn identity_map_range(
             phys.start,
             phys.len(),
             flags,
-            VirtualAddress::ZERO, // called before translation into higher half
+            VirtualAddress::MIN, // called before translation into higher half
         )
     }
 }
@@ -130,7 +130,7 @@ pub fn map_physical_memory(
             phys.start,
             phys.len(),
             Flags::READ | Flags::WRITE,
-            VirtualAddress::ZERO, // called before translation into higher half
+            VirtualAddress::MIN, // called before translation into higher half
         )?;
     }
 

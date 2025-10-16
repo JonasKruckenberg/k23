@@ -116,7 +116,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
 
     let root_pgtable = frame_alloc
         .allocate_one_zeroed(
-            VirtualAddress::ZERO, // called before translation into higher half
+            VirtualAddress::MIN, // called before translation into higher half
         )
         .unwrap();
 
