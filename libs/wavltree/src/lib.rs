@@ -1510,7 +1510,7 @@ impl<T: ?Sized> Links<T> {
     }
 
     /// Returns `true` if this node is currently linked to a [WAVLTree].
-    pub fn is_linked(&self) -> bool {
+    pub const fn is_linked(&self) -> bool {
         let inner = unsafe { &*self.inner.get() };
         inner.up.is_some() || inner.left.is_some() || inner.right.is_some()
     }
