@@ -14,7 +14,7 @@ use core::ffi::c_void;
 use core::ops::Range;
 
 use arrayvec::ArrayVec;
-use kmem::{PhysicalAddress, VirtualAddress};
+use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use spin::{Barrier, OnceLock};
@@ -95,10 +95,10 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     let self_regions = SelfRegions::collect(&minfo);
     log::debug!("{self_regions:#x?}");
 
-    let fdt_phys = {
-        let fdt = minfo.fdt.as_ptr_range();
-        PhysicalAddress::from_ptr(fdt.start)..PhysicalAddress::from_ptr(fdt.end)
-    };
+    let fdt_phys = Range::from_start_len(
+        PhysicalAddress::from_ptr(minfo.fdt.as_ptr()),
+        minfo.fdt.len(),
+    );
 
     // Initialize the frame allocator
     let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys.clone());
@@ -301,8 +301,7 @@ fn allocatable_memory_regions(
             }
 
             assert!(
-                !other.contains(&region.start)
-                    && !other.contains(&(region.end.checked_sub(1).unwrap())),
+                !region.overlaps(other),
                 "regions {region:#x?} and {other:#x?} overlap"
             );
         }

@@ -1,6 +1,8 @@
 #![no_std]
 #![feature(step_trait)]
 
-mod addresses;
+mod address;
+mod address_range;
 
-pub use addresses::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+pub use address::{PhysicalAddress, VirtualAddress};
+pub use address_range::AddressRangeExt;

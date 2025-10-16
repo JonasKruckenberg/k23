@@ -8,7 +8,7 @@
 use core::alloc::Layout;
 use core::ops::Range;
 
-use kmem::VirtualAddress;
+use kmem::{AddressRangeExt, VirtualAddress};
 use rand::distr::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
@@ -127,6 +127,7 @@ impl PageAllocator {
             0
         };
 
-        base.checked_add(offset).unwrap()..base.checked_add(offset + layout.size()).unwrap()
+        let start = base.checked_add(offset).unwrap();
+        Range::from_start_len(start, layout.size())
     }
 }

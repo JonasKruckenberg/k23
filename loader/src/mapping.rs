@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
-use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::{cmp, ptr, slice};
 
@@ -82,7 +81,6 @@ fn identity_map_range(
     phys: Range<PhysicalAddress>,
     flags: Flags,
 ) -> crate::Result<()> {
-    let len = NonZeroUsize::new(phys.size()).unwrap();
     let virt_start = VirtualAddress::new(phys.start.get());
 
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
@@ -93,7 +91,7 @@ fn identity_map_range(
             frame_alloc,
             virt_start,
             phys.start,
-            len,
+            phys.len(),
             flags,
             VirtualAddress::ZERO, // called before translation into higher half
         )
@@ -109,13 +107,14 @@ pub fn map_physical_memory(
     let alignment = arch::page_size_for_level(2);
 
     let phys = minfo.memory_hull().checked_align_out(alignment).unwrap();
-    let virt = arch::KERNEL_ASPACE_BASE
-        .checked_add(phys.start.get())
-        .unwrap()
-        ..arch::KERNEL_ASPACE_BASE
+    let virt = Range {
+        start: arch::KERNEL_ASPACE_BASE
+            .checked_add(phys.start.get())
+            .unwrap(),
+        end: arch::KERNEL_ASPACE_BASE
             .checked_add(phys.end.get())
-            .unwrap();
-    let size = NonZeroUsize::new(phys.size()).unwrap();
+            .unwrap(),
+    };
 
     debug_assert!(phys.start.is_aligned_to(alignment) && phys.end.is_aligned_to(alignment));
     debug_assert!(virt.start.is_aligned_to(alignment) && virt.end.is_aligned_to(alignment));
@@ -129,14 +128,14 @@ pub fn map_physical_memory(
             frame_alloc,
             virt.start,
             phys.start,
-            size,
+            phys.len(),
             Flags::READ | Flags::WRITE,
             VirtualAddress::ZERO, // called before translation into higher half
         )?;
     }
 
     // exclude the physical memory map region from page allocation
-    page_alloc.reserve(virt.start, size.get());
+    page_alloc.reserve(virt.start, phys.len());
 
     Ok((arch::KERNEL_ASPACE_BASE, virt))
 }
@@ -243,19 +242,16 @@ fn handle_load_segment(
         memsz = ph.mem_size
     );
 
-    let phys = {
-        let start = phys_base.checked_add(ph.offset).unwrap();
-        let end = start.checked_add(ph.file_size).unwrap();
+    let phys = Range::from_start_len(phys_base.checked_add(ph.offset).unwrap(), ph.file_size)
+        .checked_align_out(ph.align)
+        .unwrap();
 
-        (start..end).checked_align_out(ph.align).unwrap()
-    };
-
-    let virt = {
-        let start = virt_base.checked_add(ph.virtual_address).unwrap();
-        let end = start.checked_add(ph.file_size).unwrap();
-
-        (start..end).checked_align_out(ph.align).unwrap()
-    };
+    let virt = Range::from_start_len(
+        virt_base.checked_add(ph.virtual_address).unwrap(),
+        ph.file_size,
+    )
+    .checked_align_out(ph.align)
+    .unwrap();
 
     log::trace!("mapping {virt:#x?} => {phys:#x?}");
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
@@ -266,7 +262,7 @@ fn handle_load_segment(
             frame_alloc,
             virt.start,
             phys.start,
-            NonZeroUsize::new(phys.size()).unwrap(),
+            phys.len(),
             flags,
             arch::KERNEL_ASPACE_BASE,
         )?;
@@ -362,48 +358,44 @@ fn handle_bss_section(
                 root_pgtable,
                 last_page,
                 new_frame,
-                NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
+                arch::PAGE_SIZE,
                 phys_off,
             );
         }
     }
 
     log::trace!("zero_start {zero_start:?} zero_end {zero_end:?}");
-    let (mut virt, len) = {
-        // zero_start either lies at a page boundary OR somewhere within the first page
-        // by aligning up, we move it to the beginning of the *next* page.
-        let start = zero_start.checked_align_up(ph.align).unwrap();
-        let end = zero_end.checked_align_up(ph.align).unwrap();
-        (start, end.checked_sub_addr(start).unwrap())
+    // zero_start either lies at a page boundary OR somewhere within the first page
+    // by aligning up, we move it to the beginning of the *next* page.
+    let mut virt = Range {
+        start: zero_start.checked_align_up(ph.align).unwrap(),
+        end: zero_end.checked_align_up(ph.align).unwrap(),
     };
 
-    if len > 0 {
-        let mut phys_iter = frame_alloc.allocate_zeroed(
-            Layout::from_size_align(len, arch::PAGE_SIZE).unwrap(),
+    if !virt.is_empty() {
+        let mut frame_iter = frame_alloc.allocate_zeroed(
+            Layout::from_size_align(virt.len(), arch::PAGE_SIZE).unwrap(),
             arch::KERNEL_ASPACE_BASE,
         );
 
-        while let Some((phys, len)) = phys_iter.next()? {
-            log::trace!(
-                "mapping additional zeros {virt:?}..{:?}",
-                virt.checked_add(len.get()).unwrap()
-            );
+        while let Some(chunk) = frame_iter.next()? {
+            log::trace!("mapping additional zeros {virt:?}",);
 
             // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
             // abort startup anyway
             unsafe {
                 arch::map_contiguous(
                     root_pgtable,
-                    phys_iter.alloc(),
-                    virt,
-                    phys,
-                    len,
+                    frame_iter.alloc(),
+                    virt.start,
+                    chunk.start,
+                    chunk.len(),
                     flags,
                     arch::KERNEL_ASPACE_BASE,
                 )?;
             }
 
-            virt = virt.checked_add(len.get()).unwrap();
+            virt.start = virt.start.checked_add(chunk.len()).unwrap();
         }
     }
 
@@ -498,11 +490,11 @@ fn handle_tls_segment(
     let virt = page_alloc.allocate(layout);
     let mut virt_start = virt.start;
 
-    let mut phys_iter = frame_alloc.allocate_zeroed(layout, phys_off);
-    while let Some((phys, len)) = phys_iter.next()? {
+    let mut frame_iter = frame_alloc.allocate_zeroed(layout, phys_off);
+    while let Some(chunk) = frame_iter.next()? {
         log::trace!(
-            "Mapping TLS region {virt_start:?}..{:?} {len} ...",
-            virt_start.checked_add(len.get()).unwrap()
+            "Mapping TLS region {virt_start:?}..{:?} => {chunk:?} ...",
+            virt_start.checked_add(chunk.len()).unwrap()
         );
 
         // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
@@ -510,16 +502,16 @@ fn handle_tls_segment(
         unsafe {
             arch::map_contiguous(
                 root_pgtable,
-                phys_iter.alloc(),
+                frame_iter.alloc(),
                 virt_start,
-                phys,
-                len,
+                chunk.start,
+                chunk.len(),
                 Flags::READ | Flags::WRITE,
                 phys_off,
             )?;
         }
 
-        virt_start = virt_start.checked_add(len.get()).unwrap();
+        virt_start = virt_start.checked_add(chunk.len()).unwrap();
     }
 
     Ok(TlsAllocation {
@@ -550,7 +542,7 @@ impl TlsAllocation {
         .unwrap();
         let start = self.virt.start.checked_add(aligned_size * hartid).unwrap();
 
-        start..start.checked_add(self.template.mem_size).unwrap()
+        Range::from_start_len(start, self.template.mem_size)
     }
 
     pub fn initialize_for_hart(&self, hartid: usize) {
@@ -608,13 +600,12 @@ pub fn map_kernel_stacks(
         log::trace!("Allocating stack {layout:?}...");
         // The stacks region doesn't need to be zeroed, since we will be filling it with
         // the canary pattern anyway
-        let mut phys_iter = frame_alloc.allocate(layout);
+        let mut frame_iter = frame_alloc.allocate(layout);
 
-        while let Some((phys, len)) = phys_iter.next()? {
+        while let Some(chunk) = frame_iter.next()? {
             log::trace!(
-                "mapping stack for hart {hart} {virt:?}..{:?} => {phys:?}..{:?}",
-                virt.checked_add(len.get()).unwrap(),
-                phys.checked_add(len.get()).unwrap()
+                "mapping stack for hart {hart} {virt:?}..{:?} => {chunk:?}",
+                virt.checked_add(chunk.len()).unwrap()
             );
 
             // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
@@ -622,16 +613,16 @@ pub fn map_kernel_stacks(
             unsafe {
                 arch::map_contiguous(
                     root_pgtable,
-                    phys_iter.alloc(),
+                    frame_iter.alloc(),
                     virt,
-                    phys,
-                    len,
+                    chunk.start,
+                    chunk.len(),
                     Flags::READ | Flags::WRITE,
                     phys_off,
                 )?;
             }
 
-            virt = virt.checked_add(len.get()).unwrap();
+            virt = virt.checked_add(chunk.len()).unwrap();
         }
     }
 

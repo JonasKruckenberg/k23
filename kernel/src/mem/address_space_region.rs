@@ -142,7 +142,7 @@ impl AddressSpaceRegion {
                 batch.queue_map(
                     range.start,
                     range_phys.start,
-                    NonZeroUsize::new(range_phys.size()).unwrap(),
+                    NonZeroUsize::new(range_phys.len()).unwrap(),
                     self.permissions.into(),
                 )?;
             }
@@ -266,16 +266,13 @@ impl AddressSpaceRegion {
             Vmo::Wired => unreachable!("Wired VMO can never page fault"),
             Vmo::Phys(vmo) => {
                 let range_phys = vmo
-                    .lookup_contiguous(
-                        vmo_relative_offset
-                            ..vmo_relative_offset.checked_add(arch::PAGE_SIZE).unwrap(),
-                    )
+                    .lookup_contiguous(vmo_relative_offset..vmo_relative_offset + arch::PAGE_SIZE)
                     .expect("contiguous lookup for wired VMOs should never fail");
 
                 batch.queue_map(
                     addr,
                     range_phys.start,
-                    NonZeroUsize::new(range_phys.size()).unwrap(),
+                    NonZeroUsize::new(range_phys.len()).unwrap(),
                     self.permissions.into(),
                 )?;
             }

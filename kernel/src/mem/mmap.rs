@@ -119,7 +119,7 @@ impl Mmap {
                 Permissions::READ | Permissions::WRITE,
                 |range_virt, perms, _batch| {
                     Ok(AddressSpaceRegion::new_phys(
-                        range_virt.clone(),
+                        range_virt,
                         perms,
                         range_phys.clone(),
                         name,
@@ -175,7 +175,7 @@ impl Mmap {
 
         // Safety: checked by caller
         unsafe {
-            let slice = slice::from_raw_parts(self.range.start.as_ptr(), self.range().size());
+            let slice = slice::from_raw_parts(self.range.start.as_ptr(), self.range().len());
 
             f(&slice[range]);
         }
@@ -201,7 +201,7 @@ impl Mmap {
         // Safety: checked by caller
         unsafe {
             let slice =
-                slice::from_raw_parts_mut(self.range.start.as_mut_ptr(), self.range().size());
+                slice::from_raw_parts_mut(self.range.start.as_mut_ptr(), self.range().len());
             f(&mut slice[range]);
         }
 
@@ -236,7 +236,7 @@ impl Mmap {
     #[inline]
     pub fn len(&self) -> usize {
         // Safety: the constructor ensures that the NonNull is valid.
-        self.range.size()
+        self.range.len()
     }
 
     /// Whether this is a mapping of zero bytes
@@ -277,7 +277,7 @@ impl Mmap {
             unsafe {
                 aspace.arch.update_flags(
                     self.range.start,
-                    NonZeroUsize::new(self.range.size()).unwrap(),
+                    NonZeroUsize::new(self.range.len()).unwrap(),
                     new_permissions.into(),
                     &mut flush,
                 )?;

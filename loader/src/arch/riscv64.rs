@@ -7,7 +7,6 @@
 
 use core::arch::{asm, naked_asm};
 use core::fmt;
-use core::num::NonZero;
 use core::ptr::NonNull;
 
 use bitflags::bitflags;
@@ -267,11 +266,11 @@ pub unsafe fn map_contiguous(
     frame_alloc: &mut FrameAllocator,
     mut virt: VirtualAddress,
     mut phys: PhysicalAddress,
-    len: NonZero<usize>,
+    len: usize,
     flags: Flags,
     phys_off: VirtualAddress,
 ) -> crate::Result<()> {
-    let mut remaining_bytes = len.get();
+    let mut remaining_bytes = len;
     debug_assert!(
         remaining_bytes >= PAGE_SIZE,
         "address range span be at least one page"
@@ -358,10 +357,10 @@ pub unsafe fn remap_contiguous(
     root_pgtable: PhysicalAddress,
     mut virt: VirtualAddress,
     mut phys: PhysicalAddress,
-    len: NonZero<usize>,
+    len: usize,
     phys_off: VirtualAddress,
 ) {
-    let mut remaining_bytes = len.get();
+    let mut remaining_bytes = len;
     debug_assert!(
         remaining_bytes >= PAGE_SIZE,
         "virtual address range must span be at least one page"
