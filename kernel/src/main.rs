@@ -229,11 +229,7 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
     let temp: ArrayVec<Range<PhysicalAddress>, 16> = boot_info
         .memory_regions
         .iter()
-        .filter_map(|region| {
-            let range = region.range.start..region.range.end;
-
-            region.kind.is_usable().then_some(range)
-        })
+        .filter_map(|region| region.kind.is_usable().then_some(region.range.clone()))
         .collect();
 
     // merge adjacent regions
@@ -270,6 +266,6 @@ fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAdd
         .as_mut_ptr();
 
     // Safety: we need to trust the bootinfo data is correct
-    let slice = unsafe { slice::from_raw_parts(base, fdt.range.size()) };
-    (slice, fdt.range.start..fdt.range.end)
+    let slice = unsafe { slice::from_raw_parts(base, fdt.range.len()) };
+    (slice, fdt.range.clone())
 }

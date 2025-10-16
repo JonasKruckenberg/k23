@@ -57,7 +57,7 @@ pub struct PhysVmo {
 
 impl PhysVmo {
     pub fn is_valid_offset(&self, offset: usize) -> bool {
-        offset <= self.range.size()
+        offset <= self.range.len()
     }
 
     pub fn lookup_contiguous(&self, range: Range<usize>) -> crate::Result<Range<PhysicalAddress>> {

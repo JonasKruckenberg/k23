@@ -18,12 +18,12 @@ const S: &str = r#"
 use alloc::string::{String, ToString};
 use core::fmt;
 use core::fmt::Write;
-use core::ops::DerefMut;
+use core::ops::{DerefMut, Range};
 use core::str::FromStr;
 
 use fallible_iterator::FallibleIterator;
 use kasync::executor::Executor;
-use kmem::PhysicalAddress;
+use kmem::{AddressRangeExt, PhysicalAddress};
 use spin::{Barrier, OnceLock};
 
 use crate::device_tree::DeviceTree;
@@ -94,10 +94,7 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
             .unwrap()
             .get();
 
-        let range_phys = {
-            let start = PhysicalAddress::new(reg.starting_address);
-            start..start.checked_add(size).unwrap()
-        };
+        let range_phys = Range::from_start_len(PhysicalAddress::new(reg.starting_address), size);
 
         let mmap = Mmap::new_phys(
             aspace.clone(),

@@ -57,7 +57,7 @@ impl fmt::Debug for Arena {
 
 impl Arena {
     pub fn from_selection(selection: ArenaSelection) -> Self {
-        debug_assert!(selection.bookkeeping.size() >= bookkeeping_size(selection.arena.size()));
+        debug_assert!(selection.bookkeeping.len() >= bookkeeping_size(selection.arena.len()));
 
         // Safety: arena selection has ensured the region is valid
         let slots: &mut [MaybeUninit<FrameInfo>] = unsafe {
@@ -68,11 +68,11 @@ impl Arena {
 
             slice::from_raw_parts_mut(
                 ptr,
-                selection.bookkeeping.size() / ARENA_PAGE_BOOKKEEPING_SIZE,
+                selection.bookkeeping.len() / ARENA_PAGE_BOOKKEEPING_SIZE,
             )
         };
 
-        let mut remaining_bytes = selection.arena.size();
+        let mut remaining_bytes = selection.arena.len();
         let mut addr = selection.arena.start;
         let mut total_frames = 0;
         let mut max_order = 0;
@@ -106,7 +106,7 @@ impl Arena {
         }
 
         // Make sure we've accounted for all frames
-        debug_assert_eq!(total_frames, selection.arena.size() / arch::PAGE_SIZE);
+        debug_assert_eq!(total_frames, selection.arena.len() / arch::PAGE_SIZE);
 
         Self {
             range: selection.arena,
@@ -251,7 +251,7 @@ impl FallibleIterator for ArenaSelections {
         while let Some(region) = self.free_regions.pop() {
             tracing::debug!(arena.end=?arena.end,region=?region, "Attempting to add free region");
 
-            debug_assert!(!arena.is_overlapping(&region));
+            debug_assert!(!arena.overlaps(&region));
 
             let pages_in_hole = if arena.end <= region.start {
                 // the region is higher than the current arena
@@ -280,7 +280,7 @@ impl FallibleIterator for ArenaSelections {
         }
 
         let mut aligned = arena.checked_align_in(arch::PAGE_SIZE).unwrap();
-        let bookkeeping_size = bookkeeping_size(aligned.size());
+        let bookkeeping_size = bookkeeping_size(aligned.len());
 
         // We can't use empty arenas anyway
         if aligned.is_empty() {

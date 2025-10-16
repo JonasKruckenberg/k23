@@ -163,9 +163,7 @@ impl AddressSpace {
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         let layout = layout.pad_to_align();
         let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY)?;
-        let range = base..base
-            .checked_add(layout.size())
-            .expect("chosen memory range end overflows");
+        let range = Range::from_start_len(base, layout.size());
 
         self.map_internal(range, permissions, map)
     }
@@ -183,7 +181,7 @@ impl AddressSpace {
         ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
-            range.size()
+            range.clone().len()
                 <= self
                     .max_range
                     .end()
@@ -218,7 +216,7 @@ impl AddressSpace {
         ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
-            range.size()
+            range.len()
                 <= self
                     .max_range
                     .end()
@@ -233,10 +231,10 @@ impl AddressSpace {
         // as the requested range.
         let mut bytes_seen = 0;
         self.for_each_region_in_range(range.clone(), |region| {
-            bytes_seen += region.range.size();
+            bytes_seen += region.range.len();
             Ok(())
         })?;
-        ensure!(bytes_seen == range.size());
+        ensure!(bytes_seen == range.len());
 
         // Actually do the unmapping now
         // Safety: we checked all invariant above
@@ -244,13 +242,13 @@ impl AddressSpace {
     }
 
     pub unsafe fn unmap_unchecked(&mut self, range: Range<VirtualAddress>) -> crate::Result<()> {
-        let mut bytes_remaining = range.size();
+        let mut bytes_remaining = range.len();
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
             let mut region = c.remove().unwrap();
             let range = region.range.clone();
             Pin::as_mut(&mut region).unmap(range.clone())?;
-            bytes_remaining -= range.size();
+            bytes_remaining -= range.len();
         }
 
         let mut flush = self.arch.new_flush();
@@ -258,7 +256,7 @@ impl AddressSpace {
         unsafe {
             self.arch.unmap(
                 range.start,
-                NonZeroUsize::new(range.size()).unwrap(),
+                NonZeroUsize::new(range.len()).unwrap(),
                 &mut flush,
             )?;
         }
@@ -275,7 +273,7 @@ impl AddressSpace {
         ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
-            range.size()
+            range.len()
                 <= self
                     .max_range
                     .end()
@@ -293,13 +291,13 @@ impl AddressSpace {
         // current ones.
         let mut bytes_seen = 0;
         self.for_each_region_in_range(range.clone(), |region| {
-            bytes_seen += region.range.size();
+            bytes_seen += region.range.len();
 
             ensure!(region.permissions.contains(new_permissions),);
 
             Ok(())
         })?;
-        ensure!(bytes_seen == range.size());
+        ensure!(bytes_seen == range.len());
 
         // Actually do the permission changes now
         // Safety: we checked all invariant above
@@ -311,12 +309,12 @@ impl AddressSpace {
         range: Range<VirtualAddress>,
         new_permissions: Permissions,
     ) -> crate::Result<()> {
-        let mut bytes_remaining = range.size();
+        let mut bytes_remaining = range.len();
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
             let mut region = c.get_mut().unwrap();
             region.permissions = new_permissions;
-            bytes_remaining -= range.size();
+            bytes_remaining -= range.len();
         }
 
         let mut flush = self.arch.new_flush();
@@ -324,7 +322,7 @@ impl AddressSpace {
         unsafe {
             self.arch.update_flags(
                 range.start,
-                NonZeroUsize::new(range.size()).unwrap(),
+                NonZeroUsize::new(range.len()).unwrap(),
                 new_permissions.into(),
                 &mut flush,
             )?;
@@ -401,7 +399,7 @@ impl AddressSpace {
         ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
-            range.size()
+            range.len()
                 <= self
                     .max_range
                     .end()
@@ -425,14 +423,14 @@ impl AddressSpace {
             // Safety: we checked all invariants above
             unsafe {
                 self.arch
-                    .unmap(range.start, NonZeroUsize::new(range.size()).unwrap(), flush)?;
+                    .unmap(range.start, NonZeroUsize::new(range.len()).unwrap(), flush)?;
             }
         } else {
             // Safety: we checked all invariants above
             unsafe {
                 self.arch.update_flags(
                     range.start,
-                    NonZeroUsize::new(range.size()).unwrap(),
+                    NonZeroUsize::new(range.len()).unwrap(),
                     permissions.into(),
                     flush,
                 )?;
@@ -446,7 +444,7 @@ impl AddressSpace {
         ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(
-            range.size()
+            range.len()
                 <= self
                     .max_range
                     .end()
@@ -455,14 +453,14 @@ impl AddressSpace {
         );
 
         let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
-        let mut bytes_remaining = range.size();
+        let mut bytes_remaining = range.len();
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
             let region = c.get_mut().unwrap();
-            let clamped = range.clamp(region.range.clone());
+            let clamped = range.clone().intersect(region.range.clone());
             region.commit(&mut batch, clamped, will_write)?;
 
-            bytes_remaining -= range.size();
+            bytes_remaining -= range.len();
         }
         batch.flush()?;
 
@@ -588,7 +586,7 @@ impl AddressSpace {
                 return 0;
             }
 
-            let range_size = aligned.size();
+            let range_size = aligned.len();
             if range_size >= layout.size() {
                 ((range_size - layout.size()) >> layout.align().ilog2()) + 1
             } else {
@@ -773,7 +771,7 @@ impl<'a> Batch<'a> {
         if self.range.end != virt || self.flags != flags {
             self.flush()?;
             self.flags = flags;
-            self.range = virt..virt.checked_add(len.get()).unwrap();
+            self.range = Range::from_start_len(virt, len.get());
         } else {
             self.range.end = self.range.end.checked_add(len.get()).unwrap();
         }
@@ -809,7 +807,7 @@ impl<'a> Batch<'a> {
         }
         flush.flush()?;
 
-        self.range = self.range.end..self.range.end;
+        self.range = Range::from_start_len(self.range.end, 0);
         Ok(())
     }
 

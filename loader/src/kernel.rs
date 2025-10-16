@@ -9,7 +9,7 @@ use core::fmt::Formatter;
 use core::ops::Range;
 use core::{fmt, slice};
 
-use kmem::{PhysicalAddress, VirtualAddress};
+use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use loader_api::LoaderConfig;
 use xmas_elf::program::{ProgramHeader, Type};
 
@@ -63,8 +63,10 @@ impl Kernel<'static> {
 
 impl Kernel<'_> {
     pub fn phys_range(&self) -> Range<PhysicalAddress> {
-        let fdt = INLINED_KERNEL_BYTES.0.as_ptr_range();
-        PhysicalAddress::from_ptr(fdt.start)..PhysicalAddress::from_ptr(fdt.end)
+        Range::from_start_len(
+            PhysicalAddress::from_ptr(INLINED_KERNEL_BYTES.0.as_ptr()),
+            INLINED_KERNEL_BYTES.0.len(),
+        )
     }
 
     /// Returns the size of the kernel in memory.

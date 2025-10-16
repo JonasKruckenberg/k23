@@ -59,17 +59,17 @@ impl<'a> BootstrapAllocator<'a> {
 
         for region in self.regions.iter().rev() {
             // only consider regions that we haven't already exhausted
-            if offset < region.size() {
+            if offset < region.len() {
                 // Allocating a contiguous range has different requirements than "regular" allocation
                 // contiguous are rare and often happen in very critical paths where e.g. virtual
                 // memory is not available yet. So we rather waste some memory than outright crash.
-                if region.size() - offset < requested_size {
+                if region.len() - offset < requested_size {
                     tracing::warn!(
                         "Skipped memory region {region:?} since it was too small to fulfill request for {requested_size} bytes. Wasted {} bytes in the process...",
-                        region.size() - offset
+                        region.len() - offset
                     );
 
-                    self.offset += region.size() - offset;
+                    self.offset += region.len() - offset;
                     offset = 0;
                     continue;
                 }
@@ -80,7 +80,7 @@ impl<'a> BootstrapAllocator<'a> {
                 return Some(frame);
             }
 
-            offset -= region.size();
+            offset -= region.len();
         }
 
         None
@@ -122,8 +122,8 @@ impl Iterator for FreeRegions<'_> {
         loop {
             let mut region = self.inner.next()?;
             // keep advancing past already fully used memory regions
-            if self.offset >= region.size() {
-                self.offset -= region.size();
+            if self.offset >= region.len() {
+                self.offset -= region.len();
                 continue;
             } else if self.offset > 0 {
                 region.end = region.end.checked_sub(self.offset).unwrap();

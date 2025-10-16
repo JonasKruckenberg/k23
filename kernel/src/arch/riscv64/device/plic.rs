@@ -9,7 +9,7 @@ use alloc::string::ToString;
 use core::alloc::Layout;
 use core::mem::{MaybeUninit, offset_of};
 use core::num::NonZero;
-use core::ops::{BitAnd, BitOr, Not};
+use core::ops::{BitAnd, BitOr, Not, Range};
 use core::ptr;
 
 use fallible_iterator::FallibleIterator;
@@ -107,12 +107,15 @@ impl Plic {
         let mmio_range = {
             let reg = dev.regs().unwrap().next()?.unwrap();
 
-            let start = PhysicalAddress::new(reg.starting_address);
-            start..start.checked_add(reg.size.unwrap()).unwrap()
+            Range::from_start_len(
+                PhysicalAddress::new(reg.starting_address),
+                reg.size.unwrap(),
+            )
         };
 
         let mmio_region = with_kernel_aspace(|aspace| {
-            let layout = Layout::from_size_align(mmio_range.size(), PAGE_SIZE).unwrap();
+            let layout =
+                Layout::from_size_align(AddressRangeExt::len(&mmio_range), PAGE_SIZE).unwrap();
             aspace
                 .lock()
                 .map(

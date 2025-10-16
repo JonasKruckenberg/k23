@@ -74,7 +74,7 @@ impl BacktraceInfo {
                     .unwrap()
                     .as_ptr();
 
-                slice::from_raw_parts(base, boot_info.kernel_phys.size())
+                slice::from_raw_parts(base, boot_info.kernel_phys.len())
             },
             symbolize_context: OnceLock::new(),
             backtrace_style,

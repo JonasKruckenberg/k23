@@ -86,7 +86,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
     // reserve the physical memory map
     aspace
         .reserve(
-            boot_info.physical_memory_map.start..boot_info.physical_memory_map.end,
+            boot_info.physical_memory_map.clone(),
             Permissions::READ | Permissions::WRITE,
             Some("Physical Memory Map".to_string()),
             flush,
@@ -101,7 +101,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
             .unwrap()
             .as_ptr();
 
-        slice::from_raw_parts(base, boot_info.kernel_phys.size())
+        slice::from_raw_parts(base, boot_info.kernel_phys.len())
     };
     let own_elf = xmas_elf::ElfFile::new(own_elf).unwrap();
 

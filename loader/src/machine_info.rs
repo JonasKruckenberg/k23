@@ -67,7 +67,6 @@ impl MachineInfo<'_> {
                     .and_then(|addr| usize::from_str(addr).ok())
             {
                 // if the node is a CPU check its availability and populate the hart_mask
-
                 let available = find_cstr_property(node.properties(), "status")? == Some(c"okay");
 
                 if available {
@@ -86,7 +85,7 @@ impl MachineInfo<'_> {
                     memories.push({
                         let start = PhysicalAddress::new(reg.starting_address);
 
-                        start..start.checked_add(reg.size.unwrap_or(0)).unwrap()
+                        Range::from_start_len(start, reg.size.unwrap_or(0))
                     });
                 }
             } else if stack[depth - 1].is_some_and(|(s, _)| s == "reserved-memory") {
@@ -99,7 +98,7 @@ impl MachineInfo<'_> {
                     reserved_memory.push({
                         let start = PhysicalAddress::new(reg.starting_address);
 
-                        start..start.checked_add(reg.size.unwrap_or(0)).unwrap()
+                        Range::from_start_len(start, reg.size.unwrap_or(0))
                     });
                 }
             } else if name.name == "chosen" {
@@ -139,11 +138,11 @@ impl MachineInfo<'_> {
 
         // Apply reserved_entries
         while let Some(entry) = reservations.next()? {
-            let region = {
-                let start = PhysicalAddress::new(usize::try_from(entry.address)?);
+            let region = Range::from_start_len(
+                PhysicalAddress::try_from(entry.address)?,
+                usize::try_from(entry.size)?,
+            );
 
-                start..start.checked_add(usize::try_from(entry.size)?).unwrap()
-            };
             log::trace!("applying reservation {region:#x?}");
 
             exclude_region(region);
@@ -157,7 +156,7 @@ impl MachineInfo<'_> {
         }
 
         // remove memory regions that are left as zero-sized from the previous step
-        memories.retain(|region| region.size() > 0);
+        memories.retain(|region| !region.is_empty());
 
         // page-align all memory regions, this will waste some physical memory in the process,
         // but we can't make use of it either way
