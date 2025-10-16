@@ -60,7 +60,14 @@ impl PageAllocator {
                 self.page_state[idx + i] = true;
             }
 
-            VirtualAddress::new(idx)
+            let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
+
+            let page = idx
+                .checked_mul(top_level_page_size) // convert the index into an actual address
+                .and_then(|idx| idx.checked_add(usize::MAX << arch::VIRT_ADDR_BITS)) // and shift it into the kernel half
+                .unwrap();
+
+            VirtualAddress::new(page)
         } else {
             panic!("no usable top-level pages found ({num_pages} pages requested)");
         }
@@ -97,7 +104,7 @@ impl PageAllocator {
 
         // how many top-level pages are needed to map `size` bytes
         // and attempt to allocate them
-        let page_idx = self.allocate_pages(layout.size().div_ceil(top_level_page_size));
+        let base = self.allocate_pages(layout.size().div_ceil(top_level_page_size));
 
         // calculate the base address of the page
         //
@@ -106,11 +113,6 @@ impl PageAllocator {
         //
         // we can then take the lowest possible address of the higher half (`usize::MAX << VA_BITS`)
         // and add the `idx` multiple of the size of a top-level entry to it
-        let base = page_idx
-            .checked_mul(top_level_page_size)
-            .unwrap()
-            .checked_add(usize::MAX << arch::VIRT_ADDR_BITS)
-            .unwrap();
 
         let offset = if let Some(rng) = self.prng.as_mut() {
             // Choose a random offset.

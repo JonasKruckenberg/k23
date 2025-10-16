@@ -937,9 +937,9 @@ impl Default for VMStoreContext {
             stack_limit: UnsafeCell::new(VirtualAddress::MAX),
             fuel_consumed: UnsafeCell::new(0),
             epoch_deadline: UnsafeCell::new(0),
-            last_wasm_exit_fp: UnsafeCell::new(VirtualAddress::ZERO),
-            last_wasm_exit_pc: UnsafeCell::new(VirtualAddress::ZERO),
-            last_wasm_entry_fp: UnsafeCell::new(VirtualAddress::ZERO),
+            last_wasm_exit_fp: UnsafeCell::new(VirtualAddress::MIN),
+            last_wasm_exit_pc: UnsafeCell::new(VirtualAddress::MIN),
+            last_wasm_entry_fp: UnsafeCell::new(VirtualAddress::MIN),
         }
     }
 }

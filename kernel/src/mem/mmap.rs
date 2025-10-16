@@ -42,8 +42,8 @@ impl Mmap {
         Self {
             aspace: None,
             range: Range {
-                start: VirtualAddress::ZERO,
-                end: VirtualAddress::ZERO,
+                start: VirtualAddress::MIN,
+                end: VirtualAddress::MIN,
             },
         }
     }

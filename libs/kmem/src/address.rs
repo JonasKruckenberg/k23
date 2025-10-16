@@ -31,8 +31,7 @@ macro_rules! impl_address {
     ($address_ty:ident) => {
         impl $address_ty {
             pub const MAX: Self = Self(usize::MAX);
-            pub const MIN: Self = Self(0);
-            pub const ZERO: Self = Self(0);
+            pub const MIN: Self = Self(usize::MIN);
             pub const BITS: u32 = usize::BITS;
 
             #[must_use]
@@ -108,91 +107,12 @@ macro_rules! impl_address {
                     None
                 }
             }
-            #[must_use]
-            #[inline]
-            pub const fn checked_div(self, rhs: usize) -> Option<Self> {
-                if let Some(out) = self.0.checked_div(rhs) {
-                    Some(Self(out))
-                } else {
-                    None
-                }
-            }
-            #[must_use]
-            #[inline]
-            pub const fn checked_mul(self, rhs: usize) -> Option<Self> {
-                if let Some(out) = self.0.checked_mul(rhs) {
-                    Some(Self(out))
-                } else {
-                    None
-                }
-            }
-            #[must_use]
-            #[inline]
-            pub const fn checked_shl(self, rhs: u32) -> Option<Self> {
-                if let Some(out) = self.0.checked_shl(rhs) {
-                    Some(Self(out))
-                } else {
-                    None
-                }
-            }
-            #[must_use]
-            #[inline]
-            pub const fn checked_shr(self, rhs: u32) -> Option<Self> {
-                if let Some(out) = self.0.checked_shr(rhs) {
-                    Some(Self(out))
-                } else {
-                    None
-                }
-            }
-            // #[must_use]
-            // #[inline]
-            // pub const fn saturating_add(self, rhs: usize) -> Self {
-            //     Self(self.0.saturating_add(rhs))
-            // }
-            // #[must_use]
-            // #[inline]
-            // pub const fn saturating_add_signed(self, rhs: isize) -> Self {
-            //     Self(self.0.saturating_add_signed(rhs))
-            // }
-            // #[must_use]
-            // #[inline]
-            // pub const fn saturating_div(self, rhs: usize) -> Self {
-            //     Self(self.0.saturating_div(rhs))
-            // }
-            // #[must_use]
-            // #[inline]
-            // pub const fn saturating_sub(self, rhs: usize) -> Self {
-            //     Self(self.0.saturating_sub(rhs))
-            // }
-            // #[must_use]
-            // #[inline]
-            // pub const fn saturating_mul(self, rhs: usize) -> Self {
-            //     Self(self.0.saturating_mul(rhs))
-            // }
-            #[must_use]
-            #[inline]
-            pub const fn overflowing_shl(self, rhs: u32) -> (Self, bool) {
-                let (a, b) = self.0.overflowing_shl(rhs);
-                (Self(a), b)
-            }
-            #[must_use]
-            #[inline]
-            pub const fn overflowing_shr(self, rhs: u32) -> (Self, bool) {
-                let (a, b) = self.0.overflowing_shr(rhs);
-                (Self(a), b)
-            }
 
             #[must_use]
             #[inline]
             pub const fn checked_sub_addr(self, rhs: Self) -> Option<usize> {
                 self.0.checked_sub(rhs.0)
             }
-
-            // #[must_use]
-            // #[inline]
-            // pub const fn saturating_sub_addr(self, rhs: Self) -> usize {
-            //     self.0.saturating_sub(rhs.0)
-            // }
 
             #[must_use]
             #[inline]
@@ -224,27 +144,6 @@ macro_rules! impl_address {
                 } else {
                     None
                 }
-            }
-
-            // #[must_use]
-            // #[inline]
-            // pub const fn wrapping_align_up(self, align: usize) -> Self {
-            //     if !align.is_power_of_two() {
-            //         panic!("checked_align_up: align is not a power-of-two");
-            //     }
-            //
-            //     // SAFETY: `align` has been checked to be a power of 2 above
-            //     let align_minus_one = unsafe { align.unchecked_sub(1) };
-            //
-            //     // addr.wrapping_add(align_minus_one) & 0usize.wrapping_sub(align)
-            //     let out = addr.wrapping_add(align_minus_one) & 0usize.wrapping_sub(align);
-            //     debug_assert!(out.is_aligned_to(align));
-            //     out
-            // }
-
-            #[inline]
-            pub const fn alignment(&self) -> usize {
-                self.0 & (!self.0 + 1)
             }
 
             #[must_use]

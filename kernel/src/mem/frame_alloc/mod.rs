@@ -236,7 +236,9 @@ impl CpuLocalFrameCache {
         let mut index = 0;
         let mut base = self.free_list.iter();
         'outer: while let Some(base_frame) = base.next() {
-            if base_frame.addr().alignment() >= layout.align() {
+            let address_alignment = base_frame.addr().get() & (!base_frame.addr().get() + 1);
+
+            if address_alignment >= layout.align() {
                 let mut prev_addr = base_frame.addr();
 
                 let mut c = 0;
