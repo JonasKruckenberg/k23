@@ -26,10 +26,10 @@ pub trait AddressRangeExt {
     /// Returns the intersection of `self` and `other`.
     fn intersect(self, other: Self) -> Self;
 
-    fn checked_align_in(self, align: usize) -> Option<Self>
+    fn align_in(self, align: usize) -> Self
     where
         Self: Sized;
-    fn checked_align_out(self, align: usize) -> Option<Self>
+    fn align_out(self, align: usize) -> Self
     where
         Self: Sized;
 }
@@ -40,7 +40,7 @@ macro_rules! impl_address_range {
             type Address = $address_ty;
 
             fn from_start_len(start: Self::Address, len: usize) -> Self {
-                let end = start.checked_add(len).unwrap();
+                let end = start.add(len);
 
                 Self { start, end }
             }
@@ -50,7 +50,7 @@ macro_rules! impl_address_range {
             }
 
             fn len(&self) -> usize {
-                self.end.checked_sub_addr(self.start).unwrap()
+                self.end.offset_from_unsigned(self.start)
             }
 
             fn contains(&self, address: &Self::Address) -> bool {
@@ -68,20 +68,18 @@ macro_rules! impl_address_range {
                 }
             }
 
-            fn checked_align_in(self, align: usize) -> Option<Self>
+            fn align_in(self, align: usize) -> Self
             where
                 Self: Sized,
             {
-                let res = self.start.checked_align_up(align)?..self.end.align_down(align);
-                Some(res)
+                self.start.align_up(align)..self.end.align_down(align)
             }
 
-            fn checked_align_out(self, align: usize) -> Option<Self>
+            fn align_out(self, align: usize) -> Self
             where
                 Self: Sized,
             {
-                let res = self.start.align_down(align)..self.end.checked_align_up(align)?;
-                Some(res)
+                self.start.align_down(align)..self.end.align_up(align)
             }
         }
     };

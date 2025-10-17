@@ -76,7 +76,7 @@ impl PageAllocator {
     pub fn reserve(&mut self, mut virt_base: VirtualAddress, mut remaining_bytes: usize) {
         log::trace!(
             "marking {virt_base}..{} as used",
-            virt_base.checked_add(remaining_bytes).unwrap()
+            virt_base.add(remaining_bytes)
         );
 
         let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
@@ -92,7 +92,7 @@ impl PageAllocator {
 
             self.page_state[page_idx] = true;
 
-            virt_base = virt_base.checked_add(top_level_page_size).unwrap();
+            virt_base = virt_base.add(top_level_page_size);
             remaining_bytes -= top_level_page_size;
         }
     }
@@ -129,7 +129,7 @@ impl PageAllocator {
             0
         };
 
-        let start = base.checked_add(offset).unwrap();
+        let start = base.add(offset);
         Range::from_start_len(start, layout.size())
     }
 }

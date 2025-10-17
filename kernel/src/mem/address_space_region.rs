@@ -128,8 +128,8 @@ impl AddressSpaceRegion {
         will_write: bool,
     ) -> crate::Result<()> {
         let vmo_relative_range = Range {
-            start: range.start.checked_sub_addr(self.range.start).unwrap(),
-            end: range.end.checked_sub_addr(self.range.start).unwrap(),
+            start: range.start.offset_from_unsigned(self.range.start),
+            end: range.end.offset_from_unsigned(self.range.start),
         };
 
         match self.vmo.as_ref() {
@@ -152,7 +152,7 @@ impl AddressSpaceRegion {
 
                     for addr in range.step_by(arch::PAGE_SIZE) {
                         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
-                        let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
+                        let vmo_relative_offset = addr.offset_from_unsigned(self.range.start);
                         let frame = vmo.require_owned_frame(vmo_relative_offset)?;
                         batch.queue_map(
                             addr,
@@ -166,7 +166,7 @@ impl AddressSpaceRegion {
 
                     for addr in range.into_iter().step_by(arch::PAGE_SIZE) {
                         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
-                        let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
+                        let vmo_relative_offset = addr.offset_from_unsigned(self.range.start);
                         let frame = vmo.require_read_frame(vmo_relative_offset)?;
                         batch.queue_map(
                             addr,
@@ -194,16 +194,8 @@ impl AddressSpaceRegion {
             }
             Vmo::Paged(vmo) => {
                 let vmo_relative_range = Range {
-                    start: range
-                        .start
-                        .checked_sub_addr(self.range.start)
-                        .and_then(|start| start.checked_add(self.vmo_offset))
-                        .unwrap(),
-                    end: range
-                        .end
-                        .checked_sub_addr(self.range.start)
-                        .and_then(|end| end.checked_add(self.vmo_offset))
-                        .unwrap(),
+                    start: range.start.offset_from_unsigned(self.range.start) + self.vmo_offset,
+                    end: range.end.offset_from_unsigned(self.range.start) + self.vmo_offset,
                 };
 
                 let mut vmo = vmo.write();
@@ -260,7 +252,7 @@ impl AddressSpaceRegion {
         // it is always mapped, cannot be paged-out, and also doesn't support COW. This is used to
         // simplify handling of regions like kernel memory which must always be present anyway.
 
-        let vmo_relative_offset = addr.checked_sub_addr(self.range.start).unwrap();
+        let vmo_relative_offset = addr.offset_from_unsigned(self.range.start);
 
         match self.vmo.as_ref() {
             Vmo::Wired => unreachable!("Wired VMO can never page fault"),
@@ -334,9 +326,7 @@ impl AddressSpaceRegion {
         node.max_gap = cmp::max(left_max_gap, right_max_gap);
 
         fn gap(left_last_byte: VirtualAddress, right_first_byte: VirtualAddress) -> usize {
-            right_first_byte
-                .checked_sub_addr(left_last_byte)
-                .unwrap_or_default() // TODO use saturating_sub_addr
+            right_first_byte.get().saturating_sub(left_last_byte.get())
         }
     }
 

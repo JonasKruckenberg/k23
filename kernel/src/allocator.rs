@@ -26,10 +26,7 @@ pub fn init(boot_alloc: &mut BootstrapAllocator, boot_info: &BootInfo) {
     let phys = boot_alloc.allocate_contiguous(layout).unwrap();
 
     let virt: Range<VirtualAddress> = {
-        let start = boot_info
-            .physical_address_offset
-            .checked_add(phys.get())
-            .unwrap();
+        let start = boot_info.physical_address_offset.add(phys.get());
 
         Range::from_start_len(start, layout.size())
     };

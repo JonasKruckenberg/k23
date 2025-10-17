@@ -261,8 +261,7 @@ fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAdd
 
     let base = boot_info
         .physical_address_offset
-        .checked_add(fdt.range.start.get())
-        .unwrap()
+        .add(fdt.range.start.get())
         .as_mut_ptr();
 
     // Safety: we need to trust the bootinfo data is correct

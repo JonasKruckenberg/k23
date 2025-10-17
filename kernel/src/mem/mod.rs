@@ -97,8 +97,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
     let own_elf = unsafe {
         let base = boot_info
             .physical_address_offset
-            .checked_add(boot_info.kernel_phys.start.get())
-            .unwrap()
+            .add(boot_info.kernel_phys.start.get())
             .as_ptr();
 
         slice::from_raw_parts(base, boot_info.kernel_phys.len())
@@ -113,8 +112,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
         let virt = boot_info
             .kernel_virt
             .start
-            .checked_add(usize::try_from(ph.virtual_addr()).unwrap())
-            .unwrap();
+            .add(usize::try_from(ph.virtual_addr()).unwrap());
 
         let mut permissions = Permissions::empty();
         if ph.flags().is_read() {
@@ -139,10 +137,8 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
                 Range {
                     start: virt.align_down(arch::PAGE_SIZE),
                     end: virt
-                        .checked_add(usize::try_from(ph.mem_size()).unwrap())
-                        .unwrap()
-                        .checked_align_up(arch::PAGE_SIZE)
-                        .unwrap(),
+                        .add(usize::try_from(ph.mem_size()).unwrap())
+                        .align_up(arch::PAGE_SIZE),
                 },
                 permissions,
                 Some(format!("Kernel {permissions} Segment")),

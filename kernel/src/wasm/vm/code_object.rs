@@ -96,7 +96,7 @@ impl CodeObject {
     pub fn text_range(&self) -> Range<VirtualAddress> {
         let start = self.mmap.range().start;
 
-        start..start.checked_add(self.len).unwrap()
+        start..start.add(self.len)
     }
 
     pub fn resolve_function_loc(&self, func_loc: FunctionLoc) -> usize {
