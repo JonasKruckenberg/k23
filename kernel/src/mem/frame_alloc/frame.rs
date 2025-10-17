@@ -255,7 +255,7 @@ impl FrameInfo {
     /// Returns a slice of the corresponding physical memory
     #[inline]
     pub fn as_slice(&self) -> &[u8] {
-        let base = arch::phys_to_virt(self.addr).unwrap().as_ptr();
+        let base = arch::phys_to_virt(self.addr).as_ptr();
         // Safety: construction ensures the base ptr is valid
         unsafe { slice::from_raw_parts(base, arch::PAGE_SIZE) }
     }
@@ -263,7 +263,7 @@ impl FrameInfo {
     /// Returns a mutable slice of the corresponding physical memory
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        let base = arch::phys_to_virt(self.addr).unwrap().as_mut_ptr();
+        let base = arch::phys_to_virt(self.addr).as_mut_ptr();
         // Safety: construction ensures the base ptr is valid
         unsafe { slice::from_raw_parts_mut(base, arch::PAGE_SIZE) }
     }

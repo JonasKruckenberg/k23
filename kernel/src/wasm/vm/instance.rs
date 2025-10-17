@@ -444,7 +444,7 @@ impl Instance {
                 assert!(fault.is_none());
                 fault = Some(WasmFault {
                     memory_size: memory.byte_size(),
-                    wasm_address: u64::try_from(addr.checked_sub_addr(accessible.start).unwrap())
+                    wasm_address: u64::try_from(addr.offset_from_unsigned(accessible.start))
                         .unwrap(),
                 });
             }

@@ -140,8 +140,7 @@ impl AddressSpace {
                 <= self
                     .max_range
                     .end()
-                    .checked_sub_addr(*self.max_range.start())
-                    .unwrap_or_default(),
+                    .offset_from_unsigned(*self.max_range.start())
         );
         ensure!(layout.align() <= self.frame_alloc.max_alignment(),);
         ensure!(permissions.is_valid());
@@ -185,8 +184,7 @@ impl AddressSpace {
                 <= self
                     .max_range
                     .end()
-                    .checked_sub_addr(*self.max_range.start())
-                    .unwrap_or_default(),
+                    .offset_from_unsigned(*self.max_range.start())
         );
         ensure!(permissions.is_valid());
         // ensure the entire address space range is free
@@ -220,8 +218,7 @@ impl AddressSpace {
                 <= self
                     .max_range
                     .end()
-                    .checked_sub_addr(*self.max_range.start())
-                    .unwrap_or_default(),
+                    .offset_from_unsigned(*self.max_range.start())
         );
 
         // ensure the entire range is mapped and doesn't cover any holes
@@ -277,8 +274,7 @@ impl AddressSpace {
                 <= self
                     .max_range
                     .end()
-                    .checked_sub_addr(*self.max_range.start())
-                    .unwrap_or_default(),
+                    .offset_from_unsigned(*self.max_range.start())
         );
         ensure!(new_permissions.is_valid());
 
@@ -403,8 +399,7 @@ impl AddressSpace {
                 <= self
                     .max_range
                     .end()
-                    .checked_sub_addr(*self.max_range.start())
-                    .unwrap_or_default(),
+                    .offset_from_unsigned(*self.max_range.start())
         );
         ensure!(permissions.is_valid());
 
@@ -448,8 +443,7 @@ impl AddressSpace {
                 <= self
                     .max_range
                     .end()
-                    .checked_sub_addr(*self.max_range.start())
-                    .unwrap_or_default(),
+                    .offset_from_unsigned(*self.max_range.start()),
         );
 
         let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
@@ -559,7 +553,7 @@ impl AddressSpace {
                 self.find_spot_at_index(selected_index, layout).unwrap()
             }
         };
-        tracing::trace!("picked spot {spot}..{:?}", spot.checked_add(layout.size()));
+        tracing::trace!("picked spot {spot}..{:?}", spot.add(layout.size()));
 
         debug_assert!(arch::is_canonical(spot));
         Ok(spot)
@@ -599,17 +593,8 @@ impl AddressSpace {
         // if the tree is empty, treat max_range as the gap
         if self.regions.is_empty() {
             let aligned_gap = Range {
-                start: self
-                    .max_range
-                    .start()
-                    .checked_align_up(layout.align())
-                    .unwrap(),
-                end: self
-                    .max_range
-                    .end()
-                    .checked_sub(1)
-                    .unwrap()
-                    .align_down(layout.align()),
+                start: self.max_range.start().align_up(layout.align()),
+                end: self.max_range.end().sub(1).align_down(layout.align()),
             };
 
             let spot_count = spots_in_range(layout, aligned_gap.clone());
@@ -618,25 +603,22 @@ impl AddressSpace {
                 tracing::trace!("tree is empty, chose gap {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
-                    .checked_add(target_index << layout.align().ilog2())
-                    .unwrap());
+                    .add(target_index << layout.align().ilog2()));
             }
             target_index -= spot_count;
         }
 
         // see if there is a suitable gap between the start of the address space and the first mapping
         if let Some(root) = self.regions.root().get() {
-            let aligned_gap = (*self.max_range.start()..root.max_range.start)
-                .checked_align_in(layout.align())
-                .unwrap();
+            let aligned_gap =
+                (*self.max_range.start()..root.max_range.start).align_in(layout.align());
             let spot_count = spots_in_range(layout, aligned_gap.clone());
             candidate_spot_count += spot_count;
             if target_index < spot_count {
                 tracing::trace!("found gap left of tree in {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
-                    .checked_add(target_index << layout.align().ilog2())
-                    .unwrap());
+                    .add(target_index << layout.align().ilog2()));
             }
             target_index -= spot_count;
         }
@@ -654,9 +636,8 @@ impl AddressSpace {
                         continue;
                     }
 
-                    let aligned_gap = (left.max_range.end..node.range.start)
-                        .checked_align_in(layout.align())
-                        .unwrap();
+                    let aligned_gap =
+                        (left.max_range.end..node.range.start).align_in(layout.align());
 
                     let spot_count = spots_in_range(layout, aligned_gap.clone());
 
@@ -665,8 +646,7 @@ impl AddressSpace {
                         tracing::trace!("found gap in left subtree in {aligned_gap:?}");
                         return Ok(aligned_gap
                             .start
-                            .checked_add(target_index << layout.align().ilog2())
-                            .unwrap());
+                            .add(target_index << layout.align().ilog2()));
                     }
                     target_index -= spot_count;
                 }
@@ -674,9 +654,8 @@ impl AddressSpace {
                 if let Some(right) = node.links.right() {
                     let right = unsafe { right.as_ref() };
 
-                    let aligned_gap = (node.range.end..right.max_range.start)
-                        .checked_align_in(layout.align())
-                        .unwrap();
+                    let aligned_gap =
+                        (node.range.end..right.max_range.start).align_in(layout.align());
 
                     let spot_count = spots_in_range(layout, aligned_gap.clone());
 
@@ -685,8 +664,7 @@ impl AddressSpace {
                         tracing::trace!("found gap in right subtree in {aligned_gap:?}");
                         return Ok(aligned_gap
                             .start
-                            .checked_add(target_index << layout.align().ilog2())
-                            .unwrap());
+                            .add(target_index << layout.align().ilog2()));
                     }
                     target_index -= spot_count;
 
@@ -702,17 +680,14 @@ impl AddressSpace {
 
         // see if there is a suitable gap between the end of the last mapping and the end of the address space
         if let Some(root) = self.regions.root().get() {
-            let aligned_gap = (root.max_range.end..*self.max_range.end())
-                .checked_align_in(layout.align())
-                .unwrap();
+            let aligned_gap = (root.max_range.end..*self.max_range.end()).align_in(layout.align());
             let spot_count = spots_in_range(layout, aligned_gap.clone());
             candidate_spot_count += spot_count;
             if target_index < spot_count {
                 tracing::trace!("found gap right of tree in {aligned_gap:?}");
                 return Ok(aligned_gap
                     .start
-                    .checked_add(target_index << layout.align().ilog2())
-                    .unwrap());
+                    .add(target_index << layout.align().ilog2()));
             }
         }
 
@@ -773,7 +748,7 @@ impl<'a> Batch<'a> {
             self.flags = flags;
             self.range = Range::from_start_len(virt, len.get());
         } else {
-            self.range.end = self.range.end.checked_add(len.get()).unwrap();
+            self.range.end = self.range.end.add(len.get());
         }
 
         self.actions.push(BBatchAction::Map(phys, len.get()));
@@ -801,7 +776,7 @@ impl<'a> Batch<'a> {
                         self.flags,
                         &mut flush,
                     )?;
-                    virt = virt.checked_add(len).unwrap();
+                    virt = virt.add(len);
                 },
             }
         }

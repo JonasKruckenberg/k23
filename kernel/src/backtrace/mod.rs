@@ -70,8 +70,7 @@ impl BacktraceInfo {
             elf: unsafe {
                 let base = boot_info
                     .physical_address_offset
-                    .checked_add(boot_info.kernel_phys.start.get())
-                    .unwrap()
+                    .add(boot_info.kernel_phys.start.get())
                     .as_ptr();
 
                 slice::from_raw_parts(base, boot_info.kernel_phys.len())

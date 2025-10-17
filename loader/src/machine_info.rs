@@ -161,7 +161,7 @@ impl MachineInfo<'_> {
         // page-align all memory regions, this will waste some physical memory in the process,
         // but we can't make use of it either way
         memories.iter_mut().for_each(|region| {
-            *region = region.clone().checked_align_in(PAGE_SIZE).unwrap();
+            *region = region.clone().align_in(PAGE_SIZE);
         });
 
         // ensure the memory regions are sorted.

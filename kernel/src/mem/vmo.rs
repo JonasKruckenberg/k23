@@ -65,8 +65,8 @@ impl PhysVmo {
             range.start.is_multiple_of(arch::PAGE_SIZE),
             "range is not arch::PAGE_SIZE aligned"
         );
-        let start = self.range.start.checked_add(range.start).unwrap();
-        let end = self.range.start.checked_add(range.end).unwrap();
+        let start = self.range.start.add(range.start);
+        let end = self.range.start.add(range.end);
 
         ensure!(
             self.range.start <= start && self.range.end >= end,

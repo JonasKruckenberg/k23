@@ -320,8 +320,8 @@ pub unsafe fn map_contiguous(
                     // mark this PTE as a valid leaf node pointing to the physical frame
                     pte.replace_address_and_flags(phys, PTEFlags::VALID | PTEFlags::from(flags));
 
-                    virt = virt.checked_add(page_size).unwrap();
-                    phys = phys.checked_add(page_size).unwrap();
+                    virt = virt.add(page_size);
+                    phys = phys.add(page_size);
                     remaining_bytes -= page_size;
                     continue 'outer;
                 } else if !pte.is_valid() {
@@ -404,8 +404,8 @@ pub unsafe fn remap_contiguous(
                 let (_old_phys, flags) = pte.get_address_and_flags();
                 pte.replace_address_and_flags(phys, flags);
 
-                virt = virt.checked_add(page_size).unwrap();
-                phys = phys.checked_add(page_size).unwrap();
+                virt = virt.add(page_size);
+                phys = phys.add(page_size);
                 remaining_bytes -= page_size;
                 continue 'outer;
             } else if pte.is_valid() {
@@ -469,11 +469,7 @@ fn pgtable_ptr_from_phys(
     phys: PhysicalAddress,
     phys_off: VirtualAddress,
 ) -> NonNull<PageTableEntry> {
-    phys.checked_add(phys_off.get())
-        .unwrap()
-        .as_non_null()
-        .unwrap()
-        .cast()
+    phys.add(phys_off.get()).as_non_null().unwrap().cast()
 }
 
 #[repr(transparent)]

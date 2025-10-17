@@ -78,40 +78,76 @@ macro_rules! impl_address {
                     .map(::core::ptr::NonNull::with_exposed_provenance)
             }
 
+            /// Adds an unsigned offset to this address, panicking if overflow occurred.
             #[must_use]
             #[inline]
-            pub const fn checked_add(self, rhs: usize) -> Option<Self> {
-                if let Some(out) = self.0.checked_add(rhs) {
-                    Some(Self(out))
+            pub const fn add(self, offset: usize) -> Self {
+                Self(self.0 + offset)
+            }
+
+            /// Subtracts an unsigned offset from this address, panicking if overflow occurred.
+            #[must_use]
+            #[inline]
+            pub const fn sub(self, offset: usize) -> Self {
+                Self(self.0 - offset)
+            }
+
+            /// Adds a signed offset in bytes to this address, panicking if overflow occurred.
+            #[must_use]
+            #[inline]
+            pub const fn offset(self, offset: isize) -> Self {
+                let (a, b) = self.0.overflowing_add_signed(offset);
+                if b {
+                    panic!("attempt to offset with overflow")
                 } else {
-                    None
+                    Self(a)
                 }
             }
 
+            /// Adds an unsigned offset to this address, wrapping around at the boundary of the type.
             #[must_use]
             #[inline]
-            pub const fn checked_add_signed(self, rhs: isize) -> Option<Self> {
-                if let Some(out) = self.0.checked_add_signed(rhs) {
-                    Some(Self(out))
-                } else {
-                    None
-                }
+            pub const fn wrapping_add(self, offset: usize) -> Self {
+                Self(self.0.wrapping_add(offset))
             }
 
+            /// Subtracts an unsigned offset from this address, wrapping around at the boundary of the type.
             #[must_use]
             #[inline]
-            pub const fn checked_sub(self, rhs: usize) -> Option<Self> {
-                if let Some(out) = self.0.checked_sub(rhs) {
-                    Some(Self(out))
-                } else {
-                    None
-                }
+            pub const fn wrapping_sub(self, offset: usize) -> Self {
+                Self(self.0.wrapping_sub(offset))
             }
 
+            /// Adds a signed offset in bytes to this address, wrapping around at the boundary of the type.
             #[must_use]
             #[inline]
-            pub const fn checked_sub_addr(self, rhs: Self) -> Option<usize> {
-                self.0.checked_sub(rhs.0)
+            pub const fn wrapping_offset(self, offset: isize) -> Self {
+                Self(self.0.wrapping_add_signed(offset))
+            }
+
+            /// Calculates the distance between two addresses in bytes.
+            #[must_use]
+            #[inline]
+            #[expect(clippy::cast_possible_wrap, reason = "intentional wrapping here")]
+            pub const fn offset_from(self, origin: Self) -> isize {
+                self.0.wrapping_sub(origin.0) as isize
+            }
+
+            /// Calculates the distance between two addresses in bytes, _where it’s known that `self`
+            /// is equal to or greater than `origin`_.
+            ///
+            /// # Panics
+            ///
+            /// Panics if `self` is less than `origin`.
+            #[must_use]
+            #[inline]
+            pub const fn offset_from_unsigned(self, origin: Self) -> usize {
+                let (a, b) = self.0.overflowing_sub(origin.0);
+                if b {
+                    panic!("attempt to subtract with overflow")
+                } else {
+                    a
+                }
             }
 
             #[must_use]
@@ -127,7 +163,7 @@ macro_rules! impl_address {
 
             #[must_use]
             #[inline]
-            pub const fn checked_align_up(self, align: usize) -> Option<Self> {
+            pub const fn align_up(self, align: usize) -> Self {
                 if !align.is_power_of_two() {
                     panic!("checked_align_up: align is not a power-of-two");
                 }
@@ -135,15 +171,11 @@ macro_rules! impl_address {
                 // SAFETY: `align` has been checked to be a power of 2 above
                 let align_minus_one = unsafe { align.unchecked_sub(1) };
 
-                // addr.wrapping_add(align_minus_one) & 0usize.wrapping_sub(align)
-                if let Some(addr_plus_align) = self.0.checked_add(align_minus_one) {
-                    let aligned = Self(addr_plus_align & 0usize.wrapping_sub(align));
-                    debug_assert!(aligned.is_aligned_to(align));
-                    debug_assert!(aligned.0 >= self.0);
-                    Some(aligned)
-                } else {
-                    None
-                }
+                let aligned =
+                    Self(self.0.wrapping_add(align_minus_one) & 0usize.wrapping_sub(align));
+                debug_assert!(aligned.is_aligned_to(align));
+                debug_assert!(aligned.0 >= self.0);
+                aligned
             }
 
             #[must_use]

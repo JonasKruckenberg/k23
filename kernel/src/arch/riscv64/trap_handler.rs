@@ -361,8 +361,7 @@ fn handle_kernel_exception(
     };
     regs.gp[2] = sscratch::read();
 
-    let backtrace =
-        Backtrace::<32>::from_registers(regs.clone(), epc.checked_add(1).unwrap()).unwrap();
+    let backtrace = Backtrace::<32>::from_registers(regs.clone(), epc.add(1)).unwrap();
     tracing::error!("{backtrace}");
 
     // FIXME it would be great to get rid of the allocation here :/
@@ -372,7 +371,7 @@ fn handle_kernel_exception(
 
     // begin a panic on the original stack
     // Safety: we saved the register state at the beginning of the trap handler
-    unsafe { panic_unwind2::begin_unwind(payload, regs, epc.checked_add(1).unwrap().get()) };
+    unsafe { panic_unwind2::begin_unwind(payload, regs, epc.add(1).get()) };
 }
 
 fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
@@ -382,8 +381,7 @@ fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
     };
     regs.gp[2] = sscratch::read();
 
-    let backtrace =
-        Backtrace::<32>::from_registers(regs.clone(), epc.checked_add(1).unwrap()).unwrap();
+    let backtrace = Backtrace::<32>::from_registers(regs.clone(), epc.add(1)).unwrap();
     tracing::error!("{backtrace}");
 
     // FIXME it would be great to get rid of the allocation here :/
@@ -392,6 +390,6 @@ fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
     // begin a panic on the original stack
     // Safety: we saved the register state at the beginning of the trap handler
     unsafe {
-        panic_unwind2::begin_unwind(payload, regs, epc.checked_add(1).unwrap().get());
+        panic_unwind2::begin_unwind(payload, regs, epc.add(1).get());
     }
 }

@@ -62,7 +62,6 @@ impl Arena {
         // Safety: arena selection has ensured the region is valid
         let slots: &mut [MaybeUninit<FrameInfo>] = unsafe {
             let ptr = arch::phys_to_virt(selection.bookkeeping.start)
-                .unwrap()
                 .as_mut_ptr()
                 .cast();
 
@@ -94,14 +93,14 @@ impl Arena {
 
             {
                 debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
-                let offset = addr.checked_sub_addr(selection.arena.start).unwrap();
+                let offset = addr.offset_from_unsigned(selection.arena.start);
                 let idx = offset / arch::PAGE_SIZE;
 
                 let frame = slots[idx].write(FrameInfo::new(addr)).into();
                 free_lists[order].push_back(frame);
             }
 
-            addr = addr.checked_add(size).unwrap();
+            addr = addr.add(size);
             remaining_bytes -= size;
         }
 
@@ -132,10 +131,7 @@ impl Arena {
             // Safety: we just allocated the frame
             let frame = unsafe { frame.as_mut() };
 
-            let buddy_addr = frame
-                .addr()
-                .checked_add(arch::PAGE_SIZE << (order - 1))
-                .unwrap();
+            let buddy_addr = frame.addr().add(arch::PAGE_SIZE << (order - 1));
 
             let buddy = self
                 .find_specific(buddy_addr)
@@ -170,10 +166,7 @@ impl Arena {
             // Safety: we just allocated the frame
             let frame = unsafe { frame.as_mut() };
 
-            let buddy_addr = frame
-                .addr()
-                .checked_add(arch::PAGE_SIZE << (order - 1))
-                .unwrap();
+            let buddy_addr = frame.addr().add(arch::PAGE_SIZE << (order - 1));
 
             let buddy = self
                 .find_specific(buddy_addr)
@@ -196,9 +189,7 @@ impl Arena {
             let base = unsafe { frame.as_ref().addr() };
 
             uninit.iter_mut().enumerate().map(move |(idx, slot)| {
-                NonNull::from(slot.write(FrameInfo::new(
-                    base.checked_add(idx * arch::PAGE_SIZE).unwrap(),
-                )))
+                NonNull::from(slot.write(FrameInfo::new(base.add(idx * arch::PAGE_SIZE))))
             })
         };
 
@@ -208,7 +199,7 @@ impl Arena {
 
     #[inline]
     fn find_specific(&mut self, addr: PhysicalAddress) -> Option<&mut MaybeUninit<FrameInfo>> {
-        let index = addr.checked_sub_addr(self.range.start).unwrap() / arch::PAGE_SIZE;
+        let index = addr.offset_from_unsigned(self.range.start) / arch::PAGE_SIZE;
         self.slots.get_mut(index)
     }
 }
@@ -255,11 +246,11 @@ impl FallibleIterator for ArenaSelections {
 
             let pages_in_hole = if arena.end <= region.start {
                 // the region is higher than the current arena
-                region.start.checked_sub_addr(arena.end).unwrap() / arch::PAGE_SIZE
+                region.start.offset_from_unsigned(arena.end) / arch::PAGE_SIZE
             } else {
                 debug_assert!(region.end <= arena.start);
                 // the region is lower than the current arena
-                arena.start.checked_sub_addr(region.end).unwrap() / arch::PAGE_SIZE
+                arena.start.offset_from_unsigned(region.end) / arch::PAGE_SIZE
             };
 
             let waste_from_hole = ARENA_PAGE_BOOKKEEPING_SIZE * pages_in_hole;
@@ -279,7 +270,7 @@ impl FallibleIterator for ArenaSelections {
             }
         }
 
-        let mut aligned = arena.checked_align_in(arch::PAGE_SIZE).unwrap();
+        let mut aligned = arena.align_in(arch::PAGE_SIZE);
         let bookkeeping_size = bookkeeping_size(aligned.len());
 
         // We can't use empty arenas anyway
@@ -290,8 +281,7 @@ impl FallibleIterator for ArenaSelections {
 
         let bookkeeping_start = aligned
             .end
-            .checked_sub(bookkeeping_size)
-            .unwrap()
+            .sub(bookkeeping_size)
             .align_down(arch::PAGE_SIZE);
 
         // The arena has no space to hold its own bookkeeping

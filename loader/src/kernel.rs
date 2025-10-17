@@ -32,9 +32,7 @@ impl Kernel<'static> {
         // Safety: The kernel elf file is inlined into the loader executable as part of the build setup
         // which means we just need to parse it here.
         let elf_file = xmas_elf::ElfFile::new(unsafe {
-            let base = phys_off
-                .checked_add(INLINED_KERNEL_BYTES.0.as_ptr().addr())
-                .unwrap();
+            let base = phys_off.add(INLINED_KERNEL_BYTES.0.as_ptr().addr());
 
             slice::from_raw_parts(base.as_mut_ptr(), INLINED_KERNEL_BYTES.0.len())
         })

@@ -114,7 +114,7 @@ impl<'a> FrameAllocator<'a> {
                     continue;
                 }
 
-                let frame = region.end.checked_sub(offset + requested_size).unwrap();
+                let frame = region.end.sub(offset + requested_size);
                 self.offset += requested_size;
                 return Ok(frame);
             }
@@ -134,11 +134,7 @@ impl<'a> FrameAllocator<'a> {
         let addr = self.allocate_contiguous(layout)?;
         // Safety: we just allocated the frame
         unsafe {
-            ptr::write_bytes::<u8>(
-                addr.checked_add(phys_offset.get()).unwrap().as_mut_ptr(),
-                0,
-                requested_size,
-            );
+            ptr::write_bytes::<u8>(addr.add(phys_offset.get()).as_mut_ptr(), 0, requested_size);
         }
         Ok(addr)
     }
@@ -172,7 +168,7 @@ impl FallibleIterator for FrameIter<'_, '_> {
                         & 0usize.wrapping_sub(arch::PAGE_SIZE);
                     debug_assert!(allocation_size.is_multiple_of(arch::PAGE_SIZE));
 
-                    let frame = region.end.checked_sub(offset + allocation_size).unwrap();
+                    let frame = region.end.sub(offset + allocation_size);
                     self.alloc.offset += allocation_size;
                     self.remaining -= allocation_size;
 
@@ -212,10 +208,7 @@ impl FallibleIterator for FrameIterZeroed<'_, '_> {
         // Safety: we just allocated the frame
         unsafe {
             ptr::write_bytes::<u8>(
-                self.phys_offset
-                    .checked_add(range.start.get())
-                    .unwrap()
-                    .as_mut_ptr(),
+                self.phys_offset.add(range.start.get()).as_mut_ptr(),
                 0,
                 range.len(),
             );
@@ -243,7 +236,7 @@ impl Iterator for FreeRegions<'_> {
                 self.offset -= region_size;
                 continue;
             } else if self.offset > 0 {
-                region.end = region.end.checked_sub(self.offset).unwrap();
+                region.end = region.end.sub(self.offset);
                 self.offset = 0;
             }
 
@@ -266,7 +259,7 @@ impl Iterator for UsedRegions<'_> {
         if self.offset >= region.len() {
             Some(region)
         } else if self.offset > 0 {
-            region.start = region.end.checked_sub(self.offset).unwrap();
+            region.start = region.end.sub(self.offset);
             self.offset = 0;
 
             Some(region)
