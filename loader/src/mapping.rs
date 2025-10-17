@@ -106,14 +106,10 @@ pub fn map_physical_memory(
 ) -> crate::Result<(VirtualAddress, Range<VirtualAddress>)> {
     let alignment = arch::page_size_for_level(2);
 
-    let phys = minfo.memory_hull().checked_align_out(alignment).unwrap();
+    let phys = minfo.memory_hull().align_out(alignment);
     let virt = Range {
-        start: arch::KERNEL_ASPACE_BASE
-            .checked_add(phys.start.get())
-            .unwrap(),
-        end: arch::KERNEL_ASPACE_BASE
-            .checked_add(phys.end.get())
-            .unwrap(),
+        start: arch::KERNEL_ASPACE_BASE.add(phys.start.get()),
+        end: arch::KERNEL_ASPACE_BASE.add(phys.end.get()),
     };
 
     debug_assert!(phys.start.is_aligned_to(alignment) && phys.end.is_aligned_to(alignment));
@@ -242,16 +238,10 @@ fn handle_load_segment(
         memsz = ph.mem_size
     );
 
-    let phys = Range::from_start_len(phys_base.checked_add(ph.offset).unwrap(), ph.file_size)
-        .checked_align_out(ph.align)
-        .unwrap();
+    let phys = Range::from_start_len(phys_base.add(ph.offset), ph.file_size).align_out(ph.align);
 
-    let virt = Range::from_start_len(
-        virt_base.checked_add(ph.virtual_address).unwrap(),
-        ph.file_size,
-    )
-    .checked_align_out(ph.align)
-    .unwrap();
+    let virt =
+        Range::from_start_len(virt_base.add(ph.virtual_address), ph.file_size).align_out(ph.align);
 
     log::trace!("mapping {virt:#x?} => {phys:#x?}");
     // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
@@ -306,9 +296,9 @@ fn handle_bss_section(
     virt_base: VirtualAddress,
     phys_off: VirtualAddress,
 ) -> crate::Result<()> {
-    let virt_start = virt_base.checked_add(ph.virtual_address).unwrap();
-    let zero_start = virt_start.checked_add(ph.file_size).unwrap();
-    let zero_end = virt_start.checked_add(ph.mem_size).unwrap();
+    let virt_start = virt_base.add(ph.virtual_address);
+    let zero_start = virt_start.add(ph.file_size);
+    let zero_end = virt_start.add(ph.mem_size);
 
     let data_bytes_before_zero = zero_start.get() & 0xfff;
 
@@ -319,12 +309,10 @@ fn handle_bss_section(
 
     if data_bytes_before_zero != 0 {
         let last_page = virt_start
-            .checked_add(ph.file_size.saturating_sub(1))
-            .unwrap()
+            .add(ph.file_size.saturating_sub(1))
             .align_down(ph.align);
         let last_frame = phys_base
-            .checked_add(ph.offset + ph.file_size - 1)
-            .unwrap()
+            .add(ph.offset + ph.file_size - 1)
             .align_down(ph.align);
 
         let new_frame = frame_alloc.allocate_one_zeroed(arch::KERNEL_ASPACE_BASE)?;
@@ -332,18 +320,12 @@ fn handle_bss_section(
         // Safety: we just allocated the frame
         unsafe {
             let src = slice::from_raw_parts(
-                arch::KERNEL_ASPACE_BASE
-                    .checked_add(last_frame.get())
-                    .unwrap()
-                    .as_mut_ptr(),
+                arch::KERNEL_ASPACE_BASE.add(last_frame.get()).as_mut_ptr(),
                 data_bytes_before_zero,
             );
 
             let dst = slice::from_raw_parts_mut(
-                arch::KERNEL_ASPACE_BASE
-                    .checked_add(new_frame.get())
-                    .unwrap()
-                    .as_mut_ptr(),
+                arch::KERNEL_ASPACE_BASE.add(new_frame.get()).as_mut_ptr(),
                 data_bytes_before_zero,
             );
 
@@ -368,8 +350,8 @@ fn handle_bss_section(
     // zero_start either lies at a page boundary OR somewhere within the first page
     // by aligning up, we move it to the beginning of the *next* page.
     let mut virt = Range {
-        start: zero_start.checked_align_up(ph.align).unwrap(),
-        end: zero_end.checked_align_up(ph.align).unwrap(),
+        start: zero_start.align_up(ph.align),
+        end: zero_end.align_up(ph.align),
     };
 
     if !virt.is_empty() {
@@ -395,7 +377,7 @@ fn handle_bss_section(
                 )?;
             }
 
-            virt.start = virt.start.checked_add(chunk.len()).unwrap();
+            virt.start = virt.start.add(chunk.len());
         }
     }
 
@@ -447,14 +429,10 @@ fn apply_relocation(rela: &xmas_elf::sections::Rela<P64>, virt_base: VirtualAddr
             // Calculate address at which to apply the relocation.
             // dynamic relocations offsets are relative to the virtual layout of the elf,
             // not the physical file
-            let target = virt_base
-                .checked_add(usize::try_from(rela.get_offset()).unwrap())
-                .unwrap();
+            let target = virt_base.add(usize::try_from(rela.get_offset()).unwrap());
 
             // Calculate the value to store at the relocation target.
-            let value = virt_base
-                .checked_add_signed(isize::try_from(rela.get_addend()).unwrap())
-                .unwrap();
+            let value = virt_base.offset(isize::try_from(rela.get_addend()).unwrap());
 
             // log::trace!("reloc R_RISCV_RELATIVE offset: {:#x}; addend: {:#x} => target {target:?} value {value:?}", rela.get_offset(), rela.get_addend());
             // Safety: we have to trust the ELF data here
@@ -494,7 +472,7 @@ fn handle_tls_segment(
     while let Some(chunk) = frame_iter.next()? {
         log::trace!(
             "Mapping TLS region {virt_start:?}..{:?} => {chunk:?} ...",
-            virt_start.checked_add(chunk.len()).unwrap()
+            virt_start.add(chunk.len())
         );
 
         // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
@@ -511,13 +489,13 @@ fn handle_tls_segment(
             )?;
         }
 
-        virt_start = virt_start.checked_add(chunk.len()).unwrap();
+        virt_start = virt_start.add(chunk.len());
     }
 
     Ok(TlsAllocation {
         virt,
         template: TlsTemplate {
-            start_addr: virt_base.checked_add(ph.virtual_address).unwrap(),
+            start_addr: virt_base.add(ph.virtual_address),
             mem_size: ph.mem_size,
             file_size: ph.file_size,
             align: ph.align,
@@ -540,7 +518,7 @@ impl TlsAllocation {
             cmp::max(self.template.align, arch::PAGE_SIZE),
         )
         .unwrap();
-        let start = self.virt.start.checked_add(aligned_size * hartid).unwrap();
+        let start = self.virt.start.add(aligned_size * hartid);
 
         Range::from_start_len(start, self.template.mem_size)
     }
@@ -593,9 +571,8 @@ pub fn map_kernel_stacks(
 
         let mut virt = virt
             .end
-            .checked_sub(per_cpu_size_with_guard * hart as usize)
-            .and_then(|a| a.checked_sub(per_cpu_size))
-            .unwrap();
+            .add(per_cpu_size_with_guard * hart as usize)
+            .sub(per_cpu_size);
 
         log::trace!("Allocating stack {layout:?}...");
         // The stacks region doesn't need to be zeroed, since we will be filling it with
@@ -605,7 +582,7 @@ pub fn map_kernel_stacks(
         while let Some(chunk) = frame_iter.next()? {
             log::trace!(
                 "mapping stack for hart {hart} {virt:?}..{:?} => {chunk:?}",
-                virt.checked_add(chunk.len()).unwrap()
+                virt.add(chunk.len())
             );
 
             // Safety: Leaving the address space in an invalid state here is fine since on panic we'll
@@ -622,7 +599,7 @@ pub fn map_kernel_stacks(
                 )?;
             }
 
-            virt = virt.checked_add(chunk.len()).unwrap();
+            virt = virt.add(chunk.len());
         }
     }
 
@@ -642,13 +619,9 @@ pub struct StacksAllocation {
 
 impl StacksAllocation {
     pub fn region_for_cpu(&self, cpuid: usize) -> Range<VirtualAddress> {
-        let end = self
-            .virt
-            .end
-            .checked_sub(self.per_cpu_size_with_guard * cpuid)
-            .unwrap();
+        let end = self.virt.end.add(self.per_cpu_size_with_guard * cpuid);
 
-        end.checked_sub(self.per_cpu_size).unwrap()..end
+        end.sub(self.per_cpu_size)..end
     }
 }
 

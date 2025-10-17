@@ -298,8 +298,8 @@ impl Mmap {
             let mut cursor = aspace.regions.find_mut(&self.range.start);
 
             let src_range = Range {
-                start: self.range.start.checked_add(range.start).unwrap(),
-                end: self.range.end.checked_add(range.start).unwrap(),
+                start: self.range.start.add(range.start),
+                end: self.range.end.add(range.start),
             };
 
             let mut batch = Batch::new(&mut aspace.arch, aspace.frame_alloc);

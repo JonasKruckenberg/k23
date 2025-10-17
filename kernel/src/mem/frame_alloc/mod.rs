@@ -127,7 +127,7 @@ impl FrameAllocator {
         let frame = self.alloc_one()?;
 
         // Translate the physical address into a virtual one through the physmap
-        let virt = arch::phys_to_virt(frame.addr()).unwrap();
+        let virt = arch::phys_to_virt(frame.addr());
 
         // memset'ing the slice to zero
         // Safety: the slice has just been allocated
@@ -178,7 +178,7 @@ impl FrameAllocator {
         let frames = self.alloc_contiguous(layout)?;
 
         // Translate the physical address into a virtual one through the physmap
-        let virt = arch::phys_to_virt(frames.first().unwrap().addr()).unwrap();
+        let virt = arch::phys_to_virt(frames.first().unwrap().addr());
 
         // memset'ing the slice to zero
         // Safety: the slice has just been allocated
@@ -248,7 +248,7 @@ impl CpuLocalFrameCache {
                         break 'outer;
                     }
 
-                    if frame.addr().checked_sub_addr(prev_addr).unwrap() > arch::PAGE_SIZE {
+                    if frame.addr().offset_from_unsigned(prev_addr) > arch::PAGE_SIZE {
                         // frames aren't contiguous, so let's try the next one
                         tracing::trace!("frames not contiguous, trying next");
                         continue 'outer;

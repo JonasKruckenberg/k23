@@ -90,8 +90,7 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
     let mmap = with_kernel_aspace(|aspace| {
         // FIXME: this is gross, we're using the PhysicalAddress as an alignment utility :/
         let size = PhysicalAddress::new(reg.size.unwrap())
-            .checked_align_up(arch::PAGE_SIZE)
-            .unwrap()
+            .align_up(arch::PAGE_SIZE)
             .get();
 
         let range_phys = Range::from_start_len(PhysicalAddress::new(reg.starting_address), size);

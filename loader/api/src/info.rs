@@ -166,11 +166,9 @@ impl fmt::Display for BootInfo {
                 "{:<23} : .tdata: {:?}..{:?}, .tbss: {:?}..{:?}",
                 "TLS TEMPLATE",
                 tls.start_addr,
-                tls.start_addr.checked_add(tls.file_size).unwrap(),
-                tls.start_addr.checked_add(tls.file_size).unwrap(),
-                tls.start_addr
-                    .checked_add(tls.file_size + tls.mem_size)
-                    .unwrap()
+                tls.start_addr.add(tls.file_size),
+                tls.start_addr.add(tls.file_size),
+                tls.start_addr.add(tls.file_size + tls.mem_size)
             )?;
         } else {
             writeln!(f, "{:<23} : None", "TLS TEMPLATE")?;

@@ -74,7 +74,7 @@ impl<'a> BootstrapAllocator<'a> {
                     continue;
                 }
 
-                let frame = region.end.checked_sub(offset + requested_size).unwrap();
+                let frame = region.end.sub(offset + requested_size);
                 self.offset += requested_size;
 
                 return Some(frame);
@@ -99,8 +99,7 @@ impl<'a> BootstrapAllocator<'a> {
             ptr::write_bytes::<u8>(
                 arch::KERNEL_ASPACE_RANGE
                     .start()
-                    .checked_add(addr.get())
-                    .unwrap()
+                    .add(addr.get())
                     .as_mut_ptr(),
                 0,
                 requested_size,
@@ -126,7 +125,7 @@ impl Iterator for FreeRegions<'_> {
                 self.offset -= region.len();
                 continue;
             } else if self.offset > 0 {
-                region.end = region.end.checked_sub(self.offset).unwrap();
+                region.end = region.end.sub(self.offset);
                 self.offset = 0;
             }
 

@@ -193,8 +193,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
 
     let kernel_entry = kernel_virt
         .start
-        .checked_add(usize::try_from(kernel.elf_file.header.pt2.entry_point()).unwrap())
-        .unwrap();
+        .add(usize::try_from(kernel.elf_file.header.pt2.entry_point()).unwrap());
 
     GlobalInitResult {
         boot_info,
@@ -236,8 +235,7 @@ impl SelfRegions {
             read_write: Range {
                 start: PhysicalAddress::from_ptr(&raw const __bss_start),
                 end: PhysicalAddress::from_ptr(&raw const __stack_start)
-                    .checked_add(minfo.hart_mask.count_ones() as usize * STACK_SIZE)
-                    .unwrap(),
+                    .add(minfo.hart_mask.count_ones() as usize * STACK_SIZE),
             },
         }
     }

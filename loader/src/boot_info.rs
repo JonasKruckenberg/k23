@@ -33,7 +33,7 @@ pub fn prepare_boot_info(
         Layout::from_size_align(arch::PAGE_SIZE, arch::PAGE_SIZE).unwrap(),
         arch::KERNEL_ASPACE_BASE,
     )?;
-    let page = physical_address_offset.checked_add(frame.get()).unwrap();
+    let page = physical_address_offset.add(frame.get());
 
     let memory_regions = init_boot_info_memory_regions(
         page,
@@ -72,7 +72,7 @@ fn init_boot_info_memory_regions(
 ) -> MemoryRegions {
     // Safety: we just allocated a whole frame for the boot info
     let regions: &mut [MaybeUninit<MemoryRegion>] = unsafe {
-        let base = page.checked_add(size_of::<BootInfo>()).unwrap();
+        let base = page.add(size_of::<BootInfo>());
         let len = (arch::PAGE_SIZE - size_of::<BootInfo>()) / size_of::<MemoryRegion>();
 
         #[expect(

@@ -13,7 +13,7 @@ use core::ptr::NonNull;
 use core::{fmt, slice};
 
 use bitflags::bitflags;
-use kmem::{PhysicalAddress, VirtualAddress};
+use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
@@ -31,8 +31,7 @@ const_assert_eq!(KERNEL_ASPACE_RANGE.start().get(), CANONICAL_ADDRESS_MASK);
 const_assert_eq!(
     KERNEL_ASPACE_RANGE
         .end()
-        .checked_sub_addr(*KERNEL_ASPACE_RANGE.start())
-        .unwrap(),
+        .offset_from_unsigned(*KERNEL_ASPACE_RANGE.start()),
     !CANONICAL_ADDRESS_MASK
 );
 
@@ -68,19 +67,15 @@ pub fn init() {
     // Safety: `get_active_pgtable` & `VirtualAddress::from_phys` do minimal checking that the address is valid
     // but otherwise we have to trust the address is valid for the entire page.
     unsafe {
-        slice::from_raw_parts_mut(
-            phys_to_virt(root_pgtable).unwrap().as_mut_ptr(),
-            PAGE_SIZE / 2,
-        )
-        .fill(0);
+        slice::from_raw_parts_mut(phys_to_virt(root_pgtable).as_mut_ptr(), PAGE_SIZE / 2).fill(0);
     }
 
     wmb();
 }
 
 #[must_use]
-pub fn phys_to_virt(phys: PhysicalAddress) -> Option<VirtualAddress> {
-    KERNEL_ASPACE_RANGE.start().checked_add(phys.get())
+pub fn phys_to_virt(phys: PhysicalAddress) -> VirtualAddress {
+    KERNEL_ASPACE_RANGE.start().add(phys.get())
 }
 
 pub const fn is_canonical(virt: VirtualAddress) -> bool {
@@ -110,12 +105,13 @@ pub const fn is_kernel_address(virt: VirtualAddress) -> bool {
 pub fn invalidate_range(asid: u16, address_range: Range<VirtualAddress>) -> crate::Result<()> {
     mb();
 
-    let base_addr = address_range.start.get();
-    let size = address_range
-        .end
-        .checked_sub_addr(address_range.start)
-        .unwrap();
-    sfence_vma_asid(0, usize::MAX, base_addr, size, asid)?;
+    sfence_vma_asid(
+        0,
+        usize::MAX,
+        address_range.start.get(),
+        address_range.len(),
+        asid,
+    )?;
 
     mb();
 
@@ -188,11 +184,7 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
             let root_pgtable = PhysicalAddress::new(satp.ppn() << 12);
             debug_assert!(root_pgtable.get() != 0);
 
-            let base = phys_to_virt(root_pgtable)
-                .unwrap()
-                .checked_add(PAGE_SIZE / 2)
-                .unwrap()
-                .as_ptr();
+            let base = phys_to_virt(root_pgtable).add(PAGE_SIZE / 2).as_ptr();
 
             slice::from_raw_parts(base, PAGE_SIZE / 2)
         };
@@ -292,9 +284,9 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                     // mark this PTE as a valid leaf node pointing to the physical frame
                     pte.replace_address_and_flags(phys, PTEFlags::VALID | flags);
 
-                    flush.extend_range(self.asid, virt..virt.checked_add(page_size).unwrap())?;
-                    virt = virt.checked_add(page_size).unwrap();
-                    phys = phys.checked_add(page_size).unwrap();
+                    flush.extend_range(self.asid, virt..virt.add(page_size))?;
+                    virt = virt.add(page_size);
+                    phys = phys.add(page_size);
                     remaining_bytes -= page_size;
                     continue 'outer;
                 } else if pte.is_valid() && !pte.is_leaf() {
@@ -375,8 +367,8 @@ impl crate::mem::ArchAddressSpace for AddressSpace {
                         old_flags.difference(rwx_mask).union(new_flags),
                     );
 
-                    flush.extend_range(self.asid, virt..virt.checked_add(page_size).unwrap())?;
-                    virt = virt.checked_add(page_size).unwrap();
+                    flush.extend_range(self.asid, Range::from_start_len(virt, page_size))?;
+                    virt = virt.add(page_size);
                     remaining_bytes -= page_size;
                     continue 'outer;
                 } else if pte.is_valid() {
@@ -490,8 +482,8 @@ impl AddressSpace {
             // The PTE is mapped, so go ahead and clear it unmapping the frame
             pte.clear();
 
-            flush.extend_range(self.asid, *virt..virt.checked_add(page_size).unwrap())?;
-            *virt = virt.checked_add(page_size).unwrap();
+            flush.extend_range(self.asid, Range::from_start_len(*virt, page_size))?;
+            *virt = virt.add(page_size);
             *remaining_bytes -= page_size;
         } else if pte.is_valid() {
             // This PTE is an internal node pointing to another page table
@@ -522,8 +514,7 @@ impl AddressSpace {
         NonNull::new(
             KERNEL_ASPACE_RANGE
                 .start()
-                .checked_add(phys.get())
-                .unwrap()
+                .add(phys.get())
                 .as_mut_ptr()
                 .cast(),
         )
