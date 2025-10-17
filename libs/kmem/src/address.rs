@@ -32,7 +32,6 @@ macro_rules! impl_address {
         impl $address_ty {
             pub const MAX: Self = Self(usize::MAX);
             pub const MIN: Self = Self(usize::MIN);
-            pub const BITS: u32 = usize::BITS;
 
             #[must_use]
             pub const fn new(n: usize) -> Self {
