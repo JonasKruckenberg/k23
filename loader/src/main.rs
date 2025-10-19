@@ -14,9 +14,10 @@ use core::ffi::c_void;
 use core::ops::Range;
 
 use arrayvec::ArrayVec;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem::{AddressRangeExt, FrameAllocator as _, HardwareAddressSpace, PhysicalAddress, VirtualAddress};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use kmem::arch::Arch;
 use spin::{Barrier, OnceLock};
 
 use crate::boot_info::prepare_boot_info;
@@ -25,8 +26,8 @@ use crate::frame_alloc::FrameAllocator;
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::mapping::{
-    StacksAllocation, TlsAllocation, identity_map_self, map_kernel, map_kernel_stacks,
-    map_physical_memory,
+    identity_map_self, map_kernel, map_kernel_stacks, map_physical_memory, StacksAllocation,
+    TlsAllocation,
 };
 
 mod arch;
@@ -42,7 +43,6 @@ mod panic;
 
 pub const ENABLE_KASLR: bool = false;
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
-pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -50,7 +50,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 ///
 /// The passed `opaque` ptr must point to a valid memory region.
 unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
-    static GLOBAL_INIT: OnceLock<GlobalInitResult> = OnceLock::new();
+    static GLOBAL_INIT: OnceLock<GlobalInitResult<A>> = OnceLock::new();
     let res = GLOBAL_INIT.get_or_init(|| do_global_init(hartid, opaque));
 
     // Enable the MMU on all harts. Note that this technically reenables it on the initializing hart
@@ -58,7 +58,7 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     // Safety: there is no safety
     unsafe {
         log::trace!("activating MMU...");
-        arch::activate_aspace(res.root_pgtable);
+        res.aspace.activate();
         log::trace!("activated.");
     }
 
@@ -70,21 +70,22 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
     unsafe { arch::handoff_to_kernel(hartid, boot_ticks, res) }
 }
 
-pub struct GlobalInitResult {
+pub struct GlobalInitResult<A: Arch> {
     boot_info: *mut loader_api::BootInfo,
     kernel_entry: VirtualAddress,
     root_pgtable: PhysicalAddress,
     stacks_alloc: StacksAllocation,
     maybe_tls_alloc: Option<TlsAllocation>,
     barrier: Barrier,
+    aspace: HardwareAddressSpace<A, FrameAllocator<'static>>
 }
 
 // Safety: *mut BootInfo isn't Send but `GlobalInitResult` will only ever we read from, so this is fine.
-unsafe impl Send for GlobalInitResult {}
+unsafe impl<A: Arch> Send for GlobalInitResult<A> {}
 // Safety: *mut BootInfo isn't Send but `GlobalInitResult` will only ever we read from, so this is fine.
-unsafe impl Sync for GlobalInitResult {}
+unsafe impl<A: Arch> Sync for GlobalInitResult<A> {}
 
-fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
+fn do_global_init<A: Arch>(hartid: usize, opaque: *const c_void) -> GlobalInitResult<A> {
     logger::init(LOG_LEVEL.to_level_filter());
     // Safety: TODO
     let minfo = unsafe { MachineInfo::from_dtb(opaque).expect("failed to parse machine info") };
@@ -114,11 +115,10 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     // Initialize the page allocator
     let mut page_alloc = page_alloc::init(rng);
 
-    let root_pgtable = frame_alloc
-        .allocate_one_zeroed(
-            VirtualAddress::MIN, // called before translation into higher half
-        )
-        .unwrap();
+    // The only supported arch & page table configuration is RISC-V Sv39
+    let arch = kmem::arch::bare::Bare::new(kmem::arch::riscv64::RiscV64Sv39::new());
+
+    let mut aspace = HardwareAddressSpace::new(arch, frame_alloc).unwrap();
 
     // Identity map the loader itself (this binary).
     //
@@ -126,14 +126,13 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     // as opposed to m-mode where it would take effect after the jump to s-mode.
     // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
     // We will then unmap the loader in the kernel.
-    identity_map_self(root_pgtable, &mut frame_alloc, &self_regions).unwrap();
+    identity_map_self(&mut aspace, &self_regions).unwrap();
 
     // Map the physical memory into kernel address space.
     //
     // This will be used by the kernel to access the page tables, BootInfo struct and maybe
     // more in the future.
-    let (phys_off, phys_map) =
-        map_physical_memory(root_pgtable, &mut frame_alloc, &mut page_alloc, &minfo).unwrap();
+    let (phys_off, phys_map) = map_physical_memory(&mut aspace, &mut page_alloc, &minfo).unwrap();
 
     // Activate the MMU with the address space we have built so far.
     // the rest of the address space setup will happen in virtual memory (mostly so that we
@@ -141,7 +140,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     // Safety: there is no safety
     unsafe {
         log::trace!("activating MMU...");
-        arch::activate_aspace(root_pgtable);
+        aspace.activate();
         log::trace!("activated.");
     }
 
@@ -149,36 +148,26 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     // print the elf sections for debugging purposes
     log::debug!("\n{kernel}");
 
-    let (kernel_virt, maybe_tls_alloc) = map_kernel(
-        root_pgtable,
-        &mut frame_alloc,
-        &mut page_alloc,
-        &kernel,
-        &minfo,
-        phys_off,
-    )
-    .unwrap();
+    let (kernel_virt, maybe_tls_alloc) =
+        map_kernel(&mut aspace, &mut page_alloc, &kernel, &minfo).unwrap();
 
     log::trace!("KASLR: Kernel image at {:?}", kernel_virt.start);
 
     let stacks_alloc = map_kernel_stacks(
-        root_pgtable,
-        &mut frame_alloc,
+        &mut aspace,
         &mut page_alloc,
         &minfo,
         usize::try_from(kernel._loader_config.kernel_stack_size_pages).unwrap(),
-        phys_off,
     )
     .unwrap();
 
-    let frame_usage = frame_alloc.frame_usage();
     log::debug!(
         "Mapping complete, permanently used {} KiB.",
-        (frame_usage * arch::PAGE_SIZE) / 1024,
+        aspace.frame_allocator().usage() / 1024,
     );
 
     let boot_info = prepare_boot_info(
-        frame_alloc,
+        aspace.frame_allocator(),
         phys_off,
         phys_map,
         kernel_virt.clone(),
@@ -202,6 +191,7 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         maybe_tls_alloc,
         stacks_alloc,
         barrier: Barrier::new(minfo.hart_mask.count_ones() as usize),
+        aspace
     }
 }
 
