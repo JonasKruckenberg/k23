@@ -11,6 +11,7 @@
 #![feature(alloc_layout_extra)]
 
 use core::ffi::c_void;
+use core::mem;
 use core::ops::Range;
 
 use arrayvec::ArrayVec;
@@ -249,7 +250,7 @@ fn allocatable_memory_regions(
     let mut temp: ArrayVec<Range<PhysicalAddress>, 16> = minfo.memories.clone();
 
     let mut exclude = |to_exclude: Range<PhysicalAddress>| {
-        for mut region in temp.take() {
+        for mut region in mem::take(&mut temp) {
             if to_exclude.contains(&region.start) && to_exclude.contains(&region.end) {
                 // remove region
                 continue;

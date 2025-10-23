@@ -24,7 +24,7 @@ impl Default for WakeBatch {
 impl WakeBatch {
     pub const fn new() -> Self {
         Self {
-            inner: ArrayVec::new_const(),
+            inner: ArrayVec::new(),
         }
     }
 
