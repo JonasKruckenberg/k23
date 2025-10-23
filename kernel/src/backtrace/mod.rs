@@ -135,7 +135,7 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
         let mut iter = iter.take(MAX_FRAMES);
 
         while let Some(frame) = iter.next()? {
-            frames.try_push(frame.ip()).unwrap();
+            frames.push(frame.ip());
         }
         let frames_omitted = iter.next()?.is_some();
 

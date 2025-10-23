@@ -7,10 +7,10 @@
 
 use core::cmp::Ordering;
 use core::ffi::{CStr, c_void};
-use core::fmt;
 use core::fmt::Formatter;
 use core::ops::Range;
 use core::str::FromStr;
+use core::{fmt, mem};
 
 use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
@@ -115,7 +115,7 @@ impl MachineInfo<'_> {
         }
 
         let mut exclude_region = |entry: Range<PhysicalAddress>| {
-            let _memories = memories.take();
+            let _memories = mem::take(&mut memories);
 
             for mut region in _memories {
                 if entry.contains(&region.start) && entry.contains(&region.end) {
