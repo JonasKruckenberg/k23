@@ -90,33 +90,33 @@ pub unsafe fn try_set(mode: Mode, asid: u16, ppn: usize) -> crate::Result<()> {
     }
 }
 impl Satp {
-    #[cfg(target_arch = "riscv32")]
+    #[cfg(target_pointer_width = "32")]
     pub fn ppn(&self) -> usize {
         self.bits & 0x3f_ffff // bits 0-21
     }
-    #[cfg(target_arch = "riscv64")]
+    #[cfg(target_pointer_width = "64")]
     #[must_use]
     pub fn ppn(&self) -> usize {
         self.bits & 0xfff_ffff_ffff // bits 0-43
     }
-    #[cfg(target_arch = "riscv32")]
+    #[cfg(target_pointer_width = "32")]
     pub fn asid(&self) -> usize {
         (self.bits >> 22) & 0x1ff // bits 22-30
     }
-    #[cfg(target_arch = "riscv64")]
+    #[cfg(target_pointer_width = "64")]
     #[must_use]
     pub fn asid(&self) -> u16 {
         // Safety: `& 0xffff` ensures the number must be 16 bit
         unsafe { u16::try_from((self.bits >> 44) & 0xffff).unwrap_unchecked() } // bits 44-60
     }
-    #[cfg(target_arch = "riscv32")]
+    #[cfg(target_pointer_width = "32")]
     pub fn mode(&self) -> Mode {
         match (self.bits >> 31) != 0 {
             true => Mode::Sv32,
             false => Mode::Bare,
         }
     }
-    #[cfg(target_arch = "riscv64")]
+    #[cfg(target_pointer_width = "64")]
     #[must_use]
     pub fn mode(&self) -> Mode {
         // bits 60-64
@@ -148,7 +148,7 @@ pub enum Mode {
     Sv64 = 11,
 }
 
-#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+#[cfg(any(target_pointer_width = "32", target_pointer_width = "64"))]
 impl fmt::Debug for Satp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Satp")
