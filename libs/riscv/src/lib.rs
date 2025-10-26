@@ -9,6 +9,10 @@
 
 #![cfg_attr(not(test), no_std)]
 #![allow(edition_2024_expr_fragment_specifier, reason = "vetted usage")]
+#![cfg_attr(
+    not(any(target_arch = "riscv32", target_arch = "riscv64")),
+    allow(unused)
+)]
 
 mod error;
 pub mod extensions;
