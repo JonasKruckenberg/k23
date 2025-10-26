@@ -9,7 +9,7 @@ use core::ops::Range;
 use core::{cmp, mem};
 
 use anyhow::bail;
-use kmem::VirtualAddress;
+use kmem_core::VirtualAddress;
 
 use crate::arch;
 

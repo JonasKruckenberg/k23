@@ -13,7 +13,7 @@ use core::ptr::NonNull;
 use core::{fmt, slice};
 
 use bitflags::bitflags;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use riscv::satp;
 use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;

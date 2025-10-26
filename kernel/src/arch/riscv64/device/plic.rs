@@ -13,7 +13,7 @@ use core::ops::{BitAnd, BitOr, Not, Range};
 use core::ptr;
 
 use fallible_iterator::FallibleIterator;
-use kmem::{AddressRangeExt, PhysicalAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress};
 use static_assertions::const_assert_eq;
 
 use crate::arch::PAGE_SIZE;

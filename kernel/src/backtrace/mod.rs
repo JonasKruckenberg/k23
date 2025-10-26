@@ -13,7 +13,7 @@ use core::{fmt, slice};
 
 use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
-use kmem::{AddressRangeExt, VirtualAddress};
+use kmem_core::{AddressRangeExt, VirtualAddress};
 use loader_api::BootInfo;
 use spin::OnceLock;
 use symbolize::SymbolizeContext;
