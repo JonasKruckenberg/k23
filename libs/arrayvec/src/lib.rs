@@ -1,7 +1,9 @@
 #![cfg_attr(not(test), no_std)]
 // #![no_std]
 
+use core::borrow::{Borrow, BorrowMut};
 use core::error::Error;
+use core::hash::{Hash, Hasher};
 use core::mem::MaybeUninit;
 use core::ops::{Bound, Deref, DerefMut, RangeBounds};
 use core::ptr::NonNull;
@@ -31,7 +33,6 @@ impl<T> fmt::Debug for CapacityError<T> {
 ///
 /// The maximum capacity of the vector is determined by the `CAP` generic parameter, attempting to
 /// insert more elements than `CAP` will always fail.
-#[derive(Debug)]
 pub struct ArrayVec<T, const CAP: usize> {
     len: usize,
     data: [MaybeUninit<T>; CAP],
@@ -381,6 +382,15 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
     }
 }
 
+impl<T, const CAP: usize> fmt::Debug for ArrayVec<T, CAP>
+where
+    T: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        (**self).fmt(f)
+    }
+}
+
 impl<T, const CAP: usize> Clone for ArrayVec<T, CAP>
 where
     T: Clone,
@@ -404,6 +414,108 @@ where
     }
 }
 
+impl<T, const CAP: usize> Deref for ArrayVec<T, CAP> {
+    type Target = [T];
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
+impl<T, const CAP: usize> DerefMut for ArrayVec<T, CAP> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut_slice()
+    }
+}
+
+impl<T, const CAP: usize> Hash for ArrayVec<T, CAP>
+where
+    T: Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Hash::hash(&**self, state);
+    }
+}
+
+impl<T, const CAP: usize> PartialEq for ArrayVec<T, CAP>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+
+impl<T, const CAP: usize> PartialEq<[T]> for ArrayVec<T, CAP>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &[T]) -> bool {
+        **self == *other
+    }
+}
+
+impl<T, const CAP: usize> Eq for ArrayVec<T, CAP> where T: Eq {}
+
+impl<T, const CAP: usize> Borrow<[T]> for ArrayVec<T, CAP> {
+    fn borrow(&self) -> &[T] {
+        self
+    }
+}
+
+impl<T, const CAP: usize> BorrowMut<[T]> for ArrayVec<T, CAP> {
+    fn borrow_mut(&mut self) -> &mut [T] {
+        self
+    }
+}
+
+impl<T, const CAP: usize> AsRef<[T]> for ArrayVec<T, CAP> {
+    fn as_ref(&self) -> &[T] {
+        self
+    }
+}
+
+impl<T, const CAP: usize> AsMut<[T]> for ArrayVec<T, CAP> {
+    fn as_mut(&mut self) -> &mut [T] {
+        self
+    }
+}
+
+impl<T, const CAP: usize> PartialOrd for ArrayVec<T, CAP>
+where
+    T: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        (**self).partial_cmp(other)
+    }
+
+    fn lt(&self, other: &Self) -> bool {
+        (**self).lt(other)
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        (**self).le(other)
+    }
+
+    fn ge(&self, other: &Self) -> bool {
+        (**self).ge(other)
+    }
+
+    fn gt(&self, other: &Self) -> bool {
+        (**self).gt(other)
+    }
+}
+
+impl<T, const CAP: usize> Ord for ArrayVec<T, CAP>
+where
+    T: Ord,
+{
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        (**self).cmp(other)
+    }
+}
+
 /// Create an `ArrayVec` from an iterator.
 ///
 /// ***Panics*** if the number of elements in the iterator exceeds the arrayvec's capacity.
@@ -417,21 +529,6 @@ impl<T, const CAP: usize> FromIterator<T> for ArrayVec<T, CAP> {
             array.push(element);
         }
         array
-    }
-}
-
-impl<T, const CAP: usize> Deref for ArrayVec<T, CAP> {
-    type Target = [T];
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.as_slice()
-    }
-}
-
-impl<T, const CAP: usize> DerefMut for ArrayVec<T, CAP> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_mut_slice()
     }
 }
 
@@ -478,11 +575,20 @@ impl<T, const CAP: usize> Drop for IntoIter<T, CAP> {
     }
 }
 
+impl<T, const CAP: usize> fmt::Debug for IntoIter<T, CAP>
+where
+    T: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_list().entries(&self.vec[self.index..]).finish()
+    }
+}
+
 impl<T, const CAP: usize> Iterator for IntoIter<T, CAP> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.vec.is_empty() {
+        if self.vec.is_empty() || self.index >= self.vec.len {
             None
         } else {
             let elt = mem::replace(&mut self.vec.data[self.index], MaybeUninit::uninit());
@@ -499,11 +605,11 @@ impl<T, const CAP: usize> Iterator for IntoIter<T, CAP> {
 
 impl<T, const CAP: usize> DoubleEndedIterator for IntoIter<T, CAP> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        if self.vec.is_empty() {
+        if self.vec.is_empty() || self.index >= self.vec.len {
             None
         } else {
             let elt = mem::replace(&mut self.vec.data[self.vec.len - 1], MaybeUninit::uninit());
-            self.index -= 1;
+            self.vec.len -= 1;
             // Safety: ArrayVec API guarantees properly-initialized items within 0..len
             Some(unsafe { MaybeUninit::assume_init(elt) })
         }
@@ -835,6 +941,35 @@ mod tests {
         assert_eq!(drain.next(), None);
         drop(drain);
         assert_eq!(vec.as_slice(), &[1, 5]);
+    }
+
+    #[test]
+    fn into_iter_consumes_all_elements() {
+        let mut vec: ArrayVec<i32, 10> = ArrayVec::new();
+        vec.extend_from_slice(&[1, 2, 3, 4, 5]);
+        let collected: Vec<_> = vec.into_iter().collect();
+        assert_eq!(collected, &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn into_iter_empty_vec() {
+        let vec: ArrayVec<i32, 10> = ArrayVec::new();
+        let collected: Vec<_> = vec.into_iter().collect();
+        assert_eq!(collected.len(), 0);
+    }
+
+    #[test]
+    fn into_iter_double_ended() {
+        let mut vec: ArrayVec<i32, 10> = ArrayVec::new();
+        vec.extend_from_slice(&[1, 2, 3, 4, 5]);
+        let mut iter = vec.into_iter();
+        assert_eq!(iter.next(), Some(1));
+        assert_eq!(iter.next_back(), Some(5));
+        assert_eq!(iter.next(), Some(2));
+        assert_eq!(iter.next_back(), Some(4));
+        assert_eq!(iter.next(), Some(3));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next_back(), None);
     }
 
     #[test]
