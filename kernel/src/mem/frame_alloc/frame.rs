@@ -15,7 +15,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, ptr};
 
 use cordyceps::{Linked, list};
-use kmem::PhysicalAddress;
+use kmem_core::PhysicalAddress;
 use static_assertions::assert_impl_all;
 
 use crate::arch;

@@ -1,0 +1,32 @@
+[package]
+name = "kmem-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+arrayvec.workspace = true
+riscv.workspace = true
+cpu-local = { workspace = true, optional = true }
+spin = { workspace = true, optional = true }
+
+# 3rd-party dependencies
+mycelium-bitfield.workspace = true
+cfg-if.workspace = true
+log.workspace = true
+lock_api.workspace = true
+fallible-iterator.workspace = true
+
+[dev-dependencies]
+parking_lot = "0.12.5"
+kmem-core = { workspace = true, features = ["emulate"] }
+test-log = "0.2.18"
+proptest = "1.9.0"
+
+[features]
+emulate = ["cpu-local", "spin"]
+
+[lints]
+workspace = true
+

@@ -24,10 +24,9 @@ pub mod sbi;
 pub mod semihosting;
 pub mod trap;
 
-use core::arch::asm;
-
 pub use error::Error;
 pub use register::*;
+
 pub type Result<T> = core::result::Result<T, Error>;
 
 /// Terminates the current execution with the specified exit code.
@@ -35,13 +34,19 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// This will use the semihosting interface, if available, to exit the program. Otherwise, it will
 /// enter a wfi loop.
 pub fn exit(code: i32) -> ! {
-    semihosting::exit(code);
+    cfg_if::cfg_if! {
+        if #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))] {
+            semihosting::exit(code);
 
-    // fall back to a wfi loop if exiting using semihosting failed
-    // Safety: inline assembly
-    unsafe {
-        loop {
-            asm!("wfi");
+            // fall back to a wfi loop if exiting using semihosting failed
+            // Safety: inline assembly
+            unsafe {
+                loop {
+                    core::arch::asm!("wfi");
+                }
+            }
+        } else {
+            unimplemented!();
         }
     }
 }

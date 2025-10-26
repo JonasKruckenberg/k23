@@ -11,7 +11,7 @@ use core::{cmp, ptr, slice};
 
 use bitflags::bitflags;
 use fallible_iterator::FallibleIterator;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use loader_api::TlsTemplate;
 use xmas_elf::P64;
 use xmas_elf::dynamic::Tag;

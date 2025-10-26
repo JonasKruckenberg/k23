@@ -10,7 +10,7 @@ use core::fmt;
 use core::ptr::NonNull;
 
 use bitflags::bitflags;
-use kmem::{PhysicalAddress, VirtualAddress};
+use kmem_core::{PhysicalAddress, VirtualAddress};
 use riscv::satp;
 
 use crate::GlobalInitResult;
@@ -469,7 +469,7 @@ fn pgtable_ptr_from_phys(
     phys: PhysicalAddress,
     phys_off: VirtualAddress,
 ) -> NonNull<PageTableEntry> {
-    phys.add(phys_off.get()).as_non_null().unwrap().cast()
+    phys.to_virt(phys_off).as_non_null().unwrap().cast()
 }
 
 #[repr(transparent)]

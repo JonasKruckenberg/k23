@@ -6,4 +6,4 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-kmem.workspace = true
+kmem-core.workspace = true

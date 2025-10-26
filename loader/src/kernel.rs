@@ -9,7 +9,7 @@ use core::fmt::Formatter;
 use core::ops::Range;
 use core::{fmt, slice};
 
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use loader_api::LoaderConfig;
 use xmas_elf::program::{ProgramHeader, Type};
 

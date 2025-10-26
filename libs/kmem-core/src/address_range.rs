@@ -26,6 +26,9 @@ pub trait AddressRangeExt {
     /// Returns the intersection of `self` and `other`.
     fn intersect(self, other: Self) -> Self;
 
+    /// Returns the union of `self` and `other`.
+    fn union(self, other: Self) -> Self;
+
     fn align_in(self, align: usize) -> Self
     where
         Self: Sized;
@@ -65,6 +68,13 @@ macro_rules! impl_address_range {
                 Self {
                     start: core::cmp::max(self.start, other.start),
                     end: core::cmp::min(self.end, other.end),
+                }
+            }
+
+            fn union(self, other: Self) -> Self {
+                Self {
+                    start: core::cmp::min(self.start, other.start),
+                    end: core::cmp::max(self.end, other.end),
                 }
             }
 

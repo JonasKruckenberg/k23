@@ -10,7 +10,7 @@ use core::ops::Range;
 use core::{cmp, iter, ptr, slice};
 
 use fallible_iterator::FallibleIterator;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 use crate::arch;
 use crate::error::Error;
@@ -134,7 +134,7 @@ impl<'a> FrameAllocator<'a> {
         let addr = self.allocate_contiguous(layout)?;
         // Safety: we just allocated the frame
         unsafe {
-            ptr::write_bytes::<u8>(addr.add(phys_offset.get()).as_mut_ptr(), 0, requested_size);
+            ptr::write_bytes::<u8>(addr.to_virt(phys_offset).as_mut_ptr(), 0, requested_size);
         }
         Ok(addr)
     }
