@@ -25,7 +25,7 @@ use core::{fmt, slice};
 pub use address_space::{AddressSpace, Batch};
 pub use address_space_region::AddressSpaceRegion;
 pub use flush::Flush;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use loader_api::BootInfo;
 pub use mmap::Mmap;
 use rand::SeedableRng;

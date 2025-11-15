@@ -8,7 +8,7 @@
 use core::alloc::Layout;
 use core::ops::Range;
 
-use kmem::{AddressRangeExt, VirtualAddress};
+use kmem_core::{AddressRangeExt, VirtualAddress};
 use loader_api::BootInfo;
 use talc::{ErrOnOom, Span, Talc, Talck};
 

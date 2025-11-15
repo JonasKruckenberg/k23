@@ -9,7 +9,7 @@ use core::alloc::Layout;
 use core::ops::Range;
 use core::{iter, ptr, slice};
 
-use kmem::{AddressRangeExt, PhysicalAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress};
 
 use crate::arch;
 

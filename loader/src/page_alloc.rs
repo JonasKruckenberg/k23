@@ -8,7 +8,7 @@
 use core::alloc::Layout;
 use core::ops::Range;
 
-use kmem::{AddressRangeExt, VirtualAddress};
+use kmem_core::{AddressRangeExt, VirtualAddress};
 use rand::distr::{Distribution, Uniform};
 use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;

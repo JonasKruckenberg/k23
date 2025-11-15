@@ -5,6 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::num::NonZeroUsize;
+use core::ptr::NonNull;
+
 macro_rules! impl_address_from {
     ($address_ty:ident, $int_ty:ident) => {
         impl From<$int_ty> for $address_ty {
@@ -61,22 +64,6 @@ macro_rules! impl_address {
                 Self(ptr.addr().get())
             }
 
-            #[inline]
-            pub fn as_ptr(self) -> *const u8 {
-                ::core::ptr::with_exposed_provenance(self.0)
-            }
-
-            #[inline]
-            pub fn as_mut_ptr(self) -> *mut u8 {
-                ::core::ptr::with_exposed_provenance_mut(self.0)
-            }
-
-            #[inline]
-            pub fn as_non_null(self) -> Option<::core::ptr::NonNull<u8>> {
-                ::core::num::NonZeroUsize::new(self.0)
-                    .map(::core::ptr::NonNull::with_exposed_provenance)
-            }
-
             /// Adds an unsigned offset to this address, panicking if overflow occurred.
             #[must_use]
             #[inline]
@@ -122,6 +109,13 @@ macro_rules! impl_address {
             #[inline]
             pub const fn wrapping_offset(self, offset: isize) -> Self {
                 Self(self.0.wrapping_add_signed(offset))
+            }
+
+            /// Adds an unsigned offset to this address, wrapping around at the boundary of the type.
+            #[must_use]
+            #[inline]
+            pub const fn saturating_add(self, offset: usize) -> Self {
+                Self(self.0.saturating_add(offset))
             }
 
             /// Calculates the distance between two addresses in bytes.
@@ -256,7 +250,30 @@ macro_rules! impl_address {
 pub struct VirtualAddress(usize);
 impl_address!(VirtualAddress);
 
+impl VirtualAddress {
+    #[inline]
+    pub fn as_ptr(self) -> *const u8 {
+        core::ptr::with_exposed_provenance(self.0)
+    }
+
+    #[inline]
+    pub fn as_mut_ptr(self) -> *mut u8 {
+        core::ptr::with_exposed_provenance_mut(self.0)
+    }
+
+    #[inline]
+    pub fn as_non_null(self) -> Option<NonNull<u8>> {
+        NonZeroUsize::new(self.0).map(NonNull::with_exposed_provenance)
+    }
+}
+
 #[repr(transparent)]
 #[derive(Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct PhysicalAddress(usize);
 impl_address!(PhysicalAddress);
+
+impl PhysicalAddress {
+    pub const fn to_virt(self, physmap_base: VirtualAddress) -> VirtualAddress {
+        physmap_base.add(self.0)
+    }
+}

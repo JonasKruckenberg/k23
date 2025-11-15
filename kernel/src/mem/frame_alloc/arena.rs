@@ -13,7 +13,7 @@ use core::{cmp, fmt, mem, slice};
 
 use cordyceps::List;
 use fallible_iterator::FallibleIterator;
-use kmem::{AddressRangeExt, PhysicalAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress};
 use smallvec::SmallVec;
 
 use super::frame::FrameInfo;

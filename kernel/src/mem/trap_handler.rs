@@ -7,7 +7,7 @@
 
 use core::ops::ControlFlow;
 
-use kmem::VirtualAddress;
+use kmem_core::VirtualAddress;
 use riscv::scause::Exception;
 
 use crate::arch::trap::Trap;
