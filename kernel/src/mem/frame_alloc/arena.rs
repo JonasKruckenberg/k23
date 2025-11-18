@@ -10,7 +10,7 @@ use core::mem::MaybeUninit;
 use core::ops::Range;
 use core::ptr::NonNull;
 use core::{cmp, fmt, mem, slice};
-
+use core::num::NonZeroUsize;
 use cordyceps::List;
 use fallible_iterator::FallibleIterator;
 use kmem_core::{AddressRangeExt, PhysicalAddress};
@@ -56,12 +56,12 @@ impl fmt::Debug for Arena {
 }
 
 impl Arena {
-    pub fn from_selection(selection: ArenaSelection) -> Self {
+    pub fn from_selection<A: kmem_core::Arch>(selection: ArenaSelection, arch: &A) -> Self {
         debug_assert!(selection.bookkeeping.len() >= bookkeeping_size(selection.arena.len()));
 
         // Safety: arena selection has ensured the region is valid
         let slots: &mut [MaybeUninit<FrameInfo>] = unsafe {
-            let ptr = arch::phys_to_virt(selection.bookkeeping.start)
+            let ptr = arch.phys_to_virt(selection.bookkeeping.start)
                 .as_mut_ptr()
                 .cast();
 
@@ -117,8 +117,8 @@ impl Arena {
         }
     }
 
-    pub fn max_alignment(&self) -> usize {
-        arch::PAGE_SIZE << self.max_order
+    pub fn max_block_size(&self) -> NonZeroUsize {
+        NonZeroUsize::new(arch::PAGE_SIZE << self.max_order).unwrap()
     }
 
     pub fn allocate_one(&mut self) -> Option<NonNull<FrameInfo>> {

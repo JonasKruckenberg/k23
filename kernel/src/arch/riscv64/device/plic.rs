@@ -7,19 +7,19 @@
 
 use alloc::string::ToString;
 use core::alloc::Layout;
-use core::mem::{MaybeUninit, offset_of};
+use core::mem::{offset_of, MaybeUninit};
 use core::num::NonZero;
 use core::ops::{BitAnd, BitOr, Not, Range};
 use core::ptr;
 
 use fallible_iterator::FallibleIterator;
-use kmem_core::{AddressRangeExt, PhysicalAddress};
+use kmem_core::{AddressRangeExt, MemoryAttributes, PhysicalAddress, WriteOrExecute};
 use static_assertions::const_assert_eq;
 
 use crate::arch::PAGE_SIZE;
 use crate::device_tree::{Device, DeviceTree, IrqSource};
 use crate::irq::{InterruptController, IrqClaim};
-use crate::mem::{AddressSpaceRegion, Permissions, with_kernel_aspace};
+use crate::mem::{with_kernel_aspace, AddressSpaceRegion};
 use crate::util::either::Either;
 
 const MAX_CONTEXTS: usize = 64;
@@ -120,7 +120,9 @@ impl Plic {
                 .lock()
                 .map(
                     layout,
-                    Permissions::READ | Permissions::WRITE,
+                    MemoryAttributes::new()
+                        .with(MemoryAttributes::READ, true)
+                        .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write),
                     |range, perms, batch| {
                         let region = AddressSpaceRegion::new_phys(
                             range.clone(),

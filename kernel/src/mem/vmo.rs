@@ -90,7 +90,11 @@ impl PagedVmo {
         offset <= self.frames.size()
     }
 
-    pub fn require_owned_frame(&mut self, at_offset: usize) -> crate::Result<&mut Frame> {
+    pub fn require_owned_frame<A: kmem_core::Arch>(
+        &mut self,
+        at_offset: usize,
+        arch: &A,
+    ) -> crate::Result<&mut Frame> {
         if let Some(old_frame) = self.frames.get(at_offset) {
             // we already have a unique frame reference, a write page fault against it shouldn't happen
             assert!(!old_frame.is_unique());
@@ -103,10 +107,10 @@ impl PagedVmo {
             // all zeroes anyway
             if !Frame::ptr_eq(old_frame, THE_ZERO_FRAME.frame()) {
                 tracing::trace!("performing copy-on-write...");
-                let src = old_frame.as_slice();
+                let src = old_frame.as_slice(arch);
                 let dst = Frame::get_mut(&mut new_frame)
                     .expect("newly allocated frame should be unique")
-                    .as_mut_slice();
+                    .as_mut_slice(arch);
 
                 tracing::trace!(
                     "copying from {:?} to {:?}",

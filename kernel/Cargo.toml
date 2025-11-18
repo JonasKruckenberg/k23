@@ -28,6 +28,7 @@ panic-unwind2.workspace = true
 util.workspace = true
 kasync = { workspace = true, features = ["unwind2", "counters"] }
 kmem-core.workspace = true
+kmem-aslr.workspace = true
 
 # 3rd-party dependencies
 rustc-demangle.workspace = true

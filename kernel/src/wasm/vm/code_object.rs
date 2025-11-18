@@ -65,7 +65,7 @@ impl CodeObject {
         }
     }
 
-    pub fn publish(&mut self, aspace: &mut AddressSpace) -> crate::Result<()> {
+    pub fn publish<A: kmem_core::Arch>(&mut self, aspace: &mut AddressSpace<A>) -> crate::Result<()> {
         debug_assert!(!self.published);
         self.published = true;
 

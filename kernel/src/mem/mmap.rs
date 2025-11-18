@@ -8,15 +8,16 @@
 use alloc::string::String;
 use alloc::sync::Arc;
 use core::alloc::Layout;
-use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::{ptr, slice};
 
-use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{
+    AddressRangeExt, Arch, Flush, MemoryAttributes, PhysicalAddress, VirtualAddress, WriteOrExecute,
+};
 use spin::Mutex;
 
 use crate::arch;
-use crate::mem::{AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions};
+use crate::mem::{AddressSpace, AddressSpaceRegion, Batch};
 
 /// A memory mapping.
 ///
@@ -24,7 +25,7 @@ use crate::mem::{AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Perm
 /// specific needs such as copying from and to memory.
 #[derive(Debug)]
 pub struct Mmap {
-    aspace: Option<Arc<Mutex<AddressSpace>>>,
+    aspace: Option<Arc<Mutex<AddressSpace<arch::KmemArch>>>>,
     range: Range<VirtualAddress>,
 }
 
@@ -50,7 +51,7 @@ impl Mmap {
 
     /// Creates a new read-write (`RW`) memory mapping in the given address space.
     pub fn new_zeroed(
-        aspace: Arc<Mutex<AddressSpace>>,
+        aspace: Arc<Mutex<AddressSpace<arch::KmemArch>>>,
         len: usize,
         align: usize,
         name: Option<String>,
@@ -66,12 +67,14 @@ impl Mmap {
         let range = aspace_
             .map(
                 layout,
-                Permissions::READ | Permissions::WRITE | Permissions::USER,
-                |range, perms, batch| {
+                MemoryAttributes::new()
+                    .with(MemoryAttributes::READ, true)
+                    .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write),
+                |range, attributes, batch| {
                     Ok(AddressSpaceRegion::new_zeroed(
                         batch.frame_alloc,
                         range,
-                        perms,
+                        attributes,
                         name,
                     ))
                 },
@@ -89,7 +92,7 @@ impl Mmap {
     }
 
     pub fn new_phys(
-        aspace: Arc<Mutex<AddressSpace>>,
+        aspace: Arc<Mutex<AddressSpace<arch::KmemArch>>>,
         range_phys: Range<PhysicalAddress>,
         len: usize,
         align: usize,
@@ -116,11 +119,13 @@ impl Mmap {
         let range = aspace_
             .map(
                 layout,
-                Permissions::READ | Permissions::WRITE,
-                |range_virt, perms, _batch| {
+                MemoryAttributes::new()
+                    .with(MemoryAttributes::READ, true)
+                    .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write),
+                |range_virt, attributes, _batch| {
                     Ok(AddressSpaceRegion::new_phys(
                         range_virt,
-                        perms,
+                        attributes,
                         range_phys.clone(),
                         name,
                     ))
@@ -144,7 +149,7 @@ impl Mmap {
 
     pub fn copy_from_userspace(
         &self,
-        aspace: &mut AddressSpace,
+        aspace: &mut AddressSpace<arch::KmemArch>,
         src_range: Range<usize>,
         dst: &mut [u8],
     ) -> crate::Result<()> {
@@ -153,7 +158,7 @@ impl Mmap {
 
     pub fn copy_to_userspace(
         &mut self,
-        aspace: &mut AddressSpace,
+        aspace: &mut AddressSpace<arch::KmemArch>,
         src: &[u8],
         dst_range: Range<usize>,
     ) -> crate::Result<()> {
@@ -164,7 +169,7 @@ impl Mmap {
 
     pub fn with_user_slice<F>(
         &self,
-        aspace: &mut AddressSpace,
+        aspace: &mut AddressSpace<arch::KmemArch>,
         range: Range<usize>,
         f: F,
     ) -> crate::Result<()>
@@ -172,6 +177,11 @@ impl Mmap {
         F: FnOnce(&[u8]),
     {
         self.commit(aspace, range.clone(), false)?;
+
+        aspace.raw.arch().fence(Range {
+            start: self.range.start.add(range.start),
+            end: self.range.start.add(range.end),
+        });
 
         // Safety: checked by caller
         unsafe {
@@ -185,7 +195,7 @@ impl Mmap {
 
     pub fn with_user_slice_mut<F>(
         &mut self,
-        aspace: &mut AddressSpace,
+        aspace: &mut AddressSpace<arch::KmemArch>,
         range: Range<usize>,
         f: F,
     ) -> crate::Result<()>
@@ -193,10 +203,11 @@ impl Mmap {
         F: FnOnce(&mut [u8]),
     {
         self.commit(aspace, range.clone(), true)?;
-        // Safety: user aspace also includes kernel mappings in higher half
-        unsafe {
-            aspace.arch.activate();
-        }
+
+        aspace.raw.arch().fence(Range {
+            start: self.range.start.add(range.start),
+            end: self.range.start.add(range.end),
+        });
 
         // Safety: checked by caller
         unsafe {
@@ -248,41 +259,49 @@ impl Mmap {
     /// Mark this memory mapping as executable (`RX`) this will by-design make it not-writable too.
     pub fn make_executable(
         &mut self,
-        aspace: &mut AddressSpace,
+        aspace: &mut AddressSpace<arch::KmemArch>,
         _branch_protection: bool,
     ) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_executable: {:?}", self.range);
-        self.protect(aspace, Permissions::READ | Permissions::EXECUTE)
+        self.protect(
+            aspace,
+            MemoryAttributes::new()
+                .with(MemoryAttributes::READ, true)
+                .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Execute),
+        )
     }
 
     /// Mark this memory mapping as read-only (`R`) essentially removing the write permission.
-    pub fn make_readonly(&mut self, aspace: &mut AddressSpace) -> crate::Result<()> {
+    pub fn make_readonly(
+        &mut self,
+        aspace: &mut AddressSpace<arch::KmemArch>,
+    ) -> crate::Result<()> {
         tracing::trace!("UserMmap::make_readonly: {:?}", self.range);
-        self.protect(aspace, Permissions::READ)
+        self.protect(
+            aspace,
+            MemoryAttributes::new().with(MemoryAttributes::READ, true),
+        )
     }
 
     fn protect(
         &mut self,
-        aspace: &mut AddressSpace,
-        new_permissions: Permissions,
+        aspace: &mut AddressSpace<arch::KmemArch>,
+        new_attributes: MemoryAttributes,
     ) -> crate::Result<()> {
         if !self.range.is_empty() {
             let mut cursor = aspace.regions.find_mut(&self.range.start);
             let mut region = cursor.get_mut().unwrap();
 
-            region.permissions = new_permissions;
+            region.attributes = new_attributes;
 
-            let mut flush = aspace.arch.new_flush();
+            let mut flush = Flush::new();
             // Safety: constructors ensure invariants are maintained
             unsafe {
-                aspace.arch.update_flags(
-                    self.range.start,
-                    NonZeroUsize::new(self.range.len()).unwrap(),
-                    new_permissions.into(),
-                    &mut flush,
-                )?;
+                aspace
+                    .raw
+                    .set_attributes(self.range, new_attributes.into(), &mut flush);
             };
-            flush.flush()?;
+            flush.flush(aspace.raw.arch());
         }
 
         Ok(())
@@ -290,7 +309,7 @@ impl Mmap {
 
     pub fn commit(
         &self,
-        aspace: &mut AddressSpace,
+        aspace: &mut AddressSpace<arch::KmemArch>,
         range: Range<usize>,
         will_write: bool,
     ) -> crate::Result<()> {
@@ -302,7 +321,7 @@ impl Mmap {
                 end: self.range.end.add(range.start),
             };
 
-            let mut batch = Batch::new(&mut aspace.arch, aspace.frame_alloc);
+            let mut batch = Batch::new(&mut aspace.raw, aspace.frame_alloc);
             cursor
                 .get_mut()
                 .unwrap()

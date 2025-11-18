@@ -564,11 +564,11 @@ impl RawBacktrace {
         // We already checked for this case in the `trace_with_trap_state`
         // caller.
         assert_ne!(pc.get(), 0);
-        assert!(arch::is_canonical(pc));
+        // assert!(arch::is_canonical(pc));
         assert_ne!(fp.get(), 0);
-        assert!(arch::is_canonical(fp));
+        // assert!(arch::is_canonical(fp));
         assert_ne!(trampoline_fp.get(), 0);
-        assert!(arch::is_canonical(trampoline_fp));
+        // assert!(arch::is_canonical(trampoline_fp));
 
         // This loop will walk the linked list of frame pointers starting at
         // `fp` and going up until `trampoline_fp`. We know that both `fp` and

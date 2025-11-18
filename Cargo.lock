@@ -1048,6 +1048,7 @@ dependencies = [
  "kaddr2line",
  "kasync",
  "kfastrand",
+ "kmem-aslr",
  "kmem-core",
  "ksharded-slab",
  "ktest",
