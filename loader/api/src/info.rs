@@ -5,15 +5,21 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::ops::{Deref, DerefMut, Range};
-use core::{fmt, slice};
+use core::alloc::Layout;
+use core::fmt;
+use core::ops::Range;
+use core::ptr::NonNull;
 
-use kmem_core::{PhysicalAddress, VirtualAddress};
+use arrayvec::ArrayVec;
+use kmem_core::{AddressSpace, AllocError, Arch, FrameAllocator, PhysicalAddress, VirtualAddress};
+
+pub const MAX_REGIONS: usize = 32;
 
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct BootInfo {
     pub cpu_mask: usize,
+
     /// A map of the physical memory regions of the underlying machine.
     ///
     /// The loader parses this information from the firmware and also reports regions used
@@ -22,15 +28,13 @@ pub struct BootInfo {
     ///
     /// Note: Memory regions are *guaranteed* to not overlap and be sorted by their start address.
     /// But they might not be optimally packed, i.e. adjacent regions that could be merged are not.
-    pub memory_regions: MemoryRegions,
-    /// Physical addresses can be converted to virtual addresses by adding this offset to them.
-    ///
-    /// The mapping of the physical memory allows to access arbitrary physical frames. Accessing
-    /// frames that are also mapped at other virtual addresses can easily break memory safety and
-    /// cause undefined behavior. Only frames reported as `USABLE` by the memory map in the `BootInfo`
-    /// can be safely accessed.
-    pub physical_address_offset: VirtualAddress,
+    pub memory_regions: ArrayVec<MemoryRegion, MAX_REGIONS>,
+
+    pub address_space: AddressSpace,
+
     pub physical_memory_map: Range<VirtualAddress>,
+
+    // pub physical_memory_map: Range<VirtualAddress>,
     /// The thread local storage (TLS) template of the kernel executable, if present.
     pub tls_template: Option<TlsTemplate>,
     /// Virtual address of the loaded kernel image.
@@ -42,67 +46,19 @@ pub struct BootInfo {
 
     pub rng_seed: [u8; 32],
 }
-unsafe impl Send for BootInfo {}
-unsafe impl Sync for BootInfo {}
 
-impl BootInfo {
-    /// Create a new boot info structure with the given memory map.
-    ///
-    /// The other fields are initialized with default values.
-    pub fn new(memory_regions: MemoryRegions) -> Self {
-        Self {
-            memory_regions,
-            cpu_mask: 0,
-            physical_address_offset: Default::default(),
-            physical_memory_map: Default::default(),
-            tls_template: None,
-            kernel_virt: Default::default(),
-            kernel_phys: Default::default(),
-            rng_seed: [0; 32],
-        }
-    }
-}
-
-/// FFI-safe slice of [`MemoryRegion`] structs, semantically equivalent to
-/// `&'static mut [MemoryRegion]`.
-///
-/// This type implements the [`Deref`][core::ops::Deref] and [`DerefMut`][core::ops::DerefMut]
-/// traits, so it can be used like a `&mut [MemoryRegion]` slice. It also implements [`From`]
-/// and [`Into`] for easy conversions from and to `&'static mut [MemoryRegion]`.
-#[derive(Debug)]
 #[repr(C)]
-pub struct MemoryRegions {
-    pub(crate) ptr: *mut MemoryRegion,
-    pub(crate) len: usize,
-}
-
-impl Deref for MemoryRegions {
-    type Target = [MemoryRegion];
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { slice::from_raw_parts(self.ptr, self.len) }
-    }
-}
-
-impl DerefMut for MemoryRegions {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
-    }
-}
-
-impl From<&'static mut [MemoryRegion]> for MemoryRegions {
-    fn from(regions: &'static mut [MemoryRegion]) -> Self {
-        MemoryRegions {
-            ptr: regions.as_mut_ptr(),
-            len: regions.len(),
-        }
-    }
-}
-
-impl From<MemoryRegions> for &'static mut [MemoryRegion] {
-    fn from(regions: MemoryRegions) -> &'static mut [MemoryRegion] {
-        unsafe { slice::from_raw_parts_mut(regions.ptr, regions.len) }
-    }
+#[derive(Debug, Clone)]
+pub struct TlsTemplate {
+    /// The address of TLS template
+    pub start_addr: VirtualAddress,
+    /// The size of the TLS segment in memory
+    pub mem_size: usize,
+    /// The size of the TLS segment in the elf file.
+    /// If the TLS segment contains zero-initialized data (tbss) then this size will be smaller than
+    /// `mem_size`
+    pub file_size: usize,
+    pub align: usize,
 }
 
 /// Represent a physical memory region.
@@ -140,11 +96,9 @@ impl MemoryRegionKind {
 
 impl fmt::Display for BootInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "{:<23} : {}",
-            "PHYSICAL ADDRESS OFFSET", self.physical_address_offset
-        )?;
+        writeln!(f, "{:<23} : {:b}", "CPU MASK", self.cpu_mask)?;
+        writeln!(f, "{:<23} : {:x?}", "RNG SEED", self.rng_seed)?;
+        writeln!(f, "{:<23} : {:?}", "ADDRESS SPACE", self.address_space)?;
         writeln!(
             f,
             "{:<23} : {}..{}",
@@ -172,29 +126,104 @@ impl fmt::Display for BootInfo {
             )?;
         } else {
             writeln!(f, "{:<23} : None", "TLS TEMPLATE")?;
-            for (idx, region) in self.memory_regions.iter().enumerate() {
-                writeln!(
-                    f,
-                    "MEMORY REGION {:<10}: {}..{} {:?}",
-                    idx, region.range.start, region.range.end, region.kind,
-                )?;
-            }
+        }
+
+        for (idx, region) in self.memory_regions.iter().enumerate() {
+            writeln!(
+                f,
+                "MEMORY REGION {:<10}: {}..{} {:?}",
+                idx, region.range.start, region.range.end, region.kind,
+            )?;
         }
 
         Ok(())
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub struct TlsTemplate {
-    /// The address of TLS template
-    pub start_addr: VirtualAddress,
-    /// The size of the TLS segment in memory
-    pub mem_size: usize,
-    /// The size of the TLS segment in the elf file.
-    /// If the TLS segment contains zero-initialized data (tbss) then this size will be smaller than
-    /// `mem_size`
-    pub file_size: usize,
-    pub align: usize,
+pub struct BootInfoBuilder {
+    under_construction: BootInfo,
+}
+
+impl BootInfoBuilder {
+    pub fn new(address_space: AddressSpace) -> Self {
+        Self {
+            under_construction: BootInfo {
+                address_space,
+                cpu_mask: 0,
+                memory_regions: ArrayVec::new(),
+                physical_memory_map: VirtualAddress::MIN..VirtualAddress::MIN,
+                tls_template: None,
+                kernel_virt: VirtualAddress::MIN..VirtualAddress::MIN,
+                kernel_phys: PhysicalAddress::MIN..PhysicalAddress::MIN,
+                rng_seed: [0u8; 32],
+            },
+        }
+    }
+
+    pub fn with_cpu_mask(mut self, cpu_mask: usize) -> Self {
+        self.under_construction.cpu_mask = cpu_mask;
+        self
+    }
+
+    pub fn with_memory_region(mut self, memory_region: MemoryRegion) -> Self {
+        self.under_construction.memory_regions.push(memory_region);
+        self
+    }
+
+    pub fn with_memory_regions(
+        mut self,
+        memory_regions: impl IntoIterator<Item = MemoryRegion>,
+    ) -> Self {
+        self.under_construction
+            .memory_regions
+            .extend(memory_regions);
+        self
+    }
+
+    pub fn with_physical_memory_map(mut self, physical_memory_map: Range<VirtualAddress>) -> Self {
+        self.under_construction.physical_memory_map = physical_memory_map;
+        self
+    }
+
+    pub fn with_tls_template(mut self, tls_template: TlsTemplate) -> Self {
+        self.under_construction.tls_template = Some(tls_template);
+        self
+    }
+
+    pub fn with_kernel_virt(mut self, kernel_virt: Range<VirtualAddress>) -> Self {
+        self.under_construction.kernel_virt = kernel_virt;
+        self
+    }
+
+    pub fn with_kernel_phys(mut self, kernel_phys: Range<PhysicalAddress>) -> Self {
+        self.under_construction.kernel_phys = kernel_phys;
+        self
+    }
+
+    pub fn with_rng_seed(mut self, rng_seed: [u8; 32]) -> Self {
+        self.under_construction.rng_seed = rng_seed;
+        self
+    }
+
+    pub fn finish(self) -> BootInfo {
+        self.under_construction
+    }
+
+    pub fn finish_and_allocate(
+        self,
+        frame_alloc: impl FrameAllocator,
+    ) -> Result<NonNull<BootInfo>, AllocError> {
+        let info = self.finish();
+
+        let phys = frame_alloc
+            .allocate_contiguous_zeroed(Layout::for_value(&info), info.address_space.arch())?;
+
+        let virt = info.address_space.arch().phys_to_virt(phys);
+
+        let ptr = unsafe { virt.as_non_null().unwrap_unchecked().cast::<BootInfo>() };
+
+        unsafe { ptr.write(info) };
+
+        Ok(ptr)
+    }
 }

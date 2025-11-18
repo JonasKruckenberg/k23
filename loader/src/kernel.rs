@@ -9,7 +9,7 @@ use core::fmt::Formatter;
 use core::ops::Range;
 use core::{fmt, slice};
 
-use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, Arch, PhysicalAddress};
 use loader_api::LoaderConfig;
 use xmas_elf::program::{ProgramHeader, Type};
 
@@ -24,17 +24,26 @@ struct KernelBytes(pub [u8; include_bytes!(env!("KERNEL")).len()]);
 /// The decompressed and parsed kernel ELF plus the embedded loader configuration data
 pub struct Kernel<'a> {
     pub elf_file: xmas_elf::ElfFile<'a>,
+    pub base_phys: PhysicalAddress,
     pub _loader_config: &'a LoaderConfig,
 }
 
 impl Kernel<'static> {
-    pub fn from_static(phys_off: VirtualAddress) -> crate::Result<Self> {
+    pub fn from_static<A>(arch: &A) -> crate::Result<Self>
+    where
+        A: Arch,
+    {
         // Safety: The kernel elf file is inlined into the loader executable as part of the build setup
         // which means we just need to parse it here.
+        let base_phys = PhysicalAddress::from_ptr(INLINED_KERNEL_BYTES.0.as_ptr());
+        assert!(
+            base_phys.is_aligned_to(arch.memory_mode().page_size()),
+            "Loaded ELF file is not sufficiently aligned"
+        );
+        
         let elf_file = xmas_elf::ElfFile::new(unsafe {
-            let base = phys_off.add(INLINED_KERNEL_BYTES.0.as_ptr().addr());
-
-            slice::from_raw_parts(base.as_mut_ptr(), INLINED_KERNEL_BYTES.0.len())
+            let base = arch.phys_to_virt(base_phys);
+            slice::from_raw_parts(base.as_ptr(), INLINED_KERNEL_BYTES.0.len())
         })
         .map_err(Error::Elf)?;
 
@@ -54,6 +63,7 @@ impl Kernel<'static> {
 
         Ok(Kernel {
             elf_file,
+            base_phys,
             _loader_config: loader_config,
         })
     }

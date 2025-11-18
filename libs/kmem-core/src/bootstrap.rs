@@ -133,7 +133,7 @@ impl<A: Arch> AddressSpace<BootstrapArch<A>> {
     ///
     /// Returning `Err` indicates the mapping cannot be established and the address space remains
     /// unaltered.
-    pub unsafe fn map_identity<R, F>(
+    pub unsafe fn map_identity<F>(
         &mut self,
         phys: Range<PhysicalAddress>,
         attributes: MemoryAttributes,
@@ -141,7 +141,6 @@ impl<A: Arch> AddressSpace<BootstrapArch<A>> {
         flush: &mut Flush,
     ) -> Result<(), AllocError>
     where
-        R: lock_api::RawMutex,
         F: FrameAllocator,
     {
         let virt = Range {

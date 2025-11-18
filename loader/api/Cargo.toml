@@ -7,3 +7,4 @@ license.workspace = true
 
 [dependencies]
 kmem-core.workspace = true
+arrayvec.workspace = true

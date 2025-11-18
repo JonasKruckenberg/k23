@@ -15,8 +15,10 @@ pub enum Error {
     Fdt(fdt::Error),
     /// Failed to parse kernel elf
     Elf(&'static str),
-    /// The system was not able to allocate memory needed for the operation.
-    NoMemory,
+    /// The system was not able to allocate the physical memory needed for the operation.
+    FrameAlloc(kmem_core::AllocError),
+    /// The system was not able to allocate the virtual memory needed for the operation.
+    PageAlloc(crate::page_alloc::AllocError),
     /// Failed to start secondary hart
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
     FailedToStartSecondaryHart(riscv::sbi::Error),
@@ -37,13 +39,27 @@ impl From<core::array::TryFromSliceError> for Error {
         Error::TryFromSlice(err)
     }
 }
+impl From<kmem_core::AllocError> for Error {
+    fn from(err: kmem_core::AllocError) -> Self {
+        Self::FrameAlloc(err)
+    }
+}
+impl From<crate::page_alloc::AllocError> for Error {
+    fn from(err: crate::page_alloc::AllocError) -> Self {
+        Self::PageAlloc(err)
+    }
+}
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            Error::NoMemory => write!(
+            Error::FrameAlloc(err) => write!(
                 f,
-                "The system was not able to allocate memory needed for the operation"
+                "The system was not able to allocate the physical memory needed for the operation: {err:?}"
+            ),
+            Error::PageAlloc(err) => write!(
+                f,
+                "The system was not able to allocate the virtual memory needed for the operation: {err:?}"
             ),
             Error::TryFromInt(_) => write!(f, "Failed to convert number"),
             Error::Fdt(err) => write!(f, "Failed to parse device tree blob: {err}"),

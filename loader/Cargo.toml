@@ -15,8 +15,9 @@ spin.workspace = true
 fdt.workspace = true
 abort.workspace = true
 kmem-core.workspace = true
+kmem-aslr.workspace = true
 
-# third-party dependencies
+# 3rd-party dependencies
 log.workspace = true
 cfg-if.workspace = true
 rand_chacha.workspace = true

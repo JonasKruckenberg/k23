@@ -14,6 +14,12 @@ use core::ptr;
 
 use crate::{MemoryAttributes, MemoryMode, PhysicalAddress, VirtualAddress};
 
+cfg_if::cfg_if! {
+    if #[cfg(target_arch = "riscv64")] {
+        pub type DefaultArchForArchitecture = riscv64::Riscv64;
+    }
+}
+
 /// Architecture-specific memory subsystem primitives.
 pub trait Arch {
     /// The type representing a single page table entry on this architecture. Usually `usize` sized.

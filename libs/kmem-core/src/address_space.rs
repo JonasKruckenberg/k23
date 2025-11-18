@@ -83,7 +83,7 @@ pub trait VisitMut<A: Arch> {
 }
 
 #[derive(Debug)]
-pub struct AddressSpace<A: Arch> {
+pub struct AddressSpace<A: Arch = crate::arch::DefaultArchForArchitecture> {
     arch: A,
     root_page_table: Table<A, marker::Owned>,
 }

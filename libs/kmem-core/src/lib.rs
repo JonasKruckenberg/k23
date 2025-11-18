@@ -45,18 +45,17 @@ pub use address_space::{AddressSpace, Visit, VisitMut};
 pub use arch::Arch;
 pub use asid::Asid;
 pub use flush::Flush;
+pub use frame_alloc::{AllocError, FrameAllocator};
 pub use memory_attributes::{MemoryAttributes, WriteOrExecute};
 pub use memory_mode::{
     HasLevels, HasPhysmap, MemoryMode, MemoryModeBuilder, MissingLevels, MissingPhysmap,
     PageTableLevel,
 };
 pub use table::Table;
-pub use frame_alloc::{FrameAllocator, AllocError};
 
 pub const KIB: usize = 1024;
 pub const MIB: usize = KIB * 1024;
 pub const GIB: usize = MIB * 1024;
 #[cfg(target_pointer_width = "64")]
 pub const TIB: usize = GIB * 1024;
-
 

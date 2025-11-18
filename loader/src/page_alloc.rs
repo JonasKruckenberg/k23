@@ -6,130 +6,86 @@
 // copied, modified, or distributed except according to those terms.
 
 use core::alloc::Layout;
+use core::fmt::Formatter;
 use core::ops::Range;
 
+use arrayvec::ArrayVec;
 use kmem_core::{AddressRangeExt, VirtualAddress};
-use rand::distr::{Distribution, Uniform};
-use rand::prelude::IteratorRandom;
 use rand_chacha::ChaCha20Rng;
 
-use crate::arch;
+#[derive(Debug, Copy, Clone)]
+pub struct AllocError;
 
-pub fn init(prng: Option<ChaCha20Rng>) -> PageAllocator {
-    PageAllocator {
-        page_state: [false; arch::PAGE_TABLE_ENTRIES / 2],
-        prng,
+impl core::fmt::Display for AllocError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.write_str("virtual memory allocation failed")
     }
 }
 
-/// Virtual memory allocator for setting up initial mappings.
-///
-/// All regions will be huge page (1GiB) aligned.
+impl core::error::Error for AllocError {}
+
 #[derive(Debug)]
 pub struct PageAllocator {
-    /// Whether a top-level page is in use.
-    page_state: [bool; arch::PAGE_TABLE_ENTRIES / 2],
-    /// A random number generator that should be used to generate random addresses or
-    /// `None` if aslr is disabled.
-    prng: Option<ChaCha20Rng>,
+    regions: ArrayVec<Range<VirtualAddress>, 256>, // should be enough for anyone!
+    rng: Option<ChaCha20Rng>,
 }
 
 impl PageAllocator {
-    fn allocate_pages(&mut self, num_pages: usize) -> VirtualAddress {
-        // find a consecutive range of `num` entries that are not used
-        let mut free_pages = self
-            .page_state
-            .windows(num_pages.div_ceil(8))
-            .enumerate()
-            .filter_map(|(idx, entries)| {
-                if entries.iter().all(|used| !used) {
-                    Some(idx)
-                } else {
-                    None
-                }
-            });
-
-        let maybe_idx = if let Some(rng) = self.prng.as_mut() {
-            free_pages.choose(rng)
-        } else {
-            free_pages.next()
-        };
-
-        if let Some(idx) = maybe_idx {
-            for i in 0..num_pages {
-                self.page_state[idx + i] = true;
-            }
-
-            let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
-
-            let page = idx
-                .checked_mul(top_level_page_size) // convert the index into an actual address
-                .and_then(|idx| idx.checked_add(usize::MAX << arch::VIRT_ADDR_BITS)) // and shift it into the kernel half
-                .unwrap();
-
-            VirtualAddress::new(page)
-        } else {
-            panic!("no usable top-level pages found ({num_pages} pages requested)");
+    pub fn new(rng: Option<ChaCha20Rng>) -> Self {
+        Self {
+            regions: ArrayVec::new(),
+            rng,
         }
     }
 
-    pub fn reserve(&mut self, mut virt_base: VirtualAddress, mut remaining_bytes: usize) {
-        log::trace!(
-            "marking {virt_base}..{} as used",
-            virt_base.add(remaining_bytes)
-        );
-
-        let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
-        debug_assert!(virt_base.is_aligned_to(top_level_page_size));
-
-        while remaining_bytes > 0 {
-            let page_idx = virt_base
-                .get()
-                .checked_sub(usize::MAX << arch::VIRT_ADDR_BITS)
-                .unwrap()
-                .checked_div(top_level_page_size)
-                .unwrap();
-
-            self.page_state[page_idx] = true;
-
-            virt_base = virt_base.add(top_level_page_size);
-            remaining_bytes -= top_level_page_size;
-        }
-    }
-
-    pub fn allocate(&mut self, layout: Layout) -> Range<VirtualAddress> {
+    pub fn allocate(&mut self, layout: Layout) -> Result<Range<VirtualAddress>, AllocError> {
         assert!(layout.align().is_power_of_two());
 
-        let top_level_page_size = arch::page_size_for_level(arch::PAGE_TABLE_LEVELS - 1);
-
-        // how many top-level pages are needed to map `size` bytes
-        // and attempt to allocate them
-        let base = self.allocate_pages(layout.size().div_ceil(top_level_page_size));
-
-        // calculate the base address of the page
-        //
-        // we know that entry_idx is between 0 and PAGE_TABLE_ENTRIES / 2
-        // and represents a top-level page in the *higher half* of the address space.
-        //
-        // we can then take the lowest possible address of the higher half (`usize::MAX << VA_BITS`)
-        // and add the `idx` multiple of the size of a top-level entry to it
-
-        let offset = if let Some(rng) = self.prng.as_mut() {
-            // Choose a random offset.
-            let max_offset = top_level_page_size - (layout.size() % top_level_page_size);
-
-            if max_offset / layout.align() > 0 {
-                let uniform_range = Uniform::new(0, max_offset / layout.align()).unwrap();
-
-                uniform_range.sample(rng) * layout.align()
-            } else {
-                0
-            }
-        } else {
-            0
+        let gaps = Gaps {
+            prev_region_end: self.max_range.start,
+            max_range_end: self.max_range.end,
+            regions: self.regions.iter(),
         };
 
-        let start = base.add(offset);
-        Range::from_start_len(start, layout.size())
+        let spot =
+            kmem_aslr::find_spot_for(layout, gaps, self.max_range.clone(), self.rng.as_mut())
+                .ok_or(AllocError)?;
+
+        let region = Range::from_start_len(spot, layout.size());
+
+        self.regions.push(region.clone());
+
+        Ok(region)
+    }
+
+    pub unsafe fn reserve(&mut self, region: Range<VirtualAddress>) {
+        log::trace!("marking {region:?} as used",);
+        self.regions.push(region);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Gaps<'vec> {
+    prev_region_end: Option<VirtualAddress>,
+    max_range_end: VirtualAddress,
+    regions: core::slice::Iter<'vec, Range<VirtualAddress>>,
+}
+
+impl Iterator for Gaps<'_> {
+    type Item = Range<VirtualAddress>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let prev_region_end = self.prev_region_end.take()?;
+
+        if let Some(region) = self.regions.next() {
+            let gap = prev_region_end..region.start;
+
+            self.prev_region_end = Some(region.end);
+
+            Some(gap)
+        } else {
+            let gap = prev_region_end..self.max_range_end;
+
+            Some(gap)
+        }
     }
 }
