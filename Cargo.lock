@@ -1065,6 +1065,7 @@ dependencies = [
 name = "kmem"
 version = "0.1.0"
 dependencies = [
+ "fallible-iterator",
  "mycelium-bitfield",
 ]
 
