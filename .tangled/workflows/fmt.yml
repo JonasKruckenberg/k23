@@ -7,6 +7,8 @@ environment:
   CLICOLOR: 1
   RUSTFLAGS: -Dwarnings
 
+engine: "nixery"
+
 steps:
   - name: cargo fmt
     command: nix develop --command just check-fmt

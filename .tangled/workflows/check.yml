@@ -7,6 +7,8 @@ environment:
   CLICOLOR: 1
   RUSTFLAGS: -Dwarnings
 
+engine: "nixery"
+
 steps:
   - name: cargo check
     command: nix develop --command just check
