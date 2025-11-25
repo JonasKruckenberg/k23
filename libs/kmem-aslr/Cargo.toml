@@ -1,14 +1,16 @@
 [package]
-name = "kmem"
+name = "kmem-aslr"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [dependencies]
+kmem-core.workspace = true
 
 # 3rd-party dependencies
-mycelium-bitfield.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
 
 [lints]
 workspace = true

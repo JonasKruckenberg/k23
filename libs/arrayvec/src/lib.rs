@@ -1,6 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 // #![no_std]
 
+use core::iter::Extend;
 use core::borrow::{Borrow, BorrowMut};
 use core::error::Error;
 use core::hash::{Hash, Hasher};
@@ -513,6 +514,14 @@ where
 {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         (**self).cmp(other)
+    }
+}
+
+impl<T, const CAP: usize> Extend<T> for ArrayVec<T, CAP> {
+    fn extend<I: IntoIterator<Item=T>>(&mut self, iter: I) {
+        for val in iter {
+            self.push(val);
+        }
     }
 }
 

@@ -7,8 +7,6 @@
 
 mod address_space;
 mod address_space_region;
-pub mod bootstrap_alloc;
-pub mod flush;
 pub mod frame_alloc;
 mod mmap;
 mod provider;
@@ -18,14 +16,14 @@ mod vmo;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::sync::Arc;
-use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::{fmt, slice};
 
 pub use address_space::{AddressSpace, Batch};
 pub use address_space_region::AddressSpaceRegion;
-pub use flush::Flush;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{
+    AddressRangeExt, Flush, MemoryAttributes, WriteOrExecute,
+};
 use loader_api::BootInfo;
 pub use mmap::Mmap;
 use rand::SeedableRng;
@@ -33,7 +31,7 @@ use rand_chacha::ChaCha20Rng;
 use spin::{Mutex, OnceLock};
 pub use trap_handler::handle_page_fault;
 pub use vmo::Vmo;
-use xmas_elf::program::Type;
+use xmas_elf::program::{ProgramHeader, Type};
 
 use crate::arch;
 use crate::mem::frame_alloc::FrameAllocator;
@@ -42,11 +40,11 @@ pub const KIB: usize = 1024;
 pub const MIB: usize = KIB * 1024;
 pub const GIB: usize = MIB * 1024;
 
-static KERNEL_ASPACE: OnceLock<Arc<Mutex<AddressSpace>>> = OnceLock::new();
+static KERNEL_ASPACE: OnceLock<Arc<Mutex<AddressSpace<arch::KmemArch>>>> = OnceLock::new();
 
 pub fn with_kernel_aspace<F, R>(f: F) -> R
 where
-    F: FnOnce(&Arc<Mutex<AddressSpace>>) -> R,
+    F: FnOnce(&Arc<Mutex<AddressSpace<arch::KmemArch>>>) -> R,
 {
     let aspace = KERNEL_ASPACE
         .get()
@@ -54,25 +52,27 @@ where
     f(aspace)
 }
 
-pub fn init(
-    boot_info: &BootInfo,
+pub fn init<A: kmem_core::Arch>(
+    boot_info: &BootInfo<A>,
     rand: &mut impl rand::RngCore,
     frame_alloc: &'static FrameAllocator,
 ) -> crate::Result<()> {
     KERNEL_ASPACE.get_or_try_init(|| -> crate::Result<_> {
-        let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
+        // let (hw_aspace, mut flush) = arch::AddressSpace::from_active(arch::DEFAULT_ASID);
 
         // Safety: `init` is called during startup where the kernel address space is the only address space available
         let mut aspace = unsafe {
-            AddressSpace::from_active_kernel(
-                hw_aspace,
+            AddressSpace::new(
+                boot_info.address_space,
                 Some(ChaCha20Rng::from_rng(rand)),
                 frame_alloc,
             )
         };
 
+        let mut flush = Flush::new();
+
         reserve_wired_regions(&mut aspace, boot_info, &mut flush);
-        flush.flush().unwrap();
+        flush.flush(aspace.raw.arch());
 
         tracing::trace!("Kernel AddressSpace {aspace:?}");
 
@@ -82,12 +82,18 @@ pub fn init(
     Ok(())
 }
 
-fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush: &mut Flush) {
+fn reserve_wired_regions<A: kmem_core::Arch>(
+    aspace: &mut AddressSpace<A>,
+    boot_info: &BootInfo<A>,
+    flush: &mut Flush,
+) {
     // reserve the physical memory map
     aspace
         .reserve(
             boot_info.physical_memory_map.clone(),
-            Permissions::READ | Permissions::WRITE,
+            MemoryAttributes::new()
+                .with(MemoryAttributes::READ, true)
+                .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write),
             Some("Physical Memory Map".to_string()),
             flush,
         )
@@ -96,8 +102,9 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
     // Safety: we have to trust the loaders BootInfo here
     let own_elf = unsafe {
         let base = boot_info
-            .physical_address_offset
-            .add(boot_info.kernel_phys.start.get())
+            .address_space
+            .arch()
+            .phys_to_virt(boot_info.kernel_phys.start)
             .as_ptr();
 
         slice::from_raw_parts(base, boot_info.kernel_phys.len())
@@ -114,23 +121,7 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
             .start
             .add(usize::try_from(ph.virtual_addr()).unwrap());
 
-        let mut permissions = Permissions::empty();
-        if ph.flags().is_read() {
-            permissions |= Permissions::READ;
-        }
-        if ph.flags().is_write() {
-            permissions |= Permissions::WRITE;
-        }
-        if ph.flags().is_execute() {
-            permissions |= Permissions::EXECUTE;
-        }
-
-        assert!(
-            !permissions.contains(Permissions::WRITE | Permissions::EXECUTE),
-            "elf segment (virtual range {:#x}..{:#x}) is marked as write-execute",
-            ph.virtual_addr(),
-            ph.virtual_addr() + ph.mem_size()
-        );
+        let mut attributes = attributes_for_segment(&ph);
 
         aspace
             .reserve(
@@ -140,12 +131,30 @@ fn reserve_wired_regions(aspace: &mut AddressSpace, boot_info: &BootInfo, flush:
                         .add(usize::try_from(ph.mem_size()).unwrap())
                         .align_up(arch::PAGE_SIZE),
                 },
-                permissions,
-                Some(format!("Kernel {permissions} Segment")),
+                attributes,
+                Some(format!("Kernel {attributes} Segment")),
                 flush,
             )
             .unwrap();
     }
+}
+
+fn attributes_for_segment(ph: &ProgramHeader) -> MemoryAttributes {
+    MemoryAttributes::new()
+        .with(MemoryAttributes::READ, ph.flags().is_read())
+        .with(
+            MemoryAttributes::WRITE_OR_EXECUTE,
+            match (ph.flags().is_write(), ph.flags().is_execute()) {
+                (false, false) => WriteOrExecute::Neither,
+                (true, false) => WriteOrExecute::Write,
+                (false, true) => WriteOrExecute::Execute,
+                (true, true) => panic!(
+                    "elf segment (virtual range {:#x}..{:#x}) is marked as write-execute",
+                    ph.virtual_addr(),
+                    ph.virtual_addr() + ph.mem_size()
+                ),
+            },
+        )
 }
 
 bitflags::bitflags! {
@@ -180,89 +189,4 @@ impl PageFaultFlags {
     pub fn cause_is_instr_fetch(self) -> bool {
         self.contains(PageFaultFlags::INSTRUCTION)
     }
-}
-
-bitflags::bitflags! {
-    #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-    pub struct Permissions: u8 {
-        /// Allow reads from the memory region
-        const READ = 1 << 0;
-        /// Allow writes to the memory region
-        const WRITE = 1 << 1;
-        /// Allow code execution from the memory region
-        const EXECUTE = 1 << 2;
-        /// Allow userspace to access the memory region
-        const USER = 1 << 3;
-    }
-}
-
-impl fmt::Display for Permissions {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        bitflags::parser::to_writer(self, f)
-    }
-}
-
-impl Permissions {
-    /// Returns whether the set of permissions is `R^X` ie doesn't allow
-    /// write-execute at the same time.
-    pub fn is_valid(self) -> bool {
-        !self.contains(Permissions::WRITE | Permissions::EXECUTE)
-    }
-}
-
-impl From<PageFaultFlags> for Permissions {
-    fn from(value: PageFaultFlags) -> Self {
-        let mut out = Permissions::empty();
-        if value.contains(PageFaultFlags::STORE) {
-            out |= Permissions::WRITE;
-        } else {
-            out |= Permissions::READ;
-        }
-        if value.contains(PageFaultFlags::INSTRUCTION) {
-            out |= Permissions::EXECUTE;
-        }
-        out
-    }
-}
-
-pub trait ArchAddressSpace {
-    type Flags: From<Permissions> + bitflags::Flags;
-
-    fn new(asid: u16, frame_alloc: &FrameAllocator) -> crate::Result<(Self, Flush)>
-    where
-        Self: Sized;
-    fn from_active(asid: u16) -> (Self, Flush)
-    where
-        Self: Sized;
-
-    unsafe fn map_contiguous(
-        &mut self,
-        frame_alloc: &FrameAllocator,
-        virt: VirtualAddress,
-        phys: PhysicalAddress,
-        len: NonZeroUsize,
-        flags: Self::Flags,
-        flush: &mut Flush,
-    ) -> crate::Result<()>;
-
-    unsafe fn update_flags(
-        &mut self,
-        virt: VirtualAddress,
-        len: NonZeroUsize,
-        new_flags: Self::Flags,
-        flush: &mut Flush,
-    ) -> crate::Result<()>;
-
-    unsafe fn unmap(
-        &mut self,
-        virt: VirtualAddress,
-        len: NonZeroUsize,
-        flush: &mut Flush,
-    ) -> crate::Result<()>;
-
-    unsafe fn query(&mut self, virt: VirtualAddress) -> Option<(PhysicalAddress, Self::Flags)>;
-
-    unsafe fn activate(&self);
-
-    fn new_flush(&self) -> Flush;
 }

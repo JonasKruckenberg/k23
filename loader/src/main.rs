@@ -13,27 +13,27 @@
 use core::ffi::c_void;
 use core::mem;
 use core::ops::Range;
+use core::ptr::NonNull;
 
 use arrayvec::ArrayVec;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::bootstrap::BootstrapAllocator;
+use kmem_core::{AddressRangeExt, Arch, Flush, FrameAllocator, PhysicalAddress, VirtualAddress, KIB};
+use loader_api::{BootInfoBuilder, MemoryRegion, MemoryRegionKind};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use spin::{Barrier, OnceLock};
 
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;
-use crate::frame_alloc::FrameAllocator;
 use crate::kernel::Kernel;
 use crate::machine_info::MachineInfo;
 use crate::mapping::{
-    StacksAllocation, TlsAllocation, identity_map_self, map_kernel, map_kernel_stacks,
-    map_physical_memory,
+    identity_map_self, map_kernel, map_kernel_stacks, StacksAllocation, TlsAllocation,
 };
 
 mod arch;
 mod boot_info;
 mod error;
-mod frame_alloc;
 mod kernel;
 mod logger;
 mod machine_info;
@@ -43,7 +43,7 @@ mod panic;
 
 pub const ENABLE_KASLR: bool = false;
 pub const LOG_LEVEL: log::Level = log::Level::Trace;
-pub const STACK_SIZE: usize = 32 * arch::PAGE_SIZE;
+pub const STACK_SIZE: usize = 32 * KIB;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -56,14 +56,13 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
 
     // Enable the MMU on all harts. Note that this technically reenables it on the initializing hart
     // but there is no harm in that.
-    // Safety: there is no safety
+    log::trace!("activating MMU...");
     unsafe {
-        log::trace!("activating MMU...");
-        arch::activate_aspace(res.root_pgtable);
-        log::trace!("activated.");
+        res.boot_info.as_ref().address_space.activate();
     }
+    log::trace!("activated.");
 
-    if let Some(alloc) = &res.maybe_tls_alloc {
+    if let Some(alloc) = &res.maybe_tls_allocation {
         alloc.initialize_for_hart(hartid);
     }
 
@@ -72,11 +71,10 @@ unsafe fn main(hartid: usize, opaque: *const c_void, boot_ticks: u64) -> ! {
 }
 
 pub struct GlobalInitResult {
-    boot_info: *mut loader_api::BootInfo,
+    boot_info: NonNull<loader_api::BootInfo>,
     kernel_entry: VirtualAddress,
-    root_pgtable: PhysicalAddress,
-    stacks_alloc: StacksAllocation,
-    maybe_tls_alloc: Option<TlsAllocation>,
+    stacks_allocation: StacksAllocation,
+    maybe_tls_allocation: Option<TlsAllocation>,
     barrier: Barrier,
 }
 
@@ -101,24 +99,26 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
         minfo.fdt.len(),
     );
 
-    // Initialize the frame allocator
-    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys.clone());
-    log::debug!("allocatable memory regions {allocatable_memories:#x?}");
-    let mut frame_alloc = FrameAllocator::new(&allocatable_memories);
-
     // initialize the random number generator
     let rng = ENABLE_KASLR.then_some(ChaCha20Rng::from_seed(
         minfo.rng_seed.unwrap()[0..32].try_into().unwrap(),
     ));
     let rng_seed = rng.as_ref().map(|rng| rng.get_seed()).unwrap_or_default();
+    
+    // Initialize the frame allocator
+    let allocatable_memories = allocatable_memory_regions(&minfo, &self_regions, fdt_phys.clone());
+    log::debug!("allocatable memory regions {allocatable_memories:#x?}");
+    let mut frame_alloc = BootstrapAllocator::new(allocatable_memories, 4096); // TODO fix
 
-    // Initialize the page allocator
-    let mut page_alloc = page_alloc::init(rng);
+    let mut flush = Flush::new();
+    let mut aspace = arch::init_address_space(&frame_alloc, &mut flush).unwrap();
 
-    let root_pgtable = frame_alloc
-        .allocate_one_zeroed(
-            VirtualAddress::MIN, // called before translation into higher half
-        )
+    // Map the physical memory into kernel address space.
+    //
+    // This will be used by the kernel to access the page tables, BootInfo struct and maybe
+    // more in the future.
+    aspace
+        .map_physical_memory(&frame_alloc, &mut flush)
         .unwrap();
 
     // Identity map the loader itself (this binary).
@@ -127,81 +127,107 @@ fn do_global_init(hartid: usize, opaque: *const c_void) -> GlobalInitResult {
     // as opposed to m-mode where it would take effect after the jump to s-mode.
     // This means we need to temporarily identity map the loader here, so we can continue executing our own code.
     // We will then unmap the loader in the kernel.
-    identity_map_self(root_pgtable, &mut frame_alloc, &self_regions).unwrap();
-
-    // Map the physical memory into kernel address space.
-    //
-    // This will be used by the kernel to access the page tables, BootInfo struct and maybe
-    // more in the future.
-    let (phys_off, phys_map) =
-        map_physical_memory(root_pgtable, &mut frame_alloc, &mut page_alloc, &minfo).unwrap();
+    identity_map_self(&mut aspace, frame_alloc.by_ref(), &self_regions, &mut flush).unwrap();
 
     // Activate the MMU with the address space we have built so far.
     // the rest of the address space setup will happen in virtual memory (mostly so that we
     // can correctly apply relocations without having to do expensive virt to phys queries)
-    // Safety: there is no safety
-    unsafe {
-        log::trace!("activating MMU...");
-        arch::activate_aspace(root_pgtable);
-        log::trace!("activated.");
-    }
+    log::trace!("activating MMU...");
+    let mut aspace = unsafe { aspace.finish_bootstrap_and_activate() };
+    log::trace!("activated.");
 
-    let kernel = Kernel::from_static(phys_off).unwrap();
+    flush.flush(aspace.arch());
+
+    let kernel = Kernel::from_static(aspace.arch()).unwrap();
     // print the elf sections for debugging purposes
     log::debug!("\n{kernel}");
 
-    let (kernel_virt, maybe_tls_alloc) = map_kernel(
-        root_pgtable,
-        &mut frame_alloc,
+    // Initialize the page allocator
+    let mut page_alloc = page_alloc::PageAllocator::new(rng);
+
+    let mut flush = Flush::new();
+
+    let (kernel_virt, maybe_tls_allocation) = map_kernel(
+        &mut aspace,
+        frame_alloc.by_ref(),
         &mut page_alloc,
         &kernel,
         &minfo,
-        phys_off,
+        &mut flush,
     )
     .unwrap();
 
     log::trace!("KASLR: Kernel image at {:?}", kernel_virt.start);
 
-    let stacks_alloc = map_kernel_stacks(
-        root_pgtable,
-        &mut frame_alloc,
+    let stacks_allocation = map_kernel_stacks(
+        &mut aspace,
+        frame_alloc.by_ref(),
         &mut page_alloc,
         &minfo,
         usize::try_from(kernel._loader_config.kernel_stack_size_pages).unwrap(),
-        phys_off,
+        &mut flush,
     )
     .unwrap();
 
-    let frame_usage = frame_alloc.frame_usage();
     log::debug!(
         "Mapping complete, permanently used {} KiB.",
-        (frame_usage * arch::PAGE_SIZE) / 1024,
+        frame_alloc.usage() / 1024,
     );
 
-    let boot_info = prepare_boot_info(
-        frame_alloc,
-        phys_off,
-        phys_map,
-        kernel_virt.clone(),
-        maybe_tls_alloc.as_ref().map(|alloc| alloc.template.clone()),
-        self_regions.executable.start..self_regions.read_write.end,
-        kernel.phys_range(),
-        fdt_phys,
-        minfo.hart_mask,
-        rng_seed,
-    )
-    .unwrap();
+    let mut boot_info_builder = BootInfoBuilder::new(aspace)
+        .with_cpu_mask(minfo.hart_mask)
+        .with_physical_memory_map(physical_memory_map)
+        .with_kernel_virt(kernel_virt.clone())
+        .with_kernel_phys(kernel.phys_range())
+        .with_rng_seed(rng_seed);
+
+    if let Some(tls_allocation) = &maybe_tls_allocation {
+        boot_info_builder = boot_info_builder.with_tls_template(tls_allocation.template.clone());
+    }
+
+    for used_region in frame_alloc.used_regions() {
+        boot_info_builder = boot_info_builder.with_memory_region(MemoryRegion {
+            range: used_region,
+            kind: MemoryRegionKind::Loader,
+        });
+    }
+
+    // Report the free regions as usable.
+    for free_region in frame_alloc.free_regions() {
+        boot_info_builder = boot_info_builder.with_memory_region(MemoryRegion {
+            range: free_region,
+            kind: MemoryRegionKind::Usable,
+        });
+    }
+
+    // Most of the memory occupied by the loader is not needed once the kernel is running,
+    // but the kernel itself lies somewhere in the loader memory.
+    //
+    // We can still mark the range before and after the kernel as usable.
+    boot_info_builder = boot_info_builder.with_memory_region(MemoryRegion {
+        range: self_regions.total_range().start..kernel.phys_range().start,
+        kind: MemoryRegionKind::Usable,
+    });
+    boot_info_builder = boot_info_builder.with_memory_region(MemoryRegion {
+        range: kernel.phys_range().end..self_regions.total_range().end,
+        kind: MemoryRegionKind::Usable,
+    });
+
+    // Report the flattened device tree as a separate region.
+    boot_info_builder = boot_info_builder.with_memory_region(MemoryRegion {
+        range: fdt_phys,
+        kind: MemoryRegionKind::FDT,
+    });
 
     let kernel_entry = kernel_virt
         .start
         .add(usize::try_from(kernel.elf_file.header.pt2.entry_point()).unwrap());
 
     GlobalInitResult {
-        boot_info,
+        boot_info: boot_info_builder.finish_and_allocate(frame_alloc).unwrap(),
         kernel_entry,
-        root_pgtable,
-        maybe_tls_alloc,
-        stacks_alloc,
+        maybe_tls_allocation,
+        stacks_allocation,
         barrier: Barrier::new(minfo.hart_mask.count_ones() as usize),
     }
 }
@@ -239,6 +265,10 @@ impl SelfRegions {
                     .add(minfo.hart_mask.count_ones() as usize * STACK_SIZE),
             },
         }
+    }
+
+    pub fn total_range(&self) -> Range<PhysicalAddress> {
+        self.executable.start..self.read_write.end
     }
 }
 
@@ -289,22 +319,6 @@ fn allocatable_memory_regions(
     //
     //     out.push(region);
     // }
-
-    temp.sort_unstable_by_key(|region| region.start);
-
-    #[cfg(debug_assertions)]
-    for (i, region) in temp.iter().enumerate() {
-        for (j, other) in temp.iter().enumerate() {
-            if i == j {
-                continue;
-            }
-
-            assert!(
-                !region.overlaps(other),
-                "regions {region:#x?} and {other:#x?} overlap"
-            );
-        }
-    }
 
     temp
 }

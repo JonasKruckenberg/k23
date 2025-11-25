@@ -8,21 +8,22 @@
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::sync::Arc;
-use core::cmp;
+use core::alloc::Layout;
 use core::mem::offset_of;
 use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::pin::Pin;
 use core::ptr::NonNull;
+use core::{cmp, mem};
 
 use anyhow::bail;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, MemoryAttributes, PhysicalAddress, VirtualAddress};
 use pin_project::pin_project;
 use spin::LazyLock;
 
 use crate::arch;
 use crate::mem::frame_alloc::FrameAllocator;
-use crate::mem::{Batch, PageFaultFlags, Permissions, Vmo};
+use crate::mem::{Batch, PageFaultFlags, Vmo};
 
 /// A contiguous region of an address space
 #[pin_project]
@@ -30,73 +31,75 @@ use crate::mem::{Batch, PageFaultFlags, Permissions, Vmo};
 pub struct AddressSpaceRegion {
     /// The address range covered by this region
     pub range: Range<VirtualAddress>,
-    /// The permissions of this region
-    pub permissions: Permissions,
+    /// The memory attributes of this region
+    pub attributes: MemoryAttributes,
     /// The name of this region, for debugging
     pub name: Option<String>,
     /// The Virtual Memory Object backing this region
     pub vmo: Arc<Vmo>,
     pub vmo_offset: usize,
+
     /// The address range covered by this region and its WAVL tree subtree, used when allocating new regions
-    pub(super) max_range: Range<VirtualAddress>,
+    subtree_range: Range<VirtualAddress>,
     /// The largest gap in this subtree, used when allocating new regions
-    pub(super) max_gap: usize,
+    max_gap: usize,
+
     /// Links to other regions in the WAVL tree
-    pub(super) links: wavltree::Links<AddressSpaceRegion>,
+    links: wavltree::Links<AddressSpaceRegion>,
 }
 
 impl AddressSpaceRegion {
     pub fn new_zeroed(
         frame_alloc: &'static FrameAllocator,
         range: Range<VirtualAddress>,
-        permissions: Permissions,
+        attributes: MemoryAttributes,
         name: Option<String>,
     ) -> Self {
         Self {
             range: range.clone(),
-            permissions,
+            attributes,
             name,
             vmo: Arc::new(Vmo::new_zeroed(frame_alloc)),
             vmo_offset: 0,
+            subtree_range: range,
             max_gap: 0,
-            max_range: range,
             links: wavltree::Links::default(),
         }
     }
 
     pub fn new_phys(
         virt: Range<VirtualAddress>,
-        permissions: Permissions,
+        attributes: MemoryAttributes,
         phys: Range<PhysicalAddress>,
         name: Option<String>,
     ) -> AddressSpaceRegion {
         Self {
             range: virt.clone(),
-            permissions,
+            attributes,
             name,
             vmo: Arc::new(Vmo::new_phys(phys)),
             vmo_offset: 0,
+            subtree_range: virt,
             max_gap: 0,
-            max_range: virt,
             links: wavltree::Links::default(),
         }
     }
 
     pub fn new_wired(
         range: Range<VirtualAddress>,
-        permissions: Permissions,
+        attributes: MemoryAttributes,
         name: Option<String>,
     ) -> AddressSpaceRegion {
         static WIRED_VMO: LazyLock<Arc<Vmo>> = LazyLock::new(|| Arc::new(Vmo::Wired));
 
         Self {
             range: range.clone(),
-            permissions,
+            attributes,
             name,
             vmo: WIRED_VMO.clone(),
             vmo_offset: 0,
+            subtree_range: range,
             max_gap: 0,
-            max_range: range,
             links: wavltree::Links::default(),
         }
     }
@@ -121,9 +124,9 @@ impl AddressSpaceRegion {
     //     })
     // }
 
-    pub fn commit(
+    pub fn commit<A: kmem_core::Arch>(
         &self,
-        batch: &mut Batch,
+        batch: &mut Batch<A>,
         range: Range<VirtualAddress>,
         will_write: bool,
     ) -> crate::Result<()> {
@@ -143,7 +146,7 @@ impl AddressSpaceRegion {
                     range.start,
                     range_phys.start,
                     NonZeroUsize::new(range_phys.len()).unwrap(),
-                    self.permissions.into(),
+                    self.attributes,
                 )?;
             }
             Vmo::Paged(vmo) => {
@@ -153,12 +156,13 @@ impl AddressSpaceRegion {
                     for addr in range.step_by(arch::PAGE_SIZE) {
                         debug_assert!(addr.is_aligned_to(arch::PAGE_SIZE));
                         let vmo_relative_offset = addr.offset_from_unsigned(self.range.start);
-                        let frame = vmo.require_owned_frame(vmo_relative_offset)?;
+                        let frame =
+                            vmo.require_owned_frame(vmo_relative_offset, batch.aspace.arch())?;
                         batch.queue_map(
                             addr,
                             frame.addr(),
                             NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
-                            self.permissions.into(),
+                            self.attributes,
                         )?;
                     }
                 } else {
@@ -172,7 +176,7 @@ impl AddressSpaceRegion {
                             addr,
                             frame.addr(),
                             NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
-                            self.permissions.difference(Permissions::WRITE).into(),
+                            self.attributes.difference(Permissions::WRITE).into(),
                         )?;
                     }
                 }
@@ -206,9 +210,9 @@ impl AddressSpaceRegion {
         Ok(())
     }
 
-    pub fn page_fault(
+    pub fn page_fault<A: kmem_core::Arch>(
         self: Pin<&mut Self>,
-        batch: &mut Batch,
+        batch: &mut Batch<A>,
         addr: VirtualAddress,
         flags: PageFaultFlags,
     ) -> crate::Result<()> {
@@ -218,7 +222,7 @@ impl AddressSpaceRegion {
 
         // Check that the access (read,write or execute) is permitted given this region's permissions
         let access_permission = Permissions::from(flags);
-        let diff = access_permission.difference(self.permissions);
+        let diff = access_permission.difference(self.attributes);
         if !diff.is_empty() {
             // diff being empty here means there is no permission mismatch e.g. a read fault against
             // a read-accessible mapping. Hardware *should* never generate such faults, and for soft
@@ -265,19 +269,20 @@ impl AddressSpaceRegion {
                     addr,
                     range_phys.start,
                     NonZeroUsize::new(range_phys.len()).unwrap(),
-                    self.permissions.into(),
+                    self.attributes,
                 )?;
             }
             Vmo::Paged(vmo) => {
                 if flags.cause_is_write() {
                     let mut vmo = vmo.write();
 
-                    let frame = vmo.require_owned_frame(vmo_relative_offset)?;
+                    let frame =
+                        vmo.require_owned_frame(vmo_relative_offset, batch.aspace.arch())?;
                     batch.queue_map(
                         addr,
                         frame.addr(),
                         NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
-                        self.permissions.into(),
+                        self.attributes,
                     )?;
                 } else {
                     let mut vmo = vmo.write();
@@ -287,7 +292,7 @@ impl AddressSpaceRegion {
                         addr,
                         frame.addr(),
                         NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
-                        self.permissions.difference(Permissions::WRITE).into(),
+                        self.attributes.difference(Permissions::WRITE).into(),
                     )?;
                 }
 
@@ -299,42 +304,105 @@ impl AddressSpaceRegion {
         Ok(())
     }
 
-    #[expect(clippy::undocumented_unsafe_blocks, reason = "intrusive tree access")]
-    fn update(mut node: NonNull<Self>, left: Option<NonNull<Self>>, right: Option<NonNull<Self>>) {
+    /// Returns this regions address range.
+    pub const fn range(&self) -> &Range<VirtualAddress> {
+        &self.range
+    }
+
+    /// Returns the largest range covered by this region and all it's binary-search-tree children,
+    /// used during gap-searching.
+    pub const fn subtree_range(&self) -> &Range<VirtualAddress> {
+        &self.subtree_range
+    }
+
+    /// Returns `true` if this nodes subtree contains a gap suitable for the given `layout`, used
+    /// during gap-searching.
+    pub fn suitable_gap_in_subtree(&self, layout: Layout) -> bool {
+        // we need the layout to be padded to alignment
+        debug_assert!(layout.size().is_multiple_of(layout.align()));
+
+        self.max_gap >= layout.size()
+    }
+
+    /// Returns the left child node in the search tree of regions, used during gap-searching.
+    pub fn left_child(&self) -> Option<&Self> {
+        // Safety: we have to trust the intrusive tree implementation here
+        Some(unsafe { self.links.left()?.as_ref() })
+    }
+
+    /// Returns the right child node in the search tree of regions, used during gap-searching.
+    pub fn right_child(&self) -> Option<&Self> {
+        // Safety: we have to trust the intrusive tree implementation here
+        Some(unsafe { self.links.right()?.as_ref() })
+    }
+
+    /// Returns the parent node in the search tree of regions, used during gap-searching.
+    pub fn parent(&self) -> Option<&Self> {
+        // Safety: we have to trust the intrusive tree implementation here
+        Some(unsafe { self.links.parent()?.as_ref() })
+    }
+
+    /// Update the gap search metadata of this region. This method is called in the [`wavltree::Linked`]
+    /// implementation below after each tree mutation that impacted this node or its subtree in some way
+    /// (insertion, rotation, deletion).
+    ///
+    /// Returns `true` if this nodes metadata changed.
+    fn update_gap_metadata(
+        mut node: NonNull<Self>,
+        left: Option<NonNull<Self>>,
+        right: Option<NonNull<Self>>,
+    ) -> bool {
+        fn gap(left_last_byte: VirtualAddress, right_first_byte: VirtualAddress) -> usize {
+            right_first_byte.offset_from_unsigned(left_last_byte)
+        }
+
+        // Safety: we have to trust the intrusive tree implementation
         let node = unsafe { node.as_mut() };
         let mut left_max_gap = 0;
         let mut right_max_gap = 0;
 
-        if let Some(left) = left {
+        // recalculate the subtree_range start
+        let old_subtree_range_start = if let Some(left) = left {
+            // Safety: we have to trust the intrusive tree implementation
             let left = unsafe { left.as_ref() };
-            let left_gap = gap(left.max_range.end, node.range.start);
+            let left_gap = gap(left.subtree_range.end, node.range.start);
             left_max_gap = cmp::max(left_gap, left.max_gap);
-            node.max_range.start = left.max_range.start;
+            mem::replace(&mut node.subtree_range.start, left.subtree_range.start)
         } else {
-            node.max_range.start = node.range.start;
-        }
+            mem::replace(&mut node.subtree_range.start, node.range.start)
+        };
 
-        if let Some(right) = right {
+        // recalculate the subtree range end
+        let old_subtree_range_end = if let Some(right) = right {
+            // Safety: we have to trust the intrusive tree implementation
             let right = unsafe { right.as_ref() };
-            let right_gap = gap(node.range.end, right.max_range.start);
+            let right_gap = gap(node.range.end, right.subtree_range.start);
             right_max_gap = cmp::max(right_gap, right.max_gap);
-            node.max_range.end = right.max_range.end;
+            mem::replace(&mut node.subtree_range.end, right.subtree_range.end)
         } else {
-            node.max_range.end = node.range.end;
-        }
+            mem::replace(&mut node.subtree_range.end, node.range.end)
+        };
 
-        node.max_gap = cmp::max(left_max_gap, right_max_gap);
+        // recalculate the map_gap
+        let old_max_gap = mem::replace(&mut node.max_gap, cmp::max(left_max_gap, right_max_gap));
 
-        fn gap(left_last_byte: VirtualAddress, right_first_byte: VirtualAddress) -> usize {
-            right_first_byte.get().saturating_sub(left_last_byte.get())
-        }
+        old_max_gap != node.max_gap
+            || old_subtree_range_start != node.subtree_range.start
+            || old_subtree_range_end != node.subtree_range.end
     }
 
-    #[expect(clippy::undocumented_unsafe_blocks, reason = "intrusive tree access")]
-    fn propagate_to_root(mut maybe_node: Option<NonNull<Self>>) {
+    // Propagate metadata updates to this regions parent in the search tree. If we had to update
+    // our metadata the parent must update its metadata too.
+    fn propagate_update_to_parent(mut maybe_node: Option<NonNull<Self>>) {
         while let Some(node) = maybe_node {
+            // Safety: we have to trust the intrusive tree implementation
             let links = unsafe { &node.as_ref().links };
-            Self::update(node, links.left(), links.right());
+            let changed = Self::update_gap_metadata(node, links.left(), links.right());
+
+            // if the metadata didn't actually change, we don't need to recalculate parents
+            if !changed {
+                return;
+            }
 
             maybe_node = links.parent();
         }
@@ -377,14 +445,14 @@ unsafe impl wavltree::Linked for AddressSpaceRegion {
     }
 
     fn after_insert(self: Pin<&mut Self>) {
-        debug_assert_eq!(self.max_range.start, self.range.start);
-        debug_assert_eq!(self.max_range.end, self.range.end);
+        debug_assert_eq!(self.subtree_range.start, self.range.start);
+        debug_assert_eq!(self.subtree_range.end, self.range.end);
         debug_assert_eq!(self.max_gap, 0);
-        Self::propagate_to_root(self.links.parent());
+        Self::propagate_update_to_parent(self.links.parent());
     }
 
     fn after_remove(self: Pin<&mut Self>, parent: Option<NonNull<Self>>) {
-        Self::propagate_to_root(parent);
+        Self::propagate_update_to_parent(parent);
     }
 
     fn after_rotate(
@@ -398,14 +466,14 @@ unsafe impl wavltree::Linked for AddressSpaceRegion {
         // Safety: caller ensures ptr is valid
         let _parent = unsafe { parent.as_ref() };
 
-        this.max_range.start = _parent.max_range.start;
-        this.max_range.end = _parent.max_range.end;
+        this.subtree_range.start = _parent.subtree_range.start;
+        this.subtree_range.end = _parent.subtree_range.end;
         *this.max_gap = _parent.max_gap;
 
         if side == wavltree::Side::Left {
-            Self::update(parent, sibling, lr_child);
+            Self::update_gap_metadata(parent, sibling, lr_child);
         } else {
-            Self::update(parent, lr_child, sibling);
+            Self::update_gap_metadata(parent, lr_child, sibling);
         }
     }
 }

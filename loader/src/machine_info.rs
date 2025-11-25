@@ -15,9 +15,8 @@ use core::{fmt, mem};
 use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
 use fdt::{CellSizes, Fdt, PropertiesIter};
-use kmem::{AddressRangeExt, PhysicalAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress};
 
-use crate::arch::PAGE_SIZE;
 use crate::error::Error;
 
 /// Information about the machine we're running on.
@@ -157,13 +156,7 @@ impl MachineInfo<'_> {
 
         // remove memory regions that are left as zero-sized from the previous step
         memories.retain(|region| !region.is_empty());
-
-        // page-align all memory regions, this will waste some physical memory in the process,
-        // but we can't make use of it either way
-        memories.iter_mut().for_each(|region| {
-            *region = region.clone().align_in(PAGE_SIZE);
-        });
-
+        
         // ensure the memory regions are sorted.
         // this is important for the allocation logic to be correct
         memories.sort_unstable_by(|a, b| -> Ordering {

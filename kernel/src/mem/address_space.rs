@@ -12,23 +12,21 @@ use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::fmt;
 use core::num::NonZeroUsize;
-use core::ops::{Bound, DerefMut, Range, RangeBounds, RangeInclusive};
+use core::ops::{Bound, DerefMut, Range, RangeBounds};
 use core::pin::Pin;
 use core::ptr::NonNull;
 
-use anyhow::{bail, ensure};
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-use rand::Rng;
-use rand::distr::Uniform;
+use anyhow::{anyhow, bail, ensure};
+use kmem_core::{
+    AddressRangeExt, Arch, Flush, FrameAllocator as _, MemoryAttributes, PhysicalAddress,
+    VirtualAddress,
+};
 use rand_chacha::ChaCha20Rng;
 
 use crate::arch;
 use crate::mem::address_space_region::AddressSpaceRegion;
 use crate::mem::frame_alloc::FrameAllocator;
-use crate::mem::{ArchAddressSpace, Flush, PageFaultFlags, Permissions};
-
-// const VIRT_ALLOC_ENTROPY: u8 = u8::try_from((arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT as u32) + 1).unwrap();
-const VIRT_ALLOC_ENTROPY: u8 = 27;
+use crate::mem::PageFaultFlags;
 
 #[derive(Debug, Clone, Copy)]
 pub enum AddressSpaceKind {
@@ -36,78 +34,57 @@ pub enum AddressSpaceKind {
     Kernel,
 }
 
-pub struct AddressSpace {
+pub struct AddressSpace<A: Arch> {
     kind: AddressSpaceKind,
     /// A binary search tree of regions that make up this address space.
     pub(super) regions: wavltree::WAVLTree<AddressSpaceRegion>,
-    /// The maximum range this address space can encompass.
-    ///
-    /// This is used to check new mappings against and speed up page fault handling.
-    max_range: RangeInclusive<VirtualAddress>,
     /// The pseudo-random number generator used for address space layout randomization or `None`
     /// if ASLR is disabled.
     rng: Option<ChaCha20Rng>,
     /// The hardware address space backing this "logical" address space that changes need to be
     /// materialized into in order to take effect.
-    pub arch: arch::AddressSpace,
+    pub raw: kmem_core::AddressSpace<A>,
     pub frame_alloc: &'static FrameAllocator,
     last_fault: Option<(NonNull<AddressSpaceRegion>, VirtualAddress)>,
 }
 // Safety: the last_fault field makes the not-Send, but its only ever accessed behind a &mut Self
-unsafe impl Send for AddressSpace {}
+unsafe impl<A> Send for AddressSpace<A> where A: Arch + Send {}
 // Safety: the last_fault field makes the not-Send, but its only ever accessed behind a &mut Self
-unsafe impl Sync for AddressSpace {}
+unsafe impl<A> Sync for AddressSpace<A> where A: Arch + Sync {}
 
-impl fmt::Debug for AddressSpace {
+impl<A> fmt::Debug for AddressSpace<A>
+where
+    A: Arch + fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AddressSpace")
+            .field("raw", &self.raw)
             .field_with("regions", |f| {
                 let mut f = f.debug_list();
                 for region in self.regions.iter() {
                     f.entry(&format_args!(
                         "{:<40?} {}..{} {}",
-                        region.name, region.range.start, region.range.end, region.permissions
+                        region.name, region.range.start, region.range.end, region.attributes
                     ));
                 }
                 f.finish()
             })
-            .field("max_range", &self.max_range)
             .field("kind", &self.kind)
             .field("rng", &self.rng)
             .finish_non_exhaustive()
     }
 }
 
-impl AddressSpace {
-    pub fn new_user(
-        asid: u16,
-        rng: Option<ChaCha20Rng>,
-        frame_alloc: &'static FrameAllocator,
-    ) -> crate::Result<Self> {
-        let (arch, _) = arch::AddressSpace::new(asid, frame_alloc)?;
-
-        #[allow(tail_expr_drop_order, reason = "")]
-        Ok(Self {
-            regions: wavltree::WAVLTree::default(),
-            arch,
-            max_range: arch::USER_ASPACE_RANGE,
-            rng,
-            kind: AddressSpaceKind::User,
-            frame_alloc,
-            last_fault: None,
-        })
-    }
-
-    pub unsafe fn from_active_kernel(
-        arch_aspace: arch::AddressSpace,
+impl<A: Arch> AddressSpace<A> {
+    pub unsafe fn new(
+        raw_aspace: kmem_core::AddressSpace<A>,
         rng: Option<ChaCha20Rng>,
         frame_alloc: &'static FrameAllocator,
     ) -> Self {
         #[allow(tail_expr_drop_order, reason = "")]
         Self {
             regions: wavltree::WAVLTree::default(),
-            arch: arch_aspace,
-            max_range: arch::KERNEL_ASPACE_RANGE,
+            raw: raw_aspace,
             rng,
             kind: AddressSpaceKind::Kernel,
             frame_alloc,
@@ -121,72 +98,59 @@ impl AddressSpace {
 
     pub unsafe fn activate(&self) {
         // Safety: ensured by caller
-        unsafe { self.arch.activate() }
+        unsafe { self.raw.activate() }
     }
 
     pub fn map(
         &mut self,
         layout: Layout,
-        permissions: Permissions,
+        attributes: MemoryAttributes,
         map: impl FnOnce(
             Range<VirtualAddress>,
-            Permissions,
-            &mut Batch,
+            MemoryAttributes,
+            &mut Batch<A>,
         ) -> crate::Result<AddressSpaceRegion>,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
-        ensure!(layout.pad_to_align().size() % arch::PAGE_SIZE == 0,);
-        ensure!(
-            layout.pad_to_align().size()
-                <= self
-                    .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start())
-        );
-        ensure!(layout.align() <= self.frame_alloc.max_alignment(),);
-        ensure!(permissions.is_valid());
+        ensure!(layout.pad_to_align().size() % arch::PAGE_SIZE == 0);
+        ensure!(Some(NonZeroUsize::new(layout.align()).unwrap()) <= self.frame_alloc.size_hint().1);
 
         // Actually do the mapping now
         // Safety: we checked all invariants above
-        unsafe { self.map_unchecked(layout, permissions, map) }
+        unsafe { self.map_unchecked(layout, attributes, map) }
     }
 
     pub unsafe fn map_unchecked(
         &mut self,
         layout: Layout,
-        permissions: Permissions,
+        attributes: MemoryAttributes,
         map: impl FnOnce(
             Range<VirtualAddress>,
-            Permissions,
-            &mut Batch,
+            MemoryAttributes,
+            &mut Batch<A>,
         ) -> crate::Result<AddressSpaceRegion>,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         let layout = layout.pad_to_align();
-        let base = self.find_spot(layout, VIRT_ALLOC_ENTROPY)?;
+        let base = self
+            .find_spot_for(layout)
+            .ok_or(anyhow!("out of virtual memory"))?;
         let range = Range::from_start_len(base, layout.size());
 
-        self.map_internal(range, permissions, map)
+        self.map_internal(range, attributes, map)
     }
 
     pub fn map_specific(
         &mut self,
         range: Range<VirtualAddress>,
-        permissions: Permissions,
+        attributes: MemoryAttributes,
         map: impl FnOnce(
             Range<VirtualAddress>,
-            Permissions,
-            &mut Batch,
+            MemoryAttributes,
+            &mut Batch<A>,
         ) -> crate::Result<AddressSpaceRegion>,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
         ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
-        ensure!(
-            range.clone().len()
-                <= self
-                    .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start())
-        );
-        ensure!(permissions.is_valid());
+
         // ensure the entire address space range is free
         if let Some(prev) = self.regions.upper_bound(range.start_bound()).get() {
             ensure!(prev.range.end <= range.start);
@@ -194,32 +158,25 @@ impl AddressSpace {
 
         // Actually do the mapping now
         // Safety: we checked all invariants above
-        unsafe { self.map_specific_unchecked(range, permissions, map) }
+        unsafe { self.map_specific_unchecked(range, attributes, map) }
     }
 
     pub unsafe fn map_specific_unchecked(
         &mut self,
         range: Range<VirtualAddress>,
-        permissions: Permissions,
+        attributes: MemoryAttributes,
         map: impl FnOnce(
             Range<VirtualAddress>,
-            Permissions,
-            &mut Batch,
+            MemoryAttributes,
+            &mut Batch<A>,
         ) -> crate::Result<AddressSpaceRegion>,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
-        self.map_internal(range, permissions, map)
+        self.map_internal(range, attributes, map)
     }
 
     pub fn unmap(&mut self, range: Range<VirtualAddress>) -> crate::Result<()> {
         ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
         ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
-        ensure!(
-            range.len()
-                <= self
-                    .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start())
-        );
 
         // ensure the entire range is mapped and doesn't cover any holes
         // `for_each_region_in_range` covers the last half so we just need to check that the regions
@@ -248,16 +205,12 @@ impl AddressSpace {
             bytes_remaining -= range.len();
         }
 
-        let mut flush = self.arch.new_flush();
+        let mut flush = Flush::new();
         // Safety: caller has to ensure invariants are checked
         unsafe {
-            self.arch.unmap(
-                range.start,
-                NonZeroUsize::new(range.len()).unwrap(),
-                &mut flush,
-            )?;
+            self.raw.unmap(range, self.frame_alloc, &mut flush);
         }
-        flush.flush()?;
+        flush.flush(self.raw.arch());
 
         Ok(())
     }
@@ -265,18 +218,10 @@ impl AddressSpace {
     pub fn protect(
         &mut self,
         range: Range<VirtualAddress>,
-        new_permissions: Permissions,
+        new_attributes: MemoryAttributes,
     ) -> crate::Result<()> {
-        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
-        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
-        ensure!(
-            range.len()
-                <= self
-                    .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start())
-        );
-        ensure!(new_permissions.is_valid());
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE));
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE));
 
         // ensure the entire range is mapped and doesn't cover any holes
         // `for_each_region_in_range` covers the last half so we just need to check that the regions
@@ -289,7 +234,7 @@ impl AddressSpace {
         self.for_each_region_in_range(range.clone(), |region| {
             bytes_seen += region.range.len();
 
-            ensure!(region.permissions.contains(new_permissions),);
+            ensure!(region.attributes.contains(new_attributes),);
 
             Ok(())
         })?;
@@ -297,55 +242,34 @@ impl AddressSpace {
 
         // Actually do the permission changes now
         // Safety: we checked all invariant above
-        unsafe { self.protect_unchecked(range, new_permissions) }
+        unsafe { self.protect_unchecked(range, new_attributes) }
     }
 
     pub unsafe fn protect_unchecked(
         &mut self,
         range: Range<VirtualAddress>,
-        new_permissions: Permissions,
+        new_attributes: MemoryAttributes,
     ) -> crate::Result<()> {
         let mut bytes_remaining = range.len();
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
             let mut region = c.get_mut().unwrap();
-            region.permissions = new_permissions;
+            region.attributes = new_attributes;
             bytes_remaining -= range.len();
         }
 
-        let mut flush = self.arch.new_flush();
+        let mut flush = Flush::new();
         // Safety: caller has to ensure invariants are checked
         unsafe {
-            self.arch.update_flags(
-                range.start,
-                NonZeroUsize::new(range.len()).unwrap(),
-                new_permissions.into(),
-                &mut flush,
-            )?;
+            self.raw.set_attributes(range, new_attributes, &mut flush);
         }
-        flush.flush()?;
+        flush.flush(self.raw.arch());
 
         Ok(())
     }
 
     pub fn page_fault(&mut self, addr: VirtualAddress, flags: PageFaultFlags) -> crate::Result<()> {
         assert!(flags.is_valid(), "invalid page fault flags {flags:?}");
-
-        // make sure addr is even a valid address for this address space
-        match self.kind {
-            AddressSpaceKind::User => ensure!(
-                arch::is_user_address(addr),
-                "kernel fault in user space addr={addr}"
-            ),
-            AddressSpaceKind::Kernel => ensure!(
-                arch::is_kernel_address(addr),
-                "user fault in kernel space addr={addr}"
-            ),
-        }
-        ensure!(
-            self.max_range.contains(&addr),
-            "page fault at address outside of address space range"
-        );
 
         let addr = addr.align_down(arch::PAGE_SIZE);
 
@@ -373,7 +297,7 @@ impl AddressSpace {
         if let Some(mut region) = region {
             let region_ptr = NonNull::from(region.deref_mut());
 
-            let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
+            let mut batch = Batch::new(&mut self.raw, self.frame_alloc);
             region.page_fault(&mut batch, addr, flags)?;
             batch.flush()?;
 
@@ -388,47 +312,33 @@ impl AddressSpace {
     pub fn reserve(
         &mut self,
         range: Range<VirtualAddress>,
-        permissions: Permissions,
+        attributes: MemoryAttributes,
         name: Option<String>,
         flush: &mut Flush,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
-        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
-        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
-        ensure!(
-            range.len()
-                <= self
-                    .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start())
-        );
-        ensure!(permissions.is_valid());
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE));
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE));
 
         // ensure the entire address space range is free
         if let Some(prev) = self.regions.upper_bound(range.start_bound()).get() {
             ensure!(prev.range.end <= range.start);
         }
 
-        let region = AddressSpaceRegion::new_wired(range.clone(), permissions, name);
+        let region = AddressSpaceRegion::new_wired(range.clone(), attributes, name);
         let region = self.regions.insert(Box::pin(region));
 
         // eagerly materialize any possible changes, we do this eagerly for the entire range here
         // since `reserve` will only be called for kernel memory setup by the loader. For which it is
         // critical that the MMUs and our "logical" view are in sync.
-        if permissions.is_empty() {
+        if attributes.bits() == 0 {
             // Safety: we checked all invariants above
             unsafe {
-                self.arch
-                    .unmap(range.start, NonZeroUsize::new(range.len()).unwrap(), flush)?;
+                self.raw.unmap(range, self.frame_alloc, flush);
             }
         } else {
             // Safety: we checked all invariants above
             unsafe {
-                self.arch.update_flags(
-                    range.start,
-                    NonZeroUsize::new(range.len()).unwrap(),
-                    permissions.into(),
-                    flush,
-                )?;
+                self.raw.set_attributes(range, attributes, flush);
             }
         }
 
@@ -436,17 +346,10 @@ impl AddressSpace {
     }
 
     pub fn commit(&mut self, range: Range<VirtualAddress>, will_write: bool) -> crate::Result<()> {
-        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE),);
-        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE),);
-        ensure!(
-            range.len()
-                <= self
-                    .max_range
-                    .end()
-                    .offset_from_unsigned(*self.max_range.start()),
-        );
+        ensure!(range.start.is_aligned_to(arch::PAGE_SIZE));
+        ensure!(range.end.is_aligned_to(arch::PAGE_SIZE));
 
-        let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
+        let mut batch = Batch::new(&mut self.raw, self.frame_alloc);
         let mut bytes_remaining = range.len();
         let mut c = self.regions.find_mut(&range.start);
         while bytes_remaining > 0 {
@@ -464,15 +367,15 @@ impl AddressSpace {
     fn map_internal(
         &mut self,
         range: Range<VirtualAddress>,
-        permissions: Permissions,
+        attributes: MemoryAttributes,
         map: impl FnOnce(
             Range<VirtualAddress>,
-            Permissions,
-            &mut Batch,
+            MemoryAttributes,
+            &mut Batch<A>,
         ) -> crate::Result<AddressSpaceRegion>,
     ) -> crate::Result<Pin<&mut AddressSpaceRegion>> {
-        let mut batch = Batch::new(&mut self.arch, self.frame_alloc);
-        let region = map(range, permissions, &mut batch)?;
+        let mut batch = Batch::new(&mut self.raw, self.frame_alloc);
+        let region = map(range, attributes, &mut batch)?;
         let region = self.regions.insert(Box::pin(region));
 
         // TODO eagerly map a few pages now
@@ -508,200 +411,95 @@ impl AddressSpace {
         Ok(())
     }
 
-    /// Find a spot in the address space that satisfies the given `layout` requirements.
-    ///
-    /// This function will walk the ordered set of `Mappings` from left to right, looking for a gap
-    /// that is large enough to fit the given `layout`.
-    ///
-    /// To enable ASLR we additionally choose a random `target_index` and require that the chosen
-    /// gap is at lest the `target_index`th gap in the address space. The `target_index` is chosen
-    /// in the range [0, 2^entropy).
-    /// `entropy` is a configurable value, but by default it is set to `arch::VIRT_ADDR_BITS - arch::PAGE_SHIFT + 1`
-    /// which is the number of usable bits when allocating virtual memory addresses. `arch::VIRT_ADDR_BITS`
-    /// is the total number of usable bits in a virtual address, and `arch::PAGE_SHIFT` is the number
-    /// of bits that are "lost" to used because all addresses must be at least page aligned.
-    ///
-    /// If the algorithm fails to find a suitable spot in the first attempt, it will have collected the
-    /// total number of candidate spots and retry with a new `target_index` in the range [0, candidate_spot_count)
-    /// which guarantees that a spot will be found as long as `candidate_spot_count > 0`.
-    fn find_spot(&mut self, layout: Layout, entropy: u8) -> crate::Result<VirtualAddress> {
-        // behaviour:
-        // - find the leftmost gap that satisfies the size and alignment requirements
-        //      - starting at the root,
-        // tracing::trace!("finding spot for {layout:?} entropy {entropy}");
-
-        let max_candidate_spaces: usize = 1 << entropy;
-        // tracing::trace!("max_candidate_spaces {max_candidate_spaces}");
-
-        let selected_index: usize = self
-            .rng
-            .as_mut()
-            .map(|prng| prng.sample(Uniform::new(0, max_candidate_spaces).unwrap()))
-            .unwrap_or_default();
-
-        let spot = match self.find_spot_at_index(selected_index, layout) {
-            Ok(spot) => spot,
-            Err(0) => bail!("out of virtual memory"),
-            Err(candidate_spot_count) => {
-                // tracing::trace!("couldn't find spot in first attempt (max_candidate_spaces {max_candidate_spaces}), retrying with (candidate_spot_count {candidate_spot_count})");
-                let selected_index: usize = self
-                    .rng
-                    .as_mut()
-                    .unwrap()
-                    .sample(Uniform::new(0, candidate_spot_count).unwrap());
-
-                self.find_spot_at_index(selected_index, layout).unwrap()
-            }
+    fn find_spot_for(&mut self, layout: Layout) -> Option<VirtualAddress> {
+        let mut gaps = Gaps {
+            layout,
+            stack: vec![],
+            prev_region_end: Some(VirtualAddress::MIN),
+            max_range_end: VirtualAddress::MAX,
         };
-        tracing::trace!("picked spot {spot}..{:?}", spot.add(layout.size()));
+        gaps.push_left_nodes(self.regions.root().get().unwrap());
 
-        debug_assert!(arch::is_canonical(spot));
-        Ok(spot)
+        kmem_aslr::find_spot_for(
+            layout,
+            gaps,
+            self.raw.arch().memory_mode().virtual_address_bits()
+                - self.raw.arch().memory_mode().page_size().ilog2() as u8,
+            self.rng.as_mut(),
+        )
     }
+}
 
-    #[expect(clippy::undocumented_unsafe_blocks, reason = "intrusive tree access")]
-    fn find_spot_at_index(
-        &self,
-        mut target_index: usize,
-        layout: Layout,
-    ) -> Result<VirtualAddress, usize> {
-        tracing::trace!("attempting to find spot for {layout:?} at index {target_index}");
+#[derive(Debug, Clone)]
+struct Gaps<'a> {
+    layout: Layout,
+    stack: Vec<&'a AddressSpaceRegion>,
+    prev_region_end: Option<VirtualAddress>,
+    max_range_end: VirtualAddress,
+}
 
-        let spots_in_range = |layout: Layout, aligned: Range<VirtualAddress>| -> usize {
-            debug_assert!(
-                aligned.start.is_aligned_to(layout.align())
-                    && aligned.end.is_aligned_to(layout.align())
-            );
-
-            // ranges passed in here can become empty for a number of reasons (aligning might produce ranges
-            // where end > start, or the range might be empty to begin with) in either case an empty
-            // range means no spots are available
-            if aligned.is_empty() {
-                return 0;
-            }
-
-            let range_size = aligned.len();
-            if range_size >= layout.size() {
-                ((range_size - layout.size()) >> layout.align().ilog2()) + 1
+impl<'a> Gaps<'a> {
+    fn push_left_nodes(&mut self, mut node: &'a AddressSpaceRegion) {
+        // while node.suitable_gap_in_subtree(self.layout) {
+        loop {
+            self.stack.push(node);
+            if let Some(left) = node.left_child() {
+                node = left;
             } else {
-                0
+                break;
             }
-        };
-
-        let mut candidate_spot_count = 0;
-
-        // if the tree is empty, treat max_range as the gap
-        if self.regions.is_empty() {
-            let aligned_gap = Range {
-                start: self.max_range.start().align_up(layout.align()),
-                end: self.max_range.end().sub(1).align_down(layout.align()),
-            };
-
-            let spot_count = spots_in_range(layout, aligned_gap.clone());
-            candidate_spot_count += spot_count;
-            if target_index < spot_count {
-                tracing::trace!("tree is empty, chose gap {aligned_gap:?}");
-                return Ok(aligned_gap
-                    .start
-                    .add(target_index << layout.align().ilog2()));
-            }
-            target_index -= spot_count;
         }
+    }
+}
 
-        // see if there is a suitable gap between the start of the address space and the first mapping
-        if let Some(root) = self.regions.root().get() {
-            let aligned_gap =
-                (*self.max_range.start()..root.max_range.start).align_in(layout.align());
-            let spot_count = spots_in_range(layout, aligned_gap.clone());
-            candidate_spot_count += spot_count;
-            if target_index < spot_count {
-                tracing::trace!("found gap left of tree in {aligned_gap:?}");
-                return Ok(aligned_gap
-                    .start
-                    .add(target_index << layout.align().ilog2()));
-            }
-            target_index -= spot_count;
-        }
+impl Iterator for Gaps<'_> {
+    type Item = Range<VirtualAddress>;
 
-        let mut maybe_node = self.regions.root().get();
-        let mut already_visited = VirtualAddress::default();
+    fn next(&mut self) -> Option<Self::Item> {
+        let prev_region_end = self.prev_region_end.take()?;
 
-        while let Some(node) = maybe_node {
-            if node.max_gap >= layout.size() {
-                if let Some(left) = node.links.left() {
-                    let left = unsafe { left.as_ref() };
-
-                    if left.max_gap >= layout.size() && left.max_range.end > already_visited {
-                        maybe_node = Some(left);
-                        continue;
-                    }
-
-                    let aligned_gap =
-                        (left.max_range.end..node.range.start).align_in(layout.align());
-
-                    let spot_count = spots_in_range(layout, aligned_gap.clone());
-
-                    candidate_spot_count += spot_count;
-                    if target_index < spot_count {
-                        tracing::trace!("found gap in left subtree in {aligned_gap:?}");
-                        return Ok(aligned_gap
-                            .start
-                            .add(target_index << layout.align().ilog2()));
-                    }
-                    target_index -= spot_count;
+        while let Some(node) = self.stack.pop() {
+            // compute gap size (use VirtualAddress subtraction helper)
+            let gap_size = node.range.start.offset_from_unsigned(prev_region_end);
+            // if the gap is large enough yield it
+            if gap_size >= self.layout.size() {
+                // prepare next traversal: push right subtree if it can contain suitable gaps
+                if let Some(right) = node.right_child() {
+                    // if right.suitable_gap_in_subtree(self.layout) {
+                    self.push_left_nodes(right);
+                    // }
                 }
 
-                if let Some(right) = node.links.right() {
-                    let right = unsafe { right.as_ref() };
+                let gap = prev_region_end..node.range.start;
 
-                    let aligned_gap =
-                        (node.range.end..right.max_range.start).align_in(layout.align());
+                // update prev_end to current node end before yielding
+                self.prev_region_end = Some(node.range.end);
 
-                    let spot_count = spots_in_range(layout, aligned_gap.clone());
+                return Some(gap);
+            }
 
-                    candidate_spot_count += spot_count;
-                    if target_index < spot_count {
-                        tracing::trace!("found gap in right subtree in {aligned_gap:?}");
-                        return Ok(aligned_gap
-                            .start
-                            .add(target_index << layout.align().ilog2()));
-                    }
-                    target_index -= spot_count;
-
-                    if right.max_gap >= layout.size() && right.max_range.end > already_visited {
-                        maybe_node = Some(right);
-                        continue;
-                    }
+            // no gap yielded for this node, continue traversal: push right subtree if interesting
+            if let Some(right) = node.right_child() {
+                if right.suitable_gap_in_subtree(self.layout) {
+                    self.push_left_nodes(right);
                 }
-            }
-            already_visited = node.max_range.end;
-            maybe_node = node.links.parent().map(|ptr| unsafe { ptr.as_ref() });
-        }
-
-        // see if there is a suitable gap between the end of the last mapping and the end of the address space
-        if let Some(root) = self.regions.root().get() {
-            let aligned_gap = (root.max_range.end..*self.max_range.end()).align_in(layout.align());
-            let spot_count = spots_in_range(layout, aligned_gap.clone());
-            candidate_spot_count += spot_count;
-            if target_index < spot_count {
-                tracing::trace!("found gap right of tree in {aligned_gap:?}");
-                return Ok(aligned_gap
-                    .start
-                    .add(target_index << layout.align().ilog2()));
+            } else {
+                // ensure prev_end reflects the most-recent visited node end
+                self.prev_region_end = Some(node.range.end);
             }
         }
 
-        Err(candidate_spot_count)
+        Some(prev_region_end..self.max_range_end)
     }
 }
 
 // === Batch ===
 
-pub struct Batch<'a> {
-    pub aspace: &'a mut arch::AddressSpace,
+pub struct Batch<'a, A: Arch> {
+    pub aspace: &'a mut kmem_core::AddressSpace<A>,
     pub frame_alloc: &'static FrameAllocator,
     range: Range<VirtualAddress>,
-    flags: <arch::AddressSpace as ArchAddressSpace>::Flags,
+    attributes: MemoryAttributes,
     actions: Vec<BBatchAction>,
 }
 
@@ -710,7 +508,7 @@ enum BBatchAction {
     Map(PhysicalAddress, usize),
 }
 
-impl Drop for Batch<'_> {
+impl<A: Arch> Drop for Batch<'_, A> {
     fn drop(&mut self) {
         if !self.actions.is_empty() {
             tracing::error!("batch was not flushed before dropping");
@@ -719,13 +517,16 @@ impl Drop for Batch<'_> {
     }
 }
 
-impl<'a> Batch<'a> {
-    pub fn new(aspace: &'a mut arch::AddressSpace, frame_alloc: &'static FrameAllocator) -> Self {
+impl<'a, A: kmem_core::Arch> Batch<'a, A> {
+    pub fn new(
+        aspace: &'a mut kmem_core::AddressSpace<A>,
+        frame_alloc: &'static FrameAllocator,
+    ) -> Self {
         Self {
             aspace,
             frame_alloc,
             range: Range::default(),
-            flags: <arch::AddressSpace as ArchAddressSpace>::Flags::empty(),
+            attributes: MemoryAttributes::new(),
             actions: vec![],
         }
     }
@@ -735,17 +536,17 @@ impl<'a> Batch<'a> {
         virt: VirtualAddress,
         phys: PhysicalAddress,
         len: NonZeroUsize,
-        flags: <arch::AddressSpace as ArchAddressSpace>::Flags,
+        attributes: MemoryAttributes,
     ) -> crate::Result<()> {
         debug_assert!(
             len.get().is_multiple_of(arch::PAGE_SIZE),
             "physical address range must be multiple of page size"
         );
 
-        tracing::trace!("appending {phys:?} at {virt:?} with flags {flags:?}");
-        if self.range.end != virt || self.flags != flags {
+        tracing::trace!("appending {phys:?} at {virt:?} with flags {attributes:?}");
+        if self.range.end != virt || self.attributes != attributes {
             self.flush()?;
-            self.flags = flags;
+            self.attributes = attributes;
             self.range = Range::from_start_len(virt, len.get());
         } else {
             self.range.end = self.range.end.add(len.get());
@@ -762,25 +563,24 @@ impl<'a> Batch<'a> {
         }
         tracing::trace!("flushing batch {:?} {:?}...", self.range, self.actions);
 
-        let mut flush = self.aspace.new_flush();
-        let mut virt = self.range.start;
+        let mut flush = Flush::new();
+        let mut virt = self.range;
         for action in self.actions.drain(..) {
             match action {
                 // Safety: we have checked all the invariants
                 BBatchAction::Map(phys, len) => unsafe {
                     self.aspace.map_contiguous(
-                        self.frame_alloc,
-                        virt,
+                        virt.clone(),
                         phys,
-                        NonZeroUsize::new(len).unwrap(),
-                        self.flags,
+                        self.attributes,
+                        self.frame_alloc,
                         &mut flush,
                     )?;
-                    virt = virt.add(len);
+                    virt.start = virt.start.add(len);
                 },
             }
         }
-        flush.flush()?;
+        flush.flush(self.aspace.arch());
 
         self.range = Range::from_start_len(self.range.end, 0);
         Ok(())
@@ -788,5 +588,68 @@ impl<'a> Batch<'a> {
 
     pub fn ignore(&mut self) {
         self.actions.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use wavltree::WAVLTree;
+
+    use super::*;
+
+    #[test]
+    fn gaps() {
+        let mut tree: WAVLTree<AddressSpaceRegion> = WAVLTree::new();
+        let mut addr = VirtualAddress::new(0x000000000000b000);
+
+        for _ in 0..10 {
+            tree.insert(Box::pin(AddressSpaceRegion::new_wired(
+                Range::from_start_len(addr, 4096),
+                MemoryAttributes::new(),
+                None,
+            )));
+            addr = addr.add(11 * 4096);
+        }
+
+        let expected_regions = [
+            VirtualAddress::new(0x000000000000b000)..VirtualAddress::new(0x000000000000c000),
+            VirtualAddress::new(0x0000000000016000)..VirtualAddress::new(0x0000000000017000),
+            VirtualAddress::new(0x0000000000021000)..VirtualAddress::new(0x0000000000022000),
+            VirtualAddress::new(0x000000000002c000)..VirtualAddress::new(0x000000000002d000),
+            VirtualAddress::new(0x0000000000037000)..VirtualAddress::new(0x0000000000038000),
+            VirtualAddress::new(0x0000000000042000)..VirtualAddress::new(0x0000000000043000),
+            VirtualAddress::new(0x000000000004d000)..VirtualAddress::new(0x000000000004e000),
+            VirtualAddress::new(0x0000000000058000)..VirtualAddress::new(0x0000000000059000),
+            VirtualAddress::new(0x0000000000063000)..VirtualAddress::new(0x0000000000064000),
+            VirtualAddress::new(0x000000000006e000)..VirtualAddress::new(0x000000000006f000),
+        ];
+
+        let regions: Vec<_> = tree.iter().map(|region| region.range().clone()).collect();
+        assert_eq!(&expected_regions, regions.as_slice());
+
+        let expected_gaps = [
+            VirtualAddress::new(usize::MIN)..VirtualAddress::new(0x000000000000b000),
+            VirtualAddress::new(0x000000000000c000)..VirtualAddress::new(0x0000000000016000),
+            VirtualAddress::new(0x0000000000017000)..VirtualAddress::new(0x0000000000021000),
+            VirtualAddress::new(0x0000000000022000)..VirtualAddress::new(0x000000000002c000),
+            VirtualAddress::new(0x000000000002d000)..VirtualAddress::new(0x0000000000037000),
+            VirtualAddress::new(0x0000000000038000)..VirtualAddress::new(0x0000000000042000),
+            VirtualAddress::new(0x0000000000043000)..VirtualAddress::new(0x000000000004d000),
+            VirtualAddress::new(0x000000000004e000)..VirtualAddress::new(0x0000000000058000),
+            VirtualAddress::new(0x0000000000059000)..VirtualAddress::new(0x0000000000063000),
+            VirtualAddress::new(0x0000000000064000)..VirtualAddress::new(0x000000000006e000),
+            VirtualAddress::new(0x000000000006f000)..VirtualAddress::new(usize::MAX),
+        ];
+
+        let mut gaps = Gaps {
+            layout: Layout::from_size_align(4096, 4096).unwrap(),
+            stack: vec![],
+            prev_region_end: Some(VirtualAddress::MIN),
+            max_range_end: VirtualAddress::MAX,
+        };
+        gaps.push_left_nodes(tree.root().get().unwrap());
+
+        let gaps: Vec<_> = gaps.map(|region| region).collect();
+        assert_eq!(&expected_gaps, gaps.as_slice());
     }
 }

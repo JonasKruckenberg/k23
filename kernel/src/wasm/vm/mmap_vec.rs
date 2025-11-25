@@ -33,7 +33,7 @@ impl<T> MmapVec<T> {
         }
     }
 
-    pub fn new_zeroed(aspace: Arc<Mutex<AddressSpace>>, capacity: usize) -> crate::Result<Self> {
+    pub fn new_zeroed(aspace: Arc<Mutex<AddressSpace<arch::KmemArch>>>, capacity: usize) -> crate::Result<Self> {
         Ok(Self {
             mmap: Mmap::new_zeroed(
                 aspace,
@@ -47,7 +47,7 @@ impl<T> MmapVec<T> {
         })
     }
 
-    pub fn from_slice(aspace: Arc<Mutex<AddressSpace>>, slice: &[T]) -> crate::Result<Self>
+    pub fn from_slice(aspace: Arc<Mutex<AddressSpace<arch::KmemArch>>>, slice: &[T]) -> crate::Result<Self>
     where
         T: Clone,
     {
@@ -101,7 +101,7 @@ impl<T> MmapVec<T> {
         self.mmap.as_mut_ptr().cast()
     }
 
-    pub fn extend_from_slice(&mut self, aspace: &mut AddressSpace, other: &[T])
+    pub fn extend_from_slice(&mut self, aspace: &mut AddressSpace<arch::KmemArch>, other: &[T])
     where
         T: Clone,
     {
@@ -120,7 +120,7 @@ impl<T> MmapVec<T> {
         self.len += other.len();
     }
 
-    pub(crate) fn extend_with(&mut self, aspace: &mut AddressSpace, count: usize, elem: T)
+    pub(crate) fn extend_with(&mut self, aspace: &mut AddressSpace<arch::KmemArch>, count: usize, elem: T)
     where
         T: Clone,
     {

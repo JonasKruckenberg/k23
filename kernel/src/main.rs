@@ -51,7 +51,8 @@ use cfg_if::cfg_if;
 use kasync::executor::{Executor, Worker};
 use kasync::time::{Instant, Ticks, Timer};
 use kfastrand::FastRand;
-use kmem::{AddressRangeExt, PhysicalAddress};
+use kmem_core::bootstrap::BootstrapAllocator;
+use kmem_core::{AddressRangeExt, PhysicalAddress};
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use mem::frame_alloc;
 use rand::{RngCore, SeedableRng};
@@ -59,7 +60,6 @@ use rand_chacha::ChaCha20Rng;
 
 use crate::backtrace::Backtrace;
 use crate::device_tree::DeviceTree;
-use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::state::{CpuLocal, Global};
 
 /// The size of the stack in pages
@@ -85,7 +85,7 @@ static LOADER_CONFIG: LoaderConfig = {
 };
 
 #[unsafe(no_mangle)]
-fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
+fn _start<A: kmem_core::Arch>(cpuid: usize, boot_info: &'static BootInfo<A>, boot_ticks: u64) -> ! {
     panic_unwind2::set_hook(|info| {
         tracing::error!("CPU {info}");
 
@@ -122,7 +122,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     }
 }
 
-fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
+fn kmain<A: kmem_core::Arch>(cpuid: usize, boot_info: &'static BootInfo<A>, boot_ticks: u64) {
     // perform EARLY per-cpu, architecture-specific initialization
     // (e.g. resetting the FPU)
     arch::per_cpu_init_early();
@@ -139,7 +139,10 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         // is available
         let allocatable_memories = allocatable_memory_regions(boot_info);
         tracing::info!("allocatable memories: {:?}", allocatable_memories);
-        let mut boot_alloc = BootstrapAllocator::new(&allocatable_memories);
+        let mut boot_alloc = BootstrapAllocator::new(
+            allocatable_memories,
+            boot_info.address_space.arch().memory_mode().page_size(),
+        );
 
         // initializing the global allocator
         allocator::init(&mut boot_alloc, boot_info);
@@ -225,7 +228,7 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
 /// The regions passed by the loader are guaranteed to be non-overlapping, but might not be
 /// sorted and might not be optimally "packed". This function will both sort regions and
 /// attempt to compact the list by merging adjacent regions.
-fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAddress>, 16> {
+fn allocatable_memory_regions<A: kmem_core::Arch>(boot_info: &BootInfo<A>) -> ArrayVec<Range<PhysicalAddress>, 16> {
     let temp: ArrayVec<Range<PhysicalAddress>, 16> = boot_info
         .memory_regions
         .iter()
@@ -252,7 +255,7 @@ fn allocatable_memory_regions(boot_info: &BootInfo) -> ArrayVec<Range<PhysicalAd
     out
 }
 
-fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAddress>) {
+fn locate_device_tree<A: kmem_core::Arch>(boot_info: &BootInfo<A>) -> (&'static [u8], Range<PhysicalAddress>) {
     let fdt = boot_info
         .memory_regions
         .iter()
@@ -260,8 +263,9 @@ fn locate_device_tree(boot_info: &BootInfo) -> (&'static [u8], Range<PhysicalAdd
         .expect("no FDT region");
 
     let base = boot_info
-        .physical_address_offset
-        .add(fdt.range.start.get())
+        .address_space
+        .arch()
+        .phys_to_virt(fdt.range.start)
         .as_mut_ptr();
 
     // Safety: we need to trust the bootinfo data is correct

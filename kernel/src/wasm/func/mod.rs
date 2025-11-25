@@ -16,7 +16,7 @@ use core::ptr::NonNull;
 
 use anyhow::ensure;
 pub use host::{HostFunc, IntoFunc};
-use kmem::VirtualAddress;
+use kmem_core::VirtualAddress;
 pub use typed::{TypedFunc, WasmParams, WasmResults, WasmTy};
 
 use crate::arch;

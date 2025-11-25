@@ -12,36 +12,39 @@ pub mod frame_list;
 use alloc::vec::Vec;
 use core::alloc::Layout;
 use core::cell::RefCell;
+use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;
-use core::{cmp, fmt, iter, slice};
+use core::{cmp, iter, slice};
 
-use arena::{Arena, select_arenas};
+use arena::{select_arenas, Arena};
 use cordyceps::list::List;
 use cpu_local::collection::CpuLocal;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
-use kmem::PhysicalAddress;
+use kmem_core::bootstrap::BootstrapAllocator;
+use kmem_core::{AllocError, PhysicalAddress};
 use spin::{Mutex, OnceLock};
 
 use crate::arch;
-use crate::mem::bootstrap_alloc::BootstrapAllocator;
 use crate::mem::frame_alloc::frame_list::FrameList;
 
 pub static FRAME_ALLOC: OnceLock<FrameAllocator> = OnceLock::new();
-pub fn init(
-    boot_alloc: BootstrapAllocator,
+pub fn init<A: kmem_core::Arch>(
+    boot_alloc: BootstrapAllocator<spin::RawMutex>,
     fdt_region: Range<PhysicalAddress>,
+    arch: &A
 ) -> &'static FrameAllocator {
-    FRAME_ALLOC.get_or_init(|| FrameAllocator::new(boot_alloc, fdt_region))
+    FRAME_ALLOC.get_or_init(|| FrameAllocator::new(boot_alloc, fdt_region, arch))
 }
 
 #[derive(Debug)]
 pub struct FrameAllocator {
     /// Global list of arenas that can be allocated from.
     global: Mutex<GlobalFrameAllocator>,
-    max_alignment: usize,
+    max_block_size: NonZeroUsize,
+    min_block_size: NonZeroUsize,
     /// Per-cpu cache of frames to speed up allocation.
     cpu_local_cache: CpuLocal<RefCell<CpuLocalFrameCache>>,
     /// Number of frames - across all cpus - that are in cpu-local caches.
@@ -60,18 +63,15 @@ struct CpuLocalFrameCache {
     free_list: List<FrameInfo>,
 }
 
-/// Allocation failure that may be due to resource exhaustion or invalid combination of arguments
-/// such as a too-large alignment. Importantly this error is *not-permanent*, a caller choosing to
-/// retry allocation at a later point in time or with different arguments and might receive a successful
-/// result.
-#[derive(Debug)]
-pub struct AllocError;
-
 // === impl FrameAllocator ===
 
 impl FrameAllocator {
-    pub fn new(boot_alloc: BootstrapAllocator, fdt_region: Range<PhysicalAddress>) -> Self {
-        let mut max_alignment = arch::PAGE_SIZE;
+    pub fn new<A: kmem_core::Arch>(
+        boot_alloc: BootstrapAllocator<spin::RawMutex>,
+        fdt_region: Range<PhysicalAddress>,
+        arch: &A
+    ) -> Self {
+        let mut max_block_size = NonZeroUsize::new(arch::PAGE_SIZE).unwrap();
         let mut arenas = Vec::new();
 
         let phys_regions = boot_alloc
@@ -82,9 +82,9 @@ impl FrameAllocator {
             match selection_result {
                 Ok(selection) => {
                     tracing::trace!("selection {selection:?}");
-                    let arena = Arena::from_selection(selection);
-                    tracing::trace!("max arena alignment {}", arena.max_alignment());
-                    max_alignment = cmp::max(max_alignment, arena.max_alignment());
+                    let arena = Arena::from_selection(selection, arch);
+                    tracing::trace!("max arena alignment {}", arena.max_block_size());
+                    max_block_size = cmp::max(max_block_size, arena.max_block_size());
                     arenas.push(arena);
                 }
                 Err(err) => {
@@ -95,7 +95,8 @@ impl FrameAllocator {
 
         FrameAllocator {
             global: Mutex::new(GlobalFrameAllocator { arenas }),
-            max_alignment,
+            max_block_size,
+            min_block_size: NonZeroUsize::new(arch::PAGE_SIZE).unwrap(),
             frames_in_caches_hint: AtomicUsize::new(0),
             cpu_local_cache: CpuLocal::new(),
         }
@@ -123,11 +124,11 @@ impl FrameAllocator {
     }
 
     /// Allocate a single [`Frame`] and ensure the backing physical memory is zero initialized.
-    pub fn alloc_one_zeroed(&self) -> Result<Frame, AllocError> {
+    pub fn alloc_one_zeroed<A: kmem_core::Arch>(&self, arch: &A) -> Result<Frame, AllocError> {
         let frame = self.alloc_one()?;
 
         // Translate the physical address into a virtual one through the physmap
-        let virt = arch::phys_to_virt(frame.addr());
+        let virt = arch.phys_to_virt(frame.addr());
 
         // memset'ing the slice to zero
         // Safety: the slice has just been allocated
@@ -174,11 +175,15 @@ impl FrameAllocator {
 
     /// Allocate a contiguous runs of [`Frame`] meeting the size and alignment requirements of `layout`
     /// and ensuring the backing physical memory is zero initialized.
-    pub fn alloc_contiguous_zeroed(&self, layout: Layout) -> Result<FrameList, AllocError> {
+    pub fn alloc_contiguous_zeroed<A: kmem_core::Arch>(
+        &self,
+        layout: Layout,
+        arch: &A,
+    ) -> Result<FrameList, AllocError> {
         let frames = self.alloc_contiguous(layout)?;
 
         // Translate the physical address into a virtual one through the physmap
-        let virt = arch::phys_to_virt(frames.first().unwrap().addr());
+        let virt = arch.phys_to_virt(frames.first().unwrap().addr());
 
         // memset'ing the slice to zero
         // Safety: the slice has just been allocated
@@ -188,9 +193,21 @@ impl FrameAllocator {
 
         Ok(frames)
     }
+}
 
-    pub fn max_alignment(&self) -> usize {
-        self.max_alignment
+unsafe impl kmem_core::FrameAllocator for FrameAllocator {
+    fn allocate_contiguous(&self, layout: Layout) -> Result<PhysicalAddress, AllocError> {
+        let _frames = self.alloc_contiguous(layout)?;
+
+        todo!()
+    }
+
+    unsafe fn deallocate(&self, _block: PhysicalAddress, _layout: Layout) {
+        todo!()
+    }
+
+    fn size_hint(&self) -> (NonZeroUsize, Option<NonZeroUsize>) {
+        (self.min_block_size, Some(self.max_block_size))
     }
 }
 
@@ -277,13 +294,3 @@ impl CpuLocalFrameCache {
         Some(split)
     }
 }
-
-// === impl AllocError ===
-
-impl fmt::Display for AllocError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("AllocError")
-    }
-}
-
-impl core::error::Error for AllocError {}
