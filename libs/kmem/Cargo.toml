@@ -9,6 +9,7 @@ license.workspace = true
 
 # 3rd-party dependencies
 mycelium-bitfield.workspace = true
+fallible-iterator.workspace = true
 
 [lints]
 workspace = true
