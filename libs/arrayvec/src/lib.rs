@@ -168,6 +168,27 @@ impl<T, const CAP: usize> ArrayVec<T, CAP> {
         self.len += 1;
     }
 
+    /// Removes the last element from a vector and returns it, or [`None`] if it
+    /// is empty.
+    ///
+    /// # Time complexity
+    ///
+    /// Takes *O*(1) time.
+    #[inline]
+    pub const fn pop(&mut self) -> Option<T> {
+        if self.len == 0 {
+            None
+        } else {
+            // Safety: we have checked `len` is NOT zero above, which means there
+            // must be at least one element in the vec at the `len - 1` index.
+            unsafe {
+                self.len -= 1;
+                core::hint::assert_unchecked(self.len < self.capacity());
+                Some(ptr::read(self.as_ptr().add(self.len())))
+            }
+        }
+    }
+
     /// Remove all elements in the vector.
     pub fn clear(&mut self) {
         let len = self.len;
