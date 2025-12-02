@@ -23,9 +23,9 @@ mycelium_bitfield::bitfield! {
     #[derive(PartialEq, Eq)]
     pub struct MemoryAttributes<u8> {
         /// If set, reading from the memory region is allowed.
-        const READ: bool;
+        pub const READ: bool;
         /// Whether executing, or writing this memory region is allowed (or neither).
-        const WRITE_OR_EXECUTE: WriteOrExecute;
+        pub const WRITE_OR_EXECUTE: WriteOrExecute;
     }
 }
 
@@ -36,7 +36,7 @@ mycelium_bitfield::enum_from_bits! {
     ///
     /// [`W^X`]: AccessRules
     #[derive(Debug, Eq, PartialEq)]
-    enum WriteOrExecute<u8> {
+    pub enum WriteOrExecute<u8> {
         /// Neither writing nor execution of the memory region is allowed.
         Neither = 0b00,
         /// Writing to the memory region is allowed.
@@ -46,38 +46,7 @@ mycelium_bitfield::enum_from_bits! {
     }
 }
 
-// ===== impl AccessRules =====
-
 impl MemoryAttributes {
-    /// Returns new `MemoryAttributes` that only allow reading from memory.
-    pub fn with_read_only(self) -> Self {
-        self.with_read().with(Self::WRITE_OR_EXECUTE, WriteOrExecute::Neither)
-    }
-
-    /// Returns new `MemoryAttributes` that additionally allow reading and writing to and from memory.
-    pub fn with_read_write(self) -> Self {
-        self.with_read().with_write()
-    }
-
-    /// Returns new `MemoryAttributes` that additionally allow writing to memory.
-    pub fn with_read(self) -> Self {
-        self.with(Self::READ, true)
-    }
-
-    // Returns new `MemoryAttributes` that additionally allow writing to memory.
-    pub fn with_write(self) -> Self {
-        assert!(self.allows_execution());
-
-        self.with(Self::WRITE_OR_EXECUTE, WriteOrExecute::Write)
-    }
-
-    // Returns new `MemoryAttributes` that additionally allow executing code from memory.
-    pub fn with_execute(self) -> Self {
-        assert!(self.allows_write());
-
-        self.with(Self::WRITE_OR_EXECUTE, WriteOrExecute::Execute)
-    }
-
     /// Returns whether these `MemoryAttributes` allow _only_ reading memory.
     pub const fn is_read_only(&self) -> bool {
         const READ_MASK: u8 = MemoryAttributes::READ.max_value();

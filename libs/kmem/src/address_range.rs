@@ -87,3 +87,19 @@ macro_rules! impl_address_range {
 
 impl_address_range!(VirtualAddress);
 impl_address_range!(PhysicalAddress);
+
+#[cfg(test)]
+mod test {
+    use core::ops::Range;
+
+    use super::{AddressRangeExt, *};
+
+    proptest::proptest! {
+        #[test]
+        fn len(len: usize) {
+            let r: Range<VirtualAddress> = Range::from_start_len(VirtualAddress::new(0), len);
+
+            proptest::prop_assert_eq!(len, AddressRangeExt::len(&r))
+        }
+    }
+}

@@ -5,6 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use core::num::NonZeroUsize;
+use core::ptr::NonNull;
+
+use crate::arch::Arch;
+
 macro_rules! impl_address_from {
     ($address_ty:ident, $int_ty:ident) => {
         impl From<$int_ty> for $address_ty {
@@ -61,22 +66,6 @@ macro_rules! impl_address {
                 Self(ptr.addr().get())
             }
 
-            #[inline]
-            pub fn as_ptr(self) -> *const u8 {
-                ::core::ptr::with_exposed_provenance(self.0)
-            }
-
-            #[inline]
-            pub fn as_mut_ptr(self) -> *mut u8 {
-                ::core::ptr::with_exposed_provenance_mut(self.0)
-            }
-
-            #[inline]
-            pub fn as_non_null(self) -> Option<::core::ptr::NonNull<u8>> {
-                ::core::num::NonZeroUsize::new(self.0)
-                    .map(::core::ptr::NonNull::with_exposed_provenance)
-            }
-
             /// Adds an unsigned offset to this address, panicking if overflow occurred.
             #[must_use]
             #[inline]
@@ -122,6 +111,13 @@ macro_rules! impl_address {
             #[inline]
             pub const fn wrapping_offset(self, offset: isize) -> Self {
                 Self(self.0.wrapping_add_signed(offset))
+            }
+
+            /// Adds an unsigned offset to this address, wrapping around at the boundary of the type.
+            #[must_use]
+            #[inline]
+            pub const fn saturating_add(self, offset: usize) -> Self {
+                Self(self.0.saturating_add(offset))
             }
 
             /// Calculates the distance between two addresses in bytes.
@@ -256,7 +252,69 @@ macro_rules! impl_address {
 pub struct VirtualAddress(usize);
 impl_address!(VirtualAddress);
 
+impl VirtualAddress {
+    #[inline]
+    pub fn as_ptr(self) -> *const u8 {
+        core::ptr::with_exposed_provenance(self.0)
+    }
+
+    #[inline]
+    pub fn as_mut_ptr(self) -> *mut u8 {
+        core::ptr::with_exposed_provenance_mut(self.0)
+    }
+
+    #[inline]
+    pub fn as_non_null(self) -> Option<NonNull<u8>> {
+        NonZeroUsize::new(self.0).map(NonNull::with_exposed_provenance)
+    }
+
+    #[expect(
+        clippy::cast_sign_loss,
+        clippy::cast_possible_wrap,
+        reason = "cast to isize is intentional"
+    )]
+    pub const fn canonicalize<A: Arch>(&self) -> Self {
+        let shift = usize::BITS - A::VIRTUAL_ADDRESS_BITS as u32;
+        Self::new((((self.get() as isize) << shift) >> shift) as usize)
+    }
+
+    pub fn is_canonical<A: Arch>(&self) -> bool {
+        let mask = !((1 << (A::VIRTUAL_ADDRESS_BITS)) - 1);
+        let upper = self.get() & mask;
+        upper == 0 || upper == mask
+    }
+}
+
 #[repr(transparent)]
 #[derive(Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct PhysicalAddress(usize);
 impl_address!(PhysicalAddress);
+
+// #[cfg(test)]
+// mod tests {
+//     use proptest::{proptest, prop_assert, prop_assert_eq, prop_assert_ne};
+//     use super::*;
+//
+//     proptest! {
+//         #[test]
+//         fn lower_half_is_canonical(addr in 0x0usize..0x3fffffffff) {
+//             let addr = VirtualAddress::new(addr);
+//             prop_assert!(addr.is_canonical(&crate::arch::riscv64::RISCV64_SV39));
+//             prop_assert_eq!(addr.canonicalize(&crate::arch::riscv64::RISCV64_SV39), addr);
+//         }
+//
+//         #[test]
+//         fn upper_half_is_canonical(addr in 0xffffffc000000000usize..0xffffffffffffffff) {
+//             let addr = VirtualAddress::new(addr);
+//             prop_assert!(addr.is_canonical(&crate::arch::riscv64::RISCV64_SV39));
+//             prop_assert_eq!(addr.canonicalize(&crate::arch::riscv64::RISCV64_SV39), addr);
+//         }
+//
+//         #[test]
+//         fn non_canonical_hole(addr in 0x4000000000usize..0xffffffbfffffffff) {
+//             let addr = VirtualAddress::new(addr);
+//             prop_assert_ne!(addr.canonicalize(&crate::arch::riscv64::RISCV64_SV39), addr);
+//             prop_assert!(!addr.is_canonical(&crate::arch::riscv64::RISCV64_SV39));
+//         }
+//     }
+// }
