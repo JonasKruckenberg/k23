@@ -1,0 +1,58 @@
+mod memory;
+mod machine;
+
+// pub use memory::Memory;
+pub use machine::{Machine, MachineBuilder, Cpu, BootstrapResult};
+
+#[macro_export]
+macro_rules! archtest {
+    ($($(#[$meta:meta])* fn $test_name:ident$(<$ge:ident: $gen_ty:tt>)*() $body:block)*) => {
+        mod riscv64_sv39 {
+            use super::*;
+            $(
+                archtest! {
+                    arch: $crate::arch::riscv64::Riscv64Sv39,
+                    meta: $($meta)*,
+                    test_name: $test_name,
+                    generics: $($ge: $gen_ty)*,
+                    body: $body
+                }
+            )*
+        }
+        mod riscv64_sv48 {
+            use super::*;
+            $(
+                archtest! {
+                    arch: $crate::arch::riscv64::Riscv64Sv48,
+                    meta: $($meta)*,
+                    test_name: $test_name,
+                    generics: $($ge: $gen_ty)*,
+                    body: $body
+                }
+            )*
+        }
+        mod riscv64_sv57 {
+            use super::*;
+            $(
+                archtest! {
+                    arch: $crate::arch::riscv64::Riscv64Sv57,
+                    meta: $($meta)*,
+                    test_name: $test_name,
+                    generics: $($ge: $gen_ty)*,
+                    body: $body
+                }
+            )*
+        }
+    };
+
+    (arch: $arch:ty, meta: $($($meta:meta)*, test_name: $test_name:ident, generics: $($ge:ident: $gen_ty:tt)*, body: $body:block)*) => {
+        $(
+            $(#[$meta])*
+            fn $test_name() {
+                fn $test_name$(<$ge: $gen_ty>)*() $body
+
+                $test_name::<$arch>()
+            }
+        )*
+    }
+}

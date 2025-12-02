@@ -6,10 +6,24 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+arrayvec.workspace = true
+riscv.workspace = true
+cpu-local = { workspace = true, optional = true }
+spin = { workspace = true, optional = true }
 
 # 3rd-party dependencies
 mycelium-bitfield.workspace = true
 fallible-iterator.workspace = true
+log.workspace = true
+lock_api.workspace = true
+
+[dev-dependencies]
+kmem = { workspace = true, features = ["emulate"] }
+proptest.workspace = true
+parking_lot = "0.12.5"
+
+[features]
+emulate = ["cpu-local", "spin"]
 
 [lints]
 workspace = true
