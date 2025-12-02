@@ -7,7 +7,6 @@
 
 #![no_std]
 #![no_main]
-#![feature(maybe_uninit_slice)]
 #![feature(alloc_layout_extra)]
 
 use core::ffi::c_void;
