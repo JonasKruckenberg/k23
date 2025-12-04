@@ -99,6 +99,7 @@ util = { path = "libs/util" }
 kasync = { path = "libs/kasync" }
 kmem = { path = "libs/kmem" }
 arrayvec = { path = "libs/arrayvec" }
+iso9660 = { path = "libs/iso9660" }
 
 # 3rd-party dependencies
 cfg-if = "1.0.0"

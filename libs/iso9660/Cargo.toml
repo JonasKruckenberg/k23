@@ -1,0 +1,14 @@
+[package]
+name = "iso9660"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "ECMA-119 (ISO 9660) filesystem image creation with El Torito boot support"
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true
