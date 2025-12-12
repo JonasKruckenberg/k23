@@ -433,6 +433,7 @@ impl TaskRef {
         }
     }
 
+    #[inline(always)]
     fn into_raw_waker(self) -> RawWaker {
         // Increment the reference count of the arc to clone it.
         //
