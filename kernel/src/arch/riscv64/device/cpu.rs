@@ -78,8 +78,8 @@ impl Cpu {
             Some(prop) => {
                 let extensions = prop.as_strlist()?;
                 parse_riscv_extensions(extensions)
-            },
-            None => RiscvExtensions::empty()
+            }
+            None => RiscvExtensions::empty(),
         };
 
         // TODO find CLINT associated with this core
