@@ -74,8 +74,13 @@ impl Cpu {
             .property("riscv,cbom-block-size")
             .map(|prop| prop.as_usize().unwrap());
 
-        let extensions = cpu.property("riscv,isa-extensions").unwrap().as_strlist()?;
-        let extensions = parse_riscv_extensions(extensions);
+        let extensions = match cpu.property("riscv,isa-extensions") {
+            Some(prop) => {
+                let extensions = prop.as_strlist()?;
+                parse_riscv_extensions(extensions)
+            }
+            None => RiscvExtensions::empty(),
+        };
 
         // TODO find CLINT associated with this core
         let hlic_node = cpu
