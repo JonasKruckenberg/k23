@@ -8,7 +8,6 @@ use crate::arch::Arch;
 use crate::PhysicalAddress;
 
 pub struct Memory {
-    total_size: usize,
     regions: BTreeMap<PhysicalAddress, (PhysicalAddress, NonNull<[u8]>, Layout)>,
 }
 
@@ -24,13 +23,9 @@ impl Drop for Memory {
 
 impl Memory {
     pub fn new<A: Arch>(region_sizes: impl IntoIterator<Item = usize>) -> Self {
-        let mut total_size = 0;
-
         let regions = region_sizes
             .into_iter()
             .map(|size| {
-                total_size += size;
-
                 let layout = Layout::from_size_align(size, A::GRANULE_SIZE).unwrap();
 
                 let region = std::alloc::System.allocate(layout).unwrap();
@@ -45,18 +40,11 @@ impl Memory {
             })
             .collect();
 
-        Self {
-            regions,
-            total_size,
-        }
+        Self { regions }
     }
 
     pub fn regions(&self) -> impl Iterator<Item = Range<PhysicalAddress>> {
         self.regions.iter().map(|(end, (start, _, _))| *start..*end)
-    }
-
-    pub fn total_size(&self) -> usize {
-        self.total_size
     }
 
     pub fn get_region_containing(&self, address: PhysicalAddress) -> Option<(&[u8], usize)> {

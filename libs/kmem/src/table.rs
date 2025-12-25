@@ -79,12 +79,12 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
             .base
             .add(index as usize * size_of::<A::PageTableEntry>());
 
-        physmap.with_mapped(entry_phys, |entry_virt| {
-            // Safety: The address is always well aligned by the way we calculate it above (2.) we also
-            // know `0` is a valid pattern for `A::PageTableEntry` and we know that we can access the
-            // location either through the physmap or because we're still in bootstrapping.
-            unsafe { arch.read(entry_virt) }
-        })
+        let entry_virt = physmap.phys_to_virt(entry_phys);
+
+        // Safety: The address is always well aligned by the way we calculate it above (2.) we also
+        // know `0` is a valid pattern for `A::PageTableEntry` and we know that we can access the
+        // location either through the physmap or because we're still in bootstrapping.
+        unsafe { arch.read(entry_virt) }
     }
 }
 
@@ -155,12 +155,12 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
             .base
             .add(index as usize * size_of::<A::PageTableEntry>());
 
-        physmap.with_mapped(entry_phys, |entry_virt| {
-            // Safety: The address is always well aligned by the way we calculate it above (2.) we also
-            // know `0` is a valid pattern for `A::PageTableEntry` and we know that we can access the
-            // location either through the physmap or because we're still in bootstrapping.
-            unsafe { arch.write(entry_virt, entry) }
-        });
+        let entry_virt = physmap.phys_to_virt(entry_phys);
+
+        // Safety: The address is always well aligned by the way we calculate it above (2.) we also
+        // know `0` is a valid pattern for `A::PageTableEntry` and we know that we can access the
+        // location either through the physmap or because we're still in bootstrapping.
+        unsafe { arch.write(entry_virt, entry) }
     }
 
     pub fn visit_mut<F, E>(

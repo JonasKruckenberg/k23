@@ -97,13 +97,13 @@ pub unsafe trait FrameAllocator {
     ) -> Result<PhysicalAddress, AllocError> {
         let frame = self.allocate_contiguous(layout)?;
 
-        physmap.with_mapped(frame, |page| {
-            // Safety: the address is properly aligned (at least page aligned) and is either valid to
-            // access through the physical memory map or because we're in bootstrapping still and phys==virt
-            unsafe {
-                arch.write_bytes(page, 0, layout.size());
-            }
-        });
+        let page = physmap.phys_to_virt(frame);
+
+        // Safety: the address is properly aligned (at least page aligned) and is either valid to
+        // access through the physical memory map or because we're in bootstrapping still and phys==virt
+        unsafe {
+            arch.write_bytes(page, 0, layout.size());
+        }
 
         Ok(frame)
     }

@@ -292,7 +292,8 @@ impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, MissingMemory> {
 impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, HasMemory> {
     pub fn finish(self) -> (Machine<A, R>, PhysicalMemoryMapping) {
         let memory = self.memory.unwrap();
-        let memory_size = memory.total_size();
+
+        let physmap = PhysicalMemoryMapping::new(self.physmap_base, memory.regions());
 
         let inner = MachineInner {
             memory: Mutex::new(memory),
@@ -301,7 +302,7 @@ impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, HasMemory> {
 
         (
             Machine(Arc::new(inner)),
-            PhysicalMemoryMapping::new(Range::from_start_len(self.physmap_base, memory_size)),
+            physmap
         )
     }
 
