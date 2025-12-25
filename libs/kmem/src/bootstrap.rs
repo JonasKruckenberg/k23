@@ -46,20 +46,19 @@ impl<A: Arch> Bootstrap<HardwareAddressSpace<A>> {
 
         for region_phys in frame_allocator.regions() {
             // NB: use the "future" physical memory mapping (ie after bootstrapping)
-            self.future_physmap
-                .with_mapped_range(region_phys.clone(), |region_virt| {
-                    // Safety: we just created the address space and `BootstrapAllocator` checks its regions to
-                    // not be overlapping (1.). It will also align regions to at least page size (2., 3.).
-                    unsafe {
-                        self.address_space.map_contiguous(
-                            region_virt,
-                            region_phys.start,
-                            attrs,
-                            frame_allocator.by_ref(),
-                            flush,
-                        )
-                    }
-                })?;
+            let region_virt = self.future_physmap.phys_to_virt_range(region_phys.clone());
+
+            // Safety: we just created the address space and `BootstrapAllocator` checks its regions to
+            // not be overlapping (1.). It will also align regions to at least page size (2., 3.).
+            unsafe {
+                self.address_space.map_contiguous(
+                    region_virt,
+                    region_phys.start,
+                    attrs,
+                    frame_allocator.by_ref(),
+                    flush,
+                )?;
+            }
         }
 
         Ok(())
