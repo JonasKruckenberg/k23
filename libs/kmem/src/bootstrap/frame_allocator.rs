@@ -1,7 +1,7 @@
 use core::alloc::Layout;
+use core::fmt;
 use core::num::NonZeroUsize;
 use core::ops::Range;
-
 use arrayvec::ArrayVec;
 use lock_api::Mutex;
 
@@ -19,10 +19,23 @@ where
     page_size: usize,
 }
 
+#[derive(Debug)]
 struct BootstrapAllocatorInner<const MAX_REGIONS: usize> {
     regions: ArrayVec<Range<PhysicalAddress>, MAX_REGIONS>,
     // offset from the top of memory regions
     offset: usize,
+}
+
+impl<R, const MAX_REGIONS: usize> fmt::Debug for BootstrapAllocator<R, MAX_REGIONS>
+where
+    R: lock_api::RawMutex,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BootstrapAllocator")
+            .field("regions", &self.inner.lock())
+            .field("page_size", &self.page_size)
+            .finish()
+    }
 }
 
 impl<R, const MAX_REGIONS: usize> BootstrapAllocator<R, MAX_REGIONS>
