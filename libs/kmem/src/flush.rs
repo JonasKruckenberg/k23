@@ -3,8 +3,8 @@ use core::ops::Range;
 
 use arrayvec::ArrayVec;
 
-use crate::arch::Arch;
 use crate::VirtualAddress;
+use crate::arch::Arch;
 
 pub enum Flush<const CAP: usize = 16> {
     Ranges(ArrayVec<Range<VirtualAddress>, CAP>),

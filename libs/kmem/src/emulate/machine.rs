@@ -1,5 +1,4 @@
-use std::cell::Ref;
-use std::cell::{RefCell, RefMut};
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::ops::Range;
@@ -10,11 +9,11 @@ use arrayvec::ArrayVec;
 use cpu_local::collection::CpuLocal;
 use lock_api::Mutex;
 
-use crate::arch::emulate::EmulateArch;
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::bootstrap::BootstrapAllocator;
+use crate::emulate::arch::EmulateArch;
+use crate::emulate::memory::Memory;
 use crate::flush::Flush;
-use crate::test_utils::memory::Memory;
 use crate::utils::page_table_entries_for;
 use crate::{
     AddressRangeExt, AllocError, HardwareAddressSpace, MemoryAttributes, PhysicalAddress,
@@ -112,8 +111,7 @@ impl<A: Arch, R: lock_api::RawMutex> Machine<A, R> {
     }
 
     pub unsafe fn set_active_table(&self, address: PhysicalAddress) {
-        self.cpu_mut()
-            .set_active_page_table(address);
+        self.cpu_mut().set_active_page_table(address);
     }
 
     pub fn invalidate(&self, asid: u16, address_range: Range<VirtualAddress>) {
@@ -300,10 +298,7 @@ impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, HasMemory> {
             cpus: CpuLocal::with_capacity(std::thread::available_parallelism().unwrap().get()),
         };
 
-        (
-            Machine(Arc::new(inner)),
-            physmap
-        )
+        (Machine(Arc::new(inner)), physmap)
     }
 
     pub fn finish_and_bootstrap(self) -> Result<BootstrapResult<A, R>, AllocError> {

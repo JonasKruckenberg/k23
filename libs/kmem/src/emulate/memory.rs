@@ -4,8 +4,8 @@ use std::ops::Range;
 use std::ptr::NonNull;
 use std::{fmt, mem};
 
-use crate::arch::Arch;
 use crate::PhysicalAddress;
+use crate::arch::Arch;
 
 pub struct Memory {
     regions: BTreeMap<PhysicalAddress, (PhysicalAddress, NonNull<[u8]>, Layout)>,

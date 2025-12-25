@@ -5,8 +5,8 @@ use riscv::sbi::rfence::{sfence_vma, sfence_vma_asid};
 
 use crate::arch::PageTableLevel;
 use crate::{
-    AddressRangeExt, MemoryAttributes, PhysicalAddress, VirtualAddress, WriteOrExecute, GIB, KIB, MIB,
-    TIB,
+    AddressRangeExt, GIB, KIB, MIB, MemoryAttributes, PhysicalAddress, TIB, VirtualAddress,
+    WriteOrExecute,
 };
 
 pub struct Riscv64Sv39 {

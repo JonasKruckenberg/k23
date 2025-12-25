@@ -5,9 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use core::num::NonZeroUsize;
-use core::ptr::NonNull;
-
 use crate::arch::Arch;
 
 macro_rules! impl_address_from {
@@ -64,6 +61,22 @@ macro_rules! impl_address {
             #[inline]
             pub fn from_non_null<T: ?Sized>(ptr: ::core::ptr::NonNull<T>) -> Self {
                 Self(ptr.addr().get())
+            }
+
+            #[inline]
+            pub fn as_ptr(self) -> *const u8 {
+                ::core::ptr::with_exposed_provenance(self.0)
+            }
+
+            #[inline]
+            pub fn as_mut_ptr(self) -> *mut u8 {
+                ::core::ptr::with_exposed_provenance_mut(self.0)
+            }
+
+            #[inline]
+            pub fn as_non_null(self) -> Option<::core::ptr::NonNull<u8>> {
+                ::core::num::NonZeroUsize::new(self.0)
+                    .map(::core::ptr::NonNull::with_exposed_provenance)
             }
 
             /// Adds an unsigned offset to this address, panicking if overflow occurred.
@@ -253,20 +266,20 @@ pub struct VirtualAddress(usize);
 impl_address!(VirtualAddress);
 
 impl VirtualAddress {
-    #[inline]
-    pub fn as_ptr(self) -> *const u8 {
-        core::ptr::with_exposed_provenance(self.0)
-    }
-
-    #[inline]
-    pub fn as_mut_ptr(self) -> *mut u8 {
-        core::ptr::with_exposed_provenance_mut(self.0)
-    }
-
-    #[inline]
-    pub fn as_non_null(self) -> Option<NonNull<u8>> {
-        NonZeroUsize::new(self.0).map(NonNull::with_exposed_provenance)
-    }
+    // #[inline]
+    // pub fn as_ptr(self) -> *const u8 {
+    //     core::ptr::with_exposed_provenance(self.0)
+    // }
+    //
+    // #[inline]
+    // pub fn as_mut_ptr(self) -> *mut u8 {
+    //     core::ptr::with_exposed_provenance_mut(self.0)
+    // }
+    //
+    // #[inline]
+    // pub fn as_non_null(self) -> Option<NonNull<u8>> {
+    //     NonZeroUsize::new(self.0).map(NonNull::with_exposed_provenance)
+    // }
 
     #[expect(
         clippy::cast_sign_loss,

@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 use core::ops::{Range, RangeInclusive};
 
-use crate::arch::{Arch, PageTableLevel};
 use crate::VirtualAddress;
+use crate::arch::{Arch, PageTableLevel};
 
 pub(crate) fn page_table_entries_for<A: Arch>(
     range: Range<VirtualAddress>,
