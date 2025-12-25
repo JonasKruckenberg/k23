@@ -236,7 +236,7 @@ impl PageTableLevel {
 
     /// Extracts the page table entry (PTE) for a table at this level from the given address.
     pub(crate) fn pte_index_of(&self, address: VirtualAddress) -> u16 {
-        let idx = u16::try_from(address.get() >> self.index_shift).unwrap() & (self.entries - 1);
+        let idx = u16::try_from(address.get() >> self.index_shift & (self.entries as usize - 1)).unwrap() ;
         debug_assert!(idx < self.entries);
         idx
     }
