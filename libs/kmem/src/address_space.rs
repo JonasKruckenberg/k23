@@ -444,7 +444,7 @@ mod tests {
                 frame_allocator,
                 ..
             } = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0x6000])
+                .with_memory_regions([0xA000])
                 .finish_and_bootstrap()
                 .unwrap();
 
@@ -484,7 +484,7 @@ mod tests {
                 frame_allocator,
                 ..
             } = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0x7000])
+                .with_memory_regions([0xB000])
                 .finish_and_bootstrap()
                 .unwrap();
 
@@ -547,7 +547,7 @@ mod tests {
                 frame_allocator,
                 ..
             } = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0x7000])
+                .with_memory_regions([0xB000])
                 .finish_and_bootstrap()
                 .unwrap();
 
@@ -603,6 +603,5 @@ mod tests {
             assert_eq!(attrs.allows_execution(), true);
             assert_eq!(lvl.page_size(), 4096);
         }
-
     }
 }
