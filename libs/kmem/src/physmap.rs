@@ -1,5 +1,5 @@
+use core::cmp;
 use core::ops::Range;
-use std::cmp;
 
 use crate::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 

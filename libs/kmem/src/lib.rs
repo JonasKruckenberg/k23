@@ -15,7 +15,9 @@ mod memory_attributes;
 mod physmap;
 mod table;
 mod utils;
-mod test_utils;
+
+#[cfg(feature = "emulate")]
+mod emulate;
 
 pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_range::AddressRangeExt;

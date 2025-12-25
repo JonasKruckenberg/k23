@@ -5,8 +5,8 @@ use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::bootstrap::{Bootstrap, BootstrapAllocator};
 use crate::flush::Flush;
 use crate::physmap::PhysicalMemoryMapping;
-use crate::table::{marker, Table};
-use crate::utils::{page_table_entries_for, PageTableEntries};
+use crate::table::{Table, marker};
+use crate::utils::{PageTableEntries, page_table_entries_for};
 use crate::{
     AddressRangeExt, AllocError, FrameAllocator, MemoryAttributes, PhysicalAddress, VirtualAddress,
 };
@@ -431,10 +431,10 @@ mod tests {
 
     use crate::address_range::AddressRangeExt;
     use crate::arch::Arch;
+    use crate::emulate::{BootstrapResult, MachineBuilder};
     use crate::flush::Flush;
     use crate::frame_allocator::FrameAllocator;
-    use crate::test_utils::{BootstrapResult, MachineBuilder};
-    use crate::{archtest, MemoryAttributes, WriteOrExecute, VirtualAddress};
+    use crate::{MemoryAttributes, VirtualAddress, WriteOrExecute, archtest};
 
     archtest! {
         #[test]

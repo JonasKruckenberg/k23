@@ -3,7 +3,7 @@ mod frame_allocator;
 use core::mem;
 use core::ops::Range;
 
-pub use frame_allocator::{BootstrapAllocator, FreeRegions, UsedRegions, DEFAULT_MAX_REGIONS};
+pub use frame_allocator::{BootstrapAllocator, DEFAULT_MAX_REGIONS, FreeRegions, UsedRegions};
 
 use crate::arch::Arch;
 use crate::flush::Flush;

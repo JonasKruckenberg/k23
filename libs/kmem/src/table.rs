@@ -5,7 +5,7 @@ use arrayvec::ArrayVec;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::physmap::PhysicalMemoryMapping;
-use crate::utils::{page_table_entries_for, PageTableEntries};
+use crate::utils::{PageTableEntries, page_table_entries_for};
 use crate::{AllocError, FrameAllocator, PhysicalAddress, VirtualAddress};
 
 /// A page table. Essentially a fixed-sized list of `A::PageTableEntry`s.

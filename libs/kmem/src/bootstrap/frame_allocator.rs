@@ -2,6 +2,7 @@ use core::alloc::Layout;
 use core::fmt;
 use core::num::NonZeroUsize;
 use core::ops::Range;
+
 use arrayvec::ArrayVec;
 use lock_api::Mutex;
 
@@ -236,12 +237,12 @@ impl<const MAX_REGIONS: usize> Iterator for UsedRegions<MAX_REGIONS> {
 
 #[cfg(test)]
 mod tests {
-    use crate::arch::emulate::EmulateArch;
     use crate::arch::Arch;
     use crate::bootstrap::BootstrapAllocator;
+    use crate::emulate::MachineBuilder;
+    use crate::emulate::arch::EmulateArch;
     use crate::frame_allocator::FrameAllocator;
-    use crate::{archtest, PhysicalMemoryMapping};
-    use crate::test_utils::MachineBuilder;
+    use crate::{PhysicalMemoryMapping, archtest};
 
     archtest! {
         // Assert that the BootstrapAllocator can allocate frames
@@ -275,7 +276,7 @@ mod tests {
                 .unwrap_err();
         }
 
-        // Assert that the BootstrapAllocator can allocate zeored frames in
+        // Assert that the BootstrapAllocator can allocate zeroed frames in
         // bootstrap (bare, before paging is enabled) mode.
         #[test]
         fn allocate_contiguous_zeroed_bare<A: Arch>() {

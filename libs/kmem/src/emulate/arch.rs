@@ -1,12 +1,10 @@
-use core::ops::Range;
 use core::fmt;
+use core::ops::Range;
 use std::mem;
+
 use crate::arch::{Arch, PageTableLevel};
-use crate::{
-    PhysicalAddress
-    , VirtualAddress,
-};
-use crate::test_utils::Machine;
+use crate::emulate::Machine;
+use crate::{PhysicalAddress, VirtualAddress};
 
 pub struct EmulateArch<A: Arch, R: lock_api::RawMutex> {
     machine: Machine<A, R>,
@@ -89,4 +87,3 @@ impl<A: Arch, R: lock_api::RawMutex> Arch for EmulateArch<A, R> {
         }
     }
 }
-
