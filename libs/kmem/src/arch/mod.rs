@@ -7,11 +7,22 @@ use core::{fmt, ptr};
 use crate::{MemoryAttributes, PhysicalAddress, VirtualAddress};
 
 pub trait Arch {
+    /// The type representing a single page table entry on this architecture. Usually `usize` sized.
+    ///
+    /// # Safety
+    ///
+    /// The value `0` **must** be a valid pattern for this type and **must** correspond to a _vacant_ entry.
     type PageTableEntry: PageTableEntry + fmt::Debug;
 
+    /// The page table levels that this architecture supports.
     const LEVELS: &'static [PageTableLevel];
+
+    /// The default base address of the [`PhysMap`][crate::PhysMap]. The loader may randomize this
+    /// during ASLR but this should be the fallback address. On most architectures it is the first
+    /// address of the upper-half of the address space.
     const DEFAULT_PHYSMAP_BASE: VirtualAddress;
 
+    /// The size of the "translation granule" i.e. the smallest page size supported by this architecture.
     const GRANULE_SIZE: usize = {
         if let Some(level) = Self::LEVELS.last() {
             level.page_size()
@@ -20,6 +31,7 @@ pub trait Arch {
         }
     };
 
+    /// A `Layout` representing a "translation granule".
     const GRANULE_LAYOUT: Layout = {
         if let Ok(layout) = Layout::from_size_align(Self::GRANULE_SIZE, Self::GRANULE_SIZE) {
             layout
@@ -28,6 +40,7 @@ pub trait Arch {
         }
     };
 
+    /// The number of usable bits in a `VirtualAddress`. This may be used for address canonicalization.
     #[expect(
         clippy::cast_possible_truncation,
         reason = "we check the coercion does not truncate"
@@ -174,6 +187,7 @@ pub trait PageTableEntry: Copy + Send {
     fn attributes(&self) -> MemoryAttributes;
 }
 
+/// Represents a level in a hierarchical page table.
 #[derive(Debug)]
 pub struct PageTableLevel {
     /// The number of entries in this page table level
@@ -190,8 +204,7 @@ impl PageTableLevel {
         clippy::cast_possible_truncation,
         reason = "we check the coercion does not truncate"
     )]
-    // #[expect(clippy::missing_panics_doc, reason = "internal assertion")]
-    pub const fn new(page_size: usize, entries: u16, supports_leaf: bool) -> PageTableLevel {
+    pub(crate) const fn new(page_size: usize, entries: u16, supports_leaf: bool) -> PageTableLevel {
         let index_shift = page_size.ilog2();
         assert!(index_shift <= u8::MAX as u32);
 
@@ -233,6 +246,8 @@ impl PageTableLevel {
     }
 
     /// Extracts the page table entry (PTE) for a table at this level from the given address.
+    // TODO: tests
+    //  - ensure this only returns in-bound indices
     pub(crate) fn pte_index_of(&self, address: VirtualAddress) -> u16 {
         let idx =
             u16::try_from(address.get() >> self.index_shift & (self.entries as usize - 1)).unwrap();
@@ -240,6 +255,8 @@ impl PageTableLevel {
         idx
     }
 
+    /// Whether we can create a leaf entry at this level given the combination of base `VirtualAddress`,
+    /// base `PhysicalAddress`, and remaining chunk length.
     pub(crate) fn can_map(&self, virt: VirtualAddress, phys: PhysicalAddress, len: usize) -> bool {
         let page_size = self.page_size();
 

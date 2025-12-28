@@ -41,6 +41,7 @@ pub fn exit(code: i32) -> ! {
     // Safety: inline assembly
     unsafe {
         loop {
+            #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
             asm!("wfi");
         }
     }

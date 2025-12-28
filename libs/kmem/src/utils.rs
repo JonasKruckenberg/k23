@@ -4,7 +4,9 @@ use core::ops::{Range, RangeInclusive};
 use crate::VirtualAddress;
 use crate::arch::{Arch, PageTableLevel};
 
-pub(crate) fn page_table_entries_for<A: Arch>(
+// TODO: tests
+//  - ensure this only returns in-bound indices
+pub fn page_table_entries_for<A: Arch>(
     range: Range<VirtualAddress>,
     level: &PageTableLevel,
 ) -> PageTableEntries<A> {

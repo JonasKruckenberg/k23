@@ -6,9 +6,12 @@ use core::{cmp, fmt};
 use fallible_iterator::FallibleIterator;
 
 use crate::arch::Arch;
-use crate::physmap::PhysicalMemoryMapping;
+use crate::physmap::PhysMap;
 use crate::{AddressRangeExt, PhysicalAddress};
 
+/// The `AllocError` error indicates a frame allocation failure that may be due
+/// to resource exhaustion or to something wrong when combining the given input
+/// arguments with this allocator.
 #[derive(Debug, Copy, Clone)]
 pub struct AllocError;
 
@@ -92,7 +95,7 @@ pub unsafe trait FrameAllocator {
     fn allocate_contiguous_zeroed(
         &self,
         layout: Layout,
-        physmap: &PhysicalMemoryMapping,
+        physmap: &PhysMap,
         arch: &impl Arch,
     ) -> Result<PhysicalAddress, AllocError> {
         let frame = self.allocate_contiguous(layout)?;

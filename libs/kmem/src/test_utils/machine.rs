@@ -7,33 +7,37 @@ use std::{cmp, fmt};
 
 use arrayvec::ArrayVec;
 use cpu_local::collection::CpuLocal;
-use lock_api::Mutex;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::bootstrap::BootstrapAllocator;
-use crate::emulate::arch::EmulateArch;
-use crate::emulate::memory::Memory;
 use crate::flush::Flush;
+use crate::test_utils::arch::EmulateArch;
+use crate::test_utils::memory::Memory;
 use crate::utils::page_table_entries_for;
 use crate::{
-    AddressRangeExt, AllocError, HardwareAddressSpace, MemoryAttributes, PhysicalAddress,
-    PhysicalMemoryMapping, VirtualAddress,
+    AllocError, HardwareAddressSpace, MemoryAttributes, PhysMap, PhysicalAddress, VirtualAddress,
 };
 
-pub struct Machine<A: Arch, R: lock_api::RawMutex>(Arc<MachineInner<A, R>>);
+/// A "virtual machine" that emulates a given architecture. It is intended to be used in tests
+/// and supports modeling the following properties:
+///
+/// - multiple, discontiguous physical memory regions
+/// - per-cpu virtual->physical address translation buffers
+/// - address translation buffer invalidation
+pub struct Machine<A: Arch>(Arc<MachineInner<A>>);
 
-struct MachineInner<A: Arch, R: lock_api::RawMutex> {
-    memory: Mutex<R, Memory>,
+struct MachineInner<A: Arch> {
+    memory: Memory,
     cpus: CpuLocal<RefCell<Cpu<A>>>,
 }
 
-impl<A: Arch, R: lock_api::RawMutex> Clone for Machine<A, R> {
+impl<A: Arch> Clone for Machine<A> {
     fn clone(&self) -> Self {
         Self(Arc::clone(&self.0))
     }
 }
 
-impl<A: Arch, R: lock_api::RawMutex> fmt::Debug for Machine<A, R>
+impl<A: Arch> fmt::Debug for Machine<A>
 where
     A::PageTableEntry: fmt::Debug,
 {
@@ -45,9 +49,9 @@ where
     }
 }
 
-impl<A: Arch, R: lock_api::RawMutex> Machine<A, R> {
+impl<A: Arch> Machine<A> {
     pub fn memory_regions<const MAX: usize>(&self) -> ArrayVec<Range<PhysicalAddress>, MAX> {
-        self.0.memory.lock().regions().collect()
+        self.0.memory.regions().collect()
     }
 
     pub unsafe fn read<T>(&self, asid: u16, addr: VirtualAddress) -> T {
@@ -95,15 +99,15 @@ impl<A: Arch, R: lock_api::RawMutex> Machine<A, R> {
     }
 
     pub unsafe fn read_phys<T>(&self, address: PhysicalAddress) -> T {
-        unsafe { self.0.memory.lock().read(address) }
+        unsafe { self.0.memory.read(address) }
     }
 
     pub unsafe fn write_phys<T>(&self, address: PhysicalAddress, value: T) {
-        unsafe { self.0.memory.lock().write(address, value) }
+        unsafe { self.0.memory.write(address, value) }
     }
 
     pub fn write_bytes_phys(&self, address: PhysicalAddress, value: u8, count: usize) {
-        self.0.memory.lock().write_bytes(address, value, count)
+        self.0.memory.write_bytes(address, value, count)
     }
 
     pub fn active_table(&self) -> Option<PhysicalAddress> {
@@ -116,16 +120,14 @@ impl<A: Arch, R: lock_api::RawMutex> Machine<A, R> {
 
     pub fn invalidate(&self, asid: u16, address_range: Range<VirtualAddress>) {
         let mut cpu = self.cpu_mut();
-        let memory = self.0.memory.lock();
 
-        cpu.invalidate(asid, address_range, &memory);
+        cpu.invalidate(asid, address_range, &self.0.memory);
     }
 
     pub fn invalidate_all(&self, asid: u16) {
         let mut cpu = self.cpu_mut();
-        let memory = self.0.memory.lock();
 
-        cpu.invalidate_all(asid, &memory);
+        cpu.invalidate_all(asid, &self.0.memory);
     }
 
     fn cpu(&self) -> Ref<'_, Cpu<A>> {
@@ -188,15 +190,12 @@ impl<A: Arch> Cpu<A> {
         self.map
             .retain(|(key_asid, key_range), _| !(*key_asid == asid && range.contains(key_range)));
 
-        // if let Some(page_table) = self.page_table {
         self.reload_map(asid, range, 0, self.page_table.unwrap(), memory);
-        // }
     }
 
     pub fn invalidate_all(&mut self, asid: u16, memory: &Memory) {
         self.map.clear();
 
-        // if let Some(page_table) = self.page_table {
         self.reload_map(
             asid,
             VirtualAddress::MIN..VirtualAddress::MAX.align_down(A::GRANULE_SIZE),
@@ -204,7 +203,6 @@ impl<A: Arch> Cpu<A> {
             self.page_table.unwrap(),
             memory,
         );
-        // }
     }
 
     fn reload_map(
@@ -250,8 +248,8 @@ pub struct MachineBuilder<A: Arch, R: lock_api::RawMutex, Mem> {
 }
 
 pub struct BootstrapResult<A: Arch, R: lock_api::RawMutex> {
-    pub machine: Machine<A, R>,
-    pub address_space: HardwareAddressSpace<EmulateArch<A, R>>,
+    pub machine: Machine<A>,
+    pub address_space: HardwareAddressSpace<EmulateArch<A>>,
     pub frame_allocator: BootstrapAllocator<R>,
 }
 
@@ -288,13 +286,13 @@ impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, MissingMemory> {
 }
 
 impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, HasMemory> {
-    pub fn finish(self) -> (Machine<A, R>, PhysicalMemoryMapping) {
+    pub fn finish(self) -> (Machine<A>, PhysMap) {
         let memory = self.memory.unwrap();
 
-        let physmap = PhysicalMemoryMapping::new(self.physmap_base, memory.regions());
+        let physmap = PhysMap::new(self.physmap_base, memory.regions());
 
         let inner = MachineInner {
-            memory: Mutex::new(memory),
+            memory,
             cpus: CpuLocal::with_capacity(std::thread::available_parallelism().unwrap().get()),
         };
 

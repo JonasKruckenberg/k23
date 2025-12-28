@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6e6921502ef9b923b728203c38cbf0c9dd25f51a974f8d04fdd2f0f438478a73 # shrinks to base = VirtualAddress(0x0000000000000000), region_start = PhysicalAddress(0x0000000000000000), region_size = 1

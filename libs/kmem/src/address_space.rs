@@ -4,7 +4,7 @@ use core::ops::Range;
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::bootstrap::{Bootstrap, BootstrapAllocator};
 use crate::flush::Flush;
-use crate::physmap::PhysicalMemoryMapping;
+use crate::physmap::PhysMap;
 use crate::table::{Table, marker};
 use crate::utils::{PageTableEntries, page_table_entries_for};
 use crate::{
@@ -14,13 +14,19 @@ use crate::{
 pub struct HardwareAddressSpace<A: Arch> {
     arch: A,
     root_page_table: Table<A, marker::Owned>,
-    physmap: PhysicalMemoryMapping,
+    physmap: PhysMap,
 }
 
 impl<A: Arch> HardwareAddressSpace<A> {
+    /// Constructs a new `AddressSpace` with a freshly allocated root page table
+    /// that may be used during address space bringup in the `loader`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(AllocError)` when allocating the root page table fails.
     pub fn new(
         arch: A,
-        physmap: PhysicalMemoryMapping,
+        physmap: PhysMap,
         frame_allocator: impl FrameAllocator,
         flush: &mut Flush,
     ) -> Result<Self, AllocError> {
@@ -35,23 +41,19 @@ impl<A: Arch> HardwareAddressSpace<A> {
         })
     }
 
-    /// Constructs **and bootstraps** a new AddressSpace with a freshly allocated root page table.
+    /// Constructs a new *bootstrapping* `AddressSpace` with a freshly allocated root page table
+    /// that may be used during address space bringup in the `loader`.
     ///
     /// # Errors
     ///
-    /// Returns Err(AllocError) when allocating the root page table fails.
+    /// Returns `Err(AllocError)` when allocating the root page table fails.
     pub fn new_bootstrap<R: lock_api::RawMutex>(
         arch: A,
-        future_physmap: PhysicalMemoryMapping,
+        future_physmap: PhysMap,
         frame_allocator: &BootstrapAllocator<R>,
         flush: &mut Flush,
     ) -> Result<Bootstrap<Self>, AllocError> {
-        let address_space = Self::new(
-            arch,
-            PhysicalMemoryMapping::new_bootstrap(),
-            frame_allocator,
-            flush,
-        )?;
+        let address_space = Self::new(arch, PhysMap::new_bootstrap(), frame_allocator, flush)?;
 
         Ok(Bootstrap {
             address_space,
@@ -60,11 +62,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
     }
 
     /// Constructs a new `AddressSpace` from its raw components: architecture-specific data and the root table.
-    pub fn from_parts(
-        arch: A,
-        root_page_table: Table<A, marker::Owned>,
-        physmap: PhysicalMemoryMapping,
-    ) -> Self {
+    pub fn from_parts(arch: A, root_page_table: Table<A, marker::Owned>, physmap: PhysMap) -> Self {
         Self {
             physmap,
             root_page_table,
@@ -73,7 +71,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
     }
 
     /// Decomposes an `AddressSpace` into its raw components: architecture-specific data and the root table.
-    pub fn into_parts(self) -> (A, Table<A, marker::Owned>, PhysicalMemoryMapping) {
+    pub fn into_parts(self) -> (A, Table<A, marker::Owned>, PhysMap) {
         (self.arch, self.root_page_table, self.physmap)
     }
 
@@ -104,6 +102,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
 
         for level in A::LEVELS {
             let entry_index = level.pte_index_of(virt);
+            // Safety: `pte_index_of` only returns in-bounds indices.
             let entry = unsafe { table.get(entry_index, &self.physmap, &self.arch) };
 
             if entry.is_table() {
@@ -183,9 +182,11 @@ impl<A: Arch> HardwareAddressSpace<A> {
                 // TODO we can omit the fence here and lazily change the mapping in the fault handler#
                 flush.invalidate(range);
             } else {
-                let frame = frame_allocator
-                    .allocate_contiguous_zeroed(A::GRANULE_LAYOUT, &self.physmap, &self.arch)
-                    .unwrap();
+                let frame = frame_allocator.allocate_contiguous_zeroed(
+                    A::GRANULE_LAYOUT,
+                    &self.physmap,
+                    &self.arch,
+                )?;
 
                 *entry = <A as Arch>::PageTableEntry::new_table(frame);
 
@@ -261,6 +262,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
             Ok(())
         };
 
+        // Safety: `remap_contiguous` is infallible
         unsafe {
             self.root_page_table
                 .borrow_mut()
@@ -318,6 +320,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
             Ok(())
         };
 
+        // Safety: `set_attributes` is infallible
         unsafe {
             self.root_page_table
                 .borrow_mut()
@@ -372,7 +375,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
     fn unmap_inner(
         mut table: Table<A, marker::Mut<'_>>,
         range: Range<VirtualAddress>,
-        physmap: &PhysicalMemoryMapping,
+        physmap: &PhysMap,
         arch: &A,
         frame_allocator: impl FrameAllocator,
         flush: &mut Flush,
@@ -380,6 +383,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
         let entries: PageTableEntries<A> = page_table_entries_for(range.clone(), table.level());
 
         for (entry_index, range) in entries {
+            // Safety: `page_table_entries_for` only returns in-bounds indices.
             let mut entry = unsafe { table.get(entry_index, physmap, arch) };
             debug_assert!(!entry.is_vacant());
 
@@ -418,6 +422,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
                 }
             }
 
+            // Safety: `page_table_entries_for` only returns in-bounds indices.
             unsafe {
                 table.set(entry_index, entry, physmap, arch);
             }
@@ -431,9 +436,9 @@ mod tests {
 
     use crate::address_range::AddressRangeExt;
     use crate::arch::Arch;
-    use crate::emulate::{BootstrapResult, MachineBuilder};
     use crate::flush::Flush;
     use crate::frame_allocator::FrameAllocator;
+    use crate::test_utils::{BootstrapResult, MachineBuilder};
     use crate::{MemoryAttributes, VirtualAddress, WriteOrExecute, archtest};
 
     archtest! {

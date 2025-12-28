@@ -9,6 +9,12 @@ use crate::{
     WriteOrExecute,
 };
 
+/// The number of usable bits in a `PhysicalAddress`. This may be used for address canonicalization.
+#[cfg_attr(not(test), expect(unused, reason = "only used by tests"))]
+const PHYSICAL_ADDRESS_BITS: usize = 56;
+
+const PAGE_OFFSET_BITS: usize = 12;
+
 pub struct Riscv64Sv39 {
     asid: u16,
 }
@@ -155,6 +161,47 @@ mycelium_bitfield::bitfield! {
     }
 }
 
+const _: () = {
+    assert!(PageTableEntry::VALID.least_significant_index() == 0);
+    assert!(PageTableEntry::VALID.most_significant_index() - 1 == 0);
+
+    assert!(PageTableEntry::READ.least_significant_index() - 1 == 0);
+    assert!(PageTableEntry::READ.most_significant_index() - 2 == 0);
+
+    assert!(PageTableEntry::WRITE.least_significant_index() - 2 == 0);
+    assert!(PageTableEntry::WRITE.most_significant_index() - 3 == 0);
+
+    assert!(PageTableEntry::EXECUTE.least_significant_index() - 3 == 0);
+    assert!(PageTableEntry::EXECUTE.most_significant_index() - 4 == 0);
+
+    assert!(PageTableEntry::USER.least_significant_index() - 4 == 0);
+    assert!(PageTableEntry::USER.most_significant_index() - 5 == 0);
+
+    assert!(PageTableEntry::GLOBAL.least_significant_index() - 5 == 0);
+    assert!(PageTableEntry::GLOBAL.most_significant_index() - 6 == 0);
+
+    assert!(PageTableEntry::ACCESSED.least_significant_index() - 6 == 0);
+    assert!(PageTableEntry::ACCESSED.most_significant_index() - 7 == 0);
+
+    assert!(PageTableEntry::DIRTY.least_significant_index() - 7 == 0);
+    assert!(PageTableEntry::DIRTY.most_significant_index() - 8 == 0);
+
+    assert!(PageTableEntry::SOFTWARE_USE.least_significant_index() - 8 == 0);
+    assert!(PageTableEntry::SOFTWARE_USE.most_significant_index() - 10 == 0);
+
+    assert!(PageTableEntry::ADDRESS.least_significant_index() - 10 == 0);
+    assert!(PageTableEntry::ADDRESS.most_significant_index() - 54 == 0);
+
+    assert!(PageTableEntry::_RESERVED.least_significant_index() - 54 == 0);
+    assert!(PageTableEntry::_RESERVED.most_significant_index() - 61 == 0);
+
+    assert!(PageTableEntry::PBMT.least_significant_index() - 61 == 0);
+    assert!(PageTableEntry::PBMT.most_significant_index() - 63 == 0);
+
+    assert!(PageTableEntry::NAPOT.least_significant_index() - 63 == 0);
+    assert!(PageTableEntry::NAPOT.most_significant_index() - 64 == 0);
+};
+
 mycelium_bitfield::enum_from_bits! {
     // TODO explain
     #[derive(Debug)]
@@ -170,18 +217,26 @@ mycelium_bitfield::enum_from_bits! {
 
 impl super::PageTableEntry for PageTableEntry {
     fn new_leaf(address: PhysicalAddress, attributes: MemoryAttributes) -> Self {
+        let address_raw = address.get() >> PAGE_OFFSET_BITS;
+
+        debug_assert!(address_raw <= Self::ADDRESS.max_value());
+
         Self::new()
             .with(Self::VALID, true)
-            .with(Self::ADDRESS, address.get())
+            .with(Self::ADDRESS, address_raw)
             .with(Self::READ, attributes.allows_read())
             .with(Self::WRITE, attributes.allows_write())
             .with(Self::EXECUTE, attributes.allows_execution())
     }
 
     fn new_table(address: PhysicalAddress) -> Self {
+        let address_raw = address.get() >> PAGE_OFFSET_BITS;
+
+        debug_assert!(address_raw <= Self::ADDRESS.max_value());
+
         Self::new()
             .with(Self::VALID, true)
-            .with(Self::ADDRESS, address.get())
+            .with(Self::ADDRESS, address_raw)
     }
 
     const VACANT: Self = Self::new();
@@ -203,7 +258,7 @@ impl super::PageTableEntry for PageTableEntry {
     }
 
     fn address(&self) -> PhysicalAddress {
-        PhysicalAddress::new(self.get(Self::ADDRESS))
+        PhysicalAddress::new(self.get(Self::ADDRESS) << PAGE_OFFSET_BITS)
     }
 
     fn attributes(&self) -> MemoryAttributes {
@@ -257,4 +312,23 @@ fn fence(asid: u16, address_range: Range<VirtualAddress>) {
 
 fn fence_all() {
     sfence_vma(0, usize::MAX, 0, usize::MAX).unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::{prop_assert_eq, proptest};
+
+    use super::*;
+    use crate::arch::PageTableEntry;
+    use crate::test_utils::proptest::{aligned_phys, phys};
+    use crate::{KIB, MemoryAttributes};
+
+    proptest! {
+        #[test]
+        fn pte_new_leaf(address in aligned_phys(phys(0..1 << PHYSICAL_ADDRESS_BITS), 4*KIB)) {
+            let pte = <super::PageTableEntry as PageTableEntry>::new_leaf(address, MemoryAttributes::new());
+
+            prop_assert_eq!(pte.address(), address, "{}", pte);
+        }
+    }
 }
