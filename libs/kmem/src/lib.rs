@@ -1,4 +1,4 @@
-#![cfg_attr(not(any(test, feature = "emulate")), no_std)]
+#![cfg_attr(not(any(test, feature = "test_utils")), no_std)]
 // #![no_std]
 #![feature(step_trait)]
 #![feature(debug_closure_helpers)]
@@ -14,17 +14,17 @@ mod frame_allocator;
 mod memory_attributes;
 mod physmap;
 mod table;
+#[cfg(feature = "test_utils")]
+pub mod test_utils;
 mod utils;
-
-#[cfg(feature = "emulate")]
-mod emulate;
 
 pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_range::AddressRangeExt;
 pub use address_space::HardwareAddressSpace;
+pub use flush::Flush;
 pub use frame_allocator::{AllocError, FrameAllocator, FrameIter};
 pub use memory_attributes::{MemoryAttributes, WriteOrExecute};
-pub use physmap::PhysicalMemoryMapping;
+pub use physmap::PhysMap;
 
 pub const KIB: usize = 1024;
 pub const MIB: usize = KIB * 1024;

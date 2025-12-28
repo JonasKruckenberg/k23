@@ -12,18 +12,26 @@ use crate::{AddressRangeExt, PhysicalAddress};
 
 pub const DEFAULT_MAX_REGIONS: usize = 16;
 
+/// Simple bump allocator (cannot free) that can be used to allocate physical memory frames early during system
+/// bootstrap.
+///
+/// This allocator supports discontiguous physical memory by default. By default, up to [`DEFAULT_MAX_REGIONS`]
+/// but this limit can be adjusted by explicitly specifying the const-generic parameter.
 pub struct BootstrapAllocator<R, const MAX_REGIONS: usize = DEFAULT_MAX_REGIONS>
 where
     R: lock_api::RawMutex,
 {
     inner: Mutex<R, BootstrapAllocatorInner<MAX_REGIONS>>,
-    page_size: usize,
+    // we make a "snapshot" of the translation granule size during construction so that the allocator
+    // itself doesn't need to be generic over `Arch`.
+    frame_size: usize,
 }
 
 #[derive(Debug)]
 struct BootstrapAllocatorInner<const MAX_REGIONS: usize> {
+    /// The discontiguous regions of "regular" physical memory that we can use for allocation.
     regions: ArrayVec<Range<PhysicalAddress>, MAX_REGIONS>,
-    // offset from the top of memory regions
+    /// offset from the top of memory regions
     offset: usize,
 }
 
@@ -34,7 +42,7 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BootstrapAllocator")
             .field("regions", &self.inner.lock())
-            .field("page_size", &self.page_size)
+            .field("frame_size", &self.frame_size)
             .finish()
     }
 }
@@ -68,14 +76,17 @@ where
 
         Self {
             inner: Mutex::new(BootstrapAllocatorInner { regions, offset: 0 }),
-            page_size: A::GRANULE_SIZE,
+            frame_size: A::GRANULE_SIZE,
         }
     }
 
-    pub fn regions(&self) -> impl Iterator<Item = Range<PhysicalAddress>> {
-        self.inner.lock().regions.clone().into_iter()
+    /// Returns the array of "regular" physical memory regions managed by this allocator.
+    pub fn regions(&self) -> ArrayVec<Range<PhysicalAddress>, MAX_REGIONS> {
+        self.inner.lock().regions.clone()
     }
 
+    /// Returns an iterator over the "free" (not allocated) portions of  physical memory regions
+    /// managed by this allocator.
     pub fn free_regions(&self) -> impl Iterator<Item = Range<PhysicalAddress>> {
         let inner = self.inner.lock();
 
@@ -85,6 +96,8 @@ where
         }
     }
 
+    /// Returns an iterator over the "used" (allocated) portions of  physical memory regions
+    /// managed by this allocator.
     pub fn used_regions(&self) -> impl Iterator<Item = Range<PhysicalAddress>> {
         let inner = self.inner.lock();
 
@@ -94,6 +107,7 @@ where
         }
     }
 
+    /// Returns the number of allocated bytes.
     pub fn usage(&self) -> usize {
         self.inner.lock().offset
     }
@@ -108,43 +122,19 @@ where
     fn allocate_contiguous(&self, layout: Layout) -> Result<PhysicalAddress, AllocError> {
         assert_eq!(
             layout.align(),
-            self.page_size,
+            self.frame_size,
             "BootstrapAllocator only supports page-aligned allocations"
         );
 
         self.inner.lock().allocate(layout)
     }
 
-    // fn allocate_contiguous_zeroed(
-    //     &self,
-    //     layout: Layout,
-    //     arch: &impl Arch,
-    // ) -> Result<PhysicalAddress, AllocError> {
-    //     assert_eq!(
-    //         layout.align(),
-    //         self.page_size,
-    //         "BootstrapAllocator only supports page-aligned allocations"
-    //     );
-    //
-    //     let frame = self.inner.lock().allocate(layout)?;
-    //
-    //     self.physmap.with_mapped(frame, |page| {
-    //         // Safety: the address is properly aligned (at least page aligned) and is either valid to
-    //         // access through the physical memory map or because we're in bootstrapping still and phys==virt
-    //         unsafe {
-    //             arch.write_bytes(page, 0, layout.size());
-    //         }
-    //     });
-    //
-    //     Ok(frame)
-    // }
-
     unsafe fn deallocate(&self, _block: PhysicalAddress, _layout: Layout) {
-        unimplemented!()
+        unimplemented!("BootstrapAllocator does not support deallocation")
     }
 
     fn size_hint(&self) -> (NonZeroUsize, Option<NonZeroUsize>) {
-        (NonZeroUsize::new(self.page_size).unwrap(), None)
+        (NonZeroUsize::new(self.frame_size).unwrap(), None)
     }
 }
 
@@ -239,10 +229,9 @@ impl<const MAX_REGIONS: usize> Iterator for UsedRegions<MAX_REGIONS> {
 mod tests {
     use crate::arch::Arch;
     use crate::bootstrap::BootstrapAllocator;
-    use crate::emulate::MachineBuilder;
-    use crate::emulate::arch::EmulateArch;
     use crate::frame_allocator::FrameAllocator;
-    use crate::{PhysicalMemoryMapping, archtest};
+    use crate::test_utils::{EmulateArch, MachineBuilder};
+    use crate::{PhysMap, archtest};
 
     archtest! {
         // Assert that the BootstrapAllocator can allocate frames
@@ -291,7 +280,7 @@ mod tests {
 
             let arch = EmulateArch::new(machine);
 
-            let physmap = PhysicalMemoryMapping::new_bootstrap();
+            let physmap = PhysMap::new_bootstrap();
 
             // Based on the memory of the machine we set up above, we expect the allocator to
             // yield 3 pages.

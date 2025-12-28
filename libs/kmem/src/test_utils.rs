@@ -1,10 +1,11 @@
-#[cfg(feature = "emulate")]
-pub mod arch;
+mod arch;
 mod machine;
 mod memory;
+pub mod proptest;
 
-// pub use memory::Memory;
-pub use machine::{BootstrapResult, Cpu, Machine, MachineBuilder};
+pub use arch::EmulateArch;
+pub use machine::{BootstrapResult, Cpu, HasMemory, Machine, MachineBuilder, MissingMemory};
+pub use memory::Memory;
 
 #[macro_export]
 macro_rules! archtest {

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 26bcb7f9640296e1ce43defa4a891640f04dbb0569c49ee2fd49fb0d71a1a909 # shrinks to address = PhysicalAddress(0x0000100000000000)

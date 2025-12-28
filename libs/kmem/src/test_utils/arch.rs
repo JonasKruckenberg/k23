@@ -3,15 +3,16 @@ use core::ops::Range;
 use std::mem;
 
 use crate::arch::{Arch, PageTableLevel};
-use crate::emulate::Machine;
+use crate::test_utils::Machine;
 use crate::{PhysicalAddress, VirtualAddress};
 
-pub struct EmulateArch<A: Arch, R: lock_api::RawMutex> {
-    machine: Machine<A, R>,
+/// `[Arch`] implementation that emulates a given "real" architecture. For testing purposes.
+pub struct EmulateArch<A: Arch> {
+    machine: Machine<A>,
     asid: u16,
 }
 
-impl<A: Arch, R: lock_api::RawMutex> fmt::Debug for EmulateArch<A, R>
+impl<A: Arch> fmt::Debug for EmulateArch<A>
 where
     A::PageTableEntry: fmt::Debug,
 {
@@ -22,25 +23,28 @@ where
     }
 }
 
-impl<A: Arch, R: lock_api::RawMutex> EmulateArch<A, R> {
-    pub const fn new(machine: Machine<A, R>) -> Self {
+impl<A: Arch> EmulateArch<A> {
+    pub const fn new(machine: Machine<A>) -> Self {
         Self::with_asid(machine, 0)
     }
 
-    pub const fn with_asid(machine: Machine<A, R>, asid: u16) -> Self {
+    pub const fn with_asid(machine: Machine<A>, asid: u16) -> Self {
         Self { machine, asid }
     }
 
-    pub const fn machine(&self) -> &Machine<A, R> {
+    pub const fn machine(&self) -> &Machine<A> {
         &self.machine
     }
 }
 
-impl<A: Arch, R: lock_api::RawMutex> Arch for EmulateArch<A, R> {
-    type PageTableEntry = A::PageTableEntry;
+impl<A: Arch> Arch for EmulateArch<A> {
+    // We want to inherit all const parameters from the proper architecture...
 
+    type PageTableEntry = A::PageTableEntry;
     const LEVELS: &'static [PageTableLevel] = A::LEVELS;
     const DEFAULT_PHYSMAP_BASE: VirtualAddress = A::DEFAULT_PHYSMAP_BASE;
+
+    // ...while we emulate all other methods.
 
     fn active_table(&self) -> Option<PhysicalAddress> {
         self.machine.active_table()
@@ -61,27 +65,42 @@ impl<A: Arch, R: lock_api::RawMutex> Arch for EmulateArch<A, R> {
     }
 
     unsafe fn read<T>(&self, address: VirtualAddress) -> T {
+        // NB: if there is no active page table on this CPU, we are in "bare" translation mode.
+        // In which case we need to use `read_phys` instead of `read`, bypassing
+        // translation checks.
         if self.active_table().is_some() {
             unsafe { self.machine.read(self.asid, address) }
         } else {
+            // Safety: We checked for the absence of an active translation table, meaning we're in
+            // "bare" mode and VirtualAddress==PhysicalAddress.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             unsafe { self.machine.read_phys(address) }
         }
     }
 
     unsafe fn write<T>(&self, address: VirtualAddress, value: T) {
+        // NB: if there is no active page table on this CPU, we are in "bare" translation mode.
+        // In which case we need to use `write_phys` instead of `write`, bypassing
+        // translation checks.
         if self.active_table().is_some() {
             unsafe { self.machine.write(self.asid, address, value) }
         } else {
+            // Safety: We checked for the absence of an active translation table, meaning we're in
+            // "bare" mode and VirtualAddress==PhysicalAddress.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             unsafe { self.machine.write_phys(address, value) }
         }
     }
 
     unsafe fn write_bytes(&self, address: VirtualAddress, value: u8, count: usize) {
+        // NB: if there is no active page table on this CPU, we are in "bare" translation mode.
+        // In which case we need to use `write_bytes_phys` instead of `write_bytes`, bypassing
+        // translation checks.
         if self.active_table().is_some() {
             self.machine.write_bytes(self.asid, address, value, count)
         } else {
+            // Safety: We checked for the absence of an active translation table, meaning we're in
+            // "bare" mode and VirtualAddress==PhysicalAddress.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             self.machine.write_bytes_phys(address, value, count)
         }

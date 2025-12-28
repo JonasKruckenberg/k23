@@ -4,7 +4,7 @@ use core::ops::Range;
 use arrayvec::ArrayVec;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
-use crate::physmap::PhysicalMemoryMapping;
+use crate::physmap::PhysMap;
 use crate::utils::{PageTableEntries, page_table_entries_for};
 use crate::{AllocError, FrameAllocator, PhysicalAddress, VirtualAddress};
 
@@ -50,7 +50,7 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
     }
 
     /// Returns `true` when _all_ page table entries in this table are _vacant_.
-    pub fn is_empty(&self, physmap: &PhysicalMemoryMapping, arch: &A) -> bool {
+    pub fn is_empty(&self, physmap: &PhysMap, arch: &A) -> bool {
         let mut is_empty = true;
 
         for entry_index in 0..self.level().entries() {
@@ -69,12 +69,7 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
     /// # Safety
     ///
     /// The caller must ensure `index` is in-bounds (less than the number of entries at this level).
-    pub unsafe fn get(
-        &self,
-        index: u16,
-        physmap: &PhysicalMemoryMapping,
-        arch: &A,
-    ) -> A::PageTableEntry {
+    pub unsafe fn get(&self, index: u16, physmap: &PhysMap, arch: &A) -> A::PageTableEntry {
         let entry_phys = self
             .base
             .add(index as usize * size_of::<A::PageTableEntry>());
@@ -91,7 +86,7 @@ impl<A: Arch, BorrowType> Table<A, BorrowType> {
 impl<A: Arch> Table<A, marker::Owned> {
     pub fn allocate(
         frame_allocator: impl FrameAllocator,
-        physmap: &PhysicalMemoryMapping,
+        physmap: &PhysMap,
         arch: &A,
     ) -> Result<Self, AllocError> {
         let base = frame_allocator.allocate_contiguous_zeroed(A::GRANULE_LAYOUT, physmap, arch)?;
@@ -146,7 +141,7 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
         &mut self,
         index: u16,
         entry: A::PageTableEntry,
-        physmap: &PhysicalMemoryMapping,
+        physmap: &PhysMap,
         arch: &A,
     ) {
         debug_assert!(index < self.level().entries());
@@ -166,7 +161,7 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
     pub fn visit_mut<F, E>(
         self,
         range: Range<VirtualAddress>,
-        physmap: &PhysicalMemoryMapping,
+        physmap: &PhysMap,
         arch: &A,
         mut visit_entry: F,
     ) -> Result<(), E>
@@ -193,10 +188,12 @@ impl<A: Arch> Table<A, marker::Mut<'_>> {
 
         while let Some(mut frame) = stack.pop() {
             for (entry_index, range) in frame.entries_iter {
+                // Safety: `page_table_entries_for` yields only in-bound indices
                 let mut entry = unsafe { frame.table.get(entry_index, physmap, arch) };
 
                 visit_entry(&mut entry, range.clone(), frame.table.level())?;
 
+                // Safety: `page_table_entries_for` yields only in-bound indices
                 unsafe {
                     frame.table.set(entry_index, entry, physmap, arch);
                 }

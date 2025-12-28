@@ -133,6 +133,17 @@ macro_rules! impl_address {
                 Self(self.0.saturating_add(offset))
             }
 
+            /// Adds an unsigned offset to this address, wrapping around at the boundary of the type.
+            #[must_use]
+            #[inline]
+            pub const fn checked_add(self, offset: usize) -> Option<Self> {
+                if let Some(val) = self.0.checked_add(offset) {
+                    Some(Self(val))
+                } else {
+                    None
+                }
+            }
+
             /// Calculates the distance between two addresses in bytes.
             #[must_use]
             #[inline]
@@ -262,6 +273,7 @@ macro_rules! impl_address {
 
 #[repr(transparent)]
 #[derive(Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(feature = "test_utils", derive(proptest_derive::Arbitrary))]
 pub struct VirtualAddress(usize);
 impl_address!(VirtualAddress);
 
@@ -300,34 +312,36 @@ impl VirtualAddress {
 
 #[repr(transparent)]
 #[derive(Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(feature = "test_utils", derive(proptest_derive::Arbitrary))]
 pub struct PhysicalAddress(usize);
 impl_address!(PhysicalAddress);
 
-// #[cfg(test)]
-// mod tests {
-//     use proptest::{proptest, prop_assert, prop_assert_eq, prop_assert_ne};
-//     use super::*;
-//
-//     proptest! {
-//         #[test]
-//         fn lower_half_is_canonical(addr in 0x0usize..0x3fffffffff) {
-//             let addr = VirtualAddress::new(addr);
-//             prop_assert!(addr.is_canonical(&crate::arch::riscv64::RISCV64_SV39));
-//             prop_assert_eq!(addr.canonicalize(&crate::arch::riscv64::RISCV64_SV39), addr);
-//         }
-//
-//         #[test]
-//         fn upper_half_is_canonical(addr in 0xffffffc000000000usize..0xffffffffffffffff) {
-//             let addr = VirtualAddress::new(addr);
-//             prop_assert!(addr.is_canonical(&crate::arch::riscv64::RISCV64_SV39));
-//             prop_assert_eq!(addr.canonicalize(&crate::arch::riscv64::RISCV64_SV39), addr);
-//         }
-//
-//         #[test]
-//         fn non_canonical_hole(addr in 0x4000000000usize..0xffffffbfffffffff) {
-//             let addr = VirtualAddress::new(addr);
-//             prop_assert_ne!(addr.canonicalize(&crate::arch::riscv64::RISCV64_SV39), addr);
-//             prop_assert!(!addr.is_canonical(&crate::arch::riscv64::RISCV64_SV39));
-//         }
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use proptest::{prop_assert, prop_assert_eq, prop_assert_ne, proptest};
+
+    use super::*;
+
+    proptest! {
+        #[test]
+        fn lower_half_is_canonical(addr in 0x0usize..0x3fffffffff) {
+            let addr = VirtualAddress::new(addr);
+            prop_assert!(addr.is_canonical::<crate::arch::riscv64::Riscv64Sv39>());
+            prop_assert_eq!(addr.canonicalize::<crate::arch::riscv64::Riscv64Sv39>(), addr);
+        }
+
+        #[test]
+        fn upper_half_is_canonical(addr in 0xffffffc000000000usize..0xffffffffffffffff) {
+            let addr = VirtualAddress::new(addr);
+            prop_assert!(addr.is_canonical::<crate::arch::riscv64::Riscv64Sv39>());
+            prop_assert_eq!(addr.canonicalize::<crate::arch::riscv64::Riscv64Sv39>(), addr);
+        }
+
+        #[test]
+        fn non_canonical_hole(addr in 0x4000000000usize..0xffffffbfffffffff) {
+            let addr = VirtualAddress::new(addr);
+            prop_assert_ne!(addr.canonicalize::<crate::arch::riscv64::Riscv64Sv39>(), addr);
+            prop_assert!(!addr.is_canonical::<crate::arch::riscv64::Riscv64Sv39>());
+        }
+    }
+}

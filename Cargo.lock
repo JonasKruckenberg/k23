@@ -1086,6 +1086,7 @@ name = "kmem"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
+ "bitflags",
  "cpu-local",
  "fallible-iterator",
  "kmem",
@@ -1094,6 +1095,7 @@ dependencies = [
  "mycelium-bitfield",
  "parking_lot",
  "proptest",
+ "proptest-derive",
  "riscv",
  "spin",
 ]
@@ -1556,6 +1558,17 @@ dependencies = [
  "rusty-fork",
  "tempfile",
  "unarray",
+]
+
+[[package]]
+name = "proptest-derive"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb6dc647500e84a25a85b100e76c85b8ace114c209432dc174f20aac11d4ed6c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

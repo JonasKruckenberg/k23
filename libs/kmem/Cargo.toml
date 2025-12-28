@@ -10,6 +10,8 @@ arrayvec.workspace = true
 riscv.workspace = true
 cpu-local = { workspace = true, optional = true }
 spin = { workspace = true, optional = true }
+proptest = { workspace = true, optional = true }
+proptest-derive = { workspace = true, optional = true }
 
 # 3rd-party dependencies
 mycelium-bitfield.workspace = true
@@ -18,12 +20,12 @@ log.workspace = true
 lock_api.workspace = true
 
 [dev-dependencies]
-kmem = { workspace = true, features = ["emulate"] }
-proptest.workspace = true
 parking_lot = "0.12.5"
+kmem = { workspace = true, features = ["test_utils"] }
+bitflags.workspace = true
 
 [features]
-emulate = ["cpu-local", "spin"]
+test_utils = ["cpu-local", "spin", "proptest", "proptest-derive"]
 
 [lints]
 workspace = true

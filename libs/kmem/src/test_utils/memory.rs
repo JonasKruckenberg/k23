@@ -4,8 +4,8 @@ use std::ops::Range;
 use std::ptr::NonNull;
 use std::{fmt, mem};
 
-use crate::PhysicalAddress;
 use crate::arch::Arch;
+use crate::{AddressRangeExt, PhysicalAddress};
 
 pub struct Memory {
     regions: BTreeMap<PhysicalAddress, (PhysicalAddress, NonNull<[u8]>, Layout)>,
@@ -47,59 +47,57 @@ impl Memory {
         self.regions.iter().map(|(end, (start, _, _))| *start..*end)
     }
 
-    pub fn get_region_containing(&self, address: PhysicalAddress) -> Option<(&[u8], usize)> {
+    fn get_region_containing(&self, address: PhysicalAddress) -> Option<(NonNull<[u8]>, usize)> {
         let (_end, (start, region, _)) = self.regions.range(address..).next()?;
-        let offset = address.offset_from_unsigned(*start);
 
-        let region = unsafe { region.as_ref() };
-
-        Some((region, offset))
-    }
-
-    pub fn get_region_containing_mut(
-        &mut self,
-        address: PhysicalAddress,
-    ) -> Option<(&mut [u8], usize)> {
-        let (_end, (start, region, _)) = self.regions.range_mut(address..).next()?;
         let offset = address.get().checked_sub(start.get())?;
 
-        let region = unsafe { region.as_mut() };
+        Some((*region, offset))
+    }
 
-        Some((region, offset))
+    pub fn with_region<Ret>(
+        &self,
+        range: Range<PhysicalAddress>,
+        will_write: bool,
+        cb: impl FnOnce(&mut [u8]) -> Ret,
+    ) -> Ret {
+        let Some((mut region, offset)) = self.get_region_containing(range.start) else {
+            let access_ty = if will_write { "write" } else { "read" };
+
+            panic!(
+                "Memory Violation: {access_ty} at {range:?} ({} bytes) outside of memory ({self:?})",
+                range.len()
+            )
+        };
+
+        let region = unsafe { region.as_mut() };
+        let res = cb(&mut region[offset..offset + range.len()]);
+
+        res
     }
 
     pub unsafe fn read<T>(&self, address: PhysicalAddress) -> T {
         let size = size_of::<T>();
-        if let Some((region, offset)) = self.get_region_containing(address)
-            && offset + size <= region.len()
-        {
-            unsafe { region.as_ptr().add(offset).cast::<T>().read() }
-        } else {
-            core::panic!("Memory::read: {address} size {size:#x} outside of memory ({self:?})");
-        }
+        self.with_region(
+            Range::from_start_len(address, size),
+            false,
+            |region| unsafe { region.as_ptr().cast::<T>().read() },
+        )
     }
 
-    pub unsafe fn write<T>(&mut self, address: PhysicalAddress, value: T) {
+    pub unsafe fn write<T>(&self, address: PhysicalAddress, value: T) {
         let size = size_of::<T>();
-        if let Some((region, offset)) = self.get_region_containing_mut(address)
-            && offset + size <= region.len()
-        {
-            unsafe { region.as_mut_ptr().add(offset).cast::<T>().write(value) };
-        } else {
-            core::panic!("Memory::write: {address} size {size:#x} outside of memory ({self:?})");
-        }
+        self.with_region(
+            Range::from_start_len(address, size),
+            true,
+            |region| unsafe { region.as_mut_ptr().cast::<T>().write(value) },
+        )
     }
 
-    pub fn write_bytes(&mut self, address: PhysicalAddress, value: u8, count: usize) {
-        if let Some((region, offset)) = self.get_region_containing_mut(address)
-            && offset + count <= region.len()
-        {
-            region[offset..offset + count].fill(value);
-        } else {
-            core::panic!(
-                "Memory::write_bytes: {address} size {count:#x} outside of memory ({self:?})"
-            );
-        }
+    pub fn write_bytes(&self, address: PhysicalAddress, value: u8, count: usize) {
+        self.with_region(Range::from_start_len(address, count), true, |region| {
+            region.fill(value);
+        })
     }
 }
 

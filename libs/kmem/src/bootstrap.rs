@@ -1,6 +1,5 @@
 mod frame_allocator;
 
-use core::mem;
 use core::ops::Range;
 
 pub use frame_allocator::{BootstrapAllocator, DEFAULT_MAX_REGIONS, FreeRegions, UsedRegions};
@@ -8,13 +7,13 @@ pub use frame_allocator::{BootstrapAllocator, DEFAULT_MAX_REGIONS, FreeRegions, 
 use crate::arch::Arch;
 use crate::flush::Flush;
 use crate::{
-    AllocError, FrameAllocator, HardwareAddressSpace, MemoryAttributes, PhysicalAddress,
-    PhysicalMemoryMapping, VirtualAddress, WriteOrExecute,
+    AllocError, FrameAllocator, HardwareAddressSpace, MemoryAttributes, PhysMap, PhysicalAddress,
+    VirtualAddress, WriteOrExecute,
 };
 
 pub struct Bootstrap<S> {
     pub(crate) address_space: S,
-    pub(crate) future_physmap: PhysicalMemoryMapping,
+    pub(crate) future_physmap: PhysMap,
 }
 
 impl<A: Arch> Bootstrap<HardwareAddressSpace<A>> {
@@ -95,13 +94,12 @@ impl<A: Arch> Bootstrap<HardwareAddressSpace<A>> {
     where
         F: FrameAllocator,
     {
-        let virt = unsafe {
-            Range {
-                start: mem::transmute::<PhysicalAddress, VirtualAddress>(phys.start),
-                end: mem::transmute::<PhysicalAddress, VirtualAddress>(phys.end),
-            }
+        let virt = Range {
+            start: VirtualAddress::new(phys.start.get()),
+            end: VirtualAddress::new(phys.end.get()),
         };
 
+        // Safety: ensured by caller.
         unsafe {
             self.address_space
                 .map_contiguous(virt, phys.start, attributes, frame_allocator, flush)
@@ -114,11 +112,15 @@ impl<A: Arch> Bootstrap<HardwareAddressSpace<A>> {
     /// # Safety
     ///
     /// After this method returns, all pointers become dangling and as such any access through
-    /// pre-existing pointers is Undefined Behaviour. This includes implicit references by the CPU
+    /// pre-existing pointers is Undefined Behavior. This includes implicit references by the CPU
     /// such as the instruction pointer.
+    ///
+    /// This might seem impossible to uphold, except for identity-mappings which we consider valid
+    /// even after activating the address space.
     pub unsafe fn finish_bootstrap_and_activate(self) -> HardwareAddressSpace<A> {
         let (arch, root_table, _) = self.address_space.into_parts();
 
+        // Safety: ensured by caller
         unsafe { arch.set_active_table(root_table.address()) };
 
         HardwareAddressSpace::from_parts(arch, root_table, self.future_physmap)
