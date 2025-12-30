@@ -1,5 +1,8 @@
 use core::convert::Infallible;
 use core::ops::Range;
+use core::alloc::Layout;
+
+use fallible_iterator::FallibleIterator;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::bootstrap::{Bootstrap, BootstrapAllocator};
@@ -79,6 +82,18 @@ impl<A: Arch> HardwareAddressSpace<A> {
         &self.arch
     }
 
+    pub fn physmap(&self) -> &PhysMap {
+        &self.physmap
+    }
+
+    pub const fn granule_size(&self) -> usize {
+        A::GRANULE_SIZE
+    }
+
+    pub const fn granule_layout(&self) -> Layout {
+        A::GRANULE_LAYOUT
+    }
+
     /// Activate the address space on this CPU (set this CPUs page table).
     ///
     /// # Safety
@@ -117,6 +132,36 @@ impl<A: Arch> HardwareAddressSpace<A> {
         }
 
         unreachable!()
+    }
+
+    pub unsafe fn map(
+        &mut self,
+        mut virt: Range<VirtualAddress>,
+
+
+
+        // mut phys: impl FallibleIterator<Item = Range<PhysicalAddress>, Error = AllocError>,
+        attributes: MemoryAttributes,
+        frame_allocator: impl FrameAllocator,
+        flush: &mut Flush,
+    ) -> Result<(), AllocError> {
+        while let Some(phys) = phys.next()? {
+            debug_assert!(!virt.is_empty());
+
+            unsafe {
+                self.map_contiguous(
+                    Range::from_start_len(virt.start, phys.len()),
+                    phys.start,
+                    attributes,
+                    frame_allocator.by_ref(),
+                    flush,
+                )?;
+            }
+
+            virt.start = virt.start.add(phys.len());
+        }
+
+        Ok(())
     }
 
     /// Maps the virtual address range `virt` to a continuous region of physical memory starting at `phys`
@@ -444,14 +489,11 @@ mod tests {
     archtest! {
         #[test]
         fn map<A: Arch>() {
-            let BootstrapResult {
-                mut address_space,
-                frame_allocator,
-                ..
-            } = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
+            let res = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
                 .with_memory_regions([0xA000])
                 .finish_and_bootstrap()
                 .unwrap();
+            let (_, mut address_space, frame_allocator) = res;
 
             let frame = frame_allocator
                 .allocate_contiguous(A::GRANULE_LAYOUT)
@@ -484,23 +526,17 @@ mod tests {
 
         #[test]
         fn remap<A: Arch>() {
-            let BootstrapResult {
-                mut address_space,
-                frame_allocator,
-                ..
-            } = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
+            let res = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
                 .with_memory_regions([0xB000])
                 .finish_and_bootstrap()
                 .unwrap();
+            let (_, mut address_space, frame_allocator) = res;
 
             let frame = frame_allocator
                 .allocate_contiguous(A::GRANULE_LAYOUT)
                 .unwrap();
 
-            let page = Range::from_start_len(
-                VirtualAddress::new(0x7000),
-                A::GRANULE_SIZE,
-            );
+            let page = Range::from_start_len(VirtualAddress::new(0x7000), A::GRANULE_SIZE);
 
             let mut flush = Flush::new();
             unsafe {
@@ -547,23 +583,17 @@ mod tests {
 
         #[test]
         fn set_attributes<A: Arch>() {
-            let BootstrapResult {
-                mut address_space,
-                frame_allocator,
-                ..
-            } = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
+            let res = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
                 .with_memory_regions([0xB000])
                 .finish_and_bootstrap()
                 .unwrap();
+            let (_, mut address_space, frame_allocator) = res;
 
             let frame = frame_allocator
                 .allocate_contiguous(A::GRANULE_LAYOUT)
                 .unwrap();
 
-            let page = Range::from_start_len(
-                VirtualAddress::new(0x7000),
-                A::GRANULE_SIZE
-            );
+            let page = Range::from_start_len(VirtualAddress::new(0x7000), A::GRANULE_SIZE);
 
             let mut flush = Flush::new();
             unsafe {

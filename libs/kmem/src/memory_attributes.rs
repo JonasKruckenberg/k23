@@ -20,7 +20,7 @@ mycelium_bitfield::bitfield! {
     /// In order to prevent malicious code execution as proactively as possible,
     /// [`AccessRules`] can either allow *writes* OR *execution* but never both. This is enforced
     /// through the [`WriteOrExecute`] enum field.
-    #[derive(PartialEq, Eq)]
+    #[derive(Default, PartialEq, Eq)]
     pub struct MemoryAttributes<u8> {
         /// If set, reading from the memory region is allowed.
         pub const READ: bool;

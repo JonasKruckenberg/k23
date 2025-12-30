@@ -21,6 +21,7 @@ mod utils;
 pub use address::{PhysicalAddress, VirtualAddress};
 pub use address_range::AddressRangeExt;
 pub use address_space::HardwareAddressSpace;
+pub use arch::Arch;
 pub use flush::Flush;
 pub use frame_allocator::{AllocError, FrameAllocator, FrameIter};
 pub use memory_attributes::{MemoryAttributes, WriteOrExecute};
