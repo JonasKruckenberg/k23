@@ -15,13 +15,13 @@ proptest-derive = { workspace = true, optional = true }
 
 # 3rd-party dependencies
 mycelium-bitfield.workspace = true
-fallible-iterator.workspace = true
 log.workspace = true
 lock_api.workspace = true
 
 [dev-dependencies]
 kmem = { workspace = true, features = ["test_utils"] }
 parking_lot = "0.12.5"
+test-log = "0.2.19"
 
 [features]
 test_utils = ["cpu-local", "spin", "proptest", "proptest-derive"]

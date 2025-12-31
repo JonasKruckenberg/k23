@@ -2,7 +2,7 @@ pub mod riscv64;
 
 use core::alloc::Layout;
 use core::ops::Range;
-use core::{fmt, ptr};
+use core::{fmt, ptr, slice};
 
 use crate::{MemoryAttributes, PhysicalAddress, VirtualAddress};
 
@@ -138,6 +138,21 @@ pub trait Arch {
         unsafe { address.as_mut_ptr().cast::<T>().write(value) }
     }
 
+    /// Reads `count` bytes of memory starting at `address`. This leaves the memory in `address` unchanged.
+    ///
+    /// # Safety
+    ///
+    /// This method largely inherits the safety requirements of [`slice::from_raw_parts`], namely
+    /// behavior is undefined if any of the following conditions are violated:
+    ///
+    /// - `address` must be non-null and [valid] for reads of `count` bytes.
+    /// - `address` must be properly aligned.
+    /// - The memory referenced by the returned slice must not be mutated for the duration its lifetime.
+    unsafe fn read_bytes(&self, address: VirtualAddress, count: usize) -> &[u8] {
+        // Safety: ensured by the caller.
+        unsafe { slice::from_raw_parts(address.as_ptr(), count) }
+    }
+
     /// Sets `count` bytes of memory starting at `address` to `val`.
     ///
     /// `write_bytes` behaves like C's [`memset`].
@@ -149,10 +164,10 @@ pub trait Arch {
     /// This method largely inherits the safety requirements of [`ptr::write_bytes`], namely
     /// behavior is undefined if any of the following conditions are violated:
     ///
-    /// - `address` must be [valid] for writes of `count` bytes.
+    /// - `address` must be non-null and [valid] for writes of `count` bytes.
     /// - `address` must be properly aligned.
     ///
-    /// Note that even if the effectively copied sizeis 0, the pointer must be properly aligned.
+    /// Note that even if the effectively copied size is 0, the pointer must be properly aligned.
     ///
     /// [valid]:
     /// [`ptr::write_bytes`]: core::ptr::write_bytes()

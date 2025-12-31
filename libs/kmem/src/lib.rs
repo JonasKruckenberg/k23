@@ -3,6 +3,8 @@
 #![feature(step_trait)]
 #![feature(debug_closure_helpers)]
 #![feature(allocator_api)]
+#![feature(alloc_layout_extra)]
+extern crate core;
 
 mod address;
 mod address_range;
@@ -23,7 +25,7 @@ pub use address_range::AddressRangeExt;
 pub use address_space::HardwareAddressSpace;
 pub use arch::Arch;
 pub use flush::Flush;
-pub use frame_allocator::{AllocError, FrameAllocator, FrameIter};
+pub use frame_allocator::{AllocError, FrameAllocator};
 pub use memory_attributes::{MemoryAttributes, WriteOrExecute};
 pub use physmap::PhysMap;
 

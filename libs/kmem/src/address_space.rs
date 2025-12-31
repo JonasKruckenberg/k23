@@ -2,8 +2,6 @@ use core::alloc::Layout;
 use core::convert::Infallible;
 use core::ops::Range;
 
-use fallible_iterator::FallibleIterator;
-
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::bootstrap::{Bootstrap, BootstrapAllocator};
 use crate::flush::Flush;
@@ -161,12 +159,12 @@ impl<A: Arch> HardwareAddressSpace<A> {
     pub unsafe fn map(
         &mut self,
         mut virt: Range<VirtualAddress>,
-        mut phys: impl FallibleIterator<Item = Range<PhysicalAddress>, Error = AllocError>,
+        phys: impl ExactSizeIterator<Item = Range<PhysicalAddress>>,
         attributes: MemoryAttributes,
         frame_allocator: impl FrameAllocator,
         flush: &mut Flush,
     ) -> Result<(), AllocError> {
-        while let Some(chunk_phys) = phys.next()? {
+        for chunk_phys in phys {
             debug_assert!(!virt.is_empty());
 
             // Safety: ensured by caller
@@ -299,10 +297,10 @@ impl<A: Arch> HardwareAddressSpace<A> {
     pub unsafe fn remap(
         &mut self,
         mut virt: Range<VirtualAddress>,
-        mut phys: impl FallibleIterator<Item = Range<PhysicalAddress>, Error = AllocError>,
+        phys: impl ExactSizeIterator<Item = Range<PhysicalAddress>>,
         flush: &mut Flush,
     ) -> Result<(), AllocError> {
-        while let Some(chunk_phys) = phys.next()? {
+        for chunk_phys in phys {
             debug_assert!(!virt.is_empty());
 
             // Safety: ensured by caller
