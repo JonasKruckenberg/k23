@@ -1,11 +1,10 @@
 use core::alloc::Layout;
 use core::fmt;
-use core::num::NonZeroUsize;
 use core::ops::Range;
 
-use crate::PhysicalAddress;
 use crate::arch::Arch;
 use crate::physmap::PhysMap;
+use crate::{AddressRangeExt, PhysicalAddress};
 
 /// The `AllocError` error indicates a frame allocation failure that may be due
 /// to resource exhaustion or to something wrong when combining the given input
@@ -42,11 +41,11 @@ impl core::error::Error for AllocError {}
 pub unsafe trait FrameAllocator {
     /// Attempts to allocate physical memory.
     ///
-    /// On success, returns an iterator over the allocated chunks of physical memory. The combined
-    /// size of all chunks will meet the size required by `Layout` and each chunk will individually
+    /// On success, returns an iterator over the allocated blocks of physical memory. The combined
+    /// size of all blocks will meet the size required by `Layout` and each block will individually
     /// meet the alignment required by `Layout`.
     ///
-    /// The returned chunks may have a larger size than specified by `layout.size()`, and may or may
+    /// The returned blocks may have a larger size than specified by `layout.size()`, and may or may
     /// not have its contents initialized.
     ///
     /// # Errors
@@ -57,16 +56,16 @@ pub unsafe trait FrameAllocator {
     fn allocate(
         &self,
         layout: Layout,
-    ) -> Result<impl Iterator<Item = Range<PhysicalAddress>>, AllocError>;
+    ) -> Result<impl ExactSizeIterator<Item = Range<PhysicalAddress>>, AllocError>;
 
     /// Attempts to allocate physical memory.
     ///
-    /// On success, returns an iterator over the allocated chunks of physical memory. The combined
-    /// size of all chunks will meet the size required by `Layout` and each chunk will individually
+    /// On success, returns an iterator over the allocated blocks of physical memory. The combined
+    /// size of all blocks will meet the size required by `Layout` and each block will individually
     /// meet the alignment required by `Layout`.
     ///
-    /// The returned chunks may have a larger size than specified by `layout.size()`.
-    /// The contents of each chunk will be initialized to zero.
+    /// The returned blocks may have a larger size than specified by `layout.size()`.
+    /// The contents of each block will be initialized to zero.
     ///
     /// # Errors
     ///
@@ -78,7 +77,21 @@ pub unsafe trait FrameAllocator {
         layout: Layout,
         physmap: &PhysMap,
         arch: &impl Arch,
-    ) -> Result<impl Iterator<Item = Range<PhysicalAddress>>, AllocError>;
+    ) -> Result<impl ExactSizeIterator<Item = Range<PhysicalAddress>>, AllocError> {
+        let blocks = self.allocate(layout)?;
+
+        let blocks = blocks.inspect(|block_phys| {
+            let block_virt = physmap.phys_to_virt_range(block_phys.clone());
+            debug_assert_eq!(block_phys.len(), block_virt.len());
+
+            // Safety: we just allocated the block
+            unsafe {
+                arch.write_bytes(block_virt.start, 0, block_phys.len());
+            }
+        });
+
+        Ok(blocks)
+    }
 
     /// Attempts to allocate a contiguous block of physical memory.
     ///
@@ -145,8 +158,6 @@ pub unsafe trait FrameAllocator {
     {
         self
     }
-
-    fn size_hint(&self) -> (NonZeroUsize, Option<NonZeroUsize>);
 }
 
 // Safety: we just forward to the inner implementation
@@ -157,7 +168,7 @@ where
     fn allocate(
         &self,
         layout: Layout,
-    ) -> Result<impl Iterator<Item = Range<PhysicalAddress>>, AllocError> {
+    ) -> Result<impl ExactSizeIterator<Item = Range<PhysicalAddress>>, AllocError> {
         (**self).allocate(layout)
     }
 
@@ -166,7 +177,7 @@ where
         layout: Layout,
         physmap: &PhysMap,
         arch: &impl Arch,
-    ) -> Result<impl Iterator<Item = Range<PhysicalAddress>>, AllocError> {
+    ) -> Result<impl ExactSizeIterator<Item = Range<PhysicalAddress>>, AllocError> {
         (**self).allocate_zeroed(layout, physmap, arch)
     }
 
@@ -186,9 +197,5 @@ where
     unsafe fn deallocate(&self, block: PhysicalAddress, layout: Layout) {
         // Safety: ensured by caller
         unsafe { (**self).deallocate(block, layout) }
-    }
-
-    fn size_hint(&self) -> (NonZeroUsize, Option<NonZeroUsize>) {
-        (**self).size_hint()
     }
 }

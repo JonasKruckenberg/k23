@@ -43,9 +43,13 @@ pub fn region_sizes(
         num_regions,
     )
     .prop_map(move |mut regions| {
-        regions
-            .iter_mut()
-            .for_each(|size| *size = *size & 0usize.wrapping_sub(alignment));
+        regions.iter_mut().for_each(|size| {
+            let align_minus_one = unsafe { alignment.unchecked_sub(1) };
+
+            *size = size.wrapping_add(align_minus_one) & 0usize.wrapping_sub(alignment);
+
+            debug_assert_ne!(*size, 0);
+        });
         regions
     })
 }

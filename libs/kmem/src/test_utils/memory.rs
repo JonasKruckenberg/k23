@@ -47,16 +47,23 @@ impl Memory {
         self.regions.iter().map(|(end, (start, _, _))| *start..*end)
     }
 
-    fn get_region_containing(&self, address: PhysicalAddress) -> Option<(NonNull<[u8]>, usize)> {
-        let (_end, (start, region, _)) = self.regions.range(address..).next()?;
+    fn get_region_containing(
+        &self,
+        range: Range<PhysicalAddress>,
+    ) -> Option<(NonNull<[u8]>, usize)> {
+        let (_end, (start, region, _)) = self.regions.range(range.start.add(1)..).next()?;
 
-        let offset = address.get().checked_sub(start.get())?;
+        let offset = range.start.get().checked_sub(start.get())?;
+
+        if offset + range.len() > region.len() {
+            return None;
+        }
 
         Some((*region, offset))
     }
 
     pub fn region(&self, range: Range<PhysicalAddress>, will_write: bool) -> &mut [u8] {
-        let Some((mut region, offset)) = self.get_region_containing(range.start) else {
+        let Some((mut region, offset)) = self.get_region_containing(range.clone()) else {
             let access_ty = if will_write { "write" } else { "read" };
 
             panic!(

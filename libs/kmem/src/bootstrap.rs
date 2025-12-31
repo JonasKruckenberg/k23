@@ -2,7 +2,7 @@ mod frame_allocator;
 
 use core::ops::Range;
 
-pub use frame_allocator::{BootstrapAllocator, DEFAULT_MAX_REGIONS, FreeRegions, UsedRegions};
+pub use frame_allocator::{BootstrapAllocator, DEFAULT_MAX_REGIONS};
 
 use crate::arch::Arch;
 use crate::flush::Flush;
@@ -34,9 +34,9 @@ impl<A: Arch> Bootstrap<HardwareAddressSpace<A>> {
     ///
     /// Returning `Err` indicates the mapping cannot be established and the address space remains
     /// unaltered.
-    pub fn map_physical_memory<R: lock_api::RawMutex>(
+    pub fn map_physical_memory<R: lock_api::RawMutex, const MAX_REGIONS: usize>(
         &mut self,
-        frame_allocator: &BootstrapAllocator<R>,
+        frame_allocator: &BootstrapAllocator<R, MAX_REGIONS>,
         flush: &mut Flush,
     ) -> Result<(), AllocError> {
         let attrs = MemoryAttributes::new()
