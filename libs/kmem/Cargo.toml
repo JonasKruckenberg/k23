@@ -20,9 +20,8 @@ log.workspace = true
 lock_api.workspace = true
 
 [dev-dependencies]
-parking_lot = "0.12.5"
 kmem = { workspace = true, features = ["test_utils"] }
-bitflags.workspace = true
+parking_lot = "0.12.5"
 
 [features]
 test_utils = ["cpu-local", "spin", "proptest", "proptest-derive"]

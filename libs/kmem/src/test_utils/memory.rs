@@ -55,12 +55,7 @@ impl Memory {
         Some((*region, offset))
     }
 
-    pub fn with_region<Ret>(
-        &self,
-        range: Range<PhysicalAddress>,
-        will_write: bool,
-        cb: impl FnOnce(&mut [u8]) -> Ret,
-    ) -> Ret {
+    pub fn region(&self, range: Range<PhysicalAddress>, will_write: bool) -> &mut [u8] {
         let Some((mut region, offset)) = self.get_region_containing(range.start) else {
             let access_ty = if will_write { "write" } else { "read" };
 
@@ -71,33 +66,31 @@ impl Memory {
         };
 
         let region = unsafe { region.as_mut() };
-        let res = cb(&mut region[offset..offset + range.len()]);
-
-        res
+        &mut region[offset..offset + range.len()]
     }
 
     pub unsafe fn read<T>(&self, address: PhysicalAddress) -> T {
         let size = size_of::<T>();
-        self.with_region(
-            Range::from_start_len(address, size),
-            false,
-            |region| unsafe { region.as_ptr().cast::<T>().read() },
-        )
+        let region = self.region(Range::from_start_len(address, size), false);
+
+        unsafe { region.as_ptr().cast::<T>().read() }
     }
 
     pub unsafe fn write<T>(&self, address: PhysicalAddress, value: T) {
         let size = size_of::<T>();
-        self.with_region(
-            Range::from_start_len(address, size),
-            true,
-            |region| unsafe { region.as_mut_ptr().cast::<T>().write(value) },
-        )
+        let region = self.region(Range::from_start_len(address, size), true);
+
+        unsafe { region.as_mut_ptr().cast::<T>().write(value) }
+    }
+
+    pub fn read_bytes(&self, address: PhysicalAddress, count: usize) -> &[u8] {
+        self.region(Range::from_start_len(address, count), false)
     }
 
     pub fn write_bytes(&self, address: PhysicalAddress, value: u8, count: usize) {
-        self.with_region(Range::from_start_len(address, count), true, |region| {
-            region.fill(value);
-        })
+        let region = self.region(Range::from_start_len(address, count), true);
+
+        region.fill(value);
     }
 }
 

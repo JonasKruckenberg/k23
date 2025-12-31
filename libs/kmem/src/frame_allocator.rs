@@ -42,7 +42,7 @@ impl core::error::Error for AllocError {}
 /// A memory block which is currently allocated may be passed to any method of the allocator that
 /// accepts such an argument.
 pub unsafe trait FrameAllocator {
-    fn allocate(&self, layout: Layout) -> FrameIter<'_, Self, false>
+    fn allocate(&self, layout: Layout) -> FrameIter<'_, Self>
     where
         Self: Sized,
     {
@@ -53,16 +53,21 @@ pub unsafe trait FrameAllocator {
         }
     }
 
-    // fn allocate_zeroed(&self, layout: Layout) -> FrameIter<'_, Self, true>
-    // where
-    //     Self: Sized,
-    // {
-    //     FrameIter {
-    //         alloc: self,
-    //         remaining: layout.size(),
-    //         alignment: layout.align(),
-    //     }
-    // }
+    fn allocate_zeroed<'a, A: Arch>(
+        &self,
+        layout: Layout,
+        physmap: &'a PhysMap,
+        arch: &'a A,
+    ) -> FrameIterZeroed<'_, 'a, Self, A>
+    where
+        Self: Sized,
+    {
+        FrameIterZeroed {
+            inner: self.allocate(layout),
+            physmap,
+            arch,
+        }
+    }
 
     /// Attempts to allocate a contiguous block of physical memory.
     ///
@@ -98,17 +103,17 @@ pub unsafe trait FrameAllocator {
         physmap: &PhysMap,
         arch: &impl Arch,
     ) -> Result<PhysicalAddress, AllocError> {
-        let frame = self.allocate_contiguous(layout)?;
+        let phys = self.allocate_contiguous(layout)?;
 
-        let page = physmap.phys_to_virt(frame);
+        let virt = physmap.phys_to_virt(phys);
 
         // Safety: the address is properly aligned (at least page aligned) and is either valid to
         // access through the physical memory map or because we're in bootstrapping still and phys==virt
         unsafe {
-            arch.write_bytes(page, 0, layout.size());
+            arch.write_bytes(virt, 0, layout.size());
         }
 
-        Ok(frame)
+        Ok(phys)
     }
 
     /// Deallocates the block of memory referenced by `block`.
@@ -142,9 +147,14 @@ where
         (**self).allocate_contiguous(layout)
     }
 
-    // fn allocate_contiguous_zeroed(&self, layout: Layout, arch: &impl Arch) -> Result<PhysicalAddress, AllocError> {
-    //     (**self).allocate_contiguous_zeroed(layout, arch)
-    // }
+    fn allocate_contiguous_zeroed(
+        &self,
+        layout: Layout,
+        physmap: &PhysMap,
+        arch: &impl Arch,
+    ) -> Result<PhysicalAddress, AllocError> {
+        (**self).allocate_contiguous_zeroed(layout, physmap, arch)
+    }
 
     unsafe fn deallocate(&self, block: PhysicalAddress, layout: Layout) {
         // Safety: ensured by caller
@@ -156,13 +166,13 @@ where
     }
 }
 
-pub struct FrameIter<'alloc, F: ?Sized, const ZEROED: bool> {
+pub struct FrameIter<'alloc, F: ?Sized> {
     alloc: &'alloc F,
     remaining: usize,
     alignment: usize,
 }
 
-impl<F: FrameAllocator, const ZEROED: bool> FallibleIterator for FrameIter<'_, F, ZEROED> {
+impl<F: FrameAllocator> FallibleIterator for FrameIter<'_, F> {
     type Item = Range<PhysicalAddress>;
     type Error = AllocError;
 
@@ -182,15 +192,36 @@ impl<F: FrameAllocator, const ZEROED: bool> FallibleIterator for FrameIter<'_, F
         );
         let layout = Layout::from_size_align(alloc_size.get(), self.alignment).unwrap();
 
-        let addr = if ZEROED {
-            todo!()
-            // self.alloc.allocate_contiguous_zeroed(layout)?
-        } else {
-            self.alloc.allocate_contiguous(layout)?
-        };
+        let addr = self.alloc.allocate_contiguous(layout)?;
 
         self.remaining -= requested_size.get();
 
         Ok(Some(Range::from_start_len(addr, requested_size.get())))
+    }
+}
+
+pub struct FrameIterZeroed<'alloc, 'a, F: ?Sized, A: Arch> {
+    inner: FrameIter<'alloc, F>,
+    physmap: &'a PhysMap,
+    arch: &'a A,
+}
+
+impl<F: FrameAllocator, A: Arch> FallibleIterator for FrameIterZeroed<'_, '_, F, A> {
+    type Item = Range<PhysicalAddress>;
+    type Error = AllocError;
+
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        let Some(range) = self.inner.next()? else {
+            return Ok(None);
+        };
+
+        let virt = self.physmap.phys_to_virt_range(range.clone());
+
+        // Safety: we just allocated the frame
+        unsafe {
+            self.arch.write_bytes(virt.start, 0, virt.len());
+        }
+
+        Ok(Some(range))
     }
 }

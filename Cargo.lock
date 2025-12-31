@@ -1097,7 +1097,6 @@ name = "kmem"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
- "bitflags",
  "cpu-local",
  "fallible-iterator",
  "kmem",

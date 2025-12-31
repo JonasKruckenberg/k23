@@ -4,7 +4,7 @@ mod memory;
 pub mod proptest;
 
 pub use arch::EmulateArch;
-pub use machine::{BootstrapResult, Cpu, HasMemory, Machine, MachineBuilder, MissingMemory};
+pub use machine::{Cpu, HasMemory, Machine, MachineBuilder, MissingMemory};
 pub use memory::Memory;
 
 #[macro_export]

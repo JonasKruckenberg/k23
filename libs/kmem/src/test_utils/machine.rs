@@ -54,27 +54,55 @@ impl<A: Arch> Machine<A> {
         self.0.memory.regions().collect()
     }
 
-    pub unsafe fn read<T>(&self, asid: u16, addr: VirtualAddress) -> T {
-        assert!(addr.is_aligned_to(size_of::<T>()));
+    pub unsafe fn read<T>(&self, asid: u16, address: VirtualAddress) -> T {
+        assert!(address.is_aligned_to(size_of::<T>()));
 
-        if let Some((phys, attrs, _level)) = self.cpu().translate(asid, addr) {
+        if let Some((phys, attrs, level)) = self.cpu().translate(asid, address) {
             assert!(attrs.allows_read());
+            assert_eq!(
+                address.align_down(level.page_size()),
+                address.add(size_of::<T>()).align_down(level.page_size()),
+                "reads crossing page boundaries are not supported. {address} + {}",
+                size_of::<T>()
+            );
 
             unsafe { self.read_phys(phys) }
         } else {
-            core::panic!("read: {addr} size {:#x} not present", size_of::<T>());
+            core::panic!("read: {address} size {:#x} not present", size_of::<T>());
         }
     }
 
-    pub unsafe fn write<T>(&self, asid: u16, addr: VirtualAddress, value: T) {
-        assert!(addr.is_aligned_to(size_of::<T>()));
+    pub unsafe fn write<T>(&self, asid: u16, address: VirtualAddress, value: T) {
+        assert!(address.is_aligned_to(size_of::<T>()));
 
-        if let Some((phys, attrs, _level)) = self.cpu().translate(asid, addr) {
+        if let Some((phys, attrs, level)) = self.cpu().translate(asid, address) {
             assert!(attrs.allows_read());
+            assert_eq!(
+                address.align_down(level.page_size()),
+                address.add(size_of::<T>()).align_down(level.page_size()),
+                "typed writes crossing page boundaries are not supported. {address} + {}",
+                size_of::<T>()
+            );
 
             unsafe { self.write_phys(phys, value) }
         } else {
-            core::panic!("write: {addr} size {:#x} not present", size_of::<T>());
+            core::panic!("write: {address} size {:#x} not present", size_of::<T>());
+        }
+    }
+
+    pub fn read_bytes(&self, asid: u16, address: VirtualAddress, count: usize) -> &[u8] {
+        if let Some((phys, attrs, level)) = self.cpu().translate(asid, address) {
+            assert!(attrs.allows_read());
+            assert_eq!(
+                address.align_down(level.page_size()),
+                address.add(count).align_down(level.page_size()),
+                "reads crossing page boundaries are not supported. {address} + {}",
+                count
+            );
+
+            self.read_bytes_phys(phys, count)
+        } else {
+            panic!("write: {address} size {count:#x} not present");
         }
     }
 
@@ -104,6 +132,10 @@ impl<A: Arch> Machine<A> {
 
     pub unsafe fn write_phys<T>(&self, address: PhysicalAddress, value: T) {
         unsafe { self.0.memory.write(address, value) }
+    }
+
+    pub fn read_bytes_phys(&self, address: PhysicalAddress, count: usize) -> &[u8] {
+        self.0.memory.read_bytes(address, count)
     }
 
     pub fn write_bytes_phys(&self, address: PhysicalAddress, value: u8, count: usize) {
@@ -247,12 +279,6 @@ pub struct MachineBuilder<A: Arch, R: lock_api::RawMutex, Mem> {
     _m: PhantomData<(A, R)>,
 }
 
-pub struct BootstrapResult<A: Arch, R: lock_api::RawMutex> {
-    pub machine: Machine<A>,
-    pub address_space: HardwareAddressSpace<EmulateArch<A>>,
-    pub frame_allocator: BootstrapAllocator<R>,
-}
-
 impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, MissingMemory> {
     pub fn new() -> Self {
         Self {
@@ -299,7 +325,16 @@ impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, HasMemory> {
         (Machine(Arc::new(inner)), physmap)
     }
 
-    pub fn finish_and_bootstrap(self) -> Result<BootstrapResult<A, R>, AllocError> {
+    pub fn finish_and_bootstrap(
+        self,
+    ) -> Result<
+        (
+            Machine<A>,
+            HardwareAddressSpace<EmulateArch<A>>,
+            BootstrapAllocator<R>,
+        ),
+        AllocError,
+    > {
         let (machine, physmap) = self.finish();
 
         let arch = EmulateArch::new(machine.clone());
@@ -318,10 +353,6 @@ impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, HasMemory> {
 
         flush.flush(address_space.arch());
 
-        Ok(BootstrapResult {
-            machine,
-            address_space,
-            frame_allocator,
-        })
+        Ok((machine, address_space, frame_allocator))
     }
 }

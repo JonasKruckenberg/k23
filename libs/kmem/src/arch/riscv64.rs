@@ -19,6 +19,12 @@ pub struct Riscv64Sv39 {
     asid: u16,
 }
 
+impl Riscv64Sv39 {
+    pub const fn new(asid: u16) -> Riscv64Sv39 {
+        Riscv64Sv39 { asid }
+    }
+}
+
 impl super::Arch for Riscv64Sv39 {
     type PageTableEntry = PageTableEntry;
 
