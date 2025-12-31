@@ -49,7 +49,8 @@ jobs:
 
             Use the repository's CLAUDE.md for guidance on style and conventions.
             Include a single list of 5 recommendations sorted by relevance.
-            Keep your comments and recommendations concise, technical and to the point.
+            Keep your comments and recommendations concise, SHORT, technical and to the point.
+            Only comment comment when you have a **high** degree of confidence.
 
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
 
