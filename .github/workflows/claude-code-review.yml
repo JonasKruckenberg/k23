@@ -47,8 +47,9 @@ jobs:
             - Security concerns
             - Test coverage
 
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
-            Keep your comments and recommendations concise, technical and to the point. Include a single list of recommendations sorted by relevance. 
+            Use the repository's CLAUDE.md for guidance on style and conventions.
+            Include a single list of 5 recommendations sorted by relevance.
+            Keep your comments and recommendations concise, technical and to the point.
 
             Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
 
