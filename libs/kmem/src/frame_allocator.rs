@@ -103,17 +103,17 @@ pub unsafe trait FrameAllocator {
         physmap: &PhysMap,
         arch: &impl Arch,
     ) -> Result<PhysicalAddress, AllocError> {
-        let frame = self.allocate_contiguous(layout)?;
+        let phys = self.allocate_contiguous(layout)?;
 
-        let page = physmap.phys_to_virt(frame);
+        let virt = physmap.phys_to_virt(phys);
 
         // Safety: the address is properly aligned (at least page aligned) and is either valid to
         // access through the physical memory map or because we're in bootstrapping still and phys==virt
         unsafe {
-            arch.write_bytes(page, 0, layout.size());
+            arch.write_bytes(virt, 0, layout.size());
         }
 
-        Ok(frame)
+        Ok(phys)
     }
 
     /// Deallocates the block of memory referenced by `block`.
@@ -147,9 +147,14 @@ where
         (**self).allocate_contiguous(layout)
     }
 
-    // fn allocate_contiguous_zeroed(&self, layout: Layout, arch: &impl Arch) -> Result<PhysicalAddress, AllocError> {
-    //     (**self).allocate_contiguous_zeroed(layout, arch)
-    // }
+    fn allocate_contiguous_zeroed(
+        &self,
+        layout: Layout,
+        physmap: &PhysMap,
+        arch: &impl Arch,
+    ) -> Result<PhysicalAddress, AllocError> {
+        (**self).allocate_contiguous_zeroed(layout, physmap, arch)
+    }
 
     unsafe fn deallocate(&self, block: PhysicalAddress, layout: Layout) {
         // Safety: ensured by caller

@@ -1,6 +1,6 @@
+use core::alloc::Layout;
 use core::convert::Infallible;
 use core::ops::Range;
-use core::alloc::Layout;
 
 use fallible_iterator::FallibleIterator;
 
@@ -134,31 +134,53 @@ impl<A: Arch> HardwareAddressSpace<A> {
         unreachable!()
     }
 
+    /// Maps the virtual address range `virt` to *possibly discontiguous* chunk(s) of physical memory
+    /// `phys` with the specified memory attributes.
+    ///
+    /// If this returns `Ok`, the mapping is added to the address space.
+    ///
+    /// Note that this method **does not** establish any ordering between address space modification
+    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
+    /// new mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    ///
+    /// After the modifications have been synchronized with current execution, all accesses to the virtual
+    /// address range will translate to accesses of the physical address range and adhere to the
+    /// access rules established by the `MemoryAttributes`.
+    ///
+    /// # Safety
+    ///
+    /// 1. The entire range `virt` must be unmapped.
+    /// 2. `virt` must be aligned to at least the smallest architecture block size.
+    /// 3. `phys` chunks must be aligned to at least the smallest architecture block size.
+    /// 4. `phys` chunks must in-total be at least as large as `virt`.
+    ///
+    /// # Errors
+    ///
+    /// Returning `Err` indicates the mapping cannot be established. NOTE: The address space may remain
+    /// partially altered. The caller should call *unmap* on the virtual address range upon failure.
     pub unsafe fn map(
         &mut self,
         mut virt: Range<VirtualAddress>,
-
-
-
-        // mut phys: impl FallibleIterator<Item = Range<PhysicalAddress>, Error = AllocError>,
+        mut phys: impl FallibleIterator<Item = Range<PhysicalAddress>, Error = AllocError>,
         attributes: MemoryAttributes,
         frame_allocator: impl FrameAllocator,
         flush: &mut Flush,
     ) -> Result<(), AllocError> {
-        while let Some(phys) = phys.next()? {
+        while let Some(chunk_phys) = phys.next()? {
             debug_assert!(!virt.is_empty());
 
+            // Safety: ensured by caller
             unsafe {
                 self.map_contiguous(
-                    Range::from_start_len(virt.start, phys.len()),
-                    phys.start,
+                    Range::from_start_len(virt.start, chunk_phys.len()),
+                    chunk_phys.start,
                     attributes,
                     frame_allocator.by_ref(),
                     flush,
                 )?;
             }
 
-            virt.start = virt.start.add(phys.len());
+            virt.start = virt.start.add(chunk_phys.len());
         }
 
         Ok(())
@@ -182,11 +204,12 @@ impl<A: Arch> HardwareAddressSpace<A> {
     /// 1. The entire range `virt` must be unmapped.
     /// 2. `virt` must be aligned to at least the smallest architecture block size.
     /// 3. `phys` must be aligned to at least the smallest architecture block size.
+    /// 4. The region pointed to by `phys` must be at least as large as `virt`.
     ///
     /// # Errors
     ///
-    /// Returning `Err` indicates the mapping cannot be established and the address space remains
-    /// unaltered.
+    /// Returning `Err` indicates the mapping cannot be established. NOTE: The address space may remain
+    /// partially altered. The caller should call *unmap* on the virtual address range upon failure.
     pub unsafe fn map_contiguous(
         &mut self,
         virt: Range<VirtualAddress>,
@@ -252,7 +275,52 @@ impl<A: Arch> HardwareAddressSpace<A> {
         Ok(())
     }
 
-    /// Remaps the virtual address range `virt` to a new continuous region of physical memory start
+    /// Remaps the virtual address range `virt` to new *possibly discontiguous* chunk(s) of physical
+    /// memory `phys`. The old physical memory region is not freed.
+    ///
+    /// Note that this method **does not** establish any ordering between address space modification
+    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
+    /// updated mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    ///
+    /// After the modifications have been synchronized with current execution, all accesses to the virtual
+    /// address range will translate to accesses of the new physical address range.
+    ///
+    /// # Safety
+    ///
+    /// 1. The entire range `virt` must be mapped.
+    /// 2. `virt` must be aligned to at least the smallest architecture block size.
+    /// 3. `phys` chunks must be aligned to `at least the smallest architecture block size.
+    /// 4. `phys` chunks must in-total be at least as large as `virt`.
+    ///
+    /// # Errors
+    ///
+    /// Returning `Err` indicates the mapping cannot be established. NOTE: The address space may remain
+    /// partially altered. The caller should call *unmap* on the virtual address range upon failure.
+    pub unsafe fn remap(
+        &mut self,
+        mut virt: Range<VirtualAddress>,
+        mut phys: impl FallibleIterator<Item = Range<PhysicalAddress>, Error = AllocError>,
+        flush: &mut Flush,
+    ) -> Result<(), AllocError> {
+        while let Some(chunk_phys) = phys.next()? {
+            debug_assert!(!virt.is_empty());
+
+            // Safety: ensured by caller
+            unsafe {
+                self.remap_contiguous(
+                    Range::from_start_len(virt.start, chunk_phys.len()),
+                    chunk_phys.start,
+                    flush,
+                );
+            }
+
+            virt.start = virt.start.add(chunk_phys.len());
+        }
+
+        Ok(())
+    }
+
+    /// Remaps the virtual address range `virt` to a new continuous region of physical memory starting
     /// at `phys`. The old physical memory region is not freed.
     ///
     /// Note that this method **does not** establish any ordering between address space modification
@@ -267,6 +335,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
     /// 1. The entire range `virt` must be mapped.
     /// 2. `virt` must be aligned to at least the smallest architecture block size.
     /// 3. `phys` must be aligned to `at least the smallest architecture block size.
+    /// 4. The region pointed to by `phys` must be at least as large as `virt`.
     pub unsafe fn remap_contiguous(
         &mut self,
         virt: Range<VirtualAddress>,
@@ -483,7 +552,7 @@ mod tests {
     use crate::arch::Arch;
     use crate::flush::Flush;
     use crate::frame_allocator::FrameAllocator;
-    use crate::test_utils::{BootstrapResult, MachineBuilder};
+    use crate::test_utils::MachineBuilder;
     use crate::{MemoryAttributes, VirtualAddress, WriteOrExecute, archtest};
 
     archtest! {
