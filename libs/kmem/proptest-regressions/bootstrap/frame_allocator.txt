@@ -1,0 +1,16 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc fb3867557e4125c9af34128bc2d2b86f878f5a1a40db8db2380262cbb51571cd # shrinks to region_sizes = []
+cc a5d30f8381e0d4dcab3cf645f308d1998dc2dd7802e0e47a985e74babf2fc543 # shrinks to region_sizes = []
+cc 7849807d5ff072a5df694489ecd12668ee5f7aa50a281a94fec2b58142cb1566 # shrinks to region_sizes = []
+cc 589e03024578c3fc3583201c824e75d7947a96c14153416c4c260415a69c0a28 # shrinks to region_sizes = [4096], alignment_pot = 13
+cc ff2dcd7413a420740b44940b64bda8956711aab2bcd68c9771b8e06361f7b9fc # shrinks to region_sizes = [4096, 4096], alignment_pot = 13
+cc 4acc0a82561e26e57b9c37aee7ba9f3ee03df2a399a444f96e8d402ffc4ebe90 # shrinks to region_sizes = [4096], alignment_pot = 13
+cc cffd8e7f33b1804f3ca8808dc85381851df16ade0431000006b49f31f69dfd18 # shrinks to region_sizes = [4294971392, 4294975488, 4096], alignment_pot = 32
+cc 791f5e19cd5c7aff666d2823dbca4be2f1b4d41b52cd7d5847ea5c2be795e18d # shrinks to region_sizes = [4096], alignment_pot = 13
+cc 423b7f20d0692df9842b5e45736a8d9b7732362eddea413f2955d20a8cce549a # shrinks to region_sizes = [1073741824], alignment_pot = 30
+cc 230d6d336cc87025a79f56c49cd98699f02940b892ec15c0f586660dd0a191ce # shrinks to region_sizes = [1073741824], size = 536870913, alignment_pot = 29

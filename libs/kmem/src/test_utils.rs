@@ -8,6 +8,30 @@ pub use machine::{Cpu, HasMemory, Machine, MachineBuilder, MissingMemory};
 pub use memory::Memory;
 
 #[macro_export]
+macro_rules! for_every_arch {
+    ($arch:ident => {$($body:item)*}) => {
+        mod riscv64_sv39 {
+            use super::*;
+            type $arch = $crate::arch::riscv64::Riscv64Sv39;
+
+            $($body)*
+        }
+        mod riscv64_sv48 {
+            use super::*;
+            type $arch = $crate::arch::riscv64::Riscv64Sv48;
+
+            $($body)*
+        }
+        mod riscv64_sv57 {
+            use super::*;
+            type $arch = $crate::arch::riscv64::Riscv64Sv57;
+
+            $($body)*
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! archtest {
     ($($(#[$meta:meta])* fn $test_name:ident$(<$ge:ident: $gen_ty:tt>)*() $body:block)*) => {
         mod riscv64_sv39 {

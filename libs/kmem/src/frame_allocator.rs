@@ -1,9 +1,6 @@
 use core::alloc::Layout;
-use core::num::NonZeroUsize;
+use core::fmt;
 use core::ops::Range;
-use core::{cmp, fmt};
-
-use fallible_iterator::FallibleIterator;
 
 use crate::arch::Arch;
 use crate::physmap::PhysMap;
@@ -42,31 +39,58 @@ impl core::error::Error for AllocError {}
 /// A memory block which is currently allocated may be passed to any method of the allocator that
 /// accepts such an argument.
 pub unsafe trait FrameAllocator {
-    fn allocate(&self, layout: Layout) -> FrameIter<'_, Self>
-    where
-        Self: Sized,
-    {
-        FrameIter {
-            alloc: self,
-            remaining: layout.size(),
-            alignment: layout.align(),
-        }
-    }
-
-    fn allocate_zeroed<'a, A: Arch>(
+    /// Attempts to allocate physical memory.
+    ///
+    /// On success, returns an iterator over the allocated blocks of physical memory. The combined
+    /// size of all blocks will meet the size required by `Layout` and each block will individually
+    /// meet the alignment required by `Layout`.
+    ///
+    /// The returned blocks may have a larger size than specified by `layout.size()`, and may or may
+    /// not have its contents initialized.
+    ///
+    /// # Errors
+    ///
+    /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
+    /// allocator's size or alignment constraints. You can check [`Self::max_alignment_hint`] for
+    /// the largest alignment possibly supported by this allocator.
+    fn allocate(
         &self,
         layout: Layout,
-        physmap: &'a PhysMap,
-        arch: &'a A,
-    ) -> FrameIterZeroed<'_, 'a, Self, A>
-    where
-        Self: Sized,
-    {
-        FrameIterZeroed {
-            inner: self.allocate(layout),
-            physmap,
-            arch,
-        }
+    ) -> Result<impl ExactSizeIterator<Item = Range<PhysicalAddress>>, AllocError>;
+
+    /// Attempts to allocate physical memory.
+    ///
+    /// On success, returns an iterator over the allocated blocks of physical memory. The combined
+    /// size of all blocks will meet the size required by `Layout` and each block will individually
+    /// meet the alignment required by `Layout`.
+    ///
+    /// The returned blocks may have a larger size than specified by `layout.size()`.
+    /// The contents of each block will be initialized to zero.
+    ///
+    /// # Errors
+    ///
+    /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
+    /// allocator's size or alignment constraints. You can check [`Self::max_alignment_hint`] for
+    /// the largest alignment possibly supported by this allocator.
+    fn allocate_zeroed(
+        &self,
+        layout: Layout,
+        physmap: &PhysMap,
+        arch: &impl Arch,
+    ) -> Result<impl ExactSizeIterator<Item = Range<PhysicalAddress>>, AllocError> {
+        let blocks = self.allocate(layout)?;
+
+        let blocks = blocks.inspect(|block_phys| {
+            let block_virt = physmap.phys_to_virt_range(block_phys.clone());
+            debug_assert_eq!(block_phys.len(), block_virt.len());
+
+            // Safety: we just allocated the block
+            unsafe {
+                arch.write_bytes(block_virt.start, 0, block_phys.len());
+            }
+        });
+
+        Ok(blocks)
     }
 
     /// Attempts to allocate a contiguous block of physical memory.
@@ -89,8 +113,8 @@ pub unsafe trait FrameAllocator {
     /// On success, returns a [`PhysicalAddress`] meeting the size and alignment guarantees
     /// of `layout`.
     ///
-    /// The returned block may have a larger size than specified by `layout.size()`, and may or may
-    /// not have its contents initialized.
+    /// The returned block may have a larger size than specified by `layout.size()`.
+    /// The contents of the returned block will be initialized to zero.
     ///
     /// # Errors
     ///
@@ -134,8 +158,6 @@ pub unsafe trait FrameAllocator {
     {
         self
     }
-
-    fn size_hint(&self) -> (NonZeroUsize, Option<NonZeroUsize>);
 }
 
 // Safety: we just forward to the inner implementation
@@ -143,6 +165,22 @@ unsafe impl<F> FrameAllocator for &F
 where
     F: FrameAllocator + ?Sized,
 {
+    fn allocate(
+        &self,
+        layout: Layout,
+    ) -> Result<impl ExactSizeIterator<Item = Range<PhysicalAddress>>, AllocError> {
+        (**self).allocate(layout)
+    }
+
+    fn allocate_zeroed(
+        &self,
+        layout: Layout,
+        physmap: &PhysMap,
+        arch: &impl Arch,
+    ) -> Result<impl ExactSizeIterator<Item = Range<PhysicalAddress>>, AllocError> {
+        (**self).allocate_zeroed(layout, physmap, arch)
+    }
+
     fn allocate_contiguous(&self, layout: Layout) -> Result<PhysicalAddress, AllocError> {
         (**self).allocate_contiguous(layout)
     }
@@ -159,69 +197,5 @@ where
     unsafe fn deallocate(&self, block: PhysicalAddress, layout: Layout) {
         // Safety: ensured by caller
         unsafe { (**self).deallocate(block, layout) }
-    }
-
-    fn size_hint(&self) -> (NonZeroUsize, Option<NonZeroUsize>) {
-        (**self).size_hint()
-    }
-}
-
-pub struct FrameIter<'alloc, F: ?Sized> {
-    alloc: &'alloc F,
-    remaining: usize,
-    alignment: usize,
-}
-
-impl<F: FrameAllocator> FallibleIterator for FrameIter<'_, F> {
-    type Item = Range<PhysicalAddress>;
-    type Error = AllocError;
-
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let Some(remaining) = NonZeroUsize::new(self.remaining) else {
-            return Ok(None);
-        };
-
-        let (min_size, max_size) = self.alloc.size_hint();
-
-        let requested_size = cmp::min(remaining, max_size.unwrap_or(NonZeroUsize::MAX));
-        let alloc_size = cmp::max(requested_size, min_size);
-
-        log::trace!(
-            "requested_size={requested_size:?} alloc_size={alloc_size:?} align={:?}",
-            self.alignment
-        );
-        let layout = Layout::from_size_align(alloc_size.get(), self.alignment).unwrap();
-
-        let addr = self.alloc.allocate_contiguous(layout)?;
-
-        self.remaining -= requested_size.get();
-
-        Ok(Some(Range::from_start_len(addr, requested_size.get())))
-    }
-}
-
-pub struct FrameIterZeroed<'alloc, 'a, F: ?Sized, A: Arch> {
-    inner: FrameIter<'alloc, F>,
-    physmap: &'a PhysMap,
-    arch: &'a A,
-}
-
-impl<F: FrameAllocator, A: Arch> FallibleIterator for FrameIterZeroed<'_, '_, F, A> {
-    type Item = Range<PhysicalAddress>;
-    type Error = AllocError;
-
-    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let Some(range) = self.inner.next()? else {
-            return Ok(None);
-        };
-
-        let virt = self.physmap.phys_to_virt_range(range.clone());
-
-        // Safety: we just allocated the frame
-        unsafe {
-            self.arch.write_bytes(virt.start, 0, virt.len());
-        }
-
-        Ok(Some(range))
     }
 }

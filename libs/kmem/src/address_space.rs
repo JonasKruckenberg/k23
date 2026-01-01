@@ -2,8 +2,6 @@ use core::alloc::Layout;
 use core::convert::Infallible;
 use core::ops::Range;
 
-use fallible_iterator::FallibleIterator;
-
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::bootstrap::{Bootstrap, BootstrapAllocator};
 use crate::flush::Flush;
@@ -50,10 +48,10 @@ impl<A: Arch> HardwareAddressSpace<A> {
     /// # Errors
     ///
     /// Returns `Err(AllocError)` when allocating the root page table fails.
-    pub fn new_bootstrap<R: lock_api::RawMutex>(
+    pub fn new_bootstrap<R: lock_api::RawMutex, const MAX_REGIONS: usize>(
         arch: A,
         future_physmap: PhysMap,
-        frame_allocator: &BootstrapAllocator<R>,
+        frame_allocator: &BootstrapAllocator<R, MAX_REGIONS>,
         flush: &mut Flush,
     ) -> Result<Bootstrap<Self>, AllocError> {
         let address_space = Self::new(arch, PhysMap::new_bootstrap(), frame_allocator, flush)?;
@@ -134,7 +132,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
         unreachable!()
     }
 
-    /// Maps the virtual address range `virt` to *possibly discontiguous* chunk(s) of physical memory
+    /// Maps the virtual address range `virt` to *possibly discontiguous* block(s) of physical memory
     /// `phys` with the specified memory attributes.
     ///
     /// If this returns `Ok`, the mapping is added to the address space.
@@ -151,8 +149,8 @@ impl<A: Arch> HardwareAddressSpace<A> {
     ///
     /// 1. The entire range `virt` must be unmapped.
     /// 2. `virt` must be aligned to at least the smallest architecture block size.
-    /// 3. `phys` chunks must be aligned to at least the smallest architecture block size.
-    /// 4. `phys` chunks must in-total be at least as large as `virt`.
+    /// 3. `phys` blocks must be aligned to at least the smallest architecture block size.
+    /// 4. `phys` blocks must in-total be at least as large as `virt`.
     ///
     /// # Errors
     ///
@@ -161,26 +159,26 @@ impl<A: Arch> HardwareAddressSpace<A> {
     pub unsafe fn map(
         &mut self,
         mut virt: Range<VirtualAddress>,
-        mut phys: impl FallibleIterator<Item = Range<PhysicalAddress>, Error = AllocError>,
+        phys: impl ExactSizeIterator<Item = Range<PhysicalAddress>>,
         attributes: MemoryAttributes,
         frame_allocator: impl FrameAllocator,
         flush: &mut Flush,
     ) -> Result<(), AllocError> {
-        while let Some(chunk_phys) = phys.next()? {
+        for block_phys in phys {
             debug_assert!(!virt.is_empty());
 
             // Safety: ensured by caller
             unsafe {
                 self.map_contiguous(
-                    Range::from_start_len(virt.start, chunk_phys.len()),
-                    chunk_phys.start,
+                    Range::from_start_len(virt.start, block_phys.len()),
+                    block_phys.start,
                     attributes,
                     frame_allocator.by_ref(),
                     flush,
                 )?;
             }
 
-            virt.start = virt.start.add(chunk_phys.len());
+            virt.start = virt.start.add(block_phys.len());
         }
 
         Ok(())
@@ -275,7 +273,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
         Ok(())
     }
 
-    /// Remaps the virtual address range `virt` to new *possibly discontiguous* chunk(s) of physical
+    /// Remaps the virtual address range `virt` to new *possibly discontiguous* block(s) of physical
     /// memory `phys`. The old physical memory region is not freed.
     ///
     /// Note that this method **does not** establish any ordering between address space modification
@@ -289,8 +287,8 @@ impl<A: Arch> HardwareAddressSpace<A> {
     ///
     /// 1. The entire range `virt` must be mapped.
     /// 2. `virt` must be aligned to at least the smallest architecture block size.
-    /// 3. `phys` chunks must be aligned to `at least the smallest architecture block size.
-    /// 4. `phys` chunks must in-total be at least as large as `virt`.
+    /// 3. `phys` blocks must be aligned to `at least the smallest architecture block size.
+    /// 4. `phys` blocks must in-total be at least as large as `virt`.
     ///
     /// # Errors
     ///
@@ -299,22 +297,22 @@ impl<A: Arch> HardwareAddressSpace<A> {
     pub unsafe fn remap(
         &mut self,
         mut virt: Range<VirtualAddress>,
-        mut phys: impl FallibleIterator<Item = Range<PhysicalAddress>, Error = AllocError>,
+        phys: impl ExactSizeIterator<Item = Range<PhysicalAddress>>,
         flush: &mut Flush,
     ) -> Result<(), AllocError> {
-        while let Some(chunk_phys) = phys.next()? {
+        for block_phys in phys {
             debug_assert!(!virt.is_empty());
 
             // Safety: ensured by caller
             unsafe {
                 self.remap_contiguous(
-                    Range::from_start_len(virt.start, chunk_phys.len()),
-                    chunk_phys.start,
+                    Range::from_start_len(virt.start, block_phys.len()),
+                    block_phys.start,
                     flush,
                 );
             }
 
-            virt.start = virt.start.add(chunk_phys.len());
+            virt.start = virt.start.add(block_phys.len());
         }
 
         Ok(())

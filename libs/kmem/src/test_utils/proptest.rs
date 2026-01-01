@@ -32,6 +32,28 @@ pub fn aligned_phys(
     addr.prop_map(move |value| value.align_down(alignment))
 }
 
+pub fn region_sizes(
+    num_regions: Range<usize>,
+    alignment: usize,
+    max_region_size: usize,
+) -> impl Strategy<Value = Vec<usize>> {
+    proptest::collection::vec(
+        // Size of the region (will be aligned)
+        alignment..=max_region_size,
+        num_regions,
+    )
+    .prop_map(move |mut regions| {
+        regions.iter_mut().for_each(|size| {
+            let align_minus_one = unsafe { alignment.unchecked_sub(1) };
+
+            *size = size.wrapping_add(align_minus_one) & 0usize.wrapping_sub(alignment);
+
+            debug_assert_ne!(*size, 0);
+        });
+        regions
+    })
+}
+
 /// Produces a set of *sorted*, *non-overlapping* regions of physical memory aligned to `alignment`.
 /// Most useful for initializing an emulated machine.
 pub fn regions(

@@ -111,6 +111,7 @@ mod tests {
             );
 
             prop_assert_eq!(map.translation_offset, base.get().wrapping_sub(region_start.get()) as isize);
+            #[cfg(debug_assertions)]
             prop_assert_eq!(
                 map.range,
                 Some(base.get() as u128..base.add(region_size).get() as u128)

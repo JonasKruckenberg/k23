@@ -92,6 +92,20 @@ impl<A: Arch> Arch for EmulateArch<A> {
         }
     }
 
+    unsafe fn read_bytes(&self, address: VirtualAddress, count: usize) -> &[u8] {
+        // NB: if there is no active page table on this CPU, we are in "bare" translation mode.
+        // In which case we need to use `write_bytes_phys` instead of `write_bytes`, bypassing
+        // translation checks.
+        if self.active_table().is_some() {
+            self.machine.read_bytes(self.asid, address, count)
+        } else {
+            // Safety: We checked for the absence of an active translation table, meaning we're in
+            // "bare" mode and VirtualAddress==PhysicalAddress.
+            let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
+            self.machine.read_bytes_phys(address, count)
+        }
+    }
+
     unsafe fn write_bytes(&self, address: VirtualAddress, value: u8, count: usize) {
         // NB: if there is no active page table on this CPU, we are in "bare" translation mode.
         // In which case we need to use `write_bytes_phys` instead of `write_bytes`, bypassing
