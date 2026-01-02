@@ -11,8 +11,8 @@ use core::{fmt, iter, mem, slice};
 
 use bumpalo::Bump;
 use fallible_iterator::FallibleIterator;
-use fdt::{CellSizes, Error, Fdt, NodeName, StringList};
 use hashbrown::HashMap;
+use k23_fdt::{CellSizes, Error, Fdt, NodeName, StringList};
 use smallvec::{SmallVec, smallvec};
 
 type Link<T> = Option<NonNull<T>>;
@@ -60,7 +60,7 @@ pub struct Device<'a> {
 
 /// A property of a device.
 pub struct Property<'a> {
-    inner: fdt::Property<'a>,
+    inner: k23_fdt::Property<'a>,
     next: Link<Property<'a>>,
 }
 
@@ -266,7 +266,7 @@ impl<'a> Device<'a> {
         }
     }
 
-    pub fn regs(&self) -> Option<fdt::Regs<'_>> {
+    pub fn regs(&self) -> Option<k23_fdt::Regs<'_>> {
         self.properties()
             .find(|p| p.name() == "reg")
             .map(|prop| prop.inner.as_regs(self.cell_sizes()))
@@ -517,7 +517,7 @@ fn unflatten_root<'a>(fdt: &Fdt, alloc: &'a Bump) -> crate::Result<NonNull<Devic
 }
 
 fn unflatten_node<'a>(
-    node: fdt::Node,
+    node: k23_fdt::Node,
     phandle2ptr: &mut HashMap<u32, NonNull<Device<'a>>>,
     mut parent: NonNull<Device<'a>>,
     prev_sibling: Link<Device<'a>>,
@@ -576,13 +576,13 @@ fn unflatten_node<'a>(
 }
 
 fn unflatten_property<'a>(
-    prop: fdt::Property,
+    prop: k23_fdt::Property,
     head: &mut Link<Property<'a>>,
     tail: &mut Link<Property<'a>>,
     alloc: &'a Bump,
 ) {
     let prop = NonNull::from(alloc.alloc(Property {
-        inner: fdt::Property {
+        inner: k23_fdt::Property {
             name: alloc.alloc_str(prop.name),
             raw: alloc.alloc_slice_copy(prop.raw),
         },

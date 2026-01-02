@@ -1,12 +1,12 @@
 [package]
-name = "cpu-local"
+name = "k23-cpu-local"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [dependencies]
-util.workspace = true
+k32-util.workspace = true
 
 [lints]
 workspace = true

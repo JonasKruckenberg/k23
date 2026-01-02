@@ -5,8 +5,8 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::{cmp, fmt};
 
-use arrayvec::ArrayVec;
-use cpu_local::collection::CpuLocal;
+use k23_arrayvec::ArrayVec;
+use k23_cpu_local::collection::CpuLocal;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::bootstrap::BootstrapAllocator;

@@ -8,8 +8,8 @@
 use core::ptr;
 use core::time::Duration;
 
+use k23_riscv::sbi;
 use kasync::time::{Clock, NANOS_PER_SEC, RawClock, RawClockVTable};
-use riscv::sbi;
 
 use crate::device_tree::Device;
 
@@ -24,7 +24,7 @@ unsafe fn clone_raw(ptr: *const ()) -> RawClock {
 unsafe fn now_raw(_ptr: *const ()) -> u64 {
     debug_assert!(_ptr.is_null());
 
-    riscv::register::time::read64()
+    k23_riscv::register::time::read64()
 }
 
 unsafe fn schedule_wakeup_raw(_ptr: *const (), at: u64) {

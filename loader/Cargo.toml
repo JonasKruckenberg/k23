@@ -11,9 +11,9 @@ harness = false
 
 [dependencies]
 loader-api.workspace = true
-spin.workspace = true
-fdt.workspace = true
-abort.workspace = true
+k23-spin.workspace = true
+k23-fdt.workspace = true
+k23-abort.workspace = true
 kmem.workspace = true
 
 # third-party dependencies
@@ -21,13 +21,13 @@ log.workspace = true
 cfg-if.workspace = true
 rand_chacha.workspace = true
 rand.workspace = true
-arrayvec.workspace = true
+k23-arrayvec.workspace = true
 xmas-elf.workspace = true
 fallible-iterator.workspace = true
 bitflags.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
-riscv.workspace = true
+k23-riscv.workspace = true
 
 [lints]
 workspace = true

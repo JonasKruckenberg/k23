@@ -7,7 +7,7 @@
 
 use core::mem;
 
-use util::loom_const_fn;
+use k32_util::loom_const_fn;
 
 use crate::Backoff;
 use crate::loom::sync::atomic::{AtomicU8, Ordering};

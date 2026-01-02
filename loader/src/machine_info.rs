@@ -12,9 +12,9 @@ use core::ops::Range;
 use core::str::FromStr;
 use core::{fmt, mem};
 
-use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
-use fdt::{CellSizes, Fdt, PropertiesIter};
+use k23_arrayvec::ArrayVec;
+use k23_fdt::{CellSizes, Fdt, PropertiesIter};
 use kmem::{AddressRangeExt, PhysicalAddress};
 
 use crate::arch::PAGE_SIZE;
@@ -228,7 +228,7 @@ impl fmt::Display for MachineInfo<'_> {
 fn find_property<'dt>(
     mut props: PropertiesIter<'dt>,
     name: &str,
-) -> crate::Result<Option<fdt::Property<'dt>>> {
+) -> crate::Result<Option<k23_fdt::Property<'dt>>> {
     props
         .find_map(|prop| {
             if prop.name == name {

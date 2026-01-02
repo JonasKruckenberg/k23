@@ -9,7 +9,7 @@ use core::fmt;
 use core::mem::MaybeUninit;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 
-use util::loom_const_fn;
+use k32_util::loom_const_fn;
 
 use super::Once;
 use crate::loom::cell::UnsafeCell;

@@ -10,7 +10,7 @@ use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 use futures::pin_mut;
 use futures::task::WakerRef;
-use util::loom_const_fn;
+use k32_util::loom_const_fn;
 
 use crate::loom::sync::{Arc, Condvar, Mutex as StdMutex};
 

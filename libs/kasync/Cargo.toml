@@ -11,12 +11,13 @@ name = "spawn"
 harness = false
 
 [dependencies]
-util.workspace = true
-cpu-local.workspace = true
-spin.workspace = true
-kfastrand.workspace = true
-panic-unwind2 = { workspace = true, optional = true }
+k32-util.workspace = true
+k23-cpu-local.workspace = true
+k23-spin.workspace = true
+k23-fastrand.workspace = true
+k23-panic-unwind = { workspace = true, optional = true }
 cordyceps.workspace = true
+k23-arrayvec.workspace = true
 
 # 3rd-party dependencies
 static_assertions.workspace = true
@@ -24,7 +25,6 @@ cfg-if.workspace = true
 mycelium-bitfield.workspace = true
 tracing.workspace = true
 bitflags.workspace = true
-arrayvec.workspace = true
 pin-project.workspace = true
 futures = { workspace = true, default-features = false }
 
@@ -38,7 +38,7 @@ futures = { workspace = true, features = ["alloc"] }
 loom.workspace = true
 
 [features]
-unwind2 = ["dep:panic-unwind2"]
+k23-unwind = ["dep:k23-panic-unwind"]
 counters = []
 __bench = ["tracing/max_level_off"]
 

@@ -10,7 +10,7 @@ use core::ops::Deref;
 use core::panic::{RefUnwindSafe, UnwindSafe};
 use core::{fmt, ptr};
 
-use util::loom_const_fn;
+use k32_util::loom_const_fn;
 
 use super::Once;
 use super::once::ExclusiveState;

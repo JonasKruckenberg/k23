@@ -14,10 +14,10 @@ use core::ptr::NonNull;
 use core::sync::atomic::Ordering;
 
 use cordyceps::mpsc_queue::{MpscQueue, TryDequeueError};
-use cpu_local::collection::CpuLocal;
 use futures::pin_mut;
-use kfastrand::FastRand;
-use spin::Backoff;
+use k23_cpu_local::collection::CpuLocal;
+use k23_fastrand::FastRand;
+use k23_spin::Backoff;
 
 use crate::error::{Closed, SpawnError};
 use crate::executor::steal::{Injector, Stealer, TryStealError};

@@ -16,9 +16,9 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 
 use anyhow::bail;
+use k23_spin::LazyLock;
 use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use pin_project::pin_project;
-use spin::LazyLock;
 
 use crate::arch;
 use crate::mem::frame_alloc::FrameAllocator;

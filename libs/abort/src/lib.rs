@@ -28,7 +28,7 @@ pub fn abort() -> ! {
             extern crate std;
             std::process::abort();
         } else if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-            riscv::exit(1);
+            k23_riscv::exit(1);
         } else {
             compile_error!("unsupported target architecture")
         }

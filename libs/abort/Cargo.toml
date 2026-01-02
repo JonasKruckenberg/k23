@@ -1,5 +1,5 @@
 [package]
-name = "abort"
+name = "k23-abort"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,7 +10,7 @@ license.workspace = true
 cfg-if.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
-riscv.workspace = true
+k23-riscv.workspace = true
 
 [lints]
 workspace = true

@@ -12,14 +12,14 @@ use alloc::{format, vec};
 use core::fmt::{Display, LowerHex};
 
 use anyhow::{Context, anyhow, bail};
-use spin::Mutex;
-use wasmparser::Validator;
-use wast::core::{EncodeOptions, NanPattern, V128Pattern, WastArgCore, WastRetCore};
-use wast::parser::ParseBuffer;
-use wast::token::{F32, F64};
-use wast::{
+use k23_spin::Mutex;
+use k23_wast::core::{EncodeOptions, NanPattern, V128Pattern, WastArgCore, WastRetCore};
+use k23_wast::parser::ParseBuffer;
+use k23_wast::token::{F32, F64};
+use k23_wast::{
     Error, QuoteWat, Wast, WastArg, WastDirective, WastExecute, WastInvoke, WastRet, Wat, parser,
 };
+use wasmparser::Validator;
 
 use crate::wasm::{
     ConstExprEvaluator, Engine, Extern, Instance, Linker, Module, PlaceholderAllocatorDontUse,

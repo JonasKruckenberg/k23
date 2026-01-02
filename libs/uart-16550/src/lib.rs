@@ -11,7 +11,7 @@ use core::fmt;
 use core::sync::atomic::{AtomicPtr, Ordering};
 
 use bitflags::bitflags;
-use spin::Backoff;
+use k23_spin::Backoff;
 
 macro_rules! wait_for {
     ($cond:expr, $boff:expr) => {

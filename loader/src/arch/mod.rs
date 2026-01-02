@@ -9,7 +9,7 @@ cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
         mod riscv64;
         pub use riscv64::*;
-        pub use riscv::*;
+        pub use k23_riscv::*;
     } else {
         compile_error!("Unsupported target architecture");
     }

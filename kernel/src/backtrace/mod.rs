@@ -11,13 +11,13 @@ mod symbolize;
 use core::str::FromStr;
 use core::{fmt, slice};
 
-use arrayvec::ArrayVec;
 use fallible_iterator::FallibleIterator;
+use k23_arrayvec::ArrayVec;
+use k23_spin::OnceLock;
+use k23_unwind::FrameIter;
 use kmem::{AddressRangeExt, VirtualAddress};
 use loader_api::BootInfo;
-use spin::OnceLock;
 use symbolize::SymbolizeContext;
-use unwind2::FrameIter;
 
 use crate::backtrace::print::BacktraceFmt;
 
@@ -103,9 +103,9 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
     ///
     /// # Errors
     ///
-    /// Returns the underlying [`unwind2::Error`] if walking the stack fails.
+    /// Returns the underlying [`k23_unwind::Error`] if walking the stack fails.
     #[inline]
-    pub fn capture() -> Result<Self, unwind2::Error> {
+    pub fn capture() -> Result<Self, k23_unwind::Error> {
         Self::new_inner(FrameIter::new())
     }
 
@@ -119,17 +119,17 @@ impl<const MAX_FRAMES: usize> Backtrace<'_, MAX_FRAMES> {
     ///
     /// # Errors
     ///
-    /// Returns the underlying [`unwind2::Error`] if walking the stack fails.
+    /// Returns the underlying [`k23_unwind::Error`] if walking the stack fails.
     #[inline]
     pub fn from_registers(
-        regs: unwind2::Registers,
+        regs: k23_unwind::Registers,
         pc: VirtualAddress,
-    ) -> Result<Self, unwind2::Error> {
+    ) -> Result<Self, k23_unwind::Error> {
         let iter = FrameIter::from_registers(regs, pc.get());
         Self::new_inner(iter)
     }
 
-    fn new_inner(iter: FrameIter) -> Result<Self, unwind2::Error> {
+    fn new_inner(iter: FrameIter) -> Result<Self, k23_unwind::Error> {
         let mut frames = ArrayVec::new();
 
         let mut iter = iter.take(MAX_FRAMES);

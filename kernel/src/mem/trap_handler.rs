@@ -7,8 +7,8 @@
 
 use core::ops::ControlFlow;
 
+use k23_riscv::scause::Exception;
 use kmem::VirtualAddress;
-use riscv::scause::Exception;
 
 use crate::arch::trap::Trap;
 use crate::mem::{PageFaultFlags, with_kernel_aspace};

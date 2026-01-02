@@ -4,7 +4,7 @@ use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::{cmp, fmt, iter};
 
-use arrayvec::ArrayVec;
+use k23_arrayvec::ArrayVec;
 use lock_api::Mutex;
 
 use crate::arch::Arch;
@@ -479,7 +479,7 @@ unsafe fn round_up_to_unchecked(n: usize, divisor: usize) -> usize {
 
 enum Blocks<const MAX: usize> {
     One(iter::Once<Range<PhysicalAddress>>),
-    Multiple(arrayvec::IntoIter<Range<PhysicalAddress>, MAX>),
+    Multiple(k23_arrayvec::IntoIter<Range<PhysicalAddress>, MAX>),
 }
 
 impl<const MAX: usize> Iterator for Blocks<MAX> {

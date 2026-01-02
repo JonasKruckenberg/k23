@@ -7,11 +7,11 @@
 
 use core::cell::OnceCell;
 
-use cpu_local::cpu_local;
+use k23_cpu_local::cpu_local;
+use k23_spin::OnceLock;
 use kasync::executor::Executor;
 use kasync::time::{Instant, Timer};
 use loader_api::BootInfo;
-use spin::OnceLock;
 
 use crate::arch;
 use crate::device_tree::DeviceTree;

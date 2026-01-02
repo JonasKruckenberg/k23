@@ -13,9 +13,9 @@ use core::ptr::NonNull;
 use core::{fmt, slice};
 
 use bitflags::bitflags;
+use k23_riscv::satp;
+use k23_riscv::sbi::rfence::sfence_vma_asid;
 use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-use riscv::satp;
-use riscv::sbi::rfence::sfence_vma_asid;
 use static_assertions::const_assert_eq;
 
 use crate::arch::{mb, wmb};
