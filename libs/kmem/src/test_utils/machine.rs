@@ -5,7 +5,6 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::{cmp, fmt};
 
-use k23_arrayvec::ArrayVec;
 use k23_cpu_local::collection::CpuLocal;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
@@ -14,9 +13,7 @@ use crate::flush::Flush;
 use crate::test_utils::arch::EmulateArch;
 use crate::test_utils::memory::Memory;
 use crate::utils::page_table_entries_for;
-use crate::{
-    AllocError, HardwareAddressSpace, MemoryAttributes, PhysMap, PhysicalAddress, VirtualAddress,
-};
+use crate::{HardwareAddressSpace, MemoryAttributes, PhysMap, PhysicalAddress, VirtualAddress};
 
 /// A "virtual machine" that emulates a given architecture. It is intended to be used in tests
 /// and supports modeling the following properties:
@@ -50,8 +47,40 @@ where
 }
 
 impl<A: Arch> Machine<A> {
-    pub fn memory_regions<const MAX: usize>(&self) -> ArrayVec<Range<PhysicalAddress>, MAX> {
-        self.0.memory.regions().collect()
+    pub fn bootstrap_address_space(
+        &self,
+        physmap_start: VirtualAddress,
+    ) -> (
+        HardwareAddressSpace<EmulateArch<A>>,
+        BootstrapAllocator<parking_lot::RawMutex>,
+    ) {
+        let physmap = PhysMap::new(physmap_start, self.memory_regions());
+
+        let arch = EmulateArch::new(self.clone());
+
+        let frame_allocator =
+            BootstrapAllocator::new::<A>(arch.machine().memory_regions().collect());
+
+        let mut flush = Flush::new();
+        let mut aspace =
+            HardwareAddressSpace::new_bootstrap(arch, physmap, &frame_allocator, &mut flush)
+                .expect("Machine does not have enough physical memory for root page table. Consider increasing configured physical memory sizes.");
+
+        aspace
+            .map_physical_memory(&frame_allocator, &mut flush)
+            .expect("Machine does not have enough physical memory for physmap. Consider increasing configured physical memory sizes.");
+
+        // Safety: we just created the address space, so don't have any pointers into it. In hosted tests
+        // the programs memory and CPU registers are outside the address space anyway.
+        let address_space = unsafe { aspace.finish_bootstrap_and_activate() };
+
+        flush.flush(address_space.arch());
+
+        (address_space, frame_allocator)
+    }
+
+    pub fn memory_regions(&self) -> impl Iterator<Item = Range<PhysicalAddress>> {
+        self.0.memory.regions()
     }
 
     pub unsafe fn read<T>(&self, asid: u16, address: VirtualAddress) -> T {
@@ -272,14 +301,14 @@ pub struct MissingMemory;
 
 pub struct HasMemory;
 
-pub struct MachineBuilder<A: Arch, R: lock_api::RawMutex, Mem> {
+pub struct MachineBuilder<A: Arch, Mem> {
     memory: Option<Memory>,
     physmap_base: VirtualAddress,
     _has: PhantomData<Mem>,
-    _m: PhantomData<(A, R)>,
+    _m: PhantomData<A>,
 }
 
-impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, MissingMemory> {
+impl<A: Arch> MachineBuilder<A, MissingMemory> {
     pub fn new() -> Self {
         Self {
             memory: None,
@@ -290,11 +319,11 @@ impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, MissingMemory> {
     }
 }
 
-impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, MissingMemory> {
+impl<A: Arch> MachineBuilder<A, MissingMemory> {
     pub fn with_memory_regions(
         self,
         region_sizes: impl IntoIterator<Item = usize>,
-    ) -> MachineBuilder<A, R, HasMemory> {
+    ) -> MachineBuilder<A, HasMemory> {
         let memory = Memory::new::<A>(region_sizes);
 
         assert!(
@@ -311,48 +340,15 @@ impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, MissingMemory> {
     }
 }
 
-impl<A: Arch, R: lock_api::RawMutex> MachineBuilder<A, R, HasMemory> {
-    pub fn finish(self) -> (Machine<A>, PhysMap) {
+impl<A: Arch> MachineBuilder<A, HasMemory> {
+    pub fn finish(self) -> Machine<A> {
         let memory = self.memory.unwrap();
-
-        let physmap = PhysMap::new(self.physmap_base, memory.regions());
 
         let inner = MachineInner {
             memory,
             cpus: CpuLocal::with_capacity(std::thread::available_parallelism().unwrap().get()),
         };
 
-        (Machine(Arc::new(inner)), physmap)
-    }
-
-    pub fn finish_and_bootstrap(
-        self,
-    ) -> Result<
-        (
-            Machine<A>,
-            HardwareAddressSpace<EmulateArch<A>>,
-            BootstrapAllocator<R>,
-        ),
-        AllocError,
-    > {
-        let (machine, physmap) = self.finish();
-
-        let arch = EmulateArch::new(machine.clone());
-
-        let frame_allocator = BootstrapAllocator::new::<A>(arch.machine().memory_regions());
-
-        let mut flush = Flush::new();
-        let mut aspace =
-            HardwareAddressSpace::new_bootstrap(arch, physmap, &frame_allocator, &mut flush)?;
-
-        aspace.map_physical_memory(&frame_allocator, &mut flush)?;
-
-        // Safety: we just created the address space, so don't have any pointers into it. In hosted tests
-        // the programs memory and CPU registers are outside the address space anyway.
-        let address_space = unsafe { aspace.finish_bootstrap_and_activate() };
-
-        flush.flush(address_space.arch());
-
-        Ok((machine, address_space, frame_allocator))
+        Machine(Arc::new(inner))
     }
 }

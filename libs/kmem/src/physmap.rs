@@ -98,7 +98,7 @@ mod tests {
     use super::*;
     use crate::address_range::AddressRangeExt;
     use crate::test_utils::proptest::{
-        aligned_phys, aligned_virt, pick_address_in_regions, regions,
+        aligned_phys, aligned_virt, pick_address_in_regions, regions_phys,
     };
     use crate::{GIB, KIB};
 
@@ -119,7 +119,7 @@ mod tests {
         }
 
         #[test]
-        fn multi_region(base in aligned_virt(any::<VirtualAddress>(), 1*GIB), regions in regions(1..10, 4*KIB, 256*GIB, 256*GIB)) {
+        fn multi_region(base in aligned_virt(any::<VirtualAddress>(), 1*GIB), regions in regions_phys(1..10, 4*KIB, 256*GIB, 256*GIB)) {
             let regions_start = regions[0].start;
 
             let map = PhysMap::new(
@@ -131,7 +131,7 @@ mod tests {
         }
 
         #[test]
-        fn phys_to_virt(base in aligned_virt(any::<VirtualAddress>(), 1*GIB), (regions, phys) in pick_address_in_regions(regions(1..10, 4*KIB, 256*GIB, 256*GIB)), ) {
+        fn phys_to_virt(base in aligned_virt(any::<VirtualAddress>(), 1*GIB), (regions, phys) in pick_address_in_regions(regions_phys(1..10, 4*KIB, 256*GIB, 256*GIB)), ) {
             let regions_start = regions[0].start;
 
             let map = PhysMap::new(
