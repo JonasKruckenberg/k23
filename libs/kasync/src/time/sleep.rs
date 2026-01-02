@@ -140,7 +140,7 @@ impl PinnedDrop for Sleep<'_> {
 
 #[cfg(test)]
 mod tests {
-    use kfastrand::FastRand;
+    use k23_fastrand::FastRand;
     use tracing_subscriber::EnvFilter;
     use tracing_subscriber::fmt::format::FmtSpan;
 

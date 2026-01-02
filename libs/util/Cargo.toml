@@ -1,5 +1,5 @@
 [package]
-name = "util"
+name = "k32-util"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

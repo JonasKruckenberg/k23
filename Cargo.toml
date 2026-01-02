@@ -78,27 +78,27 @@ missing_panics_doc = "deny"
 missing_errors_doc = "deny"
 
 [workspace.dependencies]
-kaddr2line = { path = "libs/kaddr2line" }
-kbacktrace = { path = "libs/kbacktrace" }
-riscv = { path = "libs/riscv" }
-spin = { path = "libs/spin" }
+k23-addr2line = { path = "libs/addr2line" }
+k23-backtrace = { path = "libs/backtrace" }
+k23-riscv = { path = "libs/riscv" }
+k23-spin = { path = "libs/spin" }
 trap = { path = "libs/trap" }
-cpu-local = { path = "libs/cpu-local" }
-unwind2 = { path = "libs/unwind2" }
-wast = { path = "libs/wast" }
+k23-cpu-local = { path = "libs/cpu-local" }
+k23-unwind = { path = "libs/unwind" }
+k23-wast = { path = "libs/wast" }
 wavltree = { path = "libs/wavltree" }
 loader-api = { path = "loader/api" }
-fdt = { path = "libs/fdt" }
-ksharded-slab = { path = "libs/ksharded-slab" }
+k23-fdt = { path = "libs/fdt" }
+k23-sharded-slab = { path = "libs/sharded-slab" }
 ktest = { path = "libs/ktest" }
 uart-16550 = { path = "libs/uart-16550" }
-kfastrand = { path = "libs/kfastrand" }
-abort = { path = "libs/abort" }
-panic-unwind2 = { path = "libs/panic-unwind2" }
-util = { path = "libs/util" }
+k23-fastrand = { path = "libs/fastrand" }
+k23-abort = { path = "libs/abort" }
+k23-panic-unwind = { path = "libs/panic-unwind" }
+k32-util = { path = "libs/util" }
 kasync = { path = "libs/kasync" }
 kmem = { path = "libs/kmem" }
-arrayvec = { path = "libs/arrayvec" }
+k23-arrayvec = { path = "libs/arrayvec" }
 
 # 3rd-party dependencies
 cfg-if = "1.0.0"

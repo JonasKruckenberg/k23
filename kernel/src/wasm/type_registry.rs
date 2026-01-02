@@ -20,7 +20,7 @@ use core::{fmt, iter};
 use cranelift_entity::packed_option::{PackedOption, ReservedValue};
 use cranelift_entity::{PrimaryMap, SecondaryMap, iter_entity_range};
 use hashbrown::HashSet;
-use spin::RwLock;
+use k23_spin::RwLock;
 use wasmtime_slab::Slab;
 
 use crate::wasm::Engine;

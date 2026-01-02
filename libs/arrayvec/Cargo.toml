@@ -1,5 +1,5 @@
 [package]
-name = "arrayvec"
+name = "k23-arrayvec"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

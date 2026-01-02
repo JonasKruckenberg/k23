@@ -11,7 +11,7 @@ use core::fmt::Debug;
 use core::iter;
 use core::num::NonZeroUsize;
 
-use spin::{LazyLock, OnceLock};
+use k23_spin::{LazyLock, OnceLock};
 
 use crate::arch;
 use crate::mem::frame_alloc::frame_list::FrameList;

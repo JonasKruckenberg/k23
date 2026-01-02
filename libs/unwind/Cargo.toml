@@ -1,0 +1,17 @@
+[package]
+name = "k23-unwind"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+cfg-if.workspace = true
+gimli = { workspace = true, features = ["read-core"] }
+k23-spin.workspace = true
+fallible-iterator.workspace = true
+k23-abort.workspace = true
+tracing.workspace = true

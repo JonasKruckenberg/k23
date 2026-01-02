@@ -27,14 +27,14 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use cpu_local::collection::CpuLocal;
+use k23_cpu_local::collection::CpuLocal;
 
 /// Declares a new counter.
 #[macro_export]
 macro_rules! counter {
     ($name:expr) => {{
         #[unsafe(link_section = concat!(".bss.kcounter.", $name))]
-        static ARENA: $crate::cpu_local::CpuLocal<::core::sync::atomic::AtomicU64> =
+        static ARENA: $crate::k23_cpu_local::CpuLocal<::core::sync::atomic::AtomicU64> =
             $crate::cpu_local::CpuLocal::new();
 
         Counter::new(&ARENA, $name)

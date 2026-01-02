@@ -88,7 +88,7 @@ check-fmt crate="" *cargo_args="":
 # ==============================================================================
 
 # crates that have hosted tests
-_hosted_crates := "-p kaddr2line -p kmem -p cpu-local -p kfastrand -p fdt -p kasync --features counters -p ksharded-slab -p spin -p wast@228.0.0 -p wavltree"
+_hosted_crates := "-p k23-addr2line -p kmem -p k23-cpu-local -p k23-fastrand -p k23-fdt -p kasync --features counters -p k23-sharded-slab -p k23-spin -p k23-wast -p wavltree"
 # run hosted tests
 test crate="" *cargo_args="": _get-nextest
     RUSTFLAGS=-Dwarnings {{ _cargo }} {{ _testcmd }} \
@@ -98,7 +98,7 @@ test crate="" *cargo_args="": _get-nextest
             {{ cargo_args }}
 
 # crates that have miri tests
-_miri_crates := "-p kasync --features counters -p ksharded-slab -p spin -p wavltree"
+_miri_crates := "-p kasync --features counters -p k23-sharded-slab -p k23-spin -p wavltree"
 # run hosted tests under miri
 miri crate="" *cargo_args="": _get-nextest
     MIRIFLAGS="{{ env_var_or_default("MIRIFLAGS", "-Zmiri-strict-provenance -Zmiri-disable-isolation") }} -Zmiri-env-forward=RUST_BACKTRACE -Zmiri-env-forward=RUST_LOG" \
@@ -110,7 +110,7 @@ miri crate="" *cargo_args="": _get-nextest
             {{ cargo_args }}
 
 # crates that have loom tests
-_loom_crates := "-p kasync --features counters -p spin"
+_loom_crates := "-p kasync --features counters -p k23-spin"
 # run hosted tests under loom
 loom crate="" *cargo_args='': _get-nextest
     #!/usr/bin/env bash

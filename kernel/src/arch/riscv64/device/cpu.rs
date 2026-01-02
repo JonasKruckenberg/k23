@@ -9,7 +9,7 @@ use core::cell::RefCell;
 use core::fmt;
 use core::str::FromStr;
 
-use riscv::extensions::RiscvExtensions;
+use k23_riscv::extensions::RiscvExtensions;
 
 use crate::arch::device;
 use crate::device_tree::DeviceTree;
@@ -104,7 +104,7 @@ impl Cpu {
     }
 }
 
-fn parse_riscv_extensions(strs: fdt::StringList) -> RiscvExtensions {
+fn parse_riscv_extensions(strs: k23_fdt::StringList) -> RiscvExtensions {
     let mut out = RiscvExtensions::empty();
 
     for str in strs {

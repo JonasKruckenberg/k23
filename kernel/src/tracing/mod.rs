@@ -17,10 +17,10 @@ use core::fmt::Write;
 
 pub use ::tracing::*;
 use color::{Color, SetColor};
-use cpu_local::cpu_local;
 pub use filter::Filter;
+use k23_cpu_local::cpu_local;
+use k23_spin::OnceLock;
 use registry::Registry;
-use spin::OnceLock;
 use tracing::field;
 use tracing_core::span::{Attributes, Current, Id, Record};
 use tracing_core::{Collect, Dispatch, Event, Interest, Level, LevelFilter, Metadata};

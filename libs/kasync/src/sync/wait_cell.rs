@@ -11,8 +11,8 @@ use core::task::{Context, Poll, Waker};
 use core::{fmt, task};
 
 use bitflags::bitflags;
+use k32_util::{CachePadded, loom_const_fn};
 use static_assertions::const_assert_eq;
-use util::{CachePadded, loom_const_fn};
 
 use crate::error::Closed;
 use crate::loom::cell::UnsafeCell;

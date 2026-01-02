@@ -1,7 +1,7 @@
 use core::ops::Range;
 
-use riscv::satp;
-use riscv::sbi::rfence::{sfence_vma, sfence_vma_asid};
+use k23_riscv::satp;
+use k23_riscv::sbi::rfence::{sfence_vma, sfence_vma_asid};
 
 use crate::arch::PageTableLevel;
 use crate::{

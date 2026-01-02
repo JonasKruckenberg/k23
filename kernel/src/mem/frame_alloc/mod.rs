@@ -19,11 +19,11 @@ use core::{cmp, fmt, iter, slice};
 
 use arena::{Arena, select_arenas};
 use cordyceps::list::List;
-use cpu_local::collection::CpuLocal;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
+use k23_cpu_local::collection::CpuLocal;
+use k23_spin::{Mutex, OnceLock};
 use kmem::PhysicalAddress;
-use spin::{Mutex, OnceLock};
 
 use crate::arch;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;

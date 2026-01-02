@@ -12,7 +12,7 @@ use core::panic::UnwindSafe;
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::{fmt, mem, ptr, slice};
 
-use util::CheckedMaybeUninit;
+use k32_util::CheckedMaybeUninit;
 
 use crate::cpu_local;
 

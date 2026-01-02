@@ -15,8 +15,8 @@ use core::time::Duration;
 
 use cordyceps::List;
 pub(in crate::time) use entry::Entry;
-use spin::Mutex;
-use util::loom_const_fn;
+use k23_spin::Mutex;
+use k32_util::loom_const_fn;
 use wheel::Wheel;
 
 use crate::loom::sync::atomic::Ordering;

@@ -1,7 +1,7 @@
 use core::mem;
 use core::ops::Range;
 
-use arrayvec::ArrayVec;
+use k23_arrayvec::ArrayVec;
 
 use crate::VirtualAddress;
 use crate::arch::Arch;

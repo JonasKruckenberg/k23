@@ -11,22 +11,22 @@ harness = false
 
 [dependencies]
 loader-api.workspace = true
-cpu-local.workspace = true
+k23-cpu-local.workspace = true
 trap.workspace = true
-spin = { workspace = true, features = ["thread-local"] }
-unwind2.workspace = true
+k23-spin = { workspace = true, features = ["thread-local"] }
+k23-unwind.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
-fdt.workspace = true
-ksharded-slab.workspace = true
+k23-fdt.workspace = true
+k23-sharded-slab.workspace = true
 ktest.workspace = true
-kaddr2line.workspace = true
+k23-addr2line.workspace = true
 uart-16550.workspace = true
-wast.workspace = true
-kfastrand.workspace = true
-abort.workspace = true
-panic-unwind2.workspace = true
-util.workspace = true
-kasync = { workspace = true, features = ["unwind2", "counters"] }
+k23-wast.workspace = true
+k23-fastrand.workspace = true
+k23-abort.workspace = true
+k23-panic-unwind.workspace = true
+k32-util.workspace = true
+kasync = { workspace = true, features = ["k23-unwind", "counters"] }
 kmem.workspace = true
 
 # 3rd-party dependencies
@@ -35,7 +35,7 @@ log.workspace = true
 cfg-if.workspace = true
 talc.workspace = true
 static_assertions.workspace = true
-arrayvec.workspace = true
+k23-arrayvec.workspace = true
 bitflags.workspace = true
 xmas-elf.workspace = true
 fallible-iterator.workspace = true
@@ -62,7 +62,7 @@ cranelift-entity.workspace = true
 wasmtime-slab.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
-riscv.workspace = true
+k23-riscv.workspace = true
 
 [build-dependencies]
 vergen-git2 = { version = "1.0.7", features = ["build", "cargo", "rustc"] }

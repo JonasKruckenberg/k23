@@ -12,8 +12,8 @@ use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::{ptr, slice};
 
+use k23_spin::Mutex;
 use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
-use spin::Mutex;
 
 use crate::arch;
 use crate::mem::{AddressSpace, AddressSpaceRegion, ArchAddressSpace, Batch, Permissions};

@@ -1,0 +1,20 @@
+[package]
+name = "k23-backtrace"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+k23-addr2line.workspace = true
+k23-arrayvec.workspace = true
+k23-unwind.workspace = true
+
+# 3rd-party dependencies
+gimli.workspace = true
+xmas-elf.workspace = true
+rustc-demangle.workspace = true
+fallible-iterator.workspace = true

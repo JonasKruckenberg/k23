@@ -14,11 +14,11 @@ use core::ffi::c_void;
 use core::mem;
 use core::ops::Range;
 
-use arrayvec::ArrayVec;
+use k23_arrayvec::ArrayVec;
+use k23_spin::{Barrier, OnceLock};
 use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use spin::{Barrier, OnceLock};
 
 use crate::boot_info::prepare_boot_info;
 use crate::error::Error;

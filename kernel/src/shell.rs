@@ -22,9 +22,9 @@ use core::ops::{DerefMut, Range};
 use core::str::FromStr;
 
 use fallible_iterator::FallibleIterator;
+use k23_spin::{Barrier, OnceLock};
 use kasync::executor::Executor;
 use kmem::{AddressRangeExt, PhysicalAddress};
-use spin::{Barrier, OnceLock};
 
 use crate::device_tree::DeviceTree;
 use crate::mem::{Mmap, with_kernel_aspace};
@@ -231,14 +231,13 @@ fn handle_command<'cmd>(ctx: Context<'cmd>, commands: &'cmd [Command]) -> CmdRes
         if let Some(current) = chunk.strip_prefix(cmd.name) {
             let current = current.trim();
 
-            return panic_unwind2::catch_unwind(|| cmd.run(Context { current, ..ctx })).unwrap_or(
-                {
+            return k23_panic_unwind::catch_unwind(|| cmd.run(Context { current, ..ctx }))
+                .unwrap_or({
                     Err(Error {
                         line: cmd.name,
                         kind: ErrorKind::Other("command failed"),
                     })
-                },
-            );
+                });
         }
     }
 
