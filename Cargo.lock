@@ -1104,7 +1104,7 @@ dependencies = [
  "memchr",
  "unicode-width",
  "wasm-encoder 0.241.2",
- "wasmparser 0.228.0",
+ "wasmparser 0.243.0",
  "wat",
 ]
 
@@ -1185,7 +1185,7 @@ dependencies = [
  "trap",
  "uart-16550",
  "vergen-git2",
- "wasmparser 0.228.0",
+ "wasmparser 0.243.0",
  "wasmtime-slab",
  "wavltree",
  "xmas-elf",
@@ -2543,15 +2543,6 @@ checksum = "c55db9c896d70bd9fa535ce83cd4e1f2ec3726b0edd2142079f594fc3be1cb35"
 dependencies = [
  "leb128fmt",
  "wasmparser 0.243.0",
-]
-
-[[package]]
-name = "wasmparser"
-version = "0.228.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4abf1132c1fdf747d56bbc1bb52152400c70f336870f968b85e89ea422198ae3"
-dependencies = [
- "bitflags",
 ]
 
 [[package]]
