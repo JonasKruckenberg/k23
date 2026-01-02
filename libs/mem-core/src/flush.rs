@@ -1,5 +1,5 @@
 use core::mem;
-use core::ops::Range;
+use core::range::Range;
 
 use karrayvec::ArrayVec;
 

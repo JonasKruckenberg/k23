@@ -1,7 +1,7 @@
 //! `proptest` strategies for virtual memory subsystem tests
 
 use std::alloc::Layout;
-use std::ops::Range;
+use std::range::Range;
 
 use proptest::prelude::{Just, Strategy};
 
@@ -9,7 +9,7 @@ use crate::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 /// Produces `VirtualAddress`s in the given range
 pub fn virt(range: Range<usize>) -> impl Strategy<Value = VirtualAddress> {
-    range.prop_map(|raw| VirtualAddress::new(raw))
+    core::ops::Range::from(range).prop_map(|raw| VirtualAddress::new(raw))
 }
 
 /// Produces `VirtualAddress`s aligned to the given `alignment`
@@ -22,7 +22,7 @@ pub fn aligned_virt(
 
 /// Produces `PhysicalAddress`s in the given range
 pub fn phys(range: Range<usize>) -> impl Strategy<Value = PhysicalAddress> {
-    range.prop_map(|raw| PhysicalAddress::new(raw))
+    core::ops::Range::from(range).prop_map(|raw| PhysicalAddress::new(raw))
 }
 
 /// Produces `PhysicalAddress`s aligned to the given `alignment`
@@ -41,7 +41,7 @@ pub fn region_layouts(
     proptest::collection::vec(
         // Size of the region (will be aligned)
         alignment..=max_region_size,
-        num_regions,
+        core::ops::Range::from(num_regions),
     )
     .prop_map(move |regions| {
         regions
@@ -74,7 +74,7 @@ pub fn regions_phys(
             // Gap after this region (will be aligned)
             alignment..=max_gap_size,
         ),
-        num_regions,
+        core::ops::Range::from(num_regions),
     )
     .prop_flat_map(move |size_gap_pairs| {
         // Calculate the maximum starting address that won't cause overflow
@@ -138,7 +138,7 @@ pub fn regions_virt(
             // Gap after this region (will be aligned)
             alignment..=max_gap_size,
         ),
-        num_regions,
+        core::ops::Range::from(num_regions),
     )
     .prop_flat_map(move |size_gap_pairs| {
         // Calculate the maximum starting address that won't cause overflow
