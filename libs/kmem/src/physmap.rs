@@ -1,4 +1,5 @@
 use core::cmp;
+use core::num::NonZeroIsize;
 use core::ops::Range;
 
 use crate::{PhysicalAddress, VirtualAddress};
@@ -8,14 +9,20 @@ use crate::{PhysicalAddress, VirtualAddress};
 /// zeroing frames of memory in the frame allocator).
 ///
 /// This region must be mapped so it is only accessible by the kernel.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PhysMap {
-    translation_offset: isize,
+    translation_offset: Option<NonZeroIsize>,
     #[cfg(debug_assertions)]
     range: Option<Range<u128>>,
 }
 
 impl PhysMap {
+    pub const ABSENT: Self = Self {
+        translation_offset: None,
+        #[cfg(debug_assertions)]
+        range: None,
+    };
+
     /// Construct a new `PhysMap` from a chosen base address and the machines physical memory regions.
     /// The iterator over the memory regions must not be empty.
     ///
@@ -40,7 +47,9 @@ impl PhysMap {
             clippy::cast_possible_wrap,
             reason = "this is expected to wrap when the physmap_start is lower than the lowest physical address (e.g. when it is in upper half of memory)"
         )]
-        let translation_offset = physmap_start.get().wrapping_sub(min_addr.get()) as isize;
+        let translation_offset =
+            NonZeroIsize::new(physmap_start.get().wrapping_sub(min_addr.get()) as isize)
+                .expect("identity-mapped physmap is not allowed");
 
         #[cfg(debug_assertions)]
         let range = {
@@ -51,17 +60,9 @@ impl PhysMap {
         };
 
         Self {
-            translation_offset,
+            translation_offset: Some(translation_offset),
             #[cfg(debug_assertions)]
             range: Some(range),
-        }
-    }
-
-    pub(crate) const fn new_bootstrap() -> Self {
-        Self {
-            translation_offset: 0,
-            #[cfg(debug_assertions)]
-            range: None,
         }
     }
 
@@ -69,7 +70,9 @@ impl PhysMap {
     #[expect(clippy::missing_panics_doc, reason = "internal assert")]
     #[inline]
     pub fn phys_to_virt(&self, phys: PhysicalAddress) -> VirtualAddress {
-        let virt = VirtualAddress::new(phys.wrapping_offset(self.translation_offset).get());
+        let translation_offset = self.translation_offset.map_or(0, |off| off.get());
+
+        let virt = VirtualAddress::new(phys.wrapping_offset(translation_offset).get());
 
         #[cfg(debug_assertions)]
         if let Some(range) = &self.range {
@@ -110,7 +113,7 @@ mod tests {
                 [Range::from_start_len(region_start, region_size)],
             );
 
-            prop_assert_eq!(map.translation_offset, base.get().wrapping_sub(region_start.get()) as isize);
+            prop_assert_eq!(map.translation_offset.unwrap().get(), base.get().wrapping_sub(region_start.get()) as isize);
             #[cfg(debug_assertions)]
             prop_assert_eq!(
                 map.range,
@@ -127,7 +130,7 @@ mod tests {
                 regions
             );
 
-            prop_assert_eq!(map.translation_offset, base.get().wrapping_sub(regions_start.get()) as isize);
+            prop_assert_eq!(map.translation_offset.unwrap().get(), base.get().wrapping_sub(regions_start.get()) as isize);
         }
 
         #[test]
