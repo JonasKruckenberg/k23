@@ -1,3 +1,4 @@
+use std::alloc::Layout;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
@@ -322,7 +323,7 @@ impl<A: Arch> MachineBuilder<A, MissingMemory> {
 impl<A: Arch> MachineBuilder<A, MissingMemory> {
     pub fn with_memory_regions(
         self,
-        region_sizes: impl IntoIterator<Item = usize>,
+        region_sizes: impl IntoIterator<Item = Layout>,
     ) -> MachineBuilder<A, HasMemory> {
         let memory = Memory::new::<A>(region_sizes);
 

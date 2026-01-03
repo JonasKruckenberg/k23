@@ -1,5 +1,6 @@
 //! `proptest` strategies for virtual memory subsystem tests
 
+use std::alloc::Layout;
 use std::ops::Range;
 
 use proptest::prelude::{Just, Strategy};
@@ -32,25 +33,29 @@ pub fn aligned_phys(
     addr.prop_map(move |value| value.align_down(alignment))
 }
 
-pub fn region_sizes(
+pub fn region_layouts(
     num_regions: Range<usize>,
     alignment: usize,
     max_region_size: usize,
-) -> impl Strategy<Value = Vec<usize>> {
+) -> impl Strategy<Value = Vec<Layout>> {
     proptest::collection::vec(
         // Size of the region (will be aligned)
         alignment..=max_region_size,
         num_regions,
     )
-    .prop_map(move |mut regions| {
-        regions.iter_mut().for_each(|size| {
-            let align_minus_one = unsafe { alignment.unchecked_sub(1) };
-
-            *size = size.wrapping_add(align_minus_one) & 0usize.wrapping_sub(alignment);
-
-            debug_assert_ne!(*size, 0);
-        });
+    .prop_map(move |regions| {
         regions
+            .into_iter()
+            .map(|size| {
+                let align_minus_one = unsafe { alignment.unchecked_sub(1) };
+
+                let size = size.wrapping_add(align_minus_one) & 0usize.wrapping_sub(alignment);
+
+                debug_assert_ne!(size, 0);
+
+                Layout::from_size_align(size, alignment).unwrap()
+            })
+            .collect()
     })
 }
 

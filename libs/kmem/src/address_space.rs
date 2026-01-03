@@ -544,6 +544,7 @@ impl<A: Arch> HardwareAddressSpace<A> {
 
 #[cfg(test)]
 mod tests {
+    use std::alloc::Layout;
     use std::ops::Range;
 
     use crate::address_range::AddressRangeExt;
@@ -557,7 +558,9 @@ mod tests {
         #[test]
         fn map<A: Arch>() {
             let machine: Machine<A> = MachineBuilder::new()
-                .with_memory_regions([0xA000])
+                .with_memory_regions([
+                    Layout::from_size_align(0xA000, A::GRANULE_SIZE).unwrap()
+                ])
                 .finish();
 
             let (mut address_space, frame_allocator) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
@@ -594,7 +597,7 @@ mod tests {
         #[test]
         fn remap<A: Arch>() {
             let machine: Machine<A> = MachineBuilder::new()
-                .with_memory_regions([0xB000])
+                .with_memory_regions([Layout::from_size_align(0xB000, A::GRANULE_SIZE).unwrap()])
                 .finish();
 
             let (mut address_space, frame_allocator) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
@@ -651,7 +654,7 @@ mod tests {
         #[test]
         fn set_attributes<A: Arch>() {
             let machine: Machine<A> = MachineBuilder::new()
-                .with_memory_regions([0xB000])
+                .with_memory_regions([Layout::from_size_align(0xB000, A::GRANULE_SIZE).unwrap()])
                 .finish();
 
             let (mut address_space, frame_allocator) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
