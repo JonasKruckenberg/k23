@@ -544,23 +544,26 @@ impl<A: Arch> HardwareAddressSpace<A> {
 
 #[cfg(test)]
 mod tests {
+    use std::alloc::Layout;
     use std::ops::Range;
 
     use crate::address_range::AddressRangeExt;
     use crate::arch::Arch;
     use crate::flush::Flush;
     use crate::frame_allocator::FrameAllocator;
-    use crate::test_utils::MachineBuilder;
+    use crate::test_utils::{Machine, MachineBuilder};
     use crate::{MemoryAttributes, VirtualAddress, WriteOrExecute, archtest};
 
     archtest! {
         #[test]
         fn map<A: Arch>() {
-            let res = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0xA000])
-                .finish_and_bootstrap()
-                .unwrap();
-            let (_, mut address_space, frame_allocator) = res;
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([
+                    Layout::from_size_align(0xA000, A::GRANULE_SIZE).unwrap()
+                ])
+                .finish();
+
+            let (mut address_space, frame_allocator) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
 
             let frame = frame_allocator
                 .allocate_contiguous(A::GRANULE_LAYOUT)
@@ -593,11 +596,11 @@ mod tests {
 
         #[test]
         fn remap<A: Arch>() {
-            let res = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0xB000])
-                .finish_and_bootstrap()
-                .unwrap();
-            let (_, mut address_space, frame_allocator) = res;
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([Layout::from_size_align(0xB000, A::GRANULE_SIZE).unwrap()])
+                .finish();
+
+            let (mut address_space, frame_allocator) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
 
             let frame = frame_allocator
                 .allocate_contiguous(A::GRANULE_LAYOUT)
@@ -650,11 +653,11 @@ mod tests {
 
         #[test]
         fn set_attributes<A: Arch>() {
-            let res = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0xB000])
-                .finish_and_bootstrap()
-                .unwrap();
-            let (_, mut address_space, frame_allocator) = res;
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([Layout::from_size_align(0xB000, A::GRANULE_SIZE).unwrap()])
+                .finish();
+
+            let (mut address_space, frame_allocator) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
 
             let frame = frame_allocator
                 .allocate_contiguous(A::GRANULE_LAYOUT)

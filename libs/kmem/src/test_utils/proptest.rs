@@ -1,5 +1,6 @@
 //! `proptest` strategies for virtual memory subsystem tests
 
+use std::alloc::Layout;
 use std::ops::Range;
 
 use proptest::prelude::{Just, Strategy};
@@ -32,31 +33,35 @@ pub fn aligned_phys(
     addr.prop_map(move |value| value.align_down(alignment))
 }
 
-pub fn region_sizes(
+pub fn region_layouts(
     num_regions: Range<usize>,
     alignment: usize,
     max_region_size: usize,
-) -> impl Strategy<Value = Vec<usize>> {
+) -> impl Strategy<Value = Vec<Layout>> {
     proptest::collection::vec(
         // Size of the region (will be aligned)
         alignment..=max_region_size,
         num_regions,
     )
-    .prop_map(move |mut regions| {
-        regions.iter_mut().for_each(|size| {
-            let align_minus_one = unsafe { alignment.unchecked_sub(1) };
-
-            *size = size.wrapping_add(align_minus_one) & 0usize.wrapping_sub(alignment);
-
-            debug_assert_ne!(*size, 0);
-        });
+    .prop_map(move |regions| {
         regions
+            .into_iter()
+            .map(|size| {
+                let align_minus_one = unsafe { alignment.unchecked_sub(1) };
+
+                let size = size.wrapping_add(align_minus_one) & 0usize.wrapping_sub(alignment);
+
+                debug_assert_ne!(size, 0);
+
+                Layout::from_size_align(size, alignment).unwrap()
+            })
+            .collect()
     })
 }
 
 /// Produces a set of *sorted*, *non-overlapping* regions of physical memory aligned to `alignment`.
 /// Most useful for initializing an emulated machine.
-pub fn regions(
+pub fn regions_phys(
     num_regions: Range<usize>,
     alignment: usize,
     max_region_size: usize,
@@ -103,7 +108,7 @@ pub fn regions(
 }
 
 /// Picks an arbitrary `PhysicalAddress` from a strategy that produces physical memory regions such
-/// as [`regions`].
+/// as [`regions_phys`].
 pub fn pick_address_in_regions(
     regions: impl Strategy<Value = Vec<Range<PhysicalAddress>>>,
 ) -> impl Strategy<Value = (Vec<Range<PhysicalAddress>>, PhysicalAddress)> {
@@ -116,5 +121,52 @@ pub fn pick_address_in_regions(
         });
 
         (Just(regions), address)
+    })
+}
+
+/// Produces a set of *sorted*, *non-overlapping* regions of virtual memory aligned to `alignment`.
+pub fn regions_virt(
+    num_regions: Range<usize>,
+    alignment: usize,
+    max_region_size: usize,
+    max_gap_size: usize,
+) -> impl Strategy<Value = Vec<Range<VirtualAddress>>> {
+    proptest::collection::vec(
+        (
+            // Size of the region (will be aligned)
+            alignment..=max_region_size,
+            // Gap after this region (will be aligned)
+            alignment..=max_gap_size,
+        ),
+        num_regions,
+    )
+    .prop_flat_map(move |size_gap_pairs| {
+        // Calculate the maximum starting address that won't cause overflow
+        let max_start = {
+            let total_space_needed: usize =
+                size_gap_pairs.iter().map(|(size, gap)| size + gap).sum();
+
+            // Ensure we have headroom for alignment adjustments
+            usize::MAX
+                .saturating_sub(total_space_needed)
+                .saturating_sub(alignment)
+        };
+
+        (0..=max_start).prop_map(move |start_raw| {
+            let mut regions = Vec::with_capacity(size_gap_pairs.len());
+            let mut current = VirtualAddress::new(start_raw).align_down(alignment);
+
+            for (size, gap) in &size_gap_pairs {
+                let range: Range<VirtualAddress> =
+                    Range::from_start_len(current, *size).align_in(alignment);
+                assert!(!range.is_empty());
+
+                regions.push(range);
+
+                current = current.add(size + gap).align_up(alignment);
+            }
+
+            regions
+        })
     })
 }

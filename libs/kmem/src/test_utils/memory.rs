@@ -22,12 +22,10 @@ impl Drop for Memory {
 }
 
 impl Memory {
-    pub fn new<A: Arch>(region_sizes: impl IntoIterator<Item = usize>) -> Self {
+    pub fn new<A: Arch>(region_sizes: impl IntoIterator<Item = Layout>) -> Self {
         let regions = region_sizes
             .into_iter()
-            .map(|size| {
-                let layout = Layout::from_size_align(size, A::GRANULE_SIZE).unwrap();
-
+            .map(|layout| {
                 let region = std::alloc::System.allocate(layout).unwrap();
 
                 // Safety: we just allocated the ptr, we know it is valid

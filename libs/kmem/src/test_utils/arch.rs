@@ -69,6 +69,7 @@ impl<A: Arch> Arch for EmulateArch<A> {
         // In which case we need to use `read_phys` instead of `read`, bypassing
         // translation checks.
         if self.active_table().is_some() {
+            // Safety: ensured by caller.
             unsafe { self.machine.read(self.asid, address) }
         } else {
             // Safety: We checked for the absence of an active translation table, meaning we're in
@@ -83,6 +84,7 @@ impl<A: Arch> Arch for EmulateArch<A> {
         // In which case we need to use `write_phys` instead of `write`, bypassing
         // translation checks.
         if self.active_table().is_some() {
+            // Safety: ensured by caller.
             unsafe { self.machine.write(self.asid, address, value) }
         } else {
             // Safety: We checked for the absence of an active translation table, meaning we're in
@@ -97,10 +99,12 @@ impl<A: Arch> Arch for EmulateArch<A> {
         // In which case we need to use `write_bytes_phys` instead of `write_bytes`, bypassing
         // translation checks.
         if self.active_table().is_some() {
-            self.machine.read_bytes(self.asid, address, count)
+            // Safety: ensured by caller.
+            unsafe { self.machine.read_bytes(self.asid, address, count) }
         } else {
             // Safety: We checked for the absence of an active translation table, meaning we're in
-            // "bare" mode and VirtualAddress==PhysicalAddress.
+            // "bare" mode and VirtualAddress==PhysicalAddress. All other safety invariants are
+            // ensured by the caller.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             self.machine.read_bytes_phys(address, count)
         }
@@ -111,10 +115,12 @@ impl<A: Arch> Arch for EmulateArch<A> {
         // In which case we need to use `write_bytes_phys` instead of `write_bytes`, bypassing
         // translation checks.
         if self.active_table().is_some() {
-            self.machine.write_bytes(self.asid, address, value, count)
+            // Safety: ensured by caller.
+            unsafe { self.machine.write_bytes(self.asid, address, value, count) }
         } else {
             // Safety: We checked for the absence of an active translation table, meaning we're in
-            // "bare" mode and VirtualAddress==PhysicalAddress.
+            // "bare" mode and VirtualAddress==PhysicalAddress. All other safety invariants are
+            // ensured by the caller.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
             self.machine.write_bytes_phys(address, value, count)
         }

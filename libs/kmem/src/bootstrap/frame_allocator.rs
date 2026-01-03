@@ -510,7 +510,7 @@ mod tests {
     use crate::arch::Arch;
     use crate::bootstrap::BootstrapAllocator;
     use crate::frame_allocator::FrameAllocator;
-    use crate::test_utils::{EmulateArch, MachineBuilder};
+    use crate::test_utils::{EmulateArch, Machine, MachineBuilder};
     use crate::{GIB, PhysMap, PhysicalAddress, archtest};
 
     fn assert_zeroed(frame: PhysicalAddress, bytes: usize, physmap: &PhysMap, arch: &impl Arch) {
@@ -523,12 +523,15 @@ mod tests {
         // Assert that the BootstrapAllocator can allocate frames
         #[test_log::test]
         fn allocate_contiguous_smoke<A: Arch>() {
-            let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0x2000, 0x1000])
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([
+                    Layout::from_size_align(2 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                    Layout::from_size_align(A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                ])
                 .finish();
 
             let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions());
+                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
             // Based on the memory of the machine we set up above, we expect the allocator to
             // yield 3 pages.
@@ -548,7 +551,8 @@ mod tests {
                 .unwrap();
             assert!(frame.is_aligned_to(A::GRANULE_SIZE));
 
-            // assert that we're out of memory
+            // after that, assert that we're out of memory
+
             frame_allocator
                 .allocate_contiguous(A::GRANULE_LAYOUT)
                 .unwrap_err();
@@ -558,12 +562,15 @@ mod tests {
         // bootstrap (bare, before paging is enabled) mode.
         #[test_log::test]
         fn allocate_contiguous_zeroed_smoke<A: Arch>() {
-            let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0x2000, 0x1000])
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([
+                    Layout::from_size_align(2 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                    Layout::from_size_align(A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                ])
                 .finish();
 
             let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions());
+                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
             let arch = EmulateArch::new(machine);
 
@@ -590,7 +597,8 @@ mod tests {
             assert!(frame.is_aligned_to(A::GRANULE_SIZE));
             assert_zeroed(frame, A::GRANULE_SIZE, &physmap, &arch);
 
-            // assert that we're out of memory
+            // after that, assert that we're out of memory
+
             frame_allocator
                 .allocate_contiguous_zeroed(A::GRANULE_LAYOUT, &physmap, &arch)
                 .unwrap_err();
@@ -598,21 +606,24 @@ mod tests {
 
         #[test_log::test]
         fn allocate_smoke<A: Arch>() {
-            let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0x3000, 0x1000])
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([
+                    Layout::from_size_align(3 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                    Layout::from_size_align(A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                ])
                 .finish();
 
             let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions());
+                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
             let blocks: Vec<_> = frame_allocator
-                .allocate(Layout::from_size_align(0x4000, A::GRANULE_SIZE).unwrap())
+                .allocate(Layout::from_size_align(4 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap())
                 .unwrap()
                 .collect();
 
             // assert the total size is what we expect
             let allocated_size: usize = blocks.iter().map(|block| block.len()).sum();
-            assert!(allocated_size >= 0x4000);
+            assert!(allocated_size >= 4 * A::GRANULE_SIZE);
 
             // assert each block is aligned correctly
             for block in blocks.iter() {
@@ -622,8 +633,11 @@ mod tests {
 
         #[test_log::test]
         fn allocate_zeroed_smoke<A: Arch>() {
-            let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0x3000, 0x1000])
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([
+                    Layout::from_size_align(3 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                    Layout::from_size_align(A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                ])
                 .finish();
 
             let arch = EmulateArch::new(machine.clone());
@@ -631,16 +645,20 @@ mod tests {
             let physmap = PhysMap::new_bootstrap();
 
             let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions());
+                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
             let blocks: Vec<_> = frame_allocator
-                .allocate_zeroed(Layout::from_size_align(0x4000, A::GRANULE_SIZE).unwrap(), &physmap, &arch)
+                .allocate_zeroed(
+                    Layout::from_size_align(4 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                    &physmap,
+                    &arch,
+                )
                 .unwrap()
                 .collect();
 
             // assert the total size is what we expect
             let allocated_size: usize = blocks.iter().map(|block| block.len()).sum();
-            assert!(allocated_size >= 0x4000);
+            assert!(allocated_size >= 4 * A::GRANULE_SIZE);
 
             // assert each block is aligned correctly
             for block in blocks.iter() {
@@ -652,14 +670,19 @@ mod tests {
 
         #[test_log::test]
         fn allocate_contiguous_small_alignment<A: Arch>() {
-            let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0x4000, 0x1000])
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([
+                    Layout::from_size_align(4 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                    Layout::from_size_align(A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                ])
                 .finish();
 
             let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions());
+                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
-            let frame = frame_allocator.allocate_contiguous(Layout::from_size_align(A::GRANULE_SIZE, 1).unwrap()).unwrap();
+            let frame = frame_allocator
+                .allocate_contiguous(Layout::from_size_align(A::GRANULE_SIZE, 1).unwrap())
+                .unwrap();
 
             assert!(frame.is_aligned_to(1));
             assert!(frame.is_aligned_to(A::GRANULE_SIZE));
@@ -667,14 +690,19 @@ mod tests {
 
         #[test_log::test]
         fn allocate_small_alignment<A: Arch>() {
-            let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([0x4000, 0x1000])
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([
+                    Layout::from_size_align(4 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                    Layout::from_size_align(A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                ])
                 .finish();
 
             let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions());
+                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
-            let blocks = frame_allocator.allocate(Layout::from_size_align(A::GRANULE_SIZE, 1).unwrap()).unwrap();
+            let blocks = frame_allocator
+                .allocate(Layout::from_size_align(A::GRANULE_SIZE, 1).unwrap())
+                .unwrap();
 
             for block in blocks {
                 assert!(block.start.is_aligned_to(1));
@@ -684,31 +712,41 @@ mod tests {
 
         #[test_log::test]
         fn allocate_contiguous_large_alignment<A: Arch>() {
-            let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([2*GIB, 0x1000])
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([
+                    Layout::from_size_align(2 * GIB, 1 * GIB).unwrap(),
+                    Layout::from_size_align(A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                ])
                 .finish();
 
             let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions());
+                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
-            let frame = frame_allocator.allocate_contiguous(Layout::from_size_align(A::GRANULE_SIZE, 1*GIB).unwrap()).unwrap();
+            let frame = frame_allocator
+                .allocate_contiguous(Layout::from_size_align(A::GRANULE_SIZE, 1 * GIB).unwrap())
+                .unwrap();
 
-            assert!(frame.is_aligned_to(1*GIB));
+            assert!(frame.is_aligned_to(1 * GIB));
         }
 
         #[test_log::test]
         fn allocate_large_alignment<A: Arch>() {
-            let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                .with_memory_regions([2*GIB, 0x1000])
+            let machine: Machine<A> = MachineBuilder::new()
+                .with_memory_regions([
+                    Layout::from_size_align(2 * GIB, 1 * GIB).unwrap(),
+                    Layout::from_size_align(A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap(),
+                ])
                 .finish();
 
             let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions());
+                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
-            let blocks = frame_allocator.allocate(Layout::from_size_align(A::GRANULE_SIZE, 1*GIB).unwrap()).unwrap();
+            let blocks = frame_allocator
+                .allocate(Layout::from_size_align(A::GRANULE_SIZE, 1 * GIB).unwrap())
+                .unwrap();
 
             for block in blocks {
-                assert!(block.start.is_aligned_to(1*GIB));
+                assert!(block.start.is_aligned_to(1 * GIB));
             }
         }
     }
@@ -724,26 +762,32 @@ mod proptests {
     use crate::arch::Arch;
     use crate::bootstrap::{BootstrapAllocator, DEFAULT_MAX_REGIONS};
     use crate::frame_allocator::FrameAllocator;
-    use crate::test_utils::MachineBuilder;
-    use crate::test_utils::proptest::region_sizes;
+    use crate::test_utils::proptest::region_layouts;
+    use crate::test_utils::{Machine, MachineBuilder};
     use crate::{GIB, KIB, for_every_arch};
 
     for_every_arch!(A => {
         proptest! {
             #[test_log::test]
-            fn allocate(region_sizes in region_sizes(1..DEFAULT_MAX_REGIONS, 4*KIB, 16*GIB)) {
-                let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                    .with_memory_regions(region_sizes.clone())
+            fn allocate(region_layouts in region_layouts(1..DEFAULT_MAX_REGIONS, 4*KIB, 16*GIB)) {
+                let machine: Machine<A> = MachineBuilder::new()
+                    .with_memory_regions(region_layouts.clone())
                     .finish();
 
                 let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                    BootstrapAllocator::new::<A>(machine.memory_regions());
+                    BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
-                let total_size = region_sizes.iter().sum();
+                let total_size = region_layouts.iter().map(|layout| layout.size()).sum();
 
-                let res = frame_allocator
-                    .allocate(Layout::from_size_align(total_size, A::GRANULE_SIZE).unwrap());
-                prop_assert!(res.is_ok(), "failed to allocate {} bytes with alignment {}. capacities left {:?}", total_size, A::GRANULE_SIZE, frame_allocator.capacities());
+                let res =
+                    frame_allocator.allocate(Layout::from_size_align(total_size, A::GRANULE_SIZE).unwrap());
+                prop_assert!(
+                    res.is_ok(),
+                    "failed to allocate {} bytes with alignment {}. capacities left {:?}",
+                    total_size,
+                    A::GRANULE_SIZE,
+                    frame_allocator.capacities()
+                );
                 let blocks = res.unwrap();
 
                 let blocks: Vec<_> = blocks.collect();
@@ -759,18 +803,19 @@ mod proptests {
             }
 
             #[test_log::test]
-            fn allocate_contiguous(region_sizes in region_sizes(1..DEFAULT_MAX_REGIONS, 1*GIB, 16*GIB)) {
-                let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                    .with_memory_regions(region_sizes.clone())
+            fn allocate_contiguous(region_layouts in region_layouts(1..DEFAULT_MAX_REGIONS, 1*GIB, 16*GIB)) {
+                let machine: Machine<A> = MachineBuilder::new()
+                    .with_memory_regions(region_layouts.clone())
                     .finish();
 
                 let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                    BootstrapAllocator::new::<A>(machine.memory_regions());
+                    BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
-                let total_size = region_sizes.iter().sum();
+                let total_size = region_layouts.iter().map(|layout| layout.size()).sum();
 
-                for _ in (0..total_size).step_by(1*GIB) {
-                    let res = frame_allocator.allocate_contiguous(Layout::from_size_align(1*GIB, A::GRANULE_SIZE).unwrap());
+                for _ in (0..total_size).step_by(1 * GIB) {
+                    let res = frame_allocator
+                        .allocate_contiguous(Layout::from_size_align(1 * GIB, A::GRANULE_SIZE).unwrap());
                     prop_assert!(res.is_ok());
                     let base = res.unwrap();
                     prop_assert!(base.is_aligned_to(A::GRANULE_SIZE));
@@ -778,17 +823,18 @@ mod proptests {
             }
 
             #[test_log::test]
-            fn allocate_contiguous_alignments(region_sizes in region_sizes(1..DEFAULT_MAX_REGIONS, 1*GIB, 16*GIB), alignment_pot in 1..30) {
-                let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                    .with_memory_regions(region_sizes.clone())
+            fn allocate_contiguous_alignments(region_layouts in region_layouts(1..DEFAULT_MAX_REGIONS, 1*GIB, 16*GIB), alignment_pot in 1..30) {
+                let machine: Machine<A> = MachineBuilder::new()
+                    .with_memory_regions(region_layouts.clone())
                     .finish();
 
                 let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                    BootstrapAllocator::new::<A>(machine.memory_regions());
+                    BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
                 let alignment = 1usize << alignment_pot;
 
-                let res = frame_allocator.allocate_contiguous(Layout::from_size_align(A::GRANULE_SIZE, alignment).unwrap());
+                let res = frame_allocator
+                    .allocate_contiguous(Layout::from_size_align(A::GRANULE_SIZE, alignment).unwrap());
                 prop_assert!(res.is_ok());
                 let base = res.unwrap();
 
@@ -796,17 +842,18 @@ mod proptests {
             }
 
             #[test_log::test]
-            fn allocate_alignments(region_sizes in region_sizes(1..DEFAULT_MAX_REGIONS, 1*GIB, 16*GIB), alignment_pot in 1..30) {
-                let (machine, _) = MachineBuilder::<A, parking_lot::RawMutex, _>::new()
-                    .with_memory_regions(region_sizes.clone())
+            fn allocate_alignments(region_layouts in region_layouts(1..DEFAULT_MAX_REGIONS, 1*GIB, 16*GIB), alignment_pot in 1..30) {
+                let machine: Machine<A> = MachineBuilder::new()
+                    .with_memory_regions(region_layouts.clone())
                     .finish();
 
                 let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                    BootstrapAllocator::new::<A>(machine.memory_regions());
+                    BootstrapAllocator::new::<A>(machine.memory_regions().collect());
 
                 let alignment = 1usize << alignment_pot;
 
-                let res = frame_allocator.allocate(Layout::from_size_align(A::GRANULE_SIZE, alignment).unwrap());
+                let res =
+                    frame_allocator.allocate(Layout::from_size_align(A::GRANULE_SIZE, alignment).unwrap());
                 prop_assert!(res.is_ok());
                 let blocks = res.unwrap();
 

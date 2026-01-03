@@ -12,6 +12,7 @@ k23-cpu-local = { workspace = true, optional = true }
 k23-spin = { workspace = true, optional = true }
 proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
+parking_lot = { version = "0.12.5", optional = true }
 
 # 3rd-party dependencies
 mycelium-bitfield.workspace = true
@@ -20,11 +21,10 @@ lock_api.workspace = true
 
 [dev-dependencies]
 kmem = { workspace = true, features = ["test_utils"] }
-parking_lot = "0.12.5"
 test-log = "0.2.19"
 
 [features]
-test_utils = ["k23-cpu-local", "k23-spin", "proptest", "proptest-derive"]
+test_utils = ["k23-cpu-local", "k23-spin", "proptest", "proptest-derive", "parking_lot"]
 
 [lints]
 workspace = true
