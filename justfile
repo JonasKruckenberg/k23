@@ -29,18 +29,18 @@ _default:
     @just --list
 
 # Alias for `cargo xtask qemu`
-run profile args="" *qemu_args="":
-    {{ _cargo }} xtask run {{ profile }} {{ args }} {{ qemu_args }}
+run configuration args="" *qemu_args="":
+    {{ _cargo }} xtask run {{ configuration }} {{ args }} {{ qemu_args }}
 
 # Alias for `cargo xtask build`
-build profile args="" *qemu_args="":
-    {{ _cargo }} xtask build {{ profile }} {{ args }} {{ qemu_args }}
+build configuration args="" *qemu_args="":
+    {{ _cargo }} xtask build {{ configuration }} {{ args }} {{ qemu_args }}
 
 # quick check for development
 check crate="" *cargo_args="":
     RUSTFLAGS=-Dwarnings {{ _cargo }} check \
         {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch" } else { "-p" } }} {{ crate }} \
-        --target profile/riscv64/riscv64gc-k23-none-kernel.json \
+        --target configurations/riscv64/riscv64gc-k23-none-kernel.json \
         --locked \
         {{ _buildstd }} \
         {{ _fmt }} \
@@ -63,7 +63,7 @@ lint crate="" *cargo_args="": (clippy crate cargo_args) (check-fmt crate cargo_a
 clippy crate="" *cargo_args="":
     RUSTFLAGS=-Dwarnings {{ _cargo }} clippy \
         {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch" } else { "-p" } }} {{ crate }} \
-        --target profile/riscv64/riscv64gc-k23-none-kernel.json \
+        --target configurations/riscv64/riscv64gc-k23-none-kernel.json \
         --locked \
         {{ _buildstd }} \
         {{ _fmt_clippy }} \
@@ -160,7 +160,7 @@ loom crate="" *cargo_args='': _get-nextest
 
 # run on-target tests for RISCV 64-bit
 test-riscv64 *args='':
-    cargo xtask test profile/riscv64/qemu.toml --release {{ args }}
+    cargo xtask test configurations/riscv64/qemu.toml --release {{ args }}
 
 # ==============================================================================
 # Documentation
@@ -174,7 +174,7 @@ manual:
 #build-docs crate="" *cargo_args="":
 #    {{ _rustdoc }} \
 #        {{ if crate == "" { _hosted_crates } else { "-p" + crate } }} \
-#        --target profile/riscv64/riscv64gc-k23-none-kernel.json \
+#        --target configurations/riscv64/riscv64gc-k23-none-kernel.json \
 #        {{ _buildstd }} \
 #        {{ _fmt }} \
 #        {{ cargo_args }}

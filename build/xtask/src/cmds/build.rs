@@ -10,22 +10,22 @@ use std::path::PathBuf;
 use clap::{Parser, ValueHint};
 
 use crate::Options;
-use crate::profile::Profile;
+use crate::configuration::Configuration;
 use crate::tracing::OutputOptions;
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
     /// The path to the build configuration file
     #[clap(value_hint = ValueHint::FilePath)]
-    profile: PathBuf,
+    configuration: PathBuf,
 }
 
 impl Cmd {
     pub fn run(&self, opts: &Options, output: &OutputOptions) -> crate::Result<()> {
-        let profile = Profile::from_file(&self.profile)?;
+        let configuration = Configuration::from_file(&self.configuration)?;
 
-        let kernel = crate::build::build_kernel(&opts, output, &profile)?;
-        let _image = crate::build::build_loader(&opts, output, &profile, &kernel)?;
+        let kernel = crate::build::build_kernel(&opts, output, &configuration)?;
+        let _image = crate::build::build_loader(&opts, output, &configuration, &kernel)?;
 
         Ok(())
     }

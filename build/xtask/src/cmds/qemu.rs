@@ -9,14 +9,14 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueHint};
 
-use crate::profile::Profile;
+use crate::configuration::Configuration;
 use crate::tracing::OutputOptions;
 use crate::{Options, qemu};
 
 #[derive(Debug, Parser)]
 pub struct Cmd {
     #[clap(value_hint = ValueHint::FilePath)]
-    profile: PathBuf,
+    configuration: PathBuf,
     #[clap(value_hint = ValueHint::FilePath)]
     kernel: PathBuf,
     #[clap(flatten)]
@@ -25,11 +25,11 @@ pub struct Cmd {
 
 impl Cmd {
     pub fn run(&self, opts: &Options, output: &OutputOptions) -> crate::Result<()> {
-        let profile = Profile::from_file(&self.profile)?;
+        let configuration = Configuration::from_file(&self.configuration)?;
 
-        let image = crate::build::build_loader(&opts, output, &profile, &self.kernel)?;
+        let image = crate::build::build_loader(&opts, output, &configuration, &self.kernel)?;
 
-        let mut child = qemu::spawn(&self.qemu_opts, profile, &image, true, &[])?;
+        let mut child = qemu::spawn(&self.qemu_opts, configuration, &image, true, &[])?;
 
         child.0.wait()?;
 
