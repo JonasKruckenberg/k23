@@ -18,37 +18,37 @@ pub const DEFAULT_MAX_REGIONS: usize = 16;
 ///
 /// This allocator supports discontiguous physical memory by default. By default, up to [`DEFAULT_MAX_REGIONS`]
 /// but this limit can be adjusted by explicitly specifying the const-generic parameter.
-pub struct BootstrapAllocator<R, const MAX_REGIONS: usize = DEFAULT_MAX_REGIONS>
+pub struct BumpAllocator<R, const MAX_REGIONS: usize = DEFAULT_MAX_REGIONS>
 where
     R: lock_api::RawMutex,
 {
-    inner: Mutex<R, BootstrapAllocatorInner<MAX_REGIONS>>,
+    inner: Mutex<R, BumpAllocatorInner<MAX_REGIONS>>,
     min_align: NonZeroUsize,
 }
 
 #[derive(Debug)]
-struct BootstrapAllocatorInner<const MAX_REGIONS: usize> {
+struct BumpAllocatorInner<const MAX_REGIONS: usize> {
     arenas: ArrayVec<Arena, MAX_REGIONS>,
     current_arena_hint: usize,
 }
 
-impl<R, const MAX_REGIONS: usize> fmt::Debug for BootstrapAllocator<R, MAX_REGIONS>
+impl<R, const MAX_REGIONS: usize> fmt::Debug for BumpAllocator<R, MAX_REGIONS>
 where
     R: lock_api::RawMutex,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BootstrapAllocator")
+        f.debug_struct("BumpAllocator")
             .field("inner", &self.inner.lock())
             .field("min_align", &self.min_align)
             .finish()
     }
 }
 
-impl<R, const MAX_REGIONS: usize> BootstrapAllocator<R, MAX_REGIONS>
+impl<R, const MAX_REGIONS: usize> BumpAllocator<R, MAX_REGIONS>
 where
     R: lock_api::RawMutex,
 {
-    /// Constructs a new bootstrap frame allocator from the given regions of physical memory.
+    /// Constructs a new bump allocator from the given regions of physical memory.
     ///
     /// # Panics
     ///
@@ -89,7 +89,7 @@ where
             .collect();
 
         Self {
-            inner: Mutex::new(BootstrapAllocatorInner {
+            inner: Mutex::new(BumpAllocatorInner {
                 arenas,
                 current_arena_hint: largest_region_idx,
             }),
@@ -143,9 +143,9 @@ where
     }
 }
 
-// Safety: bootstrap allocator manages raw physical memory regions, they remain valid theoretically
+// Safety: bump allocator manages raw physical memory regions, they remain valid theoretically
 // forever we merely hand out "land claims" to it.
-unsafe impl<R, const MAX_REGIONS: usize> FrameAllocator for BootstrapAllocator<R, MAX_REGIONS>
+unsafe impl<R, const MAX_REGIONS: usize> FrameAllocator for BumpAllocator<R, MAX_REGIONS>
 where
     R: lock_api::RawMutex,
 {
@@ -182,11 +182,11 @@ where
     }
 
     unsafe fn deallocate(&self, _block: PhysicalAddress, _layout: Layout) {
-        unimplemented!("BootstrapAllocator does not support deallocation");
+        unimplemented!("BumpAllocator does not support deallocation");
     }
 }
 
-impl<const MAX_REGIONS: usize> BootstrapAllocatorInner<MAX_REGIONS> {
+impl<const MAX_REGIONS: usize> BumpAllocatorInner<MAX_REGIONS> {
     /// Fast-path for allocation from the "current" arena. Most modern machines have a single large
     /// physical memory region. During creation, we determine the largest physical memory region
     /// and designate it as the "current" arena.
@@ -506,9 +506,9 @@ impl<const MAX: usize> ExactSizeIterator for Blocks<MAX> {}
 mod tests {
     use core::alloc::Layout;
 
+    use super::*;
     use crate::address_range::AddressRangeExt;
     use crate::arch::Arch;
-    use crate::bootstrap::BootstrapAllocator;
     use crate::frame_allocator::FrameAllocator;
     use crate::test_utils::{EmulateArch, Machine, MachineBuilder};
     use crate::{GIB, PhysMap, PhysicalAddress, archtest};
@@ -520,7 +520,7 @@ mod tests {
     }
 
     archtest! {
-        // Assert that the BootstrapAllocator can allocate frames
+        // Assert that the BumpAllocator can allocate frames
         #[test_log::test]
         fn allocate_contiguous_smoke<A: Arch>() {
             let machine: Machine<A> = MachineBuilder::new()
@@ -530,8 +530,8 @@ mod tests {
                 ])
                 .finish();
 
-            let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+            let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                BumpAllocator::new::<A>(machine.memory_regions().collect());
 
             // Based on the memory of the machine we set up above, we expect the allocator to
             // yield 3 pages.
@@ -558,7 +558,7 @@ mod tests {
                 .unwrap_err();
         }
 
-        // Assert that the BootstrapAllocator can allocate zeroed frames in
+        // Assert that the BumpAllocator can allocate zeroed frames in
         // bootstrap (bare, before paging is enabled) mode.
         #[test_log::test]
         fn allocate_contiguous_zeroed_smoke<A: Arch>() {
@@ -569,8 +569,8 @@ mod tests {
                 ])
                 .finish();
 
-            let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+            let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                BumpAllocator::new::<A>(machine.memory_regions().collect());
 
             let arch = EmulateArch::new(machine);
 
@@ -613,8 +613,8 @@ mod tests {
                 ])
                 .finish();
 
-            let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+            let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                BumpAllocator::new::<A>(machine.memory_regions().collect());
 
             let blocks: Vec<_> = frame_allocator
                 .allocate(Layout::from_size_align(4 * A::GRANULE_SIZE, A::GRANULE_SIZE).unwrap())
@@ -644,8 +644,8 @@ mod tests {
 
             let physmap = PhysMap::new_bootstrap();
 
-            let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+            let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                BumpAllocator::new::<A>(machine.memory_regions().collect());
 
             let blocks: Vec<_> = frame_allocator
                 .allocate_zeroed(
@@ -677,8 +677,8 @@ mod tests {
                 ])
                 .finish();
 
-            let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+            let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                BumpAllocator::new::<A>(machine.memory_regions().collect());
 
             let frame = frame_allocator
                 .allocate_contiguous(Layout::from_size_align(A::GRANULE_SIZE, 1).unwrap())
@@ -697,8 +697,8 @@ mod tests {
                 ])
                 .finish();
 
-            let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+            let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                BumpAllocator::new::<A>(machine.memory_regions().collect());
 
             let blocks = frame_allocator
                 .allocate(Layout::from_size_align(A::GRANULE_SIZE, 1).unwrap())
@@ -719,8 +719,8 @@ mod tests {
                 ])
                 .finish();
 
-            let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+            let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                BumpAllocator::new::<A>(machine.memory_regions().collect());
 
             let frame = frame_allocator
                 .allocate_contiguous(Layout::from_size_align(A::GRANULE_SIZE, 1 * GIB).unwrap())
@@ -738,8 +738,8 @@ mod tests {
                 ])
                 .finish();
 
-            let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+            let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                BumpAllocator::new::<A>(machine.memory_regions().collect());
 
             let blocks = frame_allocator
                 .allocate(Layout::from_size_align(A::GRANULE_SIZE, 1 * GIB).unwrap())
@@ -760,8 +760,7 @@ mod proptests {
 
     use crate::address_range::AddressRangeExt;
     use crate::arch::Arch;
-    use crate::bootstrap::{BootstrapAllocator, DEFAULT_MAX_REGIONS};
-    use crate::frame_allocator::FrameAllocator;
+    use crate::frame_allocator::{BumpAllocator, DEFAULT_MAX_REGIONS, FrameAllocator};
     use crate::test_utils::proptest::region_layouts;
     use crate::test_utils::{Machine, MachineBuilder};
     use crate::{GIB, KIB, for_every_arch};
@@ -774,8 +773,8 @@ mod proptests {
                     .with_memory_regions(region_layouts.clone())
                     .finish();
 
-                let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                    BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+                let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                    BumpAllocator::new::<A>(machine.memory_regions().collect());
 
                 let total_size = region_layouts.iter().map(|layout| layout.size()).sum();
 
@@ -808,8 +807,8 @@ mod proptests {
                     .with_memory_regions(region_layouts.clone())
                     .finish();
 
-                let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                    BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+                let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                    BumpAllocator::new::<A>(machine.memory_regions().collect());
 
                 let total_size = region_layouts.iter().map(|layout| layout.size()).sum();
 
@@ -828,8 +827,8 @@ mod proptests {
                     .with_memory_regions(region_layouts.clone())
                     .finish();
 
-                let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                    BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+                let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                    BumpAllocator::new::<A>(machine.memory_regions().collect());
 
                 let alignment = 1usize << alignment_pot;
 
@@ -847,8 +846,8 @@ mod proptests {
                     .with_memory_regions(region_layouts.clone())
                     .finish();
 
-                let frame_allocator: BootstrapAllocator<parking_lot::RawMutex> =
-                    BootstrapAllocator::new::<A>(machine.memory_regions().collect());
+                let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
+                    BumpAllocator::new::<A>(machine.memory_regions().collect());
 
                 let alignment = 1usize << alignment_pot;
 

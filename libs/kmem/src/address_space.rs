@@ -3,71 +3,237 @@ use core::convert::Infallible;
 use core::ops::Range;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
-use crate::bootstrap::{Bootstrap, BootstrapAllocator};
 use crate::flush::Flush;
 use crate::physmap::PhysMap;
 use crate::table::{Table, marker};
 use crate::utils::{PageTableEntries, page_table_entries_for};
 use crate::{
     AddressRangeExt, AllocError, FrameAllocator, MemoryAttributes, PhysicalAddress, VirtualAddress,
+    WriteOrExecute,
 };
 
-pub struct HardwareAddressSpace<A: Arch> {
+/// Marks an `HardwareAddressSpace` that is still under construction. It has a root page table
+/// allocated but no physmap or other mappings yet. During bootstrapping we expect the machine
+/// has no active page table yet.
+pub struct Bootstrapping {}
+
+/// Marks an `HardwareAddressSpace` that has a mapped physmap. During bootstrapping we expect the
+/// machine has no active page table yet.
+pub struct BootstrappingWithPhysmap {
+    chosen_physmap: PhysMap,
+}
+
+/// Marks an active `HardwareAddressSpace` that has a
+pub struct Active {}
+
+pub struct HardwareAddressSpace<A: Arch, Phase> {
     arch: A,
     root_page_table: Table<A, marker::Owned>,
     physmap: PhysMap,
+    phase: Phase,
 }
 
-impl<A: Arch> HardwareAddressSpace<A> {
+impl<A: Arch> HardwareAddressSpace<A, Bootstrapping> {
     /// Constructs a new `AddressSpace` with a freshly allocated root page table
     /// that may be used during address space bringup in the `loader`.
     ///
     /// # Errors
     ///
     /// Returns `Err(AllocError)` when allocating the root page table fails.
-    pub fn new(
-        arch: A,
-        physmap: PhysMap,
-        frame_allocator: impl FrameAllocator,
-        flush: &mut Flush,
-    ) -> Result<Self, AllocError> {
+    pub fn new(arch: A, frame_allocator: impl FrameAllocator) -> Result<Self, AllocError> {
+        debug_assert!(
+            arch.active_table().is_none(),
+            "During bootstrapping the machine must have no active page table."
+        );
+
+        let physmap = PhysMap::new_bootstrap();
+
         let root_page_table = Table::allocate(frame_allocator, &physmap, &arch)?;
 
-        flush.invalidate_all();
-
         Ok(Self {
-            physmap,
-            root_page_table,
             arch,
+            root_page_table,
+            physmap,
+            phase: Bootstrapping {},
         })
     }
 
-    /// Constructs a new *bootstrapping* `AddressSpace` with a freshly allocated root page table
-    /// that may be used during address space bringup in the `loader`.
+    /// Identity-maps the physical address range with the specified memory attributes.
+    ///
+    /// If this returns `Ok`, the mapping is added to the address space.
+    ///
+    /// Note that this method **does not** establish any ordering between address space modification
+    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
+    /// new mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    ///
+    /// After the modifications have been synchronized with current execution, all accesses to the virtual
+    /// address range will translate to accesses of the physical address range and adhere to the
+    /// access rules established by the `MemoryAttributes`.
+    ///
+    /// # Safety
+    ///
+    /// 1. The entire virtual address range corresponding to `phys` must be unmapped.
+    /// 2. `phys` must be aligned to `at least the smallest architecture block size.
     ///
     /// # Errors
     ///
-    /// Returns `Err(AllocError)` when allocating the root page table fails.
-    pub fn new_bootstrap<R: lock_api::RawMutex, const MAX_REGIONS: usize>(
-        arch: A,
-        future_physmap: PhysMap,
-        frame_allocator: &BootstrapAllocator<R, MAX_REGIONS>,
-        flush: &mut Flush,
-    ) -> Result<Bootstrap<Self>, AllocError> {
-        let address_space = Self::new(arch, PhysMap::new_bootstrap(), frame_allocator, flush)?;
+    /// Returning `Err` indicates the mapping cannot be established and the address space remains
+    /// unaltered.
+    pub unsafe fn map_identity<F>(
+        &mut self,
+        phys: Range<PhysicalAddress>,
+        attributes: MemoryAttributes,
+        frame_allocator: F,
+    ) -> Result<(), AllocError>
+    where
+        F: FrameAllocator,
+    {
+        debug_assert!(
+            self.arch.active_table().is_none(),
+            "During bootstrapping the machine must have no active page table."
+        );
 
-        Ok(Bootstrap {
-            address_space,
-            future_physmap,
-        })
+        let virt = Range {
+            start: VirtualAddress::new(phys.start.get()),
+            end: VirtualAddress::new(phys.end.get()),
+        };
+
+        let mut flush = Flush::new();
+
+        // Safety: ensured by caller.
+        unsafe {
+            self.map_contiguous(virt, phys.start, attributes, frame_allocator, &mut flush)?;
+        }
+
+        // Safety: we're going to invalidate the entire address space after bootstrapping. No need
+        // to flush in between.
+        unsafe { flush.ignore() };
+
+        Ok(())
     }
 
+    /// Maps the physical memory region managed by the bootstrap allocator into the physmap region
+    /// described by this architectures memory mode.
+    ///
+    /// If this returns `Ok`, the mapping is added to the address space.
+    ///
+    /// Note that this method **does not** establish any ordering between address space modification
+    /// and accesses through the mapping, nor does it imply a page table cache flush. To ensure the
+    /// new mapping is visible to the calling CPU you must call [`flush`][Flush::flush] on the returned `[Flush`].
+    ///
+    /// After the modifications have been synchronized with current execution, all accesses to the virtual
+    /// address range will translate to accesses of the physical address range and adhere to the
+    /// access rules established by the `MemoryAttributes`.
+    ///
+    /// # Errors
+    ///
+    /// Returning `Err` indicates the mapping cannot be established. NOTE: The address space may remain
+    /// partially altered. The caller should call *unmap* on the virtual address range upon failure.
+    pub fn map_physical_memory(
+        mut self,
+        regions: impl Iterator<Item = Range<PhysicalAddress>>,
+        chosen_physmap: PhysMap,
+        frame_allocator: impl FrameAllocator,
+    ) -> Result<HardwareAddressSpace<A, BootstrappingWithPhysmap>, AllocError> {
+        debug_assert!(
+            self.arch.active_table().is_none(),
+            "During bootstrapping the machine must have no active page table."
+        );
+
+        let attrs = MemoryAttributes::new()
+            .with(MemoryAttributes::READ, true)
+            .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Write);
+
+        for region_phys in regions {
+            // NB: use the desired physmap (ie the one used after bootstrapping)
+            let region_virt = chosen_physmap.phys_to_virt_range(region_phys.clone());
+
+            let mut flush = Flush::new();
+
+            // Safety: we just created the address space and `BootstrapAllocator` checks its regions to
+            // not be overlapping (1.). It will also align regions to at least page size (2., 3.).
+            unsafe {
+                self.map_contiguous(
+                    region_virt,
+                    region_phys.start,
+                    attrs,
+                    frame_allocator.by_ref(),
+                    &mut flush,
+                )?;
+            }
+
+            // Safety: we're going to invalidate the entire address space after bootstrapping. No need
+            // to flush in between.
+            unsafe { flush.ignore() };
+        }
+
+        Ok(HardwareAddressSpace {
+            arch: self.arch,
+            root_page_table: self.root_page_table,
+            physmap: self.physmap,
+            phase: BootstrappingWithPhysmap { chosen_physmap },
+        })
+    }
+}
+
+impl<A: Arch> HardwareAddressSpace<A, BootstrappingWithPhysmap> {
+    /// Finish the address space bootstrapping phase and activate the address space on this CPU (set
+    /// this CPUs page table).
+    ///
+    /// # Safety
+    ///
+    /// After this method returns, all pointers become dangling and as such any access through
+    /// pre-existing pointers is Undefined Behavior. This includes implicit references by the CPU
+    /// such as the instruction pointer.
+    ///
+    /// This might seem impossible to uphold, except for identity-mappings which we consider valid
+    /// even after activating the address space.
+    pub unsafe fn finish_bootstrap_and_activate(self) -> HardwareAddressSpace<A, Active> {
+        debug_assert!(
+            self.arch.active_table().is_none(),
+            "During bootstrapping the machine must have no active page table."
+        );
+
+        let Self {
+            arch,
+            root_page_table,
+            phase,
+            ..
+        } = self;
+
+        // Safety: ensured by caller
+        unsafe { arch.set_active_table(root_page_table.address()) };
+
+        // NB: this is load-bearing. We need to ensure to flush the entire address space with all
+        // CPUs so that it correctly takes effect (especially so if the address space ID was reused).
+        arch.fence_all();
+
+        HardwareAddressSpace {
+            arch,
+            root_page_table,
+            physmap: phase.chosen_physmap,
+            phase: Active {},
+        }
+    }
+}
+
+impl<A: Arch> HardwareAddressSpace<A, Active> {
     /// Constructs a new `AddressSpace` from its raw components: architecture-specific data and the root table.
-    pub fn from_parts(arch: A, root_page_table: Table<A, marker::Owned>, physmap: PhysMap) -> Self {
+    ///
+    /// #  Safety
+    ///
+    /// The caller must ensure the address space defined by `arch`, `root_page_table`, and `physmap`
+    /// indeed represents a properly initialized address space according to [`Active`].
+    pub unsafe fn from_parts(
+        arch: A,
+        root_page_table: Table<A, marker::Owned>,
+        physmap: PhysMap,
+    ) -> Self {
         Self {
             physmap,
             root_page_table,
             arch,
+            phase: Active {},
         }
     }
 
@@ -75,14 +241,28 @@ impl<A: Arch> HardwareAddressSpace<A> {
     pub fn into_parts(self) -> (A, Table<A, marker::Owned>, PhysMap) {
         (self.arch, self.root_page_table, self.physmap)
     }
+}
 
+impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
     pub fn arch(&self) -> &A {
         &self.arch
     }
 
-    pub fn physmap(&self) -> &PhysMap {
-        &self.physmap
-    }
+    // pub fn physmap(&self) -> &PhysMap {
+    //     &self.physmap
+    // }
+
+    // /// Activate the address space on this CPU (set this CPUs page table).
+    // ///
+    // /// # Safety
+    // ///
+    // /// After this method returns, all pointers become dangling and as such any access through
+    // /// pre-existing pointers is Undefined Behaviour. This includes implicit references by the CPU
+    // /// such as the instruction pointer.
+    // pub unsafe fn activate(&self) {
+    //     todo!()
+    //     // unsafe { (self.vtable.activate)(self.raw, self.root_page_table) }
+    // }
 
     pub const fn granule_size(&self) -> usize {
         A::GRANULE_SIZE
@@ -90,18 +270,6 @@ impl<A: Arch> HardwareAddressSpace<A> {
 
     pub const fn granule_layout(&self) -> Layout {
         A::GRANULE_LAYOUT
-    }
-
-    /// Activate the address space on this CPU (set this CPUs page table).
-    ///
-    /// # Safety
-    ///
-    /// After this method returns, all pointers become dangling and as such any access through
-    /// pre-existing pointers is Undefined Behaviour. This includes implicit references by the CPU
-    /// such as the instruction pointer.
-    pub unsafe fn activate(&self) {
-        todo!()
-        // unsafe { (self.vtable.activate)(self.raw, self.root_page_table) }
     }
 
     /// Return the corresponding [`PhysicalAddress`] and [`MemoryAttributes`] for the given

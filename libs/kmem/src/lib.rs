@@ -10,7 +10,6 @@ mod address;
 mod address_range;
 mod address_space;
 pub mod arch;
-pub mod bootstrap;
 mod flush;
 mod frame_allocator;
 mod memory_attributes;
@@ -25,7 +24,7 @@ pub use address_range::AddressRangeExt;
 pub use address_space::HardwareAddressSpace;
 pub use arch::Arch;
 pub use flush::Flush;
-pub use frame_allocator::{AllocError, FrameAllocator};
+pub use frame_allocator::{AllocError, BumpAllocator, DEFAULT_MAX_REGIONS, FrameAllocator};
 pub use memory_attributes::{MemoryAttributes, WriteOrExecute};
 pub use physmap::PhysMap;
 

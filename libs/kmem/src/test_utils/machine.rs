@@ -6,15 +6,19 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::{cmp, fmt};
 
+use k23_arrayvec::ArrayVec;
 use k23_cpu_local::collection::CpuLocal;
 
+use crate::address_space::Active;
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
-use crate::bootstrap::BootstrapAllocator;
-use crate::flush::Flush;
+use crate::frame_allocator::BumpAllocator;
 use crate::test_utils::arch::EmulateArch;
 use crate::test_utils::memory::Memory;
 use crate::utils::page_table_entries_for;
-use crate::{HardwareAddressSpace, MemoryAttributes, PhysMap, PhysicalAddress, VirtualAddress};
+use crate::{
+    FrameAllocator, HardwareAddressSpace, MemoryAttributes, PhysMap, PhysicalAddress,
+    VirtualAddress,
+};
 
 /// A "virtual machine" that emulates a given architecture. It is intended to be used in tests
 /// and supports modeling the following properties:
@@ -54,30 +58,26 @@ impl<A: Arch> Machine<A> {
         &self,
         physmap_start: VirtualAddress,
     ) -> (
-        HardwareAddressSpace<EmulateArch<A>>,
-        BootstrapAllocator<parking_lot::RawMutex>,
+        HardwareAddressSpace<EmulateArch<A>, Active>,
+        BumpAllocator<parking_lot::RawMutex>,
     ) {
-        let physmap = PhysMap::new(physmap_start, self.memory_regions());
-
         let arch = EmulateArch::new(self.clone());
 
-        let frame_allocator =
-            BootstrapAllocator::new::<A>(arch.machine().memory_regions().collect());
+        let memory_regions: ArrayVec<_, _> = arch.machine().memory_regions().collect();
 
-        let mut flush = Flush::new();
-        let mut aspace =
-            HardwareAddressSpace::new_bootstrap(arch, physmap, &frame_allocator, &mut flush)
-                .expect("Machine does not have enough physical memory for root page table. Consider increasing configured physical memory sizes.");
+        let chosen_physmap = PhysMap::new(physmap_start, memory_regions.clone());
 
-        aspace
-            .map_physical_memory(&frame_allocator, &mut flush)
+        let frame_allocator = BumpAllocator::new::<A>(memory_regions.clone());
+
+        let address_space = HardwareAddressSpace::new(arch, frame_allocator.by_ref())
+            .expect("Machine does not have enough physical memory for root page table. Consider increasing configured physical memory sizes.");
+
+        let address_space = address_space.map_physical_memory(memory_regions.into_iter(), chosen_physmap, frame_allocator.by_ref())
             .expect("Machine does not have enough physical memory for physmap. Consider increasing configured physical memory sizes.");
 
         // Safety: we just created the address space, so don't have any pointers into it. In hosted tests
         // the programs memory and CPU registers are outside the address space anyway.
-        let address_space = unsafe { aspace.finish_bootstrap_and_activate() };
-
-        flush.flush(address_space.arch());
+        let address_space = unsafe { address_space.finish_bootstrap_and_activate() };
 
         (address_space, frame_allocator)
     }
@@ -455,6 +455,7 @@ pub struct MissingMemory;
 pub struct HasMemory;
 
 pub struct MachineBuilder<A: Arch, Mem> {
+    // under_construction: HardwareAddressSpace<A, Bootstrapping>,
     memory: Option<Memory>,
     _has: PhantomData<Mem>,
     _m: PhantomData<A>,
