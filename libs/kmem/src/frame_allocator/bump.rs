@@ -574,7 +574,7 @@ mod tests {
 
             let arch = EmulateArch::new(machine);
 
-            let physmap = PhysMap::new_bootstrap();
+            let physmap = PhysMap::ABSENT;
 
             // Based on the memory of the machine we set up above, we expect the allocator to
             // yield 3 pages.
@@ -642,7 +642,7 @@ mod tests {
 
             let arch = EmulateArch::new(machine.clone());
 
-            let physmap = PhysMap::new_bootstrap();
+            let physmap = PhysMap::ABSENT;
 
             let frame_allocator: BumpAllocator<parking_lot::RawMutex> =
                 BumpAllocator::new::<A>(machine.memory_regions().collect());

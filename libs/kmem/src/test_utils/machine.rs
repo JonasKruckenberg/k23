@@ -60,26 +60,28 @@ impl<A: Arch> Machine<A> {
     ) -> (
         HardwareAddressSpace<EmulateArch<A>, Active>,
         BumpAllocator<parking_lot::RawMutex>,
+        PhysMap,
     ) {
         let arch = EmulateArch::new(self.clone());
 
         let memory_regions: ArrayVec<_, _> = arch.machine().memory_regions().collect();
 
+        let active_physmap = PhysMap::ABSENT;
         let chosen_physmap = PhysMap::new(physmap_start, memory_regions.clone());
 
         let frame_allocator = BumpAllocator::new::<A>(memory_regions.clone());
 
-        let address_space = HardwareAddressSpace::new(arch, frame_allocator.by_ref())
+        let mut address_space = HardwareAddressSpace::new(arch, &active_physmap, frame_allocator.by_ref())
             .expect("Machine does not have enough physical memory for root page table. Consider increasing configured physical memory sizes.");
 
-        let address_space = address_space.map_physical_memory(memory_regions.into_iter(), chosen_physmap, frame_allocator.by_ref())
+        address_space.map_physical_memory(memory_regions.into_iter(), &active_physmap, &chosen_physmap, frame_allocator.by_ref())
             .expect("Machine does not have enough physical memory for physmap. Consider increasing configured physical memory sizes.");
 
         // Safety: we just created the address space, so don't have any pointers into it. In hosted tests
         // the programs memory and CPU registers are outside the address space anyway.
         let address_space = unsafe { address_space.finish_bootstrap_and_activate() };
 
-        (address_space, frame_allocator)
+        (address_space, frame_allocator, chosen_physmap)
     }
 
     /// Returns an iterator over the physical memory regions in this machine

@@ -1,5 +1,6 @@
 use core::alloc::Layout;
 use core::convert::Infallible;
+use core::marker::PhantomData;
 use core::ops::Range;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
@@ -12,25 +13,16 @@ use crate::{
     WriteOrExecute,
 };
 
-/// Marks an `HardwareAddressSpace` that is still under construction. It has a root page table
-/// allocated but no physmap or other mappings yet. During bootstrapping we expect the machine
-/// has no active page table yet.
+/// Marks an `HardwareAddressSpace` that is still under construction.
 pub struct Bootstrapping {}
 
-/// Marks an `HardwareAddressSpace` that has a mapped physmap. During bootstrapping we expect the
-/// machine has no active page table yet.
-pub struct BootstrappingWithPhysmap {
-    chosen_physmap: PhysMap,
-}
-
-/// Marks an active `HardwareAddressSpace` that has a
+/// Marks an active `HardwareAddressSpace`.
 pub struct Active {}
 
 pub struct HardwareAddressSpace<A: Arch, Phase> {
     arch: A,
     root_page_table: Table<A, marker::Owned>,
-    physmap: PhysMap,
-    phase: Phase,
+    phase: PhantomData<Phase>,
 }
 
 impl<A: Arch> HardwareAddressSpace<A, Bootstrapping> {
@@ -40,21 +32,17 @@ impl<A: Arch> HardwareAddressSpace<A, Bootstrapping> {
     /// # Errors
     ///
     /// Returns `Err(AllocError)` when allocating the root page table fails.
-    pub fn new(arch: A, frame_allocator: impl FrameAllocator) -> Result<Self, AllocError> {
-        debug_assert!(
-            arch.active_table().is_none(),
-            "During bootstrapping the machine must have no active page table."
-        );
-
-        let physmap = PhysMap::new_bootstrap();
-
-        let root_page_table = Table::allocate(frame_allocator, &physmap, &arch)?;
+    pub fn new(
+        arch: A,
+        physmap: &PhysMap,
+        frame_allocator: impl FrameAllocator,
+    ) -> Result<Self, AllocError> {
+        let root_page_table = Table::allocate(frame_allocator, physmap, &arch)?;
 
         Ok(Self {
             arch,
             root_page_table,
-            physmap,
-            phase: Bootstrapping {},
+            phase: PhantomData,
         })
     }
 
@@ -79,15 +67,13 @@ impl<A: Arch> HardwareAddressSpace<A, Bootstrapping> {
     ///
     /// Returning `Err` indicates the mapping cannot be established and the address space remains
     /// unaltered.
-    pub unsafe fn map_identity<F>(
+    pub unsafe fn map_identity(
         &mut self,
         phys: Range<PhysicalAddress>,
         attributes: MemoryAttributes,
-        frame_allocator: F,
-    ) -> Result<(), AllocError>
-    where
-        F: FrameAllocator,
-    {
+        frame_allocator: impl FrameAllocator,
+        physmap: &PhysMap,
+    ) -> Result<(), AllocError> {
         debug_assert!(
             self.arch.active_table().is_none(),
             "During bootstrapping the machine must have no active page table."
@@ -102,7 +88,14 @@ impl<A: Arch> HardwareAddressSpace<A, Bootstrapping> {
 
         // Safety: ensured by caller.
         unsafe {
-            self.map_contiguous(virt, phys.start, attributes, frame_allocator, &mut flush)?;
+            self.map_contiguous(
+                virt,
+                phys.start,
+                attributes,
+                frame_allocator,
+                physmap,
+                &mut flush,
+            )?;
         }
 
         // Safety: we're going to invalidate the entire address space after bootstrapping. No need
@@ -130,11 +123,12 @@ impl<A: Arch> HardwareAddressSpace<A, Bootstrapping> {
     /// Returning `Err` indicates the mapping cannot be established. NOTE: The address space may remain
     /// partially altered. The caller should call *unmap* on the virtual address range upon failure.
     pub fn map_physical_memory(
-        mut self,
+        &mut self,
         regions: impl Iterator<Item = Range<PhysicalAddress>>,
-        chosen_physmap: PhysMap,
+        active_physmap: &PhysMap,
+        chosen_physmap: &PhysMap,
         frame_allocator: impl FrameAllocator,
-    ) -> Result<HardwareAddressSpace<A, BootstrappingWithPhysmap>, AllocError> {
+    ) -> Result<(), AllocError> {
         debug_assert!(
             self.arch.active_table().is_none(),
             "During bootstrapping the machine must have no active page table."
@@ -158,6 +152,7 @@ impl<A: Arch> HardwareAddressSpace<A, Bootstrapping> {
                     region_phys.start,
                     attrs,
                     frame_allocator.by_ref(),
+                    active_physmap,
                     &mut flush,
                 )?;
             }
@@ -167,16 +162,9 @@ impl<A: Arch> HardwareAddressSpace<A, Bootstrapping> {
             unsafe { flush.ignore() };
         }
 
-        Ok(HardwareAddressSpace {
-            arch: self.arch,
-            root_page_table: self.root_page_table,
-            physmap: self.physmap,
-            phase: BootstrappingWithPhysmap { chosen_physmap },
-        })
+        Ok(())
     }
-}
 
-impl<A: Arch> HardwareAddressSpace<A, BootstrappingWithPhysmap> {
     /// Finish the address space bootstrapping phase and activate the address space on this CPU (set
     /// this CPUs page table).
     ///
@@ -197,7 +185,6 @@ impl<A: Arch> HardwareAddressSpace<A, BootstrappingWithPhysmap> {
         let Self {
             arch,
             root_page_table,
-            phase,
             ..
         } = self;
 
@@ -211,8 +198,7 @@ impl<A: Arch> HardwareAddressSpace<A, BootstrappingWithPhysmap> {
         HardwareAddressSpace {
             arch,
             root_page_table,
-            physmap: phase.chosen_physmap,
-            phase: Active {},
+            phase: PhantomData,
         }
     }
 }
@@ -224,22 +210,17 @@ impl<A: Arch> HardwareAddressSpace<A, Active> {
     ///
     /// The caller must ensure the address space defined by `arch`, `root_page_table`, and `physmap`
     /// indeed represents a properly initialized address space according to [`Active`].
-    pub unsafe fn from_parts(
-        arch: A,
-        root_page_table: Table<A, marker::Owned>,
-        physmap: PhysMap,
-    ) -> Self {
+    pub unsafe fn from_parts(arch: A, root_page_table: Table<A, marker::Owned>) -> Self {
         Self {
-            physmap,
             root_page_table,
             arch,
-            phase: Active {},
+            phase: PhantomData,
         }
     }
 
     /// Decomposes an `AddressSpace` into its raw components: architecture-specific data and the root table.
-    pub fn into_parts(self) -> (A, Table<A, marker::Owned>, PhysMap) {
-        (self.arch, self.root_page_table, self.physmap)
+    pub fn into_parts(self) -> (A, Table<A, marker::Owned>) {
+        (self.arch, self.root_page_table)
     }
 }
 
@@ -247,10 +228,6 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
     pub fn arch(&self) -> &A {
         &self.arch
     }
-
-    // pub fn physmap(&self) -> &PhysMap {
-    //     &self.physmap
-    // }
 
     // /// Activate the address space on this CPU (set this CPUs page table).
     // ///
@@ -278,13 +255,14 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
     pub fn lookup(
         &self,
         virt: VirtualAddress,
+        physmap: &PhysMap,
     ) -> Option<(PhysicalAddress, MemoryAttributes, &'static PageTableLevel)> {
         let mut table = self.root_page_table.borrow();
 
         for level in A::LEVELS {
             let entry_index = level.pte_index_of(virt);
             // Safety: `pte_index_of` only returns in-bounds indices.
-            let entry = unsafe { table.get(entry_index, &self.physmap, &self.arch) };
+            let entry = unsafe { table.get(entry_index, physmap, &self.arch) };
 
             if entry.is_table() {
                 // Safety: We checked the entry is a table above (1.) know the depth is correct (2.).
@@ -330,6 +308,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
         phys: impl ExactSizeIterator<Item = Range<PhysicalAddress>>,
         attributes: MemoryAttributes,
         frame_allocator: impl FrameAllocator,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) -> Result<(), AllocError> {
         for block_phys in phys {
@@ -342,6 +321,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
                     block_phys.start,
                     attributes,
                     frame_allocator.by_ref(),
+                    physmap,
                     flush,
                 )?;
             }
@@ -382,6 +362,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
         mut phys: PhysicalAddress,
         attributes: MemoryAttributes,
         frame_allocator: impl FrameAllocator,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) -> Result<(), AllocError> {
         debug_assert!(
@@ -418,7 +399,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
             } else {
                 let frame = frame_allocator.allocate_contiguous_zeroed(
                     A::GRANULE_LAYOUT,
-                    &self.physmap,
+                    physmap,
                     &self.arch,
                 )?;
 
@@ -431,12 +412,9 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
             Ok(())
         };
 
-        self.root_page_table.borrow_mut().visit_mut(
-            virt,
-            &self.physmap,
-            &self.arch,
-            map_contiguous,
-        )?;
+        self.root_page_table
+            .borrow_mut()
+            .visit_mut(virt, physmap, &self.arch, map_contiguous)?;
 
         Ok(())
     }
@@ -466,6 +444,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
         &mut self,
         mut virt: Range<VirtualAddress>,
         phys: impl ExactSizeIterator<Item = Range<PhysicalAddress>>,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) -> Result<(), AllocError> {
         for block_phys in phys {
@@ -476,6 +455,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
                 self.remap_contiguous(
                     Range::from_start_len(virt.start, block_phys.len()),
                     block_phys.start,
+                    physmap,
                     flush,
                 );
             }
@@ -506,6 +486,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
         &mut self,
         virt: Range<VirtualAddress>,
         mut phys: PhysicalAddress,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) {
         debug_assert!(
@@ -546,7 +527,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
         unsafe {
             self.root_page_table
                 .borrow_mut()
-                .visit_mut(virt, &self.physmap, &self.arch, remap_contiguous)
+                .visit_mut(virt, physmap, &self.arch, remap_contiguous)
                 .unwrap_unchecked();
         }
     }
@@ -569,6 +550,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
         &mut self,
         virt: Range<VirtualAddress>,
         attributes: MemoryAttributes,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) {
         debug_assert!(
@@ -604,7 +586,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
         unsafe {
             self.root_page_table
                 .borrow_mut()
-                .visit_mut(virt, &self.physmap, &self.arch, set_attributes)
+                .visit_mut(virt, physmap, &self.arch, set_attributes)
                 .unwrap_unchecked();
         }
     }
@@ -627,6 +609,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
         &mut self,
         virt: Range<VirtualAddress>,
         frame_allocator: impl FrameAllocator,
+        physmap: &PhysMap,
         flush: &mut Flush,
     ) {
         debug_assert!(
@@ -642,14 +625,7 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
 
         let table = self.root_page_table.borrow_mut();
 
-        Self::unmap_inner(
-            table,
-            virt,
-            &self.physmap,
-            &self.arch,
-            frame_allocator,
-            flush,
-        );
+        Self::unmap_inner(table, virt, physmap, &self.arch, frame_allocator, flush);
     }
 
     fn unmap_inner(
@@ -731,7 +707,7 @@ mod tests {
                 ])
                 .finish();
 
-            let (mut address_space, frame_allocator) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
+            let (mut address_space, frame_allocator, physmap) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
 
             let frame = frame_allocator
                 .allocate_contiguous(A::GRANULE_LAYOUT)
@@ -747,13 +723,14 @@ mod tests {
                         frame,
                         MemoryAttributes::new().with(MemoryAttributes::READ, true),
                         frame_allocator.by_ref(),
+                        &physmap,
                         &mut flush,
                     )
                     .unwrap();
             }
             flush.flush(address_space.arch());
 
-            let (phys, attrs, lvl) = address_space.lookup(page.start).unwrap();
+            let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
 
             assert_eq!(phys, frame);
             assert_eq!(attrs.allows_read(), true);
@@ -768,7 +745,7 @@ mod tests {
                 .with_memory_regions([Layout::from_size_align(0xB000, A::GRANULE_SIZE).unwrap()])
                 .finish();
 
-            let (mut address_space, frame_allocator) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
+            let (mut address_space, frame_allocator, physmap) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
 
             let frame = frame_allocator
                 .allocate_contiguous(A::GRANULE_LAYOUT)
@@ -784,13 +761,14 @@ mod tests {
                         frame,
                         MemoryAttributes::new().with(MemoryAttributes::READ, true),
                         frame_allocator.by_ref(),
+                        &physmap,
                         &mut flush,
                     )
                     .unwrap();
             }
             flush.flush(address_space.arch());
 
-            let (phys, attrs, lvl) = address_space.lookup(page.start).unwrap();
+            let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
 
             assert_eq!(phys, frame);
             assert_eq!(attrs.allows_read(), true);
@@ -806,11 +784,11 @@ mod tests {
 
             let mut flush = Flush::new();
             unsafe {
-                address_space.remap_contiguous(page.clone(), new_frame, &mut flush);
+                address_space.remap_contiguous(page.clone(), new_frame, &physmap, &mut flush);
             }
             flush.flush(address_space.arch());
 
-            let (phys, attrs, lvl) = address_space.lookup(page.start).unwrap();
+            let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
 
             assert_eq!(phys, new_frame);
             assert_eq!(attrs.allows_read(), true);
@@ -825,7 +803,7 @@ mod tests {
                 .with_memory_regions([Layout::from_size_align(0xB000, A::GRANULE_SIZE).unwrap()])
                 .finish();
 
-            let (mut address_space, frame_allocator) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
+            let (mut address_space, frame_allocator, physmap) = machine.bootstrap_address_space(A::DEFAULT_PHYSMAP_BASE);
 
             let frame = frame_allocator
                 .allocate_contiguous(A::GRANULE_LAYOUT)
@@ -841,13 +819,14 @@ mod tests {
                         frame,
                         MemoryAttributes::new().with(MemoryAttributes::READ, true),
                         frame_allocator.by_ref(),
+                        &physmap,
                         &mut flush,
                     )
                     .unwrap();
             }
             flush.flush(address_space.arch());
 
-            let (phys, attrs, lvl) = address_space.lookup(page.start).unwrap();
+            let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
 
             assert_eq!(phys, frame);
             assert_eq!(attrs.allows_read(), true);
@@ -863,12 +842,13 @@ mod tests {
                     page.clone(),
                     MemoryAttributes::new()
                         .with(MemoryAttributes::WRITE_OR_EXECUTE, WriteOrExecute::Execute),
+                    &physmap,
                     &mut flush,
                 );
             }
             flush.flush(address_space.arch());
 
-            let (phys, attrs, lvl) = address_space.lookup(page.start).unwrap();
+            let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
 
             assert_eq!(phys, frame);
             assert_eq!(attrs.allows_read(), false);
