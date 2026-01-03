@@ -47,12 +47,10 @@ jobs:
             - Security concerns
             - Test coverage
 
-            Use the repository's CLAUDE.md for guidance on style and conventions.
-            Include a single list of 5 recommendations sorted by relevance.
-            Keep your comments and recommendations concise, SHORT, technical and to the point.
-            Only comment comment when you have a **high** degree of confidence.
+            Keep your feedback SHORT and only comment on HIGHLY RELEVANT changes when you feel VERY CONFIDENT.
 
-            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+            When you do feel confifent feedback is helpful and relevant use `gh pr comment`
+            with your Bash tool to leave your review as a comment on the PR.
 
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
