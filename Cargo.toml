@@ -98,6 +98,7 @@ k23-panic-unwind = { path = "libs/panic-unwind" }
 k32-util = { path = "libs/util" }
 kasync = { path = "libs/kasync" }
 kmem = { path = "libs/kmem" }
+kmem-aslr = { path = "libs/kmem-aslr" }
 k23-arrayvec = { path = "libs/arrayvec" }
 
 # 3rd-party dependencies

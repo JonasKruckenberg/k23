@@ -9,7 +9,6 @@ use std::{cmp, fmt};
 use k23_arrayvec::ArrayVec;
 use k23_cpu_local::collection::CpuLocal;
 
-use crate::address_space::Active;
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::frame_allocator::BumpAllocator;
 use crate::test_utils::arch::EmulateArch;
@@ -58,7 +57,7 @@ impl<A: Arch> Machine<A> {
         &self,
         physmap_start: VirtualAddress,
     ) -> (
-        HardwareAddressSpace<EmulateArch<A>, Active>,
+        HardwareAddressSpace<EmulateArch<A>>,
         BumpAllocator<parking_lot::RawMutex>,
         PhysMap,
     ) {

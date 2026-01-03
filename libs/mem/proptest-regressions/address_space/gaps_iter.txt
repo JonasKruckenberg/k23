@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 05021c62e7c05e267337c78ced6a0cec8e17903f800e9d93d50b594abcfdc741 # shrinks to regions = [VirtualAddress(0x0000000000000000)..VirtualAddress(0x0000000000007000)]
+cc c76b1c1ca0235c8891e3e2f442f5852c0a0331c7d91412d5172e2759aff6c677 # shrinks to regions = [VirtualAddress(0x0000000000000000)..VirtualAddress(0x000000000d2c1000), VirtualAddress(0x0000000016289000)..VirtualAddress(0x000000001b3ec000), VirtualAddress(0x00000000444e7000)..VirtualAddress(0x000000005e8c0000)]
