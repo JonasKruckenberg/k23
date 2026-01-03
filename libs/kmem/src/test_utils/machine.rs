@@ -143,7 +143,7 @@ impl<A: Arch> Machine<A> {
         assert!(address.is_aligned_to(size_of::<T>()));
 
         if let Some((phys, attrs, level)) = self.cpu().translate(asid, address) {
-            assert!(attrs.allows_read());
+            assert!(attrs.allows_write());
             assert_eq!(
                 address.align_down(level.page_size()),
                 address.add(size_of::<T>()).align_down(level.page_size()),
