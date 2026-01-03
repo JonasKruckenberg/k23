@@ -15,7 +15,7 @@ use color_eyre::eyre::{Context, format_err};
 use wait_timeout::ChildExt;
 
 use crate::build::{Cargo, CrateToBuild};
-use crate::profile::{Architecture, Profile};
+use crate::configuration::{Architecture, Configuration};
 use crate::tracing::OutputOptions;
 use crate::util::KillOnDrop;
 use crate::{Options, qemu};
@@ -24,7 +24,7 @@ use crate::{Options, qemu};
 pub struct Cmd {
     /// The path to the build configuration file
     #[clap(value_hint = ValueHint::FilePath)]
-    profile: PathBuf,
+    configuration: PathBuf,
 
     /// Timeout for failing test run, in seconds.
     ///
@@ -39,13 +39,13 @@ pub struct Cmd {
 
 impl Cmd {
     pub fn run(&self, opts: &Options, output: &OutputOptions) -> crate::Result<()> {
-        let profile = Profile::from_file(&self.profile)?;
+        let configuration = Configuration::from_file(&self.configuration)?;
 
-        let mut cargo = Cargo::test(CrateToBuild::Kernel, &profile, opts, output)?;
+        let mut cargo = Cargo::test(CrateToBuild::Kernel, &configuration, opts, output)?;
         cargo.build_std(true);
         let mut cmd = cargo.into_cmd();
 
-        let (var, val) = cargo_qemu_runner_env(&profile)?;
+        let (var, val) = cargo_qemu_runner_env(&configuration)?;
         cmd.env(var, val);
 
         cmd.args(["--", "--"]);
@@ -95,10 +95,12 @@ fn parse_secs(s: &str) -> color_eyre::Result<Duration> {
         .context("not a valid number of seconds")
 }
 
-pub fn cargo_qemu_runner_env(profile: &Profile) -> crate::Result<(&'static str, String)> {
+pub fn cargo_qemu_runner_env(
+    configuration: &Configuration,
+) -> crate::Result<(&'static str, String)> {
     // The produced target artifact cannot be run on the host, so we proactively set the
     // runner to the
-    let runner_env_var = match profile.arch {
+    let runner_env_var = match configuration.arch {
         Architecture::Riscv64 => "CARGO_TARGET_RISCV64GC_K23_NONE_KERNEL_RUNNER",
     };
 
@@ -106,7 +108,7 @@ pub fn cargo_qemu_runner_env(profile: &Profile) -> crate::Result<(&'static str, 
         runner_env_var,
         format!(
             "cargo xtask __qemu {}",
-            profile.file_path.canonicalize()?.display()
+            configuration.file_path.canonicalize()?.display()
         ),
     ))
 }

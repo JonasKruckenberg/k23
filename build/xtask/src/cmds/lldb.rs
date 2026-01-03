@@ -11,7 +11,7 @@ use std::{fs, thread};
 
 use clap::{Parser, ValueHint};
 
-use crate::profile::Profile;
+use crate::configuration::Configuration;
 use crate::tracing::OutputOptions;
 use crate::{Options, build, qemu};
 
@@ -19,7 +19,7 @@ use crate::{Options, build, qemu};
 pub struct Cmd {
     /// The path to the build configuration file
     #[clap(value_hint = ValueHint::FilePath)]
-    profile: PathBuf,
+    configuration: PathBuf,
     /// The TCP port to listen for debug connections on.
     #[clap(long, default_value = "1234")]
     gdb_port: u16,
@@ -33,7 +33,7 @@ pub struct Cmd {
 
 impl Cmd {
     pub fn run(&self, opts: &Options, output: &OutputOptions) -> crate::Result<()> {
-        let profile = Profile::from_file(&self.profile)?;
+        let configuration = Configuration::from_file(&self.configuration)?;
 
         let target_dir = opts
             .target_dir
@@ -48,21 +48,21 @@ impl Cmd {
                 qemu_args: self.qemu_args.clone(),
             };
 
-            let kernel = build::build_kernel(opts, output, &profile)?;
-            let loader = build::build_loader(opts, output, &profile, &kernel)?;
+            let kernel = build::build_kernel(opts, output, &configuration)?;
+            let loader = build::build_loader(opts, output, &configuration, &kernel)?;
 
-            let mut qemu = qemu::spawn(&qemu_opts, profile, &loader, false, &[])?;
+            let mut qemu = qemu::spawn(&qemu_opts, configuration, &loader, false, &[])?;
             thread::spawn(move || qemu.0.wait().unwrap().exit_ok().unwrap());
 
             (kernel, loader)
         } else {
             let kernel = target_dir
-                .join(profile.kernel.target.resolve(&profile).name())
+                .join(configuration.kernel.target.resolve(&configuration).name())
                 .join("debug")
                 .join("kernel");
 
             let loader = target_dir
-                .join(profile.loader.target.resolve(&profile).name())
+                .join(configuration.loader.target.resolve(&configuration).name())
                 .join("debug")
                 .join("loader");
 

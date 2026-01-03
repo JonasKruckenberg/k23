@@ -21,7 +21,7 @@
 
 mod build;
 mod cmds;
-mod profile;
+mod configuration;
 mod qemu;
 mod tracing;
 mod util;

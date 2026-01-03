@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-struct RawProfile {
+struct RawConfiguration {
     arch: Architecture,
     name: String,
     #[serde(default)]
@@ -78,9 +78,9 @@ pub enum RustTarget {
 }
 
 impl RawRustTarget {
-    pub fn resolve(&self, profile: &Profile) -> RustTarget {
+    pub fn resolve(&self, configuration: &Configuration) -> RustTarget {
         if self.0.ends_with(".json") {
-            RustTarget::Json(profile.resolve_path(&self.0).unwrap())
+            RustTarget::Json(configuration.resolve_path(&self.0).unwrap())
         } else {
             RustTarget::Builtin(self.0.clone())
         }
@@ -106,7 +106,7 @@ impl Display for RustTarget {
 }
 
 #[derive(Clone, Debug)]
-pub struct Profile {
+pub struct Configuration {
     pub arch: Architecture,
     pub name: String,
     pub version: u32,
@@ -117,14 +117,14 @@ pub struct Profile {
     pub file_path: PathBuf,
 }
 
-impl Profile {
+impl Configuration {
     pub fn from_file(file_path: &Path) -> crate::Result<Self> {
         let mut hasher = DefaultHasher::new();
 
         let doc = read_and_flatten_toml(file_path, &mut hasher, &mut BTreeSet::new())?;
-        let profile_contents = doc.to_string();
+        let configuration_contents = doc.to_string();
 
-        let toml: RawProfile = toml::from_str(&profile_contents)?;
+        let toml: RawConfiguration = toml::from_str(&configuration_contents)?;
 
         // if we had any other checks, perform them here
 
@@ -151,31 +151,31 @@ impl Profile {
 }
 
 fn read_and_flatten_toml(
-    profile: &Path,
+    configuration: &Path,
     hasher: &mut DefaultHasher,
     seen: &mut BTreeSet<PathBuf>,
 ) -> crate::Result<toml_edit::DocumentMut> {
     use toml_patch::merge_toml_documents;
 
     // Prevent diamond inheritance
-    if !seen.insert(profile.to_owned()) {
+    if !seen.insert(configuration.to_owned()) {
         bail!(
-            "{profile:?} is inherited more than once; \
+            "{configuration:?} is inherited more than once; \
              diamond dependencies are not allowed"
         );
     }
-    let profile_contents =
-        std::fs::read(profile).with_context(|| format!("could not read {}", profile.display()))?;
+    let configuration_contents = std::fs::read(configuration)
+        .with_context(|| format!("could not read {}", configuration.display()))?;
 
     // Accumulate the contents into the buildhash here, so that we hash both
     // the inheritance file and the target (recursively, if necessary)
-    hasher.write(&profile_contents);
+    hasher.write(&configuration_contents);
 
-    let profile_contents =
-        std::str::from_utf8(&profile_contents).context("failed to read manifest as UTF-8")?;
+    let configuration_contents =
+        std::str::from_utf8(&configuration_contents).context("failed to read manifest as UTF-8")?;
 
     // Additive TOML file inheritance
-    let mut doc = profile_contents
+    let mut doc = configuration_contents
         .parse::<toml_edit::DocumentMut>()
         .context("failed to parse TOML file")?;
     let Some(inherited_from) = doc.remove("inherit") else {
@@ -187,7 +187,7 @@ fn read_and_flatten_toml(
     let mut original = match inherited_from {
         // Single inheritance
         Item::Value(Value::String(s)) => {
-            let file = profile.parent().unwrap().join(s.value());
+            let file = configuration.parent().unwrap().join(s.value());
             read_and_flatten_toml(&file, hasher, seen)
                 .with_context(|| format!("Could not load {file:?}"))?
         }
@@ -196,7 +196,7 @@ fn read_and_flatten_toml(
             let mut doc: Option<toml_edit::DocumentMut> = None;
             for a in a.iter() {
                 if let Value::String(s) = a {
-                    let file = profile.parent().unwrap().join(s.value());
+                    let file = configuration.parent().unwrap().join(s.value());
                     let next: toml_edit::DocumentMut =
                         read_and_flatten_toml(&file, hasher, seen)
                             .with_context(|| format!("Could not load {file:?}"))?;

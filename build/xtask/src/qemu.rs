@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 
 use clap::Parser;
 
-use crate::profile::{Architecture, Profile};
+use crate::configuration::{Architecture, Configuration};
 use crate::util::KillOnDrop;
 
 #[derive(Debug, Parser)]
@@ -28,12 +28,12 @@ pub struct QemuOptions {
 
 pub fn spawn(
     qemu: &QemuOptions,
-    profile: Profile,
+    configuration: Configuration,
     image: &Path,
     inherit_stdio: bool,
     additional_args: &[String],
 ) -> crate::Result<KillOnDrop> {
-    let mut cmd = match profile.arch {
+    let mut cmd = match configuration.arch {
         Architecture::Riscv64 => {
             let mut cmd = Command::new("qemu-system-riscv64");
             cmd.args([

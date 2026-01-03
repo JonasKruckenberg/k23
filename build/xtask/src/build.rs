@@ -12,7 +12,7 @@ use color_eyre::eyre::{Context, bail};
 use tracing_core::LevelFilter;
 
 use crate::Options;
-use crate::profile::{LogLevel, Profile, RustTarget};
+use crate::configuration::{Configuration, LogLevel, RustTarget};
 use crate::tracing::{ColorMode, OutputOptions};
 use crate::util::KillOnDrop;
 
@@ -21,21 +21,21 @@ const DEFAULT_KERNEL_STACK_SIZE_PAGES: u32 = 256;
 pub fn build_kernel(
     opts: &Options,
     output: &OutputOptions,
-    profile: &Profile,
+    configuration: &Configuration,
 ) -> crate::Result<PathBuf> {
-    let (mut cargo, output) = Cargo::build(CrateToBuild::Kernel, profile, opts, output)?;
+    let (mut cargo, output) = Cargo::build(CrateToBuild::Kernel, configuration, opts, output)?;
     cargo.build_std(true);
     let mut cmd = cargo.into_cmd();
 
-    let stacksize_pages = profile
+    let stacksize_pages = configuration
         .kernel
         .stacksize_pages
         .unwrap_or(DEFAULT_KERNEL_STACK_SIZE_PAGES);
 
-    let max_log_level = match profile
+    let max_log_level = match configuration
         .kernel
         .max_log_level
-        .unwrap_or(profile.max_log_level)
+        .unwrap_or(configuration.max_log_level)
     {
         LogLevel::Trace => "::tracing::Level::TRACE",
         LogLevel::Debug => "::tracing::Level::DEBUG",
@@ -65,17 +65,17 @@ pub fn build_kernel(
 pub fn build_loader(
     opts: &Options,
     output: &OutputOptions,
-    profile: &Profile,
+    configuration: &Configuration,
     kernel: &Path,
 ) -> crate::Result<PathBuf> {
-    let (mut cargo, output) = Cargo::build(CrateToBuild::Loader, profile, opts, output)?;
+    let (mut cargo, output) = Cargo::build(CrateToBuild::Loader, configuration, opts, output)?;
     cargo.build_std(true);
     let mut cmd = cargo.into_cmd();
 
-    let max_log_level = match profile
+    let max_log_level = match configuration
         .kernel
         .max_log_level
-        .unwrap_or(profile.max_log_level)
+        .unwrap_or(configuration.max_log_level)
     {
         LogLevel::Trace => "::log::Level::Trace",
         LogLevel::Debug => "::log::Level::Debug",
@@ -124,7 +124,7 @@ pub struct Cargo<'a> {
     release: bool,
     build_std: bool,
     color_mode: ColorMode,
-    profile: &'a Profile,
+    configuration: &'a Configuration,
     no_default_features: bool,
     features: Vec<String>,
     rust_target: RustTarget,
@@ -137,7 +137,7 @@ impl<'a> Cargo<'a> {
         krate: CrateToBuild,
         opts: &'a Options,
         output: &OutputOptions,
-        profile: &'a Profile,
+        configuration: &'a Configuration,
     ) -> Self {
         let verbosity = output.log.default_level().map_or(0, |lvl| match lvl {
             LevelFilter::TRACE => 2,
@@ -145,18 +145,18 @@ impl<'a> Cargo<'a> {
             _ => 0,
         });
 
-        let kernel_target = profile.kernel.target.resolve(&profile);
-        let loader_target = profile.loader.target.resolve(&profile);
+        let kernel_target = configuration.kernel.target.resolve(&configuration);
+        let loader_target = configuration.loader.target.resolve(&configuration);
 
         let (no_default_features, features, rust_target) = match krate {
             CrateToBuild::Kernel => (
-                profile.kernel.no_default_features,
-                profile.kernel.features.clone(),
+                configuration.kernel.no_default_features,
+                configuration.kernel.features.clone(),
                 kernel_target.clone(),
             ),
             CrateToBuild::Loader => (
-                profile.loader.no_default_features,
-                profile.loader.features.clone(),
+                configuration.loader.no_default_features,
+                configuration.loader.features.clone(),
                 loader_target.clone(),
             ),
         };
@@ -176,7 +176,7 @@ impl<'a> Cargo<'a> {
             release: opts.release,
             build_std: false,
             color_mode: output.color,
-            profile,
+            configuration,
             no_default_features,
             features,
             rust_target,
@@ -186,11 +186,11 @@ impl<'a> Cargo<'a> {
 
     // pub fn check(
     //     krate: CrateToBuild,
-    //     profile: &'a Profile,
+    //     configuration: &'a Configuration,
     //     opts: &'a Options,
     //     output: &OutputOptions,
     // ) -> crate::Result<Self> {
-    //     let this = Self::new("check", krate, opts, output, profile);
+    //     let this = Self::new("check", krate, opts, output, configuration);
     //
     //     this.maybe_clean()?;
     //
@@ -199,11 +199,11 @@ impl<'a> Cargo<'a> {
     //
     // pub fn clippy(
     //     krate: CrateToBuild,
-    //     profile: &'a Profile,
+    //     configuration: &'a Configuration,
     //     opts: &'a Options,
     //     output: &OutputOptions,
     // ) -> crate::Result<Self> {
-    //     let this = Self::new("clippy", krate, opts, output, profile);
+    //     let this = Self::new("clippy", krate, opts, output, configuration);
     //
     //     this.maybe_clean()?;
     //
@@ -212,11 +212,11 @@ impl<'a> Cargo<'a> {
 
     pub fn build(
         krate: CrateToBuild,
-        profile: &'a Profile,
+        configuration: &'a Configuration,
         opts: &'a Options,
         output: &OutputOptions,
     ) -> crate::Result<(Self, PathBuf)> {
-        let this = Self::new("build", krate, opts, output, profile);
+        let this = Self::new("build", krate, opts, output, configuration);
 
         this.maybe_clean()?;
 
@@ -231,11 +231,11 @@ impl<'a> Cargo<'a> {
 
     pub fn test(
         krate: CrateToBuild,
-        profile: &'a Profile,
+        configuration: &'a Configuration,
         opts: &'a Options,
         output: &OutputOptions,
     ) -> crate::Result<Self> {
-        let this = Self::new("test", krate, opts, output, profile);
+        let this = Self::new("test", krate, opts, output, configuration);
 
         this.maybe_clean()?;
 
@@ -260,7 +260,7 @@ impl<'a> Cargo<'a> {
         cmd.env("CARGO_TARGET_DIR", self.target_dir);
         cmd.env("CARGO_TERM_COLOR", self.color_mode.as_str());
 
-        cmd.env("K23_CONFIG_PATH", &self.profile.file_path);
+        cmd.env("K23_CONFIG_PATH", &self.configuration.file_path);
 
         if self.release {
             cmd.arg("--release");
@@ -299,7 +299,7 @@ impl<'a> Cargo<'a> {
             Ok(contents) => {
                 if let Ok(contents) = std::str::from_utf8(&contents) {
                     if let Ok(cmp) = u64::from_str_radix(contents, 16) {
-                        self.profile.buildhash != cmp
+                        self.configuration.buildhash != cmp
                     } else {
                         tracing::warn!("buildstamp file contents unknown; re-building.");
                         true
@@ -316,18 +316,29 @@ impl<'a> Cargo<'a> {
         };
         // if we need to rebuild, we should clean everything before we start building
         if rebuild {
-            tracing::debug!("profile.toml has changed; rebuilding...");
+            tracing::debug!("configuration.toml has changed; rebuilding...");
 
-            let kernel_target = self.profile.kernel.target.resolve(&self.profile);
+            let kernel_target = self
+                .configuration
+                .kernel
+                .target
+                .resolve(&self.configuration);
             cargo_clean(&["kernel"], &kernel_target.to_string())?;
 
-            let loader_target = self.profile.loader.target.resolve(&self.profile);
+            let loader_target = self
+                .configuration
+                .loader
+                .target
+                .resolve(&self.configuration);
             cargo_clean(&["loader"], &loader_target.to_string())?;
         }
 
         // now that we're clean, update our buildstamp file; any failure to build
         // from here on need not trigger a clean
-        std::fs::write(&buildstamp_file, format!("{:x}", self.profile.buildhash))?;
+        std::fs::write(
+            &buildstamp_file,
+            format!("{:x}", self.configuration.buildhash),
+        )?;
 
         Ok(())
     }
