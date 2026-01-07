@@ -1,36 +1,33 @@
+#![feature(iter_map_windows)]
+
 use std::alloc::Layout;
+use std::hint::black_box;
 use std::mem::offset_of;
 use std::ops::Range;
 use std::pin::Pin;
 use std::ptr::NonNull;
-use std::{cmp, fmt, mem};
-use std::collections::Bound;
-use brie_tree::nonmax::NonMaxU64;
-use brie_tree::{BTree, BTreeKey};
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use rand::distr::Uniform;
-use rand::prelude::SliceRandom;
-use rand::Rng;
-use wavltree::{Linked, Links, WAVLTree};
+use std::{cmp, mem};
 
-#[derive(Default)]
+use brie_tree::BTree;
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use rand::prelude::SliceRandom;
+use rand::{thread_rng, Rng};
+use wavltree::{Linked, Links, WAVLTree};
+use pin_project::pin_project;
+use rand::distr::Uniform;
+
+#[pin_project(!Unpin)]
+#[derive(Debug, Default)]
 struct WAVLEntry {
     range: Range<usize>,
+
     /// The address range covered by this region and its WAVL tree subtree, used when allocating new regions.
     subtree_range: Range<usize>,
     /// The largest gap in this subtree, used when allocating new regions.
     max_gap: usize,
+
     links: Links<Self>,
 }
-
-impl fmt::Debug for WAVLEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PlaceHolderEntry")
-            .field("value", &self.range)
-            .finish()
-    }
-}
-
 impl WAVLEntry {
     pub fn new(range: Range<usize>) -> Self {
         Self {
@@ -184,73 +181,137 @@ unsafe impl Linked for WAVLEntry {
     }
 }
 
-fn wavl(inserts: &[Range<usize>], deletes: &[Range<usize>]) {
-    let mut tree: WAVLTree<WAVLEntry> = WAVLTree::new();
+pub struct GapsIter<'a> {
+    layout: Layout,
+    stack: Vec<&'a WAVLEntry>,
+    prev_region_end: Option<usize>,
+}
 
-    for i in inserts {
-        tree.insert(Box::pin(WAVLEntry::new(*i)));
+impl<'a> GapsIter<'a> {
+    pub fn new(layout: Layout, root: &'a WAVLEntry) -> Self {
+        let mut me = GapsIter {
+            layout,
+            stack: vec![],
+            prev_region_end: None,
+        };
+        me.push_left_nodes(root);
+        me
     }
 
-    for i in deletes {
-        tree.remove(&i.start);
+    fn push_left_nodes(&mut self, mut node: &'a WAVLEntry) {
+        loop {
+            self.stack.push(node);
+            if node.suitable_gap_in_subtree(self.layout)
+                && let Some(left) = node.left_child()
+            {
+                node = left;
+            } else {
+                break;
+            }
+        }
     }
 }
 
-fn brie(inserts: &[Range<usize>], deletes: &[Range<usize>]) {
-    let mut tree: BTree<NonMaxU64, (u64, u8)> = BTree::new();
-    // let mut gaps: BTree<NonMaxU64, (u64, u8)> = BTree::new();
+impl Iterator for GapsIter<'_> {
+    type Item = Range<usize>;
 
-    for range in inserts {
-        let mut c = tree.cursor_mut_at(Bound::Included(*i.start));
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(node) = self.stack.pop() {
+            if let Some(prev_region_end) = self.prev_region_end {
+                // compute gap size
+                let gap_size = node.range.start - prev_region_end;
 
-        if let Some((_, (start, _))) = c.entry() {
-            let gap = range.end..start;
-            debug_assert!(!gap.is_empty());
-            // gaps.insert();
-        } else {
+                // if the gap is large enough yield it
+                if gap_size >= self.layout.size() {
+                    // no gap yielded for this node, continue traversal: push right subtree if interesting
+                    if node.suitable_gap_in_subtree(self.layout)
+                        && let Some(right) = node.right_child()
+                    {
+                        self.push_left_nodes(right);
+                    }
 
+                    let gap = prev_region_end..node.range.start;
+
+                    // update prev_end to current node end before yielding
+                    self.prev_region_end = Some(node.range.end);
+
+                    return Some(gap);
+                }
+            }
+
+            // no gap yielded for this node, continue traversal: push right subtree if interesting
+            if node.suitable_gap_in_subtree(self.layout)
+                && let Some(right) = node.right_child()
+            {
+                self.push_left_nodes(right);
+            }
+
+            // ensure prev_end reflects the most-recent visited node end
+            self.prev_region_end = Some(node.range.end);
         }
 
-        c.insert_after(NonMaxU64::new(range.end as u64).unwrap(), (range.start as u64, 0));
+        None
     }
+}
 
-    // for i in inserts {
-        tree.insert(NonMaxU64::new(i.end as u64).unwrap(), (i.start as u64, 0));
-    // }
+fn wavl(tree: &WAVLTree<WAVLEntry>, layout: Layout) {
+    let gaps = GapsIter::new(layout, tree.root().get().unwrap());
 
-    for i in deletes {
-        tree.remove(NonMaxU64::new(i.end as u64).unwrap());
+    for gap in gaps {
+        black_box(gap);
+    }
+}
+
+fn brie(tree: &BTree<brie_tree::nonmax::NonMaxU64, (u64, u8)>, layout: Layout) {
+    let gaps = tree
+        .iter()
+        .map_windows(|[(region_end, _), (_, (next_region_start, _))]| {
+            region_end.get()..*next_region_start
+        })
+        .filter(|gap| (gap.end - gap.start) >= layout.size() as u64);
+
+    for gap in gaps {
+        black_box(gap);
     }
 }
 
 pub const KIB: usize = 1024;
 pub const MIB: usize = KIB * 1024;
+pub const GIB: usize = MIB * 1024;
 
 fn bench_fibs(c: &mut Criterion) {
-    let mut rng = rand::rng();
+    let mut rng = thread_rng();
 
-    let mut group = c.benchmark_group("Insertions Deletions");
+    let mut group = c.benchmark_group("Gap Search");
     for num_entries in (10..10_000).step_by(1000) {
-        let mut ranges = (0..num_entries)
-            .map(|idx| idx * 2 * MIB)
-            .map(|base| base..base + rng.sample(Uniform::new(0, 2 * MIB).unwrap()))
-            .collect::<Vec<_>>();
+        let mut entries = (0..num_entries * 2*MIB).step_by(2*MIB).collect::<Vec<_>>();
+        entries.shuffle(&mut rng);
 
-        ranges.shuffle(&mut rng);
-        let inserts = ranges.clone();
-        ranges.shuffle(&mut rng);
-        let deletes = ranges;
+        let mut wavltree = WAVLTree::new();
+        for i in &entries {
+            wavltree.insert(Box::pin(WAVLEntry::new(*i..*i + rng.sample(Uniform::new(0, 2*MIB).unwrap()))));
+        }
 
-        c.bench_with_input(
+        let layout = Layout::from_size_align(MIB, 4096).unwrap();
+
+        group.bench_with_input(
             BenchmarkId::new("WAVLTree", num_entries),
-            &(inserts.as_slice(), deletes.as_slice()),
-            |b, (inserts, deletes)| b.iter(|| wavl(inserts, deletes)),
+            &(wavltree, layout),
+            |b, (wavltree, layout)| b.iter(|| wavl(wavltree, *layout)),
         );
 
-        c.bench_with_input(
-            BenchmarkId::new("Brie", num_entries),
-            &(inserts, deletes),
-            |b, (inserts, deletes)| b.iter(|| brie(inserts, deletes)),
+        let mut brie_tree = BTree::new();
+        for i in &entries {
+            brie_tree.insert(
+                brie_tree::nonmax::NonMaxU64::new(*i as u64).unwrap(),
+                (*i as u64 + rng.sample(Uniform::new(0, 2*MIB).unwrap()) as u64, 0),
+            );
+        }
+
+        group.bench_with_input(
+            BenchmarkId::new("BrieTree", num_entries),
+            &(brie_tree, layout),
+            |b, (brie_tree, layout)| b.iter(|| brie(brie_tree, *layout)),
         );
     }
     group.finish();

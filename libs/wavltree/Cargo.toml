@@ -10,9 +10,15 @@ license.workspace = true
 name = "insertions_deletions"
 harness = false
 
+[[bench]]
+name = "gaps"
+harness = false
+
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
 rand= { workspace = true, features = ["thread_rng"] }
 criterion = "0.8.0"
+brie-tree = "0.1.2"
+pin-project.workspace = true
 
 [features]
 dot = []
