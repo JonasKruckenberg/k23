@@ -48,6 +48,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "allocator-api2"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c583acf993cf4245c4acb0a2cc2ab1f9cc097de73411bb6d3647ff6af2b1013d"
+
+[[package]]
 name = "anes"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -152,12 +158,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
+name = "brie-tree"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc07bcb47a1eaa44b6eb9ae3dd5e895cbf222f7f378ecbe014e1dae4bba30a66"
+dependencies = [
+ "allocator-api2 0.3.1",
+ "cfg-if",
+ "nonmax",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
 dependencies = [
- "allocator-api2",
+ "allocator-api2 0.2.21",
 ]
 
 [[package]]
@@ -1112,6 +1129,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24e0cc5e2c585acbd15c5ce911dff71e1f4d5313f43345873311c4f5efd741cc"
 
 [[package]]
+name = "nonmax"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "610a5acd306ec67f907abe5567859a3c693fb9886eb1f012ab8f2a47bef3db51"
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1425,6 +1448,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "range-tree"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+ "brie-tree",
+ "cfg-if",
+ "criterion",
+ "nonmax",
+ "pin-project",
+ "proptest",
+ "rand",
+ "wavltree",
+]
+
+[[package]]
 name = "rayon"
 version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1458,7 +1496,7 @@ name = "regalloc2"
 version = "0.11.1"
 source = "git+https://github.com/JonasKruckenberg/regalloc2?branch=jonas%2Frefactor%2Fstatic-machine-env#305811667665047d750521973be4b3b7a6a7d312"
 dependencies = [
- "allocator-api2",
+ "allocator-api2 0.2.21",
  "bumpalo",
  "hashbrown 0.15.5",
  "log",
