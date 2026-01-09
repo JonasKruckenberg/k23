@@ -9,6 +9,7 @@ mod clock;
 mod instant;
 mod sleep;
 #[cfg(test)]
+#[cfg(not(loom))]
 mod test_util;
 mod timeout;
 mod timer;

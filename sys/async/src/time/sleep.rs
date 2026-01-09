@@ -139,6 +139,7 @@ impl PinnedDrop for Sleep<'_> {
 }
 
 #[cfg(test)]
+#[cfg(not(loom))]
 mod tests {
     use fastrand::FastRand;
     use tracing_subscriber::EnvFilter;
@@ -153,7 +154,6 @@ mod tests {
     // loom is not happy about this test. For whatever reason it triggers the "too many branches"
     // error. But both the regular test AND miri are fine with it
     #[test]
-    #[cfg(not(loom))]
     fn sleep_basically_works() {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
