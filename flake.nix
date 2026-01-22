@@ -42,6 +42,16 @@
 
             # for testing the kernel
             qemu
+
+            # To profile the code or benchmarks
+            samply
+          ] ++ lib.optionals pkgs.stdenv.isLinux [
+            # To profile the code or benchmarks
+            perf
+
+            # For valgrind
+            valgrind
+            cargo-valgrind
           ];
 
           LIBCLANG_PATH = "${llvmPackages.libclang.lib}/lib";
