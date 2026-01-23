@@ -1,14 +1,14 @@
 use core::marker::PhantomData;
 use core::ops::{Index, IndexMut};
 
-use crate::idx::Idx;
-use crate::node::{MAX_POOL_SIZE, NodePos, NodeRef, leaf_node_layout, marker};
+use crate::int::RangeTreeInteger;
+use crate::node::{MAX_POOL_SIZE, NodePos, NodeRef, leaf_node_layout};
 
 /// Returns the worst case maximum height for a tree with key `I`.
 #[inline]
-pub(crate) const fn max_height<I: Idx>() -> usize {
-    let (layout,_,_,_) = leaf_node_layout::<I, ()>();
-    
+pub(crate) const fn max_height<I: RangeTreeInteger>() -> usize {
+    let (layout, _, _, _) = leaf_node_layout::<I, ()>();
+
     // Get the maximum possible number of leaf nodes, assuming an empty `V`.
     //
     // `NodePool` stores offsets in a u32 and therefore the total pool size
@@ -39,12 +39,12 @@ pub(crate) const fn max_height<I: Idx>() -> usize {
 /// This has the invariant of always being less than `max_height::<I>()`, which
 /// allows safe unchecked indexing in a stack.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Height<I: Idx> {
+pub(crate) struct Height<I: RangeTreeInteger> {
     pub height: usize,
     _m: PhantomData<fn() -> I>,
 }
 
-impl<I: Idx> Height<I> {
+impl<I: RangeTreeInteger> Height<I> {
     /// Returns the height for leaf nodes.
     pub(crate) const LEAF: Self = Self {
         height: 0,
@@ -84,17 +84,19 @@ impl<I: Idx> Height<I> {
     }
 }
 
-pub(crate) struct Stack<I: Idx, V, const H: usize> {
-    entries: [(NodeRef<marker::LeafOrInternal<V>>, NodePos<I>); H],
+pub(crate) struct Stack<I: RangeTreeInteger, const H: usize> {
+    entries: [(NodeRef, NodePos<I>); H],
 }
 
-impl<I: Idx, V, const H: usize> Clone for Stack<I, V, H> {
+impl<I: RangeTreeInteger, const H: usize> Clone for Stack<I, H> {
     fn clone(&self) -> Self {
-        Self { entries: self.entries } 
+        Self {
+            entries: self.entries,
+        }
     }
 }
 
-impl<I: Idx, V, const H: usize> Default for Stack<I, V, H> {
+impl<I: RangeTreeInteger, const H: usize> Default for Stack<I, H> {
     #[inline]
     fn default() -> Self {
         Self {
@@ -105,8 +107,8 @@ impl<I: Idx, V, const H: usize> Default for Stack<I, V, H> {
     }
 }
 
-impl<I: Idx, V, const H: usize> Index<Height<I>> for Stack<I, V, H> {
-    type Output = (NodeRef<marker::LeafOrInternal<V>>, NodePos<I>);
+impl<I: RangeTreeInteger, const H: usize> Index<Height<I>> for Stack<I, H> {
+    type Output = (NodeRef, NodePos<I>);
 
     #[inline]
     fn index(&self, index: Height<I>) -> &Self::Output {
@@ -115,7 +117,7 @@ impl<I: Idx, V, const H: usize> Index<Height<I>> for Stack<I, V, H> {
     }
 }
 
-impl<I: Idx, V, const H: usize> IndexMut<Height<I>> for Stack<I, V, H> {
+impl<I: RangeTreeInteger, const H: usize> IndexMut<Height<I>> for Stack<I, H> {
     #[inline]
     fn index_mut(&mut self, index: Height<I>) -> &mut Self::Output {
         const { assert!(H == max_height::<I>()) };

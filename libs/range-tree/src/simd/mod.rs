@@ -5,7 +5,7 @@ use core::{fmt::Debug, hint};
 
 use cfg_if::cfg_if;
 
-use crate::idx::CACHE_LINE;
+use crate::int::CACHE_LINE;
 
 cfg_if! {
     if #[cfg(all(
@@ -211,8 +211,8 @@ unsafe fn exact_div_unchecked(a: usize, b: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::SimdSearch;
-    use crate::idx::{CACHE_LINE};
-    use crate::idx::CacheAligned;
+    use crate::int::{CACHE_LINE};
+    use crate::int::CacheAligned;
 
     fn generic_search<T: SimdSearch>(keys: &[T], search: T) -> usize {
         keys[..keys.len() - 1].partition_point(|&key| T::bias_cmp(key, search).is_lt())
