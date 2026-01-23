@@ -1756,7 +1756,6 @@ dependencies = [
 name = "range-tree"
 version = "0.1.0"
 dependencies = [
- "bitflags",
  "brie-tree",
  "cfg-if",
  "criterion",
@@ -1764,6 +1763,8 @@ dependencies = [
  "pin-project",
  "proptest",
  "rand",
+ "tracing 0.2.0",
+ "tracing-subscriber 0.3.0",
  "wavltree",
 ]
 

@@ -3,7 +3,7 @@
 extern crate alloc;
 
 mod cursor;
-mod idx;
+mod int;
 mod iter;
 mod node;
 mod simd;
@@ -13,20 +13,31 @@ use core::alloc::{AllocError, Allocator};
 use core::ops;
 
 pub use cursor::{Cursor, CursorMut};
-use idx::Idx;
+use int::RangeTreeInteger;
 
 use crate::node::{NodePool, NodePos, NodeRef, UninitNodeRef, marker};
 use crate::stack::Height;
 
-pub struct RangeTree<I: Idx, V, A: Allocator> {
-    internal: NodePool<I, marker::Internal<V>>,
-    leaf: NodePool<I, marker::Leaf<V>>,
-    root: NodeRef<marker::LeafOrInternal<V>>,
-    height: Height<I>,
+pub trait RangeTreeIndex: Copy {
+    #[allow(private_bounds)]
+    type Int: RangeTreeInteger;
+
+    /// Converts the index to an integer.
+    fn to_int(self) -> Self::Int;
+
+    /// Recovers the index from an integer.
+    fn from_int(int: Self::Int) -> Self;
+}
+
+pub struct RangeTree<I: RangeTreeIndex, V, A: Allocator> {
+    internal: NodePool<I::Int, marker::Internal>,
+    leaf: NodePool<I::Int, marker::Leaf<V>>,
+    root: NodeRef,
+    height: Height<I::Int>,
     allocator: A,
 }
 
-impl<I: Idx, V, A: Allocator> RangeTree<I, V, A> {
+impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     #[inline]
     pub fn try_new_in(allocator: A) -> Result<Self, AllocError> {
         let mut out = Self {
@@ -43,7 +54,7 @@ impl<I: Idx, V, A: Allocator> RangeTree<I, V, A> {
 
     /// Initializes the root node to the leaf node at offset zero.
     #[inline]
-    fn init_root(&mut self, root: UninitNodeRef<marker::Leaf<V>>) {
+    fn init_root(&mut self, root: UninitNodeRef) {
         let root = unsafe { root.init_pivots(&mut self.leaf) };
         unsafe {
             root.set_next_leaf(None, &mut self.leaf);
@@ -55,7 +66,7 @@ impl<I: Idx, V, A: Allocator> RangeTree<I, V, A> {
     #[inline]
     pub fn insert(&mut self, range: ops::Range<I>, value: V) -> Result<(), AllocError> {
         let mut cursor = unsafe { CursorMut::uninit(self) };
-        cursor.seek(range.end.to_raw());
+        cursor.seek(range.end.to_int().to_raw());
         cursor.insert_before(range, value)
     }
 
@@ -66,7 +77,7 @@ impl<I: Idx, V, A: Allocator> RangeTree<I, V, A> {
             self.height,
             assert_sorted,
             None,
-            I::MAX,
+            I::Int::MAX,
             &mut last_leaf,
         );
 
@@ -76,40 +87,39 @@ impl<I: Idx, V, A: Allocator> RangeTree<I, V, A> {
 
     fn check_node(
         &self,
-        node: NodeRef<marker::LeafOrInternal<V>>,
-        height: Height<I>,
+        node: NodeRef,
+        height: Height<I::Int>,
         assert_sorted: bool,
-        min: Option<I::Raw>,
-        max: I::Raw,
-        prev_leaf: &mut Option<NodeRef<marker::Leaf<V>>>,
+        min: Option<<I::Int as RangeTreeInteger>::Raw>,
+        max: <I::Int as RangeTreeInteger>::Raw,
+        prev_leaf: &mut Option<NodeRef>,
     ) {
         let Some(down) = height.down() else {
-            self.check_leaf_node(unsafe { node.cast() }, assert_sorted, min, max, prev_leaf);
+            self.check_leaf_node(node, assert_sorted, min, max, prev_leaf);
             return;
         };
 
-        let node = unsafe { node.cast() };
-
-        let keys =
-            || (0..I::B).map(|i| unsafe { node.pivot(NodePos::new_unchecked(i), &self.internal) });
+        let keys = || {
+            (0..I::Int::B).map(|i| unsafe { node.pivot(NodePos::new_unchecked(i), &self.internal) })
+        };
 
         // The last 2 keys must be MAX.
-        assert_eq!(keys().nth(I::B - 1).unwrap(), I::MAX);
-        assert_eq!(keys().nth(I::B - 2).unwrap(), I::MAX);
+        assert_eq!(keys().nth(I::Int::B - 1).unwrap(), I::Int::MAX);
+        assert_eq!(keys().nth(I::Int::B - 2).unwrap(), I::Int::MAX);
 
         // All MAX keys must be after non-MAX keys,
-        assert!(keys().is_sorted_by_key(|key| key == I::MAX));
+        assert!(keys().is_sorted_by_key(|key| key == I::Int::MAX));
 
         // Keys must be sorted in increasing order.
         if assert_sorted {
-            assert!(keys().is_sorted_by(|&a, &b| I::cmp(a, b).is_le()));
+            assert!(keys().is_sorted_by(|&a, &b| I::Int::cmp(a, b).is_le()));
             if let Some(min) = min {
-                assert!(keys().all(|key| I::cmp(key, min).is_ge()));
+                assert!(keys().all(|key| I::Int::cmp(key, min).is_ge()));
             }
-            assert!(keys().all(|key| key == I::MAX || I::cmp(key, max).is_le()));
+            assert!(keys().all(|key| key == I::Int::MAX || I::Int::cmp(key, max).is_le()));
         }
 
-        let len = keys().take_while(|&key| key != I::MAX).count() + 1;
+        let len = keys().take_while(|&key| key != I::Int::MAX).count() + 1;
         let is_root = height == self.height;
 
         // Non-root nodes must be at least half full. Non-leaf root nodes must
@@ -117,7 +127,7 @@ impl<I: Idx, V, A: Allocator> RangeTree<I, V, A> {
         if is_root {
             assert!(len >= 2);
         } else {
-            assert!(len >= I::B / 2);
+            assert!(len >= I::Int::B / 2);
         }
 
         // Check the invariants for child nodes.
@@ -132,7 +142,7 @@ impl<I: Idx, V, A: Allocator> RangeTree<I, V, A> {
                     down,
                     assert_sorted,
                     prev_key,
-                    if key == I::MAX { max } else { key },
+                    if key == I::Int::MAX { max } else { key },
                     prev_leaf,
                 );
                 prev_key = Some(key);
@@ -142,40 +152,40 @@ impl<I: Idx, V, A: Allocator> RangeTree<I, V, A> {
 
     fn check_leaf_node(
         &self,
-        node: NodeRef<marker::Leaf<V>>,
+        node: NodeRef,
         assert_sorted: bool,
-        min: Option<I::Raw>,
-        max: I::Raw,
-        prev_leaf: &mut Option<NodeRef<marker::Leaf<V>>>,
+        min: Option<<I::Int as RangeTreeInteger>::Raw>,
+        max: <I::Int as RangeTreeInteger>::Raw,
+        prev_leaf: &mut Option<NodeRef>,
     ) {
         let keys =
-            || (0..I::B).map(|i| unsafe { node.pivot(NodePos::new_unchecked(i), &self.leaf) });
+            || (0..I::Int::B).map(|i| unsafe { node.pivot(NodePos::new_unchecked(i), &self.leaf) });
 
         // The last key must be MAX.
-        assert_eq!(keys().nth(I::B - 1).unwrap(), I::MAX);
+        assert_eq!(keys().nth(I::Int::B - 1).unwrap(), I::Int::MAX);
 
         // All MAX keys must be after non-MAX keys,
-        assert!(keys().is_sorted_by_key(|key| key == I::MAX));
+        assert!(keys().is_sorted_by_key(|key| key == I::Int::MAX));
 
         // Keys must be sorted in increasing order.
         if assert_sorted {
-            assert!(keys().is_sorted_by(|&a, &b| I::cmp(a, b).is_le()));
+            assert!(keys().is_sorted_by(|&a, &b| I::Int::cmp(a, b).is_le()));
             if let Some(min) = min {
-                assert!(keys().all(|key| I::cmp(key, min).is_ge()));
+                assert!(keys().all(|key| I::Int::cmp(key, min).is_ge()));
             }
-            assert!(keys().all(|key| key == I::MAX || I::cmp(key, max).is_le()));
+            assert!(keys().all(|key| key == I::Int::MAX || I::Int::cmp(key, max).is_le()));
         }
 
-        let len = keys().take_while(|&key| key != I::MAX).count();
+        let len = keys().take_while(|&key| key != I::Int::MAX).count();
         let is_root = self.height == Height::LEAF;
 
         // Non-root nodes must be at least half full.
         if !is_root {
-            assert!(len >= I::B / 2);
+            assert!(len >= I::Int::B / 2);
         }
 
         // The last key must be equal to the maximum for this sub-tree.
-        if max != I::MAX {
+        if max != I::Int::MAX {
             assert_eq!(keys().nth(len - 1).unwrap(), max);
         }
 
@@ -203,6 +213,7 @@ mod tests {
     use rand::seq::SliceRandom;
 
     use super::*;
+    use crate::node::{internal_node_layout, leaf_node_layout};
 
     struct Ranges {
         num_ranges: SizeRange,
@@ -282,13 +293,14 @@ mod tests {
 
     proptest! {
         #[test]
-        fn insert_random(mut input in Ranges::new(1..1000).finish()) {
-            let mut tree: RangeTree<NonMaxU64, usize, _> =
-                RangeTree::try_new_in(Global).unwrap();
+        fn insert_random(input in Ranges::new(1..750).finish()) {
+            let mut input: Vec<_> = input.into_iter().enumerate().collect();
 
-            for (idx, range) in input.iter().enumerate() {
-                println!("inserting range {range:?}");
-                tree.insert(range.clone(), idx).unwrap();
+            let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
+
+            for (idx, range) in input.iter() {
+                tracing::debug!("inserting range {range:?}");
+                tree.insert(range.clone(), *idx).unwrap();
 
                 tree.assert_valid(true);
             }
@@ -296,69 +308,66 @@ mod tests {
             let ranges: Vec<_> = tree.ranges().collect();
             let values: Vec<_> = tree.values().copied().collect();
 
-            input.sort_unstable_by(|a, b| a.end.cmp(&b.end));
-            assert_eq!(input, ranges);
-            // assert_eq!(input, values);
+            input.sort_unstable_by(|(_, a), (_, b)| a.end.cmp(&b.end));
+            assert_eq!(
+                input
+                    .iter()
+                    .map(|(_, range)| range.clone())
+                    .collect::<Vec<_>>(),
+                ranges
+            );
+            assert_eq!(
+                input.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
+                values
+            );
         }
 
         #[test]
-        fn insert_sorted(mut input in Ranges::new(1..1000).shuffled(false).finish()) {
-            let mut tree: RangeTree<NonMaxU64, usize, _> =
-                RangeTree::try_new_in(Global).unwrap();
+        fn insert_sorted(input in Ranges::new(1..750).shuffled(false).finish()) {
+            let mut input: Vec<_> = input.into_iter().enumerate().collect();
 
-            for (idx, range) in input.iter().enumerate() {
-                println!("inserting range {range:?}");
-                tree.insert(range.clone(), idx).unwrap();
+            let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
+
+            for (idx, range) in input.iter() {
+                tracing::debug!("inserting range {range:?}");
+                tree.insert(range.clone(), *idx).unwrap();
 
                 tree.assert_valid(true);
             }
 
             let ranges: Vec<_> = tree.ranges().collect();
+            let values: Vec<_> = tree.values().copied().collect();
 
-            input.sort_unstable_by(|a, b| a.end.cmp(&b.end));
-            assert_eq!(input, ranges);
+            input.sort_unstable_by(|(_, a), (_, b)| a.end.cmp(&b.end));
+            assert_eq!(
+                input
+                    .iter()
+                    .map(|(_, range)| range.clone())
+                    .collect::<Vec<_>>(),
+                ranges
+            );
+            assert_eq!(
+                input.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
+                values
+            );
         }
     }
 
     #[test]
     fn smoke() {
-        let mut input: Vec<_> = [
-            9048959..9050743,
-            7376378..7378870,
-            7029025..7030107,
-            3296991..3298651,
-            9017035..9020669,
-            3811427..3813899,
-            1298150..1298449,
-            8545363..8546770,
-            4601879..4605500,
-            124870..128878,
-            3225715..3229378,
-            9066040..9070057,
-            8946829..8950481,
-            1980642..1981410,
-            9082338..9084591,
-            9126468..9129798,
-            // 5408990..5409042,
-            // 4460276..4461031,
-            // 7716648..7718835,
-            // 7557250..7559903,
-            // 7240558..7241800,
-            // 3693758..3696905,
-            // 426826..430407,
-            // 3422322..3423416,
-            // 4098760..4099199,
-            // 6353542..6357079,
-            // 7494944..7496189,
-            // 2567118..2569888,
-            // 1125162..1126174,
-            // 7450205..7453367,
-        ].into_iter().map(|range| NonMaxU64::new(range.start).unwrap()..NonMaxU64::new(range.end).unwrap()).collect();
+        let input: Vec<_> = [100..200, 300..400, 500..600, 600..700]
+            .into_iter()
+            .map(|range| NonMaxU64::new(range.start).unwrap()..NonMaxU64::new(range.end).unwrap())
+            .enumerate()
+            .collect();
+
+        let mut shuffled = input.clone();
+        shuffled.shuffle(&mut rand::rng());
 
         let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
 
-        for (idx, range) in input.iter().enumerate() {
-            println!("inserting range {range:?}");
+        for (idx, range) in shuffled {
+            tracing::debug!("inserting range {range:?}");
             tree.insert(range.clone(), idx).unwrap();
 
             tree.assert_valid(true);
@@ -367,8 +376,44 @@ mod tests {
         let ranges: Vec<_> = tree.ranges().collect();
         let values: Vec<_> = tree.values().copied().collect();
 
-        input.sort_unstable_by(|a, b| a.end.cmp(&b.end));
-        assert_eq!(input.as_slice(), ranges.as_slice());
-        // assert_eq!(input, values);
+        assert_eq!(
+            input
+                .iter()
+                .map(|(_, range)| range.clone())
+                .collect::<Vec<_>>(),
+            ranges
+        );
+        assert_eq!(
+            input.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
+            values
+        );
+    }
+
+    #[test]
+    fn layout() {
+        let (layout, children_offset) = const { internal_node_layout::<NonMaxU64>() };
+
+        assert!(layout.align() >= align_of::<NodeRef>());
+        assert!(
+            layout.size()
+                >= (size_of::<u64>() * NonMaxU64::B) + (size_of::<NodeRef>() * NonMaxU64::B)
+        );
+        assert_eq!(children_offset, size_of::<u64>() * NonMaxU64::B);
+
+        let (layout, starts_offset, values_offset, next_leaf_offset) =
+            const { leaf_node_layout::<NonMaxU64, usize>() };
+
+        let size_pivots = size_of::<u64>() * NonMaxU64::B;
+        let size_starts = size_of::<u64>() * NonMaxU64::B;
+        let size_values = size_of::<usize>() * (NonMaxU64::B - 1);
+
+        assert!(layout.align() >= align_of::<NodeRef>());
+        assert!(
+            layout.size() >= size_pivots + size_starts + size_values + (size_of::<NodeRef>()), // next leaf
+            "leaf node layout too small! must be at least "
+        );
+        assert_eq!(starts_offset, size_pivots);
+        assert_eq!(values_offset, size_pivots + size_starts);
+        assert_eq!(next_leaf_offset, size_pivots + size_starts + size_values);
     }
 }
