@@ -6,11 +6,12 @@ edition = "2024"
 [dependencies]
 nonmax = { version = "0.5.5", default-features = false}
 cfg-if = "1.0.4"
-bitflags = "2.10.0"
+tracing.workspace = true
 
 [dev-dependencies]
 proptest = "1.9.0"
 rand = { workspace = true, features = ["thread_rng"] }
+tracing-subscriber.workspace = true
 
 [[bench]]
 name = "comparisons"

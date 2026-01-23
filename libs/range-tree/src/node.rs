@@ -1,12 +1,11 @@
 use core::alloc::{AllocError, Allocator, Layout};
-use core::any::type_name;
-use core::fmt::{Debug, Formatter};
+use core::fmt::Debug;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
 use core::slice;
 
-use crate::idx::Idx;
+use crate::int::RangeTreeInteger;
 
 // Maximum allocation size of a `NodePool`. This is used to derive the maximum
 // tree height.
@@ -16,23 +15,23 @@ pub(crate) const MAX_POOL_SIZE: usize = u32::MAX as usize;
 pub(crate) const MAX_POOL_SIZE: usize = i32::MAX as usize;
 
 #[derive(Clone, Copy, Debug)]
-pub struct NodePos<I: Idx> {
+pub struct NodePos<I: RangeTreeInteger> {
     pos: u8,
     _m: PhantomData<fn() -> I>,
 }
 
 macro_rules! pos {
     ($expr:expr) => {{
-        const { assert!($expr < I::B) };
+        const { assert!($expr < I::Int::B) };
         #[allow(unused_unsafe)]
         unsafe {
-            $crate::node::NodePos::<I>::new_unchecked($expr)
+            $crate::node::NodePos::<I::Int>::new_unchecked($expr)
         }
     }};
 }
 pub(crate) use pos;
 
-impl<I: Idx> NodePos<I> {
+impl<I: RangeTreeInteger> NodePos<I> {
     pub const ZERO: Self = Self {
         pos: 0,
         _m: PhantomData,
@@ -92,34 +91,14 @@ impl<I: Idx> NodePos<I> {
 ///
 /// This doesn't have a lifetime, but is logically bound to the `NodePool` that
 /// it was allocated from and is only valid for the lifetime of that pool.
-pub(crate) struct NodeRef<Type>(u32, PhantomData<Type>);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct NodeRef(u32);
 
-impl<Type> Clone for NodeRef<Type> {
-    fn clone(&self) -> Self {
-        Self(self.0, PhantomData)
-    }
-}
-impl<Type> Copy for NodeRef<Type> {}
-impl<Type> Debug for NodeRef<Type> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.debug_tuple("NodeRef")
-            .field(&self.0)
-            .field(&type_name::<Type>())
-            .finish()
-    }
-}
-impl<Type> PartialEq for NodeRef<Type> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-impl<Type> Eq for NodeRef<Type> {}
-
-impl<Type> NodeRef<Type> {
-    pub(crate) const ZERO: Self = Self(0, PhantomData);
+impl NodeRef {
+    pub(crate) const ZERO: Self = Self(0);
 
     #[inline]
-    unsafe fn pivots_ptr<I: Idx>(self, pool: &NodePool<I, Type>) -> NonNull<I::Raw> {
+    unsafe fn pivots_ptr<I: RangeTreeInteger, Type>(self, pool: &NodePool<I, Type>) -> NonNull<I::Raw> {
         #[cfg(debug_assertions)]
         self.assert_valid(pool);
 
@@ -127,17 +106,21 @@ impl<Type> NodeRef<Type> {
     }
 
     #[inline]
-    pub(crate) unsafe fn pivots<I: Idx>(self, pool: &NodePool<I, Type>) -> &I::Pivots {
+    pub(crate) unsafe fn pivots<I: RangeTreeInteger, Type>(self, pool: &NodePool<I, Type>) -> &I::Pivots {
         unsafe { self.pivots_ptr(pool).cast::<I::Pivots>().as_ref() }
     }
 
     #[inline]
-    pub(crate) unsafe fn pivot<I: Idx>(self, pos: NodePos<I>, pool: &NodePool<I, Type>) -> I::Raw {
+    pub(crate) unsafe fn pivot<I: RangeTreeInteger, Type>(
+        self,
+        pos: NodePos<I>,
+        pool: &NodePool<I, Type>,
+    ) -> I::Raw {
         unsafe { self.pivots_ptr(pool).add(pos.index()).read() }
     }
 
     #[inline]
-    pub(crate) unsafe fn set_pivot<I: Idx>(
+    pub(crate) unsafe fn set_pivot<I: RangeTreeInteger, Type>(
         self,
         pivot: I::Raw,
         pos: NodePos<I>,
@@ -147,7 +130,7 @@ impl<Type> NodeRef<Type> {
     }
 
     #[inline]
-    pub(crate) unsafe fn insert_pivot<I: Idx>(
+    pub(crate) unsafe fn insert_pivot<I: RangeTreeInteger, Type>(
         self,
         key: I::Raw,
         pos: NodePos<I>,
@@ -165,57 +148,51 @@ impl<Type> NodeRef<Type> {
     }
 
     #[inline]
-    pub(crate) unsafe fn cast<Other>(self) -> NodeRef<Other> {
-        NodeRef(self.0, PhantomData)
-    }
-
-    #[inline]
-    pub(crate) fn assert_valid<I: Idx>(&self, pool: &NodePool<I, Type>) {
+    pub(crate) fn assert_valid<I: RangeTreeInteger, Type>(&self, pool: &NodePool<I, Type>) {
         // let node_layout = const { node_layout::<I, V>().0 };
         // debug_assert_eq!(node.0 as usize % node_layout.size(), 0);
         assert!(self.0 < pool.len);
     }
 }
 
-impl<V> NodeRef<marker::Internal<V>> {
+impl NodeRef {
     #[inline]
-    unsafe fn children_ptr<I: Idx>(
+    unsafe fn children_ptr<I: RangeTreeInteger>(
         self,
-        pool: &NodePool<I, marker::Internal<V>>,
-    ) -> NonNull<MaybeUninit<NodeRef<marker::LeafOrInternal<V>>>> {
-        let (_, children_offset) = const { internal_node_layout::<I, V>() };
+        pool: &NodePool<I, marker::Internal>,
+    ) -> NonNull<MaybeUninit<NodeRef>> {
+        let (_, children_offset) = const { internal_node_layout::<I>() };
         unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
-            ptr.byte_add(children_offset)
-                .cast::<MaybeUninit<NodeRef<marker::LeafOrInternal<V>>>>()
+            ptr.byte_add(children_offset).cast::<MaybeUninit<NodeRef>>()
         }
     }
 
     #[inline]
-    pub(crate) unsafe fn child<I: Idx>(
+    pub(crate) unsafe fn child<I: RangeTreeInteger>(
         self,
         pos: NodePos<I>,
-        pool: &NodePool<I, marker::Internal<V>>,
-    ) -> &MaybeUninit<NodeRef<marker::LeafOrInternal<V>>> {
+        pool: &NodePool<I, marker::Internal>,
+    ) -> &MaybeUninit<NodeRef> {
         unsafe { self.children_ptr(pool).add(pos.index()).as_ref() }
     }
 
     #[inline]
-    pub(crate) unsafe fn child_mut<I: Idx>(
+    pub(crate) unsafe fn child_mut<I: RangeTreeInteger>(
         self,
         pos: NodePos<I>,
-        pool: &mut NodePool<I, marker::Internal<V>>,
-    ) -> &mut MaybeUninit<NodeRef<marker::LeafOrInternal<V>>> {
+        pool: &mut NodePool<I, marker::Internal>,
+    ) -> &mut MaybeUninit<NodeRef> {
         unsafe { self.children_ptr(pool).add(pos.index()).as_mut() }
     }
 
     #[inline]
-    pub(crate) unsafe fn insert_child<I: Idx>(
+    pub(crate) unsafe fn insert_child<I: RangeTreeInteger>(
         self,
-        child: NodeRef<marker::LeafOrInternal<V>>,
+        child: NodeRef,
         pos: NodePos<I>,
         node_size: usize,
-        pool: &mut NodePool<I, marker::Internal<V>>,
+        pool: &mut NodePool<I, marker::Internal>,
     ) {
         debug_assert!(node_size <= I::B);
         debug_assert!(node_size > pos.index());
@@ -228,10 +205,10 @@ impl<V> NodeRef<marker::Internal<V>> {
     }
 
     #[inline]
-    pub(crate) unsafe fn split_into<I: Idx>(
+    pub(crate) unsafe fn internal_split_into<I: RangeTreeInteger>(
         self,
-        dest: UninitNodeRef<marker::Internal<V>>,
-        pool: &mut NodePool<I, marker::Internal<V>>,
+        dest: UninitNodeRef,
+        pool: &mut NodePool<I, marker::Internal>,
     ) -> Self {
         unsafe {
             // copy the second half of our node into dest
@@ -260,9 +237,9 @@ impl<V> NodeRef<marker::Internal<V>> {
     }
 }
 
-impl<V> NodeRef<marker::Leaf<V>> {
+impl NodeRef {
     #[inline]
-    unsafe fn starts_ptr<I: Idx>(
+    unsafe fn starts_ptr<I: RangeTreeInteger, V>(
         self,
         pool: &NodePool<I, marker::Leaf<V>>,
     ) -> NonNull<MaybeUninit<I::Raw>> {
@@ -277,7 +254,7 @@ impl<V> NodeRef<marker::Leaf<V>> {
     }
 
     #[inline]
-    pub(crate) unsafe fn values_ptr<I: Idx>(
+    pub(crate) unsafe fn values_ptr<I: RangeTreeInteger, V>(
         self,
         pool: &NodePool<I, marker::Leaf<V>>,
     ) -> NonNull<MaybeUninit<V>> {
@@ -292,23 +269,22 @@ impl<V> NodeRef<marker::Leaf<V>> {
     }
 
     #[inline]
-    unsafe fn next_leaf_ptr<I: Idx>(
+    unsafe fn next_leaf_ptr<I: RangeTreeInteger, V>(
         self,
         pool: &NodePool<I, marker::Leaf<V>>,
-    ) -> NonNull<NodeRef<marker::Leaf<V>>> {
+    ) -> NonNull<NodeRef> {
         #[cfg(debug_assertions)]
         self.assert_valid(pool);
 
         let (_, _, _, next_leaf_offset) = const { leaf_node_layout::<I, V>() };
         unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
-            ptr.byte_add(next_leaf_offset)
-                .cast::<NodeRef<marker::Leaf<V>>>()
+            ptr.byte_add(next_leaf_offset).cast::<NodeRef>()
         }
     }
 
     #[inline]
-    pub(crate) unsafe fn start<I: Idx>(
+    pub(crate) unsafe fn start<I: RangeTreeInteger, V>(
         self,
         pos: NodePos<I>,
         pool: &NodePool<I, marker::Leaf<V>>,
@@ -317,7 +293,7 @@ impl<V> NodeRef<marker::Leaf<V>> {
     }
 
     #[inline]
-    pub(crate) unsafe fn start_mut<I: Idx>(
+    pub(crate) unsafe fn start_mut<I: RangeTreeInteger, V>(
         self,
         pos: NodePos<I>,
         pool: &mut NodePool<I, marker::Leaf<V>>,
@@ -326,7 +302,7 @@ impl<V> NodeRef<marker::Leaf<V>> {
     }
 
     #[inline]
-    pub(crate) unsafe fn insert_start<I: Idx>(
+    pub(crate) unsafe fn insert_start<I: RangeTreeInteger, V>(
         self,
         start: I::Raw,
         pos: NodePos<I>,
@@ -343,17 +319,17 @@ impl<V> NodeRef<marker::Leaf<V>> {
         }
     }
 
-    #[inline]
-    pub(crate) unsafe fn value<I: Idx>(
-        self,
-        pos: NodePos<I>,
-        pool: &NodePool<I, marker::Leaf<V>>,
-    ) -> &MaybeUninit<V> {
-        unsafe { self.values_ptr(pool).add(pos.index()).as_ref() }
-    }
+    // #[inline]
+    // pub(crate) unsafe fn value<I: RangeTreeInteger, V>(
+    //     self,
+    //     pos: NodePos<I>,
+    //     pool: &NodePool<I, marker::Leaf<V>>,
+    // ) -> &MaybeUninit<V> {
+    //     unsafe { self.values_ptr(pool).add(pos.index()).as_ref() }
+    // }
 
     #[inline]
-    pub(crate) unsafe fn value_mut<I: Idx>(
+    pub(crate) unsafe fn value_mut<I: RangeTreeInteger, V>(
         self,
         pos: NodePos<I>,
         pool: &mut NodePool<I, marker::Leaf<V>>,
@@ -362,7 +338,7 @@ impl<V> NodeRef<marker::Leaf<V>> {
     }
 
     #[inline]
-    pub(crate) unsafe fn insert_value<I: Idx>(
+    pub(crate) unsafe fn insert_value<I: RangeTreeInteger, V>(
         self,
         value: V,
         pos: NodePos<I>,
@@ -380,31 +356,31 @@ impl<V> NodeRef<marker::Leaf<V>> {
     }
 
     #[inline]
-    pub(crate) unsafe fn next_leaf<I: Idx>(
+    pub(crate) unsafe fn next_leaf<I: RangeTreeInteger, V>(
         self,
         pool: &NodePool<I, marker::Leaf<V>>,
-    ) -> Option<NodeRef<marker::Leaf<V>>> {
+    ) -> Option<NodeRef> {
         let next_leaf = unsafe { self.next_leaf_ptr(pool).read() };
 
         (next_leaf.0 != !0).then_some(next_leaf)
     }
 
     #[inline]
-    pub(crate) unsafe fn set_next_leaf<I: Idx>(
+    pub(crate) unsafe fn set_next_leaf<I: RangeTreeInteger, V>(
         self,
-        next_leaf: Option<NodeRef<marker::Leaf<V>>>,
+        next_leaf: Option<NodeRef>,
         pool: &NodePool<I, marker::Leaf<V>>,
     ) {
         unsafe {
             self.next_leaf_ptr(pool)
-                .write(next_leaf.unwrap_or(NodeRef(!0, PhantomData)))
+                .write(next_leaf.unwrap_or(NodeRef(!0)))
         }
     }
 
     #[inline]
-    pub(crate) unsafe fn split_into<I: Idx>(
+    pub(crate) unsafe fn leaf_split_into<I: RangeTreeInteger, V>(
         self,
-        dest: UninitNodeRef<marker::Leaf<V>>,
+        dest: UninitNodeRef,
         pool: &mut NodePool<I, marker::Leaf<V>>,
     ) -> Self {
         unsafe {
@@ -438,16 +414,16 @@ impl<V> NodeRef<marker::Leaf<V>> {
 }
 
 #[derive(Debug)]
-pub(crate) struct UninitNodeRef<Type>(NodeRef<Type>);
+pub(crate) struct UninitNodeRef(NodeRef);
 
-impl<Type> UninitNodeRef<Type> {
+impl UninitNodeRef {
     /// Initializes all pivots of the node with `I::MAX`.
     ///
     /// # Safety
     ///
     /// `self` must be allocated from `pool`.
     #[inline]
-    pub(crate) unsafe fn init_pivots<I: Idx>(self, pool: &mut NodePool<I, Type>) -> NodeRef<Type> {
+    pub(crate) unsafe fn init_pivots<I: RangeTreeInteger, Type>(self, pool: &mut NodePool<I, Type>) -> NodeRef {
         unsafe {
             let ptr = self.0.pivots_ptr(pool).cast::<MaybeUninit<I::Raw>>();
 
@@ -464,30 +440,21 @@ pub(crate) mod marker {
     use core::fmt::{Debug, Formatter};
     use core::marker::PhantomData;
 
-    pub(crate) struct Internal<V>(PhantomData<V>);
+    #[derive(Debug)]
+    pub(crate) enum Internal {}
     pub(crate) struct Leaf<V>(PhantomData<V>);
-    pub(crate) struct LeafOrInternal<V>(PhantomData<V>);
-    impl<V> Debug for Internal<V> {
-        fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-            f.debug_tuple("Internal").field(&type_name::<V>()).finish()
-        }
-    }
+
     impl<V> Debug for Leaf<V> {
         fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
             f.debug_tuple("Leaf").field(&type_name::<V>()).finish()
         }
     }
-    impl<V> Debug for LeafOrInternal<V> {
-        fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-            f.debug_tuple("LeafOrInternal").field(&type_name::<V>()).finish()
-        }
-    }
 }
 
-pub(crate) const fn internal_node_layout<I: Idx, V>() -> (Layout, usize) {
+pub(crate) const fn internal_node_layout<I: RangeTreeInteger>() -> (Layout, usize) {
     let layout = Layout::new::<I::Pivots>();
 
-    let Ok(children) = Layout::array::<NodeRef<marker::LeafOrInternal<V>>>(I::B) else {
+    let Ok(children) = Layout::array::<NodeRef>(I::B) else {
         panic!("Could not calculate node layout");
     };
     let Ok((layout, children_offset)) = layout.extend(children) else {
@@ -503,7 +470,7 @@ pub(crate) const fn internal_node_layout<I: Idx, V>() -> (Layout, usize) {
     (layout.pad_to_align(), children_offset)
 }
 
-pub(crate) const fn leaf_node_layout<I: Idx, V>() -> (Layout, usize, usize, usize) {
+pub(crate) const fn leaf_node_layout<I: RangeTreeInteger, V>() -> (Layout, usize, usize, usize) {
     let layout = Layout::new::<I::Pivots>();
 
     let Ok(starts) = Layout::array::<I::Raw>(I::B) else {
@@ -513,14 +480,14 @@ pub(crate) const fn leaf_node_layout<I: Idx, V>() -> (Layout, usize, usize, usiz
         panic!("Could not calculate node layout");
     };
 
-    let Ok(values) = Layout::array::<NodeRef<V>>(I::B - 1) else {
+    let Ok(values) = Layout::array::<V>(I::B - 1) else {
         panic!("Could not calculate node layout");
     };
     let Ok((layout, values_offset)) = layout.extend(values) else {
         panic!("Could not calculate node layout");
     };
 
-    let next_leaf = Layout::new::<NodeRef<marker::Leaf<V>>>();
+    let next_leaf = Layout::new::<NodeRef>();
     let Ok((layout, next_leaf_offset)) = layout.extend(next_leaf) else {
         panic!("Could not calculate node layout");
     };
@@ -539,7 +506,7 @@ pub(crate) const fn leaf_node_layout<I: Idx, V>() -> (Layout, usize, usize, usiz
     )
 }
 
-pub(crate) struct NodePool<I: Idx, Type> {
+pub(crate) struct NodePool<I: RangeTreeInteger, Type> {
     /// Base of the allocation.
     ptr: NonNull<u8>,
 
@@ -556,7 +523,7 @@ pub(crate) struct NodePool<I: Idx, Type> {
     _type: PhantomData<(I, Type)>,
 }
 
-impl<I: Idx, Type> NodePool<I, Type> {
+impl<I: RangeTreeInteger, Type> NodePool<I, Type> {
     pub(crate) const fn new() -> Self {
         Self {
             ptr: NonNull::dangling(),
@@ -607,12 +574,12 @@ impl<I: Idx, Type> NodePool<I, Type> {
         &mut self,
         node_layout: Layout,
         allocator: &impl Allocator,
-    ) -> Result<UninitNodeRef<Type>, AllocError> {
+    ) -> Result<UninitNodeRef, AllocError> {
         // First try re-using a node from the free list.
         if self.free_list != !0 {
             // Freed nodes hold a single `NodeRef` with the next element in the
             // free list.
-            let node = UninitNodeRef(NodeRef(self.free_list, PhantomData));
+            let node = UninitNodeRef(NodeRef(self.free_list));
             self.free_list = unsafe { self.ptr.byte_add(self.free_list as usize).cast().read() };
             return Ok(node);
         }
@@ -623,14 +590,14 @@ impl<I: Idx, Type> NodePool<I, Type> {
 
         // grow() will have doubled the capacity or initialized it, which
         // guarantees at least enough space to allocate a single node.
-        let node = UninitNodeRef(NodeRef(self.len, PhantomData));
+        let node = UninitNodeRef(NodeRef(self.len));
         self.len += node_layout.size() as u32;
         debug_assert!(self.len <= self.capacity);
         Ok(node)
     }
 }
 
-impl<I: Idx, V> NodePool<I, marker::Internal<V>> {
+impl<I: RangeTreeInteger> NodePool<I, marker::Internal> {
     /// Allocates a new uninitialized internal node from the pool.
     ///
     /// # Safety
@@ -639,14 +606,14 @@ impl<I: Idx, V> NodePool<I, marker::Internal<V>> {
     pub(crate) unsafe fn alloc_node(
         &mut self,
         allocator: &impl Allocator,
-    ) -> Result<UninitNodeRef<marker::Internal<V>>, AllocError> {
-        let (node_layout, _) = const { internal_node_layout::<I, V>() };
+    ) -> Result<UninitNodeRef, AllocError> {
+        let (node_layout, _) = const { internal_node_layout::<I>() };
 
         unsafe { self.alloc_node_inner(node_layout, allocator) }
     }
 }
 
-impl<I: Idx, V> NodePool<I, marker::Leaf<V>> {
+impl<I: RangeTreeInteger, V> NodePool<I, marker::Leaf<V>> {
     /// Allocates a new uninitialized leaf node from the pool.
     ///
     /// # Safety
@@ -655,7 +622,7 @@ impl<I: Idx, V> NodePool<I, marker::Leaf<V>> {
     pub(crate) unsafe fn alloc_node(
         &mut self,
         allocator: &impl Allocator,
-    ) -> Result<UninitNodeRef<marker::Leaf<V>>, AllocError> {
+    ) -> Result<UninitNodeRef, AllocError> {
         let (node_layout, _, _, _) = const { leaf_node_layout::<I, V>() };
 
         unsafe { self.alloc_node_inner(node_layout, allocator) }
