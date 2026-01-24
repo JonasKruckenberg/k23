@@ -116,6 +116,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
+name = "arbitrary"
+version = "1.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
+dependencies = [
+ "derive_arbitrary",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,6 +539,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ececcb659e7ba858fb4f10388c250a7252eb0a27373f1a72b8748afdd248e587"
 dependencies = [
  "powerfmt",
+]
+
+[[package]]
+name = "derive_arbitrary"
+version = "1.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e567bd82dcff979e4b03460c307b3cdc9e96fde3d73bed1496d2bc75d9dd62a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1263,6 +1283,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37c93d8daa9d8a012fd8ab92f088405fb202ea0b6ab73ee2482ae66af4f42091"
 
 [[package]]
+name = "libfuzzer-sys"
+version = "0.4.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5037190e1f70cbeef565bd267599242926f724d3b8a9f510fd7e0b540cfa4404"
+dependencies = [
+ "arbitrary",
+ "cc",
+]
+
+[[package]]
 name = "libgit2-sys"
 version = "0.18.3+1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1766,6 +1796,15 @@ dependencies = [
  "tracing 0.2.0",
  "tracing-subscriber 0.3.0",
  "wavltree",
+]
+
+[[package]]
+name = "range-tree-fuzz"
+version = "0.0.0"
+dependencies = [
+ "arbitrary",
+ "libfuzzer-sys",
+ "range-tree",
 ]
 
 [[package]]
@@ -2649,6 +2688,14 @@ version = "0.0.8"
 dependencies = [
  "criterion",
  "rand",
+]
+
+[[package]]
+name = "wavltree-fuzz"
+version = "0.0.0"
+dependencies = [
+ "libfuzzer-sys",
+ "wavltree",
 ]
 
 [[package]]

@@ -1,7 +1,5 @@
-[workspace]
-
 [package]
-name = "wavl-fuzz"
+name = "wavltree-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -10,7 +8,7 @@ edition = "2021"
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys = "0.4"
+libfuzzer-sys.workspace = true
 
 [dependencies.wavltree]
 path = ".."
