@@ -1,0 +1,22 @@
+[package]
+name = "range-tree-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys.workspace = true
+arbitrary.workspace = true
+
+[dependencies.range-tree]
+path = ".."
+
+[[bin]]
+name = "range-tree"
+path = "fuzz_targets/range_tree.rs"
+test = false
+doc = false
+bench = false

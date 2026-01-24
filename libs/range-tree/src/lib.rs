@@ -10,13 +10,40 @@ mod simd;
 mod stack;
 
 use core::alloc::{AllocError, Allocator};
-use core::ops;
+use core::fmt::{self, Debug, Display};
+use core::{mem, ops};
 
 pub use cursor::{Cursor, CursorMut};
 use int::RangeTreeInteger;
+pub use iter::{Ranges, Values, ValuesMut, Iter, IntoIter, IterMut};
+pub use nonmax;
 
-use crate::node::{NodePool, NodePos, NodeRef, UninitNodeRef, marker};
+use crate::node::{NodePool, NodePos, NodeRef, UninitNodeRef, marker, pos};
 use crate::stack::Height;
+
+/// Error type returned by insertion methods.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InsertError {
+    /// An allocation failure occurred while inserting.
+    AllocError,
+    /// The range overlaps with an existing range in the tree.
+    Overlap,
+}
+
+impl Display for InsertError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InsertError::AllocError => write!(f, "allocation failure"),
+            InsertError::Overlap => write!(f, "overlapping range"),
+        }
+    }
+}
+
+impl From<AllocError> for InsertError {
+    fn from(_: AllocError) -> Self {
+        InsertError::AllocError
+    }
+}
 
 pub trait RangeTreeIndex: Copy {
     #[allow(private_bounds)]
@@ -63,11 +90,71 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         self.root = NodeRef::ZERO;
     }
 
+    /// Clears the map, removing all elements.
     #[inline]
-    pub fn insert(&mut self, range: ops::Range<I>, value: V) -> Result<(), AllocError> {
+    pub fn clear(&mut self) {
+        // Drop values. We don't need to modify the keys since we're about to
+        // free the nodes anyways.
+        if mem::needs_drop::<V>() {
+            let mut iter = self.raw_iter();
+            while let Some((_key, value_ptr)) = unsafe { iter.next(&self.leaf) } {
+                unsafe {
+                    value_ptr.drop_in_place();
+                }
+            }
+        }
+
+        // Free all nodes without freeing the underlying allocations.
+        let root = self.leaf.clear_and_alloc_node();
+        self.internal.clear();
+
+        // Re-initialize the root node.
+        self.height = Height::LEAF;
+        self.init_root(root);
+    }
+
+    /// Returns `true` if the map contains no elements.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        if self.height != Height::LEAF {
+            return false;
+        }
+        let first_key = unsafe { self.root.pivot(pos!(0), &self.leaf) };
+        first_key == I::Int::MAX
+    }
+
+    #[inline]
+    pub fn insert(&mut self, range: ops::Range<I>, value: V) -> Result<(), InsertError>
+    where
+        I: Debug,
+        V: Debug,
+    {
         let mut cursor = unsafe { CursorMut::uninit(self) };
         cursor.seek(range.end.to_int().to_raw());
-        cursor.insert_before(range, value)
+
+        if let Some((existing, _)) = cursor.entry()
+            && I::Int::cmp(
+                existing.start.to_int().to_raw(),
+                range.end.to_int().to_raw(),
+            )
+            .is_lt()
+        {
+            return Err(InsertError::Overlap);
+        }
+
+        if cursor.prev() {
+            if let Some((prev, _)) = cursor.entry()
+                && I::Int::cmp(prev.end.to_int().to_raw(), range.start.to_int().to_raw()).is_gt()
+            {
+                // Overlap detected: previous range ends after new range starts
+                return Err(InsertError::Overlap);
+            }
+
+            cursor.next(); // Move back to insertion position
+        }
+
+        cursor.insert_before(range, value)?;
+        Ok(())
     }
 
     pub fn assert_valid(&self, assert_sorted: bool) {
@@ -203,6 +290,28 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     }
 }
 
+impl<I: RangeTreeIndex, V, A: Allocator> Drop for RangeTree<I, V, A> {
+    #[inline]
+    fn drop(&mut self) {
+        // Drop values. We don't need to modify the keys since we're about to
+        // free the nodes anyways.
+        if mem::needs_drop::<V>() {
+            let mut iter = self.raw_iter();
+            while let Some((_key, value_ptr)) = unsafe { iter.next(&self.leaf) } {
+                unsafe {
+                    value_ptr.drop_in_place();
+                }
+            }
+        }
+
+        // Release all allocated memory
+        unsafe {
+            self.internal.clear_and_free(&self.allocator);
+            self.leaf.clear_and_free(&self.allocator);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::alloc::Global;
@@ -289,6 +398,21 @@ mod tests {
                 ranges
             })
         }
+    }
+
+    macro_rules! idx {
+        ($raw:literal) => {{
+            const {
+                assert!(
+                    $raw < <<I as $crate::RangeTreeIndex>::Int as $crate::RangeTreeInteger>::MAX
+                )
+            };
+            #[allow(unused_unsafe)]
+            unsafe {
+                <<I as $crate::RangeTreeIndex>::Int as $crate::RangeTreeInteger>::from_raw($raw)
+                    .unwrap_unchecked()
+            }
+        }};
     }
 
     proptest! {
@@ -387,6 +511,35 @@ mod tests {
             input.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
             values
         );
+    }
+
+    #[test]
+    fn overlap() {
+        tracing_subscriber::fmt::init();
+
+        type I = NonMaxU64;
+
+        let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
+
+        tree.insert(idx!(0)..idx!(100), 0).unwrap();
+        tree.insert(idx!(200)..idx!(300), 1).unwrap();
+
+        assert!(matches!(
+            tree.insert(idx!(0)..idx!(10), 2),
+            Err(InsertError::Overlap)
+        ));
+        assert!(matches!(
+            tree.insert(idx!(99)..idx!(101), 2),
+            Err(InsertError::Overlap)
+        ));
+        assert!(matches!(
+            tree.insert(idx!(10)..idx!(90), 2),
+            Err(InsertError::Overlap)
+        ));
+        assert!(matches!(
+            tree.insert(idx!(10)..idx!(201), 1),
+            Err(InsertError::Overlap)
+        ));
     }
 
     #[test]

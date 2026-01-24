@@ -151,6 +151,8 @@ wasmtime-slab = "34.0.0"
 proptest = "1.8.0"
 proptest-derive = "0.8.0"
 libm = "0.2.15"
+arbitrary = { version = "1.4.2", features = ["derive"] }
+libfuzzer-sys = "0.4"
 
 # build dependencies
 proc-macro2 = "1"

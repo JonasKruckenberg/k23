@@ -1,7 +1,8 @@
 use core::alloc::Allocator;
-use core::{hint, ops};
+use core::{hint, mem, ops};
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
+use core::mem::ManuallyDrop;
 use core::ptr::NonNull;
 use crate::int::RangeTreeInteger;
 use crate::node::{marker, NodePool, NodePos, NodeRef};
@@ -19,7 +20,7 @@ pub(crate) struct RawIter<I: RangeTreeIndex, V> {
     /// key in the node.
     pub(crate) pos: NodePos<I::Int>,
     
-    _value: PhantomData<V>
+    pub(crate) _value: PhantomData<V>
 }
 
 impl<I: RangeTreeIndex, V> Clone for RawIter<I, V> {
@@ -87,6 +88,100 @@ impl<I: RangeTreeIndex, V> RawIter<I, V> {
         Some((I::from_int(start)..I::from_int(pivot), value.cast()))
     }
 }
+
+/// An iterator over the entries of a [`BTree`].
+pub struct Iter<'a, I: RangeTreeIndex, V, A: Allocator> {
+    pub(crate) raw: RawIter<I, V>,
+    pub(crate) tree: &'a RangeTree<I, V, A>,
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Iter<'a, I, V, A> {
+    type Item = (ops::Range<I>, &'a V);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            self.raw
+                .next(&self.tree.leaf)
+                .map(|(range, value_ptr)| (range, value_ptr.as_ref()))
+        }
+    }
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for Iter<'a, I, V, A> {}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> Clone for Iter<'a, I, V, A> {
+    fn clone(&self) -> Self {
+        Self {
+            raw: self.raw.clone(),
+            tree: self.tree,
+        }
+    }
+}
+
+/// A mutable iterator over the entries of a [`BTree`].
+pub struct IterMut<'a, I: RangeTreeIndex, V, A: Allocator> {
+    pub(crate) raw: RawIter<I, V>,
+    pub(crate) tree: &'a mut RangeTree<I, V, A>,
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for IterMut<'a, I, V, A> {
+    type Item = (ops::Range<I>, &'a mut V);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            self.raw
+                .next(&self.tree.leaf)
+                .map(|(range, mut value_ptr)| (range, value_ptr.as_mut()))
+        }
+    }
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for IterMut<'a, I, V, A> {}
+
+/// An owning iterator over the entries of a [`BTree`].
+pub struct IntoIter<I: RangeTreeIndex, V, A: Allocator> {
+    raw: RawIter<I, V>,
+    btree: ManuallyDrop<RangeTree<I, V, A>>,
+}
+
+impl<I: RangeTreeIndex, V, A: Allocator> Iterator for IntoIter<I, V, A> {
+    type Item = (ops::Range<I>, V);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        // Read the element out of the tree without touching the key.
+        unsafe {
+            self.raw
+                .next(&self.btree.leaf)
+                .map(|(range, value_ptr)| (range, value_ptr.read()))
+        }
+    }
+}
+
+impl<I: RangeTreeIndex, V, A: Allocator> Drop for IntoIter<I, V, A> {
+    #[inline]
+    fn drop(&mut self) {
+        // Ensure all remaining elements are dropped.
+        if mem::needs_drop::<V>() {
+            while let Some((_key, value_ptr)) = unsafe { self.raw.next(&self.btree.leaf) } {
+                unsafe {
+                    value_ptr.drop_in_place();
+                }
+            }
+        }
+
+        // Then release the allocations for the tree without dropping elements.
+        unsafe {
+            let btree = &mut *self.btree;
+            btree.internal.clear_and_free(&btree.allocator);
+            btree.leaf.clear_and_free(&btree.allocator);
+        }
+    }
+}
+
+impl<I: RangeTreeIndex, V, A: Allocator> FusedIterator for IntoIter<I, V, A> {}
 
 /// An iterator over the keys of a [`BTree`].
 pub struct Ranges<'a, I: RangeTreeIndex, V, A: Allocator> {
@@ -175,6 +270,24 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         // The first leaf node is always the left-most leaf on the tree and is
         // never deleted.
         RawIter { node: NodeRef::ZERO, pos: NodePos::ZERO, _value: PhantomData }
+    }
+
+    /// Gets an iterator over the entries of the map, sorted by key.
+    #[inline]
+    pub fn iter(&self) -> Iter<'_, I, V, A> {
+        Iter {
+            raw: self.raw_iter(),
+            tree: self,
+        }
+    }
+
+    /// Gets a mutable iterator over the entries of the map, sorted by key.
+    #[inline]
+    pub fn iter_mut(&mut self) -> IterMut<'_, I, V, A> {
+        IterMut {
+            raw: self.raw_iter(),
+            tree: self,
+        }
     }
 
     /// Gets an iterator over the ranges of the map, in sorted order.
