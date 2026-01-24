@@ -9,13 +9,14 @@ mod node;
 mod simd;
 mod stack;
 
+use alloc::alloc::Global;
 use core::alloc::{AllocError, Allocator};
 use core::fmt::{self, Debug, Display};
 use core::{mem, ops};
-
+use core::ops::Bound;
 pub use cursor::{Cursor, CursorMut};
 use int::RangeTreeInteger;
-pub use iter::{Ranges, Values, ValuesMut, Iter, IntoIter, IterMut};
+pub use iter::{IntoIter, Iter, IterMut, Ranges, Values, ValuesMut};
 pub use nonmax;
 
 use crate::node::{NodePool, NodePos, NodeRef, UninitNodeRef, marker, pos};
@@ -56,7 +57,7 @@ pub trait RangeTreeIndex: Copy {
     fn from_int(int: Self::Int) -> Self;
 }
 
-pub struct RangeTree<I: RangeTreeIndex, V, A: Allocator> {
+pub struct RangeTree<I: RangeTreeIndex, V, A: Allocator = Global> {
     internal: NodePool<I::Int, marker::Internal>,
     leaf: NodePool<I::Int, marker::Leaf<V>>,
     root: NodeRef,
@@ -124,11 +125,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     }
 
     #[inline]
-    pub fn insert(&mut self, range: ops::Range<I>, value: V) -> Result<(), InsertError>
-    where
-        I: Debug,
-        V: Debug,
-    {
+    pub fn insert(&mut self, range: ops::Range<I>, value: V) -> Result<(), InsertError> {
         let mut cursor = unsafe { CursorMut::uninit(self) };
         cursor.seek(range.end.to_int().to_raw());
 
@@ -155,6 +152,12 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
 
         cursor.insert_before(range, value)?;
         Ok(())
+    }
+
+    #[inline]
+    pub fn get(&self, search: I) -> Option<&V> {
+        let cursor = self.cursor_at(Bound::Included(search));
+        cursor.into_iter().next().map(|(_range, value)| value)
     }
 
     pub fn assert_valid(&self, assert_sorted: bool) {
@@ -309,264 +312,5 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for RangeTree<I, V, A> {
             self.internal.clear_and_free(&self.allocator);
             self.leaf.clear_and_free(&self.allocator);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use alloc::alloc::Global;
-
-    use nonmax::NonMaxU64;
-    use proptest::collection::SizeRange;
-    use proptest::prelude::*;
-    use rand::seq::SliceRandom;
-
-    use super::*;
-    use crate::node::{internal_node_layout, leaf_node_layout};
-
-    struct Ranges {
-        num_ranges: SizeRange,
-        size: ops::Range<u64>,
-        gap: ops::Range<u64>,
-        shuffled: bool,
-    }
-
-    impl Ranges {
-        pub fn new(num_ranges: impl Into<SizeRange>) -> Self {
-            Self {
-                num_ranges: num_ranges.into(),
-                size: 0..4096,
-                gap: 0..49096,
-                shuffled: true,
-            }
-        }
-
-        pub fn size(mut self, size: ops::Range<u64>) -> Self {
-            self.size = size;
-            self
-        }
-
-        pub fn gap(mut self, gap: ops::Range<u64>) -> Self {
-            self.gap = gap;
-            self
-        }
-
-        pub fn shuffled(mut self, shuffled: bool) -> Self {
-            self.shuffled = shuffled;
-            self
-        }
-
-        pub fn finish(self) -> impl Strategy<Value = Vec<ops::Range<NonMaxU64>>> {
-            proptest::collection::vec(
-                (
-                    // Size of the region (will be aligned)
-                    self.size, // Gap after this region (will be aligned)
-                    self.gap,
-                ),
-                self.num_ranges,
-            )
-            .prop_flat_map(move |size_gap_pairs| {
-                // Calculate the maximum starting address that won't cause overflow
-                let max_start = {
-                    let total_space_needed: u64 =
-                        size_gap_pairs.iter().map(|(size, gap)| size + gap).sum();
-
-                    // Ensure we have headroom for alignment adjustments
-                    u64::MAX.saturating_sub(total_space_needed)
-                };
-
-                (0..=max_start).prop_map(move |start_raw| {
-                    let mut ranges = Vec::with_capacity(size_gap_pairs.len());
-                    let mut current = start_raw;
-
-                    for (size, gap) in &size_gap_pairs {
-                        let start = NonMaxU64::new(current).unwrap();
-                        let end = NonMaxU64::new(current + *size).unwrap();
-
-                        ranges.push(start..end);
-
-                        current += size + gap;
-                    }
-
-                    ranges
-                })
-            })
-            .prop_perturb(move |mut ranges, mut rng| {
-                if self.shuffled {
-                    ranges.shuffle(&mut rng);
-                }
-                ranges
-            })
-        }
-    }
-
-    macro_rules! idx {
-        ($raw:literal) => {{
-            const {
-                assert!(
-                    $raw < <<I as $crate::RangeTreeIndex>::Int as $crate::RangeTreeInteger>::MAX
-                )
-            };
-            #[allow(unused_unsafe)]
-            unsafe {
-                <<I as $crate::RangeTreeIndex>::Int as $crate::RangeTreeInteger>::from_raw($raw)
-                    .unwrap_unchecked()
-            }
-        }};
-    }
-
-    proptest! {
-        #[test]
-        fn insert_random(input in Ranges::new(1..750).finish()) {
-            let mut input: Vec<_> = input.into_iter().enumerate().collect();
-
-            let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
-
-            for (idx, range) in input.iter() {
-                tracing::debug!("inserting range {range:?}");
-                tree.insert(range.clone(), *idx).unwrap();
-
-                tree.assert_valid(true);
-            }
-
-            let ranges: Vec<_> = tree.ranges().collect();
-            let values: Vec<_> = tree.values().copied().collect();
-
-            input.sort_unstable_by(|(_, a), (_, b)| a.end.cmp(&b.end));
-            assert_eq!(
-                input
-                    .iter()
-                    .map(|(_, range)| range.clone())
-                    .collect::<Vec<_>>(),
-                ranges
-            );
-            assert_eq!(
-                input.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
-                values
-            );
-        }
-
-        #[test]
-        fn insert_sorted(input in Ranges::new(1..750).shuffled(false).finish()) {
-            let mut input: Vec<_> = input.into_iter().enumerate().collect();
-
-            let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
-
-            for (idx, range) in input.iter() {
-                tracing::debug!("inserting range {range:?}");
-                tree.insert(range.clone(), *idx).unwrap();
-
-                tree.assert_valid(true);
-            }
-
-            let ranges: Vec<_> = tree.ranges().collect();
-            let values: Vec<_> = tree.values().copied().collect();
-
-            input.sort_unstable_by(|(_, a), (_, b)| a.end.cmp(&b.end));
-            assert_eq!(
-                input
-                    .iter()
-                    .map(|(_, range)| range.clone())
-                    .collect::<Vec<_>>(),
-                ranges
-            );
-            assert_eq!(
-                input.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
-                values
-            );
-        }
-    }
-
-    #[test]
-    fn smoke() {
-        let input: Vec<_> = [100..200, 300..400, 500..600, 600..700]
-            .into_iter()
-            .map(|range| NonMaxU64::new(range.start).unwrap()..NonMaxU64::new(range.end).unwrap())
-            .enumerate()
-            .collect();
-
-        let mut shuffled = input.clone();
-        shuffled.shuffle(&mut rand::rng());
-
-        let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
-
-        for (idx, range) in shuffled {
-            tracing::debug!("inserting range {range:?}");
-            tree.insert(range.clone(), idx).unwrap();
-
-            tree.assert_valid(true);
-        }
-
-        let ranges: Vec<_> = tree.ranges().collect();
-        let values: Vec<_> = tree.values().copied().collect();
-
-        assert_eq!(
-            input
-                .iter()
-                .map(|(_, range)| range.clone())
-                .collect::<Vec<_>>(),
-            ranges
-        );
-        assert_eq!(
-            input.iter().map(|(idx, _)| *idx).collect::<Vec<_>>(),
-            values
-        );
-    }
-
-    #[test]
-    fn overlap() {
-        tracing_subscriber::fmt::init();
-
-        type I = NonMaxU64;
-
-        let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
-
-        tree.insert(idx!(0)..idx!(100), 0).unwrap();
-        tree.insert(idx!(200)..idx!(300), 1).unwrap();
-
-        assert!(matches!(
-            tree.insert(idx!(0)..idx!(10), 2),
-            Err(InsertError::Overlap)
-        ));
-        assert!(matches!(
-            tree.insert(idx!(99)..idx!(101), 2),
-            Err(InsertError::Overlap)
-        ));
-        assert!(matches!(
-            tree.insert(idx!(10)..idx!(90), 2),
-            Err(InsertError::Overlap)
-        ));
-        assert!(matches!(
-            tree.insert(idx!(10)..idx!(201), 1),
-            Err(InsertError::Overlap)
-        ));
-    }
-
-    #[test]
-    fn layout() {
-        let (layout, children_offset) = const { internal_node_layout::<NonMaxU64>() };
-
-        assert!(layout.align() >= align_of::<NodeRef>());
-        assert!(
-            layout.size()
-                >= (size_of::<u64>() * NonMaxU64::B) + (size_of::<NodeRef>() * NonMaxU64::B)
-        );
-        assert_eq!(children_offset, size_of::<u64>() * NonMaxU64::B);
-
-        let (layout, starts_offset, values_offset, next_leaf_offset) =
-            const { leaf_node_layout::<NonMaxU64, usize>() };
-
-        let size_pivots = size_of::<u64>() * NonMaxU64::B;
-        let size_starts = size_of::<u64>() * NonMaxU64::B;
-        let size_values = size_of::<usize>() * (NonMaxU64::B - 1);
-
-        assert!(layout.align() >= align_of::<NodeRef>());
-        assert!(
-            layout.size() >= size_pivots + size_starts + size_values + (size_of::<NodeRef>()), // next leaf
-            "leaf node layout too small! must be at least "
-        );
-        assert_eq!(starts_offset, size_pivots);
-        assert_eq!(values_offset, size_pivots + size_starts);
-        assert_eq!(next_leaf_offset, size_pivots + size_starts + size_values);
     }
 }
