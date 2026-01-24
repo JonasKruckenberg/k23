@@ -1,3 +1,4 @@
+use alloc::alloc::Global;
 use core::alloc::Allocator;
 use core::{hint, mem, ops};
 use core::iter::FusedIterator;
@@ -90,7 +91,7 @@ impl<I: RangeTreeIndex, V> RawIter<I, V> {
 }
 
 /// An iterator over the entries of a [`BTree`].
-pub struct Iter<'a, I: RangeTreeIndex, V, A: Allocator> {
+pub struct Iter<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
     pub(crate) raw: RawIter<I, V>,
     pub(crate) tree: &'a RangeTree<I, V, A>,
 }
@@ -120,7 +121,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Clone for Iter<'a, I, V, A> {
 }
 
 /// A mutable iterator over the entries of a [`BTree`].
-pub struct IterMut<'a, I: RangeTreeIndex, V, A: Allocator> {
+pub struct IterMut<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
     pub(crate) raw: RawIter<I, V>,
     pub(crate) tree: &'a mut RangeTree<I, V, A>,
 }
@@ -141,7 +142,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for IterMut<'a, I, V, A> {
 impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for IterMut<'a, I, V, A> {}
 
 /// An owning iterator over the entries of a [`BTree`].
-pub struct IntoIter<I: RangeTreeIndex, V, A: Allocator> {
+pub struct IntoIter<I: RangeTreeIndex, V, A: Allocator = Global> {
     raw: RawIter<I, V>,
     btree: ManuallyDrop<RangeTree<I, V, A>>,
 }
@@ -184,7 +185,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for IntoIter<I, V, A> {
 impl<I: RangeTreeIndex, V, A: Allocator> FusedIterator for IntoIter<I, V, A> {}
 
 /// An iterator over the keys of a [`BTree`].
-pub struct Ranges<'a, I: RangeTreeIndex, V, A: Allocator> {
+pub struct Ranges<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
     raw: RawIter<I, V>,
     btree: &'a RangeTree<I, V, A>,
 }
@@ -214,7 +215,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Clone for Ranges<'a, I, V, A> {
 }
 
 /// An iterator over the values of a [`BTree`].
-pub struct Values<'a, I: RangeTreeIndex, V, A: Allocator> {
+pub struct Values<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
     raw: RawIter<I, V>,
     btree: &'a RangeTree<I, V, A>,
 }
@@ -244,7 +245,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Clone for Values<'a, I, V, A> {
 }
 
 /// A mutable iterator over the values of a [`BTree`].
-pub struct ValuesMut<'a, I: RangeTreeIndex, V, A: Allocator> {
+pub struct ValuesMut<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
     raw: RawIter<I, V>,
     btree: &'a mut RangeTree<I, V, A>,
 }

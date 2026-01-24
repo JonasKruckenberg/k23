@@ -1,3 +1,4 @@
+use alloc::alloc::Global;
 use core::alloc::{AllocError, Allocator};
 use core::marker::PhantomData;
 use core::ops::{Bound, Deref};
@@ -530,7 +531,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
     }
 }
 
-pub struct Cursor<'a, I: RangeTreeIndex, V, A: Allocator> {
+pub struct Cursor<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
     raw: RawCursor<I, V, A, &'a RangeTree<I, V, A>>,
 }
 
@@ -625,7 +626,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
     }
 }
 
-pub struct CursorMut<'a, I: RangeTreeIndex, V, A: Allocator> {
+pub struct CursorMut<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
     raw: RawCursor<I, V, A, &'a mut RangeTree<I, V, A>>,
 }
 

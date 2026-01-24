@@ -98,7 +98,10 @@ impl NodeRef {
     pub(crate) const ZERO: Self = Self(0);
 
     #[inline]
-    unsafe fn pivots_ptr<I: RangeTreeInteger, Type>(self, pool: &NodePool<I, Type>) -> NonNull<I::Raw> {
+    unsafe fn pivots_ptr<I: RangeTreeInteger, Type>(
+        self,
+        pool: &NodePool<I, Type>,
+    ) -> NonNull<I::Raw> {
         #[cfg(debug_assertions)]
         self.assert_valid(pool);
 
@@ -106,7 +109,10 @@ impl NodeRef {
     }
 
     #[inline]
-    pub(crate) unsafe fn pivots<I: RangeTreeInteger, Type>(self, pool: &NodePool<I, Type>) -> &I::Pivots {
+    pub(crate) unsafe fn pivots<I: RangeTreeInteger, Type>(
+        self,
+        pool: &NodePool<I, Type>,
+    ) -> &I::Pivots {
         unsafe { self.pivots_ptr(pool).cast::<I::Pivots>().as_ref() }
     }
 
@@ -423,7 +429,10 @@ impl UninitNodeRef {
     ///
     /// `self` must be allocated from `pool`.
     #[inline]
-    pub(crate) unsafe fn init_pivots<I: RangeTreeInteger, Type>(self, pool: &mut NodePool<I, Type>) -> NodeRef {
+    pub(crate) unsafe fn init_pivots<I: RangeTreeInteger, Type>(
+        self,
+        pool: &mut NodePool<I, Type>,
+    ) -> NodeRef {
         unsafe {
             let ptr = self.0.pivots_ptr(pool).cast::<MaybeUninit<I::Raw>>();
 
@@ -602,14 +611,6 @@ impl<I: RangeTreeInteger, Type> NodePool<I, Type> {
         Ok(node)
     }
 
-    /// Same as `clear` but then allocates the first node.
-    #[inline]
-    fn clear_and_alloc_node_inner(&mut self, node_layout: Layout) -> UninitNodeRef {
-        self.len = node_layout.size() as u32;
-        self.free_list = !0;
-        UninitNodeRef(NodeRef::ZERO)
-    }
-
     /// Frees the pool and its allocation. This invalidates all `NodeRef`s
     /// allocated from this pool.
     ///
@@ -644,12 +645,6 @@ impl<I: RangeTreeInteger> NodePool<I, marker::Internal> {
         unsafe { self.alloc_node_inner(node_layout, allocator) }
     }
 
-    /// Same as `clear` but then allocates the first node.
-    pub(crate) fn clear_and_alloc_node(&mut self) -> UninitNodeRef {
-        let (node_layout, _) = const { internal_node_layout::<I>() };
-        self.clear_and_alloc_node_inner(node_layout)
-    }
-
     /// Frees the pool and its allocation. This invalidates all `NodeRef`s
     /// allocated from this pool.
     ///
@@ -678,12 +673,12 @@ impl<I: RangeTreeInteger, V> NodePool<I, marker::Leaf<V>> {
         unsafe { self.alloc_node_inner(node_layout, allocator) }
     }
 
-
-
     /// Same as `clear` but then allocates the first node.
     pub(crate) fn clear_and_alloc_node(&mut self) -> UninitNodeRef {
         let (node_layout, _, _, _) = const { leaf_node_layout::<I, V>() };
-        self.clear_and_alloc_node_inner(node_layout)
+        self.len = node_layout.size() as u32;
+        self.free_list = !0;
+        UninitNodeRef(NodeRef::ZERO)
     }
 
     /// Frees the pool and its allocation. This invalidates all `NodeRef`s
@@ -696,5 +691,40 @@ impl<I: RangeTreeInteger, V> NodePool<I, marker::Leaf<V>> {
     pub(crate) unsafe fn clear_and_free(&mut self, allocator: &impl Allocator) {
         let (node_layout, _, _, _) = const { leaf_node_layout::<I, V>() };
         unsafe { self.clear_and_free_inner(node_layout, allocator) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nonmax::NonMaxU64;
+
+    use super::*;
+
+    #[test]
+    fn layout() {
+        let (layout, children_offset) = const { internal_node_layout::<NonMaxU64>() };
+
+        assert!(layout.align() >= align_of::<NodeRef>());
+        assert!(
+            layout.size()
+                >= (size_of::<u64>() * NonMaxU64::B) + (size_of::<NodeRef>() * NonMaxU64::B)
+        );
+        assert_eq!(children_offset, size_of::<u64>() * NonMaxU64::B);
+
+        let (layout, starts_offset, values_offset, next_leaf_offset) =
+            const { leaf_node_layout::<NonMaxU64, usize>() };
+
+        let size_pivots = size_of::<u64>() * NonMaxU64::B;
+        let size_starts = size_of::<u64>() * NonMaxU64::B;
+        let size_values = size_of::<usize>() * (NonMaxU64::B - 1);
+
+        assert!(layout.align() >= align_of::<NodeRef>());
+        assert!(
+            layout.size() >= size_pivots + size_starts + size_values + (size_of::<NodeRef>()), // next leaf
+            "leaf node layout too small! must be at least "
+        );
+        assert_eq!(starts_offset, size_pivots);
+        assert_eq!(values_offset, size_pivots + size_starts);
+        assert_eq!(next_leaf_offset, size_pivots + size_starts + size_values);
     }
 }
