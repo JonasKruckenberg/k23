@@ -20,6 +20,7 @@ pub(crate) unsafe trait RangeTreeInteger: Copy + Eq + Debug + Send + Sync + Unpi
 
     fn to_raw(self) -> Self::Raw;
     fn from_raw(int: Self::Raw) -> Option<Self>;
+    fn increment(int: Self::Raw) -> Self::Raw;
     fn cmp(a: Self::Raw, b: Self::Raw) -> Ordering;
 
     unsafe fn search(pivots: &Self::Pivots, search: Self::Raw) -> NodePos<Self>;
@@ -55,10 +56,10 @@ macro_rules! impl_int {
                     Self::Raw::bias_cmp(a, b)
                 }
 
-                // // #[inline]
-                // // fn increment(int: Self::Raw) -> Self::Raw {
-                // //     int.wrapping_add(1)
-                // // }
+                #[inline]
+                fn increment(int: Self::Raw) -> Self::Raw {
+                    int.wrapping_add(1)
+                }
 
                 #[inline]
                 unsafe fn search(pivots: &Self::Pivots, search: Self::Raw) -> NodePos<Self> {

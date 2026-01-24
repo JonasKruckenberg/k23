@@ -534,6 +534,12 @@ impl<I: RangeTreeInteger, Type> NodePool<I, Type> {
         }
     }
 
+    /// Frees all `NodeRef`s allocated from this pool.
+    pub(crate) fn clear(&mut self) {
+        self.len = 0;
+        self.free_list = !0;
+    }
+
     #[inline]
     fn grow(&mut self, node_layout: Layout, allocator: &impl Allocator) -> Result<(), AllocError> {
         if self.capacity == 0 {
@@ -595,6 +601,32 @@ impl<I: RangeTreeInteger, Type> NodePool<I, Type> {
         debug_assert!(self.len <= self.capacity);
         Ok(node)
     }
+
+    /// Same as `clear` but then allocates the first node.
+    #[inline]
+    fn clear_and_alloc_node_inner(&mut self, node_layout: Layout) -> UninitNodeRef {
+        self.len = node_layout.size() as u32;
+        self.free_list = !0;
+        UninitNodeRef(NodeRef::ZERO)
+    }
+
+    /// Frees the pool and its allocation. This invalidates all `NodeRef`s
+    /// allocated from this pool.
+    ///
+    /// # Safety
+    ///
+    /// This pool must always be used with the same allocator.
+    #[inline]
+    unsafe fn clear_and_free_inner(&mut self, node_layout: Layout, allocator: &impl Allocator) {
+        self.clear();
+        let layout = unsafe {
+            Layout::from_size_align_unchecked(self.capacity as usize, node_layout.align())
+        };
+        unsafe {
+            allocator.deallocate(self.ptr, layout);
+        }
+        self.capacity = 0;
+    }
 }
 
 impl<I: RangeTreeInteger> NodePool<I, marker::Internal> {
@@ -611,6 +643,24 @@ impl<I: RangeTreeInteger> NodePool<I, marker::Internal> {
 
         unsafe { self.alloc_node_inner(node_layout, allocator) }
     }
+
+    /// Same as `clear` but then allocates the first node.
+    pub(crate) fn clear_and_alloc_node(&mut self) -> UninitNodeRef {
+        let (node_layout, _) = const { internal_node_layout::<I>() };
+        self.clear_and_alloc_node_inner(node_layout)
+    }
+
+    /// Frees the pool and its allocation. This invalidates all `NodeRef`s
+    /// allocated from this pool.
+    ///
+    /// # Safety
+    ///
+    /// This pool must always be used with the same allocator.
+    #[inline]
+    pub(crate) unsafe fn clear_and_free(&mut self, allocator: &impl Allocator) {
+        let (node_layout, _) = const { internal_node_layout::<I>() };
+        unsafe { self.clear_and_free_inner(node_layout, allocator) }
+    }
 }
 
 impl<I: RangeTreeInteger, V> NodePool<I, marker::Leaf<V>> {
@@ -626,5 +676,25 @@ impl<I: RangeTreeInteger, V> NodePool<I, marker::Leaf<V>> {
         let (node_layout, _, _, _) = const { leaf_node_layout::<I, V>() };
 
         unsafe { self.alloc_node_inner(node_layout, allocator) }
+    }
+
+
+
+    /// Same as `clear` but then allocates the first node.
+    pub(crate) fn clear_and_alloc_node(&mut self) -> UninitNodeRef {
+        let (node_layout, _, _, _) = const { leaf_node_layout::<I, V>() };
+        self.clear_and_alloc_node_inner(node_layout)
+    }
+
+    /// Frees the pool and its allocation. This invalidates all `NodeRef`s
+    /// allocated from this pool.
+    ///
+    /// # Safety
+    ///
+    /// This pool must always be used with the same allocator.
+    #[inline]
+    pub(crate) unsafe fn clear_and_free(&mut self, allocator: &impl Allocator) {
+        let (node_layout, _, _, _) = const { leaf_node_layout::<I, V>() };
+        unsafe { self.clear_and_free_inner(node_layout, allocator) }
     }
 }
