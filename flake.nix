@@ -27,21 +27,27 @@
             rustToolchain
             clang
 
+            # version control
+            jujutsu
+
             # devtools
             just
-            mdbook
-            socat
-            wabt
-            dtc
             cargo-nextest
-            cargo-fuzz
             cargo-deny
             typos
+            dtc
+            cargo-fuzz
+
+            # for manual
+            mdbook
+
+            # wasm tooling
+            wabt
             wasm-tools
-            jujutsu
 
             # for testing the kernel
             qemu
+            socat
 
             # To profile the code or benchmarks
             samply
