@@ -1,24 +1,19 @@
-//! Stack used for mutable tree operations that records a path through the tree.
+use core::marker::PhantomData;
+use core::ops::{Index, IndexMut};
 
-use core::{
-    marker::PhantomData,
-    ops::{Index, IndexMut},
-};
+use crate::int::RangeTreeInteger;
+use crate::node::{MAX_POOL_SIZE, NodePos, NodeRef, leaf_node_layout, LeafNodeLayout};
 
-use crate::{
-    RangeTreeInteger, NodeRef,
-    node::NodePos,
-    node::{MAX_POOL_SIZE, node_layout},
-};
-
-/// Returns the worst case maximum height for a tree with pivot `I`.
+/// Returns the worst case maximum height for a tree with key `I`.
 #[inline]
 pub(crate) const fn max_height<I: RangeTreeInteger>() -> usize {
+    let LeafNodeLayout { layout, .. } =  leaf_node_layout::<I, ()>();
+
     // Get the maximum possible number of leaf nodes, assuming an empty `V`.
     //
     // `NodePool` stores offsets in a u32 and therefore the total pool size
     // cannot exceed `u32::MAX`.
-    let mut nodes = MAX_POOL_SIZE / node_layout::<I, ()>().0.size();
+    let mut nodes = MAX_POOL_SIZE / layout.size();
     let mut height = 0;
 
     // If there are multiple nodes at this height then we need another level
@@ -45,27 +40,22 @@ pub(crate) const fn max_height<I: RangeTreeInteger>() -> usize {
 /// allows safe unchecked indexing in a stack.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Height<I: RangeTreeInteger> {
-    height: usize,
-    marker: PhantomData<fn() -> I>,
+    pub height: usize,
+    _m: PhantomData<fn() -> I>,
 }
 
 impl<I: RangeTreeInteger> Height<I> {
     /// Returns the height for leaf nodes.
-    #[inline]
-    pub(crate) fn leaf() -> Self {
-        Self {
-            height: 0,
-            marker: PhantomData,
-        }
-    }
+    pub(crate) const LEAF: Self = Self {
+        height: 0,
+        _m: PhantomData,
+    };
+
     /// Returns the maximum possible height for a tree.
-    #[inline]
-    pub(crate) fn max() -> Self {
-        Self {
-            height: max_height::<I>(),
-            marker: PhantomData,
-        }
-    }
+    pub(crate) const MAX: Self = Self {
+        height: max_height::<I>(),
+        _m: PhantomData,
+    };
 
     /// Returns one level down (towards the leaves).
     #[inline]
@@ -75,35 +65,35 @@ impl<I: RangeTreeInteger> Height<I> {
         } else {
             Some(Self {
                 height: self.height - 1,
-                marker: PhantomData,
+                _m: PhantomData,
             })
         }
     }
 
     /// Returns one level up (towards the root) up to the given maximum heigh.
     #[inline]
-    pub(crate) fn up(self, max: Height<I>) -> Option<Self> {
+    pub(crate) fn up(self, max: Self) -> Option<Self> {
         if self.height >= max.height {
             None
         } else {
             Some(Self {
                 height: self.height + 1,
-                marker: PhantomData,
+                _m: PhantomData,
             })
         }
     }
 }
 
-/// Stack which holds the path to a leaf node from the root of the tree.
-///
-/// The is large enough to hold `max_height::<I>()`, which depends on the branching
-/// factor and the node size.
-///
-/// The stack is indexed with `Height` which allows unchecked indexing since
-/// all heights must be less than `max_heigh::<I>()`.
-#[derive(Clone)]
 pub(crate) struct Stack<I: RangeTreeInteger, const H: usize> {
     entries: [(NodeRef, NodePos<I>); H],
+}
+
+impl<I: RangeTreeInteger, const H: usize> Clone for Stack<I, H> {
+    fn clone(&self) -> Self {
+        Self {
+            entries: self.entries,
+        }
+    }
 }
 
 impl<I: RangeTreeInteger, const H: usize> Default for Stack<I, H> {
@@ -112,7 +102,7 @@ impl<I: RangeTreeInteger, const H: usize> Default for Stack<I, H> {
         Self {
             // The values here don't matter and zero initialization is slightly
             // faster.
-            entries: [(NodeRef::zero(), NodePos::zero()); H],
+            entries: [(NodeRef::ZERO, NodePos::ZERO); H],
         }
     }
 }

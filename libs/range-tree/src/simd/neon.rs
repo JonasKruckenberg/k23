@@ -5,9 +5,9 @@ impl SimdSearch for u8 {
     const SIMD_WIDTH: usize = 64;
     #[inline]
     #[target_feature(enable = "neon")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_u8(search);
-        let uint8x16x4_t(a, b, c, d) = unsafe { vld4q_u8(keys) };
+        let uint8x16x4_t(a, b, c, d) = unsafe { vld4q_u8(pivots) };
         let a = vcgeq_u8(a, search);
         let b = vcgeq_u8(b, search);
         let c = vcgeq_u8(c, search);
@@ -25,9 +25,9 @@ impl SimdSearch for u16 {
     const SIMD_WIDTH: usize = 32;
     #[inline]
     #[target_feature(enable = "neon")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_u16(search);
-        let uint16x8x4_t(a, b, c, d) = unsafe { vld4q_u16(keys) };
+        let uint16x8x4_t(a, b, c, d) = unsafe { vld4q_u16(pivots) };
         let a = vcgeq_u16(a, search);
         let b = vcgeq_u16(b, search);
         let c = vcgeq_u16(c, search);
@@ -44,9 +44,9 @@ impl SimdSearch for u32 {
     const SIMD_WIDTH: usize = 16;
     #[inline]
     #[target_feature(enable = "neon")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_u32(search);
-        let uint32x4x4_t(a, b, c, d) = unsafe { vld1q_u32_x4(keys) };
+        let uint32x4x4_t(a, b, c, d) = unsafe { vld1q_u32_x4(pivots) };
         let a = vcgeq_u32(a, search);
         let b = vcgeq_u32(b, search);
         let c = vcgeq_u32(c, search);
@@ -63,9 +63,9 @@ impl SimdSearch for u64 {
     const SIMD_WIDTH: usize = 8;
     #[inline]
     #[target_feature(enable = "neon")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_u64(search);
-        let uint64x2x4_t(a, b, c, d) = unsafe { vld1q_u64_x4(keys) };
+        let uint64x2x4_t(a, b, c, d) = unsafe { vld1q_u64_x4(pivots) };
         let a = vcgeq_u64(a, search);
         let b = vcgeq_u64(b, search);
         let c = vcgeq_u64(c, search);
@@ -83,9 +83,9 @@ impl SimdSearch for i8 {
     const SIMD_WIDTH: usize = 64;
     #[inline]
     #[target_feature(enable = "neon")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_s8(search);
-        let int8x16x4_t(a, b, c, d) = unsafe { vld4q_s8(keys) };
+        let int8x16x4_t(a, b, c, d) = unsafe { vld4q_s8(pivots) };
         let a = vcgeq_s8(a, search);
         let b = vcgeq_s8(b, search);
         let c = vcgeq_s8(c, search);
@@ -103,9 +103,9 @@ impl SimdSearch for i16 {
     const SIMD_WIDTH: usize = 32;
     #[inline]
     #[target_feature(enable = "neon")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_s16(search);
-        let int16x8x4_t(a, b, c, d) = unsafe { vld4q_s16(keys) };
+        let int16x8x4_t(a, b, c, d) = unsafe { vld4q_s16(pivots) };
         let a = vcgeq_s16(a, search);
         let b = vcgeq_s16(b, search);
         let c = vcgeq_s16(c, search);
@@ -122,9 +122,9 @@ impl SimdSearch for i32 {
     const SIMD_WIDTH: usize = 16;
     #[inline]
     #[target_feature(enable = "neon")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_s32(search);
-        let int32x4x4_t(a, b, c, d) = unsafe { vld1q_s32_x4(keys) };
+        let int32x4x4_t(a, b, c, d) = unsafe { vld1q_s32_x4(pivots) };
         let a = vcgeq_s32(a, search);
         let b = vcgeq_s32(b, search);
         let c = vcgeq_s32(c, search);
@@ -141,9 +141,9 @@ impl SimdSearch for i64 {
     const SIMD_WIDTH: usize = 8;
     #[inline]
     #[target_feature(enable = "neon")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_s64(search);
-        let int64x2x4_t(a, b, c, d) = unsafe { vld1q_s64_x4(keys) };
+        let int64x2x4_t(a, b, c, d) = unsafe { vld1q_s64_x4(pivots) };
         let a = vcgeq_s64(a, search);
         let b = vcgeq_s64(b, search);
         let c = vcgeq_s64(c, search);

@@ -1,16 +1,17 @@
-use alloc::alloc::Global;
-use core::alloc::Allocator;
-use core::{hint, mem, ops};
+use alloc::alloc::{Allocator, Global};
 use core::iter::FusedIterator;
-use core::marker::PhantomData;
-use core::mem::ManuallyDrop;
+use core::mem::{self, ManuallyDrop};
+use core::ops::{Bound, RangeBounds};
 use core::ptr::NonNull;
-use crate::int::RangeTreeInteger;
-use crate::node::{marker, NodePool, NodePos, NodeRef};
-use crate::{RangeTreeIndex, RangeTree};
+use core::{hint, ops};
+
+use crate::int::{RangeTreeInteger, int_from_pivot};
+use crate::node::{NodePool, NodePos, NodeRef};
+use crate::{RangeTree, RangeTreeIndex};
 
 /// Common base for mutable and immutable iterators.
-pub(crate) struct RawIter<I: RangeTreeIndex, V> {
+#[derive(Clone)]
+pub(crate) struct RawIter<I: RangeTreeInteger> {
     /// Current leaf node.
     pub(crate) node: NodeRef,
 
@@ -18,37 +19,29 @@ pub(crate) struct RawIter<I: RangeTreeIndex, V> {
     ///
     /// This must point to a valid entry *except* if the iterator has reached
     /// the end of the tree, in which case it must point to the first `Int::MAX`
-    /// key in the node.
-    pub(crate) pos: NodePos<I::Int>,
-    
-    pub(crate) _value: PhantomData<V>
+    /// pivot in the node.
+    pub(crate) pos: NodePos<I>,
 }
 
-impl<I: RangeTreeIndex, V> Clone for RawIter<I, V> {
-    fn clone(&self) -> Self {
-        Self { node: self.node.clone(), pos: self.pos.clone(), _value: PhantomData }
-    }
-}
-
-impl<I: RangeTreeIndex, V> RawIter<I, V> {
+impl<I: RangeTreeInteger> RawIter<I> {
     /// Returns `true` if the iterator points to the end of the tree.
     ///
     /// # Safety
     ///
     /// `leaf_pool` must point to the `NodePool` for leaf nodes in the tree.
     #[inline]
-    unsafe fn is_end(&self, leaf_pool: &NodePool<I::Int, marker::Leaf<V>>) -> bool {
-        unsafe { self.node.pivot(self.pos, leaf_pool) == I::Int::MAX }
+    unsafe fn is_end<V>(&self, leaf_pool: &NodePool<I, V>) -> bool {
+        unsafe { self.node.pivot(self.pos, leaf_pool) == I::MAX }
     }
 
-    /// Returns the next key that the iterator will yield, or `I::MAX` if it is
+    /// Returns the next pivot that the iterator will yield, or `I::MAX` if it is
     /// at the end of the tree.
     ///
     /// # Safety
     ///
     /// `leaf_pool` must point to the `NodePool` for leaf nodes in the tree.
     #[inline]
-    unsafe fn next_key(&self, leaf_pool: &NodePool<I::Int, marker::Leaf<V>>) -> <I::Int as RangeTreeInteger>::Raw {
+    unsafe fn next_pivot<V>(&self, leaf_pool: &NodePool<I, V>) -> I::Raw {
         unsafe { self.node.pivot(self.pos, leaf_pool) }
     }
 
@@ -58,10 +51,9 @@ impl<I: RangeTreeIndex, V> RawIter<I, V> {
     ///
     /// `leaf_pool` must point to the `NodePool` for leaf nodes in the tree.
     #[inline]
-    pub(crate) unsafe fn next(&mut self, leaf_pool: &NodePool<I::Int, marker::Leaf<V>>) -> Option<(ops::Range<I>, NonNull<V>)> {
+    pub(crate) unsafe fn next<V>(&mut self, leaf_pool: &NodePool<I, V>) -> Option<(I, NonNull<V>)> {
         // Get the current element that will be returned.
-        let pivot = unsafe { I::Int::from_raw(self.node.pivot(self.pos, leaf_pool))? };
-        let start = unsafe { I::Int::from_raw(self.node.start(self.pos, leaf_pool).assume_init_read()).unwrap() };
+        let pivot = unsafe { I::from_raw(self.node.pivot(self.pos, leaf_pool))? };
         let value = unsafe { self.node.values_ptr(leaf_pool).add(self.pos.index()) };
 
         // First, try to move to the next element in the current leaf.
@@ -71,13 +63,13 @@ impl<I: RangeTreeIndex, V> RawIter<I, V> {
         // leaf node.
         if unsafe { self.is_end(leaf_pool) } {
             // If we've reached the end of the tree then we can leave the
-            // iterator pointing to an `Int::MAX` key.
+            // iterator pointing to an `Int::MAX` pivot.
             if let Some(next_leaf) = unsafe { self.node.next_leaf(leaf_pool) } {
                 self.node = next_leaf;
-                self.pos = NodePos::ZERO;
+                self.pos = NodePos::zero();
 
                 // The tree invariants guarantee that leaf nodes are always at least
-                // half full, except if this is the root node. However, this can't be the
+                // half full, except if this is the root node. However this can't be the
                 // root node since there is more than one node.
                 unsafe {
                     hint::assert_unchecked(!self.is_end(leaf_pool));
@@ -85,15 +77,14 @@ impl<I: RangeTreeIndex, V> RawIter<I, V> {
             }
         }
 
-
-        Some((I::from_int(start)..I::from_int(pivot), value.cast()))
+        Some((pivot, value.cast()))
     }
 }
 
-/// An iterator over the entries of a [`BTree`].
+/// An iterator over the entries of a [`RangeTree`].
 pub struct Iter<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
-    pub(crate) raw: RawIter<I, V>,
-    pub(crate) tree: &'a RangeTree<I, V, A>,
+    pub(crate) raw: RawIter<I::Int>,
+    pub(crate) btree: &'a RangeTree<I, V, A>,
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Iter<'a, I, V, A> {
@@ -102,9 +93,11 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Iter<'a, I, V, A> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
-            self.raw
-                .next(&self.tree.leaf)
-                .map(|(range, value_ptr)| (range, value_ptr.as_ref()))
+            self.raw.next(&self.btree.leaf).map(|(end, value)| {
+                let (start, value) = value.as_ref();
+
+                (*start..I::from_int(end), value)
+            })
         }
     }
 }
@@ -115,15 +108,15 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Clone for Iter<'a, I, V, A> {
     fn clone(&self) -> Self {
         Self {
             raw: self.raw.clone(),
-            tree: self.tree,
+            btree: self.btree,
         }
     }
 }
 
-/// A mutable iterator over the entries of a [`BTree`].
+/// A mutable iterator over the entries of a [`RangeTree`].
 pub struct IterMut<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
-    pub(crate) raw: RawIter<I, V>,
-    pub(crate) tree: &'a mut RangeTree<I, V, A>,
+    pub(crate) raw: RawIter<I::Int>,
+    pub(crate) btree: &'a mut RangeTree<I, V, A>,
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for IterMut<'a, I, V, A> {
@@ -132,18 +125,20 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for IterMut<'a, I, V, A> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
-            self.raw
-                .next(&self.tree.leaf)
-                .map(|(range, mut value_ptr)| (range, value_ptr.as_mut()))
+            self.raw.next(&self.btree.leaf).map(|(end, mut value)| {
+                let (start, value) = value.as_mut();
+
+                (*start..I::from_int(end), value)
+            })
         }
     }
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for IterMut<'a, I, V, A> {}
 
-/// An owning iterator over the entries of a [`BTree`].
+/// An owning iterator over the entries of a [`RangeTree`].
 pub struct IntoIter<I: RangeTreeIndex, V, A: Allocator = Global> {
-    raw: RawIter<I, V>,
+    raw: RawIter<I::Int>,
     btree: ManuallyDrop<RangeTree<I, V, A>>,
 }
 
@@ -152,11 +147,13 @@ impl<I: RangeTreeIndex, V, A: Allocator> Iterator for IntoIter<I, V, A> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        // Read the element out of the tree without touching the key.
+        // Read the element out of the tree without touching the pivot.
         unsafe {
-            self.raw
-                .next(&self.btree.leaf)
-                .map(|(range, value_ptr)| (range, value_ptr.read()))
+            self.raw.next(&self.btree.leaf).map(|(end, value)| {
+                let (start, value) = value.read();
+
+                (start..I::from_int(end), value)
+            })
         }
     }
 }
@@ -166,7 +163,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for IntoIter<I, V, A> {
     fn drop(&mut self) {
         // Ensure all remaining elements are dropped.
         if mem::needs_drop::<V>() {
-            while let Some((_key, value_ptr)) = unsafe { self.raw.next(&self.btree.leaf) } {
+            while let Some((_pivot, value_ptr)) = unsafe { self.raw.next(&self.btree.leaf) } {
                 unsafe {
                     value_ptr.drop_in_place();
                 }
@@ -176,17 +173,17 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for IntoIter<I, V, A> {
         // Then release the allocations for the tree without dropping elements.
         unsafe {
             let btree = &mut *self.btree;
-            btree.internal.clear_and_free(&btree.allocator);
-            btree.leaf.clear_and_free(&btree.allocator);
+            btree.internal.clear_and_free(&btree.alloc);
+            btree.leaf.clear_and_free(&btree.alloc);
         }
     }
 }
 
 impl<I: RangeTreeIndex, V, A: Allocator> FusedIterator for IntoIter<I, V, A> {}
 
-/// An iterator over the keys of a [`BTree`].
+/// An iterator over the pivots of a [`RangeTree`].
 pub struct Ranges<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
-    raw: RawIter<I, V>,
+    raw: RawIter<I::Int>,
     btree: &'a RangeTree<I, V, A>,
 }
 
@@ -196,9 +193,11 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Ranges<'a, I, V, A> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
-            self.raw
-                .next(&self.btree.leaf)
-                .map(|(key, _value_ptr)| key)
+            self.raw.next(&self.btree.leaf).map(|(end, value)| {
+                let (start, _) = value.as_ref();
+
+                *start..I::from_int(end)
+            })
         }
     }
 }
@@ -214,9 +213,9 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Clone for Ranges<'a, I, V, A> {
     }
 }
 
-/// An iterator over the values of a [`BTree`].
+/// An iterator over the values of a [`RangeTree`].
 pub struct Values<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
-    raw: RawIter<I, V>,
+    raw: RawIter<I::Int>,
     btree: &'a RangeTree<I, V, A>,
 }
 
@@ -226,9 +225,10 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Values<'a, I, V, A> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
-            self.raw
-                .next(&self.btree.leaf)
-                .map(|(_key, value_ptr)| value_ptr.as_ref())
+            self.raw.next(&self.btree.leaf).map(|(_pivot, value_ptr)| {
+                let (_, value) = value_ptr.as_ref();
+                value
+            })
         }
     }
 }
@@ -244,9 +244,9 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Clone for Values<'a, I, V, A> {
     }
 }
 
-/// A mutable iterator over the values of a [`BTree`].
+/// A mutable iterator over the values of a [`RangeTree`].
 pub struct ValuesMut<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
-    raw: RawIter<I, V>,
+    raw: RawIter<I::Int>,
     btree: &'a mut RangeTree<I, V, A>,
 }
 
@@ -258,49 +258,171 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for ValuesMut<'a, I, V, A>
         unsafe {
             self.raw
                 .next(&self.btree.leaf)
-                .map(|(_key, mut value_ptr)| value_ptr.as_mut())
+                .map(|(_pivot, mut value_ptr)| {
+                    let (_, value) = value_ptr.as_mut();
+                    value
+                })
         }
     }
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for ValuesMut<'a, I, V, A> {}
 
-impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
+/// An iterator over a sub-range of the entries of a [`RangeTree`].
+pub struct Range<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
+    raw: RawIter<I::Int>,
+    end: <I::Int as RangeTreeInteger>::Raw,
+    btree: &'a RangeTree<I, V, A>,
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Range<'a, I, V, A> {
+    type Item = (ops::Range<I>, &'a V);
+
     #[inline]
-    pub(crate) fn raw_iter(&self) -> RawIter<I, V> {
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            if I::Int::cmp(self.raw.next_pivot(&self.btree.leaf), self.end).is_ge() {
+                return None;
+            }
+
+            self.raw.next(&self.btree.leaf).map(|(end, value)| {
+                let (start, value) = value.as_ref();
+
+                (*start..I::from_int(end), value)
+            })
+        }
+    }
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for Range<'a, I, V, A> {}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> Clone for Range<'a, I, V, A> {
+    fn clone(&self) -> Self {
+        Self {
+            raw: self.raw.clone(),
+            end: self.end,
+            btree: self.btree,
+        }
+    }
+}
+
+/// A mutable iterator over a sub-range of the entries of a [`RangeTree`].
+pub struct RangeMut<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
+    raw: RawIter<I::Int>,
+    end: <I::Int as RangeTreeInteger>::Raw,
+    btree: &'a mut RangeTree<I, V, A>,
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for RangeMut<'a, I, V, A> {
+    type Item = (ops::Range<I>, &'a mut V);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            if I::Int::cmp(self.raw.next_pivot(&self.btree.leaf), self.end).is_ge() {
+                return None;
+            }
+
+            self.raw.next(&self.btree.leaf).map(|(end, mut value)| {
+                let (start, value) = value.as_mut();
+
+                (*start..I::from_int(end), value)
+            })
+        }
+    }
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for RangeMut<'a, I, V, A> {}
+
+impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
+    /// Returns a [`RawIter`] pointing at the first element of the tree.
+    #[inline]
+    pub(crate) fn raw_iter(&self) -> RawIter<I::Int> {
         // The first leaf node is always the left-most leaf on the tree and is
         // never deleted.
-        RawIter { node: NodeRef::ZERO, pos: NodePos::ZERO, _value: PhantomData }
+        let node = NodeRef::zero();
+        let pos = pos!(0);
+        RawIter { node, pos }
     }
 
-    /// Gets an iterator over the entries of the map, sorted by key.
+    /// Returns a [`RawIter`] pointing at the first element with pivot greater
+    /// than or equal to `pivot`.
+    #[inline]
+    pub(crate) fn raw_iter_from(
+        &self,
+        search: <I::Int as RangeTreeInteger>::Raw,
+    ) -> RawIter<I::Int> {
+        // Go down the tree, at each internal node selecting the first sub-tree
+        // with pivot greater than or equal to the search pivot. This sub-tree will
+        // only contain pivots less than or equal to its pivot.
+        let mut height = self.height;
+        let mut node = self.root;
+        while let Some(down) = height.down() {
+            let pivots = unsafe { node.pivots(&self.internal) };
+            let pos = unsafe { I::Int::search(pivots, search) };
+            node = unsafe { node.value(pos, &self.internal).assume_init_read() };
+            height = down;
+        }
+
+        // Select the first leaf element with pivot greater than or equal to the
+        // search pivot.
+        let pivots = unsafe { node.pivots(&self.leaf) };
+        let pos = unsafe { I::Int::search(pivots, search) };
+        RawIter { node, pos }
+    }
+
+    /// Gets an iterator over the entries of the map, sorted by pivot.
     #[inline]
     pub fn iter(&self) -> Iter<'_, I, V, A> {
         Iter {
             raw: self.raw_iter(),
-            tree: self,
+            btree: self,
         }
     }
 
-    /// Gets a mutable iterator over the entries of the map, sorted by key.
+    /// Gets a mutable iterator over the entries of the map, sorted by pivot.
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, I, V, A> {
         IterMut {
             raw: self.raw_iter(),
-            tree: self,
+            btree: self,
         }
     }
 
-    /// Gets an iterator over the ranges of the map, in sorted order.
+    /// Gets an iterator over the entries of the map starting from the given
+    /// bound.
     #[inline]
-    pub fn ranges(&self) -> Ranges<'_, I, V, A> {
+    pub fn iter_from(&self, bound: Bound<I>) -> Iter<'_, I, V, A> {
+        let raw = match bound {
+            Bound::Included(pivot) => self.raw_iter_from(int_from_pivot(pivot)),
+            Bound::Excluded(pivot) => self.raw_iter_from(I::Int::increment(int_from_pivot(pivot))),
+            Bound::Unbounded => self.raw_iter(),
+        };
+        Iter { raw, btree: self }
+    }
+
+    /// Gets a mutable iterator over the entries of the map starting from the
+    /// given bound.
+    #[inline]
+    pub fn iter_mut_from(&mut self, bound: Bound<I>) -> IterMut<'_, I, V, A> {
+        let raw = match bound {
+            Bound::Included(pivot) => self.raw_iter_from(int_from_pivot(pivot)),
+            Bound::Excluded(pivot) => self.raw_iter_from(I::Int::increment(int_from_pivot(pivot))),
+            Bound::Unbounded => self.raw_iter(),
+        };
+        IterMut { raw, btree: self }
+    }
+
+    /// Gets an iterator over the pivots of the map, in sorted order.
+    #[inline]
+    pub fn pivots(&self) -> Ranges<'_, I, V, A> {
         Ranges {
             raw: self.raw_iter(),
             btree: self,
         }
     }
 
-    /// Gets an iterator over the values of the map, in order by key.
+    /// Gets an iterator over the values of the map, in order by pivot.
     #[inline]
     pub fn values(&self) -> Values<'_, I, V, A> {
         Values {
@@ -309,12 +431,94 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         }
     }
 
-    /// Gets a mutable iterator over the values of the map, in order by key.
+    /// Gets a mutable iterator over the values of the map, in order by pivot.
     #[inline]
     pub fn values_mut(&mut self) -> ValuesMut<'_, I, V, A> {
         ValuesMut {
             raw: self.raw_iter(),
             btree: self,
         }
+    }
+
+    /// Constructs an iterator over a sub-range of elements in the map.
+    ///
+    /// Unlike `BTreeMap`, this is not a [`DoubleEndedIterator`]: it only allows
+    /// forward iteration.
+    #[inline]
+    pub fn range(&self, range: impl RangeBounds<I>) -> Range<'_, I, V, A> {
+        let raw = match range.start_bound() {
+            Bound::Included(&pivot) => self.raw_iter_from(int_from_pivot(pivot)),
+            Bound::Excluded(&pivot) => self.raw_iter_from(I::Int::increment(int_from_pivot(pivot))),
+            Bound::Unbounded => self.raw_iter(),
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&pivot) => I::Int::increment(int_from_pivot(pivot)),
+            Bound::Excluded(&pivot) => int_from_pivot(pivot),
+            Bound::Unbounded => I::Int::MAX,
+        };
+        Range {
+            raw,
+            end,
+            btree: self,
+        }
+    }
+
+    /// Constructs a mutable iterator over a sub-range of elements in the map.
+    ///
+    /// Unlike `BTreeMap`, this is not a [`DoubleEndedIterator`]: it only allows
+    /// forward iteration.
+    #[inline]
+    pub fn range_mut(&mut self, range: impl RangeBounds<I>) -> RangeMut<'_, I, V, A> {
+        let raw = match range.start_bound() {
+            Bound::Included(&pivot) => self.raw_iter_from(int_from_pivot(pivot)),
+            Bound::Excluded(&pivot) => self.raw_iter_from(I::Int::increment(int_from_pivot(pivot))),
+            Bound::Unbounded => self.raw_iter(),
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&pivot) => I::Int::increment(int_from_pivot(pivot)),
+            Bound::Excluded(&pivot) => int_from_pivot(pivot),
+            Bound::Unbounded => I::Int::MAX,
+        };
+        RangeMut {
+            raw,
+            end,
+            btree: self,
+        }
+    }
+}
+
+impl<I: RangeTreeIndex, V, A: Allocator> IntoIterator for RangeTree<I, V, A> {
+    type Item = (ops::Range<I>, V);
+
+    type IntoIter = IntoIter<I, V, A>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            raw: self.raw_iter(),
+            btree: ManuallyDrop::new(self),
+        }
+    }
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> IntoIterator for &'a RangeTree<I, V, A> {
+    type Item = (ops::Range<I>, &'a V);
+
+    type IntoIter = Iter<'a, I, V, A>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> IntoIterator for &'a mut RangeTree<I, V, A> {
+    type Item = (ops::Range<I>, &'a mut V);
+
+    type IntoIter = IterMut<'a, I, V, A>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }

@@ -1,5 +1,5 @@
 use super::SimdSearch;
-use crate::int::KEYS_BYTES;
+use crate::int::pivotS_BYTES;
 use core::mem;
 
 /// Returns the runtime vector length in bytes.
@@ -28,7 +28,7 @@ macro_rules! rvv_search {
                 concat!("vl", $elen, ".v v8, ({ptr})"),
                 concat!("vms", $cmp, ".vx v8, v8, {search}"),
                 "vcpop.m {out}, v8",
-                vl = in(reg) KEYS_BYTES / mem::size_of::<Self>(),
+                vl = in(reg) pivotS_BYTES / mem::size_of::<Self>(),
                 ptr = in(reg) $ptr,
                 search = in(reg) $search,
                 out = lateout(reg) out,
@@ -44,7 +44,7 @@ macro_rules! rvv_search {
                 concat!("vl", $elen, ".v v8, ({ptr})"),
                 concat!("vms", $cmp, ".vx v8, v8, {search}"),
                 "vcpop.m {out}, v8",
-                vl = in(reg) KEYS_BYTES / mem::size_of::<Self>(),
+                vl = in(reg) pivotS_BYTES / mem::size_of::<Self>(),
                 ptr = in(reg) $ptr,
                 search = in(reg) $search,
                 out = lateout(reg) out,
@@ -66,58 +66,58 @@ macro_rules! rvv_search {
 impl SimdSearch for u8 {
     const SIMD_WIDTH: usize = 128;
     #[inline]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
-        unsafe { rvv_search!(keys, search, "e8", "ltu") }
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
+        unsafe { rvv_search!(pivots, search, "e8", "ltu") }
     }
 }
 impl SimdSearch for u16 {
     const SIMD_WIDTH: usize = 64;
     #[inline]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
-        unsafe { rvv_search!(keys, search, "e16", "ltu") }
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
+        unsafe { rvv_search!(pivots, search, "e16", "ltu") }
     }
 }
 impl SimdSearch for u32 {
     const SIMD_WIDTH: usize = 32;
     #[inline]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
-        unsafe { rvv_search!(keys, search, "e32", "ltu") }
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
+        unsafe { rvv_search!(pivots, search, "e32", "ltu") }
     }
 }
 impl SimdSearch for u64 {
     const SIMD_WIDTH: usize = 16;
     #[inline]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
-        unsafe { rvv_search!(keys, search, "e64", "ltu") }
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
+        unsafe { rvv_search!(pivots, search, "e64", "ltu") }
     }
 }
 impl SimdSearch for u128 {}
 impl SimdSearch for i8 {
     const SIMD_WIDTH: usize = 128;
     #[inline]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
-        unsafe { rvv_search!(keys, search, "e8", "lt") }
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
+        unsafe { rvv_search!(pivots, search, "e8", "lt") }
     }
 }
 impl SimdSearch for i16 {
     const SIMD_WIDTH: usize = 64;
     #[inline]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
-        unsafe { rvv_search!(keys, search, "e16", "lt") }
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
+        unsafe { rvv_search!(pivots, search, "e16", "lt") }
     }
 }
 impl SimdSearch for i32 {
     const SIMD_WIDTH: usize = 32;
     #[inline]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
-        unsafe { rvv_search!(keys, search, "e32", "lt") }
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
+        unsafe { rvv_search!(pivots, search, "e32", "lt") }
     }
 }
 impl SimdSearch for i64 {
     const SIMD_WIDTH: usize = 16;
     #[inline]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
-        unsafe { rvv_search!(keys, search, "e64", "lt") }
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
+        unsafe { rvv_search!(pivots, search, "e64", "lt") }
     }
 }
 impl SimdSearch for i128 {}
