@@ -1,11 +1,12 @@
 //! SIMD-optimized implementations of binary search in a fixed-length slice.
 
 use core::cmp::Ordering;
-use core::{fmt::Debug, hint};
+use core::fmt::Debug;
+use core::hint;
 
 use cfg_if::cfg_if;
 
-use crate::int::CACHE_LINE;
+use crate::int::PIVOTS_BYTES;
 
 cfg_if! {
     if #[cfg(all(
@@ -119,31 +120,31 @@ pub(crate) trait SimdSearch: Int {
         Ord::cmp(&a.wrapping_add(Self::BIAS), &b.wrapping_add(Self::BIAS))
     }
 
-    /// Performs a binary search on sorted elements in `keys`, returning the
+    /// Performs a binary search on sorted elements in `pivots`, returning the
     /// index of the first element greater than or equal to `search`.
     ///
-    /// The last element of `keys` is assumed to have the maximum integer
+    /// The last element of `pivots` is assumed to have the maximum integer
     /// value and as such the returned index will always be less than
     /// `Self::SIMD_WIDTH`.
     ///
     /// # Safety
     ///
-    /// `keys` must have `Self::SIMD_WIDTH` elements and be aligned to
-    /// `KEYS_BYTES` bytes.
+    /// `pivots` must have `Self::SIMD_WIDTH` elements and be aligned to
+    /// `pivotS_BYTES` bytes.
     #[inline]
-    unsafe fn search(keys: &[Self], search: Self) -> usize {
-        debug_assert!(keys.len() >= 2);
-        debug_assert!(keys.len() >= Self::SIMD_WIDTH);
-        debug_assert!(keys.len().is_power_of_two());
-        debug_assert_eq!(keys.as_ptr().addr() % CACHE_LINE, 0);
+    unsafe fn search(pivots: &[Self], search: Self) -> usize {
+        debug_assert!(pivots.len() >= 2);
+        debug_assert!(pivots.len() >= Self::SIMD_WIDTH);
+        debug_assert!(pivots.len().is_power_of_two());
+        debug_assert_eq!(pivots.as_ptr().addr() % PIVOTS_BYTES, 0);
 
-        // If the keys are larger than the SIMD search size, use binary search
+        // If the pivots are larger than the SIMD search size, use binary search
         // to shrink it. If no SIMD implementation is available then this
         // shrinks down to a single element.
         //
         // Since the length is fixed, the binary search is fully unrolled by the
         // compiler and only uses ~3 instructions per iteration.
-        let mut len = keys.len();
+        let mut len = pivots.len();
         let mut base = 0;
 
         // This code is based on the binary search implementation in the
@@ -152,42 +153,42 @@ pub(crate) trait SimdSearch: Int {
             let mid = base + len / 2;
 
             // This is slightly different from a normal binary search:
-            // `simd_seach` requires that the last key be less than or equal to
-            // `search`, so we check the last key of the first half. This works
-            // because `len` is guaranteed to be a power of 2 and the last key
+            // `simd_seach` requires that the last pivot be less than or equal to
+            // `search`, so we check the last pivot of the first half. This works
+            // because `len` is guaranteed to be a power of 2 and the last pivot
             // is guaranteed to be the maximum integer value.
             //
             // Since elements in a node have a 2/3 chance of being in
             // the first half of the node, this means we have a 2/3 chance of not
-            // needing to load the second half of the keys into cache.
-            let key = unsafe { *keys.get_unchecked(mid - 1) };
-            base = hint::select_unpredictable(Self::bias_cmp(search, key).is_gt(), mid, base);
+            // needing to load the second half of the pivots into cache.
+            let pivot = unsafe { *pivots.get_unchecked(mid - 1) };
+            base = hint::select_unpredictable(Self::bias_cmp(search, pivot).is_gt(), mid, base);
 
             len /= 2;
         }
 
         debug_assert_eq!(len, Self::SIMD_WIDTH);
         debug_assert_eq!(base % Self::SIMD_WIDTH, 0);
-        base + unsafe { Self::simd_search(keys.as_ptr().add(base), search) }
+        base + unsafe { Self::simd_search(pivots.as_ptr().add(base), search) }
     }
 
-    /// Performs a SIMD search on sorted elements in `keys`, returning the
+    /// Performs a SIMD search on sorted elements in `pivots`, returning the
     /// index of the first element greater than or equal to `search`.
     ///
-    /// The last element of `keys` is assumed to always be less than or equal to
+    /// The last element of `pivots` is assumed to always be less than or equal to
     /// `search`. This is ensured by the outer binary search and the node
     /// invariant. As such the returned index will always be less than
     /// `Self::WIDTH`.
     ///
     /// # Safety
     ///
-    /// `keys` must have `Self::WIDTH` elements and be aligned to
+    /// `pivots` must have `Self::WIDTH` elements and be aligned to
     /// `size_of::<T>() * Self::WIDTH` bytes.
     #[inline]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         // The default implementation relies entirely on the binary search.
         assert_eq!(Self::SIMD_WIDTH, 1);
-        debug_assert!(Self::bias_cmp(search, unsafe { keys.read() }).is_le());
+        debug_assert!(Self::bias_cmp(search, unsafe { pivots.read() }).is_le());
         0
     }
 }
@@ -211,23 +212,22 @@ unsafe fn exact_div_unchecked(a: usize, b: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::SimdSearch;
-    use crate::int::{CACHE_LINE};
-    use crate::int::CacheAligned;
+    use crate::int::{CacheAligned, PIVOTS_BYTES};
 
-    fn generic_search<T: SimdSearch>(keys: &[T], search: T) -> usize {
-        keys[..keys.len() - 1].partition_point(|&key| T::bias_cmp(key, search).is_lt())
+    fn generic_search<T: SimdSearch>(pivots: &[T], search: T) -> usize {
+        pivots[..pivots.len() - 1].partition_point(|&pivot| T::bias_cmp(pivot, search).is_lt())
     }
 
     fn test_search<T: SimdSearch>(encode: impl Fn(usize) -> T, max: T) {
-        let len = CACHE_LINE / size_of::<T>();
-        let mut keys: CacheAligned<[T; CACHE_LINE]> = unsafe { std::mem::zeroed() };
+        let len = PIVOTS_BYTES / size_of::<T>();
+        let mut pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe { std::mem::zeroed() };
         for i in 0..len {
-            keys.0[i] = encode(i & !1);
+            pivots.0[i] = encode(i & !1);
         }
-        keys.0[len - 1] = max;
+        pivots.0[len - 1] = max;
         for i in 0..len {
-            assert_eq!(generic_search(&keys.0[..len], encode(i)), unsafe {
-                T::search(&keys.0[..len], encode(i))
+            assert_eq!(generic_search(&pivots.0[..len], encode(i)), unsafe {
+                T::search(&pivots.0[..len], encode(i))
             });
         }
     }
@@ -307,7 +307,7 @@ mod tests {
 #[cfg(feature = "internal_benches")]
 mod bench {
     use super::SimdSearch;
-    use crate::int::{AlignedKeys, KEYS_BYTES};
+    use crate::int::{CacheAligned, PIVOTS_BYTES};
 
     #[divan::bench(types = [
         u8,
@@ -323,11 +323,11 @@ mod bench {
     ])]
     fn search<T: SimdSearch>(bencher: divan::Bencher) {
         // The values don't matter because we use branchless searches.
-        let keys: AlignedKeys<[T; KEYS_BYTES]> = unsafe { std::mem::zeroed() };
+        let pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe { std::mem::zeroed() };
         bencher.bench_local(|| {
             let zero: T = unsafe { std::mem::zeroed() };
-            let len = KEYS_BYTES / std::mem::size_of::<T>();
-            unsafe { T::search(&keys.0[..len], divan::black_box(zero)) }
+            let len = PIVOTS_BYTES / std::mem::size_of::<T>();
+            unsafe { T::search(&pivots.0[..len], divan::black_box(zero)) }
         });
     }
 
@@ -344,16 +344,16 @@ mod bench {
         i128,
     ])]
     fn generic_search<T: SimdSearch>(bencher: divan::Bencher) {
-        fn generic_search<T: SimdSearch>(keys: &[T], search: T) -> usize {
-            keys[..keys.len() - 1].partition_point(|&key| T::bias_cmp(key, search).is_lt())
+        fn generic_search<T: SimdSearch>(pivots: &[T], search: T) -> usize {
+            pivots[..pivots.len() - 1].partition_point(|&pivot| T::bias_cmp(pivot, search).is_lt())
         }
 
         // The values don't matter because we use branchless searches.
-        let keys: AlignedKeys<[T; KEYS_BYTES]> = unsafe { std::mem::zeroed() };
+        let pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe { std::mem::zeroed() };
         bencher.bench_local(|| {
             let zero: T = unsafe { std::mem::zeroed() };
-            let len = KEYS_BYTES / std::mem::size_of::<T>();
-            generic_search(&keys.0[..len], divan::black_box(zero))
+            let len = PIVOTS_BYTES / std::mem::size_of::<T>();
+            generic_search(&pivots.0[..len], divan::black_box(zero))
         });
     }
 }
