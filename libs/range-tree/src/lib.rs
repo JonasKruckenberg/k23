@@ -8,9 +8,10 @@
 extern crate alloc;
 
 use alloc::alloc::{Allocator, Global};
+use core::alloc::AllocError;
 use core::ops::Bound;
 use core::{mem, ops};
-use core::alloc::AllocError;
+
 use int::RangeTreeInteger;
 use node::{NodePool, NodeRef, UninitNodeRef};
 use stack::Height;
@@ -58,6 +59,9 @@ pub trait RangeTreeIndex: Copy {
     #[allow(private_bounds)]
     type Int: RangeTreeInteger;
 
+    const ZERO: Self;
+    const MAX: Self;
+
     /// Converts the pivot to an integer.
     fn to_int(self) -> Self::Int;
 
@@ -87,7 +91,7 @@ pub trait RangeTreeIndex: Copy {
 /// [B+ Tree]: https://en.wikipedia.org/wiki/B%2B_tree
 /// [B- Tree]: https://en.algorithmica.org/hpc/data-structures/b-tree/
 pub struct RangeTree<I: RangeTreeIndex, V, A: Allocator = Global> {
-    internal: NodePool<I::Int, NodeRef>,
+    internal: NodePool<I::Int, (NodeRef, u32)>,
     leaf: NodePool<I::Int, (I, V)>,
     height: Height<I::Int>,
     root: NodeRef,
@@ -175,8 +179,9 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
 
     /// Returns a mutable reference to the value corresponding to the pivot.
     #[inline]
-    pub fn get_mut(&mut self, pivot: I) -> Option<&mut V> {
-        self.range_mut(pivot..=pivot).next().map(|(_k, v)| v)
+    pub fn get_mut(&mut self, search: I) -> Option<&mut V> {
+        let cursor = self.cursor_mut_at(Bound::Included(search));
+        cursor.into_iter_mut().next().map(|(_pivot, value)| value)
     }
 
     /// Inserts a pivot-value pair into the map while allowing for multiple

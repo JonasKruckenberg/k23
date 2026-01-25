@@ -1,5 +1,7 @@
 #![feature(allocator_api)]
 
+mod common;
+
 use std::alloc::Global;
 use std::ops;
 
