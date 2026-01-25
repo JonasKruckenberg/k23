@@ -6,7 +6,7 @@ use std::alloc::Global;
 
 use nonmax::NonMaxU64;
 use rand::seq::SliceRandom;
-use range_tree::RangeTree;
+use range_tree::{InsertError, RangeTree};
 
 use crate::common::idx;
 

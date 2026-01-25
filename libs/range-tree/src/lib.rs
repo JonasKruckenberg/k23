@@ -10,7 +10,7 @@ extern crate alloc;
 use alloc::alloc::{Allocator, Global};
 use core::alloc::AllocError;
 use core::ops::Bound;
-use core::{mem, ops};
+use core::{fmt, mem, ops};
 
 use int::RangeTreeInteger;
 use node::{NodePool, NodeRef, UninitNodeRef};
@@ -32,6 +32,30 @@ pub use iter::*;
 pub use nonmax;
 
 use crate::int::int_from_pivot;
+
+/// Error type returned by insertion methods.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InsertError {
+    /// An allocation failure occurred while inserting.
+    AllocError,
+    /// The range overlaps with an existing range in the tree.
+    Overlap,
+}
+
+impl fmt::Display for InsertError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InsertError::AllocError => write!(f, "allocation failure"),
+            InsertError::Overlap => write!(f, "overlapping range"),
+        }
+    }
+}
+
+impl From<AllocError> for InsertError {
+    fn from(_: AllocError) -> Self {
+        InsertError::AllocError
+    }
+}
 
 /// Trait which must be implemented for all pivots inserted into a [`RangeTree`].
 ///
@@ -192,10 +216,34 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     /// and [`RangeTree::remove`] will only operate on one of the associated values
     /// (arbitrarily chosen).
     #[inline]
-    pub fn insert(&mut self, range: ops::Range<I>, value: V) -> Result<(), AllocError> {
+    pub fn insert(&mut self, range: ops::Range<I>, value: V) -> Result<(), InsertError> {
         let mut cursor = unsafe { CursorMut::uninit(self) };
         cursor.seek(int_from_pivot(range.end));
-        cursor.insert_before(range, value)
+
+        if let Some((existing, _)) = cursor.entry()
+            && I::Int::cmp(
+            existing.start.to_int().to_raw(),
+            range.end.to_int().to_raw(),
+        )
+            .is_lt()
+        {
+            return Err(InsertError::Overlap);
+        }
+
+        if cursor.prev() {
+            if let Some((prev, _)) = cursor.entry()
+                && I::Int::cmp(prev.end.to_int().to_raw(), range.start.to_int().to_raw()).is_gt()
+            {
+                // Overlap detected: previous range ends after new range starts
+                return Err(InsertError::Overlap);
+            }
+
+            cursor.next(); // Move back to insertion position
+        }
+
+        cursor.insert_before(range, value)?;
+
+        Ok(())
     }
 
     /// Removes a pivot from the map, returning the value at the pivot if the pivot
