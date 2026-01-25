@@ -1,22 +1,22 @@
 #![feature(allocator_api)]
 
+mod common;
+
 use std::alloc::Global;
 
 use nonmax::NonMaxU64;
 use rand::seq::SliceRandom;
-use range_tree::{InsertError, RangeTree};
+use range_tree::RangeTree;
 
-macro_rules! idx {
-    ($raw:literal) => {{ const { NonMaxU64::new($raw).unwrap() } }};
-}
+use crate::common::idx;
 
 #[test]
 fn smoke() {
     let input: Vec<_> = [
-        idx!(100)..idx!(200),
-        idx!(300)..idx!(400),
-        idx!(500)..idx!(600),
-        idx!(600)..idx!(700),
+        idx!(NonMaxU64(100))..idx!(NonMaxU64(200)),
+        idx!(NonMaxU64(300))..idx!(NonMaxU64(400)),
+        idx!(NonMaxU64(500))..idx!(NonMaxU64(600)),
+        idx!(NonMaxU64(600))..idx!(NonMaxU64(700)),
     ]
     .into_iter()
     .enumerate()
@@ -56,23 +56,23 @@ fn overlap() {
 
     let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
 
-    tree.insert(idx!(0)..idx!(100), 0).unwrap();
-    tree.insert(idx!(200)..idx!(300), 1).unwrap();
+    tree.insert(idx!(NonMaxU64(0))..idx!(NonMaxU64(100)), 0).unwrap();
+    tree.insert(idx!(NonMaxU64(200))..idx!(NonMaxU64(300)), 1).unwrap();
 
     assert!(matches!(
-        tree.insert(idx!(0)..idx!(10), 2),
+        tree.insert(idx!(NonMaxU64(0))..idx!(NonMaxU64(10)), 2),
         Err(InsertError::Overlap)
     ));
     assert!(matches!(
-        tree.insert(idx!(99)..idx!(101), 2),
+        tree.insert(idx!(NonMaxU64(99))..idx!(NonMaxU64(101)), 2),
         Err(InsertError::Overlap)
     ));
     assert!(matches!(
-        tree.insert(idx!(10)..idx!(90), 2),
+        tree.insert(idx!(NonMaxU64(10))..idx!(NonMaxU64(90)), 2),
         Err(InsertError::Overlap)
     ));
     assert!(matches!(
-        tree.insert(idx!(10)..idx!(201), 1),
+        tree.insert(idx!(NonMaxU64(10))..idx!(NonMaxU64(201)), 1),
         Err(InsertError::Overlap)
     ));
 }
