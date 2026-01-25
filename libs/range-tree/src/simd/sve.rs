@@ -39,9 +39,9 @@ impl SimdSearch for u8 {
     const SIMD_WIDTH: usize = 64;
     #[inline]
     #[target_feature(enable = "sve")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_u8(search);
-        let data = unsafe { vld1q_u8_x4(keys) };
+        let data = unsafe { vld1q_u8_x4(pivots) };
         sve_compare!(search, data, "b", "lo")
     }
 }
@@ -49,9 +49,9 @@ impl SimdSearch for u16 {
     const SIMD_WIDTH: usize = 32;
     #[inline]
     #[target_feature(enable = "sve")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_u16(search);
-        let data = unsafe { vld1q_u16_x4(keys) };
+        let data = unsafe { vld1q_u16_x4(pivots) };
         sve_compare!(search, data, "h", "lo")
     }
 }
@@ -59,9 +59,9 @@ impl SimdSearch for u32 {
     const SIMD_WIDTH: usize = 16;
     #[inline]
     #[target_feature(enable = "sve")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_u32(search);
-        let data = unsafe { vld1q_u32_x4(keys) };
+        let data = unsafe { vld1q_u32_x4(pivots) };
         sve_compare!(search, data, "s", "lo")
     }
 }
@@ -69,9 +69,9 @@ impl SimdSearch for u64 {
     const SIMD_WIDTH: usize = 8;
     #[inline]
     #[target_feature(enable = "sve")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_u64(search);
-        let data = unsafe { vld1q_u64_x4(keys) };
+        let data = unsafe { vld1q_u64_x4(pivots) };
         sve_compare!(search, data, "d", "lo")
     }
 }
@@ -80,9 +80,9 @@ impl SimdSearch for i8 {
     const SIMD_WIDTH: usize = 64;
     #[inline]
     #[target_feature(enable = "sve")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_s8(search);
-        let data = unsafe { vld1q_s8_x4(keys) };
+        let data = unsafe { vld1q_s8_x4(pivots) };
         sve_compare!(search, data, "b", "lt")
     }
 }
@@ -90,9 +90,9 @@ impl SimdSearch for i16 {
     const SIMD_WIDTH: usize = 32;
     #[inline]
     #[target_feature(enable = "sve")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_s16(search);
-        let data = unsafe { vld1q_s16_x4(keys) };
+        let data = unsafe { vld1q_s16_x4(pivots) };
         sve_compare!(search, data, "h", "lt")
     }
 }
@@ -100,9 +100,9 @@ impl SimdSearch for i32 {
     const SIMD_WIDTH: usize = 16;
     #[inline]
     #[target_feature(enable = "sve")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_s32(search);
-        let data = unsafe { vld1q_s32_x4(keys) };
+        let data = unsafe { vld1q_s32_x4(pivots) };
         sve_compare!(search, data, "s", "lt")
     }
 }
@@ -110,9 +110,9 @@ impl SimdSearch for i64 {
     const SIMD_WIDTH: usize = 8;
     #[inline]
     #[target_feature(enable = "sve")]
-    unsafe fn simd_search(keys: *const Self, search: Self) -> usize {
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
         let search = vdupq_n_s64(search);
-        let data = unsafe { vld1q_s64_x4(keys) };
+        let data = unsafe { vld1q_s64_x4(pivots) };
         sve_compare!(search, data, "d", "lt")
     }
 }

@@ -94,12 +94,13 @@ fn brie_insertions(insertions: &[Range<u64>]) {
 }
 
 fn range_insertions(insertions: &[Range<u64>]) {
-    let mut map: RangeTree<NonMaxU64, u8, _> = RangeTree::try_new_in(Global).unwrap();
+    let mut map: RangeTree<NonMaxU64, u8> = RangeTree::try_new().unwrap();
 
     for range in insertions {
-        let range = NonMaxU64::new(range.start).unwrap()..NonMaxU64::new(range.end).unwrap();
+        let start = NonMaxU64::new(range.start).unwrap();
+        let end = NonMaxU64::new(range.end).unwrap();
 
-        unsafe { map.insert_unchecked(range, 0u8).unwrap() };
+        map.insert(start..end, 0u8).unwrap();
     }
 
     black_box(map);
@@ -109,7 +110,7 @@ fn bench_insertions(c: &mut Criterion) {
     let mut rng = rand::rng();
 
     let mut group = c.benchmark_group("Insertions");
-    for num_entries in (10..1000).step_by(250) {
+    for num_entries in (10..1000).step_by(100) {
         let mut ranges = (0..num_entries * 2 * MIB)
             .step_by(2 * MIB as usize)
             .map(|base| base..base + rng.sample(Uniform::new(0, 2 * MIB).unwrap()))
@@ -124,15 +125,15 @@ fn bench_insertions(c: &mut Criterion) {
         );
 
         group.bench_with_input(
-            BenchmarkId::new("BrieTree", num_entries),
-            ranges.as_slice(),
-            |b, ranges| b.iter(|| brie_insertions(ranges)),
-        );
-
-        group.bench_with_input(
             BenchmarkId::new("WAVLTree", num_entries),
             ranges.as_slice(),
             |b, ranges| b.iter(|| wavl_insertions(ranges)),
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("BrieTree", num_entries),
+            ranges.as_slice(),
+            |b, ranges| b.iter(|| brie_insertions(ranges)),
         );
 
         group.bench_with_input(
@@ -184,7 +185,7 @@ fn bench_lookups_hits(c: &mut Criterion) {
     let mut rng = rand::rng();
 
     let mut group = c.benchmark_group("Lookups Hits");
-    for num_entries in (10..3000).step_by(100) {
+    for num_entries in (10..1000).step_by(100) {
         let mut ranges = (0..num_entries * 2 * MIB)
             .step_by(2 * MIB as usize)
             .map(|base| base..base + rng.sample(Uniform::new(1, 2 * MIB).unwrap()))
@@ -214,6 +215,21 @@ fn bench_lookups_hits(c: &mut Criterion) {
             );
         }
 
+
+        {
+            let mut map: WAVLTree<WAVLEntry> = WAVLTree::new();
+
+            for range in &ranges {
+                map.insert(Box::pin(WAVLEntry::new(range.clone())));
+            }
+
+            group.bench_with_input(
+                BenchmarkId::new("WAVLTree", num_entries),
+                &(map, lookups.as_slice()),
+                |b, (map, lookups)| b.iter(|| wavl_lookups(map, lookups)),
+            );
+        }
+
         {
             let mut map: BTree<NonMaxU64, (NonMaxU64, u8)> = BTree::new();
 
@@ -232,21 +248,7 @@ fn bench_lookups_hits(c: &mut Criterion) {
         }
 
         {
-            let mut map: WAVLTree<WAVLEntry> = WAVLTree::new();
-
-            for range in &ranges {
-                map.insert(Box::pin(WAVLEntry::new(range.clone())));
-            }
-
-            group.bench_with_input(
-                BenchmarkId::new("WAVLTree", num_entries),
-                &(map, lookups.as_slice()),
-                |b, (map, lookups)| b.iter(|| wavl_lookups(map, lookups)),
-            );
-        }
-
-        {
-            let mut map: RangeTree<NonMaxU64, u8, _> = RangeTree::try_new_in(Global).unwrap();
+            let mut map: RangeTree<NonMaxU64, u8> = RangeTree::try_new().unwrap();
 
             for range in &ranges {
                 let start = NonMaxU64::new(range.start).unwrap();
