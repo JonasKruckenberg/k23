@@ -18,12 +18,14 @@ use crate::{
     stack::Height,
 };
 
+const PLACEHOLDER_MAX_GAP: u32 = 0;
+
 /// Common base for mutable and immutable cursors.
 pub(crate) struct RawCursor<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>> {
     /// Array of node and position pairs for each level of the tree.
     ///
     /// Invariants:
-    /// - Only levels between 0 and `btree.height` are valid.
+    /// - Only levels between 0 and `tree.height` are valid.
     /// - Positions in internal nodes must match the node on the next level of
     ///   the stack. This implies that positions in internal nodes must be
     ///   in-bounds.
@@ -38,7 +40,7 @@ pub(crate) struct RawCursor<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Targe
     ///
     /// This is either a mutable or immutable reference depending on the type of
     /// cursor.
-    btree: Ref,
+    tree: Ref,
 }
 
 impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>> Clone
@@ -50,7 +52,7 @@ where
     fn clone(&self) -> Self {
         Self {
             stack: self.stack.clone(),
-            btree: self.btree.clone(),
+            tree: self.tree.clone(),
         }
     }
 }
@@ -62,19 +64,19 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
         // Go down the tree, at each internal node selecting the first sub-tree
         // with pivot greater than or equal to the search pivot. This sub-tree will
         // only contain pivots less than or equal to its pivot.
-        let mut height = self.btree.height;
-        let mut node = self.btree.root;
+        let mut height = self.tree.height;
+        let mut node = self.tree.root;
         while let Some(down) = height.down() {
-            let pivots = unsafe { node.pivots(&self.btree.internal) };
+            let pivots = unsafe { node.pivots(&self.tree.internal) };
             let pos = unsafe { I::Int::search(pivots, pivot) };
             self.stack[height] = (node, pos);
-            node = unsafe { node.value(pos, &self.btree.internal).assume_init_read() };
+            node = unsafe { node.value(pos, &self.tree.internal).assume_init_read().0 };
             height = down;
         }
 
         // Select the first leaf element with pivot greater than or equal to the
         // search pivot.
-        let pivots = unsafe { node.pivots(&self.btree.leaf) };
+        let pivots = unsafe { node.pivots(&self.tree.leaf) };
         let pos = unsafe { I::Int::search(pivots, pivot) };
         self.stack[height] = (node, pos);
     }
@@ -89,11 +91,11 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
         // The element at each internal level should point to the node lower on
         // the stack.
         let mut height = Height::leaf();
-        while let Some(up) = height.up(self.btree.height) {
+        while let Some(up) = height.up(self.tree.height) {
             let (node, pos) = self.stack[up];
             let child = self.stack[height].0;
             debug_assert_eq!(
-                unsafe { node.value(pos, &self.btree.internal).assume_init_read() },
+                unsafe { node.value(pos, &self.tree.internal).assume_init_read().0 },
                 child
             );
             height = up;
@@ -102,16 +104,16 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
         // If the leaf node points to an `Int::MAX` pivot then so must all
         // internal nodes.
         let (node, pos) = self.stack[Height::leaf()];
-        if unsafe { node.pivot(pos, &self.btree.leaf) } == I::Int::MAX {
+        if unsafe { node.pivot(pos, &self.tree.leaf) } == I::Int::MAX {
             let mut height = Height::leaf();
-            while let Some(up) = height.up(self.btree.height) {
+            while let Some(up) = height.up(self.tree.height) {
                 let (node, pos) = self.stack[up];
-                debug_assert_eq!(unsafe { node.pivot(pos, &self.btree.internal) }, I::Int::MAX);
+                debug_assert_eq!(unsafe { node.pivot(pos, &self.tree.internal) }, I::Int::MAX);
                 height = up;
             }
         }
 
-        debug_assert_eq!(self.stack[self.btree.height].0, self.btree.root);
+        debug_assert_eq!(self.stack[self.tree.height].0, self.tree.root);
     }
 
     /// Returns `true` if the cursor points to the end of the tree.
@@ -125,9 +127,9 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
     #[inline]
     fn entry(&self) -> Option<(I, NonNull<(I, V)>)> {
         let (node, pos) = self.stack[Height::leaf()];
-        let pivot = unsafe { node.pivot(pos, &self.btree.leaf) };
+        let pivot = unsafe { node.pivot(pos, &self.tree.leaf) };
         let pivot = pivot_from_int(pivot)?;
-        let value = unsafe { node.values_ptr(&self.btree.leaf).add(pos.index()) };
+        let value = unsafe { node.values_ptr(&self.tree.leaf).add(pos.index()) };
         Some((pivot, value.cast()))
     }
 
@@ -142,13 +144,13 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
 
         // Increment the position in the leaf node.
         let (node, pos) = self.stack[Height::leaf()];
-        debug_assert_ne!(unsafe { node.pivot(pos, &self.btree.leaf) }, I::Int::MAX);
+        debug_assert_ne!(unsafe { node.pivot(pos, &self.tree.leaf) }, I::Int::MAX);
         let pos = unsafe { pos.next() };
         self.stack[Height::leaf()].1 = pos;
 
         // If we reached the end of the leaf then we need to go up the tree to
         // find the next leaf node.
-        if unsafe { node.pivot(pos, &self.btree.leaf) } == I::Int::MAX {
+        if unsafe { node.pivot(pos, &self.tree.leaf) } == I::Int::MAX {
             self.next_leaf_node();
         }
 
@@ -188,7 +190,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
             // last entry at all levels of the tree. We've reached the end of
             // the tree and can leave the cursor pointing on an `Int::MAX` pivot
             // to indicate that.
-            let Some(up) = height.up(self.btree.height) else {
+            let Some(up) = height.up(self.tree.height) else {
                 return;
             };
 
@@ -196,9 +198,9 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
             // we are not at the last element then we can advance to the next
             // sub-tree and go down that one.
             let (node, pos) = &mut self.stack[up];
-            if unsafe { node.pivot(*pos, &self.btree.internal) } != I::Int::MAX {
+            if unsafe { node.pivot(*pos, &self.tree.internal) } != I::Int::MAX {
                 *pos = unsafe { pos.next() };
-                let node = unsafe { node.value(*pos, &self.btree.internal).assume_init_read() };
+                let node = unsafe { node.value(*pos, &self.tree.internal).assume_init_read().0 };
                 break node;
             }
 
@@ -212,7 +214,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
         // read the first element.
         while let Some(down) = height.down() {
             self.stack[height] = (node, pos!(0));
-            node = unsafe { node.value(pos!(0), &self.btree.internal).assume_init_read() };
+            node = unsafe { node.value(pos!(0), &self.tree.internal).assume_init_read().0 };
             height = down;
         }
         self.stack[Height::leaf()] = (node, pos!(0));
@@ -221,7 +223,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
         // half full, except if this is the root node. However this can't be the
         // root node since there is more than one node.
         unsafe {
-            hint::assert_unchecked(node.pivot(pos!(0), &self.btree.leaf) != I::Int::MAX);
+            hint::assert_unchecked(node.pivot(pos!(0), &self.tree.leaf) != I::Int::MAX);
         }
     }
 
@@ -237,7 +239,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
             // first entry at all levels of the tree. We've reached the start of
             // the tree and can leave the cursor pointing to the start of a
             // leaf node to indicate that.
-            let Some(up) = height.up(self.btree.height) else {
+            let Some(up) = height.up(self.tree.height) else {
                 return false;
             };
 
@@ -246,7 +248,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
             let (node, pos) = &mut self.stack[up];
             if pos.index() != 0 {
                 *pos = unsafe { pos.prev() };
-                let node = unsafe { node.value(*pos, &self.btree.internal).assume_init_read() };
+                let node = unsafe { node.value(*pos, &self.tree.internal).assume_init_read().0 };
                 break node;
             }
 
@@ -260,12 +262,12 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
         // read the first element.
         // TODO: Only search high half of the node.
         while let Some(down) = height.down() {
-            let pos = unsafe { I::Int::search(node.pivots(&self.btree.internal), I::Int::MAX) };
+            let pos = unsafe { I::Int::search(node.pivots(&self.tree.internal), I::Int::MAX) };
             self.stack[height] = (node, pos);
-            node = unsafe { node.value(pos, &self.btree.internal).assume_init_read() };
+            node = unsafe { node.value(pos, &self.tree.internal).assume_init_read().0 };
             height = down;
         }
-        let pos = unsafe { I::Int::search(node.pivots(&self.btree.leaf), I::Int::MAX) };
+        let pos = unsafe { I::Int::search(node.pivots(&self.tree.leaf), I::Int::MAX) };
         self.stack[Height::leaf()] = (node, unsafe { pos.prev() });
 
         // The tree invariants guarantee that leaf nodes are always at least
@@ -292,11 +294,11 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         let mut height = Height::leaf();
         // This continues recursively as long as the parent sub-tree is the last
         // one in its node, or the root of the tree is reached.
-        while let Some(up) = height.up(self.btree.height) {
+        while let Some(up) = height.up(self.tree.height) {
             let (node, pos) = self.stack[up];
-            if unsafe { node.pivot(pos, &self.btree.internal) } != I::Int::MAX {
+            if unsafe { node.pivot(pos, &self.tree.internal) } != I::Int::MAX {
                 unsafe {
-                    node.set_pivot(pivot, pos, &mut self.btree.internal);
+                    node.set_pivot(pivot, pos, &mut self.tree.internal);
                 }
                 break;
             }
@@ -321,7 +323,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         } else {
             pos
         };
-        let prev_pivot = unsafe { node.pivot(insert_pos, &self.btree.leaf) };
+        let prev_pivot = unsafe { node.pivot(insert_pos, &self.tree.leaf) };
 
         // If we are inserting the last pivot in a node then we need to update
         // the sub-tree max pivot in the parent.
@@ -344,24 +346,24 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         // Check if this insertion will cause the leaf node to become completely
         // full. Specifically that after insertion the last pivot will *not* be
         // `Int::MAX`, which violates the node invariant.
-        let overflow = unsafe { node.pivot(pos!(I::Int::B - 2), &self.btree.leaf) } != I::Int::MAX;
+        let overflow = unsafe { node.pivot(pos!(I::Int::B - 2), &self.tree.leaf) } != I::Int::MAX;
 
         // Save the next leaf pointer since it is overwritten by insertion.
-        let next_leaf = unsafe { node.next_leaf(&self.btree.leaf) };
+        let next_leaf = unsafe { node.next_leaf(&self.tree.leaf) };
 
         // Insert the new pivot and value in the leaf. Use a fast path for
         // inserting at the end of a node. This helps with common cases when
         // appending to the end of a tree.
         if prev_pivot == I::Int::MAX {
             unsafe {
-                node.set_pivot(pivot, insert_pos, &mut self.btree.leaf);
-                node.value_mut(insert_pos, &mut self.btree.leaf)
+                node.set_pivot(pivot, insert_pos, &mut self.tree.leaf);
+                node.value_mut(insert_pos, &mut self.tree.leaf)
                     .write((range.start,value));
             }
         } else {
             unsafe {
-                node.insert_pivot(pivot, insert_pos, I::Int::B, &mut self.btree.leaf);
-                node.insert_value((range.start, value), insert_pos, I::Int::B, &mut self.btree.leaf);
+                node.insert_pivot(pivot, insert_pos, I::Int::B, &mut self.tree.leaf);
+                node.insert_value((range.start, value), insert_pos, I::Int::B, &mut self.tree.leaf);
             }
         }
 
@@ -369,7 +371,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         if !overflow {
             // Restore next_leaf which will have been overwritten by the insert.
             unsafe {
-                node.set_next_leaf(next_leaf, &mut self.btree.leaf);
+                node.set_next_leaf(next_leaf, &mut self.tree.leaf);
             }
             return Ok(());
         }
@@ -379,17 +381,17 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
 
         // Record the last pivot of the first half of the node. This will become
         // the pivot for the left sub-tree in the parent node.
-        let mut mid_pivot = unsafe { node.pivot(pos!(I::Int::B / 2 - 1), &self.btree.leaf) };
+        let mut mid_pivot = unsafe { node.pivot(pos!(I::Int::B / 2 - 1), &self.tree.leaf) };
 
         // Allocate a new node and move the second half of the current node to
         // it.
-        let new_uninit_node = unsafe { self.btree.leaf.alloc_node(&self.btree.alloc)? };
-        let mut new_node = unsafe { node.split_into(new_uninit_node, &mut self.btree.leaf) };
+        let new_uninit_node = unsafe { self.tree.leaf.alloc_node(&self.tree.alloc)? };
+        let mut new_node = unsafe { node.split_into(new_uninit_node, &mut self.tree.leaf) };
 
         // Update the next-leaf pointers for both nodes.
         unsafe {
-            new_node.set_next_leaf(next_leaf, &mut self.btree.leaf);
-            node.set_next_leaf(Some(new_node), &mut self.btree.leaf);
+            new_node.set_next_leaf(next_leaf, &mut self.tree.leaf);
+            node.set_next_leaf(Some(new_node), &mut self.tree.leaf);
         }
 
         // Keep track of where the cursor is in the tree by adjusting the
@@ -405,7 +407,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         // Propagate the split by inserting the new node in the next level of
         // the tree. This may cause that node to also be split if it gets full.
         let mut height = Height::leaf();
-        while let Some(up) = height.up(self.btree.height) {
+        while let Some(up) = height.up(self.tree.height) {
             height = up;
             let (node, mut pos) = self.stack[height];
 
@@ -413,7 +415,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
             // check if an insertion will cause an overflow by looking at
             // whether the pivot at `B - 3` is `Int::MAX`.
             let overflow =
-                unsafe { node.pivot(pos!(I::Int::B - 3), &self.btree.internal) } != I::Int::MAX;
+                unsafe { node.pivot(pos!(I::Int::B - 3), &self.tree.internal) } != I::Int::MAX;
 
             // The existing pivot for this sub-tree (max of all pivots in sub-tree)
             // is correct for the second node of the split. Similarly the
@@ -421,8 +423,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
             // insert the new pivot before the existing one and the new value
             // after the existing one.
             unsafe {
-                node.insert_pivot(mid_pivot, pos, I::Int::B, &mut self.btree.internal);
-                node.insert_value(new_node, pos.next(), I::Int::B, &mut self.btree.internal);
+                node.insert_pivot(mid_pivot, pos, I::Int::B, &mut self.tree.internal);
+                node.insert_value((new_node, PLACEHOLDER_MAX_GAP), pos.next(), I::Int::B, &mut self.tree.internal);
             }
 
             // If the node below us ended up on the right side of the split,
@@ -440,7 +442,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
 
             // Record the last pivot of the first half of the node. This will
             // become the pivot for the left sub-tree in the parent node.
-            mid_pivot = unsafe { node.pivot(pos!(I::Int::B / 2 - 1), &self.btree.internal) };
+            mid_pivot = unsafe { node.pivot(pos!(I::Int::B / 2 - 1), &self.tree.internal) };
 
             // Set the last pivot of the first half to `Int::MAX` to indicate that
             // it is the last element in this node.
@@ -448,14 +450,14 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                 node.set_pivot(
                     I::Int::MAX,
                     pos!(I::Int::B / 2 - 1),
-                    &mut self.btree.internal,
+                    &mut self.tree.internal,
                 );
             }
 
             // Allocate a new node and move the second half of the current node
             // to it.
-            let new_uninit_node = unsafe { self.btree.internal.alloc_node(&self.btree.alloc)? };
-            new_node = unsafe { node.split_into(new_uninit_node, &mut self.btree.internal) };
+            let new_uninit_node = unsafe { self.tree.internal.alloc_node(&self.tree.alloc)? };
+            new_node = unsafe { node.split_into(new_uninit_node, &mut self.tree.internal) };
 
             // Keep track of where the cursor is in the tree by adjusting the
             // position on the stack if we were in the second half of the node
@@ -470,36 +472,36 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
 
         // If we reached the root of the tree then we need to add a new level to
         // the tree and create a new root node.
-        let new_uninit_root = unsafe { self.btree.internal.alloc_node(&self.btree.alloc)? };
+        let new_uninit_root = unsafe { self.tree.internal.alloc_node(&self.tree.alloc)? };
 
         // The new root only contains 2 elements: the original root node and the
         // newly created split node. The only non-MAX pivot is the first one which
         // holds the maximum pivot in the left sub-tree.
         let new_root;
         unsafe {
-            new_root = new_uninit_root.init_pivots(&mut self.btree.internal);
-            new_root.set_pivot(mid_pivot, pos!(0), &mut self.btree.internal);
+            new_root = new_uninit_root.init_pivots(&mut self.tree.internal);
+            new_root.set_pivot(mid_pivot, pos!(0), &mut self.tree.internal);
             new_root
-                .value_mut(pos!(0), &mut self.btree.internal)
-                .write(self.btree.root);
+                .value_mut(pos!(0), &mut self.tree.internal)
+                .write((self.tree.root, PLACEHOLDER_MAX_GAP));
             new_root
-                .value_mut(pos!(1), &mut self.btree.internal)
-                .write(new_node);
+                .value_mut(pos!(1), &mut self.tree.internal)
+                .write((new_node, PLACEHOLDER_MAX_GAP));
         }
-        self.btree.root = new_root;
+        self.tree.root = new_root;
 
         // Increment the height of the tree. The `expect` should never fail here
         // since we calculated the maximum possible height for the tree
         // statically as `Height::max`.
-        self.btree.height = self
-            .btree
+        self.tree.height = self
+            .tree
             .height
             .up(Height::max())
             .expect("exceeded maximum height");
 
         // Set up the new level in the cursor stack.
         let pos = if in_right_split { pos!(1) } else { pos!(0) };
-        self.stack[self.btree.height] = (new_root, pos);
+        self.stack[self.tree.height] = (new_root, pos);
 
         self.check_invariants();
         
@@ -516,24 +518,24 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         let pivot = int_from_pivot(range.end);
 
         let (node, pos) = self.stack[Height::leaf()];
-        let old_pivot = unsafe { node.pivot(pos, &self.btree.leaf) };
+        let old_pivot = unsafe { node.pivot(pos, &self.tree.leaf) };
         let old_pivot = pivot_from_int(old_pivot).expect("called replace() on cursor already at end");
 
         // If we are replacing the last pivot in a node then we need to update the
         // sub-tree max pivot in the parent.
         unsafe {
-            if node.pivot(pos.next(), &self.btree.leaf) == I::Int::MAX {
+            if node.pivot(pos.next(), &self.tree.leaf) == I::Int::MAX {
                 self.update_leaf_max_pivot(pivot);
             }
         }
 
         // Then actually replace the pivot and value in the leaf node.
         unsafe {
-            node.set_pivot(pivot, pos, &mut self.btree.leaf);
+            node.set_pivot(pivot, pos, &mut self.tree.leaf);
         }
         let (old_start, old_value) = unsafe {
             mem::replace(
-                node.value_mut(pos, &mut self.btree.leaf).assume_init_mut(),
+                node.value_mut(pos, &mut self.tree.leaf).assume_init_mut(),
                 (range.start, value),
             )
         };
@@ -553,29 +555,29 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         // Check if this deletion will cause the leaf node to become less than
         // half full. Specifically that after deletion last pivot in the first
         // half will be`Int::MAX`, which violates the node invariant.
-        let underflow = unsafe { node.pivot(pos!(I::Int::B / 2), &self.btree.leaf) } == I::Int::MAX;
+        let underflow = unsafe { node.pivot(pos!(I::Int::B / 2), &self.tree.leaf) } == I::Int::MAX;
 
         // Extract the pivot and value that will be returned by this function.
         let pivot = unsafe {
-            pivot_from_int(node.pivot(pos, &self.btree.leaf))
+            pivot_from_int(node.pivot(pos, &self.tree.leaf))
                 .expect("called remove() on cursor already at end")
         };
-        let (start, value) = unsafe { node.value(pos, &self.btree.leaf).assume_init_read() };
+        let (start, value) = unsafe { node.value(pos, &self.tree.leaf).assume_init_read() };
 
         // Remove the pivot and value from the node.
         unsafe {
-            node.remove_pivot(pos, &mut self.btree.leaf);
-            node.remove_value(pos, &mut self.btree.leaf);
+            node.remove_pivot(pos, &mut self.tree.leaf);
+            node.remove_value(pos, &mut self.tree.leaf);
         }
 
         // If we removed the last pivot in a node then we need to update the
         // sub-tree max pivot in the parent.
         unsafe {
-            if node.pivot(pos, &self.btree.leaf) == I::Int::MAX && self.btree.height != Height::leaf()
+            if node.pivot(pos, &self.tree.leaf) == I::Int::MAX && self.tree.height != Height::leaf()
             {
                 // Leaf nodes must be at least half full if they are not the
                 // root node.
-                let new_max = node.pivot(pos.prev(), &self.btree.leaf);
+                let new_max = node.pivot(pos.prev(), &self.tree.leaf);
                 self.update_leaf_max_pivot(new_max);
             }
         }
@@ -586,28 +588,28 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         if underflow {
             // If there is only a single leaf node in the tree then it is
             // allowed to have as little as zero elements and cannot underflow.
-            if let Some(up) = Height::leaf().up(self.btree.height) {
+            if let Some(up) = Height::leaf().up(self.tree.height) {
                 // `node` is less than half-full, try to restore the invariant
                 // by stealing from another node or merging it.
                 let up_node = unsafe {
-                    self.handle_underflow(Height::leaf(), up, node, true, |btree| &mut btree.leaf)
+                    self.handle_underflow(Height::leaf(), up, node, true, |tree| &mut tree.leaf)
                 };
                 if let Some(mut node) = up_node {
                     let mut height = up;
                     loop {
-                        if let Some(up) = height.up(self.btree.height) {
+                        if let Some(up) = height.up(self.tree.height) {
                             // Check if this node is less than half full. A
                             // half-full internal node would have the first
                             // `Int::MAX` pivot at `B / 2 - 1`.
-                            if unsafe { node.pivot(pos!(I::Int::B / 2 - 2), &self.btree.internal) }
+                            if unsafe { node.pivot(pos!(I::Int::B / 2 - 2), &self.tree.internal) }
                                 == I::Int::MAX
                             {
                                 // `node` is less than half-full, try to restore
                                 // the invariant by stealing from another node
                                 // or merging it.
                                 if let Some(up_node) = unsafe {
-                                    self.handle_underflow(height, up, node, false, |btree| {
-                                        &mut btree.internal
+                                    self.handle_underflow(height, up, node, false, |tree| {
+                                        &mut tree.internal
                                     })
                                 } {
                                     // If the underflow was resolved by merging
@@ -623,17 +625,17 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                             // We've reached the root node. If it only has a
                             // single element then we can pop a level off the
                             // tree and free the old root node.
-                            debug_assert_eq!(node, self.btree.root);
-                            if unsafe { node.pivot(pos!(0), &self.btree.internal) } == I::Int::MAX {
+                            debug_assert_eq!(node, self.tree.root);
+                            if unsafe { node.pivot(pos!(0), &self.tree.internal) } == I::Int::MAX {
                                 unsafe {
-                                    self.btree.root = node
-                                        .value(pos!(0), &self.btree.internal)
-                                        .assume_init_read();
+                                    self.tree.root = node
+                                        .value(pos!(0), &self.tree.internal)
+                                        .assume_init_read().0;
                                 }
                                 unsafe {
-                                    self.btree.internal.free_node(node);
+                                    self.tree.internal.free_node(node);
                                 }
-                                self.btree.height = height.down().unwrap();
+                                self.tree.height = height.down().unwrap();
                             }
                         }
                         break;
@@ -679,9 +681,9 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         debug_assert_eq!(
             unsafe {
                 if child_is_leaf {
-                    child.leaf_end(&self.btree.leaf).index()
+                    child.leaf_end(&self.tree.leaf).index()
                 } else {
-                    child.internal_end(&self.btree.internal).index()
+                    child.internal_end(&self.tree.internal).index()
                 }
             },
             I::Int::B / 2 - 1
@@ -691,17 +693,17 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         // sub-tree always has a pivot of `Int::MAX`.
         let (node, pos) = self.stack[up];
         debug_assert_eq!(
-            unsafe { node.value(pos, &self.btree.internal).assume_init_read() },
+            unsafe { node.value(pos, &self.tree.internal).assume_init_read().0 },
             child
         );
-        let child_subtree_max = unsafe { node.pivot(pos, &self.btree.internal) };
+        let child_sutree_max = unsafe { node.pivot(pos, &self.tree.internal) };
 
         // We now need to select a sibling node to steal from or merge with.
         // Prefer using the next sub-tree as a sibling since it has a more
         // efficient code path.
-        if child_subtree_max != I::Int::MAX {
-            let sibling = unsafe {
-                node.value(pos.next(), &self.btree.internal)
+        if child_sutree_max != I::Int::MAX {
+            let (sibling,_) = unsafe {
+                node.value(pos.next(), &self.tree.internal)
                     .assume_init_read()
             };
 
@@ -713,40 +715,40 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                     } else {
                         pos!(I::Int::B / 2 - 1)
                     },
-                    child_pool(self.btree),
+                    child_pool(self.tree),
                 )
             } != I::Int::MAX;
 
             if can_steal {
                 unsafe {
                     // Remove the first pivot/value from the sibling.
-                    let pivot = sibling.pivot(pos!(0), child_pool(self.btree));
+                    let pivot = sibling.pivot(pos!(0), child_pool(self.tree));
                     let value = sibling
-                        .value(pos!(0), child_pool(self.btree))
+                        .value(pos!(0), child_pool(self.tree))
                         .assume_init_read();
-                    sibling.remove_pivot(pos!(0), child_pool(self.btree));
-                    sibling.remove_value(pos!(0), child_pool(self.btree));
+                    sibling.remove_pivot(pos!(0), child_pool(self.tree));
+                    sibling.remove_value(pos!(0), child_pool(self.tree));
 
                     if child_is_leaf {
                         // If the child is a leaf node then we can just insert
                         // the pivot/value at `B / 2 - 1` since we know the child
                         // currently has exactly that many elements.
-                        child.set_pivot(pivot, pos!(I::Int::B / 2 - 1), child_pool(self.btree));
+                        child.set_pivot(pivot, pos!(I::Int::B / 2 - 1), child_pool(self.tree));
                         child
-                            .value_mut(pos!(I::Int::B / 2 - 1), child_pool(self.btree))
+                            .value_mut(pos!(I::Int::B / 2 - 1), child_pool(self.tree))
                             .write(value);
                     } else {
                         // If the child is an internal node then we need to set
                         // the pivot for the *previous* sub-tree (which is
-                        // currently `Int::MAX`) to `child_subtree_max` which is
+                        // currently `Int::MAX`) to `child_sutree_max` which is
                         // the maximum pivot for that sub-tree before the steal.
                         child.set_pivot(
-                            child_subtree_max,
+                            child_sutree_max,
                             pos!(I::Int::B / 2 - 2),
-                            child_pool(self.btree),
+                            child_pool(self.tree),
                         );
                         child
-                            .value_mut(pos!(I::Int::B / 2 - 1), child_pool(self.btree))
+                            .value_mut(pos!(I::Int::B / 2 - 1), child_pool(self.tree))
                             .write(value);
                     }
 
@@ -754,7 +756,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                     // increase (since we appended to its end). Update the pivot
                     // for this sub-tree in the parent to the pivot for the stolen
                     // element.
-                    node.set_pivot(pivot, pos, &mut self.btree.internal);
+                    node.set_pivot(pivot, pos, &mut self.tree.internal);
                 }
 
                 // Stealing can't cause recursive underflows.
@@ -769,7 +771,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                         sibling,
                         pos!(I::Int::B / 2 - 1),
                         I::Int::B / 2,
-                        child_pool(self.btree),
+                        child_pool(self.tree),
                     );
 
                     // If this is an internal node then we need to copy the
@@ -777,34 +779,34 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                     // `B / 2 - 2`  which previously contained MAX.
                     if !child_is_leaf {
                         child.set_pivot(
-                            child_subtree_max,
+                            child_sutree_max,
                             pos!(I::Int::B / 2 - 2),
-                            child_pool(self.btree),
+                            child_pool(self.tree),
                         );
                     }
 
                     // Update the next leaf pointer if this is a leaf node.
                     if child_is_leaf {
-                        let next_leaf = sibling.next_leaf(child_pool(self.btree));
-                        child.set_next_leaf(next_leaf, child_pool(self.btree));
+                        let next_leaf = sibling.next_leaf(child_pool(self.tree));
+                        child.set_next_leaf(next_leaf, child_pool(self.tree));
                     }
 
                     // The sibling is no longer in the tree, free its node.
-                    child_pool(self.btree).free_node(sibling);
+                    child_pool(self.tree).free_node(sibling);
 
                     // Remove the sibling node from its parent. We keep the pivot
                     // of `sibling` and remove that of `child` because the pivot
                     // should hold the maximum pivot in the sub-tree.
-                    node.remove_pivot(pos, &mut self.btree.internal);
-                    node.remove_value(pos.next(), &mut self.btree.internal);
+                    node.remove_pivot(pos, &mut self.tree.internal);
+                    node.remove_value(pos.next(), &mut self.tree.internal);
                 }
 
                 // Merging may cause the parent node to become under-sized.
                 Some(node)
             }
         } else {
-            let sibling = unsafe {
-                node.value(pos.prev(), &self.btree.internal)
+            let (sibling,_) = unsafe {
+                node.value(pos.prev(), &self.tree.internal)
                     .assume_init_read()
             };
 
@@ -816,7 +818,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                     } else {
                         pos!(I::Int::B / 2 - 1)
                     },
-                    child_pool(self.btree),
+                    child_pool(self.tree),
                 )
             } != I::Int::MAX;
 
@@ -824,9 +826,9 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                 unsafe {
                     // Find the position of the last element in the sibling.
                     let sibling_end = if child_is_leaf {
-                        sibling.leaf_end(child_pool(self.btree))
+                        sibling.leaf_end(child_pool(self.tree))
                     } else {
-                        sibling.internal_end(child_pool(self.btree))
+                        sibling.internal_end(child_pool(self.tree))
                     };
                     let sibling_last = sibling_end.prev();
 
@@ -840,16 +842,16 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                         // All elements in the second half of the node are
                         // absent anyways. This also preserves the next leaf
                         // pointer.
-                        let pivot = sibling.pivot(sibling_last, child_pool(self.btree));
+                        let pivot = sibling.pivot(sibling_last, child_pool(self.tree));
                         let value = sibling
-                            .value(sibling_last, child_pool(self.btree))
+                            .value(sibling_last, child_pool(self.tree))
                             .assume_init_read();
-                        child.insert_pivot(pivot, pos!(0), I::Int::B / 2 + 1, child_pool(self.btree));
+                        child.insert_pivot(pivot, pos!(0), I::Int::B / 2 + 1, child_pool(self.tree));
                         child.insert_value(
                             value,
                             pos!(0),
                             I::Int::B / 2 + 1,
-                            child_pool(self.btree),
+                            child_pool(self.tree),
                         );
 
                         // Stealing the last element of `sibling` has caused
@@ -857,12 +859,12 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                         // sub-tree in the parent to the pivot for the new last
                         // element.
                         let sibling_max_pivot =
-                            sibling.pivot(sibling_last.prev(), child_pool(self.btree));
-                        node.set_pivot(sibling_max_pivot, pos.prev(), &mut self.btree.internal);
+                            sibling.pivot(sibling_last.prev(), child_pool(self.tree));
+                        node.set_pivot(sibling_max_pivot, pos.prev(), &mut self.tree.internal);
 
                         // Now actually shrink the sibling by removing its last
                         // element.
-                        sibling.set_pivot(I::Int::MAX, sibling_last, child_pool(self.btree));
+                        sibling.set_pivot(I::Int::MAX, sibling_last, child_pool(self.tree));
                     } else {
                         // If the child is a internal node then we need to
                         // recover the maximum pivot in the sibling from `node`
@@ -874,21 +876,21 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                         // All elements in the second half of the node are
                         // absent anyways. This also preserves the next leaf
                         // pointer.
-                        let sibling_max_pivot = node.pivot(pos.prev(), &self.btree.internal);
+                        let sibling_max_pivot = node.pivot(pos.prev(), &self.tree.internal);
                         let value = sibling
-                            .value(sibling_last, child_pool(self.btree))
+                            .value(sibling_last, child_pool(self.tree))
                             .assume_init_read();
                         child.insert_pivot(
                             sibling_max_pivot,
                             pos!(0),
                             I::Int::B / 2 + 1,
-                            child_pool(self.btree),
+                            child_pool(self.tree),
                         );
                         child.insert_value(
                             value,
                             pos!(0),
                             I::Int::B / 2 + 1,
-                            child_pool(self.btree),
+                            child_pool(self.tree),
                         );
 
                         // Stealing the last element of `sibling` has caused
@@ -896,12 +898,12 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                         // sub-tree in the parent to the pivot for the new last
                         // element.
                         let sibling_max_pivot =
-                            sibling.pivot(sibling_last.prev(), child_pool(self.btree));
-                        node.set_pivot(sibling_max_pivot, pos.prev(), &mut self.btree.internal);
+                            sibling.pivot(sibling_last.prev(), child_pool(self.tree));
+                        node.set_pivot(sibling_max_pivot, pos.prev(), &mut self.tree.internal);
 
                         // Now actually shrink the sibling by removing its last
                         // element.
-                        sibling.set_pivot(I::Int::MAX, sibling_last.prev(), child_pool(self.btree));
+                        sibling.set_pivot(I::Int::MAX, sibling_last.prev(), child_pool(self.tree));
                     }
 
                     // After stealing, we need to adjust the cursor position for
@@ -921,35 +923,35 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
                         child,
                         pos!(I::Int::B / 2),
                         I::Int::B / 2 - 1,
-                        child_pool(self.btree),
+                        child_pool(self.tree),
                     );
 
                     // If this is an internal node then we need to copy the
                     // previous maximum pivot for the sibling's sub-tree to slot
                     // `B / 2 - 1`  which previously contained MAX.
                     if !child_is_leaf {
-                        let sibling_max_pivot = node.pivot(pos.prev(), &self.btree.internal);
+                        let sibling_max_pivot = node.pivot(pos.prev(), &self.tree.internal);
                         sibling.set_pivot(
                             sibling_max_pivot,
                             pos!(I::Int::B / 2 - 1),
-                            child_pool(self.btree),
+                            child_pool(self.tree),
                         );
                     }
 
                     // Update the next leaf pointer if this is a leaf node.
                     if child_is_leaf {
-                        let next_leaf = child.next_leaf(child_pool(self.btree));
-                        sibling.set_next_leaf(next_leaf, child_pool(self.btree));
+                        let next_leaf = child.next_leaf(child_pool(self.tree));
+                        sibling.set_next_leaf(next_leaf, child_pool(self.tree));
                     }
 
                     // The child is no longer in the tree, free its node.
-                    child_pool(self.btree).free_node(child);
+                    child_pool(self.tree).free_node(child);
 
                     // Remove the child node from its parent. We keep the pivot
                     // of `child` and remove that of `sibling` because the pivot
                     // should hold the maximum pivot in the sub-tree.
-                    node.remove_pivot(pos.prev(), &mut self.btree.internal);
-                    node.remove_value(pos, &mut self.btree.internal);
+                    node.remove_pivot(pos.prev(), &mut self.tree.internal);
+                    node.remove_value(pos, &mut self.tree.internal);
 
                     // After merging, we need to adjust the cursor position for
                     // the child and parent.
@@ -1051,7 +1053,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
         let (node, pos) = self.raw.stack[Height::leaf()];
         Iter {
             raw: crate::RawIter { node, pos },
-            btree: self.raw.btree,
+            tree: self.raw.tree,
         }
     }
 }
@@ -1080,11 +1082,11 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     ///
     /// The cursor must be initialized before use by calling `seek`.
     #[inline]
-    pub(crate) unsafe fn uninit(btree: &'a mut RangeTree<I, V, A>) -> Self {
+    pub(crate) unsafe fn uninit(tree: &'a mut RangeTree<I, V, A>) -> Self {
         Self {
             raw: RawCursor {
                 stack: <I::Int as RangeTreeInteger>::Stack::default(),
-                btree,
+                tree,
             },
         }
     }
@@ -1177,7 +1179,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
         let (node, pos) = self.raw.stack[Height::leaf()];
         Iter {
             raw: crate::RawIter { node, pos },
-            btree: self.raw.btree,
+            tree: self.raw.tree,
         }
     }
 
@@ -1191,7 +1193,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
         let (node, pos) = self.raw.stack[Height::leaf()];
         IterMut {
             raw: crate::RawIter { node, pos },
-            btree: self.raw.btree,
+            tree: self.raw.tree,
         }
     }
 
@@ -1209,7 +1211,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
         let (node, pos) = self.raw.stack[Height::leaf()];
         Iter {
             raw: crate::RawIter { node, pos },
-            btree: self.raw.btree,
+            tree: self.raw.tree,
         }
     }
 
@@ -1226,7 +1228,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
         let (node, pos) = self.raw.stack[Height::leaf()];
         IterMut {
             raw: crate::RawIter { node, pos },
-            btree: self.raw.btree,
+            tree: self.raw.tree,
         }
     }
 
@@ -1301,15 +1303,15 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
 impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     /// Returns a [`RawCursor`] pointing at the first element of the tree.
     #[inline]
-    fn raw_cursor<Ref: Deref<Target = Self>>(btree: Ref) -> RawCursor<I, V, A, Ref> {
+    fn raw_cursor<Ref: Deref<Target = Self>>(tree: Ref) -> RawCursor<I, V, A, Ref> {
         let mut stack = <I::Int as RangeTreeInteger>::Stack::default();
 
         // Go down the tree, at each internal node selecting the first sub-tree.
-        let mut height = btree.height;
-        let mut node = btree.root;
+        let mut height = tree.height;
+        let mut node = tree.root;
         while let Some(down) = height.down() {
             stack[height] = (node, pos!(0));
-            node = unsafe { node.value(pos!(0), &btree.internal).assume_init_read() };
+            node = unsafe { node.value(pos!(0), &tree.internal).assume_init_read().0 };
             height = down;
         }
 
@@ -1317,18 +1319,18 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         // never deleted.
         debug_assert_eq!(node, NodeRef::zero());
         stack[height] = (NodeRef::zero(), pos!(0));
-        RawCursor { stack, btree }
+        RawCursor { stack, tree }
     }
 
     /// Returns a [`RawCursor`] pointing at the first element with pivot greater
     /// than `bound`.
     #[inline]
     fn raw_cursor_at<Ref: Deref<Target = Self>>(
-        btree: Ref,
+        tree: Ref,
         pivot: <I::Int as RangeTreeInteger>::Raw,
     ) -> RawCursor<I, V, A, Ref> {
         let stack = <I::Int as RangeTreeInteger>::Stack::default();
-        let mut cursor = RawCursor { stack, btree };
+        let mut cursor = RawCursor { stack, tree };
         cursor.seek(pivot);
         cursor
     }

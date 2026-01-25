@@ -125,6 +125,9 @@ macro_rules! impl_int {
 
             impl RangeTreeIndex for nonmax::$nonmax {
                 type Int = Self;
+                
+                const ZERO: Self = nonmax::$nonmax::ZERO;
+                const MAX: Self = nonmax::$nonmax::MAX;
 
                 #[inline]
                 fn to_int(self) -> Self::Int {
