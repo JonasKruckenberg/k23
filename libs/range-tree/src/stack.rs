@@ -1,15 +1,10 @@
 //! Stack used for mutable tree operations that records a path through the tree.
 
-use core::{
-    marker::PhantomData,
-    ops::{Index, IndexMut},
-};
+use core::marker::PhantomData;
+use core::ops::{Index, IndexMut};
 
-use crate::{
-    RangeTreeInteger, NodeRef,
-    node::NodePos,
-    node::{MAX_POOL_SIZE, node_layout},
-};
+use crate::node::{MAX_POOL_SIZE, NodePos, node_layout};
+use crate::{NodeRef, RangeTreeInteger};
 
 /// Returns the worst case maximum height for a tree with pivot `I`.
 #[inline]
@@ -43,33 +38,36 @@ pub(crate) const fn max_height<I: RangeTreeInteger>() -> usize {
 ///
 /// This has the invariant of always being less than `max_height::<I>()`, which
 /// allows safe unchecked indexing in a stack.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Height<I: RangeTreeInteger> {
     height: usize,
     marker: PhantomData<fn() -> I>,
 }
 
+impl<I: RangeTreeInteger> PartialEq for Height<I> {
+    fn eq(&self, other: &Self) -> bool {
+        self.height == other.height
+    }
+}
+
+impl<I: RangeTreeInteger> Eq for Height<I> {}
+
 impl<I: RangeTreeInteger> Height<I> {
     /// Returns the height for leaf nodes.
-    #[inline]
-    pub(crate) fn leaf() -> Self {
-        Self {
-            height: 0,
-            marker: PhantomData,
-        }
-    }
+    pub(crate) const LEAF: Self = Self {
+        height: 0,
+        marker: PhantomData,
+    };
+
     /// Returns the maximum possible height for a tree.
-    #[inline]
-    pub(crate) fn max() -> Self {
-        Self {
-            height: max_height::<I>(),
-            marker: PhantomData,
-        }
-    }
+    pub(crate) const MAX: Self = Self {
+        height: max_height::<I>(),
+        marker: PhantomData,
+    };
 
     /// Returns one level down (towards the leaves).
     #[inline]
-    pub(crate) fn down(self) -> Option<Self> {
+    pub(crate) const fn down(self) -> Option<Self> {
         if self.height == 0 {
             None
         } else {
@@ -82,7 +80,7 @@ impl<I: RangeTreeInteger> Height<I> {
 
     /// Returns one level up (towards the root) up to the given maximum heigh.
     #[inline]
-    pub(crate) fn up(self, max: Height<I>) -> Option<Self> {
+    pub(crate) const fn up(self, max: Height<I>) -> Option<Self> {
         if self.height >= max.height {
             None
         } else {
@@ -112,7 +110,7 @@ impl<I: RangeTreeInteger, const H: usize> Default for Stack<I, H> {
         Self {
             // The values here don't matter and zero initialization is slightly
             // faster.
-            entries: [(NodeRef::zero(), NodePos::zero()); H],
+            entries: [(NodeRef::ZERO, NodePos::ZERO); H],
         }
     }
 }

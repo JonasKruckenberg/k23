@@ -33,7 +33,7 @@ pub(crate) struct CacheAligned<T>(pub(crate) T);
 ///
 /// All items must be implemented as documented.
 pub(crate) unsafe trait RangeTreeInteger:
-Copy + Eq + Debug + Send + Sync + Unpin
+Copy + Debug + Send + Sync + Unpin
 {
     /// Number of elements per node, which must be at least 4.
     ///

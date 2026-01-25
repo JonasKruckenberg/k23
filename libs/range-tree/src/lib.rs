@@ -32,6 +32,7 @@ pub use iter::*;
 pub use nonmax;
 
 use crate::int::int_from_pivot;
+use crate::node::NodePos;
 
 /// Error type returned by insertion methods.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,8 +142,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         let mut out = Self {
             internal: NodePool::new(),
             leaf: NodePool::new(),
-            height: Height::leaf(),
-            root: NodeRef::zero(),
+            height: Height::LEAF,
+            root: NodeRef::ZERO,
             alloc,
         };
         let root = unsafe { out.leaf.alloc_node(&out.alloc)? };
@@ -157,8 +158,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         unsafe {
             root.set_next_leaf(None, &mut self.leaf);
         }
-        debug_assert_eq!(root, NodeRef::zero());
-        self.root = NodeRef::zero();
+        debug_assert_eq!(root, NodeRef::ZERO);
+        self.root = NodeRef::ZERO;
     }
 
     /// Clears the map, removing all elements.
@@ -180,14 +181,14 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         self.internal.clear();
 
         // Re-initialize the root node.
-        self.height = Height::leaf();
+        self.height = Height::LEAF;
         self.init_root(root);
     }
 
     /// Returns `true` if the map contains no elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        if self.height != Height::leaf() {
+        if self.height != Height::LEAF {
             return false;
         }
         let first_pivot = unsafe { self.root.pivot(pos!(0), &self.leaf) };
@@ -198,14 +199,24 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     #[inline]
     pub fn get(&self, search: I) -> Option<&V> {
         let cursor = self.cursor_at(Bound::Included(search));
-        cursor.iter().next().map(|(_pivot, value)| value)
+        let (range, value) = cursor.iter().next()?;
+        if range.start.to_int().to_raw() <= search.to_int().to_raw() {
+            Some(value)
+        } else {
+            None
+        }
     }
 
     /// Returns a mutable reference to the value corresponding to the pivot.
     #[inline]
     pub fn get_mut(&mut self, search: I) -> Option<&mut V> {
         let cursor = self.cursor_mut_at(Bound::Included(search));
-        cursor.into_iter_mut().next().map(|(_pivot, value)| value)
+        let (range, value) = cursor.into_iter_mut().next()?;
+        if range.start.to_int().to_raw() <= search.to_int().to_raw() {
+            Some(value)
+        } else {
+            None
+        }
     }
 
     /// Inserts a pivot-value pair into the map while allowing for multiple
@@ -221,18 +232,15 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         cursor.seek(int_from_pivot(range.end));
 
         if let Some((existing, _)) = cursor.entry()
-            && I::Int::cmp(
-            existing.start.to_int().to_raw(),
-            range.end.to_int().to_raw(),
-        )
-            .is_lt()
+            && existing.start.to_int().to_raw() <
+            range.end.to_int().to_raw()
         {
             return Err(InsertError::Overlap);
         }
 
         if cursor.prev() {
             if let Some((prev, _)) = cursor.entry()
-                && I::Int::cmp(prev.end.to_int().to_raw(), range.start.to_int().to_raw()).is_gt()
+                && prev.end.to_int().to_raw() > range.start.to_int().to_raw()
             {
                 // Overlap detected: previous range ends after new range starts
                 return Err(InsertError::Overlap);
@@ -249,13 +257,145 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     /// Removes a pivot from the map, returning the value at the pivot if the pivot
     /// was previously in the map.
     #[inline]
-    pub fn remove(&mut self, pivot: I) -> Option<V> {
+    pub fn remove(&mut self, search: I) -> Option<V> {
         let mut cursor = unsafe { CursorMut::uninit(self) };
-        cursor.seek(int_from_pivot(pivot));
-        if cursor.range()?.end.to_int() == pivot.to_int() {
+        cursor.seek(int_from_pivot(search));
+        if cursor.range()?.start.to_int().to_raw() <= search.to_int().to_raw() {
             return Some(cursor.remove().1);
         }
         None
+    }
+
+    pub fn assert_valid(&self, assert_sorted: bool) {
+        let mut last_leaf = None;
+        self.check_node(
+            self.root,
+            self.height,
+            assert_sorted,
+            None,
+            I::Int::MAX,
+            &mut last_leaf,
+        );
+
+        // Ensure the linked list of leaf nodes is properly terminated.
+        assert_eq!(unsafe { last_leaf.unwrap().next_leaf(&self.leaf) }, None);
+    }
+
+    fn check_node(
+        &self,
+        node: NodeRef,
+        height: Height<I::Int>,
+        assert_sorted: bool,
+        min: Option<<I::Int as RangeTreeInteger>::Raw>,
+        max: <I::Int as RangeTreeInteger>::Raw,
+        prev_leaf: &mut Option<NodeRef>,
+    ) {
+        let Some(down) = height.down() else {
+            self.check_leaf_node(node, assert_sorted, min, max, prev_leaf);
+            return;
+        };
+
+        let keys = || {
+            (0..I::Int::B).map(|i| unsafe { node.pivot(NodePos::new_unchecked(i), &self.internal) })
+        };
+
+        // The last 2 keys must be MAX.
+        assert_eq!(keys().nth(I::Int::B - 1).unwrap(), I::Int::MAX);
+        assert_eq!(keys().nth(I::Int::B - 2).unwrap(), I::Int::MAX);
+
+        // All MAX keys must be after non-MAX keys,
+        assert!(keys().is_sorted_by_key(|key| key == I::Int::MAX));
+
+        // Keys must be sorted in increasing order.
+        if assert_sorted {
+            assert!(keys().is_sorted_by(|&a, &b| I::Int::cmp(a, b).is_le()));
+            if let Some(min) = min {
+                assert!(keys().all(|key| I::Int::cmp(key, min).is_ge()));
+            }
+            assert!(keys().all(|key| key == I::Int::MAX || I::Int::cmp(key, max).is_le()));
+        }
+
+        let len = keys().take_while(|&key| key != I::Int::MAX).count() + 1;
+        let is_root = height == self.height;
+
+        // Non-root nodes must be at least half full. Non-leaf root nodes must
+        // have at least 2 elements.
+        if is_root {
+            assert!(len >= 2);
+        } else {
+            assert!(len >= I::Int::B / 2);
+        }
+
+        // Check the invariants for child nodes.
+        let mut prev_key = min;
+        for i in 0..len {
+            unsafe {
+                let pos = NodePos::new_unchecked(i);
+                let key = node.pivot(pos, &self.internal);
+                let (child, _) = node.value(pos, &self.internal).assume_init_read();
+                self.check_node(
+                    child,
+                    down,
+                    assert_sorted,
+                    prev_key,
+                    if key == I::Int::MAX { max } else { key },
+                    prev_leaf,
+                );
+                prev_key = Some(key);
+            }
+        }
+    }
+
+    fn check_leaf_node(
+        &self,
+        node: NodeRef,
+        assert_sorted: bool,
+        min: Option<<I::Int as RangeTreeInteger>::Raw>,
+        max: <I::Int as RangeTreeInteger>::Raw,
+        prev_leaf: &mut Option<NodeRef>,
+    ) {
+        let keys =
+            || (0..I::Int::B).map(|i| unsafe { node.pivot(NodePos::new_unchecked(i), &self.leaf) });
+
+        // The last key must be MAX.
+        assert_eq!(keys().nth(I::Int::B - 1).unwrap(), I::Int::MAX);
+
+        // All MAX keys must be after non-MAX keys,
+        assert!(keys().is_sorted_by_key(|key| key == I::Int::MAX));
+
+        // Keys must be sorted in increasing order.
+        if assert_sorted {
+            assert!(keys().is_sorted_by(|&a, &b| I::Int::cmp(a, b).is_le()));
+            if let Some(min) = min {
+                assert!(keys().all(|key| I::Int::cmp(key, min).is_ge()));
+            }
+            assert!(keys().all(|key| key == I::Int::MAX || I::Int::cmp(key, max).is_le()));
+        }
+
+        let len = keys().take_while(|&key| key != I::Int::MAX).count();
+        let is_root = self.height == Height::LEAF;
+
+        // Non-root nodes must be at least half full.
+        if !is_root {
+            assert!(len >= I::Int::B / 2);
+        }
+
+        // The last key must be equal to the maximum for this sub-tree.
+        if max != I::Int::MAX {
+            assert_eq!(keys().nth(len - 1).unwrap(), max);
+        }
+
+        // The first leaf node must always have an offset of 0.
+        if prev_leaf.is_none() {
+            assert_eq!(node, NodeRef::ZERO);
+        }
+
+        // Ensure the linked list of leaf nodes is correct.
+        if let Some(prev_leaf) = prev_leaf {
+            assert_eq!(unsafe { prev_leaf.next_leaf(&self.leaf) }, Some(node));
+        }
+
+        *prev_leaf = Some(node);
     }
 }
 
