@@ -82,13 +82,10 @@ macro_rules! pos {
 
 impl<I: RangeTreeInteger> NodePos<I> {
     /// Returns a `NodePos` pointing to the first element of a node.
-    #[inline]
-    pub(crate) const fn zero() -> Self {
-        Self {
-            pos: 0,
-            marker: PhantomData,
-        }
-    }
+    pub(crate) const ZERO: Self = Self {
+        pos: 0,
+        marker: PhantomData,
+    };
 
     /// Returns a `NodePos` at the given index.
     ///
@@ -167,10 +164,7 @@ impl NodeRef {
     ///
     /// This is only meant for use when initializing a stack, it is not a valid
     /// `NodeRef`.
-    #[inline]
-    pub(crate) const fn zero() -> Self {
-        Self(0)
-    }
+    pub(crate) const ZERO: Self = Self(0);
 
     /// Returns a pointer to the pivot array in the node.
     ///
@@ -179,7 +173,9 @@ impl NodeRef {
     /// `self` must be allocated from `pool`.
     #[inline]
     unsafe fn pivots_ptr<I: RangeTreeInteger, V>(self, pool: &NodePool<I, V>) -> NonNull<I::Raw> {
+        #[cfg(debug_assertions)]
         pool.validate_noderef(self);
+
         unsafe { pool.ptr.byte_add(self.0 as usize).cast() }
     }
 
@@ -193,7 +189,9 @@ impl NodeRef {
         self,
         pool: &NodePool<I, V>,
     ) -> NonNull<MaybeUninit<V>> {
+        #[cfg(debug_assertions)]
         pool.validate_noderef(self);
+
         let values_offset = const { node_layout::<I, V>().1 };
         unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
@@ -211,7 +209,9 @@ impl NodeRef {
         self,
         pool: &NodePool<I, V>,
     ) -> NodePos<I> {
+        #[cfg(debug_assertions)]
         pool.validate_noderef(self);
+
         unsafe { I::search(self.pivots(pool), I::MAX) }
     }
 
@@ -225,7 +225,9 @@ impl NodeRef {
         self,
         pool: &NodePool<I, V>,
     ) -> NodePos<I> {
+        #[cfg(debug_assertions)]
         pool.validate_noderef(self);
+
         unsafe { I::search(self.pivots(pool), I::MAX).next() }
     }
 
@@ -308,7 +310,9 @@ impl NodeRef {
         self,
         pool: &NodePool<I, V>,
     ) -> Option<NodeRef> {
+        #[cfg(debug_assertions)]
         pool.validate_noderef(self);
+
         let next_leaf_offset = const { node_layout::<I, V>().2 };
         let next_leaf = unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
@@ -330,7 +334,9 @@ impl NodeRef {
         next_leaf: Option<NodeRef>,
         pool: &mut NodePool<I, V>,
     ) {
+        #[cfg(debug_assertions)]
         pool.validate_noderef(self);
+
         let next_leaf_offset = const { node_layout::<I, V>().2 };
         unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
@@ -564,7 +570,7 @@ pub(crate) const fn node_layout<I: RangeTreeInteger, V>() -> (Layout, usize, usi
     // However this can't be expressed directly due to limitations on const
     // generics.
     let pivots = Layout::new::<I::pivots>();
-    
+
     let Ok(values) = Layout::array::<V>(I::B - 1) else {
         panic!("Could not calculate node layout");
     };
@@ -644,10 +650,10 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
         if self.capacity == 0 {
             // Allocate space for 2 nodes for the initial allocation.
             let new_layout = Layout::from_size_align(node_layout.size() * 2, node_layout.align())
-                .expect("exceeded BTree maximum allocation size");
+                .expect("exceeded RangeTree maximum allocation size");
             assert!(
                 new_layout.size() <= MAX_POOL_SIZE,
-                "exceeded BTree maximum allocation size"
+                "exceeded RangeTree maximum allocation size"
             );
             self.ptr = alloc.allocate(new_layout)?.cast();
             self.capacity = new_layout.size() as u32;
@@ -660,10 +666,10 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
             // layout cannot exceed `isize::MAX`.
             let new_layout =
                 Layout::from_size_align(self.capacity as usize * 2, node_layout.align())
-                    .expect("exceeded BTree maximum allocation size");
+                    .expect("exceeded RangeTree maximum allocation size");
             assert!(
                 new_layout.size() <= MAX_POOL_SIZE,
-                "exceeded BTree maximum allocation size"
+                "exceeded RangeTree maximum allocation size"
             );
             self.ptr = unsafe { alloc.grow(self.ptr, old_layout, new_layout)?.cast() };
             self.capacity = new_layout.size() as u32;
@@ -734,7 +740,7 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
         let node_layout = const { node_layout::<I, V>().0 };
         self.len = node_layout.size() as u32;
         self.free_list = !0;
-        UninitNodeRef(NodeRef::zero())
+        UninitNodeRef(NodeRef::ZERO)
     }
 
     /// Frees the pool and its allocation. This invalidates all `NodeRef`s
@@ -760,8 +766,8 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
     #[inline]
     pub(crate) fn validate_noderef(&self, node: NodeRef) {
         let node_layout = const { node_layout::<I, V>().0 };
-        debug_assert_eq!(node.0 as usize % node_layout.size(), 0);
-        debug_assert!(node.0 < self.len);
+        assert_eq!(node.0 as usize % node_layout.size(), 0);
+        assert!(node.0 < self.len);
     }
 }
 

@@ -3,13 +3,14 @@
 
 use std::alloc::Global;
 use std::fmt::Debug;
-use std::ops;
 use std::ops::Bound;
+use std::{iter, ops};
+
 use libfuzzer_sys::arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
+use range_tree::InsertError::Overlap;
 use range_tree::nonmax::*;
 use range_tree::{RangeTree, RangeTreeIndex};
-use range_tree::InsertError::Overlap;
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
 struct Index<Int>(Int);
@@ -27,6 +28,9 @@ macro_rules! impl_index {
 
             impl RangeTreeIndex for Index<$nonmax> {
                 type Int = $nonmax;
+
+                const ZERO: Self = Index(<$nonmax>::ZERO);
+                const MAX: Self = Index(<$nonmax>::MAX);
 
                 fn from_int(int: Self::Int) -> Self {
                     Self(int)
@@ -56,8 +60,16 @@ impl_index! {
 #[derive(Debug, Arbitrary)]
 enum Action<Index, Value> {
     Clear,
-    Insert { start: Index, end: Index, value: Value },
+    Insert {
+        start: Index,
+        end: Index,
+        value: Value,
+    },
+    Get(Index),
+    Remove(Index),
     Range(Bound<Index>, Bound<Index>),
+    Iter(Option<Bound<Index>>),
+    Gaps,
     Cursor(Option<Bound<Index>>, Vec<CursorAction>),
     CursorMut(Option<Bound<Index>>, Vec<CursorMutAction<Index, Value>>),
 }
@@ -72,10 +84,14 @@ enum CursorAction {
 enum CursorMutAction<Index, Value> {
     Next,
     Prev,
-    InsertBefore { start: Index, end: Index, value: Value },
+    InsertBefore {
+        start: Index,
+        end: Index,
+        value: Value,
+    },
     InsertAfter(Value),
     Replace(Value),
-    // Remove,
+    Remove,
 }
 
 #[derive(Arbitrary, Debug)]
@@ -117,7 +133,7 @@ fn run<
             Action::Clear => {
                 tree.clear();
                 vec.clear();
-            },
+            }
             Action::Insert { start, end, value } => {
                 let res = tree.insert(start..end, value);
 
@@ -132,7 +148,84 @@ fn run<
                     assert_eq!(res, Ok(()));
                 }
             }
-            Action::Range(_, _) => {}
+            Action::Get(search) => {
+                let value = tree.get(search);
+                let index = vec.partition_point(|(range, _v)| range.end < search);
+
+                if index != vec.len() && vec[index].0.start <= search {
+                    assert_eq!(value, Some(&vec[index].1));
+                } else {
+                    assert_eq!(value, None);
+                }
+            }
+            Action::Remove(search) => {
+                let value = tree.remove(search);
+                let index = vec.partition_point(|(range, _v)| range.end < search);
+
+                if index != vec.len() && vec[index].0.start <= search {
+                    assert_eq!(value, Some(vec[index].1));
+                    vec.remove(index);
+                } else {
+                    assert_eq!(value, None);
+                }
+            }
+            Action::Range(start, end) => {
+                let range = tree.range((start, end));
+                let entries: Vec<_> = range.map(|(k, &v)| (k, v)).collect();
+                let start = match start {
+                    Bound::Unbounded => 0,
+                    Bound::Included(start) => vec.partition_point(|(range, _v)| range.end < start),
+                    Bound::Excluded(start) => vec.partition_point(|(range, _v)| range.end <= start),
+                };
+                let end = match end {
+                    Bound::Unbounded => vec.len(),
+                    Bound::Included(end) => vec.partition_point(|(range, _v)| range.end <= end),
+                    Bound::Excluded(end) => vec.partition_point(|(range, _v)| range.end < end),
+                };
+                assert_eq!(vec[start.min(end)..end], entries);
+            }
+            Action::Iter(from) => {
+                let (iter, index) = if let Some(from) = from {
+                    (
+                        tree.iter_from(from),
+                        match from {
+                            Bound::Unbounded => 0,
+                            Bound::Included(from) => vec.partition_point(|(r, _v)| r.end < from),
+                            Bound::Excluded(from) => vec.partition_point(|(r, _v)| r.end <= from),
+                        },
+                    )
+                } else {
+                    (tree.iter(), 0)
+                };
+
+                let entries: Vec<_> = iter.map(|(k, &v)| (k, v)).collect();
+                assert_eq!(entries, vec[index..]);
+            }
+            Action::Gaps => {
+                let gaps = tree.gaps();
+                let gaps: Vec<_> = gaps.collect();
+
+                let expected_gaps: Vec<_> = vec
+                    .iter()
+                    // starting at ZERO, produce all gaps between ranges
+                    .scan(Index::ZERO, |prev_end, (range, _v)| {
+                        let gap = *prev_end..range.start;
+                        *prev_end = range.end;
+                        Some(gap)
+                    })
+                    // add the final gap at the end. either between the last range and MAX or
+                    // if no ranges exists the gap between ZERO and MAX
+                    .chain(if let Some((last_range, _)) = vec.last() {
+                        iter::once(last_range.end..Index::MAX)
+                    } else {
+                        iter::once(Index::ZERO..Index::MAX)
+                    })
+                    // filter out all empty ranges
+                    .filter(|range| !range.is_empty())
+                    .collect();
+
+                assert_eq!(gaps, expected_gaps);
+            }
             Action::Cursor(at, actions) => {
                 let (mut cursor, mut index) = if let Some(at) = at {
                     (
@@ -204,7 +297,7 @@ fn run<
                                 index -= 1;
                             }
                         }
-                        CursorMutAction::InsertBefore { start, end, value} => {
+                        CursorMutAction::InsertBefore { start, end, value } => {
                             let range = if vec.is_empty() {
                                 start..end
                             } else if index == vec.len() {
@@ -230,13 +323,13 @@ fn run<
                                 vec[index].1 = value;
                             }
                         }
-                        // CursorMutAction::Remove => {
-                        //     if index != vec.len() {
-                        //         let entry = cursor.remove();
-                        //         let vec_entry = vec.remove(index);
-                        //         assert_eq!(entry, vec_entry);
-                        //     }
-                        // }
+                        CursorMutAction::Remove => {
+                            if index != vec.len() {
+                                let entry = cursor.remove();
+                                let vec_entry = vec.remove(index);
+                                assert_eq!(entry, vec_entry);
+                            }
+                        }
                     }
 
                     let entries: Vec<_> = cursor.iter().map(|(k, &v)| (k, v)).collect();

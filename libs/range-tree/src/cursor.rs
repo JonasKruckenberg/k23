@@ -83,14 +83,10 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
 
     /// Helper function to check that cursor invariants are maintained.
     #[inline]
-    fn check_invariants(&self) {
-        if !cfg!(debug_assertions) {
-            return;
-        }
-
+    fn assert_valid(&self) {
         // The element at each internal level should point to the node lower on
         // the stack.
-        let mut height = Height::leaf();
+        let mut height = Height::LEAF;
         while let Some(up) = height.up(self.tree.height) {
             let (node, pos) = self.stack[up];
             let child = self.stack[height].0;
@@ -103,9 +99,9 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
 
         // If the leaf node points to an `Int::MAX` pivot then so must all
         // internal nodes.
-        let (node, pos) = self.stack[Height::leaf()];
+        let (node, pos) = self.stack[Height::LEAF];
         if unsafe { node.pivot(pos, &self.tree.leaf) } == I::Int::MAX {
-            let mut height = Height::leaf();
+            let mut height = Height::LEAF;
             while let Some(up) = height.up(self.tree.height) {
                 let (node, pos) = self.stack[up];
                 debug_assert_eq!(unsafe { node.pivot(pos, &self.tree.internal) }, I::Int::MAX);
@@ -126,7 +122,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
     /// position, or `None` if the cursor is pointing to the end of the tree.
     #[inline]
     fn entry(&self) -> Option<(I, NonNull<(I, V)>)> {
-        let (node, pos) = self.stack[Height::leaf()];
+        let (node, pos) = self.stack[Height::LEAF];
         let pivot = unsafe { node.pivot(pos, &self.tree.leaf) };
         let pivot = pivot_from_int(pivot)?;
         let value = unsafe { node.values_ptr(&self.tree.leaf).add(pos.index()) };
@@ -143,10 +139,10 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
         assert!(!self.is_end(), "called next() on cursor already at end");
 
         // Increment the position in the leaf node.
-        let (node, pos) = self.stack[Height::leaf()];
+        let (node, pos) = self.stack[Height::LEAF];
         debug_assert_ne!(unsafe { node.pivot(pos, &self.tree.leaf) }, I::Int::MAX);
         let pos = unsafe { pos.next() };
-        self.stack[Height::leaf()].1 = pos;
+        self.stack[Height::LEAF].1 = pos;
 
         // If we reached the end of the leaf then we need to go up the tree to
         // find the next leaf node.
@@ -154,7 +150,8 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
             self.next_leaf_node();
         }
 
-        self.check_invariants();
+        #[cfg(debug_assertions)]
+        self.assert_valid();
     }
 
     /// Advances the cursor to the previous element in the tree.
@@ -165,16 +162,17 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
     fn prev(&mut self) -> bool {
         // If we are at the start of the leaf then we need to go up the tree to
         // find the previous leaf node.
-        let (_node, pos) = self.stack[Height::leaf()];
+        let (_node, pos) = self.stack[Height::LEAF];
         if pos.index() == 0 {
             return self.prev_leaf_node();
         }
 
         // Decrement the position in the leaf node.
         let pos = unsafe { pos.prev() };
-        self.stack[Height::leaf()].1 = pos;
+        self.stack[Height::LEAF].1 = pos;
 
-        self.check_invariants();
+        #[cfg(debug_assertions)]
+        self.assert_valid();
 
         true
     }
@@ -184,7 +182,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
     /// Leaves the cursor unmodified if this is the last leaf node of the tree.
     #[inline]
     fn next_leaf_node(&mut self) {
-        let mut height = Height::leaf();
+        let mut height = Height::LEAF;
         let mut node = loop {
             // If we reached the top of the tree then it means we are on the
             // last entry at all levels of the tree. We've reached the end of
@@ -217,7 +215,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
             node = unsafe { node.value(pos!(0), &self.tree.internal).assume_init_read().0 };
             height = down;
         }
-        self.stack[Height::leaf()] = (node, pos!(0));
+        self.stack[Height::LEAF] = (node, pos!(0));
 
         // The tree invariants guarantee that leaf nodes are always at least
         // half full, except if this is the root node. However this can't be the
@@ -233,7 +231,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
     /// leaf node of the tree.
     #[inline]
     fn prev_leaf_node(&mut self) -> bool {
-        let mut height = Height::leaf();
+        let mut height = Height::LEAF;
         let mut node = loop {
             // If we reached the top of the tree then it means we are on the
             // first entry at all levels of the tree. We've reached the start of
@@ -268,7 +266,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
             height = down;
         }
         let pos = unsafe { I::Int::search(node.pivots(&self.tree.leaf), I::Int::MAX) };
-        self.stack[Height::leaf()] = (node, unsafe { pos.prev() });
+        self.stack[Height::LEAF] = (node, unsafe { pos.prev() });
 
         // The tree invariants guarantee that leaf nodes are always at least
         // half full, except if this is the root node. However this can't be the
@@ -277,7 +275,8 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
             hint::assert_unchecked(pos.index() != 0);
         }
 
-        self.check_invariants();
+        #[cfg(debug_assertions)]
+        self.assert_valid();
 
         true
     }
@@ -291,7 +290,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
     /// `pivot` must be the largest non-`MAX` pivot in the current leaf node.
     #[inline]
     unsafe fn update_leaf_max_pivot(&mut self, pivot: <I::Int as RangeTreeInteger>::Raw) {
-        let mut height = Height::leaf();
+        let mut height = Height::LEAF;
         // This continues recursively as long as the parent sub-tree is the last
         // one in its node, or the root of the tree is reached.
         while let Some(up) = height.up(self.tree.height) {
@@ -312,7 +311,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
     #[inline]
     fn insert<const AFTER: bool>(&mut self, range: ops::Range<I>, value: V) -> Result<(), AllocError> {
         let pivot = int_from_pivot(range.end);
-        let (node, pos) = self.stack[Height::leaf()];
+        let (node, pos) = self.stack[Height::LEAF];
 
         let insert_pos = if AFTER {
             assert!(
@@ -398,7 +397,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         // position on the stack if we were in the second half of the node that
         // got split.
         let mut in_right_split = if let Some(new_pos) = pos.split_right_half() {
-            self.stack[Height::leaf()] = (new_node, new_pos);
+            self.stack[Height::LEAF] = (new_node, new_pos);
             true
         } else {
             false
@@ -406,7 +405,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
 
         // Propagate the split by inserting the new node in the next level of
         // the tree. This may cause that node to also be split if it gets full.
-        let mut height = Height::leaf();
+        let mut height = Height::LEAF;
         while let Some(up) = height.up(self.tree.height) {
             height = up;
             let (node, mut pos) = self.stack[height];
@@ -436,7 +435,9 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
 
             // If the node is not full then we're done.
             if !overflow {
-                self.check_invariants();
+                #[cfg(debug_assertions)]
+                self.assert_valid();
+                
                 return Ok(());
             }
 
@@ -496,14 +497,15 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         self.tree.height = self
             .tree
             .height
-            .up(Height::max())
+            .up(Height::MAX)
             .expect("exceeded maximum height");
 
         // Set up the new level in the cursor stack.
         let pos = if in_right_split { pos!(1) } else { pos!(0) };
         self.stack[self.tree.height] = (new_root, pos);
 
-        self.check_invariants();
+        #[cfg(debug_assertions)]
+        self.assert_valid();
         
         Ok(())
     }
@@ -517,7 +519,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
     fn replace(&mut self, range: ops::Range<I>, value: V) -> (ops::Range<I>, V) {
         let pivot = int_from_pivot(range.end);
 
-        let (node, pos) = self.stack[Height::leaf()];
+        let (node, pos) = self.stack[Height::LEAF];
         let old_pivot = unsafe { node.pivot(pos, &self.tree.leaf) };
         let old_pivot = pivot_from_int(old_pivot).expect("called replace() on cursor already at end");
 
@@ -550,7 +552,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
     /// Panics if the cursor is pointing to the end of the tree.
     #[inline]
     fn remove(&mut self) -> (ops::Range<I>, V) {
-        let (node, pos) = self.stack[Height::leaf()];
+        let (node, pos) = self.stack[Height::LEAF];
 
         // Check if this deletion will cause the leaf node to become less than
         // half full. Specifically that after deletion last pivot in the first
@@ -573,7 +575,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         // If we removed the last pivot in a node then we need to update the
         // sub-tree max pivot in the parent.
         unsafe {
-            if node.pivot(pos, &self.tree.leaf) == I::Int::MAX && self.tree.height != Height::leaf()
+            if node.pivot(pos, &self.tree.leaf) == I::Int::MAX && self.tree.height != Height::LEAF
             {
                 // Leaf nodes must be at least half full if they are not the
                 // root node.
@@ -588,11 +590,11 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
         if underflow {
             // If there is only a single leaf node in the tree then it is
             // allowed to have as little as zero elements and cannot underflow.
-            if let Some(up) = Height::leaf().up(self.tree.height) {
+            if let Some(up) = Height::LEAF.up(self.tree.height) {
                 // `node` is less than half-full, try to restore the invariant
                 // by stealing from another node or merging it.
                 let up_node = unsafe {
-                    self.handle_underflow(Height::leaf(), up, node, true, |tree| &mut tree.leaf)
+                    self.handle_underflow(Height::LEAF, up, node, true, |tree| &mut tree.leaf)
                 };
                 if let Some(mut node) = up_node {
                     let mut height = up;
@@ -650,7 +652,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
             self.next_leaf_node();
         }
 
-        self.check_invariants();
+        self.assert_valid();
 
         (start..pivot, value)
     }
@@ -1050,7 +1052,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
     /// the tree.
     #[inline]
     pub fn iter(&self) -> Iter<'a, I, V, A> {
-        let (node, pos) = self.raw.stack[Height::leaf()];
+        let (node, pos) = self.raw.stack[Height::LEAF];
         Iter {
             raw: crate::RawIter { node, pos },
             tree: self.raw.tree,
@@ -1176,7 +1178,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     /// the tree.
     #[inline]
     pub fn iter(&self) -> Iter<'_, I, V, A> {
-        let (node, pos) = self.raw.stack[Height::leaf()];
+        let (node, pos) = self.raw.stack[Height::LEAF];
         Iter {
             raw: crate::RawIter { node, pos },
             tree: self.raw.tree,
@@ -1190,7 +1192,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     /// the tree.
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, I, V, A> {
-        let (node, pos) = self.raw.stack[Height::leaf()];
+        let (node, pos) = self.raw.stack[Height::LEAF];
         IterMut {
             raw: crate::RawIter { node, pos },
             tree: self.raw.tree,
@@ -1208,7 +1210,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     #[inline]
     #[allow(clippy::should_implement_trait)]
     pub fn into_iter(self) -> Iter<'a, I, V, A> {
-        let (node, pos) = self.raw.stack[Height::leaf()];
+        let (node, pos) = self.raw.stack[Height::LEAF];
         Iter {
             raw: crate::RawIter { node, pos },
             tree: self.raw.tree,
@@ -1225,7 +1227,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     /// the tree.
     #[inline]
     pub fn into_iter_mut(self) -> IterMut<'a, I, V, A> {
-        let (node, pos) = self.raw.stack[Height::leaf()];
+        let (node, pos) = self.raw.stack[Height::LEAF];
         IterMut {
             raw: crate::RawIter { node, pos },
             tree: self.raw.tree,
@@ -1317,8 +1319,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
 
         // The first leaf node is always the left-most leaf on the tree and is
         // never deleted.
-        debug_assert_eq!(node, NodeRef::zero());
-        stack[height] = (NodeRef::zero(), pos!(0));
+        debug_assert_eq!(node, NodeRef::ZERO);
+        stack[height] = (NodeRef::ZERO, pos!(0));
         RawCursor { stack, tree }
     }
 
