@@ -66,7 +66,7 @@ impl<I: RangeTreeInteger> RawIter<I> {
             // iterator pointing to an `Int::MAX` pivot.
             if let Some(next_leaf) = unsafe { self.node.next_leaf(leaf_pool) } {
                 self.node = next_leaf;
-                self.pos = NodePos::zero();
+                self.pos = NodePos::ZERO;
 
                 // The tree invariants guarantee that leaf nodes are always at least
                 // half full, except if this is the root node. However this can't be the
@@ -368,7 +368,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     pub(crate) fn raw_iter(&self) -> RawIter<I::Int> {
         // The first leaf node is always the left-most leaf on the tree and is
         // never deleted.
-        let node = NodeRef::zero();
+        let node = NodeRef::ZERO;
         let pos = pos!(0);
         RawIter { node, pos }
     }
