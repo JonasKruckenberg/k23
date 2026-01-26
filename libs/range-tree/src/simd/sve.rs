@@ -1,6 +1,7 @@
-use super::SimdSearch;
 use core::arch::aarch64::*;
 use core::mem;
+
+use super::SimdSearch;
 
 macro_rules! sve_compare {
     ($search:expr, $data:expr, $w:literal, $cmp:literal) => {

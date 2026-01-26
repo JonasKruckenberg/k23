@@ -73,7 +73,7 @@ pub(crate) struct NodePos<I: RangeTreeInteger> {
 macro_rules! pos {
     ($expr:expr) => {{
         const { assert!($expr < I::Int::B) };
-        #[allow(unused_unsafe)]
+        #[allow(unused_unsafe, reason = "macro")]
         unsafe {
             $crate::node::NodePos::<I::Int>::new_unchecked($expr)
         }
@@ -237,8 +237,8 @@ impl NodeRef {
     ///
     /// `self` must be allocated from `pool`.
     #[inline]
-    pub(crate) unsafe fn pivots<I: RangeTreeInteger, V>(self, pool: &NodePool<I, V>) -> &I::pivots {
-        unsafe { self.pivots_ptr(pool).cast::<I::pivots>().as_ref() }
+    pub(crate) unsafe fn pivots<I: RangeTreeInteger, V>(self, pool: &NodePool<I, V>) -> &I::Pivots {
+        unsafe { self.pivots_ptr(pool).cast::<I::Pivots>().as_ref() }
     }
 
     /// Returns the pivot at `pos` in this node.
@@ -457,7 +457,6 @@ impl NodeRef {
     /// # Safety
     ///
     /// `self` and `dest` must be allocated from `pool`.
-    #[allow(clippy::needless_pass_by_value)]
     #[inline]
     pub(crate) unsafe fn split_into<I: RangeTreeInteger, V>(
         self,
@@ -473,7 +472,7 @@ impl NodeRef {
                 .copy_to_nonoverlapping(dest.0.values_ptr(pool), I::B / 2);
             slice::from_raw_parts_mut(self.pivots_ptr(pool).add(I::B / 2).as_ptr(), I::B / 2)
                 .fill(I::MAX);
-            // Make sure not to create a referene to uninitialized memory.
+            // Make sure not to create a reference to uninitialized memory.
             slice::from_raw_parts_mut(
                 dest.0
                     .pivots_ptr(pool)
@@ -495,7 +494,6 @@ impl NodeRef {
     /// `self` and `src` must be allocated from `pool`.
     ///
     /// `offset.len() + count <= I::B`
-    #[allow(clippy::needless_pass_by_value)]
     #[inline]
     pub(crate) unsafe fn merge_from<I: RangeTreeInteger, V>(
         self,
@@ -534,7 +532,7 @@ impl UninitNodeRef {
     ) -> NodeRef {
         unsafe {
             let ptr = self.0.pivots_ptr(pool).cast::<MaybeUninit<I::Raw>>();
-            // Make sure not to create a referene to uninitialized memory.
+            // Make sure not to create a reference to uninitialized memory.
             let slice = slice::from_raw_parts_mut(ptr.as_ptr(), I::B);
             slice.fill(MaybeUninit::new(I::MAX));
         }
@@ -569,7 +567,7 @@ pub(crate) const fn node_layout<I: RangeTreeInteger, V>() -> (Layout, usize, usi
     //
     // However this can't be expressed directly due to limitations on const
     // generics.
-    let pivots = Layout::new::<I::pivots>();
+    let pivots = Layout::new::<I::Pivots>();
 
     let Ok(values) = Layout::array::<V>(I::B - 1) else {
         panic!("Could not calculate node layout");
@@ -617,7 +615,7 @@ pub(crate) struct NodePool<I: RangeTreeInteger, V> {
     marker: PhantomData<(I, V)>,
 }
 
-// These impls are needed because `NonNull` supresses the automatic impls.
+// These impls are needed because `NonNull` suppresses the automatic impls.
 unsafe impl<I: RangeTreeInteger + Send, V: Send> Send for NodePool<I, V> {}
 unsafe impl<I: RangeTreeInteger + Sync, V: Sync> Sync for NodePool<I, V> {}
 
@@ -704,7 +702,7 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
             self.grow(alloc)?;
         }
 
-        // grow() will have doubled the capacity or initalized it, which
+        // grow() will have doubled the capacity or initialized it, which
         // guarantees at least enough space to allocate a single node.
         let node = UninitNodeRef(NodeRef(self.len));
         self.len += node_layout.size() as u32;
