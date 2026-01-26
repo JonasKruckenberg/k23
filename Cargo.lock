@@ -2690,14 +2690,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wavltree-fuzz"
-version = "0.0.0"
-dependencies = [
- "libfuzzer-sys",
- "wavltree",
-]
-
-[[package]]
 name = "web-sys"
 version = "0.3.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"

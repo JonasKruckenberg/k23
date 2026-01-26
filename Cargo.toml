@@ -1,5 +1,5 @@
 [workspace]
-members = ["kernel", "libs/*", "libs/*/fuzz", "build/*", "loader", "loader/api", "libs/ktest/macros"]
+members = ["kernel", "fuzz", "libs/*", "build/*", "loader", "loader/api", "libs/ktest/macros"]
 exclude = ["libs/_kmem"]
 resolver = "3"
 
@@ -99,6 +99,7 @@ k32-util = { path = "libs/util" }
 kasync = { path = "libs/kasync" }
 kmem = { path = "libs/kmem" }
 k23-arrayvec = { path = "libs/arrayvec" }
+range-tree  = { path = "libs/range-tree" }
 
 # 3rd-party dependencies
 cfg-if = "1.0.0"

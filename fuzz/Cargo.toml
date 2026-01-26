@@ -11,8 +11,8 @@ cargo-fuzz = true
 libfuzzer-sys.workspace = true
 arbitrary.workspace = true
 
-[dependencies.range-tree]
-path = ".."
+# crates being fuzzed
+range-tree.workspace = true
 
 [[bin]]
 name = "range-tree"
