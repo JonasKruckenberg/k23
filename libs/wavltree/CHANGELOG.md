@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.9](https://github.com/JonasKruckenberg/k23/compare/wavltree-v0.0.8...wavltree-v0.0.9) - 2026-01-26
+
+### Other
+
+- *(deps)* update rust crate criterion to 0.8.0
+- *(kmem)* AddressSpace API and AddressSpaceRegion tree
+- *(wavltree)* add context parameter to `assert_valid` method. ([#554](https://github.com/JonasKruckenberg/k23/pull/554))
+- *(deps)* update rust crate criterion to 0.7.0 ([#508](https://github.com/JonasKruckenberg/k23/pull/508))
+- rustfmt  items ([#506](https://github.com/JonasKruckenberg/k23/pull/506))
+
 ## [0.0.8](https://github.com/JonasKruckenberg/k23/compare/v0.0.7...v0.0.8) - 2025-07-11
 
 ### Fixed
