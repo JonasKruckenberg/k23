@@ -146,3 +146,35 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: just test-riscv64
         run: nix develop --command just test-riscv64
+
+  fuzz:
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        fuzz-target: [ "range-tree" ]
+        target:
+          - tuple: aarch64-unknown-linux-gnu
+          - tuple: aarch64-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+sve
+          - tuple: riscv64gc-unknown-linux-gnu
+          - tuple: riscv64gc-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+v
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cross-compilation tools
+        if: ${{ matrix.target.tuple }} != x86_64-unknown-linux-gnu
+        uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target.tuple }}
+      - name: Run fuzz target ${{matrix.fuzz-target}} for 60s
+        run: nix develop --command cargo fuzz run ${{matrix.fuzz-target}} -s none -- -max_total_time=60
+        env:
+          RUSTFLAGS: -D warnings ${{ matrix.target.rustflags }}
