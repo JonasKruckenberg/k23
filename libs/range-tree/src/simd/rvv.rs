@@ -1,6 +1,7 @@
+use core::mem;
+
 use super::SimdSearch;
 use crate::int::pivotS_BYTES;
-use core::mem;
 
 /// Returns the runtime vector length in bytes.
 #[inline]

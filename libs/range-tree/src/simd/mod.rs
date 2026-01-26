@@ -10,6 +10,7 @@ use crate::int::PIVOTS_BYTES;
 
 cfg_if! {
     if #[cfg(all(
+        not(miri),
         any(target_arch = "x86", target_arch = "x86_64"),
         target_feature = "avx512bw",
         target_feature = "popcnt",
@@ -17,6 +18,7 @@ cfg_if! {
         // x86-64-v4: AVX512F + AVX512BW
         mod avx512;
     } else if #[cfg(all(
+        not(miri),
         any(target_arch = "x86", target_arch = "x86_64"),
         target_feature = "avx2",
         target_feature = "popcnt",
@@ -24,6 +26,7 @@ cfg_if! {
         // x86-64-v3: AVX2 + POPCNT
         mod avx2;
     } else if #[cfg(all(
+        not(miri),
         any(target_arch = "x86", target_arch = "x86_64"),
         target_feature = "sse2",
         target_feature = "popcnt",
@@ -31,24 +34,28 @@ cfg_if! {
         // x86-64-v2: SSE2 + POPCNT
         mod sse2_popcnt;
     } else if #[cfg(all(
+        not(miri),
         any(target_arch = "x86", target_arch = "x86_64"),
         target_feature = "sse2",
     ))] {
         // x86-64-v1: SSE2
         mod sse2;
     } else if #[cfg(all(
+        not(miri),
         target_arch = "aarch64",
         target_feature = "sve",
     ))] {
         // AArch64 SVE
         mod sve;
     } else if #[cfg(all(
+        not(miri),
         target_arch = "aarch64",
         target_feature = "neon",
     ))] {
         // AArch64 NEON
         mod neon;
     } else if #[cfg(all(
+        not(miri),
         any(target_arch = "riscv32", target_arch = "riscv64"),
         target_feature = "v",
     ))] {
@@ -153,7 +160,7 @@ pub(crate) trait SimdSearch: Int {
             let mid = base + len / 2;
 
             // This is slightly different from a normal binary search:
-            // `simd_seach` requires that the last pivot be less than or equal to
+            // `simd_search` requires that the last pivot be less than or equal to
             // `search`, so we check the last pivot of the first half. This works
             // because `len` is guaranteed to be a power of 2 and the last pivot
             // is guaranteed to be the maximum integer value.
@@ -226,9 +233,11 @@ mod tests {
         }
         pivots.0[len - 1] = max;
         for i in 0..len {
-            assert_eq!(generic_search(&pivots.0[..len], encode(i)), unsafe {
+            let generic_result = generic_search(&pivots.0[..len], encode(i));
+            let simd_result = unsafe {
                 T::search(&pivots.0[..len], encode(i))
-            });
+            };
+            assert_eq!(generic_result, simd_result, "SIMD search for {i} returned incorrect index {simd_result}. expected {generic_result} {:?}", pivots.0);
         }
     }
 
@@ -304,56 +313,56 @@ mod tests {
     }
 }
 
-#[cfg(feature = "internal_benches")]
-mod bench {
-    use super::SimdSearch;
-    use crate::int::{CacheAligned, PIVOTS_BYTES};
-
-    #[divan::bench(types = [
-        u8,
-        u16,
-        u32,
-        u64,
-        u128,
-        i8,
-        i16,
-        i32,
-        i64,
-        i128,
-    ])]
-    fn search<T: SimdSearch>(bencher: divan::Bencher) {
-        // The values don't matter because we use branchless searches.
-        let pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe { std::mem::zeroed() };
-        bencher.bench_local(|| {
-            let zero: T = unsafe { std::mem::zeroed() };
-            let len = PIVOTS_BYTES / std::mem::size_of::<T>();
-            unsafe { T::search(&pivots.0[..len], divan::black_box(zero)) }
-        });
-    }
-
-    #[divan::bench(types = [
-        u8,
-        u16,
-        u32,
-        u64,
-        u128,
-        i8,
-        i16,
-        i32,
-        i64,
-        i128,
-    ])]
-    fn generic_search<T: SimdSearch>(bencher: divan::Bencher) {
-        fn generic_search<T: SimdSearch>(pivots: &[T], search: T) -> usize {
-            pivots[..pivots.len() - 1].partition_point(|&pivot| T::bias_cmp(pivot, search).is_lt())
-        }
-
-        // The values don't matter because we use branchless searches.
-        let pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe { std::mem::zeroed() };
-        bencher.bench_local(|| {
-            let zero: T = unsafe { std::mem::zeroed() };
-            let len = PIVOTS_BYTES / std::mem::size_of::<T>();
-            generic_search(&pivots.0[..len], divan::black_box(zero))
-        });
-    }
-}
+// #[cfg(feature = "internal_benches")]
+// mod bench {
+//     use super::SimdSearch;
+//     use crate::int::{CacheAligned, PIVOTS_BYTES};
+//
+//     #[divan::bench(types = [
+//         u8,
+//         u16,
+//         u32,
+//         u64,
+//         u128,
+//         i8,
+//         i16,
+//         i32,
+//         i64,
+//         i128,
+//     ])]
+//     fn search<T: SimdSearch>(bencher: divan::Bencher) {
+//         // The values don't matter because we use branchless searches.
+//         let pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe { std::mem::zeroed() };
+//         bencher.bench_local(|| {
+//             let zero: T = unsafe { std::mem::zeroed() };
+//             let len = PIVOTS_BYTES / std::mem::size_of::<T>();
+//             unsafe { T::search(&pivots.0[..len], divan::black_box(zero)) }
+//         });
+//     }
+//
+//     #[divan::bench(types = [
+//         u8,
+//         u16,
+//         u32,
+//         u64,
+//         u128,
+//         i8,
+//         i16,
+//         i32,
+//         i64,
+//         i128,
+//     ])]
+//     fn generic_search<T: SimdSearch>(bencher: divan::Bencher) {
+//         fn generic_search<T: SimdSearch>(pivots: &[T], search: T) -> usize {
+//             pivots[..pivots.len() - 1].partition_point(|&pivot| T::bias_cmp(pivot, search).is_lt())
+//         }
+//
+//         // The values don't matter because we use branchless searches.
+//         let pivots: CacheAligned<[T; PIVOTS_BYTES]> = unsafe { std::mem::zeroed() };
+//         bencher.bench_local(|| {
+//             let zero: T = unsafe { std::mem::zeroed() };
+//             let len = PIVOTS_BYTES / std::mem::size_of::<T>();
+//             generic_search(&pivots.0[..len], divan::black_box(zero))
+//         });
+//     }
+// }

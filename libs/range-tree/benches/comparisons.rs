@@ -215,7 +215,6 @@ fn bench_lookups_hits(c: &mut Criterion) {
             );
         }
 
-
         {
             let mut map: WAVLTree<WAVLEntry> = WAVLTree::new();
 

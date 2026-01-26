@@ -56,8 +56,10 @@ fn overlap() {
 
     let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
 
-    tree.insert(idx!(NonMaxU64(0))..idx!(NonMaxU64(100)), 0).unwrap();
-    tree.insert(idx!(NonMaxU64(200))..idx!(NonMaxU64(300)), 1).unwrap();
+    tree.insert(idx!(NonMaxU64(0))..idx!(NonMaxU64(100)), 0)
+        .unwrap();
+    tree.insert(idx!(NonMaxU64(200))..idx!(NonMaxU64(300)), 1)
+        .unwrap();
 
     assert!(matches!(
         tree.insert(idx!(NonMaxU64(0))..idx!(NonMaxU64(10)), 2),

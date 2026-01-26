@@ -78,7 +78,7 @@ impl<I: RangeTreeInteger> Height<I> {
         }
     }
 
-    /// Returns one level up (towards the root) up to the given maximum heigh.
+    /// Returns one level up (towards the root) up to the given maximum height.
     #[inline]
     pub(crate) const fn up(self, max: Height<I>) -> Option<Self> {
         if self.height >= max.height {
@@ -98,7 +98,7 @@ impl<I: RangeTreeInteger> Height<I> {
 /// factor and the node size.
 ///
 /// The stack is indexed with `Height` which allows unchecked indexing since
-/// all heights must be less than `max_heigh::<I>()`.
+/// all heights must be less than `max_height::<I>()`.
 #[derive(Clone)]
 pub(crate) struct Stack<I: RangeTreeInteger, const H: usize> {
     entries: [(NodeRef, NodePos<I>); H],

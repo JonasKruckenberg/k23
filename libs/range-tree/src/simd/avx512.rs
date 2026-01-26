@@ -1,8 +1,9 @@
-use super::SimdSearch;
 #[cfg(target_arch = "x86")]
 use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
+
+use super::SimdSearch;
 
 impl SimdSearch for u8 {
     const SIMD_WIDTH: usize = 128;

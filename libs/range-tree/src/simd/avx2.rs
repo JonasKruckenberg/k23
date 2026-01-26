@@ -1,8 +1,9 @@
-use super::{SimdSearch, exact_div_unchecked};
 #[cfg(target_arch = "x86")]
 use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
+
+use super::{SimdSearch, exact_div_unchecked};
 
 #[inline]
 #[target_feature(enable = "avx2")]

@@ -1,5 +1,6 @@
-use super::{SimdSearch, exact_div_unchecked};
 use core::arch::aarch64::*;
+
+use super::{SimdSearch, exact_div_unchecked};
 
 impl SimdSearch for u8 {
     const SIMD_WIDTH: usize = 64;

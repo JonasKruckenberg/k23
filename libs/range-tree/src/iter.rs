@@ -351,13 +351,13 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Gaps<'a, I, V, A> {
             } else {
                 prev_end..I::MAX
             };
-            
+
             // if this gap is NOT empty, yield it
             if gap.start.to_int().to_raw() < gap.end.to_int().to_raw() {
                 return Some(gap);
             }
         }
-        
+
         None
     }
 }

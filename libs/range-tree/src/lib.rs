@@ -123,6 +123,14 @@ pub struct RangeTree<I: RangeTreeIndex, V, A: Allocator = Global> {
     alloc: A,
 }
 
+impl<I: RangeTreeIndex + fmt::Debug, V: fmt::Debug, A: Allocator> fmt::Debug
+    for RangeTree<I, V, A>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
+}
+
 impl<I: RangeTreeIndex, V> RangeTree<I, V, Global> {
     /// Creates a new, empty [`RangeTree`].
     ///
@@ -232,8 +240,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         cursor.seek(int_from_pivot(range.end));
 
         if let Some((existing, _)) = cursor.entry()
-            && existing.start.to_int().to_raw() <
-            range.end.to_int().to_raw()
+            && existing.start.to_int().to_raw() < range.end.to_int().to_raw()
         {
             return Err(InsertError::Overlap);
         }
@@ -418,5 +425,22 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for RangeTree<I, V, A> {
             self.internal.clear_and_free(&self.alloc);
             self.leaf.clear_and_free(&self.alloc);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nonmax::NonMaxU64;
+    use crate::RangeTree;
+
+    #[test]
+    fn smokee() {
+        let mut tree = RangeTree::<NonMaxU64, u64>::try_new().unwrap();
+
+        for i in 1..2 {
+            tree.insert(NonMaxU64::new(i).unwrap()..NonMaxU64::new(i + 1).unwrap(), i).unwrap();
+        }
+
+        println!("{:?}", unsafe { tree.root.pivots(&tree.leaf) })
     }
 }
