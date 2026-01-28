@@ -5,7 +5,7 @@ mod common;
 use std::alloc::Global;
 use std::ops;
 
-use nonmax::NonMaxU64;
+use core::num::NonZeroU64;
 use proptest::collection::SizeRange;
 use proptest::prelude::*;
 use rand::seq::SliceRandom;
@@ -43,7 +43,7 @@ impl Ranges {
         self
     }
 
-    pub fn finish(self) -> impl Strategy<Value = Vec<ops::Range<NonMaxU64>>> {
+    pub fn finish(self) -> impl Strategy<Value = Vec<ops::Range<NonZeroU64>>> {
         proptest::collection::vec(
             (
                 // Size of the region (will be aligned)
@@ -67,8 +67,8 @@ impl Ranges {
                 let mut current = start_raw;
 
                 for (size, gap) in &size_gap_pairs {
-                    let start = NonMaxU64::new(current).unwrap();
-                    let end = NonMaxU64::new(current + *size).unwrap();
+                    let start = NonZeroU64::new(current).unwrap();
+                    let end = NonZeroU64::new(current + *size).unwrap();
 
                     ranges.push(start..end);
 
@@ -92,7 +92,7 @@ proptest! {
     fn insert_random(input in Ranges::new(1..750).finish()) {
         let mut input: Vec<_> = input.into_iter().enumerate().collect();
 
-        let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
+        let mut tree: RangeTree<NonZeroU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
 
         for (idx, range) in input.iter() {
             tracing::debug!("inserting range {range:?}");
@@ -122,7 +122,7 @@ proptest! {
     fn insert_sorted(input in Ranges::new(1..750).shuffled(false).finish()) {
         let mut input: Vec<_> = input.into_iter().enumerate().collect();
 
-        let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
+        let mut tree: RangeTree<NonZeroU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
 
         for (idx, range) in input.iter() {
             tracing::debug!("inserting range {range:?}");

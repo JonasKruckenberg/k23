@@ -1,4 +1,6 @@
-macro_rules! idx {
-    ($nonmax:ident($raw:literal)) => {{ const { $nonmax::new($raw).unwrap() } }};
+#![allow(unused)]
+
+macro_rules! nonzero {
+    ($raw:literal) => {{ const { ::core::num::NonZero::new($raw).unwrap() } }};
 }
-pub(crate) use idx;
+pub(crate) use nonzero;

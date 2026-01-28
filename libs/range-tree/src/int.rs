@@ -86,9 +86,9 @@ pub(crate) unsafe trait RangeTreeInteger: Copy + Debug + Send + Sync + Unpin {
 }
 
 macro_rules! impl_int {
-    ($($int:ident $nonmax:ident,)*) => {
+    ($($int:ident $nonzero:ident,)*) => {
         $(
-            unsafe impl RangeTreeInteger for nonmax::$nonmax {
+            unsafe impl RangeTreeInteger for core::num::$nonzero {
                 const B: usize = PIVOTS_BYTES / mem::size_of::<Self>();
 
                 const MAX: Self::Raw = $int::MAX.wrapping_add(Self::Raw::BIAS);
@@ -97,12 +97,12 @@ macro_rules! impl_int {
 
                 #[inline]
                 fn to_raw(self) -> Self::Raw {
-                    self.get().wrapping_add(Self::Raw::BIAS)
+                    self.get().wrapping_sub(1).wrapping_add(Self::Raw::BIAS)
                 }
 
                 #[inline]
                 fn from_raw(int: Self::Raw) -> Option<Self> {
-                    Self::new(int.wrapping_sub(Self::Raw::BIAS))
+                    Self::new(int.wrapping_add(1).wrapping_sub(Self::Raw::BIAS))
                 }
 
                 #[inline]
@@ -125,11 +125,11 @@ macro_rules! impl_int {
                 type Stack = Stack<Self, { max_height::<Self>() }>;
             }
 
-            impl RangeTreeIndex for nonmax::$nonmax {
+            impl RangeTreeIndex for core::num::$nonzero {
                 type Int = Self;
 
-                const ZERO: Self = nonmax::$nonmax::ZERO;
-                const MAX: Self = nonmax::$nonmax::MAX;
+                // const ZERO: Self = nonmax::$nonmax::ZERO;
+                // const MAX: Self = nonmax::$nonmax::MAX;
 
                 #[inline]
                 fn to_int(self) -> Self::Int {
@@ -146,14 +146,14 @@ macro_rules! impl_int {
 }
 
 impl_int! {
-    u8 NonMaxU8,
-    u16 NonMaxU16,
-    u32 NonMaxU32,
-    u64 NonMaxU64,
-    u128 NonMaxU128,
-    i8 NonMaxI8,
-    i16 NonMaxI16,
-    i32 NonMaxI32,
-    i64 NonMaxI64,
-    i128 NonMaxI128,
+    u8 NonZeroU8,
+    u16 NonZeroU16,
+    u32 NonZeroU32,
+    u64 NonZeroU64,
+    u128 NonZeroU128,
+    i8 NonZeroI8,
+    i16 NonZeroI16,
+    i32 NonZeroI32,
+    i64 NonZeroI64,
+    i128 NonZeroI128,
 }

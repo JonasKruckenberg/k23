@@ -2,21 +2,21 @@
 
 mod common;
 
+use core::num::NonZeroU64;
 use std::alloc::Global;
 
-use nonmax::NonMaxU64;
 use rand::seq::SliceRandom;
 use range_tree::{InsertError, RangeTree};
 
-use crate::common::idx;
+use crate::common::nonzero;
 
 #[test]
 fn smoke() {
     let input: Vec<_> = [
-        idx!(NonMaxU64(100))..idx!(NonMaxU64(200)),
-        idx!(NonMaxU64(300))..idx!(NonMaxU64(400)),
-        idx!(NonMaxU64(500))..idx!(NonMaxU64(600)),
-        idx!(NonMaxU64(600))..idx!(NonMaxU64(700)),
+        nonzero!(100)..nonzero!(200),
+        nonzero!(300)..nonzero!(400),
+        nonzero!(500)..nonzero!(600),
+        nonzero!(600)..nonzero!(700),
     ]
     .into_iter()
     .enumerate()
@@ -25,7 +25,7 @@ fn smoke() {
     let mut shuffled = input.clone();
     shuffled.shuffle(&mut rand::rng());
 
-    let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
+    let mut tree: RangeTree<NonZeroU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
 
     for (idx, range) in shuffled {
         tracing::debug!("inserting range {range:?}");
@@ -54,27 +54,25 @@ fn smoke() {
 fn overlap() {
     tracing_subscriber::fmt::init();
 
-    let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
+    let mut tree: RangeTree<NonZeroU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
 
-    tree.insert(idx!(NonMaxU64(0))..idx!(NonMaxU64(100)), 0)
-        .unwrap();
-    tree.insert(idx!(NonMaxU64(200))..idx!(NonMaxU64(300)), 1)
-        .unwrap();
+    tree.insert(nonzero!(100)..nonzero!(200), 0).unwrap();
+    tree.insert(nonzero!(300)..nonzero!(400), 1).unwrap();
 
     assert!(matches!(
-        tree.insert(idx!(NonMaxU64(0))..idx!(NonMaxU64(10)), 2),
+        tree.insert(nonzero!(100)..nonzero!(110), 2),
         Err(InsertError::Overlap)
     ));
     assert!(matches!(
-        tree.insert(idx!(NonMaxU64(99))..idx!(NonMaxU64(101)), 2),
+        tree.insert(nonzero!(199)..nonzero!(201), 2),
         Err(InsertError::Overlap)
     ));
     assert!(matches!(
-        tree.insert(idx!(NonMaxU64(10))..idx!(NonMaxU64(90)), 2),
+        tree.insert(nonzero!(110)..nonzero!(190), 2),
         Err(InsertError::Overlap)
     ));
     assert!(matches!(
-        tree.insert(idx!(NonMaxU64(10))..idx!(NonMaxU64(201)), 1),
+        tree.insert(nonzero!(110)..nonzero!(301), 1),
         Err(InsertError::Overlap)
     ));
 }

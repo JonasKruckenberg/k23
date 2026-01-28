@@ -334,33 +334,33 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for RangeMut<'a, I, V, A> 
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for RangeMut<'a, I, V, A> {}
 
-pub struct Gaps<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
-    inner: Ranges<'a, I, V, A>,
-    prev_end: Option<I>,
-}
-
-impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Gaps<'a, I, V, A> {
-    type Item = ops::Range<I>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some(prev_end) = self.prev_end.take() {
-            let gap = if let Some(range) = self.inner.next() {
-                let gap = prev_end..range.start;
-                self.prev_end = Some(range.end);
-                gap
-            } else {
-                prev_end..I::MAX
-            };
-
-            // if this gap is NOT empty, yield it
-            if gap.start.to_int().to_raw() < gap.end.to_int().to_raw() {
-                return Some(gap);
-            }
-        }
-
-        None
-    }
-}
+// pub struct Gaps<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
+//     inner: Ranges<'a, I, V, A>,
+//     prev_end: Option<I>,
+// }
+//
+// impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Gaps<'a, I, V, A> {
+//     type Item = ops::Range<I>;
+//
+//     fn next(&mut self) -> Option<Self::Item> {
+//         while let Some(prev_end) = self.prev_end.take() {
+//             let gap = if let Some(range) = self.inner.next() {
+//                 let gap = prev_end..range.start;
+//                 self.prev_end = Some(range.end);
+//                 gap
+//             } else {
+//                 prev_end..I::MAX
+//             };
+//
+//             // if this gap is NOT empty, yield it
+//             if gap.start.to_int().to_raw() < gap.end.to_int().to_raw() {
+//                 return Some(gap);
+//             }
+//         }
+//
+//         None
+//     }
+// }
 
 impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     /// Returns a [`RawIter`] pointing at the first element of the tree.
@@ -514,12 +514,12 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         }
     }
 
-    pub fn gaps(&self) -> Gaps<'_, I, V, A> {
-        Gaps {
-            inner: self.ranges(),
-            prev_end: Some(I::ZERO),
-        }
-    }
+    // pub fn gaps(&self) -> Gaps<'_, I, V, A> {
+    //     Gaps {
+    //         inner: self.ranges(),
+    //         prev_end: Some(I::ZERO),
+    //     }
+    // }
 }
 
 impl<I: RangeTreeIndex, V, A: Allocator> IntoIterator for RangeTree<I, V, A> {
