@@ -1,7 +1,8 @@
-use nonmax::NonMaxU64;
+use core::num::NonZeroU64;
+
 use range_tree::RangeTree;
 
-use crate::common::idx;
+use crate::common::nonzero;
 
 mod common;
 
@@ -9,12 +10,11 @@ mod common;
 fn lookup_hit() {
     tracing_subscriber::fmt::init();
 
-    let mut tree: RangeTree<NonMaxU64, usize, _> = RangeTree::try_new().unwrap();
+    let mut tree: RangeTree<NonZeroU64, usize, _> = RangeTree::try_new().unwrap();
 
-    tree.insert(idx!(NonMaxU64(0))..idx!(NonMaxU64(100)), 0)
-        .unwrap();
+    tree.insert(nonzero!(100)..nonzero!(200), 0).unwrap();
 
-    assert_eq!(tree.get(idx!(NonMaxU64(0))), Some(&0));
-    assert_eq!(tree.get(idx!(NonMaxU64(50))), Some(&0));
-    assert_eq!(tree.get(idx!(NonMaxU64(100))), None);
+    assert_eq!(tree.get(nonzero!(100)), Some(&0));
+    assert_eq!(tree.get(nonzero!(150)), Some(&0));
+    assert_eq!(tree.get(nonzero!(200)), None);
 }

@@ -29,7 +29,6 @@ mod stack;
 
 pub use cursor::*;
 pub use iter::*;
-pub use nonmax;
 
 use crate::int::int_from_pivot;
 use crate::node::NodePos;
@@ -71,21 +70,21 @@ pub trait RangeTreeIndex: Copy {
     /// Non-max integer type that this pivot
     ///
     /// This must be one of the integer types from the [`nonmax`] crate:
-    /// - [`nonmax::NonMaxU8`]
-    /// - [`nonmax::NonMaxU16`]
-    /// - [`nonmax::NonMaxU32`]
-    /// - [`nonmax::NonMaxU64`]
-    /// - [`nonmax::NonMaxU128`]
-    /// - [`nonmax::NonMaxI8`]
-    /// - [`nonmax::NonMaxI16`]
-    /// - [`nonmax::NonMaxI32`]
-    /// - [`nonmax::NonMaxI64`]
-    /// - [`nonmax::NonMaxI128`]
+    /// - [`nonmax::NonZeroU8`]
+    /// - [`nonmax::NonZeroU16`]
+    /// - [`nonmax::NonZeroU32`]
+    /// - [`nonmax::NonZeroU64`]
+    /// - [`nonmax::NonZeroU128`]
+    /// - [`nonmax::NonZeroI8`]
+    /// - [`nonmax::NonZeroI16`]
+    /// - [`nonmax::NonZeroI32`]
+    /// - [`nonmax::NonZeroI64`]
+    /// - [`nonmax::NonZeroI128`]
     #[allow(private_bounds)]
     type Int: RangeTreeInteger;
 
-    const ZERO: Self;
-    const MAX: Self;
+    // const ZERO: Self;
+    // const MAX: Self;
 
     /// Converts the pivot to an integer.
     fn to_int(self) -> Self::Int;
@@ -430,15 +429,15 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for RangeTree<I, V, A> {
 
 #[cfg(test)]
 mod tests {
-    use nonmax::NonMaxU64;
+    use core::num::NonZeroU64;
     use crate::RangeTree;
 
     #[test]
     fn smokee() {
-        let mut tree = RangeTree::<NonMaxU64, u64>::try_new().unwrap();
+        let mut tree = RangeTree::<NonZeroU64, u64>::try_new().unwrap();
 
         for i in 1..2 {
-            tree.insert(NonMaxU64::new(i).unwrap()..NonMaxU64::new(i + 1).unwrap(), i).unwrap();
+            tree.insert(NonZeroU64::new(i).unwrap()..NonZeroU64::new(i + 1).unwrap(), i).unwrap();
         }
 
         println!("{:?}", unsafe { tree.root.pivots(&tree.leaf) })

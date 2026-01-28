@@ -773,13 +773,13 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
 mod tests {
     use alloc::alloc::Global;
 
-    use nonmax::NonMaxU32;
+    use core::num::NonZeroU32;
 
     use super::NodePool;
 
     #[test]
     fn smoke() {
-        let mut pool = NodePool::<NonMaxU32, u32>::new();
+        let mut pool = NodePool::<NonZeroU32, u32>::new();
         let node = unsafe { pool.alloc_node(&Global).unwrap().0 };
         let node2 = unsafe { pool.alloc_node(&Global).unwrap().0 };
         unsafe {
