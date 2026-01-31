@@ -1,7 +1,6 @@
 #![feature(allocator_api)]
 #![feature(new_range_api)]
 
-use std::alloc::Global;
 use std::collections::{BTreeMap, Bound};
 use std::hint::black_box;
 use std::mem::offset_of;
@@ -47,7 +46,7 @@ unsafe impl Linked for WAVLEntry {
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
         // Safety: `NonNull` *must* be constructed from a pinned reference
         // which the tree implementation upholds.
-        Pin::new_unchecked(Box::from_raw(ptr.as_ptr()))
+        unsafe { Pin::new_unchecked(Box::from_raw(ptr.as_ptr())) }
     }
     unsafe fn links(target: NonNull<Self>) -> NonNull<Links<WAVLEntry>> {
         target
