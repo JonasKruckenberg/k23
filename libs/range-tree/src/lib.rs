@@ -81,9 +81,6 @@ pub trait RangeTreeIndex: Copy {
     #[allow(private_bounds)]
     type Int: RangeTreeInteger;
 
-    // const ZERO: Self;
-    // const MAX: Self;
-
     /// Converts the pivot to an integer.
     fn to_int(self) -> Self::Int;
 
