@@ -1,9 +1,11 @@
 #![feature(allocator_api)]
+#![feature(new_range_api)]
 
 use std::alloc::Global;
 use std::collections::{BTreeMap, Bound};
 use std::hint::black_box;
 use std::mem::offset_of;
+use std::num::NonZeroU64;
 use std::ops::Range;
 use std::pin::Pin;
 use std::ptr::NonNull;
@@ -94,13 +96,13 @@ fn brie_insertions(insertions: &[Range<u64>]) {
 }
 
 fn range_insertions(insertions: &[Range<u64>]) {
-    let mut map: RangeTree<NonMaxU64, u8> = RangeTree::try_new().unwrap();
+    let mut map: RangeTree<NonZeroU64, u8> = RangeTree::try_new().unwrap();
 
     for range in insertions {
-        let start = NonMaxU64::new(range.start).unwrap();
-        let end = NonMaxU64::new(range.end).unwrap();
+        let start = NonZeroU64::new(range.start).unwrap();
+        let end = NonZeroU64::new(range.end).unwrap();
 
-        map.insert(start..end, 0u8).unwrap();
+        map.insert(start..=end, 0u8).unwrap();
     }
 
     black_box(map);
@@ -172,9 +174,9 @@ fn wavl_lookups(map: &WAVLTree<WAVLEntry>, lookups: &[u64]) {
     }
 }
 
-fn range_lookups(map: &RangeTree<NonMaxU64, u8>, lookups: &[u64]) {
+fn range_lookups(map: &RangeTree<NonZeroU64, u8>, lookups: &[u64]) {
     for lookup in lookups {
-        let lookup = NonMaxU64::new(*lookup).unwrap();
+        let lookup = NonZeroU64::new(*lookup).unwrap();
         let (range, _) = map.cursor_at(Bound::Included(lookup)).entry().unwrap();
         let offset = lookup.get().checked_sub(range.start.get()).unwrap();
         black_box(offset);
@@ -247,13 +249,13 @@ fn bench_lookups_hits(c: &mut Criterion) {
         }
 
         {
-            let mut map: RangeTree<NonMaxU64, u8> = RangeTree::try_new().unwrap();
+            let mut map: RangeTree<NonZeroU64, u8> = RangeTree::try_new().unwrap();
 
             for range in &ranges {
-                let start = NonMaxU64::new(range.start).unwrap();
-                let end = NonMaxU64::new(range.end).unwrap();
+                let start = NonZeroU64::new(range.start).unwrap();
+                let end = NonZeroU64::new(range.end).unwrap();
 
-                map.insert(start..end, 0u8).unwrap();
+                map.insert(start..=end, 0u8).unwrap();
             }
 
             group.bench_with_input(

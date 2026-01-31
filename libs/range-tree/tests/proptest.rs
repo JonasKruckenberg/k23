@@ -1,11 +1,13 @@
 #![feature(allocator_api)]
+#![feature(new_range_api)]
 
 mod common;
 
+use core::num::NonZeroU64;
 use std::alloc::Global;
 use std::ops;
+use std::range::RangeInclusive;
 
-use core::num::NonZeroU64;
 use proptest::collection::SizeRange;
 use proptest::prelude::*;
 use rand::seq::SliceRandom;
@@ -43,7 +45,7 @@ impl Ranges {
         self
     }
 
-    pub fn finish(self) -> impl Strategy<Value = Vec<ops::Range<NonZeroU64>>> {
+    pub fn finish(self) -> impl Strategy<Value = Vec<RangeInclusive<NonZeroU64>>> {
         proptest::collection::vec(
             (
                 // Size of the region (will be aligned)
@@ -70,7 +72,7 @@ impl Ranges {
                     let start = NonZeroU64::new(current).unwrap();
                     let end = NonZeroU64::new(current + *size).unwrap();
 
-                    ranges.push(start..end);
+                    ranges.push(RangeInclusive { start, end });
 
                     current += size + gap;
                 }

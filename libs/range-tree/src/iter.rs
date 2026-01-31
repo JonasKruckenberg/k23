@@ -1,9 +1,10 @@
 use alloc::alloc::{Allocator, Global};
+use core::hint;
 use core::iter::FusedIterator;
 use core::mem::{self, ManuallyDrop};
 use core::ops::{Bound, RangeBounds};
 use core::ptr::NonNull;
-use core::{hint, ops};
+use core::range::RangeInclusive;
 
 use crate::int::{RangeTreeInteger, int_from_pivot};
 use crate::node::{NodePool, NodePos, NodeRef};
@@ -88,7 +89,7 @@ pub struct Iter<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Iter<'a, I, V, A> {
-    type Item = (ops::Range<I>, &'a V);
+    type Item = (RangeInclusive<I>, &'a V);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -96,7 +97,11 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Iter<'a, I, V, A> {
             self.raw.next(&self.tree.leaf).map(|(end, value)| {
                 let (start, value) = value.as_ref();
 
-                (*start..I::from_int(end), value)
+                let range = RangeInclusive {
+                    start: *start,
+                    end: I::from_int(end),
+                };
+                (range, value)
             })
         }
     }
@@ -120,7 +125,7 @@ pub struct IterMut<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for IterMut<'a, I, V, A> {
-    type Item = (ops::Range<I>, &'a mut V);
+    type Item = (RangeInclusive<I>, &'a mut V);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -128,7 +133,11 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for IterMut<'a, I, V, A> {
             self.raw.next(&self.tree.leaf).map(|(end, mut value)| {
                 let (start, value) = value.as_mut();
 
-                (*start..I::from_int(end), value)
+                let range = RangeInclusive {
+                    start: *start,
+                    end: I::from_int(end),
+                };
+                (range, value)
             })
         }
     }
@@ -143,7 +152,7 @@ pub struct IntoIter<I: RangeTreeIndex, V, A: Allocator = Global> {
 }
 
 impl<I: RangeTreeIndex, V, A: Allocator> Iterator for IntoIter<I, V, A> {
-    type Item = (ops::Range<I>, V);
+    type Item = (RangeInclusive<I>, V);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -152,7 +161,11 @@ impl<I: RangeTreeIndex, V, A: Allocator> Iterator for IntoIter<I, V, A> {
             self.raw.next(&self.tree.leaf).map(|(end, value)| {
                 let (start, value) = value.read();
 
-                (start..I::from_int(end), value)
+                let range = RangeInclusive {
+                    start,
+                    end: I::from_int(end),
+                };
+                (range, value)
             })
         }
     }
@@ -188,7 +201,7 @@ pub struct Ranges<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Ranges<'a, I, V, A> {
-    type Item = ops::Range<I>;
+    type Item = RangeInclusive<I>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -196,7 +209,10 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Ranges<'a, I, V, A> {
             self.raw.next(&self.tree.leaf).map(|(end, value)| {
                 let (start, _) = value.as_ref();
 
-                *start..I::from_int(end)
+                RangeInclusive {
+                    start: *start,
+                    end: I::from_int(end),
+                }
             })
         }
     }
@@ -276,7 +292,7 @@ pub struct Range<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Range<'a, I, V, A> {
-    type Item = (ops::Range<I>, &'a V);
+    type Item = (RangeInclusive<I>, &'a V);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -288,7 +304,11 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Range<'a, I, V, A> {
             self.raw.next(&self.tree.leaf).map(|(end, value)| {
                 let (start, value) = value.as_ref();
 
-                (*start..I::from_int(end), value)
+                let range = RangeInclusive {
+                    start: *start,
+                    end: I::from_int(end),
+                };
+                (range, value)
             })
         }
     }
@@ -314,7 +334,7 @@ pub struct RangeMut<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for RangeMut<'a, I, V, A> {
-    type Item = (ops::Range<I>, &'a mut V);
+    type Item = (RangeInclusive<I>, &'a mut V);
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
@@ -326,7 +346,11 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for RangeMut<'a, I, V, A> 
             self.raw.next(&self.tree.leaf).map(|(end, mut value)| {
                 let (start, value) = value.as_mut();
 
-                (*start..I::from_int(end), value)
+                let range = RangeInclusive {
+                    start: *start,
+                    end: I::from_int(end),
+                };
+                (range, value)
             })
         }
     }
@@ -340,7 +364,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for RangeMut<'a, I, V
 // }
 //
 // impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Gaps<'a, I, V, A> {
-//     type Item = ops::Range<I>;
+//     type Item = RangeInclusive<I>;
 //
 //     fn next(&mut self) -> Option<Self::Item> {
 //         while let Some(prev_end) = self.prev_end.take() {
@@ -523,7 +547,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
 }
 
 impl<I: RangeTreeIndex, V, A: Allocator> IntoIterator for RangeTree<I, V, A> {
-    type Item = (ops::Range<I>, V);
+    type Item = (RangeInclusive<I>, V);
 
     type IntoIter = IntoIter<I, V, A>;
 
@@ -537,7 +561,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> IntoIterator for RangeTree<I, V, A> {
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> IntoIterator for &'a RangeTree<I, V, A> {
-    type Item = (ops::Range<I>, &'a V);
+    type Item = (RangeInclusive<I>, &'a V);
 
     type IntoIter = Iter<'a, I, V, A>;
 
@@ -548,7 +572,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> IntoIterator for &'a RangeTree<I, V
 }
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> IntoIterator for &'a mut RangeTree<I, V, A> {
-    type Item = (ops::Range<I>, &'a mut V);
+    type Item = (RangeInclusive<I>, &'a mut V);
 
     type IntoIter = IterMut<'a, I, V, A>;
 

@@ -1,33 +1,34 @@
 #![feature(allocator_api)]
+#![feature(new_range_api)]
 #![no_main]
 
 use std::alloc::Global;
 use std::fmt::Debug;
+use std::num::{NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128};
 use std::ops::Bound;
-use std::{iter, ops};
+use std::range::RangeInclusive;
 
 use libfuzzer_sys::arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use range_tree::InsertError::Overlap;
-use range_tree::nonmax::*;
 use range_tree::{RangeTree, RangeTreeIndex};
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
 struct Index<Int>(Int);
 
 macro_rules! impl_index {
-    ($($int:ident $nonmax:ident),*) => {
+    ($($int:ident $nonzero:ident),*) => {
         $(
-            impl Arbitrary<'_> for Index<$nonmax> {
+            impl Arbitrary<'_> for Index<$nonzero> {
                 fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
                     Ok(Index(
-                        $nonmax::new(u.int_in_range(0..=$int::MAX - 1)?).unwrap()
+                        $nonzero::new(u.int_in_range(1..=$int::MAX)?).unwrap()
                     ))
                 }
             }
 
-            impl RangeTreeIndex for Index<$nonmax> {
-                type Int = $nonmax;
+            impl RangeTreeIndex for Index<$nonzero> {
+                type Int = $nonzero;
 
                 const ZERO: Self = Index(<$nonmax>::ZERO);
                 const MAX: Self = Index(<$nonmax>::MAX);
@@ -126,7 +127,7 @@ fn run<
     actions: Vec<Action<Index, Value>>,
 ) {
     let mut tree = RangeTree::try_new_in(Global).unwrap();
-    let mut vec: Vec<(ops::Range<Index>, Value)> = vec![];
+    let mut vec: Vec<(RangeInclusive<Index>, Value)> = vec![];
 
     for action in actions {
         match action {
@@ -135,7 +136,7 @@ fn run<
                 vec.clear();
             }
             Action::Insert { start, end, value } => {
-                let res = tree.insert(start..end, value);
+                let res = tree.insert(RangeInclusive { start, end }, value);
 
                 let index = vec.partition_point(|(range, _v)| range.end < end);
 
@@ -144,7 +145,7 @@ fn run<
                 } else if index != 0 && vec[index - 1].0.end > start {
                     assert_eq!(res, Err(Overlap));
                 } else {
-                    vec.insert(index, (start..end, value));
+                    vec.insert(index, (RangeInclusive { start, end }, value));
                     assert_eq!(res, Ok(()));
                 }
             }
@@ -299,7 +300,7 @@ fn run<
                         }
                         CursorMutAction::InsertBefore { start, end, value } => {
                             let range = if vec.is_empty() {
-                                start..end
+                                RangeInclusive { start, end }
                             } else if index == vec.len() {
                                 vec[index - 1].0.clone()
                             } else {

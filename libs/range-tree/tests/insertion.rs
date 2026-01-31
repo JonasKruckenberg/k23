@@ -1,9 +1,11 @@
 #![feature(allocator_api)]
+#![feature(new_range_api)]
 
 mod common;
 
 use core::num::NonZeroU64;
 use std::alloc::Global;
+use std::range::RangeInclusive;
 
 use rand::seq::SliceRandom;
 use range_tree::{InsertError, RangeTree};
@@ -13,10 +15,22 @@ use crate::common::nonzero;
 #[test]
 fn smoke() {
     let input: Vec<_> = [
-        nonzero!(100)..nonzero!(200),
-        nonzero!(300)..nonzero!(400),
-        nonzero!(500)..nonzero!(600),
-        nonzero!(600)..nonzero!(700),
+        RangeInclusive {
+            start: nonzero!(100),
+            end: nonzero!(200),
+        },
+        RangeInclusive {
+            start: nonzero!(300),
+            end: nonzero!(400),
+        },
+        RangeInclusive {
+            start: nonzero!(500),
+            end: nonzero!(600),
+        },
+        RangeInclusive {
+            start: nonzero!(600),
+            end: nonzero!(700),
+        },
     ]
     .into_iter()
     .enumerate()
@@ -56,23 +70,23 @@ fn overlap() {
 
     let mut tree: RangeTree<NonZeroU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
 
-    tree.insert(nonzero!(100)..nonzero!(200), 0).unwrap();
-    tree.insert(nonzero!(300)..nonzero!(400), 1).unwrap();
+    tree.insert(nonzero!(100)..=nonzero!(200), 0).unwrap();
+    tree.insert(nonzero!(300)..=nonzero!(400), 1).unwrap();
 
     assert!(matches!(
-        tree.insert(nonzero!(100)..nonzero!(110), 2),
+        tree.insert(nonzero!(100)..=nonzero!(110), 2),
         Err(InsertError::Overlap)
     ));
     assert!(matches!(
-        tree.insert(nonzero!(199)..nonzero!(201), 2),
+        tree.insert(nonzero!(199)..=nonzero!(201), 2),
         Err(InsertError::Overlap)
     ));
     assert!(matches!(
-        tree.insert(nonzero!(110)..nonzero!(190), 2),
+        tree.insert(nonzero!(110)..=nonzero!(190), 2),
         Err(InsertError::Overlap)
     ));
     assert!(matches!(
-        tree.insert(nonzero!(110)..nonzero!(301), 1),
+        tree.insert(nonzero!(110)..=nonzero!(301), 1),
         Err(InsertError::Overlap)
     ));
 }
