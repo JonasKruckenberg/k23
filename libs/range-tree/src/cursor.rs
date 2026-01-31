@@ -6,7 +6,8 @@ use alloc::alloc::{Allocator, Global};
 use core::alloc::AllocError;
 use core::ops::{Bound, Deref};
 use core::ptr::NonNull;
-use core::{hint, mem, ops};
+use core::range::RangeInclusive;
+use core::{hint, mem};
 
 use crate::int::{int_from_pivot, pivot_from_int};
 use crate::node::{NodePool, NodePos, NodeRef};
@@ -317,7 +318,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
     #[inline]
     fn insert<const AFTER: bool>(
         &mut self,
-        range: ops::Range<I>,
+        range: RangeInclusive<I>,
         value: V,
     ) -> Result<(), AllocError> {
         let pivot = int_from_pivot(range.end);
@@ -536,7 +537,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
     ///
     /// Panics if the cursor is pointing to the end of the tree.
     #[inline]
-    fn replace(&mut self, range: ops::Range<I>, value: V) -> (ops::Range<I>, V) {
+    fn replace(&mut self, range: RangeInclusive<I>, value: V) -> (RangeInclusive<I>, V) {
         let pivot = int_from_pivot(range.end);
 
         let (node, pos) = self.stack[Height::LEAF];
@@ -563,7 +564,11 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
             )
         };
 
-        (old_start..old_pivot, old_value)
+        let range = RangeInclusive {
+            start: old_start,
+            end: old_pivot,
+        };
+        (range, old_value)
     }
 
     /// Removes the element to the right of the cursor and returns it.
@@ -572,7 +577,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
     ///
     /// Panics if the cursor is pointing to the end of the tree.
     #[inline]
-    fn remove(&mut self) -> (ops::Range<I>, V) {
+    fn remove(&mut self) -> (RangeInclusive<I>, V) {
         let (node, pos) = self.stack[Height::LEAF];
 
         // Check if this deletion will cause the leaf node to become less than
@@ -675,7 +680,8 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
 
         self.assert_valid();
 
-        (start..pivot, value)
+        let range = RangeInclusive { start, end: pivot };
+        (range, value)
     }
 
     /// Given `child` which is less than half full, restores the invariant that
@@ -1029,7 +1035,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
     /// Returns the pivot of the element that the cursor is currently pointing to,
     /// or `None` if the cursor is pointing to the end of the tree.
     #[inline]
-    pub fn range(&self) -> Option<ops::Range<I>> {
+    pub fn range(&self) -> Option<RangeInclusive<I>> {
         self.entry().map(|(r, _v)| r)
     }
 
@@ -1044,11 +1050,15 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
     /// currently pointing to, or `None` if the cursor is pointing to the end of
     /// the tree.
     #[inline]
-    pub fn entry(&self) -> Option<(ops::Range<I>, &'a V)> {
+    pub fn entry(&self) -> Option<(RangeInclusive<I>, &'a V)> {
         self.raw.entry().map(|(pivot, value)| {
             let (start, value) = unsafe { value.as_ref() };
 
-            (*start..pivot, value)
+            let range = RangeInclusive {
+                start: *start,
+                end: pivot,
+            };
+            (range, value)
         })
     }
 
@@ -1134,7 +1144,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     /// Returns the pivot of the element that the cursor is currently pointing to,
     /// or `None` if the cursor is pointing to the end of the tree.
     #[inline]
-    pub fn range(&self) -> Option<ops::Range<I>> {
+    pub fn range(&self) -> Option<RangeInclusive<I>> {
         self.entry().map(|(r, _v)| r)
     }
 
@@ -1156,11 +1166,15 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     /// currently pointing to, or `None` if the cursor is pointing to the end of
     /// the tree.
     #[inline]
-    pub fn entry(&self) -> Option<(ops::Range<I>, &V)> {
+    pub fn entry(&self) -> Option<(RangeInclusive<I>, &V)> {
         self.raw.entry().map(|(pivot, value)| {
             let (start, value) = unsafe { value.as_ref() };
 
-            (*start..pivot, value)
+            let range = RangeInclusive {
+                start: *start,
+                end: pivot,
+            };
+            (range, value)
         })
     }
 
@@ -1168,11 +1182,15 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     /// currently pointing to, or `None` if the cursor is pointing to the end of
     /// the tree.
     #[inline]
-    pub fn entry_mut(&mut self) -> Option<(ops::Range<I>, &mut V)> {
+    pub fn entry_mut(&mut self) -> Option<(RangeInclusive<I>, &mut V)> {
         self.raw.entry().map(|(pivot, mut value)| {
             let (start, value) = unsafe { value.as_mut() };
 
-            (*start..pivot, value)
+            let range = RangeInclusive {
+                start: *start,
+                end: pivot,
+            };
+            (range, value)
         })
     }
 
@@ -1272,7 +1290,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     /// order in the tree. Violating this invariant is safe but may cause
     /// other operations to return incorrect results or panic.
     #[inline]
-    pub fn insert_before(&mut self, range: ops::Range<I>, value: V) -> Result<(), AllocError> {
+    pub fn insert_before(&mut self, range: RangeInclusive<I>, value: V) -> Result<(), AllocError> {
         self.raw.insert::<false>(range, value)
     }
 
@@ -1291,7 +1309,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     ///
     /// Panics if the cursor is pointing to the end of the tree.
     #[inline]
-    pub fn insert_after(&mut self, range: ops::Range<I>, value: V) -> Result<(), AllocError> {
+    pub fn insert_after(&mut self, range: RangeInclusive<I>, value: V) -> Result<(), AllocError> {
         self.raw.insert::<true>(range, value)
     }
 
@@ -1307,7 +1325,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     ///
     /// Panics if the cursor is pointing to the end of the tree.
     #[inline]
-    pub fn replace(&mut self, range: ops::Range<I>, value: V) -> (ops::Range<I>, V) {
+    pub fn replace(&mut self, range: RangeInclusive<I>, value: V) -> (RangeInclusive<I>, V) {
         self.raw.replace(range, value)
     }
 
@@ -1321,7 +1339,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     ///
     /// Panics if the cursor is pointing to the end of the tree.
     #[inline]
-    pub fn remove(&mut self) -> (ops::Range<I>, V) {
+    pub fn remove(&mut self) -> (RangeInclusive<I>, V) {
         self.raw.remove()
     }
 }

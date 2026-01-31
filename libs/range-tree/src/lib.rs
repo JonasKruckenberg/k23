@@ -1,20 +1,13 @@
 //! This crate provides [`RangeTree`], a fast B+ Tree implementation using integer
 //! pivots.
 
-#![cfg_attr(not(test), no_std)]
+// #![cfg_attr(not(test), no_std)]
 #![feature(allocator_api)]
+#![feature(new_range_api)]
 #![warn(missing_docs)]
 
 extern crate alloc;
-
-use alloc::alloc::{Allocator, Global};
-use core::alloc::AllocError;
-use core::ops::Bound;
-use core::{fmt, mem, ops};
-
-use int::RangeTreeInteger;
-use node::{NodePool, NodeRef, UninitNodeRef};
-use stack::Height;
+extern crate core;
 
 #[macro_use]
 mod node;
@@ -24,11 +17,17 @@ mod int;
 mod iter;
 mod simd;
 mod stack;
-// #[cfg(test)]
-// mod tests;
+
+use alloc::alloc::{Allocator, Global};
+use core::alloc::AllocError;
+use core::ops::Bound;
+use core::{fmt, mem, range};
 
 pub use cursor::*;
+use int::RangeTreeInteger;
 pub use iter::*;
+use node::{NodePool, NodeRef, UninitNodeRef};
+use stack::Height;
 
 use crate::int::int_from_pivot;
 use crate::node::NodePos;
@@ -234,7 +233,12 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     /// and [`RangeTree::remove`] will only operate on one of the associated values
     /// (arbitrarily chosen).
     #[inline]
-    pub fn insert(&mut self, range: ops::Range<I>, value: V) -> Result<(), InsertError> {
+    pub fn insert(
+        &mut self,
+        range: impl Into<range::RangeInclusive<I>>,
+        value: V,
+    ) -> Result<(), InsertError> {
+        let range = range.into();
         let mut cursor = unsafe { CursorMut::uninit(self) };
         cursor.seek(int_from_pivot(range.end));
 
@@ -437,7 +441,7 @@ mod tests {
         let mut tree = RangeTree::<NonZeroU64, u64>::try_new().unwrap();
 
         for i in 1..2 {
-            tree.insert(NonZeroU64::new(i).unwrap()..NonZeroU64::new(i + 1).unwrap(), i).unwrap();
+            tree.insert(NonZeroU64::new(i).unwrap()..=NonZeroU64::new(i + 1).unwrap(), i).unwrap();
         }
 
         println!("{:?}", unsafe { tree.root.pivots(&tree.leaf) })
