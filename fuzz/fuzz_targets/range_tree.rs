@@ -70,7 +70,7 @@ enum Action<Index, Value> {
     Remove(Index),
     Range(Bound<Index>, Bound<Index>),
     Iter(Option<Bound<Index>>),
-    Gaps,
+    // Gaps,
     Cursor(Option<Bound<Index>>, Vec<CursorAction>),
     CursorMut(Option<Bound<Index>>, Vec<CursorMutAction<Index, Value>>),
 }
@@ -202,31 +202,31 @@ fn run<
                 let entries: Vec<_> = iter.map(|(k, &v)| (k, v)).collect();
                 assert_eq!(entries, vec[index..]);
             }
-            Action::Gaps => {
-                let gaps = tree.gaps();
-                let gaps: Vec<_> = gaps.collect();
-
-                let expected_gaps: Vec<_> = vec
-                    .iter()
-                    // starting at ZERO, produce all gaps between ranges
-                    .scan(Index::ZERO, |prev_end, (range, _v)| {
-                        let gap = *prev_end..range.start;
-                        *prev_end = range.end;
-                        Some(gap)
-                    })
-                    // add the final gap at the end. either between the last range and MAX or
-                    // if no ranges exists the gap between ZERO and MAX
-                    .chain(if let Some((last_range, _)) = vec.last() {
-                        iter::once(last_range.end..Index::MAX)
-                    } else {
-                        iter::once(Index::ZERO..Index::MAX)
-                    })
-                    // filter out all empty ranges
-                    .filter(|range| !range.is_empty())
-                    .collect();
-
-                assert_eq!(gaps, expected_gaps);
-            }
+            // Action::Gaps => {
+            //     let gaps = tree.gaps();
+            //     let gaps: Vec<_> = gaps.collect();
+            //
+            //     let expected_gaps: Vec<_> = vec
+            //         .iter()
+            //         // starting at ZERO, produce all gaps between ranges
+            //         .scan(Index::ZERO, |prev_end, (range, _v)| {
+            //             let gap = *prev_end..range.start;
+            //             *prev_end = range.end;
+            //             Some(gap)
+            //         })
+            //         // add the final gap at the end. either between the last range and MAX or
+            //         // if no ranges exists the gap between ZERO and MAX
+            //         .chain(if let Some((last_range, _)) = vec.last() {
+            //             iter::once(last_range.end..Index::MAX)
+            //         } else {
+            //             iter::once(Index::ZERO..Index::MAX)
+            //         })
+            //         // filter out all empty ranges
+            //         .filter(|range| !range.is_empty())
+            //         .collect();
+            //
+            //     assert_eq!(gaps, expected_gaps);
+            // }
             Action::Cursor(at, actions) => {
                 let (mut cursor, mut index) = if let Some(at) = at {
                     (

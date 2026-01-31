@@ -1,13 +1,12 @@
 //! This crate provides [`RangeTree`], a fast B+ Tree implementation using integer
 //! pivots.
 
-// #![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(test), no_std)]
 #![feature(allocator_api)]
 #![feature(new_range_api)]
 #![warn(missing_docs)]
 
 extern crate alloc;
-extern crate core;
 
 #[macro_use]
 mod node;
@@ -428,22 +427,5 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for RangeTree<I, V, A> {
             self.internal.clear_and_free(&self.alloc);
             self.leaf.clear_and_free(&self.alloc);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use core::num::NonZeroU64;
-    use crate::RangeTree;
-
-    #[test]
-    fn smokee() {
-        let mut tree = RangeTree::<NonZeroU64, u64>::try_new().unwrap();
-
-        for i in 1..2 {
-            tree.insert(NonZeroU64::new(i).unwrap()..=NonZeroU64::new(i + 1).unwrap(), i).unwrap();
-        }
-
-        println!("{:?}", unsafe { tree.root.pivots(&tree.leaf) })
     }
 }

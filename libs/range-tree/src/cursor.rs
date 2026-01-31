@@ -678,6 +678,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RawCursor<I, V, A, &'_ mut RangeTree<I,
             self.next_leaf_node();
         }
 
+        #[cfg(debug_assertions)]
         self.assert_valid();
 
         let range = RangeInclusive { start, end: pivot };
