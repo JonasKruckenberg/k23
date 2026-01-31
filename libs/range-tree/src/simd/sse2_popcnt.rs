@@ -132,34 +132,3 @@ impl SimdSearch for u64 {
     }
 }
 impl SimdSearch for u128 {}
-impl SimdSearch for i8 {
-    const SIMD_WIDTH: usize = 64;
-    #[inline]
-    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
-        unsafe { search8(pivots, search) }
-    }
-}
-impl SimdSearch for i16 {
-    const SIMD_WIDTH: usize = 32;
-    #[inline]
-    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
-        unsafe { search16(pivots, search) }
-    }
-}
-impl SimdSearch for i32 {
-    const SIMD_WIDTH: usize = 16;
-    #[inline]
-    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
-        unsafe { search32(pivots, search) }
-    }
-}
-impl SimdSearch for i64 {
-    #[cfg(target_feature = "sse4.2")]
-    const SIMD_WIDTH: usize = 8;
-    #[cfg(target_feature = "sse4.2")]
-    #[inline]
-    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
-        unsafe { search64(pivots, search) }
-    }
-}
-impl SimdSearch for i128 {}

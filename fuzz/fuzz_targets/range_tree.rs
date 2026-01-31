@@ -46,16 +46,11 @@ macro_rules! impl_index {
 }
 
 impl_index! {
-    u8 NonMaxU8,
-    u16 NonMaxU16,
-    u32 NonMaxU32,
-    u64 NonMaxU64,
-    u128 NonMaxU128,
-    i8 NonMaxI8,
-    i16 NonMaxI16,
-    i32 NonMaxI32,
-    i64 NonMaxI64,
-    i128 NonMaxI128
+    u8 NonZeroU8,
+    u16 NonZeroU16,
+    u32 NonZeroU32,
+    u64 NonZeroU64,
+    u128 NonZeroU128
 }
 
 #[derive(Debug, Arbitrary)]
@@ -97,16 +92,11 @@ enum CursorMutAction<Index, Value> {
 
 #[derive(Arbitrary, Debug)]
 enum IndexType<Value> {
-    U8(Vec<Action<Index<NonMaxU8>, Value>>),
-    U16(Vec<Action<Index<NonMaxU16>, Value>>),
-    U32(Vec<Action<Index<NonMaxU32>, Value>>),
-    U64(Vec<Action<Index<NonMaxU64>, Value>>),
-    U128(Vec<Action<Index<NonMaxU128>, Value>>),
-    I8(Vec<Action<Index<NonMaxI8>, Value>>),
-    I16(Vec<Action<Index<NonMaxI16>, Value>>),
-    I32(Vec<Action<Index<NonMaxI32>, Value>>),
-    I64(Vec<Action<Index<NonMaxI64>, Value>>),
-    I128(Vec<Action<Index<NonMaxI128>, Value>>),
+    U8(Vec<Action<Index<NonZeroU8>, Value>>),
+    U16(Vec<Action<Index<NonZeroU16>, Value>>),
+    U32(Vec<Action<Index<NonZeroU32>, Value>>),
+    U64(Vec<Action<Index<NonZeroU64>, Value>>),
+    U128(Vec<Action<Index<NonZeroU128>, Value>>),
 }
 
 #[derive(Arbitrary, Debug)]
@@ -357,11 +347,6 @@ fn dispatch_by_key<'a, Value: Eq + Arbitrary<'a> + Debug + Copy>(actions: IndexT
         IndexType::U32(actions) => run(actions),
         IndexType::U64(actions) => run(actions),
         IndexType::U128(actions) => run(actions),
-        IndexType::I8(actions) => run(actions),
-        IndexType::I16(actions) => run(actions),
-        IndexType::I32(actions) => run(actions),
-        IndexType::I64(actions) => run(actions),
-        IndexType::I128(actions) => run(actions),
     }
 }
 

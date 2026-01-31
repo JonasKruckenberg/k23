@@ -68,11 +68,6 @@ cfg_if! {
         impl SimdSearch for u32 {}
         impl SimdSearch for u64 {}
         impl SimdSearch for u128 {}
-        impl SimdSearch for i8 {}
-        impl SimdSearch for i16 {}
-        impl SimdSearch for i32 {}
-        impl SimdSearch for i64 {}
-        impl SimdSearch for i128 {}
     }
 }
 
@@ -100,11 +95,6 @@ impl_zero! {
     u32,
     u64,
     u128,
-    i8,
-    i16,
-    i32,
-    i64,
-    i128,
 }
 
 /// SIMD search on an array of sorted integers.
@@ -274,41 +264,6 @@ mod tests {
         test_search(
             |i| (i as u128).wrapping_add(SimdSearch::BIAS),
             u128::MAX.wrapping_add(SimdSearch::BIAS),
-        );
-    }
-    #[test]
-    fn test_search_i8() {
-        test_search(
-            |i| (i as i8).wrapping_add(SimdSearch::BIAS),
-            i8::MAX.wrapping_add(SimdSearch::BIAS),
-        );
-    }
-    #[test]
-    fn test_search_i16() {
-        test_search(
-            |i| (i as i16).wrapping_add(SimdSearch::BIAS),
-            i16::MAX.wrapping_add(SimdSearch::BIAS),
-        );
-    }
-    #[test]
-    fn test_search_i32() {
-        test_search(
-            |i| (i as i32).wrapping_add(SimdSearch::BIAS),
-            i32::MAX.wrapping_add(SimdSearch::BIAS),
-        );
-    }
-    #[test]
-    fn test_search_i64() {
-        test_search(
-            |i| (i as i64).wrapping_add(SimdSearch::BIAS),
-            i64::MAX.wrapping_add(SimdSearch::BIAS),
-        );
-    }
-    #[test]
-    fn test_search_i128() {
-        test_search(
-            |i| (i as i128).wrapping_add(SimdSearch::BIAS),
-            i128::MAX.wrapping_add(SimdSearch::BIAS),
         );
     }
 }
