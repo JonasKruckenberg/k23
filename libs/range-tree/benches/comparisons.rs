@@ -112,7 +112,7 @@ fn bench_insertions(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Insertions");
     for num_entries in (10..1000).step_by(100) {
-        let mut ranges = (0..num_entries * 2 * MIB)
+        let mut ranges = (1..num_entries * 2 * MIB)
             .step_by(2 * MIB as usize)
             .map(|base| base..base + rng.sample(Uniform::new(0, 2 * MIB).unwrap()))
             .collect::<Vec<_>>();
@@ -187,7 +187,7 @@ fn bench_lookups_hits(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Lookups Hits");
     for num_entries in (10..1000).step_by(100) {
-        let mut ranges = (0..num_entries * 2 * MIB)
+        let mut ranges = (1..num_entries * 2 * MIB)
             .step_by(2 * MIB as usize)
             .map(|base| base..base + rng.sample(Uniform::new(1, 2 * MIB).unwrap()))
             .collect::<Vec<_>>();

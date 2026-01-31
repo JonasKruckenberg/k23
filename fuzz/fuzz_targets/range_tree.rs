@@ -1,11 +1,12 @@
 #![feature(allocator_api)]
 #![feature(new_range_api)]
+#![feature(range_bounds_is_empty)]
 #![no_main]
 
 use std::alloc::Global;
 use std::fmt::Debug;
 use std::num::{NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128};
-use std::ops::Bound;
+use std::ops::{Bound, RangeBounds};
 use std::range::RangeInclusive;
 
 use libfuzzer_sys::arbitrary::Arbitrary;
@@ -15,6 +16,10 @@ use range_tree::{RangeTree, RangeTreeIndex};
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
 struct Index<Int>(Int);
+
+trait Idx: Copy {
+    fn checked_increment(self) -> Option<Self>;
+}
 
 macro_rules! impl_index {
     ($($int:ident $nonzero:ident),*) => {
@@ -30,15 +35,18 @@ macro_rules! impl_index {
             impl RangeTreeIndex for Index<$nonzero> {
                 type Int = $nonzero;
 
-                const ZERO: Self = Index(<$nonmax>::ZERO);
-                const MAX: Self = Index(<$nonmax>::MAX);
-
                 fn from_int(int: Self::Int) -> Self {
                     Self(int)
                 }
 
                 fn to_int(self) -> Self::Int {
                     self.0
+                }
+            }
+
+            impl Idx for Index<$nonzero> {
+                fn checked_increment(self) -> Option<Self> {
+                    self.0.checked_add(1).map(Self)
                 }
             }
         )*
@@ -65,7 +73,7 @@ enum Action<Index, Value> {
     Remove(Index),
     Range(Bound<Index>, Bound<Index>),
     Iter(Option<Bound<Index>>),
-    // Gaps,
+    Gaps,
     Cursor(Option<Bound<Index>>, Vec<CursorAction>),
     CursorMut(Option<Bound<Index>>, Vec<CursorMutAction<Index, Value>>),
 }
@@ -111,7 +119,7 @@ enum ValueType {
 
 fn run<
     'a,
-    Index: Ord + RangeTreeIndex + Arbitrary<'a> + Debug,
+    Index: Ord + RangeTreeIndex + Arbitrary<'a> + Debug + Idx,
     Value: Eq + Arbitrary<'a> + Debug + Copy,
 >(
     actions: Vec<Action<Index, Value>>,
@@ -192,31 +200,36 @@ fn run<
                 let entries: Vec<_> = iter.map(|(k, &v)| (k, v)).collect();
                 assert_eq!(entries, vec[index..]);
             }
-            // Action::Gaps => {
-            //     let gaps = tree.gaps();
-            //     let gaps: Vec<_> = gaps.collect();
-            //
-            //     let expected_gaps: Vec<_> = vec
-            //         .iter()
-            //         // starting at ZERO, produce all gaps between ranges
-            //         .scan(Index::ZERO, |prev_end, (range, _v)| {
-            //             let gap = *prev_end..range.start;
-            //             *prev_end = range.end;
-            //             Some(gap)
-            //         })
-            //         // add the final gap at the end. either between the last range and MAX or
-            //         // if no ranges exists the gap between ZERO and MAX
-            //         .chain(if let Some((last_range, _)) = vec.last() {
-            //             iter::once(last_range.end..Index::MAX)
-            //         } else {
-            //             iter::once(Index::ZERO..Index::MAX)
-            //         })
-            //         // filter out all empty ranges
-            //         .filter(|range| !range.is_empty())
-            //         .collect();
-            //
-            //     assert_eq!(gaps, expected_gaps);
-            // }
+            Action::Gaps => {
+                let gaps = tree.gaps();
+                let gaps: Vec<_> = gaps.collect();
+
+                let mut expected_gaps: Vec<_> = vec
+                    .iter()
+                    .scan(Some(Bound::Unbounded), |prev_end, (range, _v)| {
+                        let gap = ((*prev_end)?, Bound::Excluded(range.start));
+
+                        *prev_end = range.end.checked_increment().map(Bound::Included);
+
+                        Some(gap)
+                    })
+                    .collect();
+
+                // add the final gap at the end. either between the last range and MAX or
+                // if no ranges exists the gap between ZERO and MAX
+                if let Some((last_range, _)) = vec.last() {
+                    if let Some(end) = last_range.end.checked_increment() {
+                        expected_gaps.push((Bound::Included(end), Bound::Unbounded));
+                    }
+                } else {
+                    expected_gaps.push((Bound::Unbounded, Bound::Unbounded))
+                }
+
+                // filter out all empty ranges
+                expected_gaps.retain(|gap| !gap.is_empty());
+
+                assert_eq!(gaps, expected_gaps);
+            }
             Action::Cursor(at, actions) => {
                 let (mut cursor, mut index) = if let Some(at) = at {
                     (

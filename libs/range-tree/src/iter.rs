@@ -6,7 +6,7 @@ use core::ops::{Bound, RangeBounds};
 use core::ptr::NonNull;
 use core::range::RangeInclusive;
 
-use crate::int::{RangeTreeInteger, int_from_pivot};
+use crate::int::{RangeTreeInteger, int_from_pivot, pivot_from_int};
 use crate::node::{NodePool, NodePos, NodeRef};
 use crate::{RangeTree, RangeTreeIndex};
 
@@ -358,33 +358,55 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for RangeMut<'a, I, V, A> 
 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for RangeMut<'a, I, V, A> {}
 
-// pub struct Gaps<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
-//     inner: Ranges<'a, I, V, A>,
-//     prev_end: Option<I>,
-// }
-//
-// impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Gaps<'a, I, V, A> {
-//     type Item = RangeInclusive<I>;
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         while let Some(prev_end) = self.prev_end.take() {
-//             let gap = if let Some(range) = self.inner.next() {
-//                 let gap = prev_end..range.start;
-//                 self.prev_end = Some(range.end);
-//                 gap
-//             } else {
-//                 prev_end..I::MAX
-//             };
-//
-//             // if this gap is NOT empty, yield it
-//             if gap.start.to_int().to_raw() < gap.end.to_int().to_raw() {
-//                 return Some(gap);
-//             }
-//         }
-//
-//         None
-//     }
-// }
+/// An iterator over gaps between the ranges of a [`RangeTree`].
+///
+/// Always yields range bounds like this:
+/// - The first pair is always `(Bound::Unbounded, _)` to indicate the gap _before_ all ranges.
+/// - The last pair is always `(_, Bound::Unbounded)` to indicate the gap _after_ all ranges.
+/// - All pairs in between are of shape `(Bound::Included, Bound::Excluded)`.
+pub struct Gaps<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
+    inner: Ranges<'a, I, V, A>,
+    prev_end: Option<Bound<I>>,
+}
+
+impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Gaps<'a, I, V, A> {
+    type Item = (Bound<I>, Bound<I>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(prev_end) = self.prev_end.take() {
+            let gap = if let Some(range) = self.inner.next() {
+                let gap = (prev_end, Bound::Excluded(range.start));
+
+                self.prev_end = pivot_from_int(I::Int::increment(int_from_pivot(range.end)))
+                    .map(Bound::Included);
+
+                gap
+            } else {
+                (prev_end, Bound::Unbounded)
+            };
+
+            // if this gap is NOT empty, yield it
+            if !is_empty(gap) {
+                return Some(gap);
+            }
+        }
+
+        None
+    }
+}
+
+fn is_empty<I>(gap: impl RangeBounds<I>) -> bool
+where
+    I: RangeTreeIndex,
+{
+    match (gap.start_bound(), gap.end_bound()) {
+        (Bound::Unbounded, _) | (_, Bound::Unbounded) => false,
+        (Bound::Included(start), Bound::Excluded(end)) => {
+            start.to_int().to_raw() >= end.to_int().to_raw()
+        }
+        _ => unreachable!(),
+    }
+}
 
 impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
     /// Returns a [`RawIter`] pointing at the first element of the tree.
@@ -538,12 +560,12 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         }
     }
 
-    // pub fn gaps(&self) -> Gaps<'_, I, V, A> {
-    //     Gaps {
-    //         inner: self.ranges(),
-    //         prev_end: Some(I::ZERO),
-    //     }
-    // }
+    pub fn gaps(&self) -> Gaps<'_, I, V, A> {
+        Gaps {
+            inner: self.ranges(),
+            prev_end: Some(Bound::Unbounded),
+        }
+    }
 }
 
 impl<I: RangeTreeIndex, V, A: Allocator> IntoIterator for RangeTree<I, V, A> {
