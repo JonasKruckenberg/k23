@@ -8,7 +8,7 @@ use std::alloc::Global;
 use std::range::RangeInclusive;
 
 use rand::seq::SliceRandom;
-use range_tree::{InsertError, RangeTree};
+use range_tree::{OverlapError, RangeTree};
 
 use crate::common::nonzero;
 
@@ -45,7 +45,7 @@ fn smoke() {
         tracing::debug!("inserting range {range:?}");
         tree.insert(range.clone(), idx).unwrap();
 
-        tree.assert_valid(true);
+        tree.assert_valid();
     }
 
     let ranges: Vec<_> = tree.ranges().collect();
@@ -75,18 +75,18 @@ fn overlap() {
 
     assert!(matches!(
         tree.insert(nonzero!(100)..=nonzero!(110), 2),
-        Err(InsertError::Overlap)
+        Err(OverlapError)
     ));
     assert!(matches!(
         tree.insert(nonzero!(199)..=nonzero!(201), 2),
-        Err(InsertError::Overlap)
+        Err(OverlapError)
     ));
     assert!(matches!(
         tree.insert(nonzero!(110)..=nonzero!(190), 2),
-        Err(InsertError::Overlap)
+        Err(OverlapError)
     ));
     assert!(matches!(
         tree.insert(nonzero!(110)..=nonzero!(301), 1),
-        Err(InsertError::Overlap)
+        Err(OverlapError)
     ));
 }

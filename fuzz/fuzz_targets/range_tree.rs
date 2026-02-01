@@ -11,7 +11,7 @@ use std::range::RangeInclusive;
 
 use libfuzzer_sys::arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use range_tree::InsertError::Overlap;
+use range_tree::OverlapError;
 use range_tree::{RangeTree, RangeTreeIndex};
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -88,12 +88,11 @@ enum CursorAction {
 enum CursorMutAction<Index, Value> {
     Next,
     Prev,
-    InsertBefore {
+    Insert {
         start: Index,
         end: Index,
         value: Value,
     },
-    InsertAfter(Value),
     Replace(Value),
     Remove,
 }
@@ -139,9 +138,9 @@ fn run<
                 let index = vec.partition_point(|(range, _v)| range.end < end);
 
                 if index != vec.len() && vec[index].0.start < end {
-                    assert_eq!(res, Err(Overlap));
+                    assert_eq!(res, Err(OverlapError));
                 } else if index != 0 && vec[index - 1].0.end > start {
-                    assert_eq!(res, Err(Overlap));
+                    assert_eq!(res, Err(OverlapError));
                 } else {
                     vec.insert(index, (RangeInclusive { start, end }, value));
                     assert_eq!(res, Ok(()));
@@ -301,7 +300,7 @@ fn run<
                                 index -= 1;
                             }
                         }
-                        CursorMutAction::InsertBefore { start, end, value } => {
+                        CursorMutAction::Insert { start, end, value } => {
                             let range = if vec.is_empty() {
                                 RangeInclusive { start, end }
                             } else if index == vec.len() {
@@ -309,15 +308,8 @@ fn run<
                             } else {
                                 vec[index].0.clone()
                             };
-                            cursor.insert_before(range.clone(), value).unwrap();
+                            cursor.insert(range.clone(), value);
                             vec.insert(index, (range, value));
-                        }
-                        CursorMutAction::InsertAfter(value) => {
-                            if index != vec.len() {
-                                let key = vec[index].0.clone();
-                                cursor.insert_after(key.clone(), value).unwrap();
-                                vec.insert(index + 1, (key, value));
-                            }
                         }
                         CursorMutAction::Replace(value) => {
                             if index != vec.len() {

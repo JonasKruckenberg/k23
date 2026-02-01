@@ -36,6 +36,10 @@ macro_rules! sve_compare {
     }
 }
 
+impl_fallback! {
+    u128
+}
+
 impl SimdSearch for u8 {
     const SIMD_WIDTH: usize = 64;
     #[inline]
@@ -76,4 +80,3 @@ impl SimdSearch for u64 {
         sve_compare!(search, data, "d", "lo")
     }
 }
-impl SimdSearch for u128 {}

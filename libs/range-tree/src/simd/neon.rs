@@ -2,6 +2,10 @@ use core::arch::aarch64::*;
 
 use super::{SimdSearch, exact_div_unchecked};
 
+impl_fallback! {
+    u128
+}
+
 impl SimdSearch for u8 {
     const SIMD_WIDTH: usize = 64;
     #[inline]
@@ -79,4 +83,3 @@ impl SimdSearch for u64 {
         unsafe { exact_div_unchecked(low.trailing_zeros() as usize, 8) }
     }
 }
-impl SimdSearch for u128 {}

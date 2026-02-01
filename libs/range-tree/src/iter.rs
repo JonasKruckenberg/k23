@@ -1,4 +1,5 @@
-use alloc::alloc::{Allocator, Global};
+use alloc::alloc::Global;
+use core::alloc::Allocator;
 use core::hint;
 use core::iter::FusedIterator;
 use core::mem::{self, ManuallyDrop};
@@ -32,6 +33,7 @@ impl<I: RangeTreeInteger> RawIter<I> {
     /// `leaf_pool` must point to the `NodePool` for leaf nodes in the tree.
     #[inline]
     unsafe fn is_end<V>(&self, leaf_pool: &NodePool<I, V>) -> bool {
+        // Safety: ensured by caller
         unsafe { self.node.pivot(self.pos, leaf_pool) == I::MAX }
     }
 
@@ -43,6 +45,7 @@ impl<I: RangeTreeInteger> RawIter<I> {
     /// `leaf_pool` must point to the `NodePool` for leaf nodes in the tree.
     #[inline]
     unsafe fn next_pivot<V>(&self, leaf_pool: &NodePool<I, V>) -> I::Raw {
+        // Safety: ensured by caller
         unsafe { self.node.pivot(self.pos, leaf_pool) }
     }
 
@@ -53,32 +56,34 @@ impl<I: RangeTreeInteger> RawIter<I> {
     /// `leaf_pool` must point to the `NodePool` for leaf nodes in the tree.
     #[inline]
     pub(crate) unsafe fn next<V>(&mut self, leaf_pool: &NodePool<I, V>) -> Option<(I, NonNull<V>)> {
-        // Get the current element that will be returned.
-        let pivot = unsafe { I::from_raw(self.node.pivot(self.pos, leaf_pool))? };
-        let value = unsafe { self.node.values_ptr(leaf_pool).add(self.pos.index()) };
+        // Safety: iterators only operate on leaf nodes
+        unsafe {
+            // Get the current element that will be returned.
+            let pivot = I::from_raw(self.node.pivot(self.pos, leaf_pool))?;
+            let value = self.node.values_ptr(leaf_pool).add(self.pos.index());
 
-        // First, try to move to the next element in the current leaf.
-        self.pos = unsafe { self.pos.next() };
+            // First, try to move to the next element in the current leaf.
+            self.pos = self.pos.next();
 
-        // If we reached the end of the leaf then we need to advance to the next
-        // leaf node.
-        if unsafe { self.is_end(leaf_pool) } {
-            // If we've reached the end of the tree then we can leave the
-            // iterator pointing to an `Int::MAX` pivot.
-            if let Some(next_leaf) = unsafe { self.node.next_leaf(leaf_pool) } {
-                self.node = next_leaf;
-                self.pos = NodePos::ZERO;
+            // If we reached the end of the leaf then we need to advance to the next
+            // leaf node.
+            // Safety: iterators only operate on leaf nodes
+            if self.is_end(leaf_pool) {
+                // If we've reached the end of the tree then we can leave the
+                // iterator pointing to an `Int::MAX` pivot.
+                if let Some(next_leaf) = self.node.next_leaf(leaf_pool) {
+                    self.node = next_leaf;
+                    self.pos = NodePos::ZERO;
 
-                // The tree invariants guarantee that leaf nodes are always at least
-                // half full, except if this is the root node. However this can't be the
-                // root node since there is more than one node.
-                unsafe {
+                    // Safety: The tree invariants guarantee that leaf nodes are always at least
+                    // half full, except if this is the root node. However this can't be the
+                    // root node since there is more than one node.
                     hint::assert_unchecked(!self.is_end(leaf_pool));
                 }
             }
-        }
 
-        Some((pivot, value.cast()))
+            Some((pivot, value.cast()))
+        }
     }
 }
 
@@ -93,6 +98,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Iter<'a, I, V, A> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
+        // Safety: iterators only operate on leaf nodes
         unsafe {
             self.raw.next(&self.tree.leaf).map(|(end, value)| {
                 let (start, value) = value.as_ref();
@@ -129,6 +135,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for IterMut<'a, I, V, A> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
+        // Safety: iterators only operate on leaf nodes
         unsafe {
             self.raw.next(&self.tree.leaf).map(|(end, mut value)| {
                 let (start, value) = value.as_mut();
@@ -157,6 +164,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> Iterator for IntoIter<I, V, A> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         // Read the element out of the tree without touching the pivot.
+        // Safety: iterators only operate on leaf nodes
         unsafe {
             self.raw.next(&self.tree.leaf).map(|(end, value)| {
                 let (start, value) = value.read();
@@ -176,7 +184,10 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for IntoIter<I, V, A> {
     fn drop(&mut self) {
         // Ensure all remaining elements are dropped.
         if mem::needs_drop::<V>() {
+            // Safety: `IntoIter` was created from a `RangeTree` so the allocators always match
             while let Some((_pivot, value_ptr)) = unsafe { self.raw.next(&self.tree.leaf) } {
+                // Safety: `RawIter` yields only entries where `pivot` is non-max, meaning the value
+                // is present and initialized.
                 unsafe {
                     value_ptr.drop_in_place();
                 }
@@ -184,6 +195,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> Drop for IntoIter<I, V, A> {
         }
 
         // Then release the allocations for the tree without dropping elements.
+        // Safety: `IntoIter` was created from a `RangeTree` so the allocators always match
         unsafe {
             let tree = &mut *self.tree;
             tree.internal.clear_and_free(&tree.alloc);
@@ -205,6 +217,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Ranges<'a, I, V, A> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
+        // Safety: iterators only operate on leaf nodes
         unsafe {
             self.raw.next(&self.tree.leaf).map(|(end, value)| {
                 let (start, _) = value.as_ref();
@@ -240,6 +253,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Values<'a, I, V, A> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
+        // Safety: iterators only operate on leaf nodes
         unsafe {
             self.raw.next(&self.tree.leaf).map(|(_pivot, value_ptr)| {
                 let (_, value) = value_ptr.as_ref();
@@ -271,6 +285,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for ValuesMut<'a, I, V, A>
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
+        // Safety: iterators only operate on leaf nodes
         unsafe {
             self.raw
                 .next(&self.tree.leaf)
@@ -296,6 +311,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for Range<'a, I, V, A> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
+        // Safety: iterators only operate on leaf nodes
         unsafe {
             if I::Int::cmp(self.raw.next_pivot(&self.tree.leaf), self.end).is_ge() {
                 return None;
@@ -338,6 +354,7 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for RangeMut<'a, I, V, A> 
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
+        // Safety: iterators only operate on leaf nodes
         unsafe {
             if I::Int::cmp(self.raw.next_pivot(&self.tree.leaf), self.end).is_ge() {
                 return None;
@@ -359,11 +376,6 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Iterator for RangeMut<'a, I, V, A> 
 impl<'a, I: RangeTreeIndex, V, A: Allocator> FusedIterator for RangeMut<'a, I, V, A> {}
 
 /// An iterator over gaps between the ranges of a [`RangeTree`].
-///
-/// Always yields range bounds like this:
-/// - The first pair is always `(Bound::Unbounded, _)` to indicate the gap _before_ all ranges.
-/// - The last pair is always `(_, Bound::Unbounded)` to indicate the gap _after_ all ranges.
-/// - All pairs in between are of shape `(Bound::Included, Bound::Excluded)`.
 pub struct Gaps<'a, I: RangeTreeIndex, V, A: Allocator = Global> {
     inner: Ranges<'a, I, V, A>,
     prev_end: Option<Bound<I>>,
@@ -432,15 +444,21 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         let mut height = self.height;
         let mut node = self.root;
         while let Some(down) = height.down() {
+            // Safety: `height > LEAF` so this MUST be an internal node
             let pivots = unsafe { node.pivots(&self.internal) };
+            // Safety: ensured by `RangeTreeInteger` trait
             let pos = unsafe { I::Int::search(pivots, search) };
+            // Safety: `height > LEAF` so this MUST be an internal node AND `pos` returned by `search`
+            // points to an initialized entry.
             node = unsafe { node.value(pos, &self.internal).assume_init_read().0 };
             height = down;
         }
 
         // Select the first leaf element with pivot greater than or equal to the
         // search pivot.
+        // Safety: we reached `height == LEAF` so this MUST be a leaf
         let pivots = unsafe { node.pivots(&self.leaf) };
+        // Safety: ensured by `RangeTreeInteger` trait
         let pos = unsafe { I::Int::search(pivots, search) };
         RawIter { node, pos }
     }
@@ -560,6 +578,12 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         }
     }
 
+    /// An iterator over gaps between the ranges of a [`RangeTree`].
+    ///
+    /// Always yields range bounds like this:
+    /// - The first pair is always `(Bound::Unbounded, _)` to indicate the gap _before_ all ranges.
+    /// - The last pair is always `(_, Bound::Unbounded)` to indicate the gap _after_ all ranges.
+    /// - All pairs in between are of shape `(Bound::Included, Bound::Excluded)`.
     pub fn gaps(&self) -> Gaps<'_, I, V, A> {
         Gaps {
             inner: self.ranges(),

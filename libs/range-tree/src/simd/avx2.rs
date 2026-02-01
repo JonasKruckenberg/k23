@@ -5,6 +5,10 @@ use core::arch::x86_64::*;
 
 use super::{SimdSearch, exact_div_unchecked};
 
+impl_fallback! {
+    u128
+}
+
 #[inline]
 #[target_feature(enable = "avx2")]
 unsafe fn search8(pivots: *const i8, search: i8) -> usize {
@@ -116,4 +120,3 @@ impl SimdSearch for u64 {
         unsafe { search64(pivots.cast(), search as i64) }
     }
 }
-impl SimdSearch for u128 {}
