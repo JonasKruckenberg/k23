@@ -39,8 +39,7 @@
 //!   - Since nodes can only have `B - 1` elements, the last 2 pivots must have a
 //!     value of `I::MAX`.
 
-use alloc::alloc::Allocator;
-use core::alloc::{AllocError, Layout};
+use core::alloc::{AllocError, Allocator, Layout};
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::ptr::NonNull;
@@ -73,15 +72,16 @@ pub(crate) struct NodePos<I: RangeTreeInteger> {
 macro_rules! pos {
     ($expr:expr) => {{
         const { assert!($expr < I::Int::B) };
-        #[allow(unused_unsafe, reason = "macro")]
-        unsafe {
-            $crate::node::NodePos::<I::Int>::new_unchecked($expr)
+        #[allow(unused_unsafe, reason = "inside macro")]
+        const {
+            // Safety: we checked the position to be `< B` above
+            unsafe { $crate::node::NodePos::<I::Int>::new_unchecked($expr) }
         }
     }};
 }
 
 impl<I: RangeTreeInteger> NodePos<I> {
-    /// Returns a `NodePos` pointing to the first element of a node.
+    /// A `NodePos` pointing to the first element of a node.
     pub(crate) const ZERO: Self = Self {
         pos: 0,
         marker: PhantomData,
@@ -93,6 +93,10 @@ impl<I: RangeTreeInteger> NodePos<I> {
     ///
     /// The index must be less than `I::B`.
     #[inline]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "B is *much less* than u32::MAX, this can not truncate"
+    )]
     pub(crate) const unsafe fn new_unchecked(pos: usize) -> Self {
         debug_assert!(pos < I::B);
         Self {
@@ -138,6 +142,10 @@ impl<I: RangeTreeInteger> NodePos<I> {
     /// If this position is in the right half of a node, returns the equivalent
     /// position in the destination node after the split.
     #[inline]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "B is *much less* than u32::MAX, this can not truncate"
+    )]
     pub(crate) fn split_right_half(self) -> Option<Self> {
         if self.index() >= I::B / 2 {
             Some(Self {
@@ -174,8 +182,9 @@ impl NodeRef {
     #[inline]
     unsafe fn pivots_ptr<I: RangeTreeInteger, V>(self, pool: &NodePool<I, V>) -> NonNull<I::Raw> {
         #[cfg(debug_assertions)]
-        pool.validate_noderef(self);
+        self.assert_valid(pool);
 
+        // Safety: ensured by caller implementation of the node pool and node layout
         unsafe { pool.ptr.byte_add(self.0 as usize).cast() }
     }
 
@@ -190,9 +199,10 @@ impl NodeRef {
         pool: &NodePool<I, V>,
     ) -> NonNull<MaybeUninit<V>> {
         #[cfg(debug_assertions)]
-        pool.validate_noderef(self);
+        self.assert_valid(pool);
 
-        let values_offset = const { node_layout::<I, V>().1 };
+        let (_, values_offset, _) = const { node_layout::<I, V>() };
+        // Safety: ensured by caller implementation of the node pool and node layout
         unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
             ptr.byte_add(values_offset).cast::<MaybeUninit<V>>()
@@ -210,8 +220,9 @@ impl NodeRef {
         pool: &NodePool<I, V>,
     ) -> NodePos<I> {
         #[cfg(debug_assertions)]
-        pool.validate_noderef(self);
+        self.assert_valid(pool);
 
+        // Safety: ensured by caller implementation of the node pool and node layout
         unsafe { I::search(self.pivots(pool), I::MAX) }
     }
 
@@ -226,8 +237,9 @@ impl NodeRef {
         pool: &NodePool<I, V>,
     ) -> NodePos<I> {
         #[cfg(debug_assertions)]
-        pool.validate_noderef(self);
+        self.assert_valid(pool);
 
+        // Safety: ensured by caller implementation of the node pool and node layout
         unsafe { I::search(self.pivots(pool), I::MAX).next() }
     }
 
@@ -238,6 +250,7 @@ impl NodeRef {
     /// `self` must be allocated from `pool`.
     #[inline]
     pub(crate) unsafe fn pivots<I: RangeTreeInteger, V>(self, pool: &NodePool<I, V>) -> &I::Pivots {
+        // Safety: ensured by caller implementation of the node pool and node layout
         unsafe { self.pivots_ptr(pool).cast::<I::Pivots>().as_ref() }
     }
 
@@ -252,6 +265,7 @@ impl NodeRef {
         pos: NodePos<I>,
         pool: &NodePool<I, V>,
     ) -> I::Raw {
+        // Safety: ensured by caller implementation of the node pool and node layout
         unsafe { self.pivots_ptr(pool).add(pos.index()).read() }
     }
 
@@ -267,6 +281,7 @@ impl NodeRef {
         pos: NodePos<I>,
         pool: &mut NodePool<I, V>,
     ) {
+        // Safety: ensured by caller implementation of the node pool and node layout
         unsafe { self.pivots_ptr(pool).add(pos.index()).write(pivot) }
     }
 
@@ -281,6 +296,7 @@ impl NodeRef {
         pos: NodePos<I>,
         pool: &NodePool<I, V>,
     ) -> &MaybeUninit<V> {
+        // Safety: ensured by caller implementation of the node pool and node layout
         unsafe { self.values_ptr(pool).add(pos.index()).as_ref() }
     }
 
@@ -295,6 +311,7 @@ impl NodeRef {
         pos: NodePos<I>,
         pool: &mut NodePool<I, V>,
     ) -> &mut MaybeUninit<V> {
+        // Safety: ensured by caller implementation of the node pool and node layout
         unsafe { self.values_ptr(pool).add(pos.index()).as_mut() }
     }
 
@@ -311,9 +328,10 @@ impl NodeRef {
         pool: &NodePool<I, V>,
     ) -> Option<NodeRef> {
         #[cfg(debug_assertions)]
-        pool.validate_noderef(self);
+        self.assert_valid(pool);
 
-        let next_leaf_offset = const { node_layout::<I, V>().2 };
+        let (_, _, next_leaf_offset) = const { node_layout::<I, V>() };
+        // Safety: ensured by caller implementation of the node pool and node layout
         let next_leaf = unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
             ptr.byte_add(next_leaf_offset).cast::<NodeRef>().read()
@@ -335,9 +353,11 @@ impl NodeRef {
         pool: &mut NodePool<I, V>,
     ) {
         #[cfg(debug_assertions)]
-        pool.validate_noderef(self);
+        self.assert_valid(pool);
 
-        let next_leaf_offset = const { node_layout::<I, V>().2 };
+        let (_, _, next_leaf_offset) = const { node_layout::<I, V>() };
+
+        // Safety: ensured by caller implementation of the node pool and node layout
         unsafe {
             let ptr = pool.ptr.byte_add(self.0 as usize);
             ptr.byte_add(next_leaf_offset)
@@ -367,6 +387,7 @@ impl NodeRef {
     ) {
         debug_assert!(node_size <= I::B);
         debug_assert!(node_size > pos.index());
+        // Safety: ensured by caller implementation of the node pool
         unsafe {
             let ptr = self.pivots_ptr(pool).add(pos.index());
             let count = node_size - pos.index() - 1;
@@ -400,6 +421,7 @@ impl NodeRef {
     ) {
         debug_assert!(node_size <= I::B);
         debug_assert!(node_size > pos.index());
+        // Safety: ensured by caller implementation of the node pool
         unsafe {
             let ptr = self.values_ptr(pool).add(pos.index());
             let count = node_size - pos.index() - 1;
@@ -421,6 +443,7 @@ impl NodeRef {
         pos: NodePos<I>,
         pool: &mut NodePool<I, V>,
     ) {
+        // Safety: ensured by caller implementation of the node pool
         unsafe {
             let ptr = self.pivots_ptr(pool).add(pos.index());
             let count = I::B - pos.index() - 1;
@@ -442,6 +465,7 @@ impl NodeRef {
         pos: NodePos<I>,
         pool: &mut NodePool<I, V>,
     ) {
+        // Safety: ensured by caller implementation of the node pool
         unsafe {
             let ptr = self.values_ptr(pool).add(pos.index());
             let count = I::B - pos.index() - 1;
@@ -463,6 +487,7 @@ impl NodeRef {
         dest: UninitNodeRef,
         pool: &mut NodePool<I, V>,
     ) -> NodeRef {
+        // Safety: ensured by caller and const params
         unsafe {
             self.pivots_ptr(pool)
                 .add(I::B / 2)
@@ -502,6 +527,7 @@ impl NodeRef {
         count: usize,
         pool: &mut NodePool<I, V>,
     ) {
+        // Safety: ensured by caller
         unsafe {
             self.pivots_ptr(pool)
                 .add(offset.index())
@@ -510,6 +536,12 @@ impl NodeRef {
                 .add(offset.index())
                 .copy_from_nonoverlapping(src.values_ptr(pool), count);
         }
+    }
+
+    pub(crate) fn assert_valid<I: RangeTreeInteger, V>(self, pool: &NodePool<I, V>) {
+        let node_layout = const { node_layout::<I, V>().0 };
+        assert_eq!(self.0 as usize % node_layout.size(), 0);
+        assert!(self.0 < pool.len);
     }
 }
 
@@ -530,6 +562,7 @@ impl UninitNodeRef {
         self,
         pool: &mut NodePool<I, V>,
     ) -> NodeRef {
+        // Safety: ensured by caller
         unsafe {
             let ptr = self.0.pivots_ptr(pool).cast::<MaybeUninit<I::Raw>>();
             // Make sure not to create a reference to uninitialized memory.
@@ -654,7 +687,10 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
                 "exceeded RangeTree maximum allocation size"
             );
             self.ptr = alloc.allocate(new_layout)?.cast();
-            self.capacity = new_layout.size() as u32;
+
+            debug_assert!(u32::try_from(new_layout.size()).is_ok());
+            // Safety: layouts `> u32::MAX` are very unlikely AND we check this with debug-assertions enabled.
+            self.capacity = unsafe { u32::try_from(new_layout.size()).unwrap_unchecked() };
         } else {
             let old_layout = unsafe {
                 Layout::from_size_align_unchecked(self.capacity as usize, node_layout.align())
@@ -669,8 +705,12 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
                 new_layout.size() <= MAX_POOL_SIZE,
                 "exceeded RangeTree maximum allocation size"
             );
+            // Safety: we constructed the new layout using the same const params
             self.ptr = unsafe { alloc.grow(self.ptr, old_layout, new_layout)?.cast() };
-            self.capacity = new_layout.size() as u32;
+
+            debug_assert!(u32::try_from(new_layout.size()).is_ok());
+            // Safety: layouts `> u32::MAX` are very unlikely AND we check this with debug-assertions enabled.
+            self.capacity = unsafe { u32::try_from(new_layout.size()).unwrap_unchecked() };
         }
 
         Ok(())
@@ -693,6 +733,7 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
             // Freed nodes hold a single `NodeRef` with the next element in the
             // free list.
             let node = UninitNodeRef(NodeRef(self.free_list));
+            // Safety: `free_list` is a node-pointer that is within this allocation by construction
             self.free_list = unsafe { self.ptr.byte_add(self.free_list as usize).cast().read() };
             return Ok(node);
         }
@@ -705,7 +746,11 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
         // grow() will have doubled the capacity or initialized it, which
         // guarantees at least enough space to allocate a single node.
         let node = UninitNodeRef(NodeRef(self.len));
-        self.len += node_layout.size() as u32;
+
+        debug_assert!(u32::try_from(node_layout.size()).is_ok());
+        // Safety: layouts `> u32::MAX` are very unlikely AND we check this with debug-assertions enabled.
+        self.len += unsafe { u32::try_from(node_layout.size()).unwrap_unchecked() };
+
         debug_assert!(self.len <= self.capacity);
         Ok(node)
     }
@@ -718,6 +763,7 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
     #[inline]
     pub(crate) unsafe fn free_node(&mut self, node: NodeRef) {
         // Just add the node to the linked list of freed nodes.
+        // Safety: ensured by caller
         unsafe {
             self.ptr
                 .byte_add(node.0 as usize)
@@ -736,7 +782,10 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
     /// Same as `clear` but then allocates the first node.
     pub(crate) fn clear_and_alloc_node(&mut self) -> UninitNodeRef {
         let node_layout = const { node_layout::<I, V>().0 };
-        self.len = node_layout.size() as u32;
+
+        debug_assert!(u32::try_from(node_layout.size()).is_ok());
+        // Safety: layouts `> u32::MAX` are very unlikely
+        self.len = unsafe { u32::try_from(node_layout.size()).unwrap_unchecked() };
         self.free_list = !0;
         UninitNodeRef(NodeRef::ZERO)
     }
@@ -751,28 +800,21 @@ impl<I: RangeTreeInteger, V> NodePool<I, V> {
     pub(crate) unsafe fn clear_and_free(&mut self, alloc: &impl Allocator) {
         self.clear();
         let node_layout = const { node_layout::<I, V>().0 };
+        // Safety: ensured by caller
         let layout = unsafe {
             Layout::from_size_align_unchecked(self.capacity as usize, node_layout.align())
         };
+        // Safety: ensured by caller
         unsafe {
             alloc.deallocate(self.ptr, layout);
         }
         self.capacity = 0;
-    }
-
-    /// Debug checks to ensure a `NodeRef` is valid.
-    #[inline]
-    pub(crate) fn validate_noderef(&self, node: NodeRef) {
-        let node_layout = const { node_layout::<I, V>().0 };
-        assert_eq!(node.0 as usize % node_layout.size(), 0);
-        assert!(node.0 < self.len);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use alloc::alloc::Global;
-
     use core::num::NonZeroU32;
 
     use super::NodePool;

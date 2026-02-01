@@ -5,6 +5,10 @@ use core::arch::x86_64::*;
 
 use super::SimdSearch;
 
+impl_fallback! {
+    u128
+}
+
 impl SimdSearch for u8 {
     const SIMD_WIDTH: usize = 128;
     #[inline]
@@ -65,4 +69,3 @@ impl SimdSearch for u64 {
         _mm512_kunpackb(a as u16, b as u16).count_ones() as usize
     }
 }
-impl SimdSearch for u128 {}

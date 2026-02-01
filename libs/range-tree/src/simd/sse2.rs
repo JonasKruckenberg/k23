@@ -3,6 +3,8 @@ use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
+use cfg_if::cfg_if;
+
 use super::{SimdSearch, exact_div_unchecked};
 
 #[inline]
@@ -81,6 +83,10 @@ unsafe fn search64(pivots: *const i64, search: i64) -> usize {
     }
 }
 
+impl_fallback! {
+    u128
+}
+
 impl SimdSearch for u8 {
     const SIMD_WIDTH: usize = 32;
     const BIAS: Self = i8::MIN as Self;
@@ -105,15 +111,21 @@ impl SimdSearch for u32 {
         unsafe { search32(pivots.cast(), search as i32) }
     }
 }
-impl SimdSearch for u64 {
-    #[cfg(target_feature = "sse4.2")]
-    const SIMD_WIDTH: usize = 4;
-    #[cfg(target_feature = "sse4.2")]
-    const BIAS: Self = i64::MIN as Self;
-    #[cfg(target_feature = "sse4.2")]
-    #[inline]
-    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
-        unsafe { search64(pivots.cast(), search as i64) }
+
+cfg_if! {
+    if #[cfg(target_feature = "sse4.2")] {
+        impl SimdSearch for u64 {
+            const SIMD_WIDTH: usize = 4;
+            const BIAS: Self = i64::MIN as Self;
+
+            #[inline]
+            unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
+                unsafe { search64(pivots.cast(), search as i64) }
+            }
+        }
+    } else {
+        impl_fallback! {
+            u64
+        }
     }
 }
-impl SimdSearch for u128 {}
