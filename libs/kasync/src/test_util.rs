@@ -55,11 +55,13 @@ fn waker_ref(wake: &Arc<ThreadNotify>) -> WakerRef<'_> {
     );
 
     unsafe fn clone_arc_raw(data: *const ()) -> RawWaker {
+        // Safety: ensured by caller
         unsafe { Arc::increment_strong_count(data.cast::<ThreadNotify>()) }
         RawWaker::new(data, &WAKER_VTABLE)
     }
 
     unsafe fn wake_arc_raw(data: *const ()) {
+        // Safety: ensured by caller
         let arc = unsafe { Arc::from_raw(data.cast::<ThreadNotify>()) };
         ThreadNotify::notify(&arc);
     }
@@ -67,18 +69,21 @@ fn waker_ref(wake: &Arc<ThreadNotify>) -> WakerRef<'_> {
     // used by `waker_ref`
     unsafe fn wake_by_ref_arc_raw(data: *const ()) {
         // Retain Arc, but don't touch refcount by wrapping in ManuallyDrop
+        // Safety: ensured by caller
         let arc = ManuallyDrop::new(unsafe { Arc::from_raw(data.cast::<ThreadNotify>()) });
         ThreadNotify::notify(&arc);
     }
 
     unsafe fn drop_arc_raw(data: *const ()) {
-        drop(unsafe { Arc::from_raw(data.cast::<ThreadNotify>()) })
+        // Safety: ensured by caller
+        drop(unsafe { Arc::from_raw(data.cast::<ThreadNotify>()) });
     }
 
     // simply copy the pointer instead of using Arc::into_raw,
     // as we don't actually keep a refcount by using ManuallyDrop.<
     let ptr = Arc::as_ptr(wake).cast::<()>();
 
+    // Safety: ensured by caller
     let waker = ManuallyDrop::new(unsafe { Waker::from_raw(RawWaker::new(ptr, &WAKER_VTABLE)) });
     WakerRef::new_unowned(waker)
 }
@@ -91,7 +96,7 @@ pub fn block_on<F: Future>(f: F) -> F::Output {
     }
 
     CURRENT_THREAD_NOTIFY.with(|thread_notify| {
-        let waker = waker_ref(&thread_notify);
+        let waker = waker_ref(thread_notify);
         let mut cx = Context::from_waker(&waker);
         loop {
             if let Poll::Ready(t) = f.as_mut().poll(&mut cx) {

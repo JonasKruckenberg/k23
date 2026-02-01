@@ -1,9 +1,10 @@
+use alloc::vec::Vec;
+
 use crate::component::Component;
 use crate::core::{Module, ModuleField, ModuleKind};
 use crate::kw;
 use crate::parser::{Parse, Parser, Result};
 use crate::token::Span;
-use alloc::vec::Vec;
 
 /// A `*.wat` file parser, or a parser for one parenthesized module.
 ///
@@ -25,8 +26,7 @@ impl Wat<'_> {
         }
     }
 
-    /// Encodes this `Wat` to binary form. This calls either [`Module::encode`]
-    /// or [`Component::encode`].
+    /// Encodes this `Wat` to binary form. This calls either [`Module::encode`].
     pub fn encode(&mut self) -> core::result::Result<Vec<u8>, crate::Error> {
         crate::core::EncodeOptions::default().encode_wat(self)
     }

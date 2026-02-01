@@ -19,9 +19,7 @@ use crate::time::{TimeError, Timer};
 ///
 /// # Errors
 ///
-/// This function fails for two reasons:
-/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
-/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
+/// Returns `Err(TimeError::DurationTooLong)` if the requested duration is too big.
 pub fn timeout<F>(
     timer: &Timer,
     duration: Duration,
@@ -40,9 +38,7 @@ where
 ///
 /// # Errors
 ///
-/// This function fails for two reasons:
-/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
-/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
+/// Returns `Err(TimeError::DurationTooLong)` if the requested duration is too big.
 pub fn timeout_at<F>(
     timer: &Timer,
     deadline: Instant,

@@ -67,7 +67,10 @@ impl PhysMap {
     }
 
     /// Translates a `PhysicalAddress` to a `VirtualAddress` through this `PhysMap`.
-    #[expect(clippy::missing_panics_doc, reason = "internal assert")]
+    #[cfg_attr(
+        debug_assertions,
+        expect(clippy::missing_panics_doc, reason = "internal assert")
+    )]
     #[inline]
     pub fn phys_to_virt(&self, phys: PhysicalAddress) -> VirtualAddress {
         let translation_offset = self.translation_offset.map_or(0, |off| off.get());
@@ -96,6 +99,12 @@ impl PhysMap {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::single_range_in_vec_init,
+        reason = "we know what we are doing, thanks"
+    )]
+    #![expect(clippy::identity_op, reason = "stylistic choice")]
+
     use proptest::prelude::*;
 
     use super::*;
@@ -108,12 +117,18 @@ mod tests {
     proptest! {
         #[test]
         fn single_region(base in aligned_virt(any::<VirtualAddress>(), 1*GIB), region_start in aligned_phys(any::<PhysicalAddress>(), 4*KIB), region_size in 0..256*GIB) {
+            prop_assume!(base != VirtualAddress::MIN);
             let map = PhysMap::new(
                 base,
                 [Range::from_start_len(region_start, region_size)],
             );
 
-            prop_assert_eq!(map.translation_offset.unwrap().get(), base.get().wrapping_sub(region_start.get()) as isize);
+            #[expect(
+                clippy::cast_possible_wrap,
+                reason = "this is expected to wrap when the physmap_start is lower than the lowest physical address (e.g. when it is in upper half of memory)"
+            )]
+            { prop_assert_eq!(map.translation_offset.unwrap().get(), base.get().wrapping_sub(region_start.get()) as isize); }
+
             #[cfg(debug_assertions)]
             prop_assert_eq!(
                 map.range,
@@ -130,7 +145,11 @@ mod tests {
                 regions
             );
 
-            prop_assert_eq!(map.translation_offset.unwrap().get(), base.get().wrapping_sub(regions_start.get()) as isize);
+            #[expect(
+                clippy::cast_possible_wrap,
+                reason = "this is expected to wrap when the physmap_start is lower than the lowest physical address (e.g. when it is in upper half of memory)"
+            )]
+            { prop_assert_eq!(map.translation_offset.unwrap().get(), base.get().wrapping_sub(regions_start.get()) as isize); }
         }
 
         #[test]
@@ -144,7 +163,7 @@ mod tests {
 
             let virt = map.phys_to_virt(phys);
 
-            prop_assert_eq!(virt.get(), base.get() + (phys.get() - regions_start.get()))
+            prop_assert_eq!(virt.get(), base.get() + (phys.get() - regions_start.get()));
         }
     }
 

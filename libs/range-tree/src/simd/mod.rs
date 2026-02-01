@@ -222,6 +222,8 @@ unsafe fn exact_div_unchecked(a: usize, b: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::cast_possible_truncation, reason = "truncations are expected")]
+
     use super::SimdSearch;
     use crate::int::{CacheAligned, PIVOTS_BYTES};
 

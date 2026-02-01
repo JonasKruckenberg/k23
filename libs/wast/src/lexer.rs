@@ -1266,7 +1266,7 @@ mod tests {
             let token = get_token(input);
             match token.kind {
                 TokenKind::Whitespace => token.src(input),
-                other => panic!("unexpected {:?}", other),
+                other => panic!("unexpected {other:?}"),
             }
         }
         assert_eq!(get_whitespace(" "), " ");
@@ -1282,7 +1282,7 @@ mod tests {
             let token = get_token(input);
             match token.kind {
                 TokenKind::LineComment => token.src(input),
-                other => panic!("unexpected {:?}", other),
+                other => panic!("unexpected {other:?}"),
             }
         }
         assert_eq!(get_line_comment(";;"), ";;");
@@ -1300,7 +1300,7 @@ mod tests {
             let token = get_token(input);
             match token.kind {
                 TokenKind::BlockComment => token.src(input),
-                other => panic!("unexpected {:?}", other),
+                other => panic!("unexpected {other:?}"),
             }
         }
         assert_eq!(get_block_comment("(;;)"), "(;;)");
@@ -1331,7 +1331,7 @@ mod tests {
             let token = get_token(input);
             match token.kind {
                 TokenKind::String => token.string(input).to_vec(),
-                other => panic!("not keyword {:?}", other),
+                other => panic!("not keyword {other:?}"),
             }
         }
         assert_eq!(&*get_string("\"\""), b"");
@@ -1355,7 +1355,7 @@ mod tests {
         );
 
         for i in 0..=255i32 {
-            let s = format!("\"\\{:02x}\"", i);
+            let s = format!("\"\\{i:02x}\"");
             assert_eq!(&*get_string(&s), &[i as u8]);
         }
     }
@@ -1366,7 +1366,7 @@ mod tests {
             let token = get_token(input);
             match token.kind {
                 TokenKind::Id => token.id(input).unwrap().to_string(),
-                other => panic!("not id {:?}", other),
+                other => panic!("not id {other:?}"),
             }
         }
         assert_eq!(get_id("$x"), "x");
@@ -1384,7 +1384,7 @@ mod tests {
             let token = get_token(input);
             match token.kind {
                 TokenKind::Annotation => token.annotation(input).unwrap().to_string(),
-                other => panic!("not annotation {:?}", other),
+                other => panic!("not annotation {other:?}"),
             }
         }
         assert_eq!(get_annotation("@foo"), "foo");
@@ -1400,7 +1400,7 @@ mod tests {
             let token = get_token(input);
             match token.kind {
                 TokenKind::Keyword => token.keyword(input),
-                other => panic!("not keyword {:?}", other),
+                other => panic!("not keyword {other:?}"),
             }
         }
         assert_eq!(get_keyword("x"), "x");
@@ -1416,7 +1416,7 @@ mod tests {
             let token = get_token(input);
             match token.kind {
                 TokenKind::Reserved => token.reserved(input),
-                other => panic!("not reserved {:?}", other),
+                other => panic!("not reserved {other:?}"),
             }
         }
         assert_eq!(get_reserved("^_x "), "^_x");
@@ -1428,7 +1428,7 @@ mod tests {
             let token = get_token(input);
             match token.kind {
                 TokenKind::Integer(i) => token.integer(input, i).val.to_string(),
-                other => panic!("not integer {:?}", other),
+                other => panic!("not integer {other:?}"),
             }
         }
         assert_eq!(get_integer("1"), "1");
@@ -1448,7 +1448,7 @@ mod tests {
             let token = get_token(input);
             match token.kind {
                 TokenKind::Float(f) => token.float(input, f),
-                other => panic!("not float {:?}", other),
+                other => panic!("not float {other:?}"),
             }
         }
         assert_eq!(

@@ -1,13 +1,13 @@
-use crate::component::*;
-use crate::core::{self, resolve::ResolveCoreType, ValType};
-use crate::kw;
-use crate::names::Namespace;
-use crate::token::Span;
-use crate::token::{Id, Index};
-use crate::Error;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec::Vec;
+
+use crate::component::*;
+use crate::core::resolve::ResolveCoreType;
+use crate::core::{self, ValType};
+use crate::names::Namespace;
+use crate::token::{Id, Index, Span};
+use crate::{Error, kw};
 
 /// Resolve the fields of a component and everything nested within it, changing
 /// `Index::Id` to `Index::Num` and expanding alias syntax sugar.
@@ -856,7 +856,7 @@ impl<'a> Resolver<'a> {
                                     "outer item `{}` is not a module, type, or component",
                                     id.name(),
                                 ),
-                            ))
+                            ));
                         }
                     },
                 },

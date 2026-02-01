@@ -1,4 +1,4 @@
-use wast::parser::{self, Parse, ParseBuffer, Parser, Result};
+use k23_wast::parser::{self, Parse, ParseBuffer, Parser, Result};
 
 pub struct Comments<'a> {
     comments: Vec<&'a str>,
@@ -8,11 +8,7 @@ impl<'a> Parse<'a> for Comments<'a> {
     fn parse(parser: Parser<'a>) -> Result<Comments<'a>> {
         let comments = parser.step(|mut cursor| {
             let mut comments = Vec::new();
-            loop {
-                let (comment, c) = match cursor.comment()? {
-                    Some(pair) => pair,
-                    None => break,
-                };
+            while let Some((comment, c)) = cursor.comment()? {
                 cursor = c;
                 comments.push(match comment.strip_prefix(";;") {
                     Some(rest) => rest,
@@ -48,7 +44,7 @@ fn parse_comments() -> anyhow::Result<()> {
     "#,
     )?;
 
-    let d: Documented<wast::core::Module> = parser::parse(&buf)?;
+    let d: Documented<k23_wast::core::Module> = parser::parse(&buf)?;
     assert_eq!(d.comments.comments, vec![" hello", " again "]);
     drop(d.item);
 
@@ -65,7 +61,7 @@ multiple;)
     "#,
     )?;
 
-    let d: Documented<wast::core::Func> = parser::parse(&buf)?;
+    let d: Documented<k23_wast::core::Func> = parser::parse(&buf)?;
     assert_eq!(
         d.comments.comments,
         vec![" this", " is\non\nmultiple", " lines"]

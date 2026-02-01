@@ -1,14 +1,15 @@
-use crate::annotation;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::mem;
+
 use crate::core::*;
 use crate::encode::Encode;
-use crate::kw;
 use crate::lexer::{Lexer, Token, TokenKind};
 use crate::parser::{Parse, Parser, Result};
 use crate::token::*;
-use alloc::boxed::Box;
-use alloc::string::String;
-use alloc::{vec, vec::Vec};
-use core::mem;
+use crate::{annotation, kw};
 
 /// An expression, or a list of instructions, in the WebAssembly text format.
 ///

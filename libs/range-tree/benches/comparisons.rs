@@ -1,5 +1,6 @@
 #![feature(allocator_api)]
 #![feature(new_range_api)]
+#![expect(clippy::cast_possible_truncation, reason = "not running on 32bit")]
 
 use std::collections::{BTreeMap, Bound};
 use std::hint::black_box;
@@ -37,10 +38,12 @@ impl WAVLEntry {
     }
 }
 
+// Safety: all methods implemented as required
 unsafe impl Linked for WAVLEntry {
     type Handle = Pin<Box<Self>>;
     type Key = u64;
     fn into_ptr(handle: Self::Handle) -> NonNull<Self> {
+        // Safety: the implementation continues to treat the pointer as pinned
         unsafe { NonNull::from(Box::leak(Pin::into_inner_unchecked(handle))) }
     }
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {

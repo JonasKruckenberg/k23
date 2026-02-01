@@ -1,12 +1,11 @@
-use crate::component::*;
-use crate::core;
-use crate::gensym;
-use crate::kw;
-use crate::token::Id;
-use crate::token::{Index, Span};
-use ::core::mem;
 use alloc::vec::Vec;
+
+use ::core::mem;
 use hashbrown::HashMap;
+
+use crate::component::*;
+use crate::token::{Id, Index, Span};
+use crate::{core, gensym, kw};
 
 /// Performs an AST "expansion" pass over the component fields provided.
 ///

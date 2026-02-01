@@ -1,8 +1,9 @@
+use alloc::format;
+use alloc::vec::Vec;
+
 use crate::core::*;
 use crate::token::Index;
 use crate::{Error, gensym};
-use alloc::format;
-use alloc::vec::Vec;
 
 mod deinline_import_export;
 mod names;

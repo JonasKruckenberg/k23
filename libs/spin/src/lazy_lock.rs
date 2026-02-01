@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn lazy_default() {
         loom::model(|| {
-            crate::loom::lazy_static! {
+            loom::lazy_static! {
                 static ref CALLED: AtomicUsize = AtomicUsize::new(0);
             }
 
@@ -204,7 +204,7 @@ mod tests {
 
             assert_eq!(lazy.lock().0, 21);
             assert_eq!(CALLED.load(Ordering::SeqCst), 1);
-        })
+        });
     }
 
     #[test]
@@ -230,7 +230,7 @@ mod tests {
             let y = **SYNC_LAZY - 30;
             assert_eq!(y, 62);
             assert_eq!(CALLED.load(Ordering::SeqCst), 1);
-        })
+        });
     }
 
     #[test]
@@ -259,19 +259,15 @@ mod tests {
 
             assert_eq!(lazy.lock().0, 21);
             assert_eq!(CALLED.load(Ordering::SeqCst), 1);
-        })
+        });
     }
 
     #[test]
     fn static_sync_lazy() {
         loom::model(|| {
-            crate::loom::lazy_static! {
+            loom::lazy_static! {
                 static ref XS: LazyLock<Vec<i32>> = LazyLock::new(|| {
-                    let mut xs = Vec::new();
-                    xs.push(1);
-                    xs.push(2);
-                    xs.push(3);
-                    xs
+                    vec![1, 2, 3]
                 });
             }
 
@@ -280,6 +276,6 @@ mod tests {
             });
 
             assert_eq!(&**XS, &vec![1, 2, 3]);
-        })
+        });
     }
 }

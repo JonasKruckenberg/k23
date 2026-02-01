@@ -1,19 +1,19 @@
+use alloc::borrow::Cow;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::marker;
+
 use crate::Wat;
 #[cfg(feature = "component-model")]
 use crate::component::Component;
 use crate::core::*;
 use crate::encode::Encode;
 use crate::token::*;
-use alloc::borrow::Cow;
-use alloc::vec;
-use alloc::vec::Vec;
-use core::marker;
 
 /// Options that can be specified when encoding a component or a module to
 /// customize what the final binary looks like.
 ///
-/// Methods such as [`Module::encode`], [`Wat::encode`], and
-/// [`Component::encode`] will use the default options.
+/// Methods such as [`Module::encode`], [`Wat::encode`].
 #[derive(Default)]
 pub struct EncodeOptions<'a> {
     #[cfg(feature = "dwarf")]
@@ -574,7 +574,7 @@ impl Index<'_> {
     fn unwrap_u32(&self) -> u32 {
         match self {
             Index::Num(n, _) => *n,
-            Index::Id(n) => panic!("unresolved index in emission: {:?}", n),
+            Index::Id(n) => panic!("unresolved index in emission: {n:?}"),
         }
     }
 }
@@ -583,7 +583,7 @@ impl From<Index<'_>> for u32 {
     fn from(i: Index<'_>) -> Self {
         match i {
             Index::Num(i, _) => i,
-            Index::Id(_) => unreachable!("unresolved index in encoding: {:?}", i),
+            Index::Id(_) => unreachable!("unresolved index in encoding: {i:?}"),
         }
     }
 }

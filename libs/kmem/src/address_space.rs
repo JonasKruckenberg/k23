@@ -209,7 +209,7 @@ impl<A: Arch> HardwareAddressSpace<A, Active> {
     /// #  Safety
     ///
     /// The caller must ensure the address space defined by `arch`, `root_page_table`, and `physmap`
-    /// indeed represents a properly initialized address space according to [`Active`].
+    /// indeed represents a properly initialized address space.
     pub unsafe fn from_parts(arch: A, root_page_table: Table<A, marker::Owned>) -> Self {
         Self {
             root_page_table,
@@ -688,6 +688,8 @@ impl<A: Arch, Phase> HardwareAddressSpace<A, Phase> {
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::undocumented_unsafe_blocks, reason = "is fine in tests")]
+
     use std::alloc::Layout;
     use std::ops::Range;
 
@@ -733,9 +735,9 @@ mod tests {
             let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
 
             assert_eq!(phys, frame);
-            assert_eq!(attrs.allows_read(), true);
-            assert_eq!(attrs.allows_write(), false);
-            assert_eq!(attrs.allows_execution(), false);
+            assert!(attrs.allows_read());
+            assert!(!attrs.allows_write());
+            assert!(!attrs.allows_execution());
             assert_eq!(lvl.page_size(), 4096);
         }
 
@@ -771,9 +773,9 @@ mod tests {
             let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
 
             assert_eq!(phys, frame);
-            assert_eq!(attrs.allows_read(), true);
-            assert_eq!(attrs.allows_write(), false);
-            assert_eq!(attrs.allows_execution(), false);
+            assert!(attrs.allows_read());
+            assert!(!attrs.allows_write());
+            assert!(!attrs.allows_execution());
             assert_eq!(lvl.page_size(), 4096);
 
             // ===== the actual remap part =====
@@ -791,9 +793,9 @@ mod tests {
             let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
 
             assert_eq!(phys, new_frame);
-            assert_eq!(attrs.allows_read(), true);
-            assert_eq!(attrs.allows_write(), false);
-            assert_eq!(attrs.allows_execution(), false);
+            assert!(attrs.allows_read());
+            assert!(!attrs.allows_write());
+            assert!(!attrs.allows_execution());
             assert_eq!(lvl.page_size(), 4096);
         }
 
@@ -829,9 +831,9 @@ mod tests {
             let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
 
             assert_eq!(phys, frame);
-            assert_eq!(attrs.allows_read(), true);
-            assert_eq!(attrs.allows_write(), false);
-            assert_eq!(attrs.allows_execution(), false);
+            assert!(attrs.allows_read());
+            assert!(!attrs.allows_write());
+            assert!(!attrs.allows_execution());
             assert_eq!(lvl.page_size(), 4096);
 
             // ===== the actual remap part =====
@@ -851,9 +853,9 @@ mod tests {
             let (phys, attrs, lvl) = address_space.lookup(page.start, &physmap).unwrap();
 
             assert_eq!(phys, frame);
-            assert_eq!(attrs.allows_read(), false);
-            assert_eq!(attrs.allows_write(), false);
-            assert_eq!(attrs.allows_execution(), true);
+            assert!(!attrs.allows_read());
+            assert!(!attrs.allows_write());
+            assert!(attrs.allows_execution());
             assert_eq!(lvl.page_size(), 4096);
         }
     }

@@ -11,12 +11,11 @@ A lock-free concurrent slab.
 """
 
 [dependencies]
-log.workspace = true
-k23-spin.workspace = true
 k23-cpu-local.workspace = true
+k23-spin.workspace = true
+log.workspace = true
 
 [features]
-loom = []
 
 [lints]
 workspace = true

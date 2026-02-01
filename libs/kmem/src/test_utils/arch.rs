@@ -19,6 +19,7 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EmulateArch")
             .field("machine", &self.machine)
+            .field("asid", &self.asid)
             .finish()
     }
 }
@@ -51,6 +52,7 @@ impl<A: Arch> Arch for EmulateArch<A> {
     }
 
     unsafe fn set_active_table(&self, address: PhysicalAddress) {
+        // Safety: ensured by caller
         unsafe {
             self.machine.set_active_table(address);
         }
@@ -75,6 +77,7 @@ impl<A: Arch> Arch for EmulateArch<A> {
             // Safety: We checked for the absence of an active translation table, meaning we're in
             // "bare" mode and VirtualAddress==PhysicalAddress.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
+            // Safety: ensured by caller
             unsafe { self.machine.read_phys(address) }
         }
     }
@@ -90,6 +93,7 @@ impl<A: Arch> Arch for EmulateArch<A> {
             // Safety: We checked for the absence of an active translation table, meaning we're in
             // "bare" mode and VirtualAddress==PhysicalAddress.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
+            // Safety: ensured by caller
             unsafe { self.machine.write_phys(address, value) }
         }
     }
@@ -122,7 +126,7 @@ impl<A: Arch> Arch for EmulateArch<A> {
             // "bare" mode and VirtualAddress==PhysicalAddress. All other safety invariants are
             // ensured by the caller.
             let address = unsafe { mem::transmute::<VirtualAddress, PhysicalAddress>(address) };
-            self.machine.write_bytes_phys(address, value, count)
+            self.machine.write_bytes_phys(address, value, count);
         }
     }
 }

@@ -11,7 +11,7 @@
 #![allow(edition_2024_expr_fragment_specifier, reason = "vetted usage")]
 #![cfg_attr(
     not(any(target_arch = "riscv32", target_arch = "riscv64")),
-    allow(unused)
+    allow(unused, reason = "")
 )]
 
 mod error;
@@ -40,6 +40,10 @@ pub fn exit(code: i32) -> ! {
     // fall back to a wfi loop if exiting using semihosting failed
     // Safety: inline assembly
     unsafe {
+        #[cfg_attr(
+            not(any(target_arch = "riscv32", target_arch = "riscv64")),
+            expect(clippy::empty_loop, reason = "this IS the pause call")
+        )]
         loop {
             #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
             asm!("wfi");

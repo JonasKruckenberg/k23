@@ -111,6 +111,6 @@ mod tests {
                 }
             }
             assert!(leader_found);
-        })
+        });
     }
 }

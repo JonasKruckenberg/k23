@@ -16,12 +16,19 @@ impl Drop for Memory {
         let regions = mem::take(&mut self.regions);
 
         for (_end, (_start, region, layout)) in regions {
+            // Safety: we allocated the ptr below, we know it is valid
             unsafe { std::alloc::System.deallocate(region.cast(), layout) }
         }
     }
 }
 
 impl Memory {
+    /// Construct a new `Memory` from an iterator of `Layout`s. Each `Layout` will correspond to
+    /// an emulated region of physical memory of the same size and alignment.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the memory allocations fail.
     pub fn new<A: Arch>(region_sizes: impl IntoIterator<Item = Layout>) -> Self {
         let regions = region_sizes
             .into_iter()
@@ -60,6 +67,15 @@ impl Memory {
         Some((*region, offset))
     }
 
+    /// Returns a mutable reference to the memory underlying the emulated physical memory region `range`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `range` is out of bounds for any regions.
+    #[expect(
+        clippy::mut_from_ref,
+        reason = "this is taking &self on purpose to replicate un-synchronized physical memory"
+    )]
     pub fn region(&self, range: Range<PhysicalAddress>, will_write: bool) -> &mut [u8] {
         let Some((mut region, offset)) = self.get_region_containing(range.clone()) else {
             let access_ty = if will_write { "write" } else { "read" };
@@ -70,21 +86,34 @@ impl Memory {
             )
         };
 
+        // Safety: we allocated this during construction
         let region = unsafe { region.as_mut() };
         &mut region[offset..offset + range.len()]
     }
 
+    /// Reads the value from `address` without moving it.
+    ///
+    /// # Safety
+    ///
+    /// Refer to [`Arch::read`].
     pub unsafe fn read<T>(&self, address: PhysicalAddress) -> T {
         let size = size_of::<T>();
         let region = self.region(Range::from_start_len(address, size), false);
 
+        // Safety: we allocated this during construction
         unsafe { region.as_ptr().cast::<T>().read() }
     }
 
+    /// Overwrites the memory location pointed to by `address` .
+    ///
+    /// # Safety
+    ///
+    /// Refer to [`Arch::write`].
     pub unsafe fn write<T>(&self, address: PhysicalAddress, value: T) {
         let size = size_of::<T>();
         let region = self.region(Range::from_start_len(address, size), true);
 
+        // Safety: we allocated this during construction
         unsafe { region.as_mut_ptr().cast::<T>().write(value) }
     }
 

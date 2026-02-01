@@ -29,10 +29,13 @@ pin-project.workspace = true
 futures = { workspace = true, default-features = false }
 
 [dev-dependencies]
-tracing-subscriber = { workspace = true, default-features = true, features = ["env-filter"] }
+tracing-subscriber = { workspace = true, default-features = true, features = [
+  "env-filter",
+] }
 lazy_static.workspace = true
 criterion.workspace = true
 futures = { workspace = true, features = ["alloc"] }
+kasync = { workspace = true, features = ["counters"] }
 
 [target.'cfg(loom)'.dependencies]
 loom.workspace = true

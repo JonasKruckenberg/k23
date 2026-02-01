@@ -1,8 +1,9 @@
+use alloc::vec::Vec;
+
 use crate::component::*;
 use crate::kw;
 use crate::parser::{Cursor, Lookahead1, Parse, Parser, Peek, Result};
 use crate::token::{Id, Index, LParen, NameAnnotation, Span};
-use alloc::vec::Vec;
 
 /// A declared core function.
 ///

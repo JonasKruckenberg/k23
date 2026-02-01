@@ -1,8 +1,9 @@
+use alloc::vec::Vec;
+
 use crate::core::*;
 use crate::kw;
 use crate::parser::{Lookahead1, Parse, Parser, Peek, Result};
 use crate::token::*;
-use alloc::vec::Vec;
 
 /// A defined WebAssembly memory instance inside of a module.
 #[derive(Debug)]

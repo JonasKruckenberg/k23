@@ -4,24 +4,22 @@ valu = "valu"
 fpr = "fpr"
 fle = "fle"
 shll = "shll"
-endianity = "endianity"   # gimli??
-arange = "arange"         # gimli
+endianity = "endianity"                 # gimli??
+arange = "arange"                       # gimli
 pre-empted = "pre-empted"
 SEH = "SEH"
 ands = "ands"
 addd = "addd"
 ratatui = "ratatui"
 datas = "datas"
-rela = "rela" # the relocation format
+rela = "rela"                           # the relocation format
 welp = "welp"
-alo = "alo" # for address-low
+alo = "alo"                             # for address-low
 canonicalizations = "canonicalizations"
-aranges = "aranges" # for address-ranges, used in kaddrline2
+aranges = "aranges"                     # for address-ranges, used in kaddrline2
 
 [default]
-extend-ignore-identifiers-re = [
-    "(?i:WAKE_ALLS)"
-]
+extend-ignore-identifiers-re = ["(?i:WAKE_ALLS)"]
 
 [files]
 extend-exclude = ["**/emit_tests.rs", "tests/testsuite"]

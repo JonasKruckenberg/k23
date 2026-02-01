@@ -67,7 +67,7 @@ cfg_if::cfg_if! {
         where
             F: Fn() + Sync + Send + 'static,
         {
-            f()
+            f();
         }
     }
 }

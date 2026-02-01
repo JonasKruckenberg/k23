@@ -1,9 +1,9 @@
+use alloc::vec::Vec;
+
 use crate::component::*;
-use crate::core;
-use crate::kw;
 use crate::parser::{Parse, Parser, Result};
 use crate::token::{Id, LParen, NameAnnotation, Span};
-use alloc::vec::Vec;
+use crate::{core, kw};
 
 /// A core instance defined by instantiation or exporting core items.
 #[derive(Debug)]

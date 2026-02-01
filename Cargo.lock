@@ -1145,6 +1145,7 @@ dependencies = [
  "k23-panic-unwind",
  "k23-spin",
  "k32-util",
+ "kasync",
  "lazy_static",
  "loom",
  "mycelium-bitfield",

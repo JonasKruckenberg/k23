@@ -1,7 +1,8 @@
+use alloc::vec::Vec;
+
 use crate::annotation;
 use crate::parser::{Parse, Parser, Result};
 use crate::token::Span;
-use alloc::vec::Vec;
 
 /// A custom section within a component.
 #[derive(Debug)]

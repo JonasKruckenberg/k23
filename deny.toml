@@ -1,23 +1,23 @@
 [graph]
 targets = [
-    "riscv64-unknown-none-elf",
-    # You can also specify which target_features you promise are enabled for a
-    # particular target. target_features are currently not validated against
-    # the actual valid features supported by the target architecture.
-    #{ triple = "wasm32-unknown-unknown", features = ["atomics"] },
+  "riscv64-unknown-none-elf",
+  # You can also specify which target_features you promise are enabled for a
+  # particular target. target_features are currently not validated against
+  # the actual valid features supported by the target architecture.
+  #{ triple = "wasm32-unknown-unknown", features = ["atomics"] },
 ]
 
 [licenses]
 allow = [
-    "MIT", # requires license notice
-    "Apache-2.0", # requires license notice
-    "Unicode-3.0", # requires license notice
-    "Apache-2.0 WITH LLVM-exception",
-    "Unicode-3.0",
-    "Zlib"
+  "MIT",                            # requires license notice
+  "Apache-2.0",                     # requires license notice
+  "Unicode-3.0",                    # requires license notice
+  "Apache-2.0 WITH LLVM-exception",
+  "Unicode-3.0",
+  "Zlib",
 ]
 
 [sources]
 allow-git = [
-    "https://github.com/JonasKruckenberg/wasmtime?branch=no_std", # Cranelift no_std fork
+  "https://github.com/JonasKruckenberg/wasmtime?branch=no_std", # Cranelift no_std fork
 ]

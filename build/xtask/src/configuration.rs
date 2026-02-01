@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-#![allow(unused)]
+#![expect(unused, reason = "not used yet")]
 
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
@@ -194,7 +194,7 @@ fn read_and_flatten_toml(
         // Multiple inheritance, applied sequentially
         Item::Value(Value::Array(a)) => {
             let mut doc: Option<toml_edit::DocumentMut> = None;
-            for a in a.iter() {
+            for a in &a {
                 if let Value::String(s) = a {
                     let file = configuration.parent().unwrap().join(s.value());
                     let next: toml_edit::DocumentMut =

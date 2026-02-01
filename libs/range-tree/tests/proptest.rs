@@ -96,9 +96,9 @@ proptest! {
 
         let mut tree: RangeTree<NonZeroU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
 
-        for (idx, range) in input.iter() {
+        for (idx, range) in &input {
             tracing::debug!("inserting range {range:?}");
-            tree.insert(range.clone(), *idx).unwrap();
+            tree.insert(*range, *idx).unwrap();
 
             tree.assert_valid();
         }
@@ -110,7 +110,7 @@ proptest! {
         assert_eq!(
             input
                 .iter()
-                .map(|(_, range)| range.clone())
+                .map(|(_, range)| *range)
                 .collect::<Vec<_>>(),
             ranges
         );
@@ -126,9 +126,9 @@ proptest! {
 
         let mut tree: RangeTree<NonZeroU64, usize, _> = RangeTree::try_new_in(Global).unwrap();
 
-        for (idx, range) in input.iter() {
+        for (idx, range) in &input {
             tracing::debug!("inserting range {range:?}");
-            tree.insert(range.clone(), *idx).unwrap();
+            tree.insert(*range, *idx).unwrap();
 
             tree.assert_valid();
         }
@@ -140,7 +140,7 @@ proptest! {
         assert_eq!(
             input
                 .iter()
-                .map(|(_, range)| range.clone())
+                .map(|(_, range)| *range)
                 .collect::<Vec<_>>(),
             ranges
         );

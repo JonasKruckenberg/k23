@@ -161,7 +161,8 @@ impl Executor {
     ///
     /// # Errors
     ///
-    /// Returns [`AllocError`] when allocation of the task fails.
+    /// Returns [`SpawnError`] when spawning the task failed, either because the runtime is closed OR
+    /// allocation of the task failed.
     #[track_caller]
     pub fn try_spawn<F>(&'static self, future: F) -> Result<JoinHandle<F::Output, ()>, SpawnError>
     where
@@ -179,7 +180,8 @@ impl Executor {
     ///
     /// # Errors
     ///
-    /// Returns [`AllocError`] when allocation of the task fails.
+    /// Returns [`SpawnError`] when spawning the task failed, either because the runtime is closed OR
+    /// allocation of the task failed.
     #[track_caller]
     pub fn try_spawn_with_metadata<F, M>(
         &'static self,
@@ -534,7 +536,7 @@ mod tests {
                 "stopping the executor should always result in a Closed(()) error here",
             );
             assert!(CALLED.load(Ordering::SeqCst));
-        })
+        });
     }
 
     #[test]

@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn sync_once_cell() {
         loom::model(|| {
-            crate::loom::lazy_static! {
+            loom::lazy_static! {
                 static ref ONCE_CELL: OnceLock<i32> = OnceLock::new();
             }
 
@@ -341,7 +341,7 @@ mod tests {
 
             ONCE_CELL.get_or_init(|| panic!("Kaboom!"));
             assert_eq!(ONCE_CELL.get(), Some(&92));
-        })
+        });
     }
 
     #[test]
@@ -357,7 +357,7 @@ mod tests {
     #[test]
     fn sync_once_cell_drop() {
         loom::model(|| {
-            crate::loom::lazy_static! {
+            loom::lazy_static! {
                 static ref DROP_CNT: AtomicUsize = AtomicUsize::new(0);
             }
             struct Dropper;
@@ -375,7 +375,7 @@ mod tests {
             });
 
             assert_eq!(DROP_CNT.load(Ordering::SeqCst), 1);
-        })
+        });
     }
 
     #[test]
@@ -457,8 +457,8 @@ mod tests {
                     res
                 }
             };
-            assert_eq!(fib[5], 8)
-        })
+            assert_eq!(fib[5], 8);
+        });
     }
 
     #[test]
@@ -469,6 +469,6 @@ mod tests {
                 let s = String::new();
                 cell.set(&s).unwrap();
             }
-        })
+        });
     }
 }

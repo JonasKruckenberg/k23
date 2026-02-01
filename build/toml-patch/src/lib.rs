@@ -19,6 +19,12 @@
 //! This crate exposes a single function [`merge_toml_documents`] which does
 //! this for you!
 
+#![expect(
+    clippy::cast_possible_wrap,
+    clippy::missing_errors_doc,
+    reason = "this is fine"
+)]
+
 use std::collections::BTreeMap;
 
 use eyre::{Result, bail, eyre};
@@ -58,7 +64,7 @@ fn compute_offsets(
     patches: &toml_edit::Table,
     offsets: &mut BTreeMap<usize, usize>,
 ) -> Result<()> {
-    for (k, v) in patches.iter() {
+    for (k, v) in patches {
         if let Some(u) = original.get(k) {
             if u.type_name() != v.type_name() {
                 bail!(
@@ -142,7 +148,7 @@ impl VisitMut for TableShiftVisitor {
     fn visit_table_mut(&mut self, t: &mut toml_edit::Table) {
         if let Some(pos) = t.position() {
             let pos: isize = pos.try_into().unwrap();
-            t.set_position((pos + self.offset).try_into().unwrap())
+            t.set_position((pos + self.offset).try_into().unwrap());
         }
         // call the default implementation to recurse
         self.visit_table_like_mut(t);
@@ -282,9 +288,9 @@ mod tests {
         merge_toml_documents(&mut a, b).unwrap();
         if a.to_string() != out {
             eprintln!("patching failed.  Got result:");
-            eprintln!("{}", a.to_string());
+            eprintln!("{a}");
             eprintln!("----------------");
-            eprintln!("{}", out);
+            eprintln!("{out}");
         }
         assert_eq!(a.to_string(), out);
     }

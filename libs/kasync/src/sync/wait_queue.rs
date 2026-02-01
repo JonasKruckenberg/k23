@@ -74,7 +74,7 @@ use crate::sync::wake_batch::WakeBatch;
 /// [wake]: WaitQueue::wake
 /// [wake_all]: WaitQueue::wake_all
 /// [`UnsafeCell`]: UnsafeCell
-/// [ilist]: linked_list::List
+/// [ilist]: List
 #[derive(Debug)]
 pub struct WaitQueue {
     /// The wait maps's state variable.

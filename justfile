@@ -29,52 +29,24 @@ _default:
     @just --list
 
 # Alias for `cargo xtask qemu`
-run configuration args="" *qemu_args="":
-    {{ _cargo }} xtask run {{ configuration }} {{ args }} {{ qemu_args }}
+run config args="" *qemu_args="":
+    {{ _cargo }} xtask run {{ config }} {{ args }} {{ qemu_args }}
 
 # Alias for `cargo xtask build`
-build configuration args="" *qemu_args="":
-    {{ _cargo }} xtask build {{ configuration }} {{ args }} {{ qemu_args }}
+build config args="" *qemu_args="":
+    {{ _cargo }} xtask build {{ config }} {{ args }} {{ qemu_args }}
 
-# quick check for development
-check crate="" *cargo_args="":
-    RUSTFLAGS=-Dwarnings {{ _cargo }} check \
-        {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch" } else { "-p" } }} {{ crate }} \
-        --target configurations/riscv64/riscv64gc-k23-none-kernel.json \
-        --locked \
-        {{ _buildstd }} \
-        {{ _fmt }} \
-        {{ cargo_args }}
-    RUSTFLAGS=-Dwarnings KERNEL=Cargo.toml {{ _cargo }} check \
-        -p loader \
-        --target riscv64gc-unknown-none-elf \
-        {{ _buildstd }} \
-        {{ _fmt }} \
-        {{ cargo_args }}
-
-# run all tests and checks
 preflight crate="" *cargo_args="": (lint crate cargo_args) (test crate cargo_args) (miri crate cargo_args) (loom crate cargo_args)
     typos
 
-# run lints (clippy, rustfmt, docs) for a crate or the entire for the workspace.
-lint crate="" *cargo_args="": (clippy crate cargo_args) (check-fmt crate cargo_args)
+# run lints (`cargo check`, `clippy`, `rustfmt`, docs) for a crate or the entire for the workspace.
+lint crate="" *cargo_args="": (check crate cargo_args) (clippy crate cargo_args) (check-fmt crate cargo_args)
 
-# run clippy on a crate or the entire workspace.
+# run `cargo check` on a crate or the entire workspace.
+check crate="" *cargo_args="":
+
+# run `clippy` on a crate or the entire workspace.
 clippy crate="" *cargo_args="":
-    RUSTFLAGS=-Dwarnings {{ _cargo }} clippy \
-        {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch" } else { "-p" } }} {{ crate }} \
-        --target configurations/riscv64/riscv64gc-k23-none-kernel.json \
-        --locked \
-        {{ _buildstd }} \
-        {{ _fmt_clippy }} \
-        {{ cargo_args }}
-    RUSTFLAGS=-Dwarnings KERNEL=Cargo.toml {{ _cargo }} clippy \
-            -p loader \
-            --target riscv64gc-unknown-none-elf \
-            --locked \
-            {{ _buildstd }} \
-            {{ _fmt_clippy }} \
-            {{ cargo_args }}
 
 # check formatting for a crate or the entire workspace.
 check-fmt crate="" *cargo_args="":
@@ -83,119 +55,199 @@ check-fmt crate="" *cargo_args="":
         {{ _fmt }} \
         {{ cargo_args }}
 
-# ==============================================================================
-# Hosted Testing
-# ==============================================================================
-
-# crates that have hosted tests
+# Hosted test crates (standard test runner)
 _hosted_crates := "-p k23-addr2line -p kmem -p k23-cpu-local -p k23-fastrand -p k23-fdt -p kasync --features counters -p k23-sharded-slab -p k23-spin -p k23-wast -p wavltree"
-# run hosted tests
-test crate="" *cargo_args="": _get-nextest
-    RUSTFLAGS=-Dwarnings {{ _cargo }} {{ _testcmd }} \
-            {{ if crate == "" { _hosted_crates } else { "-p" + crate } }} \
-            --lib \
-            --no-fail-fast \
-            {{ cargo_args }}
 
-# crates that have miri tests
+# Miri test crates (memory safety verification)
 _miri_crates := "-p kasync --features counters -p k23-sharded-slab -p k23-spin -p wavltree"
-# run hosted tests under miri
-miri crate="" *cargo_args="": _get-nextest
-    MIRIFLAGS="{{ env_var_or_default("MIRIFLAGS", "-Zmiri-strict-provenance -Zmiri-disable-isolation") }} -Zmiri-env-forward=RUST_BACKTRACE -Zmiri-env-forward=RUST_LOG" \
-        RUSTFLAGS="{{ env_var_or_default("RUSTFLAGS", "-Dwarnings -Zrandomize-layout") }}" \
-        {{ _cargo }} miri {{ _testcmd }} \
-            {{ if crate == "" { _miri_crates } else { "-p" + crate } }} \
-            --lib \
-            --no-fail-fast \
-            {{ cargo_args }}
 
-# crates that have loom tests
+# Loom test crates (concurrency verification)
 _loom_crates := "-p kasync --features counters -p k23-spin"
-# run hosted tests under loom
-loom crate="" *cargo_args='': _get-nextest
-    #!/usr/bin/env bash
-    set -euo pipefail
-    source "./util/shell.sh"
 
-    export RUSTFLAGS="--cfg loom ${RUSTFLAGS:-}"
-    export LOOM_LOG="${LOOM_LOG:-kasync=trace,cordyceps=trace,debug}"
-    export LOOM_MAX_PREEMPTIONS=2
+# Fuzz test crates
+_fuzz_crates := "-p range-tree -p wavltree"
 
-    # if logging is enabled, also enable location tracking.
-    if [[ "${LOOM_LOG}" != "off" ]]; then
-        export LOOM_LOCATION=true
-        status "Enabled" "logging, LOOM_LOG=${LOOM_LOG}"
-    else
-        status "Disabled" "logging and location tracking"
-    fi
-
-    if [[ "${LOOM_CHECKPOINT_FILE:-}" ]]; then
-        export LOOM_CHECKPOINT_FILE="${LOOM_CHECKPOINT_FILE:-}"
-        export LOOM_CHECKPOINT_INTERVAL="${LOOM_CHECKPOINT_INTERVAL:-100}"
-        status "Saving" "checkpoints to ${LOOM_CHECKPOINT_FILE} every ${LOOM_CHECKPOINT_INTERVAL} iterations"
-    fi
-
-    # if the loom tests fail, we still want to be able to print the checkpoint
-    # location before exiting.
-    set +e
-
-    # run loom tests
-    {{ _cargo }} {{ _testcmd }} \
-        {{ _loom-profile }} \
-        {{ if crate == "" { _loom_crates } else { "-p" + crate } }} \
-        --lib \
-        --no-fail-fast \
-        {{ cargo_args }}
-    status="$?"
-
-    if [[ "${LOOM_CHECKPOINT_FILE:-}" ]]; then
-        status "Checkpoints" "saved to ${LOOM_CHECKPOINT_FILE}"
-    fi
-
-    exit "$status"
+# Cross-compilation test crates (arch-specific implementations)
+_cross_crates := "-p range-tree -p k23-unwind"
 
 # ==============================================================================
-# On-Target Testing
+# Hosted Tests
 # ==============================================================================
 
-# run on-target tests for RISCV 64-bit
-test-riscv64 *args='':
-    cargo xtask test configurations/riscv64/qemu.toml --release {{ args }}
+test crate="" *cargo_args="":
+
+test-miri crate="" *cargo_args="":
+
+test-loom crate="" *cargo_args="":
 
 # ==============================================================================
-# Documentation
+# Kernel Tests
 # ==============================================================================
 
-# open the manual in development mode
-manual:
-    cd manual && mdbook serve --open
+# run kernel tests for a specific architecture
+test-kernel arch *args='':
+    {{ _cargo }} xtask test configurations/{{ arch }}/qemu.toml --release {{ args }}
 
-## build documentation for a crate or the entire workspace.
-#build-docs crate="" *cargo_args="":
-#    {{ _rustdoc }} \
-#        {{ if crate == "" { _hosted_crates } else { "-p" + crate } }} \
+# convenience alias for RISCV 64-bit kernel tests
+test-riscv64 *args='': (test-kernel "riscv64" args)
+
+## quick check for development
+#check crate="" *cargo_args="":
+#    RUSTFLAGS=-Dwarnings {{ _cargo }} check \
+#        {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch" } else { "-p" } }} {{ crate }} \
 #        --target configurations/riscv64/riscv64gc-k23-none-kernel.json \
-#        {{ _buildstd }} \
-#        {{ _fmt }} \
-#        {{ cargo_args }}
-#    KERNEL=Cargo.toml {{ _rustdoc }} \
-#            -p loader \
-#            --target riscv64gc-unknown-none-elf \
-#            {{ _buildstd }} \
-#            {{ _fmt }} \
-#            {{ cargo_args }}
-#
-## check documentation for a crate or the entire workspace.
-#check-docs crate="" *cargo_args="": (build-docs crate cargo_args) (test-docs crate cargo_args)
-#
-## test documentation for a crate or the entire workspace.
-#test-docs crate="" *cargo_args="":
-#    {{ _cargo }} test --doc \
-#        {{ if crate == "" { _hosted_crates } else { "-p" + crate } }} \
 #        --locked \
 #        {{ _buildstd }} \
 #        {{ _fmt }} \
 #        {{ cargo_args }}
+#    RUSTFLAGS=-Dwarnings KERNEL=Cargo.toml {{ _cargo }} check \
+#        -p loader \
+#        --target riscv64gc-unknown-none-elf \
+#        {{ _buildstd }} \
+#        {{ _fmt }} \
+#        {{ cargo_args }}
+
+## run clippy on a crate or the entire workspace.
+#clippy crate="" *cargo_args="":
+#    RUSTFLAGS=-Dwarnings {{ _cargo }} clippy \
+#        {{ if crate == "" { "--workspace --exclude loader --exclude xtask --exclude toml-patch" } else { "-p" } }} {{ crate }} \
+#        --target configurations/riscv64/riscv64gc-k23-none-kernel.json \
+#        --locked \
+#        {{ _buildstd }} \
+#        {{ _fmt_clippy }} \
+#        {{ cargo_args }}
+#    RUSTFLAGS=-Dwarnings KERNEL=Cargo.toml {{ _cargo }} clippy \
+#            -p loader \
+#            --target riscv64gc-unknown-none-elf \
+#            --locked \
+#            {{ _buildstd }} \
+#            {{ _fmt_clippy }} \
+#            {{ cargo_args }}
+
+#
+## ==============================================================================
+## Test Configuration
+## ==============================================================================
+#
+
+#
+## ==============================================================================
+## Hosted Testing
+## ==============================================================================
+#
+## run hosted tests
+#test crate="" *cargo_args="": _get-nextest
+#    RUSTFLAGS=-Dwarnings {{ _cargo }} {{ _testcmd }} \
+#            {{ if crate == "" { _hosted_crates } else { "-p" + crate } }} \
+#            --lib \
+#            --no-fail-fast \
+#            {{ cargo_args }}
+#
+## cross-compilation testing (for arch-specific implementations)
+#test-cross target *cargo_args="": _get-nextest
+#    RUSTFLAGS=-Dwarnings {{ _cargo }} {{ _testcmd }} \
+#        {{ _cross_crates }} \
+#        --target {{ target }} \
+#        --lib \
+#        --no-fail-fast \
+#        {{ cargo_args }}
+#
+#miri crate="" *cargo_args="": _get-nextest
+#    MIRIFLAGS="{{ env_var_or_default("MIRIFLAGS", "-Zmiri-strict-provenance -Zmiri-disable-isolation") }} -Zmiri-env-forward=RUST_BACKTRACE -Zmiri-env-forward=RUST_LOG" \
+#        RUSTFLAGS="{{ env_var_or_default("RUSTFLAGS", "-Dwarnings -Zrandomize-layout") }}" \
+#        {{ _cargo }} miri {{ _testcmd }} \
+#            {{ if crate == "" { _miri_crates } else { "-p" + crate } }} \
+#            --lib \
+#            --no-fail-fast \
+#            {{ cargo_args }}
+#
+#loom crate="" *cargo_args='': _get-nextest
+#    #!/usr/bin/env bash
+#    set -euo pipefail
+#    source "./util/shell.sh"
+#
+#    export RUSTFLAGS="--cfg loom ${RUSTFLAGS:-}"
+#    export LOOM_LOG="${LOOM_LOG:-kasync=trace,cordyceps=trace,debug}"
+#    export LOOM_MAX_PREEMPTIONS=2
+#
+#    # if logging is enabled, also enable location tracking.
+#    if [[ "${LOOM_LOG}" != "off" ]]; then
+#        export LOOM_LOCATION=true
+#        status "Enabled" "logging, LOOM_LOG=${LOOM_LOG}"
+#    else
+#        status "Disabled" "logging and location tracking"
+#    fi
+#
+#    if [[ "${LOOM_CHECKPOINT_FILE:-}" ]]; then
+#        export LOOM_CHECKPOINT_FILE="${LOOM_CHECKPOINT_FILE:-}"
+#        export LOOM_CHECKPOINT_INTERVAL="${LOOM_CHECKPOINT_INTERVAL:-100}"
+#        status "Saving" "checkpoints to ${LOOM_CHECKPOINT_FILE} every ${LOOM_CHECKPOINT_INTERVAL} iterations"
+#    fi
+#
+#    # if the loom tests fail, we still want to be able to print the checkpoint
+#    # location before exiting.
+#    set +e
+#
+#    # run loom tests
+#    {{ _cargo }} {{ _testcmd }} \
+#        {{ _loom-profile }} \
+#        {{ if crate == "" { _loom_crates } else { "-p" + crate } }} \
+#        --lib \
+#        --no-fail-fast \
+#        {{ cargo_args }}
+#    status="$?"
+#
+#    if [[ "${LOOM_CHECKPOINT_FILE:-}" ]]; then
+#        status "Checkpoints" "saved to ${LOOM_CHECKPOINT_FILE}"
+#    fi
+#
+#    exit "$status"
+#
+## ##############################################################################
+## Kernel Tests
+## ##############################################################################
+#
+## run kernel tests for a specific architecture
+#test-kernel arch *args='':
+#    cargo xtask test configurations/{{ arch }}/qemu.toml --release {{ args }}
+#
+## convenience alias for RISCV 64-bit kernel tests
+#test-riscv64 *args='': (test-kernel "riscv64" args)
+#
+## ==============================================================================
+## Documentation
+## ==============================================================================
+#
+## open the manual in development mode
+#manual:
+#    cd manual && mdbook serve --open
+#
+### build documentation for a crate or the entire workspace.
+##build-docs crate="" *cargo_args="":
+##    {{ _rustdoc }} \
+##        {{ if crate == "" { _hosted_crates } else { "-p" + crate } }} \
+##        --target configurations/riscv64/riscv64gc-k23-none-kernel.json \
+##        {{ _buildstd }} \
+##        {{ _fmt }} \
+##        {{ cargo_args }}
+##    KERNEL=Cargo.toml {{ _rustdoc }} \
+##            -p loader \
+##            --target riscv64gc-unknown-none-elf \
+##            {{ _buildstd }} \
+##            {{ _fmt }} \
+##            {{ cargo_args }}
+##
+### check documentation for a crate or the entire workspace.
+##check-docs crate="" *cargo_args="": (build-docs crate cargo_args) (test-docs crate cargo_args)
+##
+### test documentation for a crate or the entire workspace.
+##test-docs crate="" *cargo_args="":
+##    {{ _cargo }} test --doc \
+##        {{ if crate == "" { _hosted_crates } else { "-p" + crate } }} \
+##        --locked \
+##        {{ _buildstd }} \
+##        {{ _fmt }} \
+##        {{ cargo_args }}
 
 # ==============================================================================
 # Private state and commands

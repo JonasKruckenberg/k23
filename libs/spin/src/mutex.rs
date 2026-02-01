@@ -67,6 +67,8 @@ unsafe impl lock_api::RawMutex for RawMutex {
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::undocumented_unsafe_blocks, reason = "is fine in tests")]
+
     use core::sync::atomic::AtomicUsize;
 
     use lock_api::RawMutex as _;
@@ -104,13 +106,13 @@ mod tests {
                         #[cfg(loom)]
                         thread::yield_now();
                     }
-                }))
+                }));
             }
 
             for t in threads {
                 t.join().unwrap();
             }
-        })
+        });
     }
 
     #[test]
@@ -139,7 +141,7 @@ mod tests {
             for t in threads {
                 t.join().unwrap();
             }
-        })
+        });
     }
 
     #[test]
@@ -172,6 +174,6 @@ mod tests {
             for t in threads {
                 t.join().unwrap();
             }
-        })
+        });
     }
 }

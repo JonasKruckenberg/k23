@@ -219,7 +219,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         let cursor = self.cursor_at(Bound::Included(search));
         let (range, value) = cursor.iter().next()?;
 
-        if I::Int::cmp(range.start.to_int().to_raw(),  search.to_int().to_raw()).is_le() {
+        if I::Int::cmp(range.start.to_int().to_raw(), search.to_int().to_raw()).is_le() {
             Some(value)
         } else {
             None
@@ -232,7 +232,7 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         let cursor = self.cursor_mut_at(Bound::Included(search));
         let (range, value) = cursor.into_iter_mut().next()?;
 
-        if I::Int::cmp(range.start.to_int().to_raw(),  search.to_int().to_raw()).is_le() {
+        if I::Int::cmp(range.start.to_int().to_raw(), search.to_int().to_raw()).is_le() {
             Some(value)
         } else {
             None
@@ -269,7 +269,11 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         cursor.seek(int_from_pivot(range.end));
 
         if let Some((existing, _)) = cursor.entry()
-            && I::Int::cmp( existing.start.to_int().to_raw(), range.end.to_int().to_raw()).is_lt()
+            && I::Int::cmp(
+                existing.start.to_int().to_raw(),
+                range.end.to_int().to_raw(),
+            )
+            .is_lt()
         {
             return Err(OverlapError);
         }
@@ -298,7 +302,12 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
         let mut cursor = unsafe { CursorMut::uninit(self) };
         cursor.seek(int_from_pivot(search));
 
-        if I::Int::cmp(cursor.range()?.start.to_int().to_raw(), search.to_int().to_raw()).is_le() {
+        if I::Int::cmp(
+            cursor.range()?.start.to_int().to_raw(),
+            search.to_int().to_raw(),
+        )
+        .is_le()
+        {
             Some(cursor.remove().1)
         } else {
             None
@@ -352,6 +361,9 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
                 unsafe { node.pivot(pos, &self.internal) }
             })
         };
+
+        // assert the NodeRef is valid
+        node.assert_valid(&self.internal);
 
         // The last 2 keys must be MAX.
         assert_eq!(keys().nth(I::Int::B - 1).unwrap(), I::Int::MAX);
@@ -430,6 +442,9 @@ impl<I: RangeTreeIndex, V, A: Allocator> RangeTree<I, V, A> {
                 unsafe { node.pivot(pos, &self.leaf) }
             })
         };
+
+        // assert the NodeRef is valid
+        node.assert_valid(&self.leaf);
 
         // The last key must be MAX.
         assert_eq!(keys().nth(I::Int::B - 1).unwrap(), I::Int::MAX);

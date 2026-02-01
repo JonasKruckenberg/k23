@@ -867,10 +867,10 @@ where
         });
 
         cfg_if::cfg_if! {
-            if #[cfg(test)] {
-                let result = ::std::panic::catch_unwind(poll);
-            } else if #[cfg(feature = "k23-unwind")] {
+            if #[cfg(all(feature = "k23-unwind", target_os = "none"))] {
                 let result = k23_panic_unwind::catch_unwind(poll);
+            } else if #[cfg(test)] {
+                let result = ::std::panic::catch_unwind(poll);
             } else {
                 let result = Ok(poll());
             }
@@ -941,6 +941,7 @@ mod tests {
                 42usize,
             )));
 
+            // SAFETY: We created the task with metadata type `usize` above.
             assert_eq!(unsafe { *t1.metadata::<usize>() }, 42);
         });
     }

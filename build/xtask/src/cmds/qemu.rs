@@ -27,7 +27,7 @@ impl Cmd {
     pub fn run(&self, opts: &Options, output: &OutputOptions) -> crate::Result<()> {
         let configuration = Configuration::from_file(&self.configuration)?;
 
-        let image = crate::build::build_loader(&opts, output, &configuration, &self.kernel)?;
+        let image = crate::build::build_loader(opts, output, &configuration, &self.kernel)?;
 
         let mut child = qemu::spawn(&self.qemu_opts, configuration, &image, true, &[])?;
 

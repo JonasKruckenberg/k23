@@ -1,24 +1,21 @@
 name: CI
-
 on:
   push:
   pull_request:
-
 permissions:
   contents: read
-
 env:
   CARGO_TERM_COLOR: always
   CLICOLOR: 1
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   pre_ci:
     uses: dtolnay/.github/.github/workflows/pre_ci.yml@master
-
+  # =============================================================================
+  # Lint Jobs
+  # =============================================================================
   check:
     name: Check
     needs: pre_ci
@@ -36,7 +33,6 @@ jobs:
         run: nix develop --command just check
         env:
           RUSTFLAGS: -Dwarnings
-
   rustfmt:
     name: Rustfmt
     needs: pre_ci
@@ -54,7 +50,6 @@ jobs:
         run: nix develop --command just check-fmt
         env:
           RUSTFLAGS: -Dwarnings
-
   clippy:
     name: Clippy
     needs: pre_ci
@@ -72,7 +67,6 @@ jobs:
         run: nix develop --command just clippy
         env:
           RUSTFLAGS: -Dwarnings
-
   cargo-deny:
     name: Cargo deny
     runs-on: ubuntu-latest
@@ -82,11 +76,21 @@ jobs:
       - uses: actions/checkout@v6
       - name: Check Rust Code
         uses: EmbarkStudios/cargo-deny-action@v2
-
+  typos:
+    name: Typos
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: crate-ci/typos@master
+  # =============================================================================
+  # Hosted Tests (libraries, run on host machine)
+  # =============================================================================
   test-hosted:
     name: Hosted Tests
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
+    needs: [check, rustfmt, clippy]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -96,13 +100,33 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
-      - name: just test-hosted
+      - name: Run hosted tests
         run: nix develop --command just test
-
+  test-hosted-cross:
+    name: Hosted Tests (${{ matrix.target }})
+    needs: [check, rustfmt, clippy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - riscv64gc-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.target }}
+      - uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Run cross-compiled tests
+        run: just test-cross ${{ matrix.target }}
   test-miri:
     name: Miri Tests
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
+    needs: [check, rustfmt, clippy]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -112,13 +136,11 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
-      - name: just test-miri
+      - name: Run Miri tests
         run: nix develop --command just miri
-
   test-loom:
     name: Loom Tests
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
+    needs: [check, rustfmt, clippy]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -128,15 +150,66 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
-      - name: just test-loom
+      - name: Run Loom tests
         run: nix develop --command just loom
-
-  test-riscv64:
-    name: "On-Target Tests: RISCV 64-bit"
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
+  fuzz:
+    name: Fuzz (${{ matrix.target.tuple }}${{ matrix.target.rustflags && format(' {0}', matrix.target.rustflags) || '' }})
+    needs: [check, rustfmt, clippy]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        fuzz-target: [range-tree]
+        target:
+          - tuple: riscv64gc-unknown-linux-gnu
+          - tuple: riscv64gc-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+v
+          - tuple: aarch64-unknown-linux-gnu
+          - tuple: aarch64-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+sve
+          - tuple: x86_64-unknown-linux-gnu
+          - tuple: x86_64-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+sse4.2,+popcnt
+          - tuple: x86_64-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+avx2,+popcnt
+          - tuple: x86_64-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+avx512bw,+popcnt
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.target.tuple }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+      - name: Install Intel SDE
+        if: ${{ matrix.target.tuple == 'x86_64-unknown-linux-gnu' }}
+        uses: petarpetrovt/setup-sde@v2.4
+      - name: Set up Intel SDE as runner
+        if: ${{ matrix.target.tuple == 'x86_64-unknown-linux-gnu' }}
+        run: echo CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="${SDE_PATH}/sde64 -spr --" >> $GITHUB_ENV
+      - name: Setup toolchains for cross compilation and cross testing
+        if: ${{ matrix.target.tuple != 'x86_64-unknown-linux-gnu' }}
+        uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target.tuple }}
+      - name: Run tests
+        run: cargo test -p ${{ matrix.fuzz-target }}
+        env:
+          RUSTFLAGS: -D warnings ${{ matrix.target.rustflags }}
+      - name: Run fuzz target for 60s
+        run: cargo fuzz run ${{ matrix.fuzz-target }} -s none --target ${{ matrix.target.tuple }} -- -max_total_time=60
+        env:
+          RUSTFLAGS: -D warnings ${{ matrix.target.rustflags }}
+  # =============================================================================
+  # Kernel Tests (run on target via QEMU)
+  # =============================================================================
+  test-kernel-riscv64:
+    name: Kernel Tests (riscv64)
+    needs: [check, rustfmt, clippy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - name: Install Nix
@@ -144,5 +217,5 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: Swatinem/rust-cache@v2
-      - name: just test-riscv64
-        run: nix develop --command just test-riscv64
+      - name: Run kernel tests
+        run: nix develop --command just test-kernel riscv64
