@@ -121,6 +121,7 @@ impl<I: RangeTreeInteger, const H: usize> Index<Height<I>> for Stack<I, H> {
     #[inline]
     fn index(&self, index: Height<I>) -> &Self::Output {
         const { assert!(H == max_height::<I>()) };
+        // Safety: `Height` is always `< max_height::<I>()`
         unsafe { self.entries.get_unchecked(index.height) }
     }
 }
@@ -129,6 +130,7 @@ impl<I: RangeTreeInteger, const H: usize> IndexMut<Height<I>> for Stack<I, H> {
     #[inline]
     fn index_mut(&mut self, index: Height<I>) -> &mut Self::Output {
         const { assert!(H == max_height::<I>()) };
+        // Safety: `Height` is always `< max_height::<I>()`
         unsafe { self.entries.get_unchecked_mut(index.height) }
     }
 }

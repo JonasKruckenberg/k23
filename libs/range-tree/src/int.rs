@@ -32,11 +32,7 @@ pub(crate) struct CacheAligned<T>(pub(crate) T);
 
 /// This trait covers all operations that are specific to the integer type used
 /// as a pivot.
-///
-/// # Safety
-///
-/// All items must be implemented as documented.
-pub(crate) unsafe trait RangeTreeInteger: Copy + Debug + Send + Sync + Unpin {
+pub(crate) trait RangeTreeInteger: Copy + Debug + Send + Sync + Unpin {
     /// Number of elements per node, which must be at least 4.
     ///
     /// The number of elements may vary depending on the integer size to fit in
@@ -88,7 +84,7 @@ pub(crate) unsafe trait RangeTreeInteger: Copy + Debug + Send + Sync + Unpin {
 macro_rules! impl_int {
     ($($int:ident $nonzero:ident,)*) => {
         $(
-            unsafe impl RangeTreeInteger for core::num::$nonzero {
+            impl RangeTreeInteger for core::num::$nonzero {
                 const B: usize = PIVOTS_BYTES / mem::size_of::<Self>();
 
                 const MAX: Self::Raw = $int::MAX.wrapping_add(Self::Raw::BIAS);
@@ -102,7 +98,7 @@ macro_rules! impl_int {
 
                 #[inline]
                 fn from_raw(int: Self::Raw) -> Option<Self> {
-                    Self::new(int.wrapping_add(1).wrapping_sub(Self::Raw::BIAS))
+                    Self::new(int.wrapping_sub(Self::Raw::BIAS).wrapping_add(1))
                 }
 
                 #[inline]
@@ -119,6 +115,8 @@ macro_rules! impl_int {
 
                 #[inline]
                 unsafe fn search(pivots: &Self::Pivots, search: Self::Raw) -> NodePos<Self> {
+                    // Safety: the indices returned by `search` are always `< B` as long as
+                    // all other invariants (namely the last value being MAX) are upheld.
                     unsafe { NodePos::new_unchecked(Self::Raw::search(&pivots.0, search)) }
                 }
 

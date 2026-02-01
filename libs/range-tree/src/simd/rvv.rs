@@ -1,7 +1,7 @@
 use core::mem;
 
 use super::SimdSearch;
-use crate::int::pivotS_BYTES;
+use crate::int::PIVOTS_BYTES;
 
 /// Returns the runtime vector length in bytes.
 #[inline]
@@ -29,7 +29,7 @@ macro_rules! rvv_search {
                 concat!("vl", $elen, ".v v8, ({ptr})"),
                 concat!("vms", $cmp, ".vx v8, v8, {search}"),
                 "vcpop.m {out}, v8",
-                vl = in(reg) pivotS_BYTES / mem::size_of::<Self>(),
+                vl = in(reg) PIVOTS_BYTES / mem::size_of::<Self>(),
                 ptr = in(reg) $ptr,
                 search = in(reg) $search,
                 out = lateout(reg) out,
@@ -45,7 +45,7 @@ macro_rules! rvv_search {
                 concat!("vl", $elen, ".v v8, ({ptr})"),
                 concat!("vms", $cmp, ".vx v8, v8, {search}"),
                 "vcpop.m {out}, v8",
-                vl = in(reg) pivotS_BYTES / mem::size_of::<Self>(),
+                vl = in(reg) PIVOTS_BYTES / mem::size_of::<Self>(),
                 ptr = in(reg) $ptr,
                 search = in(reg) $search,
                 out = lateout(reg) out,
@@ -62,6 +62,10 @@ macro_rules! rvv_search {
         }
         out
     }}
+}
+
+impl_fallback! {
+    u128
 }
 
 impl SimdSearch for u8 {
@@ -92,4 +96,3 @@ impl SimdSearch for u64 {
         unsafe { rvv_search!(pivots, search, "e64", "ltu") }
     }
 }
-impl SimdSearch for u128 {}

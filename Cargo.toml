@@ -1,6 +1,6 @@
 [workspace]
-members = ["kernel", "libs/*", "fuzz", "build/*", "loader", "loader/api", "libs/test/macros"]
-exclude = ["libs/_kmem"]
+members = ["kernel", "libs/*", "build/*", "loader", "loader/api", "libs/test/macros"]
+exclude = ["libs/_kmem", "fuzz"]
 resolver = "3"
 
 [workspace.package]
@@ -85,7 +85,6 @@ proptest = "1.8.0"
 proptest-derive = "0.8.0"
 libm = "0.2.15"
 arbitrary = { version = "1.4.2", features = ["derive"] }
-libfuzzer-sys = "0.4"
 
 # build dependencies
 proc-macro2 = "1"

@@ -8,6 +8,25 @@ use cfg_if::cfg_if;
 
 use crate::int::PIVOTS_BYTES;
 
+macro_rules! impl_fallback {
+    ($($int:ident)*) => {
+        $(
+            impl SimdSearch for $int {
+                const SIMD_WIDTH: usize = 1;
+
+                #[inline]
+                unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
+                    // The default implementation relies entirely on the binary search.
+                    assert_eq!(Self::SIMD_WIDTH, 1);
+                    // Safety: ensured by caller
+                    debug_assert!(Self::bias_cmp(search, unsafe { pivots.read() }).is_le());
+                    0
+                }
+            }
+        )*
+    };
+}
+
 cfg_if! {
     if #[cfg(all(
         not(miri),
@@ -63,11 +82,9 @@ cfg_if! {
         mod rvv;
     } else {
         // Default fallback implementation using unrolled binary search
-        impl SimdSearch for u8 {}
-        impl SimdSearch for u16 {}
-        impl SimdSearch for u32 {}
-        impl SimdSearch for u64 {}
-        impl SimdSearch for u128 {}
+        impl_fallback! {
+            u8 u16 u32 u64 u128
+        }
     }
 }
 
@@ -102,7 +119,7 @@ pub(crate) trait SimdSearch: Int {
     /// Number of elements that the SIMD search will process.
     ///
     /// This must be a power of 2.
-    const SIMD_WIDTH: usize = 1;
+    const SIMD_WIDTH: usize;
 
     /// Some architectures (*cough* x86) only support signed SIMD comparisons
     /// so we need to convert unsigned numbers to signed when storing them in
@@ -127,7 +144,7 @@ pub(crate) trait SimdSearch: Int {
     /// # Safety
     ///
     /// `pivots` must have `Self::SIMD_WIDTH` elements and be aligned to
-    /// `pivotS_BYTES` bytes.
+    /// `PIVOTS_BYTES` bytes.
     #[inline]
     unsafe fn search(pivots: &[Self], search: Self) -> usize {
         debug_assert!(pivots.len() >= 2);
@@ -158,6 +175,7 @@ pub(crate) trait SimdSearch: Int {
             // Since elements in a node have a 2/3 chance of being in
             // the first half of the node, this means we have a 2/3 chance of not
             // needing to load the second half of the pivots into cache.
+            // Safety: `mid` is always `< pivots.len`
             let pivot = unsafe { *pivots.get_unchecked(mid - 1) };
             base = hint::select_unpredictable(Self::bias_cmp(search, pivot).is_gt(), mid, base);
 
@@ -166,6 +184,7 @@ pub(crate) trait SimdSearch: Int {
 
         debug_assert_eq!(len, Self::SIMD_WIDTH);
         debug_assert_eq!(base % Self::SIMD_WIDTH, 0);
+        // Safety: ensured by caller AND debug checked above
         base + unsafe { Self::simd_search(pivots.as_ptr().add(base), search) }
     }
 
@@ -179,15 +198,9 @@ pub(crate) trait SimdSearch: Int {
     ///
     /// # Safety
     ///
-    /// `pivots` must have `Self::WIDTH` elements and be aligned to
+    /// `pivots` must have `Self::WIDTH` initialized elements and be aligned to
     /// `size_of::<T>() * Self::WIDTH` bytes.
-    #[inline]
-    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize {
-        // The default implementation relies entirely on the binary search.
-        assert_eq!(Self::SIMD_WIDTH, 1);
-        debug_assert!(Self::bias_cmp(search, unsafe { pivots.read() }).is_le());
-        0
-    }
+    unsafe fn simd_search(pivots: *const Self, search: Self) -> usize;
 }
 
 /// Helper function used by some implementations which generate bit masks with
@@ -197,8 +210,9 @@ pub(crate) trait SimdSearch: Int {
 ///
 /// `b != 0 && a % b == 0`
 #[inline]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "only used by some arch implementations")]
 unsafe fn exact_div_unchecked(a: usize, b: usize) -> usize {
+    // Safety: ensured by caller
     unsafe {
         // This hint allows LLVM to remove unnecessary bit shifts.
         hint::assert_unchecked(a.is_multiple_of(b));
@@ -224,10 +238,12 @@ mod tests {
         pivots.0[len - 1] = max;
         for i in 0..len {
             let generic_result = generic_search(&pivots.0[..len], encode(i));
-            let simd_result = unsafe {
-                T::search(&pivots.0[..len], encode(i))
-            };
-            assert_eq!(generic_result, simd_result, "SIMD search for {i} returned incorrect index {simd_result}. expected {generic_result} {:?}", pivots.0);
+            let simd_result = unsafe { T::search(&pivots.0[..len], encode(i)) };
+            assert_eq!(
+                generic_result, simd_result,
+                "SIMD search for {i} returned incorrect index {simd_result}. expected {generic_result} {:?}",
+                pivots.0
+            );
         }
     }
 

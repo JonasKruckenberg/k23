@@ -30,15 +30,15 @@ impl Ranges {
         }
     }
 
-    pub fn size(mut self, size: ops::Range<u64>) -> Self {
-        self.size = size;
-        self
-    }
-
-    pub fn gap(mut self, gap: ops::Range<u64>) -> Self {
-        self.gap = gap;
-        self
-    }
+    // pub fn size(mut self, size: ops::Range<u64>) -> Self {
+    //     self.size = size;
+    //     self
+    // }
+    //
+    // pub fn gap(mut self, gap: ops::Range<u64>) -> Self {
+    //     self.gap = gap;
+    //     self
+    // }
 
     pub fn shuffled(mut self, shuffled: bool) -> Self {
         self.shuffled = shuffled;
@@ -100,7 +100,7 @@ proptest! {
             tracing::debug!("inserting range {range:?}");
             tree.insert(range.clone(), *idx).unwrap();
 
-            tree.assert_valid(true);
+            tree.assert_valid();
         }
 
         let ranges: Vec<_> = tree.ranges().collect();
@@ -130,7 +130,7 @@ proptest! {
             tracing::debug!("inserting range {range:?}");
             tree.insert(range.clone(), *idx).unwrap();
 
-            tree.assert_valid(true);
+            tree.assert_valid();
         }
 
         let ranges: Vec<_> = tree.ranges().collect();

@@ -96,6 +96,10 @@ unsafe fn search64(pivots: *const i64, search: i64) -> usize {
     unsafe { super::exact_div_unchecked(mask.count_ones() as usize, 2) }
 }
 
+impl_fallback! {
+    u128
+}
+
 impl SimdSearch for u8 {
     const SIMD_WIDTH: usize = 64;
     const BIAS: Self = i8::MIN as Self;
@@ -131,4 +135,3 @@ impl SimdSearch for u64 {
         unsafe { search64(pivots.cast(), search as i64) }
     }
 }
-impl SimdSearch for u128 {}

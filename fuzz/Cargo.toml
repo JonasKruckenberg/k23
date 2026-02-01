@@ -8,11 +8,11 @@ edition = "2024"
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys.workspace = true
-arbitrary.workspace = true
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1.4.2", features = ["derive"] }
 
 # crates being fuzzed
-range-tree.workspace = true
+range-tree = { path = "../libs/range-tree"}
 
 [[bin]]
 name = "range-tree"
@@ -20,3 +20,6 @@ path = "fuzz_targets/range_tree.rs"
 test = false
 doc = false
 bench = false
+
+[profile.release]
+debug-assertions = true
