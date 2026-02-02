@@ -92,7 +92,8 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`AllocError`] when allocation of the task fails.
+    /// Returns [`SpawnError`] when spawning the task failed, either because the runtime is closed OR
+    /// allocation of the task failed.
     #[inline]
     #[track_caller]
     pub fn try_spawn<F>(&self, future: F) -> Result<JoinHandle<F::Output, ()>, SpawnError>
@@ -117,7 +118,8 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`AllocError`] when allocation of the task fails.
+    /// Returns [`SpawnError`] when spawning the task failed, either because the runtime is closed OR
+    /// allocation of the task failed.
     #[inline]
     #[track_caller]
     pub fn try_spawn_with_metadata<F, M>(

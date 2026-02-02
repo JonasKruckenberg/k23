@@ -1,8 +1,9 @@
+use alloc::vec::Vec;
+
 use crate::core::*;
 use crate::kw;
 use crate::parser::{Parse, Parser, Peek, Result};
 use crate::token::{Id, Index, LParen, NameAnnotation, Span};
-use alloc::vec::Vec;
 
 /// A WebAssembly `table` directive in a module.
 #[derive(Debug)]

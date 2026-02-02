@@ -111,7 +111,7 @@ pub trait Arch {
     ///
     /// Note that even if T has size 0, the pointer must be properly aligned.
     ///
-    /// [valid]:
+    /// [valid]: https://doc.rust-lang.org/std/ptr/index.html#safety
     /// [`ptr::read`]: core::ptr::read()
     unsafe fn read<T>(&self, address: VirtualAddress) -> T {
         // Safety: ensured by the caller.
@@ -131,7 +131,7 @@ pub trait Arch {
     ///
     /// Note that even if T has size 0, the pointer must be properly aligned.
     ///
-    /// [valid]:
+    /// [valid]: https://doc.rust-lang.org/std/ptr/index.html#safety
     /// [`ptr::write`]: core::ptr::write()
     unsafe fn write<T>(&self, address: VirtualAddress, value: T) {
         // Safety: ensured by the caller.
@@ -148,6 +148,8 @@ pub trait Arch {
     /// - `address` must be non-null and [valid] for reads of `count` bytes.
     /// - `address` must be properly aligned.
     /// - The memory referenced by the returned slice must not be mutated for the duration its lifetime.
+    ///
+    /// [valid]: https://doc.rust-lang.org/std/ptr/index.html#safety
     unsafe fn read_bytes(&self, address: VirtualAddress, count: usize) -> &[u8] {
         // Safety: ensured by the caller.
         unsafe { slice::from_raw_parts(address.as_ptr(), count) }
@@ -169,7 +171,7 @@ pub trait Arch {
     ///
     /// Note that even if the effectively copied size is 0, the pointer must be properly aligned.
     ///
-    /// [valid]:
+    /// [valid]: https://doc.rust-lang.org/std/ptr/index.html#safety
     /// [`ptr::write_bytes`]: core::ptr::write_bytes()
     ///
     /// Additionally, note using this method one can easily introduce to undefined behavior (UB)

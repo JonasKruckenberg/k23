@@ -1,9 +1,9 @@
+use alloc::vec::Vec;
+
 use crate::component::*;
-use crate::core;
-use crate::kw;
 use crate::parser::{Parse, Parser, Result};
 use crate::token::{Id, NameAnnotation, Span};
-use alloc::vec::Vec;
+use crate::{core, kw};
 
 /// A core WebAssembly module to be created as part of a component.
 ///

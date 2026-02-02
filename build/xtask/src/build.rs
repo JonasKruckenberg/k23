@@ -108,7 +108,7 @@ pub enum CrateToBuild {
 }
 
 impl CrateToBuild {
-    fn as_str(&self) -> &'static str {
+    fn as_str(self) -> &'static str {
         match self {
             CrateToBuild::Kernel => "kernel",
             CrateToBuild::Loader => "loader",
@@ -145,8 +145,8 @@ impl<'a> Cargo<'a> {
             _ => 0,
         });
 
-        let kernel_target = configuration.kernel.target.resolve(&configuration);
-        let loader_target = configuration.loader.target.resolve(&configuration);
+        let kernel_target = configuration.kernel.target.resolve(configuration);
+        let loader_target = configuration.loader.target.resolve(configuration);
 
         let (no_default_features, features, rust_target) = match krate {
             CrateToBuild::Kernel => (
@@ -248,7 +248,7 @@ impl<'a> Cargo<'a> {
     }
 
     pub fn into_cmd(self) -> Command {
-        let mut cmd = Command::new(&self.cargo_path);
+        let mut cmd = Command::new(self.cargo_path);
         cmd.args([
             self.cmd,
             "-p",
@@ -318,18 +318,10 @@ impl<'a> Cargo<'a> {
         if rebuild {
             tracing::debug!("configuration.toml has changed; rebuilding...");
 
-            let kernel_target = self
-                .configuration
-                .kernel
-                .target
-                .resolve(&self.configuration);
+            let kernel_target = self.configuration.kernel.target.resolve(self.configuration);
             cargo_clean(&["kernel"], &kernel_target.to_string())?;
 
-            let loader_target = self
-                .configuration
-                .loader
-                .target
-                .resolve(&self.configuration);
+            let loader_target = self.configuration.loader.target.resolve(self.configuration);
             cargo_clean(&["loader"], &loader_target.to_string())?;
         }
 
@@ -347,7 +339,7 @@ impl<'a> Cargo<'a> {
 fn cargo_clean(names: &[&str], target: &str) -> crate::Result<()> {
     let mut cmd = Command::new("cargo");
     cmd.arg("clean");
-    println!("cleaning {:?}", names);
+    println!("cleaning {names:?}");
     for name in names {
         cmd.arg("-p").arg(name);
     }
@@ -355,7 +347,7 @@ fn cargo_clean(names: &[&str], target: &str) -> crate::Result<()> {
 
     let status = cmd
         .status()
-        .context(format!("failed to cargo clean ({:?})", cmd))?;
+        .context(format!("failed to cargo clean ({cmd:?})"))?;
 
     if !status.success() {
         bail!("command failed, see output for details");

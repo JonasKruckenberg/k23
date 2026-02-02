@@ -1,8 +1,9 @@
+use alloc::vec::Vec;
+
 use super::{ComponentExternName, ItemRef, ItemSigNoName};
 use crate::kw;
 use crate::parser::{Cursor, Parse, Parser, Peek, Result};
 use crate::token::{Id, Index, NameAnnotation, Span};
-use alloc::vec::Vec;
 
 /// An entry in a WebAssembly component's export section.
 #[derive(Debug)]

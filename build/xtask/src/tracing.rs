@@ -72,7 +72,7 @@ impl fmt::Display for ColorMode {
 }
 
 impl ColorMode {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             ColorMode::Auto => "auto",
             ColorMode::Always => "always",
@@ -244,26 +244,26 @@ impl Visit for Visitor<'_, '_> {
             // rest of the message.
             if self.level == Level::INFO && field.name() == Self::MESSAGE {
                 let message = format!("{value:?}");
-                if let Some((tag, message)) = message.as_str().split_once(' ') {
-                    if tag.len() <= Self::INDENT {
-                        let tag = tag.to_title_case();
-                        let style = match self.level {
-                            Level::DEBUG => self.styles.debug,
-                            _ => self.styles.info,
-                        };
+                if let Some((tag, message)) = message.as_str().split_once(' ')
+                    && tag.len() <= Self::INDENT
+                {
+                    let tag = tag.to_title_case();
+                    let style = match self.level {
+                        Level::DEBUG => self.styles.debug,
+                        _ => self.styles.info,
+                    };
 
-                        let _ = write!(
-                            self.writer,
-                            "{:>indent$} ",
-                            tag.style(style),
-                            indent = Self::INDENT
-                        );
+                    let _ = write!(
+                        self.writer,
+                        "{:>indent$} ",
+                        tag.style(style),
+                        indent = Self::INDENT
+                    );
 
-                        let _ = self.writer.write_str(message);
-                        self.is_empty = false;
-                        self.did_cargo_format = true;
-                        return;
-                    }
+                    let _ = self.writer.write_str(message);
+                    self.is_empty = false;
+                    self.did_cargo_format = true;
+                    return;
                 }
             }
 

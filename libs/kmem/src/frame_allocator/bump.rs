@@ -504,6 +504,9 @@ impl<const MAX: usize> ExactSizeIterator for Blocks<MAX> {}
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::undocumented_unsafe_blocks, reason = "is fine in tests")]
+    #![expect(clippy::identity_op, reason = "stylistic choice")]
+
     use core::alloc::Layout;
 
     use super::*;
@@ -626,7 +629,7 @@ mod tests {
             assert!(allocated_size >= 4 * A::GRANULE_SIZE);
 
             // assert each block is aligned correctly
-            for block in blocks.iter() {
+            for block in &blocks {
                 assert!(block.start.is_aligned_to(A::GRANULE_SIZE));
             }
         }
@@ -661,7 +664,7 @@ mod tests {
             assert!(allocated_size >= 4 * A::GRANULE_SIZE);
 
             // assert each block is aligned correctly
-            for block in blocks.iter() {
+            for block in &blocks {
                 assert!(block.start.is_aligned_to(A::GRANULE_SIZE));
 
                 assert_zeroed(block.start, block.len(), &physmap, &arch);
@@ -754,6 +757,8 @@ mod tests {
 
 #[cfg(test)]
 mod proptests {
+    #![expect(clippy::identity_op, reason = "stylistic choice")]
+
     use core::alloc::Layout;
 
     use proptest::prelude::*;
@@ -796,7 +801,7 @@ mod proptests {
                 prop_assert!(allocated_size >= total_size);
 
                 // assert each block is aligned correctly
-                for block in blocks.iter() {
+                for block in &blocks {
                     prop_assert!(block.start.is_aligned_to(A::GRANULE_SIZE));
                 }
             }

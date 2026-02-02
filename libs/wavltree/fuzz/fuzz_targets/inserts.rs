@@ -1,12 +1,12 @@
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
 use std::cmp::Ordering;
 use std::mem::offset_of;
 use std::pin::Pin;
 use std::ptr::NonNull;
-use wavltree::Linked;
-use wavltree::{Links, WAVLTree};
+
+use libfuzzer_sys::fuzz_target;
+use wavltree::{Linked, Links, WAVLTree};
 
 #[derive(Default)]
 struct TestEntry {

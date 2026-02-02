@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+#![expect(clippy::unnecessary_wraps, reason = "must match interface")]
+
 use std::path::Path;
 use std::process::{Command, Stdio};
 

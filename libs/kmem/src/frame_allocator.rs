@@ -55,8 +55,7 @@ pub unsafe trait FrameAllocator {
     /// # Errors
     ///
     /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
-    /// allocator's size or alignment constraints. You can check [`Self::max_alignment_hint`] for
-    /// the largest alignment possibly supported by this allocator.
+    /// allocator's size or alignment constraints.
     fn allocate(
         &self,
         layout: Layout,
@@ -74,8 +73,7 @@ pub unsafe trait FrameAllocator {
     /// # Errors
     ///
     /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
-    /// allocator's size or alignment constraints. You can check [`Self::max_alignment_hint`] for
-    /// the largest alignment possibly supported by this allocator.
+    /// allocator's size or alignment constraints.
     fn allocate_zeroed(
         &self,
         layout: Layout,
@@ -108,8 +106,7 @@ pub unsafe trait FrameAllocator {
     /// # Errors
     ///
     /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
-    /// allocator's size or alignment constraints. You can check [`Self::max_alignment_hint`] for
-    /// the largest alignment possibly supported by this allocator.
+    /// allocator's size or alignment constraints.
     fn allocate_contiguous(&self, layout: Layout) -> Result<PhysicalAddress, AllocError>;
 
     /// Attempts to allocate a contiguous block of physical memory.
@@ -123,8 +120,7 @@ pub unsafe trait FrameAllocator {
     /// # Errors
     ///
     /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
-    /// allocator's size or alignment constraints. You can check [`Self::max_alignment_hint`] for
-    /// the largest alignment possibly supported by this allocator.
+    /// allocator's size or alignment constraints.
     fn allocate_contiguous_zeroed(
         &self,
         layout: Layout,

@@ -1,13 +1,15 @@
+use alloc::boxed::Box;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use alloc::{format, vec};
+
+use hashbrown::HashMap;
+
 use crate::Error;
 use crate::core::resolve::Ns;
 use crate::core::*;
 use crate::names::{Namespace, resolve_error};
 use crate::token::{Id, Index};
-use alloc::boxed::Box;
-use alloc::string::ToString;
-use alloc::vec::Vec;
-use alloc::{format, vec};
-use hashbrown::HashMap;
 
 pub fn resolve<'a>(fields: &mut Vec<ModuleField<'a>>) -> Result<Resolver<'a>, Error> {
     let mut resolver = Resolver::default();

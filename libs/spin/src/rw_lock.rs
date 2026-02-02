@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-//! Implementation based on the `RwSpinLock` from facebook's folly: https://github.com/facebook/folly/blob/main/folly/synchronization/RWSpinLock.h
+//! Implementation based on the `RwSpinLock` from facebook's folly: <https://github.com/facebook/folly/blob/main/folly/synchronization/RWSpinLock.h>
 
 use core::fmt::Formatter;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -211,6 +211,8 @@ fn compare_exchange(
 
 #[cfg(test)]
 mod tests {
+    #![expect(clippy::undocumented_unsafe_blocks, reason = "is fine in tests")]
+
     use lock_api::{
         RawRwLock as _, RawRwLockDowngrade, RawRwLockUpgrade, RawRwLockUpgradeDowngrade,
     };
@@ -490,7 +492,7 @@ mod tests {
                 READS.load(Ordering::Acquire),
                 WRITES.load(Ordering::Acquire),
             );
-        })
+        });
     }
 
     #[test]
@@ -552,6 +554,6 @@ mod tests {
                 WRITES.load(Ordering::Acquire),
                 UPGRADES.load(Ordering::Acquire)
             );
-        })
+        });
     }
 }

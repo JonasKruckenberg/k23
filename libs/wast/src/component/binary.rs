@@ -1,8 +1,5 @@
-use crate::component::*;
-use crate::core;
-use crate::core::EncodeOptions;
-use crate::token::{Id, NameAnnotation};
 use alloc::vec::Vec;
+
 use wasm_encoder::{
     CanonicalFunctionSection, ComponentAliasSection, ComponentCoreTypeEncoder,
     ComponentDefinedTypeEncoder, ComponentExportSection, ComponentImportSection,
@@ -10,6 +7,11 @@ use wasm_encoder::{
     ComponentStartSection, ComponentTypeEncoder, ComponentTypeSection, CoreTypeSection,
     InstanceSection, NameMap, NestedComponentSection, RawSection,
 };
+
+use crate::component::*;
+use crate::core;
+use crate::core::EncodeOptions;
+use crate::token::{Id, NameAnnotation};
 
 pub fn encode(component: &Component<'_>, options: &EncodeOptions) -> Vec<u8> {
     match &component.kind {

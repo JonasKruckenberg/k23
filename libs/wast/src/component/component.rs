@@ -1,11 +1,10 @@
-use crate::annotation;
+use alloc::vec::Vec;
+
 use crate::component::*;
 use crate::core::Producers;
-use crate::kw;
 use crate::parser::{Parse, Parser, Result};
-use crate::token::Index;
-use crate::token::{Id, NameAnnotation, Span};
-use alloc::vec::Vec;
+use crate::token::{Id, Index, NameAnnotation, Span};
+use crate::{annotation, kw};
 
 /// A parsed WebAssembly component module.
 #[derive(Debug)]

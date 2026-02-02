@@ -197,7 +197,7 @@ impl<T> CheckedMaybeUninit<T> {
     ///
     /// On top of that, all additional invariants of the type `T` must be
     /// satisfied, as the `Drop` implementation of `T` (or its members) may
-    /// rely on this. For example, setting a [`alloc::vec::Vec<T>`] to an invalid but
+    /// rely on this. For example, setting a `alloc::vec::Vec<T>` to an invalid but
     /// non-null address makes it initialized (under the current implementation;
     /// this does not constitute a stable guarantee), because the only
     /// requirement the compiler knows about it is that the data pointer must be

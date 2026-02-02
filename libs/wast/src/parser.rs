@@ -395,14 +395,8 @@ impl ParseBuffer<'_> {
         })
     }
 
-    /// Indicates whether the [`Expression::instr_spans`] field will be filled
+    /// Indicates whether the [`crate::core::Expression::instr_spans`] field will be filled
     /// in.
-    ///
-    /// This is useful when enabling DWARF debugging information via
-    /// [`EncodeOptions::dwarf`], for example.
-    ///
-    /// [`Expression::instr_spans`]: crate::core::Expression::instr_spans
-    /// [`EncodeOptions::dwarf`]: crate::core::EncodeOptions::dwarf
     pub fn track_instr_spans(&mut self, track: bool) -> &mut Self {
         self.track_instr_spans = track;
         self

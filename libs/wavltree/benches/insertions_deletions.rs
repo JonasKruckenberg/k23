@@ -1,3 +1,8 @@
+#![expect(
+    clippy::undocumented_unsafe_blocks,
+    reason = "fine in tests/benchmarks"
+)]
+
 use std::fmt;
 use std::mem::offset_of;
 use std::pin::Pin;
@@ -5,7 +10,7 @@ use std::ptr::NonNull;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use rand::prelude::SliceRandom;
-use rand::thread_rng;
+use rand::rng;
 use wavltree::{Linked, Links, WAVLTree};
 
 #[derive(Default)]
@@ -15,16 +20,17 @@ struct WAVLEntry {
 }
 impl WAVLEntry {
     pub fn new(value: usize) -> Self {
-        let mut this = Self::default();
-        this.value = value;
-        this
+        Self {
+            value,
+            ..Default::default()
+        }
     }
 }
 impl fmt::Debug for WAVLEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PlaceHolderEntry")
             .field("value", &self.value)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 unsafe impl Linked for WAVLEntry {
@@ -36,7 +42,7 @@ unsafe impl Linked for WAVLEntry {
     unsafe fn from_ptr(ptr: NonNull<Self>) -> Self::Handle {
         // Safety: `NonNull` *must* be constructed from a pinned reference
         // which the tree implementation upholds.
-        Pin::new_unchecked(Box::from_raw(ptr.as_ptr()))
+        unsafe { Pin::new_unchecked(Box::from_raw(ptr.as_ptr())) }
     }
     unsafe fn links(target: NonNull<Self>) -> NonNull<Links<WAVLEntry>> {
         target
@@ -64,7 +70,7 @@ fn wavl(inserts: &[usize], deletes: &[usize]) {
 }
 
 fn bench_fibs(c: &mut Criterion) {
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
     let mut nums = (0..700).collect::<Vec<_>>();
     nums.shuffle(&mut rng);
@@ -73,7 +79,7 @@ fn bench_fibs(c: &mut Criterion) {
     let deletes = nums;
 
     c.bench_function("Insertions & Deletions", |b| {
-        b.iter(|| wavl(&inserts, &deletes))
+        b.iter(|| wavl(&inserts, &deletes));
     });
 }
 

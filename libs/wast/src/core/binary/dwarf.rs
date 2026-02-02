@@ -10,16 +10,18 @@
 //! crate. Hopefully doesn't carry too much complexity with it while still being
 //! easy/fun to play around with.
 
-use crate::core::binary::{EncodeOptions, Encoder, GenerateDwarf, Names, RecOrType};
-use crate::core::{InnerTypeKind, Local, ValType};
-use crate::token::Span;
 use core::cmp::Ordering;
+
 use gimli::write::{
     self, Address, AttributeValue, DwarfUnit, Expression, FileId, LineProgram, LineString,
     Sections, UnitEntryId, Writer,
 };
 use gimli::{Encoding, Format, LineEncoding, LittleEndian};
 use hashbrown::HashMap;
+
+use crate::core::binary::{EncodeOptions, Encoder, GenerateDwarf, Names, RecOrType};
+use crate::core::{InnerTypeKind, Local, ValType};
+use crate::token::Span;
 
 pub struct Dwarf<'a> {
     // Metadata configured at `Dwarf` creation time
@@ -518,10 +520,11 @@ impl Writer for DwarfWriter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Dwarf, EncodeOptions, GenerateDwarf};
-    use crate::token::Span;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
+
+    use super::{Dwarf, EncodeOptions, GenerateDwarf};
+    use crate::token::Span;
 
     fn linecol_test(contents: &str) {
         let mut dwarf = Dwarf::new(

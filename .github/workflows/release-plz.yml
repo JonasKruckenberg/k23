@@ -1,16 +1,12 @@
 name: Release-plz
-
 permissions:
   pull-requests: write
   contents: write
-
 on:
   push:
     branches:
       - main
-
 jobs:
-
   # Release unpublished packages.
   release-plz-release:
     name: Release-plz release
@@ -29,7 +25,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
   # Create a PR with the new versions and changelog, preparing the next release.
   release-plz-pr:
     name: Release-plz PR

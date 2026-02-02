@@ -4,3 +4,4 @@
 libs/cranelift-codegen/meta/target
 .jj
 rustc-ice-*
+result

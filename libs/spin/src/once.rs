@@ -182,13 +182,13 @@ mod tests {
     #[test]
     fn smoke_once() {
         loom::model(|| {
-            static O: std::sync::LazyLock<Once> = std::sync::LazyLock::new(|| Once::new());
+            static O: std::sync::LazyLock<Once> = std::sync::LazyLock::new(Once::new);
             let mut a = 0;
             O.call_once(|| a += 1);
             assert_eq!(a, 1);
             O.call_once(|| a += 1);
             assert_eq!(a, 1);
-        })
+        });
     }
 
     #[test]
@@ -228,7 +228,7 @@ mod tests {
             for _ in 0..MAX_THREADS {
                 rx.recv().unwrap();
             }
-        })
+        });
     }
 
     #[test]
@@ -250,6 +250,6 @@ mod tests {
                     once.call_once(|| val.store(true, Ordering::Relaxed));
                 });
             }
-        })
+        });
     }
 }

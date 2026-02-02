@@ -99,7 +99,7 @@ mod test {
         fn len(len: usize) {
             let r: Range<VirtualAddress> = Range::from_start_len(VirtualAddress::new(0), len);
 
-            proptest::prop_assert_eq!(len, AddressRangeExt::len(&r))
+            proptest::prop_assert_eq!(len, AddressRangeExt::len(&r));
         }
     }
 }

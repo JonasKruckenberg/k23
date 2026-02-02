@@ -1,12 +1,12 @@
+use alloc::string::ToString;
+use alloc::vec::Vec;
+
 #[cfg(feature = "component-model")]
 use crate::component::WastVal;
 use crate::core::{WastArgCore, WastRetCore};
-use crate::kw;
 use crate::parser::{self, Cursor, Parse, ParseBuffer, Parser, Peek, Result};
 use crate::token::{Id, Span};
-use crate::{Error, Wat};
-use alloc::string::ToString;
-use alloc::vec::Vec;
+use crate::{Error, Wat, kw};
 
 /// A parsed representation of a `*.wast` file.
 ///

@@ -13,12 +13,9 @@ fn assert_module_name(expected_name: &str, wat: &str) -> anyhow::Result<()> {
     let wasm = wat::parse_str(wat)?;
     let mut found = false;
     for s in get_name_section(&wasm)? {
-        match s? {
-            Name::Module { name, .. } => {
-                assert_eq!(name, expected_name);
-                found = true;
-            }
-            _ => {}
+        if let Name::Module { name, .. } = s? {
+            assert_eq!(name, expected_name);
+            found = true;
         }
     }
     assert!(found);
@@ -38,14 +35,11 @@ fn assert_func_name(name: &str, wat: &str) -> anyhow::Result<()> {
     let wasm = wat::parse_str(wat)?;
     let mut found = false;
     for s in get_name_section(&wasm)? {
-        match s? {
-            Name::Function(n) => {
-                let naming = n.into_iter().next().unwrap()?;
-                assert_eq!(naming.index, 0);
-                assert_eq!(naming.name, name);
-                found = true;
-            }
-            _ => {}
+        if let Name::Function(n) = s? {
+            let naming = n.into_iter().next().unwrap()?;
+            assert_eq!(naming.index, 0);
+            assert_eq!(naming.name, name);
+            found = true;
         }
     }
     assert!(found);
@@ -75,21 +69,18 @@ fn assert_local_name(name: &str, wat: &str) -> anyhow::Result<()> {
     let wasm = wat::parse_str(wat)?;
     let mut found = false;
     for s in get_name_section(&wasm)? {
-        match s? {
-            Name::Local(n) => {
-                let naming = n
-                    .into_iter()
-                    .next()
-                    .unwrap()?
-                    .names
-                    .into_iter()
-                    .next()
-                    .unwrap()?;
-                assert_eq!(naming.index, 0);
-                assert_eq!(naming.name, name);
-                found = true;
-            }
-            _ => {}
+        if let Name::Local(n) = s? {
+            let naming = n
+                .into_iter()
+                .next()
+                .unwrap()?
+                .names
+                .into_iter()
+                .next()
+                .unwrap()?;
+            assert_eq!(naming.index, 0);
+            assert_eq!(naming.name, name);
+            found = true;
         }
     }
     assert!(found);
@@ -97,11 +88,11 @@ fn assert_local_name(name: &str, wat: &str) -> anyhow::Result<()> {
 }
 
 fn get_name_section(wasm: &[u8]) -> anyhow::Result<NameSectionReader<'_>> {
-    for payload in Parser::new(0).parse_all(&wasm) {
-        if let Payload::CustomSection(c) = payload? {
-            if let KnownCustom::Name(s) = c.as_known() {
-                return Ok(s);
-            }
+    for payload in Parser::new(0).parse_all(wasm) {
+        if let Payload::CustomSection(c) = payload?
+            && let KnownCustom::Name(s) = c.as_known()
+        {
+            return Ok(s);
         }
     }
     panic!("no name section found");

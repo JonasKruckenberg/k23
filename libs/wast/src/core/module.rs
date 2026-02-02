@@ -1,11 +1,11 @@
+use alloc::vec::Vec;
+
 use crate::core::binary::EncodeOptions;
+pub use crate::core::resolve::Names;
 use crate::core::*;
 use crate::parser::{Parse, Parser, Result};
 use crate::token::{Id, Index, NameAnnotation, Span};
 use crate::{annotation, kw};
-use alloc::vec::Vec;
-
-pub use crate::core::resolve::Names;
 
 /// A parsed WebAssembly core module.
 #[derive(Debug)]

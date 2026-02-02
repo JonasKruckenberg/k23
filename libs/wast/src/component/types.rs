@@ -1,14 +1,10 @@
-use crate::component::*;
-use crate::core;
-use crate::kw;
-use crate::parser::Lookahead1;
-use crate::parser::Peek;
-use crate::parser::{Parse, Parser, Result};
-use crate::token::Index;
-use crate::token::LParen;
-use crate::token::{Id, NameAnnotation, Span};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+
+use crate::component::*;
+use crate::parser::{Lookahead1, Parse, Parser, Peek, Result};
+use crate::token::{Id, Index, LParen, NameAnnotation, Span};
+use crate::{core, kw};
 
 /// A core type declaration.
 #[derive(Debug)]

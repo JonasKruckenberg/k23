@@ -1,5 +1,4 @@
 name: Fuzzing
-
 on:
   push:
     paths:
@@ -9,22 +8,17 @@ on:
     paths:
       - 'fuzz/**'
       - 'libs/range-tree/**'
-
 permissions:
   contents: read
-
 env:
   CARGO_TERM_COLOR: always
   CLICOLOR: 1
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   pre_ci:
     uses: dtolnay/.github/.github/workflows/pre_ci.yml@master
-
   fuzz:
     needs: pre_ci
     if: needs.pre_ci.outputs.continue
@@ -32,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fuzz-target: [ "range-tree" ]
+        fuzz-target: ["range-tree"]
         target:
           - tuple: riscv64gc-unknown-linux-gnu
           - tuple: riscv64gc-unknown-linux-gnu

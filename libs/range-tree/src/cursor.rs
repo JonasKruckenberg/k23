@@ -87,7 +87,7 @@ impl<I: RangeTreeIndex, V, A: Allocator, Ref: Deref<Target = RangeTree<I, V, A>>
 
     /// Helper function to check that cursor invariants are maintained.
     #[inline]
-    fn assert_valid(&self) {
+    pub fn assert_valid(&self) {
         // The element at each internal level should point to the node lower on
         // the stack.
         let mut height = Height::LEAF;
@@ -1093,6 +1093,15 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> Cursor<'a, I, V, A> {
             tree: self.raw.tree,
         }
     }
+
+    /// Assert as many invariants about the cursor as possible
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any invariant is violated.
+    pub fn assert_valid(&self) {
+        self.raw.assert_valid();
+    }
 }
 
 /// A mutable cursor over the elements of a [`RangeTree`] which allows editing
@@ -1327,6 +1336,15 @@ impl<'a, I: RangeTreeIndex, V, A: Allocator> CursorMut<'a, I, V, A> {
     #[inline]
     pub fn remove(&mut self) -> (RangeInclusive<I>, V) {
         self.raw.remove()
+    }
+
+    /// Assert as many invariants about the cursor as possible
+    ///
+    /// # Panics
+    ///
+    /// Will panic if any invariant is violated.
+    pub fn assert_valid(&self) {
+        self.raw.assert_valid();
     }
 }
 

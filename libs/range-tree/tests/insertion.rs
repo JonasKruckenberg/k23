@@ -43,7 +43,7 @@ fn smoke() {
 
     for (idx, range) in shuffled {
         tracing::debug!("inserting range {range:?}");
-        tree.insert(range.clone(), idx).unwrap();
+        tree.insert(range, idx).unwrap();
 
         tree.assert_valid();
     }
@@ -52,10 +52,7 @@ fn smoke() {
     let values: Vec<_> = tree.values().copied().collect();
 
     assert_eq!(
-        input
-            .iter()
-            .map(|(_, range)| range.clone())
-            .collect::<Vec<_>>(),
+        input.iter().map(|(_, range)| *range).collect::<Vec<_>>(),
         ranges
     );
     assert_eq!(

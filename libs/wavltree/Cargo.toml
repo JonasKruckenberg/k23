@@ -11,12 +11,11 @@ name = "insertions_deletions"
 harness = false
 
 [target.'cfg(not(target_os = "none"))'.dev-dependencies]
-rand= { workspace = true, features = ["thread_rng"] }
-criterion = "0.8.0"
+criterion = { workspace = true }                       #unified
+rand = { workspace = true, features = ["thread_rng"] }
 
 [features]
 dot = []
 
 [lints]
 workspace = true
-

@@ -667,13 +667,13 @@ mod tests {
             let _tls = tls2.get_or(|| Box::new(2));
             let iter = tls2.iter();
             for item in iter {
-                println!("{:?}", item);
+                println!("{item:?}");
             }
         });
 
         let iter = tls.iter();
         for item in iter {
-            println!("{:?}", item);
+            println!("{item:?}");
         }
 
         join_1.join().ok();

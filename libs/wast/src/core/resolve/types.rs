@@ -1,9 +1,11 @@
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+
+use hashbrown::HashMap;
+
 use crate::core::*;
 use crate::gensym;
 use crate::token::{Index, Span};
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-use hashbrown::HashMap;
 
 pub fn expand<'a>(fields: &mut Vec<ModuleField<'a>>) {
     let mut expander = Expander::default();

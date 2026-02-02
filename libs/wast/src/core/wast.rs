@@ -1,8 +1,9 @@
+use alloc::vec::Vec;
+
 use crate::core::{HeapType, V128Const};
 use crate::kw;
 use crate::parser::{Cursor, Parse, Parser, Peek, Result};
 use crate::token::{F32, F64, Index};
-use alloc::vec::Vec;
 
 /// Expression that can be used inside of `invoke` expressions for core wasm
 /// functions.

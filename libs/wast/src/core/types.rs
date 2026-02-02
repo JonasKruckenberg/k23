@@ -1,13 +1,12 @@
-use crate::core::*;
-use crate::kw;
-use crate::parser::Lookahead1;
-use crate::parser::{Cursor, Parse, Parser, Peek, Result};
-use crate::token::{Id, Index, LParen, NameAnnotation, Span};
-use crate::Error;
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::vec::Vec;
 use core::mem;
+
+use crate::core::*;
+use crate::parser::{Cursor, Lookahead1, Parse, Parser, Peek, Result};
+use crate::token::{Id, Index, LParen, NameAnnotation, Span};
+use crate::{Error, kw};
 
 /// The value types for a wasm module.
 #[allow(missing_docs)]

@@ -42,7 +42,7 @@ fn run_test(test: &Path, bless: bool) -> anyhow::Result<()> {
 
     // Ignore CRLF line ending and force always `\n`
     let assert = std::fs::read_to_string(assert)
-        .unwrap_or(String::new())
+        .unwrap_or_default()
         .replace("\r\n", "\n");
 
     // Compare normalize versions which handles weirdness like path differences

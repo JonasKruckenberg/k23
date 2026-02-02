@@ -9,7 +9,7 @@ use crate::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 /// Produces `VirtualAddress`s in the given range
 pub fn virt(range: Range<usize>) -> impl Strategy<Value = VirtualAddress> {
-    range.prop_map(|raw| VirtualAddress::new(raw))
+    range.prop_map(VirtualAddress::new)
 }
 
 /// Produces `VirtualAddress`s aligned to the given `alignment`
@@ -22,7 +22,7 @@ pub fn aligned_virt(
 
 /// Produces `PhysicalAddress`s in the given range
 pub fn phys(range: Range<usize>) -> impl Strategy<Value = PhysicalAddress> {
-    range.prop_map(|raw| PhysicalAddress::new(raw))
+    range.prop_map(PhysicalAddress::new)
 }
 
 /// Produces `PhysicalAddress`s aligned to the given `alignment`
@@ -33,6 +33,9 @@ pub fn aligned_phys(
     addr.prop_map(move |value| value.align_down(alignment))
 }
 
+/// # Panics
+///
+/// Panis if alignment is zero.
 pub fn region_layouts(
     num_regions: Range<usize>,
     alignment: usize,
@@ -47,7 +50,9 @@ pub fn region_layouts(
         regions
             .into_iter()
             .map(|size| {
-                let align_minus_one = unsafe { alignment.unchecked_sub(1) };
+                let align_minus_one = alignment
+                    .checked_sub(1)
+                    .expect("alignment must be non-null");
 
                 let size = size.wrapping_add(align_minus_one) & 0usize.wrapping_sub(alignment);
 
@@ -61,6 +66,7 @@ pub fn region_layouts(
 
 /// Produces a set of *sorted*, *non-overlapping* regions of physical memory aligned to `alignment`.
 /// Most useful for initializing an emulated machine.
+#[expect(clippy::missing_panics_doc, reason = "internal assertion")]
 pub fn regions_phys(
     num_regions: Range<usize>,
     alignment: usize,
@@ -117,7 +123,7 @@ pub fn pick_address_in_regions(
         let address = (0..regions.len()).prop_flat_map(move |chosen_region| {
             let range = r[chosen_region].clone();
 
-            (range.start.get()..range.end.get()).prop_map(|raw| PhysicalAddress::new(raw))
+            (range.start.get()..range.end.get()).prop_map(PhysicalAddress::new)
         });
 
         (Just(regions), address)
@@ -125,6 +131,7 @@ pub fn pick_address_in_regions(
 }
 
 /// Produces a set of *sorted*, *non-overlapping* regions of virtual memory aligned to `alignment`.
+#[expect(clippy::missing_panics_doc, reason = "internal assertion")]
 pub fn regions_virt(
     num_regions: Range<usize>,
     alignment: usize,

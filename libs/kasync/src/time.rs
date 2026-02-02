@@ -27,7 +27,6 @@ pub const NANOS_PER_SEC: u64 = 1_000_000_000;
 #[derive(Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum TimeError {
-    NoGlobalTimer,
     DurationTooLong {
         /// The duration that was requested for a [`Sleep`] or [`Timeout`]
         /// future.
@@ -44,8 +43,10 @@ pub enum TimeError {
 impl fmt::Display for TimeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TimeError::NoGlobalTimer => f.write_str("no global timer available. Tip: You can configure the global timer with `async_kit::time::set_global_timer`"),
-            TimeError::DurationTooLong { requested, max } => write!(f, "duration too long: {requested:?}. Maximum duration {max:?}"),
+            TimeError::DurationTooLong { requested, max } => write!(
+                f,
+                "duration too long: {requested:?}. Maximum duration {max:?}"
+            ),
         }
     }
 }

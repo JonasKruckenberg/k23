@@ -24,7 +24,13 @@ kmem = { workspace = true, features = ["test_utils"] }
 test-log = "0.2.19"
 
 [features]
-test_utils = ["k23-cpu-local", "k23-spin", "proptest", "proptest-derive", "parking_lot"]
+test_utils = [
+  "k23-cpu-local",
+  "k23-spin",
+  "proptest",
+  "proptest-derive",
+  "parking_lot",
+]
 
 [lints]
 workspace = true

@@ -13,7 +13,7 @@ use crate::common::nonzero;
 fn empty_tree_gap() {
     let tree: RangeTree<NonZeroU32, ()> = RangeTree::try_new().unwrap();
     let gaps: Vec<_> = tree.gaps().collect();
-    println!("{:?}", gaps);
+    println!("{gaps:?}");
     // Empty tree should have no gaps (no keys to form gaps between)
     // Actually, an empty tree has a "gap" representing the entire key space
     // but since there are no keys, we don't yield anything
@@ -27,7 +27,7 @@ fn single_element_gaps() {
     tree.insert(nonzero!(100)..=nonzero!(199), "a").unwrap();
 
     let gaps: Vec<_> = tree.gaps().collect();
-    println!("{:?}", gaps);
+    println!("{gaps:?}");
     // Should have gaps: [MIN, 100) and (200, MAX)
     assert_eq!(gaps.len(), 2);
     assert_eq!(gaps[0], (Bound::Unbounded, Bound::Excluded(nonzero!(100))));
@@ -42,8 +42,8 @@ fn consecutive_keys_no_internal_gaps() {
     tree.insert(nonzero!(5)..=nonzero!(6), "c").unwrap();
 
     let gaps: Vec<_> = tree.gaps().collect();
-    println!("{:?}", gaps);
+    println!("{gaps:?}");
     assert_eq!(gaps.len(), 2);
     assert_eq!(gaps[0], (Bound::Unbounded, Bound::Excluded(nonzero!(1))));
-    assert_eq!(gaps[1], (Bound::Included(nonzero!(7)), Bound::Unbounded))
+    assert_eq!(gaps[1], (Bound::Included(nonzero!(7)), Bound::Unbounded));
 }

@@ -871,7 +871,7 @@ where
     }
 
     #[track_caller]
-    #[cfg_attr(not(debug_assertions), allow(unused))]
+    #[cfg_attr(not(debug_assertions), allow(unused, reason = ""))]
     fn assert_valid_inner(node: NonNull<T>, parent: NonNull<T>, ctx: &str) {
         unsafe {
             let node_links = T::links(node).as_ref();
@@ -1700,16 +1700,17 @@ mod tests {
     }
     impl TestEntry {
         pub fn new(value: usize) -> Self {
-            let mut this = Self::default();
-            this.value = value;
-            this
+            Self {
+                value,
+                ..Default::default()
+            }
         }
     }
     impl fmt::Debug for TestEntry {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.debug_struct("PlaceHolderEntry")
                 .field("value", &self.value)
-                .finish()
+                .finish_non_exhaustive()
         }
     }
     unsafe impl Linked for TestEntry {

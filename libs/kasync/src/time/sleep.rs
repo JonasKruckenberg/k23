@@ -21,9 +21,7 @@ use crate::time::{Ticks, TimeError, Timer};
 ///
 /// # Errors
 ///
-/// This function fails for two reasons:
-/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
-/// 2. [`TimeError::DurationTooLong`] The requested duration is too big
+/// Returns `Err(TimeError::DurationTooLong)` if the requested duration is too big.
 pub fn sleep(timer: &Timer, duration: Duration) -> Result<Sleep<'_>, TimeError> {
     let ticks = timer.duration_to_ticks(duration)?;
     let now = timer.now();
@@ -36,9 +34,7 @@ pub fn sleep(timer: &Timer, duration: Duration) -> Result<Sleep<'_>, TimeError> 
 ///
 /// # Errors
 ///
-/// This function fails for two reasons:
-/// 1. [`TimeError::NoGlobalTimer`] No global timer has been set up yet. Call [`crate::time::set_global_timer`] first.
-/// 2. [`TimeError::DurationTooLong`] The requested deadline lies too far into the future
+/// Returns `Err(TimeError::DurationTooLong)` if the requested duration is too big.
 pub fn sleep_until(timer: &Timer, deadline: Instant) -> Result<Sleep<'_>, TimeError> {
     let deadline = deadline.as_ticks(timer)?;
 
@@ -182,6 +178,7 @@ mod tests {
                 })
                 .unwrap();
 
+            // SAFETY: TIMER was initialized with MockClock so the pointer cast is valid.
             let clock = unsafe { TIMER.clock().data().cast::<MockClock>().as_ref().unwrap() };
 
             // Tick 1:

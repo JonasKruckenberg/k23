@@ -1,7 +1,8 @@
+use alloc::vec::Vec;
+
 use crate::kw;
 use crate::parser::{Cursor, Parse, Parser, Peek, Result};
 use crate::token::{Index, Span};
-use alloc::vec::Vec;
 
 /// A entry in a WebAssembly module's export section.
 #[derive(Debug)]
