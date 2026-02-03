@@ -1,5 +1,5 @@
 [package]
-name = "k23-spin"
+name = "kspin"
 description = "Synchronization primitives for use in k23"
 version.workspace = true
 edition.workspace = true
@@ -11,7 +11,7 @@ workspace = true
 
 [dependencies]
 cfg-if.workspace = true
-k32-util.workspace = true
+kutil.workspace = true
 
 # 3rd-party dependencies
 lock_api.workspace = true

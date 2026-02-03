@@ -12,14 +12,14 @@ pub enum Error {
     /// Failed to convert number
     TryFromInt(core::num::TryFromIntError),
     /// Failed to parse device tree blob
-    Fdt(k23_fdt::Error),
+    Fdt(kfdt::Error),
     /// Failed to parse kernel elf
     Elf(&'static str),
     /// The system was not able to allocate memory needed for the operation.
     NoMemory,
     /// Failed to start secondary hart
     #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))]
-    FailedToStartSecondaryHart(k23_riscv::sbi::Error),
+    FailedToStartSecondaryHart(riscv::sbi::Error),
     TryFromSlice(core::array::TryFromSliceError),
 }
 impl From<core::num::TryFromIntError> for Error {
@@ -27,8 +27,8 @@ impl From<core::num::TryFromIntError> for Error {
         Error::TryFromInt(err)
     }
 }
-impl From<k23_fdt::Error> for Error {
-    fn from(err: k23_fdt::Error) -> Self {
+impl From<kfdt::Error> for Error {
+    fn from(err: kfdt::Error) -> Self {
         Error::Fdt(err)
     }
 }

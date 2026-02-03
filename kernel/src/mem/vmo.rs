@@ -9,8 +9,8 @@ use alloc::sync::Arc;
 use core::ops::Range;
 
 use anyhow::ensure;
-use k23_spin::RwLock;
 use kmem::{AddressRangeExt, PhysicalAddress};
+use kspin::RwLock;
 
 use crate::arch;
 use crate::mem::frame_alloc::frame_list::{Entry, FrameList};

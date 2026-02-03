@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use core::{fmt, mem, ptr};
 
-use k23_spin::Backoff;
+use kspin::Backoff;
 
 use super::FreeList;
 use crate::clear::Clear;

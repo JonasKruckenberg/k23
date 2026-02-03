@@ -10,9 +10,9 @@ use core::cell::RefCell;
 use core::sync::atomic;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use k23_cpu_local::collection::CpuLocal;
-use k23_sharded_slab::Pool;
-use k23_sharded_slab::pool::Ref;
+use kcpu_local::collection::CpuLocal;
+use ksharded_slab::Pool;
+use ksharded_slab::pool::Ref;
 use tracing_core::field::FieldSet;
 use tracing_core::span::{Attributes, Current, Id, Record};
 use tracing_core::{Collect, Dispatch, Event, Interest, Metadata, dispatch};
@@ -61,7 +61,7 @@ use tracing_core::{Collect, Dispatch, Event, Interest, Metadata, dispatch};
 /// `tracing` spans using [fields] and/or [stored span data].
 ///
 /// [span IDs]: https://docs.rs/tracing-core/latest/tracing_core/span/struct.Id.html
-/// [slab]: https://docs.rs/crate/k23-sharded-slab/
+/// [slab]: https://docs.rs/crate/ksharded_slab/
 /// [closed]: https://docs.rs/tracing/latest/tracing/span/index.html#closing-spans
 /// [considered closed]: https://docs.rs/tracing-core/latest/tracing_core/subscriber/trait.Subscriber.html#method.try_close
 /// [`Span`]: https://docs.rs/tracing/latest/tracing/span/struct.Span.html
@@ -316,7 +316,7 @@ impl Default for DataInner {
     }
 }
 
-impl k23_sharded_slab::Clear for DataInner {
+impl ksharded_slab::Clear for DataInner {
     /// Clears the span's data in place, dropping the parent's reference count.
     fn clear(&mut self) {
         // A span is not considered closed until all of its children have closed.

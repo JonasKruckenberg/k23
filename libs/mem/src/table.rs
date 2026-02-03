@@ -1,7 +1,7 @@
 use core::marker::PhantomData;
 use core::ops::Range;
 
-use k23_arrayvec::ArrayVec;
+use karrayvec::ArrayVec;
 
 use crate::arch::{Arch, PageTableEntry, PageTableLevel};
 use crate::physmap::PhysMap;

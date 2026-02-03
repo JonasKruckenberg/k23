@@ -22,9 +22,9 @@ use core::ops::{DerefMut, Range};
 use core::str::FromStr;
 
 use fallible_iterator::FallibleIterator;
-use k23_spin::{Barrier, OnceLock};
 use kasync::executor::Executor;
 use kmem::{AddressRangeExt, PhysicalAddress};
+use kspin::{Barrier, OnceLock};
 
 use crate::device_tree::DeviceTree;
 use crate::mem::{Mmap, with_kernel_aspace};
@@ -77,7 +77,7 @@ pub fn init(devtree: &'static DeviceTree, sched: &'static Executor, num_cpus: us
     }
 }
 
-fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
+fn init_uart(devtree: &DeviceTree) -> (kuart_16550::SerialPort, Mmap, u32) {
     let s = devtree.find_by_path("/soc/serial").unwrap();
     assert!(s.is_compatible(["ns16550a"]));
 
@@ -111,7 +111,8 @@ fn init_uart(devtree: &DeviceTree) -> (uart_16550::SerialPort, Mmap, u32) {
     });
 
     // Safety: info comes from device tree
-    let uart = unsafe { uart_16550::SerialPort::new(mmap.range().start.get(), clock_freq, 115200) };
+    let uart =
+        unsafe { kuart_16550::SerialPort::new(mmap.range().start.get(), clock_freq, 115200) };
 
     (uart, mmap, irq_num)
 }
@@ -232,13 +233,14 @@ fn handle_command<'cmd>(ctx: Context<'cmd>, commands: &'cmd [Command]) -> CmdRes
         if let Some(current) = chunk.strip_prefix(cmd.name) {
             let current = current.trim();
 
-            return k23_panic_unwind::catch_unwind(|| cmd.run(Context { current, ..ctx }))
-                .unwrap_or({
+            return kpanic_unwind::catch_unwind(|| cmd.run(Context { current, ..ctx })).unwrap_or(
+                {
                     Err(Error {
                         line: cmd.name,
                         kind: ErrorKind::Other("command failed"),
                     })
-                });
+                },
+            );
         }
     }
 

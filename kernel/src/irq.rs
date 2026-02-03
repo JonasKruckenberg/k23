@@ -9,8 +9,8 @@ use alloc::sync::Arc;
 use core::num::NonZero;
 
 use hashbrown::HashMap;
-use k23_spin::{LazyLock, RwLock};
 use kasync::sync::wait_queue::WaitQueue;
+use kspin::{LazyLock, RwLock};
 
 use crate::state::cpu_local;
 

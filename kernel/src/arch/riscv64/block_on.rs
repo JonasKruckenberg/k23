@@ -13,8 +13,8 @@ use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 use futures::pin_mut;
 use futures::task::WakerRef;
-use k23_cpu_local::cpu_local;
-use k23_riscv::sbi;
+use kcpu_local::cpu_local;
+use riscv::sbi;
 
 use crate::state;
 

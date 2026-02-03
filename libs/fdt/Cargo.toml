@@ -1,5 +1,5 @@
 [package]
-name = "k23-fdt"
+name = "kfdt"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

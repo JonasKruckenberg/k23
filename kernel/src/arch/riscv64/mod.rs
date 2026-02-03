@@ -18,13 +18,13 @@ use core::arch::asm;
 use anyhow::ensure;
 pub use asid_allocator::AsidAllocator;
 pub use block_on::block_on;
-use k23_riscv::sstatus::FS;
-use k23_riscv::{interrupt, scounteren, sie, sstatus};
 use kmem::VirtualAddress;
 pub use mem::{
     AddressSpace, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_RANGE,
     invalidate_range, is_canonical, is_kernel_address, is_user_address, phys_to_virt,
 };
+use riscv::sstatus::FS;
+use riscv::{interrupt, scounteren, sie, sstatus};
 pub use setjmp_longjmp::{JmpBuf, JmpBufStruct, call_with_setjmp, longjmp};
 
 use crate::arch::device::cpu::Cpu;
@@ -35,7 +35,7 @@ pub const STACK_ALIGNMENT: usize = 16;
 /// Global RISC-V specific initialization.
 #[cold]
 pub fn init() -> state::Global {
-    let supported = k23_riscv::sbi::supported_extensions().unwrap();
+    let supported = riscv::sbi::supported_extensions().unwrap();
     tracing::trace!("Supported SBI extensions: {supported:?}");
 
     mem::init();

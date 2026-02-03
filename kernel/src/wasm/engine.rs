@@ -9,7 +9,7 @@ use alloc::sync::Arc;
 use core::sync::atomic::AtomicU64;
 
 use cranelift_codegen::settings::{Configurable, Flags};
-use k23_spin::{Mutex, MutexGuard};
+use kspin::{Mutex, MutexGuard};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 

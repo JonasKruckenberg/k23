@@ -21,9 +21,9 @@ use arena::{Arena, select_arenas};
 use cordyceps::list::List;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
-use k23_cpu_local::collection::CpuLocal;
-use k23_spin::{Mutex, OnceLock};
+use kcpu_local::collection::CpuLocal;
 use kmem::PhysicalAddress;
+use kspin::{Mutex, OnceLock};
 
 use crate::arch;
 use crate::mem::bootstrap_alloc::BootstrapAllocator;

@@ -15,8 +15,8 @@ use core::task::{Context, Poll, Waker};
 use core::{fmt, mem, ptr};
 
 use cordyceps::{Linked, List, list};
-use k23_spin::{Mutex, MutexGuard};
-use k32_util::{CachePadded, loom_const_fn};
+use kspin::{Mutex, MutexGuard};
+use kutil::{CachePadded, loom_const_fn};
 use mycelium_bitfield::{FromBits, bitfield, enum_from_bits};
 use pin_project::{pin_project, pinned_drop};
 

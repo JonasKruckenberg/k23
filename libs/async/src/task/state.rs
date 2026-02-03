@@ -7,8 +7,8 @@
 
 use core::fmt;
 
-use k23_spin::Backoff;
-use k32_util::loom_const_fn;
+use kspin::Backoff;
+use kutil::loom_const_fn;
 
 use crate::loom::sync::atomic::{self, AtomicUsize, Ordering};
 use crate::task::PollResult;

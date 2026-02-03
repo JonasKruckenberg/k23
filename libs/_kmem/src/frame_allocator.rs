@@ -15,7 +15,7 @@ use core::ptr::NonNull;
 
 pub use area_selection::{AreaSelection, SelectionError, select_areas};
 use cordyceps::List;
-use k23_cpu_local::collection::CpuLocal;
+use kkcpu_localcollection::CpuLocal;
 use lock_api::Mutex;
 use smallvec::SmallVec;
 

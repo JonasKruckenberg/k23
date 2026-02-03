@@ -14,9 +14,9 @@ use core::ffi::c_void;
 use core::mem;
 use core::ops::Range;
 
-use k23_arrayvec::ArrayVec;
-use k23_spin::{Barrier, OnceLock};
+use karrayvec::ArrayVec;
 use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kspin::{Barrier, OnceLock};
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 

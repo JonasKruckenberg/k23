@@ -46,7 +46,7 @@ impl log::Log for Logger {
 fn print(args: core::fmt::Arguments) {
     cfg_if::cfg_if! {
         if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
-            k23_riscv::hio::_print(args);
+            riscv::hio::_print(args);
         } else {
             compile_error!("unsupported target architecture");
         }

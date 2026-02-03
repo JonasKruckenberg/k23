@@ -12,21 +12,21 @@ use core::panic::UnwindSafe;
 use core::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use core::{fmt, mem, ptr, slice};
 
-use k32_util::CheckedMaybeUninit;
+use kutil::CheckedMaybeUninit;
 
 use crate::cpu_local;
 
-/// The total number of buckets stored in each cpu-local storage.
+/// The total number of buckets stored in each kcpu-local storage.
 /// All buckets combined can hold up to `usize::MAX - 1` entries.
 const BUCKETS: usize = (usize::BITS - 1) as usize;
 
-/// cpu-local variable wrapper
+/// kcpu-local variable wrapper
 pub struct CpuLocal<T: Send> {
-    /// The buckets in the cpu-local storage. The nth bucket contains `2^n`
+    /// The buckets in the kcpu-local storage. The nth bucket contains `2^n`
     /// elements. Each bucket is lazily allocated.
     buckets: [AtomicPtr<Entry<T>>; BUCKETS],
 
-    /// The number of values in the cpu-local storage. This can be less than the real number of values,
+    /// The number of values in the kcpu-local storage. This can be less than the real number of values,
     /// but is never more.
     values: AtomicUsize,
 }
@@ -89,7 +89,7 @@ impl<T: Send> CpuLocal<T> {
     }
 
     /// Creates a new `CpuLocal` with an initial capacity. If less than the capacity cpus
-    /// access the cpu-local storage it will never reallocate. The capacity may be rounded up to the
+    /// access the kcpu-local storage it will never reallocate. The capacity may be rounded up to the
     /// nearest power of two.
     ///
     /// # Panics

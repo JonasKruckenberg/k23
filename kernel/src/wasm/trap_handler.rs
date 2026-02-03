@@ -15,7 +15,7 @@ use core::panic::AssertUnwindSafe;
 use core::ptr::NonNull;
 use core::{fmt, ptr};
 
-use k23_cpu_local::cpu_local;
+use kcpu_local::cpu_local;
 use kmem::VirtualAddress;
 
 use crate::arch;
@@ -140,7 +140,7 @@ where
 
         match unwind_reason {
             UnwindReason::Trap(reason) => Err(Trap { reason, backtrace }),
-            UnwindReason::Panic(payload) => k23_panic_unwind::resume_unwind(payload),
+            UnwindReason::Panic(payload) => kpanic_unwind::resume_unwind(payload),
         }
     }
 }
@@ -384,7 +384,7 @@ where
             Err(reason) => (T::SENTINEL, Some(UnwindReason::Trap(reason.into()))),
         };
 
-        k23_panic_unwind::catch_unwind(AssertUnwindSafe(f))
+        kpanic_unwind::catch_unwind(AssertUnwindSafe(f))
             .unwrap_or_else(|payload| (T::SENTINEL, Some(UnwindReason::Panic(payload))))
     }
 }

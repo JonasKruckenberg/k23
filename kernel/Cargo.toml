@@ -11,22 +11,22 @@ harness = false
 
 [dependencies]
 loader-api.workspace = true
-k23-cpu-local.workspace = true
+kcpu-local.workspace = true
 trap.workspace = true
-k23-spin = { workspace = true, features = ["thread-local"] }
-k23-unwind.workspace = true
+kspin = { workspace = true, features = ["thread-local"] }
+kunwind.workspace = true
 wavltree = { workspace = true, features = ["dot"] }
-k23-fdt.workspace = true
-k23-sharded-slab.workspace = true
+kfdt.workspace = true
+ksharded-slab.workspace = true
 ktest.workspace = true
-k23-addr2line.workspace = true
-uart-16550.workspace = true
-k23-wast.workspace = true
-k23-fastrand.workspace = true
-k23-abort.workspace = true
-k23-panic-unwind.workspace = true
-k32-util.workspace = true
-kasync = { workspace = true, features = ["k23-unwind", "counters"] }
+kaddr2line.workspace = true
+kuart-16550.workspace = true
+kwast.workspace = true
+kfastrand.workspace = true
+kabort.workspace = true
+kpanic-unwind.workspace = true
+kutil.workspace = true
+kasync = { workspace = true, features = ["kunwind", "counters"] }
 kmem.workspace = true
 
 # 3rd-party dependencies
@@ -35,7 +35,7 @@ log.workspace = true
 cfg-if.workspace = true
 talc.workspace = true
 static_assertions.workspace = true
-k23-arrayvec.workspace = true
+karrayvec.workspace = true
 bitflags.workspace = true
 xmas-elf.workspace = true
 fallible-iterator.workspace = true
@@ -62,7 +62,7 @@ cranelift-entity.workspace = true
 wasmtime-slab.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
-k23-riscv.workspace = true
+riscv.workspace = true
 
 [lints]
 workspace = true

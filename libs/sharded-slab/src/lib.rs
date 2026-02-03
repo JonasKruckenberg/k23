@@ -1,6 +1,6 @@
 //! A lock-free concurrent slab.
 //!
-//! "Forked" from [k23-sharded-slab](https://github.com/hawkw/k23-sharded-slab) (MIT licensed) with changes
+//! "Forked" from [ksharded-slab](https://github.com/hawkw/ksharded-slab) (MIT licensed) with changes
 //! made to support the `no_std`-like environment of the kernel.
 //!
 //! Slabs provide pre-allocated storage for many instances of a single data
@@ -16,7 +16,7 @@
 //! First, add this to your `Cargo.toml`:
 //!
 //! ```toml
-//! k23-sharded-slab = "0.1.1"
+//! ksharded-slab = "0.1.1"
 //! ```
 //!
 //! This crate provides two  types, [`Slab`] and [`Pool`], which provide
@@ -49,7 +49,7 @@
 //!
 //! Inserting an item into the slab, returning an index:
 //! ```rust
-//! # use k23_sharded_slab::Slab;
+//! # use ksharded_slab::Slab;
 //! let slab = Slab::new();
 //!
 //! let key = slab.insert("hello world").unwrap();
@@ -58,7 +58,7 @@
 //!
 //! To share a slab across threads, it may be wrapped in an `Arc`:
 //! ```rust
-//! # use k23_sharded_slab::Slab;
+//! # use ksharded_slab::Slab;
 //! use alloc::sync::Arc;
 //! let slab = Arc::new(Slab::new());
 //!
@@ -83,7 +83,7 @@
 //! each item, providing granular locking of items rather than of the slab:
 //!
 //! ```rust
-//! # use k23_sharded_slab::Slab;
+//! # use ksharded_slab::Slab;
 //! use core::sync::{Arc, Mutex};
 //! let slab = Arc::new(Slab::new());
 //!
@@ -133,7 +133,7 @@
 //!   multiple threads and locking is not required, this crate will likely offer
 //!   slightly worse performance.
 //!
-//!   In summary: `k23-sharded-slab` offers significantly improved performance in
+//!   In summary: `ksharded-slab` offers significantly improved performance in
 //!   concurrent use-cases, while `slab` should be preferred in single-threaded
 //!   use-cases.
 //!
@@ -192,7 +192,7 @@
 //! a small constant-factor overhead, it offers significantly better
 //! performance across concurrent accesses.
 //!
-//! [benchmarks]: https://github.com/hawkw/k23-sharded-slab/blob/master/benches/bench.rs
+//! [benchmarks]: https://github.com/hawkw/ksharded-slab/blob/master/benches/bench.rs
 //! [`criterion`]: https://crates.io/crates/criterion
 //!
 //! # Implementation Notes
@@ -263,7 +263,7 @@ pub struct Entry<'a, T, C: cfg::Config = DefaultConfig> {
 /// # Examples
 ///
 /// ```
-/// # use k23_sharded_slab::Slab;
+/// # use ksharded_slab::Slab;
 /// let mut slab = Slab::new();
 ///
 /// let hello = {
@@ -299,7 +299,7 @@ pub struct VacantEntry<'a, T, C: cfg::Config = DefaultConfig> {
 /// # Examples
 ///
 /// ```
-/// # use k23_sharded_slab::Slab;
+/// # use ksharded_slab::Slab;
 /// # extern crate alloc;
 /// use alloc::sync::Arc;
 ///
@@ -318,9 +318,9 @@ pub struct VacantEntry<'a, T, C: cfg::Config = DefaultConfig> {
 /// for the `'static` lifetime:
 ///
 /// ```
-/// # use k23_sharded_slab::Slab;
+/// # use ksharded_slab::Slab;
 /// # extern crate alloc;
-/// use k23_sharded_slab::OwnedEntry;
+/// use ksharded_slab::OwnedEntry;
 /// use alloc::sync::Arc;
 ///
 /// pub struct MyStruct {
@@ -352,7 +352,7 @@ pub struct VacantEntry<'a, T, C: cfg::Config = DefaultConfig> {
 /// `OwnedEntry`s may be sent between threads:
 ///
 /// ```
-/// # use k23_sharded_slab::Slab;
+/// # use ksharded_slab::Slab;
 /// use core::{thread, sync::Arc};
 ///
 /// let slab: Arc<Slab<&'static str>> = Arc::new(Slab::new());
@@ -418,7 +418,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     ///
     /// # Examples
     /// ```rust
-    /// # use k23_sharded_slab::Slab;
+    /// # use ksharded_slab::Slab;
     /// let slab = Slab::new();
     ///
     /// let key = slab.insert("hello world").unwrap();
@@ -445,7 +445,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```
-    /// # use k23_sharded_slab::Slab;
+    /// # use ksharded_slab::Slab;
     /// let mut slab = Slab::new();
     ///
     /// let hello = {
@@ -484,7 +484,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```rust
-    /// let slab = k23_sharded_slab::Slab::new();
+    /// let slab = ksharded_slab::Slab::new();
     /// let key = slab.insert("hello world").unwrap();
     ///
     /// // Remove the item from the slab.
@@ -553,7 +553,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```rust
-    /// let slab = k23_sharded_slab::Slab::new();
+    /// let slab = ksharded_slab::Slab::new();
     /// let key = slab.insert("hello world").unwrap();
     ///
     /// // Remove the item from the slab, returning it.
@@ -608,7 +608,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```rust
-    /// let slab = k23_sharded_slab::Slab::new();
+    /// let slab = ksharded_slab::Slab::new();
     /// let key = slab.insert("hello world").unwrap();
     ///
     /// assert_eq!(slab.get(key).unwrap(), "hello world");
@@ -648,7 +648,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```
-    /// # use k23_sharded_slab::Slab;
+    /// # use ksharded_slab::Slab;
     /// # extern crate alloc;
     /// use alloc::sync::Arc;
     ///
@@ -667,9 +667,9 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// for the `'static` lifetime:
     ///
     /// ```
-    /// # use k23_sharded_slab::Slab;
+    /// # use ksharded_slab::Slab;
     /// # extern crate alloc;
-    /// use k23_sharded_slab::OwnedEntry;
+    /// use ksharded_slab::OwnedEntry;
     /// use alloc::sync::Arc;
     ///
     /// pub struct MyStruct {
@@ -726,7 +726,7 @@ impl<T, C: cfg::Config> Slab<T, C> {
     /// # Examples
     ///
     /// ```
-    /// let slab = k23_sharded_slab::Slab::new();
+    /// let slab = ksharded_slab::Slab::new();
     ///
     /// let key = slab.insert("hello world").unwrap();
     /// assert!(slab.contains(key));
@@ -863,7 +863,7 @@ impl<T, C: cfg::Config> VacantEntry<'_, T, C> {
     /// # Examples
     ///
     /// ```
-    /// # use k23_sharded_slab::Slab;
+    /// # use ksharded_slab::Slab;
     /// let mut slab = Slab::new();
     ///
     /// let hello = {
@@ -905,7 +905,7 @@ impl<T, C: cfg::Config> VacantEntry<'_, T, C> {
     /// # Examples
     ///
     /// ```
-    /// # use k23_sharded_slab::*;
+    /// # use ksharded_slab::*;
     /// let mut slab = Slab::new();
     ///
     /// let hello = {

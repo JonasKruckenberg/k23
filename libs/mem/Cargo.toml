@@ -6,10 +6,10 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-k23-arrayvec.workspace = true
-k23-riscv.workspace = true
-k23-cpu-local = { workspace = true, optional = true }
-k23-spin = { workspace = true, optional = true }
+karrayvec.workspace = true
+riscv.workspace = true
+kcpu-local = { workspace = true, optional = true }
+kspin = { workspace = true, optional = true }
 proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
 parking_lot = { version = "0.12.5", optional = true }
@@ -24,7 +24,7 @@ kmem = { workspace = true, features = ["test_utils"] }
 test-log = "0.2.19"
 
 [features]
-test_utils = ["k23-cpu-local", "k23-spin", "proptest", "proptest-derive", "parking_lot"]
+test_utils = ["kcpu-local", "kspin", "proptest", "proptest-derive", "parking_lot"]
 
 [lints]
 workspace = true

@@ -1,5 +1,5 @@
 [package]
-name = "k23-wast"
+name = "kwast"
 version = "228.0.0"
 authors = ["Alex Crichton <alex@alexcrichton.com>"]
 edition.workspace = true
@@ -26,7 +26,7 @@ hashbrown.workspace = true
 unicode-width.workspace = true
 memchr.workspace = true
 bumpalo.workspace = true
-k23-cpu-local.workspace = true
+kcpu-local.workspace = true
 
 [dev-dependencies]
 wat.workspace = true

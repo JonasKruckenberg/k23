@@ -10,7 +10,7 @@ use core::any::Any;
 use core::panic::Location;
 use core::{fmt, mem};
 
-use k23_spin::RwLock;
+use kspin::RwLock;
 
 #[derive(Debug)]
 pub struct PanicHookInfo<'a> {

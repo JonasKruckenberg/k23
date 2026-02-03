@@ -1,5 +1,5 @@
 [package]
-name = "k23-backtrace"
+name = "kbacktrace"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,9 +9,9 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-k23-addr2line.workspace = true
-k23-arrayvec.workspace = true
-k23-unwind.workspace = true
+kaddr2line.workspace = true
+karrayvec.workspace = true
+kunwind.workspace = true
 
 # 3rd-party dependencies
 gimli.workspace = true

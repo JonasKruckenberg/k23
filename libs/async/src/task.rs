@@ -26,7 +26,7 @@ pub use builder::TaskBuilder;
 use cordyceps::mpsc_queue;
 pub use id::Id;
 pub use join_handle::{JoinError, JoinHandle};
-use k32_util::{CachePadded, CheckedMaybeUninit, loom_const_fn};
+use kutil::{CachePadded, CheckedMaybeUninit, loom_const_fn};
 pub use yield_now::yield_now;
 
 use crate::executor::Scheduler;
@@ -869,8 +869,8 @@ where
         cfg_if::cfg_if! {
             if #[cfg(test)] {
                 let result = ::std::panic::catch_unwind(poll);
-            } else if #[cfg(feature = "k23-unwind")] {
-                let result = k23_panic_unwind::catch_unwind(poll);
+            } else if #[cfg(feature = "kunwind")] {
+                let result = kpanic_unwind::catch_unwind(poll);
             } else {
                 let result = Ok(poll());
             }

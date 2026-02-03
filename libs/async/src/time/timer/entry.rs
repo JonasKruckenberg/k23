@@ -11,7 +11,7 @@ use core::ptr::NonNull;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use cordyceps::{Linked, list};
-use k32_util::loom_const_fn;
+use kutil::loom_const_fn;
 use pin_project::pin_project;
 
 use crate::sync::wait_cell::WaitCell;

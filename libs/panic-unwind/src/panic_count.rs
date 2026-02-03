@@ -8,7 +8,7 @@
 use core::cell::Cell;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use k23_cpu_local::cpu_local;
+use kcpu_local::cpu_local;
 
 /// A reason for forcing an immediate abort on panic.
 #[derive(Debug)]

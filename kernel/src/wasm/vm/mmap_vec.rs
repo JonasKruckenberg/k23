@@ -12,7 +12,7 @@ use core::ops::Deref;
 use core::slice;
 
 use anyhow::Context;
-use k23_spin::Mutex;
+use kspin::Mutex;
 
 use crate::arch;
 use crate::mem::{AddressSpace, Mmap};

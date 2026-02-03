@@ -47,7 +47,7 @@ mod function;
 mod line;
 
 mod lookup;
-use k23_spin::OnceLock;
+use kspin::OnceLock;
 pub use lookup::{LookupContinuation, LookupResult, SplitDwarfLoad};
 
 mod unit;

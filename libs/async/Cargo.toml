@@ -11,13 +11,13 @@ name = "spawn"
 harness = false
 
 [dependencies]
-k32-util.workspace = true
-k23-cpu-local.workspace = true
-k23-spin.workspace = true
-k23-fastrand.workspace = true
-k23-panic-unwind = { workspace = true, optional = true }
+kutil.workspace = true
+kcpu-local.workspace = true
+kspin.workspace = true
+kfastrand.workspace = true
+kpanic-unwind = { workspace = true, optional = true }
 cordyceps.workspace = true
-k23-arrayvec.workspace = true
+karrayvec.workspace = true
 
 # 3rd-party dependencies
 static_assertions.workspace = true
@@ -38,7 +38,7 @@ futures = { workspace = true, features = ["alloc"] }
 loom.workspace = true
 
 [features]
-k23-unwind = ["dep:k23-panic-unwind"]
+kunwind = ["dep:kpanic-unwind"]
 counters = []
 __bench = ["tracing/max_level_off"]
 

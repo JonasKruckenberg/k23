@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use k23_spin::LazyLock;
+use kspin::LazyLock;
 use log::Record;
 use tracing::field;
 use tracing_core::{Callsite, Collect, Event, Kind, Level, Metadata, dispatch, identify_callsite};

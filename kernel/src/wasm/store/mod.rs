@@ -16,7 +16,7 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use core::{fmt, mem};
 
-use k23_abort::abort;
+use kabort::abort;
 use kmem::VirtualAddress;
 use pin_project::pin_project;
 use static_assertions::{assert_impl_all, const_assert};

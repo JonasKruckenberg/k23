@@ -4,8 +4,8 @@ use core::fmt;
 use core::marker::PhantomData;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use k23_cpu_local::cpu_local;
-use k23_spin::{LazyLock, Mutex};
+use kcpu_local::cpu_local;
+use kspin::{LazyLock, Mutex};
 
 use crate::cfg::{self, CfgPrivate};
 use crate::{Pack, page};

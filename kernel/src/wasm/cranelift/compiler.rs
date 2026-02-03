@@ -21,7 +21,7 @@ use cranelift_codegen::ir::{
 use cranelift_codegen::isa::{OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::{TextSectionBuilder, ir};
 use cranelift_frontend::FunctionBuilder;
-use k23_spin::Mutex;
+use kspin::Mutex;
 use target_lexicon::Triple;
 use wasmparser::{FuncValidatorAllocations, FunctionBody};
 
