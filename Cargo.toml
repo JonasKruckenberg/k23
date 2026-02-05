@@ -149,7 +149,7 @@ wasmtime-slab = "34.0.0"
 
 # dev dependencies
 proptest = "1.8.0"
-proptest-derive = "0.7.0"
+proptest-derive = "0.8.0"
 libm = "0.2.15"
 
 # build dependencies
