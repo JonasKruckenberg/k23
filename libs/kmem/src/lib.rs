@@ -10,6 +10,7 @@ mod address;
 mod address_range;
 mod address_space;
 pub mod arch;
+mod bootstrap;
 mod flush;
 mod frame_allocator;
 mod memory_attributes;

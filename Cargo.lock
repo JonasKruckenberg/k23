@@ -1211,6 +1211,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kmem-aslr"
+version = "0.1.0"
+dependencies = [
+ "kmem",
+ "rand",
+ "rand_chacha",
+]
+
+[[package]]
 name = "ktest"
 version = "0.1.0"
 dependencies = [
@@ -1361,6 +1370,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
 dependencies = [
  "regex-automata",
+]
+
+[[package]]
+name = "mem"
+version = "0.1.0"
+dependencies = [
+ "kmem",
+ "kmem-aslr",
+ "libm",
+ "log",
+ "pin-project",
+ "proptest",
+ "rand",
+ "rand_chacha",
+ "smallvec",
+ "test-log",
+ "wavltree",
 ]
 
 [[package]]

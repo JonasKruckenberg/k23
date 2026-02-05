@@ -1,0 +1,26 @@
+[package]
+name = "mem"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+kmem.workspace = true
+kmem-aslr.workspace = true
+wavltree = { workspace = true, features = ["dot"] }
+
+rand.workspace = true
+rand_chacha.workspace = true
+pin-project.workspace = true
+log.workspace = true
+smallvec.workspace = true
+
+[dev-dependencies]
+libm.workspace = true
+kmem = { workspace = true, features = ["test_utils"] }
+test-log = { version = "0.2.19" }
+proptest.workspace = true
+
+[lints]
+workspace = true
