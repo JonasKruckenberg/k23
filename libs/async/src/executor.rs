@@ -15,9 +15,9 @@ use core::sync::atomic::Ordering;
 
 use cordyceps::mpsc_queue::{MpscQueue, TryDequeueError};
 use futures::pin_mut;
-use k23_cpu_local::collection::CpuLocal;
-use k23_fastrand::FastRand;
-use k23_spin::Backoff;
+use kcpu_local::collection::CpuLocal;
+use kfastrand::FastRand;
+use kspin::Backoff;
 
 use crate::error::{Closed, SpawnError};
 use crate::executor::steal::{Injector, Stealer, TryStealError};

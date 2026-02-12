@@ -949,7 +949,7 @@ where
                 shard.clear_after_release(self.key);
             } else {
                 log::trace!("-> shard={:?} does not exist! THIS IS A BUG", shard_idx);
-                // debug_assert!(k23_panic_unwind::panicking(), "[internal error] tried to drop an `OwnedRef` to a slot on a shard that never existed!");
+                // debug_assert!(kpanic_unwind::panicking(), "[internal error] tried to drop an `OwnedRef` to a slot on a shard that never existed!");
             }
         }
     }
@@ -1077,7 +1077,7 @@ where
                 shard.clear_after_release(self.key);
             } else {
                 log::trace!("-> shard does not exist! THIS IS A BUG");
-                // debug_assert!(k23_panic_unwind::panicking(), "[internal error] tried to drop an `OwnedRefMut` to a slot on a shard that never existed!");
+                // debug_assert!(kpanic_unwind::panicking(), "[internal error] tried to drop an `OwnedRefMut` to a slot on a shard that never existed!");
             }
         }
     }

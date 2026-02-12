@@ -35,7 +35,7 @@
 //! ```
 //! #![feature(thread_local)]
 //! # use std::cell::Cell;
-//! use cpu_local::cpu_local;
+//! use kcpu_localcpu_local;
 //!
 //!  // the default declaration works great
 //! cpu_local! {
@@ -96,7 +96,7 @@ use core::ptr::NonNull;
 /// ```rust
 /// # #![feature(thread_local)]
 ///  use core::cell::{Cell, RefCell};
-///  use cpu_local::cpu_local;
+///  use kcpu_localcpu_local;
 ///
 ///  cpu_local! {
 ///     pub static FOO: Cell<u32> = Cell::new(1);

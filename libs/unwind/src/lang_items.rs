@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use k23_abort::abort;
+use kabort::abort;
 
 use crate::exception::Exception;
 use crate::utils::with_context;
@@ -13,7 +13,7 @@ use crate::{Error, FrameIter, arch, raise_exception_phase2};
 
 /// In traditional unwinders the personality routine is responsible for determining the unwinders
 /// behaviour for each frame (stop unwinding because a handler has been found, continue etc.)
-/// Since `k23_unwind` only cares about Rust code, the personality routine here is just a stub to make
+/// Since `kunwind` only cares about Rust code, the personality routine here is just a stub to make
 /// the compiler happy and ensure we're not unwinding across language boundaries. The real unwinding
 /// happens in [`raise_exception_phase2`].
 #[lang = "eh_personality"]

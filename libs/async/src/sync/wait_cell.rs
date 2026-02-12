@@ -11,7 +11,7 @@ use core::task::{Context, Poll, Waker};
 use core::{fmt, task};
 
 use bitflags::bitflags;
-use k32_util::{CachePadded, loom_const_fn};
+use kutil::{CachePadded, loom_const_fn};
 use static_assertions::const_assert_eq;
 
 use crate::error::Closed;

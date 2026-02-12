@@ -8,7 +8,7 @@
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 
-use k23_spin::{OnceLock, RwLock};
+use kspin::{OnceLock, RwLock};
 
 use crate::wasm::vm::CodeObject;
 

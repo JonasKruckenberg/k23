@@ -1,22 +1,22 @@
 [package]
-name = "k23-panic-unwind"
+name = "kpanic-unwind"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [dependencies]
-k23-spin.workspace = true
-k23-cpu-local.workspace = true
-k23-unwind.workspace = true
-k23-abort.workspace = true
+kspin.workspace = true
+kcpu-local.workspace = true
+kunwind.workspace = true
+kabort.workspace = true
 
 # 3rd-party dependencies
 tracing.workspace = true
 #cfg-if.workspace = true
 
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
-k23-riscv.workspace = true
+riscv.workspace = true
 
 [lints]
 workspace = true

@@ -1,5 +1,5 @@
 [package]
-name = "k23-riscv"
+name = "riscv"
 description = "RISC-V architecture support crate"
 version.workspace = true
 edition.workspace = true
@@ -10,7 +10,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-k23-spin.workspace = true
+kspin.workspace = true
 trap.workspace = true
 
 # 3rd-party dependencies

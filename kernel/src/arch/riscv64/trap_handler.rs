@@ -9,12 +9,12 @@ use alloc::boxed::Box;
 use core::arch::{asm, naked_asm};
 use core::cell::Cell;
 
-use k23_cpu_local::cpu_local;
-use k23_riscv::scause::{Exception, Interrupt};
-use k23_riscv::{
+use kcpu_local::cpu_local;
+use kmem::VirtualAddress;
+use riscv::scause::{Exception, Interrupt};
+use riscv::{
     load_fp, load_gp, save_fp, save_gp, scause, sepc, sip, sscratch, sstatus, stval, stvec,
 };
-use kmem::VirtualAddress;
 
 use crate::arch::PAGE_SIZE;
 use crate::arch::trap::Trap;
@@ -355,7 +355,7 @@ fn handle_kernel_exception(
 
     tracing::error!("KERNEL TRAP {cause:?} epc={epc};tval={tval}");
 
-    let mut regs = k23_unwind::Registers {
+    let mut regs = kunwind::Registers {
         gp: frame.gp,
         fp: frame.fp,
     };
@@ -371,11 +371,11 @@ fn handle_kernel_exception(
 
     // begin a panic on the original stack
     // Safety: we saved the register state at the beginning of the trap handler
-    unsafe { k23_panic_unwind::begin_unwind(payload, regs, epc.add(1).get()) };
+    unsafe { kpanic_unwind::begin_unwind(payload, regs, epc.add(1).get()) };
 }
 
 fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
-    let mut regs = k23_unwind::Registers {
+    let mut regs = kunwind::Registers {
         gp: frame.gp,
         fp: frame.fp,
     };
@@ -390,6 +390,6 @@ fn handle_recursive_fault(frame: &TrapFrame, epc: VirtualAddress) -> ! {
     // begin a panic on the original stack
     // Safety: we saved the register state at the beginning of the trap handler
     unsafe {
-        k23_panic_unwind::begin_unwind(payload, regs, epc.add(1).get());
+        kpanic_unwind::begin_unwind(payload, regs, epc.add(1).get());
     }
 }

@@ -9,8 +9,8 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt;
 
-use k23_riscv::satp;
-use k23_spin::OnceLock;
+use kspin::OnceLock;
+use riscv::satp;
 
 // FIXME: A OnceLock to store a u16? yikes
 static MAX_ASID: OnceLock<u16> = OnceLock::new();

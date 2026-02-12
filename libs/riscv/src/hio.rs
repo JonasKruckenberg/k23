@@ -10,7 +10,7 @@
 use core::fmt::{Error, Write};
 use core::{fmt, slice};
 
-use k23_spin::Mutex;
+use kspin::Mutex;
 
 use super::semihosting::syscall;
 

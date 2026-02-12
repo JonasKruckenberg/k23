@@ -7,7 +7,7 @@
 
 use core::task::Waker;
 
-use k23_arrayvec::ArrayVec;
+use karrayvec::ArrayVec;
 
 const NUM_WAKERS: usize = 32;
 

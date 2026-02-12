@@ -35,7 +35,7 @@ pub use error::Error;
 use exception::Exception;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameIter};
-use k23_abort::abort;
+use kabort::abort;
 use lang_items::ensure_rust_personality_routine;
 pub use utils::with_context;
 
@@ -100,13 +100,13 @@ pub unsafe fn begin_unwind_with(
 ///
 /// Note that the traditional unwinding process has 2 phases, the first where the landing pad is discovered
 /// and the second where the stack is actually unwound up to that landing pad.
-/// In `k23_unwind` we can get away with one phase because we bypass the language personality routine:
+/// In `kunwind` we can get away with one phase because we bypass the language personality routine:
 /// Traditional unwinders call the personality routine on each frame to discover a landing pad, and
 /// then during cleanup call the personality routine again to determine if control should actually be
 /// transferred. This is done so that languages have maximum flexibility in how they treat exceptions.
 ///
-/// `k23_unwind` - being Rust-only - doesn't need that flexibility since Rust landing pads are called
-/// unconditionally. Furthermore, `k23_unwind` never actually calls the personality routine, instead
+/// `kunwind` - being Rust-only - doesn't need that flexibility since Rust landing pads are called
+/// unconditionally. Furthermore, `kunwind` never actually calls the personality routine, instead
 /// parsing the [`EHAction`] for each frame directly.
 ///
 /// The name `raise_exception_phase2` is kept though to make it easier to understand what this function

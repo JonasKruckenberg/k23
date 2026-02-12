@@ -23,7 +23,7 @@
 #![feature(asm_unwind)]
 
 extern crate alloc;
-extern crate k23_panic_unwind;
+extern crate kpanic_unwind;
 
 mod allocator;
 mod arch;
@@ -46,11 +46,11 @@ use core::slice;
 use core::time::Duration;
 
 use cfg_if::cfg_if;
-use k23_abort::abort;
-use k23_arrayvec::ArrayVec;
-use k23_fastrand::FastRand;
+use kabort::abort;
+use karrayvec::ArrayVec;
 use kasync::executor::{Executor, Worker};
 use kasync::time::{Instant, Ticks, Timer};
+use kfastrand::FastRand;
 use kmem::{AddressRangeExt, PhysicalAddress};
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use mem::frame_alloc;
@@ -86,7 +86,7 @@ static LOADER_CONFIG: LoaderConfig = {
 
 #[unsafe(no_mangle)]
 fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
-    k23_panic_unwind::set_hook(|info| {
+    kpanic_unwind::set_hook(|info| {
         tracing::error!("CPU {info}");
 
         // FIXME 32 seems adequate for unoptimized builds where the callstack can get quite deep
@@ -107,7 +107,7 @@ fn _start(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) -> ! {
     // Unwinding expects at least one landing pad in the callstack, but capturing all unwinds that
     // bubble up to this point is also a good idea since we can perform some last cleanup and
     // print an error message.
-    let res = k23_panic_unwind::catch_unwind(|| {
+    let res = kpanic_unwind::catch_unwind(|| {
         backtrace::__rust_begin_short_backtrace(|| kmain(cpuid, boot_info, boot_ticks));
     });
 

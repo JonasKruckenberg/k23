@@ -1,5 +1,5 @@
 [package]
-name = "k23-sharded-slab"
+name = "ksharded-slab"
 version = "0.1.7"
 authors = ["Eliza Weisman <eliza@buoyant.io>"]
 edition.workspace = true
@@ -12,8 +12,8 @@ A lock-free concurrent slab.
 
 [dependencies]
 log.workspace = true
-k23-spin.workspace = true
-k23-cpu-local.workspace = true
+kspin.workspace = true
+kcpu-local.workspace = true
 
 [features]
 loom = []

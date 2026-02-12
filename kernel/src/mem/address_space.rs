@@ -714,7 +714,7 @@ impl Drop for Batch<'_> {
     fn drop(&mut self) {
         if !self.actions.is_empty() {
             tracing::error!("batch was not flushed before dropping");
-            // k23_panic_unwind::panic_in_drop!("batch was not flushed before dropping");
+            // kpanic_unwind::panic_in_drop!("batch was not flushed before dropping");
         }
     }
 }

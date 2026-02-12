@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 wavltree = { workspace = true, features = ["dot"] }
-k23-cpu-local.workspace = true
+kcpu-local.workspace = true
 
 # 3rd-party dependencies
 lock_api.workspace = true

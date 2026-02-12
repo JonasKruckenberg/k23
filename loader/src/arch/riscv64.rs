@@ -10,8 +10,8 @@ use core::fmt;
 use core::ptr::NonNull;
 
 use bitflags::bitflags;
-use k23_riscv::satp;
 use kmem::{PhysicalAddress, VirtualAddress};
+use riscv::satp;
 
 use crate::GlobalInitResult;
 use crate::error::Error;
@@ -204,7 +204,7 @@ pub unsafe fn handoff_to_kernel(hartid: usize, boot_ticks: u64, init: &GlobalIni
 
     // Safety: inline assembly
     unsafe {
-        k23_riscv::sstatus::set_sum();
+        riscv::sstatus::set_sum();
 
         asm! {
             "mv  sp, {stack_top}", // Set the kernel stack ptr
@@ -250,7 +250,7 @@ pub fn start_secondary_harts(boot_hart: usize, minfo: &MachineInfo) -> crate::Re
         }
 
         log::trace!("[{boot_hart}] starting hart {hartid}...");
-        k23_riscv::sbi::hsm::hart_start(
+        riscv::sbi::hsm::hart_start(
             hartid,
             _start_secondary as usize,
             minfo.fdt.as_ptr() as usize,

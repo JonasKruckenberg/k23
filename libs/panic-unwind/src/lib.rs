@@ -26,7 +26,7 @@ use core::panic::{PanicPayload, UnwindSafe};
 use core::{fmt, mem};
 
 pub use hook::{set_hook, take_hook};
-use k23_abort::abort;
+use kabort::abort;
 
 use crate::hook::{HOOK, Hook, PanicHookInfo, default_hook};
 use crate::panic_count::MustAbort;
@@ -46,7 +46,7 @@ pub fn catch_unwind<F, R>(f: F) -> Result<R, Box<dyn Any + Send + 'static>>
 where
     F: FnOnce() -> R + UnwindSafe,
 {
-    k23_unwind::catch_unwind(f).inspect_err(|_| {
+    kunwind::catch_unwind(f).inspect_err(|_| {
         panic_count::decrease(); // decrease the panic count, since we caught it
     })
 }
@@ -54,7 +54,7 @@ where
 /// Resume an unwind previously caught with [`catch_unwind`].
 pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
     debug_assert!(panic_count::increase(false).is_none());
-    k23_unwind::with_context(|regs, pc| rust_panic(payload, regs.clone(), pc))
+    kunwind::with_context(|regs, pc| rust_panic(payload, regs.clone(), pc))
 }
 
 /// Begin unwinding from an externally captured set of registers (such as from a trap handler).
@@ -63,11 +63,7 @@ pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
 ///
 /// This will start walking the stack and calling `Drop` implementations starting the the `pc` and
 /// register set you provided. Be VERY careful that it is actually correctly captured.
-pub unsafe fn begin_unwind(
-    payload: Box<dyn Any + Send>,
-    regs: k23_unwind::Registers,
-    pc: usize,
-) -> ! {
+pub unsafe fn begin_unwind(payload: Box<dyn Any + Send>, regs: kunwind::Registers, pc: usize) -> ! {
     debug_assert!(panic_count::increase(false).is_none());
     rust_panic(payload, regs, pc)
 }
@@ -108,17 +104,17 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         abort();
     }
 
-    k23_unwind::with_context(|regs, pc| rust_panic(payload, regs.clone(), pc))
+    kunwind::with_context(|regs, pc| rust_panic(payload, regs.clone(), pc))
 }
 
 /// Mirroring std, this is an unmangled function on which to slap
 /// yer breakpoints for backtracing panics.
 #[inline(never)]
 #[unsafe(no_mangle)]
-fn rust_panic(payload: Box<dyn Any + Send>, regs: k23_unwind::Registers, pc: usize) -> ! {
+fn rust_panic(payload: Box<dyn Any + Send>, regs: kunwind::Registers, pc: usize) -> ! {
     // Safety: `begin_unwind` will either return an error or not return at all
-    match unsafe { k23_unwind::begin_unwind_with(payload, regs, pc).unwrap_err_unchecked() } {
-        k23_unwind::Error::EndOfStack => {
+    match unsafe { kunwind::begin_unwind_with(payload, regs, pc).unwrap_err_unchecked() } {
+        kunwind::Error::EndOfStack => {
             tracing::error!(
                 "unwinding completed without finding a `catch_unwind` make sure there is at least a root level catch unwind wrapping the main function. aborting."
             );

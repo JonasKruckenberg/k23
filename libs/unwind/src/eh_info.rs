@@ -9,7 +9,7 @@ use gimli::{
     BaseAddresses, EhFrame, EhFrameHdr, EndianSlice, FrameDescriptionEntry, NativeEndian,
     ParsedEhFrameHdr, UnwindSection,
 };
-use k23_spin::LazyLock;
+use kspin::LazyLock;
 
 use super::utils::{deref_pointer, get_unlimited_slice};
 

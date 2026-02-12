@@ -1,7 +1,7 @@
 // This module exists only to provide a separate page for the implementation
 // documentation.
 
-//! Notes on `k23-sharded-slab`'s implementation and design.
+//! Notes on `ksharded-slab`'s implementation and design.
 //!
 //! # Design
 //!
@@ -135,4 +135,4 @@
 //! INITIAL_PAGE_SIZE.trailing_zeros() + 1;
 //! ```
 //!
-//! [`MAX_THREADS`]: https://docs.rs/k23-sharded-slab/latest/sharded_slab/trait.Config.html#associatedconstant.MAX_THREADS
+//! [`MAX_THREADS`]: https://docs.rs/ksharded-slab/latest/sharded_slab/trait.Config.html#associatedconstant.MAX_THREADS

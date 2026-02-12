@@ -275,10 +275,10 @@ impl<'a> Frame<'a> {
 
 /// An iterator over frames on the stack.
 ///
-/// This is the primary means for walking the stack in `k23_unwind`.
+/// This is the primary means for walking the stack in `kunwind`.
 ///
 /// ```rust
-/// # use k23_unwind::FrameIter;
+/// # use kunwind::FrameIter;
 /// use fallible_iterator::FallibleIterator;
 ///
 /// let mut frames = FrameIter::new(); // start the stack walking at the current frame
@@ -291,11 +291,11 @@ impl<'a> Frame<'a> {
 /// You can also construct a `FrameIter` from the raw register context and instruction pointer:
 ///
 /// ```rust
-/// # use k23_unwind::FrameIter;
+/// # use kunwind::FrameIter;
 /// use fallible_iterator::FallibleIterator;
 ///
 /// // in a real scenario you would obtain these values from e.g. a signal/trap handler
-/// let regs = k23_unwind::Registers {gp: [0; 32],fp: [0; 32]};
+/// let regs = kunwind::Registers {gp: [0; 32],fp: [0; 32]};
 /// let ip = 0;
 ///
 /// let mut frames = FrameIter::from_registers(regs, ip);

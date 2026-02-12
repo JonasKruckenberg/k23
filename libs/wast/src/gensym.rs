@@ -1,6 +1,6 @@
 use core::cell::Cell;
 
-use k23_cpu_local::cpu_local;
+use kcpu_local::cpu_local;
 
 use crate::token::{Id, Span};
 

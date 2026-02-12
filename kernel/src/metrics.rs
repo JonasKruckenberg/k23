@@ -27,7 +27,7 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use k23_cpu_local::collection::CpuLocal;
+use kcpu_local::collection::CpuLocal;
 
 /// Declares a new counter.
 #[macro_export]

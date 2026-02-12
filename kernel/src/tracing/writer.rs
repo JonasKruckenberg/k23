@@ -9,7 +9,7 @@ use core::cell::UnsafeCell;
 use core::fmt::{Arguments, Write};
 use core::{cmp, fmt};
 
-use k23_spin::{ReentrantMutex, ReentrantMutexGuard};
+use kspin::{ReentrantMutex, ReentrantMutexGuard};
 use tracing_core::Metadata;
 
 use crate::tracing::color::{AnsiEscapes, Color, SetColor};
@@ -166,10 +166,10 @@ impl<W: Write> Drop for Writer<W> {
 // Architecture-specific debug output implementation
 cfg_if::cfg_if! {
     if #[cfg(target_arch = "riscv64")] {
-        type DebugStream = k23_riscv::hio::HostStream;
+        type DebugStream = riscv::hio::HostStream;
 
         fn new_debug_stream() -> DebugStream {
-            k23_riscv::hio::HostStream::new_stdout()
+            riscv::hio::HostStream::new_stdout()
         }
     } else {
         compile_error!("Unsupported architecture for debug output");

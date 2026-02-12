@@ -10,7 +10,7 @@ use core::any::Any;
 use core::ffi::c_int;
 use core::ptr;
 
-use k23_abort::abort;
+use kabort::abort;
 
 use crate::Error;
 

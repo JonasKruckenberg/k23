@@ -14,8 +14,8 @@ use core::fmt;
 use core::fmt::Formatter;
 
 use fallible_iterator::FallibleIterator;
-use k23_arrayvec::ArrayVec;
-use k23_unwind::FrameIter;
+use karrayvec::ArrayVec;
+use kunwind::FrameIter;
 
 pub use crate::symbolize::SymbolizeContext;
 
@@ -37,9 +37,9 @@ impl<'a, 'data, const MAX_FRAMES: usize> Backtrace<'a, 'data, MAX_FRAMES> {
     ///
     /// # Errors
     ///
-    /// Returns the underlying [`k23_unwind::Error`] if walking the stack fails.
+    /// Returns the underlying [`kunwind::Error`] if walking the stack fails.
     #[inline]
-    pub fn capture(ctx: &'a SymbolizeContext<'data>) -> Result<Self, k23_unwind::Error> {
+    pub fn capture(ctx: &'a SymbolizeContext<'data>) -> Result<Self, kunwind::Error> {
         Self::new_inner(ctx, FrameIter::new())
     }
 
@@ -53,13 +53,13 @@ impl<'a, 'data, const MAX_FRAMES: usize> Backtrace<'a, 'data, MAX_FRAMES> {
     ///
     /// # Errors
     ///
-    /// Returns the underlying [`k23_unwind::Error`] if walking the stack fails.
+    /// Returns the underlying [`kunwind::Error`] if walking the stack fails.
     #[inline]
     pub fn from_registers(
         ctx: &'a SymbolizeContext<'data>,
-        regs: k23_unwind::Registers,
+        regs: kunwind::Registers,
         ip: usize,
-    ) -> Result<Self, k23_unwind::Error> {
+    ) -> Result<Self, kunwind::Error> {
         let iter = FrameIter::from_registers(regs, ip);
         Self::new_inner(ctx, iter)
     }
@@ -67,7 +67,7 @@ impl<'a, 'data, const MAX_FRAMES: usize> Backtrace<'a, 'data, MAX_FRAMES> {
     fn new_inner(
         ctx: &'a SymbolizeContext<'data>,
         mut iter: FrameIter,
-    ) -> Result<Self, k23_unwind::Error> {
+    ) -> Result<Self, kunwind::Error> {
         let mut frames = ArrayVec::new();
         let mut frames_omitted: usize = 0;
 
