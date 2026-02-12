@@ -64,8 +64,5 @@ wasmtime-slab.workspace = true
 [target.'cfg(any(target_arch = "riscv64", target_arch = "riscv32"))'.dependencies]
 k23-riscv.workspace = true
 
-[build-dependencies]
-vergen-git2 = { version = "9.0.0", features = ["build", "cargo", "rustc"] }
-
 [lints]
 workspace = true

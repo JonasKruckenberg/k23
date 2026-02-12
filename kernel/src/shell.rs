@@ -152,21 +152,22 @@ const VERSION: Command = Command::new("version")
     .with_help("print verbose build and version info.")
     .with_fn(|_| {
         tracing::info!("k23 v{}", env!("CARGO_PKG_VERSION"));
-        tracing::info!(build.version = %concat!(
-            env!("CARGO_PKG_VERSION"),
-            "-",
-            env!("VERGEN_GIT_BRANCH"),
-            ".",
-            env!("VERGEN_GIT_SHA")
-        ));
-        tracing::info!(build.timestamp = %env!("VERGEN_BUILD_TIMESTAMP"));
-        tracing::info!(build.opt_level = %env!("VERGEN_CARGO_OPT_LEVEL"));
-        tracing::info!(build.target = %env!("VERGEN_CARGO_TARGET_TRIPLE"));
-        tracing::info!(commit.sha = %env!("VERGEN_GIT_SHA"));
-        tracing::info!(commit.branch = %env!("VERGEN_GIT_BRANCH"));
-        tracing::info!(commit.date = %env!("VERGEN_GIT_COMMIT_TIMESTAMP"));
-        tracing::info!(rustc.version = %env!("VERGEN_RUSTC_SEMVER"));
-        tracing::info!(rustc.channel = %env!("VERGEN_RUSTC_CHANNEL"));
+        // TODO reimplement this with vergen later
+        // tracing::info!(build.version = %concat!(
+        //     env!("CARGO_PKG_VERSION"),
+        //     "-",
+        //     env!("VERGEN_GIT_BRANCH"),
+        //     ".",
+        //     env!("VERGEN_GIT_SHA")
+        // ));
+        // tracing::info!(build.timestamp = %env!("VERGEN_BUILD_TIMESTAMP"));
+        // tracing::info!(build.opt_level = %env!("VERGEN_CARGO_OPT_LEVEL"));
+        // tracing::info!(build.target = %env!("VERGEN_CARGO_TARGET_TRIPLE"));
+        // tracing::info!(commit.sha = %env!("VERGEN_GIT_SHA"));
+        // tracing::info!(commit.branch = %env!("VERGEN_GIT_BRANCH"));
+        // tracing::info!(commit.date = %env!("VERGEN_GIT_COMMIT_TIMESTAMP"));
+        // tracing::info!(rustc.version = %env!("VERGEN_RUSTC_SEMVER"));
+        // tracing::info!(rustc.channel = %env!("VERGEN_RUSTC_CHANNEL"));
 
         Ok(())
     });
