@@ -10,7 +10,7 @@
 use core::{fmt, ops};
 
 use cfg_if::cfg_if;
-use gimli::{Register, RiscV};
+use gimli::{Register, RegisterRule, RiscV};
 
 // Match DWARF_FRAME_REGISTERS in libgcc
 pub const MAX_REG_RULES: usize = 65;
@@ -32,6 +32,12 @@ pub const UNWIND_DATA_REG: (Register, Register) = (RiscV::A0, RiscV::A1);
 
 #[cfg(all(target_feature = "f", not(target_feature = "d")))]
 compile_error!("RISC-V with only F extension is not supported");
+
+/// Returns the default register rule for the given register on this architecture.
+pub fn default_register_rule_for(_reg: Register) -> RegisterRule<usize> {
+    // As far as I can tell RISCV has no special requirements
+    RegisterRule::Undefined
+}
 
 /// Register context when unwinding.
 ///

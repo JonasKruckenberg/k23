@@ -30,7 +30,8 @@ pub fn abort() -> ! {
         } else if #[cfg(any(target_arch = "riscv64", target_arch = "riscv32"))] {
             riscv::exit(1);
         } else {
-            compile_error!("unsupported target architecture")
+            loop {}
+            // compile_error!("unsupported target architecture")
         }
     }
 }
