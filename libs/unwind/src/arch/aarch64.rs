@@ -10,7 +10,7 @@
 use core::{fmt, ops};
 
 use cfg_if::cfg_if;
-use gimli::{AArch64, Register};
+use gimli::{AArch64, Register, RegisterRule};
 
 // Match DWARF_FRAME_REGISTERS in libgcc
 pub const MAX_REG_RULES: usize = 97;
@@ -27,6 +27,25 @@ cfg_if! {
     } else {
         /// The largest register number on this architecture.
         pub const MAX_REG: u16 = 32;
+    }
+}
+
+/// Returns the default register rule for the given register on this architecture.
+pub fn default_register_rule_for(reg: Register) -> RegisterRule<usize> {
+    // the AArch64 DWARF standard requires rules for callee-saved registers and
+    //  "registers intentionally unused by the program, for example as a consequence of the procedure call standard"
+    //  to be initialized to `RegisterRule::SameValue` while other registers should be initialized to `RegisterRule::Undefined`.
+    //  <https://github.com/ARM-software/abi-aa/blob/main/aadwarf64/aadwarf64.rst#43common-information-entries>
+    //
+    // <https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst#61machine-registers>
+    // defines callee-saved registers to be
+    //
+    // general purpose registers r19-r28
+    // and SIMD/fp registers v8-v15
+    match reg {
+        Register(19..=28) => RegisterRule::SameValue,
+        Register(72..=79) => RegisterRule::SameValue,
+        _ => RegisterRule::Undefined,
     }
 }
 

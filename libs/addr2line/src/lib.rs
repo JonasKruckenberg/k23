@@ -29,6 +29,8 @@ extern crate alloc;
 use alloc::sync::Arc;
 use core::ops::ControlFlow;
 
+use gimli::ReaderOffset;
+
 use crate::function::{Function, InlinedFunction, LazyFunctions};
 use crate::line::{LazyLines, LineLocationRangeIter, Lines};
 use crate::lookup::{LoopingLookup, SimpleLookup};
@@ -90,6 +92,9 @@ impl<R: gimli::Reader> Context<R> {
         debug_rnglists: gimli::DebugRngLists<R>,
         debug_str: gimli::DebugStr<R>,
         debug_str_offsets: gimli::DebugStrOffsets<R>,
+        debug_macinfo: gimli::DebugMacinfo<R>,
+        debug_macro: gimli::DebugMacro<R>,
+        debug_names: gimli::DebugNames<R>,
         default_section: R,
     ) -> Result<Self, Error> {
         Self::from_dwarf(gimli::Dwarf {
@@ -101,6 +106,9 @@ impl<R: gimli::Reader> Context<R> {
             debug_line_str,
             debug_str,
             debug_str_offsets,
+            debug_macinfo,
+            debug_macro,
+            debug_names,
             debug_types: default_section.clone().into(),
             locations: gimli::LocationLists::new(
                 default_section.clone().into(),
@@ -214,12 +222,12 @@ impl<R: gimli::Reader> Context<R> {
         let unit = match file {
             DebugFile::Primary => self.units.find_offset(offset)?,
             DebugFile::Supplementary => self.sup_units.find_offset(offset)?,
-            DebugFile::Dwo => return Err(gimli::Error::NoEntryAtGivenOffset),
+            DebugFile::Dwo => return Err(gimli::Error::NoEntryAtGivenOffset(offset.0.into_u64())),
         };
 
         let unit_offset = offset
             .to_unit_offset(&unit.header)
-            .ok_or(gimli::Error::NoEntryAtGivenOffset)?;
+            .ok_or(gimli::Error::NoEntryAtGivenOffset(offset.0.into_u64()))?;
         Ok((unit, unit_offset))
     }
 }

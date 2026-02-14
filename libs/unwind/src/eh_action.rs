@@ -143,20 +143,20 @@ fn read_encoded_pointer(
         constants::DW_EH_PE_pcrel => input.slice().as_ptr() as u64,
         constants::DW_EH_PE_funcrel => {
             if frame.symbol_address() == 0 {
-                return Err(gimli::Error::UnsupportedPointerEncoding);
+                return Err(gimli::Error::UnsupportedPointerEncoding(encoding));
             }
             frame.symbol_address()
         }
         constants::DW_EH_PE_textrel => frame
             .text_rel_base()
-            .ok_or(gimli::Error::UnsupportedPointerEncoding)?,
+            .ok_or(gimli::Error::UnsupportedPointerEncoding(encoding))?,
         constants::DW_EH_PE_datarel => frame
             .data_rel_base()
-            .ok_or(gimli::Error::UnsupportedPointerEncoding)?,
+            .ok_or(gimli::Error::UnsupportedPointerEncoding(encoding))?,
         constants::DW_EH_PE_aligned => {
-            return Err(gimli::Error::UnsupportedPointerEncoding);
+            return Err(gimli::Error::UnsupportedPointerEncoding(encoding));
         }
-        _ => return Err(gimli::Error::UnsupportedPointerEncoding),
+        _ => return Err(gimli::Error::UnsupportedPointerEncoding(encoding)),
     };
 
     debug_assert_ne!(base, 0);

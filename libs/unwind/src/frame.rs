@@ -188,7 +188,10 @@ impl<'a> Frame<'a> {
         for reg in 0..arch::MAX_REG {
             let reg = Register(reg);
 
-            let rule = row.register(reg);
+            let rule = row
+                .register(reg)
+                // Some architectures (e.g. aarch64) have implicit SameValue rules for callee-saved registers.
+                .unwrap_or_else(|| arch::default_register_rule_for(reg));
 
             match rule {
                 // According to LLVM libunwind (and this appears to be true in practice as well)
@@ -222,7 +225,6 @@ impl<'a> Frame<'a> {
                 }
                 RegisterRule::Architectural => unreachable!(),
                 RegisterRule::Constant(value) => new_regs[reg] = usize::try_from(value).unwrap(),
-                _ => unreachable!(),
             }
         }
 

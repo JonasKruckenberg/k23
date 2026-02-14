@@ -9,6 +9,8 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 
+use gimli::ReaderOffset;
+
 // use crate::lazy::LazyResult;
 use crate::{Context, DebugFile, Error, RangeAttributes};
 use crate::{LazyResult, maybe_small};
@@ -304,7 +306,7 @@ impl<R: gimli::Reader> Function<R> {
     }
 
     fn skip(
-        entries: &mut gimli::EntriesRaw<'_, '_, R>,
+        entries: &mut gimli::EntriesRaw<'_, R>,
         abbrev: &gimli::Abbreviation,
         depth: isize,
     ) -> Result<(), Error> {
@@ -458,7 +460,7 @@ impl<R: gimli::Reader> InlinedFunction<R> {
 
 struct InlinedState<'a, R: gimli::Reader> {
     // Mutable fields.
-    entries: gimli::EntriesRaw<'a, 'a, R>,
+    entries: gimli::EntriesRaw<'a, R>,
     functions: Vec<InlinedFunction<R>>,
     addresses: Vec<InlinedFunctionAddress>,
 
@@ -520,7 +522,7 @@ where
     let abbrev = if let Some(abbrev) = entries.read_abbreviation()? {
         abbrev
     } else {
-        return Err(gimli::Error::NoEntryAtGivenOffset);
+        return Err(gimli::Error::NoEntryAtGivenOffset(offset.0.into_u64()));
     };
 
     let mut name = None;
