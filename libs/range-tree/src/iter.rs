@@ -414,7 +414,7 @@ where
     match (gap.start_bound(), gap.end_bound()) {
         (Bound::Unbounded, _) | (_, Bound::Unbounded) => false,
         (Bound::Included(start), Bound::Excluded(end)) => {
-            start.to_int().to_raw() >= end.to_int().to_raw()
+            I::Int::cmp(start.to_int().to_raw(), end.to_int().to_raw()).is_ge()
         }
         _ => unreachable!(),
     }
