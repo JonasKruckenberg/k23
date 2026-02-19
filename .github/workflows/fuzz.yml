@@ -1,0 +1,84 @@
+name: Fuzzing
+
+on:
+  push:
+    paths:
+      - 'fuzz/**'
+      - 'libs/range-tree/**'
+  pull_request:
+    paths:
+      - 'fuzz/**'
+      - 'libs/range-tree/**'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CLICOLOR: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre_ci:
+    uses: dtolnay/.github/.github/workflows/pre_ci.yml@master
+
+  fuzz:
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        fuzz-target: [ "range-tree" ]
+        target:
+          - tuple: riscv64gc-unknown-linux-gnu
+          - tuple: riscv64gc-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+v
+          - tuple: aarch64-unknown-linux-gnu
+          - tuple: aarch64-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+sve
+          - tuple: x86_64-unknown-linux-gnu
+          - tuple: x86_64-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+sse4.2
+          - tuple: x86_64-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+sse4.2,+popcnt
+          - tuple: x86_64-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+avx2,+popcnt
+          - tuple: x86_64-unknown-linux-gnu
+            rustflags: -Ctarget-feature=+avx512bw,+popcnt
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.target.tuple }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+      - name: Install Intel SDE
+        if: ${{ matrix.target.tuple == 'x86_64-unknown-linux-gnu' }}
+        uses: petarpetrovt/setup-sde@v2.4
+      - name: Set up Intel SDE as runner
+        if: ${{ matrix.target.tuple == 'x86_64-unknown-linux-gnu' }}
+        run: echo CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="${SDE_PATH}/sde64 -spr --" >> $GITHUB_ENV
+      - name: Setup toolchains for cross compilation and cross testing for Rust
+        if: ${{ matrix.target.tuple != 'x86_64-unknown-linux-gnu' }}
+        uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target.tuple }}
+      - name: Test
+        run: cargo test -p ${{ matrix.fuzz-target }}
+        env:
+          RUSTFLAGS: -D warnings ${{ matrix.target.rustflags }}
+      - name: Run fuzz target for 60s
+        run: cargo fuzz run ${{ matrix.fuzz-target }} -s none --target ${{ matrix.target.tuple }} -- -max_total_time=60
+        env:
+          RUSTFLAGS: -D warnings ${{ matrix.target.rustflags }}
+      # Upload fuzzing artifacts on failure for post-mortem debugging.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzzing-artifacts-${{ matrix.fuzz_target }}-${{ github.sha }}
+          path: fuzz/artifacts
