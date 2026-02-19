@@ -80,5 +80,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: fuzzing-artifacts-${{ matrix.fuzz_target }}-${{ github.sha }}
+          name: fuzzing-artifacts-${{ matrix.fuzz-target }}-${{ matrix.target.tuple }}-${{ matrix.target.rustflags }}-${{ github.sha }}
           path: fuzz/artifacts
