@@ -77,7 +77,7 @@ jobs:
         env:
           RUSTFLAGS: -D warnings ${{ matrix.target.rustflags }}
       # Upload fuzzing artifacts on failure for post-mortem debugging.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: fuzzing-artifacts-${{ matrix.fuzz_target }}-${{ github.sha }}
