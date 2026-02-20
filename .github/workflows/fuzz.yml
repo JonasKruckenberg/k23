@@ -59,7 +59,7 @@ jobs:
         run: cargo install cargo-fuzz
       - name: Install Intel SDE
         if: ${{ matrix.target.tuple == 'x86_64-unknown-linux-gnu' }}
-        uses: petarpetrovt/setup-sde@v2.4
+        uses: petarpetrovt/setup-sde@v3.0
       - name: Set up Intel SDE as runner
         if: ${{ matrix.target.tuple == 'x86_64-unknown-linux-gnu' }}
         run: echo CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="${SDE_PATH}/sde64 -spr --" >> $GITHUB_ENV
