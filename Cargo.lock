@@ -871,7 +871,7 @@ dependencies = [
  "tracing 0.2.0",
  "tracing-core 0.2.0",
  "trap",
- "wasmparser 0.228.0",
+ "wasmparser 0.245.1",
  "wasmtime-slab",
  "wavltree",
  "xmas-elf",
@@ -997,7 +997,7 @@ dependencies = [
  "memchr",
  "unicode-width",
  "wasm-encoder 0.241.2",
- "wasmparser 0.228.0",
+ "wasmparser 0.245.1",
  "wat",
 ]
 
@@ -2158,15 +2158,6 @@ dependencies = [
  "indexmap",
  "wasm-encoder 0.244.0",
  "wasmparser 0.244.0",
-]
-
-[[package]]
-name = "wasmparser"
-version = "0.228.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4abf1132c1fdf747d56bbc1bb52152400c70f336870f968b85e89ea422198ae3"
-dependencies = [
- "bitflags",
 ]
 
 [[package]]
