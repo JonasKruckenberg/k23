@@ -1,5 +1,5 @@
 [package]
-name = "kmem"
+name = "kmem-core"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -20,7 +20,7 @@ log.workspace = true
 lock_api.workspace = true
 
 [dev-dependencies]
-kmem = { workspace = true, features = ["test_utils"] }
+kmem-core = { workspace = true, features = ["test_utils"] }
 test-log = "0.2.19"
 
 [features]

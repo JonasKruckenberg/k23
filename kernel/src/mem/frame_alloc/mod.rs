@@ -22,7 +22,7 @@ use cordyceps::list::List;
 use fallible_iterator::FallibleIterator;
 pub use frame::{Frame, FrameInfo};
 use kcpu_local::collection::CpuLocal;
-use kmem::PhysicalAddress;
+use kmem_core::PhysicalAddress;
 use kspin::{Mutex, OnceLock};
 
 use crate::arch;

@@ -12,7 +12,7 @@ use core::num::NonZeroUsize;
 use core::ops::Range;
 use core::{ptr, slice};
 
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use kspin::Mutex;
 
 use crate::arch;

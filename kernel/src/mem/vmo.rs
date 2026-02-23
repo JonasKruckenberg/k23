@@ -9,7 +9,7 @@ use alloc::sync::Arc;
 use core::ops::Range;
 
 use anyhow::ensure;
-use kmem::{AddressRangeExt, PhysicalAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress};
 use kspin::RwLock;
 
 use crate::arch;

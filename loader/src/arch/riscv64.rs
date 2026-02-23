@@ -10,7 +10,7 @@ use core::fmt;
 use core::ptr::NonNull;
 
 use bitflags::bitflags;
-use kmem::{PhysicalAddress, VirtualAddress};
+use kmem_core::{PhysicalAddress, VirtualAddress};
 use riscv::satp;
 
 use crate::GlobalInitResult;

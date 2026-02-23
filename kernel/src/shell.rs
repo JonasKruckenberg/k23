@@ -23,7 +23,7 @@ use core::str::FromStr;
 
 use fallible_iterator::FallibleIterator;
 use kasync::executor::Executor;
-use kmem::{AddressRangeExt, PhysicalAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress};
 use kspin::{Barrier, OnceLock};
 
 use crate::device_tree::DeviceTree;

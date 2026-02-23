@@ -15,7 +15,7 @@ use core::{fmt, mem};
 use fallible_iterator::FallibleIterator;
 use karrayvec::ArrayVec;
 use kfdt::{CellSizes, Fdt, PropertiesIter};
-use kmem::{AddressRangeExt, PhysicalAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress};
 
 use crate::arch::PAGE_SIZE;
 use crate::error::Error;

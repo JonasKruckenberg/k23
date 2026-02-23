@@ -13,7 +13,7 @@ use core::slice;
 
 use anyhow::Context;
 use cranelift_entity::PrimaryMap;
-use kmem::VirtualAddress;
+use kmem_core::VirtualAddress;
 
 use crate::mem::{AddressSpace, Mmap};
 use crate::wasm::TrapKind;

@@ -16,7 +16,7 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 
 use anyhow::bail;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use kspin::LazyLock;
 use pin_project::pin_project;
 

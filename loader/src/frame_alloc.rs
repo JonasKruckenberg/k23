@@ -10,7 +10,7 @@ use core::ops::Range;
 use core::{cmp, iter, ptr, slice};
 
 use fallible_iterator::FallibleIterator;
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 
 use crate::arch;
 use crate::error::Error;

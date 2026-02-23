@@ -846,7 +846,7 @@ dependencies = [
  "kcpu-local",
  "kfastrand",
  "kfdt",
- "kmem",
+ "kmem-core",
  "kpanic-unwind",
  "ksharded-slab",
  "kspin",
@@ -892,12 +892,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "kmem"
+name = "kmem-core"
 version = "0.1.0"
 dependencies = [
  "karrayvec",
  "kcpu-local",
- "kmem",
+ "kmem-core",
  "kspin",
  "lock_api",
  "log",
@@ -1053,7 +1053,7 @@ dependencies = [
  "kabort",
  "karrayvec",
  "kfdt",
- "kmem",
+ "kmem-core",
  "kspin",
  "loader-api",
  "log",
@@ -1067,7 +1067,7 @@ dependencies = [
 name = "loader-api"
 version = "0.1.0"
 dependencies = [
- "kmem",
+ "kmem-core",
 ]
 
 [[package]]

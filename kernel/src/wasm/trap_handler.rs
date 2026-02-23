@@ -16,7 +16,7 @@ use core::ptr::NonNull;
 use core::{fmt, ptr};
 
 use kcpu_local::cpu_local;
-use kmem::VirtualAddress;
+use kmem_core::VirtualAddress;
 
 use crate::arch;
 use crate::wasm::TrapKind;
