@@ -18,7 +18,7 @@ use core::arch::asm;
 use anyhow::ensure;
 pub use asid_allocator::AsidAllocator;
 pub use block_on::block_on;
-use kmem::VirtualAddress;
+use kmem_core::VirtualAddress;
 pub use mem::{
     AddressSpace, DEFAULT_ASID, KERNEL_ASPACE_RANGE, PAGE_SHIFT, PAGE_SIZE, USER_ASPACE_RANGE,
     invalidate_range, is_canonical, is_kernel_address, is_user_address, phys_to_virt,

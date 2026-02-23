@@ -8,7 +8,7 @@
 use core::ops::{Deref, DerefMut, Range};
 use core::{fmt, slice};
 
-use kmem::{PhysicalAddress, VirtualAddress};
+use kmem_core::{PhysicalAddress, VirtualAddress};
 
 #[derive(Debug)]
 #[non_exhaustive]

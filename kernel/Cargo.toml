@@ -27,7 +27,7 @@ kabort.workspace = true
 kpanic-unwind.workspace = true
 kutil.workspace = true
 kasync = { workspace = true, features = ["kunwind", "counters"] }
-kmem.workspace = true
+kmem-core.workspace = true
 
 # 3rd-party dependencies
 rustc-demangle.workspace = true

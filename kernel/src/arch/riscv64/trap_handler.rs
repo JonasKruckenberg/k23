@@ -10,7 +10,7 @@ use core::arch::{asm, naked_asm};
 use core::cell::Cell;
 
 use kcpu_local::cpu_local;
-use kmem::VirtualAddress;
+use kmem_core::VirtualAddress;
 use riscv::scause::{Exception, Interrupt};
 use riscv::{
     load_fp, load_gp, save_fp, save_gp, scause, sepc, sip, sscratch, sstatus, stval, stvec,

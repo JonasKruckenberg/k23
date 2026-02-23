@@ -51,7 +51,7 @@ use karrayvec::ArrayVec;
 use kasync::executor::{Executor, Worker};
 use kasync::time::{Instant, Ticks, Timer};
 use kfastrand::FastRand;
-use kmem::{AddressRangeExt, PhysicalAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress};
 use loader_api::{BootInfo, LoaderConfig, MemoryRegionKind};
 use mem::frame_alloc;
 use rand::{RngCore, SeedableRng};

@@ -10,7 +10,7 @@ use core::mem::MaybeUninit;
 use core::ops::Range;
 use core::slice;
 
-use kmem::{PhysicalAddress, VirtualAddress};
+use kmem_core::{PhysicalAddress, VirtualAddress};
 use loader_api::{BootInfo, MemoryRegion, MemoryRegionKind, MemoryRegions, TlsTemplate};
 
 use crate::arch;

@@ -17,7 +17,7 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 
 use anyhow::{bail, ensure};
-use kmem::{AddressRangeExt, PhysicalAddress, VirtualAddress};
+use kmem_core::{AddressRangeExt, PhysicalAddress, VirtualAddress};
 use rand::Rng;
 use rand::distr::Uniform;
 use rand_chacha::ChaCha20Rng;

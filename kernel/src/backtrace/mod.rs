@@ -13,7 +13,7 @@ use core::{fmt, slice};
 
 use fallible_iterator::FallibleIterator;
 use karrayvec::ArrayVec;
-use kmem::{AddressRangeExt, VirtualAddress};
+use kmem_core::{AddressRangeExt, VirtualAddress};
 use kspin::OnceLock;
 use kunwind::FrameIter;
 use loader_api::BootInfo;
