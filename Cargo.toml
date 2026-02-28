@@ -68,7 +68,7 @@ wasm-encoder = { version = "0.241.0", default-features = false }
 wat = "1.219.1"
 
 # cranelift dependencies
-hashbrown = { version = "0.15", default-features = false, features = [
+hashbrown = { version = "0.16", default-features = false, features = [
     "inline-more",
     "nightly",
     "default-hasher",
