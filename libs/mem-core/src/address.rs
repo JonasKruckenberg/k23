@@ -5,6 +5,10 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use std::num::NonZeroU64;
+
+use range_tree::RangeTreeIndex;
+
 use crate::arch::Arch;
 
 macro_rules! impl_address_from {
@@ -307,6 +311,18 @@ impl VirtualAddress {
         let mask = !((1 << (A::VIRTUAL_ADDRESS_BITS)) - 1);
         let upper = self.get() & mask;
         upper == 0 || upper == mask
+    }
+}
+
+impl RangeTreeIndex for VirtualAddress {
+    type Int = NonZeroU64;
+
+    fn to_int(self) -> Self::Int {
+        NonZeroU64::new(u64::try_from(self.get()).unwrap()).unwrap()
+    }
+
+    fn from_int(int: Self::Int) -> Self {
+        Self::new(usize::try_from(int.get()).unwrap())
     }
 }
 

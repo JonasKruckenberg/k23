@@ -1,4 +1,4 @@
-use core::ops::Range;
+use core::range::Range;
 
 use riscv::satp;
 use riscv::sbi::rfence::{sfence_vma, sfence_vma_asid};
