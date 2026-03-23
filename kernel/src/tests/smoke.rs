@@ -12,4 +12,5 @@ wast_tests!(
     fib_imported "../../../tests/fib_imported.wast",
     hostfunc_rs "../../../tests/hostfunc_rs.wast",
     hostfunc_wat "../../../tests/hostfunc_wat.wast",
+    trap "../../../tests/trap.wast",
 );
