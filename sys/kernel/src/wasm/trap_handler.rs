@@ -330,6 +330,12 @@ impl Drop for Activation {
         // Safety: TODO
         unsafe {
             let cx = self.vm_store_context.as_ref();
+            tracing::trace!(
+                "Dropping activation, reset wasm entry from {:?} to {:?}",
+                cx.last_wasm_entry_fp,
+                self.old_last_wasm_entry_fp
+            );
+
             *cx.last_wasm_exit_fp.get() = self.old_last_wasm_exit_fp.get();
             *cx.last_wasm_exit_pc.get() = self.old_last_wasm_exit_pc.get();
             *cx.last_wasm_entry_fp.get() = self.old_last_wasm_entry_fp.get();
