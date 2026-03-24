@@ -251,16 +251,19 @@ impl Compiler for CraneliftCompiler {
         // Assert that we were really given a core Wasm vmctx, since that's
         // what we are assuming with our offsets below.
         debug_assert_vmctx_kind(self.target_isa(), &mut builder, vmctx, VMCONTEXT_MAGIC);
-        // Then store our current stack pointer into the appropriate slot.
+        // Then store our current frame pointer into the appropriate slot.
         let fp = builder.ins().get_frame_pointer(pointer_type);
+        let vm_store_context = builder.ins().load(
+            pointer_type,
+            MemFlags::trusted(),
+            vmctx,
+            StaticVMShape.vmctx_store_context(),
+        );
         builder.ins().store(
             MemFlags::trusted(),
             fp,
-            vmctx,
-            Offset32::new(
-                i32::from(StaticVMShape.vmctx_store_context())
-                    + u32_offset_of!(VMStoreContext, last_wasm_entry_fp) as i32,
-            ),
+            vm_store_context,
+            Offset32::new(u32_offset_of!(VMStoreContext, last_wasm_entry_fp) as i32),
         );
 
         // Then call the Wasm function with those arguments.
