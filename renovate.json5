@@ -3,29 +3,30 @@
     extends: [
         'config:recommended',
     ],
-    customManagers: [
-        {
-            customType: 'regex',
-            managerFilePatterns: [
-                '/^rust-toolchain\\.toml?$/',
-            ],
-            matchStrings: [
-                'channel\\s*=\\s*"(?<currentValue>\\d+\\.\\d+(\\.\\d+)?)"',
-            ],
-            depNameTemplate: 'rust',
-            packageNameTemplate: 'rust-lang/rust',
-            datasourceTemplate: 'github-releases',
-        },
-    ],
+    // Only open PRs Friday morning to batch updates into a weekly review
+    schedule: ['before 9am on Friday'],
+    // Limit concurrent open PRs
+    prConcurrentLimit: 5,
     packageRules: [
+        // Group all minor & patch Rust dependency updates into one PR
         {
-            matchManagers: [
-                'custom.regex',
-            ],
-            matchPackageNames: [
-                'rust',
-            ],
-            commitMessageTopic: 'Rust Version',
+            matchManagers: ['cargo'],
+            matchUpdateTypes: ['minor', 'patch'],
+            groupName: 'Rust dependencies (non-major)',
+            groupSlug: 'rust-minor-patch',
+        },
+        // Group all major Rust dependency updates into one PR
+        {
+            matchManagers: ['cargo'],
+            matchUpdateTypes: ['major'],
+            groupName: 'Rust dependencies (major)',
+            groupSlug: 'rust-major',
+        },
+        // Group all GitHub Actions updates together
+        {
+            matchManagers: ['github-actions'],
+            groupName: 'GitHub Actions',
+            groupSlug: 'github-actions',
         },
     ],
 }
