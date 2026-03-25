@@ -7,31 +7,7 @@
     schedule: ['before 9am on Friday'],
     // Limit concurrent open PRs
     prConcurrentLimit: 5,
-    customManagers: [
-        {
-            customType: 'regex',
-            managerFilePatterns: [
-                '/^rust-toolchain\\.toml?$/',
-            ],
-            matchStrings: [
-                'channel\\s*=\\s*"(?<currentValue>\\d+\\.\\d+(\\.\\d+)?)"',
-            ],
-            depNameTemplate: 'rust',
-            packageNameTemplate: 'rust-lang/rust',
-            datasourceTemplate: 'github-releases',
-        },
-    ],
     packageRules: [
-        // Rust toolchain: keep separate, needs careful review
-        {
-            matchManagers: [
-                'custom.regex',
-            ],
-            matchPackageNames: [
-                'rust',
-            ],
-            commitMessageTopic: 'Rust Version',
-        },
         // Group all minor & patch Rust dependency updates into one PR
         {
             matchManagers: ['cargo'],
