@@ -13,6 +13,7 @@ kspin = { workspace = true, optional = true }
 proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
 parking_lot = { version = "0.12.5", optional = true }
+range-tree.workspace = true
 
 # 3rd-party dependencies
 mycelium-bitfield.workspace = true

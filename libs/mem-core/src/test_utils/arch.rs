@@ -1,5 +1,5 @@
 use core::fmt;
-use core::ops::Range;
+use core::range::Range;
 use std::mem;
 
 use crate::arch::{Arch, PageTableLevel};
