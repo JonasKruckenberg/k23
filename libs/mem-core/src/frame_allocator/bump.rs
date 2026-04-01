@@ -1,7 +1,7 @@
 use core::alloc::Layout;
 use core::cmp::Ordering;
 use core::num::NonZeroUsize;
-use core::ops::Range;
+use core::range::Range;
 use core::{cmp, fmt, iter};
 
 use karrayvec::ArrayVec;
@@ -341,13 +341,19 @@ impl Arena {
     /// Returns the used (allocated) slice of the physical memory region managed by this arena
     #[inline]
     pub fn used(&self) -> Range<PhysicalAddress> {
-        self.ptr..self.region.end
+        Range {
+            start: self.ptr,
+            end: self.region.end,
+        }
     }
 
     /// Returns the free (not allocated) slice of the physical memory region managed by this arena
     #[inline]
     pub fn free(&self) -> Range<PhysicalAddress> {
-        self.region.start..self.ptr
+        Range {
+            start: self.region.start,
+            end: self.ptr,
+        }
     }
 
     /// Deallocates a given memory block IF it is the last block that was allocated from this arena.
@@ -755,6 +761,7 @@ mod tests {
 #[cfg(test)]
 mod proptests {
     use core::alloc::Layout;
+    use core::range::Range;
 
     use proptest::prelude::*;
 
@@ -768,7 +775,7 @@ mod proptests {
     for_every_arch!(A => {
         proptest! {
             #[test_log::test]
-            fn allocate(region_layouts in region_layouts(1..DEFAULT_MAX_REGIONS, 4*KIB, 16*GIB)) {
+            fn allocate(region_layouts in region_layouts(Range { start: 1, end: DEFAULT_MAX_REGIONS }, 4*KIB, 16*GIB)) {
                 let machine: Machine<A> = MachineBuilder::new()
                     .with_memory_regions(region_layouts.clone())
                     .finish();
@@ -802,7 +809,7 @@ mod proptests {
             }
 
             #[test_log::test]
-            fn allocate_contiguous(region_layouts in region_layouts(1..DEFAULT_MAX_REGIONS, 1*GIB, 16*GIB)) {
+            fn allocate_contiguous(region_layouts in region_layouts(Range { start: 1, end: DEFAULT_MAX_REGIONS }, 1*GIB, 16*GIB)) {
                 let machine: Machine<A> = MachineBuilder::new()
                     .with_memory_regions(region_layouts.clone())
                     .finish();
@@ -822,7 +829,7 @@ mod proptests {
             }
 
             #[test_log::test]
-            fn allocate_contiguous_alignments(region_layouts in region_layouts(1..DEFAULT_MAX_REGIONS, 1*GIB, 16*GIB), alignment_pot in 1..30) {
+            fn allocate_contiguous_alignments(region_layouts in region_layouts(Range { start: 1, end: DEFAULT_MAX_REGIONS }, 1*GIB, 16*GIB), alignment_pot in 1..30) {
                 let machine: Machine<A> = MachineBuilder::new()
                     .with_memory_regions(region_layouts.clone())
                     .finish();
@@ -841,7 +848,7 @@ mod proptests {
             }
 
             #[test_log::test]
-            fn allocate_alignments(region_layouts in region_layouts(1..DEFAULT_MAX_REGIONS, 1*GIB, 16*GIB), alignment_pot in 1..30) {
+            fn allocate_alignments(region_layouts in region_layouts(Range { start: 1, end: DEFAULT_MAX_REGIONS }, 1*GIB, 16*GIB), alignment_pot in 1..30) {
                 let machine: Machine<A> = MachineBuilder::new()
                     .with_memory_regions(region_layouts.clone())
                     .finish();
