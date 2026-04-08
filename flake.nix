@@ -10,8 +10,16 @@
     };
   };
 
-  outputs = { self, nixpkgs, rust-overlay, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      rust-overlay,
+      flake-utils,
+      ...
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs {
           inherit system;
@@ -20,49 +28,54 @@
         rustToolchain = with pkgs; rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
       in
       {
-        devShells.default = with pkgs; mkShell rec {
-          name = "k23-dev";
-          buildInputs = [
-            # compilers
-            rustToolchain
-            clang
+        devShells.default =
+          with pkgs;
+          mkShell rec {
+            name = "k23-dev";
+            buildInputs = [
+              # compilers
+              rustToolchain
+              clang
 
-            # version control
-            jujutsu
+              # version control
+              jujutsu
 
-            # devtools
-            just
-            cargo-nextest
-            cargo-deny
-            typos
-            dtc
-            cargo-fuzz
+              # devtools
+              just
+              cargo-nextest
+              cargo-deny
+              typos
+              dtc
+              cargo-fuzz
+              libcdio
+              libisoburn
 
-            # for manual
-            mdbook
+              # for manual
+              mdbook
 
-            # wasm tooling
-            wabt
-            wasm-tools
+              # wasm tooling
+              wabt
+              wasm-tools
 
-            # for testing the kernel
-            qemu
-            socat
+              # for testing the kernel
+              qemu
+              socat
 
-            # To profile the code or benchmarks
-            samply
-          ] ++ lib.optionals pkgs.stdenv.isLinux [
-            # To profile the code or benchmarks
-            perf
+              # To profile the code or benchmarks
+              samply
+            ]
+            ++ lib.optionals pkgs.stdenv.isLinux [
+              # To profile the code or benchmarks
+              perf
 
-            # For valgrind
-            valgrind
-            cargo-valgrind
-          ];
+              # For valgrind
+              valgrind
+              cargo-valgrind
+            ];
 
-          LIBCLANG_PATH = "${llvmPackages.libclang.lib}/lib";
-          LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
-        };
+            LIBCLANG_PATH = "${llvmPackages.libclang.lib}/lib";
+            LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
+          };
       }
     );
 }
