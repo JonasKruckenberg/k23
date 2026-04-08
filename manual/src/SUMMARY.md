@@ -8,7 +8,10 @@
 - [Debugging k23](building/debugging.md)
 - [Boot Arguments](building/boot-args.md)
 
-[//]: # (# Contributing to k23)
+# Contributing to k23
+
+- [Code Style Guide](contributing/style-guide.md)
+- [Architecture Deep Dive](contributing/architecture.md)
 
 # High-Level Architecture
 
