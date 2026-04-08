@@ -17,7 +17,7 @@ memmap2 = "0.9.10"
 rand = { workspace = true, default-features = true }
 
 [features]
-default = []
+default = ["build"]
 build = ["zerocopy/std", "anyhow/std", "dep:blake3"]
 
 [lints]

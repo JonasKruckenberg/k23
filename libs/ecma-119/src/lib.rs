@@ -1,3 +1,5 @@
+#[cfg(feature = "build")]
+pub mod build;
 pub mod eltorito;
 mod parse;
 mod raw;
