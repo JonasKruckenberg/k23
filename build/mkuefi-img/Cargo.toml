@@ -1,0 +1,20 @@
+[package]
+name = "mkuefi-img"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true, features = ["std"] }
+clap.workspace = true
+ecma-119.workspace = true
+fatfs.workspace = true
+
+[dev-dependencies]
+log = "0.4"
+# Check crates.io for the latest version.
+uefi = { version = "0.37", features = [ "panic_handler", "logger" ] }
+
+[lints]
+workspace = true
