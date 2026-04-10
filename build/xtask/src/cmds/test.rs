@@ -28,7 +28,7 @@ pub struct Cmd {
 
     /// Timeout for failing test run, in seconds.
     ///
-    /// If a test doesn't run to completion before this timeout elpased, it will be
+    /// If a test doesn't run to completion before this timeout elapsed, it will be
     /// treated as failed.
     #[clap(long, value_parser = parse_secs, default_value = "1200")]
     timeout_secs: Duration,
