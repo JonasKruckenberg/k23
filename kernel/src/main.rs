@@ -174,13 +174,20 @@ fn kmain(cpuid: usize, boot_info: &'static BootInfo, boot_ticks: u64) {
         let executor = Executor::with_capacity(boot_info.cpu_mask.count_ones() as usize).unwrap();
         let timer = Timer::new(Duration::from_millis(1), cpu.clock);
 
+        let engine = wasm::Engine::new(&mut rng);
+
+        let unstable_local_registry =
+            wasm::UnstableLocalRegistry::from_devtree(&device_tree, &engine).unwrap();
+
         Ok(Global {
             time_origin: Instant::from_ticks(&timer, Ticks(boot_ticks)),
             timer,
             executor,
+            unstable_local_registry,
             device_tree,
             boot_info,
             arch,
+            engine,
         })
     })
     .unwrap();

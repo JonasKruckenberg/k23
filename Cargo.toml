@@ -59,6 +59,7 @@ lazy_static = "1.5.0"
 cordyceps = "0.3.4"
 futures = { version = "0.3.31", default-features = false }
 pin-project = "1.1.10"
+base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
 
 # wast dependencies
 unicode-width = { version = "0.2.0" }

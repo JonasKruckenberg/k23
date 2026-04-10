@@ -53,6 +53,7 @@ tracing-core.workspace = true
 anyhow.workspace = true
 futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
 cordyceps.workspace = true
+base64.workspace = true
 
 wasmparser.workspace = true
 target-lexicon.workspace = true
