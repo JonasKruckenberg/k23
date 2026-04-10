@@ -29,9 +29,9 @@ use kspin::{Barrier, OnceLock};
 use crate::device_tree::DeviceTree;
 use crate::mem::{Mmap, with_kernel_aspace};
 use crate::state::global;
-use crate::{arch, irq};
+use crate::{arch, irq, wasm};
 
-static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN];
+static COMMANDS: &[Command] = &[PANIC, FAULT, VERSION, SHUTDOWN, wasm::UNSTABLE_EVAL];
 
 pub fn init(devtree: &'static DeviceTree, sched: &'static Executor, num_cpus: usize) {
     // The `Barrier` below is here so that the maybe verbose startup logging is

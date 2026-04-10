@@ -13,8 +13,8 @@ use kcpu_local::cpu_local;
 use kspin::OnceLock;
 use loader_api::BootInfo;
 
-use crate::arch;
 use crate::device_tree::DeviceTree;
+use crate::{arch, wasm};
 
 static GLOBAL: OnceLock<Global> = OnceLock::new();
 
@@ -30,6 +30,8 @@ pub struct Global {
     pub boot_info: &'static BootInfo,
     pub time_origin: Instant,
     pub arch: arch::state::Global,
+    pub engine: wasm::Engine,
+    pub unstable_local_registry: wasm::UnstableLocalRegistry,
 }
 
 #[derive(Debug)]

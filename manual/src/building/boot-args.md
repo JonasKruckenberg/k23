@@ -28,3 +28,24 @@ cargo xtask qemu profile/riscv64/qemu.toml -- --append "backtrace=short"
 # To print more verbose panic backtraces
 cargo xtask qemu profile/riscv64/qemu.toml -- --append "backtrace=full"
 ```
+
+## `unstable_preload`
+
+Allows loading base64-encoded wasm modules into a machine-local registry. This is useful to dynamically run programs 
+without having to recompile the kernel.
+
+Expects a `=` separated key value pair where the key is the module identifier that can be passed to the `unstable-eval` command and the value is a base64-encoded wasm module.
+
+Example:
+
+```sh
+# base64-encoded fib module
+cargo xtask qemu profile/riscv64/qemu.toml -- --append "unstable_preload=fib=AGFzbQEAAAABBgFgAX8BfwMCAQAEBQFwAQEBBQMBAAEGCAF/AUGAiAQLBxACBm1lbW9yeQIAA2ZpYgAACsoBAccBARV/IwAhAUEgIQIgASACayEDQQAhBEEBIQUgAyAANgIcIAMgBDYCFCADIAU2AhAgAyAENgIMAkADQCADKAIMIQYgAygCHCEHIAYhCCAHIQkgCCAJSCEKQQEhCyAKIAtxIQwgDEUNASADKAIUIQ0gAyANNgIYIAMoAhAhDiADIA42AhQgAygCGCEPIAMoAhAhECAQIA9qIREgAyARNgIQIAMoAgwhEkEBIRMgEiATaiEUIAMgFDYCDAwACwsgAygCECEVIBUPCw=="
+```
+
+use at runtime:
+
+```sh
+unstable-eval fib fib 42
+# will print "results: [I32(433494437)]"
+```
