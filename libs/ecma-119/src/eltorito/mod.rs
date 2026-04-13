@@ -12,7 +12,7 @@ pub use raw::{
     InitialEntry, SectionEntry, SectionEntryExtension, SectionHeaderEntry, ValidationEntry,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BootPlatform {
     X86Bios, // 0
     PowerPC, // 1
@@ -21,7 +21,7 @@ pub enum BootPlatform {
     Unknown(u8),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmulationType {
     NoEmulation, // 0
     Floppy12,    // 1

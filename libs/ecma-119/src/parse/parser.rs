@@ -1,4 +1,4 @@
-use std::mem::size_of;
+use core::mem::size_of;
 
 use zerocopy::{FromBytes, Immutable, KnownLayout};
 
@@ -8,17 +8,49 @@ use crate::raw::{
     SupplementaryVolumeDescriptor, VolumeDescriptorHeader, VolumeDescriptorSet,
     VolumePartitionDescriptor,
 };
+use crate::validate::Validate;
 
 pub(crate) struct Parser<'a> {
     pub(crate) data: &'a [u8],
     pub(crate) pos: usize,
+    /// When `true`, every `read_validated` call checks semantic invariants and
+    /// returns `ParseError::Invalid` on violation.  When `false`, validation is
+    /// skipped (lenient / "best-effort" mode for real-world images that bend the
+    /// spec).
+    pub(crate) strict: bool,
 }
 
 impl<'a> Parser<'a> {
-    pub(crate) fn from_lba_and_len(data: &'a [u8], lba: u32, len: u32) -> Result<Self, ParseError> {
-        let data = lba_to_slice(data, lba, len)?;
+    /// Creates a strict parser (validation on by default).
+    pub(crate) fn new(data: &'a [u8]) -> Self {
+        Self {
+            data,
+            pos: 0,
+            strict: true,
+        }
+    }
 
-        Ok(Self { data, pos: 0 })
+    /// Creates a lenient parser (validation disabled).
+    pub(crate) fn lenient(data: &'a [u8]) -> Self {
+        Self {
+            data,
+            pos: 0,
+            strict: false,
+        }
+    }
+
+    pub(crate) fn from_lba_and_len(
+        data: &'a [u8],
+        lba: u32,
+        len: u32,
+        strict: bool,
+    ) -> Result<Self, ParseError> {
+        let data = lba_to_slice(data, lba, len)?;
+        Ok(Self {
+            data,
+            pos: 0,
+            strict,
+        })
     }
 
     #[inline]
@@ -43,6 +75,19 @@ impl<'a> Parser<'a> {
         Ok(T::ref_from_bytes(bytes).unwrap())
     }
 
+    /// Like [`read`], but also runs [`Validate::validate`] when the parser is
+    /// in strict mode.  Returns `ParseError::Invalid` on validation failure.
+    pub(crate) fn read_validated<T>(&mut self) -> Result<&'a T, ParseError>
+    where
+        T: FromBytes + Immutable + KnownLayout + Validate,
+    {
+        let val = self.read::<T>()?;
+        if self.strict {
+            val.validate().map_err(ParseError::Invalid)?;
+        }
+        Ok(val)
+    }
+
     pub(crate) fn peek<T>(&self) -> Result<&'a T, ParseError>
     where
         T: FromBytes + Immutable + KnownLayout,
@@ -65,26 +110,26 @@ impl<'a> Parser<'a> {
                 "descriptor must be aligned on a sector boundary {}",
                 self.pos % SECTOR_SIZE
             );
-            let header = self.read::<VolumeDescriptorHeader>()?;
+            let header = self.read_validated::<VolumeDescriptorHeader>()?;
 
             match header.volume_descriptor_ty {
                 0 => {
-                    boot.push(self.read::<BootRecord>()?);
+                    boot.push(self.read_validated::<BootRecord>()?);
                 }
                 1 => {
-                    primary = Some(self.read::<PrimaryVolumeDescriptor>()?);
+                    primary = Some(self.read_validated::<PrimaryVolumeDescriptor>()?);
                 }
                 2 => {
                     let vd = self.peek::<EnhancedVolumeDescriptor>()?;
 
                     if vd.file_structure_version == 1 {
-                        supplementary.push(self.read::<SupplementaryVolumeDescriptor>()?);
+                        supplementary.push(self.read_validated::<SupplementaryVolumeDescriptor>()?);
                     } else {
-                        enhanced.push(self.read::<EnhancedVolumeDescriptor>()?);
+                        enhanced.push(self.read_validated::<EnhancedVolumeDescriptor>()?);
                     }
                 }
                 3 => {
-                    volume_partition.push(self.read::<VolumePartitionDescriptor>()?);
+                    volume_partition.push(self.read_validated::<VolumePartitionDescriptor>()?);
                 }
                 255 => {
                     self.byte_array::<{ SECTOR_SIZE - size_of::<VolumeDescriptorHeader>() }>()?;

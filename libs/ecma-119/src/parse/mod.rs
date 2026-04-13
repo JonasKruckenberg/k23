@@ -5,8 +5,7 @@ pub(crate) mod parser;
 mod path_table;
 
 use core::fmt;
-use std::marker::PhantomData;
-use std::mem::size_of;
+use core::mem::size_of;
 
 pub use directory::{DirEntryIter, Directory, DirectoryEntry, File};
 pub use path_table::PathTableIter;
@@ -17,21 +16,34 @@ use crate::raw::{
     AStr, BootRecord, DStr, DecDateTime, DirectoryRecord, DirectoryRecordHeader, FileId,
     SECTOR_SIZE, VolumeDescriptorSet,
 };
+use crate::validate::ValidationError;
 
 #[derive(Debug)]
-pub enum ParseError {}
+pub enum ParseError {
+    /// A field failed semantic validation (strict mode only).
+    Invalid(ValidationError),
+}
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            ParseError::Invalid(e) => write!(f, "invalid field: {e}"),
+        }
     }
 }
 
-impl core::error::Error for ParseError {}
+impl core::error::Error for ParseError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            ParseError::Invalid(e) => Some(e),
+        }
+    }
+}
 
 pub struct Image<'a> {
     pub(crate) data: &'a [u8],
     volume_descriptor_set: VolumeDescriptorSet<'a>,
+    pub(crate) strict: bool,
 }
 
 impl fmt::Debug for Image<'_> {
@@ -43,8 +55,30 @@ impl fmt::Debug for Image<'_> {
 }
 
 impl<'a> Image<'a> {
+    /// Parse an ISO image in **strict** mode (default).
+    ///
+    /// Every parsed field is validated against the ECMA-119 spec.  Use
+    /// [`parse_lenient`](Self::parse_lenient) for images that bend the rules
+    /// (e.g. real-world firmware images with non-compliant string encodings).
     pub fn parse(data: &'a [u8]) -> Result<Self, ParseError> {
-        let mut parser = Parser { data, pos: 0 };
+        Self::parse_inner(data, true)
+    }
+
+    /// Parse an ISO image in **relaxed** mode.
+    ///
+    /// Structural parsing still happens, but semantic validation is skipped.
+    /// Prefer [`parse`](Self::parse) unless you need to read non-compliant
+    /// images.
+    pub fn parse_relaxed(data: &'a [u8]) -> Result<Self, ParseError> {
+        Self::parse_inner(data, false)
+    }
+
+    fn parse_inner(data: &'a [u8], strict: bool) -> Result<Self, ParseError> {
+        let mut parser = if strict {
+            Parser::new(data)
+        } else {
+            Parser::lenient(data)
+        };
 
         // first come 16 sectors of "system area"
         let _system_area = parser.byte_array::<{ 16 * SECTOR_SIZE }>()?; // TODO properly parse this
@@ -54,6 +88,7 @@ impl<'a> Image<'a> {
         Ok(Self {
             data,
             volume_descriptor_set,
+            strict,
         })
     }
 
@@ -90,15 +125,12 @@ impl<'a> Image<'a> {
         }
     }
 
-    /// Returns the root directory
-    pub fn root_at(&self, index: usize) -> Option<Directory<'_, 'a>> {
-        todo!()
+    pub fn system_identifier(&self) -> &AStr<32> {
+        &self.volume_descriptor_set.primary.system_id
     }
 
-    /// Open a directory entry at a given path
-    pub fn open(&self, path: &str) -> Result<Option<DirectoryEntry<'_, 'a>>, ParseError> {
-        // self.root().find_recursive(path)
-        todo!()
+    pub fn volume_identifier(&self) -> &DStr<32> {
+        &self.volume_descriptor_set.primary.volume_id
     }
 
     pub fn volume_set_identifier(&self) -> &DStr<128> {
@@ -145,29 +177,29 @@ impl<'a> Image<'a> {
         &self.volume_descriptor_set.primary.effective_date
     }
 
-    pub fn _path_table_le(&self) -> Result<PathTableIter<'a, LittleEndian>, ParseError> {
-        let lba = self.volume_descriptor_set.primary.path_table_l_lba.get();
-        let len = self.volume_descriptor_set.primary.path_table_size.get();
+    // pub fn _path_table_le(&self) -> Result<PathTableIter<'a, LittleEndian>, ParseError> {
+    //     let lba = self.volume_descriptor_set.primary.path_table_l_lba.get();
+    //     let len = self.volume_descriptor_set.primary.path_table_size.get();
 
-        let parser = Parser::from_lba_and_len(self.data, lba, len)?;
-        Ok(PathTableIter {
-            parser,
-            endianness: PhantomData,
-        })
-    }
+    //     let parser = Parser::from_lba_and_len(self.data, lba, len, self.strict)?;
+    //     Ok(PathTableIter {
+    //         parser,
+    //         endianness: PhantomData,
+    //     })
+    // }
 
-    pub fn _path_table_be(&self) -> Result<PathTableIter<'a, BigEndian>, ParseError> {
-        let lba = self.volume_descriptor_set.primary.path_table_m_lba.get();
-        let len = self.volume_descriptor_set.primary.path_table_size.get();
+    // pub fn _path_table_be(&self) -> Result<PathTableIter<'a, BigEndian>, ParseError> {
+    //     let lba = self.volume_descriptor_set.primary.path_table_m_lba.get();
+    //     let len = self.volume_descriptor_set.primary.path_table_size.get();
 
-        let parser = Parser::from_lba_and_len(self.data, lba, len)?;
-        Ok(PathTableIter {
-            parser,
-            endianness: PhantomData,
-        })
-    }
+    //     let parser = Parser::from_lba_and_len(self.data, lba, len, self.strict)?;
+    //     Ok(PathTableIter {
+    //         parser,
+    //         endianness: PhantomData,
+    //     })
+    // }
 
-    pub fn _boot_records(&self) -> impl ExactSizeIterator<Item = &'a BootRecord> {
-        self.volume_descriptor_set.boot.iter().copied()
-    }
+    // pub fn _boot_records(&self) -> impl ExactSizeIterator<Item = &'a BootRecord> {
+    //     self.volume_descriptor_set.boot.iter().copied()
+    // }
 }

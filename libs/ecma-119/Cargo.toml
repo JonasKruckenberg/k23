@@ -6,11 +6,9 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-mycelium-bitfield.workspace = true
 fallible-iterator.workspace = true
 bitflags.workspace = true
 zerocopy = { version = "0.8.39", default-features = false, features = ["derive"] }
-# chrono = { version = "0.4.44", default-features = false }
 
 [dev-dependencies]
 memmap2 = "0.9.10"

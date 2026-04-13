@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 use fallible_iterator::FallibleIterator;
 use zerocopy::ByteOrder;

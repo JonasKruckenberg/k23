@@ -14,7 +14,7 @@ fn test_name() -> Result<(), Box<dyn core::error::Error>> {
 
     let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
-    let image = Image::parse(&mmap).unwrap();
+    let image = Image::parse_relaxed(&mmap).inspect_err(|e| println!("{e}"))?;
     print_entries(image.root(), "", 8).unwrap();
 
     Ok(())
@@ -92,8 +92,21 @@ fn replicate() -> Result<(), Box<dyn core::error::Error>> {
 
     let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
-    let img = Image::parse(&mmap).unwrap();
+    let img = Image::parse_relaxed(&mmap).unwrap();
     let mut img_builder = ImageBuilder::new();
+
+    img_builder.system_identifier(&img.system_identifier().as_str()?)?;
+    img_builder.volume_identifier(
+        &img.volume_identifier()
+            .as_str()?
+            .to_uppercase()
+            .replace('.', &"_"),
+    )?;
+
+    img_builder.volume_set_identifier(img.volume_set_identifier().as_str()?)?;
+    img_builder.publisher_identifier(img.publisher_identifier().as_str()?)?;
+    img_builder.data_preparer_identifier(img.data_preparer_identifier().as_str()?)?;
+    img_builder.application_identifier(img.application_identifier().as_str()?)?;
 
     // copy the files
     {
@@ -141,7 +154,13 @@ fn copy_dir<'a>(dir: Directory<'_, 'a>, builder: &mut DirectoryBuilder<'a>) {
 
         match e {
             DirectoryEntry::Directory(directory) => {
-                copy_dir(directory, builder.add_dir(name).unwrap());
+                copy_dir(
+                    directory,
+                    builder
+                        .add_dir(name)
+                        .inspect_err(|e| eprintln!("{e}"))
+                        .unwrap(),
+                );
             }
             DirectoryEntry::File(file) => {
                 builder

@@ -9,11 +9,11 @@ use zerocopy::{ByteOrder, FromZeros, IntoBytes, LittleEndian};
 
 use super::directory::{DirectoryBuilder, FileSource};
 use crate::build::BootConfigBuilder;
+use crate::raw;
 use crate::raw::{
     BothEndianU16, BothEndianU32, DirDateTime, DirectoryRecordHeader, FileFlags,
     PathTableRecordHeader, RootDirectoryRecord, SECTOR_SIZE, VolumeDescriptorHeader,
 };
-use crate::raw;
 
 #[derive(Debug)]
 pub(super) struct DirNode<'a> {
@@ -22,13 +22,21 @@ pub(super) struct DirNode<'a> {
 
     pub(super) identifier: &'a str, // used to construct the PathTableRecord and DirectoryRecord
     pub(super) parent_directory: u16, // used to construct the PathTableRecord
-    pub(super) children: Vec<u16>,
+
     pub(super) files: Vec<FileNode<'a>>,
 
     /// Identifiers of `children` and `files` merged and sorted by name.
     /// Built once during flatten so `required_extent_size` doesn't have
     /// to re-sort on every call.
-    sorted_entry_ids: Vec<&'a str>,
+    sorted_entry_ids: Vec<(&'a str, DirNodeEntry)>,
+}
+
+#[derive(Debug)]
+enum DirNodeEntry {
+    // this is a direct index into the flat list of directories
+    ChildDirectory(u16),
+    // an index into this nodes list of files
+    File(u16),
 }
 
 #[derive(Debug)]
@@ -57,10 +65,21 @@ impl<'a> DirNode<'a> {
             extent_len: 0,
             identifier,
             parent_directory,
-            children: Vec::with_capacity(children_size_hint),
             files: Vec::new(),
-            sorted_entry_ids: Vec::new(),
+            sorted_entry_ids: Vec::with_capacity(children_size_hint),
         }
+    }
+
+    fn attach_child_directory(&mut self, name: &'a str, child_idx: u16) {
+        self.sorted_entry_ids
+            .push((name, DirNodeEntry::ChildDirectory(child_idx)));
+    }
+
+    fn attach_file(&mut self, name: &'a str, source: FileSource<'a>) {
+        let file_idx = u16::try_from(self.files.len()).expect("too many directories");
+        self.files.push(FileNode::new(name, source));
+        self.sorted_entry_ids
+            .push((name, DirNodeEntry::File(file_idx)));
     }
 
     fn required_path_table_record_size(&self) -> u32 {
@@ -98,7 +117,7 @@ impl<'a> DirNode<'a> {
 
         // ECMA-119 §6.8.1.1: subdirectory and file records share one
         // sequence sorted by file identifier within the dir extent.
-        for id in &self.sorted_entry_ids {
+        for (id, _) in &self.sorted_entry_ids {
             add_record(id);
         }
 
@@ -141,35 +160,26 @@ impl<'a> Layout<'a> {
                 let child_idx = u16::try_from(dirs.len()).expect("too many directories");
 
                 let child = DirNode::new(subdir.name, parent_idx, subdir.subdirs.len());
+
                 path_table_size += child.required_path_table_record_size();
                 dirs.push(child);
+                dirs[parent_idx as usize].attach_child_directory(subdir.name, child_idx);
 
-                dirs[parent_idx as usize].children.push(child_idx);
                 queue.push_back((child_idx, subdir));
             }
 
             for (file, source) in dir.files {
-                dirs[parent_idx as usize]
-                    .files
-                    .push(FileNode::new(file, source));
+                dirs[parent_idx as usize].attach_file(file, source);
             }
         }
 
         // Pre-build the per-directory sorted entry list now that all children
         // are known. ECMA-119 §6.8.1.1 requires subdirectory and file records
         // to share one sequence sorted by identifier within the dir extent.
-        for i in 0..dirs.len() {
-            let mut ids: Vec<&'a str> =
-                Vec::with_capacity(dirs[i].children.len() + dirs[i].files.len());
-            for &child_idx in &dirs[i].children {
-                ids.push(dirs[child_idx as usize].identifier);
-            }
-            for f in &dirs[i].files {
-                ids.push(f.identifier);
-            }
-            ids.sort_unstable();
-            dirs[i].sorted_entry_ids = ids;
-        }
+        dirs.iter_mut().for_each(|dir| {
+            dir.sorted_entry_ids
+                .sort_unstable_by(|(a_id, _), (b_id, _)| a_id.cmp(b_id))
+        });
 
         Self {
             dirs,
@@ -280,12 +290,16 @@ impl<'a> Layout<'a> {
         write_vd_terminator(&mut w)?;
 
         // Path Table L (little-endian)
-        w.seek(SeekFrom::Start(self.path_table_l_lba as u64 * SECTOR_SIZE as u64))?;
+        w.seek(SeekFrom::Start(
+            self.path_table_l_lba as u64 * SECTOR_SIZE as u64,
+        ))?;
         write_path_table::<LittleEndian>(&mut w, &self.dirs)?;
         pad_to_sector(&mut w)?;
 
         // Path Table M (big-endian)
-        w.seek(SeekFrom::Start(self.path_table_m_lba as u64 * SECTOR_SIZE as u64))?;
+        w.seek(SeekFrom::Start(
+            self.path_table_m_lba as u64 * SECTOR_SIZE as u64,
+        ))?;
         write_path_table::<BigEndian>(&mut w, &self.dirs)?;
         pad_to_sector(&mut w)?;
 
@@ -390,7 +404,11 @@ fn build_dir_record_header(
             second: 0,
             timezone_offset: 0,
         },
-        flags: if is_dir { FileFlags::DIRECTORY.bits() } else { 0 },
+        flags: if is_dir {
+            FileFlags::DIRECTORY.bits()
+        } else {
+            0
+        },
         interleaved_file_unit_size: 0,
         interleaved_gap_size: 0,
         volume_sequence_number: BothEndianU16::new(1),
@@ -443,8 +461,7 @@ fn write_dir_record(
 ) -> io::Result<()> {
     let id_len = id.len() as u8;
     let pad: u8 = 1 - (id_len & 1);
-    let record_size =
-        size_of::<DirectoryRecordHeader>() as u32 + id_len as u32 + pad as u32;
+    let record_size = size_of::<DirectoryRecordHeader>() as u32 + id_len as u32 + pad as u32;
 
     // ECMA-119 §9.1: no directory record may straddle a sector boundary.
     if *offset_in_sector + record_size > SECTOR_SIZE as u32 {
@@ -483,26 +500,53 @@ fn serialize_dir_extent(
     let mut offset: u32 = 0;
 
     // "." — this directory
-    write_dir_record(&mut *w, &mut offset, &[0x00], dir.extent_lba, dir.extent_len, true)?;
+    write_dir_record(
+        &mut *w,
+        &mut offset,
+        &[0x00],
+        dir.extent_lba,
+        dir.extent_len,
+        true,
+    )?;
 
     // ".." — parent (root's parent is itself)
     let parent = &dirs[dir.parent_directory as usize];
-    write_dir_record(&mut *w, &mut offset, &[0x01], parent.extent_lba, parent.extent_len, true)?;
+    write_dir_record(
+        &mut *w,
+        &mut offset,
+        &[0x01],
+        parent.extent_lba,
+        parent.extent_len,
+        true,
+    )?;
 
     // All entries (subdirs and files) in the pre-sorted order.
-    for &id in &dir.sorted_entry_ids {
-        // Check children first, then files. Identifiers are unique within a
-        // directory so at most one branch will match.
-        if let Some(child) = dir.children.iter()
-            .map(|&idx| &dirs[idx as usize])
-            .find(|d| d.identifier == id)
-        {
-            write_dir_record(&mut *w, &mut offset, child.identifier.as_bytes(), child.extent_lba, child.extent_len, true)?;
-        } else {
-            let file = dir.files.iter()
-                .find(|f| f.identifier == id)
-                .expect("sorted_entry_ids contains only known identifiers");
-            write_dir_record(&mut *w, &mut offset, file.identifier.as_bytes(), file.lba, file.len as u32, false)?;
+    for (_, entry) in &dir.sorted_entry_ids {
+        match entry {
+            DirNodeEntry::ChildDirectory(idx) => {
+                let child = &dirs[*idx as usize];
+
+                write_dir_record(
+                    &mut *w,
+                    &mut offset,
+                    child.identifier.as_bytes(),
+                    child.extent_lba,
+                    child.extent_len,
+                    true,
+                )?;
+            }
+            DirNodeEntry::File(idx) => {
+                let file = &dir.files[*idx as usize];
+
+                write_dir_record(
+                    &mut *w,
+                    &mut offset,
+                    file.identifier.as_bytes(),
+                    file.lba,
+                    file.len as u32,
+                    false,
+                )?;
+            }
         }
     }
 

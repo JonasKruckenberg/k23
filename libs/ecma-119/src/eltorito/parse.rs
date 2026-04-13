@@ -1,3 +1,5 @@
+use core::cmp;
+
 use fallible_iterator::FallibleIterator;
 use zerocopy::IntoBytes;
 
@@ -26,7 +28,13 @@ impl BootRecord {
         let parser = Parser::from_lba_and_len(
             img.data,
             lba,
-            img.data.len() as u32 - (lba * SECTOR_SIZE as u32),
+            // NB: there is no explicit len given for boot catalog, but most fit within a single sector
+            // we bound it here to a max of 6 sectors. That should be enough even for the biggest images.
+            cmp::min(
+                img.data.len() as u32 - (lba * SECTOR_SIZE as u32),
+                6 * SECTOR_SIZE as u32,
+            ),
+            img.strict,
         )?;
 
         Ok(BootCatalogIter {
@@ -98,7 +106,7 @@ impl<'a> FallibleIterator for BootCatalogIter<'a> {
 
                     if matches!(header.header_indicator, 0x90 | 0x91) {
                         self.state = State::SectionEntries {
-                            remaining: header.entries,
+                            remaining: header.entries.get(),
                             has_more_sections: header.header_indicator == 0x90,
                         };
                         return Ok(Some(CatalogEntry::Header(header)));
@@ -141,9 +149,9 @@ impl<'a> FallibleIterator for BootCatalogIter<'a> {
                     remaining_entries,
                     has_more_sections,
                 } => {
-                    let ext = self.parser.read::<SectionEntryExtension>()?;
+                    let ext_indicator = self.parser.peek::<u8>()?;
 
-                    if ext.extension_indicator != 0x44 {
+                    if *ext_indicator != 0x44 {
                         // Not an extension — send back to entries without consuming a count
                         self.state = State::SectionEntries {
                             remaining: remaining_entries,
@@ -151,6 +159,8 @@ impl<'a> FallibleIterator for BootCatalogIter<'a> {
                         };
                         continue;
                     }
+
+                    let ext = self.parser.read::<SectionEntryExtension>()?;
 
                     let more_extensions = ext.bits & 0x20 != 0;
 

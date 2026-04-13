@@ -1,4 +1,4 @@
-use std::mem::size_of;
+use core::mem::size_of;
 
 use zerocopy::byteorder::{LittleEndian, U16, U32};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -12,7 +12,7 @@ pub struct ValidationEntry {
     pub platform_id: u8, // 0 = 80x86, 1 = PowerPC, 2 = Mac, 0xef = UEFI
     _reserved: [u8; 2],
     pub id: [u8; 24],
-    pub checksum: u16,
+    pub checksum: U16<LittleEndian>,
     pub key: [u8; 2], // must be 0x55, 0xAA
 }
 const _: () = assert!(size_of::<ValidationEntry>() == 32);
@@ -48,7 +48,7 @@ impl InitialEntry {
 pub struct SectionHeaderEntry {
     pub header_indicator: u8,
     pub platform_id: u8,
-    pub entries: u16,
+    pub entries: U16<LittleEndian>,
     pub id: [u8; 28],
 }
 const _: () = assert!(size_of::<SectionHeaderEntry>() == 32);

@@ -490,7 +490,6 @@ dependencies = [
  "bitflags",
  "fallible-iterator",
  "memmap2",
- "mycelium-bitfield",
  "pretty_assertions",
  "rand",
  "zerocopy",

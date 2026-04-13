@@ -1,12 +1,13 @@
-use std::mem::size_of;
-use std::str::Utf8Error;
+use core::mem::size_of;
+use core::str::Utf8Error;
 
 use fallible_iterator::FallibleIterator;
 
 use super::Image;
 use super::parser::Parser;
-use crate::raw::{DirectoryRecord, DirectoryRecordHeader, FileFlags, DirDateTime, SECTOR_SIZE};
 use crate::ParseError;
+use crate::raw::{DirDateTime, DirectoryRecord, DirectoryRecordHeader, FileFlags, SECTOR_SIZE};
+use crate::validate::{ValidationError, ValidationErrorKind};
 
 pub struct Directory<'img, 'a> {
     pub(super) img: &'img Image<'a>,
@@ -31,6 +32,7 @@ impl<'img, 'a> Directory<'img, 'a> {
             self.img.data,
             self.record.header.extent_lba.get(),
             self.record.header.data_length.get(),
+            self.img.strict,
         )?;
 
         Ok(DirEntryIter {
@@ -47,7 +49,7 @@ pub struct File<'img, 'a> {
 
 impl<'a> File<'_, 'a> {
     pub fn size(&self) -> u32 {
-        self.record.header.extent_lba.get()
+        self.record.header.data_length.get()
     }
 
     pub fn identifier(&self) -> Result<&'a str, Utf8Error> {
@@ -117,7 +119,26 @@ impl<'img, 'a> FallibleIterator for DirEntryIter<'img, 'a> {
                 }
                 self.parser.pos = next_sector;
             } else {
-                let header = self.parser.read::<DirectoryRecordHeader>()?;
+                let header = self.parser.read_validated::<DirectoryRecordHeader>()?;
+
+                // Validate that `len` is large enough to hold the header and
+                // identifier before doing the subtraction (#10).
+                let min_len =
+                    size_of::<DirectoryRecordHeader>() + header.file_identifier_len as usize;
+                if (header.len as usize) < min_len {
+                    // read_validated already caught this in strict mode; in
+                    // lenient mode we guard against the underflow manually.
+                    // FIXME
+                    // return Err(ValidationError {
+                    //     path: todo!(),
+                    //     kind: ValidationErrorKind::LengthOutOfRange {
+                    //         len: (),
+                    //         min: min_len,
+                    //         max: (),
+                    //     },
+                    // });
+                }
+
                 let file_identifier = self.parser.bytes(header.file_identifier_len as usize)?;
                 let system_use = self.parser.bytes(
                     header.len as usize

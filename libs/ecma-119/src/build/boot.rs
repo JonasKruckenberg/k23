@@ -106,27 +106,27 @@ pub struct BootEntryBuilder<'a> {
 }
 
 impl BootEntryBuilder<'_> {
-    pub fn no_emulation(mut self) -> Self {
+    pub fn no_emulation(&mut self) -> &mut Self {
         self.emulation = EmulationType::NoEmulation;
         self
     }
 
-    pub fn floppy_12_emulation(mut self) -> Self {
+    pub fn floppy_12_emulation(&mut self) -> &mut Self {
         self.emulation = EmulationType::Floppy12;
         self
     }
 
-    pub fn floppy_144_emulation(mut self) -> Self {
+    pub fn floppy_144_emulation(&mut self) -> &mut Self {
         self.emulation = EmulationType::Floppy144;
         self
     }
 
-    pub fn floppy_288_emulation(mut self) -> Self {
+    pub fn floppy_288_emulation(&mut self) -> &mut Self {
         self.emulation = EmulationType::Floppy288;
         self
     }
 
-    pub fn hard_disk_emulation(mut self) -> Self {
+    pub fn hard_disk_emulation(&mut self) -> &mut Self {
         self.emulation = EmulationType::HardDisk;
         self
     }
