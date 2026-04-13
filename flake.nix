@@ -47,8 +47,9 @@
               typos
               dtc
               cargo-fuzz
-              libcdio
-              libisoburn
+              # libcdio
+              # libisoburn
+              cdrkit
 
               # for manual
               mdbook

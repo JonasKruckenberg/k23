@@ -56,7 +56,13 @@ impl<'a> Parser<'a> {
     #[inline]
     pub(crate) fn bytes(&mut self, num: usize) -> Result<&'a [u8], ParseError> {
         let end = self.pos.checked_add(num).unwrap();
-        let bytes = self.data.get(self.pos..end).unwrap();
+        let bytes = self.data.get(self.pos..end).unwrap_or_else(|| {
+            panic!(
+                "index out of bounds {}..{end} for 0..{}",
+                self.pos,
+                self.data.len()
+            )
+        });
         self.pos += num;
         Ok(bytes)
     }
@@ -65,6 +71,10 @@ impl<'a> Parser<'a> {
         let bytes = self.bytes(N)?;
         // Safety: `bytes` ensures the returned slice is exactly of len `N`
         Ok(unsafe { bytes.try_into().unwrap_unchecked() })
+    }
+
+    pub(crate) fn into_rest(self) -> &'a [u8] {
+        &self.data[self.pos..]
     }
 
     pub(crate) fn read<T>(&mut self) -> Result<&'a T, ParseError>

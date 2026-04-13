@@ -6,8 +6,9 @@ use fallible_iterator::FallibleIterator;
 use super::Image;
 use super::parser::Parser;
 use crate::ParseError;
+use crate::parse::rock_ridge::RockRidgeIter;
+use crate::parse::susp::SystemUseIter;
 use crate::raw::{DirDateTime, DirectoryRecord, DirectoryRecordHeader, FileFlags, SECTOR_SIZE};
-use crate::validate::{ValidationError, ValidationErrorKind};
 
 pub struct Directory<'img, 'a> {
     pub(super) img: &'img Image<'a>,
@@ -40,6 +41,34 @@ impl<'img, 'a> Directory<'img, 'a> {
             parser,
         })
     }
+
+    pub fn susp_entries(&self) -> SystemUseIter<'a> {
+        let Some(skip) = self.img.susp_skip else {
+            return SystemUseIter {
+                parser: Parser {
+                    data: &[],
+                    pos: 0,
+                    strict: self.img.strict,
+                },
+                done: true,
+            };
+        };
+        let system_use = &self.record.system_use[skip as usize..];
+        SystemUseIter {
+            parser: Parser {
+                data: system_use,
+                pos: 0,
+                strict: self.img.strict,
+            },
+            done: false,
+        }
+    }
+
+    pub fn rock_ridge_entries(&self) -> RockRidgeIter<'a> {
+        RockRidgeIter {
+            inner: self.susp_entries(),
+        }
+    }
 }
 
 pub struct File<'img, 'a> {
@@ -66,6 +95,34 @@ impl<'a> File<'_, 'a> {
             self.record.header.extent_lba.get(),
             self.record.header.data_length.get(),
         )
+    }
+
+    pub fn susp_entries(&self) -> SystemUseIter<'a> {
+        let Some(skip) = self.img.susp_skip else {
+            return SystemUseIter {
+                parser: Parser {
+                    data: &[],
+                    pos: 0,
+                    strict: self.img.strict,
+                },
+                done: true,
+            };
+        };
+        let system_use = &self.record.system_use[skip as usize..];
+        SystemUseIter {
+            parser: Parser {
+                data: system_use,
+                pos: 0,
+                strict: self.img.strict,
+            },
+            done: false,
+        }
+    }
+
+    pub fn rock_ridge_entries(&self) -> RockRidgeIter<'a> {
+        RockRidgeIter {
+            inner: self.susp_entries(),
+        }
     }
 }
 
@@ -94,6 +151,20 @@ impl<'a> DirectoryEntry<'_, 'a> {
         match self {
             DirectoryEntry::Directory(directory) => directory.recorded_at(),
             DirectoryEntry::File(file) => file.recorded_at(),
+        }
+    }
+
+    pub fn susp_entries(&self) -> SystemUseIter<'a> {
+        match self {
+            DirectoryEntry::Directory(directory) => directory.susp_entries(),
+            DirectoryEntry::File(file) => file.susp_entries(),
+        }
+    }
+
+    pub fn rock_ridge_entries(&self) -> RockRidgeIter<'a> {
+        match self {
+            DirectoryEntry::Directory(directory) => directory.rock_ridge_entries(),
+            DirectoryEntry::File(file) => file.rock_ridge_entries(),
         }
     }
 }
@@ -140,10 +211,16 @@ impl<'img, 'a> FallibleIterator for DirEntryIter<'img, 'a> {
                 }
 
                 let file_identifier = self.parser.bytes(header.file_identifier_len as usize)?;
+                // ECMA-119 §9.1.12: if LEN_FI is even, a single (00) padding
+                // byte is inserted before the System Use area so it starts on
+                // an even byte position within the record.
+                let pad = 1 - (header.file_identifier_len as usize & 1);
+                self.parser.bytes(pad)?;
                 let system_use = self.parser.bytes(
                     header.len as usize
                         - size_of::<DirectoryRecordHeader>()
-                        - header.file_identifier_len as usize,
+                        - header.file_identifier_len as usize
+                        - pad,
                 )?;
 
                 let record = DirectoryRecord {

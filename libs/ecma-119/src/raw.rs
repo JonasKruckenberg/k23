@@ -1013,3 +1013,109 @@ impl Validate for VolumePartitionDescriptor {
         Ok(())
     }
 }
+
+#[derive(Debug)]
+pub enum SystemUseEntry<'a> {
+    ContinuationArea(&'a SystemUseEntryCE),    // "CE"
+    SuspIndicator(&'a SystemUseEntrySP),       // "SP"
+    SuspTerminator,                            // "ST"
+    ExtensionsReference(SystemUseEntryER<'a>), // "ER"
+    ExtensionSelector(&'a SystemUseEntryES),   // "ES"
+    Unknown {
+        header: &'a SystemUseEntryHeader,
+        data: &'a [u8],
+    },
+}
+
+#[derive(Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[repr(C)]
+pub struct SystemUseEntryHeader {
+    pub(crate) signature: [u8; 2], // ISO9660:7.1.1
+    // length of the entry INCLUDING signature, length version and data
+    pub(crate) len: u8,     // ISO9660:7.1.1
+    pub(crate) version: u8, // ISO9660:7.1.1
+}
+
+#[derive(Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[repr(C)]
+pub struct SystemUseEntryCE {
+    header: SystemUseEntryHeader, // len = 28, version = 1
+    block_location: BothEndianU32,
+    offset: BothEndianU32,
+    len: BothEndianU32,
+}
+const _: () = assert!(size_of::<SystemUseEntryCE>() == 28);
+
+impl Validate for SystemUseEntryCE {
+    fn validate(&self) -> Result<(), ValidationError> {
+        assert!(&self.header.signature == b"CE");
+        assert!(self.header.len == 28);
+        assert!(self.header.version == 1);
+        Ok(())
+    }
+}
+
+#[derive(Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[repr(C)]
+pub struct SystemUseEntrySP {
+    header: SystemUseEntryHeader, // len = 7, version = 1
+    check_bytes: [u8; 2],         // [0xBE, 0xEF]
+    // the number of bytes to be skipped within the system use field of each directory record (except the root).
+    // before recording of system use entries other than the SP entries.
+    pub(crate) bytes_skipped: u8,
+}
+const _: () = assert!(size_of::<SystemUseEntrySP>() == 7);
+
+impl Validate for SystemUseEntrySP {
+    fn validate(&self) -> Result<(), ValidationError> {
+        assert!(&self.header.signature == b"SP");
+        assert!(self.header.len == 7);
+        assert!(self.header.version == 1);
+        assert!(self.check_bytes == [0xBE, 0xEF]);
+        Ok(())
+    }
+}
+
+#[derive(Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[repr(C)]
+pub struct SystemUseEntryERHeader {
+    header: SystemUseEntryHeader, // len = 8 + len id + len des + len src, version = 1
+    pub(crate) identifier_len: u8,
+    pub(crate) descriptor_len: u8,
+    pub(crate) source_len: u8,
+    pub(crate) extension_version: u8,
+}
+const _: () = assert!(size_of::<SystemUseEntryERHeader>() == 8);
+
+impl Validate for SystemUseEntryERHeader {
+    fn validate(&self) -> Result<(), ValidationError> {
+        assert!(&self.header.signature == b"ER");
+        assert!(self.header.version == 1);
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct SystemUseEntryER<'a> {
+    pub(crate) header: &'a SystemUseEntryERHeader,
+    pub(crate) identifier: &'a [u8], // dstr
+    pub(crate) descriptor: &'a [u8], // astr
+    pub(crate) source: &'a [u8],     // astr
+}
+
+#[derive(Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[repr(C)]
+pub struct SystemUseEntryES {
+    header: SystemUseEntryHeader, // len = 5, version = 1
+    sequence: u8,
+}
+const _: () = assert!(size_of::<SystemUseEntryES>() == 5);
+
+impl Validate for SystemUseEntryES {
+    fn validate(&self) -> Result<(), ValidationError> {
+        assert!(&self.header.signature == b"ES");
+        assert!(self.header.len == 7);
+        assert!(self.header.version == 1);
+        Ok(())
+    }
+}

@@ -3,18 +3,20 @@
 mod directory;
 pub(crate) mod parser;
 mod path_table;
+mod rock_ridge;
+mod susp;
 
 use core::fmt;
 use core::mem::size_of;
 
 pub use directory::{DirEntryIter, Directory, DirectoryEntry, File};
 pub use path_table::PathTableIter;
-use zerocopy::byteorder::{BigEndian, LittleEndian};
 
 use self::parser::Parser;
+use self::susp::SystemUseIter;
 use crate::raw::{
-    AStr, BootRecord, DStr, DecDateTime, DirectoryRecord, DirectoryRecordHeader, FileId,
-    SECTOR_SIZE, VolumeDescriptorSet,
+    AStr, DStr, DecDateTime, DirectoryRecord, DirectoryRecordHeader, FileId, SECTOR_SIZE,
+    SystemUseEntry, VolumeDescriptorSet,
 };
 use crate::validate::ValidationError;
 
@@ -44,6 +46,10 @@ pub struct Image<'a> {
     pub(crate) data: &'a [u8],
     volume_descriptor_set: VolumeDescriptorSet<'a>,
     pub(crate) strict: bool,
+    /// `None` means the image carries no SUSP entries.
+    /// `Some(n)` means SUSP is present and each directory record's system use
+    /// area begins with `n` bytes that must be skipped before SUSP entries.
+    pub(crate) susp_skip: Option<u8>,
 }
 
 impl fmt::Debug for Image<'_> {
@@ -74,6 +80,56 @@ impl<'a> Image<'a> {
     }
 
     fn parse_inner(data: &'a [u8], strict: bool) -> Result<Self, ParseError> {
+        fn detect_susp<'a>(
+            data: &'a [u8],
+            strict: bool,
+            vds: &VolumeDescriptorSet<'a>,
+        ) -> Result<Option<u8>, ParseError> {
+            // SUSP §6.3: the SP entry must appear in the system use field of
+            // the first directory record ("." entry) of the root directory.
+            // We read that record directly — no skip is applied to the root ".".
+            let root_header = &vds.primary.root_directory_record.header;
+            let dir_data = parser::lba_to_slice(
+                data,
+                root_header.extent_lba.get(),
+                root_header.data_length.get(),
+            )?;
+
+            let mut p = if strict {
+                Parser::new(dir_data)
+            } else {
+                Parser::lenient(dir_data)
+            };
+
+            let entry_header = p.read_validated::<DirectoryRecordHeader>()?;
+            p.bytes(entry_header.file_identifier_len as usize)?;
+            // Skip the padding byte (§9.1.12) if LEN_FI is even
+            let pad = 1 - (entry_header.file_identifier_len as usize & 1);
+            p.bytes(pad)?;
+            let system_use_len = entry_header.len as usize
+                - size_of::<DirectoryRecordHeader>()
+                - entry_header.file_identifier_len as usize
+                - pad;
+            let system_use = p.bytes(system_use_len)?;
+
+            let mut iter = SystemUseIter {
+                parser: Parser {
+                    data: system_use,
+                    pos: 0,
+                    strict,
+                },
+                done: false,
+            };
+
+            while let Some(entry) = fallible_iterator::FallibleIterator::next(&mut iter)? {
+                if let SystemUseEntry::SuspIndicator(sp) = entry {
+                    return Ok(Some(sp.bytes_skipped));
+                }
+            }
+
+            Ok(None)
+        }
+
         let mut parser = if strict {
             Parser::new(data)
         } else {
@@ -84,11 +140,13 @@ impl<'a> Image<'a> {
         let _system_area = parser.byte_array::<{ 16 * SECTOR_SIZE }>()?; // TODO properly parse this
 
         let volume_descriptor_set = parser.volume_descriptor_set()?;
+        let susp_skip = detect_susp(data, strict, &volume_descriptor_set)?;
 
         Ok(Self {
             data,
             volume_descriptor_set,
             strict,
+            susp_skip,
         })
     }
 

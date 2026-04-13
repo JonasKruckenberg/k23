@@ -3,7 +3,9 @@ use std::process::Command;
 
 use ecma_119::build::{BootConfigBuilder, DirectoryBuilder, FileSource, ImageBuilder};
 use ecma_119::eltorito::CatalogEntry;
-use ecma_119::{Directory, DirectoryEntry, Image, ParseError, SECTOR_SIZE, VIRTUAL_SECTOR_SIZE};
+use ecma_119::{
+    Directory, DirectoryEntry, Image, ParseError, SECTOR_SIZE, SystemUseEntry, VIRTUAL_SECTOR_SIZE,
+};
 use fallible_iterator::FallibleIterator;
 use memmap2::MmapOptions;
 use rand::seq::SliceRandom;
@@ -15,6 +17,7 @@ fn test_name() -> Result<(), Box<dyn core::error::Error>> {
     let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
     let image = Image::parse_relaxed(&mmap).inspect_err(|e| println!("{e}"))?;
+
     print_entries(image.root(), "", 8).unwrap();
 
     Ok(())
@@ -75,6 +78,10 @@ fn print_entries(dir: Directory<'_, '_>, prefix: &str, limit: usize) -> Result<(
         }
 
         println!("{}{}{identifier}", prefix, branch);
+
+        for e in entry.rock_ridge_entries().unwrap() {
+            println!("  {e:?},");
+        }
 
         if let DirectoryEntry::Directory(entry) = entry {
             let extension = if is_last { "    " } else { "│   " };
