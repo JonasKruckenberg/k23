@@ -1,0 +1,13 @@
+genrule(
+    name = "manual",
+    srcs = glob(["src/**/*"]) + ["book.toml"],
+    out = "book",
+    cmd = """
+        mkdir -p $OUT
+        cp $SRCDIR/book.toml $TMP
+        cp -r $SRCDIR/src $TMP
+        mkdir -p $TMP/src/configuration
+        cp $(location //build:config_docs) $TMP/src/configuration/config.md
+        $(exe toolchains//:mdbook) build $TMP --dest-dir $OUT
+    """
+)

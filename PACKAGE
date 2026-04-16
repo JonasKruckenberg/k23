@@ -1,0 +1,33 @@
+load("@prelude//cfg/modifier:cfg_constructor.bzl", "cfg_constructor_post_constraint_analysis", "cfg_constructor_pre_constraint_analysis")
+load("@prelude//cfg/modifier:common.bzl", "MODIFIER_METADATA_KEY")
+load("@prelude//cfg/modifier/set_cfg_modifiers.bzl", "set_cfg_modifiers")
+load("@prelude//rust:cargo_package.bzl", "DEFAULT_REINDEER_PLATFORMS", "set_reindeer_platforms")
+
+set_cfg_constructor(
+    stage0 = cfg_constructor_pre_constraint_analysis,
+    stage1 = cfg_constructor_post_constraint_analysis,
+    key = MODIFIER_METADATA_KEY,
+    aliases = struct(
+        # Profiles
+        debug = [
+            "constraints//:opt-level[0]",
+            "constraints//:debuginfo[full]",
+            "constraints//:strip[none]"
+        ],
+        release = [
+            "constraints//:opt-level[3]",
+            "constraints//:debuginfo[line-tables-only]",
+            "constraints//:strip[debuginfo]"
+        ],
+    ),
+    extra_data = struct(),
+)
+
+set_reindeer_platforms(
+    select({
+        "prelude//os:none": select({
+            "prelude//cpu/constraints:riscv64": "riscv64",
+        }),
+        "DEFAULT": DEFAULT_REINDEER_PLATFORMS,
+    })
+)

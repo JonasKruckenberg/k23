@@ -1,0 +1,30 @@
+[package]
+name = "mem-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+arrayvec.workspace = true
+riscv.workspace = true
+cpu-local = { workspace = true, optional = true }
+spin = { workspace = true, optional = true }
+proptest = { workspace = true, optional = true }
+proptest-derive = { workspace = true, optional = true }
+parking_lot = { version = "0.12.5", optional = true }
+
+# 3rd-party dependencies
+mycelium-bitfield.workspace = true
+log.workspace = true
+lock_api.workspace = true
+
+[dev-dependencies]
+mem-core = { workspace = true, features = ["test_utils"] }
+test-log = "0.2.19"
+
+[features]
+test_utils = ["cpu-local", "spin", "proptest", "proptest-derive", "parking_lot"]
+
+[lints]
+workspace = true

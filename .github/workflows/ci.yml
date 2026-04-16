@@ -1,148 +1,114 @@
 name: CI
 
 on:
-  push:
   pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-  CLICOLOR: 1
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  pre_ci:
-    uses: dtolnay/.github/.github/workflows/pre_ci.yml@master
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix develop . --command just check-fmt
+
+  buck2-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix develop . --command buck2 audit cell
+      - run: nix develop . --command buck2 audit visibility //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+      - run: nix develop . --command buck2 audit providers //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+
+  # Computes the set of Buck2 targets impacted by a PR. Skipped on push to main
+  # (no useful base ref). See .github/workflows/_changed-targets.yml for details.
+  changed-targets:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/_changed-targets.yml
 
   check:
-    name: Check
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    needs: [changed-targets]
+    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: fetch impacted targets
+        if: needs.changed-targets.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: cargo check
-        run: nix develop --command just check
-        env:
-          RUSTFLAGS: -Dwarnings
-
-  rustfmt:
-    name: Rustfmt
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: cargo fmt
-        run: nix develop --command just check-fmt
-        env:
-          RUSTFLAGS: -Dwarnings
+          name: impacted-targets
+      - run: ./.github/workflows/run-filtered.sh check '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
   clippy:
-    name: Clippy
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    needs: [changed-targets]
+    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: fetch impacted targets
+        if: needs.changed-targets.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: cargo clippy
-        run: nix develop --command just clippy
-        env:
-          RUSTFLAGS: -Dwarnings
+          name: impacted-targets
+      - run: ./.github/workflows/run-filtered.sh clippy '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
-  cargo-deny:
-    name: Cargo deny
+  unittests:
     runs-on: ubuntu-latest
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
+    needs: [changed-targets]
+    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - name: Check Rust Code
-        uses: EmbarkStudios/cargo-deny-action@v2
-
-  test-hosted:
-    name: Hosted Tests
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: fetch impacted targets
+        if: needs.changed-targets.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: just test-hosted
-        run: nix develop --command just test
+          name: impacted-targets
+      - run: ./.github/workflows/run-filtered.sh unittests '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
-  test-miri:
-    name: Miri Tests
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
+  miri:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    needs: [changed-targets]
+    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: fetch impacted targets
+        if: needs.changed-targets.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: just test-miri
-        run: nix develop --command just miri
+          name: impacted-targets
+      - run: ./.github/workflows/run-filtered.sh miri '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'
 
-  test-loom:
-    name: Loom Tests
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
+  loom:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    needs: [changed-targets]
+    if: always() && (needs.changed-targets.result == 'success' || needs.changed-targets.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: fetch impacted targets
+        if: needs.changed-targets.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: just test-loom
-        run: nix develop --command just loom
-
-  test-riscv64:
-    name: "On-Target Tests: RISCV 64-bit"
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: just test-riscv64
-        run: nix develop --command just test-riscv64
+          name: impacted-targets
+      - run: ./.github/workflows/run-filtered.sh loom '${{ needs.changed-targets.result }}' '${{ needs.changed-targets.outputs.mode }}'

@@ -1,0 +1,57 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+
+rust_library(
+    name = "kasync",
+    srcs = glob(["src/**/*.rs"]),
+    features = select({
+        "constraints//:env[kernel]": ["unwind", "counters"],
+        "DEFAULT": [],
+    }),
+    deps = [
+        "//lib/util:util",
+        "//lib/cpu-local:cpu-local",
+        "//lib/spin:spin",
+        "//lib/fastrand:fastrand",
+        "//lib/arrayvec:arrayvec",
+        "//third-party:cordyceps",
+        "//third-party:static_assertions",
+        "//third-party:cfg-if",
+        "//third-party:mycelium-bitfield",
+        "//third-party:tracing",
+        "//third-party:bitflags",
+        "//third-party:pin-project",
+        "//third-party:futures",
+    ] + select({
+        "constraints//:env[kernel]": ["//lib/panic-unwind:panic-unwind"],
+        "DEFAULT": [],
+    }),
+    tests = [":kasync_tests"],
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "kasync_tests",
+    srcs = glob(["src/**/*.rs"]),
+    crate = "kasync",
+    deps = [
+        "//lib/util:util",
+        "//lib/cpu-local:cpu-local",
+        "//lib/spin:spin",
+        "//lib/fastrand:fastrand",
+        "//lib/arrayvec:arrayvec",
+        "//third-party:cordyceps",
+        "//third-party:static_assertions",
+        "//third-party:cfg-if",
+        "//third-party:mycelium-bitfield",
+        "//third-party:tracing",
+        "//third-party:bitflags",
+        "//third-party:pin-project",
+        "//third-party:futures",
+        "//third-party:tracing-subscriber",
+        "//third-party:lazy_static",
+        "//third-party:criterion",
+    ],
+    features = ["counters"],
+    visibility = ["PUBLIC"],
+    target_compatible_with = [host_configuration.cpu, host_configuration.os],
+)

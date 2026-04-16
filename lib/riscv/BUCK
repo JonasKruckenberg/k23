@@ -1,0 +1,24 @@
+rust_library(
+    name = "riscv",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/spin:spin",
+        "//lib/trap:trap",
+        "//third-party:cfg-if",
+        "//third-party:bitflags",
+    ],
+    visibility = ["PUBLIC"],
+    tests = [":riscv_unittests"],
+)
+
+rust_test(
+    name = "riscv_unittests",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/spin:spin",
+        "//lib/trap:trap",
+        "//third-party:cfg-if",
+        "//third-party:bitflags",
+    ],
+    visibility = ["PUBLIC"],
+)

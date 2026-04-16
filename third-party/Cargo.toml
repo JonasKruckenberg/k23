@@ -1,0 +1,108 @@
+[workspace]
+
+[package]
+name = "k23"
+
+[[bin]]
+name = "_placeholder"
+path = "_placeholder.rs"
+
+[dependencies]
+cfg-if = "1.0.0"
+log = "0.4.27"
+lock_api = "0.4.13"
+bitflags = "2.9.1"
+tracing = { version = "0.1", default-features = false, features = ["attributes"] }
+tracing-core = { version = "0.1", default-features = false }
+gimli = { version = "0.33.0", default-features = false, features = ["read"] }
+fallible-iterator = { version = "0.3.0", default-features = false }
+smallvec = { version = "1", default-features = false }
+xmas-elf = "0.10.0"
+rustc-demangle = "0.1"
+cordyceps = "0.3.4"
+mycelium-bitfield = "0.1.5"
+bumpalo = "3.17.0"
+pin-project = "1.1.10"
+rand = { version = "0.9.2", default-features = false }
+rand_chacha = { version = "0.9.0", default-features = false }
+static_assertions = "1.1.0"
+futures = { version = "0.3.31", default-features = false, features = ["alloc"] }
+
+# wast dependencies
+unicode-width = { version = "0.2.0" }
+memchr = { version = "2.7.4", default-features = false }
+leb128fmt = { version = "0.1.0", default-features = false }
+wasm-encoder = { version = "0.241.0", default-features = false }
+anyhow = { version = "1.0.98", default-features = false }
+libtest-mimic = "0.8.1"
+
+# kernel dependencies
+talc = { version = "4.4.2", default-features = false, features = ["lock_api", "counters"] }
+ouroboros = "0.18.5"
+zerocopy = { version = "0.8", default-features = false, features = ["derive"] }
+
+# cranelift dependencies
+hashbrown = { version = "0.15", default-features = false, features = [
+    "inline-more",
+    "nightly",
+    "default-hasher",
+] }
+wasmparser = { version = "0.228", default-features = false, features = ["features", "validate", "simd"] }
+target-lexicon = { version = "0.13.2", default-features = false }
+cranelift-codegen = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["host-arch", "core"] }
+cranelift-frontend = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false, features = ["core"] }
+cranelift-entity = { git = "https://github.com/JonasKruckenberg/wasmtime.git", branch = "main", default-features = false }
+wasmtime-slab = "34.0.0"
+
+# proc-macro dependencies
+proc-macro2 = { version = "1", optional = true }
+quote = { version = "1", optional = true }
+syn = { version = "2", features = ["full"], optional = true }
+
+proptest = { version = "1.8.0", optional = true }
+proptest-derive = { version = "0.8.0", optional = true }
+libm = { version = "0.2.15", optional = true }
+lazy_static = { version = "1.5.0",  optional = true }
+nonmax = { version = "0.5.5",  optional = true }
+tracing-subscriber = { version = "0.3", optional = true }
+parking_lot = { version = "0.12.5",  optional = true }
+criterion = { version = "0.8.0", optional = true }
+libc = { version = "0.2.182", optional = true }
+loom = { version = "0.7",  default-features = false, optional = true }
+test-log = { version = "0.2", optional = true }
+wat = { version = "1.219.1", optional = true }
+brie-tree = { version = "0.1.2", optional = true }
+libc-errno = { package = "errno", version = "0.3.14", optional = true }
+
+[features]
+default = [
+    "proptest/std",
+    "rand/thread_rng",
+    "tracing-subscriber/std",
+    "log/std",
+    "tracing-subscriber/env-filter",
+    "test-log/trace",
+    "memchr/std",
+
+    "dep:proptest",
+    "dep:proptest-derive",
+    "dep:libm",
+    "dep:lazy_static",
+    "dep:nonmax",
+    "dep:tracing-subscriber",
+    "dep:parking_lot",
+    "dep:criterion",
+    "dep:libc",
+    "dep:loom",
+    "dep:test-log",
+    "dep:proc-macro2",
+    "dep:quote",
+    "dep:syn",
+    "dep:wat",
+    "dep:brie-tree",
+    "dep:libc-errno"
+]
+no_std = []
+
+[patch.crates-io]
+regalloc2 = { git = "https://github.com/JonasKruckenberg/regalloc2", branch = "jonas/refactor/static-machine-env" }

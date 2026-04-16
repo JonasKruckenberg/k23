@@ -1,0 +1,59 @@
+constraint(
+    name = "opt-level",
+    values = [
+        "0",
+        "1",
+        "2",
+        "3",
+        "s",
+        "z"
+    ],
+    default = "0",
+    visibility = ["PUBLIC"],
+)
+
+constraint(
+    name = "debuginfo",
+    values = [
+        "none",
+        "line-directives-only",
+        "line-tables-only",
+        "limited",
+        "full"
+    ],
+    default = "full",
+    visibility = ["PUBLIC"],
+)
+
+constraint(
+    name = "strip",
+    values = [
+        "none",
+        "debuginfo",
+        "symbols",
+    ],
+    default = "none",
+    visibility = ["PUBLIC"],
+)
+
+constraint(
+    name = "rust-std",
+    values = [
+        "prebuilt",
+        "source",
+        "bootstrap",
+    ],
+    default = "prebuilt",
+    visibility = ["PUBLIC"],
+)
+
+constraint(
+    name = "env",
+    values = [
+        "host",
+        "loader",
+        "kernel",
+    ],
+    default = "host",
+    visibility = ["PUBLIC"],
+)
