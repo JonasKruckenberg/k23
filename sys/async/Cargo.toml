@@ -1,0 +1,36 @@
+[package]
+name = "kasync"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[features]
+default = []
+__bench = []
+counters = []
+unwind = []
+
+[dependencies]
+util.workspace = true
+cpu-local.workspace = true
+spin.workspace = true
+fastrand.workspace = true
+arrayvec.workspace = true
+cordyceps.workspace = true
+static_assertions.workspace = true
+cfg-if.workspace = true
+mycelium-bitfield.workspace = true
+tracing.workspace = true
+bitflags.workspace = true
+pin-project.workspace = true
+futures.workspace = true
+panic-unwind = { workspace = true, optional = true }
+
+[dev-dependencies]
+tracing-subscriber.workspace = true
+lazy_static.workspace = true
+criterion.workspace = true
+
+[lints]
+workspace = true

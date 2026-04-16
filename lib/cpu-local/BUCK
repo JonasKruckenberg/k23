@@ -1,0 +1,18 @@
+rust_library(
+    name = "cpu-local",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/util:util",
+    ],
+    visibility = ["PUBLIC"],
+    tests = [":cpu-local_unittests"],
+)
+
+rust_test(
+    name = "cpu-local_unittests",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/util:util",
+    ],
+    visibility = ["PUBLIC"],
+)

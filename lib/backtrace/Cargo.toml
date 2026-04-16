@@ -1,0 +1,20 @@
+[package]
+name = "backtrace"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+addr2line.workspace = true
+arrayvec.workspace = true
+unwind.workspace = true
+
+# 3rd-party dependencies
+gimli.workspace = true
+xmas-elf.workspace = true
+rustc-demangle.workspace = true
+fallible-iterator.workspace = true

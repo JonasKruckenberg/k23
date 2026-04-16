@@ -1,0 +1,260 @@
+load("@nix//toolchains:python.bzl", "nix_python_bootstrap_toolchain")
+load("@prelude//toolchains:genrule.bzl", "system_genrule_toolchain")
+load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
+load("@prelude//tests:test_toolchain.bzl", "noop_test_toolchain")
+load(":flake.bzl", "flake")
+load(":rust.bzl", "rust_toolchain")
+load(":cxx.bzl", "clang_toolchain")
+load(":qemu.bzl", "qemu_toolchain")
+
+flake.package(
+    name = "python",
+    binary = "python3",
+    package = "python3",
+    path = "root//:flake",
+)
+
+flake.package(
+    name = "rust_toolchain",
+    package = "rustToolchain",
+    binaries = ["rustc", "rustdoc", "clippy-driver", "miri-driver", "rustfmt"],
+    path = "root//:flake",
+)
+
+flake.package(
+    name = "clang",
+    binaries = [
+        "ar",
+        "cc",
+        "c++",
+        "ld",
+        "nm",
+        "objcopy",
+        "ranlib",
+        "strip",
+    ],
+    package = "clang_20",
+    path = "root//:flake",
+)
+
+flake.package(
+    name = "lld",
+    package = "lld_20",
+    binaries = ["lld"],
+    path = "root//:flake",
+)
+
+flake.package(
+    name = "mdbook",
+    binary = "mdbook",
+    package = "mdbook",
+    path = "root//:flake",
+    visibility = ["PUBLIC"],
+)
+
+flake.package(
+    name = "qemu_bin",
+    binaries = [
+        "qemu-system-riscv64",
+        "qemu-system-aarch64",
+        "qemu-system-x86_64",
+        # add more emulators here if we ever support them
+    ],
+    package = "qemu",
+    path = "root//:flake",
+)
+
+system_genrule_toolchain(
+    name = "genrule",
+    visibility = ["PUBLIC"],
+)
+
+nix_python_bootstrap_toolchain(
+    name = "python_bootstrap",
+    python = ":python",
+    visibility = ["PUBLIC"],
+)
+
+rust_library(
+    name = "rust_core",
+    crate = "core",
+    srcs = [":rust_toolchain"],
+    crate_root = "out.link/lib/rustlib/src/rust/library/core/src/lib.rs",
+    incoming_transition = "root//build:rust_bootstrap",
+    visibility = ["PUBLIC"],
+)
+
+rust_library(
+    name = "rust_compiler_builtins",
+    crate = "compiler-builtins",
+    srcs = [":rust_toolchain"],
+    crate_root = "out.link/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/lib.rs",
+    features = ["compiler-builtins", "mem"],
+    deps = [
+        ":rust_core"
+    ],
+    incoming_transition = "root//build:rust_bootstrap",
+    visibility = ["PUBLIC"],
+)
+
+rust_library(
+    name = "rust_alloc",
+    crate = "alloc",
+    srcs = [":rust_toolchain"],
+    crate_root = "out.link/lib/rustlib/src/rust/library/alloc/src/lib.rs",
+    deps = [
+        ":rust_core",
+        ":rust_compiler_builtins"
+    ],
+    incoming_transition = "root//build:rust_bootstrap",
+    visibility = ["PUBLIC"],
+)
+
+filegroup(
+  name = 'rust_sysroot',
+  srcs = [":rust_toolchain"],
+)
+
+rust_toolchain(
+    name = "rust",
+    rustc = ":rust_toolchain[rustc]",
+    clippy = ":rust_toolchain[clippy-driver]",
+    rustdoc = ":rust_toolchain[rustdoc]",
+    miri_driver = ":rust_toolchain[miri-driver]",
+    miri_sysroot_path = ":rust_toolchain",
+    default_edition = "2024",
+    nightly_features = select({
+        "constraints//:rust-std[bootstrap]": True,
+        "DEFAULT": False,
+    }),
+    panic_runtime = select({
+        "constraints//:env[loader]": "abort",
+        "DEFAULT": "unwind",
+    }),
+    rustc_target_triple = select({
+        "prelude//os:none": select({
+            "constraints//:env[kernel]": select({
+                "prelude//cpu:riscv64": "riscv64gc-k23-none-kernel",
+            }),
+            "constraints//:env[loader]": select({
+                "prelude//cpu:riscv64": "riscv64gc-unknown-none-elf",
+            }),
+            "DEFAULT": select({
+                "prelude//cpu:riscv64": "riscv64gc-unknown-none-elf",
+            }),
+        }),
+        "DEFAULT": None
+    }),
+    rust_target_path = "@root//build:targets",
+    rustc_flags = [
+        "-Zunstable-options",
+    ] + select({
+        "constraints//:env[loader]": [],
+        "DEFAULT": ["-Cpanic=unwind"],
+    }) + select({
+        "constraints//:opt-level[0]": ["-Copt-level=0"],
+        "constraints//:opt-level[3]": ["-Copt-level=3", "-Cstrip=symbols"],
+    }) + select({
+        "constraints//:debuginfo[none]": ["-Cdebuginfo=none"],
+        "constraints//:debuginfo[line-directives-only]": ["-Cdebuginfo=line-directives-only"],
+        "constraints//:debuginfo[line-tables-only]": ["-Cdebuginfo=line-tables-only"],
+        "constraints//:debuginfo[limited]": ["-Cdebuginfo=limited"],
+        "constraints//:debuginfo[full]": ["-Cdebuginfo=full"],
+    }) + select({
+        "constraints//:strip[none]": ["-Cstrip=none"],
+        "constraints//:strip[debuginfo]": ["-Cstrip=debuginfo"],
+        "constraints//:strip[symbols]": ["-Cstrip=symbols"],
+    }),
+    explicit_sysroot_deps = select({
+        "constraints//:rust-std[bootstrap]": {},
+        "constraints//:rust-std[source]": {
+            "core": ":rust_core",
+            "compiler-builtins": ":rust_compiler_builtins",
+            "alloc": ":rust_alloc",
+        },
+        "constraints//:rust-std[prebuilt]": None,
+    }),
+    visibility = ["PUBLIC"],
+)
+
+clang_toolchain(
+    name = "cxx",
+    clang = ":clang",
+    linker = select({
+        "prelude//os:none": ":lld[lld]",
+        "DEFAULT": None,
+    }),
+    c_flags = select({
+        "constraints//:opt-level[0]": ["-O0"],
+        "constraints//:opt-level[3]": ["-O3"],
+        "DEFAULT": [],
+    }),
+    cxx_flags = select({
+        "prelude//os:linux": ["-stdlib=libstdc++"],
+        "DEFAULT": [],
+    }) + select({
+        "constraints//:opt-level[0]": ["-O0"],
+        "constraints//:opt-level[3]": ["-O3"],
+        "DEFAULT": [],
+    }),
+
+    link_flags = select({
+        "prelude//os:macos": [
+            "-isysroot",
+            "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+        ],
+        "DEFAULT": [],
+    }),
+
+    visibility = ["PUBLIC"],
+)
+
+qemu_toolchain(
+    name = "qemu",
+    qemu = select({
+        "prelude//cpu:riscv64": ":qemu_bin[qemu-system-riscv64]",
+        "prelude//cpu:arm64": ":qemu_bin[qemu-system-aarch64]",
+        "prelude//cpu:x86_64": ":qemu_bin[qemu-system-x86_64]",
+    }),
+    qemu_args = [
+        # general
+        "-display",
+        "none",
+        "-serial",
+        "mon:stdio",
+        "-d",
+        "guest_errors",
+        "-monitor",
+        "unix:qemu-monitor-socket,server,nowait",
+
+        # machine configuration
+        "-m",
+        "256M",
+        "-smp",
+        "cpus=8",
+        "-object",
+        "memory-backend-ram,size=128M,id=m0",
+        "-object",
+        "memory-backend-ram,size=128M,id=m1",
+        "-numa",
+        "node,cpus=0-3,nodeid=0,memdev=m0",
+        "-numa",
+        "node,cpus=4-7,nodeid=1,memdev=m1",
+        "-numa",
+        "dist,src=0,dst=1,val=20"
+    ] + select({
+        "prelude//cpu:riscv64": ["-machine", "virt", "-cpu", "rv64", "-semihosting-config", "enable=on,target=native"],
+        "DEFAULT": []
+    }),
+    visibility = ["PUBLIC"],
+)
+
+noop_test_toolchain(
+    name = "test",
+    visibility = ["PUBLIC"],
+)
+
+remote_test_execution_toolchain(
+    name = "remote_test_execution",
+    visibility = ["PUBLIC"],
+)

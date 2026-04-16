@@ -1,0 +1,11 @@
+rust_library(
+    name = "addr2line",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/spin:spin",
+        "//third-party:gimli",
+        "//third-party:smallvec",
+        "//third-party:fallible-iterator",
+    ],
+    visibility = ["PUBLIC"],
+)

@@ -1,0 +1,13 @@
+rust_library(
+    name = "unwind",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/spin:spin",
+        "//lib/abort:abort",
+        "//third-party:cfg-if",
+        "//third-party:gimli",
+        "//third-party:fallible-iterator",
+        "//third-party:tracing",
+    ],
+    visibility = ["PUBLIC"],
+)

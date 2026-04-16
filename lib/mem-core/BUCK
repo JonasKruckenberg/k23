@@ -1,0 +1,34 @@
+rust_library(
+    name = "mem-core",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/arrayvec:arrayvec",
+        "//lib/riscv:riscv",
+        "//third-party:mycelium-bitfield",
+        "//third-party:log",
+        "//third-party:lock_api",
+    ],
+    visibility = ["PUBLIC"],
+    tests = [":mem-core_unittests"],
+)
+
+rust_test(
+    name = "mem-core_unittests",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/arrayvec:arrayvec",
+        "//lib/riscv:riscv",
+        "//third-party:mycelium-bitfield",
+        "//third-party:log",
+        "//third-party:lock_api",
+        "//lib/cpu-local:cpu-local",
+        "//lib/spin:spin",
+        "//third-party:proptest",
+        "//third-party:proptest-derive",
+        "//third-party:parking_lot",
+        "//third-party:tracing-subscriber",
+        "//third-party:test-log",
+    ],
+    features = ["test_utils"],
+    visibility = ["PUBLIC"],
+)

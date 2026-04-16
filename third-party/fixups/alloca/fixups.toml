@@ -1,0 +1,5 @@
+buildscript.run = false
+
+  [[cxx_library]]
+  name = "calloca"
+  srcs = ["alloca.c"]

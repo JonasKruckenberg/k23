@@ -1,0 +1,23 @@
+rust_library(
+    name = "test-macros",
+    srcs = glob(["macros/src/**/*.rs"]),
+    crate_root = "macros/src/lib.rs",
+    proc_macro = True,
+    deps = [
+        "//third-party:proc-macro2",
+        "//third-party:quote",
+        "//third-party:syn",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+rust_library(
+    name = "test",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    deps = [
+        "//sys/loader/api:loader-api",
+        ":test-macros",
+    ],
+    visibility = ["PUBLIC"],
+)

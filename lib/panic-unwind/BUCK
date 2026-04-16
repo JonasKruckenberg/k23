@@ -1,0 +1,12 @@
+rust_library(
+    name = "panic-unwind",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/unwind:unwind",
+        "//lib/spin:spin",
+        "//lib/cpu-local:cpu-local",
+        "//lib/abort:abort",
+        "//third-party:tracing",
+    ],
+    visibility = ["PUBLIC"],
+)

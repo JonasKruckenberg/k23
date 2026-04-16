@@ -1,0 +1,12 @@
+rust_library(
+    name = "arrayvec",
+    srcs = glob(["**/*.rs"]),
+    visibility = ["PUBLIC"],
+    tests = [":arrayvec_unittests"],
+)
+
+rust_test(
+    name = "arrayvec_unittests",
+    srcs = glob(["**/*.rs"]),
+    visibility = ["PUBLIC"],
+)
