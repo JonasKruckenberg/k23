@@ -1,0 +1,50 @@
+rust_library(
+    name = "spin",
+    srcs = glob(["**/*.rs"]),
+    features = select({
+        "constraints//:env[kernel]": ["thread-local"],
+        "DEFAULT": [],
+    }),
+    deps = [
+        "//lib/util:util",
+        "//third-party:cfg-if",
+        "//third-party:lock_api",
+    ],
+    visibility = ["PUBLIC"],
+    tests = [":spin_unittests", ":spin_loom_tests"]
+)
+
+rust_test(
+    name = "spin_unittests",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/util:util",
+        "//third-party:cfg-if",
+        "//third-party:lock_api",
+        "//third-party:lazy_static",
+        "//third-party:rand",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "spin_loom_tests",
+    srcs = glob(["**/*.rs"]),
+    crate = "spin",
+    rustc_flags = ["--cfg=loom"],
+    modifiers = ["constraints//:opt-level[3]"],
+    labels = ["loom"],
+    env = {
+        "LOOM_LOG": "kasync=trace,cordyceps=trace,debug",
+        "LOOM_MAX_PREEMPTIONS": "2",
+        "LOOM_LOCATION": "true"
+    },
+    deps = [
+        "//lib/util:util",
+        "//third-party:cfg-if",
+        "//third-party:lock_api",
+        "//third-party:lazy_static",
+        "//third-party:rand",
+        "//third-party:loom",
+    ],
+)

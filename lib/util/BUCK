@@ -1,0 +1,12 @@
+rust_library(
+    name = "util",
+    srcs = glob(["**/*.rs"]),
+    visibility = ["PUBLIC"],
+    tests = [":util_unittests"],
+)
+
+rust_test(
+    name = "util_unittests",
+    srcs = glob(["**/*.rs"]),
+    visibility = ["PUBLIC"],
+)

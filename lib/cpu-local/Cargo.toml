@@ -1,0 +1,12 @@
+[package]
+name = "cpu-local"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+util.workspace = true
+
+[lints]
+workspace = true

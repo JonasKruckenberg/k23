@@ -1,6 +1,12 @@
-/target
-.idea
+target
+/buck-out
+target
 .DS_Store
-libs/cranelift-codegen/meta/target
-.jj
-rustc-ice-*
+.local
+
+# buck2-change-detector scratch files
+/base.jsonl
+/changes.txt
+/cells.json
+/config.json
+/impacted-targets.txt

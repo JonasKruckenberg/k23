@@ -1,0 +1,9 @@
+rust_library(
+    name = "loader-api",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    deps = [
+        "//lib/mem-core:mem-core",
+    ],
+    visibility = ["PUBLIC"],
+)

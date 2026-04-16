@@ -1,148 +1,193 @@
 name: CI
 
 on:
-  push:
   pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-  CLICOLOR: 1
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  pre_ci:
-    uses: dtolnay/.github/.github/workflows/pre_ci.yml@master
+  fmt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix develop . --command just check-fmt
+
+  buck2-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - run: nix develop . --command buck2 audit cell
+      - run: nix develop . --command buck2 audit visibility //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+      - run: nix develop . --command buck2 audit providers //sys:k23-riscv64 //sys:k23-qemu-riscv64 //sys/kernel:kernel //sys/loader:loader
+
+  # Computes the set of Buck2 targets impacted by a PR. Skipped on push to main
+  # (no useful base ref). Outputs go via an `impacted-targets` artifact which
+  # downstream jobs consume; the `mode` job-output is a sentinel:
+  #   - "filter": run only the targets listed in impacted-targets.txt
+  #   - "all":    pessimistic fallback (a high-level file changed); run full suite
+  #   - "noop":   no impacted targets; downstream jobs short-circuit to success
+  btd:
+    name: Determine affected targets
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    outputs:
+      mode: ${{ steps.compute.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Colocate jj on git
+        run: nix develop . --command jj git init --colocate
+
+      - name: Determine base SHA
+        id: base
+        run: |
+          BASE=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          echo "sha=$BASE" >> "$GITHUB_OUTPUT"
+          echo "Base: $BASE"
+
+      - name: Restore base.jsonl
+        id: cache-base
+        uses: actions/cache@v4
+        with:
+          path: base.jsonl
+          key: btd-base-${{ runner.os }}-${{ steps.base.outputs.sha }}
+
+      - name: Build base.jsonl (cache miss)
+        if: steps.cache-base.outputs.cache-hit != 'true'
+        run: |
+          REPO=$PWD
+          git worktree add --detach /tmp/base-tree "${{ steps.base.outputs.sha }}"
+          if [ ! -f /tmp/base-tree/.buckconfig ]; then
+            echo "Base ${{ steps.base.outputs.sha }} predates buck2 setup — no base.jsonl will be produced"
+          else
+            (cd /tmp/base-tree && nix develop "$REPO" --command supertd targets root//... --output "$REPO/base.jsonl") \
+              || { echo "::warning::supertd targets failed at base — base.jsonl skipped"; rm -f base.jsonl; }
+          fi
+          git worktree remove --force /tmp/base-tree
+
+      - name: Compute impacted targets
+        id: compute
+        run: |
+          if [ ! -s base.jsonl ]; then
+            echo "No base.jsonl available — falling back to full suite"
+            echo "mode=all" >> "$GITHUB_OUTPUT"
+            : > impacted-targets.txt
+            exit 0
+          fi
+          nix develop . --command just btd-changes "${{ steps.base.outputs.sha }}" > changes.txt
+          set +e
+          IMPACTED=$(nix develop . --command just btd-impacted changes.txt base.jsonl)
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::btd-impacted failed (exit $rc) — falling back to full suite"
+            echo "mode=all" >> "$GITHUB_OUTPUT"
+            : > impacted-targets.txt
+            exit 0
+          fi
+          IMPACTED=$(printf '%s' "$IMPACTED" | tr -s '[:space:]' ' ' | sed 's/^ *//;s/ *$//')
+          if [ "$IMPACTED" = "__ALL__" ]; then
+            echo "Pessimistic fallback: a high-level file changed — full suite"
+            echo "mode=all" >> "$GITHUB_OUTPUT"
+            : > impacted-targets.txt
+          elif [ -z "$IMPACTED" ]; then
+            echo "No impacted targets"
+            echo "mode=noop" >> "$GITHUB_OUTPUT"
+            : > impacted-targets.txt
+          else
+            echo "Impacted: $IMPACTED"
+            echo "mode=filter" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "$IMPACTED" > impacted-targets.txt
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: btd-impacted
+          path: impacted-targets.txt
+          if-no-files-found: error
 
   check:
-    name: Check
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    needs: [btd]
+    if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - if: needs.btd.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: cargo check
-        run: nix develop --command just check
-        env:
-          RUSTFLAGS: -Dwarnings
-
-  rustfmt:
-    name: Rustfmt
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: cargo fmt
-        run: nix develop --command just check-fmt
-        env:
-          RUSTFLAGS: -Dwarnings
+          name: btd-impacted
+      - run: ./.github/workflows/run-filtered.sh check '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'
 
   clippy:
-    name: Clippy
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    needs: [btd]
+    if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - if: needs.btd.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: cargo clippy
-        run: nix develop --command just clippy
-        env:
-          RUSTFLAGS: -Dwarnings
+          name: btd-impacted
+      - run: ./.github/workflows/run-filtered.sh clippy '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'
 
-  cargo-deny:
-    name: Cargo deny
-    runs-on: ubuntu-latest
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
+  unittests:
+    runs-on: ubuntu-24.04
+    needs: [btd]
+    if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - name: Check Rust Code
-        uses: EmbarkStudios/cargo-deny-action@v2
-
-  test-hosted:
-    name: Hosted Tests
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - if: needs.btd.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: just test-hosted
-        run: nix develop --command just test
+          name: btd-impacted
+      - run: ./.github/workflows/run-filtered.sh unittests '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'
 
-  test-miri:
-    name: Miri Tests
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  miri:
+    runs-on: ubuntu-24.04
+    needs: [btd]
+    if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - if: needs.btd.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: just test-miri
-        run: nix develop --command just miri
+          name: btd-impacted
+      - run: ./.github/workflows/run-filtered.sh miri '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'
 
-  test-loom:
-    name: Loom Tests
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  loom:
+    runs-on: ubuntu-24.04
+    needs: [btd]
+    if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - if: needs.btd.result == 'success'
+        uses: actions/download-artifact@v4
         with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: just test-loom
-        run: nix develop --command just loom
-
-  test-riscv64:
-    name: "On-Target Tests: RISCV 64-bit"
-    needs: pre_ci
-    if: needs.pre_ci.outputs.continue
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
-      - name: just test-riscv64
-        run: nix develop --command just test-riscv64
+          name: btd-impacted
+      - run: ./.github/workflows/run-filtered.sh loom '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'
