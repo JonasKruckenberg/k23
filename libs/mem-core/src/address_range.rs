@@ -36,7 +36,7 @@ pub trait AddressRangeExt {
 
 macro_rules! impl_address_range {
     ($address_ty:ident) => {
-        impl AddressRangeExt for ::core::ops::Range<$address_ty> {
+        impl AddressRangeExt for ::core::range::Range<$address_ty> {
             type Address = $address_ty;
 
             fn from_start_len(start: Self::Address, len: usize) -> Self {
@@ -54,7 +54,7 @@ macro_rules! impl_address_range {
             }
 
             fn contains(&self, address: &Self::Address) -> bool {
-                <Self as ::core::ops::RangeBounds<$address_ty>>::contains(self, address)
+                <Self as ::core::range::RangeBounds<$address_ty>>::contains(self, address)
             }
 
             fn overlaps(&self, other: &Self) -> bool {
@@ -72,14 +72,20 @@ macro_rules! impl_address_range {
             where
                 Self: Sized,
             {
-                self.start.align_up(align)..self.end.align_down(align)
+                Self {
+                    start: self.start.align_up(align),
+                    end: self.end.align_down(align),
+                }
             }
 
             fn align_out(self, align: usize) -> Self
             where
                 Self: Sized,
             {
-                self.start.align_down(align)..self.end.align_up(align)
+                Self {
+                    start: self.start.align_down(align),
+                    end: self.end.align_up(align),
+                }
             }
         }
     };
@@ -90,7 +96,7 @@ impl_address_range!(PhysicalAddress);
 
 #[cfg(test)]
 mod test {
-    use core::ops::Range;
+    use core::range::Range;
 
     use super::{AddressRangeExt, *};
 
