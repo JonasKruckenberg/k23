@@ -1,0 +1,14 @@
+[package]
+name = "uefi-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+log = "0.4"
+# Check crates.io for the latest version.
+uefi = { version = "0.37", features = [ "panic_handler", "logger" ] }
+
+[lints]
+workspace = true
