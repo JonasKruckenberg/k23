@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   fmt:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@main
@@ -23,7 +23,7 @@ jobs:
       - run: nix develop . --command just check-fmt
 
   buck2-audit:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@main
@@ -41,7 +41,7 @@ jobs:
   btd:
     name: Determine affected targets
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       mode: ${{ steps.compute.outputs.mode }}
     steps:
@@ -123,7 +123,7 @@ jobs:
           if-no-files-found: error
 
   check:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: [btd]
     if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
     steps:
@@ -137,7 +137,7 @@ jobs:
       - run: ./.github/workflows/run-filtered.sh check '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'
 
   clippy:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: [btd]
     if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
     steps:
@@ -151,7 +151,7 @@ jobs:
       - run: ./.github/workflows/run-filtered.sh clippy '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'
 
   unittests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: [btd]
     if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
     steps:
@@ -165,7 +165,7 @@ jobs:
       - run: ./.github/workflows/run-filtered.sh unittests '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'
 
   miri:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: [btd]
     if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
     steps:
@@ -179,7 +179,7 @@ jobs:
       - run: ./.github/workflows/run-filtered.sh miri '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'
 
   loom:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: [btd]
     if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
     steps:
@@ -191,3 +191,17 @@ jobs:
         with:
           name: btd-impacted
       - run: ./.github/workflows/run-filtered.sh loom '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'
+
+  benchmarks:
+    runs-on: ubuntu-latest
+    needs: [btd]
+    if: always() && (needs.btd.result == 'success' || needs.btd.result == 'skipped')
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - if: needs.btd.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: btd-impacted
+      - run: ./.github/workflows/run-filtered.sh benchmark '${{ needs.btd.result }}' '${{ needs.btd.outputs.mode }}'

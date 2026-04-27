@@ -67,11 +67,17 @@ lint targets=_rust_targets *buck2_args: (clippy targets buck2_args) (check-fmt t
 # ===== documentation =====
 
 # build the documentation for a crate or the entire workspace.
-@doc target=_rust_targets *buck2_args:
-    {{ _buck2 }} build {{append("[doc]", target)}} --show-output {{_platform_args}} {{buck2_args}}
+@doc targets=_rust_targets *buck2_args:
+    {{ _buck2 }} build {{append("[doc]", targets)}} --show-output {{_platform_args}} {{buck2_args}}
 
 manual:
     {{ _buck2 }} run //manual:manual
+
+# ===== benchmarking =====
+
+benchmark targets=_rust_targets *buck2_args:
+    # echo "{{_micro_benchmarks(targets)}}"
+    {{ _buck2 }} run {{_micro_benchmarks(targets)}} {{_platform_args}} {{buck2_args}}
 
 # ===== target set construction helpers =====
 
@@ -122,5 +128,8 @@ _unit_tests(targets) := _replace_newlines(shell('buck2 uquery "nattrfilter(label
 
 # filter an input set of targets down to only the loom tests
 _loom_tests(targets) := _replace_newlines(shell('buck2 uquery "attrfilter(labels, loom, (set($1)))"', _rust_tests(targets)))
+
+# filter an input set of targets down to only the loom tests
+_micro_benchmarks(targets) := _replace_newlines(shell('buck2 uquery "kind(rust_benchmark, //...)"'))
 
 _source_files(targets) := _replace_newlines(shell('buck2 uquery "inputs(set($1))"', targets))
