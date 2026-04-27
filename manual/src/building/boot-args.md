@@ -14,7 +14,7 @@ Allows configuring the verbosity and filtering of debug messages.
 # Enable the most verbose logging messages
 cargo xtask qemu profile/riscv64/qemu.toml -- --append "log=trace"
 # A more reasonable configuration that keeps trace messages enabled, but silences the very spammy ones
-cargo xtask qemu profile/riscv64/qemu.toml -- --append "log=trace,cranelift_codegen=off,ksharded_slab=off"
+cargo xtask qemu profile/riscv64/qemu.toml -- --append "log=trace,cranelift_codegen=off,sharded_slab=off"
 ```
 
 ## `backtrace`

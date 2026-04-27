@@ -1,0 +1,20 @@
+rust_library(
+    name = "uart-16550",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/spin:spin",
+        "//third-party:bitflags",
+    ],
+    visibility = ["PUBLIC"],
+    tests = [":uart-16550_unittests"],
+)
+
+rust_test(
+    name = "uart-16550_unittests",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/spin:spin",
+        "//third-party:bitflags",
+    ],
+    visibility = ["PUBLIC"],
+)

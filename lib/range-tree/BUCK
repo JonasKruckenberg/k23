@@ -1,0 +1,47 @@
+rust_library(
+    name = "range-tree",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//third-party:cfg-if",
+        "//third-party:tracing",
+    ],
+    visibility = ["PUBLIC"],
+    tests = [":range-tree_unittests"],
+)
+
+rust_test(
+    name = "range-tree_unittests",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//third-party:cfg-if",
+        "//third-party:tracing",
+        "//third-party:proptest",
+        "//third-party:rand",
+        "//third-party:tracing-subscriber",
+        "//third-party:nonmax",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+load("//build:bench.bzl", "rust_benchmark")
+
+rust_benchmark(
+    name = "range-tree_benchmarks",
+    srcs = ["./benches/comparisons.rs"],
+    crate_root = "./benches/comparisons.rs",
+    deps = [
+        ":range-tree",
+        "//third-party:cfg-if",
+        "//third-party:tracing",
+        "//third-party:proptest",
+        "//third-party:rand",
+        "//third-party:tracing-subscriber",
+        "//third-party:nonmax",
+
+        "//third-party:criterion",
+        "//third-party:brie-tree",
+        "//third-party:pin-project",
+        "//lib/wavltree:wavltree",
+    ],
+    visibility = ["PUBLIC"],
+)

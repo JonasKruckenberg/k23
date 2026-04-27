@@ -1,6 +1,13 @@
 [workspace]
-members = ["kernel", "libs/*", "build/*", "loader", "loader/api", "libs/test/macros"]
-exclude = ["libs/_kmem", "fuzz"]
+members = [
+    "sys/kernel",
+    "sys/loader",
+    "sys/loader/api",
+    "sys/async",
+    "lib/*",
+    "lib/test/macros",
+]
+exclude = ["lib/_kmem", "fuzz", "third-party"]
 resolver = "3"
 
 [workspace.package]
@@ -10,28 +17,28 @@ authors = ["Jonas Kruckenberg <iterpre@protonmail.com>"]
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-kaddr2line = { path = "libs/addr2line" }
-kbacktrace = { path = "libs/backtrace" }
-riscv = { path = "libs/riscv" }
-kspin = { path = "libs/spin" }
-trap = { path = "libs/trap" }
-kcpu-local = { path = "libs/cpu-local" }
-kunwind = { path = "libs/unwind" }
-kwast = { path = "libs/wast" }
-wavltree = { path = "libs/wavltree" }
-loader-api = { path = "loader/api" }
-kfdt = { path = "libs/fdt" }
-ksharded-slab = { path = "libs/sharded-slab" }
-ktest = { path = "libs/test" }
-kuart-16550 = { path = "libs/uart-16550" }
-kfastrand = { path = "libs/fastrand" }
-kabort = { path = "libs/abort" }
-kpanic-unwind = { path = "libs/panic-unwind" }
-kutil = { path = "libs/util" }
-kasync = { path = "libs/async" }
-kmem-core = { path = "libs/mem-core" }
-karrayvec = { path = "libs/arrayvec" }
-range-tree  = { path = "libs/range-tree" }
+addr2line = { path = "lib/addr2line" }
+backtrace = { path = "lib/backtrace" }
+riscv = { path = "lib/riscv" }
+spin = { path = "lib/spin" }
+trap = { path = "lib/trap" }
+cpu-local = { path = "lib/cpu-local" }
+unwind = { path = "lib/unwind" }
+wast = { path = "lib/wast" }
+wavltree = { path = "lib/wavltree" }
+loader-api = { path = "sys/loader/api" }
+fdt = { path = "lib/fdt" }
+sharded-slab = { path = "lib/sharded-slab" }
+test = { path = "lib/test" }
+uart-16550 = { path = "lib/uart-16550" }
+fastrand = { path = "lib/fastrand" }
+abort = { path = "lib/abort" }
+panic-unwind = { path = "lib/panic-unwind" }
+util = { path = "lib/util" }
+kasync = { path = "sys/async" }
+mem-core = { path = "lib/mem-core" }
+arrayvec = { path = "lib/arrayvec" }
+range-tree  = { path = "lib/range-tree" }
 
 # 3rd-party dependencies
 cfg-if = "1.0.0"
@@ -90,17 +97,7 @@ arbitrary = { version = "1.4.2", features = ["derive"] }
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
-color-eyre = "0.6.4"
-eyre = "0.6.12"
-clap = { version = "4.5.38", features = ["derive", "env"] }
-serde = { version = "1.0.219", features = ["derive"] }
-toml = "1.0.0"
-toml_edit = "0.22.26"
-indoc = "2.0.6"
 tracing-subscriber = { version = "0.3", git = "https://github.com/tokio-rs/tracing", branch = "master", features = ["env-filter"] }
-tracing-error = { version = "0.2", git = "https://github.com/tokio-rs/tracing", branch = "master" }
-heck = "0.5.0"
-wait-timeout = "0.2.1"
 
 [profile.release]
 debug = "limited" # The kernel should be able to print stack traces of itself even in release mode
@@ -115,7 +112,6 @@ opt-level = 3
 
 [patch.crates-io]
 regalloc2 = { git = "https://github.com/JonasKruckenberg/regalloc2", branch = "jonas/refactor/static-machine-env" }
-
 
 [workspace.lints.rust]
 # allow loom

@@ -1,0 +1,14 @@
+rust_library(
+    name = "backtrace",
+    srcs = glob(["**/*.rs"]),
+    deps = [
+        "//lib/addr2line:addr2line",
+        "//lib/arrayvec:arrayvec",
+        "//lib/unwind:unwind",
+        "//third-party:gimli",
+        "//third-party:xmas-elf",
+        "//third-party:rustc-demangle",
+        "//third-party:fallible-iterator",
+    ],
+    visibility = ["PUBLIC"],
+)
