@@ -1,3 +1,5 @@
+load("//build:bench.bzl", "rust_benchmark")
+
 rust_library(
     name = "range-tree",
     srcs = glob(["**/*.rs"]),
@@ -6,7 +8,7 @@ rust_library(
         "//third-party:tracing",
     ],
     visibility = ["PUBLIC"],
-    tests = [":range-tree_unittests"],
+    tests = [":range-tree_unittests", ":range-tree_benchmarks"],
 )
 
 rust_test(
@@ -22,8 +24,6 @@ rust_test(
     ],
     visibility = ["PUBLIC"],
 )
-
-load("//build:bench.bzl", "rust_benchmark")
 
 rust_benchmark(
     name = "range-tree_benchmarks",
