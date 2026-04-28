@@ -8,14 +8,15 @@ _DEFAULT_MODIFIERS = [
 
 def _rust_benchmark_runner_impl(ctx: AnalysisContext) -> list[Provider]:
     run_info = ctx.attrs.binary[RunInfo]
-    cmd = cmd_args(run_info.args, "--bench")
+    criterion_home = ctx.actions.declare_output("criterion", dir = True)
+    cmd = cmd_args(run_info.args, "--bench", hidden = criterion_home.as_output())
 
     return inject_test_run_info(
             ctx,
             ExternalRunnerTestInfo(
                 type = "rust",
                 command = [cmd],
-                # env = ctx.attrs.env | ctx.attrs.run_env,
+                env = {"CRITERION_HOME": cmd_args(criterion_home.as_output())},
                 labels = ctx.attrs.labels,
                 # contacts = ctx.attrs.contacts,
                 # default_executor = re_executor,
